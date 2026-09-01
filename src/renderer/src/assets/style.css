@@ -1,0 +1,1041 @@
+@import 'tailwindcss';
+@import 'katex/dist/katex.min.css';
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* ─────────────────────────── 主题语义化令牌 ─────────────────────────── */
+:root,
+.theme-light {
+  --app: #f5f6f8;
+  --panel: #ffffff;
+  --panel-2: #f0f1f4;
+  --elevate: #ffffff;
+  --edge: #e4e6ea;
+  --edge-strong: #d2d5db;
+  --ink: #20242b;
+  --ink-2: #4e5766;
+  --ink-3: #8a919e;
+  --accent: #6366f1;
+  --accent-2: #8b5cf6;
+  --accent-soft: rgba(99, 102, 241, 0.1);
+  --accent-ink: #4338ca;
+  --danger: #dc2626;
+  --warning: #d97706;
+  --ok: #16a34a;
+  --glow: rgba(99, 102, 241, 0.16);
+  --code-bg: #f1f2f5;
+  --sel: rgba(99, 102, 241, 0.22);
+  --block-hover: rgba(99, 102, 241, 0.05);
+  --block-active: rgba(99, 102, 241, 0.075);
+  --shadow-1: 0 1px 2px rgba(16, 24, 40, 0.06);
+  --shadow-2: 0 8px 28px rgba(16, 24, 40, 0.1);
+  --editor-bg: transparent;
+  color-scheme: light;
+}
+
+.theme-dark {
+  --app: #0f1116;
+  --panel: #16181f;
+  --panel-2: #1e2129;
+  --elevate: #1c1f27;
+  --edge: #272b35;
+  --edge-strong: #363b48;
+  --ink: #e8eaef;
+  --ink-2: #a8afbc;
+  --ink-3: #6d7483;
+  --accent: #818cf8;
+  --accent-2: #a78bfa;
+  --accent-soft: rgba(129, 140, 248, 0.13);
+  --accent-ink: #c7d2fe;
+  --danger: #f87171;
+  --warning: #fbbf24;
+  --ok: #4ade80;
+  --glow: rgba(129, 140, 248, 0.15);
+  --code-bg: #1a1d26;
+  --sel: rgba(129, 140, 248, 0.3);
+  --block-hover: rgba(129, 140, 248, 0.06);
+  --block-active: rgba(129, 140, 248, 0.1);
+  --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-2: 0 10px 32px rgba(0, 0, 0, 0.55);
+  --editor-bg: transparent;
+  color-scheme: dark;
+}
+
+.theme-sepia {
+  --app: #f1e9d5;
+  --panel: #faf4e4;
+  --panel-2: #f2ead3;
+  --elevate: #faf4e4;
+  --edge: #e5d8ba;
+  --edge-strong: #d6c6a0;
+  --ink: #4a3b2a;
+  --ink-2: #7c6a50;
+  --ink-3: #a5947a;
+  --accent: #b45309;
+  --accent-2: #d97706;
+  --accent-soft: rgba(180, 83, 9, 0.11);
+  --accent-ink: #92400e;
+  --danger: #b91c1c;
+  --warning: #b45309;
+  --ok: #15803d;
+  --glow: rgba(180, 83, 9, 0.12);
+  --code-bg: #efe4c9;
+  --sel: rgba(180, 83, 9, 0.2);
+  --block-hover: rgba(180, 83, 9, 0.055);
+  --block-active: rgba(180, 83, 9, 0.09);
+  --shadow-1: 0 1px 2px rgba(97, 74, 32, 0.08);
+  --shadow-2: 0 8px 28px rgba(97, 74, 32, 0.14);
+  --editor-bg: transparent;
+  color-scheme: light;
+}
+
+@theme {
+  --font-sans:
+    'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', 'PingFang SC',
+    'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+  --font-mono:
+    'JetBrains Mono', ui-monospace, 'Cascadia Code', 'SF Mono', Consolas, Menlo, monospace;
+}
+
+@theme inline {
+  --color-app: var(--app);
+  --color-panel: var(--panel);
+  --color-panel-2: var(--panel-2);
+  --color-elevate: var(--elevate);
+  --color-edge: var(--edge);
+  --color-edge-strong: var(--edge-strong);
+  --color-ink: var(--ink);
+  --color-ink-2: var(--ink-2);
+  --color-ink-3: var(--ink-3);
+  --color-accent: var(--accent);
+  --color-accent-2: var(--accent-2);
+  --color-accent-soft: var(--accent-soft);
+  --color-accent-ink: var(--accent-ink);
+  --color-danger: var(--danger);
+  --color-warning: var(--warning);
+  --color-ok: var(--ok);
+}
+
+/* ─────────────────────────── 基础层 ─────────────────────────── */
+@layer base {
+  *,
+  ::before,
+  ::after {
+    border-color: var(--edge);
+  }
+
+  html,
+  body,
+  #app {
+    height: 100%;
+    overflow: hidden;
+  }
+
+  body {
+    background: var(--app);
+    color: var(--ink);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+    transition:
+      background-color 0.35s ease,
+      color 0.35s ease;
+    user-select: none;
+  }
+
+  ::selection {
+    background: var(--sel);
+  }
+
+  input,
+  textarea {
+    user-select: text;
+  }
+
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: color-mix(in srgb, var(--ink-3) 38%, transparent);
+    border-radius: 8px;
+    border: 2px solid transparent;
+    background-clip: padding-box;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: color-mix(in srgb, var(--ink-3) 58%, transparent);
+    background-clip: padding-box;
+  }
+  ::-webkit-scrollbar-corner {
+    background: transparent;
+  }
+}
+
+/* ─────────────────────────── 动效 ─────────────────────────── */
+@keyframes lm-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@keyframes lm-pop {
+  from {
+    opacity: 0;
+    transform: scale(0.96) translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes lm-slide-up {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes lm-slide-in-right {
+  from {
+    opacity: 0;
+    transform: translateX(16px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes lm-shimmer {
+  from {
+    background-position: 200% 0;
+  }
+  to {
+    background-position: -200% 0;
+  }
+}
+@keyframes lm-breathe {
+  0%,
+  100% {
+    opacity: 0.55;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+@keyframes lm-caret-blink {
+  0%,
+  45% {
+    opacity: 1;
+  }
+  50%,
+  95% {
+    opacity: 0;
+  }
+}
+
+.fade-enter-active,
+.fade-leave-active {
+  transition: opacity 0.18s ease;
+}
+.fade-enter-from,
+.fade-leave-to {
+  opacity: 0;
+}
+
+.pop-enter-active {
+  transition:
+    opacity 0.16s ease,
+    transform 0.16s cubic-bezier(0.2, 0.9, 0.3, 1.2);
+}
+.pop-leave-active {
+  transition:
+    opacity 0.12s ease,
+    transform 0.12s ease;
+}
+.pop-enter-from,
+.pop-leave-to {
+  opacity: 0;
+  transform: scale(0.96) translateY(4px);
+}
+
+.slide-enter-active,
+.slide-leave-active {
+  transition:
+    opacity 0.2s ease,
+    transform 0.2s ease;
+}
+.slide-enter-from,
+.slide-leave-to {
+  opacity: 0;
+  transform: translateY(8px);
+}
+
+.page-enter-active,
+.page-leave-active {
+  transition:
+    opacity 0.22s ease,
+    transform 0.22s ease;
+}
+.page-enter-from {
+  opacity: 0;
+  transform: translateY(10px);
+}
+.page-leave-to {
+  opacity: 0;
+  transform: translateY(-6px);
+}
+
+.list-enter-active,
+.list-leave-active {
+  transition:
+    opacity 0.25s ease,
+    transform 0.25s ease;
+}
+.list-enter-from,
+.list-leave-to {
+  opacity: 0;
+  transform: translateY(-6px) scale(0.98);
+}
+
+/* ─────────────────────────── 通用组件样式 ─────────────────────────── */
+.surface {
+  background: var(--panel);
+  border: 1px solid var(--edge);
+  border-radius: 12px;
+  box-shadow: var(--shadow-1);
+}
+
+.skeleton {
+  background: linear-gradient(
+    100deg,
+    color-mix(in srgb, var(--ink-3) 12%, transparent) 40%,
+    color-mix(in srgb, var(--ink-3) 26%, transparent) 50%,
+    color-mix(in srgb, var(--ink-3) 12%, transparent) 60%
+  );
+  background-size: 200% 100%;
+  animation: lm-shimmer 1.6s linear infinite;
+  border-radius: 8px;
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  transition:
+    background-color 0.15s ease,
+    color 0.15s ease,
+    border-color 0.15s ease,
+    transform 0.1s ease,
+    box-shadow 0.15s ease;
+  cursor: pointer;
+}
+.btn:active {
+  transform: scale(0.96);
+}
+.btn-primary {
+  background: linear-gradient(135deg, var(--accent), var(--accent-2));
+  color: #fff;
+  box-shadow: 0 2px 10px var(--glow);
+}
+.btn-primary:hover {
+  box-shadow: 0 4px 16px var(--glow);
+  filter: brightness(1.06);
+}
+.btn-ghost {
+  color: var(--ink-2);
+}
+.btn-ghost:hover {
+  background: var(--panel-2);
+  color: var(--ink);
+}
+.btn-outline {
+  border: 1px solid var(--edge-strong);
+  color: var(--ink-2);
+}
+.btn-outline:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  color: var(--ink-2);
+  transition:
+    background-color 0.15s ease,
+    color 0.15s ease,
+    transform 0.12s ease;
+  cursor: pointer;
+  flex: none;
+}
+.icon-btn:hover {
+  background: var(--panel-2);
+  color: var(--ink);
+}
+.icon-btn:active {
+  transform: scale(0.9);
+}
+.icon-btn.active {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.input {
+  width: 100%;
+  border-radius: 8px;
+  border: 1px solid var(--edge-strong);
+  background: var(--panel);
+  color: var(--ink);
+  font-size: 13px;
+  padding: 7px 10px;
+  outline: none;
+  transition:
+    border-color 0.15s ease,
+    box-shadow 0.15s ease;
+}
+.input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+.input::placeholder {
+  color: var(--ink-3);
+}
+
+.select {
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%238a919e' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+  padding-right: 30px;
+}
+
+.range {
+  appearance: none;
+  height: 4px;
+  border-radius: 999px;
+  background: var(--edge-strong);
+  outline: none;
+  cursor: pointer;
+}
+.range::-webkit-slider-thumb {
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--accent);
+  border: 2px solid var(--panel);
+  box-shadow: 0 0 0 1px var(--accent), 0 2px 6px var(--glow);
+  transition: transform 0.12s ease;
+}
+.range::-webkit-slider-thumb:hover {
+  transform: scale(1.2);
+}
+
+.switch {
+  position: relative;
+  width: 38px;
+  height: 22px;
+  border-radius: 999px;
+  background: var(--edge-strong);
+  transition: background-color 0.2s ease;
+  cursor: pointer;
+  flex: none;
+}
+.switch::after {
+  content: '';
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+  transition: transform 0.2s cubic-bezier(0.3, 1.2, 0.4, 1);
+}
+.switch.on {
+  background: var(--accent);
+}
+.switch.on::after {
+  transform: translateX(16px);
+}
+
+.tooltip {
+  position: absolute;
+  z-index: 90;
+  padding: 4px 9px;
+  border-radius: 7px;
+  background: var(--elevate);
+  border: 1px solid var(--edge);
+  box-shadow: var(--shadow-2);
+  color: var(--ink);
+  font-size: 11.5px;
+  white-space: nowrap;
+  pointer-events: none;
+  animation: lm-pop 0.14s ease;
+}
+
+/* ─────────────────────── Markdown 预览排版（md-preview） ─────────────────────── */
+.md-preview {
+  font-family: var(--editor-font, var(--font-sans));
+  font-size: var(--editor-size, 17px);
+  line-height: var(--editor-lh, 1.9);
+  color: var(--ink);
+  word-break: break-word;
+  user-select: text;
+  cursor: text;
+}
+.md-preview > *:first-child {
+  margin-top: 0;
+}
+.md-preview h1,
+.md-preview h2,
+.md-preview h3,
+.md-preview h4,
+.md-preview h5,
+.md-preview h6 {
+  font-weight: 700;
+  line-height: 1.35;
+  margin: 1.3em 0 0.55em;
+  letter-spacing: -0.01em;
+}
+.md-preview h1 {
+  font-size: 1.95em;
+  padding-bottom: 0.28em;
+  border-bottom: 1px solid var(--edge);
+}
+.md-preview h2 {
+  font-size: 1.5em;
+  padding-bottom: 0.22em;
+  border-bottom: 1px solid var(--edge);
+}
+.md-preview h3 {
+  font-size: 1.22em;
+}
+.md-preview h4 {
+  font-size: 1.08em;
+}
+.md-preview h5 {
+  font-size: 0.98em;
+}
+.md-preview h6 {
+  font-size: 0.9em;
+  color: var(--ink-2);
+}
+.md-preview p {
+  margin: 0.55em 0;
+}
+.md-preview a {
+  color: var(--accent);
+  text-decoration: none;
+  border-bottom: 1px solid color-mix(in srgb, var(--accent) 35%, transparent);
+  transition: border-color 0.15s ease, background-color 0.15s ease;
+}
+.md-preview a:hover {
+  border-bottom-color: var(--accent);
+  background: var(--accent-soft);
+}
+.md-preview strong {
+  font-weight: 700;
+}
+.md-preview em {
+  font-style: italic;
+}
+.md-preview del {
+  color: var(--ink-3);
+}
+.md-preview blockquote {
+  margin: 0.8em 0;
+  padding: 0.4em 1.1em;
+  border-left: 3px solid var(--accent);
+  border-radius: 0 10px 10px 0;
+  background: var(--accent-soft);
+  color: var(--ink-2);
+}
+.md-preview blockquote p {
+  margin: 0.3em 0;
+}
+.md-preview ul,
+.md-preview ol {
+  margin: 0.55em 0;
+  padding-left: 1.7em;
+}
+.md-preview ul {
+  list-style: disc;
+}
+.md-preview ol {
+  list-style: decimal;
+}
+.md-preview ul ul {
+  list-style: circle;
+}
+.md-preview ul ul ul {
+  list-style: square;
+}
+.md-preview li {
+  margin: 0.22em 0;
+}
+.md-preview li > p {
+  margin: 0.2em 0;
+}
+.md-preview ul:has(> li > input[type='checkbox']) {
+  list-style: none;
+  padding-left: 0.4em;
+}
+.md-preview li > input[type='checkbox'] {
+  appearance: none;
+  width: 15px;
+  height: 15px;
+  margin-right: 8px;
+  border: 1.5px solid var(--edge-strong);
+  border-radius: 4px;
+  vertical-align: -2px;
+  cursor: pointer;
+  position: relative;
+  transition: all 0.15s ease;
+}
+.md-preview li > input[type='checkbox']:checked {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+.md-preview li > input[type='checkbox']:checked::after {
+  content: '';
+  position: absolute;
+  left: 4px;
+  top: 1px;
+  width: 4px;
+  height: 8px;
+  border: solid #fff;
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+}
+.md-preview code {
+  font-family: var(--font-mono);
+  font-size: 0.88em;
+  background: var(--code-bg);
+  border-radius: 5px;
+  padding: 0.15em 0.4em;
+}
+.md-preview pre {
+  margin: 0.8em 0;
+  padding: 14px 16px;
+  border-radius: 12px;
+  background: var(--code-bg);
+  border: 1px solid var(--edge);
+  overflow-x: auto;
+  line-height: 1.6;
+}
+.md-preview pre code {
+  background: none;
+  padding: 0;
+  font-size: 0.86em;
+}
+.md-preview table {
+  border-collapse: collapse;
+  margin: 0.9em 0;
+  width: 100%;
+  font-size: 0.95em;
+  display: block;
+  overflow-x: auto;
+}
+.md-preview thead {
+  background: var(--panel-2);
+}
+.md-preview th,
+.md-preview td {
+  border: 1px solid var(--edge);
+  padding: 7px 13px;
+  text-align: left;
+}
+.md-preview th {
+  font-weight: 600;
+}
+.md-preview tbody tr {
+  transition: background-color 0.12s ease;
+}
+.md-preview tbody tr:hover {
+  background: var(--block-hover);
+}
+.md-preview hr {
+  border: none;
+  height: 1px;
+  margin: 1.6em auto;
+  width: 70%;
+  background: linear-gradient(90deg, transparent, var(--edge-strong), transparent);
+}
+.md-preview img {
+  max-width: 100%;
+  border-radius: 10px;
+  margin: 0.4em auto;
+  display: block;
+  box-shadow: var(--shadow-2);
+}
+.md-preview .katex {
+  font-size: 1.06em;
+}
+.md-preview .katex-display {
+  margin: 0.8em 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 2px 0;
+}
+.md-preview svg {
+  max-width: 100%;
+}
+
+/* ─── 代码高亮（highlight.js 自定义配色） ─── */
+.hljs {
+  color: var(--ink);
+}
+.hljs-comment,
+.hljs-quote {
+  color: var(--ink-3);
+  font-style: italic;
+}
+.hljs-keyword,
+.hljs-selector-tag,
+.hljs-literal,
+.hljs-doctag {
+  color: var(--accent);
+}
+.hljs-string,
+.hljs-regexp,
+.hljs-addition {
+  color: var(--ok);
+}
+.hljs-number,
+.hljs-symbol,
+.hljs-bullet,
+.hljs-meta {
+  color: var(--warning);
+}
+.hljs-title,
+.hljs-section,
+.hljs-name {
+  color: var(--accent-2);
+}
+.hljs-attr,
+.hljs-attribute,
+.hljs-variable,
+.hljs-template-variable,
+.hljs-type {
+  color: var(--accent-ink);
+}
+.hljs-built_in,
+.hljs-builtin-name,
+.hljs-function {
+  color: var(--warning);
+}
+.hljs-tag {
+  color: var(--accent);
+}
+.hljs-deletion {
+  color: var(--danger);
+}
+.hljs-emphasis {
+  font-style: italic;
+}
+.hljs-strong {
+  font-weight: 700;
+}
+
+/* ─────────────────────── 编辑器块（所见即所得） ─────────────────────── */
+/* Typora 式极简：编辑中的块不做背景/色条提示，仅在行内标记符层面反馈。
+   padding 放在可编辑容器上，保证点击块整行（含边缘空白）都能放置光标 */
+.md-block {
+  position: relative;
+  margin: 0 -12px;
+}
+.md-block-inner {
+  padding: 1px 12px;
+}
+.md-block .md-raw {
+  width: 100%;
+  background: transparent;
+  border: none;
+  outline: none;
+  resize: none;
+  font-family: var(--editor-font, var(--font-sans));
+  font-size: var(--editor-size, 17px);
+  line-height: var(--editor-lh, 1.9);
+  color: var(--ink);
+  caret-color: var(--accent);
+  overflow: hidden;
+}
+.md-block .md-raw::placeholder {
+  color: var(--ink-3);
+}
+
+/* 行内可编辑容器 */
+.md-block-inner {
+  outline: none;
+  caret-color: var(--accent);
+  min-height: calc(var(--editor-size, 17px) * var(--editor-lh, 1.9));
+  cursor: text;
+}
+.md-block-inner:empty::before {
+  content: attr(data-placeholder);
+  color: var(--ink-3);
+  pointer-events: none;
+}
+.md-block-inner a {
+  cursor: text;
+}
+.md-block-inner img {
+  cursor: default;
+}
+
+/* 行内样式标记符：默认隐藏，光标进入 / 悬停 / 选区相交时显示 */
+.md-meta {
+  display: none;
+  color: color-mix(in srgb, var(--accent) 75%, var(--ink-3));
+  opacity: 0.85;
+  user-select: none;
+  font-weight: normal;
+  font-style: normal;
+  text-decoration: none;
+}
+strong:hover > .md-meta,
+em:hover > .md-meta,
+del:hover > .md-meta,
+code:hover > .md-meta,
+strong.md-reveal > .md-meta,
+em.md-reveal > .md-meta,
+del.md-reveal > .md-meta,
+code.md-reveal > .md-meta {
+  display: inline;
+  animation: lm-fade-in 0.12s ease;
+}
+code.md-reveal > .md-meta,
+code:hover > .md-meta {
+  color: var(--accent);
+}
+
+/* 标题标记符（Typora：光标进入标题时显示 #，退格可去标题） */
+h1 > .md-heading-marker,
+h2 > .md-heading-marker,
+h3 > .md-heading-marker,
+h4 > .md-heading-marker,
+h5 > .md-heading-marker,
+h6 > .md-heading-marker {
+  color: color-mix(in srgb, var(--accent) 65%, var(--ink-3));
+  opacity: 0.9;
+}
+h1.md-reveal > .md-heading-marker,
+h2.md-reveal > .md-heading-marker,
+h3.md-reveal > .md-heading-marker,
+h4.md-reveal > .md-heading-marker,
+h5.md-reveal > .md-heading-marker,
+h6.md-reveal > .md-heading-marker {
+  display: inline;
+  animation: lm-fade-in 0.12s ease;
+}
+
+/* 表格行内编辑（Typora：编辑单元格时显示 | 标记，无整行高亮） */
+.md-block-inner th,
+.md-block-inner td {
+  cursor: text;
+}
+.md-cell-pipe {
+  color: var(--ink-3);
+  opacity: 0.6;
+}
+.md-block-inner th.md-reveal > .md-cell-pipe,
+.md-block-inner td.md-reveal > .md-cell-pipe {
+  display: inline;
+  animation: lm-fade-in 0.12s ease;
+}
+
+/* 公式行内编辑 */
+.md-math {
+  cursor: pointer;
+}
+.md-math-input {
+  width: 9em;
+  background: var(--panel);
+  border: 1.5px solid var(--accent);
+  border-radius: 6px;
+  padding: 2px 8px;
+  font-family: var(--font-mono);
+  font-size: 0.85em;
+  color: var(--ink);
+  outline: none;
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+/* 代码块原位编辑：高亮层 + 透明 textarea（样式与静态代码框一致） */
+.code-edit-box {
+  position: relative;
+  margin: 0.8em 0;
+  background: var(--code-bg);
+  border: 1px solid var(--edge);
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+.code-edit-highlight,
+.code-edit-input {
+  margin: 0;
+  padding: 14px 16px;
+  font-family: var(--font-mono);
+  font-size: 0.86em;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-all;
+  tab-size: 2;
+}
+.code-edit-highlight {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  background: transparent;
+  color: var(--ink);
+}
+.code-edit-highlight code {
+  background: transparent;
+  padding: 0;
+}
+.code-edit-input {
+  position: relative;
+  display: block;
+  width: 100%;
+  min-height: 100%;
+  border: none;
+  background: transparent;
+  color: transparent;
+  caret-color: var(--accent);
+  resize: none;
+  outline: none;
+  overflow: hidden;
+  field-sizing: content;
+}
+.code-edit-input::selection {
+  background: var(--sel);
+  color: transparent;
+}
+
+/* 目录 */
+.md-toc {
+  margin: 0.6em 0;
+  padding: 10px 16px 10px 18px;
+  border: 1px solid var(--edge);
+  border-left: 3px solid var(--accent);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--panel) 55%, transparent);
+  display: inline-block;
+  min-width: 240px;
+}
+.md-toc-title {
+  font-size: 0.85em;
+  font-weight: 700;
+  color: var(--ink-2);
+  letter-spacing: 0.06em;
+  margin-bottom: 4px;
+}
+.md-toc a {
+  display: block;
+  padding: 1px 0;
+  font-size: 0.94em;
+  border-bottom: none;
+}
+.md-toc a:hover {
+  background: none;
+  border-bottom: none;
+  color: var(--accent-2);
+}
+.md-toc .toc-l2 {
+  padding-left: 1.1em;
+}
+.md-toc .toc-l3 {
+  padding-left: 2.2em;
+}
+
+/* mermaid 容器 */
+.md-mermaid {
+  display: flex;
+  justify-content: center;
+  margin: 0.8em 0;
+}
+.md-mermaid svg {
+  max-width: 100%;
+  height: auto;
+}
+
+/* 草稿恢复横幅 */
+.restore-bar {
+  background: var(--accent-soft);
+  border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent);
+  border-radius: 10px;
+  color: var(--accent-ink);
+}
+
+/* 焦点/打字机模式下的辅助类 */
+.typewriter-scroll {
+  scroll-behavior: smooth;
+}
+
+/* ─────────────────────── 侧边栏过渡 / 查找标记 ─────────────────────── */
+.sidebar-enter-active,
+.sidebar-leave-active {
+  transition:
+    width 0.28s cubic-bezier(0.4, 0, 0.2, 1),
+    opacity 0.22s ease;
+}
+.sidebar-enter-from,
+.sidebar-leave-to {
+  width: 0 !important;
+  opacity: 0;
+}
+.sidebar-leave-active {
+  overflow: hidden;
+}
+
+mark.lm-find-mark {
+  background: color-mix(in srgb, var(--warning) 35%, transparent);
+  color: inherit;
+  border-radius: 3px;
+  outline: 1px solid color-mix(in srgb, var(--warning) 55%, transparent);
+  padding: 0 1px;
+}
+mark.lm-find-mark.lm-current {
+  background: color-mix(in srgb, var(--warning) 65%, transparent);
+  outline: 2px solid var(--warning);
+}
+
+.mermaid-error pre {
+  border-color: color-mix(in srgb, var(--danger) 45%, transparent);
+}
+
+.code-wrap {
+  position: relative;
+  cursor: text;
+}
+.code-lang {
+  user-select: none;
+  pointer-events: none;
+}
+
+/* 全局搜索高亮 */
+.gs-hl {
+  color: var(--warning);
+  font-style: normal;
+  font-weight: 700;
+  background: color-mix(in srgb, var(--warning) 16%, transparent);
+  border-radius: 3px;
+  padding: 0 1px;
+}
