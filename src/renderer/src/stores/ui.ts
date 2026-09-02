@@ -13,29 +13,6 @@ export interface ConfirmOptions {
   danger?: boolean
 }
 
-export interface FormatCommand {
-  id: number
-  action:
-    | 'bold'
-    | 'italic'
-    | 'strike'
-    | 'inlineCode'
-    | 'heading'
-    | 'quote'
-    | 'ul'
-    | 'ol'
-    | 'task'
-    | 'codeBlock'
-    | 'link'
-    | 'image'
-    | 'table'
-    | 'hr'
-    | 'math'
-    | 'undo'
-    | 'redo'
-  payload?: string
-}
-
 export interface ContextMenuItem {
   label: string
   icon?: string
@@ -53,6 +30,9 @@ export interface ContextMenuState {
 
 let idSeq = 1
 
+// ─── UI 状态壳子 ──────────────────────────────────────────────────────────
+// 编辑器命令通道（formatCmd/findTick/大纲跳转等）随渲染内核剥离，
+// 保留界面状态与全局组件状态，供后续重构接入新内核。
 export const useUiStore = defineStore('ui', {
   state: () => ({
     sidebarVisible: true,
@@ -66,12 +46,6 @@ export const useUiStore = defineStore('ui', {
       | { title: string; placeholder: string; value: string; resolve: (v: string | null) => void }
       | null,
     contextMenu: null as ContextMenuState | null,
-    formatCmd: null as FormatCommand | null,
-    findTick: 0,
-    scrollToHeadingTick: 0,
-    headingToScroll: null as number | null,
-    activeHeading: -1,
-    exportTick: 0,
     cursor: { line: 1, col: 1 },
     booting: true,
     globalSearch: {
@@ -115,19 +89,6 @@ export const useUiStore = defineStore('ui', {
     closeContextMenu(): void {
       this.contextMenu = null
     },
-    sendFormat(action: FormatCommand['action'], payload?: string): void {
-      this.formatCmd = { id: idSeq++, action, payload }
-    },
-    requestFind(): void {
-      this.findTick++
-    },
-    scrollToHeading(index: number): void {
-      this.headingToScroll = index
-      this.scrollToHeadingTick++
-    },
-    setActiveHeading(index: number): void {
-      this.activeHeading = index
-    },
     openGlobalSearch(): void {
       this.globalSearch.open = true
       this.globalSearch.query = ''
@@ -141,9 +102,6 @@ export const useUiStore = defineStore('ui', {
       this.globalSearch.open = false
       this.globalSearch.results = []
       this.globalSearch.loading = false
-    },
-    requestExport(): void {
-      this.exportTick++
     }
   }
 })

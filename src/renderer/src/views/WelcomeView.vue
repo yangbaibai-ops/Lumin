@@ -248,7 +248,7 @@ onMounted(async () => {
             写作小贴士
           </h2>
           <ul class="space-y-2">
-            <li v-for="(tip, i) in ['使用 # 快速创建标题，Ctrl+B 加粗文字', '输入 $$ 公式以插入数学公式，如 E = mc²', '使用 ```mermaid 代码块绘制流程图与图表', '在文档中插入 [TOC] 可自动生成目录', '按 Ctrl+Shift+F 进入专注模式，享受沉浸写作']" :key="i" class="flex items-start gap-2 text-[12.5px] leading-relaxed text-ink-2">
+            <li v-for="(tip, i) in ['打开工作区文件夹，在左侧文件树中管理文档', '文档编辑后自动保存，意外退出可恢复草稿', 'Ctrl+Shift+P 全局搜索已索引的文档内容', '在设置中切换浅色 / 深色 / 羊皮纸主题', '编辑器内核正在重构，敬请期待新的写作体验']" :key="i" class="flex items-start gap-2 text-[12.5px] leading-relaxed text-ink-2">
               <Icon name="dot" :size="9" class="mt-1.5 flex-none text-accent" />
               {{ tip }}
             </li>

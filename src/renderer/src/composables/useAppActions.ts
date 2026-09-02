@@ -55,6 +55,11 @@ export function useAppActions(): {
     if (await files.saveAs()) ui.toast('已保存', 'success')
   }
 
+  /** 编辑器内核 / 导出随渲染层剥离：保留入口，占位提示 */
+  function pendingRefactor(feature: string): void {
+    ui.toast(`${feature}功能待重构`, 'info')
+  }
+
   function handleMenu(action: string): void {
     const a = action as MenuAction
     switch (a) {
@@ -86,7 +91,7 @@ export function useAppActions(): {
         void runExport('epub')
         break
       case 'find':
-        ui.requestFind()
+        pendingRefactor('查找替换')
         break
       case 'global-search':
         ui.openGlobalSearch()
@@ -96,18 +101,15 @@ export function useAppActions(): {
         settings.set('sidebarVisible', ui.sidebarVisible)
         break
       case 'mode-wysiwyg':
-        ui.editorMode = 'wysiwyg'
-        settings.set('editorMode', 'wysiwyg')
         break
       case 'mode-source':
-        ui.editorMode = 'source'
-        settings.set('editorMode', 'source')
+        pendingRefactor('源码模式')
         break
       case 'toggle-focus':
         ui.focusMode = !ui.focusMode
         break
       case 'toggle-typewriter':
-        ui.typewriterMode = !ui.typewriterMode
+        pendingRefactor('打字机模式')
         break
       case 'settings':
         void router.push('/settings')
@@ -126,8 +128,6 @@ export function useAppActions(): {
     const mod = e.ctrlKey || e.metaKey
     if (!mod) return
     const target = e.target
-    // 在源码编辑器内时交给 CodeMirror 处理
-    if (target instanceof Element && target.closest('.cm-editor')) return
     const tagName = target instanceof Element ? target.tagName : ''
     const key = e.key.toLowerCase()
     if (e.shiftKey && key === 'e') {
@@ -141,7 +141,7 @@ export function useAppActions(): {
       ui.focusMode = !ui.focusMode
     } else if (e.shiftKey && key === 't') {
       e.preventDefault()
-      ui.typewriterMode = !ui.typewriterMode
+      pendingRefactor('打字机模式')
     } else if (e.shiftKey && key === 'o') {
       e.preventDefault()
       void openFolderDialog()
@@ -156,7 +156,7 @@ export function useAppActions(): {
       void openFileDialog()
     } else if (key === 'f' && tagName !== 'INPUT' && tagName !== 'TEXTAREA') {
       e.preventDefault()
-      ui.requestFind()
+      pendingRefactor('查找替换')
     }
   }
 

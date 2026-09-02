@@ -5,7 +5,9 @@ import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
 import { installMenu } from './menu'
 import { registerIpc, attachCloseGuard } from './ipc'
-import { settingsStore } from './store'
+import { migrateLegacyStores } from './store'
+import { db } from './services/database'
+import { defaultSettings } from '../shared/defaults'
 import { markRunning, markClean } from './drafts'
 
 // 本地文件协议（用于 Markdown 内相对路径图片，兼容 dev/prod 与 CSP）
@@ -32,7 +34,7 @@ if (!app.requestSingleInstanceLock()) {
 
 // 主题背景色（避免启动闪白）
 function themeBackground(): string {
-  const theme = settingsStore.get('theme')
+  const theme = db.kvGet('settings', defaultSettings).theme
   if (theme === 'dark') return '#111318'
   if (theme === 'sepia') return '#f4ecd8'
   if (theme === 'auto') return nativeTheme.shouldUseDarkColors ? '#111318' : '#f7f7f8'
@@ -117,6 +119,8 @@ function createWindow(): void {
 }
 
 app.whenReady().then(() => {
+  // 历史版本 electron-store 数据一次性迁入 SQLite kv（kv 已有数据时跳过）
+  migrateLegacyStores()
   installMenu()
   registerIpc()
 
@@ -131,7 +135,7 @@ app.whenReady().then(() => {
     }
   })
 
-  const theme = settingsStore.get('theme')
+  const theme = db.kvGet('settings', defaultSettings).theme
   nativeTheme.themeSource = theme === 'auto' ? 'system' : theme === 'sepia' ? 'light' : theme
 
   app.on('browser-window-created', (_, window) => {

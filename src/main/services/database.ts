@@ -77,6 +77,14 @@ class LuminDatabase {
       );
       CREATE INDEX IF NOT EXISTS idx_documents_last_opened ON documents(last_opened);
     `)
+    // 应用状态键值表：设置 / 工作区等 UI 状态持久化（JSON 值）
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS kv (
+        key TEXT PRIMARY KEY,
+        value TEXT NOT NULL,
+        updated_at INTEGER NOT NULL
+      );
+    `)
     // FTS5：trigram 分词器（对中日韩文本支持子串匹配；支持片段高亮）
     const ftsRow = this.db
       .prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='documents_fts'")
@@ -277,6 +285,38 @@ class LuminDatabase {
       .prepare('SELECT COUNT(*) AS c FROM documents_fts')
       .get() as unknown as { c: number }
     return { docs: row.docs, fts: fts.c }
+  }
+
+  // ── 应用状态 kv（设置 / 工作区持久化，JSON 序列化）──
+
+  kvGet<T>(key: string, fallback: T): T {
+    const row = this.db.prepare('SELECT value FROM kv WHERE key = ?').get(key) as
+      | { value: string }
+      | undefined
+    if (!row) return fallback
+    try {
+      return JSON.parse(row.value) as T
+    } catch {
+      return fallback
+    }
+  }
+
+  kvSet(key: string, value: unknown): void {
+    this.db
+      .prepare(
+        `INSERT INTO kv (key, value, updated_at) VALUES (?, ?, ?)
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`
+      )
+      .run(key, JSON.stringify(value), Date.now())
+  }
+
+  kvHas(key: string): boolean {
+    const row = this.db.prepare('SELECT 1 AS x FROM kv WHERE key = ?').get(key)
+    return !!row
+  }
+
+  kvDelete(key: string): void {
+    this.db.prepare('DELETE FROM kv WHERE key = ?').run(key)
   }
 
   private getRow(filePath: string): DocRow | undefined {

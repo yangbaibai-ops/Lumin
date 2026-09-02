@@ -1,30 +1,22 @@
 import { useFilesStore } from '../stores/files'
 import { useSettingsStore } from '../stores/settings'
 import { useUiStore } from '../stores/ui'
-import { analyzeDoc, renderFull, renderMermaidInHtml } from '../lib/markdown'
-import { exportCss } from '../lib/exportCss'
+import { useEditorStore } from '../stores/editor'
+import { exportCss, renderMermaidInHtml } from '../lib/export'
 
+// ─── 导出（渲染层）：基于 Tiptap getHTML() 输出 ────────────────────────────
 export function useExport(): { runExport: (format: 'pdf' | 'html' | 'word' | 'epub') => Promise<void> } {
   const files = useFilesStore()
   const ui = useUiStore()
   const settings = useSettingsStore()
+  const editorStore = useEditorStore()
 
   async function buildExportHtml(): Promise<{ html: string; title: string } | null> {
     if (!files.current) return null
-    const analysis = analyzeDoc(files.current.content)
-    let baseDir: string | null = null
-    if (files.current.path) {
-      baseDir = await window.luminAPI.file.dirname(files.current.path)
-    } else {
-      baseDir = files.root
-    }
-    const html = renderFull(files.current.content, {
-      slugCursor: analysis.slugCursor,
-      headings: analysis.headings,
-      baseDir
-    })
-    const final = await renderMermaidInHtml(html, settings.effectiveTheme)
-    return { html: final, title: files.current.name.replace(/\.(md|markdown|txt)$/i, '') }
+    const editor = editorStore.instance
+    const raw = editor ? editor.getHTML() : `<p>${files.current.content.replace(/\n/g, '<br>')}</p>`
+    const html = await renderMermaidInHtml(raw, settings.effectiveTheme)
+    return { html, title: files.current.name.replace(/\.(md|markdown|txt)$/i, '') }
   }
 
   async function runExport(format: 'pdf' | 'html' | 'word' | 'epub'): Promise<void> {
@@ -38,17 +30,9 @@ export function useExport(): { runExport: (format: 'pdf' | 'html' | 'word' | 'ep
           settings.export.pdf
         )
       } else if (format === 'html') {
-        path = await window.luminAPI.export.html({
-          title: payload.title,
-          html: payload.html,
-          css: exportCss
-        })
+        path = await window.luminAPI.export.html({ title: payload.title, html: payload.html, css: exportCss })
       } else if (format === 'word') {
-        path = await window.luminAPI.export.word({
-          title: payload.title,
-          html: payload.html,
-          css: exportCss
-        })
+        path = await window.luminAPI.export.word({ title: payload.title, html: payload.html, css: exportCss })
       } else {
         path = await window.luminAPI.export.epub({
           title: payload.title,

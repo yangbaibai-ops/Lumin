@@ -4,11 +4,33 @@ import path from 'path'
 import * as fileOps from './fileOps'
 import * as exportSvc from './export'
 import * as drafts from './drafts'
-import { settingsStore, workspaceStore } from './store'
 import { db } from './services/database'
+import { defaultSettings } from '../shared/defaults'
 import type { AppSettings, ExportPayload, EpubMeta } from '../shared/types'
 
 const closeConfirmed = new WeakSet<BrowserWindow>()
+
+/** 浅层对象深度合并（嵌套对象递归；数组整体替换） */
+function deepMerge<T extends object>(base: T, patch: Partial<T>): T {
+  const out: Record<string, unknown> = { ...(base as Record<string, unknown>) }
+  for (const [k, v] of Object.entries(patch as Record<string, unknown>)) {
+    if (v === undefined) continue
+    const cur = out[k]
+    if (
+      cur &&
+      typeof cur === 'object' &&
+      !Array.isArray(cur) &&
+      v &&
+      typeof v === 'object' &&
+      !Array.isArray(v)
+    ) {
+      out[k] = deepMerge(cur as Record<string, unknown>, v as Record<string, unknown>)
+    } else {
+      out[k] = v
+    }
+  }
+  return out as T
+}
 
 export function registerIpc(): void {
   // ── 应用 ──
@@ -101,16 +123,21 @@ export function registerIpc(): void {
   ipcMain.handle('file:join', (_, dir: string, name: string) => path.join(dir, name))
   ipcMain.handle('file:basename', (_, p: string) => path.basename(p))
 
-  // ── 设置 / 工作区 ──
-  ipcMain.handle('settings:getAll', () => settingsStore.store)
+  // ── 设置 / 工作区（SQLite kv 持久化）──
+  ipcMain.handle('settings:getAll', () => db.kvGet<AppSettings>('settings', defaultSettings))
   ipcMain.handle('settings:update', (_, partial: Partial<AppSettings>) => {
-    const merged = { ...settingsStore.store, ...partial }
-    settingsStore.set(merged)
-    return settingsStore.store
+    const merged = deepMerge(db.kvGet<AppSettings>('settings', defaultSettings), partial)
+    db.kvSet('settings', merged)
+    return merged
   })
-  ipcMain.handle('workspace:getRoot', () => workspaceStore.get('root'))
+  ipcMain.handle('workspace:getRoot', () => {
+    const ws = db.kvGet<{ root: string | null }>('workspace', { root: null })
+    return ws.root
+  })
   ipcMain.handle('workspace:setRoot', (_, root: string | null) => {
-    workspaceStore.set('root', root)
+    const ws = db.kvGet<{ root: string | null }>('workspace', { root: null })
+    ws.root = root
+    db.kvSet('workspace', ws)
   })
 
   // ── 数据库（文档元数据 / 全文搜索）──

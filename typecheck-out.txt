@@ -1,0 +1,9 @@
+npm warn Unknown env config "manage-package-manager-versions". This will error in a future major version of npm. See `npm help npmrc` for supported config options.
+npm notice run lumin@1.0.0 typecheck
+npm notice run npm run typecheck:node && npm run typecheck:web
+npm warn Unknown env config "manage-package-manager-versions". This will error in a future major version of npm. See `npm help npmrc` for supported config options.
+npm notice run lumin@1.0.0 typecheck:node
+npm notice run tsc --noEmit -p tsconfig.node.json --composite false
+npm warn Unknown env config "manage-package-manager-versions". This will error in a future major version of npm. See `npm help npmrc` for supported config options.
+npm notice run lumin@1.0.0 typecheck:web
+npm notice run vue-tsc --noEmit -p tsconfig.web.json --composite false

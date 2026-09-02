@@ -1,30 +1,20 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { onBeforeUnmount, onMounted } from 'vue'
 import { useFilesStore } from '../stores/files'
 import { useUiStore } from '../stores/ui'
 import Toolbar from '../components/Toolbar.vue'
 import StatusBar from '../components/StatusBar.vue'
-import LiveEditor from '../components/LiveEditor.vue'
-import SourceEditor from '../components/SourceEditor.vue'
-import FindBar from '../components/FindBar.vue'
-import Icon from '../components/Icon.vue'
+import TyporaEditor from '../components/editor/TyporaEditor.vue'
 
+// ─── 编辑器页面：工具栏 + Tiptap 所见即所得内核 + 状态栏 ────────────────────
 const files = useFilesStore()
 const ui = useUiStore()
 
-const liveRef = ref<InstanceType<typeof LiveEditor> | null>(null)
-const findOpen = ref(false)
+function onEditorUpdate(md: string): void {
+  files.setContent(md)
+}
 
-watch(
-  () => ui.findTick,
-  () => {
-    if (ui.editorMode === 'wysiwyg') findOpen.value = true
-  }
-)
-
-const editorWidth = computed(() => (ui.focusMode ? '720px' : '900px'))
-
-// ── 外部文件拖放 ──
+// 外部文件拖放打开（文件系统逻辑，与内核无关）
 async function onDrop(e: DragEvent): Promise<void> {
   const file = e.dataTransfer?.files?.[0]
   if (!file) return
@@ -50,7 +40,6 @@ function onDragOver(e: DragEvent): void {
 }
 
 onMounted(() => {
-  // 无文档时默认新建一个未命名文档
   if (!files.current) void files.openUntitled()
 })
 onBeforeUnmount(() => void files.flushAll())
@@ -60,10 +49,12 @@ onBeforeUnmount(() => void files.flushAll())
   <div class="flex h-full min-h-0 flex-col" @drop.prevent="onDrop" @dragover="onDragOver">
     <Toolbar />
 
-    <!-- 草稿恢复横幅 -->
+    <!-- 草稿恢复横幅（文件状态逻辑，与内核无关） -->
     <Transition name="slide">
-      <div v-if="files.draftRestore" class="restore-bar mx-4 mt-3 flex items-center gap-3 px-4 py-2.5 text-[13px]">
-        <Icon name="clock" :size="15" />
+      <div
+        v-if="files.draftRestore"
+        class="restore-bar mx-4 mt-3 flex items-center gap-3 px-4 py-2.5 text-[13px]"
+      >
         <span class="flex-1">检测到未保存的草稿（比磁盘文件更新）</span>
         <button class="btn btn-primary !px-3 !py-1 text-[12px]" @click="files.applyDraftRestore(true)">
           恢复
@@ -74,18 +65,12 @@ onBeforeUnmount(() => void files.flushAll())
       </div>
     </Transition>
 
-    <!-- 编辑区 -->
-    <div class="relative min-h-0 flex-1" :style="{ '--editor-maxw': editorWidth }">
-      <Transition name="fade" mode="out-in">
-        <LiveEditor v-if="ui.editorMode === 'wysiwyg'" key="live" ref="liveRef" />
-        <SourceEditor v-else key="source" />
-      </Transition>
-
-      <!-- 实时渲染模式下的查找栏 -->
-      <FindBar
-        v-if="findOpen && ui.editorMode === 'wysiwyg'"
-        :target="liveRef"
-        @close="findOpen = false"
+    <!-- 编辑器内核（按文件重建，避免撤销历史/光标残留） -->
+    <div class="relative min-h-0 flex-1">
+      <TyporaEditor
+        :key="files.current?.path ?? 'untitled'"
+        :model-value="files.current?.content ?? ''"
+        @update:model-value="onEditorUpdate"
       />
     </div>
 

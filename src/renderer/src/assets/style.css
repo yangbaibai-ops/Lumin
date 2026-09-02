@@ -1,5 +1,4 @@
 @import 'tailwindcss';
-@import 'katex/dist/katex.min.css';
 
 @custom-variant dark (&:where(.dark, .dark *));
 
@@ -673,9 +672,8 @@
 .md-preview hr {
   border: none;
   height: 1px;
-  margin: 1.6em auto;
-  width: 70%;
-  background: linear-gradient(90deg, transparent, var(--edge-strong), transparent);
+  margin: 1.8em 0;
+  background: var(--edge);
 }
 .md-preview img {
   max-width: 100%;
@@ -1038,4 +1036,270 @@ mark.lm-find-mark.lm-current {
   background: color-mix(in srgb, var(--warning) 16%, transparent);
   border-radius: 3px;
   padding: 0 1px;
+}
+
+/* ═══════════════ Tiptap（ProseMirror）所见即所得编辑器 ═══════════════ */
+
+/* 编辑区容器 */
+.editor-content .ProseMirror {
+  outline: none;
+  min-height: 60vh;
+  caret-color: var(--accent);
+}
+.editor-content .ProseMirror:focus {
+  outline: none;
+}
+
+/* 空文档占位提示 */
+.editor-content .ProseMirror p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  float: left;
+  height: 0;
+  pointer-events: none;
+  color: var(--ink-3);
+}
+
+/* 选中节点（图片 / 代码块等） */
+.ProseMirror-selectednode {
+  outline: 2px solid var(--accent);
+  border-radius: 8px;
+}
+
+/* ── 光标感知标记符（ProseMirror Decoration + CSS 生成内容）──
+   光标进入节点/样式时展开语法标记，移出即隐藏，内容本身不含标记字符 */
+
+/* 标题：# 前缀 */
+h1.md-reveal::before {
+  content: '# ';
+  color: color-mix(in srgb, var(--accent) 60%, var(--ink-3));
+  font-weight: 600;
+}
+h2.md-reveal::before {
+  content: '## ';
+  color: color-mix(in srgb, var(--accent) 60%, var(--ink-3));
+  font-weight: 600;
+}
+h3.md-reveal::before {
+  content: '### ';
+  color: color-mix(in srgb, var(--accent) 60%, var(--ink-3));
+  font-weight: 600;
+}
+h4.md-reveal::before {
+  content: '#### ';
+  color: color-mix(in srgb, var(--accent) 60%, var(--ink-3));
+  font-weight: 600;
+}
+h5.md-reveal::before {
+  content: '##### ';
+  color: color-mix(in srgb, var(--accent) 60%, var(--ink-3));
+  font-weight: 600;
+}
+h6.md-reveal::before {
+  content: '###### ';
+  color: color-mix(in srgb, var(--accent) 60%, var(--ink-3));
+  font-weight: 600;
+}
+
+/* 引用：> 前缀 */
+blockquote.md-reveal > p::before {
+  content: '> ';
+  color: color-mix(in srgb, var(--accent) 60%, var(--ink-3));
+}
+
+/* 行内样式标记（光标 / 选区与样式相交时展开）
+   类名由 markers 插件直接挂在样式元素上（PM Decoration 移除路径在本版有缺陷） */
+strong.md-reveal-inline::before,
+strong.md-reveal-inline::after {
+  content: '**';
+  color: color-mix(in srgb, var(--accent) 70%, var(--ink-3));
+  font-weight: 400;
+}
+em.md-reveal-inline::before,
+em.md-reveal-inline::after {
+  content: '*';
+  color: color-mix(in srgb, var(--accent) 70%, var(--ink-3));
+  font-style: normal;
+}
+s.md-reveal-inline::before,
+s.md-reveal-inline::after {
+  content: '~~';
+  color: color-mix(in srgb, var(--accent) 70%, var(--ink-3));
+  text-decoration: none;
+}
+u.md-reveal-inline::before,
+u.md-reveal-inline::after {
+  content: '<u>';
+  color: color-mix(in srgb, var(--accent) 70%, var(--ink-3));
+  text-decoration: none;
+  font-size: 0.85em;
+}
+code.md-reveal-inline::before,
+code.md-reveal-inline::after {
+  content: '`';
+  color: var(--accent);
+}
+
+/* 无序列表：始终显示圆点（与 Typora 一致）。
+   输入 '- ' 后 input rule 将其转为 bulletList，圆点由 ul 的 list-style:disc 渲染；
+   光标在项内也不把圆点替换为 '- ' 标记（用户期望的渲染形态） */
+li.md-reveal {
+  list-style: inherit;
+}
+
+/* ── 气泡菜单 ── */
+.bubble-menu {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  background: var(--elevate);
+  border: 1px solid var(--edge);
+  border-radius: 10px;
+  padding: 4px;
+  box-shadow: var(--shadow-2);
+}
+.bubble-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 7px;
+  color: var(--ink-2);
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  transition:
+    background-color 0.12s ease,
+    color 0.12s ease;
+}
+.bubble-btn:hover {
+  background: var(--panel-2);
+  color: var(--ink);
+}
+.bubble-btn.is-active {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+.bubble-divider {
+  width: 1px;
+  height: 16px;
+  margin: 0 4px;
+  background: var(--edge);
+}
+
+/* ── 代码块 NodeView（CodeMirror 嵌入）── */
+.code-block-wrapper {
+  margin: 0.8em 0;
+  border: 1px solid var(--edge);
+  border-radius: 12px;
+  background: var(--code-bg);
+  overflow: hidden;
+}
+.code-block-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 5px 10px;
+  background: color-mix(in srgb, var(--panel-2) 70%, transparent);
+  border-bottom: 1px solid var(--edge);
+}
+.code-block-lang-label {
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+.code-block-select {
+  appearance: none;
+  border: 1px solid var(--edge-strong);
+  background: var(--panel);
+  color: var(--ink-2);
+  border-radius: 6px;
+  font-size: 11.5px;
+  padding: 2px 22px 2px 8px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='%238a919e' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 6px center;
+  cursor: pointer;
+}
+.cm-editor-container .cm-editor {
+  background: transparent;
+}
+.cm-editor-container .cm-editor.cm-focused {
+  outline: none;
+}
+.cm-editor-container .cm-scroller {
+  overflow: auto;
+  padding: 0 4px;
+}
+
+/* Mermaid 图表块 */
+.mermaid-block .mermaid-render {
+  padding: 14px 16px;
+  display: flex;
+  justify-content: center;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+.mermaid-block .mermaid-render:hover {
+  background: var(--block-hover);
+}
+.mermaid-block .mermaid-render svg {
+  max-width: 100%;
+  height: auto;
+}
+.mermaid-source-input {
+  width: 100%;
+  min-height: 130px;
+  border: none;
+  background: transparent;
+  padding: 14px 16px;
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--ink);
+  outline: none;
+  resize: vertical;
+  caret-color: var(--accent);
+}
+
+/* ── 任务列表 ── */
+.md-preview ul[data-type='taskList'] {
+  list-style: none;
+  padding-left: 0.3em;
+}
+.md-preview ul[data-type='taskList'] li {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+.md-preview ul[data-type='taskList'] li > label {
+  flex: none;
+  margin-top: 0.4em;
+}
+.md-preview ul[data-type='taskList'] li > div {
+  flex: 1;
+  min-width: 0;
+}
+.md-preview ul[data-type='taskList'] input[type='checkbox'] {
+  width: 14px;
+  height: 14px;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+/* 表格容器（Tiptap tableWrapper） */
+.md-preview .tableWrapper {
+  overflow-x: auto;
+  margin: 0.9em 0;
+}
+
+/* 图片 */
+.md-preview img {
+  max-width: 100%;
+  border-radius: 10px;
+  margin: 0.4em auto;
+  display: block;
+  box-shadow: var(--shadow-2);
 }
