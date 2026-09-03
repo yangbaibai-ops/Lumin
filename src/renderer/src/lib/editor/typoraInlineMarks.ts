@@ -123,6 +123,12 @@ function toAtoms(frag: Fragment): Atom[] {
   const atoms: Atom[] = []
   frag.forEach((n) => {
     if (n.isText) {
+      // 链接源码展开态（[文字](网址)，pointer.ts linkSource）视为不透明文本：
+      // 归一化不得扫描其内容（否则会把源码里的 `**` 误派生为样式标记）
+      if (n.marks.some((m) => m.type.name === 'linkSource')) {
+        atoms.push({ kind: 'other', node: n })
+        return
+      }
       const mk = n.marks.find((m) => m.type.name === 'mdMarker')
       if (mk) {
         atoms.push({
@@ -407,6 +413,8 @@ function blockNeedsNormalize(block: PMNode): boolean {
   let found = false
   block.content.descendants((n) => {
     if (found || !n.isText) return
+    // 链接源码展开态文本不参与派生（与 toAtoms 一致）
+    if (n.marks.some((m) => m.type.name === 'linkSource')) return
     if (
       n.marks.some((m) => m.type.name === 'mdStyle' || m.type.name === 'mdMarker' || !!LEGACY[m.type.name]) ||
       PATTERN_TEST.test(n.text ?? '')

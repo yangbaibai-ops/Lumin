@@ -267,7 +267,19 @@ async function main() {
       const es = window.__vt.pinia._s.get('editor')
       const curPath = (files.current?.path ?? '').replace(/\\\\/g, '/').toLowerCase()
       out.push({ n: 'open-path', p: curPath === ${JSON.stringify(TEST_PATH)}.toLowerCase(), d: files.current?.path ?? '' })
-      out.push({ n: 'content-equal', p: files.current?.content === ${JSON.stringify(TEST_MD)}, d: 'len=' + (files.current?.content?.length ?? 0) + ' head=' + JSON.stringify((files.current?.content ?? '').slice(0, 40)) })
+      // 磁盘文件本身必须保持验收内容不变（直接读盘比对，不受装载后序列化
+      // 时序影响）；store 与「编辑器当前文档的序列化」定稿一致且关键结构齐全
+      // ——避免依赖“装载后是否恰好触发过一次回写”来决定结果（既有 flake 根因）
+      const disk = await window.luminAPI.file.read(${JSON.stringify(TEST_PATH)})
+      out.push({ n: 'file-content-intact', p: disk.content === ${JSON.stringify(TEST_MD)}, d: 'len=' + (disk.content?.length ?? 0) })
+      const docMd = ed ? ed.storage.markdown.getMarkdown() : ''
+      files.setContent(docMd)
+      await new Promise((r) => setTimeout(r, 150))
+      out.push({
+        n: 'content-equal',
+        p: files.current?.content === docMd && docMd.includes('# 验收标题') && docMd.includes('**加粗**') && docMd.includes('*斜体*') && docMd.includes('\`行内代码\`') && docMd.includes('- [x] 已完成任务') && docMd.includes('- [ ] 待办任务') && docMd.includes('| 1 | 2 |'),
+        d: 'len=' + docMd.length + ' head=' + JSON.stringify(docMd.slice(0, 40))
+      })
       out.push({ n: 'editor-bound', p: !!ed })
       out.push({ n: 'h1-rendered', p: h1?.textContent === '验收标题', d: h1?.textContent ?? '' })
       out.push({ n: 'h2-rendered', p: h2?.textContent === '列表示例' })
@@ -1256,6 +1268,95 @@ async function main() {
         p: selType.includes('TextSelection') && !document.querySelector('.ProseMirror-selectednode'),
         d: 'type=' + selType
       }]
+    })()`))
+  })
+
+  // ═══ I. 链接交互（普通点击展开源码 / 移出折叠 / Ctrl 保持链接，§4.15）═══
+  await phase('I', async () => {
+    const bridged = await ensureBridge()
+    if (bridged !== 'OK') throw new Error('桥接失败: ' + bridged)
+    await ev(`(async () => { await window.__vt.files().openUntitled(); return 'ok' })()`)
+    await sleep(800)
+    const LINK_MD = '前言链接 [DeepSeek](https://api.deepseek.com) 后文结尾。\n\n第二段普通文字。'
+    await ev(`(() => {
+      const ed = window.__vt.ed()
+      ed?.commands.setContent(${JSON.stringify(LINK_MD)})
+      ed?.commands.focus('start')
+      return 'ok'
+    })()`)
+    await sleep(700)
+
+    const clickDocPos = async (pos, modifiers) => {
+      const c = await ev(`(() => {
+        const ed = window.__vt.ed()
+        const cc = ed.view.coordsAtPos(${pos})
+        return { x: cc.left + 2, y: cc.top + (cc.bottom - cc.top) / 2 }
+      })()`)
+      for (const type of ['mousePressed', 'mouseReleased']) {
+        await send('Input.dispatchMouseEvent', { type, x: c.x, y: c.y, button: 'left', clickCount: 1, modifiers })
+      }
+      await sleep(450)
+    }
+    // 页面端状态读取辅助（Node 端无 ev 依赖，直接装到 window 供断言调用）
+    await ev(`(() => {
+      window.__linkState = () => {
+        const ed = window.__vt.ed()
+        const dom = ed.view.dom
+        const a = dom.querySelector('a[href]')
+        let src = 0
+        ed.view.state.doc.descendants((n) => { if (n.isText && n.marks.some((m) => m.type.name === 'linkSource')) src += n.text.length })
+        const p = dom.querySelector('p')
+        const sel = ed.state.selection
+        return {
+          aHref: a ? a.getAttribute('href') : null,
+          src,
+          bracket: p ? p.innerText.includes('[') : false,
+          labelSpans: dom.querySelectorAll('span.md-link-source').length,
+          syntaxSpans: dom.querySelectorAll('span.md-link-syntax').length,
+          collapsed: sel.from === sel.to
+        }
+      }
+      return 'ok'
+    })()`)
+    const linkPos = async () => ev(`(() => {
+      const doc = window.__vt.ed().view.state.doc
+      const t = doc.firstChild.textContent
+      return 1 + t.indexOf('DeepSeek')
+    })()`)
+    const tailPos = async () => ev(`(() => {
+      const doc = window.__vt.ed().view.state.doc
+      const t = doc.firstChild.textContent
+      return 1 + t.indexOf('后文')
+    })()`)
+
+    // 1) 普通点击链接 → 展开源码（锚点消失、源码可见、label/syntax 双形态、
+    //    不自动选中 URL——光标折叠停在被点击处）
+    await clickDocPos((await linkPos()) + 2, 0)
+    record('I', await ev(`(() => {
+      const s = window.__linkState()
+      const ed = window.__vt.ed()
+      const md = ed.storage.markdown.getMarkdown()
+      return [{
+        n: 'link-plain-click-expand',
+        p: s.aHref === null && s.bracket && s.src > 0 && s.labelSpans >= 1 && s.syntaxSpans >= 1 && s.collapsed && md === ${JSON.stringify(LINK_MD)},
+        d: 'a=' + s.aHref + ' src=' + s.src + ' label=' + s.labelSpans + ' syn=' + s.syntaxSpans + ' collapsed=' + s.collapsed
+      }]
+    })()`))
+    // 2) 光标移到「后文」（离开展开区）→ 自动折叠还原链接
+    await clickDocPos((await tailPos()) + 1, 0)
+    record('I', await ev(`(() => {
+      const s = window.__linkState()
+      const ed = window.__vt.ed()
+      const md = ed.storage.markdown.getMarkdown()
+      return [{ n: 'link-auto-collapse', p: s.aHref === 'https://api.deepseek.com' && !s.bracket && s.src === 0 && md === ${JSON.stringify(LINK_MD)}, d: 'a=' + s.aHref + ' src=' + s.src }]
+    })()`))
+    // 3) Ctrl+点击链接 → 保持链接（不展开；系统浏览器打开由主进程处理）
+    await clickDocPos((await linkPos()) + 2, 2)
+    record('I', await ev(`(() => {
+      const s = window.__linkState()
+      const ed = window.__vt.ed()
+      const md = ed.storage.markdown.getMarkdown()
+      return [{ n: 'link-ctrl-keeps-link', p: s.aHref === 'https://api.deepseek.com' && s.src === 0 && md === ${JSON.stringify(LINK_MD)}, d: 'a=' + s.aHref + ' src=' + s.src }]
     })()`))
   })
 

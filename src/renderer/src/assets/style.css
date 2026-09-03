@@ -1235,6 +1235,18 @@ mark.lm-find-mark.lm-current {
   border-radius: 8px;
 }
 
+/* ── 链接源码展开（Typora 同款，§4.15）──
+   展开态的「原文标签」保持链接外观（主题色 + 下边框，与 .md-preview a 一致）；
+   新增的 `[`、`](`、网址、`)` 等字符以浅灰呈现，一眼区分「正文 vs 语法」 */
+.md-link-source {
+  color: var(--accent);
+  text-decoration: none;
+  border-bottom: 1px solid color-mix(in srgb, var(--accent) 35%, transparent);
+}
+.md-link-syntax {
+  color: var(--ink-3);
+}
+
 /* ── 光标感知标记符（ProseMirror Decoration + CSS 生成内容）──
    光标进入节点/样式时展开语法标记，移出即隐藏，内容本身不含标记字符 */
 
