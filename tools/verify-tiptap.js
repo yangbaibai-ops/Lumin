@@ -1200,6 +1200,65 @@ async function main() {
     })()`))
   })
 
+  // ═══ H. Ctrl/Cmd+左键不整选节点（TyporaPointer，§4.14）═══
+  // PM 内置 selectNodeModifier 在 Ctrl/Cmd+左键时把光标所在文本块 NodeSelection
+  // 整选（.ProseMirror-selectednode 套主题色 outline）——Typora 无此逻辑；
+  // 修复后 Ctrl+左键退化为普通点击（光标落点、折叠选区、无整选框）
+  await phase('H', async () => {
+    const bridged = await ensureBridge()
+    if (bridged !== 'OK') throw new Error('桥接失败: ' + bridged)
+    await ev(`(async () => { await window.__vt.files().openUntitled(); return 'ok' })()`)
+    await sleep(800)
+    await ev(`(() => {
+      const ed = window.__vt.ed()
+      ed?.commands.setContent('第一段 普通文本 点击目标 here。\\n\\n第二段 用于验证。')
+      ed?.commands.focus('start')
+      return 'ok'
+    })()`)
+    await sleep(600)
+    // 第一段文字中部坐标（用 Range 精确取第 5~6 字符之间，避免点在线宽留白上）
+    const pt = await ev(`(() => {
+      const p = document.querySelector('.ProseMirror p')
+      const tn = [...p.childNodes].find((n) => n.nodeType === 3)
+      const r = document.createRange()
+      r.setStart(tn, 4)
+      r.setEnd(tn, 5)
+      const b = r.getBoundingClientRect()
+      return { x: b.left + 1, y: b.top + b.height / 2 }
+    })()`)
+    // Ctrl+左键（modifiers: 2 = Ctrl）
+    for (const type of ['mousePressed', 'mouseReleased']) {
+      await send('Input.dispatchMouseEvent', { type, x: pt.x, y: pt.y, button: 'left', clickCount: 1, modifiers: 2 })
+    }
+    await sleep(500)
+    record('H', await ev(`(() => {
+      const ed = window.__vt.ed()
+      if (!ed) return [{ n: 'ctrl-click-plain-caret', p: false, d: 'no-editor' }]
+      const sel = ed.state.selection
+      const selType = sel.constructor.name
+      const whole = document.querySelector('.ProseMirror-selectednode')
+      return [{
+        n: 'ctrl-click-plain-caret',
+        p: selType.includes('TextSelection') && sel.from === sel.to && sel.from > 1 && sel.from < 16 && !whole,
+        d: 'type=' + selType + ' from=' + sel.from + ' whole=' + !!whole
+      }]
+    })()`))
+    // 普通左键（无修饰键）行为不受影响：仍为普通光标点击
+    for (const type of ['mousePressed', 'mouseReleased']) {
+      await send('Input.dispatchMouseEvent', { type, x: pt.x, y: pt.y, button: 'left', clickCount: 1, modifiers: 0 })
+    }
+    await sleep(400)
+    record('H', await ev(`(() => {
+      const sel = window.__vt.ed()?.state.selection
+      const selType = sel ? sel.constructor.name : 'none'
+      return [{
+        n: 'plain-click-unchanged',
+        p: selType.includes('TextSelection') && !document.querySelector('.ProseMirror-selectednode'),
+        d: 'type=' + selType
+      }]
+    })()`))
+  })
+
   // ═══ 清理：恢复用户工作区 ═══
   await ev(`window.luminAPI.workspace.setRoot(${JSON.stringify(USER_WS)}).then(() => 'ok')`)
 

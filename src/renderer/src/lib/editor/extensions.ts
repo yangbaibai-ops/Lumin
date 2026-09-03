@@ -19,6 +19,7 @@ import { TyporaKeymap } from './keymap'
 import { CodeBlockCM } from './codeBlock'
 import { MarkdownPaste } from './markdownPaste'
 import { TyporaInlineMarks, MdStyle, MdMarker } from './typoraInlineMarks'
+import { TyporaPointer } from './pointer'
 
 // 行内样式 mark：保留节点类型（解析粘贴/加载内容需要），但输入规则与
 // 快捷键关闭——真实文本标记模型下，'**加粗**' 由派生归一化即时成样式，
@@ -102,6 +103,8 @@ export const editorExtensions = [
     transformCopiedText: true
   }),
   TyporaMarkers,
+  // 鼠标语义：Ctrl/Cmd+左键退化为普通点击（PM 内置会整选段落/节点，Typora 无此逻辑）
+  TyporaPointer,
   // 键盘语义（分割线回车确认 / 标题行首退格降级）：priority 200，
   // 先于 core keymap 执行；置于末尾保证在同等优先级中注册最晚（最先执行）
   TyporaKeymap
