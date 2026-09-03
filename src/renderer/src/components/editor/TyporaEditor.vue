@@ -23,13 +23,22 @@ let syncTimer: ReturnType<typeof setTimeout> | null = null
 // 卸载中标记：切换文件时旧实例销毁会触发 blur/destroy，
 // 若不拦截，flushSync 会把旧文档内容回写覆盖新打开的文档（数据竞态）
 let unmounting = false
+// 内部序列化回声守卫：记录最近一次 emit 的内容与时刻。快速连续输入时，
+// blur 触发的 flushSync 会把「上一轮」的 markdown 提前 emit 出去，经父组件
+// store 同步回流成 props.modelValue，外部同步 watch 误判为外部变化而
+// setContent 回滚整个文档（快速回车丢失的根因）。回声过滤 + 静默窗双保险。
+let lastEmitted: string | null = null
+let lastEmitTime = 0
 
 function flushSync(ed: Editor): void {
   if (unmounting) return
   clearTimeout(syncTimer as never)
   syncTimer = null
   try {
-    emit('update:modelValue', getMarkdown(ed))
+    const md = getMarkdown(ed)
+    lastEmitted = md
+    lastEmitTime = performance.now()
+    emit('update:modelValue', md)
   } catch {
     /* 序列化失败时保持上次状态 */
   }
@@ -56,12 +65,20 @@ const editor = useEditor({
     clearTimeout(syncTimer as never)
     syncTimer = setTimeout(() => flushSync(ed), 250)
   },
-  onBlur: ({ editor: ed }) => {
+  onBlur: ({ editor: ed, event }) => {
+    // 焦点仍在编辑器内部（例如移入代码块 CodeMirror、点选气泡菜单）时
+    // 不落盘：否则会抢在本轮文档同步之前把「上一轮」的旧快照 emit 出去，
+    // 回流后触发外部同步 watch 的 setContent 回滚（快速回车丢失的根因）。
+    const rt = event?.relatedTarget as HTMLElement | null
+    if (rt && (rt.closest('.cm-editor') || ed.view.dom.contains(rt))) return
     flushSync(ed)
   },
   onCreate: ({ editor: ed }) => {
     editorStore.bind(ed)
     updateCursor(ed)
+    // 真实文本标记模型：初始解析产物只有 legacy bold 等 mark，
+    // 归一化一次把标记文本写入文档（后续由 appendTransaction 自动维护）
+    setTimeout(() => ed.commands.normalizeMdMarkers(), 0)
   },
   onSelectionUpdate: ({ editor: ed }) => {
     updateCursor(ed)
@@ -73,11 +90,19 @@ const editor = useEditor({
 })
 
 // ── 外部数据同步守卫（文件切换 / 草稿恢复 / SQLite 回载）──
+// 双重回声过滤：
+// 1. nv 与最近一次内部 emit 完全一致 → 自身回声，跳过；
+// 2. 距最近内部 emit 600ms 内的更新 → 滞后回声（blur 提前 emit 的旧快照
+//    经 store 回流），跳过。真正的文件切换/草稿恢复是低频外部事件，
+//    不会被静默窗误伤；高速输入结束 250ms 防抖 emit 最新内容后，其
+//    回声同样在窗内被忽略，不再触发 setContent 全文档重建。
 watch(
   () => props.modelValue,
   (nv) => {
     const ed = editor.value
     if (!ed) return
+    if (nv === lastEmitted) return
+    if (performance.now() - lastEmitTime < 600) return
     try {
       const current = getMarkdown(ed)
       if (current !== nv) {
@@ -170,11 +195,11 @@ const bubbleActive = computed(() => {
   const ed = editor.value
   if (!ed) return { bold: false, italic: false, underline: false, strike: false, code: false }
   return {
-    bold: ed.isActive('bold'),
-    italic: ed.isActive('italic'),
+    bold: ed.isActive('mdStyle', { style: 'bold' }),
+    italic: ed.isActive('mdStyle', { style: 'italic' }),
     underline: ed.isActive('underline'),
-    strike: ed.isActive('strike'),
-    code: ed.isActive('code')
+    strike: ed.isActive('mdStyle', { style: 'strike' }),
+    code: ed.isActive('mdStyle', { style: 'code' })
   }
 })
 
@@ -183,19 +208,19 @@ function runBubble(cmd: string): void {
   if (!ed) return
   switch (cmd) {
     case 'toggleBold':
-      ed.chain().focus().toggleBold().run()
+      ed.chain().focus().toggleMdBold().run()
       break
     case 'toggleItalic':
-      ed.chain().focus().toggleItalic().run()
+      ed.chain().focus().toggleMdItalic().run()
       break
     case 'toggleUnderline':
       ed.chain().focus().toggleUnderline().run()
       break
     case 'toggleStrike':
-      ed.chain().focus().toggleStrike().run()
+      ed.chain().focus().toggleMdStrike().run()
       break
     case 'toggleCode':
-      ed.chain().focus().toggleCode().run()
+      ed.chain().focus().toggleMdCode().run()
       break
   }
 }
@@ -284,7 +309,7 @@ defineExpose({ editor })
     <div class="editor-scroll h-full overflow-y-auto" @scroll.passive="onScroll">
       <div
         class="mx-auto transition-all duration-300"
-        :class="ui.focusMode ? 'max-w-[760px]' : 'max-w-[880px]'"
+        :class="ui.focusMode ? 'max-w-[1140px]' : 'max-w-[1320px]'"
       >
         <EditorContent :editor="editor" class="editor-content px-6 pt-10 pb-40" />
       </div>

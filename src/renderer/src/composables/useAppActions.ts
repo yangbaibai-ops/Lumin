@@ -4,6 +4,7 @@ import { useFilesStore } from '../stores/files'
 import { useSettingsStore } from '../stores/settings'
 import { useUiStore } from '../stores/ui'
 import { useExport } from './useExport'
+import { useEditorMode } from './useEditorMode'
 import type { MenuAction } from '../../../shared/types'
 
 /** 未保存更改确认 */
@@ -27,6 +28,7 @@ export function useAppActions(): {
   const ui = useUiStore()
   const settings = useSettingsStore()
   const { runExport } = useExport()
+  const { setMode, cycleMode } = useEditorMode()
 
   async function newDoc(): Promise<void> {
     if (!(await confirmIfDirty())) return
@@ -101,9 +103,13 @@ export function useAppActions(): {
         settings.set('sidebarVisible', ui.sidebarVisible)
         break
       case 'mode-wysiwyg':
+        setMode('wysiwyg')
         break
       case 'mode-source':
-        pendingRefactor('源码模式')
+        setMode('source')
+        break
+      case 'mode-split':
+        setMode('split')
         break
       case 'toggle-focus':
         ui.focusMode = !ui.focusMode
@@ -148,6 +154,10 @@ export function useAppActions(): {
     } else if (key === 's') {
       e.preventDefault()
       void saveDoc()
+    } else if (key === '/') {
+      // Typora 同款：Ctrl+/ 循环切换 实时渲染 → 分屏对比 → 源码
+      e.preventDefault()
+      cycleMode()
     } else if (key === 'n') {
       e.preventDefault()
       void newDoc()

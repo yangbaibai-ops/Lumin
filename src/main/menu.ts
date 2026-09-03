@@ -76,6 +76,7 @@ export function installMenu(): void {
           label: '编辑器模式',
           submenu: [
             { label: '所见即所得（实时渲染）', click: () => send('mode-wysiwyg') },
+            { label: '分屏对比（渲染 + 源码）', click: () => send('mode-split') },
             { label: '源码模式', click: () => send('mode-source') }
           ]
         },

@@ -83,6 +83,7 @@
     "link": "链接",
     "image": "图片",
     "table": "表格",
+    "tableSize": "{rows} × {cols} 表格",
     "hr": "分割线",
     "math": "公式",
     "undo": "撤销",

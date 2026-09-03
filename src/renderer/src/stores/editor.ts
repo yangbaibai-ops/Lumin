@@ -23,10 +23,12 @@ export const useEditorStore = defineStore('editor', {
       this.refreshOutline()
       editor.on('transaction', () => {
         this.tick++
+        // 每次事务都刷新大纲（保证跳转位置新鲜），内部做差异跳过，
+        // 标题集合不变时只原位更新 pos，不重建数组、不触发列表重渲染
+        this.refreshOutline()
       })
       editor.on('selectionUpdate', () => {
         this.tick++
-        this.refreshOutline()
       })
     },
     unbind(): void {
@@ -48,6 +50,17 @@ export const useEditorStore = defineStore('editor', {
         }
         return true
       })
+      // 标题集合（层级+文本序列）未变化：只原位更新 pos，保持数组引用与
+      // Vue :key 稳定——避免代码块等上方内容编辑时大纲整列进出动画（闪烁）
+      const same =
+        this.outline.length === items.length &&
+        this.outline.every((o, i) => o.level === items[i].level && o.text === items[i].text)
+      if (same) {
+        for (let i = 0; i < items.length; i++) {
+          if (this.outline[i].pos !== items[i].pos) this.outline[i].pos = items[i].pos
+        }
+        return
+      }
       this.outline = items
     },
     jumpToHeading(pos: number): void {

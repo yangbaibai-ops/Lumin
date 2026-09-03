@@ -2,6 +2,10 @@
 // 依据开发文档选型：StarterKit + Table + TaskList + Markdown(双向转换) +
 // CodeMirror 代码块 NodeView + 光标感知标记符 Plugin + 附加 InputRules。
 import StarterKit from '@tiptap/starter-kit'
+import Bold from '@tiptap/extension-bold'
+import Italic from '@tiptap/extension-italic'
+import Strike from '@tiptap/extension-strike'
+import Code from '@tiptap/extension-code'
 import { HorizontalRule } from '@tiptap/extension-horizontal-rule'
 import { Table, TableRow, TableCell, TableHeader } from '@tiptap/extension-table'
 import TaskList from '@tiptap/extension-task-list'
@@ -13,6 +17,16 @@ import { TyporaMarkers } from './markers'
 import { TyporaInputRules } from './inputRules'
 import { TyporaKeymap } from './keymap'
 import { CodeBlockCM } from './codeBlock'
+import { MarkdownPaste } from './markdownPaste'
+import { TyporaInlineMarks, MdStyle, MdMarker } from './typoraInlineMarks'
+
+// 行内样式 mark：保留节点类型（解析粘贴/加载内容需要），但输入规则与
+// 快捷键关闭——真实文本标记模型下，'**加粗**' 由派生归一化即时成样式，
+// 核心输入规则会删掉用户手打的标记文本，与模型冲突
+const BoldQuiet = Bold.extend({ addInputRules: () => [], addKeyboardShortcuts: () => ({}) })
+const ItalicQuiet = Italic.extend({ addInputRules: () => [], addKeyboardShortcuts: () => ({}) })
+const StrikeQuiet = Strike.extend({ addInputRules: () => [], addKeyboardShortcuts: () => ({}) })
+const CodeQuiet = Code.extend({ addInputRules: () => [], addKeyboardShortcuts: () => ({}) })
 
 /** 相对路径图片 → lumin-file:// 本地协议（dev/prod 通用，符合 CSP） */
 function resolveLocalImageSrc(src: string): string {
@@ -28,12 +42,27 @@ export const editorExtensions = [
     // 分割线即时输入规则关闭：改为 '---'/'***' + Enter 确认（TyporaKeymap），
     // 以便正常输入 "---你好" 这类文本（Typora 同款行为）
     horizontalRule: false,
+    // 行内样式 mark 由外部注册的「安静版」提供（无输入规则/快捷键，
+    // 见上），这里关闭 StarterKit 内置版本
+    bold: false,
+    italic: false,
+    strike: false,
+    code: false,
     link: {
       openOnClick: false,
       autolink: true,
       defaultProtocol: 'https'
     }
   }),
+  // 安静版 mark（仅节点类型 + 渲染，供解析与派生归一化使用）
+  BoldQuiet,
+  ItalicQuiet,
+  StrikeQuiet,
+  CodeQuiet,
+  // 真实文本标记模型：mdStyle（样式正文）+ mdMarker（语法标记文本）+ 派生归一化
+  MdStyle,
+  MdMarker,
+  TyporaInlineMarks,
   // 独立注册 horizontalRule 节点（仅节点与渲染，输入规则置空）
   HorizontalRule.extend({
     addInputRules() {
@@ -60,13 +89,16 @@ export const editorExtensions = [
   }),
   CodeBlockCM,
   TyporaInputRules,
+  // 粘贴修复：先注册 MarkdownPaste 接管 clipboardTextParser（someProp 取
+  // 首个非 null），Markdown 自带的 inline-only 解析器被禁用
+  MarkdownPaste,
   Markdown.configure({
     html: true,
     breaks: true,
     tightLists: true,
     bulletListMarker: '-',
     linkify: true,
-    transformPastedText: true,
+    transformPastedText: false,
     transformCopiedText: true
   }),
   TyporaMarkers,

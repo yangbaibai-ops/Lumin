@@ -82,6 +82,7 @@
     "link": "Link",
     "image": "Image",
     "table": "Table",
+    "tableSize": "{rows} × {cols} table",
     "hr": "Divider",
     "math": "Math",
     "undo": "Undo",

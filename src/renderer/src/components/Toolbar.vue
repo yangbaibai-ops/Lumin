@@ -6,7 +6,9 @@ import { useSettingsStore } from '../stores/settings'
 import { useUiStore } from '../stores/ui'
 import { useEditorStore } from '../stores/editor'
 import { useExport } from '../composables/useExport'
+import { useEditorMode } from '../composables/useEditorMode'
 import Icon from './Icon.vue'
+import ToolbarTableButton from './ToolbarTableButton.vue'
 
 // ─── 编辑器工具栏：命令通过 editor store 桥接 Tiptap 内核（解耦）────────────
 const ui = useUiStore()
@@ -15,17 +17,46 @@ const settings = useSettingsStore()
 const editorStore = useEditorStore()
 const router = useRouter()
 const { runExport } = useExport()
+const { setMode } = useEditorMode()
+const modeOptions: { mode: 'wysiwyg' | 'source' | 'split'; icon: string; label: string; title: string }[] = [
+  { mode: 'wysiwyg', icon: 'eye', label: '渲染', title: '实时渲染' },
+  { mode: 'split', icon: 'columns', label: '分屏', title: '分屏对比（左右实时同步）' },
+  { mode: 'source', icon: 'source', label: '源码', title: '源码模式' }
+]
 
 const exportOpen = ref(false)
 const exportRef = ref<HTMLElement | null>(null)
+const exportPos = ref({ x: 0, y: 0 })
+
+function toggleExport(): void {
+  if (!exportOpen.value) {
+    const rect = exportRef.value?.getBoundingClientRect()
+    if (rect) {
+      exportPos.value = { x: Math.max(8, rect.right - 190), y: rect.bottom + 8 }
+    }
+  }
+  exportOpen.value = !exportOpen.value
+}
 
 function onDocClick(e: MouseEvent): void {
   if (exportOpen.value && exportRef.value && !exportRef.value.contains(e.target as Node)) {
-    exportOpen.value = false
+    const panel = (e.target as HTMLElement).closest?.('.fixed.z-\\[100\\]')
+    if (!panel) exportOpen.value = false
   }
 }
-onMounted(() => document.addEventListener('mousedown', onDocClick))
-onBeforeUnmount(() => document.removeEventListener('mousedown', onDocClick))
+function onWindowScrollOrResize(): void {
+  if (exportOpen.value) exportOpen.value = false
+}
+onMounted(() => {
+  document.addEventListener('mousedown', onDocClick)
+  window.addEventListener('scroll', onWindowScrollOrResize, true)
+  window.addEventListener('resize', onWindowScrollOrResize)
+})
+onBeforeUnmount(() => {
+  document.removeEventListener('mousedown', onDocClick)
+  window.removeEventListener('scroll', onWindowScrollOrResize, true)
+  window.removeEventListener('resize', onWindowScrollOrResize)
+})
 
 function toggleSidebar(): void {
   ui.sidebarVisible = !ui.sidebarVisible
@@ -62,11 +93,25 @@ function runInline(cmd: 'bold' | 'italic' | 'underline' | 'strike' | 'code'): vo
   const ed = editorStore.instance
   if (!ed) return
   const chain = ed.chain().focus()
-  if (cmd === 'bold') chain.toggleBold().run()
-  else if (cmd === 'italic') chain.toggleItalic().run()
+  if (cmd === 'bold') chain.toggleMdBold().run()
+  else if (cmd === 'italic') chain.toggleMdItalic().run()
   else if (cmd === 'underline') chain.toggleUnderline().run()
-  else if (cmd === 'strike') chain.toggleStrike().run()
-  else chain.toggleCode().run()
+  else if (cmd === 'strike') chain.toggleMdStrike().run()
+  else chain.toggleMdCode().run()
+}
+
+/** 行内样式激活态（真实文本标记模型：mdStyle mark） */
+function isMdActive(cmd: 'bold' | 'italic' | 'underline' | 'strike' | 'code'): boolean {
+  void editorStore.tick
+  const ed = editorStore.instance
+  if (!ed) return false
+  if (cmd === 'underline') return ed.isActive('underline')
+  const kind = cmd === 'bold' ? 'bold' : cmd === 'italic' ? 'italic' : cmd === 'strike' ? 'strike' : 'code'
+  try {
+    return ed.isActive('mdStyle', { style: kind })
+  } catch {
+    return false
+  }
 }
 
 function toggleHeading(level: 1 | 2 | 3): void {
@@ -82,14 +127,6 @@ function runBlock(cmd: 'quote' | 'ul' | 'ol' | 'task' | 'codeBlock'): void {
   else if (cmd === 'ol') chain.toggleOrderedList().run()
   else if (cmd === 'task') chain.toggleTaskList().run()
   else chain.toggleCodeBlock().run()
-}
-
-function insertTable(): void {
-  editorStore.instance
-    ?.chain()
-    .focus()
-    .insertTable({ rows: 3, cols: 3, withHeaderRow: true })
-    .run()
 }
 
 function insertHr(): void {
@@ -170,7 +207,7 @@ const docName = computed(() => files.current?.name ?? '')
       v-for="b in inlineButtons"
       :key="b.cmd"
       class="icon-btn"
-      :class="{ active: isActive(b.name) }"
+      :class="{ active: isMdActive(b.cmd) }"
       :title="b.title"
       @click="runInline(b.cmd)"
     >
@@ -209,9 +246,7 @@ const docName = computed(() => files.current?.name ?? '')
     <div class="mx-0.5 h-4 w-px shrink-0 bg-edge" />
 
     <!-- 插入 -->
-    <button class="icon-btn" title="表格" @click="insertTable">
-      <Icon name="table" :size="15" />
-    </button>
+    <ToolbarTableButton />
     <button class="icon-btn" title="分割线" @click="insertHr">
       <Icon name="hr" :size="15" />
     </button>
@@ -222,6 +257,27 @@ const docName = computed(() => files.current?.name ?? '')
       <Icon name="image" :size="15" />
     </button>
 
+    <div class="mx-1.5 h-5 w-px shrink-0 bg-edge" />
+
+    <!-- 编辑器模式：实时渲染 / 分屏对比 / 源码。
+         主控控件放左侧主功能区：右侧文档信息区在窄窗口会被
+         overflow-x-auto 裁掉，模式切换必须永远可见 -->
+    <div class="mode-seg" role="tablist" aria-label="编辑器模式">
+      <button
+        v-for="m in modeOptions"
+        :key="m.mode"
+        class="mode-seg-btn"
+        :class="{ active: ui.editorMode === m.mode }"
+        role="tab"
+        :aria-selected="ui.editorMode === m.mode"
+        :title="m.title + ' (Ctrl+/)'"
+        @click="setMode(m.mode)"
+      >
+        <Icon :name="m.icon" :size="13.5" />
+        <span>{{ m.label }}</span>
+      </button>
+    </div>
+
     <div class="min-w-2 flex-1" />
 
     <!-- 文档信息 -->
@@ -231,6 +287,7 @@ const docName = computed(() => files.current?.name ?? '')
       <span v-if="files.dirty" class="h-1.5 w-1.5 rounded-full" :class="files.saving ? 'bg-warning' : 'bg-accent'" />
     </div>
 
+    <!-- 专注模式 -->
     <button
       class="icon-btn"
       :class="{ active: ui.focusMode }"
@@ -244,14 +301,24 @@ const docName = computed(() => files.current?.name ?? '')
 
     <!-- 导出 -->
     <div ref="exportRef" class="relative shrink-0">
-      <button class="icon-btn" :class="{ active: exportOpen }" title="导出" @click="exportOpen = !exportOpen">
+      <button class="icon-btn" :class="{ active: exportOpen }" title="导出" @click="toggleExport">
         <Icon name="download" :size="15" />
       </button>
+    </div>
+
+    <button class="icon-btn" title="设置" @click="router.push('/settings')">
+      <Icon name="settings" :size="15" />
+    </button>
+
+    <!-- 导出弹层：Teleport 到 body 固定定位。
+         工具栏是 overflow-x-auto 滚动容器，普通 absolute 弹层会被裁剪
+         （层级/裁切错乱），与表格选择器同款的 body 传送方案 -->
+    <Teleport to="body">
       <Transition name="pop">
         <div
           v-if="exportOpen"
-          class="absolute right-0 top-9 z-50 w-[190px] rounded-xl border border-edge bg-elevate p-1.5 shadow-xl"
-          :style="{ boxShadow: 'var(--shadow-2)' }"
+          class="fixed z-[100] w-[190px] rounded-xl border border-edge bg-elevate p-1.5"
+          :style="{ boxShadow: 'var(--shadow-2)', left: exportPos.x + 'px', top: exportPos.y + 'px' }"
         >
           <button
             v-for="item in exportItems"
@@ -264,10 +331,6 @@ const docName = computed(() => files.current?.name ?? '')
           </button>
         </div>
       </Transition>
-    </div>
-
-    <button class="icon-btn" title="设置" @click="router.push('/settings')">
-      <Icon name="settings" :size="15" />
-    </button>
+    </Teleport>
   </div>
 </template>

@@ -2,7 +2,7 @@
 
 export type ThemeMode = 'light' | 'dark' | 'sepia' | 'auto'
 export type EffectiveTheme = 'light' | 'dark' | 'sepia'
-export type EditorMode = 'wysiwyg' | 'source'
+export type EditorMode = 'wysiwyg' | 'source' | 'split'
 export type Language = 'zh-CN' | 'en-US'
 
 export interface ExportSettings {
@@ -21,6 +21,8 @@ export interface AppSettings {
   editorMode: EditorMode
   sidebarVisible: boolean
   sidebarWidth: number
+  splitRatio: number // 分屏对比视图左右宽度比（左面板占比 0.25~0.75）
+  syncScroll: boolean // 分屏对比视图左右滚动进度同步
   recentFiles: RecentFile[]
   pinnedFiles: string[]
   export: ExportSettings
@@ -105,6 +107,7 @@ export type MenuAction =
   | 'toggle-sidebar'
   | 'mode-wysiwyg'
   | 'mode-source'
+  | 'mode-split'
   | 'toggle-focus'
   | 'toggle-typewriter'
   | 'theme-changed'

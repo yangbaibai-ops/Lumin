@@ -82,6 +82,8 @@ const ICONS: Record<string, string[]> = {
   'align-center': ['p:M21 6H3', 'p:M17 12H7', 'p:M19 18H5'],
   eye: ['p:M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z', 'c:12,12,3'],
   source: ['p:m18 16 4-4-4-4', 'p:M6 8l-4 4 4 4'],
+  columns: ['rect:3,3,7.5,18,2', 'rect:13.5,3,7.5,18,2', 'p:M10.5 3v18'],
+  'sync-scroll': ['p:M8 3 4 7l4 4', 'p:M4 7h16', 'p:M16 21l4-4-4-4', 'p:M20 17H4'],
   'external-link': ['p:M15 3h6v6', 'p:M10 14 21 3', 'p:M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6'],
   clock: ['c:12,12,9', 'p:M12 6v6l4 2'],
   check: ['p:M20 6 9 17l-5-5'],

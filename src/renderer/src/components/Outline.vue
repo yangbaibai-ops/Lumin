@@ -10,8 +10,9 @@ const editorStore = useEditorStore()
   <div class="h-full overflow-y-auto px-2 pb-4">
     <TransitionGroup name="list">
       <button
-        v-for="h in editorStore.outline"
-        :key="`${h.pos}-${h.text}`"
+        v-for="(h, i) in editorStore.outline"
+        :key="`${i}-${h.level}-${h.text}`"
+        data-outline-item
         class="group flex w-full items-center gap-1.5 rounded-lg py-[5px] pr-2 text-left text-[12.5px] transition-colors duration-100"
         :class="
           editorStore.activeHeading === h.pos

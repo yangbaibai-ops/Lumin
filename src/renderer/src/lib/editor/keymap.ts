@@ -3,6 +3,9 @@
 //    即时转换（输入规则）被禁用，因此 "---你好" 这类文本可以正常输入；
 // 2) 标题降级：光标位于标题第一个字前按 Backspace → 取消标题格式
 //    （整行降级为段落，内容保留），而不是并入上一行 / 影响上一行层级。
+// 3) 行内语法标记内回车：光标落在 `**`/`*` 等标记字符中间（如 `**s*|*`）
+//    时，先把光标移到整个样式构造之后再切段——避免把标记文本切成两半
+//    （派生归一化会把截断误判为「删星改样式」，甚至抛出异常）。
 //
 // 优先级说明：本扩展 priority 200，高于 Tiptap core keymap（默认 100），
 // 保证 Enter/Backspace 的拦截先于 splitBlock / joinBackward 执行；
@@ -22,6 +25,9 @@ export const TyporaKeymap = Extension.create({
 
     return {
       Enter: ({ editor }) => {
+        // 注意：光标落在语法标记字符内部（如 '**5*|*'）时按回车 = 普通
+        // 文本切段（`**5*` / `*`）。派生归一化对不成对构造按字面量处理，
+        // 不再自动改写样式，也不会崩溃（详见 typoraInlineMarks.ts）。
         if (!hrType || !pType) return false
         const { state } = editor
         const { $from, empty } = state.selection

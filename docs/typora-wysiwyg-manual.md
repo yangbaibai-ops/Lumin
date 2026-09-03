@@ -269,25 +269,42 @@ Typora 的招牌细节：光标进入一个块或行内样式时，该处的 Mar
 
 ```ts
 export const CodeBlockCM = CodeBlock.extend({
-  addNodeView: () => VueNodeViewRenderer(CodeBlockView)
+  addNodeView: () => VueNodeViewRenderer(CodeBlockView, {
+    ignoreMutation: () => true,
+    stopEvent: ({ event }) => ...
+  })
 })
 ```
 
 `CodeBlockView.vue` 在挂载时创建一个 CodeMirror 6 实例（带语言包高亮），并把 PM 文档与 CM 状态同步：
 
-- PM → CM：`update` 时若外部内容变化，用 `cm.dispatch` 整体替换（保持光标）；
-- CM → PM：CM `updateListener` 把新文本写回 `node.textContent`，触发 PM 事务。
+- PM → CM：`watch(props.node.textContent)`——外部内容变化（同文件重开等）时 `setState` 整体重置（CM 状态与节点脱钩是隐性 bug 源）；
+- CM → PM：CM `updateListener` 的 `docChanged` → `syncToNode()` 把文本写回 PM 节点。
 
-**焦点管理的两个坑**（均已修复）：
+**焦点管理（本项目最深的坑，五层防线）**：
 
-1. CodeMirror 的 contentDOM 默认没有 `tabindex`，点击/聚焦不进 CM——挂载后必须 `cmView.contentDOM.tabIndex = 0`；
-2. PM 的 `updateSelection → view.focus()` 会在每次选区变化时抢焦点，导致在 CM 里点一下光标立刻弹回 PM——在 CM 容器上挂 `@mousedown.stop @pointerdown.stop` 阻断事件冒泡。
+1. **`stopEvent`**（官方机制）：CM 编辑器区域内的鼠标/键盘/输入事件全部 `stopEvent → true`——PM 的 `eventBelongsToView` 检查到此直接忽略（尤其 PM 的 click 处理器会无条件 `view.focus()` 并重置 DOM 选区，这是「光标被抢回标题位置」的元凶）；
+2. **DOM 事件阻断**：容器上 `mousedown/mouseup/pointerdown/pointerup/dblclick/click` 全部 `.stop`；
+3. **焦点钉扎 `pinCmFocus`**：冒泡阶段的 mousedown/mouseup/click 显式 `cmView.focus()` + 派发 `userEvent: 'select.pointer'` 的选择事务（`updateSelection(fromPointer=true)` 强制把 DOM 光标同步回 CM 状态选区——CM 自身的 `focus()` 对空光标不重设 DOM 选区），并 60ms 后重钉一次（兜住 PM focus 处理器 20ms 后的 `selectionToDOM` 回抢）；
+4. **hasFocus 覆盖**：CM 聚焦期间令 PM 的 `view.hasFocus()` 返回 false，阻止 PM 的选区同步；
+5. **Enter 专用捕获处理器**：`@keydown.capture` 拦截 Enter，用**视图自身 state 构建事务 + `setState` 整文档重建 + `requestMeasure()`** 插入换行——嵌套场景下 CM 的增量重绘（`docView.update`）与跨模块 `Transaction instanceof` 判定均不可靠，这是唯一验证稳定的路径。
+
+> **快速连续回车的坑不在 CM 本身，而在 PM 侧的外部同步回路**——见 §4.11（blur 提前 emit 旧快照 → store 回流 → `setContent` 回滚整文档的完整链条）。修好后 18 次连发（含 15ms 按住速率）逐行落 CM/PM 双端一致。
 
 **Mermaid**：`codeBlock(attrs.language='mermaid')` 走同一 NodeView 的另一分支——动态 `import('mermaid')` 渲染 SVG（`.mermaid-render`），双击切换回源码 `<textarea>` 编辑。
 
 ### 3.5 表格
 
 `@tiptap/extension-table` 提供 `table/tableRow/tableHeader/tableCell` 节点与 CellSelection（单元格矩形选区）。配置 `resizable: false`（拖拽改列宽体验差且与 Typora 观感不符）。表格内 Tab 移动单元格、回车换行由扩展 keymap 提供。
+
+**插入交互（WPS 式网格选择器，`ToolbarTableButton.vue`）**：
+
+- 点击工具栏表格按钮 → 立即插入默认 **3×3** 表格（表头行 + 2 数据行）；
+- 悬停按钮 ~300ms → 弹出 **8 行 × 10 列**的网格选择器（左上角为 1×1，悬停高亮 r×c，顶部实时显示尺寸），点击格子插入对应尺寸；
+- 弹层用 `<Teleport to="body">` + `fixed` 定位：工具栏 `overflow-x-auto` 会裁剪普通 absolute 弹层（实测坑）；悬停意图用 enter 300ms / leave 180ms 双定时器；
+- 选区位于表格/代码块等原子容器内时 `insertTable` 会静默失败（schema 拒绝）——检测祖先节点后回退到文档末尾插入。
+
+**表格宽度策略（Typora 同款）**：`width: 100%` + `table-layout: fixed`——**无论列数多少（哪怕只有一列），表格都占满整个写作区域宽度**：可用宽度按列均分，单列即 100%；单元格 `min-width: 56px`（最小可读宽度）与 `max-width: 280px`（超出自动换行）；列多到总宽超过容器时由 `display: block + overflow-x: auto` 提供表格内横向滚动条（`style.css` 的 `.md-preview table` 规则，验收断言 `table-cell-width-css` + `table-fills-width` 守护）。
 
 ### 3.6 任务列表
 
@@ -341,10 +358,32 @@ Tiptap v3 官方已无 Vue 版 BubbleMenu 组件，本项目自绘（`TyporaEdit
 - 动效全部收敛在 `transition-*` 与 `@media (prefers-reduced-motion: reduce)` 降级之内，减少动效敏感用户的干扰；
 - 编辑器内容本身零动画（渲染稳定优先，防抖序列化与布局抖动风险最低）。
 
+**写作区版心**：`TyporaEditor.vue` 的内容容器 `mx-auto` 居中，常规模式 `max-w-[1320px]`、焦点模式 `max-w-[1140px]`（1.5 倍于旧值 880/760），宽度切换带 `transition-all duration-300` 平滑过渡。
+
 ### 3.11 公式与图表
 
 - **KaTeX**：在 `tiptap-markdown@0.9` 未开放自定义 parser/serializer 前，公式渲染走「渲染视图内识别 `$…$` 文本 → 挂 KaTeX 组件」的渐进路径（本项目暂缓，列入路线图 §7.1）；
 - **Mermaid**：已落地，见 §3.4。
+
+### 3.12 三模式视图：实时渲染 / 分屏对比 / 源码
+
+**入口**：工具栏左侧主功能区的分段控件（渲染/分屏/源码，带激活态）、应用菜单（查看 → 编辑器模式）、`Ctrl+/` 三态循环（Typora 同款习惯）。会话态存 `ui.editorMode`（默认值来自设置页的 `settings.editorMode`，SQLite kv 持久化）。
+
+**工具栏位置教训**：分段控件最初放在工具栏右端文档信息区——该区在窄窗口下会被 `overflow-x-auto` 裁出可视区（CDP 点击落在窗口外，模式切不动）。**主控控件必须放在左侧主功能区**，任何宽度都可见。
+
+**架构**（`EditorView.vue` + `composables/useEditorMode.ts`）：
+
+- **实时渲染**：Tiptap WYSIWYG；**源码模式**：纯 `<textarea>`（等宽、零渲染样式），**分屏对比**：左侧 WYSIWYG + 右侧源码，`v-if` 互斥挂载；
+- **切走前显式 flush**：工具栏根节点 `@mousedown.prevent`（点控件不触发编辑器 blur），blur 落盘不会发生——`flushWysiwyg()` 先把文档序列化刷入 files store，防抖窗口内的编辑零丢失；
+- **源码面板高度**：textarea 是定高控件、默认只渲染 2 行——「展示不全」的根因。高度链 `.editor-scroll(h-full) → 内层(h-full) → textarea(height:100%)` 填满可视区，长内容在内部滚动（VSCode 式单滚动区，无嵌套滚动条）；Tab 插入两空格，光标行列经 `ui.cursor` 进状态栏；
+- **分屏双向实时同步**（IDEA 式对比）：
+  - 左 → 右：TyporaEditor 防抖序列化 → files store → 源码面板 `:value` 自动刷新（既有管道，零新增代码）；
+  - 右 → 左：输入即写 files store（持久化管道），另防抖 200ms 直接 `commands.setContent(…, { emitUpdate: false })` 进左侧 Tiptap——**不依赖 modelValue watch**（其 600ms 静默窗会吞掉紧邻渲染端 emit 的外部更新），且 `emitUpdate:false` 不产生 onUpdate 回声，双向永不回路；
+- **分隔条**：拖拽调整左右比例（0.25~0.75 钳制），双击复位 0.5，拖拽结束才 `settings.set('splitRatio', …)` 落 SQLite kv（重启保持）；拖拽期间全局 `user-select:none` + `cursor:col-resize`，杜绝 CodeMirror/选区抢鼠标；
+- **同步滚动**（分屏专属悬浮芯片「同步滚动」+ 设置页开关，`settings.syncScroll` 落 kv）：`scroll` 事件不冒泡但可捕获——在分屏容器挂 `@scroll.capture` 单点监听，左右任意一栏滚动（含左侧代码块 CodeMirror 内部滚动）都按**滚动进度比**（`scrollTop / (scrollHeight - clientHeight)`）映射到另一栏；busy 旗标 + 同值赋值不触发 scroll 的浏览器语义保证无回声振荡。两侧内容高度不同也能正确对齐进度（对比视图的通用做法）；
+- 菜单/快捷键/分段控件三入口共用 `useEditorMode`——切换逻辑唯一。
+
+验收：矩阵 phase F 的 `source-mode-enter/editable/fills-height/back-wysiwyg` 与 `split-mode-enter/source-to-wysiwyg/wysiwyg-to-source/divider-drag/sync-toggle/scroll-r2l/scroll-l2r`（74 项全绿）。
 
 ---
 
@@ -390,7 +429,7 @@ tr.replace(0, doc.content.size, new Slice(Fragment.fromArray(children), 0, 0))
 
 ### 4.4 焦点管理
 
-- PM 与 CodeMirror 的焦点争夺（§3.4）：`contentDOM.tabIndex = 0` + `@mousedown.stop @pointerdown.stop`；
+- PM 与 CodeMirror 的焦点争夺（完整五层防线见 §3.4）：`stopEvent` + DOM 事件阻断 + 焦点钉扎 + hasFocus 覆盖 + Enter 专用捕获处理器；
 - 气泡菜单 `@mousedown.prevent` 防止点按钮时编辑器失焦、选区塌缩（§3.8）；
 - CDP 自动化测试时，`visibilityState === 'hidden'` 的窗口会丢弃可信输入事件——测试前必须把窗口真正置前（`tools/run-verify.ps1` 的 user32 调用）。
 
@@ -411,6 +450,11 @@ tr.replace(0, doc.content.size, new Slice(Fragment.fromArray(children), 0, 0))
 2. 窗口级关闭走 `beforeunload` 监听单独 flush（不参与文件切换）；
 3. 外部同步守卫：`watch(modelValue)` 里先比较 `getMarkdown(editor)` 与传入值，**不一致才 `setContent(nv, { emitUpdate: false })`**，避免 `setContent` 触发 onUpdate 造成回环与光标重置。
 
+**回声过滤（本次修复，快速回车丢失的根因）**——同一 watch 的另两类拦截：
+
+4. **blur 守卫**：`onBlur` 时若 `relatedTarget` 仍在编辑器内部（`.cm-editor` 内或 `view.dom` 内），**不落盘**。否则焦点在代码块与正文间每次翻转都触发一次 flushSync，把「上一轮」的旧 markdown 抢在本轮 `syncToNode` 之前 emit 出去；
+5. **回声过滤 + 静默窗**：`flushSync` 记录 `lastEmitted` 与时刻；watch 收到 `nv === lastEmitted`（自身回声）或距最近 emit < 600ms（滞后回声）时直接跳过——只放行真正的低频外部事件（文件切换/草稿恢复）。完整竞态链见 §4.11。
+
 ### 4.7 装饰/类名残留与列表圆点（本次修复）
 
 - 本 PM 视图移除行内 `Decoration` 时会留下孤儿 `<span class="md-reveal-inline">`（`patchOuterDeco/patchAttributes` 对 text 节点失效）→ 行内标记改为 PluginView 直接管理类名（§3.3）；
@@ -426,6 +470,63 @@ tr.replace(0, doc.content.size, new Slice(Fragment.fromArray(children), 0, 0))
 - **core keymap 抢占**：Tiptap v3 每个扩展的 keymap 是独立插件，按扩展 `priority` 降序执行、先返回 true 者胜。core 的 Enter（`splitBlock`）与 Backspace（`joinBackward`）链默认优先于一般用户扩展——自定义键盘语义（标题退格降级、分割线回车确认）必须 `priority: 200`，否则拦截静默失效（详见 §3.2）；
 - **即时转换的误伤**：分割线输入规则 `---` 即时生效会让 `---你好` 无法输入。有歧义的语法（`---` 既是分割线又是普通文本）应采用**回车确认式**转换：关闭即时输入规则（`horizontalRule: false` + 独立注册空输入规则的 HR 节点），改由 Enter 键绑定判断「整段恰为标记」后转换；
 - **转义回写**：`---你好` 这样的段首横线文本在序列化时会被转义为 `\---你好`，保证下次解析不误判——这是 CommonMark 往返正确性的一部分，验收断言 `hr-text-kept` 直接守护。
+
+### 4.10 大纲闪烁与 CodeMirror 行渲染（本次修复）
+
+- **大纲闪烁根因**：`Outline.vue` 的列表 `:key` 曾含标题绝对位置 `pos`——代码块内每敲一键，其上方所有标题的 `pos` 位移 → 全部 key 变化 → `TransitionGroup` 整列进出动画重放 → 可视闪烁。修复：key 改为 `索引-层级-文本`（集合不变时稳定），`refreshOutline` 做差异跳过（标题集合不变时只原位更新 `pos`，不重建数组），并移到 `transaction` 钩子（保证跳转位置新鲜）——验收断言 `outline-dom-stable` 直接比较 DOM 元素引用；
+- **CodeMirror 行渲染与断言**：CM 用独立 `.cm-line` div 渲染每一行，`cm-content.textContent` 拼接无分隔符——**不能**用 `textContent.includes('\n')` 断言换行，必须数 `.cm-line` 元素（验收断言 `cm-enter-newline` 的教训）；
+- **嵌套 CM 的三条铁律**（§3.4 的实现依据）：跨模块 `Transaction instanceof` 判定会失效（事务落入 spec 合并路径、changes 丢失）；增量重绘 `docView.update` 在嵌入场景不可靠（state 更新而 DOM 不重绘）；`setState` 整文档重建是唯一稳定路径。
+
+### 4.11 代码块快速回车丢失的完整竞态链（本次修复）
+
+现象：代码块里慢慢一下一下回车正常，快速连点或按住回车时大量换行丢失、光标乱跳。
+
+诊断实录（CDP 打点 + `view.dispatch` 补丁抓 PM 事务栈）：
+
+1. **焦点全程在 CM 上**——`HTMLElement.focus` 补丁显示 47 次 focus 全部落在 `cm-content`，零次 tiptap；8 个 keydown 全部进入捕获处理器，`setState` 全部应用（CM 状态 1→9 行）。问题不在 CM；
+2. **PM 文档在事务间被回滚**：`syncToNode` 的 8 个事务依次把节点推到 9 行，但每轮之后紧跟一个 `setContent` 事务（栈指向 `TyporaEditor.vue` 的 modelValue watch）把它打回**上一轮**的行数（9→3 收尾）；
+3. **根因链**：每轮 Enter 的 `pinCmFocus` 把焦点从 PM 拉回 CM → 触发 PM blur → `onBlur` 立即 `flushSync` → **抢在本轮 `syncToNode` 之前** emit 上一轮的 markdown → 父组件 store 同步回流 `props.modelValue` → watch 比较「当前 PM 序列化 ≠ 旧快照」→ `setContent(旧快照)` 整体替换文档 → 代码块节点 props 更新 → `CodeBlockView` 的 watch 又把 CM 状态重置回旧内容。单次回车靠「syncToNode 在 watch 之后执行」的顺序碰巧自愈，快速输入时 watch 落在两轮 syncToNode 之间 → 真回滚；
+4. **修复**（§4.6 第 4、5 条）：blur 守卫（焦点仍在编辑器内不落盘）+ 回声过滤 + 600ms 静默窗。另将 `CodeBlockView` 的 `props.node.textContent` watch 防抖 150ms，避免 Vue 异步队列里的过期快照把 CM 逐级回滚；
+5. **验收**：`tools/_repro-rapidenter.js`——8 次 35ms 连发 + 10 次 15ms 按住速率，要求 `.cm-line` 与 PM codeBlock 行数双端 = 19。
+
+### 4.12 粘贴内容的「开放 Slice 合并」：标题被吸进段落（本次修复）
+
+现象：粘贴 Markdown 源码（或 HTML）后，`# 大标题` 显示成了普通段落文字——点击它不出现 `#` 标记符、块语义全丢（用户报「粘贴内容显示样式但不可编辑、点击大标题没有 #」）。
+
+诊断链（逐层 CDP 打点）：
+
+1. `markdown-it` 的解析**没有问题**——`parser.parse(text)` 输出 `<h1>…</h1><p>…</p><ul>…</ul>` 完整块结构；
+2. `DOMParser.parseSlice(<body>…</body>, { context })` 产出的 Slice 是 `openStart/openEnd > 0` 的**开放结构**（body 包裹解析使首尾块处于开放上下文）；
+3. `parseFromClipboard` 的后处理 `normalizeSiblings` 保留了 heading（实测 normalized=[heading,paragraph,bulletList]），但 `Slice.maxOpen` 会**重新把完整块算成开放**（它沿首尾节点向内容内走深度：h1→text 得 openStart=1，ul→listItem→p→text 得 openEnd=3），随后 `closeSlice` 判定「无需闭合」；
+4. `replaceSelection(开放 Slice)` 把首个块的内容**并入当前段落**——`_ReplaceAroundStep` 的 slice 首节点已是 paragraph（标题文本被吸进去），列表因为是后续块而幸存。HTML 粘贴路径同样受影响；
+5. 修复（`markdownPaste.ts`）：`clipboardTextParser` 按内容智能选择（含换行/块标记开头 → 块级解析并显式闭合；单行行内 → inline 解析保持开放）；**`transformPasted` 兜底**（插入前最后一道钩子）把首节点为文本块/引用/列表的伪开放 Slice 闭合为 0/0——编辑器内部复制粘贴的合法开放结构（部分段落、列表项）不受影响。
+
+**补丁：粘贴标题去粗（本次）**：`transformPasted` 里 `stripBoldInHeadings` 递归遍历 Slice，剥除标题节点内所有文本的 `bold` 标记——外部 HTML 粘贴的 `h1<b>…</b>`（Word/网页标题常整段加粗）与 Markdown 粘贴的 `# **…**` 都归一为干净的 `# 标题`（标题本身即加粗样式，`**` 冗余）。验收：`paste-heading-no-bold`（节点无 bold 标记 + 源码无 `**`）。
+
+### 4.13 真实文本标记模型（本次重构）
+
+需求驱动（Typora 同款）：行内语法标记（`**`/`*`/`~~`/`` ` ``）必须是**文档中的真实文本**——光标在样式内/边界（'体'后、'被'前）时显现、移出隐藏，且标记可被选中编辑；**「标记文本即源码真值」（CommonMark 对齐）**：两侧标记相等且可识别才派生样式，**不成对/不可识别即整段字面量**——删单侧一个 `*` 后显示原始字符 `*加粗**`（不再自动转斜体），两侧各删一星成 `*加粗*` 才按 CommonMark 重派为斜体；标题的光标提示改为浅色 `H1~H6` 徽章（非可编辑源码标记）。
+
+**数据模型**（`typoraInlineMarks.ts`，两条自定义 Mark）：
+- `mdStyle`（attrs.style）：被样式的正文，WYSIWYG 渲染 `<strong>/<em>/<s>/<code>`（带 `data-md-style`），markdown 序列化 open/close 为空——**语法由标记文本自身承担**，序列化输出 == 源码；
+- `mdMarker`（attrs.style + side）：语法标记文本，渲染 `.md-marker` span，序列化 `open/close: '' + escape: false`（标记字符原样输出；若被转义成 `\*`，序列化结果与源码不一致，会破坏外部同步回声过滤并引发 setContent 循环重放）。
+
+**派生归一化**（appendTransaction）：每次文档变更后重建含样式/标记的文本块——识别「标记 + 正文 + 配对标记」模式（任意位置扫描，打字合并进同一文本节点也命中）派生样式；**两侧标记相等且可识别（`**`/`*`/`~~`/`` ` ``）→ 按标记文本决定样式；不配对/不可识别（如 `**5*`、回车把标记劈开）→ 整段字面量**：内容去 `mdStyle`、标记降级 `side:'literal'`（保留 mdMarker mark 使原样序列化 + 以可见字符渲染，CSS `.md-marker[data-side='literal']{font-size/weight/style/color:inherit}`）；带样式内容缺一侧标记（回车切段）→ 自动补齐完整构造；标记删空去样式；遗留 bold/italic/strike/code（解析/粘贴产物）自动转换。与主事务同组撤销（prosemirror-history 按时间戳合并）。
+
+**关键坑位**（本版重打包 PM 的实测行为）：
+1. **`Transaction.insertText(text, from, to)` 无 marks 参数**（marks 取自 storedMarks/位置）——带标记文本须走 `replaceRangeWith(from, to, schema.text(text, marks))`，否则 marks 数组被当成 `to` 位置抛 RangeError；
+2. **DOM 观察器回写循环**：渲染后的 `<strong>`/marker span 被 PM 的 DOMObserver 解析回 legacy bold/纯文本，与文档比对不一致 → `readDOMChange` 回写 → 标记丢失 + 无限重放。修复：两个 mark 声明 `parseHTML`（`strong[data-md-style]`/`span.md-marker`，priority 60），DOM 解析还原原 mark，比对一致即止；
+3. **显隐用 PM Decoration**（`.md-reveal-inline` 包在 marker span 内部，CSS `:has(> .md-reveal-inline)` 反向匹配）：DOM 类切换会被追加事务的重渲染冲掉，装饰随选区状态自动重建。**展开判定左右边界均含**（`from <= r.end && to >= r.start`）：光标落在正文/标记内或紧贴构造两端（`|**s**`、`**s**|`）都展开，可继续选中/编辑 `*`；完全移入相邻普通文本才折叠——折叠临界不再抢占光标（Typora 同款）；
+4. **隐藏态必须零占位且可导航**：`opacity: 0` 保留布局盒（出现占位空隙）；`display: none` 移除文本节点导致浏览器光标无法导航/落位——箭头键会把光标落在错误位置，Enter 把标记劈成两半造成字符错乱/输入不可见。**正确方案 `font-size: 0`**：字形零宽不占布局，但文本节点仍在，光标可正常导航、标记可正常选中编辑，显现时 `font-size: inherit` 恢复；
+5. 初始加载（解析产物无标记）在 onCreate 跑一次 `normalizeMdMarkers`；粘贴/打字由 appendTransaction 自动维护；
+6. **标记内回车 = 普通字面量切段**（`keymap.ts` 不再拦截，priority 200 仅保留 `---/***` 段尾回车→分割线与标题首字前退格降级）：光标落在标记字符内部（如 `**5*|*`）按 Enter，PM 把构造文本切成两半——派生归一化把两个不成对片段降级为 `side:'literal'`，按**可见字符**原样落到两个新段落（`**5*` / `*`），序列化**零转义**（源码即 `**5*\n\n*`，无 `\*`），继续打字即时可见（字面量段没有隐藏标记，输入不会再"看不见"）；光标在正文中段回车同样切段，完整一侧的构造由派生自动补齐另一侧。此前"先跳到 run.end 再切段"的拦截已删除——它会伪造"跳出构造"的落点（`**5*` 变成 `**5**` 才换行）且新行输入异常。`appendTransaction` 整体包 try/catch 兜底，任何归一化异常都不会让编辑器崩溃。
+7. **构造边界打字会"污染"标记文本**：光标紧贴构造起点（`|**5**`）打字时，PM 的 `insertText` 取 `$head.marks()`——位置右侧是 mdMarker 节点，新字符继承 mdMarker，与起始标记文本合并成同一节点 `2**`（终点同理得 `**2`）；此时两侧标记文本不配对，归一化误判「不成对 → 整段字面量」，渲染失粗，且源码仍是 `2**5**`（字面量标记原样序列化），content-equal 断言**永远抓不到**，须刷新才恢复。修复：`repairPollutedMarkers` 在 `normalizeAtoms` 开头把粘连在标记外侧的多余字符拆回普通文本、只保留干净标记本体（start 标记取 `MARKER_OF[style]` 的后缀、end 标记取前缀），随后正常识别重新派生样式。
+
+**联动调整**：StarterKit 的 bold/italic/strike/code 以「安静版」注册（关闭输入规则与快捷键，mark 类型保留供解析）；工具栏/气泡菜单改用 `toggleMdBold` 等新命令；`Ctrl+B/I/Shift+X/E` 快捷键接管。验收：`bold-marker-reveal/boundary/hide-on-exit/no-layout/boundary-left`（隐藏态零占位 + 光标边界显隐）、`roundtrip-markdown`（源码零转义往返）、`paste-heading-no-bold`、`boundary-type-start/end-keeps-bold/fold-back-bold`（G 阶段，构造边界打字不失粗）等 80 项全绿。
+
+**补丁：字面量语义落地 ×3（本次）**：① **逐字符打字成样式**——打字识别正则（`typoraInlineMarks.ts` PATTERN/PATTERN_TEST）单星分支加 lookaround `(?<!\*)\*([^*\n]+?)\*(?!\*)`，杜绝输入 `**5**` 到中途 `**5*` 时把 `*5*` 误切为斜体（残星 + 序列化 `\*` 转义）；逐字输入 `*`,`*`,`5`,`*`,`*` 的最终产物为粗体 `**5**`、源码零转义。② **标记内回车字面量切段**（见上方坑位 6）。③ **行首粘贴不裂段**——光标位于构造起点（`|**5**`，pos=run.start）或文档首段边界（pos 0）粘贴内联文本时，PM 把插入合并进当前段落、归一化容错，得到同段 `2**5**`（不再出现 `2\n**5**` 两段）。验证：CDP 实测脚本（`tools/probe-three.js`，验证毕移除）三项断言全过 + 全量矩阵 77/77 全绿。
+
+**补丁：构造边界打字不失粗（本次）**：光标落在粗体 `**5**` 的构造起点打字 `2`，此前因 mdMarker 继承粘连（坑位 7）导致整段字面量、渲染失粗、刷新才恢复；新增 `repairPollutedMarkers` 拆回普通文本后，起点/终点打字均保留粗体（`2**5**`、`2**5**3` 且 `strong` 内容为 `5`），光标移出折叠为纯粗体。验证：`tools/probe-boundary-type.js` 三场景全过 + 矩阵新增 G 阶段 3 项断言，80/80 全绿。
 
 ---
 
@@ -449,7 +550,7 @@ tr.replace(0, doc.content.size, new Slice(Fragment.fromArray(children), 0, 0))
 ### 步骤 2：编辑器内核装配（✅）
 
 - **目标**：能渲染 Markdown 的 Tiptap 实例。
-- **实现**：`extensions.ts` 按 §1.3 装配：StarterKit（`codeBlock:false`、link 不点击跳转）+ Image + Table 全家 + TaskList/TaskItem + Placeholder + CodeBlockCM + TyporaInputRules + Markdown 双向转换 + TyporaMarkers。
+- **实现**：`extensions.ts` 按 §1.3 装配：StarterKit（`codeBlock:false`、link 不点击跳转）+ Image + Table 全家 + TaskList/TaskItem + Placeholder + CodeBlockCM + TyporaInputRules + **MarkdownPaste**（粘贴块级解析/开放 Slice 闭合，§4.12，Markdown 自身 `transformPastedText: false` 让位）+ Markdown 双向转换 + TyporaMarkers。
 - **验收**：打开 `.md` 文件后 `h1/strong/em/blockquote/ul/ol/table/checkbox/codemirror/mermaid` 全部渲染，`no-raw-markdown`（verify phase A 的 15 项断言）。
 
 ### 步骤 3：Markdown 双向桥（✅）
@@ -572,7 +673,8 @@ ProseMirror 的 Step 天然可序列化——接入 `y-prosemirror`（Yjs CRDT�
 
 ### 7.3 产品能力清单（对标 Typora/Obsidian）
 
-- 源码模式（CodeMirror 整文档视图，`Ctrl+/` 切换）——NodeView 已趟平 CodeMirror 嵌入路径；
+- ✅ 源码模式（§3.12：纯文本 textarea + `Ctrl+/`，Typora 同款交互——整文档 CodeMirror 视图留作后续增强，NodeView 已趟平 CM 嵌入路径）；
+- ✅ 分屏对比（§3.12：渲染+源码左右实时同步、拖拽比例 SQLite 持久化，IDEA 式）；
 - 焦点模式 / 打字机滚动；
 - 图片拖拽粘贴 + 自动入库；
 - 主题市场（CSS 变量体系已具备，`--accent/--edge/…`）；
@@ -602,6 +704,7 @@ src/
    ├─ components/editor/
    │  ├─ TyporaEditor.vue       # useEditor + 防抖序列化 + 气泡菜单
    │  └─ CodeBlockView.vue      # CodeMirror/Mermaid NodeView
+   ├─ components/ToolbarTableButton.vue  # WPS 式表格网格选择器
    ├─ lib/editor/
    │  ├─ extensions.ts          # 扩展集装配
    │  ├─ inputRules.ts          # #、-、- [ ] 即时转换
@@ -635,6 +738,8 @@ docs/typora-wysiwyg-manual.md   # 本文档
 | C | 8 项：CodeMirror 编辑同步、围栏保持、文件保存、SQLite 落库搜索、重开渲染 |
 | D | 10 项：表格单元格编辑、气泡菜单可见/加粗/保持、导出、主题切换、全局搜索 |
 | E | 5 项：分割线回车确认（不即时转换/回车生效/`---你好` 保留与转义）、标题行首退格降级、设置 SQLite 持久化往返 |
+| F | 24 项：表格按钮默认 3×3、悬停网格选择器 2×3、单元格宽度 CSS、表格占满写作区宽度、代码块真实键入（焦点保持/同步/大纲 DOM 稳定/Enter 换行）、Markdown 粘贴（块级节点/标题标记符/粘贴内容可编辑/标题去粗）、源码模式（进入/编辑/填满高度/切回重建）、分屏对比（进入/右→左/左→右/分隔条拖拽持久化/同步滚动开关与双向滚动映射）；另有 B 阶段行内标记显隐边界断言（真实文本标记模型，§4.13） |
+| G | 3 项：构造边界打字不失粗（起点/终点打字后 `strong` 保留 + 移出折叠为纯粗体，§4.13 坑位 7） |
 
 运行方式：`$env:LUMIN_DEBUG_PORT='9222'; npm run dev` 后执行 `powershell -NoProfile -ExecutionPolicy Bypass -File tools/run-verify.ps1`。
 

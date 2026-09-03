@@ -2,7 +2,7 @@
 // ─── 代码块 NodeView：CodeMirror 6 嵌入 + 语言切换 + Mermaid 渲染 ───────────
 import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { NodeViewWrapper, nodeViewProps } from '@tiptap/vue-3'
-import { Compartment, EditorState } from '@codemirror/state'
+import { Compartment, EditorState, type Extension } from '@codemirror/state'
 import {
   EditorView,
   keymap,
@@ -10,7 +10,7 @@ import {
   highlightActiveLine,
   drawSelection
 } from '@codemirror/view'
-import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirror/commands'
+import { defaultKeymap, history, historyKeymap } from '@codemirror/commands'
 import {
   syntaxHighlighting,
   HighlightStyle,
@@ -57,6 +57,8 @@ const editorRef = ref<HTMLElement | null>(null)
 const selectedLanguage = ref<string>(props.node.attrs.language || 'javascript')
 
 let cmView: EditorView | null = null
+let prevHasFocus: (() => boolean) | null = null
+let cmExtensions: Extension[] = []
 const languageCompartment = new Compartment()
 
 // ── CodeMirror 主题（CSS 变量驱动，随应用明暗/羊皮纸主题自动适配）──
@@ -121,7 +123,63 @@ async function loadLanguage(lang: string): Promise<void> {
   }
 }
 
-/** 把 CodeMirror 内容同步回 ProseMirror AST 节点 */
+/** 点击代码区时显式把焦点与 DOM 光标钉在 CM 上。
+    浏览器对 contenteditable 区域的默认焦点处理会把焦点转移到 PM 根节点；
+    且 PM 的 focus 处理器在 20ms 后会经 selectionToDOM 把 DOM 选区重置到
+    PM 状态选区（光标被移出 CM）。CM 自身的 focus() 对空光标不会重设 DOM
+    选区，因此需要再派发一次 select.pointer 选择事务强制同步光标；最后
+    60ms 后重钉一次，保证点击/输入序列结束后焦点与光标最终必在 CM。 */
+let pinTimer: ReturnType<typeof setTimeout> | null = null
+function pinCmFocus(): void {
+  if (!cmView) return
+  cmView.focus()
+  // 强制把 DOM 光标恢复到 CM 状态选区（updateSelection 的 fromPointer 分支）
+  const main = cmView.state.selection.main
+  cmView.dispatch({
+    userEvent: 'select.pointer',
+    selection: { anchor: main.anchor },
+    scrollIntoView: false
+  })
+  if (pinTimer) clearTimeout(pinTimer)
+  pinTimer = setTimeout(() => {
+    if (cmView) {
+      cmView.focus()
+      const m2 = cmView.state.selection.main
+      cmView.dispatch({
+        userEvent: 'select.pointer',
+        selection: { anchor: m2.anchor },
+        scrollIntoView: false
+      })
+    }
+    pinTimer = null
+  }, 60)
+}
+
+/** 捕获阶段拦截 Enter：走 CM 状态事务，并用 setState 强制整文档重建。
+    嵌套于 ProseMirror 的 CM 增量重绘（docView.update）在本环境不可靠：
+    state 会更新但 DOM 不重绘；setState 重建 docView，保证换行真实落到
+    DOM（代价是整块重建，对代码块尺寸而言可接受）。 */
+function onCmKeydownCapture(e: KeyboardEvent): void {
+  if (!cmView || e.isComposing) return
+  if (e.key === 'Enter') {
+    e.preventDefault()
+    e.stopPropagation()
+    // 用视图自身 state 构建事务（同源实例），setState 整文档重建 +
+    // requestMeasure 强制视口重绘：嵌套于 PM 的 CM 增量重绘不可靠，
+    // 双保险保证换行真实落 DOM
+    const { from, to } = cmView.state.selection.main
+    const tr = cmView.state.update({
+      changes: { from, to, insert: '\n' },
+      selection: { anchor: from + 1 },
+      userEvent: 'input',
+      scrollIntoView: true
+    })
+    cmView.setState(tr.state)
+    cmView.requestMeasure()
+    pinCmFocus()
+    syncToNode()
+  }
+}
 function syncToNode(): void {
   if (!cmView) return
   const code = cmView.state.doc.toString()
@@ -129,18 +187,46 @@ function syncToNode(): void {
   const getPos = props.getPos as () => number
   const pos = getPos()
   if (typeof pos !== 'number') return
-  props.editor.commands.command(({ tr }) => {
+  const editor = props.editor
+  // PM 事务在文档变更时会无条件 selectionToDOM（重写 DOM 选区），浏览器
+  // 随之可能把焦点翻回 PM 根节点。事务后立即把焦点与光标归还 CM（同步、
+  // 无可见闪烁），pinCmFocus 内置 60ms 延迟重钉兜底异步翻转。
+  editor.commands.command(({ tr }) => {
     const node = tr.doc.nodeAt(pos)
     if (!node || node.type.name !== 'codeBlock') return false
     tr.replaceWith(pos + 1, pos + node.nodeSize - 1, tr.doc.type.schema.text(code))
     return true
   })
+  pinCmFocus()
 }
 
 watch(selectedLanguage, (lang) => {
   props.updateAttributes({ language: lang })
   void loadLanguage(lang)
 })
+
+// 外部内容变化（同一文件重新打开等场景，节点内容被外部替换）：
+// CM 状态与节点脱钩时整体重置（setState 重建，语言高亮随后重挂）。
+// 防抖 150ms：Vue watch 回调是异步排队的——快速连续输入时，每个回调
+// 持有的 nv 是触发时刻的过期快照，而 cmView.state 已是最新值，直接
+// 比较会误判为「外部变化」并把 CM 状态逐级回滚（快速回车全部丢失的
+// 根因）。防抖后只在输入停顿后执行一次，此时快照与状态一致，自身同步
+// 自然跳过；真正的外部变化（低频）仍能正确同步。
+let extSyncTimer: ReturnType<typeof setTimeout> | null = null
+watch(
+  () => props.node.textContent,
+  (nv) => {
+    if (extSyncTimer) clearTimeout(extSyncTimer)
+    extSyncTimer = setTimeout(() => {
+      extSyncTimer = null
+      if (!cmView || selectedLanguage.value === 'mermaid') return
+      if (nv === cmView.state.doc.toString()) return
+      cmView.setState(EditorState.create({ doc: nv, extensions: cmExtensions }))
+      void loadLanguage(selectedLanguage.value)
+      pinCmFocus()
+    }, 150)
+  }
+)
 
 onMounted(() => {
   if (selectedLanguage.value === 'mermaid') {
@@ -149,44 +235,70 @@ onMounted(() => {
   }
   const host = editorRef.value
   if (!host) return
+  cmExtensions = [
+    lineNumbers(),
+    highlightActiveLine(),
+    drawSelection(),
+    history(),
+    foldGutter(),
+    indentOnInput(),
+    bracketMatching(),
+    autocompletion(),
+    closeBrackets(),
+    highlightSelectionMatches(),
+    mdHighlight,
+    cmTheme,
+    languageCompartment.of([]),
+    keymap.of([
+      ...closeBracketsKeymap,
+      // 剔除 Enter 系与 Tab 绑定：其内部 dispatch（state→DOM 重绘）在
+      // 嵌套于 ProseMirror 的场景中断裂（state 更新但 DOM 不重绘），
+      // 且 preventDefault 会吞掉浏览器原生插入；Enter 由容器的捕获
+      // 处理器接管（setState 重建路径），其余键不受影响
+      ...defaultKeymap.filter(
+        (b) => b.key !== 'Enter' && b.key !== 'Mod-Enter' && b.key !== 'Shift-Enter'
+      ),
+      ...searchKeymap,
+      ...historyKeymap,
+      ...foldKeymap,
+      ...completionKeymap
+    ]),
+    EditorView.updateListener.of((u) => {
+      if (u.docChanged) syncToNode()
+    })
+  ]
   const state = EditorState.create({
     doc: props.node.textContent,
-    extensions: [
-      lineNumbers(),
-      highlightActiveLine(),
-      drawSelection(),
-      history(),
-      foldGutter(),
-      indentOnInput(),
-      bracketMatching(),
-      autocompletion(),
-      closeBrackets(),
-      highlightSelectionMatches(),
-      mdHighlight,
-      cmTheme,
-      languageCompartment.of([]),
-      keymap.of([
-        ...closeBracketsKeymap,
-        ...defaultKeymap,
-        ...searchKeymap,
-        ...historyKeymap,
-        ...foldKeymap,
-        ...completionKeymap,
-        indentWithTab
-      ]),
-      EditorView.updateListener.of((u) => {
-        if (u.docChanged) syncToNode()
-      })
-    ]
+    extensions: cmExtensions
   })
   cmView = new EditorView({ state, parent: host })
   // CM 默认不给 contentDOM 设 tabindex，浏览器点击不会把焦点交给他；
-  // 显式设置后点击代码区即可聚焦输入（配合模板上的 @mousedown.stop 防 PM 抢焦点）
+  // 显式设置后点击代码区即可聚焦输入（配合模板上的事件阻断防 PM 抢焦点）
   cmView.contentDOM.tabIndex = 0
+
+  // ── 焦点封堵 ──
+  // PM 的 DOMObserver 监听 document 级 selectionchange：CM 内容区内的选区
+  // 变化会被它误读为 PM 选区（CM 位于 PM DOM 树内），随后 PM 重写 DOM 选区，
+  // 浏览器随之把焦点从 CM 抢回 PM 根节点，导致后续按键由 PM 处理而错乱。
+  // 因此：CM 获得焦点期间令 PM 的 hasFocus() 返回 false，使其跳过选区同步。
+  const pmView = props.editor.view
+  prevHasFocus = pmView.hasFocus.bind(pmView)
+  pmView.hasFocus = () => {
+    const ae = document.activeElement
+    if (ae && ae.closest('.cm-editor')) return false
+    return prevHasFocus!()
+  }
   void loadLanguage(selectedLanguage.value)
 })
 
 onBeforeUnmount(() => {
+  // 恢复 PM 的 hasFocus 实现（多代码块时按 LIFO 还原）
+  if (prevHasFocus) props.editor.view.hasFocus = prevHasFocus
+  prevHasFocus = null
+  if (pinTimer) clearTimeout(pinTimer)
+  pinTimer = null
+  if (extSyncTimer) clearTimeout(extSyncTimer)
+  extSyncTimer = null
   cmView?.destroy()
   cmView = null
 })
@@ -267,7 +379,23 @@ function commitMermaid(): void {
       />
     </div>
 
-    <!-- CodeMirror 代码编辑；.stop 阻断 mousedown 冒泡，避免 PM 抢占焦点 -->
-    <div v-else ref="editorRef" class="cm-editor-container" @mousedown.stop @pointerdown.stop />
+    <!-- CodeMirror 代码编辑。
+         .stop 阻断事件冒泡到 PM（PM 的 click 处理器会无条件 view.focus()
+         并把 DOM 选区重置到 PM 状态选区，把光标从代码块抢走）；
+         冒泡阶段的 mousedown/mouseup/click 显式把焦点钉在 CM 上——
+         浏览器对 contenteditable 的默认焦点处理并不可靠（会把焦点移到
+         PM 根节点），click 阶段最后执行，最终焦点必在 CM。 -->
+    <div
+      v-else
+      ref="editorRef"
+      class="cm-editor-container"
+      @keydown.capture="onCmKeydownCapture"
+      @mousedown.stop="pinCmFocus"
+      @mouseup.stop="pinCmFocus"
+      @click.stop="pinCmFocus"
+      @pointerdown.stop
+      @pointerup.stop
+      @dblclick.stop
+    />
   </node-view-wrapper>
 </template>

@@ -28,6 +28,8 @@ export const defaultSettings: AppSettings = {
   editorMode: 'wysiwyg',
   sidebarVisible: true,
   sidebarWidth: 264,
+  splitRatio: 0.5,
+  syncScroll: false,
   recentFiles: [],
   pinnedFiles: [],
   export: {

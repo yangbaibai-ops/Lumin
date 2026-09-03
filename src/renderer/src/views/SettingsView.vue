@@ -35,6 +35,7 @@ const themes: { mode: ThemeMode; icon: string; label: string; desc: string; colo
 
 const modes: { mode: EditorMode; icon: string; label: string; desc: string }[] = [
   { mode: 'wysiwyg', icon: 'eye', label: '实时渲染', desc: '所见即所得，点击块即可编辑' },
+  { mode: 'split', icon: 'columns', label: '分屏对比', desc: '左右实时对比渲染与源码，拖拽调比例' },
   { mode: 'source', icon: 'source', label: '源码模式', desc: '显示原始 Markdown 语法' }
 ]
 
@@ -162,6 +163,16 @@ function sectionTitle(id: string): string {
                       <span class="mt-0.5 block text-[11.5px] leading-snug text-ink-3">{{ m.desc }}</span>
                     </span>
                   </button>
+                </div>
+              </section>
+
+              <section class="surface mb-4 p-5">
+                <div class="flex items-center justify-between gap-4">
+                  <div>
+                    <p class="text-[13.5px] text-ink">分屏同步滚动</p>
+                    <p class="mt-0.5 text-[12px] text-ink-3">分屏对比视图中左右两侧按滚动进度同步</p>
+                  </div>
+                  <button class="switch" :class="{ on: settings.syncScroll }" @click="settings.set('syncScroll', !settings.syncScroll)" />
                 </div>
               </section>
 

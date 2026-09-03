@@ -393,6 +393,164 @@
   color: var(--accent);
 }
 
+/* ── 源码模式：纯文本 Markdown 编辑区（Typora 同款观感，零渲染样式）── */
+/* 高度链：.editor-scroll(h-full) → .mx-auto(h-full) → textarea(height:100%)，
+   填满可视区；长内容在 textarea 内部滚动（VSCode 式单一滚动区） */
+.source-editor {
+  display: block;
+  width: 100%;
+  height: 100%;
+  padding: 2.5rem 1.5rem 10rem;
+  border: none;
+  outline: none;
+  resize: none;
+  background: transparent;
+  color: var(--ink);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  line-height: 1.9;
+  tab-size: 2;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+  overflow-y: auto;
+  caret-color: var(--accent);
+}
+.source-editor::selection {
+  background: var(--sel);
+}
+/* 分屏右侧面板：减上下留白、去底部大留白，贴合对比面板密度 */
+.source-editor--split {
+  padding: 1.25rem 1.5rem 4rem;
+}
+
+/* ── 分屏对比视图 ── */
+.split-divider {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 9px;
+  flex: none;
+  cursor: col-resize;
+  background: transparent;
+  transition: background-color 0.15s ease;
+  touch-action: none;
+}
+.split-divider span {
+  width: 3px;
+  height: 36px;
+  border-radius: 2px;
+  background: var(--edge-strong, var(--edge));
+  transition:
+    height 0.15s ease,
+    background-color 0.15s ease;
+}
+.split-divider:hover,
+.split-divider.dragging {
+  background: var(--accent-soft);
+}
+.split-divider:hover span,
+.split-divider.dragging span {
+  height: 56px;
+  background: var(--accent);
+}
+/* 拖拽期间禁选中（覆盖全窗口，防止文本/CM 抢选区） */
+.split-dragging,
+.split-dragging * {
+  user-select: none !important;
+  cursor: col-resize !important;
+}
+
+/* 分屏专属悬浮芯片：同步滚动开关 */
+.split-sync-chip {
+  position: absolute;
+  top: 12px;
+  right: 14px;
+  z-index: 30;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 12px;
+  border: 1px solid var(--edge);
+  border-radius: 999px;
+  background: var(--elevate);
+  color: var(--ink-3);
+  font-size: 12px;
+  font-weight: 500;
+  box-shadow: var(--shadow-1, 0 2px 8px rgba(0, 0, 0, 0.06));
+  backdrop-filter: blur(8px);
+  cursor: pointer;
+  transition:
+    color 0.15s ease,
+    border-color 0.15s ease,
+    background-color 0.15s ease,
+    transform 0.12s ease;
+}
+.split-sync-chip:hover {
+  color: var(--ink-2);
+  border-color: var(--edge-strong);
+  transform: translateY(-1px);
+}
+.split-sync-chip.active {
+  color: var(--accent);
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+.split-sync-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--accent);
+  animation: sync-pulse 1.6s ease-in-out infinite;
+}
+@keyframes sync-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+
+/* ── 工具栏模式分段控件 ── */
+.mode-seg {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  height: 30px;
+  padding: 2px;
+  border: 1px solid var(--edge);
+  border-radius: 9px;
+  background: var(--panel-2);
+  flex: none;
+}
+.mode-seg-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 24px;
+  padding: 0 9px;
+  border-radius: 6px;
+  color: var(--ink-3);
+  font-size: 11.5px;
+  font-weight: 500;
+  white-space: nowrap;
+  transition:
+    background-color 0.15s ease,
+    color 0.15s ease;
+  cursor: pointer;
+  flex: none;
+}
+.mode-seg-btn:hover {
+  color: var(--ink-2);
+  background: var(--block-hover);
+}
+.mode-seg-btn.active {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
 .input {
   width: 100%;
   border-radius: 8px;
@@ -646,7 +804,12 @@
 .md-preview table {
   border-collapse: collapse;
   margin: 0.9em 0;
+  /* 默认占满整个写作区域宽度（即使只有一列）：fixed 布局把可用宽度按列
+     均分，单列即 100%；每列 min-width:56px 保证最小可读宽度，列数多到
+     总宽超过容器时由 overflow-x 提供表格内横向滚动 */
   width: 100%;
+  max-width: 100%;
+  table-layout: fixed;
   font-size: 0.95em;
   display: block;
   overflow-x: auto;
@@ -659,6 +822,12 @@
   border: 1px solid var(--edge);
   padding: 7px 13px;
   text-align: left;
+  /* 单元格宽度约束：min-width 保证最小可读宽度（列多到总宽超过容器时
+     由 overflow-x 出横向滚动条）；fixed 布局下不设 max-width——列数少时
+     表格（哪怕 1×1）占满整个写作区宽度，多列均分 + word-break 换行 */
+  min-width: 56px;
+  word-break: break-word;
+  overflow-wrap: break-word;
 }
 .md-preview th {
   font-weight: 600;
@@ -1068,36 +1237,44 @@ mark.lm-find-mark.lm-current {
 /* ── 光标感知标记符（ProseMirror Decoration + CSS 生成内容）──
    光标进入节点/样式时展开语法标记，移出即隐藏，内容本身不含标记字符 */
 
-/* 标题：# 前缀 */
-h1.md-reveal::before {
-  content: '# ';
-  color: color-mix(in srgb, var(--accent) 60%, var(--ink-3));
+/* 标题：光标进入时给出浅色级别提示（H1~H6 小徽章，非可编辑源码标记） */
+h1.md-reveal::before,
+h2.md-reveal::before,
+h3.md-reveal::before,
+h4.md-reveal::before,
+h5.md-reveal::before,
+h6.md-reveal::before {
+  display: inline-block;
+  margin-right: 6px;
+  padding: 1px 6px;
+  border: 1px solid var(--edge);
+  border-radius: 5px;
+  background: var(--panel-2);
+  color: var(--ink-3);
+  font-size: 9.5px;
   font-weight: 600;
+  letter-spacing: 0.03em;
+  line-height: 1.5;
+  vertical-align: 0.2em;
+  user-select: none;
+}
+h1.md-reveal::before {
+  content: 'H1';
 }
 h2.md-reveal::before {
-  content: '## ';
-  color: color-mix(in srgb, var(--accent) 60%, var(--ink-3));
-  font-weight: 600;
+  content: 'H2';
 }
 h3.md-reveal::before {
-  content: '### ';
-  color: color-mix(in srgb, var(--accent) 60%, var(--ink-3));
-  font-weight: 600;
+  content: 'H3';
 }
 h4.md-reveal::before {
-  content: '#### ';
-  color: color-mix(in srgb, var(--accent) 60%, var(--ink-3));
-  font-weight: 600;
+  content: 'H4';
 }
 h5.md-reveal::before {
-  content: '##### ';
-  color: color-mix(in srgb, var(--accent) 60%, var(--ink-3));
-  font-weight: 600;
+  content: 'H5';
 }
 h6.md-reveal::before {
-  content: '###### ';
-  color: color-mix(in srgb, var(--accent) 60%, var(--ink-3));
-  font-weight: 600;
+  content: 'H6';
 }
 
 /* 引用：> 前缀 */
@@ -1106,37 +1283,42 @@ blockquote.md-reveal > p::before {
   color: color-mix(in srgb, var(--accent) 60%, var(--ink-3));
 }
 
-/* 行内样式标记（光标 / 选区与样式相交时展开）
-   类名由 markers 插件直接挂在样式元素上（PM Decoration 移除路径在本版有缺陷） */
-strong.md-reveal-inline::before,
-strong.md-reveal-inline::after {
-  content: '**';
+/* ── 行内标记（真实文本标记模型：.md-marker span 即源码字符）──
+   默认零占位（font-size:0——不占任何布局位，'正文段落 **加粗** 与'
+   收起时渲染为 '正文段落 加粗 与'，无占位空隙）；标记文本节点仍在，
+   光标可正常导航/落位（display:none 会破坏浏览器光标导航与 Enter
+   切段语义）。光标落在样式范围内时 PM 装饰包上 .md-reveal-inline，
+   标记以正常字号显现（带淡入）并着色——可被选中、编辑
+   （删一个 * 即把 ** 变 *） */
+.md-marker {
+  font-size: 0;
   color: color-mix(in srgb, var(--accent) 70%, var(--ink-3));
+}
+.md-marker:has(> .md-reveal-inline) {
+  font-size: inherit;
+  animation: md-marker-in 0.12s ease;
+}
+@keyframes md-marker-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+/* 加粗/斜体标记不随正文继承样式（Typora 同款：标记字符保持常规字重） */
+.md-marker[data-md-style='bold'] {
   font-weight: 400;
 }
-em.md-reveal-inline::before,
-em.md-reveal-inline::after {
-  content: '*';
-  color: color-mix(in srgb, var(--accent) 70%, var(--ink-3));
+.md-marker[data-md-style='italic'] {
   font-style: normal;
 }
-s.md-reveal-inline::before,
-s.md-reveal-inline::after {
-  content: '~~';
-  color: color-mix(in srgb, var(--accent) 70%, var(--ink-3));
-  text-decoration: none;
-}
-u.md-reveal-inline::before,
-u.md-reveal-inline::after {
-  content: '<u>';
-  color: color-mix(in srgb, var(--accent) 70%, var(--ink-3));
-  text-decoration: none;
-  font-size: 0.85em;
-}
-code.md-reveal-inline::before,
-code.md-reveal-inline::after {
-  content: '`';
-  color: var(--accent);
+/* 字面量标记（不配对/切段残留的 '*' 等）：当作普通字符原样显示可编辑 */
+.md-marker[data-side='literal'] {
+  font-size: inherit;
+  font-weight: inherit;
+  font-style: inherit;
+  color: inherit;
 }
 
 /* 无序列表：始终显示圆点（与 Typora 一致）。
