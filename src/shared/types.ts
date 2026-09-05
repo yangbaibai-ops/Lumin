@@ -126,6 +126,8 @@ export interface LuminAPI {
     close: () => void
     /** 原生菜单栏显隐（设置「原生菜单栏」开关时由渲染进程驱动主进程） */
     setMenuBar: (visible: boolean) => void
+    /** 渲染进程触发菜单动作（与原生菜单点击同通道），供 Alt+F/E/V/H 兜底 */
+    invokeMenu: (action: MenuAction) => void
   }
   file: {
     read: (path: string) => Promise<OpenedFile>

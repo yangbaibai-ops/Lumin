@@ -70,19 +70,18 @@ const themes: { mode: ThemeMode; icon: string; label: string }[] = [
           :title="settings.autoSave ? '自动保存已开启，点击选择保存方式' : '未开启自动保存，点击选择保存方式'"
           @click="saveOpen = !saveOpen"
         >
-          <span class="relative flex h-1.5 w-1.5">
+          <!-- 手动保存模式：不显示状态圆点；文字不加强调色（沿用底部默认色） -->
+          <span v-if="!saveNeutral" class="relative flex h-1.5 w-1.5">
             <span
               v-if="files.saving"
               class="absolute inline-flex h-full w-full animate-ping rounded-full bg-warning opacity-60"
             />
             <span
               class="relative inline-flex h-1.5 w-1.5 rounded-full"
-              :class="files.saving ? 'bg-warning' : saveNeutral ? 'bg-ink-3' : files.dirty ? 'bg-warning' : 'bg-ok'"
+              :class="files.saving ? 'bg-warning' : files.dirty ? 'bg-warning' : 'bg-ok'"
             />
           </span>
-          <span
-            :class="files.saving ? 'text-warning' : saveNeutral ? 'text-warning' : files.dirty ? 'text-warning' : 'text-ok'"
-          >
+          <span :class="saveNeutral ? '' : files.saving ? 'text-warning' : files.dirty ? 'text-warning' : 'text-ok'">
             {{ saveLabel }}
           </span>
           <Icon name="chevron-up" :size="10" class="opacity-60 transition-transform duration-150" :class="saveOpen ? 'rotate-180' : ''" />
@@ -103,7 +102,7 @@ const themes: { mode: ThemeMode; icon: string; label: string }[] = [
               <Icon name="refresh" :size="14" :class="settings.autoSave ? 'mt-0.5 text-accent' : 'mt-0.5 text-ink-3'" />
               <span class="min-w-0 flex-1">
                 <span class="block text-[12.5px] font-medium" :class="settings.autoSave ? 'text-accent' : 'text-ink'">自动保存</span>
-                <span class="mt-0.5 block text-[11px] leading-snug text-ink-3">编辑后自动写入磁盘（间隔 {{ settings.autoSaveInterval }} 秒）</span>
+                <span class="mt-0.5 block text-[11px] leading-snug text-ink-3">自动保存（间隔 {{ settings.autoSaveInterval }} 秒）</span>
               </span>
               <span v-if="settings.autoSave" class="mt-0.5 flex h-4 w-4 flex-none items-center justify-center rounded-full bg-accent">
                 <Icon name="check" :size="10" class="text-white" />
@@ -117,7 +116,7 @@ const themes: { mode: ThemeMode; icon: string; label: string }[] = [
               <Icon name="save" :size="14" :class="!settings.autoSave ? 'mt-0.5 text-accent' : 'mt-0.5 text-ink-3'" />
               <span class="min-w-0 flex-1">
                 <span class="block text-[12.5px] font-medium" :class="!settings.autoSave ? 'text-accent' : 'text-ink'">手动保存</span>
-                <span class="mt-0.5 block text-[11px] leading-snug text-ink-3">关闭自动保存，仅在保存按钮 / Ctrl+S 时写入</span>
+                <span class="mt-0.5 block text-[11px] leading-snug text-ink-3">Ctrl+S 保存</span>
               </span>
               <span v-if="!settings.autoSave" class="mt-0.5 flex h-4 w-4 flex-none items-center justify-center rounded-full bg-accent">
                 <Icon name="check" :size="10" class="text-white" />

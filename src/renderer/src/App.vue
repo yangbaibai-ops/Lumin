@@ -11,6 +11,7 @@ import ContextMenu from './components/ContextMenu.vue'
 import GlobalSearch from './components/GlobalSearch.vue'
 import SkeletonScreen from './components/SkeletonScreen.vue'
 import SettingsDialog from './components/SettingsDialog.vue'
+import AltTopMenu from './components/AltTopMenu.vue'
 
 const router = useRouter()
 const ui = useUiStore()
@@ -45,6 +46,7 @@ onMounted(() => {
     <ContextMenu />
     <GlobalSearch />
     <SettingsDialog />
+    <AltTopMenu />
     <Transition name="fade">
       <SkeletonScreen v-if="ui.booting" />
     </Transition>
