@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
-import { useRouter } from 'vue-router'
 import { useFilesStore } from '../stores/files'
 import { useSettingsStore } from '../stores/settings'
 import { useUiStore } from '../stores/ui'
@@ -15,7 +14,6 @@ const ui = useUiStore()
 const files = useFilesStore()
 const settings = useSettingsStore()
 const editorStore = useEditorStore()
-const router = useRouter()
 const { runExport } = useExport()
 const { setMode } = useEditorMode()
 const modeOptions: { mode: 'wysiwyg' | 'source' | 'split'; icon: string; label: string; title: string }[] = [
@@ -306,7 +304,7 @@ const docName = computed(() => files.current?.name ?? '')
       </button>
     </div>
 
-    <button class="icon-btn" title="设置" @click="router.push('/settings')">
+    <button class="icon-btn" title="设置" @click="ui.openSettings()">
       <Icon name="settings" :size="15" />
     </button>
 

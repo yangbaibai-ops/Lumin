@@ -215,6 +215,10 @@ export const useFilesStore = defineStore('files', {
         this.saveTimer = setTimeout(() => this.save(), delay)
       }
     },
+    /** 关闭自动保存时取消尚未触发的磁盘落盘（草稿写入不受影响） */
+    cancelAutoSave(): void {
+      clearTimeout(this.saveTimer as never)
+    },
     async writeDraft(): Promise<void> {
       if (!this.current) return
       await window.luminAPI.drafts.save(

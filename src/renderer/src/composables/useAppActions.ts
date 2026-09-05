@@ -118,7 +118,7 @@ export function useAppActions(): {
         pendingRefactor('打字机模式')
         break
       case 'settings':
-        void router.push('/settings')
+        ui.openSettings()
         break
       case 'about':
         void router.push('/about')

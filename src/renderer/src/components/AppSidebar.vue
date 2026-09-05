@@ -51,9 +51,6 @@ function onDragStart(e: MouseEvent): void {
     <!-- 头部 -->
     <div class="flex h-11 flex-none items-center gap-2 border-b border-edge px-3">
       <div class="flex items-center gap-2">
-        <span class="flex h-6 w-6 items-center justify-center rounded-lg bg-gradient-to-br from-accent to-accent-2 text-white shadow-md" :style="{ boxShadow: '0 2px 8px var(--glow)' }">
-          <Icon name="logo" :size="13" :stroke-width="2" />
-        </span>
         <span class="text-[13.5px] font-semibold tracking-wide text-ink">Lumin</span>
       </div>
       <div class="flex-1" />
@@ -106,7 +103,7 @@ function onDragStart(e: MouseEvent): void {
     <div class="flex flex-none items-center gap-0.5 border-t border-edge px-2 py-1.5">
       <button
         class="flex flex-1 items-center gap-2 rounded-lg px-2 py-1.5 text-[12px] text-ink-3 transition-colors hover:bg-panel-2 hover:text-ink"
-        @click="router.push('/settings')"
+        @click="ui.openSettings()"
       >
         <Icon name="settings" :size="13" />
         设置

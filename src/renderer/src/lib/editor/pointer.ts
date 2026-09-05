@@ -23,7 +23,7 @@
 //   （须 setTimeout(0) 延后），且展开前先落光标再展开以保持“点到哪光标在哪”。
 import { Extension, Mark } from '@tiptap/core'
 import type { RawCommands } from '@tiptap/core'
-import { Plugin, PluginKey, TextSelection } from '@tiptap/pm/state'
+import { Plugin, PluginKey, TextSelection, NodeSelection } from '@tiptap/pm/state'
 import type { Node as PMNode } from '@tiptap/pm/model'
 
 // 自定义命令类型声明（tiptap v3 命令合并，命名空间形式）
@@ -209,6 +209,21 @@ export const TyporaPointer = Extension.create({
           } catch {
             return null
           }
+        },
+        // 文本块（段落/标题等）绝不允许成为 NodeSelection（会把整段套上
+        // .ProseMirror-selectednode 的紫色框——Typora 无此交互）。一旦有
+        // 事务试图选中文本块，降级为普通文本光标（节点级整选仅保留给
+        // 图片等叶子节点）。注意 filterTransaction 先于 dispatch 应用。
+        filterTransaction(tr) {
+          const sel = tr.selection
+          if (sel instanceof NodeSelection && sel.node && sel.node.isTextblock) {
+            try {
+              tr.setSelection(TextSelection.near(tr.doc.resolve(sel.from)))
+            } catch {
+              /* 落点非法则保持原样（由 PM 兜底） */
+            }
+          }
+          return true
         },
         props: {
           handleDOMEvents: {

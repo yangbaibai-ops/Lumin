@@ -48,6 +48,13 @@ export function registerIpc(): void {
     else win.maximize()
   })
   ipcMain.on('app:close', () => BrowserWindow.getFocusedWindow()?.close())
+  // 原生菜单栏显隐（默认开；关闭时隐藏且仅 Alt 临时唤起）
+  ipcMain.on('app:setMenuBar', (event, visible: boolean) => {
+    const win = BrowserWindow.fromWebContents(event.sender)
+    if (!win) return
+    win.setMenuBarVisibility(!!visible)
+    win.setAutoHideMenuBar(!visible)
+  })
 
   // ── 文件 ──
   ipcMain.handle('file:read', async (_, p: string) => {

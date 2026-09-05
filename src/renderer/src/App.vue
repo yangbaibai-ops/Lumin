@@ -10,6 +10,7 @@ import ModalHost from './components/ModalHost.vue'
 import ContextMenu from './components/ContextMenu.vue'
 import GlobalSearch from './components/GlobalSearch.vue'
 import SkeletonScreen from './components/SkeletonScreen.vue'
+import SettingsDialog from './components/SettingsDialog.vue'
 
 const router = useRouter()
 const ui = useUiStore()
@@ -43,6 +44,7 @@ onMounted(() => {
     <ModalHost />
     <ContextMenu />
     <GlobalSearch />
+    <SettingsDialog />
     <Transition name="fade">
       <SkeletonScreen v-if="ui.booting" />
     </Transition>

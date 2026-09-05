@@ -1,4 +1,4 @@
-// ─── 主进程：应用菜单 ──────────────────────────────────────────────────────
+﻿// ─── 主进程：应用菜单 ──────────────────────────────────────────────────────
 import { app, BrowserWindow, Menu, shell } from 'electron'
 import type { MenuItemConstructorOptions } from 'electron'
 import { settingsStore } from './store'
@@ -30,7 +30,7 @@ export function installMenu(): void {
         ]
       : []),
     {
-      label: '文件',
+      label: '文件(F)',
       submenu: [
         { label: '新建文档', accelerator: 'CmdOrCtrl+N', click: () => send('new') },
         { label: '打开…', accelerator: 'CmdOrCtrl+O', click: () => send('open') },
@@ -53,7 +53,7 @@ export function installMenu(): void {
       ]
     },
     {
-      label: '编辑',
+      label: '编辑(E)',
       submenu: [
         { role: 'undo', label: '撤销' },
         { role: 'redo', label: '重做' },
@@ -68,7 +68,7 @@ export function installMenu(): void {
       ]
     },
     {
-      label: '视图',
+      label: '视图(V)',
       submenu: [
         { label: '切换侧边栏', accelerator: 'CmdOrCtrl+Shift+B', click: () => send('toggle-sidebar') },
         { type: 'separator' },
@@ -122,7 +122,7 @@ export function installMenu(): void {
       ]
     },
     {
-      label: '帮助',
+      label: '帮助(H)',
       submenu: [
         { label: '设置', accelerator: 'CmdOrCtrl+,', click: () => send('settings') },
         { label: '关于 Lumin', click: () => send('about') },

@@ -290,6 +290,34 @@
   transform: translateY(-6px);
 }
 
+/* 设置浮层（SettingsDialog）：遮罩淡入 + 面板微弹 */
+.overlay-enter-active,
+.overlay-leave-active {
+  transition: opacity 0.2s ease;
+}
+.overlay-enter-active .settings-panel,
+.overlay-leave-active .settings-panel {
+  transition: transform 0.2s cubic-bezier(0.22, 0.9, 0.3, 1.08);
+}
+.overlay-enter-from,
+.overlay-leave-to {
+  opacity: 0;
+}
+.overlay-enter-from .settings-panel {
+  transform: translateY(10px) scale(0.985);
+}
+.overlay-leave-to .settings-panel {
+  transform: translateY(6px) scale(0.99);
+}
+
+/* 设置浮层（SettingsDialog）：入场动画（关闭即时，见组件注释） */
+.settings-mask {
+  animation: lm-fade-in 0.18s ease;
+}
+.settings-panel {
+  animation: lm-pop 0.2s cubic-bezier(0.22, 0.9, 0.3, 1.08);
+}
+
 .list-enter-active,
 .list-leave-active {
   transition:
@@ -1469,17 +1497,32 @@ li.md-reveal {
   align-items: flex-start;
   gap: 8px;
 }
+/* 复选框与首行文字平齐：label 撑成与「首行行盒」同高并内部垂直居中，
+   使复选框中心线与第一行文字中心线重合（多行内容时仍对齐首行）；取代
+   旧 margin-top 下推导致的割裂感 */
 .md-preview ul[data-type='taskList'] li > label {
+  display: flex;
+  align-items: center;
   flex: none;
-  margin-top: 0.4em;
+  height: calc(var(--editor-lh, 1.9) * 1em);
+  margin-top: 0;
+  cursor: pointer;
 }
 .md-preview ul[data-type='taskList'] li > div {
   flex: 1;
   min-width: 0;
 }
+/* 任务内容段落：首行顶格，保证与 label 行盒同一起点、后续行正常换行留白 */
+.md-preview ul[data-type='taskList'] li > div > p {
+  margin: 0.15em 0;
+}
+.md-preview ul[data-type='taskList'] li > div > p:first-child {
+  margin-top: 0;
+}
 .md-preview ul[data-type='taskList'] input[type='checkbox'] {
   width: 14px;
   height: 14px;
+  flex: none;
   accent-color: var(--accent);
   cursor: pointer;
 }

@@ -15,6 +15,8 @@ export interface AppSettings {
   language: Language
   autoSave: boolean
   autoSaveInterval: number // 秒
+  /** 原生菜单栏（窗口顶部 File/Edit 等）是否可见，默认开 */
+  nativeMenuBar: boolean
   fontSize: number
   lineHeight: number
   fontFamily: string
@@ -122,6 +124,8 @@ export interface LuminAPI {
     minimize: () => void
     toggleMaximize: () => void
     close: () => void
+    /** 原生菜单栏显隐（设置「原生菜单栏」开关时由渲染进程驱动主进程） */
+    setMenuBar: (visible: boolean) => void
   }
   file: {
     read: (path: string) => Promise<OpenedFile>

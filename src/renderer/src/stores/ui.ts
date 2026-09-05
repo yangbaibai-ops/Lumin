@@ -48,6 +48,9 @@ export const useUiStore = defineStore('ui', {
     contextMenu: null as ContextMenuState | null,
     cursor: { line: 1, col: 1 },
     booting: true,
+    // 设置浮层（模态面板，X/Esc/遮罩可关，不抢占路由）
+    settingsOpen: false,
+    settingsSection: 'general',
     globalSearch: {
       open: false,
       query: '',
@@ -88,6 +91,13 @@ export const useUiStore = defineStore('ui', {
     },
     closeContextMenu(): void {
       this.contextMenu = null
+    },
+    openSettings(section = 'general'): void {
+      this.settingsSection = section
+      this.settingsOpen = true
+    },
+    closeSettings(): void {
+      this.settingsOpen = false
     },
     openGlobalSearch(): void {
       this.globalSearch.open = true

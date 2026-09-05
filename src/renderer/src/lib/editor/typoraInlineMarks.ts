@@ -21,7 +21,7 @@
 import { Extension, Mark } from '@tiptap/core'
 import type { RawCommands } from '@tiptap/core'
 import { Plugin, PluginKey, TextSelection } from '@tiptap/pm/state'
-import { Fragment } from '@tiptap/pm/model'
+import { Fragment, DOMParser as PMDOMParser } from '@tiptap/pm/model'
 import { Decoration, DecorationSet } from '@tiptap/pm/view'
 import type { EditorState, Transaction } from '@tiptap/pm/state'
 import type { Mark as PMMark, Node as PMNode } from '@tiptap/pm/model'
@@ -254,6 +254,77 @@ function repairPollutedMarkers(atoms: Atom[]): boolean {
   return changed
 }
 
+/** 字面量标记「配对重提升」：字面量（side:'literal'）只是「当时不成对」的过渡态
+    ——当两侧字面量标记在编辑/合并后重新围住一段无样式正文（如回车切段后再
+    Backspace 合并成 `**` + `5` + `**`），应立即重新识别为样式构造（start/正文
+    mdStyle/end），而不是永远停留在可见字面量、等刷新才恢复。
+    仅在：起止原子都是字面量标记、文本等于某可识别标记（'**'/'*'/'~~'/'`'）且
+    相等、中间只夹无样式正文原子、整段组合文本与完整构造模式完全吻合时触发。 */
+function reLiftLiteralPairs(atoms: Atom[]): boolean {
+  let changed = false
+  let i = 0
+  while (i < atoms.length) {
+    const open = atoms[i]
+    const openTxt = open.kind === 'marker' && open.marker?.side === 'literal' ? open.text ?? '' : ''
+    const kind = KIND_OF_MARKER[openTxt]
+    if (!kind) {
+      i++
+      continue
+    }
+    // 收集中间的无样式正文（原子边界内不允许夹带其他标记/样式/块节点）
+    let contentText = ''
+    let contentOther: PMMark[] | undefined
+    let j = i + 1
+    for (; j < atoms.length; j++) {
+      const a = atoms[j]
+      if (a.kind === 'marker') {
+        // 到达配对字面量：整体必须能被完整模式识别才转换
+        if (a.marker?.side === 'literal' && (a.text ?? '') === openTxt) break
+        // 中间出现其他标记 → 无法配对，放弃本窗口
+        contentText = ''
+        break
+      }
+      if (a.kind === 'text') {
+        if (a.style) {
+          // 正文已有样式 → 说明不是退化构造，跳过
+          contentText = ''
+          break
+        }
+        contentText += a.text ?? ''
+        contentOther = contentOther ?? a.otherMarks
+        continue
+      }
+      contentText = ''
+      break
+    }
+    const close = contentText !== '' && j < atoms.length ? atoms[j] : null
+    if (!close) {
+      i++
+      continue
+    }
+    // 整窗文本必须与 PATTERN 的完整构造一致（m.index=0 且整段匹配），
+    // 防 `**a*b**` 这类跨内容误配
+    const windowText = openTxt + contentText + openTxt
+    PATTERN.lastIndex = 0
+    const m = PATTERN.exec(windowText)
+    const full = m && m.index === 0 && m[0] === windowText
+    const mKind = m ? (m[1] !== undefined ? 'bold' : m[3] !== undefined ? 'italic' : m[4] !== undefined ? 'strike' : m[5] !== undefined ? 'code' : '') : ''
+    if (!full || mKind !== kind) {
+      i++
+      continue
+    }
+    const repl: Atom[] = [
+      { kind: 'marker', text: openTxt, marker: { style: kind, side: 'start' as const } },
+      { kind: 'text', text: contentText, style: kind, otherMarks: contentOther },
+      { kind: 'marker', text: openTxt, marker: { style: kind, side: 'end' as const } }
+    ]
+    atoms.splice(i, j - i + 1, ...repl)
+    i += 3
+    changed = true
+  }
+  return changed
+}
+
 /** 单块内联序列归一化：返回修复后的原子列表（未变化返回 null）。
     语义（CommonMark 对齐，标记文本即源码真值）：
     - 两侧标记配对且可识别 → 以标记文本决定样式（'**'→粗、'*'→斜…），
@@ -266,7 +337,8 @@ function repairPollutedMarkers(atoms: Atom[]): boolean {
     - 孤立标记 → 降级为字面量（同样原样序列化）。 */
 function normalizeAtoms(atoms: Atom[]): Atom[] | null {
   const countBefore = atoms.length
-  let changed = repairPollutedMarkers(atoms)
+  let changed = reLiftLiteralPairs(atoms)
+  changed = repairPollutedMarkers(atoms) || changed
   recognizeTypedMarkers(atoms)
   // 手打模式识别会拆分原子（1 → 3+），其改动也算变化
   changed = changed || atoms.length !== countBefore
@@ -405,6 +477,104 @@ function fromAtoms(atoms: Atom[], schema: EditorState['schema']): Fragment {
     }
   }
   return Fragment.fromArray(nodes)
+}
+
+/** 解析 raw 行文本为行内结构（复用加载/刷新同一条 markdown-it 管线），
+    供「源码权威重推」对齐实时与刷新的渲染语义。 */
+function parseInlineHtml(schema: EditorState['schema'], html: string): PMNode | null {
+  try {
+    const dom = new DOMParser().parseFromString(html, 'text/html')
+    const parsed = PMDOMParser.fromSchema(schema).parse(dom.body)
+    let inline: PMNode | null = null
+    parsed.forEach((n) => {
+      if (!inline && n.isTextblock) inline = n
+    })
+    return inline
+  } catch {
+    return null
+  }
+}
+
+/** 把解析产物里“未被样式消费”的裸标记字符（* ~ `）包成字面量标记：
+    它们不是样式语法（CommonMark 解析为普通字符），但若不包一层
+    mdMarker(literal)（序列化 escape:false），markdown 写出器会给普通文本里
+    的 `*` 加反斜杠转义 → 源码漂移（`**5*` 变 `\**5*`）。字面量标记让这些
+    字符原样输出且可见，与"标记文本即源码真值"模型一致。 */
+function literalizeStrayMarkers(frag: Fragment, schema: EditorState['schema']): Fragment {
+  const mdMarker = schema.marks.mdMarker
+  const nodes: PMNode[] = []
+  frag.forEach((node) => {
+    if (!node.isText || node.marks.some((m) => m.type.name === 'mdStyle' || m.type.name === 'mdMarker')) {
+      nodes.push(node)
+      return
+    }
+    const chars = node.text ?? ''
+    let plain = ''
+    let stray = ''
+    const flush = () => {
+      if (stray) {
+        nodes.push(schema.text(stray, [mdMarker.create({ style: 'bold', side: 'literal' })]))
+        stray = ''
+      }
+      if (plain) {
+        nodes.push(schema.text(plain, node.marks))
+        plain = ''
+      }
+    }
+    for (const ch of chars) {
+      if (ch === '*' || ch === '~' || ch === '`') {
+        if (plain) flush()
+        stray += ch
+      } else {
+        if (stray) flush()
+        plain += ch
+      }
+    }
+    flush()
+  })
+  return Fragment.fromArray(nodes)
+}
+
+/** 单块最终结构：常规原子归一化 + 「源码权威重推」。
+    ——为什么需要重推：实时编辑产生的边缘源码（如 `**5*`、删掉 `*5*` 的收尾
+    `*`）与 markdown-it 的解析语义可能不同（`**5*` 会被解析为 字面 `*` + 斜体
+    `5`）。若不重推，这类结构要等“刷新（重新从源码解析）”才显示正确——即用户
+    遇到的『实时渲染滞后』。这里对纯行内文本块，把它的原文喂给与加载相同的
+    markdown-it 解析器，把解析结果经同一归一化转成标记模型，优先采用（差异
+    时才替换，稳定态零开销）；解析不可用/不适用时回退常规归一化。 */
+function resolveBlockContent(
+  schema: EditorState['schema'],
+  block: PMNode,
+  htmlParse: ((raw: string) => string) | undefined
+): Fragment | null {
+  const current = block.content
+  const atoms = toAtoms(current)
+  const fixed = normalizeAtoms(atoms)
+
+  if (htmlParse && /[*~`]/.test(block.textContent)) {
+    // 仅对“纯行内文本”（无子块/链接/图片）重推——链接的真实源码不在文本里
+    let pure = true
+    current.forEach((c) => {
+      if (!c.isText || c.marks.some((m) => m.type.name === 'link' || m.type.name === 'linkSource')) pure = false
+    })
+    if (pure) {
+      try {
+        const inline = parseInlineHtml(schema, htmlParse(block.textContent))
+        if (inline) {
+          const atoms2 = toAtoms(inline.content)
+          const f2 = normalizeAtoms(atoms2)
+          const frag2 = literalizeStrayMarkers(fromAtoms(f2 ?? atoms2, schema), schema)
+          if (!frag2.eq(current)) return frag2
+        }
+      } catch {
+        /* 解析失败 → 回退常规归一化 */
+      }
+    }
+  }
+
+  if (!fixed) return null
+  const frag = fromAtoms(fixed, schema)
+  return frag.eq(current) ? null : frag
 }
 
 /** 块是否需要归一化：含样式标记，或文本匹配手打标记模式（'**x**' 等） */
@@ -597,6 +767,16 @@ export const TyporaInlineMarks = Extension.create({
     }
   },
   addProseMirrorPlugins() {
+    // 源码权威重推的 markdown-it 解析入口：延迟取 tiptap-markdown 的 parser
+    // （storage 在编辑器创建时才初始化），与加载/刷新用同一条解析管线
+    const htmlParse: ((raw: string) => string) | undefined = (raw) => {
+      try {
+        const st = (this.editor as unknown as { storage?: { markdown?: { parser?: { parse: (s: string) => string } } } }).storage
+        return st?.markdown?.parser ? st.markdown.parser.parse(raw) : ''
+      } catch {
+        return ''
+      }
+    }
     return [
       new Plugin({
         key: inlineMarkPluginKey,
@@ -625,11 +805,10 @@ export const TyporaInlineMarks = Extension.create({
               const curPos = blockPos + delta
               const block = tr.doc.nodeAt(curPos)
               if (!block || !block.isTextblock) continue
-              const atoms = toAtoms(block.content)
-              const fixed = normalizeAtoms(atoms)
-              if (!fixed) continue
-              const frag = fromAtoms(fixed, tr.doc.type.schema)
-              if (frag.eq(block.content)) continue
+              // 常规归一化 + 源码权威重推（与加载/刷新一致的 markdown-it 语义，
+              // 消除『实时与刷新不一致』）
+              const frag = resolveBlockContent(tr.doc.type.schema, block, htmlParse)
+              if (!frag) continue
               tr.replaceWith(curPos + 1, curPos + 1 + block.content.size, frag)
               if (curPos === caretBlockStart) {
                 const newBlock = tr.doc.nodeAt(curPos)

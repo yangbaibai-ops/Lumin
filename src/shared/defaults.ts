@@ -22,6 +22,7 @@ export const defaultSettings: AppSettings = {
   language: 'zh-CN',
   autoSave: true,
   autoSaveInterval: 3,
+  nativeMenuBar: true,
   fontSize: 17,
   lineHeight: 1.9,
   fontFamily: FONT_OPTIONS[0].value,

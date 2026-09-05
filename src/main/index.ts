@@ -8,6 +8,7 @@ import { registerIpc, attachCloseGuard } from './ipc'
 import { migrateLegacyStores } from './store'
 import { db } from './services/database'
 import { defaultSettings } from '../shared/defaults'
+import type { AppSettings } from '../shared/types'
 import { markRunning, markClean } from './drafts'
 
 // 本地文件协议（用于 Markdown 内相对路径图片，兼容 dev/prod 与 CSP）
@@ -59,6 +60,11 @@ function createWindow(): void {
       sandbox: true
     }
   })
+
+  // 原生菜单栏显隐（设置项 nativeMenuBar，默认开）
+  const menuBarVisible = db.kvGet<AppSettings>('settings', defaultSettings).nativeMenuBar !== false
+  mainWindow.setMenuBarVisibility(menuBarVisible)
+  mainWindow.setAutoHideMenuBar(!menuBarVisible)
 
   attachCloseGuard(mainWindow)
 

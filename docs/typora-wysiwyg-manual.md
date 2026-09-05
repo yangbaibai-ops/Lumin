@@ -522,7 +522,18 @@ tr.replace(0, doc.content.size, new Slice(Fragment.fromArray(children), 0, 0))
 6. **标记内回车 = 普通字面量切段**（`keymap.ts` 不再拦截，priority 200 仅保留 `---/***` 段尾回车→分割线与标题首字前退格降级）：光标落在标记字符内部（如 `**5*|*`）按 Enter，PM 把构造文本切成两半——派生归一化把两个不成对片段降级为 `side:'literal'`，按**可见字符**原样落到两个新段落（`**5*` / `*`），序列化**零转义**（源码即 `**5*\n\n*`，无 `\*`），继续打字即时可见（字面量段没有隐藏标记，输入不会再"看不见"）；光标在正文中段回车同样切段，完整一侧的构造由派生自动补齐另一侧。此前"先跳到 run.end 再切段"的拦截已删除——它会伪造"跳出构造"的落点（`**5*` 变成 `**5**` 才换行）且新行输入异常。`appendTransaction` 整体包 try/catch 兜底，任何归一化异常都不会让编辑器崩溃。
 7. **构造边界打字会"污染"标记文本**：光标紧贴构造起点（`|**5**`）打字时，PM 的 `insertText` 取 `$head.marks()`——位置右侧是 mdMarker 节点，新字符继承 mdMarker，与起始标记文本合并成同一节点 `2**`（终点同理得 `**2`）；此时两侧标记文本不配对，归一化误判「不成对 → 整段字面量」，渲染失粗，且源码仍是 `2**5**`（字面量标记原样序列化），content-equal 断言**永远抓不到**，须刷新才恢复。修复：`repairPollutedMarkers` 在 `normalizeAtoms` 开头把粘连在标记外侧的多余字符拆回普通文本、只保留干净标记本体（start 标记取 `MARKER_OF[style]` 的后缀、end 标记取前缀），随后正常识别重新派生样式。
 
-**联动调整**：StarterKit 的 bold/italic/strike/code 以「安静版」注册（关闭输入规则与快捷键，mark 类型保留供解析）；工具栏/气泡菜单改用 `toggleMdBold` 等新命令；`Ctrl+B/I/Shift+X/E` 快捷键接管。验收：`bold-marker-reveal/boundary/hide-on-exit/no-layout/boundary-left`（隐藏态零占位 + 光标边界显隐）、`roundtrip-markdown`（源码零转义往返）、`paste-heading-no-bold`、`boundary-type-start/end-keeps-bold/fold-back-bold`（G 阶段，构造边界打字不失粗）、`ctrl-click-plain-caret/plain-click-unchanged`（H 阶段，Ctrl+点击普通光标）、`link-plain-click-expand/link-auto-collapse/link-ctrl-keeps-link`（I 阶段，链接点击交互，§4.15）等 86 项全绿。
+**联动调整**：StarterKit 的 bold/italic/strike/code 以「安静版」注册（关闭输入规则与快捷键，mark 类型保留供解析）；工具栏/气泡菜单改用 `toggleMdBold` 等新命令；`Ctrl+B/I/Shift+X/E` 快捷键接管。验收：`bold-marker-reveal/boundary/hide-on-exit/no-layout/boundary-left`（隐藏态零占位 + 光标边界显隐）、`roundtrip-markdown`（源码零转义往返）、`paste-heading-no-bold`、`boundary-type-start/end-keeps-bold/fold-back-bold`（G 阶段，构造边界打字不失粗）、`ctrl-click-plain-caret/plain-click-unchanged`（H 阶段，Ctrl+点击普通光标）、`link-plain-click-expand/link-auto-collapse/link-ctrl-keeps-link`（I 阶段，链接点击交互，§4.15）、`marker-enter-italic-live/backspace-join-no-purple-relift/bold-survives-after-merge`（J 阶段，标记内回车→斜体实时化/段首退格合并，§4.13）等 89 项全绿。
+
+**补丁：标记内回车 → 段首退格合并（本次，J 阶段）**：`**5*|*` 回车字面量切段后再按 Backspace，此前本版 prosemirror-commands 的 `joinBackward` 要求光标真正在文本块内部，而 Enter/归一化常把光标留在**块边界（depth 0）**位置，join 失效 → 落到 `selectNodeBackward` 把上一段做成 NodeSelection（`.ProseMirror-selectednode` 紫色整选框）；即使后续拼回 `**5**`，两侧字面量标记也会永远停在可见字面量、须刷新才恢复。修复（三处，非硬编码）：
+1. `typoraInlineMarks.ts` 新增 **reLiftLiteralPairs（字面量配对重提升）**：`side:'literal'` 只是"当时不成对"的过渡态——一旦两侧字面量标记在编辑/合并后重新围住无样式正文（整窗文本与完整构造模式吻合），立即还原为 start/正文 mdStyle/end，与任何输入/合并路径通用；
+2. `keymap.ts` 段首/段间边界 Backspace（及对称 Delete）显式 `tr.join` 相邻同型段落，并把光标设到两段拼接缝，不再让 PM 走 selectNodeBackward；
+3. `pointer.ts` 增加 **filterTransaction 护栏**：任何事务若要把文本块（段落/标题等）设为 NodeSelection，一律降级为文本光标（节点级整选只保留给图片等叶子）——紫色段选框从机制上不可能出现。
+
+**补丁：源码权威重推，实时渲染与刷新语义对齐（本次）**：用户复现出斜体同样滞后（`*5*|` 无法删到 `*5`；`**5**` 在结束标记两星之间回车后，首行 `**5*` 的 5 应实时显示斜体——按 markdown-it，`**5*` = 字面 `*` + 斜体 `5`，此前要刷新才出现）。根因：归一化只是“启发式配对/字面量化”，与 markdown-it 对**边缘源码**（不成对、劈裂、删除收尾）的解析语义不一致。修复（非硬编码）：
+1. **复用同一条解析管线**：`typoraInlineMarks.ts` 新增 `resolveBlockContent` + `parseInlineHtml`——对含 `*~`` 的纯行内文本块，把其原文（标记文本即源码真值）喂给 tiptap-markdown 的 markdown-it parser（与加载/刷新完全同一引擎），解析结果经同一归一化转成标记模型；差异才替换（稳定态零开销），解析不可用回退原启发式。于是 `**5*` 实时即 字面`*`+斜体5、`*5**` 对称同理、`*5` 删尾后按字面量显示；
+2. **零转义保持**：`literalizeStrayMarkers` 把解析产物中“未被样式消费”的裸 `*~`` 包成 mdMarker(literal)（escape:false），否则普通文本里的 `*` 会被 markdown 写出器加 `\`（`**5*` → `\**5*` 源码漂移）；
+3. **删除收尾不再自动补齐**：删掉 `*5*` 的收尾 `*` 后按源码真值落为字面 `*5`（可继续删除），而不是引擎擅自把缺侧标记补回。
+验证：原生键 CDP（删除到 `*5` 无转义；回车即斜体）+ 打字回归（逐字 `**5**`/`*5*` 最终正确零转义）+ J 阶段断言更新，89/89 全绿。
 
 **补丁：字面量语义落地 ×3（本次）**：① **逐字符打字成样式**——打字识别正则（`typoraInlineMarks.ts` PATTERN/PATTERN_TEST）单星分支加 lookaround `(?<!\*)\*([^*\n]+?)\*(?!\*)`，杜绝输入 `**5**` 到中途 `**5*` 时把 `*5*` 误切为斜体（残星 + 序列化 `\*` 转义）；逐字输入 `*`,`*`,`5`,`*`,`*` 的最终产物为粗体 `**5**`、源码零转义。② **标记内回车字面量切段**（见上方坑位 6）。③ **行首粘贴不裂段**——光标位于构造起点（`|**5**`，pos=run.start）或文档首段边界（pos 0）粘贴内联文本时，PM 把插入合并进当前段落、归一化容错，得到同段 `2**5**`（不再出现 `2\n**5**` 两段）。验证：CDP 实测脚本（`tools/probe-three.js`，验证毕移除）三项断言全过 + 全量矩阵 77/77 全绿。
 
@@ -543,6 +554,16 @@ Typora 官方行为（support.typoraio.cn/Links/）：**Ctrl/Cmd+点击**链接�
 - **联动归一化**：`typoraInlineMarks` 的 toAtoms/blockNeedsNormalize 把 linkSource 文本视为**不透明**（否则展开源码里的 `**` 会被派生归一化误转为样式标记）。
 
 关键坑位：PM 的 mark 渲染必须有 `toDOM`（tiptap `renderHTML`）——缺省会抛 `mark.type.spec.toDOM is not a function`：事务已进 state（选区/文档都对）但 **DOM 构建中断**，视图停在旧 DOM，形成「状态已展开、界面仍是链接」的失同步；且**不能在 mousedown 事件回调里同步 dispatch**（实测 DOM 不随事务重建），须 `setTimeout(0)` 延后派发；parseHTML 需还原 `span.md-link-source`/`span.md-link-syntax` 避免 DOMObserver 回写循环。验收（I 阶段）：`link-plain-click-expand`（锚点消失、源码可见、label/syntax 双形态存在、光标折叠不选中、md 不变）、`link-auto-collapse`（光标移出折叠还原）、`link-ctrl-keeps-link`（Ctrl+点击不展开）。
+
+### 4.16 设置中心（模态浮层）与系统级设置项（本次）
+
+设置从「占用整页的路由视图」重构为 **Teleport 模态浮层**（`components/SettingsDialog.vue`，挂载于 App 根，z-120 遮罩 + 居中面板 + 左导航分组 + 右侧滚动内容），提供 **X 按钮 / Esc / 点击遮罩** 三种关闭方式，打开时不离开当前文档上下文；面板入场淡入微弹，关闭即时（本版 Teleport 内层 Transition 的 leave 卸载偶发残留，故采用即时显隐 + 入场动画）。入口统一走 `ui.openSettings()`（工具栏齿轮、侧边栏底部、菜单「设置」Ctrl+,），不再使用 `/settings` 路由。
+
+新增/重构的系统级设置（均经 settings store → `settings:update` → **SQLite kv 持久化**，非 session）：
+- **原生菜单栏（`nativeMenuBar`，默认开）**：控制窗口顶部原生菜单显隐——渲染端 `luminAPI.app.setMenuBar(visible)` → 主进程 `win.setMenuBarVisibility(v)` + `setAutoHideMenuBar(!v)`（隐藏后按 Alt 仍可临时唤出，快捷键不失效）；窗口创建时按 kv 初值生效。菜单顶层文案直接展示助记键样式（`文件(F)`/`编辑(E)`/`视图(V)`/`帮助(H)`，Typora 同款观感；注：文案为字面量保证跨平台稳定显示，不做 `&` 隐藏式助记解析）。
+- **自动保存（`autoSave`，默认开）**：已有持久化字段；新增关闭时 `files.cancelAutoSave()` 取消**未触发的磁盘定时器**（草稿崩溃保护仍写）。状态栏左侧保存状态区为**入口按钮**：点击弹出**竖向选择菜单（自动保存 / 手动保存 + 打开设置…）**，选中即切换并持久化；切到手动保存时状态区文字显示 **「未开启自动保存」**（区别于自动模式的「已保存 / 未保存的更改 / 保存中…」）。
+
+验收：CDP 实测浮层 开→X 关、开→Esc 关、原生菜单栏开关状态持久化回读、autoSave 开关持久化；全量矩阵 89/89 全绿。
 
 ---
 
@@ -758,6 +779,7 @@ docs/typora-wysiwyg-manual.md   # 本文档
 | G | 3 项：构造边界打字不失粗（起点/终点打字后 `strong` 保留 + 移出折叠为纯粗体，§4.13 坑位 7） |
 | H | 2 项：Ctrl/Cmd+左键退化为普通光标点击（不整选段落/节点、无主题色全选框）、普通左键不受影响（§4.14） |
 | I | 3 项：链接普通点击原地展开（锚点消失、label/syntax 双形态、光标折叠不自动选中、md 不变）、光标移出自动折叠还原、Ctrl+点击保持链接不展开（§4.15） |
+| J | 3 项：标记内回车切段后源码精确两段且首行 5 立即斜体（与刷新一致，零转义）、段首退格合并（单段 `**5**` + 粗体即时还原 + 无 `.ProseMirror-selectednode`）、合并后光标移开粗体保持（§4.13） |
 
 运行方式：`$env:LUMIN_DEBUG_PORT='9222'; npm run dev` 后执行 `powershell -NoProfile -ExecutionPolicy Bypass -File tools/run-verify.ps1`。
 

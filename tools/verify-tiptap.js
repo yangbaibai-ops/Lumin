@@ -1360,6 +1360,87 @@ async function main() {
     })()`))
   })
 
+  // ═══ J. 标记内回车→段首退格合并（无紫框 / 即时还原粗体，§4.13）═══
+  // 复现用户路径：`**5**` 光标放在结束标记两星之间 → Enter（字面量切段）
+  // → Backspace（段间合并）：应得到单段 `**5**`、粗体即时还原（无需刷新）、
+  // 绝无 .ProseMirror-selectednode 段级整选紫框
+  await phase('J', async () => {
+    const bridged = await ensureBridge()
+    if (bridged !== 'OK') throw new Error('桥接失败: ' + bridged)
+    await ev(`(async () => { await window.__vt.files().openUntitled(); return 'ok' })()`)
+    await sleep(800)
+    await ev(`(() => {
+      const ed = window.__vt.ed()
+      ed?.commands.setContent('**5**')
+      ed?.commands.focus('start')
+      return 'ok'
+    })()`)
+    await sleep(600)
+    await ev(`(() => { const ed = window.__vt.ed(); ed?.chain().focus().setTextSelection(5).run(); return 'ok' })()`)
+    await sleep(200)
+    const pressKey = async (keyName) => {
+      const isEnter = keyName === 'Enter'
+      await ev(`(() => {
+        const ed = window.__vt.ed()
+        ed.view.focus()
+        const dom = ed.view.dom
+        const o = { key: ${JSON.stringify(keyName)}, code: ${JSON.stringify(keyName)}, keyCode: ${isEnter ? 13 : 8}, which: ${isEnter ? 13 : 8}, bubbles: true, cancelable: true }
+        dom.dispatchEvent(new KeyboardEvent('keydown', o))
+        dom.dispatchEvent(new KeyboardEvent('keyup', o))
+        return 'ok'
+      })()`)
+      await sleep(400)
+    }
+    await pressKey('Enter')
+    record('J', await ev(`(() => {
+      const ed = window.__vt.ed()
+      const md = ed.storage.markdown.getMarkdown()
+      let em = 0
+      ed.view.state.doc.descendants((n) => { if (n.isText && n.marks.some((m) => m.type.name === 'mdStyle' && m.attrs.style === 'italic')) em++ })
+      // 回车切段后：源码精确为两段（零转义）且上段 5 立即渲染为斜体
+      // （与刷新后 markdown-it 解析一致，不再滞后）
+      return [{ n: 'marker-enter-italic-live', p: md === '**5*\\n\\n*' && !md.includes('\\\\') && em === 1, d: 'md=' + JSON.stringify(md) + ' em=' + em }]
+    })()`))
+    await pressKey('Backspace')
+    record('J', await ev(`(() => {
+      const ed = window.__vt.ed()
+      const md = ed.storage.markdown.getMarkdown()
+      const dom = ed.view.dom
+      const strong = dom.querySelector('strong') ? dom.querySelector('strong').textContent : ''
+      let startMarker = 0
+      let endMarker = 0
+      let lit = 0
+      ed.view.state.doc.descendants((n) => {
+        if (!n.isText) return
+        for (const m of n.marks) {
+          if (m.type.name === 'mdMarker') { if (m.attrs.side === 'start') startMarker++; else if (m.attrs.side === 'end') endMarker++; else lit++ }
+        }
+      })
+      const blocks = []
+      ed.view.state.doc.descendants((n) => { if (n.isTextblock) blocks.push(n.textContent) })
+      return [{
+        n: 'backspace-join-no-purple-relift',
+        p: md === '**5**' && strong === '5' && startMarker === 1 && endMarker === 1 && lit === 0 && blocks.length === 1 && !dom.querySelector('.ProseMirror-selectednode'),
+        d: 'md=' + JSON.stringify(md) + ' strong=' + strong + ' s=' + startMarker + ' e=' + endMarker + ' lit=' + lit + ' blocks=' + blocks.length
+      }]
+    })()`))
+    // 光标移开后粗体保持（无需刷新）
+    const away = await ev(`(() => {
+      const ed = window.__vt.ed()
+      const doc = ed.view.state.doc
+      return { pos: doc.content.size }
+    })()`)
+    await pressKey('ArrowRight')
+    await ev(`(() => { const ed = window.__vt.ed(); ed?.chain().focus().setTextSelection(${away.pos}).run(); return 'ok' })()`)
+    await sleep(200)
+    record('J', await ev(`(() => {
+      const ed = window.__vt.ed()
+      const md = ed.storage.markdown.getMarkdown()
+      const strong = [...document.querySelectorAll('.ProseMirror strong')].map((e) => e.textContent).join(',')
+      return [{ n: 'bold-survives-after-merge', p: md === '**5**' && strong === '5', d: 'strong=' + strong }]
+    })()`))
+  })
+
   // ═══ 清理：恢复用户工作区 ═══
   await ev(`window.luminAPI.workspace.setRoot(${JSON.stringify(USER_WS)}).then(() => 'ok')`)
 
