@@ -9,6 +9,7 @@ import { useSettingsStore } from '../stores/settings'
 import { useFilesStore } from '../stores/files'
 import { useUiStore } from '../stores/ui'
 import { FONT_OPTIONS } from '../../../shared/defaults'
+import { LANGUAGE_OPTIONS } from '../i18n'
 import type { EditorMode, ThemeMode } from '../../../shared/types'
 import Icon from '../components/Icon.vue'
 
@@ -24,6 +25,9 @@ const tabs = [
   { id: 'export', label: '导出', icon: 'download' }
 ] as const
 
+/** 语言选项（由 i18n/LANGUAGE_OPTIONS 单一数据源驱动，便于扩展新语言） */
+const languageOptions = LANGUAGE_OPTIONS
+
 const activeTab = computed(() => {
   const t0 = String(ui.settingsSection ?? 'general')
   return tabs.some((x) => x.id === t0) ? t0 : 'general'
@@ -33,11 +37,9 @@ function switchTab(id: string): void {
   ui.settingsSection = id
 }
 
-/** 原生菜单栏开关：即时驱动主进程显隐（关闭后 Alt 可临时唤出） */
+/** 顶部菜单栏开关：控制应用内菜单栏（TopMenuBar）显隐，持久化即可 */
 function toggleMenuBar(): void {
-  const v = !settings.nativeMenuBar
-  settings.set('nativeMenuBar', v)
-  window.luminAPI.app.setMenuBar(v)
+  settings.set('nativeMenuBar', !settings.nativeMenuBar)
 }
 
 /** 自动保存开关：关闭时取消未触发的磁盘定时器（草稿崩溃保护不受影响） */
@@ -163,13 +165,13 @@ function sectionTitle(id: string): string {
                           </div>
                           <div class="flex rounded-lg bg-panel-2 p-0.5">
                             <button
-                              v-for="lang in (['zh-CN', 'en-US'] as const)"
-                              :key="lang"
+                              v-for="opt in languageOptions"
+                              :key="opt.value"
                               class="rounded-md px-3 py-1 text-[12.5px] font-medium transition-all"
-                              :class="settings.language === lang ? 'bg-panel text-ink shadow-sm' : 'text-ink-3 hover:text-ink-2'"
-                              @click="settings.setLanguage(lang)"
+                              :class="settings.language === opt.value ? 'bg-panel text-ink shadow-sm' : 'text-ink-3 hover:text-ink-2'"
+                              @click="settings.setLanguage(opt.value)"
                             >
-                              {{ lang === 'zh-CN' ? '简体中文' : 'English' }}
+                              {{ opt.label }}
                             </button>
                           </div>
                         </div>
@@ -204,9 +206,9 @@ function sectionTitle(id: string): string {
                       <section class="surface mb-4 p-5">
                         <div class="flex items-center justify-between gap-4">
                           <div>
-                            <p class="text-[13.5px] text-ink">原生菜单栏</p>
+                            <p class="text-[13.5px] text-ink">顶部菜单栏</p>
                             <p class="mt-0.5 text-[12px] text-ink-3">
-                              窗口顶部的原生菜单（文件(F) / 编辑(E) / 视图(V) / 帮助(H)）；关闭后界面更纯净，仍可用 Alt 临时唤出、快捷键照常生效
+                              窗口顶部的应用菜单（文件(F) / 编辑(E) / 视图(V) / 帮助(H)）；关闭后界面更纯净，快捷键（Ctrl+N/O/S、Alt+F/E/V/H 等）照常生效
                             </p>
                           </div>
                           <button class="switch" :class="{ on: settings.nativeMenuBar }" @click="toggleMenuBar" />

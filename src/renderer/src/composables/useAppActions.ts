@@ -131,6 +131,8 @@ export function useAppActions(): {
 
   // ── 全局快捷键 ──
   function onKeydown(e: KeyboardEvent): void {
+    // Alt+F/E/V/H：交由 Windows 原生菜单助记键处理（顶级菜单已用 `文件(&F)`
+    // 写法，位置由操作系统精确摆放）；不做渲染层浮层兜底，避免双开/错位
     const mod = e.ctrlKey || e.metaKey
     if (!mod) return
     const target = e.target

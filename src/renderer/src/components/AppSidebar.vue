@@ -62,11 +62,16 @@ function onDragStart(e: MouseEvent): void {
       </button>
     </div>
 
-    <!-- 工作区名 -->
+    <!-- 工作区名：点击名称重新选择文件夹（样式保持原样，仅可点击切换） -->
     <div v-if="files.root" class="flex flex-none items-center gap-1.5 px-3 pb-0.5 pt-2.5 text-[11px] font-medium uppercase tracking-[0.08em] text-ink-3">
-      <Icon name="folder" :size="11" />
-      <span class="max-w-[150px] truncate" :title="files.root">{{ workspaceName }}</span>
-      <div class="flex-1" />
+      <button
+        class="flex min-w-0 flex-1 cursor-pointer items-center gap-1.5 text-left transition-opacity hover:opacity-90"
+        :title="files.root + '\n点击重新选择文件夹'"
+        @click="files.openFolder()"
+      >
+        <Icon name="folder" :size="11" />
+        <span class="max-w-[150px] truncate">{{ workspaceName }}</span>
+      </button>
       <button class="text-ink-3 transition-colors hover:text-ink" title="刷新" @click="files.refreshDir(files.root!)">
         <Icon name="refresh" :size="11" />
       </button>

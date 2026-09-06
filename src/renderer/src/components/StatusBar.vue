@@ -3,12 +3,17 @@ import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useFilesStore } from '../stores/files'
 import { useSettingsStore } from '../stores/settings'
 import { useUiStore } from '../stores/ui'
+import { LANGUAGE_OPTIONS, nextLanguage } from '../i18n'
 import Icon from './Icon.vue'
 import type { ThemeMode } from '../../../shared/types'
 
 const files = useFilesStore()
 const settings = useSettingsStore()
 const ui = useUiStore()
+
+const langShort = computed(
+  () => LANGUAGE_OPTIONS.find((o) => o.value === settings.language)?.short ?? 'EN'
+)
 
 const themeOpen = ref(false)
 const themeRef = ref<HTMLElement | null>(null)
@@ -84,7 +89,7 @@ const themes: { mode: ThemeMode; icon: string; label: string }[] = [
           <span :class="saveNeutral ? '' : files.saving ? 'text-warning' : files.dirty ? 'text-warning' : 'text-ok'">
             {{ saveLabel }}
           </span>
-          <Icon name="chevron-up" :size="10" class="opacity-60 transition-transform duration-150" :class="saveOpen ? 'rotate-180' : ''" />
+          <!-- <Icon name="chevron-up" :size="10" class="opacity-60 transition-transform duration-150" :class="saveOpen ? 'rotate-180' : ''" /> -->
         </button>
 
         <Transition name="pop">
@@ -196,11 +201,11 @@ const themes: { mode: ThemeMode; icon: string; label: string }[] = [
 
     <button
       class="flex items-center gap-1 rounded-md px-1.5 py-0.5 transition-colors hover:bg-panel-2 hover:text-ink-2"
-      :title="'切换语言 / Switch language'"
-      @click="settings.setLanguage(settings.language === 'zh-CN' ? 'en-US' : 'zh-CN')"
+      :title="langShort + ' · 切换语言 / Switch language'"
+      @click="settings.setLanguage(nextLanguage(settings.language))"
     >
       <Icon name="globe" :size="13" />
-      <span>{{ settings.language === 'zh-CN' ? '中文' : 'EN' }}</span>
+      <span>{{ langShort }}</span>
     </button>
 
     <span class="text-ink-3/70">v{{ version }}</span>

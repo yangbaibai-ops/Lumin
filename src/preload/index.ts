@@ -10,8 +10,7 @@ const api: LuminAPI = {
     minimize: () => ipcRenderer.send('app:minimize'),
     toggleMaximize: () => ipcRenderer.send('app:toggleMaximize'),
     close: () => ipcRenderer.send('app:close'),
-    setMenuBar: (visible) => ipcRenderer.send('app:setMenuBar', visible),
-    invokeMenu: (action) => ipcRenderer.send('app:invokeMenu', action)
+    setMenuBar: (visible) => ipcRenderer.send('app:setMenuBar', visible)
   },
   file: {
     read: (path) => ipcRenderer.invoke('file:read', path),

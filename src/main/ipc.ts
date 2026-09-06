@@ -55,11 +55,6 @@ export function registerIpc(): void {
     win.setMenuBarVisibility(!!visible)
     win.setAutoHideMenuBar(!visible)
   })
-  // Alt+F/E/V/H 兜底：渲染进程触发菜单动作 → 与原生菜单同一 'menu:action' 通道
-  ipcMain.on('app:invokeMenu', (event, action: string) => {
-    const win = BrowserWindow.fromWebContents(event.sender)
-    if (win) win.webContents.send('menu:action', String(action))
-  })
 
   // ── 文件 ──
   ipcMain.handle('file:read', async (_, p: string) => {

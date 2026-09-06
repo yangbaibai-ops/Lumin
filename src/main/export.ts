@@ -131,19 +131,45 @@ export async function exportPdf(
   })
   if (result.canceled || !result.filePath) return null
 
-  const printWin = new BrowserWindow({ show: false, webPreferences: { sandbox: true } })
+  // 用隐藏窗口 + 真实 Chromium 排版引擎渲染后再 printToPDF；
+  // 等页面渲染与网页字体完全就绪再打印，避免空白/缺字/未分页
+  const printWin = new BrowserWindow({
+    show: false,
+    width: 960,
+    height: 1200,
+    webPreferences: { sandbox: true, contextIsolation: true }
+  })
   try {
     await printWin.loadURL(
       'data:text/html;charset=utf-8,' + encodeURIComponent(buildHtml(payload))
     )
+    // 等待字体与图片/样式全部可用（KaTeX、系统 CJK 等）
+    await printWin.webContents.executeJavaScript(
+      `document.fonts && document.fonts.ready ? document.fonts.ready.then(() => true) : Promise.resolve(true)`
+    )
+    // 再让一次渲染帧稳定（布局/分页计算完成）
+    await new Promise((resolve) => setTimeout(resolve, 250))
+
     const marginInch = pdfSettings.margin / 25.4
     const data = await printWin.webContents.printToPDF({
       pageSize: pdfSettings.pageSize,
       printBackground: true,
+      landscape: false,
       margins: { top: marginInch, bottom: marginInch, left: marginInch, right: marginInch }
     })
+    if (!data || data.length === 0) {
+      throw new Error('printToPDF 返回空内容')
+    }
     await fs.writeFile(result.filePath, data)
     return result.filePath
+  } catch (err) {
+    // 导出失败不留半成品：删除可能已写入的损坏文件后向上抛，由渲染层提示
+    try {
+      await fs.unlink(result.filePath).catch(() => {})
+    } catch {
+      /* ignore */
+    }
+    throw err
   } finally {
     printWin.destroy()
   }

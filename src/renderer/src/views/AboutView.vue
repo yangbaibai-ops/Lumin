@@ -7,6 +7,12 @@ const router = useRouter()
 const version = ref('')
 const platform = ref('')
 
+/** 返回进入「关于」之前的界面（无历史则回首页） */
+function goBack(): void {
+  if (window.history.length > 1) router.back()
+  else router.push('/')
+}
+
 const stack = [
   'Electron',
   'Vue 3',
@@ -69,7 +75,7 @@ onMounted(async () => {
 
       <p class="mt-10 text-[12px] text-ink-3">免费 · 开源 · 现代化 — 让写作如光般通透</p>
 
-      <button class="btn btn-outline mt-6 px-5 py-2 text-[13px]" @click="router.push('/')">
+      <button class="btn btn-outline mt-6 px-5 py-2 text-[13px]" @click="goBack">
         <Icon name="chevron-right" :size="14" class="rotate-180" />
         返回
       </button>

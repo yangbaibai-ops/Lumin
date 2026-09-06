@@ -560,11 +560,13 @@ Typora 官方行为（support.typoraio.cn/Links/）：**Ctrl/Cmd+点击**链接�
 设置从「占用整页的路由视图」重构为 **Teleport 模态浮层**（`components/SettingsDialog.vue`，挂载于 App 根，z-120 遮罩 + 居中面板 + 左导航分组 + 右侧滚动内容），提供 **X 按钮 / Esc / 点击遮罩** 三种关闭方式，打开时不离开当前文档上下文；面板入场淡入微弹，关闭即时（本版 Teleport 内层 Transition 的 leave 卸载偶发残留，故采用即时显隐 + 入场动画）。入口统一走 `ui.openSettings()`（工具栏齿轮、侧边栏底部、菜单「设置」Ctrl+,），不再使用 `/settings` 路由。
 
 新增/重构的系统级设置（均经 settings store → `settings:update` → **SQLite kv 持久化**，非 session）：
-- **原生菜单栏（`nativeMenuBar`，默认开）**：控制窗口顶部原生菜单显隐——渲染端 `luminAPI.app.setMenuBar(visible)` → 主进程 `win.setMenuBarVisibility(v)` + `setAutoHideMenuBar(!v)`（隐藏后按 Alt 仍可临时唤出，快捷键不失效）；窗口创建时按 kv 初值生效。菜单顶层使用 Electron 助记键 `文件(&F)` 等（`&` 不显示、字母加下划线，观感如「文件(F)」，Windows 下 Alt+F/E/V/H 打开对应菜单）；**确定性兜底**：`AltTopMenu`（渲染层下拉）+ `luminAPI.app.invokeMenu`（与原生菜单同一 `menu:action` 通道）——即使个别 Electron/Windows 组合系统助记键失效，Alt+字母也必然打开菜单并执行动作。
+- **顶部菜单栏（`nativeMenuBar`，默认开）**：采用**应用内菜单栏 `TopMenuBar`**（VS Code 式，位置由 DOM 精确摆放、Alt+F/E/V/H 必达、菜单项与原生菜单同源动作）替代系统原生菜单条——主进程隐藏系统菜单条（`setMenuBarVisibility(false)`）避免双开/错位，应用菜单仍安装以保留 Ctrl+N/O/S 等加速键；`nativeMenuBar` 关闭时仅隐藏该菜单栏（快捷键仍可用），设置经 SQLite kv 持久化。
 - **自动保存（`autoSave`，默认开）**：已有持久化字段；新增关闭时 `files.cancelAutoSave()` 取消**未触发的磁盘定时器**（草稿崩溃保护仍写）。状态栏左侧保存状态区为**入口按钮**：点击弹出**竖向选择菜单（自动保存 / 手动保存 + 打开设置…）**，选中即切换并持久化；切到手动保存时状态区文字显示 **「未开启自动保存」——不加强调色（沿用底部状态栏默认文字色）、且不显示前置状态圆点**。
 - **排版与空白（`whitespace`，默认全开）**：编辑/导出两个维度分别控制「保留连续空格」「保留单个换行」——编辑维度经 `data-preserve-spaces/breaks` + CSS（段落 `pre-wrap`、软换行 `<br>` 显隐）实时生效；导出维度在导出 HTML/PDF/Word/EPUB 时叠加 `white-space: pre-wrap` 与 `<br>`→空格 策略。说明：连续回车产生的**空段落**属 Markdown 块级语义，打开/保存按规范合并为单个分段空行（主流引擎与 Typora 一致）。
+- **多语言（i18n）**：基于 vue-i18n 的解耦架构，语言目录为纯 JSON 数据：`zh-CN` / `en-US` / `ru-RU`（俄文）三套全量键；新增语言 = 新增 `locales/{locale}.json` 并在 `i18n/index.ts` 的 `messages` 与 `Language` 联合类型登记（`LANGUAGE_OPTIONS` 自动驱动设置面板语言选择与状态栏快捷循环）。`settings.language` 经 SQLite kv 持久化，`document.documentElement.lang` 同步。已有 i18n 键位的界面（欢迎页、编辑器占位、工具栏常用键等）随语言即时切换；存量硬编码文案按模块增量迁移中。
+- **PDF 导出（优化）**：隐藏窗口 + 真实 Chromium 排版引擎渲染后 `printToPDF`；**等待 `document.fonts.ready` 与一次渲染帧稳定后再打印**，杜绝空白/缺字/未分页；按设置注入 A4/A5/Letter 与页边距、`printBackground`；失败时清理半成品文件并向上抛错（渲染层 Toast 提示）。
 
-验收：CDP 实测浮层 开→X 关、开→Esc 关、原生菜单栏开关状态持久化回读、autoSave 开关持久化；全量矩阵 89/89 全绿。
+验收：CDP 实测浮层 开→X 关、开→Esc 关、原生菜单栏开关状态持久化回读、autoSave 开关持久化、语言三态切换与 `ru-RU` 持久化、`openTopMenu` IPC 无异常；全量矩阵 89/89 全绿。
 
 ---
 

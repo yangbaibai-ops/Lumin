@@ -8,7 +8,6 @@ import { registerIpc, attachCloseGuard } from './ipc'
 import { migrateLegacyStores } from './store'
 import { db } from './services/database'
 import { defaultSettings } from '../shared/defaults'
-import type { AppSettings } from '../shared/types'
 import { markRunning, markClean } from './drafts'
 
 // 本地文件协议（用于 Markdown 内相对路径图片，兼容 dev/prod 与 CSP）
@@ -51,7 +50,7 @@ function createWindow(): void {
     show: false,
     autoHideMenuBar: false,
     backgroundColor: themeBackground(),
-    title: 'Lumin — Write in Light',
+    title: 'Lumin',
     ...(process.platform === 'linux' ? { icon } : {}),
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
@@ -61,10 +60,10 @@ function createWindow(): void {
     }
   })
 
-  // 原生菜单栏显隐（设置项 nativeMenuBar，默认开）
-  const menuBarVisible = db.kvGet<AppSettings>('settings', defaultSettings).nativeMenuBar !== false
-  mainWindow.setMenuBarVisibility(menuBarVisible)
-  mainWindow.setAutoHideMenuBar(!menuBarVisible)
+  // 隐藏系统原生菜单条：顶部菜单栏由渲染层 TopMenuBar 呈现（位置精确、
+  // Alt+F/E/V/H 确定性）；应用菜单仍安装，Ctrl+N/O/S 等加速键继续生效
+  mainWindow.setMenuBarVisibility(false)
+  mainWindow.setAutoHideMenuBar(true)
 
   attachCloseGuard(mainWindow)
 
