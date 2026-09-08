@@ -123,10 +123,7 @@ function onDragStart(e: DragEvent): void {
       @contextmenu="onContextMenu"
       @dragstart="onDragStart"
     >
-      <span
-        class="flex h-4 w-4 flex-none items-center justify-center"
-        :class="node.type === 'directory' ? '' : 'ml-4'"
-      >
+      <span class="flex h-4 w-4 flex-none items-center justify-center">
         <Icon
           v-if="node.type === 'directory'"
           name="chevron-right"

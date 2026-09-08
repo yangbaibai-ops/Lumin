@@ -130,6 +130,7 @@ export async function exportPdf(
     filters: [{ name: 'PDF', extensions: ['pdf'] }]
   })
   if (result.canceled || !result.filePath) return null
+  const resultFilePath = result.filePath
 
   // 用隐藏窗口 + 真实 Chromium 排版引擎渲染后再 printToPDF；
   // 等页面渲染与网页字体完全就绪再打印，避免空白/缺字/未分页
@@ -160,12 +161,12 @@ export async function exportPdf(
     if (!data || data.length === 0) {
       throw new Error('printToPDF 返回空内容')
     }
-    await fs.writeFile(result.filePath, data)
-    return result.filePath
+    await fs.writeFile(resultFilePath, data)
+    return resultFilePath
   } catch (err) {
     // 导出失败不留半成品：删除可能已写入的损坏文件后向上抛，由渲染层提示
     try {
-      await fs.unlink(result.filePath).catch(() => {})
+      await fs.unlink(resultFilePath).catch(() => {})
     } catch {
       /* ignore */
     }

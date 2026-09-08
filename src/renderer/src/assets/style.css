@@ -1296,7 +1296,8 @@ h5.md-reveal::before,
 h6.md-reveal::before {
   position: absolute;
   left: -2.2rem;
-  top: 0.35em;
+  top: 50%;
+  transform: translateY(-50%);
   padding: 1px 6px;
   border: 1px solid var(--edge);
   border-radius: 5px;
@@ -1312,9 +1313,12 @@ h6.md-reveal::before {
 }
 h1.md-reveal::before {
   content: 'H1';
+  /* h1 底部有 padding-bottom(0.28em)+边框，盒子中心低于文字行中心约 5px，向上补偿 */
+  top: calc(50% - 5px);
 }
 h2.md-reveal::before {
   content: 'H2';
+  top: calc(50% - 3px);
 }
 h3.md-reveal::before {
   content: 'H3';

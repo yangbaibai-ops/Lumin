@@ -2,7 +2,7 @@
 import fs from 'fs/promises'
 import path from 'path'
 import { pathToFileURL } from 'url'
-import { workspaceStore } from './store'
+import { db } from './services/database'
 import type { FileNode } from '../shared/types'
 
 export const MD_EXT_RE = /\.(md|markdown|mdown|mkd|txt)$/i
@@ -18,7 +18,11 @@ export function isInside(dir: string, p: string): boolean {
 
 /** 校验工作区内的路径（防路径遍历） */
 export function assertWorkspacePath(p: string): string {
-  const root = workspaceStore.get('root')
+  // 工作区根目录的唯一数据源是 SQLite kv（workspace:setRoot/getRoot 读写于此），
+  // 不能用 electron-store 的 workspaceStore（其值仅在启动迁移时同步一次，之后
+  // setRoot 只写 SQLite 不再回写 electron-store，导致校验使用过期根目录 →
+  // 新打开的文件夹被判定为「工作区之外」而列表为空）。
+  const root = db.kvGet<{ root: string | null }>('workspace', { root: null }).root
   if (!root) throw new Error('WORKSPACE_NOT_OPEN')
   const resolved = path.resolve(p)
   if (!isInside(root, resolved)) throw new Error('PATH_OUTSIDE_WORKSPACE')

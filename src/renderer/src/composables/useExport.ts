@@ -25,9 +25,11 @@ export function useExport(): { runExport: (format: 'pdf' | 'html' | 'word' | 'ep
     try {
       let path: string | null = null
       if (format === 'pdf') {
+        // Pinia 响应式代理无法通过 IPC 结构化克隆（"could not be cloned"），
+        // 必须展开为普通对象后再传，否则导出 PDF 必失败
         path = await window.luminAPI.export.pdf(
           { title: payload.title, html: payload.html, css: exportCss },
-          settings.export.pdf
+          { margin: settings.export.pdf.margin, pageSize: settings.export.pdf.pageSize }
         )
       } else if (format === 'html') {
         path = await window.luminAPI.export.html({ title: payload.title, html: payload.html, css: exportCss })
