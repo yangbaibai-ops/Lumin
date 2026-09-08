@@ -32,10 +32,16 @@ async function bootstrap(): Promise<void> {
   const files = useFilesStore(pinia)
   await files.init()
 
-  // 骨架屏最短展示时长，优化感知性能
-  setTimeout(() => {
-    ui.booting = false
-  }, 600)
+  // 多窗口：本窗口由「在新窗口打开」创建时，启动后直接打开目标文件
+  const startupFile = window.luminAPI.app.startupFile
+  if (startupFile) {
+    if (await files.openPath(startupFile)) {
+      await router.push('/editor')
+    }
+  }
+
+  // 初始化完成后立即结束骨架屏（不再人为拖延 600ms，加快启动/渲染速度）
+  ui.booting = false
 }
 
 void bootstrap()

@@ -30,6 +30,7 @@ const GROUPS: Group[] = [
     label: '文件(F)',
     items: [
       { label: '新建文档', icon: 'file-plus', run: async () => { if (await confirmIfDirty()) { await files.newDocInWorkspace(); await router.push('/editor') } } },
+      { label: '新建窗口', icon: 'copy', run: () => window.luminAPI.app.newWindow() },
       { label: '打开…', icon: 'folder-open', run: async () => { if (await confirmIfDirty()) { const p = await window.luminAPI.file.chooseOpenFile(); if (p && (await files.openPath(p))) await router.push('/editor') } } },
       { label: '打开文件夹…', icon: 'folder-plus', run: () => files.openFolder() },
       'sep',

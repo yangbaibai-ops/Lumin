@@ -288,7 +288,11 @@ onMounted(() => {
   // 变化会被它误读为 PM 选区（CM 位于 PM DOM 树内），随后 PM 重写 DOM 选区，
   // 浏览器随之把焦点从 CM 抢回 PM 根节点，导致后续按键由 PM 处理而错乱。
   // 因此：CM 获得焦点期间令 PM 的 hasFocus() 返回 false，使其跳过选区同步。
-  const pmView = props.editor.view
+  // domObserver 是 prosemirror-view 的内部字段（@internal，未在公开类型中声明），
+  // 此处显式拓宽类型以在 CM 聚焦期间暂停/恢复观察器
+  const pmView = props.editor.view as typeof props.editor.view & {
+    domObserver: { stop: () => void; start: () => void }
+  }
   prevHasFocus = pmView.hasFocus.bind(pmView)
   pmView.hasFocus = () => {
     const ae = document.activeElement
@@ -348,7 +352,9 @@ onBeforeUnmount(() => {
   }
   onPmBlurCapture = null
   // 若销毁时 CM 仍处于聚焦态，观察器处于暂停态，需恢复
-  const v = props.editor.view
+  const v = props.editor.view as typeof props.editor.view & {
+    domObserver: { stop: () => void; start: () => void }
+  }
   const ae = document.activeElement
   if (v && v.domObserver && !(ae && ae.closest('.cm-editor'))) v.domObserver.start()
   if (pinTimer) clearTimeout(pinTimer)

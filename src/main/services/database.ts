@@ -1,8 +1,19 @@
 // ─── SQLite 持久层：文档元数据 + FTS5 全文索引 ────────────────────────────
 // 使用 Electron 内置 Node 的 node:sqlite（DatabaseSync，含 FTS5），零原生依赖
-import { DatabaseSync } from 'node:sqlite'
+import type { DatabaseSync } from 'node:sqlite'
 import { app } from 'electron'
 import path from 'path'
+
+/** 惰性加载 node:sqlite 的 DatabaseSync 构造函数。
+ *  electron-vite(Rollup) 会把顶层 import 的 require 提升到 bundle 顶部、先于
+ *  suppressWarnings 的 process.emitWarning 过滤器执行，导致 node:sqlite 的
+ *  实验性警告提前打印。改为「函数内 require」后，真正加载发生在过滤器之后，
+ *  警告即可被吞掉。 */
+function requireDatabaseSync(): typeof import('node:sqlite')['DatabaseSync'] {
+  // 主进程由 electron-vite 打包为 CommonJS，运行时存在模块级 require
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  return (require('node:sqlite') as typeof import('node:sqlite')).DatabaseSync
+}
 
 export interface DocMeta {
   id: number
@@ -54,7 +65,8 @@ class LuminDatabase {
 
   constructor() {
     const dbPath = path.join(app.getPath('userData'), 'lumin.db')
-    this.db = new DatabaseSync(dbPath)
+    const DatabaseSyncCtor = requireDatabaseSync()
+    this.db = new DatabaseSyncCtor(dbPath)
     this.db.exec('PRAGMA journal_mode = WAL')
     this.db.exec('PRAGMA synchronous = NORMAL')
     this.migrate()

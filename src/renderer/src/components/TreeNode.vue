@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, nextTick, ref } from 'vue'
 import type { FileNode } from '../../../shared/types'
 import { useFilesStore } from '../stores/files'
 import { useUiStore } from '../stores/ui'
@@ -18,6 +18,41 @@ const ui = useUiStore()
 const isOpen = computed(() => files.expanded.has(props.node.path))
 const children = computed(() => files.dirCache[props.node.path] ?? [])
 const isCurrent = computed(() => files.current?.path === props.node.path)
+
+// ── 就地重命名（原位置编辑，失焦/回车生效，Esc 取消）──
+const renaming = ref(false)
+const renameDraft = ref('')
+const renameInputRef = ref<HTMLInputElement | null>(null)
+
+async function startRename(): Promise<void> {
+  renaming.value = true
+  renameDraft.value = props.node.name
+  await nextTick()
+  const input = renameInputRef.value
+  if (input) {
+    input.focus()
+    // 只选中文件名主干（不含 .md 等扩展名）：输入即替换、保留扩展名
+    const stem = props.node.name.replace(/\.(md|markdown|mdown|mkd|txt)$/i, '')
+    input.setSelectionRange(0, stem.length)
+  }
+}
+
+async function commitRename(): Promise<void> {
+  if (!renaming.value) return
+  renaming.value = false
+  const draft = renameDraft.value.trim()
+  if (!draft || draft === props.node.name) return
+  try {
+    await files.renameNode(props.node, props.parentDir, draft)
+    ui.toast('已重命名', 'success')
+  } catch {
+    ui.toast('重命名失败', 'error')
+  }
+}
+
+function cancelRename(): void {
+  renaming.value = false
+}
 
 function visibleChildren(): FileNode[] {
   if (!props.filter) return children.value
@@ -57,6 +92,8 @@ function onContextMenu(e: MouseEvent): void {
       { label: '新建文件', icon: 'file-plus', action: 'new-file' },
       { label: '新建文件夹', icon: 'folder-plus', action: 'new-folder' }
     )
+  } else {
+    items.push({ label: '在新窗口打开', icon: 'external-link', action: 'open-new-window' })
   }
   items.push({ label: '重命名', icon: 'pencil', action: 'rename' })
   items.push({ label: '删除', icon: 'trash', action: 'delete', danger: true })
@@ -69,6 +106,10 @@ function onContextMenu(e: MouseEvent): void {
 }
 
 async function handleAction(action: string): Promise<void> {
+  if (action === 'open-new-window') {
+    window.luminAPI.app.openInNewWindow(props.node.path)
+    return
+  }
   if (action === 'new-file') {
     const name = await ui.prompt('新建文件', '文件名，例如 notes.md', '未命名.md')
     if (name) {
@@ -80,15 +121,7 @@ async function handleAction(action: string): Promise<void> {
     const name = await ui.prompt('新建文件夹', '文件夹名称', '新文件夹')
     if (name) await files.createDirAt(props.node.path, name)
   } else if (action === 'rename') {
-    const name = await ui.prompt('重命名', '新名称', props.node.name)
-    if (name && name !== props.node.name) {
-      try {
-        await files.renameNode(props.node, props.parentDir, name)
-        ui.toast('已重命名', 'success')
-      } catch {
-        ui.toast('重命名失败', 'error')
-      }
-    }
+    void startRename()
   } else if (action === 'delete') {
     const ok = await ui.confirm({
       title: '删除确认',
@@ -118,7 +151,7 @@ function onDragStart(e: DragEvent): void {
           : 'text-ink-2 hover:bg-panel-2 hover:text-ink'
       "
       :style="{ paddingLeft: `${6 + depth * 14}px` }"
-      draggable="true"
+      :draggable="!renaming"
       @click="onToggle"
       @contextmenu="onContextMenu"
       @dragstart="onDragStart"
@@ -139,7 +172,20 @@ function onDragStart(e: DragEvent): void {
         class="text-[color-mix(in_srgb,var(--warning)_70%,var(--ink-3))]"
       />
       <Icon v-else name="file" :size="15" class="text-ink-3" :class="isCurrent ? 'text-accent' : ''" />
-      <span class="min-w-0 flex-1 truncate">{{ node.name }}</span>
+      <input
+        v-if="renaming"
+        ref="renameInputRef"
+        v-model="renameDraft"
+        class="min-w-0 flex-1 rounded border border-accent bg-panel px-1 py-0.5 text-[13px] text-ink outline-none"
+        spellcheck="false"
+        @click.stop
+        @mousedown.stop
+        @dblclick.stop
+        @keydown.enter.stop="commitRename"
+        @keydown.esc.stop="cancelRename"
+        @blur="commitRename"
+      />
+      <span v-else class="min-w-0 flex-1 truncate">{{ node.name }}</span>
     </div>
 
     <Transition name="list">

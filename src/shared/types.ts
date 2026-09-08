@@ -126,6 +126,12 @@ export interface LuminAPI {
     close: () => void
     /** 原生菜单栏显隐（设置「原生菜单栏」开关时由渲染进程驱动主进程） */
     setMenuBar: (visible: boolean) => void
+    /** 新建一个空白窗口（启动到欢迎页，等同新建应用实例） */
+    newWindow: () => void
+    /** 在新窗口中打开指定文件 */
+    openInNewWindow: (path: string) => void
+    /** 本窗口启动时要求打开的文件路径（由主进程 additionalArguments 传入，通常为 null） */
+    startupFile: string | null
   }
   file: {
     read: (path: string) => Promise<OpenedFile>

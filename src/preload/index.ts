@@ -1,6 +1,13 @@
 import { contextBridge, ipcRenderer, webUtils } from 'electron'
 import type { AppSettings, ExportPayload, EpubMeta, LuminAPI, MenuAction } from '../shared/types'
 
+/** 解析主进程通过 additionalArguments 传入的「新窗口要打开的文件路径」 */
+const startupFile: string | null = (() => {
+  const arg = process.argv.find((a) => a.startsWith('--lumin-open='))
+  if (!arg) return null
+  return decodeURIComponent(arg.slice(arg.indexOf('=') + 1))
+})()
+
 // Custom APIs for renderer
 const api: LuminAPI = {
   app: {
@@ -10,7 +17,10 @@ const api: LuminAPI = {
     minimize: () => ipcRenderer.send('app:minimize'),
     toggleMaximize: () => ipcRenderer.send('app:toggleMaximize'),
     close: () => ipcRenderer.send('app:close'),
-    setMenuBar: (visible) => ipcRenderer.send('app:setMenuBar', visible)
+    setMenuBar: (visible) => ipcRenderer.send('app:setMenuBar', visible),
+    newWindow: () => ipcRenderer.send('app:newWindow'),
+    openInNewWindow: (path) => ipcRenderer.send('app:openInNewWindow', path),
+    startupFile
   },
   file: {
     read: (path) => ipcRenderer.invoke('file:read', path),

@@ -38,7 +38,12 @@ export function registerIpc(): void {
   ipcMain.handle('app:getPlatform', () => process.platform)
   ipcMain.handle('app:confirmClose', (event) => {
     const win = BrowserWindow.fromWebContents(event.sender)
-    if (win) closeConfirmed.add(win)
+    if (win && !win.isDestroyed()) {
+      closeConfirmed.add(win)
+      // 立即重新触发 close：此时 closeConfirmed 已标记，关闭守卫直接放行，
+      // 窗口无需再等 2.5s 兜底定时器（否则每次关窗都固定延迟 2.5 秒）
+      win.close()
+    }
   })
   ipcMain.on('app:minimize', () => BrowserWindow.getFocusedWindow()?.minimize())
   ipcMain.on('app:toggleMaximize', () => {
