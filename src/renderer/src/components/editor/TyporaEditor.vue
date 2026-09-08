@@ -311,7 +311,7 @@ defineExpose({ editor })
         class="mx-auto transition-all duration-300"
         :class="ui.focusMode ? 'max-w-[1140px]' : 'max-w-[1320px]'"
       >
-        <EditorContent :editor="editor" class="editor-content px-6 pt-10 pb-40" />
+        <EditorContent :editor="editor" class="editor-content px-10 pt-10 pb-40" />
       </div>
     </div>
   </div>

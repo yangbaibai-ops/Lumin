@@ -21,8 +21,13 @@ function buildBlockDecorations(state: import('@tiptap/pm/state').EditorState): D
   doc.descendants((node, pos, parent) => {
     switch (node.type.name) {
       case 'heading': {
-        // 光标在标题内 → 显示级别提示（H1~H6，见 style.css）
-        if (selFrom >= pos && selTo <= pos + node.nodeSize) {
+        // 光标真正进入标题正文后才显示级别提示：排除“刚打开文档聚焦到标题首字符”
+        // 的情况（selFrom 恰为内容起点 pos+1 且标题非空），避免打开即显示 H1。
+        // 但刚通过 `# ` 输入规则创建的空标题（内容为空、光标在 pos+1）应立刻显示，
+        // 与 Typora 一致。
+        const isEmpty = node.textContent.length === 0
+        const within = selTo <= pos + node.nodeSize
+        if ((selFrom >= pos + 2 || (isEmpty && selFrom === pos + 1)) && within) {
           decos.push(Decoration.node(pos, pos + node.nodeSize, { class: 'md-reveal' }))
         }
         return

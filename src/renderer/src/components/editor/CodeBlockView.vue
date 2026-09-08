@@ -58,6 +58,7 @@ const selectedLanguage = ref<string>(props.node.attrs.language || 'javascript')
 
 let cmView: EditorView | null = null
 let prevHasFocus: (() => boolean) | null = null
+let onPmBlurCapture: ((e: FocusEvent) => void) | null = null
 let cmExtensions: Extension[] = []
 const languageCompartment = new Compartment()
 
@@ -133,23 +134,29 @@ let pinTimer: ReturnType<typeof setTimeout> | null = null
 function pinCmFocus(): void {
   if (!cmView) return
   cmView.focus()
-  // 强制把 DOM 光标恢复到 CM 状态选区（updateSelection 的 fromPointer 分支）
+  // 仅在光标已折叠时才强制把 DOM 光标恢复到 CM 状态选区（updateSelection 的
+  // fromPointer 分支）；拖选产生的非空选区必须原样保留，否则鼠标抬起时会被
+  // 折叠回锚点，代码块内多选（拖选）随之失效。
   const main = cmView.state.selection.main
-  cmView.dispatch({
-    userEvent: 'select.pointer',
-    selection: { anchor: main.anchor },
-    scrollIntoView: false
-  })
+  if (main.empty) {
+    cmView.dispatch({
+      userEvent: 'select.pointer',
+      selection: { anchor: main.anchor },
+      scrollIntoView: false
+    })
+  }
   if (pinTimer) clearTimeout(pinTimer)
   pinTimer = setTimeout(() => {
     if (cmView) {
       cmView.focus()
       const m2 = cmView.state.selection.main
-      cmView.dispatch({
-        userEvent: 'select.pointer',
-        selection: { anchor: m2.anchor },
-        scrollIntoView: false
-      })
+      if (m2.empty) {
+        cmView.dispatch({
+          userEvent: 'select.pointer',
+          selection: { anchor: m2.anchor },
+          scrollIntoView: false
+        })
+      }
     }
     pinTimer = null
   }, 60)
@@ -288,6 +295,46 @@ onMounted(() => {
     if (ae && ae.closest('.cm-editor')) return false
     return prevHasFocus!()
   }
+
+  // ── 观察器暂停 ──
+  // hasFocus=false 只能拦下 document 级 selectionchange 的误读；但 CM 在
+  // 拖拽多选时其选区绘制会改动自身 DOM（selection 高亮 span），这些「变异」
+  // 仍会被 PM 的 DOMObserver 当作文档变更读入并回写选区，把焦点抢回标题。
+  // 因此 CM 聚焦期间直接暂停 PM 观察器，失焦（焦点确实离开 .cm-editor）后恢复。
+  const pmDomObserver = pmView.domObserver
+  const stopPmObserve = (): void => pmDomObserver.stop()
+  const startPmObserve = (): void => {
+    const ae = document.activeElement
+    if (!(ae && ae.closest('.cm-editor'))) pmDomObserver.start()
+  }
+  cmView.contentDOM.addEventListener('focus', stopPmObserve)
+  cmView.contentDOM.addEventListener('blur', startPmObserve)
+
+  // ── blur 拦截（根治「焦点被抢回标题」）──
+  // 焦点从 PM 根节点移入嵌套的 CM 内容区时，PM 根节点自身触发 blur（blur
+  // 不冒泡，但 PM 的 handlers.blur / Tiptap FocusEvents 直接挂在根节点上）。
+  // 若放行：handlers.blur 会把 view.focused 置 false 并 obs.stop/start；随后
+  // CM 拖拽多选期间焦点短暂回到 PM 根节点，handlers.focus 里 view.focused
+  // 为 false 的 20ms selectionToDOM 会把 DOM 选区重置回 PM 状态选区（即
+  // 标题），表现为「光标被抢回标题」。捕获阶段拦截：relatedTarget 落在
+  // .cm-editor 内就 stopImmediatePropagation，令 PM 认为焦点从未离开。
+  onPmBlurCapture = (e) => {
+    const rt = e.relatedTarget as HTMLElement | null
+    if (rt && typeof rt.closest === 'function' && rt.closest('.cm-editor')) {
+      e.stopImmediatePropagation()
+    }
+  }
+  pmView.dom.addEventListener('blur', onPmBlurCapture, true)
+
+  // ── 隔离 CM 可编辑区（治本）──
+  // 代码块节点有文本内容，VueNodeViewRenderer 因此为其建了一个 detached
+  // contentDOM，PM 便不会给 NodeView 根节点加 contenteditable=false（见
+  // prosemirror-view `!contentDOM && dom.contentEditable="false"`）。于是 CM 的
+  // contenteditable 直接嵌套在 PM 的可编辑区内。嵌套 contenteditable 会让浏览器
+  // 在拖选时把焦点在 PM 根节点与 CM 内容区之间来回弹跳——正是抢焦点的根源。
+  // 显式把 NodeView 根节点标为不可编辑，把 CM 隔离成独立编辑岛。
+  const wrapper = host.parentElement
+  if (wrapper) wrapper.contentEditable = 'false'
   void loadLanguage(selectedLanguage.value)
 })
 
@@ -295,6 +342,15 @@ onBeforeUnmount(() => {
   // 恢复 PM 的 hasFocus 实现（多代码块时按 LIFO 还原）
   if (prevHasFocus) props.editor.view.hasFocus = prevHasFocus
   prevHasFocus = null
+  // 移除 blur 拦截器
+  if (onPmBlurCapture && props.editor.view.dom) {
+    props.editor.view.dom.removeEventListener('blur', onPmBlurCapture, true)
+  }
+  onPmBlurCapture = null
+  // 若销毁时 CM 仍处于聚焦态，观察器处于暂停态，需恢复
+  const v = props.editor.view
+  const ae = document.activeElement
+  if (v && v.domObserver && !(ae && ae.closest('.cm-editor'))) v.domObserver.start()
   if (pinTimer) clearTimeout(pinTimer)
   pinTimer = null
   if (extSyncTimer) clearTimeout(extSyncTimer)

@@ -1278,15 +1278,25 @@ mark.lm-find-mark.lm-current {
 /* ── 光标感知标记符（ProseMirror Decoration + CSS 生成内容）──
    光标进入节点/样式时展开语法标记，移出即隐藏，内容本身不含标记字符 */
 
-/* 标题：光标进入时给出浅色级别提示（H1~H6 小徽章，非可编辑源码标记） */
+/* 标题：光标进入时给出浅色级别提示（H1~H6 小徽章，非可编辑源码标记）。
+   绝对定位到正文左侧留白（px-10 内边距），不占用文本布局、不挤压标题 */
+h1.md-reveal,
+h2.md-reveal,
+h3.md-reveal,
+h4.md-reveal,
+h5.md-reveal,
+h6.md-reveal {
+  position: relative;
+}
 h1.md-reveal::before,
 h2.md-reveal::before,
 h3.md-reveal::before,
 h4.md-reveal::before,
 h5.md-reveal::before,
 h6.md-reveal::before {
-  display: inline-block;
-  margin-right: 6px;
+  position: absolute;
+  left: -2.2rem;
+  top: 0.35em;
   padding: 1px 6px;
   border: 1px solid var(--edge);
   border-radius: 5px;
@@ -1296,8 +1306,9 @@ h6.md-reveal::before {
   font-weight: 600;
   letter-spacing: 0.03em;
   line-height: 1.5;
-  vertical-align: 0.2em;
+  white-space: nowrap;
   user-select: none;
+  pointer-events: none;
 }
 h1.md-reveal::before {
   content: 'H1';
@@ -1316,6 +1327,17 @@ h5.md-reveal::before {
 }
 h6.md-reveal::before {
   content: 'H6';
+}
+
+/* 代码块（CodeMirror）聚焦时不触碰 PM 选区/装饰，仅用 :has 隐藏标题等级徽章，
+   避免“点击代码块后光标被抢回标题” */
+.ProseMirror:has(.cm-editor:focus-within) h1.md-reveal::before,
+.ProseMirror:has(.cm-editor:focus-within) h2.md-reveal::before,
+.ProseMirror:has(.cm-editor:focus-within) h3.md-reveal::before,
+.ProseMirror:has(.cm-editor:focus-within) h4.md-reveal::before,
+.ProseMirror:has(.cm-editor:focus-within) h5.md-reveal::before,
+.ProseMirror:has(.cm-editor:focus-within) h6.md-reveal::before {
+  display: none;
 }
 
 /* 引用：> 前缀 */
