@@ -24,7 +24,9 @@ export const useFilesStore = defineStore('files', {
     draftRestore: null as DraftInfo | null,
     saveTimer: null as ReturnType<typeof setTimeout> | null,
     draftTimer: null as ReturnType<typeof setTimeout> | null,
-    saving: false
+    saving: false,
+    /** 新建文件后需要自动进入就地重命名的路径（TreeNode 消费后清空） */
+    pendingRenamePath: null as string | null
   }),
   getters: {
     dirty(state): boolean {
@@ -122,6 +124,21 @@ export const useFilesStore = defineStore('files', {
       } catch {
         return false
       }
+    },
+    /** 新建文件（默认名）并让其在目录树中就地重命名（新建即改名）。
+     *  用唯一的「未命名[-n].md」占位创建，创建后置 pendingRenamePath，
+     *  对应 TreeNode 挂载后自动进入重命名编辑状态。 */
+    async newFileAt(dir: string): Promise<string | null> {
+      const base = '未命名'
+      let name = `${base}.md`
+      let i = 1
+      while (await window.luminAPI.file.exists(await window.luminAPI.file.join(dir, name))) {
+        name = `${base}-${i}.md`
+        i += 1
+      }
+      const path = await this.createFileAt(dir, name)
+      if (path) this.pendingRenamePath = path
+      return path
     },
     async removeNode(node: FileNode, parentDir: string): Promise<void> {
       await window.luminAPI.file.remove(node.path)

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, ref } from 'vue'
+import { computed, nextTick, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { FileNode } from '../../../shared/types'
 import { useFilesStore } from '../stores/files'
@@ -55,6 +55,19 @@ async function commitRename(): Promise<void> {
 function cancelRename(): void {
   renaming.value = false
 }
+
+// 新建文件后就地重命名：新建动作设置 files.pendingRenamePath，
+// 挂载（或路径变化）时若匹配本节点则自动进入重命名并消费该标记
+watch(
+  () => files.pendingRenamePath,
+  (p) => {
+    if (p && p === props.node.path) {
+      files.pendingRenamePath = null
+      void startRename()
+    }
+  },
+  { immediate: true }
+)
 
 function visibleChildren(): FileNode[] {
   if (!props.filter) return children.value
@@ -113,12 +126,8 @@ async function handleAction(action: string): Promise<void> {
     return
   }
   if (action === 'new-file') {
-    const name = await ui.prompt(t('context.newFile'), t('sidebar.newFileHint'), `${t('common.untitled')}.md`)
-    if (name) {
-      const path = await files.createFileAt(props.node.path, name)
-      if (path) await files.openPath(path)
-      else ui.toast(t('toast.createFailed'), 'error')
-    }
+    // 新建即就地重命名（不再弹窗输名）
+    await files.newFileAt(props.node.path)
   } else if (action === 'new-folder') {
     const name = await ui.prompt(t('context.newFolder'), t('sidebar.newFolderHint'), t('context.newFolder'))
     if (name) await files.createDirAt(props.node.path, name)

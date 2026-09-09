@@ -15,6 +15,7 @@ import type { Editor } from '@tiptap/core'
 import { Fragment } from '@tiptap/pm/model'
 import { TextSelection } from '@tiptap/pm/state'
 import { canJoin } from '@tiptap/pm/transform'
+import { findCodeBlockHandle } from './codeBlockViews'
 
 /** 段间 join（Backspace/Delete 用）：把光标前后的两个同型段落合并。
     dir 'backward'：光标在段首/段间边界 → 并入上一段；
@@ -61,6 +62,114 @@ function joinTextblockAtBoundary(editor: Editor, dir: 'backward' | 'forward'): b
     /* 保持事务映射结果 */
   }
   editor.view.dispatch(tr)
+  return true
+}
+
+/** 代码块后段首退格 → 光标进入代码块内容末尾。
+    场景：光标位于「紧邻代码块之后的段落」行首——可能是按 Enter 退出代码块
+    后留下的空占位段，也可能是有正文的段。PM 默认的 joinBackward 会把整个
+    后续段落并入代码块（正文变代码，S2 复现的「吞文」）；这里改为不合并文本，
+    而是把光标移到代码块内容末尾并聚焦其 CodeMirror：空占位段顺手删除，
+    有正文的段保留、光标仍进入代码块（Typora 语义：代码块是编辑岛，行首
+    退格 = 回到代码块内继续输入）。
+    另覆盖一个点击残留态：先在代码块内点过（PM 选区停在代码块内容末尾），
+    随后点击代码块下方预留空行——DOM 光标已进空段，但 PM 选区仍滞留在代码
+    块文本末尾，行首退格判定不生效，退格无反应（本编辑器代码块文本由 CM
+    独占，PM 也无法直接删除）；此时同样视为「回到代码块末尾继续输入」。 */
+function backspaceIntoCodeBlock(editor: Editor): boolean {
+  const { state } = editor
+  const { $from, empty, from } = state.selection
+  if (!empty) return false
+  const doc = state.doc
+
+  // 残留态：PM 光标停在代码块内容末尾、且其后紧跟空段落（代码块后的预留空行）
+  if ($from.parent.type.name === 'codeBlock') {
+    const code = $from.parent
+    // 必须位于代码块文本末尾（而不是中间/开头——那些不是点击空行后的残留）
+    if ($from.parentOffset !== code.content.size) return false
+    // 空代码块的退格删除由 CM / CodeBlockCM 处理，这里不接管
+    if (code.content.size === 0) return false
+    if ($from.depth !== 1) return false
+    if ((code.attrs.language || '') === 'mermaid') return false
+    const codeStart = $from.before()
+    if (codeStart < 0) return false
+    const after = codeStart + code.nodeSize
+    const next = doc.childAfter(after)
+    // 仅当紧随其后的顶层节点是空段落（预留空行）才接管；有正文的段说明光标
+    // 本就不该回代码块，放行走默认逻辑
+    if (!next.node || next.node.type.name !== 'paragraph' || next.node.content.size !== 0) {
+      return false
+    }
+    // 光标已处于代码块内容末尾：无需移动选区，把焦点与 DOM 光标移交 CM 即可
+    // （与「空段行首退格」路径的终态一致：焦点在 CM、后续输入进代码）
+    const handle = findCodeBlockHandle(codeStart)
+    if (handle) handle.focusCmAtEnd()
+    return true
+  }
+  let codePos = -1
+  let codeSize = 0
+  let codeLang = ''
+  let followPos = -1
+  let followSize = 0
+
+  if ($from.depth > 0) {
+    // 光标在段落行首：该段落必须是文档顶层（depth 1）、且紧邻代码块之后
+    // （prev sibling = codeBlock）。嵌套于列表/引用里的段落不能用
+    // doc.childBefore 判断，直接放行走默认逻辑
+    if ($from.depth !== 1) return false
+    if ($from.parent.type.name !== 'paragraph' || $from.parentOffset !== 0) return false
+    const start = $from.before()
+    if (start <= 0) return false
+    const prev = doc.childBefore(start)
+    if (!prev.node || prev.node.type.name !== 'codeBlock') return false
+    codePos = prev.offset
+    codeSize = prev.node.nodeSize
+    codeLang = prev.node.attrs.language || ''
+    followPos = start
+    if ($from.parent.content.size === 0) followSize = $from.parent.nodeSize
+  } else {
+    // 光标落在块间边界 / 文档末尾（depth 0，Enter 与归一化常把光标留在此）：
+    // 位置必须恰好是代码块终点（其后是段落起点，或文档在此结束）
+    if (from < 0 || from > doc.content.size) return false
+    const prev = doc.childBefore(from)
+    if (!prev.node || prev.node.type.name !== 'codeBlock') return false
+    if (prev.offset + prev.node.nodeSize !== from) return false
+    codePos = prev.offset
+    codeSize = prev.node.nodeSize
+    codeLang = prev.node.attrs.language || ''
+    const next = doc.childAfter(from)
+    if (next.node) {
+      // 仅当紧随其后的是顶层段落才接管；标题/列表等放行走默认逻辑
+      if (next.node.type.name !== 'paragraph') return false
+      followPos = from
+      if (next.node.content.size === 0) followSize = next.node.nodeSize
+    }
+    // next.node 为空 = 光标在文档末尾代码块之后，直接进入代码块末尾
+  }
+  if (codePos < 0 || codeLang === 'mermaid') return false
+
+  const tr = state.tr
+  if (followSize > 0 && followPos >= 0) {
+    // 删除紧随代码块的空占位段落（行首退格 = 收回按 Enter 退出的空行）。
+    // 注意不能用 nodeAt(followPos)——节点起点边界解析到的是父容器而非段落本身，
+    // 因此直接用捕获到的段落 nodeSize 计算删除区间
+    tr.delete(followPos, followPos + followSize)
+  }
+  // 代码块内容末尾 = 节点起点 + nodeSize − 1（nodeSize 含首尾边界，内容
+  // 实际占 [pos+1, pos+size−1)，末尾光标 = pos+size−1）
+  const contentEnd = codePos + codeSize - 1
+  const selPos = Math.min(Math.max(0, contentEnd), tr.doc.content.size)
+  try {
+    tr.setSelection(TextSelection.create(tr.doc, selPos))
+  } catch {
+    return false
+  }
+  editor.view.dispatch(tr)
+
+  // 把焦点移交给该代码块的 CodeMirror（光标落在内容末尾）；找不到实例
+  // （mermaid 预览等无 CM 场景）则退回 PM 光标停留在代码块末尾
+  const handle = findCodeBlockHandle(codePos)
+  if (!handle || !handle.focusCmAtEnd()) editor.commands.focus()
   return true
 }
 
@@ -112,6 +221,9 @@ export const TyporaKeymap = Extension.create({
           if ($from.parentOffset !== 0) return false
           return editor.chain().focus().setParagraph().run()
         }
+
+        // 代码块后段落行首退格 → 光标进入代码块末尾（不吞正文），见上
+        if (backspaceIntoCodeBlock(editor)) return true
 
         // 段落行首 / 段间边界退格 = 与上一段合并（Typora 行为）。
         // 本版 prosemirror-commands 的 joinBackward 要求光标真正落在文本块

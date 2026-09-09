@@ -24,7 +24,25 @@ const { runExport } = useExport()
 const { setMode } = useEditorMode()
 
 type Leaf = { labelKey: string; icon?: string; danger?: boolean; run: () => void | Promise<void> }
-type Group = { key: 'f' | 'e' | 'v' | 'h'; labelKey: string; items: (Leaf | 'sep')[] }
+type Group = { key: 'f' | 'e' | 'd' | 'v' | 'h'; labelKey: string; items: (Leaf | 'sep')[] }
+
+type HeadingLevel = 1 | 2 | 3 | 4 | 5 | 6
+/** 提升标题级别（H2 → H1 等，向更高层级走；非标题无操作） */
+function raiseHeadingLevel(): void {
+  const ed = editorStore.instance
+  if (!ed) return
+  if (!ed.isActive('heading')) return
+  const level = (ed.getAttributes('heading') as { level?: number }).level ?? 1
+  if (level > 1) ed.chain().focus().setHeading({ level: (level - 1) as HeadingLevel }).run()
+}
+/** 降低标题级别（H1 → H2 等，向更低层级走；非标题无操作） */
+function lowerHeadingLevel(): void {
+  const ed = editorStore.instance
+  if (!ed) return
+  if (!ed.isActive('heading')) return
+  const level = (ed.getAttributes('heading') as { level?: number }).level ?? 6
+  if (level < 6) ed.chain().focus().setHeading({ level: (level + 1) as HeadingLevel }).run()
+}
 
 const GROUPS: Group[] = [
   {
@@ -57,6 +75,23 @@ const GROUPS: Group[] = [
     ]
   },
   {
+    key: 'd',
+    labelKey: 'menu.paragraph',
+    items: [
+      { labelKey: 'editor.codeBlock', icon: 'braces', run: () => editorStore.instance?.chain().focus().toggleCodeBlock().run() },
+      { labelKey: 'editor.quote', icon: 'quote', run: () => editorStore.instance?.chain().focus().toggleBlockquote().run() },
+      'sep',
+      { labelKey: 'editor.ul', icon: 'list', run: () => editorStore.instance?.chain().focus().toggleBulletList().run() },
+      { labelKey: 'editor.ol', icon: 'list-ordered', run: () => editorStore.instance?.chain().focus().toggleOrderedList().run() },
+      { labelKey: 'editor.task', icon: 'list-checks', run: () => editorStore.instance?.chain().focus().toggleTaskList().run() },
+      'sep',
+      { labelKey: 'editor.hr', icon: 'hr', run: () => editorStore.instance?.chain().focus().setHorizontalRule().run() },
+      'sep',
+      { labelKey: 'editor.raiseHeading', icon: 'chevron-up', run: raiseHeadingLevel },
+      { labelKey: 'editor.lowerHeading', icon: 'chevron-down', run: lowerHeadingLevel }
+    ]
+  },
+  {
     key: 'v',
     labelKey: 'menu.view',
     items: [
@@ -81,7 +116,7 @@ const GROUPS: Group[] = [
 
 const active = ref<Group | null>(null)
 const panelStyle = reactive({ left: '0px', top: '0px' })
-const btnRefs: Record<string, HTMLElement | null> = { f: null, e: null, v: null, h: null }
+const btnRefs: Record<string, HTMLElement | null> = { f: null, e: null, d: null, v: null, h: null }
 
 function setBtnRef(key: string, el: Element | null): void {
   btnRefs[key] = (el as HTMLElement) || null

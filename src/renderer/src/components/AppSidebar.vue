@@ -56,7 +56,11 @@ function onDragStart(e: MouseEvent): void {
         <span class="text-[13.5px] font-semibold tracking-wide text-ink">Lumin</span>
       </div>
       <div class="flex-1" />
-      <button class="icon-btn !h-6.5 !w-6.5" title="新建文件" @click="files.newDocInWorkspace()">
+      <button
+        class="icon-btn !h-6.5 !w-6.5"
+        :title="t('context.newFile')"
+        @click="files.root ? files.newFileAt(files.root) : files.newDocInWorkspace()"
+      >
         <Icon name="file-plus" :size="14" />
       </button>
       <button class="icon-btn !h-6.5 !w-6.5" title="打开文件夹" @click="files.openFolder()">

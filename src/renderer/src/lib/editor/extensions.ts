@@ -20,6 +20,7 @@ import { CodeBlockCM } from './codeBlock'
 import { MarkdownPaste } from './markdownPaste'
 import { TyporaInlineMarks, MdStyle, MdMarker } from './typoraInlineMarks'
 import { TyporaPointer, LinkSource } from './pointer'
+import { TableOfContents } from './tableOfContents'
 
 // 行内样式 mark：保留节点类型（解析粘贴/加载内容需要），但输入规则与
 // 快捷键关闭——真实文本标记模型下，'**加粗**' 由派生归一化即时成样式，
@@ -105,6 +106,8 @@ export const editorExtensions = [
   TyporaMarkers,
   // 链接源码展开标记（普通点击链接时承载 [文字](网址)，序列化原样输出）
   LinkSource,
+  // 目录（工具栏「目录」插入；序列化 [TOC]，点击条目跳转标题）
+  TableOfContents,
   // 鼠标语义：Ctrl/Cmd+左键退化为普通点击（PM 内置会整选段落/节点，Typora 无此逻辑）；
   // 链接：普通左键原地展开源码、Ctrl/Cmd+左键用系统浏览器打开（§4.14/§4.15）
   TyporaPointer,

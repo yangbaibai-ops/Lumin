@@ -28,8 +28,14 @@ import {
 } from '@codemirror/autocomplete'
 import { searchKeymap, highlightSelectionMatches } from '@codemirror/search'
 import { tags as t } from '@lezer/highlight'
+import { TextSelection } from '@tiptap/pm/state'
 import { useSettingsStore } from '../../stores/settings'
 import { escapeHtml } from '../../lib/utils/html'
+import {
+  registerCodeBlockHandle,
+  unregisterCodeBlockHandle,
+  type CodeBlockHandle
+} from '../../lib/editor/codeBlockViews'
 
 const props = defineProps(nodeViewProps)
 const settings = useSettingsStore()
@@ -57,10 +63,54 @@ const editorRef = ref<HTMLElement | null>(null)
 const selectedLanguage = ref<string>(props.node.attrs.language || 'javascript')
 
 let cmView: EditorView | null = null
-let prevHasFocus: (() => boolean) | null = null
 let onPmBlurCapture: ((e: FocusEvent) => void) | null = null
 let cmExtensions: Extension[] = []
 const languageCompartment = new Compartment()
+
+// ── 每编辑器视图共享的 hasFocus 守卫 ────────────────────────────────────────
+// 目的：CM 获得焦点期间令 PM 的 hasFocus() 返回 false，使其跳过选区同步
+// （DOMObserver 误读 CM 选区 → selectionToDOM 重写 DOM → 焦点被抢回 PM 根）。
+// 实现要点：多个代码块会同时存在，各自 onMounted 里链式覆盖 hasFocus、
+// onBeforeUnmount 再还原（LIFO 假设）在“先删靠前代码块”等非 LIFO 卸载顺序下
+// 会把已被置空的旧 wrapper 装回 hasFocus，下次调用即抛
+// “prevHasFocus is not a function”。改为：每个 PM 视图只装一个守卫，用
+// 引用计数跟踪仍挂载的代码块实例；全部卸载后才恢复原始实现。
+interface HasFocusGuard {
+  original: () => boolean
+  count: number
+}
+const hasFocusGuards = new WeakMap<
+  object,
+  HasFocusGuard
+>()
+
+function acquireHasFocusGuard(pmView: object): void {
+  let guard = hasFocusGuards.get(pmView)
+  if (!guard) {
+    const v = pmView as { hasFocus: () => boolean }
+    guard = {
+      original: v.hasFocus.bind(v),
+      count: 0
+    }
+    v.hasFocus = () => {
+      const ae = document.activeElement
+      if (ae && ae.closest('.cm-editor')) return false
+      return guard!.original()
+    }
+    hasFocusGuards.set(pmView, guard)
+  }
+  guard.count++
+}
+
+function releaseHasFocusGuard(pmView: object): void {
+  const guard = hasFocusGuards.get(pmView)
+  if (!guard) return
+  guard.count--
+  if (guard.count <= 0) {
+    ;(pmView as { hasFocus: () => boolean }).hasFocus = guard.original
+    hasFocusGuards.delete(pmView)
+  }
+}
 
 // ── CodeMirror 主题（CSS 变量驱动，随应用明暗/羊皮纸主题自动适配）──
 const cmTheme = EditorView.theme({
@@ -162,12 +212,42 @@ function pinCmFocus(): void {
   }, 60)
 }
 
+/** 供 PM 层键盘拦截调用（代码块后段落行首 Backspace）：把焦点与光标
+    移入本代码块 CM 的末尾。CM 不存在（mermaid 预览态 / 已销毁）返回 false。 */
+function focusCmAtEnd(): boolean {
+  if (!cmView) return false
+  cmView.dispatch({
+    selection: { anchor: cmView.state.doc.length },
+    scrollIntoView: true
+  })
+  pinCmFocus()
+  return true
+}
+
+// ── 实例注册（PM 键盘拦截按节点位置查找本组件，见 codeBlockViews.ts）──
+const handle: CodeBlockHandle = {
+  getPos: () => {
+    const pos = props.getPos as (() => number) | undefined
+    return typeof pos === 'function' ? pos() : undefined
+  },
+  focusCmAtEnd
+}
+registerCodeBlockHandle(handle)
+
 /** 捕获阶段拦截 Enter：走 CM 状态事务，并用 setState 强制整文档重建。
     嵌套于 ProseMirror 的 CM 增量重绘（docView.update）在本环境不可靠：
     state 会更新但 DOM 不重绘；setState 重建 docView，保证换行真实落到
     DOM（代价是整块重建，对代码块尺寸而言可接受）。 */
 function onCmKeydownCapture(e: KeyboardEvent): void {
   if (!cmView || e.isComposing) return
+  // 空代码块按退格 = 删除整个代码块。CM 自身的退格在文档开头无内容可删、
+  // 且 stopEvent 让 PM 收不到按键，导致空代码块“卡住”删不掉。
+  if (e.key === 'Backspace' && cmView.state.doc.length === 0) {
+    e.preventDefault()
+    e.stopPropagation()
+    removeEmptyCodeBlock()
+    return
+  }
   if (e.key === 'Enter') {
     e.preventDefault()
     e.stopPropagation()
@@ -186,6 +266,36 @@ function onCmKeydownCapture(e: KeyboardEvent): void {
     pinCmFocus()
     syncToNode()
   }
+}
+
+/** 删除空代码块节点：文档仅剩它时替换为空段落（PM 不允许空文档），
+    否则直接删节点并把光标放到就近可编辑位置。 */
+function removeEmptyCodeBlock(): void {
+  const getPos = props.getPos as () => number
+  const pos = getPos()
+  if (typeof pos !== 'number') return
+  const editor = props.editor
+  const { schema, doc } = editor.state
+  const node = doc.nodeAt(pos)
+  if (!node || node.type.name !== 'codeBlock') return
+
+  editor.commands.command(({ tr }) => {
+    const start = pos
+    const end = pos + node.nodeSize
+    const onlyNode = doc.childCount === 1 && doc.child(0) === node
+    if (onlyNode) {
+      tr.replaceWith(start, end, schema.nodes.paragraph.create())
+      const p = Math.min(start + 1, tr.doc.content.size)
+      tr.setSelection(TextSelection.near(tr.doc.resolve(p)))
+    } else {
+      tr.delete(start, end)
+      const p = Math.min(start, tr.doc.content.size)
+      tr.setSelection(TextSelection.near(tr.doc.resolve(p)))
+    }
+    return true
+  })
+  // 焦点交还 PM（组件即将随节点移除而卸载）
+  editor.commands.focus()
 }
 function syncToNode(): void {
   if (!cmView) return
@@ -293,12 +403,8 @@ onMounted(() => {
   const pmView = props.editor.view as typeof props.editor.view & {
     domObserver: { stop: () => void; start: () => void }
   }
-  prevHasFocus = pmView.hasFocus.bind(pmView)
-  pmView.hasFocus = () => {
-    const ae = document.activeElement
-    if (ae && ae.closest('.cm-editor')) return false
-    return prevHasFocus!()
-  }
+  // 共享守卫：挂载期间令 PM hasFocus 返回 false（引用计数，多代码块安全）
+  acquireHasFocusGuard(pmView)
 
   // ── 观察器暂停 ──
   // hasFocus=false 只能拦下 document 级 selectionchange 的误读；但 CM 在
@@ -343,9 +449,9 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
-  // 恢复 PM 的 hasFocus 实现（多代码块时按 LIFO 还原）
-  if (prevHasFocus) props.editor.view.hasFocus = prevHasFocus
-  prevHasFocus = null
+  unregisterCodeBlockHandle(handle)
+  // 释放共享 hasFocus 守卫（引用计数归零才恢复 PM 原始实现）
+  releaseHasFocusGuard(props.editor.view)
   // 移除 blur 拦截器
   if (onPmBlurCapture && props.editor.view.dom) {
     props.editor.view.dom.removeEventListener('blur', onPmBlurCapture, true)

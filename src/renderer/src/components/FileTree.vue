@@ -39,11 +39,8 @@ function onRootContextMenu(e: MouseEvent): void {
 async function handleAction(action: string): Promise<void> {
   if (!files.root) return
   if (action === 'new-file') {
-    const name = await ui.prompt(t('context.newFile'), t('sidebar.newFileHint'), `${t('common.untitled')}.md`)
-    if (name) {
-      const path = await files.createFileAt(files.root, name)
-      if (path) await files.openPath(path)
-    }
+    // 新建即就地重命名（不再弹窗输名）
+    await files.newFileAt(files.root)
   } else if (action === 'new-folder') {
     const name = await ui.prompt(t('context.newFolder'), t('sidebar.newFolderHint'), t('context.newFolder'))
     if (name) await files.createDirAt(files.root, name)

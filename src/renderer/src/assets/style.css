@@ -1160,6 +1160,13 @@ h6.md-reveal > .md-heading-marker {
 .md-toc .toc-l3 {
   padding-left: 2.2em;
 }
+.md-toc a {
+  cursor: pointer;
+}
+.md-toc .md-toc-empty {
+  font-size: 0.9em;
+  color: var(--ink-3);
+}
 
 /* mermaid 容器 */
 .md-mermaid {

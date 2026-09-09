@@ -133,6 +133,14 @@ function insertHr(): void {
   editorStore.instance?.chain().focus().setHorizontalRule().run()
 }
 
+/** 在光标处插入文档目录 */
+function insertToc(): void {
+  const ed = editorStore.instance
+  if (!ed) return
+  // 光标在段落中间时先落到块首，再插入独立的目录块
+  ed.chain().focus().insertTableOfContents().run()
+}
+
 function addLink(): void {
   const ed = editorStore.instance
   if (!ed) return
@@ -255,6 +263,9 @@ const docName = computed(() => files.current?.name ?? '')
     </button>
     <button class="icon-btn" :title="t('editor.image')" @click="addImage">
       <Icon name="image" :size="15" />
+    </button>
+    <button class="icon-btn" :title="t('editor.toc')" @click="insertToc">
+      <Icon name="list" :size="15" />
     </button>
 
     <div class="mx-1.5 h-5 w-px shrink-0 bg-edge" />
