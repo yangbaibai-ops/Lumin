@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, ref } from 'vue'
+import { useI18n } from 'vue-i18n'
 import type { FileNode } from '../../../shared/types'
 import { useFilesStore } from '../stores/files'
 import { useUiStore } from '../stores/ui'
@@ -12,6 +13,7 @@ const props = defineProps<{
   filter: string
 }>()
 
+const { t } = useI18n()
 const files = useFilesStore()
 const ui = useUiStore()
 
@@ -44,9 +46,9 @@ async function commitRename(): Promise<void> {
   if (!draft || draft === props.node.name) return
   try {
     await files.renameNode(props.node, props.parentDir, draft)
-    ui.toast('已重命名', 'success')
+    ui.toast(t('toast.fileRenamed'), 'success')
   } catch {
-    ui.toast('重命名失败', 'error')
+    ui.toast(t('toast.renameFailed'), 'error')
   }
 }
 
@@ -71,8 +73,8 @@ async function onToggle(e: MouseEvent): Promise<void> {
 async function open(): Promise<void> {
   if (files.dirty && files.current?.path !== props.node.path) {
     const ok = await ui.confirm({
-      title: '有未保存的更改',
-      body: '当前文档有未保存的更改，确定要打开其他文件吗？',
+      title: t('editor.dirtyConfirmTitle'),
+      body: t('editor.dirtyConfirmBody'),
       danger: true
     })
     if (!ok) return
@@ -89,14 +91,14 @@ function onContextMenu(e: MouseEvent): void {
   const items: { label: string; icon?: string; action: string; danger?: boolean }[] = []
   if (props.node.type === 'directory') {
     items.push(
-      { label: '新建文件', icon: 'file-plus', action: 'new-file' },
-      { label: '新建文件夹', icon: 'folder-plus', action: 'new-folder' }
+      { label: t('context.newFile'), icon: 'file-plus', action: 'new-file' },
+      { label: t('context.newFolder'), icon: 'folder-plus', action: 'new-folder' }
     )
   } else {
-    items.push({ label: '在新窗口打开', icon: 'external-link', action: 'open-new-window' })
+    items.push({ label: t('context.openNewWindow'), icon: 'external-link', action: 'open-new-window' })
   }
-  items.push({ label: '重命名', icon: 'pencil', action: 'rename' })
-  items.push({ label: '删除', icon: 'trash', action: 'delete', danger: true })
+  items.push({ label: t('context.rename'), icon: 'pencil', action: 'rename' })
+  items.push({ label: t('context.delete'), icon: 'trash', action: 'delete', danger: true })
   ui.openContextMenu({
     x: e.clientX,
     y: e.clientY,
@@ -111,26 +113,26 @@ async function handleAction(action: string): Promise<void> {
     return
   }
   if (action === 'new-file') {
-    const name = await ui.prompt('新建文件', '文件名，例如 notes.md', '未命名.md')
+    const name = await ui.prompt(t('context.newFile'), t('sidebar.newFileHint'), `${t('common.untitled')}.md`)
     if (name) {
       const path = await files.createFileAt(props.node.path, name)
       if (path) await files.openPath(path)
-      else ui.toast('创建失败', 'error')
+      else ui.toast(t('toast.createFailed'), 'error')
     }
   } else if (action === 'new-folder') {
-    const name = await ui.prompt('新建文件夹', '文件夹名称', '新文件夹')
+    const name = await ui.prompt(t('context.newFolder'), t('sidebar.newFolderHint'), t('context.newFolder'))
     if (name) await files.createDirAt(props.node.path, name)
   } else if (action === 'rename') {
     void startRename()
   } else if (action === 'delete') {
     const ok = await ui.confirm({
-      title: '删除确认',
-      body: `确定要删除「${props.node.name}」吗？此操作不可恢复。`,
+      title: t('editor.deleteConfirmTitle'),
+      body: t('editor.deleteConfirmBody', { name: props.node.name }),
       danger: true
     })
     if (ok) {
       await files.removeNode(props.node, props.parentDir)
-      ui.toast('已删除', 'success')
+      ui.toast(t('toast.fileDeleted'), 'success')
     }
   }
 }
@@ -191,7 +193,7 @@ function onDragStart(e: DragEvent): void {
     <Transition name="list">
       <div v-if="node.type === 'directory' && isOpen">
         <div v-if="!children.length" class="py-0.5 pl-7 text-[11.5px] text-ink-3" :style="{ paddingLeft: `${34 + depth * 14}px` }">
-          空文件夹
+          {{ t('sidebar.emptyFolder') }}
         </div>
         <TreeNode
           v-for="child in visibleChildren()"

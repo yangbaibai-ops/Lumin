@@ -1,5 +1,5 @@
 // ─── 主进程：IPC 注册 ─────────────────────────────────────────────────────
-import { ipcMain, dialog, BrowserWindow, webUtils, shell } from 'electron'
+import { ipcMain, dialog, BrowserWindow, webUtils, shell, nativeTheme } from 'electron'
 import path from 'path'
 import { watch, type FSWatcher } from 'fs'
 import * as fileOps from './fileOps'
@@ -176,6 +176,10 @@ export function registerIpc(): void {
   ipcMain.handle('settings:update', (_, partial: Partial<AppSettings>) => {
     const merged = deepMerge(db.kvGet<AppSettings>('settings', defaultSettings), partial)
     db.kvSet('settings', merged)
+    // 同步原生主题（Windows 标题栏颜色 / prefers-color-scheme）：
+    // 切换主题时标题栏也要随之切换，否则顶部原生标题栏颜色不跟随应用主题
+    nativeTheme.themeSource =
+      merged.theme === 'auto' ? 'system' : merged.theme === 'sepia' ? 'light' : merged.theme
     return merged
   })
   ipcMain.handle('workspace:getRoot', () => {

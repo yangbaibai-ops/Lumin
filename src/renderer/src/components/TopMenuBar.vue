@@ -3,6 +3,7 @@
 // 替代依赖系统的原生菜单助记键：位置由 DOM 布局精确摆放、Alt+字母必达；
 // 菜单项与原生菜单同源动作（files/ui/settings/editor/export 组合）。
 import { onBeforeUnmount, onMounted, reactive, ref } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 import { useFilesStore } from '../stores/files'
 import { useUiStore } from '../stores/ui'
@@ -13,6 +14,7 @@ import { useEditorMode } from '../composables/useEditorMode'
 import { confirmIfDirty } from '../composables/useAppActions'
 import Icon from './Icon.vue'
 
+const { t } = useI18n()
 const router = useRouter()
 const files = useFilesStore()
 const ui = useUiStore()
@@ -21,58 +23,58 @@ const editorStore = useEditorStore()
 const { runExport } = useExport()
 const { setMode } = useEditorMode()
 
-type Leaf = { label: string; icon?: string; danger?: boolean; run: () => void | Promise<void> }
-type Group = { key: 'f' | 'e' | 'v' | 'h'; label: string; items: (Leaf | 'sep')[] }
+type Leaf = { labelKey: string; icon?: string; danger?: boolean; run: () => void | Promise<void> }
+type Group = { key: 'f' | 'e' | 'v' | 'h'; labelKey: string; items: (Leaf | 'sep')[] }
 
 const GROUPS: Group[] = [
   {
     key: 'f',
-    label: '文件(F)',
+    labelKey: 'menu.file',
     items: [
-      { label: '新建文档', icon: 'file-plus', run: async () => { if (await confirmIfDirty()) { await files.newDocInWorkspace(); await router.push('/editor') } } },
-      { label: '新建窗口', icon: 'copy', run: () => window.luminAPI.app.newWindow() },
-      { label: '打开…', icon: 'folder-open', run: async () => { if (await confirmIfDirty()) { const p = await window.luminAPI.file.chooseOpenFile(); if (p && (await files.openPath(p))) await router.push('/editor') } } },
-      { label: '打开文件夹…', icon: 'folder-plus', run: () => files.openFolder() },
+      { labelKey: 'menu.newDoc', icon: 'file-plus', run: async () => { if (await confirmIfDirty()) { await files.newDocInWorkspace(); await router.push('/editor') } } },
+      { labelKey: 'menu.newWindow', icon: 'copy', run: () => window.luminAPI.app.newWindow() },
+      { labelKey: 'menu.openFile', icon: 'folder-open', run: async () => { if (await confirmIfDirty()) { const p = await window.luminAPI.file.chooseOpenFile(); if (p && (await files.openPath(p))) await router.push('/editor') } } },
+      { labelKey: 'menu.openFolder', icon: 'folder-plus', run: () => files.openFolder() },
       'sep',
-      { label: '保存', icon: 'save', run: async () => { if (await files.save()) ui.toast('已保存', 'success') } },
-      { label: '另存为…', icon: 'copy', run: async () => { if (await files.saveAs()) ui.toast('已保存', 'success') } },
+      { labelKey: 'menu.save', icon: 'save', run: async () => { if (await files.save()) ui.toast(t('toast.saved'), 'success') } },
+      { labelKey: 'menu.saveAs', icon: 'copy', run: async () => { if (await files.saveAs()) ui.toast(t('toast.saved'), 'success') } },
       'sep',
-      { label: '导出为 PDF', icon: 'file', run: () => runExport('pdf') },
-      { label: '导出为 HTML', icon: 'code', run: () => runExport('html') },
-      { label: '导出为 Word (.doc)', icon: 'file', run: () => runExport('word') },
-      { label: '导出为 EPUB', icon: 'book', run: () => runExport('epub') }
+      { labelKey: 'menu.exportPdf', icon: 'file', run: () => runExport('pdf') },
+      { labelKey: 'menu.exportHtml', icon: 'code', run: () => runExport('html') },
+      { labelKey: 'menu.exportWord', icon: 'file', run: () => runExport('word') },
+      { labelKey: 'menu.exportEpub', icon: 'book', run: () => runExport('epub') }
     ]
   },
   {
     key: 'e',
-    label: '编辑(E)',
+    labelKey: 'menu.edit',
     items: [
-      { label: '撤销', icon: 'undo', run: () => editorStore.instance?.commands.undo() },
-      { label: '重做', icon: 'redo', run: () => editorStore.instance?.commands.redo() },
+      { labelKey: 'menu.undo', icon: 'undo', run: () => editorStore.instance?.commands.undo() },
+      { labelKey: 'menu.redo', icon: 'redo', run: () => editorStore.instance?.commands.redo() },
       'sep',
-      { label: '查找 / 替换', icon: 'search', run: () => ui.toast('查找替换功能待接入', 'info') },
-      { label: '全局搜索（全文索引）', icon: 'list-checks', run: () => ui.openGlobalSearch() }
+      { labelKey: 'menu.findReplace', icon: 'search', run: () => ui.toast(t('common.pending'), 'info') },
+      { labelKey: 'menu.globalSearch', icon: 'list-checks', run: () => ui.openGlobalSearch() }
     ]
   },
   {
     key: 'v',
-    label: '视图(V)',
+    labelKey: 'menu.view',
     items: [
-      { label: '切换侧边栏', icon: 'panel-left', run: () => { ui.sidebarVisible = !ui.sidebarVisible; settings.set('sidebarVisible', ui.sidebarVisible) } },
+      { labelKey: 'menu.toggleSidebar', icon: 'panel-left', run: () => { ui.sidebarVisible = !ui.sidebarVisible; settings.set('sidebarVisible', ui.sidebarVisible) } },
       'sep',
-      { label: '所见即所得（实时渲染）', icon: 'eye', run: () => setMode('wysiwyg') },
-      { label: '分屏对比（渲染 + 源码）', icon: 'columns', run: () => setMode('split') },
-      { label: '源码模式', icon: 'source', run: () => setMode('source') },
+      { labelKey: 'menu.wysiwyg', icon: 'eye', run: () => setMode('wysiwyg') },
+      { labelKey: 'menu.split', icon: 'columns', run: () => setMode('split') },
+      { labelKey: 'menu.source', icon: 'source', run: () => setMode('source') },
       'sep',
-      { label: '专注模式', icon: 'focus', run: () => { ui.focusMode = !ui.focusMode } }
+      { labelKey: 'menu.focus', icon: 'focus', run: () => { ui.focusMode = !ui.focusMode } }
     ]
   },
   {
     key: 'h',
-    label: '帮助(H)',
+    labelKey: 'menu.help',
     items: [
-      { label: '设置', icon: 'settings', run: () => ui.openSettings() },
-      { label: '关于 Lumin', icon: 'info', run: () => router.push('/about') }
+      { labelKey: 'menu.settings', icon: 'settings', run: () => ui.openSettings() },
+      { labelKey: 'menu.about', icon: 'info', run: () => router.push('/about') }
     ]
   }
 ]
@@ -144,7 +146,7 @@ onBeforeUnmount(() => {
         :class="active?.key === g.key ? 'bg-panel-2 text-ink' : 'hover:bg-panel-2 hover:text-ink'"
         @click="active?.key === g.key ? close() : openGroup(g)"
       >
-        {{ g.label }}
+        {{ t(g.labelKey) }}
       </button>
     </template>
 
@@ -165,7 +167,7 @@ onBeforeUnmount(() => {
             <span class="flex h-4 w-4 items-center justify-center text-ink-3">
               <Icon v-if="it.icon" :name="it.icon" :size="13" />
             </span>
-            {{ it.label }}
+            {{ t(it.labelKey) }}
           </button>
         </template>
       </div>

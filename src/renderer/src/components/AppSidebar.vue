@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 import { useFilesStore } from '../stores/files'
 import { useSettingsStore } from '../stores/settings'
@@ -8,6 +9,7 @@ import FileTree from './FileTree.vue'
 import Outline from './Outline.vue'
 import Icon from './Icon.vue'
 
+const { t } = useI18n()
 const files = useFilesStore()
 const settings = useSettingsStore()
 const ui = useUiStore()
@@ -87,7 +89,7 @@ function onDragStart(e: MouseEvent): void {
         @click="ui.sidebarTab = tab"
       >
         <Icon :name="tab === 'files' ? 'file' : 'list'" :size="13" />
-        {{ tab === 'files' ? '文件' : '大纲' }}
+        {{ tab === 'files' ? t('sidebar.files') : t('sidebar.outline') }}
         <span
           v-if="ui.sidebarTab === tab"
           class="absolute inset-x-3 bottom-0 h-[2px] rounded-full bg-gradient-to-r from-accent to-accent-2"
@@ -111,18 +113,18 @@ function onDragStart(e: MouseEvent): void {
         @click="ui.openSettings()"
       >
         <Icon name="settings" :size="13" />
-        设置
+        {{ t('settings.title') }}
       </button>
       <button
         class="flex flex-1 items-center gap-2 rounded-lg px-2 py-1.5 text-[12px] text-ink-3 transition-colors hover:bg-panel-2 hover:text-ink"
         @click="router.push('/about')"
       >
         <Icon name="info" :size="13" />
-        关于
+        {{ t('about.title') }}
       </button>
       <button
         class="icon-btn !h-6.5 !w-6.5"
-        title="收起侧边栏 (Ctrl+Shift+B)"
+        :title="t('sidebar.collapse') + ' (Ctrl+Shift+B)'"
         @click="
           () => {
             ui.sidebarVisible = false

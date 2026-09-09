@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import type { DraftInfo, FileNode, OpenedFile } from '../../../shared/types'
 import { useSettingsStore } from './settings'
 import { useUiStore } from './ui'
+import i18n from '../i18n'
 
 export interface CurrentDoc {
   path: string | null
@@ -164,7 +165,7 @@ export const useFilesStore = defineStore('files', {
         return true
       } catch {
         const ui = useUiStore()
-        ui.toast('无法打开文件：' + path, 'error')
+        ui.toast(i18n.global.t('toast.openFailed') + ': ' + path, 'error')
         return false
       }
     },
@@ -249,7 +250,7 @@ export const useFilesStore = defineStore('files', {
         this.touchRecent(this.current.path)
         return true
       } catch {
-        useUiStore().toast('保存失败', 'error')
+        useUiStore().toast(i18n.global.t('toast.saveFailed'), 'error')
         return false
       } finally {
         this.saving = false

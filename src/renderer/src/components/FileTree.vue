@@ -1,10 +1,12 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useFilesStore } from '../stores/files'
 import { useUiStore } from '../stores/ui'
 import TreeNode from './TreeNode.vue'
 import Icon from './Icon.vue'
 
+const { t } = useI18n()
 const files = useFilesStore()
 const ui = useUiStore()
 const filter = ref('')
@@ -25,10 +27,10 @@ function onRootContextMenu(e: MouseEvent): void {
     x: e.clientX,
     y: e.clientY,
     items: [
-      { label: '新建文件', icon: 'file-plus', action: 'new-file' },
-      { label: '新建文件夹', icon: 'folder-plus', action: 'new-folder' },
-      { label: '刷新', icon: 'refresh', action: 'refresh' },
-      { label: '关闭工作区', icon: 'x', action: 'close', danger: true }
+      { label: t('context.newFile'), icon: 'file-plus', action: 'new-file' },
+      { label: t('context.newFolder'), icon: 'folder-plus', action: 'new-folder' },
+      { label: t('sidebar.refresh'), icon: 'refresh', action: 'refresh' },
+      { label: t('sidebar.closeWorkspace'), icon: 'x', action: 'close', danger: true }
     ],
     onSelect: (action) => void handleAction(action)
   })
@@ -37,19 +39,19 @@ function onRootContextMenu(e: MouseEvent): void {
 async function handleAction(action: string): Promise<void> {
   if (!files.root) return
   if (action === 'new-file') {
-    const name = await ui.prompt('新建文件', '文件名，例如 notes.md', '未命名.md')
+    const name = await ui.prompt(t('context.newFile'), t('sidebar.newFileHint'), `${t('common.untitled')}.md`)
     if (name) {
       const path = await files.createFileAt(files.root, name)
       if (path) await files.openPath(path)
     }
   } else if (action === 'new-folder') {
-    const name = await ui.prompt('新建文件夹', '文件夹名称', '新文件夹')
+    const name = await ui.prompt(t('context.newFolder'), t('sidebar.newFolderHint'), t('context.newFolder'))
     if (name) await files.createDirAt(files.root, name)
   } else if (action === 'refresh') {
     await files.refreshDir(files.root)
   } else if (action === 'close') {
     await files.setRoot(null)
-    ui.toast('已关闭工作区', 'success')
+    ui.toast(t('toast.workspaceClosed'), 'success')
   }
 }
 
@@ -68,7 +70,7 @@ function onDrop(e: DragEvent): void {
         <input
           v-model="filter"
           class="w-full bg-transparent text-[12.5px] text-ink outline-none placeholder:text-ink-3"
-          placeholder="搜索文件名…"
+          :placeholder="t('sidebar.filterPlaceholder')"
         />
         <button v-if="filter" class="text-ink-3 hover:text-ink" @click="filter = ''">
           <Icon name="x" :size="12" />
@@ -91,15 +93,15 @@ function onDrop(e: DragEvent): void {
         </TransitionGroup>
         <div v-if="!rootNodes.length && !filter" class="mt-6 flex flex-col items-center gap-2 px-4 text-center">
           <Icon name="folder" :size="26" :stroke-width="1.3" class="text-ink-3/60" />
-          <p class="text-[12px] leading-relaxed text-ink-3">文件夹为空<br />右键新建 Markdown 文件</p>
+          <p class="text-[12px] leading-relaxed text-ink-3">{{ t('sidebar.emptyFolder') }}<br />{{ t('sidebar.emptyFolderHint') }}</p>
         </div>
       </template>
       <div v-else class="mt-6 flex flex-col items-center gap-3 px-4 text-center">
         <Icon name="folderOpen" :size="26" :stroke-width="1.3" class="text-ink-3/60" />
-        <p class="text-[12px] leading-relaxed text-ink-3">尚未打开工作区文件夹</p>
+        <p class="text-[12px] leading-relaxed text-ink-3">{{ t('welcome.emptyFolder') }}</p>
         <button class="btn btn-outline px-3 py-1.5 text-[12px]" @click="files.openFolder()">
           <Icon name="folder-plus" :size="13" />
-          打开文件夹
+          {{ t('sidebar.openFolderBtn') }}
         </button>
       </div>
     </div>

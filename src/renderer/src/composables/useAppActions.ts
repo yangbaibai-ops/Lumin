@@ -6,6 +6,7 @@ import { useUiStore } from '../stores/ui'
 import { useExport } from './useExport'
 import { useEditorMode } from './useEditorMode'
 import type { MenuAction } from '../../../shared/types'
+import i18n from '../i18n'
 
 /** 未保存更改确认 */
 export async function confirmIfDirty(): Promise<boolean> {
@@ -13,8 +14,8 @@ export async function confirmIfDirty(): Promise<boolean> {
   const ui = useUiStore()
   if (!files.dirty) return true
   return ui.confirm({
-    title: '有未保存的更改',
-    body: '当前文档有未保存的更改，确定要离开吗？',
+    title: i18n.global.t('editor.dirtyConfirmTitle'),
+    body: i18n.global.t('editor.dirtyConfirmBody'),
     danger: true
   })
 }
@@ -46,20 +47,20 @@ export function useAppActions(): {
   async function openFolderDialog(): Promise<void> {
     if (!(await confirmIfDirty())) return
     await files.openFolder()
-    ui.toast('已打开文件夹', 'success')
+    ui.toast(i18n.global.t('toast.folderOpened'), 'success')
   }
 
   async function saveDoc(): Promise<void> {
-    if (await files.save()) ui.toast('已保存', 'success')
+    if (await files.save()) ui.toast(i18n.global.t('toast.saved'), 'success')
   }
 
   async function saveAsDoc(): Promise<void> {
-    if (await files.saveAs()) ui.toast('已保存', 'success')
+    if (await files.saveAs()) ui.toast(i18n.global.t('toast.saved'), 'success')
   }
 
   /** 编辑器内核 / 导出随渲染层剥离：保留入口，占位提示 */
   function pendingRefactor(feature: string): void {
-    ui.toast(`${feature}功能待重构`, 'info')
+    ui.toast(`${feature}: ${i18n.global.t('common.pending')}`, 'info')
   }
 
   function handleMenu(action: string): void {

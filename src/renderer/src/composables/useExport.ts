@@ -3,6 +3,7 @@ import { useSettingsStore } from '../stores/settings'
 import { useUiStore } from '../stores/ui'
 import { useEditorStore } from '../stores/editor'
 import { exportCss, renderMermaidInHtml } from '../lib/export'
+import i18n from '../i18n'
 
 // ─── 导出（渲染层）：基于 Tiptap getHTML() 输出 ────────────────────────────
 export function useExport(): { runExport: (format: 'pdf' | 'html' | 'word' | 'epub') => Promise<void> } {
@@ -44,9 +45,9 @@ export function useExport(): { runExport: (format: 'pdf' | 'html' | 'word' | 'ep
           css: exportCss
         })
       }
-      if (path) ui.toast(`已导出到：${path}`, 'success', 4200)
+      if (path) ui.toast(i18n.global.t('toast.exportedTo', { path }), 'success', 4200)
     } catch {
-      ui.toast('导出失败', 'error')
+      ui.toast(i18n.global.t('toast.exportFailed'), 'error')
     }
   }
 

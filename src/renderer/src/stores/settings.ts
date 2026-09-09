@@ -35,8 +35,19 @@ export const useSettingsStore = defineStore('settings', {
       this.applyAll()
       this.persist()
     },
-    setTheme(theme: ThemeMode): void {
-      this.set('theme', theme)
+    async setTheme(theme: ThemeMode): Promise<void> {
+      this.$patch({ theme } as Partial<AppSettings>)
+      // auto 主题依赖渲染层的 prefers-color-scheme，而它反映主进程 nativeTheme.themeSource。
+      // 若直接 applyAll，切到 auto 时会沿用上一个显式主题（如 dark）的 themeSource，
+      // 导致 CSS 仍停留深色、只有原生标题栏（nativeTheme）更新为系统浅色。
+      // 因此先 await settings:update（主进程同步 themeSource：auto→system），
+      // 等媒体查询传播后再重算主题，auto 才能正确跟随系统。
+      try {
+        await window.luminAPI.settings.update(JSON.parse(JSON.stringify(this.$state)) as AppSettings)
+        await new Promise<void>((resolve) => setTimeout(resolve, 60))
+      } finally {
+        this.applyAll()
+      }
     },
     setLanguage(lang: Language): void {
       this.set('language', lang)

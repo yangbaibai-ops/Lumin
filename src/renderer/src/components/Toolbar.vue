@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useFilesStore } from '../stores/files'
 import { useSettingsStore } from '../stores/settings'
 import { useUiStore } from '../stores/ui'
@@ -10,16 +11,17 @@ import Icon from './Icon.vue'
 import ToolbarTableButton from './ToolbarTableButton.vue'
 
 // ─── 编辑器工具栏：命令通过 editor store 桥接 Tiptap 内核（解耦）────────────
+const { t } = useI18n()
 const ui = useUiStore()
 const files = useFilesStore()
 const settings = useSettingsStore()
 const editorStore = useEditorStore()
 const { runExport } = useExport()
 const { setMode } = useEditorMode()
-const modeOptions: { mode: 'wysiwyg' | 'source' | 'split'; icon: string; label: string; title: string }[] = [
-  { mode: 'wysiwyg', icon: 'eye', label: '渲染', title: '实时渲染' },
-  { mode: 'split', icon: 'columns', label: '分屏', title: '分屏对比（左右实时同步）' },
-  { mode: 'source', icon: 'source', label: '源码', title: '源码模式' }
+const modeOptions: { mode: 'wysiwyg' | 'source' | 'split'; icon: string; labelKey: string; titleKey: string }[] = [
+  { mode: 'wysiwyg', icon: 'eye', labelKey: 'editor.wysiwyg', titleKey: 'editor.wysiwyg' },
+  { mode: 'split', icon: 'columns', labelKey: 'editor.split', titleKey: 'editor.split' },
+  { mode: 'source', icon: 'source', labelKey: 'editor.source', titleKey: 'editor.source' }
 ]
 
 const exportOpen = ref(false)
@@ -153,26 +155,26 @@ function addImage(): void {
   })
 }
 
-const inlineButtons: { icon: string; cmd: 'bold' | 'italic' | 'underline' | 'strike' | 'code'; name: string; title: string }[] = [
-  { icon: 'bold', cmd: 'bold', name: 'bold', title: '加粗' },
-  { icon: 'italic', cmd: 'italic', name: 'italic', title: '斜体' },
-  { icon: 'underline', cmd: 'underline', name: 'underline', title: '下划线' },
-  { icon: 'strike', cmd: 'strike', name: 'strike', title: '删除线' },
-  { icon: 'code', cmd: 'code', name: 'code', title: '行内代码' }
+const inlineButtons: { icon: string; cmd: 'bold' | 'italic' | 'underline' | 'strike' | 'code'; name: string; titleKey: string }[] = [
+  { icon: 'bold', cmd: 'bold', name: 'bold', titleKey: 'editor.bold' },
+  { icon: 'italic', cmd: 'italic', name: 'italic', titleKey: 'editor.italic' },
+  { icon: 'underline', cmd: 'underline', name: 'underline', titleKey: 'editor.underline' },
+  { icon: 'strike', cmd: 'strike', name: 'strike', titleKey: 'editor.strike' },
+  { icon: 'code', cmd: 'code', name: 'code', titleKey: 'editor.inlineCode' }
 ]
-const blockButtons: { icon: string; cmd: 'quote' | 'ul' | 'ol' | 'task' | 'codeBlock'; name: string; title: string }[] = [
-  { icon: 'quote', cmd: 'quote', name: 'blockquote', title: '引用' },
-  { icon: 'list', cmd: 'ul', name: 'bulletList', title: '无序列表' },
-  { icon: 'list-ordered', cmd: 'ol', name: 'orderedList', title: '有序列表' },
-  { icon: 'list-checks', cmd: 'task', name: 'taskList', title: '任务列表' },
-  { icon: 'braces', cmd: 'codeBlock', name: 'codeBlock', title: '代码块' }
+const blockButtons: { icon: string; cmd: 'quote' | 'ul' | 'ol' | 'task' | 'codeBlock'; name: string; titleKey: string }[] = [
+  { icon: 'quote', cmd: 'quote', name: 'blockquote', titleKey: 'editor.quote' },
+  { icon: 'list', cmd: 'ul', name: 'bulletList', titleKey: 'editor.ul' },
+  { icon: 'list-ordered', cmd: 'ol', name: 'orderedList', titleKey: 'editor.ol' },
+  { icon: 'list-checks', cmd: 'task', name: 'taskList', titleKey: 'editor.task' },
+  { icon: 'braces', cmd: 'codeBlock', name: 'codeBlock', titleKey: 'editor.codeBlock' }
 ]
 
-const exportItems: { icon: string; label: string; format: 'pdf' | 'html' | 'word' | 'epub' }[] = [
-  { icon: 'file', label: '导出为 PDF', format: 'pdf' },
-  { icon: 'code', label: '导出为 HTML', format: 'html' },
-  { icon: 'file', label: '导出为 Word', format: 'word' },
-  { icon: 'book', label: '导出为 EPUB', format: 'epub' }
+const exportItems: { icon: string; labelKey: string; format: 'pdf' | 'html' | 'word' | 'epub' }[] = [
+  { icon: 'file', labelKey: 'editor.exportPdf', format: 'pdf' },
+  { icon: 'code', labelKey: 'editor.exportHtml', format: 'html' },
+  { icon: 'file', labelKey: 'editor.exportWord', format: 'word' },
+  { icon: 'book', labelKey: 'editor.exportEpub', format: 'epub' }
 ]
 
 const docName = computed(() => files.current?.name ?? '')
@@ -184,17 +186,17 @@ const docName = computed(() => files.current?.name ?? '')
     @mousedown.prevent
   >
     <!-- 侧边栏开关 -->
-    <button class="icon-btn" :title="'切换侧边栏 (Ctrl+Shift+B)'" @click="toggleSidebar">
+    <button class="icon-btn" :title="t('menu.toggleSidebar') + ' (Ctrl+Shift+B)'" @click="toggleSidebar">
       <Icon name="panel-left" :size="16" />
     </button>
 
     <div class="mx-1.5 h-5 w-px shrink-0 bg-edge" />
 
     <!-- 撤销 / 重做 -->
-    <button class="icon-btn" :class="{ 'opacity-40': !canUndo() }" title="撤销" @click="editorStore.instance?.chain().focus().undo().run()">
+    <button class="icon-btn" :class="{ 'opacity-40': !canUndo() }" :title="t('editor.undo')" @click="editorStore.instance?.chain().focus().undo().run()">
       <Icon name="undo" :size="15" />
     </button>
-    <button class="icon-btn" :class="{ 'opacity-40': !canRedo() }" title="重做" @click="editorStore.instance?.chain().focus().redo().run()">
+    <button class="icon-btn" :class="{ 'opacity-40': !canRedo() }" :title="t('editor.redo')" @click="editorStore.instance?.chain().focus().redo().run()">
       <Icon name="redo" :size="15" />
     </button>
 
@@ -206,7 +208,7 @@ const docName = computed(() => files.current?.name ?? '')
       :key="b.cmd"
       class="icon-btn"
       :class="{ active: isMdActive(b.cmd) }"
-      :title="b.title"
+      :title="t(b.titleKey)"
       @click="runInline(b.cmd)"
     >
       <Icon :name="b.icon" :size="15" />
@@ -220,7 +222,7 @@ const docName = computed(() => files.current?.name ?? '')
       :key="'h' + l"
       class="icon-btn"
       :class="{ active: isActive('heading', { level: l }) }"
-      :title="'标题 ' + l"
+      :title="t('editor.heading') + ' ' + l"
       @click="toggleHeading(l)"
     >
       <Icon name="heading" :size="15" />
@@ -235,7 +237,7 @@ const docName = computed(() => files.current?.name ?? '')
       :key="b.cmd"
       class="icon-btn"
       :class="{ active: isActive(b.name) }"
-      :title="b.title"
+      :title="t(b.titleKey)"
       @click="runBlock(b.cmd)"
     >
       <Icon :name="b.icon" :size="15" />
@@ -245,13 +247,13 @@ const docName = computed(() => files.current?.name ?? '')
 
     <!-- 插入 -->
     <ToolbarTableButton />
-    <button class="icon-btn" title="分割线" @click="insertHr">
+    <button class="icon-btn" :title="t('editor.hr')" @click="insertHr">
       <Icon name="hr" :size="15" />
     </button>
-    <button class="icon-btn" title="链接" @click="addLink">
+    <button class="icon-btn" :title="t('editor.link')" @click="addLink">
       <Icon name="link" :size="15" />
     </button>
-    <button class="icon-btn" title="图片" @click="addImage">
+    <button class="icon-btn" :title="t('editor.image')" @click="addImage">
       <Icon name="image" :size="15" />
     </button>
 
@@ -268,11 +270,11 @@ const docName = computed(() => files.current?.name ?? '')
         :class="{ active: ui.editorMode === m.mode }"
         role="tab"
         :aria-selected="ui.editorMode === m.mode"
-        :title="m.title + ' (Ctrl+/)'"
+        :title="t(m.titleKey) + ' (Ctrl+/)'"
         @click="setMode(m.mode)"
       >
         <Icon :name="m.icon" :size="13.5" />
-        <span>{{ m.label }}</span>
+        <span>{{ t(m.labelKey) }}</span>
       </button>
     </div>
 
@@ -289,7 +291,7 @@ const docName = computed(() => files.current?.name ?? '')
     <button
       class="icon-btn"
       :class="{ active: ui.focusMode }"
-      :title="'专注模式 (Ctrl+Shift+F)'"
+      :title="t('editor.focus') + ' (Ctrl+Shift+F)'"
       @click="ui.focusMode = !ui.focusMode"
     >
       <Icon name="maximize" :size="15" />
@@ -299,12 +301,12 @@ const docName = computed(() => files.current?.name ?? '')
 
     <!-- 导出 -->
     <div ref="exportRef" class="relative shrink-0">
-      <button class="icon-btn" :class="{ active: exportOpen }" title="导出" @click="toggleExport">
+      <button class="icon-btn" :class="{ active: exportOpen }" :title="t('editor.export')" @click="toggleExport">
         <Icon name="download" :size="15" />
       </button>
     </div>
 
-    <button class="icon-btn" title="设置" @click="ui.openSettings()">
+    <button class="icon-btn" :title="t('settings.title')" @click="ui.openSettings()">
       <Icon name="settings" :size="15" />
     </button>
 
@@ -325,7 +327,7 @@ const docName = computed(() => files.current?.name ?? '')
             @click="doExport(item.format)"
           >
             <Icon :name="item.icon" :size="14" class="text-ink-3" />
-            {{ item.label }}
+            {{ t(item.labelKey) }}
           </button>
         </div>
       </Transition>
