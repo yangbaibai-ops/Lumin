@@ -134,9 +134,11 @@ function createWindow(openPath?: string): BrowserWindow {
   if (restoreMaximized) mainWindow.maximize()
 
   // 隐藏系统原生菜单条：顶部菜单栏由渲染层 TopMenuBar 呈现（位置精确、
-  // Alt+F/E/V/H 确定性）；应用菜单仍安装，Ctrl+N/O/S 等加速键继续生效
+  // Alt+F/E/V/H 确定性）；应用菜单仍安装，Ctrl+N/O/S 等加速键继续生效。
+  // autoHideMenuBar=false：彻底禁用「按 Alt 唤出原生菜单条」的行为（true 会
+  // 让菜单条在按 Alt 时重新弹出）
   mainWindow.setMenuBarVisibility(false)
-  mainWindow.setAutoHideMenuBar(true)
+  mainWindow.setAutoHideMenuBar(false)
 
   // 关闭时记住当前窗口位置/大小（下次启动恢复）
   mainWindow.on('close', () => saveWindowState(mainWindow))

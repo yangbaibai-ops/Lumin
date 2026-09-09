@@ -1567,3 +1567,36 @@ li.md-reveal {
   display: block;
   box-shadow: var(--shadow-2);
 }
+
+/* ── 全局 tooltip（接管原生 title，统一主题样式）── */
+.lm-tooltip {
+  position: fixed;
+  z-index: 9999;
+  max-width: 340px;
+  padding: 5px 10px;
+  border-radius: 7px;
+  background: var(--elevate);
+  color: var(--ink-2);
+  border: 1px solid var(--edge);
+  box-shadow: var(--shadow-2);
+  font-size: 12px;
+  line-height: 1.5;
+  pointer-events: none;
+  user-select: none;
+  white-space: normal;
+  word-break: break-word;
+}
+.lm-tooltip.is-above {
+  transform: translate(-50%, calc(-100% - 7px));
+}
+.lm-tooltip.is-below {
+  transform: translate(-50%, 7px);
+}
+.lm-tip-enter-active,
+.lm-tip-leave-active {
+  transition: opacity 0.14s ease;
+}
+.lm-tip-enter-from,
+.lm-tip-leave-to {
+  opacity: 0;
+}

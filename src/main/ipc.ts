@@ -1,6 +1,7 @@
 // ─── 主进程：IPC 注册 ─────────────────────────────────────────────────────
 import { ipcMain, dialog, BrowserWindow, webUtils, shell } from 'electron'
 import path from 'path'
+import { watch, type FSWatcher } from 'fs'
 import * as fileOps from './fileOps'
 import * as exportSvc from './export'
 import * as drafts from './drafts'
@@ -9,6 +10,41 @@ import { defaultSettings } from '../shared/defaults'
 import type { AppSettings, ExportPayload, EpubMeta } from '../shared/types'
 
 const closeConfirmed = new WeakSet<BrowserWindow>()
+
+// ── 工作区文件监听：外部软件增删/改名文件时，实时推送渲染进程刷新目录树 ──
+let workspaceWatcher: FSWatcher | null = null
+let workspaceWatchTimer: ReturnType<typeof setTimeout> | null = null
+
+function stopWorkspaceWatch(): void {
+  workspaceWatcher?.close()
+  workspaceWatcher = null
+  if (workspaceWatchTimer) {
+    clearTimeout(workspaceWatchTimer)
+    workspaceWatchTimer = null
+  }
+}
+
+function startWorkspaceWatch(root: string): void {
+  stopWorkspaceWatch()
+  try {
+    workspaceWatcher = watch(root, { recursive: true }, (eventType) => {
+      // 只响应结构变化（新增/删除/改名）；忽略内容写入（自动保存会触发 'change'，
+      // 否则每次保存都会引起目录树闪烁）
+      if (eventType !== 'rename') return
+      if (workspaceWatchTimer) clearTimeout(workspaceWatchTimer)
+      // fs.watch 一次改动常触发多次事件，做 300ms 防抖合并
+      workspaceWatchTimer = setTimeout(() => {
+        workspaceWatchTimer = null
+        for (const win of BrowserWindow.getAllWindows()) {
+          if (!win.isDestroyed()) win.webContents.send('workspace:changed')
+        }
+      }, 300)
+    })
+  } catch {
+    // 部分平台不支持递归监听：忽略错误，用户仍可手动刷新
+    workspaceWatcher = null
+  }
+}
 
 /** 浅层对象深度合并（嵌套对象递归；数组整体替换） */
 function deepMerge<T extends object>(base: T, patch: Partial<T>): T {
@@ -53,12 +89,12 @@ export function registerIpc(): void {
     else win.maximize()
   })
   ipcMain.on('app:close', () => BrowserWindow.getFocusedWindow()?.close())
-  // 原生菜单栏显隐（默认开；关闭时隐藏且仅 Alt 临时唤起）
+  // 原生菜单栏显隐（关闭时彻底隐藏，禁用 Alt 临时唤起）
   ipcMain.on('app:setMenuBar', (event, visible: boolean) => {
     const win = BrowserWindow.fromWebContents(event.sender)
     if (!win) return
     win.setMenuBarVisibility(!!visible)
-    win.setAutoHideMenuBar(!visible)
+    win.setAutoHideMenuBar(false)
   })
 
   // ── 文件 ──
@@ -150,6 +186,8 @@ export function registerIpc(): void {
     const ws = db.kvGet<{ root: string | null }>('workspace', { root: null })
     ws.root = root
     db.kvSet('workspace', ws)
+    if (root) startWorkspaceWatch(root)
+    else stopWorkspaceWatch()
   })
 
   // ── 数据库（文档元数据 / 全文搜索）──
@@ -183,6 +221,10 @@ export function registerIpc(): void {
   ipcMain.on('shell:openExternal', (_, url: string) => {
     if (/^https?:\/\//.test(url)) shell.openExternal(url)
   })
+
+  // 启动时若已记住工作区，恢复对根目录的监听
+  const existingRoot = db.kvGet<{ root: string | null }>('workspace', { root: null }).root
+  if (existingRoot) startWorkspaceWatch(existingRoot)
 }
 
 /** 窗口关闭前：给渲染进程保存机会 */

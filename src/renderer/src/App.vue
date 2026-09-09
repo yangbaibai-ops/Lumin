@@ -13,6 +13,8 @@ import ContextMenu from './components/ContextMenu.vue'
 import GlobalSearch from './components/GlobalSearch.vue'
 import SkeletonScreen from './components/SkeletonScreen.vue'
 import SettingsDialog from './components/SettingsDialog.vue'
+import GlobalTooltip from './components/GlobalTooltip.vue'
+import { installGlobalTooltip } from './lib/tooltip'
 
 const router = useRouter()
 const ui = useUiStore()
@@ -20,6 +22,7 @@ const settings = useSettingsStore()
 const { pageVisible } = usePageVisible()
 
 useAppActions()
+installGlobalTooltip()
 
 onMounted(() => {
   // 文件树点击打开文件后跳转编辑器
@@ -53,6 +56,7 @@ onMounted(() => {
     <ContextMenu />
     <GlobalSearch />
     <SettingsDialog />
+    <GlobalTooltip />
     <Transition name="fade">
       <SkeletonScreen v-if="ui.booting" />
     </Transition>

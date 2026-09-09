@@ -55,6 +55,13 @@ export const useFilesStore = defineStore('files', {
         this.expanded.add(this.root)
         await this.loadChildren(this.root)
       }
+      // 外部软件增删/改名文件时，主进程 fs.watch 推送 workspace:changed，
+      // 实时刷新根目录与所有已展开子目录
+      window.luminAPI.events.on('workspace:changed', () => {
+        if (!this.root) return
+        const dirs = new Set<string>([this.root, ...this.expanded])
+        for (const dir of dirs) void this.loadChildren(dir)
+      })
     },
     async openFolder(): Promise<void> {
       const dir = await window.luminAPI.file.chooseFolder()
