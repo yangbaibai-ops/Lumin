@@ -11,6 +11,8 @@ export interface TooltipState {
   y: number
   /** true = 显示在元素上方；false = 下方（顶部空间不足时） */
   above: boolean
+  /** 目标元素视口矩形（供组件侧做精确钳制/翻转，保证整块完整显示） */
+  targetRect: { top: number; bottom: number; left: number; right: number }
 }
 
 export const tooltipState = reactive<TooltipState>({
@@ -18,7 +20,8 @@ export const tooltipState = reactive<TooltipState>({
   text: '',
   x: 0,
   y: 0,
-  above: true
+  above: true,
+  targetRect: { top: 0, bottom: 0, left: 0, right: 0 }
 })
 
 const DELAY_MS = 750
@@ -52,10 +55,10 @@ function showTooltip(el: HTMLElement): void {
   const rect = el.getBoundingClientRect()
   const above = rect.top > 64
   tooltipState.text = savedTitle ?? ''
-  // 水平居中并钳制在视口内（预留边缘余量）
-  tooltipState.x = Math.min(Math.max(rect.left + rect.width / 2, 60), window.innerWidth - 60)
+  tooltipState.x = rect.left + rect.width / 2
   tooltipState.y = above ? rect.top : rect.bottom
   tooltipState.above = above
+  tooltipState.targetRect = { top: rect.top, bottom: rect.bottom, left: rect.left, right: rect.right }
   tooltipState.visible = true
 }
 

@@ -6,7 +6,7 @@ const ui = useUiStore()
 </script>
 
 <template>
-  <div class="pointer-events-none fixed top-4 left-1/2 z-[200] -translate-x-1/2 flex flex-col items-center gap-2">
+  <div class="pointer-events-none fixed bottom-12 right-4 z-[200] flex flex-col items-end gap-2">
     <TransitionGroup name="slide">
       <div
         v-for="t in ui.toasts"
