@@ -57,6 +57,7 @@
     "refresh": "Refresh",
     "closeWorkspace": "Close workspace",
     "collapse": "Collapse sidebar",
+    "expand": "Expand sidebar",
     "filterPlaceholder": "Filter file names…",
     "noMatch": "No matching files",
     "clickReselect": "Click to reselect folder",
