@@ -231,6 +231,18 @@
     "manualSave": "已切换为手动保存",
     "autoSaveOn": "已开启自动保存"
   },
+  "notifications": {
+    "level": {
+      "info": "通知",
+      "success": "已完成",
+      "warning": "告警",
+      "error": "报错"
+    },
+    "prev": "上一条通知",
+    "next": "下一条通知",
+    "close": "关闭此通知",
+    "closeAll": "全部关闭"
+  },
   "statusbar": {
     "mode": "模式",
     "theme": "主题",

@@ -64,6 +64,12 @@ const ICONS: Record<string, string[]> = {
     'p:M17 16h6'
   ],
   info: ['c:12,12,9', 'p:M12 16v-4', 'p:M12 8h.01'],
+  'alert-triangle': [
+    'p:m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3',
+    'p:M12 9v4',
+    'p:M12 17h.01'
+  ],
+  'alert-circle': ['c:12,12,10', 'p:M12 8v4', 'p:M12 16h.01'],
   sun: [
     'c:12,12,4',
     'p:M12 2v2',
@@ -112,6 +118,7 @@ const ICONS: Record<string, string[]> = {
     'p:M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z'
   ],
   'chevron-right': ['p:m9 18 6-6-6-6'],
+  'chevron-left': ['p:m15 18-6-6 6-6'],
   'chevron-down': ['p:m6 9 6 6 6-6'],
   plus: ['p:M5 12h14', 'p:M12 5v14'],
   trash: [

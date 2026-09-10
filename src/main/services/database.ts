@@ -3,6 +3,13 @@
 import type { DatabaseSync } from 'node:sqlite'
 import { app } from 'electron'
 import path from 'path'
+import type {
+  AppNotification,
+  NotificationInput,
+  NotificationLevel,
+  NotificationListOptions,
+  NotificationPatch
+} from '../../shared/types'
 
 /** 惰性加载 node:sqlite 的 DatabaseSync 构造函数。
  *  electron-vite(Rollup) 会把顶层 import 的 require 提升到 bundle 顶部、先于
@@ -51,6 +58,32 @@ interface DocRow {
   is_archived: number
 }
 
+interface NotificationRow {
+  id: number
+  level: string
+  title: string
+  body: string
+  merge_key: string
+  created_at: number
+  closed_at: number | null
+}
+
+const NOTIFICATION_LEVELS: NotificationLevel[] = ['info', 'success', 'warning', 'error']
+
+function rowToNotification(row: NotificationRow): AppNotification {
+  const level = NOTIFICATION_LEVELS.includes(row.level as NotificationLevel)
+    ? (row.level as NotificationLevel)
+    : 'info'
+  return {
+    id: row.id,
+    level,
+    title: row.title,
+    body: row.body,
+    createdAt: row.created_at,
+    closedAt: row.closed_at ?? null
+  }
+}
+
 /** 与渲染层一致的字数统计（中文字符 + 英文单词） */
 export function countWords(content: string): number {
   const text = content.replace(/[#>*`\-_~\[\]()!|]/g, ' ').trim()
@@ -96,6 +129,20 @@ class LuminDatabase {
         value TEXT NOT NULL,
         updated_at INTEGER NOT NULL
       );
+    `)
+    // 全局通知中心：跨会话保留（关闭用 closed_at 软删除，便于日后做历史面板）
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS notifications (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        level TEXT NOT NULL DEFAULT 'info',
+        title TEXT NOT NULL,
+        body TEXT NOT NULL DEFAULT '',
+        merge_key TEXT NOT NULL DEFAULT '',
+        created_at INTEGER NOT NULL,
+        closed_at INTEGER
+      );
+      CREATE INDEX IF NOT EXISTS idx_notifications_open
+        ON notifications(closed_at, created_at DESC);
     `)
     // FTS5：trigram 分词器（对中日韩文本支持子串匹配；支持片段高亮）
     const ftsRow = this.db
@@ -297,6 +344,112 @@ class LuminDatabase {
       .prepare('SELECT COUNT(*) AS c FROM documents_fts')
       .get() as unknown as { c: number }
     return { docs: row.docs, fts: fts.c }
+  }
+
+  // ── 全局通知中心（CRUD + 关闭/清理）─────────────────────────────────────
+  // 设计：单卡片通知中心只需要「未关闭」集合，故列表默认只查 closed_at IS NULL，
+  // 但保留 includeClosed 供历史面板/调试使用；关闭是软删除（closed_at 打时间戳），
+  // 硬删除交给 remove / clearClosed。行数上限由 prune 在写入后收紧，避免无限增长。
+
+  private static readonly NOTIFICATION_LIMIT = 200
+
+  /** 新增（mergeKey 命中未关闭项时改为更新并置顶） */
+  addNotification(input: NotificationInput): AppNotification {
+    const level: NotificationLevel = input.level ?? 'info'
+    const title = input.title
+    const body = input.body ?? ''
+    const mergeKey = input.mergeKey ?? `${level}\u0000${title}`
+    const now = Date.now()
+    const hit = this.db
+      .prepare('SELECT id FROM notifications WHERE closed_at IS NULL AND merge_key = ?')
+      .get(mergeKey) as { id: number } | undefined
+    if (hit) {
+      this.db
+        .prepare('UPDATE notifications SET level = ?, title = ?, body = ?, created_at = ? WHERE id = ?')
+        .run(level, title, body, now, hit.id)
+      this.pruneNotifications()
+      const updated = this.getNotification(hit.id)
+      if (updated) return updated
+    }
+    const info = this.db
+      .prepare(
+        `INSERT INTO notifications (level, title, body, merge_key, created_at, closed_at)
+         VALUES (?, ?, ?, ?, ?, NULL)`
+      )
+      .run(level, title, body, mergeKey, now)
+    this.pruneNotifications()
+    const row = this.getNotification(Number(info.lastInsertRowid))
+    if (!row) throw new Error('DB: addNotification failed')
+    return row
+  }
+
+  getNotification(id: number): AppNotification | null {
+    const row = this.db.prepare('SELECT * FROM notifications WHERE id = ?').get(id) as
+      | NotificationRow
+      | undefined
+    return row ? rowToNotification(row) : null
+  }
+
+  /** 列表：默认只返回未关闭项，按时间倒序（最新在前） */
+  listNotifications(options: NotificationListOptions = {}): AppNotification[] {
+    const limit = options.limit ?? LuminDatabase.NOTIFICATION_LIMIT
+    const sql = options.includeClosed
+      ? 'SELECT * FROM notifications ORDER BY created_at DESC, id DESC LIMIT ?'
+      : 'SELECT * FROM notifications WHERE closed_at IS NULL ORDER BY created_at DESC, id DESC LIMIT ?'
+    const rows = this.db.prepare(sql).all(limit) as unknown as NotificationRow[]
+    return rows.map(rowToNotification)
+  }
+
+  /** 局部更新（标题/详情/级别） */
+  updateNotification(id: number, patch: NotificationPatch): AppNotification | null {
+    const current = this.getNotification(id)
+    if (!current) return null
+    this.db
+      .prepare('UPDATE notifications SET level = ?, title = ?, body = ? WHERE id = ?')
+      .run(
+        patch.level ?? current.level,
+        patch.title ?? current.title,
+        patch.body ?? current.body,
+        id
+      )
+    return this.getNotification(id)
+  }
+
+  /** 关闭单条（软删除：closed_at 打时间戳；已关闭则保持原时间） */
+  closeNotification(id: number): void {
+    this.db
+      .prepare('UPDATE notifications SET closed_at = ? WHERE id = ? AND closed_at IS NULL')
+      .run(Date.now(), id)
+  }
+
+  /** 全部关闭，返回受影响条数 */
+  closeAllNotifications(): number {
+    const info = this.db
+      .prepare('UPDATE notifications SET closed_at = ? WHERE closed_at IS NULL')
+      .run(Date.now())
+    return Number(info.changes)
+  }
+
+  /** 物理删除单条 */
+  removeNotification(id: number): void {
+    this.db.prepare('DELETE FROM notifications WHERE id = ?').run(id)
+  }
+
+  /** 清理已关闭记录，返回删除条数 */
+  clearClosedNotifications(): number {
+    const info = this.db.prepare('DELETE FROM notifications WHERE closed_at IS NOT NULL').run()
+    return Number(info.changes)
+  }
+
+  /** 只保留最近 N 条（含已关闭），控制表体积 */
+  private pruneNotifications(keep = LuminDatabase.NOTIFICATION_LIMIT): void {
+    this.db
+      .prepare(
+        `DELETE FROM notifications WHERE id NOT IN (
+           SELECT id FROM notifications ORDER BY created_at DESC, id DESC LIMIT ?
+         )`
+      )
+      .run(keep)
   }
 
   // ── 应用状态 kv（设置 / 工作区持久化，JSON 序列化）──

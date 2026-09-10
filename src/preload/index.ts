@@ -70,6 +70,15 @@ const api: LuminAPI = {
     setTags: (path, tags) => ipcRenderer.invoke('db:setTags', path, tags),
     stats: () => ipcRenderer.invoke('db:stats')
   },
+  notifications: {
+    list: (options) => ipcRenderer.invoke('notifications:list', options),
+    add: (input) => ipcRenderer.invoke('notifications:add', input),
+    update: (id, patch) => ipcRenderer.invoke('notifications:update', id, patch),
+    close: (id) => ipcRenderer.invoke('notifications:close', id),
+    closeAll: () => ipcRenderer.invoke('notifications:closeAll'),
+    remove: (id) => ipcRenderer.invoke('notifications:remove', id),
+    clearClosed: () => ipcRenderer.invoke('notifications:clearClosed')
+  },
   export: {
     pdf: (payload: ExportPayload, settings) => ipcRenderer.invoke('export:pdf', payload, settings),
     html: (payload: ExportPayload) => ipcRenderer.invoke('export:html', payload),

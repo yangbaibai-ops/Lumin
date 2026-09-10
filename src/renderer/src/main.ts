@@ -8,6 +8,7 @@ import i18n from './i18n'
 import { useSettingsStore } from './stores/settings'
 import { useFilesStore } from './stores/files'
 import { useUiStore } from './stores/ui'
+import { useNotificationsStore } from './stores/notifications'
 
 async function bootstrap(): Promise<void> {
   // Pinia 必须先于 store 使用被安装
@@ -31,6 +32,9 @@ async function bootstrap(): Promise<void> {
 
   const files = useFilesStore(pinia)
   await files.init()
+
+  // 通知中心：从 SQLite 恢复上次未关闭的通知（按需求跨会话保留）
+  await useNotificationsStore(pinia).hydrate()
 
   // 多窗口：本窗口由「在新窗口打开」创建时，启动后直接打开目标文件
   const startupFile = window.luminAPI.app.startupFile

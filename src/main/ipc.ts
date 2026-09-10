@@ -7,7 +7,14 @@ import * as exportSvc from './export'
 import * as drafts from './drafts'
 import { db } from './services/database'
 import { defaultSettings } from '../shared/defaults'
-import type { AppSettings, ExportPayload, EpubMeta } from '../shared/types'
+import type {
+  AppSettings,
+  EpubMeta,
+  ExportPayload,
+  NotificationInput,
+  NotificationListOptions,
+  NotificationPatch
+} from '../shared/types'
 
 const closeConfirmed = new WeakSet<BrowserWindow>()
 
@@ -207,6 +214,45 @@ export function registerIpc(): void {
   )
   ipcMain.handle('db:setTags', (_, p: string, tags: string[]) => db.setTags(path.resolve(p), tags))
   ipcMain.handle('db:stats', () => db.stats())
+
+  // ── 全局通知中心（SQLite 持久化，跨会话保留）──
+  // 每次变更后广播，多窗口下各窗口的通知中心保持一致（与 workspace:changed 同套路）
+  const broadcastNotifications = (): void => {
+    for (const win of BrowserWindow.getAllWindows()) {
+      if (!win.isDestroyed()) win.webContents.send('notifications:changed')
+    }
+  }
+  ipcMain.handle('notifications:list', (_, options?: NotificationListOptions) =>
+    db.listNotifications(options)
+  )
+  ipcMain.handle('notifications:add', (_, input: NotificationInput) => {
+    const saved = db.addNotification(input)
+    broadcastNotifications()
+    return saved
+  })
+  ipcMain.handle('notifications:update', (_, id: number, patch: NotificationPatch) => {
+    const saved = db.updateNotification(id, patch)
+    broadcastNotifications()
+    return saved
+  })
+  ipcMain.handle('notifications:close', (_, id: number) => {
+    db.closeNotification(id)
+    broadcastNotifications()
+  })
+  ipcMain.handle('notifications:closeAll', () => {
+    const n = db.closeAllNotifications()
+    broadcastNotifications()
+    return n
+  })
+  ipcMain.handle('notifications:remove', (_, id: number) => {
+    db.removeNotification(id)
+    broadcastNotifications()
+  })
+  ipcMain.handle('notifications:clearClosed', () => {
+    const n = db.clearClosedNotifications()
+    broadcastNotifications()
+    return n
+  })
 
   // ── 草稿 ──
   ipcMain.handle('drafts:save', (_, key: string, content: string, p: string | null) =>

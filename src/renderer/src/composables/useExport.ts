@@ -2,6 +2,7 @@ import { useFilesStore } from '../stores/files'
 import { useSettingsStore } from '../stores/settings'
 import { useUiStore } from '../stores/ui'
 import { useEditorStore } from '../stores/editor'
+import { useNotificationsStore } from '../stores/notifications'
 import { exportCss, renderMermaidInHtml } from '../lib/export'
 import i18n from '../i18n'
 
@@ -11,6 +12,7 @@ export function useExport(): { runExport: (format: 'pdf' | 'html' | 'word' | 'ep
   const ui = useUiStore()
   const settings = useSettingsStore()
   const editorStore = useEditorStore()
+  const notifications = useNotificationsStore()
 
   async function buildExportHtml(): Promise<{ html: string; title: string } | null> {
     if (!files.current) return null
@@ -45,9 +47,14 @@ export function useExport(): { runExport: (format: 'pdf' | 'html' | 'word' | 'ep
           css: exportCss
         })
       }
-      if (path) ui.toast(i18n.global.t('toast.exportedTo', { path }), 'success', 4200)
-    } catch {
-      ui.toast(i18n.global.t('toast.exportFailed'), 'error')
+      if (path) ui.toast(i18n.global.t('toast.exportedTo', { path }), 'success')
+    } catch (e) {
+      // 失败原因作为「详情」展示：标题保持一行可扫读，细节不丢（同类失败自动合并为一条）
+      void notifications.notify({
+        level: 'error',
+        title: i18n.global.t('toast.exportFailed'),
+        body: e instanceof Error ? e.message : String(e)
+      })
     }
   }
 

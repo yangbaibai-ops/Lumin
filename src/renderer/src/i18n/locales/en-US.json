@@ -230,6 +230,18 @@
     "manualSave": "Switched to manual save",
     "autoSaveOn": "Auto save enabled"
   },
+  "notifications": {
+    "level": {
+      "info": "Notice",
+      "success": "Done",
+      "warning": "Warning",
+      "error": "Error"
+    },
+    "prev": "Previous notification",
+    "next": "Next notification",
+    "close": "Dismiss this notification",
+    "closeAll": "Dismiss all"
+  },
   "statusbar": {
     "mode": "Mode",
     "theme": "Theme",

@@ -1581,10 +1581,99 @@ li.md-reveal {
   box-shadow: var(--shadow-2);
 }
 
+/* ── 全局通知中心（单卡片：级别图标 + 标题 + 详情 + 切换/关闭）── */
+.ntf-card {
+  background: color-mix(in srgb, var(--elevate) 94%, transparent);
+  box-shadow: var(--shadow-2);
+  backdrop-filter: blur(14px);
+  /* 只在出现/消失时动，避免与内容切换动效互相干扰 */
+  transition:
+    opacity 0.22s ease,
+    transform 0.22s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.ntf-body {
+  /* 长详情只在卡片内滚动，不撑高整张卡片 */
+  scrollbar-width: thin;
+}
+.ntf-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  flex: none;
+  border-radius: 8px;
+  color: var(--ink-3);
+  cursor: pointer;
+  transition:
+    background-color 0.15s ease,
+    color 0.15s ease,
+    transform 0.12s ease;
+}
+.ntf-icon-btn:hover {
+  background: var(--panel-2);
+  color: var(--ink);
+}
+.ntf-icon-btn:active {
+  transform: scale(0.9);
+}
+.ntf-text-btn {
+  flex: none;
+  border-radius: 8px;
+  padding: 3px 8px;
+  font-size: 11.5px;
+  color: var(--ink-3);
+  white-space: nowrap;
+  cursor: pointer;
+  transition:
+    background-color 0.15s ease,
+    color 0.15s ease;
+}
+.ntf-text-btn:hover {
+  background: color-mix(in srgb, var(--danger) 12%, transparent);
+  color: var(--danger);
+}
+/* 卡片整体：自下而上淡入 */
+.ntf-enter-active,
+.ntf-leave-active {
+  transition:
+    opacity 0.22s ease,
+    transform 0.22s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.ntf-enter-from,
+.ntf-leave-to {
+  opacity: 0;
+  transform: translateY(10px) scale(0.98);
+}
+/* 内容切换：上一条自左、下一条自右（配合底部 ‹ › 的语义） */
+.ntf-prev-enter-active,
+.ntf-next-enter-active,
+.ntf-prev-leave-active,
+.ntf-next-leave-active {
+  transition:
+    opacity 0.16s ease,
+    transform 0.16s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.ntf-prev-enter-from,
+.ntf-next-leave-to {
+  opacity: 0;
+  transform: translateX(-10px);
+}
+.ntf-next-enter-from,
+.ntf-prev-leave-to {
+  opacity: 0;
+  transform: translateX(10px);
+}
+
 /* ── 全局 tooltip（接管原生 title，统一主题样式）── */
 .lm-tooltip {
   position: fixed;
   z-index: 9999;
+  /* 必须显式 width: max-content：浮层用 left 定位，若目标贴近视口右缘，
+     收缩适应（shrink-to-fit）会把可用宽度算成「视口右边 − left」的极小值，
+     文字被压成一列竖排。显式取 max-content 后宽度只由内容决定（再由
+     max-width 封顶），钳制逻辑量到的宽度也才是真实宽度。 */
+  width: max-content;
   max-width: 340px;
   padding: 5px 10px;
   border-radius: 7px;

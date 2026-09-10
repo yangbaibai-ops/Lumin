@@ -31,6 +31,47 @@ export interface AppSettings {
   export: ExportSettings
 }
 
+// ─── 全局通知中心 ──────────────────────────────────────────────────────────
+/** 通知级别：通知 / 已完成 / 告警 / 报错（图标与配色由此派生） */
+export type NotificationLevel = 'info' | 'success' | 'warning' | 'error'
+
+/** 一条通知（持久化在 SQLite notifications 表，跨会话保留） */
+export interface AppNotification {
+  id: number
+  level: NotificationLevel
+  /** 标题（一行，必填） */
+  title: string
+  /** 详情（可空；多行时卡片内滚动） */
+  body: string
+  createdAt: number
+  /** 关闭时间；null = 仍在通知中心里 */
+  closedAt: number | null
+}
+
+/** 新建通知的入参 */
+export interface NotificationInput {
+  level?: NotificationLevel
+  title: string
+  body?: string
+  /**
+   * 合并键：同键的未关闭通知会被「更新并置顶」而不是再插一条。
+   * 默认取 level+title —— 反复保存/反复失败只占一个卡片位，避免刷屏。
+   */
+  mergeKey?: string
+}
+
+export interface NotificationPatch {
+  level?: NotificationLevel
+  title?: string
+  body?: string
+}
+
+export interface NotificationListOptions {
+  /** 连同已关闭一起返回（历史查询用） */
+  includeClosed?: boolean
+  limit?: number
+}
+
 export interface RecentFile {
   path: string
   title: string
@@ -187,6 +228,16 @@ export interface LuminAPI {
     setPinned: (path: string, pinned: boolean) => Promise<void>
     setTags: (path: string, tags: string[]) => Promise<void>
     stats: () => Promise<{ docs: number; fts: number }>
+  }
+  /** 全局通知中心（持久化在 SQLite notifications 表，跨会话保留） */
+  notifications: {
+    list: (options?: NotificationListOptions) => Promise<AppNotification[]>
+    add: (input: NotificationInput) => Promise<AppNotification>
+    update: (id: number, patch: NotificationPatch) => Promise<AppNotification | null>
+    close: (id: number) => Promise<void>
+    closeAll: () => Promise<number>
+    remove: (id: number) => Promise<void>
+    clearClosed: () => Promise<number>
   }
   export: {
     pdf: (payload: ExportPayload, settings: AppSettings['export']['pdf']) => Promise<string | null>

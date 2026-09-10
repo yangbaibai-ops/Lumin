@@ -8,7 +8,7 @@ import { useUiStore } from './stores/ui'
 import { useSettingsStore } from './stores/settings'
 import AppSidebar from './components/AppSidebar.vue'
 import TopMenuBar from './components/TopMenuBar.vue'
-import Toast from './components/Toast.vue'
+import NotificationCenter from './components/NotificationCenter.vue'
 import ModalHost from './components/ModalHost.vue'
 import ContextMenu from './components/ContextMenu.vue'
 import GlobalSearch from './components/GlobalSearch.vue'
@@ -107,7 +107,7 @@ onMounted(() => {
       </main>
     </div>
 
-    <Toast />
+    <NotificationCenter />
     <ModalHost />
     <ContextMenu />
     <GlobalSearch />
