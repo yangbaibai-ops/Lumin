@@ -3,13 +3,7 @@
 import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { NodeViewWrapper, nodeViewProps } from '@tiptap/vue-3'
 import { Compartment, EditorState, type Extension } from '@codemirror/state'
-import {
-  EditorView,
-  keymap,
-  lineNumbers,
-  highlightActiveLine,
-  drawSelection
-} from '@codemirror/view'
+import { EditorView, keymap, lineNumbers, drawSelection } from '@codemirror/view'
 import { defaultKeymap, history, historyKeymap } from '@codemirror/commands'
 import {
   syntaxHighlighting,
@@ -64,8 +58,10 @@ const selectedLanguage = ref<string>(props.node.attrs.language || 'javascript')
 
 let cmView: EditorView | null = null
 let onPmBlurCapture: ((e: FocusEvent) => void) | null = null
-let cmExtensions: Extension[] = []
 const languageCompartment = new Compartment()
+// 行号开关（设置项 codeLineNumbers）：用 Compartment 让切换即时生效，
+// 无需重建 CM 实例，也不打断光标/滚动位置
+const lineNumberCompartment = new Compartment()
 
 // ── 每编辑器视图共享的 hasFocus 守卫 ────────────────────────────────────────
 // 目的：CM 获得焦点期间令 PM 的 hasFocus() 返回 false，使其跳过选区同步
@@ -121,9 +117,8 @@ const cmTheme = EditorView.theme({
   '&.cm-focused .cm-selectionBackground, .cm-selectionBackground, .cm-content ::selection': {
     backgroundColor: 'var(--sel)'
   },
-  '.cm-activeLine': { backgroundColor: 'var(--block-hover)' },
+  // 不注册 highlightActiveLine：点击代码块时任一行都不该被底色标出来
   '.cm-gutters': { backgroundColor: 'transparent', color: 'var(--ink-3)', border: 'none' },
-  '.cm-activeLineGutter': { backgroundColor: 'transparent', color: 'var(--ink-2)' },
   '.cm-foldPlaceholder': {
     backgroundColor: 'var(--accent-soft)',
     color: 'var(--accent)',
@@ -323,6 +318,16 @@ watch(selectedLanguage, (lang) => {
   void loadLanguage(lang)
 })
 
+// 设置里切换「代码块行号」即时生效（折叠槽仍在，只去掉行号）
+watch(
+  () => settings.codeLineNumbers,
+  (on) => {
+    cmView?.dispatch({
+      effects: lineNumberCompartment.reconfigure(on ? lineNumbers() : [])
+    })
+  }
+)
+
 // 外部内容变化（同一文件重新打开等场景，节点内容被外部替换）：
 // CM 状态与节点脱钩时整体重置（setState 重建，语言高亮随后重挂）。
 // 防抖 150ms：Vue watch 回调是异步排队的——快速连续输入时，每个回调
@@ -339,23 +344,18 @@ watch(
       extSyncTimer = null
       if (!cmView || selectedLanguage.value === 'mermaid') return
       if (nv === cmView.state.doc.toString()) return
-      cmView.setState(EditorState.create({ doc: nv, extensions: cmExtensions }))
+      cmView.setState(EditorState.create({ doc: nv, extensions: buildCmExtensions() }))
       void loadLanguage(selectedLanguage.value)
       pinCmFocus()
     }, 150)
   }
 )
 
-onMounted(() => {
-  if (selectedLanguage.value === 'mermaid') {
-    void renderMermaid()
-    return
-  }
-  const host = editorRef.value
-  if (!host) return
-  cmExtensions = [
-    lineNumbers(),
-    highlightActiveLine(),
+/* 扩展列表按需构建：行号开关属于 Compartment，但重建 state（外部内容同步）时
+   必须按「当前设置」重新组装，否则会退回挂载时刻的取值 */
+function buildCmExtensions(): Extension[] {
+  return [
+    lineNumberCompartment.of(settings.codeLineNumbers ? lineNumbers() : []),
     drawSelection(),
     history(),
     foldGutter(),
@@ -385,9 +385,18 @@ onMounted(() => {
       if (u.docChanged) syncToNode()
     })
   ]
+}
+
+onMounted(() => {
+  if (selectedLanguage.value === 'mermaid') {
+    void renderMermaid()
+    return
+  }
+  const host = editorRef.value
+  if (!host) return
   const state = EditorState.create({
     doc: props.node.textContent,
-    extensions: cmExtensions
+    extensions: buildCmExtensions()
   })
   cmView = new EditorView({ state, parent: host })
   // CM 默认不给 contentDOM 设 tabindex，浏览器点击不会把焦点交给他；

@@ -31,6 +31,7 @@ export const defaultSettings: AppSettings = {
   sidebarWidth: 264,
   splitRatio: 0.5,
   syncScroll: false,
+  codeLineNumbers: true,
   recentFiles: [],
   pinnedFiles: [],
   export: {

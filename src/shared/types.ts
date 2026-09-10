@@ -25,6 +25,7 @@ export interface AppSettings {
   sidebarWidth: number
   splitRatio: number // 分屏对比视图左右宽度比（左面板占比 0.25~0.75）
   syncScroll: boolean // 分屏对比视图左右滚动进度同步
+  codeLineNumbers: boolean // 代码块是否显示行号，默认开
   recentFiles: RecentFile[]
   pinnedFiles: string[]
   export: ExportSettings

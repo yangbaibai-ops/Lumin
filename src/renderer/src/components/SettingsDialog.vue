@@ -260,6 +260,16 @@ function sectionTitle(id: string): string {
                       </section>
 
                       <section class="surface mb-4 p-5">
+                        <div class="flex items-center justify-between gap-4">
+                          <div>
+                            <p class="text-[13.5px] text-ink">代码块行号</p>
+                            <p class="mt-0.5 text-[12px] text-ink-3">在代码块左侧显示行号；关闭后代码块只显示代码文本</p>
+                          </div>
+                          <button class="switch" :class="{ on: settings.codeLineNumbers }" @click="settings.set('codeLineNumbers', !settings.codeLineNumbers)" />
+                        </div>
+                      </section>
+
+                      <section class="surface mb-4 p-5">
                         <h3 class="mb-4 text-[13px] font-semibold text-ink">字体与排版</h3>
                         <div class="mb-5">
                           <div class="mb-2 flex items-center justify-between">
