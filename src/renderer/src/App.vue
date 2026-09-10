@@ -11,6 +11,7 @@ import TopMenuBar from './components/TopMenuBar.vue'
 import NotificationCenter from './components/NotificationCenter.vue'
 import ModalHost from './components/ModalHost.vue'
 import ContextMenu from './components/ContextMenu.vue'
+import EditorContextMenu from './components/EditorContextMenu.vue'
 import GlobalSearch from './components/GlobalSearch.vue'
 import SkeletonScreen from './components/SkeletonScreen.vue'
 import SettingsDialog from './components/SettingsDialog.vue'
@@ -110,6 +111,7 @@ onMounted(() => {
     <NotificationCenter />
     <ModalHost />
     <ContextMenu />
+    <EditorContextMenu />
     <GlobalSearch />
     <SettingsDialog />
     <GlobalTooltip />

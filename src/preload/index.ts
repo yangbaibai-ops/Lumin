@@ -79,6 +79,12 @@ const api: LuminAPI = {
     remove: (id) => ipcRenderer.invoke('notifications:remove', id),
     clearClosed: () => ipcRenderer.invoke('notifications:clearClosed')
   },
+  menuUsage: {
+    list: (limit) => ipcRenderer.invoke('menu:usage:list', limit),
+    bump: (actionId) => ipcRenderer.invoke('menu:usage:bump', actionId),
+    forget: (actionId) => ipcRenderer.invoke('menu:usage:forget', actionId),
+    reset: () => ipcRenderer.invoke('menu:usage:reset')
+  },
   export: {
     pdf: (payload: ExportPayload, settings) => ipcRenderer.invoke('export:pdf', payload, settings),
     html: (payload: ExportPayload) => ipcRenderer.invoke('export:html', payload),

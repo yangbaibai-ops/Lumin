@@ -32,13 +32,10 @@ function buildBlockDecorations(state: import('@tiptap/pm/state').EditorState): D
         }
         return
       }
-      case 'blockquote': {
-        // 光标在引用内 → 显示 > 标记
-        if (selFrom >= pos && selTo <= pos + node.nodeSize) {
-          decos.push(Decoration.node(pos, pos + node.nodeSize, { class: 'md-reveal' }))
-        }
+      case 'blockquote':
+        // 引用不再需要「> 」前缀标记：左侧灰色色条已足够表意（样式见 .md-preview
+        // blockquote）。这里不再产出 .md-reveal 装饰，避免每次选区变化做无用功。
         return
-      }
       case 'listItem': {
         // 无序列表项：光标在项内 → 圆点换为 '- ' 标记（有序列表保留数字）
         if (parent?.type.name === 'bulletList' && selFrom >= pos && selTo <= pos + node.nodeSize) {

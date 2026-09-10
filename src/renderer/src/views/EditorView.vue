@@ -5,6 +5,7 @@ import { useFilesStore } from '../stores/files'
 import { useUiStore } from '../stores/ui'
 import { useEditorStore } from '../stores/editor'
 import { useSettingsStore } from '../stores/settings'
+import { useEditorMenuStore } from '../stores/editorMenu'
 import Toolbar from '../components/Toolbar.vue'
 import StatusBar from '../components/StatusBar.vue'
 import TyporaEditor from '../components/editor/TyporaEditor.vue'
@@ -19,6 +20,24 @@ const files = useFilesStore()
 const ui = useUiStore()
 const editorStore = useEditorStore()
 const settings = useSettingsStore()
+const editorMenu = useEditorMenuStore()
+
+/**
+ * 渲染面板右键：先按点击位置校正选区（右键点在哪就作用于哪，表格识别才准确；
+ * 点在已有选区内则保留选区），再交 store 组装并打开菜单。
+ * 源码视图不接管（保留原生文本菜单的拼写/粘贴能力）。
+ */
+function onRenderContextMenu(e: MouseEvent): void {
+  const editor = editorStore.instance
+  if (!editor || ui.editorMode === 'source') return
+  e.preventDefault()
+  const hit = editor.view.posAtCoords({ left: e.clientX, top: e.clientY })
+  if (hit) {
+    const { from, to } = editor.state.selection
+    if (hit.pos < from || hit.pos > to) editor.commands.setTextSelection(hit.pos)
+  }
+  editorMenu.openAt(e.clientX, e.clientY)
+}
 
 function onEditorUpdate(md: string): void {
   files.setContent(md)
@@ -528,7 +547,7 @@ onBeforeUnmount(() => {
       @scroll.capture="onSplitScroll"
     >
       <!-- 渲染面板（Tiptap）：wysiwyg 全宽 / split 左栏 / source 隐藏但常驻 -->
-      <div class="h-full min-w-0" :style="renderPaneStyle()">
+      <div class="h-full min-w-0" :style="renderPaneStyle()" @contextmenu="onRenderContextMenu">
         <TyporaEditor
           :key="files.current?.path ?? 'untitled'"
           :model-value="files.current?.content ?? ''"

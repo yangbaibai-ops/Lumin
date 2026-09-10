@@ -752,9 +752,9 @@
 .md-preview blockquote {
   margin: 0.8em 0;
   padding: 0.4em 1.1em;
-  border-left: 3px solid var(--accent);
-  border-radius: 0 10px 10px 0;
-  background: var(--accent-soft);
+  /* 经典引用样式：只用一条灰色前置色条，不加底色/圆角，避免与正文的强调色抢视觉 */
+  border-left: 3px solid var(--edge-strong);
+  background: none;
   color: var(--ink-2);
 }
 .md-preview blockquote p {
@@ -1353,11 +1353,7 @@ h6.md-reveal::before {
   display: none;
 }
 
-/* 引用：> 前缀 */
-blockquote.md-reveal > p::before {
-  content: '> ';
-  color: color-mix(in srgb, var(--accent) 60%, var(--ink-3));
-}
+/* 引用：编辑态不再显示 "> " 前缀（灰色色条已足够表意） */
 
 /* ── 行内标记（真实文本标记模型：.md-marker span 即源码字符）──
    默认零占位（font-size:0——不占任何布局位，'正文段落 **加粗** 与'
@@ -1663,6 +1659,165 @@ li.md-reveal {
 .ntf-prev-leave-to {
   opacity: 0;
   transform: translateX(10px);
+}
+
+/* ── 编辑器右键菜单 ──────────────────────────────────────────────────────────
+   结构：顶部横向常用行 + 分区列表 + 底部「清除最近使用」。
+   配色全部走主题令牌，三套主题自动适配；动效为自点击点缩放淡入。 */
+.ecm-panel {
+  min-width: 268px;
+  max-width: 320px;
+  border: 1px solid var(--edge);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--elevate) 96%, transparent);
+  box-shadow: var(--shadow-2);
+  backdrop-filter: blur(14px);
+  outline: none;
+  transform-origin: top left;
+}
+.ecm-tool {
+  display: inline-flex;
+  flex: 1 1 0;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  border-radius: 8px;
+  padding: 6px 4px;
+  font-size: 11px;
+  line-height: 1.1;
+  color: var(--ink-2);
+  cursor: pointer;
+  transition:
+    background-color 0.14s ease,
+    color 0.14s ease;
+}
+.ecm-tool:hover:not(:disabled) {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+.ecm-tool:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+.ecm-section {
+  padding: 6px 8px 3px;
+  font-size: 10.5px;
+  letter-spacing: 0.02em;
+  color: var(--ink-3);
+}
+.ecm-item {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: 8px;
+  border-radius: 8px;
+  padding: 5px 8px;
+  text-align: left;
+  font-size: 13px;
+  color: var(--ink);
+  cursor: pointer;
+  transition:
+    background-color 0.1s ease,
+    color 0.1s ease;
+}
+.ecm-item .ecm-icon {
+  color: var(--ink-3);
+}
+.ecm-item.is-active:not(:disabled) {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+.ecm-item.is-active:not(:disabled) .ecm-icon {
+  color: var(--accent);
+}
+.ecm-item.is-danger {
+  color: var(--danger);
+}
+.ecm-item.is-danger .ecm-icon {
+  color: var(--danger);
+}
+.ecm-item.is-danger.is-active:not(:disabled),
+.ecm-item.is-danger:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--danger) 12%, transparent);
+  color: var(--danger);
+}
+.ecm-item:disabled {
+  opacity: 0.38;
+  cursor: default;
+}
+.ecm-key {
+  flex: none;
+  font-size: 10.5px;
+  color: var(--ink-3);
+  font-variant-numeric: tabular-nums;
+}
+.ecm-foot {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: 6px;
+  border-radius: 8px;
+  padding: 5px 8px;
+  font-size: 11.5px;
+  color: var(--ink-3);
+  cursor: pointer;
+  transition:
+    background-color 0.14s ease,
+    color 0.14s ease;
+}
+.ecm-foot:hover {
+  background: color-mix(in srgb, var(--danger) 10%, transparent);
+  color: var(--danger);
+}
+.ecm-item.is-open,
+.ecm-item.is-open .ecm-caret {
+  color: var(--accent);
+}
+.ecm-item.is-open {
+  background: var(--accent-soft);
+}
+.ecm-caret {
+  flex: none;
+  color: var(--ink-3);
+}
+/* 二级菜单：贴在一级分类行右侧，独立浮层 */
+.ecm-sub {
+  min-width: 190px;
+  max-width: 260px;
+}
+.ecm-sub .ecm-section {
+  padding: 6px 8px 4px;
+}
+/* 一级列表与二级列表都自带宽高上限并吞掉滚轮链式滚动：
+   否则在菜单上滚动会滚到底下的文档，进而触发「滚动关闭菜单」 */
+.ecm-cats,
+.ecm-sub > div {
+  max-height: min(64vh, 520px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.ecm-enter-active,
+.ecm-leave-active {
+  transition:
+    opacity 0.12s ease,
+    transform 0.12s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.ecm-enter-from,
+.ecm-leave-to {
+  opacity: 0;
+  transform: scale(0.96);
+}
+/* 二级用更轻的横向滑入，避免与一级的缩放动效打架 */
+.ecm-sub-enter-active,
+.ecm-sub-leave-active {
+  transition:
+    opacity 0.1s ease,
+    transform 0.1s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.ecm-sub-enter-from,
+.ecm-sub-leave-to {
+  opacity: 0;
+  transform: translateX(-6px);
 }
 
 /* ── 全局 tooltip（接管原生 title，统一主题样式）── */

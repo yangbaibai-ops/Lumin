@@ -25,8 +25,8 @@ body.export-body {
 .md-preview p { margin: .55em 0; }
 .md-preview a { color: var(--accent); text-decoration: none; border-bottom: 1px solid rgba(99,102,241,.35); }
 .md-preview blockquote {
-  margin: .8em 0; padding: .4em 1.1em; border-left: 3px solid var(--accent);
-  border-radius: 0 10px 10px 0; background: var(--accent-soft); color: var(--ink-2);
+  margin: .8em 0; padding: .4em 1.1em; border-left: 3px solid var(--edge-strong);
+  background: none; color: var(--ink-2);
 }
 .md-preview ul,.md-preview ol { margin: .55em 0; padding-left: 1.7em; }
 .md-preview li { margin: .22em 0; }

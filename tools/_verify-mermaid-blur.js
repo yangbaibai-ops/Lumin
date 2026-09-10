@@ -46,7 +46,7 @@ const MD = ['# mermaid 验收', '', '```mermaid', 'graph TD', '  A[开始] --> B
 
 async function main() {
   const targets = await (await fetch(CDP)).json()
-  const page = targets.find((t) => t.type === 'page')
+  const page = targets.find((t) => t.type === 'page' && t.url.includes('5173'))
   ws = new WebSocket(page.webSocketDebuggerUrl)
   await new Promise((res, rej) => { ws.onopen = res; ws.onerror = rej })
   ws.onmessage = (e) => { const m = JSON.parse(e.data); if (m.id && pending.has(m.id)) { pending.get(m.id)(m); pending.delete(m.id) } }

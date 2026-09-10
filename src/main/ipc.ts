@@ -254,6 +254,12 @@ export function registerIpc(): void {
     return n
   })
 
+  // ── 编辑器右键菜单的动作使用记录（SQLite 持久化）──
+  ipcMain.handle('menu:usage:list', (_, limit?: number) => db.listMenuUsage(limit ?? 8))
+  ipcMain.handle('menu:usage:bump', (_, actionId: string) => db.bumpMenuUsage(actionId))
+  ipcMain.handle('menu:usage:forget', (_, actionId: string) => db.forgetMenuUsage(actionId))
+  ipcMain.handle('menu:usage:reset', () => db.resetMenuUsage())
+
   // ── 草稿 ──
   ipcMain.handle('drafts:save', (_, key: string, content: string, p: string | null) =>
     drafts.saveDraft(key, content, p)

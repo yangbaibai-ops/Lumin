@@ -5,6 +5,7 @@ import { app } from 'electron'
 import path from 'path'
 import type {
   AppNotification,
+  MenuUsageEntry,
   NotificationInput,
   NotificationLevel,
   NotificationListOptions,
@@ -66,6 +67,12 @@ interface NotificationRow {
   merge_key: string
   created_at: number
   closed_at: number | null
+}
+
+interface MenuUsageRow {
+  action_id: string
+  count: number
+  last_used: number
 }
 
 const NOTIFICATION_LEVELS: NotificationLevel[] = ['info', 'success', 'warning', 'error']
@@ -143,6 +150,15 @@ class LuminDatabase {
       );
       CREATE INDEX IF NOT EXISTS idx_notifications_open
         ON notifications(closed_at, created_at DESC);
+    `)
+    // 编辑器右键菜单的动作使用记录：驱动「最近使用」分区（跨会话保留）
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS menu_usage (
+        action_id TEXT PRIMARY KEY,
+        count INTEGER NOT NULL DEFAULT 0,
+        last_used INTEGER NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_menu_usage_last_used ON menu_usage(last_used DESC);
     `)
     // FTS5：trigram 分词器（对中日韩文本支持子串匹配；支持片段高亮）
     const ftsRow = this.db
@@ -450,6 +466,40 @@ class LuminDatabase {
          )`
       )
       .run(keep)
+  }
+
+  // ── 编辑器右键菜单：动作使用记录（CRUD，驱动「最近使用」）───────────────
+  // 只有「增/改（bump 累加）」与「查/删」两条路径，语义简单：
+  // 每次从菜单执行动作就 bump 一次，菜单按 last_used 倒序取前 N 组成「最近使用」。
+
+  bumpMenuUsage(actionId: string): MenuUsageEntry {
+    const now = Date.now()
+    this.db
+      .prepare(
+        `INSERT INTO menu_usage (action_id, count, last_used) VALUES (?, 1, ?)
+         ON CONFLICT(action_id) DO UPDATE SET count = count + 1, last_used = excluded.last_used`
+      )
+      .run(actionId, now)
+    const row = this.db
+      .prepare('SELECT action_id, count, last_used FROM menu_usage WHERE action_id = ?')
+      .get(actionId) as unknown as MenuUsageRow
+    return { actionId: row.action_id, count: row.count, lastUsed: row.last_used }
+  }
+
+  listMenuUsage(limit = 8): MenuUsageEntry[] {
+    const rows = this.db
+      .prepare('SELECT action_id, count, last_used FROM menu_usage ORDER BY last_used DESC LIMIT ?')
+      .all(limit) as unknown as MenuUsageRow[]
+    return rows.map((r) => ({ actionId: r.action_id, count: r.count, lastUsed: r.last_used }))
+  }
+
+  forgetMenuUsage(actionId: string): void {
+    this.db.prepare('DELETE FROM menu_usage WHERE action_id = ?').run(actionId)
+  }
+
+  resetMenuUsage(): number {
+    const info = this.db.prepare('DELETE FROM menu_usage').run()
+    return Number(info.changes)
   }
 
   // ── 应用状态 kv（设置 / 工作区持久化，JSON 序列化）──
