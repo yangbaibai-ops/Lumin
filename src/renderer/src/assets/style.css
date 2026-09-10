@@ -838,15 +838,14 @@
 .md-preview table {
   border-collapse: collapse;
   margin: 0.9em 0;
-  /* 默认占满整个写作区域宽度（即使只有一列）：fixed 布局把可用宽度按列
-     均分，单列即 100%；每列 min-width:56px 保证最小可读宽度，列数多到
-     总宽超过容器时由 overflow-x 提供表格内横向滚动 */
+  /* 始终占满整个写作区宽度：auto 布局会把多余空间按内容分配（用 fixed 会把列
+     均分/压窄，且 fixed 下单元格 min-width 会被忽略）。列数多到「各列 min-width
+     之和」超过容器时表格自然溢出，由 .tableWrapper 的 overflow-x 出横向滚动，
+     而不是把列挤到读不了。注意不能用 display:block 做滚动容器——那会让内部的
+     匿名表格退化为 auto+shrink-to-fit，表格实际只占内容宽度，撑不满写作区。 */
   width: 100%;
-  max-width: 100%;
-  table-layout: fixed;
+  table-layout: auto;
   font-size: 0.95em;
-  display: block;
-  overflow-x: auto;
 }
 .md-preview thead {
   background: var(--panel-2);
@@ -856,10 +855,8 @@
   border: 1px solid var(--edge);
   padding: 7px 13px;
   text-align: left;
-  /* 单元格宽度约束：min-width 保证最小可读宽度（列多到总宽超过容器时
-     由 overflow-x 出横向滚动条）；fixed 布局下不设 max-width——列数少时
-     表格（哪怕 1×1）占满整个写作区宽度，多列均分 + word-break 换行 */
-  min-width: 56px;
+  /* 每个单元格的最小宽度：列多到总宽超过容器时由横向滚动承载，保证最小可读宽度 */
+  min-width: 96px;
   word-break: break-word;
   overflow-wrap: break-word;
 }
@@ -1565,10 +1562,14 @@ li.md-reveal {
   cursor: pointer;
 }
 
-/* 表格容器（Tiptap tableWrapper） */
+/* 表格容器（Tiptap tableWrapper）：表格自身的横向滚动与统一外边距都交给它 */
 .md-preview .tableWrapper {
   overflow-x: auto;
   margin: 0.9em 0;
+}
+/* 表格已由 wrapper 提供外边距，这里清零，避免 0.9em 叠加成 1.8em */
+.md-preview .tableWrapper > table {
+  margin: 0;
 }
 
 /* 图片 */
