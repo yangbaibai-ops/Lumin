@@ -1,6 +1,6 @@
 <script setup lang="ts">
 // ─── 代码块 NodeView：CodeMirror 6 嵌入 + 语言切换 + Mermaid 渲染 ───────────
-import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { NodeViewWrapper, nodeViewProps } from '@tiptap/vue-3'
 import { Compartment, EditorState, type Extension } from '@codemirror/state'
 import { EditorView, keymap, lineNumbers, drawSelection } from '@codemirror/view'
@@ -313,8 +313,19 @@ function syncToNode(): void {
   pinCmFocus()
 }
 
-watch(selectedLanguage, (lang) => {
+watch(selectedLanguage, async (lang) => {
   props.updateAttributes({ language: lang })
+  if (lang === 'mermaid') {
+    // 切到 mermaid：CM 宿主节点即将被 v-else 卸载，先彻底拆掉（含焦点封堵、
+    // 观察器恢复），并退出源码态——否则再切回 mermaid 会看到残留的 textarea
+    editingMermaid.value = false
+    teardownCm()
+    void renderMermaid()
+    return
+  }
+  // 从 mermaid 切到其它语言：等 v-else 的 CM 容器挂载后按需创建视图
+  await nextTick()
+  initCm()
   void loadLanguage(lang)
 })
 
@@ -387,13 +398,19 @@ function buildCmExtensions(): Extension[] {
   ]
 }
 
-onMounted(() => {
-  if (selectedLanguage.value === 'mermaid') {
-    void renderMermaid()
-    return
-  }
+// ── CM 视图的创建 / 拆除 ────────────────────────────────────────────────────
+// 语言可在 mermaid 与其它语言之间来回切换，而模板用 v-if/v-else 在「图表容器」
+// 与「CM 容器」之间换的是不同的 DOM 节点：切到 mermaid 时 CM 的宿主节点被卸载，
+// 切回来时又是一个全新的空节点。因此 CM 视图必须能按需创建（initCm）与彻底拆除
+// （teardownCm）——原先只在 onMounted 里建一次且 mermaid 分支提前 return，
+// 结果从 mermaid 切到其它语言时只剩一块空白代码区。
+let guardAcquired = false
+let cmWrapper: HTMLElement | null = null
+
+/** 创建 CM 视图并挂好焦点封堵 / 观察器暂停（已有视图时直接返回） */
+function initCm(): void {
   const host = editorRef.value
-  if (!host) return
+  if (!host || cmView) return
   const state = EditorState.create({
     doc: props.node.textContent,
     extensions: buildCmExtensions()
@@ -415,6 +432,7 @@ onMounted(() => {
   }
   // 共享守卫：挂载期间令 PM hasFocus 返回 false（引用计数，多代码块安全）
   acquireHasFocusGuard(pmView)
+  guardAcquired = true
 
   // ── 观察器暂停 ──
   // hasFocus=false 只能拦下 document 级 selectionchange 的误读；但 CM 在
@@ -438,7 +456,12 @@ onMounted(() => {
   // 为 false 的 20ms selectionToDOM 会把 DOM 选区重置回 PM 状态选区（即
   // 标题），表现为「光标被抢回标题」。捕获阶段拦截：relatedTarget 落在
   // .cm-editor 内就 stopImmediatePropagation，令 PM 认为焦点从未离开。
+  // 注意：只拦截 PM 根节点自身的那一次 blur（e.target === pmView.dom）。监听挂在
+  // PM 根节点的捕获阶段，PM 内任意后代的 blur 都会先经过这里；若不加该判断，
+  // 节点视图内其它可聚焦元素（如 mermaid 源码 textarea）失焦到 CM 时代码块时，
+  // 其 blur 会被一并吞掉，@blur="commitMermaid" 不执行，块就卡在源码态。
   onPmBlurCapture = (e) => {
+    if (e.target !== pmView.dom) return
     const rt = e.relatedTarget as HTMLElement | null
     if (rt && typeof rt.closest === 'function' && rt.closest('.cm-editor')) {
       e.stopImmediatePropagation()
@@ -454,37 +477,66 @@ onMounted(() => {
   // 在拖选时把焦点在 PM 根节点与 CM 内容区之间来回弹跳——正是抢焦点的根源。
   // 显式把 NodeView 根节点标为不可编辑，把 CM 隔离成独立编辑岛。
   const wrapper = host.parentElement
-  if (wrapper) wrapper.contentEditable = 'false'
-  void loadLanguage(selectedLanguage.value)
-})
+  if (wrapper) {
+    cmWrapper = wrapper
+    wrapper.contentEditable = 'false'
+  }
+}
 
-onBeforeUnmount(() => {
-  unregisterCodeBlockHandle(handle)
+/** 拆掉 CM 视图与它挂上的所有监听（切到 mermaid、组件卸载时调用） */
+function teardownCm(): void {
+  if (!cmView && !guardAcquired) return
   // 释放共享 hasFocus 守卫（引用计数归零才恢复 PM 原始实现）
-  releaseHasFocusGuard(props.editor.view)
+  if (guardAcquired) {
+    releaseHasFocusGuard(props.editor.view)
+    guardAcquired = false
+  }
   // 移除 blur 拦截器
   if (onPmBlurCapture && props.editor.view.dom) {
     props.editor.view.dom.removeEventListener('blur', onPmBlurCapture, true)
   }
   onPmBlurCapture = null
-  // 若销毁时 CM 仍处于聚焦态，观察器处于暂停态，需恢复
+  cmView?.destroy()
+  cmView = null
+  // 还原隔离用的 contentEditable：图表态下没有 CM，不需要独立编辑岛
+  if (cmWrapper) {
+    cmWrapper.contentEditable = 'inherit'
+    cmWrapper = null
+  }
+  // 销毁时若 CM 仍处于聚焦态，观察器处于暂停态：确认没有别的 CM 仍持有焦点后恢复
   const v = props.editor.view as typeof props.editor.view & {
     domObserver: { stop: () => void; start: () => void }
   }
   const ae = document.activeElement
-  if (v && v.domObserver && !(ae && ae.closest('.cm-editor'))) v.domObserver.start()
+  if (v && v.domObserver && !(ae && ae.closest && ae.closest('.cm-editor'))) v.domObserver.start()
+}
+
+onMounted(() => {
+  if (selectedLanguage.value === 'mermaid') {
+    void renderMermaid()
+    return
+  }
+  initCm()
+  void loadLanguage(selectedLanguage.value)
+})
+
+onBeforeUnmount(() => {
+  unregisterCodeBlockHandle(handle)
+  teardownCm()
   if (pinTimer) clearTimeout(pinTimer)
   pinTimer = null
   if (extSyncTimer) clearTimeout(extSyncTimer)
   extSyncTimer = null
-  cmView?.destroy()
-  cmView = null
 })
 
 // ─── Mermaid 渲染 ───
 const mermaidSvg = ref('')
 const editingMermaid = ref(false)
 const mermaidSource = ref('')
+const mermaidInputRef = ref<HTMLTextAreaElement | null>(null)
+const mermaidRenderRef = ref<HTMLElement | null>(null)
+/** 进入源码态时沿用的图表高度（px）：让两种形态的块高一致 */
+const mermaidEditHeight = ref<number | null>(null)
 let mermaidRenderTimer: ReturnType<typeof setTimeout> | null = null
 
 async function renderMermaid(): Promise<void> {
@@ -514,7 +566,24 @@ watch(
 
 function startMermaidEdit(): void {
   mermaidSource.value = props.node.textContent
+  // 先量图表高度，让源码态沿用同一高度：一是切换形态时不再有布局跳动，
+  // 二是避免「折叠时块变矮/变高」把鼠标下的其它图表挪走——那样紧随其后的
+  // mouseup 会落到别的元素上，浏览器只在两者的共同祖先上补一个 click，
+  // 于是「点另一个图表」这一次点击被吞掉，看起来像没反应。
+  mermaidEditHeight.value = mermaidRenderRef.value
+    ? Math.round(mermaidRenderRef.value.getBoundingClientRect().height)
+    : null
   editingMermaid.value = true
+  // 进入源码态后必须把焦点交给 textarea：点击时 textarea 尚不存在（v-else 刚切换），
+  // 浏览器不会给它焦点，PM 的 click 处理器又会把焦点交给 PM 根节点——于是
+  // 「点击块外」不会产生任何 blur，commitMermaid 永不执行，块卡在源码态，
+  // 表现为「要再点进去一次、再失焦一次才回到图表」。
+  void nextTick(() => {
+    const el = mermaidInputRef.value
+    if (!el) return
+    el.focus()
+    el.setSelectionRange(el.value.length, el.value.length)
+  })
 }
 
 function commitMermaid(): void {
@@ -545,13 +614,21 @@ function commitMermaid(): void {
 
     <!-- Mermaid 图表模式 -->
     <div v-if="selectedLanguage === 'mermaid'" class="mermaid-block">
-      <div v-if="!editingMermaid" class="mermaid-render" title="点击编辑源码" @click="startMermaidEdit">
+      <div
+        v-if="!editingMermaid"
+        ref="mermaidRenderRef"
+        class="mermaid-render"
+        title="点击编辑源码"
+        @click="startMermaidEdit"
+      >
         <div v-html="mermaidSvg" />
       </div>
       <textarea
         v-else
+        ref="mermaidInputRef"
         v-model="mermaidSource"
         class="mermaid-source-input"
+        :style="mermaidEditHeight ? { minHeight: mermaidEditHeight + 'px' } : null"
         spellcheck="false"
         @blur="commitMermaid"
       />
