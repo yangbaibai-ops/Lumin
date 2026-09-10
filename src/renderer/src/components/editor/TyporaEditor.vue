@@ -32,6 +32,11 @@ let lastEmitTime = 0
 
 function flushSync(ed: Editor): void {
   if (unmounting) return
+  // 源码模式：编辑器被 display:none 隐藏，切走时其 blur 若把序列化 md 写回
+  // files 会重置 textarea 的 value/光标（还把源码模式里的最新编辑覆盖掉）。
+  // 源码模式的编辑面是 textarea，编辑器只是隐藏副本——切回编辑器视图时由
+  // EditorView 按需一次性同步（syncEditorContent），此处无需 emit。
+  if (ui.editorMode === 'source') return
   clearTimeout(syncTimer as never)
   syncTimer = null
   try {
@@ -39,6 +44,8 @@ function flushSync(ed: Editor): void {
     lastEmitted = md
     lastEmitTime = performance.now()
     emit('update:modelValue', md)
+    // 编辑器文档 == 刚序列化的 md（files 槽同步由父组件 onEditorUpdate 完成）
+    editorStore.markSynced(md)
   } catch {
     /* 序列化失败时保持上次状态 */
   }
@@ -62,6 +69,7 @@ const editor = useEditor({
   },
   onUpdate: ({ editor: ed }) => {
     // 防抖 250ms：高频输入合并序列化（开发文档性能建议）
+    editorStore.markDirty()
     clearTimeout(syncTimer as never)
     syncTimer = setTimeout(() => flushSync(ed), 250)
   },
@@ -75,6 +83,8 @@ const editor = useEditor({
   },
   onCreate: ({ editor: ed }) => {
     editorStore.bind(ed)
+    // 编辑器以 props.modelValue（=files.content）整装创建：记录已对齐 md
+    editorStore.markSynced(props.modelValue)
     updateCursor(ed)
     // 真实文本标记模型：初始解析产物只有 legacy bold 等 mark，
     // 归一化一次把标记文本写入文档（后续由 appendTransaction 自动维护）
@@ -101,12 +111,19 @@ watch(
   (nv) => {
     const ed = editor.value
     if (!ed) return
+    // 源码模式：编辑器常驻但隐藏，textarea 才是编辑面。逐键的 files 更新
+    // 若在这里 setContent 会变成「每次停顿重解析整篇大文档」（历史卡顿根源），
+    // 交给 EditorView 在切回编辑器视图时按需一次性同步（restore 里的
+    // syncEditorContent）。文件打开/草稿恢复走 :key 重建，同样不需要此路径。
+    if (ui.editorMode === 'source') return
     if (nv === lastEmitted) return
     if (performance.now() - lastEmitTime < 600) return
     try {
       const current = getMarkdown(ed)
       if (current !== nv) {
         ed.commands.setContent(nv, { emitUpdate: false })
+        // 外部同步后编辑器文档 == nv（files 内容），记录对齐状态
+        editorStore.markSynced(nv)
       }
     } catch {
       /* 忽略序列化异常 */

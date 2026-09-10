@@ -42,6 +42,17 @@ export interface FileNode {
   type: 'file' | 'directory'
 }
 
+/** 文件列表视图（Typora 式侧边栏「列表」）：工作区 Markdown 文章的扁平条目 */
+export interface WorkspaceDoc {
+  name: string
+  /** 相对工作区根目录的路径（分隔符统一为 /），根级为空串 */
+  relPath: string
+  path: string
+  mtimeMs: number
+  /** 正文头部预览（去除 Markdown 符号后的一段纯文本） */
+  preview: string
+}
+
 export interface OpenedFile {
   path: string
   name: string
@@ -137,6 +148,8 @@ export interface LuminAPI {
     read: (path: string) => Promise<OpenedFile>
     write: (path: string, content: string) => Promise<void>
     readDir: (dir: string) => Promise<FileNode[]>
+    /** 递归扫描工作区根目录，返回全部 Markdown 文章（含 mtime 与正文预览） */
+    scanWorkspace: (root: string) => Promise<WorkspaceDoc[]>
     createFile: (path: string) => Promise<void>
     createDir: (path: string) => Promise<void>
     remove: (path: string) => Promise<void>

@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import type { DraftInfo, FileNode, OpenedFile } from '../../../shared/types'
+import type { DraftInfo, FileNode, OpenedFile, WorkspaceDoc } from '../../../shared/types'
 import { useSettingsStore } from './settings'
 import { useUiStore } from './ui'
 import i18n from '../i18n'
@@ -20,6 +20,13 @@ export const useFilesStore = defineStore('files', {
     currentDir: null as string | null,
     dirCache: {} as Record<string, FileNode[]>,
     expanded: new Set<string>() as Set<string>,
+    /** 侧边栏「列表视图」的工作区文章缓存（主进程递归扫描结果） */
+    docs: [] as WorkspaceDoc[],
+    /** 文档列表的失效世代：工作区结构变化 / 保存后自增，列表组件据此重扫 */
+    docsEpoch: 0,
+    /** 上次成功扫描所对应的世代（避免同世代重复扫描） */
+    lastDocsEpoch: -1,
+    docsLoading: false,
     current: null as CurrentDoc | null,
     draftRestore: null as DraftInfo | null,
     saveTimer: null as ReturnType<typeof setTimeout> | null,
@@ -59,12 +66,42 @@ export const useFilesStore = defineStore('files', {
         await this.loadChildren(this.root)
       }
       // 外部软件增删/改名文件时，主进程 fs.watch 推送 workspace:changed，
-      // 实时刷新根目录与所有已展开子目录
+      // 实时刷新根目录与所有已展开子目录；列表视图缓存一并失效
       window.luminAPI.events.on('workspace:changed', () => {
         if (!this.root) return
         const dirs = new Set<string>([this.root, ...this.expanded])
         for (const dir of dirs) void this.loadChildren(dir)
+        this.docsEpoch++
       })
+    },
+    /** 列表视图：重新扫描工作区文章。同根目录、epoch 未变时不重复扫描 */
+    async loadDocs(): Promise<void> {
+      if (!this.root || this.docsLoading) return
+      const root = this.root
+      const epoch = this.docsEpoch
+      if (this.docs.length && epoch === this.lastDocsEpoch) return
+      this.docsLoading = true
+      try {
+        const docs = await window.luminAPI.file.scanWorkspace(root)
+        if (this.root === root && this.docsEpoch === epoch) {
+          this.docs = docs
+          this.lastDocsEpoch = epoch
+        }
+      } catch {
+        /* 扫描失败保留旧缓存 */
+      } finally {
+        this.docsLoading = false
+      }
+    },
+    /** 当前文档保存成功后，就地刷新列表里该条目的 mtime（避免整库重扫） */
+    bumpDocMtime(path: string): void {
+      const item = this.docs.find((d) => d.path === path)
+      if (item) {
+        item.mtimeMs = Date.now()
+        this.docs = [...this.docs].sort(
+          (a, b) => b.mtimeMs - a.mtimeMs || a.name.localeCompare(b.name, 'zh-CN')
+        )
+      }
     },
     async openFolder(): Promise<void> {
       const dir = await window.luminAPI.file.chooseFolder()
@@ -75,6 +112,8 @@ export const useFilesStore = defineStore('files', {
       this.root = dir
       this.dirCache = {}
       this.expanded.clear()
+      this.docs = []
+      this.docsEpoch++
       await window.luminAPI.workspace.setRoot(dir)
       if (dir) {
         this.expanded.add(dir)
@@ -102,6 +141,8 @@ export const useFilesStore = defineStore('files', {
       for (const key of Object.keys(this.dirCache)) {
         if (key !== dir && key.startsWith(dir + '\\')) delete this.dirCache[key]
       }
+      // 结构变化（新建/删除/改名）会改变列表内容，失效列表缓存
+      this.docsEpoch++
     },
     async createFileAt(dir: string, name: string): Promise<string | null> {
       const path = await window.luminAPI.file.join(dir, name.endsWith('.md') ? name : `${name}.md`)
@@ -217,6 +258,8 @@ export const useFilesStore = defineStore('files', {
     close(): void {
       this.current = null
       this.draftRestore = null
+      this.docs = []
+      this.docsEpoch++
     },
     draftKey(path: string | null): string {
       if (!path) return 'untitled'
@@ -265,6 +308,8 @@ export const useFilesStore = defineStore('files', {
         this.current.savedContent = this.current.content
         await window.luminAPI.drafts.remove(this.draftKey(this.current.path))
         this.touchRecent(this.current.path)
+        // 列表视图就地刷新该条目的修改时间（若列表已打开）
+        this.bumpDocMtime(this.current.path)
         return true
       } catch {
         useUiStore().toast(i18n.global.t('toast.saveFailed'), 'error')

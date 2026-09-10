@@ -3,7 +3,7 @@ import fs from 'fs/promises'
 import path from 'path'
 import { pathToFileURL } from 'url'
 import { db } from './services/database'
-import type { FileNode } from '../shared/types'
+import type { FileNode, WorkspaceDoc } from '../shared/types'
 
 export const MD_EXT_RE = /\.(md|markdown|mdown|mkd|txt)$/i
 
@@ -54,6 +54,89 @@ export async function readDir(dir: string): Promise<FileNode[]> {
     return a.name.localeCompare(b.name, 'zh-CN')
   })
   return nodes
+}
+
+/** 把一段 Markdown 文本转成纯文本预览（去符号、去行首标记、折叠空白） */
+function toPlainPreview(text: string, max = 140): string {
+  const lines = text
+    .replace(/^\uFEFF/, '')
+    .split(/\r?\n/)
+    .filter((l) => !/^\s*(#|>|-{3,}|\*{3,}|```)/.test(l) && l.trim())
+    .map((l) => l.replace(/[`*_~\[\]()!#>]/g, '').replace(/\s+/g, ' ').trim())
+    .filter(Boolean)
+  const plain = lines.join(' ').trim()
+  return plain.length > max ? plain.slice(0, max).trimEnd() + '…' : plain
+}
+
+/** 读取文件头部的预览文本（只读前 ~1KB，避免大文件全量读取） */
+async function readPreviewHead(filePath: string, bytes = 1024): Promise<string> {
+  try {
+    const fh = await fs.open(filePath, 'r')
+    try {
+      const buf = Buffer.alloc(bytes)
+      const { bytesRead } = await fh.read(buf, 0, bytes, 0)
+      return toPlainPreview(buf.subarray(0, bytesRead).toString('utf8'))
+    } finally {
+      await fh.close()
+    }
+  } catch {
+    return ''
+  }
+}
+
+/** 递归扫描工作区根目录下的全部 Markdown 文章，返回扁平条目。
+    用于侧边栏「列表」视图（Typora 式）：展示每篇的修改时间与正文预览。
+    - 只统计 md/markdown/mdown/mkd/txt；
+    - 跳过隐藏目录（.git/.obsidian 等）以提速并避免噪音；
+    - 并发受限 + 行数上限，超大工作区也能安全返回。 */
+export async function scanWorkspace(root: string): Promise<WorkspaceDoc[]> {
+  const docs: WorkspaceDoc[] = []
+  const MAX_DOCS = 4000
+  const MAX_DEPTH = 24
+  let cancelled = false
+
+  async function walk(dir: string, relDir: string, depth: number): Promise<void> {
+    if (cancelled || depth > MAX_DEPTH) return
+    let entries: import('fs').Dirent[]
+    try {
+      entries = await fs.readdir(dir, { withFileTypes: true })
+    } catch {
+      return
+    }
+    const dirs: import('fs').Dirent[] = []
+    for (const e of entries) {
+      if (e.name.startsWith('.')) continue
+      const p = path.join(dir, e.name)
+      if (e.isDirectory()) {
+        dirs.push(e)
+      } else if (e.isFile() && MD_EXT_RE.test(e.name)) {
+        if (docs.length >= MAX_DOCS) {
+          cancelled = true
+          return
+        }
+        try {
+          const stat = await fs.stat(p)
+          docs.push({
+            name: e.name,
+            relPath: relDir,
+            path: p,
+            mtimeMs: stat.mtimeMs,
+            preview: await readPreviewHead(p)
+          })
+        } catch {
+          /* 读取失败的条目跳过 */
+        }
+      }
+    }
+    // 并发遍历子目录（目录数通常有限）
+    await Promise.all(
+      dirs.map((d) => walk(path.join(dir, d.name), relDir ? `${relDir}/${d.name}` : d.name, depth + 1))
+    )
+  }
+
+  await walk(root, '', 0)
+  docs.sort((a, b) => b.mtimeMs - a.mtimeMs || a.name.localeCompare(b.name, 'zh-CN'))
+  return docs
 }
 
 export async function writeFile(filePath: string, content: string): Promise<void> {

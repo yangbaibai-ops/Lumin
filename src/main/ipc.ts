@@ -114,6 +114,9 @@ export function registerIpc(): void {
     db.upsertDocument({ path: fp, title: path.basename(fp), content })
   })
   ipcMain.handle('file:readDir', (_, dir: string) => fileOps.readDir(fileOps.assertWorkspacePath(dir)))
+  ipcMain.handle('file:scanWorkspace', (_, dir: string) =>
+    fileOps.scanWorkspace(fileOps.assertWorkspacePath(dir))
+  )
   ipcMain.handle('file:createFile', async (_, p: string) => {
     const fp = fileOps.assertWorkspacePath(p)
     await fileOps.writeFile(fp, '')

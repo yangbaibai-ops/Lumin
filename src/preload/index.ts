@@ -26,6 +26,7 @@ const api: LuminAPI = {
     read: (path) => ipcRenderer.invoke('file:read', path),
     write: (path, content) => ipcRenderer.invoke('file:write', path, content),
     readDir: (dir) => ipcRenderer.invoke('file:readDir', dir),
+    scanWorkspace: (root) => ipcRenderer.invoke('file:scanWorkspace', root),
     createFile: (path) => ipcRenderer.invoke('file:createFile', path),
     createDir: (path) => ipcRenderer.invoke('file:createDir', path),
     remove: (path) => ipcRenderer.invoke('file:remove', path),

@@ -62,7 +62,14 @@
     "clickReselect": "Нажмите, чтобы выбрать папку заново",
     "emptyFolder": "Папка пуста",
     "emptyFolderHint": "ПКМ для создания Markdown-файла",
-    "openFolderBtn": "Открыть папку"
+    "openFolderBtn": "Открыть папку",
+    "viewTree": "Дерево",
+    "viewList": "Список",
+    "docsCount": "Статей: {n}",
+    "listEmpty": "В рабочем пространстве пока нет Markdown-файлов",
+    "listEmptyHint": "Создайте или импортируйте статьи в дереве файлов",
+    "loading": "Загрузка…",
+    "modifiedAt": "Изменено: {time}"
   },
   "menu": {
     "file": "Файл(F)",

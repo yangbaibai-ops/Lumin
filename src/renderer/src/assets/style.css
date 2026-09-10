@@ -422,6 +422,11 @@
   color: var(--accent);
 }
 
+/* 视图切换恢复期间隐藏内容区（保留布局，仅供恢复完成后一次性呈现） */
+.view-restoring {
+  visibility: hidden;
+}
+
 /* ── 源码模式：纯文本 Markdown 编辑区（Typora 同款观感，零渲染样式）── */
 /* 高度链：.editor-scroll(h-full) → .mx-auto(h-full) → textarea(height:100%)，
    填满可视区；长内容在 textarea 内部滚动（VSCode 式单一滚动区） */

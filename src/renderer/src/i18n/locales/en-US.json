@@ -62,7 +62,14 @@
     "clickReselect": "Click to reselect folder",
     "emptyFolder": "Folder is empty",
     "emptyFolderHint": "Right-click to create a Markdown file",
-    "openFolderBtn": "Open Folder"
+    "openFolderBtn": "Open Folder",
+    "viewTree": "Tree view",
+    "viewList": "List view",
+    "docsCount": "{n} articles",
+    "listEmpty": "No Markdown files in this workspace yet",
+    "listEmptyHint": "Create or import articles in the file tree to see them here",
+    "loading": "Loading…",
+    "modifiedAt": "Modified {time}"
   },
   "menu": {
     "file": "File(F)",

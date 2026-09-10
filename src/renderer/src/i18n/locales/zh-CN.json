@@ -63,7 +63,14 @@
     "clickReselect": "点击重新选择文件夹",
     "emptyFolder": "文件夹为空",
     "emptyFolderHint": "右键新建 Markdown 文件",
-    "openFolderBtn": "打开文件夹"
+    "openFolderBtn": "打开文件夹",
+    "viewTree": "树视图",
+    "viewList": "列表视图",
+    "docsCount": "{n} 篇文章",
+    "listEmpty": "工作区中还没有 Markdown 文件",
+    "listEmptyHint": "在文件树中新建或导入文章后即可在此查看",
+    "loading": "加载中…",
+    "modifiedAt": "修改于 {time}"
   },
   "menu": {
     "file": "文件(F)",

@@ -8,6 +8,8 @@ export interface CodeBlockHandle {
   getPos: () => number | undefined
   /** 把焦点与光标移入本代码块 CodeMirror 的末尾；无 CM（mermaid 等）返回 false */
   focusCmAtEnd: () => boolean
+  /** 请求 CM 重新测量（面板从隐藏转可见后尺寸恢复时调用） */
+  requestMeasure?: () => void
 }
 
 const handles = new Set<CodeBlockHandle>()
@@ -26,4 +28,11 @@ export function findCodeBlockHandle(pos: number): CodeBlockHandle | undefined {
     if (h.getPos() === pos) return h
   }
   return undefined
+}
+
+/** 请求所有已注册代码块重新测量（如隐藏的编辑器面板重新显示后） */
+export function measureAllCodeBlocks(): void {
+  for (const h of handles) {
+    h.requestMeasure?.()
+  }
 }

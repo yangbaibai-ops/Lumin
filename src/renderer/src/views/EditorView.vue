@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { TextSelection } from '@tiptap/pm/state'
 import { useFilesStore } from '../stores/files'
 import { useUiStore } from '../stores/ui'
 import { useEditorStore } from '../stores/editor'
@@ -8,8 +9,12 @@ import Toolbar from '../components/Toolbar.vue'
 import StatusBar from '../components/StatusBar.vue'
 import TyporaEditor from '../components/editor/TyporaEditor.vue'
 import Icon from '../components/Icon.vue'
+import { measureAllCodeBlocks } from '../lib/editor/codeBlockViews'
 
 // ─── 编辑器页面：工具栏 + 实时渲染/分屏对比/源码三模式 + 状态栏 ────────────
+// 布局模型：渲染面板（Tiptap）与源码面板（textarea）各只挂载一次、常驻 DOM，
+// 模式切换只改变两个面板的尺寸/显隐与分隔条，绝不卸载重建编辑器内核——
+// 大文档下 TyporaEditor 重建是此前切换耗时（数百 ms）的唯一来源。
 const files = useFilesStore()
 const ui = useUiStore()
 const editorStore = useEditorStore()
@@ -17,13 +22,36 @@ const settings = useSettingsStore()
 
 function onEditorUpdate(md: string): void {
   files.setContent(md)
+  // 编辑器刚把自身序列化写入文件槽：记录「编辑器内容 == 该 md」，
+  // 供后续离开源码模式时判断是否需要一次性同步回编辑器
+  editorStore.markSynced(md)
 }
 
+/** editorStore.instance 的窄化类型（跨文件类型别名，避免 Editor 泛型不一致） */
+type PmEditor = NonNullable<typeof editorStore.instance>
+
 // ─── 源码面板（textarea 原始 Markdown，绝不渲染样式）──
+// 分屏右侧与全屏源码模式共用同一个常驻 textarea：切换时选区/滚动天然保留，
+// 只需按模式切换外层的居中/留白类。
 const sourceRef = ref<HTMLTextAreaElement | null>(null)
+
+function syncEditorContent(): void {
+  const content = files.current?.content ?? ''
+  const ed = editorStore.instance
+  if (!ed || editorStore.syncedMd === content) return
+  try {
+    // 源码模式里 textarea 是编辑面，编辑器只是被隐藏的渲染副本：一次性
+    // setContent 使其与最新源码对齐（emitUpdate:false 不回灌 files）
+    ed.commands.setContent(content, { emitUpdate: false })
+    editorStore.markSynced(content)
+  } catch {
+    /* 忽略：编辑器未就绪时保持现状 */
+  }
+}
 
 function onSourceInput(e: Event): void {
   files.setContent((e.target as HTMLTextAreaElement).value)
+  if (ui.editorMode === 'split') scheduleSplitSync()
 }
 
 /** 源码模式 Tab 插入两个空格（textarea 默认 Tab 会移出焦点，写作语义不符） */
@@ -34,7 +62,7 @@ function onSourceTab(e: KeyboardEvent): void {
   ta.value = value.slice(0, selectionStart) + '  ' + value.slice(selectionEnd)
   ta.selectionStart = ta.selectionEnd = selectionStart + 2
   files.setContent(ta.value)
-  scheduleSplitSync()
+  if (ui.editorMode === 'split') scheduleSplitSync()
 }
 
 /** 源码模式光标位置 → 状态栏 */
@@ -59,17 +87,14 @@ function scheduleSplitSync(): void {
     splitSyncTimer = null
     const ed = editorStore.instance
     if (!ed) return
-    ed.commands.setContent(files.current?.content ?? '', { emitUpdate: false })
+    const content = files.current?.content ?? ''
+    ed.commands.setContent(content, { emitUpdate: false })
+    editorStore.markSynced(content)
   }, 200)
 }
 
-function onSplitSourceInput(e: Event): void {
-  onSourceInput(e)
-  scheduleSplitSync()
-}
-
 // ── 分屏分隔条拖拽（比例 0.25~0.75，SQLite kv 持久化）──
-const splitHostRef = ref<HTMLElement | null>(null)
+const kernelRef = ref<HTMLElement | null>(null)
 const splitRatio = ref<number>(settings.splitRatio)
 const splitDragging = ref(false)
 
@@ -79,7 +104,7 @@ function clampRatio(v: number): number {
 
 function startSplitDrag(e: MouseEvent): void {
   e.preventDefault()
-  const host = splitHostRef.value
+  const host = kernelRef.value
   if (!host) return
   const rect = host.getBoundingClientRect()
   splitDragging.value = true
@@ -98,14 +123,14 @@ function startSplitDrag(e: MouseEvent): void {
 }
 
 // ─── 分屏同步滚动 ───
-// scroll 事件不冒泡但可捕获：在分屏容器挂 capture 监听，左右任意一栏滚动
-// （含左侧代码块的 CodeMirror 内部滚动）都按「滚动进度比」映射到另一栏。
+// scroll 事件不冒泡但可捕获：在内核容器挂 capture 监听，分屏时左右任意一栏
+// 滚动（含左侧代码块的 CodeMirror 内部滚动）都按「滚动进度比」映射到另一栏。
 // 写入 target.scrollTop 后浏览器会回发一次 scroll 事件：busy 旗标 + 比值
 // 收敛（同值赋值不再触发 scroll）保证不振荡、无回声回路。
 let splitScrollBusy = false
 function onSplitScroll(e: Event): void {
-  if (!settings.syncScroll || splitScrollBusy) return
-  const host = splitHostRef.value
+  if (ui.editorMode !== 'split' || !settings.syncScroll || splitScrollBusy) return
+  const host = kernelRef.value
   if (!host) return
   const t = e.target as HTMLElement
   const leftScroll = host.querySelector<HTMLElement>('.editor-scroll')
@@ -127,23 +152,311 @@ function toggleSyncScroll(): void {
   settings.set('syncScroll', !settings.syncScroll)
 }
 
-// 模式切换后把焦点还给对应视图（v-if 重建的编辑器需要等实例绑定）
-watch(
-  () => ui.editorMode,
-  async (mode) => {
-    await nextTick()
-    if (mode === 'source') {
-      sourceRef.value?.focus()
-    } else if (mode === 'split') {
-      editorStore.instance?.commands.focus('end')
+// ─── 三视图切换时保持滚动/光标位置 ─────────────────────────────────────────
+// 编辑器与 textarea 常驻后，各自内部的光标/滚动天然保留，不再需要「等待重建」。
+// 保留的只有「跨面换算」：离开当前编辑面时把光标锚（PM pos 或 md offset）与
+// 滚动进度记入 mem，切到另一编辑面时按内容比例还原到目标坐标——保证切换时
+// 视线不跳（中段→中段），且滚动条宽度/换行变化后仍保持同一阅读进度。
+interface ViewPosMem {
+  // 滚动进度 0..1（相对各自滚动区总长）
+  scrollRatio: number
+  // 上次离开 Tiptap 编辑面时的光标：PM 位置 + 当时文档内容长度
+  pmPos: number
+  pmLen: number
+  // 上次离开源码编辑面时的光标：字符偏移 + 当时源码长度
+  mdOffset: number
+  mdLen: number
+  // 来源坐标种类（split 左右都可能持焦，用于跨界换算基准）
+  fromKind: 'tiptap' | 'textarea'
+}
+const viewPosMem = ref<ViewPosMem | null>(null)
+// 视图切换恢复期间隐藏内容区：新布局虽已就位，但光标/滚动是按比例落位的，
+// 若先显示旧位置再跳会闪一帧；隐藏到恢复完成再一次性呈现（visibility:hidden
+// 保留布局，滚动测量正常，耗时仅数毫秒）。
+const viewRestoring = ref(false)
+
+/** 距文档开头的内容比例（Tiptap：按 PM pos / doc 长度；源码：offset / len） */
+function anchorRatio(mem: ViewPosMem): number {
+  if (mem.fromKind === 'textarea') return mem.mdLen ? mem.mdOffset / mem.mdLen : 0
+  return mem.pmLen ? mem.pmPos / mem.pmLen : 0
+}
+
+/** 读取某元素的滚动进度（0..1），无滚动余地时 0 */
+function scrollRatioOf(el: HTMLElement | null): number {
+  if (!el) return 0
+  const max = el.scrollHeight - el.clientHeight
+  return max > 0 ? el.scrollTop / max : 0
+}
+
+/** 设置滚动进度：滚动条没有超出内容时不动（否则内容会跳） */
+function applyScrollRatio(el: HTMLElement | null, ratio: number): void {
+  if (!el) return
+  const max = el.scrollHeight - el.clientHeight
+  if (max > 0) el.scrollTop = Math.min(1, Math.max(0, ratio)) * max
+}
+
+/** 恢复滚动：立即设置 + 后台静默校准。
+    图片/mermaid/代码块高亮等异步内容加载完可能改变 scrollHeight，用 rAF +
+    120ms 各补一次（后台执行、位移很小，不会让用户感到延迟或明显跳动）。 */
+function applyScrollRatioSettled(el: HTMLElement | null, ratio: number): void {
+  applyScrollRatio(el, ratio)
+  requestAnimationFrame(() => applyScrollRatio(el, ratio))
+  setTimeout(() => applyScrollRatio(el, ratio), 120)
+}
+
+/** 编辑器视图内的实际滚动容器（.editor-scroll，TyporaEditor 内部） */
+function editorScrollEl(ed: PmEditor | null): HTMLElement | null {
+  const dom = ed?.view?.dom as HTMLElement | undefined
+  return dom ? (dom.closest('.editor-scroll') as HTMLElement | null) : null
+}
+
+/** 保存当前编辑面状态（离开前调用；此时旧布局还在 DOM 里，可直接读取） */
+function captureViewPos(prev: 'wysiwyg' | 'split' | 'source'): void {
+  const ed = editorStore.instance
+  let pmPos = 0
+  let pmLen = 0
+  let mdOffset = 0
+  let mdLen = 0
+  let scrollRatio = 0
+  let fromKind: 'tiptap' | 'textarea' = 'tiptap'
+
+  if (prev === 'source') {
+    const ta = sourceRef.value
+    mdLen = ta?.value.length ?? 0
+    mdOffset = ta?.selectionStart ?? 0
+    scrollRatio = scrollRatioOf(ta)
+    fromKind = 'textarea'
+  } else if (prev === 'split') {
+    // 焦点在右侧源码 textarea 时按源码坐标系记录，否则按左侧 Tiptap 记录
+    const ae = document.activeElement as HTMLElement | null
+    const ta = sourceRef.value
+    if (ta && (ae === ta || ta.contains(ae))) {
+      mdLen = ta.value.length
+      mdOffset = ta.selectionStart ?? 0
+      scrollRatio = scrollRatioOf(ta)
+      fromKind = 'textarea'
+    } else if (ed) {
+      pmLen = ed.state.doc.content.size
+      pmPos = Math.min(Math.max(0, ed.state.selection.from), pmLen)
+      scrollRatio = scrollRatioOf(editorScrollEl(ed))
+      fromKind = 'tiptap'
+    }
+  } else if (ed) {
+    // wysiwyg
+    pmLen = ed.state.doc.content.size
+    pmPos = Math.min(Math.max(0, ed.state.selection.from), pmLen)
+    scrollRatio = scrollRatioOf(editorScrollEl(ed))
+    fromKind = 'tiptap'
+  }
+  viewPosMem.value = { scrollRatio, pmPos, pmLen, mdOffset, mdLen, fromKind }
+}
+
+/** 等待编辑器实例就绪（文件刚切换、新 TyporaEditor 尚未绑定完成时） */
+async function waitEditorReady(timeout = 1200): Promise<PmEditor | null> {
+  const t0 = Date.now()
+  await nextTick()
+  for (;;) {
+    const ed = editorStore.instance
+    if (ed && ed.view?.dom?.isConnected) return ed
+    if (Date.now() - t0 > timeout) return editorStore.instance
+    await new Promise((r) => setTimeout(r, 8))
+  }
+}
+
+/** 把记忆里的「光标比例」转成目标坐标系位置并安全落位 */
+function placePmCursor(ed: PmEditor, ratio: number, exactPos: number): void {
+  const doc = ed.state.doc
+  const size = doc.content.size
+  let pos: number
+  if (exactPos > 0 && exactPos <= size) {
+    pos = exactPos
+  } else {
+    pos = Math.round(ratio * size)
+  }
+  pos = Math.max(1, Math.min(pos, size))
+  // 落点可能是块边界/非内联位置，用 near 安全钳制到最近可编辑文本位置
+  try {
+    const $pos = doc.resolve(pos)
+    if (!$pos.parent.isTextblock) {
+      const near = TextSelection.near($pos, 1)
+      pos = near ? near.from : pos
+    }
+  } catch {
+    /* 忽略，pos 已被钳制 */
+  }
+  try {
+    ed.commands.setTextSelection(pos)
+  } catch {
+    /* 忽略：位置非法时保持编辑器默认光标 */
+  }
+}
+
+function placeTextareaCursor(ta: HTMLTextAreaElement, ratio: number, exactOffset: number): void {
+  const len = ta.value.length
+  const offset = exactOffset > 0 && exactOffset <= len ? exactOffset : Math.round(ratio * len)
+  try {
+    ta.setSelectionRange(offset, offset)
+  } catch {
+    /* 忽略 */
+  }
+  updateSourceCursor(ta)
+}
+
+/** 切换后恢复（目标布局已应用、两编辑面均常驻） */
+async function restoreViewPos(mode: 'wysiwyg' | 'split' | 'source'): Promise<void> {
+  const mem = viewPosMem.value
+  if (!mem) return
+  // 源码坐标系的锚需要源码长度一致才有效（源码文本 = files.content）
+  if (mem.fromKind === 'textarea' && mem.mdLen !== (files.current?.content ?? '').length) return
+  const ratio = anchorRatio(mem)
+
+  if (mode === 'source') {
+    const ta = sourceRef.value
+    if (!ta) return
+    if (mem.fromKind === 'textarea') {
+      placeTextareaCursor(ta, ratio, mem.mdOffset)
     } else {
-      if (!editorStore.instance) {
-        setTimeout(() => editorStore.instance?.commands.focus('end'), 50)
+      placeTextareaCursor(ta, ratio, 0) // Tiptap→源码：按比例近似
+    }
+    ta.focus()
+    // focus 可能把光标滚入视野，布局稳定后再按比例复位滚动
+    applyScrollRatioSettled(ta, mem.scrollRatio)
+    return
+  }
+
+  // wysiwyg / split：目标含 Tiptap 左栏；编辑器常驻，直接拿当前实例
+  let ed = editorStore.instance
+  if (!ed) ed = await waitEditorReady()
+  if (!ed) return
+  // files 是源码侧的单一事实源（分屏右侧/源码 textarea 都直接写 files）。
+  // 进入编辑器视图前确保编辑器文档 == files.content：有源码编辑时一次性同步
+  // （光标比例落在新文档上）；无编辑时 syncedMd 已一致，零开销。
+  syncEditorContent()
+  const fromTiptap = mem.fromKind === 'tiptap'
+  if (mode === 'wysiwyg') {
+    placePmCursor(ed, ratio, fromTiptap ? mem.pmPos : 0)
+    ed.commands.focus()
+    applyScrollRatioSettled(editorScrollEl(ed), mem.scrollRatio)
+  }
+
+  if (mode === 'split') {
+    // 左栏始终对齐位置：同源精确、跨源按比例（保持中段→中段）
+    placePmCursor(ed, ratio, fromTiptap ? mem.pmPos : 0)
+    applyScrollRatioSettled(editorScrollEl(ed), mem.scrollRatio)
+    const ta = sourceRef.value
+    if (ta) {
+      // 源码侧来的光标回到右栏；并把右栏滚动对齐到同一进度
+      if (!fromTiptap) {
+        placeTextareaCursor(ta, ratio, mem.mdOffset)
+        ta.focus()
       } else {
-        editorStore.instance.commands.focus('end')
+        ed.commands.focus()
       }
+      applyScrollRatioSettled(ta, mem.scrollRatio)
     }
   }
+}
+
+// 切换文件（TyporaEditor :key 重建）时，跨文档的位置记忆作废
+watch(
+  () => files.current?.path,
+  () => {
+    viewPosMem.value = null
+    // 新编辑器将按当前文件内容整装重建，记录已对齐的 md
+    editorStore.markSynced(files.current?.content ?? '')
+  }
+)
+
+// ─── 布局/显隐由模式驱动的计算样式 ───
+function renderPaneStyle(): Record<string, string> {
+  const m = ui.editorMode
+  if (m === 'source') return { display: 'none' }
+  if (m === 'split') return { flex: '0 0 auto', width: (splitRatio.value * 100).toFixed(2) + '%' }
+  return { flex: '1 1 0%' } // wysiwyg
+}
+function sourcePaneStyle(): Record<string, string> {
+  const m = ui.editorMode
+  if (m === 'wysiwyg') return { display: 'none' }
+  return { flex: '1 1 0%', minWidth: '0' }
+}
+/** 全屏源码模式的居中列（focusMode 决定最大宽度）；分屏右栏不居中。
+    不加 transition：切模式时从「贴边」到「居中限宽」若带动画会显得慢一拍。 */
+function sourceCenterClass(): string[] {
+  if (ui.editorMode !== 'source') return []
+  return ui.focusMode ? ['mx-auto', 'max-w-[1140px]'] : ['mx-auto', 'max-w-[1320px]']
+}
+
+// 模式切换：记录位置 → 激活/休眠编辑器 → 布局切换后按比例恢复
+// immediate：启动即同步编辑器激活态（若持久化模式是 source，instance 保持 null，
+// 待 bind 后 applyActive 也会尊重 active=false）
+watch(
+  () => ui.editorMode,
+  async (mode, prev) => {
+    // 离开前先记录当前位置（旧布局还在 DOM 里）；须在 setActive 前读取
+    // instance（prev 为 tiptap 编辑面时 capture 依赖它）
+    if (prev === 'wysiwyg' || prev === 'split' || prev === 'source') {
+      captureViewPos(prev)
+    }
+    // 源码模式不激活编辑器（instance=null，工具栏富文本命令失活、大纲清空）
+    editorStore.setActive(mode !== 'source')
+    // 首次运行（prev===undefined，组件刚挂载）：只同步激活态
+    if (prev === undefined) return
+    const mem = viewPosMem.value
+    if (!mem) {
+      // 无记忆（首开/文件刚切换）：先把焦点给目标视图；编辑器可能因源码
+      // 编辑而滞后，内容有差异时一次性同步（编辑器常驻后才需要）
+      if (mode === 'source') {
+        await nextTick()
+        sourceRef.value?.focus()
+      } else {
+        const ed = await waitEditorReady()
+        if (!ed) return
+        syncEditorContent()
+        ed.commands.focus()
+      }
+      return
+    }
+    // 有记忆：隐藏内容直到位置恢复完成（内容常驻、恢复仅数毫秒）
+    viewRestoring.value = true
+    await nextTick()
+    try {
+      await restoreViewPos(mode as 'wysiwyg' | 'split' | 'source')
+    } finally {
+      viewRestoring.value = false
+    }
+    // 隐藏（view-restoring）期间程序化 focus/光标落位可能被浏览器丢弃：
+    // 可见后再补一次焦点与光标（隐藏期间设置的选区若被重置会掉到末尾）
+    const mem2 = viewPosMem.value
+    if (mem2) {
+      const ratio2 = anchorRatio(mem2)
+      requestAnimationFrame(() => {
+        if (mode === 'source' || (mode === 'split' && mem2.fromKind === 'textarea')) {
+          const ta = sourceRef.value
+          if (!ta) return
+          ta.focus()
+          if (mode === 'source') {
+            placeTextareaCursor(ta, ratio2, mem2.fromKind === 'textarea' ? mem2.mdOffset : 0)
+            applyScrollRatio(ta, mem2.scrollRatio)
+          } else {
+            placeTextareaCursor(ta, ratio2, mem2.mdOffset)
+          }
+        } else {
+          // 编辑器面：焦点补位（selection 已在 restore 里按比例放好）
+          const ed = editorStore.instance
+          if (!ed) return
+          ed.commands.focus()
+          // focus 会把光标滚入视野，重新按比例钉住滚动以免跳动
+          applyScrollRatio(editorScrollEl(ed), mem2.scrollRatio)
+        }
+      })
+    }
+    // 渲染面板刚从隐藏（source 模式 display:none）转可见：CodeMirror 需要
+    // 重新测量（隐藏期间宽度为 0，行号/视口尺寸会失真）
+    if (mode !== 'source') {
+      requestAnimationFrame(() => measureAllCodeBlocks())
+    }
+  },
+  { immediate: true }
 )
 
 // 外部文件拖放打开（文件系统逻辑，与内核无关）
@@ -172,6 +485,7 @@ function onDragOver(e: DragEvent): void {
 }
 
 onMounted(() => {
+  editorStore.setActive(ui.editorMode !== 'source')
   if (!files.current) void files.openUntitled()
 })
 onBeforeUnmount(() => {
@@ -205,84 +519,67 @@ onBeforeUnmount(() => {
       </div>
     </Transition>
 
-    <!-- 编辑器内核（按文件重建，避免撤销历史/光标残留） -->
-    <div class="relative min-h-0 flex-1">
-      <!-- 分屏对比：左实时渲染 + 右源码，拖拽分隔条调比例，双向实时同步 -->
+    <!-- 编辑器内核：渲染面板与源码面板常驻，模式切换仅改布局/显隐（零重建） -->
+    <!-- view-restoring：恢复位置期间隐藏内容区，避免「旧位置先闪现→跳转」的抖动 -->
+    <div
+      ref="kernelRef"
+      class="relative flex min-h-0 flex-1"
+      :class="{ 'view-restoring': viewRestoring }"
+      @scroll.capture="onSplitScroll"
+    >
+      <!-- 渲染面板（Tiptap）：wysiwyg 全宽 / split 左栏 / source 隐藏但常驻 -->
+      <div class="h-full min-w-0" :style="renderPaneStyle()">
+        <TyporaEditor
+          :key="files.current?.path ?? 'untitled'"
+          :model-value="files.current?.content ?? ''"
+          @update:model-value="onEditorUpdate"
+        />
+      </div>
+
+      <!-- 分屏分隔条（仅 split 存在；拖动时显示拖拽态） -->
       <div
         v-if="ui.editorMode === 'split'"
-        ref="splitHostRef"
-        class="relative flex h-full min-h-0"
-        @scroll.capture="onSplitScroll"
+        class="split-divider"
+        :class="{ dragging: splitDragging }"
+        title="拖动调整左右比例（双击复位）"
+        @mousedown="startSplitDrag"
+        @dblclick="splitRatio = clampRatio(0.5); settings.set('splitRatio', splitRatio)"
       >
-        <div class="h-full min-w-0" :style="{ width: (splitRatio * 100).toFixed(2) + '%' }">
-          <TyporaEditor
-            :key="files.current?.path ?? 'untitled'"
-            :model-value="files.current?.content ?? ''"
-            @update:model-value="onEditorUpdate"
-          />
-        </div>
-        <div
-          class="split-divider"
-          :class="{ dragging: splitDragging }"
-          title="拖动调整左右比例（双击复位）"
-          @mousedown="startSplitDrag"
-          @dblclick="splitRatio = clampRatio(0.5); settings.set('splitRatio', splitRatio)"
-        >
-          <span />
-        </div>
-        <div class="h-full min-w-0 flex-1 overflow-hidden">
-          <textarea
-            class="source-editor source-editor--split"
-            :value="files.current?.content ?? ''"
-            spellcheck="false"
-            @input="onSplitSourceInput"
-            @keydown.tab="onSourceTab"
-            @click="updateSourceCursor($event.target as HTMLTextAreaElement)"
-            @keyup="updateSourceCursor($event.target as HTMLTextAreaElement)"
-            @select="updateSourceCursor($event.target as HTMLTextAreaElement)"
-          />
-        </div>
-
-        <!-- 同步滚动开关（分屏专属悬浮芯片，SQLite kv 持久化） -->
-        <button
-          class="split-sync-chip"
-          :class="{ active: settings.syncScroll }"
-          :title="settings.syncScroll ? '同步滚动已开启（点击关闭）' : '开启同步滚动'"
-          @click="toggleSyncScroll"
-        >
-          <Icon name="sync-scroll" :size="13" />
-          <span>同步滚动</span>
-          <span v-if="settings.syncScroll" class="split-sync-dot" />
-        </button>
+        <span />
       </div>
 
-      <!-- 实时渲染：Tiptap WYSIWYG -->
-      <TyporaEditor
-        v-else-if="ui.editorMode === 'wysiwyg'"
-        :key="files.current?.path ?? 'untitled'"
-        :model-value="files.current?.content ?? ''"
-        @update:model-value="onEditorUpdate"
-      />
-
-      <!-- 源码模式：纯文本 Markdown（无任何渲染样式） -->
-      <div v-else class="editor-scroll h-full overflow-y-auto">
-        <div
-          class="mx-auto h-full transition-all duration-300"
-          :class="ui.focusMode ? 'max-w-[1140px]' : 'max-w-[1320px]'"
-        >
-          <textarea
-            ref="sourceRef"
-            class="source-editor"
-            :value="files.current?.content ?? ''"
-            spellcheck="false"
-            @input="onSourceInput"
-            @keydown.tab="onSourceTab"
-            @click="updateSourceCursor($event.target as HTMLTextAreaElement)"
-            @keyup="updateSourceCursor($event.target as HTMLTextAreaElement)"
-            @select="updateSourceCursor($event.target as HTMLTextAreaElement)"
-          />
+      <!-- 源码面板（textarea）：split 右栏 / source 全宽 / wysiwyg 隐藏但常驻 -->
+      <div class="h-full min-w-0 overflow-hidden" :style="sourcePaneStyle()">
+        <div class="h-full">
+          <div class="h-full" :class="sourceCenterClass()">
+            <textarea
+              ref="sourceRef"
+              class="source-editor"
+              :class="{ 'source-editor--split': ui.editorMode === 'split' }"
+              :value="files.current?.content ?? ''"
+              spellcheck="false"
+              @input="onSourceInput"
+              @keydown.tab="onSourceTab"
+              @click="updateSourceCursor($event.target as HTMLTextAreaElement)"
+              @keyup="updateSourceCursor($event.target as HTMLTextAreaElement)"
+              @select="updateSourceCursor($event.target as HTMLTextAreaElement)"
+            />
+          </div>
         </div>
       </div>
+
+      <!-- 同步滚动开关（分屏专属悬浮芯片，SQLite kv 持久化） -->
+      <button
+        v-if="ui.editorMode === 'split'"
+        class="split-sync-chip"
+        :class="{ active: settings.syncScroll }"
+        :title="settings.syncScroll ? '同步滚动已开启（点击关闭）' : '开启同步滚动'"
+        @click="toggleSyncScroll"
+      >
+        <Icon name="sync-scroll" :size="13" />
+        <span>同步滚动</span>
+        <span v-if="settings.syncScroll" class="split-sync-dot" />
+      </button>
     </div>
 
     <StatusBar />

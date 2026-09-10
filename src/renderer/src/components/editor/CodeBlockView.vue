@@ -230,7 +230,8 @@ const handle: CodeBlockHandle = {
     const pos = props.getPos as (() => number) | undefined
     return typeof pos === 'function' ? pos() : undefined
   },
-  focusCmAtEnd
+  focusCmAtEnd,
+  requestMeasure: () => cmView?.requestMeasure()
 }
 registerCodeBlockHandle(handle)
 

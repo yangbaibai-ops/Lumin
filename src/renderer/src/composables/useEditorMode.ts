@@ -23,14 +23,17 @@ export function useEditorMode(): {
 
   const CYCLE: EditorMode[] = ['wysiwyg', 'split', 'source']
 
-  /** 把当前 Tiptap 文档序列化为 Markdown 刷入文件槽（防抖编辑不丢失） */
+  /** 把当前 Tiptap 文档序列化为 Markdown 刷入文件槽（防抖编辑不丢失）。
+      编辑器不脏时跳过——文件槽内容已与其一致（onUpdate emit 已同步），
+      避免「只看视图不编辑」的切换也要整篇序列化（大文档的隐藏成本）。 */
   function flushWysiwyg(): void {
     const ed = editorStore.instance
-    if (!ed) return
+    if (!ed || !editorStore.dirty) return
     try {
       const storage = ed.storage as { markdown?: { getMarkdown(): string } }
       const md = storage.markdown?.getMarkdown() ?? ''
       files.setContent(md)
+      editorStore.markSynced(md)
     } catch {
       /* 序列化失败时保持文件槽现状 */
     }

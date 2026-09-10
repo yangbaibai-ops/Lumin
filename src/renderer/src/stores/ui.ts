@@ -37,6 +37,8 @@ export const useUiStore = defineStore('ui', {
   state: () => ({
     sidebarVisible: true,
     sidebarTab: 'files' as 'files' | 'outline',
+    /** 文件标签页展示形态：树 / 列表（Typora 式元数据列表） */
+    sidebarFilesView: 'tree' as 'tree' | 'list',
     editorMode: 'wysiwyg' as EditorMode,
     focusMode: false,
     typewriterMode: false,
