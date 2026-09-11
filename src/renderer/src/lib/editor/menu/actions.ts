@@ -43,6 +43,17 @@ async function readClipboard(): Promise<{ html?: string; text?: string }> {
   return { text }
 }
 
+/** 取 tiptap-markdown 的解析器（MarkdownPaste 扩展用的是同一份 storage） */
+function markdownParser(editor: Editor): { parse(text: string): string } | null {
+  const storage = editor.storage as { markdown?: { parser?: { parse(text: string): string } } }
+  return storage.markdown?.parser ?? null
+}
+
+/** 看起来像 markdown 源码的纯文本（链接/标题/列表/引用/围栏） */
+function looksLikeMarkdown(text: string): boolean {
+  return /\]\(|^#{1,6}\s|^\s*([-*+]|\d{1,9}[.)])\s|^```|^>\s?/m.test(text)
+}
+
 export function buildEditorMenuActions(
   deps: EditorMenuActionDeps
 ): Record<string, EditorMenuAction> {
@@ -73,13 +84,25 @@ export function buildEditorMenuActions(
       icon: 'clipboard',
       shortcut: 'Ctrl+V',
       // 走 view.pasteHTML/pasteText：复用 PM 的粘贴管线（含本项目的 MarkdownPaste
-      // 扩展——Markdown 源码粘贴会被解析成块级结构，而不是一坨纯文本）
+      // 扩展——Markdown 源码粘贴会被解析成块级结构，而不是一坨纯文本）。
+      // 注意：pasteText 是「纯文本粘贴」通道，不经过 clipboardTextParser，遇到
+      // `[a](url)` 这类 markdown 源码会原样插入（还会被 link 的 pasteRule 把网址
+      // 单独链化，留下 `[a](` 明文）。因此纯文本分支先看是否像 markdown：像就自己
+      // 用同一份 markdown 解析器转成 HTML 再走 pasteHTML，与 Ctrl+V 行为一致。
       run: async () => {
         try {
           const { html, text } = await readClipboard()
-          if (html) editor.view.pasteHTML(html)
-          else if (text) editor.view.pasteText(text)
-          else return false
+          if (html) {
+            editor.view.pasteHTML(html)
+            return true
+          }
+          if (!text) return false
+          const parser = markdownParser(editor)
+          if (parser && looksLikeMarkdown(text)) {
+            editor.view.pasteHTML(parser.parse(text))
+          } else {
+            editor.view.pasteText(text)
+          }
           return true
         } catch (e) {
           notifyError('editorMenu.pasteFailed', e instanceof Error ? e.message : String(e))

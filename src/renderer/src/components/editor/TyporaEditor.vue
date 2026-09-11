@@ -169,12 +169,24 @@ onBeforeUnmount(() => {
 })
 
 // ── 自绘选区浮动菜单 ──
+/**
+ * 选中文字后的浮动格式工具栏开关。
+ * 目前按需求「暂时禁用」：实现完整保留（定位计算、贴边钳制、样式、按钮全在），
+ * 把这里改回 true 即可原样恢复，无需其它改动。
+ * 禁用时 updateBubbleMenu 直接返回，气泡永不显示；模板处再兜一层判断，
+ * 避免将来别处置位 bubbleVisible 时意外弹出。
+ */
+const BUBBLE_MENU_ENABLED = false
 const bubbleVisible = ref(false)
 const bubblePos = ref({ top: 0, left: 0 })
 // 气泡的绝对定位上下文：模板根节点 .typora-container（position:relative）
 const containerRef = ref<HTMLElement | null>(null)
 
 function updateBubbleMenu(ed: Editor): void {
+  if (!BUBBLE_MENU_ENABLED) {
+    bubbleVisible.value = false
+    return
+  }
   const { from, to, empty } = ed.state.selection
   if (empty) {
     bubbleVisible.value = false
@@ -264,10 +276,10 @@ defineExpose({ editor })
 
 <template>
   <div ref="containerRef" class="typora-container relative h-full" :class="{ 'focus-mode': ui.focusMode }">
-    <!-- 自绘选区浮动菜单 -->
+    <!-- 自绘选区浮动菜单（当前由 BUBBLE_MENU_ENABLED 关闭，见 script 顶部说明） -->
     <Transition name="pop">
       <div
-        v-if="bubbleVisible && editor"
+        v-if="BUBBLE_MENU_ENABLED && bubbleVisible && editor"
         class="bubble-menu absolute z-50"
         :style="{ top: bubblePos.top + 'px', left: bubblePos.left + 'px', transform: 'translateX(-50%)' }"
         @mousedown.prevent

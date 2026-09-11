@@ -73,7 +73,7 @@ const themes: { mode: ThemeMode; icon: string; labelKey: string }[] = [
     <template v-if="files.current">
       <div ref="saveRef" class="relative flex items-center">
         <button
-          class="group flex items-center gap-1.5 rounded-md px-1.5 py-0.5 -ml-1.5 transition-colors hover:bg-panel-2"
+          class="group flex cursor-pointer items-center gap-1.5 rounded-md px-1.5 py-0.5 -ml-1.5 transition-colors hover:bg-panel-2"
           :title="saveLabel"
           @click="saveOpen = !saveOpen"
         >

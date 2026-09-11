@@ -38,7 +38,12 @@ async function place(): Promise<void> {
   requestAnimationFrame(measureAndClamp)
 }
 
-/** 二级菜单定位：贴在一级面板右侧；右侧放不下则翻到左侧 */
+/**
+ * 二级菜单定位：贴在一级面板右侧，**不留缝隙**（重叠 1px），右侧放不下则翻到左侧。
+ * 贴死是「指针一定移得进二级」的第一道保障：两块之间不留任何空隙，安全区（见
+ * inSafeZone）才是一个连通区域，指针从分类行走向二级的全程都被视为「还在菜单上」。
+ * 曾经留 2px 空档，配合 mouseleave 立即收起，就出现了「怎么都移不到二级菜单上」。
+ */
 async function placeSub(): Promise<void> {
   await nextTick()
   const cat = menu.activeSectionId ? catRefs.value[menu.activeSectionId] : null
@@ -51,10 +56,9 @@ async function placeSub(): Promise<void> {
     const w = sub.offsetWidth
     const h = sub.offsetHeight
     const margin = 8
-    // 以「面板右边缘」为基准（按行右边缘会让二级盖住面板的内边距）
-    const flip = panelRect.right + 2 + w > window.innerWidth - margin
+    const flip = panelRect.right + w > window.innerWidth - margin
     subPos.value = {
-      left: Math.max(margin, flip ? panelRect.left - w - 2 : panelRect.right + 2),
+      left: Math.max(margin, flip ? panelRect.left - w + 1 : panelRect.right - 1),
       top: Math.max(margin, Math.min(row.top - 6, window.innerHeight - h - margin))
     }
   }
@@ -66,7 +70,11 @@ async function placeSub(): Promise<void> {
 watch(
   () => menu.open,
   async (open) => {
-    if (!open) return
+    if (!open) {
+      cancelSubClose()
+      cancelCatSwitch()
+      return
+    }
     pos.value = { left: menu.x, top: menu.y }
     await place()
     menuRef.value?.focus()
@@ -76,7 +84,9 @@ watch(
 watch(
   () => menu.activeSectionId,
   (id) => {
-    if (id) void placeSub()
+    if (!id) return
+    cancelSubClose() // 刚展开的二级不该被上一段悬停留下的计时器收掉
+    void placeSub()
   }
 )
 
@@ -106,27 +116,112 @@ onMounted(() => {
   document.addEventListener('mousedown', onDocMouseDown, true)
   window.addEventListener('resize', onResize)
   window.addEventListener('scroll', onScrollCapture, true)
+  window.addEventListener('pointermove', onDocPointerMove, true)
 })
 onBeforeUnmount(() => {
+  cancelSubClose()
+  cancelCatSwitch()
   document.removeEventListener('mousedown', onDocMouseDown, true)
   window.removeEventListener('resize', onResize)
   window.removeEventListener('scroll', onScrollCapture, true)
+  window.removeEventListener('pointermove', onDocPointerMove, true)
 })
 
-/** 鼠标离开面板/二级菜单时收起二级；进入对方则保持（斜向移动不闪断） */
-function onLeavePanel(e: MouseEvent): void {
-  const related = e.relatedTarget as Node | null
-  if (related && subRef.value?.contains(related)) return
-  menu.closeSection()
+/**
+ * 收起二级菜单的「悬停意图」宽限：
+ * 二级比一级高（一级 159px、二级可达 299px），下半段挂在面板下方；指针从分类行移向
+ * 二级下半段时常常先向下、再向右，中途会短暂处于「既不在面板、也不在二级」的位置。
+ * 宽限用于兜住这类越界：短暂越界不收起，持续越界才收起。
+ */
+const SUB_CLOSE_DELAY = 160
+let closeTimer: ReturnType<typeof setTimeout> | null = null
+
+function cancelSubClose(): void {
+  if (closeTimer) {
+    clearTimeout(closeTimer)
+    closeTimer = null
+  }
 }
-function onLeaveSub(e: MouseEvent): void {
-  const related = e.relatedTarget as Node | null
-  if (related && menuRef.value?.contains(related)) return
-  menu.closeSection()
+function scheduleSubClose(): void {
+  cancelSubClose()
+  closeTimer = setTimeout(() => {
+    closeTimer = null
+    menu.closeSection()
+  }, SUB_CLOSE_DELAY)
+}
+
+/**
+ * 安全区：一级面板与二级菜单的整体外接矩形（外扩几像素）。
+ * 不能只判断「是否在面板内、是否在二级内」——两矩形之间（尤其是面板下方、二级左侧
+ * 那块）属于两者的补集，指针经过时会被判为「离开」，二级随即消失，用户表现为
+ * 「怎么都移不到二级菜单上」。用外接矩形把两块之间的通路一并纳入，任何从一级
+ * 走向二级的路径都不会触发收起。
+ */
+function inSafeZone(x: number, y: number): boolean {
+  const panel = menuRef.value
+  if (!panel) return false
+  const a = panel.getBoundingClientRect()
+  const b = subRef.value?.getBoundingClientRect() ?? a
+  const slack = 4
+  return (
+    x >= Math.min(a.left, b.left) - slack &&
+    x <= Math.max(a.right, b.right) + slack &&
+    y >= Math.min(a.top, b.top) - slack &&
+    y <= Math.max(a.bottom, b.bottom) + slack
+  )
+}
+
+/**
+ * 指针是否停在一级面板内（用于判断「只是路过某个分类行」还是「真的停在上面」）
+ */
+function inPanelRect(x: number, y: number): boolean {
+  const r = menuRef.value?.getBoundingClientRect()
+  if (!r) return false
+  return x >= r.left && x <= r.right && y >= r.top && y <= r.bottom
+}
+
+/**
+ * 切换分类的「悬停意图」延迟：
+ * 二级比一级高，取二级下半段的条目时指针常常要斜向穿过下面几个分类行；若每次路过
+ * 都立即切换分类，用户想要的那一项就被换走了 —— 表现出来同样是「移不到二级菜单上」。
+ * 因此只有指针真的停在某个分类行上超过 CAT_SWITCH_DELAY 才切换（首次展开不延迟）。
+ */
+const CAT_SWITCH_DELAY = 180
+let switchTimer: ReturnType<typeof setTimeout> | null = null
+let switchTarget: { index: number; id: string } | null = null
+
+function cancelCatSwitch(): void {
+  if (switchTimer) {
+    clearTimeout(switchTimer)
+    switchTimer = null
+  }
+  switchTarget = null
+}
+
+/**
+ * 指针在安全区内 → 撤销待收起；越出安全区 → 开始宽限计时。
+ * 用 pointermove 而不是 mouseleave：mouseleave 只在跨出元素边界的那一瞬触发，
+ * 既无法区分「正走向二级」和「真的要离开」，也表达不了「两块合一」的安全区。
+ */
+function onDocPointerMove(e: PointerEvent): void {
+  if (!menu.open) return
+  // 离开一级面板就不再是「停在该分类行上」，撤销待切换的分类
+  if (!inPanelRect(e.clientX, e.clientY)) cancelCatSwitch()
+  if (!menu.activeSectionId) return
+  if (inSafeZone(e.clientX, e.clientY)) cancelSubClose()
+  else scheduleSubClose()
+}
+
+/** 指针进入二级：取消待收起与待切换 */
+function onEnterSub(): void {
+  cancelCatSwitch()
+  cancelSubClose()
 }
 
 function onKeydown(e: KeyboardEvent): void {
   if (!menu.open) return
+  // 键盘接管后，撤销悬停留下的待切换：否则 Esc 关掉二级后它会被计时器重新打开
+  cancelCatSwitch()
   const inSub = !!menu.activeSectionId
   if (e.key === 'Escape') {
     e.preventDefault()
@@ -153,10 +248,30 @@ function onKeydown(e: KeyboardEvent): void {
   }
 }
 
-/** 悬停一级分类：移动高亮并展开其二级菜单（抽成方法，模板里的多语句会被换行拆坏） */
+/**
+ * 悬停一级分类：展开其二级菜单（抽成方法，模板里的多语句会被换行拆坏）。
+ * 尚未展开、或悬停的正是已展开的分类 → 立即生效；已有其它分类展开 → 延迟切换，
+ * 避免指针斜向穿过分类行时把用户要的二级菜单换掉。
+ */
 function onCategoryHover(index: number, id: string): void {
-  menu.setActive(index)
-  menu.openSection(id)
+  cancelSubClose() // 回到一级：撤销上一个分类的待收起
+  if (!menu.activeSectionId || menu.activeSectionId === id) {
+    cancelCatSwitch()
+    menu.setActive(index)
+    menu.openSection(id)
+    return
+  }
+  if (switchTarget && switchTarget.id === id && switchTarget.index === index) return
+  cancelCatSwitch()
+  switchTarget = { index, id }
+  switchTimer = setTimeout(() => {
+    switchTimer = null
+    const target = switchTarget
+    switchTarget = null
+    if (!target || !menu.open) return
+    menu.setActive(target.index)
+    menu.openSection(target.id)
+  }, CAT_SWITCH_DELAY)
 }
 
 const panelStyle = computed(() => ({ left: `${pos.value.left}px`, top: `${pos.value.top}px` }))
@@ -175,7 +290,6 @@ const subStyle = computed(() => ({ left: `${subPos.value.left}px`, top: `${subPo
         role="menu"
         @keydown="onKeydown"
         @contextmenu.prevent
-        @mouseleave="onLeavePanel"
       >
         <!-- 顶部：横向常用操作 -->
         <div
@@ -233,7 +347,7 @@ const subStyle = computed(() => ({ left: `${subPos.value.left}px`, top: `${subPo
         class="ecm-panel ecm-sub fixed z-[171] select-none"
         :style="subStyle"
         role="menu"
-        @mouseleave="onLeaveSub"
+        @mouseenter="onEnterSub"
         @contextmenu.prevent
       >
         <p v-if="menu.activeSection.labelKey" class="ecm-section">

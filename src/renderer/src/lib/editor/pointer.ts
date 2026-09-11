@@ -75,6 +75,36 @@ interface TextRun {
   href?: string
 }
 
+/** markdown 链接的完整形态：[label](href)。label 内不允许方括号/换行，
+    href 内不允许空白与圆括号——与折叠解析（collapseRun）的判定保持一致 */
+const MD_LINK_SHAPE = /^\[[^[\]\n]*\]\([^()\s]*\)$/
+
+/**
+ * 合并「被手动编辑切开」的展开区。
+ * 展开态下往网址/文字里**粘贴**（或任何不带 linkSource 标记的插入）会把一个展开区
+ * 切成多段 run，原来的逐段解析必然失败 → 折叠时只能剥掉标记、把 `[label](url)`
+ * 原样留在渲染界面（就是「改了之后就失效、md 格式直接露出来」的成因）。
+ * 这里把「同一文本块内、合并后恰好构成完整链接形态」的相邻同 href run 并回去，
+ * 折叠逻辑随即能正常回读。形态整串匹配保证了不会把同段落里两个独立链接误并。
+ */
+function mergeSplitRuns(doc: PMNode, runs: TextRun[]): TextRun[] {
+  if (runs.length < 2) return runs
+  const merged: TextRun[] = []
+  for (const run of runs) {
+    const prev = merged[merged.length - 1]
+    if (prev && (prev.href ?? '') === (run.href ?? '')) {
+      // 用 '\n' 作块分隔符：跨文本块的拼接会带出换行，无法通过形态校验
+      const span = doc.textBetween(prev.from, run.to, '\n')
+      if (MD_LINK_SHAPE.test(span)) {
+        prev.to = run.to
+        continue
+      }
+    }
+    merged.push({ ...run })
+  }
+  return merged
+}
+
 /** 收集文档内连续命中某 mark 的文本区间（相邻同 href 文本节点合并——
     展开区 label/syntax 各节点同 href，合并为整段 [..](url) 供折叠回读） */
 function collectMarkRuns(doc: PMNode, markName: string): TextRun[] {
@@ -102,7 +132,7 @@ function collectMarkRuns(doc: PMNode, markName: string): TextRun[] {
       }
     })
   })
-  return runs
+  return mergeSplitRuns(doc, runs)
 }
 
 function runAt(doc: PMNode, pos: number, markName: string): TextRun | null {
@@ -112,7 +142,13 @@ function runAt(doc: PMNode, pos: number, markName: string): TextRun | null {
 /** 展开：link mark → linkSource(part:'label')（保留 label 内其他标记），
     两侧补 `[`、`](url)`（part:'syntax'）。不改变选区——PM 自动把光标按步骤
     映射进展开后的 label，光标停在被点击处、不做任何选中。 */
-function expandRun(view: { state: import('@tiptap/pm/state').EditorState; dispatch: (tr: import('@tiptap/pm/state').Transaction) => void }, run: TextRun): void {
+function expandRun(
+  view: {
+    state: import('@tiptap/pm/state').EditorState
+    dispatch: (tr: import('@tiptap/pm/state').Transaction) => void
+  },
+  run: TextRun
+): void {
   const { state } = view
   const schema = state.schema
   const linkMark = schema.marks.link
@@ -130,15 +166,18 @@ function expandRun(view: { state: import('@tiptap/pm/state').EditorState; dispat
 }
 
 /** 折叠：解析展开区当前整体文本为 `[label](url)` → 以 link mark 重建 label
-    （内部 `**` 等由派生归一化还原）；解析失败（用户改残）→ 仅去掉 linkSource
-    标记保留原文。 */
+    （内部 `**` 等由派生归一化还原）；解析失败（用户改残、或 label 被清空）→
+    仅去掉 linkSource 标记保留原文。 */
 function collapseRun(tr: import('@tiptap/pm/state').Transaction, doc: PMNode, run: TextRun): void {
   const schema = doc.type.schema
-  const raw = doc.textBetween(run.from, run.to, '')
+  // '\n' 作块分隔符：若 run 意外跨块，raw 里会出现换行，形态判定自然失败
+  const raw = doc.textBetween(run.from, run.to, '\n')
   const lb = raw.lastIndexOf('](')
-  const ok = raw.startsWith('[') && lb > 0 && raw.endsWith(')')
+  const label = lb > 0 ? raw.slice(1, lb) : ''
+  // label 为空（用户把链接文字删光了）时不能重建：PM 不允许空文本节点，
+  // schema.text('') 会抛 RangeError。这种情况按「解析失败」处理，保留字面文本。
+  const ok = raw.startsWith('[') && lb > 0 && raw.endsWith(')') && label.length > 0
   if (ok) {
-    const label = raw.slice(1, lb)
     const href = raw.slice(lb + 2, raw.length - 1)
     tr.replaceWith(run.from, run.to, schema.text(label, [schema.marks.link.create({ href })]))
   } else {
@@ -176,10 +215,16 @@ export const TyporaPointer = Extension.create({
     // 运行时平铺返回（CommandManager 直接展开顶层键）；类型经声明合并拍平
     return {
       /** 折叠当前所有链接展开区（Esc/失焦调用） */
-      collapseLinkSources: () => ({ state, dispatch }: {
-        state: import('@tiptap/pm/state').EditorState
-        dispatch: (tr: import('@tiptap/pm/state').Transaction) => void
-      }) => collapseAll(state, dispatch, true)
+      collapseLinkSources:
+        () =>
+        ({
+          state,
+          dispatch
+        }: {
+          state: import('@tiptap/pm/state').EditorState
+          dispatch: (tr: import('@tiptap/pm/state').Transaction) => void
+        }) =>
+          collapseAll(state, dispatch, true)
     } as unknown as Partial<RawCommands>
   },
   addKeyboardShortcuts() {

@@ -34,7 +34,10 @@ function onRenderContextMenu(e: MouseEvent): void {
   const hit = editor.view.posAtCoords({ left: e.clientX, top: e.clientY })
   if (hit) {
     const { from, to } = editor.state.selection
-    if (hit.pos < from || hit.pos > to) editor.commands.setTextSelection(hit.pos)
+    // posAtCoords 可能落在非文本块上（表格外框、行间空白、块首尾边界），此时不能改选区：
+    // TextSelection 要求端点落在 inline content 内，否则 PM 会告警并拒绝定位。
+    const inline = editor.state.doc.resolve(hit.pos).parent.inlineContent
+    if (inline && (hit.pos < from || hit.pos > to)) editor.commands.setTextSelection(hit.pos)
   }
   editorMenu.openAt(e.clientX, e.clientY)
 }
