@@ -2,7 +2,8 @@
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { useEditor, EditorContent } from '@tiptap/vue-3'
 import type { Editor } from '@tiptap/core'
-import { editorExtensions } from '../../lib/editor/extensions'
+import { buildEditorExtensions } from '../../lib/editor/extensions'
+import { openLinkTarget } from '../../lib/linkOpen'
 import { getMarkdown } from '../../lib/editor/markdownStorage'
 import { useEditorStore } from '../../stores/editor'
 import { useUiStore } from '../../stores/ui'
@@ -60,7 +61,7 @@ function updateCursor(ed: Editor): void {
 
 const editor = useEditor({
   content: props.modelValue,
-  extensions: editorExtensions,
+  extensions: buildEditorExtensions({ onOpenLink: (href) => void openLinkTarget(href) }),
   editorProps: {
     attributes: {
       class: 'md-preview',

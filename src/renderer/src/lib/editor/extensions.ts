@@ -2,6 +2,7 @@
 // 依据开发文档选型：StarterKit + Table + TaskList + Markdown(双向转换) +
 // CodeMirror 代码块 NodeView + 光标感知标记符 Plugin + 附加 InputRules。
 import StarterKit from '@tiptap/starter-kit'
+import type { Extensions } from '@tiptap/core'
 import Bold from '@tiptap/extension-bold'
 import Italic from '@tiptap/extension-italic'
 import Strike from '@tiptap/extension-strike'
@@ -37,7 +38,25 @@ function resolveLocalImageSrc(src: string): string {
   return src
 }
 
-export const editorExtensions = [
+/** 编辑器扩展集组装入参（宿主可注入的少量应用级行为） */
+export interface EditorExtensionOptions {
+  /** Ctrl/Cmd+左键点链接时的打开逻辑（默认交系统默认浏览器） */
+  onOpenLink?: (href: string) => void
+}
+
+/** 默认链接打开：只把网址交给系统默认浏览器（应用内由 lib/linkOpen.ts 覆盖） */
+function defaultOpenLink(href: string): void {
+  if (typeof window !== 'undefined' && window.luminAPI?.shell?.openExternal) {
+    window.luminAPI.shell.openExternal(href)
+  }
+}
+
+/**
+ * 下划线基准扩展集：固定数组保持原样（顺序即注册顺序，优先级语义见文件末尾注释）。
+ * 需要注入应用级行为时用下面的 buildEditorExtensions()，避免把 store/应用模块
+ * 拖进编辑器内核。
+ */
+export const editorExtensions: Extensions = [
   StarterKit.configure({
     // 代码块由 CodeMirror NodeView 接管（开发文档步骤 3）
     codeBlock: false,
@@ -109,9 +128,21 @@ export const editorExtensions = [
   // 目录（工具栏「目录」插入；序列化 [TOC]，点击条目跳转标题）
   TableOfContents,
   // 鼠标语义：Ctrl/Cmd+左键退化为普通点击（PM 内置会整选段落/节点，Typora 无此逻辑）；
-  // 链接：普通左键原地展开源码、Ctrl/Cmd+左键用系统浏览器打开（§4.14/§4.15）
+  // 链接：普通左键原地展开源码、Ctrl/Cmd+左键交宿主注入的 onOpenLink（§4.14/§4.15）
   TyporaPointer,
   // 键盘语义（分割线回车确认 / 标题行首退格降级）：priority 200，
   // 先于 core keymap 执行；置于末尾保证在同等优先级中注册最晚（最先执行）
   TyporaKeymap
 ]
+
+/**
+ * 组装编辑器扩展集：把「打开链接」这类应用级行为注入内核，同时保持顺序不变
+ * （顺序即注册顺序，不能改动）。宿主不传 onOpenLink 时退化为「只开浏览器」。
+ */
+export function buildEditorExtensions(options: EditorExtensionOptions = {}): Extensions {
+  return editorExtensions.map((e) =>
+    e.name === 'typoraPointer'
+      ? e.configure({ onOpenLink: options.onOpenLink ?? defaultOpenLink })
+      : e
+  )
+}

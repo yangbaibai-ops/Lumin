@@ -5,12 +5,14 @@ import { watch, type FSWatcher } from 'fs'
 import * as fileOps from './fileOps'
 import * as exportSvc from './export'
 import * as drafts from './drafts'
+import * as links from './services/links'
 import { db } from './services/database'
 import { defaultSettings } from '../shared/defaults'
 import type {
   AppSettings,
   EpubMeta,
   ExportPayload,
+  LinkActivateRecord,
   NotificationInput,
   NotificationListOptions,
   NotificationPatch
@@ -276,10 +278,29 @@ export function registerIpc(): void {
   ipcMain.handle('export:word', (_, payload: ExportPayload) => exportSvc.exportWord(payload))
   ipcMain.handle('export:epub', (_, meta: EpubMeta) => exportSvc.exportEpub(meta))
 
-  // ── 外部链接 ──
+  // ── 外部链接与「用默认应用打开」（链接逻辑见 services/links.ts）──
+  // 统一走白名单校验：文档里的链接不可信，绝不让任意 scheme 落到系统处理器
   ipcMain.on('shell:openExternal', (_, url: string) => {
-    if (/^https?:\/\//.test(url)) shell.openExternal(url)
+    const safe = links.safeExternalUrl(url)
+    if (safe) void shell.openExternal(safe)
   })
+  ipcMain.handle('shell:openPath', async (_, p: string) => {
+    const abs = path.resolve(p)
+    // shell.openPath 返回空字符串表示成功，否则是系统给的错误信息
+    return shell.openPath(abs)
+  })
+
+  // ── 链接目标：解析 / 创建 / 历史记录 ──
+  ipcMain.handle('links:resolve', (_, target: string, baseDir: string | null) =>
+    links.resolveLinkTarget(target, baseDir)
+  )
+  ipcMain.handle('links:create', (_, p: string, type: 'file' | 'directory') =>
+    links.createLinkTarget(p, type)
+  )
+  ipcMain.handle('links:record', (_, record: LinkActivateRecord) => db.recordLinkOpen(record))
+  ipcMain.handle('links:history', (_, limit?: number) => db.listLinkHistory(limit ?? 50))
+  ipcMain.handle('links:forget', (_, target: string) => db.forgetLinkOpen(target))
+  ipcMain.handle('links:clear', () => db.clearLinkHistory())
 
   // 启动时若已记住工作区，恢复对根目录的监听
   const existingRoot = db.kvGet<{ root: string | null }>('workspace', { root: null }).root

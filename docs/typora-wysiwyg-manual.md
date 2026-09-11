@@ -547,7 +547,7 @@ prosemirror-view 内置 `selectNodeModifier`（Win: `ctrlKey` / Mac: `metaKey`�
 
 Typora 官方行为（support.typoraio.cn/Links/）：**Ctrl/Cmd+点击**链接跳转（网页/本地/应用），**普通点击**不跳转，而是把该链接原地展开为可编辑的 Markdown 源码 `[文字](网址)`。Lumin 实现（`pointer.ts` → `TyporaPointer` + `LinkSource` 标记）：
 
-- **Ctrl/Cmd + 左键点击链接** → `window.luminAPI.shell.openExternal(href)`（主进程校验 `^https?://` 后交系统默认浏览器）；非链接处仍为 §4.14 的普通光标落点；
+- **Ctrl/Cmd + 左键点击链接** → 交宿主注入的 `onOpenLink`（`pointer.ts` 的 `TyporaPointer` 选项；应用内为 `lib/linkOpen.ts`：网址→系统默认浏览器、同级文件名→新窗口、相对/绝对路径→默认应用，目标缺失时询问是否新建，详见 §4.17）；非链接处仍为 §4.14 的普通光标落点；
 - **普通左键点击链接** → 展开：**不整体替换成纯文本**，而是把原 label 上的 link mark 换成 `linkSource(part:'label')`（**保留其内 mdStyle/mdMarker 等标记**，各 mark 序列化 open/close 为空 → 输出仍是原 label 字符），两侧补 `linkSource(part:'syntax')` 的 `[` 与 `](网址)`——效果：**原文标签保持链接外观**（主题色 + 下边框，CSS `.md-link-source` 与 `.md-preview a` 一致）、**新增的括号与网址以浅灰呈现**（`.md-link-syntax` = `--ink-3`）、源码往返恒等；
 - **不自动选中、光标停在点击处**：展开前先把光标落到点击位置（mousedown 内 preventDefault 会阻止 PM 落光标，须先 `setSelection` 再展开），展开事务本身不 setSelection，PM 把光标按步骤映射进 label 的相对偏移——点到哪光标就在哪；
 - **自动折叠**：光标移出展开区（appendTransaction 判定）、按 Esc、编辑器失焦 → 解析展开区整体文本 `[label](url)` 以 link mark 重建 label（内部 `**` 等由派生归一化还原）；改残则不还原、仅去掉 linkSource 标记保留原文；
@@ -567,6 +567,25 @@ Typora 官方行为（support.typoraio.cn/Links/）：**Ctrl/Cmd+点击**链接�
 - **PDF 导出（优化）**：隐藏窗口 + 真实 Chromium 排版引擎渲染后 `printToPDF`；**等待 `document.fonts.ready` 与一次渲染帧稳定后再打印**，杜绝空白/缺字/未分页；按设置注入 A4/A5/Letter 与页边距、`printBackground`；失败时清理半成品文件并向上抛错（渲染层 Toast 提示）。
 
 验收：CDP 实测浮层 开→X 关、开→Esc 关、原生菜单栏开关状态持久化回读、autoSave 开关持久化、语言三态切换与 `ru-RU` 持久化、`openTopMenu` IPC 无异常；全量矩阵 89/89 全绿。
+
+### 4.17 链接目标解析与打开策略（本次）
+
+§4.15 只区分了「是不是链接」，Ctrl/Cmd+点击一律丢给 `shell.openExternal`——于是 Markdown 里极常见的 `[下一篇](notes.md)`、`[资料](./assets/spec.pdf)` 这类**本地目标点不动**（`openExternal` 只认 http/https）。本次把「打开链接」升级为**分类解析 + 按需创建**的完整流程：
+
+| 链接形态 | 判定 | 打开方式 |
+| --- | --- | --- |
+| `https://…`、`http://…`、`mailto:…` | `url` | 系统默认浏览器 / 邮件客户端 |
+| `notes.md`（不含量分隔符） | `file`（相对**当前文档所在目录**） | **Lumin 新窗口**打开（`app:openInNewWindow`） |
+| `./a/b.md`、`../x` | `relative` | 系统默认应用（`shell.openPath`） |
+| `C:\a\b`、`\\server\share`、`/home/a` | `absolute` | 系统默认应用 |
+
+- **目标不存在 → 询问是否创建**（`ui.confirm` 模态）：新建文件/文件夹后按上表打开（`file` 类进新窗口，路径类交默认应用）。策略可由 **设置 → 链接 → 目标不存在时** 三态控制：总是创建 / 每次询问（默认）/ 从不创建；父目录缺失会一并 `mkdir -p`。链接以分隔符结尾（`./notes/`）判定为文件夹，否则为文件。
+- **非文本目标不凭空创建**：`.png`/`.pdf` 之类已经存在时交系统默认应用；不存在时直接提示「该类型的文件无法新建」——造一个空的二进制文件没有意义。
+- **安全**：`shell.openExternal` 只放行 http/https/mailto 白名单（任意 scheme 交给系统处理器是历史上的高危面，如 `javascript:`、`ms-msdt:`）；分类前先排除 Windows 盘符（`C:\x` 会被 `new URL()` 误判成 scheme `c:`）；创建文件用 `flag: 'wx'`——**绝不覆盖**已有内容。`file://` URL 先 `fileURLToPath` 再按路径规则处理。
+- **持久化（SQLite，非 session）**：`link_history` 表以链接文本为主键 upsert（`kind / resolved_path / action / created_entry / count / created_at / last_used`），记录每一次打开、以及「放弃创建」；设置项 `linkCreateMode` 落在 `kv.settings`。**设置 → 链接**页签可查看历史（含类型/动作/次数/时间徽章）、逐条删除、一键清空（完整 CRUD）。
+- **解耦**：主进程 `services/links.ts` 只做「分类 + 路径解析 + 探测/创建」，**不打开任何东西**；打开动作由渲染层 `lib/linkOpen.ts` 编排（确认弹窗、通知、落库都在 UI 层）。编辑器内核不依赖任何 store——`TyporaPointer` 暴露 `onOpenLink` 选项注入（默认实现仅开浏览器），`buildEditorExtensions({ onOpenLink })` 在 `TyporaEditor.vue` 里接上应用逻辑。
+
+验收：`tools/_verify-link-open.js`（真实文件系统 + 真实新窗口 + 直读 SQLite）：分类矩阵、缺失目标「是/否」两条分支、创建后打开、协议白名单拒绝、非文本不创建、历史 CRUD 与落盘。
 
 ---
 

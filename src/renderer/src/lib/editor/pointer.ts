@@ -4,7 +4,9 @@
 //    会把光标所在文本块 NodeSelection 整选（.ProseMirror-selectednode 全选框）
 //    ——Typora 没有，须拦截：非链接处 Ctrl/Cmd+左键退化为普通光标落点。
 // 2) 链接（Typora 官方行为）：
-//    - Ctrl/Cmd + 左键点击链接 → 交给系统默认浏览器打开（shell.openExternal）；
+//    - Ctrl/Cmd + 左键点击链接 → 交给宿主注入的 onOpenLink（默认：系统默认
+//      浏览器；应用内注入 lib/linkOpen.ts 的完整分流：网址/同级文件名/相对路径/
+//      绝对路径，并按需询问是否新建缺失目标）；
 //    - 普通左键点击链接（不按修饰键）→ 该链接「原地展开」为可编辑源码形态：
 //      `[` 与 `](网址)` 等新增字符以浅灰（linkSource/syntax）呈现、**原文链接
 //      标签保持链接外观（主题色 + 下边框）**、光标停在点击处且不自动选中任何
@@ -209,8 +211,26 @@ function collapseAll(
   return true
 }
 
-export const TyporaPointer = Extension.create({
+export interface TyporaPointerOptions {
+  /**
+   * 打开链接（Ctrl/Cmd+左键）。宿主注入完整解析逻辑（网址→浏览器、同级文件名→
+   * 新窗口、相对/绝对路径→默认应用，见 lib/linkOpen.ts）；默认实现只把网址交给
+   * 系统默认浏览器，保证编辑器内核单独使用时也可用。
+   */
+  onOpenLink: (href: string) => void
+}
+
+export const TyporaPointer = Extension.create<TyporaPointerOptions>({
   name: 'typoraPointer',
+  addOptions() {
+    return {
+      onOpenLink: (href: string) => {
+        if (typeof window !== 'undefined' && window.luminAPI?.shell?.openExternal) {
+          window.luminAPI.shell.openExternal(href)
+        }
+      }
+    }
+  },
   addCommands() {
     // 运行时平铺返回（CommandManager 直接展开顶层键）；类型经声明合并拍平
     return {
@@ -234,6 +254,8 @@ export const TyporaPointer = Extension.create({
     }
   },
   addProseMirrorPlugins() {
+    // 事件回调里的 this 指向 props 对象而非扩展实例，先把宿主注入的打开逻辑取出来
+    const openLink = this.options.onOpenLink
     return [
       new Plugin({
         key: pluginKey,
@@ -285,12 +307,11 @@ export const TyporaPointer = Extension.create({
               const linkRun = ppos >= 0 ? runAt(view.state.doc, ppos, 'link') : null
 
               if (mod) {
-                // Ctrl/Cmd+左键：链接 → 系统浏览器打开；非链接 → 普通光标落点
+                // Ctrl/Cmd+左键：链接 → 交给宿主注入的打开逻辑（网址/本地文件/路径分流）；
+                // 非链接 → 普通光标落点
                 if (linkRun?.href) {
                   event.preventDefault()
-                  if (typeof window !== 'undefined' && window.luminAPI?.shell?.openExternal) {
-                    window.luminAPI.shell.openExternal(linkRun.href)
-                  }
+                  openLink(linkRun.href)
                   return true
                 }
                 event.preventDefault()

@@ -5,6 +5,9 @@ import { app } from 'electron'
 import path from 'path'
 import type {
   AppNotification,
+  LinkActivateRecord,
+  LinkHistoryEntry,
+  LinkTargetKind,
   MenuUsageEntry,
   NotificationInput,
   NotificationLevel,
@@ -75,6 +78,34 @@ interface MenuUsageRow {
   last_used: number
 }
 
+interface LinkHistoryRow {
+  target: string
+  kind: string
+  resolved_path: string | null
+  action: string
+  created_entry: number
+  count: number
+  created_at: number
+  last_used: number
+}
+
+const LINK_TARGET_KINDS: LinkTargetKind[] = ['url', 'file', 'relative', 'absolute']
+
+function rowToLinkHistory(row: LinkHistoryRow): LinkHistoryEntry {
+  return {
+    target: row.target,
+    kind: LINK_TARGET_KINDS.includes(row.kind as LinkTargetKind)
+      ? (row.kind as LinkTargetKind)
+      : 'file',
+    path: row.resolved_path,
+    action: row.action,
+    created: row.created_entry === 1,
+    count: row.count,
+    createdAt: row.created_at,
+    lastUsed: row.last_used
+  }
+}
+
 const NOTIFICATION_LEVELS: NotificationLevel[] = ['info', 'success', 'warning', 'error']
 
 function rowToNotification(row: NotificationRow): AppNotification {
@@ -93,7 +124,8 @@ function rowToNotification(row: NotificationRow): AppNotification {
 
 /** 与渲染层一致的字数统计（中文字符 + 英文单词） */
 export function countWords(content: string): number {
-  const text = content.replace(/[#>*`\-_~\[\]()!|]/g, ' ').trim()
+  // 字符集与原来完全一致，只是把 `-` 放到末尾（类内末尾的连字符无需转义）
+  const text = content.replace(/[#>*`_~[\]()!|-]/g, ' ').trim()
   if (!text) return 0
   const zh = (text.match(/[\u4e00-\u9fff\u3400-\u4dbf]/g) || []).length
   const words = (text.match(/[a-zA-Z0-9_]+(?:['’-][a-zA-Z0-9_]+)*/g) || []).length
@@ -159,6 +191,20 @@ class LuminDatabase {
         last_used INTEGER NOT NULL
       );
       CREATE INDEX IF NOT EXISTS idx_menu_usage_last_used ON menu_usage(last_used DESC);
+    `)
+    // 链接打开历史：设置面板可查看/删除/清空（跨会话保留，避免只活在 session 里）
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS link_history (
+        target TEXT PRIMARY KEY,
+        kind TEXT NOT NULL DEFAULT 'file',
+        resolved_path TEXT,
+        action TEXT NOT NULL DEFAULT 'external',
+        created_entry INTEGER NOT NULL DEFAULT 0,
+        count INTEGER NOT NULL DEFAULT 1,
+        created_at INTEGER NOT NULL,
+        last_used INTEGER NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_link_history_last_used ON link_history(last_used DESC);
     `)
     // FTS5：trigram 分词器（对中日韩文本支持子串匹配；支持片段高亮）
     const ftsRow = this.db
@@ -499,6 +545,54 @@ class LuminDatabase {
 
   resetMenuUsage(): number {
     const info = this.db.prepare('DELETE FROM menu_usage').run()
+    return Number(info.changes)
+  }
+
+  // ── 链接打开历史（CRUD，SQLite 持久化）─────────────────────────────────
+  // 以「链接文本」为主键做 upsert：同一个链接重复打开只累加计数并刷新时间，
+  // 因此这里天然是「增/改」合一，配合 list（查）/ forget·clear（删）构成完整 CRUD。
+  // 用途：设置面板「链接」页签里可查看并清理；也被用来记录用户放弃创建的链接。
+
+  recordLinkOpen(input: LinkActivateRecord): LinkHistoryEntry {
+    const now = Date.now()
+    const created = input.created ? 1 : 0
+    this.db
+      .prepare(
+        `INSERT INTO link_history (target, kind, resolved_path, action, created_entry, count, created_at, last_used)
+         VALUES (?, ?, ?, ?, ?, 1, ?, ?)
+         ON CONFLICT(target) DO UPDATE SET
+           kind = excluded.kind,
+           resolved_path = excluded.resolved_path,
+           action = excluded.action,
+           created_entry = MAX(link_history.created_entry, excluded.created_entry),
+           count = link_history.count + 1,
+           last_used = excluded.last_used`
+      )
+      .run(input.target, input.kind, input.path, input.action, created, now, now)
+    const row = this.db
+      .prepare(
+        'SELECT target, kind, resolved_path, action, created_entry, count, created_at, last_used FROM link_history WHERE target = ?'
+      )
+      .get(input.target) as unknown as LinkHistoryRow
+    return rowToLinkHistory(row)
+  }
+
+  listLinkHistory(limit = 50): LinkHistoryEntry[] {
+    const rows = this.db
+      .prepare(
+        `SELECT target, kind, resolved_path, action, created_entry, count, created_at, last_used
+         FROM link_history ORDER BY last_used DESC LIMIT ?`
+      )
+      .all(limit) as unknown as LinkHistoryRow[]
+    return rows.map(rowToLinkHistory)
+  }
+
+  forgetLinkOpen(target: string): void {
+    this.db.prepare('DELETE FROM link_history WHERE target = ?').run(target)
+  }
+
+  clearLinkHistory(): number {
+    const info = this.db.prepare('DELETE FROM link_history').run()
     return Number(info.changes)
   }
 

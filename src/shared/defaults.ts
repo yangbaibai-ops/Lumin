@@ -32,6 +32,7 @@ export const defaultSettings: AppSettings = {
   splitRatio: 0.5,
   syncScroll: false,
   codeLineNumbers: true,
+  linkCreateMode: 'ask',
   recentFiles: [],
   pinnedFiles: [],
   export: {

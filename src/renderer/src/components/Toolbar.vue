@@ -9,6 +9,7 @@ import { useExport } from '../composables/useExport'
 import { useEditorMode } from '../composables/useEditorMode'
 import Icon from './Icon.vue'
 import ToolbarTableButton from './ToolbarTableButton.vue'
+import ToolbarCodeBlockButton from './ToolbarCodeBlockButton.vue'
 
 // ─── 编辑器工具栏：命令通过 editor store 桥接 Tiptap 内核（解耦）────────────
 const { t } = useI18n()
@@ -118,15 +119,14 @@ function toggleHeading(level: 1 | 2 | 3): void {
   editorStore.instance?.chain().focus().toggleHeading({ level }).run()
 }
 
-function runBlock(cmd: 'quote' | 'ul' | 'ol' | 'task' | 'codeBlock'): void {
+function runBlock(cmd: 'quote' | 'ul' | 'ol' | 'task'): void {
   const ed = editorStore.instance
   if (!ed) return
   const chain = ed.chain().focus()
   if (cmd === 'quote') chain.toggleBlockquote().run()
   else if (cmd === 'ul') chain.toggleBulletList().run()
   else if (cmd === 'ol') chain.toggleOrderedList().run()
-  else if (cmd === 'task') chain.toggleTaskList().run()
-  else chain.toggleCodeBlock().run()
+  else chain.toggleTaskList().run()
 }
 
 function insertHr(): void {
@@ -170,12 +170,11 @@ const inlineButtons: { icon: string; cmd: 'bold' | 'italic' | 'underline' | 'str
   { icon: 'strike', cmd: 'strike', name: 'strike', titleKey: 'editor.strike' },
   { icon: 'code', cmd: 'code', name: 'code', titleKey: 'editor.inlineCode' }
 ]
-const blockButtons: { icon: string; cmd: 'quote' | 'ul' | 'ol' | 'task' | 'codeBlock'; name: string; titleKey: string }[] = [
+const blockButtons: { icon: string; cmd: 'quote' | 'ul' | 'ol' | 'task'; name: string; titleKey: string }[] = [
   { icon: 'quote', cmd: 'quote', name: 'blockquote', titleKey: 'editor.quote' },
   { icon: 'list', cmd: 'ul', name: 'bulletList', titleKey: 'editor.ul' },
   { icon: 'list-ordered', cmd: 'ol', name: 'orderedList', titleKey: 'editor.ol' },
-  { icon: 'list-checks', cmd: 'task', name: 'taskList', titleKey: 'editor.task' },
-  { icon: 'braces', cmd: 'codeBlock', name: 'codeBlock', titleKey: 'editor.codeBlock' }
+  { icon: 'list-checks', cmd: 'task', name: 'taskList', titleKey: 'editor.task' }
 ]
 
 const exportItems: { icon: string; labelKey: string; format: 'pdf' | 'html' | 'word' | 'epub' }[] = [
@@ -239,7 +238,7 @@ const docName = computed(() => files.current?.name ?? '')
 
     <div class="mx-0.5 h-4 w-px shrink-0 bg-edge" />
 
-    <!-- 块级 -->
+    <!-- 块级（代码块按钮自带「行号」悬停弹层，见 ToolbarCodeBlockButton） -->
     <button
       v-for="b in blockButtons"
       :key="b.cmd"
@@ -250,6 +249,7 @@ const docName = computed(() => files.current?.name ?? '')
     >
       <Icon :name="b.icon" :size="15" />
     </button>
+    <ToolbarCodeBlockButton />
 
     <div class="mx-0.5 h-4 w-px shrink-0 bg-edge" />
 

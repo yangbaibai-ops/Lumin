@@ -38,7 +38,9 @@ function clearTimer(): void {
 }
 
 function restoreTitle(): void {
-  if (currentEl && savedTitle !== null) {
+  // 只在 title 仍然缺失时写回：若悬停期间组件重新渲染并写入了新的 title
+  // （例如随状态变化的 :title），写回旧值会让提示与实际状态不一致
+  if (currentEl && savedTitle !== null && !currentEl.hasAttribute('title')) {
     currentEl.setAttribute('title', savedTitle)
   }
   currentEl = null

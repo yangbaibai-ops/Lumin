@@ -3,34 +3,38 @@
 // 覆盖在项目视图之上，带遮罩与 X / Esc / 点击遮罩关闭——不再占据路由与整页，
 // 提供大厂主流的「模态设置中心」交互。所有设置项均经由 settings store
 // （SQLite kv 持久化）读写；原生菜单栏/自动保存等系统级设置即时同步主进程。
-import { computed, onBeforeUnmount, onMounted, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
+import { useI18n } from 'vue-i18n'
 import { useSettingsStore } from '../stores/settings'
 import { useFilesStore } from '../stores/files'
 import { useUiStore } from '../stores/ui'
 import { FONT_OPTIONS } from '../../../shared/defaults'
 import { LANGUAGE_OPTIONS } from '../i18n'
-import type { EditorMode, ThemeMode } from '../../../shared/types'
+import type { EditorMode, LinkCreateMode, LinkHistoryEntry, ThemeMode } from '../../../shared/types'
 import Icon from '../components/Icon.vue'
 
 const router = useRouter()
+const { t } = useI18n()
 const settings = useSettingsStore()
 const files = useFilesStore()
 const ui = useUiStore()
 
-const tabs = [
-  { id: 'general', label: '通用', icon: 'settings' },
-  { id: 'editor', label: '编辑器', icon: 'pencil' },
-  { id: 'appearance', label: '外观', icon: 'sun' },
-  { id: 'export', label: '导出', icon: 'download' }
-] as const
+/** 页签：文案统一走 i18n（settings.* 命名空间，三语言同步维护） */
+const tabs = computed(() => [
+  { id: 'general', label: t('settings.general'), icon: 'settings' },
+  { id: 'editor', label: t('settings.editor'), icon: 'pencil' },
+  { id: 'appearance', label: t('settings.appearance'), icon: 'sun' },
+  { id: 'export', label: t('settings.export'), icon: 'download' },
+  { id: 'links', label: t('settings.links'), icon: 'link' }
+])
 
 /** 语言选项（由 i18n/LANGUAGE_OPTIONS 单一数据源驱动，便于扩展新语言） */
 const languageOptions = LANGUAGE_OPTIONS
 
 const activeTab = computed(() => {
   const t0 = String(ui.settingsSection ?? 'general')
-  return tabs.some((x) => x.id === t0) ? t0 : 'general'
+  return tabs.value.some((x) => x.id === t0) ? t0 : 'general'
 })
 
 function switchTab(id: string): void {
@@ -61,6 +65,15 @@ function onKeydown(e: KeyboardEvent): void {
 onMounted(() => window.addEventListener('keydown', onKeydown))
 onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
 
+// 切到「链接」页签时读取历史（每次打开设置面板都刷新，避免看到过期数据）
+watch(
+  () => [ui.settingsOpen, activeTab.value] as const,
+  ([open, tab]) => {
+    if (open && tab === 'links') void loadLinkHistory()
+  },
+  { immediate: true }
+)
+
 // 打开时记住上一次所在分组（复用 ui.settingsSection）
 watch(
   () => ui.settingsOpen,
@@ -90,8 +103,56 @@ const fontLabel = computed(() => {
 })
 
 function sectionTitle(id: string): string {
-  const x = tabs.find((y) => y.id === id)
+  const x = tabs.value.find((y) => y.id === id)
   return x ? x.label : ''
+}
+
+// ─── 链接：创建策略 + 打开历史（SQLite link_history，CRUD）────────────────────
+const createModes: { value: LinkCreateMode; labelKey: string; icon: string }[] = [
+  { value: 'ask', labelKey: 'settings.linksAsk', icon: 'info' },
+  { value: 'always', labelKey: 'settings.linksAlways', icon: 'check' },
+  { value: 'never', labelKey: 'settings.linksNever', icon: 'x' }
+]
+
+const linkHistory = ref<LinkHistoryEntry[]>([])
+
+async function loadLinkHistory(): Promise<void> {
+  try {
+    linkHistory.value = await window.luminAPI.links.history(50)
+  } catch {
+    linkHistory.value = []
+  }
+}
+
+async function forgetLink(target: string): Promise<void> {
+  await window.luminAPI.links.forget(target).catch(() => {})
+  await loadLinkHistory()
+}
+
+async function clearLinkHistory(): Promise<void> {
+  await window.luminAPI.links.clear().catch(() => 0)
+  await loadLinkHistory()
+}
+
+/** 历史记录的动作/类型徽章文案 */
+function linkActionLabel(action: string): string {
+  if (action === 'external') return t('links.actionExternal')
+  if (action === 'window') return t('links.actionWindow')
+  if (action === 'default-app') return t('links.actionDefault')
+  return t('links.actionDeclined')
+}
+
+function linkKindLabel(kind: string): string {
+  if (kind === 'url') return t('links.kindUrl')
+  if (kind === 'relative') return t('links.kindRelative')
+  if (kind === 'absolute') return t('links.kindAbsolute')
+  return t('links.kindFile')
+}
+
+function formatTime(ms: number): string {
+  const d = new Date(ms)
+  const pad = (n: number): string => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`
 }
 </script>
 
@@ -422,6 +483,96 @@ function sectionTitle(id: string): string {
                         <p class="mt-4 text-[11.5px] leading-relaxed text-ink-3">
                           Word 导出使用 Word 兼容的 HTML 文档格式；EPUB 为标准 epub 3 格式。在编辑器工具栏点击「导出」即可使用。
                         </p>
+                      </section>
+                    </template>
+
+                    <!-- 链接：Ctrl/Cmd+左键打开链接时的行为与历史 -->
+                    <template v-else-if="activeTab === 'links'">
+                      <section class="surface mb-4 p-5">
+                        <h3 class="mb-1 text-[13.5px] text-ink">{{ t('settings.linksCreateMode') }}</h3>
+                        <p class="mb-4 text-[12px] text-ink-3">{{ t('settings.linksCreateModeDesc') }}</p>
+                        <div class="grid grid-cols-3 gap-2">
+                          <button
+                            v-for="m in createModes"
+                            :key="m.value"
+                            class="flex items-center justify-center gap-2 rounded-xl border px-3 py-2.5 text-[13px] transition-all duration-150"
+                            :class="
+                              settings.linkCreateMode === m.value
+                                ? 'border-accent bg-accent-soft text-accent'
+                                : 'border-edge text-ink-2 hover:border-edge-strong hover:text-ink'
+                            "
+                            :aria-pressed="settings.linkCreateMode === m.value"
+                            @click="settings.set('linkCreateMode', m.value)"
+                          >
+                            <Icon :name="m.icon" :size="14" />
+                            <span>{{ t(m.labelKey) }}</span>
+                          </button>
+                        </div>
+                      </section>
+
+                      <section class="surface p-5">
+                        <div class="mb-1 flex items-center justify-between gap-3">
+                          <h3 class="text-[13.5px] text-ink">{{ t('settings.linksHistory') }}</h3>
+                          <button
+                            v-if="linkHistory.length"
+                            class="rounded-lg border border-edge px-2.5 py-1 text-[12px] text-ink-2 transition-colors hover:border-edge-strong hover:text-ink"
+                            @click="clearLinkHistory()"
+                          >
+                            {{ t('settings.linksClear') }}
+                          </button>
+                        </div>
+                        <p class="mb-4 text-[12px] text-ink-3">{{ t('settings.linksHistoryDesc') }}</p>
+
+                        <p
+                          v-if="!linkHistory.length"
+                          class="rounded-xl border border-dashed border-edge px-3.5 py-6 text-center text-[12.5px] text-ink-3"
+                        >
+                          {{ t('settings.linksHistoryEmpty') }}
+                        </p>
+
+                        <TransitionGroup v-else name="link-row" tag="div" class="relative space-y-2">
+                          <div
+                            v-for="item in linkHistory"
+                            :key="item.target"
+                            class="flex items-center gap-3 rounded-xl border border-edge px-3.5 py-2.5"
+                          >
+                            <span class="flex h-8 w-8 flex-none items-center justify-center rounded-lg bg-panel-2 text-ink-3">
+                              <Icon name="link" :size="14" />
+                            </span>
+                            <div class="min-w-0 flex-1">
+                              <p class="truncate text-[13px] text-ink" :title="item.target">{{ item.target }}</p>
+                              <p class="mt-0.5 truncate text-[11.5px] text-ink-3" :title="item.path ?? ''">
+                                {{ formatTime(item.lastUsed) }} · {{ t('settings.linksCount', { count: item.count }) }}
+                              </p>
+                            </div>
+                            <span class="flex-none rounded-md bg-panel-2 px-1.5 py-0.5 text-[11px] text-ink-3">
+                              {{ linkKindLabel(item.kind) }}
+                            </span>
+                            <span
+                              class="flex-none rounded-md px-1.5 py-0.5 text-[11px]"
+                              :class="
+                                item.action === 'declined'
+                                  ? 'bg-[color-mix(in_srgb,var(--warning)_18%,transparent)] text-warning'
+                                  : 'bg-accent-soft text-accent'
+                              "
+                            >
+                              {{ linkActionLabel(item.action) }}
+                            </span>
+                            <span
+                              v-if="item.created"
+                              class="flex-none rounded-md bg-[color-mix(in_srgb,var(--ok)_16%,transparent)] px-1.5 py-0.5 text-[11px] text-ok"
+                            >
+                              {{ t('settings.linksCreatedBadge') }}
+                            </span>
+                            <button
+                              class="flex h-7 w-7 flex-none items-center justify-center rounded-lg text-ink-3 transition-colors hover:bg-panel-2 hover:text-danger"
+                              :title="t('settings.linksForget')"
+                              @click="forgetLink(item.target)"
+                            >
+                              <Icon name="trash" :size="14" />
+                            </button>
+                          </div>
+                        </TransitionGroup>
                       </section>
                     </template>
                   </div>

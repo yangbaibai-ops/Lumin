@@ -1857,3 +1857,25 @@ li.md-reveal {
 .lm-tip-leave-to {
   opacity: 0;
 }
+
+/* 设置 → 链接：历史记录行的增删动效（删除时离场行脱离文档流，其余行平滑上移） */
+.link-row-enter-active,
+.link-row-leave-active,
+.link-row-move {
+  transition:
+    opacity 0.18s ease,
+    transform 0.18s cubic-bezier(0.2, 0.9, 0.3, 1);
+}
+.link-row-enter-from {
+  opacity: 0;
+  transform: translateY(-6px);
+}
+.link-row-leave-to {
+  opacity: 0;
+  transform: translateX(10px);
+}
+.link-row-leave-active {
+  position: absolute;
+  left: 0;
+  right: 0;
+}

@@ -26,6 +26,8 @@ export interface AppSettings {
   splitRatio: number // 分屏对比视图左右宽度比（左面板占比 0.25~0.75）
   syncScroll: boolean // 分屏对比视图左右滚动进度同步
   codeLineNumbers: boolean // 代码块是否显示行号，默认开
+  /** 链接指向的文件/文件夹不存在时的处理策略（询问 / 总是创建 / 从不创建） */
+  linkCreateMode: LinkCreateMode
   recentFiles: RecentFile[]
   pinnedFiles: string[]
   export: ExportSettings
@@ -86,6 +88,64 @@ export interface RecentFile {
   path: string
   title: string
   openedAt: number
+}
+
+// ─── 链接目标：解析与打开 ──────────────────────────────────────────────────
+/**
+ * 链接目标分类：
+ *  - url      → 网址（http/https/mailto），交系统默认浏览器/邮件客户端；
+ *  - file     → 不含量路径分隔符的「文件名」，相对当前文档所在目录，由 Lumin 新窗口打开；
+ *  - relative → 含分隔符的相对路径（./a/b.md、../x），交系统默认应用；
+ *  - absolute → 绝对路径（C:\a\b、\\server\share、/home/a），交系统默认应用。
+ */
+export type LinkTargetKind = 'url' | 'file' | 'relative' | 'absolute'
+
+/** 打开方式：系统默认浏览器 / Lumin 新窗口 / 系统默认应用 */
+export type LinkOpenAction = 'external' | 'window' | 'default-app'
+
+/** 目标不存在时的策略（持久化在 SQLite settings） */
+export type LinkCreateMode = 'ask' | 'always' | 'never'
+
+/** 链接解析结果（纯探测，不产生任何副作用） */
+export interface LinkResolveResult {
+  /** 归一化后的链接文本（去首尾空白） */
+  target: string
+  kind: LinkTargetKind
+  /** 解析出的绝对路径；kind='url' 时为 null */
+  path: string | null
+  /** 目标是否已存在；kind='url' 时为 null */
+  exists: boolean | null
+  /** 已存在时的实体类型 */
+  entryType: 'file' | 'directory' | null
+  /** 不存在时按链接形态推断的创建类型（尾部分隔符 → 目录，否则文件） */
+  createType: 'file' | 'directory' | null
+  /** 建议的打开方式 */
+  action: LinkOpenAction
+  /** 非 null 表示该链接不应被打开，值为原因码（协议不支持 / 空链接 / 缺少基准目录） */
+  blocked: 'unsupported-scheme' | 'invalid' | 'missing-base' | null
+}
+
+/** 一次链接打开动作（写入 SQLite link_history） */
+export interface LinkActivateRecord {
+  target: string
+  kind: LinkTargetKind
+  path: string | null
+  /** declined = 目标不存在且用户放弃创建 */
+  action: LinkOpenAction | 'declined'
+  /** 该次动作是否伴随「新建文件/文件夹」 */
+  created?: boolean
+}
+
+/** 链接打开历史（SQLite 持久化，跨会话保留） */
+export interface LinkHistoryEntry {
+  target: string
+  kind: LinkTargetKind
+  path: string | null
+  action: string
+  created: boolean
+  count: number
+  createdAt: number
+  lastUsed: number
 }
 
 export interface FileNode {
@@ -264,6 +324,23 @@ export interface LuminAPI {
   }
   shell: {
     openExternal: (url: string) => void
+    /** 用系统默认应用打开文件或文件夹；返回空字符串表示成功，否则为错误信息 */
+    openPath: (path: string) => Promise<string>
+  }
+  /** 链接目标解析 / 创建 / 历史记录（link_history 表，SQLite 持久化） */
+  links: {
+    /** 解析链接目标（不产生副作用）：分类、绝对路径、是否存在、建议打开方式 */
+    resolve: (target: string, baseDir: string | null) => Promise<LinkResolveResult>
+    /** 新建文件或文件夹（父目录缺失时一并创建；已存在则拒绝覆盖） */
+    create: (path: string, type: 'file' | 'directory') => Promise<{ ok: boolean; error?: string }>
+    /** 记录一次链接打开动作（目标维度 upsert + 计数） */
+    record: (record: LinkActivateRecord) => Promise<LinkHistoryEntry>
+    /** 历史记录（按最近使用倒序） */
+    history: (limit?: number) => Promise<LinkHistoryEntry[]>
+    /** 删除单条历史 */
+    forget: (target: string) => Promise<void>
+    /** 清空历史，返回删除条数 */
+    clear: () => Promise<number>
   }
   events: {
     on: (channel: string, cb: (payload?: unknown) => void) => () => void

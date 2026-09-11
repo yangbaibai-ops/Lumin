@@ -92,7 +92,16 @@ const api: LuminAPI = {
     epub: (meta: EpubMeta) => ipcRenderer.invoke('export:epub', meta)
   },
   shell: {
-    openExternal: (url) => ipcRenderer.send('shell:openExternal', url)
+    openExternal: (url) => ipcRenderer.send('shell:openExternal', url),
+    openPath: (path) => ipcRenderer.invoke('shell:openPath', path)
+  },
+  links: {
+    resolve: (target, baseDir) => ipcRenderer.invoke('links:resolve', target, baseDir),
+    create: (path, type) => ipcRenderer.invoke('links:create', path, type),
+    record: (record) => ipcRenderer.invoke('links:record', record),
+    history: (limit) => ipcRenderer.invoke('links:history', limit),
+    forget: (target) => ipcRenderer.invoke('links:forget', target),
+    clear: () => ipcRenderer.invoke('links:clear')
   },
   events: {
     on: (channel, cb) => {
