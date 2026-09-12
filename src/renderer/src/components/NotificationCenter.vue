@@ -49,6 +49,26 @@ function step(delta: number): void {
   notifications.step(delta)
 }
 
+/** 操作按钮的视觉层级（主/次/危险），配色全部走主题令牌 */
+function actionToneClass(tone?: 'primary' | 'ghost' | 'danger'): string {
+  if (tone === 'primary') return 'is-primary'
+  if (tone === 'danger') return 'is-danger'
+  return ''
+}
+
+/** 正在执行某个按钮的动作：期间禁用按钮，避免连点造成重复创建 */
+const busy = ref(false)
+async function runAction(actionId: string): Promise<void> {
+  const current = active.value
+  if (!current || busy.value) return
+  busy.value = true
+  try {
+    await notifications.runAction(current.id, actionId)
+  } finally {
+    busy.value = false
+  }
+}
+
 const timeFmt = computed(
   () => new Intl.DateTimeFormat(locale.value, { hour: '2-digit', minute: '2-digit' })
 )
@@ -88,6 +108,21 @@ function closeCurrent(): void {
               >
                 {{ active.body }}
               </p>
+
+              <!-- 操作按钮（可交互通知，如「创建并打开 / 取消」）：
+                   点击即收起本卡片，再按 payload.kind 派发给注册的处理器 -->
+              <div v-if="active.actions.length" class="mt-3 flex flex-wrap items-center gap-2">
+                <button
+                  v-for="a in active.actions"
+                  :key="a.id"
+                  class="ntf-action"
+                  :class="actionToneClass(a.tone)"
+                  :disabled="busy"
+                  @click="runAction(a.id)"
+                >
+                  {{ a.label }}
+                </button>
+              </div>
             </div>
 
             <button

@@ -33,7 +33,9 @@ export const defaultSettings: AppSettings = {
   syncScroll: false,
   codeLineNumbers: true,
   linkCreateMode: 'ask',
+  restoreSession: true,
   recentFiles: [],
+  recentFolders: [],
   pinnedFiles: [],
   export: {
     pdf: { margin: 24, pageSize: 'A4' },

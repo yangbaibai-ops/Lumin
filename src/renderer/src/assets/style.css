@@ -1591,6 +1591,54 @@ li.md-reveal {
   /* 长详情只在卡片内滚动，不撑高整张卡片 */
   scrollbar-width: thin;
 }
+/* 可交互通知的操作按钮：主/次/危险三档，配色全部取主题令牌（三套主题自动适配） */
+.ntf-action {
+  border: 1px solid var(--edge);
+  border-radius: 9px;
+  padding: 5px 13px;
+  font-size: 12.5px;
+  line-height: 1.25;
+  color: var(--ink-2);
+  white-space: nowrap;
+  cursor: pointer;
+  transition:
+    background-color 0.15s ease,
+    border-color 0.15s ease,
+    color 0.15s ease,
+    transform 0.12s ease;
+}
+.ntf-action:hover {
+  border-color: var(--edge-strong);
+  background: var(--panel-2);
+  color: var(--ink);
+}
+.ntf-action:active {
+  transform: scale(0.97);
+}
+.ntf-action:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+.ntf-action.is-primary {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--accent-ink);
+  font-weight: 500;
+}
+.ntf-action.is-primary:hover {
+  background: color-mix(in srgb, var(--accent) 88%, #000);
+  border-color: color-mix(in srgb, var(--accent) 88%, #000);
+  color: var(--accent-ink);
+}
+.ntf-action.is-danger {
+  border-color: color-mix(in srgb, var(--danger) 45%, var(--edge));
+  color: var(--danger);
+}
+.ntf-action.is-danger:hover {
+  background: color-mix(in srgb, var(--danger) 12%, transparent);
+  border-color: var(--danger);
+  color: var(--danger);
+}
 .ntf-icon-btn {
   display: inline-flex;
   align-items: center;

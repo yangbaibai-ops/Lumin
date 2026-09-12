@@ -5,6 +5,7 @@ import { useSettingsStore } from '../stores/settings'
 import { useUiStore } from '../stores/ui'
 import { useExport } from './useExport'
 import { useEditorMode } from './useEditorMode'
+import { flushSession } from '../lib/session'
 import type { MenuAction } from '../../../shared/types'
 import i18n from '../i18n'
 
@@ -176,6 +177,8 @@ export function useAppActions(): {
   // ── 关闭守卫：保存全部并放行 ──
   async function requestClose(): Promise<void> {
     await files.flushAll()
+    // 会话位置（光标/滚动）也补一次：窗口销毁前最后的状态
+    await flushSession()
     await window.luminAPI.app.confirmClose()
   }
 

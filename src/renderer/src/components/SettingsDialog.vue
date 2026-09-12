@@ -279,6 +279,21 @@ function formatTime(ms: number): string {
                       <section class="surface p-5">
                         <div class="flex items-center justify-between gap-4">
                           <div>
+                            <p class="text-[13.5px] text-ink">{{ t('settings.restoreSession') }}</p>
+                            <p class="mt-0.5 text-[12px] text-ink-3">{{ t('settings.restoreSessionDesc') }}</p>
+                          </div>
+                          <button
+                            class="switch"
+                            :class="{ on: settings.restoreSession }"
+                            :aria-checked="settings.restoreSession"
+                            @click="settings.set('restoreSession', !settings.restoreSession)"
+                          />
+                        </div>
+                      </section>
+
+                      <section class="surface p-5">
+                        <div class="flex items-center justify-between gap-4">
+                          <div>
                             <p class="text-[13.5px] text-ink">侧边栏</p>
                             <p class="mt-0.5 text-[12px] text-ink-3">默认显示左侧边栏</p>
                           </div>

@@ -21,29 +21,25 @@
     "restore": "恢复",
     "discard": "丢弃",
     "untitled": "未命名",
-    "pending": "功能待接入"
+    "pending": "功能待接入",
+    "searchPlaceholder": "全局搜索文档内容（FTS5 全文索引）…"
   },
-  "welcome": {
-    "greeting": "开始你的灵感之旅",
-    "subtitle": "所见即所得的 Markdown 写作体验",
+  "open": {
+    "emptyTitle": "开始你的灵感之旅",
+    "emptyDesc": "所见即所得的 Markdown 写作体验",
     "newDoc": "新建文档",
     "openFile": "打开文件",
     "openFolder": "打开文件夹",
     "recent": "最近文档",
-    "pinned": "已固定",
+    "recentFolders": "最近文件夹",
     "emptyRecent": "暂无最近文档，创建或打开一个 Markdown 文件开始写作吧",
-    "emptyFolder": "尚未打开工作区文件夹",
-    "recoverUntitled": "恢复上次未保存的草稿",
-    "searchPlaceholder": "全局搜索文档内容（FTS5 全文索引）…",
-    "shortcuts": "快捷键",
-    "tips": "写作小贴士",
-    "tipsContent": [
-      "使用 # 快速创建标题，Ctrl+B 加粗文字",
-      "输入 $$ 公式以插入数学公式，如 E = mc^2",
-      "使用 ```mermaid 代码块绘制流程图与图表",
-      "在文档中插入 [TOC] 可自动生成目录",
-      "按 Ctrl+Shift+F 进入专注模式，享受沉浸写作"
-    ]
+    "emptyFolders": "暂无最近文件夹，用「打开文件夹」选一个工作区吧",
+    "clearRecent": "清除记录",
+    "clearFolders": "清除文件夹记录",
+    "pin": "固定到顶部",
+    "unpin": "取消固定",
+    "removeRecent": "从列表移除",
+    "hint": "Ctrl+O 打开文件 · Ctrl+Shift+P 搜索文档"
   },
   "sidebar": {
     "files": "文件",
@@ -207,6 +203,8 @@
     "pdfPageSize": "PDF 页面尺寸",
     "exportNote": "Word 导出使用 Word 兼容的 HTML 文档格式；EPUB 为标准 epub 3 格式。",
     "reset": "恢复默认设置",
+    "restoreSession": "启动时恢复上次会话",
+    "restoreSessionDesc": "重新打开上次的文档，并把光标与滚动位置放回原处（多窗口时各窗口分别恢复）",
     "links": "链接",
     "linksCreateMode": "目标不存在时",
     "linksCreateModeDesc": "链接指向的文件或文件夹不存在时的处理方式",
@@ -223,8 +221,7 @@
     "linksDeclinedBadge": "已取消"
   },
   "links": {
-    "kindUrl": "网址",
-    "kindFile": "同级文件",
+    "kindUrl": "网址",    "kindFile": "同级文件",
     "kindRelative": "相对路径",
     "kindAbsolute": "绝对路径",
     "actionExternal": "浏览器",
@@ -232,6 +229,8 @@
     "actionDefault": "默认应用",
     "actionDeclined": "未打开",
     "confirmTitle": "目标不存在",
+    "actionCreate": "创建并打开",
+    "actionCancel": "取消",
     "confirmFile": "「{path}」不存在。是否新建该文件（缺失的上级文件夹会一并创建）？",
     "confirmDir": "「{path}」不存在。是否新建该文件夹（缺失的上级路径会一并创建）？",
     "afterWindow": "创建后将在新窗口中打开。",
@@ -245,6 +244,9 @@
     "errNeverCreate": "已按设置跳过：目标不存在",
     "errCreate": "新建失败",
     "errOpen": "无法用默认应用打开"
+  },
+  "session": {
+    "restoreFailed": "无法恢复上次的文档（文件可能已被移动或删除）"
   },
   "about": {
     "title": "关于 Lumin",

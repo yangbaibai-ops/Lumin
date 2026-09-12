@@ -9,10 +9,12 @@ import type {
   LinkHistoryEntry,
   LinkTargetKind,
   MenuUsageEntry,
+  NotificationAction,
   NotificationInput,
   NotificationLevel,
   NotificationListOptions,
-  NotificationPatch
+  NotificationPatch,
+  NotificationPayload
 } from '../../shared/types'
 
 /** 惰性加载 node:sqlite 的 DatabaseSync 构造函数。
@@ -64,12 +66,16 @@ interface DocRow {
 
 interface NotificationRow {
   id: number
+  /** 窗口作用域（见 services/windowScope）；不进入渲染进程的 DTO */
+  scope: string
   level: string
   title: string
   body: string
   merge_key: string
   created_at: number
   closed_at: number | null
+  actions: string | null
+  payload: string | null
 }
 
 interface MenuUsageRow {
@@ -108,15 +114,31 @@ function rowToLinkHistory(row: LinkHistoryRow): LinkHistoryEntry {
 
 const NOTIFICATION_LEVELS: NotificationLevel[] = ['info', 'success', 'warning', 'error']
 
+/** JSON 列的安全解析（脏数据一律退化为空值，不影响通知可用性） */
+function parseJson<T>(raw: string | null | undefined, fallback: T): T {
+  if (!raw) return fallback
+  try {
+    return JSON.parse(raw) as T
+  } catch {
+    return fallback
+  }
+}
+
 function rowToNotification(row: NotificationRow): AppNotification {
   const level = NOTIFICATION_LEVELS.includes(row.level as NotificationLevel)
     ? (row.level as NotificationLevel)
     : 'info'
+  const actions = parseJson<NotificationAction[]>(row.actions, []).filter(
+    (a) => a && typeof a.id === 'string' && typeof a.label === 'string'
+  )
+  const payload = parseJson<NotificationPayload | null>(row.payload, null)
   return {
     id: row.id,
     level,
     title: row.title,
     body: row.body,
+    actions,
+    payload: payload && typeof payload.kind === 'string' ? payload : null,
     createdAt: row.created_at,
     closedAt: row.closed_at ?? null
   }
@@ -169,10 +191,13 @@ class LuminDatabase {
         updated_at INTEGER NOT NULL
       );
     `)
-    // 全局通知中心：跨会话保留（关闭用 closed_at 软删除，便于日后做历史面板）
+    // 通知中心：跨会话保留（关闭用 closed_at 软删除，便于日后做历史面板）。
+    // scope = 窗口作用域（services/windowScope）：通知属于「产生它的那个窗口」，
+    // 多窗口各自独立，不会一条提示在所有窗口同时弹出。
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS notifications (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
+        scope TEXT NOT NULL DEFAULT '',
         level TEXT NOT NULL DEFAULT 'info',
         title TEXT NOT NULL,
         body TEXT NOT NULL DEFAULT '',
@@ -180,9 +205,33 @@ class LuminDatabase {
         created_at INTEGER NOT NULL,
         closed_at INTEGER
       );
-      CREATE INDEX IF NOT EXISTS idx_notifications_open
-        ON notifications(closed_at, created_at DESC);
     `)
+    // 可交互通知：卡片上的操作按钮 + 负载（JSON 文本）。
+    // 建表时已存在则走 ADD COLUMN（SQLite 不支持 IF NOT EXISTS 加列），
+    // 旧库升级后历史行取默认值（纯消息通知，actions 为空数组）。
+    const notifCols = this.db.prepare('PRAGMA table_info(notifications)').all() as unknown as {
+      name: string
+    }[]
+    const hasCol = (n: string): boolean => notifCols.some((c) => c.name === n)
+    if (!hasCol('actions')) {
+      this.db.exec("ALTER TABLE notifications ADD COLUMN actions TEXT NOT NULL DEFAULT '[]'")
+    }
+    if (!hasCol('payload')) {
+      this.db.exec("ALTER TABLE notifications ADD COLUMN payload TEXT NOT NULL DEFAULT ''")
+    }
+    if (!hasCol('scope')) {
+      this.db.exec("ALTER TABLE notifications ADD COLUMN scope TEXT NOT NULL DEFAULT ''")
+      // 旧库里的通知是「全局共享」时期的产物，无法归属到任何窗口，一次性清掉，
+      // 否则它们会在所有窗口都查不到（查询按 scope 过滤）却永久占着表空间。
+      this.db.exec("DELETE FROM notifications WHERE scope = ''")
+    }
+    // 索引必须等 scope 列确定存在后再建（旧库此时才刚 ALTER 出来）
+    this.db.exec(`
+      CREATE INDEX IF NOT EXISTS idx_notifications_scope_open
+        ON notifications(scope, closed_at, created_at DESC);
+    `)
+    // 旧索引被 (scope, closed_at, created_at) 覆盖，去掉避免写放大
+    this.db.exec('DROP INDEX IF EXISTS idx_notifications_open')
     // 编辑器右键菜单的动作使用记录：驱动「最近使用」分区（跨会话保留）
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS menu_usage (
@@ -307,6 +356,14 @@ class LuminDatabase {
   }
 
   renameDocument(oldPath: string, newPath: string): void {
+    // 目标路径可能残留在索引里（同名文件以前打开过、或在外部被删后索引未清），
+    // 此时直接 UPDATE 会撞 documents.path 的 UNIQUE 约束、整个重命名失败。
+    // 索引只是「打开过的文件」的缓存，先清掉旧的目标行（含其 FTS 行）再改路径。
+    const stale = this.getRow(newPath)
+    if (stale && stale.path !== oldPath) {
+      this.db.prepare('DELETE FROM documents_fts WHERE rowid = ?').run(stale.id)
+      this.db.prepare('DELETE FROM documents WHERE id = ?').run(stale.id)
+    }
     this.db
       .prepare('UPDATE documents SET path = ?, title = ? WHERE path = ?')
       .run(newPath, path.basename(newPath), oldPath)
@@ -408,38 +465,47 @@ class LuminDatabase {
     return { docs: row.docs, fts: fts.c }
   }
 
-  // ── 全局通知中心（CRUD + 关闭/清理）─────────────────────────────────────
+  // ── 通知中心（CRUD + 关闭/清理，按窗口作用域隔离）────────────────────────
   // 设计：单卡片通知中心只需要「未关闭」集合，故列表默认只查 closed_at IS NULL，
   // 但保留 includeClosed 供历史面板/调试使用；关闭是软删除（closed_at 打时间戳），
   // 硬删除交给 remove / clearClosed。行数上限由 prune 在写入后收紧，避免无限增长。
+  // scope 由主进程按 IPC 发送方注入（渲染进程无法指定），所有读写都以它为前提条件。
 
   private static readonly NOTIFICATION_LIMIT = 200
 
-  /** 新增（mergeKey 命中未关闭项时改为更新并置顶） */
-  addNotification(input: NotificationInput): AppNotification {
+  /** 新增（同作用域内 mergeKey 命中未关闭项时改为更新并置顶，按钮与负载一并刷新） */
+  addNotification(scope: string, input: NotificationInput): AppNotification {
     const level: NotificationLevel = input.level ?? 'info'
     const title = input.title
     const body = input.body ?? ''
+    const actions = JSON.stringify(input.actions ?? [])
+    const payload = input.payload ? JSON.stringify(input.payload) : ''
     const mergeKey = input.mergeKey ?? `${level}\u0000${title}`
     const now = Date.now()
     const hit = this.db
-      .prepare('SELECT id FROM notifications WHERE closed_at IS NULL AND merge_key = ?')
-      .get(mergeKey) as { id: number } | undefined
+      .prepare(
+        'SELECT id FROM notifications WHERE scope = ? AND closed_at IS NULL AND merge_key = ?'
+      )
+      .get(scope, mergeKey) as { id: number } | undefined
     if (hit) {
       this.db
-        .prepare('UPDATE notifications SET level = ?, title = ?, body = ?, created_at = ? WHERE id = ?')
-        .run(level, title, body, now, hit.id)
-      this.pruneNotifications()
+        .prepare(
+          `UPDATE notifications
+             SET level = ?, title = ?, body = ?, actions = ?, payload = ?, created_at = ?
+           WHERE id = ?`
+        )
+        .run(level, title, body, actions, payload, now, hit.id)
+      this.pruneNotifications(scope)
       const updated = this.getNotification(hit.id)
       if (updated) return updated
     }
     const info = this.db
       .prepare(
-        `INSERT INTO notifications (level, title, body, merge_key, created_at, closed_at)
-         VALUES (?, ?, ?, ?, ?, NULL)`
+        `INSERT INTO notifications (scope, level, title, body, merge_key, actions, payload, created_at, closed_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL)`
       )
-      .run(level, title, body, mergeKey, now)
-    this.pruneNotifications()
+      .run(scope, level, title, body, mergeKey, actions, payload, now)
+    this.pruneNotifications(scope)
     const row = this.getNotification(Number(info.lastInsertRowid))
     if (!row) throw new Error('DB: addNotification failed')
     return row
@@ -447,71 +513,89 @@ class LuminDatabase {
 
   getNotification(id: number): AppNotification | null {
     const row = this.db.prepare('SELECT * FROM notifications WHERE id = ?').get(id) as
-      | NotificationRow
-      | undefined
+      NotificationRow | undefined
     return row ? rowToNotification(row) : null
   }
 
-  /** 列表：默认只返回未关闭项，按时间倒序（最新在前） */
-  listNotifications(options: NotificationListOptions = {}): AppNotification[] {
+  /** 列表：只返回该窗口的通知；默认只含未关闭项，按时间倒序（最新在前） */
+  listNotifications(scope: string, options: NotificationListOptions = {}): AppNotification[] {
     const limit = options.limit ?? LuminDatabase.NOTIFICATION_LIMIT
     const sql = options.includeClosed
-      ? 'SELECT * FROM notifications ORDER BY created_at DESC, id DESC LIMIT ?'
-      : 'SELECT * FROM notifications WHERE closed_at IS NULL ORDER BY created_at DESC, id DESC LIMIT ?'
-    const rows = this.db.prepare(sql).all(limit) as unknown as NotificationRow[]
+      ? 'SELECT * FROM notifications WHERE scope = ? ORDER BY created_at DESC, id DESC LIMIT ?'
+      : `SELECT * FROM notifications WHERE scope = ? AND closed_at IS NULL
+           ORDER BY created_at DESC, id DESC LIMIT ?`
+    const rows = this.db.prepare(sql).all(scope, limit) as unknown as NotificationRow[]
     return rows.map(rowToNotification)
   }
 
-  /** 局部更新（标题/详情/级别） */
-  updateNotification(id: number, patch: NotificationPatch): AppNotification | null {
-    const current = this.getNotification(id)
+  /** 局部更新（标题/详情/级别）；跨窗口的 id 不生效 */
+  updateNotification(scope: string, id: number, patch: NotificationPatch): AppNotification | null {
+    const current = this.db
+      .prepare('SELECT * FROM notifications WHERE id = ? AND scope = ?')
+      .get(id, scope) as NotificationRow | undefined
     if (!current) return null
+    const before = rowToNotification(current)
     this.db
-      .prepare('UPDATE notifications SET level = ?, title = ?, body = ? WHERE id = ?')
+      .prepare('UPDATE notifications SET level = ?, title = ?, body = ? WHERE id = ? AND scope = ?')
       .run(
-        patch.level ?? current.level,
-        patch.title ?? current.title,
-        patch.body ?? current.body,
-        id
+        patch.level ?? before.level,
+        patch.title ?? before.title,
+        patch.body ?? before.body,
+        id,
+        scope
       )
     return this.getNotification(id)
   }
 
   /** 关闭单条（软删除：closed_at 打时间戳；已关闭则保持原时间） */
-  closeNotification(id: number): void {
-    this.db
-      .prepare('UPDATE notifications SET closed_at = ? WHERE id = ? AND closed_at IS NULL')
-      .run(Date.now(), id)
-  }
-
-  /** 全部关闭，返回受影响条数 */
-  closeAllNotifications(): number {
-    const info = this.db
-      .prepare('UPDATE notifications SET closed_at = ? WHERE closed_at IS NULL')
-      .run(Date.now())
-    return Number(info.changes)
-  }
-
-  /** 物理删除单条 */
-  removeNotification(id: number): void {
-    this.db.prepare('DELETE FROM notifications WHERE id = ?').run(id)
-  }
-
-  /** 清理已关闭记录，返回删除条数 */
-  clearClosedNotifications(): number {
-    const info = this.db.prepare('DELETE FROM notifications WHERE closed_at IS NOT NULL').run()
-    return Number(info.changes)
-  }
-
-  /** 只保留最近 N 条（含已关闭），控制表体积 */
-  private pruneNotifications(keep = LuminDatabase.NOTIFICATION_LIMIT): void {
+  closeNotification(scope: string, id: number): void {
     this.db
       .prepare(
-        `DELETE FROM notifications WHERE id NOT IN (
-           SELECT id FROM notifications ORDER BY created_at DESC, id DESC LIMIT ?
+        'UPDATE notifications SET closed_at = ? WHERE id = ? AND scope = ? AND closed_at IS NULL'
+      )
+      .run(Date.now(), id, scope)
+  }
+
+  /** 关闭该窗口全部通知，返回受影响条数 */
+  closeAllNotifications(scope: string): number {
+    const info = this.db
+      .prepare('UPDATE notifications SET closed_at = ? WHERE scope = ? AND closed_at IS NULL')
+      .run(Date.now(), scope)
+    return Number(info.changes)
+  }
+
+  /** 物理删除单条（限本窗口） */
+  removeNotification(scope: string, id: number): void {
+    this.db.prepare('DELETE FROM notifications WHERE id = ? AND scope = ?').run(id, scope)
+  }
+
+  /** 清理该窗口已关闭记录，返回删除条数 */
+  clearClosedNotifications(scope: string): number {
+    const info = this.db
+      .prepare('DELETE FROM notifications WHERE scope = ? AND closed_at IS NOT NULL')
+      .run(scope)
+    return Number(info.changes)
+  }
+
+  /**
+   * 清空某个窗口作用域的全部通知（含已关闭）。
+   * 用于「窗口关闭」与「槽位被新窗口复用」——通知随窗口生命周期存在，
+   * 关掉窗口就不会把提示留给下一个占用这个槽位的窗口。
+   */
+  deleteNotificationsByScope(scope: string): number {
+    const info = this.db.prepare('DELETE FROM notifications WHERE scope = ?').run(scope)
+    return Number(info.changes)
+  }
+
+  /** 每个窗口作用域只保留最近 N 条（含已关闭），控制表体积 */
+  private pruneNotifications(scope: string, keep = LuminDatabase.NOTIFICATION_LIMIT): void {
+    this.db
+      .prepare(
+        `DELETE FROM notifications WHERE scope = ? AND id NOT IN (
+           SELECT id FROM notifications WHERE scope = ? ORDER BY created_at DESC, id DESC LIMIT ?
          )`
       )
-      .run(keep)
+      .run(scope, scope, keep)
   }
 
   // ── 编辑器右键菜单：动作使用记录（CRUD，驱动「最近使用」）───────────────

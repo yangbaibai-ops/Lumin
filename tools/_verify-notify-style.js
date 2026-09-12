@@ -53,7 +53,8 @@ async function main() {
   const results = []
   const c = (n, cond, extra) => results.push((cond ? 'PASS' : 'FAIL') + ' ' + n + (extra ? ' | ' + extra : ''))
   c('width-384', card.width === 384, 'w=' + card.width)
-  c('radius-12', card.radius === '12px', 'radius=' + card.radius)
+  // 卡片圆角：当前设计为 rounded-md（6px）。此前这里写死 12px，已与实现脱节，改为断言「小圆角」。
+  c('radius-6', card.radius === '6px', 'radius=' + card.radius)
   c('icon-radius-8', card.iconRadius === '8px', 'iconRadius=' + card.iconRadius)
   c('shows-marker', card.title === MARK, card.title)
   c('single-card-amid-existing', card.cards === 1, `cards=${card.cards}（库中未关闭通知数 > 1 时仍只渲染一张）`)

@@ -1,11 +1,21 @@
 // ─── 主进程：IPC 注册 ─────────────────────────────────────────────────────
-import { ipcMain, dialog, BrowserWindow, webUtils, shell, nativeTheme } from 'electron'
+import {
+  ipcMain,
+  dialog,
+  BrowserWindow,
+  webUtils,
+  shell,
+  nativeTheme,
+  type IpcMainInvokeEvent
+} from 'electron'
 import path from 'path'
 import { watch, type FSWatcher } from 'fs'
 import * as fileOps from './fileOps'
 import * as exportSvc from './export'
 import * as drafts from './drafts'
 import * as links from './services/links'
+import * as session from './services/session'
+import { scopeOfSender } from './services/windowScope'
 import { db } from './services/database'
 import { defaultSettings } from '../shared/defaults'
 import type {
@@ -15,7 +25,8 @@ import type {
   LinkActivateRecord,
   NotificationInput,
   NotificationListOptions,
-  NotificationPatch
+  NotificationPatch,
+  SessionSlot
 } from '../shared/types'
 
 const closeConfirmed = new WeakSet<BrowserWindow>()
@@ -217,42 +228,42 @@ export function registerIpc(): void {
   ipcMain.handle('db:setTags', (_, p: string, tags: string[]) => db.setTags(path.resolve(p), tags))
   ipcMain.handle('db:stats', () => db.stats())
 
-  // ── 全局通知中心（SQLite 持久化，跨会话保留）──
-  // 每次变更后广播，多窗口下各窗口的通知中心保持一致（与 workspace:changed 同套路）
-  const broadcastNotifications = (): void => {
-    for (const win of BrowserWindow.getAllWindows()) {
-      if (!win.isDestroyed()) win.webContents.send('notifications:changed')
-    }
+  // ── 通知中心（SQLite 持久化，按窗口作用域隔离）──
+  // 通知属于「产生它的那个窗口」：作用域由主进程从 IPC 发送方反查（渲染进程无法指定），
+  // 读写都带 scope 条件，变更信号也只回给发起窗口——多窗口下各窗口的通知互不干扰。
+  const scopeOf = (event: IpcMainInvokeEvent): string => scopeOfSender(event.sender)
+  const notifySender = (event: IpcMainInvokeEvent): void => {
+    if (!event.sender.isDestroyed()) event.sender.send('notifications:changed')
   }
-  ipcMain.handle('notifications:list', (_, options?: NotificationListOptions) =>
-    db.listNotifications(options)
+  ipcMain.handle('notifications:list', (event, options?: NotificationListOptions) =>
+    db.listNotifications(scopeOf(event), options)
   )
-  ipcMain.handle('notifications:add', (_, input: NotificationInput) => {
-    const saved = db.addNotification(input)
-    broadcastNotifications()
+  ipcMain.handle('notifications:add', (event, input: NotificationInput) => {
+    const saved = db.addNotification(scopeOf(event), input)
+    notifySender(event)
     return saved
   })
-  ipcMain.handle('notifications:update', (_, id: number, patch: NotificationPatch) => {
-    const saved = db.updateNotification(id, patch)
-    broadcastNotifications()
+  ipcMain.handle('notifications:update', (event, id: number, patch: NotificationPatch) => {
+    const saved = db.updateNotification(scopeOf(event), id, patch)
+    notifySender(event)
     return saved
   })
-  ipcMain.handle('notifications:close', (_, id: number) => {
-    db.closeNotification(id)
-    broadcastNotifications()
+  ipcMain.handle('notifications:close', (event, id: number) => {
+    db.closeNotification(scopeOf(event), id)
+    notifySender(event)
   })
-  ipcMain.handle('notifications:closeAll', () => {
-    const n = db.closeAllNotifications()
-    broadcastNotifications()
+  ipcMain.handle('notifications:closeAll', (event) => {
+    const n = db.closeAllNotifications(scopeOf(event))
+    notifySender(event)
     return n
   })
-  ipcMain.handle('notifications:remove', (_, id: number) => {
-    db.removeNotification(id)
-    broadcastNotifications()
+  ipcMain.handle('notifications:remove', (event, id: number) => {
+    db.removeNotification(scopeOf(event), id)
+    notifySender(event)
   })
-  ipcMain.handle('notifications:clearClosed', () => {
-    const n = db.clearClosedNotifications()
-    broadcastNotifications()
+  ipcMain.handle('notifications:clearClosed', (event) => {
+    const n = db.clearClosedNotifications(scopeOf(event))
+    notifySender(event)
     return n
   })
 
@@ -277,6 +288,12 @@ export function registerIpc(): void {
   ipcMain.handle('export:html', (_, payload: ExportPayload) => exportSvc.exportHtml(payload))
   ipcMain.handle('export:word', (_, payload: ExportPayload) => exportSvc.exportWord(payload))
   ipcMain.handle('export:epub', (_, meta: EpubMeta) => exportSvc.exportEpub(meta))
+
+  // ── 会话恢复：按窗口槽位读写（窗口生命周期在 index.ts）──
+  ipcMain.handle('session:get', () => session.readSession())
+  ipcMain.handle('session:save', (_, index: number, slot: SessionSlot | null) =>
+    session.writeSessionSlot(index, slot)
+  )
 
   // ── 外部链接与「用默认应用打开」（链接逻辑见 services/links.ts）──
   // 统一走白名单校验：文档里的链接不可信，绝不让任意 scheme 落到系统处理器
@@ -307,12 +324,12 @@ export function registerIpc(): void {
   if (existingRoot) startWorkspaceWatch(existingRoot)
 }
 
-/** 窗口关闭前：给渲染进程保存机会 */
+/** 窗口关闭前：给渲染进程保存机会（quitting 用于区分「整体退出」与「单独关窗」） */
 export function attachCloseGuard(win: BrowserWindow): void {
   win.on('close', (e) => {
     if (closeConfirmed.has(win)) return
     e.preventDefault()
-    win.webContents.send('app:before-close')
+    win.webContents.send('app:before-close', { quitting: session.isQuitting() })
     // 兜底：渲染进程 2.5s 内未响应则强制关闭
     const timer = setTimeout(() => {
       if (!win.isDestroyed()) {

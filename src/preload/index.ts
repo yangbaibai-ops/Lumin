@@ -8,6 +8,21 @@ const startupFile: string | null = (() => {
   return decodeURIComponent(arg.slice(arg.indexOf('=') + 1))
 })()
 
+/** 「新窗口要作为工作区打开的文件夹」（最近文件夹 → 新窗口） */
+const startupFolder: string | null = (() => {
+  const arg = process.argv.find((a) => a.startsWith('--lumin-open-folder='))
+  if (!arg) return null
+  return decodeURIComponent(arg.slice(arg.indexOf('=') + 1))
+})()
+
+/** 本窗口的会话槽位（主进程分配；null = 不参与会话恢复） */
+const sessionSlot: number | null = (() => {
+  const arg = process.argv.find((a) => a.startsWith('--lumin-session-slot='))
+  if (!arg) return null
+  const n = Number(arg.slice(arg.indexOf('=') + 1))
+  return Number.isInteger(n) && n >= 0 ? n : null
+})()
+
 // Custom APIs for renderer
 const api: LuminAPI = {
   app: {
@@ -20,7 +35,10 @@ const api: LuminAPI = {
     setMenuBar: (visible) => ipcRenderer.send('app:setMenuBar', visible),
     newWindow: () => ipcRenderer.send('app:newWindow'),
     openInNewWindow: (path) => ipcRenderer.send('app:openInNewWindow', path),
-    startupFile
+    openFolderInNewWindow: (path) => ipcRenderer.send('app:openFolderInNewWindow', path),
+    startupFile,
+    startupFolder,
+    sessionSlot
   },
   file: {
     read: (path) => ipcRenderer.invoke('file:read', path),
@@ -94,6 +112,10 @@ const api: LuminAPI = {
   shell: {
     openExternal: (url) => ipcRenderer.send('shell:openExternal', url),
     openPath: (path) => ipcRenderer.invoke('shell:openPath', path)
+  },
+  session: {
+    get: () => ipcRenderer.invoke('session:get'),
+    save: (index, slot) => ipcRenderer.invoke('session:save', index, slot)
   },
   links: {
     resolve: (target, baseDir) => ipcRenderer.invoke('links:resolve', target, baseDir),

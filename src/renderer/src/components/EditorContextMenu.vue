@@ -72,7 +72,6 @@ watch(
   async (open) => {
     if (!open) {
       cancelSubClose()
-      cancelCatSwitch()
       return
     }
     pos.value = { left: menu.x, top: menu.y }
@@ -120,7 +119,6 @@ onMounted(() => {
 })
 onBeforeUnmount(() => {
   cancelSubClose()
-  cancelCatSwitch()
   document.removeEventListener('mousedown', onDocMouseDown, true)
   window.removeEventListener('resize', onResize)
   window.removeEventListener('scroll', onScrollCapture, true)
@@ -172,56 +170,23 @@ function inSafeZone(x: number, y: number): boolean {
 }
 
 /**
- * 指针是否停在一级面板内（用于判断「只是路过某个分类行」还是「真的停在上面」）
- */
-function inPanelRect(x: number, y: number): boolean {
-  const r = menuRef.value?.getBoundingClientRect()
-  if (!r) return false
-  return x >= r.left && x <= r.right && y >= r.top && y <= r.bottom
-}
-
-/**
- * 切换分类的「悬停意图」延迟：
- * 二级比一级高，取二级下半段的条目时指针常常要斜向穿过下面几个分类行；若每次路过
- * 都立即切换分类，用户想要的那一项就被换走了 —— 表现出来同样是「移不到二级菜单上」。
- * 因此只有指针真的停在某个分类行上超过 CAT_SWITCH_DELAY 才切换（首次展开不延迟）。
- */
-const CAT_SWITCH_DELAY = 180
-let switchTimer: ReturnType<typeof setTimeout> | null = null
-let switchTarget: { index: number; id: string } | null = null
-
-function cancelCatSwitch(): void {
-  if (switchTimer) {
-    clearTimeout(switchTimer)
-    switchTimer = null
-  }
-  switchTarget = null
-}
-
-/**
  * 指针在安全区内 → 撤销待收起；越出安全区 → 开始宽限计时。
  * 用 pointermove 而不是 mouseleave：mouseleave 只在跨出元素边界的那一瞬触发，
  * 既无法区分「正走向二级」和「真的要离开」，也表达不了「两块合一」的安全区。
  */
 function onDocPointerMove(e: PointerEvent): void {
-  if (!menu.open) return
-  // 离开一级面板就不再是「停在该分类行上」，撤销待切换的分类
-  if (!inPanelRect(e.clientX, e.clientY)) cancelCatSwitch()
-  if (!menu.activeSectionId) return
+  if (!menu.open || !menu.activeSectionId) return
   if (inSafeZone(e.clientX, e.clientY)) cancelSubClose()
   else scheduleSubClose()
 }
 
-/** 指针进入二级：取消待收起与待切换 */
+/** 指针进入二级：取消待收起 */
 function onEnterSub(): void {
-  cancelCatSwitch()
   cancelSubClose()
 }
 
 function onKeydown(e: KeyboardEvent): void {
   if (!menu.open) return
-  // 键盘接管后，撤销悬停留下的待切换：否则 Esc 关掉二级后它会被计时器重新打开
-  cancelCatSwitch()
   const inSub = !!menu.activeSectionId
   if (e.key === 'Escape') {
     e.preventDefault()
@@ -249,29 +214,16 @@ function onKeydown(e: KeyboardEvent): void {
 }
 
 /**
- * 悬停一级分类：展开其二级菜单（抽成方法，模板里的多语句会被换行拆坏）。
- * 尚未展开、或悬停的正是已展开的分类 → 立即生效；已有其它分类展开 → 延迟切换，
- * 避免指针斜向穿过分类行时把用户要的二级菜单换掉。
+ * 悬停一级分类：立即展开其二级菜单（抽成方法，模板里的多语句会被换行拆坏）。
+ * 与主流系统菜单一致：**悬停即切换、零延迟**（早先为「防止斜穿分类行把二级换掉」
+ * 加过 180ms 悬停意图延迟，实测手感明显发木，已移除）。
+ * 斜穿分类行时二级会跟着指针换到那条分类上——这正是系统菜单的行为；而「移不到
+ * 二级菜单上」由安全区（面板 ∪ 二级的外接矩形）+ 收起宽限保证，与本函数无关。
  */
 function onCategoryHover(index: number, id: string): void {
   cancelSubClose() // 回到一级：撤销上一个分类的待收起
-  if (!menu.activeSectionId || menu.activeSectionId === id) {
-    cancelCatSwitch()
-    menu.setActive(index)
-    menu.openSection(id)
-    return
-  }
-  if (switchTarget && switchTarget.id === id && switchTarget.index === index) return
-  cancelCatSwitch()
-  switchTarget = { index, id }
-  switchTimer = setTimeout(() => {
-    switchTimer = null
-    const target = switchTarget
-    switchTarget = null
-    if (!target || !menu.open) return
-    menu.setActive(target.index)
-    menu.openSection(target.id)
-  }, CAT_SWITCH_DELAY)
+  menu.setActive(index)
+  menu.openSection(id)
 }
 
 const panelStyle = computed(() => ({ left: `${pos.value.left}px`, top: `${pos.value.top}px` }))

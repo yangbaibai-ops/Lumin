@@ -21,28 +21,25 @@
     "restore": "Restore",
     "discard": "Discard",
     "untitled": "Untitled",
-    "pending": "Coming soon"
+    "pending": "Coming soon",
+    "searchPlaceholder": "Search all indexed documents (FTS5 full-text index)…"
   },
-  "welcome": {
-    "greeting": "Begin your journey of inspiration",
-    "subtitle": "A WYSIWYG Markdown writing experience",
+  "open": {
+    "emptyTitle": "Begin your journey of inspiration",
+    "emptyDesc": "A WYSIWYG Markdown writing experience",
     "newDoc": "New Document",
     "openFile": "Open File",
     "openFolder": "Open Folder",
     "recent": "Recent Documents",
-    "pinned": "Pinned",
+    "recentFolders": "Recent Folders",
     "emptyRecent": "No recent documents yet. Create or open a Markdown file to start writing.",
-    "emptyFolder": "No workspace folder opened",
-    "recoverUntitled": "Restore your unsaved draft",
-    "shortcuts": "Shortcuts",
-    "tips": "Writing Tips",
-    "tipsContent": [
-      "Use # to create headings quickly, Ctrl+B for bold",
-      "Type $$ to insert math formulas, e.g. E = mc^2",
-      "Use ```mermaid code blocks to draw flowcharts",
-      "Insert [TOC] to auto-generate a table of contents",
-      "Press Ctrl+Shift+F for focus mode and immersive writing"
-    ]
+    "emptyFolders": "No recent folders yet. Use “Open Folder” to pick a workspace.",
+    "clearRecent": "Clear list",
+    "clearFolders": "Clear folder list",
+    "pin": "Pin to top",
+    "unpin": "Unpin",
+    "removeRecent": "Remove from list",
+    "hint": "Ctrl+O to open a file · Ctrl+Shift+P to search documents"
   },
   "sidebar": {
     "files": "Files",
@@ -206,6 +203,8 @@
     "pdfPageSize": "PDF page size",
     "exportNote": "Word export uses a Word-compatible HTML document; EPUB follows the epub 3 standard.",
     "reset": "Reset to defaults",
+    "restoreSession": "Restore the last session on startup",
+    "restoreSessionDesc": "Reopen the documents from last time and put the caret and scroll position back (each window restores its own)",
     "links": "Links",
     "linksCreateMode": "When the target is missing",
     "linksCreateModeDesc": "What to do when the linked file or folder does not exist",
@@ -231,6 +230,8 @@
     "actionDefault": "Default app",
     "actionDeclined": "Not opened",
     "confirmTitle": "Target not found",
+    "actionCreate": "Create and open",
+    "actionCancel": "Cancel",
     "confirmFile": "“{path}” does not exist. Create this file (missing parent folders are created too)?",
     "confirmDir": "“{path}” does not exist. Create this folder (missing parent folders are created too)?",
     "afterWindow": "It will be opened in a new window afterwards.",
@@ -244,6 +245,9 @@
     "errNeverCreate": "Skipped as configured: target does not exist",
     "errCreate": "Could not create",
     "errOpen": "Could not open with the default app"
+  },
+  "session": {
+    "restoreFailed": "Could not restore the previous document (the file may have been moved or deleted)"
   },
   "about": {
     "title": "About Lumin",

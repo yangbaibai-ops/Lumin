@@ -503,7 +503,10 @@ async function main() {
       })
     })()`)
   )
-  const rightLeg = { x: subNow.left + 30, y: downLeg.y }
+  // 右移进入二级：**必须重新测量**二级矩形——向下这一路悬停到了别的分类行上，
+  // 二级会跟着换到那条分类（悬停即切换），旧坐标已失效。
+  const subNow2 = await rectOf('.ecm-sub')
+  const rightLeg = { x: subNow2.left + 30, y: Math.min(subNow2.bottom - 20, downLeg.y) }
   let rightKept = 0
   for (let i = 1; i <= 8; i++) {
     await moveTo(downLeg.x + ((rightLeg.x - downLeg.x) * i) / 8, rightLeg.y, 30)
@@ -543,23 +546,31 @@ async function main() {
     rightKept === 8 && landState.insideSub === true,
     JSON.stringify({ rightKept, landState })
   )
-  // 向下这一路会穿过「格式」「插入」两个分类行：只是路过，不能把二级换成它们的
+  // 向下这一路会穿过「格式」「插入」两个分类行。**悬停即切换（零延迟）**是主流系统
+  // 菜单的行为，所以此处断言的是「分类跟着指针走」：最后停在哪个分类行上，二级就是它。
+  // （早先这里断言「路过不切换」，对应的是后来被用户否掉的那个 180ms 悬停延迟。）
+  const lastCatLabel = await ev(`(() => {
+      const panel = document.querySelector('.ecm-panel:not(.ecm-sub)')
+      const rows = panel ? [...panel.querySelectorAll('.ecm-item')] : []
+      const last = rows[rows.length - 1]
+      return last ? last.textContent.trim() : null
+    })()`)
   c(
-    'pass-through-keeps-category',
-    landState.title === '段落',
-    JSON.stringify({ title: landState.title, expect: '段落' })
+    'pass-through-follows-hover',
+    landState.title !== null && landState.title === lastCatLabel,
+    JSON.stringify({ title: landState.title, expectLast: lastCatLabel })
   )
-  // 反向对照：真的停在另一个分类行上 → 应当切换（延迟不能把切换本身弄坏）
+  // 悬停另一个分类行 → 立即切换（无延迟，用户反馈的正是这个「慢」）
   const fmtRow = await rowEdge('格式')
-  await moveTo(fmtRow.x, fmtRow.y, 600)
+  await moveTo(fmtRow.x, fmtRow.y, 300)
   const fmtState = JSON.parse(
     await ev(
       `(() => JSON.stringify({ title: document.querySelector('.ecm-sub .ecm-section')?.textContent?.trim() ?? null, section: window.__vt.menu().activeSectionId }))()`
     )
   )
-  console.log('B2b-settle ' + JSON.stringify(fmtState))
+  console.log('B2b-hover ' + JSON.stringify(fmtState))
   c(
-    'settled-hover-switches-category',
+    'hover-switches-category-instantly',
     fmtState.title === '格式' && fmtState.section === 'format',
     JSON.stringify(fmtState)
   )

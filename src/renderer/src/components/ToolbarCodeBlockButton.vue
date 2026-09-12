@@ -11,6 +11,7 @@ import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useEditorStore } from '../stores/editor'
 import { useSettingsStore } from '../stores/settings'
+import { shouldCloseOnScrollOrResize } from '../lib/popoverClose'
 import Icon from './Icon.vue'
 
 const { t } = useI18n()
@@ -86,11 +87,12 @@ function onDocMouseDown(e: MouseEvent): void {
   open.value = false
 }
 
-function onWindowScrollOrResize(): void {
-  if (open.value) {
-    cancelTimers()
-    open.value = false
-  }
+/** 滚动/缩放收起：弹层内部滚动不收起（见 lib/popoverClose.ts） */
+function onWindowScrollOrResize(e: Event): void {
+  if (!open.value) return
+  if (!shouldCloseOnScrollOrResize(e, popRef.value)) return
+  cancelTimers()
+  open.value = false
 }
 
 onMounted(() => {

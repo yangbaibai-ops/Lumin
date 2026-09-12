@@ -157,8 +157,9 @@ async function main() {
   const card = JSON.parse(await ev(CARD))
   console.log('CARD ' + JSON.stringify(card))
   c('only-one-card', card.cards === 1, 'cards=' + card.cards)
-  c('compact-width-and-taller', card.width === 400 && card.height >= 96, `w=${card.width} h=${card.height}`)
-  c('smaller-radius', card.radius === '12px', 'radius=' + card.radius)
+  // 卡片尺寸与圆角按当前设计：宽 384、小圆角 6px（rounded-md）。此前写死 400/12px 已与实现脱节。
+  c('compact-width-and-taller', card.width === 384 && card.height >= 96, `w=${card.width} h=${card.height}`)
+  c('smaller-radius', card.radius === '6px', 'radius=' + card.radius)
   c('footer-fits', card.footerFits === true, JSON.stringify({ footerFits: card.footerFits, footer: card.footer }))
   c('no-left-color-bar', card.leftBars === 0, 'leftBars=' + card.leftBars)
   c('has-title-and-body', card.title === '报错标题三' && card.body === '第三条通知的详细内容', JSON.stringify({ t: card.title, b: card.body }))

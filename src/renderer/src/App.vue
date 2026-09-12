@@ -18,6 +18,7 @@ import SettingsDialog from './components/SettingsDialog.vue'
 import GlobalTooltip from './components/GlobalTooltip.vue'
 import Icon from './components/Icon.vue'
 import { installGlobalTooltip } from './lib/tooltip'
+import { installLinkNotificationActions } from './lib/linkOpen'
 
 const router = useRouter()
 const { t } = useI18n()
@@ -27,6 +28,8 @@ const { pageVisible } = usePageVisible()
 
 useAppActions()
 installGlobalTooltip()
+// 通知卡片上的按钮按 payload.kind 派发，需在启动时把业务处理器接上
+installLinkNotificationActions()
 
 /** 左侧边缘触发展开把手的横向阈值（px，可按手感调整） */
 const EDGE_TRIGGER_PX = 86

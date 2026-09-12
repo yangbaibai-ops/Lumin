@@ -1,5 +1,11 @@
 import { defineStore } from 'pinia'
-import type { DraftInfo, FileNode, OpenedFile, WorkspaceDoc } from '../../../shared/types'
+import type {
+  DraftInfo,
+  FileNode,
+  OpenedFile,
+  RecentFolder,
+  WorkspaceDoc
+} from '../../../shared/types'
 import { useSettingsStore } from './settings'
 import { useUiStore } from './ui'
 import i18n from '../i18n'
@@ -41,7 +47,8 @@ export const useFilesStore = defineStore('files', {
     },
     wordCount(state): number {
       if (!state.current) return 0
-      const text = state.current.content.replace(/[#>*`\-_~\[\]()!|]/g, ' ').trim()
+      // 字符集与主进程 countWords 一致，`-` 放末尾（类内末尾的连字符无需转义）
+      const text = state.current.content.replace(/[#>*`_~[\]()!|-]/g, ' ').trim()
       if (!text) return 0
       const zh = (text.match(/[\u4e00-\u9fff\u3400-\u4dbf]/g) || []).length
       const words = (text.match(/[a-zA-Z0-9_]+(?:['’-][a-zA-Z0-9_]+)*/g) || []).length
@@ -116,6 +123,7 @@ export const useFilesStore = defineStore('files', {
       this.docsEpoch++
       await window.luminAPI.workspace.setRoot(dir)
       if (dir) {
+        this.touchRecentFolder(dir)
         this.expanded.add(dir)
         await this.loadChildren(dir)
       }
@@ -365,6 +373,33 @@ export const useFilesStore = defineStore('files', {
       if (pinned.has(path)) pinned.delete(path)
       else pinned.add(path)
       settings.set('pinnedFiles', [...pinned])
+    },
+
+    // ── 最近文件夹（工作区）──
+    /** 打开文件夹时记一笔（去重 + 置顶，最多 12 条，跨会话保留在 SQLite kv） */
+    touchRecentFolder(dir: string): void {
+      const settings = useSettingsStore()
+      const name = dir.split(/[\\/]/).filter(Boolean).pop() || dir
+      const list = (settings.recentFolders ?? []).filter((f) => f.path !== dir)
+      list.unshift({ path: dir, name, openedAt: Date.now() })
+      settings.set('recentFolders', list.slice(0, 12))
+    },
+    removeRecentFolder(dir: string): void {
+      const settings = useSettingsStore()
+      settings.set(
+        'recentFolders',
+        (settings.recentFolders ?? []).filter((f) => f.path !== dir)
+      )
+    },
+    /** 最近文件夹列表：并入「当前工作区」（历史用户可能没记录过，避免空列表） */
+    recentFolderList(): RecentFolder[] {
+      const settings = useSettingsStore()
+      const list = [...(settings.recentFolders ?? [])]
+      if (this.root && !list.some((f) => f.path === this.root)) {
+        const name = this.root.split(/[\\/]/).filter(Boolean).pop() || this.root
+        list.unshift({ path: this.root, name, openedAt: Date.now() })
+      }
+      return list
     }
   }
 })

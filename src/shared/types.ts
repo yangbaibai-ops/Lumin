@@ -28,16 +28,45 @@ export interface AppSettings {
   codeLineNumbers: boolean // 代码块是否显示行号，默认开
   /** 链接指向的文件/文件夹不存在时的处理策略（询问 / 总是创建 / 从不创建） */
   linkCreateMode: LinkCreateMode
+  /** 启动时恢复上次会话（文档 + 光标 + 滚动位置）；关闭则每次启动都进欢迎页 */
+  restoreSession: boolean
   recentFiles: RecentFile[]
+  /** 最近打开过的文件夹（工作区） */
+  recentFolders: RecentFolder[]
   pinnedFiles: string[]
   export: ExportSettings
 }
 
-// ─── 全局通知中心 ──────────────────────────────────────────────────────────
+// ─── 通知中心（窗口私有，SQLite 持久化）────────────────────────────────────
 /** 通知级别：通知 / 已完成 / 告警 / 报错（图标与配色由此派生） */
 export type NotificationLevel = 'info' | 'success' | 'warning' | 'error'
 
-/** 一条通知（持久化在 SQLite notifications 表，跨会话保留） */
+/**
+ * 通知卡片上的操作按钮。
+ * 文案（label）与 title/body 一样是「已本地化的成品文本」并随通知一起持久化——
+ * 应用重启后卡片仍能正确显示按钮；点击时按 payload.kind 找渲染层注册的处理器执行，
+ * 因此不会出现「按钮还在、逻辑没了」的死按钮。
+ */
+export interface NotificationAction {
+  /** 动作标识（同一条通知内唯一），如 create / cancel */
+  id: string
+  /** 按钮文案 */
+  label: string
+  /** 视觉层级：primary 主按钮、ghost 次按钮、danger 危险操作 */
+  tone?: 'primary' | 'ghost' | 'danger'
+}
+
+/** 可交互通知的负载：kind 决定由哪个处理器接手，其余字段由处理器自行约定 */
+export interface NotificationPayload {
+  kind: string
+  [key: string]: unknown
+}
+
+/**
+ * 一条通知（持久化在 SQLite notifications 表，跨会话保留）。
+ * 通知按「窗口作用域」隔离：它只属于产生它的那个窗口，作用域由主进程按 IPC 发送方
+ * 决定，因此不出现在这个 DTO 里（渲染进程既不需要也无法指定）。
+ */
 export interface AppNotification {
   id: number
   level: NotificationLevel
@@ -45,6 +74,10 @@ export interface AppNotification {
   title: string
   /** 详情（可空；多行时卡片内滚动） */
   body: string
+  /** 卡片上的操作按钮（可空 = 纯消息通知） */
+  actions: NotificationAction[]
+  /** 操作按钮的负载（与 actions 同时存在） */
+  payload: NotificationPayload | null
   createdAt: number
   /** 关闭时间；null = 仍在通知中心里 */
   closedAt: number | null
@@ -55,6 +88,10 @@ export interface NotificationInput {
   level?: NotificationLevel
   title: string
   body?: string
+  /** 需要用户作答时给出的按钮 */
+  actions?: NotificationAction[]
+  /** 与 actions 配套的负载 */
+  payload?: NotificationPayload
   /**
    * 合并键：同键的未关闭通知会被「更新并置顶」而不是再插一条。
    * 默认取 level+title —— 反复保存/反复失败只占一个卡片位，避免刷屏。
@@ -90,7 +127,40 @@ export interface RecentFile {
   openedAt: number
 }
 
-// ─── 链接目标：解析与打开 ──────────────────────────────────────────────────
+/** 最近打开过的文件夹（工作区），驱动「文件 → 最近文件夹」与侧栏列表 */
+export interface RecentFolder {
+  path: string
+  /** 末级目录名（展示用，避免每次 split） */
+  name: string
+  openedAt: number
+}
+
+// ─── 会话恢复（跨重启回到上次的文档与位置）─────────────────────────────────
+/**
+ * 一个窗口的会话槽位。位置用「PM 文档位置 + 记录时的文档长度 + 滚动比例」三件套
+ * 记录，与 EditorView 的视图位置记忆同源：文件被外部改动后，仍能按比例安全落位，
+ * 而不是粗暴地跳到一个已经不存在的位置。
+ */
+export interface SessionSlot {
+  /** 该窗口上次打开的文档绝对路径；null = 无文档（未命名缓冲区/仅开着文件夹） */
+  path: string | null
+  /** 该窗口上次打开的工作区文件夹；无文档但开着文件夹的窗口靠它恢复 */
+  folder?: string | null
+  /** Tiptap 文档位置（PM pos，取值 1..content.size） */
+  pos: number
+  /** 记录时的文档长度（同文件内容变化后用于按比例回退） */
+  len: number
+  /** 滚动进度 0..1（不存 scrollTop：窗口大小/字体/主题变化后绝对值会失真） */
+  scrollRatio: number
+  /** 最近一次写入时间 */
+  savedAt: number
+}
+
+export interface SessionState {
+  /** 按窗口槽位索引存放；null = 空槽（该窗口已被单独关闭，或从未用过） */
+  slots: (SessionSlot | null)[]
+}
+
 /**
  * 链接目标分类：
  *  - url      → 网址（http/https/mailto），交系统默认浏览器/邮件客户端；
@@ -249,12 +319,18 @@ export interface LuminAPI {
     close: () => void
     /** 原生菜单栏显隐（设置「原生菜单栏」开关时由渲染进程驱动主进程） */
     setMenuBar: (visible: boolean) => void
-    /** 新建一个空白窗口（启动到欢迎页，等同新建应用实例） */
+    /** 新建一个空白窗口（启动到编辑器，空白未命名缓冲区） */
     newWindow: () => void
     /** 在新窗口中打开指定文件 */
     openInNewWindow: (path: string) => void
+    /** 在新窗口中把指定文件夹作为工作区打开 */
+    openFolderInNewWindow: (path: string) => void
     /** 本窗口启动时要求打开的文件路径（由主进程 additionalArguments 传入，通常为 null） */
     startupFile: string | null
+    /** 本窗口启动时要求作为工作区打开的文件夹（同上，通常为 null） */
+    startupFolder: string | null
+    /** 本窗口的会话槽位索引（主进程分配，用于会话恢复）；null = 本窗口不参与会话 */
+    sessionSlot: number | null
   }
   file: {
     read: (path: string) => Promise<OpenedFile>
@@ -299,7 +375,11 @@ export interface LuminAPI {
     setTags: (path: string, tags: string[]) => Promise<void>
     stats: () => Promise<{ docs: number; fts: number }>
   }
-  /** 全局通知中心（持久化在 SQLite notifications 表，跨会话保留） */
+  /**
+   * 通知中心（持久化在 SQLite notifications 表，跨会话保留）。
+   * 全部方法只作用于「调用方窗口」的通知——作用域由主进程按 IPC 发送方注入，
+   * 多窗口下各窗口的通知互不干扰。
+   */
   notifications: {
     list: (options?: NotificationListOptions) => Promise<AppNotification[]>
     add: (input: NotificationInput) => Promise<AppNotification>
@@ -326,6 +406,13 @@ export interface LuminAPI {
     openExternal: (url: string) => void
     /** 用系统默认应用打开文件或文件夹；返回空字符串表示成功，否则为错误信息 */
     openPath: (path: string) => Promise<string>
+  }
+  /** 会话恢复：按窗口槽位持久化「打开的文档 + 光标 + 滚动」（SQLite kv） */
+  session: {
+    /** 读取整份会话状态 */
+    get: () => Promise<SessionState>
+    /** 保存本窗口的槽位；slot 为 null 表示清空该槽位 */
+    save: (index: number, slot: SessionSlot | null) => Promise<void>
   }
   /** 链接目标解析 / 创建 / 历史记录（link_history 表，SQLite 持久化） */
   links: {

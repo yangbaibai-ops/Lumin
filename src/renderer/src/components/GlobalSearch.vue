@@ -120,7 +120,7 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onDocKeydown))
                 ref="inputEl"
                 v-model="ui.globalSearch.query"
                 class="flex-1 bg-transparent text-[14.5px] text-ink outline-none placeholder:text-ink-3"
-                :placeholder="$t('welcome.searchPlaceholder')"
+                :placeholder="$t('common.searchPlaceholder')"
                 spellcheck="false"
               />
               <span

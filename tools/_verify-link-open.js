@@ -65,6 +65,33 @@ let ws,
   id = 0
 const pending = new Map()
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
+
+// ─── 共享 SQLite 的快照/还原 ───────────────────────────────────────────────
+// 验收会在同一份 lumin.db 里写 link_history 与 notifications（多窗口共享），
+// 若不还原，用户的通知中心与链接历史会被测试数据污染。这里直接对数据库文件做
+// 「整表快照 → 测试 → 整表还原」。
+const DB_PATH = path.join(process.env.APPDATA, 'lumin', 'lumin.db')
+function snapshotTable(table) {
+  const { DatabaseSync } = require('node:sqlite')
+  const db = new DatabaseSync(DB_PATH, { readOnly: true })
+  const rows = db.prepare(`SELECT * FROM ${table}`).all()
+  db.close()
+  return rows
+}
+function restoreTable(table, rows) {
+  const { DatabaseSync } = require('node:sqlite')
+  const db = new DatabaseSync(DB_PATH)
+  db.exec(`DELETE FROM ${table}`)
+  if (rows.length) {
+    const cols = Object.keys(rows[0])
+    const ins = db.prepare(
+      `INSERT OR REPLACE INTO ${table} (${cols.join(', ')}) VALUES (${cols.map(() => '?').join(', ')})`
+    )
+    for (const r of rows) ins.run(...cols.map((c) => r[c]))
+  }
+  db.close()
+  return rows.length
+}
 function send(m, p) {
   return new Promise((r) => {
     const i = ++id
@@ -161,6 +188,25 @@ async function clickCtrl(x, y, wait = 700) {
   })
   await sleep(wait)
 }
+/** 普通点击（含按下/抬起之间的微延时，模拟真实点击） */
+async function clickPoint({ x, y }, wait = 600) {
+  await send('Input.dispatchMouseEvent', {
+    type: 'mousePressed',
+    x,
+    y,
+    button: 'left',
+    clickCount: 1
+  })
+  await sleep(50)
+  await send('Input.dispatchMouseEvent', {
+    type: 'mouseReleased',
+    x,
+    y,
+    button: 'left',
+    clickCount: 1
+  })
+  await sleep(wait)
+}
 /** 文档里某个链接文字的点击坐标（编辑器未就绪时抛明确错误） */
 async function linkPoint(text) {
   const raw = await ev(`(() => {
@@ -194,17 +240,39 @@ async function waitEditorReady(marker, ms = 12000) {
 const RESOLVE = (target, baseDir) =>
   `(async () => JSON.stringify(await window.luminAPI.links.resolve(${JSON.stringify(target)}, ${JSON.stringify(baseDir)})))()`
 const HISTORY = `(async () => JSON.stringify(await window.luminAPI.links.history(50)))()`
-/** 确认弹窗（ModalHost）里的按钮：0=取消 1=确定 */
-const MODAL_BTN = (i) => `(() => {
-  const mask = [...document.querySelectorAll('div')].find((d) => d.className?.toString?.().includes('z-[150]') && d.className?.toString?.().includes('fixed'))
-  if (!mask) return 'null'
-  const btns = [...mask.querySelectorAll('button.btn')]
-  const b = btns[${i}]
-  if (!b) return 'null'
-  const r = b.getBoundingClientRect()
-  return JSON.stringify({ x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2), text: b.textContent.trim() })
+/** 通知卡片（右下角）：位置、按钮、是否走了模态确认框 */
+const NTF_CARD = `(() => {
+  const card = document.querySelector('.ntf-card')
+  if (!card) return 'null'
+  const r = card.getBoundingClientRect()
+  return JSON.stringify({
+    x: Math.round(r.left + r.width / 2),
+    y: Math.round(r.top + r.height / 2),
+    right: Math.round(r.right),
+    bottom: Math.round(r.bottom),
+    vw: window.innerWidth,
+    vh: window.innerHeight,
+    title: card.querySelector('p')?.textContent?.trim() ?? null,
+    actions: [...card.querySelectorAll('.ntf-action')].map((b) => b.textContent.trim()),
+    // 是否走了模态确认框：ModalHost 只在 confirmState/promptState 存在时渲染
+    modalOpen: !!(window.__vt.ui().confirmState || window.__vt.ui().promptState)
+  })
+})()`
+/** 卡片上的按钮坐标：primary=true 取主按钮，false 取次按钮 */
+const NTF_BTN = (primary) => `(() => {
+  const card = document.querySelector('.ntf-card')
+  const sel = ${JSON.stringify(primary ? '.ntf-action.is-primary' : '.ntf-action:not(.is-primary)')}
+  const btn = card?.querySelector(sel)
+  if (!btn) return 'null'
+  const r = btn.getBoundingClientRect()
+  return JSON.stringify({ x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2), text: btn.textContent.trim(), disabled: btn.disabled })
 })()`
 const NOTIF_TITLES = `(() => JSON.stringify(window.__vt.notifications().items.map((n) => n.level + ':' + n.title)))()`
+/** 是否还挂着「创建缺失目标」的询问卡片（只看本功能的通知，避免被用户自己的通知干扰） */
+const LINK_CARD = `(() => {
+  const n = window.__vt.notifications().items.find((x) => x.payload?.kind === 'link-create')
+  return n ? JSON.stringify({ id: n.id, title: n.title }) : 'gone'
+})()`
 /** 通知列表里是否存在某级别的通知（关键词匹配，避免绑死整句文案） */
 function hasNotif(raw, level, keyword) {
   try {
@@ -280,11 +348,16 @@ async function main() {
       `(() => { const s = window.__vt.settings(); return JSON.stringify({ linkCreateMode: s.linkCreateMode ?? null, recentFiles: s.recentFiles }) })()`
     )
   )
+  // 共享表快照：跑完要整表还原，用户自己的链接历史与通知不能被测试数据污染
+  const historySnapshot = snapshotTable('link_history')
+  const notifSnapshot = snapshotTable('notifications')
   console.log(
     'SNAPSHOT ' +
       JSON.stringify({
         linkCreateMode: snapshot.linkCreateMode,
-        recent: snapshot.recentFiles.length
+        recent: snapshot.recentFiles.length,
+        linkHistory: historySnapshot.length,
+        notifications: notifSnapshot.length
       })
   )
 
@@ -450,33 +523,39 @@ async function main() {
   c('sibling-opens-in-new-window', docC === SIBLING, String(docC))
   if (winC) await closePage(winC)
 
-  // ── D. 端到端：缺失文件 → 询问 → 取消 ────────────────────────────────────
+  // ── D. 端到端：缺失文件 → 右下角通知卡片询问 → 取消 ───────────────────────
   fs.rmSync(ASKED, { force: true })
-  const beforeD = await ev(NOTIF_TITLES)
   pt = await linkPoint('询问创建')
-  if (pt) await clickCtrl(pt.x, pt.y, 600)
-  const modalD = await ev(MODAL_BTN(0))
-  console.log('D-modal ' + modalD)
-  c('missing-target-shows-confirm', modalD !== 'null', String(modalD))
-  if (modalD !== 'null') {
-    const btn = JSON.parse(modalD)
-    await send('Input.dispatchMouseEvent', {
-      type: 'mousePressed',
-      x: btn.x,
-      y: btn.y,
-      button: 'left',
-      clickCount: 1
-    })
-    await sleep(50)
-    await send('Input.dispatchMouseEvent', {
-      type: 'mouseReleased',
-      x: btn.x,
-      y: btn.y,
-      button: 'left',
-      clickCount: 1
-    })
-    await sleep(600)
-  }
+  if (pt) await clickCtrl(pt.x, pt.y, 700)
+  const cardD = await ev(NTF_CARD)
+  console.log('D-card ' + cardD)
+  const cardState = cardD === 'null' ? null : JSON.parse(cardD)
+  c('missing-target-shows-notification-card', !!cardState, String(cardD))
+  c(
+    'card-anchored-bottom-right',
+    !!cardState && cardState.right > cardState.vw * 0.6 && cardState.bottom > cardState.vh * 0.6,
+    JSON.stringify(
+      cardState && {
+        right: cardState.right,
+        bottom: cardState.bottom,
+        vw: cardState.vw,
+        vh: cardState.vh
+      }
+    )
+  )
+  c(
+    'card-keeps-action-buttons',
+    !!cardState && cardState.actions.length === 2,
+    JSON.stringify(cardState?.actions)
+  )
+  c(
+    'no-modal-dialog-used',
+    cardState?.modalOpen === false,
+    JSON.stringify({ modalOpen: cardState?.modalOpen })
+  )
+  const cancelBtn = await ev(NTF_BTN(false))
+  if (cancelBtn !== 'null') await clickPoint(JSON.parse(cancelBtn))
+  await sleep(700)
   const histD = JSON.parse(await ev(HISTORY))
   const rowD = histD.find((h) => h.target === 'ask-create.md')
   console.log(
@@ -484,9 +563,10 @@ async function main() {
       JSON.stringify({
         row: rowD,
         fileExists: fs.existsSync(ASKED),
-        notifs: await ev(NOTIF_TITLES)
+        card: await ev(NTF_CARD)
       })
   )
+  c('card-closed-after-answer', (await ev(LINK_CARD)) === 'gone', await ev(LINK_CARD))
   c('decline-does-not-create', fs.existsSync(ASKED) === false)
   c(
     'decline-recorded',
@@ -498,32 +578,23 @@ async function main() {
     (await appPages()).length === known.length,
     'windows=' + (await appPages()).length
   )
-
-  // ── E. 端到端：缺失文件 → 询问 → 确定（创建 + 新窗口）────────────────────
-  const beforeE = (await appPages()).map((p) => p.id)
+  // 同一目标重复点击只占一张卡片（mergeKey）
   pt = await linkPoint('询问创建')
-  if (pt) await clickCtrl(pt.x, pt.y, 600)
-  const modalE = await ev(MODAL_BTN(1))
-  c('confirm-has-accept-button', modalE !== 'null', String(modalE))
-  if (modalE !== 'null') {
-    const btn = JSON.parse(modalE)
-    await send('Input.dispatchMouseEvent', {
-      type: 'mousePressed',
-      x: btn.x,
-      y: btn.y,
-      button: 'left',
-      clickCount: 1
-    })
-    await sleep(50)
-    await send('Input.dispatchMouseEvent', {
-      type: 'mouseReleased',
-      x: btn.x,
-      y: btn.y,
-      button: 'left',
-      clickCount: 1
-    })
-    await sleep(800)
-  }
+  if (pt) await clickCtrl(pt.x, pt.y, 700)
+  pt = await linkPoint('询问创建')
+  if (pt) await clickCtrl(pt.x, pt.y, 700)
+  const cards = await ev(
+    `(() => String(window.__vt.notifications().items.filter((n) => n.payload?.kind === 'link-create').length))()`
+  )
+  console.log('D-merge cards=' + cards)
+  c('same-target-merges-one-card', cards === '1', 'cards=' + cards)
+
+  // ── E. 端到端：卡片上点「创建并打开」 → 创建 + 新窗口 ────────────────────
+  const beforeE = (await appPages()).map((p) => p.id)
+  const acceptBtn = await ev(NTF_BTN(true))
+  c('card-has-primary-action', acceptBtn !== 'null', String(acceptBtn))
+  if (acceptBtn !== 'null') await clickPoint(JSON.parse(acceptBtn))
+  await sleep(900)
   const createdOnDisk = fs.existsSync(ASKED)
   const winE = await waitNewWindow(beforeE)
   const docE = winE ? await pageDocPath(winE) : null
@@ -777,6 +848,40 @@ async function main() {
   for (const p of [DOC, SIBLING, ABS_FILE, ASKED, MISSING, DEEP, PHOTO]) {
     await ev(`window.luminAPI.db.deleteDocument(${JSON.stringify(p)}).catch(() => {})`)
   }
+  // 清掉本窗口遗留的通知，再整表还原共享表（链接历史 + 通知中心）
+  await ev(`window.__vt.notifications().closeAll()`)
+  await sleep(400)
+  const restoredHistory = restoreTable('link_history', historySnapshot)
+  const restoredNotifs = restoreTable('notifications', notifSnapshot)
+  // 触发一次广播，让所有窗口（含用户窗口）按还原后的数据重新 hydrate
+  await ev(`(async () => {
+    const n = await window.luminAPI.notifications.add({ title: '__probe__', level: 'info' })
+    await window.luminAPI.notifications.remove(n.id)
+    return 'ok'
+  })()`)
+  await sleep(600)
+  const sharedState = {
+    linkHistory: snapshotTable('link_history').length,
+    notifications: snapshotTable('notifications').length
+  }
+  console.log(
+    'J-shared ' +
+      JSON.stringify({
+        restoredHistory,
+        restoredNotifs,
+        ...sharedState,
+        want: { history: historySnapshot.length, notifs: notifSnapshot.length }
+      })
+  )
+  c(
+    'shared-tables-restored',
+    sharedState.linkHistory === historySnapshot.length &&
+      sharedState.notifications === notifSnapshot.length,
+    JSON.stringify({
+      ...sharedState,
+      want: { history: historySnapshot.length, notifs: notifSnapshot.length }
+    })
+  )
   const restored = JSON.parse(
     await ev(
       `(() => { const s = window.__vt.settings(); const f = window.__vt.files(); return JSON.stringify({ mode: s.linkCreateMode, recent: s.recentFiles.length, path: f.current?.path ?? null }) })()`

@@ -563,7 +563,7 @@ Typora 官方行为（support.typoraio.cn/Links/）：**Ctrl/Cmd+点击**链接�
 - **顶部菜单栏（`nativeMenuBar`，默认开）**：采用**应用内菜单栏 `TopMenuBar`**（VS Code 式，位置由 DOM 精确摆放、Alt+F/E/V/H 必达、菜单项与原生菜单同源动作）替代系统原生菜单条——主进程隐藏系统菜单条（`setMenuBarVisibility(false)`）避免双开/错位，应用菜单仍安装以保留 Ctrl+N/O/S 等加速键；`nativeMenuBar` 关闭时仅隐藏该菜单栏（快捷键仍可用），设置经 SQLite kv 持久化。
 - **自动保存（`autoSave`，默认开）**：已有持久化字段；新增关闭时 `files.cancelAutoSave()` 取消**未触发的磁盘定时器**（草稿崩溃保护仍写）。状态栏左侧保存状态区为**入口按钮**：点击弹出**竖向选择菜单（自动保存 / 手动保存 + 打开设置…）**，选中即切换并持久化；切到手动保存时状态区文字显示 **「未开启自动保存」——不加强调色（沿用底部状态栏默认文字色）、且不显示前置状态圆点**。
 - **排版与空白（`whitespace`，默认全开）**：编辑/导出两个维度分别控制「保留连续空格」「保留单个换行」——编辑维度经 `data-preserve-spaces/breaks` + CSS（段落 `pre-wrap`、软换行 `<br>` 显隐）实时生效；导出维度在导出 HTML/PDF/Word/EPUB 时叠加 `white-space: pre-wrap` 与 `<br>`→空格 策略。说明：连续回车产生的**空段落**属 Markdown 块级语义，打开/保存按规范合并为单个分段空行（主流引擎与 Typora 一致）。
-- **多语言（i18n）**：基于 vue-i18n 的解耦架构，语言目录为纯 JSON 数据：`zh-CN` / `en-US` / `ru-RU`（俄文）三套全量键；新增语言 = 新增 `locales/{locale}.json` 并在 `i18n/index.ts` 的 `messages` 与 `Language` 联合类型登记（`LANGUAGE_OPTIONS` 自动驱动设置面板语言选择与状态栏快捷循环）。`settings.language` 经 SQLite kv 持久化，`document.documentElement.lang` 同步。已有 i18n 键位的界面（欢迎页、编辑器占位、工具栏常用键等）随语言即时切换；存量硬编码文案按模块增量迁移中。
+- **多语言（i18n）**：基于 vue-i18n 的解耦架构，语言目录为纯 JSON 数据：`zh-CN` / `en-US` / `ru-RU`（俄文）三套全量键；新增语言 = 新增 `locales/{locale}.json` 并在 `i18n/index.ts` 的 `messages` 与 `Language` 联合类型登记（`LANGUAGE_OPTIONS` 自动驱动设置面板语言选择与状态栏快捷循环）。`settings.language` 经 SQLite kv 持久化，`document.documentElement.lang` 同步。已有 i18n 键位的界面（编辑区、工具栏、侧栏空态、设置面板等）随语言即时切换；存量硬编码文案按模块增量迁移中。
 - **PDF 导出（优化）**：隐藏窗口 + 真实 Chromium 排版引擎渲染后 `printToPDF`；**等待 `document.fonts.ready` 与一次渲染帧稳定后再打印**，杜绝空白/缺字/未分页；按设置注入 A4/A5/Letter 与页边距、`printBackground`；失败时清理半成品文件并向上抛错（渲染层 Toast 提示）。
 
 验收：CDP 实测浮层 开→X 关、开→Esc 关、原生菜单栏开关状态持久化回读、autoSave 开关持久化、语言三态切换与 `ru-RU` 持久化、`openTopMenu` IPC 无异常；全量矩阵 89/89 全绿。
@@ -579,13 +579,64 @@ Typora 官方行为（support.typoraio.cn/Links/）：**Ctrl/Cmd+点击**链接�
 | `./a/b.md`、`../x` | `relative` | 系统默认应用（`shell.openPath`） |
 | `C:\a\b`、`\\server\share`、`/home/a` | `absolute` | 系统默认应用 |
 
-- **目标不存在 → 询问是否创建**（`ui.confirm` 模态）：新建文件/文件夹后按上表打开（`file` 类进新窗口，路径类交默认应用）。策略可由 **设置 → 链接 → 目标不存在时** 三态控制：总是创建 / 每次询问（默认）/ 从不创建；父目录缺失会一并 `mkdir -p`。链接以分隔符结尾（`./notes/`）判定为文件夹，否则为文件。
+- **目标不存在 → 询问是否创建**：询问**融合进右下角通知中心的可交互卡片**（带「创建并打开 / 取消」按钮，不弹模态、不打断写作，答完自动收起；同一目标只占一张卡片）。策略可由 **设置 → 链接 → 目标不存在时** 三态控制：总是创建 / 每次询问（默认）/ 从不创建；父目录缺失会一并 `mkdir -p`。链接以分隔符结尾（`./notes/`）判定为文件夹，否则为文件。
+  - 实现要点：通知表新增 `actions` / `payload` 两列（JSON 文本，旧库走 `ALTER TABLE` 升级），因此**按钮与负载随通知一起持久化**；点击时按 `payload.kind` 找渲染层注册表（`lib/notificationActions.ts`）里的处理器执行，不会出现「按钮还在、逻辑没了」的死按钮。负载只存「原始链接 + 当时的基准目录」，处理器会**重新解析**——等待期间文件若已被别处创建，会直接落到「打开」分支。
 - **非文本目标不凭空创建**：`.png`/`.pdf` 之类已经存在时交系统默认应用；不存在时直接提示「该类型的文件无法新建」——造一个空的二进制文件没有意义。
 - **安全**：`shell.openExternal` 只放行 http/https/mailto 白名单（任意 scheme 交给系统处理器是历史上的高危面，如 `javascript:`、`ms-msdt:`）；分类前先排除 Windows 盘符（`C:\x` 会被 `new URL()` 误判成 scheme `c:`）；创建文件用 `flag: 'wx'`——**绝不覆盖**已有内容。`file://` URL 先 `fileURLToPath` 再按路径规则处理。
 - **持久化（SQLite，非 session）**：`link_history` 表以链接文本为主键 upsert（`kind / resolved_path / action / created_entry / count / created_at / last_used`），记录每一次打开、以及「放弃创建」；设置项 `linkCreateMode` 落在 `kv.settings`。**设置 → 链接**页签可查看历史（含类型/动作/次数/时间徽章）、逐条删除、一键清空（完整 CRUD）。
 - **解耦**：主进程 `services/links.ts` 只做「分类 + 路径解析 + 探测/创建」，**不打开任何东西**；打开动作由渲染层 `lib/linkOpen.ts` 编排（确认弹窗、通知、落库都在 UI 层）。编辑器内核不依赖任何 store——`TyporaPointer` 暴露 `onOpenLink` 选项注入（默认实现仅开浏览器），`buildEditorExtensions({ onOpenLink })` 在 `TyporaEditor.vue` 里接上应用逻辑。
 
 验收：`tools/_verify-link-open.js`（真实文件系统 + 真实新窗口 + 直读 SQLite）：分类矩阵、缺失目标「是/否」两条分支、创建后打开、协议白名单拒绝、非文本不创建、历史 CRUD 与落盘。
+
+### 4.18 会话恢复：重启回到上次的文档与位置（本次）
+
+此前每次启动都停在欢迎页——写作工具里这是最容易被吐槽的一处（Typora/VS Code 都会回到上次的位置）。本次按「一窗一文档」的既有模型做**每窗口会话**：
+- **记录什么**：`{ path, pos, len, scrollRatio }`。位置不用 scrollTop 而用**滚动比例**、光标除 PM 位置外还带上当时的文档长度——文件被外部改过、窗口大小/字体/主题变了，也能按比例落到同一处（与 EditorView 视图位置记忆同一套思路）。
+- **存在哪**：SQLite `kv.session = { slots: [SessionSlot|null] }`，按**窗口槽位**索引存放。主进程在创建窗口时分配槽位（`--lumin-session-slot=N` 走 additionalArguments，preload 解析），启动时按槽位重建：几个窗口就是几份上下文，各自恢复各自的文档（上限 5 个，避免窗口风暴）。显式 `--lumin-open` 的窗口优先打开指定文件，不参与恢复。
+- **谁清槽位**：窗口被**单独关闭**时，主进程在 `closed` 里清掉它的槽位（下次启动不会把用户已关掉的窗口又拉回来）；**整体退出**（`before-quit`）则保留。渲染层只管写。
+- **写入时机**：文档切换、光标移动（`ui.cursor`）、滚动（window 捕获阶段，容器重建也无需重绑）→ **800ms 节流**写一行 kv；关键路径补刀：关窗前（`app:before-close` 里 flush）、`pagehide`、切到后台。
+- **开关**：设置 → 通用 →「启动时恢复上次会话」（`restoreSession`，默认开）。关掉后启动直接进编辑器（空白未命名缓冲区）——注意语义：会话记录的是**当前状态**，关着的时候该窗口的会话就被写成「无文档」，这与主流行为一致。
+- **降级**：恢复的文档已不存在（被移动/删除）→ 通知中心告警一条，不阻断启动；未命名缓冲区不进会话（其内容本就由草稿机制保护，避免两套恢复逻辑打架）。
+
+验收：`tools/_verify-session.js`（真实 reload 触发完整启动流程 + 直读 SQLite）：槽位分配、路径/光标/滚动落盘、reload 后三者精确恢复、开关两向、文件丢失告警、单独关窗清槽位；另做了**真·杀进程重启**复核（窗口数、文档、光标 1168/保存值 1166、滚动 0.5 全部对上）。
+
+### 4.19 去掉欢迎页，能力重排到三个入口（本次）
+
+Lumin 是写作工具，没有文档时就该是一篇空白稿纸——Typora、iA Writer、Bear 都没有欢迎页。会话恢复（§4.18）之后，欢迎页更只在异常路径出现（首启、用户关掉恢复、上次没开文档、文档丢失），专门为它维护一个路由 + 一套 hero 样式不划算。于是：
+
+- **删除 `views/WelcomeView.vue`**，`/` 一律重定向到 `/editor`：没有文档时 `EditorView` 挂载即建空白未命名缓冲区，「无文档」从此只有一种表现，异常降级也走同一条路（不再有「欢迎页 / 空编辑器」两种空态）。
+- **能力重排到三个已有一等入口**（这才是关键，删页面不等于删能力）：
+  1. **侧栏空态**（`FileTree.vue`，未打开工作区时）：logo + 一句话介绍 + 「新建文档 / 打开文件 / 打开文件夹」三个按钮 + 快捷键提示——原来欢迎页「这是什么应用、能干什么」的作用由它承担；
+  2. **侧栏头部「最近文档」按钮**（`components/SidebarRecentButton.vue`，新增，位于「新建文件」**左侧**）：点击展开最近文档下拉（固定优先 + 按时间倒序，行内可 固定/取消固定/移除 + 清除记录）；
+  3. **顶栏「文件」菜单**：原有「新建文档 / 新建窗口 / 打开文件 / 打开文件夹」保持不变，新增两个**一级项 + 悬停二级菜单**——`最近文档 ▸` 与 `最近文件夹 ▸`（`SubMenu` 类型 + `RecentList.vue` 共用组件）。
+- **最近文档 / 最近文件夹 → 一律在新窗口打开**（`openInNewWindow` / `openFolderInNewWindow`）：当前窗口的文档与工作区完全不受打扰，因此**不再需要脏数据确认**。为此把窗口创建参数收敛成 `WindowOpenOptions { openFile?, openFolder?, sessionSlot? }`，新增 `--lumin-open-folder=<dir>` 启动参数：新窗口以该文件夹为工作区（空白文档，等用户点开文件）。会话槽位（§4.18）随之扩展出 `folder` 字段——「只开着文件夹」的窗口也能在重启后回来；`planRestore()` 现在同时接受「有文档」与「有文件夹」的槽位。
+  （已知边界：`workspace.root` 是**全局** kv 值，所以在一个窗口里换文件夹会影响其它窗口的下次初始化；每窗口独立工作区是后续可做的一步。）
+- **二级菜单实现**（`TopMenuBar.vue`）：一级行悬停 → 右侧浮层（贴死左侧面板、重叠 1px），指针移出后 **160ms 宽限**再收起、进入浮层即撤销 —— 与编辑器右键菜单同一套「悬停意图」思路，避免「怎么都移不到二级上」；右侧放不下自动翻到左侧；Esc 先收二级再收一级。二级内容由插槽渲染（`slot: 'recentFiles' | 'recentFolders'`），列表与行内操作全部复用 `RecentList.vue`。
+- **浮层关闭条件抽成公共判断**（`lib/popoverClose.ts`）：`shouldCloseOnScrollOrResize(e, ...panels)` —— **浮层内部滚动不关闭**、外部滚动与缩放才关闭。此前「滚动即关闭」的监听挂在 window 捕获阶段，而列表自带滚动条，滚动它同样会冒到 window，于是「菜单里有滚动条却滚不动，一滚就消失」；浮层经 Teleport 挂到 body，判断「是否在内部」必须显式传元素而非靠 DOM 祖先关系。侧栏最近文档下拉、导出菜单、表格选择器、代码块弹层统一改用它（编辑器右键菜单里原本就是同一套逻辑）。
+- **新增持久化字段 `recentFolders`**：打开文件夹（`files.setRoot`）时记一笔（去重 + 置顶，最多 12 条，落 SQLite kv）；列表展示时并入「当前工作区」，避免历史用户看到空列表。
+- **工具栏不再有「打开」按钮**：同一能力不在工具栏、侧栏、菜单三处重复；打开文件仍走菜单 / `Ctrl+O` / 侧栏空态。
+- **i18n 收敛**：`welcome.*` 命名空间整体退场——`searchPlaceholder` 迁到 `common.*`（全局搜索在用），其余文案迁到新的 `open.*`（复用既有译文，新增 `recentFolders/emptyFolders/clearFolders/pin/unpin/removeRecent/hint`）；三语言键集合保持一致（顶层与各命名空间均校验过）。
+- **顺带清掉**欢迎页里的「未保存草稿恢复卡」：`openUntitled()` 本来就会把草稿挂到编辑器横幅（`.restore-bar`，含 恢复/丢弃），同一能力不再有两处实现；`/about` 仍承担版本、技术栈等信息面板的角色。
+
+验收：`tools/_verify-welcome-removed.js`（无会话启动落在编辑器 + 侧栏空态三入口 + 工具栏分裂按钮的最近文档/固定/清除 + 文件菜单含最近项）。
+
+### 4.20 通知按窗口隔离（本次）
+
+**问题**：在任一窗口保存文件产生的提示，会在**所有窗口**同时弹出——通知表是全局的，而且主进程每次变更都 `BrowserWindow.getAllWindows()` 广播一遍，于是「A 窗口的提示」变成了「每个窗口都有的提示」。
+
+**根因**：主进程能力（IPC handler、SQLite、广播）天然是所有窗口共享的，渲染进程又无法自证身份。Electron 没有「这个状态属于哪个窗口」的原生答案，必须自己建一层**窗口身份**。
+
+**方案（最小且主流）**：给通知加**窗口作用域**，作用域由主进程从 IPC 发送方反查，渲染层既不传也传不了。
+
+- **窗口身份**（`src/main/services/windowScope.ts`，新增）：`window.id → w<会话槽位>`，创建窗口时 `bindWindowScope(win, slot)` 登记、`closed` 时自动注销；`scopeOfSender(event.sender)` 用 `BrowserWindow.fromWebContents` 反查。选**会话槽位**而不是 `webContents.id`：槽位是本项目里唯一**跨启动稳定**的窗口身份（§4.18 按槽位重建窗口），这样「窗口 A 没处理完的提示」重启后仍回到窗口 A，而不是变成孤儿行或串到别的窗口。没有槽位的窗口退化成一次性随机作用域——底线是「宁可各自独立，不可互相串台」。
+- **存储层**（`services/database.ts`）：`notifications` 新增 `scope TEXT NOT NULL DEFAULT ''` 列（旧库 `ALTER TABLE` 升级；升级时把 `scope=''` 的历史行一次性删掉——它们是「全局共享」时期的产物，无法归属，留着只会在所有窗口都查不到却永久占表）。索引换成 `(scope, closed_at, created_at DESC)` 并删掉被它覆盖的旧索引。`add/list/update/close/closeAll/remove/clearClosed/prune` **全部带 scope 条件**，连 `mergeKey` 去重与「每窗口保留 200 条」的裁剪也按作用域各自进行——不会出现「另一个窗口的同名提示把我的卡片顶掉」。
+- **IPC 层**（`src/main/ipc.ts`）：每个 handler 用 `scopeOf(event)` 取作用域；变更信号由「广播给所有窗口」改成**只回给发起窗口**（`event.sender.send('notifications:changed')`）。
+- **生命周期**：通知随窗口存在。窗口被**单独关闭**（非整体退出）时，除了清会话槽位，同时 `deleteNotificationsByScope` 清掉它的通知；新窗口领到槽位时（`claimFreshSlot()`）也先清一遍该作用域——槽位被复用时不会把上一任窗口的提示带给新窗口。整体退出（`before-quit`）保留，交给下次启动按槽位恢复到同一个窗口。
+- **渲染层零改动**：`stores/notifications.ts` 的调用签名与数据流不变（store → IPC → SQLite，UI 只读 store），只是语义从「全局通知中心」变成「本窗口通知中心」——解耦的好处在这里体现：隔离完全落在主进程一侧，UI 不知情也不需要知情。
+
+**边界与取舍**：① 升级瞬间，旧库里未关闭的全局通知会被丢掉一次（无法归属到窗口，且多为一过性的「已保存」）；② 每个窗口的未读提示不跨窗口汇总——这正是本次要的行为；③ 槽位索引在单次运行内只增不减（`releaseSlot` 未被调用），因此作用域清理主要覆盖「关窗即清」与「重启后复用槽位」两条路径，`claimFreshSlot()` 的清理是后者的安全网。
+
+验收：`tools/_verify-notify-multiwindow.js`（新建临时窗口 A/B/C，全程不碰用户窗口）：A 的通知**不出现在 B**、DB 行的 `scope` 等于 A 的槽位、同 mergeKey 只在各自窗口内合并、`closeAll/clearClosed` 只作用本窗口、关窗后该作用域行被物理清掉、新窗口干净且各占独立槽位、用户已有窗口快照前后一致；`tools/_verify-notify-disk.js` 直读 `lumin.db` 核对 `scope` 列/索引/行内容/软关闭/关窗清理；`tools/_verify-notify-restart.js`（两阶段，中间由外部硬杀进程 + 重启）核对「重启后按槽位恢复到同一个窗口，且那条通知只回到这个窗口」。
 
 ---
 

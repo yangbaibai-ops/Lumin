@@ -7,6 +7,7 @@ import { useSettingsStore } from '../stores/settings'
 import { useUiStore } from '../stores/ui'
 import FileTree from './FileTree.vue'
 import Outline from './Outline.vue'
+import SidebarRecentButton from './SidebarRecentButton.vue'
 import Icon from './Icon.vue'
 
 const { t } = useI18n()
@@ -47,7 +48,10 @@ function onDragStart(e: MouseEvent): void {
 <template>
   <aside
     class="relative z-10 flex h-full flex-none flex-col border-r border-edge bg-panel/70 backdrop-blur-md"
-    :style="{ width: width + 'px', transition: dragging ? 'none' : 'width .28s cubic-bezier(.4,0,.2,1)' }"
+    :style="{
+      width: width + 'px',
+      transition: dragging ? 'none' : 'width .28s cubic-bezier(.4,0,.2,1)'
+    }"
     :class="ui.focusMode ? 'opacity-40 saturate-50' : ''"
   >
     <!-- 头部 -->
@@ -56,6 +60,8 @@ function onDragStart(e: MouseEvent): void {
         <span class="text-[13.5px] font-semibold tracking-wide text-ink">Lumin</span>
       </div>
       <div class="flex-1" />
+      <!-- 最近文档（在「新建文件」左侧）：快速回到最近写的那篇 -->
+      <SidebarRecentButton />
       <button
         class="icon-btn !h-6.5 !w-6.5"
         :title="t('context.newFile')"
@@ -69,7 +75,10 @@ function onDragStart(e: MouseEvent): void {
     </div>
 
     <!-- 工作区名：点击名称重新选择文件夹（样式保持原样，仅可点击切换） -->
-    <div v-if="files.root" class="flex flex-none items-center gap-1.5 px-3 pb-0.5 pt-2.5 text-[11px] font-medium uppercase tracking-[0.08em] text-ink-3">
+    <div
+      v-if="files.root"
+      class="flex flex-none items-center gap-1.5 px-3 pb-0.5 pt-2.5 text-[11px] font-medium uppercase tracking-[0.08em] text-ink-3"
+    >
       <button
         class="flex min-w-0 flex-1 cursor-pointer items-center gap-1.5 text-left transition-opacity hover:opacity-90"
         :title="files.root + '\n点击重新选择文件夹'"
@@ -78,7 +87,11 @@ function onDragStart(e: MouseEvent): void {
         <Icon name="folder" :size="11" />
         <span class="max-w-[150px] truncate">{{ workspaceName }}</span>
       </button>
-      <button class="text-ink-3 transition-colors hover:text-ink" title="刷新" @click="files.refreshDir(files.root!)">
+      <button
+        class="text-ink-3 transition-colors hover:text-ink"
+        title="刷新"
+        @click="files.refreshDir(files.root!)"
+      >
         <Icon name="refresh" :size="11" />
       </button>
     </div>
@@ -86,7 +99,7 @@ function onDragStart(e: MouseEvent): void {
     <!-- 标签页 -->
     <div class="flex flex-none gap-1 px-2.5 pt-2">
       <button
-        v-for="tab in (['files', 'outline'] as const)"
+        v-for="tab in ['files', 'outline'] as const"
         :key="tab"
         class="relative flex flex-1 items-center justify-center gap-1.5 rounded-lg py-1.5 text-[12.5px] font-medium transition-all duration-200"
         :class="ui.sidebarTab === tab ? 'text-ink' : 'text-ink-3 hover:text-ink-2'"
@@ -146,7 +159,10 @@ function onDragStart(e: MouseEvent): void {
       :class="dragging ? 'opacity-100' : ''"
       @mousedown="onDragStart"
     >
-      <div class="mx-auto h-full w-px transition-colors" :class="dragging ? 'bg-accent' : 'bg-transparent'" />
+      <div
+        class="mx-auto h-full w-px transition-colors"
+        :class="dragging ? 'bg-accent' : 'bg-transparent'"
+      />
     </div>
   </aside>
 </template>

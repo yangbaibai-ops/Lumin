@@ -7,6 +7,7 @@
 import { computed, onBeforeUnmount, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useEditorStore } from '../stores/editor'
+import { shouldCloseOnScrollOrResize } from '../lib/popoverClose'
 import Icon from './Icon.vue'
 
 const { t } = useI18n()
@@ -71,8 +72,11 @@ function onPopoverEnter(): void {
   }
 }
 
-function onWindowScrollOrResize(): void {
-  if (open.value) open.value = false
+/** 滚动/缩放收起：弹层内部滚动不收起（见 lib/popoverClose.ts） */
+function onWindowScrollOrResize(e: Event): void {
+  if (!open.value) return
+  if (!shouldCloseOnScrollOrResize(e, btnRef.value)) return
+  open.value = false
 }
 
 function insertTable(rows: number, cols: number): void {

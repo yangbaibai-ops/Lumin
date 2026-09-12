@@ -5,15 +5,20 @@ import type {
   NotificationLevel,
   NotificationPatch
 } from '../../../shared/types'
+import { dispatchNotificationAction } from '../lib/notificationActions'
 
 /** 是否已订阅主进程广播（模块级，避免重复订阅） */
 let changeSubscribed = false
 
 /**
- * ─── 全局通知中心 store ────────────────────────────────────────────────────
- * 职责：持有「未关闭通知」的内存镜像，并把每次变更同步到 SQLite（主进程）。
+ * ─── 通知中心 store（窗口私有）─────────────────────────────────────────────
+ * 职责：持有「本窗口未关闭通知」的内存镜像，并把每次变更同步到 SQLite（主进程）。
  * 数据流是单向的：store 是唯一入口 → IPC → 数据库；UI（NotificationCenter.vue）
  * 只读 store 并调用其动作，不直接碰 IPC，也无需知道持久化细节。
+ *
+ * 隔离：通知属于产生它的那个窗口。主进程按 IPC 发送方（event.sender）反查窗口作用域
+ * （src/main/services/windowScope.ts），列表/关闭/清理全部带作用域条件，变更信号也只
+ * 回给发起窗口——因此本 store 拿到的永远只是本窗口的通知（渲染进程无需也传不了作用域）。
  *
  * 为什么不是「toast 队列」：需求要求通知不自动消失、单卡片展示、可上下切换、
  * 可逐条或整体关闭，并且跨会话保留——这是「通知中心」而不是瞬时提示，故：
@@ -49,9 +54,10 @@ export const useNotificationsStore = defineStore('notifications', {
     }
   },
   actions: {
-    /** 启动时从数据库恢复未关闭通知（已关闭的不会回来） */
+    /** 启动时从数据库恢复本窗口未关闭的通知（已关闭的不会回来） */
     async hydrate(): Promise<void> {
-      // 多窗口一致性：任一窗口的增删改都会被主进程广播，收到后重新对齐列表
+      // 本窗口内的变更（含其它视图/动作触发的）由主进程回信，收到后重新对齐列表；
+      // 其它窗口的增删改不会发到这里——通知是按窗口作用域隔离的。
       if (!changeSubscribed) {
         changeSubscribed = true
         window.luminAPI.events.on('notifications:changed', () => void this.hydrate())
@@ -71,17 +77,22 @@ export const useNotificationsStore = defineStore('notifications', {
 
     /**
      * 新建通知（默认置顶展示）。
-     * @param input level/title/body/mergeKey
+     * 传 actions + payload 即为「需要用户作答」的可交互通知：卡片会渲染按钮，
+     * 点击后由 lib/notificationActions.ts 的注册表按 payload.kind 派发。
+     * @param input level/title/body/actions/payload/mergeKey
      */
     async notify(input: NotificationInput): Promise<AppNotification | null> {
       const title = input.title.trim()
       if (!title) return null
       const level: NotificationLevel = input.level ?? 'info'
+      const actions = input.actions ?? []
       try {
         const saved = await window.luminAPI.notifications.add({
           level,
           title,
           body: input.body ?? '',
+          actions,
+          payload: input.payload,
           mergeKey: input.mergeKey
         })
         this.items = [saved, ...this.items.filter((n) => n.id !== saved.id)]
@@ -94,6 +105,8 @@ export const useNotificationsStore = defineStore('notifications', {
           level,
           title,
           body: input.body ?? '',
+          actions,
+          payload: input.payload ?? null,
           createdAt: Date.now(),
           closedAt: null
         }
@@ -101,6 +114,17 @@ export const useNotificationsStore = defineStore('notifications', {
         this.activeId = fallback.id
         return fallback
       }
+    },
+
+    /**
+     * 点击卡片上的操作按钮：先收起卡片（问题已作答），再按 payload.kind 派发。
+     * 未注册处理器时只收起卡片，不留下「点了没反应」的死按钮。
+     */
+    async runAction(id: number, actionId: string): Promise<void> {
+      const item = this.items.find((n) => n.id === id)
+      if (!item || !item.actions.some((a) => a.id === actionId)) return
+      await this.close(id)
+      await dispatchNotificationAction(item, actionId)
     },
 
     /** 编辑已有通知（标题/详情/级别） */

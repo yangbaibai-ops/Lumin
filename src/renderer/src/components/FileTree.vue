@@ -1,8 +1,10 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { useRouter } from 'vue-router'
 import { useFilesStore } from '../stores/files'
 import { useUiStore } from '../stores/ui'
+import { confirmIfDirty } from '../composables/useAppActions'
 import TreeNode from './TreeNode.vue'
 import FileList from './FileList.vue'
 import Icon from './Icon.vue'
@@ -10,6 +12,7 @@ import Icon from './Icon.vue'
 const { t } = useI18n()
 const files = useFilesStore()
 const ui = useUiStore()
+const router = useRouter()
 const filter = ref('')
 
 const rootNodes = computed(() => files.dirCache[files.root ?? ''] ?? [])
@@ -35,6 +38,20 @@ function onRootContextMenu(e: MouseEvent): void {
     ],
     onSelect: (action) => void handleAction(action)
   })
+}
+
+/** 侧栏空态里的三个入口（原欢迎页的能力，见 template 里的空态区块） */
+async function newDoc(): Promise<void> {
+  if (!(await confirmIfDirty())) return
+  await files.newDocInWorkspace()
+  await router.push('/editor')
+}
+
+async function openFileDialog(): Promise<void> {
+  if (!(await confirmIfDirty())) return
+  const path = await window.luminAPI.file.chooseOpenFile()
+  if (!path) return
+  if (await files.openPath(path)) await router.push('/editor')
 }
 
 async function handleAction(action: string): Promise<void> {
@@ -131,14 +148,33 @@ function onDrop(e: DragEvent): void {
       </div>
     </template>
 
-    <!-- 未打开工作区 -->
-    <div v-else class="mt-6 flex flex-col items-center gap-3 px-4 text-center">
-      <Icon name="folderOpen" :size="26" :stroke-width="1.3" class="text-ink-3/60" />
-      <p class="text-[12px] leading-relaxed text-ink-3">{{ t('welcome.emptyFolder') }}</p>
-      <button class="btn btn-outline px-3 py-1.5 text-[12px]" @click="files.openFolder()">
-        <Icon name="folder-plus" :size="13" />
-        {{ t('sidebar.openFolderBtn') }}
-      </button>
+    <!-- 未打开工作区：空态即入口（原欢迎页的能力在这里收口） -->
+    <div v-else class="flex min-h-0 flex-1 flex-col items-center px-4 pb-5 pt-8 text-center">
+      <span
+        class="mb-3 flex h-11 w-11 items-center justify-center rounded-xl bg-gradient-to-br from-accent to-accent-2 text-white"
+        :style="{ boxShadow: '0 6px 22px var(--glow)' }"
+      >
+        <Icon name="logo" :size="22" :stroke-width="1.7" />
+      </span>
+      <p class="text-[13.5px] font-semibold text-ink">{{ t('open.emptyTitle') }}</p>
+      <p class="mt-1 text-[12px] leading-relaxed text-ink-3">{{ t('open.emptyDesc') }}</p>
+
+      <div class="mt-5 flex w-full flex-col gap-2">
+        <button class="btn btn-primary w-full justify-center px-3 py-2 text-[12.5px]" @click="newDoc">
+          <Icon name="file-plus" :size="14" />
+          {{ t('open.newDoc') }}
+        </button>
+        <button class="btn btn-outline w-full justify-center px-3 py-2 text-[12.5px]" @click="openFileDialog">
+          <Icon name="folderOpen" :size="14" />
+          {{ t('open.openFile') }}
+        </button>
+        <button class="btn btn-ghost w-full justify-center px-3 py-2 text-[12.5px]" @click="files.openFolder()">
+          <Icon name="folder-plus" :size="14" />
+          {{ t('open.openFolder') }}
+        </button>
+      </div>
+
+      <p class="mt-5 text-[11.5px] leading-relaxed text-ink-3/80">{{ t('open.hint') }}</p>
     </div>
   </div>
 </template>

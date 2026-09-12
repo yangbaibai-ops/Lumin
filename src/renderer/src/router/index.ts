@@ -2,13 +2,17 @@ import { createRouter, createWebHashHistory } from 'vue-router'
 import { useFilesStore } from '../stores/files'
 import { useUiStore } from '../stores/ui'
 
+// ─── 路由 ──────────────────────────────────────────────────────────────────
+// 不再有「欢迎页」：Lumin 是写作工具，没有文档时编辑器直接以空白未命名缓冲区出现
+// （EditorView 挂载时会保证这一点），「新建 / 打开文件 / 打开文件夹 / 最近文档」
+// 分别由侧栏空态、工具栏「打开」分裂按钮与文件菜单承担。
+// `/` 一律重定向到 `/editor`，于是「无文档」只有一种表现、异常降级也走同一条路。
 const router = createRouter({
   history: createWebHashHistory(),
   routes: [
     {
       path: '/',
-      name: 'welcome',
-      component: () => import('../views/WelcomeView.vue')
+      redirect: '/editor'
     },
     {
       path: '/editor/:fileId?',
@@ -22,7 +26,7 @@ const router = createRouter({
     },
     {
       path: '/:pathMatch(.*)*',
-      redirect: '/'
+      redirect: '/editor'
     }
   ]
 })

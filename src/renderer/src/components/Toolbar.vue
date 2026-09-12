@@ -10,6 +10,7 @@ import { useEditorMode } from '../composables/useEditorMode'
 import Icon from './Icon.vue'
 import ToolbarTableButton from './ToolbarTableButton.vue'
 import ToolbarCodeBlockButton from './ToolbarCodeBlockButton.vue'
+import { shouldCloseOnScrollOrResize } from '../lib/popoverClose'
 
 // ─── 编辑器工具栏：命令通过 editor store 桥接 Tiptap 内核（解耦）────────────
 const { t } = useI18n()
@@ -45,8 +46,12 @@ function onDocClick(e: MouseEvent): void {
     if (!panel) exportOpen.value = false
   }
 }
-function onWindowScrollOrResize(): void {
-  if (exportOpen.value) exportOpen.value = false
+/** 滚动/缩放收起导出菜单：菜单内部滚动不收起（见 lib/popoverClose.ts） */
+function onWindowScrollOrResize(e: Event): void {
+  if (!exportOpen.value) return
+  const panel = document.querySelector<HTMLElement>('.export-pop')
+  if (!shouldCloseOnScrollOrResize(e, panel)) return
+  exportOpen.value = false
 }
 onMounted(() => {
   document.addEventListener('mousedown', onDocClick)
@@ -328,7 +333,7 @@ const docName = computed(() => files.current?.name ?? '')
       <Transition name="pop">
         <div
           v-if="exportOpen"
-          class="fixed z-[100] w-[190px] rounded-xl border border-edge bg-elevate p-1.5"
+          class="export-pop fixed z-[100] w-[190px] rounded-xl border border-edge bg-elevate p-1.5"
           :style="{ boxShadow: 'var(--shadow-2)', left: exportPos.x + 'px', top: exportPos.y + 'px' }"
         >
           <button
