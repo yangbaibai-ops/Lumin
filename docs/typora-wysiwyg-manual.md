@@ -1082,6 +1082,28 @@ UTF-16 在写回时**总是补 BOM**：没有 BOM 的 UTF-16 文件几乎无法�
 3. **i18n key 命名偏差**：规格写的是 `status.encodingTooltip`，但本项目状态栏文案统一在 `statusbar.*`（没有 `status` 组），实际落在 **`statusbar.encodingTooltip`**；其余 key 与规格一致。
 4. **`setupState` 内省只在开发构建可用**：Vue 生产构建不把 `<script setup>` 绑定挂到 `setupState`，所以套件同时保留 **DOM 断言**。本次 31/31 是在开发渲染层（dev server 5173）下跑出的；用 `-NoDevServer` 跑时 setupState 那三条显示 SKIP，DOM 三条照常断言。
 
+### 4.38 开发态主进程热重载：`electron-vite dev --watch`（本次）
+
+**症状**：改主进程代码（如新增编码功能）后，界面上能看到新菜单（渲染层走 dev server 热更新），但点下去报错 —— 像是功能坏了；而且**每次都要手动重启应用**才可能生效，甚至重启也没用（加载的还是旧主进程构建产物）。
+
+**根因**：`electron-vite@5` 的 dev 命令里，**主进程/preload 的监听是可选开关**（`-w, --watch`：*rebuilds when main process or preload script modules have changed on disk*，见 `node_modules/electron-vite/dist/cli.js`），而本仓库的 `dev` 脚本是 `electron-vite dev` —— **没开**。于是渲染层热更新正常、主进程永远不重建：应用进程里跑的一直是启动那一刻加载的旧主进程。实测：用户 dev server 19:51 启动，20:48 落地的主进程功能到 22:00 都没触发过任何重建（`out/main/index.js` 的 mtime 一直是手动构建的时间）。
+
+**改法**（一个词）：
+
+```json
+"dev": "electron-vite dev --watch"
+```
+
+**验证**（隔离实例，`--watch` 且把参数透传给 electron：`electron-vite dev --watch -- --user-data-dir=…`）：
+
+- 启动后 `out/main/index.js` 随启动构建（22:07:10）；
+- 改一行主进程文件 → **主进程产物重建**（mtime 22:07:10 → 22:07:57）且日志出现 `electron main process rebuilt successfully` / `restarting electron app...`；
+- **应用进程号变化**：PID 24544 → 24932（即自动重启，不再需要人工重启）。
+
+**对编码功能的意义**：编码切换本身**从来不需要重启** —— 「选择编码重新打开」是重新读盘 + 就地换内容，切一次生效一次；之前需要重启纯粹是因为主进程代码没被重建过。开了 `--watch` 之后，这类「渲染层新、主进程旧」的错配不会再出现。
+
+> 顺带说明：打包产物里主进程与渲染层来自同一次构建，不存在这种错配；它是**开发态专属**问题。渲染层遇到旧主进程时会提示「编码功能需要重启应用后生效」（见 §4.37），而不是含糊地报失败。
+
 ---
 
 ## 5. 分步实施计划（从零到一）
