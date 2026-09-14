@@ -125,6 +125,7 @@ function taskbarLog() {
       const aumid = /aumid=(\S+)/.exec(l)?.[1] ?? ''
       const target = /target="([^"]*)"/.exec(l)?.[1] ?? ''
       const path2 = /path="([^"]*)"/.exec(l)?.[1] ?? ''
+      const icon = /icon="([^"]*)"/.exec(l)?.[1] ?? ''
       const okMatch = /ok=(true|false)/.exec(l)
       return {
         line: l,
@@ -137,6 +138,7 @@ function taskbarLog() {
         aumid,
         target,
         path: path2,
+        icon,
         ok: okMatch ? okMatch[1] === 'true' : null
       }
     })
@@ -193,7 +195,7 @@ async function waitForNewPages(before, amount, timeoutMs = 15000) {
     const app = document.querySelector('#app')?.__vue_app__
     if (!app) return 'no-app'
     const sym = Object.getOwnPropertySymbols(app._context.provides).find((s) => String(s) === 'Symbol(pinia)')
-    const pinia = app._context.provides[sym]
+    const pinia = app._context.provides[sym] ?? Object.getOwnPropertySymbols(app._context.provides).map((s) => app._context.provides[s]).find((v) => v && typeof v === "object" && v._s instanceof Map) ?? Object.getOwnPropertySymbols(app._context.provides).map((s) => app._context.provides[s]).find((v) => v && typeof v === "object" && v._s instanceof Map)
     window.__K = { files: () => pinia._s.get('files'), settings: () => pinia._s.get('settings'), ui: () => pinia._s.get('ui') }
     return 'ok'
   })()`
@@ -238,6 +240,9 @@ async function waitForNewPages(before, amount, timeoutMs = 15000) {
     JSON.stringify(back ?? null)
   )
   c('shortcut-file-on-disk', !!sc?.path && fs.existsSync(sc.path), String(sc?.path))
+  // 图标：任务栏/开始菜单只认 exe/dll/ico 资源，必须是应用自己的 icon.ico（之前借的是 electron.exe 的图标）
+  c('shortcut-icon-is-app-icon', !!sc && /icon\.ico$/i.test(sc.icon) && fs.existsSync(sc.icon), String(sc?.icon))
+  c('shortcut-readback-icon-matches', !!back && back.icon === sc?.icon, JSON.stringify({ readback: back?.icon, written: sc?.icon }))
 
   // ── A3. 快捷方式的启动命令 == 已经验证过能开新窗口的那条命令 ──
   // 注意：**不要**在验收里真的用 shell 打开这条 .lnk —— 它是应用自己的快捷方式，不带

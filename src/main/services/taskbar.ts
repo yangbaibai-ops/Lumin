@@ -6,6 +6,8 @@ import type { JumpListCategory, JumpListItem } from 'electron'
 import { db } from './database'
 import { defaultSettings } from '../../shared/defaults'
 import type { AppSettings, Language } from '../../shared/types'
+// 应用图标的 ICO：任务栏/开始菜单只认 exe/dll/ico 里的图标资源，PNG 在这里没用
+import appIconIco from '../../../resources/icon.ico?asset'
 
 /**
  * ─── Windows 任务栏跳转列表与「应用标识」（右键图标的那份菜单）─────────────────
@@ -130,18 +132,16 @@ export function ensureAppShortcut(): ShortcutStatus {
       args,
       cwd: app.getAppPath(),
       description: 'Lumin',
-      // 只有 icon.png，快捷方式图标得是 exe/dll/ico：直接借可执行文件自己的图标
-      // （打包后 Lumin.exe 带的就是应用图标）
-      icon: target,
+      icon: appIconIco,
       iconIndex: 0,
       appUserModelId: appId()
     })
-    debugLog(`shortcut ok=${ok} path="${path}" aumid=${appId()} target="${target}" args="${args}"`)
-    // 再读回来一次：证明**磁盘上那条**快捷方式（Windows 真正会读的）确实带上了标识与参数
+    debugLog(`shortcut ok=${ok} path="${path}" aumid=${appId()} target="${target}" args="${args}" icon="${appIconIco}"`)
+    // 再读回来一次：证明**磁盘上那条**快捷方式（Windows 真正会读的）确实带上了标识、参数与图标
     try {
       const back = shell.readShortcutLink(path)
       debugLog(
-        `shortcut-readback target="${back.target}" args="${back.args}" aumid=${back.appUserModelId ?? ''}`
+        `shortcut-readback target="${back.target}" args="${back.args}" aumid=${back.appUserModelId ?? ''} icon="${back.icon ?? ''}"`
       )
     } catch (err) {
       debugLog(`shortcut-readback failed: ${String(err)}`)
@@ -216,7 +216,7 @@ export function refreshJumpList(): JumpListStatus {
         args: launchArgs([NEW_WINDOW_SWITCH]),
         title: TASK_TITLE[lang],
         description: NEW_WINDOW_DESC[lang],
-        iconPath: process.execPath,
+        iconPath: appIconIco,
         iconIndex: 0
       }
     ]
@@ -228,7 +228,7 @@ export function refreshJumpList(): JumpListStatus {
       title: r.title || basename(r.path),
       // description 上限 260 字符，超了整个条目会被系统丢掉
       description: dirname(r.path).slice(0, 240),
-      iconPath: process.execPath,
+      iconPath: appIconIco,
       iconIndex: 0
     }))
 

@@ -76,7 +76,7 @@ async function main() {
   await ev(`(() => {
     const app = document.querySelector('#app').__vue_app__
     const sym = Object.getOwnPropertySymbols(app._context.provides).find((s) => String(s) === 'Symbol(pinia)')
-    const pinia = app._context.provides[sym]
+    const pinia = app._context.provides[sym] ?? Object.getOwnPropertySymbols(app._context.provides).map((s) => app._context.provides[s]).find((v) => v && typeof v === "object" && v._s instanceof Map) ?? Object.getOwnPropertySymbols(app._context.provides).map((s) => app._context.provides[s]).find((v) => v && typeof v === "object" && v._s instanceof Map)
     window.__vt = { pinia, ui: () => pinia._s.get('ui'), notif: () => pinia._s.get('notifications'), settings: () => pinia._s.get('settings') }
     return 'ok'
   })()`)
@@ -224,7 +224,7 @@ async function main() {
   await ev(`(() => {
     const app = document.querySelector('#app').__vue_app__
     const sym = Object.getOwnPropertySymbols(app._context.provides).find((s) => String(s) === 'Symbol(pinia)')
-    const pinia = app._context.provides[sym]
+    const pinia = app._context.provides[sym] ?? Object.getOwnPropertySymbols(app._context.provides).map((s) => app._context.provides[s]).find((v) => v && typeof v === "object" && v._s instanceof Map) ?? Object.getOwnPropertySymbols(app._context.provides).map((s) => app._context.provides[s]).find((v) => v && typeof v === "object" && v._s instanceof Map)
     window.__vt = { pinia, ui: () => pinia._s.get('ui'), notif: () => pinia._s.get('notifications'), settings: () => pinia._s.get('settings') }
     return 'ok'
   })()`)

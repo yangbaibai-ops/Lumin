@@ -93,7 +93,7 @@ async function main() {
 
   // ── 1b) 变宽后表格仍可正常编辑（点进单元格 → 选区落在 tableCell/tableHeader）──
   if (real.present) {
-    const savedPos = await ev(`(() => { const app = document.querySelector('#app').__vue_app__; const sym = Object.getOwnPropertySymbols(app._context.provides).find((s) => String(s) === 'Symbol(pinia)'); const pinia = app._context.provides[sym]; window.__vt = { ed: () => pinia._s.get('editor')?.instance ?? null, ui: () => pinia._s.get('ui') }; const ed = window.__vt.ed(); return ed ? ed.state.selection.from : null })()`)
+    const savedPos = await ev(`(() => { const app = document.querySelector('#app').__vue_app__; const sym = Object.getOwnPropertySymbols(app._context.provides).find((s) => String(s) === 'Symbol(pinia)'); const pinia = app._context.provides[sym] ?? Object.getOwnPropertySymbols(app._context.provides).map((s) => app._context.provides[s]).find((v) => v && typeof v === "object" && v._s instanceof Map) ?? Object.getOwnPropertySymbols(app._context.provides).map((s) => app._context.provides[s]).find((v) => v && typeof v === "object" && v._s instanceof Map); window.__vt = { ed: () => pinia._s.get('editor')?.instance ?? null, ui: () => pinia._s.get('ui') }; const ed = window.__vt.ed(); return ed ? ed.state.selection.from : null })()`)
     const pt = JSON.parse(await ev(`(() => { const cell = document.querySelector('.ProseMirror table th, .ProseMirror table td'); if (!cell) return JSON.stringify({ none: true }); const r = cell.getBoundingClientRect(); return JSON.stringify({ x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2) }) })()`))
     if (!pt.none) {
       await send('Input.dispatchMouseEvent', { type: 'mousePressed', x: pt.x, y: pt.y, button: 'left', clickCount: 1 })

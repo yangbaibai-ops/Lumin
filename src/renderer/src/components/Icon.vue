@@ -7,7 +7,9 @@ const props = withDefaults(defineProps<{ name: string; size?: number; strokeWidt
 
 // 每个图标 = 元素数组；'p:...' 为 path，'c:cx,cy,r' 为 circle
 const ICONS: Record<string, string[]> = {
-  logo: ['p:M12 3l1.9 5.6 5.6 1.9-5.6 1.9L12 18l-1.9-5.6-5.6-1.9 5.6-1.9z', 'c:19.5,4.5,0.9', 'c:3.5,19.5,0.9'],
+  // 应用标识：与应用图标同一份几何（32 网格那笔 L 折线，折算到 24 viewBox）。
+  // 调用方要给较粗的 stroke-width，它才像「标识」而不是一枚普通线性图标。
+  logo: ['p:M9 8 V16.5 H15.5'],
   bold: ['p:M6 12h9a4 4 0 0 1 0 8H7a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1h7a4 4 0 0 1 0 8'],
   italic: ['p:M19 4h-9', 'p:M14 20H5', 'p:M15 4L9 20'],
   underline: ['p:M6 4v6a6 6 0 0 0 12 0V4', 'p:M4 20h16'],

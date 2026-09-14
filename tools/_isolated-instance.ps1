@@ -2,6 +2,9 @@
 param(
   [string]$UserData = "$env:TEMP\lumin-keymap-userdata",
   [string]$RendererUrl = 'http://localhost:5173',
+  # 不连 dev server，直接加载 out/renderer 里构建好的页面
+  # （dev server 没在跑时用；少数会 import /src/... 的用例仍然必须配 dev server）
+  [switch]$NoDevServer,
   [int]$Port = 9222
 )
 $ErrorActionPreference = 'Continue'
@@ -24,10 +27,20 @@ if (Test-Port $Port) {
 }
 
 # 2) 干净数据目录
-Remove-Item $UserData -Recurse -Force -ErrorAction SilentlyContinue
+# 用 cmd 的 rmdir 而不是 Remove-Item：实例刚被杀掉时目录里可能还有句柄，
+# Remove-Item 会一直重试（整套脚本就卡在这里，实测卡过 7 分钟）；rmdir 失败就失败，立刻返回。
+if (Test-Path $UserData) {
+  & cmd.exe /c rmdir /s /q "$UserData" 2>$null
+}
 
 # 3) 启动（stdout/stderr 落文件：验收脚本要读主进程的自检日志，例如 [taskbar] 跳转列表注册结果）
-$env:ELECTRON_RENDERER_URL = $RendererUrl
+# -RendererUrl '' 表示不用 dev server，直接加载 out/renderer 里构建好的页面
+# （dev server 没在跑时用这个；注意少数用例会 import /src/...，那些必须配 dev server）
+if ($NoDevServer -or [string]::IsNullOrWhiteSpace($RendererUrl)) {
+  Remove-Item Env:\ELECTRON_RENDERER_URL -ErrorAction SilentlyContinue
+} else {
+  $env:ELECTRON_RENDERER_URL = $RendererUrl
+}
 $env:LUMIN_DEBUG_PORT = "$Port"
 $outLog = Join-Path $env:TEMP 'lumin-instance-out.log'
 $errLog = Join-Path $env:TEMP 'lumin-instance-err.log'

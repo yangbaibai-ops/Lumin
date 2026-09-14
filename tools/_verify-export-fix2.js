@@ -13,7 +13,7 @@ const expr = `(async () => {
     if (!app) return 'NO_APP'
     const prov = app._context.provides
     const sym = Object.getOwnPropertySymbols(prov).find((s) => String(s) === 'Symbol(pinia)')
-    const pinia = sym ? prov[sym] : null
+    const pinia = (sym ? prov[sym] : null) ?? Object.getOwnPropertySymbols(prov).map((s) => prov[s]).find((v) => v && typeof v === "object" && v._s instanceof Map)
     window.__vt = { pinia, files: () => pinia._s.get('files'), ui: () => pinia._s.get('ui'), settings: () => pinia._s.get('settings'), ed: () => pinia._s.get('editor')?.instance ?? null }
 
     // 拦截 export.pdf
@@ -41,7 +41,7 @@ async function main() {
   // 打开一个文档，让 files.current 存在
   await ev(`(() => { location.hash = '#/editor'; return 'ok' })()`)
   await sleep(1000)
-  await ev(`(() => { const app = document.querySelector('#app')?.__vue_app__; if (!app) return 'NO_APP'; const prov = app._context.provides; const sym = Object.getOwnPropertySymbols(prov).find((s) => String(s) === 'Symbol(pinia)'); const pinia = sym ? prov[sym] : null; window.__vt = { pinia, files: () => pinia._s.get('files'), ui: () => pinia._s.get('ui'), settings: () => pinia._s.get('settings'), ed: () => pinia._s.get('editor')?.instance ?? null }; return 'OK' })()`)
+  await ev(`(() => { const app = document.querySelector('#app')?.__vue_app__; if (!app) return 'NO_APP'; const prov = app._context.provides; const sym = Object.getOwnPropertySymbols(prov).find((s) => String(s) === 'Symbol(pinia)'); const pinia = (sym ? prov[sym] : null) ?? Object.getOwnPropertySymbols(prov).map((s) => prov[s]).find((v) => v && typeof v === "object" && v._s instanceof Map); window.__vt = { pinia, files: () => pinia._s.get('files'), ui: () => pinia._s.get('ui'), settings: () => pinia._s.get('settings'), ed: () => pinia._s.get('editor')?.instance ?? null }; return 'OK' })()`)
   await ev(`(async () => { await window.__vt.files().openPath('D:\\\\code_workspace\\\\Lumin-test-workspace\\\\tipverify.md'); return 'ok' })()`)
   await sleep(1500)
   const r = await send('Runtime.evaluate', { expression: expr, returnByValue: true, awaitPromise: true })

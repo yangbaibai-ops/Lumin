@@ -39,7 +39,7 @@ onMounted(async () => {
         class="relative mb-6 flex h-20 w-20 items-center justify-center rounded-3xl bg-gradient-to-br from-accent to-accent-2 text-white"
         :style="{ animation: 'lm-pop 0.5s cubic-bezier(0.2, 0.9, 0.3, 1.2)', boxShadow: '0 12px 40px var(--glow)' }"
       >
-        <Icon name="logo" :size="40" :stroke-width="1.6" />
+        <Icon name="logo" :size="40" :stroke-width="4" />
       </div>
       <h1 class="text-[28px] font-bold tracking-tight text-ink">Lumin</h1>
       <p class="mt-1 text-[13.5px] font-medium tracking-[0.25em] text-accent">WRITE IN LIGHT.</p>

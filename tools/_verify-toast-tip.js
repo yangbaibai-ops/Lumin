@@ -22,7 +22,7 @@ async function main() {
     if (!app) return 'NO_APP'
     const prov = app._context.provides
     const sym = Object.getOwnPropertySymbols(prov).find((s) => String(s) === 'Symbol(pinia)')
-    const pinia = sym ? prov[sym] : null
+    const pinia = (sym ? prov[sym] : null) ?? Object.getOwnPropertySymbols(prov).map((s) => prov[s]).find((v) => v && typeof v === "object" && v._s instanceof Map)
     window.__vt = { pinia, ui: () => pinia._s.get('ui'), files: () => pinia._s.get('files'), settings: () => pinia._s.get('settings') }
     return 'OK'
   })()`)

@@ -981,6 +981,52 @@ commands     应用级命令表（composables/useKeymap.ts）：id / i18n 标题
 - `tools/_verify-rename.js` 从「只打印」改成真断言（13 条）：走真实右键菜单 → 重命名 → 真实文本输入（`Input.insertText`，会**替换已选中的主干**、保留 `.md`）→ 回落后直接用 fs 验证磁盘结果，并覆盖 Esc 取消。写这套时顺便确认了「只选主干、扩展名不动」这条设计确实生效（`selStart/selEnd = 0/5`）。
 - **另一个必须记住的环境事实**：用户正在跑的 dev 应用**不会**自动拿到主进程改动——`electron-vite dev` 从 11:34 起就没有重建 `out/main`（渲染层是 HMR，主进程不是）。本次已手动 `electron-vite build` 重建，重启应用即生效。
 
+### 4.36 应用图标：一束光写下的 L（本次）
+
+**用户要求**：设计并换上项目的应用图标，简约大气。
+
+**设计**（`resources/icon.svg` 是母版，下面都是它的参数）：
+
+概念是「**一束光写下的 L**」——字母对应 Lumin，等宽圆头笔画对应界面里那套线性图标，靛蓝对应 `--accent`；两层意思、两个颜色，没有第三样东西。
+
+| 元素 | 规格（32 网格） |
+| --- | --- |
+| 底板 | 圆角方块 `rx=7`（≈22%，Win11 那种方圆形），垂直渐变 `#6366F1 → #4F46E5` |
+| 高光 | 左上径向柔光 `rgba(255,255,255,.16)`（只做「光来自左上」这一件事） |
+| 笔画 | 等宽 `6`（**16px 下正好 3px**）、圆头，`M13 10 V22 H22` |
+| 字面 | 外框 x 10–25、y 7–25（左 10 右 7 上下 7 的留白；L 视觉重心偏左下，所以整体略偏右） |
+
+**为什么要两个尺寸档**：16/24/32px 用**平色 `#5A5CE8` + 方头笔画**（端点补 `3` 个单位，外框与圆头版完全一致）——渐变和高光在 16px 下只会变成脏点，方头对齐像素网格更锐利；48px 以上才用渐变 + 柔光 + 圆头。这是「不靠等比缩小糊过去」的常规做法。
+
+**生成方式（零新依赖）**：`tools/build-app-icon.js`
+
+- 光栅化交给**项目自己的 Chromium**：Chromium 有 canvas，图标又只是圆角矩形 + 渐变 + 一笔折线，直接用图元画比引 sharp / canvas 之类的依赖更省；母版 SVG 与 canvas 用**同一组常量**，两边不会走样。
+- **Electron 不允许 CDP 建临时页面**（`Target.createTarget` 与 `PUT /json/new` 都返回失败），所以就在已有页面里画：只创建游离 canvas、画完立刻 `width=height=0` 释放，不碰应用 DOM；也**不用** data:/blob: 图片（应用页面 CSP 里没有 `blob:`）。
+- **ICO 自己打包**：6 字节头 + 每张 16 字节目录项 + PNG 负载（Vista 起支持），比装一个 `png-to-ico` 更可控。
+- **写完立刻回读校验**，并且**按 32 网格坐标取像素**证明「画出来的就是设计的样子」：圆角外必须 `alpha=0`、笔画正中必须近白、折角内侧必须是底板色（证明确实是 L 不是实心块）、大档上下亮度必须差 >8（渐变在）、小档上下必须完全同色且等于 `#5A5CE8`（平色在）。
+
+**产物**（都在 `resources/`，由脚本生成，勿手改）：
+
+- `icon.svg`（母版，给设计/其他平台）、`icon-small.svg`（小尺寸档，方头平色是刻意的，别当手误）
+- `icon.png` 512×512（窗口图标；比 1024 省一半解码内存，够高 DPI）
+- `icon.ico`：**16/24/32/48/64/128/256** 七档（Windows 的任务栏、窗口、快捷方式都读它）
+
+**接线**：
+
+- 窗口图标沿用 `resources/icon.png?asset`（electron-vite 会把导入改写成 `path.join(__dirname, '../../resources/icon.png')`，所以任务栏按钮用的就是这张新图）。
+- **任务栏快捷方式与跳转列表条目**改用 `resources/icon.ico`（它们只认 exe/dll/ico 资源，PNG 在这里没用；之前借的是 electron.exe 的图标）——`ensureAppShortcut()` 的 `icon` 与两条 task 的 `iconPath` 都指向它。
+- **应用内标识**（`Icon.vue` 的 `logo`）换成与图标同源的折线 `M9 8 V16.5 H15.5`（24 viewBox 折算），启动骨架屏与「关于」页各给一个较粗的 `stroke-width`，它才像「标识」而不是一枚普通线性图标。
+
+**验收**：`tools/build-app-icon.js` 自检 **14/14**（文件结构 + 像素取样）；`tools/_verify-taskbar-jumplist.js` **27/27**（新增两条：快捷方式的 `icon` 是 `icon.ico` 且文件存在、`readShortcutLink` 回读的 icon 与写入一致）。另外用 **Windows 自己的 COM** 独立复核了那条 `.lnk`：`IconLocation = D:\code_workspace\Lumin\resources\icon.ico,0`。各档观感另存 `%TEMP%\lumin-icon-sheet.png`（浅色/深色两条 + 原尺寸，供人工看）。
+
+**打包注意**：`?asset` 在打包后仍指向 `app.asar` 内的 `resources/`——窗口图标 Electron 自己能读，但**任务栏/快捷方式要的是真实文件**，所以将来配 electron-builder 时要把 `resources/**` 放进 `asarUnpack`（并把 `win.icon` 指到 `resources/icon.ico`）。
+
+**顺带修的脚手架问题**（都是「dev server 不在跑就整片挂掉」这类）：
+
+- 48 个验收套件都用 `Symbol(pinia)` 的描述去找 Pinia 实例，而**生产构建里这个 Symbol 没有描述**，于是加载 `out/renderer` 时全部报 `Cannot read properties of undefined (reading '_s')`；统一加了一条鸭子类型兜底（在 provides 里找带 `_s` 的 Map）。
+- `tools/_isolated-instance.ps1` 新增 `-NoDevServer`：不连 dev server，直接加载构建好的 `out/renderer`（dev server 没在跑时用）。注意少数套件自己按 `5173` 过滤页面或 `import /src/...`，那些仍然必须配 dev server。
+- 回归（无 dev server 模式）：文件树 24/24、目录 23/23、工具栏去文件名 12/12、跳转列表 27/27；`npm run typecheck` 0 error。
+
 ---
 
 ## 5. 分步实施计划（从零到一）

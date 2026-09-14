@@ -23,7 +23,7 @@ async function main() {
     if (!app) return 'NO_APP'
     const prov = app._context.provides
     const sym = Object.getOwnPropertySymbols(prov).find((s) => String(s) === 'Symbol(pinia)')
-    const pinia = sym ? prov[sym] : null
+    const pinia = (sym ? prov[sym] : null) ?? Object.getOwnPropertySymbols(prov).map((s) => prov[s]).find((v) => v && typeof v === "object" && v._s instanceof Map)
     window.__vt = { pinia, files: () => pinia._s.get('files'), ui: () => pinia._s.get('ui'), settings: () => pinia._s.get('settings'), ed: () => pinia._s.get('editor')?.instance ?? null }
     window.__exportCapture = null
     const orig = window.luminAPI.export.pdf.bind(window.luminAPI.export)
