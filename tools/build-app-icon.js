@@ -544,6 +544,35 @@ function parseIco(b) {
     JSON.stringify({ tl: P16.tileTL, br: P16.tileBR })
   )
 
+  // ── 单一来源守卫：所有**运行时**引用必须指向同一个图标文件 ──
+  // 背景：模板自带的 build/icon.{ico,png,icns} 曾是另一套（旧）设计，electron-builder 默认又会
+  // 去读 build/icon.ico —— 这样同一个应用就会出现两种图标。这里把它钉死：
+  //   1) src/ 下引用图标的地方只能出现 resources/icon.ico（PNG 仅限非 Windows 分支）；
+  //   2) build/ 下不允许再出现 icon.* 旧产物。
+  {
+    const walk = (dir) =>
+      fs.readdirSync(dir, { withFileTypes: true }).flatMap((e) => {
+        const p = path.join(dir, e.name)
+        if (e.isDirectory()) return walk(p)
+        return /\.(ts|vue|js)$/.test(e.name) ? [p] : []
+      })
+    const refs = []
+    for (const f of walk(path.join(REPO, 'src'))) {
+      const text = fs.readFileSync(f, 'utf-8')
+      for (const m of text.matchAll(/resources\/icon[\w.-]*/g)) {
+        refs.push({ file: path.relative(REPO, f), ref: m[0] })
+      }
+    }
+    const unexpected = refs.filter((r) => r.ref !== 'resources/icon.ico' && r.ref !== 'resources/icon.png')
+    console.log('ICON-REFS ' + JSON.stringify(refs))
+    c('all-runtime-refs-are-canonical', unexpected.length === 0, JSON.stringify(unexpected))
+    c('only-one-icon-file-for-windows', refs.filter((r) => r.ref === 'resources/icon.ico').length >= 2, JSON.stringify(refs.filter((r) => r.ref === 'resources/icon.ico')))
+    const staleIcon = ['icon.ico', 'icon.png', 'icon.icns']
+      .map((n) => path.join(REPO, 'build', n))
+      .filter((p) => fs.existsSync(p))
+    c('no-stale-build-icons', staleIcon.length === 0, JSON.stringify(staleIcon))
+  }
+
   console.log('SHEET ' + sheetPath)
   browser.ws.close()
   w.ws.close()

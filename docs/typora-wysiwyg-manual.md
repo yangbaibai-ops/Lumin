@@ -1350,3 +1350,25 @@ docs/typora-wysiwyg-manual.md   # 本文档
 **验收**：`tools/_verify-encoding.js` 在开发渲染层下 34/34；`-NoDevServer`（生产渲染层）下 31/34，差的 3 条是既有的 `setupState` 内省（生产构建不暴露，套件里已注明 SKIP）。两个探针（快速切换、先 emit 再切换）在修复后仍 PASS，且**磁盘字节全程不变**（切换只重读、不写回）。`npm run typecheck` 两工程 0 error。
 
 > 说明：第 1 条加固是**预防性**的 —— 我无法在当前构建上复现用户的现象，但它是代码里唯一能产生该现象的机制，封掉它之后该类时序问题不再可能发生。
+
+### 4.40 图标统一到单一文件（本次）
+
+**用户要求**：所有应用图标（窗口、任务栏等）都换成最新设计；删掉未使用的旧图标；**所有用到的地方引用同一个文件**，避免出现两种图标（除非确实需要别的图标类型）。
+
+**排查发现的三个真问题**：
+
+1. **窗口图标以前只在 Linux 设置**：`src/main/index.ts` 里是 `...(process.platform === 'linux' ? { icon } : {})` —— Windows 下等于没设，任务栏按钮退化用 electron.exe 自带的图标（开发态看着就是 Electron 的 logo）。所以之前换 `icon.png` 对 Windows 根本没生效。
+2. **模板自带的旧图标还在，而且是打包默认读取的位置**：`build/icon.ico`（123 KB）、`build/icon.png`、`build/icon.icns` 是 electron-vite 模板的占位图（旧设计），而 electron-builder 默认就去读 `build/icon.ico` —— 一旦打包就会出现「开发态一个新图标、安装后一个旧图标」。
+3. **同一个应用读两个文件**：窗口图标读 `resources/icon.png`，而开始菜单快捷方式与跳转列表读 `resources/icon.ico`。
+
+**改法**：
+
+- **Windows 运行时统一到一个文件**：窗口图标改成 `process.platform === 'win32' ? appIconIco : appIconPng`（`resources/icon.ico`）—— ICO 里本来就含 16/24/32/48/64/128/256 七档，Windows 会按场景（任务栏 / Alt+Tab / 标题栏 / 高 DPI）自己挑最合适的尺寸，比单张 PNG 更对；于是**窗口 + 任务栏 + 开始菜单快捷方式 + 跳转列表**读的都是 `resources/icon.ico`。
+- **非 Windows 用 PNG**：macOS/Linux 不吃 ICO，这是「确实需要另一种图标类型」的那种例外，用同一份设计导出的 `resources/icon.png`。
+- **删掉旧图标**：`build/icon.ico`、`build/icon.png`、`build/icon.icns` 全部删除（`build/` 只剩 mac 的 entitlements，与图标无关）。
+- **打包也指到同一个文件**：`package.json` 增加最小 `build` 配置 —— `appId: com.lumin.app`（与 `taskbar.appId()` 的打包分支一致，见 §4.35）、`productName: Lumin`、`win.icon: resources/icon.ico`。不写这段的话 electron-builder 会回去找 `build/icon.ico`（已被我们删掉），反而退化成 Electron 默认图标。
+- **加守卫防复发**：`tools/build-app-icon.js` 自检里新增三条 —— 扫 `src/**` 里所有 `resources/icon*` 引用必须只有 `icon.ico`（或非 Windows 分支的 `icon.png`）、Windows 必须有 ≥2 处引用同一个 ico、`build/` 下不允许再出现 `icon.*`。
+
+**验收**：`tools/build-app-icon.js` **14/14**（像素取样 + 三条单一来源守卫）；`_verify-taskbar-jumplist.js` 里快捷方式的 `IconLocation` 独立用 Windows COM 复核为 `D:\code_workspace\Lumin\resources\icon.ico,0`；`npm run typecheck` 0 error。
+
+**需要重启才能看到**：窗口图标是在窗口创建时设置的，所以改完要重启应用（如今开发态 `npm run dev --watch` 会自动重启，见 §4.38）。
