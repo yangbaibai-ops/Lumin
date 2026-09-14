@@ -3,7 +3,7 @@ import './suppressWarnings'
 import { app, shell, BrowserWindow, nativeTheme, protocol, net, ipcMain, screen } from 'electron'
 import { join } from 'path'
 import { pathToFileURL } from 'url'
-import { electronApp, optimizer, is } from '@electron-toolkit/utils'
+import { optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
 import { installMenu } from './menu'
 import { registerIpc, attachCloseGuard } from './ipc'
@@ -24,9 +24,13 @@ protocol.registerSchemesAsPrivileged([
   }
 ])
 
-// 应用名 / 模型 ID
+// 应用名 / 应用标识（AppUserModelID）
 app.setName('Lumin')
-electronApp.setAppUserModelId('com.lumin.app')
+// 不用 electronApp.setAppUserModelId()：它在开发态会把标识设成 process.execPath，
+// 于是 Windows 把窗口当成 electron.exe（右键菜单第一项显示「Electron」，点它启动无参数的
+// electron.exe）。标识必须由我们自己的 appId() 给，并且配套写一条开始菜单快捷方式，详见
+// services/taskbar 的文件头说明。
+app.setAppUserModelId(taskbar.appId())
 
 // 可选：通过环境变量开启远程调试端口（用于自动化验证）
 if (process.env.LUMIN_DEBUG_PORT) {
@@ -306,9 +310,11 @@ app.whenReady().then(() => {
 
   markRunning()
 
-  // 任务栏跳转列表（右键图标）：一条以应用名命名的任务（开新窗口）+ 一栏最近文档。
-  // 放在窗口创建之前注册，用户从固定按钮右键时就已可见。
+  // 任务栏跳转列表（右键图标）：一条「新建窗口」任务 + 一栏最近文档。
+  // 顺序有讲究：先写「开始菜单快捷方式」——任务栏右键菜单第一项的名字与点击行为都来自它
+  // （没有它时 Windows 退回进程路径，就显示成「Electron」并启动无参数的 electron.exe）。
   const intent = taskbar.parseLaunchIntent(process.argv)
+  taskbar.ensureAppShortcut()
   taskbar.refreshJumpList()
 
   // 会话恢复：按上次的窗口槽位重建窗口（每个槽位一个窗口，各自恢复文档/文件夹与位置）。

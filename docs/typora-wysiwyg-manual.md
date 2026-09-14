@@ -933,38 +933,46 @@ commands     应用级命令表（composables/useKeymap.ts）：id / i18n 标题
 
 **回归**：分段控件 16/16、工具栏去文件名 12/12、会话 16/16、去欢迎页 32 项通过（另 2 项为既有的隔离实例环境跳过）；`npm run typecheck:web` 0 error，改动文件 eslint 0 error。
 
-### 4.35 任务栏跳转列表对齐 Typora：新窗口任务 + 最近文档（本次）
+### 4.35 任务栏右键对齐 Typora：应用标识 + 快捷方式 + 跳转列表（本次）
 
-**用户反馈**：Windows 任务栏里右键其他应用（如 Typora）的图标，会列出一堆条目，其中一条就叫应用名（「Typora」），点它出来一个**全新窗口**；而 Lumin 那条叫「Electron」，点下去出来的是 **Electron 原生窗口**。要求对齐 Typora 的逻辑。
+**用户反馈（两轮）**：① 右键任务栏里其他应用（如 Typora）的图标会列出很多条目，其中一条就叫应用名，点它出来一个**全新窗口**；Lumin 那条却叫「Electron」，点下去出来的是 **Electron 原生窗口**。② 第一轮改完仍然如此：右键只有三项——「Electron」「固定到任务栏」「关闭窗口」。
 
-**根因**（两件事叠在一起）：
+**根因**（第一轮只治了半张菜单，第二轮才找到真正的那半张）：
 
-1. **那条「Electron」不是我们注册的**，而是用户**固定到任务栏的快捷方式**本身——开发态跑的是 `electron.exe`，Windows 建的固定快捷方式指向 `electron.exe` 且**不带任何参数**。点它 = 启动一个无参数的 `electron.exe`，那就是 Electron 自带的示例窗口。应用内部改不了那个快捷方式（它属于 shell）。
-2. 应用侧此前**没有注册任何跳转列表条目**（`setUserTasks` / `setJumpList` 都没调），所以右键菜单里除了系统那几项空空如也，更没有「开新窗口」的入口。
+1. **任务栏右键菜单第一项的名字与点击行为，来自该 AUMID（应用标识）注册的那条开始菜单快捷方式。** Windows 只认「标识 → 快捷方式」这条链：**名字**取快捷方式的显示名，**点击执行的命令**取它的 target + args。开发态跑的是 `electron.exe`，而 `@electron-toolkit/utils` 的 `setAppUserModelId()` 在开发态用的正是 `process.execPath`——那个标识在 Windows 眼里就是 electron.exe 本身：名字显示成「Electron」，点击执行**不带参数**的 electron.exe（= Electron 自带的示例窗口），「固定到任务栏」固定下来的也是这条无参数快捷方式。**应用侧改不了别人的快捷方式，但可以自己注册一条正确标识的快捷方式**，让 Windows 认这一条。
+2. 应用侧此前没注册任何跳转列表条目，于是连 Tasks／最近文档都没有。
+3. 为什么第一轮改完没变化：Win11 里**只有固定到任务栏的图标**右键才展开完整跳转列表；未固定时就是「应用名 / 固定到任务栏 / 关闭窗口」三项——第一项正是根因 1 那条。所以光注册 Tasks 是不够的，必须先把**标识**换对。
 
-**改法**（新增 `src/main/services/taskbar.ts`）：
+**改法**（`src/main/services/taskbar.ts`）：
 
-- **Tasks 里注册一条以应用名命名的任务**（`title: 'Lumin'`，与 Typora 一样就用应用名）：点它开一个**新的 Lumin 窗口**。命令行的 program/args 是**显式拼的**：开发态 = `process.execPath` + **应用目录** + `--lumin-new-window`，打包态只带开关——这一步是关键，差一个应用目录就会退回「无参数 electron.exe = Electron 示例窗口」。含空格的路径自动加引号。
-- **最近文档**：另起一个 custom 分类（分类名按 `settings.language` 本地化），每条的 program/args 同样显式指向本应用。**故意不用 `app.addRecentDocument()`**：那个把点击交给**文件关联**，开发态 `electron.exe` 并没有 `.md` 关联，用户点「最近」反而会叫起别的程序（机器上装了 Typora 就开 Typora）。
-- **AUMID 不动**：`electronApp.setAppUserModelId()` 在开发态用的是 `process.execPath`（见 @electron-toolkit/utils），正好与用户固定按钮的 AUMID 一致——跳转列表按 AUMID 注册，于是这些条目就出现在他右键的那个按钮上；打包态用 `com.lumin.app`，与安装器快捷方式一致。
+- **`appId()`**：打包态 `com.lumin.app`（与安装器一致），开发态 `com.lumin.app.dev`（加后缀，避免和装好的版本互相顶掉快捷方式）。`src/main/index.ts` 里改成 `app.setAppUserModelId(taskbar.appId())`，并且**在建窗口之前**设置。
+- **`ensureAppShortcut()`**：用 `shell.writeShortcutLink(path, 'create', {...})` 在开始菜单（`%APPDATA%\...\Start Menu\Programs\Lumin (dev).lnk`）写一条带 `target`（electron.exe / Lumin.exe）、`args`（开发态含**应用目录** + `--lumin-new-window`）、`appUserModelId`、`description` 的快捷方式；每次启动刷新一遍（幂等）。有了它：菜单第一项显示 **Lumin (dev)**，点它就是「electron.exe + 应用目录」→ **新的 Lumin 窗口**；用户「固定到任务栏」时，Windows 按 AUMID 复制这条快捷方式，**参数一起固定**。
+- **Tasks 那条改名「新建窗口」**（按语言本地化）：它和「应用名」那条不再重名，各司其职（前者是显式动作，后者是 Windows 的启动项）。
+- **最近文档**：custom 分类（分类名跟随界面语言），每条的 program/args 同样显式指向本应用。**故意不用 `app.addRecentDocument()`**：那个把点击交给**文件关联**，开发态 electron.exe 没有 `.md` 关联，用户点「最近」反而会叫起别的程序（机器上装了 Typora 就开 Typora）。
 - **主进程解析这些开关**（`parseLaunchIntent`，冷启动与第二实例两条路都认）：
   - 运行中的实例收到 `--lumin-new-window` → 开干净新窗口（与「文件 → 新建窗口」同一路径，带 `--lumin-no-workspace`）；
   - 收到 `--lumin-open=<file>` → **先查这篇是否已在别的窗口开着**，是则把那窗口唤到前面（沿用 §4.28 的「一个文件只开一个窗口」），否则新开窗口打开它；
   - 什么都没有 → 聚焦已有窗口（原行为）。
   - 冷启动带 `--lumin-open` 时**不拉会话恢复**：意图很明确就是开这一篇，否则会先把一堆旧窗口恢复出来再把这篇插进去；槽位数据仍留在 kv，下次正常启动照旧恢复。
-- **重建时机**：启动时注册一次；`window:docPath`（文档切换）后节流 1.5s 重建（等这次打开先落库到 `documents.last_opened`）；换语言或最近列表变化（含界面上「清空最近」）时立即重建。
+- **重建时机**：启动时先写快捷方式、再注册跳转列表；`window:docPath`（文档切换）后节流 1.5s 重建（等这次打开先落库）；换语言或最近列表变化（含界面上「清空最近」）时立即重建。
 
-**验收**：`tools/_verify-taskbar-jumplist.js` **18/18**（隔离实例 + 主进程自检日志 + **真的再起一个进程**）：
+**验收**：`tools/_verify-taskbar-jumplist.js` **25/25**（隔离实例 + 主进程自检日志 + **真的再起一个进程**）：
 
-- 注册结果：自检日志 `status=ok tasks=1`（`setJumpList` 的返回值，Windows 真收下了）；
-- 任务命令行：`args` 的第一个 token 就是应用目录、且含 `--lumin-new-window`（含空格时必须带引号这条规则也一并断言）；
-- **行为**：带 `--lumin-new-window` 起第二进程 → 多出一个窗口，且该窗口 `location.href` 是我们的渲染页、`window.luminAPI` 在、`document.title === 'Lumin'`——即**不是** Electron 原生窗口；
-- 带 `--lumin-open=<beta.md>` → 新窗口打开的正是那篇文档；同一篇再来一次**不会开第二个**（聚焦原窗口）；不带参数再来一次**不会多开**；
-- 冷启动（应用没在跑）带 `--lumin-open=<alpha.md>` → 只开一个窗口且直接打开该文档。
+- 标识与快捷方式：`shortcut ok=true`，**AUMID = `com.lumin.app.dev` 且不含 electron.exe**（这条直接钉住「名字显示成 Electron」的根因），target 是 electron.exe、args 含应用目录；`shell.readShortcutLink` **回读**校验磁盘上那条快捷方式与写入一致（不是只信我们的意图）；快捷方式文件确实存在于开始菜单；它的 target+args 恰好等于下一条里被验证过能开新窗口的命令。
+- 跳转列表：`status=ok tasks=1 title="新建窗口"`（`setJumpList` 的返回值，Windows 真收下了）。
+- **行为**：带 `--lumin-new-window` 起第二进程 → 多出一个窗口，且该窗口 `location.href` 是我们的渲染页、`window.luminAPI` 在、标题是 `Lumin`——即**不是** Electron 原生窗口；带 `--lumin-open=<beta.md>` → 新窗口打开的正是那篇；同一篇再来一次不多开；不带参数再来一次不多开；冷启动带 `--lumin-open=<alpha.md>` → 只开一个窗口并直接打开该文档。
 
-**踩坑记录**：Windows 上主进程的 `console.log` 拿不到——把 electron 的 stdout 重定向到文件后，里面只有 Chromium 那行 `DevTools listening`（GUI 子系统进程没有控制台）。所以自检信息落 `%TEMP%\lumin-taskbar.log`，且只在 `LUMIN_DEBUG_PORT`／`LUMIN_STARTUP_LOG` 打开时写。
+**踩坑记录**：
+
+- Windows 上主进程的 `console.log` 拿不到——把 electron 的 stdout 重定向到文件后，里面只有 Chromium 那行 `DevTools listening`（GUI 子系统进程没有控制台）。所以自检信息落 `%TEMP%\lumin-taskbar.log`，且只在 `LUMIN_DEBUG_PORT`／`LUMIN_STARTUP_LOG` 打开时写。
+- `shell.writeShortcutLink(path, 'replace', ...)` 在**文件还不存在**时会失败（`replace` 的语义是「只替换已存在的」）——用 `'create'`（它会覆盖已存在的）。
+- **验收里不要真的去 shell 打开这条 .lnk**：它是应用自己的快捷方式，不带 `--user-data-dir`，于是会连到「默认配置目录」那个实例上——也就是**用户正在用的那个应用**，等于拿验收去动用户的窗口（踩过一次，用户那边多出一个窗口）。所以改成断言「快捷方式的 target+args 等于已通过隔离验证的那条命令」，真正的启动行为由隔离实例那条用例负责。
+
+**用户侧需要做的一步**：重启 Lumin（标识在启动时设置），之后右键任务栏图标第一项就是「Lumin (dev)」；把旧的「Electron」固定取消、重新固定新的按钮，固定下来的那条快捷方式会带参数（Windows 按 AUMID 复制我们自己写的那条）。若名字没立刻变，是 shell 缓存没刷新，重登或重启资源管理器即可。
 
 **回归**：会话 16/16、目录 23/23、文件树 24/24、打开落点 22/22、单文件单窗口 21/21、新窗口干净 13/13、另存为切工作区 17/17、重命名 13/13、去欢迎页 32 项（另 2 项既有环境跳过）、工具栏去文件名 12/12；`npm run typecheck` 0 error。
+
+> 打包提醒：`package.json` 目前还没有 electron-builder 配置，将来加的时候 `appId` 要写成 `com.lumin.app`（与 `appId()` 的打包分支一致），安装器就会建出同名标识的 `Lumin.lnk`，与现在的开发态逻辑严丝合缝。
 
 **顺带修的三处验收脚手架问题**：
 

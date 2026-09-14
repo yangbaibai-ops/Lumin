@@ -121,8 +121,35 @@ function taskbarLog() {
       const tasks = Number(/tasks=(\d+)/.exec(l)?.[1] ?? NaN)
       const recent = Number(/recent=(\d+)/.exec(l)?.[1] ?? NaN)
       const args = /args="([^"]*)"/.exec(l)?.[1] ?? ''
-      return { line: l, status, tasks, recent, args }
+      const title = /title="([^"]*)"/.exec(l)?.[1] ?? ''
+      const aumid = /aumid=(\S+)/.exec(l)?.[1] ?? ''
+      const target = /target="([^"]*)"/.exec(l)?.[1] ?? ''
+      const path2 = /path="([^"]*)"/.exec(l)?.[1] ?? ''
+      const okMatch = /ok=(true|false)/.exec(l)
+      return {
+        line: l,
+        kind: l.includes('shortcut') ? 'shortcut' : 'jumplist',
+        status,
+        tasks,
+        recent,
+        args,
+        title,
+        aumid,
+        target,
+        path: path2,
+        ok: okMatch ? okMatch[1] === 'true' : null
+      }
     })
+}
+
+/** 用 shell 打开 .lnk（与「点任务栏菜单第一项」同一条路径：Windows 解析标识对应的快捷方式）。
+ *  仅保留给「用户没在跑应用」时的手工验证，验收默认不调用 —— 理由见 A3 的注释。 */
+function launchShortcut(lnkPath) {
+  const env = { ...process.env }
+  delete env.LUMIN_DEBUG_PORT
+  delete env.ELECTRON_RENDERER_URL
+  // 直接 spawn 一个 .lnk 不行（不是可执行文件），必须交给 shell 解析
+  spawn('cmd.exe', ['/c', 'start', '', lnkPath], { detached: true, stdio: 'ignore', env }).unref()
 }
 
 /** 起第二个进程（同一个 user-data-dir → 命中单实例锁，把参数交给已运行的实例） */
@@ -181,11 +208,50 @@ async function waitForNewPages(before, amount, timeoutMs = 15000) {
   await main.ev(SETUP)
 
   // ── A. 启动时的注册结果 ──
-  const boot = taskbarLog().filter((l) => l.tasks === 1)
+  const boot = taskbarLog().filter((l) => l.kind === 'jumplist' && l.tasks === 1)
   const first = boot[0]
   console.log('BOOT-LOG ' + JSON.stringify(first))
   c('jumplist-registered-ok', !!first && first.status === 'ok', JSON.stringify(first))
   c('has-new-window-task', !!first && first.tasks === 1, JSON.stringify(first?.tasks))
+  c('task-title-localized', !!first && first.title === '新建窗口', String(first?.title))
+
+  // ── A2. 开始菜单快捷方式：任务栏右键菜单第一项的**名字**与**点击行为**都来自它 ──
+  const sc = taskbarLog().find((l) => l.kind === 'shortcut' && l.ok === true)
+  const back = taskbarLog().find((l) => l.line.includes('shortcut-readback'))
+  console.log('SHORTCUT ' + JSON.stringify(sc ?? null))
+  console.log('SHORTCUT-READBACK ' + JSON.stringify(back ?? null))
+  const expectAppPath0 = path.resolve(__dirname, '..')
+  c('shortcut-written', !!sc && sc.ok === true && !!sc.path, JSON.stringify(sc ?? null))
+  c(
+    'shortcut-aumid-is-ours-not-electron',
+    !!sc && sc.aumid === 'com.lumin.app.dev' && !/electron\.exe/i.test(sc.aumid),
+    String(sc?.aumid)
+  )
+  c(
+    'shortcut-targets-electron-with-app-path',
+    !!sc && /electron\.exe$/i.test(sc.target) && sc.args.includes(expectAppPath0),
+    JSON.stringify({ target: sc?.target, args: sc?.args })
+  )
+  c(
+    'shortcut-readback-matches',
+    !!back && back.aumid === sc?.aumid && back.args === sc?.args && back.target === sc?.target,
+    JSON.stringify(back ?? null)
+  )
+  c('shortcut-file-on-disk', !!sc?.path && fs.existsSync(sc.path), String(sc?.path))
+
+  // ── A3. 快捷方式的启动命令 == 已经验证过能开新窗口的那条命令 ──
+  // 注意：**不要**在验收里真的用 shell 打开这条 .lnk —— 它是应用自己的快捷方式，不带
+  // --user-data-dir，于是会连到「默认配置目录」那个实例上（也就是用户正在用的那个应用），
+  // 等于拿验收去动用户的窗口（踩过一次）。所以这里只断言「快捷方式的 target+args 恰好
+  // 等于下面那条已通过验证的启动命令」，再由 C1 用隔离实例真的跑一遍。
+  const provenLaunch = `${path.join(REPO, 'node_modules', 'electron', 'dist', 'electron.exe')}|${expectAppPath0} --lumin-new-window`
+  const shortcutLaunch = `${sc?.target ?? ''}|${sc?.args ?? ''}`
+  console.log('SHORTCUT-LAUNCH ' + JSON.stringify({ shortcutLaunch, provenLaunch }))
+  c(
+    'shortcut-launch-equals-proven-command',
+    shortcutLaunch === provenLaunch,
+    JSON.stringify({ shortcutLaunch, provenLaunch })
+  )
 
   // ── B. 任务命令行必须能拉起「我们的应用」 ──
   // 开发态（未打包）：第一个 token 就是应用目录，否则 electron.exe 会开成 Electron 自带的示例窗口

@@ -15,11 +15,13 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 
 function get(p) {
   return new Promise((res, rej) => {
-    http.get({ host: '127.0.0.1', port: 9222, path: p }, (r) => {
-      let d = ''
-      r.on('data', (c) => (d += c))
-      r.on('end', () => res(JSON.parse(d)))
-    }).on('error', rej)
+    http
+      .get({ host: '127.0.0.1', port: 9222, path: p }, (r) => {
+        let d = ''
+        r.on('data', (c) => (d += c))
+        r.on('end', () => res(JSON.parse(d)))
+      })
+      .on('error', rej)
   })
 }
 
@@ -45,8 +47,13 @@ function connect(url) {
       ws.send(JSON.stringify({ id: i, method, params }))
     })
   const ev = async (expr) => {
-    const r = await send('Runtime.evaluate', { expression: expr, returnByValue: true, awaitPromise: true })
-    if (r.result?.exceptionDetails) throw new Error('EXC ' + JSON.stringify(r.result.exceptionDetails).slice(0, 240))
+    const r = await send('Runtime.evaluate', {
+      expression: expr,
+      returnByValue: true,
+      awaitPromise: true
+    })
+    if (r.result?.exceptionDetails)
+      throw new Error('EXC ' + JSON.stringify(r.result.exceptionDetails).slice(0, 240))
     return r.result?.result?.value
   }
   return { ws, ready, send, ev }
@@ -149,9 +156,12 @@ const SCROLL_HOOK = `(() => {
 
 ;(async () => {
   const results = []
-  const c = (n, cond, extra) => results.push((cond ? 'PASS' : 'FAIL') + ' ' + n + (extra ? ' | ' + extra : ''))
+  const c = (n, cond, extra) =>
+    results.push((cond ? 'PASS' : 'FAIL') + ' ' + n + (extra ? ' | ' + extra : ''))
 
-  const pages = (await get('/json/list')).filter((t) => t.type === 'page' && /index\.html|5173/.test(t.url))
+  const pages = (await get('/json/list')).filter(
+    (t) => t.type === 'page' && /index\.html|5173/.test(t.url)
+  )
   if (!pages.length) {
     console.log('SKIP: 没有可用窗口')
     return
@@ -161,7 +171,11 @@ const SCROLL_HOOK = `(() => {
   await w.send('Page.enable')
   for (let i = 0; i < 80; i++) {
     await sleep(250)
-    if ((await w.ev(SETUP)) === 'ok' && (await w.ev(`window.__T.ui().booting ? 'booting' : 'ready'`)) === 'ready') break
+    if (
+      (await w.ev(SETUP)) === 'ok' &&
+      (await w.ev(`window.__T.ui().booting ? 'booting' : 'ready'`)) === 'ready'
+    )
+      break
   }
   await w.ev(SETUP)
 
@@ -181,26 +195,70 @@ const SCROLL_HOOK = `(() => {
       '',
       '[TOC]'
     ].join('\n\n')
-    await w.ev(`(() => { window.__T.ed().commands.setContent(${JSON.stringify(md)}); return 'ok' })()`)
+    await w.ev(
+      `(() => { window.__T.ed().commands.setContent(${JSON.stringify(md)}); return 'ok' })()`
+    )
     await sleep(900)
 
     // ── A/B. 样式 ──
     const st = JSON.parse(await w.ev(TOC_STYLE))
     console.log('STYLE ' + JSON.stringify(st))
-    c('toc-rendered', st.present === true && st.anchors >= 3, JSON.stringify({ present: st.present, anchors: st.anchors }))
+    c(
+      'toc-rendered',
+      st.present === true && st.anchors >= 3,
+      JSON.stringify({ present: st.present, anchors: st.anchors })
+    )
     // 注意：Tailwind preflight 给所有元素写了 `border-style: solid; border-width: 0`，
     // 所以「没有色条」的判据是**宽度为 0**（visible 的色条必然有非 0 宽度），而不是 style 为 none。
-    c('no-left-color-bar', st.borderLeftWidth === '0px', JSON.stringify({ w: st.borderLeftWidth, s: st.borderLeftStyle }))
+    c(
+      'no-left-color-bar',
+      st.borderLeftWidth === '0px',
+      JSON.stringify({ w: st.borderLeftWidth, s: st.borderLeftStyle })
+    )
     c(
       'items-have-no-bar-or-chip',
-      st.itemStyle.every((x) => x.borderLeftWidth === '0px' && x.background === 'rgba(0, 0, 0, 0)' && x.boxShadow === 'none' && x.outlineWidth === '0px' && x.bulletBackground === 'rgba(0, 0, 0, 0)'),
-      JSON.stringify(st.itemStyle.map((x) => ({ bl: x.borderLeftWidth, bg: x.background, sh: x.boxShadow, ol: x.outlineWidth, pbg: x.bulletBackground })))
+      st.itemStyle.every(
+        (x) =>
+          x.borderLeftWidth === '0px' &&
+          x.background === 'rgba(0, 0, 0, 0)' &&
+          x.boxShadow === 'none' &&
+          x.outlineWidth === '0px' &&
+          x.bulletBackground === 'rgba(0, 0, 0, 0)'
+      ),
+      JSON.stringify(
+        st.itemStyle.map((x) => ({
+          bl: x.borderLeftWidth,
+          bg: x.background,
+          sh: x.boxShadow,
+          ol: x.outlineWidth,
+          pbg: x.bulletBackground
+        }))
+      )
     )
-    c('no-box-no-background', st.borderTopWidth === '0px' && st.background === 'rgba(0, 0, 0, 0)' && st.boxShadow === 'none', JSON.stringify({ top: st.borderTopWidth, bg: st.background, shadow: st.boxShadow }))
+    c(
+      'no-box-no-background',
+      st.borderTopWidth === '0px' &&
+        st.background === 'rgba(0, 0, 0, 0)' &&
+        st.boxShadow === 'none',
+      JSON.stringify({ top: st.borderTopWidth, bg: st.background, shadow: st.boxShadow })
+    )
     c('no-title-row', st.hasTitle === false, String(st.hasTitle))
-    c('bulleted-by-level', st.itemStyle.map((x) => x.bullet).join('|') === '"•"|"◦"|"▪"', JSON.stringify(st.itemStyle.map((x) => x.bullet)))
-    c('indent-increases-with-level', st.itemStyle[0].paddingLeft < st.itemStyle[1].paddingLeft && st.itemStyle[1].paddingLeft < st.itemStyle[2].paddingLeft, JSON.stringify(st.itemStyle.map((x) => ({ l: x.level, pad: x.paddingLeft }))))
-    c('typora-like-typography', st.itemStyle.every((x) => x.cursor === 'pointer') && st.itemStyle[0].lineHeight !== 'normal', JSON.stringify(st.itemStyle.map((x) => ({ lh: x.lineHeight, cursor: x.cursor }))))
+    c(
+      'bulleted-by-level',
+      st.itemStyle.map((x) => x.bullet).join('|') === '"•"|"◦"|"▪"',
+      JSON.stringify(st.itemStyle.map((x) => x.bullet))
+    )
+    c(
+      'indent-increases-with-level',
+      st.itemStyle[0].paddingLeft < st.itemStyle[1].paddingLeft &&
+        st.itemStyle[1].paddingLeft < st.itemStyle[2].paddingLeft,
+      JSON.stringify(st.itemStyle.map((x) => ({ l: x.level, pad: x.paddingLeft })))
+    )
+    c(
+      'typora-like-typography',
+      st.itemStyle.every((x) => x.cursor === 'pointer') && st.itemStyle[0].lineHeight !== 'normal',
+      JSON.stringify(st.itemStyle.map((x) => ({ lh: x.lineHeight, cursor: x.cursor })))
+    )
 
     // ── C. 点击平滑滚动 ──
     // 显式把媒体特性固定在 no-preference：否则若上一次运行残留了 reduce 模拟，
@@ -217,7 +275,9 @@ const SCROLL_HOOK = `(() => {
     )
     // 先把视图滚到底部（目录所在处），确保点击第一级标题时要往上滚一大段；
     // 注意顺序：**先滚动、再量坐标**——否则量到的是滚动前的位置，点击会落空。
-    await w.ev(`(() => { const el = document.querySelector('.editor-scroll'); el.scrollTop = el.scrollHeight; return 'ok' })()`)
+    await w.ev(
+      `(() => { const el = document.querySelector('.editor-scroll'); el.scrollTop = el.scrollHeight; return 'ok' })()`
+    )
     await sleep(600)
     const startTop = await w.ev(`Math.round(document.querySelector('.editor-scroll').scrollTop)`)
     const targetInfo = JSON.parse(
@@ -231,21 +291,54 @@ const SCROLL_HOOK = `(() => {
     console.log('CLICK-TARGET ' + JSON.stringify(targetInfo))
     console.log('HOOK ' + (await w.ev(SCROLL_HOOK)))
     await w.ev(SCROLL_SAMPLER)
-    await w.send('Input.dispatchMouseEvent', { type: 'mousePressed', x: targetInfo.x, y: targetInfo.y, button: 'left', clickCount: 1 })
-    await w.send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: targetInfo.x, y: targetInfo.y, button: 'left', clickCount: 1 })
+    await w.send('Input.dispatchMouseEvent', {
+      type: 'mousePressed',
+      x: targetInfo.x,
+      y: targetInfo.y,
+      button: 'left',
+      clickCount: 1
+    })
+    await w.send('Input.dispatchMouseEvent', {
+      type: 'mouseReleased',
+      x: targetInfo.x,
+      y: targetInfo.y,
+      button: 'left',
+      clickCount: 1
+    })
     await sleep(140)
     const mid = await w.ev(`JSON.stringify(window.__samples.slice())`)
     await sleep(1400)
-    const samples = JSON.parse(await w.ev(`(window.__stopSampler = true, JSON.stringify(window.__samples.slice()))`))
+    const samples = JSON.parse(
+      await w.ev(`(window.__stopSampler = true, JSON.stringify(window.__samples.slice()))`)
+    )
     await sleep(300)
     const finalTop = await w.ev(`Math.round(document.querySelector('.editor-scroll').scrollTop)`)
-    const headingTop = await w.ev(`(() => { const h = document.querySelector('.md-preview h1, .ProseMirror h1'); const el = document.querySelector('.editor-scroll'); return h ? Math.round(el.scrollTop + h.getBoundingClientRect().top - el.getBoundingClientRect().top) : null })()`)
+    const headingTop = await w.ev(
+      `(() => { const h = document.querySelector('.md-preview h1, .ProseMirror h1'); const el = document.querySelector('.editor-scroll'); return h ? Math.round(el.scrollTop + h.getBoundingClientRect().top - el.getBoundingClientRect().top) : null })()`
+    )
     const distinct = new Set(samples).size
-    console.log('SCROLL ' + JSON.stringify({ startTop, finalTop, headingTop, samples: samples.slice(0, 12), distinct }))
+    console.log(
+      'SCROLL ' +
+        JSON.stringify({ startTop, finalTop, headingTop, samples: samples.slice(0, 12), distinct })
+    )
     c('scroll-moved-upward', finalTop < startTop - 200, JSON.stringify({ startTop, finalTop }))
-    c('scroll-is-animated-not-instant', distinct > 6, JSON.stringify({ distinct, first: samples.slice(0, 8) }))
-    c('mid-flight-intermediate-value', JSON.parse(mid).some((v) => v > Math.min(startTop, finalTop) + 20 && v < Math.max(startTop, finalTop) - 20), JSON.stringify(JSON.parse(mid).slice(0, 10)))
-    c('lands-near-heading', typeof headingTop === 'number' && Math.abs(finalTop - headingTop) <= 24, JSON.stringify({ finalTop, headingTop }))
+    c(
+      'scroll-is-animated-not-instant',
+      distinct > 6,
+      JSON.stringify({ distinct, first: samples.slice(0, 8) })
+    )
+    c(
+      'mid-flight-intermediate-value',
+      JSON.parse(mid).some(
+        (v) => v > Math.min(startTop, finalTop) + 20 && v < Math.max(startTop, finalTop) - 20
+      ),
+      JSON.stringify(JSON.parse(mid).slice(0, 10))
+    )
+    c(
+      'lands-near-heading',
+      typeof headingTop === 'number' && Math.abs(finalTop - headingTop) <= 24,
+      JSON.stringify({ finalTop, headingTop })
+    )
     const sel = await w.ev(`(() => {
       const ed = window.__T.ed(); const s = ed.state.selection; const size = ed.state.doc.content.size
       // 夹紧上界：越界会让 textBetween 内部取到 undefined 子节点（Cannot read properties of undefined）
@@ -263,13 +356,20 @@ const SCROLL_HOOK = `(() => {
     c(
       'smooth-scroll-not-interrupted',
       smoothIdx >= 0 && afterSmooth.length === 0,
-      JSON.stringify({ calls: sc.map((x) => x.kind), after: afterSmooth.map((x) => x.kind + ' @ ' + x.stack) })
+      JSON.stringify({
+        calls: sc.map((x) => x.kind),
+        after: afterSmooth.map((x) => x.kind + ' @ ' + x.stack)
+      })
     )
 
     // ── D. prefers-reduced-motion：瞬时定位 ──
-    await w.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: 'reduce' }] })
+    await w.send('Emulation.setEmulatedMedia', {
+      features: [{ name: 'prefers-reduced-motion', value: 'reduce' }]
+    })
     await sleep(200)
-    await w.ev(`(() => { const el = document.querySelector('.editor-scroll'); el.scrollTop = el.scrollHeight; return 'ok' })()`)
+    await w.ev(
+      `(() => { const el = document.querySelector('.editor-scroll'); el.scrollTop = el.scrollHeight; return 'ok' })()`
+    )
     await sleep(400)
     const start2 = await w.ev(`Math.round(document.querySelector('.editor-scroll').scrollTop)`)
     const target2 = JSON.parse(
@@ -280,31 +380,64 @@ const SCROLL_HOOK = `(() => {
       })()`)
     )
     await w.ev(SCROLL_SAMPLER)
-    await w.send('Input.dispatchMouseEvent', { type: 'mousePressed', x: target2.x, y: target2.y, button: 'left', clickCount: 1 })
-    await w.send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: target2.x, y: target2.y, button: 'left', clickCount: 1 })
+    await w.send('Input.dispatchMouseEvent', {
+      type: 'mousePressed',
+      x: target2.x,
+      y: target2.y,
+      button: 'left',
+      clickCount: 1
+    })
+    await w.send('Input.dispatchMouseEvent', {
+      type: 'mouseReleased',
+      x: target2.x,
+      y: target2.y,
+      button: 'left',
+      clickCount: 1
+    })
     await sleep(260)
-    const samples2 = JSON.parse(await w.ev(`(window.__stopSampler = true, JSON.stringify(window.__samples.slice()))`))
+    const samples2 = JSON.parse(
+      await w.ev(`(window.__stopSampler = true, JSON.stringify(window.__samples.slice()))`)
+    )
     const final2 = await w.ev(`Math.round(document.querySelector('.editor-scroll').scrollTop)`)
     const distinct2 = new Set(samples2).size
-    console.log('REDUCED-MOTION ' + JSON.stringify({ start2, final2, distinct2, samples: samples2.slice(0, 6) }))
-    c('reduced-motion-jumps-instantly', distinct2 <= 3 && Math.abs(final2 - start2) > 200, JSON.stringify({ distinct2, start2, final2 }))
+    console.log(
+      'REDUCED-MOTION ' +
+        JSON.stringify({ start2, final2, distinct2, samples: samples2.slice(0, 6) })
+    )
+    c(
+      'reduced-motion-jumps-instantly',
+      distinct2 <= 3 && Math.abs(final2 - start2) > 200,
+      JSON.stringify({ distinct2, start2, final2 })
+    )
     await w.send('Emulation.setEmulatedMedia', { features: [] })
 
     // ── E. 侧栏大纲点击也平滑（同一个 jumpToHeading） ──
-    await w.ev(`(() => { window.__T.ui().sidebarVisible = true; window.__T.ui().sidebarTab = 'outline'; return 'ok' })()`)
+    await w.ev(
+      `(() => { window.__T.ui().sidebarVisible = true; window.__T.ui().sidebarTab = 'outline'; return 'ok' })()`
+    )
     await sleep(700)
     const outlineOk = await w.ev(`document.querySelectorAll('[data-outline-item]').length`)
     if (outlineOk > 0) {
-      await w.ev(`(() => { const el = document.querySelector('.editor-scroll'); el.scrollTop = el.scrollHeight; return 'ok' })()`)
+      await w.ev(
+        `(() => { const el = document.querySelector('.editor-scroll'); el.scrollTop = el.scrollHeight; return 'ok' })()`
+      )
       await sleep(400)
       const start3 = await w.ev(`Math.round(document.querySelector('.editor-scroll').scrollTop)`)
       await w.ev(SCROLL_SAMPLER)
-      await w.ev(`(() => { document.querySelectorAll('[data-outline-item]')[0].click(); return 'ok' })()`)
+      await w.ev(
+        `(() => { document.querySelectorAll('[data-outline-item]')[0].click(); return 'ok' })()`
+      )
       await sleep(140 + 1200)
-      const samples3 = JSON.parse(await w.ev(`(window.__stopSampler = true, JSON.stringify(window.__samples.slice()))`))
+      const samples3 = JSON.parse(
+        await w.ev(`(window.__stopSampler = true, JSON.stringify(window.__samples.slice()))`)
+      )
       const final3 = await w.ev(`Math.round(document.querySelector('.editor-scroll').scrollTop)`)
       console.log('OUTLINE ' + JSON.stringify({ start3, final3, distinct: new Set(samples3).size }))
-      c('outline-click-also-smooth', new Set(samples3).size > 6 && Math.abs(final3 - start3) > 200, JSON.stringify({ distinct: new Set(samples3).size, start3, final3 }))
+      c(
+        'outline-click-also-smooth',
+        new Set(samples3).size > 6 && Math.abs(final3 - start3) > 200,
+        JSON.stringify({ distinct: new Set(samples3).size, start3, final3 })
+      )
     } else {
       c('outline-click-also-smooth', false, 'SKIP: 侧栏大纲不可用')
     }
@@ -340,33 +473,66 @@ const SCROLL_HOOK = `(() => {
     const col = JSON.parse(await w.ev(colorProbe))
     console.log('COLOR ' + JSON.stringify(col))
     c('default-color-is-blue', isBlue(col.item), JSON.stringify(col.item))
-    c('default-color-follows-token', col.item === col.token, JSON.stringify({ item: col.item, token: col.token }))
-    c('default-color-not-body-ink', col.item !== col.ink, JSON.stringify({ item: col.item, ink: col.ink }))
+    c(
+      'default-color-follows-token',
+      col.item === col.token,
+      JSON.stringify({ item: col.item, token: col.token })
+    )
+    c(
+      'default-color-not-body-ink',
+      col.item !== col.ink,
+      JSON.stringify({ item: col.item, ink: col.ink })
+    )
     // 悬停：真实指针移上去（:hover 取不到计算值，只能用真事件）——先把目录滚进视口
-    await w.ev(`(() => { document.querySelector('.md-toc').scrollIntoView({ block: 'center' }); return 'ok' })()`)
+    await w.ev(
+      `(() => { document.querySelector('.md-toc').scrollIntoView({ block: 'center' }); return 'ok' })()`
+    )
     await sleep(400)
     const hoverRect = JSON.parse(
-      await w.ev(`(() => { const r = document.querySelector('.md-toc .toc-item').getBoundingClientRect(); return JSON.stringify({ x: Math.round(r.left + 30), y: Math.round(r.top + r.height / 2) }) })()`)
+      await w.ev(
+        `(() => { const r = document.querySelector('.md-toc .toc-item').getBoundingClientRect(); return JSON.stringify({ x: Math.round(r.left + 30), y: Math.round(r.top + r.height / 2) }) })()`
+      )
     )
     await w.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: hoverRect.x, y: hoverRect.y })
     await sleep(250)
-    const hovered = await w.ev(`getComputedStyle(document.querySelector('.md-toc .toc-item')).color`)
+    const hovered = await w.ev(
+      `getComputedStyle(document.querySelector('.md-toc .toc-item')).color`
+    )
     await w.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: 4, y: 4 })
     await sleep(200)
     console.log('HOVER ' + JSON.stringify({ default: col.item, hover: hovered }))
-    c('hover-stays-blue-and-changes', isBlue(hovered) && hovered !== col.item, JSON.stringify({ default: col.item, hover: hovered }))
+    c(
+      'hover-stays-blue-and-changes',
+      isBlue(hovered) && hovered !== col.item,
+      JSON.stringify({ default: col.item, hover: hovered })
+    )
 
     // 截图：目录区域（3 主题，顺便断言三套主题下默认字色都是蓝的）
     for (const th of ['light', 'dark', 'sepia']) {
       await w.ev(`(() => { window.__T.settings().set('theme', '${th}'); return 'ok' })()`)
       await sleep(1000)
       const tc = JSON.parse(await w.ev(colorProbe))
-      console.log(`THEME-COLOR ${th} ` + JSON.stringify({ item: tc.item, token: tc.token, ink: tc.ink }))
-      c(`theme-${th}-toc-color-is-blue`, isBlue(tc.item) && tc.item === tc.token && tc.item !== tc.ink, JSON.stringify(tc))
-      await w.ev(`(() => { const toc = document.querySelector('.md-toc'); toc.scrollIntoView({ block: 'center' }); return 'ok' })()`)
+      console.log(
+        `THEME-COLOR ${th} ` + JSON.stringify({ item: tc.item, token: tc.token, ink: tc.ink })
+      )
+      c(
+        `theme-${th}-toc-color-is-blue`,
+        isBlue(tc.item) && tc.item === tc.token && tc.item !== tc.ink,
+        JSON.stringify(tc)
+      )
+      await w.ev(
+        `(() => { const toc = document.querySelector('.md-toc'); toc.scrollIntoView({ block: 'center' }); return 'ok' })()`
+      )
       await sleep(500)
-      const rect = JSON.parse(await w.ev(`(() => { const r = document.querySelector('.md-toc').getBoundingClientRect(); return JSON.stringify({ x: Math.max(0, Math.round(r.left) - 16), y: Math.max(0, Math.round(r.top) - 16), width: Math.min(460, Math.round(r.width) + 32), height: Math.round(r.height) + 32 }) })()`))
-      const shot = await w.send('Page.captureScreenshot', { format: 'png', clip: { ...rect, scale: 2 } })
+      const rect = JSON.parse(
+        await w.ev(
+          `(() => { const r = document.querySelector('.md-toc').getBoundingClientRect(); return JSON.stringify({ x: Math.max(0, Math.round(r.left) - 16), y: Math.max(0, Math.round(r.top) - 16), width: Math.min(460, Math.round(r.width) + 32), height: Math.round(r.height) + 32 }) })()`
+        )
+      )
+      const shot = await w.send('Page.captureScreenshot', {
+        format: 'png',
+        clip: { ...rect, scale: 2 }
+      })
       if (shot.result?.data) {
         const out = path.join(os.tmpdir(), `lumin-toc-${th}.png`)
         fs.writeFileSync(out, Buffer.from(shot.result.data, 'base64'))
@@ -375,7 +541,9 @@ const SCROLL_HOOK = `(() => {
     }
     await w.ev(`(() => { window.__T.settings().set('theme', 'light'); return 'ok' })()`)
   } finally {
-    await w.ev(`(async () => { const f = window.__T.files(); f.close(); return 'ok' })()`).catch(() => {})
+    await w
+      .ev(`(async () => { const f = window.__T.files(); f.close(); return 'ok' })()`)
+      .catch(() => {})
     await sleep(300)
   }
 
@@ -383,7 +551,8 @@ const SCROLL_HOOK = `(() => {
   const failed = results.filter((r) => r.startsWith('FAIL')).length
   console.log(`--- ${results.length - failed}/${results.length} PASS`)
   w.ws.close()
-  if (failed) process.exit(1)
+  // 必须无条件退出：漏掉的 WebSocket 会让 Node 的事件循环一直挂着（全套通过时也不会结束）
+  process.exit(failed ? 1 : 0)
 })().catch((e) => {
   console.error('ERROR', e.message)
   process.exit(1)
