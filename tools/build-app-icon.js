@@ -1,13 +1,24 @@
-// 生成 Lumin 的应用图标：SVG 母版 → PNG（多档）→ ICO（多尺寸打包）
+// 生成 Lumin 的应用图标：SVG 母版 → PNG（多档）→ ICO（多尺寸打包），并出一张候选对照图
 //
-// 为什么用这套办法（而不是引入 sharp / png-to-ico 之类的依赖）：
-//  1. 光栅化交给**项目自己的 Chromium**（Electron 已运行，CDP 里开一个临时 about:blank 页面，
-//     把 SVG 画进 canvas 再 toDataURL）——零新依赖，且拿到的就是 Chromium 的抗锯齿效果；
-//  2. ICO 只是「6 字节头 + 每张 16 字节目录项 + PNG 负载」的容器（Vista 起支持 PNG 负载），
-//    自己打包比装一个依赖更可控；
-//  3. 产物写完立刻**回读校验**（PNG 的 IHDR、ICO 的目录项与偏移），不靠肉眼看。
+// ── 设计：一条折起来的「光带 L」 ─────────────────────────────────────────────
+// 上一版是「靛蓝方块 + 一个白字母」，问题在于它只是把字体字母摆在方块正中：没有结构、没有光、
+// 比例也怯。这一版做了三件事：
+//   1. **字形成结构**：L 不再是一笔字母，而是**一条折起来的光带**——竖面与横面在折角处由一条
+//      45° 折痕分成受光面与背光面，两段明度差让它有「体积」而不是「字形」；三个外角收 2 单位
+//      圆角、内侧折角保持尖锐，圆与锐的对比就是设计感的来源。
+//   2. **字面放大到 59%**（x 8..26、y 7..25）：大气来自敢占位置，上一版的 47% 是怯的。
+//   3. **底是有光的**：对角（135°）渐变定光向，中央一团同色系辉光垫在字后面，内圈一条渐隐描边
+//      当玻璃边缘——扁平，但不呆板。
 //
-// 用法：先跑 tools/_isolated-instance.ps1（提供 9222），再 node tools/build-app-icon.js
+// ── 生成方式（零新依赖）──────────────────────────────────────────────────────
+//   * 光栅化交给**项目自己的 Chromium**（canvas 图元 + Path2D，与 SVG 母版共用同一份路径字符串
+//     与同一组常量，两边不可能走样）；
+//   * Electron 不允许 CDP 建临时页面（Target.createTarget / PUT /json/new 都失败），所以就在已有
+//     页面里画游离 canvas，画完立刻释放；也不用 data:/blob: 图片（应用页面 CSP 里没有 blob:）；
+//   * ICO 自己打包（6 字节头 + 每张 16 字节目录项 + PNG 负载，Vista 起支持）；
+//   * 写完**回读校验**，并按网格坐标**取像素**证明「画出来的就是设计的样子」（含折痕明暗差）。
+//
+// 用法：先跑 tools/_isolated-instance.ps1（可加 -NoDevServer），再 node tools/build-app-icon.js
 const fs = require('fs')
 const os = require('os')
 const path = require('path')
@@ -18,52 +29,270 @@ const REPO = path.resolve(__dirname, '..')
 const RES = path.join(REPO, 'resources')
 const PORT = 9222
 
-// ─── 设计参数（32 网格；改这里就等于改图标）───────────────────────────────────
-// 概念：靛蓝圆角方块 + 一束光写下的 L（等宽圆头笔画，与界面里的线性图标同源）
+// ─── 几何（32 网格；改这里等于改图标）────────────────────────────────────────
 const GRID = 32
-const TILE_RADIUS = 7 // 22% ≈ Win11 那种方圆形
-const STROKE = 6 // 16px 下正好 3px：最小档也不会糊
-const V_X = 13 // 竖画中心线
-const V_TOP = 10 // 竖画起点（圆头端点会让它看上去从 7 开始）
-const CORNER_Y = 22 // 折角所在高度
-const H_END = 22 // 横画终点（圆头会让它看上去到 25）
-const ACCENT_TOP = '#6366F1' // 与 --accent 一致
-const ACCENT_BOTTOM = '#4F46E5'
-const FLAT = '#5A5CE8' // 小尺寸用的平色（去掉渐变，避免 16px 下变脏）
+const TILE_RADIUS = 8 // 25%：比方圆形再圆一点，现代感来自这个比例
+/** 折带 L 外轮廓：x 8..26、y 7..25（占字面 59%），三个外角 r=2，内侧折角尖锐 */
+const MARK_PATH = 'M10 7 H17 V16 H24 A2 2 0 0 1 26 18 V23 A2 2 0 0 1 24 25 H8 V9 A2 2 0 0 1 10 7 Z'
+/** 小尺寸（16/24/32px）用方角版：像素网格上更锐利 */
+const MARK_PATH_SMALL = 'M8 7 H17 V16 H26 V25 H8 Z'
+/** 折痕：从内侧折角 (17,16) 斜下到左缘 (8,25)，把竖面切成受光/背光两块 */
+const CREASE_PATH = 'M8 16 H17 L8 25 Z'
 
-/** 大尺寸档（≥48px）：渐变底板 + 左上柔光 + 圆头笔画 */
-function svgLarge() {
+// ─── 三种底（字形完全相同，只换「光」的处理；装哪个由 INSTALL_VARIANT 决定）──
+const VARIANTS = {
+  // A：深色底 + 字自己发光 —— 最「高级」，也最不容易和一堆蓝色图标撞脸
+  dark: {
+    label: 'A 深色 · 字发光',
+    tileA: '#262A42',
+    tileB: '#12131F',
+    rimA: 'rgba(255,255,255,0.20)',
+    rimB: 'rgba(255,255,255,0)',
+    glow: { color: 'rgba(99,102,241,0.55)', cx: 0.5, cy: 0.44, r: 0.66 },
+    markA: '#FFFFFF',
+    markB: '#A9B4FF',
+    crease: 'rgba(14,16,36,0.34)',
+    small: { tile: '#1A1C2C', mark: '#E8EBFF', crease: 'rgba(14,16,36,0.44)', glow: null }
+  },
+  // B：靛蓝斜向渐变 + 白字 —— 明亮饱和版，同构
+  indigo: {
+    label: 'B 靛蓝 · 白字',
+    tileA: '#6E6BF8',
+    tileB: '#4441D6',
+    rimA: 'rgba(255,255,255,0.16)',
+    rimB: 'rgba(255,255,255,0)',
+    glow: { color: 'rgba(255,255,255,0.14)', cx: 0.28, cy: 0.22, r: 0.6 },
+    markA: '#FFFFFF',
+    markB: '#FFFFFF',
+    crease: 'rgba(38,34,120,0.26)',
+    small: { tile: '#5457E4', mark: '#FFFFFF', crease: 'rgba(38,34,120,0.32)', glow: null }
+  },
+  // C：纸感浅底 + 靛蓝字 —— 像一张被光照到的纸，与亮色主题最贴
+  paper: {
+    label: 'C 纸感 · 靛蓝字',
+    tileA: '#FFFFFF',
+    tileB: '#E9ECF6',
+    rimA: 'rgba(20,22,45,0.10)',
+    rimB: 'rgba(20,22,45,0.16)',
+    glow: { color: 'rgba(99,102,241,0.10)', cx: 0.62, cy: 0.7, r: 0.7 },
+    markA: '#5B5EF0',
+    markB: '#3F3FBE',
+    crease: 'rgba(10,12,50,0.22)',
+    small: { tile: '#F7F8FC', mark: '#4F46E5', crease: 'rgba(10,12,50,0.3)', glow: null }
+  }
+}
+/** 装进 resources/ 的那一套：换口味只改这一行，再跑一次脚本 */
+const INSTALL_VARIANT = 'dark'
+
+// ─── SVG 母版（与 canvas 共用同一份路径与常量）───────────────────────────────
+/** 表格里为了方便 canvas 写的是 rgba()，但 SVG 1.1 的 stop-color / fill 不吃 rgba：
+ *  转成 `#RRGGBB` + `*-opacity` 两个属性，Illustrator / Figma 打开才不会翻车。 */
+function svgPaint(attr, color) {
+  const m = /^rgba?\(([^)]+)\)$/.exec(String(color).trim())
+  if (!m) return `${attr}="${color}"`
+  const [r, g, b, a] = m[1].split(',').map((s) => Number(s.trim()))
+  const hex =
+    '#' +
+    [r, g, b]
+      .map((v) => Math.round(v).toString(16).padStart(2, '0'))
+      .join('')
+      .toUpperCase()
+  const alpha = a === undefined ? 1 : a
+  // stop-color → stop-opacity；fill → fill-opacity（别写成 stop-color-opacity）
+  const op = (attr.endsWith('-color') ? attr.slice(0, -'-color'.length) : attr) + '-opacity'
+  return `${attr}="${hex}" ${op}="${alpha}"`
+}
+
+// small=true 出的是 16/24/32px 那一档：方角字形 + 平色底 + 无辉光/描边（小尺寸不糊）
+function svgMaster(key, small = false) {
+  const v = VARIANTS[key]
+  const glow = v.glow ?? { cx: 0.5, cy: 0.5, r: 0.6, color: 'transparent' }
+  const tileA = small ? v.small.tile : v.tileA
+  const tileB = small ? v.small.tile : v.tileB
+  const markA = small ? v.small.mark : v.markA
+  const markB = small ? v.small.mark : v.markB
+  const crease = small ? v.small.crease : v.crease
+  const markPath = small ? MARK_PATH_SMALL : MARK_PATH
+  const glowRect = small
+    ? ''
+    : `
+  <rect width="${GRID}" height="${GRID}" rx="${TILE_RADIUS}" fill="url(#glow)"/>`
+  const rimRect = small
+    ? ''
+    : `
+  <rect x="0.5" y="0.5" width="${GRID - 1}" height="${GRID - 1}" rx="${TILE_RADIUS - 0.5}" fill="none" stroke="url(#rim)" stroke-width="1"/>`
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${GRID * 32}" height="${GRID * 32}" viewBox="0 0 ${GRID} ${GRID}">
   <defs>
-    <linearGradient id="tile" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="${ACCENT_TOP}"/>
-      <stop offset="1" stop-color="${ACCENT_BOTTOM}"/>
+    <linearGradient id="tile" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" ${svgPaint('stop-color', tileA)}/>
+      <stop offset="1" ${svgPaint('stop-color', tileB)}/>
     </linearGradient>
-    <radialGradient id="glow" cx="0.3" cy="0.22" r="0.62">
-      <stop offset="0" stop-color="#FFFFFF" stop-opacity="0.16"/>
-      <stop offset="1" stop-color="#FFFFFF" stop-opacity="0"/>
+    <linearGradient id="rim" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" ${svgPaint('stop-color', v.rimA)}/>
+      <stop offset="1" ${svgPaint('stop-color', v.rimB)}/>
+    </linearGradient>
+    <linearGradient id="mark" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" ${svgPaint('stop-color', markA)}/>
+      <stop offset="1" ${svgPaint('stop-color', markB)}/>
+    </linearGradient>
+    <radialGradient id="glow" cx="${glow.cx}" cy="${glow.cy}" r="${glow.r}">
+      <stop offset="0" ${svgPaint('stop-color', glow.color)}/>
+      <stop offset="1" stop-color="transparent"/>
     </radialGradient>
   </defs>
-  <rect width="${GRID}" height="${GRID}" rx="${TILE_RADIUS}" fill="url(#tile)"/>
-  <rect width="${GRID}" height="${GRID}" rx="${TILE_RADIUS}" fill="url(#glow)"/>
-  <path d="M${V_X} ${V_TOP} V${CORNER_Y} H${H_END}" fill="none" stroke="#FFFFFF" stroke-width="${STROKE}" stroke-linecap="round" stroke-linejoin="round"/>
+  <rect width="${GRID}" height="${GRID}" rx="${TILE_RADIUS}" fill="url(#tile)"/>${glowRect}
+  <path d="${markPath}" fill="url(#mark)"/>
+  <path d="${CREASE_PATH}" ${svgPaint('fill', crease)}/>${rimRect}
 </svg>
 `
 }
 
-/**
- * 小尺寸档（16/24/32px）：平色底板 + **方头**笔画。
- * 端点由圆改方，所以几何要往外补 STROKE/2，才能让字形外框与圆头版完全一致
- * （x 10..25、y 7..25）；16px 下方头对齐像素网格更锐利。
- */
-function svgSmall() {
-  const half = STROKE / 2
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${GRID * 32}" height="${GRID * 32}" viewBox="0 0 ${GRID} ${GRID}">
-  <rect width="${GRID}" height="${GRID}" rx="${TILE_RADIUS}" fill="${FLAT}"/>
-  <path d="M${V_X} ${V_TOP - half} V${CORNER_Y} H${H_END + half}" fill="none" stroke="#FFFFFF" stroke-width="${STROKE}" stroke-linecap="butt" stroke-linejoin="miter"/>
-</svg>
-`
-}
+/** 页面里的绘制器：一份代码画三种底 × 两档尺寸档 */
+const PAINTER = `(() => {
+  const G = ${GRID}, R = ${TILE_RADIUS}
+  const VARIANTS = ${JSON.stringify(VARIANTS)}
+  const MARK = ${JSON.stringify(MARK_PATH)}
+  const MARK_SMALL = ${JSON.stringify(MARK_PATH_SMALL)}
+  const CREASE = ${JSON.stringify(CREASE_PATH)}
+
+  const pathsFor = (size) => {
+    const u = size / G
+    const m = new DOMMatrix().scale(u, u)
+    const mark = new Path2D()
+    mark.addPath(new Path2D(size <= 32 ? MARK_SMALL : MARK), m)
+    const crease = new Path2D()
+    crease.addPath(new Path2D(CREASE), m)
+    return { mark, crease }
+  }
+
+  const draw = (ctx, x0, y0, size, key) => {
+    const v = VARIANTS[key]
+    const u = size / G
+    const small = size <= 32
+    ctx.save()
+    ctx.translate(x0, y0)
+
+    const tile = new Path2D()
+    tile.roundRect(0, 0, size, size, R * u)
+
+    // 底：对角渐变定光向
+    const g = ctx.createLinearGradient(0, 0, size, size)
+    g.addColorStop(0, small ? v.small.tile : v.tileA)
+    g.addColorStop(1, small ? v.small.tile : v.tileB)
+    ctx.fillStyle = g
+    ctx.fill(tile)
+
+    // 中央辉光（小尺寸关掉：16px 下只会变脏）
+    const glow = small ? v.small.glow : v.glow
+    if (glow) {
+      const cx = glow.cx * size, cy = glow.cy * size, r = glow.r * size
+      const rg = ctx.createRadialGradient(cx, cy, 0, cx, cy, r)
+      rg.addColorStop(0, glow.color)
+      rg.addColorStop(1, 'rgba(0,0,0,0)')
+      ctx.save(); ctx.clip(tile); ctx.fillStyle = rg; ctx.fillRect(0, 0, size, size); ctx.restore()
+    }
+
+    // 玻璃边缘：内圈一条渐隐描边
+    if (!small) {
+      ctx.save()
+      ctx.clip(tile)
+      const rim = ctx.createLinearGradient(0, 0, size, size)
+      rim.addColorStop(0, v.rimA)
+      rim.addColorStop(1, v.rimB)
+      ctx.strokeStyle = rim
+      ctx.lineWidth = Math.max(1, u)
+      ctx.stroke(tile)
+      ctx.restore()
+    }
+
+    // 折带 L：整体对角渐变，背光面（折痕靠左下那块）再压一层暗
+    const { mark, crease } = pathsFor(size)
+    const mg = ctx.createLinearGradient(0, 0, size, size)
+    mg.addColorStop(0, small ? v.small.mark : v.markA)
+    mg.addColorStop(1, small ? v.small.mark : v.markB)
+    ctx.fillStyle = mg
+    ctx.fill(mark)
+    ctx.save()
+    ctx.clip(mark)
+    ctx.fillStyle = small ? v.small.crease : v.crease
+    ctx.fill(crease)
+    ctx.restore()
+
+    ctx.restore()
+  }
+
+  window.__lmIcon = {
+    draw,
+    toPng(size, key) {
+      const c = document.createElement('canvas')
+      c.width = size; c.height = size
+      draw(c.getContext('2d'), 0, 0, size, key)
+      const out = c.toDataURL('image/png')
+      c.width = c.height = 0
+      return out
+    },
+    /** 按 32 网格坐标取像素：用来证明「画出来的就是设计的样子」 */
+    probe(size, key, gridPoints) {
+      const c = document.createElement('canvas')
+      c.width = size; c.height = size
+      const ctx = c.getContext('2d')
+      draw(ctx, 0, 0, size, key)
+      const u = size / G
+      const img = ctx.getImageData(0, 0, size, size).data
+      const at = (gx, gy) => {
+        const px = Math.min(size - 1, Math.max(0, Math.round(gx * u)))
+        const py = Math.min(size - 1, Math.max(0, Math.round(gy * u)))
+        const i = (py * size + px) * 4
+        return [img[i], img[i + 1], img[i + 2], img[i + 3]]
+      }
+      const out = {}
+      for (const p of gridPoints) out[p.k] = at(p.x, p.y)
+      c.width = c.height = 0
+      return JSON.stringify(out)
+    },
+    /** 候选对照图：三种底 × 各档尺寸，浅/深两条底各排一行 */
+    sheet() {
+      const keys = Object.keys(VARIANTS)
+      const sizes = [16, 24, 32, 48, 64]
+      const pad = 18
+      const cellW = 300
+      const big = 256
+      const rowH = pad + big + 14 + 72 + pad
+      const c = document.createElement('canvas')
+      c.width = cellW * keys.length + pad
+      c.height = rowH * 2 + 34
+      const ctx = c.getContext('2d')
+      ctx.textBaseline = 'top'
+      const strip = (y0, bg, fg) => {
+        ctx.fillStyle = bg
+        ctx.fillRect(0, y0, c.width, rowH)
+        keys.forEach((k, i) => {
+          const x = pad + i * cellW
+          draw(ctx, x, y0 + pad, big, k)
+          let sx = x
+          for (const s of sizes) {
+            draw(ctx, sx, y0 + pad + big + 14, s, k)
+            sx += s + 12
+          }
+          ctx.fillStyle = fg
+          ctx.font = '600 15px Segoe UI, sans-serif'
+          ctx.fillText(VARIANTS[k].label, x, y0 + rowH - pad - 22)
+          ctx.font = '12px Segoe UI, sans-serif'
+          ctx.fillText(sizes.join(' / ') + ' px', x, y0 + rowH - pad - 5)
+        })
+      }
+      strip(34, '#F5F6F8', '#20242B')
+      strip(rowH + 34, '#0F1116', '#E8EAEF')
+      ctx.fillStyle = '#8A919E'
+      ctx.font = '600 14px Segoe UI, sans-serif'
+      ctx.fillText('上：浅色任务栏   下：深色任务栏   · 折带 L（大字面）三种底', pad, 10)
+      const out = c.toDataURL('image/png')
+      c.width = c.height = 0
+      return out
+    }
+  }
+  return 'ok'
+})()`
 
 // ─── CDP 小工具 ──────────────────────────────────────────────────────────────
 function get(p) {
@@ -131,96 +360,6 @@ function connect(url, timeoutMs = 6000) {
   }
   return { ws, ready, send, ev }
 }
-
-/** 页面里注入的绘制器：**用 canvas 图元直接画**，不走 <img> + data:/blob: URL。
- *  两个原因：Electron 不允许 CDP 建临时页面（Target.createTarget / /json/new 都失败），
- *  只能在已有页面里画；而应用页面的 CSP 里没有 blob:，用 data: 图片又可能被策略拦。
- *  这里的图元与上面 SVG 母版是同一组常量，所以两边不会走样。 */
-const PAINTER = `(() => {
-  const G = ${GRID}, R = ${TILE_RADIUS}, SW = ${STROKE}
-  const VX = ${V_X}, VT = ${V_TOP}, CY = ${CORNER_Y}, HE = ${H_END}
-  const TOP = ${JSON.stringify(ACCENT_TOP)}, BOTTOM = ${JSON.stringify(ACCENT_BOTTOM)}, FLAT = ${JSON.stringify(FLAT)}
-  const draw = (ctx, x0, y0, size, variant) => {
-    const u = size / G
-    ctx.save()
-    ctx.translate(x0, y0)
-    ctx.beginPath()
-    ctx.roundRect(0, 0, size, size, R * u)
-    if (variant === 'large') {
-      const g = ctx.createLinearGradient(0, 0, 0, size)
-      g.addColorStop(0, TOP); g.addColorStop(1, BOTTOM)
-      ctx.fillStyle = g; ctx.fill()
-      const rg = ctx.createRadialGradient(0.3 * size, 0.22 * size, 0, 0.3 * size, 0.22 * size, 0.62 * size)
-      rg.addColorStop(0, 'rgba(255,255,255,0.16)'); rg.addColorStop(1, 'rgba(255,255,255,0)')
-      ctx.fillStyle = rg; ctx.fill()
-    } else {
-      ctx.fillStyle = FLAT; ctx.fill()
-    }
-    const round = variant === 'large'
-    ctx.strokeStyle = '#FFFFFF'
-    ctx.lineWidth = SW * u
-    ctx.lineCap = round ? 'round' : 'butt'
-    ctx.lineJoin = round ? 'round' : 'miter'
-    ctx.beginPath()
-    ctx.moveTo(VX * u, (round ? VT : VT - SW / 2) * u)
-    ctx.lineTo(VX * u, CY * u)
-    ctx.lineTo((round ? HE : HE + SW / 2) * u, CY * u)
-    ctx.stroke()
-    ctx.restore()
-  }
-  window.__lmIcon = {
-    draw,
-    toPng(size, variant) {
-      const c = document.createElement('canvas')
-      c.width = size; c.height = size
-      const ctx = c.getContext('2d')
-      draw(ctx, 0, 0, size, variant)
-      const out = c.toDataURL('image/png')
-      c.width = c.height = 0
-      return out
-    },
-    /** 按 32 网格坐标取像素：用来证明「画出来的就是设计的样子」 */
-    probe(size, variant, gridPoints) {
-      const c = document.createElement('canvas')
-      c.width = size; c.height = size
-      const ctx = c.getContext('2d')
-      draw(ctx, 0, 0, size, variant)
-      const u = size / G
-      const img = ctx.getImageData(0, 0, size, size).data
-      const at = (gx, gy) => {
-        const px = Math.min(size - 1, Math.max(0, Math.round(gx * u)))
-        const py = Math.min(size - 1, Math.max(0, Math.round(gy * u)))
-        const i = (py * size + px) * 4
-        return [img[i], img[i + 1], img[i + 2], img[i + 3]]
-      }
-      const out = {}
-      for (const p of gridPoints) out[p.k] = at(p.x, p.y)
-      c.width = c.height = 0
-      return JSON.stringify(out)
-    },
-    sheet(items, pad) {
-      const rowH = 256 + pad * 2 + 264
-      const width = items.reduce((a, it) => a + Math.max(it.size, 24) + pad, pad)
-      const c = document.createElement('canvas')
-      c.width = width; c.height = rowH * 2
-      const ctx = c.getContext('2d')
-      const row = (y, bg) => {
-        ctx.fillStyle = bg; ctx.fillRect(0, y, width, rowH)
-        let x = pad
-        for (const it of items) {
-          draw(ctx, x, y + pad, it.size, it.variant)
-          x += Math.max(it.size, 24) + pad
-        }
-      }
-      row(0, '#F5F6F8')
-      row(rowH, '#0F1116')
-      const out = c.toDataURL('image/png')
-      c.width = c.height = 0
-      return out
-    }
-  }
-  return 'ok'
-})()`
 
 /** 把一段 SVG 光栅化成 size×size 的 PNG 缓冲（透明背景） */
 async function raster(w, size, variant) {
@@ -294,9 +433,6 @@ function parseIco(b) {
   }
   const browser = connect(version.webSocketDebuggerUrl)
   await browser.ready
-
-  // Electron 不允许 CDP 建临时页面（Target.createTarget 与 PUT /json/new 都会失败），
-  // 所以就在**已有页面**里画：只创建游离的 canvas、画完立刻释放，不碰应用的 DOM。
   const list = (await get('/json/list')).filter((t) => t.type === 'page')
   if (!list.length) {
     console.log('SKIP: 没有可用的页面')
@@ -304,103 +440,40 @@ function parseIco(b) {
   }
   const w = connect(list[0].webSocketDebuggerUrl)
   await w.ready
-  const ok = await w.ev(PAINTER)
-  if (ok !== 'ok') throw new Error('painter injection failed')
+  if ((await w.ev(PAINTER)) !== 'ok') throw new Error('painter injection failed')
 
-  const largeSvg = svgLarge()
-  const smallSvg = svgSmall()
-  const variantOf = (size) => (size <= 32 ? 'small' : 'large')
+  const key = INSTALL_VARIANT
   const pngs = {}
-  for (const s of [16, 24, 32, 48, 64, 128, 256, 512, 1024])
-    pngs[s] = await raster(w, s, variantOf(s))
+  for (const s of [16, 24, 32, 48, 64, 128, 256, 512]) pngs[s] = await raster(w, s, key)
 
-  // ── 产物 1：母版 SVG（给设计/其他平台用）──
-  fs.writeFileSync(path.join(RES, 'icon.svg'), largeSvg, 'utf-8')
-  // 小尺寸那版也留一份：方头/平色是刻意的，不要被当成手误
-  fs.writeFileSync(path.join(RES, 'icon-small.svg'), smallSvg, 'utf-8')
-
-  // ── 产物 2：icon.png（512，窗口图标用；比 1024 省一半解码内存，够高 DPI 用）──
+  fs.writeFileSync(path.join(RES, 'icon.svg'), svgMaster(key), 'utf-8')
+  fs.writeFileSync(path.join(RES, 'icon-small.svg'), svgMaster(key, true), 'utf-8')
   fs.writeFileSync(path.join(RES, 'icon.png'), pngs[512])
-
-  // ── 产物 3：icon.ico（Windows：任务栏/窗口/快捷方式都读它）──
-  const icoSizes = [16, 24, 32, 48, 64, 128, 256]
-  const ico = packIco(icoSizes.map((size) => ({ size, png: pngs[size] })))
-  fs.writeFileSync(path.join(RES, 'icon.ico'), ico)
-
-  // ── 对照图（人工看各档观感；我这边看不了图，交给你眼看一下）──
-  const sheet = await contactSheet(
-    w,
-    [16, 24, 32, 48, 64, 128, 256].map((size) => ({ size, variant: variantOf(size) }))
+  fs.writeFileSync(
+    path.join(RES, 'icon.ico'),
+    packIco([16, 24, 32, 48, 64, 128, 256].map((size) => ({ size, png: pngs[size] })))
   )
+
   const sheetPath = path.join(os.tmpdir(), 'lumin-icon-sheet.png')
-  fs.writeFileSync(sheetPath, sheet)
-  // 注意：CDP 连接要留到像素校验之后才能关（校验要在页面里取样）
+  fs.writeFileSync(
+    sheetPath,
+    Buffer.from((await w.ev('window.__lmIcon.sheet()')).split(',')[1], 'base64')
+  )
 
   // ── 回读校验 ──
   const png = fs.readFileSync(path.join(RES, 'icon.png'))
   const pngInfo = pngSize(png)
-  console.log('ICON-PNG ' + JSON.stringify({ bytes: png.length, ...pngInfo }))
+  console.log('ICON-PNG ' + JSON.stringify({ bytes: png.length, ...pngInfo, variant: key }))
   c(
     'icon.png-is-512-squared',
     !!pngInfo && pngInfo.w === 512 && pngInfo.h === 512,
     JSON.stringify(pngInfo)
   )
-
-  // ── 像素级校验：证明画出来的就是设计的样子（按 32 网格坐标取样）──
-  const points = [
-    // 0.25 网格 ≈ 最角上的那个像素：16px 下圆角半径就有 3.5px，(1,1) 其实还在圆角以内
-    { k: 'outsideCorner', x: 0.25, y: 0.25 }, // 圆角之外 → 必须完全透明
-    { k: 'tileTop', x: 28, y: 6 }, // 底板右上（渐变浅端）
-    { k: 'tileBottom', x: 28, y: 27 }, // 底板右下（渐变深端）
-    { k: 'strokeV', x: 13, y: 14 }, // 竖画正中 → 白
-    { k: 'strokeH', x: 20, y: 22 }, // 横画右段 → 白
-    { k: 'insideBend', x: 20, y: 14 } // 折角内侧空白 → 底板色（证明是 L 不是实心块）
-  ]
-  const probeLarge = JSON.parse(
-    await w.ev(`window.__lmIcon.probe(256, 'large', ${JSON.stringify(points)})`)
-  )
-  const probeSmall = JSON.parse(
-    await w.ev(`window.__lmIcon.probe(16, 'small', ${JSON.stringify(points)})`)
-  )
-  console.log('PROBE-LARGE ' + JSON.stringify(probeLarge))
-  console.log('PROBE-16 ' + JSON.stringify(probeSmall))
-  const white = (p) => p[0] > 235 && p[1] > 235 && p[2] > 235
-  const luma = (p) => p[0] * 0.299 + p[1] * 0.587 + p[2] * 0.114
-  c(
-    'corner-transparent',
-    probeLarge.outsideCorner[3] === 0 && probeSmall.outsideCorner[3] === 0,
-    JSON.stringify({ large: probeLarge.outsideCorner, small: probeSmall.outsideCorner })
-  )
-  c(
-    'stroke-is-white',
-    white(probeLarge.strokeV) &&
-      white(probeLarge.strokeH) &&
-      white(probeSmall.strokeV) &&
-      white(probeSmall.strokeH),
-    JSON.stringify({ v: probeLarge.strokeV, h: probeLarge.strokeH })
-  )
-  c(
-    'shape-is-an-L-not-a-block',
-    !white(probeLarge.insideBend) && !white(probeSmall.insideBend),
-    JSON.stringify({ large: probeLarge.insideBend, small: probeSmall.insideBend })
-  )
-  c(
-    'large-has-gradient',
-    luma(probeLarge.tileTop) - luma(probeLarge.tileBottom) > 8,
-    JSON.stringify({ top: probeLarge.tileTop, bottom: probeLarge.tileBottom })
-  )
-  c(
-    'small-is-flat-color',
-    probeSmall.tileTop.join() === probeSmall.tileBottom.join() &&
-      probeSmall.tileTop[0] === 0x5a &&
-      probeSmall.tileTop[1] === 0x5c &&
-      probeSmall.tileTop[2] === 0xe8,
-    JSON.stringify({ top: probeSmall.tileTop, bottom: probeSmall.tileBottom })
-  )
-
   const icoBuf = fs.readFileSync(path.join(RES, 'icon.ico'))
   const dir = parseIco(icoBuf)
-  console.log('ICON-ICO ' + JSON.stringify({ bytes: icoBuf.length, entries: dir }))
+  console.log(
+    'ICON-ICO ' + JSON.stringify({ bytes: icoBuf.length, entries: dir?.map((d) => d.size) })
+  )
   c('icon.ico-has-7-entries', !!dir && dir.length === 7, String(dir?.length))
   c(
     'icon.ico-sizes-in-order',
@@ -409,22 +482,67 @@ function parseIco(b) {
   )
   c(
     'icon.ico-payloads-are-png',
-    !!dir && dir.every((d) => d.pngOk),
-    JSON.stringify(dir?.map((d) => d.pngOk))
-  )
-  c(
-    'icon.ico-payload-dimensions-match',
-    !!dir && dir.every((d) => d.pngSize && d.pngSize.w === d.size && d.pngSize.h === d.size),
-    JSON.stringify(dir?.map((d) => d.pngSize))
+    !!dir && dir.every((d) => d.pngOk && d.pngSize.w === d.size && d.pngSize.h === d.size),
+    'ok'
   )
   c('icon.ico-no-overrun', !!dir && dir.every((d) => d.off + d.len <= icoBuf.length), 'ok')
-  c('master-svg-written', fs.existsSync(path.join(RES, 'icon.svg')), path.join(RES, 'icon.svg'))
-  c(
-    'small-svg-written',
-    fs.existsSync(path.join(RES, 'icon-small.svg')),
-    path.join(RES, 'icon-small.svg')
+
+  // ── 像素取样：证明「画出来的就是设计的样子」（坐标按 32 网格）──
+  // 折面取三角形重心 (11,19)：16px 下一像素 = 2 网格，折痕那条 45° 边只有 1~2 px 宽，
+  // 单点采样落不准，所以折痕的明暗差只在大尺寸上断言，小尺寸只断言「字在」。
+  const points = [
+    { k: 'corner', x: 0.25, y: 0.25 },
+    { k: 'tileTL', x: 4, y: 4 },
+    { k: 'tileBR', x: 27.5, y: 27.5 },
+    { k: 'stemLit', x: 12, y: 10 },
+    { k: 'foldFace', x: 11, y: 19 },
+    { k: 'footLit', x: 22, y: 21 },
+    { k: 'outsideLeft', x: 7, y: 16 },
+    { k: 'outsideRight', x: 27, y: 21 }
+  ]
+  const P = JSON.parse(
+    await w.ev(`window.__lmIcon.probe(256, ${JSON.stringify(key)}, ${JSON.stringify(points)})`)
   )
-  c('contact-sheet-written', fs.existsSync(sheetPath), sheetPath)
+  const P16 = JSON.parse(
+    await w.ev(`window.__lmIcon.probe(16, ${JSON.stringify(key)}, ${JSON.stringify(points)})`)
+  )
+  console.log('PROBE-256 ' + JSON.stringify(P))
+  console.log('PROBE-16 ' + JSON.stringify(P16))
+  const luma = (p) => p[0] * 0.299 + p[1] * 0.587 + p[2] * 0.114
+  const same = (a, b) => a.slice(0, 3).join() === b.slice(0, 3).join()
+  const near = (a, b, tol = 3) => a.slice(0, 3).every((v, i) => Math.abs(v - b[i]) <= tol)
+  c(
+    'corner-transparent',
+    P.corner[3] === 0 && P16.corner[3] === 0,
+    JSON.stringify({ p: P.corner, p16: P16.corner })
+  )
+  c(
+    'tile-has-light-direction',
+    Math.abs(luma(P.tileTL) - luma(P.tileBR)) > 5,
+    JSON.stringify({ tl: P.tileTL, br: P.tileBR })
+  )
+  c(
+    'fold-reads-as-two-planes',
+    luma(P.stemLit) - luma(P.foldFace) > 12 && luma(P.footLit) - luma(P.foldFace) > 12,
+    JSON.stringify({ stemLit: P.stemLit, foldFace: P.foldFace, footLit: P.footLit })
+  )
+  c(
+    'mark-is-bold-enough',
+    !same(P.outsideLeft, P.stemLit) && !same(P.outsideRight, P.footLit),
+    JSON.stringify({ left: P.outsideLeft, right: P.outsideRight })
+  )
+  c(
+    'mark-visible-at-16px',
+    P16.stemLit[3] === 255 &&
+      luma(P16.stemLit) > 190 &&
+      luma(P16.stemLit) - luma(P16.outsideRight) > 60,
+    JSON.stringify({ mark: P16.stemLit, field: P16.outsideRight })
+  )
+  c(
+    'small-is-flat-field',
+    near(P16.tileTL, P16.tileBR) && P16.corner[3] === 0,
+    JSON.stringify({ tl: P16.tileTL, br: P16.tileBR })
+  )
 
   console.log('SHEET ' + sheetPath)
   browser.ws.close()
