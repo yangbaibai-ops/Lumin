@@ -1325,3 +1325,28 @@ docs/typora-wysiwyg-manual.md   # 本文档
 ---
 
 *本手册随代码演进持续更新；任何涉及编辑器内核的改动（扩展装配、标记、输入规则、序列化桥）都必须先跑通附录 C 的验收矩阵。*
+
+### 4.39 编码切换的两个加固：强制同步 + 构建自检（本次）
+
+**用户反馈**：UTF-8 文档切成 GBK 成功，但再切回 UTF-8「切不回去」。
+
+**排查结论（重要）**：在当前构建上我用四种方式复现，**全部通过、复现不出来** —— ① 直接调 `reopenWithEncoding`；② 走真实菜单两级点击；③ 两次点击间隔 <600ms 的快速切换；④ 先让编辑器 emit 过一次原文（`focus` → `blur` 触发 `flushSync`，使 `lastEmitted === 磁盘原文`）再切换。四条的编码、正文、磁盘字节都正确往返。
+
+**但确实找到了一条「能产生完全相同症状」的代码路径**，并把它封掉了：
+
+`src/renderer/src/components/editor/TyporaEditor.vue` 的外部同步 watch 有两条**回声过滤**（启发式）：
+1. `if (nv === lastEmitted) return` —— 「store 内容 == 我上次 emit 的文本」当成自身回声；
+2. `if (performance.now() - lastEmitTime < 600) return` —— 600ms 静默窗。
+
+两条对「显式外部替换」都不成立：**按原编码切回来时，store 里的内容恰好就是原文**（= 编辑器上次 emit 的文本）→ 规则 1 把它当回声丢掉；若上次 emit 在 600ms 内 → 规则 2 丢掉。表现就是「状态栏编码变了、正文却没回来」。实测里之所以没咬到，是因为切成 GBK 后编辑器往往又 emit 了一次乱码文本、把 `lastEmitted` 顶掉了 —— 属于时序运气，不能依赖。
+
+**改法**：`files` store 新增 `syncEpoch`（显式外部替换计数），`reopenWithEncoding` 替换内容后 `syncEpoch++`；TyporaEditor 把同步逻辑抽成 `applyExternalContent(nv, force)`，`force = true` 时**跳过两条过滤**、无条件 `setContent`。于是「重新解释编码」这类显式动作永远能落到编辑器上，不受任何回声启发式影响。
+
+**顺带两处诊断加固**（这次排查最费时间的就是「不知道用户那边跑的是哪份构建」）：
+
+- **构建自检**：开发态启动时往 `%TEMP%\lumin-build.log` 追加一行 —— 进程启动时间、app/Electron/Chrome 版本、**主进程 bundle 的 mtime**（这份代码什么时候构建的）、能力标记 `{encoding, taskbar}`。主进程不热更新，排查错配时第一眼看它。打包态不写（`src/main/services/buildStamp.ts`）。
+- **失败不再沉默**：`reopenWithEncoding` 在「文档还没落盘」时给出提示（原先静默 `return false`，用户只会看到「点了没反应」）；失败提示里带上真实原因（`无法按该编码重新打开：<原因>`），console 里也留一条。
+
+**验收**：`tools/_verify-encoding.js` 在开发渲染层下 34/34；`-NoDevServer`（生产渲染层）下 31/34，差的 3 条是既有的 `setupState` 内省（生产构建不暴露，套件里已注明 SKIP）。两个探针（快速切换、先 emit 再切换）在修复后仍 PASS，且**磁盘字节全程不变**（切换只重读、不写回）。`npm run typecheck` 两工程 0 error。
+
+> 说明：第 1 条加固是**预防性**的 —— 我无法在当前构建上复现用户的现象，但它是代码里唯一能产生该现象的机制，封掉它之后该类时序问题不再可能发生。

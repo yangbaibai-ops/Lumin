@@ -57,7 +57,13 @@ export const useFilesStore = defineStore('files', {
     draftTimer: null as ReturnType<typeof setTimeout> | null,
     saving: false,
     /** 新建文件后需要自动进入就地重命名的路径（TreeNode 消费后清空） */
-    pendingRenamePath: null as string | null
+    pendingRenamePath: null as string | null,
+    /**
+     * 显式「外部内容替换」的次数（重新解释编码等）。
+     * 编辑器 watch 它，变化时**强制**同步一次并跳过自己的两条回声过滤 ——
+     * 否则「切回原编码」时 store 内容恰好等于编辑器上次 emit 的文本，会被当成回声丢掉。
+     */
+    syncEpoch: 0
   }),
   getters: {
     dirty(state): boolean {
@@ -273,7 +279,7 @@ export const useFilesStore = defineStore('files', {
         savedContent: '',
         // 未命名文档还没有真实编码：用设置里的默认（auto 时落成 utf-8，保存时按它写）
         encoding: untitledEncoding(),
-        hadBom: false
+        hadBom: false,
       }
       this.currentDir = this.root
       this.draftRestore = null
@@ -391,7 +397,11 @@ export const useFilesStore = defineStore('files', {
      */
     async reopenWithEncoding(encoding: EncodingId): Promise<boolean> {
       const cur = this.current
-      if (!cur?.path) return false
+      // 未落盘的文档没有「磁盘字节」可重新解释：不要静默返回 false（否则用户只会看到「点了没反应」）
+      if (!cur?.path) {
+        useUiStore().toast(i18n.global.t('toast.encodingFailed'), 'error')
+        return false
+      }
       // 脏文档先问（这里不引 composables/useAppActions 的 confirmIfDirty：那个模块反过来
       // 依赖本 store，会形成循环导入，所以就地写同样的询问）
       const ui = useUiStore()
@@ -418,6 +428,8 @@ export const useFilesStore = defineStore('files', {
         cur.savedContent = opened.content
         cur.mtimeMs = opened.mtimeMs
         cur.encoding = concrete
+        // 显式替换内容：让编辑器绕过回声过滤强制同步（否则"切回原编码"可能被当成回声丢掉）
+        this.syncEpoch++
         cur.hadBom = opened.hadBom
         this.draftRestore = null
         this.bumpDocMtime(cur.path)
@@ -429,7 +441,9 @@ export const useFilesStore = defineStore('files', {
       } catch (err) {
         // 带上原因，别让用户和后来的我们都只能看到一句「失败了」（真出问题时这条日志就是线索）
         console.error('[encoding] 按编码重新打开失败:', err)
-        ui.toast(i18n.global.t('toast.encodingFailed'), 'error')
+        // 把原因带在提示里：否则用户只能看到一句「失败了」，排查要多绕一轮
+        const reason = String((err as Error)?.message ?? err).slice(0, 120)
+        ui.toast(`${i18n.global.t('toast.encodingFailed')}：${reason}`, 'error')
         return false
       }
     },

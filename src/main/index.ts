@@ -12,6 +12,7 @@ import { db } from './services/database'
 import * as session from './services/session'
 import * as openDocs from './services/openDocs'
 import * as taskbar from './services/taskbar'
+import { recordBuildStamp } from './services/buildStamp'
 import { bindWindowScope, scopeOfSlot } from './services/windowScope'
 import { defaultSettings } from '../shared/defaults'
 import { markRunning, markClean } from './drafts'
@@ -309,6 +310,8 @@ app.whenReady().then(() => {
   })
 
   markRunning()
+  // 开发态记录「这份构建是什么时候的」：主进程不热更新，排查错配时第一眼看它
+  recordBuildStamp()
 
   // 任务栏跳转列表（右键图标）：一条「新建窗口」任务 + 一栏最近文档。
   // 顺序有讲究：先写「开始菜单快捷方式」——任务栏右键菜单第一项的名字与点击行为都来自它

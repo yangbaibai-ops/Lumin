@@ -6,6 +6,7 @@ import { buildEditorExtensions } from '../../lib/editor/extensions'
 import { openLinkTarget } from '../../lib/linkOpen'
 import { getMarkdown } from '../../lib/editor/markdownStorage'
 import { useEditorStore } from '../../stores/editor'
+import { useFilesStore } from '../../stores/files'
 import { useUiStore } from '../../stores/ui'
 import Icon from '../Icon.vue'
 
@@ -18,6 +19,7 @@ const props = defineProps<{ modelValue: string }>()
 const emit = defineEmits<{ (e: 'update:modelValue', value: string): void }>()
 
 const editorStore = useEditorStore()
+const files = useFilesStore()
 const ui = useUiStore()
 
 let syncTimer: ReturnType<typeof setTimeout> | null = null
@@ -107,29 +109,45 @@ const editor = useEditor({
 //    经 store 回流），跳过。真正的文件切换/草稿恢复是低频外部事件，
 //    不会被静默窗误伤；高速输入结束 250ms 防抖 emit 最新内容后，其
 //    回声同样在窗内被忽略，不再触发 setContent 全文档重建。
-watch(
-  () => props.modelValue,
-  (nv) => {
-    const ed = editor.value
-    if (!ed) return
-    // 源码模式：编辑器常驻但隐藏，textarea 才是编辑面。逐键的 files 更新
-    // 若在这里 setContent 会变成「每次停顿重解析整篇大文档」（历史卡顿根源），
-    // 交给 EditorView 在切回编辑器视图时按需一次性同步（restore 里的
-    // syncEditorContent）。文件打开/草稿恢复走 :key 重建，同样不需要此路径。
-    if (ui.editorMode === 'source') return
+//
+// ⚠️ 两条过滤都是**启发式**，对「显式外部替换」（重新解释编码等）都不成立：
+//    * 按原编码切回来时，store 里的内容恰好**等于**编辑器上一次 emit 的文本（就是原文），
+//      于是被规则 1 当成回声丢掉；
+//    * 若上一次 emit 发生在 600ms 内（切完编码马上再切、或刚打完字），会被规则 2 丢掉。
+//    结果就是「状态栏编码变了、正文却没回来」。所以显式替换（files.syncEpoch 变化）走
+//    force 分支，**跳过两条过滤**、无条件同步。
+function applyExternalContent(nv: string, force: boolean): void {
+  const ed = editor.value
+  if (!ed) return
+  // 源码模式：编辑器常驻但隐藏，textarea 才是编辑面。逐键的 files 更新
+  // 若在这里 setContent 会变成「每次停顿重解析整篇大文档」（历史卡顿根源），
+  // 交给 EditorView 在切回编辑器视图时按需一次性同步（restore 里的
+  // syncEditorContent）。文件打开/草稿恢复走 :key 重建，同样不需要此路径。
+  if (ui.editorMode === 'source') return
+  if (!force) {
     if (nv === lastEmitted) return
     if (performance.now() - lastEmitTime < 600) return
-    try {
-      const current = getMarkdown(ed)
-      if (current !== nv) {
-        ed.commands.setContent(nv, { emitUpdate: false })
-        // 外部同步后编辑器文档 == nv（files 内容），记录对齐状态
-        editorStore.markSynced(nv)
-      }
-    } catch {
-      /* 忽略序列化异常 */
-    }
   }
+  try {
+    const current = getMarkdown(ed)
+    if (force || current !== nv) {
+      ed.commands.setContent(nv, { emitUpdate: false })
+      // 外部同步后编辑器文档 == nv（files 内容），记录对齐状态
+      editorStore.markSynced(nv)
+    }
+  } catch {
+    /* 解析失败时保持现状（例如极端脏数据） */
+  }
+}
+
+watch(
+  () => props.modelValue,
+  (nv) => applyExternalContent(nv, false)
+)
+// 显式外部替换（重新解释编码 / 强制回载）：无条件同步
+watch(
+  () => files.syncEpoch,
+  () => applyExternalContent(props.modelValue, true)
 )
 
 // ── 大纲滚动联动 ──
