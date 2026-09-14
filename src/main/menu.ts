@@ -1,4 +1,4 @@
-﻿// ─── 主进程：应用菜单 ──────────────────────────────────────────────────────
+// ─── 主进程：应用菜单 ──────────────────────────────────────────────────────
 import { app, BrowserWindow, Menu, shell } from 'electron'
 import type { MenuItemConstructorOptions } from 'electron'
 import { settingsStore } from './store'
@@ -31,18 +31,22 @@ export function installMenu(): void {
       : []),
     {
       label: '文件(F)',
+      // 注意：这里**故意不设 accelerator**。应用级快捷键由渲染层的命令注册表统一接管
+      // （renderer/src/lib/keymap/），用户可以在「设置 → 快捷键」里改；若原生菜单也绑一份，
+      // 就会出现「用户改了键但原生那份照旧触发」的两套真相 + 重复触发。菜单项保留是为了
+      // 系统级可访问性（菜单栏本身由 autoHideMenuBar=false 隐藏）。
       submenu: [
-        { label: '新建文档', accelerator: 'CmdOrCtrl+N', click: () => send('new') },
-        { label: '打开…', accelerator: 'CmdOrCtrl+O', click: () => send('open') },
-        { label: '打开文件夹…', accelerator: 'CmdOrCtrl+Shift+O', click: () => send('open-folder') },
+        { label: '新建文档', click: () => send('new') },
+        { label: '打开…', click: () => send('open') },
+        { label: '打开文件夹…', click: () => send('open-folder') },
         { type: 'separator' },
-        { label: '保存', accelerator: 'CmdOrCtrl+S', click: () => send('save') },
-        { label: '另存为…', accelerator: 'CmdOrCtrl+Shift+S', click: () => send('save-as') },
+        { label: '保存', click: () => send('save') },
+        { label: '另存为…', click: () => send('save-as') },
         { type: 'separator' },
         {
           label: '导出',
           submenu: [
-            { label: '导出为 PDF', accelerator: 'CmdOrCtrl+Shift+E', click: () => send('export-pdf') },
+            { label: '导出为 PDF', click: () => send('export-pdf') },
             { label: '导出为 HTML', click: () => send('export-html') },
             { label: '导出为 Word (.doc)', click: () => send('export-word') },
             { label: '导出为 EPUB', click: () => send('export-epub') }
@@ -63,14 +67,14 @@ export function installMenu(): void {
         { role: 'paste', label: '粘贴' },
         { role: 'selectAll', label: '全选' },
         { type: 'separator' },
-        { label: '查找 / 替换', accelerator: 'CmdOrCtrl+F', click: () => send('find') },
-        { label: '全局搜索（全文索引）', accelerator: 'CmdOrCtrl+Shift+P', click: () => send('global-search') }
+        { label: '查找 / 替换', click: () => send('find') },
+        { label: '全局搜索（全文索引）', click: () => send('global-search') }
       ]
     },
     {
       label: '视图(V)',
       submenu: [
-        { label: '切换侧边栏', accelerator: 'CmdOrCtrl+Shift+B', click: () => send('toggle-sidebar') },
+        { label: '切换侧边栏', click: () => send('toggle-sidebar') },
         { type: 'separator' },
         {
           label: '编辑器模式',
@@ -80,8 +84,8 @@ export function installMenu(): void {
             { label: '源码模式', click: () => send('mode-source') }
           ]
         },
-        { label: '专注模式', accelerator: 'CmdOrCtrl+Shift+F', click: () => send('toggle-focus') },
-        { label: '打字机模式', accelerator: 'CmdOrCtrl+Shift+T', click: () => send('toggle-typewriter') },
+        { label: '专注模式', click: () => send('toggle-focus') },
+        { label: '打字机模式', click: () => send('toggle-typewriter') },
         { type: 'separator' },
         {
           label: '主题',
@@ -124,7 +128,7 @@ export function installMenu(): void {
     {
       label: '帮助(H)',
       submenu: [
-        { label: '设置', accelerator: 'CmdOrCtrl+,', click: () => send('settings') },
+        { label: '设置', click: () => send('settings') },
         { label: '关于 Lumin', click: () => send('about') },
         {
           label: '在浏览器中打开项目主页',

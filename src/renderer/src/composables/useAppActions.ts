@@ -6,6 +6,7 @@ import { useUiStore } from '../stores/ui'
 import { useExport } from './useExport'
 import { useEditorMode } from './useEditorMode'
 import { flushSession } from '../lib/session'
+import { openExternalFile } from '../lib/openFile'
 import type { MenuAction } from '../../../shared/types'
 import i18n from '../i18n'
 
@@ -42,7 +43,10 @@ export function useAppActions(): {
     if (!(await confirmIfDirty())) return
     const path = await window.luminAPI.file.chooseOpenFile()
     if (!path) return
-    if (await files.openPath(path)) await router.push('/editor')
+    // 落点规则（本窗口无工作区 → 就本窗口打开并把侧栏切到它的文件夹；
+    // 已有工作区 → 新窗口打开）统一在 lib/openFile.ts 里
+    await openExternalFile(path)
+    await router.push('/editor')
   }
 
   async function openFolderDialog(): Promise<void> {
@@ -69,6 +73,12 @@ export function useAppActions(): {
     switch (a) {
       case 'new':
         void newDoc()
+        break
+      case 'new-window':
+        window.luminAPI.app.newWindow()
+        break
+      case 'cycle-mode':
+        cycleMode()
         break
       case 'open':
         void openFileDialog()
@@ -132,47 +142,9 @@ export function useAppActions(): {
   }
 
   // ── 全局快捷键 ──
-  function onKeydown(e: KeyboardEvent): void {
-    // Alt+F/E/V/H：交由 Windows 原生菜单助记键处理（顶级菜单已用 `文件(&F)`
-    // 写法，位置由操作系统精确摆放）；不做渲染层浮层兜底，避免双开/错位
-    const mod = e.ctrlKey || e.metaKey
-    if (!mod) return
-    const target = e.target
-    const tagName = target instanceof Element ? target.tagName : ''
-    const key = e.key.toLowerCase()
-    if (e.shiftKey && key === 'e') {
-      e.preventDefault()
-      void runExport('pdf')
-    } else if (e.shiftKey && key === 'b') {
-      e.preventDefault()
-      handleMenu('toggle-sidebar')
-    } else if (e.shiftKey && key === 'f') {
-      e.preventDefault()
-      ui.focusMode = !ui.focusMode
-    } else if (e.shiftKey && key === 't') {
-      e.preventDefault()
-      pendingRefactor('打字机模式')
-    } else if (e.shiftKey && key === 'o') {
-      e.preventDefault()
-      void openFolderDialog()
-    } else if (key === 's') {
-      e.preventDefault()
-      void saveDoc()
-    } else if (key === '/') {
-      // Typora 同款：Ctrl+/ 循环切换 实时渲染 → 分屏对比 → 源码
-      e.preventDefault()
-      cycleMode()
-    } else if (key === 'n') {
-      e.preventDefault()
-      void newDoc()
-    } else if (key === 'o') {
-      e.preventDefault()
-      void openFileDialog()
-    } else if (key === 'f' && tagName !== 'INPUT' && tagName !== 'TEXTAREA') {
-      e.preventDefault()
-      pendingRefactor('查找替换')
-    }
-  }
+  // 已迁移到命令注册表 + keybinding 服务（composables/useKeymap.ts + lib/keymap/）：
+  // 键位集中声明、用户可在「设置 → 快捷键」里改，且与原生菜单共用同一份 handleMenu 实现，
+  // 因此这里不再保留任何硬编码按键判断（避免两套真相/重复触发）。
 
   // ── 关闭守卫：保存全部并放行 ──
   async function requestClose(): Promise<void> {
@@ -190,13 +162,11 @@ export function useAppActions(): {
     if (settings.theme === 'auto') settings.applyAll()
   }
   media.addEventListener('change', onSystemTheme)
-  window.addEventListener('keydown', onKeydown)
 
   onBeforeUnmount(() => {
     offMenu()
     offClose()
     media.removeEventListener('change', onSystemTheme)
-    window.removeEventListener('keydown', onKeydown)
   })
 
   return { handleMenu, requestClose }

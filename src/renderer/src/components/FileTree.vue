@@ -5,6 +5,7 @@ import { useRouter } from 'vue-router'
 import { useFilesStore } from '../stores/files'
 import { useUiStore } from '../stores/ui'
 import { confirmIfDirty } from '../composables/useAppActions'
+import { openExternalFile } from '../lib/openFile'
 import TreeNode from './TreeNode.vue'
 import FileList from './FileList.vue'
 import Icon from './Icon.vue'
@@ -51,7 +52,9 @@ async function openFileDialog(): Promise<void> {
   if (!(await confirmIfDirty())) return
   const path = await window.luminAPI.file.chooseOpenFile()
   if (!path) return
-  if (await files.openPath(path)) await router.push('/editor')
+  // 落点规则见 lib/openFile.ts（无工作区 → 本窗口 + 侧栏切到该文件的文件夹）
+  await openExternalFile(path)
+  await router.push('/editor')
 }
 
 async function handleAction(action: string): Promise<void> {
@@ -148,33 +151,37 @@ function onDrop(e: DragEvent): void {
       </div>
     </template>
 
-    <!-- 未打开工作区：空态即入口（原欢迎页的能力在这里收口） -->
-    <div v-else class="flex min-h-0 flex-1 flex-col items-center px-4 pb-5 pt-8 text-center">
-      <span
-        class="mb-3 flex h-11 w-11 items-center justify-center rounded-xl bg-gradient-to-br from-accent to-accent-2 text-white"
-        :style="{ boxShadow: '0 6px 22px var(--glow)' }"
-      >
-        <Icon name="logo" :size="22" :stroke-width="1.7" />
-      </span>
-      <p class="text-[13.5px] font-semibold text-ink">{{ t('open.emptyTitle') }}</p>
-      <p class="mt-1 text-[12px] leading-relaxed text-ink-3">{{ t('open.emptyDesc') }}</p>
-
-      <div class="mt-5 flex w-full flex-col gap-2">
-        <button class="btn btn-primary w-full justify-center px-3 py-2 text-[12.5px]" @click="newDoc">
-          <Icon name="file-plus" :size="14" />
-          {{ t('open.newDoc') }}
+    <!-- 未打开工作区：空态只留三个图标按钮（新建 / 打开文件 / 打开文件夹），
+         文案走 title（全局 tooltip）+ aria-label（读屏可读），侧栏保持干净 -->
+    <div v-else class="empty-hub flex min-h-0 flex-1 flex-col items-center px-4 pt-8 text-center">
+      <div class="flex items-center gap-2">
+        <button
+          class="icon-btn border border-edge"
+          :title="t('open.newDoc')"
+          :aria-label="t('open.newDoc')"
+          @click="newDoc"
+        >
+          <Icon name="file-plus" :size="16" />
         </button>
-        <button class="btn btn-outline w-full justify-center px-3 py-2 text-[12.5px]" @click="openFileDialog">
-          <Icon name="folderOpen" :size="14" />
-          {{ t('open.openFile') }}
+        <button
+          class="icon-btn border border-edge"
+          :title="t('open.openFile')"
+          :aria-label="t('open.openFile')"
+          @click="openFileDialog"
+        >
+          <Icon name="folderOpen" :size="16" />
         </button>
-        <button class="btn btn-ghost w-full justify-center px-3 py-2 text-[12.5px]" @click="files.openFolder()">
-          <Icon name="folder-plus" :size="14" />
-          {{ t('open.openFolder') }}
+        <button
+          class="icon-btn border border-edge"
+          :title="t('open.openFolder')"
+          :aria-label="t('open.openFolder')"
+          @click="files.openFolder()"
+        >
+          <Icon name="folder-plus" :size="16" />
         </button>
       </div>
 
-      <p class="mt-5 text-[11.5px] leading-relaxed text-ink-3/80">{{ t('open.hint') }}</p>
+      <p class="mt-4 text-[11.5px] leading-relaxed text-ink-3/80">{{ t('open.hint') }}</p>
     </div>
   </div>
 </template>

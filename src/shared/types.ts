@@ -34,6 +34,12 @@ export interface AppSettings {
   /** 最近打开过的文件夹（工作区） */
   recentFolders: RecentFolder[]
   pinnedFiles: string[]
+  /**
+   * 快捷键自定义：命令 id → 按键表达式（如 `Ctrl+Shift+P`）。
+   * 只存**用户改过的**那些：值为 `null` 表示「明确解绑」，缺键表示用代码里的默认值。
+   * 解析与冲突判定见 renderer/src/lib/keymap/service.ts（SQLite kv 持久化）。
+   */
+  keybindings: Record<string, string | null>
   export: ExportSettings
 }
 
@@ -289,6 +295,8 @@ export interface EpubMeta {
 
 export type MenuAction =
   | 'new'
+  | 'new-window'
+  | 'cycle-mode'
   | 'open'
   | 'open-folder'
   | 'save'
@@ -319,16 +327,33 @@ export interface LuminAPI {
     close: () => void
     /** 原生菜单栏显隐（设置「原生菜单栏」开关时由渲染进程驱动主进程） */
     setMenuBar: (visible: boolean) => void
-    /** 新建一个空白窗口（启动到编辑器，空白未命名缓冲区） */
+    /** 新建一个空白窗口（干净窗口：不继承当前工作区，空白未命名缓冲区） */
     newWindow: () => void
     /** 在新窗口中打开指定文件 */
     openInNewWindow: (path: string) => void
     /** 在新窗口中把指定文件夹作为工作区打开 */
     openFolderInNewWindow: (path: string) => void
+    /**
+     * 上报「本窗口当前打开的文档」（null = 未打开文档）。
+     * 主进程据此维护「哪个窗口开着哪个文档」，做到「一个文件只开一个窗口」。
+     */
+    reportWindowDoc: (path: string | null) => void
+    /**
+     * 该文件若已开在别的窗口 → 把那个窗口唤到前面（必要时从最小化还原）并返回 'focused'；
+     * 没有任何窗口开着它则返回 'not-open'，调用方再去建新窗口。
+     */
+    focusWindowByDoc: (path: string) => Promise<'focused' | 'not-open'>
+    /**
+     * 应用内快速切换窗口：`delta = +1` 下一个、`-1` 上一个（默认绑定 Ctrl+Tab / Ctrl+Shift+Tab）。
+     * 按窗口创建顺序循环；只有一个窗口时不动作。返回被聚焦窗口的 id（无动作则 null）。
+     */
+    cycleWindow: (delta: number) => Promise<number | null>
     /** 本窗口启动时要求打开的文件路径（由主进程 additionalArguments 传入，通常为 null） */
     startupFile: string | null
     /** 本窗口启动时要求作为工作区打开的文件夹（同上，通常为 null） */
     startupFolder: string | null
+    /** 本窗口是「新建窗口」的干净窗口：启动时不继承当前工作区 */
+    startupNoWorkspace: boolean
     /** 本窗口的会话槽位索引（主进程分配，用于会话恢复）；null = 本窗口不参与会话 */
     sessionSlot: number | null
   }

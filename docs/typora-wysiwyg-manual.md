@@ -606,7 +606,7 @@ Lumin 是写作工具，没有文档时就该是一篇空白稿纸——Typora�
 
 - **删除 `views/WelcomeView.vue`**，`/` 一律重定向到 `/editor`：没有文档时 `EditorView` 挂载即建空白未命名缓冲区，「无文档」从此只有一种表现，异常降级也走同一条路（不再有「欢迎页 / 空编辑器」两种空态）。
 - **能力重排到三个已有一等入口**（这才是关键，删页面不等于删能力）：
-  1. **侧栏空态**（`FileTree.vue`，未打开工作区时）：logo + 一句话介绍 + 「新建文档 / 打开文件 / 打开文件夹」三个按钮 + 快捷键提示——原来欢迎页「这是什么应用、能干什么」的作用由它承担；
+  1. **侧栏空态**（`FileTree.vue`，未打开工作区时）：三个入口按钮 + 快捷键提示——原来欢迎页「这是什么应用、能干什么」的作用由它承担（后来按 §4.24 精简为一行图标按钮）；
   2. **侧栏头部「最近文档」按钮**（`components/SidebarRecentButton.vue`，新增，位于「新建文件」**左侧**）：点击展开最近文档下拉（固定优先 + 按时间倒序，行内可 固定/取消固定/移除 + 清除记录）；
   3. **顶栏「文件」菜单**：原有「新建文档 / 新建窗口 / 打开文件 / 打开文件夹」保持不变，新增两个**一级项 + 悬停二级菜单**——`最近文档 ▸` 与 `最近文件夹 ▸`（`SubMenu` 类型 + `RecentList.vue` 共用组件）。
 - **最近文档 / 最近文件夹 → 一律在新窗口打开**（`openInNewWindow` / `openFolderInNewWindow`）：当前窗口的文档与工作区完全不受打扰，因此**不再需要脏数据确认**。为此把窗口创建参数收敛成 `WindowOpenOptions { openFile?, openFolder?, sessionSlot? }`，新增 `--lumin-open-folder=<dir>` 启动参数：新窗口以该文件夹为工作区（空白文档，等用户点开文件）。会话槽位（§4.18）随之扩展出 `folder` 字段——「只开着文件夹」的窗口也能在重启后回来；`planRestore()` 现在同时接受「有文档」与「有文件夹」的槽位。
@@ -637,6 +637,220 @@ Lumin 是写作工具，没有文档时就该是一篇空白稿纸——Typora�
 **边界与取舍**：① 升级瞬间，旧库里未关闭的全局通知会被丢掉一次（无法归属到窗口，且多为一过性的「已保存」）；② 每个窗口的未读提示不跨窗口汇总——这正是本次要的行为；③ 槽位索引在单次运行内只增不减（`releaseSlot` 未被调用），因此作用域清理主要覆盖「关窗即清」与「重启后复用槽位」两条路径，`claimFreshSlot()` 的清理是后者的安全网。
 
 验收：`tools/_verify-notify-multiwindow.js`（新建临时窗口 A/B/C，全程不碰用户窗口）：A 的通知**不出现在 B**、DB 行的 `scope` 等于 A 的槽位、同 mergeKey 只在各自窗口内合并、`closeAll/clearClosed` 只作用本窗口、关窗后该作用域行被物理清掉、新窗口干净且各占独立槽位、用户已有窗口快照前后一致；`tools/_verify-notify-disk.js` 直读 `lumin.db` 核对 `scope` 列/索引/行内容/软关闭/关窗清理；`tools/_verify-notify-restart.js`（两阶段，中间由外部硬杀进程 + 重启）核对「重启后按槽位恢复到同一个窗口，且那条通知只回到这个窗口」。
+
+### 4.21 启动速度优化（本次）
+
+**方法论**：先测量再动手，所有结论都以生产包（`npm run build` + `electron .`）的实测数字为准，dev 数字不作为依据。
+
+- **打点**：主进程 `LUMIN_STARTUP_LOG=1` 时输出 `[startup] app-ready / ipc-registered / first-window-created / first-window-loaded / remaining-windows-created / first-window-painted`（含 `t+ms` 与 `process.uptime`）；渲染层统一 `performance.mark('lumin:*')`（`boot-start / settings / shell / files / editor-mounted / doc-visible / idle-tasks-started / notifications / editor-menu`），零开销、DevTools Performance 面板可见。基准脚本 `tools/_startup-bench.js <label> [轮数]`：从 spawn 进程起算，逐窗口记录「窗口可见」（`document.visibilityState` 变 visible）与「文档可用」（编辑器挂载且骨架屏退场），复用单个 CDP 连接轮询以避免测量噪声。
+
+**实测（同一脚本 3 轮中位数，生产包，2 个窗口）**：
+
+| 指标 | 优化前 | 优化后 |
+|---|---|---|
+| 首次内容绘制 FCP | 668 ms | **280 ms** |
+| 窗口可见（`show()`） | 386 ms | 376 ms |
+| 文档可用（首个窗口） | 1151 ms | 1120 ms |
+| 文档可用（全部窗口） | 1157 ms | 1136 ms |
+
+**改了什么**：
+
+1. **首帧骨架屏内联进 `index.html`**（纯 HTML/CSS，不用 JS，中性半透明灰因此适配明/暗/羊皮纸主题）：窗口出现时立刻是「应用骨架 + 呼吸的 LUMIN」，Vue 挂载时整棵 `#app` 子树被替换。这是 FCP 从 668ms → 280ms 的原因——首帧不再等模块脚本执行 + Vue 挂载骨架组件。
+2. **渲染层启动链路重排**（`renderer/src/main.ts`）：主题/语言 + 本窗口要打开的文档留在关键路径上；通知中心与右键菜单「最近使用」的 hydrate 改到 `requestIdleCallback`（它们只影响卡片与菜单次要分区），并且不再互相串行等待。
+3. **多窗口会话恢复错峰创建**（`main/index.ts` + `services/session.ts`）：`planRestore()` 改为按 `savedAt` 倒序（**用户最后停留的窗口排第一**），首个窗口先建、等它 `did-finish-load` 后再建其余（兜底 1.5s），避免 N 个渲染进程同时抢 CPU/磁盘。
+4. **主进程初始化顺序**：`registerIpc()` 保持在窗口之前（渲染层启动即发 IPC），`installMenu()`（原生菜单）挪到窗口创建之后——它不影响首屏。
+5. **dev 侧预打包与预热**（`electron.vite.config.ts`）：`optimizeDeps.include` 列出真实用到的 specifier（含 `@tiptap/pm/*` 这类子路径，只写根包名覆盖不到），`server.warmup.clientFiles` 预热首屏链路，消除首次进入编辑器时 "new dependencies optimized, reloading" 造成的二次加载。
+
+**测量后被否掉的两项**（记录在此，避免以后重复踩）：
+
+- **惰性化 SQLite 单例**：实测「打开 + PRAGMA + 全部 `CREATE ... IF NOT EXISTS` + `table_info` 检查」在真实库（1.6MB，含 FTS trigram）上只有 **~1.5ms**，不值得为它改结构 → 放弃。
+- **`manualChunks` 手工拆包**：拆出 `vendor-vue/editor/code/diagram` 后 Rollup 报 `Circular chunk`，并且把**只被动态 import 的 mermaid（4.9MB）提到了首屏 `modulepreload`**——首屏载荷反而暴涨，启动更慢 → 已回退，保留 Vite 默认的「按动态 import 边界拆包」（编辑器仍是懒加载 chunk，mermaid/katex 按需加载）。
+
+**剩余瓶颈（优化后首个窗口的自身时间轴，相对 navigationStart）**：模块解析执行 → `boot-start` ≈225ms（首屏 chunk ~935KB，其中还夹着一部分 ProseMirror：`lib/session.ts` 顶层 `import { TextSelection } from '@tiptap/pm/state'`）→ `shell` ≈95ms（settings IPC + Vue 挂载）→ `files` ≈25ms → `editor-mounted` ≈20ms → `doc-visible` ≈250ms（EditorView chunk 1.9MB 的加载/执行 + ProseMirror 文档构建与首帧，其中 CodeMirror 6 与 `@codemirror/language-data` 是静态导入）。**下一步的正确做法是「减字节」而不是继续重排**：把 CM6 从编辑器 chunk 里拆成按需加载（只含代码块的文档才付这份成本，用 `_verify-cb-*` 系列套件兜底），以及把 ProseMirror 从首屏 chunk 里请出去（session 里的 `TextSelection` 改为惰性获取）。这两项都会改变编辑器内部加载时序，属于独立改动 + 独立验收，本次不做。
+
+**回归验收**：`_verify-session.js` 16/16（含槽位与光标/滚动恢复）、`_verify-welcome-removed.js` 34/34、`_verify-notifications.js` 30/30、`_verify-editor-menu.js` 全 PASS、`_verify-link-open.js` 62/62、`_verify-notify-multiwindow.js` 21/21、`_verify-notify-restart.js` 6/6（错峰创建后仍按槽位恢复，且通知只回到原窗口）、`_verify-alt-menu.js`（Alt+F 仍由应用内菜单接管，原生菜单条不拦截）；`npm run build`（含 `typecheck` 双工程）与 `eslint` 均零错误。
+
+### 4.22 窗口标题跟随打开的文档（本次）
+
+**问题**：多窗口时 Windows 任务栏把每个窗口列成一项，而所有窗口的标题都是「Lumin」——最小化后想把某个文档调出来，只能一个个点开看，等于没有窗口切换能力。
+
+**方案**：标题跟随本窗口打开的**文件**（Typora 是 `文件名 - Typora`，VS Code 是 `● 文件名 - 文件夹 - 应用名`，同一套主流做法）。新增 `renderer/src/composables/useWindowTitle.ts`，在 `App.vue` 的 `setup` 里调一次，用 `watchEffect` 把 `files` 的状态映射成标题——**只有真的打开了文件才进标题，否则就是纯应用名**：
+
+| 本窗口状态 | 标题 |
+|---|---|
+| 打开了文件 | `文件名.md - Lumin` |
+| 该文件有未保存改动 | `• 文件名.md - Lumin` |
+| 没有打开任何文件（只开着工作区 / 未命名缓冲区，含其有未保存改动） | `Lumin` |
+
+**几个刻意的决定**：
+
+- **只写 `document.title`，不加任何 IPC**：Electron 会把渲染层的页面标题同步成原生窗口标题，任务栏、Alt+Tab、窗口缩略图用的都是它。所以主进程不需要再存一份标题，也不需要在窗口创建时 `setTitle`——一份真相，零同步成本。
+- **天然按窗口隔离**：每个窗口的渲染层各自计算自己的标题，多窗口之间不可能互相影响（与 §4.20 的通知作用域是同一个「窗口私有状态」的思路）。
+- **「没打开文件」就不带任何后缀**：未命名缓冲区的编号是每个渲染进程各自从 1 开始的，带上它反而会让两个「新建窗口」同时叫 `Untitled-1.md`（正是本功能要消掉的重名）；只开着工作区也不代表「打开了什么」。未保存内容另有提示通道——状态栏「未保存」+ 工具栏小圆点，标题保持纯 `Lumin` 最干净也最符合直觉。
+- **不落 SQLite**：标题是**派生状态**（由当前文件实时算出来），不是用户数据；重启后由会话恢复（§4.18）重新算出同样的标题。为它建表只会多一份可能不一致的副本。
+- **不新增 i18n 文案**：`•`、` - `、`Lumin` 都不是需要翻译的自然语言。
+- **HMR 友好**：挂在 `App.vue` 的 setup 里（而不是 `renderer/src/main.ts`）——改 `main.ts` 会让 Vite 整页重载，丢掉当前窗口未保存的内容；组件级 HMR 只重跑 setup。
+
+**验收**：`tools/_verify-window-title.js` 14/14（没打开文件 → `Lumin`（无工作区 / 有工作区 / **未命名缓冲区有未保存改动** / 关掉文件后 都是 `Lumin`）、打开文件 → `文件名 - Lumin`、改动后 → `• 文件名 - Lumin`、重新打开 → 前缀消失、**目录树里改名 → 标题跟随**、两个窗口各自显示自己的文件互不串台）。套件用**独立 `--user-data-dir`** 的实例跑，并在每段前把状态重置成「无文档无工作区」，因此不碰用户正在用的窗口和数据、且可重复运行。另用 Win32 `EnumWindows` 直接读**原生窗口标题**交叉核对（任务栏用的就是它）：实测用户实例里「只开着工作区」的窗口标题为 `Lumin`、打开了文件的窗口为 `未命名-17.md - Lumin`，与 `document.title` 完全一致。
+
+### 4.23 「新建窗口」是干净窗口（本次）
+
+**问题**：文件 → 新建窗口 出来的新窗口，会顺带把当前工作区（文件夹树）也带出来，不是「一张白纸」。
+
+**原因**：`workspace.root` 在 SQLite kv 里是**全局**值（§4.19 记过这条边界），而且主进程的文件操作校验（`fileOps.assertWorkspacePath` → `file:readDir/scanWorkspace/create/remove/rename`）也依赖它——它不是纯 UI 状态，不能简单地"按窗口拆"。新窗口启动时 `files.init()` 读的就是这个全局根目录。
+
+**方案（最小改动，不碰全局语义）**：给「新建窗口」加一个启动开关，只让**那一个窗口**不继承工作区：
+
+- 主进程 `WindowOpenOptions` 增加 `noWorkspace`，透传 `--lumin-no-workspace=1`；**只有** `app:newWindow`（= 文件 → 新建窗口，全项目唯一调用点）带它；
+- 渲染层 `files.init({ inheritWorkspace })`：`false` 时不读 kv 根目录，于是侧栏是该工作区的空态入口（按 §4.24 为一行图标按钮 + 快捷键提示），编辑器里是一张空白未命名缓冲区，标题按 §4.22 就是纯 `Lumin`（没打开文件）；
+- **全局根目录一个字都没动**：其它窗口的文件夹树、主进程的路径校验、下次启动的工作区全都保持原样（这也是为什么不采用"清空 kv 根目录"这种看起来更省事的做法）。
+
+**边界（有意保持的差异）**：只有「新建窗口」是干净的；**「在新窗口打开文件」** 与 **「最近文件夹 → 新窗口」** 语义不变——前者仍继承工作区并多打开一个文件，后者本来就要把指定文件夹作为工作区。干净窗口随后自己「打开文件夹」时，仍然会写全局根目录（与既有行为一致；**每窗口独立工作区**仍是后续可做的一步）。另外，一个既没有文档也没有工作区的干净窗口在重启后不会被恢复（会话恢复要求槽位里有文档或文件夹），这是「没内容可恢复」的既有语义。
+
+**验收**：`tools/_verify-new-window-clean.js` 13/13，全程走**真实 UI 路径**（Alt+F 打开文件菜单 → 点「新建窗口」，不直接调 IPC）：新窗口 `startupNoWorkspace=true`、`root=null`、侧栏是空态入口且行数为 0、编辑器是未命名缓冲区、标题 `Lumin`（没打开文件）；**原窗口的根目录/树/槽位不变**、`workspace:getRoot` 仍是原值；干净窗口里打开文件正常（`alpha.md - Lumin`）且不会因此获得文件夹、随后也能自己打开文件夹；边界项——`openInNewWindow` 出来的窗口仍 `noWorkspaceFlag=false` 且继承工作区。回归：`_verify-session.js` 16/16、`_verify-notify-multiwindow.js` 21/21、`_verify-window-title.js` 14/14、`_verify-welcome-removed.js` 30 项通过（其中「最近文档/最近文件夹 → 新窗口」两项在隔离实例里因缺少工作区夹具而跳过，这两条路径本次未改动）。
+
+**顺带修好的测试基建**：`_verify-session.js` / `_verify-notify-*.js` 直读 SQLite 的路径改为支持 `LUMIN_DB` 环境变量覆盖。此前它们硬编码 `%APPDATA%\lumin\lumin.db`，导致在 `--user-data-dir` 起的隔离实例上跑时读的是**用户真实库**（曾让 5 项会话断言误报失败）。
+
+### 4.24 侧栏空态精简为一行图标按钮（本次）
+
+**问题**：没打开工作区的窗口里，侧栏空态是「logo + 一句 slogan（开始你的灵感之旅）+ 一句描述（所见即所得的 Markdown 写作体验）+ 三个整行文字按钮」，占掉大半屏，和一个写作工具的侧栏气质不符——用户开个空窗口是为了立刻写字，不是为了看介绍。
+
+**改法**（`components/FileTree.vue` 的空态区块）：
+
+- **删掉 logo、标题 slogan、描述文案**（连同 i18n 里的 `open.emptyTitle` / `open.emptyDesc` 两个键一起删——三语言同步，不留死键）；
+- **三个入口收成一行图标按钮**：新建文档 / 打开文件 / 打开文件夹，复用既有 `.icon-btn`（30×30，已有 hover/active 动效）+ `border border-edge` 描边，**不新增任何 CSS**；文案挪到 `title`（全局 tooltip 接管，750ms 延迟、主题化样式）与 `aria-label`（读屏可读），因此「图标没字」不等于「没有说明」；
+- 保留一行 11.5px 的快捷键提示（`open.hint`：Ctrl+O 打开文件 · Ctrl+Shift+P 搜索文档）——它是空态里唯一还带信息的文字，也是那三个图标的可发现性补丁；不想要的话删一行即可；
+- 空态根节点保留语义类名 `empty-hub`，验收脚本按它定位（也让断言不再依赖界面文案）。
+
+**验收**：`tools/_verify-welcome-removed.js` 的 B 段改为按 `aria-label` 断言并新增两条——`empty-state-buttons-are-icon-only`（三个按钮 `textContent` 全为空）、`empty-state-has-no-hero-text`（空态区已无 slogan/描述文案），另有 `hasLogoSvg:false` 佐证 logo 已移除；`tools/_verify-new-window-clean.js` 13/13（空态识别改用三个 `aria-label`）。视觉不变量另行程序化核对：三按钮 30×30、同排等高、只含 3 个 svg、按钮下方才是提示、`--ink-2`/`--edge` 随 light/dark/sepia 主题令牌变化（切换后 150ms 内完成颜色过渡）。
+
+### 4.25 工具栏与状态栏去掉文件名（本次）
+
+**问题**：文件名同时出现在三个地方——窗口标题（任务栏）、编辑器工具栏右上角（文件 + 名称 + 未保存圆点）、底部状态栏左侧（名称）——重复且占地方；写作工具里这三处本来就是同一份信息的三种冗余呈现。
+
+**改法**：
+
+- **工具栏**（`Toolbar.vue`）：删掉整块「文档信息」（文件图标 + 文件名 + 未保存圆点）。未保存状态在状态栏有「已保存 / 未保存 + 圆点」的完整呈现，不会因为这次精简而丢失；工具栏右侧从「文档信息 · 专注模式 · 导出」变成「专注模式 · 导出」。
+- **状态栏**（`StatusBar.vue`）：删掉左侧的分隔线与文件名（连同它上面那层「完整路径」的 `title` 提示），保留保存态、字数/行数/字符数、光标行列、主题与语言入口；没有文档时仍显示 `Lumin — Write in Light.` 占位。
+- **清理**：`Toolbar.vue` 里只为显示名字而存在的 `docName` computed 与 `useFilesStore` 导入、`files` 变量一并删掉（`vue-tsc` 会以 TS6133 拦截这种死代码）；**没有 i18n 改动**（文件名是数据不是文案）。
+
+文件名如今只在**窗口标题/任务栏**里出现（§4.22 的那套规则），需要看「我现在在哪个文件」时看任务栏或侧栏树即可，三处冗余收敛成一处。
+
+**验收**：`tools/_verify-bars-no-filename.js` 12/12（两条栏都不再出现当前文件名、`title` 提示里也不残留；工具栏按钮 27 个不变；状态栏仍显示「已保存」、字数/行数/字符数、光标行列、主题/语言；窗口标题仍是 `visible-name-check.md - Lumin`）。`npm run typecheck`（主/渲染）0 error，`eslint` 对两个文件 0 error（余下警告均为既有的 prettier 换行偏好）。
+
+### 4.26 打开外部文件的落点规则（本次）
+
+**问题**：从系统外部打开一个文件（Ctrl+O / 打开文件 / 把文件拖进窗口）时落点不统一：没有工作区时不知道该不该顺手把侧栏切过去；已有工作区时也没有「新窗口打开」的语义，用户既可能打断当前窗口的现场，也可能打开了一个侧栏里根本看不见的文件。
+
+**规则**（针对「窗口外的文件」这一条语义，实现在 `renderer/src/lib/openFile.ts`）：
+
+| 本窗口状态 | 行为 |
+|---|---|
+| 这个文件**已经在本窗口打开** | 什么都不做：不重复打开、不新建窗口 |
+| **没有打开任何文件夹** | 在**本窗口**打开，并把侧栏切到该文件所在文件夹 |
+| **已打开文件夹** | 在**新窗口**打开；新窗口的侧栏对准该文件的文件夹（文件本来就在继承来的工作区里时保持原工作区，不做无谓的缩小） |
+
+**为什么这样切**：核心诉求是「刚打开的文件必须能在侧栏里看见」。所以判据不是「文件属于哪个文件夹」，而是**本窗口有没有工作区**——没有工作区时本窗口就是一张白纸，直接用它最省事；已有工作区说明这个窗口正服务于另一个文件夹，硬塞进来既打断现场、又让侧栏与内容对不上，于是交给新窗口，并让新窗口自己把侧栏对准目标文件夹。反过来，若文件本来就在当前工作区内，新窗口保持原工作区即可（缩小范围反而丢了上下文）。
+
+**实现要点**：
+
+- **一处实现、四处入口**：`openExternalFile(path)` 被 Ctrl+O / 原生菜单、侧栏空态的「打开文件」按钮、文件菜单「打开…」、编辑器拖放四处调用（验收里有调用点静态核对）。侧栏树里点文件（同一工作区内切换）、最近文档 / 右键「在新窗口打开」、文档内链接点击各有既定行为，不走这条路径。
+- **新窗口那一侧**（`renderer/src/main.ts` 的 `--lumin-open` 分支）：打开启动文件后，若该文件不在继承来的工作区内，就把工作区切到它的文件夹——这样「最近文档 → 新窗口」「右键 → 在新窗口打开」也自动获得同一可见性保证。
+- **路径判断**（`samePath` / `isInside`）：Windows 大小写不敏感 + 正反斜杠归一，`isInside` 按**目录边界**比较（`C:\Docs` 不会把 `C:\Docs2` 判成内部），两者都有 null 兜底。
+- **顺手修掉的 i18n 债**：拖放处理器里原本硬编码了三处中文（不支持的格式、脏数据确认标题与正文），现在复用既有的 `editor.dirtyConfirmTitle/Body` 并新增 `toast.unsupportedFile`（三语言同步、键集合一致）。
+
+**验收**：`tools/_verify-open-file-routing.js` 22/22（在页面里 `await import('/src/lib/openFile.ts')` 驱动**真实模块**）：路径判断的大小写/分隔符/前缀边界；无工作区 → 本窗口打开 + 侧栏切到该文件夹且文件在树里可见；同一个文件再次打开 → `already-open`、窗口数不变、文档不变；有工作区 + 文件在外 → 新窗口（doc = 文件、root = 文件所在文件夹），原窗口完全不受影响；有工作区 + 文件在内 → 新窗口保持原工作区；另覆盖 `openInNewWindow`（最近文档/右键那条路）的两个分支。回归：`_verify-session.js` 16/16、`_verify-bars-no-filename.js` 12/12、`_verify-menu-export-submenu.js` 15/15、`_verify-welcome-removed.js` 32 项通过（其中「最近文档/最近文件夹 → 新窗口」两项在本机隔离实例里因缺工作区夹具跳过，其断言涉及的行为已由上一条用例覆盖）。
+
+### 4.27 文件菜单「导出」收进二级菜单（本次）
+
+原先文件菜单把四种导出格式平铺成四行，菜单过长、也把「导出」这个动作本身淹没了。现在一级只留一个 `导出 ▸`，四种格式进二级浮层（复用 §4.19 建立的二级菜单机制：贴死一级面板重叠 1px、悬停 160ms 宽限、右侧放不下翻到左侧、Esc 先收二级再收一级）。
+
+- **菜单数据**：`SubMenu` 类型本来就支持 `children`（固定 Leaf 列表）与 `slot`（自定义组件）两种二级内容，`placeSub()` 也已按 `slot ? 300 : 220` 预留宽度——只是模板里此前只渲染了 `slot` 分支。本次补上 `children` 分支（行样式与一级项一致），因此**没有改任何定位/悬停逻辑**。
+- **i18n**：新增 `menu.export`（导出 / Export / Экспорт），复用既有的 `menu.exportPdf/Html/Word/Epub`；三语言键集合保持一致。
+
+**验收**：`tools/_verify-menu-export-submenu.js` 15/15：一级菜单只剩一个带箭头的一级项「导出」、不再平铺四行；悬停展开的二级浮层标题为「导出」且列出四种格式；浮层与一级面板贴死（`gap = -1`）；指针从一级行平移进浮层不会被关掉、悬停普通项会收起；Esc 先收浮层再收菜单；**动作接线**通过读组件实例的菜单数据断言四项各自调用 `runExport('pdf'|'html'|'word'|'epub')`——这里刻意不点击导出项：点击会真的走导出流程并弹出系统「另存为」对话框，而 `window.luminAPI` 是冻结对象（打桩无效），自动化无法取消原生对话框（第一版就踩了这个坑），因此改为「结构 + 悬停/关闭机制 + 接线」三段式验证。
+
+### 4.28 一个文件只开一个窗口（本次）
+
+**问题**：同一个文件可以在两个窗口里各开一份——多开的那份不会同步，改哪一份都可能被另一份覆盖，用户也分不清哪个是「正本」。
+
+**方案**：主进程维护一张「哪个窗口开着哪个文档」的注册表，打开文件时先查表。
+
+- **注册表**（`src/main/services/openDocs.ts`）：`window.id → 文档路径`。数据来自渲染层在**文档切换时**的上报（`window:docPath`），因此是**精确即时**的，不依赖会话槽位那套 800ms 节流写库；窗口关闭时 `forgetWindow()` 清账，不留已销毁窗口的条目。路径比较与渲染层同一套判据（Windows 大小写不敏感 + 分隔符归一）。
+- **查表与聚焦**（`src/main/ipc.ts` 的 `window:focusByDoc`）：返回 `'focused'` / `'not-open'`。命中别的窗口时把那个窗口**唤到前面**（最小化则先 `restore()`，再 `show()` + `focus()`，Windows 任务栏随之激活）；命中的唯一窗口就是调用方自己时不聚焦、也不新建（渲染层已先判掉「本窗口已打开」，主进程这层是兜底）。
+- **落点规则随之调整为四步**（`renderer/src/lib/openFile.ts`）：
+  1. 已在本窗口打开 → 什么都不做；
+  2. **已开在别的窗口 → 聚焦那个窗口**；
+  3. 本窗口没有工作区 → 在本窗口打开 + 侧栏切到该文件的文件夹；
+  4. 本窗口已有工作区且没人开着 → 新窗口打开。
+  **顺序很关键**：一开始我把「本窗口没有工作台就直接打开」放在第 2 步之前，结果一个已经开在别处的文件会在无工作台的窗口里**又开一份**（正是要消灭的重复；回归用例 `no-workspace-still-focuses-existing` 就是这条），现已把它排到查表之后。
+- **覆盖面**：Ctrl+O / 打开文件 / 拖文件进窗口（走 `openExternalFile`）与**最近文档**（侧栏按钮、文件菜单二级，走 `openInWindowOrFocus`）都会先查表。**例外**：侧栏树右键的「在新窗口打开」是用户**显式**要求新窗口，保持原样（否则点了没有任何新窗口出现会像 bug）；文档内链接点击、`最近文件夹` 也各有既定行为。
+
+**验收**：`tools/_verify-open-file-dedup.js` 21/21（隔离实例，两个窗口 A/B）：A 开着 `x.md` 后，B 问 `focusWindowByDoc(x.md)` → `focused` 且**窗口数不变**、A 获得焦点、B 不失焦于自身；A 最小化后再问 → `focused` 且 A 被还原并聚焦（`visibilityState=visible` + `hasFocus`）；没人开的文件 → `not-open`；**A 开着 x.md 而 B 没有工作台**时，B 走真实入口打开 x.md → `focused-existing`、B 不会多出一份、窗口数不变（回归用例）；B 打开没人开的 `y.md` → `opened-here` 且侧栏切到该文件夹；B 有工作区后打开没人开的 `z.md` → 新窗口；最近文档入口对已在别处打开的 `x.md` → `focused-existing` 且窗口数不变；关掉 A 后同一路径变回 `not-open`（注册表清账）。回归：`_verify-open-file-routing.js` 22/22、`_verify-session.js` 16/16、`_verify-bars-no-filename.js` 12/12；`npm run typecheck` 双工程 0 error，改动文件 `eslint` 0 error。
+
+### 4.29 快捷键系统：命令注册表 + 可自定义键位 + Ctrl+Tab 切窗口（本次）
+
+**目标**：把散落三处的按键处理收敛成一套可扩展、可自定义的系统，并补上应用内切换窗口的快捷键。
+
+**改造前的问题**：快捷键有**两套真相**——主进程原生菜单自带 `accelerator`（Ctrl+N/O/S…），渲染层又有一份硬编码的 `keydown` 判断（`useAppActions` 里十几个 `if`）。用户既改不了键，也容易出现重复/绕过的行为；加一条快捷键要改两处。
+
+**架构**（`renderer/src/lib/keymap/`，与 VS Code / Atom 同一套思路，只是规模小得多）：
+
+```
+keys.ts      按键表达式解析/规范化/格式化/匹配（Mod、Ctrl、Shift、Alt、Meta、Tab、F12、, …）
+service.ts   命令注册表 + 解析（用户覆盖优先）+ 全局 keydown 派发 + 冲突计算 + 录制态
+commands     应用级命令表（composables/useKeymap.ts）：id / i18n 标题 / 分组 / 默认键 / when / run
+```
+
+- **一处声明**：命令表的每一项 = 一条可被快捷键触发的命令，`run` 统一调 `handleMenu(action)`——和原生菜单**同一份实现**，因此不存在「菜单能做的事快捷键做不到」。
+- **扩展方式**：加一条快捷键 = 命令表里加一项（设置界面、冲突检测、恢复默认、i18n 检查全部自动生效）；换默认键只改 `defaultKeys`，用户改过的不受影响。
+- **解析优先级**（写在 `service.ts` 顶部注释里）：用户覆盖 > 代码默认；同一档内**后注册者胜**（与 VS Code「later wins」一致）；`keybindings[id] = null` 表示**明确解绑**。
+- **派发**：一个 window 捕获阶段的 `keydown`；只处理带修饰键的组合（纯字母键留给编辑器/输入框）；`when: 'notInInput'` 的命令在输入框里让行（Ctrl+F）；**录制期间整体让行**（否则「录 Ctrl+N」会真的新建文档）。
+- **原生菜单不再自带 accelerator**（`src/main/menu.ts`）：否则用户改了键，原生那份照旧触发——两套真相 + 重复触发。菜单项保留（系统级可访问性），应用内快捷键统一由渲染层接管。
+
+**默认键一览**（26 条，分 6 组；「导出」单独成组）：
+
+| 分组 | 命令 | 默认键 |
+|---|---|---|
+| 文件 | 新建文档 / 新建窗口 / 打开… / 打开文件夹… / 保存 / 另存为… | `Ctrl+N` / `Ctrl+Shift+N` / `Ctrl+O` / `Ctrl+Shift+O` / `Ctrl+S` / `Ctrl+Shift+S` |
+| 文件 | 关闭窗口 | `Ctrl+W` |
+| 导出 | 导出为 PDF（HTML/Word/EPUB 默认不绑） | `Ctrl+Shift+E` |
+| 编辑 | 查找 / 替换、全局搜索、设置 | `Ctrl+F`、`Ctrl+Shift+P`、`Ctrl+,` |
+| 视图 | 切换侧边栏 / 专注模式 / 打字机模式 / 循环切换编辑模式 | `Ctrl+Shift+B` / `Ctrl+Shift+F` / `Ctrl+Shift+T` / `Ctrl+/`（模式直选三条默认不绑） |
+| **窗口** | **切换到下一个窗口 / 上一个窗口** | **`Ctrl+Tab` / `Ctrl+Shift+Tab`** |
+| 帮助 | 打开快捷键设置（关于默认不绑） | `Ctrl+K` |
+
+`Ctrl+Tab` 由主进程按**窗口创建顺序循环**（1 个窗口不动、2 个来回切、N 个依次走），语义与浏览器 Ctrl+Tab 切标签页一致；目标窗口最小化时先还原再聚焦（`services/openDocs.ts` 的 `focusWindow`）。
+
+**设置界面**（设置 → 快捷键，`components/SettingsKeymap.vue`）：搜索（命令名或按键）、按分组浏览、逐条显示键位胶囊 / 「已修改」/「冲突」标记、点键盘图标进入**录制**（Esc 取消、Backspace 解绑）、单条恢复默认、全部恢复默认，并显示已自定义条数；键位写入 `settings.keybindings`（SQLite kv，`null` = 解绑），三语言文案同步。
+
+**本次顺带修掉的两个真 bug**（都是被验收用例逼出来的）：
+
+1. **Pinia `$patch(对象)` 对嵌套对象是深合并**，所以「恢复默认」用 `$patch({ keybindings: {...} })` 删键会被合并回来 → 表现为「点了恢复默认却没生效」。改用 `$patch(函数)` 整体替换。
+2. **`focusWindow` 只用 `isMinimized()` 判断**：窗口在应用处于后台时被最小化，Electron 可能报 `isMinimized() === false`，于是只调 `focus()` 得到「焦点给了它、但它还最小化着」的怪状态。改为 `isMinimized() || !isVisible()` 一起判断（`restore()` 对非最小化窗口本来就是 no-op）。
+
+**验收**：`tools/_verify-keymap.js` **31/31**（隔离实例；含页面内的按键投递探针）：命令表 26 条且标题/分组 i18n 全部有值、默认键 `Ctrl+Tab` / `Ctrl+Shift+Tab` / `Mod→Ctrl` 规范化、无重复默认键；默认键真的生效（`Ctrl+/` 切模式、`Ctrl+Shift+B` 侧栏、`Ctrl+Shift+P` 全局搜索）；`Ctrl+N` **只创建一份**（原生菜单已无 accelerator）；自定义后新键生效且旧键失效、用户绑定优先于默认绑定、冲突可见、解绑后按键无反应、恢复默认后默认键回来；**`Ctrl+Tab` / `Ctrl+Shift+Tab` 真的切换窗口**（focus/blur 事件流判定，含反向与自定义键）；设置界面 26 行 / 7 分组 / 45 个键位胶囊 / 搜索过滤 / 进入录制 / **录制期间按 Ctrl+N 不新建文档** / 录制写入生效；直读 SQLite 证明改键落库，reload 后解析结果仍是自定义键。回归：`_verify-editor-menu.js` 51/51、`_verify-open-file-routing.js` 22/22、`_verify-open-file-dedup.js` 21/21、`_verify-session.js` 16/16、`_verify-menu-export-submenu.js` 15/15、`_verify-window-title.js` 14/14、`_verify-bars-no-filename.js` 12/12、`_verify-welcome-removed.js` 32 项通过（另 2 项为既有的隔离实例环境跳过）、`_verify-alt-menu.js`（Alt+F 仍由应用内菜单接管）；`npm run build`（含双工程 typecheck）0 error。
+
+**范围与边界**：本表管**应用级命令**；编辑器内部的排版键（`Ctrl+B/I/U`、`Ctrl+Z/Y`、Markdown 输入规则等）由 ProseMirror / CodeMirror 自己的 keymap 处理，属编辑器内核语义，**不在**设置里改（要改需把编辑器键也搬进注册表，是另一件事）。另外，侧栏树右键的「在新窗口打开」仍是显式新建窗口，不参与 §4.28 的去重。
+
+### 4.30 另存为之后侧栏跟到保存位置（本次）
+
+**问题**：另存为把文件写到别处后，侧栏还停在原来的工作区——那份新文件在侧栏里根本看不见，像是「存丢了」。
+
+**规则**（`stores/files.ts` 的 `syncWorkspaceToPath` / `revealPath`，与 §4.26「刚打开的文件必须能看见」同一条原则）：
+
+| 保存位置 | 侧栏行为 |
+|---|---|
+| 当前工作区**之外**，或本窗口**没有工作区** | 工作区切到该文件所在文件夹（`setRoot`，并记入最近文件夹） |
+| 当前工作区**之内**（含深层子目录） | **不缩小范围**，逐级展开路径把文件露出来；列表视图则让文档缓存重扫一次 |
+
+- `saveAs()` 的时序：先写盘，**成功后**才同步侧栏（`const ok = await this.save(); if (ok) await this.syncWorkspaceToPath(path)`）——写失败不该把侧栏带走。
+- 落成 store 动作而不是写在组件里：侧栏状态（`root` / `expanded` / `dirCache` / `docsEpoch`）本来就归 `files` store 管；将来「重命名到别处」「移动到文件夹」也能复用同一个动作。
+- **顺带抽出 `lib/pathUtils.ts`**：`normPath` / `samePath` / `isInside` / `parentDir` / `ancestorDirs`。原先 `samePath`、`isInside` 只存在于 `lib/openFile.ts`，而 store 也要判「在不在工作区内」——直接 import 会形成 `stores/files ↔ lib/openFile` 循环，抽出公共模块后两边共用同一套判据（Windows 大小写不敏感 + 分隔符归一 + 目录边界），`lib/openFile.ts` 仍转出这两个函数供调用方就近引用。
+
+**验收**：`tools/_verify-save-as-workspace.js` **17/17**（隔离实例 + 真实文件系统）：路径工具边界（`ancestorDirs`：直接子文件 / 深层嵌套 / 工作区外为空；`parentDir('C:\x') === 'C:\'`、裸文件名 → `''`；`C:\Docs` 不把 `C:\Docs2` 判成内部）；保存到工作区内 → root 不变、`sub` 被展开且树里能看到 `b.md`；保存到工作区外 → root 切成目标文件夹并落库（`workspace:getRoot` 一致）、树里能看到 `c.md`；深层路径 `d1/d2/deep.md` → 两级祖先都展开；没有工作区时保存 → 同样切到该文件夹；并静态核对 `saveAs()` 在保存成功后调用了它。回归：打开文件落点 22/22、一文件一窗口 21/21、会话 16/16、工具栏去文件名 12/12；`npm run typecheck` 双工程 0 error。
+
+**说明**：原生「另存为」对话框无法在自动化里作答，因此上面用「改路径 → `save()` 写真实文件 → `syncWorkspaceToPath`」的等价序列验证，并静态核对 `saveAs` 的调用点；对话框本身与本功能无关。
 
 ---
 

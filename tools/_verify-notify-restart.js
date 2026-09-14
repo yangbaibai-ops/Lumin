@@ -1,4 +1,4 @@
-// 验收（跨重启持久化 + 隔离）：在临时窗口里产生的通知，硬杀进程重启后
+﻿// 验收（跨重启持久化 + 隔离）：在临时窗口里产生的通知，硬杀进程重启后
 // 回到**同一个窗口**（按会话槽位重建），且不会出现在别的窗口。
 //
 // 两阶段执行（重启由外部完成，套件不自己杀进程）：
@@ -12,7 +12,7 @@ const os = require('os')
 const fs = require('fs')
 const { DatabaseSync } = require('node:sqlite')
 const CDP = 'http://127.0.0.1:9222/json'
-const DB = path.join(os.homedir(), 'AppData', 'Roaming', 'lumin', 'lumin.db')
+const DB = process.env.LUMIN_DB || path.join(os.homedir(), 'AppData', 'Roaming', 'lumin', 'lumin.db')
 const STATE = path.join(os.tmpdir(), 'lumin-notify-restart.json')
 /** 临时窗口里要打开的文档：用工作区里已存在、且已在最近文档里的文件（只读打开，不写盘） */
 const USER_DOC = 'D:\\code_workspace\\Lumin-test-workspace\\000.md'
@@ -166,9 +166,18 @@ async function check() {
   const { slot, title } = state
   const results = []
   const c = (n, cond, extra) => results.push((cond ? 'PASS' : 'FAIL') + ' ' + n + (extra ? ' | ' + extra : ''))
-  const all = await attachAll()
-  const snaps = []
-  for (const w of all) snaps.push({ id: w.id, ...JSON.parse(await w.ev(SNAP)) })
+  // 启动时窗口是**依次**创建的（首个窗口先画出首帧，其余错峰），所以这里要等到
+  // 目标槽位的窗口出现为止，而不是只看第一瞬间的窗口列表。
+  let all = []
+  let snaps = []
+  for (let attempt = 0; attempt < 24; attempt++) {
+    for (const w of all) if (!snaps.some((s) => s.id === w.id)) w.ws.close()
+    all = await attachAll()
+    snaps = []
+    for (const w of all) snaps.push({ id: w.id, ...JSON.parse(await w.ev(SNAP)) })
+    if (snaps.some((s) => s.slot === slot)) break
+    await sleep(500)
+  }
   console.log('SNAPS ' + JSON.stringify(snaps))
 
   const target = snaps.find((s) => s.slot === slot)

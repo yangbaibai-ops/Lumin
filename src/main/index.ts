@@ -10,6 +10,7 @@ import { registerIpc, attachCloseGuard } from './ipc'
 import { migrateLegacyStores } from './store'
 import { db } from './services/database'
 import * as session from './services/session'
+import * as openDocs from './services/openDocs'
 import { bindWindowScope, scopeOfSlot } from './services/windowScope'
 import { defaultSettings } from '../shared/defaults'
 import { markRunning, markClean } from './drafts'
@@ -95,12 +96,17 @@ function saveWindowState(win: BrowserWindow): void {
 // 生产环境 CSP 只注册一次（session 为所有窗口共享，避免重复监听）
 let cspInstalled = false
 
-/** 创建窗口时的启动意图：打开某个文件 / 打开某个文件夹 / 参与会话恢复的槽位 */
+/** 创建窗口时的启动意图：打开某个文件 / 打开某个文件夹 / 干净窗口 / 参与会话恢复的槽位 */
 interface WindowOpenOptions {
   /** 启动后打开的文件（--lumin-open） */
   openFile?: string
   /** 启动后作为工作区打开的文件夹（--lumin-open-folder） */
   openFolder?: string
+  /**
+   * 干净窗口（--lumin-no-workspace）：「新建窗口」用它，不继承当前工作区。
+   * 工作区根目录在 kv 里是**全局**的，若不做区分，新窗口会顺带把别人的文件夹树也带出来。
+   */
+  noWorkspace?: boolean
   /** 会话槽位（渲染进程据此读写自己的会话；主进程负责单窗关闭时清空） */
   sessionSlot?: number
 }
@@ -111,7 +117,7 @@ interface WindowOpenOptions {
  * 参与会话恢复。首个窗口恢复上次的位置/大小，后续窗口基于最近窗口级联偏移。
  */
 function createWindow(options: WindowOpenOptions = {}): BrowserWindow {
-  const { openFile, openFolder, sessionSlot } = options
+  const { openFile, openFolder, noWorkspace, sessionSlot } = options
   const existing = BrowserWindow.getAllWindows()
   const isFirst = existing.length === 0
 
@@ -158,11 +164,12 @@ function createWindow(options: WindowOpenOptions = {}): BrowserWindow {
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
-      ...(openFile || openFolder || sessionSlot !== undefined
+      ...(openFile || openFolder || noWorkspace || sessionSlot !== undefined
         ? {
             additionalArguments: [
               ...(openFile ? [`--lumin-open=${encodeURIComponent(openFile)}`] : []),
               ...(openFolder ? [`--lumin-open-folder=${encodeURIComponent(openFolder)}`] : []),
+              ...(noWorkspace ? ['--lumin-no-workspace=1'] : []),
               ...(sessionSlot !== undefined ? [`--lumin-session-slot=${sessionSlot}`] : [])
             ]
           }
@@ -186,6 +193,8 @@ function createWindow(options: WindowOpenOptions = {}): BrowserWindow {
   }
   // 窗口作用域：通知等「属于某个窗口」的数据按它隔离（见 services/windowScope）
   bindWindowScope(mainWindow, sessionSlot)
+  // 「哪个窗口开着哪个文档」注册表：窗口关闭即清账，不留已销毁窗口的条目
+  mainWindow.on('closed', () => openDocs.forgetWindow(mainWindow.id))
 
   if (restoreMaximized) mainWindow.maximize()
 
@@ -244,16 +253,30 @@ function createWindow(options: WindowOpenOptions = {}): BrowserWindow {
   return mainWindow
 }
 
+/** 启动耗时探针：仅在 LUMIN_STARTUP_LOG 打开时输出（渲染层对应 performance.mark('lumin:*')） */
+const startupT0 = performance.now()
+function startup(label: string): void {
+  if (process.env['LUMIN_STARTUP_LOG']) {
+    console.log(
+      `[startup] ${label} t+${(performance.now() - startupT0).toFixed(0)}ms uptime=${(process.uptime() * 1000).toFixed(0)}ms`
+    )
+  }
+}
+
 app.whenReady().then(() => {
+  startup('app-ready')
   // 历史版本 electron-store 数据一次性迁入 SQLite kv（kv 已有数据时跳过）
   migrateLegacyStores()
-  installMenu()
+  // 顺序要点：IPC 必须在任何窗口加载之前注册（渲染层启动就会发 IPC）；
+  // 原生菜单不影响首屏，放到窗口创建之后再装。
   registerIpc()
+  startup('ipc-registered')
 
   // 多窗口：新建空白窗口 / 在新窗口打开文件 / 在新窗口打开文件夹（IPC 由渲染进程驱动）。
   // 三者都领一个新槽位，这样用户新开的窗口也会被会话记录到。
+  // 「新建窗口」是干净窗口：带 --lumin-no-workspace，不继承当前工作区（详见 WindowOpenOptions）。
   ipcMain.on('app:newWindow', () => {
-    createWindow({ sessionSlot: claimFreshSlot() })
+    createWindow({ sessionSlot: claimFreshSlot(), noWorkspace: true })
   })
   ipcMain.on('app:openInNewWindow', (_event, path: string) => {
     if (path) createWindow({ openFile: path, sessionSlot: claimFreshSlot() })
@@ -288,11 +311,27 @@ app.whenReady().then(() => {
   const wantRestore = db.kvGet('settings', defaultSettings).restoreSession !== false
   const plan = wantRestore ? session.planRestore() : []
   if (!wantRestore) session.resetSession()
-  if (plan.length) {
-    for (const { index } of plan) createWindow({ sessionSlot: index })
-  } else {
-    createWindow({ sessionSlot: claimFreshSlot() })
+  // 首个窗口先建（「最近使用过的窗口」优先，见 planRestore 的排序），
+  // 其余窗口等它加载完首帧后再建 —— 避免 N 个渲染进程同时抢 CPU/磁盘把首屏拖慢。
+  const [head, ...rest] = plan
+  const first =
+    head !== undefined
+      ? createWindow({ sessionSlot: head.index })
+      : createWindow({ sessionSlot: claimFreshSlot() })
+  startup('first-window-created')
+  first.once('ready-to-show', () => startup('first-window-painted'))
+  let firstShown = false
+  const openRemaining = (): void => {
+    if (firstShown) return
+    firstShown = true
+    startup('first-window-loaded')
+    for (const { index } of rest) createWindow({ sessionSlot: index })
+    if (rest.length) startup('remaining-windows-created')
   }
+  // 首帧之后再建其余窗口：load 事件即「首屏内容已就绪」；兜底 1.5s，避免异常时窗口永远不建。
+  first.webContents.once('did-finish-load', openRemaining)
+  setTimeout(openRemaining, 1500)
+  installMenu()
 
   app.on('activate', function () {
     if (BrowserWindow.getAllWindows().length === 0)

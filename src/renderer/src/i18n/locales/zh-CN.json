@@ -25,8 +25,6 @@
     "searchPlaceholder": "全局搜索文档内容（FTS5 全文索引）…"
   },
   "open": {
-    "emptyTitle": "开始你的灵感之旅",
-    "emptyDesc": "所见即所得的 Markdown 写作体验",
     "newDoc": "新建文档",
     "openFile": "打开文件",
     "openFolder": "打开文件夹",
@@ -81,6 +79,7 @@
     "openFolder": "打开文件夹…",
     "save": "保存",
     "saveAs": "另存为…",
+    "export": "导出",
     "exportPdf": "导出为 PDF",
     "exportHtml": "导出为 HTML",
     "exportWord": "导出为 Word (.doc)",
@@ -177,6 +176,7 @@
     "title": "设置",
     "general": "通用",
     "editor": "编辑器",
+    "keymap": "快捷键",
     "appearance": "外观",
     "export": "导出",
     "language": "语言",
@@ -221,7 +221,8 @@
     "linksDeclinedBadge": "已取消"
   },
   "links": {
-    "kindUrl": "网址",    "kindFile": "同级文件",
+    "kindUrl": "网址",
+    "kindFile": "同级文件",
     "kindRelative": "相对路径",
     "kindAbsolute": "绝对路径",
     "actionExternal": "浏览器",
@@ -262,6 +263,7 @@
     "fileDeleted": "已删除",
     "fileRenamed": "已重命名",
     "folderOpened": "已打开文件夹",
+    "unsupportedFile": "仅支持打开 Markdown 文件",
     "workspaceClosed": "已关闭工作区",
     "copyPath": "已复制路径",
     "saved": "已保存",
@@ -340,5 +342,34 @@
     "manualSave": "手动保存",
     "openSettings": "打开设置…",
     "switchLanguage": "切换语言"
+  },
+  "keymap": {
+    "title": "快捷键",
+    "desc": "点击右侧键盘图标后按下新的组合键即可修改（Esc 取消，Backspace 清除绑定）。默认键与系统一致，改动实时生效并写入 SQLite。",
+    "searchPlaceholder": "搜索命令或按键…",
+    "customizedCount": "已自定义 {n} 项",
+    "customized": "已修改",
+    "conflict": "冲突",
+    "conflictWith": "与「{names}」冲突，后者按注册顺序取胜",
+    "unbound": "未绑定",
+    "pressKeys": "按下组合键…",
+    "edit": "修改快捷键",
+    "resetOne": "恢复默认",
+    "resetAll": "全部恢复默认",
+    "noMatch": "没有匹配的命令",
+    "hint": "应用级快捷键在此管理；编辑器内部的排版键（Ctrl+B/I/U、Ctrl+Z/Y 等）由编辑器内核处理。",
+    "groupFile": "文件",
+    "groupExport": "导出",
+    "groupEdit": "编辑",
+    "groupView": "视图",
+    "groupWindow": "窗口",
+    "groupHelp": "帮助",
+    "nextWindow": "切换到下一个窗口",
+    "prevWindow": "切换到上一个窗口",
+    "minimizeWindow": "最小化窗口",
+    "closeWindow": "关闭窗口",
+    "cycleMode": "循环切换编辑模式",
+    "typewriterMode": "打字机模式",
+    "openKeymapSettings": "打开快捷键设置"
   }
 }

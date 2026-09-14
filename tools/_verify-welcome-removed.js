@@ -255,25 +255,32 @@ async function main() {
     c('editor-mounted-with-empty-doc', a.size !== null && a.size <= 4, 'size=' + a.size)
     c('no-welcome-view', a.welcomeMounted === false)
 
-    // ── B. 侧栏空态：未打开工作区时的三个入口 ────────────────────────────────
+    // ── B. 侧栏空态：未打开工作区时的三个**图标**入口 ────────────────────────
+    // 空态已精简：无 logo、无标题/描述文案，三个按钮只有图标（文案在 title/aria-label 上）
     const b = JSON.parse(
       await ev(`(() => {
-      const aside = document.querySelector('aside')
-      if (!aside) return 'null'
-      const texts = [...aside.querySelectorAll('button')].map((x) => x.textContent.trim())
+      const hub = document.querySelector('aside .empty-hub')
+      if (!hub) return 'null'
+      const label = (el) => el.getAttribute('aria-label') ?? ''
+      const btns = [...hub.querySelectorAll('button')]
+      const labels = btns.map(label)
       return JSON.stringify({
         root: window.__L.files().root,
-        hasLogo: !!aside.querySelector('svg'),
-        newDoc: texts.some((x) => x.includes('新建文档')),
-        openFile: texts.some((x) => x.includes('打开文件')),
-        openFolder: texts.some((x) => x.includes('打开文件夹')),
-        hint: (aside.textContent || '').includes('Ctrl+O')
+        hasLogoSvg: !!hub.querySelector('svg[data-logo], .hub-logo'),
+        newDoc: labels.some((x) => x.includes('新建文档')),
+        openFile: labels.some((x) => x.includes('打开文件')),
+        openFolder: labels.some((x) => x.includes('打开文件夹')),
+        buttonText: btns.map((x) => x.textContent.trim()),
+        headingText: (hub.textContent || '').trim(),
+        hint: (hub.textContent || '').includes('Ctrl+O')
       })
     })()`)
     )
     console.log('B ' + JSON.stringify(b))
     c('sidebar-empty-state-shown', b.root === null, 'root=' + b.root)
-    c('empty-state-has-three-entries', b.newDoc && b.openFile && b.openFolder, JSON.stringify(b))
+    c('empty-state-has-three-icon-entries', b.newDoc && b.openFile && b.openFolder, JSON.stringify(b))
+    c('empty-state-buttons-are-icon-only', b.buttonText.every((x) => x === ''), JSON.stringify(b.buttonText))
+    c('empty-state-has-no-hero-text', !/开始你的灵感之旅|所见即所得/.test(String(b.headingText)), JSON.stringify(b.headingText))
     c('empty-state-has-shortcut-hint', b.hint === true)
 
     // ── C. 工具栏「打开」分裂按钮 ────────────────────────────────────────────

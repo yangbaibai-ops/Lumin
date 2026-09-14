@@ -12,6 +12,7 @@ import { useEditorStore } from '../stores/editor'
 import { useExport } from '../composables/useExport'
 import { useEditorMode } from '../composables/useEditorMode'
 import { confirmIfDirty } from '../composables/useAppActions'
+import { openExternalFile, openInWindowOrFocus } from '../lib/openFile'
 import RecentList from './RecentList.vue'
 import Icon from './Icon.vue'
 
@@ -77,10 +78,11 @@ function lowerHeadingLevel(): void {
       .run()
 }
 
-/** 二级菜单里的「最近文档 / 最近文件夹」：都在**新窗口**打开，不打扰当前窗口 */
+/** 二级菜单里的「最近文档」：已开着就聚焦那个窗口，否则新窗口打开（不打扰当前窗口）；
+ *  「最近文件夹」始终在新窗口把该文件夹作为工作区打开 */
 function openRecentFile(path: string): void {
   close()
-  window.luminAPI.app.openInNewWindow(path)
+  void openInWindowOrFocus(path)
 }
 function openRecentFolder(path: string): void {
   close()
@@ -110,7 +112,12 @@ const GROUPS = computed<Group[]>(() => [
         run: async () => {
           if (await confirmIfDirty()) {
             const p = await window.luminAPI.file.chooseOpenFile()
-            if (p && (await files.openPath(p))) await router.push('/editor')
+            if (p) {
+              // 落点规则（无工作区 → 本窗口 + 侧栏切到该文件的文件夹；有工作区 → 新窗口）
+              // 统一在 lib/openFile.ts
+              await openExternalFile(p)
+              await router.push('/editor')
+            }
           }
         }
       },
@@ -135,10 +142,17 @@ const GROUPS = computed<Group[]>(() => [
         }
       },
       'sep',
-      { labelKey: 'menu.exportPdf', icon: 'file', run: () => runExport('pdf') },
-      { labelKey: 'menu.exportHtml', icon: 'code', run: () => runExport('html') },
-      { labelKey: 'menu.exportWord', icon: 'file', run: () => runExport('word') },
-      { labelKey: 'menu.exportEpub', icon: 'book', run: () => runExport('epub') }
+      // 一级「导出」+ 悬停二级：具体格式收进二级菜单，一级菜单保持短（children 列表）
+      {
+        labelKey: 'menu.export',
+        icon: 'download',
+        children: [
+          { labelKey: 'menu.exportPdf', icon: 'file', run: () => runExport('pdf') },
+          { labelKey: 'menu.exportHtml', icon: 'code', run: () => runExport('html') },
+          { labelKey: 'menu.exportWord', icon: 'file', run: () => runExport('word') },
+          { labelKey: 'menu.exportEpub', icon: 'book', run: () => runExport('epub') }
+        ]
+      }
     ]
   },
   {
@@ -438,6 +452,27 @@ onBeforeUnmount(() => {
             dense
             @select="openRecentFolder"
           />
+          <!-- children 列表（如「导出」下的四种格式）：与一级菜单项同样的行样式 -->
+          <template v-else-if="subOpen.children">
+            <template v-for="(child, ci) in subOpen.children" :key="ci">
+              <div v-if="child === 'sep'" class="my-1 h-px bg-edge" />
+              <button
+                v-else
+                class="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-left text-[12.5px] transition-colors duration-100"
+                :class="
+                  child.danger ? 'text-danger hover:bg-danger/10' : 'text-ink hover:bg-panel-2'
+                "
+                @click="runLeaf(child)"
+              >
+                <span class="flex h-4 w-4 items-center justify-center text-ink-3">
+                  <Icon v-if="child.icon" :name="child.icon" :size="13" />
+                </span>
+                <span class="min-w-0 flex-1 truncate">{{
+                  child.label ?? t(child.labelKey ?? '')
+                }}</span>
+              </button>
+            </template>
+          </template>
         </div>
       </Transition>
     </Teleport>

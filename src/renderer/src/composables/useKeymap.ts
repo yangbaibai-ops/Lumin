@@ -1,0 +1,225 @@
+import { onBeforeUnmount } from 'vue'
+import { useRouter } from 'vue-router'
+import { useUiStore } from '../stores/ui'
+import { useSettingsStore } from '../stores/settings'
+import { installKeymap, type KeymapCommand } from '../lib/keymap/service'
+import type { useAppActions } from './useAppActions'
+
+/**
+ * ─── 应用级命令表（快捷键的唯一声明处）─────────────────────────────────────
+ * 每一项 = 一条可被快捷键触发的命令：
+ *   - `titleKey` 尽量复用菜单里的同一批 i18n 键，设置界面与菜单文案天然一致；
+ *   - `run` 统一走 `handleMenu(action)`（原生菜单也走它），因此**同一条命令只有一份实现**；
+ *   - `defaultKeys` 是默认键；用户改过的以用户设置为准（见 lib/keymap/service.ts）。
+ *
+ * 新增一条快捷键 = 在下面加一项即可：默认键、设置界面、冲突检测、恢复默认全部自动生效。
+ *
+ * 范围说明：这里管**应用级**命令。编辑器内部的排版键（Ctrl+B/I/U、Ctrl+Z/Y 等）由
+ * ProseMirror / CodeMirror 自己的 keymap 处理，属于编辑器内核语义，不在此表内。
+ */
+export function useKeymap(actions: ReturnType<typeof useAppActions>): void {
+  const ui = useUiStore()
+  const settings = useSettingsStore()
+  const router = useRouter()
+  const { handleMenu } = actions
+
+  const commands: KeymapCommand[] = [
+    // ── 文件 ──
+    {
+      id: 'file.new',
+      titleKey: 'menu.newDoc',
+      groupKey: 'keymap.groupFile',
+      defaultKeys: 'Mod+N',
+      run: () => handleMenu('new')
+    },
+    {
+      id: 'file.newWindow',
+      titleKey: 'menu.newWindow',
+      groupKey: 'keymap.groupFile',
+      defaultKeys: 'Mod+Shift+N',
+      run: () => handleMenu('new-window')
+    },
+    {
+      id: 'file.open',
+      titleKey: 'menu.openFile',
+      groupKey: 'keymap.groupFile',
+      defaultKeys: 'Mod+O',
+      run: () => handleMenu('open')
+    },
+    {
+      id: 'file.openFolder',
+      titleKey: 'menu.openFolder',
+      groupKey: 'keymap.groupFile',
+      defaultKeys: 'Mod+Shift+O',
+      run: () => handleMenu('open-folder')
+    },
+    {
+      id: 'file.save',
+      titleKey: 'menu.save',
+      groupKey: 'keymap.groupFile',
+      defaultKeys: 'Mod+S',
+      run: () => handleMenu('save')
+    },
+    {
+      id: 'file.saveAs',
+      titleKey: 'menu.saveAs',
+      groupKey: 'keymap.groupFile',
+      defaultKeys: 'Mod+Shift+S',
+      run: () => handleMenu('save-as')
+    },
+    {
+      id: 'file.exportPdf',
+      titleKey: 'menu.exportPdf',
+      groupKey: 'keymap.groupExport',
+      defaultKeys: 'Mod+Shift+E',
+      run: () => handleMenu('export-pdf')
+    },
+    {
+      id: 'file.exportHtml',
+      titleKey: 'menu.exportHtml',
+      groupKey: 'keymap.groupExport',
+      defaultKeys: null,
+      run: () => handleMenu('export-html')
+    },
+    {
+      id: 'file.exportWord',
+      titleKey: 'menu.exportWord',
+      groupKey: 'keymap.groupExport',
+      defaultKeys: null,
+      run: () => handleMenu('export-word')
+    },
+    {
+      id: 'file.exportEpub',
+      titleKey: 'menu.exportEpub',
+      groupKey: 'keymap.groupExport',
+      defaultKeys: null,
+      run: () => handleMenu('export-epub')
+    },
+    {
+      id: 'file.closeWindow',
+      titleKey: 'keymap.closeWindow',
+      groupKey: 'keymap.groupWindow',
+      defaultKeys: 'Mod+W',
+      run: () => window.luminAPI.app.close()
+    },
+
+    // ── 编辑 ──
+    {
+      id: 'edit.findReplace',
+      titleKey: 'menu.findReplace',
+      groupKey: 'keymap.groupEdit',
+      defaultKeys: 'Mod+F',
+      // 输入框里 Ctrl+F 交给输入框自身（避免抢「查找」语义）
+      when: 'notInInput',
+      run: () => handleMenu('find')
+    },
+    {
+      id: 'edit.globalSearch',
+      titleKey: 'menu.globalSearch',
+      groupKey: 'keymap.groupEdit',
+      defaultKeys: 'Mod+Shift+P',
+      run: () => handleMenu('global-search')
+    },
+    {
+      id: 'app.settings',
+      titleKey: 'menu.settings',
+      groupKey: 'keymap.groupEdit',
+      defaultKeys: 'Mod+,',
+      run: () => handleMenu('settings')
+    },
+
+    // ── 视图 ──
+    {
+      id: 'view.toggleSidebar',
+      titleKey: 'menu.toggleSidebar',
+      groupKey: 'keymap.groupView',
+      defaultKeys: 'Mod+Shift+B',
+      run: () => handleMenu('toggle-sidebar')
+    },
+    {
+      id: 'view.focusMode',
+      titleKey: 'menu.focus',
+      groupKey: 'keymap.groupView',
+      defaultKeys: 'Mod+Shift+F',
+      run: () => handleMenu('toggle-focus')
+    },
+    {
+      id: 'view.typewriterMode',
+      titleKey: 'keymap.typewriterMode',
+      groupKey: 'keymap.groupView',
+      defaultKeys: 'Mod+Shift+T',
+      run: () => handleMenu('toggle-typewriter')
+    },
+    {
+      id: 'view.modeWysiwyg',
+      titleKey: 'editor.wysiwyg',
+      groupKey: 'keymap.groupView',
+      defaultKeys: null,
+      run: () => handleMenu('mode-wysiwyg')
+    },
+    {
+      id: 'view.modeSplit',
+      titleKey: 'editor.split',
+      groupKey: 'keymap.groupView',
+      defaultKeys: null,
+      run: () => handleMenu('mode-split')
+    },
+    {
+      id: 'view.modeSource',
+      titleKey: 'editor.source',
+      groupKey: 'keymap.groupView',
+      defaultKeys: null,
+      run: () => handleMenu('mode-source')
+    },
+    {
+      id: 'view.cycleMode',
+      titleKey: 'keymap.cycleMode',
+      groupKey: 'keymap.groupView',
+      defaultKeys: 'Mod+/',
+      run: () => handleMenu('cycle-mode')
+    },
+
+    // ── 窗口 ──
+    // Ctrl+Tab：应用内快速切换窗口（Alt+Tab 的「应用内版本」）；主进程按窗口顺序循环
+    {
+      id: 'window.next',
+      titleKey: 'keymap.nextWindow',
+      groupKey: 'keymap.groupWindow',
+      defaultKeys: 'Mod+Tab',
+      run: () => window.luminAPI.app.cycleWindow(1)
+    },
+    {
+      id: 'window.prev',
+      titleKey: 'keymap.prevWindow',
+      groupKey: 'keymap.groupWindow',
+      defaultKeys: 'Mod+Shift+Tab',
+      run: () => window.luminAPI.app.cycleWindow(-1)
+    },
+    {
+      id: 'window.minimize',
+      titleKey: 'keymap.minimizeWindow',
+      groupKey: 'keymap.groupWindow',
+      defaultKeys: null,
+      run: () => window.luminAPI.app.minimize()
+    },
+
+    // ── 帮助 ──
+    {
+      id: 'help.about',
+      titleKey: 'menu.about',
+      groupKey: 'keymap.groupHelp',
+      defaultKeys: null,
+      run: () => void router.push('/about')
+    },
+    {
+      id: 'help.keymap',
+      titleKey: 'keymap.openKeymapSettings',
+      groupKey: 'keymap.groupHelp',
+      defaultKeys: 'Mod+K',
+      run: () => ui.openSettings('keymap')
+    }
+  ]
+
+  const handle = installKeymap(commands, () => settings.keybindings ?? {})
+  onBeforeUnmount(() => handle.dispose())
+}

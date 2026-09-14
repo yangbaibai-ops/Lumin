@@ -37,6 +37,8 @@ export const defaultSettings: AppSettings = {
   recentFiles: [],
   recentFolders: [],
   pinnedFiles: [],
+  /** 快捷键自定义（空 = 全部用代码里的默认键，见 renderer/src/lib/keymap/commands） */
+  keybindings: {},
   export: {
     pdf: { margin: 24, pageSize: 'A4' },
     html: { template: 'default' }

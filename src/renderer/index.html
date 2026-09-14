@@ -8,10 +8,150 @@
       http-equiv="Content-Security-Policy"
       content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https: file: lumin-file:; font-src 'self' data:; connect-src 'self' ws: wss:; media-src 'self' data:"
     />
+    <!--
+      首帧骨架屏：纯 HTML/CSS，不需要任何 JS。窗口在 ready-to-show 就显示它，
+      用户看到的是「应用骨架 + 呼吸的 LUMIN」，而不是一段空白背景；
+      Vue 挂载时 #app 的这棵子树会被整体替换掉。
+      颜色用中性半透明灰，浅色/深色/羊皮纸主题下都不会突兀（窗口底色由主进程设定）。
+    -->
+    <style>
+      .lm-boot {
+        position: fixed;
+        inset: 0;
+        display: flex;
+        flex-direction: column;
+        pointer-events: none;
+      }
+      .lm-boot i,
+      .lm-boot b {
+        display: block;
+        background: rgba(128, 128, 128, 0.16);
+        border-radius: 6px;
+      }
+      .lm-boot-top {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        height: 48px;
+        padding: 0 16px;
+        border-bottom: 1px solid rgba(128, 128, 128, 0.16);
+      }
+      .lm-boot-top > i:first-child {
+        width: 96px;
+        height: 18px;
+      }
+      .lm-boot-top > i:nth-child(2) {
+        width: 64px;
+        height: 18px;
+      }
+      .lm-boot-top > span {
+        margin-left: auto;
+        display: flex;
+        gap: 8px;
+      }
+      .lm-boot-top > span > i {
+        width: 28px;
+        height: 28px;
+      }
+      .lm-boot-body {
+        display: flex;
+        flex: 1;
+        min-height: 0;
+      }
+      .lm-boot-side {
+        width: 264px;
+        flex: 0 0 264px;
+        padding: 12px;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        border-right: 1px solid rgba(128, 128, 128, 0.16);
+      }
+      .lm-boot-side > i {
+        height: 16px;
+      }
+      .lm-boot-side > i:first-child {
+        height: 24px;
+        width: 75%;
+      }
+      .lm-boot-main {
+        flex: 1;
+        min-width: 0;
+        display: flex;
+        justify-content: center;
+        padding: 40px 32px;
+      }
+      .lm-boot-doc {
+        width: 100%;
+        max-width: 768px;
+        display: flex;
+        flex-direction: column;
+        gap: 14px;
+      }
+      .lm-boot-doc > i {
+        height: 15px;
+      }
+      .lm-boot-doc > .h1 {
+        height: 34px;
+        width: 50%;
+      }
+      .lm-boot-doc > .box {
+        height: 96px;
+        border-radius: 12px;
+        margin: 10px 0;
+      }
+      .lm-boot-logo {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 12px;
+        font: 600 14px/1 ui-sans-serif, system-ui, sans-serif;
+        letter-spacing: 0.3em;
+        color: rgba(128, 128, 128, 0.55);
+        animation: lm-breathe 1.6s ease-in-out infinite;
+      }
+      .lm-boot-logo > b {
+        width: 34px;
+        height: 34px;
+        border-radius: 10px;
+      }
+      @keyframes lm-breathe {
+        0%,
+        100% {
+          opacity: 0.55;
+        }
+        50% {
+          opacity: 1;
+        }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .lm-boot-logo {
+          animation: none;
+        }
+      }
+    </style>
   </head>
 
   <body>
-    <div id="app"></div>
+    <div id="app">
+      <div class="lm-boot" aria-hidden="true">
+        <div class="lm-boot-top">
+          <i></i><i></i><span><i></i><i></i></span>
+        </div>
+        <div class="lm-boot-body">
+          <div class="lm-boot-side"><i></i><i></i><i></i><i></i><i></i></div>
+          <div class="lm-boot-main">
+            <div class="lm-boot-doc">
+              <i class="h1"></i><i></i><i></i><i></i><i class="box"></i><i></i><i></i>
+            </div>
+          </div>
+        </div>
+        <div class="lm-boot-logo"><b></b>LUMIN</div>
+      </div>
+    </div>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

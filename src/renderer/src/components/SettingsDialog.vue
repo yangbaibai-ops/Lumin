@@ -13,6 +13,7 @@ import { FONT_OPTIONS } from '../../../shared/defaults'
 import { LANGUAGE_OPTIONS } from '../i18n'
 import type { EditorMode, LinkCreateMode, LinkHistoryEntry, ThemeMode } from '../../../shared/types'
 import Icon from '../components/Icon.vue'
+import SettingsKeymap from '../components/SettingsKeymap.vue'
 
 const router = useRouter()
 const { t } = useI18n()
@@ -25,6 +26,7 @@ const tabs = computed(() => [
   { id: 'general', label: t('settings.general'), icon: 'settings' },
   { id: 'editor', label: t('settings.editor'), icon: 'pencil' },
   { id: 'appearance', label: t('settings.appearance'), icon: 'sun' },
+  { id: 'keymap', label: t('settings.keymap'), icon: 'keyboard' },
   { id: 'export', label: t('settings.export'), icon: 'download' },
   { id: 'links', label: t('settings.links'), icon: 'link' }
 ])
@@ -502,7 +504,11 @@ function formatTime(ms: number): string {
                     </template>
 
                     <!-- 链接：Ctrl/Cmd+左键打开链接时的行为与历史 -->
-                    <template v-else-if="activeTab === 'links'">
+                    <template v-else-if="activeTab === 'keymap'">
+                    <SettingsKeymap />
+                  </template>
+
+                  <template v-else-if="activeTab === 'links'">
                       <section class="surface mb-4 p-5">
                         <h3 class="mb-1 text-[13.5px] text-ink">{{ t('settings.linksCreateMode') }}</h3>
                         <p class="mb-4 text-[12px] text-ink-3">{{ t('settings.linksCreateModeDesc') }}</p>

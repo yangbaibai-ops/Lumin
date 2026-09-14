@@ -1,6 +1,6 @@
 import './assets/style.css'
 
-import { createApp } from 'vue'
+import { createApp, nextTick } from 'vue'
 import { createPinia } from 'pinia'
 import App from './App.vue'
 import router from './router'
@@ -11,14 +11,35 @@ import { useUiStore } from './stores/ui'
 import { useNotificationsStore } from './stores/notifications'
 import { useEditorMenuStore } from './stores/editorMenu'
 import { applySessionPosition, installSessionTracking, restoreSession } from './lib/session'
+import { isInside, installOpenDocTracking } from './lib/openFile'
+
+/**
+ * 启动阶段打点（`performance.mark('lumin:*')`）：零开销、可在 DevTools Performance
+ * 面板里直接看到，验收脚本也能通过 CDP 读到，用来对比启动优化前后。
+ * 关心的关键点是 `lumin:doc-visible` —— 用户真正看到文档内容的时刻。
+ */
+const mark = (stage: string): void => {
+  performance.mark(`lumin:${stage}`)
+}
+
+/** 首屏不需要的初始化（通知中心、右键菜单"最近使用"）丢到空闲时段 */
+const whenIdle = (fn: () => void): void => {
+  const ric = (window as unknown as { requestIdleCallback?: (cb: () => void) => number })
+    .requestIdleCallback
+  if (ric) ric(fn)
+  else setTimeout(fn, 0)
+}
 
 async function bootstrap(): Promise<void> {
+  mark('boot-start')
   // Pinia 必须先于 store 使用被安装
   const pinia = createPinia()
 
+  // 主题/语言必须在挂载前就位，否则会闪一下默认主题
   const settings = useSettingsStore(pinia)
   await settings.init()
   settings.applyAll()
+  mark('settings')
 
   const ui = useUiStore(pinia)
   ui.sidebarVisible = settings.sidebarVisible
@@ -31,21 +52,39 @@ async function bootstrap(): Promise<void> {
 
   await router.isReady()
   app.mount('#app')
+  mark('shell')
 
+  // 工作区目录树先就绪：它会设置「当前工作区根目录」，必须早于下面的打开文档 /
+  // 会话恢复（否则并发 setRoot 会互相覆盖），所以这里保持顺序等待。
+  // 「新建窗口」是干净窗口：不继承当前工作区（工作区根在 kv 里是全局的）。
   const files = useFilesStore(pinia)
-  await files.init()
+  await files.init({ inheritWorkspace: !window.luminAPI.app.startupNoWorkspace })
+  mark('files')
 
-  // 通知中心：从 SQLite 恢复上次未关闭的通知（按需求跨会话保留）
-  await useNotificationsStore(pinia).hydrate()
-
-  // 右键菜单的「最近使用」：从 SQLite 恢复动作使用记录
-  await useEditorMenuStore(pinia).hydrate()
+  // 通知中心 / 右键菜单「最近使用」：只影响卡片与菜单的次要分区，不阻塞文档显示
+  // —— 空闲时再从 SQLite 恢复（各自独立，互不等待）。启动瞬间产生通知也没问题：
+  // notify() 直接更新内存镜像，空闲 hydrate 会再与数据库对齐一次。
+  whenIdle(() => {
+    void useNotificationsStore(pinia)
+      .hydrate()
+      .then(() => mark('notifications'))
+    void useEditorMenuStore(pinia)
+      .hydrate()
+      .then(() => mark('editor-menu'))
+    mark('idle-tasks-started')
+  })
 
   // 多窗口：本窗口由「在新窗口打开文件 / 打开文件夹」创建时，启动后直接打开目标
   const startupFile = window.luminAPI.app.startupFile
   const startupFolder = window.luminAPI.app.startupFolder
   if (startupFile) {
     if (await files.openPath(startupFile)) {
+      // 侧栏必须能看见刚打开的文件：本窗口继承来的工作区若不包含它，就把工作区
+      // 切到该文件所在文件夹（文件本来就在工作区里时保持原样，不做无谓的缩小）。
+      // 规则同 lib/openFile.ts 的第 ③ 条（「已有文件夹 → 新窗口打开」）。
+      if (!isInside(files.root, startupFile)) {
+        await files.setRoot(await window.luminAPI.file.dirname(startupFile))
+      }
       await router.push('/editor')
     }
   } else if (startupFolder) {
@@ -57,18 +96,26 @@ async function bootstrap(): Promise<void> {
     const slot = await restoreSession()
     if (slot) {
       await router.push('/editor')
+      mark('editor-mounted')
       await applySessionPosition(slot)
     } else if (files.root) {
       // 会话里只记着工作区文件夹（无文档）→ 也要进编辑器
       await router.push('/editor')
+      mark('editor-mounted')
     }
   }
 
   // 会话跟踪：此后文档/光标/滚动变化会节流写回本窗口的会话槽位
   installSessionTracking()
+  // 「本窗口当前文档」上报：供主进程做「一个文件只开一个窗口」判断
+  installOpenDocTracking()
 
   // 初始化完成后立即结束骨架屏（不再人为拖延 600ms，加快启动/渲染速度）
   ui.booting = false
+  // 打点等一帧：booting=false 只是改了状态，用户看到内容要等下一次绘制
+  await nextTick()
+  await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
+  mark('doc-visible')
 }
 
 void bootstrap()

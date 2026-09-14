@@ -15,6 +15,9 @@ const startupFolder: string | null = (() => {
   return decodeURIComponent(arg.slice(arg.indexOf('=') + 1))
 })()
 
+/** 「新建窗口」的干净窗口标记：不继承当前工作区（见主进程 WindowOpenOptions.noWorkspace） */
+const startupNoWorkspace: boolean = process.argv.includes('--lumin-no-workspace=1')
+
 /** 本窗口的会话槽位（主进程分配；null = 不参与会话恢复） */
 const sessionSlot: number | null = (() => {
   const arg = process.argv.find((a) => a.startsWith('--lumin-session-slot='))
@@ -36,8 +39,15 @@ const api: LuminAPI = {
     newWindow: () => ipcRenderer.send('app:newWindow'),
     openInNewWindow: (path) => ipcRenderer.send('app:openInNewWindow', path),
     openFolderInNewWindow: (path) => ipcRenderer.send('app:openFolderInNewWindow', path),
+    /** 上报「本窗口当前打开的文档」：主进程据此避免同一个文件被两个窗口重复打开 */
+    reportWindowDoc: (path) => ipcRenderer.send('window:docPath', path),
+    /** 该文件若已开在别的窗口 → 把那个窗口唤到前面并返回 'focused'；否则 'not-open' */
+    focusWindowByDoc: (path) => ipcRenderer.invoke('window:focusByDoc', path),
+    /** 应用内切换窗口：delta = +1 下一个 / -1 上一个（默认 Ctrl+Tab / Ctrl+Shift+Tab） */
+    cycleWindow: (delta) => ipcRenderer.invoke('window:cycle', delta),
     startupFile,
     startupFolder,
+    startupNoWorkspace,
     sessionSlot
   },
   file: {

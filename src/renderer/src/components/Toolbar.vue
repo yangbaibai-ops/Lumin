@@ -1,7 +1,6 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { onBeforeUnmount, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { useFilesStore } from '../stores/files'
 import { useSettingsStore } from '../stores/settings'
 import { useUiStore } from '../stores/ui'
 import { useEditorStore } from '../stores/editor'
@@ -15,7 +14,6 @@ import { shouldCloseOnScrollOrResize } from '../lib/popoverClose'
 // ─── 编辑器工具栏：命令通过 editor store 桥接 Tiptap 内核（解耦）────────────
 const { t } = useI18n()
 const ui = useUiStore()
-const files = useFilesStore()
 const settings = useSettingsStore()
 const editorStore = useEditorStore()
 const { runExport } = useExport()
@@ -188,8 +186,6 @@ const exportItems: { icon: string; labelKey: string; format: 'pdf' | 'html' | 'w
   { icon: 'file', labelKey: 'editor.exportWord', format: 'word' },
   { icon: 'book', labelKey: 'editor.exportEpub', format: 'epub' }
 ]
-
-const docName = computed(() => files.current?.name ?? '')
 </script>
 
 <template>
@@ -295,13 +291,6 @@ const docName = computed(() => files.current?.name ?? '')
     </div>
 
     <div class="min-w-2 flex-1" />
-
-    <!-- 文档信息 -->
-    <div class="hidden items-center gap-2 xl:flex">
-      <Icon name="file" :size="13" class="text-ink-3" />
-      <span class="max-w-[180px] truncate text-[12.5px] text-ink-2">{{ docName }}</span>
-      <span v-if="files.dirty" class="h-1.5 w-1.5 rounded-full" :class="files.saving ? 'bg-warning' : 'bg-accent'" />
-    </div>
 
     <!-- 专注模式 -->
     <button

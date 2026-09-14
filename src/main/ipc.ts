@@ -15,6 +15,7 @@ import * as exportSvc from './export'
 import * as drafts from './drafts'
 import * as links from './services/links'
 import * as session from './services/session'
+import * as openDocs from './services/openDocs'
 import { scopeOfSender } from './services/windowScope'
 import { db } from './services/database'
 import { defaultSettings } from '../shared/defaults'
@@ -272,6 +273,38 @@ export function registerIpc(): void {
   ipcMain.handle('menu:usage:bump', (_, actionId: string) => db.bumpMenuUsage(actionId))
   ipcMain.handle('menu:usage:forget', (_, actionId: string) => db.forgetMenuUsage(actionId))
   ipcMain.handle('menu:usage:reset', () => db.resetMenuUsage())
+
+  // ── 「一个文件只开一个窗口」：文档归属上报 + 打开前先看有没有别处已开着 ──
+  // 渲染层在文档切换时上报（见 renderer lib/openFile.ts）；要打开的文件若已在别的
+  // 窗口开着，`window:focusByDoc` 直接把那个窗口唤到前面（返回 focused），
+  // 渲染层据此不再新建窗口；返回 not-open 时才走原本的「在新窗口打开」。
+  ipcMain.on('window:docPath', (event, docPath: string | null) => {
+    const win = BrowserWindow.fromWebContents(event.sender)
+    if (win) openDocs.setWindowDoc(win, docPath)
+  })
+  ipcMain.handle('window:focusByDoc', (event, docPath: string) => {
+    const self = BrowserWindow.fromWebContents(event.sender)
+    const target = openDocs.findWindowWithDoc(docPath, self?.id)
+    if (!target) return 'not-open'
+    if (target.id !== self?.id) openDocs.focusWindow(target)
+    return 'focused'
+  })
+  // 应用内快速切换窗口（默认 Ctrl+Tab / Ctrl+Shift+Tab）：
+  // 按窗口创建顺序循环（1 个窗口时不动，2 个时来回切，N 个时依次走），
+  // 与浏览器 Ctrl+Tab 切标签页的直觉一致。
+  ipcMain.handle('window:cycle', (event, delta: number) => {
+    const self = BrowserWindow.fromWebContents(event.sender)
+    const wins = BrowserWindow.getAllWindows().filter((w) => !w.isDestroyed())
+    if (wins.length < 2) return null
+    const idx = Math.max(
+      0,
+      wins.findIndex((w) => w.id === self?.id)
+    )
+    const step = delta < 0 ? -1 : 1
+    const next = wins[(idx + step + wins.length) % wins.length]
+    openDocs.focusWindow(next)
+    return next.id
+  })
 
   // ── 草稿 ──
   ipcMain.handle('drafts:save', (_, key: string, content: string, p: string | null) =>

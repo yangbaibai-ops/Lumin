@@ -89,17 +89,21 @@ export function releaseSlot(index: number): void {
 }
 
 /**
- * 启动时应当重建的窗口清单：只挑「有文档」或「有文件夹」的槽位，按索引升序，
- * 最多 MAX_RESTORE_WINDOWS 个。同时把这些槽位标记为已领取，后续新建窗口不会撞车。
+ * 启动时应当重建的窗口清单：只挑「有文档」或「有文件夹」的槽位，最多
+ * MAX_RESTORE_WINDOWS 个。同时把这些槽位标记为已领取，后续新建窗口不会撞车。
+ *
+ * 排序按 savedAt 倒序（最近用过的窗口排第一）：调用方会**先只建第一个**、等它加载完
+ * 再建其余窗口，所以「用户最后停留的那个窗口」应当最先出现在屏幕上，其余错峰创建。
  */
 export function planRestore(): { index: number; slot: SessionSlot }[] {
   const state = readSession()
   const plan: { index: number; slot: SessionSlot }[] = []
   state.slots.forEach((slot, index) => {
     if (!slot || (!slot.path && !slot.folder)) return
-    if (plan.length >= MAX_RESTORE_WINDOWS) return
     plan.push({ index, slot })
   })
-  for (const p of plan) claimed.add(p.index)
-  return plan
+  plan.sort((a, b) => (b.slot.savedAt ?? 0) - (a.slot.savedAt ?? 0) || a.index - b.index)
+  const limited = plan.slice(0, MAX_RESTORE_WINDOWS)
+  for (const p of limited) claimed.add(p.index)
+  return limited
 }

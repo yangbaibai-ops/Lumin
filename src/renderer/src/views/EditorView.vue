@@ -11,6 +11,9 @@ import StatusBar from '../components/StatusBar.vue'
 import TyporaEditor from '../components/editor/TyporaEditor.vue'
 import Icon from '../components/Icon.vue'
 import { measureAllCodeBlocks } from '../lib/editor/codeBlockViews'
+import { confirmIfDirty } from '../composables/useAppActions'
+import { openExternalFile } from '../lib/openFile'
+import i18n from '../i18n'
 
 // ─── 编辑器页面：工具栏 + 实时渲染/分屏对比/源码三模式 + 状态栏 ────────────
 // 布局模型：渲染面板（Tiptap）与源码面板（textarea）各只挂载一次、常驻 DOM，
@@ -482,24 +485,19 @@ watch(
 )
 
 // 外部文件拖放打开（文件系统逻辑，与内核无关）
+// 落点规则与「打开文件 / Ctrl+O」完全一致，统一在 lib/openFile.ts：无工作区 → 本窗口
+// 打开并把侧栏切到该文件的文件夹；已有工作区 → 新窗口打开；已打开同一个文件 → 不重复。
 async function onDrop(e: DragEvent): Promise<void> {
   const file = e.dataTransfer?.files?.[0]
   if (!file) return
   const path = window.luminAPI.file.getPathForFile(file)
   if (!path) return
   if (!/\.(md|markdown|mdown|mkd|txt)$/i.test(path)) {
-    ui.toast('仅支持打开 Markdown 文件', 'error')
+    ui.toast(i18n.global.t('toast.unsupportedFile'), 'error')
     return
   }
-  if (files.dirty) {
-    const ok = await ui.confirm({
-      title: '有未保存的更改',
-      body: '当前文档有未保存的更改，确定要打开其他文件吗？',
-      danger: true
-    })
-    if (!ok) return
-  }
-  await files.openPath(path)
+  if (!(await confirmIfDirty())) return
+  await openExternalFile(path)
 }
 function onDragOver(e: DragEvent): void {
   e.preventDefault()

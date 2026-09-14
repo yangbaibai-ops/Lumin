@@ -133,7 +133,9 @@ const STATE = `(() => {
   })
 })()`
 
-const DB_PATH = path.join(process.env.APPDATA, 'lumin', 'lumin.db')
+/** 直读 SQLite 用的库路径：默认用户真实 userData；用 --user-data-dir 起隔离实例时
+ *  用 LUMIN_DB 指定，套件才能跑在隔离数据上（不碰用户正在用的库）。 */
+const DB_PATH = process.env.LUMIN_DB || path.join(process.env.APPDATA, 'lumin', 'lumin.db')
 function readKvSession() {
   const { DatabaseSync } = require('node:sqlite')
   const db = new DatabaseSync(DB_PATH, { readOnly: true })

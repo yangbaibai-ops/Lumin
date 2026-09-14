@@ -1,4 +1,4 @@
-// 验收：通知按「窗口作用域」隔离 —— 一个窗口的提示只出现在它自己身上
+﻿// 验收：通知按「窗口作用域」隔离 —— 一个窗口的提示只出现在它自己身上
 //
 // 背景（修复前的 bug）：通知表是全局的，主进程每次变更还广播给所有窗口，
 // 于是在 A 窗口保存文件产生的提示会在 B/C 窗口同时弹出来。
@@ -11,7 +11,7 @@ const path = require('path')
 const os = require('os')
 const { DatabaseSync } = require('node:sqlite')
 const CDP = 'http://127.0.0.1:9222/json'
-const DB = path.join(os.homedir(), 'AppData', 'Roaming', 'lumin', 'lumin.db')
+const DB = process.env.LUMIN_DB || path.join(os.homedir(), 'AppData', 'Roaming', 'lumin', 'lumin.db')
 const STAMP = Date.now()
 const T_A = '隔离验证-A-' + STAMP
 const T_B = '隔离验证-B-' + STAMP

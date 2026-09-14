@@ -3,7 +3,9 @@ import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { useAppActions } from './composables/useAppActions'
+import { useKeymap } from './composables/useKeymap'
 import { usePageVisible } from './composables/usePageVisible'
+import { useWindowTitle } from './composables/useWindowTitle'
 import { useUiStore } from './stores/ui'
 import { useSettingsStore } from './stores/settings'
 import AppSidebar from './components/AppSidebar.vue'
@@ -26,7 +28,11 @@ const ui = useUiStore()
 const settings = useSettingsStore()
 const { pageVisible } = usePageVisible()
 
-useAppActions()
+const actions = useAppActions()
+// 快捷键：命令注册表 + 可自定义键位（设置 → 快捷键）；与菜单共用同一份实现
+useKeymap(actions)
+// 窗口标题跟随本窗口打开的内容（任务栏里才能分辨多个窗口）
+useWindowTitle()
 installGlobalTooltip()
 // 通知卡片上的按钮按 payload.kind 派发，需在启动时把业务处理器接上
 installLinkNotificationActions()

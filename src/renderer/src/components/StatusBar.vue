@@ -145,10 +145,6 @@ const themes: { mode: ThemeMode; icon: string; labelKey: string }[] = [
           </div>
         </Transition>
       </div>
-      <span class="h-3 w-px bg-edge" />
-      <span class="max-w-[260px] truncate" :title="files.current.path || files.current.name">
-        {{ files.current.name }}
-      </span>
     </template>
     <span v-else>Lumin — Write in Light.</span>
 

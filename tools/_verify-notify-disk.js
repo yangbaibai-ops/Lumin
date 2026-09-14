@@ -1,4 +1,4 @@
-// 验收（磁盘侧）：通知确实写进了 lumin.db（而不是只存在内存/会话里），
+﻿// 验收（磁盘侧）：通知确实写进了 lumin.db（而不是只存在内存/会话里），
 // 并且带上产生它的窗口作用域（scope = w<会话槽位>）。
 // 用 node:sqlite 直接读应用数据库文件，核对表结构、行内容、作用域与软关闭标记。
 // 全程在自建临时窗口里进行，不打扰用户已开的窗口。
@@ -6,7 +6,7 @@ const path = require('path')
 const os = require('os')
 const { DatabaseSync } = require('node:sqlite')
 const CDP = 'http://127.0.0.1:9222/json'
-const DB = path.join(os.homedir(), 'AppData', 'Roaming', 'lumin', 'lumin.db')
+const DB = process.env.LUMIN_DB || path.join(os.homedir(), 'AppData', 'Roaming', 'lumin', 'lumin.db')
 const MARK = '磁盘持久化验校-' + Date.now()
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 

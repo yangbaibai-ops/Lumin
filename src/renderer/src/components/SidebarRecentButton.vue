@@ -5,6 +5,7 @@
 import { onBeforeUnmount, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { shouldCloseOnScrollOrResize } from '../lib/popoverClose'
+import { openInWindowOrFocus } from '../lib/openFile'
 import RecentList from './RecentList.vue'
 import Icon from './Icon.vue'
 
@@ -32,12 +33,13 @@ function toggle(): void {
 }
 
 /**
- * 最近文档 → **新窗口打开**：不替换当前窗口的文档，因此无需脏数据确认
- * （当前窗口的一切保持原样）。新窗口由主进程创建并带上 `--lumin-open`。
+ * 最近文档 → 打开：若该文件已经开在某个窗口（含本窗口）就聚焦那个窗口，
+ * 否则**新窗口打开**（不替换当前窗口的文档，因此无需脏数据确认）。
+ * 判定与落点统一在 lib/openFile.ts。
  */
 function openDoc(path: string): void {
   open.value = false
-  window.luminAPI.app.openInNewWindow(path)
+  void openInWindowOrFocus(path)
 }
 
 function onDocMouseDown(e: MouseEvent): void {

@@ -9,6 +9,7 @@ import type {
 import { useSettingsStore } from './settings'
 import { useUiStore } from './ui'
 import i18n from '../i18n'
+import { ancestorDirs, isInside } from '../lib/pathUtils'
 
 export interface CurrentDoc {
   path: string | null
@@ -66,8 +67,15 @@ export const useFilesStore = defineStore('files', {
   },
   actions: {
     // ── 工作区 ──
-    async init(): Promise<void> {
-      this.root = await window.luminAPI.workspace.getRoot()
+    /**
+     * 启动初始化。
+     * @param options.inheritWorkspace 是否继承 SQLite kv 里的当前工作区。默认 true；
+     *   「新建窗口」（--lumin-no-workspace）传 false —— 那是个干净窗口，不该顺带把
+     *   别的窗口打开着的文件夹树带出来。
+     */
+    async init(options: { inheritWorkspace?: boolean } = {}): Promise<void> {
+      this.root =
+        options.inheritWorkspace === false ? null : await window.luminAPI.workspace.getRoot()
       if (this.root) {
         this.expanded.add(this.root)
         await this.loadChildren(this.root)
@@ -334,7 +342,38 @@ export const useFilesStore = defineStore('files', {
       this.current.path = path
       this.current.name = await window.luminAPI.file.basename(path)
       this.currentDir = await window.luminAPI.file.dirname(path)
-      return this.save()
+      const ok = await this.save()
+      // 另存到别处后，侧栏必须能看见这份新文件（否则它「消失」了）：
+      // 落在当前工作区之外 → 工作区跟到它的文件夹；本来就在工作区内 → 逐级展开把它露出来。
+      if (ok) await this.syncWorkspaceToPath(path)
+      return ok
+    },
+
+    /**
+     * 让侧栏「对准」某个文件（打开外部文件、另存为之后都走这里）：
+     *  - 没有工作区，或文件在当前工作区之外 → 把工作区切到该文件所在文件夹（`setRoot`）；
+     *  - 文件本来就在当前工作区内 → **不缩小范围**，改为逐级展开到它（树视图可见）。
+     * 返回 're-rooted' | 'revealed'，便于调用方与验收断言。
+     */
+    async syncWorkspaceToPath(p: string): Promise<'re-rooted' | 'revealed'> {
+      const dir = await window.luminAPI.file.dirname(p)
+      if (!this.root || !isInside(this.root, p)) {
+        await this.setRoot(dir)
+        return 're-rooted'
+      }
+      await this.revealPath(p)
+      return 'revealed'
+    },
+
+    /** 逐级展开到某个文件（含其父目录），路径上的目录都加载好子项 */
+    async revealPath(p: string): Promise<void> {
+      if (!this.root) return
+      for (const dir of ancestorDirs(this.root, p)) {
+        this.expanded.add(dir)
+        if (!this.dirCache[dir]) await this.loadChildren(dir)
+      }
+      // 列表视图按 mtime 排序并缓存，新文件要让它重扫一次才会出现
+      this.docsEpoch++
     },
     async flushAll(): Promise<void> {
       clearTimeout(this.saveTimer as never)
