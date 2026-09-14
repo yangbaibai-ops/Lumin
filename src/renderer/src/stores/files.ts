@@ -405,6 +405,13 @@ export const useFilesStore = defineStore('files', {
       }
       try {
         const opened: OpenedFile = await window.luminAPI.file.read(cur.path, encoding)
+        // 主进程/preload 是**构建产物**，不像渲染层那样热更新：若应用是在本次改动之前启动的，
+        // 老主进程会忽略 encoding 参数、老 preload 也没有 rememberEncoding。这时必须明确告诉用户
+        // 「重启应用」，而不是含糊地报「无法按该编码重新打开」—— 否则看着像功能坏了（实际踩过）。
+        if (!opened?.encoding || typeof window.luminAPI.file.rememberEncoding !== 'function') {
+          ui.toast(i18n.global.t('toast.encodingNeedsRestart'), 'warning')
+          return false
+        }
         const concrete = opened.encoding
         await window.luminAPI.file.rememberEncoding(cur.path, concrete)
         cur.content = opened.content
@@ -419,7 +426,9 @@ export const useFilesStore = defineStore('files', {
           'success'
         )
         return true
-      } catch {
+      } catch (err) {
+        // 带上原因，别让用户和后来的我们都只能看到一句「失败了」（真出问题时这条日志就是线索）
+        console.error('[encoding] 按编码重新打开失败:', err)
         ui.toast(i18n.global.t('toast.encodingFailed'), 'error')
         return false
       }

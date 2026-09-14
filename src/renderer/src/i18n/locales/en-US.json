@@ -282,7 +282,8 @@
     "manualSave": "Switched to manual save",
     "autoSaveOn": "Auto save enabled",
     "reopenedWithEncoding": "Reopened as {enc}",
-    "encodingFailed": "Could not reopen with that encoding"
+    "encodingFailed": "Could not reopen with that encoding",
+    "encodingNeedsRestart": "Encoding needs an app restart to take effect (main process is not hot-reloaded)"
   },
   "editorMenu": {
     "copy": "Copy",

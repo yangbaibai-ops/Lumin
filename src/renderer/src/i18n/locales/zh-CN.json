@@ -282,7 +282,8 @@
     "manualSave": "已切换为手动保存",
     "autoSaveOn": "已开启自动保存",
     "reopenedWithEncoding": "已按 {enc} 重新打开",
-    "encodingFailed": "无法按该编码重新打开"
+    "encodingFailed": "无法按该编码重新打开",
+    "encodingNeedsRestart": "编码功能需要重启应用后生效（主进程未热更新）"
   },
   "editorMenu": {
     "copy": "复制",
