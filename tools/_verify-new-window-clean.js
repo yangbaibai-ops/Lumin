@@ -69,7 +69,7 @@ const SNAP = `JSON.stringify({
   doc: window.__vt.files().current?.path ?? null,
   docName: window.__vt.files().current?.name ?? null,
   title: document.title,
-  treeRows: document.querySelectorAll('aside .group.cursor-pointer').length,
+  treeRows: document.querySelectorAll('aside [data-tree-row]').length,
   hubVisible: (() => {
     const hub = document.querySelector('aside .empty-hub')
     if (!hub) return false

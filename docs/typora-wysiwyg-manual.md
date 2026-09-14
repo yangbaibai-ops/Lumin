@@ -933,6 +933,46 @@ commands     应用级命令表（composables/useKeymap.ts）：id / i18n 标题
 
 **回归**：分段控件 16/16、工具栏去文件名 12/12、会话 16/16、去欢迎页 32 项通过（另 2 项为既有的隔离实例环境跳过）；`npm run typecheck:web` 0 error，改动文件 eslint 0 error。
 
+### 4.35 任务栏跳转列表对齐 Typora：新窗口任务 + 最近文档（本次）
+
+**用户反馈**：Windows 任务栏里右键其他应用（如 Typora）的图标，会列出一堆条目，其中一条就叫应用名（「Typora」），点它出来一个**全新窗口**；而 Lumin 那条叫「Electron」，点下去出来的是 **Electron 原生窗口**。要求对齐 Typora 的逻辑。
+
+**根因**（两件事叠在一起）：
+
+1. **那条「Electron」不是我们注册的**，而是用户**固定到任务栏的快捷方式**本身——开发态跑的是 `electron.exe`，Windows 建的固定快捷方式指向 `electron.exe` 且**不带任何参数**。点它 = 启动一个无参数的 `electron.exe`，那就是 Electron 自带的示例窗口。应用内部改不了那个快捷方式（它属于 shell）。
+2. 应用侧此前**没有注册任何跳转列表条目**（`setUserTasks` / `setJumpList` 都没调），所以右键菜单里除了系统那几项空空如也，更没有「开新窗口」的入口。
+
+**改法**（新增 `src/main/services/taskbar.ts`）：
+
+- **Tasks 里注册一条以应用名命名的任务**（`title: 'Lumin'`，与 Typora 一样就用应用名）：点它开一个**新的 Lumin 窗口**。命令行的 program/args 是**显式拼的**：开发态 = `process.execPath` + **应用目录** + `--lumin-new-window`，打包态只带开关——这一步是关键，差一个应用目录就会退回「无参数 electron.exe = Electron 示例窗口」。含空格的路径自动加引号。
+- **最近文档**：另起一个 custom 分类（分类名按 `settings.language` 本地化），每条的 program/args 同样显式指向本应用。**故意不用 `app.addRecentDocument()`**：那个把点击交给**文件关联**，开发态 `electron.exe` 并没有 `.md` 关联，用户点「最近」反而会叫起别的程序（机器上装了 Typora 就开 Typora）。
+- **AUMID 不动**：`electronApp.setAppUserModelId()` 在开发态用的是 `process.execPath`（见 @electron-toolkit/utils），正好与用户固定按钮的 AUMID 一致——跳转列表按 AUMID 注册，于是这些条目就出现在他右键的那个按钮上；打包态用 `com.lumin.app`，与安装器快捷方式一致。
+- **主进程解析这些开关**（`parseLaunchIntent`，冷启动与第二实例两条路都认）：
+  - 运行中的实例收到 `--lumin-new-window` → 开干净新窗口（与「文件 → 新建窗口」同一路径，带 `--lumin-no-workspace`）；
+  - 收到 `--lumin-open=<file>` → **先查这篇是否已在别的窗口开着**，是则把那窗口唤到前面（沿用 §4.28 的「一个文件只开一个窗口」），否则新开窗口打开它；
+  - 什么都没有 → 聚焦已有窗口（原行为）。
+  - 冷启动带 `--lumin-open` 时**不拉会话恢复**：意图很明确就是开这一篇，否则会先把一堆旧窗口恢复出来再把这篇插进去；槽位数据仍留在 kv，下次正常启动照旧恢复。
+- **重建时机**：启动时注册一次；`window:docPath`（文档切换）后节流 1.5s 重建（等这次打开先落库到 `documents.last_opened`）；换语言或最近列表变化（含界面上「清空最近」）时立即重建。
+
+**验收**：`tools/_verify-taskbar-jumplist.js` **18/18**（隔离实例 + 主进程自检日志 + **真的再起一个进程**）：
+
+- 注册结果：自检日志 `status=ok tasks=1`（`setJumpList` 的返回值，Windows 真收下了）；
+- 任务命令行：`args` 的第一个 token 就是应用目录、且含 `--lumin-new-window`（含空格时必须带引号这条规则也一并断言）；
+- **行为**：带 `--lumin-new-window` 起第二进程 → 多出一个窗口，且该窗口 `location.href` 是我们的渲染页、`window.luminAPI` 在、`document.title === 'Lumin'`——即**不是** Electron 原生窗口；
+- 带 `--lumin-open=<beta.md>` → 新窗口打开的正是那篇文档；同一篇再来一次**不会开第二个**（聚焦原窗口）；不带参数再来一次**不会多开**；
+- 冷启动（应用没在跑）带 `--lumin-open=<alpha.md>` → 只开一个窗口且直接打开该文档。
+
+**踩坑记录**：Windows 上主进程的 `console.log` 拿不到——把 electron 的 stdout 重定向到文件后，里面只有 Chromium 那行 `DevTools listening`（GUI 子系统进程没有控制台）。所以自检信息落 `%TEMP%\lumin-taskbar.log`，且只在 `LUMIN_DEBUG_PORT`／`LUMIN_STARTUP_LOG` 打开时写。
+
+**回归**：会话 16/16、目录 23/23、文件树 24/24、打开落点 22/22、单文件单窗口 21/21、新窗口干净 13/13、另存为切工作区 17/17、重命名 13/13、去欢迎页 32 项（另 2 项既有环境跳过）、工具栏去文件名 12/12；`npm run typecheck` 0 error。
+
+**顺带修的三处验收脚手架问题**：
+
+- 三套用例里「找文件树的行」还在用 Tailwind 的 `.group` / `.group.cursor-pointer`——§4.34 把行样式搬进 CSS 后这些类没了，于是行数恒为 0；统一改用新钩子 `[data-tree-row]`（同时避免误匹配「最近文档」下拉里的 `.group` 行）。
+- `tools/_verify-tree-indent.js` 删除：它只打印不断言，且绑定的是旧几何（`paddingLeft === '6px'`）。
+- `tools/_verify-rename.js` 从「只打印」改成真断言（13 条）：走真实右键菜单 → 重命名 → 真实文本输入（`Input.insertText`，会**替换已选中的主干**、保留 `.md`）→ 回落后直接用 fs 验证磁盘结果，并覆盖 Esc 取消。写这套时顺便确认了「只选主干、扩展名不动」这条设计确实生效（`selStart/selEnd = 0/5`）。
+- **另一个必须记住的环境事实**：用户正在跑的 dev 应用**不会**自动拿到主进程改动——`electron-vite dev` 从 11:34 起就没有重建 `out/main`（渲染层是 HMR，主进程不是）。本次已手动 `electron-vite build` 重建，重启应用即生效。
+
 ---
 
 ## 5. 分步实施计划（从零到一）

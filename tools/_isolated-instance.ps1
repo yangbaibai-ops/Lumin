@@ -26,12 +26,17 @@ if (Test-Port $Port) {
 # 2) 干净数据目录
 Remove-Item $UserData -Recurse -Force -ErrorAction SilentlyContinue
 
-# 3) 启动
+# 3) 启动（stdout/stderr 落文件：验收脚本要读主进程的自检日志，例如 [taskbar] 跳转列表注册结果）
 $env:ELECTRON_RENDERER_URL = $RendererUrl
 $env:LUMIN_DEBUG_PORT = "$Port"
+$outLog = Join-Path $env:TEMP 'lumin-instance-out.log'
+$errLog = Join-Path $env:TEMP 'lumin-instance-err.log'
+Remove-Item $outLog, $errLog -Force -ErrorAction SilentlyContinue
+# 主进程自检日志（taskbar 等）也清掉，保证验收脚本读到的是本次实例写的内容
+Remove-Item (Join-Path $env:TEMP 'lumin-taskbar.log') -Force -ErrorAction SilentlyContinue
 # 两种调用方式都支持：直接执行 .ps1（有 $PSScriptRoot）或 Invoke-Expression 内容（用当前目录）
 $root = if ($PSScriptRoot) { (Resolve-Path "$PSScriptRoot\..").Path } else { (Get-Location).Path }
-Start-Process -FilePath (Join-Path $root 'node_modules\.bin\electron.cmd') -ArgumentList '.', "--user-data-dir=$UserData" -WorkingDirectory $root
+Start-Process -FilePath (Join-Path $root 'node_modules\.bin\electron.cmd') -ArgumentList '.', "--user-data-dir=$UserData" -WorkingDirectory $root -RedirectStandardOutput $outLog -RedirectStandardError $errLog
 
 # 4) 等调试端口起来，并校验只有 1 个窗口（= 全新实例，而不是别的实例留下的窗口）
 $deadline = (Get-Date).AddSeconds(40)

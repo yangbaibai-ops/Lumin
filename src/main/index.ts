@@ -11,6 +11,7 @@ import { migrateLegacyStores } from './store'
 import { db } from './services/database'
 import * as session from './services/session'
 import * as openDocs from './services/openDocs'
+import * as taskbar from './services/taskbar'
 import { bindWindowScope, scopeOfSlot } from './services/windowScope'
 import { defaultSettings } from '../shared/defaults'
 import { markRunning, markClean } from './drafts'
@@ -305,11 +306,19 @@ app.whenReady().then(() => {
 
   markRunning()
 
+  // 任务栏跳转列表（右键图标）：一条以应用名命名的任务（开新窗口）+ 一栏最近文档。
+  // 放在窗口创建之前注册，用户从固定按钮右键时就已可见。
+  const intent = taskbar.parseLaunchIntent(process.argv)
+  taskbar.refreshJumpList()
+
   // 会话恢复：按上次的窗口槽位重建窗口（每个槽位一个窗口，各自恢复文档/文件夹与位置）。
   // 「在新窗口打开文件/文件夹」创建的窗口带 --lumin-open(-folder)，优先级高于会话槽位；
   // 设置里关闭 restoreSession 时一律走单窗口（空白未命名缓冲区）。
   const wantRestore = db.kvGet('settings', defaultSettings).restoreSession !== false
-  const plan = wantRestore ? session.planRestore() : []
+  // 从跳转列表点「最近打开」的某篇文档时，意图很明确：就打开这篇。
+  // 此时不拉会话恢复（否则会先恢复一堆旧窗口再把这篇插进去，观感很乱）；
+  // 槽位数据仍留在 kv 里，下次正常启动照旧恢复。
+  const plan = wantRestore && !intent.openFile ? session.planRestore() : []
   if (!wantRestore) session.resetSession()
   // 首个窗口先建（「最近使用过的窗口」优先，见 planRestore 的排序），
   // 其余窗口等它加载完首帧后再建 —— 避免 N 个渲染进程同时抢 CPU/磁盘把首屏拖慢。
@@ -317,7 +326,7 @@ app.whenReady().then(() => {
   const first =
     head !== undefined
       ? createWindow({ sessionSlot: head.index })
-      : createWindow({ sessionSlot: claimFreshSlot() })
+      : createWindow({ openFile: intent.openFile ?? undefined, sessionSlot: claimFreshSlot() })
   startup('first-window-created')
   first.once('ready-to-show', () => startup('first-window-painted'))
   let firstShown = false
@@ -339,7 +348,29 @@ app.whenReady().then(() => {
   })
 })
 
-app.on('second-instance', () => {
+/**
+ * 第二个实例：用户在任务栏跳转列表里点了东西，或又双击了一次图标。
+ * 三种意图分别处理（顺序即优先级）：
+ *  ① 带 --lumin-new-window → 开一个新窗口（跳转列表里的「Lumin」那条，与 Typora 一致）；
+ *  ② 带 --lumin-open=<file> → 该文档若已在某个窗口开着就把它唤到前面（「一个文件只开一个
+ *     窗口」的规则），否则新开一个窗口打开它；
+ *  ③ 什么都没有 → 聚焦已有窗口（沿用原行为）。
+ */
+app.on('second-instance', (_event, argv) => {
+  const intent = taskbar.parseLaunchIntent(argv)
+  if (intent.newWindow) {
+    createWindow({ sessionSlot: claimFreshSlot(), noWorkspace: true })
+    return
+  }
+  if (intent.openFile) {
+    const existing = openDocs.findWindowWithDoc(intent.openFile)
+    if (existing) {
+      openDocs.focusWindow(existing)
+      return
+    }
+    createWindow({ openFile: intent.openFile, sessionSlot: claimFreshSlot() })
+    return
+  }
   const win = BrowserWindow.getAllWindows()[0]
   if (win) {
     if (win.isMinimized()) win.restore()

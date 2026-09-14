@@ -71,7 +71,7 @@ const SNAP = `JSON.stringify({
   root: window.__S.files().root,
   doc: window.__S.files().current?.path ?? null,
   expanded: [...window.__S.files().expanded],
-  treeText: [...document.querySelectorAll('aside .group.cursor-pointer')].map((el) => el.textContent.trim()),
+  treeText: [...document.querySelectorAll('aside [data-tree-row]')].map((el) => el.textContent.trim()),
   globalRoot: null
 })`
 

@@ -69,7 +69,7 @@ const SETUP = `(() => {
 const SNAP = `JSON.stringify({
   doc: window.__R.files().current?.path ?? null,
   root: window.__R.files().root,
-  treeRows: document.querySelectorAll('aside .group.cursor-pointer').length,
+  treeRows: document.querySelectorAll('aside [data-tree-row]').length,
   hub: !!document.querySelector('aside .empty-hub')
 })`
 

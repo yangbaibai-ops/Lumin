@@ -16,6 +16,7 @@ import * as drafts from './drafts'
 import * as links from './services/links'
 import * as session from './services/session'
 import * as openDocs from './services/openDocs'
+import * as taskbar from './services/taskbar'
 import { scopeOfSender } from './services/windowScope'
 import { db } from './services/database'
 import { defaultSettings } from '../shared/defaults'
@@ -204,6 +205,9 @@ export function registerIpc(): void {
     // 切换主题时标题栏也要随之切换，否则顶部原生标题栏颜色不跟随应用主题
     nativeTheme.themeSource =
       merged.theme === 'auto' ? 'system' : merged.theme === 'sepia' ? 'light' : merged.theme
+    // 任务栏跳转列表里的分类名/任务描述是本地化文案，最近文档也来自设置：
+    // 换语言或最近列表变化（含用户在界面上「清空最近」）时顺手重建
+    if (partial.language || partial.recentFiles) taskbar.refreshJumpList()
     return merged
   })
   ipcMain.handle('workspace:getRoot', () => {
@@ -281,6 +285,8 @@ export function registerIpc(): void {
   ipcMain.on('window:docPath', (event, docPath: string | null) => {
     const win = BrowserWindow.fromWebContents(event.sender)
     if (win) openDocs.setWindowDoc(win, docPath)
+    // 文档换了就顺手重建任务栏跳转列表的「最近打开」（延迟到落库后再读，见 services/taskbar）
+    if (docPath) taskbar.scheduleRefresh()
   })
   ipcMain.handle('window:focusByDoc', (event, docPath: string) => {
     const self = BrowserWindow.fromWebContents(event.sender)
