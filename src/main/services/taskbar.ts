@@ -1,5 +1,5 @@
 import { app, shell } from 'electron'
-import { appendFileSync } from 'fs'
+import { appendFileSync, unlinkSync } from 'fs'
 import { tmpdir } from 'os'
 import { basename, dirname, join } from 'path'
 import type { JumpListCategory, JumpListItem } from 'electron'
@@ -127,6 +127,15 @@ export function ensureAppShortcut(): ShortcutStatus {
     return { ok: false, path, aumid: appId(), target, args }
   }
   try {
+    // 先删再写：**换掉文件标识**，逼 Windows 重新提取快捷方式图标。
+    // 直接覆盖同一个 .lnk 时，shell 的图标缓存会继续显示改写前的旧图标（实测踩过：
+    // 图标文件早换成新设计，右键菜单里那条却还是上一版的图）。删掉重建等于换了个文件，
+    // 缓存必然失效；万一中途崩了也只是少一条快捷方式，下次启动会补回来。
+    try {
+      unlinkSync(path)
+    } catch {
+      /* 本来就不存在 */
+    }
     const ok = shell.writeShortcutLink(path, 'create', {
       target,
       args,
