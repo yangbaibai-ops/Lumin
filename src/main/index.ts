@@ -6,7 +6,6 @@ import { pathToFileURL } from 'url'
 import { optimizer, is } from '@electron-toolkit/utils'
 // 窗口图标与任务栏/开始菜单快捷方式/跳转列表**共用同一个文件**（resources/icon.ico，内含 16~256 七档，
 // Windows 会按场景挑最合适的尺寸）；不要在这里另引 PNG，否则同一应用会出现两种图标。
-import appIconIco from '../../resources/icon.ico?asset'
 import appIconPng from '../../resources/icon.png?asset'
 import { installMenu } from './menu'
 import { registerIpc, attachCloseGuard } from './ipc'
@@ -171,7 +170,7 @@ function createWindow(options: WindowOpenOptions = {}): BrowserWindow {
     // 就退化成 electron.exe 自带的图标（开发态看着就是 Electron 的 logo）。
     // Windows 用 ICO（与开始菜单快捷方式、跳转列表同一个文件，内含 16~256 七档）；
     // macOS/Linux 不吃 ICO，用同一份设计的 PNG。
-    icon: process.platform === 'win32' ? appIconIco : appIconPng,
+    icon: process.platform === 'win32' ? taskbar.runtimeIconPath() : appIconPng,
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       contextIsolation: true,

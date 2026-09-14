@@ -1,5 +1,6 @@
 import { app, shell } from 'electron'
-import { appendFileSync, unlinkSync } from 'fs'
+import { appendFileSync, copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, unlinkSync } from 'fs'
+import { createHash } from 'crypto'
 import { tmpdir } from 'os'
 import { basename, dirname, join } from 'path'
 import type { JumpListCategory, JumpListItem } from 'electron'
@@ -34,6 +35,42 @@ import appIconIco from '../../../resources/icon.ico?asset'
  *     「最近文档」+**文件关联**，开发态 electron.exe 没有 .md 关联，点下去会跑去打开别的程序
  *     （机器上装了 Typora 就开 Typora）。自己写 program/args 则永远拉起本应用。
  */
+
+/**
+ * ─── 运行期真正使用的图标路径（内容寻址）────────────────────────────────────
+ * 为什么不能直接用仓库里的 resources/icon.ico：**Windows 的图标缓存与跳转列表缓存都按「路径」
+ * 记忆**，同一个 .lnk / 同一个 .ico 路径被覆盖时缓存不失效 —— 实测出现过「图标文件已经换成新设计，
+ * 任务栏右键那条却还显示上一版的图」，重建快捷方式、ie4uinit 都不管用。
+ * 做法：把 icon.ico 复制到用户目录下一个**名字里带内容哈希**的文件（内容变 → 路径变 → 缓存必然失效），
+ * 并让**所有运行时位置**（窗口图标 / 开始菜单快捷方式 / 跳转列表条目）都用这一个文件，保持单一来源。
+ * 旧设计留下的副本顺手清掉，不会越积越多。
+ */
+export function runtimeIconPath(): string {
+  const src = appIconIco
+  try {
+    const hash = createHash('sha1').update(readFileSync(src)).digest('hex').slice(0, 8)
+    const dir = join(app.getPath('userData'), 'icons')
+    const dst = join(dir, `lumin-${hash}.ico`)
+    if (!existsSync(dst)) {
+      mkdirSync(dir, { recursive: true })
+      copyFileSync(src, dst)
+      // 清理旧设计的副本（只留当前这一份）
+      for (const f of readdirSync(dir)) {
+        if (/^lumin-[0-9a-f]{8}\.ico$/.test(f) && f !== `lumin-${hash}.ico`) {
+          try {
+            unlinkSync(join(dir, f))
+          } catch {
+            /* 正被别的进程占用也无所谓 */
+          }
+        }
+      }
+    }
+    return dst
+  } catch {
+    // 复制失败就退回仓库里的原件：功能不受影响，最多是缓存问题重现
+    return src
+  }
+}
 
 /** 跳转列表里「打开新窗口」的开关（主进程解析：冷启动与第二实例两条路都要认） */
 export const NEW_WINDOW_SWITCH = '--lumin-new-window'
@@ -93,10 +130,22 @@ export function appId(): string {
   return app.isPackaged ? 'com.lumin.app' : 'com.lumin.app.dev'
 }
 
+/**
+ * 当前是否跑在「默认配置目录」上。
+ * 验收/多开场景会用 --user-data-dir 起隔离实例，而那些实例**绝不能碰用户自己开始菜单里那条快捷方式**
+ * （实测踩过：隔离实例把用户的 Lumin (dev) 快捷方式改成了指向临时目录的图标）。
+ */
+function isDefaultProfile(): boolean {
+  const def = join(app.getPath('appData'), app.getName())
+  return app.getPath('userData').toLowerCase() === def.toLowerCase()
+}
+
 /** 开始时菜单里那条「应用」快捷方式的路径（也是任务栏用来解析标识与启动命令的那条） */
 export function shortcutPath(): string {
   const dir = join(app.getPath('appData'), 'Microsoft', 'Windows', 'Start Menu', 'Programs')
-  return join(dir, app.isPackaged ? 'Lumin.lnk' : 'Lumin (dev).lnk')
+  const base = app.isPackaged ? 'Lumin.lnk' : 'Lumin (dev).lnk'
+  // 非默认配置目录（验收隔离实例）用单独的名字，绝不覆盖用户那条
+  return join(dir, isDefaultProfile() ? base : base.replace(/\.lnk$/, ' [test].lnk'))
 }
 
 export interface ShortcutStatus {
@@ -141,11 +190,11 @@ export function ensureAppShortcut(): ShortcutStatus {
       args,
       cwd: app.getAppPath(),
       description: 'Lumin',
-      icon: appIconIco,
+      icon: runtimeIconPath(),
       iconIndex: 0,
       appUserModelId: appId()
     })
-    debugLog(`shortcut ok=${ok} path="${path}" aumid=${appId()} target="${target}" args="${args}" icon="${appIconIco}"`)
+    debugLog(`shortcut ok=${ok} path="${path}" aumid=${appId()} target="${target}" args="${args}" icon="${runtimeIconPath()}"`)
     // 再读回来一次：证明**磁盘上那条**快捷方式（Windows 真正会读的）确实带上了标识、参数与图标
     try {
       const back = shell.readShortcutLink(path)
@@ -225,7 +274,7 @@ export function refreshJumpList(): JumpListStatus {
         args: launchArgs([NEW_WINDOW_SWITCH]),
         title: TASK_TITLE[lang],
         description: NEW_WINDOW_DESC[lang],
-        iconPath: appIconIco,
+        iconPath: runtimeIconPath(),
         iconIndex: 0
       }
     ]
@@ -237,7 +286,7 @@ export function refreshJumpList(): JumpListStatus {
       title: r.title || basename(r.path),
       // description 上限 260 字符，超了整个条目会被系统丢掉
       description: dirname(r.path).slice(0, 240),
-      iconPath: appIconIco,
+      iconPath: runtimeIconPath(),
       iconIndex: 0
     }))
 
