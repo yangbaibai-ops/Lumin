@@ -256,6 +256,53 @@ const SETUP = `(() => {
       JSON.stringify({ enc: a6.encoding })
     )
 
+    // ── A2. 显式选择必须压过 BOM ──
+    // 否则对带 BOM 的文件，「选择编码重新打开」点了等于没反应（看着像坏了）。
+    const x1 = await readAs(F.utf8bom, 'windows-1252')
+    console.log(
+      'A2-explicit-over-bom ' +
+        JSON.stringify({ enc: x1.encoding, hadBom: x1.hadBom, unchanged: x1.content === T_UTF8 })
+    )
+    c(
+      'explicit-choice-beats-bom',
+      x1.encoding === 'windows-1252' && x1.hadBom === false && x1.content !== T_UTF8,
+      JSON.stringify({ enc: x1.encoding, hadBom: x1.hadBom })
+    )
+
+    // 显式选「UTF-8」= 顺手去掉 BOM（正文里不能留 U+FEFF，保存后文件头也不该再有 BOM）
+    await w.ev(
+      `(async () => { await window.__E.files().openPath(${JSON.stringify(F.utf8bom)}); return 'ok' })()`
+    )
+    await sleep(500)
+    const x2 = await w.ev(
+      `(async () => { const ok = await window.__E.files().reopenWithEncoding('utf-8'); const cur = window.__E.files().current; return JSON.stringify({ ok, content: cur.content, encoding: cur.encoding, hadBom: cur.hadBom, dirty: window.__E.files().dirty }) })()`
+    ).then(JSON.parse)
+    console.log(
+      'A2-reopen-utf8 ' +
+        JSON.stringify({ enc: x2.encoding, hadBom: x2.hadBom, dirty: x2.dirty, bait: x2.content.charCodeAt(0) })
+    )
+    c(
+      'explicit-utf8-strips-bom',
+      x2.ok === true &&
+        x2.content === T_UTF8 &&
+        x2.encoding === 'utf-8' &&
+        x2.hadBom === false &&
+        x2.content.charCodeAt(0) !== 0xfeff,
+      JSON.stringify({ enc: x2.encoding, hadBom: x2.hadBom, first: x2.content.charCodeAt(0) })
+    )
+    await w.ev(`(async () => { return await window.__E.files().save() })()`)
+    await sleep(900)
+    const noBom = fs.readFileSync(F.utf8bom)
+    console.log('A2-save-no-bom ' + JSON.stringify({ first3: [...noBom.subarray(0, 3)] }))
+    c(
+      'save-after-explicit-utf8-drops-bom',
+      !(noBom[0] === 0xef && noBom[1] === 0xbb && noBom[2] === 0xbf) &&
+        noBom.toString('utf-8') === T_UTF8,
+      JSON.stringify({ first3: [...noBom.subarray(0, 3)] })
+    )
+    // 把夹具还原成「带 BOM」原样：后面 C 段还要验「保存保留 BOM」
+    fs.writeFileSync(F.utf8bom, Buffer.concat([Buffer.from([0xef, 0xbb, 0xbf]), Buffer.from(T_UTF8, 'utf-8')]))
+
     // ── B. 重新打开（乱码 → 正确，且文档保持干净）──
     const b1 = await open(F.gbk) // 先自动打开（正确）
     const b2 = await readAs(F.gbk, 'windows-1252') // 显式按 1252 解 → 乱码

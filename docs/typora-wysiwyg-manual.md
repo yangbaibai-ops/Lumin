@@ -1041,12 +1041,14 @@ commands     应用级命令表（composables/useKeymap.ts）：id / i18n 标题
 
 **判定链**（`src/main/services/encoding.ts` 的 `decodeBuffer`，顺序即优先级）：
 
-1. **BOM 嗅探**（`EF BB BF` → UTF-8 BOM、`FF FE` → UTF-16 LE、`FE FF` → UTF-16 BE）：BOM 是文件自己写的声明，比任何猜测都可靠，所以**压过一切**（包括调用方显式指定的编码——带 BOM 的文件永远被识别成它 BOM 说的那个编码）；
-2. **调用方显式指定的具体编码**（用户在「选择编码重新打开」里点了某个编码）：必须听用户的；
+1. **调用方显式指定的具体编码**（用户在「选择编码重新打开」里点了某个编码）：**必须听用户的，BOM 也不能挡**。这一条最初写成了「BOM 优先」，复核时改掉了 —— 那样对带 BOM 的文件，菜单点了等于没反应，用户会以为功能坏了。现在 BOM 仍有用：它若**正好属于**所选编码，就把它摘掉并把 `hadBom` 记下来（写回时补回）；若与所选编码不符（用户就是要强行换个解释），那几个字节按普通字节解、`hadBom=false`。顺带得到一个明确能力：**显式选「UTF-8」= 去掉 BOM**（选「UTF-8 BOM」相反，保存必然带 BOM）；
+2. **BOM 嗅探**（`EF BB BF` → UTF-8 BOM、`FF FE` → UTF-16 LE、`FE FF` → UTF-16 BE）：自动模式下 BOM 是文件自己写的声明，比任何猜测都可靠；
 3. **该文件上次记住的编码**（kv `fileEncodings`）：同一个文件反复打开保持一致；
 4. **严格 UTF-8 能过 → UTF-8**（`new TextDecoder('utf-8', { fatal: true })`）：UTF-8 是当代默认，「通过 fatal 校验」是很强的证据；
 5. **按系统语言兜底**：`app.getLocale()` → zh → GB18030、ja → Shift_JIS、ko → EUC-KR、ru → Windows-1251、其它 → Windows-1252；
 6. **最后兜底 UTF-8（有损）**：理论上到不了（1252 能解码任意字节），留作保险。
+
+UTF-16 在写回时**总是补 BOM**：没有 BOM 的 UTF-16 文件几乎无法被别的软件识别，所以哪怕用户是从无 BOM 的 UTF-8 切过来的，也给他补上（这是「选 UTF-16」这个动作的合理预期）。
 
 **为什么必须引 iconv-lite**：Node 的 `TextDecoder`（Electron 带完整 ICU）能解很多编码，但 **`TextEncoder` 只支持 UTF-8** —— 「按原编码写回」标准库做不到。所以 UTF-8 家族走 Node 内置，其余**解码与编码**都走 iconv-lite（纯 JS、无原生编译、极主流；本项目 mermaid → d3 → d3-dsv 本来就带着它）。本次把 `iconv-lite@0.6.3` 提升为**直接依赖**（package.json + lockfile 均已更新，`npm ls iconv-lite` 首行即它）。
 
@@ -1060,9 +1062,10 @@ commands     应用级命令表（composables/useKeymap.ts）：id / i18n 标题
 
 `stores/files.reopenWithEncoding()` 三个要点：脏文档先问（就地写 `ui.confirm`，**没有**引 `composables/useAppActions.confirmIfDirty`——那个模块反过来依赖本 store，会循环导入）；换进来时 **savedContent 一起更新 = 标记为干净**（语义是「重新解释磁盘字节」，磁盘没变，不该留成未保存态）；成功 toast（`toast.reopenedWithEncoding` 带 `{enc}`）。保存按当前编码 + `hadBom` 写回（`file:write(p, content, encoding, hadBom)`），UTF-8 BOM 文件存完 BOM 仍在。
 
-**验收**：`tools/_verify-encoding.js` **31/31**（隔离实例 + Node/iconv-lite 写出的真实夹具 + 真实指针点击）：
+**验收**：`tools/_verify-encoding.js` **34/34**（隔离实例 + Node/iconv-lite 写出的真实夹具 + 真实指针点击）：
 
 - **解码**：UTF-8 → `utf-8`；UTF-8 BOM → `utf-8-bom` 且 `hadBom=true`（正文不含 BOM 字符）；UTF-16LE(BOM) → `utf-16le`；GBK 正文与期望**逐字相等**（中文系统判定为 `gb18030`，GBK 超集，允许两者之一）；Shift_JIS / Windows-1251 用显式编码打开，正文与编码都对；三条自动检测（两种 UTF-8 + UTF-16LE）全判对。
+- **显式选择压过 BOM**（复核时补的 3 条）：带 BOM 的文件显式按 `windows-1252` 打开 → 正文确实变了（不再等于 UTF-8 文本）、`hadBom=false`（即菜单对 BOM 文件不再是「点了没反应」）；`reopenWithEncoding('utf-8')` → 正文干净（首字符码点 35 而非 `U+FEFF`）、`hadBom=false`、`dirty=false`，随后保存 → 文件头前三字节变成 `[35, 32, 228]`（BOM 被去掉）；断言后把夹具还原成带 BOM，供后面「保存保留 BOM」的用例继续验。
 - **重新打开**：`reopenWithEncoding('windows-1252')` 打开 GBK 文件 → 正文确实乱码（`# ÖÐÎÄ G…`）；再 `reopenWithEncoding('gbk')` → 正文恢复、`encoding='gbk'`、**`dirty === false`**。
 - **保存回写**：GBK 文件改内容保存 → 磁盘 80 字节、`iconv.decode(bytes,'gbk')` 与文本完全相等，且这些字节**不等于** UTF-8 编码（没偷偷写成 UTF-8）；UTF-8 BOM 文件保存后前三字节仍是 `EF BB BF`，其余等于新文本。
 - **设置生效**：同一串字节 `C4 E3 BA C3` 在两种编码下都合法 → 默认编码 `gbk` 解出「你好」、`windows-1252` 解出「ÄãºÃ」，两次不同且各自正确；**node:sqlite 直读隔离实例 DB** 断言 `settings.defaultEncoding === 'windows-1252'` 已落库，`fileEncodings` 记忆表 5 条。

@@ -81,8 +81,13 @@ export interface DecodeResult {
 /**
  * 解码一个文件缓冲区。**判定链的顺序就是优先级**，逐条说明为什么这样排：
  *
- *  1. **BOM 嗅探**：BOM 是文件自己写的声明，比任何猜测都可靠，所以压过一切（含调用方指定）；
- *  2. **调用方显式指定的具体编码**：用户在「选择编码重新打开」里明确点了某个编码，必须听他的；
+ *  1. **调用方显式指定的具体编码**：用户在「选择编码重新打开」里明确点了某个编码，就必须听他的
+ *     —— 这是那个菜单存在的意义。**BOM 也不能挡**：否则对带 BOM 的文件，菜单点了等于没反应
+ *     （看着像坏了）。BOM 仍然有用：如果它正好属于所选编码，就把它摘掉并把 `hadBom` 记下来，
+ *     写回时补回去；如果与所选编码不符（用户就是要强行换个解释），BOM 那几个字节就按普通字节解，
+ *     此时 `hadBom=false`。
+ *     顺带一个好处：显式选「UTF-8」正好是**去掉 BOM** 的办法（选 UTF-8 BOM 则相反，保存必然带 BOM）。
+ *  2. **BOM 嗅探**：自动模式下 BOM 是文件自己写的声明，比任何猜测都可靠；
  *  3. **该文件上次记住的编码**：同一个文件反复打开时保持一致（kv `fileEncodings`）；
  *  4. **严格 UTF-8 能过 → utf-8**：UTF-8 是当代默认，且「能通过 fatal 校验」是很强的证据；
  *  5. **按系统语言兜底**（zh → GB18030、ja → Shift_JIS、ko → EUC-KR、ru → Windows-1251、其它 → Windows-1252）；
@@ -93,19 +98,26 @@ export function decodeBuffer(
   requested: EncodingId = 'auto',
   remembered?: EncodingId | null
 ): DecodeResult {
-  // 1) BOM
   const bom = sniffBom(buf)
+
+  // 1) 显式指定：用户的选择优先于 BOM（但属于该编码的 BOM 要摘掉并记住）
+  if (requested !== 'auto') {
+    const keepBom = bom !== null && bomBelongsTo(requested, bom.id)
+    return {
+      text: decodeAs(keepBom ? buf.subarray(bom.length) : buf, requested),
+      encoding: requested,
+      // 「UTF-8」这一项按语义就是不带 BOM：选它等于顺手把 BOM 去掉
+      hadBom: keepBom && requested !== 'utf-8'
+    }
+  }
+
+  // 2) BOM
   if (bom) {
     const body = buf.subarray(bom.length)
     if (bom.id === 'utf-16le' || bom.id === 'utf-16be') {
       return { text: iconv.decode(body, iconvName(bom.id)), encoding: bom.id, hadBom: true }
     }
     return { text: new TextDecoder('utf-8').decode(body), encoding: 'utf-8-bom', hadBom: true }
-  }
-
-  // 2) 显式指定（auto 之外）
-  if (requested !== 'auto') {
-    return { text: decodeAs(buf, requested), encoding: requested, hadBom: false }
   }
 
   // 3) 上次记住的
@@ -126,6 +138,12 @@ export function decodeBuffer(
     // 6) 保险：utf-8 有损解码（不会抛）
     return { text: new TextDecoder('utf-8').decode(buf), encoding: 'utf-8', hadBom: false }
   }
+}
+
+/** 文件里那个 BOM 是不是「属于」所选的编码（决定要不要摘掉、写回时装不装） */
+function bomBelongsTo(requested: ConcreteEncoding, bom: ConcreteEncoding): boolean {
+  if (bom === 'utf-8-bom') return requested === 'utf-8' || requested === 'utf-8-bom'
+  return bom === requested
 }
 
 /** 用某个具体编码解码（UTF-8 家族走内置，其余走 iconv-lite） */
@@ -172,6 +190,8 @@ export function rememberEncoding(filePath: string, encoding: ConcreteEncoding): 
  * 按编码把文本编成字节，并按需补 BOM。
  * `utf-8-bom` 视作「utf-8 + 写 BOM」；`keepBom` 由调用方按文件的 hadBom 传进来，
  * 这样「原样写回」不会平白多出或少掉一个 BOM。
+ * UTF-16 **总是**写 BOM：没有 BOM 的 UTF-16 文件几乎无法被别的软件识别，所以哪怕用户是从
+ * 无 BOM 的 UTF-8 切过来的，也给它补上（这是「选 UTF-16」这个动作的合理预期）。
  */
 export function encodeText(text: string, encoding: ConcreteEncoding, keepBom: boolean): Buffer {
   const target: ConcreteEncoding = encoding === 'utf-8-bom' ? 'utf-8' : encoding
@@ -179,8 +199,9 @@ export function encodeText(text: string, encoding: ConcreteEncoding, keepBom: bo
     ? Buffer.from(text, 'utf-8')
     : iconv.encode(text, iconvName(target))
 
-  // utf-8-bom 这个「编码本身」就意味着要写 BOM；其余按 keepBom
-  const wantBom = encoding === 'utf-8-bom' || keepBom
+  const isUtf16 = target === 'utf-16le' || target === 'utf-16be'
+  // utf-8-bom 这个「编码本身」就意味着要写 BOM；其余按 keepBom（UTF-16 例外，见上）
+  const wantBom = encoding === 'utf-8-bom' || isUtf16 || keepBom
   const bomBytes = wantBom ? bomOf(target) ?? bomOf(encoding) : null
   if (!bomBytes) return body
 
