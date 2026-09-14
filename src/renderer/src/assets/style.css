@@ -18,6 +18,7 @@
   --accent-2: #8b5cf6;
   --accent-soft: rgba(99, 102, 241, 0.1);
   --accent-ink: #4338ca;
+  --toc-link: #2563eb;
   --danger: #dc2626;
   --warning: #d97706;
   --ok: #16a34a;
@@ -46,6 +47,7 @@
   --accent-2: #a78bfa;
   --accent-soft: rgba(129, 140, 248, 0.13);
   --accent-ink: #c7d2fe;
+  --toc-link: #60a5fa;
   --danger: #f87171;
   --warning: #fbbf24;
   --ok: #4ade80;
@@ -74,6 +76,7 @@
   --accent-2: #d97706;
   --accent-soft: rgba(180, 83, 9, 0.11);
   --accent-ink: #92400e;
+  --toc-link: #1d4ed8;
   --danger: #b91c1c;
   --warning: #b45309;
   --ok: #15803d;
@@ -1090,7 +1093,9 @@ h6.md-reveal > .md-heading-marker {
 }
 
 /* 目录（[TOC] 渲染结果）：对齐 Typora 的朴素嵌套列表——没有外框 / 底色 / 左侧色条，
-   只有按层级缩进的圆点与文字；点击条目平滑滚动到对应标题（见 stores/editor.jumpToHeading）。 */
+   只有按层级缩进的圆点与文字；点击条目平滑滚动到对应标题（见 stores/editor.jumpToHeading）。
+   条目默认是**蓝色**（--toc-link，三套主题各自调过对比度：浅色 blue-600 / 深色 blue-400 /
+   羊皮纸 blue-700——那边 --accent 是琥珀色，直接用 accent 就不是蓝的了）。 */
 .md-toc {
   margin: 0.9em 0;
 }
@@ -1101,7 +1106,7 @@ h6.md-reveal > .md-heading-marker {
   padding-left: calc(1.15em + var(--toc-depth, 0) * 1.15em);
   font-size: 1em;
   line-height: 1.75;
-  color: inherit;
+  color: var(--toc-link);
   text-decoration: none;
   border-bottom: none;
   cursor: pointer;
@@ -1125,11 +1130,13 @@ h6.md-reveal > .md-heading-marker {
   font-size: 0.9em;
 }
 
+/* 悬停时文字与圆点一起变色：把链接色往正文色混一点（浅色变深、深色变亮），
+   不额外加令牌，也不会从蓝跳到紫 */
 .md-toc .toc-item:hover {
-  color: var(--accent-2);
+  color: color-mix(in srgb, var(--toc-link) 78%, var(--ink));
 }
 .md-toc .toc-item:hover::before {
-  color: var(--accent-2);
+  color: color-mix(in srgb, var(--toc-link) 78%, var(--ink));
 }
 
 .md-toc .md-toc-empty {

@@ -882,7 +882,7 @@ commands     应用级命令表（composables/useKeymap.ts）：id / i18n 标题
 
 **验收**：`tools/_verify-sidebar-handle-style.js` **19/19**（隔离实例 + CDP 真实指针移动）：折叠后把手存在；**收起态整体在窗口外**（`left=-22 / right=0`）+ `opacity:0` + `pointer-events:none`；指针到 x=80 → 浮现且左边缘贴 0；**退到 x=150（迟滞带内）仍保持浮现**（不闪）；退到 x=260 → 收起；再次靠近 x=100 → 又浮现；过渡属性确认为 `transform, opacity, color, box-shadow` 且带 `cubic-bezier(.22,1,.36,1)`/`0.3s`；**位移落在 `transform` 上而 `translate` 长属性为 `none`**（即上一轮那个坑已修掉）；`will-change` 含 transform；圆角为 `0 12px 12px 0`；玻璃质感 + 投影；三主题下底色/字色各不相同（令牌驱动）；键盘聚焦浮现；点击后侧边栏展开且设置落库、把手卸载。回归：分段控件 16/16、工具栏去文件名 12/12、会话 16/16、去欢迎页 32 项通过；`npm run typecheck` 双工程 0 error。另存 `%TEMP%\lumin-handle-{light,dark,sepia}.png` 三张 3× 截图供观感确认。
 
-### 4.33 目录对齐 Typora（去掉左侧色条）+ 点击标题平滑滚动（本次）
+### 4.33 目录对齐 Typora（去掉左侧色条、默认蓝色）+ 点击标题平滑滚动（本次）
 
 **用户要求**：① 优化目录样式——**取消左侧颜色条**、做成 Typora 那样；② 点目录里的标题时界面要**滑过去**，而不是直接跳过去。
 
@@ -891,6 +891,7 @@ commands     应用级命令表（composables/useKeymap.ts）：id / i18n 标题
 - **去掉整套卡片化外观**：原先 `.md-toc` 有「目录」标题行 + 左侧色条 + 底色 + 外框 + 圆角，现在全删——目录就是一个普通块（`margin: .9em 0`），嵌在正文流里，与 Typora 的观感一致。
 - **改成按层级的圆点列表**：条目带 `--toc-depth`（`min(level, 4) - 1`，0..3），`padding-left: calc(1.15em + var(--toc-depth) * 1.15em)` 由层级算缩进；`::before` 的圆点按层换字符 **`•` / `◦` / `▪`**（第 3 级起 0.9em 略小），圆点定位在 `left: calc(var(--toc-depth) * 1.15em)`。字号 1em、行高 1.75 与正文同款，颜色继承正文、悬停转 `--accent-2`——**全走主题令牌**，三套主题自动跟随。
 - 只留一个内联变量（`--toc-depth`），缩进与圆点都在 CSS 里推导，DOM 里不再有装饰元素。
+- **默认字色改为蓝色**（同日追问）：新增主题令牌 `--toc-link`，条目 `color: var(--toc-link)`。**没有直接用 `--accent`**——浅色/深色主题的 accent 是靛紫（#6366f1 / #818cf8），到了一直走暖色的羊皮纸主题就变成琥珀（#b45309），用 accent 就「不是蓝的」。所以三套主题各自给一个蓝并校过对比度（按各自的 `--app` 底色算）：浅色 `#2563eb`（blue-600，在 #f5f6f8 上 ≈4.7:1）、深色 `#60a5fa`（blue-400，在 #0f1116 上 ≈7.5:1）、羊皮纸 `#1d4ed8`（blue-700，在 #f1e9d5 上 ≈5.5:1）——都过 AA（正文 4.5:1）。悬停时文字与圆点一起用 `color-mix(in srgb, var(--toc-link) 78%, var(--ink))`——浅色变深、深色变亮，不额外加令牌，也不会从蓝跳成紫（原来是 hover → `--accent-2`）。
 
 **平滑滚动改法**（新增 `src/renderer/src/lib/editor/smoothScroll.ts` + `stores/editor.ts` 的 `jumpToHeading`）：
 
@@ -901,11 +902,12 @@ commands     应用级命令表（composables/useKeymap.ts）：id / i18n 标题
 - **坑 1**：`scrollTo({ behavior })` 的显式取值**优先于** CSS 的 `scroll-behavior`——所以打字机模式下容器自带的 `smooth` 也能被我们强制瞬时复位，不会被 CSS 反噬。
 - **坑 2（实测抓到的「偶发瞬移」）**：Tiptap 的 `focus()` 默认 `scrollIntoView: true`，而它是在 **`requestAnimationFrame` 里**补一次 `scrollIntoView`（瞬时滚动）。若我们的平滑动画同步启动，那一帧的瞬时滚动会把动画打断 —— 表现为「多数时候滑、偶尔还是直接跳过去」。修法两步：`focus(null, { scrollIntoView: false })` 关掉它；并把平滑滚动排到下一帧执行（`document.hidden` 时直接瞬时，免得 rAF 不触发导致回到前台才莫名滚动）。
 
-**验收**：`tools/_verify-toc-style-scroll.js` **16/16**（隔离实例，样式与滚动全部按 DOM / 逐帧滚动位置实测）：
+**验收**：`tools/_verify-toc-style-scroll.js` **23/23**（隔离实例，样式与滚动全部按 DOM / 逐帧滚动位置实测）：
 
 - 样式：无色条（判据是 `border-left` **宽度 0**，不是 `style: none`——Tailwind preflight 给所有元素写了 `border-style: solid`）、条目无底色/外框/阴影/伪元素底色、无「目录」标题行、3 个条目圆点恰为 `•`/`◦`/`▪`、缩进 20/39/59px 单调递增、`font-size: 17px` / `line-height: 29.75px` / `cursor: pointer`。
 - 滚动：从文档底部（`scrollTop 2506`）点「一级标题 Alpha」→ 逐帧采样得到 **50 个不同值**（2506 → 2504 → 2497 → 2483 → … → 28），最终停在该标题上方 12px（`headingTop 40` / `finalTop 28`），光标落在该标题；**并额外断言「平滑调用之后不允许再出现任何滚动写入」**——这条就是坑 2 那个 bug 的回归护栏（探针实测只应有 `scrollTo{top:2506,behavior:'instant'}` 与 `scrollTo{top:28,behavior:'smooth'}` 两条，之后为空）。
 - `prefers-reduced-motion: reduce` 模拟下同一路径只采到 2 个值（瞬时）、落点相同；侧栏大纲点击同样平滑（证明是同一个动作）。
+- 颜色（**23 项**里的 6 项）：默认字色三套主题都是蓝且**等于令牌解析值**（用临时元素取 `var(--toc-link)` 的计算色，不把色值写死在套件里）、且 ≠ 正文墨色；用真实指针移上去验证悬停色仍是蓝且确实变深（`color-mix` 会算出浮点格式 `color(srgb …)`，套件里的解析两种格式都吃）；light/dark/sepia 轮换时逐主题断言 `rgb(37,99,235)` / `rgb(96,165,250)` / `rgb(29,78,216)`。
 - 截图：`%TEMP%\lumin-toc-{light,dark,sepia}.png`（3×）供人工看观感。
 - 回归：分段控件 16/16、工具栏去文件名 12/12、会话 16/16、去欢迎页 32 项通过（另 2 项为既有的隔离实例环境跳过）、旧目录用例 `_verify-toc.js` 的插入/点击/往返仍正常（3 个条目、点击后光标落在「二级标题B」、Markdown 仍往返成 `[TOC]`）；`npm run typecheck:web` 0 error。
 - 顺带修了验收脚手架在**全新配置目录**下的三处隐含假设（侧栏默认收起、标签页可能停在大纲、编辑器模式跨会话持久化），并给 `tools/*.ps1` 补了 UTF-8 BOM——PowerShell 5.1 会把「无 BOM 的 UTF-8」按 ANSI 解码，中文注释里的引号会把脚本整体解析搞崩。

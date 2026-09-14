@@ -309,10 +309,60 @@ const SCROLL_HOOK = `(() => {
       c('outline-click-also-smooth', false, 'SKIP: 侧栏大纲不可用')
     }
 
-    // 截图：目录区域（3 主题）
+    // ── F. 默认字色 = 蓝色（--toc-link 令牌），悬停仍是蓝的 ──
+    const colorProbe = `(() => {
+      const a = document.querySelector('.md-toc .toc-item')
+      const cs = getComputedStyle(a)
+      // 令牌实际解析出来的颜色：用一个临时元素取计算值，避免把色值写死在套件里
+      const probe = document.createElement('span')
+      probe.style.color = 'var(--toc-link)'
+      document.body.appendChild(probe)
+      const tokenColor = getComputedStyle(probe).color
+      probe.remove()
+      return JSON.stringify({
+        item: cs.color,
+        token: tokenColor,
+        ink: getComputedStyle(document.querySelector('.ProseMirror')).color,
+        theme: document.documentElement.className
+      })
+    })()`
+    // 颜色可能是 `rgb(37, 99, 235)`，也可能是 color-mix 出来的浮点格式 `color(srgb 0.14 0.33 0.76)`
+    const rgb = (s) => {
+      const m = String(s)
+      const nums = m.match(/-?\d*\.?\d+/g) || []
+      if (m.startsWith('color(')) return nums.slice(0, 3).map((v) => Math.round(Number(v) * 255))
+      return nums.slice(0, 3).map(Number)
+    }
+    const isBlue = (s) => {
+      const [r, g, b] = rgb(s)
+      return r !== undefined && b > r + 20 && b > g + 20
+    }
+    const col = JSON.parse(await w.ev(colorProbe))
+    console.log('COLOR ' + JSON.stringify(col))
+    c('default-color-is-blue', isBlue(col.item), JSON.stringify(col.item))
+    c('default-color-follows-token', col.item === col.token, JSON.stringify({ item: col.item, token: col.token }))
+    c('default-color-not-body-ink', col.item !== col.ink, JSON.stringify({ item: col.item, ink: col.ink }))
+    // 悬停：真实指针移上去（:hover 取不到计算值，只能用真事件）——先把目录滚进视口
+    await w.ev(`(() => { document.querySelector('.md-toc').scrollIntoView({ block: 'center' }); return 'ok' })()`)
+    await sleep(400)
+    const hoverRect = JSON.parse(
+      await w.ev(`(() => { const r = document.querySelector('.md-toc .toc-item').getBoundingClientRect(); return JSON.stringify({ x: Math.round(r.left + 30), y: Math.round(r.top + r.height / 2) }) })()`)
+    )
+    await w.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: hoverRect.x, y: hoverRect.y })
+    await sleep(250)
+    const hovered = await w.ev(`getComputedStyle(document.querySelector('.md-toc .toc-item')).color`)
+    await w.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: 4, y: 4 })
+    await sleep(200)
+    console.log('HOVER ' + JSON.stringify({ default: col.item, hover: hovered }))
+    c('hover-stays-blue-and-changes', isBlue(hovered) && hovered !== col.item, JSON.stringify({ default: col.item, hover: hovered }))
+
+    // 截图：目录区域（3 主题，顺便断言三套主题下默认字色都是蓝的）
     for (const th of ['light', 'dark', 'sepia']) {
       await w.ev(`(() => { window.__T.settings().set('theme', '${th}'); return 'ok' })()`)
       await sleep(1000)
+      const tc = JSON.parse(await w.ev(colorProbe))
+      console.log(`THEME-COLOR ${th} ` + JSON.stringify({ item: tc.item, token: tc.token, ink: tc.ink }))
+      c(`theme-${th}-toc-color-is-blue`, isBlue(tc.item) && tc.item === tc.token && tc.item !== tc.ink, JSON.stringify(tc))
       await w.ev(`(() => { const toc = document.querySelector('.md-toc'); toc.scrollIntoView({ block: 'center' }); return 'ok' })()`)
       await sleep(500)
       const rect = JSON.parse(await w.ev(`(() => { const r = document.querySelector('.md-toc').getBoundingClientRect(); return JSON.stringify({ x: Math.max(0, Math.round(r.left) - 16), y: Math.max(0, Math.round(r.top) - 16), width: Math.min(460, Math.round(r.width) + 32), height: Math.round(r.height) + 32 }) })()`))
