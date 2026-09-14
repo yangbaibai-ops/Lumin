@@ -852,6 +852,36 @@ commands     应用级命令表（composables/useKeymap.ts）：id / i18n 标题
 
 **说明**：原生「另存为」对话框无法在自动化里作答，因此上面用「改路径 → `save()` 写真实文件 → `syncWorkspaceToPath`」的等价序列验证，并静态核对 `saveAs` 的调用点；对话框本身与本功能无关。
 
+### 4.31 分段控件重做：滑动指示块（本次）
+
+**问题**：工具栏的「实时渲染 / 分屏 / 源码」原来是三个图标+文字按钮各自填充（激活项 `accent-soft` 底 + 强调色字），读起来像「三个小按钮」而不是一个控件；加上三段中文标签，横向也占地方。侧栏的「树 / 列表」是另一套写法，同一类交互两种长相。
+
+**做法**：抽出一个通用 `components/SegmentedControl.vue`，两处共用（工具栏 3 段、侧栏 2 段），采用当代主流的**滑动指示块（sliding thumb）**：
+
+- **一条中性轨道 + 一个随选中项平移的抬升色块**：轨道用 `--panel-2` + `--edge` 描边 + 极轻内阴影；指示块用 `--elevate` + 发丝描边 + 1px 投影——「浮起来」的三件套让它在浅色/深色/羊皮纸下都立得住。
+- **不需要测量 DOM**：指示块宽度 `calc((100% - 内外边距) / 段数)`、位移 `translateX(序号 × 100%)`（百分比相对**指示块自身**宽度），因此尺寸变化/字体变化都不会错位，也没有测量后的跳动。
+- **动效只走 transform**（`0.24s cubic-bezier(.4,0,.2,1)`，合成层），并遵循 `prefers-reduced-motion`。
+- **克制的强调色**：激活项文字转 `--ink`、图标用 `--accent` 点一下，而不是整块染色；未激活 `--ink-3`、悬停 `--ink-2`。
+- **工具栏只留图标**（文案在 `title`——悬停提示会带上 `Ctrl+/`——与 `aria-label` 上），控件宽度从约 180px 收到 108px，工具栏更透气；`role="tablist"/"tab"` + `aria-selected` 保持不变，两个控件的无障碍名称新增 i18n 词条（`editor.viewMode` / `sidebar.filesView`，三语言同步）。
+- 顺手删掉已无引用的 `.mode-seg` / `.mode-seg-btn` 死 CSS（38 行）。
+
+**验收**：`tools/_verify-segmented-control.js` **16/16**（隔离实例，几何与状态都按 DOM 实测）：两处控件段数正确（3 / 2）、每段只有 1 个图标且无可见文字、提示里带 `Ctrl+/`、`aria-selected` 与激活段一致、各段等宽；**指示块宽度 = 一段宽（±1px）且与激活段左边缘重合**；点击第 3 段 → 模式变 `source`、`aria-selected` 跟着走、**指示块位移正好两段宽**（21→89，段宽 34）；侧栏切到列表视图且指示块跟上；指示块带 transform 过渡与投影、底色 ≠ 轨道底色；light/dark/sepia 三主题下轨道与指示块颜色各不相同（令牌驱动）；工具栏无横向溢出（`scrollWidth - clientWidth = 0`）。回归：工具栏去文件名 12/12（按钮数仍 27）、去欢迎页 32 项通过（另 2 项为既有的隔离实例环境跳过）；`npm run typecheck` 双工程 0 error。另存了三张 3× 截图（浅色/深色/羊皮纸）到 `%TEMP%\lumin-seg-*.png` 供人工看观感。
+
+### 4.32 左缘展开把手重做（本次）
+
+**用户反馈的三点**：① 长得不好看；② 出现/消失「卡卡的」；③ 热区太小，鼠标要靠得很近才现身。
+
+**② 的根因（值得记一笔）**：把手原先是 Tailwind 工具类拼的——`-translate-x-1` / `translate-x-0` 在 **Tailwind v4 里写的是 `translate` 长属性**，而类上声明的过渡是 `transition-[opacity,transform,color]`：**被动画化的属性（transform）和实际承载位移的属性（translate）不是同一个**，于是位移根本不参与过渡，只有透明度在淡入淡出，看起来就是「啪地跳一下」。另外 `top-1/2 -translate-y-1/2` 把纵向居中混在同一个属性里，也让位移难以单独控制。
+
+**改法**：
+
+- **把位移交给 `transform`**：新增 `.sidebar-handle` 类（style.css），收起态 `translate3d(-100%, -50%, 0)`、浮现态 `translate3d(0, -50%, 0)`——**整体退到窗口之外**，不再只挪 4px（原来收起时还会露出一条边，视觉上像「没关干净」）。过渡显式写在 `transform` / `opacity` 上：`transform .3s cubic-bezier(.22,1,.36,1)`（带一点回弹的缓出，滑出更顺）+ `opacity .22s`，并加 `will-change: transform, opacity` 走合成层。
+- **③ 双阈值迟滞**：`EDGE_SHOW_PX = 120`（原来是 86，热区扩大约 40%）、`EDGE_HIDE_PX = 200`。指针进 120px 内浮现、退到 200px 外才收起，**中间 80px 是迟滞带**——单阈值时指针停在边界上会反复闪现，这是「忽有忽无」的另一个来源。
+- **① 外观**：22×56 的小药丸，只在右侧圆角（12px）贴住窗口边缘；`--elevate` 92% 半透明 + `backdrop-filter: blur(10px)`（与工具栏/状态栏同一套玻璃语言）+ `--shadow-2` 轻投影；默认 `--ink-3`，悬停/键盘聚焦时转 `--accent` 并加一圈 `--accent-soft` 光环，悬停再往外探 2px 提示可点；遵循 `prefers-reduced-motion`（此时只保留淡入淡出）。
+- 键盘 Tab 聚焦仍会浮现（原行为保留）、点击展开后把手卸载并落库（`sidebarVisible`）不变。
+
+**验收**：`tools/_verify-sidebar-handle-style.js` **19/19**（隔离实例 + CDP 真实指针移动）：折叠后把手存在；**收起态整体在窗口外**（`left=-22 / right=0`）+ `opacity:0` + `pointer-events:none`；指针到 x=80 → 浮现且左边缘贴 0；**退到 x=150（迟滞带内）仍保持浮现**（不闪）；退到 x=260 → 收起；再次靠近 x=100 → 又浮现；过渡属性确认为 `transform, opacity, color, box-shadow` 且带 `cubic-bezier(.22,1,.36,1)`/`0.3s`；**位移落在 `transform` 上而 `translate` 长属性为 `none`**（即上一轮那个坑已修掉）；`will-change` 含 transform；圆角为 `0 12px 12px 0`；玻璃质感 + 投影；三主题下底色/字色各不相同（令牌驱动）；键盘聚焦浮现；点击后侧边栏展开且设置落库、把手卸载。回归：分段控件 16/16、工具栏去文件名 12/12、会话 16/16、去欢迎页 32 项通过；`npm run typecheck` 双工程 0 error。另存 `%TEMP%\lumin-handle-{light,dark,sepia}.png` 三张 3× 截图供观感确认。
+
 ---
 
 ## 5. 分步实施计划（从零到一）

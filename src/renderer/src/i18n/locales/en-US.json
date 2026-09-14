@@ -59,6 +59,7 @@
     "emptyFolder": "Folder is empty",
     "emptyFolderHint": "Right-click to create a Markdown file",
     "openFolderBtn": "Open Folder",
+    "filesView": "File view",
     "viewTree": "Tree view",
     "viewList": "List view",
     "docsCount": "{n} articles",
@@ -116,6 +117,7 @@
     "delete": "Delete"
   },
   "editor": {
+    "viewMode": "View mode",
     "wysiwyg": "Live",
     "split": "Split",
     "source": "Source",

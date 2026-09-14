@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useSettingsStore } from '../stores/settings'
 import { useUiStore } from '../stores/ui'
@@ -7,6 +7,7 @@ import { useEditorStore } from '../stores/editor'
 import { useExport } from '../composables/useExport'
 import { useEditorMode } from '../composables/useEditorMode'
 import Icon from './Icon.vue'
+import SegmentedControl, { type SegmentItem } from './SegmentedControl.vue'
 import ToolbarTableButton from './ToolbarTableButton.vue'
 import ToolbarCodeBlockButton from './ToolbarCodeBlockButton.vue'
 import { shouldCloseOnScrollOrResize } from '../lib/popoverClose'
@@ -18,11 +19,28 @@ const settings = useSettingsStore()
 const editorStore = useEditorStore()
 const { runExport } = useExport()
 const { setMode } = useEditorMode()
-const modeOptions: { mode: 'wysiwyg' | 'source' | 'split'; icon: string; labelKey: string; titleKey: string }[] = [
-  { mode: 'wysiwyg', icon: 'eye', labelKey: 'editor.wysiwyg', titleKey: 'editor.wysiwyg' },
-  { mode: 'split', icon: 'columns', labelKey: 'editor.split', titleKey: 'editor.split' },
-  { mode: 'source', icon: 'source', labelKey: 'editor.source', titleKey: 'editor.source' }
-]
+
+/** 分段控件的段定义：文案走 i18n，提示里带上循环切换的快捷键（Ctrl+/） */
+const modeItems = computed<SegmentItem[]>(() =>
+  (
+    [
+      { id: 'wysiwyg', icon: 'eye', labelKey: 'editor.wysiwyg' },
+      { id: 'split', icon: 'columns', labelKey: 'editor.split' },
+      { id: 'source', icon: 'source', labelKey: 'editor.source' }
+    ] as const
+  ).map((m) => ({
+    id: m.id,
+    icon: m.icon,
+    label: t(m.labelKey),
+    title: `${t(m.labelKey)} (Ctrl+/)`
+  }))
+)
+
+/** v-model 桥接：写回时走 useEditorMode（它负责 mode → ui/editor 的联动），不直接改 ui */
+const editorModeValue = computed({
+  get: () => ui.editorMode,
+  set: (v: string) => setMode(v as 'wysiwyg' | 'source' | 'split')
+})
 
 const exportOpen = ref(false)
 const exportRef = ref<HTMLElement | null>(null)
@@ -273,22 +291,15 @@ const exportItems: { icon: string; labelKey: string; format: 'pdf' | 'html' | 'w
 
     <!-- 编辑器模式：实时渲染 / 分屏对比 / 源码。
          主控控件放左侧主功能区：右侧文档信息区在窄窗口会被
-         overflow-x-auto 裁掉，模式切换必须永远可见 -->
-    <div class="mode-seg" role="tablist" aria-label="编辑器模式">
-      <button
-        v-for="m in modeOptions"
-        :key="m.mode"
-        class="mode-seg-btn"
-        :class="{ active: ui.editorMode === m.mode }"
-        role="tab"
-        :aria-selected="ui.editorMode === m.mode"
-        :title="t(m.titleKey) + ' (Ctrl+/)'"
-        @click="setMode(m.mode)"
-      >
-        <Icon :name="m.icon" :size="13.5" />
-        <span>{{ t(m.labelKey) }}</span>
-      </button>
-    </div>
+         overflow-x-auto 裁掉，模式切换必须永远可见。
+         分段控件只显示图标（文案在 title/aria-label 上）+ 滑动指示块，比三个文字
+         按钮更简约；具体说明悬停即得，模式本身看指示块位置与图标配色。 -->
+    <SegmentedControl
+      v-model="editorModeValue"
+      :items="modeItems"
+      :group-label="t('editor.viewMode')"
+      class="mx-1"
+    />
 
     <div class="min-w-2 flex-1" />
 

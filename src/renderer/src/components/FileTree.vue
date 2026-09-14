@@ -9,6 +9,7 @@ import { openExternalFile } from '../lib/openFile'
 import TreeNode from './TreeNode.vue'
 import FileList from './FileList.vue'
 import Icon from './Icon.vue'
+import SegmentedControl, { type SegmentItem } from './SegmentedControl.vue'
 
 const { t } = useI18n()
 const files = useFilesStore()
@@ -16,6 +17,15 @@ const ui = useUiStore()
 const router = useRouter()
 const filter = ref('')
 
+/** 侧栏文件视图切换的段定义（与工具栏模式切换共用同一个分段控件） */
+const viewItems = computed<SegmentItem[]>(() => [
+  { id: 'tree', icon: 'chevron-right', label: t('sidebar.viewTree') },
+  { id: 'list', icon: 'list', label: t('sidebar.viewList') }
+])
+const filesViewValue = computed({
+  get: () => ui.sidebarFilesView,
+  set: (v: string) => (ui.sidebarFilesView = v as 'tree' | 'list')
+})
 const rootNodes = computed(() => files.dirCache[files.root ?? ''] ?? [])
 const filtered = computed(() => {
   if (!filter.value) return rootNodes.value
@@ -95,29 +105,14 @@ function onDrop(e: DragEvent): void {
             <Icon name="x" :size="12" />
           </button>
         </div>
-        <!-- 树 / 列表 切换（会话级偏好，非持久化） -->
-        <div class="flex flex-none rounded-lg border border-edge bg-panel p-0.5" role="tablist" aria-label="文件视图">
-          <button
-            class="flex h-6 w-7 items-center justify-center rounded-md transition-colors"
-            :class="ui.sidebarFilesView === 'tree' ? 'bg-accent-soft text-accent' : 'text-ink-3 hover:text-ink-2'"
-            :title="t('sidebar.viewTree')"
-            role="tab"
-            :aria-selected="ui.sidebarFilesView === 'tree'"
-            @click="ui.sidebarFilesView = 'tree'"
-          >
-            <Icon name="chevron-right" :size="14" />
-          </button>
-          <button
-            class="flex h-6 w-7 items-center justify-center rounded-md transition-colors"
-            :class="ui.sidebarFilesView === 'list' ? 'bg-accent-soft text-accent' : 'text-ink-3 hover:text-ink-2'"
-            :title="t('sidebar.viewList')"
-            role="tab"
-            :aria-selected="ui.sidebarFilesView === 'list'"
-            @click="ui.sidebarFilesView = 'list'"
-          >
-            <Icon name="list" :size="14" />
-          </button>
-        </div>
+        <!-- 树 / 列表 切换（会话级偏好，非持久化）：与工具栏模式切换同一个分段控件 -->
+        <SegmentedControl
+          v-model="filesViewValue"
+          :items="viewItems"
+          size="sm"
+          :group-label="t('sidebar.filesView')"
+          class="flex-none"
+        />
       </div>
     </div>
 

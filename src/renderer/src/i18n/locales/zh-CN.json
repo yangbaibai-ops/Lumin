@@ -59,6 +59,7 @@
     "emptyFolder": "文件夹为空",
     "emptyFolderHint": "右键新建 Markdown 文件",
     "openFolderBtn": "打开文件夹",
+    "filesView": "文件视图",
     "viewTree": "树视图",
     "viewList": "列表视图",
     "docsCount": "{n} 篇文章",
@@ -116,6 +117,7 @@
     "delete": "删除"
   },
   "editor": {
+    "viewMode": "视图模式",
     "wysiwyg": "实时渲染",
     "split": "分屏",
     "source": "源码",

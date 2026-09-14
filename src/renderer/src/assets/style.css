@@ -547,44 +547,6 @@
   }
 }
 
-/* ── 工具栏模式分段控件 ── */
-.mode-seg {
-  display: inline-flex;
-  align-items: center;
-  gap: 2px;
-  height: 30px;
-  padding: 2px;
-  border: 1px solid var(--edge);
-  border-radius: 9px;
-  background: var(--panel-2);
-  flex: none;
-}
-.mode-seg-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  height: 24px;
-  padding: 0 9px;
-  border-radius: 6px;
-  color: var(--ink-3);
-  font-size: 11.5px;
-  font-weight: 500;
-  white-space: nowrap;
-  transition:
-    background-color 0.15s ease,
-    color 0.15s ease;
-  cursor: pointer;
-  flex: none;
-}
-.mode-seg-btn:hover {
-  color: var(--ink-2);
-  background: var(--block-hover);
-}
-.mode-seg-btn.active {
-  background: var(--accent-soft);
-  color: var(--accent);
-}
-
 .input {
   width: 100%;
   border-radius: 8px;
@@ -1208,6 +1170,67 @@ h6.md-reveal > .md-heading-marker {
 }
 .sidebar-leave-active {
   overflow: hidden;
+}
+
+/* ─────────────────────── 左缘展开把手（侧边栏折叠时）─────────────────────── */
+/* 一条从窗口左缘「探出来」的小药丸：中性玻璃质感 + 悬停染色 + 轻投影。
+   位移与淡入都走 transform/opacity（合成层），并且**显式用 transform 属性**——
+   Tailwind v4 的 translate-* 工具类写的是 `translate` 长属性；若过渡只声明
+   `transform`，位移根本不会被动画化，表现就是「啪地跳出来」：这正是之前
+   「动效卡卡的」的根因。 */
+.sidebar-handle {
+  position: absolute;
+  left: 0;
+  top: 50%;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 56px;
+  border: 1px solid var(--edge);
+  border-left: 0;
+  border-radius: 0 12px 12px 0;
+  background: color-mix(in srgb, var(--elevate) 92%, transparent);
+  color: var(--ink-3);
+  backdrop-filter: blur(10px);
+  box-shadow: var(--shadow-2);
+  cursor: pointer;
+  /* 收起态：整体退到窗口之外（而非只挪几像素），不留「露出一条边」的脏像素 */
+  transform: translate3d(-100%, -50%, 0);
+  opacity: 0;
+  pointer-events: none;
+  will-change: transform, opacity;
+  transition:
+    transform 0.3s cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 0.22s ease,
+    color 0.15s ease,
+    box-shadow 0.22s ease;
+}
+.sidebar-handle.is-shown {
+  transform: translate3d(0, -50%, 0);
+  opacity: 1;
+  pointer-events: auto;
+}
+.sidebar-handle:hover {
+  color: var(--accent);
+  box-shadow:
+    var(--shadow-2),
+    0 0 0 3px var(--accent-soft);
+  /* 悬停时再往外探 2px，提示「可以点」 */
+  transform: translate3d(2px, -50%, 0);
+}
+.sidebar-handle:focus-visible {
+  outline: none;
+  color: var(--accent);
+  box-shadow:
+    var(--shadow-2),
+    0 0 0 3px var(--accent-soft);
+}
+@media (prefers-reduced-motion: reduce) {
+  .sidebar-handle {
+    transition: opacity 0.15s ease;
+  }
 }
 
 mark.lm-find-mark {

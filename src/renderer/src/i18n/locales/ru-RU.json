@@ -59,6 +59,7 @@
     "emptyFolder": "Папка пуста",
     "emptyFolderHint": "ПКМ для создания Markdown-файла",
     "openFolderBtn": "Открыть папку",
+    "filesView": "Вид файлов",
     "viewTree": "Дерево",
     "viewList": "Список",
     "docsCount": "Статей: {n}",
@@ -116,6 +117,7 @@
     "delete": "Удалить"
   },
   "editor": {
+    "viewMode": "Режим просмотра",
     "wysiwyg": "Живой",
     "split": "Раздельный",
     "source": "Исходный",

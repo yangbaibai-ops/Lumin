@@ -37,18 +37,25 @@ installGlobalTooltip()
 // 通知卡片上的按钮按 payload.kind 派发，需在启动时把业务处理器接上
 installLinkNotificationActions()
 
-/** 左侧边缘触发展开把手的横向阈值（px，可按手感调整） */
-const EDGE_TRIGGER_PX = 86
+/**
+ * 左缘展开把手的热区（px，可按手感调整）。
+ * 用**两个**阈值做迟滞（hysteresis）：进入 120px 内浮现，退到 200px 外才收起——
+ * 单阈值时指针停在边界上会反复闪现，是「忽有忽无」的根源。
+ */
+const EDGE_SHOW_PX = 120
+const EDGE_HIDE_PX = 200
 
 const edgeNear = ref(false)
 const handleFocused = ref(false)
-const handleShown = computed(() => edgeNear.value || handleFocused.value)
+/** 是否应该浮现把手（侧边栏已展开时永不显示） */
+const handleShown = computed(() => !ui.sidebarVisible && (edgeNear.value || handleFocused.value))
 
-/** 指针在应用内移动：靠近左缘则准备浮现把手，移到阈值外即收起。只在状态翻转时写 ref，
-    避免逐帧触发渲染。 */
+/** 指针在应用内移动：靠近左缘则浮现把手，退到迟滞阈值外才收起。
+    只在状态翻转时写 ref，避免逐帧触发渲染。 */
 function onAppPointerMove(e: PointerEvent): void {
-  const near = e.clientX <= EDGE_TRIGGER_PX
-  if (near !== edgeNear.value) edgeNear.value = near
+  const x = e.clientX
+  if (!edgeNear.value && x <= EDGE_SHOW_PX) edgeNear.value = true
+  else if (edgeNear.value && x > EDGE_HIDE_PX) edgeNear.value = false
 }
 
 /** 指针真正移出窗口时收起。只认 relatedTarget 为空的场景：窗口内元素之间的 enter/leave
@@ -87,25 +94,24 @@ onMounted(() => {
         <AppSidebar v-if="ui.sidebarVisible" />
       </Transition>
 
-      <!-- 侧边栏折叠时的左缘展开把手：指针进入窗口左缘阈值内（EDGE_TRIGGER_PX）即滑出，
+      <!-- 侧边栏折叠时的左缘展开把手：指针进入窗口左缘热区（EDGE_SHOW_PX）即滑出，
+           退到 EDGE_HIDE_PX 之外才收起（双阈值迟滞，避免边界处闪烁）。
            判定完全基于指针横坐标，不做命中测试，因此该区域不吃任何点击，正文的点击与
-           选词不受影响；隐藏时 pointer-events-none，键盘 Tab 聚焦时同样会浮现。 -->
+           选词不受影响；隐藏时 pointer-events-none，键盘 Tab 聚焦时同样会浮现。
+           动效与样式见 style.css 的 .sidebar-handle（位移走 transform 而非 Tailwind 的
+           translate 长属性，否则过渡根本作用不到位移上 → 看起来就是「跳一下」）。 -->
       <button
         v-if="!ui.sidebarVisible"
         type="button"
-        class="absolute left-0 top-1/2 z-20 flex h-12 w-[18px] -translate-y-1/2 items-center justify-center rounded-r-lg border border-l-0 border-edge bg-elevate text-ink-3 shadow-[var(--shadow-2)] transition-[opacity,transform,color] duration-150 hover:text-accent"
-        :class="
-          handleShown
-            ? 'pointer-events-auto translate-x-0 opacity-100'
-            : 'pointer-events-none -translate-x-1 opacity-0'
-        "
+        class="sidebar-handle"
+        :class="{ 'is-shown': handleShown }"
         :title="t('sidebar.expand')"
         :aria-label="t('sidebar.expand')"
         @click="expandSidebar"
         @focus="handleFocused = true"
         @blur="handleFocused = false"
       >
-        <Icon name="panel-left" :size="14" />
+        <Icon name="panel-left" :size="15" />
       </button>
 
       <main class="flex min-w-0 flex-1 flex-col">
