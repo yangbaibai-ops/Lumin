@@ -128,7 +128,11 @@ function onDrop(e: DragEvent): void {
     <!-- 树视图 -->
     <template v-else-if="files.root">
       <!-- 工作区树 -->
-      <div class="min-h-0 flex-1 overflow-y-auto px-2 pb-3" @contextmenu="onRootContextMenu">
+      <div
+        class="min-h-0 flex-1 overflow-y-auto px-2 pt-1 pb-3"
+        data-tree-scroll
+        @contextmenu="onRootContextMenu"
+      >
         <TransitionGroup name="list">
           <TreeNode
             v-for="node in filtered"

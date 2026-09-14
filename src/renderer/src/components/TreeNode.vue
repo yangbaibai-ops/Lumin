@@ -154,40 +154,43 @@ function onDragStart(e: DragEvent): void {
 
 <template>
   <div>
+    <!-- 一行的解剖：16px 的箭头槽（文件行留空以对齐）→ 15px 类型图标 → 文件名。
+         缩进由 --tree-depth 在 CSS 里算（8 + depth * 16），行高固定 27px 让整棵树等距。 -->
     <div
-      class="group flex cursor-pointer select-none items-center gap-1.5 rounded-lg py-[3.5px] pr-2 text-[13px] transition-colors duration-100"
-      :class="
-        isCurrent
-          ? 'bg-accent-soft text-accent'
-          : 'text-ink-2 hover:bg-panel-2 hover:text-ink'
-      "
-      :style="{ paddingLeft: `${6 + depth * 14}px` }"
+      class="tree-row"
+      :class="{ 'is-current': isCurrent }"
+      data-tree-row
+      :data-depth="depth"
+      :data-tree-type="node.type"
+      :style="{ '--tree-depth': depth }"
       :draggable="!renaming"
       @click="onToggle"
       @contextmenu="onContextMenu"
       @dragstart="onDragStart"
     >
-      <span class="flex h-4 w-4 flex-none items-center justify-center">
+      <span class="tree-chevron-slot">
         <Icon
           v-if="node.type === 'directory'"
           name="chevron-right"
-          :size="13"
-          class="text-ink-3 transition-transform duration-200"
-          :class="isOpen ? 'rotate-90' : ''"
+          :size="12"
+          class="tree-chevron"
+          :class="{ 'is-open': isOpen }"
+          data-tree-chevron
         />
       </span>
       <Icon
         v-if="node.type === 'directory'"
         :name="isOpen ? 'folderOpen' : 'folder'"
         :size="15"
-        class="text-[color-mix(in_srgb,var(--warning)_70%,var(--ink-3))]"
+        class="tree-icon"
+        data-tree-icon
       />
-      <Icon v-else name="file" :size="15" class="text-ink-3" :class="isCurrent ? 'text-accent' : ''" />
+      <Icon v-else name="file" :size="15" class="tree-icon" data-tree-icon />
       <input
         v-if="renaming"
         ref="renameInputRef"
         v-model="renameDraft"
-        class="min-w-0 flex-1 rounded border border-accent bg-panel px-1 py-0.5 text-[13px] text-ink outline-none"
+        class="tree-rename-input"
         spellcheck="false"
         @click.stop
         @mousedown.stop
@@ -196,12 +199,17 @@ function onDragStart(e: DragEvent): void {
         @keydown.esc.stop="cancelRename"
         @blur="commitRename"
       />
-      <span v-else class="min-w-0 flex-1 truncate">{{ node.name }}</span>
+      <span v-else class="tree-label">{{ node.name }}</span>
     </div>
 
-    <Transition name="list">
-      <div v-if="node.type === 'directory' && isOpen">
-        <div v-if="!children.length" class="py-0.5 pl-7 text-[11.5px] text-ink-3" :style="{ paddingLeft: `${34 + depth * 14}px` }">
+    <!-- 子层级用轻量过渡（透明度 + 2px 位移，不带缩放），展开/收起不抢注意力 -->
+    <Transition name="tree">
+      <div
+        v-if="node.type === 'directory' && isOpen"
+        data-tree-children
+        :style="{ '--tree-depth': depth }"
+      >
+        <div v-if="!children.length" class="tree-empty-hint" data-tree-empty-folder>
           {{ t('sidebar.emptyFolder') }}
         </div>
         <TreeNode

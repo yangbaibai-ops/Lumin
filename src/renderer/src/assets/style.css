@@ -1144,6 +1144,120 @@ h6.md-reveal > .md-heading-marker {
   color: var(--ink-3);
 }
 
+/* ─── 侧栏文件树 ───────────────────────────────────────────────────────────────
+   设计取向：简约大气、不喧哗。三个决定：
+   1) 图标全部单色（--ink-3）——文件夹原来用 warning 混色出「琥珀色文件夹」，颜色语义
+      既不对（warning 是警示色）也花，改回中性色后靠字形（folder / file）区分类型；
+   2) 缩进走固定 16px 网格（8 + depth * 16），行高固定 27px、圆角 6px，整棵树等距好扫读；
+   3) 只保留三种状态：默认 ink-2 / 悬停 panel-2 + ink / 当前 accent-soft + accent（加 500 字重），
+      不做左侧色条、不做连线、不做渐变。
+   另外：箭头旋转必须用 transform（Tailwind v4 的 rotate-90 写的是 rotate 长属性，
+   配 transition-transform 不会动——这个坑侧栏把手那里踩过一次）。 */
+.tree-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 27px;
+  padding-right: 8px;
+  padding-left: calc(8px + var(--tree-depth, 0) * 16px);
+  border-radius: 6px;
+  font-size: 13px;
+  line-height: 1;
+  color: var(--ink-2);
+  cursor: pointer;
+  user-select: none;
+  transition:
+    background-color 0.12s ease,
+    color 0.12s ease;
+}
+.tree-row:hover {
+  background: var(--panel-2);
+  color: var(--ink);
+}
+.tree-row.is-current {
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-weight: 500;
+}
+/* 当前项也要有悬停反馈，但只比选中态略强一点，不换色系 */
+.tree-row.is-current:hover {
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+}
+
+.tree-chevron-slot {
+  display: flex;
+  width: 16px;
+  height: 16px;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+}
+.tree-chevron {
+  color: var(--ink-3);
+  transition:
+    transform 0.18s cubic-bezier(0.4, 0, 0.2, 1),
+    color 0.12s ease;
+}
+.tree-chevron.is-open {
+  transform: rotate(90deg);
+}
+.tree-row:hover .tree-chevron {
+  color: var(--ink-2);
+}
+
+.tree-icon {
+  flex: none;
+  color: var(--ink-3);
+  transition: color 0.12s ease;
+}
+.tree-row.is-current .tree-icon {
+  color: var(--accent);
+}
+
+.tree-label {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* 就地重命名：贴着行高的小输入框，不撑开行 */
+.tree-rename-input {
+  min-width: 0;
+  flex: 1;
+  height: 19px;
+  padding: 0 4px;
+  border: 1px solid var(--accent);
+  border-radius: 4px;
+  background: var(--panel);
+  color: var(--ink);
+  font-size: 13px;
+  outline: none;
+}
+
+/* 空文件夹提示：左边缘对齐同级子项的**文字**（8 + (depth+1)*16 + 16 + 6 + 15 + 6 = 67 + depth*16） */
+.tree-empty-hint {
+  padding-top: 2px;
+  padding-bottom: 2px;
+  padding-left: calc(67px + var(--tree-depth, 0) * 16px);
+  font-size: 12px;
+  color: var(--ink-3);
+}
+
+/* 展开/收起：轻量淡入 + 2px 下沉，不带缩放（列表用的 .list-* 带 scale，观感更重） */
+.tree-enter-active,
+.tree-leave-active {
+  transition:
+    opacity 0.14s ease,
+    transform 0.14s ease;
+}
+.tree-enter-from,
+.tree-leave-to {
+  opacity: 0;
+  transform: translateY(-2px);
+}
+
 /* mermaid 容器 */
 .md-mermaid {
   display: flex;

@@ -912,6 +912,27 @@ commands     应用级命令表（composables/useKeymap.ts）：id / i18n 标题
 - 回归：分段控件 16/16、工具栏去文件名 12/12、会话 16/16、去欢迎页 32 项通过（另 2 项为既有的隔离实例环境跳过）、旧目录用例 `_verify-toc.js` 的插入/点击/往返仍正常（3 个条目、点击后光标落在「二级标题B」、Markdown 仍往返成 `[TOC]`）；`npm run typecheck:web` 0 error。
 - 顺带修了验收脚手架在**全新配置目录**下的三处隐含假设（侧栏默认收起、标签页可能停在大纲、编辑器模式跨会话持久化），并给 `tools/*.ps1` 补了 UTF-8 BOM——PowerShell 5.1 会把「无 BOM 的 UTF-8」按 ANSI 解码，中文注释里的引号会把脚本整体解析搞崩。
 
+### 4.34 侧栏文件树重做：单色图标 + 16px 网格 + 三种状态（本次）
+
+**用户要求**：重新设计左侧侧栏文件树的样式，**不要太花里胡哨，简约大气**，符合项目与「大厂」审美。
+
+**三条设计决定**（都为了「安静」）：
+
+1. **图标全部单色**：文件夹原来是 `color-mix(--warning 70%, --ink-3)` 的琥珀色——颜色语义不对（`--warning` 是警示色），视觉上也花。现在类型图标统一 `--ink-3`，靠字形区分（`folder` / `folderOpen` / `file`），选中时才整体转 `--accent`。
+2. **固定 16px 缩进网格 + 等距行**：行高锁 27px、圆角 6px、字号 13px，缩进 `padding-left: calc(8px + depth * 16px)`（原来的 14px 步进偏挤）。层级靠间距表达，**不画连线、不做色条**。
+3. **只有三种状态**：默认 `--ink-2` / 悬停 `--panel-2` + `--ink` / 当前项 `--accent-soft` + `--accent` + 500 字重（悬停当前项时底色只是同色系加深到 16%，不换色系）。展开箭头 12px，收起不变换、展开 `rotate(90deg)`，过渡 0.18s。
+
+**实现**：行/箭头/图标/空目录提示/重命名输入框全部收敛到 `style.css` 的「侧栏文件树」CSS 块（`.tree-row` / `.tree-chevron` / `.tree-icon` / `.tree-label` / `.tree-empty-hint` / `.tree-rename-input`），`TreeNode.vue` 模板只留结构（十几行 Tailwind 工具类去掉，缩进由 `--tree-depth` 在 CSS 里算）；展开/收起从全局 `.list-*`（带 `scale(0.98)`、250ms）换成专用的 `.tree-*` 过渡（0.14s、`opacity` + `translateY(-2px)`，不带缩放）。同时补了几个测试钩子（`data-tree-row` / `data-tree-scroll` / `data-tree-children` / `data-tree-chevron` / `data-tree-icon` / `data-tree-empty-folder`）。
+
+**顺手修掉两个真 bug**（都是「看着像样式、其实是缺陷」）：
+
+- **选中文件时图标不变色**：原来 `class="text-ink-3" :class="isCurrent ? 'text-accent' : ''"` —— 两个 `text-*` 工具类同时存在、特异性相同，生成的 CSS 里 `text-ink-3` 在后面，把 `text-accent` 压掉了，于是选中行的文字是强调色、图标还是灰的。改成父状态选择器 `.tree-row.is-current .tree-icon` 后必然生效。
+- **箭头旋转其实没有动画**：`class="transition-transform"` + `:class="isOpen ? 'rotate-90' : ''"` —— Tailwind v4 的 `rotate-90` 写的是 **`rotate` 长属性**，而过渡声明的属性是 `transform`，两者不是一个属性，所以旋转是「啪」地跳（和 §4.32 侧栏把手踩的是同一个坑）。现在用 `.tree-chevron.is-open { transform: rotate(90deg) }` + `transition: transform 0.18s`。
+
+**验收**：`tools/_verify-sidebar-tree-style.js` **24/24**（隔离实例 + 夹具工作区三层嵌套/空目录/未展开目录，全部按 DOM 实测）：行高全为 27px、圆角 6px、字号 13px；**缩进步进 16px**（图标槽与文字各测一次，行盒子整宽不变是设计如此）；类型图标同色且等于 `--ink-3` 令牌、尺寸 15px；默认文字 = `--ink-2`；悬停（真实指针）底色 = `--panel-2`、文字 = `--ink`；选中底色 = `--accent-soft`、文字与图标 = `--accent`、字重 500；选中项悬停是同色系加深（alpha 0.16 > 0.10）；未展开目录箭头 `transform: none`、展开目录为 `matrix(0,1,-1,0,0,0)`（正好 90°），且过渡确实挂在 `transform` 上；空目录提示文字与同级子项文字左对齐（75 = 75px）；`.tree-*` 过渡为 `opacity, transform 0.14s`（无 scale），收起后子节点在 180ms 内从 DOM 消失；三套主题下选中底色都来自各自令牌。另存 `%TEMP%\lumin-tree-{light,dark,sepia}.png` 三张截图供人工看观感。
+
+**回归**：分段控件 16/16、工具栏去文件名 12/12、会话 16/16、去欢迎页 32 项通过（另 2 项为既有的隔离实例环境跳过）；`npm run typecheck:web` 0 error，改动文件 eslint 0 error。
+
 ---
 
 ## 5. 分步实施计划（从零到一）
