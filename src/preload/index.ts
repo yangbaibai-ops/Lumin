@@ -51,8 +51,10 @@ const api: LuminAPI = {
     sessionSlot
   },
   file: {
-    read: (path) => ipcRenderer.invoke('file:read', path),
-    write: (path, content) => ipcRenderer.invoke('file:write', path, content),
+    read: (path, encoding) => ipcRenderer.invoke('file:read', path, encoding),
+    write: (path, content, encoding, hadBom) =>
+      ipcRenderer.invoke('file:write', path, content, encoding, hadBom),
+    rememberEncoding: (path, encoding) => ipcRenderer.invoke('file:rememberEncoding', path, encoding),
     readDir: (dir) => ipcRenderer.invoke('file:readDir', dir),
     scanWorkspace: (root) => ipcRenderer.invoke('file:scanWorkspace', root),
     createFile: (path) => ipcRenderer.invoke('file:createFile', path),

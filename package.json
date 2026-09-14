@@ -42,6 +42,7 @@
     "@tiptap/vue-3": "^3.31.0",
     "electron-store": "^8.2.0",
     "electron-updater": "^6.3.9",
+    "iconv-lite": "^0.6.3",
     "katex": "^0.18.5",
     "mermaid": "^11.17.2",
     "pinia": "^4.0.3",

@@ -10,6 +10,7 @@ import { useSettingsStore } from '../stores/settings'
 import { useFilesStore } from '../stores/files'
 import { useUiStore } from '../stores/ui'
 import { FONT_OPTIONS } from '../../../shared/defaults'
+import { ENCODINGS, type EncodingId } from '../../../shared/encodings'
 import { LANGUAGE_OPTIONS } from '../i18n'
 import type { EditorMode, LinkCreateMode, LinkHistoryEntry, ThemeMode } from '../../../shared/types'
 import Icon from '../components/Icon.vue'
@@ -278,7 +279,7 @@ function formatTime(ms: number): string {
                         </div>
                       </section>
 
-                      <section class="surface p-5">
+                      <section class="surface mb-4 p-5">
                         <div class="flex items-center justify-between gap-4">
                           <div>
                             <p class="text-[13.5px] text-ink">{{ t('settings.restoreSession') }}</p>
@@ -291,6 +292,24 @@ function formatTime(ms: number): string {
                             @click="settings.set('restoreSession', !settings.restoreSession)"
                           />
                         </div>
+                      </section>
+
+                      <!-- 编码：默认编码 + 一行说明（临时切换走「文件 → 选择编码重新打开」） -->
+                      <section class="surface p-5">
+                        <h3 class="mb-3 text-[13px] font-semibold text-ink">{{ t('settings.encoding') }}</h3>
+                        <div class="flex items-center justify-between gap-4">
+                          <p class="text-[12.5px] text-ink-2">{{ t('settings.defaultEncoding') }}</p>
+                          <select
+                            class="input select min-w-[190px]"
+                            :value="settings.defaultEncoding"
+                            :aria-label="t('settings.defaultEncoding')"
+                            @change="settings.set('defaultEncoding', ($event.target as HTMLSelectElement).value as EncodingId)"
+                          >
+                            <option value="auto">{{ t('encoding.auto') }}</option>
+                            <option v-for="e in ENCODINGS" :key="e.id" :value="e.id">{{ e.label }}</option>
+                          </select>
+                        </div>
+                        <p class="mt-2 text-[12px] leading-relaxed text-ink-3">{{ t('settings.encodingHint') }}</p>
                       </section>
 
                       <section class="surface p-5">

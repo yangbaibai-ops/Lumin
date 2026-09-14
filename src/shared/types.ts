@@ -3,6 +3,8 @@
 export type ThemeMode = 'light' | 'dark' | 'sepia' | 'auto'
 export type EffectiveTheme = 'light' | 'dark' | 'sepia'
 export type EditorMode = 'wysiwyg' | 'source' | 'split'
+import type { ConcreteEncoding, EncodingId } from './encodings'
+export type { ConcreteEncoding, EncodingId }
 export type Language = 'zh-CN' | 'en-US' | 'ru-RU'
 
 export interface ExportSettings {
@@ -30,6 +32,8 @@ export interface AppSettings {
   linkCreateMode: LinkCreateMode
   /** 启动时恢复上次会话（文档 + 光标 + 滚动位置）；关闭则每次启动都进欢迎页 */
   restoreSession: boolean
+  /** 打开文件时的默认编码（'auto' = 自动检测；见 shared/encodings 与 main/services/encoding） */
+  defaultEncoding: EncodingId
   recentFiles: RecentFile[]
   /** 最近打开过的文件夹（工作区） */
   recentFolders: RecentFolder[]
@@ -246,6 +250,10 @@ export interface OpenedFile {
   name: string
   content: string
   mtimeMs: number
+  /** 实际用于解码的编码（一定不是 'auto'） */
+  encoding: ConcreteEncoding
+  /** 文件原本是否带 BOM（写回时保持一致） */
+  hadBom: boolean
 }
 
 export interface DraftInfo {
@@ -358,8 +366,15 @@ export interface LuminAPI {
     sessionSlot: number | null
   }
   file: {
-    read: (path: string) => Promise<OpenedFile>
-    write: (path: string, content: string) => Promise<void>
+    read: (path: string, encoding?: EncodingId) => Promise<OpenedFile>
+    write: (
+      path: string,
+      content: string,
+      encoding?: ConcreteEncoding,
+      hadBom?: boolean
+    ) => Promise<void>
+    /** 记住某文件的编码（「选择编码重新打开」用；落 kv，LRU 200 条） */
+    rememberEncoding: (path: string, encoding: ConcreteEncoding) => Promise<void>
     readDir: (dir: string) => Promise<FileNode[]>
     /** 递归扫描工作区根目录，返回全部 Markdown 文章（含 mtime 与正文预览） */
     scanWorkspace: (root: string) => Promise<WorkspaceDoc[]>

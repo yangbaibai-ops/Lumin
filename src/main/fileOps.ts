@@ -3,7 +3,9 @@ import fs from 'fs/promises'
 import path from 'path'
 import { pathToFileURL } from 'url'
 import { db } from './services/database'
+import { decodeBuffer, encodeText } from './services/encoding'
 import type { FileNode, WorkspaceDoc } from '../shared/types'
+import type { ConcreteEncoding, EncodingId } from '../shared/encodings'
 
 export const MD_EXT_RE = /\.(md|markdown|mdown|mkd|txt)$/i
 
@@ -29,12 +31,19 @@ export function assertWorkspacePath(p: string): string {
   return resolved
 }
 
-export async function readFileInfo(filePath: string): Promise<{ content: string; mtimeMs: number }> {
+/**
+ * 读文件（**原始字节**，不做任何编码假设）。
+ * 编码判定放在 services/encoding（判定链 + 每文件记忆），这里只负责把字节交出去。
+ */
+export async function readFileInfo(
+  filePath: string,
+  requested: EncodingId = 'auto',
+  remembered?: EncodingId | null
+): Promise<{ content: string; mtimeMs: number; encoding: ConcreteEncoding; hadBom: boolean }> {
   const stat = await fs.stat(filePath)
-  const raw = await fs.readFile(filePath, 'utf-8')
-  // 剥离 UTF-8 BOM，避免影响 Markdown 解析
-  const content = raw.replace(/^\uFEFF/, '')
-  return { content, mtimeMs: stat.mtimeMs }
+  const raw = await fs.readFile(filePath)
+  const { text, encoding, hadBom } = decodeBuffer(raw, requested, remembered)
+  return { content: text, mtimeMs: stat.mtimeMs, encoding, hadBom }
 }
 
 export async function readDir(dir: string): Promise<FileNode[]> {
@@ -139,9 +148,18 @@ export async function scanWorkspace(root: string): Promise<WorkspaceDoc[]> {
   return docs
 }
 
-export async function writeFile(filePath: string, content: string): Promise<void> {
+/**
+ * 写文件：按指定编码编成字节再落盘（默认 UTF-8，保持旧行为）。
+ * `hadBom` 为真时补回文件原有的 BOM——「原样写回」不该平白少一个 BOM。
+ */
+export async function writeFile(
+  filePath: string,
+  content: string,
+  encoding: ConcreteEncoding = 'utf-8',
+  hadBom = false
+): Promise<void> {
   await fs.mkdir(path.dirname(filePath), { recursive: true })
-  await fs.writeFile(filePath, content, 'utf-8')
+  await fs.writeFile(filePath, encodeText(content, encoding, hadBom))
 }
 
 /** 生成不冲突的文件名：base.md → base-1.md */

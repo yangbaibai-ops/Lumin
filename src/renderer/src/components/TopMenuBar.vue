@@ -13,6 +13,7 @@ import { useExport } from '../composables/useExport'
 import { useEditorMode } from '../composables/useEditorMode'
 import { confirmIfDirty } from '../composables/useAppActions'
 import { openExternalFile, openInWindowOrFocus } from '../lib/openFile'
+import { ENCODINGS } from '../../../shared/encodings'
 import RecentList from './RecentList.vue'
 import Icon from './Icon.vue'
 
@@ -31,6 +32,8 @@ type Leaf = {
   label?: string
   icon?: string
   danger?: boolean
+  /** 当前项（如「选择编码重新打开」里当前生效的那个编码）：右侧打勾并高亮 */
+  active?: boolean
   run: () => void | Promise<void>
 }
 /** 二级菜单项：悬停展开右侧浮层（最近文档 / 最近文件夹 / 自定义内容） */
@@ -89,9 +92,37 @@ function openRecentFolder(path: string): void {
   window.luminAPI.app.openFolderInNewWindow(path)
 }
 
+/**
+ * 「选择编码重新打开」的二级项：自动检测 + 全部编码。
+ * 当前生效的那个编码打勾（`active`）——文档的 encoding 一定是具体编码，
+ * 所以「自动检测」这一项本身不打勾，它只是「回到自动判定」的动作。
+ */
+function reopenEncodingItems(): (Leaf | 'sep')[] {
+  const cur = files.current
+  const items: (Leaf | 'sep')[] = [
+    {
+      labelKey: 'encoding.auto',
+      icon: 'refresh',
+      run: async () => {
+        await files.reopenWithEncoding('auto')
+      }
+    },
+    'sep'
+  ]
+  for (const e of ENCODINGS) {
+    items.push({
+      label: e.label,
+      active: cur?.encoding === e.id,
+      run: async () => {
+        await files.reopenWithEncoding(e.id)
+      }
+    })
+  }
+  return items
+}
+
 /** 菜单结构用 computed：文件菜单里的「最近文档/最近文件夹」需要随使用记录实时更新 */
-const GROUPS = computed<Group[]>(() => [
-  {
+const GROUPS = computed<Group[]>(() => [  {
     key: 'f',
     labelKey: 'menu.file',
     items: [
@@ -152,6 +183,12 @@ const GROUPS = computed<Group[]>(() => [
           { labelKey: 'menu.exportWord', icon: 'file', run: () => runExport('word') },
           { labelKey: 'menu.exportEpub', icon: 'book', run: () => runExport('epub') }
         ]
+      },
+      // 一级「选择编码重新打开」+ 悬停二级：按指定编码重读当前文档（当前生效的那个打勾）
+      {
+        labelKey: 'menu.reopenWithEncoding',
+        icon: 'globe',
+        children: reopenEncodingItems()
       }
     ]
   },
@@ -452,7 +489,8 @@ onBeforeUnmount(() => {
             dense
             @select="openRecentFolder"
           />
-          <!-- children 列表（如「导出」下的四种格式）：与一级菜单项同样的行样式 -->
+          <!-- children 列表（如「导出」下的四种格式、「选择编码重新打开」下的编码表）：
+               与一级菜单项同样的行样式；active 的项右侧打勾 -->
           <template v-else-if="subOpen.children">
             <template v-for="(child, ci) in subOpen.children" :key="ci">
               <div v-if="child === 'sep'" class="my-1 h-px bg-edge" />
@@ -460,8 +498,13 @@ onBeforeUnmount(() => {
                 v-else
                 class="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-left text-[12.5px] transition-colors duration-100"
                 :class="
-                  child.danger ? 'text-danger hover:bg-danger/10' : 'text-ink hover:bg-panel-2'
+                  child.danger
+                    ? 'text-danger hover:bg-danger/10'
+                    : child.active
+                      ? 'bg-accent-soft text-accent'
+                      : 'text-ink hover:bg-panel-2'
                 "
+                :data-encoding-item="child.label ?? child.labelKey ?? ''"
                 @click="runLeaf(child)"
               >
                 <span class="flex h-4 w-4 items-center justify-center text-ink-3">
@@ -470,6 +513,7 @@ onBeforeUnmount(() => {
                 <span class="min-w-0 flex-1 truncate">{{
                   child.label ?? t(child.labelKey ?? '')
                 }}</span>
+                <Icon v-if="child.active" name="check" :size="13" class="flex-none" />
               </button>
             </template>
           </template>

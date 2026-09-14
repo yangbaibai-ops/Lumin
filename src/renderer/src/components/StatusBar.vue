@@ -5,6 +5,7 @@ import { useFilesStore } from '../stores/files'
 import { useSettingsStore } from '../stores/settings'
 import { useUiStore } from '../stores/ui'
 import { LANGUAGE_OPTIONS, nextLanguage } from '../i18n'
+import { encodingOf } from '../../../shared/encodings'
 import Icon from './Icon.vue'
 import type { ThemeMode } from '../../../shared/types'
 
@@ -16,6 +17,12 @@ const ui = useUiStore()
 const langShort = computed(
   () => LANGUAGE_OPTIONS.find((o) => o.value === settings.language)?.short ?? 'EN'
 )
+
+/** 当前文档的编码名（专有名，不走 i18n；文档本身没打开时整块不渲染） */
+const currentEncodingLabel = computed(() => {
+  const id = files.current?.encoding
+  return id ? encodingOf(id)?.label ?? String(id) : ''
+})
 
 const themeOpen = ref(false)
 const themeRef = ref<HTMLElement | null>(null)
@@ -160,6 +167,17 @@ const themes: { mode: ThemeMode; icon: string; labelKey: string }[] = [
     </template>
 
     <div class="flex-1" />
+
+    <!-- 当前文档编码（次要信息：夹在统计与主题切换之间，只读展示 + tooltip） -->
+    <span
+      v-if="files.current"
+      class="flex items-center gap-1 tabular-nums"
+      :title="t('statusbar.encodingTooltip')"
+      data-status-encoding
+    >
+      <Icon name="globe" :size="12" />
+      <span>{{ currentEncodingLabel }}</span>
+    </span>
 
     <!-- 右侧：主题 / 语言 -->
     <div ref="themeRef" class="relative flex items-center">

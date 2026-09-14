@@ -18,6 +18,8 @@ import * as session from './services/session'
 import * as openDocs from './services/openDocs'
 import * as taskbar from './services/taskbar'
 import { scopeOfSender } from './services/windowScope'
+import { getRememberedEncoding, rememberEncoding } from './services/encoding'
+import type { ConcreteEncoding, EncodingId } from '../shared/encodings'
 import { db } from './services/database'
 import { defaultSettings } from '../shared/defaults'
 import type {
@@ -120,20 +122,36 @@ export function registerIpc(): void {
   })
 
   // ── 文件 ──
-  ipcMain.handle('file:read', async (_, p: string) => {
+  /**
+   * 读文件：`encoding` 省略/为 'auto' 时走 services/encoding 的判定链（含每文件记忆）。
+   * 判定结果如果是**非 UTF-8**（或用户显式指定过），就把这个文件的编码记下来，
+   * 下次自动打开时直接用——不然「上次手选的 GBK」每次都要再选一遍。
+   */
+  ipcMain.handle('file:read', async (_, p: string, encoding: EncodingId = 'auto') => {
     const fp = path.resolve(p)
-    const { content, mtimeMs } = await fileOps.readFileInfo(fp)
+    const remembered = encoding === 'auto' ? getRememberedEncoding(fp) : null
+    const { content, mtimeMs, encoding: used, hadBom } = await fileOps.readFileInfo(fp, encoding, remembered)
+    if (encoding !== 'auto' || (used !== 'utf-8' && used !== 'utf-8-bom')) {
+      rememberEncoding(fp, used)
+    }
     const name = path.basename(fp)
     // 打开即建立/刷新数据库索引（元数据 + 全文）
     db.upsertDocument({ path: fp, title: name, content })
     db.touchOpened(fp, name)
-    return { path: fp, name, content, mtimeMs }
+    return { path: fp, name, content, mtimeMs, encoding: used, hadBom }
   })
-  ipcMain.handle('file:write', async (_, p: string, content: string) => {
-    const fp = path.resolve(p)
-    await fileOps.writeFile(fp, content)
-    // 保存时同步元数据 + 全文索引
-    db.upsertDocument({ path: fp, title: path.basename(fp), content })
+  ipcMain.handle(
+    'file:write',
+    async (_, p: string, content: string, encoding: ConcreteEncoding = 'utf-8', hadBom = false) => {
+      const fp = path.resolve(p)
+      await fileOps.writeFile(fp, content, encoding, hadBom)
+      // 保存时同步元数据 + 全文索引
+      db.upsertDocument({ path: fp, title: path.basename(fp), content })
+    }
+  )
+  /** 「选择编码重新打开」用：把用户显式选的编码记进每文件记忆表 */
+  ipcMain.handle('file:rememberEncoding', (_, p: string, encoding: ConcreteEncoding) => {
+    rememberEncoding(path.resolve(p), encoding)
   })
   ipcMain.handle('file:readDir', (_, dir: string) => fileOps.readDir(fileOps.assertWorkspacePath(dir)))
   ipcMain.handle('file:scanWorkspace', (_, dir: string) =>

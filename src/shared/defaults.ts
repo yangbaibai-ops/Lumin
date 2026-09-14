@@ -34,6 +34,8 @@ export const defaultSettings: AppSettings = {
   codeLineNumbers: true,
   linkCreateMode: 'ask',
   restoreSession: true,
+  /** 打开文件时的默认编码：auto = 走判定链（BOM → 每文件记忆 → 严格 UTF-8 → 系统语言兜底） */
+  defaultEncoding: 'auto',
   recentFiles: [],
   recentFolders: [],
   pinnedFiles: [],

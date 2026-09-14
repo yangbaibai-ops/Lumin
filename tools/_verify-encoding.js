@@ -1,0 +1,685 @@
+// 验收：文件编码（判定链 / 每文件记忆 / 重新打开 / 按编码保存 / 设置与菜单入口）
+//
+// 覆盖：
+//  A. 解码：UTF-8、UTF-8 BOM、UTF-16LE(BOM)、GBK、Shift_JIS、Windows-1251
+//  B. 重新打开：先用 windows-1252 打开 GBK 文件（乱码）→ reopenWithEncoding('gbk') 恢复且文档干净
+//  C. 保存回写：GBK 文件保存后字节仍是 GBK；UTF-8 BOM 文件保存后 BOM 还在
+//  D. 设置生效：同一串字节（C4 E3 BA C3）在 gbk / windows-1252 下解出不同文本；设置确实落库
+//  E. 菜单：一级「选择编码重新打开」+ 二级全编码列表 + 当前编码被标记 + 真实点击切换
+//  F. i18n：三个语言文件里 key 齐全；切到 en-US 菜单标题跟着变
+//  G. 状态栏显示当前编码
+//
+// 用法：先跑 tools/_isolated-instance.ps1（可加 -NoDevServer；本套件不 import /src/...，两种都行）
+const fs = require('fs')
+const os = require('os')
+const path = require('path')
+const http = require('http')
+const iconv = require('iconv-lite')
+
+const PORT = 9222
+const REPO = path.resolve(__dirname, '..')
+const USER_DATA =
+  process.env.LUMIN_ISOLATED_USERDATA || path.join(os.tmpdir(), 'lumin-keymap-userdata')
+const DB_PATH = process.env.LUMIN_DB || path.join(USER_DATA, 'lumin.db')
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
+
+// ─── 夹具文本（各语言都放一点，确保不是 ASCII 蒙对）──────────────────────────
+const T_UTF8 = '# 你好，UTF-8\n\n正文 content 一行。\n'
+const T_GBK = '# 中文 GBK 测试\n\n这是 GBK 编码的正文，含标点：你好，世界。\n'
+const T_UTF16 = '# UTF-16LE 文本\n\n这段是 UTF-16LE（带 BOM）保存的。\n'
+const T_SJIS = '# 日本語テスト\n\nこれは Shift_JIS の本文です。\n'
+const T_1251 = '# Русский тест\n\nЭто текст в кодировке Windows-1251.\n'
+/** 同一串字节：GBK 解出「你好」，Windows-1252 解出「ÃãºÃ」 */
+const AMBIG_BYTES = Buffer.from([0xc4, 0xe3, 0xba, 0xc3])
+const AMBIG_GBK = '你好'
+const AMBIG_1252 = 'ÄãºÃ'
+
+function get(p) {
+  return new Promise((res, rej) => {
+    http
+      .get({ host: '127.0.0.1', port: PORT, path: p }, (r) => {
+        let d = ''
+        r.on('data', (c) => (d += c))
+        r.on('end', () => res(JSON.parse(d)))
+      })
+      .on('error', rej)
+  })
+}
+
+function connect(url, timeoutMs = 6000) {
+  let id = 0
+  const pending = new Map()
+  const ws = new WebSocket(url)
+  const ready = new Promise((res, rej) => {
+    const t = setTimeout(() => rej(new Error('connect timeout')), timeoutMs)
+    ws.onopen = () => {
+      clearTimeout(t)
+      res()
+    }
+    ws.onerror = (e) => {
+      clearTimeout(t)
+      rej(e instanceof Error ? e : new Error('ws error'))
+    }
+  })
+  ws.onmessage = (e) => {
+    const m = JSON.parse(e.data)
+    if (m.id && pending.has(m.id)) {
+      pending.get(m.id)(m)
+      pending.delete(m.id)
+    }
+  }
+  const send = (method, params, timeoutMs2 = 20000) =>
+    new Promise((res) => {
+      const i = ++id
+      const t = setTimeout(() => {
+        pending.delete(i)
+        res({ timedOut: true })
+      }, timeoutMs2)
+      pending.set(i, (m) => {
+        clearTimeout(t)
+        res(m)
+      })
+      ws.send(JSON.stringify({ id: i, method, params }))
+    })
+  const ev = async (expr) => {
+    const r = await send('Runtime.evaluate', {
+      expression: expr,
+      returnByValue: true,
+      awaitPromise: true
+    })
+    if (r.timedOut) throw new Error('evaluate timeout')
+    if (r.result?.exceptionDetails)
+      throw new Error(
+        'EXC ' + String(r.result.exceptionDetails.exception?.description || '').slice(0, 200)
+      )
+    return r.result?.result?.value
+  }
+  return { ws, ready, send, ev }
+}
+
+/** 页面里的桥：pinia 用鸭子类型找（生产构建里 Symbol(pinia) 没有描述） */
+const SETUP = `(() => {
+  const app = document.querySelector('#app')?.__vue_app__
+  if (!app) return 'no-app'
+  const prov = app._context.provides
+  const sym = Object.getOwnPropertySymbols(prov).find((s) => String(s) === 'Symbol(pinia)')
+  const pinia = (sym ? prov[sym] : null) ?? Object.getOwnPropertySymbols(prov).map((s) => prov[s]).find((v) => v && typeof v === 'object' && v._s instanceof Map)
+  if (!pinia) return 'no-pinia'
+  window.__E = {
+    files: () => pinia._s.get('files'),
+    settings: () => pinia._s.get('settings'),
+    ui: () => pinia._s.get('ui')
+  }
+  return 'ok'
+})()`
+
+;(async () => {
+  const results = []
+  const c = (n, cond, extra) =>
+    results.push((cond ? 'PASS' : 'FAIL') + ' ' + n + (extra ? ' | ' + extra : ''))
+
+  const pages = (await get('/json/list')).filter((t) => t.type === 'page')
+  if (!pages.length) {
+    console.log('SKIP: 没有可用窗口（先跑 tools/_isolated-instance.ps1）')
+    process.exit(2)
+  }
+  const w = connect(pages[0].webSocketDebuggerUrl)
+  await w.ready
+  await w.send('Page.enable')
+  await w.send('Page.bringToFront')
+  for (let i = 0; i < 80; i++) {
+    await sleep(250)
+    if (
+      (await w.ev(SETUP)) === 'ok' &&
+      (await w.ev(`window.__E.ui().booting ? 'booting' : 'ready'`)) === 'ready'
+    )
+      break
+  }
+  if ((await w.ev(SETUP)) !== 'ok') throw new Error('pinia bridge not available')
+
+  // ── 夹具：直接用 Node 按各编码写盘 ──
+  const dir = path.join(os.tmpdir(), 'lumin-encoding-ws')
+  fs.rmSync(dir, { recursive: true, force: true })
+  fs.mkdirSync(dir, { recursive: true })
+  const F = {
+    utf8: path.join(dir, 'plain-utf8.md'),
+    utf8bom: path.join(dir, 'bom-utf8.md'),
+    gbk: path.join(dir, 'gbk.md'),
+    utf16: path.join(dir, 'utf16le.md'),
+    sjis: path.join(dir, 'sjis.md'),
+    win1251: path.join(dir, 'win1251.md'),
+    ambig: path.join(dir, 'ambiguous.md')
+  }
+  fs.writeFileSync(F.utf8, Buffer.from(T_UTF8, 'utf-8'))
+  fs.writeFileSync(
+    F.utf8bom,
+    Buffer.concat([Buffer.from([0xef, 0xbb, 0xbf]), Buffer.from(T_UTF8, 'utf-8')])
+  )
+  fs.writeFileSync(F.gbk, iconv.encode(T_GBK, 'gbk'))
+  fs.writeFileSync(
+    F.utf16,
+    Buffer.concat([Buffer.from([0xff, 0xfe]), iconv.encode(T_UTF16, 'utf16le')])
+  )
+  fs.writeFileSync(F.sjis, iconv.encode(T_SJIS, 'shift_jis'))
+  fs.writeFileSync(F.win1251, iconv.encode(T_1251, 'windows-1251'))
+  fs.writeFileSync(F.ambig, AMBIG_BYTES)
+
+  try {
+    // 工作区设到夹具目录（侧栏树/编码无关，但 openPath 走文件 API，不需要工作区）
+    await w.ev(
+      `(async () => { await window.__E.files().openUntitled(); await window.__E.files().setRoot(${JSON.stringify(dir)}); return 'ok' })()`
+    )
+    await sleep(900)
+
+    /** 打开文件并把编码一起读出来 */
+    const open = async (p) => {
+      const ok = await w.ev(
+        `(async () => await window.__E.files().openPath(${JSON.stringify(p)}))()`
+      )
+      await sleep(500)
+      const info = JSON.parse(
+        await w.ev(
+          `(() => { const cur = window.__E.files().current; return JSON.stringify(cur ? { content: cur.content, encoding: cur.encoding, hadBom: cur.hadBom } : null) })()`
+        )
+      )
+      return { ok, ...(info ?? {}) }
+    }
+    /** 指定编码直接读（走 file:read 的显式分支） */
+    const readAs = async (p, enc) =>
+      JSON.parse(
+        await w.ev(
+          `(async () => { const r = await window.luminAPI.file.read(${JSON.stringify(p)}, ${JSON.stringify(enc)}); return JSON.stringify({ content: r.content, encoding: r.encoding, hadBom: r.hadBom }) })()`
+        )
+      )
+
+    // ── A. 解码 ──
+    const a1 = await open(F.utf8)
+    console.log(
+      'A-utf8 ' + JSON.stringify({ enc: a1.encoding, hadBom: a1.hadBom, ok: a1.content === T_UTF8 })
+    )
+    c(
+      'auto-utf8-plain',
+      a1.content === T_UTF8 && a1.encoding === 'utf-8',
+      JSON.stringify({ enc: a1.encoding })
+    )
+
+    const a2 = await open(F.utf8bom)
+    console.log(
+      'A-utf8bom ' +
+        JSON.stringify({ enc: a2.encoding, hadBom: a2.hadBom, ok: a2.content === T_UTF8 })
+    )
+    c(
+      'auto-utf8-bom',
+      a2.content === T_UTF8 && a2.encoding === 'utf-8-bom' && a2.hadBom === true,
+      JSON.stringify({ enc: a2.encoding, hadBom: a2.hadBom })
+    )
+
+    const a3 = await open(F.utf16)
+    console.log(
+      'A-utf16le ' +
+        JSON.stringify({ enc: a3.encoding, hadBom: a3.hadBom, ok: a3.content === T_UTF16 })
+    )
+    c(
+      'auto-utf16le-bom',
+      a3.content === T_UTF16 && a3.encoding === 'utf-16le' && a3.hadBom === true,
+      JSON.stringify({ enc: a3.encoding })
+    )
+
+    // GBK：中文系统下允许自动判成 gb18030（GBK 的超集），但正文必须正确
+    const a4 = await open(F.gbk)
+    console.log('A-gbk ' + JSON.stringify({ enc: a4.encoding, ok: a4.content === T_GBK }))
+    c(
+      'auto-gbk-text-correct',
+      a4.content === T_GBK,
+      JSON.stringify({ enc: a4.encoding, got: a4.content.slice(0, 12) })
+    )
+    c(
+      'auto-gbk-encoding-superset-ok',
+      a4.encoding === 'gbk' || a4.encoding === 'gb18030',
+      String(a4.encoding)
+    )
+
+    // Shift_JIS / Windows-1251：没有 BOM 也不是合法 UTF-8 时，自动判定不可能猜准（见报告），
+    // 所以这里用显式编码打开 —— 这正是「选择编码重新打开」存在的意义
+    const a5 = await readAs(F.sjis, 'shift_jis')
+    console.log('A-sjis ' + JSON.stringify({ enc: a5.encoding, ok: a5.content === T_SJIS }))
+    c(
+      'explicit-shift_jis',
+      a5.content === T_SJIS && a5.encoding === 'shift_jis',
+      JSON.stringify({ enc: a5.encoding })
+    )
+    const a6 = await readAs(F.win1251, 'windows-1251')
+    console.log('A-win1251 ' + JSON.stringify({ enc: a6.encoding, ok: a6.content === T_1251 }))
+    c(
+      'explicit-windows-1251',
+      a6.content === T_1251 && a6.encoding === 'windows-1251',
+      JSON.stringify({ enc: a6.encoding })
+    )
+
+    // ── B. 重新打开（乱码 → 正确，且文档保持干净）──
+    const b1 = await open(F.gbk) // 先自动打开（正确）
+    const b2 = await readAs(F.gbk, 'windows-1252') // 显式按 1252 解 → 乱码
+    await w.ev(
+      `(async () => { await window.__E.files().openPath(${JSON.stringify(F.gbk)}); return 'ok' })()`
+    )
+    await sleep(400)
+    // 让它按 1252 重新打开（模拟用户点错编码）
+    await w.ev(
+      `(async () => { await window.__E.files().reopenWithEncoding('windows-1252'); return 'ok' })()`
+    )
+    await sleep(600)
+    const garbled = JSON.parse(
+      await w.ev(
+        `(() => { const cur = window.__E.files().current; return JSON.stringify({ content: cur.content, encoding: cur.encoding, dirty: window.__E.files().dirty }) })()`
+      )
+    )
+    console.log(
+      'B-garbled ' +
+        JSON.stringify({
+          enc: garbled.encoding,
+          isGarbage: garbled.content !== T_GBK,
+          head: garbled.content.slice(0, 8)
+        })
+    )
+    c(
+      'reopen-wrong-encoding-looks-garbled',
+      garbled.content !== T_GBK && garbled.encoding === 'windows-1252',
+      JSON.stringify({ enc: garbled.encoding })
+    )
+
+    const fixed = await w.ev(`(async () => await window.__E.files().reopenWithEncoding('gbk'))()`)
+    await sleep(600)
+    const after = JSON.parse(
+      await w.ev(
+        `(() => { const cur = window.__E.files().current; return JSON.stringify({ content: cur.content, encoding: cur.encoding, dirty: window.__E.files().dirty, saved: cur.savedContent === cur.content }) })()`
+      )
+    )
+    console.log(
+      'B-fixed ' +
+        JSON.stringify({
+          returned: fixed,
+          enc: after.encoding,
+          ok: after.content === T_GBK,
+          dirty: after.dirty
+        })
+    )
+    c(
+      'reopen-with-gbk-restores-text',
+      after.content === T_GBK && after.encoding === 'gbk',
+      JSON.stringify({ enc: after.encoding })
+    )
+    c(
+      'reopen-leaves-document-clean',
+      after.dirty === false && after.saved === true,
+      JSON.stringify({ dirty: after.dirty, saved: after.saved })
+    )
+
+    // ── C. 保存回写 ──
+    const newGbkText = T_GBK + '\n追加一行 new line。\n'
+    await w.ev(
+      `(async () => { const f = window.__E.files(); f.current.content = ${JSON.stringify(newGbkText)}; const ok = await f.save(); return ok })()`
+    )
+    await sleep(900)
+    const gbkBytes = fs.readFileSync(F.gbk)
+    const gbkRound = iconv.decode(gbkBytes, 'gbk')
+    console.log(
+      'C-gbk-save ' +
+        JSON.stringify({
+          bytes: gbkBytes.length,
+          roundTrip: gbkRound === newGbkText,
+          isUtf8: gbkBytes.equals(Buffer.from(newGbkText, 'utf-8'))
+        })
+    )
+    c(
+      'save-keeps-gbk-bytes',
+      gbkRound === newGbkText && !gbkBytes.equals(Buffer.from(newGbkText, 'utf-8')),
+      JSON.stringify({ bytes: gbkBytes.length })
+    )
+    c('save-gbk-roundtrip-equal', iconv.decode(gbkBytes, 'gbk') === newGbkText, 'ok')
+
+    // UTF-8 BOM：改一下再存，BOM 必须还在
+    const newBomText = T_UTF8 + '\n再补一行。\n'
+    await w.ev(
+      `(async () => { await window.__E.files().openPath(${JSON.stringify(F.utf8bom)}); return 'ok' })()`
+    )
+    await sleep(500)
+    await w.ev(
+      `(async () => { const f = window.__E.files(); f.current.content = ${JSON.stringify(newBomText)}; const ok = await f.save(); return ok })()`
+    )
+    await sleep(900)
+    const bomBytes = fs.readFileSync(F.utf8bom)
+    const hasBom = bomBytes[0] === 0xef && bomBytes[1] === 0xbb && bomBytes[2] === 0xbf
+    console.log(
+      'C-bom-save ' +
+        JSON.stringify({ hasBom, textOk: bomBytes.subarray(3).toString('utf-8') === newBomText })
+    )
+    c(
+      'save-keeps-utf8-bom',
+      hasBom && bomBytes.subarray(3).toString('utf-8') === newBomText,
+      JSON.stringify({ hasBom })
+    )
+
+    // ── D. 设置生效：同一串字节在两种编码下解出不同文本 ──
+    await w.ev(`(() => { window.__E.settings().set('defaultEncoding', 'gbk'); return 'ok' })()`)
+    await sleep(700)
+    const d1 = await open(F.ambig)
+    console.log('D-gbk ' + JSON.stringify({ enc: d1.encoding, content: d1.content }))
+    c(
+      'default-encoding-gbk-applies',
+      d1.content === AMBIG_GBK && d1.encoding === 'gbk',
+      JSON.stringify({ content: d1.content })
+    )
+
+    await w.ev(
+      `(() => { window.__E.settings().set('defaultEncoding', 'windows-1252'); return 'ok' })()`
+    )
+    await sleep(700)
+    const d2 = await open(F.ambig)
+    console.log('D-1252 ' + JSON.stringify({ enc: d2.encoding, content: d2.content }))
+    c(
+      'default-encoding-1252-applies',
+      d2.content === AMBIG_1252 && d2.encoding === 'windows-1252' && d2.content !== d1.content,
+      JSON.stringify({ content: d2.content })
+    )
+
+    // 设置与每文件记忆都要真的落库（node:sqlite 直读隔离实例的 DB）
+    const { DatabaseSync } = require('node:sqlite')
+    const db = new DatabaseSync(DB_PATH, { readOnly: true })
+    const kv = (k) => {
+      const row = db.prepare('SELECT value FROM kv WHERE key = ?').get(k)
+      return row ? row.value : null
+    }
+    const stored = JSON.parse(kv('settings') ?? '{}')
+    const memory = JSON.parse(kv('fileEncodings') ?? '{}')
+    db.close()
+    console.log(
+      'D-db ' +
+        JSON.stringify({
+          defaultEncoding: stored.defaultEncoding,
+          memoryKeys: Object.keys(memory).length
+        })
+    )
+    c(
+      'setting-persisted-in-sqlite',
+      stored.defaultEncoding === 'windows-1252',
+      String(stored.defaultEncoding)
+    )
+    c(
+      'per-file-memory-recorded',
+      Object.keys(memory).some((k) => k.toLowerCase().endsWith('ambiguous.md')) ||
+        Object.keys(memory).some((k) => k.toLowerCase().endsWith('gbk.md')),
+      JSON.stringify(Object.keys(memory).slice(0, 6))
+    )
+
+    // ── E. 菜单结构 + 真实点击 ──
+    // 回到 auto，并打开 GBK 文件（后面验证「当前编码被标记」用它）
+    await w.ev(`(() => { window.__E.settings().set('defaultEncoding', 'auto'); return 'ok' })()`)
+    await sleep(600)
+    await w.ev(
+      `(async () => { await window.__E.files().reopenWithEncoding('gbk'); return 'ok' })()`
+    )
+    await sleep(600)
+
+    const menuProbe = `(() => {
+      const btns = [...document.querySelectorAll('button')]
+      const fileBtn = btns.find((b) => /文件\\(F\\)|File\\(F\\)/.test(b.textContent || ''))
+      if (!fileBtn) return JSON.stringify({ err: 'no-file-button' })
+      let inst = fileBtn.__vueParentComponent
+      let groups = null
+      for (let i = 0; inst && i < 8 && !groups; i++) {
+        if (inst.setupState?.GROUPS) groups = inst.setupState.GROUPS
+        inst = inst.parent
+      }
+      if (!groups) return JSON.stringify({ err: 'GROUPS not reachable' })
+      const g = (groups.value ?? groups).find((x) => x.key === 'f')
+      const sub = g.items.find((it) => it && it.labelKey === 'menu.reopenWithEncoding')
+      if (!sub) return JSON.stringify({ err: 'no-encoding-submenu', labels: g.items.map((i) => (i && (i.labelKey || i.label)) || i) })
+      const kids = sub.children.filter((k) => k !== 'sep')
+      return JSON.stringify({
+        ok: true,
+        count: kids.length,
+        labels: kids.map((k) => k.label || k.labelKey),
+        active: kids.filter((k) => k.active).map((k) => k.label || k.labelKey)
+      })
+    })()`
+    const menu = JSON.parse(await w.ev(menuProbe))
+    console.log('E-menu ' + JSON.stringify(menu))
+    // 注意：`<script setup>` 的绑定只在**开发构建**里挂到 setupState 上（Vue 生产构建不暴露），
+    // 所以 setupState 拿不到时退回 DOM 证据（下面 E-submenu 那组行就是同一件事的实测）。
+    if (menu.ok === true) {
+      c('menu-has-reopen-with-encoding', true, 'via setupState')
+      c('menu-lists-all-encodings', menu.count === 14, JSON.stringify({ count: menu.count }))
+      c(
+        'menu-marks-current-encoding',
+        menu.active?.length === 1 && menu.active[0] === 'GBK',
+        JSON.stringify(menu.active)
+      )
+    } else {
+      c(
+        'menu-has-reopen-with-encoding',
+        false,
+        'SKIP setupState: ' + JSON.stringify(menu) + '（改用 DOM 断言，见下方 dom-* 项）'
+      )
+      c('menu-lists-all-encodings', false, 'SKIP setupState')
+      c('menu-marks-current-encoding', false, 'SKIP setupState')
+    }
+
+    // 真实打开菜单 → 悬停二级 → 点一个编码
+    const rectOf = async (selector) =>
+      JSON.parse(
+        await w.ev(
+          `(() => { const el = document.querySelector(${JSON.stringify(selector)}); if (!el) return 'null'; const r = el.getBoundingClientRect(); return JSON.stringify({ x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2) }) })()`
+        )
+      )
+    const fileBtnRect = JSON.parse(
+      await w.ev(
+        `(() => { const b = [...document.querySelectorAll('button')].find((x) => /文件\\(F\\)|File\\(F\\)/.test(x.textContent || '')); const r = b.getBoundingClientRect(); return JSON.stringify({ x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2) }) })()`
+      )
+    )
+    await w.send('Input.dispatchMouseEvent', {
+      type: 'mouseMoved',
+      x: fileBtnRect.x,
+      y: fileBtnRect.y
+    })
+    await w.send('Input.dispatchMouseEvent', {
+      type: 'mousePressed',
+      x: fileBtnRect.x,
+      y: fileBtnRect.y,
+      button: 'left',
+      clickCount: 1
+    })
+    await w.send('Input.dispatchMouseEvent', {
+      type: 'mouseReleased',
+      x: fileBtnRect.x,
+      y: fileBtnRect.y,
+      button: 'left',
+      clickCount: 1
+    })
+    await sleep(500)
+    // 一级行：按 data 找不到，就用「导出」同款结构里的文本找
+    const openSub = await w.ev(`(() => {
+      const rows = [...document.querySelectorAll('.topmenu-drop button')]
+      const row = rows.find((b) => /选择编码重新打开|Reopen with Encoding/.test(b.textContent || ''))
+      if (!row) return 'no-row'
+      const r = row.getBoundingClientRect()
+      return JSON.stringify({ x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2) })
+    })()`)
+    let subItems = []
+    if (openSub !== 'no-row') {
+      const r = JSON.parse(openSub)
+      await w.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: r.x, y: r.y })
+      await sleep(600)
+      subItems = JSON.parse(
+        await w.ev(
+          `(() => { const sub = document.querySelector('.topmenu-sub'); if (!sub) return 'null'; return JSON.stringify([...sub.querySelectorAll('button')].map((b) => ({ text: (b.textContent || '').trim(), active: b.className.includes('bg-accent-soft'), hasCheck: !!b.querySelector('svg') }))) })()`
+        )
+      )
+    }
+    console.log('E-submenu ' + JSON.stringify(subItems))
+    const domRows = Array.isArray(subItems) ? subItems.length : 0
+    const domActive = Array.isArray(subItems)
+      ? subItems.filter((x) => x.active).map((x) => x.text)
+      : []
+    // DOM 侧断言：与 setupState 那三条问的是同一件事，这里是真实渲染出来的结果
+    c('dom-submenu-has-reopen-encoding', domRows > 0, JSON.stringify({ rows: domRows }))
+    c('dom-submenu-lists-all-encodings', domRows === 14, JSON.stringify({ rows: domRows }))
+    c(
+      'dom-submenu-highlights-current',
+      domActive.length === 1 && domActive[0] === 'GBK',
+      JSON.stringify(domActive)
+    )
+    c(
+      'dom-submenu-marks-with-check',
+      Array.isArray(subItems) && subItems.filter((x) => x.active && x.hasCheck).length === 1,
+      JSON.stringify(
+        subItems?.filter((x) => x.active)?.map((x) => ({ t: x.text, check: x.hasCheck }))
+      )
+    )
+
+    // 真实点击「Windows-1252」那一行 → 文档编码应随之变化
+    const clickTarget = JSON.parse(
+      await w.ev(
+        `(() => { const sub = document.querySelector('.topmenu-sub'); const b = [...sub.querySelectorAll('button')].find((x) => (x.textContent || '').includes('Windows-1252')); const r = b.getBoundingClientRect(); return JSON.stringify({ x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2) }) })()`
+      )
+    )
+    await w.send('Input.dispatchMouseEvent', {
+      type: 'mouseMoved',
+      x: clickTarget.x,
+      y: clickTarget.y
+    })
+    await sleep(150)
+    await w.send('Input.dispatchMouseEvent', {
+      type: 'mousePressed',
+      x: clickTarget.x,
+      y: clickTarget.y,
+      button: 'left',
+      clickCount: 1
+    })
+    await w.send('Input.dispatchMouseEvent', {
+      type: 'mouseReleased',
+      x: clickTarget.x,
+      y: clickTarget.y,
+      button: 'left',
+      clickCount: 1
+    })
+    await sleep(1000)
+    const afterClick = JSON.parse(
+      await w.ev(
+        `(() => { const cur = window.__E.files().current; return JSON.stringify({ enc: cur.encoding, isGarbage: cur.content !== ${JSON.stringify(T_GBK)} }) })()`
+      )
+    )
+    console.log('E-click ' + JSON.stringify(afterClick))
+    c(
+      'submenu-click-switches-encoding',
+      afterClick.enc === 'windows-1252' && afterClick.isGarbage === true,
+      JSON.stringify(afterClick)
+    )
+
+    // 收尾：把文档调回正确的 GBK，别留个乱码文档
+    await w.ev(
+      `(async () => { await window.__E.files().reopenWithEncoding('gbk'); return 'ok' })()`
+    )
+    await sleep(500)
+
+    // ── F. i18n ──
+    const KEYS = [
+      ['encoding', 'auto'],
+      ['menu', 'reopenWithEncoding'],
+      ['settings', 'encoding'],
+      ['settings', 'encodingHint'],
+      ['settings', 'defaultEncoding'],
+      ['toast', 'reopenedWithEncoding'],
+      ['toast', 'encodingFailed'],
+      ['statusbar', 'encodingTooltip']
+    ]
+    for (const loc of ['zh-CN', 'en-US', 'ru-RU']) {
+      const json = JSON.parse(
+        fs.readFileSync(path.join(REPO, 'src/renderer/src/i18n/locales', loc + '.json'), 'utf-8')
+      )
+      const missing = KEYS.filter(([g, k]) => !json[g] || json[g][k] === undefined).map(
+        ([g, k]) => `${g}.${k}`
+      )
+      c(`i18n-${loc}-has-all-keys`, missing.length === 0, missing.join(',') || 'ok')
+    }
+    // 切到英文，菜单标题应随之变化（重新点开菜单再读 DOM —— 点完编码后菜单已收起）
+    await w.ev(`(() => { window.__E.settings().set('language', 'en-US'); return 'ok' })()`)
+    await sleep(900)
+    await w.send('Input.dispatchMouseEvent', {
+      type: 'mouseMoved',
+      x: fileBtnRect.x,
+      y: fileBtnRect.y
+    })
+    await w.send('Input.dispatchMouseEvent', {
+      type: 'mousePressed',
+      x: fileBtnRect.x,
+      y: fileBtnRect.y,
+      button: 'left',
+      clickCount: 1
+    })
+    await w.send('Input.dispatchMouseEvent', {
+      type: 'mouseReleased',
+      x: fileBtnRect.x,
+      y: fileBtnRect.y,
+      button: 'left',
+      clickCount: 1
+    })
+    await sleep(500)
+    const enRows = JSON.parse(
+      await w.ev(
+        `(() => { const rows = [...document.querySelectorAll('.topmenu-drop button')]; return JSON.stringify(rows.map((b) => (b.textContent || '').trim())) })()`
+      )
+    )
+    console.log('F-en-rows ' + JSON.stringify(enRows))
+    c(
+      'i18n-menu-title-follows-language',
+      enRows.some((x) => /Reopen with Encoding/.test(x)),
+      JSON.stringify(enRows.filter((x) => /Reopen|Encoding/.test(x)))
+    )
+    // 关掉菜单，切回中文
+    await w.send('Input.dispatchKeyEvent', {
+      type: 'keyDown',
+      key: 'Escape',
+      code: 'Escape',
+      windowsVirtualKeyCode: 27
+    })
+    await w.send('Input.dispatchKeyEvent', {
+      type: 'keyUp',
+      key: 'Escape',
+      code: 'Escape',
+      windowsVirtualKeyCode: 27
+    })
+    await w.ev(`(() => { window.__E.settings().set('language', 'zh-CN'); return 'ok' })()`)
+    await sleep(700)
+
+    // ── G. 状态栏显示当前编码 ──
+    const statusEnc = await w.ev(
+      `(() => { const el = document.querySelector('[data-status-encoding]'); return el ? (el.textContent || '').trim() + '|' + (el.getAttribute('title') || '') : 'missing' })()`
+    )
+    console.log('G-status ' + JSON.stringify(statusEnc))
+    c(
+      'statusbar-shows-encoding',
+      typeof statusEnc === 'string' && statusEnc.includes('GBK'),
+      String(statusEnc)
+    )
+    c(
+      'statusbar-has-tooltip',
+      typeof statusEnc === 'string' &&
+        statusEnc.includes('|') &&
+        statusEnc.split('|')[1].length > 4,
+      String(statusEnc).split('|')[1] ?? ''
+    )
+  } finally {
+    // 隔离实例里的东西清掉：关闭当前文档，避免影响后续套件
+    await w.ev(`(async () => { await window.__E.files().close(); return 'ok' })()`).catch(() => {})
+    await sleep(200)
+  }
+
+  console.log(results.join('\n'))
+  const failed = results.filter((r) => r.startsWith('FAIL')).length
+  console.log(`--- ${results.length - failed}/${results.length} PASS`)
+  w.ws.close()
+  process.exit(failed ? 1 : 0)
+})().catch((e) => {
+  console.error('ERROR', e.message)
+  process.exit(1)
+})

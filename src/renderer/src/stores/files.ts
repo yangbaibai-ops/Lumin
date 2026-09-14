@@ -6,6 +6,8 @@ import type {
   RecentFolder,
   WorkspaceDoc
 } from '../../../shared/types'
+import type { ConcreteEncoding, EncodingId } from '../../../shared/encodings'
+import { encodingOf } from '../../../shared/encodings'
 import { useSettingsStore } from './settings'
 import { useUiStore } from './ui'
 import i18n from '../i18n'
@@ -17,9 +19,24 @@ export interface CurrentDoc {
   content: string
   mtimeMs: number | null
   savedContent: string
+  /** 该文档当前的编码（未命名文档用设置里的默认编码，落到具体值时才有意义） */
+  encoding: ConcreteEncoding
+  /** 文件原本是否带 BOM（写回时保持一致） */
+  hadBom: boolean
 }
 
 let untitledSeq = 1
+
+/** 未命名文档的编码：设置里选了具体编码就用它，'auto' 时当作 utf-8（新文件没得猜） */
+function untitledEncoding(): ConcreteEncoding {
+  const id = useSettingsStore().defaultEncoding
+  return id === 'auto' ? 'utf-8' : id
+}
+
+/** 编码 id → 给用户看的名字（专有名，不走 i18n） */
+function encodingLabel(id: ConcreteEncoding): string {
+  return encodingOf(id)?.label ?? id
+}
 
 export const useFilesStore = defineStore('files', {
   state: () => ({
@@ -220,13 +237,17 @@ export const useFilesStore = defineStore('files', {
     // ── 文档 ──
     async openPath(path: string): Promise<boolean> {
       try {
-        const opened: OpenedFile = await window.luminAPI.file.read(path)
+        // 编码走设置里的「默认编码」（默认 auto = 主进程按判定链猜）
+        const requested = useSettingsStore().defaultEncoding
+        const opened: OpenedFile = await window.luminAPI.file.read(path, requested)
         this.current = {
           path: opened.path,
           name: opened.name,
           content: opened.content,
           mtimeMs: opened.mtimeMs,
-          savedContent: opened.content
+          savedContent: opened.content,
+          encoding: opened.encoding,
+          hadBom: opened.hadBom
         }
         this.draftRestore = null
         this.currentDir = await window.luminAPI.file.dirname(opened.path)
@@ -249,7 +270,10 @@ export const useFilesStore = defineStore('files', {
         name: `Untitled-${untitledSeq++}.md`,
         content: '',
         mtimeMs: null,
-        savedContent: ''
+        savedContent: '',
+        // 未命名文档还没有真实编码：用设置里的默认（auto 时落成 utf-8，保存时按它写）
+        encoding: untitledEncoding(),
+        hadBom: false
       }
       this.currentDir = this.root
       this.draftRestore = null
@@ -318,7 +342,13 @@ export const useFilesStore = defineStore('files', {
       }
       this.saving = true
       try {
-        await window.luminAPI.file.write(this.current.path, this.current.content)
+        // 按文档当前编码写回（编码来源：打开时判定出来的，或用户「选择编码重新打开」选的）
+        await window.luminAPI.file.write(
+          this.current.path,
+          this.current.content,
+          this.current.encoding,
+          this.current.hadBom
+        )
         const stat = await window.luminAPI.file.exists(this.current.path)
         if (stat) this.current.mtimeMs = Date.now()
         this.current.savedContent = this.current.content
@@ -347,6 +377,52 @@ export const useFilesStore = defineStore('files', {
       // 落在当前工作区之外 → 工作区跟到它的文件夹；本来就在工作区内 → 逐级展开把它露出来。
       if (ok) await this.syncWorkspaceToPath(path)
       return ok
+    },
+
+    /**
+     * 「选择编码重新打开」：按指定编码重新读盘，把内容换进编辑器。
+     *
+     * 三个要点：
+     *  1. 脏文档先问（confirmIfDirty），否则重新读盘会把未保存的修改直接吞掉；
+     *  2. 换进来之后 **标记为干净**（savedContent = 新内容）：这次操作的语义是「重新解释磁盘上的
+     *     字节」，磁盘没被改过，所以不该留下未保存状态；
+     *  3. 让主进程把这次选择记进每文件记忆表，下次自动打开就用它。
+     * 返回是否成功（失败时 toast 报错）。
+     */
+    async reopenWithEncoding(encoding: EncodingId): Promise<boolean> {
+      const cur = this.current
+      if (!cur?.path) return false
+      // 脏文档先问（这里不引 composables/useAppActions 的 confirmIfDirty：那个模块反过来
+      // 依赖本 store，会形成循环导入，所以就地写同样的询问）
+      const ui = useUiStore()
+      if (this.dirty) {
+        const ok = await ui.confirm({
+          title: i18n.global.t('editor.dirtyConfirmTitle'),
+          body: i18n.global.t('editor.dirtyConfirmBody'),
+          danger: true
+        })
+        if (!ok) return false
+      }
+      try {
+        const opened: OpenedFile = await window.luminAPI.file.read(cur.path, encoding)
+        const concrete = opened.encoding
+        await window.luminAPI.file.rememberEncoding(cur.path, concrete)
+        cur.content = opened.content
+        cur.savedContent = opened.content
+        cur.mtimeMs = opened.mtimeMs
+        cur.encoding = concrete
+        cur.hadBom = opened.hadBom
+        this.draftRestore = null
+        this.bumpDocMtime(cur.path)
+        ui.toast(
+          i18n.global.t('toast.reopenedWithEncoding', { enc: encodingLabel(concrete) }),
+          'success'
+        )
+        return true
+      } catch {
+        ui.toast(i18n.global.t('toast.encodingFailed'), 'error')
+        return false
+      }
     },
 
     /**

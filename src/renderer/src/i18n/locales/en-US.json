@@ -107,7 +107,8 @@
     "about": "About Lumin",
     "quit": "Quit",
     "closeWindow": "Close Window",
-    "homepage": "Open Project Homepage in Browser"
+    "homepage": "Open Project Homepage in Browser",
+    "reopenWithEncoding": "Reopen with Encoding"
   },
   "context": {
     "openNewWindow": "Open in New Window",
@@ -220,7 +221,10 @@
     "linksClear": "Clear all records",
     "linksCount": "Opened {count} times",
     "linksCreatedBadge": "Created",
-    "linksDeclinedBadge": "Cancelled"
+    "linksDeclinedBadge": "Cancelled",
+    "encoding": "Encoding",
+    "defaultEncoding": "Default encoding",
+    "encodingHint": "Encoding used when opening files. \"Auto Detect\" checks the BOM first, then this file's remembered encoding, then whether the bytes are valid UTF-8, and finally guesses from the system language (Chinese → GB18030, Japanese → Shift_JIS, Korean → EUC-KR, Russian → Windows-1251, otherwise → Windows-1252). To change a single document temporarily, use File → Reopen with Encoding."
   },
   "links": {
     "kindUrl": "URL",
@@ -276,7 +280,9 @@
     "createFailed": "Creation failed",
     "renameFailed": "Rename failed",
     "manualSave": "Switched to manual save",
-    "autoSaveOn": "Auto save enabled"
+    "autoSaveOn": "Auto save enabled",
+    "reopenedWithEncoding": "Reopened as {enc}",
+    "encodingFailed": "Could not reopen with that encoding"
   },
   "editorMenu": {
     "copy": "Copy",
@@ -343,7 +349,8 @@
     "autoSave": "Auto Save",
     "manualSave": "Manual Save",
     "openSettings": "Open Settings…",
-    "switchLanguage": "Switch Language"
+    "switchLanguage": "Switch Language",
+    "encodingTooltip": "Current document encoding (File → Reopen with Encoding)"
   },
   "keymap": {
     "title": "Keyboard shortcuts",
@@ -373,5 +380,8 @@
     "cycleMode": "Cycle editor mode",
     "typewriterMode": "Typewriter mode",
     "openKeymapSettings": "Open shortcut settings"
+  },
+  "encoding": {
+    "auto": "Auto Detect"
   }
 }

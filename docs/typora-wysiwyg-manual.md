@@ -1035,6 +1035,52 @@ commands     应用级命令表（composables/useKeymap.ts）：id / i18n 标题
 
 ---
 
+### 4.37 文件编码：判定链 + 每文件记忆 + 按编码读写（本次）
+
+**用户要求**：适配不同编码（UTF-8 等）；设置里能选；顶部「文件」菜单加一级「选择编码重新打开」+ 二级编码列表，选中即按该编码重读当前文档。
+
+**判定链**（`src/main/services/encoding.ts` 的 `decodeBuffer`，顺序即优先级）：
+
+1. **BOM 嗅探**（`EF BB BF` → UTF-8 BOM、`FF FE` → UTF-16 LE、`FE FF` → UTF-16 BE）：BOM 是文件自己写的声明，比任何猜测都可靠，所以**压过一切**（包括调用方显式指定的编码——带 BOM 的文件永远被识别成它 BOM 说的那个编码）；
+2. **调用方显式指定的具体编码**（用户在「选择编码重新打开」里点了某个编码）：必须听用户的；
+3. **该文件上次记住的编码**（kv `fileEncodings`）：同一个文件反复打开保持一致；
+4. **严格 UTF-8 能过 → UTF-8**（`new TextDecoder('utf-8', { fatal: true })`）：UTF-8 是当代默认，「通过 fatal 校验」是很强的证据；
+5. **按系统语言兜底**：`app.getLocale()` → zh → GB18030、ja → Shift_JIS、ko → EUC-KR、ru → Windows-1251、其它 → Windows-1252；
+6. **最后兜底 UTF-8（有损）**：理论上到不了（1252 能解码任意字节），留作保险。
+
+**为什么必须引 iconv-lite**：Node 的 `TextDecoder`（Electron 带完整 ICU）能解很多编码，但 **`TextEncoder` 只支持 UTF-8** —— 「按原编码写回」标准库做不到。所以 UTF-8 家族走 Node 内置，其余**解码与编码**都走 iconv-lite（纯 JS、无原生编译、极主流；本项目 mermaid → d3 → d3-dsv 本来就带着它）。本次把 `iconv-lite@0.6.3` 提升为**直接依赖**（package.json + lockfile 均已更新，`npm ls iconv-lite` 首行即它）。
+
+**每文件编码记忆**：kv key `fileEncodings`，形如 `{ [小写路径]: EncodingId }`，**插入序当 LRU** 裁到 200 条；重复写入先删键再插回队尾（真正的 LRU 语义）。**只记「用户显式选过的」或「判定为非 UTF-8 的」**——纯 UTF-8 不占条目，否则这张表很快被日常文档塞满，真正需要记的反而被挤掉。
+
+**UI 三处入口**：
+
+- **设置 → 通用 → 编码**：下拉选「默认编码」（自动检测 + 全部 13 种）+ 一行说明（默认编码的作用、临时切换走「文件 → 选择编码重新打开」），经 `settings.defaultEncoding` 落 SQLite kv；
+- **文件 → 选择编码重新打开**（一级）→ 悬停二级：**自动检测 + 全部编码**，**当前生效的那个打勾并高亮**（沿用「导出」二级菜单的结构与样式，新增 `active` 标记）；
+- **状态栏**：文档打开时在统计与主题切换之间显示当前编码名（专有名，如 `GBK`）+ tooltip。
+
+`stores/files.reopenWithEncoding()` 三个要点：脏文档先问（就地写 `ui.confirm`，**没有**引 `composables/useAppActions.confirmIfDirty`——那个模块反过来依赖本 store，会循环导入）；换进来时 **savedContent 一起更新 = 标记为干净**（语义是「重新解释磁盘字节」，磁盘没变，不该留成未保存态）；成功 toast（`toast.reopenedWithEncoding` 带 `{enc}`）。保存按当前编码 + `hadBom` 写回（`file:write(p, content, encoding, hadBom)`），UTF-8 BOM 文件存完 BOM 仍在。
+
+**验收**：`tools/_verify-encoding.js` **31/31**（隔离实例 + Node/iconv-lite 写出的真实夹具 + 真实指针点击）：
+
+- **解码**：UTF-8 → `utf-8`；UTF-8 BOM → `utf-8-bom` 且 `hadBom=true`（正文不含 BOM 字符）；UTF-16LE(BOM) → `utf-16le`；GBK 正文与期望**逐字相等**（中文系统判定为 `gb18030`，GBK 超集，允许两者之一）；Shift_JIS / Windows-1251 用显式编码打开，正文与编码都对；三条自动检测（两种 UTF-8 + UTF-16LE）全判对。
+- **重新打开**：`reopenWithEncoding('windows-1252')` 打开 GBK 文件 → 正文确实乱码（`# ÖÐÎÄ G…`）；再 `reopenWithEncoding('gbk')` → 正文恢复、`encoding='gbk'`、**`dirty === false`**。
+- **保存回写**：GBK 文件改内容保存 → 磁盘 80 字节、`iconv.decode(bytes,'gbk')` 与文本完全相等，且这些字节**不等于** UTF-8 编码（没偷偷写成 UTF-8）；UTF-8 BOM 文件保存后前三字节仍是 `EF BB BF`，其余等于新文本。
+- **设置生效**：同一串字节 `C4 E3 BA C3` 在两种编码下都合法 → 默认编码 `gbk` 解出「你好」、`windows-1252` 解出「ÄãºÃ」，两次不同且各自正确；**node:sqlite 直读隔离实例 DB** 断言 `settings.defaultEncoding === 'windows-1252'` 已落库，`fileEncodings` 记忆表 5 条。
+- **菜单**：`setupState.GROUPS` 里文件菜单含 `menu.reopenWithEncoding`，二级 **14 项**且 `active` 恰为 `['GBK']`；同时用真实指针展开做 DOM 断言（14 行、GBK 行 `bg-accent-soft` + 打勾、其余无勾）；**真实点击**「Windows-1252」→ `files.current.encoding` 变为 `windows-1252` 且正文变乱码。
+- **i18n**：三语 8 个 key 齐全；切到 `en-US` 后重开菜单，一级项文本变成 `Reopen with Encoding`。
+- **状态栏**：`[data-status-encoding]` 文本含 `GBK`，title 是那句 tooltip。
+
+**回归**：打开落点 22/22、会话 16/16、另存为切工作区 17/17、工具栏去文件名 12/12、导出二级菜单 15/15、目录样式与平滑滚动 23/23；`npm run typecheck` 两工程 0 error；改动文件 eslint 0 error（`src/main/fileOps.ts` 那条 `no-useless-escape` 是既有正则的存量问题，不在本次 diff 内）。
+
+**已知取舍与风险**（验收里都如实体现）：
+
+1. **GBK/GB18030 与 Shift_JIS 会互相误判**：无 BOM 且非法 UTF-8 的文件只能按系统语言猜 —— 中文系统下日文 Shift_JIS 会被猜成 GB18030（乱码），日文系统下中文 GBK 会被猜成 Shift_JIS（乱码）。这是「没有元信息的双字节编码」的固有歧义，任何编辑器都只能猜；缓解手段就是「选择编码重新打开」+ 每文件记忆（选一次以后这个文件都对）。套件里 Shift_JIS/Windows-1251 走显式编码路径正因此。
+2. **GBK 与 GB18030 不区分**：中文系统下 GBK 文件判成 GB18030（超集，正文正确）；想让它显示成 `GBK` 手动选一次即可，之后走每文件记忆。
+3. **i18n key 命名偏差**：规格写的是 `status.encodingTooltip`，但本项目状态栏文案统一在 `statusbar.*`（没有 `status` 组），实际落在 **`statusbar.encodingTooltip`**；其余 key 与规格一致。
+4. **`setupState` 内省只在开发构建可用**：Vue 生产构建不把 `<script setup>` 绑定挂到 `setupState`，所以套件同时保留 **DOM 断言**。本次 31/31 是在开发渲染层（dev server 5173）下跑出的；用 `-NoDevServer` 跑时 setupState 那三条显示 SKIP，DOM 三条照常断言。
+
+---
+
 ## 5. 分步实施计划（从零到一）
 
 > 每一节对应本项目的一个真实完成阶段，含目标、关键实现、验收标准。标注 ✅ 的均已在本仓库落地并通过验收矩阵。
