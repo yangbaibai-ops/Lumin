@@ -1,4 +1,4 @@
-# 起一个「干净的隔离实例」：确保 9222 空闲 → 删数据目录 → 启动 → 校验确实是新实例
+﻿# 起一个「干净的隔离实例」：确保 9222 空闲 → 删数据目录 → 启动 → 校验确实是新实例
 param(
   [string]$UserData = "$env:TEMP\lumin-keymap-userdata",
   [string]$RendererUrl = 'http://localhost:5173',

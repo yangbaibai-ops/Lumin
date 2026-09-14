@@ -23,13 +23,15 @@ function jump(pos: number): void {
 </script>
 
 <template>
+  <!-- 样式对齐 Typora：一颗朴素的嵌套列表（圆点 + 缩进），没有外框、底色与左侧色条 -->
   <node-view-wrapper class="md-toc" contenteditable="false">
-    <div class="md-toc-title">{{ t('editor.toc') }}</div>
     <template v-if="items.length">
       <a
         v-for="(h, i) in items"
         :key="i"
-        :class="h.level > 1 ? 'toc-l' + Math.min(h.level, 3) : ''"
+        class="toc-item"
+        :data-level="h.level"
+        :style="{ '--toc-depth': Math.min(h.level, 4) - 1 }"
         @mousedown.prevent.stop
         @click.prevent.stop="jump(h.pos)"
       >

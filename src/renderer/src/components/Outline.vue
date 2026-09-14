@@ -1,8 +1,10 @@
 <script setup lang="ts">
+import { useI18n } from 'vue-i18n'
 import { useEditorStore } from '../stores/editor'
 import Icon from './Icon.vue'
 
 // ─── 大纲侧栏：标题来自 Tiptap 文档 AST（editor store 维护）──────────────────
+const { t } = useI18n()
 const editorStore = useEditorStore()
 </script>
 
@@ -31,7 +33,7 @@ const editorStore = useEditorStore()
     </TransitionGroup>
     <div v-if="!editorStore.outline.length" class="mt-6 flex flex-col items-center gap-2 px-4 text-center">
       <Icon name="heading" :size="24" :stroke-width="1.3" class="text-ink-3/60" />
-      <p class="text-[12px] leading-relaxed text-ink-3">暂无标题<br />使用 # 创建大纲</p>
+      <p class="text-[12px] leading-relaxed text-ink-3">{{ t('sidebar.emptyOutline') }}</p>
     </div>
   </div>
 </template>

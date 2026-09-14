@@ -145,7 +145,13 @@ const PROBE = `(() => {
     fs.mkdirSync(tmp, { recursive: true })
     fs.writeFileSync(path.join(tmp, 'a.md'), '# a\n\nseg test\n', 'utf-8')
     await w.ev(`(async () => { const f = window.__G.files(); await f.setRoot(${JSON.stringify(tmp)}); await f.openPath(${JSON.stringify(path.join(tmp, 'a.md'))}); return 'ok' })()`)
-    await sleep(1200)
+    // 全新配置目录里侧栏默认是收起的，标签页也可能停在「大纲」：都显式摆正，
+    // 否则拿不到侧栏的那个分段控件（FileTree 只在 files 标签页里挂载）
+    await w.ev(`(() => { window.__G.ui().sidebarVisible = true; window.__G.ui().sidebarTab = 'files'; return 'ok' })()`)
+    await sleep(600)
+    // 编辑器模式会跨会话持久化（上次套件可能留在「源码」）：点第一段回到「实时渲染」
+    await w.ev(`(() => { document.querySelector('div.h-11 .seg .seg-btn')?.click(); return 'ok' })()`)
+    await sleep(800)
 
     const s0 = await probe()
     console.log('INIT ' + JSON.stringify({ mode: s0.mode, toolbar: s0.toolbarSeg, aside: s0.asideSeg, overflow: s0.toolbarOverflow }))

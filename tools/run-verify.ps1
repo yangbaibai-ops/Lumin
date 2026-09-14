@@ -1,4 +1,4 @@
-# tools/run-verify.ps1 - foreground the Electron window, then run the CDP verification matrix.
+﻿# tools/run-verify.ps1 - foreground the Electron window, then run the CDP verification matrix.
 # Windows PowerShell 5.1 compatible (ASCII only).
 Add-Type -TypeDefinition @"
 using System;

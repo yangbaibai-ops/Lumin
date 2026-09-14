@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { markRaw } from 'vue'
 import type { Editor } from '@tiptap/core'
+import { scrollContainerTo, smoothScrollToElement } from '../lib/editor/smoothScroll'
 
 // ─── 编辑器实例桥接（解耦：工具栏 / 大纲 / 导出等通过此 store 与内核通信）──
 // 持久化模型：编辑器在 EditorView 里常驻挂载（模式切换只改布局，不再 v-if
@@ -107,10 +108,37 @@ export const useEditorStore = defineStore('editor', {
       }
       this.outline = items
     },
+    /**
+     * 点击目录/大纲条目 → 光标落到对应标题，并且**平滑滚过去**（不是瞬时跳转）。
+     *
+     * 为什么不能直接用 ProseMirror 的 `.scrollIntoView()`：它一步写死 `scrollTop`，
+     * 视觉上就是「啪」地跳。这里改成：先只移动光标，然后把 focus 引起的瞬时滚动
+     * 复位，最后对滚动容器做 smooth 滚动。系统开启「减少动态效果」时退化为瞬时。
+     *
+     * 坑（实测抓到过）：Tiptap 的 `focus()` 默认 `scrollIntoView: true`，它会在
+     * **requestAnimationFrame 里**补一次 `scrollIntoView`（瞬时滚动）。如果我们的平滑
+     * 动画同步启动，那一帧的瞬时滚动会把它打断，肉眼就是「跳过去」而不是滑过去。
+     * 所以：(1) 关掉 focus 的 scrollIntoView；(2) 平滑滚动排到下一帧执行。
+     */
     jumpToHeading(pos: number): void {
       const editor = this.instance ?? this.editor
       if (!editor || !this.active) return
-      editor.chain().focus().setTextSelection(pos).scrollIntoView().run()
+      const view = editor.view
+      const container = view.dom.closest('.editor-scroll') as HTMLElement | null
+      const before = container?.scrollTop ?? 0
+      editor.chain().focus(null, { scrollIntoView: false }).setTextSelection(pos).run()
+      if (!container) return
+      // focus + 选区变化可能让浏览器把光标瞬时滚进视口：原样复位后再平滑滚动
+      scrollContainerTo(container, before, 'instant')
+      const at = view.domAtPos(pos)
+      const target =
+        (at.node.nodeType === Node.TEXT_NODE ? at.node.parentElement : (at.node as HTMLElement)) ??
+        null
+      if (!target) return
+      // 下一帧再滚：排在 Tiptap 排队的那次 focus 之后，避免动画被它打断
+      // （页面不可见时 rAF 不会触发，此时直接瞬时定位，免得回前台才莫名滚动）
+      if (document.hidden) smoothScrollToElement(container, target)
+      else requestAnimationFrame(() => smoothScrollToElement(container, target))
     }
   }
 })
