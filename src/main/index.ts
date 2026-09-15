@@ -1,4 +1,5 @@
 // 必须在任何会（传递）导入 node:sqlite 的模块之前加载，以屏蔽其实验性警告
+import './devProfile'
 import './suppressWarnings'
 import { app, shell, BrowserWindow, nativeTheme, protocol, net, ipcMain, screen } from 'electron'
 import { join } from 'path'
@@ -15,6 +16,7 @@ import * as session from './services/session'
 import * as openDocs from './services/openDocs'
 import * as taskbar from './services/taskbar'
 import { recordBuildStamp, recordLaunchIntent } from './services/buildStamp'
+import { devProfileDir } from './devProfile'
 import { parseLaunchIntent, type LaunchIntent } from './services/launchIntent'
 import { initUpdater } from './services/updater'
 import { bindWindowScope, scopeOfSlot } from './services/windowScope'
@@ -323,6 +325,7 @@ app.whenReady().then(() => {
   markRunning()
   // 开发态记录「这份构建是什么时候的」：主进程不热更新，排查错配时第一眼看它
   recordBuildStamp()
+  if (devProfileDir) console.log(`[profile] 开发态隔离 profile 生效: ${devProfileDir}`)
 
   // 任务栏跳转列表（右键图标）：一条「新建窗口」任务 + 一栏最近文档。
   // 顺序有讲究：先写「开始菜单快捷方式」——任务栏右键菜单第一项的名字与点击行为都来自它
@@ -333,7 +336,7 @@ app.whenReady().then(() => {
   // 落一行日志：启动参数解析是「静默失败」重灾区（关联双击没反应之类），解出来的意图与被忽略的
   // 参数必须留证据，否则只能靠猜。见 services/buildStamp 的说明。
   recordLaunchIntent({ argv: process.argv, intent, ignored: intent.ignored, cwd, appPath })
-  taskbar.ensureAppShortcut()
+  taskbar.ensureShortcut()
   taskbar.refreshJumpList()
 
   // 会话恢复：按上次的窗口槽位重建窗口（每个槽位一个窗口，各自恢复文档/文件夹与位置）。

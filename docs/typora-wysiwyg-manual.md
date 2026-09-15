@@ -1580,3 +1580,72 @@ set LUMIN_PKG_SKIP_BUILD=1 && node tools/_verify-packaging.js   # 复用已有�
 - 卸载 `/currentuser /S`：退出码 0、10.6 s；安装目录与快捷方式清除；**`%APPDATA%\Lumin` 11027 个文件 / 38 个草稿原样保留**（`deleteAppDataOnUninstall: false` 生效）。
 
 报告同时记录了 **1 个中severity 缺陷**（卸载后 `HKCU\Software\Classes\.md` 默认值残留 `Markdown`，形成悬空关联，需在 `nsis.include` 里补一段删除逻辑）、**4 项待修/待确认**（Publisher 显示 `example.com`、桌面同名快捷方式会被覆盖、快捷方式未携带 AUMID、dev 与打包版共用 `%APPDATA%\Lumin` 与单实例锁）以及 **5 项未覆盖**（真实双击 `.md`、任务栏固定项观感、自动更新、代码签名/SmartScreen、非 Windows 平台）。
+
+> ⬅ 这些问题已在 **§4.43** 逐条处置并**重新跑了一遍完整装/卸实测**。其中「快捷方式未携带 AUMID」那条的**结论被推翻**：安装器写的 `Lumin.lnk` 本来就带 `com.lumin.app`，第一轮是**测量方法**错了（拿原始字节搜 UTF-16 字符串）。
+
+### 4.43 安装 / 卸载缺陷修复 + 复测（本次）
+
+接 §4.42：6 条问题逐条处置，然后**重新构建安装包、重新跑完整个装 → 跑 → 卸链路**，用实测数据证明修好了。完整报告见 `docs/packaging-install-test.md`（第一轮原始记录作为附录保留在文末）。
+
+#### 一、修了什么（逐条给落点与证据）
+
+| 第一轮问题 | 处置 | 落点 | 复测证据 |
+| --- | --- | --- | --- |
+| **中**：卸载后 `.md` 默认值残留 `Markdown`（悬空关联） | 修 | 新增 `build/installer.nsh`（`customUnInstall` + 自己的 `Lumin_UnassociateExtension` 宏），经 `electron-builder.yml` 的 `nsis.include` 挂载 | `.md=''`、`.markdown=''`，且扩展名下 `OpenWithProgids` 子键也删掉 |
+| **中**：Publisher 显示 `example.com` | 修 | `package.json` 的 `author` 改成真实作者（NSIS 的 Publisher 就取自这里） | `Publisher='yang_bai_bai'` |
+| 低：桌面同名快捷方式被覆盖 | **有意保持** | 不改代码 | 见下「三」 |
+| 低：判断「快捷方式未携带 AUMID」 | **前提有误，改断言 + 留兜底** | `taskbar.ts` 的 `backfillInstalledShortcutAumid()`（幂等，正常走「已存在」分支） | 日志 `shortcut aumid already present … aumid=com.lumin.app` |
+| 中（开发期）：dev 与打包版共用 `%APPDATA%\Lumin` 与单实例锁 | 修（opt-in） | 新增 `src/main/devProfile.ts` + `npm run dev:isolated` | 复测全程用 `--user-data-dir` 隔离，用户数据 11027 文件/38 草稿未变 |
+| 低：`InstallLocation` 空 | 修（前半） | `build/installer.nsh` 的 `customInstall` 写 `InstallLocation=$INSTDIR` | `InstallLocation='…\AppData\Local\Programs\Lumin'`；`EstimatedSize` 501.4 MB 属上游估算方式，只记录不处理 |
+
+#### 二、根因：漏的那一半在 electron-builder 自带模板里
+
+`nsis.include` 不是「随手加一段脚本」，而是因为根因在依赖里、上游模板又不能改：
+
+- `APP_ASSOCIATE`（`FileAssociation.nsh:65-74`）写的是三处：扩展名默认值 = FILECLASS、`OpenWithProgids` 加点、ProgID 子树；
+- `APP_UNASSOCIATE`（同文件 `:99-102`）只删了**后两处** —— `OpenWithProgids` 的那个值和 ProgID 子树，**从不删扩展名的默认值**；
+- 于是卸载后 `.md` 的默认值仍指着已被删除的 ProgID，Windows 只能弹「选择打开方式」。
+
+官方给的扩展点正好够用：`customInstall` / `customUnInstall` 宏（`installSection.nsh:81`、`uninstaller.nsh:156`）。我们的宏还顺手做了幂等与「只删自己建的键」：用 `DeleteRegKey /ifempty`，别人的键一个不动。
+
+#### 三、P3 为什么保持现状（桌面快捷方式覆盖同名文件）
+
+`createDesktopShortcut: true` 是主流做法（VS Code / Typora / Obsidian 都是），安装向导非静默时也能取消勾选；改成 `false` 会让「装完桌面没图标」变成更常见的抱怨。真正的风险只是「静默覆盖同名文件」，而 `Lumin.lnk` 这个名字本就属于本应用。**代价**：验收脚本收尾会把桌面那条按原样重建（本轮即 `target = D:\code_workspace\Lumin`），发布说明里要写明会在桌面创建快捷方式。
+
+#### 四、AUMID：我第一轮判错了，留档避免再犯
+
+第一轮我说「在 `.lnk` 字节里搜不到 `com.lumin.app` → 没带 AUMID」。第二轮用 Electron 的 `shell.readShortcutLink()`（内部就是 Windows Shell 的 `IShellLink`/`IPropertyStore`）读同一条快捷方式，**读得到 `com.lumin.app`** —— electron-builder 会按 `appId` 写这条属性。
+
+错在哪：`.lnk` 的扩展属性存储有自己的序列化格式，**把它当 UTF-16 字符串搜子串，搜不到不等于属性不存在**。现在的断言走权威 API，脚本里只保留一条「只观察、不断言」的字节搜索结果，并把这个坑写在输出里（`INFO 原始字节搜索命中=False（仅观察；与日志不一致时以日志为准）`）。
+
+对代码的影响：`backfillInstalledShortcutAumid()` 从「补救」降级为**幂等兜底** —— 正常情况走「已存在」分支直接返回（实测正是这条路），只在快捷方式被换成不带 AUMID 的版本时才真的补写；仍然只动 AUMID 一个属性、绝不新建文件、绝不改启动参数。函数注释已按此改写。
+
+#### 五、复测数据（本次实测）
+
+- 产物：`dist/Lumin-1.0.0-setup.exe` **123.22 MB**（129,201,831 字节），SHA256 `341F322B4C1719532EEED790AFE5EA5609E3884CD0207E0F8B21783A6A91DA76`；
+- 安装 `/S`：退出码 0、**11.2 s**；`Lumin.exe` 210,974,720 字节；
+- 裸路径启动打包版：窗口标题 `安装测试-甲文档.md - Lumin`；
+- 卸载 `/currentuser /S`：退出码 0、**6.4 s**；安装目录残留 0 文件；快捷方式、ProgID、扩展名默认值、卸载条目全部清除；
+- **用户数据**：`before=11027/38 after=11027/38`（文件数/草稿数逐项一致）；
+- 断言总计 **19/19 PASS**，退出码 0。
+
+> ⚠️ **NSIS 产物不可字节复现**：同一份源码连打三次，sha256 各不相同（`0D953579…` / `b6424599…` / `341F322B…`），差异来自构建时嵌入的时间戳等。所以别拿 sha256 当发布校验。
+
+#### 六、回归（确认没踩坏既有功能）
+
+`npm run typecheck`（`tsc` + `vue-tsc`）exit=0；`node tools/_verify-packaging.js` **24/24 PASS**（含真跑 `build:win`、配置单一来源、`appId` 一致、只关联 `.md/.markdown`）；`node tools/_verify-taskbar-jumplist.js` **27/27 PASS**；本轮改动的 `src/` 文件 ESLint 0 问题。
+
+顺带修掉一个**验收脚本**缺陷（不是产品问题，但会污染回归结论）：`tools/_verify-taskbar-jumplist.js` 的冷启动那一节把渲染页面地址硬编码成 `http://localhost:5173`，而套件里其他每次启动都是继承父进程环境的 —— 没有 dev server 时冷启动进程拿不到页面，脚本会以 `TypeError: Cannot read properties of undefined (reading 'files')` 崩掉，看着像产品回归。现改为继承父进程环境（有 `ELECTRON_RENDERER_URL` 就用，没有就走 `out/renderer`），并在注入失败时输出能看懂的结论。
+
+#### 七、命令
+
+```bash
+pwsh -NoProfile -File tools\_install-test.ps1   # 装 → 19 条断言 → 卸 → 自动恢复机器状态
+npm run dev:isolated                            # dev 用独立 profile（%APPDATA%\Lumin (dev)），不再和打包版抢锁
+```
+
+> `dev:isolated` 是**可选开关**（`LUMIN_DEV_PROFILE=1`）：默认 `npm run dev` 行为**故意不变** —— 否则你现有的开发数据会「凭空消失」（其实是换了目录），那比共用 profile 更吓人。
+
+#### 八、本轮**未验证**的部分（别当成已验证）
+
+真实「双击 `.md`」端到端（你的 dev 实例在跑 → 会转给它，测不出打包版自身行为；要验就关掉 dev 实例或改用 `dev:isolated` 后双击）、图形化安装向导界面、**覆盖安装/升级**、任务栏右键菜单与「固定到任务栏」的**观感**（断言只覆盖到「快捷方式/ AUMID / 启动命令正确」这一层）、自动更新（`publish` 仍是占位）、代码签名与 SmartScreen。

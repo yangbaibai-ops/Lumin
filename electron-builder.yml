@@ -54,6 +54,8 @@ win:
         - x64
 
 nsis:
+  # 自定义 NSIS 段（卸载清关联残留、补 InstallLocation）。为什么要这两件事写在 build/installer.nsh 里。
+  include: build/installer.nsh
   # 不做一键安装：允许用户选安装目录（写作类应用常被装到非系统盘）
   oneClick: false
   allowToChangeInstallationDirectory: true

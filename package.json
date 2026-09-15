@@ -1,9 +1,12 @@
 {
   "name": "lumin",
   "version": "1.0.0",
-  "description": "An Electron application with Vue and TypeScript",
+  "description": "Lumin —— 所见即所得的 Markdown 编辑器（Electron + Vue 3 + Tiptap）",
   "main": "./out/main/index.js",
-  "author": "example.com",
+  "author": {
+    "name": "yang_bai_bai",
+    "email": "yang_bai_bai@163.com"
+  },
   "homepage": "https://electron-vite.org",
   "scripts": {
     "format": "prettier --write .",
@@ -18,7 +21,8 @@
     "build:unpack": "npm run build && electron-builder --dir",
     "build:win": "npm run build && electron-builder --win",
     "build:mac": "npm run build && electron-builder --mac",
-    "build:linux": "npm run build && electron-builder --linux"
+    "build:linux": "npm run build && electron-builder --linux",
+    "dev:isolated": "set LUMIN_DEV_PROFILE=1&& electron-vite dev --watch"
   },
   "dependencies": {
     "@codemirror/autocomplete": "^6.20.3",

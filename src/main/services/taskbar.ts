@@ -147,6 +147,27 @@ export function shortcutPath(): string {
   return join(dir, isDefaultProfile() ? base : base.replace(/\.lnk$/, ' [test].lnk'))
 }
 
+/**
+ * 安装器创建的那条开始菜单快捷方式的路径。
+ *
+ * 与 shortcutPath() 的区别（很容易搞混，所以分成两个函数）：
+ *  * shortcutPath() 是**开发态由我们自己创建/刷新**的那条，名字按 profile 区分（隔离实例不会覆盖用户的）；
+ *  * installedShortcutPath() 是**安装器写的**那条，名字由 electron-builder.yml 的 nsis.shortcutName 决定
+ *    （= Lumin），与当前进程用什么 profile 无关 —— 因为它是安装到系统里的那一条。
+ * 打包态的 AUMID 补写必须用后者：用前者的话，带 --user-data-dir 的实例会去找 "Lumin [test].lnk"，
+ * 永远补不到安装器那条（实测踩过这个前提）。
+ */
+export function installedShortcutPath(): string {
+  return join(
+    app.getPath('appData'),
+    'Microsoft',
+    'Windows',
+    'Start Menu',
+    'Programs',
+    app.isPackaged ? 'Lumin.lnk' : 'Lumin (dev).lnk'
+  )
+}
+
 export interface ShortcutStatus {
   ok: boolean
   path: string
@@ -169,6 +190,69 @@ export interface ShortcutStatus {
  *
  * **打包态直接跳过**（见函数内注释）：安装器负责创建快捷方式，运行时不该插一脚。
  */
+/**
+ * ─── 打包态：确保安装器那条快捷方式带 AppUserModelID（幂等）────────────────────
+ *
+ * 背景（含一条**被修正过的**结论，别照抄旧说法）：
+ *  * NSIS 那套快捷方式脚本本身写不了 .lnk 的 AppUserModelID —— 它属于 .lnk 的扩展属性存储，
+ *    不是注册表值；而这条属性决定任务栏把窗口与哪条快捷方式认成同一个应用；
+ *  * 但 electron-builder 会按 appId 写这条属性。**实测（第二轮）：安装器创建的 Lumin.lnk 里
+ *    本来就有 com.lumin.app**，shell.readShortcutLink 直接读得到。
+ *    第一轮报告 P4 说的「lnk 里没有 AUMID」是**测量方法错了**：当时拿原始字节去搜 UTF-16
+ *    字符串，搜不到不等于属性不存在。结论更正见 docs/packaging-install-test.md。
+ *
+ * 所以这个函数是**兜底**，不是补救：正常情况走下面「已存在」那条分支直接返回；
+ * 只有当快捷方式被换成了不带 AUMID 的版本（换安装器、被别的工具重写过）时才真的补写。
+ * 做法：只读取并补这一个属性，其余字段（target/args/cwd/description/icon/iconIndex）原样保留 ——
+ * 绝不新建文件、绝不改启动参数，仍然遵守「打包态不创建快捷方式，快捷方式归安装器」的原则。
+ * 失败只记日志：拿不到这条属性最多是任务栏身份弱一些，不该影响启动。
+ */
+export function backfillInstalledShortcutAumid(): boolean {
+  if (process.platform !== 'win32') return false
+  const path = installedShortcutPath()
+  try {
+    if (!existsSync(path)) {
+      debugLog(`shortcut aumid backfill skipped (not found) path="${path}"`)
+      return false
+    }
+    const cur = shell.readShortcutLink(path)
+    if (cur.appUserModelId) {
+      debugLog(`shortcut aumid already present path="${path}" aumid=${cur.appUserModelId}`)
+      return true
+    }
+    // 显式逐字段写回，而不是展开 cur：readShortcutLink 返回的对象里有些字段（如空字符串的
+    // toastActivatorClsid）不适合原样回传，逐字段更可控，也更容易看出「我们只动了 AUMID」。
+    const ok = shell.writeShortcutLink(path, 'update', {
+      target: cur.target,
+      args: cur.args,
+      cwd: cur.cwd,
+      description: cur.description,
+      icon: cur.icon,
+      iconIndex: cur.iconIndex,
+      appUserModelId: appId()
+    })
+    debugLog(`shortcut aumid backfilled ok=${ok} path="${path}" aumid=${appId()}`)
+    return ok
+  } catch (err) {
+    debugLog(`shortcut aumid backfill failed: ${String(err)}`)
+    return false
+  }
+}
+
+/**
+ * 启动时管理快捷方式的**唯一入口**，按运行形态分流：
+ *  * 打包态：快捷方式归安装器，我们只做 AUMID 幂等补写（见上）；
+ *  * 开发态：由我们自己创建/刷新那条带参数的快捷方式（因为开发态没有安装器，
+ *    而 Windows 的任务栏身份又依赖「AUMID → 快捷方式」这条链）。
+ */
+export function ensureShortcut(): void {
+  if (app.isPackaged) {
+    backfillInstalledShortcutAumid()
+    return
+  }
+  ensureAppShortcut()
+}
+
 export function ensureAppShortcut(): ShortcutStatus {
   const path = shortcutPath()
   const args = launchArgs([NEW_WINDOW_SWITCH])
@@ -180,7 +264,7 @@ export function ensureAppShortcut(): ShortcutStatus {
   // （AUMID、图标、启动参数、卸载信息都由安装器登记）。运行时再写一遍等于用开发态那套
   // （electron.exe 或 Lumin.exe + 我们的参数）去覆盖安装器那条，纯属添乱。
   if (app.isPackaged) {
-    debugLog(`shortcut skipped (packaged; installer owns it) path="${path}"`)
+    debugLog(`shortcut creation skipped (packaged; installer owns it) path="${path}"`)
     return { ok: true, path, aumid: appId(), target, args }
   }
   try {

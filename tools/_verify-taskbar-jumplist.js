@@ -449,11 +449,15 @@ async function waitForNewPages(before, amount, timeoutMs = 15000) {
   const coldUd = path.join(os.tmpdir(), 'lumin-jump-cold')
   const coldPort = 9223
   fs.rmSync(coldUd, { recursive: true, force: true })
+  // 渲染页面来源**继承父进程**，不硬编码 dev server 地址：
+  // 本套件其余每个实例（主实例、launchSecond）都是继承的，只有这里写死 http://localhost:5173 会
+  // 导致「没有 dev server 时冷启动进程拿不到页面 → #app 不存在 → 下面读 window.__K 直接 TypeError」。
+  // 父进程有 ELECTRON_RENDERER_URL 就用它（dev server 模式），没有就删掉 → 与主实例一样走 out/renderer。
   const coldEnv = {
     ...process.env,
-    ELECTRON_RENDERER_URL: 'http://localhost:5173',
     LUMIN_DEBUG_PORT: String(coldPort)
   }
+  if (!process.env.ELECTRON_RENDERER_URL) delete coldEnv.ELECTRON_RENDERER_URL
   spawn(
     ELECTRON_EXE,
     [REPO, `--user-data-dir=${coldUd}`, `--lumin-open=${encodeURIComponent(fileA)}`],
@@ -487,6 +491,19 @@ async function waitForNewPages(before, amount, timeoutMs = 15000) {
     }
     await w.ev(SETUP)
     let cur = null
+    // SETUP 注入失败（页面没起来 / 冷启动进程拿不到渲染页面）时给一条能看懂的结论，别抛 undefined.files
+    if ((await w.ev(`typeof window.__K === 'object' ? 'ok' : 'missing'`)) !== 'ok') {
+      const href = await w.ev('location.href')
+      c('cold-start-opens-that-file', false, `SETUP 失败：页面没起来 href=${href}`)
+      c('cold-start-no-extra-restore-windows', false, 'SETUP 失败')
+      w.ws.close()
+      for (const p of coldPages) await closeTarget(p.id, coldPort)
+      console.log(results.join('\n'))
+      const nf = results.filter((r) => r.startsWith('FAIL')).length
+      console.log(`--- ${results.length - nf}/${results.length} PASS`)
+      main.ws.close()
+      return process.exit(1)
+    }
     for (let i = 0; i < 40; i++) {
       await sleep(300)
       cur = await w.ev(`(window.__K.files().current && window.__K.files().current.path) || null`)
