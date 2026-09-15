@@ -1568,3 +1568,15 @@ set LUMIN_PKG_SKIP_BUILD=1 && node tools/_verify-packaging.js   # 复用已有�
 ```
 
 > `tools/_verify-packaging.js` 全程不运行安装包，所有打包态启动都用 `--user-data-dir=%TEMP%\lumin-pkg-userdata` 隔离并按该 profile 精确回收进程，不会碰用户正在使用的实例。
+
+### 4.42 安装 / 卸载链路实测报告（本次）
+
+见独立文档 **`docs/packaging-install-test.md`**：在本机用 NSIS 安装包做了完整的装 → 跑 → 卸实测。
+
+- 安装 `Lumin-1.0.0-setup.exe /S`：退出码 0、20.2 s；安装到 `%LOCALAPPDATA%\Programs\Lumin`（82 个文件，`Lumin.exe` 210,974,720 字节）；
+- exe 内嵌图标：`resources/icon.ico` 的 **16/24/32/48/64/128/256 七档负载 7/7 逐字节命中**，同一批字节在 `electron.exe` 里 7/7 不存在；
+- 文件关联：`HKCU\Software\Classes\.md` → ProgID `Markdown` → 命令 `…\Programs\Lumin\Lumin.exe "%1"`（`%1` 即裸路径，正好由 §4.41 的 `launchIntent` 解析）；
+- 打包版以**裸路径**打开中文文档成功（窗口标题 = 文件名，渲染层从 `app.asar` 加载）；
+- 卸载 `/currentuser /S`：退出码 0、10.6 s；安装目录与快捷方式清除；**`%APPDATA%\Lumin` 11027 个文件 / 38 个草稿原样保留**（`deleteAppDataOnUninstall: false` 生效）。
+
+报告同时记录了 **1 个中severity 缺陷**（卸载后 `HKCU\Software\Classes\.md` 默认值残留 `Markdown`，形成悬空关联，需在 `nsis.include` 里补一段删除逻辑）、**4 项待修/待确认**（Publisher 显示 `example.com`、桌面同名快捷方式会被覆盖、快捷方式未携带 AUMID、dev 与打包版共用 `%APPDATA%\Lumin` 与单实例锁）以及 **5 项未覆盖**（真实双击 `.md`、任务栏固定项观感、自动更新、代码签名/SmartScreen、非 Windows 平台）。
