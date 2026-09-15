@@ -36,6 +36,8 @@ export const defaultSettings: AppSettings = {
   restoreSession: true,
   /** 打开文件时的默认编码：auto = 走判定链（BOM → 每文件记忆 → 严格 UTF-8 → 系统语言兜底） */
   defaultEncoding: 'auto',
+  // 自动检查更新：默认关 —— 用户没要求就别联网，也别让通知中心多出无意义卡片
+  autoCheckUpdate: false,
   recentFiles: [],
   recentFolders: [],
   pinnedFiles: [],

@@ -240,8 +240,20 @@ async function waitForNewPages(before, amount, timeoutMs = 15000) {
     JSON.stringify(back ?? null)
   )
   c('shortcut-file-on-disk', !!sc?.path && fs.existsSync(sc.path), String(sc?.path))
-  // 图标：任务栏/开始菜单只认 exe/dll/ico 资源，必须是应用自己的 icon.ico（之前借的是 electron.exe 的图标）
-  c('shortcut-icon-is-app-icon', !!sc && /icon\.ico$/i.test(sc.icon) && fs.existsSync(sc.icon), String(sc?.icon))
+  // 图标：任务栏/开始菜单只认 exe/dll/ico 资源，必须是应用自己的图标（之前借的是 electron.exe 的图标）。
+  // 开发态写的是**内容寻址的运行时副本**（userData/icons/lumin-<hash>.ico，见 §4.35：Windows 按路径
+  // 缓存图标，所以每次内容变化都要换路径），所以这里断言「后缀 .ico + 文件真实存在 + 字节与
+  // resources/icon.ico 完全一致」——比只看文件名更强：既排除了 electron.exe 的图标，也排除了旧设计。
+  const canonicalIcon = path.resolve(__dirname, '..', 'resources', 'icon.ico')
+  const iconBytesEqual =
+    !!sc?.icon && fs.existsSync(sc.icon) && fs.existsSync(canonicalIcon)
+      ? fs.readFileSync(sc.icon).equals(fs.readFileSync(canonicalIcon))
+      : false
+  c(
+    'shortcut-icon-is-app-icon',
+    !!sc && /\.ico$/i.test(sc.icon) && iconBytesEqual,
+    JSON.stringify({ icon: sc?.icon, canonical: canonicalIcon, bytesEqual: iconBytesEqual })
+  )
   c('shortcut-readback-icon-matches', !!back && back.icon === sc?.icon, JSON.stringify({ readback: back?.icon, written: sc?.icon }))
 
   // ── A3. 快捷方式的启动命令 == 已经验证过能开新窗口的那条命令 ──

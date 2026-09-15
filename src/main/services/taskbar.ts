@@ -72,10 +72,9 @@ export function runtimeIconPath(): string {
   }
 }
 
-/** 跳转列表里「打开新窗口」的开关（主进程解析：冷启动与第二实例两条路都要认） */
-export const NEW_WINDOW_SWITCH = '--lumin-new-window'
-/** 跳转列表里「打开某篇文档」的参数前缀（与 additionalArguments 的 --lumin-open 同一套格式） */
-export const OPEN_FILE_PREFIX = '--lumin-open='
+// 开关常量的单一来源在 services/launchIntent.ts（解析也在那里，这里只负责**拼**跳转列表的命令行）
+export { NEW_WINDOW_SWITCH, OPEN_FILE_PREFIX } from './launchIntent'
+import { NEW_WINDOW_SWITCH, OPEN_FILE_PREFIX } from './launchIntent'
 
 /** 任务名（Tasks 分类里的那条）：与「应用名」那条区分开，见文件头的说明 */
 const TASK_TITLE: Record<Language, string> = {
@@ -167,6 +166,8 @@ export interface ShortcutStatus {
  *
  * 用 'create' 幂等写入（它会覆盖已存在的），每次启动都刷新一遍，改了图标/参数也跟着更新。
  * 注意别用 'replace'：那个是「只替换已存在的」，文件还没建出来时直接失败。
+ *
+ * **打包态直接跳过**（见函数内注释）：安装器负责创建快捷方式，运行时不该插一脚。
  */
 export function ensureAppShortcut(): ShortcutStatus {
   const path = shortcutPath()
@@ -174,6 +175,13 @@ export function ensureAppShortcut(): ShortcutStatus {
   const target = process.execPath
   if (process.platform !== 'win32') {
     return { ok: false, path, aumid: appId(), target, args }
+  }
+  // 打包态**什么都不做**：开始菜单/桌面快捷方式由 NSIS 安装器创建，而且它写的那条才是「正品」
+  // （AUMID、图标、启动参数、卸载信息都由安装器登记）。运行时再写一遍等于用开发态那套
+  // （electron.exe 或 Lumin.exe + 我们的参数）去覆盖安装器那条，纯属添乱。
+  if (app.isPackaged) {
+    debugLog(`shortcut skipped (packaged; installer owns it) path="${path}"`)
+    return { ok: true, path, aumid: appId(), target, args }
   }
   try {
     // 先删再写：**换掉文件标识**，逼 Windows 重新提取快捷方式图标。
@@ -225,33 +233,21 @@ function launchArgs(extra: string[]): string {
   return parts.map(quote).join(' ')
 }
 
-/** 本次进程启动（或第二实例被拉起）时携带的跳转列表意图 */
-export interface LaunchIntent {
-  /** 要求开一个新窗口 */
-  newWindow: boolean
-  /** 要求打开这篇文档（绝对路径） */
-  openFile: string | null
-}
-
-/** 解析 `process.argv` / `second-instance` 的 argv 里的跳转列表意图 */
-export function parseLaunchIntent(argv: string[]): LaunchIntent {
-  let openFile: string | null = null
-  const arg = argv.find((a) => a.startsWith(OPEN_FILE_PREFIX))
-  if (arg) {
-    try {
-      openFile = decodeURIComponent(arg.slice(OPEN_FILE_PREFIX.length)) || null
-    } catch {
-      openFile = null
-    }
-  }
-  return { newWindow: argv.includes(NEW_WINDOW_SWITCH), openFile }
-}
-
 export interface JumpListStatus {
   /** 注册结果：setJumpList 的返回值（'ok' 才算真的注册上） */
   status: string
   tasks: number
   recent: number
+}
+
+/**
+ * 跳转列表条目用哪个图标文件。
+ * 打包态用 **exe 自身**：图标已经嵌进 `Lumin.exe`，这正是「确实需要另一种图标类型」的正当场景
+ * —— exe 资源不需要额外文件，也不会被 Windows 的图标缓存按路径记住；
+ * 开发态跑的是 electron.exe（自带图标是 Electron 的 logo），必须用我们那份内容寻址的 ico。
+ */
+function jumpListIconPath(): string {
+  return app.isPackaged ? process.execPath : runtimeIconPath()
 }
 
 /**
@@ -274,7 +270,7 @@ export function refreshJumpList(): JumpListStatus {
         args: launchArgs([NEW_WINDOW_SWITCH]),
         title: TASK_TITLE[lang],
         description: NEW_WINDOW_DESC[lang],
-        iconPath: runtimeIconPath(),
+        iconPath: jumpListIconPath(),
         iconIndex: 0
       }
     ]
@@ -286,7 +282,7 @@ export function refreshJumpList(): JumpListStatus {
       title: r.title || basename(r.path),
       // description 上限 260 字符，超了整个条目会被系统丢掉
       description: dirname(r.path).slice(0, 240),
-      iconPath: runtimeIconPath(),
+      iconPath: jumpListIconPath(),
       iconIndex: 0
     }))
 

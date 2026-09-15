@@ -208,6 +208,8 @@
     "reset": "恢复默认设置",
     "restoreSession": "启动时恢复上次会话",
     "restoreSessionDesc": "重新打开上次的文档，并把光标与滚动位置放回原处（多窗口时各窗口分别恢复）",
+    "autoCheckUpdate": "自动检查更新",
+    "autoCheckUpdateDesc": "有新版本时在通知中心提示。仅在打包版且配置了更新渠道后生效，默认关闭。",
     "links": "链接",
     "linksCreateMode": "目标不存在时",
     "linksCreateModeDesc": "链接指向的文件或文件夹不存在时的处理方式",
@@ -384,5 +386,13 @@
   },
   "encoding": {
     "auto": "自动检测"
+  },
+  "update": {
+    "availableTitle": "发现新版本",
+    "availableBody": "Lumin {version} 已发布，请到发布页下载。",
+    "downloadedTitle": "更新已下载",
+    "downloadedBody": "版本 {version} 已下载，退出 Lumin 后会自动安装。",
+    "errorTitle": "检查更新失败",
+    "errorBody": "暂时无法连接更新服务器：{message}"
   }
 }

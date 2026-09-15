@@ -34,6 +34,11 @@ export interface AppSettings {
   restoreSession: boolean
   /** 打开文件时的默认编码（'auto' = 自动检测；见 shared/encodings 与 main/services/encoding） */
   defaultEncoding: EncodingId
+  /**
+   * 是否自动检查更新（默认关：不打扰用户）。
+   * 只有打包版 + publish 配了真实渠道时才会真的去查，开发态一律不查（见 main/services/updater.ts）。
+   */
+  autoCheckUpdate: boolean
   recentFiles: RecentFile[]
   /** 最近打开过的文件夹（工作区） */
   recentFolders: RecentFolder[]

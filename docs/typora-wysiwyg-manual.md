@@ -1366,9 +1366,205 @@ docs/typora-wysiwyg-manual.md   # 本文档
 - **Windows 运行时统一到一个文件**：窗口图标改成 `process.platform === 'win32' ? appIconIco : appIconPng`（`resources/icon.ico`）—— ICO 里本来就含 16/24/32/48/64/128/256 七档，Windows 会按场景（任务栏 / Alt+Tab / 标题栏 / 高 DPI）自己挑最合适的尺寸，比单张 PNG 更对；于是**窗口 + 任务栏 + 开始菜单快捷方式 + 跳转列表**读的都是 `resources/icon.ico`。
 - **非 Windows 用 PNG**：macOS/Linux 不吃 ICO，这是「确实需要另一种图标类型」的那种例外，用同一份设计导出的 `resources/icon.png`。
 - **删掉旧图标**：`build/icon.ico`、`build/icon.png`、`build/icon.icns` 全部删除（`build/` 只剩 mac 的 entitlements，与图标无关）。
-- **打包也指到同一个文件**：`package.json` 增加最小 `build` 配置 —— `appId: com.lumin.app`（与 `taskbar.appId()` 的打包分支一致，见 §4.35）、`productName: Lumin`、`win.icon: resources/icon.ico`。不写这段的话 electron-builder 会回去找 `build/icon.ico`（已被我们删掉），反而退化成 Electron 默认图标。
+- **打包也指到同一个文件**：当时在 `package.json` 里加了一段最小 `build` 配置（`appId: com.lumin.app`、`productName: Lumin`、`win.icon: resources/icon.ico`）—— 不写这段的话 electron-builder 会回去找 `build/icon.ico`（已被我们删掉），反而退化成 Electron 默认图标。**后来这段被移到 `electron-builder.yml` 里成为唯一配置源，`package.json` 的 `build` 字段已删除，见 §4.41。**
 - **加守卫防复发**：`tools/build-app-icon.js` 自检里新增三条 —— 扫 `src/**` 里所有 `resources/icon*` 引用必须只有 `icon.ico`（或非 Windows 分支的 `icon.png`）、Windows 必须有 ≥2 处引用同一个 ico、`build/` 下不允许再出现 `icon.*`。
 
 **验收**：`tools/build-app-icon.js` **14/14**（像素取样 + 三条单一来源守卫）；`_verify-taskbar-jumplist.js` 里快捷方式的 `IconLocation` 独立用 Windows COM 复核为 `D:\code_workspace\Lumin\resources\icon.ico,0`；`npm run typecheck` 0 error。
 
 **需要重启才能看到**：窗口图标是在窗口创建时设置的，所以改完要重启应用（如今开发态 `npm run dev --watch` 会自动重启，见 §4.38）。
+
+### 4.41 打包链路：单一配置源 + 打包态/开发态分层 + 打包验收（本次）
+
+**先纠正一个说法**：此前把打包链路说成「空的」并不准确 —— `electron-builder.yml` 一直存在，`package.json` 里也有一段 `build`。准确的说法是：**它是 electron-vite 模板的原样默认值 + 三行手写配置，而且从来没有被验证过**（没人跑过 `build:win`/`build:unpack`，也没有任何针对打包产物的验收）。本次把它做成「可用、专业、可扩展」的形态。
+
+#### 一、排查出的四个真实缺陷（含一处我先判断错、后经实测纠正的）
+
+先说一个反直觉但**已实测确认**的事实：electron-builder 的配置解析顺序是
+
+1. **先看 `package.json` 的 `build` 字段 —— 有它就只用它，`electron-builder.yml` 整份被忽略**；
+2. 只有 `build` 字段不存在时，才按 `electron-builder.yml → .yaml → .json → .json5 → .toml → .js` 去找配置文件。
+
+（读的是 `app-builder-lib/out/util/config/load.js` 的 `loadConfig()`；并写了个探针在同一目录下同时放 `package.json` 的 `build` 与 `electron-builder.yml` 验证：有 `build` 时读到的是 `FROM-PACKAGE-JSON`，删掉后读到 `FROM-YML`。**我最初按印象写反了**，是这两步把我拉回来的 —— 所以这条结论连同「为什么」一起写进 yml 注释，免得下次再猜。）
+
+于是模板留下的真实状况是**反的**：
+
+1. **`electron-builder.yml` 是一份完整的死配置**：它写着模板默认值 `appId: com.electron.app`、`productName: lumin`、`win.executableName: lumin`、`linux.maintainer: electronjs.org`、`category: Utility`、snap target……**而它一个字都没被读过**（因为 `package.json` 里有 `build`）。危险在于：这不是「配置写错了」，而是「配置看着很全、其实全是摆设」，且**一旦有人删掉 `package.json` 的 `build`（比如为了消除重复配置），应用身份会瞬间变成 `com.electron.app` / `lumin.exe`** —— 任务栏身份、快捷方式、跳转列表、通知归属一起崩。这类地雷比明显写错更难发现。
+2. **真正生效的配置只有三行**：`package.json` 里的 `{appId: com.lumin.app, productName: Lumin, win.icon: resources/icon.ico}` —— 身份恰好是对的，纯属这三行**恰好**写对了；除此之外的一切都退回 electron-builder 的默认值，没人检查过默认值是否符合产品预期。
+3. **默认安装行为不符合写作类应用**：`nsis.oneClick` 默认是 `true` —— **一键安装、不给选安装目录**。写作软件常被装到非系统盘，这个默认值不合适（现在的 yml 明确写 `oneClick: false` + `allowToChangeInstallationDirectory: true`）。
+4. **没有文件关联**：`.md` 双击打不开（也就谈不上「Typora 平替」的入场体验）。顺带说，把 `publish` 的 `url` 留在 `https://example.com/auto-updates` 这种占位值上而运行时又不去识别它，也是同类问题（会在用户机器上冒网络失败），所以 `updater.ts` 会主动识别占位域名并跳过。
+
+#### 二、比配置更致命的洞：裸路径 argv 根本没解析
+
+旧版解析器（原在 `taskbar.ts`）只认自己造的两个开关：
+
+```ts
+const arg = argv.find((a) => a.startsWith(OPEN_FILE_PREFIX))   // --lumin-open=<encodeURIComponent(path)>
+return { newWindow: argv.includes(NEW_WINDOW_SWITCH), openFile }
+```
+
+而**双击文件、`Lumin.exe x.md`、从别的程序拖进来**，argv 里是一个**裸路径**（Windows 还会附带 `--allow-file-access-from-files`、`--source-app-id`、`--secure-schemes=lumin-file` 等 Chromium 自己的开关）。旧代码对这些一律无视 —— 于是「双击 .md 没反应」是**必然**的，哪怕文件关联注册得再对。**文件关联 = 安装器注册 + 应用会解析裸路径，两件事缺一不可。**
+
+#### 三、改法（六块，逐条讲为什么）
+
+**① `electron-builder.yml` 成为唯一配置源**
+
+`package.json` 的 `build` 字段已删除，配置全部集中到 yml：
+
+- 身份对齐代码：`appId: com.lumin.app`（与 `taskbar.appId()` 打包分支一致）、`productName: Lumin`、`win.executableName: Lumin`；
+- `win.icon: resources/icon.ico` —— 图标单一来源（§4.40），这里显式指过去，避免 electron-builder 回退去找已删除的 `build/icon.ico`；
+- `win.target: nsis / x64`（只出 Windows 免安装版 + 安装包，不做跨架构幻想）；
+- `nsis` 显式写全：`oneClick: false` + `allowToChangeInstallationDirectory: true`（可选安装目录，**不是**一路 next 的静默安装）、`perMachine: false`（装到当前用户，不需要管理员）、`createDesktopShortcut/ createStartMenuShortcut: true`、`shortcutName: Lumin`、`uninstallDisplayName: Lumin`、`artifactName: Lumin-${version}-setup.${ext}`、`runAfterFinish: true`；
+- **`deleteAppDataOnUninstall: false`**：卸载**不删**用户数据（SQLite 里的会话、设置、编码记忆都在 `%APPDATA%\lumin`）—— 卸载重装不该把用户的偏好和草稿一起带走；
+- `fileAssociations`：只注册 `.md` 与 `.markdown`（`name: Markdown`、`description: Markdown Document`、`role: Editor`、`icon: resources/icon.ico`）。不贪多：`.txt`/`.markdownx` 之类抢来只会惹人烦；
+- `publish` 保留占位并写清启用步骤（见第五块）；
+- 模板残留一并修掉：`linux.maintainer` 从 `electronjs.org` 改为 Lumin、`linux.category` 从 `Utility` 改为 `Office`、去掉 snap target（本产品是 Windows-only，留着 snap 只是噪音）、mac 的 entitlements 与 `notarize: false` 保留；
+- `asarUnpack: resources/**` 与 `npmRebuild: false` 保持（前者保证运行时能按真实路径取图标文件、后者本工程没有原生模块要重建）；
+- `files` 里补排除**开发期专属内容**：`docs/*`、`tools/*`、`{build-out.txt,typecheck-out.txt,dev-run.log}`。这条是解析 asar 顶层时发现的 —— 默认打包会把文档、验收脚本、构建日志一起塞进 `app.asar`（顶层能看到 `docs/`、`tools/`、`build-out.txt`、`typecheck-out.txt`、`dev-run.log`），既让安装包变大，也等于把开发脚本发给用户；已核对 `src` 里没有任何代码在运行时读这些路径。
+
+> 关于「两处配置谁是权威」：不是「说不清」，而是一个**确定的、反直觉的**顺序（`package.json` 的 `build` 赢）。正确做法不是记住它，而是**不让它成为问题**：现在只剩 yml 一处，并且验收里有两条断言把这个状态钉住 —— `package-json-has-no-build-field`（`package.json` 不许再长出 `build`）与 `builder-config-comes-from-yml`（用 electron-builder 自己的解析函数算出「有效配置」，再核对它等于 yml 里写的值；`nsis.oneClick` 默认 `true` 而 yml 写 `false`，读出 `false` 就证明 yml 真的在生效，而不是躺着的死配置）。实测产物 `Lumin.exe` / `Lumin-1.0.0-setup.exe` / 开始菜单名 `Lumin` 也全部严格来自 yml。
+
+**② 新增纯函数 `src/main/services/launchIntent.ts`**
+
+把「命令行 → 启动意图」从主进程里剥出来，做成**无副作用纯函数**（唯一依赖 `fs.existsSync/statSync` 与注入的 `cwd/appPath`），因为这段逻辑是文件关联、跳转列表、第二实例转发三条路径的共同入口，值得独立：
+
+```ts
+export interface LaunchIntent {
+  openFile: string | null
+  openFolder: string | null
+  newWindow: boolean
+  noWorkspace: boolean
+  ignored: string[]        // 被忽略的参数（诊断用）
+}
+parseLaunchIntent(argv, { appPath, cwd }): LaunchIntent
+```
+
+解析规则（每条都对应一个真实踩法）：
+
+- 跳过 `argv[0]`（可执行文件自身）与 `appPath`（开发态 `electron .` 就是这条，否则一定被当成「打开文件夹」）；
+- `--` 之后一律不解释（POSIX 约定，避免把用户数据当成开关）；
+- 认识自己的开关：`--lumin-open=`、`--lumin-open-folder=`、`--lumin-new-window`、`--lumin-no-workspace=1`；
+- 其它 `-` 开头的参数**一律忽略并记进 `ignored`**（Chromium/Squirrel 会塞 `--allow-file-access-from-files`、`--source-app-id`、`--secure-schemes=…` 等，不忽略就会被当成文件路径去 stat）；
+- 剩下的是裸路径：**相对路径按 cwd 解析**（从命令行敲 `Lumin.exe ..\a.md` 必须能用），`existsSync` + `statSync` 判定文件还是目录，不存在的记进 `ignored`（而不是静默丢掉）。
+
+`ignored` 不是为了好看，而是为了「双击没反应」这类反馈能一眼定位。
+
+**③ `src/main/index.ts` 接线：三条入口收敛到一个函数**
+
+三个来源原本各写一套逻辑：冷启动 argv、`second-instance`（第二实例把 argv 转发给已运行实例）、macOS 的 `open-file` 事件。现在统一成：
+
+- 冷启动：`parseLaunchIntent(process.argv, { appPath, cwd })` → `recordLaunchIntent(...)` 落一行日志 → 合并 `pendingOpenPaths`（macOS `open-file` 早于 ready 时的暂存，这里保留为跨平台正确性）→ 首个窗口按意图携带 `openFile`/`openFolder`/`noWorkspace`；
+- `app.on('open-file')`：ready 前入 `pendingOpenPaths`，ready 后直接 `handleOpenRequest`；
+- `app.on('second-instance', (_e, argv, cwd))`：解析 + 落日志 + `handleOpenRequest`；
+- **`handleOpenRequest(intent)` 是唯一分发点**：`newWindow` → 新窗口（带目标就带上，没带目标才是「干净窗口」）；`openFile` → 先用 `openDocs.findWindowWithDoc` 找已打开它的窗口，找到就聚焦（**不重复开**），否则新窗口；`openFolder` → 新窗口；什么都没有 → `focusExistingWindow()`。
+
+**④ 打包态与开发态明确分层**（之前是混着来的，两个身份互相污染）：
+
+| 行为 | 开发态 | 打包态 |
+|---|---|---|
+| 开始菜单快捷方式 | 启动时写（`ensureAppShortcut()`） | **不写**，早退并记日志 `shortcut skipped (packaged; installer owns it)` —— 快捷方式归安装器所有，运行时不越权 |
+| 窗口 `icon` | 传 `runtimeIconPath()`（内容寻址副本） | **不传**：图标已内嵌进 `Lumin.exe`（验收 B 段就是证明），再传一次只会多一条路径依赖 |
+| 跳转列表图标 | `runtimeIconPath()`（按内容换路径，规避 Windows 按路径缓存，§4.35） | `process.execPath`（即 `Lumin.exe`，系统直接取 exe 内嵌图标） |
+
+**⑤ 新增 `src/main/services/updater.ts`：更新能力「装好但默认关闭」**
+
+- 只在**打包态**且**真有发布通道**时才是可用状态：`updateChannelConfigured()` 要求 `resources/app-update.yml` 存在、且 url 主机不是 `example.com/example.org/example.net/localhost` 这类占位值 —— 否则「检查更新」只会永远失败；
+- `autoDownload = false`：**不偷偷下 100MB 安装包**；`autoInstallOnAppQuit = true` 只在用户已选择下载后才在退出时安装；
+- 检查条件是 `app.isPackaged && settings.autoCheckUpdate && updateChannelConfigured()`，即默认设置（`autoCheckUpdate: false`）下**一条网络请求都不发**；
+- 状态经 `update:status` 推给渲染层，渲染层用通知中心呈现（文案在 i18n 里，主进程只传数据 —— 与既有约定一致，§4.32）。
+- **与规格的一处有意偏差**：只有 `available` / `downloaded` / `error` 三种状态发通知，`checking` / `not-available` 只 `console.info`。原因是本应用的通知中心是**持久卡片**而不是自动消失的 toast（§4.32），「没找到更新」这种一次性的中间态做成卡片会一直躺在那里等人手动关。
+
+**⑥ 新增 `tools/_verify-packaging.js`（24 项，本次的重点）**
+
+打包链路以前最大的问题不是配置，而是**没人验证**。这个套件把「打包产物真的能用」变成可重复的事实：
+
+- **A** **构建前先清场**（`no-packaged-instance-holds-dist-before-build` + `dist-cleared-before-build`：不许有 `Lumin.exe` 占着 `dist\`，且上一轮产物必须删得掉，原因见三点五），然后 `npm run build:unpack`（内含 typecheck）成功、`dist/win-unpacked/Lumin.exe` 存在；
+- **A2** **产物冒烟启动**：真起一次、等首页就绪；起不来就自动重建一次再试（`packaged-artifact-boots-after-rebuild`）—— 这条是本轮的血泪（见三点五）；
+- **B** **exe 里真的内嵌了我们的图标**：解析 `resources/icon.ico` 的目录项，断言 7 个尺寸（16/24/32/48/64/128/256）的字节**全部**能在 `Lumin.exe` 里找到，且 **electron.exe 里一个都找不到**（对照组）；再用 `ExtractAssociatedIcon` 取出 32×32 证明「取出来能渲染」；
+- **C** **裸路径打开文件**：用打包后的 exe 直接启动 `Lumin.exe <临时目录>\甲-中文名.md`（隔离 `--user-data-dir` + CDP），断言 `files.current.path`、正文开头 `# 甲文档标题`、内存里的编码是 `utf-8`；
+- **D** **第二实例转发 + 去重**：再启动一次同一个 exe（另一个文件 `乙-第二篇.md`）→ 窗口数 1→2 且新窗口里是乙文件；同一文件再开一次 → 2→2（不会开出第三个窗口）；
+- **E** **打包运行不碰开始菜单**：整段测试前后对 `开始菜单\Programs` 做快照对比（含 mtime），必须完全不变，且不得出现 `Lumin.lnk`；
+- **F** `npm run build:win` 出 NSIS 安装包，只检查大小与 SHA256，**绝不运行安装包**（见第六节）；
+- **G** **配置单一来源 + 身份一致**（这一段是排查出「死配置」之后补的，防止复发）：`package.json` 不得有 `build` 字段；用 electron-builder **自己的解析函数**算出有效配置并核对它确实等于 yml 里写的（`appId`/`productName`/`executableName`/`win.icon`/`nsis.oneClick === false`/`allowToChangeInstallationDirectory === true`/`deleteAppDataOnUninstall === false`）；`appId` 必须等于代码里 `taskbar.ts` 用的那个；文件关联必须恰好是 `md` + `markdown`（不许顺手抢 `.txt`）。
+
+#### 三点五、「打包产物启动即静默退出」——本次踩得最贵的一个坑（必须留档）
+
+这一节建议优先读：它说明**「产物存在 + 图标字节都对」也可能整个产物是坏的**，验收里「真的把它跑起来」这一步不能省。
+
+**现象**：一轮完整验收里 A 段（`build:unpack` 成功、`Lumin.exe` 存在）与 B 段（exe 里 7 档图标字节全中、与 electron.exe 对照正确）**全部 PASS**，C 段却连不上 CDP：`packaged-app-boots FAIL pid=13660` + `ERROR connect ECONNREFUSED 127.0.0.1:9225`。
+
+**误导性极强的地方**（也是我绕远路的原因）：手工起同一个 exe，它**立刻退出、exit code 1、stdout/stderr 一个字都没有**；profile 目录建了但是空的；`%TEMP%\lumin-build.log` 里**没有**本次启动的意图行；用 `--inspect` 起它，**Node inspector 根本不监听** —— 即**主进程 JS 一行都没执行**，死在了 Electron 自己的启动阶段。于是我先怀疑配置和代码，依次排查（全是死路）：yml 是否被读、asar 结构是否被截断（自己解析 asar 头部 → 结构完好）、换 `electron.exe` 直接加载 `resources/app.asar`（同样秒退）、Windows 事件日志、磁盘空间。
+
+**已验证的事实**（这部分是硬结论）：
+
+1. 这种产物**重新构建一次就恢复正常**（三次复现，每次重建都立刻好）；
+2. 重建后的 `Lumin.exe` 与 `app.asar` 和可用产物的 **SHA256 逐字节一致**（`exe 52B90573…` / `asar 6437F17C…`），构建本身是确定的 —— **所以不是配置问题、不是代码问题、也不是构建不确定**；
+3. 坏产物死在 Electron 的启动校验阶段（JS 未执行）。
+
+**已定位的一个真凶（且是验收脚本自己的 bug）**：`run()` 用 `spawnSync` 跑构建，而 **spawnSync 默认只缓冲 1MB 输出**；electron-builder 那一行 `duplicate dependency references dependencies=[...]` 本身就接近 1MB，**一旦超限子进程会被直接杀掉**（`error.code = ENOBUFS`、`status = null`）—— 于是构建被**中途打断**，`dist/` 里留下半成品（asar 换了、exe 的完整性资源没来得及写），这种半成品启动时正是「静默退出」。而且断言只报一句 `exit=1`，完全看不出是「构建真失败」还是「输出太多被杀」。**已修**：`maxBuffer` 提到 64MB，并在失败时额外打印 `BUILD-SUSPECT-LINES`（把 error/fail/EPERM/ENOBUFS 之类的行拎出来）。这一条同时也是本次「排查被误导」的一部分原因 —— **验收工具本身不可信时，排查方向会被它带偏**。
+
+**仍未定位的一处**（如实记录）：另有一轮构建 `exit=0` 正常退出、产物却是坏的。推测是「构建时 `dist` 里上一轮的产物文件仍被占用，electron-builder 往 exe 写 asar 完整性资源（日志 `• updating asar integrity executable resource`）时没能与新的 asar 对上」，但**没有证实**。
+
+**已加的护栏**（不依赖上面哪种解释成立）：
+
+- **构建前清场**：`ensureNoPackagedInstanceRunning()` 干掉残留实例并等它真的退出（断言 `no-packaged-instance-holds-dist-before-build`）；`clearPreviousArtifacts()` **自己删掉上一轮产物并确认删得掉**（断言 `dist-cleared-before-build`）—— 删不掉就当场失败，绝不在文件被占的情况下让构建继续；
+- **构建后冒烟启动（A2）**：`smokeBootArtifact()` 真起一次产物、等首页就绪；起不来就**自动重建一次**再试（断言 `packaged-artifact-boots-after-rebuild`）；这一步让「坏产物」在 A2 就被抓住，不用等到 C 段看一句没头没脑的「连不上 CDP」；
+- C 段再失败会打印 `HINT-PACKAGED-BOOT-FAILED`，直接给出归因方向与下一步；
+- 清场范围刻意收窄：进程名必须是 `Lumin.exe`，**且**（命令行带本套件的隔离 profile **或** 可执行文件就在 `dist\` 下）—— 用户开发态跑的是 `electron.exe`，永远不会被误杀。
+
+> 一句话总结：**构建产物可能坏，而坏法恰好是「静默退出 + 前面几段全绿」**。所以「构建前清场」和「构建后真起一次」都必须写进验收，而不是靠人记得。
+
+#### 四、验收数据（本次实测）
+
+`node tools\_verify-packaging.js` → **24/24 PASS**（全新构建，非复用产物）：
+
+- **A2 冒烟启动本轮一次通过**；而加护栏的那一轮它**真的抓到过一次坏产物**：`SMOKE-FAILED-FIRST-TRY {"ok":false,"pid":26736}` → 自动重建一次 → `PASS packaged-artifact-smoke-boots {"ok":true}`（那一轮因为多跑了「重建后通过」这条断言，总数是 25）。也就是说这个坑**不是理论上的可能，而是会真的碰上**，护栏确实在起作用；
+- `ICON-BYTES` `sizes=[16,24,32,48,64,128,256] inExe=[true×7]`，对照 `electron.exe` 全 `false`；
+- `ICON-EXTRACT` 我们的 exe 中心像素 `(176,179,198)`、亮度 180；electron.exe 对照 `(60,66,78)`、亮度 66（断言「亮度差 > 60」，避免把「都是深色」误判成同一张图）；
+- `C-BARE-PATH` `path=…\Temp\lumin-pkg-fixtures\甲-中文名.md`、`head="# 甲文档标题\n\n这"`、`encoding=utf-8`；
+- `D-SECOND-INSTANCE` `乙-第二篇.md`、窗口 `1 -> 2`；`D-DEDUP` `2 -> 2`；
+- `E` 开始菜单快照前后完全一致（含 mtime），无新建 `Lumin.lnk`；
+- `G` `EFFECTIVE-CONFIG {"appId":"com.lumin.app","productName":"Lumin","executableName":"Lumin","winIcon":"resources/icon.ico","oneClick":false,"allowDir":true,"deleteAppDataOnUninstall":false,"associations":["md","markdown"]}` —— 生效配置确实来自 yml（`oneClick: false` 不是默认值）；
+- `F` `Lumin-1.0.0-setup.exe`，**129,201,471 字节（123.2 MB）**，`sha256=6d8f208c421b7e38eeebd9507b1e8b520785763898bae7c09d774beb8cbcd958`；`latest.yml` 一并产出（自动更新的版本清单）。
+
+> 安装包体积会随构建时间戳等变动（同一天两次构建差几十到几百 KB），哈希也随之变 —— 上面是本次实测值。把 `docs/`、`tools/`、构建日志排除出打包后，安装包从 129,444,185 字节降到 **129,201,471 字节**（约 -240 KB），这既是体积收益，也是「不把开发脚本发给用户」。
+
+**回归**（本次改动不碰编辑器内核，但仍全跑一遍，全部在隔离实例上）：
+
+| 套件 | 结果 |
+|---|---|
+| `_verify-encoding.js` | **34/34** |
+| `_verify-open-file-dedup.js` | **21/21** |
+| `_verify-open-file-routing.js` | **22/22** |
+| `_verify-session.js` | **16/16**（会话恢复没被 `explicitOpen` 判定改坏） |
+| `_verify-taskbar-jumplist.js` | **27/27** |
+| `npm run typecheck` | 0 error |
+
+> taskbar 套件里 `shortcut-icon-is-app-icon` 原本是「路径以 `icon.ico` 结尾 + 文件存在」。§4.35 把开发态图标改成**内容寻址的运行时副本**（`userData\icons\lumin-<sha1:8>.ico`）之后，这条断言就**过时了**（文件名不再叫 `icon.ico`）。已改为更强的一条：后缀 `.ico` + 文件存在 + **字节与 `resources/icon.ico` 完全一致**（实测 `bytesEqual: true`）—— 既排除 electron.exe 的图标，也排除旧设计的残留。
+
+#### 五、更新通道怎么开
+
+1. 把 `electron-builder.yml` 的 `publish.url` 换成真实地址；
+2. 把 `latest.yml` 与安装包一起上传到该地址；
+3. 在设置里打开「自动检查更新」（`settings.autoCheckUpdate`，默认关）。
+
+三项缺一，更新就保持「装好但不动」的状态 —— 这是刻意的：默认关、不发请求、不自动下载。
+
+#### 六、本次**未验证**的部分（不要当成已验证）
+
+- **没有真的运行安装包**。所以「安装后 `.md` 关联是否注册成功」「桌面/开始菜单快捷方式是否正确」「卸载是否保留用户数据（`deleteAppDataOnUninstall: false` 的真实行为）」都**没有实测**。安装器只被检查了大小与 SHA256。
+- 即便关联注册成功，**Win10+ 也不会自动抢默认程序**：用户需要在「打开方式」里选一次 Lumin（`role: Editor` 只影响候选列表）。这是平台行为，不是配置问题。
+- 更新链路只验证了「默认关且不发请求」，**没有接真实更新服务器**跑过一次真实升级。
+
+手动验证步骤（要真验证时）：在**虚拟机或非工作机**上双击安装包 → 装到非默认目录 → 双击任意 `.md`（应打开该文件且窗口里是同一篇）→ 检查开始菜单/桌面快捷方式图标 → 卸载 → 确认 `%APPDATA%\lumin` 仍在。
+
+#### 七、命令
+
+```bash
+npm run dev          # 开发（--watch：主进程改动自动重建，§4.38）
+npm run build:unpack # 免安装版 → dist/win-unpacked/Lumin.exe（验收 A–E 用这个）
+npm run build:win    # NSIS 安装包 → dist/Lumin-<version>-setup.exe
+node tools/_verify-packaging.js            # 17 项打包验收（会跑上面两条构建）
+set LUMIN_PKG_SKIP_BUILD=1 && node tools/_verify-packaging.js   # 复用已有产物，快速回归
+```
+
+> `tools/_verify-packaging.js` 全程不运行安装包，所有打包态启动都用 `--user-data-dir=%TEMP%\lumin-pkg-userdata` 隔离并按该 profile 精确回收进程，不会碰用户正在使用的实例。

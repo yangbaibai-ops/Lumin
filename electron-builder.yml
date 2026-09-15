@@ -1,7 +1,30 @@
-appId: com.electron.app
-productName: lumin
+# ─── Lumin 打包配置（**唯一配置真相源**）────────────────────────────────────────
+# 解析顺序（读的是 app-builder-lib/out/util/config/load.js，别凭印象猜）：
+#   1) 先看 package.json 的 `build` 字段 —— **有它就只用它，本文件整份被忽略**；
+#   2) 只有 `build` 字段不存在时，才按 electron-builder.yml → .yaml → .json → .json5 → .toml → .js 找配置文件。
+# 所以历史情况正好是反的：之前 package.json 里那三行 `build` 才是真正生效的配置，而本文件（模板默认值
+# appId: com.electron.app / productName: lumin / executableName: lumin）一个字都没被读过 —— 是个**死配置地雷**：
+# 改它不生效，而一旦有人删掉 package.json 的 `build`，应用身份会瞬间变成 com.electron.app / lumin.exe。
+# 现在 package.json 的 `build` 已删除，本文件成为唯一真相源；验收脚本有一条断言盯住「package.json 不许
+# 再长出 build 字段」。
+#
+# 为什么 appId 必须与代码里一致：Windows 的任务栏身份（AppUserModelID）由安装器写进快捷方式，
+# 而应用启动时会再设一次（src/main/services/taskbar.ts 的 appId()）。两边不一致时，任务栏右键菜单
+# 会出现「名字/图标/点击行为对不上」的怪象。验收脚本 tools/_verify-packaging.js 里有一条断言
+# 专门盯住这个一致性。
+appId: com.lumin.app
+productName: Lumin
+copyright: Copyright © 2026 Lumin
+
 directories:
   buildResources: build
+
+# 只排除开发期文件：源码、配置、锁文件、文档、验收脚本、构建日志。out/（编译产物）必须留着 ——
+# package.json 的 main 指向 out/main/index.js。
+#
+# 为什么连文档和日志也要排除：默认打包会把它们一起塞进 app.asar —— 实测解析 asar 顶层能看到
+# docs/、tools/、build-out.txt、typecheck-out.txt、dev-run.log。它们跟运行时毫无关系，
+# 进来只会让安装包变大、把开发脚本发给用户。运行时没有任何代码读这些路径（已核对 src）。
 files:
   - '!**/.vscode/*'
   - '!src/*'
@@ -9,35 +32,102 @@ files:
   - '!{.eslintcache,eslint.config.mjs,.prettierignore,.prettierrc.yaml,dev-app-update.yml,CHANGELOG.md,README.md}'
   - '!{.env,.env.*,.npmrc,pnpm-lock.yaml}'
   - '!{tsconfig.json,tsconfig.node.json,tsconfig.web.json}'
+  - '!docs/*'
+  - '!tools/*'
+  - '!{build-out.txt,typecheck-out.txt,dev-run.log}'
+
+# 保留 asarUnpack：asar 里的文件 Windows shell 读不到，而 resources/ 将来会放导出模板之类的
+# **必须作为真实文件存在**的资源。图标现在是嵌进 exe 的（见 win.icon），不依赖这条，
+# 但保留它是为了不让后来者踩「资源在 asar 里读不到」这个坑。
 asarUnpack:
   - resources/**
+
 win:
-  executableName: lumin
+  # exe 名 = Lumin.exe（默认取 productName，这里显式写出来，避免改 productName 时悄悄变名）
+  executableName: Lumin
+  # 图标嵌进 exe 资源：任务栏、Alt+Tab、资源管理器、安装器都用它。必须是 .ico（含多档尺寸），
+  # 与开发态用的是同一份设计（resources/icon.ico）。
+  icon: resources/icon.ico
+  target:
+    - target: nsis
+      arch:
+        - x64
+
 nsis:
-  artifactName: ${name}-${version}-setup.${ext}
-  shortcutName: ${productName}
-  uninstallDisplayName: ${productName}
-  createDesktopShortcut: always
+  # 不做一键安装：允许用户选安装目录（写作类应用常被装到非系统盘）
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  # 当前用户安装（免管理员）。个人项目走 per-user 更省事；要全机安装时改 true 并接受 UAC。
+  perMachine: false
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: Lumin
+  uninstallDisplayName: Lumin
+  artifactName: Lumin-${version}-setup.${ext}
+  # 装完直接启动：面向普通用户，省一步手动点开
+  runAfterFinish: true
+  # ⚠️ **绝对不能改成 true**：它会在卸载时删掉 %APPDATA%\Lumin，而用户的笔记索引、草稿、
+  # 设置、会话都在那里。卸载程序删用户数据是写作类应用最不可原谅的行为之一。
+  deleteAppDataOnUninstall: false
+
+# 文件关联：把 .md / .markdown 登记为「可由 Lumin 打开」。**不抢 .txt**（那是通用文本，
+# 抢过来只会惹人烦）。role: Editor 让它在 Windows 的「打开方式」里排到编辑器那一档。
+#
+# 两个必须知道的真相（写在这里免得后来者误判）：
+#  1. **注册 ≠ 成为默认程序**。Windows 10 以后不允许程序静默抢夺默认程序，安装器只能把 Lumin
+#     登记为**候选**，用户还得在「设置 → 应用 → 默认应用」里点一次（或在右键「打开方式」里选）。
+#  2. 关联要真正能用，**主进程必须会解析裸文件路径参数**（`Lumin.exe D:\a\b.md`）——
+#     见 src/main/services/launchIntent.ts。只注册不解析 = 双击了没反应。
+#
+# description 不进 i18n：Windows 的文件类型名称是**系统级**元数据（不随应用语言切换），
+# 所以固定用英文惯例写法。
+fileAssociations:
+  - ext: md
+    name: Markdown
+    description: Markdown Document
+    role: Editor
+    icon: resources/icon.ico
+  - ext: markdown
+    name: Markdown
+    description: Markdown Document
+    role: Editor
+    icon: resources/icon.ico
+
+# 自动更新：**这里还是占位地址**，所以运行时不会去检查（services/updater.ts 会识别占位域名
+# 并直接跳过，避免用户机器上冒出莫名其妙的网络失败通知）。
+# 真正启用需要两步：
+#   1) 把 provider/url 换成真实渠道，例如 GitHub Releases：
+#        publish:
+#          provider: github
+#          owner: <你的账号>
+#          repo: Lumin
+#      或自建静态源（把安装包与 latest.yml 放到任意 HTTPS 静态目录）：
+#        publish:
+#          provider: generic
+#          url: https://你的域名/lumin/updates
+#   2) 重新打包（electron-builder 会生成 latest.yml 与 app-update.yml），发布安装包 + latest.yml。
+# 之后在设置里打开「自动检查更新」即生效（默认关，不打扰用户）。
+publish:
+  provider: generic
+  url: https://example.com/auto-updates
+
+# ─── 非 Windows 平台：目前不是发布目标，配置保留但不做针对性适配 ───────────────
 mac:
   entitlementsInherit: build/entitlements.mac.plist
-  extendInfo:
-    - NSCameraUsageDescription: Application requests access to the device's camera.
-    - NSMicrophoneUsageDescription: Application requests access to the device's microphone.
-    - NSDocumentsFolderUsageDescription: Application requests access to the user's Documents folder.
-    - NSDownloadsFolderUsageDescription: Application requests access to the user's Downloads folder.
+  icon: resources/icon.png
+  # 未签名不公证：macOS 上会被 Gatekeeper 拦，故不承诺可用
   notarize: false
 dmg:
   artifactName: ${name}-${version}.${ext}
 linux:
+  icon: resources/icon.png
+  category: Office
+  maintainer: Lumin
   target:
     - AppImage
-    - snap
     - deb
-  maintainer: electronjs.org
-  category: Utility
 appImage:
   artifactName: ${name}-${version}.${ext}
+
+# 依赖是纯 JS（iconv-lite 等），没有需要重编译的原生模块
 npmRebuild: false
-publish:
-  provider: generic
-  url: https://example.com/auto-updates

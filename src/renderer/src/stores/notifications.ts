@@ -6,6 +6,17 @@ import type {
   NotificationPatch
 } from '../../../shared/types'
 import { dispatchNotificationAction } from '../lib/notificationActions'
+import i18n from '../i18n'
+
+/** 主进程发来的自动更新状态（见 main/services/updater.ts） */
+interface UpdateStatus {
+  state: 'checking' | 'available' | 'not-available' | 'downloaded' | 'error'
+  version?: string
+  message?: string
+}
+
+/** 是否已订阅「自动更新状态」（模块级，避免重复订阅） */
+let updateSubscribed = false
 
 /** 是否已订阅主进程广播（模块级，避免重复订阅） */
 let changeSubscribed = false
@@ -62,6 +73,14 @@ export const useNotificationsStore = defineStore('notifications', {
         changeSubscribed = true
         window.luminAPI.events.on('notifications:changed', () => void this.hydrate())
       }
+      // 自动更新状态：主进程只发「数据」，文案与卡片由这里（有 i18n 的一侧）生成 ——
+      // 通知中心必须只有一套实现，主进程不该自己拼通知。
+      if (!updateSubscribed) {
+        updateSubscribed = true
+        window.luminAPI.events.on('update:status', (payload) => {
+          void this.onUpdateStatus(payload as UpdateStatus)
+        })
+      }
       try {
         const rows = await window.luminAPI.notifications.list()
         this.items = rows
@@ -73,6 +92,45 @@ export const useNotificationsStore = defineStore('notifications', {
       } finally {
         this.ready = true
       }
+    },
+
+    /**
+     * 自动更新状态 → 通知卡片。
+     *
+     * 只对**需要用户知道/行动**的状态落卡片：有新版本、已下载待安装、检查失败。
+     * `checking` / `not-available` **故意不落卡片** —— 本项目的通知中心是「持久卡片」而不是
+     * 自动消失的 toast，每次启动都插一张「正在检查更新 / 已是最新」会永久占位，是纯噪音。
+     * 这两个状态走 console，供排查。
+     *
+     * mergeKey 按状态固定：反复检查不会叠出多张卡（同键会更新并置顶）。
+     */
+    async onUpdateStatus(status: UpdateStatus): Promise<void> {
+      const t = i18n.global.t
+      if (status.state === 'checking' || status.state === 'not-available') {
+        console.info(`[update] ${status.state}`)
+        return
+      }
+      const version = status.version ?? ''
+      const map: Record<string, { level: NotificationLevel; title: string; body: string }> = {
+        available: {
+          level: 'info',
+          title: t('update.availableTitle'),
+          body: t('update.availableBody', { version })
+        },
+        downloaded: {
+          level: 'success',
+          title: t('update.downloadedTitle'),
+          body: t('update.downloadedBody', { version })
+        },
+        error: {
+          level: 'warning',
+          title: t('update.errorTitle'),
+          body: t('update.errorBody', { message: status.message ?? '' })
+        }
+      }
+      const hit = map[status.state]
+      if (!hit) return
+      await this.notify({ ...hit, mergeKey: `update:${status.state}` })
     },
 
     /**

@@ -17,6 +17,7 @@ import * as links from './services/links'
 import * as session from './services/session'
 import * as openDocs from './services/openDocs'
 import * as taskbar from './services/taskbar'
+import { onSettingsChanged } from './services/updater'
 import { scopeOfSender } from './services/windowScope'
 import { getRememberedEncoding, rememberEncoding } from './services/encoding'
 import type { ConcreteEncoding, EncodingId } from '../shared/encodings'
@@ -226,6 +227,8 @@ export function registerIpc(): void {
     // 任务栏跳转列表里的分类名/任务描述是本地化文案，最近文档也来自设置：
     // 换语言或最近列表变化（含用户在界面上「清空最近」）时顺手重建
     if (partial.language || partial.recentFiles) taskbar.refreshJumpList()
+    // 用户刚打开「自动检查更新」时立刻查一次，否则要等下次启动，像开关没反应
+    onSettingsChanged(partial)
     return merged
   })
   ipcMain.handle('workspace:getRoot', () => {

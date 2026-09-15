@@ -208,6 +208,8 @@
     "reset": "Reset to defaults",
     "restoreSession": "Restore the last session on startup",
     "restoreSessionDesc": "Reopen the documents from last time and put the caret and scroll position back (each window restores its own)",
+    "autoCheckUpdate": "Check for updates automatically",
+    "autoCheckUpdateDesc": "Show a notification when a new version is available. Only works in packaged builds with a configured update channel; off by default.",
     "links": "Links",
     "linksCreateMode": "When the target is missing",
     "linksCreateModeDesc": "What to do when the linked file or folder does not exist",
@@ -384,5 +386,13 @@
   },
   "encoding": {
     "auto": "Auto Detect"
+  },
+  "update": {
+    "availableTitle": "New version available",
+    "availableBody": "Lumin {version} has been released — download it from the release page.",
+    "downloadedTitle": "Update downloaded",
+    "downloadedBody": "Version {version} has been downloaded and will be installed after you quit Lumin.",
+    "errorTitle": "Update check failed",
+    "errorBody": "Cannot reach the update server right now: {message}"
   }
 }

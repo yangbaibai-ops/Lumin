@@ -294,6 +294,23 @@ function formatTime(ms: number): string {
                         </div>
                       </section>
 
+                      <!-- 自动检查更新：默认关闭。真正联网还要求「打包版 + 配了更新渠道」，
+                           两个条件不满足时即使打开也不会有任何请求（见 main/services/updater.ts）。 -->
+                      <section class="surface mb-4 p-5">
+                        <div class="flex items-center justify-between gap-4">
+                          <div>
+                            <p class="text-[13.5px] text-ink">{{ t('settings.autoCheckUpdate') }}</p>
+                            <p class="mt-0.5 text-[12px] text-ink-3">{{ t('settings.autoCheckUpdateDesc') }}</p>
+                          </div>
+                          <button
+                            class="switch"
+                            :class="{ on: settings.autoCheckUpdate }"
+                            :aria-checked="settings.autoCheckUpdate"
+                            @click="settings.set('autoCheckUpdate', !settings.autoCheckUpdate)"
+                          />
+                        </div>
+                      </section>
+
                       <!-- 编码：默认编码 + 一行说明（临时切换走「文件 → 选择编码重新打开」） -->
                       <section class="surface p-5">
                         <h3 class="mb-3 text-[13px] font-semibold text-ink">{{ t('settings.encoding') }}</h3>

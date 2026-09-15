@@ -14,7 +14,9 @@ import { db } from './services/database'
 import * as session from './services/session'
 import * as openDocs from './services/openDocs'
 import * as taskbar from './services/taskbar'
-import { recordBuildStamp } from './services/buildStamp'
+import { recordBuildStamp, recordLaunchIntent } from './services/buildStamp'
+import { parseLaunchIntent, type LaunchIntent } from './services/launchIntent'
+import { initUpdater } from './services/updater'
 import { bindWindowScope, scopeOfSlot } from './services/windowScope'
 import { defaultSettings } from '../shared/defaults'
 import { markRunning, markClean } from './drafts'
@@ -166,11 +168,14 @@ function createWindow(options: WindowOpenOptions = {}): BrowserWindow {
     autoHideMenuBar: false,
     backgroundColor: themeBackground(),
     title: 'Lumin',
-    // 窗口图标 = 任务栏按钮图标。**必须在所有平台显式设置**：以前只在 linux 传，Windows 下
-    // 就退化成 electron.exe 自带的图标（开发态看着就是 Electron 的 logo）。
-    // Windows 用 ICO（与开始菜单快捷方式、跳转列表同一个文件，内含 16~256 七档）；
-    // macOS/Linux 不吃 ICO，用同一份设计的 PNG。
-    icon: process.platform === 'win32' ? taskbar.runtimeIconPath() : appIconPng,
+    // 窗口图标 = 任务栏按钮图标。
+    // **打包态不传**：图标已经嵌进 Lumin.exe（win.icon），Windows 自己会取 —— 这是
+    // 「确实需要另一种图标类型」的正当例外，也免掉一整类图标缓存问题。
+    // **开发态必须显式传**：进程是 electron.exe，不自带我们的图标，不传就显示 Electron 的 logo
+    // （以前这里只在 linux 传，Windows 下一直是错的）。Windows 用 ICO，其余平台用 PNG。
+    ...(app.isPackaged
+      ? {}
+      : { icon: process.platform === 'win32' ? taskbar.runtimeIconPath() : appIconPng }),
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       contextIsolation: true,
@@ -322,7 +327,12 @@ app.whenReady().then(() => {
   // 任务栏跳转列表（右键图标）：一条「新建窗口」任务 + 一栏最近文档。
   // 顺序有讲究：先写「开始菜单快捷方式」——任务栏右键菜单第一项的名字与点击行为都来自它
   // （没有它时 Windows 退回进程路径，就显示成「Electron」并启动无参数的 electron.exe）。
-  const intent = taskbar.parseLaunchIntent(process.argv)
+  const cwd = process.cwd()
+  const appPath = app.getAppPath()
+  const intent = parseLaunchIntent(process.argv, { appPath, cwd })
+  // 落一行日志：启动参数解析是「静默失败」重灾区（关联双击没反应之类），解出来的意图与被忽略的
+  // 参数必须留证据，否则只能靠猜。见 services/buildStamp 的说明。
+  recordLaunchIntent({ argv: process.argv, intent, ignored: intent.ignored, cwd, appPath })
   taskbar.ensureAppShortcut()
   taskbar.refreshJumpList()
 
@@ -330,10 +340,19 @@ app.whenReady().then(() => {
   // 「在新窗口打开文件/文件夹」创建的窗口带 --lumin-open(-folder)，优先级高于会话槽位；
   // 设置里关闭 restoreSession 时一律走单窗口（空白未命名缓冲区）。
   const wantRestore = db.kvGet('settings', defaultSettings).restoreSession !== false
-  // 从跳转列表点「最近打开」的某篇文档时，意图很明确：就打开这篇。
-  // 此时不拉会话恢复（否则会先恢复一堆旧窗口再把这篇插进去，观感很乱）；
+  // macOS：open-file 事件可能在 ready 之前到达（Finder 双击）。合并进本次启动的意图，
+  // 这样首个窗口就直接打开它，而不是先开一个空窗口再补一个。Windows 走命令行裸路径，这段恒为空。
+  if (pendingOpenPaths.length) {
+    const merged = intentFromPaths(pendingOpenPaths.splice(0))
+    intent.openFile ??= merged.openFile
+    intent.openFolder ??= merged.openFolder
+  }
+
+  // 明确要求打开某篇文档 / 某个目录时（跳转列表的「最近打开」、双击文件、把文件夹拖给应用），
+  // 意图很清楚：就打开它。此时不拉会话恢复（否则会先恢复一堆旧窗口再把目标插进去，观感很乱）；
   // 槽位数据仍留在 kv 里，下次正常启动照旧恢复。
-  const plan = wantRestore && !intent.openFile ? session.planRestore() : []
+  const explicitOpen = !!(intent.openFile || intent.openFolder)
+  const plan = wantRestore && !explicitOpen ? session.planRestore() : []
   if (!wantRestore) session.resetSession()
   // 首个窗口先建（「最近使用过的窗口」优先，见 planRestore 的排序），
   // 其余窗口等它加载完首帧后再建 —— 避免 N 个渲染进程同时抢 CPU/磁盘把首屏拖慢。
@@ -341,7 +360,13 @@ app.whenReady().then(() => {
   const first =
     head !== undefined
       ? createWindow({ sessionSlot: head.index })
-      : createWindow({ openFile: intent.openFile ?? undefined, sessionSlot: claimFreshSlot() })
+      : createWindow({
+          openFile: intent.openFile ?? undefined,
+          openFolder: intent.openFolder ?? undefined,
+          // 冷启动时 --lumin-no-workspace=1 同样要认（「新建窗口」那条快捷方式在应用没跑时就走这条路）
+          noWorkspace: intent.noWorkspace || undefined,
+          sessionSlot: claimFreshSlot()
+        })
   startup('first-window-created')
   first.once('ready-to-show', () => startup('first-window-painted'))
   let firstShown = false
@@ -356,6 +381,9 @@ app.whenReady().then(() => {
   first.webContents.once('did-finish-load', openRemaining)
   setTimeout(openRemaining, 1500)
   installMenu()
+  // 自动更新：默认不检查（设置里关着、或 publish 还是占位地址时都不会联网）。
+  // 放在窗口创建之后：更新检查再重要也不该跟首屏抢时间。
+  initUpdater()
 
   app.on('activate', function () {
     if (BrowserWindow.getAllWindows().length === 0)
@@ -364,17 +392,38 @@ app.whenReady().then(() => {
 })
 
 /**
- * 第二个实例：用户在任务栏跳转列表里点了东西，或又双击了一次图标。
- * 三种意图分别处理（顺序即优先级）：
- *  ① 带 --lumin-new-window → 开一个新窗口（跳转列表里的「Lumin」那条，与 Typora 一致）；
- *  ② 带 --lumin-open=<file> → 该文档若已在某个窗口开着就把它唤到前面（「一个文件只开一个
- *     窗口」的规则），否则新开一个窗口打开它；
- *  ③ 什么都没有 → 聚焦已有窗口（沿用原行为）。
+ * 聚焦已有窗口（没有任何打开要求时的兜底）。
+ * 只判断 isMinimized 是不够的：窗口在应用处于后台时被最小化，Electron 可能报 false，
+ * 只调 focus() 会得到「焦点给了它、但它还最小化着」的怪状态（见 services/openDocs.focusWindow 的说明），
+ * 所以这里与它保持同一套口径。
  */
-app.on('second-instance', (_event, argv) => {
-  const intent = taskbar.parseLaunchIntent(argv)
+function focusExistingWindow(): void {
+  const win = BrowserWindow.getAllWindows()[0]
+  if (!win) return
+  if (win.isMinimized() || !win.isVisible()) win.restore()
+  win.focus()
+}
+
+/**
+ * 把一次「打开请求」落到具体窗口。
+ * 第二实例（任务栏跳转列表 / 双击文件 / 再点一次图标）与 macOS open-file 都走这里 ——
+ * 同一套落点规则只留一份实现，尤其「一个文件只开一个窗口」不会被绕过。
+ *
+ * 顺序即优先级：
+ *  ① 要新窗口 → 开新窗口（若同时带文件/目录就一并装进去，不丢参数）
+ *  ② 打开文件 → 已在别的窗口开着就聚焦过去，否则新窗口打开
+ *  ③ 打开目录 → 新窗口以它为工作区
+ *  ④ 都没有 → 聚焦已有窗口
+ */
+function handleOpenRequest(intent: LaunchIntent): void {
   if (intent.newWindow) {
-    createWindow({ sessionSlot: claimFreshSlot(), noWorkspace: true })
+    createWindow({
+      openFile: intent.openFile ?? undefined,
+      openFolder: intent.openFolder ?? undefined,
+      // 只有「纯新窗口」才是干净窗口（不继承当前工作区）；带了目标就按目标的落点规则走
+      noWorkspace: !intent.openFile && !intent.openFolder,
+      sessionSlot: claimFreshSlot()
+    })
     return
   }
   if (intent.openFile) {
@@ -386,11 +435,54 @@ app.on('second-instance', (_event, argv) => {
     createWindow({ openFile: intent.openFile, sessionSlot: claimFreshSlot() })
     return
   }
-  const win = BrowserWindow.getAllWindows()[0]
-  if (win) {
-    if (win.isMinimized()) win.restore()
-    win.focus()
+  if (intent.openFolder) {
+    createWindow({ openFolder: intent.openFolder, sessionSlot: claimFreshSlot() })
+    return
   }
+  focusExistingWindow()
+}
+
+/**
+ * 把若干「已知是文件/目录的路径」包成一次打开请求。
+ * 刻意复用同一套解析器（而不是另写一份判断）：先是文件还是目录、是否存在、要不要忽略，
+ * 规则只有一处，避免「命令行能开、open-file 不能开」这种分裂。
+ */
+function intentFromPaths(paths: string[]): LaunchIntent {
+  return parseLaunchIntent([process.execPath, ...paths], {
+    appPath: app.getAppPath(),
+    cwd: process.cwd()
+  })
+}
+
+/**
+ * macOS：Finder 里双击文件走这个事件（Windows 是命令行裸路径，不进这里）。
+ * 成本极低，为将来留口 —— 而且与第二实例共用落点规则，不另写一份。
+ */
+const pendingOpenPaths: string[] = []
+app.on('open-file', (event, filePath) => {
+  event.preventDefault()
+  if (!app.isReady()) {
+    pendingOpenPaths.push(filePath)
+    return
+  }
+  const intent = intentFromPaths([filePath])
+  recordLaunchIntent({
+    argv: [process.execPath, filePath],
+    intent,
+    ignored: intent.ignored,
+    cwd: process.cwd(),
+    appPath: app.getAppPath()
+  })
+  handleOpenRequest(intent)
+})
+
+app.on('second-instance', (_event, argv) => {
+  const cwd = process.cwd()
+  const appPath = app.getAppPath()
+  const intent = parseLaunchIntent(argv, { appPath, cwd })
+  // 与冷启动同样留证据：用户「双击了没反应」时，先看这行日志
+  recordLaunchIntent({ argv, intent, ignored: intent.ignored, cwd, appPath })
+  handleOpenRequest(intent)
 })
 
 app.on('window-all-closed', () => {
