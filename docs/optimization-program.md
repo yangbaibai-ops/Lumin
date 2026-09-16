@@ -20,57 +20,226 @@
 | 图标按路径被 shell 缓存 → 内容寻址 `runtimeIconPath()` + profile 分名 | ✅ 已完成 | `cba76af`、`b34eac3` |
 | 编码：三处入口（菜单重开 / 设置默认 / 状态栏显示）+ 每文件记忆 + 按编码回写 | ✅ 已完成 | `12b42de`、`cb4be25`、`af724c7` |
 | 显式外部替换被回声启发式吞掉 → `syncEpoch` 强制同步 | ✅ 部分（只修了这一条路径，未收敛成状态机） | `496b622` |
-| Markdown 保真套件 / 本地历史 / EOL / 以编码保存 / 文件树键盘可达 / CI / README / 单测 | ❌ 未做 | — |
-| 编辑器⇄store 状态机收敛 / store 拆分 / `services/dialog` | ❌ 未做（本方案 Wave 3、Wave 5） | — |
-
+| **数据安全：写盘原子化**（临时文件 + fsync + rename） | ✅ 已完成（2026-09-15 优化执行） | 本轮 |
+| **lint 门禁可用**（忽略 `tools/**`、行尾对齐、修掉 src 14 个 error → 0 error / 0 warning） | ✅ 已完成 | 本轮 |
+| **CI**（Windows runner：typecheck + lint + 单测 + build） | ✅ 已完成 | 本轮 |
+| **单元测试**（`node --test`，57 条：草稿/会话判定矩阵、路径、编码、图片、媒体白名单、lock 一致性） | ✅ 已完成 | 本轮 |
+| **README 重写 + CHANGELOG + `.gitattributes` + 仓库卫生**（构建日志退跟踪、清未用依赖/死代码） | ✅ 已完成 | 本轮 |
+| **安全**：`lumin-file` 双白名单（媒体扩展名 + 工作区/文档目录）、`will-navigate` 兜底、搜索高亮去 `v-html` | ✅ 已完成 | 本轮 |
+| **性能**：FTS 索引节流（合并 2s、批量事务、大文档截断、搜索/退出前 flush） | ✅ 已完成 | 本轮 |
+| **功能修复**：相对路径图片按文档目录解析（此前渲染不出来） | ✅ 已完成 | 本轮 |
+| **Wave 1：Markdown 往返保真**（判级器 + 30 份夹具 + 文档级/幂等/字节级三层套件 + 7 类内容损坏缺陷修复） | ✅ 已完成（2026-09-15 第二轮） | 本轮 |
+| **CDP 脚手架**：`tools/lib/harness.js`（公共骨架）+ `tools/run-suites.js`（统一入口与矩阵）+ `start-isolated.ps1` | ✅ 已完成 | 本轮 |
+| **Wave 2：文档级元数据（编码 / 行尾 / BOM 落库 + 迁移）与本地历史**（EOL 进模型、快照链、抽稀策略纯函数、历史浮层） | ✅ 已完成（2026-09-15 第三轮） | 本轮 |
+| Wave 2 剩余：多窗口元数据一致性 / 历史保留策略可配 | ❌ 未做（下一轮起点） | — |
+| **Wave 3：显式意图同步 / 文件树键盘可达 / 原生菜单三语** | ✅ 已完成（2026-09-16 第四轮） | 本轮 |
+| **工程化收口**：`files` store 拆分（派生缓存 + 规则抽出，703→535 行）、`confirmIfDirty` 收敛成一份 | ✅ 已完成（2026-09-16 第五轮） | 本轮 |
+| 本地历史 / EOL 与以编码保存 / 文件树键盘可达 | ✅ 三项均已完成 | — |
+| **反斜杠转义保留**（Wave 1 头号缺口）：`parse.setup` 换掉 markdown-it 的 escape 规则 + `MdEscape` mark 逐字写回；`escapes.md` 升为 exact | ✅ 已完成（2026-09-16 第六轮） | 本轮 |
+| **Wave 2 尾巴**：多窗口元数据一致性（显式指定 > 每文件记录 > 全局默认，`opts.softDefault`）+ 本地历史保留策略可配（开关 / 条数 / 天数进设置） | ✅ 已完成（2026-09-16 第七轮） | 本轮 |
+| **Wave 3.2 三处真相源收敛**：编辑面 ⇄ 真源的单向数据流账本（`rev` + `author` + `applied`），删掉 3 条启发式与 2 条冗余通道 | ✅ 已完成（2026-09-16 第八轮） | 本轮 |
+| **老套件 pinia 迁移**：77 个 CDP 套件改按结构认 pinia（不再按 `Symbol(pinia)` 名字），生产构建下可跑 | ✅ 已完成（2026-09-16 第八轮） | 本轮 |
+| **嵌套样式**（`mdStyle` 支持样式集合；行内代码不再排斥其它 mark；标记按样式栈物化） | ✅ 已完成（2026-09-16 第九轮） | 本轮 |
+| **YAML front matter 原样保留**（文档开头真实节点 + markdown-it block 规则 + 保守判定纯函数） | ✅ 已完成（2026-09-16 第九轮） | 本轮 |
+| **表格列对齐 + 单元格转义竖线**（接管 table 的 markdown 序列化；纯文本规则进 `tableAlign.ts`） | ✅ 已完成（2026-09-16 第十轮） | 本轮 |
+| **行内 / 块级 HTML 原样保留**（`html_inline`/`html_block` 渲染规则 → `MdHtml` mark / `HtmlBlock` 节点） | ✅ 已完成（2026-09-16 第十轮） | 本轮 |
+| **有序任务列表**（`taskList.ordered` 属性）与**相邻有序列表**（判级器规则 19：编号按位置重算） | ✅ 已完成（2026-09-16 第十轮） | 本轮 |
+| **内联图片 / 链接图片**（图片从块级节点改成行内节点；CSS 保住「独立成段」的块级观感） | ✅ 已完成（2026-09-16 第十一轮） | 本轮 |
 ---
 
-## Wave 1：Markdown 往返保真（信誉底线，必须先做）
+## Wave 1：Markdown 往返保真（信誉底线，必须先做）—— ✅ 本轮完成
 
 **为什么第一**：产品承诺「所见即所得且不破坏源文件」，但仓库里**没有**任何「刁钻 Markdown → 解析 → 序列化 → 差异」的验收。
 任何语法被静默改写都是**无声丢内容**；而在没有这条指标之前，动编辑器内核（Wave 3）等于闭着眼睛改。
 
-- **交付**：语料 `tools/fixtures/md-fidelity/*.md`（setext、引用式链接、行内 HTML、front-matter、表格对齐与 `\|`、
-  嵌套/混合列表、`~~~` 与缩进代码块、硬换行、连续空行、数学、mermaid、`[TOC]`、中文与 emoji、CRLF 各一份）；
-  套件 `tools/_verify-md-fidelity.js`；报告 `docs/markdown-fidelity-report.md`。
-- **判定必须分三档**：`EXACT`（字节一致）/ `NORMALIZED`（语义等价但有规范化，须输出逐行 diff 供人审）/ `LOSSY`（丢内容或改语义，一律 FAIL）。
-  LOSSY 至少两条判据：可见 token 缺失、结构标记数量减少（行数/围栏数/管道数/`[ ]` 数）、URL 被改写。
+**实际交付**（与计划的差异都记在这里）：
+
+- 语料落在 `tools/fixtures/md/*.md`（**30 份**）+ **`EXPECT.json` 预期表**（原计划是 `md-fidelity/*.md`；
+  多出的预期表是关键新增：`lossy` 必须写明「为什么」与「修法」，否则等于把缺陷藏进预期里）。
+- 套件 `tools/_verify-md-fidelity.js`：三层 —— 文档级（走应用自己的落盘管线 `flushSync`）、幂等、字节级
+  （CRLF/BOM/GB18030/文末无换行）。逐份结果落 `%TEMP%\lumin-md-fidelity-report.json`。
+- 判定三档照计划：`exact` / `normalized` / `lossy`；规范化收了 18 条**保义改写**规则（`RULES` 导出），
+  而不是把「像」的东西都算通过。
+- **风险项改了**：计划里写「本轮不改产品代码」，实际查实了 **7 类内容损坏缺陷**（代码块换行被并、
+  行内代码反斜杠非幂等增长、软换行写成 `\`、列表标记被抹平且相邻列表被插空行、任务列表被拆散、
+  图片粘行与吞标题、围栏被内容提前闭合），全部修掉并把每条写成单测/夹具。
+  理由：这些是「用户会丢内容」的缺陷，只报告不修等于明知有洞不补。
+- **验收数字**：`_verify-md-fidelity.js` = **50 PASS / 0 FAIL / 20 SKIP**（SKIP 全部是 `EXPECT.json` 里
+  写了修法的已知缺口）；单测 57 → **81**；`node tools/run-suites.js` 矩阵见 CHANGELOG。
+
+## Wave 2：文件级元数据模型 + EOL + 以编码保存 + 本地历史
 - **加一条幂等性回归**：每个夹具连做两轮往返，第二轮必须与第一轮完全一致 —— 不幂等等于用户每次保存都在改文件。
 - **验收**：夹具总数、三档各自计数、幂等通过率、每条 LOSSY 的**最小复现片段**（原文 vs 往返）。
 - **风险**：本轮**不改产品代码**，只出报告与修复建议，改法单独拍板。
 
-## Wave 2：文件级元数据模型 + EOL + 以编码保存 + 本地历史
+## Wave 2：文件级元数据模型 + EOL + 以编码保存 + 本地历史 —— ✅ 本轮完成（两处剩余见下）
 
 **为什么排第二**：这三件事是同一个根 ——「文档级元数据没有模型」。现在编码挂在 `current` 上、再配一张 kv 里的
 `fileEncodings` 表（我上一轮为省迁移而选的临时方案），EOL/缩进/BOM 各写各的 → 两个窗口开同一文件会**各说各话**，
 重启又会忘。把它一次做对，能同时消掉三类 bug。
 
-- **DB**：`documents` 表加列（`encoding` / `eol` / `had_bom` / 可选 `cursor`、`scroll`），写**迁移**（本仓库已有 kv 兜底模式可参考）；
-  老的 `fileEncodings` kv 表做一次性迁移后废弃。
-- **服务**：主进程 `services/eol.ts`（检测/转换 CRLF↔LF，尊重 `.gitattributes`？—— 至少不猜，按文档记录）；
-  编码读写沿用 `services/encoding.ts`，把「文档元数据」作为权威来源。
-- **UI**：状态栏显示 `CRLF`/`LF` 与编码，**都可点**（点开切换，复用 Wave 2 新增的选择器）；文件菜单加
-  「以编码保存…」「以 LF/CRLF 保存」；设置里默认编码/默认 EOL；三语齐全。
-- **本地历史（数据安全）**：`documents_history` 表（path、保存时间、内容或差量），策略：每次保存前留一份、
-  按时间抽稀（例如最近 1 小时内每次、之后每小时、保留 N 天），设置里可查看/恢复/关闭。**关键**：现在保存成功即清草稿，
-  一次误保存无法挽回 —— 这条是写作工具的信誉底线。
-- **验收**：两窗口同文件的编码/EOL 一致；重启后记住；保存后字节确为目标 EOL/编码；历史可回滚且保存不再清空历史；
-  卸载/清库不影响。
+**实际交付**（与计划的差异记在这里，细节与踩坑见手册 §4.53）：
 
-## Wave 3：内核收敛 + 可访问性 + 打磨小刺
+- **DB**：`documents` 表加 `encoding` / `eol` / `had_bom` 三列 + 迁移（`PRAGMA table_info` + `ALTER TABLE`）；
+  老的 kv `fileEncodings` 做**一次性迁移**（能对上 documents 行的搬进去，对不上的留 kv 兜底）。
+  计划里的 `documents_history` 也落地了。
+- **行尾**：计划写的是「主进程 `services/eol.ts`」，实际放在 **`src/shared/eol.ts`（纯函数）** ——
+  这样能被 `node --test` 直接覆盖；服务层只负责「打开时判定 + 写盘时展开」（`fileOps.readFileInfo/writeFile`）。
+  约定：**内存里文本永远是 LF**，行尾是文档属性。
+- **UI**：状态栏行尾标记**可点**（LF ⇄ CRLF 且立即写回）；文件菜单加「行尾」（以 LF/CRLF 保存）与
+  「以编码保存」两个二级；设置面板加「默认行尾」；三语同步。
+- **本地历史**：快照取自**磁盘上现有的字节**（在主进程 `file:write` 里统一记录，所有写盘路径自动覆盖）；
+  抽稀策略是纯函数（每文件 30 条 / 30 天 / 全库 2000 条，每文件最新几条不受年龄限制）；
+  回滚语义是**载入缓冲、不直接写盘**（选错版本不会毁文件）。
+- **验收数字**：单测 97/97；`_verify-md-fidelity.js` 63 PASS / 0 FAIL / 19 SKIP；
+  `node tools/run-suites.js` 7/7 套件 PASS。行尾与历史各有 6 条端到端断言。
+
+**Wave 2 剩余（下一轮）**：
+
+1. **多窗口一致性**：两个窗口开同一文件时，编码/行尾以库为准（库表已就位，还差「打开时优先用库里的元数据」
+   这一步取舍与套件）。
+2. **历史保留策略可配**：设置面板开关 + 保留天数/条数（当前是常量 + 纯函数策略）。
+3. 顺带：Wave 1 留下的第一号缺口「反斜杠转义保留」（钩子方案已验证可用）。
+
+> **Wave 1 留给本波的已知缺口**（`tools/fixtures/md/EXPECT.json` 里逐条写了修法）：
+> CRLF 与文末无换行（字节级）、反斜杠转义保留（`\*`）、行内 HTML、表格列对齐与单元格转义竖线、
+> 公式（应用**没有数学节点**，`$$` 里的反斜杠会被补成 `\\`）、链接包裹的图片、段落中间的图片、
+> 有序任务列表编号、YAML front matter、CommonMark 同标记相邻列表的重编号。
+> 其中「反斜杠转义保留」的修法已经验证过钩子可用（`parse.setup` 替换 markdown-it 的 inline escape 规则
+> + `escape:false` 的 mark），可以优先做。
+
+## Wave 3：内核收敛 + 可访问性 + 打磨小刺 —— 3.1 / 3.3 / 3.4（菜单三语）本轮完成
 
 **为什么排第三**：Wave 1 已有保真门槛，这时候动内核才安全。
 
-- **3.1 编辑器 ⇄ store 显式意图状态机**（清单第 1 条）：把 `nv === lastEmitted` 与 600ms 静默窗这两条**启发式**换成
-  「意图 + 通道」：`open / reload / reopenWithEncoding / draftRestore / modeSwitch / userInput` 各自明确「谁写、谁读、谁清脏标记」。
-  `syncEpoch` 只是本波的过渡产物，最终应被意图取代。
-- **3.2 三处真相源收敛**（清单第 2 条）：WYSIWYG / 源码 textarea / 代码块 CodeMirror。方向：**模式切换走显式重建**
-  （宁可重建也不要双向防抖），把 `scheduleSplitSync`、`syncEditorContent`、textarea 兜底收敛成单向数据流。
-- **3.3 文件树键盘可达**：`role="tree"`/`treeitem`、`aria-expanded`、上下键移动、左右键展开收起、Home/End、Enter 打开。
-- **3.4 打磨小刺**：原生菜单 `menu.ts` 硬编码中文 → 接三语；错误提示统一带上**原因**（参考编码那次的示范）；
-  `lumin-file://` 协议处理器补路径校验（与 IPC 侧 `assertWorkspacePath` 同口径）并显式开 `webPreferences.sandbox`；
-  状态栏编码/EOL 可点；`build/entitlements.mac.plist` 等模板残留清理或标注为「非发布目标」。
-- **验收**：编码/图标/任务栏套件全绿 + 新增「模式切换与远程同步」套件（含快速连续切换、源码↔所见即所得往返、草稿恢复）。
+**实际交付**（与计划的差异记在这里，细节见手册 §4.54）：
+
+- **3.1 编辑器 ⇄ store 显式意图状态机** ✅：契约是「**凡是要编辑器换内容的动作都自增 `files.syncEpoch`**」
+  （打开文件 / 恢复草稿 / 重新解释编码 / 载入历史）。编辑器只判断世代是否变化：变了就 `setContent`，
+  没变就不动它。两条启发式（内容相等 + 600ms 静默窗）连同 `lastEmitted`/`lastEmitTime` 一起删除，
+  也顺带免掉每次 modelValue 变化的整篇字符串比较。
+  计划里写的 `open / reload / reopenWithEncoding / draftRestore / modeSwitch / userInput` 六种意图，
+  实际收敛成**一个世代号**（`modeSwitch` 走既有的 `syncEditorContent` 单向路径）——
+  能用一个数字说清的事不必上状态机。
+- **3.2 三处真相源收敛** ❌ 未做（WYSIWYG / 源码 textarea / 代码块 CodeMirror）：本波只动了 store→编辑器
+  那一条通道；模式切换仍走既有的「常驻 DOM + 显式同步」。留作下一轮。
+- **3.3 文件树键盘可达** ✅：`role="tree"`/`treeitem`、`aria-expanded`/`aria-selected`/`aria-level`、
+  roving tabindex（空闲时也有落点）、`↑↓ ←→ Home/End Enter/Space`，实现见 `lib/treeFocus.ts`。
+- **3.4 打磨小刺**（部分）✅：原生菜单接三语（语言包移到 `shared/i18n` 与渲染层共用，换语言立即重建，
+  并加静态自检单测）；状态栏编码/EOL 可点（上一波）；错误提示带原因（第一波已做）。
+  剩余：`lumin-file://` 的 `webPreferences.sandbox` 显式化、`build/entitlements.mac.plist` 模板残留标注。
+- **验收**：新增 `tools/_verify-wave3.js`（19 条：意图同步 5 + 文件树 11 + 原生菜单 2 + 夹具 1）；
+  `node tools/run-suites.js` **8/8 套件 PASS**；单测 101/101。
+
+**下一轮起点**：3.2 三处真相源收敛；工程化（`files` store 拆分、`confirmIfDirty` 收敛）；
+多窗口元数据一致性；Wave 1 的反斜杠转义保留。
+
+## Wave 3.2：编辑面 ⇄ 真源的单向数据流账本 —— ✅ 本轮完成（2026-09-16 第八轮）
+
+**为什么必须做**：正文有三个能改它的编辑面（Tiptap 面板 / 源码 textarea / 代码块里的 CodeMirror），
+当时它们各自发明了一套「这次变化要不要跟着更新」的判断 —— 四条通道、三种启发式（比字符串、
+600ms 静默窗、150ms 快照相等），于是有一批「看着像玄学」的 bug：快速回车丢字、切回原编码后正文不刷新、
+分屏里停顿后的更新被静默窗吞掉。根因不是哪条判断写错了，而是**没有唯一的写入者身份**。
+
+**实际交付**（细节见手册 §4.59）：
+
+- `src/renderer/src/lib/contentSync.ts`（纯函数，9 条单测）：真源内容配一个 `rev` 世代号 + `author` 作者；
+  命令式编辑面（Tiptap / 代码块 CM）记 `applied`，要不要重渲染只问 `shouldApply()` —— **不比字符串、不看时间窗**。
+- 四个编辑面的角色：Tiptap = 命令式副本；源码 textarea = 声明式副本（`:value` 就是唯一回灌通道，
+  且 DOM 值相等时浏览器不动光标，所以「自己写的」不需要代码再判断）；
+  代码块 CM = **子编辑面**（写内容时连宿主一起标记为最新，否则宿主回灌会把光标踢出代码块）；
+  打开/草稿/切编码/载入历史 = 作者 `external`，**不动任何 applied** ⇒ 所有面都落后 ⇒ 文本恰好相等也重渲染。
+- 删除 `files.syncEpoch` 与 `editorStore.syncedMd`（前者就是账本的 `rev`，后者是字符串版的 `applied.wysiwyg`），
+  以及 `EditorView` 里那条 200ms 的 `scheduleSplitSync` 第二条通道。
+- 代码块 CM 的外部同步从「150ms 快照相等」改成三条结构性规则：**触发时重读节点文本**、
+  文本一致就不动、**CM 拿着光标时绝不覆盖**（改成再等一轮）。
+
+**顺带完成的工程项**：`tools/` 下 77 个 CDP 套件改按结构认 pinia（`prov[s]._s instanceof Map`），
+不再按 `Symbol(pinia)` 的 symbol 描述取 store —— 那是「同一套件在 dev 与生产构建下行为不同」的根源。
+A/B 实测：19 个原本没有结构兜底的套件里 **13 个在构建产物上直接崩（`reading '_s'`）→ 0 个崩**，
+其中 4 个从「崩」变成端到端跑通。`tools/_regress-split-live.js` 顺手迁到 `tools/lib/harness.js`、
+修好旧选择器，现在进默认矩阵（盯的就是本轮的账本）。
+
+**验收数字**：`npm run ci` exit 0（单测 **120/120**，新增 `tests/contentSync.test.mjs` 9 条）；
+`npx eslint .` 0/0；`node tools/run-suites.js` **9/9 套件 PASS**；
+`tools/_verify-wave3.js` A 段 9 条（含作者标记、落后判定、代码块作者）。
+
+**下一轮起点**：嵌套样式（`mdStyle` 支持样式集合）；其余 `_regress-*` / `_repro-*` 老套件按
+「改到谁就顺手迁谁」继续迁到 `tools/lib/harness.js`；`files` store 继续瘦身（最近文档/置顶整块移出）。
+
+## Wave 1 收尾（一）：嵌套样式 + YAML front matter —— ✅ 本轮完成（2026-09-16 第九轮）
+
+**为什么先做这两个**：8 个 lossy 缺口里，这两个是**内容真的坏掉**的那一类 ——
+嵌套样式会写出 CommonMark 下不成立的孤儿标记（渲染成字面星号），front matter 会把 YAML
+元数据变成正文。其余 6 个是「结构被改写但不丢内容」，排在后面。
+
+**嵌套样式**（细节见手册 §4.60）：
+
+- `mdStyle` 的样式从单个值改成**集合**（`styles: StyleKind[]`，按固定顺序规范化）——
+  PM 里同一种 mark 只能挂一个，嵌套必须靠集合；DOM 只渲染**一个**元素（标签取最外样式，
+  全部样式写进 `data-md-styles`），其余样式的外观交给 CSS 属性选择器；**不能**渲染成嵌套标签，
+  否则 DOM 回读时后者顶掉前者（样式丢失 + 回写 churn）。
+- 标记物化改成**样式栈**：相邻两段取样式集合的公共前缀保持不动、只开关差集 → 标记天然嵌套；
+  单一样式时退化成原来的「两边各一对」，既有行为不变。找配对标记的扫描改成深度计数，
+  否则外层 `**` 会在内层 `` ` `` 处误判「缺 end」而把构造劈成两半。
+- `CodeQuiet` 放开 `excludes: '_'`：上行默认让行内代码**排斥一切 mark**，嵌套样式在解析那一刻就少一半。
+- 顺带修掉一个同类潜在缺口：`**粗体 *斜体* 粗体**` 这类 legacy mark 组合此前也会被扁平物化。
+
+**YAML front matter**：做成文档开头的**真实节点**（不是编辑器外的一小段字符串 —— 那会重新引入
+「正文两处表示」，与 §4.59 的收敛相悖）。markdown-it block 规则只在第 0 行认领，判定放在纯函数
+`shared/frontmatter.ts`（保守规则：必须有顶层 `key:`，否则 CommonMark 里合法的「分割线夹文字」会被误吃），
+11 条单测覆盖两侧边界。节点是 atom：WYSIWYG 里只读可见，改 YAML 走源码模式。
+
+**验收**：`npm run ci` exit 0（单测 **131/131**）；`npx eslint .` 0/0；
+`_verify-md-fidelity.js` **81 PASS / 0 FAIL / 13 SKIP**；`node tools/run-suites.js` **9/9 套件 PASS**；
+夹具分级 `exact 11 / normalized 14 / lossy 6`（本轮前是 9/14/8）。
+
+**下一轮起点**：Wave 1 剩余 6 个缺口按内容损坏严重度继续收 —— 表格（列对齐 + 单元格转义竖线）、
+行内 HTML、有序任务列表、相邻有序列表、内联图片、链接图片。
+
+## Wave 1 收尾（二）：表格 + 行内 HTML + 列表编号 —— ✅ 本轮完成（2026-09-16 第十轮）
+
+**实际交付**（细节与踩坑见手册 §4.61）：
+
+- **表格**：解析侧本来就对（markdown-it → 单元格 `align`；`\|` 解成字面竖线），坏的一直是**写回**。
+  接管 `table` 的 markdown 序列化：分隔行按表头 align 生成，单元格内容渲染后转义 `|`
+  （不转义会被当列分隔符、**整行结构被拆坏**）；复杂表格退回 HTML。纯文本规则进 `tableAlign.ts`（6 条单测）。
+- **行内 / 块级 HTML**：`parse.setup` 覆盖 `html_inline` / `html_block` 渲染规则 →
+  `MdHtml` mark（行内，逐字写回）/ `HtmlBlock` 节点（块级，原样写回）。两个坑：
+  ① 任务列表插件生成的复选框 token 必须放行（否则任务列表变成标签文本）；
+  ② 不透明行内内容在样式栈物化时要**原样穿过**，不能打断外层构造。
+- **有序任务列表**：`taskList.ordered` 属性（按 `<ol>`/`<ul>` 记住）；只覆盖 `serialize`，
+  保留 tiptap-markdown 默认 spec 的 `parse.setup`/`updateDOM`。
+- **相邻有序列表**：不是缺陷而是 CommonMark 语义（空行不结束列表），改判级器加规则 19
+  （编号按位置重算、首项编号保留、同列表内项间空行不参与比对）—— 规则必须幂等，
+  所以有序列表在它眼里不区分 `)` 与 `.`。
+
+**验收**：`npm run ci` exit 0（单测 **137/137**）；`npx eslint .` 0/0；
+`_verify-md-fidelity.js` **94 PASS / 0 FAIL / 5 SKIP**；`node tools/run-suites.js` **9/9**；
+夹具分级 `exact 13 / normalized 16 / lossy 2`（只剩两个图片缺口）。
+
+**下一轮起点**：`images-inline.md` 与 `images-linked.md` —— 都要把图片从**块级节点**改成
+内联形态（或按上下文双形态），并复跑 `images.md`（当前 exact）、`_verify-local-media.js`
+与字节级用例，确认「独立成段的图片」仍然逐字节一致。
+
+## Wave 1 收尾（三）：图片改成行内节点 —— ✅ 本轮完成（2026-09-16 第十一轮）
+
+**为什么这两个缺口是同一个问题**：图片配的是**块级节点**，而 Markdown 的 `![alt](src)` 本来就是
+**行内语法**（能出现在段落中间、能被链接包住）。块级形态下这两种写法都表达不出来：段落被拆成
+「文字 / 图片 / 文字」三段；外层链接因为块节点挂不了 mark 而整个丢掉。
+
+**实际交付**：`Image.configure({ inline: true })`；删掉自定义的块级序列化器（原来为修
+「块级图片黏成一行/吞掉下一个标题」而补的 `closeBlock` —— 行内之后段落自己管换行，
+默认实现已对齐 prosemirror-markdown 的 alt/括号/引号转义）；CSS 默认行内 + `p > img:only-child`
+按块级居中（「独立成段的图片」观感不变），并删掉文件后部重复的一份 `.md-preview img` 规则。
+
+**验收**：`npm run ci` exit 0（单测 137/137）；`npx eslint .` 0/0；
+`_verify-md-fidelity.js` **100 PASS / 0 FAIL / 1 SKIP**（101 条；唯一 SKIP 是文档化的
+「保存补文末换行」字节级行为）；`node tools/run-suites.js` 9/9；
+夹具分级 **exact 15 / normalized 16 / lossy 0** —— Wave 1 的 8 个缺口全部清零（8→6→4→2→0）。
+
+**Wave 1 到此收口。** 下一波回到评审报告里的其他方向（`files` store 继续瘦身、
+老套件继续迁到 `tools/lib/harness.js`、以及功能缺口如查找替换 / 数学公式渲染）。
 
 ## Wave 4：工程化地基
 

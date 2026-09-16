@@ -593,12 +593,12 @@ Typora 官方行为（support.typoraio.cn/Links/）：**Ctrl/Cmd+点击**链接�
 此前每次启动都停在欢迎页——写作工具里这是最容易被吐槽的一处（Typora/VS Code 都会回到上次的位置）。本次按「一窗一文档」的既有模型做**每窗口会话**：
 - **记录什么**：`{ path, pos, len, scrollRatio }`。位置不用 scrollTop 而用**滚动比例**、光标除 PM 位置外还带上当时的文档长度——文件被外部改过、窗口大小/字体/主题变了，也能按比例落到同一处（与 EditorView 视图位置记忆同一套思路）。
 - **存在哪**：SQLite `kv.session = { slots: [SessionSlot|null] }`，按**窗口槽位**索引存放。主进程在创建窗口时分配槽位（`--lumin-session-slot=N` 走 additionalArguments，preload 解析），启动时按槽位重建：几个窗口就是几份上下文，各自恢复各自的文档（上限 5 个，避免窗口风暴）。显式 `--lumin-open` 的窗口优先打开指定文件，不参与恢复。
-- **谁清槽位**：窗口被**单独关闭**时，主进程在 `closed` 里清掉它的槽位（下次启动不会把用户已关掉的窗口又拉回来）；**整体退出**（`before-quit`）则保留。渲染层只管写。
+- **谁动槽位**：渲染层只管写；主进程在窗口 `closed` 里分两种情形处理 —— **单独关窗**保留槽位并标记 `closed`（下次启动若没有别的窗口「活着退出」就恢复它，见 §4.45），**整体退出**（`before-quit` / 菜单退出 / 系统关机）原样保留，下次启动把当时活着的窗口全部恢复。
 - **写入时机**：文档切换、光标移动（`ui.cursor`）、滚动（window 捕获阶段，容器重建也无需重绑）→ **800ms 节流**写一行 kv；关键路径补刀：关窗前（`app:before-close` 里 flush）、`pagehide`、切到后台。
 - **开关**：设置 → 通用 →「启动时恢复上次会话」（`restoreSession`，默认开）。关掉后启动直接进编辑器（空白未命名缓冲区）——注意语义：会话记录的是**当前状态**，关着的时候该窗口的会话就被写成「无文档」，这与主流行为一致。
 - **降级**：恢复的文档已不存在（被移动/删除）→ 通知中心告警一条，不阻断启动；未命名缓冲区不进会话（其内容本就由草稿机制保护，避免两套恢复逻辑打架）。
 
-验收：`tools/_verify-session.js`（真实 reload 触发完整启动流程 + 直读 SQLite）：槽位分配、路径/光标/滚动落盘、reload 后三者精确恢复、开关两向、文件丢失告警、单独关窗清槽位；另做了**真·杀进程重启**复核（窗口数、文档、光标 1168/保存值 1166、滚动 0.5 全部对上）。
+验收：`tools/_verify-session.js`（真实 reload 触发完整启动流程 + 直读 SQLite）：槽位分配、路径/光标/滚动落盘、reload 后三者精确恢复、开关两向、文件丢失告警、单独关窗保留槽位并标记关闭；另做了**真·杀进程重启**复核（窗口数、文档、光标 1168/保存值 1166、滚动 0.5 全部对上）。
 
 ### 4.19 去掉欢迎页，能力重排到三个入口（本次）
 
@@ -631,7 +631,7 @@ Lumin 是写作工具，没有文档时就该是一篇空白稿纸——Typora�
 - **窗口身份**（`src/main/services/windowScope.ts`，新增）：`window.id → w<会话槽位>`，创建窗口时 `bindWindowScope(win, slot)` 登记、`closed` 时自动注销；`scopeOfSender(event.sender)` 用 `BrowserWindow.fromWebContents` 反查。选**会话槽位**而不是 `webContents.id`：槽位是本项目里唯一**跨启动稳定**的窗口身份（§4.18 按槽位重建窗口），这样「窗口 A 没处理完的提示」重启后仍回到窗口 A，而不是变成孤儿行或串到别的窗口。没有槽位的窗口退化成一次性随机作用域——底线是「宁可各自独立，不可互相串台」。
 - **存储层**（`services/database.ts`）：`notifications` 新增 `scope TEXT NOT NULL DEFAULT ''` 列（旧库 `ALTER TABLE` 升级；升级时把 `scope=''` 的历史行一次性删掉——它们是「全局共享」时期的产物，无法归属，留着只会在所有窗口都查不到却永久占表）。索引换成 `(scope, closed_at, created_at DESC)` 并删掉被它覆盖的旧索引。`add/list/update/close/closeAll/remove/clearClosed/prune` **全部带 scope 条件**，连 `mergeKey` 去重与「每窗口保留 200 条」的裁剪也按作用域各自进行——不会出现「另一个窗口的同名提示把我的卡片顶掉」。
 - **IPC 层**（`src/main/ipc.ts`）：每个 handler 用 `scopeOf(event)` 取作用域；变更信号由「广播给所有窗口」改成**只回给发起窗口**（`event.sender.send('notifications:changed')`）。
-- **生命周期**：通知随窗口存在。窗口被**单独关闭**（非整体退出）时，除了清会话槽位，同时 `deleteNotificationsByScope` 清掉它的通知；新窗口领到槽位时（`claimFreshSlot()`）也先清一遍该作用域——槽位被复用时不会把上一任窗口的提示带给新窗口。整体退出（`before-quit`）保留，交给下次启动按槽位恢复到同一个窗口。
+- **生命周期**：通知随窗口存在。窗口被**单独关闭**（非整体退出）时，除了把会话槽位标记为「已关闭」（§4.45，不清内容），同时 `deleteNotificationsByScope` 清掉它的通知；新窗口领到槽位时（`claimFreshSlot()`）也先清一遍该作用域——槽位被复用时不会把上一任窗口的提示带给新窗口。整体退出（`before-quit`）保留，交给下次启动按槽位恢复到同一个窗口。
 - **渲染层零改动**：`stores/notifications.ts` 的调用签名与数据流不变（store → IPC → SQLite，UI 只读 store），只是语义从「全局通知中心」变成「本窗口通知中心」——解耦的好处在这里体现：隔离完全落在主进程一侧，UI 不知情也不需要知情。
 
 **边界与取舍**：① 升级瞬间，旧库里未关闭的全局通知会被丢掉一次（无法归属到窗口，且多为一过性的「已保存」）；② 每个窗口的未读提示不跨窗口汇总——这正是本次要的行为；③ 槽位索引在单次运行内只增不减（`releaseSlot` 未被调用），因此作用域清理主要覆盖「关窗即清」与「重启后复用槽位」两条路径，`claimFreshSlot()` 的清理是后者的安全网。
@@ -805,14 +805,14 @@ commands     应用级命令表（composables/useKeymap.ts）：id / i18n 标题
 - **一处声明**：命令表的每一项 = 一条可被快捷键触发的命令，`run` 统一调 `handleMenu(action)`——和原生菜单**同一份实现**，因此不存在「菜单能做的事快捷键做不到」。
 - **扩展方式**：加一条快捷键 = 命令表里加一项（设置界面、冲突检测、恢复默认、i18n 检查全部自动生效）；换默认键只改 `defaultKeys`，用户改过的不受影响。
 - **解析优先级**（写在 `service.ts` 顶部注释里）：用户覆盖 > 代码默认；同一档内**后注册者胜**（与 VS Code「later wins」一致）；`keybindings[id] = null` 表示**明确解绑**。
-- **派发**：一个 window 捕获阶段的 `keydown`；只处理带修饰键的组合（纯字母键留给编辑器/输入框）；`when: 'notInInput'` 的命令在输入框里让行（Ctrl+F）；**录制期间整体让行**（否则「录 Ctrl+N」会真的新建文档）。
+- **派发**：一个 window 捕获阶段的 `keydown`；只处理带修饰键的组合（纯字母键留给编辑器/输入框）；`when: 'notInInput'` 的命令在输入框里让行（Ctrl+F）；**录制期间整体让行**（否则「录 Ctrl+N」会真的执行它 —— §4.47 之后这一下会**开一个新窗口**）。
 - **原生菜单不再自带 accelerator**（`src/main/menu.ts`）：否则用户改了键，原生那份照旧触发——两套真相 + 重复触发。菜单项保留（系统级可访问性），应用内快捷键统一由渲染层接管。
 
 **默认键一览**（26 条，分 6 组；「导出」单独成组）：
 
 | 分组 | 命令 | 默认键 |
 |---|---|---|
-| 文件 | 新建文档 / 新建窗口 / 打开… / 打开文件夹… / 保存 / 另存为… | `Ctrl+N` / `Ctrl+Shift+N` / `Ctrl+O` / `Ctrl+Shift+O` / `Ctrl+S` / `Ctrl+Shift+S` |
+| 文件 | 新建 / 新建窗口 / 打开… / 打开文件夹… / 保存 / 另存为… | `Ctrl+N` / `Ctrl+Shift+N` / `Ctrl+O` / `Ctrl+Shift+O` / `Ctrl+S` / `Ctrl+Shift+S` |
 | 文件 | 关闭窗口 | `Ctrl+W` |
 | 导出 | 导出为 PDF（HTML/Word/EPUB 默认不绑） | `Ctrl+Shift+E` |
 | 编辑 | 查找 / 替换、全局搜索、设置 | `Ctrl+F`、`Ctrl+Shift+P`、`Ctrl+,` |
@@ -829,7 +829,7 @@ commands     应用级命令表（composables/useKeymap.ts）：id / i18n 标题
 1. **Pinia `$patch(对象)` 对嵌套对象是深合并**，所以「恢复默认」用 `$patch({ keybindings: {...} })` 删键会被合并回来 → 表现为「点了恢复默认却没生效」。改用 `$patch(函数)` 整体替换。
 2. **`focusWindow` 只用 `isMinimized()` 判断**：窗口在应用处于后台时被最小化，Electron 可能报 `isMinimized() === false`，于是只调 `focus()` 得到「焦点给了它、但它还最小化着」的怪状态。改为 `isMinimized() || !isVisible()` 一起判断（`restore()` 对非最小化窗口本来就是 no-op）。
 
-**验收**：`tools/_verify-keymap.js` **31/31**（隔离实例；含页面内的按键投递探针）：命令表 26 条且标题/分组 i18n 全部有值、默认键 `Ctrl+Tab` / `Ctrl+Shift+Tab` / `Mod→Ctrl` 规范化、无重复默认键；默认键真的生效（`Ctrl+/` 切模式、`Ctrl+Shift+B` 侧栏、`Ctrl+Shift+P` 全局搜索）；`Ctrl+N` **只创建一份**（原生菜单已无 accelerator）；自定义后新键生效且旧键失效、用户绑定优先于默认绑定、冲突可见、解绑后按键无反应、恢复默认后默认键回来；**`Ctrl+Tab` / `Ctrl+Shift+Tab` 真的切换窗口**（focus/blur 事件流判定，含反向与自定义键）；设置界面 26 行 / 7 分组 / 45 个键位胶囊 / 搜索过滤 / 进入录制 / **录制期间按 Ctrl+N 不新建文档** / 录制写入生效；直读 SQLite 证明改键落库，reload 后解析结果仍是自定义键。回归：`_verify-editor-menu.js` 51/51、`_verify-open-file-routing.js` 22/22、`_verify-open-file-dedup.js` 21/21、`_verify-session.js` 16/16、`_verify-menu-export-submenu.js` 15/15、`_verify-window-title.js` 14/14、`_verify-bars-no-filename.js` 12/12、`_verify-welcome-removed.js` 32 项通过（另 2 项为既有的隔离实例环境跳过）、`_verify-alt-menu.js`（Alt+F 仍由应用内菜单接管）；`npm run build`（含双工程 typecheck）0 error。
+**验收**：`tools/_verify-keymap.js` **31/31**（隔离实例；含页面内的按键投递探针）——**§4.47 之后为 33/33**（C 段改为「窗口数 +1」判定，并新增「新窗口同工作区且未命名、不落盘」两条）：命令表 26 条且标题/分组 i18n 全部有值、默认键 `Ctrl+Tab` / `Ctrl+Shift+Tab` / `Mod→Ctrl` 规范化、无重复默认键；默认键真的生效（`Ctrl+/` 切模式、`Ctrl+Shift+B` 侧栏、`Ctrl+Shift+P` 全局搜索）；`Ctrl+N` **只执行一次**（原生菜单已无 accelerator；§4.47 后「执行一次」= 只多一个窗口）；自定义后新键生效且旧键失效、用户绑定优先于默认绑定、冲突可见、解绑后按键无反应、恢复默认后默认键回来；**`Ctrl+Tab` / `Ctrl+Shift+Tab` 真的切换窗口**（focus/blur 事件流判定，含反向与自定义键）；设置界面 26 行 / 7 分组 / 45 个键位胶囊 / 搜索过滤 / 进入录制 / **录制期间按 Ctrl+N 不开新窗口** / 录制写入生效；直读 SQLite 证明改键落库，reload 后解析结果仍是自定义键。回归：`_verify-editor-menu.js` 51/51、`_verify-open-file-routing.js` 22/22、`_verify-open-file-dedup.js` 21/21、`_verify-session.js` 16/16、`_verify-menu-export-submenu.js` 15/15、`_verify-window-title.js` 14/14、`_verify-bars-no-filename.js` 12/12、`_verify-welcome-removed.js` 32 项通过（另 2 项为既有的隔离实例环境跳过）、`_verify-alt-menu.js`（Alt+F 仍由应用内菜单接管）；`npm run build`（含双工程 typecheck）0 error。
 
 **范围与边界**：本表管**应用级命令**；编辑器内部的排版键（`Ctrl+B/I/U`、`Ctrl+Z/Y`、Markdown 输入规则等）由 ProseMirror / CodeMirror 自己的 keymap 处理，属编辑器内核语义，**不在**设置里改（要改需把编辑器键也搬进注册表，是另一件事）。另外，侧栏树右键的「在新窗口打开」仍是显式新建窗口，不参与 §4.28 的去重。
 
@@ -945,7 +945,7 @@ commands     应用级命令表（composables/useKeymap.ts）：id / i18n 标题
 
 **改法**（`src/main/services/taskbar.ts`）：
 
-- **`appId()`**：打包态 `com.lumin.app`（与安装器一致），开发态 `com.lumin.app.dev`（加后缀，避免和装好的版本互相顶掉快捷方式）。`src/main/index.ts` 里改成 `app.setAppUserModelId(taskbar.appId())`，并且**在建窗口之前**设置。
+- **`appId()`**：打包态 `com.lumin.app`（与安装器一致），开发态 `com.lumin.app.dev`（加后缀，避免和装好的版本互相顶掉快捷方式）。`src/main/index.ts` 里改成 `app.setAppUserModelId(taskbar.appId())`，并且**在建窗口之前**设置。**（后续修正：开发态再按配置目录分流 —— 默认配置目录才是 `.dev`，隔离实例用 `.dev.test`，原因见 §4.46。）**
 - **`ensureAppShortcut()`**：用 `shell.writeShortcutLink(path, 'create', {...})` 在开始菜单（`%APPDATA%\...\Start Menu\Programs\Lumin (dev).lnk`）写一条带 `target`（electron.exe / Lumin.exe）、`args`（开发态含**应用目录** + `--lumin-new-window`）、`appUserModelId`、`description` 的快捷方式；每次启动刷新一遍（幂等）。有了它：菜单第一项显示 **Lumin (dev)**，点它就是「electron.exe + 应用目录」→ **新的 Lumin 窗口**；用户「固定到任务栏」时，Windows 按 AUMID 复制这条快捷方式，**参数一起固定**。
 - **Tasks 那条改名「新建窗口」**（按语言本地化）：它和「应用名」那条不再重名，各司其职（前者是显式动作，后者是 Windows 的启动项）。
 - **最近文档**：custom 分类（分类名跟随界面语言），每条的 program/args 同样显式指向本应用。**故意不用 `app.addRecentDocument()`**：那个把点击交给**文件关联**，开发态 electron.exe 没有 `.md` 关联，用户点「最近」反而会叫起别的程序（机器上装了 Typora 就开 Typora）。
@@ -956,9 +956,9 @@ commands     应用级命令表（composables/useKeymap.ts）：id / i18n 标题
   - 冷启动带 `--lumin-open` 时**不拉会话恢复**：意图很明确就是开这一篇，否则会先把一堆旧窗口恢复出来再把这篇插进去；槽位数据仍留在 kv，下次正常启动照旧恢复。
 - **重建时机**：启动时先写快捷方式、再注册跳转列表；`window:docPath`（文档切换）后节流 1.5s 重建（等这次打开先落库）；换语言或最近列表变化（含界面上「清空最近」）时立即重建。
 
-**验收**：`tools/_verify-taskbar-jumplist.js` **25/25**（隔离实例 + 主进程自检日志 + **真的再起一个进程**）：
+**验收**：`tools/_verify-taskbar-jumplist.js` **25/25**（隔离实例 + 主进程自检日志 + **真的再起一个进程**）——该套件现为 **31/31**，新增的断言见 §4.46：
 
-- 标识与快捷方式：`shortcut ok=true`，**AUMID = `com.lumin.app.dev` 且不含 electron.exe**（这条直接钉住「名字显示成 Electron」的根因），target 是 electron.exe、args 含应用目录；`shell.readShortcutLink` **回读**校验磁盘上那条快捷方式与写入一致（不是只信我们的意图）；快捷方式文件确实存在于开始菜单；它的 target+args 恰好等于下一条里被验证过能开新窗口的命令。
+- 标识与快捷方式：`shortcut ok=true`，**AUMID 是我们自己的且不含 electron.exe**（这条直接钉住「名字显示成 Electron」的根因；§4.46 之后隔离实例的期望值改为 `com.lumin.app.dev.test`），target 是 electron.exe、args 含应用目录；`shell.readShortcutLink` **回读**校验磁盘上那条快捷方式与写入一致（不是只信我们的意图）；快捷方式文件确实存在于开始菜单；它的 target+args 恰好等于下一条里被验证过能开新窗口的命令。
 - 跳转列表：`status=ok tasks=1 title="新建窗口"`（`setJumpList` 的返回值，Windows 真收下了）。
 - **行为**：带 `--lumin-new-window` 起第二进程 → 多出一个窗口，且该窗口 `location.href` 是我们的渲染页、`window.luminAPI` 在、标题是 `Lumin`——即**不是** Electron 原生窗口；带 `--lumin-open=<beta.md>` → 新窗口打开的正是那篇；同一篇再来一次不多开；不带参数再来一次不多开；冷启动带 `--lumin-open=<alpha.md>` → 只开一个窗口并直接打开该文档。
 
@@ -1649,3 +1649,1266 @@ npm run dev:isolated                            # dev 用独立 profile（%APPDA
 #### 八、本轮**未验证**的部分（别当成已验证）
 
 真实「双击 `.md`」端到端（你的 dev 实例在跑 → 会转给它，测不出打包版自身行为；要验就关掉 dev 实例或改用 `dev:isolated` 后双击）、图形化安装向导界面、**覆盖安装/升级**、任务栏右键菜单与「固定到任务栏」的**观感**（断言只覆盖到「快捷方式/ AUMID / 启动命令正确」这一层）、自动更新（`publish` 仍是占位）、代码签名与 SmartScreen。
+
+---
+
+### 4.44 未保存草稿横幅的假阳性：草稿语义收敛（本次）
+
+**现象**（用户报的）：每次新开一个窗口、或打开一个没保存过的空文档，编辑器上方都会冒出
+「检测到未保存的草稿（比磁盘文件更新）」+ 恢复/丢弃。观感上像出了故障，逻辑上也说不通 ——
+明明什么都没有输入。
+
+#### 一、根因（两条，都是「草稿的语义被写成了无条件」）
+
+1. **干净文档也写草稿。** `scheduleSave()` 的注释原文就是「草稿防抖（**始终写入**，用于崩溃恢复）」，
+   `flushAll()` 更是在关窗时无条件 `writeDraft()`。于是任何一次关窗都会把**当前缓冲区**（包括
+   从未编辑过的空白未命名缓冲区）落成一份草稿。实测用户盘上那份 `%APPDATA%\lumin\drafts\untitled.json`
+   正是 `{"content":"","savedAt":…}` —— 空草稿。
+2. **未命名草稿全应用共用一个键。** `openUntitled()` 固定读 `'untitled'`，而 `writeDraft()` 用
+   `draftKey(null)` 也落到同一个键：所有窗口的未命名缓冲区共享一份草稿。于是「本窗口的空白缓冲区」
+   会把**别的窗口 / 上一次运行**留下的草稿当成自己的，条件（`draft.savedAt > mtime + 1000`）对
+   未命名缓冲区根本不成立（没有磁盘文件可比较），只要文件存在就弹横幅。
+
+第 1 条决定了「**每次**都会出现」，第 2 条决定了「**新窗口**里冒出来的是别人的东西」。
+
+#### 二、改法：把草稿的语义写成可判定的三条
+
+| 规则 | 落点 |
+| --- | --- |
+| **只有脏文档才有草稿**：`content === savedContent` 时不写，并把盘上的旧草稿清掉（正等用户决定的横幅除外） | `stores/files.ts` 的 `writeDraft()` |
+| **只有「确实不同」才打扰用户**：内容与即将显示的内容一致 → 不弹；文件草稿还要「确实比磁盘新」，并核对草稿里记的路径（键名对 `.`/`_` 会折叠，理论上会撞键） | `restorableDraft()`（`stores/files.ts`） |
+| **未命名草稿按窗口（会话槽位）隔离**：`untitled-<slot>`；窗口没了留下的那份由主进程判定为「无主草稿」再交给空白缓冲区认领 | 新增 `src/shared/drafts.ts`（键约定，两个进程共用）+ `main/drafts.ts` 的 `takeUntitledDraft()` |
+
+配套：
+
+- 「谁还活着」只有主进程知道 → `registerIpc({ slotOf, liveSlots })` 由 `index.ts` 注入（不反向
+  import，避免成环）；渲染层只调 `drafts.untitledDraft()` 拿结果。
+- **数据安全不回退**：未命名缓冲区不进会话（§4.29），草稿是它唯一的保护。窗口被单独关闭或崩溃后，
+  它的 `untitled-<slot>` 不再被任何活动窗口占着 → 下一个空白缓冲区认领并**搬移**（天然只被认领一次）；
+  空内容草稿直接清掉。升级前遗留的 `untitled`（历史键）同样走认领 + 清理。
+- 顺手把横幅文案接进 i18n（原先是硬编码中文、恢复/丢弃按钮也硬编码），未命名缓冲区不再说
+  「比磁盘文件更新」（它没有磁盘文件），改用 `editor.restoreDraftUntitled`（三语齐全）。
+- `applyDraftRestore(true)` 补 `syncEpoch++`：它和「重新解释编码」一样是**显式外部替换**，不该被
+  编辑器的 600ms 回声静默窗吞掉（与 §4.39 同一类坑）。
+
+#### 三、验收（新增套件）
+
+`node tools/_verify-draft-banner.js`（独立 userData 起实例，21/21 PASS）：干净空白缓冲区不写草稿、
+不弹横幅 → 旧版遗留的空 `untitled` 草稿不弹横幅且被清掉 → 真有未保存内容时横幅照旧出现（未命名文案）
+且「恢复」能取回正文 → 干净文件不留草稿、与磁盘同内容的草稿不弹 → 真比磁盘新的文件草稿弹横幅（文件文案）
+→ **多窗口**：A 窗口有未保存未命名正文时，新建窗口不冒横幅且 A 的草稿未被碰 → 无主草稿仍能被认领
+→ **重启**（reload）：干净空白缓冲区不再冒横幅、脏未命名缓冲区重启后仍可恢复。
+
+回归：`npm run typecheck` exit=0；`npm run build` 通过；本轮改动文件 ESLint 0 error；
+`node tools/_verify-new-window-clean.js` **13/13 PASS**（新建窗口仍是干净窗口，不受草稿认领影响）。
+
+> 存量影响：用户盘上那份空的 `untitled.json` 会在下次启动/新开空白窗口时被自动清掉（套件第 ② 条
+> 就是按这份真实文件构造的）；已有的文件草稿只有「内容确实不同且比磁盘新」时才会再弹横幅。
+
+---
+
+### 4.45 关窗再打开：回到刚才那篇文档（本次）
+
+**现象**（用户报的）：关掉窗口、重新打开，**文件夹回来了，文档却是一个不落在任何实际位置的
+未命名缓冲区**（`Untitled-1.md`）—— 明明刚编辑过一篇真实的 `.md`。
+
+#### 一、根因：单独关窗被当成「清空槽位」
+
+`createWindow` 的 `closed` 处理器里有这么一句：单独关窗（非整体退出）时 `session.clearSessionSlot(slot)`
+—— 本意是「下次启动不要把用户已经关掉的窗口又拉回来」。但用户关掉窗口往往就是「今天先这样」，
+再打开时他期望回到刚才那篇；槽位一清，**文档路径就没了**。而侧栏那个文件夹来自另一处（全局
+`kv.workspace.root`，不随槽位走），于是出现「文件夹在、文件是虚空的」这种极不协调的状态。
+实测（`node tools/_verify-session-last-closed.js` 的 A 段就是按这条构造的）：
+
+```
+关窗前 kv：{"slots":[{"path":"…\\restore-me.md","folder":"…"}]}
+关窗后 kv：{"slots":[null]}                       ← 文档路径被清掉
+重启后   ：{"root":"…","doc":null,"name":"Untitled-1.md"}   ← 文件夹照旧，文档虚空
+```
+
+#### 二、改法：槽位不删，改成「已关闭」；恢复时按两种退出方式分流
+
+| 规则 | 落点 |
+| --- | --- |
+| 单独关窗 → 槽位**保留**并标记 `closed`/`closedAt`（只记最后一个被关掉的） | `services/session.ts` 的 `markSlotClosed()`，由 `index.ts` 的 `closed` 处理器调用 |
+| **整体退出**（菜单退出 / 系统关机 / 崩溃）：当时活着的窗口**全部**恢复（原行为不变） | `planRestore()`：优先返回未标记 `closed` 的槽位 |
+| **挨个关窗**：只恢复**最后关掉的那一个**；更早关掉的是用户明确关掉的，不再冒出来 | `planRestore()`：一个存活槽位都没有时，返回 `closedAt` 最新的那个 |
+
+两个必须一起处理的细节：
+
+1. **恢复时立刻摘掉「已关闭」标记**（`planRestore` 写回时删掉 `closed`）。否则那个窗口会一直挂着
+   这个身份：用户接着再开一个窗口、然后整体退出，它会被当成「被单独关掉的」而丢掉（测试第 C 段
+   正是踩到这个才暴露出来的）。
+2. **`closed` 记录会顶掉上一条**（旧的连同槽位号一起置空）。否则「先关 C、再关 B」会留下两条记录，
+   而更早关掉的那条会以「存活」的身份被恢复 —— 与「只回到最后关掉的那个」相反。
+
+#### 三、验收（新增套件，自起自灭 3 轮实例）
+
+`node tools/_verify-session-last-closed.js`（独立 userData，**8/8 PASS**）：
+- **A** 单独关掉唯一窗口 → 再打开：回到关窗时那篇文档（`doc === alpha.md`，且不是 `Untitled-N.md`），工作区文件夹照旧；
+- **B** 两个窗口（alpha / beta）挨个关掉（最后关的是 alpha）→ 再打开：**只有一个窗口、且是 alpha**，更早关掉的 beta 不再冒出来；
+- **C** 两个窗口一起结束（整进程被杀 ≈ 崩溃/整体退出）→ 再打开：**两个窗口都回来**。
+
+回归：`npm run typecheck` exit=0、`npm run build` 通过、改动文件 ESLint 0 error；
+`tools/_verify-session.js` **17/17 PASS**（E 段已从「关窗清槽位」改为「关窗保留并标记」，
+A~D 段的光标/滚动/开关/文件丢失恢复全部照旧）；`_verify-draft-banner.js` **21/21**、
+`_verify-new-window-clean.js` **13/13**。
+
+顺带把 `_verify-session.js` 变得**不依赖 dev server**：页面识别同时认 `5173` 与
+`out/renderer/index.html`，并且不再按 `Symbol(pinia)` 的名字找 store（生产构建会压掉 symbol
+描述，只有 dev server 页面能命中）—— 与其余套件统一成「provides 里持有 `_s` Map 的那个对象」。
+
+> 存量影响：你现有的 `kv.session` 里那份记录早被旧逻辑清掉了，所以**下一次正常关窗再打开**才生效
+> （从那以后每次都生效）。
+
+---
+
+### 4.46 任务栏图标变缺省：隔离实例抢了用户的 AUMID（本次）
+
+**现象**（用户报的）：跑过项目（开发态）之后，任务栏按钮的图标变成**缺省图标**（Windows 的空白/通用图标）。
+
+#### 一、根因：同一个 AUMID 下有两条快捷方式，用户的应用被解析到**测试实例那条**
+
+任务栏按钮的**图标与名字**不是取窗口自己的 HICON，而是按「**AUMID → 开始菜单快捷方式**」这条链
+去解析的。而开发态我们一直用**同一个** AUMID（`com.lumin.app.dev`）给所有实例：
+
+| 谁 | 写的快捷方式 | 图标指向 |
+| --- | --- | --- |
+| 用户的应用（默认配置目录） | `Lumin (dev).lnk` | `%APPDATA%\lumin\icons\lumin-<hash>.ico`（长期存在） |
+| 验收/隔离实例（`--user-data-dir`） | `Lumin (dev) [test].lnk` | `<临时配置目录>\icons\lumin-<hash>.ico`（**跑完就被删**） |
+
+于是：隔离实例一跑，开始菜单里就多了一条**同 AUMID**的快捷方式，而它的图标文件随临时目录一起消失
+（`Lumin (dev) [test].lnk` 按字母序还排在前面）。Windows 解析用户的应用图标时命中那条 → 找不到图标文件
+→ **任务栏只剩缺省图标**。实测证据（`%TEMP%\lumin-taskbar.log`，来自本轮验收实例）：
+
+```
+[taskbar] shortcut ok=true path="…\Start Menu\Programs\Lumin (dev) [test].lnk"
+          aumid=com.lumin.app.dev icon="C:\Users\…\Temp\lumin-guard-userdata\icons\lumin-817ce6db.ico"
+```
+
+而那条 `.lnk` 的图标文件在套件收尾删掉临时配置目录后就不存在了（`IconExists: False`）。
+另外同一份日志还显示隔离实例的跳转列表重建也写进了同一个 AUMID —— 用户的右键菜单会被测试实例
+的临时路径顶掉一次。
+
+#### 二、改法：隔离实例用**独立标识**，并清掉历史残留
+
+| 规则 | 落点 |
+| --- | --- |
+| 开发态按配置目录分流 AUMID：默认配置目录 `com.lumin.app.dev`，隔离实例 `com.lumin.app.dev.test` | `appId()` |
+| 隔离实例的图标副本改放**稳定**目录（`%TEMP%\lumin-icons`），不再随它那个跑完就删的配置目录消失 | `iconDir()` + `runtimeIconPath()` |
+| 默认配置目录启动时**自愈**：删掉名字里带 `[test]` 的快捷方式（历史版本留下的、带用户 AUMID 的那条） | `removeStaleTestShortcut()`，由 `ensureShortcut()` 调用 |
+
+`appId()` 的打包分支没动（仍是 `com.lumin.app`，与安装器一致），所以打包链路、安装器那条
+`Lumin.lnk`、`backfillInstalledShortcutAumid()` 的兜底语义全部不变。`[test]` 这个名字**默认配置目录
+从不用**，自愈删它绝不会碰到用户那条快捷方式。
+
+#### 三、修完的机器状态（本次已修）
+
+- 删掉 `…\Start Menu\Programs\Lumin (dev) [test].lnk`（它当时指向已被删除的临时图标）；
+- `ie4uinit.exe -show` 刷新 shell 图标缓存；
+- 复读用户那条 `Lumin (dev).lnk`：target/args 正确，图标指向
+  `%APPDATA%\lumin\icons\lumin-817ce6db.ico` 且**文件存在**。
+
+以后运行验收套件不会再产生这种残留：新的隔离实例写的是 `.test` 标识那条，且图标落在稳定目录里；
+默认配置目录每次启动还会顺手清掉 `[test]` 残留。
+
+#### 四、验收
+
+`node tools/_verify-taskbar-jumplist.js`（隔离实例 + 主进程自检日志 + 真起第二进程）**31/31 PASS**，
+其中为本次新增/改写的断言：
+
+- `isolated-aumid-is-not-user-aumid`：隔离实例的 AUMID 必须是 `com.lumin.app.dev.test`（**不再与用户同一个**）；
+- `isolated-shortcut-path-is-test-only`：它写的必须是 `[test].lnk`，不能是用户那条；
+- `isolated-shortcut-icon-outside-profile`：它写的图标必须落在配置目录**之外**（稳定目录）；
+- `user-shortcut-icon-still-valid`：**用户那条** `Lumin (dev).lnk` 的图标文件必须仍然存在（这条直接钉住本 bug）。
+
+顺带把该套件的 SETUP 也换成「provides 里持有 `_s` Map 的对象」那套取 pinia 的口径
+（与 §4.45 同一处改动：不再按 `Symbol(pinia)` 的名字找，生产构建会压掉 symbol 描述）。
+
+> 如果你的任务栏还留着旧图：图标缓存是按 AUMID 记的，正常重启应用即可；极少数情况需要
+> 「从任务栏取消固定 → 重新固定」，或重启一次 explorer.exe。
+
+---
+
+### 4.47 顶部栏「新建」按钮 + Ctrl+N 的语义：新窗口 + 工作区不变 + 未命名文档（本次）
+
+**需求**（用户提的）：顶部栏要有一个「新建」按钮；Ctrl+N 和「文件 → 新建」都应当**开一个新窗口**，
+**文件夹不变**，但文档是**未命名**的；按 Ctrl+S 时才问保存到哪。
+
+#### 一、改之前的三种「新建」（各说各话）
+
+| 入口 | 旧行为 |
+| --- | --- |
+| 文件 → 新建文档 / `Ctrl+N` | 在**当前窗口**的工作区里造一个 `未命名.md` 并打开（还先弹脏数据确认） |
+| 文件 → 新建窗口 / `Ctrl+Shift+N` | 干净窗口：**不继承工作区**，空白 + 未命名文档 |
+| 侧栏空态 / 文件树的「新建文件」 | 在工作区里造文件（本次**保持不动**，那才是它们该有的语义） |
+
+#### 二、改法：一个动作、三个入口共用一份实现
+
+- 新增 `newDocumentWindow()`（`composables/useAppActions.ts`）：有工作区 → `app.openFolderInNewWindow(root)`
+  （新窗口以**同一个文件夹**为工作区）；没有工作区 → `app.newWindow()`（干净窗口）。
+- 「文件 → 新建文档」、`Ctrl+N`（命令表 `file.new` → `handleMenu('new')`）、顶部栏新按钮**都调它** ——
+  三个入口不可能走岔。
+- **不再需要脏数据确认**：新动作完全不碰当前窗口（与「最近文档/最近文件夹 → 新窗口」同一口径）。
+- 未命名文档 `path === null` ⇒ `files.save()` 天然走 `saveAs()`（`chooseFile` 对话框）：
+  「Ctrl+S 时选择保存到的位置」**不需要新代码**。
+- 顶部栏按钮：放在菜单组**右侧**（`data-topbar-action="new"`，`file-plus` 图标 + 「新建」，title 带 `(Ctrl+N)`），
+  不挤 Alt+F/E/V/H 的位置；文案走 i18n（新增 `menu.new`，三语齐全）。
+  **（后续调整：§4.50 把这个独立按钮收回「文件」菜单第一项 —— 顶部栏只留菜单组。）**
+
+**为什么不做成「在当前窗口新建」**：用户要的是「新建 → 直接开始写 → 保存时再决定放哪」，
+而且当前窗口正在写的东西一个字节都不会被打断。
+
+#### 三、验收
+
+新增 `node tools/_verify-new-document.js`（隔离实例，**19/19 PASS**）：
+
+- 顶部栏按钮存在、在菜单栏内、标签等于 `menu.new`（**§4.50 起改为：「文件」菜单第一项就是「新建」、
+  顶部栏不再有独立按钮、全菜单只有一个「新建」**）；
+- **三个入口各跑一遍真实交互**（真实鼠标点击按钮 / 真实 `Ctrl+N` 按键 / Alt+F 后点菜单项），
+  每个都：多出一个窗口（slot 变化）、新窗口 `root` 与当前窗口**同一个文件夹**（侧栏树有行）、
+  文档是 `Untitled-N.md`（`path === null`、不脏）；
+- **当前窗口没被动**（文档与工作区照旧）、**工作区目录里没多出任何文件**（旧行为会造 `未命名.md`）；
+- 未命名 ⇒ 保存走另存为（`path === null` 前提 + 静态核对 `save() → saveAs() → chooseFile` 链，
+  原生对话框无法自动作答，与 `_verify-save-as-workspace.js` 同一口径）。
+
+回归：`tools/_verify-keymap.js` **33/33**（C 段从「工作区文件数 +1」改为「**窗口数 +1**」判定，
+并新增「新窗口同工作区且未命名、不落盘」两条；录制期间那条也补上窗口数断言）；
+`tools/_verify-new-window-clean.js` **13/13**（「新建窗口」的干净窗口语义未受影响）；
+`tools/_verify-welcome-removed.js` **32/34**（文件菜单仍有「新建文档」、侧栏空态三个入口不变；
+另 2 项是既有的隔离实例环境跳过）；`npm run typecheck` / `build` / 改动文件 ESLint 均干净。
+
+顺带把 `_verify-keymap.js`、`_verify-welcome-removed.js` 也换成「provides 里持有 `_s` Map 的对象」
+取 pinia、页面识别同时认 `out/renderer` 的口径（与 §4.45/§4.46 同一处修正）：它们现在**不依赖 dev server**。
+
+---
+
+### 4.48 「另存为」对话框默认落在侧栏那个文件夹（本次）
+
+**需求**（用户提的）：§4.47 的「新建」开出来的未命名文档，按 Ctrl+S 时对话框应当**默认就停在
+侧边栏打开的那个文件夹**（省掉每次自己找一遍）。
+
+#### 一、改之前
+
+`file:chooseSaveFile` 的 `defaultPath` 只有**文件名**（`Untitled-1.md`），于是对话框停在哪完全看
+Windows 记的「上次位置」—— 常常不是当前工作区。
+
+#### 二、改法：两半各管一段
+
+| 半 | 落点 | 规则 |
+| --- | --- | --- |
+| 渲染层决定**默认目录**交给主进程 | `stores/files.ts` → `saveAs()` | `const dir = current.path ? currentDir : root` |
+| 主进程拼成 `defaultPath` | `main/ipc.ts` → `file:chooseSaveFile` | `dir && existsSync(dir) ? path.join(dir, name) : name` |
+
+- **未命名文档**（含 `Ctrl+N` / 文件 → 新建 开出来的那份）→ 传**侧栏当前工作区**；
+  于是 Ctrl+S 默认就存进侧栏那个文件夹，落盘后 `syncWorkspaceToPath()` 还会把新文件在树里露出来。
+- **已有路径**（对已存在的文档按「另存为」）→ 传**它自己所在的文件夹**（`currentDir` 就是打开/上次保存时记下的）——
+  比一律用工作区根更符合直觉（文档在 `工作区\sub\` 下时，默认还是 `sub`）。
+- **都没有**（没打开文件夹、也没有路径）→ 不传：交给系统记上次的位置。
+- 目录**已不存在**（工作区被移走/删掉）→ 主进程退回「只给文件名」，不甩一个死路径出去。
+
+#### 三、验收
+
+`tools/_verify-new-document.js` **23/23 PASS**（在原有 19 条上新增 4 条）：
+
+- `untitled-save-defaults-to-sidebar-folder`：Ctrl+N 的那个窗口里，交给对话框的目录 == 侧栏工作区；
+- `existing-save-defaults-to-own-folder`：把工作区子目录里的 `sub\c.md` 打开后，默认目录 == `工作区\sub`
+  （证明两条分支真的分开，不是都退化成工作区根）；
+- `static-save-as-passes-default-dir` / `static-main-joins-dir-and-name`：静态核对两半
+  （原生保存对话框无法在自动化里作答，与 `_verify-save-as-workspace.js` 同一口径）。
+
+回归：`_verify-save-as-workspace.js` 里那条「`saveAs` 保存成功后调用 `syncWorkspaceToPath`」的静态断言仍成立；
+`npm run typecheck` / `build` / 改动文件 ESLint 均干净。
+
+---
+
+### 4.49 按 Ctrl+N 却冒出「检测到上次未保存的内容」：草稿归属改成显式身份（本次）
+
+**现象**（用户报的）：按 Ctrl+N 开出来的新窗口，弹出了「检测到上次未保存的内容」横幅 ——
+用户明确要的是一篇空白，这既打断人又说不通。
+
+#### 一、根因：§4.44 的「无主」判据太宽
+
+§4.44 给未命名草稿分了命名空间（`untitled-<会话槽位>`），「无主」= **没有活动窗口占着那个槽位**。
+于是两类东西都会被判成无主，并被**任何一个**空白缓冲区认领：
+
+1. 某个窗口**被关掉**后留下的草稿（`untitled-<它的槽位>` —— 槽位不再 live，草稿还在盘上）；
+2. 槽位号被复用：某个关掉的窗口腾出索引后，后来的窗口拿到同一个号，而那一格还留着**上一个住户**的正文。
+
+Ctrl+N 开的新窗口正好是「空白缓冲区」，于是把别人的正文当成自己的弹了出来。
+
+#### 二、改法：草稿带**写它的窗口实例**
+
+| 机制 | 落点 |
+| --- | --- |
+| 每个窗口实例一个 uid（`crypto.randomUUID()`），随窗口 argv 下发（`--lumin-window-uid=`，reload 后不变） | `index.ts` `createWindow()` |
+| 写草稿时盖上这个 uid（`DraftInfo.ownerUid`） | `main/ipc.ts` `drafts:save` + `main/drafts.ts` `saveDraft()` |
+| 「是我的」= **uid 相同**（同一个窗口 reload 前后）；「无主」= 写它的窗口已经不在这个进程里 / 来自上一次运行 | `main/drafts.ts` `takeUntitledDraft()` |
+| **只有本次运行的启动窗口**能认领无主草稿（Ctrl+N / 新建窗口是明确要空白，不打扰） | `index.ts` 的 `startupWindowId` + `SlotRegistry.mayClaimUntitledDraft` |
+| 自己这一格留着**别人**的正文时：不弹、也**不覆盖**，先挪到停放键 `untitled-orphan` 等着被启动窗口认领 | `main/drafts.ts` `parkDraft()` |
+
+安全性没丢：崩溃 / 单独关窗后的未保存正文，仍会在**下次启动的那个窗口**里被认领（§4.44 的
+数据安全承诺照旧），只是不再往 Ctrl+N 的窗口里塞。
+
+#### 三、验收
+
+`tools/_verify-draft-banner.js` **25/25 PASS**（需要 `LUMIN_DRAFTS_DIR` 才能构造「写它的窗口不在了」
+的草稿并直接核对盘上文件）：
+
+- `new-window-does-not-claim-orphan`：新开的窗口（Ctrl+N 同一条路径）**不弹横幅**，且把它留给启动窗口；
+- `startup-window-claims-orphan` / `orphan-draft-moved`：启动窗口照旧认领并搬走（数据安全）；
+- `foreign-draft-not-shown` / `foreign-draft-parked-not-overwritten`：别人 uid 的草稿既不展示也不被覆盖；
+- `sibling-draft-untouched`、reload / 重启那几条照旧（同一个窗口自己那份仍认得出来）。
+
+`tools/_verify-new-document.js` **24/24 PASS**：新增 `no-new-window-shows-draft-banner` ——
+先往盘上种一份无主草稿，再走**文件 → 新建 / 真实 Ctrl+N**（§4.50 前的第三条是顶部栏按钮）几条路，
+新窗口都不弹横幅。
+
+回归：`tools/_verify-session.js` **17/17**（新增的 `--lumin-window-uid` 不影响槽位解析与会话恢复）、
+`tools/_verify-session-last-closed.js` **8/8**、`npm run typecheck` / `build` / 改动文件 ESLint 均干净。
+
+---
+
+### 4.50 「新建」收进「文件」菜单第一项（本次）
+
+**需求**（用户提的）：把顶部栏那个独立的「新建」按钮收回「文件」菜单里，放在最上面。
+
+**背景**：§4.47 加按钮时，「文件 → 新建文档」和它已经是**同一个动作**（新窗口 + 工作区不变 +
+未命名文档）。所以这一轮不是「再加一项」，而是**合并成一个入口**（用户选的就是这条）：
+菜单里若同时留着「新建」与「新建文档」，就是两个一模一样的入口。
+
+#### 改法
+
+| 位置 | 改动 |
+| --- | --- |
+| `TopMenuBar.vue` | 删掉顶部栏右侧的独立按钮；「文件」菜单第一项 = `menu.new`（新建，`file-plus` 图标），动作仍是 `newDocumentWindow()` |
+| i18n ×3 | `menu.new`（新建 / New / Создать）成为这一项的文案；删掉已无人引用的 `menu.newDoc`（三语同步删，键集仍完全一致：357 键） |
+| `useKeymap.ts` | 命令 `file.new`（`Ctrl+N`）的标题 key 改为 `menu.new` —— 设置 → 快捷键里显示的就是「新建」 |
+| `main/menu.ts` | 隐藏的原生菜单那一项也跟着改叫「新建」（仍是同一个 `send('new')`） |
+| 侧栏空态 / 文件树 | 仍用 `open.newDoc`（「新建文档」）—— 那是「在工作区里新建文件」，与菜单里的「新建」是两件事，保持不变 |
+
+改完的「文件」菜单：**新建 / 新建窗口 / 打开… / 打开文件夹… / 最近文档 ▸ / 最近文件夹 ▸ /
+保存 / 另存为… / 导出 ▸ / 选择编码重新打开 ▸**。
+
+#### 验收
+
+`tools/_verify-new-document.js` **23/23 PASS**（原 19 条的入口断言按新位置重写）：
+
+- `topbar-button-removed`：顶部栏只剩五个菜单组（`文件(F)|编辑(E)|段落(D)|视图(V)|帮助(H)`），没有残留按钮；
+- `file-menu-first-item-is-new`：文件菜单**第一项**就是「新建」；
+- `file-menu-has-single-new-entry`：全菜单只有**一个**「新建」，且不再有「新建文档」；
+- `menu-new-opens-new-window` / `menu-new-keeps-same-folder` / `menu-new-doc-untitled` /
+  `menu-new-works-repeatedly`：真实点这条菜单项（两次）→ 每次都多出一个窗口、工作区不变、
+  文档是未命名缓冲区；加上 `Ctrl+N` 那条，以及 `no-new-window-shows-draft-banner`（种了无主草稿也不打扰）。
+
+回归：`tools/_verify-welcome-removed.js` **32/34**（`file-menu-has-new` 已改成「第一项是新建、
+且没有新建文档」；另 2 项仍是既有的隔离实例环境跳过）、`tools/_verify-i18n.js` 正常切换语言；
+三份 locale 键集逐项一致（357 键，无 missing/extra）；`npm run typecheck` / `build` / 改动文件 ESLint 均干净。
+
+> `tools/_verify-keymap.js` 本轮**未跑**：它 `import('/src/lib/keymap/service.ts')`，必须有 dev server
+> 在 5173 才跑得起来，而写这轮时它没在跑。本轮对它的影响只是 `file.new` 的标题 key 换成 `menu.new`
+> （三语都有这个 key，且 `titles-and-groups-translated` 校验的就是「标题能取到」），Ctrl+N 的行为
+> 由上面那个套件覆盖。
+
+---
+
+### 4.51 系统性优化第一轮：数据安全 + 门禁 + 安全/性能 + 测试基建（本次）
+
+> 依据：桌面上的《Lumin 项目评审报告》。按仓库自己的规矩「一次一波、每波留下可复跑数字」，本轮做的是
+> 报告里的**第一批（零风险高收益）**，外加三个高价值项（安全加固、索引节流、单元测试 + CI）。
+> Wave 1（Markdown 保真）与 Wave 2（元数据/EOL/本地历史）**未动** —— 它们是各自独立的一波，见文末。
+
+#### 一、数据安全（P0）
+
+| 项 | 改法 | 落点 |
+| --- | --- | --- |
+| **写盘原子化** | 同目录临时文件 → `fsync` → `rename` 覆盖；失败清理临时文件并原样抛出 | `main/fileOps.ts` `writeFile()` |
+| 失败要带原因 | IPC 错误前缀削掉后进 toast（不再只有「保存失败」） | 新增 `renderer/lib/errors.ts`，`stores/files.ts` 的 `save()` / `reopenWithEncoding()` |
+
+为什么必须：原先 `fs.writeFile` 直接覆盖原文件，写入中途崩溃/断电/磁盘满会把用户唯一的一份稿件截断，
+而当时连本地历史都还没有 —— 这是写作工具最不能接受的一类故障。同分区 `rename` 是原子的，
+磁盘上任何时刻只可能是「完整旧版」或「完整新版」。
+
+#### 二、门禁可用（P2）
+
+| 项 | 改法 | 实测 |
+| --- | --- | --- |
+| `tools/**` 不进 lint | flat config `ignores` 加 `tools/**`、`build/**`（脚手架是 CommonJS + 一次性脚本，898 个 error 把真问题淹了） | 912 → 14 errors |
+| 行尾不再假报 | `.prettierrc.yaml` 加 `endOfLine: auto`（工作树是 CRLF，默认 LF 校验让**每一行**都报 `Delete ␍`） | 7260 → 0 warnings |
+| 修掉 src 的 14 个 error | 13 个 `no-useless-escape`（正则字符类里的多余转义）+ 1 个缺返回类型 | — |
+| 格式化收口 | `prettier --write src`（41 个文件，纯格式） | — |
+| **结果** | — | **`npm run lint` 0 error / 0 warning（exit 0）** |
+
+**踩到的坑（值得记住）**：`prettier --write` 会把模板里**内联多语句**的分号吃掉，变成
+`@dblclick=" a = 1 b() "`，Vue 模板编译器随后报 `Error parsing JavaScript expression`，构建直接失败。
+正确做法是把这类逻辑抽成方法：本轮抽了 `collapseSidebar` / `openGeneralSettings` / `pickTheme` /
+`resetSplitRatio`（顺带让模板更干净），并在 `tools/_verify-local-media.js` 里逐个个点了一遍。
+
+#### 三、仓库卫生（P2）
+
+- 取消跟踪并清理误提交的构建产物：`build-out.txt`、`typecheck-out.txt`、`dev-app-update.yml`（`.gitignore` 同步加规则）。
+- 新增 `.gitattributes`：行尾与二进制类型写进仓库，不再看各机器的 `core.autocrlf`（**没有**顺手 renormalize 历史，那是独立一次改动）。
+- README 重写：平台现状（Windows 优先，mac/Linux 未验证）、真实的质量门禁命令、目录结构、文档地图、
+  已知限制与路线 —— 修掉「说 2 种语言其实 3 种」「说 run-verify.ps1 跑 45 项其实只跑 1 个」这类过期信息。
+- 新增 `CHANGELOG.md`（Keep a Changelog；此前完全没有）。
+- 依赖与元数据：删掉未使用的 `@electron-toolkit/preload`（`src` 里 0 引用，并同步了 lock）、
+  删掉 pnpm 专用字段 `allowScripts`、补 `engines.node >= 22`、补 `npm run ci` / `lint:fix`。
+- 死代码：删掉 `wasCrashed()` 与整套 crash-flag（写而不读）、`releaseSlot()`（从未被调用）。
+
+#### 四、安全加固（P1）
+
+| 项 | 改法 | 落点 |
+| --- | --- | --- |
+| `lumin-file://` 无校验 | **两道白名单**：① 媒体扩展名（图片/音视频/PDF）；② 必须位于「当前工作区」或「某个已打开文档所在目录」之内，否则 404 并记一行日志 | `main/index.ts` `protocol.handle` + `shared/media.ts`（纯函数）+ `fileOps.isServableMedia()` + `openDocs.listOpenDocs()` |
+| 缺 `will-navigate` 兜底 | 只允许停留在自己的页面，其余拦下并交系统浏览器（与 `setWindowOpenHandler`、`shell:openExternal` 白名单同口径） | `main/index.ts` `createWindow` |
+| 搜索结果 `v-html` | 主进程 `snippet()` 改用 U+0001/U+0002 作标记（**数据里不再夹 HTML**），渲染层按段渲染 `<em class="gs-hl">` —— **全程没有 `v-html`**，也就没有转义遗漏的机会 | `main/services/database.ts` + 新增 `renderer/lib/highlight.ts` + `GlobalSearch.vue` |
+
+顺带修掉一个**功能缺口**：`![](img/a.png)` 这类相对图片原先按「页面目录」解析（`resolveLocalImageSrc`
+是空实现）→ **渲染不出来**。现在按**文档目录**解析成 `lumin-file:///<绝对路径>`（新增
+`renderer/lib/imageSrc.ts`，纯函数 + 单测），走上面那道校验过的协议加载。
+
+#### 五、性能（P1）
+
+**FTS 索引节流**：自动保存默认 3 秒一次，原先每次都 `DELETE` + `INSERT` 整篇正文进 FTS5 ——
+`DatabaseSync` 是**同步** API、跑在主进程上，大文档等于每 3 秒卡一下。现在：
+元数据（标题/时间/字数）立即写；正文索引按 rowid 合并、**2 秒窗口**批量重建（批次内开事务，
+`node:sqlite` 没有 better-sqlite3 的 `.transaction()`，就显式 `BEGIN/COMMIT/ROLLBACK`）；
+单篇超过 **256KB** 只索引前一段；**搜索前**与**退出前**各 flush 一次，保证「刚保存就搜」也能命中。
+落点：`main/services/database.ts`（`scheduleFtsIndex` / `flushFtsIndex` / `clipForIndex`）+ `index.ts` 的 `before-quit`。
+
+#### 六、测试基建（P1-7 / P2-2）
+
+1. **把判定从 I/O 里剥出来**（这是本轮结构性改动的主线）：
+   - `shared/drafts.ts`：`planUntitledDraft(ctx, onDisk)` → 返回 `show / adopt / park / purge` 步骤；
+     `main/drafts.ts` 只剩「列目录 → 问它 → 照做」。这块语义连续出过三次真 bug（§4.44/§4.45/§4.49）。
+   - `shared/session.ts`：`planRestoreFromSlots(slots, max)` → 返回「重建哪些窗口 + 清哪些 closed 记录 + 摘哪些标记」；
+     `main/services/session.ts` 只做 kv 读写。
+   - `shared/media.ts`、`renderer/lib/imageSrc.ts`、`renderer/lib/highlight.ts`：同样是纯函数。
+2. **`tests/`（`node --test`，原生 TS 类型剥离，零新依赖）**：57 条断言 —— 草稿归属矩阵（11 条）、
+   会话恢复矩阵（9 条）、高亮分段（5 条）、图片路径（8 条）、路径工具（5 条）、编码表（5 条）、
+   媒体白名单（8 条）、**package.json ↔ package-lock 一致性自检**（6 条）。
+3. **CI**（`.github/workflows/ci.yml`，Windows runner）：`npm ci` → typecheck → lint（`--max-warnings 0`）→ 单测 → 构建。
+   本地等价命令是 `npm run ci`。
+
+#### 七、本轮验收数字（全部可复跑）
+
+| 门禁 | 结果 |
+| --- | --- |
+| `npm run typecheck` | exit 0 |
+| `npm run lint` | **0 error / 0 warning** |
+| `npm run test:unit` | **57/57** |
+| `npm run ci`（本地等价 CI） | exit 0 |
+| `npm run build` | exit 0 |
+| `_verify-draft-banner.js` | 25/25 |
+| `_verify-new-document.js` | 23/23 |
+| `_verify-session.js` | 17/17 |
+| `_verify-session-last-closed.js` | 8/8 |
+| `_verify-taskbar-jumplist.js` | 31/31 |
+| `_verify-local-media.js`（本轮新增，10 条） | 10/10 |
+
+`_verify-local-media.js` 覆盖三块：相对图片按文档目录解析并**真的加载成功**、协议两道闸
+（非媒体文件 404、工作区外图片 404）、以及本轮抽成方法的四个 UI 处理器逐个点一遍。
+
+#### 八、本轮**未做**（下一波的起点，别当成已完成）
+
+1. **Wave 1 Markdown 往返保真**（信誉底线）：夹具 + `EXACT/NORMALIZED/LOSSY` 三档 + 幂等回归 + 报告。**优先做这个。**
+2. **Wave 2 数据安全**：`documents` 表加编码/EOL/BOM 列 + 迁移；`services/eol.ts`；本地历史与回滚；以编码/EOL 保存。
+3. **Wave 3**：编辑器 ⇄ store 的显式意图状态机（替换回声 + 600ms 两条启发式）；文件树键盘可达；原生菜单文案三语。
+4. **工程化**：`tools/lib/harness.js` + `tools/run-suites.js`（57 个 CDP 套件目前没有统一入口，
+   且仍有 49 个套件按 `Symbol(pinia)` 名字取 store —— 在生产构建下会失败）；
+   `files` store 拆分；把 store 里那份为绕循环导入复制的 `confirmIfDirty` 收敛到 `services/dialog`。
+5. 依赖升级与 `node:sqlite` 实验 API 的升级检查单；`publish` 渠道与代码签名决策。
+
+---
+
+### 4.52 Wave 1：Markdown 往返保真（本次）
+
+> 上一节把「Wave 1」列为第一优先，理由是它是**写作工具的信誉底线**：
+> 用户打开一份 `.md`、动一下、保存 —— 文件不该变；内容更不该被吃掉。
+> 本轮把它做成可复跑的数字，并在过程中查实并修掉了 **7 类内容损坏缺陷**。
+
+#### 一、判级器：`tools/lib/md-fidelity.js`（纯函数，零依赖）
+
+三档分级，等级数字越大越糟（`actual > expected` 即回归）：
+
+| 档 | 含义 |
+| --- | --- |
+| `exact` | 磁盘字节完全没变 |
+| `normalized` | 经过**文档化的保义规则**规范化后完全一致：文件被重写，但语义没丢 |
+| `lossy` | 规范化后仍不一致 → 内容/结构真的变了，必须当缺陷处理 |
+
+规范化只收「能在 CommonMark 语义上站得住脚」的改写，共 18 条（`RULES` 导出，报告可直接引用）：
+行尾 LF、硬换行两种写法归一、ATX/Setext 标题、列表标记 `*`/`+`/`1)`、引用块、分割线、表格空白与分隔行、
+围栏 `~~~`→``` ```、缩进代码 ↔ 无 info 围栏、强调标记 `__`/`_`、链接尖括号、HTML 实体、引用式链接展开、
+**段落内软换行合并（软换行 ≡ 空格）**、连续空行压缩、非必要转义 `\\` ≡ `\`、
+**不同标记的相邻列表之间的空行无义**（同标记的空行会让列表变松散，那就有义了）。
+
+判定「不能靠规则糊过去」的例子（都写成了单测）：围栏内容里的 `*` 差异、行内代码里的内容差异、
+`**粗**`→`*斜*`、少一个列表项、表格单元格内容变化、段落合并、代码语言丢失。
+
+#### 二、夹具库 `tools/fixtures/md/`（30 份 + `EXPECT.json`）
+
+覆盖：标题（ATX/Setext/边界写法）、段落与硬换行、强调与嵌套、转义、列表（无序/有序/嵌套/松散/相邻）、
+任务列表（含有序）、引用块、分割线、围栏代码（含内容里带 ```）、缩进代码、表格（对齐/转义竖线）、
+链接（行内/带标题/自动链接/裸 URL/中文路径/引用式）、图片（本地/远程/空 alt/行内/被链接）、行内 HTML、
+实体、中日韩与 Unicode、公式、mermaid、`[TOC]`、YAML front matter、空行边界、综合文档。
+
+**`EXPECT.json` 就是契约**：`class` + `why`。`lossy` 必须写清**为什么**以及**修法**——
+没有 why 的 lossy 等于把缺陷藏进预期里。实测比预期好会在输出里提示「可收紧」，
+比预期差就是 FAIL。
+
+#### 三、套件 `tools/_verify-md-fidelity.js`（文档级 / 幂等 / 字节级）
+
+1. **文档级（主断言）**：把夹具装进真实编辑器 → 触发应用**自己的落盘管线**
+   （`TyporaEditor` 的 `flushSync`，用 window 的 `beforeunload` 同步触发，正是「关窗落盘」那条真实路径）
+   → 读 `files.current.content`（= 文档文本）→ 判级比对。
+   *为什么绕这一道*：Tiptap 只在 **docChanged** 时发 `onUpdate`（还有 250ms 防抖），
+   而 `beforeunload` 的 flush 是同步的 —— 既确定，又不用给产品代码开后门。
+2. **幂等**：把文档文本再装回去走一遍，必须**一字不差**（否则每次保存都在漂，
+   git diff 全是噪声，用户会认为编辑器在改他的文件）。已知缺口内的幂等不检查。
+3. **字节级**：真开真存（临时目录副本）—— 打开不改就保存必须**字节不变**
+   （CRLF / UTF-8 BOM / GB18030 / 文末无换行四种），走一遍落盘管线再保存也要字节不变。
+   诊断产出落 `%TEMP%\lumin-md-fidelity-report.json`（原文/产出/判级/逐行差异）。
+
+#### 四、本轮查实并修掉的缺陷（都是「用户会丢内容」那一类）
+
+| 现象 | 根因 | 修法（落点） |
+| --- | --- | --- |
+| 代码块里出现成对反引号（``let a = `x```）时，**一次编辑后整段代码并成一行** | 标记模型的「源码权威重推」把 `codeBlock` 当普通段落处理（PM 里 `isTextblock` 对代码块也为真），拿代码文本再喂 markdown-it，而重推走的 DOMParser **不保留空白** → 换行全塌成空格 | `isVerbatimBlock()`（`type.spec.code === true`）把逐字块排除在归一化之外（`typoraInlineMarks.ts`） |
+| 行内代码里的反斜杠**每保存一次多一层**（非幂等增长） | prose-mirror-markdown 只按**最内层 mark** 的 `escape:false` 决定原样输出，而 `mdStyle(code)` 正文没有这层保护；代码跨度里反斜杠不是转义字符 | 新增 `mdCodeLiteral` mark（空包裹 + `escape:false`），贴在代码样式正文上（`typoraInlineMarks.ts` + `extensions.ts`） |
+| 软换行被写成行尾 `\`（每行都加） | `Markdown.configure({ breaks: true })`：markdown-it 把段内单个换行渲染成 `<br>` → 解析成 hardBreak → 序列化成 `\`。语义从「软换行 ≡ 空格」变成强制换行，GitHub 渲染都不一样 | `breaks: false`；真正的「软换行可往返」需要独立节点，列为 Wave 2 |
+| 无序列表标记被抹平（`*`/`+` → `-`），相邻两个列表被插**两个空行**，再解析并成一个**松散列表** → 每次保存都在漂 | 上游 `bulletListMarker` 固定 `-`；`renderList` 遇到同类型相邻块会 `flushClose(3)` 兜底 | 解析时记录 `bullet`（`parse.setup` 钩子给 `<ul>` 打 `data-bullet`）→ 序列化写回原标记；标记不同时 `flushClose(1)` 只断行不插空行（`listMarkers.ts`） |
+| 任务列表**每个任务项之间都被塞空行**；`1. [ ] x` 变成「空的有序项 + 无序任务列表」 | 任务列表复用无序列表的序列化器，而它读 `node.attrs.tight`，`tight` 只挂在 bulletList/orderedList 上 → `undefined` → 松散；`ol` 形态的任务列表没有 parse 规则 | 给 `taskList` 补 `tight` 属性；parse 规则同时认 `ul/ol[data-type="taskList"]`（`listMarkers.ts`） |
+| 相邻图片被粘成一行；图片后紧跟的标题被吞进同一段 | `Image` 是块级节点，但 tiptap-markdown 给它的是行内序列化器（不换行、不 closeBlock） | 自定义 Image 序列化器：沿用上游写法 + `closeBlock`（`extensions.ts`） |
+| 内容里含 ``` 的代码块，围栏被内容提前闭合 → 后面正文被解析成代码 | 围栏固定写三个反引号 | `codeFenceFor(content)`：围栏长度 ≥ 内容里最长反引号串 + 1（`shared/documentText.ts` + `codeBlock.ts`） |
+| 序列化产出**不含文末换行** → 每次保存都与原文差一个字节 | 上游 serializer 不补 | 文档文本收尾规则 `withFinalNewline()`，收在 `markdownStorage.getMarkdown()`（编辑器内容 → 文档文本的**唯一出口**，否则会与外部同步比较打架、触发 setContent 回滚） |
+
+#### 五、判级器/工具链自身踩过的坑（都已修，值得记）
+
+- **判级器**：围栏闭合必须**不短于**开启（` ```` ` 里的 ``` 不闭合它）；`---` 既是 Setext 下划线又是分割线，
+  得按「前面是不是段落文本」判（CommonMark 顺序）；`$$` 块要与多行写法归一；实体要按命名/十进制/十六进制还原
+  （`&lt;` 与 `<` 才判等）；链接目标要还原百分号编码（`%E4%B8%AD` ≡ `中`）；
+  相邻列表之间的空行要**在标记归一化之前**判定（归一化后 `*` 也成了 `-`，就再也分不出两个列表了）。
+- **`start-isolated.ps1`**：Electron 的 `--user-data-dir` 用的是 **8.3 短路径**（`YANGBA~1`），
+  拿长路径字符串比对会**漏杀**旧实例 —— 曾经因此对着**旧构建**跑了一整轮验收（结论全错）。
+  现在两边都 `Resolve-Path` 成同一形态再比；端口判定改用 TCP 连接（`Get-NetTCPConnection`
+  在受限模式会静默返回空，把「被占」判成「空闲」）。
+- **PowerShell 脚本必须存 UTF-8 with BOM**：Windows PowerShell 5.1 读无 BOM 的 UTF-8 脚本时按 ANSI 解码，
+  中文注释里的多字节序列会撞出引号 → 语法错误。
+- **别用 PowerShell 做字符串替换**：`$pair[0]`/`$pair[1]` 在字符串上取到的是**首字符**
+  （`'s'`/`'t'`），一次替换把源码里的 `s` 全换成了 `t`（两个文件被改坏，`git checkout` 才救回来）。
+  这类一次性改写一律走 Node 脚本。
+
+#### 六、测试基建（本轮补齐）
+
+- **`tools/lib/harness.js`**：CDP 套件公共骨架 —— 连页面、注入 pinia 访问器、键鼠模拟、结果汇总。
+  两个反复咬人的坑固化在这里：**按结构找 pinia**（`provides` 里持有 `_s` Map 的那个对象），
+  不按 `Symbol(pinia)` 名字找（生产构建会压掉 symbol 描述 → 只有 dev server 的页面能用）；
+  页面识别同时认 dev server 与 `out/` 构建产物（不写死 5173）。
+- **`tools/run-suites.js`**：统一入口 —— 逐个套件起**全新隔离实例**（串着跑必然互相污染）、
+  解析末行 `--- N/M PASS`、汇总矩阵、有 FAIL 非零退出；依赖 dev server 的套件默认跳过（`--all` 才跑）。
+- **单测**：`tests/md-fidelity.test.mjs`（判级器自身：每条规则一个同义改写用例 + 反例 + 幂等）、
+  `tests/documentText.test.mjs`（收尾规则与围栏长度）。单测总数 57 → **81**。
+
+#### 七、本轮验收数字
+
+| 门禁 | 结果 |
+| --- | --- |
+| `npm run typecheck` | exit 0 |
+| `npm run lint` | 0 error / 0 warning |
+| `npm run test:unit` | **86/86**（57 → 86） |
+| `npm run ci` | exit 0 |
+| `_verify-md-fidelity.js` | **50 PASS / 0 FAIL / 20 SKIP**（30 份夹具；SKIP = `EXPECT.json` 里逐条写明修法的已知缺口） |
+| `node tools/run-suites.js` | **7/7 套件 PASS**：session-last-closed 8/8、md-fidelity 50/70（0 FAIL）、draft-banner 25/25、new-document 23/23、session 17/17、local-media 10/10、encoding 31/31 |
+
+#### 八、已知缺口（`EXPECT.json` 里逐条写了修法，Wave 2 的起点）
+
+1. **反斜杠转义保留**：`\*` 被解析器吃掉，模型还原不回来（语义会从「字面星号」变成「斜体」）。
+   修法：用 `parse.setup` 钩子替换 markdown-it 的 inline `escape` 规则，把转义字符渲染成带 data 标记的
+   span + 一个 `escape:false` 的 mark 原样写回（钩子已验证可用）。
+2. **行内 HTML**（`<kbd>`/`<span>`/`<br>`/注释/`<details>`）：unknown 标签被 DOMParser 剥离。修法：加「原样 HTML 节点」。
+3. **表格列对齐 +单元格转义竖线**：Tiptap 表格没有 align 属性；`\|` 会被当分隔符。修法：cell 加 align + 自定义 Table 序列化器转义 `|`。
+4. **公式**：应用**根本没有数学节点**（KaTeX 只用于导出 CSS），`$$` 只是普通文本，里面的反斜杠会被补成 `\\`。
+   修法：mathInline/mathBlock 节点 + 原样序列化（顺带把「公式渲染」这个功能补上）。
+5. **链接包裹的图片**（`[![alt](img)](url)`）与**段落中间的图片**：块级 Image 挂不了 link mark、会被拆成独立块。
+   修法：内联图片节点或 figure 包裹节点。
+6. **有序任务列表编号**：`1. [ ] x` 的编号在模型里没有位置。
+7. **YAML front matter**：被解析成分割线 + 段落。修法：解析前摘出头部块存进文档属性。
+8. **CommonMark 同标记相邻列表的重编号**：`3. c` 空行 `5. e` 在 CommonMark 里是**同一个**松散列表，
+   所以 `5.` 会被重排 —— 这是规范行为，要「保持从 5 开始」得拆列表并记住起始序号。
+9. **CRLF 与文末无换行**（字节级）：编辑器序列化只产出 LF；文档收尾规则统一补一个文末换行。
+   前者要把 EOL 收进文档模型（Wave 2 的数据安全波）。
+
+---
+
+### 4.53 Wave 2：文档级元数据（编码 / 行尾 / BOM）与本地历史（本次）
+
+> 这三件事是**同一个根**：「文档级元数据没有模型」。此前编码只活在渲染进程的 `current` 上、
+> 再配一张 kv 表兜；行尾（EOL）**根本没人管**；保存成功即清草稿 —— 一次误保存无法挽回。
+> 本波把前两件收进 `documents` 表，把第三件做成一条**写盘前的快照链**。
+
+#### 一、行尾（EOL）进文档模型
+
+**约定**：**内存里的文本永远是 LF，行尾是文档属性，落盘时才展开。**
+理由：编辑器内核（ProseMirror / markdown 序列化器）只会产出 `\n`；若让「当前文本」承担行尾，
+那么任何一次序列化都会把 CRLF 抹成 LF，而且没有任何一层知道它该不该抹。
+把行尾变成**属性**之后只有一个真相：编辑器怎么改都不会污染行尾。
+
+- `src/shared/eol.ts`（纯函数 + 单测）：`detectEol`（按**多数**行尾判定）、`toLf`、`toEol`、`hasUniformEol`。
+- 判定与归一位于 `fileOps.readFileInfo`（打开时一次），展开位于 `fileOps.writeFile`（写盘时一次）——
+  **所有写盘路径都走这里**（保存、另存为、导出），不会有调用点漏掉。
+- 混合行尾（同一文件两种混用）没有正确答案：按多数判定，保存时统一成它。这条写进代码注释与本文档，
+  免得日后被当 bug 报。
+- **实测收益**：`_verify-md-fidelity.js` 的 crlf 字节级用例（打开 → 动一下 → 保存，字节必须不变）
+  从「已知缺口」变成 **PASS**。
+
+#### 二、编码 / 行尾 / BOM 落库 + 一次性迁移
+
+- `documents` 表加 `encoding` / `eol` / `had_bom` 三列，用 `PRAGMA table_info` + `ALTER TABLE` 迁移
+  （与 notifications 加列同一套写法，旧库无痛升级）。
+- 老的 kv `fileEncodings`（`{ 小写路径: 编码 }`，插入序当 LRU）做**一次性迁移**：
+  能对上 `documents` 行的条目搬进表；对不上的（文件还没进索引）留在 kv 兜底；迁完打标记不重复扫。
+  `rememberEncoding` 现在优先写 `documents`，并顺手清掉 kv 里的同名条目，避免两处不一致。
+- 顺带修掉一处**同名双份定义**：`DocMeta` 原本在 `shared/types.ts` 与 `main/services/database.ts`
+  各写了一份。现在只保留 shared 那份并再导出（"一次真相"这条约定不该有例外）。
+
+#### 三、本地历史（数据安全）
+
+**问题**：保存成功即清草稿 —— 全选删掉再 Ctrl+S、或改错一份稿，就再也回不去了。
+
+**做法**：
+
+- 新表 `documents_history`（path / saved_at / size / preview / content / encoding / eol）。
+- **快照取自磁盘上现有的字节**（即将被覆盖的那一版），记录点在主进程 `file:write`：
+  * 语义准确 —— 用户想回滚的就是「上次保存时磁盘上的样子」；
+  * 与调用方解耦 —— 保存、另存为、以后的回滚写回都自动有历史，不依赖某个调用点记得调用；
+  * 内容相同不重复留（连按 Ctrl+S 不会灌水）。
+- **抽稀策略是纯函数**（`shared/history.ts` 的 `planHistoryPrune`，有单测）：
+  每文件最多 30 条；超过 30 天且不是该文件最新 3 条就丢；全库封顶 2000 条。
+  数据安全优先于省空间：**每个文件的最新几条不受年龄限制**（全库膨胀交给总量封顶）。
+- **回滚的语义是「载入缓冲」而不是「直接写盘」**：快照是说不准的东西，直接覆盖磁盘风险太大
+  （选错版本、或只想摘一段）。载入后文档变成未保存状态，用户能在编辑器里看清/对比再 Ctrl+S。
+  实测断言直接盯着这条：载入后缓冲是第一版、**磁盘仍是第三版**、`dirty === true`。
+
+#### 四、界面
+
+- 状态栏新增**可点的行尾标记**（LF ⇄ CRLF，点击即按新行尾写回）—— 行尾是「打开→保存会不会整文件 diff」
+  的直接原因，值得一眼可见、一键可改。
+- 文件菜单新增两个二级：「行尾」（以 LF / CRLF 保存）与「以编码保存」；「本地历史…」开浮层。
+- 设置面板新增「默认行尾」（只影响新建/未命名文档；已有文件按自己原本的行尾）。
+- 三语同步 11 个键（377 键，键集合一致）。
+
+#### 五、本轮验收数字
+
+| 门禁 | 结果 |
+| --- | --- |
+| `npm run typecheck` / `npm run lint` | exit 0 / 0 error 0 warning |
+| `npm run test:unit` | **97/97**（新增行尾 6 条、历史策略 5 条） |
+| `_verify-md-fidelity.js` | **63 PASS / 0 FAIL / 19 SKIP**（82 条断言；新增行尾 6 条、历史 6 条） |
+| `node tools/run-suites.js` | 7/7 套件 PASS |
+
+行尾与历史的端到端断言（都是一个真实 Electron 窗口里跑出来的）：
+打开 CRLF 文件 → 判定 `crlf` 且内存无 CR；切 LF → 磁盘 LF；切回 CRLF → 磁盘 CRLF；
+元数据落库（`documents.eol/encoding`）；未命名文档用设置里的默认行尾；
+保存两轮 → 历史两条（最新一条正是「即将被覆盖」的那一版、最早一条是打开时的原文）；
+载入历史 → 缓冲变、磁盘不变、标记未保存；清空 → 归零。
+
+#### 六、工具链补丁（本轮踩到的坑）
+
+`tools/run-suites.js` 现在会在开场与「端口被占」时**清掉临时目录下的 Electron 实例**：
+人工起的隔离实例（`%TEMP%\lumin-ud` 等）会占着 9222，把整轮矩阵顶成 6 个 FAIL ——
+而那看起来像"代码坏了"，实际只是端口被占。判定按「命令行里的 user-data-dir 落在 `%TEMP%` 下」，
+**绝不碰**用户自己的 `%APPDATA%\lumin` 实例。
+
+#### 七、Wave 2 剩余（下一轮的起点）
+
+1. **多窗口一致性**：同一文件在两个窗口打开时，编码/行尾以库为准（库表已就位，
+   还差"打开时优先用库里记的元数据"这一步取舍与套件）。
+2. **本地历史的可配项**：设置面板里的开关与保留策略（当前是代码里的常量 + 纯函数策略）。
+3. 反斜杠转义保留（Wave 1 留下的第一号缺口，钩子方案已验证可用）。
+
+---
+
+### 4.54 Wave 3：显式意图同步 / 文件树键盘可达 / 原生菜单三语（本次）
+
+> 三条的共同思路：**把"猜"换成"明说"**。
+
+#### 一、编辑器 ⇄ store：显式意图状态机（替掉两条回声启发式）
+
+**旧实现的两年债**（§4.6 / §4.11 记录过它救过的火）：`TyporaEditor` 的 watch 靠两条启发式判断
+「这次 `modelValue` 变化是不是我自己的回声」——
+① 与最近一次 emit 的内容完全相等 → 跳过；② 距最近 emit < 600ms → 跳过。
+
+两条都**必漏判**，各自有记录在案的故障：
+
+| 场景 | 旧行为 |
+| --- | --- |
+| 按原编码切回来（内容恰好等于上次 emit 的文本） | 规则①把它当回声丢掉 → **状态栏编码变了、正文没变** |
+| 刚打完字就点「恢复草稿 / 切编码」 | 规则②把它丢掉 → 同上 |
+| 每次 modelValue 变化 | 都要做一次**整篇字符串比较**（大文档下的无谓开销） |
+
+**新实现**：契约定在 store 里 —— **凡是要编辑器换内容的动作都必须自增 `files.syncEpoch`**
+（打开文件、恢复草稿、重新解释编码、载入历史；源码模式切回来走另一条既有路径）。
+编辑器只看一件事：
+
+```
+世代没变 ⇒ 不是给编辑器的指令（多半是自己 flush 的回声）→ 不动编辑器
+世代变了 ⇒ 按 store 的新内容 setContent（内容一致时连这一步都省）
+```
+
+于是「碰巧内容相等」「刚 emit 完」都不再影响判断，两条启发式连同 `lastEmitted`/`lastEmitTime`
+一起删掉。**验收盯着三件事**（`tools/_verify-wave3.js` A 段）：
+
+- flush 完之后**立刻**做显式替换，必须生效（旧规则②会吞掉它）；
+- 编辑器自己的回声**不得**重建文档：输入一个字符后走完回声链路，文档内容与光标位置原样保持；
+- 同一 `:key` 下换内容（未命名缓冲区 `openUntitled`）也要生效。
+
+#### 二、文件树键盘可达（ARIA tree + roving tabindex）
+
+`FileTree.vue` 容器是 `role="tree"`，每一行是 `role="treeitem"`，带 `aria-expanded`（目录）、
+`aria-selected`（当前文档）、`aria-level`；**整棵树任何时候只有一个可 Tab 的行**（空闲时也挑一个落点，
+`schema` 上就是 roving tabindex 的 0）。
+
+键位按 WAI-ARIA 的 Tree View：`↑/↓` 上下、`→` 展开（已展开则进第一个子项）、`←` 收起（已收起则回父项）、
+`Home/End` 首尾、`Enter/Space` 打开文件（目录则展开收起）。实现放在 `lib/treeFocus.ts`：
+
+- **递归组件里怎么拿"可见行"**：直接用 DOM 顺序（`[data-tree-row]`）—— 渲染出来的行就是可见行，
+  顺序天然等于 ARIA 要求的遍历顺序；不用把递归树拍平成数组再逐层传 props。
+- **进子项为什么要轮询**：展开是一次 IPC 读目录 + 渲染，单次 `nextTick` 太早（实测拿不到子行）；
+  实现里按 60ms 轮询几轮，并且每次都确认"本行仍是活跃行"（期间用户可能已按别的键）。
+- 键盘焦点有可见描边，且只在 `:focus-visible` 时出现（鼠标点击不闪描边）。
+
+#### 三、原生菜单三语化
+
+菜单栏默认被隐藏（自绘顶栏 + `autoHideMenuBar=false`），只有系统级可访问性路径（Alt 唤出、
+屏幕阅读器、Windows 菜单键）会用到它 —— 正因为"没人看"，它一直是硬编码中文。
+
+- **语言包搬到 `src/shared/i18n/`**：主进程与渲染层**共用一份**（跨进程的东西放 shared，README 的开发约定）。
+- `main/menu.ts` 所有标签走语言包；语言取持久化设置（SQLite kv 的 `settings.language`）。
+- **换语言立即重建**：`settings:update` 里 `partial.language` 存在时调用 `installMenu()`（否则要重启才生效）。
+- **可验证性**：菜单栏页面侧看不到，所以加了一行 ASCII 自检日志 `[menu] rebuilt lang=… top=…`；
+  验收脚本读隔离实例的 stdout 断言"确实按新语言重建了"。
+- **静态自检单测** `tests/menu.test.mjs`：菜单源码里没有硬编码中文（去掉注释后搜 CJK）、
+  `T('key')` 用到的 key 在三份语言包都存在、顶层菜单带助记符、三份键集合一致。
+  这条**当场抓出** 4 个漏翻的键（`cut`/`copy`/`paste`/`selectAll` 在语言包里根本不存在，
+  原生菜单会退化成显示英文 key）。
+
+#### 四、本轮验收数字
+
+| 门禁 | 结果 |
+| --- | --- |
+| `npm run typecheck` / `npm run lint` | exit 0 / 0 error 0 warning |
+| `npm run test:unit` | **101/101**（新增菜单静态自检 4 条） |
+| `tools/_verify-wave3.js`（新增，19 条） | **19/19 PASS** |
+| `tools/_verify-md-fidelity.js` | 63 PASS / 0 FAIL / 19 SKIP |
+| `node tools/run-suites.js` | **8/8 套件 PASS** |
+
+Wave 3 段的端到端断言（真实窗口里跑出来的）：flush 后立刻显式替换仍生效且编辑器确实换成新内容；
+自身回声不改文档、不动光标；`openUntitled` 同 key 也清空编辑器；
+树结构（role/treeitem/aria-expanded/单一可 Tab 行）、`↓↑`、`Home/End`、`→` 展开并进子项、`←` 回父项并收起、
+空目录再按 `→` 安静留在原地、`Enter` 打开焦点行文件；语言切到 en-US 后主进程按新语言重建菜单。
+
+#### 五、仍待办（下一轮起点）
+
+1. **工程化**：`files` store 拆分（约 700 行）、`confirmIfDirty` 收敛到 `services/dialog`。
+2. **Wave 2 尾巴**：多窗口元数据一致性、历史保留策略可配。
+3. **Wave 1 头号缺口**：反斜杠转义保留（`parse.setup` 钩子 + `escape:false` 的 mark，方案已验证）。
+4. 仍有约 40 个老套件按 `Symbol(pinia)` 名字取 store（生产构建下会失败），继续「改到谁就顺手迁谁」。
+
+---
+
+### 4.56 工程化收口：store 拆分与对话框收敛（本次）
+
+> 整改方案的最后两项工程债。原则同前几波：**先把「规则」从「状态」里剥出来** —— 能单测的才有底气。
+
+#### 一、`files` store 瘦身（703 → 535 行）
+
+这个 store 原本一份承担四件事：工作区文件树、当前文档 + 草稿 + 自动保存、**列表视图的派生缓存**、
+最近文档/文件夹。拆法按「生命周期是否相同」而不是按行数切：
+
+| 拆出物 | 为什么是它 | 落点 |
+| --- | --- | --- |
+| **列表视图缓存** → 独立 store | 它是一份**派生缓存**（主进程递归扫描的产物），失效条件是「工作区结构变了 / 某篇保存了」，与文档状态无关；只有一个消费者（`FileList.vue`） | `stores/workspaceDocs.ts`（`docs`/`epoch`/`loading` + `load`/`invalidate`/`bumpMtime`/`reset`） |
+| **最近文档/文件夹/置顶的列表规则** → 纯函数 | 「去重 + 置顶 + 截断 + 并入当前工作区」这类容易写错又不容易发现的逻辑散在 4 个 action 里 | `lib/recent.ts`（`planTouchRecent` / `planRemoveRecent` / `planTogglePin` / `planTouchRecentFolder` / `planRemoveRecentFolder` / `planRecentFolderList`） |
+| **草稿键与可恢复判定** → 纯函数 | 这块**出过三次真 bug**（§4.44 空草稿假横幅、§4.45 关窗清槽位、§4.49 跨窗认领），必须能被毫秒级钉住 | `lib/draftRules.ts`（`draftKeyFor` / `restorableDraft`） |
+| **文档文本小工具** → 纯函数 | 未命名文档的编码/行尾、编码显示名、历史时间格式，都是**规则**不是状态 | `lib/docText.ts` |
+
+依赖方向是**单向**的：`workspaceDocs` 读 `files.root`；`files` 只在结构变化/保存时调用
+`invalidate()` / `bumpMtime()`。新增单测 `tests/filesRules.test.mjs`（9 条）。
+
+**一个部署细节**：`tests/*.test.mjs` 直接用 `node --test` 加载这些模块，而 **Node 的 ESM 解析不做
+扩展名补全** —— 所以「会被单测加载」的模块里，相对导入写显式 `.ts`（`tsconfig.web.json` 开
+`allowImportingTsExtensions`）；其余文件保持仓库既有的无扩展名写法，不搞全仓改造。
+
+**没有继续做的那一步（诚实记录）**：把**状态**也拆成「workspace store + document store」需要改动
+约 20 个调用点（`files.root` / `dirCache` / `expanded` / `toggleDir` …），收益是文件更小、
+风险是回归面铺得很宽。当前拆法已经把「派生缓存」与「规则」搬出主 store，剩下的 535 行是
+「状态 + IPC 编排」，语义内聚；再拆建议单独一波、以现有 8 个套件为安全网来做。
+
+#### 二、未保存更改确认：从四份收敛成一份
+
+此前四处各写一遍同样的 `ui.confirm({ title: t('editor.dirtyConfirmTitle'), ... })`：
+`composables/useAppActions.ts`、`stores/files.ts`（当初为绕循环导入复制了一份）、
+`TreeNode.vue`（打开文件前）、`FileList.vue`（列表里打开）。文案改一次要改四处，漏一处就是
+「两个入口问的话不一样」。
+
+现在只有 `lib/dialog.ts`：
+
+- `confirmDiscardChanges()`：直接问（调用方已确认确实脏了）；
+- `confirmDiscardIfDirty(dirty)`：脏了才问，干净直接放行。
+
+**关键设计**：这个模块**只依赖 ui store 与 i18n**，「脏不脏」作为**参数**传进来 ——
+于是 `stores/files.ts` 也能用它，不必再为「循环导入」复制一份（那正是当初抄四遍的根因）。
+
+命名偏差说明：整改方案写的是 `services/dialog`，但本仓库的 `services/` 是**主进程**约定
+（`src/main/services/*`），渲染层没有这一层，故落在 `lib/dialog.ts`（与 `lib/errors.ts` 同级）。
+
+#### 三、顺带记下的一条踩坑（工具链）
+
+`tools/run-suites.js` 跑套件时**不要同时 `npm run build`**：实例加载的是 `out/`，
+边跑边构建会让正在运行的实例读到半截产物 —— 实测表现是编码套件的「设置已落库」与
+「菜单标题跟随语言」同时变红，看着像代码坏了，其实是构建把它脚下的产物换掉了。
+这条已写进 runner 的文件头。
+
+#### 四、本轮验收数字
+
+| 门禁 | 结果 |
+| --- | --- |
+| `npm run typecheck` / `npm run lint` | exit 0 / 0 error 0 warning |
+| `npm run test:unit` | **110/110**（新增 9 条） |
+| `npm run ci` | exit 0 |
+| `node tools/run-suites.js` | **8/8 套件 PASS** |
+| `tools/_verify-md-fidelity.js` / `tools/_verify-wave3.js` | 63 PASS / 0 FAIL / 19 SKIP · 19/19 |
+
+#### 五、四波做完之后仍开着的口子（按价值排序）
+
+1. **Wave 1 头号缺口**：反斜杠转义保留（`\*` 被解析器吃掉；`parse.setup` 钩子 + `escape:false` 的 mark 方案已验证）。
+2. **Wave 2 尾巴**：多窗口元数据一致性（库表已就位，差「打开时以库为准」）、历史保留策略做成设置项。
+3. **Wave 3.2**：三处真相源（WYSIWYG / 源码 textarea / 代码块 CM）收敛成单向数据流。
+4. **套件迁移**：约 40 个老套件仍按 `Symbol(pinia)` 名字取 store（生产构建下会失败），继续「改到谁就顺手迁谁」。
+
+---
+
+### 4.57 反斜杠转义保留：`\*` 原样往返（本次）
+
+> Wave 1 留下的第一号缺口。它排第一的原因是**信息在解析那一刻就丢了**：
+> markdown-it 的 inline `escape` 规则会把 `\*` 变成文本 `*`，于是「字面星号」往返后
+> 变成「斜体标记」—— 语义变了，而任何后置的归一化都补不回来（无法区分 `\*` 与 `*`）。
+
+#### 一、机制：解析时留痕，序列化逐字写回
+
+用 tiptap-markdown 官方给的 `parse.setup` 钩子（与「保留列表标记」同一套机制，见 §4.52）：
+
+1. **替换 markdown-it 的 inline `escape` 规则**：照抄上游的三种分支，只改一处 ——
+   可转义标点不再被"吃掉"反斜杠，而是把原文 `\X` 放进一个自定义 token；
+2. **渲染成 `<span data-md-escape>\X</span>`**（token 自带渲染规则；内容来自用户源码，做了 HTML 转义）；
+3. **`MdEscape` mark**（`escape:false` + 空包裹）认领这个 span → 序列化时**逐字写回**。
+
+三种分支一个都不能漏（实测教训）：
+
+| 分支 | 语义 | 漏掉的后果 |
+| --- | --- | --- |
+| `\` + 换行 | 硬换行（并吃掉行尾空格） | 退化成「字面反斜杠 + 软换行」→ 整段被并成一行，`paragraph-breaks` 夹具立刻变红 |
+| `\` + 空格 | 反斜杠不是转义，字面输出 | 空格被当作转义目标 |
+| 其余 | 可转义标点保留 `\X`；不可转义字符本来就原样 | `C:\temp` 会被补成 `C:\\temp`（源码漂移） |
+
+#### 二、三处「不显眼但必须改」的联动
+
+1. **`literalizeStrayMarkers` 要跳过转义文本**：那一步会把裸 `*`/`~`/`` ` `` 包成「字面量标记」，
+   若不跳过，`\*` 会被拆成「反斜杠 + 字面量星号」→ 输出 `\\*`。
+2. **转义文本必须留在样式构造里**：一开始把它当成不透明节点（`kind: 'other'`），
+   结果它把同样式正文**切成两段** —— `**粗体里的 \* 星号**` 被拆成两个 `**…**` 构造，
+   实测输出 `****\*****`。正确做法是让它作为**带样式的 verbatim 文本**参与构造
+   （`verbatim` 标记只影响「不参与标记派生」与「序列化时贴回 mdEscape」两件事）。
+3. **重推的触发条件要认识反斜杠**：`blockNeedsNormalize` / `resolveBlockContent` 的守卫
+   此前只认 `*~`` ` ``；现在补上「反斜杠 + ASCII 标点」。用「反斜杠 + 标点」而不是「任意反斜杠」
+   是有意的 —— Windows 路径那种普通反斜杠不该让每次按键都对整段做一次 markdown-it 解析。
+
+#### 三、顺带修掉的「孤儿标记漂移」
+
+夹具新加的一行暴露了另一个老问题：`$a * b$` 里那个**不成对**的 `*` 会被写出器补成 `\*`。
+原因：把裸标记包成字面量标记（`literalizeStrayMarkers`）那条路径的触发条件用了 `PATTERN_TEST`
+（要求**成对**的 `*…*`），单颗星直接漏过。现在触发条件补上「孤儿标记字符」这一档，
+源码不再漂移（这正是那一整段代码注释里写的目标）。
+
+#### 四、夹具与已知缺口
+
+- `escapes.md` 扩到 6 个边界：非标点反斜杠、`\`+空格、`\`+emoji（代理对）、反斜杠硬换行、
+  与粗体/行内代码/链接混排 —— 现在整份 **exact**（从「已知缺口 lossy」升级）。
+- `math.md` 从 lossy 升到 **normalized**：`$$ … $$` 里的反斜杠不再被转义
+  （剩下的「没有公式渲染」是**功能**缺口，不是保真缺口，已在 EXPECT 里写明）。
+- 新增 `nested-styles.md` 记录一个**结构性**缺口：标记模型是扁平的（`mdStyle` 只带一个 style 值），
+  「粗体里套行内代码/链接」表达不出来。修法（给 `mdStyle` 支持样式集合）属独立一波。
+
+#### 五、本轮验收数字
+
+| 门禁 | 结果 |
+| --- | --- |
+| `npm run ci` | exit 0（110/110 单测） |
+| `node tools/run-suites.js` | **8/8 套件 PASS** |
+| `tools/_verify-md-fidelity.js` | **67 PASS / 0 FAIL / 17 SKIP**（31 份夹具；exact 9 / normalized 14 / lossy 8） |
+
+---
+
+### 4.58 Wave 2 尾巴：多窗口元数据一致性与历史保留策略可配（本次）
+
+> Wave 2 当时留了两条尾巴：两个窗口打开同一文件时元数据可能各说各话；本地历史的保留策略写死在代码里。
+
+#### 一、编码优先级：显式指定 > 每文件记录 > 全局默认
+
+原来的 `file:read` 只有「设置里是 `auto`」时才查每文件记录，于是：
+
+- 用户把**全局默认编码**改成 windows-1252 之后，之前明确按 GBK 打开过的文件会被解成乱码；
+- 两个窗口如果「默认编码」设置不同（比如一个窗口刚改过），**同一个文件会解出不同内容** ——
+  这就是「多窗口元数据不一致」的实际表现。
+
+新优先级（`file:read` 增加 `opts.softDefault`）：
+
+| 来源 | 何时生效 | 为什么 |
+| --- | --- | --- |
+| **显式指定**（`reopenWithEncoding`、显式 readAs） | 永远优先 | 用户刚点的那个必须听，否则「点了没反应」 |
+| **该文件的记录**（`documents.encoding`，兼容 kv 兜底） | 调用方说「这只是设置里的默认值」时（`softDefault: true`） | 它是「这个文件是什么编码」的权威答案，比全局默认更具体 |
+| **自动判定链**（BOM → 记忆 → 严格 UTF-8 → 语言兜底） | 没有记录、也没显式指定 | 兜底 |
+
+实测（`_verify-md-fidelity.js` F 段）：窗口 A 用 auto 打开 GBK 文件并落库 → 窗口 B 打开同一文件，
+**编码与行尾都与库记录一致**；窗口 B 把「默认编码」改成 windows-1252 后重开，**每文件记录仍然优先**。
+
+**套件侧的两处修正**（新语义下必须显式管理状态）：
+
+1. `_verify-encoding.js` 的「默认编码生效」拆成两条：先证明**记录优先**（同一份字节在默认编码改成 1252 后
+   仍按 gbk 解出），再删掉记录、证明**没有记录时设置里的默认编码确实生效**；
+2. A2 段的两次**显式试读**（windows-1252 / utf-8）会把该文件的记录改掉，而 C 段依赖它被当成 BOM 文件 ——
+   所以还原夹具字节的同时也要 `rememberEncoding(…, 'utf-8-bom')` 把记录调回来。
+
+#### 二、本地历史的保留策略进设置
+
+新增三个设置项（默认开、30 条 / 30 天，常量仍以 `shared/history.ts` 为准）：
+
+- `historyEnabled`：关掉后 `pushHistory` 直接返回，不再新增快照（**已有历史仍可查看/回滚**）；
+- `historyLimitPerFile` / `historyMaxAgeDays`：主进程在写快照与抽稀时从 kv settings 读，喂给
+  `planHistoryPrune`（纯函数，参数化后仍可单测）。
+
+设置面板「通用」页新增一组（开关 + 两档下拉），三语同步（388 键）。实测（同一个套件 G 段）：
+关掉后连存两次**不再写快照**；上限设为 2 后连存 4 次**恰好剩 2 条**（且是最新的两条）。
+
+#### 三、顺带修掉的一处配置债
+
+`tsconfig.node.json` 也开 `allowImportingTsExtensions`：`shared/defaults.ts` 现在会被单测直接加载
+（断言默认策略与常量一致），它的相对导入按 §4.56 的约定写显式 `.ts` ——
+而它同时属于 node 工程，两边都得开这个开关。
+
+#### 四、本轮验收数字
+
+| 门禁 | 结果 |
+| --- | --- |
+| `npm run ci` | exit 0（**111/111** 单测） |
+| `node tools/run-suites.js` | **8/8 套件 PASS**（encoding 34/34、wave3 19/19…） |
+| `tools/_verify-md-fidelity.js` | **73 PASS / 0 FAIL / 17 SKIP**（90 条断言；新增元数据 4 条 + 历史策略 2 条） |
+
+#### 五、还剩什么（下一轮）
+
+1. **Wave 3.2**：三处真相源（WYSIWYG / 源码 textarea / 代码块 CM）收敛成单向数据流。
+2. **嵌套样式**（§4.57 记录的结构缺口）：让 `mdStyle` 支持样式集合。
+3. **老套件迁移**：约 40 个仍按 `Symbol(pinia)` 取 store（生产构建下会失败），「改到谁就顺手迁谁」。
+
+### 4.59 Wave 3.2：编辑面 ⇄ 真源的**单向数据流账本**（本次）
+
+> 这一节回答一个问题：**正文有三个能改它的地方（Tiptap 面板 / 源码 textarea / 代码块里的
+> CodeMirror），凭什么保证它们不会互相打架？**
+> 之前的答案是「每个编辑面各自发明一套判断要不要跟着更新的规则」，于是有了四条通道、
+> 三种启发式，和一批看着像玄学的 bug。现在的答案是一个**世代号 + 一个作者标记**。
+
+#### 一、收敛之前：四套判断，三种启发式
+
+| 通道 | 收敛前的判断 | 曾经的漏判形态 |
+| --- | --- | --- |
+| Tiptap ⇄ store | 比字符串 `syncedMd === content` + 世代号 `files.syncEpoch` | 「切回原编码」时新旧文本恰好相等 → 状态栏变了、正文不动 |
+| 源码 textarea → Tiptap | **另一条** 200ms `setContent` 定时器（`scheduleSplitSync`） | 分屏里停顿一下的更新被静默窗吞掉 |
+| 切模式时再对齐一次 | `syncEditorContent()` 自己再比一次字符串 | 三处判断对同一件事给出不同结论 |
+| 代码块 CodeMirror | 150ms 防抖 + 「节点文本快照相等就跳过」 | 快照过期（CM 已经又往前跑了几行）→ 用旧文本重建 CM，**快速回车丢字** |
+
+根因不是某一条写错了，而是**没有唯一的写入者身份**：每个面都在猜「这次变化是不是我自己弄出来的」。
+
+#### 二、收敛之后：账本（`src/renderer/src/lib/contentSync.ts`）
+
+```
+{ rev, author, applied: { wysiwyg, codeblock } }
+```
+
+- 谁改内容谁调 `files.setContent(md, author)`：`rev+1`、记下 `author`；
+- 需要**命令式回灌**的编辑面（渲染动作是 `setContent` / `setState`）记下自己渲染到哪一代；
+- 该编辑面要不要重渲染 ⇔ `files.contentIsStale(surface)`（= 它的 `applied` 落后于 `rev`），
+  渲染完 `files.markContentApplied(surface)`。**不比较字符串、不看时间窗。**
+
+三条推论，正好覆盖了上面每个漏判形态：
+
+1. **自己的回声永不回灌自己**：`write()` 顺手把作者的 `applied` 推到最新，所以「刚打完字就
+   触发替换」这类时序问题在结构上不存在（A2 断言：输入后内容与光标都不动）；
+2. **文本恰好相等也要换内容**：整篇替换（打开文件 / 恢复草稿 / 切编码 / 载入历史）作者记为
+   `external`，它**不动任何 applied** ⇒ 所有编辑面都落后 ⇒ 都按新内容重渲染一次（A6 断言）；
+3. **嵌套编辑面**：代码块的 CodeMirror 是 Tiptap 文档里的**子编辑面**，它写内容时先把文本写回
+   Tiptap 节点，所以 `write(codeblock)` 会**连宿主 `wysiwyg` 一起**标记为最新 —— 否则宿主会把
+   md 重新灌回去，把光标从代码块里踢出来（A5 断言）。
+
+**一个必须记住的坑：回灌时读 store，不要读 `props`。** Vue 的 `watch` 默认跑在渲染之前
+（pre-flush），而 `props.modelValue` 是父组件**上一次渲染**时传下来的 —— 在 watcher 里读 props
+会拿到上一代内容，等于把编辑器灌成旧文本。这不是「偶尔有点旧」那么轻：编辑器里那次 `setContent`
+会触发 md 标记归一化插件再产生一次事务 → `onUpdate` → 250ms 防抖 flush 把旧文本写回 store，
+**源码面刚敲的那行就没了**（正是本轮实测抓到的那次偶发失败：`_verify-wave3.js` A4 在整轮矩阵里红、
+单跑绿）。修法是本节的立场本身 —— 真源只有一个，就直接读它：
+`files.current?.content`（代码块那侧同理，`props.node.textContent` 换成按 pos 现读 PM 文档）。
+
+#### 三、四个编辑面各自的角色
+
+| 编辑面 | 角色 | 实现要点 |
+| --- | --- | --- |
+| Tiptap 面板 | 命令式副本 | `watch(files.contentRev)` → `contentIsStale('wysiwyg')` 才 `setContent`；分屏下源码面逐键输入时 **200ms 合并重解析（渲染节流，不是第二条真源）** |
+| 源码 textarea | 声明式副本 | 模板 `:value="files.current?.content"` 就是唯一回灌通道：DOM 值已等于新值时浏览器不动光标，所以「自己写的」那条路径不需要代码再判断一次 |
+| 代码块 CodeMirror | 子编辑面（写 + 读） | 写：`editorStore.noteWrite('codeblock')` 挂牌，序列化时消费成作者；读：节点文本变了才重建，且**触发时重新读节点文本**、**CM 拿着光标时绝不覆盖**（改成再等一轮） |
+| 外部整篇替换 | 作者 = `external` | 打开/草稿/切编码/载入历史统一走 `setContent(..., 'external')` / `noteExternalReplace()` |
+
+`files.syncEpoch` 与 `editorStore.syncedMd` 一并删除：前者就是账本的 `rev`（且账本还知道是谁写的），
+后者是字符串版本的 `applied.wysiwyg`。`docs/optimization-program.md` 里 Wave 3.2 的那条待办到此收口。
+
+#### 四、老套件迁移：不再按 `Symbol(pinia)` 的名字取 store
+
+`tools/` 下 50+ 个 CDP 套件原本靠 `Object.getOwnPropertySymbols(provides).find((s) => String(s) === 'Symbol(pinia)')`
+取 store —— 生产构建会把 symbol 描述压掉，于是**同一套件的行为取决于实例是 dev 还是构建产物**（最坑的一类漂移）。
+
+本轮把 77 个套件统一改成**按结构认 pinia**（`prov[s]` 是对象且 `_s instanceof Map`），并把
+`t.url.includes('5173')` 换成 `index\.html|5173`。A/B 实测（对着 `out/` 构建产物的隔离实例）：
+
+| | 迁移前（HEAD 版本） | 迁移后 |
+| --- | --- | --- |
+| 19 个「只按 symbol 名字找、没有结构兜底」的套件 | **13 个直接崩**：`TypeError: Cannot read properties of null (reading '_s')` | **0 个崩** |
+| 其中端到端跑通（exit 0 且有真实输出） | 4 个 | 7 个 |
+
+剩下的差异都不是 pinia 的问题：`_regress-*` 那几个用的是早已改名的旧选择器（`.mode-seg-btn`，
+现在是 `.seg-btn` / `role="tab"`），`_test-export-full.js` 需要 5173 上的 dev server。
+`tools/_regress-split-live.js` 顺手迁到 `tools/lib/harness.js` 并修好选择器，现在进默认矩阵
+（它盯的正是本节的账本：分屏双向同步 + 切换文件 + 每次输入后账本必须收敛）。
+
+#### 五、本轮验收数字
+
+| 门禁 | 结果 |
+| --- | --- |
+| `npm run ci` | exit 0（**120/120** 单测，新增 `tests/contentSync.test.mjs` 9 条） |
+| `npx eslint .` | 0 error / 0 warning |
+| `node tools/run-suites.js` | **9/9 套件 PASS**（新增 `_regress-split-live` 8 条：模式切换 / 右→左 / 左→右 / 账本收敛 / 切文件） |
+| `tools/_verify-wave3.js` | A 段 9 条（含账本作者、落后判定、代码块作者标记）|
+
+#### 六、还剩什么（下一轮）
+
+1. **嵌套样式**（§4.57 记录的结构缺口）：让 `mdStyle` 支持样式集合。
+2. **其余老套件**：`_regress-*` / `_repro-*` 还有十来个用着旧选择器，按「改到谁就顺手迁谁」继续收；
+   迁移时一律 `require('./lib/harness')` + `Reporter`（有 `--- N/M PASS` 才能进矩阵）。
+3. **`files` store 继续瘦身**：内容/编码相关的动作已可独立，下一步把「最近文档/置顶」整块移出。
+
+#### 七、附：一次真实事故的恢复办法（值得记下来）
+
+本轮施工中真的把 `src/renderer/src/stores/files.ts`（647 行）毁过一次：用
+`(Get-Content -Raw) -replace … | Set-Content -Encoding UTF8` 改一处字面量，先被 ANSI 码页
+（GBK）解码、再按 UTF-8 写回 —— 文件当场变成乱码，而且那次解码是**有损**的（约 180 处字节丢失，
+`?`/`U+FFFD` 占位，个别换行被吃掉）。当时该文件有大量**未提交**改动，`git checkout` 等于丢掉两波成果。
+
+救回来的三条线索，按可靠性从高到低：
+
+1. **会话转录（最权威）**：DSH 的会话记录落在 `~/.dsh/sessions/<workspace>/<session>/session.v3.jsonl.zstd`
+   （**多帧 zstd**：Node 的 `zstdDecompressSync` 只吃第一帧，要按 `28 B5 2F FD` 魔数切片逐帧解）。
+   里面按顺序存着每一次 `write` / `edit` 的**完整 payload** —— 拿 HEAD 版本当基线，把这一串
+   `old_string → new_string` 按序重放，就能重建出事故前的文件（脚本化的字面量替换可放在 VM 沙箱里
+   跑，只改内存里的字符串，不碰磁盘）。
+2. **反解编码（结构完整、局部损坏）**：`iconv.decode(iconv.encode(损坏文本, 'gbk'), 'utf8')`
+   能把大部分还原回来（GBK 那一步没丢的字节都在）。剩下的 `U+FFFD` 用「上下文窗口 + 上面那份重放文本」
+   当字典逐个补 —— 注意上下文要**在相邻损坏点处切断**，否则窗口里带着 `U+FFFD`，在干净字典里永远搜不到。
+3. **转录里的 `read` 结果**：本会话读过的每一段文件内容都在转录里（带行号），是逐字权威的局部证据。
+
+最后用三件事交叉验证：行数对得上（事故前 609 行 + 本轮 4 处改动 = 648 行）、
+`npm run typecheck` 与 `npx eslint` 全绿、单测与套件矩阵全绿。**教训**：批量改源码一律用 Node 脚本
+（见 README 开发约定第 7 条），别让 PowerShell 碰源码字符串。
+
+### 4.60 Wave 1 收尾（一）：嵌套样式与 YAML front matter（本次）
+
+> Wave 1 留下的 8 个 `lossy` 缺口里，最伤内容的两个：**嵌套样式**（`**粗体里的 `代码`**`
+> 会被写成 `**粗体里的 **`代码`** …**` 这种 CommonMark 下根本不成立的孤儿标记，渲染直接坏掉）
+> 和 **YAML front matter**（被解析成「分割线 + 段落 + 分割线」，元数据静默变成正文）。
+> 本节记这两个的改法与验收。
+
+#### 一、嵌套样式：`mdStyle` 的样式从「一个值」改成「一个集合」
+
+**原来为什么表达不出来**：`mdStyle` 只有一个 `style` 属性，而 ProseMirror 里**同一种 mark 只能挂一个**。
+`**粗体里的 `行内代码`**` 要求那段代码同时是粗体与代码 —— 一个属性存不下两个样式，于是：
+
+1. 解析时行内代码的遗留 mark `code` 带 `excludes: '_'`（**排斥一切其它 mark**），把外层的 bold 直接丢掉了
+   （所以那段代码在模型里从来就不是粗体）；
+2. 归一化物化标记时按「单个样式各补一对」，外层构造在内层之前被合上 →
+   `**粗体里的 **`行内代码`** 应该整段加粗**`，其中 `**粗体里的 **` 在 CommonMark 里前面的
+   `**` 无法闭合（闭合定界符右边必须是标点/非空白），**整段渲染成字面星号**。
+
+**改法**（三处，都很小）：
+
+| 改动 | 位置 | 说明 |
+| --- | --- | --- |
+| 样式集合 | `MdStyle.attrs.styles: StyleKind[]` | 按固定顺序 `bold → strike → italic → code` 规范化（`styleList()`），顺序固定才能保证「同一份文档每次解析/序列化得到同一串标记」（幂等是套件硬门槛） |
+| DOM 呈现 | `MdStyle.renderHTML` | 只出一个元素：标签取集合里最外那个样式（`strong`/`s`/`em`/`code`），全部样式写进 `data-md-styles="bold code"`，其余样式的外观由 CSS 属性选择器补齐。**不能**渲染成嵌套的 `<strong><code>` —— DOM 回读时同类型 mark 后者会顶掉前者，样式丢失并触发回写 churn |
+| 标记物化 | `normalizeAtoms` + 新的 `materializeStyledRun()` | 按**样式栈**开关：相邻两段取样式集合的公共前缀保持不动，只开关差集 → 标记天然嵌套。单一样式时它退化成原来的「两边各一对」，所以既有行为不变 |
+| 放开互斥 | `CodeQuiet.extend({ excludes: '' })` | 上行默认 `excludes: '_'` 让行内代码排斥一切 mark，嵌套样式在**解析那一刻**就少一半 |
+
+顺带把「按标记配对找构造」的那段扫描改成**深度计数**（`start` +1 / `end` -1），否则外层 `**` 会在
+遇到内层的 `` ` `` 时以为「缺 end」而补一个 `**`，把构造劈成两半 —— 这正是旧的扁平物化写法。
+
+**验收**：夹具 `nested-styles.md` 从 `lossy` 升到 **exact**（原文与往返逐字节相同，且幂等）；
+`emphasis.md` 里的 `***粗斜体***、**加粗里的 *斜体* 嵌套**` 也回到 exact。端到端断言见
+`_verify-md-fidelity.js` 的 A/B 矩阵与幂等段。
+
+#### 二、YAML front matter：做成文档开头的**真实节点**
+
+**为什么不做成「编辑器外面的一个小字符串」**：§4.59 刚把「正文只有一个真源」收敛干净。
+front matter 存在组件 ref 或 store 单独字段里就又出现两处表示 —— 而源码模式 textarea 里它明明就在正文里。
+做成节点后**文档文本 = 节点序列化结果**，一行不多一行不少，WYSIWYG 里也看得见这段 YAML。
+
+**判定（保守优先，`src/shared/frontmatter.ts`，纯函数有 11 条单测）**：
+
+1. 必须从文档**第一个字符**开始；
+2. 收尾分隔符是独立的 `---` 或 `...` 行；
+3. 块内至少有一行顶层 `key:` —— 这条是**排除**用的：CommonMark 里 `---\n一段文字\n---`
+   （分割线夹文字）合法且常见，没有键值就不能当 YAML 吃掉。
+
+**往返三段**（与 `MdEscape` 同一套 `parse.setup` 机制）：markdown-it **block 规则**只在第 0 行认领
+（`state.line` 直接跳到块后首行）→ 推自定义 token → 渲染成 `<pre data-md-frontmatter>原文</pre>`
+→ `Frontmatter` 节点的 `parseHTML` 认领它、`storage.markdown.serialize` 把原文**逐字写回**。
+
+**取舍**（都写进代码注释，免得以后当 bug 报）：
+
+- 节点是 `atom`：WYSIWYG 里**只读**，改 YAML 走源码模式（做成可编辑需要一整套 YAML 编辑器，那是功能不是保真）；
+- 只能待在文档开头：用户把它拖到中间后再序列化就不再是 front matter（解析规则同样只认开头，语义一致，
+  不会出现「看着还在、保存后跑进正文」的错位）。
+
+**验收**：夹具 `frontmatter.md` 升到 **exact**；套件新增 H 段 4 条端到端断言 ——
+① 首节点是 `frontmatter` 且 WYSIWYG 里渲染出同样的 YAML；② 在正文末尾敲字后 YAML 逐字不变；
+③ 源码模式里 YAML 就是正文开头（改它的入口通）；④ 分割线夹文字**不**被误判成 front matter。
+
+#### 三、本轮验收数字
+
+| 门禁 | 结果 |
+| --- | --- |
+| `npm run ci` | exit 0（**131/131** 单测：新增 `tests/frontmatter.test.mjs` 11 条） |
+| `npx eslint .` | 0 error / 0 warning |
+| `_verify-md-fidelity.js` | **81 PASS / 0 FAIL / 13 SKIP**（94 条断言；Wave 1 缺口从 8 个减到 6 个） |
+| `node tools/run-suites.js` | 见下一节（矩阵全绿） |
+
+**还剩什么**：`table`（列对齐 + 单元格转义竖线）、`html-inline`、`task-lists-ordered`、
+`lists-adjacent-ordered`、`images-inline`、`images-linked` 六个缺口，按内容损坏严重度继续收（下一轮）。
+
+### 4.61 Wave 1 收尾（二）：表格、行内 HTML、列表编号（本次）
+
+> 接 §4.60，本轮把剩下 6 个缺口里的 4 个收掉（表格 / 行内 HTML / 有序任务列表 / 相邻有序列表），
+> 只剩两个图片缺口。这一节记的是「为什么这些看起来简单的改法其实各有坑」。
+
+#### 一、表格：解析侧本来就对，坏的是写回
+
+先把事实查清楚再动手（这一步很值）：markdown-it 会把列对齐写成单元格的
+`style="text-align:center"`，`@tiptap/extension-table` 的 `align` 属性认领它；
+单元格里的 `\|` 也被正确解成**字面竖线**。所以 `align` **本来就存得下**，
+丢信息的是 tiptap-markdown 内置的表格序列化器：
+
+- 分隔行永远写裸 `---` → 列对齐丢失；
+- 单元格内容不转义 → 内容里的 `|` 被当成列分隔符，**整行结构被拆坏**
+  （`| 转义 \| 竖线 |  |  |` 重新解析成 4 列）。
+
+改法就是接管 `table` 节点的 markdown 序列化（`lib/editor/tableMarkdown.ts`）：
+分隔行按各列表头的 `align` 生成（`:---` / `:---:` / `---:`），单元格先渲染进输出缓冲再把竖线转义
+（逐字符写没法插转义）。复杂表格（合并单元格、一格多块）仍退回 HTML —— 那是 Markdown
+表格语法表达不了的东西，硬拼成管道表才是真的丢结构。纯文本规则抽在 `tableAlign.ts`，
+6 条单测（含「已经是 `\|` 的不重复加反斜杠」这种幂等性）。
+
+#### 二、行内 / 块级 HTML：原文进模型，WYSIWYG 按源码显示
+
+Markdown 允许直接嵌 HTML，而 ProseMirror 的 DOMParser **只认识 schema 里有的节点** ——
+未知标签一律剥掉只剩文字：`<kbd>Ctrl</kbd>` → `Ctrl`、注释整条消失、`<br>` 还被写成 `\`
+（语义从「HTML 换行」变成「Markdown 硬换行」）。
+
+解法与 `MdEscape`、front matter 同一套：在 markdown-it 那一层认领（`lib/editor/htmlPassthrough.ts`）：
+
+| 形态 | 进模型 | 写回 |
+| --- | --- | --- |
+| 行内（`html_inline` token） | `<span data-md-html>` → `MdHtml` mark（open/close 空 + `escape:false`） | 逐字写回 |
+| 块级（`html_block` token） | `<pre data-md-htmlblock>` → `HtmlBlock` 原子节点 | 原样写回 |
+
+**两个踩到的坑**（都写进代码注释了）：
+
+1. **任务列表的复选框**是 `markdown-it-task-lists` 插件**生成**的 `html_inline` token
+   （`<input class="task-list-item-checkbox" …>`），不是用户写的 HTML。若一并「原样保留」，
+   任务列表会变成一堆标签文本 —— `task-lists.md` 直接从 exact 掉到 lossy。所以按插件写死的
+   class 名放行这类 token。
+2. **不透明内容不能切开样式构造**：`**加粗里的 <kbd>Ctrl</kbd> 还是加粗**` 里，
+   行内 HTML 在原子模型里是「不透明内容」，一开始会把它当边界、把加粗构造劈成两半。
+   改成：样式栈物化时把不透明内容**原样穿过**（不参与栈、也不打断外层构造）。
+
+WYSIWYG 里行内 HTML **按源码显示**（淡色等宽）：把任意 HTML 真渲染出来是另一个功能
+（要沙箱、要样式隔离），而「把标签吃掉」是静默丢内容 —— 两害相权取保真。
+
+#### 三、列表：有序任务列表 + 相邻有序列表
+
+- **有序任务列表**（`1. [ ] x`）：`taskList` 新增 `ordered` 属性（解析时按 `<ol>`/`<ul>` 标签记住，
+  序列化时有序写 `1. `/`2. `）。上游的任务列表序列化器直接复用无序列表那份、永远写 `- `，
+  于是列表**类型**从有序变无序（渲染从数字变圆点）。只覆盖 `serialize`、不动
+  tiptap-markdown 默认 spec 里的 `parse.setup`/`updateDOM`（否则任务列表整体失效）。
+- **相邻有序列表**（`1./2./3.` + 空行 + `5./6.`）：这一条**不是缺陷**，是 CommonMark 语义 ——
+  空行不结束有序列表，它和后面是**同一个**松散列表，渲染序号由位置决定。所以正确的处理是
+  给判级器加一条规范化规则（19）：编号按位置重算（**首项**编号保留，那是 `<ol start>`，有语义），
+  同一个列表里项与项之间的空行不参与比对（松散是整表属性，源码位置保留不下来）。
+  - 规则必须**幂等**：`1) a` 与 `2. b` 的空行判断若区分分隔符，第一遍是两个列表、第二遍
+    两边都是 `.` 又成一个列表 —— 判级结果随遍数漂移。所以有序列表的分隔符在这条规则里不区分
+    （规则 7 本来就会把 `)` 归一为 `.`）。
+
+#### 四、本轮验收数字
+
+| 门禁 | 结果 |
+| --- | --- |
+| `npm run ci` | exit 0（**137/137** 单测） |
+| `npx eslint .` | 0 error / 0 warning |
+| `_verify-md-fidelity.js` | **94 PASS / 0 FAIL / 5 SKIP**（99 条断言） |
+| `node tools/run-suites.js` | 见矩阵（全绿） |
+| 夹具分级 | exact **13** / normalized **16** / lossy **2**（四轮累计：8 → 6 → 4 → 2） |
+
+#### 五、还剩什么（下一轮）
+
+只剩两个**图片**缺口，它们要动的是同一个结构决策：图片目前是**块级节点**（`inline: false`）。
+
+1. `images-inline.md`：段落中间的图片被拆成独立块，前后文字被切成两段；
+2. `images-linked.md`：`[![alt](img)](url)` 的**外层链接**丢失（块级节点上挂不了 link mark）。
+
+计划（下一轮）：把图片改成**内联节点**（或按上下文双形态），并复跑 `images.md`（当前 exact）、
+`_verify-local-media.js`（本地媒体白名单）与字节级用例，确认块级写法（独立成段的图片）仍然逐字节一致。
+
+### 4.62 Wave 1 收尾（三）：图片改成行内节点 —— Wave 1 缺口清零
+
+> 最后两个缺口（`images-inline.md` / `images-linked.md`）其实是**同一个结构决策**造成的：
+> 图片被配成**块级节点**。Markdown 的 `![alt](src)` 本来就是**行内语法** —— 它能出现在段落中间
+> （`图标 ![](a.png) 后面还有字`），也能被链接包住（`[![alt](a.png)](url)`）。
+> 做成块级节点时这两种写法都表达不出来：段落被拆成「文字 / 图片 / 文字」三段；
+> 外层链接因为块节点上挂不了 mark 而**整个丢掉**。
+
+**改法**：`Image.configure({ inline: true })`。三处配套调整：
+
+| 位置 | 调整 | 为什么 |
+| --- | --- | --- |
+| `extensions.ts` | 删掉自定义的块级 markdown 序列化器（原来补了 `closeBlock`） | 那个序列化器是为了解决「块级图片黏成一行 / 吞掉下一个标题」；行内之后图片在段落里，段落自己负责换行，直接用 tiptap-markdown 的默认实现（prosemirror-markdown 的 image 规则：alt 转义、src 括号转义、title 引号） |
+| `style.css` | `img` 默认 `display: inline-block` + `vertical-align: middle`；`p > img:only-child` 才 `display: block; margin: .4em auto` | 「独立成段的图片」观感与改之前**完全一致**（居中、独占一行），而段落中间的图片不再把段落拆开 |
+| `style.css` | 删掉文件后部**重复的一份** `.md-preview img` 规则 | 它位置更靠后、会覆盖上面的行内排版（重复定义本来就是个隐患） |
+
+**验收**（三个图片夹具全部 `exact` 且幂等，Wave 1 的 8 个缺口清零）：
+
+| 门禁 | 结果 |
+| --- | --- |
+| `npm run ci` | exit 0（**137/137** 单测） |
+| `npx eslint .` | 0 error / 0 warning |
+| `_verify-md-fidelity.js` | **100 PASS / 0 FAIL / 1 SKIP**（101 条断言；唯一 SKIP 是文档化的字节级行为「保存补文末换行」） |
+| `node tools/run-suites.js` | 9/9 套件 PASS |
+| 夹具分级 | exact **15** / normalized **16** / lossy **0**（四轮累计 lossy：8 → 6 → 4 → 2 → **0**） |
+
+新增 M 段 2 条端到端断言：段落中间的图片与文字仍在**同一个**段落里；`[![…](…)](url)`
+的两个图片都带着 link mark（外层链接没丢）。
+
+
