@@ -241,6 +241,25 @@ A/B 实测：19 个原本没有结构兜底的套件里 **13 个在构建产物�
 **Wave 1 到此收口。** 下一波回到评审报告里的其他方向（`files` store 继续瘦身、
 老套件继续迁到 `tools/lib/harness.js`、以及功能缺口如查找替换 / 数学公式渲染）。
 
+## 工程化收尾（二）：`recent` store 拆分 + 嵌套样式渲染断言 —— ✅ 本轮完成（2026-09-16 第十二轮）
+
+- **`stores/recent.ts`**：最近文档 / 置顶 / 最近文件夹整块从 `files` store 拆出
+  （`files.ts` 646 → 593 行）。边界：规则留在 `lib/recent.ts` 纯函数（有单测），
+  store 只落盘 + 给 UI 排好序的视图；数据仍存 `settings`（**键名不变 ⇒ 无迁移**）；
+  `folderList(root)` 由调用方传根目录以避免两个 store 互相 import；
+  置顶判断给 `Set`（列表每行都要问，数组是 O(n²)）。
+- **渲染断言**：`_verify-md-fidelity.js` 新增 N 段，断言「粗体里的行内代码」那段文本的
+  **计算样式**（标签 `strong`、`data-md-styles="bold code"`、`font-weight ≥ 700`、等宽字体）——
+  补的是「CSS 漏了属性选择器时序列化仍保真、但观感已经坏了」这个盲区。
+- **复核上一轮列出的两处**：`.md-preview img` 只剩一份规则；主题无独立 CSS 文件
+  （明/暗/羊皮纸都是 `style.css` 里的 CSS 变量），不需要同步第二份属性选择器。
+
+**验收**：`npm run ci` exit 0（单测 137/137）；`npx eslint .` 0/0；
+`_verify-md-fidelity.js` **101 PASS / 0 FAIL / 1 SKIP**；`node tools/run-suites.js` **9/9**。
+
+**下一轮起点**：老套件迁移（`_regress-*` 5 个 + 价值最高的几个 `_repro-*` 迁到
+`tools/lib/harness.js` + `Reporter` 并纳入矩阵），然后是功能缺口（查找替换、数学公式渲染）。
+
 ## Wave 4：工程化地基
 
 - `README.md`（是什么、快速开始、架构图、开发/打包流程、常见坑：`--watch`、构建自检、`dev:isolated`）

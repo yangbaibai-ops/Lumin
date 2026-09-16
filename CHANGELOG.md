@@ -77,6 +77,42 @@
 - **工程化**：~~`tools/lib/harness.js` + `tools/run-suites.js`~~ → **本轮已完成**；
   剩余：`files` store 拆分；`store` 里那份为绕循环导入而复制的 `confirmIfDirty` 收敛到 `services/dialog`。
 
+## [Unreleased · 工程化收尾（二）] — recent store 拆分 + 嵌套样式渲染断言
+
+### Changed
+
+- **`stores/recent.ts`（新）**：最近文档 / 置顶 / 最近文件夹从 `files` store 整块拆出来。
+  这份数据的归属是「用户开过什么」，与「当前工作区 / 当前文档」是两件事（关掉所有文档、
+  切换工作区，历史都还在）。`files.ts` 646 → 593 行；调用点（打开文件夹 / 打开文件 / 另存为）
+  改为 `useRecentStore()`。
+  - 边界：规则仍在 `lib/recent.ts` 纯函数（有单测），store 只负责落盘 + 给 UI 排好序的视图；
+    数据仍存 `settings`（SQLite kv），**键名不变 ⇒ 无迁移**，既有套件断言不受影响；
+  - `folderList(root)` 由调用方传根目录，**不反过来 import `files` store**（避免循环引用）；
+  - 置顶判断给 `pinnedPaths: Set<string>`（列表每行都要问，数组 `includes` 是 O(n²)）。
+
+### Added
+
+- `_verify-md-fidelity.js` 新增 **N 段**：嵌套样式的**计算样式**断言 ——
+  加载 `nested-styles.md` 后取 `[data-md-styles~="code"]`，断言标签是 `strong`、
+  `data-md-styles` 为 `bold code`、`font-weight ≥ 700`、`font-family` 命中等宽字体。
+  这条补的是「CSS 漏了属性选择器时，序列化仍然保真但代码看着不像代码」那个盲区
+  （保真套件量不到观感）。
+
+### Verification（本轮实测）
+
+| 门禁 | 结果 |
+| --- | --- |
+| `npm run ci` | exit 0（**137/137** 单测） |
+| `npx eslint .` | **0 error / 0 warning** |
+| `_verify-md-fidelity.js` | **101 PASS / 0 FAIL / 1 SKIP**（102 条断言） |
+| `node tools/run-suites.js` | **9/9 套件 PASS** |
+| 复核 | `.md-preview img` 规则只剩一份（重复的那份已删）；主题无独立 CSS 文件（明/暗/羊皮纸都是 `style.css` 里的 CSS 变量），无需同步第二份属性选择器 |
+
+### Docs
+
+- 手册新增 §4.63（recent store 拆分的边界与两个设计细节、渲染断言的动机）；
+  `docs/optimization-program.md` 台账更新。
+
 ## [Unreleased · Wave 1 收尾（三）] — 图片改成行内节点（Wave 1 缺口清零）
 
 > 最后两个 `lossy` 夹具（`images-inline` / `images-linked`）是同一个结构决策造成的：

@@ -2911,4 +2911,55 @@ WYSIWYG 里行内 HTML **按源码显示**（淡色等宽）：把任意 HTML �
 新增 M 段 2 条端到端断言：段落中间的图片与文字仍在**同一个**段落里；`[![…](…)](url)`
 的两个图片都带着 link mark（外层链接没丢）。
 
+### 4.63 工程化收尾（二）：`recent` store 拆分 + 嵌套样式渲染断言（本次）
+
+#### 一、最近文档 / 置顶 / 最近文件夹：从 `files` store 拆出来
+
+**为什么拆**：这份数据的归属是「**用户开过什么**」，与「当前工作区 / 当前文档」是两件事 ——
+关掉所有文档、切换工作区、甚至工作区打不开时，这份历史都还在。挂在 `files` 上时它既管文档生命周期
+又管历史列表（评审报告 Wave 5 那条「store 拆分」），`files.ts` 一度到 646 行。
+
+**边界**（这是这次拆分的关键取舍）：
+
+| 归属 | 放哪 | 理由 |
+| --- | --- | --- |
+| 「列表怎么变」（去重、置顶优先、截断、并入当前工作区） | `lib/recent.ts` 纯函数（**已有单测**） | 规则易测、无状态 |
+| 「把结果落盘 + 给 UI 排好序的视图」 | 新 `stores/recent.ts` | 只做这两件事，94 行 |
+| 数据本身 | 仍在 `settings`（SQLite kv） | **键名不变 ⇒ 升级不需要迁移**，既有套件（`_verify-session` 等断言 `settings.recentFiles`）也不用改 |
+
+两个设计细节：
+
+- `folders(root)` 只接一个参数而**不反过来 import `files` store** —— 需要工作区根目录的地方
+  由调用方传进来（`RecentList` 里就是 `recent.folderList(files.root)`）。两个 store 互相引用
+  在这类代码里很容易变成循环 import；
+- 置顶判断给的是 **`pinnedPaths: Set<string>`** 而不是数组：列表每行都要问「这个置没置顶」，
+  数组 `includes` 是 O(n)，模板里按行调用就是 O(n²)。
+
+`files.ts` 646 → 593 行，调用点只有三处（打开文件夹、打开文件、另存为）改成 `useRecentStore()`。
+
+#### 二、嵌套样式的**渲染**也要有断言（不只是序列化）
+
+上一轮把行内代码的 `excludes` 放开之后，「粗体里的行内代码」这段文本的渲染变成：
+**一个** `<strong data-md-styles="bold code">` + CSS 的 `[data-md-styles~='code']` 规则。
+这里有个容易被忽略的盲区：**CSS 规则漏了的话，序列化仍然「保真」（往返字节不变），
+但用户看到的那段代码不再像代码** —— 保真套件量不到观感。
+
+所以补一条计算样式断言（`_verify-md-fidelity.js` 的 N 段）：加载 `nested-styles.md`，
+取 `[data-md-styles~="code"]`，断言 ① 标签是 `strong`（集合里最外的样式决定标签）、
+② `data-md-styles` 正好是 `bold code`、③ 计算 `font-weight ≥ 700`（粗体生效）、
+④ 计算 `font-family` 命中等宽字体（代码外观生效）。四者缺一都会红。
+
+顺带复核上一轮列出的两处遗留：`.md-preview img` 规则现在只有**一份**（重复的那份已删，
+它位置更靠后、会覆盖行内排版）；主题**没有独立 CSS 文件**（明/暗/羊皮纸都是 `style.css` 里的
+CSS 变量），所以不存在「另一份主题文件也要同步属性选择器」的问题。
+
+#### 三、本轮验收数字
+
+| 门禁 | 结果 |
+| --- | --- |
+| `npm run ci` | exit 0（**137/137** 单测） |
+| `npx eslint .` | 0 error / 0 warning |
+| `_verify-md-fidelity.js` | **101 PASS / 0 FAIL / 1 SKIP**（102 条断言） |
+| `node tools/run-suites.js` | **9/9 套件 PASS**（`_verify-session` 仍绿 ⇒ recentFiles 数据键未变） |
+
 
