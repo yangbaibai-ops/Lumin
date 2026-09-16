@@ -12,7 +12,9 @@ const originalEmitWarning = process.emitWarning.bind(process) as (
 process.emitWarning = ((warning: unknown, typeOrOptions?: unknown, code?: unknown): void => {
   const message = typeof warning === 'string' ? warning : ((warning as Error)?.message ?? '')
   const type =
-    typeof typeOrOptions === 'string' ? typeOrOptions : ((typeOrOptions as { type?: string } | undefined)?.type ?? '')
+    typeof typeOrOptions === 'string'
+      ? typeOrOptions
+      : ((typeOrOptions as { type?: string } | undefined)?.type ?? '')
   if (type === 'ExperimentalWarning' && String(message).includes('SQLite')) return
   originalEmitWarning(warning, typeOrOptions, code)
 }) as typeof process.emitWarning

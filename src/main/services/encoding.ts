@@ -153,9 +153,9 @@ function decodeAs(buf: Buffer, id: ConcreteEncoding): string {
 }
 
 // ─── 每文件编码记忆 ──────────────────────────────────────────────────────────
-// 存在 kv 里：`{ [小写路径]: EncodingId }`，**插入序**当 LRU，超过 200 条砍掉最老的。
-// 只记「用户显式选过的」或「自动判定为非 UTF-8 的」——纯 UTF-8 文件不占条目，
-// 否则一张表很快就被日常文档塞满，真正需要记的那些反而被挤掉。
+// **Wave 2 起权威来源是 `documents` 表的 encoding 列**（跟着文件走、两个窗口一致、
+// 重启后仍在）。下面这个 kv 表只保留给「文件还没进索引」的极少数情况兜底
+// （见 database.migrateFileEncodings：迁移时把能对上的条目搬进 documents，剩下的留在这里）。
 const KV_KEY = 'fileEncodings'
 const MAX_REMEMBERED = 200
 
@@ -167,15 +167,33 @@ function loadMap(): Record<string, ConcreteEncoding> {
   return db.kvGet<Record<string, ConcreteEncoding>>(KV_KEY, {})
 }
 
-/** 该文件上次记住的编码（没有则 null） */
+/**
+ * 该文件上次记住的编码（没有则 null）。
+ * 先查 documents（权威），再退回 kv 兜底表。
+ */
 export function getRememberedEncoding(filePath: string): ConcreteEncoding | null {
+  const meta = db.getDocumentMeta(filePath)
+  if (meta?.encoding) return meta.encoding as ConcreteEncoding
   const map = loadMap()
   return map[normKey(filePath)] ?? null
 }
 
-/** 记住某文件的编码（重复写入会把它挪到队尾 = 最近使用） */
+/**
+ * 记住某文件的编码。
+ * 文档已在索引里 → 写 documents（权威）；否则按老办法写 kv 兜底表（重复写入会挪到队尾 = 最近使用）。
+ */
 export function rememberEncoding(filePath: string, encoding: ConcreteEncoding): void {
   const key = normKey(filePath)
+  if (db.getDocumentMeta(filePath)) {
+    db.setDocumentTextMeta(filePath, { encoding })
+    // 顺手把兜底表里的同名条目清掉，避免两处不一致
+    const map = loadMap()
+    if (map[key]) {
+      delete map[key]
+      db.kvSet(KV_KEY, map)
+    }
+    return
+  }
   const map = loadMap()
   delete map[key]
   map[key] = encoding
@@ -202,7 +220,7 @@ export function encodeText(text: string, encoding: ConcreteEncoding, keepBom: bo
   const isUtf16 = target === 'utf-16le' || target === 'utf-16be'
   // utf-8-bom 这个「编码本身」就意味着要写 BOM；其余按 keepBom（UTF-16 例外，见上）
   const wantBom = encoding === 'utf-8-bom' || isUtf16 || keepBom
-  const bomBytes = wantBom ? bomOf(target) ?? bomOf(encoding) : null
+  const bomBytes = wantBom ? (bomOf(target) ?? bomOf(encoding)) : null
   if (!bomBytes) return body
 
   const prefix =

@@ -80,7 +80,11 @@ function zipStore(entries: ZipEntry[]): Buffer {
 }
 
 // ─── 通用：保存对话框 + 写入 ───────────────────────────────────────────────
-async function saveWithDialog(defaultName: string, ext: string, data: Buffer): Promise<string | null> {
+async function saveWithDialog(
+  defaultName: string,
+  ext: string,
+  data: Buffer
+): Promise<string | null> {
   const win = BrowserWindow.getFocusedWindow()
   const result = await dialog.showSaveDialog(win!, {
     defaultPath: defaultName,
@@ -141,9 +145,7 @@ export async function exportPdf(
     webPreferences: { sandbox: true, contextIsolation: true }
   })
   try {
-    await printWin.loadURL(
-      'data:text/html;charset=utf-8,' + encodeURIComponent(buildHtml(payload))
-    )
+    await printWin.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(buildHtml(payload)))
     // 等待字体与图片/样式全部可用（KaTeX、系统 CJK 等）
     await printWin.webContents.executeJavaScript(
       `document.fonts && document.fonts.ready ? document.fonts.ready.then(() => true) : Promise.resolve(true)`

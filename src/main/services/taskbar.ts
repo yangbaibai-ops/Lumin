@@ -1,5 +1,13 @@
 import { app, shell } from 'electron'
-import { appendFileSync, copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, unlinkSync } from 'fs'
+import {
+  appendFileSync,
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  readdirSync,
+  unlinkSync
+} from 'fs'
 import { createHash } from 'crypto'
 import { tmpdir } from 'os'
 import { basename, dirname, join } from 'path'
@@ -37,6 +45,17 @@ import appIconIco from '../../../resources/icon.ico?asset'
  */
 
 /**
+ * 运行期图标副本放哪个目录。
+ *  * **默认配置目录**：放 userData 的 `icons/`（跟用户数据一起、随卸载保留）；
+ *  * **隔离实例**：放一个**稳定**的公共目录。它的配置目录跑完就被删，而它写的那条
+ *    `[test]` 快捷方式还指着这个图标文件 —— 放 userData 里必然变成「找不到图标」
+ *    （实测踩过：跑完验收套件后，开始菜单/任务栏那条只剩缺省图标）。
+ */
+function iconDir(): string {
+  return isDefaultProfile() ? join(app.getPath('userData'), 'icons') : join(tmpdir(), 'lumin-icons')
+}
+
+/**
  * ─── 运行期真正使用的图标路径（内容寻址）────────────────────────────────────
  * 为什么不能直接用仓库里的 resources/icon.ico：**Windows 的图标缓存与跳转列表缓存都按「路径」
  * 记忆**，同一个 .lnk / 同一个 .ico 路径被覆盖时缓存不失效 —— 实测出现过「图标文件已经换成新设计，
@@ -49,7 +68,7 @@ export function runtimeIconPath(): string {
   const src = appIconIco
   try {
     const hash = createHash('sha1').update(readFileSync(src)).digest('hex').slice(0, 8)
-    const dir = join(app.getPath('userData'), 'icons')
+    const dir = iconDir()
     const dst = join(dir, `lumin-${hash}.ico`)
     if (!existsSync(dst)) {
       mkdirSync(dir, { recursive: true })
@@ -124,9 +143,18 @@ function debugLog(msg: string): void {
  * 打包态用安装器同一套；开发态加 `.dev` 后缀 —— 上面第 3 点解释了为什么不能沿用
  * @electron-toolkit/utils 的 `process.execPath`：那个标识在 Windows 眼里就是 electron.exe
  * 本身（名字显示成「Electron」），点它的启动命令是**不带参数**的 electron.exe。
+ *
+ * ─── 为什么隔离实例还要再分一层（`.test`）───────────────────────────────────
+ * 任务栏按钮的**图标与名字**由「AUMID → 开始菜单快捷方式」这条链决定，而这条链是按 AUMID
+ * 去开始菜单里找的。隔离实例（`--user-data-dir` / `dev:isolated`）也会写自己那条快捷方式
+ * （`Lumin (dev) [test].lnk`）；只要 AUMID 跟用户的一样，用户的应用就可能被解析到**测试实例
+ * 那条**快捷方式上 —— 测试实例的配置目录跑完就被删，它的图标文件跟着没了，用户的任务栏
+ * 图标于是变成缺省（实测踩过：跑完验收套件后，任务栏图标变白）。给隔离实例一个独立标识，
+ * 两边的「标识 → 快捷方式」各归各的，互不干扰。
  */
 export function appId(): string {
-  return app.isPackaged ? 'com.lumin.app' : 'com.lumin.app.dev'
+  if (app.isPackaged) return 'com.lumin.app'
+  return isDefaultProfile() ? 'com.lumin.app.dev' : 'com.lumin.app.dev.test'
 }
 
 /**
@@ -240,12 +268,45 @@ export function backfillInstalledShortcutAumid(): boolean {
 }
 
 /**
+ * ─── 默认配置目录启动时，清掉「名字里带 [test] 的快捷方式」─────────────────────
+ *
+ * 任务栏按钮的**图标与名字**由「AUMID → 开始菜单快捷方式」这条链决定。只要开始菜单里还留着
+ * **另一条**同 AUMID 的快捷方式，用户的应用就可能被解析到那条上 —— 隔离实例写的那条
+ * `Lumin (dev) [test].lnk` 正是重灾区：它的配置目录跑完就被删，图标文件跟着没了，
+ * 用户的任务栏图标于是变成缺省（实测踩过：跑完验收套件后图标变白）。
+ *
+ * `appId()` 已给隔离实例发了独立标识，从源头隔开；这条自愈用来清掉**历史版本**留下的那份
+ * 残留（它带的是用户的 AUMID）。`[test]` 这个名字默认配置目录从不用，删它绝不会碰到用户那条。
+ */
+function removeStaleTestShortcut(): void {
+  if (process.platform !== 'win32' || !isDefaultProfile()) return
+  const base = app.isPackaged ? 'Lumin' : 'Lumin (dev)'
+  const stale = join(
+    app.getPath('appData'),
+    'Microsoft',
+    'Windows',
+    'Start Menu',
+    'Programs',
+    `${base} [test].lnk`
+  )
+  try {
+    if (!existsSync(stale)) return
+    unlinkSync(stale)
+    debugLog(`stale test shortcut removed path="${stale}"`)
+  } catch (err) {
+    debugLog(`stale test shortcut removal failed: ${String(err)}`)
+  }
+}
+
+/**
  * 启动时管理快捷方式的**唯一入口**，按运行形态分流：
  *  * 打包态：快捷方式归安装器，我们只做 AUMID 幂等补写（见上）；
  *  * 开发态：由我们自己创建/刷新那条带参数的快捷方式（因为开发态没有安装器，
  *    而 Windows 的任务栏身份又依赖「AUMID → 快捷方式」这条链）。
+ * 无论哪种形态，都先做一次「清掉同 AUMID 的测试残留」自愈。
  */
 export function ensureShortcut(): void {
+  removeStaleTestShortcut()
   if (app.isPackaged) {
     backfillInstalledShortcutAumid()
     return
@@ -286,7 +347,9 @@ export function ensureAppShortcut(): ShortcutStatus {
       iconIndex: 0,
       appUserModelId: appId()
     })
-    debugLog(`shortcut ok=${ok} path="${path}" aumid=${appId()} target="${target}" args="${args}" icon="${runtimeIconPath()}"`)
+    debugLog(
+      `shortcut ok=${ok} path="${path}" aumid=${appId()} target="${target}" args="${args}" icon="${runtimeIconPath()}"`
+    )
     // 再读回来一次：证明**磁盘上那条**快捷方式（Windows 真正会读的）确实带上了标识、参数与图标
     try {
       const back = shell.readShortcutLink(path)

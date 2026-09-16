@@ -4,10 +4,26 @@ import path from 'path'
 import { pathToFileURL } from 'url'
 import { db } from './services/database'
 import { decodeBuffer, encodeText } from './services/encoding'
+import * as openDocs from './services/openDocs'
 import type { FileNode, WorkspaceDoc } from '../shared/types'
 import type { ConcreteEncoding, EncodingId } from '../shared/encodings'
+import { detectEol, toEol, toLf, type Eol } from '../shared/eol'
+import { isMediaExtension, isWithinAnyRoot } from '../shared/media'
 
 export const MD_EXT_RE = /\.(md|markdown|mdown|mkd|txt)$/i
+
+/**
+ * 该绝对路径能否经 `lumin-file://` 送出（两道闸，见 main/index.ts 的 protocol.handle 注释）：
+ *  1. 扩展名在媒体白名单里；
+ *  2. 位于「当前工作区」或「某个已打开文档所在目录」之内。
+ * 两条规则本身是纯函数，在 shared/media.ts（可单测）；这里只负责取「当前的根」。
+ */
+export function isServableMedia(p: string): boolean {
+  if (!isMediaExtension(p)) return false
+  const workspaceRoot = db.kvGet<{ root: string | null }>('workspace', { root: null }).root
+  const docDirs = openDocs.listOpenDocs().map((doc) => path.dirname(doc))
+  return isWithinAnyRoot(p, [workspaceRoot, ...docDirs])
+}
 
 export function normalize(p: string): string {
   return path.normalize(p)
@@ -39,11 +55,20 @@ export async function readFileInfo(
   filePath: string,
   requested: EncodingId = 'auto',
   remembered?: EncodingId | null
-): Promise<{ content: string; mtimeMs: number; encoding: ConcreteEncoding; hadBom: boolean }> {
+): Promise<{
+  content: string
+  mtimeMs: number
+  encoding: ConcreteEncoding
+  hadBom: boolean
+  eol: Eol
+}> {
   const stat = await fs.stat(filePath)
   const raw = await fs.readFile(filePath)
   const { text, encoding, hadBom } = decodeBuffer(raw, requested, remembered)
-  return { content: text, mtimeMs: stat.mtimeMs, encoding, hadBom }
+  // 行尾是**文档级元数据**：这里判定一次并归一内存形态（LF），
+  // 写回时再由 writeFile 展开回去，见 shared/eol.ts
+  const eol = detectEol(text)
+  return { content: toLf(text), mtimeMs: stat.mtimeMs, encoding, hadBom, eol }
 }
 
 export async function readDir(dir: string): Promise<FileNode[]> {
@@ -71,7 +96,12 @@ function toPlainPreview(text: string, max = 140): string {
     .replace(/^\uFEFF/, '')
     .split(/\r?\n/)
     .filter((l) => !/^\s*(#|>|-{3,}|\*{3,}|```)/.test(l) && l.trim())
-    .map((l) => l.replace(/[`*_~\[\]()!#>]/g, '').replace(/\s+/g, ' ').trim())
+    .map((l) =>
+      l
+        .replace(/[`*_~[\]()!#>]/g, '')
+        .replace(/\s+/g, ' ')
+        .trim()
+    )
     .filter(Boolean)
   const plain = lines.join(' ').trim()
   return plain.length > max ? plain.slice(0, max).trimEnd() + '…' : plain
@@ -139,7 +169,9 @@ export async function scanWorkspace(root: string): Promise<WorkspaceDoc[]> {
     }
     // 并发遍历子目录（目录数通常有限）
     await Promise.all(
-      dirs.map((d) => walk(path.join(dir, d.name), relDir ? `${relDir}/${d.name}` : d.name, depth + 1))
+      dirs.map((d) =>
+        walk(path.join(dir, d.name), relDir ? `${relDir}/${d.name}` : d.name, depth + 1)
+      )
     )
   }
 
@@ -151,15 +183,46 @@ export async function scanWorkspace(root: string): Promise<WorkspaceDoc[]> {
 /**
  * 写文件：按指定编码编成字节再落盘（默认 UTF-8，保持旧行为）。
  * `hadBom` 为真时补回文件原有的 BOM——「原样写回」不该平白少一个 BOM。
+ *
+ * ─── 为什么是「临时文件 + fsync + rename」而不是直接 writeFile ──────────────────
+ * 直接覆盖原文件时，**写入中途**断电/崩溃/磁盘满/被杀进程会把用户唯一的一份稿件截断或半写，
+ * 而写作工具没有第二次机会（本仓库连本地历史都还没有）。同目录 rename 在 Windows 与 POSIX 上
+ * 都是原子的：磁盘上任何时刻只可能是「完整旧版」或「完整新版」。
+ *
+ * 三个细节：
+ *  1. 临时文件与目标**同目录**（跨盘 rename 不是原子操作）；
+ *  2. 先 `fsync` 再 rename —— 保证 rename 生效时数据已经落盘，而不是只改了目录项；
+ *  3. 临时文件名固定（`<name>.lumin-tmp`）而不是带时间戳：崩溃残留的那一份会在下次写入时
+ *     被直接覆盖（自愈），不会在工作区里越积越多；扩展名不在 `.md` 白名单里，也不会进文件树。
+ *     同一个文件不会有两个窗口同时写（见 openDocs 的「一个文件只开一个窗口」）。
  */
 export async function writeFile(
   filePath: string,
   content: string,
   encoding: ConcreteEncoding = 'utf-8',
-  hadBom = false
+  hadBom = false,
+  eol?: Eol
 ): Promise<void> {
+  // 行尾在**这一层**统一展开：所有落盘路径（保存、另存为、导出走的都是这里）都不会漏。
+  // eol 缺省 = 不做行尾处理（老调用方行为不变）。
+  const text = eol ? toEol(content, eol) : content
+  const bytes = encodeText(text, encoding, hadBom)
   await fs.mkdir(path.dirname(filePath), { recursive: true })
-  await fs.writeFile(filePath, encodeText(content, encoding, hadBom))
+  const tmp = `${filePath}.lumin-tmp`
+  let handle: Awaited<ReturnType<typeof fs.open>> | null = null
+  try {
+    handle = await fs.open(tmp, 'w')
+    await handle.writeFile(bytes)
+    await handle.sync()
+    await handle.close()
+    handle = null
+    await fs.rename(tmp, filePath)
+  } catch (err) {
+    // 失败时收拾干净并原样抛出：调用方（渲染层）负责把**原因**告诉用户
+    if (handle) await handle.close().catch(() => {})
+    await fs.rm(tmp, { force: true }).catch(() => {})
+    throw err
+  }
 }
 
 /** 生成不冲突的文件名：base.md → base-1.md */

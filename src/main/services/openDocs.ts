@@ -27,6 +27,24 @@ export function forgetWindow(winId: number): void {
 }
 
 /**
+ * 当前所有窗口打开着的文档路径（去重）。
+ * 用途：`lumin-file://` 协议的访问白名单 —— 只放行「工作区之内」或「某个已打开文档所在目录之内」
+ * 的媒体文件（见 main/index.ts 的 protocol.handle）。
+ */
+export function listOpenDocs(): string[] {
+  const out = new Set<string>()
+  for (const [id, p] of docOfWindow) {
+    const win = BrowserWindow.fromId(id)
+    if (!win || win.isDestroyed()) {
+      docOfWindow.delete(id)
+      continue
+    }
+    out.add(p)
+  }
+  return [...out]
+}
+
+/**
  * 找出正开着这个文件的窗口。
  * 先排除调用方自己的窗口（「同一个文件在本窗口已打开」由渲染层先判掉，这里做兜底：
  * 若唯一命中就是调用方，就返回它，调用方据此返回「已聚焦」而不是再开一个窗口）。

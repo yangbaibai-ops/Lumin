@@ -7,6 +7,7 @@
 // 关闭时清空）在 index.ts，因为只有那里持有 BrowserWindow。
 import { db } from './database'
 import type { SessionSlot, SessionState } from '../../shared/types'
+import { planRestoreFromSlots } from '../../shared/session'
 
 const KEY = 'session'
 
@@ -54,9 +55,26 @@ export function writeSessionSlot(index: number, slot: SessionSlot | null): void 
   db.kvSet(KEY, { slots } satisfies SessionState)
 }
 
-/** 清空某个槽位（窗口被单独关闭时调用；应用整体退出时不清） */
-export function clearSessionSlot(index: number): void {
-  writeSessionSlot(index, null)
+/**
+ * 单独关窗：把这个窗口的槽位**留下**，只标记「已关闭」。
+ *
+ * 为什么不是直接清掉：用户关掉窗口往往就是「今天先这样」，下次启动应当回到刚才那篇文档。
+ * 清掉槽位的结果是——重启后只剩工作区文件夹（它另记在全局 kv 里），文档变成一个不落在
+ * 任何实际位置的未命名缓冲区（「文件夹还在、文件是虚空的」就是这么来的）。
+ *
+ * 只记**最后一个**：更早被单独关掉的窗口是用户明确关掉的，不该在下次启动又冒出来；
+ * 而关掉最后一个窗口就等于退出应用，所以「最后关掉的那个」才是用户心里「刚才那篇」。
+ */
+export function markSlotClosed(index: number): void {
+  if (!Number.isInteger(index) || index < 0 || index > 64) return
+  const state = readSession()
+  const slot = state.slots[index]
+  if (!slot || (!slot.path && !slot.folder)) return
+  // 上一份「最后关掉的窗口」记录被这次的取代（连同它的槽位号一起释放）
+  const slots = state.slots.map((s) => (s?.closed ? null : s))
+  while (slots.length <= index) slots.push(null)
+  slots[index] = { ...slot, closed: true, closedAt: Date.now() }
+  db.kvSet(KEY, { slots } satisfies SessionState)
 }
 
 /**
@@ -84,26 +102,39 @@ export function claimSlot(index?: number): number {
   return next
 }
 
-export function releaseSlot(index: number): void {
-  claimed.delete(index)
-}
-
 /**
- * 启动时应当重建的窗口清单：只挑「有文档」或「有文件夹」的槽位，最多
- * MAX_RESTORE_WINDOWS 个。同时把这些槽位标记为已领取，后续新建窗口不会撞车。
+ * 槽位领取表：单次运行内只增不减。
+ * 为什么不做「关窗即释放」：单独关掉的槽位是**故意留着**的（下次启动要回到那篇文档，
+ * 见 markSlotClosed），释放它反而会让后来的窗口拿到同一个号、认领到别人的草稿。
+ * 原先这里有个没人调用的 releaseSlot()，已删（真要释放，3 行就能加回来）。
+ *//**
+ * 启动时应当重建的窗口清单：读 kv → 交给纯函数判定（shared/session.ts 的
+ * planRestoreFromSlots，有单测）→ 落回 kv 的副作用在这里做。
  *
  * 排序按 savedAt 倒序（最近用过的窗口排第一）：调用方会**先只建第一个**、等它加载完
  * 再建其余窗口，所以「用户最后停留的那个窗口」应当最先出现在屏幕上，其余错峰创建。
  */
 export function planRestore(): { index: number; slot: SessionSlot }[] {
   const state = readSession()
-  const plan: { index: number; slot: SessionSlot }[] = []
-  state.slots.forEach((slot, index) => {
-    if (!slot || (!slot.path && !slot.folder)) return
-    plan.push({ index, slot })
+  const plan = planRestoreFromSlots(state.slots, MAX_RESTORE_WINDOWS)
+
+  // 有窗口活着退出 → 被单独关掉的记录作废（槽位号一并释放）
+  if (plan.dropClosed.length) {
+    const drop = new Set(plan.dropClosed)
+    const slots = state.slots.map((s, i) => (s && drop.has(i) ? null : s))
+    db.kvSet(KEY, { slots } satisfies SessionState)
+  }
+
+  const windows = plan.windows.map(({ index, slot }) => {
+    if (!plan.unmarkClosed.includes(index)) return { index, slot }
+    // 摘掉「已关闭」标记再写回：它马上会被建成窗口，不该再挂着那个身份
+    const restored: SessionSlot = { ...slot }
+    delete restored.closed
+    delete restored.closedAt
+    writeSessionSlot(index, restored)
+    return { index, slot: restored }
   })
-  plan.sort((a, b) => (b.slot.savedAt ?? 0) - (a.slot.savedAt ?? 0) || a.index - b.index)
-  const limited = plan.slice(0, MAX_RESTORE_WINDOWS)
-  for (const p of limited) claimed.add(p.index)
-  return limited
+
+  for (const w of windows) claimed.add(w.index)
+  return windows
 }

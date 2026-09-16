@@ -51,10 +51,14 @@ const api: LuminAPI = {
     sessionSlot
   },
   file: {
-    read: (path, encoding) => ipcRenderer.invoke('file:read', path, encoding),
-    write: (path, content, encoding, hadBom) =>
-      ipcRenderer.invoke('file:write', path, content, encoding, hadBom),
-    rememberEncoding: (path, encoding) => ipcRenderer.invoke('file:rememberEncoding', path, encoding),
+    // opts.softDefault：encoding 只是「打开文件时的设置默认值」时传 true ——
+    // 主进程会让该文件**已记录的编码**优先（见 ipc.ts 的 file:read 注释）
+    read: (path, encoding, opts) => ipcRenderer.invoke('file:read', path, encoding, opts),
+    // eol：文档记录的行尾（'lf'/'crlf'）。主进程在写盘前展开，见 shared/eol.ts
+    write: (path, content, encoding, hadBom, eol) =>
+      ipcRenderer.invoke('file:write', path, content, encoding, hadBom, eol),
+    rememberEncoding: (path, encoding) =>
+      ipcRenderer.invoke('file:rememberEncoding', path, encoding),
     readDir: (dir) => ipcRenderer.invoke('file:readDir', dir),
     scanWorkspace: (root) => ipcRenderer.invoke('file:scanWorkspace', root),
     createFile: (path) => ipcRenderer.invoke('file:createFile', path),
@@ -63,7 +67,7 @@ const api: LuminAPI = {
     rename: (oldPath, newPath) => ipcRenderer.invoke('file:rename', oldPath, newPath),
     exists: (path) => ipcRenderer.invoke('file:exists', path),
     chooseOpenFile: () => ipcRenderer.invoke('file:chooseOpenFile'),
-    chooseSaveFile: (name, ext) => ipcRenderer.invoke('file:chooseSaveFile', name, ext),
+    chooseSaveFile: (name, ext, dir) => ipcRenderer.invoke('file:chooseSaveFile', name, ext, dir),
     chooseFolder: () => ipcRenderer.invoke('file:chooseFolder'),
     getPathForFile: (file) => {
       try {
@@ -89,7 +93,7 @@ const api: LuminAPI = {
     save: (key, content, path) => ipcRenderer.invoke('drafts:save', key, content, path),
     load: (key) => ipcRenderer.invoke('drafts:load', key),
     remove: (key) => ipcRenderer.invoke('drafts:remove', key),
-    hasUntitled: () => ipcRenderer.invoke('drafts:hasUntitled')
+    untitledDraft: () => ipcRenderer.invoke('drafts:untitledDraft')
   },
   db: {
     search: (query, limit) => ipcRenderer.invoke('db:search', query, limit),
@@ -99,6 +103,13 @@ const api: LuminAPI = {
     setPinned: (path, pinned) => ipcRenderer.invoke('db:setPinned', path, pinned),
     setTags: (path, tags) => ipcRenderer.invoke('db:setTags', path, tags),
     stats: () => ipcRenderer.invoke('db:stats')
+  },
+  // 本地历史（Wave 2 数据安全）：保存前留快照，可查看/回滚
+  history: {
+    list: (path, limit) => ipcRenderer.invoke('history:list', path, limit),
+    get: (id) => ipcRenderer.invoke('history:get', id),
+    clear: (path) => ipcRenderer.invoke('history:clear', path),
+    stats: () => ipcRenderer.invoke('history:stats')
   },
   notifications: {
     list: (options) => ipcRenderer.invoke('notifications:list', options),

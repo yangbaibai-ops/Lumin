@@ -110,7 +110,10 @@ export async function checkNow(): Promise<boolean> {
     return true
   } catch (err) {
     // 网络类失败很常见（离线、公司代理）：只作为状态告知，不抛给调用方
-    notifyRenderer({ state: 'error', message: String((err as Error)?.message ?? err).slice(0, 200) })
+    notifyRenderer({
+      state: 'error',
+      message: String((err as Error)?.message ?? err).slice(0, 200)
+    })
     return false
   }
 }

@@ -53,7 +53,12 @@ export function recordBuildStamp(): void {
  */
 export function recordLaunchIntent(record: {
   argv: string[]
-  intent: { openFile: string | null; openFolder: string | null; newWindow: boolean; noWorkspace: boolean }
+  intent: {
+    openFile: string | null
+    openFolder: string | null
+    newWindow: boolean
+    noWorkspace: boolean
+  }
   ignored: string[]
   cwd: string
   appPath: string

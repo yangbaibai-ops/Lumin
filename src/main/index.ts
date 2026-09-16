@@ -2,7 +2,8 @@
 import './devProfile'
 import './suppressWarnings'
 import { app, shell, BrowserWindow, nativeTheme, protocol, net, ipcMain, screen } from 'electron'
-import { join } from 'path'
+import { join, resolve } from 'path'
+import { randomUUID } from 'crypto'
 import { pathToFileURL } from 'url'
 import { optimizer, is } from '@electron-toolkit/utils'
 // 窗口图标与任务栏/开始菜单快捷方式/跳转列表**共用同一个文件**（resources/icon.ico，内含 16~256 七档，
@@ -10,6 +11,8 @@ import { optimizer, is } from '@electron-toolkit/utils'
 import appIconPng from '../../resources/icon.png?asset'
 import { installMenu } from './menu'
 import { registerIpc, attachCloseGuard } from './ipc'
+import { isServableMedia } from './fileOps'
+import * as links from './services/links'
 import { migrateLegacyStores } from './store'
 import { db } from './services/database'
 import * as session from './services/session'
@@ -21,7 +24,6 @@ import { parseLaunchIntent, type LaunchIntent } from './services/launchIntent'
 import { initUpdater } from './services/updater'
 import { bindWindowScope, scopeOfSlot } from './services/windowScope'
 import { defaultSettings } from '../shared/defaults'
-import { markRunning, markClean } from './drafts'
 
 // 本地文件协议（用于 Markdown 内相对路径图片，兼容 dev/prod 与 CSP）
 protocol.registerSchemesAsPrivileged([
@@ -52,7 +54,26 @@ if (!app.requestSingleInstanceLock()) {
 // ─── 会话恢复：窗口 ↔ 槽位 归属（「整体退出 vs 单独关窗」的判定在 services/session）──
 /** window.id → 会话槽位 */
 const slotOfWindow = new Map<number, number>()
-app.on('before-quit', () => session.markQuitting())
+/**
+ * window.id → 该**窗口实例**的 uid（随机生成，随窗口 argv 交给它的渲染进程）。
+ * 会话槽位号会被复用，光靠槽位分不清「这格草稿是我自己上次写的」还是「上一个住户留下的」；
+ * 草稿带上 uid 才答得准（见 main/drafts.ts 的 takeUntitledDraft / shared/drafts.ts）。
+ */
+const uidOfWindow = new Map<number, string>()
+/**
+ * 本次运行的**启动窗口**（第一个建出来的那个）。只有它能认领「无主草稿」：
+ * Ctrl+N / 新建窗口是用户明确要一篇空白，不该被上一次没保存的内容打断。
+ */
+let startupWindowId: number | null = null
+app.on('before-quit', () => {
+  session.markQuitting()
+  // 退出前把排队的全文索引落盘（索引是节流的，见 services/database.ts 的 scheduleFtsIndex）
+  try {
+    db.flushFtsIndex()
+  } catch {
+    /* 退出路径上的失败不该拦住退出 */
+  }
+})
 
 /**
  * 新窗口领一个自动分配的槽位。
@@ -89,7 +110,9 @@ interface WindowState {
 function validWindowBounds(s: WindowState): boolean {
   return screen.getAllDisplays().some((d) => {
     const a = d.workArea
-    return s.x < a.x + a.width && s.x + s.width > a.x && s.y < a.y + a.height && s.y + s.height > a.y
+    return (
+      s.x < a.x + a.width && s.x + s.width > a.x && s.y < a.y + a.height && s.y + s.height > a.y
+    )
   })
 }
 
@@ -132,6 +155,7 @@ function createWindow(options: WindowOpenOptions = {}): BrowserWindow {
   const { openFile, openFolder, noWorkspace, sessionSlot } = options
   const existing = BrowserWindow.getAllWindows()
   const isFirst = existing.length === 0
+  const windowUid = randomUUID()
 
   let x: number | undefined
   let y: number | undefined
@@ -183,29 +207,29 @@ function createWindow(options: WindowOpenOptions = {}): BrowserWindow {
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
-      ...(openFile || openFolder || noWorkspace || sessionSlot !== undefined
-        ? {
-            additionalArguments: [
-              ...(openFile ? [`--lumin-open=${encodeURIComponent(openFile)}`] : []),
-              ...(openFolder ? [`--lumin-open-folder=${encodeURIComponent(openFolder)}`] : []),
-              ...(noWorkspace ? ['--lumin-no-workspace=1'] : []),
-              ...(sessionSlot !== undefined ? [`--lumin-session-slot=${sessionSlot}`] : [])
-            ]
-          }
-        : {})
+      // 每个窗口实例一个 uid（见 uidOfWindow 的说明）：草稿靠它区分「我自己写的」与
+      // 「上一个住户/上一次运行留下的」。窗口 argv 是 per-window 的，reload 后也不变。
+      additionalArguments: [
+        ...(openFile ? [`--lumin-open=${encodeURIComponent(openFile)}`] : []),
+        ...(openFolder ? [`--lumin-open-folder=${encodeURIComponent(openFolder)}`] : []),
+        ...(noWorkspace ? ['--lumin-no-workspace=1'] : []),
+        ...(sessionSlot !== undefined ? [`--lumin-session-slot=${sessionSlot}`] : []),
+        `--lumin-window-uid=${windowUid}`
+      ]
     }
   })
 
-  // 会话槽位归属：窗口被「单独关闭」（非整体退出）时清空它的槽位，
-  // 这样下次启动不会把一个用户已经关掉的窗口又拉回来。
-  // 同一时刻它的窗口作用域（通知等窗口私有数据）也随窗口一起销毁；
-  // 整体退出时保留，让下次启动的会话恢复到「同一个窗口」里。
+  // 会话槽位归属：窗口被「单独关闭」时**保留**它的槽位并标记「已关闭」——
+  // 用户关窗往往就是「今天先这样」，下次启动要回到刚才那篇文档（只清掉槽位的话，
+  // 重启后只剩工作区文件夹、文档变成不落在任何位置的未命名缓冲区）。
+  // 整体退出时不动槽位，让下次启动把当时活着的窗口全部恢复。
+  // 同一时刻它的窗口作用域（通知等窗口私有数据）也随窗口一起销毁。
   if (sessionSlot !== undefined) {
     slotOfWindow.set(mainWindow.id, sessionSlot)
     mainWindow.on('closed', () => {
       slotOfWindow.delete(mainWindow.id)
       if (!session.isQuitting()) {
-        session.clearSessionSlot(sessionSlot)
+        session.markSlotClosed(sessionSlot)
         db.deleteNotificationsByScope(scopeOfSlot(sessionSlot))
       }
     })
@@ -214,6 +238,9 @@ function createWindow(options: WindowOpenOptions = {}): BrowserWindow {
   bindWindowScope(mainWindow, sessionSlot)
   // 「哪个窗口开着哪个文档」注册表：窗口关闭即清账，不留已销毁窗口的条目
   mainWindow.on('closed', () => openDocs.forgetWindow(mainWindow.id))
+  // 窗口实例 uid：草稿归属靠它（窗口没了就注销，那份草稿随即变成「无主」）
+  uidOfWindow.set(mainWindow.id, windowUid)
+  mainWindow.on('closed', () => uidOfWindow.delete(mainWindow.id))
 
   if (restoreMaximized) mainWindow.maximize()
 
@@ -233,7 +260,9 @@ function createWindow(options: WindowOpenOptions = {}): BrowserWindow {
   if (is.dev) {
     mainWindow.webContents.on('console-message', (details) => {
       if (details.level === 'error' || details.level === 'warning') {
-        console.log(`[renderer:${details.level}] ${details.message} (${details.sourceId}:${details.lineNumber})`)
+        console.log(
+          `[renderer:${details.level}] ${details.message} (${details.sourceId}:${details.lineNumber})`
+        )
       }
     })
   }
@@ -246,6 +275,26 @@ function createWindow(options: WindowOpenOptions = {}): BrowserWindow {
   mainWindow.webContents.setWindowOpenHandler((details) => {
     if (/^https?:\/\//.test(details.url)) shell.openExternal(details.url)
     return { action: 'deny' }
+  })
+
+  /**
+   * 导航兜底：文档里的链接若没被渲染层的点击拦截逻辑覆盖（中键点击、表格里、或脚本里
+   * `location.href = …`），窗口会被**整个导航走** —— 应用 UI 消失、CSP 随导航失效，
+   * 用户看到的是一个浏览器窗口。这里只允许停留在我们自己的页面上，其余拦下来并交给系统浏览器
+   * （与上面的 setWindowOpenHandler、以及 shell:openExternal 的白名单同一口径）。
+   * 注意：应用内路由是 hash 变化，走的是 did-navigate-in-page，不会触发本事件。
+   */
+  mainWindow.webContents.on('will-navigate', (event, url) => {
+    try {
+      const here = new URL(mainWindow.webContents.getURL())
+      const next = new URL(url)
+      if (next.origin === here.origin && next.pathname === here.pathname) return // 同页（仅 hash 变化时通常不会走到这里）
+    } catch {
+      /* URL 解析失败 → 当作不可信，继续走拦截 */
+    }
+    event.preventDefault()
+    const safe = links.safeExternalUrl(url)
+    if (safe) void shell.openExternal(safe)
   })
 
   // 生产环境强化 CSP（仅首次注册）
@@ -288,7 +337,14 @@ app.whenReady().then(() => {
   migrateLegacyStores()
   // 顺序要点：IPC 必须在任何窗口加载之前注册（渲染层启动就会发 IPC）；
   // 原生菜单不影响首屏，放到窗口创建之后再装。
-  registerIpc()
+  // 注入「窗口 ↔ 槽位」归属：草稿认领要看「还有哪些窗口活着」，那份状态只有这里持有。
+  registerIpc({
+    slotOf: (windowId) => slotOfWindow.get(windowId) ?? null,
+    liveSlots: () => [...new Set(slotOfWindow.values())],
+    uidOf: (windowId) => uidOfWindow.get(windowId) ?? null,
+    liveUids: () => [...new Set(uidOfWindow.values())],
+    mayClaimUntitledDraft: (windowId) => windowId === startupWindowId
+  })
   startup('ipc-registered')
 
   // 多窗口：新建空白窗口 / 在新窗口打开文件 / 在新窗口打开文件夹（IPC 由渲染进程驱动）。
@@ -304,11 +360,26 @@ app.whenReady().then(() => {
     if (path) createWindow({ openFolder: path, sessionSlot: claimFreshSlot() })
   })
 
-  // 本地文件协议处理器
+  /**
+   * ─── 本地媒体协议 `lumin-file://` ────────────────────────────────────────────
+   * 用途：Markdown 里的**相对路径图片**（`![](img/a.png)`）由渲染层解析成
+   * `lumin-file:///<绝对路径>` 后走这里加载（见 renderer/lib/imageSrc.ts）。
+   *
+   * 为什么要校验：这个协议等价于「把本地文件读给渲染层」，而渲染层渲染的是**用户文档**。
+   * 一旦文档内容能影响 URL，不加限制就等于开放任意文件读取。两道闸：
+   *  1. **媒体扩展名白名单** —— 它只该送图片/音视频/PDF，永远不该送 `.txt/.json/.db/.env`；
+   *  2. **位置白名单** —— 必须落在「当前工作区」或「某个已打开文档所在目录」之内
+   *     （相对图片本来就只可能在这两处；`..` 逃出工作区的一律 404）。
+   */
   protocol.handle('lumin-file', (request) => {
     try {
       const url = new URL(request.url)
-      const p = decodeURIComponent(url.pathname.replace(/^\//, ''))
+      const decoded = decodeURIComponent(url.pathname.replace(/^\//, ''))
+      const p = resolve(decoded)
+      if (!isServableMedia(p)) {
+        console.warn(`[protocol] 拒绝 lumin-file 请求: ${p}`)
+        return new Response('Not Found', { status: 404 })
+      }
       return net.fetch(pathToFileURL(p).href)
     } catch {
       return new Response('Not Found', { status: 404 })
@@ -322,7 +393,6 @@ app.whenReady().then(() => {
     optimizer.watchWindowShortcuts(window)
   })
 
-  markRunning()
   // 开发态记录「这份构建是什么时候的」：主进程不热更新，排查错配时第一眼看它
   recordBuildStamp()
   if (devProfileDir) console.log(`[profile] 开发态隔离 profile 生效: ${devProfileDir}`)
@@ -371,6 +441,9 @@ app.whenReady().then(() => {
           sessionSlot: claimFreshSlot()
         })
   startup('first-window-created')
+  // 启动窗口 = 本次运行里唯一能认领「无主草稿」的窗口（见 main/drafts.ts：
+  // Ctrl+N / 新建窗口是用户明确要一篇空白，不该被上一次没保存的内容打断）
+  startupWindowId = first.id
   first.once('ready-to-show', () => startup('first-window-painted'))
   let firstShown = false
   const openRemaining = (): void => {
@@ -389,8 +462,7 @@ app.whenReady().then(() => {
   initUpdater()
 
   app.on('activate', function () {
-    if (BrowserWindow.getAllWindows().length === 0)
-      createWindow({ sessionSlot: claimFreshSlot() })
+    if (BrowserWindow.getAllWindows().length === 0) createWindow({ sessionSlot: claimFreshSlot() })
   })
 })
 
@@ -489,12 +561,7 @@ app.on('second-instance', (_event, argv) => {
 })
 
 app.on('window-all-closed', () => {
-  markClean()
   if (process.platform !== 'darwin') {
     app.quit()
   }
-})
-
-app.on('before-quit', () => {
-  markClean()
 })

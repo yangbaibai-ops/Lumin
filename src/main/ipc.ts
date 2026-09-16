@@ -9,7 +9,7 @@ import {
   type IpcMainInvokeEvent
 } from 'electron'
 import path from 'path'
-import { watch, type FSWatcher } from 'fs'
+import { watch, existsSync, type FSWatcher } from 'fs'
 import * as fileOps from './fileOps'
 import * as exportSvc from './export'
 import * as drafts from './drafts'
@@ -18,9 +18,12 @@ import * as session from './services/session'
 import * as openDocs from './services/openDocs'
 import * as taskbar from './services/taskbar'
 import { onSettingsChanged } from './services/updater'
+import { installMenu } from './menu'
 import { scopeOfSender } from './services/windowScope'
 import { getRememberedEncoding, rememberEncoding } from './services/encoding'
 import type { ConcreteEncoding, EncodingId } from '../shared/encodings'
+import type { Eol } from '../shared/eol'
+import { untitledDraftKey } from '../shared/drafts'
 import { db } from './services/database'
 import { defaultSettings } from '../shared/defaults'
 import type {
@@ -93,7 +96,46 @@ function deepMerge<T extends object>(base: T, patch: Partial<T>): T {
   return out as T
 }
 
-export function registerIpc(): void {
+/**
+ * 主进程持有、渲染层问不到的两件事：窗口 ↔ 会话槽位归属。
+ * 由 index.ts 注入（那里才是窗口生命周期的所有者），避免 ipc.ts 反向 import index.ts 成环。
+ */
+export interface SlotRegistry {
+  /** 某个窗口当前占用的会话槽位（null = 该窗口不参与会话） */
+  slotOf: (windowId: number) => number | null
+  /** 当前所有活动窗口占用的槽位 */
+  liveSlots: () => number[]
+  /** 某个窗口实例的 uid（写草稿时落在草稿上，用来区分「谁写的」） */
+  uidOf: (windowId: number) => string | null
+  /** 当前所有活动窗口实例的 uid（写草稿的窗口还活着 → 那份草稿不叫「无主」） */
+  liveUids: () => string[]
+  /** 该窗口能不能认领「无主草稿」：只有本次运行的启动窗口可以 */
+  mayClaimUntitledDraft: (windowId: number) => boolean
+}
+
+/**
+ * 写盘前留一份历史快照（本地历史，Wave 2）。
+ *
+ * 内容来自**磁盘上现有的字节**（即将被覆盖的那一版），而不是渲染层的状态：
+ *   * 语义准确 —— 用户想回滚的就是「上次保存时磁盘上的样子」；
+ *   * 与调用方解耦 —— 另存为、回滚写回、以后的批量操作都自动有历史。
+ * 文件不存在（新建）或读不出来时静默跳过：历史是补充能力，不能因为它让保存失败。
+ */
+async function recordHistoryBeforeOverwrite(
+  filePath: string,
+  encoding: ConcreteEncoding,
+  eol?: Eol
+): Promise<void> {
+  try {
+    if (!existsSync(filePath)) return
+    const { content } = await fileOps.readFileInfo(filePath)
+    db.pushHistory({ path: filePath, content, encoding, eol })
+  } catch {
+    /* 读不到旧内容就算了（权限/被占用），保存本身继续 */
+  }
+}
+
+export function registerIpc(slots: SlotRegistry): void {
   // ── 应用 ──
   ipcMain.handle('app:getVersion', () => exportSvc.appVersion())
   ipcMain.handle('app:getPlatform', () => process.platform)
@@ -124,37 +166,81 @@ export function registerIpc(): void {
 
   // ── 文件 ──
   /**
-   * 读文件：`encoding` 省略/为 'auto' 时走 services/encoding 的判定链（含每文件记忆）。
-   * 判定结果如果是**非 UTF-8**（或用户显式指定过），就把这个文件的编码记下来，
-   * 下次自动打开时直接用——不然「上次手选的 GBK」每次都要再选一遍。
+   * 读文件。
+   *
+   * 编码优先级（Wave 2 尾巴「多窗口一致性」）：
+   *   1. **调用方显式指定的编码**（「选择编码重新打开」、显式 readAs）—— 用户刚点的，必须听他的；
+   *   2. **该文件已记录的编码**（`documents.encoding`，兼容老的 kv 兜底表）—— 但只对
+   *      「软默认」生效（`opts.softDefault`，即打开文件时用的设置默认值）。它是"这个文件是什么编码"
+   *      的权威答案，比全局默认更具体：用户上次手选的 GBK、或自动判定出的非 UTF-8 都记在这儿，
+   *      所以第二个窗口打开同一文件时解出的还是同一份内容；
+   *   3. 都没有 → 走 `services/encoding` 的判定链（'auto'）。
+   * 判定结果若是非 UTF-8（或用户显式指定过），把它记回去，下次自动打开直接用。
    */
-  ipcMain.handle('file:read', async (_, p: string, encoding: EncodingId = 'auto') => {
-    const fp = path.resolve(p)
-    const remembered = encoding === 'auto' ? getRememberedEncoding(fp) : null
-    const { content, mtimeMs, encoding: used, hadBom } = await fileOps.readFileInfo(fp, encoding, remembered)
-    if (encoding !== 'auto' || (used !== 'utf-8' && used !== 'utf-8-bom')) {
-      rememberEncoding(fp, used)
-    }
-    const name = path.basename(fp)
-    // 打开即建立/刷新数据库索引（元数据 + 全文）
-    db.upsertDocument({ path: fp, title: name, content })
-    db.touchOpened(fp, name)
-    return { path: fp, name, content, mtimeMs, encoding: used, hadBom }
-  })
   ipcMain.handle(
-    'file:write',
-    async (_, p: string, content: string, encoding: ConcreteEncoding = 'utf-8', hadBom = false) => {
+    'file:read',
+    async (_, p: string, encoding: EncodingId = 'auto', opts: { softDefault?: boolean } = {}) => {
       const fp = path.resolve(p)
-      await fileOps.writeFile(fp, content, encoding, hadBom)
-      // 保存时同步元数据 + 全文索引
-      db.upsertDocument({ path: fp, title: path.basename(fp), content })
+      const remembered = getRememberedEncoding(fp)
+      // 软默认（打开文件时的设置默认值）让位给该文件的记录；显式指定则压过记录
+      const requested: EncodingId = opts?.softDefault && remembered ? remembered : encoding
+      const {
+        content,
+        mtimeMs,
+        encoding: used,
+        hadBom,
+        eol
+      } = await fileOps.readFileInfo(fp, requested, remembered)
+      // 记回去的条件：用户显式指定过、或自动判定出非 UTF-8（纯 UTF-8 文件不占条目）
+      if (encoding !== 'auto' || (used !== 'utf-8' && used !== 'utf-8-bom')) {
+        rememberEncoding(fp, used)
+      }
+      const name = path.basename(fp)
+      // 打开即建立/刷新数据库索引（元数据 + 全文 + 编码/行尾/BOM）
+      db.upsertDocument({ path: fp, title: name, content, encoding: used, eol, hadBom })
+      db.touchOpened(fp, name)
+      return { path: fp, name, content, mtimeMs, encoding: used, hadBom, eol }
     }
   )
+  ipcMain.handle(
+    'file:write',
+    async (
+      _,
+      p: string,
+      content: string,
+      encoding: ConcreteEncoding = 'utf-8',
+      hadBom = false,
+      eol?: Eol
+    ) => {
+      const fp = path.resolve(p)
+      // 本地历史（Wave 2 数据安全）：写盘前把**即将被覆盖的那一版**留一份快照。
+      // 放在主进程而不是渲染层：所有写盘路径（保存/另存为/以后的回滚写回）都经过这里，
+      // 不会因为某个调用点忘了调用而漏掉历史。
+      await recordHistoryBeforeOverwrite(fp, encoding, eol)
+      await fileOps.writeFile(fp, content, encoding, hadBom, eol)
+      // 保存时同步元数据 + 全文索引
+      db.upsertDocument({ path: fp, title: path.basename(fp), content, encoding, eol, hadBom })
+    }
+  )
+  /** 本地历史：某个文件的快照列表（新的在前；不含正文） */
+  ipcMain.handle('history:list', (_, p: string, limit = 30) =>
+    db.listHistory(path.resolve(p), limit)
+  )
+  /** 本地历史：取某条快照的正文（回滚用） */
+  ipcMain.handle('history:get', (_, id: number) => db.getHistory(id))
+  /** 本地历史：清空（不传路径 = 清全部） */
+  ipcMain.handle('history:clear', (_, p?: string) =>
+    db.clearHistory(p ? path.resolve(p) : undefined)
+  )
+  /** 本地历史：条数统计（设置面板显示用） */
+  ipcMain.handle('history:stats', () => db.historyStats())
   /** 「选择编码重新打开」用：把用户显式选的编码记进每文件记忆表 */
   ipcMain.handle('file:rememberEncoding', (_, p: string, encoding: ConcreteEncoding) => {
     rememberEncoding(path.resolve(p), encoding)
   })
-  ipcMain.handle('file:readDir', (_, dir: string) => fileOps.readDir(fileOps.assertWorkspacePath(dir)))
+  ipcMain.handle('file:readDir', (_, dir: string) =>
+    fileOps.readDir(fileOps.assertWorkspacePath(dir))
+  )
   ipcMain.handle('file:scanWorkspace', (_, dir: string) =>
     fileOps.scanWorkspace(fileOps.assertWorkspacePath(dir))
   )
@@ -190,17 +276,29 @@ export function registerIpc(): void {
     })
     return r.canceled || !r.filePaths.length ? null : r.filePaths[0]
   })
-  ipcMain.handle('file:chooseSaveFile', async (_, name: string, ext: string) => {
-    const win = BrowserWindow.getFocusedWindow()
-    const r = await dialog.showSaveDialog(win!, {
-      defaultPath: name,
-      filters: [{ name: ext.toUpperCase(), extensions: [ext] }]
-    })
-    return r.canceled || !r.filePath ? null : r.filePath
-  })
+  /**
+   * 「保存到哪」对话框。`dir` = 对话框**默认落在的文件夹**（渲染层给：未命名文档传侧栏工作区，
+   * 另存为传文档自己的文件夹）—— 于是 Ctrl+N → 写两行 → Ctrl+S，默认就是存进侧栏那个工作区。
+   * 目录不存在（工作区被移走/删掉）或没给，就退回只给文件名：交给系统记上次的位置，
+   * 总比甩一个死路径出去好。
+   */
+  ipcMain.handle(
+    'file:chooseSaveFile',
+    async (_, name: string, ext: string, dir?: string | null) => {
+      const win = BrowserWindow.getFocusedWindow()
+      const defaultPath = dir && existsSync(dir) ? path.join(dir, name) : name
+      const r = await dialog.showSaveDialog(win!, {
+        defaultPath,
+        filters: [{ name: ext.toUpperCase(), extensions: [ext] }]
+      })
+      return r.canceled || !r.filePath ? null : r.filePath
+    }
+  )
   ipcMain.handle('file:chooseFolder', async () => {
     const win = BrowserWindow.getFocusedWindow()
-    const r = await dialog.showOpenDialog(win!, { properties: ['openDirectory', 'createDirectory'] })
+    const r = await dialog.showOpenDialog(win!, {
+      properties: ['openDirectory', 'createDirectory']
+    })
     return r.canceled || !r.filePaths.length ? null : r.filePaths[0]
   })
   ipcMain.handle('file:getPathForFile', (_, file: File) => {
@@ -227,6 +325,8 @@ export function registerIpc(): void {
     // 任务栏跳转列表里的分类名/任务描述是本地化文案，最近文档也来自设置：
     // 换语言或最近列表变化（含用户在界面上「清空最近」）时顺手重建
     if (partial.language || partial.recentFiles) taskbar.refreshJumpList()
+    // 原生菜单也是本地化文案：换语言必须**立刻重建**，否则要重启才生效（用户按 Alt 看到的还是旧语言）
+    if (partial.language) installMenu()
     // 用户刚打开「自动检查更新」时立刻查一次，否则要等下次启动，像开关没反应
     onSettingsChanged(partial)
     return merged
@@ -334,12 +434,30 @@ export function registerIpc(): void {
   })
 
   // ── 草稿 ──
-  ipcMain.handle('drafts:save', (_, key: string, content: string, p: string | null) =>
-    drafts.saveDraft(key, content, p)
-  )
+  ipcMain.handle('drafts:save', (event, key: string, content: string, p: string | null) => {
+    // 落上「是哪个窗口实例写的」：槽位号会被复用，只有 uid 答得准「这格草稿是不是我的」
+    const win = BrowserWindow.fromWebContents(event.sender)
+    return drafts.saveDraft(key, content, p, win ? slots.uidOf(win.id) : null)
+  })
   ipcMain.handle('drafts:load', (_, key: string) => drafts.loadDraft(key))
   ipcMain.handle('drafts:remove', (_, key: string) => drafts.removeDraft(key))
-  ipcMain.handle('drafts:hasUntitled', () => drafts.loadDraft('untitled'))
+  /**
+   * 本窗口该用的未命名草稿。两种来源（见 main/drafts.ts）：
+   *  1. 我自己上次写的那份（uid 相同，reload 不丢内容）→ 任何窗口都给；
+   *  2. 「无主草稿」（写它的窗口已经不在 / 上一次运行留下的）→ **只有启动窗口**认领。
+   * Ctrl+N / 新建窗口是用户明确要一篇空白，冒出「检测到上次未保存的内容」是错的（实测踩过）。
+   */
+  ipcMain.handle('drafts:untitledDraft', (event) => {
+    const win = BrowserWindow.fromWebContents(event.sender)
+    if (!win) return null
+    return drafts.takeUntitledDraft({
+      ownKey: untitledDraftKey(slots.slotOf(win.id)),
+      myUid: slots.uidOf(win.id),
+      liveUids: slots.liveUids(),
+      liveSlots: slots.liveSlots(),
+      mayClaimOrphan: slots.mayClaimUntitledDraft(win.id)
+    })
+  })
 
   // ── 导出 ──
   ipcMain.handle('export:pdf', (_, payload: ExportPayload, s: AppSettings['export']['pdf']) =>
