@@ -1,6 +1,9 @@
 // 必须在任何会（传递）导入 node:sqlite 的模块之前加载，以屏蔽其实验性警告
 import './devProfile'
 import './suppressWarnings'
+// 单实例锁：抢不到锁的进程在这里就退出了。**必须**排在会读 userData 的模块（./menu、./ipc
+// → services/database：`db` 是模块级 new）之前，理由见 singleInstance.ts 的文件头。
+import './singleInstance'
 import { app, shell, BrowserWindow, nativeTheme, protocol, net, ipcMain, screen } from 'electron'
 import { join, resolve } from 'path'
 import { randomUUID } from 'crypto'
@@ -33,8 +36,9 @@ protocol.registerSchemesAsPrivileged([
   }
 ])
 
-// 应用名 / 应用标识（AppUserModelID）
-app.setName('Lumin')
+// 应用标识（AppUserModelID）。
+// 应用名 `app.setName('Lumin')` 在 singleInstance.ts 里设置：它必须早于单实例锁与 userData 的
+// 首次读取，只有那个模块的求值顺序能保证这一点（见该文件头）。
 // 不用 electronApp.setAppUserModelId()：它在开发态会把标识设成 process.execPath，
 // 于是 Windows 把窗口当成 electron.exe（右键菜单第一项显示「Electron」，点它启动无参数的
 // electron.exe）。标识必须由我们自己的 appId() 给，并且配套写一条开始菜单快捷方式，详见
@@ -46,10 +50,10 @@ if (process.env.LUMIN_DEBUG_PORT) {
   app.commandLine.appendSwitch('remote-debugging-port', process.env.LUMIN_DEBUG_PORT)
 }
 
-// 单实例
-if (!app.requestSingleInstanceLock()) {
-  app.quit()
-}
+// 单实例锁在 ./singleInstance 里完成（import 时即求值）：抢不到锁的进程在那里就已经 app.exit，
+// 因此下面这些启动逻辑（IPC 注册、会话恢复、窗口创建）只会被**首个实例**执行。
+// 对比：写成 `if (!app.requestSingleInstanceLock()) app.quit()` 是**不够**的 —— quit() 在 ready
+// 前只是标记，whenReady 回调照跑，第二个实例仍会开库/建窗/抢 GPU 缓存（详见 singleInstance.ts）。
 
 // ─── 会话恢复：窗口 ↔ 槽位 归属（「整体退出 vs 单独关窗」的判定在 services/session）──
 /** window.id → 会话槽位 */
