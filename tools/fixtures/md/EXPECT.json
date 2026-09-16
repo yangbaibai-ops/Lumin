@@ -1,0 +1,123 @@
+{
+  "$comment": [
+    "Markdown 往返保真的预期分级（tools/_verify-md-fidelity.js 读它）。",
+    "class: exact = 打开→动一下→保存字节不变；normalized = 命中文档化的保义规则（tools/lib/md-fidelity.js 的 RULES）；lossy = 内容真变了，必须写明 why 与修法。",
+    "实际比这里差 = FAIL（回归）；实际比这里好 = PASS 但会在输出里提示「可收紧」；lossy 且实际也是 lossy = SKIP（已知缺口，不算失败也不算通过）。"
+  ],
+  "headings-atx.md": {
+    "class": "exact"
+  },
+  "headings-edge.md": {
+    "class": "normalized",
+    "why": "ATX 收尾 # 与多余空格按规则 4 归一"
+  },
+  "headings-setext.md": {
+    "class": "normalized",
+    "why": "Setext 标题转 ATX（规则 5）"
+  },
+  "paragraph-breaks.md": {
+    "class": "normalized",
+    "why": "段内软换行合并 + 硬换行两种写法归一（规则 2/17）"
+  },
+  "emphasis.md": {
+    "class": "normalized",
+    "why": "强调标记 __/_ 归一为 **/*（规则 13）"
+  },
+  "escapes.md": {
+    "class": "exact",
+    "why": "反斜杠转义原样往返（本轮修好）：parse.setup 替换 markdown-it 的 inline escape 规则 → 渲染成 data-md-escape 的 span → mdEscape mark（escape:false）逐字写回"
+  },
+  "lists-unordered.md": {
+    "class": "normalized",
+    "why": "无序列表标记已保留（-/*/+ 不再被抹平）；松散项之间的空行按规则 18 压缩"
+  },
+  "lists-ordered.md": {
+    "class": "normalized",
+    "why": "有序列表标记 ) 归一为 .（规则 7）"
+  },
+  "lists-adjacent-ordered.md": {
+    "class": "normalized",
+    "why": "CommonMark 语义使然（本轮改为规范化规则 19）：空行**不结束**有序列表 —— `1./2./3.` + 空行 + `5./6.` 是**同一个**松散列表，渲染序号由位置决定（原样与保存后都是 1..5），所以编号按位置重算；列表**首项**编号有语义（`<ol start>`）必须保留。空行在同一个列表内只影响整表松紧，也就不参与比对。"
+  },
+  "task-lists.md": {
+    "class": "exact"
+  },
+  "task-lists-ordered.md": {
+    "class": "exact",
+    "why": "有序任务列表原样往返（本轮修好）：taskList 新增 `ordered` 属性（解析时按 `<ol>`/`<ul>` 标签记住，序列化时有序写 `1. `/`2. `），上游的任务列表序列化器直接复用无序列表那份、永远是 `- ` —— 列表类型从有序变无序（渲染从数字变圆点）是实打实的结构变化。"
+  },
+  "blockquote.md": {
+    "class": "exact"
+  },
+  "thematic-break.md": {
+    "class": "normalized",
+    "why": "分割线归一为 ---（规则 9）"
+  },
+  "code-fence.md": {
+    "class": "normalized",
+    "why": "~~~ 围栏归一为 ```；内容含 ``` 时围栏自动加长（不再截断）"
+  },
+  "code-indented.md": {
+    "class": "normalized",
+    "why": "缩进代码块与无 info 围栏等价（规则 12）"
+  },
+  "table.md": {
+    "class": "normalized",
+    "why": "列对齐与单元格内转义竖线已修好（本轮）：解析侧 markdown-it → 单元格 align 属性 → 序列化时按各列表头还原 `:---`/`:---:`/`---:`，单元格内容渲染后转义 `|`（不转义会被当成列分隔符，行结构直接坏掉）。仍属 normalized 的只是紧凑写法 `|x|y|` 的空白归一（规则 18）。"
+  },
+  "links.md": {
+    "class": "normalized",
+    "why": "引用式链接展开为行内链接 + 裸 URL 加尖括号 + 中文路径百分号编码（规则 16/14）"
+  },
+  "images.md": {
+    "class": "exact"
+  },
+  "images-inline.md": {
+    "class": "exact",
+    "why": "行内图片原样往返（本轮修好）：图片从**块级节点**改成行内节点 —— Markdown 的 `![alt](src)` 本来就是行内语法，做成块级时段落会被拆成「文字 / 图片 / 文字」三段。独立成段的图片由 CSS 保持块级观感（`p > img:only-child`），序列化仍逐字节一致。"
+  },
+  "images-linked.md": {
+    "class": "exact",
+    "why": "链接包住的图片原样往返（本轮修好）：图片是行内节点后，外层链接可以正常挂在它上面（块级节点挂不了 mark，外链整个丢）。"
+  },
+  "html-inline.md": {
+    "class": "exact",
+    "why": "行内/块级 HTML 原样保留（本轮修好）：`parse.setup` 覆盖 markdown-it 的 html_inline / html_block 渲染规则 → 行内的包成 <span data-md-html> 由 MdHtml mark（escape:false）逐字写回，块级的包成 <pre data-md-htmlblock> 由 HtmlBlock 原子节点原样写回。任务列表插件**生成**的复选框 token（`<input class=\"task-list-item-checkbox\">`）例外放行，否则会被当用户写的 HTML 留下来。WYSIWYG 里按源码显示（淡色等宽），真渲染 HTML 是另一个功能。"
+  },
+  "entities.md": {
+    "class": "normalized",
+    "why": "HTML 实体还原为字符（规则 15）"
+  },
+  "cjk.md": {
+    "class": "exact"
+  },
+  "math.md": {
+    "class": "normalized",
+    "why": "文本往返已保义（`$$ … $$` 的行内/多行写法归一，公式里的反斜杠不再被转义）。注意：应用**没有公式渲染**（KaTeX 只用在导出 CSS，没有数学节点）—— 那是功能缺口不是保真缺口。"
+  },
+  "mermaid.md": {
+    "class": "exact"
+  },
+  "toc.md": {
+    "class": "exact"
+  },
+  "frontmatter.md": {
+    "class": "exact",
+    "why": "YAML front matter 原样往返（本轮修好）：markdown-it block 规则只在文档最开头认领 `---…---`（shared/frontmatter.ts 的保守判定：必须有顶层 key，否则按 CommonMark 的分割线处理）→ 渲染成 <pre data-md-frontmatter> → frontmatter 节点原样写回。WYSIWYG 里只读可见，改 YAML 走源码模式。"
+  },
+  "trailing-blank.md": {
+    "class": "normalized",
+    "why": "连续空行压缩 + 文末补单个换行（规则 18）"
+  },
+  "unicode-special.md": {
+    "class": "exact"
+  },
+  "mixed-doc.md": {
+    "class": "normalized",
+    "why": "Setext h1 转 ATX + 缩进代码转围栏 + 表格空白归一"
+  },
+  "nested-styles.md": {
+    "class": "exact",
+    "why": "嵌套样式原样往返（本轮修好）：① `mdStyle` 的样式从单个值改成**集合**（`styles: StyleKind[]`，PM 里同一种 mark 只能挂一个，嵌套必须靠集合）；② 标记物化改成按**样式栈**开关（前后两段样式集合取公共前缀不动，只开关差集），于是写出 `**粗体里的 `行内代码` 应该整段加粗**` 而不是外层提前合上的孤儿标记；③ 行内代码的遗留 mark 原本 `excludes: '_'`（排斥一切），解析时会把外层粗体丢掉，现已放开。"
+  }
+}
