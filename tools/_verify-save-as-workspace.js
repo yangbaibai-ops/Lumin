@@ -9,7 +9,7 @@
 //   ② 运行时跑一遍「改路径 → save() → syncWorkspaceToPath」的等价序列（写真实文件）；
 //   ③ 静态核对 saveAs() 在保存成功后确实调用了它。
 //
-// 跑法：独立 userData 实例（tools/_isolated-instance.ps1），不碰用户数据。
+// 跑法：独立 userData 实例（tools/start-isolated.ps1），不碰用户数据。
 const fs = require('fs')
 const os = require('os')
 const path = require('path')
@@ -60,8 +60,8 @@ function connect(url) {
 const SETUP = `(() => {
   const app = document.querySelector('#app')?.__vue_app__
   if (!app) return 'no-app'
-  const sym = Object.getOwnPropertySymbols(app._context.provides).find((s) => String(s) === 'Symbol(pinia)')
-  const pinia = app._context.provides[sym] ?? Object.getOwnPropertySymbols(app._context.provides).map((s) => app._context.provides[s]).find((v) => v && typeof v === "object" && v._s instanceof Map) ?? Object.getOwnPropertySymbols(app._context.provides).map((s) => app._context.provides[s]).find((v) => v && typeof v === "object" && v._s instanceof Map)
+  const sym = Object.getOwnPropertySymbols(app._context.provides).find((s) => { const p = app._context.provides[s]; return !!p && typeof p === 'object' && p._s instanceof Map })
+  const pinia = app._context.provides[sym]
   window.__S = { files: () => pinia._s.get('files'), ui: () => pinia._s.get('ui'), app }
   return 'ok'
 })()`

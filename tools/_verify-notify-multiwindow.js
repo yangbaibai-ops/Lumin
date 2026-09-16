@@ -54,8 +54,8 @@ function connect(url) {
 const SETUP_VT = `(() => {
   const app = document.querySelector('#app')?.__vue_app__
   if (!app) return 'no-app'
-  const sym = Object.getOwnPropertySymbols(app._context.provides).find((s) => String(s) === 'Symbol(pinia)')
-  const pinia = app._context.provides[sym] ?? Object.getOwnPropertySymbols(app._context.provides).map((s) => app._context.provides[s]).find((v) => v && typeof v === "object" && v._s instanceof Map) ?? Object.getOwnPropertySymbols(app._context.provides).map((s) => app._context.provides[s]).find((v) => v && typeof v === "object" && v._s instanceof Map)
+  const sym = Object.getOwnPropertySymbols(app._context.provides).find((s) => { const p = app._context.provides[s]; return !!p && typeof p === 'object' && p._s instanceof Map })
+  const pinia = app._context.provides[sym]
   window.__vt = { ui: () => pinia._s.get('ui'), notif: () => pinia._s.get('notifications') }
   return 'ok'
 })()`
@@ -78,7 +78,7 @@ function dbRows(title) {
 }
 
 async function pages() {
-  return (await (await fetch(CDP)).json()).filter((t) => t.type === 'page' && t.url.includes('5173'))
+  return (await (await fetch(CDP)).json()).filter((t) => t.type === 'page' && /index\.html|5173/.test(t.url))
 }
 
 /** 用「id 集合差」找出新开的窗口（不依赖顺序，也不碰已有窗口） */

@@ -10,8 +10,8 @@ async function ev(expression) { const r = await send('Runtime.evaluate', { expre
 const STATE = `(() => {
   const app = document.querySelector('#app')?.__vue_app__
   const prov = app?._context.provides
-  const sym = Object.getOwnPropertySymbols(prov).find((s) => String(s) === 'Symbol(pinia)')
-  const pinia = (sym ? prov[sym] : null) ?? Object.getOwnPropertySymbols(prov).map((s) => prov[s]).find((v) => v && typeof v === "object" && v._s instanceof Map)
+  const sym = Object.getOwnPropertySymbols(prov).find((s) => { const p = prov[s]; return !!p && typeof p === 'object' && p._s instanceof Map })
+  const pinia = (sym ? prov[sym] : null)
   const html = document.documentElement
   return JSON.stringify({
     themeClass: [...html.classList].find((c) => c.startsWith('theme-')),
@@ -31,8 +31,8 @@ async function main() {
   await ev(`(() => {
     const app = document.querySelector('#app')?.__vue_app__
     const prov = app?._context.provides
-    const sym = Object.getOwnPropertySymbols(prov).find((s) => String(s) === 'Symbol(pinia)')
-    const pinia = (sym ? prov[sym] : null) ?? Object.getOwnPropertySymbols(prov).map((s) => prov[s]).find((v) => v && typeof v === "object" && v._s instanceof Map)
+    const sym = Object.getOwnPropertySymbols(prov).find((s) => { const p = prov[s]; return !!p && typeof p === 'object' && p._s instanceof Map })
+    const pinia = (sym ? prov[sym] : null)
     window.__vt = { settings: () => pinia._s.get('settings') }
     return 'OK'
   })()`)

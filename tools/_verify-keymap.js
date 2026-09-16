@@ -60,8 +60,8 @@ function connect(url) {
 const SETUP = `(() => {
   const app = document.querySelector('#app')?.__vue_app__
   if (!app) return 'no-app'
-  const sym = Object.getOwnPropertySymbols(app._context.provides).find((s) => String(s) === 'Symbol(pinia)')
-  const pinia = app._context.provides[sym] ?? Object.getOwnPropertySymbols(app._context.provides).map((s) => app._context.provides[s]).find((v) => v && typeof v === "object" && v._s instanceof Map) ?? Object.getOwnPropertySymbols(app._context.provides).map((s) => app._context.provides[s]).find((v) => v && typeof v === "object" && v._s instanceof Map)
+  const sym = Object.getOwnPropertySymbols(app._context.provides).find((s) => { const p = app._context.provides[s]; return !!p && typeof p === 'object' && p._s instanceof Map })
+  const pinia = app._context.provides[sym]
   window.__K = {
     files: () => pinia._s.get('files'),
     ui: () => pinia._s.get('ui'),
@@ -262,18 +262,40 @@ const resolvedKeys = (w, id) =>
     c('default-global-search-fires', searchOpen === true, String(searchOpen))
     await sleep(300)
 
-    // ── C. Ctrl+N 只创建一份（原生菜单不再自带 accelerator，避免原生 + 渲染层各触发一次） ──
-    // 先关掉文档：夹具经编辑器往返后可能被判为「有未保存改动」，那样 Ctrl+N 会（正确地）
-    // 先弹确认框而不建文件，测的就不是「只触发一次」了。
+    // ── C. Ctrl+N 只触发一次（原生菜单不再自带 accelerator，避免原生 + 渲染层各触发一次） ──
+    // 语义（§4.47）：Ctrl+N = **新窗口 + 工作区不变 + 未命名文档**（不落盘），
+    // 所以「只触发一次」用**窗口数**判定 —— 真触发两次就会多出两个窗口。
     await w1.ev(`(() => { window.__K.files().close(); return 'ok' })()`)
     await sleep(600)
-    const beforeFiles = fs.readdirSync(F).length
+    const pagesBeforeC = (await pages()).length
     await pressVerified(w1, 'Ctrl+N')
-    await sleep(1500)
-    const afterFiles = fs.readdirSync(F).length
+    await sleep(2200)
+    const freshC = (await pages()).filter((p) => !seen.has(p.id))
     const keyLogN = JSON.parse(await w1.ev(`JSON.stringify(window.__keyLog)`))
-    console.log('CTRL-N ' + JSON.stringify({ beforeFiles, afterFiles, keyLogN }))
-    c('new-doc-fires-exactly-once', afterFiles === beforeFiles + 1, `files ${beforeFiles} -> ${afterFiles} keylog=${JSON.stringify(keyLogN)}`)
+    console.log('CTRL-N ' + JSON.stringify({ pagesBeforeC, after: (await pages()).length, fresh: freshC.length, keyLogN }))
+    c(
+      'new-doc-fires-exactly-once',
+      freshC.length === 1,
+      `windows ${pagesBeforeC} -> ${(await pages()).length} keylog=${JSON.stringify(keyLogN)}`
+    )
+    if (freshC.length) {
+      // 新窗口：同一个工作区 + 未命名文档（磁盘上不产生文件）
+      const nw = await attach(freshC[0])
+      const ns = JSON.parse(
+        await nw.ev(
+          `JSON.stringify({ root: window.__K.files().root ?? null, doc: window.__K.files().current?.path ?? null, name: window.__K.files().current?.name ?? null })`
+        )
+      )
+      c(
+        'ctrl-n-new-window-same-folder-untitled',
+        ns.root === F && ns.doc === null && /^Untitled-\d+\.md$/.test(String(ns.name)),
+        JSON.stringify(ns)
+      )
+      c('ctrl-n-creates-no-file', fs.readdirSync(F).length === 1, JSON.stringify(fs.readdirSync(F)))
+      await nw.send('Page.close').catch(() => {})
+      nw.ws.close()
+      await sleep(1300)
+    }
     // 恢复：重新打开夹具文档，后续用例继续在同一窗口上跑
     await w1.ev(`(async () => { const f = window.__K.files(); await f.setRoot(${JSON.stringify(F)}); await f.openPath(${JSON.stringify(path.join(F, 'k.md'))}); return 'ok' })()`)
     await sleep(900)
@@ -440,14 +462,17 @@ const resolvedKeys = (w, id) =>
     )
     c('recorder-enters-recording', recording.recording === true && recording.hint === true, JSON.stringify(recording))
 
-    // 录制期间：Ctrl+N 不应真的新建文档（全局服务让行）
+    // 录制期间：Ctrl+N 不应真的执行（全局服务让行）。§4.47 之后它的「执行」= 多一个窗口，
+    // 所以窗口数一并断言（旧断言只看工作区文件数，已随语义变化调整）。
     const filesBefore = fs.readdirSync(F).length
+    const winBefore = (await pages()).length
     const docBefore = await w1.ev(`window.__K.files().current?.path ?? null`)
     await pressVerified(w1, 'Ctrl+N')
-    await sleep(800)
+    await sleep(900)
     const filesAfter = fs.readdirSync(F).length
+    const winAfter = (await pages()).length
     const docAfter = await w1.ev(`window.__K.files().current?.path ?? null`)
-    c('recording-swallows-global-keys', filesAfter === filesBefore && docAfter === docBefore, JSON.stringify({ files: [filesBefore, filesAfter], doc: [docBefore, docAfter] }))
+    c('recording-swallows-global-keys', filesAfter === filesBefore && docAfter === docBefore && winAfter === winBefore, JSON.stringify({ files: [filesBefore, filesAfter], doc: [docBefore, docAfter], windows: [winBefore, winAfter] }))
     // 而这次按键已经被录制为 sidebar 的新键
     const recorded = JSON.parse(await resolvedKeys(w1, 'view.toggleSidebar'))
     c('recorder-captures-keys', recorded.keys === 'Ctrl+N' && recorded.customized === true, JSON.stringify(recorded))

@@ -32,7 +32,7 @@ const STATE = `(() => {
 
 async function main() {
   const targets = await (await fetch(CDP)).json()
-  const mainPage = targets.find((t) => t.type === 'page' && t.url.includes('5173'))
+  const mainPage = targets.find((t) => t.type === 'page' && /index\.html|5173/.test(t.url))
   const main = connect(mainPage.webSocketDebuggerUrl)
   await main.ready
   await main.send('Page.enable')
@@ -41,7 +41,7 @@ async function main() {
   for (let i = 0; i < 60; i++) {
     await sleep(400)
     const list = await (await fetch(CDP)).json()
-    const pages = list.filter((t) => t.type === 'page' && t.url.includes('5173'))
+    const pages = list.filter((t) => t.type === 'page' && /index\.html|5173/.test(t.url))
     if (pages.length >= 2) { pageB = pages.find((p) => p.id !== mainPage.id); break }
   }
   if (!pageB) { console.log('SKIP: 第二个窗口未出现'); main.ws.close(); return }
@@ -52,8 +52,8 @@ async function main() {
   for (let i = 0; i < 80; i++) { await sleep(300); if ((await b.ev(`document.querySelector('#app')?.__vue_app__ ? 'y' : 'n'`)) === 'y') break }
   await b.ev(`(() => {
     const app = document.querySelector('#app').__vue_app__
-    const sym = Object.getOwnPropertySymbols(app._context.provides).find((s) => String(s) === 'Symbol(pinia)')
-    const pinia = app._context.provides[sym] ?? Object.getOwnPropertySymbols(app._context.provides).map((s) => app._context.provides[s]).find((v) => v && typeof v === "object" && v._s instanceof Map) ?? Object.getOwnPropertySymbols(app._context.provides).map((s) => app._context.provides[s]).find((v) => v && typeof v === "object" && v._s instanceof Map)
+    const sym = Object.getOwnPropertySymbols(app._context.provides).find((s) => { const p = app._context.provides[s]; return !!p && typeof p === 'object' && p._s instanceof Map })
+    const pinia = app._context.provides[sym]
     window.__vt = { files: () => pinia._s.get('files'), ed: () => pinia._s.get('editor')?.instance ?? null, menu: () => pinia._s.get('editorMenu') }
     return 'ok'
   })()`)
@@ -115,7 +115,7 @@ async function main() {
   console.log('C → ' + cOut)
   c('menu-paste-html', cOut.includes('⟦link:https://html.example.com'), String(cOut))
 
-  await b.ev(`(async () => { const f = window.__vt.files(); await f.close(); await window.luminAPI.drafts.remove('untitled'); return 'ok' })()`)
+  await b.ev(`(async () => { const f = window.__vt.files(); await f.close(); await window.luminAPI.drafts.remove('untitled-' + (window.luminAPI.app.sessionSlot ?? 0)); return 'ok' })()`)
   console.log(results.join('\n'))
   await b.send('Page.close').catch(() => {})
   await sleep(400)

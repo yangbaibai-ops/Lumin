@@ -46,7 +46,7 @@ const LINKS = `(() => {
 
 async function main() {
   const targets = await (await fetch(CDP)).json()
-  let page = targets.find((t) => t.type === 'page' && t.url.includes('5173'))
+  let page = targets.find((t) => t.type === 'page' && /index\.html|5173/.test(t.url))
   if (!page) { console.log('NO-APP-PAGE'); return }
   // NEW_WINDOW=1：在当前 app 里另开一个窗口跑验收，完全不碰用户窗口里的文档
   // （本项目的验收会临时切到未命名缓冲区，对正在编辑的用户文档是有侵入的）
@@ -63,7 +63,7 @@ async function main() {
     for (let i = 0; i < 60; i++) {
       await sleep(400)
       const list = await (await fetch(CDP)).json()
-      const pages = list.filter((t) => t.type === 'page' && t.url.includes('5173'))
+      const pages = list.filter((t) => t.type === 'page' && /index\.html|5173/.test(t.url))
       if (pages.length >= 2) { page = pages.find((p) => p.id !== mainId) ?? page; tempWindow = page; break }
     }
     opener.close()
@@ -79,8 +79,8 @@ async function main() {
 
   await ev(`(() => {
     const app = document.querySelector('#app').__vue_app__
-    const sym = Object.getOwnPropertySymbols(app._context.provides).find((s) => String(s) === 'Symbol(pinia)')
-    const pinia = app._context.provides[sym] ?? Object.getOwnPropertySymbols(app._context.provides).map((s) => app._context.provides[s]).find((v) => v && typeof v === "object" && v._s instanceof Map) ?? Object.getOwnPropertySymbols(app._context.provides).map((s) => app._context.provides[s]).find((v) => v && typeof v === "object" && v._s instanceof Map)
+    const sym = Object.getOwnPropertySymbols(app._context.provides).find((s) => { const p = app._context.provides[s]; return !!p && typeof p === 'object' && p._s instanceof Map })
+    const pinia = app._context.provides[sym]
     window.__vt = { ui: () => pinia._s.get('ui'), files: () => pinia._s.get('files'), ed: () => pinia._s.get('editor')?.instance ?? null }
     return 'ok'
   })()`)
@@ -245,7 +245,7 @@ async function main() {
     const f = window.__vt.files()
     await f.close()
     ${before.path ? `await f.openPath(${JSON.stringify(before.path)})` : ''}
-    await window.luminAPI.drafts.remove('untitled')
+    await window.luminAPI.drafts.remove('untitled-' + (window.luminAPI.app.sessionSlot ?? 0))
     return 'ok'
   })()`)
   await sleep(500)

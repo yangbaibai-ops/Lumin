@@ -9,7 +9,7 @@
 //  F. i18n：三个语言文件里 key 齐全；切到 en-US 菜单标题跟着变
 //  G. 状态栏显示当前编码
 //
-// 用法：先跑 tools/_isolated-instance.ps1（可加 -NoDevServer；本套件不 import /src/...，两种都行）
+// 用法：先跑 tools/start-isolated.ps1；本套件不 import /src/...，两种都行
 const fs = require('fs')
 const os = require('os')
 const path = require('path')
@@ -102,7 +102,7 @@ const SETUP = `(() => {
   const app = document.querySelector('#app')?.__vue_app__
   if (!app) return 'no-app'
   const prov = app._context.provides
-  const sym = Object.getOwnPropertySymbols(prov).find((s) => String(s) === 'Symbol(pinia)')
+  const sym = Object.getOwnPropertySymbols(prov).find((s) => { const p = prov[s]; return !!p && typeof p === 'object' && p._s instanceof Map })
   const pinia = (sym ? prov[sym] : null) ?? Object.getOwnPropertySymbols(prov).map((s) => prov[s]).find((v) => v && typeof v === 'object' && v._s instanceof Map)
   if (!pinia) return 'no-pinia'
   window.__E = {
@@ -115,12 +115,21 @@ const SETUP = `(() => {
 
 ;(async () => {
   const results = []
-  const c = (n, cond, extra) =>
-    results.push((cond ? 'PASS' : 'FAIL') + ' ' + n + (extra ? ' | ' + extra : ''))
+  /**
+   * 记一条结果。`extra` 以 `SKIP` 开头 = 这项在当前构建下**测不了**而不是失败：
+   * 典型情况是「生产构建里拿不到组件 setupState 的内部状态」——同一行为都有 DOM 断言
+   * （`dom-*` 项）覆盖，把它们算成 FAIL 会让矩阵长期红着、真回归反而被淹没。
+   */
+  const c = (n, cond, extra) => {
+    const skipped = typeof extra === 'string' && extra.startsWith('SKIP')
+    results.push(
+      (skipped ? 'SKIP' : cond ? 'PASS' : 'FAIL') + ' ' + n + (extra ? ' | ' + extra : '')
+    )
+  }
 
   const pages = (await get('/json/list')).filter((t) => t.type === 'page')
   if (!pages.length) {
-    console.log('SKIP: 没有可用窗口（先跑 tools/_isolated-instance.ps1）')
+    console.log('SKIP: 没有可用窗口（先跑 tools/start-isolated.ps1）')
     process.exit(2)
   }
   const w = connect(pages[0].webSocketDebuggerUrl)
@@ -302,6 +311,12 @@ const SETUP = `(() => {
     )
     // 把夹具还原成「带 BOM」原样：后面 C 段还要验「保存保留 BOM」
     fs.writeFileSync(F.utf8bom, Buffer.concat([Buffer.from([0xef, 0xbb, 0xbf]), Buffer.from(T_UTF8, 'utf-8')]))
+    // 记录也要一起还原：上面两次**显式**试读（windows-1252 / utf-8）会把每文件编码记录改掉，
+    // 而 Wave 2 尾巴之后「该文件的记录 > 设置里的默认编码」——C 段依赖它被当成 BOM 文件打开
+    await w.ev(
+      `(async () => { await window.luminAPI.file.rememberEncoding(${JSON.stringify(F.utf8bom)}, 'utf-8-bom'); return 'ok' })()`
+    )
+    await sleep(200)
 
     // ── B. 重新打开（乱码 → 正确，且文档保持干净）──
     const b1 = await open(F.gbk) // 先自动打开（正确）
@@ -421,12 +436,26 @@ const SETUP = `(() => {
       `(() => { window.__E.settings().set('defaultEncoding', 'windows-1252'); return 'ok' })()`
     )
     await sleep(700)
+    // 上一行已经把这个文件的编码「记」下来了（gbk）。Wave 2 尾巴之后的优先级是：
+    //   **显式指定 > 该文件的记录（对"软默认"生效） > 自动判定链**
+    // 所以这里先证明「记录优先」——同一份字节在默认编码改成 1252 后仍然按 gbk 解出来；
+    // 再清掉记录，证明「没有记录时，设置里的默认编码确实生效」。
     const d2 = await open(F.ambig)
     console.log('D-1252 ' + JSON.stringify({ enc: d2.encoding, content: d2.content }))
     c(
+      'per-file-record-beats-default-setting',
+      d2.encoding === 'gbk' && d2.content === d1.content,
+      JSON.stringify({ enc: d2.encoding, content: d2.content })
+    )
+
+    await w.ev(`(async () => { await window.luminAPI.db.deleteDocument(${JSON.stringify(F.ambig)}) ; return 'ok' })()`)
+    await sleep(300)
+    const d3 = await open(F.ambig)
+    console.log('D-1252-fresh ' + JSON.stringify({ enc: d3.encoding, content: d3.content }))
+    c(
       'default-encoding-1252-applies',
-      d2.content === AMBIG_1252 && d2.encoding === 'windows-1252' && d2.content !== d1.content,
-      JSON.stringify({ content: d2.content })
+      d3.content === AMBIG_1252 && d3.encoding === 'windows-1252' && d3.content !== d1.content,
+      JSON.stringify({ enc: d3.encoding, content: d3.content })
     )
 
     // 设置与每文件记忆都要真的落库（node:sqlite 直读隔离实例的 DB）
@@ -437,13 +466,21 @@ const SETUP = `(() => {
       return row ? row.value : null
     }
     const stored = JSON.parse(kv('settings') ?? '{}')
-    const memory = JSON.parse(kv('fileEncodings') ?? '{}')
+    // Wave 2 起「每文件编码记忆」的**权威来源是 documents 表**（跟着文件走、跨窗口一致），
+    // kv 的 fileEncodings 只留作「文件还没进索引」时兜底。所以两条都要查。
+    const kvMemory = JSON.parse(kv('fileEncodings') ?? '{}')
+    const docEncodings = db.prepare('SELECT path, encoding FROM documents').all()
     db.close()
+    const memoryKeys = [
+      ...Object.keys(kvMemory),
+      ...docEncodings.map((r) => String(r.path).toLowerCase())
+    ]
     console.log(
       'D-db ' +
         JSON.stringify({
           defaultEncoding: stored.defaultEncoding,
-          memoryKeys: Object.keys(memory).length
+          kvMemoryKeys: Object.keys(kvMemory).length,
+          docEncodings: docEncodings.length
         })
     )
     c(
@@ -453,9 +490,9 @@ const SETUP = `(() => {
     )
     c(
       'per-file-memory-recorded',
-      Object.keys(memory).some((k) => k.toLowerCase().endsWith('ambiguous.md')) ||
-        Object.keys(memory).some((k) => k.toLowerCase().endsWith('gbk.md')),
-      JSON.stringify(Object.keys(memory).slice(0, 6))
+      memoryKeys.some((k) => k.endsWith('ambiguous.md')) ||
+        memoryKeys.some((k) => k.endsWith('gbk.md')),
+      JSON.stringify(memoryKeys.slice(0, 6))
     )
 
     // ── E. 菜单结构 + 真实点击 ──
@@ -583,12 +620,23 @@ const SETUP = `(() => {
       )
     )
 
+    // 二级浮层必须被**视口内可达**：14 项 ≈ 480px，文件菜单又在上面 —— 只钳 top 会让最后几行
+    // 渲染到窗口外面（用户点不到、自动化点不到）。修法是钳高度 + 内部滚动（TopMenuBar.placeSub）。
+    const clamped = await w.ev(
+      `(() => { const s = document.querySelector('.topmenu-sub'); if (!s) return 'null'; const r = s.getBoundingClientRect(); return JSON.stringify({ bottom: Math.round(r.bottom), inner: window.innerHeight, scrollable: s.scrollHeight > s.clientHeight + 1 }) })()`
+    )
+    console.log('E-clamp ' + clamped)
+    c('submenu-clamped-to-viewport', clamped !== 'null' && JSON.parse(clamped).bottom <= JSON.parse(clamped).inner, clamped)
+
     // 真实点击「Windows-1252」那一行 → 文档编码应随之变化
+    // （先 scrollIntoView：二级可能被钳成可滚动面板，目标行不一定在首屏）
     const clickTarget = JSON.parse(
       await w.ev(
-        `(() => { const sub = document.querySelector('.topmenu-sub'); const b = [...sub.querySelectorAll('button')].find((x) => (x.textContent || '').includes('Windows-1252')); const r = b.getBoundingClientRect(); return JSON.stringify({ x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2) }) })()`
+        `(() => { const sub = document.querySelector('.topmenu-sub'); const b = [...sub.querySelectorAll('button')].find((x) => (x.textContent || '').includes('Windows-1252')); if (!b) return '{"err":"no-item"}'; b.scrollIntoView({ block: 'nearest' }); const r = b.getBoundingClientRect(); return JSON.stringify({ x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2), visible: r.top >= 0 && r.bottom <= window.innerHeight }) })()`
       )
     )
+    console.log('E-target ' + JSON.stringify(clickTarget))
+    c('submenu-item-clickable', clickTarget.visible === true, JSON.stringify(clickTarget))
     await w.send('Input.dispatchMouseEvent', {
       type: 'mouseMoved',
       x: clickTarget.x,
@@ -641,7 +689,7 @@ const SETUP = `(() => {
     ]
     for (const loc of ['zh-CN', 'en-US', 'ru-RU']) {
       const json = JSON.parse(
-        fs.readFileSync(path.join(REPO, 'src/renderer/src/i18n/locales', loc + '.json'), 'utf-8')
+        fs.readFileSync(path.join(REPO, 'src/shared/i18n', loc + '.json'), 'utf-8')
       )
       const missing = KEYS.filter(([g, k]) => !json[g] || json[g][k] === undefined).map(
         ([g, k]) => `${g}.${k}`
@@ -723,7 +771,10 @@ const SETUP = `(() => {
 
   console.log(results.join('\n'))
   const failed = results.filter((r) => r.startsWith('FAIL')).length
-  console.log(`--- ${results.length - failed}/${results.length} PASS`)
+  const skipped = results.filter((r) => r.startsWith('SKIP')).length
+  const considered = results.length - skipped
+  console.log(`TOTAL ${results.length} PASS ${considered - failed} FAIL ${failed} SKIP ${skipped}`)
+  console.log(`--- ${considered - failed}/${considered} PASS`)
   w.ws.close()
   process.exit(failed ? 1 : 0)
 })().catch((e) => {

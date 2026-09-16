@@ -48,7 +48,7 @@ const BTN_TITLE = `(() => { const b = [...document.querySelectorAll('[title]')].
 
 async function main() {
   const targets = await (await fetch(CDP)).json()
-  let page = targets.find((t) => t.type === 'page' && t.url.includes('5173'))
+  let page = targets.find((t) => t.type === 'page' && /index\.html|5173/.test(t.url))
   if (!page) {
     console.log('NO-APP-PAGE')
     return
@@ -80,13 +80,13 @@ async function main() {
       returnByValue: true
     })
     const preexisting = new Set(
-      targets.filter((t) => t.type === 'page' && t.url.includes('5173')).map((t) => t.id)
+      targets.filter((t) => t.type === 'page' && /index\.html|5173/.test(t.url)).map((t) => t.id)
     )
     for (let i = 0; i < 60; i++) {
       await sleep(400)
       const list = await (await fetch(CDP)).json()
       const fresh = list.filter(
-        (t) => t.type === 'page' && t.url.includes('5173') && !preexisting.has(t.id)
+        (t) => t.type === 'page' && /index\.html|5173/.test(t.url) && !preexisting.has(t.id)
       )
       if (fresh.length) {
         page = fresh[fresh.length - 1]

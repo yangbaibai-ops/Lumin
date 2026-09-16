@@ -22,8 +22,8 @@ async function main() {
 
   await ev(`(() => {
     const app = document.querySelector('#app').__vue_app__
-    const sym = Object.getOwnPropertySymbols(app._context.provides).find((s) => String(s) === 'Symbol(pinia)')
-    const pinia = app._context.provides[sym] ?? Object.getOwnPropertySymbols(app._context.provides).map((s) => app._context.provides[s]).find((v) => v && typeof v === "object" && v._s instanceof Map) ?? Object.getOwnPropertySymbols(app._context.provides).map((s) => app._context.provides[s]).find((v) => v && typeof v === "object" && v._s instanceof Map)
+    const sym = Object.getOwnPropertySymbols(app._context.provides).find((s) => { const p = app._context.provides[s]; return !!p && typeof p === 'object' && p._s instanceof Map })
+    const pinia = app._context.provides[sym]
     window.__vt = { pinia, ui: () => pinia._s.get('ui'), files: () => pinia._s.get('files'), ed: () => pinia._s.get('editor')?.instance ?? null }
     return 'ok'
   })()`)
@@ -102,7 +102,7 @@ async function main() {
     const f = window.__vt.files()
     await f.close()
     ${openedBefore.path ? `await f.openPath(${JSON.stringify(openedBefore.path)})` : ''}
-    await window.luminAPI.drafts.remove('untitled')
+    await window.luminAPI.drafts.remove('untitled-' + (window.luminAPI.app.sessionSlot ?? 0))
     return 'ok'
   })()`)
   await sleep(500)

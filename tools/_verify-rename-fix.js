@@ -50,7 +50,7 @@ async function main() {
     results.push((cond ? 'PASS' : 'FAIL') + ' ' + n + (extra ? ' | ' + extra : ''))
 
   const targets = (await (await fetch(CDP)).json()).filter(
-    (t) => t.type === 'page' && t.url.includes('5173')
+    (t) => t.type === 'page' && /index\.html|5173/.test(t.url)
   )
   if (!targets.length) {
     console.log('NO-APP-PAGE')
@@ -86,7 +86,7 @@ async function main() {
   for (let i = 0; i < 60 && !page; i++) {
     await sleep(400)
     const list = (await (await fetch(CDP)).json()).filter(
-      (t) => t.type === 'page' && t.url.includes('5173')
+      (t) => t.type === 'page' && /index\.html|5173/.test(t.url)
     )
     page = list.find((p) => p.id !== opener.id) ?? null
   }

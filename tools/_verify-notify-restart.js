@@ -56,8 +56,8 @@ function connect(url) {
 const SETUP_VT = `(() => {
   const app = document.querySelector('#app')?.__vue_app__
   if (!app) return 'no-app'
-  const sym = Object.getOwnPropertySymbols(app._context.provides).find((s) => String(s) === 'Symbol(pinia)')
-  const pinia = app._context.provides[sym] ?? Object.getOwnPropertySymbols(app._context.provides).map((s) => app._context.provides[s]).find((v) => v && typeof v === "object" && v._s instanceof Map) ?? Object.getOwnPropertySymbols(app._context.provides).map((s) => app._context.provides[s]).find((v) => v && typeof v === "object" && v._s instanceof Map)
+  const sym = Object.getOwnPropertySymbols(app._context.provides).find((s) => { const p = app._context.provides[s]; return !!p && typeof p === 'object' && p._s instanceof Map })
+  const pinia = app._context.provides[sym]
   window.__vt = { ui: () => pinia._s.get('ui'), notif: () => pinia._s.get('notifications'), files: () => pinia._s.get('files') }
   return 'ok'
 })()`
@@ -70,7 +70,7 @@ const SNAP = `(() => JSON.stringify({
 }))()`
 
 const pages = async () =>
-  (await (await fetch(CDP)).json()).filter((t) => t.type === 'page' && t.url.includes('5173'))
+  (await (await fetch(CDP)).json()).filter((t) => t.type === 'page' && /index\.html|5173/.test(t.url))
 
 function dbRows(title) {
   const db = new DatabaseSync(DB, { readOnly: true })
@@ -135,7 +135,7 @@ async function seed() {
   // 先在临时窗口里打开一份已存在的文档：会话跟踪只在「文档/光标变化」时才落盘，
   // 一个完全没动过的空白窗口本来就没有会话可恢复（这是既有语义，不是本次改动）。
   const docOpened = await w.ev(
-    `(async () => { const app = document.querySelector('#app').__vue_app__; const sym = Object.getOwnPropertySymbols(app._context.provides).find((s) => String(s) === 'Symbol(pinia)'); const f = app._context.provides[sym]._s.get('files'); return String(await f.openPath(${JSON.stringify(USER_DOC)})); })()`
+    `(async () => { const app = document.querySelector('#app').__vue_app__; const sym = Object.getOwnPropertySymbols(app._context.provides).find((s) => { const p = app._context.provides[s]; return !!p && typeof p === 'object' && p._s instanceof Map }); const f = app._context.provides[sym]._s.get('files'); return String(await f.openPath(${JSON.stringify(USER_DOC)})); })()`
   )
   await sleep(1800)
   await w.ev(

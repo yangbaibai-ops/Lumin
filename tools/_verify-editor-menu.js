@@ -204,7 +204,7 @@ const MD = [
 
 async function main() {
   const targets = await (await fetch(CDP)).json()
-  let page = targets.find((t) => t.type === 'page' && t.url.includes('5173'))
+  let page = targets.find((t) => t.type === 'page' && /index\.html|5173/.test(t.url))
   if (!page) {
     console.log('NO-APP-PAGE')
     return
@@ -238,13 +238,13 @@ async function main() {
     })
     // 以「窗口 id 集合的差集」判定新窗口：只看数量会在有残留窗口时误判（也可能选到用户窗口）
     const preexisting = new Set(
-      targets.filter((t) => t.type === 'page' && t.url.includes('5173')).map((t) => t.id)
+      targets.filter((t) => t.type === 'page' && /index\.html|5173/.test(t.url)).map((t) => t.id)
     )
     for (let i = 0; i < 60; i++) {
       await sleep(400)
       const list = await (await fetch(CDP)).json()
       const fresh = list.filter(
-        (t) => t.type === 'page' && t.url.includes('5173') && !preexisting.has(t.id)
+        (t) => t.type === 'page' && /index\.html|5173/.test(t.url) && !preexisting.has(t.id)
       )
       if (fresh.length) {
         page = fresh[fresh.length - 1]
@@ -281,8 +281,8 @@ async function main() {
 
   await ev(`(() => {
     const app = document.querySelector('#app').__vue_app__
-    const sym = Object.getOwnPropertySymbols(app._context.provides).find((s) => String(s) === 'Symbol(pinia)')
-    const pinia = app._context.provides[sym] ?? Object.getOwnPropertySymbols(app._context.provides).map((s) => app._context.provides[s]).find((v) => v && typeof v === "object" && v._s instanceof Map) ?? Object.getOwnPropertySymbols(app._context.provides).map((s) => app._context.provides[s]).find((v) => v && typeof v === "object" && v._s instanceof Map)
+    const sym = Object.getOwnPropertySymbols(app._context.provides).find((s) => { const p = app._context.provides[s]; return !!p && typeof p === 'object' && p._s instanceof Map })
+    const pinia = app._context.provides[sym]
     window.__vt = { ui: () => pinia._s.get('ui'), files: () => pinia._s.get('files'), ed: () => pinia._s.get('editor')?.instance ?? null, menu: () => pinia._s.get('editorMenu') }
     return 'ok'
   })()`)
@@ -888,7 +888,7 @@ async function main() {
     const f = window.__vt.files()
     await f.close()
     ${before.path ? `await f.openPath(${JSON.stringify(before.path)})` : ''}
-    await window.luminAPI.drafts.remove('untitled')
+    await window.luminAPI.drafts.remove('untitled-' + (window.luminAPI.app.sessionSlot ?? 0))
     await window.luminAPI.menuUsage.reset()
     window.__vt.menu().usage = {}
     return 'ok'

@@ -32,7 +32,7 @@ async function main() {
     const app = document.querySelector('#app')?.__vue_app__
     if (!app) return 'NO_APP'
     const prov = app._context.provides
-    const sym = Object.getOwnPropertySymbols(prov).find((s) => String(s) === 'Symbol(pinia)')
+    const sym = Object.getOwnPropertySymbols(prov).find((s) => { const p = prov[s]; return !!p && typeof p === 'object' && p._s instanceof Map })
     const pinia = sym ? prov[sym] : null
     if (!pinia) return 'NO_PINIA'
     window.__vt = { pinia, files: () => pinia._s.get('files'), ed: () => pinia._s.get('editor')?.instance ?? null }

@@ -172,7 +172,7 @@ const SETUP = `(() => {
   const app = document.querySelector('#app')?.__vue_app__
   if (!app) return 'no-app'
   const prov = app._context.provides
-  const sym = Object.getOwnPropertySymbols(prov).find((s) => String(s) === 'Symbol(pinia)')
+  const sym = Object.getOwnPropertySymbols(prov).find((s) => { const p = prov[s]; return !!p && typeof p === 'object' && p._s instanceof Map })
   const pinia = (sym ? prov[sym] : null) ?? Object.getOwnPropertySymbols(prov).map((s) => prov[s]).find((v) => v && typeof v === 'object' && v._s instanceof Map)
   if (!pinia) return 'no-pinia'
   window.__PKG = { files: () => pinia._s.get('files'), ui: () => pinia._s.get('ui') }

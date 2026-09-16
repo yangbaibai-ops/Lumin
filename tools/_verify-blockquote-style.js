@@ -37,7 +37,7 @@ const MD = ['# 引用样式验收', '', '> 这是一段引用文本', '> 第二�
 
 async function main() {
   const targets = await (await fetch(CDP)).json()
-  const page = targets.find((t) => t.type === 'page' && t.url.includes('5173'))
+  const page = targets.find((t) => t.type === 'page' && /index\.html|5173/.test(t.url))
   ws = new WebSocket(page.webSocketDebuggerUrl)
   await new Promise((res, rej) => { ws.onopen = res; ws.onerror = rej })
   ws.onmessage = (e) => { const m = JSON.parse(e.data); if (m.id && pending.has(m.id)) { pending.get(m.id)(m); pending.delete(m.id) } }
@@ -50,8 +50,8 @@ async function main() {
 
   await ev(`(() => {
     const app = document.querySelector('#app').__vue_app__
-    const sym = Object.getOwnPropertySymbols(app._context.provides).find((s) => String(s) === 'Symbol(pinia)')
-    const pinia = app._context.provides[sym] ?? Object.getOwnPropertySymbols(app._context.provides).map((s) => app._context.provides[s]).find((v) => v && typeof v === "object" && v._s instanceof Map) ?? Object.getOwnPropertySymbols(app._context.provides).map((s) => app._context.provides[s]).find((v) => v && typeof v === "object" && v._s instanceof Map)
+    const sym = Object.getOwnPropertySymbols(app._context.provides).find((s) => { const p = app._context.provides[s]; return !!p && typeof p === 'object' && p._s instanceof Map })
+    const pinia = app._context.provides[sym]
     window.__vt = { ui: () => pinia._s.get('ui'), files: () => pinia._s.get('files'), ed: () => pinia._s.get('editor')?.instance ?? null }
     return 'ok'
   })()`)
@@ -113,7 +113,7 @@ async function main() {
   c('toggle-still-works', toggled === 2, 'blockquotes=' + toggled)
 
   // 复原
-  await ev(`(async () => { const f = window.__vt.files(); await f.close(); ${before.path ? `await f.openPath(${JSON.stringify(before.path)})` : ''} await window.luminAPI.drafts.remove('untitled'); return 'ok' })()`)
+  await ev(`(async () => { const f = window.__vt.files(); await f.close(); ${before.path ? `await f.openPath(${JSON.stringify(before.path)})` : ''} await window.luminAPI.drafts.remove('untitled-' + (window.luminAPI.app.sessionSlot ?? 0)); return 'ok' })()`)
   await sleep(400)
   const restored = JSON.parse(await ev(`(() => { const f = window.__vt.files(); return JSON.stringify({ path: f.current?.path ?? null, dirty: !!f.dirty }) })()`))
   c('state-restored', restored.path === before.path && restored.dirty === false, JSON.stringify(restored))

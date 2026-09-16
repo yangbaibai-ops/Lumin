@@ -66,7 +66,11 @@ async function attach(page) {
   return { sock, send: s, ev: e }
 }
 const appPages = async () =>
-  (await (await fetch(CDP)).json()).filter((t) => t.type === 'page' && t.url.includes('5173'))
+  (await (await fetch(CDP)).json()).filter(
+    // 认 dev server（5173）与构建产物（out/renderer/index.html）两种页面地址：
+    // 别把地址写死成 5173，那样没 dev server 就整轮跑不了
+    (t) => t.type === 'page' && /index\.html|5173/.test(t.url)
+  )
 
 /** 等一个不在 known 里的新窗口出现 */
 async function waitNewWindow(known, ms = 9000) {
@@ -88,10 +92,9 @@ async function windowState(page) {
     await sleep(300)
   }
   const raw = await o.ev(`(() => {
-    const app = document.querySelector('#app')?.__vue_app__
-    if (!app) return 'null'
-    const sym = Object.getOwnPropertySymbols(app._context.provides).find((s) => String(s) === 'Symbol(pinia)')
-    const f = app._context.provides[sym]._s.get('files')
+    const pinia = ${PINIA}
+    if (!pinia) return 'null'
+    const f = pinia._s.get('files')
     return JSON.stringify({ path: f.current?.path ?? null, root: f.root ?? null })
   })()`)
   o.sock.close()
@@ -122,10 +125,19 @@ async function closeAnyPopover(ev) {
   await sleep(400)
 }
 
-const INJECT = `(() => {  const app = document.querySelector('#app')?.__vue_app__
-  if (!app) return 'NO_APP'
-  const sym = Object.getOwnPropertySymbols(app._context.provides).find((s) => String(s) === 'Symbol(pinia)')
-  const pinia = app._context.provides[sym] ?? Object.getOwnPropertySymbols(app._context.provides).map((s) => app._context.provides[s]).find((v) => v && typeof v === "object" && v._s instanceof Map) ?? Object.getOwnPropertySymbols(app._context.provides).map((s) => app._context.provides[s]).find((v) => v && typeof v === "object" && v._s instanceof Map)
+/** 页面侧取 pinia：**别按 Symbol 名字找**（生产构建会把 symbol 描述压掉，那样只有 dev server
+ *  的页面能命中）；以「provides 里持有 _s Map 的那个对象」为准，与其余套件同一口径 ——
+ *  于是本套件对着 out/ 构建产物也能跑。 */
+const PINIA = `(() => {
+  const app = document.querySelector('#app')?.__vue_app__
+  if (!app) return null
+  const vals = Object.getOwnPropertySymbols(app._context.provides).map((s) => app._context.provides[s])
+  return vals.find((v) => v && typeof v === 'object' && v._s instanceof Map) ?? null
+})()`
+
+const INJECT = `(() => {
+  const pinia = ${PINIA}
+  if (!pinia) return 'NO_PINIA'
   window.__L = {
     files: () => pinia._s.get('files'),
     settings: () => pinia._s.get('settings'),
@@ -139,10 +151,8 @@ async function settle(e, ms = 20000) {
   const end = Date.now() + ms
   while (Date.now() < end) {
     const ok = await e(`(() => {
-      const app = document.querySelector('#app')?.__vue_app__
-      if (!app) return false
-      const sym = Object.getOwnPropertySymbols(app._context.provides).find((s) => String(s) === 'Symbol(pinia)')
-      return app._context.provides[sym]._s.get('ui').booting === false
+      const pinia = ${PINIA}
+      return !!pinia && pinia._s.get('ui').booting === false
     })()`)
     if (ok === true) {
       await e(INJECT)
@@ -173,10 +183,9 @@ async function main() {
   }
   const known = pages.map((p) => p.id)
   const backupRaw = await opener.ev(`(() => {
-    const app = document.querySelector('#app')?.__vue_app__
-    if (!app) return 'null'
-    const sym = Object.getOwnPropertySymbols(app._context.provides).find((s) => String(s) === 'Symbol(pinia)')
-    const s = app._context.provides[sym]._s.get('settings')
+    const pinia = ${PINIA}
+    if (!pinia) return 'null'
+    const s = pinia._s.get('settings')
     return JSON.stringify({
       recentFiles: s.recentFiles,
       pinnedFiles: s.pinnedFiles,
@@ -567,7 +576,7 @@ async function main() {
     console.log('D ' + JSON.stringify(d))
     c(
       'file-menu-has-new',
-      d !== null && d.items.some((x) => x.includes('新建文档')),
+      d !== null && d.items[0] === '新建' && !d.items.includes('新建文档'),
       JSON.stringify(d?.items)
     )
     c(

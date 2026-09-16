@@ -17,7 +17,7 @@ async function main() {
   await send('Page.bringToFront')
 
   // 先确保菜单关闭
-  await ev(`(() => { const app = document.querySelector('#app')?.__vue_app__; const prov = app?._context.provides; const sym = Object.getOwnPropertySymbols(prov).find((s) => String(s) === 'Symbol(pinia)'); const pinia = (sym ? prov[sym] : null) ?? Object.getOwnPropertySymbols(prov).map((s) => prov[s]).find((v) => v && typeof v === "object" && v._s instanceof Map); window.__vt = { pinia, ui: () => pinia._s.get('ui') }; return 'ok' })()`)
+  await ev(`(() => { const app = document.querySelector('#app')?.__vue_app__; const prov = app?._context.provides; const sym = Object.getOwnPropertySymbols(prov).find((s) => { const p = prov[s]; return !!p && typeof p === 'object' && p._s instanceof Map }); const pinia = (sym ? prov[sym] : null); window.__vt = { pinia, ui: () => pinia._s.get('ui') }; return 'ok' })()`)
 
   const closedBefore = await ev(`!document.querySelector('.topmenu-drop')`)
 
@@ -31,7 +31,7 @@ async function main() {
   console.log('topmenu-drop after Alt+F:', dropOpen)
 
   // 关闭（按 Esc 或点击空白）
-  await ev(`(() => { const app = document.querySelector('#app').__vue_app__; const prov = app._context.provides; const sym = Object.getOwnPropertySymbols(prov).find((s) => String(s) === 'Symbol(pinia)'); const pinia = (sym ? prov[sym] : null) ?? Object.getOwnPropertySymbols(prov).map((s) => prov[s]).find((v) => v && typeof v === "object" && v._s instanceof Map); pinia._s.get('ui').toasts = []; return 'ok' })()`)
+  await ev(`(() => { const app = document.querySelector('#app').__vue_app__; const prov = app._context.provides; const sym = Object.getOwnPropertySymbols(prov).find((s) => { const p = prov[s]; return !!p && typeof p === 'object' && p._s instanceof Map }); const pinia = (sym ? prov[sym] : null); pinia._s.get('ui').toasts = []; return 'ok' })()`)
 
   ws.close()
   process.exit(closedBefore === true && dropOpen !== null ? 0 : 1)

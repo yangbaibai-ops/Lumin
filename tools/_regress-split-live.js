@@ -1,66 +1,166 @@
-// 回归：分屏模式 live 同步 + 切换文件（编辑器按 :key 重建）
-const CDP = 'http://127.0.0.1:9222/json'
-let ws
-let id = 0
-const pending = new Map()
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
-function send(method, params) { return new Promise((res) => { const i = ++id; pending.set(i, res); ws.send(JSON.stringify({ id: i, method, params })) }) }
-async function ev(expression) { const r = await send('Runtime.evaluate', { expression, returnByValue: true, awaitPromise: true }); if (r.result && r.result.exceptionDetails) throw new Error('EXC: ' + (r.result.exceptionDetails.exception?.description || r.result.exceptionDetails.text)); return r.result?.result?.value }
-async function clickMode(text) {
-  const p = await ev(`(() => {
-    const el = Array.from(document.querySelectorAll('.mode-seg-btn')).find((b) => (b.textContent || '').trim() === ${JSON.stringify(text)})
-    if (!el) return null
-    const r = el.getBoundingClientRect()
-    return JSON.stringify({ x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2) })
-  })()`)
-  if (!p) throw new Error('NO-BTN ' + text)
-  const g = JSON.parse(p)
-  await send('Input.dispatchMouseEvent', { type: 'mousePressed', x: g.x, y: g.y, button: 'left', clickCount: 1 })
-  await send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: g.x, y: g.y, button: 'left', clickCount: 1 })
-  await sleep(400)
-}
-async function main() {
-  const targets = await (await fetch(CDP)).json()
-  const page = targets.find((t) => t.type === 'page')
-  ws = new WebSocket(page.webSocketDebuggerUrl)
-  await new Promise((res, rej) => { ws.onopen = res; ws.onerror = rej })
-  ws.onmessage = (e) => { const m = JSON.parse(e.data); if (m.id && pending.has(m.id)) { pending.get(m.id)(m); pending.delete(m.id) } }
-  await send('Page.enable'); await send('Page.bringToFront')
-  await ev(`(() => {
-    const app = document.querySelector('#app')?.__vue_app__
-    const prov = app?._context.provides
-    const sym = Object.getOwnPropertySymbols(prov).find((s) => String(s) === 'Symbol(pinia)')
-    const pinia = sym ? prov[sym] : null
-    window.__vt = { pinia, ui: () => pinia._s.get('ui'), files: () => pinia._s.get('files'), ed: () => pinia._s.get('editor')?.instance ?? null }
-    return 'OK'
-  })()`)
-  await ev(`(() => { if (!location.hash.includes('/editor')) location.hash = '#/editor'; return 'ok' })()`)
-  await sleep(600)
-  await ev(`(() => { window.__vt.ui().editorMode = 'wysiwyg'; return 'ok' })()`)
-  await sleep(300)
-  await ev(`(async () => { const files = window.__vt.files(); if (!files.current) await files.openUntitled(); return 'ok' })()`)
-  await ev(`(async () => { for (let i = 0; i < 150 && !window.__vt.ed(); i++) await new Promise((r) => setTimeout(r, 20)); return 'ed' })()`)
-  const results = []
-  const check = (n, c, x) => results.push((c ? 'PASS' : 'FAIL') + ' ' + n + (x ? ' | ' + x : ''))
-  // 进分屏，右侧输入一行 → 左侧编辑器出现该标题
-  await clickMode('分屏')
-  const ta = await ev(`(() => { const t = document.querySelector('textarea.source-editor'); if (!t) return null; t.focus(); const len = t.value.length; t.setSelectionRange(len, len); return 'ok' })()`)
-  await send('Input.insertText', { text: '\n## 分屏右侧新增' })
-  await sleep(700) // scheduleSplitSync 200ms + 处理
-  const leftHas = await ev(`(() => { const ed = window.__vt.ed(); let ok = false; ed.state.doc.descendants((n) => { if (n.type.name === 'heading' && n.textContent.includes('分屏右侧新增')) ok = true }); return ok })()`)
-  check('分屏右侧输入→左编辑器同步', leftHas === true, '')
-  // 左侧编辑器输入 → 右侧 textarea 更新
-  const p = JSON.parse(await ev(`(() => { const el = document.querySelector('.cm-content') || document.querySelector('.md-preview'); if (!el) return JSON.stringify({ none: true }); const r = el.getBoundingClientRect(); return JSON.stringify({ x: Math.round(r.left + Math.min(80, r.width / 2)), y: Math.round(r.top + Math.max(20, r.height / 2)) }) })()`))
-  if (!p.none) {
-    await send('Input.dispatchMouseEvent', { type: 'mousePressed', x: p.x, y: p.y, button: 'left', clickCount: 1 })
-    await send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: p.x, y: p.y, button: 'left', clickCount: 1 })
-    await sleep(150)
+'use strict'
+// ─── 回归：分屏双向实时同步 + 切文件（编辑器 :key 重建）──────────────────────
+//
+// 这条套件盯着的是 Wave 3.2 的**单向数据流**：分屏左右两个编辑面互相看得见对方，
+// 全靠同一个账本（`files.contentRev` / `contentAuthor` / `contentIsStale`）驱动，
+// 不再有第二条 setContent 定时器。所以断言分两层：
+//   1. 行为：右侧输入左侧能看见、左侧输入右侧能看见（双向）；
+//   2. 机制：每次输入之后账本都收敛（没有编辑面还落后），且作者记得对。
+//
+// 跑法（对着隔离实例）：
+//   powershell -NoProfile -ExecutionPolicy Bypass -File tools/start-isolated.ps1
+//   node tools/_regress-split-live.js
+
+const path = require('path')
+const os = require('os')
+const fs = require('fs')
+const { connect, settle, waitEditor, sleep, Reporter, fatal } = require('./lib/harness')
+
+const WS = path.join(os.tmpdir(), 'lumin-split-live-ws')
+
+/** 点模式分段控件：工具栏里那个有 3 个 role=tab 的 tablist（顺序 wysiwyg/split/source） */
+async function clickMode(app, index) {
+  const box = JSON.parse(
+    await app.ev(`(() => {
+      const list = [...document.querySelectorAll('[role="tablist"]')].find(
+        (l) => l.querySelectorAll('[role="tab"]').length === 3
+      )
+      const btn = list?.querySelectorAll('[role="tab"]')[${index}]
+      if (!btn) return 'null'
+      const r = btn.getBoundingClientRect()
+      return JSON.stringify({ x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2) })
+    })()`)
+  )
+  if (!box || box === 'null') throw new Error('模式分段控件没找到（role=tablist/role=tab）')
+  for (const type of ['mousePressed', 'mouseReleased']) {
+    await app.send('Input.dispatchMouseEvent', {
+      type,
+      x: box.x,
+      y: box.y,
+      button: 'left',
+      clickCount: 1
+    })
   }
-  await ev(`(() => { const ed = window.__vt.ed(); ed.commands.focus(); ed.commands.setTextSelection(1); ed.commands.insertContent('分屏左侧'); return 'ok' })()`)
-  await sleep(800)
-  const rightHas = await ev(`(() => { const ta = document.querySelector('textarea.source-editor'); return ta ? ta.value.includes('分屏左侧') : false })()`)
-  check('左侧编辑器输入→右 textarea 同步', rightHas === true, '')
-  console.log(results.join('\n'))
-  ws.close(); process.exit(results.some((r) => r.startsWith('FAIL')) ? 2 : 0)
+  await sleep(450)
+  return box
 }
-main().catch((e) => { console.log('FAIL', e.message); try { ws.close() } catch {} process.exit(1) })
+
+async function main() {
+  const report = new Reporter('回归：分屏双向同步（账本驱动的单向数据流）')
+  const app = await connect()
+  if (!(await settle(app.ev))) {
+    report.skip('app-ready', '应用未就绪')
+    return report.finish()
+  }
+  const backup = JSON.parse(
+    await app.ev(`JSON.stringify({
+      mode: window.__L.ui().editorMode,
+      autoSave: window.__L.settings().autoSave,
+      recentFiles: window.__L.settings().recentFiles
+    })`)
+  )
+  await app.ev(`(() => { window.__L.settings().set('autoSave', false); return 'ok' })()`)
+
+  fs.rmSync(WS, { recursive: true, force: true })
+  fs.mkdirSync(WS, { recursive: true })
+  const alpha = path.join(WS, 'alpha.md')
+  const beta = path.join(WS, 'beta.md')
+  fs.writeFileSync(alpha, '# alpha\n\n正文 A。\n')
+  fs.writeFileSync(beta, '# beta\n\n正文 B。\n')
+
+  await app.ev(`(async () => { await window.__L.files().openPath(${JSON.stringify(alpha)}); return 'ok' })()`)
+  await sleep(800)
+  await waitEditor(app.ev)
+  await clickMode(app, 1) // split
+  report.check('M1 切到分屏', (await app.ev(`window.__L.ui().editorMode`)) === 'split')
+
+  // ── 右 → 左：源码 textarea 输入，左侧实时渲染跟上 ──
+  const right = await app.ev(`(async () => {
+    const f = window.__L.files()
+    const ta = document.querySelector('textarea.source-editor')
+    if (!ta) return JSON.stringify({ err: 'no-textarea' })
+    ta.focus()
+    const before = f.contentRev
+    ta.value = ta.value + '\\n## 分屏右侧新增\\n'
+    ta.dispatchEvent(new Event('input', { bubbles: true }))
+    return JSON.stringify({ err: null, bumped: f.contentRev > before, author: f.contentAuthor, stale: f.contentIsStale('wysiwyg') })
+  })()`)
+  const right2 = JSON.parse(right)
+  report.check(
+    'R1 源码面输入记进账本（作者=source、Tiptap 落后）',
+    right2.err === null && right2.bumped === true && right2.author === 'source' && right2.stale === true,
+    right
+  )
+  await sleep(800)
+  const leftHas = await app.ev(`(() => {
+    const ed = window.__L.ed()
+    if (!ed) return false
+    let ok = false
+    ed.state.doc.descendants((n) => {
+      if (n.type.name === 'heading' && n.textContent.includes('分屏右侧新增')) ok = true
+    })
+    return ok
+  })()`)
+  report.check('R2 右侧输入 → 左侧渲染出现该标题', leftHas === true)
+  report.check(
+    'R3 左侧渲染后账本收敛（没有编辑面落后）',
+    (await app.ev(`window.__L.files().contentIsStale('wysiwyg')`)) === false
+  )
+
+  // ── 左 → 右：Tiptap 输入，右侧 textarea 跟上（声明式 :value） ──
+  const left = await app.ev(`(async () => {
+    const f = window.__L.files()
+    const ed = window.__L.ed()
+    ed.commands.focus()
+    ed.commands.setTextSelection(1)
+    ed.commands.insertContent('分屏左侧')
+    await new Promise((r) => setTimeout(r, 700))
+    const ta = document.querySelector('textarea.source-editor')
+    return JSON.stringify({
+      author: f.contentAuthor,
+      rightHas: ta ? ta.value.includes('分屏左侧') : false,
+      stale: f.contentIsStale('wysiwyg'),
+      storeHas: (f.current?.content ?? '').includes('分屏左侧')
+    })
+  })()`)
+  const left2 = JSON.parse(left)
+  report.check('L1 左侧输入 → 右 textarea 跟上', left2.rightHas === true, left)
+  report.check('L2 左侧输入已落进真源', left2.storeHas === true, left)
+  report.check('L3 作者记成 wysiwyg 且账本收敛', left2.author === 'wysiwyg' && left2.stale === false, left)
+
+  // ── 切文件：编辑器按 :key 重建，内容跟着换 ──
+  const swapped = JSON.parse(
+    await app.ev(`(async () => {
+      const f = window.__L.files()
+      await f.openPath(${JSON.stringify(beta)})
+      await new Promise((r) => setTimeout(r, 700))
+      const ed = window.__L.ed()
+      const ta = document.querySelector('textarea.source-editor')
+      return JSON.stringify({
+        path: f.current?.path ?? null,
+        editorHas: (ed ? ed.state.doc.textContent : '').includes('beta'),
+        textareaHas: ta ? ta.value.includes('beta') : false,
+        stale: f.contentIsStale('wysiwyg')
+      })
+    })()`)
+  )
+  report.check(
+    'S1 切文件后两个面都换成新文档',
+    swapped.path === beta && swapped.editorHas === true && swapped.textareaHas === true && swapped.stale === false,
+    JSON.stringify(swapped)
+  )
+
+  // 收尾：恢复设置与模式
+  await app.ev(`(() => {
+    window.__L.ui().editorMode = ${JSON.stringify(backup.mode)}
+    window.__L.settings().set('autoSave', ${backup.autoSave})
+    return 'ok'
+  })()`)
+  fs.rmSync(WS, { recursive: true, force: true })
+  app.close()
+  return report.finish()
+}
+
+main()
+  .then((code) => process.exit(code))
+  .catch(fatal)

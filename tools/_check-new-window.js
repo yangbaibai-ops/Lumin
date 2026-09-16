@@ -14,7 +14,7 @@ async function main() {
   await new Promise((res, rej) => { ws.onopen = res; ws.onerror = rej })
   ws.onmessage = (e) => { const m = JSON.parse(e.data); if (m.id && pending.has(m.id)) { pending.get(m.id)(m); pending.delete(m.id) } }
   const r = await send('Runtime.evaluate', {
-    expression: `(() => { const app = document.querySelector('#app')?.__vue_app__; const prov = app?._context.provides; const sym = Object.getOwnPropertySymbols(prov).find((s) => String(s) === 'Symbol(pinia)'); const pinia = sym ? prov[sym] : null; const files = pinia?._s.get('files'); const ed = pinia?._s.get('editor')?.instance; return JSON.stringify({ current: files?.current ? { name: files.current.name, path: files.current.path } : null, hasEditor: !!ed, h1: document.querySelector('.ProseMirror h1')?.textContent ?? null }) })()`,
+    expression: `(() => { const app = document.querySelector('#app')?.__vue_app__; const prov = app?._context.provides; const sym = Object.getOwnPropertySymbols(prov).find((s) => { const p = prov[s]; return !!p && typeof p === 'object' && p._s instanceof Map }); const pinia = sym ? prov[sym] : null; const files = pinia?._s.get('files'); const ed = pinia?._s.get('editor')?.instance; return JSON.stringify({ current: files?.current ? { name: files.current.name, path: files.current.path } : null, hasEditor: !!ed, h1: document.querySelector('.ProseMirror h1')?.textContent ?? null }) })()`,
     returnByValue: true
   })
   console.log(r.result?.result?.value)

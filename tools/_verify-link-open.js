@@ -110,7 +110,7 @@ async function ev(e) {
   return r.result?.result?.value
 }
 const appPages = async () =>
-  (await (await fetch(CDP)).json()).filter((t) => t.type === 'page' && t.url.includes('5173'))
+  (await (await fetch(CDP)).json()).filter((t) => t.type === 'page' && /index\.html|5173/.test(t.url))
 
 async function attach(page) {
   const sock = new WebSocket(page.webSocketDebuggerUrl)
@@ -161,7 +161,7 @@ async function pageDocPath(page) {
   const v = await e(`(() => {
     const app = document.querySelector('#app')?.__vue_app__
     if (!app) return null
-    const sym = Object.getOwnPropertySymbols(app._context.provides).find((s) => String(s) === 'Symbol(pinia)')
+    const sym = Object.getOwnPropertySymbols(app._context.provides).find((s) => { const p = app._context.provides[s]; return !!p && typeof p === 'object' && p._s instanceof Map })
     const f = app._context.provides[sym]._s.get('files')
     return f.current?.path ?? null
   })()`)
@@ -331,8 +331,8 @@ async function main() {
   }
   await ev(`(() => {
     const app = document.querySelector('#app').__vue_app__
-    const sym = Object.getOwnPropertySymbols(app._context.provides).find((s) => String(s) === 'Symbol(pinia)')
-    const pinia = app._context.provides[sym] ?? Object.getOwnPropertySymbols(app._context.provides).map((s) => app._context.provides[s]).find((v) => v && typeof v === "object" && v._s instanceof Map) ?? Object.getOwnPropertySymbols(app._context.provides).map((s) => app._context.provides[s]).find((v) => v && typeof v === "object" && v._s instanceof Map)
+    const sym = Object.getOwnPropertySymbols(app._context.provides).find((s) => { const p = app._context.provides[s]; return !!p && typeof p === 'object' && p._s instanceof Map })
+    const pinia = app._context.provides[sym]
     window.__vt = {
       ui: () => pinia._s.get('ui'),
       files: () => pinia._s.get('files'),
@@ -841,7 +841,7 @@ async function main() {
     })
     const f = window.__vt.files()
     await f.close()
-    await window.luminAPI.drafts.remove('untitled')
+    await window.luminAPI.drafts.remove('untitled-' + (window.luminAPI.app.sessionSlot ?? 0))
     return 'ok'
   })()`)
   await sleep(700)

@@ -62,7 +62,7 @@ function readDbRows() {
 }
 
 async function pages() {
-  return (await (await fetch(CDP)).json()).filter((t) => t.type === 'page' && t.url.includes('5173'))
+  return (await (await fetch(CDP)).json()).filter((t) => t.type === 'page' && /index\.html|5173/.test(t.url))
 }
 
 ;(async () => {

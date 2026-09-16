@@ -10,7 +10,7 @@ async function ev(expression) { const r = await send('Runtime.evaluate', { expre
 
 async function main() {
   const targets = await (await fetch(CDP)).json()
-  const page = targets.find((t) => t.type === 'page' && t.url.includes('5173'))
+  const page = targets.find((t) => t.type === 'page' && /index\.html|5173/.test(t.url))
   ws = new WebSocket(page.webSocketDebuggerUrl)
   await new Promise((res, rej) => { ws.onopen = res; ws.onerror = rej })
   ws.onmessage = (e) => { const m = JSON.parse(e.data); if (m.id && pending.has(m.id)) { pending.get(m.id)(m); pending.delete(m.id) } }
@@ -18,8 +18,8 @@ async function main() {
   await ev(`(() => {
     const app = document.querySelector('#app')?.__vue_app__
     const prov = app?._context.provides
-    const sym = Object.getOwnPropertySymbols(prov).find((s) => String(s) === 'Symbol(pinia)')
-    const pinia = (sym ? prov[sym] : null) ?? Object.getOwnPropertySymbols(prov).map((s) => prov[s]).find((v) => v && typeof v === "object" && v._s instanceof Map)
+    const sym = Object.getOwnPropertySymbols(prov).find((s) => { const p = prov[s]; return !!p && typeof p === 'object' && p._s instanceof Map })
+    const pinia = (sym ? prov[sym] : null)
     window.__vt = { pinia, ui: () => pinia._s.get('ui'), files: () => pinia._s.get('files') }
     return 'OK'
   })()`)

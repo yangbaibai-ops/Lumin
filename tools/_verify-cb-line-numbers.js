@@ -83,7 +83,7 @@ async function switchRect() {
 
 async function main() {
   const targets = await (await fetch(CDP)).json()
-  const page = targets.find((t) => t.type === 'page' && t.url.includes('5173'))
+  const page = targets.find((t) => t.type === 'page' && /index\.html|5173/.test(t.url))
   ws = new WebSocket(page.webSocketDebuggerUrl)
   await new Promise((res, rej) => {
     ws.onopen = res
@@ -102,8 +102,8 @@ async function main() {
 
   await ev(`(() => {
     const app = document.querySelector('#app').__vue_app__
-    const sym = Object.getOwnPropertySymbols(app._context.provides).find((s) => String(s) === 'Symbol(pinia)')
-    const pinia = app._context.provides[sym] ?? Object.getOwnPropertySymbols(app._context.provides).map((s) => app._context.provides[s]).find((v) => v && typeof v === "object" && v._s instanceof Map) ?? Object.getOwnPropertySymbols(app._context.provides).map((s) => app._context.provides[s]).find((v) => v && typeof v === "object" && v._s instanceof Map)
+    const sym = Object.getOwnPropertySymbols(app._context.provides).find((s) => { const p = app._context.provides[s]; return !!p && typeof p === 'object' && p._s instanceof Map })
+    const pinia = app._context.provides[sym]
     window.__vt = { ui: () => pinia._s.get('ui'), files: () => pinia._s.get('files'), settings: () => pinia._s.get('settings'), ed: () => pinia._s.get('editor')?.instance ?? null }
     return 'ok'
   })()`)
@@ -236,7 +236,7 @@ async function main() {
     ui.settingsOpen = false
     await f.close()
     ${openedBefore.path ? `await f.openPath(${JSON.stringify(openedBefore.path)})` : ''}
-    await window.luminAPI.drafts.remove('untitled')
+    await window.luminAPI.drafts.remove('untitled-' + (window.luminAPI.app.sessionSlot ?? 0))
     s.set('codeLineNumbers', ${openedBefore.lineNumbers})
     await window.luminAPI.settings.update({ codeLineNumbers: ${openedBefore.lineNumbers} })
     return 'ok'

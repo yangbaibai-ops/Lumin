@@ -8,13 +8,13 @@
 //     --lumin-open=<file>，断言多出一个**Lumin 窗口**（URL 是我们的渲染页 + luminAPI 在），
 //     并且最近文档那条能把指定文件打开；不带参数时不会多开窗口。
 //
-// 用法：先跑 tools/_isolated-instance.ps1（它会设置 9222 并把主进程 stdout 落到
+// 用法：先跑 tools/start-isolated.ps1（它会设置 9222 并把主进程 stdout 落到
 // %TEMP%\lumin-instance-out.log），再跑本脚本。
 const fs = require('fs')
 const os = require('os')
 const path = require('path')
 const http = require('http')
-const { spawn } = require('child_process')
+const { spawn, execFileSync } = require('child_process')
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 
 const USER_DATA =
@@ -144,10 +144,40 @@ function taskbarLog() {
     })
 }
 
+/**
+ * 读**用户自己那条**开发态快捷方式（`Lumin (dev).lnk`）的图标路径；没有这条快捷方式时返回 null。
+ * 注意用 `-LiteralPath`/`[System.IO.File]::Exists` 那套口径：`Lumin (dev) [test].lnk` 里的方括号
+ * 在 PowerShell 里是通配符，路径判断必须走字面量（否则会误判成「不存在」）。
+ */
+function userDevShortcutIcon() {
+  const lnk = path.join(
+    process.env.APPDATA,
+    'Microsoft',
+    'Windows',
+    'Start Menu',
+    'Programs',
+    'Lumin (dev).lnk'
+  )
+  if (!fs.existsSync(lnk)) return null
+  try {
+    return execFileSync(
+      'powershell.exe',
+      [
+        '-NoProfile',
+        '-NonInteractive',
+        '-Command',
+        `(New-Object -ComObject WScript.Shell).CreateShortcut('${lnk.replace(/'/g, "''")}').IconLocation`
+      ],
+      { encoding: 'utf-8', windowsHide: true }
+    ).trim()
+  } catch {
+    return null
+  }
+}
+
 /** 用 shell 打开 .lnk（与「点任务栏菜单第一项」同一条路径：Windows 解析标识对应的快捷方式）。
  *  仅保留给「用户没在跑应用」时的手工验证，验收默认不调用 —— 理由见 A3 的注释。 */
-function launchShortcut(lnkPath) {
-  const env = { ...process.env }
+function launchShortcut(lnkPath) {  const env = { ...process.env }
   delete env.LUMIN_DEBUG_PORT
   delete env.ELECTRON_RENDERER_URL
   // 直接 spawn 一个 .lnk 不行（不是可执行文件），必须交给 shell 解析
@@ -186,7 +216,7 @@ async function waitForNewPages(before, amount, timeoutMs = 15000) {
 
   const initialPages = await pages()
   if (!initialPages.length) {
-    console.log('SKIP: 没有可用窗口（先跑 tools/_isolated-instance.ps1）')
+    console.log('SKIP: 没有可用窗口（先跑 tools/start-isolated.ps1）')
     return process.exit(1)
   }
   const main = connect(initialPages[0].webSocketDebuggerUrl)
@@ -194,8 +224,9 @@ async function waitForNewPages(before, amount, timeoutMs = 15000) {
   const SETUP = `(() => {
     const app = document.querySelector('#app')?.__vue_app__
     if (!app) return 'no-app'
-    const sym = Object.getOwnPropertySymbols(app._context.provides).find((s) => String(s) === 'Symbol(pinia)')
-    const pinia = app._context.provides[sym] ?? Object.getOwnPropertySymbols(app._context.provides).map((s) => app._context.provides[s]).find((v) => v && typeof v === "object" && v._s instanceof Map) ?? Object.getOwnPropertySymbols(app._context.provides).map((s) => app._context.provides[s]).find((v) => v && typeof v === "object" && v._s instanceof Map)
+    const vals = Object.getOwnPropertySymbols(app._context.provides).map((s) => app._context.provides[s])
+    const pinia = vals.find((v) => v && typeof v === 'object' && v._s instanceof Map)
+    if (!pinia) return 'no-pinia'
     window.__K = { files: () => pinia._s.get('files'), settings: () => pinia._s.get('settings'), ui: () => pinia._s.get('ui') }
     return 'ok'
   })()`
@@ -226,8 +257,28 @@ async function waitForNewPages(before, amount, timeoutMs = 15000) {
   c('shortcut-written', !!sc && sc.ok === true && !!sc.path, JSON.stringify(sc ?? null))
   c(
     'shortcut-aumid-is-ours-not-electron',
-    !!sc && sc.aumid === 'com.lumin.app.dev' && !/electron\.exe/i.test(sc.aumid),
+    !!sc && /^com\.lumin\.app\.dev(\.test)?$/.test(sc.aumid) && !/electron\.exe/i.test(sc.aumid),
     String(sc?.aumid)
+  )
+  // 隔离实例必须用**独立标识**：任务栏按钮的图标/名字按「AUMID → 开始菜单快捷方式」解析，
+  // 同 AUMID 的另一条快捷方式会把用户的应用顶到测试实例那条上 —— 而测试实例的配置目录跑完
+  // 就被删，图标文件随之消失，用户的任务栏图标只剩缺省（实测踩过，见手册 §4.46）。
+  c(
+    'isolated-aumid-is-not-user-aumid',
+    !!sc && sc.aumid === 'com.lumin.app.dev.test',
+    String(sc?.aumid)
+  )
+  c(
+    'isolated-shortcut-path-is-test-only',
+    !!sc && /\[test\]\.lnk$/i.test(sc.path) && !/Lumin \(dev\)\.lnk$/i.test(sc.path),
+    String(sc?.path)
+  )
+  // 它写的图标必须落在**稳定**目录（不能是那个跑完就删的配置目录），否则 [test] 快捷方式
+  // 会留下一条「找不到图标」的引用。
+  c(
+    'isolated-shortcut-icon-outside-profile',
+    !!sc?.icon && !sc.icon.toLowerCase().includes(String(USER_DATA).toLowerCase()),
+    JSON.stringify({ icon: sc?.icon, userData: USER_DATA })
   )
   c(
     'shortcut-targets-electron-with-app-path',
@@ -255,6 +306,19 @@ async function waitForNewPages(before, amount, timeoutMs = 15000) {
     JSON.stringify({ icon: sc?.icon, canonical: canonicalIcon, bytesEqual: iconBytesEqual })
   )
   c('shortcut-readback-icon-matches', !!back && back.icon === sc?.icon, JSON.stringify({ readback: back?.icon, written: sc?.icon }))
+
+  // ── A2b. 用户自己那条开发态快捷方式必须**还指向存在的图标文件** ──
+  // 这正是本轮修的 bug 的断言：隔离实例曾经和用户共用同一个 AUMID，跑完验收（配置目录被删）
+  // 之后，任务栏按 AUMID 解析到测试实例那条快捷方式 → 图标文件没了 → 用户图标变缺省。
+  // .lnk 的属性存储 Node 读不了，用 WScript.Shell（与 Windows 同一套解析）读图标路径即可。
+  const userIcon = userDevShortcutIcon()
+  const userIconPath = (userIcon ?? '').split(',')[0]
+  console.log('USER-SHORTCUT-ICON ' + JSON.stringify({ icon: userIcon }))
+  c(
+    'user-shortcut-icon-still-valid',
+    userIcon === null || (!!userIconPath && fs.existsSync(userIconPath)),
+    JSON.stringify({ icon: userIcon })
+  )
 
   // ── A3. 快捷方式的启动命令 == 已经验证过能开新窗口的那条命令 ──
   // 注意：**不要**在验收里真的用 shell 打开这条 .lnk —— 它是应用自己的快捷方式，不带

@@ -18,7 +18,7 @@
 //   * ICO 自己打包（6 字节头 + 每张 16 字节目录项 + PNG 负载，Vista 起支持）；
 //   * 写完**回读校验**，并按网格坐标**取像素**证明「画出来的就是设计的样子」（含折痕明暗差）。
 //
-// 用法：先跑 tools/_isolated-instance.ps1（可加 -NoDevServer），再 node tools/build-app-icon.js
+// 用法：先跑 tools/start-isolated.ps1，再 node tools/build-app-icon.js
 const fs = require('fs')
 const os = require('os')
 const path = require('path')
@@ -428,7 +428,7 @@ function parseIco(b) {
   try {
     version = await get('/json/version')
   } catch {
-    console.log('SKIP: 没有可用的 Chromium（先跑 tools/_isolated-instance.ps1 起隔离实例）')
+    console.log('SKIP: 没有可用的 Chromium（先跑 tools/start-isolated.ps1 起隔离实例）')
     process.exit(2)
   }
   const browser = connect(version.webSocketDebuggerUrl)

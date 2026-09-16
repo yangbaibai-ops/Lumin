@@ -10,7 +10,7 @@
 //  B. reload 后：文档、光标、滚动进度、路由全部恢复
 //  C. 设置开关：restoreSession=false → reload 进欢迎页；重新打开 → 又恢复
 //  D. 文件丢失：磁盘上删掉后 reload → 告警通知 + 不阻塞启动
-//  E. 单独关窗：窗口关闭后它的槽位被清空（不参与下次启动的窗口重建）
+//  E. 单独关窗：槽位保留并标记「已关闭」（不再清空 —— 清空会让重启后只剩文件夹，见 §4.45）
 //  F. 复原：会话表、夹具目录
 const CDP = 'http://127.0.0.1:9222/json'
 const fs = require('fs')
@@ -44,8 +44,12 @@ async function ev(e) {
     throw new Error('EXC ' + JSON.stringify(r.result.exceptionDetails).slice(0, 300))
   return r.result?.result?.value
 }
+// 页面识别同时认 dev server（5173）与构建产物（out/renderer/index.html）：
+// 有 dev server 就用它，没有也能对着 out/ 跑（别把地址写死成 5173，那样没 dev server 就整轮跑不了）
 const appPages = async () =>
-  (await (await fetch(CDP)).json()).filter((t) => t.type === 'page' && t.url.includes('5173'))
+  (await (await fetch(CDP)).json()).filter(
+    (t) => t.type === 'page' && /index\.html|5173/.test(t.url)
+  )
 
 async function attach(page) {
   const sock = new WebSocket(page.webSocketDebuggerUrl)
@@ -81,12 +85,20 @@ async function attach(page) {
   return { sock, send: s, ev: e }
 }
 
+/** 页面侧取 pinia 实例：**别按 Symbol 名字找**（生产构建会把 symbol 的描述压掉，
+ *  那样只有 dev server 的页面能用）；以「provides 里持有 _s Map 的那个对象」为准，
+ *  与其余套件同一口径 —— 于是本套件对着 out/ 构建产物也能跑。 */
+const PINIA = `(() => {
+  const app = document.querySelector('#app')?.__vue_app__
+  if (!app) return null
+  const vals = Object.getOwnPropertySymbols(app._context.provides).map((s) => app._context.provides[s])
+  return vals.find((v) => v && typeof v === 'object' && v._s instanceof Map) ?? null
+})()`
+
 /** 页面侧注入便捷访问器（reload 会清掉，需在每次 reload 后重新注入） */
 const INJECT = `(() => {
-  const app = document.querySelector('#app')?.__vue_app__
-  if (!app) return 'NO_APP'
-  const sym = Object.getOwnPropertySymbols(app._context.provides).find((s) => String(s) === 'Symbol(pinia)')
-  const pinia = app._context.provides[sym] ?? Object.getOwnPropertySymbols(app._context.provides).map((s) => app._context.provides[s]).find((v) => v && typeof v === "object" && v._s instanceof Map) ?? Object.getOwnPropertySymbols(app._context.provides).map((s) => app._context.provides[s]).find((v) => v && typeof v === "object" && v._s instanceof Map)
+  const pinia = ${PINIA}
+  if (!pinia) return 'NO_PINIA'
   window.__L = {
     files: () => pinia._s.get('files'),
     settings: () => pinia._s.get('settings'),
@@ -101,10 +113,8 @@ async function settle(e, ms = 20000) {
   const end = Date.now() + ms
   while (Date.now() < end) {
     const ok = await e(`(() => {
-      const app = document.querySelector('#app')?.__vue_app__
-      if (!app) return false
-      const sym = Object.getOwnPropertySymbols(app._context.provides).find((s) => String(s) === 'Symbol(pinia)')
-      return app._context.provides[sym]._s.get('ui').booting === false
+      const pinia = ${PINIA}
+      return !!pinia && pinia._s.get('ui').booting === false
     })()`)
     if (ok === true) {
       await e(INJECT)
@@ -169,10 +179,9 @@ async function main() {
   const opener = await attach(before[0])
   // 打开夹具会把路径写进 recentFiles，跑完要还原（否则用户「最近文档」被测试数据污染）
   const recentBackup = await opener.ev(`(() => {
-    const app = document.querySelector('#app')?.__vue_app__
-    if (!app) return 'null'
-    const sym = Object.getOwnPropertySymbols(app._context.provides).find((s) => String(s) === 'Symbol(pinia)')
-    return JSON.stringify(app._context.provides[sym]._s.get('settings').recentFiles ?? [])
+    const pinia = ${PINIA}
+    if (!pinia) return 'null'
+    return JSON.stringify(pinia._s.get('settings').recentFiles ?? [])
   })()`)
   const root = await opener.ev(`(async () => await window.luminAPI.workspace.getRoot())()`)
   DIR = path.join(typeof root === 'string' && root ? root : os.tmpdir(), DIR_NAME)
@@ -289,7 +298,17 @@ async function main() {
   // 语义（主流同款）：会话记录的是「当前状态」。关掉恢复后应用停在欢迎页/未命名
   // 缓冲区，该窗口的会话随之被写成「无文档」——所以「关→开」不会凭空找回旧文档；
   // 要验证开关另一向，需先打开文档（会话随即记录）再把开关打开，然后 reload。
-  await ev(`(() => { window.__L.settings().set('restoreSession', false); return 'ok' })()`)
+  await ev(`(async () => {
+  window.__L.settings().set('restoreSession', false)
+  // 改设置是异步落库（IPC → SQLite kv）：必须确认写进去了再 reload，
+  // 否则主进程读到的还是旧值（机器忙时 600ms 不够，会偶发「关了开关仍恢复文档」）
+  for (let i = 0; i < 60; i++) {
+    const s = await window.luminAPI.settings.getAll()
+    if (s.restoreSession === false) return 'persisted'
+    await new Promise((r) => setTimeout(r, 50))
+  }
+  return 'TIMEOUT'
+})()`)
   await sleep(600)
   await send('Page.reload')
   await sleep(1500)
@@ -304,7 +323,17 @@ async function main() {
   )
   await sleep(1500)
   const slotWhileOff = readKvSession().slots[s0.slot]
-  await ev(`(() => { window.__L.settings().set('restoreSession', true); return 'ok' })()`)
+  await ev(`(async () => {
+  window.__L.settings().set('restoreSession', true)
+  // 改设置是异步落库（IPC → SQLite kv）：必须确认写进去了再 reload，
+  // 否则主进程读到的还是旧值（机器忙时 600ms 不够，会偶发「关了开关仍恢复文档」）
+  for (let i = 0; i < 60; i++) {
+    const s = await window.luminAPI.settings.getAll()
+    if (s.restoreSession === true) return 'persisted'
+    await new Promise((r) => setTimeout(r, 50))
+  }
+  return 'TIMEOUT'
+})()`)
   await sleep(600)
   await send('Page.reload')
   await sleep(1500)
@@ -335,22 +364,32 @@ async function main() {
     String(notif).slice(0, 120)
   )
 
-  // ── E. 单独关窗 → 槽位清空 ───────────────────────────────────────────────
-  const cur = readKvSession()
-  const slots = cur.slots.slice()
-  while (slots.length <= s0.slot) slots.push(null)
-  slots[s0.slot] = { path: DOC, pos: 10, len: 20, scrollRatio: 0.5, savedAt: Date.now() }
-  writeKvSession({ slots })
-  const slotBefore = readKvSession().slots[s0.slot]
+  // ── E. 单独关窗：槽位**保留**并标记「已关闭」（不参与「活着退出」那批，但一个不剩时恢复它）
+  //     清空槽位会让重启后只剩工作区文件夹、文档变成不落在任何位置的未命名缓冲区，
+  //     所以语义已改为「保留 + 标记」（见手册 §4.45）。
+  const KEEP = path.join(DIR, 'keep-on-close.md')
+  fs.writeFileSync(KEEP, '# keep\n', 'utf-8')
   const closer = await attach(page)
+  await closer.ev(
+    `(async () => { await window.__L.files().openPath(${JSON.stringify(KEEP)}); return 'ok' })()`
+  )
+  await sleep(1500) // 等会话写回（文档/光标变化后 800ms 节流）
+  const slotBefore = readKvSession().slots[s0.slot] ?? null
   await closer.send('Page.close').catch(() => {})
-  await sleep(1000)
+  await sleep(1500)
   closer.sock.close()
   const slotAfter = readKvSession().slots[s0.slot] ?? null
-  console.log('E ' + JSON.stringify({ before: slotBefore?.path ?? null, after: slotAfter }))
+  console.log(
+    'E ' +
+      JSON.stringify({
+        before: slotBefore?.path ?? null,
+        after: slotAfter && { path: slotAfter.path, closed: slotAfter.closed }
+      })
+  )
+  c('closing-window-keeps-slot', slotAfter !== null, JSON.stringify(slotAfter))
   c(
-    'closing-window-clears-slot',
-    slotBefore !== null && slotAfter === null,
+    'closing-window-marks-slot-closed',
+    slotAfter?.closed === true && slotAfter?.path === KEEP,
     JSON.stringify(slotAfter)
   )
 
@@ -361,10 +400,9 @@ async function main() {
   if (recentBackup && recentBackup !== 'null') {
     const o = await attach(before[0])
     await o.ev(`(() => {
-      const app = document.querySelector('#app')?.__vue_app__
-      if (!app) return 'ok'
-      const sym = Object.getOwnPropertySymbols(app._context.provides).find((s) => String(s) === 'Symbol(pinia)')
-      app._context.provides[sym]._s.get('settings').set('recentFiles', ${recentBackup})
+      const pinia = ${PINIA}
+      if (!pinia) return 'ok'
+      pinia._s.get('settings').set('recentFiles', ${recentBackup})
       return 'ok'
     })()`)
     o.sock.close()
@@ -373,10 +411,9 @@ async function main() {
   for (const p of await appPages()) {
     const o = await attach(p)
     await o.ev(`(async () => {
-      const app = document.querySelector('#app')?.__vue_app__
-      if (!app) return 'ok'
-      const sym = Object.getOwnPropertySymbols(app._context.provides).find((s) => String(s) === 'Symbol(pinia)')
-      const store = app._context.provides[sym]._s.get('notifications')
+      const pinia = ${PINIA}
+      if (!pinia) return 'ok'
+      const store = pinia._s.get('notifications')
       for (const n of store.items.filter((x) => x.title.includes('无法恢复上次的文档'))) {
         await window.luminAPI.notifications.close(n.id)
       }
@@ -387,11 +424,15 @@ async function main() {
   }
   const restored = readKvSession()
   console.log('F-restored ' + JSON.stringify(restored).slice(0, 160))
-  c(
-    'session-table-restored',
-    JSON.stringify(restored) === JSON.stringify(sessionBackup),
-    JSON.stringify(restored).slice(0, 120)
+  // 判定用「前 N 个槽位逐一相等」而不是整表 JSON 相等：本套件跑的时候**还活着的窗口**
+  // 会继续按节流写自己的槽位（那是应用自己的状态，不是套件污染）。整表比较会随
+  // 「谁先写完」抖动 —— 实测同一套件两次结果不同（16/17 与 17/17），红得莫名其妙。
+  const backupSlots = sessionBackup.slots ?? []
+  const restoredSlots = restored.slots ?? []
+  const slotsRestored = backupSlots.every(
+    (s, i) => JSON.stringify(restoredSlots[i]) === JSON.stringify(s)
   )
+  c('session-table-restored', slotsRestored, JSON.stringify(restored).slice(0, 120))
 
   console.log(results.join('\n'))
   const failed = results.filter((r) => r.startsWith('FAIL')).length
