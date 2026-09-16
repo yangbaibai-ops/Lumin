@@ -7,7 +7,9 @@ import { exportCss, renderMermaidInHtml } from '../lib/export'
 import i18n from '../i18n'
 
 // ─── 导出（渲染层）：基于 Tiptap getHTML() 输出 ────────────────────────────
-export function useExport(): { runExport: (format: 'pdf' | 'html' | 'word' | 'epub') => Promise<void> } {
+export function useExport(): {
+  runExport: (format: 'pdf' | 'html' | 'word' | 'epub') => Promise<void>
+} {
   const files = useFilesStore()
   const ui = useUiStore()
   const settings = useSettingsStore()
@@ -35,9 +37,17 @@ export function useExport(): { runExport: (format: 'pdf' | 'html' | 'word' | 'ep
           { margin: settings.export.pdf.margin, pageSize: settings.export.pdf.pageSize }
         )
       } else if (format === 'html') {
-        path = await window.luminAPI.export.html({ title: payload.title, html: payload.html, css: exportCss })
+        path = await window.luminAPI.export.html({
+          title: payload.title,
+          html: payload.html,
+          css: exportCss
+        })
       } else if (format === 'word') {
-        path = await window.luminAPI.export.word({ title: payload.title, html: payload.html, css: exportCss })
+        path = await window.luminAPI.export.word({
+          title: payload.title,
+          html: payload.html,
+          css: exportCss
+        })
       } else {
         path = await window.luminAPI.export.epub({
           title: payload.title,

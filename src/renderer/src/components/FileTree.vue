@@ -1,11 +1,17 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, nextTick, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 import { useFilesStore } from '../stores/files'
 import { useUiStore } from '../stores/ui'
 import { confirmIfDirty } from '../composables/useAppActions'
 import { openExternalFile } from '../lib/openFile'
+import {
+  activeTreePath,
+  focusFirstAvailableRow,
+  initRovingFocus,
+  onTreeKeydown
+} from '../lib/treeFocus'
 import TreeNode from './TreeNode.vue'
 import FileList from './FileList.vue'
 import Icon from './Icon.vue'
@@ -27,13 +33,38 @@ const filesViewValue = computed({
   set: (v: string) => (ui.sidebarFilesView = v as 'tree' | 'list')
 })
 const rootNodes = computed(() => files.dirCache[files.root ?? ''] ?? [])
+
+/**
+ * 键盘导航（ARIA tree 模式，实现见 lib/treeFocus.ts）。
+ * keydown 挂在容器上（行会冒泡上来）：一行一个监听器在递归组件里没必要。
+ *
+ * `focusin` 里补一次「落点」：用 Tab 进入树时浏览器会聚焦第一个 tabindex≥0 的元素，
+ * 而 roving tabindex 的 0 需要先有落点 —— 首次（activeTreePath 为空）时挑当前文档那一行。
+ */
+function ensureRovingFocus(): void {
+  if (!activeTreePath.value) focusFirstAvailableRow()
+}
+
+function handleTreeKeydown(e: KeyboardEvent): void {
+  if (onTreeKeydown(e)) e.preventDefault()
+}
+
 const filtered = computed(() => {
   if (!filter.value) return rootNodes.value
   return rootNodes.value.filter(
-    (n) =>
-      n.name.toLowerCase().includes(filter.value.toLowerCase()) || n.type === 'directory'
+    (n) => n.name.toLowerCase().includes(filter.value.toLowerCase()) || n.type === 'directory'
   )
 })
+
+// 树渲染完就挑一个「静息焦点行」（当前文档行，否则第一行）：ARIA tree 随时都得有
+// 且只有一个可 Tab 的行，否则 Tab 进来方向键没反应（见 lib/treeFocus.initRovingFocus）
+watch(
+  [filtered, () => files.root],
+  () => {
+    void nextTick(() => initRovingFocus())
+  },
+  { immediate: true }
+)
 
 function onRootContextMenu(e: MouseEvent): void {
   if (!files.root) return
@@ -73,7 +104,11 @@ async function handleAction(action: string): Promise<void> {
     // 新建即就地重命名（不再弹窗输名）
     await files.newFileAt(files.root)
   } else if (action === 'new-folder') {
-    const name = await ui.prompt(t('context.newFolder'), t('sidebar.newFolderHint'), t('context.newFolder'))
+    const name = await ui.prompt(
+      t('context.newFolder'),
+      t('sidebar.newFolderHint'),
+      t('context.newFolder')
+    )
     if (name) await files.createDirAt(files.root, name)
   } else if (action === 'refresh') {
     await files.refreshDir(files.root)
@@ -94,7 +129,9 @@ function onDrop(e: DragEvent): void {
     <!-- 搜索 + 视图切换（树 / 列表） -->
     <div v-if="files.root" class="px-2.5 pb-1.5">
       <div class="flex items-center gap-1.5">
-        <div class="flex min-w-0 flex-1 items-center gap-2 rounded-lg border border-edge bg-panel px-2.5 py-1.5 transition-colors focus-within:border-accent">
+        <div
+          class="flex min-w-0 flex-1 items-center gap-2 rounded-lg border border-edge bg-panel px-2.5 py-1.5 transition-colors focus-within:border-accent"
+        >
           <Icon name="search" :size="13" class="text-ink-3" />
           <input
             v-model="filter"
@@ -127,10 +164,14 @@ function onDrop(e: DragEvent): void {
 
     <!-- 树视图 -->
     <template v-else-if="files.root">
-      <!-- 工作区树 -->
+      <!-- 工作区树（ARIA tree：方向键移动/展开、Home/End、Enter 打开，见 lib/treeFocus.ts） -->
       <div
         class="min-h-0 flex-1 overflow-y-auto px-2 pt-1 pb-3"
-        data-tree-scroll
+        role="tree"
+        data-tree-root
+        :aria-label="t('sidebar.files')"
+        @keydown="handleTreeKeydown"
+        @focusin="ensureRovingFocus()"
         @contextmenu="onRootContextMenu"
       >
         <TransitionGroup name="list">
@@ -143,9 +184,14 @@ function onDrop(e: DragEvent): void {
             :filter="filter"
           />
         </TransitionGroup>
-        <div v-if="!rootNodes.length && !filter" class="mt-6 flex flex-col items-center gap-2 px-4 text-center">
+        <div
+          v-if="!rootNodes.length && !filter"
+          class="mt-6 flex flex-col items-center gap-2 px-4 text-center"
+        >
           <Icon name="folder" :size="26" :stroke-width="1.3" class="text-ink-3/60" />
-          <p class="text-[12px] leading-relaxed text-ink-3">{{ t('sidebar.emptyFolder') }}<br />{{ t('sidebar.emptyFolderHint') }}</p>
+          <p class="text-[12px] leading-relaxed text-ink-3">
+            {{ t('sidebar.emptyFolder') }}<br />{{ t('sidebar.emptyFolderHint') }}
+          </p>
         </div>
       </div>
     </template>

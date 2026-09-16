@@ -2,8 +2,9 @@
 import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useFilesStore } from '../stores/files'
+import { useWorkspaceDocsStore } from '../stores/workspaceDocs'
 import { useSettingsStore } from '../stores/settings'
-import { useUiStore } from '../stores/ui'
+import { confirmDiscardIfDirty } from '../lib/dialog'
 import Icon from './Icon.vue'
 
 // ─── 文件列表视图（Typora 式侧边栏「列表」）────────────────────────────────
@@ -11,11 +12,12 @@ import Icon from './Icon.vue'
 // 条目之间用 1px 细分隔线分区（容器上边框 + 每行下边框，--edge-strong），
 // hover / 选中态用整块底色区分；元数据（所在文件夹、修改时间）与后缀标签
 // 整体弱化，去后缀的文件名为视觉主体，正文预览最多两行。
-// 数据来自主进程一次递归扫描（files.docs，由 workspace 结构变化/保存就地
+// 数据来自主进程一次递归扫描（docsStore.docs，由 workspace 结构变化/保存就地
 // 刷新失效，见 files store）。
 const { t } = useI18n()
 const files = useFilesStore()
-const ui = useUiStore()
+// 列表视图的数据与失效世代在 workspaceDocs store（从 files store 拆出来的派生缓存）
+const docsStore = useWorkspaceDocsStore()
 const settings = useSettingsStore()
 
 const props = defineProps<{ filter: string }>()
@@ -23,14 +25,14 @@ const props = defineProps<{ filter: string }>()
 // 扫描触发：进入列表 / 根目录切换 / 结构失效世代变化 / 手动刷新
 const forceTick = ref(0)
 watch(
-  () => [files.root, files.docsEpoch, forceTick.value],
-  () => void files.loadDocs(),
+  () => [files.root, docsStore.epoch, forceTick.value],
+  () => void docsStore.load(),
   { immediate: true }
 )
 
 const items = computed(() => {
   const q = props.filter.trim().toLowerCase()
-  let list = files.docs
+  let list = docsStore.docs
   if (q) {
     list = list.filter(
       (d) =>
@@ -94,14 +96,8 @@ const timeTitleFmt = computed(
 )
 
 async function openDoc(path: string): Promise<void> {
-  if (files.dirty && files.current?.path !== path) {
-    const ok = await ui.confirm({
-      title: t('editor.dirtyConfirmTitle'),
-      body: t('editor.dirtyConfirmBody'),
-      danger: true
-    })
-    if (!ok) return
-  }
+  // 打开另一篇文档前先问（唯一实现在 lib/dialog）
+  if (!(await confirmDiscardIfDirty(files.dirty && files.current?.path !== path))) return
   if (await files.openPath(path)) {
     document.dispatchEvent(new CustomEvent('lumin:file-opened'))
   }
@@ -127,7 +123,7 @@ async function openDoc(path: string): Promise<void> {
     <!-- 滚动列表 -->
     <div class="min-h-0 flex-1 overflow-y-auto px-2 pb-4">
       <div
-        v-if="files.docsLoading && !files.docs.length"
+        v-if="docsStore.loading && !docsStore.docs.length"
         class="mt-8 flex items-center justify-center gap-2 px-4 text-[12px] text-ink-3"
       >
         <Icon name="refresh" :size="13" class="animate-spin" style="animation-duration: 1.2s" />

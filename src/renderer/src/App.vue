@@ -15,6 +15,7 @@ import ModalHost from './components/ModalHost.vue'
 import ContextMenu from './components/ContextMenu.vue'
 import EditorContextMenu from './components/EditorContextMenu.vue'
 import GlobalSearch from './components/GlobalSearch.vue'
+import LocalHistoryDialog from './components/LocalHistoryDialog.vue'
 import SkeletonScreen from './components/SkeletonScreen.vue'
 import SettingsDialog from './components/SettingsDialog.vue'
 import GlobalTooltip from './components/GlobalTooltip.vue'
@@ -128,6 +129,7 @@ onMounted(() => {
     <ContextMenu />
     <EditorContextMenu />
     <GlobalSearch />
+    <LocalHistoryDialog />
     <SettingsDialog />
     <GlobalTooltip />
     <Transition name="fade">

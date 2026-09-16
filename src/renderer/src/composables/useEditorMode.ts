@@ -9,8 +9,8 @@ import type { EditorMode } from '../../../shared/types'
  * - 离开含 Tiptap 实例的模式（wysiwyg / split）前，先把文档序列化回
  *   Markdown 刷入 files store（工具栏 root 有 @mousedown.prevent，点击切换
  *   按钮不会触发编辑器 blur，若不显式 flush，防抖窗口内的编辑会在卸载时丢失）；
- * - 源码/分屏的 textarea 输入实时同步 files store，切回后 TyporaEditor
- *   以最新内容整装重建（v-if 卸载/重建，无撤销历史与光标残留）。
+ * - 写入的作者是 `wysiwyg`：账本据此把编辑器标记为「已跟上当前世代」，
+ *   切到源码模式后 textarea 才是编辑面。
  */
 export function useEditorMode(): {
   setMode: (mode: EditorMode) => void
@@ -32,8 +32,8 @@ export function useEditorMode(): {
     try {
       const storage = ed.storage as { markdown?: { getMarkdown(): string } }
       const md = storage.markdown?.getMarkdown() ?? ''
-      files.setContent(md)
-      editorStore.markSynced(md)
+      files.setContent(md, 'wysiwyg')
+      editorStore.markFlushed()
     } catch {
       /* 序列化失败时保持文件槽现状 */
     }

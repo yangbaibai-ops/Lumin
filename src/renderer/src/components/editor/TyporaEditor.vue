@@ -5,6 +5,7 @@ import type { Editor } from '@tiptap/core'
 import { buildEditorExtensions } from '../../lib/editor/extensions'
 import { openLinkTarget } from '../../lib/linkOpen'
 import { getMarkdown } from '../../lib/editor/markdownStorage'
+import { selectionHasMdStyle } from '../../lib/editor/typoraInlineMarks'
 import { useEditorStore } from '../../stores/editor'
 import { useFilesStore } from '../../stores/files'
 import { useUiStore } from '../../stores/ui'
@@ -13,7 +14,7 @@ import Icon from '../Icon.vue'
 // ─── Typora 式所见即所得编辑器（开发文档「步骤 2」的高阶封装）────────────────
 // - Tiptap(ProseMirror) AST 内核 + tiptap-markdown 双向转换
 // - onUpdate 防抖序列化回 Markdown 源码（SQLite 持久化管道的源头）
-// - 外部数据同步守卫：仅当 MD 不一致才 setContent，避免光标重置与死循环
+// - 外部数据同步：**按账本世代**判断该不该换内容（手册 §4.59），不比字符串、不看时间窗
 // - 自绘选区浮动菜单（选中文本时弹出格式工具）
 const props = defineProps<{ modelValue: string }>()
 const emit = defineEmits<{ (e: 'update:modelValue', value: string): void }>()
@@ -26,29 +27,20 @@ let syncTimer: ReturnType<typeof setTimeout> | null = null
 // 卸载中标记：切换文件时旧实例销毁会触发 blur/destroy，
 // 若不拦截，flushSync 会把旧文档内容回写覆盖新打开的文档（数据竞态）
 let unmounting = false
-// 内部序列化回声守卫：记录最近一次 emit 的内容与时刻。快速连续输入时，
-// blur 触发的 flushSync 会把「上一轮」的 markdown 提前 emit 出去，经父组件
-// store 同步回流成 props.modelValue，外部同步 watch 误判为外部变化而
-// setContent 回滚整个文档（快速回车丢失的根因）。回声过滤 + 静默窗双保险。
-let lastEmitted: string | null = null
-let lastEmitTime = 0
 
 function flushSync(ed: Editor): void {
   if (unmounting) return
   // 源码模式：编辑器被 display:none 隐藏，切走时其 blur 若把序列化 md 写回
   // files 会重置 textarea 的 value/光标（还把源码模式里的最新编辑覆盖掉）。
   // 源码模式的编辑面是 textarea，编辑器只是隐藏副本——切回编辑器视图时由
-  // EditorView 按需一次性同步（syncEditorContent），此处无需 emit。
+  // 账本（`files.contentIsStale('wysiwyg')`）驱动一次性同步，此处无需 emit。
   if (ui.editorMode === 'source') return
   clearTimeout(syncTimer as never)
   syncTimer = null
   try {
     const md = getMarkdown(ed)
-    lastEmitted = md
-    lastEmitTime = performance.now()
     emit('update:modelValue', md)
-    // 编辑器文档 == 刚序列化的 md（files 槽同步由父组件 onEditorUpdate 完成）
-    editorStore.markSynced(md)
+    // 序列化结果由父组件写入 files（onEditorUpdate）并消费写者标记
   } catch {
     /* 序列化失败时保持上次状态 */
   }
@@ -63,7 +55,11 @@ function updateCursor(ed: Editor): void {
 
 const editor = useEditor({
   content: props.modelValue,
-  extensions: buildEditorExtensions({ onOpenLink: (href) => void openLinkTarget(href) }),
+  extensions: buildEditorExtensions({
+    onOpenLink: (href) => void openLinkTarget(href),
+    // 图片相对路径的解析基准 = 当前文档所在目录（未命名文档为侧栏工作区，见 stores/files 的 openUntitled）
+    getDocumentDir: () => files.currentDir ?? null
+  }),
   editorProps: {
     attributes: {
       class: 'md-preview',
@@ -86,8 +82,8 @@ const editor = useEditor({
   },
   onCreate: ({ editor: ed }) => {
     editorStore.bind(ed)
-    // 编辑器以 props.modelValue（=files.content）整装创建：记录已对齐 md
-    editorStore.markSynced(props.modelValue)
+    // 编辑器以 props.modelValue（=files.content）整装创建：直接标记「已渲染到当前世代」
+    files.markContentApplied('wysiwyg')
     updateCursor(ed)
     // 真实文本标记模型：初始解析产物只有 legacy bold 等 mark，
     // 归一化一次把标记文本写入文档（后续由 appendTransaction 自动维护）
@@ -102,53 +98,71 @@ const editor = useEditor({
   }
 })
 
-// ── 外部数据同步守卫（文件切换 / 草稿恢复 / SQLite 回载）──
-// 双重回声过滤：
-// 1. nv 与最近一次内部 emit 完全一致 → 自身回声，跳过；
-// 2. 距最近内部 emit 600ms 内的更新 → 滞后回声（blur 提前 emit 的旧快照
-//    经 store 回流），跳过。真正的文件切换/草稿恢复是低频外部事件，
-//    不会被静默窗误伤；高速输入结束 250ms 防抖 emit 最新内容后，其
-//    回声同样在窗内被忽略，不再触发 setContent 全文档重建。
+// ── 外部数据同步：**只看账本世代**（手册 §4.59）──────────────────────────────
 //
-// ⚠️ 两条过滤都是**启发式**，对「显式外部替换」（重新解释编码等）都不成立：
-//    * 按原编码切回来时，store 里的内容恰好**等于**编辑器上一次 emit 的文本（就是原文），
-//      于是被规则 1 当成回声丢掉；
-//    * 若上一次 emit 发生在 600ms 内（切完编码马上再切、或刚打完字），会被规则 2 丢掉。
-//    结果就是「状态栏编码变了、正文却没回来」。所以显式替换（files.syncEpoch 变化）走
-//    force 分支，**跳过两条过滤**、无条件同步。
-function applyExternalContent(nv: string, force: boolean): void {
+// 规则只有一条：`files.contentIsStale('wysiwyg')` —— 我渲染到的世代落后于真源，就按
+// store 的内容 setContent 一次并报「已跟上」；没落后就什么都不做。
+//
+// 为什么这就够了：
+//   * 自己 flush 出去的写入由账本记成 `author='wysiwyg'`（代码块写的是 `'codeblock'`），
+//     `write()` 顺手把这些编辑面的 applied 推到最新 ⇒ **自己的回声永远不会回灌自己**，
+//     不需要「刚 emit 的内容相等」或「600ms 静默窗」这类会漏判的启发式；
+//   * 源码 textarea / 切编码 / 恢复草稿 / 载入历史 / 打开文件都会让世代 +1 且作者不是
+//     wysiwyg ⇒ applied 落后 ⇒ 这里必换内容，哪怕新旧文本恰好一模一样
+//     （旧写法在「切回原编码」时正好被内容相等骗过去，状态栏变了正文不动）。
+//
+// 唯一例外：源码模式。编辑器此时是被 display:none 的隐藏副本，textarea 才是编辑面；
+// 逐键 setContent 会变成「每停一下重解析整篇大文档」，所以推迟到切回编辑器视图时
+// 由 EditorView 调 `applyStoreContent()` 一次性对齐（模式切换本就会走这条路）。
+function doApplyStoreContent(): void {
   const ed = editor.value
-  if (!ed) return
-  // 源码模式：编辑器常驻但隐藏，textarea 才是编辑面。逐键的 files 更新
-  // 若在这里 setContent 会变成「每次停顿重解析整篇大文档」（历史卡顿根源），
-  // 交给 EditorView 在切回编辑器视图时按需一次性同步（restore 里的
-  // syncEditorContent）。文件打开/草稿恢复走 :key 重建，同样不需要此路径。
-  if (ui.editorMode === 'source') return
-  if (!force) {
-    if (nv === lastEmitted) return
-    if (performance.now() - lastEmitTime < 600) return
-  }
+  if (!ed || unmounting) return
+  if (!files.contentIsStale('wysiwyg')) return
+  // 内容**从 store 现读**，不读 `props.modelValue`：props 是父组件渲染时传下来的，
+  // 而账本 watcher 跑在渲染之前（默认 pre-flush）—— 读 props 会拿到**上一代**的内容，
+  // 把编辑器灌成旧文本。真源只有一个，就直接读它（旧写法正是踩在这一点上：
+  // 灌旧文本后归一化插件会产生一次新事务 → onUpdate → 防抖 flush 把旧文本写回 store，
+  // 源码面刚敲的那行就没了；表现为偶发，取决于那一次 watcher 落在渲染前还是渲染后）。
+  const nv = files.current?.content ?? ''
   try {
-    const current = getMarkdown(ed)
-    if (force || current !== nv) {
-      ed.commands.setContent(nv, { emitUpdate: false })
-      // 外部同步后编辑器文档 == nv（files 内容），记录对齐状态
-      editorStore.markSynced(nv)
-    }
+    ed.commands.setContent(nv, { emitUpdate: false })
   } catch {
     /* 解析失败时保持现状（例如极端脏数据） */
   }
+  files.markContentApplied('wysiwyg')
 }
 
-watch(
-  () => props.modelValue,
-  (nv) => applyExternalContent(nv, false)
-)
-// 显式外部替换（重新解释编码 / 强制回载）：无条件同步
-watch(
-  () => files.syncEpoch,
-  () => applyExternalContent(props.modelValue, true)
-)
+/**
+ * 渲染节流：分屏下源码面逐键输入时，左侧预览合并成 ~200ms 一次整篇重解析。
+ * 注意这只是**推迟渲染**，不是第二条真源 —— 「要不要重渲染」仍然只由账本决定。
+ */
+let renderTimer: ReturnType<typeof setTimeout> | null = null
+
+/** 账本驱动的自动对齐（真源每变一代跑一次） */
+function applyStoreContent(): void {
+  if (unmounting || !editor.value) return
+  // 源码模式：编辑器是隐藏副本，不在这里逐键重解析（切回视图时 syncNow 一次性对齐）
+  if (ui.editorMode === 'source') return
+  if (!files.contentIsStale('wysiwyg')) return
+  if (ui.editorMode === 'split' && files.contentAuthor === 'source') {
+    clearTimeout(renderTimer as never)
+    renderTimer = setTimeout(() => {
+      renderTimer = null
+      doApplyStoreContent()
+    }, 200)
+    return
+  }
+  syncNow()
+}
+
+/** 立刻对齐（供模式切换 / 光标落位前调用：不做节流、不看模式） */
+function syncNow(): void {
+  clearTimeout(renderTimer as never)
+  renderTimer = null
+  doApplyStoreContent()
+}
+
+watch(() => files.contentRev, applyStoreContent)
 
 // ── 大纲滚动联动 ──
 let outlineTimer: ReturnType<typeof setTimeout> | null = null
@@ -183,6 +197,7 @@ window.addEventListener('beforeunload', onWindowBeforeUnload)
 onBeforeUnmount(() => {
   unmounting = true
   clearTimeout(syncTimer as never)
+  clearTimeout(renderTimer as never)
   clearTimeout(outlineTimer as never)
   window.removeEventListener('beforeunload', onWindowBeforeUnload)
 })
@@ -243,11 +258,11 @@ const bubbleActive = computed(() => {
   const ed = editor.value
   if (!ed) return { bold: false, italic: false, underline: false, strike: false, code: false }
   return {
-    bold: ed.isActive('mdStyle', { style: 'bold' }),
-    italic: ed.isActive('mdStyle', { style: 'italic' }),
+    bold: selectionHasMdStyle(ed, 'bold'),
+    italic: selectionHasMdStyle(ed, 'italic'),
     underline: ed.isActive('underline'),
-    strike: ed.isActive('mdStyle', { style: 'strike' }),
-    code: ed.isActive('mdStyle', { style: 'code' })
+    strike: selectionHasMdStyle(ed, 'strike'),
+    code: selectionHasMdStyle(ed, 'code')
   }
 })
 
@@ -290,17 +305,25 @@ function clearFormats(): void {
   editor.value?.chain().focus().clearNodes().unsetAllMarks().run()
 }
 
-defineExpose({ editor })
+defineExpose({ editor, syncNow })
 </script>
 
 <template>
-  <div ref="containerRef" class="typora-container relative h-full" :class="{ 'focus-mode': ui.focusMode }">
+  <div
+    ref="containerRef"
+    class="typora-container relative h-full"
+    :class="{ 'focus-mode': ui.focusMode }"
+  >
     <!-- 自绘选区浮动菜单（当前由 BUBBLE_MENU_ENABLED 关闭，见 script 顶部说明） -->
     <Transition name="pop">
       <div
         v-if="BUBBLE_MENU_ENABLED && bubbleVisible && editor"
         class="bubble-menu absolute z-50"
-        :style="{ top: bubblePos.top + 'px', left: bubblePos.left + 'px', transform: 'translateX(-50%)' }"
+        :style="{
+          top: bubblePos.top + 'px',
+          left: bubblePos.left + 'px',
+          transform: 'translateX(-50%)'
+        }"
         @mousedown.prevent
       >
         <button

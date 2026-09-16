@@ -7,19 +7,32 @@ import { useExport } from './useExport'
 import { useEditorMode } from './useEditorMode'
 import { flushSession } from '../lib/session'
 import { openExternalFile } from '../lib/openFile'
+import { confirmDiscardIfDirty } from '../lib/dialog'
 import type { MenuAction } from '../../../shared/types'
 import i18n from '../i18n'
 
-/** 未保存更改确认 */
+/** 未保存更改确认：薄适配器 —— 文案与语义只有一份，在 lib/dialog */
 export async function confirmIfDirty(): Promise<boolean> {
-  const files = useFilesStore()
-  const ui = useUiStore()
-  if (!files.dirty) return true
-  return ui.confirm({
-    title: i18n.global.t('editor.dirtyConfirmTitle'),
-    body: i18n.global.t('editor.dirtyConfirmBody'),
-    danger: true
-  })
+  return confirmDiscardIfDirty(useFilesStore().dirty)
+}
+
+/**
+ * 「新建」的单一实现：**开一个新窗口**（工作区不变）+ 一篇**未命名**文档。
+ *
+ * 三个入口共用它：文件 → 新建（含原生菜单）、Ctrl+N（命令表 `file.new`）、顶部栏的「新建」按钮。
+ *
+ * 为什么不沿用「在当前窗口里建一个工作区文件」：用户要的是「新建 → 直接开始写 → 保存时再决定放哪」，
+ * 而不是先替他造一个 `未命名.md`。未命名缓冲区没有 path，于是 Ctrl+S（`files.save()`）天然走
+ * 「另存为」对话框 —— 这正是「点击 Ctrl+S 时选择保存到的位置」。
+ *
+ * 也因此**不需要脏数据确认**：当前窗口一个字节都没动（对比「最近文档/最近文件夹 → 新窗口」的同一口径）。
+ */
+export async function newDocumentWindow(): Promise<void> {
+  const root = useFilesStore().root
+  // 有工作区 → 新窗口以同一个文件夹为工作区（磁盘上不产生任何文件）；
+  // 没有工作区 → 退化成干净窗口（空白 + 未命名文档）
+  if (root) window.luminAPI.app.openFolderInNewWindow(root)
+  else window.luminAPI.app.newWindow()
 }
 
 export function useAppActions(): {
@@ -32,12 +45,6 @@ export function useAppActions(): {
   const settings = useSettingsStore()
   const { runExport } = useExport()
   const { setMode, cycleMode } = useEditorMode()
-
-  async function newDoc(): Promise<void> {
-    if (!(await confirmIfDirty())) return
-    await files.newDocInWorkspace()
-    await router.push('/editor')
-  }
 
   async function openFileDialog(): Promise<void> {
     if (!(await confirmIfDirty())) return
@@ -72,7 +79,8 @@ export function useAppActions(): {
     const a = action as MenuAction
     switch (a) {
       case 'new':
-        void newDoc()
+        // 新窗口 + 工作区不变 + 未命名文档（Ctrl+S 时再选保存位置），见 newDocumentWindow
+        void newDocumentWindow()
         break
       case 'new-window':
         window.luminAPI.app.newWindow()

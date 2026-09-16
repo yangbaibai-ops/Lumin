@@ -1,7 +1,9 @@
 import { createI18n } from 'vue-i18n'
-import zhCN from './locales/zh-CN.json'
-import enUS from './locales/en-US.json'
-import ruRU from './locales/ru-RU.json'
+// 语言包放在 src/shared/i18n：**主进程的原生菜单也要用**（菜单三语化），
+// 一处维护、两个进程共用（跨进程的东西放 shared —— README 的开发约定）
+import zhCN from '../../../shared/i18n/zh-CN.json'
+import enUS from '../../../shared/i18n/en-US.json'
+import ruRU from '../../../shared/i18n/ru-RU.json'
 import type { Language } from '../../../shared/types'
 
 // 语言目录是纯数据（JSON），新增语言 = 新增一个 {locale}.json + 在 Language 联合

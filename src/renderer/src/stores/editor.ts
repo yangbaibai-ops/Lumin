@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { markRaw } from 'vue'
 import type { Editor } from '@tiptap/core'
+import type { Author } from '../lib/contentSync'
 import { scrollContainerTo, smoothScrollToElement } from '../lib/editor/smoothScroll'
 
 // ─── 编辑器实例桥接（解耦：工具栏 / 大纲 / 导出等通过此 store 与内核通信）──
@@ -26,11 +27,16 @@ export const useEditorStore = defineStore('editor', {
     /** 编辑器文档是否含尚未序列化回 files 的用户输入（onUpdate 置位，flush 后清除） */
     dirty: false,
     /**
-     * 编辑器文档内容最近一次与 files.content 对齐时的 md（编辑面 emit /
-     * 显式 setContent / flushWysiwyg 后更新）。源码模式逐键编辑时编辑器是
-     * 隐藏副本，此值保持旧内容 —— 切回编辑器视图时据此判断是否需要一次性同步。
+     * 下一次序列化回 files 时该记谁写的（手册 §4.59 的账本作者）。
+     *
+     * 为什么需要它：正文里嵌着**子编辑面**（代码块的 CodeMirror）。它的输入先写回
+     * Tiptap 节点、再由 Tiptap 序列化成 md，于是「谁是作者」在序列化的那一刻已经看不出来了
+     * （序列化是 250ms 防抖的，写回动作早就结束了）。所以子编辑面在写回节点时**挂个牌**，
+     * `files.setContent(md, 取牌())` 时消费掉：作者是 codeblock ⇒ Tiptap 面板不会被回灌
+     * （它的文档本来就是最新的，回灌会把光标从代码块里踢出去），源码 textarea 照常跟着更新。
+     * 默认（没挂牌）= `wysiwyg`：正文输入都来自 Tiptap 自己。
      */
-    syncedMd: '',
+    writeIntent: null as Author | null,
     tick: 0,
     outline: [] as OutlineItem[],
     activeHeading: -1
@@ -65,10 +71,20 @@ export const useEditorStore = defineStore('editor', {
     markDirty(): void {
       this.dirty = true
     },
-    /** 记录编辑器文档 == 该 md（编辑面 emit / 显式同步 / flushWysiwyg 后调用） */
-    markSynced(md: string): void {
-      this.syncedMd = md
+    /** 子编辑面（代码块 CodeMirror / 源码 textarea）声明：接下来这次序列化是它写的 */
+    noteWrite(surface: Author): void {
+      this.writeIntent = surface
+    },
+    /** 序列化已落进 files store：清掉写者标记与脏标记（消费即失效，避免下次正文输入被误记） */
+    markFlushed(): void {
+      this.writeIntent = null
       this.dirty = false
+    },
+    /** 取走写者标记并收敛状态（默认 `wysiwyg`：正文输入都来自 Tiptap 自己） */
+    consumeWriteIntent(): Author {
+      const who = this.writeIntent ?? 'wysiwyg'
+      this.markFlushed()
+      return who
     },
     applyActive(): void {
       if (this.active && this.editor) {

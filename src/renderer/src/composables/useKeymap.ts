@@ -27,7 +27,7 @@ export function useKeymap(actions: ReturnType<typeof useAppActions>): void {
     // ── 文件 ──
     {
       id: 'file.new',
-      titleKey: 'menu.newDoc',
+      titleKey: 'menu.new',
       groupKey: 'keymap.groupFile',
       defaultKeys: 'Mod+N',
       run: () => handleMenu('new')

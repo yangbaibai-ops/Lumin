@@ -37,7 +37,10 @@ import Icon from './Icon.vue'
     </div>
     <!-- Logo 呼吸灯 -->
     <div class="pointer-events-none absolute inset-0 flex items-center justify-center">
-      <div class="flex flex-col items-center gap-3" style="animation: lm-breathe 1.6s ease-in-out infinite">
+      <div
+        class="flex flex-col items-center gap-3"
+        style="animation: lm-breathe 1.6s ease-in-out infinite"
+      >
         <Icon name="logo" :size="46" class="text-accent" :stroke-width="4.2" />
         <span class="text-sm font-semibold tracking-[0.3em] text-ink-3">LUMIN</span>
       </div>

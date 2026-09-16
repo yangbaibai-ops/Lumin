@@ -46,10 +46,9 @@ function onRenderContextMenu(e: MouseEvent): void {
 }
 
 function onEditorUpdate(md: string): void {
-  files.setContent(md)
-  // 编辑器刚把自身序列化写入文件槽：记录「编辑器内容 == 该 md」，
-  // 供后续离开源码模式时判断是否需要一次性同步回编辑器
-  editorStore.markSynced(md)
+  // 记一代账：作者由编辑面自己挂的牌决定（正文输入 = wysiwyg，代码块 CodeMirror = codeblock）。
+  // 账本顺手把作者的 applied 推到最新，所以这次写入不会回灌到作者自己身上。
+  files.setContent(md, editorStore.consumeWriteIntent())
 }
 
 /** editorStore.instance 的窄化类型（跨文件类型别名，避免 Editor 泛型不一致） */
@@ -58,25 +57,15 @@ type PmEditor = NonNullable<typeof editorStore.instance>
 // ─── 源码面板（textarea 原始 Markdown，绝不渲染样式）──
 // 分屏右侧与全屏源码模式共用同一个常驻 textarea：切换时选区/滚动天然保留，
 // 只需按模式切换外层的居中/留白类。
+//
+// 它是**声明式副本**：模板上 `:value="files.current?.content"` 就是唯一的回灌通道，
+// 内核永远单向 store → DOM。声明式本身是收敛的（DOM 值已经等于新值时浏览器不动光标，
+// 所以「自己写的」那条路径不需要再用代码判断一次）—— 见 lib/contentSync.ts 顶部说明。
 const sourceRef = ref<HTMLTextAreaElement | null>(null)
-
-function syncEditorContent(): void {
-  const content = files.current?.content ?? ''
-  const ed = editorStore.instance
-  if (!ed || editorStore.syncedMd === content) return
-  try {
-    // 源码模式里 textarea 是编辑面，编辑器只是被隐藏的渲染副本：一次性
-    // setContent 使其与最新源码对齐（emitUpdate:false 不回灌 files）
-    ed.commands.setContent(content, { emitUpdate: false })
-    editorStore.markSynced(content)
-  } catch {
-    /* 忽略：编辑器未就绪时保持现状 */
-  }
-}
+const renderRef = ref<{ syncNow: () => void } | null>(null)
 
 function onSourceInput(e: Event): void {
-  files.setContent((e.target as HTMLTextAreaElement).value)
-  if (ui.editorMode === 'split') scheduleSplitSync()
+  files.setContent((e.target as HTMLTextAreaElement).value, 'source')
 }
 
 /** 源码模式 Tab 插入两个空格（textarea 默认 Tab 会移出焦点，写作语义不符） */
@@ -86,8 +75,7 @@ function onSourceTab(e: KeyboardEvent): void {
   const { selectionStart, selectionEnd, value } = ta
   ta.value = value.slice(0, selectionStart) + '  ' + value.slice(selectionEnd)
   ta.selectionStart = ta.selectionEnd = selectionStart + 2
-  files.setContent(ta.value)
-  if (ui.editorMode === 'split') scheduleSplitSync()
+  files.setContent(ta.value, 'source')
 }
 
 /** 源码模式光标位置 → 状态栏 */
@@ -98,25 +86,14 @@ function updateSourceCursor(ta: HTMLTextAreaElement): void {
 }
 
 // ─── 分屏双向同步（IDEA 式对比）──
-// 左（实时渲染）→ 右（源码）：TyporaEditor 防抖序列化 → files store →
-//   textarea :value 自动刷新（已有管道，零新增代码）。
-// 右（源码）→ 左（实时渲染）：输入即写 files store（持久化管道），并防抖
-//   200ms 直接 setContent 进左侧 Tiptap——不依赖 modelValue watch（其静默窗
-//   会吞掉距上次渲染端 emit 600ms 内的外部更新），保证对比实时且不回路
-//   （setContent 带 emitUpdate:false，不触发 onUpdate 回声）。
-let splitSyncTimer: ReturnType<typeof setTimeout> | null = null
-function scheduleSplitSync(): void {
-  if (ui.editorMode !== 'split') return
-  clearTimeout(splitSyncTimer as never)
-  splitSyncTimer = setTimeout(() => {
-    splitSyncTimer = null
-    const ed = editorStore.instance
-    if (!ed) return
-    const content = files.current?.content ?? ''
-    ed.commands.setContent(content, { emitUpdate: false })
-    editorStore.markSynced(content)
-  }, 200)
-}
+// 两条方向都由**同一个账本**驱动，没有第二套判断：
+//   左（实时渲染）→ 右（源码）：Tiptap 防抖序列化 → files store（作者 wysiwyg）
+//     → textarea 的 `:value` 绑定自动跟上（声明式副本，零新增代码）。
+//   右（源码）→ 左（实时渲染）：输入即写 files store（作者 source）→ TyporaEditor 的
+//     `contentRev` watcher 看到自己落后 ⇒ setContent 进 Tiptap（分屏下 200ms 合并，
+//     见 TyporaEditor 的 applyStoreContent；那条合并只是渲染节流）。
+// 旧写法在这里另开了一个 200ms 的 setContent 定时器，是同一件事的第二条通道，
+// 已删除（手册 §4.59）。
 
 // ── 分屏分隔条拖拽（比例 0.25~0.75，SQLite kv 持久化）──
 const kernelRef = ref<HTMLElement | null>(null)
@@ -147,6 +124,16 @@ function startSplitDrag(e: MouseEvent): void {
   window.addEventListener('mouseup', up)
 }
 
+/**
+ * 双击分隔条：左右比例复位到 1:1 并持久化。
+ * 写成方法而不是模板内联多语句 —— prettier 会把内联多语句的分号吃掉（`a = 1 b()`），
+ * Vue 模板编译器随即报 "Error parsing JavaScript expression"。
+ */
+function resetSplitRatio(): void {
+  splitRatio.value = clampRatio(0.5)
+  settings.set('splitRatio', splitRatio.value)
+}
+
 // ─── 分屏同步滚动 ───
 // scroll 事件不冒泡但可捕获：在内核容器挂 capture 监听，分屏时左右任意一栏
 // 滚动（含左侧代码块的 CodeMirror 内部滚动）都按「滚动进度比」映射到另一栏。
@@ -160,7 +147,12 @@ function onSplitScroll(e: Event): void {
   const t = e.target as HTMLElement
   const leftScroll = host.querySelector<HTMLElement>('.editor-scroll')
   const rightScroll = host.querySelector<HTMLElement>('textarea.source-editor')
-  const source = t === leftScroll || leftScroll?.contains(t) ? leftScroll : t === rightScroll ? rightScroll : null
+  const source =
+    t === leftScroll || leftScroll?.contains(t)
+      ? leftScroll
+      : t === rightScroll
+        ? rightScroll
+        : null
   if (!source || !leftScroll || !rightScroll) return
   const target = source === leftScroll ? rightScroll : leftScroll
   const srcRange = source.scrollHeight - source.clientHeight
@@ -353,10 +345,10 @@ async function restoreViewPos(mode: 'wysiwyg' | 'split' | 'source'): Promise<voi
   let ed = editorStore.instance
   if (!ed) ed = await waitEditorReady()
   if (!ed) return
-  // files 是源码侧的单一事实源（分屏右侧/源码 textarea 都直接写 files）。
-  // 进入编辑器视图前确保编辑器文档 == files.content：有源码编辑时一次性同步
-  // （光标比例落在新文档上）；无编辑时 syncedMd 已一致，零开销。
-  syncEditorContent()
+  // files 是唯一真源（分屏右侧/源码 textarea 都直接写 files）。进入编辑器视图前
+  // 先把编辑器对齐到当前世代（源码模式下它是隐藏副本，刚才没逐键同步）；
+  // 光标比例因此总是落在最新文档上。已对齐时这一步是空操作。
+  renderRef.value?.syncNow()
   const fromTiptap = mem.fromKind === 'tiptap'
   if (mode === 'wysiwyg') {
     placePmCursor(ed, ratio, fromTiptap ? mem.pmPos : 0)
@@ -387,8 +379,9 @@ watch(
   () => files.current?.path,
   () => {
     viewPosMem.value = null
-    // 新编辑器将按当前文件内容整装重建，记录已对齐的 md
-    editorStore.markSynced(files.current?.content ?? '')
+    // 新编辑器会按当前世代整装重建（onCreate 里自报「已跟上」），此处只兜底一次，
+    // 覆盖「同一 :key 下换了内容」的情形（未命名缓冲 → 另一个未命名缓冲）
+    renderRef.value?.syncNow()
   }
 )
 
@@ -429,14 +422,14 @@ watch(
     const mem = viewPosMem.value
     if (!mem) {
       // 无记忆（首开/文件刚切换）：先把焦点给目标视图；编辑器可能因源码
-      // 编辑而滞后，内容有差异时一次性同步（编辑器常驻后才需要）
+      // 编辑而落后一个世代，落焦点前先按账本对齐一次
       if (mode === 'source') {
         await nextTick()
         sourceRef.value?.focus()
       } else {
         const ed = await waitEditorReady()
         if (!ed) return
-        syncEditorContent()
+        renderRef.value?.syncNow()
         ed.commands.focus()
       }
       return
@@ -509,7 +502,6 @@ onMounted(() => {
   if (!files.current) void files.openUntitled()
 })
 onBeforeUnmount(() => {
-  clearTimeout(splitSyncTimer as never)
   void files.flushAll()
 })
 </script>
@@ -523,18 +515,28 @@ onBeforeUnmount(() => {
   >
     <Toolbar />
 
-    <!-- 草稿恢复横幅（文件状态逻辑，与内核无关） -->
+    <!-- 草稿恢复横幅（文件状态逻辑，与内核无关）；未命名缓冲区没有磁盘文件可比较，文案另给一条 -->
     <Transition name="slide">
       <div
         v-if="files.draftRestore"
         class="restore-bar mx-4 mt-3 flex items-center gap-3 px-4 py-2.5 text-[13px]"
       >
-        <span class="flex-1">检测到未保存的草稿（比磁盘文件更新）</span>
-        <button class="btn btn-primary !px-3 !py-1 text-[12px]" @click="files.applyDraftRestore(true)">
-          恢复
+        <span class="flex-1">{{
+          files.draftRestore.path
+            ? i18n.global.t('editor.restoreDraft')
+            : i18n.global.t('editor.restoreDraftUntitled')
+        }}</span>
+        <button
+          class="btn btn-primary !px-3 !py-1 text-[12px]"
+          @click="files.applyDraftRestore(true)"
+        >
+          {{ i18n.global.t('common.restore') }}
         </button>
-        <button class="btn btn-ghost !px-3 !py-1 text-[12px]" @click="files.applyDraftRestore(false)">
-          丢弃
+        <button
+          class="btn btn-ghost !px-3 !py-1 text-[12px]"
+          @click="files.applyDraftRestore(false)"
+        >
+          {{ i18n.global.t('common.discard') }}
         </button>
       </div>
     </Transition>
@@ -550,6 +552,7 @@ onBeforeUnmount(() => {
       <!-- 渲染面板（Tiptap）：wysiwyg 全宽 / split 左栏 / source 隐藏但常驻 -->
       <div class="h-full min-w-0" :style="renderPaneStyle()" @contextmenu="onRenderContextMenu">
         <TyporaEditor
+          ref="renderRef"
           :key="files.current?.path ?? 'untitled'"
           :model-value="files.current?.content ?? ''"
           @update:model-value="onEditorUpdate"
@@ -563,7 +566,7 @@ onBeforeUnmount(() => {
         :class="{ dragging: splitDragging }"
         title="拖动调整左右比例（双击复位）"
         @mousedown="startSplitDrag"
-        @dblclick="splitRatio = clampRatio(0.5); settings.set('splitRatio', splitRatio)"
+        @dblclick="resetSplitRatio"
       >
         <span />
       </div>

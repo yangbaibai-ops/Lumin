@@ -11,9 +11,10 @@ import { useSettingsStore } from '../stores/settings'
 import { useEditorStore } from '../stores/editor'
 import { useExport } from '../composables/useExport'
 import { useEditorMode } from '../composables/useEditorMode'
-import { confirmIfDirty } from '../composables/useAppActions'
+import { confirmIfDirty, newDocumentWindow } from '../composables/useAppActions'
 import { openExternalFile, openInWindowOrFocus } from '../lib/openFile'
 import { ENCODINGS } from '../../../shared/encodings'
+import { EOL_OPTIONS } from '../../../shared/eol'
 import RecentList from './RecentList.vue'
 import Icon from './Icon.vue'
 
@@ -121,20 +122,64 @@ function reopenEncodingItems(): (Leaf | 'sep')[] {
   return items
 }
 
+/**
+ * 「行尾」二级项：LF / CRLF，当前生效的打勾。
+ * 语义是「按该行尾保存」（不是只切个显示）—— 内存里文本永远是 LF，行尾是文档属性，
+ * 所以切换后要立刻落盘，否则用户以为改了、文件其实还没变（见 stores/files.setEol）。
+ */
+function eolItems(): (Leaf | 'sep')[] {
+  const cur = files.current
+  return EOL_OPTIONS.map((eol) => ({
+    labelKey: eol === 'crlf' ? 'menu.eolCrlf' : 'menu.eolLf',
+    active: cur?.eol === eol,
+    run: async () => {
+      await files.setEol(eol, { save: true })
+    }
+  }))
+}
+
+/**
+ * 「以编码保存」的二级项：把文档编码改成指定值并立即写回。
+ * 与「选择编码重新打开」的区别：那个是重新解释磁盘上的字节（不动文件），
+ * 这个是改变**写盘**编码（会真的改写文件）。
+ */
+function saveEncodingItems(): (Leaf | 'sep')[] {
+  const cur = files.current
+  const items: (Leaf | 'sep')[] = [
+    // 当前编码直接保存（最常用的那项）；具体编码在下面
+    {
+      labelKey: 'menu.saveWithEncoding',
+      run: async () => {
+        await files.save()
+      }
+    },
+    'sep'
+  ]
+  for (const e of ENCODINGS) {
+    items.push({
+      label: e.label,
+      active: cur?.encoding === e.id,
+      run: async () => {
+        await files.saveWithEncoding(e.id)
+      }
+    })
+  }
+  return items
+}
+
 /** 菜单结构用 computed：文件菜单里的「最近文档/最近文件夹」需要随使用记录实时更新 */
-const GROUPS = computed<Group[]>(() => [  {
+const GROUPS = computed<Group[]>(() => [
+  {
     key: 'f',
     labelKey: 'menu.file',
     items: [
       {
-        labelKey: 'menu.newDoc',
+        // 「新建」是文件菜单第一项（与 Ctrl+N 同一动作）：新窗口 + 工作区不变 + 未命名文档
+        // （保存位置等 Ctrl+S 时再问，见 newDocumentWindow）。§4.50 起不再有单独的「新建文档」项 ——
+        // 同一件事不留两个入口；顶部栏那个独立按钮也收回到这里。
+        labelKey: 'menu.new',
         icon: 'file-plus',
-        run: async () => {
-          if (await confirmIfDirty()) {
-            await files.newDocInWorkspace()
-            await router.push('/editor')
-          }
-        }
+        run: () => newDocumentWindow()
       },
       { labelKey: 'menu.newWindow', icon: 'copy', run: () => window.luminAPI.app.newWindow() },
       {
@@ -183,6 +228,26 @@ const GROUPS = computed<Group[]>(() => [  {
           { labelKey: 'menu.exportWord', icon: 'file', run: () => runExport('word') },
           { labelKey: 'menu.exportEpub', icon: 'book', run: () => runExport('epub') }
         ]
+      },
+      // 本地历史（Wave 2）：保存前的快照可查看/载入（未落盘文档没有历史）
+      {
+        labelKey: 'menu.localHistory',
+        icon: 'clock',
+        run: async () => {
+          await files.openHistory()
+        }
+      },
+      // 一级「行尾」+ 悬停二级：以 LF / CRLF 保存（当前行尾打勾）
+      {
+        labelKey: 'menu.saveWithEol',
+        icon: 'hr',
+        children: eolItems()
+      },
+      // 一级「以编码保存」+ 悬停二级：按指定编码改写文件（当前编码打勾）
+      {
+        labelKey: 'menu.saveWithEncoding',
+        icon: 'save',
+        children: saveEncodingItems()
       },
       // 一级「选择编码重新打开」+ 悬停二级：按指定编码重读当前文档（当前生效的那个打勾）
       {
@@ -322,7 +387,7 @@ async function runLeaf(leaf: Leaf): Promise<void> {
 // 二级上」；因此：定位贴死（重叠 1px，见 placeSub）、离开后用 160ms 宽限收起、
 // 指针进入二级即撤销。
 const subOpen = ref<SubMenu | null>(null)
-const subStyle = reactive({ left: '0px', top: '0px' })
+const subStyle = reactive({ left: '0px', top: '0px', maxHeight: '70vh' })
 let closeTimer: ReturnType<typeof setTimeout> | null = null
 
 function cancelSubClose(): void {
@@ -355,7 +420,12 @@ function placeSub(rowEl: HTMLElement, sub: SubMenu): void {
     const base = panel ?? row
     const flip = base.right + w > window.innerWidth - 8
     subStyle.left = `${Math.round(flip ? Math.max(8, base.left - w + 1) : base.right - 1)}px`
-    subStyle.top = `${Math.round(Math.max(8, Math.min(row.top - 6, window.innerHeight - 120)))}px`
+    const top = Math.round(Math.max(8, Math.min(row.top - 6, window.innerHeight - 120)))
+    subStyle.top = `${top}px`
+    // 高度必须按「到窗口底部还剩多少」钳制并允许内部滚动：编码那类二级有 14 项（≈480px），
+    // 只钳 top 会让最后几行渲染到窗口外面 —— 用户点不到，自动化点不到（实测：菜单项变多后
+    // 「选择编码重新打开 → Windows-1252」整行掉出视口，套件点击静默失效）
+    subStyle.maxHeight = `${Math.max(160, window.innerHeight - top - 8)}px`
   })
 }
 
@@ -460,12 +530,13 @@ onBeforeUnmount(() => {
       <Transition name="pop">
         <div
           v-if="active && subOpen"
-          class="topmenu-drop topmenu-sub fixed z-[151] rounded-xl border border-edge bg-elevate p-1.5"
+          class="topmenu-drop topmenu-sub fixed z-[151] overflow-y-auto overscroll-contain rounded-xl border border-edge bg-elevate p-1.5"
           :style="{
             boxShadow: 'var(--shadow-2)',
             width: subOpen.slot ? '300px' : '220px',
             left: subStyle.left,
-            top: subStyle.top
+            top: subStyle.top,
+            maxHeight: subStyle.maxHeight
           }"
           @mouseenter="cancelSubClose"
           @mouseleave="scheduleSubClose"

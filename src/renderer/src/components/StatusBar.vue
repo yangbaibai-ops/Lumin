@@ -6,6 +6,7 @@ import { useSettingsStore } from '../stores/settings'
 import { useUiStore } from '../stores/ui'
 import { LANGUAGE_OPTIONS, nextLanguage } from '../i18n'
 import { encodingOf } from '../../../shared/encodings'
+import { eolLabel } from '../../../shared/eol'
 import Icon from './Icon.vue'
 import type { ThemeMode } from '../../../shared/types'
 
@@ -21,8 +22,11 @@ const langShort = computed(
 /** 当前文档的编码名（专有名，不走 i18n；文档本身没打开时整块不渲染） */
 const currentEncodingLabel = computed(() => {
   const id = files.current?.encoding
-  return id ? encodingOf(id)?.label ?? String(id) : ''
+  return id ? (encodingOf(id)?.label ?? String(id)) : ''
 })
+
+/** 当前文档的行尾标记（LF / CRLF）——点一下就在两者间切换并写回 */
+const currentEolLabel = computed(() => eolLabel(files.current?.eol ?? 'lf'))
 
 const themeOpen = ref(false)
 const themeRef = ref<HTMLElement | null>(null)
@@ -64,6 +68,22 @@ function chooseSaveMode(manual: boolean): void {
   ui.toast(manual ? t('toast.manualSave') : t('toast.autoSaveOn'), manual ? 'info' : 'success')
 }
 
+/**
+ * 保存方式弹层里点「打开设置…」：先关弹层再进设置。
+ * 写成方法而不是模板内联多语句：prettier 会把内联多语句的分号吃掉（变成 `a = 1 b()`），
+ * Vue 模板编译器随即报 "Error parsing JavaScript expression"。逻辑进脚本是更稳、更好测的写法。
+ */
+function openGeneralSettings(): void {
+  saveOpen.value = false
+  ui.openSettings('general')
+}
+
+/** 主题弹层里选一种主题 */
+function pickTheme(mode: ThemeMode): void {
+  settings.setTheme(mode)
+  themeOpen.value = false
+}
+
 const themes: { mode: ThemeMode; icon: string; labelKey: string }[] = [
   { mode: 'auto', icon: 'monitor', labelKey: 'settings.themeAuto' },
   { mode: 'light', icon: 'sun', labelKey: 'settings.themeLight' },
@@ -95,7 +115,17 @@ const themes: { mode: ThemeMode; icon: string; labelKey: string }[] = [
               :class="files.saving ? 'bg-warning' : files.dirty ? 'bg-warning' : 'bg-ok'"
             />
           </span>
-          <span :class="saveNeutral ? '' : files.saving ? 'text-warning' : files.dirty ? 'text-warning' : 'text-ok'">
+          <span
+            :class="
+              saveNeutral
+                ? ''
+                : files.saving
+                  ? 'text-warning'
+                  : files.dirty
+                    ? 'text-warning'
+                    : 'text-ok'
+            "
+          >
             {{ saveLabel }}
           </span>
           <!-- <Icon name="chevron-up" :size="10" class="opacity-60 transition-transform duration-150" :class="saveOpen ? 'rotate-180' : ''" /> -->
@@ -107,18 +137,35 @@ const themes: { mode: ThemeMode; icon: string; labelKey: string }[] = [
             class="absolute bottom-7 left-0 z-50 w-[236px] rounded-xl border border-edge bg-elevate p-1.5 shadow-xl"
             :style="{ boxShadow: 'var(--shadow-2)' }"
           >
-            <p class="px-2.5 pb-1 pt-1.5 text-[10.5px] font-medium uppercase tracking-wide text-ink-3">{{ t('statusbar.saveMode') }}</p>
+            <p
+              class="px-2.5 pb-1 pt-1.5 text-[10.5px] font-medium uppercase tracking-wide text-ink-3"
+            >
+              {{ t('statusbar.saveMode') }}
+            </p>
             <button
               class="flex w-full items-start gap-2.5 rounded-lg px-2.5 py-2 text-left transition-colors duration-100"
               :class="settings.autoSave ? 'bg-accent-soft' : 'hover:bg-panel-2'"
               @click="chooseSaveMode(false)"
             >
-              <Icon name="refresh" :size="14" :class="settings.autoSave ? 'mt-0.5 text-accent' : 'mt-0.5 text-ink-3'" />
+              <Icon
+                name="refresh"
+                :size="14"
+                :class="settings.autoSave ? 'mt-0.5 text-accent' : 'mt-0.5 text-ink-3'"
+              />
               <span class="min-w-0 flex-1">
-                <span class="block text-[12.5px] font-medium" :class="settings.autoSave ? 'text-accent' : 'text-ink'">{{ t('statusbar.autoSave') }}</span>
-                <span class="mt-0.5 block text-[11px] leading-snug text-ink-3">{{ t('settings.autoSaveDesc', { sec: settings.autoSaveInterval }) }}</span>
+                <span
+                  class="block text-[12.5px] font-medium"
+                  :class="settings.autoSave ? 'text-accent' : 'text-ink'"
+                  >{{ t('statusbar.autoSave') }}</span
+                >
+                <span class="mt-0.5 block text-[11px] leading-snug text-ink-3">{{
+                  t('settings.autoSaveDesc', { sec: settings.autoSaveInterval })
+                }}</span>
               </span>
-              <span v-if="settings.autoSave" class="mt-0.5 flex h-4 w-4 flex-none items-center justify-center rounded-full bg-accent">
+              <span
+                v-if="settings.autoSave"
+                class="mt-0.5 flex h-4 w-4 flex-none items-center justify-center rounded-full bg-accent"
+              >
                 <Icon name="check" :size="10" class="text-white" />
               </span>
             </button>
@@ -127,24 +174,32 @@ const themes: { mode: ThemeMode; icon: string; labelKey: string }[] = [
               :class="!settings.autoSave ? 'bg-accent-soft' : 'hover:bg-panel-2'"
               @click="chooseSaveMode(true)"
             >
-              <Icon name="save" :size="14" :class="!settings.autoSave ? 'mt-0.5 text-accent' : 'mt-0.5 text-ink-3'" />
+              <Icon
+                name="save"
+                :size="14"
+                :class="!settings.autoSave ? 'mt-0.5 text-accent' : 'mt-0.5 text-ink-3'"
+              />
               <span class="min-w-0 flex-1">
-                <span class="block text-[12.5px] font-medium" :class="!settings.autoSave ? 'text-accent' : 'text-ink'">{{ t('statusbar.manualSave') }}</span>
-                <span class="mt-0.5 block text-[11px] leading-snug text-ink-3">Ctrl+S {{ t('common.save') }}</span>
+                <span
+                  class="block text-[12.5px] font-medium"
+                  :class="!settings.autoSave ? 'text-accent' : 'text-ink'"
+                  >{{ t('statusbar.manualSave') }}</span
+                >
+                <span class="mt-0.5 block text-[11px] leading-snug text-ink-3"
+                  >Ctrl+S {{ t('common.save') }}</span
+                >
               </span>
-              <span v-if="!settings.autoSave" class="mt-0.5 flex h-4 w-4 flex-none items-center justify-center rounded-full bg-accent">
+              <span
+                v-if="!settings.autoSave"
+                class="mt-0.5 flex h-4 w-4 flex-none items-center justify-center rounded-full bg-accent"
+              >
                 <Icon name="check" :size="10" class="text-white" />
               </span>
             </button>
             <div class="my-1 border-t border-edge" />
             <button
               class="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-[12px] text-ink-3 transition-colors hover:bg-panel-2 hover:text-ink-2"
-              @click="
-                () => {
-                  saveOpen = false
-                  ui.openSettings('general')
-                }
-              "
+              @click="openGeneralSettings"
             >
               <Icon name="settings" :size="12" />
               {{ t('statusbar.openSettings') }}
@@ -161,9 +216,13 @@ const themes: { mode: ThemeMode; icon: string; labelKey: string }[] = [
     <template v-if="files.current">
       <span class="tabular-nums">{{ files.wordCount }} {{ t('editor.words') }}</span>
       <span class="tabular-nums">{{ files.lineCount }} {{ t('editor.lines') }}</span>
-      <span class="hidden tabular-nums sm:inline">{{ files.charCount }} {{ t('editor.chars') }}</span>
+      <span class="hidden tabular-nums sm:inline"
+        >{{ files.charCount }} {{ t('editor.chars') }}</span
+      >
       <span class="h-3 w-px bg-edge" />
-      <span class="tabular-nums">{{ t('editor.cursor', { line: ui.cursor.line, col: ui.cursor.col }) }}</span>
+      <span class="tabular-nums">{{
+        t('editor.cursor', { line: ui.cursor.line, col: ui.cursor.col })
+      }}</span>
     </template>
 
     <div class="flex-1" />
@@ -179,15 +238,40 @@ const themes: { mode: ThemeMode; icon: string; labelKey: string }[] = [
       <span>{{ currentEncodingLabel }}</span>
     </span>
 
+    <!--
+      行尾：**可点**（LF ⇄ CRLF，点击即按新行尾写回）。
+      为什么放状态栏而不只放菜单：行尾是「打开→保存会不会整文件 diff」的直接原因，
+      用户需要一眼看到它、并且一键改掉（见 shared/eol.ts 与 stores/files.setEol）。
+    -->
+    <button
+      v-if="files.current"
+      class="flex items-center gap-1 rounded-md px-1.5 py-0.5 tabular-nums transition-colors hover:bg-panel-2 hover:text-ink-2"
+      :title="t('statusbar.eolTooltip', { eol: currentEolLabel })"
+      data-status-eol
+      @click="files.toggleEol()"
+    >
+      <Icon name="align-left" :size="12" />
+      <span>{{ currentEolLabel }}</span>
+    </button>
+
     <!-- 右侧：主题 / 语言 -->
     <div ref="themeRef" class="relative flex items-center">
       <button
         class="flex items-center gap-1 rounded-md px-1.5 py-0.5 transition-colors hover:bg-panel-2 hover:text-ink-2"
         @click="themeOpen = !themeOpen"
       >
-        <Icon :name="themes.find((th) => th.mode === settings.theme)?.icon || 'monitor'" :size="13" />
-        <span>{{ t(themes.find((th) => th.mode === settings.theme)?.labelKey || 'settings.themeAuto') }}</span>
-        <Icon name="chevron-down" :size="11" :class="themeOpen ? 'rotate-180 transition-transform' : 'transition-transform'" />
+        <Icon
+          :name="themes.find((th) => th.mode === settings.theme)?.icon || 'monitor'"
+          :size="13"
+        />
+        <span>{{
+          t(themes.find((th) => th.mode === settings.theme)?.labelKey || 'settings.themeAuto')
+        }}</span>
+        <Icon
+          name="chevron-down"
+          :size="11"
+          :class="themeOpen ? 'rotate-180 transition-transform' : 'transition-transform'"
+        />
       </button>
       <Transition name="pop">
         <div
@@ -199,13 +283,12 @@ const themes: { mode: ThemeMode; icon: string; labelKey: string }[] = [
             v-for="th in themes"
             :key="th.mode"
             class="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-left text-[12.5px] transition-colors duration-100"
-            :class="settings.theme === th.mode ? 'bg-accent-soft text-accent' : 'text-ink hover:bg-panel-2'"
-            @click="
-              () => {
-                settings.setTheme(th.mode)
-                themeOpen = false
-              }
+            :class="
+              settings.theme === th.mode
+                ? 'bg-accent-soft text-accent'
+                : 'text-ink hover:bg-panel-2'
             "
+            @click="pickTheme(th.mode)"
           >
             <Icon :name="th.icon" :size="14" />
             {{ t(th.labelKey) }}

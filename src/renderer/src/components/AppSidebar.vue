@@ -43,6 +43,16 @@ function onDragStart(e: MouseEvent): void {
   document.addEventListener('mouseup', up)
   e.preventDefault()
 }
+
+/**
+ * 收起侧栏：改内存状态 + 落库。
+ * 写成方法而不是模板内联多语句 —— prettier 会把内联多语句的分号吃掉（`a = 1 b()`），
+ * Vue 模板编译器随即报 "Error parsing JavaScript expression"。
+ */
+function collapseSidebar(): void {
+  ui.sidebarVisible = false
+  settings.set('sidebarVisible', false)
+}
 </script>
 
 <template>
@@ -142,12 +152,7 @@ function onDragStart(e: MouseEvent): void {
       <button
         class="icon-btn !h-6.5 !w-6.5"
         :title="t('sidebar.collapse') + ' (Ctrl+Shift+B)'"
-        @click="
-          () => {
-            ui.sidebarVisible = false
-            settings.set('sidebarVisible', false)
-          }
-        "
+        @click="collapseSidebar"
       >
         <Icon name="panel-left" :size="14" />
       </button>

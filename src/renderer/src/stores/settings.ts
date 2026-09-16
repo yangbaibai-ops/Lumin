@@ -43,7 +43,9 @@ export const useSettingsStore = defineStore('settings', {
       // 因此先 await settings:update（主进程同步 themeSource：auto→system），
       // 等媒体查询传播后再重算主题，auto 才能正确跟随系统。
       try {
-        await window.luminAPI.settings.update(JSON.parse(JSON.stringify(this.$state)) as AppSettings)
+        await window.luminAPI.settings.update(
+          JSON.parse(JSON.stringify(this.$state)) as AppSettings
+        )
         await new Promise<void>((resolve) => setTimeout(resolve, 60))
       } finally {
         this.applyAll()

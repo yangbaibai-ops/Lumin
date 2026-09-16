@@ -37,7 +37,10 @@ onMounted(async () => {
     <div class="mx-auto flex max-w-[560px] flex-col items-center px-8 pb-16 pt-16 text-center">
       <div
         class="relative mb-6 flex h-20 w-20 items-center justify-center rounded-3xl bg-gradient-to-br from-accent to-accent-2 text-white"
-        :style="{ animation: 'lm-pop 0.5s cubic-bezier(0.2, 0.9, 0.3, 1.2)', boxShadow: '0 12px 40px var(--glow)' }"
+        :style="{
+          animation: 'lm-pop 0.5s cubic-bezier(0.2, 0.9, 0.3, 1.2)',
+          boxShadow: '0 12px 40px var(--glow)'
+        }"
       >
         <Icon name="logo" :size="40" :stroke-width="4" />
       </div>
@@ -45,8 +48,8 @@ onMounted(async () => {
       <p class="mt-1 text-[13.5px] font-medium tracking-[0.25em] text-accent">WRITE IN LIGHT.</p>
 
       <p class="mt-6 max-w-[440px] text-[13.5px] leading-relaxed text-ink-2">
-        Lumin 是一款基于 Electron 构建的跨平台桌面 Markdown 编辑器，以「所见即所得」为核心设计理念，致力于提供媲美
-        Typora 的沉浸式写作体验。
+        Lumin 是一款基于 Electron 构建的跨平台桌面 Markdown
+        编辑器，以「所见即所得」为核心设计理念，致力于提供媲美 Typora 的沉浸式写作体验。
       </p>
 
       <div class="mt-8 grid w-full grid-cols-2 gap-3">
@@ -61,7 +64,9 @@ onMounted(async () => {
       </div>
 
       <div class="mt-8 w-full">
-        <h2 class="mb-3 text-[12px] font-semibold uppercase tracking-[0.14em] text-ink-3">技术栈</h2>
+        <h2 class="mb-3 text-[12px] font-semibold uppercase tracking-[0.14em] text-ink-3">
+          技术栈
+        </h2>
         <div class="flex flex-wrap justify-center gap-2">
           <span
             v-for="s in stack"

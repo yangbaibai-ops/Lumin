@@ -29,13 +29,7 @@ const ICONS: Record<string, string[]> = {
     'p:M4 6h1v4',
     'p:M6 18H4c0-1 2-2 2-3s-1-1.5-2-1'
   ],
-  'list-checks': [
-    'p:M3 17 5 19l4-4',
-    'p:M3 7l2 2 4-4',
-    'p:M13 6h8',
-    'p:M13 12h8',
-    'p:M13 18h8'
-  ],
+  'list-checks': ['p:M3 17 5 19l4-4', 'p:M3 7l2 2 4-4', 'p:M13 6h8', 'p:M13 12h8', 'p:M13 18h8'],
   braces: [
     'p:M8 3H7a2 2 0 0 0-2 2v5a2 2 0 0 1-2 2 2 2 0 0 1 2 2v5c0 1.1.9 2 2 2h1',
     'p:M16 21h1a2 2 0 0 0 2-2v-5c0-1.1.9-2 2-2a2 2 0 0 1-2-2V5a2 2 0 0 0-2-2h-1'
@@ -86,13 +80,22 @@ const ICONS: Record<string, string[]> = {
   moon: ['p:M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z'],
   book: ['p:M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20'],
   monitor: ['rect:2,3,20,14,2', 'p:M8 21h8', 'p:M12 17v4'],
-  maximize: ['p:M8 3H5a2 2 0 0 0-2 2v3', 'p:M21 8V5a2 2 0 0 0-2-2h-3', 'p:M3 16v3a2 2 0 0 0 2 2h3', 'p:M16 21h3a2 2 0 0 0 2-2v-3'],
+  maximize: [
+    'p:M8 3H5a2 2 0 0 0-2 2v3',
+    'p:M21 8V5a2 2 0 0 0-2-2h-3',
+    'p:M3 16v3a2 2 0 0 0 2 2h3',
+    'p:M16 21h3a2 2 0 0 0 2-2v-3'
+  ],
   'align-center': ['p:M21 6H3', 'p:M17 12H7', 'p:M19 18H5'],
   eye: ['p:M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z', 'c:12,12,3'],
   source: ['p:m18 16 4-4-4-4', 'p:M6 8l-4 4 4 4'],
   columns: ['rect:3,3,7.5,18,2', 'rect:13.5,3,7.5,18,2', 'p:M10.5 3v18'],
   'sync-scroll': ['p:M8 3 4 7l4 4', 'p:M4 7h16', 'p:M16 21l4-4-4-4', 'p:M20 17H4'],
-  'external-link': ['p:M15 3h6v6', 'p:M10 14 21 3', 'p:M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6'],
+  'external-link': [
+    'p:M15 3h6v6',
+    'p:M10 14 21 3',
+    'p:M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6'
+  ],
   clock: ['c:12,12,9', 'p:M12 6v6l4 2'],
   check: ['p:M20 6 9 17l-5-5'],
   sparkles: [
@@ -108,14 +111,26 @@ const ICONS: Record<string, string[]> = {
     'p:M21 3v5h-5',
     'p:M3 21v-5h5'
   ],
-  globe: ['c:12,12,9', 'p:M2 12h20', 'p:M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z'],
-  'file-plus': ['p:M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7z', 'p:M14 2v4a2 2 0 0 0 2 2h4', 'p:M12 18v-6', 'p:M9 15h6'],
+  globe: [
+    'c:12,12,9',
+    'p:M2 12h20',
+    'p:M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z'
+  ],
+  'file-plus': [
+    'p:M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7z',
+    'p:M14 2v4a2 2 0 0 0 2 2h4',
+    'p:M12 18v-6',
+    'p:M9 15h6'
+  ],
   'folder-plus': [
     'p:M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z',
     'p:M12 10v6',
     'p:M9 13h6'
   ],
-  file: ['p:M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7z', 'p:M14 2v4a2 2 0 0 0 2 2h4'],
+  file: [
+    'p:M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7z',
+    'p:M14 2v4a2 2 0 0 0 2 2h4'
+  ],
   folder: [
     'p:M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z'
   ],
@@ -135,14 +150,20 @@ const ICONS: Record<string, string[]> = {
     'p:M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z'
   ],
   more: ['c:5,12,1', 'c:12,12,1', 'c:19,12,1'],
-  'panel-left': [
-    'rect:3,3,18,18,2',
-    'p:M9 3v18'
-  ],
+  'panel-left': ['rect:3,3,18,18,2', 'p:M9 3v18'],
   search: ['c:11,11,7', 'p:m21 21-4.3-4.3'],
   copy: ['rect:9,9,13,13,2', 'p:M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1'],
-  scissors: ['c:6,6,3', 'c:6,18,3', 'p:M20 4 8.12 15.88', 'p:M14.47 14.48 20 20', 'p:M8.12 8.12 12 12'],
-  clipboard: ['rect:8,2,8,4,1', 'p:M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2'],
+  scissors: [
+    'c:6,6,3',
+    'c:6,18,3',
+    'p:M20 4 8.12 15.88',
+    'p:M14.47 14.48 20 20',
+    'p:M8.12 8.12 12 12'
+  ],
+  clipboard: [
+    'rect:8,2,8,4,1',
+    'p:M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2'
+  ],
   dot: ['c:12,12,4.5'],
   folderOpen: [
     'p:M6 14l1.5-2.9A2 2 0 0 1 9.24 10H20a2 2 0 0 1 1.94 2.5l-1.54 6a2 2 0 0 1-1.95 1.5H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H18a2 2 0 0 1 2 2v2'
@@ -152,12 +173,25 @@ const ICONS: Record<string, string[]> = {
     'p:M17 21v-8H7v8',
     'p:M7 3v5h8'
   ],
-  keyboard: ['rect:2,6,20,12,2', 'p:M6 10h.01', 'p:M10 10h.01', 'p:M14 10h.01', 'p:M18 10h.01', 'p:M6 14h.01', 'p:M18 14h.01', 'p:M9 14h4']
+  keyboard: [
+    'rect:2,6,20,12,2',
+    'p:M6 10h.01',
+    'p:M10 10h.01',
+    'p:M14 10h.01',
+    'p:M18 10h.01',
+    'p:M6 14h.01',
+    'p:M18 14h.01',
+    'p:M9 14h4'
+  ]
 }
 
 const elements = ICONS[props.name] || ICONS.info
 
-function parts(): { paths: string[]; circles: { cx: number; cy: number; r: number }[]; rects: { x: number; y: number; w: number; h: number; rx: number }[] } {
+function parts(): {
+  paths: string[]
+  circles: { cx: number; cy: number; r: number }[]
+  rects: { x: number; y: number; w: number; h: number; rx: number }[]
+} {
   const paths: string[] = []
   const circles: { cx: number; cy: number; r: number }[] = []
   const rects: { x: number; y: number; w: number; h: number; rx: number }[] = []

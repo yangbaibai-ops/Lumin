@@ -11,6 +11,7 @@ import SegmentedControl, { type SegmentItem } from './SegmentedControl.vue'
 import ToolbarTableButton from './ToolbarTableButton.vue'
 import ToolbarCodeBlockButton from './ToolbarCodeBlockButton.vue'
 import { shouldCloseOnScrollOrResize } from '../lib/popoverClose'
+import { selectionHasMdStyle } from '../lib/editor/typoraInlineMarks'
 
 // ─── 编辑器工具栏：命令通过 editor store 桥接 Tiptap 内核（解耦）────────────
 const { t } = useI18n()
@@ -128,9 +129,10 @@ function isMdActive(cmd: 'bold' | 'italic' | 'underline' | 'strike' | 'code'): b
   const ed = editorStore.instance
   if (!ed) return false
   if (cmd === 'underline') return ed.isActive('underline')
-  const kind = cmd === 'bold' ? 'bold' : cmd === 'italic' ? 'italic' : cmd === 'strike' ? 'strike' : 'code'
+  const kind =
+    cmd === 'bold' ? 'bold' : cmd === 'italic' ? 'italic' : cmd === 'strike' ? 'strike' : 'code'
   try {
-    return ed.isActive('mdStyle', { style: kind })
+    return selectionHasMdStyle(ed, kind)
   } catch {
     return false
   }
@@ -184,26 +186,37 @@ function addImage(): void {
   })
 }
 
-const inlineButtons: { icon: string; cmd: 'bold' | 'italic' | 'underline' | 'strike' | 'code'; name: string; titleKey: string }[] = [
+const inlineButtons: {
+  icon: string
+  cmd: 'bold' | 'italic' | 'underline' | 'strike' | 'code'
+  name: string
+  titleKey: string
+}[] = [
   { icon: 'bold', cmd: 'bold', name: 'bold', titleKey: 'editor.bold' },
   { icon: 'italic', cmd: 'italic', name: 'italic', titleKey: 'editor.italic' },
   { icon: 'underline', cmd: 'underline', name: 'underline', titleKey: 'editor.underline' },
   { icon: 'strike', cmd: 'strike', name: 'strike', titleKey: 'editor.strike' },
   { icon: 'code', cmd: 'code', name: 'code', titleKey: 'editor.inlineCode' }
 ]
-const blockButtons: { icon: string; cmd: 'quote' | 'ul' | 'ol' | 'task'; name: string; titleKey: string }[] = [
+const blockButtons: {
+  icon: string
+  cmd: 'quote' | 'ul' | 'ol' | 'task'
+  name: string
+  titleKey: string
+}[] = [
   { icon: 'quote', cmd: 'quote', name: 'blockquote', titleKey: 'editor.quote' },
   { icon: 'list', cmd: 'ul', name: 'bulletList', titleKey: 'editor.ul' },
   { icon: 'list-ordered', cmd: 'ol', name: 'orderedList', titleKey: 'editor.ol' },
   { icon: 'list-checks', cmd: 'task', name: 'taskList', titleKey: 'editor.task' }
 ]
 
-const exportItems: { icon: string; labelKey: string; format: 'pdf' | 'html' | 'word' | 'epub' }[] = [
-  { icon: 'file', labelKey: 'editor.exportPdf', format: 'pdf' },
-  { icon: 'code', labelKey: 'editor.exportHtml', format: 'html' },
-  { icon: 'file', labelKey: 'editor.exportWord', format: 'word' },
-  { icon: 'book', labelKey: 'editor.exportEpub', format: 'epub' }
-]
+const exportItems: { icon: string; labelKey: string; format: 'pdf' | 'html' | 'word' | 'epub' }[] =
+  [
+    { icon: 'file', labelKey: 'editor.exportPdf', format: 'pdf' },
+    { icon: 'code', labelKey: 'editor.exportHtml', format: 'html' },
+    { icon: 'file', labelKey: 'editor.exportWord', format: 'word' },
+    { icon: 'book', labelKey: 'editor.exportEpub', format: 'epub' }
+  ]
 </script>
 
 <template>
@@ -212,17 +225,31 @@ const exportItems: { icon: string; labelKey: string; format: 'pdf' | 'html' | 'w
     @mousedown.prevent
   >
     <!-- 侧边栏开关 -->
-    <button class="icon-btn" :title="t('menu.toggleSidebar') + ' (Ctrl+Shift+B)'" @click="toggleSidebar">
+    <button
+      class="icon-btn"
+      :title="t('menu.toggleSidebar') + ' (Ctrl+Shift+B)'"
+      @click="toggleSidebar"
+    >
       <Icon name="panel-left" :size="16" />
     </button>
 
     <div class="mx-1.5 h-5 w-px shrink-0 bg-edge" />
 
     <!-- 撤销 / 重做 -->
-    <button class="icon-btn" :class="{ 'opacity-40': !canUndo() }" :title="t('editor.undo')" @click="editorStore.instance?.chain().focus().undo().run()">
+    <button
+      class="icon-btn"
+      :class="{ 'opacity-40': !canUndo() }"
+      :title="t('editor.undo')"
+      @click="editorStore.instance?.chain().focus().undo().run()"
+    >
       <Icon name="undo" :size="15" />
     </button>
-    <button class="icon-btn" :class="{ 'opacity-40': !canRedo() }" :title="t('editor.redo')" @click="editorStore.instance?.chain().focus().redo().run()">
+    <button
+      class="icon-btn"
+      :class="{ 'opacity-40': !canRedo() }"
+      :title="t('editor.redo')"
+      @click="editorStore.instance?.chain().focus().redo().run()"
+    >
       <Icon name="redo" :size="15" />
     </button>
 
@@ -317,7 +344,12 @@ const exportItems: { icon: string; labelKey: string; format: 'pdf' | 'html' | 'w
 
     <!-- 导出 -->
     <div ref="exportRef" class="relative shrink-0">
-      <button class="icon-btn" :class="{ active: exportOpen }" :title="t('editor.export')" @click="toggleExport">
+      <button
+        class="icon-btn"
+        :class="{ active: exportOpen }"
+        :title="t('editor.export')"
+        @click="toggleExport"
+      >
         <Icon name="download" :size="15" />
       </button>
     </div>
@@ -334,7 +366,11 @@ const exportItems: { icon: string; labelKey: string; format: 'pdf' | 'html' | 'w
         <div
           v-if="exportOpen"
           class="export-pop fixed z-[100] w-[190px] rounded-xl border border-edge bg-elevate p-1.5"
-          :style="{ boxShadow: 'var(--shadow-2)', left: exportPos.x + 'px', top: exportPos.y + 'px' }"
+          :style="{
+            boxShadow: 'var(--shadow-2)',
+            left: exportPos.x + 'px',
+            top: exportPos.y + 'px'
+          }"
         >
           <button
             v-for="item in exportItems"

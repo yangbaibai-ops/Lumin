@@ -24,6 +24,7 @@ import { searchKeymap, highlightSelectionMatches } from '@codemirror/search'
 import { tags as t } from '@lezer/highlight'
 import { TextSelection } from '@tiptap/pm/state'
 import { useSettingsStore } from '../../stores/settings'
+import { useEditorStore } from '../../stores/editor'
 import { escapeHtml } from '../../lib/utils/html'
 import {
   registerCodeBlockHandle,
@@ -33,6 +34,7 @@ import {
 
 const props = defineProps(nodeViewProps)
 const settings = useSettingsStore()
+const editorStore = useEditorStore()
 
 const LANGUAGES = [
   'javascript',
@@ -75,10 +77,7 @@ interface HasFocusGuard {
   original: () => boolean
   count: number
 }
-const hasFocusGuards = new WeakMap<
-  object,
-  HasFocusGuard
->()
+const hasFocusGuards = new WeakMap<object, HasFocusGuard>()
 
 function acquireHasFocusGuard(pmView: object): void {
   let guard = hasFocusGuards.get(pmView)
@@ -134,12 +133,30 @@ const cmTheme = EditorView.theme({
 const mdHighlight = syntaxHighlighting(
   HighlightStyle.define([
     { tag: t.keyword, color: 'var(--accent)' },
-    { tag: [t.name, t.deleted, t.character, t.propertyName, t.macroName], color: 'var(--accent-ink)' },
+    {
+      tag: [t.name, t.deleted, t.character, t.propertyName, t.macroName],
+      color: 'var(--accent-ink)'
+    },
     { tag: [t.function(t.variableName), t.labelName], color: 'var(--warning)' },
     { tag: [t.color, t.constant(t.name), t.standard(t.name)], color: 'var(--warning)' },
     { tag: [t.definition(t.name), t.separator], color: 'var(--ink-2)' },
-    { tag: [t.typeName, t.className, t.number, t.changed, t.annotation, t.modifier, t.self, t.namespace], color: 'var(--warning)' },
-    { tag: [t.operator, t.operatorKeyword, t.url, t.escape, t.regexp, t.link, t.special(t.string)], color: 'var(--accent-2)' },
+    {
+      tag: [
+        t.typeName,
+        t.className,
+        t.number,
+        t.changed,
+        t.annotation,
+        t.modifier,
+        t.self,
+        t.namespace
+      ],
+      color: 'var(--warning)'
+    },
+    {
+      tag: [t.operator, t.operatorKeyword, t.url, t.escape, t.regexp, t.link, t.special(t.string)],
+      color: 'var(--accent-2)'
+    },
     { tag: [t.meta, t.comment], color: 'var(--ink-3)', fontStyle: 'italic' },
     { tag: t.strong, fontWeight: '700' },
     { tag: t.emphasis, fontStyle: 'italic' },
@@ -155,8 +172,8 @@ const mdHighlight = syntaxHighlighting(
 async function loadLanguage(lang: string): Promise<void> {
   if (lang === 'mermaid' || !cmView) return
   try {
-    const desc = languages.find((l) =>
-      l.name.toLowerCase() === lang.toLowerCase() || l.alias.includes(lang.toLowerCase())
+    const desc = languages.find(
+      (l) => l.name.toLowerCase() === lang.toLowerCase() || l.alias.includes(lang.toLowerCase())
     )
     if (!desc) {
       cmView.dispatch({ effects: languageCompartment.reconfigure([]) })
@@ -301,6 +318,12 @@ function syncToNode(): void {
   const pos = getPos()
   if (typeof pos !== 'number') return
   const editor = props.editor
+  // 挂个牌：这次正文变化的作者是这个代码块（手册 §4.59 的账本）。
+  // 序列化是 250ms 防抖的，等它落到 files 时已经看不出谁写的了，所以写回节点
+  // 之前先声明；EditorView 的 onEditorUpdate 会消费掉它并记进账本。
+  // 效果：Tiptap 面板不会被回灌（它的文档本来就是最新的，回灌会把光标踢出代码块），
+  // 而源码 textarea 照常跟着更新。
+  editorStore.noteWrite('codeblock')
   // PM 事务在文档变更时会无条件 selectionToDOM（重写 DOM 选区），浏览器
   // 随之可能把焦点翻回 PM 根节点。事务后立即把焦点与光标归还 CM（同步、
   // 无可见闪烁），pinCmFocus 内置 60ms 延迟重钉兜底异步翻转。
@@ -339,27 +362,52 @@ watch(
   }
 )
 
-// 外部内容变化（同一文件重新打开等场景，节点内容被外部替换）：
-// CM 状态与节点脱钩时整体重置（setState 重建，语言高亮随后重挂）。
-// 防抖 150ms：Vue watch 回调是异步排队的——快速连续输入时，每个回调
-// 持有的 nv 是触发时刻的过期快照，而 cmView.state 已是最新值，直接
-// 比较会误判为「外部变化」并把 CM 状态逐级回滚（快速回车全部丢失的
-// 根因）。防抖后只在输入停顿后执行一次，此时快照与状态一致，自身同步
-// 自然跳过；真正的外部变化（低频）仍能正确同步。
+// 外部内容变化（源码面编辑、同一文件重新打开等）：CM 的文本源是**节点文本**，
+// 节点文本变了就整体重置（setState 重建，语言高亮随后重挂）。
+//
+// 收敛后的规则（手册 §4.59），只有三条，都是结构性的、不看时间窗：
+//   1. **触发时重新读节点文本**，不用 Vue watch 队列里那份可能已过期的快照
+//      （旧写法拿的是触发瞬间的 `nv`，而 150ms 内 CM 已经又往前跑了几行 →
+//      用旧文本重建 CM，快速输入被逐级回滚，正是「快速回车丢字」的根因之一）；
+//   2. 文本已经一致就不动（自己写回去的那一次天然落在这里）；
+//   3. **CM 拿着光标时绝不覆盖**，改成再等一轮 —— 外部同步绝不能打断正在输入的人。
 let extSyncTimer: ReturnType<typeof setTimeout> | null = null
+
+/** 节点当前的文本：**现读 PM 文档**（`props.node` 是渲染时传下来的，可能落后一拍） */
+function currentNodeText(): string {
+  const getPos = props.getPos as (() => number) | undefined
+  const pos = typeof getPos === 'function' ? getPos() : undefined
+  if (typeof pos === 'number') {
+    const node = props.editor.state.doc.nodeAt(pos)
+    if (node && node.type.name === 'codeBlock') return node.textContent
+  }
+  return props.node.textContent
+}
+
+function applyNodeText(): void {
+  if (!cmView || selectedLanguage.value === 'mermaid') return
+  const fresh = currentNodeText()
+  if (fresh === cmView.state.doc.toString()) return
+  if (cmView.hasFocus) {
+    // 焦点还在代码块里：说明这份节点文本是**落后的那一边**，等失焦后再对齐
+    scheduleApplyNodeText()
+    return
+  }
+  cmView.setState(EditorState.create({ doc: fresh, extensions: buildCmExtensions() }))
+  void loadLanguage(selectedLanguage.value)
+}
+
+function scheduleApplyNodeText(): void {
+  if (extSyncTimer) clearTimeout(extSyncTimer)
+  extSyncTimer = setTimeout(() => {
+    extSyncTimer = null
+    applyNodeText()
+  }, 150)
+}
+
 watch(
   () => props.node.textContent,
-  (nv) => {
-    if (extSyncTimer) clearTimeout(extSyncTimer)
-    extSyncTimer = setTimeout(() => {
-      extSyncTimer = null
-      if (!cmView || selectedLanguage.value === 'mermaid') return
-      if (nv === cmView.state.doc.toString()) return
-      cmView.setState(EditorState.create({ doc: nv, extensions: buildCmExtensions() }))
-      void loadLanguage(selectedLanguage.value)
-      pinCmFocus()
-    }, 150)
-  }
+  () => scheduleApplyNodeText()
 )
 
 /* 扩展列表按需构建：行号开关属于 Compartment，但重建 state（外部内容同步）时
@@ -548,7 +596,10 @@ async function renderMermaid(): Promise<void> {
       theme: settings.effectiveTheme === 'dark' ? 'dark' : 'default',
       fontFamily: 'ui-sans-serif, system-ui, sans-serif'
     })
-    const { svg } = await mod.default.render(`mmd-block-${Date.now()}`, props.node.textContent || '')
+    const { svg } = await mod.default.render(
+      `mmd-block-${Date.now()}`,
+      props.node.textContent || ''
+    )
     mermaidSvg.value = svg
   } catch {
     mermaidSvg.value = `<pre><code>${escapeHtml(props.node.textContent || '')}</code></pre>`
@@ -621,6 +672,7 @@ function commitMermaid(): void {
         title="点击编辑源码"
         @click="startMermaidEdit"
       >
+        <!-- eslint-disable-next-line vue/no-v-html -- mermaidSvg 是 mermaid.render() 在 securityLevel:'strict' 下生成的 SVG（见本文件 mermaid 初始化），不是文档原文 -->
         <div v-html="mermaidSvg" />
       </div>
       <textarea

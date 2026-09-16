@@ -1,5 +1,10 @@
 import { defineStore } from 'pinia'
-import type { EditorMode, NotificationLevel, SearchResult } from '../../../shared/types'
+import type {
+  EditorMode,
+  HistoryEntryMeta,
+  NotificationLevel,
+  SearchResult
+} from '../../../shared/types'
 import { useNotificationsStore } from './notifications'
 
 export interface ToastItem {
@@ -50,9 +55,12 @@ export const useUiStore = defineStore('ui', {
     focusMode: false,
     typewriterMode: false,
     confirmState: null as (ConfirmOptions & { resolve: (v: boolean) => void }) | null,
-    promptState: null as
-      | { title: string; placeholder: string; value: string; resolve: (v: string | null) => void }
-      | null,
+    promptState: null as {
+      title: string
+      placeholder: string
+      value: string
+      resolve: (v: string | null) => void
+    } | null,
     contextMenu: null as ContextMenuState | null,
     cursor: { line: 1, col: 1 },
     booting: true,
@@ -66,6 +74,13 @@ export const useUiStore = defineStore('ui', {
       loading: false,
       docs: 0,
       fts: 0
+    },
+    /** 本地历史浮层（Wave 2）：列出当前文档保存前的快照，可预览/载入 */
+    localHistory: {
+      open: false,
+      path: null as string | null,
+      entries: [] as HistoryEntryMeta[],
+      loading: false
     }
   }),
   actions: {
@@ -123,6 +138,25 @@ export const useUiStore = defineStore('ui', {
       this.globalSearch.open = false
       this.globalSearch.results = []
       this.globalSearch.loading = false
+    },
+    /** 打开本地历史浮层：只列当前文档的快照（正文按需取，见 files.restoreHistory） */
+    async openLocalHistory(path: string): Promise<void> {
+      this.localHistory.open = true
+      this.localHistory.path = path
+      this.localHistory.entries = []
+      this.localHistory.loading = true
+      try {
+        this.localHistory.entries = await window.luminAPI.history.list(path, 50)
+      } catch {
+        this.localHistory.entries = []
+      } finally {
+        this.localHistory.loading = false
+      }
+    },
+    closeLocalHistory(): void {
+      this.localHistory.open = false
+      this.localHistory.path = null
+      this.localHistory.entries = []
     }
   }
 })

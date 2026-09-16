@@ -4,6 +4,8 @@ import { useI18n } from 'vue-i18n'
 import type { FileNode } from '../../../shared/types'
 import { useFilesStore } from '../stores/files'
 import { useUiStore } from '../stores/ui'
+import { activeTreePath } from '../lib/treeFocus'
+import { confirmDiscardIfDirty } from '../lib/dialog'
 import Icon from './Icon.vue'
 
 const props = defineProps<{
@@ -84,14 +86,8 @@ async function onToggle(e: MouseEvent): Promise<void> {
 }
 
 async function open(): Promise<void> {
-  if (files.dirty && files.current?.path !== props.node.path) {
-    const ok = await ui.confirm({
-      title: t('editor.dirtyConfirmTitle'),
-      body: t('editor.dirtyConfirmBody'),
-      danger: true
-    })
-    if (!ok) return
-  }
+  // 打开另一篇文档前先问（脏的是**当前**文档；点的就是它自己则不用问）
+  if (!(await confirmDiscardIfDirty(files.dirty && files.current?.path !== props.node.path))) return
   if (await files.openPath(props.node.path)) {
     // 已在编辑器路由内则由事件驱动，无需导航
     document.dispatchEvent(new CustomEvent('lumin:file-opened'))
@@ -108,7 +104,11 @@ function onContextMenu(e: MouseEvent): void {
       { label: t('context.newFolder'), icon: 'folder-plus', action: 'new-folder' }
     )
   } else {
-    items.push({ label: t('context.openNewWindow'), icon: 'external-link', action: 'open-new-window' })
+    items.push({
+      label: t('context.openNewWindow'),
+      icon: 'external-link',
+      action: 'open-new-window'
+    })
   }
   items.push({ label: t('context.rename'), icon: 'pencil', action: 'rename' })
   items.push({ label: t('context.delete'), icon: 'trash', action: 'delete', danger: true })
@@ -129,7 +129,11 @@ async function handleAction(action: string): Promise<void> {
     // 新建即就地重命名（不再弹窗输名）
     await files.newFileAt(props.node.path)
   } else if (action === 'new-folder') {
-    const name = await ui.prompt(t('context.newFolder'), t('sidebar.newFolderHint'), t('context.newFolder'))
+    const name = await ui.prompt(
+      t('context.newFolder'),
+      t('sidebar.newFolderHint'),
+      t('context.newFolder')
+    )
     if (name) await files.createDirAt(props.node.path, name)
   } else if (action === 'rename') {
     void startRename()
@@ -155,15 +159,30 @@ function onDragStart(e: DragEvent): void {
 <template>
   <div>
     <!-- 一行的解剖：16px 的箭头槽（文件行留空以对齐）→ 15px 类型图标 → 文件名。
-         缩进由 --tree-depth 在 CSS 里算（8 + depth * 16），行高固定 27px 让整棵树等距。 -->
+         缩进由 --tree-depth 在 CSS 里算（8 + depth * 16），行高固定 27px 让整棵树等距。
+
+         ARIA：这是 tree 里的一行（role="treeitem"，容器在 FileTree.vue）。
+         tabindex 用 roving tabindex —— 整棵树只有一个可 Tab 到的行（键盘焦点所在行），
+         其余 -1；方向键移动与 Home/End 见 lib/treeFocus.ts（DOM 顺序即 ARIA 遍历顺序）。
+         data-tree-* 是键盘导航要读的最小元数据：path（身份）、parent（← 回父项）、
+         type（← 收起 / → 展开的语义差别）、current（Tab 进树时的落点）。 -->
     <div
       class="tree-row"
       :class="{ 'is-current': isCurrent }"
+      role="treeitem"
       data-tree-row
       :data-depth="depth"
       :data-tree-type="node.type"
+      :data-tree-path="node.path"
+      :data-tree-parent="parentDir"
+      :data-tree-current="isCurrent ? 'true' : undefined"
+      :aria-expanded="node.type === 'directory' ? isOpen : undefined"
+      :aria-selected="isCurrent"
+      :aria-level="depth + 1"
+      :tabindex="activeTreePath === node.path ? 0 : -1"
       :style="{ '--tree-depth': depth }"
       :draggable="!renaming"
+      @focus="activeTreePath = node.path"
       @click="onToggle"
       @contextmenu="onContextMenu"
       @dragstart="onDragStart"

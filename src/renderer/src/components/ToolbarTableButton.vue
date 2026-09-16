@@ -156,9 +156,7 @@ window.addEventListener('resize', onWindowScrollOrResize)
             :key="c"
             class="h-[18px] w-[18px] rounded-[4px] border transition-colors duration-75"
             :class="
-              r <= hoverR && c <= hoverC
-                ? 'border-accent bg-accent-soft'
-                : 'border-edge bg-panel-2'
+              r <= hoverR && c <= hoverC ? 'border-accent bg-accent-soft' : 'border-edge bg-panel-2'
             "
             :aria-label="`${r + 1} × ${c + 1}`"
             @mouseenter="onCellEnter(r, c)"
