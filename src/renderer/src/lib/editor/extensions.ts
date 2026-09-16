@@ -23,6 +23,8 @@ import { MarkdownPaste } from './markdownPaste'
 import { TyporaInlineMarks, MdStyle, MdMarker, MdCodeLiteral, MdEscape } from './typoraInlineMarks'
 import { Frontmatter } from './frontmatter'
 import { HtmlBlock, MdHtml } from './htmlPassthrough'
+import { MathBlock, MdMath } from './mathMarkers'
+import { MathPreview } from './mathPreview'
 import { BulletListMarked, TaskListTight } from './listMarkers'
 import { TyporaPointer, LinkSource } from './pointer'
 import { TableOfContents } from './tableOfContents'
@@ -105,6 +107,8 @@ export const editorExtensions: Extensions = [
   MdEscape,
   // 行内 HTML 原文（`<kbd>`/`<br>`/注释）：同样靠 escape:false 逐字写回
   MdHtml,
+  // 数学公式原文（`$…$`）：靠 escape:false 逐字写回；渲染由 MathPreview 的装饰负责
+  MdMath,
   TyporaInlineMarks,
   // 独立注册 horizontalRule 节点（仅节点与渲染，输入规则置空）
   HorizontalRule.extend({
@@ -176,6 +180,10 @@ export const editorExtensions: Extensions = [
   Frontmatter,
   // 块级 HTML 原文（`<div>`/`<!-- 注释 -->`/`<details>`）：Markdown 表达不了就整段原样留
   HtmlBlock,
+  // 块级公式（`$$…$$`）：独占块的原子节点，屏幕上用 KaTeX 渲染（见 mathMarkers.ts）
+  MathBlock,
+  // 行内公式的 KaTeX 预览（光标不在公式上时用渲染结果替换原文）
+  MathPreview,
   // 鼠标语义：Ctrl/Cmd+左键退化为普通点击（PM 内置会整选段落/节点，Typora 无此逻辑）；
   // 链接：普通左键原地展开源码、Ctrl/Cmd+左键交宿主注入的 onOpenLink（§4.14/§4.15）
   TyporaPointer,

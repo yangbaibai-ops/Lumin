@@ -366,10 +366,17 @@ function toAtoms(frag: Fragment): Atom[] {
   const atoms: Atom[] = []
   frag.forEach((n) => {
     if (n.isText) {
-      // 链接源码展开态（[文字](网址)，pointer.ts linkSource）与**行内 HTML 原文**
-      // （`<kbd>`，htmlPassthrough.ts 的 MdHtml）都视为不透明文本：内容按字面保留，
-      // 不参与行内标记派生（否则 HTML 里的 `*`/`_` 会被当成 Markdown 语法再解释一遍）。
-      if (n.marks.some((m) => m.type.name === 'linkSource' || m.type.name === 'mdHtml')) {
+      // 链接源码展开态（[文字](网址)，pointer.ts linkSource）、**行内 HTML 原文**
+      // （`<kbd>`，htmlPassthrough.ts 的 MdHtml）与**行内公式原文**（`$…$`，mathMarkers.ts 的
+      // MdMath）都视为不透明文本：内容按字面保留，不参与行内标记派生
+      // （否则 HTML/公式里的 `*`/`_`/`\` 会被当成 Markdown 语法再解释一遍 ——
+      //  实测 `$a * b$` 会被 `literalizeStrayMarkers` 从中间切开，公式碎成两段）。
+      if (
+        n.marks.some(
+          (m) =>
+            m.type.name === 'linkSource' || m.type.name === 'mdHtml' || m.type.name === 'mdMath'
+        )
+      ) {
         atoms.push({ kind: 'other', node: n })
         return
       }
@@ -867,8 +874,10 @@ function literalizeStrayMarkers(frag: Fragment, schema: EditorState['schema']): 
           m.type.name === 'mdStyle' ||
           m.type.name === 'mdMarker' ||
           m.type.name === 'mdEscape' ||
-          // 行内 HTML 原文：靠 mdHtml 的 escape:false 原样输出，包成字面量标记反而会被当源码再解析
-          m.type.name === 'mdHtml'
+          // 行内 HTML / 公式原文：靠各自的 `escape:false` 原样输出，
+          // 包成字面量标记反而会被当源码再解析（公式还会被从中间切开）
+          m.type.name === 'mdHtml' ||
+          m.type.name === 'mdMath'
       )
     ) {
       nodes.push(node)

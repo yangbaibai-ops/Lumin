@@ -52,7 +52,8 @@ const DEFAULT_SUITES = [
   '_regress-fileswitch.js', // 切文件（:key 重建）与「源码模式下切文件」
   '_regress-source-roundtrip.js', // 源码模式往返后的代码块可用性
   '_repro-rapidenter.js', // 快速连续回车不丢行（CM / PM / store 三处一致）
-  '_verify-find-replace.js' // 编辑器内查找替换（两个编辑面 / 替换与全部替换 / 大小写）
+  '_verify-find-replace.js', // 编辑器内查找替换（两个编辑面 / 替换与全部替换 / 大小写）
+  '_verify-math.js' // 数学公式（行内 `$…$` / 块级 `$$…$$`）：KaTeX 渲染 + 原文逐字保留
 ]
 
 /** 自己管理 Electron 实例的套件（运行器不替它们起实例） */

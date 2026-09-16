@@ -1600,6 +1600,36 @@ h6.md-reveal::before {
   background: var(--sel);
 }
 
+/* ── 数学公式（KaTeX）──
+   行内公式：原文留在文档里（`$…$` 是一个带 mdMath mark 的文本节点），渲染成公式靠**装饰**：
+   旁边的 .md-math-rendered 是 KaTeX 输出，原文那一段被加上 .md-math-source 折叠掉
+   （`font-size: 0` 而不是 `display: none` —— 后者会破坏浏览器的光标导航，与行内标记同一套处理）。
+   光标落进公式时装饰消失，原文自动露出来可编辑。 */
+.md-preview .md-math-source {
+  font-size: 0;
+}
+.md-preview .md-math-rendered {
+  font-size: inherit;
+  padding: 0 0.1em;
+}
+/* 块级公式：独占一块、居中、可横向滚动（长公式不撑破版心） */
+.md-preview .md-math-block {
+  margin: 0.9em 0;
+  padding: 2px 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  text-align: center;
+  cursor: default;
+}
+.md-preview .md-math-block .katex-display {
+  margin: 0;
+}
+.md-preview .md-math-error {
+  color: var(--danger);
+  font-family: var(--font-mono);
+  font-size: 0.9em;
+}
+
 /* 无序列表：始终显示圆点（与 Typora 一致）。
    输入 '- ' 后 input rule 将其转为 bulletList，圆点由 ul 的 list-style:disc 渲染；
    光标在项内也不把圆点替换为 '- ' 标记（用户期望的渲染形态） */
