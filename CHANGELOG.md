@@ -77,6 +77,46 @@
 - **工程化**：~~`tools/lib/harness.js` + `tools/run-suites.js`~~ → **本轮已完成**；
   剩余：`files` store 拆分；`store` 里那份为绕循环导入而复制的 `confirmIfDirty` 收敛到 `services/dialog`。
 
+## [Unreleased · 日常与深度使用验收] — 逐控件盘点 + 结构面审计（i18n / 设置 / IPC / 覆盖矩阵）
+
+> 视角：日常使用（每个按钮/菜单/设置项）与深度使用（边界状态、结构一致性）。
+> 报告：桌面《lumin-日常与深度使用测试验收报告.md》；原始审计见 `docs/_audit/`。
+
+### Added
+
+- `tests/i18nAndIpc.test.mjs`（进 `npm run ci`，5 条）：三语 key 集合必须一致、en/ru 不许残留中文、
+  代码里字面量 key 必须存在于语言包、preload 调用的 IPC 通道主进程必须注册、主进程死通道必须登记原因。
+- `docs/_audit/i18n-and-settings.md`：i18n 覆盖统计（三语各 **399** key、零缺失、零漏翻译、**59 条死键**）
+  + 30 个设置项的「UI ↔ 默认值 ↔ 消费点」矩阵 + 缺陷清单（含逐条 `文件:行` 证据）。
+- `docs/_audit/coverage-matrix.md`：**121 行**功能 × 套件覆盖矩阵（12 个功能域）、**18 条零覆盖空白**、
+  套件健康度三分类，以及两条结构发现（见下）。
+
+### 关键发现（本轮未全部修完，逐条见报告 §5）
+
+- **S1**：设置面板切 en/ru 后仍以中文为主（约 60 处硬编码），而词条早已存在于语言包（死键）→ 属于
+  「翻译做完了没接上」；同类还有 `AboutView` 整页、`ModalHost` 的「取消/确定」、浮动工具条 title、
+  全局搜索面板、原生对话框「所有文件」、未命名文档名、router 离开确认（与已本地化的 `lib/dialog.ts` 重复）。
+- **S2 测试基建**：`tools/verify-tiptap.js`（1473 行 / **114 条具名断言**，守着气泡菜单、input rules、
+  表格编辑、全局搜索、粘贴）**不在任何矩阵里** —— 硬编码绝对路径 + 写死 dev server + 不用 harness。
+- **S4 假绿**：`--all` 里约 15 个 0 断言探针被运行器按退出码判成 `PASS 0/0`。
+- **S3/S4 健壮性**：`settings:update`（设置唯一写入点）零入参校验；`splitRatio` 载入不 clamp；
+  `autoSaveInterval` NaN → 0ms 定时器；非法 `defaultEncoding` 被当显式编码并**污染该文件的编码记忆**；
+  `nativeMenuBar` 名实不符（`app:setMenuBar` 无调用者）；死 IPC 通道 `file:getPathForFile`。
+
+### Verification（本轮实测）
+
+| 门禁 | 结果 |
+| --- | --- |
+| `npm run typecheck` | exit 0 |
+| `npm run test:unit` | **181/181**（新增 5 条 i18n/IPC 守卫） |
+| `npx eslint .` | **0 error / 0 warning** |
+| `electron-vite build` | 成功 |
+| `node tools/run-suites.js` | 21 个套件 20 绿（`_verify-find-replace` 单跑 12/12、成套连跑 10/12 → 测试时序问题，已记台账） |
+
+### Docs
+
+- 手册新增 §4.69（本轮结论摘要与待办）；optimization-program 台账同步；桌面另存完整验收报告。
+
 ## [Unreleased · 双面一致性测试] — 实时渲染 ⇄ 源码的全面验收（L0–L4）
 
 > 目标：按「专业、可复跑、可扩展」的方式把两个编辑面（wysiwyg / source / split + 代码块内 CM）
