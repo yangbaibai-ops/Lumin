@@ -241,7 +241,24 @@ function patchEscapeRule(md: unknown): void {
     const max = state.posMax
     if (state.src.charCodeAt(pos) !== 0x5c /* \ */) return false
     let p = pos + 1
-    if (p >= max) return false
+
+    // ⓪ `\` 是这一段行内内容的**最后一个字符**（段尾孤立反斜杠）：它是字面反斜杠，
+    //    必须原样写回。两个理由：
+    //    · CommonMark/markdown-it 的硬换行都要求 `\` 后面**还有内容**（`hardbreak` 规则
+    //      判的是 `pos < posMax`），所以段尾这个 `\` 不是硬换行，不能推 hardbreak；
+    //    · 这里若 `return false`（修复前的行为），markdown-it 会把它当普通文本，
+    //      序列化器再转义成 `\\` —— 于是「打开一个以 `a\` 结尾的段落、保存」会让文件
+    //      **涨一个字符**（实测：`a\` → `a\\`，幂等但字节被改）。
+    //    与下面 ② 的「`\` + 空格」同理：字面反斜杠一律走 `md_escape`（escape:false）逐字写回。
+    if (p >= max) {
+      if (!silent) {
+        const token = state.push('md_escape', '', 0)
+        token.content = '\\'
+      }
+      state.pos = p
+      return true
+    }
+
     let code = state.src.charCodeAt(p)
 
     // ① `\` + 换行 = 硬换行（上游还会顺手吃掉后面的行尾空格）

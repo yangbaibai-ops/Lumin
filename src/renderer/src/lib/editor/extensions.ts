@@ -26,6 +26,7 @@ import { HtmlBlock, MdHtml } from './htmlPassthrough'
 import { MathBlock, MdMath } from './mathMarkers'
 import { MathPreview } from './mathPreview'
 import { BulletListMarked, TaskListTight } from './listMarkers'
+import { MarkdownParseLimits } from './parseLimits'
 import { TyporaPointer, LinkSource } from './pointer'
 import { TableOfContents } from './tableOfContents'
 
@@ -172,6 +173,9 @@ export const editorExtensions: Extensions = [
     transformCopiedText: true
   }),
   TyporaMarkers,
+  // 放宽 markdown-it 的嵌套上限（默认 100 → 1000）：默认值会让 50 层以上的列表/引用
+  // **整段被丢掉**（解析器触到上限就跳过剩余行），见 parseLimits.ts
+  MarkdownParseLimits,
   // 链接源码展开标记（普通点击链接时承载 [文字](网址)，序列化原样输出）
   LinkSource,
   // 目录（工具栏「目录」插入；序列化 [TOC]，点击条目跳转标题）

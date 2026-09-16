@@ -77,6 +77,61 @@
 - **工程化**：~~`tools/lib/harness.js` + `tools/run-suites.js`~~ → **本轮已完成**；
   剩余：`files` store 拆分；`store` 里那份为绕循环导入而复制的 `confirmIfDirty` 收敛到 `services/dialog`。
 
+## [Unreleased · 双面一致性测试] — 实时渲染 ⇄ 源码的全面验收（L0–L4）
+
+> 目标：按「专业、可复跑、可扩展」的方式把两个编辑面（wysiwyg / source / split + 代码块内 CM）
+> 的一致性测一遍，回答「结构、渲染、数据有没有问题，哪些处理得不够好」。方案见
+> **`docs/wysiwyg-test-plan.md`**（质量模型、不变量 I1–I12、分层、生成器设计、预算、扩展方式、结果台账）。
+
+### Added
+
+- **L0 纯函数性质测试**（进 `npm run ci`）：`tools/lib/md-gen.js`（生成式语料库：40+ 块级 + 30+ 行内构造、
+  三种接缝、上下文包裹、LF/CRLF/CR/BOM/文末换行变异、种子可复现）+ `tools/lib/surface-invariants.js`
+  （内容守恒 / 幂等 / 切面稳定 / 哨兵词追踪 / 结构扫描 / 损失分诊）+ 19 条单测（含「判据不许误报/漏报」）。
+- **L2 `tools/_verify-surfaces.js`（30 条）**：切面无副作用、源码面完整性、文档树签名同构、
+  光标位置语义（跨面按比例、同源精确、切回可续写）、dirty/撤销/保存、**表驱动的渲染结构**（13 条：
+  标题字号递减、代码块 CodeMirror、引用缩进、表格对齐、任务复选框、KaTeX、front matter、行内代码、粗体）、分屏同世代。
+- **L3 `tools/_verify-surface-fuzz.js`**：生成式语料往返（默认 60 篇，`LUMIN_FUZZ_SEED/COUNT` 可调），
+  失败时按块/行**贪心最小化**给出最小复现；已知缺陷登记在 `KNOWN`（不拖红矩阵，但仍在报告里）。
+- **L4 `tools/_verify-surface-stress.js`（72 断言）**：12 个极端/边界/畸形用例 × 6 类断言
+  （不崩 / 结构守恒 / 切面稳定 / 内容完整 / 三处耗时基线）：1MB 文档、两万行、单行 200KB、
+  100 层列表、40 层引用、2000 个围栏、200×30 宽表、5000 处行内样式、800 公式、Unicode 重载、
+  未闭合构造、100 代码块 + 100 表的真实混合文档。
+- `tools/lib/surface-probe.js`：三套件共用的双面探针（页面侧表达式 + 装载/切面工具），
+  把踩过的坑（不 flush 会被回灌覆盖、源码模式装载静默失败、`textContent` 漏原子节点原文）写进文件头。
+
+### Fixed（都是测试查出来的真实缺陷）
+
+- **S1 · 深层嵌套静默丢内容**：50 层以上的列表/引用在保存时**整段消失** —— markdown-it 的块解析器
+  `if (state.level >= maxNesting) { state.line = endLine; break }` 触顶即跳过剩余行，而默认
+  `maxNesting: 100`、每个列表层吃 2 级 ⇒ 实际上限 ≈ 50 层。实测 100 层列表只剩 49 层。
+  修法：新增 `src/renderer/src/lib/editor/parseLimits.ts`，用 `parse.setup` 钩子把 `maxNesting` 抬到 1000。
+  回归：`deep-list-100`（哨兵 100/100）；深度扫描 64/100 层从 lossy 变 exact。
+- **S2 · 段尾孤立反斜杠被改写**：`a\`（CommonMark 里是字面反斜杠）保存一次变成 `a\\`（文件涨一个字符）。
+  根因：自定义 escape 规则在 `pos + 1 >= posMax` 时 `return false`，markdown-it 当普通文本 → 序列化器转义。
+  修法：`typoraInlineMarks.ts` 补「段尾字面反斜杠」分支，走 `md_escape`（`escape:false`）逐字写回。
+
+### 已知未修（fuzz 抓到并登记）
+
+`> ```mermaid` + `> ``` `（空引用代码块）内容从空串变一个换行；CR 行尾 + 引用的空行展开与 setext 重排；
+纯文本下划线补转义（保义但改字节）；列表后 `---`+段落+`---` 的 HR/setext 歧义重排。三条性能问题
+（977KB 文档装载/回灌各 ~16s；2000 个代码块 52s；混合 98KB 34s）已立基线守卫，建议代码块虚拟化。
+
+### Verification（本轮实测）
+
+| 门禁 | 结果 |
+| --- | --- |
+| `npm run ci` | exit 0（**176/176** 单测） |
+| `npx eslint .` | **0 error / 0 warning** |
+| `electron-vite build` | 成功 |
+| `node tools/run-suites.js` | **21 个套件**：20 绿，`_verify-find-replace` 在**成套连跑**时 10/12、单独跑 12/12 → 判定为**测试隔离/时序问题**（S4，已记台账；非产品回归） |
+| L2 / L3 / L4 | **30/30** / 5 类不变量通过（4 篇命中已登记缺陷） / **72/72** |
+
+### Docs
+
+- 新增 `docs/wysiwyg-test-plan.md`（方案 + 结果台账 §9：F1–F12 逐条现象/根因/状态/回归）；
+  手册新增 §4.68；optimization-program 台账同步；桌面另存一份《双面一致性测试验收报告》。
+
 ## [Unreleased · 单实例提示的终端编码] — 提示改成纯 ASCII（Windows 控制台代码页）
 
 > 承接上一节：修好「第二个实例干净退出」之后，用户终端里那条中文提示是**乱码**，

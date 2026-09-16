@@ -54,7 +54,11 @@ const DEFAULT_SUITES = [
   '_regress-source-roundtrip.js', // 源码模式往返后的代码块可用性
   '_repro-rapidenter.js', // 快速连续回车不丢行（CM / PM / store 三处一致）
   '_verify-find-replace.js', // 编辑器内查找替换（两个编辑面 / 替换与全部替换 / 大小写）
-  '_verify-math.js' // 数学公式（行内 `$…$` / 块级 `$$…$$`）：KaTeX 渲染 + 原文逐字保留
+  '_verify-math.js', // 数学公式（行内 `$…$` / 块级 `$$…$$`）：KaTeX 渲染 + 原文逐字保留
+  // 两面一致性（实时渲染 ⇄ 源码）三层：见 docs/wysiwyg-test-plan.md
+  '_verify-surfaces.js', // L2 双面端到端矩阵：切面无副作用 / 位置语义 / 状态语义 / 渲染结构
+  '_verify-surface-fuzz.js', // L3 生成式语料往返（可复现种子 + 失败最小化）
+  '_verify-surface-stress.js' // L4 极端/边界/压力（含 1MB 与 2000 代码块的耗时基线）
 ]
 
 /** 自己管理 Electron 实例的套件（运行器不替它们起实例） */
@@ -65,7 +69,7 @@ const SELF_MANAGED = new Set([
 ])
 
 function parseArgs(argv) {
-  const args = { suite: null, all: false, keep: false, port: 9222, timeoutMs: 240000 }
+  const args = { suite: null, all: false, keep: false, port: 9222, timeoutMs: 420000 }
   for (const a of argv.slice(2)) {
     if (a === '--all') args.all = true
     else if (a === '--keep') args.keep = true
