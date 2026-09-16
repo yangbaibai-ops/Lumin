@@ -4,3 +4,11 @@ out
 .DS_Store
 .eslintcache
 *.log*
+# 一次性验收/构建日志：以前被误提交进仓库（build-out.txt / typecheck-out.txt）
+*-out.txt
+# electron-updater 的开发态配置（构建产物）
+dev-app-update.yml
+# 写盘用的临时文件（fileOps.writeFile 的原子写落地名，正常情况下一闪而过）
+*.lumin-tmp
+# TypeScript 增量构建缓存（每次 typecheck 都会变，不该进仓库）
+*.tsbuildinfo

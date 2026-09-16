@@ -3,6 +3,9 @@
   "include": ["electron.vite.config.*", "src/main/**/*", "src/preload/**/*"],
   "compilerOptions": {
     "composite": true,
+    // 同 tsconfig.web.json：会被 tests/*.test.mjs 加载的共享模块（defaults 等）用显式 .ts
+    // 写相对导入，Node 的 ESM 解析不做扩展名补全
+    "allowImportingTsExtensions": true,
     "types": ["electron-vite/node"]
   }
 }

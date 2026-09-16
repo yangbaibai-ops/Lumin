@@ -2,3 +2,8 @@ singleQuote: true
 semi: false
 printWidth: 100
 trailingComma: none
+# 行尾统一交给「文件自己」：仓库在 Windows 上签出后工作树是 CRLF，而 prettier 默认按 LF 校验，
+# 于是每一行都会报一条 `Delete ␍` —— 实测 src 下 2251 条告警里 2247 条都是这种假告警，
+# 真问题被淹没。`auto` = 保留文件既有的行尾（以首个行尾为准）：既不误报，也不产生全仓库重写的 diff。
+# 若要让仓库彻底转 LF，正确做法是加 .gitattributes + 一次性 renormalize —— 那是独立的一次改动。
+endOfLine: auto

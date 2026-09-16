@@ -1,0 +1,52 @@
+# ─── CI：类型 / 风格 / 单元测试 / 构建 ─────────────────────────────────────────
+#
+# 为什么只有这些、不含 CDP 套件：`tools/_verify-*.js` 需要**真实桌面会话**（鼠标键盘、窗口焦点、
+# 单实例锁），在无头 runner 上跑不稳。那部分留在本地按需跑（跑法见 README 与各套件文件头）。
+#
+# 门禁口径（本地 `npm run ci` 与这里完全一致）：
+#   npm run typecheck  双工程（tsc + vue-tsc）
+#   npm run lint       ESLint flat config，0 error / 0 warning
+#   npm run test:unit  node --test（纯逻辑，毫秒级）
+#   build              electron-vite build
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    # 目标平台是 Windows，用同平台 runner 才能复现路径/编码相关行为
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: 安装依赖
+        run: npm ci
+
+      - name: 类型检查（tsc + vue-tsc）
+        run: npm run typecheck
+
+      - name: 代码风格（ESLint，0 warning 门槛）
+        run: npm run lint -- --max-warnings 0
+
+      - name: 单元测试（node --test）
+        run: npm run test:unit
+
+      - name: 生产构建
+        run: npx electron-vite build
+        env:
+          # 构建不需要联网；显式关掉更新检查相关的干扰
+          ELECTRON_SKIP_BINARY_DOWNLOAD: '1'

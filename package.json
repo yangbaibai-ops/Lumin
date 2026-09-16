@@ -11,9 +11,12 @@
   "scripts": {
     "format": "prettier --write .",
     "lint": "eslint --cache .",
+    "lint:fix": "eslint --cache --fix .",
     "typecheck:node": "tsc --noEmit -p tsconfig.node.json --composite false",
     "typecheck:web": "vue-tsc --noEmit -p tsconfig.web.json --composite false",
     "typecheck": "npm run typecheck:node && npm run typecheck:web",
+    "test:unit": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test \"tests/*.test.mjs\"",
+    "ci": "npm run typecheck && npm run lint && npm run test:unit && electron-vite build",
     "start": "electron-vite preview",
     "dev": "electron-vite dev --watch",
     "build": "npm run typecheck && electron-vite build",
@@ -24,6 +27,9 @@
     "build:linux": "npm run build && electron-builder --linux",
     "dev:isolated": "set LUMIN_DEV_PROFILE=1&& electron-vite dev --watch"
   },
+  "engines": {
+    "node": ">=22"
+  },
   "dependencies": {
     "@codemirror/autocomplete": "^6.20.3",
     "@codemirror/commands": "^6.11.0",
@@ -32,7 +38,6 @@
     "@codemirror/search": "^6.7.2",
     "@codemirror/state": "^6.7.2",
     "@codemirror/view": "^6.43.10",
-    "@electron-toolkit/preload": "^3.0.2",
     "@electron-toolkit/utils": "^4.0.0",
     "@tiptap/extension-horizontal-rule": "^3.31.0",
     "@tiptap/extension-image": "^3.31.0",
@@ -73,11 +78,5 @@
     "vue": "^3.5.25",
     "vue-eslint-parser": "^10.2.0",
     "vue-tsc": "^3.1.6"
-  },
-  "allowScripts": {
-    "electron@39.8.10": true,
-    "electron-winstaller@5.4.0": true,
-    "esbuild@0.25.12": true,
-    "esbuild@0.28.2": true
   }
 }

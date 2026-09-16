@@ -1,0 +1,26 @@
+# ─── 行尾与二进制类型的单一事实来源 ────────────────────────────────────────────
+# 为什么需要它：以前行尾完全取决于每台机器的 core.autocrlf —— 同一份仓库在 Windows 上是 CRLF、
+# 在 CI/Linux 上是 LF，prettier/eslint 于是各报各的（实测曾因此产生 2200+ 条「Delete ␍」假告警）。
+# 这里把规则写进仓库：文本文件交给 git 归一（仓库内存 LF，检出时按平台），二进制显式声明。
+#
+# 注意：本文件只对**之后写入**的内容生效。若要把历史文件也一次性转成 LF，需要单独做
+# `git add --renormalize .`（会产生一个全仓库 diff 的提交），属于独立的一次改动，不在这里偷偷做。
+* text=auto
+
+*.ico binary
+*.icns binary
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.woff binary
+*.woff2 binary
+*.ttf binary
+*.exe binary
+*.dll binary
+*.node binary
+*.db binary
+
+# 锁文件不做行尾转换（避免 diff 噪音与工具误判）
+package-lock.json -text
