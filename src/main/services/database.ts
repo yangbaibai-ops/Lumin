@@ -370,8 +370,9 @@ class LuminDatabase {
         migrated += 1
       }
       this.kvSet('fileEncodings', leftover)
+      // 主进程 console 输出一律 ASCII（见 tests/mainConsoleAscii.test.mjs）
       console.log(
-        `[db] 文档编码元数据迁移：${migrated} 条进 documents，${Object.keys(leftover).length} 条留在 kv`
+        `[db] encoding metadata migration: ${migrated} rows into documents, ${Object.keys(leftover).length} rows left in kv`
       )
     }
     this.kvSet('fileEncodingsMigrated', true)

@@ -381,7 +381,9 @@ app.whenReady().then(() => {
       const decoded = decodeURIComponent(url.pathname.replace(/^\//, ''))
       const p = resolve(decoded)
       if (!isServableMedia(p)) {
-        console.warn(`[protocol] 拒绝 lumin-file 请求: ${p}`)
+        // 主进程 console 输出一律 ASCII：Windows 控制台按代码页解读字节（中文系统 936/GBK），
+        // 写中文只会得到乱码（详见 singleInstance.ts 的说明）。
+        console.warn(`[protocol] refused lumin-file request: ${p}`)
         return new Response('Not Found', { status: 404 })
       }
       return net.fetch(pathToFileURL(p).href)
@@ -399,7 +401,8 @@ app.whenReady().then(() => {
 
   // 开发态记录「这份构建是什么时候的」：主进程不热更新，排查错配时第一眼看它
   recordBuildStamp()
-  if (devProfileDir) console.log(`[profile] 开发态隔离 profile 生效: ${devProfileDir}`)
+  // 同上：console 输出一律 ASCII（Windows 控制台代码页不接受 UTF-8 字节）
+  if (devProfileDir) console.log(`[profile] isolated dev profile active: ${devProfileDir}`)
 
   // 任务栏跳转列表（右键图标）：一条「新建窗口」任务 + 一栏最近文档。
   // 顺序有讲究：先写「开始菜单快捷方式」——任务栏右键菜单第一项的名字与点击行为都来自它
