@@ -787,6 +787,37 @@ async function main() {
     JSON.stringify(m2)
   )
 
+  // ── N. 嵌套样式的**渲染**：粗体里的行内代码要靠属性选择器补齐外观 ──
+  // 为什么要有这条：`mdStyle` 只渲染**一个**元素（`<strong data-md-styles="bold code">`），
+  // 集合里其余样式的外观全靠 CSS 的 `[data-md-styles~=…]` 规则。CSS 一旦漏掉，
+  // 序列化仍然「保真」（往返字节不变），但用户看到的那段代码**不再像代码** ——
+  // 保真套件管不到观感，所以在这里补一条计算样式断言。
+  await win.ev(loadInto(fs.readFileSync(path.join(FIXTURE_DIR, 'nested-styles.md'), 'utf-8')))
+  await sleep(300)
+  const n1 = JSON.parse(
+    await win.ev(`(() => {
+      const el = document.querySelector('.md-preview [data-md-styles~="code"]')
+      if (!el) return 'null'
+      const cs = getComputedStyle(el)
+      return JSON.stringify({
+        tag: el.tagName.toLowerCase(),
+        dataStyles: el.getAttribute('data-md-styles'),
+        weight: cs.fontWeight,
+        mono: /mono|Consolas|Menlo|Courier/i.test(cs.fontFamily),
+        bg: cs.backgroundColor
+      })
+    })()`)
+  )
+  report.check(
+    'N1 粗体里的行内代码：一个元素同时拿到粗体与代码外观',
+    n1 !== 'null' &&
+      n1.tag === 'strong' &&
+      n1.dataStyles === 'bold code' &&
+      Number(n1.weight) >= 700 &&
+      n1.mono === true,
+    JSON.stringify(n1)
+  )
+
   // ── 复原（设置 / 最近文档 / 索引 / 临时文件）──────────────────────────────
   await win.ev(`(() => {
     window.__L.settings().set('autoSave', ${JSON.stringify(backup.autoSave)})
