@@ -4,7 +4,10 @@ export type ThemeMode = 'light' | 'dark' | 'sepia' | 'auto'
 export type EffectiveTheme = 'light' | 'dark' | 'sepia'
 export type EditorMode = 'wysiwyg' | 'source' | 'split'
 import type { ConcreteEncoding, EncodingId } from './encodings'
-export type { ConcreteEncoding, EncodingId }
+import type { Eol } from './eol'
+import type { HistoryEntry, HistoryEntryMeta } from './history'
+export type { HistoryEntry, HistoryEntryMeta }
+export type { ConcreteEncoding, EncodingId, Eol }
 export type Language = 'zh-CN' | 'en-US' | 'ru-RU'
 
 export interface ExportSettings {
@@ -34,6 +37,20 @@ export interface AppSettings {
   restoreSession: boolean
   /** 打开文件时的默认编码（'auto' = 自动检测；见 shared/encodings 与 main/services/encoding） */
   defaultEncoding: EncodingId
+  /**
+   * 新建/未命名文档的默认行尾（已有文件一律按它自己原本的行尾走，见 shared/eol.ts）。
+   * 内存里文本永远是 LF，只有落盘时才展开成 CRLF。
+   */
+  defaultEol: Eol
+  /**
+   * 本地历史（保存前快照）：总开关 + 保留策略。
+   * 关掉后不再写新快照（已有历史仍可查看/回滚）；抽稀规则见 shared/history.ts 的纯函数。
+   */
+  historyEnabled: boolean
+  /** 每个文件最多保留多少条快照 */
+  historyLimitPerFile: number
+  /** 超过多少天的快照会被清掉（每个文件仍至少保留最新几条） */
+  historyMaxAgeDays: number
   /**
    * 是否自动检查更新（默认关：不打扰用户）。
    * 只有打包版 + publish 配了真实渠道时才会真的去查，开发态一律不查（见 main/services/updater.ts）。
@@ -169,10 +186,18 @@ export interface SessionSlot {
   scrollRatio: number
   /** 最近一次写入时间 */
   savedAt: number
+  /**
+   * 该窗口是被用户**单独关掉**的（不是随应用整体退出）。
+   * 单独关窗不删槽位：用户关窗往往就是「今天先这样」，下次启动要回到刚才那篇文档。
+   * 启动时若还有「活着退出」的窗口，就恢复那些、忽略这个标记；一个都不剩时恢复它。
+   */
+  closed?: boolean
+  /** 被单独关掉的时刻（只记最后一个被关掉的窗口，靠它排序） */
+  closedAt?: number
 }
 
 export interface SessionState {
-  /** 按窗口槽位索引存放；null = 空槽（该窗口已被单独关闭，或从未用过） */
+  /** 按窗口槽位索引存放；null = 空槽（从未用过，或那份「最后关掉的窗口」记录已被更新的记录取代） */
   slots: (SessionSlot | null)[]
 }
 
@@ -259,6 +284,8 @@ export interface OpenedFile {
   encoding: ConcreteEncoding
   /** 文件原本是否带 BOM（写回时保持一致） */
   hadBom: boolean
+  /** 文件原本的行尾（内存内容已归一为 LF；写回时按它还原） */
+  eol: Eol
 }
 
 export interface DraftInfo {
@@ -266,6 +293,13 @@ export interface DraftInfo {
   path: string | null
   content: string
   savedAt: number
+  /**
+   * 写这份草稿的**窗口实例**（主进程为每个窗口生成一个，随窗口 argv 传给它的渲染进程）。
+   * 会话槽位号会被复用，所以「这一格是不是我自己上次写的那份」只能靠它判断；
+   * 同一个窗口 reload 前后 uid 不变（自己那份仍认得出），不同窗口/不同运行则不同。
+   * 旧版本写下的草稿没有这个字段。
+   */
+  ownerUid?: string
 }
 
 export interface DocMeta {
@@ -280,6 +314,13 @@ export interface DocMeta {
   tags: string[]
   isPinned: boolean
   isArchived: boolean
+  /**
+   * 文档级元数据（Wave 2 起落库，权威来源；空串 = 尚未记录，按判定链/默认值处理）。
+   * 以前编码只活在这一进程的 `current` 上、再配一张 kv 表，两个窗口开同一文件会各说各话。
+   */
+  encoding: string
+  eol: string
+  hadBom: boolean
 }
 
 export interface SearchResult {
@@ -371,14 +412,24 @@ export interface LuminAPI {
     sessionSlot: number | null
   }
   file: {
-    read: (path: string, encoding?: EncodingId) => Promise<OpenedFile>
+    /**
+     * 读文件。`opts.softDefault` = 这个 encoding 只是「打开文件时的设置默认值」，
+     * 该文件已记录的编码（documents.encoding）优先；不传则按显式指定处理（用户刚点的那个必须听）。
+     */
+    read: (
+      path: string,
+      encoding?: EncodingId,
+      opts?: { softDefault?: boolean }
+    ) => Promise<OpenedFile>
     write: (
       path: string,
       content: string,
       encoding?: ConcreteEncoding,
-      hadBom?: boolean
+      hadBom?: boolean,
+      /** 文档记录的行尾：主进程写盘前展开（内存里的文本永远是 LF，见 shared/eol） */
+      eol?: Eol
     ) => Promise<void>
-    /** 记住某文件的编码（「选择编码重新打开」用；落 kv，LRU 200 条） */
+    /** 记住某文件的编码（「选择编码重新打开」用；权威来源是 documents 表，kv 只兜底） */
     rememberEncoding: (path: string, encoding: ConcreteEncoding) => Promise<void>
     readDir: (dir: string) => Promise<FileNode[]>
     /** 递归扫描工作区根目录，返回全部 Markdown 文章（含 mtime 与正文预览） */
@@ -389,7 +440,13 @@ export interface LuminAPI {
     rename: (oldPath: string, newPath: string) => Promise<void>
     exists: (path: string) => Promise<boolean>
     chooseOpenFile: () => Promise<string | null>
-    chooseSaveFile: (name: string, ext: string) => Promise<string | null>
+    /**
+     * 「保存到哪」对话框。`dir` 是对话框**默认落在的文件夹**：
+     *   - 未命名文档 → 传侧栏工作区（Ctrl+N 之后 Ctrl+S 直接存进当前文件夹，不用每次自己找）；
+     *   - 已有路径（另存为）→ 传它自己所在的文件夹。
+     * 传 null/省略或该目录已不存在时退回「只给文件名」，交给系统记上次的位置。
+     */
+    chooseSaveFile: (name: string, ext: string, dir?: string | null) => Promise<string | null>
     chooseFolder: () => Promise<string | null>
     getPathForFile: (file: File) => string | null
     fileUrl: (path: string) => Promise<string>
@@ -409,7 +466,8 @@ export interface LuminAPI {
     save: (key: string, content: string, path: string | null) => Promise<void>
     load: (key: string) => Promise<DraftInfo | null>
     remove: (key: string) => Promise<void>
-    hasUntitled: () => Promise<DraftInfo | null>
+    /** 本窗口该用的未命名草稿（自己的；没有则认领一份无主的） */
+    untitledDraft: () => Promise<DraftInfo | null>
   }
   db: {
     search: (query: string, limit?: number) => Promise<SearchResult[]>
@@ -419,6 +477,13 @@ export interface LuminAPI {
     setPinned: (path: string, pinned: boolean) => Promise<void>
     setTags: (path: string, tags: string[]) => Promise<void>
     stats: () => Promise<{ docs: number; fts: number }>
+  }
+  /** 本地历史（Wave 2 数据安全）：每次写盘前留一份「即将被覆盖」的快照，可查看/回滚 */
+  history: {
+    list: (path: string, limit?: number) => Promise<HistoryEntryMeta[]>
+    get: (id: number) => Promise<HistoryEntry | null>
+    clear: (path?: string) => Promise<number>
+    stats: () => Promise<{ entries: number; files: number }>
   }
   /**
    * 通知中心（持久化在 SQLite notifications 表，跨会话保留）。
