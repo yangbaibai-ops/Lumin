@@ -63,6 +63,11 @@ export const CodeBlockCM = CodeBlock.extend({
           state.write(fence + String(node.attrs.language ?? '') + '\n')
           state.text(content, false)
           state.ensureNewLine()
+          // 内容以换行结尾（用户在块尾敲过回车）时，收尾围栏前必须**多留一个空行**：
+          // CommonMark 里围栏前那个换行是「最后一行的行终止符」，不算内容 ——
+          // 直接写 `a\n` + 围栏，重新解析后内容变成 `a`，**块尾的空行被吃掉**
+          // （表现：在代码块末尾按回车、保存、重开，少一行）。多写一个换行才等价。
+          if (content.endsWith('\n')) state.write('\n')
           state.write(fence)
           state.closeBlock(node)
         }
