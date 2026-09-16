@@ -2962,4 +2962,77 @@ CSS 变量），所以不存在「另一份主题文件也要同步属性选择�
 | `_verify-md-fidelity.js` | **101 PASS / 0 FAIL / 1 SKIP**（102 条断言） |
 | `node tools/run-suites.js` | **9/9 套件 PASS**（`_verify-session` 仍绿 ⇒ recentFiles 数据键未变） |
 
+### 4.64 老套件迁移（一）：`_regress-*` 全部 + 最有价值的 `_repro-*`（本次）
+
+#### 一、迁了哪 6 个、为什么
+
+`tools/` 下有 92 个 `_*.js` 脚本，此前**只有 9 个**用公共骨架（`lib/harness.js`），其余各自抄了一遍
+「连 CDP → 找页面 → attach → 注入 store 访问器 → 敲键盘」。本轮把「回归守卫」这一类整批收口：
+
+| 套件 | 断言 | 守什么 |
+| --- | --- | --- |
+| `_regress-layout.js` | 9 | 常驻布局：代码块可聚焦可输入 / 「渲染→分屏→源码→渲染」光标比例保持 / 源码回灌 / `instance=null` / 大纲联动 |
+| `_regress-cb.js` | 3 | 代码块打字 + 回车换行 / 空代码块退格删除 / 段落退格入块尾 |
+| `_regress-divider.js` | 4 | 分屏分隔条拖拽改比例 / 双击复位 / 比例写进设置 |
+| `_regress-fileswitch.js` | 5 | 切文件（`:key` 重建）与「**源码模式下**切文件」 |
+| `_regress-source-roundtrip.js` | 4 | 源码模式往返后代码块仍可聚焦可输入 |
+| `_repro-rapidenter.js` | 4 | 快速连续回车不丢行（CM 可见行 / PM 行 / **store 正文行**三处一致） |
+
+它们**此前全部发红**，原因不是产品坏了，而是套件自己过期：按中文按钮文字找 `.mode-seg-btn`
+（现在是 `role="tablist"` + 三个 `role="tab"`，且文案可本地化 —— 换语言就整轮跑不了）。
+所以模式切换统一挪进 harness：`clickMode(app, 0|1|2)` **按序号**点，语言无关。
+
+#### 二、迁移本身的三个收获（都不是「搬代码」这么简单）
+
+1. **`openDocWith()`：加载文档不能直接 `ed.commands.setContent()`**。
+   代码块里的 CodeMirror 有一条「CM 拿着光标时绝不覆盖」的规则（§4.59）—— 用例若刚在代码块里
+   打过字（CM 仍持焦），再直接换编辑器内容时 CM 会**故意保持旧文本**，于是后续断言看到的是
+   上一份文档的内容（实测：空代码块退格那条莫名其妙 `blocks=1`）。
+   走 `files.current` 赋值 + path 变化则等同真实「打开文件」： EditorView 按 `:key=path` 重建，
+   CM 一起重建 —— 这才是套件想测的路径。它现在是 harness 里的公共函数。
+2. **「焦点稳定」要确认两次**。账本收敛会触发渲染面再 `setContent` 一次，CM 的 NodeView 随之重建；
+   在重建前点到的是**即将被换掉的那个** `.cm-content`（当时还在 DOM 里、也能通过一次焦点检查），
+   换掉后焦点就丢了。所以 `focusCodeBlock()` 间隔 160ms 连查两次。
+3. **迁移过程抓到一个真实保真缺口**（见下节）。
+
+#### 三、顺手修掉的保真缺口：代码块「内容末尾的空行」往返丢失
+
+`_repro-rapidenter.js` 的 store 侧断言（R3）第一版就红了：CM 与 PM 都是 19 行，而落进 store 的
+正文只数出 18 行。查下去是 CommonMark 的一个边界：
+
+> 收尾围栏前那个换行是「最后一行的**行终止符**」，不算内容。
+> 于是内容 `a\n`（用户在块尾敲过回车）写成 `a` + 换行 + 围栏，重新解析回来就变成 `a` ——
+> **块尾那个空行被吃掉**，保存一次少一行。
+
+修法在 `codeBlock.ts` 的围栏序列化器里：内容以换行结尾时，收尾围栏前**多写一个换行**。
+夹具 `code-fence.md` 补了这一例（内容末尾带空行），往返与幂等都过。
+
+#### 四、剩下 83 个脚本的定位（写清楚，免得后来人以为是死代码）
+
+| 类别 | 例子 | 定位 |
+| --- | --- | --- |
+| 回归守卫（已迁） | `_regress-*`、`_repro-rapidenter` | **进矩阵**，`--- N/M PASS` 机器聚合 |
+| 一次性复现/观察脚本 | `_repro-backspace-after-cb`、`_repro-cb-delete2`、`_repro-heading-cm*`、`_check-*`、`_exp-*` | 当年查某个具体 bug 时的探针，**需要人读输出**，不是断言套件；留着是因为它们记录了「当时怎么看到的」 |
+| 测量/基准 | `_measure-latency`、`_startup-bench`、`_time-close` | 量性能，输出是数字不是 PASS/FAIL |
+| 截图/手工触发 | `_shot-heading-badge`、`_trigger-export`、`_set-windowstate` | 配合人工检查 |
+| 老 `_verify-*` 套件（约 57 个） | `_verify-toc`、`_verify-links`、`_verify-notifications`… | **能跑**（各自打印 `--- N/M PASS`，矩阵能聚合），但仍自带一份 CDP 样板；按「**改到谁就顺手迁谁**」继续收口，一次全迁风险大于收益 |
+
+顺带把「迁移后仍可能发红的两类坑」写进 README：`build` 之后必须让实例重新加载；
+手工探针连 9222 前先确认端口上没有上一轮的旧实例（否则验证的是改动前的代码）。
+
+#### 五、本轮验收数字
+
+| 门禁 | 结果 |
+| --- | --- |
+| `npm run ci` | exit 0（**137/137** 单测） |
+| `npx eslint .` | 0 error / 0 warning |
+| `node tools/run-suites.js` | **15/15 套件 PASS**（新增 6 个：`_regress-layout` 9、`_regress-cb` 3、`_regress-divider` 4、`_regress-fileswitch` 5、`_regress-source-roundtrip` 4、`_repro-rapidenter` 4） |
+| `_verify-md-fidelity.js` | **101 PASS / 0 FAIL / 1 SKIP**（夹具 `code-fence.md` 新增「内容末尾带空行」一例） |
+
+#### 六、下一轮起点
+
+功能缺口：**编辑器内查找替换**（菜单/快捷键目前只 toast「功能待接入」）与
+**数学公式渲染**（`$…$` / `$$…$$`，KaTeX 已是依赖但没有数学节点）。
+
+
 

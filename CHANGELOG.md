@@ -77,6 +77,41 @@
 - **工程化**：~~`tools/lib/harness.js` + `tools/run-suites.js`~~ → **本轮已完成**；
   剩余：`files` store 拆分；`store` 里那份为绕循环导入而复制的 `confirmIfDirty` 收敛到 `services/dialog`。
 
+## [Unreleased · 老套件迁移（一）] — `_regress-*` 全部 + 最有价值的 `_repro-*`
+
+### Changed
+
+- **6 个老套件迁到 `tools/lib/harness.js` + `Reporter` 并纳入矩阵**：`_regress-layout`（9 条）、
+  `_regress-cb`（3）、`_regress-divider`（4）、`_regress-fileswitch`（5）、
+  `_regress-source-roundtrip`（4）、`_repro-rapidenter`（4，且把断言扩到 **store 正文行**）。
+  它们此前全部发红，原因不是产品坏了而是套件自己过期：按**中文按钮文字**找 `.mode-seg-btn`
+  （现在是 `role="tablist"` + 三个 `role="tab"`，文案可本地化 ⇒ 换语言就整轮跑不了）。
+- `harness.js` 新增三个公共能力：`clickMode(app, 0|1|2)`（**按序号**点模式分段控件，语言无关）、
+  `waitRestored()`（等 `.view-restoring` 结束）、`openDocWith(app, md, name)`
+  （走 `files.current` + path 变化加载文档 ⇒ 触发 `:key` 重建）。
+
+### Fixed
+
+- **代码块「内容末尾的空行」往返丢失**（迁移中被 `_repro-rapidenter` 的 store 侧断言抓到）：
+  CommonMark 里收尾围栏前的换行是「最后一行的行终止符」，不算内容 —— 内容 `a\n` 写成
+  `a` + 换行 + 围栏，重新解析回来变成 `a`，**保存一次少一行**。现在内容以换行结尾时，
+  收尾围栏前多写一个换行（`lib/editor/codeBlock.ts`）；夹具 `code-fence.md` 补了对应一例。
+
+### Verification（本轮实测）
+
+| 门禁 | 结果 |
+| --- | --- |
+| `npm run ci` | exit 0（**137/137** 单测） |
+| `npx eslint .` | **0 error / 0 warning** |
+| `node tools/run-suites.js` | **15/15 套件 PASS**（从 9 个扩到 15 个） |
+| `_verify-md-fidelity.js` | **101 PASS / 0 FAIL / 1 SKIP**（夹具新增「内容末尾带空行」一例） |
+
+### Docs
+
+- 手册新增 §4.64：迁了哪 6 个、为什么按序号点模式控件、迁移本身的两个教训
+  （不能直接 `setContent` 加载文档 / 焦点要确认两次）、顺手修掉的保真缺口，
+  以及**剩下 83 个脚本的定位表**（回归守卫 / 一次性探针 / 测量基准 / 截图工具 / 尚未迁的老套件）。
+
 ## [Unreleased · 工程化收尾（二）] — recent store 拆分 + 嵌套样式渲染断言
 
 ### Changed

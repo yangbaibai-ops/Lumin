@@ -260,6 +260,29 @@ A/B 实测：19 个原本没有结构兜底的套件里 **13 个在构建产物�
 **下一轮起点**：老套件迁移（`_regress-*` 5 个 + 价值最高的几个 `_repro-*` 迁到
 `tools/lib/harness.js` + `Reporter` 并纳入矩阵），然后是功能缺口（查找替换、数学公式渲染）。
 
+## 老套件迁移（一）：`_regress-*` 全部 + 最有价值的 `_repro-*` —— ✅ 本轮完成（2026-09-16 第十三轮）
+
+**实际交付**（细节与教训见手册 §4.64）：
+
+- 6 个套件迁到 `lib/harness.js` + `Reporter` 并**纳入默认矩阵**：`_regress-layout`(9) /
+  `_regress-cb`(3) / `_regress-divider`(4) / `_regress-fileswitch`(5) /
+  `_regress-source-roundtrip`(4) / `_repro-rapidenter`(4，断言扩到 store 正文行)。
+  它们此前全红的原因是**套件自己过期**（按中文按钮文字找 `.mode-seg-btn`），
+  现在模式切换统一走 harness 的 `clickMode(app, 序号)`，语言无关；
+- harness 补三个公共能力：`clickMode` / `waitRestored` / **`openDocWith`**（走
+  `files.current` + path 变化 ⇒ `:key` 重建 —— 这是唯一不踩「代码块 CM 持焦时不被覆盖」
+  那条规则的加载方式，直接 `setContent` 会让后续断言看到上一份文档的内容）；
+- **迁移中抓到一个真实保真缺口并修掉**：代码块内容以换行结尾时（用户在块尾敲过回车），
+  收尾围栏前必须多留一个空行 —— 否则 CommonMark 把那个换行当成「最后一行的行终止符」，
+  重新打开少一行。夹具 `code-fence.md` 补例；
+- **剩下 83 个脚本的定位写进手册**（回归守卫 / 一次性探针 / 测量基准 / 截图工具 /
+  尚未迁的老 `_verify-*`），并明确「改到谁就顺手迁谁」的节奏。
+
+**验收**：`npm run ci` exit 0（单测 137/137）；`npx eslint .` 0/0；
+`node tools/run-suites.js` **15/15 套件 PASS**；`_verify-md-fidelity.js` **101 PASS / 0 FAIL / 1 SKIP**。
+
+**下一轮起点**：功能缺口 —— 编辑器内查找替换、数学公式渲染（`$…$` / `$$…$$`，KaTeX 已是依赖）。
+
 ## Wave 4：工程化地基
 
 - `README.md`（是什么、快速开始、架构图、开发/打包流程、常见坑：`--watch`、构建自检、`dev:isolated`）
