@@ -77,6 +77,49 @@
 - **工程化**：~~`tools/lib/harness.js` + `tools/run-suites.js`~~ → **本轮已完成**；
   剩余：`files` store 拆分；`store` 里那份为绕循环导入而复制的 `confirmIfDirty` 收敛到 `services/dialog`。
 
+## [Unreleased · 编辑器内查找替换] — 菜单/Ctrl+F 的功能缺口补齐
+
+> 此前菜单里的「查找 / 替换」与 `Ctrl+F` 都只 toast 一句「功能待接入」。
+
+### Added
+
+- **编辑器内查找替换**：右上角查找栏（`components/FindReplaceBar.vue`），
+  `Ctrl+F` 打开/关闭 · `Enter` 下一个 · `Shift+Enter` 上一个（首尾循环）· `Esc` 关闭 ·
+  `Aa` 区分大小写 · 「替换」只动当前命中 · 「全部替换」一次改完。
+  - **两个编辑面共用一份查询状态，各自算匹配**：实时渲染/分屏在 ProseMirror 文档里**按块**找
+    （`lib/editor/findInDoc.ts`，位置是文档位置）；源码模式在 `files.current.content` 里找
+    （位置是字符偏移）。计数显示的是**当前编辑面**的结果 —— 比显示一个对不上的数字诚实。
+  - 纯逻辑抽在 `lib/findReplace.ts`（转义、查找、循环步进、替换计划、片段→位置映射），
+    **无依赖可单测**：`tests/findReplace.test.mjs` 11 条。
+  - 全部替换在渲染面走**一个事务、从后往前**替换：位置不会互相顶掉，Ctrl+Z 一次整体撤销。
+  - 三语各新增 11 个 `find.*` 键。
+- `tools/_verify-find-replace.js`：12 条端到端断言（入口 / 命中与循环 / 大小写 /
+  替换与全部替换 / Esc / 源码面的查找与替换 / 回灌渲染面），已进默认矩阵。
+
+### Fixed
+
+- **「下一个」不再抢焦点**：查找的选中与滚动**一律不 focus**（`setTextSelection` +
+  `scrollIntoView` 不需要焦点，编辑器照样画出选区与命中高亮）。第一版用了 `focus()`，
+  结果下一次 Enter 落到正文里 —— 按两下「下一个」等于在文档里敲了两个回车，实测把整段写坏。
+  焦点只在**关闭查找栏**时归还给当前编辑面。
+- **源码模式下 `Ctrl+F` 不再失灵**：快捷键系统的 `notInInput` 守卫把源码 textarea 与
+  代码块里的 CodeMirror 也算成「表单输入框」，于是最需要查找的源码模式反而按不出来。
+  现在 `isTextEntry()` 先排除**文档自己的编辑面**（`.source-editor`、`.ProseMirror`/`.md-preview` 之内）；
+  查找栏自己的输入框仍被挡住（在栏里按 Ctrl+F 不该把栏关掉）。
+
+### Verification（本轮实测）
+
+| 门禁 | 结果 |
+| --- | --- |
+| `npm run ci` | exit 0（**148/148** 单测） |
+| `npx eslint .` | **0 error / 0 warning** |
+| `node tools/run-suites.js` | **16/16 套件 PASS**（新增 `_verify-find-replace` 12 条） |
+| `_verify-md-fidelity.js` | 101 PASS / 0 FAIL / 1 SKIP |
+
+### Docs
+
+- 手册新增 §4.65（结构：一份查询状态两个编辑面、两个只有真跑起来才暴露的坑、交互与验收）。
+
 ## [Unreleased · 老套件迁移（一）] — `_regress-*` 全部 + 最有价值的 `_repro-*`
 
 ### Changed
