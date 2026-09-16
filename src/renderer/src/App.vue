@@ -15,6 +15,7 @@ import ModalHost from './components/ModalHost.vue'
 import ContextMenu from './components/ContextMenu.vue'
 import EditorContextMenu from './components/EditorContextMenu.vue'
 import GlobalSearch from './components/GlobalSearch.vue'
+import FindReplaceBar from './components/FindReplaceBar.vue'
 import LocalHistoryDialog from './components/LocalHistoryDialog.vue'
 import SkeletonScreen from './components/SkeletonScreen.vue'
 import SettingsDialog from './components/SettingsDialog.vue'
@@ -129,6 +130,7 @@ onMounted(() => {
     <ContextMenu />
     <EditorContextMenu />
     <GlobalSearch />
+    <FindReplaceBar />
     <LocalHistoryDialog />
     <SettingsDialog />
     <GlobalTooltip />

@@ -1,6 +1,7 @@
 import { onBeforeUnmount } from 'vue'
 import { useRouter } from 'vue-router'
 import { useFilesStore } from '../stores/files'
+import { useFindStore } from '../stores/find'
 import { useSettingsStore } from '../stores/settings'
 import { useUiStore } from '../stores/ui'
 import { useExport } from './useExport'
@@ -113,7 +114,8 @@ export function useAppActions(): {
         void runExport('epub')
         break
       case 'find':
-        pendingRefactor('查找替换')
+        // Ctrl+F / 菜单「查找替换」：打开右上角查找栏（再按一次关闭）
+        useFindStore().toggle()
         break
       case 'global-search':
         ui.openGlobalSearch()

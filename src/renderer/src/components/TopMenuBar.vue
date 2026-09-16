@@ -9,6 +9,7 @@ import { useFilesStore } from '../stores/files'
 import { useUiStore } from '../stores/ui'
 import { useSettingsStore } from '../stores/settings'
 import { useEditorStore } from '../stores/editor'
+import { useFindStore } from '../stores/find'
 import { useExport } from '../composables/useExport'
 import { useEditorMode } from '../composables/useEditorMode'
 import { confirmIfDirty, newDocumentWindow } from '../composables/useAppActions'
@@ -267,7 +268,7 @@ const GROUPS = computed<Group[]>(() => [
       {
         labelKey: 'menu.findReplace',
         icon: 'search',
-        run: () => ui.toast(t('common.pending'), 'info')
+        run: () => useFindStore().show()
       },
       { labelKey: 'menu.globalSearch', icon: 'list-checks', run: () => ui.openGlobalSearch() }
     ]

@@ -129,6 +129,19 @@
     "rename": "重命名",
     "delete": "删除"
   },
+  "find": {
+    "title": "查找替换",
+    "placeholder": "查找",
+    "replacePlaceholder": "替换为",
+    "prev": "上一个（Shift+Enter）",
+    "next": "下一个（Enter）",
+    "replace": "替换",
+    "replaceAll": "全部替换",
+    "caseSensitive": "区分大小写",
+    "noResults": "无匹配",
+    "replaced": "已替换 {count} 处",
+    "close": "关闭（Esc）"
+  },
   "editor": {
     "viewMode": "视图模式",
     "wysiwyg": "实时渲染",

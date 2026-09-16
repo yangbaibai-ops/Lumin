@@ -129,6 +129,19 @@
     "rename": "Rename",
     "delete": "Delete"
   },
+  "find": {
+    "title": "Find and replace",
+    "placeholder": "Find",
+    "replacePlaceholder": "Replace with",
+    "prev": "Previous (Shift+Enter)",
+    "next": "Next (Enter)",
+    "replace": "Replace",
+    "replaceAll": "Replace all",
+    "caseSensitive": "Match case",
+    "noResults": "No results",
+    "replaced": "Replaced {count}",
+    "close": "Close (Esc)"
+  },
   "editor": {
     "viewMode": "View mode",
     "wysiwyg": "Live",

@@ -129,6 +129,19 @@
     "rename": "Переименовать",
     "delete": "Удалить"
   },
+  "find": {
+    "title": "Поиск и замена",
+    "placeholder": "Найти",
+    "replacePlaceholder": "Заменить на",
+    "prev": "Предыдущее (Shift+Enter)",
+    "next": "Следующее (Enter)",
+    "replace": "Заменить",
+    "replaceAll": "Заменить всё",
+    "caseSensitive": "Учитывать регистр",
+    "noResults": "Нет совпадений",
+    "replaced": "Заменено: {count}",
+    "close": "Закрыть (Esc)"
+  },
   "editor": {
     "viewMode": "Режим просмотра",
     "wysiwyg": "Живой",
