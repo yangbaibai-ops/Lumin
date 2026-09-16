@@ -1,94 +1,149 @@
-// 回归：代码块核心修复（空块退格删除 / 代码块后段落行首退格进入块尾 / 输入回车）
-const CDP = 'http://127.0.0.1:9222/json'
-let ws
-let id = 0
-const pending = new Map()
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
-function send(method, params) { return new Promise((res) => { const i = ++id; pending.set(i, res); ws.send(JSON.stringify({ id: i, method, params })) }) }
-async function ev(expression) { const r = await send('Runtime.evaluate', { expression, returnByValue: true, awaitPromise: true }); if (r.result && r.result.exceptionDetails) throw new Error('EXC: ' + (r.result.exceptionDetails.exception?.description || r.result.exceptionDetails.text)); return r.result?.result?.value }
-async function key(type, key, code, vk) { await send('Input.dispatchKeyEvent', { type, key, code, windowsVirtualKeyCode: vk }) }
-async function clickMode(text) {
-  const p = await ev(`(() => {
-    const el = Array.from(document.querySelectorAll('.mode-seg-btn')).find((b) => (b.textContent || '').trim() === ${JSON.stringify(text)})
-    if (!el) return null
-    const r = el.getBoundingClientRect()
-    return JSON.stringify({ x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2) })
-  })()`)
-  if (!p) throw new Error('NO-BTN ' + text)
-  const g = JSON.parse(p)
-  await send('Input.dispatchMouseEvent', { type: 'mousePressed', x: g.x, y: g.y, button: 'left', clickCount: 1 })
-  await send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: g.x, y: g.y, button: 'left', clickCount: 1 })
-  await sleep(350)
+'use strict'
+// ─── 回归：代码块的核心修复（打字 / 回车 / 退格三类）─────────────────────────
+//
+// 这一组是「代码块里输入会丢字」那一类 bug 的守卫。它们此前写成一次性脚本
+// （自己连 CDP、自己打印 PASS/FAIL），本轮迁到 `lib/harness.js` + `Reporter`，
+// 于是能进矩阵、能被 `--- N/M PASS` 机器聚合。
+//
+// 跑法（对着隔离实例）：
+//   powershell -NoProfile -ExecutionPolicy Bypass -File tools/start-isolated.ps1
+//   node tools/_regress-cb.js
+
+const {
+  connect,
+  settle,
+  waitEditor,
+  sleep,
+  Reporter,
+  key,
+  clickCenter,
+  openDocWith,
+  fatal
+} = require('./lib/harness')
+
+/** 代码块（CodeMirror）里的文本 */
+const CODE_TEXT = `(() => {
+  const ed = window.__L.ed()
+  let c = ''
+  ed.state.doc.descendants((n) => { if (n.type.name === 'codeBlock') c += '[' + n.textContent + ']' })
+  return c
+})()`
+
+const CODE_BLOCKS = `(() => {
+  const ed = window.__L.ed()
+  let n = 0
+  ed.state.doc.descendants((x) => { if (x.type.name === 'codeBlock') n++ })
+  return n
+})()`
+
+/** 代码块里 CodeMirror 看到的文本（与节点文本区分：两者不一致就说明外部同步没生效） */
+const CM_TEXT = `(() => {
+  const el = document.querySelector('.cm-content')
+  return el ? el.textContent : null
+})()`
+
+async function tapKey(app, name, vk) {
+  await key(app.send, 'keyDown', name, name, vk)
+  await key(app.send, 'keyUp', name, name, vk)
 }
-async function prepare(md) {
-  await ev(`(() => { window.__vt.ui().editorMode = 'wysiwyg'; return 'ok' })()`)
-  await sleep(400)
-  await ev(`(async () => { const files = window.__vt.files(); if (!files.current) await files.openUntitled(); return 'ok' })()`)
-  await ev(`(async () => { for (let i = 0; i < 150 && !window.__vt.ed(); i++) await new Promise((r) => setTimeout(r, 20)); return 'ed' })()`)
-  await ev(`(() => { const f = window.__vt.files(); f.setContent(${JSON.stringify(md)}); const ed = window.__vt.ed(); ed.commands.setContent(${JSON.stringify(md)}, { emitUpdate: false }); return 'ok' })()`)
-  await sleep(900)
+
+/**
+ * 点进代码块并确认焦点**稳定**落在 CM 里。
+ *
+ * 为什么要确认两次：账本收敛会触发渲染面再 `setContent` 一次，CM 的 NodeView 随之
+ * 重建 —— 我们在重建前点到的是**即将被换掉的那个** `.cm-content`（它当时还在 DOM 里、
+ * 也能通过一次焦点检查），换掉之后焦点就丢了，退格键落不到 CM 上（实测：B 段
+ * `focused=true` 却 `blocks=1`）。所以点完要隔一拍再确认一次仍然聚焦。
+ */
+async function focusCodeBlock(app) {
+  const isFocused = `(() => {
+    const el = document.querySelector('.cm-content')
+    return !!el && el.isConnected && (document.activeElement === el || el.contains(document.activeElement))
+  })()`
+  for (let i = 0; i < 6; i++) {
+    await clickCenter(app.send, app.ev, '.cm-content')
+    await sleep(220)
+    if (await app.ev(isFocused)) {
+      await sleep(160)
+      if (await app.ev(isFocused)) return true
+    }
+  }
+  return false
 }
-async function clickCmAt(offsetRatio) {
-  const p = JSON.parse(await ev(`(() => { const el = document.querySelector('.cm-content'); if (!el) return null; const r = el.getBoundingClientRect(); return JSON.stringify({ x: Math.round(r.left + Math.min(60, r.width / 2)), y: Math.round(r.top + Math.max(10, r.height / 2)) }) })()`))
-  await send('Input.dispatchMouseEvent', { type: 'mousePressed', x: p.x, y: p.y, button: 'left', clickCount: 1 })
-  await send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: p.x, y: p.y, button: 'left', clickCount: 1 })
-  await sleep(200)
-}
-async function codeText() { return ev(`(() => { const ed = window.__vt.ed(); let c = ''; ed.state.doc.descendants((n) => { if (n.type.name === 'codeBlock') c += '[' + n.textContent + ']' }); return c })()`) }
-async function blocksCount() { return ev(`(() => { const ed = window.__vt.ed(); let n = 0; ed.state.doc.descendants((x) => { if (x.type.name === 'codeBlock') n++ }); return n })()`) }
+
 async function main() {
-  const targets = await (await fetch(CDP)).json()
-  const page = targets.find((t) => t.type === 'page')
-  ws = new WebSocket(page.webSocketDebuggerUrl)
-  await new Promise((res, rej) => { ws.onopen = res; ws.onerror = rej })
-  ws.onmessage = (e) => { const m = JSON.parse(e.data); if (m.id && pending.has(m.id)) { pending.get(m.id)(m); pending.delete(m.id) } }
-  await send('Page.enable'); await send('Page.bringToFront')
-  await ev(`(() => {
-    const app = document.querySelector('#app')?.__vue_app__
-    const prov = app?._context.provides
-    const sym = Object.getOwnPropertySymbols(prov).find((s) => { const p = prov[s]; return !!p && typeof p === 'object' && p._s instanceof Map })
-    const pinia = sym ? prov[sym] : null
-    window.__vt = { pinia, ui: () => pinia._s.get('ui'), files: () => pinia._s.get('files'), ed: () => pinia._s.get('editor')?.instance ?? null }
-    return 'OK'
-  })()`)
-  await ev(`(() => { if (!location.hash.includes('/editor')) location.hash = '#/editor'; return 'ok' })()`)
+  const report = new Reporter('回归：代码块打字 / 回车 / 退格')
+  const app = await connect()
+  if (!(await settle(app.ev))) {
+    report.skip('app-ready', '应用未就绪')
+    return report.finish()
+  }
+  await app.ev(`(() => { window.__L.ui().editorMode = 'wysiwyg'; return 'ok' })()`)
+  await sleep(400)
+  await app.ev(`(async () => { if (!window.__L.files().current) await window.__L.files().openUntitled(); return 'ok' })()`)
+  await waitEditor(app.ev)
+
+  // A：代码块内输入 + 回车 + 继续输入（换行不能丢）
+  await openDocWith(app, ['正文', '', '```js', 'const a = 1', '```'].join('\n'), 'cb-a.md')
+  await sleep(400)
+  const focused = await focusCodeBlock(app)
+  await app.send('Input.insertText', { text: 'hello' })
+  await sleep(150)
+  await tapKey(app, 'Enter', 13)
+  await sleep(150)
+  await app.send('Input.insertText', { text: 'world' })
   await sleep(500)
-  const results = []
-  const check = (n, c, x) => results.push((c ? 'PASS' : 'FAIL') + ' ' + n + (x ? ' | ' + x : ''))
+  const codeA = await app.ev(CODE_TEXT)
+  report.check(
+    'A 代码块内输入 + 回车换行',
+    focused === true && typeof codeA === 'string' && codeA.includes('hello') && codeA.includes('world'),
+    `focused=${focused} code=${JSON.stringify(codeA)}`
+  )
 
-  // 测试 A：代码块内输入+Enter
-  await prepare(['正文', '', '```js', 'const a = 1', '```'].join('\n'))
-  await clickCmAt()
-  await send('Input.insertText', { text: 'hello' })
-  await sleep(150)
-  await key('keyDown', 'Enter', 'Enter', 13); await key('keyUp', 'Enter', 'Enter', 13)
-  await sleep(150)
-  await send('Input.insertText', { text: 'world' })
+  // B：空代码块按退格 → 整块删除（否则空块「卡住」删不掉）
+  await openDocWith(app, ['正文', '', '```', '', '```', '', '尾部'].join('\n'), 'cb-b.md')
   await sleep(400)
-  const codeA = await codeText()
-  check('代码块输入+回车', codeA.includes('hello') && codeA.includes('world'), codeA)
-
-  // 测试 B：空代码块按退格 → 整块删除
-  await prepare(['正文', '', '```', '', '```', '', '尾部'].join('\n'))
-  await clickCmAt()
-  await key('keyDown', 'Backspace', 'Backspace', 8); await key('keyUp', 'Backspace', 'Backspace', 8)
+  const focusedB = await focusCodeBlock(app)
+  const cmTextB = await app.ev(CM_TEXT)
+  await tapKey(app, 'Backspace', 8)
   await sleep(400)
-  const nB = await blocksCount()
-  check('空代码块退格删除', nB === 0, `blocks=${nB}`)
+  const blocksB = await app.ev(CODE_BLOCKS)
+  report.check(
+    'B 空代码块退格 → 整块删除',
+    focusedB === true && blocksB === 0,
+    `focused=${focusedB} blocks=${blocksB} cm=${JSON.stringify(cmTextB)}`
+  )
 
-  // 测试 C：代码块后段落行首退格 → 光标进入代码块末尾（非空代码块）
-  await prepare(['正文', '', '```js', 'code line', '```', '', ''].join('\n'))
-  // 点击代码块后第一段开头：用 PM 命令把光标放到 blockquote 后段落起始 = 文档后部空段落
-  await ev(`(() => { const ed = window.__vt.ed(); const size = ed.state.doc.content.size; ed.commands.setTextSelection(size - 1); ed.commands.focus(); return 'ok' })()`)
+  // C：代码块后段落行首退格 → 光标进入代码块末尾（而不是删掉内容）
+  await openDocWith(app, ['正文', '', '```js', 'code line', '```', '', ''].join('\n'), 'cb-c.md')
+  await sleep(400)
+  await app.ev(`(() => {
+    const ed = window.__L.ed()
+    ed.commands.setTextSelection(ed.state.doc.content.size - 1)
+    ed.commands.focus()
+    return 'ok'
+  })()`)
   await sleep(150)
-  await key('keyDown', 'Backspace', 'Backspace', 8); await key('keyUp', 'Backspace', 'Backspace', 8)
+  await tapKey(app, 'Backspace', 8)
   await sleep(300)
-  const infoC = await ev(`(() => { const ed = window.__vt.ed(); const sel = ed.state.selection; return JSON.stringify({ from: sel.from, code: (() => { let c=''; ed.state.doc.descendants((n)=>{ if(n.type.name==='codeBlock') c=n.textContent }); return c })() }) })()`)
-  const cC = JSON.parse(infoC)
-  // 期望：空段落被吞掉，光标落在代码块内末尾（文本 'code line' 之后）
-  check('代码块后段落退格→入块尾', cC.code.endsWith('code line'), `from=${cC.from} code=${JSON.stringify(cC.code)}`)
+  const infoC = JSON.parse(
+    await app.ev(`(() => {
+      const ed = window.__L.ed()
+      let code = ''
+      ed.state.doc.descendants((n) => { if (n.type.name === 'codeBlock') code = n.textContent })
+      return JSON.stringify({ from: ed.state.selection.from, code })
+    })()`)
+  )
+  report.check(
+    'C 代码块后空段落退格 → 光标落入块尾（内容不动）',
+    typeof infoC.code === 'string' && infoC.code.endsWith('code line'),
+    JSON.stringify(infoC)
+  )
 
-  console.log(results.join('\n'))
-  ws.close(); process.exit(results.some((r) => r.startsWith('FAIL')) ? 2 : 0)
+  app.close()
+  return report.finish()
 }
-main().catch((e) => { console.log('FAIL', e.message); try { ws.close() } catch {} process.exit(1) })
+
+main()
+  .then((code) => process.exit(code))
+  .catch(fatal)

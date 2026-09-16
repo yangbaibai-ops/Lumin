@@ -1,104 +1,138 @@
-// tools/_repro-rapidenter.js — 快速回车验收：8 次回车应全部落 CM（9 行），PM 不回滚
-const CDP = 'http://127.0.0.1:9222/json'
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
-const TEST_DIR = 'D:/code_workspace/Lumin-test-workspace'
-const TEST_PATH = TEST_DIR + '/tipverify.md'
-const TEST_MD = ['# 验收标题', '', '正文段落。', '', '```js', "console.log('hello')", '```', ''].join('\n')
+'use strict'
+// ─── 回归：快速连续回车不能丢（代码块里的「丢字」类数据损坏）─────────────────
+//
+// 曾经的 bug：在代码块里快速连敲回车（或按住不放），CM 的 state 已经往前跑了，
+// 而外部同步用的是**过期快照**，于是把 CM 的整块内容回滚到旧文本 —— 敲出来的换行
+// 一层层丢掉。修法见手册 §4.59（CM 侧「现读节点文本 + 文本一致就不动 +
+// CM 拿着光标绝不覆盖」）。
+//
+// 这条守住的是三处必须一致：CM 的可见行数、Tiptap 文档里的行数、**落进 store 的正文**。
+// 少一处就说明某条同步链路在回滚。
+//
+// 跑法：node tools/_repro-rapidenter.js（先起隔离实例）
+
+const {
+  connect,
+  settle,
+  waitEditor,
+  sleep,
+  Reporter,
+  key,
+  clickCenter,
+  openDocWith,
+  fatal
+} = require('./lib/harness')
+
+const MD = ['```js', 'const a = 1', '```', '', '尾部段落。'].join('\n')
+
+/** 三处一起读：CM 可见行 / PM 代码块行 / store 正文行 */
+const SNAPSHOT = `(() => {
+  const ed = window.__L.ed()
+  let pmCode = null
+  ed.state.doc.descendants((n) => { if (n.type.name === 'codeBlock') pmCode = n.textContent })
+  const store = window.__L.files().current?.content ?? ''
+  // 数 store 里围栏之间的行数：用「开围栏行号 → 下一个围栏行号」差值，
+  // 别用 /\`\`\`\\n([\\s\\S]*?)\\n\`\`\`/ 那种正则 —— 内容以空行结尾时，
+  // 它会把最后那个换行当成「围栏前换行」吃掉，平白少一行（实测差 1）。
+  const storeCodeLines = (() => {
+    const lines = store.split('\\n')
+    const open = lines.findIndex((l) => /^\`\`\`/.test(l))
+    if (open < 0) return -1
+    for (let i = open + 1; i < lines.length; i++) {
+      if (/^\`\`\`/.test(lines[i])) return i - open - 1
+    }
+    return -1
+  })()
+  return JSON.stringify({
+    active: (() => {
+      const ae = document.activeElement
+      return ae ? ae.tagName + '.' + (typeof ae.className === 'string' ? ae.className.split(' ')[0] : '') : null
+    })(),
+    cmLines: document.querySelectorAll('.cm-line').length,
+    pmLines: pmCode === null ? -1 : pmCode.split('\\n').length,
+    storeCodeLines
+  })
+})()`
 
 async function main() {
-  const targets = await (await fetch(CDP)).json()
-  const page = targets.find((t) => t.type === 'page')
-  if (!page) throw new Error('NO_PAGE_TARGET')
-  const ws = new WebSocket(page.webSocketDebuggerUrl)
-  await new Promise((res, rej) => { ws.onopen = res; ws.onerror = rej })
-  let id = 0
-  const pending = new Map()
-  ws.onmessage = (e) => {
-    const m = JSON.parse(e.data)
-    if (m.id && pending.has(m.id)) { pending.get(m.id)(m); pending.delete(m.id) }
+  const report = new Reporter('回归：快速连续回车全部落盘（CM / PM / store 三处一致）')
+  const app = await connect()
+  if (!(await settle(app.ev))) {
+    report.skip('app-ready', '应用未就绪')
+    return report.finish()
   }
-  const send = (method, params = {}) => new Promise((res) => {
-    const i = ++id
-    pending.set(i, res)
-    ws.send(JSON.stringify({ id: i, method, params }))
-  })
-  const ev = async (expression) => {
-    const r = await send('Runtime.evaluate', { expression, returnByValue: true, awaitPromise: true })
-    if (r.result?.exceptionDetails) throw new Error('页面异常: ' + (r.result.exceptionDetails.exception?.description || r.result.exceptionDetails.text))
-    return r.result?.result?.value
+  const backupAutoSave = await app.ev(`window.__L.settings().autoSave`)
+  await app.ev(`(() => { window.__L.settings().set('autoSave', false); window.__L.ui().editorMode = 'wysiwyg'; return 'ok' })()`)
+  await sleep(300)
+  await openDocWith(app, MD, 'rapidenter.md')
+  await waitEditor(app.ev)
+  await sleep(400)
+
+  // 点进代码块行尾
+  const box = await app.ev(`(() => {
+    const el = document.querySelector('.cm-content')
+    if (!el) return null
+    const r = el.getBoundingClientRect()
+    return JSON.stringify({ x: Math.round(r.left + Math.min(60, r.width / 2)), y: Math.round(r.bottom - 10) })
+  })()`)
+  if (box === null) {
+    report.skip('rapidenter', '没有代码块（.cm-content）')
+    return report.finish()
   }
-  const ensureBridge = () => ev(`(() => {
-    if (window.__vt) return 'OK'
-    const app = document.querySelector('#app')?.__vue_app__
-    if (!app) return 'NO_APP'
-    const prov = app._context.provides
-    const sym = Object.getOwnPropertySymbols(prov).find((s) => { const p = prov[s]; return !!p && typeof p === 'object' && p._s instanceof Map })
-    const pinia = sym ? prov[sym] : null
-    if (!pinia) return 'NO_PINIA'
-    window.__vt = { pinia, files: () => pinia._s.get('files'), ed: () => pinia._s.get('editor')?.instance ?? null }
-    return 'OK'
-  })()`)
-
-  await send('Page.enable')
-  await send('Page.bringToFront')
-  await ensureBridge()
-  await ev(`(() => { location.hash = '#/editor'; return 'ok' })()`)
-  await sleep(1000)
-  await ensureBridge()
-  await ev(`window.luminAPI.workspace.setRoot(${JSON.stringify(TEST_DIR)}).then(() => 'ok')`)
-  await ev(`window.luminAPI.file.write(${JSON.stringify(TEST_PATH)}, ${JSON.stringify(TEST_MD)}).then(() => 'ok')`)
-  await ev(`(async () => { await window.__vt.files().openPath(${JSON.stringify(TEST_PATH)}); return 'ok' })()`)
-  await sleep(1200)
-  await ensureBridge()
-
-  // 点击 CM 行尾
-  const r = await ev(`(() => {
-    const cm = document.querySelector('.cm-content')
-    const b = cm?.getBoundingClientRect()
-    return b ? { x: b.left + 60, y: b.top + b.height - 10 } : null
-  })()`)
+  const p = JSON.parse(box)
   for (const type of ['mousePressed', 'mouseReleased']) {
-    await send('Input.dispatchMouseEvent', { type, x: r.x, y: r.y, button: 'left', clickCount: 1 })
+    await app.send('Input.dispatchMouseEvent', { type, x: p.x, y: p.y, button: 'left', clickCount: 1 })
   }
   await sleep(300)
+  await clickCenter(app.send, app.ev, '.cm-content')
+  await sleep(200)
 
-  // 快速回车 ×8（35ms 间隔，模拟快速连点/按住）
+  const before = JSON.parse(await app.ev(SNAPSHOT))
+  report.check('R0 起始态：代码块 1 行、焦点在 CM', before.cmLines === 1 && before.pmLines === 1, JSON.stringify(before))
+
+  // 快速回车 ×8（35ms）+ 模拟按键重复 ×10（15ms）
   for (let i = 0; i < 8; i++) {
-    await send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13, text: '\r' })
-    await send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13 })
+    await app.send('Input.dispatchKeyEvent', {
+      type: 'keyDown',
+      key: 'Enter',
+      code: 'Enter',
+      windowsVirtualKeyCode: 13,
+      text: '\r'
+    })
+    await key(app.send, 'keyUp', 'Enter', 'Enter', 13)
     await sleep(35)
   }
-  // 按住不动：15ms 间隔 ×10（系统按键重复速率）
   for (let i = 0; i < 10; i++) {
-    await send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13, text: '\r' })
-    await send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13 })
+    await app.send('Input.dispatchKeyEvent', {
+      type: 'keyDown',
+      key: 'Enter',
+      code: 'Enter',
+      windowsVirtualKeyCode: 13,
+      text: '\r'
+    })
+    await key(app.send, 'keyUp', 'Enter', 'Enter', 13)
     await sleep(15)
   }
-  await sleep(800)
+  await sleep(900) // 等序列化防抖（250ms）落进 store
 
-  const state = await ev(`(() => {
-    const ae = document.activeElement
-    const ed = window.__vt.ed()
-    let pmLines = -1
-    ed?.view.state.doc.descendants((n) => { if (n.type.name === 'codeBlock') pmLines = n.textContent.split('\\n').length })
-    return JSON.stringify({
-      active: ae?.tagName + '.' + (typeof ae?.className === 'string' ? ae.className.split(' ')[0] : ''),
-      cmLines: document.querySelectorAll('.cm-line').length,
-      pmLines
-    })
-  })()`)
-  console.log('final state:', state)
+  const after = JSON.parse(await app.ev(SNAPSHOT))
+  report.check(
+    'R1 CM 里 18 次回车 → 19 行（可见行没被回滚）',
+    after.cmLines === 19,
+    `cm=${after.cmLines} active=${after.active}`
+  )
+  report.check('R2 Tiptap 文档里的代码块也是 19 行', after.pmLines === 19, `pm=${after.pmLines}`)
+  report.check(
+    'R3 落进 store 的正文同样是 19 行（序列化没丢换行）',
+    after.storeCodeLines === 19,
+    `store=${after.storeCodeLines}`
+  )
 
-  const cmLines = JSON.parse(state).cmLines
-  const pmLines = JSON.parse(state).pmLines
-  if (cmLines === 19 && pmLines === 19) {
-    console.log('PASS: 18 rapid Enters all landed (19 lines) in CM and PM')
-  } else {
-    console.log('FAIL: expected 19 lines in both, got cm=' + cmLines + ' pm=' + pmLines)
-    process.exitCode = 1
-  }
-
-  ws.close()
-  process.exit(0)
+  await app.ev(`(() => { window.__L.settings().set('autoSave', ${JSON.stringify(backupAutoSave)}); return 'ok' })()`)
+  app.close()
+  return report.finish()
 }
-main().catch((e) => { console.log('FAIL:', e.message); process.exit(1) })
+
+main()
+  .then((code) => process.exit(code))
+  .catch(fatal)

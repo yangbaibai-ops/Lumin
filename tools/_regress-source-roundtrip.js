@@ -1,72 +1,103 @@
-// 回归：代码块 typing 经「源码模式往返」（CM 曾被 display:none）后仍正常
-const CDP = 'http://127.0.0.1:9222/json'
-let ws
-let id = 0
-const pending = new Map()
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
-function send(method, params) { return new Promise((res) => { const i = ++id; pending.set(i, res); ws.send(JSON.stringify({ id: i, method, params })) }) }
-async function ev(expression) { const r = await send('Runtime.evaluate', { expression, returnByValue: true, awaitPromise: true }); if (r.result && r.result.exceptionDetails) throw new Error('EXC: ' + (r.result.exceptionDetails.exception?.description || r.result.exceptionDetails.text)); return r.result?.result?.value }
-async function key(type, key, code, vk) { await send('Input.dispatchKeyEvent', { type, key, code, windowsVirtualKeyCode: vk }) }
-async function clickMode(text) {
-  const p = await ev(`(() => {
-    const el = Array.from(document.querySelectorAll('.mode-seg-btn')).find((b) => (b.textContent || '').trim() === ${JSON.stringify(text)})
+'use strict'
+// ─── 回归：代码块经过「源码模式往返」之后仍然能聚焦与输入 ────────────────────
+//
+// 背景：代码块里的 CodeMirror 曾被源码模式的 `display:none` 影响（隐藏期间宽度为 0，
+// 切回来行号/视口尺寸失真、点击落不到 CM 上）。这条回归守着「源码面改一圈再回来，
+// 代码块仍然可点、可输入，且源码里改的内容确实同步过来了」。
+//
+// 跑法：node tools/_regress-source-roundtrip.js（先起隔离实例）
+
+const { connect, settle, waitEditor, sleep, Reporter, clickMode, waitRestored, fatal } = require('./lib/harness')
+
+const MD = ['# 标题', '正文', '', '```js', 'const a = 1', '```', '', '## 尾部'].join('\n')
+
+async function main() {
+  const report = new Reporter('回归：源码模式往返后的代码块可用性')
+  const app = await connect()
+  if (!(await settle(app.ev))) {
+    report.skip('app-ready', '应用未就绪')
+    return report.finish()
+  }
+  const backupMode = await app.ev(`window.__L.ui().editorMode`)
+  await app.ev(`(() => { window.__L.ui().editorMode = 'wysiwyg'; return 'ok' })()`)
+  await sleep(350)
+  await app.ev(`(async () => { if (!window.__L.files().current) await window.__L.files().openUntitled(); return 'ok' })()`)
+  await waitEditor(app.ev)
+  await app.ev(`(() => {
+    window.__L.files().setContent(${JSON.stringify(MD)}, 'external')
+    window.__L.ed().commands.setContent(${JSON.stringify(MD)}, { emitUpdate: false })
+    return 'ok'
+  })()`)
+  await sleep(900)
+
+  // 源码模式：在末尾加一行，再切回渲染
+  await clickMode(app, 2)
+  await waitRestored(app.ev)
+  await app.ev(`(() => {
+    const ta = document.querySelector('textarea.source-editor')
+    ta.focus()
+    ta.setSelectionRange(ta.value.length, ta.value.length)
+    return 'ok'
+  })()`)
+  await sleep(150)
+  await app.send('Input.insertText', { text: '\n### 源码加了一行' })
+  await sleep(300)
+  await clickMode(app, 0)
+  await waitRestored(app.ev)
+  await sleep(400)
+
+  const synced = await app.ev(`(() => {
+    const ed = window.__L.ed()
+    let ok = false
+    ed.state.doc.descendants((n) => { if (n.type.name === 'heading' && n.textContent.includes('源码加了一行')) ok = true })
+    return ok
+  })()`)
+  report.check('S1 源码里加的标题同步进渲染面', synced === true)
+
+  // 代码块：点得到、焦点进得去
+  const box = await app.ev(`(() => {
+    const el = document.querySelector('.cm-content')
     if (!el) return null
     const r = el.getBoundingClientRect()
-    return JSON.stringify({ x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2) })
+    return JSON.stringify({ w: Math.round(r.width), h: Math.round(r.height) })
   })()`)
-  if (!p) throw new Error('NO-BTN ' + text)
-  const g = JSON.parse(p)
-  await send('Input.dispatchMouseEvent', { type: 'mousePressed', x: g.x, y: g.y, button: 'left', clickCount: 1 })
-  await send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: g.x, y: g.y, button: 'left', clickCount: 1 })
-  await sleep(400)
-}
-async function main() {
-  const targets = await (await fetch(CDP)).json()
-  const page = targets.find((t) => t.type === 'page')
-  ws = new WebSocket(page.webSocketDebuggerUrl)
-  await new Promise((res, rej) => { ws.onopen = res; ws.onerror = rej })
-  ws.onmessage = (e) => { const m = JSON.parse(e.data); if (m.id && pending.has(m.id)) { pending.get(m.id)(m); pending.delete(m.id) } }
-  await send('Page.enable'); await send('Page.bringToFront')
-  await ev(`(() => {
-    const app = document.querySelector('#app')?.__vue_app__
-    const prov = app?._context.provides
-    const sym = Object.getOwnPropertySymbols(prov).find((s) => { const p = prov[s]; return !!p && typeof p === 'object' && p._s instanceof Map })
-    const pinia = sym ? prov[sym] : null
-    window.__vt = { pinia, ui: () => pinia._s.get('ui'), files: () => pinia._s.get('files'), ed: () => pinia._s.get('editor')?.instance ?? null }
-    return 'OK'
-  })()`)
-  await ev(`(() => { if (!location.hash.includes('/editor')) location.hash = '#/editor'; return 'ok' })()`)
-  await sleep(600)
-  await ev(`(() => { window.__vt.ui().editorMode = 'wysiwyg'; return 'ok' })()`)
-  await sleep(300)
-  await ev(`(async () => { const files = window.__vt.files(); if (!files.current) await files.openUntitled(); return 'ok' })()`)
-  await ev(`(async () => { for (let i = 0; i < 150 && !window.__vt.ed(); i++) await new Promise((r) => setTimeout(r, 20)); return 'ed' })()`)
-  const md = ['# 标题', '正文', '', '```js', 'const a = 1', '```', '', '## 尾部'].join('\n')
-  await ev(`(() => { const f = window.__vt.files(); f.setContent(${JSON.stringify(md)}); const ed = window.__vt.ed(); ed.commands.setContent(${JSON.stringify(md)}, { emitUpdate: false }); return 'ok' })()`)
-  await sleep(900)
-  // 源码模式往返
-  await clickMode('源码')
-  await ev(`(() => { const ta = document.querySelector('textarea.source-editor'); ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length); return 'ok' })()`)
-  await sleep(150)
-  await send('Input.insertText', { text: '\n### 源码加了一行' })
-  await sleep(300)
-  await clickMode('实时渲染')
-  await sleep(500)
-  // 回渲染后：代码块可见且可聚焦输入
-  let cmFocus = false
-  for (let a = 0; a < 5 && !cmFocus; a++) {
-    const p = JSON.parse(await ev(`(() => { const el = document.querySelector('.cm-content'); if (!el) return null; const r = el.getBoundingClientRect(); return JSON.stringify({ x: r.left + Math.min(60, r.width / 2), y: r.top + Math.max(10, r.height / 2), w: r.width, h: r.height }) })()`))
-    await send('Input.dispatchMouseEvent', { type: 'mousePressed', x: p.x, y: p.y, button: 'left', clickCount: 1 })
-    await send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: p.x, y: p.y, button: 'left', clickCount: 1 })
+  report.check('S2 往返后代码块尺寸正常（隐藏期间被量成 0 过）', box !== null && JSON.parse(box).w > 50, String(box))
+
+  let focused = false
+  for (let i = 0; i < 5 && !focused; i++) {
+    const p = JSON.parse(
+      await app.ev(`(() => {
+        const el = document.querySelector('.cm-content')
+        const r = el.getBoundingClientRect()
+        return JSON.stringify({ x: Math.round(r.left + Math.min(60, r.width / 2)), y: Math.round(r.top + Math.max(10, r.height / 2)) })
+      })()`)
+    )
+    for (const type of ['mousePressed', 'mouseReleased']) {
+      await app.send('Input.dispatchMouseEvent', { type, x: p.x, y: p.y, button: 'left', clickCount: 1 })
+    }
     await sleep(250)
-    cmFocus = await ev(`(() => { const el = document.querySelector('.cm-content'); return el ? document.activeElement === el : false })()`)
+    focused = await app.ev(
+      `(() => { const el = document.querySelector('.cm-content'); return el ? document.activeElement === el || el.contains(document.activeElement) : false })()`
+    )
   }
-  await send('Input.insertText', { text: 'zz' })
+  report.check('S3 往返后点击能把焦点交进 CM', focused === true)
+
+  await app.send('Input.insertText', { text: 'zz' })
   await sleep(400)
-  const code = await ev(`(() => { const ed = window.__vt.ed(); let c = ''; ed.state.doc.descendants((n) => { if (n.type.name === 'codeBlock') c = n.textContent }); return c })()`)
-  console.log((cmFocus ? 'PASS' : 'FAIL') + ' 源码往返后 CM 可聚焦', '')
-  console.log((code.includes('zz') ? 'PASS' : 'FAIL') + ' 源码往返后代码块可输入', JSON.stringify(code))
-  console.log('heading 同步:', (await ev(`(() => { const ed = window.__vt.ed(); let ok = false; ed.state.doc.descendants((n) => { if (n.type.name === 'heading' && n.textContent.includes('源码加了一行')) ok = true }); return ok })()`) ? 'PASS' : 'FAIL'))
-  ws.close(); process.exit(0)
+  const code = await app.ev(`(() => {
+    const ed = window.__L.ed()
+    let c = ''
+    ed.state.doc.descendants((n) => { if (n.type.name === 'codeBlock') c = n.textContent })
+    return c
+  })()`)
+  report.check('S4 往返后代码块仍可输入', typeof code === 'string' && code.includes('zz'), JSON.stringify(code))
+
+  await app.ev(`(() => { window.__L.ui().editorMode = ${JSON.stringify(backupMode)}; return 'ok' })()`)
+  await sleep(200)
+  app.close()
+  return report.finish()
 }
-main().catch((e) => { console.log('FAIL', e.message); try { ws.close() } catch {} process.exit(1) })
+
+main()
+  .then((code) => process.exit(code))
+  .catch(fatal)

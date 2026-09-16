@@ -1,117 +1,173 @@
-// 回归：常驻布局下的核心编辑路径 + 模式切换位置保持
-// 准备：untitled 文档 + 代码块内容；逐项验证并打印 PASS/FAIL
-const CDP = 'http://127.0.0.1:9222/json'
-let ws
-let id = 0
-const pending = new Map()
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
-function send(method, params) { return new Promise((res) => { const i = ++id; pending.set(i, res); ws.send(JSON.stringify({ id: i, method, params })) }) }
-async function ev(expression) { const r = await send('Runtime.evaluate', { expression, returnByValue: true, awaitPromise: true }); if (r.result && r.result.exceptionDetails) throw new Error('EXC: ' + (r.result.exceptionDetails.exception?.description || r.result.exceptionDetails.text)); return r.result?.result?.value }
-async function key(type, key, code, vk, text, modifiers) { await send('Input.dispatchKeyEvent', { type, key, code, windowsVirtualKeyCode: vk, ...(text !== undefined ? { text } : {}), ...(modifiers ? { modifiers } : {}) }) }
-async function clickMode(text) {
-  const p = await ev(`(() => {
-    const el = Array.from(document.querySelectorAll('.mode-seg-btn')).find((b) => (b.textContent || '').trim() === ${JSON.stringify(text)})
-    if (!el) return null
-    const r = el.getBoundingClientRect()
-    return JSON.stringify({ x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2) })
-  })()`)
-  if (!p) throw new Error('NO-BTN ' + text)
-  const g = JSON.parse(p)
-  await send('Input.dispatchMouseEvent', { type: 'mousePressed', x: g.x, y: g.y, button: 'left', clickCount: 1 })
-  await send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: g.x, y: g.y, button: 'left', clickCount: 1 })
-  await sleep(350)
-}
+'use strict'
+// ─── 回归：常驻布局下的核心编辑路径 + 模式切换的位置保持 ────────────────────
+//
+// 这是 `_regress-*` 里覆盖最广的一条（8 条断言）：代码块可聚焦可输入、
+// 「渲染 → 分屏 → 源码 → 渲染」往返后光标比例仍在原处、源码输入写进 store 并回灌渲染面、
+// 源码模式编辑器实例为 null、大纲在源码模式清空。
+//
+// 跑法：node tools/_regress-layout.js（先起隔离实例）
+
+const { connect, settle, waitEditor, sleep, Reporter, clickMode, waitRestored, key, fatal } =
+  require('./lib/harness')
+
+const MD = [
+  '# 标题',
+  '正文段落用于测试，足够长以产生滚动。',
+  '',
+  '```js',
+  'const a = 1',
+  '```',
+  '',
+  '## 小节',
+  '更多正文。'
+].join('\n')
+
 async function main() {
-  const targets = await (await fetch(CDP)).json()
-  const page = targets.find((t) => t.type === 'page')
-  ws = new WebSocket(page.webSocketDebuggerUrl)
-  await new Promise((res, rej) => { ws.onopen = res; ws.onerror = rej })
-  ws.onmessage = (e) => { const m = JSON.parse(e.data); if (m.id && pending.has(m.id)) { pending.get(m.id)(m); pending.delete(m.id) } }
-  await send('Page.enable'); await send('Page.bringToFront')
-  await ev(`(() => {
-    const app = document.querySelector('#app')?.__vue_app__
-    const prov = app?._context.provides
-    const sym = Object.getOwnPropertySymbols(prov).find((s) => { const p = prov[s]; return !!p && typeof p === 'object' && p._s instanceof Map })
-    const pinia = sym ? prov[sym] : null
-    window.__vt = { pinia, ui: () => pinia._s.get('ui'), files: () => pinia._s.get('files'), ed: () => pinia._s.get('editor')?.instance ?? null }
-    return 'OK'
+  const report = new Reporter('回归：常驻布局的核心编辑路径与位置保持')
+  const app = await connect()
+  if (!(await settle(app.ev))) {
+    report.skip('app-ready', '应用未就绪')
+    return report.finish()
+  }
+  const backupMode = await app.ev(`window.__L.ui().editorMode`)
+  await app.ev(`(() => { window.__L.ui().editorMode = 'wysiwyg'; return 'ok' })()`)
+  await sleep(400)
+  await app.ev(`(async () => { if (!window.__L.files().current) await window.__L.files().openUntitled(); return 'ok' })()`)
+  await waitEditor(app.ev)
+  await app.ev(`(() => {
+    window.__L.files().setContent(${JSON.stringify(MD)}, 'external')
+    window.__L.ed().commands.setContent(${JSON.stringify(MD)}, { emitUpdate: false })
+    return 'ok'
   })()`)
-  await ev(`(() => { if (!location.hash.includes('/editor')) location.hash = '#/editor'; return 'ok' })()`)
-  await sleep(700)
-  await ev(`(() => { window.__vt.ui().editorMode = 'wysiwyg'; return 'ok' })()`)
-  await sleep(500)
-  await ev(`(async () => { const files = window.__vt.files(); if (!files.current) await files.openUntitled(); return 'ok' })()`)
-  await ev(`(async () => { for (let i = 0; i < 200 && !window.__vt.ed(); i++) await new Promise((r) => setTimeout(r, 25)); return window.__vt.ed() ? 'ed' : 'no-ed' })()`)
-  await sleep(300)
-  const md = ['# 标题', '正文段落用于测试，足够长以产生滚动。', '', '```js', 'const a = 1', '```', '', '## 小节', '更多正文。'].join('\n')
-  await ev(`(() => { const f = window.__vt.files(); f.setContent(${JSON.stringify(md)}); const ed = window.__vt.ed(); if (ed) ed.commands.setContent(${JSON.stringify(md)}, { emitUpdate: false }); return 'ok' })()`)
   await sleep(900)
 
-  const results = []
-  function check(name, cond, extra) { results.push((cond ? 'PASS' : 'FAIL') + ' ' + name + (extra ? ' | ' + extra : '')) }
-
-  // 1) 代码块点击 + 输入 + Enter（重测坐标直到可聚焦，避免 pane settle 竞争）
-  const cm = await ev(`(() => { const el = document.querySelector('.cm-content'); if (!el) return null; const r = el.getBoundingClientRect(); return { x: r.left + Math.min(40, r.width / 2), y: r.top + Math.max(12, r.height / 2), w: r.width, h: r.height } })()`)
-  check('代码块CM可见', cm && cm.w > 50 && cm.h > 10, cm ? `w=${Math.round(cm.w)} h=${Math.round(cm.h)}` : 'no cm')
-  if (cm) {
-    let focused = false
+  // 1) 代码块：可见 → 点击聚焦 → 输入 + 回车
+  const cm = JSON.parse(
+    await app.ev(`(() => {
+      const el = document.querySelector('.cm-content')
+      if (!el) return 'null'
+      const r = el.getBoundingClientRect()
+      return JSON.stringify({ w: Math.round(r.width), h: Math.round(r.height) })
+    })()`)
+  )
+  report.check('L1 代码块 CodeMirror 可见', cm !== 'null' && cm.w > 50 && cm.h > 10, JSON.stringify(cm))
+  let focused = false
+  if (cm !== 'null') {
     for (let attempt = 0; attempt < 5 && !focused; attempt++) {
-      await ev(`(async () => { for (let i = 0; i < 50 && document.querySelector('.view-restoring'); i++) await new Promise((r) => setTimeout(r, 20)); return 'ok' })()`)
-      const p = JSON.parse(await ev(`(() => { const el = document.querySelector('.cm-content'); if (!el) return null; const r = el.getBoundingClientRect(); return JSON.stringify({ x: r.left + Math.min(40, r.width / 2), y: r.top + Math.max(12, r.height / 2) }) })()`))
-      await send('Input.dispatchMouseEvent', { type: 'mousePressed', x: p.x, y: p.y, button: 'left', clickCount: 1 })
-      await send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: p.x, y: p.y, button: 'left', clickCount: 1 })
+      await waitRestored(app.ev)
+      const p = JSON.parse(
+        await app.ev(`(() => {
+          const el = document.querySelector('.cm-content')
+          const r = el.getBoundingClientRect()
+          return JSON.stringify({ x: Math.round(r.left + Math.min(40, r.width / 2)), y: Math.round(r.top + Math.max(12, r.height / 2)) })
+        })()`)
+      )
+      for (const type of ['mousePressed', 'mouseReleased']) {
+        await app.send('Input.dispatchMouseEvent', { type, x: p.x, y: p.y, button: 'left', clickCount: 1 })
+      }
       await sleep(200)
-      focused = await ev(`(() => { const el = document.querySelector('.cm-content'); return el ? document.activeElement === el || el.contains(document.activeElement) : false })()`)
+      focused = await app.ev(
+        `(() => { const el = document.querySelector('.cm-content'); return el ? document.activeElement === el || el.contains(document.activeElement) : false })()`
+      )
     }
-    check('点击后 CM 聚焦', focused === true, '')
-    await send('Input.insertText', { text: 'hello' })
+    report.check('L2 点击后焦点在 CM 里（没被 PM 抢回）', focused === true)
+    await app.send('Input.insertText', { text: 'hello' })
     await sleep(200)
-    await key('keyDown', 'Enter', 'Enter', 13); await key('keyUp', 'Enter', 'Enter', 13)
+    await key(app.send, 'keyDown', 'Enter', 'Enter', 13)
+    await key(app.send, 'keyUp', 'Enter', 'Enter', 13)
     await sleep(200)
-    await send('Input.insertText', { text: 'world' })
+    await app.send('Input.insertText', { text: 'world' })
     await sleep(400)
-    const code = await ev(`(() => { const ed = window.__vt.ed(); let c = ''; ed.state.doc.descendants((n) => { if (n.type.name === 'codeBlock') c = n.textContent }); return c })()`)
-    check('代码块输入+Enter', code.includes('hello') && code.includes('world'), JSON.stringify(code))
+    const code = await app.ev(`(() => {
+      const ed = window.__L.ed()
+      let c = ''
+      ed.state.doc.descendants((n) => { if (n.type.name === 'codeBlock') c = n.textContent })
+      return c
+    })()`)
+    report.check(
+      'L3 代码块输入 + 回车换行都落到文档里',
+      typeof code === 'string' && code.includes('hello') && code.includes('world'),
+      JSON.stringify(code)
+    )
   }
 
-  // 2) 模式切换位置保持：设光标到 50%，切换三个方向后再回来验证 pm 比例
-  await ev(`(() => { const ed = window.__vt.ed(); ed.commands.setTextSelection(Math.floor(ed.state.doc.content.size * 0.5)); return 'ok' })()`)
+  // 2) 位置保持：光标放到 50% → 渲染→分屏→源码→渲染 往返后仍在 40%~60%
+  await app.ev(`(() => {
+    const ed = window.__L.ed()
+    ed.commands.setTextSelection(Math.floor(ed.state.doc.content.size * 0.5))
+    return 'ok'
+  })()`)
+  await sleep(200)
+  await clickMode(app, 1)
+  await waitRestored(app.ev)
+  await clickMode(app, 2)
+  await waitRestored(app.ev)
+  const inSource = await app.ev(
+    `(() => { const ta = document.querySelector('textarea.source-editor'); return ta ? ta.value.length : -1 })()`
+  )
+  await clickMode(app, 0)
+  await waitRestored(app.ev)
+  await sleep(250)
+  const pos = JSON.parse(
+    await app.ev(`(() => {
+      const ed = window.__L.ed()
+      const size = ed.state.doc.content.size
+      return JSON.stringify({ from: ed.state.selection.from, size, ratio: size ? ed.state.selection.from / size : 0 })
+    })()`)
+  )
+  report.check(
+    'L4 跨面往返后光标比例保持（≈0.5）',
+    pos.ratio > 0.4 && pos.ratio < 0.6,
+    `from=${pos.from} size=${pos.size} ratio=${pos.ratio.toFixed(3)} sourceLen=${inSource}`
+  )
+
+  // 3) 源码输入 → 写进 store → 切回渲染后出现
+  await clickMode(app, 2)
+  await waitRestored(app.ev)
+  await app.ev(`(() => {
+    const ta = document.querySelector('textarea.source-editor')
+    ta.focus()
+    ta.setSelectionRange(ta.value.length, ta.value.length)
+    return 'ok'
+  })()`)
   await sleep(150)
-  await clickMode('分屏')
-  await clickMode('源码')
-  const taMid = await ev(`(() => { const ta = document.querySelector('textarea.source-editor'); const v = ta.value; const mx = ta.scrollHeight - ta.clientHeight; return JSON.stringify({ len: v.length, sel: ta.selectionStart, ratio: mx > 0 ? ta.scrollTop / mx : 0 }) })()`)
-  await clickMode('实时渲染')
-  const pm = await ev(`(() => { const ed = window.__vt.ed(); const s = ed.state.doc.content.size; return JSON.stringify({ from: ed.state.selection.from, size: s, ratio: s ? ed.state.selection.from / s : 0 }) })()`)
-  const r1 = JSON.parse(pm)
-  check('跨面往返位置保持(≈0.5)', r1.ratio > 0.4 && r1.ratio < 0.6, `from=${r1.from} size=${r1.size} ratio=${r1.ratio.toFixed(3)} taMid=${taMid}`)
-
-  // 3) 源码模式输入 → 切回实时渲染内容同步
-  await clickMode('源码')
-  await ev(`(() => { const ta = document.querySelector('textarea.source-editor'); ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length); const e = new Event('input', { bubbles: true }); Object.defineProperty(e, 'target', { value: ta }); ta.dispatchEvent(e); return 'ok' })()`)
-  // 用真实输入（insertText 在 textarea 焦点下）
-  await send('Input.insertText', { text: '\n## 源码新增' })
+  await app.send('Input.insertText', { text: '\n## 源码新增' })
   await sleep(400)
-  const mdSynced = await ev(`(() => { const f = window.__vt.files(); return f.current.content.includes('源码新增') })()`)
-  check('源码输入写入 files', mdSynced === true, '')
-  await clickMode('实时渲染')
-  const hasHeading = await ev(`(() => { const ed = window.__vt.ed(); let ok = false; ed.state.doc.descendants((n) => { if (n.type.name === 'heading' && n.textContent.includes('源码新增')) ok = true }); return ok })()`)
-  check('源码编辑→渲染同步', hasHeading === true, '')
+  const inStore = await app.ev(`window.__L.files().current.content.includes('源码新增')`)
+  report.check('L5 源码输入写进 files store', inStore === true)
+  await clickMode(app, 0)
+  await waitRestored(app.ev)
+  await sleep(300)
+  const synced = await app.ev(`(() => {
+    const ed = window.__L.ed()
+    let ok = false
+    ed.state.doc.descendants((n) => { if (n.type.name === 'heading' && n.textContent.includes('源码新增')) ok = true })
+    return ok
+  })()`)
+  report.check('L6 源码编辑回灌渲染面', synced === true)
 
-  // 4) 工具栏富文本命令在源码模式失活（instance null）
-  await clickMode('源码')
-  const instanceInSource = await ev(`(() => window.__vt.ed() !== null)()`)
-  check('源码模式 instance=null', instanceInSource === false, '')
+  // 4) 源码模式：编辑器实例应为 null（工具栏富文本命令失活）
+  await clickMode(app, 2)
+  await waitRestored(app.ev)
+  report.check('L7 源码模式 instance=null', (await app.ev(`window.__L.ed() !== null`)) === false)
 
-  // 5) 大纲在源码模式清空
-  await clickMode('实时渲染')
-  const outlineWysiwyg = await ev(`(() => window.__vt.pinia._s.get('editor').outline.length)()`)
-  check('渲染模式 outline 非空', outlineWysiwyg >= 2, `count=${outlineWysiwyg}`)
-  await clickMode('源码')
-  const outlineSource = await ev(`(() => window.__vt.pinia._s.get('editor').outline.length)()`)
-  check('源码模式 outline 清空', outlineSource === 0, `count=${outlineSource}`)
+  // 5) 大纲：渲染模式非空，源码模式清空
+  await clickMode(app, 0)
+  await waitRestored(app.ev)
+  await sleep(250)
+  const outlineWysiwyg = await app.ev(`window.__L.editor().outline.length`)
+  report.check('L8 渲染模式大纲非空', outlineWysiwyg >= 2, `count=${outlineWysiwyg}`)
+  await clickMode(app, 2)
+  await waitRestored(app.ev)
+  const outlineSource = await app.ev(`window.__L.editor().outline.length`)
+  report.check('L9 源码模式大纲清空', outlineSource === 0, `count=${outlineSource}`)
 
-  await clickMode('实时渲染')
-  console.log(results.join('\n'))
-  ws.close(); process.exit(results.some((r) => r.startsWith('FAIL')) ? 2 : 0)
+  await app.ev(`(() => { window.__L.ui().editorMode = ${JSON.stringify(backupMode)}; return 'ok' })()`)
+  await sleep(200)
+  app.close()
+  return report.finish()
 }
-main().catch((e) => { console.log('FAIL', e.message); try { ws.close() } catch {} process.exit(1) })
+
+main()
+  .then((code) => process.exit(code))
+  .catch(fatal)

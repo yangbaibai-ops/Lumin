@@ -1,68 +1,135 @@
-// 回归：分屏分隔条拖拽改变左栏宽度 + 双击复位
-const CDP = 'http://127.0.0.1:9222/json'
-let ws
-let id = 0
-const pending = new Map()
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
-function send(method, params) { return new Promise((res) => { const i = ++id; pending.set(i, res); ws.send(JSON.stringify({ id: i, method, params })) }) }
-async function ev(expression) { const r = await send('Runtime.evaluate', { expression, returnByValue: true, awaitPromise: true }); if (r.result && r.result.exceptionDetails) throw new Error('EXC: ' + (r.result.exceptionDetails.exception?.description || r.result.exceptionDetails.text)); return r.result?.result?.value }
-async function clickMode(text) {
-  const p = await ev(`(() => {
-    const el = Array.from(document.querySelectorAll('.mode-seg-btn')).find((b) => (b.textContent || '').trim() === ${JSON.stringify(text)})
-    if (!el) return null
-    const r = el.getBoundingClientRect()
-    return JSON.stringify({ x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2) })
-  })()`)
-  if (!p) throw new Error('NO-BTN ' + text)
-  const g = JSON.parse(p)
-  await send('Input.dispatchMouseEvent', { type: 'mousePressed', x: g.x, y: g.y, button: 'left', clickCount: 1 })
-  await send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: g.x, y: g.y, button: 'left', clickCount: 1 })
-  await sleep(500)
-}
+'use strict'
+// ─── 回归：分屏分隔条（拖拽改比例 + 双击复位）───────────────────────────────
+//
+// 迁到 `lib/harness.js` 后新增的价值：模式切换改成按 **序号** 点分段控件
+// （老写法按中文按钮文字找 `.mode-seg-btn`，换语言或改类名就整轮发红）。
+//
+// 跑法：node tools/_regress-divider.js（先起隔离实例）
+
+const { connect, settle, waitEditor, sleep, Reporter, clickMode, waitRestored, clickAt, fatal } =
+  require('./lib/harness')
+
+/** 左栏（渲染面板）占内核容器的比例 */
+const RATIO = `(() => {
+  const host = document.querySelector('.typora-container')?.parentElement
+  if (!host) return -1
+  const parent = host.parentElement
+  if (!parent) return -1
+  return Math.round((host.getBoundingClientRect().width / parent.getBoundingClientRect().width) * 1000) / 1000
+})()`
+
 async function main() {
-  const targets = await (await fetch(CDP)).json()
-  const page = targets.find((t) => t.type === 'page')
-  ws = new WebSocket(page.webSocketDebuggerUrl)
-  await new Promise((res, rej) => { ws.onopen = res; ws.onerror = rej })
-  ws.onmessage = (e) => { const m = JSON.parse(e.data); if (m.id && pending.has(m.id)) { pending.get(m.id)(m); pending.delete(m.id) } }
-  await send('Page.enable'); await send('Page.bringToFront')
-  await ev(`(() => {
-    const app = document.querySelector('#app')?.__vue_app__
-    const prov = app?._context.provides
-    const sym = Object.getOwnPropertySymbols(prov).find((s) => { const p = prov[s]; return !!p && typeof p === 'object' && p._s instanceof Map })
-    const pinia = sym ? prov[sym] : null
-    window.__vt = { pinia, ui: () => pinia._s.get('ui'), files: () => pinia._s.get('files'), ed: () => pinia._s.get('editor')?.instance ?? null }
-    return 'OK'
+  const report = new Reporter('回归：分屏分隔条拖拽与复位')
+  const app = await connect()
+  if (!(await settle(app.ev))) {
+    report.skip('app-ready', '应用未就绪')
+    return report.finish()
+  }
+  const backup = JSON.parse(
+    await app.ev(`JSON.stringify({ mode: window.__L.ui().editorMode, ratio: window.__L.settings().splitRatio })`)
+  )
+  await app.ev(`(async () => { if (!window.__L.files().current) await window.__L.files().openUntitled(); return 'ok' })()`)
+  await waitEditor(app.ev)
+  await app.ev(`(() => {
+    const md = ['# 标题', '正文段落。', '', '\`\`\`js', 'x', '\`\`\`'].join('\\n')
+    window.__L.files().setContent(md, 'external')
+    window.__L.ed().commands.setContent(md, { emitUpdate: false })
+    return 'ok'
   })()`)
-  await ev(`(() => { if (!location.hash.includes('/editor')) location.hash = '#/editor'; return 'ok' })()`)
-  await sleep(600)
-  await ev(`(() => { window.__vt.ui().editorMode = 'wysiwyg'; return 'ok' })()`)
-  await sleep(300)
-  await ev(`(async () => { const files = window.__vt.files(); if (!files.current) await files.openUntitled(); return 'ok' })()`)
-  await ev(`(async () => { for (let i = 0; i < 150 && !window.__vt.ed(); i++) await new Promise((r) => setTimeout(r, 20)); return 'ed' })()`)
-  const md = ['# 标题', '正文段落。', '', '```js', 'x', '```'].join('\n')
-  await ev(`(() => { window.__vt.files().setContent(${JSON.stringify(md)}); const ed = window.__vt.ed(); ed.commands.setContent(${JSON.stringify(md)}, { emitUpdate: false }); return 'ok' })()`)
   await sleep(800)
-  await clickMode('分屏')
-  const divider = JSON.parse(await ev(`(() => { const d = document.querySelector('.split-divider'); if (!d) return JSON.stringify({ none: true }); const r = d.getBoundingClientRect(); return JSON.stringify({ x: r.left, y: r.top, w: r.width, h: r.height, midY: r.top + r.height / 2 }) })()`))
-  console.log('divider:', JSON.stringify(divider))
-  const w0 = await ev(`(() => { const host = document.querySelector('.typora-container')?.parentElement; return host ? Math.round(host.getBoundingClientRect().width) : -1 })()`)
-  // 向左拖
-  const dx = Math.round(divider.x - 120)
-  const dy = Math.round(divider.midY)
-  await send('Input.dispatchMouseEvent', { type: 'mousePressed', x: Math.round(divider.x), y: dy, button: 'left', clickCount: 1 })
-  await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: dx, y: dy, button: 'left', buttons: 1 })
-  await send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: dx, y: dy, button: 'left', clickCount: 1, buttons: 0 })
-  await sleep(400)
-  const w1 = await ev(`(() => { const host = document.querySelector('.typora-container')?.parentElement; return host ? Math.round(host.getBoundingClientRect().width) : -1 })()`)
-  console.log(`左栏宽度 ${w0} → ${w1}（期望变小）`, w1 < w0 ? 'PASS 拖拽生效' : 'FAIL')
-  // 双击复位
-  const d2 = JSON.parse(await ev(`(() => { const d = document.querySelector('.split-divider'); const r = d.getBoundingClientRect(); return JSON.stringify({ x: r.left + r.width / 2, y: r.top + r.height / 2 }) })()`))
-  await send('Input.dispatchMouseEvent', { type: 'mousePressed', x: d2.x, y: d2.y, button: 'left', clickCount: 2 })
-  await send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: d2.x, y: d2.y, button: 'left', clickCount: 2 })
-  await sleep(300)
-  const w2 = await ev(`(() => { const host = document.querySelector('.typora-container')?.parentElement; const k = host.parentElement; return host ? Math.round(host.getBoundingClientRect().width / k.getBoundingClientRect().width * 100) / 100 : -1 })()`)
-  console.log(`复位后左栏占比 ${w2}（期望≈0.5）`, Math.abs(w2 - 0.5) < 0.05 ? 'PASS 双击复位' : 'FAIL')
-  ws.close(); process.exit(0)
+
+  const switched = await clickMode(app, 1) // 分屏
+  await waitRestored(app.ev)
+  report.check('M1 切到分屏', switched === true && (await app.ev(`window.__L.ui().editorMode`)) === 'split')
+
+  const box = JSON.parse(
+    await app.ev(`(() => {
+      const d = document.querySelector('.split-divider')
+      if (!d) return 'null'
+      const r = d.getBoundingClientRect()
+      return JSON.stringify({ x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2) })
+    })()`)
+  )
+  if (box === 'null') {
+    report.skip('D1 拖拽改变左栏宽度', '没有 .split-divider（不在分屏模式）')
+  } else {
+    const before = await app.ev(RATIO)
+    // 向左拖 120px：左栏应变窄
+    const target = box.x - 120
+    await app.send('Input.dispatchMouseEvent', {
+      type: 'mousePressed',
+      x: box.x,
+      y: box.y,
+      button: 'left',
+      clickCount: 1
+    })
+    await app.send('Input.dispatchMouseEvent', {
+      type: 'mouseMoved',
+      x: target,
+      y: box.y,
+      button: 'left',
+      buttons: 1
+    })
+    await app.send('Input.dispatchMouseEvent', {
+      type: 'mouseReleased',
+      x: target,
+      y: box.y,
+      button: 'left',
+      clickCount: 1,
+      buttons: 0
+    })
+    await sleep(400)
+    const after = await app.ev(RATIO)
+    report.check(
+      'D1 向左拖 → 左栏变窄',
+      typeof after === 'number' && typeof before === 'number' && after < before - 0.02,
+      `ratio ${before} → ${after}`
+    )
+    report.check(
+      'D2 拖拽结束把比例写进设置（跨会话保留）',
+      Math.abs(Number(await app.ev(`window.__L.settings().splitRatio`)) - after) < 0.03,
+      `settings=${await app.ev(`window.__L.settings().splitRatio`)} ratio=${after}`
+    )
+
+    // 双击复位到 1:1
+    const mid = JSON.parse(
+      await app.ev(`(() => {
+        const d = document.querySelector('.split-divider')
+        const r = d.getBoundingClientRect()
+        return JSON.stringify({ x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2) })
+      })()`)
+    )
+    await app.send('Input.dispatchMouseEvent', {
+      type: 'mousePressed',
+      x: mid.x,
+      y: mid.y,
+      button: 'left',
+      clickCount: 2
+    })
+    await app.send('Input.dispatchMouseEvent', {
+      type: 'mouseReleased',
+      x: mid.x,
+      y: mid.y,
+      button: 'left',
+      clickCount: 2
+    })
+    await sleep(350)
+    const reset = await app.ev(RATIO)
+    report.check('D3 双击复位到 1:1', Math.abs(reset - 0.5) < 0.05, `ratio=${reset}`)
+  }
+
+  // 收尾：还原模式与比例
+  await app.ev(`(() => {
+    window.__L.ui().editorMode = ${JSON.stringify(backup.mode)}
+    window.__L.settings().set('splitRatio', ${JSON.stringify(backup.ratio)})
+    return 'ok'
+  })()`)
+  await sleep(200)
+  void clickAt
+  app.close()
+  return report.finish()
 }
-main().catch((e) => { console.log('FAIL', e.message); try { ws.close() } catch {} process.exit(1) })
+
+main()
+  .then((code) => process.exit(code))
+  .catch(fatal)

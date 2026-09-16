@@ -227,6 +227,84 @@ async function clickAt(send, x, y) {
   await send('Input.dispatchMouseEvent', { type: 'mouseReleased', x, y, button: 'left', clickCount: 1 })
 }
 
+/**
+ * 点工具栏的**模式分段控件**（0=实时渲染 / 1=分屏 / 2=源码）。
+ *
+ * 为什么按序号而不是按按钮文字找：按钮上是图标 + **可本地化**的标签，
+ * 按文字找的话「换语言就跑不了」（老套件里写死中文『分屏』正是它们长期发红的原因之一）。
+ * 顺序由 Toolbar 的 `modeItems` 固定，控件本身是 `role="tablist"` + 三个 `role="tab"`。
+ * @returns 是否点到了（false = 控件还没渲染出来）
+ */
+async function clickMode(app, index, waitMs = 450) {
+  const raw = await app.ev(`(() => {
+    const list = [...document.querySelectorAll('[role="tablist"]')].find(
+      (l) => l.querySelectorAll('[role="tab"]').length === 3
+    )
+    const btn = list?.querySelectorAll('[role="tab"]')[${index}]
+    if (!btn) return null
+    const r = btn.getBoundingClientRect()
+    return JSON.stringify({ x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2) })
+  })()`)
+  if (!raw) return false
+  const p = JSON.parse(raw)
+  await clickAt(app.send, p.x, p.y)
+  await sleep(waitMs)
+  return true
+}
+
+/** 等视图恢复完成（切模式时内容区会被临时隐藏，期间坐标/焦点都不可靠） */
+async function waitRestored(ev, ms = 4000) {
+  const end = Date.now() + ms
+  while (Date.now() < end) {
+    const busy = await ev(`!!document.querySelector('.view-restoring')`).catch(() => false)
+    if (!busy) return true
+    await sleep(50)
+  }
+  return false
+}
+
+let docSeq = 0
+
+/**
+ * 让应用「打开一份新文档」（内容 = md），返回文档路径。
+ *
+ * 为什么不让套件直接 `ed.commands.setContent()`：那只是换**编辑器**内容，
+ * 而代码块里的 CodeMirror 有一条「CM 拿着光标时绝不覆盖」的规则（手册 §4.59）——
+ * 先前的用例若刚在代码块里打过字（CM 仍持焦），外部换内容时 CM 会**故意**保持旧文本，
+ * 于是后续断言看到的是上一份文档的内容（实测：空代码块退格那条会莫名其妙 blocks=1）。
+ *
+ * 走 `files.current` 赋值 + path 变化则完全等同于真实「打开文件」：EditorView 按
+ * `:key=path` 重建渲染面，CM 也一起重建 —— 这才是套件想测的那条路径。
+ * @returns 该文档的路径（每次调用都不同，保证触发重建）
+ */
+async function openDocWith(app, md, name = 'lumin-fixture.md') {
+  docSeq += 1
+  const path = `/tmp/lumin-suite-${Date.now()}-${docSeq}/${name}`
+  await app.ev(`(() => {
+    const f = window.__L.files()
+    f.current = {
+      path: ${JSON.stringify(path)},
+      name: ${JSON.stringify(name)},
+      content: ${JSON.stringify(md)},
+      mtimeMs: Date.now(),
+      savedContent: ${JSON.stringify(md)}
+    }
+    // 语义上这就是一次外部整篇替换（与打开文件同一条路径）
+    f.noteExternalReplace()
+    return 'ok'
+  })()`)
+  await sleep(600)
+  return path
+}
+
+/** 点某个选择器的中心（坐标每次现取：布局可能刚变过），返回是否点到 */
+async function clickCenter(send, ev, selector) {
+  const p = await centerOf(ev, selector)
+  if (!p) return false
+  await clickAt(send, p.x, p.y)
+  return true
+}
+
 // ─── 结果汇总 ────────────────────────────────────────────────────────────────
 /**
  * 统一结果格式（机器可读，tools/run-suites.js 依赖末行）：
@@ -303,6 +381,10 @@ module.exports = {
   centerOf,
   clickSelector,
   clickAt,
+  clickMode,
+  clickCenter,
+  waitRestored,
+  openDocWith,
   Reporter,
   fatal
 }
