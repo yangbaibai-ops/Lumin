@@ -4,6 +4,19 @@
 import CodeBlock from '@tiptap/extension-code-block'
 import { VueNodeViewRenderer } from '@tiptap/vue-3'
 import CodeBlockView from '../../components/editor/CodeBlockView.vue'
+import { codeFenceFor } from '../../../../shared/documentText'
+
+/** tiptap-markdown 序列化状态/节点的最小结构化声明（包未导出这些类型） */
+interface CodeFenceStateLike {
+  write(text: string): void
+  text(text: string, escape: boolean): void
+  ensureNewLine(): void
+  closeBlock(node: unknown): void
+}
+interface CodeFenceNodeLike {
+  attrs: Record<string, unknown>
+  textContent: string
+}
 
 // CM 编辑器区域内的事件全部由 CM 自理：PM 的 eventBelongsToView 检查到
 // stopEvent 为真时直接忽略（尤其是 click 处理器——它无条件 view.focus()
@@ -35,6 +48,27 @@ const CM_EVENTS = new Set([
 
 export const CodeBlockCM = CodeBlock.extend({
   name: 'codeBlock',
+
+  /**
+   * 围栏长度按内容自适应：内容里出现连续反引号（例如文档在教怎么写 Markdown）时，
+   * 固定写三个反引号会让围栏被内容里的 ``` 提前闭合——**后面的正文会被解析成代码**，
+   * 属于内容损坏。见 shared/documentText.ts 的 codeFenceFor。
+   */
+  addStorage() {
+    return {
+      markdown: {
+        serialize(state: CodeFenceStateLike, node: CodeFenceNodeLike) {
+          const content = node.textContent
+          const fence = codeFenceFor(content)
+          state.write(fence + String(node.attrs.language ?? '') + '\n')
+          state.text(content, false)
+          state.ensureNewLine()
+          state.write(fence)
+          state.closeBlock(node)
+        }
+      }
+    }
+  },
 
   addNodeView() {
     return VueNodeViewRenderer(CodeBlockView, {

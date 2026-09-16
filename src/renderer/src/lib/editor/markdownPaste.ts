@@ -18,6 +18,8 @@ import { Plugin, PluginKey } from '@tiptap/pm/state'
 import { DOMParser as PMDOMParser, Fragment, Slice } from '@tiptap/pm/model'
 import type { EditorProps } from '@tiptap/pm/view'
 import type { Node as PMNode, ResolvedPos, Slice as PMSlice } from '@tiptap/pm/model'
+import type { Mark as PMMark } from '@tiptap/pm/model'
+import { styleList } from './typoraInlineMarks'
 
 /** 块标记开头：粘贴以这些字符起头时即使单行也按块解析（单行 '# 标题' 也是块） */
 const BLOCK_START = /^(#{1,6}\s|>\s?|[-*+]\s|```|~~~|\d{1,9}[.)]\s|\[[ xX]?\]\s|\|)/
@@ -37,31 +39,35 @@ function elementFromString(value: string): HTMLElement {
 /** 块内容首节点闭合白名单：文本块（标题/段落/代码块）+ 引用 + 各类列表 */
 function closableBlockName(name: string): boolean {
   return (
-    name === 'blockquote' ||
-    name === 'bulletList' ||
-    name === 'orderedList' ||
-    name === 'taskList'
+    name === 'blockquote' || name === 'bulletList' || name === 'orderedList' || name === 'taskList'
   )
 }
 
-/** 去掉 Fragment 内所有文本节点的 bold 类标记（legacy bold + mdStyle(bold)） */
+/** 去掉 Fragment 内所有文本节点的「粗体」样式（legacy bold + mdStyle 集合里的 bold）。
+    注意样式是集合：只把 bold 从集合里摘掉，别的样式（行内代码等）要留着。 */
 function stripBoldMarks(frag: Fragment): Fragment {
   let changed = false
   const out: PMNode[] = []
   frag.forEach((child) => {
     if (child.isText) {
-      const bold = child.marks.some(
-        (m) => m.type.name === 'bold' || (m.type.name === 'mdStyle' && m.attrs.style === 'bold')
-      )
-      if (bold) {
+      let touched = false
+      const kept: PMMark[] = []
+      for (const m of child.marks) {
+        if (m.type.name === 'bold') {
+          touched = true
+          continue
+        }
+        if (m.type.name === 'mdStyle' && styleList(m.attrs.styles).includes('bold')) {
+          const rest = styleList(m.attrs.styles).filter((s) => s !== 'bold')
+          touched = true
+          if (rest.length) kept.push(m.type.create({ styles: rest }))
+          continue
+        }
+        kept.push(m)
+      }
+      if (touched) {
         changed = true
-        out.push(
-          child.mark(
-            child.marks.filter(
-              (m) => !(m.type.name === 'bold' || (m.type.name === 'mdStyle' && m.attrs.style === 'bold'))
-            )
-          )
-        )
+        out.push(child.mark(kept))
       } else {
         out.push(child)
       }
@@ -117,10 +123,17 @@ export const MarkdownPaste = Extension.create({
   name: 'markdownPaste',
   addProseMirrorPlugins() {
     const props = {
-      clipboardTextParser: (text: string, $context: ResolvedPos, plain: boolean): PMSlice | null => {
+      clipboardTextParser: (
+        text: string,
+        $context: ResolvedPos,
+        plain: boolean
+      ): PMSlice | null => {
         if (plain || !text) return null
-        const parser = (this.editor.storage as { markdown?: { parser?: { parse(text: string, opts?: { inline?: boolean }): string } } })
-          .markdown?.parser
+        const parser = (
+          this.editor.storage as {
+            markdown?: { parser?: { parse(text: string, opts?: { inline?: boolean }): string } }
+          }
+        ).markdown?.parser
         if (!parser) return null
         const block = needsBlockParse(text)
         const html = block ? parser.parse(text) : parser.parse(text, { inline: true })

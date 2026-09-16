@@ -786,6 +786,26 @@
   border-radius: 5px;
   padding: 0.15em 0.4em;
 }
+/* ── mdStyle 的样式集合：主样式由标签承担，集合里**其余**样式靠属性选择器补齐 ──
+   例：`**粗体里的 `代码`**` 渲染成 <strong data-md-styles="bold code">（PM 里同一种 mark
+   只能挂一个，所以不能渲染成嵌套的 <strong><code>），代码那部分的外观就来自这里。
+   取值与上面的标签规则保持一致，避免同一个样式出现两种外观。 */
+.md-preview [data-md-styles~='bold'] {
+  font-weight: 700;
+}
+.md-preview [data-md-styles~='italic'] {
+  font-style: italic;
+}
+.md-preview [data-md-styles~='strike'] {
+  text-decoration: line-through;
+}
+.md-preview [data-md-styles~='code'] {
+  font-family: var(--font-mono);
+  font-size: 0.88em;
+  background: var(--code-bg);
+  border-radius: 5px;
+  padding: 0.15em 0.4em;
+}
 .md-preview pre {
   margin: 0.8em 0;
   padding: 14px 16px;
@@ -843,9 +863,17 @@
 .md-preview img {
   max-width: 100%;
   border-radius: 10px;
-  margin: 0.4em auto;
-  display: block;
   box-shadow: var(--shadow-2);
+  /* 图片是**行内**节点（Markdown 的 `![alt](src)` 本来就是行内语法）：
+     默认按行内排版，能与文字同行、也能被链接包住 */
+  display: inline-block;
+  vertical-align: middle;
+}
+/* 段落里只有一张图（源码里独占一段）→ 仍按块级显示：居中、独占一行。
+   这样「独立成段的图片」观感与改成行内之前一致，而段落中间的图片不再把段落拆开 */
+.md-preview p > img:only-child {
+  display: block;
+  margin: 0.4em auto;
 }
 .md-preview .katex {
   font-size: 1.06em;
@@ -1178,6 +1206,14 @@ h6.md-reveal > .md-heading-marker {
   background: var(--accent-soft);
   color: var(--accent);
   font-weight: 500;
+}
+/* 键盘焦点必须看得见：ARIA tree 用 roving tabindex，鼠标点击不该出现描边
+   （:focus-visible 只在键盘/Tab 时生效），所以只给 focus-visible 加环 */
+.tree-row:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+  background: var(--panel-2);
+  color: var(--ink);
 }
 /* 当前项也要有悬停反馈，但只比选中态略强一点，不换色系 */
 .tree-row.is-current:hover {
@@ -1542,6 +1578,28 @@ h6.md-reveal::before {
   color: inherit;
 }
 
+/* ── YAML front matter 块（文档开头的元数据，原样保留）──
+   WYSIWYG 里只读（atom 节点）：改 YAML 走源码模式。样式上刻意与正文区分，
+   避免用户以为它是一段普通正文；限高可滚动，长 front matter 不挤占视线 */
+.md-preview pre[data-md-frontmatter] {
+  margin: 0 0 1.1em;
+  padding: 10px 12px;
+  max-height: 15em;
+  overflow: auto;
+  font-family: var(--font-mono);
+  font-size: 0.82em;
+  line-height: 1.6;
+  color: var(--ink-2);
+  background: color-mix(in srgb, var(--ink-3) 7%, transparent);
+  border-left: 3px solid color-mix(in srgb, var(--accent) 55%, transparent);
+  border-radius: 0 6px 6px 0;
+  white-space: pre;
+  cursor: default;
+}
+.md-preview pre[data-md-frontmatter]::selection {
+  background: var(--sel);
+}
+
 /* 无序列表：始终显示圆点（与 Typora 一致）。
    输入 '- ' 后 input rule 将其转为 bulletList，圆点由 ul 的 list-style:disc 渲染；
    光标在项内也不把圆点替换为 '- ' 标记（用户期望的渲染形态） */
@@ -1717,14 +1775,8 @@ li.md-reveal {
   margin: 0;
 }
 
-/* 图片 */
-.md-preview img {
-  max-width: 100%;
-  border-radius: 10px;
-  margin: 0.4em auto;
-  display: block;
-  box-shadow: var(--shadow-2);
-}
+/* 图片：规则在文件上部（`.md-preview img` 那一段）已经有完整一份，
+   这里原先重复了一遍、且因为位置更靠后会覆盖上面的行内排版 —— 删掉重复项 */
 
 /* ── 全局通知中心（单卡片：级别图标 + 标题 + 详情 + 切换/关闭）── */
 .ntf-card {

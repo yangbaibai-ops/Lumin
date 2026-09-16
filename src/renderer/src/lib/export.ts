@@ -80,7 +80,10 @@ export async function renderMermaidInHtml(html: string, theme: EffectiveTheme): 
       const pre = code.parentElement
       if (!pre) continue
       try {
-        const { svg } = await mod.default.render(`mmd-export-${Date.now()}-${seq++}`, code.textContent || '')
+        const { svg } = await mod.default.render(
+          `mmd-export-${Date.now()}-${seq++}`,
+          code.textContent || ''
+        )
         const wrap = doc.createElement('div')
         wrap.className = 'md-mermaid'
         wrap.innerHTML = svg

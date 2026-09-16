@@ -60,7 +60,12 @@ function showTooltip(el: HTMLElement): void {
   tooltipState.x = rect.left + rect.width / 2
   tooltipState.y = above ? rect.top : rect.bottom
   tooltipState.above = above
-  tooltipState.targetRect = { top: rect.top, bottom: rect.bottom, left: rect.left, right: rect.right }
+  tooltipState.targetRect = {
+    top: rect.top,
+    bottom: rect.bottom,
+    left: rect.left,
+    right: rect.right
+  }
   tooltipState.visible = true
 }
 

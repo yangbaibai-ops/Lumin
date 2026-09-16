@@ -8,10 +8,11 @@ import Italic from '@tiptap/extension-italic'
 import Strike from '@tiptap/extension-strike'
 import Code from '@tiptap/extension-code'
 import { HorizontalRule } from '@tiptap/extension-horizontal-rule'
-import { Table, TableRow, TableCell, TableHeader } from '@tiptap/extension-table'
-import TaskList from '@tiptap/extension-task-list'
+import { TableRow, TableCell, TableHeader } from '@tiptap/extension-table'
+import { TableFidelity } from './tableMarkdown'
 import TaskItem from '@tiptap/extension-task-item'
 import Placeholder from '@tiptap/extension-placeholder'
+import { imageSrcForDoc } from '../imageSrc'
 import Image from '@tiptap/extension-image'
 import { Markdown } from 'tiptap-markdown'
 import { TyporaMarkers } from './markers'
@@ -19,7 +20,10 @@ import { TyporaInputRules } from './inputRules'
 import { TyporaKeymap } from './keymap'
 import { CodeBlockCM } from './codeBlock'
 import { MarkdownPaste } from './markdownPaste'
-import { TyporaInlineMarks, MdStyle, MdMarker } from './typoraInlineMarks'
+import { TyporaInlineMarks, MdStyle, MdMarker, MdCodeLiteral, MdEscape } from './typoraInlineMarks'
+import { Frontmatter } from './frontmatter'
+import { HtmlBlock, MdHtml } from './htmlPassthrough'
+import { BulletListMarked, TaskListTight } from './listMarkers'
 import { TyporaPointer, LinkSource } from './pointer'
 import { TableOfContents } from './tableOfContents'
 
@@ -29,19 +33,29 @@ import { TableOfContents } from './tableOfContents'
 const BoldQuiet = Bold.extend({ addInputRules: () => [], addKeyboardShortcuts: () => ({}) })
 const ItalicQuiet = Italic.extend({ addInputRules: () => [], addKeyboardShortcuts: () => ({}) })
 const StrikeQuiet = Strike.extend({ addInputRules: () => [], addKeyboardShortcuts: () => ({}) })
-const CodeQuiet = Code.extend({ addInputRules: () => [], addKeyboardShortcuts: () => ({}) })
+const CodeQuiet = Code.extend({
+  addInputRules: () => [],
+  addKeyboardShortcuts: () => ({}),
+  // `excludes: '_'`（上游默认）会让行内代码**排斥其它所有 mark** —— 于是
+  // `**粗体里的 `行内代码`**` 解析时那段代码上的粗体被丢掉，嵌套样式一开始就少一半。
+  // 本模型里样式是「集合」（mdStyle.styles），行内代码当然可以同时在粗体里，
+  // 所以放开互斥；换行/代码块那套「逐字」语义与 mark 互斥无关。
+  excludes: ''
+})
 
-/** 相对路径图片 → lumin-file:// 本地协议（dev/prod 通用，符合 CSP） */
-function resolveLocalImageSrc(src: string): string {
-  if (/^(https?|data|file|lumin-file):/i.test(src)) return src
-  // 无文档目录上下文时保持原样（http 场景由浏览器解析）
-  return src
-}
+/**
+ * 当前文档所在目录的提供者：图片相对路径要靠它解析（见 lib/imageSrc.ts）。
+ * 宿主（TyporaEditor）注入；默认返回 null = 不解析（原样输出，与旧行为一致）。
+ * 用「读的时候现取」而不是快照：切换文档后编辑器按 :key 重建，取值时机天然正确。
+ */
+let documentDirProvider: () => string | null = () => null
 
 /** 编辑器扩展集组装入参（宿主可注入的少量应用级行为） */
 export interface EditorExtensionOptions {
   /** Ctrl/Cmd+左键点链接时的打开逻辑（默认交系统默认浏览器） */
   onOpenLink?: (href: string) => void
+  /** 当前文档所在目录（图片相对路径的解析基准）；返回 null = 不解析 */
+  getDocumentDir?: () => string | null
 }
 
 /** 默认链接打开：只把网址交给系统默认浏览器（应用内由 lib/linkOpen.ts 覆盖） */
@@ -60,6 +74,8 @@ export const editorExtensions: Extensions = [
   StarterKit.configure({
     // 代码块由 CodeMirror NodeView 接管（开发文档步骤 3）
     codeBlock: false,
+    // 无序列表用「保留源码标记」的版本（见 listMarkers.ts），这里关掉内置的
+    bulletList: false,
     // 分割线即时输入规则关闭：改为 '---'/'***' + Enter 确认（TyporaKeymap），
     // 以便正常输入 "---你好" 这类文本（Typora 同款行为）
     horizontalRule: false,
@@ -81,8 +97,14 @@ export const editorExtensions: Extensions = [
   StrikeQuiet,
   CodeQuiet,
   // 真实文本标记模型：mdStyle（样式正文）+ mdMarker（语法标记文本）+ 派生归一化
+  // mdCodeLiteral 必须紧跟 mdStyle 之后注册（见该 mark 的说明：最内层 mark 才有 noEsc 效果）
   MdStyle,
+  MdCodeLiteral,
   MdMarker,
+  // 反斜杠转义（`\*` 原样往返）：放在最后 —— escape:false 只对「最内层 mark」生效
+  MdEscape,
+  // 行内 HTML 原文（`<kbd>`/`<br>`/注释）：同样靠 escape:false 逐字写回
+  MdHtml,
   TyporaInlineMarks,
   // 独立注册 horizontalRule 节点（仅节点与渲染，输入规则置空）
   HorizontalRule.extend({
@@ -91,19 +113,32 @@ export const editorExtensions: Extensions = [
     }
   }),
   Image.configure({
-    inline: false,
+    // **行内节点**（本轮从块级改过来）：Markdown 的 `![alt](src)` 本来就是**行内**语法 ——
+    // 它可以出现在段落中间（`图标 ![](a.png) 后面还有字`），也可以被链接包住
+    // （`[![alt](a.png)](url)`）。做成块级节点时这两种写法都表达不出来：
+    // 段落被拆成「文字 / 图片 / 文字」三段，外层链接因为块节点挂不了 mark 而整个丢掉。
+    // 改成行内后，图片就是段落里的一个 inline 节点，两种写法都自然成立；
+    // 「独立成段的图片」由 CSS 负责仍按块级显示（见 style.css 的 `p > img:only-child`），
+    // 序列化仍然逐字节一致（段落里只有一个图片 → `![alt](src)` 一行）。
+    inline: true,
     allowBase64: true
   }).extend({
     renderHTML({ HTMLAttributes }) {
-      const src = resolveLocalImageSrc(String(HTMLAttributes.src ?? ''))
+      const src = imageSrcForDoc(String(HTMLAttributes.src ?? ''), documentDirProvider())
       return ['img', { ...HTMLAttributes, src, loading: 'lazy' }]
     }
+    // markdown 序列化用 tiptap-markdown 的默认实现（prosemirror-markdown 的 image 规则：
+    // alt 转义、src 里的括号转义、title 带引号）—— 行内写法不再需要 closeBlock
   }),
-  Table.configure({ resizable: false }),
+  // 表格：接管 markdown 序列化（列对齐 + 单元格转义竖线，见 tableMarkdown.ts）
+  TableFidelity.configure({ resizable: false }),
   TableRow,
   TableHeader,
   TableCell,
-  TaskList,
+  // 无序列表：保留源码里的 -/*/+ 标记（见 listMarkers.ts）
+  BulletListMarked,
+  // 任务列表：补 tight 属性，否则每个任务项之间都被塞空行
+  TaskListTight,
   TaskItem.configure({ nested: true }),
   Placeholder.configure({
     placeholder: '在此开始写作…（输入 # 创建标题）'
@@ -115,7 +150,17 @@ export const editorExtensions: Extensions = [
   MarkdownPaste,
   Markdown.configure({
     html: true,
-    breaks: true,
+    // breaks: **必须 false**。开启时 markdown-it 把段内单个换行渲染成 <br>，
+    // 解析回来就是 hardBreak 节点，序列化再写成行尾 `\` —— 于是「打开一份手写
+    // 折行的文档、随便改一个字、保存」，**每一行都被塞进一个反斜杠**：
+    //   * 语义变了（软换行 ≡ 空格 → 强制换行，GitHub/VSCode 里渲染都不一样）；
+    //   * 源码变脏（git diff 满屏 `\`）；
+    //   * 用户会认为编辑器擅自改文件。实测见 tools/_verify-md-fidelity.js 的
+    //     paragraph-breaks 用例。
+    // 关闭后软换行按 CommonMark 语义处理（≡ 空格，段落被重新折成一行）：
+    // 语义不变，只是源码不再按用户的换行位置断开。**真正的解法**是给软换行建一个
+    // 能往返的节点（Wave 2 计划），在那之前「保义」优先于「保版式」。
+    breaks: false,
     tightLists: true,
     bulletListMarker: '-',
     linkify: true,
@@ -127,6 +172,10 @@ export const editorExtensions: Extensions = [
   LinkSource,
   // 目录（工具栏「目录」插入；序列化 [TOC]，点击条目跳转标题）
   TableOfContents,
+  // YAML front matter（文档开头原样保留；见 lib/editor/frontmatter.ts）
+  Frontmatter,
+  // 块级 HTML 原文（`<div>`/`<!-- 注释 -->`/`<details>`）：Markdown 表达不了就整段原样留
+  HtmlBlock,
   // 鼠标语义：Ctrl/Cmd+左键退化为普通点击（PM 内置会整选段落/节点，Typora 无此逻辑）；
   // 链接：普通左键原地展开源码、Ctrl/Cmd+左键交宿主注入的 onOpenLink（§4.14/§4.15）
   TyporaPointer,
@@ -136,10 +185,11 @@ export const editorExtensions: Extensions = [
 ]
 
 /**
- * 组装编辑器扩展集：把「打开链接」这类应用级行为注入内核，同时保持顺序不变
+ * 组装编辑器扩展集：把「打开链接」「文档目录」这类应用级行为注入内核，同时保持顺序不变
  * （顺序即注册顺序，不能改动）。宿主不传 onOpenLink 时退化为「只开浏览器」。
  */
 export function buildEditorExtensions(options: EditorExtensionOptions = {}): Extensions {
+  documentDirProvider = options.getDocumentDir ?? ((): string | null => null)
   return editorExtensions.map((e) =>
     e.name === 'typoraPointer'
       ? e.configure({ onOpenLink: options.onOpenLink ?? defaultOpenLink })

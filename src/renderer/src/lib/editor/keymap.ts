@@ -35,7 +35,8 @@ function joinTextblockAtBoundary(editor: Editor, dir: 'backward' | 'forward'): b
   let boundary = -1
   if ($from.parent.type.name === 'paragraph') {
     if (dir === 'backward' && $from.parentOffset === 0) boundary = $from.before()
-    if (dir === 'forward' && $from.parentOffset === $from.parent.content.size) boundary = $from.after()
+    if (dir === 'forward' && $from.parentOffset === $from.parent.content.size)
+      boundary = $from.after()
   }
   if (boundary < 0 && $from.depth === 0 && caretPos > 0 && caretPos < doc.content.size) {
     // 块间边界光标：可能正好在某块起点或终点

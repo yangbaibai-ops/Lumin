@@ -18,11 +18,7 @@ import { useFilesStore } from '../stores/files'
 import { useNotificationsStore } from '../stores/notifications'
 import { useSettingsStore } from '../stores/settings'
 import { registerNotificationActions } from './notificationActions'
-import type {
-  AppNotification,
-  LinkOpenAction,
-  LinkResolveResult
-} from '../../../shared/types'
+import type { AppNotification, LinkOpenAction, LinkResolveResult } from '../../../shared/types'
 
 /** 可交互通知的 kind（payload.kind） */
 const LINK_CREATE_KIND = 'link-create'
@@ -114,10 +110,7 @@ async function createAndOpen(res: LinkResolveResult): Promise<void> {
  * 重新解析而不是复用旧结果，是为了让「等待期间文件已被别人创建」这类情况也能正确
  * 落到「直接打开」分支（exists 已变 true）。
  */
-async function onLinkCreateAction(
-  notification: AppNotification,
-  actionId: string
-): Promise<void> {
+async function onLinkCreateAction(notification: AppNotification, actionId: string): Promise<void> {
   const payload = notification.payload as { target?: string; baseDir?: string | null } | null
   const target = typeof payload?.target === 'string' ? payload.target : ''
   if (!target) return
