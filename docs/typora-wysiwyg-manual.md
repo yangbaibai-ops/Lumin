@@ -3191,29 +3191,62 @@ if (!app.requestSingleInstanceLock()) app.quit()
 - **只退出还不够**：`services/database` 的 `db` 是模块级 `new LuminDatabase()`，那个模块一旦被求值，
   SQLite 就已经打开并跑了迁移。所以守卫必须排在 `./menu` / `./ipc`（→ `services/database`）**之前**
   —— 与 `devProfile.ts` 靠 import 顺序保证 userData 先被改掉是同一套机制。构建产物里可以直接核对
-  这个顺序（套件 D 项：`已有实例在运行` 的偏移 < `new LuminDatabase` 的偏移）。
+  这个顺序（套件 D 项：`another instance is already running` 的偏移 < `new LuminDatabase` 的偏移）。
 
 启动参数不会丢：`requestSingleInstanceLock()` 返回 false 之前，已经**同步**把命令行交给了已运行的实例
 （那边触发 `second-instance` → `services/launchIntent` → 打开文件/目录/新窗口），紧接着退出不会截断它。
 
-#### 三、验收
+#### 三、第二个坑：提示在用户终端里是乱码（Windows 控制台代码页）
+
+第一版修好之后，用户终端里那条中文提示长这样（他把输出贴了回来）：
+
+```
+[Lumin] 宸叉湁瀹炰緥鍦ㄨ繍琛岋紙鍗曞疄渚嬮攣琚畠鎸佹湁锛夛紝鏈鍚姩宸查€€鍑恒€?        鍛戒护琛屽弬鏁?…
+```
+
+两件事同时发生：**中文全乱码**，而且**四行被并成一行**（行尾那个非法尾字节把 `\n` 一起吃了）。
+根因是 `fs.writeSync(2, 中文)` 写的是 UTF-8 字节，而 Windows 控制台按**代码页**解读它们
+（中文系统 cmd 是 936/GBK）。
+
+「先认出控制台、再交给 Node 转码（WriteConsoleW）」这条路走不通，全是实测：
+
+| 想用的信号 | 实测结果 |
+| --- | --- |
+| `process.stderr.isTTY` | 真实控制台与管道下**都是 `undefined`**；Electron 自己把这条 spec 标成「on some machines 不可靠」压掉了（[electron/electron@62b1034](https://github.com/electron/electron/commit/62b1034c6be9a0590d3cea8978927e67650b0a08)） |
+| `new tty.WriteStream(2)` | 控制台侧 `ERR_TTY_INIT_FAILED`（`uv_tty_init` 返回 EPERM）、管道侧同样失败（EBADF） |
+| 子进程 `[Console]::IsOutputRedirected` | 两种落点都是 `True` —— 连「有没有控制台」都问不出来（Electron 是 GUI 子系统进程，`stdio: 'inherit'` 拿到的句柄类型不可信） |
+
+探测不可靠，就只能让**内容**不依赖探测：**提示改成纯 ASCII**（英文）。ASCII 在任意代码页、
+管道、日志文件里都是对的；而提示的关键信息本来就是命令（`npm run dev:isolated` / 先关掉再
+`npm run dev`），英文不影响操作。中文说明留在 README 与本节。
+
+顺带立规矩并落地：**主进程 console 输出一律 ASCII**。原先三处中文 console 输出一并改成英文
+（`[protocol] refused lumin-file request`、`[profile] isolated dev profile active`、
+`[db] encoding metadata migration: …`）。规矩由 `tests/mainConsoleAscii.test.mjs` 守着 ——
+它扫描 `src/main/**/*.ts` 里所有 `console.*` 的**实参文本**（跳过注释里的假调用、跳过字符串里的
+括号），出现非 ASCII 就红；测试自己还有两个「扫描器先自证」的断言，免得扫描器悄悄失效变成空扫通过。
+为什么值得写这条测试：违反这条规矩**不会有任何报错**，只会在用户终端里显示成乱码，而乱码又很
+容易被误判成「用户环境有问题」。
+
+#### 四、验收
 
 | 门禁 | 结果 |
 | --- | --- |
-| `npm run ci` | exit 0（**157/157** 单测） |
+| `npm run ci` | exit 0（**159/159** 单测：新增 `tests/mainConsoleAscii.test.mjs` 2 条） |
 | `npx eslint .` | 0 error / 0 warning |
-| `node tools/run-suites.js` | **18/18 套件 PASS**（新增 `_verify-single-instance` **13/13**） |
-| 现场复现（同一个 userData 再起一个实例） | 打印三行提示、**exit 0**、耗时 ~0.2s、无缓存报错 |
+| `node tools/run-suites.js` | **18/18 套件 PASS**（`_verify-single-instance` **14/14**） |
+| 现场复现（同一个 userData 再起一个实例；`npm run dev`） | 四行 ASCII 提示可读、**exit 0**、~0.2s（整条 dev 命令 1314ms）、无缓存报错 |
 
 `tools/_verify-single-instance.js` 自己起「首个实例 + 第二个实例」（独立 userData + 独立调试端口 9231，
-不占运行器给别的套件用的 9222），13 条断言见 CHANGELOG。修复前它至少有 3 条必红：
-输出里出现 `[menu] rebuilt`（跑了启动流程）、出现那三条缓存报错、第二个实例不是「自己干净退出」。
+不占运行器给别的套件用的 9222），14 条断言见 CHANGELOG。修复前它至少有 3 条必红：
+输出里出现 `[menu] rebuilt`（跑了启动流程）、出现那三条缓存报错、第二个实例不是「自己干净退出」；
+提示被改回中文时，另有一条「提示是纯 ASCII」立刻红。
 
-#### 四、与既有套件的关系
+#### 五、与既有套件的关系
 
 单实例相关的既有套件（`_verify-taskbar-jumplist`、`_verify-packaging` 的第二实例段）测的是**首个实例
-那一侧**（参数转交有没有落成新窗口）；本条补的是**第二个实例那一侧**（它自己该不该干活、退得干不干净）。
-默认矩阵现在是 **18 个套件**（§4.66 里的「17」是上一轮的数字）。
+那一侧**（参数转交有没有落成新窗口）；本条补的是**第二个实例那一侧**（它自己该不该干活、退得干不干净、
+说给人听的话看不看得懂）。默认矩阵现在是 **18 个套件**（§4.66 里的「17」是上一轮的数字）。
 
 
 

@@ -77,6 +77,55 @@
 - **工程化**：~~`tools/lib/harness.js` + `tools/run-suites.js`~~ → **本轮已完成**；
   剩余：`files` store 拆分；`store` 里那份为绕循环导入而复制的 `confirmIfDirty` 收敛到 `services/dialog`。
 
+## [Unreleased · 单实例提示的终端编码] — 提示改成纯 ASCII（Windows 控制台代码页）
+
+> 承接上一节：修好「第二个实例干净退出」之后，用户终端里那条中文提示是**乱码**，
+> 而且四行被并成一行 —— 这次的根因是 Windows 控制台的代码页，不是单实例逻辑。
+
+### Fixed
+
+- **提示改成纯 ASCII**。上一版用 `fs.writeSync(2, 中文)` 写提示；Windows 控制台按**代码页**解读
+  字节（中文系统 cmd 是 936/GBK），而写出去的是 UTF-8 —— 中文整个变乱码，更麻烦的是行尾那个
+  非法尾字节会把**换行一起吃掉**：
+
+  ```
+  [Lumin] 宸叉湁瀹炰緥鍦ㄨ繍琛岋紙鍗曞疄渚嬮攣琚畠鎸佹湁锛夛紝鏈鍚姩宸查€€鍑恒€?        鍛戒护琛屽弬鏁?…
+  ```
+
+  试过「先识别控制台、再交给 Node 转码（WriteConsoleW）」这条路，走不通：Electron 自己把
+  `isTTY` 的 spec 标成「on some machines 不可靠」压掉了（
+  [electron/electron@62b1034](https://github.com/electron/electron/commit/62b1034c6be9a0590d3cea8978927e67650b0a08)），
+  本机实测在真实控制台下 `process.stderr.isTTY` 仍是 `undefined`、`new tty.WriteStream(2)`
+  直接 `ERR_TTY_INIT_FAILED`，而管道下子进程 `[Console]::IsOutputRedirected` 为真 ——
+  两种落点都拿不到可信信号。既然探测不可靠，就只能让**内容**不依赖探测：ASCII 在任意代码页、
+  管道、日志文件里都是对的。提示里的关键信息（要不要新开实例、怎么重启）本来就是命令，英文不影响操作。
+
+  顺带立规矩并落地：**主进程 console 输出一律 ASCII**。原先三处中文 console 输出一并改成英文
+  （`[protocol] refused lumin-file request`、`[profile] isolated dev profile active`、
+  `[db] encoding metadata migration: …`），中文说明留在界面与文档里。
+
+### Added
+
+- `tests/mainConsoleAscii.test.mjs`：扫描 `src/main/**/*.ts` 里所有 `console.*` 的**实参文本**，
+  出现非 ASCII 就红（含「扫描器本身先自证」的两个断言：注释里的 console 调用不算、
+  含中文的实参必须被认出来、纯 ASCII 的不许误报）。这条规则违反了不会有任何报错，只会在用户
+  终端里显示成乱码 —— 所以拿测试钉住，而不是靠 review 时肉眼检查。
+- `tools/_verify-single-instance.js` 增加断言「提示是纯 ASCII」+ 提示文案改为英文版
+  （13 → 14 条）。
+
+### Verification（本轮实测）
+
+| 门禁 | 结果 |
+| --- | --- |
+| `npm run ci` | exit 0（**159/159** 单测，新增 2 条 ASCII 守卫） |
+| `npx eslint .` | **0 error / 0 warning** |
+| `node tools/run-suites.js` | **18/18 套件 PASS**（`_verify-single-instance` **14/14**） |
+| 现场复现 `npm run dev`（已有实例在跑） | 四行 ASCII 提示可读、exit 0、1314ms、无缓存报错 |
+
+### Docs
+
+- README「快速开始」注明提示是英文（终端代码页不吃 UTF-8 中文）；手册 §4.67 增补这一坑与验收。
+
 ## [Unreleased · 单实例锁] — 「`npm run dev` 报一堆缓存错就退出」的真因
 
 > 现场：dev 实例还开着时再执行一次 `npm run dev`，控制台刷出三条 Chromium 磁盘缓存报错，

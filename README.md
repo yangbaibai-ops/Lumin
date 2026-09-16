@@ -51,9 +51,15 @@ npm run build:win      # 打 Windows 安装包（electron-builder / NSIS）
 ```
 
 > **单实例**：应用同一时刻只允许一个实例。已经有 Lumin 在跑（比如你的 `npm run dev` 还开着）时，
-> 再执行一次 `npm run dev` 会**立刻**退出并打印一行提示，因为第二个 Electron 进程抢不到单实例锁 ——
-> 它会把命令行参数转交给已在运行的那个实例（双击 `.md`、跳转列表都走这条路），然后干净退出。
-> 想在开发时同时开第二个实例，用 `npm run dev:isolated`（独立 `%APPDATA%\Lumin (dev)`，不抢锁）。
+> 再执行一次 `npm run dev` 会**立刻**退出并打印一段提示，因为第二个 Electron 进程抢不到单实例锁 ——
+> 它会把命令行参数转交给已在运行的那个实例（双击 `.md`、跳转列表都走这条路），然后干净退出；
+> **你原来那个窗口不会被动过**。
+>
+> 想在开发时同时开第二个实例，用 `npm run dev:isolated`（独立 `%APPDATA%\Lumin (dev)`，不抢锁）；
+> 想让当前这份 dev 会话跑在你常用的 profile 上，先关掉已有实例再 `npm run dev`。
+>
+> 提示本身是**英文**（ASCII）：Windows 控制台按代码页解读字节（中文系统是 GBK），写中文只会得到
+> 乱码、连换行都会被吃掉 —— 主进程的 console 输出因此一律走 ASCII（有测试守着）。
 
 ---
 
