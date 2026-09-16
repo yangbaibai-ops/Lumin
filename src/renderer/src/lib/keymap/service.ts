@@ -71,9 +71,22 @@ export type KeybindingOverrides = Record<string, string | null>
 /** 当前安装的服务（设置界面读取解析结果用） */
 let current: KeymapHandle | null = null
 
+/**
+ * 文档自己的编辑面（源码 textarea / 渲染面 ProseMirror / 代码块里的 CodeMirror）。
+ *
+ * 它们虽然也是 input/contenteditable，但语义上**就是文档本身**：应用级快捷键
+ * （Ctrl+F 查找、Ctrl+S 保存…）在这里必须照常生效。把它们当「表单输入框」挡掉，
+ * 结果就是「源码模式下按 Ctrl+F 没反应」——用户会以为功能坏了（实测踩到）。
+ */
+function isDocumentSurface(el: HTMLElement): boolean {
+  if (el.classList.contains('source-editor')) return true
+  return typeof el.closest === 'function' && !!el.closest('.ProseMirror, .md-preview')
+}
+
 function isTextEntry(target: EventTarget | null): boolean {
   const el = target as HTMLElement | null
   if (!el || !el.tagName) return false
+  if (isDocumentSurface(el)) return false
   const tag = el.tagName.toUpperCase()
   if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return true
   return el.isContentEditable === true
