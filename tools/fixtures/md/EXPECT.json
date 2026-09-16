@@ -92,8 +92,8 @@
     "class": "exact"
   },
   "math.md": {
-    "class": "normalized",
-    "why": "文本往返已保义（`$$ … $$` 的行内/多行写法归一，公式里的反斜杠不再被转义）。注意：应用**没有公式渲染**（KaTeX 只用在导出 CSS，没有数学节点）—— 那是功能缺口不是保真缺口。"
+    "class": "exact",
+    "why": "公式原文逐字往返（本轮修好）：`$…$` 由 markdown-it 行内规则**在强调规则之前**认领 → `MdMath` mark（escape:false）逐字写回；`$$…$$` 由 block 规则认领 → MathBlock 原子节点。识别规则在 lib/mathScan.ts（不跨行、内容非空、闭合 `$` 后不紧跟数字 —— 否则「价格 $5 和 $6」会被吃成公式）。渲染是**视图**：行内用 KaTeX 组件 + 原文折叠装饰，块级用 NodeView。"
   },
   "mermaid.md": {
     "class": "exact"

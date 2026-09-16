@@ -3098,6 +3098,59 @@ CSS 变量），所以不存在「另一份主题文件也要同步属性选择�
 **数学公式渲染**（`$…$` / `$$…$$`）：KaTeX 已经在依赖里（目前只用于导出的 CSS），
 但应用没有数学节点 —— `math.md` 夹具现在是 normalized（文本往返保义），渲染成公式则是新功能。
 
+### 4.66 数学公式渲染（本次）—— 功能缺口清零
+
+> KaTeX 早就在依赖里，但一直只用于**导出**的 CSS：应用里没有数学节点，`$x^2$` 只是一串普通文本
+> （连斜体都不会误判，因为 `$` 挡住了 intraword 规则）。这一节记「公式原文一个字符都不动、
+> 渲染成公式只是视图」这件事怎么落地，以及三个只有真跑起来才知道的坑。
+
+#### 一、两条链路，都遵守「标记文本即源码」
+
+| 形态 | 进文档 | 渲染 | 写回 |
+| --- | --- | --- | --- |
+| 行内 `$…$` | markdown-it 行内规则 → `<span data-md-math>` → 文本带 `MdMath` mark | 装饰：KaTeX 组件插在公式起点 + 原文加类折叠 | `MdMath`（open/close 空 + `escape:false`）**逐字写回** |
+| 块级 `$$…$$` | block 规则 → `<div data-md-math-block data-source=…>` → `MathBlock` 原子节点 | NodeView 里 `katex.renderToString` | 序列化写成多行形态（单行写法归一到它，保义） |
+
+行内之所以用**装饰**而不是自定义节点：模型里公式原文必须留在文档里，序列化才能逐字写回；
+「画成公式」是视图的事，正好是 ProseMirror 装饰的适用场景。交互与行内标记显隐同一套
+（手册 §4.14）：光标不在公式上 → 只看得到渲染结果；光标落进去/选中 → 装饰消失，露出 `$…$` 原文可编辑。
+
+识别规则抽在 `lib/mathScan.ts`（纯函数，9 条单测）：不跨行、内容非空、
+**闭合 `$` 后面不能紧跟数字**（否则「价格 $5 和 $6」会被吃成一段公式 —— 各家编辑器都踩过这个坑）、
+`\$` 不是起点、`$$` 不当行内公式。
+
+#### 二、三个坑
+
+1. **`*` 会把公式从中间切开**。公式原文是「不透明内容」，但第一版只把行内 HTML 与展开态链接算作
+   不透明，公式没算 → 归一化里的 `literalizeStrayMarkers`（给裸 `*`/`~`/`` ` `` 包字面量标记，
+   免得写出时被转义）把 `$a * b$` 在 `*` 处切成两个文本节点，公式碎成两段（实测：4 个公式渲染成 5 个）。
+   修法：`toAtoms`/`literalizeStrayMarkers` 把 `mdMath` 与 `mdHtml`、`linkSource` 一视同仁地当不透明。
+2. **这套 prosemirror-view（1.42）的 `Decoration` 只有 `widget`/`inline`/`node`** ——
+   **没有** `replace`，也没导出 `WidgetType`。所以「替换掉那段文本」是两步拼出来的：
+   `widget` 插入 KaTeX 结果 + `inline` 加类把原文 `font-size: 0` 折叠掉
+   （与行内标记同一套手法：不用 `display: none`，那会破坏光标导航）。
+3. **PM 的 DOMOutputSpec 不能注入 HTML**（这个版本的 `renderSpec` 不认 `innerHTML`），
+   所以块级公式的屏幕呈现走 **NodeView**；`renderHTML` 只在「复制为 HTML」等场景用到，那里给原文。
+
+#### 三、验收
+
+| 门禁 | 结果 |
+| --- | --- |
+| `npm run ci` | exit 0（**157/157** 单测：新增 `tests/mathScan.test.mjs` 9 条） |
+| `npx eslint .` | 0 error / 0 warning |
+| `node tools/run-suites.js` | **17/17 套件 PASS**（新增 `_verify-math` 7 条） |
+| 夹具 | `math.md` 从 normalized 升到 **exact**（16 exact / 15 normalized / **0 lossy**） |
+
+`_verify-math.js` 的 7 条断言：原文进文档（含定界符）/ 行内渲染成 KaTeX 且原文折叠 /
+块级成为 `mathBlock` 且渲染成 display 公式 / 下划线与星号没被当斜体加粗 / 落进 store 的正文逐字 /
+**光标落进公式露出原文** / **写坏的公式不让整篇崩**（KaTeX 降级成红字，原文仍在）。
+
+#### 四、这条线的收口
+
+评审报告里列出的两个功能缺口（查找替换、数学公式渲染）到此都做完了；
+`tools/run-suites.js` 的默认矩阵从 9 个套件涨到 17 个，件件有 `--- N/M PASS` 可复跑。
+
+
 
 
 

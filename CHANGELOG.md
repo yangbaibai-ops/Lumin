@@ -77,6 +77,40 @@
 - **工程化**：~~`tools/lib/harness.js` + `tools/run-suites.js`~~ → **本轮已完成**；
   剩余：`files` store 拆分；`store` 里那份为绕循环导入而复制的 `confirmIfDirty` 收敛到 `services/dialog`。
 
+## [Unreleased · 数学公式渲染] — 功能缺口清零（KaTeX）
+
+### Added
+
+- **数学公式渲染**：`$…$` 行内、`$$…$$` 块级（单行与多行写法都认），KaTeX 画出来。
+  - **公式原文一个字符都不动，渲染只是视图**（与「标记文本即源码」模型一致）：
+    行内是带 `MdMath` mark 的文本节点（`escape:false`，序列化逐字写回），
+    渲染靠**装饰**（KaTeX 组件 + 原文折叠，光标落进去就露出 `$…$` 原文可编辑，与行内标记显隐同一套交互）；
+    块级是 `MathBlock` 原子节点（原文在属性里），屏幕呈现走 NodeView。
+  - 识别规则抽成纯函数 `lib/mathScan.ts`（9 条单测）：不跨行、内容非空、
+    **闭合 `$` 后不能紧跟数字**（否则「价格 $5 和 $6」会被吃成公式）、`\$` 不是起点、`$$` 不当行内公式。
+  - 公式写坏不让整篇崩：KaTeX `throwOnError: false`，失败降级成红字，原文照旧。
+- `tools/_verify-math.js`：7 条端到端断言（原文进文档 / 行内渲染 + 折叠 / 块级 display /
+  下划线与星号不被误判 / store 逐字 / 光标落进露出原文 / 坏公式不崩），已进默认矩阵。
+
+### Fixed
+
+- **`*` 不再把公式切开**：`toAtoms` 与 `literalizeStrayMarkers` 此前只把行内 HTML、展开态链接
+  当「不透明内容」，公式没算 —— 于是 `$a * b$` 被 `literalizeStrayMarkers` 在 `*` 处切成两个文本节点，
+  公式碎成两段（实测 4 个公式渲染成 5 个）。现在 `mdMath` 与它们一视同仁。
+
+### Verification（本轮实测）
+
+| 门禁 | 结果 |
+| --- | --- |
+| `npm run ci` | exit 0（**157/157** 单测） |
+| `npx eslint .` | **0 error / 0 warning** |
+| `node tools/run-suites.js` | **17/17 套件 PASS** |
+| 夹具 | `math.md` normalized → **exact**；合计 **16 exact / 15 normalized / 0 lossy** |
+
+### Docs
+
+- 手册新增 §4.66（两条链路、三个坑、验收；并给这条线收口：两个功能缺口都做完了）。
+
 ## [Unreleased · 编辑器内查找替换] — 菜单/Ctrl+F 的功能缺口补齐
 
 > 此前菜单里的「查找 / 替换」与 `Ctrl+F` 都只 toast 一句「功能待接入」。

@@ -307,6 +307,29 @@ A/B 实测：19 个原本没有结构兜底的套件里 **13 个在构建产物�
 **下一轮起点**：功能缺口二 —— **数学公式渲染**（`$…$` / `$$…$$`；KaTeX 已在依赖里，
 但目前只用于导出 CSS，应用没有数学节点，`math.md` 夹具只是「文本往返保义」）。
 
+## 功能缺口（二）：数学公式渲染 —— ✅ 本轮完成（2026-09-16 第十五轮）
+
+**实际交付**（细节与三个坑见手册 §4.66）：KaTeX 渲染行内 `$…$` 与块级 `$$…$$`
+（单行/多行都认）。**公式原文一个字符都不动，渲染只是视图**：
+
+- 行内：markdown-it 行内规则（在强调规则**之前**认领）→ `MdMath` mark（`escape:false`）逐字写回；
+  渲染靠**装饰**（KaTeX 组件 + 原文折叠 `font-size: 0`），光标落进去就露出原文可编辑；
+- 块级：block 规则 → `MathBlock` 原子节点，屏幕呈现走 **NodeView**（PM 的 DOMOutputSpec 注不了 HTML）；
+- 识别规则抽成纯函数 `lib/mathScan.ts`（9 条单测）：不跨行、内容非空、闭合 `$` 后不紧跟数字、
+  `\$` 不是起点、`$$` 不当行内公式。
+
+**三个坑**：① `mdMath` 漏进「不透明内容」名单 → `$a * b$` 被 `literalizeStrayMarkers` 从 `*` 处切开
+（实测 4 个公式渲染成 5 个）；② 这套 prosemirror-view（1.42）的 `Decoration` 没有 `replace`、
+也没导出 `WidgetType`，只能 `widget` + `inline` 两步拼；③ `renderSpec` 不认 `innerHTML` → 块级走 NodeView。
+
+**验收**：`npm run ci` exit 0（单测 **157/157**）；`npx eslint .` 0/0；
+`node tools/run-suites.js` **17/17 套件 PASS**（新增 `_verify-math` 7 条）；
+夹具 `math.md` normalized → **exact**（合计 16 exact / 15 normalized / **0 lossy**）。
+
+**这条线的收口**：评审报告里列的两处功能缺口（编辑器内查找替换、数学公式渲染）都已完成；
+默认矩阵从 9 个套件涨到 17 个。后续可继续的方向：其余老 `_verify-*` 套件按「改到谁就顺手迁谁」
+继续收口、`files` store 继续瘦身、打包/更新链路（签名与真实更新渠道，需要拍板）。
+
 ## Wave 4：工程化地基
 
 - `README.md`（是什么、快速开始、架构图、开发/打包流程、常见坑：`--watch`、构建自检、`dev:isolated`）
