@@ -77,6 +77,59 @@
 - **工程化**：~~`tools/lib/harness.js` + `tools/run-suites.js`~~ → **本轮已完成**；
   剩余：`files` store 拆分；`store` 里那份为绕循环导入而复制的 `confirmIfDirty` 收敛到 `services/dialog`。
 
+## [Unreleased · 单实例锁] — 「`npm run dev` 报一堆缓存错就退出」的真因
+
+> 现场：dev 实例还开着时再执行一次 `npm run dev`，控制台刷出三条 Chromium 磁盘缓存报错，
+> 然后整个命令就结束了、窗口也没出来。根因不在 electron-vite，而在主进程的单实例写法。
+
+### Fixed
+
+- **第二个实例不再跑完整启动流程**。此前 `src/main/index.ts` 用的是 Electron 文档里的写法
+  `if (!app.requestSingleInstanceLock()) app.quit()`，而 **`app.quit()` 在 ready 之前只是「标记」**：
+  ready 一到，`app.whenReady()` 的回调照常执行（实测对照见新套件 E 项）—— 于是被锁挡下的第二个
+  Electron 进程照样开 SQLite、写设置、建窗口、装菜单、拉 GPU 进程，与首个实例**共用同一个
+  userData**，两边的 Chromium 磁盘缓存互相争抢：
+
+  ```
+  ERROR:net\disk_cache\cache_util_win.cc:25  Unable to move the cache: 拒绝访问。(0x5)
+  ERROR:net\disk_cache\disk_cache.cc:236     Unable to create cache
+  ERROR:gpu\ipc\host\gpu_disk_cache.cc:724   Gpu Cache Creation failed: -2
+  ```
+
+  这个进程退出后，electron-vite 的 dev 命令跟着结束 —— 用户看到的就是「报错 + 没窗口」。
+
+  修法：新增 `src/main/singleInstance.ts`，抢不到锁就 `app.exit(0)`（实测**不返回**，退出码 0，
+  且不再出现那三条报错）并同步写一行中文提示（`fs.writeSync(2, …)`：重定向下 `console` 是异步的，
+  紧接着退出会把提示吞掉）。该模块在 `index.ts` 里排在 `./menu` / `./ipc`
+  （→ `services/database` 的模块级 `new LuminDatabase()`）**之前**求值，所以第二个实例连首个实例的
+  SQLite 都不会打开、更不会跑迁移。
+- **`app.setName('Lumin')` 挪进上述模块**：userData（以及按它认定的锁）由 app name 推导，名字必须
+  早于抢锁与首次 `getPath('userData')`。顺带修掉一个跨平台隐患：此前 `setName` 晚于 `database.ts`
+  的模块级 `new`，库落在 `.../lumin` 而其余数据落在 `.../Lumin`（Windows 大小写不敏感所以看不出来，
+  macOS/Linux 上是两个目录）。
+
+### Added
+
+- `tools/_verify-single-instance.js`（**13 条，已进默认矩阵**，自管两个实例 + 独立调试端口 9231）：
+  第二个实例必须**自己退出**（不是被超时杀掉）、退出码 0、提示里说清「已有实例在运行」并给出
+  `npm run dev:isolated` 的出路、输出里**没有** `[menu] rebuilt`（=没跑启动流程）、**没有**上面那三条
+  缓存报错；另加两条回归保护：命令行参数仍被转交（首个实例把目标 `.md` 开成新窗口）、构建产物里
+  守卫的求值顺序早于 `new LuminDatabase`；外加一条根因对照（`app.quit()` 早于 ready 时 whenReady 回调照跑）。
+
+### Verification（本轮实测）
+
+| 门禁 | 结果 |
+| --- | --- |
+| `npm run ci` | exit 0（**157/157** 单测） |
+| `npx eslint .` | **0 error / 0 warning** |
+| `node tools/run-suites.js` | **18/18 套件 PASS**（新增 `_verify-single-instance` 13/13） |
+| 现场复现（同一个 userData 再起一个实例） | 打印提示、**exit 0**、耗时 ~0.2s，无缓存报错 |
+
+### Docs
+
+- README「快速开始」补单实例说明（第二次 `npm run dev` 为什么会自己退出、要用 `dev:isolated`）；
+  手册新增 §4.67（根因、两段实测证据、修法与验收）；`docs/optimization-program.md` 台账同步。
+
 ## [Unreleased · 数学公式渲染] — 功能缺口清零（KaTeX）
 
 ### Added

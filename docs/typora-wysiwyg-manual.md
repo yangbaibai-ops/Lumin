@@ -3150,6 +3150,71 @@ CSS 变量），所以不存在「另一份主题文件也要同步属性选择�
 评审报告里列出的两个功能缺口（查找替换、数学公式渲染）到此都做完了；
 `tools/run-suites.js` 的默认矩阵从 9 个套件涨到 17 个，件件有 `--- N/M PASS` 可复跑。
 
+### 4.67 单实例锁：第二个实例立刻干净退出（本次）
+
+> 现象：dev 实例还开着时再跑一次 `npm run dev` → 控制台刷出三条 Chromium 磁盘缓存报错，
+> 然后整个命令就结束了、窗口也没出来。这一节记根因（两段都有实测）、修法，以及为什么
+> 「照抄官方文档的单实例写法」在这里是错的。
+
+#### 一、根因：`app.quit()` 早于 ready 只是「标记」，并不终止流程
+
+`src/main/index.ts` 原来写的是 Electron 文档里的标准写法：
+
+```ts
+if (!app.requestSingleInstanceLock()) app.quit()
+```
+
+两个事实，都是实测出来的（第二个已固化成套件里的对照项）：
+
+| 事实 | 怎么测的 | 结果 |
+| --- | --- | --- |
+| 锁本身没问题 | 首个实例在跑时，用同一条代码路径调 `requestSingleInstanceLock()` | `false` —— userData 一致，认得出对方 |
+| `app.quit()` 在 ready 前**不**跳过启动流程 | 最小脚本：`app.whenReady().then(打印)` + `app.quit()` | ready 一到打印照跑 → 回调没被跳过 |
+
+于是第二个进程照样走完 `whenReady`：开 SQLite、写设置、建窗口、装菜单、拉 GPU 进程。它与首个实例
+共用同一个 userData，Chromium 磁盘缓存被两边同时写：`Unable to move the cache: 拒绝访问。(0x5)`、
+`Unable to create cache`、`Gpu Cache Creation failed: -2`。这个进程一退，electron-vite 的 dev 命令
+也跟着结束；「窗口没出来」是因为那个窗口还没显示就被退出流程带走了。
+
+#### 二、修法：`app.exit(0)` + 把守卫排在「会开库的模块」之前
+
+新增 `src/main/singleInstance.ts`，在 `index.ts` 里第三个 import：
+
+1. `app.setName('Lumin')` —— userData（以及按它认定的锁）由 app name 推导，名字必须早于抢锁；
+2. 抢不到锁 → `fs.writeSync(2, 提示)` + `app.exit(0)`。
+
+两个容易漏的点：
+
+- **必须是 `app.exit(0)` 而不是 `app.quit()`**：实测 `app.exit()` 不返回（其后的语句不会执行），
+  退出码 0。提示要用 `fs.writeSync(2, …)` **同步**写 —— 重定向/管道下 `console` 是异步的，
+  紧接着退出会把提示吞掉。
+- **只退出还不够**：`services/database` 的 `db` 是模块级 `new LuminDatabase()`，那个模块一旦被求值，
+  SQLite 就已经打开并跑了迁移。所以守卫必须排在 `./menu` / `./ipc`（→ `services/database`）**之前**
+  —— 与 `devProfile.ts` 靠 import 顺序保证 userData 先被改掉是同一套机制。构建产物里可以直接核对
+  这个顺序（套件 D 项：`已有实例在运行` 的偏移 < `new LuminDatabase` 的偏移）。
+
+启动参数不会丢：`requestSingleInstanceLock()` 返回 false 之前，已经**同步**把命令行交给了已运行的实例
+（那边触发 `second-instance` → `services/launchIntent` → 打开文件/目录/新窗口），紧接着退出不会截断它。
+
+#### 三、验收
+
+| 门禁 | 结果 |
+| --- | --- |
+| `npm run ci` | exit 0（**157/157** 单测） |
+| `npx eslint .` | 0 error / 0 warning |
+| `node tools/run-suites.js` | **18/18 套件 PASS**（新增 `_verify-single-instance` **13/13**） |
+| 现场复现（同一个 userData 再起一个实例） | 打印三行提示、**exit 0**、耗时 ~0.2s、无缓存报错 |
+
+`tools/_verify-single-instance.js` 自己起「首个实例 + 第二个实例」（独立 userData + 独立调试端口 9231，
+不占运行器给别的套件用的 9222），13 条断言见 CHANGELOG。修复前它至少有 3 条必红：
+输出里出现 `[menu] rebuilt`（跑了启动流程）、出现那三条缓存报错、第二个实例不是「自己干净退出」。
+
+#### 四、与既有套件的关系
+
+单实例相关的既有套件（`_verify-taskbar-jumplist`、`_verify-packaging` 的第二实例段）测的是**首个实例
+那一侧**（参数转交有没有落成新窗口）；本条补的是**第二个实例那一侧**（它自己该不该干活、退得干不干净）。
+默认矩阵现在是 **18 个套件**（§4.66 里的「17」是上一轮的数字）。
+
 
 
 

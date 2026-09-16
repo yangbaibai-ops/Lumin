@@ -50,6 +50,11 @@ npm run build          # 类型检查 + 构建到 out/
 npm run build:win      # 打 Windows 安装包（electron-builder / NSIS）
 ```
 
+> **单实例**：应用同一时刻只允许一个实例。已经有 Lumin 在跑（比如你的 `npm run dev` 还开着）时，
+> 再执行一次 `npm run dev` 会**立刻**退出并打印一行提示，因为第二个 Electron 进程抢不到单实例锁 ——
+> 它会把命令行参数转交给已在运行的那个实例（双击 `.md`、跳转列表都走这条路），然后干净退出。
+> 想在开发时同时开第二个实例，用 `npm run dev:isolated`（独立 `%APPDATA%\Lumin (dev)`，不抢锁）。
+
 ---
 
 ## 质量门禁

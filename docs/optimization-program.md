@@ -45,6 +45,7 @@
 | **行内 / 块级 HTML 原样保留**（`html_inline`/`html_block` 渲染规则 → `MdHtml` mark / `HtmlBlock` 节点） | ✅ 已完成（2026-09-16 第十轮） | 本轮 |
 | **有序任务列表**（`taskList.ordered` 属性）与**相邻有序列表**（判级器规则 19：编号按位置重算） | ✅ 已完成（2026-09-16 第十轮） | 本轮 |
 | **内联图片 / 链接图片**（图片从块级节点改成行内节点；CSS 保住「独立成段」的块级观感） | ✅ 已完成（2026-09-16 第十一轮） | 本轮 |
+| **单实例锁缺陷修复**（第二个实例立刻干净退出：`app.exit(0)` + 守卫排在「会开库的模块」之前） | ✅ 已完成（2026-09-16 第十六轮） | 本轮 |
 ---
 
 ## Wave 1：Markdown 往返保真（信誉底线，必须先做）—— ✅ 本轮完成
@@ -329,6 +330,28 @@ A/B 实测：19 个原本没有结构兜底的套件里 **13 个在构建产物�
 **这条线的收口**：评审报告里列的两处功能缺口（编辑器内查找替换、数学公式渲染）都已完成；
 默认矩阵从 9 个套件涨到 17 个。后续可继续的方向：其余老 `_verify-*` 套件按「改到谁就顺手迁谁」
 继续收口、`files` store 继续瘦身、打包/更新链路（签名与真实更新渠道，需要拍板）。
+
+## 缺陷修复：单实例锁 —— ✅ 本轮完成（2026-09-16 第十六轮）
+
+**现场**（用户报告）：dev 实例还开着时再执行一次 `npm run dev` → 控制台刷出三条 Chromium 磁盘缓存报错
+（`Unable to move the cache: 拒绝访问。(0x5)` / `Unable to create cache` / `Gpu Cache Creation failed: -2`），
+紧接着整个 dev 命令结束、窗口也没出来。
+
+**根因**（两段，均实测）：① 主进程照抄官方文档的 `if (!app.requestSingleInstanceLock()) app.quit()`，
+而 **`app.quit()` 在 ready 之前只是「标记退出」**：ready 一到 `app.whenReady()` 的回调照跑，
+于是第二个实例完整启动一遍（开 SQLite / 写设置 / 建窗口 / 装菜单 / 拉 GPU 进程），与首个实例共用
+userData → 两边同时写 Chromium 磁盘缓存，报出上面三条；② 这个进程一退，electron-vite 的 dev 命令跟着结束。
+
+**修法**：新增 `src/main/singleInstance.ts`，在 `index.ts` 里排在所有会读 userData 的模块之前求值：
+`app.setName('Lumin')`（名字决定 userData 与锁）→ `requestSingleInstanceLock()` →
+抢不到就 `fs.writeSync(2, 提示)` + `app.exit(0)`（实测 `app.exit()` 不返回，退出码 0）。
+**只退出还不够**：`services/database` 的 `db` 是模块级 `new LuminDatabase()`，守卫若排在它之后，
+第二个实例仍会打开首个实例的 SQLite 并跑迁移 —— 所以顺序本身就是修复的一部分（与 `devProfile.ts`
+靠 import 顺序先改 userData 同一套机制），并在套件里静态核对。
+
+**验收**：`npm run ci` exit 0（单测 **157/157**）；`npx eslint .` **0/0**；
+`node tools/run-suites.js` **18/18 套件 PASS**（新增 `_verify-single-instance` **13/13**，自管两个实例、
+独立端口 9231）；现场复现：打印提示、**exit 0**、耗时 ~0.2s、无缓存报错。细节见手册 §4.67。
 
 ## Wave 4：工程化地基
 
