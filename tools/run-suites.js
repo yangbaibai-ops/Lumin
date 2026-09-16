@@ -41,6 +41,7 @@ const DEFAULT_SUITES = [
   '_verify-draft-banner.js', // 草稿横幅（未命名缓冲区的归属）
   '_verify-new-document.js', // 新建 / Ctrl+N / Ctrl+S 落点
   '_verify-session.js', // 会话恢复
+  '_verify-single-instance.js', // 单实例锁：第二个实例立刻干净退出（自管实例 + 独立调试端口）
   '_verify-local-media.js', // lumin-file:// 白名单 + 本地图片
   '_verify-encoding.js', // 编码判定与写回
   '_verify-wave3.js', // 编辑器⇄store 单向数据流账本 / 文件树键盘可达 / 原生菜单三语
@@ -57,7 +58,11 @@ const DEFAULT_SUITES = [
 ]
 
 /** 自己管理 Electron 实例的套件（运行器不替它们起实例） */
-const SELF_MANAGED = new Set(['_verify-session-last-closed.js'])
+const SELF_MANAGED = new Set([
+  '_verify-session-last-closed.js',
+  // 它自己起「首个实例 + 第二个实例」，并用 9231 而不是 9222，故不占运行器的实例
+  '_verify-single-instance.js'
+])
 
 function parseArgs(argv) {
   const args = { suite: null, all: false, keep: false, port: 9222, timeoutMs: 240000 }
