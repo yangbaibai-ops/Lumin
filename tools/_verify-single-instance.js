@@ -158,7 +158,7 @@ function bundleOrder() {
   const file = path.join(REPO, 'out', 'main', 'index.js')
   if (!fs.existsSync(file)) return { skipped: '没有 out/main/index.js（先 npm run build）' }
   const text = fs.readFileSync(file, 'utf-8')
-  const guard = text.indexOf('已有实例在运行')
+  const guard = text.indexOf('another instance is already running')
   const open = text.indexOf('new LuminDatabase')
   if (guard < 0 || open < 0) return { skipped: '标记串没找到（打包方式变了？）' }
   return { ok: guard < open, guard, open }
@@ -245,8 +245,25 @@ async function quitBeforeReadyProbe(r) {
     }
     r.check('第二个实例自己退出了（不是被超时杀掉的）', res.closed, `${res.ms}ms`)
     r.check('退出码 0（是「请求转交」而不是崩溃）', second.exitCode === 0, `exitCode=${second.exitCode}`)
-    r.check('提示说清了「已有实例在运行」', /已有实例在运行/.test(res.output), '')
+    r.check(
+      '提示说清了「已有实例在运行」',
+      /another instance is already running/.test(res.output),
+      ''
+    )
     r.check('提示给了出路（npm run dev:isolated）', /dev:isolated/.test(res.output), '')
+    /**
+     * 提示必须**纯 ASCII**：Windows 控制台按代码页解读字节（中文系统 936/GBK），写中文会乱码、
+     * 还会把换行一起吃掉（用户实测过一次）。这条断言就是那道闸 —— 以后有人把提示改回中文，
+     * 这里立刻红。
+     */
+    const notice = res.output
+      .split('\n')
+      .filter((l) => /^\s*(\[Lumin\]|\(argv|second dev instance|restart this one)/.test(l))
+    r.check(
+      '提示是纯 ASCII（任意代码页的控制台都不会乱码）',
+      notice.length >= 4 && notice.every((l) => /^[\x20-\x7E]+$/.test(l)),
+      notice.length + ' 行'
+    )
     r.check('没有跑启动流程（没有装菜单）', !/\[menu\] rebuilt/.test(res.output), '')
     const cacheErr = res.output.match(
       /Unable to move the cache|Unable to create cache|Gpu Cache Creation failed/
