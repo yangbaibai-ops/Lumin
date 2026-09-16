@@ -1,15 +1,10 @@
 import { defineStore } from 'pinia'
-import type {
-  DraftInfo,
-  FileNode,
-  HistoryEntry,
-  OpenedFile,
-  RecentFolder
-} from '../../../shared/types'
+import type { DraftInfo, FileNode, HistoryEntry, OpenedFile } from '../../../shared/types'
 import type { ConcreteEncoding, EncodingId } from '../../../shared/encodings'
 import { isEol, otherEol, type Eol } from '../../../shared/eol'
 import { useSettingsStore } from './settings'
 import { useWorkspaceDocsStore } from './workspaceDocs'
+import { useRecentStore } from './recent'
 import { useUiStore } from './ui'
 import i18n from '../i18n'
 import { ancestorDirs, isInside, samePath } from '../lib/pathUtils'
@@ -26,14 +21,6 @@ import {
   type SyncLedger
 } from '../lib/contentSync'
 import { encodingLabel, formatHistoryTime, untitledEncoding, untitledEol } from '../lib/docText'
-import {
-  planRecentFolderList,
-  planRemoveRecent,
-  planRemoveRecentFolder,
-  planTogglePin,
-  planTouchRecent,
-  planTouchRecentFolder
-} from '../lib/recent'
 
 export interface CurrentDoc {
   path: string | null
@@ -149,7 +136,7 @@ export const useFilesStore = defineStore('files', {
       useWorkspaceDocsStore().reset()
       await window.luminAPI.workspace.setRoot(dir)
       if (dir) {
-        this.touchRecentFolder(dir)
+        useRecentStore().touchFolder(dir)
         this.expanded.add(dir)
         await this.loadChildren(dir)
       }
@@ -268,7 +255,7 @@ export const useFilesStore = defineStore('files', {
         if (restorableDraft(draft, opened.content, opened.path, opened.mtimeMs)) {
           this.draftRestore = draft
         }
-        this.touchRecent(path)
+        useRecentStore().touchFile(path)
         return true
       } catch {
         const ui = useUiStore()
@@ -400,7 +387,7 @@ export const useFilesStore = defineStore('files', {
         if (stat) this.current.mtimeMs = Date.now()
         this.current.savedContent = this.current.content
         await window.luminAPI.drafts.remove(this.draftKey(this.current.path))
-        this.touchRecent(this.current.path)
+        useRecentStore().touchFile(this.current.path)
         // 列表视图就地刷新该条目的修改时间（若列表已打开）
         useWorkspaceDocsStore().bumpMtime(this.current.path)
         return true
@@ -608,39 +595,8 @@ export const useFilesStore = defineStore('files', {
         this.noteExternalReplace()
       }
       await window.luminAPI.drafts.remove(draft.key)
-    },
-
-    // ── 最近文档 / 最近文件夹 / 置顶 ──
-    // 「列表怎么变」（去重、置顶、截断、并入当前工作区）全在 lib/recent.ts 的纯函数里，
-    // 这里只负责把结果落盘。
-    touchRecent(path: string): void {
-      const settings = useSettingsStore()
-      settings.set('recentFiles', planTouchRecent(settings.recentFiles, path, Date.now()))
-    },
-    removeRecent(path: string): void {
-      const settings = useSettingsStore()
-      settings.set('recentFiles', planRemoveRecent(settings.recentFiles, path))
-    },
-    togglePin(path: string): void {
-      const settings = useSettingsStore()
-      settings.set('pinnedFiles', planTogglePin(settings.pinnedFiles, path))
-    },
-    /** 打开文件夹时记一笔（去重 + 置顶，最多 12 条，跨会话保留在 SQLite kv） */
-    touchRecentFolder(dir: string): void {
-      const settings = useSettingsStore()
-      settings.set(
-        'recentFolders',
-        planTouchRecentFolder(settings.recentFolders ?? [], dir, Date.now())
-      )
-    },
-    removeRecentFolder(dir: string): void {
-      const settings = useSettingsStore()
-      settings.set('recentFolders', planRemoveRecentFolder(settings.recentFolders ?? [], dir))
-    },
-    /** 最近文件夹列表：并入「当前工作区」（历史用户可能没记录过，避免空列表） */
-    recentFolderList(): RecentFolder[] {
-      const settings = useSettingsStore()
-      return planRecentFolderList(settings.recentFolders ?? [], this.root, Date.now())
     }
+    // 「最近文档 / 最近文件夹 / 置顶」已整块移到 stores/recent.ts：那份数据的归属是
+    // 「用户开过什么」，与「当前工作区/当前文档」是两件事，不该继续挂在这个 store 上。
   }
 })

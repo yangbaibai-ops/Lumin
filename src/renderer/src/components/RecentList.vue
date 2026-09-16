@@ -2,11 +2,12 @@
 // ─── 最近列表（文件 / 文件夹）：侧栏下拉与顶部菜单二级共用 ──────────────────
 // 只负责「渲染一列最近项 + 固定/移除等行内操作」，容器（点击展开的下拉、
 // 悬停展开的二级菜单）由调用方决定——两处展示同一份数据，避免各写一套。
+// 数据来自 `stores/recent`（最近文档/文件夹/置顶已从 files store 拆出去）。
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { RecentFile, RecentFolder } from '../../../shared/types'
 import { useFilesStore } from '../stores/files'
-import { useSettingsStore } from '../stores/settings'
+import { useRecentStore } from '../stores/recent'
 import Icon from './Icon.vue'
 
 const props = withDefaults(
@@ -24,17 +25,12 @@ const emit = defineEmits<{ (e: 'select', path: string): void }>()
 
 const { t } = useI18n()
 const files = useFilesStore()
-const settings = useSettingsStore()
+const recent = useRecentStore()
 
-/** 文档：固定优先 + 按打开时间倒序；文件夹：直接按时间倒序 */
+/** 文档：置顶优先 + 按打开时间倒序（排序规则在 store 的 getter 里）；文件夹：并入当前工作区后按时间倒序 */
 const items = computed<RecentFile[] | RecentFolder[]>(() => {
-  if (props.kind === 'folders') return files.recentFolderList().slice(0, props.max)
-  const pinned = new Set(settings.pinnedFiles)
-  return [...settings.recentFiles]
-    .sort(
-      (a, b) => Number(pinned.has(b.path)) - Number(pinned.has(a.path)) || b.openedAt - a.openedAt
-    )
-    .slice(0, props.max)
+  if (props.kind === 'folders') return recent.folderList(files.root).slice(0, props.max)
+  return recent.files.slice(0, props.max)
 })
 
 function label(item: RecentFile | RecentFolder): string {
@@ -46,7 +42,13 @@ function sub(item: RecentFile | RecentFolder): string {
 }
 
 function isPinned(path: string): boolean {
-  return settings.pinnedFiles.includes(path)
+  return recent.pinnedPaths.has(path)
+}
+
+/** 清空当前这一类（文件夹：只清文件夹；文档：连置顶一起清 —— 置顶属于文档列表的语义） */
+function clearCurrent(): void {
+  if (props.kind === 'folders') recent.clearFolders()
+  else recent.clearAll()
 }
 </script>
 
@@ -93,14 +95,14 @@ function isPinned(path: string): boolean {
             class="icon-btn !h-6 !w-6 opacity-0 group-hover:opacity-100"
             :class="{ active: isPinned(item.path) }"
             :title="isPinned(item.path) ? t('open.unpin') : t('open.pin')"
-            @click="files.togglePin(item.path)"
+            @click="recent.togglePin(item.path)"
           >
             <Icon name="pin" :size="12" />
           </button>
           <button
             class="icon-btn !h-6 !w-6 opacity-0 hover:!text-danger group-hover:opacity-100"
             :title="t('open.removeRecent')"
-            @click="files.removeRecent(item.path)"
+            @click="recent.removeFile(item.path)"
           >
             <Icon name="x" :size="12" />
           </button>
@@ -109,7 +111,7 @@ function isPinned(path: string): boolean {
           v-else
           class="icon-btn !h-6 !w-6 opacity-0 hover:!text-danger group-hover:opacity-100"
           :title="t('open.removeRecent')"
-          @click="files.removeRecentFolder(item.path)"
+          @click="recent.removeFolder(item.path)"
         >
           <Icon name="x" :size="12" />
         </button>
@@ -119,15 +121,7 @@ function isPinned(path: string): boolean {
     <button
       v-if="items.length"
       class="mt-1 flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-[12px] text-ink-3 transition-colors hover:bg-panel-2 hover:text-danger"
-      @click="
-        () => {
-          if (kind === 'folders') settings.set('recentFolders', [])
-          else {
-            settings.set('recentFiles', [])
-            settings.set('pinnedFiles', [])
-          }
-        }
-      "
+      @click="clearCurrent"
     >
       <Icon name="trash" :size="13" />
       {{ kind === 'folders' ? t('open.clearFolders') : t('open.clearRecent') }}
