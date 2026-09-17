@@ -54,6 +54,7 @@ const DEFAULT_SUITES = [
   '_regress-source-roundtrip.js', // 源码模式往返后的代码块可用性
   '_repro-rapidenter.js', // 快速连续回车不丢行（CM / PM / store 三处一致）
   '_verify-find-replace.js', // 编辑器内查找替换（两个编辑面 / 替换与全部替换 / 大小写）
+  '_verify-inline-formats.js', // 行内格式矩阵：工具栏/快捷键/手打标记/组合（标记字符一个不能少）
   '_verify-math.js', // 数学公式（行内 `$…$` / 块级 `$$…$$`）：KaTeX 渲染 + 原文逐字保留
   // 两面一致性（实时渲染 ⇄ 源码）三层：见 docs/wysiwyg-test-plan.md
   '_verify-surfaces.js', // L2 双面端到端矩阵：切面无副作用 / 位置语义 / 状态语义 / 渲染结构

@@ -49,6 +49,8 @@ export type MarkdownItRendererRule = (
 ) => string
 
 export interface MarkdownItToken {
+  /** token 类型（`strong_open` / `em_close` …）：行内嵌套关系靠它配对计数 */
+  type: string
   markup: string
   attrSet(name: string, value: string): void
 }
