@@ -77,6 +77,78 @@
 - **工程化**：~~`tools/lib/harness.js` + `tools/run-suites.js`~~ → **本轮已完成**；
   剩余：`files` store 拆分；`store` 里那份为绕循环导入而复制的 `confirmIfDirty` 收敛到 `services/dialog`。
 
+## [Unreleased · 行内标记的字节保真] — 字面量化补齐「样式正文」这一档 + 转义反斜杠可见（承第十七轮）
+
+> 用户报：实时渲染区输入 `**2****2**`，源码变成 `**2\*\*\*\*2**`。**先取证再改**：隔离实例跑了
+> 四条写入路径，报障里的两条推断（「输入中间态把标记锁成字面文本」「一次性写入不会这样」）**都被证伪**
+> ——逐字键入 / 一次性 `insertContent` / 从磁盘装载**三条都**产生转义。真根因是字面量化漏了
+> 「样式正文里的裸标记字符」，被 markdown 写出器补了反斜杠。详见手册 §4.70「五、六」。
+
+### Fixed
+
+- **样式正文里的裸标记字符不再被补反斜杠**（`**2****2**` 逐字节留住）：
+  `typoraInlineMarks.ts` 的 `literalizeStrayMarkers` 见到 `mdStyle` 就整段跳过，
+  于是 `**2****2**` 中间那四颗星（CommonMark 语义：**一个** `<strong>` 包住字面文本
+  `2****2`）落进普通文本分支，被 `MarkdownSerializerState.esc()` 转义成 `\*\*\*\*`。
+  同类受害输入：`**a * b**` → `**a \* b**`、`*a**b*` → `*a\*\*b*`。
+- 字面量化下沉到纯逻辑核心后**顺带修掉装载路径的同一问题**（此前只有「源码权威重推」那条路
+  会字面量化，带 legacy mark 的块走常规归一化时不做）。
+- **真实剪贴板粘贴丢字符**（本轮顺带查出、上一轮遗留）：Ctrl+V 粘贴 `**2****2**` 落成
+  `**2**2**`（少两个星号）、`**a * b**` 落成 `**a  b*`。根因是 tiptap 的 **mark 粘贴规则**
+  （`markPasteRule` 的 appendTransaction，只在 `uiEvent === 'paste'` 时触发）：markdown 粘贴
+  解析出「一个 legacy bold 文本节点 `2****2`」之后，它又把这批定界符当语法消费掉。
+  `extensions.ts` 的四个「安静版」mark 此前只关了 `addInputRules` / `addKeyboardShortcuts`，
+  本轮把 `addPasteRules` 一并关掉（同一理由：样式由标记文本派生，吃掉 `**` 就等于删用户的字符）。
+  取证链：真剪贴板复现 → 同一 slice 带/不带 `paste` meta 对照（不带 → 正确，带 → 丢两个字符）
+  → 忠实复刻 PM 的 appendTransaction 循环认出 keyless 粘贴规则插件。
+
+### Added
+
+- `inlineMarkerCore`：`splitStrayMarkerRuns()`（字面量化的唯一判据：只有 `*`/`~`/`` ` `` 的
+  **连续段**可能被字面量化）、`literalizeStrayAtoms()`（无样式正文 → `mdMarker(literal)`；
+  **样式正文 → verbatim 原子 + `MdEscape` 的 `escape:false` 逐字写回**）、
+  `hasStrayMarker()`、`needsSourceReparse()`（「源码权威重推」的触发判据，同时就是
+  **已字面化标记的重新评估机制**：文本一变就把整段原文重喂 markdown-it）。全部进单测。
+- `typoraInlineMarks.escapeDecorations()` + `style.css` 的 `.md-escape-backslash` /
+  `.md-escape-char`：**转义反斜杠拆成两个 span 且始终可见（暗色，`--ink-3`，三套主题各自定义）**，
+  不跟 `.md-marker` 的「光标离开即折叠」走。纯观感：模型、`textContent`、落盘字节一个都不动
+  （`data-md-escape` 仍由 `MdEscape.renderHTML` 承载，解析语义不变）。
+
+### Changed
+
+- `literalizeStrayMarkers`（Fragment 级、只在重推路径调用）删除，逻辑并入 `normalizeAtoms`
+  末尾的原子级字面量化 —— 两条路径（重推 / 常规归一化）行为一致，且可被毫秒级单测覆盖。
+- `resolveBlockContent` 的重推条件改调 `needsSourceReparse()`（纯逻辑核心），
+  「纯行内文本」判定抽成 `isPureInlineContent()`。
+
+### 口径修正（本轮）
+
+- **`**2****2**` 的正确语义是「一个 `<strong>` 包住字面 `2****2`」**，不是两个相邻 `<strong>`：
+  CommonMark §6.2「3 的倍数」规则只在前一定界符串**同时能开能闭**时生效（`**` 与 `****` 的长度和
+  6 是 3 的倍数且都不是 3 的倍数 → 不许配对），最后的 `**` 回头配上最前面的 `**`。
+  markdown-it（默认 + commonmark preset）与 marked 三方实测一致 → 实时渲染区显示
+  「粗体的 `2****2`（星号可见）」**才是**与 GitHub / VS Code 一致的行为。
+  本轮按 CommonMark 语义实现，未按报障时的预期改成「两个相邻粗体 2、星号隐藏」。
+- **已知边界（保留现状，不引入结构损坏）**：带链接 / 下划线 mark 的**无样式**文本里的裸标记字符
+  仍会被补反斜杠（`[a*b](url)` → `[a\*b](url)`）——`mdMarker(literal)` 挂不住那些 mark，
+  硬切会把链接劈成 `[a](u)*[b](u)`。
+
+### Verification（本轮实测）
+
+| 门禁 | 结果 |
+| --- | --- |
+| `npm run ci` | exit 0（typecheck + lint 0/0 + 单测 **217/217** + 构建） |
+| `_verify-inline-formats.js` | **139/140 PASS + 1 SKIP**（上轮 102/103；本轮新增 37 条） |
+| `_verify-md-fidelity.js` | **101/102**（不回退） |
+| 五套件门禁（行内格式 / 保真 / 布局 / 代码块 / 查找替换） | 全绿（数字见手册 §4.70） |
+| `node tools/run-suites.js` | **22 个套件**（数字见手册 §4.70） |
+
+### Docs
+
+- 手册 §4.70 新增「五、样式正文里的字面标记字符被补反斜杠（本轮，任务 A）」与
+  「六、转义反斜杠的观感（本轮，任务 B）」，并补「已知边界」三条；
+- `docs/optimization-program.md` 台账加行。
+
 ## [Unreleased · 日常与深度使用验收] — 逐控件盘点 + 结构面审计（i18n / 设置 / IPC / 覆盖矩阵）
 
 > 视角：日常使用（每个按钮/菜单/设置项）与深度使用（边界状态、结构一致性）。

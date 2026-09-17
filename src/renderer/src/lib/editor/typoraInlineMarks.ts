@@ -33,7 +33,9 @@ import {
   PATTERN_TEST,
   STYLE_ORDER,
   blockCaretTarget,
+  hasStrayMarker,
   markerPairOffsets,
+  needsSourceReparse,
   normalizeAtoms,
   patchRedundantEmphasis,
   styleList,
@@ -48,17 +50,21 @@ export {
   STYLE_ORDER,
   blockCaretTarget,
   emphasisDepth,
+  hasStrayMarker,
   isRedundantEmphasis,
   isRunPart,
   literalSpan,
+  literalizeStrayAtoms,
   markerPairOffsets,
   materializeStyledRun,
+  needsSourceReparse,
   normalizeAtoms,
   patchRedundantEmphasis,
   recognizeTypedMarkers,
   reLiftLiteralPairs,
   repairPollutedMarkers,
   sameStyles,
+  splitStrayMarkerRuns,
   styleList,
   stylesOf,
   toLiteral
@@ -210,8 +216,8 @@ function charClassSource(chars: string): string {
 }
 /** 「反斜杠 + ASCII 标点」的守卫（blockNeedsNormalize 用；不匹配普通反斜杠） */
 const ESCAPED_PUNCT_RE = new RegExp('\\\\[' + charClassSource(ASCII_PUNCT) + ']')
-/** 孤儿标记字符（`*`/`~`/`` ` `` 任意出现，包括不成对的那种） */
-const STRAY_MARKER_RE = /[*~`]/
+// 孤儿标记字符（`*`/`~`/`` ` `` 任意出现，包括不成对的那种）的判据只有一份：
+// inlineMarkerCore.hasStrayMarker（字面量化用的是同一套字符集）
 
 /** markdown-it 行内状态（只用到这几个成员） */
 interface MdEscapeState {
@@ -380,7 +386,7 @@ function toAtoms(frag: Fragment): Atom[] {
       // （`<kbd>`，htmlPassthrough.ts 的 MdHtml）与**行内公式原文**（`$…$`，mathMarkers.ts 的
       // MdMath）都视为不透明文本：内容按字面保留，不参与行内标记派生
       // （否则 HTML/公式里的 `*`/`_`/`\` 会被当成 Markdown 语法再解释一遍 ——
-      //  实测 `$a * b$` 会被 `literalizeStrayMarkers` 从中间切开，公式碎成两段）。
+      //  实测 `$a * b$` 会被字面量化（literalizeStrayAtoms）从中间切开，公式碎成两段）。
       if (
         n.marks.some(
           (m) =>
@@ -464,57 +470,20 @@ function parseInlineHtml(schema: EditorState['schema'], html: string): PMNode | 
   }
 }
 
-/** 把解析产物里“未被样式消费”的裸标记字符（* ~ `）包成字面量标记：
-    它们不是样式语法（CommonMark 解析为普通字符），但若不包一层
-    mdMarker(literal)（序列化 escape:false），markdown 写出器会给普通文本里
-    的 `*` 加反斜杠转义 → 源码漂移（`**5*` 变 `\**5*`）。字面量标记让这些
-    字符原样输出且可见，与"标记文本即源码真值"模型一致。 */
-function literalizeStrayMarkers(frag: Fragment, schema: EditorState['schema']): Fragment {
-  const mdMarker = schema.marks.mdMarker
-  const nodes: PMNode[] = []
-  frag.forEach((node) => {
-    if (
-      !node.isText ||
-      node.marks.some(
-        (m) =>
-          m.type.name === 'mdStyle' ||
-          m.type.name === 'mdMarker' ||
-          m.type.name === 'mdEscape' ||
-          // 行内 HTML / 公式原文：靠各自的 `escape:false` 原样输出，
-          // 包成字面量标记反而会被当源码再解析（公式还会被从中间切开）
-          m.type.name === 'mdHtml' ||
-          m.type.name === 'mdMath'
-      )
-    ) {
-      nodes.push(node)
-      return
-    }
-    const chars = node.text ?? ''
-    let plain = ''
-    let stray = ''
-    const flush = (): void => {
-      if (stray) {
-        nodes.push(schema.text(stray, [mdMarker.create({ style: 'bold', side: 'literal' })]))
-        stray = ''
-      }
-      if (plain) {
-        nodes.push(schema.text(plain, node.marks))
-        plain = ''
-      }
-    }
-    for (const ch of chars) {
-      if (ch === '*' || ch === '~' || ch === '`') {
-        if (plain) flush()
-        stray += ch
-      } else {
-        if (stray) flush()
-        plain += ch
-      }
-    }
-    flush()
-  })
-  return Fragment.fromArray(nodes)
-}
+// ─── 字面量化（「未被样式消费的裸标记字符」）——实现已搬进纯逻辑核心 ─────────────
+//
+// 背景：`*`/`~`/`` ` `` 这些字符若在 CommonMark 里没被样式构造消费，就只能是**字面文本**；
+// 不给它们 `escape:false` 的载体的话，markdown 写出器会补反斜杠 → 源码漂移
+// （`**5*` → `\**5*`，`**2****2**` → `**2\*\*\*\*2**`）。
+//
+// 实现现在只有**一份**：`inlineMarkerCore.literalizeStrayAtoms`，作为 `normalizeAtoms`
+// 的最后一步跑（字面量化的产物不该再被拿去配对）。它同时覆盖两档：
+//   * 无样式正文 → `mdMarker(side:'literal')`（原样序列化，文本变了还能「配对重提升」）；
+//   * **样式正文** → 独立 verbatim 原子（`fromAtoms` 贴 `MdEscape` 的 `escape:false`
+//     → 逐字写回）。这一档此前被漏掉：`**2****2**` 在 CommonMark 里是一个 strong
+//     包住字面 `2****2`，而旧的 `literalizeStrayMarkers` 见到 `mdStyle` 就整段跳过，
+//     于是写出器把那四颗星转义成了 `\*\*\*\*`（用户报的缺陷）。
+// 走原子层还顺带让**装载路径**（带 legacy mark、不做源码重推的块）也吃到同一条规则。
 
 /** 这个块里还有没有「解析器留下的」行内 mark（bold/italic/strike/code）。
     它们意味着内容是从 Markdown/HTML **解析**出来的，标记字符早已被解析器吃掉，
@@ -578,33 +547,44 @@ function resolveBlockContent(
   const atoms = toAtoms(current)
   const fixed = normalizeAtoms(atoms)
 
-  // 触发重推的条件：文本里还有**标记字符或反斜杠转义**（后者见 MdEscape：
-  // 用户手打的 `\*` / `\#` 要靠重推走一遍带 escape 规则的解析器，才能变成"原样输出"的转义文本）
-  if (htmlParse && !hasLegacyInlineMark(block) && /[*~`\\]/.test(block.textContent)) {
-    // 仅对“纯行内文本”（无子块/链接/图片）重推——链接的真实源码不在文本里
-    let pure = true
-    current.forEach((c) => {
-      if (!c.isText || c.marks.some((m) => m.type.name === 'link' || m.type.name === 'linkSource'))
-        pure = false
+  // 触发重推的条件（判据在纯逻辑核心 needsSourceReparse，单测钉死）：文本里还有
+  // **标记字符或反斜杠转义**（后者见 MdEscape：用户手打的 `\*` / `\#` 要靠重推走一遍
+  // 带 escape 规则的解析器，才能变成"原样输出"的转义文本）。
+  // 「仅纯行内文本」（无子块/链接/图片）也在这里判——链接的真实源码不在文本里。
+  if (
+    htmlParse &&
+    needsSourceReparse(block.textContent, {
+      legacyStyles: hasLegacyInlineMark(block),
+      pure: isPureInlineContent(current)
     })
-    if (pure) {
-      try {
-        const inline = parseInlineHtml(schema, htmlParse(block.textContent))
-        if (inline) {
-          const atoms2 = toAtoms(inline.content)
-          const f2 = normalizeAtoms(atoms2)
-          const frag2 = literalizeStrayMarkers(fromAtoms(f2 ?? atoms2, schema), schema)
-          if (!frag2.eq(current) && fragmentText(frag2) === block.textContent) return frag2
-        }
-      } catch {
-        /* 解析失败 → 回退常规归一化 */
+  ) {
+    try {
+      const inline = parseInlineHtml(schema, htmlParse(block.textContent))
+      if (inline) {
+        const atoms2 = toAtoms(inline.content)
+        const f2 = normalizeAtoms(atoms2)
+        const frag2 = fromAtoms(f2 ?? atoms2, schema)
+        if (!frag2.eq(current) && fragmentText(frag2) === block.textContent) return frag2
       }
+    } catch {
+      /* 解析失败 → 回退常规归一化 */
     }
   }
 
   if (!fixed) return null
   const frag = fromAtoms(fixed, schema)
   return frag.eq(current) ? null : frag
+}
+
+/** 块内容是不是「纯行内文本」（没有子块，也没有链接/链接源码这种源码不在文本里的东西） */
+function isPureInlineContent(content: Fragment): boolean {
+  let pure = true
+  content.forEach((c) => {
+    if (!c.isText || c.marks.some((m) => m.type.name === 'link' || m.type.name === 'linkSource')) {
+      pure = false
+    }
+  })
+  return pure
 }
 
 /**
@@ -636,8 +616,9 @@ function blockNeedsNormalize(block: PMNode): boolean {
       PATTERN_TEST.test(n.text ?? '') ||
       // 单个「孤儿标记字符」（`$a * b$` 里的那个 `*`）：不成对所以 PATTERN_TEST 不命中，
       // 但若不包成字面量标记，markdown 写出器会给它补反斜杠 → **源码漂移**（`*` → `\*`）。
-      // 这正是 literalizeStrayMarkers 存在的理由，只是此前漏了「不成对」这一档。
-      STRAY_MARKER_RE.test(n.text ?? '') ||
+      // 这正是字面量化（literalizeStrayAtoms）存在的理由：不成对的标记字符也得有
+      // `escape:false` 的载体，否则写出器会给它补反斜杠。
+      hasStrayMarker(n.text ?? '') ||
       // 反斜杠 + ASCII 标点（`\*`、`\#`…）：要交给带 escape 规则的解析器转成"原样输出"的转义文本。
       // 用「反斜杠 + 标点」而不是「任意反斜杠」做守卫：Windows 路径这类普通反斜杠不会命中，
       // 免得每次按键都对整段做一次 markdown-it 解析。
@@ -694,6 +675,14 @@ function collectRuns(doc: EditorState['doc']): MdRun[] {
 
 /**
  * 选区覆盖的样式构造范围 → 装饰类（光标在构造内/边缘即展开标记）
+ *
+ * 同时产出**转义反斜杠**的拆分装饰（任务 B）：模型里 `\*` 是**一个**文本节点
+ * （内容含反斜杠，靠 MdEscape 的 `escape:false` 逐字写回），PM 按 mark 渲染时
+ * 整段只能落在一个 `<span class="md-escape">` 里 —— 想「只把反斜杠画成暗色」就必须
+ * 把它的渲染拆开。renderHTML 做不到（一个 mark 的内容洞是连续的），所以在**装饰层**拆：
+ * 反斜杠 [pos, pos+1) 一个 span、被转义的字面字符 [pos+1, pos+size) 另一个 span。
+ * 纯观感：`textContent`、模型、落盘字节一个都不动（`data-md-escape` 仍在 mark 的
+ * renderHTML 上，解析语义不变）。
  */
 function buildRevealDecorations(state: EditorState): DecorationSet {
   const { from, to } = state.selection
@@ -705,7 +694,40 @@ function buildRevealDecorations(state: EditorState): DecorationSet {
       decos.push(Decoration.inline(r.start, r.end, { class: 'md-reveal-inline' }))
     }
   }
+  decos.push(...escapeDecorations(state))
   return DecorationSet.create(state.doc, decos)
+}
+
+/**
+ * 转义文本的拆分装饰：`\X` → 反斜杠 span + 字面字符 span。
+ *
+ * 只在**真的以反斜杠开头**的转义文本上做（`node.text[0] === '\\'`）：同一层
+ * `MdEscape` mark 还承担「冗余嵌套强调多出来那对定界符」的逐字写回
+ * （`inlineMarkerCore.literalSpan`，内容形如 `**`，**没有**反斜杠）—— 那种是
+ * 字面标记，不是转义，不该被画成暗色。
+ *
+ * 一个文本节点里可能**连着好几处**转义（`\*\*\*\*`：整行标记被逐字符转义后的形态，
+ * PM 会把相邻的同 mark 文本合并成一段），所以按字符走而不是只切第一个。
+ *
+ * 与 `.md-marker` 的显隐机制**无关**：这两个 span 永远可见（Typora 习惯：
+ * 转义反斜杠一直看得见，光标进出不改变它的显隐），样式见 style.css 的
+ * `.md-escape-backslash`。
+ */
+function escapeDecorations(state: EditorState): Decoration[] {
+  const decos: Decoration[] = []
+  state.doc.descendants((node, pos) => {
+    if (!node.isText || !node.text || node.text[0] !== '\\') return
+    if (!node.marks.some((m) => m.type.name === 'mdEscape')) return
+    for (let i = 0; i < node.text.length; i++) {
+      if (node.text[i] !== '\\') continue
+      decos.push(Decoration.inline(pos + i, pos + i + 1, { class: 'md-escape-backslash' }))
+      if (i + 1 < node.text.length) {
+        decos.push(Decoration.inline(pos + i + 1, pos + i + 2, { class: 'md-escape-char' }))
+      }
+      i++ // 被转义的那个字符已单独成 span，跳过
+    }
+  })
+  return decos
 }
 
 /**

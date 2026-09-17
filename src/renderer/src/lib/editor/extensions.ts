@@ -30,15 +30,27 @@ import { MarkdownParseLimits } from './parseLimits'
 import { TyporaPointer, LinkSource } from './pointer'
 import { TableOfContents } from './tableOfContents'
 
-// 行内样式 mark：保留节点类型（解析粘贴/加载内容需要），但输入规则与
-// 快捷键关闭——真实文本标记模型下，'**加粗**' 由派生归一化即时成样式，
-// 核心输入规则会删掉用户手打的标记文本，与模型冲突
-const BoldQuiet = Bold.extend({ addInputRules: () => [], addKeyboardShortcuts: () => ({}) })
-const ItalicQuiet = Italic.extend({ addInputRules: () => [], addKeyboardShortcuts: () => ({}) })
-const StrikeQuiet = Strike.extend({ addInputRules: () => [], addKeyboardShortcuts: () => ({}) })
-const CodeQuiet = Code.extend({
+// 行内样式 mark：保留节点类型（解析粘贴/加载内容需要），但输入规则、**粘贴规则**
+// 与快捷键一律关闭——真实文本标记模型下，'**加粗**' 由派生归一化即时成样式，
+// 核心输入规则会删掉用户手打的标记文本，与模型冲突。
+//
+// 粘贴规则（`addPasteRules`）是同一类缺陷的另一半，实测（本轮）：
+// 剪贴板里是 `**2****2**` 时，markdown 粘贴解析产物是「一个 legacy bold 文本节点
+// `2****2`」，紧接着 tiptap 的 bold 粘贴规则在 appendTransaction 里又把这批定界符
+// **当语法消费掉**——落盘变成 `**2**2**`（**凭空少两个字符**）。它与输入规则同一个
+// 理由：本模型的样式由**标记文本**派生，任何「把 `**` 吃掉换成 mark」的自动化都会
+// 删掉用户的字符。粘贴内容的 Markdown 语义由 markdownPaste/clipboardTextParser +
+// 派生归一化负责，不需要这层规则。
+const QuietMark = {
   addInputRules: () => [],
-  addKeyboardShortcuts: () => ({}),
+  addPasteRules: () => [],
+  addKeyboardShortcuts: () => ({})
+}
+const BoldQuiet = Bold.extend(QuietMark)
+const ItalicQuiet = Italic.extend(QuietMark)
+const StrikeQuiet = Strike.extend(QuietMark)
+const CodeQuiet = Code.extend({
+  ...QuietMark,
   // `excludes: '_'`（上游默认）会让行内代码**排斥其它所有 mark** —— 于是
   // `**粗体里的 `行内代码`**` 解析时那段代码上的粗体被丢掉，嵌套样式一开始就少一半。
   // 本模型里样式是「集合」（mdStyle.styles），行内代码当然可以同时在粗体里，

@@ -262,6 +262,130 @@ export function reLiftLiteralPairs(atoms: Atom[]): boolean {
   return changed
 }
 
+// ─── 字面量化的判据（CommonMark 对齐：没有被样式消费的标记字符只能当字面量）──────
+//
+// 为什么要有这一层：markdown 写出器（prosemirror-markdown 的 `esc()`）会把**普通文本**里的
+// `` ` `` `*` `\` `~` `[` `]` `_` 逐个补反斜杠。模型里凡是「按 CommonMark 只能是字面量」的
+// 标记字符都必须带上 `escape:false` 的载体（MdMarker(literal) 或 MdEscape），否则
+// **保存一次文件就多一串反斜杠**：
+//   * 无样式正文里的 `*`（`**5*` 的尾巴、`a * b` 里的星号）→ MdMarker(side:'literal')
+//     （既有的行为：它们还能参与「配对重提升」，文本变了可重新变回定界符）；
+//   * **样式正文里**的 `*`（`**2****2**` 中间那四颗星）→ 独立 verbatim 原子 + MdEscape
+//     —— 这一档此前被漏掉（`literalizeStrayMarkers` 见到 mdStyle 就整段跳过），
+//     于是 `**2****2**` 落盘变成 `**2\*\*\*\*2**`（用户报的缺陷）。
+export interface StrayRun {
+  text: string
+  /** true = 这一段全是标记字符（必须按字面量对待） */
+  stray: boolean
+}
+
+/** 能开启/关闭行内构造的字符（与文档级规则 documentText 的集合一致的正文版） */
+const STRAY_MARKER_CHAR = /[*~`]/
+
+/** 一段文本有没有必须按字面量对待的标记字符（重推/字面量化的快速判据） */
+export function hasStrayMarker(text: string): boolean {
+  return STRAY_MARKER_CHAR.test(text)
+}
+
+/**
+ * 按「是不是标记字符的连续段」把文本切片 —— 字面量化的**唯一判据**在这里：
+ * 只有 `*` `~` `` ` `` 的连续段才可能被字面量化，其余字符一律原样。
+ * `'2****2'` → `[{2,false},{****,true},{2,false}]`。
+ */
+export function splitStrayMarkerRuns(text: string): StrayRun[] {
+  const runs: StrayRun[] = []
+  let buf = ''
+  let stray = false
+  for (const ch of text) {
+    const isStray = STRAY_MARKER_CHAR.test(ch)
+    if (buf && isStray !== stray) {
+      runs.push({ text: buf, stray })
+      buf = ''
+    }
+    stray = isStray
+    buf += ch
+  }
+  if (buf) runs.push({ text: buf, stray })
+  return runs
+}
+
+/**
+ * 把原子列表里「按 CommonMark 只能是字面量」的标记字符切出来（原地改写）。
+ *
+ * 两类去处（见上面那段说明）：
+ *   * 无样式正文：降级为 `side:'literal'` 的标记原子（原样序列化 + 可重新提升）；
+ *   * 样式正文：切成独立原子并标 `verbatim`（fromAtoms 会给它贴 MdEscape 的
+ *     `escape:false` —— 逐字写回，反斜杠一个都不多）；
+ *   * 行内代码正文（styles 含 code）本来就逐字写回（MdCodeLiteral），**不动**，
+ *     免得给每个含 `*` 的代码跨度平白加一层 mark（渲染/断言都没必要动）。
+ *
+ * 幂等：已经 verbatim / 已经字面量标记的原子直接跳过，所以第二遍归一化不再改动
+ * （appendTransaction 因此能收敛，不会来回换内容）。
+ */
+export function literalizeStrayAtoms(atoms: Atom[]): boolean {
+  let changed = false
+  const out: Atom[] = []
+  for (const a of atoms) {
+    if (a.kind !== 'text' || !a.text || a.verbatim || !STRAY_MARKER_CHAR.test(a.text)) {
+      out.push(a)
+      continue
+    }
+    const styles = stylesOf(a)
+    if (styles.includes('code')) {
+      out.push(a)
+      continue
+    }
+    // 无样式但带**别的 mark**（链接 / 下划线 / …）的文本：字面量标记原子挂不住这些 mark，
+    // 硬切会把它丢掉 —— 实测后果是链接被劈成两半并复制成 `[a](u)*[b](u)`。保持现状
+    // （写出器给那几颗星补反斜杠：字节不完美，但结构一个字节都不坏）。
+    if (!styles.length && a.otherMarks?.length) {
+      out.push(a)
+      continue
+    }
+    const runs = splitStrayMarkerRuns(a.text)
+    if (!runs.some((r) => r.stray)) {
+      out.push(a)
+      continue
+    }
+    for (const r of runs) {
+      if (r.stray) {
+        out.push(
+          styles.length
+            ? { ...a, text: r.text, verbatim: true }
+            : { kind: 'marker', text: r.text, marker: { style: 'bold', side: 'literal' } }
+        )
+      } else {
+        out.push({ ...a, text: r.text })
+      }
+    }
+    changed = true
+  }
+  if (changed) atoms.splice(0, atoms.length, ...out)
+  return changed
+}
+
+/**
+ * 「源码权威重推」的触发判据 —— 同时是**已字面化标记的重新评估机制**。
+ *
+ * 为什么必须每次文本变化都重推：字面量化只是「当时那段文本在 CommonMark 里无法配对」的
+ * **过渡态**（`**2***` 末尾那颗星确实配不上）。相邻文本一变，同一批字符就可能重新参与配对
+ * （`**2***` → `**2****2**`）。只要把**整段原文**重新喂给 markdown-it，判定就永远跟着
+ * CommonMark 走，不存在「锁死成字面量」——这正是 `resolveBlockContent` 里 `htmlParse` 那一步。
+ *
+ * 两个不重推的例外（都是「重推会损坏内容」的场景，不是省事）：
+ *   * `legacyStyles`：块里还有解析器留下的 bold/italic/… mark（文本里根本没有标记字符，
+ *     `**加粗**` 只剩 `加粗`）→ 重推等于把「带样式的文本」当源码再解析一遍，
+ *     实测会把整行样式抹平（行内代码里的 `*` 触发）；
+ *   * `pure === false`：块里有链接/图片（真实源码不在文本里）→ 重推会丢链接。
+ */
+export function needsSourceReparse(
+  text: string,
+  opts: { legacyStyles?: boolean; pure?: boolean } = {}
+): boolean {
+  if (opts.legacyStyles || opts.pure === false) return false
+  return /[*~`\\]/.test(text)
+}
+
 /** 单块内联序列归一化：返回修复后的原子列表（未变化返回 null）。
     语义（CommonMark 对齐，标记文本即源码真值）：
     - 两侧标记配对且可识别 → 以标记文本决定样式（'**'→粗、'*'→斜…），
@@ -271,7 +395,9 @@ export function reLiftLiteralPairs(atoms: Atom[]): boolean {
       （保留 mdMarker mark 以原样序列化，源码不出现 '\*' 转义）；
     - 带样式内容缺一侧标记（回车切段/粘贴产物）→ 按标记文本补齐；
     - 无任何标记的纯样式正文（legacy/历史）→ 补全两侧标记；
-    - 孤立标记 → 降级为字面量（同样原样序列化）。 */
+    - 孤立标记 → 降级为字面量（同样原样序列化）；
+    - 最后再过一遍 literalizeStrayAtoms：样式正文里**没能被 CommonMark 消费**的
+      标记字符（`**2****2**` 中间那四颗星）切成 verbatim 原子，落盘逐字节不变。 */
 export function normalizeAtoms(atoms: Atom[]): Atom[] | null {
   const countBefore = atoms.length
   let changed = reLiftLiteralPairs(atoms)
@@ -422,6 +548,9 @@ export function normalizeAtoms(atoms: Atom[]): Atom[] | null {
     }
     i++
   }
+  // 字面量化放在最后：前面的配对/物化只看样式，字面量化的产物（verbatim 文本 /
+  // literal 标记）不该再被当成构造去配对。
+  changed = literalizeStrayAtoms(out) || changed
   return changed ? out : null
 }
 

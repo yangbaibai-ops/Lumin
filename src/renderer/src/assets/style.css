@@ -1578,6 +1578,21 @@ h6.md-reveal::before {
   color: inherit;
 }
 
+/* 转义反斜杠（`\*`）：模型里是**一个** MdEscape 文本节点（含反斜杠，逐字写回），
+   渲染时由装饰拆成两个 span（typoraInlineMarks.escapeDecorations）——
+   反斜杠单独着色，被转义的字面字符保持正文样式。
+   反斜杠属于「**始终可见（暗）**」的那一类：不跟 .md-marker 的
+   `font-size: 0`（光标离开即折叠）走，Typora 同款习惯 ——
+   用户写下的 `\` 一直在屏幕上看得见，只是比正文暗一档。
+   颜色用主题令牌 --ink-3（light/dark/sepia 三套主题各自定义），
+   实测与正文色（--ink）都不同 → 可读且不喧宾夺主。 */
+.md-escape-backslash {
+  color: var(--ink-3);
+}
+.md-escape-char {
+  color: inherit;
+}
+
 /* ── YAML front matter 块（文档开头的元数据，原样保留）──
    WYSIWYG 里只读（atom 节点）：改 YAML 走源码模式。样式上刻意与正文区分，
    避免用户以为它是一段普通正文；限高可滚动，长 front matter 不挤占视线 */
