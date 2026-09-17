@@ -1581,13 +1581,25 @@ h6.md-reveal::before {
 /* 转义反斜杠（`\*`）：模型里是**一个** MdEscape 文本节点（含反斜杠，逐字写回），
    渲染时由装饰拆成两个 span（typoraInlineMarks.escapeDecorations）——
    反斜杠单独着色，被转义的字面字符保持正文样式。
-   反斜杠属于「**始终可见（暗）**」的那一类：不跟 .md-marker 的
-   `font-size: 0`（光标离开即折叠）走，Typora 同款习惯 ——
-   用户写下的 `\` 一直在屏幕上看得见，只是比正文暗一档。
+   显隐与 `.md-marker` **同一套机制**：默认 `font-size: 0` 零占位折叠
+   （不用 display:none —— 那会破坏浏览器光标导航与命中，与 `.md-marker`
+   的取舍完全一致）；光标/选区落在该转义段内（或紧贴段两端）时装饰给**同一个
+   span** 加上 `.md-reveal-inline`，字号恢复 inherit、以暗色显现（带与 `.md-marker`
+   同一条淡入动画，避免过场跳字）。连续转义段（`\*\*\*\*`）整段统一判定 ——
+   4 个反斜杠同显同隐，判据与 folding 参数都对齐 `.md-marker`。
    颜色用主题令牌 --ink-3（light/dark/sepia 三套主题各自定义），
-   实测与正文色（--ink）都不同 → 可读且不喧宾夺主。 */
+   实测与正文色（--ink）都不同 → 可读且不喧宾夺主。
+   被转义的字面字符本身（`.md-escape-char`）始终正常显示。
+   例外：**非标点的 `\X`**（Windows 路径 `C:\Users\x` 的 `\U`/`\x`、孤立反斜杠）在模型里
+   同样是 MdEscape 节点，但**不是** CommonMark 的转义 —— 折叠它会让路径少字符
+   （`C:Usersx`），所以装饰永远给它 `.md-reveal-inline`（= 常显暗色），不参与光标显隐。 */
 .md-escape-backslash {
+  font-size: 0;
   color: var(--ink-3);
+}
+.md-escape-backslash.md-reveal-inline {
+  font-size: inherit;
+  animation: md-marker-in 0.12s ease;
 }
 .md-escape-char {
   color: inherit;

@@ -77,7 +77,7 @@
 - **工程化**：~~`tools/lib/harness.js` + `tools/run-suites.js`~~ → **本轮已完成**；
   剩余：`files` store 拆分；`store` 里那份为绕循环导入而复制的 `confirmIfDirty` 收敛到 `services/dialog`。
 
-## [Unreleased · 行内标记的字节保真] — 字面量化补齐「样式正文」这一档 + 转义反斜杠可见（承第十七轮）
+## [Unreleased · 行内标记的字节保真] — 字面量化补齐「样式正文」这一档 + 转义反斜杠按光标显隐（承第十七轮）
 
 > 用户报：实时渲染区输入 `**2****2**`，源码变成 `**2\*\*\*\*2**`。**先取证再改**：隔离实例跑了
 > 四条写入路径，报障里的两条推断（「输入中间态把标记锁成字面文本」「一次性写入不会这样」）**都被证伪**
@@ -110,12 +110,25 @@
   `hasStrayMarker()`、`needsSourceReparse()`（「源码权威重推」的触发判据，同时就是
   **已字面化标记的重新评估机制**：文本一变就把整段原文重喂 markdown-it）。全部进单测。
 - `typoraInlineMarks.escapeDecorations()` + `style.css` 的 `.md-escape-backslash` /
-  `.md-escape-char`：**转义反斜杠拆成两个 span 且始终可见（暗色，`--ink-3`，三套主题各自定义）**，
-  不跟 `.md-marker` 的「光标离开即折叠」走。纯观感：模型、`textContent`、落盘字节一个都不动
+  `.md-escape-char`：**转义反斜杠拆成两个 span 且按光标显隐（暗色 `--ink-3`，三套主题各自定义）**，
+  与 `.md-marker` 复用同一套机制（`.md-reveal-inline` + `font-size: 0` 折叠，不用 `display:none`）。
+  纯观感：模型、`textContent`、落盘字节一个都不动
   （`data-md-escape` 仍由 `MdEscape.renderHTML` 承载，解析语义不变）。
 
 ### Changed
 
+- **转义反斜杠从「暗色常显」改为「跟 `**` 一样按光标显隐」**（用户反馈的行为修订）：
+  `escapeDecorations()` 新增 `collectEscapeRuns()` —— 反斜杠之间只隔着各自的被转义字符时算
+  **一段**（`\*\*\*\*` = 1 段 4 个，光标在任一位置都**同时**显示 / 同时折叠；`\* \*` 中间有空格
+  = 2 段，各显各的）。显隐判据与 mdMarker 构造**逐字一致**（`from <= run.end && to >= run.start`，
+  左右边界均含 → 光标紧贴段两端也显示）；`style.css` 的 `.md-escape-backslash` 默认
+  `font-size: 0`，带 `.md-reveal-inline` 时 `font-size: inherit` + 同一条淡入动画。
+  被转义的字面字符（`.md-escape-char`）始终正常显示。
+- **只有「真转义」（`\` + ASCII 标点）参与折叠**：实测发现 `C:\Users\x` 这类 Windows 路径
+  在装载路径上**同样是 `MdEscape` 文本节点**（逐字写回的载体，不是 CommonMark 转义）——
+  若一起折叠，路径在屏幕上会少字符（`C:Usersx`）。所以非标点 `\X` 一律常显（复用同一个
+  `.md-reveal-inline` 的「已展开」态，判据复用既有常量 `ASCII_PUNCT`），取舍是
+  「宁可多显示一个反斜杠，也绝不把内容藏起来」。
 - `literalizeStrayMarkers`（Fragment 级、只在重推路径调用）删除，逻辑并入 `normalizeAtoms`
   末尾的原子级字面量化 —— 两条路径（重推 / 常规归一化）行为一致，且可被毫秒级单测覆盖。
 - `resolveBlockContent` 的重推条件改调 `needsSourceReparse()`（纯逻辑核心），
@@ -138,15 +151,15 @@
 | 门禁 | 结果 |
 | --- | --- |
 | `npm run ci` | exit 0（typecheck + lint 0/0 + 单测 **217/217** + 构建） |
-| `_verify-inline-formats.js` | **139/140 PASS + 1 SKIP**（上轮 102/103；本轮新增 37 条） |
+| `_verify-inline-formats.js` | **159/160 PASS + 1 SKIP**（SKIP = 「下划线 + 加粗」已知缺口；转义反斜杠显隐一组 29 条） |
 | `_verify-md-fidelity.js` | **101/102**（不回退） |
-| 五套件门禁（行内格式 / 保真 / 布局 / 代码块 / 查找替换） | 全绿（数字见手册 §4.70） |
-| `node tools/run-suites.js` | **22 个套件**（数字见手册 §4.70） |
+| 五套件门禁（行内格式 / 保真 / 布局 / 代码块 / 查找替换） | 全绿：`159/160`、`101/102`、`9/9`、`3/3`、`12/12` |
+| `node tools/run-suites.js` | **22 个套件，全绿**（数字见手册 §4.70） |
 
 ### Docs
 
 - 手册 §4.70 新增「五、样式正文里的字面标记字符被补反斜杠（本轮，任务 A）」与
-  「六、转义反斜杠的观感（本轮，任务 B）」，并补「已知边界」三条；
+  「六、转义反斜杠的观感：拆成两个 span + 按光标显隐（本轮行为修订，任务 B）」，并补「已知边界」三条；
 - `docs/optimization-program.md` 台账加行。
 
 ## [Unreleased · 日常与深度使用验收] — 逐控件盘点 + 结构面审计（i18n / 设置 / IPC / 覆盖矩阵）

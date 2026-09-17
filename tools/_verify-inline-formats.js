@@ -140,6 +140,32 @@ async function caretEnd(attempts = 8) {
   throw new Error('编辑器没拿到焦点（NO-FOCUS）')
 }
 
+/**
+ * 聚焦编辑面并把光标放到**绝对位置**（`caretEnd` 的带参版本）。
+ *
+ * 与 caretAt（块内偏移）的分工：多段落夹具里 caretAt 以「当前选区所在块」为基准，
+ * 前一条用例把光标留在第二段时会算到错误的段落上 —— 跨段定位一律用绝对位置。
+ * 同样带焦点重试（真实按键要求 DOM 焦点在编辑面上）。
+ */
+async function caretAbs(pos, attempts = 8) {
+  const expr = `(() => {
+    const ed = window.__L.ed()
+    const pm = document.querySelector('.ProseMirror')
+    if (pm) pm.focus()
+    ed.commands.focus(${pos})
+    return ed.isFocused ? 'ok' : 'NO-FOCUS'
+  })()`
+  for (let i = 0; i < attempts; i++) {
+    const r = await app.ev(expr)
+    if (r === 'ok') {
+      await sleep(120)
+      return
+    }
+    await sleep(250)
+  }
+  throw new Error('编辑器没拿到焦点（NO-FOCUS）')
+}
+
 /** 选中块内 [from,to) 区间（偏移，不是绝对位置）；同样带焦点重试 */
 async function selectRange(from, to, attempts = 8) {
   const expr = `(() => {
@@ -665,13 +691,19 @@ async function main() {
     )
   }
 
-  // ═══ H. 转义反斜杠的渲染（任务 B：拆成两个 span + 暗色常显）════════════════════
+  // ═══ H. 转义反斜杠的渲染与显隐（与 `**` 同一机制：按光标显隐 + 连续段整体显隐）══
   // 现场：「真正无法配对、必须字面化」的场景（整行只有 `****`）落盘写成 `\*\*\*\*`，
-  // 用户希望这个反斜杠在实时渲染区**看得见**（灰色），而不是凭空多出来。
+  // 重开后这些反斜杠**不该一直挂在屏幕上**，而要像加粗的 `**` 那样按光标显隐：
+  // 光标不在转义段上就折叠（零占位）、落在被转义字符上（或选中它）就显示出来、仍是暗色。
   // 修法：模型/字节一个都不动，只在**装饰层**把 `\X` 拆成
   // `<span class="md-escape-backslash">\</span><span class="md-escape-char">X</span>`
-  // （`data-md-escape` 仍由 MdEscape 的 renderHTML 承载，解析语义不变）；
-  // 反斜杠属于「始终可见（暗）」那一类，不跟 .md-marker 的「光标离开就折叠」走。
+  // （`data-md-escape` 仍由 MdEscape 的 renderHTML 承载，解析语义不变），
+  // 反斜杠 span 的显隐**复用 `.md-marker` 那一套**：折叠 = `font-size: 0`（零占位，
+  // 不用 display:none——那会破坏光标导航与命中），显示 = 装饰给它加 `.md-reveal-inline`
+  // （同一元素上的复合类）+ 暗色。判据也与 mdMarker 构造逐字一致：
+  // `from <= run.end && to >= run.start`（左右边界均含，贴着段两端也算「在里面」）。
+  // 连续段整体性：反斜杠之间只隔着各自的被转义字符时算**一段**（`\*\*\*\*` = 1 段 4 个，
+  // 4 个同显同隐）；中间隔着别的字符（`\* \*` 的空格）就是两段，各显各的。
   const ESCAPE_PROBE = `JSON.stringify((() => {
     const bs = [...document.querySelectorAll('.md-escape-backslash')]
     const chars = [...document.querySelectorAll('.md-escape-char')]
@@ -683,6 +715,13 @@ async function main() {
       return { color: cs.color, fontSize: cs.fontSize, display: cs.display,
                visibility: cs.visibility, opacity: cs.opacity, w: r.width, h: r.height }
     }
+    // 「可见」与 .md-marker 的既有断言**同一口径**：fontSize 不为 0 + display 不是 none
+    // + visibility 可见 + 有实际宽度（verify-tiptap 的标记隐藏态断的就是 rect 宽度 === 0）
+    const visible = (el) => {
+      const s = style(el)
+      return !!s && s.fontSize !== '0px' && s.display !== 'none' &&
+             s.visibility === 'visible' && s.w > 0 && s.h > 0
+    }
     return {
       theme: document.documentElement.className,
       backslashes: bs.length,
@@ -690,6 +729,16 @@ async function main() {
       bsText: bs.map((e) => e.textContent).join(''),
       bsStyle: style(bs[0]),
       charStyle: style(chars[0]),
+      // 逐个反斜杠 span：文本 + 是否带显隐类 + 是否可见 + 颜色/字号/占位
+      spans: bs.map((e) => {
+        const s = style(e)
+        return { text: e.textContent, revealed: e.classList.contains('md-reveal-inline'),
+                 visible: visible(e), color: s.color, fontSize: s.fontSize,
+                 display: s.display, visibility: s.visibility, w: s.w, h: s.h }
+      }),
+      revealedCount: bs.filter((e) => e.classList.contains('md-reveal-inline')).length,
+      visibleCount: bs.filter(visible).length,
+      hiddenZeroWidth: bs.every((e) => e.getBoundingClientRect().width === 0),
       bodyColor: para ? getComputedStyle(para).color : null,
       paraText: para ? para.textContent : null,
       paraHTML: para ? para.innerHTML : null,
@@ -697,30 +746,56 @@ async function main() {
       docText: window.__L.ed().state.doc.textContent
     }
   })())`
-  /** 判「可见且是暗色」：字号不为 0、display 不是 none、visibility 可见、有实际宽度、颜色与正文不同 */
-  function escapeVisibleAndDim(p, paraColor) {
+  /** 单个 span 是否「折叠」：零字号零宽，但仍在布局里（display 不是 none、visibility 可见）
+      —— 与 .md-marker 隐藏态同一口径（font-size: 0） */
+  function spanHidden(s) {
     return (
-      p.backslashes > 0 &&
-      p.bsStyle &&
-      p.bsStyle.fontSize !== '0px' &&
-      p.bsStyle.display !== 'none' &&
-      p.bsStyle.visibility === 'visible' &&
-      p.bsStyle.w > 0 &&
-      p.bsStyle.h > 0 &&
-      p.bsStyle.color !== paraColor
+      !s.revealed &&
+      s.fontSize === '0px' &&
+      s.display !== 'none' &&
+      s.visibility === 'visible' &&
+      s.w === 0
     )
+  }
+  /** 单个 span 是否「显示且暗色」：字号恢复、实际占位、颜色与正文不同 */
+  function spanShownDim(s, bodyColor) {
+    return (
+      s.revealed &&
+      s.fontSize !== '0px' &&
+      s.display !== 'none' &&
+      s.visibility === 'visible' &&
+      s.w > 0 &&
+      s.h > 0 &&
+      s.color !== bodyColor
+    )
+  }
+  /** 全部反斜杠都折叠（光标不在该转义段上） */
+  function escapeAllHidden(p) {
+    return p.backslashes > 0 && p.revealedCount === 0 && p.visibleCount === 0 && p.spans.every(spanHidden)
+  }
+  /** n 个反斜杠**同时**显示且都是暗色（连续段整体性） */
+  function escapeAllShownDim(p, n) {
+    return (
+      p.backslashes === n &&
+      p.spans.length === n &&
+      p.revealedCount === n &&
+      p.visibleCount === n &&
+      p.spans.every((s) => spanShownDim(s, p.bodyColor))
+    )
+  }
+  /** span 的紧凑诊断串：`显示/暗` 或 `折叠` */
+  function spanSig(p) {
+    return p.spans
+      .map((s) =>
+        spanShownDim(s, p.bodyColor) ? '显' : spanHidden(s) ? '隐' : `?(${s.fontSize}/${s.w})`
+      )
+      .join('')
   }
 
   const themeBackup = await app.ev(`window.__L.settings().theme`)
-  // H1：装载被转义后的源码；光标先放在**另一段**（远离转义）——必须照样可见（常显）
+  // H1：装载被转义后的源码；光标先放在**另一段**（远离转义）⇒ 反斜杠必须**折叠不可见**
   await openDoc('\\*\\*\\*\\*\n\n尾行\n')
-  await app.ev(`(() => {
-    const ed = window.__L.ed()
-    const pm = document.querySelector('.ProseMirror')
-    if (pm) pm.focus()
-    ed.commands.focus('end')
-    return 'ok'
-  })()`)
+  await caretEnd()
   await sleep(200)
   const esc1 = JSON.parse(await app.ev(ESCAPE_PROBE))
   const bytes1 = await app.ev(FLUSH)
@@ -731,54 +806,182 @@ async function main() {
       `data-md-escape 包裹=${esc1.wrappers} | ${esc1.paraHTML}`
   )
   report.check(
-    '转义反斜杠 · 光标在别的段也**始终可见**（不跟 .md-marker 的折叠机制）',
-    escapeVisibleAndDim(esc1, esc1.bodyColor),
-    `bs=${JSON.stringify(esc1.bsStyle)} 正文色=${esc1.bodyColor}`
+    '转义反斜杠 · 光标在别的段 ⇒ **折叠不可见**（font-size:0 零字号，与 .md-marker 同口径）',
+    escapeAllHidden(esc1),
+    `revealed=${esc1.revealedCount} visible=${esc1.visibleCount} spans=${spanSig(esc1)} ` +
+      `fontSize=${JSON.stringify(esc1.spans.map((s) => s.fontSize))}`
   )
   report.check(
-    '转义反斜杠 · 暗色（与正文色不同）且字面字符保持正文色',
-    esc1.bsStyle && esc1.bsStyle.color !== esc1.bodyColor && esc1.charStyle?.color === esc1.bodyColor,
-    `反斜杠=${esc1.bsStyle?.color} 字面字符=${esc1.charStyle?.color} 正文=${esc1.bodyColor}`
+    '转义反斜杠 · 折叠态零占位且仍可命中（4 个都是 rect 宽 0 / display≠none / visibility:visible）',
+    esc1.backslashes === 4 &&
+      esc1.hiddenZeroWidth &&
+      esc1.spans.every((s) => s.display !== 'none' && s.visibility === 'visible'),
+    `widths=${JSON.stringify(esc1.spans.map((s) => s.w))} ` +
+      `display=${JSON.stringify(esc1.spans.map((s) => s.display))}`
   )
   report.check(
     '转义反斜杠 · textContent 不变（`\\*\\*\\*\\*尾行`）且落盘字节不变',
     esc1.docText === '\\*\\*\\*\\*尾行' && bytes1 === '\\*\\*\\*\\*\n\n尾行\n',
     `docText=${JSON.stringify(esc1.docText)} 字节=${JSON.stringify(bytes1)}`
   )
-  // 光标移进转义所在段落：显隐行为不许改变（这两个 span 本来就无关显隐）
-  await app.ev(`(() => { const ed = window.__L.ed(); ed.commands.focus(3); return 'ok' })()`)
-  await sleep(200)
-  const esc2 = JSON.parse(await app.ev(ESCAPE_PROBE))
-  report.check(
-    '转义反斜杠 · 光标在转义段内也一样（可见 + 暗色）',
-    escapeVisibleAndDim(esc2, esc2.bodyColor) &&
-      esc2.bsStyle?.color !== esc2.bodyColor &&
-      esc2.backslashes === 4,
-    `bs=${JSON.stringify(esc2.bsStyle)} 正文色=${esc2.bodyColor}`
-  )
-  // H2：三套主题都要能读（light / dark / sepia 的 --ink-3 各不相同）
-  for (const theme of ['light', 'dark', 'sepia']) {
-    await app.ev(`(() => { window.__L.settings().set('theme', ${JSON.stringify(theme)}); return 'ok' })()`)
-    await sleep(250)
-    await openDoc('\\*\\*\\*\\*\n')
-    await app.ev(`(() => {
-      const ed = window.__L.ed()
-      const pm = document.querySelector('.ProseMirror')
-      if (pm) pm.focus()
-      ed.commands.focus('end')
-      return 'ok'
-    })()`)
+
+  // H2：光标落在该转义段内（第一处 / 最后一处 / 选中整段）⇒ 该段 **4 个反斜杠同时可见**且暗色。
+  // 绝对位置：段落内容从 1 起，`\*\*\*\*` = [1,9)；被转义的字符在 2/4/6/8。
+  // 用 caretAbs（绝对位置）而不是 caretAt（块内偏移）：上一条用例已把光标移到**第二段**，
+  // 块内偏移会以第二段为基准算到错误的段落上。
+  for (const c of [
+    { label: '落在第一处被转义字符上（`\\*|*\\*\\*`）', pos: 2 },
+    { label: '落在最后一处被转义字符上（`\\*\\*\\*|*`）', pos: 8 }
+  ]) {
+    await caretAbs(c.pos)
     await sleep(200)
     const p = JSON.parse(await app.ev(ESCAPE_PROBE))
     report.check(
-      `转义反斜杠 · 主题 ${theme}：可见 + 暗色（与正文色不同）`,
-      escapeVisibleAndDim(p, p.bodyColor) && p.bsStyle?.color !== p.charStyle?.color,
-      `theme=${p.theme} 反斜杠=${p.bsStyle?.color} 字面字符=${p.charStyle?.color} 正文=${p.bodyColor}`
+      `转义反斜杠 · 光标${c.label} ⇒ 4 个**同时**可见且暗色`,
+      escapeAllShownDim(p, 4),
+      `revealed=${p.revealedCount} visible=${p.visibleCount} spans=${spanSig(p)} ` +
+        `反斜杠色=${JSON.stringify(p.spans.map((s) => s.color))} 正文色=${p.bodyColor}`
+    )
+  }
+  // 选中整段（绝对 [1,9) ⇒ 块内 [0,8)）
+  await caretAbs(2)
+  await selectRange(0, 8)
+  await sleep(200)
+  const escSel = JSON.parse(await app.ev(ESCAPE_PROBE))
+  report.check(
+    '转义反斜杠 · 选中整个转义段 ⇒ 4 个**同时**可见且暗色',
+    escapeAllShownDim(escSel, 4),
+    `revealed=${escSel.revealedCount} visible=${escSel.visibleCount} spans=${spanSig(escSel)}`
+  )
+  report.check(
+    '转义反斜杠 · 字面字符（`.md-escape-char`）始终是正文色（不随反斜杠显隐改变）',
+    escSel.charStyle?.color === escSel.bodyColor,
+    `字面字符=${escSel.charStyle?.color} 正文=${escSel.bodyColor}`
+  )
+  // 光标移出转义段（回第二段）⇒ 重新折叠（显隐双向，不留半显）
+  await caretEnd()
+  await sleep(200)
+  const escOut = JSON.parse(await app.ev(ESCAPE_PROBE))
+  report.check(
+    '转义反斜杠 · 光标移出后重新折叠（显隐是双向的，不是一次性展开）',
+    escapeAllHidden(escOut),
+    `revealed=${escOut.revealedCount} spans=${spanSig(escOut)}`
+  )
+
+  // H3：连续段整体性（本次要求的核心）——
+  // `\*\*\*\*`（4 个转义两两相接）= **1 段**：光标在段内**任一**位置，4 个反斜杠同显；
+  // `\* \*`（中间有空格）= **2 段**：只显示光标所在的那一段。
+  await openDoc('\\*\\*\\*\\*\n')
+  let fourTogether = true
+  const fourDiag = []
+  for (const caret of [1, 3, 5, 7, 2, 4, 6]) {
+    await caretAt(caret)
+    await sleep(160)
+    const p = JSON.parse(await app.ev(ESCAPE_PROBE))
+    fourDiag.push(`${caret}:${spanSig(p)}`)
+    if (!escapeAllShownDim(p, 4)) fourTogether = false
+  }
+  report.check(
+    '转义反斜杠 · 连续段整体性：`\\*\\*\\*\\*` 光标在任一位置 ⇒ 4 个反斜杠**同时**可见',
+    fourTogether,
+    fourDiag.join(' ')
+  )
+  // 边界口径（与 `.md-marker` 逐字一致）：光标**紧贴**段的两端也算「在该构造内」⇒ 显示。
+  // 理由：`**x**` 的同一判据（from <= run.end && to >= run.start）在贴着标记两端时也展开标记；
+  // 用户在段首/段尾接着编辑时不该出现「刚打完就看不见了」。
+  let edgeTogether = true
+  const edgeDiag = []
+  for (const caret of [0, 8]) {
+    await caretAt(caret)
+    await sleep(160)
+    const p = JSON.parse(await app.ev(ESCAPE_PROBE))
+    edgeDiag.push(`${caret}:${spanSig(p)}`)
+    if (!escapeAllShownDim(p, 4)) edgeTogether = false
+  }
+  report.check(
+    '转义反斜杠 · 边界口径同 mdMarker：光标紧贴段两端（`|\\*…` / `…*|`）也显示',
+    edgeTogether,
+    edgeDiag.join(' ')
+  )
+  // 两段：`\* \*`（段 1 = 偏移 [0,2)、段 2 = [3,5)），光标在第 1 段 ⇒ 只显第 1 个
+  await openDoc('\\* \\*\n')
+  await caretAt(1)
+  await sleep(160)
+  const two1 = JSON.parse(await app.ev(ESCAPE_PROBE))
+  report.check(
+    '转义反斜杠 · 两段 `\\* \\*`：光标在第 1 段 ⇒ 只显第 1 个（段为单位，不整行连坐）',
+    two1.spans.length === 2 &&
+      spanShownDim(two1.spans[0], two1.bodyColor) &&
+      spanHidden(two1.spans[1]),
+    `spans=${spanSig(two1)} fontSize=${JSON.stringify(two1.spans.map((s) => s.fontSize))}`
+  )
+  // 光标在第 2 段 ⇒ 只显第 2 个
+  await caretAt(4)
+  await sleep(160)
+  const two2 = JSON.parse(await app.ev(ESCAPE_PROBE))
+  report.check(
+    '转义反斜杠 · 两段 `\\* \\*`：光标在第 2 段 ⇒ 只显第 2 个',
+    two2.spans.length === 2 && spanHidden(two2.spans[0]) && spanShownDim(two2.spans[1], two2.bodyColor),
+    `spans=${spanSig(two2)}`
+  )
+  // 光标落在两段之间的空格上（块内偏移 2 = 第 1 段的右边界）：按「边界均含」只显第 1 段
+  await caretAt(2)
+  await sleep(160)
+  const twoMid = JSON.parse(await app.ev(ESCAPE_PROBE))
+  report.check(
+    '转义反斜杠 · 两段之间（光标在空格上）：按 mdMarker 的「边界均含」只显第 1 段',
+    twoMid.spans.length === 2 &&
+      spanShownDim(twoMid.spans[0], twoMid.bodyColor) &&
+      spanHidden(twoMid.spans[1]),
+    `spans=${spanSig(twoMid)}`
+  )
+
+  // H4：键盘移动光标跨越转义段边界 ⇒ 显隐正确切换（用套件既有的真实按键路径 pressKey）
+  // `前\*\*\*\*后`：转义段 = 绝对 [2,10)，前后都是普通文字（`后` 在 10）。
+  await openDoc('前\\*\\*\\*\\*后\n')
+  await caretAbs(10) // 段末（最后一处被转义字符之后、`后` 之前）⇒ 显示
+  await sleep(200)
+  const kb1 = JSON.parse(await app.ev(ESCAPE_PROBE))
+  report.check('转义反斜杠 · 键盘：光标停在段末 ⇒ 4 个显示', escapeAllShownDim(kb1, 4), `spans=${spanSig(kb1)}`)
+  await pressKey(app.send, { key: 'ArrowRight', code: 'ArrowRight', vk: 39 })
+  await sleep(200)
+  const kb2 = JSON.parse(await app.ev(ESCAPE_PROBE))
+  report.check('转义反斜杠 · 键盘：→ 跨出转义段 ⇒ 4 个折叠', escapeAllHidden(kb2), `spans=${spanSig(kb2)}`)
+  await pressKey(app.send, { key: 'ArrowLeft', code: 'ArrowLeft', vk: 37 })
+  await sleep(200)
+  const kb3 = JSON.parse(await app.ev(ESCAPE_PROBE))
+  report.check(
+    '转义反斜杠 · 键盘：← 跨回段末 ⇒ 4 个重新显示',
+    escapeAllShownDim(kb3, 4),
+    `spans=${spanSig(kb3)}`
+  )
+
+  // H5：三套主题都要能读（light / dark / sepia 的 --ink-3 各不相同）：
+  // 光标在别段 ⇒ 折叠；光标落在转义段内 ⇒ 4 个同时可见且暗色（与正文色可区分）
+  for (const theme of ['light', 'dark', 'sepia']) {
+    await app.ev(`(() => { window.__L.settings().set('theme', ${JSON.stringify(theme)}); return 'ok' })()`)
+    await sleep(250)
+    await openDoc('\\*\\*\\*\\*\n\n尾行\n')
+    await caretEnd()
+    await sleep(200)
+    const off = JSON.parse(await app.ev(ESCAPE_PROBE))
+    report.check(
+      `转义反斜杠 · 主题 ${theme}：光标在别段 ⇒ 折叠（font-size:0）`,
+      escapeAllHidden(off) && off.bsStyle?.fontSize === '0px',
+      `theme=${off.theme} spans=${spanSig(off)} fontSize=${off.bsStyle?.fontSize}`
+    )
+    await caretAbs(2)
+    await sleep(200)
+    const on = JSON.parse(await app.ev(ESCAPE_PROBE))
+    report.check(
+      `转义反斜杠 · 主题 ${theme}：光标落在段内 ⇒ 4 个可见 + 暗色（与正文色不同）`,
+      escapeAllShownDim(on, 4) && on.spans.every((s) => s.color !== on.charStyle?.color),
+      `theme=${on.theme} 反斜杠=${on.bsStyle?.color} 字面字符=${on.charStyle?.color} 正文=${on.bodyColor}`
     )
   }
   await app.ev(`(() => { window.__L.settings().set('theme', ${JSON.stringify(themeBackup)}); return 'ok' })()`)
   await sleep(200)
-  // H3：实时键入的转义（`\*`）也要拆 —— 走的是同一条 mark
+  // H6：实时键入的转义（`\*`）也要拆 + 按同一判据显隐 —— 走的是同一条 mark
   await openDoc('\n')
   await caretAt(0)
   await typeChars('\\*')
@@ -793,6 +996,54 @@ async function main() {
     '转义反斜杠 · 实时键入的 `\\*` 同样拆两个 span',
     escTyped.backslashes === 1 && escTyped.chars === 1 && escTyped.bsText === '\\',
     JSON.stringify({ bs: escTyped.backslashes, ch: escTyped.chars, text: escTyped.bsText })
+  )
+  report.check(
+    '转义反斜杠 · 实时键入后光标紧贴段末 ⇒ 显示（与 mdMarker 打着字就展开一致）',
+    escapeAllShownDim(escTyped, 1),
+    `caret=2 spans=${spanSig(escTyped)}`
+  )
+  // 接着打 `b`：光标随打字移出转义段（`\*b`，段 = [1,3)）⇒ 折叠，字节仍然只有这一处 `\`
+  await typeChars('b')
+  const escTypedOut = JSON.parse(await app.ev(ESCAPE_PROBE))
+  const bytesTypedOut = await app.ev(FLUSH)
+  report.check(
+    '转义反斜杠 · 实时键入后光标移出段末（`\\*b`）⇒ 折叠，且落盘字节不变',
+    escapeAllHidden(escTypedOut) &&
+      escTypedOut.docText === '\\*b' &&
+      bytesTypedOut === '\\*b\n',
+    `docText=${JSON.stringify(escTypedOut.docText)} spans=${spanSig(escTypedOut)} ` +
+      `字节=${JSON.stringify(bytesTypedOut)}`
+  )
+
+  // H7：**非标点的 `\X` 不参与光标显隐**（Windows 路径 `C:\a\b`）——
+  // 取证（隔离实例实测）：`C:\Users\x` 在装载路径上同样是 **MdEscape 文本节点**
+  // （`patchEscapeRule` 的分支 ③ 把不可转义字符也原样保留、逐字写回），但它不是
+  // CommonMark 语义上的转义；若一起折叠，屏幕上会少字符（`C:Usersx`）。
+  // 所以装饰永远给它 `.md-reveal-inline`（= 常显暗色），判据是被转义字符属不属于
+  // 既有常量 ASCII_PUNCT（CommonMark 的可转义集合）。
+  await openDoc('Windows 路径 C:\\a\\b 结束\n')
+  await caretEnd()
+  await sleep(200)
+  const pthOff = JSON.parse(await app.ev(ESCAPE_PROBE))
+  const pthBytes = await app.ev(FLUSH)
+  report.check(
+    '转义反斜杠 · 非标点 `\\X`（路径 `C:\\a\\b`）光标在别处也**常显**（不进按光标显隐那一档）',
+    pthOff.backslashes === 2 &&
+      pthOff.spans.every((s) => spanShownDim(s, pthOff.bodyColor)),
+    `spans=${spanSig(pthOff)} fontSize=${JSON.stringify(pthOff.spans.map((s) => s.fontSize))}`
+  )
+  report.check(
+    '转义反斜杠 · 路径的 `textContent` 与落盘字节不变（`C:\\a\\b`）',
+    pthOff.docText === 'Windows 路径 C:\\a\\b 结束' && pthBytes === 'Windows 路径 C:\\a\\b 结束\n',
+    `docText=${JSON.stringify(pthOff.docText)} 字节=${JSON.stringify(pthBytes)}`
+  )
+  await caretAbs(17) // 光标落进路径中间（`C:\a\|b`）——非标点反斜杠照样常显，不因光标在段内而变
+  await sleep(200)
+  const pthOn = JSON.parse(await app.ev(ESCAPE_PROBE))
+  report.check(
+    '转义反斜杠 · 路径光标落在段内/段外都常显（显隐与光标无关）',
+    pthOn.backslashes === 2 && pthOn.spans.every((s) => spanShownDim(s, pthOn.bodyColor)),
+    `spans=${spanSig(pthOn)}`
   )
 
   // ═══ I. 真实剪贴板粘贴（任务 A 的「粘贴」路径）════════════════════════════════

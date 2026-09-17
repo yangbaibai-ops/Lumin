@@ -1,5 +1,7 @@
 'use strict'
-// 任务 B 的取证探针：转义反斜杠的拆分渲染（灰色可见）+ 三个主题下的颜色 + 字节不变。
+// 任务 B 的取证探针（第二十轮行为修订后）：转义反斜杠的拆分渲染 + **按光标显隐**
+// （与 `.md-marker` 同一套：`font-size: 0` 折叠 / `.md-reveal-inline` 显示 + 暗色）
+// + 连续转义段整体显隐 + 三个主题下的颜色 + 字节不变。
 const { connect, settle, waitEditor, sleep, openDocWith, fatal } = require('./lib/harness')
 
 const FLUSH = `(() => {
@@ -21,7 +23,7 @@ const PROBE = `JSON.stringify((() => {
     return { text: el.textContent, color: cs.color, fontSize: cs.fontSize, display: cs.display,
              visibility: cs.visibility, opacity: cs.opacity, w: Math.round(r.width * 100) / 100,
              h: Math.round(r.height * 100) / 100, parent: el.parentElement?.className ?? null,
-             html: el.outerHTML }
+             revealed: el.classList.contains('md-reveal-inline'), html: el.outerHTML }
   }
   return {
     theme: document.documentElement.className,
@@ -31,6 +33,11 @@ const PROBE = `JSON.stringify((() => {
     backslashCount: bs.length,
     charCount: ch.length,
     bs0: info(bs[0]),
+    // 逐个反斜杠的显隐（显 = revealed 且字号非 0 且有宽度）
+    bsAll: bs.map((e) => {
+      const i = info(e)
+      return (i.revealed && i.fontSize !== '0px' && i.w > 0 ? '显' : '隐') + '(' + i.fontSize + '/' + i.w + ')'
+    }),
     ch0: info(ch[0]),
     firstParaHTML: first ? first.innerHTML : null,
     // 段落内所有 span 的类（看拆分形态）
@@ -50,6 +57,7 @@ async function dump(label) {
   console.log('  段落文本     : ' + JSON.stringify(d.paras))
   console.log('  正文颜色     : ' + d.bodyColor)
   console.log('  span 数      : backslash=' + d.backslashCount + ' char=' + d.charCount)
+  console.log('  反斜杠显隐   : ' + JSON.stringify(d.bsAll))
   console.log('  bs[0]        : ' + JSON.stringify(d.bs0))
   console.log('  ch[0]        : ' + JSON.stringify(d.ch0))
   console.log('  段落 HTML    : ' + d.firstParaHTML)
@@ -69,16 +77,17 @@ async function main() {
   const before = JSON.parse(await app.ev(`JSON.stringify({ theme: window.__L.settings().theme, autoSave: window.__L.settings().autoSave })`))
 
   // 场景 1：装载「整行只有 `****`」被转义后的源码（任务 B 的目标场景），
-  // 光标放在**第二段**（远离转义）——验证「不跟光标显隐走、始终可见」
+  // 光标放在**第二段**（远离转义）——验证「按光标显隐」：此时 4 个反斜杠全部折叠
+  // （font-size:0 / rect 宽 0，但仍 display≠none —— 不是 display:none 那种隐藏）
   await openDoc('\\*\\*\\*\\*\n\n尾行\n')
   await app.ev(`(() => { const ed = window.__L.ed(); const pm = document.querySelector('.ProseMirror'); if (pm) pm.focus(); ed.commands.focus('end'); return 'ok' })()`)
   await sleep(200)
-  await dump('[B1] 装载 \\*\\*\\*\\* + 光标在末段')
+  await dump('[B1] 装载 \\*\\*\\*\\* + 光标在末段（期望：4 个反斜杠折叠）')
 
-  // 场景 2：光标移进转义所在段落（仍在第一段里）
+  // 场景 2：光标移进转义段（绝对位置 3 = 第 1 段里）——期望 4 个反斜杠**同时**显示且暗色
   await app.ev(`(() => { const ed = window.__L.ed(); ed.commands.focus(3); return 'ok' })()`)
   await sleep(200)
-  await dump('[B2] 光标在转义段内')
+  await dump('[B2] 光标在转义段内（期望：4 个反斜杠同时显示 + 暗色）')
 
   // 场景 3：逐字键入 `\*`（实时路径）
   await openDoc('\n')

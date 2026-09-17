@@ -676,11 +676,13 @@ function collectRuns(doc: EditorState['doc']): MdRun[] {
 /**
  * 选区覆盖的样式构造范围 → 装饰类（光标在构造内/边缘即展开标记）
  *
- * 同时产出**转义反斜杠**的拆分装饰（任务 B）：模型里 `\*` 是**一个**文本节点
- * （内容含反斜杠，靠 MdEscape 的 `escape:false` 逐字写回），PM 按 mark 渲染时
- * 整段只能落在一个 `<span class="md-escape">` 里 —— 想「只把反斜杠画成暗色」就必须
- * 把它的渲染拆开。renderHTML 做不到（一个 mark 的内容洞是连续的），所以在**装饰层**拆：
- * 反斜杠 [pos, pos+1) 一个 span、被转义的字面字符 [pos+1, pos+size) 另一个 span。
+ * 同时产出**转义反斜杠**的拆分 + 显隐装饰（见 escapeDecorations）：模型里 `\*` 是
+ * **一个**文本节点（内容含反斜杠，靠 MdEscape 的 `escape:false` 逐字写回），PM 按 mark
+ * 渲染时整段只能落在一个 `<span class="md-escape">` 里 —— 想「只把反斜杠画成暗色、
+ * 且按光标显隐」就必须把它的渲染拆开。renderHTML 做不到（一个 mark 的内容洞是连续的），
+ * 所以在**装饰层**拆：反斜杠 [pos, pos+1) 一个 span、被转义的字面字符 [pos+1, pos+size)
+ * 另一个 span。两者都随 selection 重建（`apply` 里 `docChanged || selectionSet` 时整份重算），
+ * 所以转义反斜杠的显隐与 mdMarker 一样是「每次选区变化即时重算」的。
  * 纯观感：`textContent`、模型、落盘字节一个都不动（`data-md-escape` 仍在 mark 的
  * renderHTML 上，解析语义不变）。
  */
@@ -698,35 +700,118 @@ function buildRevealDecorations(state: EditorState): DecorationSet {
   return DecorationSet.create(state.doc, decos)
 }
 
+/** 一个转义单元：反斜杠 [bsFrom, bsTo) + 被它转义的字面字符 [charFrom, charTo)
+    （反斜杠是文本节点最后一个字符时没有「被转义字符」，两个 char 字段为 null）。
+    revealable = 该单元是不是**真转义**（`\` + ASCII 标点，即 CommonMark 的可转义集合）：
+    只有真转义参与「按光标显隐」，其余照旧常显（理由见 escapeDecorations）。 */
+interface EscapeUnit {
+  bsFrom: number
+  bsTo: number
+  charFrom: number | null
+  charTo: number | null
+  revealable: boolean
+}
+
+/** 一个「连续转义段」：反斜杠之间只隔着各自的被转义字符（`\*\*\*\*` = 1 段 4 个） */
+interface EscapeRun {
+  start: number
+  end: number
+  units: EscapeUnit[]
+}
+
 /**
- * 转义文本的拆分装饰：`\X` → 反斜杠 span + 字面字符 span。
+ * 收集文档里所有**连续转义段**（显隐的判定单位）。
+ *
+ * 连续判据：后一个单元的反斜杠**紧跟前一个「被转义字符」的末尾**
+ * （`\*\*\*\*` 的 8 个字符两两相接 → 1 段 4 个）；中间隔着任何别的字符就断开
+ * （`\* \*` 中间有空格 → 2 段，各自独立显隐）。
+ * 这与 `.md-marker` 把「一对 `**` + 正文」当作**一个整体**同显同隐是同一个思路，
+ * 只是这里的「构造」是一段连续的转义。
+ *
+ * 一个文本节点里可能连着好几处转义（整行 `\*\*\*\*` 会被 PM 合并成一段），
+ * 所以按字符走而不是只切第一个；跨文本节点（PM 未合并的同 mark 相邻文本）也能连。
+ * 单元上的 `revealable` 判据见 EscapeUnit 的说明（复用既有的 ASCII_PUNCT）。
+ */
+function collectEscapeRuns(doc: EditorState['doc']): EscapeRun[] {
+  const units: EscapeUnit[] = []
+  doc.descendants((node, pos) => {
+    if (!node.isText || !node.text || node.text[0] !== '\\') return
+    if (!node.marks.some((m) => m.type.name === 'mdEscape')) return
+    for (let i = 0; i < node.text.length; i++) {
+      if (node.text[i] !== '\\') continue
+      const ch = i + 1 < node.text.length ? node.text[i + 1] : null
+      units.push({
+        bsFrom: pos + i,
+        bsTo: pos + i + 1,
+        charFrom: ch === null ? null : pos + i + 1,
+        charTo: ch === null ? null : pos + i + 2,
+        // 「真转义」= `\` + ASCII 标点。非标点的 `\X` 在本应用里**同样是** MdEscape 节点
+        // （见 patchEscapeRule 的分支 ③：不可转义字符也原样保留、逐字写回），但它不是
+        // CommonMark 语义上的转义 —— 折叠它会让人看不清内容，所以不进显隐那一档。
+        revealable: ch !== null && ASCII_PUNCT.includes(ch)
+      })
+      i++ // 被转义的那个字符与反斜杠同属一个单元，跳过
+    }
+  })
+
+  const runs: EscapeRun[] = []
+  for (const u of units) {
+    const cur = runs[runs.length - 1]
+    const prev = cur?.units[cur.units.length - 1]
+    if (cur && prev && prev.charTo !== null && prev.charTo === u.bsFrom) {
+      cur.units.push(u)
+      cur.end = u.charTo ?? u.bsTo
+    } else {
+      runs.push({ start: u.bsFrom, end: u.charTo ?? u.bsTo, units: [u] })
+    }
+  }
+  return runs
+}
+
+/**
+ * 转义文本的拆分 + 显隐装饰：`\X` → 反斜杠 span + 字面字符 span，
+ * 反斜杠按光标显隐（与 `.md-marker` **同一套机制、同一判据**）。
  *
  * 只在**真的以反斜杠开头**的转义文本上做（`node.text[0] === '\\'`）：同一层
  * `MdEscape` mark 还承担「冗余嵌套强调多出来那对定界符」的逐字写回
  * （`inlineMarkerCore.literalSpan`，内容形如 `**`，**没有**反斜杠）—— 那种是
  * 字面标记，不是转义，不该被画成暗色。
  *
- * 一个文本节点里可能**连着好几处**转义（`\*\*\*\*`：整行标记被逐字符转义后的形态，
- * PM 会把相邻的同 mark 文本合并成一段），所以按字符走而不是只切第一个。
+ * 显隐（本轮改动：从「暗色常显」改成「跟 `**` 一样按光标显隐」）：
+ *   * 判据与 `buildRevealDecorations` 里的 mdMarker 构造**逐字一致**——
+ *     `from <= run.end && to >= run.start`（左右边界均含）：光标/选区落在转义段内，
+ *     或紧贴段的两端（`|\*`、`\*|`，与 `|**x**` 同理），都显示；完全移入相邻普通文本才折叠；
+ *   * **整段统一判定**：连续转义段的所有 `\` 一起显/隐（`\*\*\*\*` 4 个同进同出），
+ *     与「一对 `**` 整体显隐」同理；中间隔字符的 `\* \*` 是两段，各管各的；
+ *   * **只有「真转义」（`\` + ASCII 标点）折叠**，非标点的 `\X` 一律常显（带
+ *     `.md-reveal-inline` 的「已展开」态）：`C:\Users\x`、`C:\a\b` 这类 Windows 路径
+ *     在本应用里也是 MdEscape 文本节点（那是**逐字写回**的载体，不是转义语义），
+ *     把它们折叠会让路径在屏幕上少字符（`C:Usersx`）—— 边界取证见套件 H7 与手册 §4.70 六；
+ *   * 只给反斜杠 span 加 `.md-reveal-inline`（**同一个元素**上），折叠/显示由
+ *     style.css 的 `font-size: 0` / `font-size: inherit` 承担（不用 `display:none`，
+ *     否则会破坏光标导航与命中）；`.md-escape-char` 始终正常显示。
  *
- * 与 `.md-marker` 的显隐机制**无关**：这两个 span 永远可见（Typora 习惯：
- * 转义反斜杠一直看得见，光标进出不改变它的显隐），样式见 style.css 的
- * `.md-escape-backslash`。
+ * 纯观感：`textContent`、模型、落盘字节一个都不动（`data-md-escape` 仍由
+ * `MdEscape.renderHTML` 承载，解析语义不变）。
  */
 function escapeDecorations(state: EditorState): Decoration[] {
+  const { from, to } = state.selection
   const decos: Decoration[] = []
-  state.doc.descendants((node, pos) => {
-    if (!node.isText || !node.text || node.text[0] !== '\\') return
-    if (!node.marks.some((m) => m.type.name === 'mdEscape')) return
-    for (let i = 0; i < node.text.length; i++) {
-      if (node.text[i] !== '\\') continue
-      decos.push(Decoration.inline(pos + i, pos + i + 1, { class: 'md-escape-backslash' }))
-      if (i + 1 < node.text.length) {
-        decos.push(Decoration.inline(pos + i + 1, pos + i + 2, { class: 'md-escape-char' }))
+  for (const run of collectEscapeRuns(state.doc)) {
+    const reveal = from <= run.end && to >= run.start
+    for (const u of run.units) {
+      // 真转义：在段内才显示，移出即折叠；非真转义：永远显示（同一个显隐类的「已展开」态）
+      const shown = u.revealable ? reveal : true
+      decos.push(
+        Decoration.inline(u.bsFrom, u.bsTo, {
+          class: shown ? 'md-escape-backslash md-reveal-inline' : 'md-escape-backslash'
+        })
+      )
+      if (u.charFrom !== null && u.charTo !== null) {
+        decos.push(Decoration.inline(u.charFrom, u.charTo, { class: 'md-escape-char' }))
       }
-      i++ // 被转义的那个字符已单独成 span，跳过
     }
-  })
+  }
   return decos
 }
 
