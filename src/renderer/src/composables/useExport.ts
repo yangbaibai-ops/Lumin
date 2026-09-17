@@ -20,7 +20,7 @@ export function useExport(): {
     if (!files.current) return null
     const editor = editorStore.instance
     const raw = editor ? editor.getHTML() : `<p>${files.current.content.replace(/\n/g, '<br>')}</p>`
-    const html = await renderMermaidInHtml(raw, settings.effectiveTheme)
+    const html = await renderMermaidInHtml(raw, settings.resolveTheme())
     return { html, title: files.current.name.replace(/\.(md|markdown|txt)$/i, '') }
   }
 

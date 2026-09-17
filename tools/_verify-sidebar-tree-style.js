@@ -8,11 +8,14 @@
 //  E. 空文件夹提示文字与同级子项文字左对齐（±1px）
 //  F. 展开/收起用轻量过渡（≤200ms 内完成且不带 scale）
 //  G. 三套主题下选中底色/字色都来自令牌
+//  H. 两段式：侧栏是**外壳（chrome）**不是纸 —— 底色 = --app，且纸（--paper）比它亮一档；
+//     选中药丸（accent-soft）压在 chrome 上仍然看得清（否则文件树的选中态失去依托）
 //  （另存三张侧栏截图到 %TEMP% 供人工看观感）
 const fs = require('fs')
 const os = require('os')
 const path = require('path')
 const http = require('http')
+const { contrast, over, rgbText, rat, sameColor } = require('./lib/color')
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 
 function get(p) {
@@ -80,6 +83,26 @@ const SETUP = `(() => {
   return 'ok'
 })()`
 
+/**
+ * 等启动骨架（z-[300] 的全屏占位）退场。
+ *
+ * 为什么必须先等：骨架盖在整个窗口之上，`elementFromPoint` 会命中骨架元素本身，真实指针
+ * 也点不到文件树（实测那把命中的是 `w-[264px] … space-y-2.5` 的侧栏骨架）。此前的 hover
+ * 探针就是因此拿到 null → `null.closest()` 抛 TypeError，整套 0/0 FAIL；点击选中那几条
+ * 也会静默失效（读到的永远是未选中态）。
+ */
+async function waitSkeletonGone(ev, maxMs = 20000) {
+  const end = Date.now() + maxMs
+  while (Date.now() < end) {
+    const busy = await ev(
+      `window.__S.ui().booting ? true : !!document.querySelector('.skeleton')`
+    ).catch(() => true)
+    if (!busy) return true
+    await sleep(200)
+  }
+  return false
+}
+
 /** 采样：所有树行的几何/颜色/箭头状态 + 令牌解析值 */
 const MEASURE = `(() => {
   const tok = (name) => {
@@ -122,8 +145,11 @@ const MEASURE = `(() => {
   })
   const scroll = document.querySelector('[data-tree-scroll]')
   const hint = document.querySelector('[data-tree-empty-folder]')
+  const aside = document.querySelector('aside')
   return JSON.stringify({
-    tokens: { ink: tok('--ink'), ink2: tok('--ink-2'), ink3: tok('--ink-3'), panel2: tok('--panel-2'), accent: tok('--accent'), accentSoft: tok('--accent-soft') },
+    tokens: { ink: tok('--ink'), ink2: tok('--ink-2'), ink3: tok('--ink-3'), panel2: tok('--panel-2'), accent: tok('--accent'), accentSoft: tok('--accent-soft'), paper: tok('--paper'), app: tok('--app'), panel: tok('--panel') },
+    // 外壳（chrome）实测色：侧栏自己 + body（body 的底色就是 --app）
+    chrome: { sidebar: aside ? getComputedStyle(aside).backgroundColor : null, body: getComputedStyle(document.body).backgroundColor },
     rows: rowInfo,
     hint: hint
       ? {
@@ -159,6 +185,14 @@ const MEASURE = `(() => {
       break
   }
   await w.ev(SETUP)
+  // 骨架没退场就往下走的话，后面所有「真实指针」的断言都会量到骨架而不是文件树
+  const booted = await waitSkeletonGone(w.ev)
+  console.log('BOOT ' + JSON.stringify({ skeletonGone: booted }))
+  c(
+    'boot-skeleton-gone',
+    booted,
+    '启动骨架必须在量指针类断言前退场（否则 elementFromPoint 命中骨架）'
+  )
 
   // 夹具工作区：三层目录 + 空目录 + 根下文件
   const ws = path.join(os.tmpdir(), 'lumin-tree-ws')
@@ -284,18 +318,33 @@ const MEASURE = `(() => {
     )
 
     // 悬停：真实指针（挑一个文件行）
+    // 量坐标前先把它滚进视口：`elementFromPoint` 对**视口之外**的坐标返回 null，
+    // 而 null.closest(...) 会直接抛 TypeError —— 那一版在这里整套 0/0 FAIL（行多/窗矮时必现）。
     const fileRow = rows.find((r) => r.type === 'file' && r.depth > 0)
     await w.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: fileRow.left + 60, y: 0 })
     const fileRect = JSON.parse(
       await w.ev(
-        `(() => { const el = [...document.querySelectorAll('[data-tree-row]')].find((r) => Number(r.getAttribute('data-depth')) === ${fileRow.depth} && r.getAttribute('data-tree-type') === 'file'); const b = el.getBoundingClientRect(); return JSON.stringify({ x: Math.round(b.left + b.width / 2), y: Math.round(b.top + b.height / 2) }) })()`
+        `(() => {
+          const el = [...document.querySelectorAll('[data-tree-row]')].find((r) => Number(r.getAttribute('data-depth')) === ${fileRow.depth} && r.getAttribute('data-tree-type') === 'file')
+          if (!el) return JSON.stringify({ err: 'no-row' })
+          el.scrollIntoView({ block: 'center' })
+          const b = el.getBoundingClientRect()
+          return JSON.stringify({ x: Math.round(b.left + b.width / 2), y: Math.round(b.top + b.height / 2), w: Math.round(b.width), h: Math.round(b.height) })
+        })()`
       )
     )
+    console.log('HOVER-TARGET ' + JSON.stringify(fileRect))
     await w.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: fileRect.x, y: fileRect.y })
     await sleep(300)
     const hovered = JSON.parse(
       await w.ev(
-        `(() => { const el = document.elementFromPoint(${fileRect.x}, ${fileRect.y}).closest('[data-tree-row]') || document.querySelector('[data-tree-row]:hover'); const cs = getComputedStyle(el); return JSON.stringify({ bg: cs.backgroundColor, color: cs.color }) })()`
+        `(() => {
+          const hit = document.elementFromPoint(${fileRect.x}, ${fileRect.y})
+          const el = (hit && hit.closest('[data-tree-row]')) || document.querySelector('[data-tree-row]:hover')
+          if (!el) return JSON.stringify({ err: 'no-row-at-point', hit: hit ? hit.className || hit.tagName : null })
+          const cs = getComputedStyle(el)
+          return JSON.stringify({ bg: cs.backgroundColor, color: cs.color })
+        })()`
       )
     )
     await w.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: 4, y: 4 })
@@ -340,13 +389,23 @@ const MEASURE = `(() => {
     // 选中项悬停：底色比选中态略强（同色系加深，不换成 panel-2）
     const selRect = JSON.parse(
       await w.ev(
-        `(() => { const el = [...document.querySelectorAll('[data-tree-row]')].find((r) => r.textContent.includes('guide')); const b = el.getBoundingClientRect(); return JSON.stringify({ x: Math.round(b.left + b.width / 2), y: Math.round(b.top + b.height / 2) }) })()`
+        `(() => {
+          const el = [...document.querySelectorAll('[data-tree-row]')].find((r) => r.textContent.includes('guide'))
+          if (!el) return JSON.stringify({ err: 'no-row' })
+          el.scrollIntoView({ block: 'center' })
+          const b = el.getBoundingClientRect()
+          return JSON.stringify({ x: Math.round(b.left + b.width / 2), y: Math.round(b.top + b.height / 2) })
+        })()`
       )
     )
     await w.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: selRect.x, y: selRect.y })
     await sleep(280)
     const selHoverBg = await w.ev(
-      `getComputedStyle(document.elementFromPoint(${selRect.x}, ${selRect.y}).closest('[data-tree-row]')).backgroundColor`
+      `(() => {
+        const hit = document.elementFromPoint(${selRect.x}, ${selRect.y})
+        const el = (hit && hit.closest('[data-tree-row]')) || document.querySelector('[data-tree-row]:hover')
+        return el ? getComputedStyle(el).backgroundColor : null
+      })()`
     )
     await w.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: 4, y: 4 })
     await sleep(200)
@@ -458,9 +517,11 @@ const MEASURE = `(() => {
       await window.__S.files().toggleDir(dir)
       const t0 = performance.now()
       // 注意：leaving 的子树在过渡期间仍在 DOM 里，所以不能「连续几帧不变」就收工，
-      // 必须等行数真的**掉下来**为止（否则量到的是过渡开始的那一瞬）
+      // 必须等行数真的**掉下来**为止（否则量到的是过渡开始的那一瞬）。
+      // 用 setTimeout 而不是 requestAnimationFrame：窗口被别的窗口挡住（Chromium 判定
+      // occluded）时 rAF 会被暂停，那样这个 await 会**永远不返回**，整套挂死（实测踩过）。
       while (performance.now() - t0 < 800 && count() >= before) {
-        await new Promise((r) => requestAnimationFrame(r))
+        await new Promise((r) => setTimeout(r, 16))
       }
       return JSON.stringify({ ms: Math.round(performance.now() - t0), wasExpanded, before, after: count(), nowExpanded: window.__S.files().expanded.has(dir), names: names().slice(0, 12) })
     })()`)
@@ -481,7 +542,11 @@ const MEASURE = `(() => {
       const t = JSON.parse(await w.ev(MEASURE))
       themeSeen[th] = {
         sel: t.rows.find((r) => r.bg !== 'rgba(0, 0, 0, 0)')?.bg || null,
-        accentSoft: t.tokens.accentSoft
+        accentSoft: t.tokens.accentSoft,
+        paper: t.tokens.paper,
+        app: t.tokens.app,
+        sidebar: t.chrome.sidebar,
+        body: t.chrome.body
       }
       const shot = await w.send('Page.captureScreenshot', {
         format: 'png',
@@ -498,6 +563,51 @@ const MEASURE = `(() => {
       'theme-driven-selection',
       Object.values(themeSeen).every((v) => v.sel && v.sel === v.accentSoft),
       JSON.stringify(themeSeen)
+    )
+
+    // H. 两段式：侧栏属于「外壳（chrome）」，纸是写作区的事 —— 三主题都必须成立
+    const twoTier = Object.entries(themeSeen).map(([th, v]) => ({
+      th,
+      paperVsChrome: contrast(v.paper, v.app),
+      sidebarIsChrome: sameColor(v.sidebar, v.app),
+      sidebarIsPaper: sameColor(v.sidebar, v.paper),
+      bodyIsChrome: sameColor(v.body, v.app),
+      pillOnChrome: contrast(over(v.accentSoft, v.app), v.app)
+    }))
+    console.log(
+      'TWO-TIER ' +
+        JSON.stringify(
+          twoTier.map((x) => ({
+            th: x.th,
+            paper: rgbText(themeSeen[x.th].paper),
+            chrome: rgbText(themeSeen[x.th].app),
+            sidebar: rgbText(themeSeen[x.th].sidebar),
+            paperVsChrome: rat(x.paperVsChrome),
+            pillOnChrome: rat(x.pillOnChrome)
+          }))
+        )
+    )
+    c(
+      'sidebar-is-chrome-not-paper',
+      twoTier.every((x) => x.sidebarIsChrome && x.bodyIsChrome && !x.sidebarIsPaper),
+      JSON.stringify(
+        twoTier.map((x) => ({ th: x.th, chrome: x.sidebarIsChrome, paper: x.sidebarIsPaper }))
+      )
+    )
+    c(
+      'paper-brighter-than-chrome',
+      twoTier.every((x) => x.paperVsChrome >= 1.03),
+      JSON.stringify(twoTier.map((x) => `${x.th}:${rat(x.paperVsChrome)}:1`))
+    )
+    c(
+      'selection-pill-visible-on-chrome',
+      twoTier.every((x) => x.pillOnChrome >= 1.05),
+      JSON.stringify(twoTier.map((x) => `${x.th}:${rat(x.pillOnChrome)}:1`))
+    )
+    c(
+      'three-themes-have-distinct-paper',
+      new Set(Object.values(themeSeen).map((v) => rgbText(v.paper))).size === 3,
+      JSON.stringify(Object.entries(themeSeen).map(([th, v]) => `${th}:${rgbText(v.paper)}`))
     )
     await w.ev(`(() => { window.__S.settings().set('theme', 'light'); return 'ok' })()`)
   } finally {

@@ -543,6 +543,9 @@ onBeforeUnmount(() => {
 
     <!-- 编辑器内核：渲染面板与源码面板常驻，模式切换仅改布局/显隐（零重建） -->
     <!-- view-restoring：恢复位置期间隐藏内容区，避免「旧位置先闪现→跳转」的抖动 -->
+    <!-- 写作区 = 纸（--paper）：两个 pane 各自整块铺纸，于是 wysiwyg / split / source
+         三种模式下「纸」都是同一个矩形，切换模式不会看见底色跳变；pane 之间的分屏
+         缝隙仍露出外壳灰（--app），正好充当分隔线。 -->
     <div
       ref="kernelRef"
       class="relative flex min-h-0 flex-1"
@@ -550,7 +553,11 @@ onBeforeUnmount(() => {
       @scroll.capture="onSplitScroll"
     >
       <!-- 渲染面板（Tiptap）：wysiwyg 全宽 / split 左栏 / source 隐藏但常驻 -->
-      <div class="h-full min-w-0" :style="renderPaneStyle()" @contextmenu="onRenderContextMenu">
+      <div
+        class="h-full min-w-0 bg-paper"
+        :style="renderPaneStyle()"
+        @contextmenu="onRenderContextMenu"
+      >
         <TyporaEditor
           ref="renderRef"
           :key="files.current?.path ?? 'untitled'"
@@ -572,7 +579,7 @@ onBeforeUnmount(() => {
       </div>
 
       <!-- 源码面板（textarea）：split 右栏 / source 全宽 / wysiwyg 隐藏但常驻 -->
-      <div class="h-full min-w-0 overflow-hidden" :style="sourcePaneStyle()">
+      <div class="h-full min-w-0 overflow-hidden bg-paper" :style="sourcePaneStyle()">
         <div class="h-full">
           <div class="h-full" :class="sourceCenterClass()">
             <textarea

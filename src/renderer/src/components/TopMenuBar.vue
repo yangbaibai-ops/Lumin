@@ -476,7 +476,7 @@ onBeforeUnmount(() => {
 
 <template>
   <div
-    class="topmenu-root flex h-8 shrink-0 items-center gap-0.5 border-b border-edge bg-panel/90 px-2 text-[12.5px] text-ink-2 backdrop-blur-md select-none"
+    class="topmenu-root flex h-8 shrink-0 items-center gap-0.5 border-b border-edge bg-app px-2 text-[12.5px] text-ink-2 select-none"
   >
     <template v-for="g in GROUPS" :key="g.key">
       <button

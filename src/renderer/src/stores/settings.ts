@@ -5,15 +5,22 @@ import { setLanguage } from '../i18n'
 
 export const useSettingsStore = defineStore('settings', {
   state: (): AppSettings => ({ ...defaultSettings }),
-  getters: {
-    effectiveTheme(state): EffectiveTheme {
-      if (state.theme === 'auto') {
+  actions: {
+    /**
+     * 当前生效的主题（light / dark / sepia）。
+     *
+     * **故意是方法而不是 getter**：getter 是缓存的计算值，而它的依赖只有 `state.theme`——
+     * 「跟随系统」时系统偏好变化**不改 state.theme**，于是缓存会把主题钉死在进入 auto 的那一刻。
+     * 实测症状：`useAppActions` 明明监听了 `prefers-color-scheme` 并在变化时调 `applyAll()`，
+     * 但 applyAll 取到的是旧值，CSS 主题不跟着翻（只有下一次写设置、theme 真的变了才会刷新）。
+     * 现算就没有这个坑，`applyAll()` / mermaid / 导出三处都拿得到实时值。
+     */
+    resolveTheme(): EffectiveTheme {
+      if (this.theme === 'auto') {
         return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
       }
-      return state.theme
-    }
-  },
-  actions: {
+      return this.theme
+    },
     async init(): Promise<void> {
       const remote = await window.luminAPI.settings.getAll()
       this.$patch(remote)
@@ -21,9 +28,10 @@ export const useSettingsStore = defineStore('settings', {
     },
     /** 应用主题/语言到 DOM */
     applyAll(): void {
+      const theme = this.resolveTheme()
       document.documentElement.classList.remove('theme-light', 'theme-dark', 'theme-sepia')
-      document.documentElement.classList.add(`theme-${this.effectiveTheme}`)
-      document.documentElement.classList.toggle('dark', this.effectiveTheme === 'dark')
+      document.documentElement.classList.add(`theme-${theme}`)
+      document.documentElement.classList.toggle('dark', theme === 'dark')
       document.documentElement.style.setProperty('--editor-size', `${this.fontSize}px`)
       document.documentElement.style.setProperty('--editor-lh', String(this.lineHeight))
       document.documentElement.style.setProperty('--editor-font', this.fontFamily)

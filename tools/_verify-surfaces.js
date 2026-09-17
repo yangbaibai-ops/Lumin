@@ -16,6 +16,8 @@
 //      绝不产生损坏内容；保存后磁盘字节 = 真源内容。
 //   E. 渲染结构（I8）：每种构造落到预期元素且关键计算样式成立（表驱动，见 RENDER_SPECS）。
 //   F. 分屏同世代（I9）：右栏输入后账本收敛、左栏跟上。
+//   T. 两段式表面（纸 / 外壳）与纸面上的可辨识度：三主题各量一遍，**只判关系不判绝对值**
+//      —— 见 lib/color.js 的说明（为什么不该钉死 rgb(...)）。
 //
 // 跑法（对着隔离实例；跑完恢复模式/设置）：
 //   powershell -NoProfile -ExecutionPolicy Bypass -File tools/start-isolated.ps1
@@ -25,7 +27,18 @@
 const fs = require('fs')
 const os = require('os')
 const path = require('path')
-const { connect, settle, waitEditor, sleep, clickMode, appPages, attach, Reporter, fatal } = require('./lib/harness')
+const {
+  connect,
+  settle,
+  waitEditor,
+  sleep,
+  clickMode,
+  appPages,
+  attach,
+  Reporter,
+  fatal
+} = require('./lib/harness')
+const { contrast, deltaL, over, rgbText, sameColor, rat, SURFACE_PROBE } = require('./lib/color')
 const { generateCorpus } = require('./lib/md-gen')
 const {
   contentPreserved,
@@ -351,6 +364,7 @@ async function main() {
     app,
     `JSON.stringify({
       mode: window.__L.ui().editorMode,
+      theme: window.__L.settings().theme,
       autoSave: window.__L.settings().autoSave,
       recentFiles: window.__L.settings().recentFiles
     })`
@@ -361,7 +375,13 @@ async function main() {
 
   fs.rmSync(WS, { recursive: true, force: true })
   fs.mkdirSync(WS, { recursive: true })
-  const dump = { generatedAt: new Date().toISOString(), seed: SEED, docs: [], render: [], notes: [] }
+  const dump = {
+    generatedAt: new Date().toISOString(),
+    seed: SEED,
+    docs: [],
+    render: [],
+    notes: []
+  }
 
   // ── A/B. 语料 × 切面稳定性 + 结构往返 ──────────────────────────────────────
   const corpus = generateCorpus({ seed: SEED, count: DOCS, maxBlocks: 5 })
@@ -446,7 +466,11 @@ async function main() {
       signatureA: sigEqual ? null : sigA,
       signatureB: sigEqual ? null : sigB,
       scannerDiffs,
-      tokens: { total: doc.tokens.length, missing: tracePm.missing, outOfOrder: tracePm.outOfOrder },
+      tokens: {
+        total: doc.tokens.length,
+        missing: tracePm.missing,
+        outOfOrder: tracePm.outOfOrder
+      },
       stability: {
         source: stableSource.detail,
         back: stableBack.detail,
@@ -460,9 +484,15 @@ async function main() {
     })
   }
 
-  report.note(`语料 ${corpus.length} 篇（seed=${SEED}）：exact ${tally.exact} / normalized ${tally.normalized} / lossy ${tally.lossy}`)
+  report.note(
+    `语料 ${corpus.length} 篇（seed=${SEED}）：exact ${tally.exact} / normalized ${tally.normalized} / lossy ${tally.lossy}`
+  )
   const unexplained = lossyCases.filter((c) => !c.sigEqual || !c.tokensOk)
-  report.check('I1 lossy 全部能解释：文档树同构 + 哨兵齐全（否则是内容/结构回归）', unexplained.length === 0, `无法解释=${unexplained.length}`)
+  report.check(
+    'I1 lossy 全部能解释：文档树同构 + 哨兵齐全（否则是内容/结构回归）',
+    unexplained.length === 0,
+    `无法解释=${unexplained.length}`
+  )
   if (lossyCases.length) {
     report.note(
       `判级器判 lossy 的 ${lossyCases.length} 篇 —— 全部是标记层改写（文档树同构），详见报告 JSON：` +
@@ -470,13 +500,28 @@ async function main() {
     )
   }
   report.check('I2 往返幂等：语料逐字稳定', idemCount === 0, `不幂等=${idemCount}`)
-  report.check('I3/I4/I6 切面稳定：内容逐字不变且 textarea = 真源', unstableCount === 0, `异常=${unstableCount}`)
+  report.check(
+    'I3/I4/I6 切面稳定：内容逐字不变且 textarea = 真源',
+    unstableCount === 0,
+    `异常=${unstableCount}`
+  )
   report.check('I7 渲染面完整性：哨兵词按序齐全', tokenFail === 0, `失败=${tokenFail}`)
   report.check('I5 结构往返：序列化产出重装后结构计数一致', structFail === 0, `失败=${structFail}`)
   report.check('I5′ 文档树签名：往返后文档树同构（位置也不能变）', sigFail === 0, `失败=${sigFail}`)
 
   // ── C. 位置语义（渲染 → 源码 → 渲染）──────────────────────────────────────
-  const POS_DOC = ['# 标题', '', '第一段文字，用于定位。', '', '## 小节', '', '第二段文字，目标在这里。', '', '第三段。', ''].join('\n')
+  const POS_DOC = [
+    '# 标题',
+    '',
+    '第一段文字，用于定位。',
+    '',
+    '## 小节',
+    '',
+    '第二段文字，目标在这里。',
+    '',
+    '第三段。',
+    ''
+  ].join('\n')
   await loadDoc(app, POS_DOC)
   await sleep(300)
   const placed = await readJson(
@@ -533,7 +578,9 @@ async function main() {
   // ── D. 状态语义：dirty / 撤销 / 保存 ───────────────────────────────────────
   const SAVE_FILE = path.join(WS, 'surface-save.md')
   fs.writeFileSync(SAVE_FILE, '# 保存测试\n\n原文。\n', 'utf-8')
-  await app.ev(`(async () => { await window.__L.files().openPath(${JSON.stringify(SAVE_FILE)}); return 'ok' })()`)
+  await app.ev(
+    `(async () => { await window.__L.files().openPath(${JSON.stringify(SAVE_FILE)}); return 'ok' })()`
+  )
   await sleep(700)
   const cleanDirty = await readJson(app, STORE)
   await setMode(app, 'source')
@@ -544,7 +591,11 @@ async function main() {
     cleanDirty.dirty === afterSwitchDirty.dirty,
     `${cleanDirty.dirty} → ${afterSwitchDirty.dirty}`
   )
-  report.check('D2 打开后未编辑：dirty=false', cleanDirty.dirty === false, `dirty=${cleanDirty.dirty}`)
+  report.check(
+    'D2 打开后未编辑：dirty=false',
+    cleanDirty.dirty === false,
+    `dirty=${cleanDirty.dirty}`
+  )
 
   // 编辑 → 切面 → 内容不丢 → 撤销安全
   const edited = await app.ev(`(async () => {
@@ -559,7 +610,9 @@ async function main() {
   const taEdited = await readJson(app, TEXTAREA)
   report.check(
     'D3 编辑后立刻切源码：编辑内容没丢',
-    typeof edited === 'string' && edited.includes('追加一句话。') && taEdited.value.includes('追加一句话。'),
+    typeof edited === 'string' &&
+      edited.includes('追加一句话。') &&
+      taEdited.value.includes('追加一句话。'),
     JSON.stringify(String(taEdited && taEdited.value).slice(0, 60))
   )
   // 撤销：允许「撤销成功」或「撤销无效」，但不允许出现第三种（损坏）内容
@@ -615,6 +668,154 @@ async function main() {
     report.check(`E ${spec.id}`, ok, `${spec.why} | ${JSON.stringify(m).slice(0, 120)}`)
     dump.render.push({ id: spec.id, ok, why: spec.why, measured: m })
   }
+
+  // ── T. 两段式表面：纸 / 外壳 + 纸面上的可辨识度（三主题）────────────────────
+  // 「写作区铺近白的纸、外壳留浅灰」这类改动最容易踩的坑不是颜色不美，而是**关系塌了**：
+  //   · 纸与外壳同色 → 侧栏与正文糊成一片，文件树的 accent-soft 选中态也失去依托；
+  //   · 某个面板底色与纸同色 → 在白纸上像掉了块；
+  //   · 悬停 / 选中 / 选区在新底色上看不见。
+  // 所以这一段判的全是**关系**（谁比谁亮、两者差多少、对比度够不够），绝不钉死 rgb(...)：
+  // 以后调令牌不该让这一段红，只有关系真的塌了才该红。数字由 lib/color.js 现算。
+  // 依赖 E 段已装载的 RENDER_FIXTURE（代码块 / 行内代码 / 引用 / 表格 / front matter / 分隔线）。
+  const themeRows = []
+  for (const th of ['light', 'dark', 'sepia']) {
+    await app.ev(
+      `(async () => { await window.__L.settings().setTheme(${JSON.stringify(th)}); return 'ok' })()`
+    )
+    await sleep(900)
+    const m = await readJson(app, SURFACE_PROBE)
+    const s = m.surfaces
+    themeRows.push({
+      theme: th,
+      domTheme: m.theme,
+      tokens: m.tokens,
+      body: m.body,
+      pane: m.pane,
+      sourcePane: m.sourcePane,
+      surfaces: s,
+      inkOnPaper: contrast(s.editorRoot.color, m.tokens.paper),
+      paperVsChrome: contrast(m.tokens.paper, m.tokens.app),
+      paperChromeDeltaL: deltaL(m.tokens.paper, m.tokens.app)
+    })
+    report.note(
+      `T ${th}: paper=${rgbText(m.tokens.paper)} chrome=${rgbText(m.tokens.app)} ` +
+        `pane=${rgbText(m.pane && m.pane.bg)} 正文=${rgbText(s.editorRoot.color)} ` +
+        `正文/纸=${rat(contrast(s.editorRoot.color, m.tokens.paper))}:1 ` +
+        `纸/壳=${rat(contrast(m.tokens.paper, m.tokens.app))}:1 ΔL=${rat(deltaL(m.tokens.paper, m.tokens.app))}`
+    )
+  }
+  dump.surfaces = themeRows
+  const fmt = (fn) => themeRows.map((r) => `${r.theme}: ${fn(r)}`).join(' | ')
+  /** 叠到纸上再比：带 alpha 的面（front matter / accent-soft / 选区）必须先合成 */
+  const onPaper = (c, paper) => over(c, paper)
+  const onChrome = (c, chrome) => over(c, chrome)
+
+  report.check(
+    'T1 写作区 pane（渲染面 + 源码面）铺的是 --paper',
+    themeRows.every(
+      (r) =>
+        sameColor(r.pane && r.pane.bg, r.tokens.paper) &&
+        sameColor(r.sourcePane && r.sourcePane.bg, r.tokens.paper) &&
+        r.domTheme === `theme-${r.theme}`
+    ),
+    fmt(
+      (r) =>
+        `pane=${rgbText(r.pane && r.pane.bg)} 源码面=${rgbText(r.sourcePane && r.sourcePane.bg)} ` +
+        `纸=${rgbText(r.tokens.paper)} class=${r.domTheme}`
+    )
+  )
+
+  report.check(
+    'T2 两段式：纸比外壳亮一档、body 就是外壳色、三主题的纸互不相同',
+    themeRows.every((r) => r.paperVsChrome >= 1.03 && sameColor(r.body, r.tokens.app)) &&
+      new Set(themeRows.map((r) => rgbText(r.tokens.paper))).size === themeRows.length,
+    fmt(
+      (r) =>
+        `纸/壳=${rat(r.paperVsChrome)}:1 ΔL=${rat(r.paperChromeDeltaL)} body=${rgbText(r.body)} ` +
+        `壳=${rgbText(r.tokens.app)}`
+    )
+  )
+
+  report.check(
+    'T3 正文对纸的 WCAG 对比度 ≥ 7:1',
+    themeRows.every((r) => r.inkOnPaper >= 7),
+    fmt((r) => `${rat(r.inkOnPaper)}:1`)
+  )
+
+  report.check(
+    'T4 代码块 / 行内代码底色与纸可辨（≥1.05:1）',
+    themeRows.every(
+      (r) =>
+        contrast(r.surfaces.codeBlock.bg, r.tokens.paper) >= 1.05 &&
+        contrast(r.surfaces.inlineCode.bg, r.tokens.paper) >= 1.05 &&
+        !sameColor(r.surfaces.codeBlock.bg, r.tokens.paper)
+    ),
+    fmt(
+      (r) =>
+        `代码块=${rgbText(r.surfaces.codeBlock.bg)}(${rat(contrast(r.surfaces.codeBlock.bg, r.tokens.paper))}:1) ` +
+        `行内=${rgbText(r.surfaces.inlineCode.bg)}(${rat(contrast(r.surfaces.inlineCode.bg, r.tokens.paper))}:1)`
+    )
+  )
+
+  report.check(
+    'T5 引用块在纸上可辨（≥3px 色条且对比 ≥1.25:1，或自带底色 ≥1.05:1）',
+    themeRows.every((r) => {
+      const q = r.surfaces.quote
+      const bar = q.borderLeftWidth >= 3 && contrast(q.borderLeftColor, r.tokens.paper) >= 1.25
+      const bg = contrast(onPaper(q.bg, r.tokens.paper), r.tokens.paper) >= 1.05
+      return bar || bg
+    }),
+    fmt((r) => {
+      const q = r.surfaces.quote
+      return (
+        `条=${q.borderLeftWidth}px ${rgbText(q.borderLeftColor)}(${rat(contrast(q.borderLeftColor, r.tokens.paper))}:1) ` +
+        `底色=${rgbText(q.bg)}`
+      )
+    })
+  )
+
+  report.check(
+    'T6 表头 / front matter / 分隔线在纸上可辨',
+    themeRows.every((r) => {
+      const head = r.surfaces.thead.exists ? r.surfaces.thead : r.surfaces.th
+      const headOk = !!head && head.exists && contrast(head.bg, r.tokens.paper) >= 1.08
+      const fmOk =
+        contrast(onPaper(r.surfaces.frontmatter.bg, r.tokens.paper), r.tokens.paper) >= 1.05
+      const hrOk = contrast(onPaper(r.surfaces.hr.bg, r.tokens.paper), r.tokens.paper) >= 1.1
+      return headOk && fmOk && hrOk
+    }),
+    fmt((r) => {
+      const head = r.surfaces.thead.exists ? r.surfaces.thead : r.surfaces.th
+      const which = r.surfaces.thead.exists ? 'thead' : 'th'
+      return (
+        `表头(${which})=${rgbText(head && head.bg)}(${rat(contrast(head && head.bg, r.tokens.paper))}:1) ` +
+        `frontmatter=${rgbText(r.surfaces.frontmatter.bg)}(${rat(contrast(onPaper(r.surfaces.frontmatter.bg, r.tokens.paper), r.tokens.paper))}:1) ` +
+        `hr=${rat(contrast(onPaper(r.surfaces.hr.bg, r.tokens.paper), r.tokens.paper))}:1`
+      )
+    })
+  )
+
+  report.check(
+    'T7 选中态药丸（accent-soft）与选区高亮在纸 / 外壳上都看得清',
+    themeRows.every((r) => {
+      const pillPaper = contrast(onPaper(r.tokens.accentSoft, r.tokens.paper), r.tokens.paper)
+      const pillChrome = contrast(onChrome(r.tokens.accentSoft, r.tokens.app), r.tokens.app)
+      const selPaper = contrast(onPaper(r.tokens.sel, r.tokens.paper), r.tokens.paper)
+      return pillPaper >= 1.05 && pillChrome >= 1.05 && selPaper >= 1.1
+    }),
+    fmt((r) => {
+      const pillPaper = contrast(onPaper(r.tokens.accentSoft, r.tokens.paper), r.tokens.paper)
+      const pillChrome = contrast(onChrome(r.tokens.accentSoft, r.tokens.app), r.tokens.app)
+      const selPaper = contrast(onPaper(r.tokens.sel, r.tokens.paper), r.tokens.paper)
+      return `药丸/纸=${rat(pillPaper)}:1 药丸/壳=${rat(pillChrome)}:1 选区/纸=${rat(selPaper)}:1`
+    })
+  )
+
+  // 量完三主题把主题还原（后面 F 段与收尾都按调用者原来的主题跑）
+  await app.ev(
+    `(async () => { await window.__L.settings().setTheme(${JSON.stringify(backup.theme)}); return 'ok' })()`
+  )
+  await sleep(600)
 
   // ── F. 分屏同世代（I9）─────────────────────────────────────────────────────
   await loadDoc(app, '# 分屏甲\n\n正文。\n')

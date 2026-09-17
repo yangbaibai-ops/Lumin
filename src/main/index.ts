@@ -27,6 +27,7 @@ import { parseLaunchIntent, type LaunchIntent } from './services/launchIntent'
 import { initUpdater } from './services/updater'
 import { bindWindowScope, scopeOfSlot } from './services/windowScope'
 import { defaultSettings } from '../shared/defaults'
+import { PAPER_BY_THEME } from '../shared/theme'
 
 // 本地文件协议（用于 Markdown 内相对路径图片，兼容 dev/prod 与 CSP）
 protocol.registerSchemesAsPrivileged([
@@ -92,13 +93,16 @@ function claimFreshSlot(): number {
   return slot
 }
 
-// 主题背景色（避免启动闪白）
+// 主题背景色（避免启动闪白）：必须等于渲染层写作区的纸色（style.css 的 --paper），
+// 否则窗口在页面首次绘制前会先露出一块别的颜色。镜像值见 shared/theme.ts，
+// 与 style.css 的一致性由 tests/themeTokens.test.mjs 在 `npm run ci` 里钉住。
 function themeBackground(): string {
   const theme = db.kvGet('settings', defaultSettings).theme
-  if (theme === 'dark') return '#111318'
-  if (theme === 'sepia') return '#f4ecd8'
-  if (theme === 'auto') return nativeTheme.shouldUseDarkColors ? '#111318' : '#f7f7f8'
-  return '#f7f7f8'
+  if (theme === 'dark') return PAPER_BY_THEME.dark
+  if (theme === 'sepia') return PAPER_BY_THEME.sepia
+  if (theme === 'auto')
+    return nativeTheme.shouldUseDarkColors ? PAPER_BY_THEME.dark : PAPER_BY_THEME.light
+  return PAPER_BY_THEME.light
 }
 
 /** 窗口位置/大小持久化（记住上次关闭时的位置与尺寸） */

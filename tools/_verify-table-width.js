@@ -58,6 +58,34 @@ async function main() {
   const results = []
   const c = (n, cond, extra) => results.push((cond ? 'PASS' : 'FAIL') + ' ' + n + (extra ? ' | ' + extra : ''))
 
+  // ── 0) 夹具：把「真实文档」装成一篇带表格的文档 ──────────────────────
+  // 这套件原来假设调用者当前正开着一张表（人工跑时的情形）——隔离实例里当前文档是空的，
+  // `real-table-exists` 就会红，而它跟「表格宽度」这件事毫无关系。改成自己装夹具：
+  // 套件自洽，下面那些真实文档断言（撑满版心 / 单元格可点 / 无双 margin）也才有东西可量。
+  const FIXTURE = [
+    '# 表格宽度验收',
+    '',
+    '| 甲 | 乙 | 丙 |',
+    '| --- | ---: | --- |',
+    '| a | b | c |',
+    '| d | e | f |',
+    ''
+  ].join('\n')
+  await ev(`(async () => {
+    const app = document.querySelector('#app').__vue_app__
+    const sym = Object.getOwnPropertySymbols(app._context.provides).find((s) => { const p = app._context.provides[s]; return !!p && typeof p === 'object' && p._s instanceof Map })
+    const pinia = app._context.provides[sym]
+    window.__vt = { files: () => pinia._s.get('files'), ed: () => pinia._s.get('editor')?.instance ?? null }
+    const f = window.__vt.files()
+    if (f.current) await f.close()
+    await f.openUntitled()
+    for (let i = 0; i < 200 && !window.__vt.ed(); i++) await new Promise((r) => setTimeout(r, 20))
+    f.setContent(${JSON.stringify(FIXTURE)})
+    window.__vt.ed().commands.setContent(${JSON.stringify(FIXTURE)}, { emitUpdate: false })
+    return 'ok'
+  })()`)
+  await sleep(900)
+
   // ── 1) 真实文档里的表格 ──────────────────────────────────────────────
   const real = JSON.parse(await ev(`(() => {
     const table = document.querySelector('.ProseMirror table, .md-preview table')
@@ -160,6 +188,11 @@ async function main() {
   }
 
   console.log(results.join('\n'))
+  // 汇总行 + 退出码：run-suites.js 判定以**退出码**为准，此前这里只打印结果、永远退 0，
+  // 断言红了整轮矩阵照绿（也不进 0/0 的计数）—— 与 _verify-blockquote-style.js 同款修法。
+  const failed = results.filter((r) => r.startsWith('FAIL')).length
+  console.log(`--- ${results.length - failed}/${results.length} PASS`)
   ws.close()
+  process.exit(failed ? 1 : 0)
 }
 main().catch((e) => { console.error('ERROR', e.message); process.exit(1) })

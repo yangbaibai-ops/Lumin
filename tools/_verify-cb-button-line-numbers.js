@@ -459,11 +459,16 @@ async function main() {
 
   await send('Emulation.setFocusEmulationEnabled', { enabled: false })
   console.log(results.join('\n'))
+  // 汇总行 + 退出码：run-suites.js 判定以**退出码**为准，此前这里只打印结果、永远退 0，
+  // 断言红了整轮矩阵照绿（也不进 0/0 的计数）—— 与 _verify-blockquote-style.js 同款修法。
+  const failed = results.filter((r) => r.startsWith('FAIL')).length
+  console.log(`--- ${results.length - failed}/${results.length} PASS`)
   if (tempWindow) {
     await send('Page.close').catch(() => {})
     await sleep(400)
   }
   ws.close()
+  process.exit(failed ? 1 : 0)
 }
 main().catch((e) => {
   console.error('ERROR', e.message)

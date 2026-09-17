@@ -22,8 +22,9 @@ import Icon from './Icon.vue'
         <div class="skeleton h-4 w-full" />
         <div class="skeleton h-4 w-2/3" />
       </div>
-      <!-- 主区骨架 -->
-      <div class="flex flex-1 flex-col items-center px-8 py-10">
+      <!-- 主区骨架 = 写作区：铺纸（--paper），与外壳灰一起构成启动瞬间的「灰 chrome + 白纸」
+           两段式；主进程窗口底色（themeBackground）也取同一个纸色，避免启动先闪一下别的颜色 -->
+      <div class="flex flex-1 flex-col items-center bg-paper px-8 py-10">
         <div class="w-full max-w-3xl space-y-4">
           <div class="skeleton h-9 w-1/2" />
           <div class="skeleton h-4 w-full" />

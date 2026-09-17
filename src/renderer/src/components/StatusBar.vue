@@ -94,7 +94,7 @@ const themes: { mode: ThemeMode; icon: string; labelKey: string }[] = [
 
 <template>
   <div
-    class="flex h-7 shrink-0 items-center gap-3 border-t border-edge bg-panel/80 px-3 text-[11.5px] text-ink-3 backdrop-blur-md"
+    class="flex h-7 shrink-0 items-center gap-3 border-t border-edge bg-app px-3 text-[11.5px] text-ink-3"
   >
     <!-- 左侧：文档状态 + 保存方式（点击弹出竖向选择） -->
     <template v-if="files.current">

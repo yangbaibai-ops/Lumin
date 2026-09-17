@@ -57,7 +57,7 @@ function collapseSidebar(): void {
 
 <template>
   <aside
-    class="relative z-10 flex h-full flex-none flex-col border-r border-edge bg-panel/70 backdrop-blur-md"
+    class="relative z-10 flex h-full flex-none flex-col border-r border-edge bg-app"
     :style="{
       width: width + 'px',
       transition: dragging ? 'none' : 'width .28s cubic-bezier(.4,0,.2,1)'

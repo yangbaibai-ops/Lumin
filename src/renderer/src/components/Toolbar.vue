@@ -221,7 +221,7 @@ const exportItems: { icon: string; labelKey: string; format: 'pdf' | 'html' | 'w
 
 <template>
   <div
-    class="flex h-11 shrink-0 items-center gap-0.5 overflow-x-auto border-b border-edge bg-panel/80 px-3 backdrop-blur-md"
+    class="flex h-11 shrink-0 items-center gap-0.5 overflow-x-auto border-b border-edge bg-app px-3"
     @mousedown.prevent
   >
     <!-- 侧边栏开关 -->

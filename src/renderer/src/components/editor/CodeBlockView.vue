@@ -593,7 +593,7 @@ async function renderMermaid(): Promise<void> {
     mod.default.initialize({
       startOnLoad: false,
       securityLevel: 'strict',
-      theme: settings.effectiveTheme === 'dark' ? 'dark' : 'default',
+      theme: settings.resolveTheme() === 'dark' ? 'dark' : 'default',
       fontFamily: 'ui-sans-serif, system-ui, sans-serif'
     })
     const { svg } = await mod.default.render(

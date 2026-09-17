@@ -659,8 +659,9 @@ function formatTime(ms: number): string {
 
                     <section class="surface p-5">
                       <h3 class="mb-4 text-[13px] font-semibold text-ink">预览效果</h3>
+                      <!-- 排版预览 = 一小块纸：用 --paper（不再是 --app/60），与真实写作区同色 -->
                       <div
-                        class="md-preview rounded-xl border border-edge bg-app/60 p-5"
+                        class="md-preview rounded-xl border border-edge bg-paper p-5"
                         :style="{
                           '--editor-size': settings.fontSize + 'px',
                           '--editor-lh': String(settings.lineHeight),

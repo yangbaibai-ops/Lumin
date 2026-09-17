@@ -3,11 +3,30 @@
 @custom-variant dark (&:where(.dark, .dark *));
 
 /* ─────────────────────────── 主题语义化令牌 ─────────────────────────── */
+/* 两段式表面模型（三主题共用同一条不变量，套件 `_verify-surfaces.js` 的 T 段按它断言）：
+ *
+ *   --app   = 外壳（chrome）：侧栏 / 工具栏 / 状态栏 / 顶栏 / 分屏缝隙 / 启动骨架 / body
+ *   --paper = 写作区（纸）：编辑器正文 pane、源码模式 pane、设置里的排版预览、骨架的正文区
+ *
+ *   **不变量 ①：L(paper) > L(chrome)** —— 纸永远比外壳亮一档。浅色下纸近白、外壳浅灰；
+ *   深色下纸 #12141a、外壳更暗；sepia 下纸是暖纸、外壳是暖灰。
+ *   若两者同色（或反了），侧栏与正文会糊成一片，文件树的 accent-soft 选中态也失去依托。
+ *
+ *   --panel / --elevate = 浮在纸**之上**的面板（对话框 / 菜单 / 气泡 / 输入框），
+ *   比纸再亮一档（浅色 #ffffff 已是上限）。深色下纸刻意压暗，就是为了给面板留出这档。
+ *
+ * 承载「比纸略灰」的面（改动纸色时逐个复核，套件里量的是**关系**不是绝对值）：
+ *   --code-bg（代码块 / 行内代码 / CodeMirror 编辑框）、--panel-2（表头 / 悬停底色 / kbd 芯片）、
+ *   --edge / --edge-strong（分隔线 / 引用色条 / 边框）、--sel（选区）、--accent-soft（选中药丸）。
+ * 与纸同色、只靠边框表达的面（front matter 块、气泡菜单、浮层）见各自规则处的注释。 */
 :root,
 .theme-light {
-  --app: #f5f6f8;
+  --app: #f2f3f7;
+  --paper: #fcfcfb;
   --panel: #ffffff;
-  --panel-2: #f0f1f4;
+  /* 比旧值 #f0f1f4 深一档：外壳从「近白」变成「浅灰」后，悬停底色必须跟着让位，
+     否则 panel-2 与 chrome 只差 2/255，侧栏与工具栏的悬停反馈会消失 */
+  --panel-2: #e9ebf0;
   --elevate: #ffffff;
   --edge: #e4e6ea;
   --edge-strong: #d2d5db;
@@ -34,7 +53,10 @@
 }
 
 .theme-dark {
-  --app: #0f1116;
+  /* 外壳比纸再暗一档：纸抬到 #12141a、外壳压到 #0b0d12，于是「纸比 chrome 亮」在暗色下
+     也成立（改动前是反的：外壳比正文亮）。两者都还在原来的近黑色域里，气质不变。 */
+  --app: #0b0d12;
+  --paper: #12141a;
   --panel: #16181f;
   --panel-2: #1e2129;
   --elevate: #1c1f27;
@@ -64,9 +86,12 @@
 
 .theme-sepia {
   --app: #f1e9d5;
-  --panel: #faf4e4;
-  --panel-2: #f2ead3;
-  --elevate: #faf4e4;
+  --paper: #faf4e4;
+  /* 面板抬到比暖纸更亮一档：纸取的是原来的 --panel 值，面板若还留在同色就会「只靠边框」 */
+  --panel: #fdf8ec;
+  /* 同浅色：悬停底色要压到暖灰外壳之下，否则 hover 在 chrome 上看不见 */
+  --panel-2: #e9dfc4;
+  --elevate: #fdf8ec;
   --edge: #e5d8ba;
   --edge-strong: #d6c6a0;
   --ink: #4a3b2a;
@@ -101,6 +126,7 @@
 
 @theme inline {
   --color-app: var(--app);
+  --color-paper: var(--paper);
   --color-panel: var(--panel);
   --color-panel-2: var(--panel-2);
   --color-elevate: var(--elevate);
@@ -832,7 +858,12 @@
   table-layout: auto;
   font-size: 0.95em;
 }
-.md-preview thead {
+/* 表头底色：**必须同时挂 thead 与 th**。
+   导出的 HTML 走 markdown-it，那一边有 <thead>；而编辑器里 TipTap 渲染的是 <tbody> 里的
+   <th>（没有 thead）—— 只写 thead 的话编辑器里的表头与纸同色，整个表头只剩 1px 边框，
+   在近白的纸上就像掉了块（实测：th 的计算底色是 rgba(0,0,0,0)，对比 1:1）。 */
+.md-preview thead,
+.md-preview th {
   background: var(--panel-2);
 }
 .md-preview th,
