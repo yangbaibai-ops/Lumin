@@ -1179,7 +1179,8 @@ h6.md-reveal > .md-heading-marker {
    2) 缩进走固定 16px 网格（4 + depth * 16，容器再内缩 10px 与搜索框同一条竖线）。
       层级不只靠缩进：1px 低对比度缩进参考线（画在子级容器上，正落在父级箭头中线，且抬到
       行底色之上，悬停/选中都不会把它切断）+ 文件夹图标内部浅填充（容器）/ 文件图标纯描边（内容）；
-   3) 状态三档：静止 ink-2 / 悬停 panel-2 + ink / 当前 accent-soft + accent + 左侧 2px 强调条。
+   3) 状态三档：静止 ink-2 / 悬停 panel-2 + ink / 当前 accent-soft + accent（**不做左侧色条**：
+   用户明确不要那条竖条，选中态只靠浅色底 + accent 图标 + accent-ink 文字表达）。
       选中文字走 accent-ink —— accent 落在 accent-soft 上只有 3.8:1，够不到正文可读线；
    4) 箭头 14px 图形放进 14px 槽，再用 -2px 外边距收近文件夹：原来 12px 图形悬在 16px 槽里，
       又小又离文件夹远。文件夹图标一律与文件图标同色（--ink-3），不靠颜色区分类型。
@@ -1230,8 +1231,6 @@ h6.md-reveal > .md-heading-marker {
   background-clip: padding-box;
   color: var(--accent);
   font-weight: 500;
-  /* 左侧强调条：深色主题下只靠底色明度差不够，多一个形状线索 */
-  box-shadow: inset 2px 0 0 0 var(--accent);
 }
 .tree-row.is-current > .tree-label {
   color: var(--accent-ink);
