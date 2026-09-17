@@ -191,7 +191,7 @@ function onDragStart(e: DragEvent): void {
         <Icon
           v-if="node.type === 'directory'"
           name="chevron-right"
-          :size="12"
+          :size="14"
           class="tree-chevron"
           :class="{ 'is-open': isOpen }"
           data-tree-chevron
