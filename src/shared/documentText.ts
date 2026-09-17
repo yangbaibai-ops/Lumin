@@ -11,10 +11,86 @@
  *   * 为什么必须只有**一个**：文末连续空行是纯噪声，序列化器也不该产出 `\n\n\n`；
  *   * 空文档保持空（补一个换行会让「全选删除」后的空文档变成 1 字节文件，
  *     而空白新文档保存成 0 字节更符合直觉）。
+ *
+ * 规则 2：**整行只由标记字符组成**（`*` `~` `` ` `` `_`）时，逐字符转义
+ *   （见 escapeMarkerOnlyLines）：否则重开时会被 CommonMark 当成分割线/代码围栏，
+ *   字符被静默改写。
  */
 export function withFinalNewline(text: string): string {
   if (!text) return text
   return text.replace(/\n+$/, '') + '\n'
+}
+
+/** 「整行只有标记字符」：`*` `~` `` ` `` `_`（四种都可能开启块级构造或强调语法） */
+const MARKER_ONLY_LINE = /^[*~`_]+$/
+
+/**
+ * 规则 2：**整行只由标记字符组成**时逐字符转义（`*` → `\*`、`~` → `\~`、`` ` `` → `` \` ``、
+ * `_` → `\_`）。
+ *
+ * 为什么必须转义：这些整行写法在 CommonMark 里**不是**普通文本 ——
+ *   * `****`（四个及以上 `*`）= **分割线**；
+ *   * `~~~~`（三个及以上 `~`）= **代码围栏**开头；
+ *   * `___`（三个及以上 `_`）= 分割线。
+ * 而编辑器里「空光标点工具栏加粗/删除线」得到的正文正好就是 `****` / `~~~~`
+ * （标记字符是文档里的真实文本，光标要落在两个标记之间才好接着打字）。不转义的话，
+ * 用户存盘再打开会看到：段落变成了分割线 / 内容变成空代码块 —— **字符被静默改写**，
+ * 正是「标记文本即源码」模型要消灭的那类问题。
+ *
+ * 转义之后：文件里是 `\*\*\*\*`，重开仍是**字面文本** `****`（不会变分割线），
+ * 而且跨编辑器一致（别的 Markdown 编辑器也渲染成字面星号）。代价是「文件字节」与
+ * 「屏幕上那四个字符」差了几个反斜杠 —— 按「绝不静默改变语义」优先于「原始字节逐字
+ * 相同」的口径，这个代价是划算的（产品口径见手册 §4.70）。
+ *
+ * 边界（都刻意排除，避免误伤）：
+ *   * **代码围栏与其内部内容一律不动**：反引号围栏（` ``` `）和「整行标记」长得一模一样，
+ *     围栏内的行是**代码内容**，改一个字节都不行 → 扫描时维护「是否在反引号围栏内」的状态。
+ *     开启围栏可以带 info（```js），**闭合围栏后面只能是空白**（CommonMark 同款判定：
+ *     代码块里出现「```js」这种行时不能把它当成闭合）。
+ *     只认反引号围栏：本仓库的序列化器（CodeBlock / codeFenceFor）只写反引号围栏，
+ *     波浪线整行只会出现在正文里（空段落点删除线得到的 `~~~~` 正是要转义的那种）；
+ *   * `protect`：**原样写回的节点**（HTML 块 / 公式块 / front matter，`attrs.source`）
+ *     里的行走这条通道跳过 —— 它们的内容是用户的原文，一个字节都不许动；
+ *   * 有**前导空白**的行不动（缩进代码块/列表续行的内容按字面理解）；
+ *   * 行尾空白保留（只有它前面的标记字符被转义）；
+ *   * `-`/`>`/`#`/数字序号等不在集合里：分割线的 `---` 与列表/引用标记另有规则，
+ *     且它们本来就是块级语法，不需要在这里处理（代价是「引用/列表里的空段落点加粗」
+ *     这种带前缀的整行标记不会被转义，属已知边界，见手册 §4.70）。
+ */
+export function escapeMarkerOnlyLines(text: string, protect?: Iterable<string>): string {
+  // 快速通道：整篇连一个标记字符都没有（绝大多数文档）→ 原样返回
+  if (!text || !/[*~`_]/.test(text)) return text
+  const guarded = new Set<string>()
+  if (protect) {
+    for (const line of protect) {
+      guarded.add(line)
+      guarded.add(line.trimEnd())
+    }
+  }
+  let changed = false
+  /** 当前反引号围栏的长度（0 = 不在围栏内） */
+  let fence = 0
+  const lines = text.split('\n').map((line) => {
+    // 开启围栏：三个以上反引号，后面可以带 info（```js）
+    const fenceOpen = /^\s{0,3}(`{3,})/.exec(line)
+    // 闭合围栏：三个以上反引号**后面只有空白**（CommonMark：收尾围栏不能带 info，
+    // 否则那行是内容 —— 代码块里出现「```js」这种行很常见，不能把它当成闭合）
+    const fenceClose = /^\s{0,3}(`{3,})\s*$/.exec(line)
+    if (fenceOpen) {
+      if (fence === 0) fence = fenceOpen[1].length
+      else if (fenceClose && fenceClose[1].length >= fence) fence = 0
+      return line
+    }
+    if (fence !== 0) return line
+    if (guarded.has(line)) return line
+    // 前导空白 → 跳过（缩进行不是「整行标记」）
+    if (line.length !== line.trimStart().length) return line
+    const body = line.trimEnd()
+    if (!body || !MARKER_ONLY_LINE.test(body)) return line
+    changed = true
+    return body.replace(/[*~`_]/g, (c) => '\\' + c) + line.slice(body.length)
+  })
+  return changed ? lines.join('\n') : text
 }
 
 /**

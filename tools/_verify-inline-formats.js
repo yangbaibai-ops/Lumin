@@ -243,19 +243,52 @@ async function main() {
   // ═══ A. 工具栏按钮：空光标（缺陷 1）═══════════════════════════════════════
   // 期望：`**|**`（标记字符成对留着、光标在正中间），接着打字 → `**文字**`
   const emptyCases = [
-    { kind: 'bold', marker: '**', literal: '****', caret: 2, typed: '**ab**', litStyle: 'bold' },
-    { kind: 'italic', marker: '*', literal: '**', caret: 1, typed: '*ab*', litStyle: 'bold' },
-    { kind: 'strike', marker: '~~', literal: '~~~~', caret: 2, typed: '~~ab~~', litStyle: 'strike' },
-    { kind: 'code', marker: '`', literal: '``', caret: 1, typed: '`ab`', litStyle: 'bold' }
+    {
+      kind: 'bold',
+      marker: '**',
+      literal: '****',
+      escaped: '\\*\\*\\*\\*',
+      caret: 2,
+      typed: '**ab**',
+      litStyle: 'bold'
+    },
+    {
+      kind: 'italic',
+      marker: '*',
+      literal: '**',
+      escaped: '\\*\\*',
+      caret: 1,
+      typed: '*ab*',
+      litStyle: 'bold'
+    },
+    {
+      kind: 'strike',
+      marker: '~~',
+      literal: '~~~~',
+      escaped: '\\~\\~\\~\\~',
+      caret: 2,
+      typed: '~~ab~~',
+      litStyle: 'strike'
+    },
+    {
+      kind: 'code',
+      marker: '`',
+      literal: '``',
+      escaped: '\\`\\`',
+      caret: 1,
+      typed: '`ab`',
+      litStyle: 'bold'
+    }
   ]
   for (const c of emptyCases) {
     await openDoc('\n')
     await caretAt(0)
     await clickToolbar(c.kind)
     // 空构造在 CommonMark 里不成立（`****` 之间没有内容）→ 两个标记都降级为字面量，
-    // 但**四个字符必须原样留着**、光标必须落在正中间（这才是「能接着打字」的前提）
+    // 但**四个字符必须原样留着**、光标必须落在正中间（这才是「能接着打字」的前提）。
+    // 落盘时整行标记逐字符转义（否则 `****`/`~~~~` 会被当成块级构造，见下条口径）。
     await checkState(`工具栏 空光标 ${c.kind}`, {
-      content: c.literal + '\n',
+      content: c.escaped + '\n',
       caret: c.caret,
       sig: `${JSON.stringify(c.literal)}<mdMarker(${c.litStyle}/literal)>`,
       roundTrip: false
@@ -272,19 +305,42 @@ async function main() {
     })
   }
 
-  // 已知语义冲突（**没修**，写清楚留给产品口径）：整行只有标记字符时，CommonMark 把
-  // `****` 读作分割线、`~~~~` 读作代码围栏开头 —— 保存后重开必然不再是那四个字面字符。
-  // 光标在中间时又**必须**是字面 `****`（否则用户没法接着打字），两条要求在这里直接冲突。
-  await openDoc('****\n')
-  const boldReload = await app.ev(FLUSH)
-  await openDoc('~~~~\n')
-  const strikeReload = await app.ev(FLUSH)
-  report.skip(
-    '空光标 `****` / `~~~~` 整行标记的往返',
-    `CommonMark 语义冲突：重开后分别变成 ${JSON.stringify(boldReload)} 与 ${JSON.stringify(
-      strikeReload
-    )}（详见验收报告）`
-  )
+  // 口径（已定，见 shared/documentText.escapeMarkerOnlyLines）：整行只由标记字符组成时
+  // **逐字符转义** —— 不转义的话 `****` 是 CommonMark 的分割线、`~~~~` 是代码围栏开头，
+  // 保存重开就变成 `---` / 空代码块（**字符被静默改写**，正是本次要消灭的那类问题）。
+  // 转义后重开仍是字面四个字符，且跨编辑器一致。
+  const ROW_SHAPE = `JSON.stringify((() => {
+    const ed = window.__L.ed()
+    const names = []
+    ed.state.doc.forEach((n) => names.push(n.type.name))
+    return { names, text: ed.state.doc.textContent }
+  })())`
+  for (const c of [
+    { kind: 'bold', literal: '****', escaped: '\\*\\*\\*\\*' },
+    { kind: 'strike', literal: '~~~~', escaped: '\\~\\~\\~\\~' }
+  ]) {
+    await openDoc(c.escaped + '\n')
+    const shape = JSON.parse(await app.ev(ROW_SHAPE))
+    report.check(
+      `整行标记 ${c.kind} · 重开不是分割线/代码块`,
+      shape.names.length === 1 && shape.names[0] === 'paragraph',
+      JSON.stringify(shape.names)
+    )
+    // 四个标记字符**一个不少**：它们以 mdEscape（逐字写回）活在同一段落里
+    // （模型文本带上转义用的反斜杠是这套「转义靠 mark 承载」模型的既有形态）
+    const marks = shape.text.match(/[*~`]/g) ?? []
+    report.check(
+      `整行标记 ${c.kind} · 重开后四个字符都在（字面文本，非块级构造）`,
+      marks.length === 4 && shape.text === c.escaped,
+      `实际 ${JSON.stringify(shape.text)} 期望 ${JSON.stringify(c.escaped)}`
+    )
+    const again = await app.ev(FLUSH)
+    report.check(
+      `整行标记 ${c.kind} · 再序列化字节稳定`,
+      again === c.escaped + '\n',
+      `实际 ${JSON.stringify(again)} 期望 ${JSON.stringify(c.escaped + '\n')}`
+    )
+  }
 
   // ═══ A2. 工具栏按钮：选中文本 ═════════════════════════════════════════════
   const selCases = [
@@ -321,11 +377,12 @@ async function main() {
     await hotkey(c.key)
     await checkState(`快捷键 ${c.key} 选中文本`, { content: c.out + '\n' })
   }
-  // 空光标 + Ctrl+B（缺陷 1 的快捷键版本）：与工具栏按钮同一条命令路径
+  // 空光标 + Ctrl+B（缺陷 1 的快捷键版本）：与工具栏按钮同一条命令路径。
+  // 整行标记落盘逐字符转义，所以这份文档重开也是稳定的（往返断言照做）
   await openDoc('\n')
   await caretAt(0)
   await hotkey('Mod-b')
-  await checkState('快捷键 Mod-b 空光标', { content: '****\n', caret: 2, roundTrip: false })
+  await checkState('快捷键 Mod-b 空光标', { content: '\\*\\*\\*\\*\n', caret: 2 })
 
   // ═══ C. 手打标记对（缺陷 2：新增的 `*` 一个都不能少）═══════════════════════
   // C1：`**x**` 起点前补一对 `**`
@@ -458,13 +515,13 @@ async function main() {
     content: '<u>abc</u>\n',
     sig: '"abc"<underline>'
   })
-  // 已知缺口（**没修**）：下划线是 Markdown 表达不了的 mark，它的序列化形态是**裸 HTML**
-  // `<u>`。一旦同一段里还有 `**`，重开时那段 `<u>` 会被 htmlPassthrough 认成「原样保留的
-  // 行内 HTML 文本」，于是 `**` 被重新物化 —— 实测每开一次星号就翻一倍
-  // （`**<u>a</u>**<u>bc</u>` → `**<u>****a****</u>**<u>**bc</u>` → …）。
-  // 光标保护的重推如果给这种块「开后门」（跳过重推），反而会让下划线留下来并进入上面
-  // 那条膨胀链；所以现在**保持原行为**：给带下划线的文本套标记样式时，下划线被丢掉
-  // （字节稳定、内容有损）。这是产品口径问题（下划线与标记模型的共存方式），留给决策。
+  // 已知限制（**已定口径：保持现状**）：下划线没有 Markdown 语法，它的序列化形态是**裸 HTML**
+  // `<u>`。若给它开后门（跳过源码重推以保住这个 mark），同一段里的 `**` 会在每次重开时
+  // 指数膨胀（实测 `**<u>a</u>**<u>bc</u>` → `**<u>****a****</u>**<u>**bc</u>` →
+  // 星号 4→8→12……属于**数据损坏级**）；权衡之后当前行为是：
+  // **给带下划线的文本套标记样式时保留「字节稳定」，丢弃下划线**（可解释、可文档化）。
+  // 正确修法是给下划线一个一等 mark（`<u>…</u>` + `escape:false`，与 MdHtml 同思路），
+  // 已登记为后续任务（手册 §4.70 / docs/optimization-program.md）。
   await openDoc('abc\n')
   await selectRange(0, 3)
   await clickToolbar('underline')
@@ -472,10 +529,11 @@ async function main() {
   await clickToolbar('bold')
   const ubm = await state()
   report.skip(
-    '下划线 + 加粗（Markdown 表达不了的 mark）',
-    `实测：加粗后下划线被丢掉（字节稳定、内容有损）→ 实际 ${JSON.stringify(
+    '下划线 + 加粗（下划线无 Markdown 语法，序列化为裸 <u>）',
+    `当前：字节稳定、丢掉下划线 → 实际 ${JSON.stringify(
       ubm.content
-    )}；若改成保留，则重开会进入星号翻倍链（见套件注释）`
+    )}；给它开后门会让 ` +
+      '`**` 在重开时指数膨胀（实测 4→8→12 颗星），故不采用'
   )
 
   // ═══ F. 行内公式与链接源码（相邻格式不互相干扰）══════════════════════════
