@@ -639,88 +639,77 @@ export interface MdRun {
   endMarker: [number, number] // end 标记文本区间
 }
 
-/** 收集所有「start 标记 + 样式正文 + end 标记」构造（含标记字符区间） */
-function collectRuns(doc: EditorState['doc']): MdRun[] {
-  const runs: MdRun[] = []
-  doc.descendants((node, pos) => {
-    if (!node.isTextblock) return
-    let start = -1
-    let startMarkerEnd = -1
-    let style: StyleKind | null = null
-    node.content.forEach((child, offset) => {
-      const abs = pos + 1 + offset
-      if (!child.isText) return
-      const m = child.marks.find((mk) => mk.type.name === 'mdMarker')
-      if (!m) return
-      if (m.attrs.side === 'start' && start < 0) {
-        start = abs
-        startMarkerEnd = abs + child.nodeSize
-        style = m.attrs.style as StyleKind
-      } else if (m.attrs.side === 'end' && start >= 0) {
-        runs.push({
-          start,
-          end: abs + child.nodeSize,
-          style: style ?? 'bold',
-          startMarker: [start, startMarkerEnd],
-          endMarker: [abs, abs + child.nodeSize]
-        })
-        start = -1
-        startMarkerEnd = -1
-        style = null
-      }
-    })
-  })
-  return runs
-}
-
 /**
- * 选区覆盖的样式构造范围 → 装饰类（光标在构造内/边缘即展开标记）
+ * 一个块的行内容清单（**块内相对偏移**，块内容起点 = 0）。
  *
- * 同时产出**转义反斜杠**的拆分 + 显隐装饰（见 escapeDecorations）：模型里 `\*` 是
- * **一个**文本节点（内容含反斜杠，靠 MdEscape 的 `escape:false` 逐字写回），PM 按 mark
- * 渲染时整段只能落在一个 `<span class="md-escape">` 里 —— 想「只把反斜杠画成暗色、
- * 且按光标显隐」就必须把它的渲染拆开。renderHTML 做不到（一个 mark 的内容洞是连续的），
- * 所以在**装饰层**拆：反斜杠 [pos, pos+1) 一个 span、被转义的字面字符 [pos+1, pos+size)
- * 另一个 span。两者都随 selection 重建（`apply` 里 `docChanged || selectionSet` 时整份重算），
- * 所以转义反斜杠的显隐与 mdMarker 一样是「每次选区变化即时重算」的。
- * 纯观感：`textContent`、模型、落盘字节一个都不动（`data-md-escape` 仍在 mark 的
- * renderHTML 上，解析语义不变）。
+ * 为什么按块缓存：装饰（显隐类 + 转义反斜杠的拆分 span）每次事务都要重算，
+ * 而它只跟**块的内容**有关。若每键都全文遍历整篇文档（`doc.descendants` + 逐字符扫
+ * mark），成本就随文档长度线性增长 —— 实测 100 段文档每键 41ms、400 段 541ms
+ * （打字直接卡死，见 tools/_probe-perf.js 的前后对照）。
+ *
+ * PM 的节点是**不可变 + 结构共享**的：没被这次编辑碰到的块，节点对象**同一个引用**。
+ * 所以用 `WeakMap<PMNode, 清单>` 缓存「块 → 清单」是安全且精确的 —— 内容一变就是新
+ * 节点，缓存自然失效；位置变化不影响（清单存的是块内相对偏移，绝对位置在遍历时加）。
  */
-function buildRevealDecorations(state: EditorState): DecorationSet {
-  const { from, to } = state.selection
-  const decos: Decoration[] = []
-  for (const r of collectRuns(state.doc)) {
-    // 左右边界均含：光标落在正文/标记内或紧贴构造两端（`|**s**`、`**s**|`）
-    // 都展开标记（可继续选中/编辑 `*`），完全移入相邻普通文本才折叠
-    if (from <= r.end && to >= r.start) {
-      decos.push(Decoration.inline(r.start, r.end, { class: 'md-reveal-inline' }))
+interface BlockDecos {
+  runs: MdRun[]
+  escapes: EscapeRun[]
+}
+
+/** 块内清单计算（原 collectRuns/collectEscapeRuns 的按块版本，偏移相对块内容起点） */
+function blockInventory(block: PMNode): BlockDecos {
+  const runs: MdRun[] = []
+  const units: EscapeUnit[] = []
+  block.content.forEach((child, offset) => {
+    if (!child.isText) return
+    // ① 标记构造（一对 `**` + 正文）
+    const m = child.marks.find((mk) => mk.type.name === 'mdMarker')
+    if (m) {
+      const cur = runs[runs.length - 1]
+      if (m.attrs.side === 'start') {
+        // start 已开时忽略新的 start（与旧的 collectRuns 逐字一致）
+        if (!cur || cur.end >= 0) {
+          runs.push({
+            start: offset,
+            end: -1, // 占位，配对成功时改写
+            style: m.attrs.style as StyleKind,
+            startMarker: [offset, offset + child.nodeSize],
+            endMarker: [-1, -1]
+          })
+        }
+      } else if (m.attrs.side === 'end' && cur && cur.end === -1) {
+        cur.end = offset + child.nodeSize
+        cur.endMarker = [offset, offset + child.nodeSize]
+      }
     }
-  }
-  decos.push(...escapeDecorations(state))
-  return DecorationSet.create(state.doc, decos)
-}
-
-/** 一个转义单元：反斜杠 [bsFrom, bsTo) + 被它转义的字面字符 [charFrom, charTo)
-    （反斜杠是文本节点最后一个字符时没有「被转义字符」，两个 char 字段为 null）。
-    revealable = 该单元是不是**真转义**（`\` + ASCII 标点，即 CommonMark 的可转义集合）：
-    只有真转义参与「按光标显隐」，其余照旧常显（理由见 escapeDecorations）。 */
-interface EscapeUnit {
-  bsFrom: number
-  bsTo: number
-  charFrom: number | null
-  charTo: number | null
-  revealable: boolean
-}
-
-/** 一个「连续转义段」：反斜杠之间只隔着各自的被转义字符（`\*\*\*\*` = 1 段 4 个） */
-interface EscapeRun {
-  start: number
-  end: number
-  units: EscapeUnit[]
+    // ② 转义文本单元（`\X`）：同一层 MdEscape 还承担「冗余嵌套强调多出来的那对定界符」
+    //    的逐字写回（内容形如 `**`，**没有**反斜杠）—— 那种是字面标记，不是转义。
+    if (
+      child.text &&
+      child.text[0] === '\\' &&
+      child.marks.some((mk) => mk.type.name === 'mdEscape')
+    ) {
+      for (let i = 0; i < child.text.length; i++) {
+        if (child.text[i] !== '\\') continue
+        const ch = i + 1 < child.text.length ? child.text[i + 1] : null
+        units.push({
+          bsFrom: offset + i,
+          bsTo: offset + i + 1,
+          charFrom: ch === null ? null : offset + i + 1,
+          charTo: ch === null ? null : offset + i + 2,
+          revealable: ch !== null && ASCII_PUNCT.includes(ch)
+        })
+        i++ // 被转义的那个字符与反斜杠同属一个单元，跳过
+      }
+    }
+  })
+  // 只保留真正配好对的构造（end 为 -1 的是孤立 start 标记，不参与显隐）
+  const closed = runs.filter((r) => r.end >= 0)
+  return { runs: closed, escapes: groupEscapeRuns(units) }
 }
 
 /**
- * 收集文档里所有**连续转义段**（显隐的判定单位）。
+ * 收集文档里所有**连续转义段**（显隐的判定单位）。清单从按块的 `blockInventory` 来。
  *
  * 连续判据：后一个单元的反斜杠**紧跟前一个「被转义字符」的末尾**
  * （`\*\*\*\*` 的 8 个字符两两相接 → 1 段 4 个）；中间隔着任何别的字符就断开
@@ -728,32 +717,11 @@ interface EscapeRun {
  * 这与 `.md-marker` 把「一对 `**` + 正文」当作**一个整体**同显同隐是同一个思路，
  * 只是这里的「构造」是一段连续的转义。
  *
- * 一个文本节点里可能连着好几处转义（整行 `\*\*\*\*` 会被 PM 合并成一段），
- * 所以按字符走而不是只切第一个；跨文本节点（PM 未合并的同 mark 相邻文本）也能连。
- * 单元上的 `revealable` 判据见 EscapeUnit 的说明（复用既有的 ASCII_PUNCT）。
+ * 跨块不会连：块之间的位置差至少 2（块边界 + 内容起点），而 `charTo` 最大到块内容末尾，
+ * 所以按块分组与「全文一起分组」等价（旧实现就是全文一起分组）。
+ * 同一块内**跨文本节点**仍能连（PM 未合并的同 mark 相邻文本，位置是相接的）。
  */
-function collectEscapeRuns(doc: EditorState['doc']): EscapeRun[] {
-  const units: EscapeUnit[] = []
-  doc.descendants((node, pos) => {
-    if (!node.isText || !node.text || node.text[0] !== '\\') return
-    if (!node.marks.some((m) => m.type.name === 'mdEscape')) return
-    for (let i = 0; i < node.text.length; i++) {
-      if (node.text[i] !== '\\') continue
-      const ch = i + 1 < node.text.length ? node.text[i + 1] : null
-      units.push({
-        bsFrom: pos + i,
-        bsTo: pos + i + 1,
-        charFrom: ch === null ? null : pos + i + 1,
-        charTo: ch === null ? null : pos + i + 2,
-        // 「真转义」= `\` + ASCII 标点。非标点的 `\X` 在本应用里**同样是** MdEscape 节点
-        // （见 patchEscapeRule 的分支 ③：不可转义字符也原样保留、逐字写回），但它不是
-        // CommonMark 语义上的转义 —— 折叠它会让人看不清内容，所以不进显隐那一档。
-        revealable: ch !== null && ASCII_PUNCT.includes(ch)
-      })
-      i++ // 被转义的那个字符与反斜杠同属一个单元，跳过
-    }
-  })
-
+function groupEscapeRuns(units: EscapeUnit[]): EscapeRun[] {
   const runs: EscapeRun[] = []
   for (const u of units) {
     const cur = runs[runs.length - 1]
@@ -768,17 +736,88 @@ function collectEscapeRuns(doc: EditorState['doc']): EscapeRun[] {
   return runs
 }
 
+/** 一个转义单元：反斜杠 [bsFrom, bsTo) + 被它转义的字面字符 [charFrom, charTo)
+    （反斜杠是文本节点最后一个字符时没有「被转义字符」，两个 char 字段为 null；偏移相对块内容起点）。
+    revealable = 该单元是不是**真转义**（`\` + ASCII 标点，即 CommonMark 的可转义集合）：
+    只有真转义参与「按光标显隐」，其余照旧常显（理由见 pushEscapeDecorations）。 */
+interface EscapeUnit {
+  bsFrom: number
+  bsTo: number
+  charFrom: number | null
+  charTo: number | null
+  revealable: boolean
+}
+
+/** 一个「连续转义段」：反斜杠之间只隔着各自的被转义字符（`\*\*\*\*` = 1 段 4 个）。
+    偏移同样相对块内容起点。 */
+interface EscapeRun {
+  start: number
+  end: number
+  units: EscapeUnit[]
+}
+
+/**
+ * 选区覆盖的样式构造范围 → 装饰类（光标在构造内/边缘即展开标记）
+ *
+ * 同时产出**转义反斜杠**的拆分 + 显隐装饰（见 pushEscapeDecorations）：模型里 `\*` 是
+ * **一个**文本节点（内容含反斜杠，靠 MdEscape 的 `escape:false` 逐字写回），PM 按 mark
+ * 渲染时整段只能落在一个 `<span class="md-escape">` 里 —— 想「只把反斜杠画成暗色、
+ * 且按光标显隐」就必须把它的渲染拆开。renderHTML 做不到（一个 mark 的内容洞是连续的），
+ * 所以在**装饰层**拆：反斜杠 [pos, pos+1) 一个 span、被转义的字面字符 [pos+1, pos+size)
+ * 另一个 span。两者都随 selection 重建（`apply` 里 `docChanged || selectionSet` 时整份重算），
+ * 所以转义反斜杠的显隐与 mdMarker 一样是「每次选区变化即时重算」的。
+ * 纯观感：`textContent`、模型、落盘字节一个都不动（`data-md-escape` 仍在 mark 的
+ * renderHTML 上，解析语义不变）。
+ *
+ * **性能口径（本轮）**：按块缓存的清单（`blockInventory`）让「内容没变的块」在每次事务里
+ * 只花一次 WeakMap 查表；只有被这次编辑改到的块才会重新扫 marks/标记字符。
+ * 遍历本身仍是「整篇走一遍 textblock」（PM 的可变树访问，每节点常数开销），但**逐字符扫
+ * 标记/转义的线性开销**与**分配**都只发生在变化过的块上。
+ * 不改成「只算可见视口」是**故意的**：转义拆分出来的 `.md-escape-backslash`/`.md-escape-char`
+ * 是**常显**的渲染结构（不只显隐类），而 PM 的 docView 是惰性构建、滚动不会重建已有视图
+ * —— 视口外的块若不带这套装饰，滚过去就会看到「反斜杠直接露在正文里」。宁可多算一点，
+ * 也不能让渲染结构随滚动位置变。
+ */
+function buildRevealDecorations(
+  state: EditorState,
+  cache: WeakMap<PMNode, BlockDecos>
+): DecorationSet {
+  const { from, to } = state.selection
+  const decos: Decoration[] = []
+  state.doc.descendants((node, pos) => {
+    if (!node.isTextblock) return
+    let inv = cache.get(node)
+    if (!inv) {
+      inv = blockInventory(node)
+      cache.set(node, inv)
+    }
+    // 清单是块内相对偏移（块内容起点 = pos + 1），这里加回绝对位置
+    const base = pos + 1
+    for (const r of inv.runs) {
+      const rs = base + r.start
+      const re = base + r.end
+      // 左右边界均含：光标落在正文/标记内或紧贴构造两端（`|**s**`、`**s**|`）
+      // 都展开标记（可继续选中/编辑 `*`），完全移入相邻普通文本才折叠
+      if (from <= re && to >= rs) {
+        decos.push(Decoration.inline(rs, re, { class: 'md-reveal-inline' }))
+      }
+    }
+    pushEscapeDecorations(decos, inv, base, from, to)
+  })
+  return DecorationSet.create(state.doc, decos)
+}
+
 /**
  * 转义文本的拆分 + 显隐装饰：`\X` → 反斜杠 span + 字面字符 span，
  * 反斜杠按光标显隐（与 `.md-marker` **同一套机制、同一判据**）。
  *
- * 只在**真的以反斜杠开头**的转义文本上做（`node.text[0] === '\\'`）：同一层
+ * 只在**真的以反斜杠开头**的转义文本上做（`node.text[0] === '\\'`，见 blockInventory）：同一层
  * `MdEscape` mark 还承担「冗余嵌套强调多出来那对定界符」的逐字写回
  * （`inlineMarkerCore.literalSpan`，内容形如 `**`，**没有**反斜杠）—— 那种是
  * 字面标记，不是转义，不该被画成暗色。
  *
  * 显隐（本轮改动：从「暗色常显」改成「跟 `**` 一样按光标显隐」）：
- *   * 判据与 `buildRevealDecorations` 里的 mdMarker 构造**逐字一致**——
+ *   * 判据与 mdMarker 构造**逐字一致**——
  *     `from <= run.end && to >= run.start`（左右边界均含）：光标/选区落在转义段内，
  *     或紧贴段的两端（`|\*`、`\*|`，与 `|**x**` 同理），都显示；完全移入相邻普通文本才折叠；
  *   * **整段统一判定**：连续转义段的所有 `\` 一起显/隐（`\*\*\*\*` 4 个同进同出），
@@ -794,25 +833,30 @@ function collectEscapeRuns(doc: EditorState['doc']): EscapeRun[] {
  * 纯观感：`textContent`、模型、落盘字节一个都不动（`data-md-escape` 仍由
  * `MdEscape.renderHTML` 承载，解析语义不变）。
  */
-function escapeDecorations(state: EditorState): Decoration[] {
-  const { from, to } = state.selection
-  const decos: Decoration[] = []
-  for (const run of collectEscapeRuns(state.doc)) {
-    const reveal = from <= run.end && to >= run.start
+function pushEscapeDecorations(
+  decos: Decoration[],
+  inv: BlockDecos,
+  base: number,
+  from: number,
+  to: number
+): void {
+  for (const run of inv.escapes) {
+    const reveal = from <= base + run.end && to >= base + run.start
     for (const u of run.units) {
       // 真转义：在段内才显示，移出即折叠；非真转义：永远显示（同一个显隐类的「已展开」态）
       const shown = u.revealable ? reveal : true
       decos.push(
-        Decoration.inline(u.bsFrom, u.bsTo, {
+        Decoration.inline(base + u.bsFrom, base + u.bsTo, {
           class: shown ? 'md-escape-backslash md-reveal-inline' : 'md-escape-backslash'
         })
       )
       if (u.charFrom !== null && u.charTo !== null) {
-        decos.push(Decoration.inline(u.charFrom, u.charTo, { class: 'md-escape-char' }))
+        decos.push(
+          Decoration.inline(base + u.charFrom, base + u.charTo, { class: 'md-escape-char' })
+        )
       }
     }
   }
-  return decos
 }
 
 /**
@@ -1050,11 +1094,20 @@ export const TyporaInlineMarks = Extension.create({
         return ''
       }
     }
+    // 装饰的**按块清单缓存**（见 buildRevealDecorations）：PM 节点不可变 + 结构共享，
+    // 没被编辑碰到的块还是同一个节点对象 ⇒ 清单可以一直复用，不必每键重扫全文。
+    const decoCache = new WeakMap<PMNode, BlockDecos>()
+    // 归一化的**按块状态缓存**（见 appendTransaction）：块节点对象出现一次就只处理一次。
+    // 这是把「每键成本随文档长度线性增长」压回「只跟被编辑的那个块有关」的关键 ——
+    // 实测（tools/_probe-perf.js）400 段文档从 541ms/键 降到 <1ms/键。
+    const normalizeClean = new WeakMap<PMNode, true>()
     return [
       new Plugin({
         key: inlineMarkPluginKey,
         appendTransaction: (_transactions, _oldState, newState) => {
           try {
+            // 没有文档变更 ⇒ 没有任何块需要重新派生（显隐装饰由 state.apply 负责）
+            if (!_transactions.some((t) => t.docChanged)) return null
             const tr = newState.tr
             let any = false
             let delta = 0
@@ -1078,7 +1131,16 @@ export const TyporaInlineMarks = Extension.create({
             }
             const blockStarts: number[] = []
             tr.doc.descendants((node, pos) => {
-              if (node.isTextblock && blockNeedsNormalize(node)) blockStarts.push(pos)
+              if (!node.isTextblock) return
+              // 这个块节点已经处理过（且处理完是稳定的）⇒ 直接跳过。
+              // PM 只重建被编辑路径上的节点，所以「没被碰到的块」引用不变：
+              // 一次 WeakMap 查表就够，不必再对它做逐字符的标记扫描/归一化。
+              if (normalizeClean.has(node)) return
+              if (!blockNeedsNormalize(node)) {
+                normalizeClean.set(node, true)
+                return
+              }
+              blockStarts.push(pos)
             })
             for (const blockPos of blockStarts) {
               const curPos = blockPos + delta
@@ -1087,7 +1149,11 @@ export const TyporaInlineMarks = Extension.create({
               // 常规归一化 + 源码权威重推（与加载/刷新一致的 markdown-it 语义，
               // 消除『实时与刷新不一致』）
               const frag = resolveBlockContent(tr.doc.type.schema, block, htmlParse)
-              if (!frag) continue
+              if (!frag) {
+                // 结果与现状一致 ⇒ 这个块节点从此可以跳过（它是稳定态）
+                normalizeClean.set(block, true)
+                continue
+              }
               tr.replaceWith(curPos + 1, curPos + 1 + block.content.size, frag)
               if (curPos === caretBlockStart) {
                 const newBlock = tr.doc.nodeAt(curPos)
@@ -1127,9 +1193,9 @@ export const TyporaInlineMarks = Extension.create({
           }
         },
         state: {
-          init: (_config, state) => buildRevealDecorations(state),
+          init: (_config, state) => buildRevealDecorations(state, decoCache),
           apply: (tr, oldSet, _oldState, newState) => {
-            if (tr.docChanged || tr.selectionSet) return buildRevealDecorations(newState)
+            if (tr.docChanged || tr.selectionSet) return buildRevealDecorations(newState, decoCache)
             return oldSet
           }
         },

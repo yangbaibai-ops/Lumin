@@ -15,6 +15,7 @@ import {
   blockCaretTarget,
   emphasisDepth,
   hasStrayMarker,
+  isCjkPunctCode,
   isRedundantEmphasis,
   literalSpan,
   literalizeStrayAtoms,
@@ -25,6 +26,7 @@ import {
   patchRedundantEmphasis,
   repairPollutedMarkers,
   reLiftLiteralPairs,
+  scanDelimsCjk,
   splitStrayMarkerRuns,
   styleList,
   stylesOf
@@ -446,4 +448,113 @@ test('渲染规则：保留上游已有的渲染规则（别的扩展先包过�
   assert.equal(rule(flat, 0, {}, {}, { renderToken: () => 'FALLBACK' }), 'UPSTREAM')
   const nested = toks('strong_open', 'strong_open', 'text', 'strong_close', 'strong_close')
   assert.equal(rule(nested, 1, {}, {}, { renderToken: () => 'FALLBACK' }), literalSpan('**'))
+})
+
+// ─── 5. CJK 强调定界符（flanking）口径：`**「…」**` 必须能成对 ──────────────────
+//
+// 现场（用户报障）：`……押在了**「保存路径」与「Markdown 保真」**这两件……`
+// 在**标准 CommonMark 的 flanking 判定**下开/闭都不成立（`「`/`」` 算标点，
+// 「后面跟标点、前面既不是空白也不是标点」⇒ 不算 left-flanking），
+// 于是整段渲染成字面星号、加粗区间错位（stock markdown-it 实测：<strong> 6 个、
+// 两处 `**` 以字面文本出现；本口径下 7 个 strong、没有字面 `**`）。
+//
+// 判定逻辑抽在 `scanDelimsCjk`（纯函数），这里用**假的 utils** 注入标点分类
+// （ASCII 标点表与 markdown-it 的 isMdAsciiPunct 一致；Unicode 标点只列本组用例
+// 用到的 CJK/全角字符）—— 真实 markdown-it 的端到端断言在 CDP 套件里。
+const U = {
+  isWhiteSpace: (cp) => cp === 0x20 || cp === 0x09 || cp === 0x0a || cp === 0x0d || cp === 0x3000,
+  isMdAsciiPunct: (cp) => '!"#$%&\'()*+,-./:;<=>?@[\\]^_`{|}~'.includes(String.fromCharCode(cp)),
+  isPunctCharCode: (cp) => '「」『』（）：；。、，！？—…“”'.includes(String.fromCharCode(cp))
+}
+
+test('isCjkPunctCode：CJK / 全角 / 中文引号 / 破折号算，ASCII 标点与文字不算', () => {
+  for (const ch of [
+    '「',
+    '」',
+    '（',
+    '）',
+    '：',
+    '；',
+    '。',
+    '、',
+    '，',
+    '！',
+    '？',
+    '—',
+    '…',
+    '“',
+    '”'
+  ]) {
+    assert.equal(isCjkPunctCode(ch.codePointAt(0)), true, ch)
+  }
+  for (const ch of [
+    '(',
+    ')',
+    ':',
+    '.',
+    ',',
+    '!',
+    '?',
+    '-',
+    '*',
+    '_',
+    '`',
+    'a',
+    'A',
+    '中',
+    ' ',
+    '\n'
+  ]) {
+    assert.equal(isCjkPunctCode(ch.codePointAt(0)), false, ch)
+  }
+})
+
+test('scanDelimsCjk：`**「保存路径」**` 在中文语境里能开、能闭（标准口径下两个都不成立）', () => {
+  const src = '押在了**「保存路径」与「Markdown 保真」**这两件'
+  const open = src.indexOf('**')
+  const close = src.lastIndexOf('**')
+  assert.equal(scanDelimsCjk(src, open, src.length, true, U).can_open, true, '开定界符')
+  assert.equal(scanDelimsCjk(src, open, src.length, true, U).length, 2)
+  assert.equal(scanDelimsCjk(src, close, src.length, true, U).can_close, true, '闭定界符')
+})
+
+test('scanDelimsCjk：`**（…）**` 同理（全角括号）', () => {
+  const src = '工程侧最拖后腿的是 **`npm run lint` 目前是坏的（912 errors）**、以及'
+  const open = src.indexOf('**')
+  const close = src.lastIndexOf('**')
+  assert.equal(scanDelimsCjk(src, open, src.length, true, U).can_open, true)
+  assert.equal(scanDelimsCjk(src, close, src.length, true, U).can_close, true)
+  // 闭定界符**右边**是顿号：`）**、` —— 标准口径下同样不能合
+  const tight = '**（重点）**这是重点'
+  assert.equal(scanDelimsCjk(tight, tight.lastIndexOf('**'), tight.length, true, U).can_close, true)
+})
+
+test('scanDelimsCjk：放宽**只针对 `*`** —— ASCII 标点与 `_` 仍是标准 CommonMark 语义', () => {
+  // ASCII 引号：不参与放宽（与 markdown-it 一致：`a**"b"**c` 不成强调）
+  const ascii = 'a**"b"**c'
+  assert.equal(scanDelimsCjk(ascii, 1, ascii.length, true, U).can_open, false)
+  // `_`（canSplitWord = false）：`：__加粗__` 依赖「前一个字符是标点」这条**正向使能**，
+  // 放宽标点会把它关掉（实测 emphasis.md 夹具变红）——所以 `_` 走完全上游的判定。
+  const u = '下划线形式：__加粗__ 与 _斜体_。'
+  assert.equal(scanDelimsCjk(u, u.indexOf('__'), u.length, false, U).can_open, true)
+  assert.equal(scanDelimsCjk(u, u.lastIndexOf('__'), u.length, false, U).can_close, true)
+})
+
+test('scanDelimsCjk：行首/行尾按空白、`*` 可以出现在词中（与上游同构）', () => {
+  const s = '**a**'
+  assert.deepEqual(scanDelimsCjk(s, 0, s.length, true, U), {
+    can_open: true,
+    can_close: false,
+    length: 2
+  })
+  assert.deepEqual(scanDelimsCjk(s, 3, s.length, true, U), {
+    can_open: false,
+    can_close: true,
+    length: 2
+  })
+  // 词中：`a**b**`（canSplitWord 让 `**` 不受 intraword 限制影响）
+  const mid = 'a**b**'
+  assert.equal(scanDelimsCjk(mid, 1, mid.length, true, U).can_open, true)
+  // 单星与相邻双星的长度统计
+  assert.equal(scanDelimsCjk('***x***', 0, 7, true, U).length, 3)
 })

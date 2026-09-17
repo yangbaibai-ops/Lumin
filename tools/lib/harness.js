@@ -181,6 +181,23 @@ async function connect({ port = DEFAULT_PORT, timeoutMs = 30000, bringToFront = 
   return app
 }
 
+/**
+ * 把**被测实例的窗口**重新提到前台（`Page.bringToFront`）。
+ *
+ * 为什么需要单独一个可重复调用的入口：`connect()` 只在挂载时提一次前台，而
+ * `ed.isFocused` 依赖 `document.hasFocus()` —— 只要用户**自己的** Lumin 窗口
+ * （`%APPDATA%\lumin`，套件约定绝不碰它）此刻在前台，被测实例就拿不到焦点，
+ * 真实按键会打到 body 上（套件里表现为 `NO-FOCUS`，且**只影响真实输入类断言**）。
+ * 所以「取焦点」的重试循环里每次都重新提一次前台，把这条环境干扰压掉。
+ */
+async function bringToFront(app) {
+  try {
+    await app.send('Page.bringToFront')
+  } catch {
+    /* 目标已关闭/不支持：由调用方的重试逻辑决定后续 */
+  }
+}
+
 // ─── 输入模拟（统一从这里取，别各写各的坐标算法）─────────────────────────────
 async function key(send, type, keyName, code, vk) {
   await send('Input.dispatchKeyEvent', {
@@ -370,6 +387,7 @@ module.exports = {
   waitForAppPage,
   attach,
   connect,
+  bringToFront,
   PINIA,
   INJECT,
   inject,

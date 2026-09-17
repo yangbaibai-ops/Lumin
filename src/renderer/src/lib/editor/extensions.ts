@@ -27,6 +27,8 @@ import { MathBlock, MdMath } from './mathMarkers'
 import { MathPreview } from './mathPreview'
 import { BulletListMarked, TaskListTight } from './listMarkers'
 import { MarkdownParseLimits } from './parseLimits'
+// CJK 强调定界符口径：`**「…」**` 这类中文写法必须能成对（见 cjkEmphasis.ts）
+import { CjkEmphasis } from './cjkEmphasis'
 import { TyporaPointer, LinkSource } from './pointer'
 import { TableOfContents } from './tableOfContents'
 
@@ -185,6 +187,10 @@ export const editorExtensions: Extensions = [
     transformCopiedText: true
   }),
   TyporaMarkers,
+  // CJK 强调定界符（flanking）口径：全角/中文标点不参与定界符判定。
+  // 必须与 Markdown 的 parser 同源 —— 它就是通过 parse.setup 改 markdown-it 的
+  // emphasis 分词规则，所以「加载/刷新」与「实时重推」自动一致。
+  CjkEmphasis,
   // 放宽 markdown-it 的嵌套上限（默认 100 → 1000）：默认值会让 50 层以上的列表/引用
   // **整段被丢掉**（解析器触到上限就跳过剩余行），见 parseLimits.ts
   MarkdownParseLimits,

@@ -25,8 +25,29 @@ export type StyleKind = 'bold' | 'italic' | 'strike' | 'code'
  */
 export const STYLE_ORDER: readonly StyleKind[] = ['bold', 'strike', 'italic', 'code']
 
-/** 样式集合规范化：去重 + 按 STYLE_ORDER 排序（非法值丢弃；空集合表示「无样式」） */
+/** 样式集合规范化：去重 + 按 STYLE_ORDER 排序（非法值丢弃；空集合表示「无样式」）
+ *
+ *  热路径说明：归一化里 `styleList` 被调用的次数与文本原子数成正比（`stylesOf` /
+ *  `sameStyles` / DOM 呈现都走它）。绝大多数入参**已经是规范化过的**（单个样式或
+ *  已排序的集合），所以先走一条无分配的快路径；走不通再退回 Set + filter。 */
 export function styleList(input: unknown): StyleKind[] {
+  if (Array.isArray(input)) {
+    if (input.length === 0) return []
+    if (input.length <= 4) {
+      // 已按 STYLE_ORDER 升序排列且无重复 ⇒ 直接浅拷贝，省掉 Set 与 filter
+      let prev = -1
+      let ok = true
+      for (const s of input) {
+        const idx = typeof s === 'string' ? STYLE_ORDER.indexOf(s as StyleKind) : -1
+        if (idx < 0 || idx <= prev) {
+          ok = false
+          break
+        }
+        prev = idx
+      }
+      if (ok) return input.slice() as StyleKind[]
+    }
+  }
   const raw = Array.isArray(input) ? input : typeof input === 'string' ? input.split(/[\s,]+/) : []
   const set = new Set<string>()
   for (const s of raw) if (typeof s === 'string' && s) set.add(s)
@@ -362,6 +383,129 @@ export function literalizeStrayAtoms(atoms: Atom[]): boolean {
   }
   if (changed) atoms.splice(0, atoms.length, ...out)
   return changed
+}
+
+/**
+ * ─── CJK 强调定界符（flanking）口径 ────────────────────────────────────────────
+ *
+ * 背景（用户报障的现场，2026-09-17）：这一段在编辑器里显示的 `**` 是**字面星号**，
+ * 加粗没了、而且加粗区间错位：
+ *
+ *   `**一句话**：……但它把最重的风险押在了**「保存路径」与「Markdown 保真」**这两件……`
+ *
+ * 根因**不在**本文件（不在字面量化）：把同一段原文直接喂给 markdown-it（默认 preset）
+ * 得到的 HTML 就是那个坏样子 —— CommonMark 的 flanking 判定里 `「` `」` `（` `）` `：`
+ * 这类**全角/中文标点算「标点」**，于是 `押在了**「保存路径」……` 里那个 `**`
+ * 「后面跟着标点、前面不是空白也不是标点」⇒ 不算 left-flanking ⇒ **不能开**；
+ * 与之配对的 `」**这两件` 同样不能合。结果是整段的定界符配对整体错位，
+ * 相邻的 `**` 互相当成了对方的开/闭 ⇒ 渲染成字面星号（GitHub/VS Code 同款行为）。
+ *
+ * 但中文写作里 `**「…」**`、`**（…）**` 是最常见的加粗写法，中文用户不会接受它渲染成
+ * 星号（本编辑器内部的「手打标记识别」`recognizeTypedMarkers` 也一直把它们当合法配对，
+ * 于是**同一段文字在不同上下文里渲染结果不一致** —— 单独一行是加粗，放进长段落变字面星号）。
+ *
+ * 所以这里定一条**只针对 CJK/全角标点**的口径：在参与**强调定界符**的 flanking 判定时，
+ * 这些标点**不当标点用**（其余一切标点仍然是标准 CommonMark 语义）。
+ * 这一条判定只有一份实现（下面的 `scanDelimsCjk`），由 markdown-it 的 emphasis 分词调用，
+ * 因此「实时渲染」与「刷新/重开」走的是同一条规则，不会再有实时/刷新不一致。
+ *
+ * 单调性（为什么风险可控）：对 `*`（`canSplitWord === true`）来说，标点分类**只起阻挡作用**
+ * ——把标点改判成非标点只会让更多定界符能开/能闭，**不会让原本成立的强调失效**；
+ * 31 份 md 夹具逐份 diff（stock vs 本口径）实测：30 份 HTML 完全相同、1 份（emphasis.md）的
+ * `：__加粗__` 一行会因为 `_` 而变——所以本口径**只对 `*` 生效**（见下）。
+ */
+export function isCjkPunctCode(cp: number): boolean {
+  return (
+    (cp >= 0x3000 && cp <= 0x303f) || // CJK 符号与标点：、。〈〉《》「」『』【】〔〕…
+    (cp >= 0xff01 && cp <= 0xff5e) || // 全角 ASCII 变体：！？，．：；（）［］｛｝…
+    cp === 0x2018 || // ‘
+    cp === 0x2019 || // ’
+    cp === 0x201c || // “
+    cp === 0x201d || // ”
+    cp === 0x2014 || // —
+    cp === 0x2015 || // ―
+    cp === 0x2026 || // …
+    (cp >= 0xfe30 && cp <= 0xfe4f) // CJK 兼容形式（﹑ ﹒ ︰ …）
+  )
+}
+
+/** flanking 判定要用的 markdown-it 工具（注入进来：纯逻辑文件不依赖 markdown-it 运行时） */
+export interface DelimUtils {
+  isWhiteSpace(cp: number): boolean
+  isMdAsciiPunct(cp: number): boolean
+  isPunctCharCode(cp: number): boolean
+}
+
+/**
+ * markdown-it `StateInline.prototype.scanDelims` 的等价实现，**只有一处不同**：
+ * 对 `*`（`canSplitWord = true`）把 CJK/全角标点当非标点（口径见上）。
+ *
+ * 逐字照抄上游的分支结构（含代理对合并、行首/行尾按空白处理），因为定界符判定
+ * 差一个分支就会让「边缘源码」的渲染与 markdown-it 分叉。`_` 走**完全上游**的判定：
+ * 它的 `can_open` 里 `isLastPunctChar` 是**正向使能**项（intraword 限制），
+ * 放宽标点反而会把 `：__加粗__` 关掉（实测 emphasis.md 夹具变红）。
+ */
+export function scanDelimsCjk(
+  src: string,
+  start: number,
+  posMax: number,
+  canSplitWord: boolean,
+  u: DelimUtils
+): { can_open: boolean; can_close: boolean; length: number } {
+  const marker = src.charCodeAt(start)
+
+  // 定界符串**前一个字符**（行首按空白处理；代理对合并，坏对当 U+FFFD）
+  let lastChar: number
+  if (start === 0) {
+    lastChar = 0x20
+  } else if (start === 1) {
+    lastChar = src.charCodeAt(0)
+    if ((lastChar & 0xf800) === 0xd800) lastChar = 0xfffd
+  } else {
+    lastChar = src.charCodeAt(start - 1)
+    if ((lastChar & 0xfc00) === 0xdc00) {
+      const highSurr = src.charCodeAt(start - 2)
+      lastChar =
+        (highSurr & 0xfc00) === 0xd800
+          ? 0x10000 + ((highSurr - 0xd800) << 10) + (lastChar - 0xdc00)
+          : 0xfffd
+    } else if ((lastChar & 0xfc00) === 0xd800) {
+      lastChar = 0xfffd
+    }
+  }
+
+  let pos = start
+  while (pos < posMax && src.charCodeAt(pos) === marker) pos++
+  const length = pos - start
+
+  // 定界符串**后一个字符**（行尾按空白处理；同样处理代理对）
+  let nextChar = pos < posMax ? src.charCodeAt(pos) : 0x20
+  if ((nextChar & 0xfc00) === 0xd800) {
+    const lowSurr = src.charCodeAt(pos + 1)
+    nextChar =
+      (lowSurr & 0xfc00) === 0xdc00
+        ? 0x10000 + ((nextChar - 0xd800) << 10) + (lowSurr - 0xdc00)
+        : 0xfffd
+  } else if ((nextChar & 0xfc00) === 0xdc00) {
+    nextChar = 0xfffd
+  }
+
+  const upstreamPunct = (cp: number): boolean => u.isMdAsciiPunct(cp) || u.isPunctCharCode(cp)
+  const isPunct = canSplitWord
+    ? (cp: number) => !isCjkPunctCode(cp) && upstreamPunct(cp)
+    : upstreamPunct
+  const isLastPunctChar = isPunct(lastChar)
+  const isNextPunctChar = isPunct(nextChar)
+  const isLastWhiteSpace = u.isWhiteSpace(lastChar)
+  const isNextWhiteSpace = u.isWhiteSpace(nextChar)
+
+  const left_flanking =
+    !isNextWhiteSpace && (!isNextPunctChar || isLastWhiteSpace || isLastPunctChar)
+  const right_flanking =
+    !isLastWhiteSpace && (!isLastPunctChar || isNextWhiteSpace || isNextPunctChar)
+  const can_open = left_flanking && (canSplitWord || !right_flanking || isLastPunctChar)
+  const can_close = right_flanking && (canSplitWord || !left_flanking || isNextPunctChar)
+  return { can_open, can_close, length }
 }
 
 /**

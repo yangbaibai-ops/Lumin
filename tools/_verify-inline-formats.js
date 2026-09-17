@@ -31,6 +31,7 @@ const {
   clickAt,
   openDocWith,
   pressKey,
+  bringToFront,
   Reporter,
   fatal
 } = require('./lib/harness')
@@ -110,6 +111,8 @@ async function caretAt(offset, attempts = 8) {
     return ed.isFocused ? 'ok' : 'NO-FOCUS'
   })()`
   for (let i = 0; i < attempts; i++) {
+    // 用户**自己的** Lumin 窗口可能正占着前台（套件约定不碰它）⇒ 每次重试都重新提一次
+    await bringToFront(app)
     const r = await app.ev(expr)
     if (r === 'ok') {
       await sleep(120)
@@ -130,6 +133,8 @@ async function caretEnd(attempts = 8) {
     return ed.isFocused ? 'ok' : 'NO-FOCUS'
   })()`
   for (let i = 0; i < attempts; i++) {
+    // 用户**自己的** Lumin 窗口可能正占着前台（套件约定不碰它）⇒ 每次重试都重新提一次
+    await bringToFront(app)
     const r = await app.ev(expr)
     if (r === 'ok') {
       await sleep(120)
@@ -156,6 +161,8 @@ async function caretAbs(pos, attempts = 8) {
     return ed.isFocused ? 'ok' : 'NO-FOCUS'
   })()`
   for (let i = 0; i < attempts; i++) {
+    // 用户**自己的** Lumin 窗口可能正占着前台（套件约定不碰它）⇒ 每次重试都重新提一次
+    await bringToFront(app)
     const r = await app.ev(expr)
     if (r === 'ok') {
       await sleep(120)
@@ -180,6 +187,8 @@ async function selectRange(from, to, attempts = 8) {
     return ed.isFocused ? 'ok' : 'NO-FOCUS'
   })()`
   for (let i = 0; i < attempts; i++) {
+    // 用户**自己的** Lumin 窗口可能正占着前台（套件约定不碰它）⇒ 每次重试都重新提一次
+    await bringToFront(app)
     const r = await app.ev(expr)
     if (r === 'ok') {
       await sleep(120)
@@ -566,8 +575,7 @@ async function main() {
   await clickToolbar('bold')
   await checkState('组合 嵌套里取消粗体（行内代码保留）', {
     content: 'a `b` c\n',
-    sig:
-      '"a "<> "`"<mdMarker(code/start)> "b"<mdStyle(code),mdCodeLiteral> "`"<mdMarker(code/end)> " c"<>'
+    sig: '"a "<> "`"<mdMarker(code/start)> "b"<mdStyle(code),mdCodeLiteral> "`"<mdMarker(code/end)> " c"<>'
   })
 
   // ═══ E. 非 Markdown 标记：下划线（`<u>`）══════════════════════════════════
@@ -593,9 +601,7 @@ async function main() {
   const ubm = await state()
   report.skip(
     '下划线 + 加粗（下划线无 Markdown 语法，序列化为裸 <u>）',
-    `当前：字节稳定、丢掉下划线 → 实际 ${JSON.stringify(
-      ubm.content
-    )}；给它开后门会让 ` +
+    `当前：字节稳定、丢掉下划线 → 实际 ${JSON.stringify(ubm.content)}；给它开后门会让 ` +
       '`**` 在重开时指数膨胀（实测 4→8→12 颗星），故不采用'
   )
 
@@ -611,8 +617,7 @@ async function main() {
   await openDoc('$a * b$ 与 **粗**\n')
   await checkState('公式里的 `*` 不当标记', {
     content: '$a * b$ 与 **粗**\n',
-    sig:
-      '"$a * b$"<mdMath> " 与 "<> "**"<mdMarker(bold/start)> "粗"<mdStyle(bold)> "**"<mdMarker(bold/end)>'
+    sig: '"$a * b$"<mdMath> " 与 "<> "**"<mdMarker(bold/start)> "粗"<mdStyle(bold)> "**"<mdMarker(bold/end)>'
   })
 
   // ═══ G. 样式正文里的字面标记字符（任务 A：**不许产生转义**）════════════════════
@@ -669,7 +674,10 @@ async function main() {
     return 'ok'
   })()`)
   await sleep(250)
-  await checkState('`**2****2**` · 一次性 insertContent 逐字节', { content: '**2****2**\n', roundTrip: false })
+  await checkState('`**2****2**` · 一次性 insertContent 逐字节', {
+    content: '**2****2**\n',
+    roundTrip: false
+  })
   // 装载路径（源码从磁盘进来）：`getMarkdown`（落盘出口）必须与输入逐字节一致
   await openDoc('**2****2**\n')
   await checkState('`**2****2**` · 装载源码逐字节', { content: '**2****2**\n' })
@@ -771,7 +779,12 @@ async function main() {
   }
   /** 全部反斜杠都折叠（光标不在该转义段上） */
   function escapeAllHidden(p) {
-    return p.backslashes > 0 && p.revealedCount === 0 && p.visibleCount === 0 && p.spans.every(spanHidden)
+    return (
+      p.backslashes > 0 &&
+      p.revealedCount === 0 &&
+      p.visibleCount === 0 &&
+      p.spans.every(spanHidden)
+    )
   }
   /** n 个反斜杠**同时**显示且都是暗色（连续段整体性） */
   function escapeAllShownDim(p, n) {
@@ -921,7 +934,9 @@ async function main() {
   const two2 = JSON.parse(await app.ev(ESCAPE_PROBE))
   report.check(
     '转义反斜杠 · 两段 `\\* \\*`：光标在第 2 段 ⇒ 只显第 2 个',
-    two2.spans.length === 2 && spanHidden(two2.spans[0]) && spanShownDim(two2.spans[1], two2.bodyColor),
+    two2.spans.length === 2 &&
+      spanHidden(two2.spans[0]) &&
+      spanShownDim(two2.spans[1], two2.bodyColor),
     `spans=${spanSig(two2)}`
   )
   // 光标落在两段之间的空格上（块内偏移 2 = 第 1 段的右边界）：按「边界均含」只显第 1 段
@@ -942,11 +957,19 @@ async function main() {
   await caretAbs(10) // 段末（最后一处被转义字符之后、`后` 之前）⇒ 显示
   await sleep(200)
   const kb1 = JSON.parse(await app.ev(ESCAPE_PROBE))
-  report.check('转义反斜杠 · 键盘：光标停在段末 ⇒ 4 个显示', escapeAllShownDim(kb1, 4), `spans=${spanSig(kb1)}`)
+  report.check(
+    '转义反斜杠 · 键盘：光标停在段末 ⇒ 4 个显示',
+    escapeAllShownDim(kb1, 4),
+    `spans=${spanSig(kb1)}`
+  )
   await pressKey(app.send, { key: 'ArrowRight', code: 'ArrowRight', vk: 39 })
   await sleep(200)
   const kb2 = JSON.parse(await app.ev(ESCAPE_PROBE))
-  report.check('转义反斜杠 · 键盘：→ 跨出转义段 ⇒ 4 个折叠', escapeAllHidden(kb2), `spans=${spanSig(kb2)}`)
+  report.check(
+    '转义反斜杠 · 键盘：→ 跨出转义段 ⇒ 4 个折叠',
+    escapeAllHidden(kb2),
+    `spans=${spanSig(kb2)}`
+  )
   await pressKey(app.send, { key: 'ArrowLeft', code: 'ArrowLeft', vk: 37 })
   await sleep(200)
   const kb3 = JSON.parse(await app.ev(ESCAPE_PROBE))
@@ -959,7 +982,9 @@ async function main() {
   // H5：三套主题都要能读（light / dark / sepia 的 --ink-3 各不相同）：
   // 光标在别段 ⇒ 折叠；光标落在转义段内 ⇒ 4 个同时可见且暗色（与正文色可区分）
   for (const theme of ['light', 'dark', 'sepia']) {
-    await app.ev(`(() => { window.__L.settings().set('theme', ${JSON.stringify(theme)}); return 'ok' })()`)
+    await app.ev(
+      `(() => { window.__L.settings().set('theme', ${JSON.stringify(theme)}); return 'ok' })()`
+    )
     await sleep(250)
     await openDoc('\\*\\*\\*\\*\n\n尾行\n')
     await caretEnd()
@@ -979,7 +1004,9 @@ async function main() {
       `theme=${on.theme} 反斜杠=${on.bsStyle?.color} 字面字符=${on.charStyle?.color} 正文=${on.bodyColor}`
     )
   }
-  await app.ev(`(() => { window.__L.settings().set('theme', ${JSON.stringify(themeBackup)}); return 'ok' })()`)
+  await app.ev(
+    `(() => { window.__L.settings().set('theme', ${JSON.stringify(themeBackup)}); return 'ok' })()`
+  )
   await sleep(200)
   // H6：实时键入的转义（`\*`）也要拆 + 按同一判据显隐 —— 走的是同一条 mark
   await openDoc('\n')
@@ -1008,9 +1035,7 @@ async function main() {
   const bytesTypedOut = await app.ev(FLUSH)
   report.check(
     '转义反斜杠 · 实时键入后光标移出段末（`\\*b`）⇒ 折叠，且落盘字节不变',
-    escapeAllHidden(escTypedOut) &&
-      escTypedOut.docText === '\\*b' &&
-      bytesTypedOut === '\\*b\n',
+    escapeAllHidden(escTypedOut) && escTypedOut.docText === '\\*b' && bytesTypedOut === '\\*b\n',
     `docText=${JSON.stringify(escTypedOut.docText)} spans=${spanSig(escTypedOut)} ` +
       `字节=${JSON.stringify(bytesTypedOut)}`
   )
@@ -1028,8 +1053,7 @@ async function main() {
   const pthBytes = await app.ev(FLUSH)
   report.check(
     '转义反斜杠 · 非标点 `\\X`（路径 `C:\\a\\b`）光标在别处也**常显**（不进按光标显隐那一档）',
-    pthOff.backslashes === 2 &&
-      pthOff.spans.every((s) => spanShownDim(s, pthOff.bodyColor)),
+    pthOff.backslashes === 2 && pthOff.spans.every((s) => spanShownDim(s, pthOff.bodyColor)),
     `spans=${spanSig(pthOff)} fontSize=${JSON.stringify(pthOff.spans.map((s) => s.fontSize))}`
   )
   report.check(
@@ -1046,8 +1070,7 @@ async function main() {
     `spans=${spanSig(pthOn)}`
   )
 
-  // ═══ I. 真实剪贴板粘贴（任务 A 的「粘贴」路径）════════════════════════════════
-  // 本轮新查出的**字符丢失**（上一轮遗留）：真实 Ctrl+V 粘贴 `**2****2**` 会落成
+  // ═══ I. 真实剪贴板粘贴（任务 A 的「粘贴」路径）════════════════════════════════  // 本轮新查出的**字符丢失**（上一轮遗留）：真实 Ctrl+V 粘贴 `**2****2**` 会落成
   // `**2**2**`（少两个星号）。根因不在解析，而在 **tiptap 的 mark 粘贴规则**：
   //   * 真实粘贴走 `clipboardTextParser`（markdown 解析）→ 得到「一个 legacy bold
   //     文本节点 `2****2`」；
@@ -1104,6 +1127,248 @@ async function main() {
       /* 复原失败不影响结论 */
     }
   }
+
+  // ═══ J. 用户报障夹具：CJK 标点旁的 `**…**` 必须成对（本轮，永久断言）═══════════
+  // 原话现场：`……押在了**「保存路径」与「Markdown 保真」**这两件……` 整段渲染成**字面星号**
+  // （加粗没了、加粗区间整体错位）。根因**不在**本仓库的「字面量化」，而在
+  // **markdown-it 的 flanking 判定**：`「`/`」`/`：` 这类全角标点算「标点」，
+  // 于是「后面跟标点、前面既不是空白也不是标点」的 `**` 不算 left-flanking ⇒ 不能开，
+  // 与之配对的 `」**` 也不能合（stock markdown-it 默认 preset 实测就是这个结果）。
+  // 修法：在 markdown-it 那一层定 CJK 口径（`cjkEmphasis.ts` + `inlineMarkerCore.scanDelimsCjk`），
+  // 让「加载/刷新」与「实时重推」共用同一条规则。
+  //
+  // 断言口径（每条都查三件事，缺一就会漏掉真实缺陷）：
+  //   · strong 的**个数与每个的 textContent**（与 markdown-it 解析同一段的结果一致）；
+  //   · `getMarkdown()`（落盘字节）与输入**逐字节一致**；
+  //   · **不许出现字面量化的标记**（`.md-marker[data-side="literal"]` = 0）与
+  //     被字面量化的 `**`（`.md-escape` 里包着 `**` 的 = 0）。
+  const FIXTURE =
+    '**一句话**：这是一个**工程素养明显高于平均水平**的桌面应用 —— 安全基线正确、踩坑记录齐全、验收文化扎实、冷启动实测不到 1 秒；' +
+    '但它把最重的风险押在了**「保存路径」与「Markdown 保真」**这两件写作工具的信：' +
+    '**写盘不是原子操作、没有本地历史、没有任何往返保真验收**。' +
+    '工程侧最拖后腿的是 **`npm run lint` 目前是坏的（912 errors）**、**没有 CI / 没有单元测试**、以及**验收脚本没有统一入口**。'
+  // 8 个 `<strong>` 元素 = 7 个逻辑加粗（`` `npm run lint` `` 那段是「粗+码」的样式集合，
+  // 按本模型「一个样式集合只出一个元素」的既有呈现拆成 2 个：代码 wbr 段 + 其余正文）
+  const FIXTURE_STRONGS = [
+    '一句话',
+    '工程素养明显高于平均水平',
+    '「保存路径」与「Markdown 保真」',
+    '写盘不是原子操作、没有本地历史、没有任何往返保真验收',
+    'npm run lint',
+    ' 目前是坏的（912 errors）',
+    '没有 CI / 没有单元测试',
+    '验收脚本没有统一入口'
+  ]
+  /** 夹具体检：实时渲染结构 + 落盘字节 + 对照基准（markdown-it 自己解析同一段） */
+  const FIXTURE_PROBE = `JSON.stringify((() => {
+    const ed = window.__L.ed()
+    const pm = document.querySelector('.ProseMirror')
+    const html = ed.storage.markdown.parser.parse(${JSON.stringify(FIXTURE)})
+    const textOnly = html.replace(/<[^>]*>/g, '')
+    const strongs = pm ? [...pm.querySelectorAll('strong')] : []
+    return {
+      strongs: strongs.map((s) => s.textContent),
+      literalMarkers: pm ? pm.querySelectorAll('.md-marker[data-side="literal"]').length : -1,
+      escapedStars: pm
+        ? [...pm.querySelectorAll('.md-escape[data-md-escape]')].filter((e) => (e.textContent || '').includes('**')).length
+        : -1,
+      docText: ed.state.doc.textContent,
+      baselineStrongs: (html.match(/<strong>/g) || []).length,
+      baselineLiteralStars: (textOnly.match(/\\*\\*/g) || []).length
+    }
+  })())`
+  /** 一条路径的夹具断言（三条写入路径都过同一套） */
+  async function checkFixture(label) {
+    const p = JSON.parse(await app.ev(FIXTURE_PROBE))
+    const bytes = await app.ev(FLUSH)
+    report.check(
+      `夹具 ${label} · strong 个数与每个内容`,
+      JSON.stringify(p.strongs) === JSON.stringify(FIXTURE_STRONGS),
+      `实际 ${JSON.stringify(p.strongs)}`
+    )
+    report.check(
+      `夹具 ${label} · 没有字面量化的标记/` + '`**`',
+      p.literalMarkers === 0 && p.escapedStars === 0,
+      `literal=${p.literalMarkers} mdEscape(**)=${p.escapedStars}`
+    )
+    report.check(
+      `夹具 ${label} · docText 与输入逐字节一致`,
+      p.docText === FIXTURE,
+      `实际 ${JSON.stringify(p.docText).slice(0, 120)}…`
+    )
+    report.check(
+      `夹具 ${label} · getMarkdown 与输入逐字节一致`,
+      bytes === FIXTURE + '\n',
+      `实际 ${JSON.stringify(bytes).slice(0, 120)}…`
+    )
+    report.check(
+      `夹具 ${label} · 对照基准（markdown-it 解析同一段：7 个 strong、0 处字面 ` + '`**`' + `）`,
+      p.baselineStrongs === 7 && p.baselineLiteralStars === 0,
+      `baseline strong=${p.baselineStrongs} 字面星号=${p.baselineLiteralStars}`
+    )
+  }
+
+  // 三条写入路径：① 一次性装载（markdown-it）② 逐字键入 ③ 真实 Ctrl+V 粘贴
+  await openDoc(FIXTURE + '\n')
+  await checkFixture('① 装载')
+  await openDoc('\n')
+  await caretAt(0)
+  await typeChars(FIXTURE)
+  await checkFixture('② 逐字键入')
+  if (clipboardSaved !== undefined && clipboardSaved !== null) {
+    await openDoc('\n')
+    await caretAt(0)
+    writeClipboard(FIXTURE)
+    await sleep(250)
+    await pressKey(app.send, { key: 'v', code: 'KeyV', vk: 86, modifiers: 2 })
+    await sleep(500)
+    await checkFixture('③ 真实 Ctrl+V')
+    try {
+      writeClipboard(clipboardSaved)
+    } catch {
+      /* 复原失败不影响结论 */
+    }
+  } else {
+    report.skip('夹具 ③ 真实 Ctrl+V', 'Set-Clipboard 不可用（非 Windows 或权限受限）')
+  }
+
+  // 最小复现：`押在了**「…」**这两件` —— **单独一行**与**放在长段落里**必须得到同一个结论
+  // （修之前两者不一致：单独一行被正则当成合法配对 → 加粗；放进整段则被 markdown-it 判成
+  //  字面星号 → 整段错位。这条断言钉的就是「同源文本在任何上下文里渲染一致」。）
+  for (const md of [
+    '押在了**「保存路径」与「Markdown 保真」**这两件',
+    '**「保存路径」与「Markdown 保真」**',
+    '**（重点）**这是重点',
+    '工程侧 **`npm run lint` 坏了（912 errors）**、以及'
+  ]) {
+    await openDoc(md + '\n')
+    const one = JSON.parse(
+      await app.ev(`JSON.stringify((() => {
+        const pm = document.querySelector('.ProseMirror')
+        return {
+          strongs: pm ? [...pm.querySelectorAll('strong')].map((s) => s.textContent) : [],
+          literal: pm ? pm.querySelectorAll('.md-marker[data-side="literal"]').length : -1
+        }
+      })())`)
+    )
+    const bytes = await app.ev(FLUSH)
+    report.check(
+      `CJK 标点旁成对 ${JSON.stringify(md)}`,
+      one.strongs.length >= 1 && one.literal === 0 && bytes === md + '\n',
+      `strong=${JSON.stringify(one.strongs)} literal=${one.literal} 字节=${JSON.stringify(bytes)}`
+    )
+  }
+
+  // ═══ K. 打字每键成本（本轮：不许随文档长度恶化）═══════════════════════════════
+  // 现场（用户报障「写入内容变的非常卡」）：每键成本随**文档长度**线性增长 ——
+  // appendTransaction 每次事务都会把**全篇**需要归一化的块重算一遍（每个带样式的块
+  // 都要走一遍 markdown-it 重推 + 原子归一化）。取证：50 段 ≈3000 字的文档里打字，
+  // 每键触发 **51 次** markdown-it 解析（`MarkdownParser.parse`），修复后是 **2 次**。
+  // 修法：按块缓存「已归一的块节点」（PM 节点不可变 + 结构共享 ⇒ 没被编辑的块引用不变），
+  // 只重算被这次编辑改到的块（见 typoraInlineMarks.appendTransaction 的 normalizeClean）；
+  // 装饰同理按块缓存清单（decoCache）。
+  //
+  // 阈值依据（本机实测，见下方 note 打印的实际值）：
+  //   * p95 ≤ 25ms / max ≤ 60ms：实测 p95 0.9~4.6ms、max 1.4~8.2ms ⇒ 留 5~25 倍余量，
+  //     既能挡住「退化回每键几十毫秒」的回归，又不会被负载抖动误伤；
+  //   * 「文档长度不显著恶化」用 p95 比值 ≤ 2：实测 500 字 vs 3000 字 ≈ 1.0~1.3 倍。
+  const PERF_KEYS = 100
+  const perfExpr = (n) => `(async () => {
+    const ed = window.__L.ed()
+    const pm = document.querySelector('.ProseMirror')
+    if (pm) pm.focus()
+    ed.commands.focus('end')
+    const parser = ed.storage && ed.storage.markdown && ed.storage.markdown.parser
+    const P = (window.__perfProbe = window.__perfProbe || { n: 0 })
+    if (parser && !parser.__probeWrapped) {
+      const origParse = parser.parse.bind(parser)
+      parser.parse = (c, o) => {
+        P.n++
+        return origParse(c, o)
+      }
+      parser.__probeWrapped = true
+    }
+    const before = P.n
+    const times = []
+    for (let i = 0; i < ${n}; i++) {
+      const t0 = performance.now()
+      ed.commands.insertContent('甲')
+      times.push(performance.now() - t0)
+      if (i % 20 === 19) await new Promise((r) => setTimeout(r, 0))
+    }
+    return JSON.stringify({ times, parseCalls: P.n - before })
+  })()`
+  const perfOf = (times) => {
+    const s = [...times].sort((a, b) => a - b)
+    const q = (p) => s[Math.min(s.length - 1, Math.floor((s.length - 1) * p))]
+    return {
+      avg: times.reduce((a, b) => a + b, 0) / times.length,
+      p50: q(0.5),
+      p95: q(0.95),
+      max: Math.max(...times)
+    }
+  }
+  /** 一段 ≈chars 字、内部含标记（`**重点**`/`*斜体*`/`` `代码` ``）的长段落 */
+  const perfParagraph = (chars) => {
+    const unit = '这是一段用于压测的中文正文**重点**，含标点、顿号、以及*斜体*与`代码`。'
+    let s = ''
+    while (s.length < chars) s += unit
+    return s.slice(0, chars)
+  }
+  /** N 段、每段都带加粗（模拟「一篇有很多加粗的长文档」） */
+  const perfBlocks = (blocks, per) =>
+    Array.from(
+      { length: blocks },
+      (_, i) => `第${i}段：这一段有**加粗**与普通文字，长度约${'x'.repeat(Math.max(0, per - 30))}。`
+    ).join('\n\n')
+
+  async function measureTyping(md) {
+    await openDoc(md)
+    await app.ev(perfExpr(10)) // 预热（首键含块装载后的第一次归一化，不该计入统计）
+    await sleep(200)
+    const r = JSON.parse(await app.ev(perfExpr(PERF_KEYS)))
+    return { ...perfOf(r.times), parseCalls: r.parseCalls }
+  }
+  const fmt = (m) =>
+    `avg=${m.avg.toFixed(2)} p50=${m.p50.toFixed(2)} p95=${m.p95.toFixed(2)} max=${m.max.toFixed(2)}`
+
+  const perfEmpty = await measureTyping('\n')
+  const perf500 = await measureTyping(perfParagraph(500) + '\n')
+  const perf3000 = await measureTyping(perfParagraph(3000) + '\n')
+  const perfDoc500 = await measureTyping(perfBlocks(8, 60) + '\n')
+  const perfDoc3000 = await measureTyping(perfBlocks(50, 60) + '\n')
+  report.note(
+    `性能实测（每键 ms）: 空段落 ${fmt(perfEmpty)}；单段 500 字 ${fmt(perf500)}；单段 3000 字 ${fmt(perf3000)}`
+  )
+  report.note(
+    `性能实测（文档长度维度）: 500 字多段 ${fmt(perfDoc500)}；3000 字多段 ${fmt(perfDoc3000)}；` +
+      `每键 markdown-it 解析次数 = ${perfDoc3000.parseCalls / PERF_KEYS}（修复前实测 ≈51）`
+  )
+  report.check(
+    `打字性能 · 空段落对照 p95 ≤ 25ms / max ≤ 60ms`,
+    perfEmpty.p95 <= 25 && perfEmpty.max <= 60,
+    fmt(perfEmpty)
+  )
+  report.check(
+    `打字性能 · 长段落 3000 字 p95 ≤ 25ms / max ≤ 60ms`,
+    perf3000.p95 <= 25 && perf3000.max <= 60,
+    fmt(perf3000)
+  )
+  report.check(
+    `打字性能 · 3000 字长文档 p95 ≤ 25ms / max ≤ 60ms`,
+    perfDoc3000.p95 <= 25 && perfDoc3000.max <= 60,
+    fmt(perfDoc3000)
+  )
+  report.check(
+    '打字性能 · 每键成本不随文档长度恶化（500 字 vs 3000 字多段 p95 比值 ≤ 2）',
+    perfDoc3000.p95 <= Math.max(0.5, perfDoc500.p95 * 2),
+    `500 字 p95=${perfDoc500.p95.toFixed(2)} → 3000 字 p95=${perfDoc3000.p95.toFixed(2)}`
+  )
+  report.check(
+    '打字性能 · 每键 markdown-it 解析次数与文档长度无关（≤ 4 次/键）',
+    perfDoc3000.parseCalls <= PERF_KEYS * 4,
+    `${perfDoc3000.parseCalls} 次 / ${PERF_KEYS} 键（修复前 50 段文档实测 5100+ 次）`
+  )
 
   // ── 复原 ─────────────────────────────────────────────────────────────────
   await app.ev(
