@@ -18,6 +18,10 @@ const { t } = useI18n()
 const editorStore = useEditorStore()
 const settings = useSettingsStore()
 
+// 同 ToolbarTableButton：两个根节点（按钮容器 + Teleport 弹层）导致属性无法自动继承，
+// 工具栏的 `data-toolbar-item` 必须手动挂到按钮容器上（否则警告 + 右键被当空白区）。
+defineOptions({ inheritAttrs: false })
+
 const POP_WIDTH = 188
 const OPEN_DELAY = 300
 const CLOSE_DELAY = 180
@@ -132,7 +136,7 @@ function toggleLineNumbers(): void {
 </script>
 
 <template>
-  <div ref="btnRef" class="shrink-0" @mouseleave="scheduleClose">
+  <div ref="btnRef" v-bind="$attrs" class="shrink-0" @mouseleave="scheduleClose">
     <button
       class="icon-btn"
       :class="{ active }"

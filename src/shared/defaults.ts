@@ -1,6 +1,7 @@
 import type { AppSettings } from './types'
 // 显式 .ts：defaults 会被 tests/*.test.mjs 直接加载，而 Node 的 ESM 解析不做扩展名补全（见 §4.56）
 import { HISTORY_LIMIT_PER_FILE, HISTORY_MAX_AGE_MS } from './history.ts'
+import { DEFAULT_TOOLBAR_ITEMS } from './toolbarItems.ts'
 
 export const FONT_OPTIONS: { value: string; label: string }[] = [
   {
@@ -28,6 +29,9 @@ export const defaultSettings: AppSettings = {
   lineHeight: 1.9,
   fontFamily: FONT_OPTIONS[0].value,
   editorMode: 'wysiwyg',
+  /** 快捷工具栏：默认显示，项目/顺序取目录里的默认值（见 shared/toolbarItems.ts） */
+  toolbarVisible: true,
+  toolbarItems: [...DEFAULT_TOOLBAR_ITEMS],
   sidebarVisible: true,
   sidebarWidth: 264,
   splitRatio: 0.5,

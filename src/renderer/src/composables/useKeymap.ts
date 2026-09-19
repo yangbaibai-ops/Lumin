@@ -109,9 +109,17 @@ export function useKeymap(actions: ReturnType<typeof useAppActions>): void {
       titleKey: 'menu.findReplace',
       groupKey: 'keymap.groupEdit',
       defaultKeys: 'Mod+F',
-      // 输入框里 Ctrl+F 交给输入框自身（避免抢「查找」语义）
-      when: 'notInInput',
+      // 打开查找栏（替换行收起；要替换用 Ctrl+H 或栏里的折叠三角）。
+      // 不再限制 `when: 'notInInput'`：Ctrl+F 在各家编辑器里都是「就地查找」，
+      // 在查找框里再按一次也应该把它关掉，而不是漏给输入框。
       run: () => handleMenu('find')
+    },
+    {
+      id: 'edit.replace',
+      titleKey: 'menu.replace',
+      groupKey: 'keymap.groupEdit',
+      defaultKeys: 'Mod+H',
+      run: () => handleMenu('replace')
     },
     {
       id: 'edit.globalSearch',

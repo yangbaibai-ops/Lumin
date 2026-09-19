@@ -1,5 +1,12 @@
 import { defineStore } from 'pinia'
-import { findMatches, replaceMatches, stepIndex, type Match } from '../lib/findReplace'
+import {
+  findMatches,
+  isValidQuery,
+  replaceMatchesEach,
+  replacementForMatch,
+  stepIndex,
+  type Match
+} from '../lib/findReplace'
 import { findInDoc } from '../lib/editor/findInDoc'
 import { useEditorStore } from './editor'
 import { useFilesStore } from './files'
@@ -15,6 +22,11 @@ import { useUiStore } from './ui'
  * 所以计数显示的是**当前编辑面**的结果 —— 这比"显示一个对不上的数字"诚实。
  *
  * 分屏模式下以渲染面为准（它是主编辑面）；源码模式则以 textarea 为准。
+ *
+ * 两条与入口相关的状态：
+ *   * `replaceExpanded`：替换那一行是否展开。Ctrl+F 默认收起（只留查找 + 一个折叠三角），
+ *     Ctrl+H / 菜单「替换」默认展开；
+ *   * `regex`：查询串是否按正则解释（默认否 —— 字面量搜索才是绝大多数人的预期）。
  */
 export type FindSurface = 'wysiwyg' | 'source'
 
@@ -24,6 +36,10 @@ export const useFindStore = defineStore('find', {
     query: '',
     replacement: '',
     caseSensitive: false,
+    /** 查询串是否按正则表达式解释（`$1` 这类替换语法只在打开它时生效） */
+    regex: false,
+    /** 替换行是否展开（折叠三角控制；打开方式决定默认值） */
+    replaceExpanded: false,
     /** 当前命中下标（-1 = 没有命中） */
     index: -1
   }),
@@ -33,13 +49,27 @@ export const useFindStore = defineStore('find', {
       void state
       return useUiStore().editorMode === 'source' ? 'source' : 'wysiwyg'
     },
+    /** 传给纯逻辑层的选项（两个 getter 共用一份，避免两处漏传） */
+    options(state): { caseSensitive: boolean; regex: boolean } {
+      return { caseSensitive: state.caseSensitive, regex: state.regex }
+    },
+    /**
+     * 查询串是否合法。字面量模式永远合法；
+     * 正则模式下语法错（如只敲了一个 `(`）会让整栏显示「表达式无效」而不是零匹配的错觉。
+     */
+    queryValid(state): boolean {
+      return isValidQuery(state.query, {
+        caseSensitive: state.caseSensitive,
+        regex: state.regex
+      })
+    },
     /** 当前编辑面的全部命中 */
     matches(state): Match[] {
       // 依赖文档的每次事务（编辑器内容变了要重算），也依赖 files 内容（源码面 / 打开文档）
       void useEditorStore().tick
       const files = useFilesStore()
-      if (!state.query) return []
-      const opts = { caseSensitive: state.caseSensitive }
+      if (!state.query || !this.queryValid) return []
+      const opts = this.options
       if (this.surface === 'source') {
         return findMatches(files.current?.content ?? '', state.query, opts)
       }
@@ -56,10 +86,19 @@ export const useFindStore = defineStore('find', {
     }
   },
   actions: {
-    show(): void {
+    /**
+     * 打开查找栏。
+     * @param expandReplace 是否同时展开替换行（Ctrl+H / 菜单「替换」传 true；Ctrl+F 省略）
+     */
+    show(expandReplace = false): void {
       this.open = true
+      this.replaceExpanded = expandReplace
       // 打开时把命中选择到第一个（查询串保留：连续按 Ctrl+F 不该丢掉上次搜的内容）
       this.select(this.query ? 0 : -1)
+    },
+    /** 打开并直接展开替换行（Ctrl+H） */
+    showReplace(): void {
+      this.show(true)
     },
     hide(): void {
       this.open = false
@@ -88,6 +127,15 @@ export const useFindStore = defineStore('find', {
     toggleCase(): void {
       this.caseSensitive = !this.caseSensitive
       this.select(this.matches.length ? 0 : -1)
+    },
+    /** 正则开关：切了要重算命中（语法错的表达式在这里会变成「表达式无效 + 零匹配」） */
+    toggleRegex(): void {
+      this.regex = !this.regex
+      this.select(this.matches.length ? 0 : -1)
+    },
+    /** 折叠/展开替换行（查找栏左侧那个三角） */
+    toggleReplace(): void {
+      this.replaceExpanded = !this.replaceExpanded
     },
     /** 前进/后退（循环），并把选中落到编辑面上 */
     step(delta: number): void {
@@ -123,19 +171,30 @@ export const useFindStore = defineStore('find', {
         /* 位置非法（文档刚变）时只留下标 */
       }
     },
+    /**
+     * 某一处命中该替换成什么文本。
+     *
+     * 正则模式下按捕获组展开（`$1` / `$&` …），捕获组随 `Match` 一起从匹配层带上来
+     * （`findReplace.ts` 的 `Match.groups`）—— 所以**两个编辑面共用这一个判定**，
+     * 不需要各自再回原文里数位置（渲染面的文档坐标与纯文本偏移不同源，回原文数必错）。
+     */
+    textFor(m: Match): string {
+      return replacementForMatch(this.replacement, m, this.options)
+    },
     /** 替换当前命中（不动其它命中） */
     replaceCurrent(): boolean {
-      const m = this.matches[this.index]
+      const m = this.current
       if (!m) return false
       const ui = useUiStore()
       const files = useFilesStore()
+      const text = this.textFor(m)
       if (this.surface === 'source') {
-        const text = files.current?.content ?? ''
-        const next = replaceMatches(text, [m], this.replacement)
-        if (next === text) return false
+        const content = files.current?.content ?? ''
+        const next = replaceMatchesEach(content, [m], () => text)
+        if (next === content) return false
         files.setContent(next, 'source')
         // 光标停在替换后的文本之后
-        const after = m.from + this.replacement.length
+        const after = m.from + text.length
         const ta = document.querySelector<HTMLTextAreaElement>('textarea.source-editor')
         if (ta) ta.setSelectionRange(after, after)
       } else {
@@ -143,7 +202,7 @@ export const useFindStore = defineStore('find', {
         const ed = store.instance ?? store.editor
         if (!ed) return false
         try {
-          ed.chain().insertContentAt({ from: m.from, to: m.to }, this.replacement).run()
+          ed.chain().insertContentAt({ from: m.from, to: m.to }, text).run()
         } catch {
           return false
         }
@@ -158,9 +217,14 @@ export const useFindStore = defineStore('find', {
       const matches = this.matches
       if (!matches.length) return 0
       const files = useFilesStore()
+      // 每处的替换文本先算好（正则下各处可能不同：$1 各取各的组）
+      const texts = matches.map((m) => this.textFor(m))
       if (this.surface === 'source') {
         const text = files.current?.content ?? ''
-        files.setContent(replaceMatches(text, matches, this.replacement), 'source')
+        files.setContent(
+          replaceMatchesEach(text, matches, (m) => texts[matches.indexOf(m)] ?? ''),
+          'source'
+        )
       } else {
         const store = useEditorStore()
         const ed = store.instance ?? store.editor
@@ -172,7 +236,7 @@ export const useFindStore = defineStore('find', {
             tr.replaceWith(
               matches[i].from,
               matches[i].to,
-              tr.doc.type.schema.text(this.replacement)
+              tr.doc.type.schema.text(texts[i] ?? this.replacement)
             )
           }
           return true

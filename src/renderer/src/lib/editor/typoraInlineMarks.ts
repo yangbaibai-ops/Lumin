@@ -23,6 +23,7 @@ import type { RawCommands } from '@tiptap/core'
 import { Plugin, PluginKey, TextSelection } from '@tiptap/pm/state'
 import { Fragment, DOMParser as PMDOMParser } from '@tiptap/pm/model'
 import { Decoration, DecorationSet } from '@tiptap/pm/view'
+import type { EditorView } from '@tiptap/pm/view'
 import type { EditorState, Transaction } from '@tiptap/pm/state'
 import type { Mark as PMMark, MarkType as PMMarkType, Node as PMNode } from '@tiptap/pm/model'
 // 纯逻辑核心（标记派生/配对/物化 + 冗余嵌套强调判定 + 光标落点）：**无 PM 运行时依赖**，
@@ -778,10 +779,62 @@ interface EscapeRun {
  * —— 视口外的块若不带这套装饰，滚过去就会看到「反斜杠直接露在正文里」。宁可多算一点，
  * 也不能让渲染结构随滚动位置变。
  */
+/**
+ * ─── 「按住指针期间不显示标记」── (pointer-hold suppression) ────────────────────
+ *
+ * 现象：用鼠标拖选一段加粗文字时，鼠标**还没松开**，两侧的 `**` 就跟着选区一起冒出来，
+ * 拖选过程中标记不断地进/出，视觉上很吵。期望：**松开鼠标再显示**。
+ *
+ * 为什么不是「只在拖选时抑制」：拖选/双击选词/单击落点这几条路径在 PM 里最终都表现为
+ * 「selection 变了」，而「用户是不是正按着键」这个信息只有 DOM 事件知道。既然产品要求是
+ * 「**按键抬起来的时候再显示出来**」，判据就取字面含义：**指针按住期间折叠、抬起即恢复**。
+ * 单击也会先折叠再恢复（同一帧内），人眼看不到；拖选则全程干净。
+ *
+ * ⚠️ 不能动 `.md-marker` 的折叠机制（`font-size: 0`）：那是**渲染结构**，与光标导航/命中
+ * 绑在一起（见 style.css 里的说明）。这里只改「要不要给出 `.md-reveal-inline`」——
+ * 与「光标不在构造内」时完全同一条路径，所以模型、落盘字节、选区语义一个都不动。
+ */
+let pointerHolding = false
+
+/**
+ * 主体按下期间：折叠全部标记（等抬起再显示）。
+ *
+ * 锚点取 **mousedown** 而不是 pointerdown：拖选的语义完全由 mousedown/mousemove/mouseup 承担，
+ * 而且 pointerdown 在部分环境（含 CDP 合成的输入）不会被派发 —— 押在它上面会出现
+ * 「代码看着对，实际不折叠」。触控/笔的抬起仍由下面的 pointerup/pointercancel 兜住。
+ */
+function onMarkerPointerDown(): void {
+  pointerHolding = true
+}
+
+/**
+ * 把「按住 / 松开」的变化**送进编辑器的状态机**。
+ *
+ * ⚠️ 这里必须带事务元数据（`SET_SUPPRESSED`），不能只翻模块里的布尔量：
+ * PM 只在 `docChanged || selectionSet` 时才调插件的 `apply` —— 单纯 dispatch 一个空事务
+ * 会被当成「什么都没变」而直接返回旧装饰集，标记照样显示（实测踩到：
+ * 空事务 dispatch 出去，`.md-reveal-inline` 数一个都没少）。
+ *
+ * 去重口径：**每个视图各记一份「上一次告诉它的值」**，相同就不重复派发。
+ * 不能用「模块级标志是否翻转」来判断：`mousedown` 的处理会先把模块标志置位，
+ * 于是这里的「翻转检测」永远为假、事务根本不会派发（实测：拖到编辑区外松手后标记回不来）。
+ */
+const lastSentSuppressed = new WeakMap<EditorView, boolean>()
+
+function setMarkerSuppression(view: EditorView, holding: boolean): void {
+  if (view.isDestroyed) return
+  if (lastSentSuppressed.get(view) === holding) return
+  lastSentSuppressed.set(view, holding)
+  view.dispatch(view.state.tr.setMeta(SET_SUPPRESSED, holding))
+}
+
 function buildRevealDecorations(
   state: EditorState,
   cache: WeakMap<PMNode, BlockDecos>
 ): DecorationSet {
+  // 按住指针期间一律不展开：整份装饰集为空（含转义反斜杠的拆分 —— 折叠态就是它的
+  // 默认渲染形态，所以空集不会让内容少字符，只是把 `\` 折起来）
+  if (pointerHolding) return DecorationSet.empty
   const { from, to } = state.selection
   const decos: Decoration[] = []
   state.doc.descendants((node, pos) => {
@@ -1027,8 +1080,47 @@ function toggleStyle(
 
 const inlineMarkPluginKey = new PluginKey('typora-inline-marks')
 
+/**
+ * 「抑制开关变了」的事务标记（见 setMarkerSuppression）。
+ * 用 `PluginKey.getMeta` 取（PM 会自动做命名空间，避免与别人的 meta 撞键）。
+ */
+const SET_SUPPRESSED = new PluginKey<boolean>('typora-inline-marks-suppress')
+/** 上一次算出的显隐装饰集：props.decorations 每次求值都复用它（别重复整篇扫描） */
+let lastRevealDecos: DecorationSet | null = null
+
 export const TyporaInlineMarks = Extension.create({
   name: 'typoraInlineMarks',
+  /**
+   * 按住指针（拖选进行中）折叠标记、松开即恢复 —— 见文件里 pointerHolding / SET_SUPPRESSED
+   * 的说明。编辑区上听 mousedown 置位，document 上听 mouseup/pointerup/pointercancel 恢复；
+   * 监听挂在 document 上是为了「拖到编辑区外松手」也能恢复（否则标记会永久折叠）。
+   * 生命周期跟着编辑器视图走，`onDestroy` 一定摘干净（多窗口/切文件会反复建销）。
+   */
+  onCreate() {
+    const dom = this.editor.view.dom as HTMLElement
+    const up = (): void => {
+      pointerHolding = false
+      setMarkerSuppression(this.editor.view, false)
+    }
+    const down = (e: MouseEvent): void => {
+      if (e.button !== 0) return // 只认左键
+      onMarkerPointerDown()
+      setMarkerSuppression(this.editor.view, true)
+    }
+    dom.addEventListener('mousedown', down, true)
+    document.addEventListener('mouseup', up)
+    document.addEventListener('pointerup', up)
+    document.addEventListener('pointercancel', up)
+    this.editor.on('destroy', () => {
+      dom.removeEventListener('mousedown', down, true)
+      document.removeEventListener('mouseup', up)
+      document.removeEventListener('pointerup', up)
+      document.removeEventListener('pointercancel', up)
+      // 视图销毁后别把「按住」留在 true 上（下一个文档会继承这个状态）
+      pointerHolding = false
+      lastRevealDecos = null
+    })
+  },
   addCommands() {
     // 运行时平铺返回（CommandManager 直接展开顶层键）；类型经声明合并
     // 命名空间 + UnionToIntersection 拍平为顶层命令
@@ -1193,15 +1285,37 @@ export const TyporaInlineMarks = Extension.create({
           }
         },
         state: {
-          init: (_config, state) => buildRevealDecorations(state, decoCache),
+          init: (_config, state) => {
+            lastRevealDecos = buildRevealDecorations(state, decoCache)
+            return lastRevealDecos
+          },
+          /**
+           * 三个重建条件：
+           *   * `tr.docChanged` / `tr.selectionSet` —— 原有行为（内容或光标变了要重算）；
+           *   * 事务里带着抑制开关的元数据 —— 「按住/松开」本身不改文档也不改选区，
+           *     不认这一条的话开关翻了装饰集也不会重建（实测：空事务 dispatch 出去，
+           *     `.md-reveal-inline` 一个都没少）。
+           */
           apply: (tr, oldSet, _oldState, newState) => {
-            if (tr.docChanged || tr.selectionSet) return buildRevealDecorations(newState, decoCache)
+            const toggled = tr.getMeta(SET_SUPPRESSED) !== undefined
+            if (tr.docChanged || tr.selectionSet || toggled) {
+              lastRevealDecos = buildRevealDecorations(newState, decoCache)
+              return lastRevealDecos
+            }
             return oldSet
           }
         },
         props: {
+          /**
+           * 每次求值都回一次当前开关对得上的装饰集：`apply` 之外还有一条路径能让装饰过期 ——
+           * PM 在 `setProps` / `updateState` 时会重新读 `decorations`，而那时插件 state 里
+           * 存的可能还是「开关翻转前」算出来的那一份（两次事务之间的窗口）。
+           * 这里按开关现状复算一次并复用（`lastRevealDecos` 缓存，不重复整篇扫描）。
+           */
           decorations(state) {
-            return this.getState(state)
+            const cur = this.getState(state) as DecorationSet | undefined
+            if (pointerHolding) return DecorationSet.empty
+            return cur ?? DecorationSet.empty
           }
         }
       })

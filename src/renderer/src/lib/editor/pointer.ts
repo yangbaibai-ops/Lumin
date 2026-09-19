@@ -277,13 +277,15 @@ export const TyporaPointer = Extension.create<TyporaPointerOptions>({
             return null
           }
         },
-        // 文本块（段落/标题等）绝不允许成为 NodeSelection（会把整段套上
-        // .ProseMirror-selectednode 的紫色框——Typora 无此交互）。一旦有
-        // 事务试图选中文本块，降级为普通文本光标（节点级整选仅保留给
-        // 图片等叶子节点）。注意 filterTransaction 先于 dispatch 应用。
+        // 节点级整选一律不允许（图片 / 水平线 / 代码块 / 数学块…，不只是文本块）。
+        // 为什么连叶子节点也压掉：它会套上 `.ProseMirror-selectednode` 的整选框，而本应用
+        // 按 Typora 的口径走 —— 点图片是为了拖/删它，不是为了看一圈选中框；键盘整体选中
+        // 也没有对应的可用操作（删除仍然可用：光标落到节点旁边按退格即可）。
+        // 降级为**就近的文本光标**（不是丢弃事务），选区语义不丢、用户看到的就是一个光标。
+        // 注意 filterTransaction 先于 dispatch 应用。
         filterTransaction(tr) {
           const sel = tr.selection
-          if (sel instanceof NodeSelection && sel.node && sel.node.isTextblock) {
+          if (sel instanceof NodeSelection && sel.node) {
             try {
               tr.setSelection(TextSelection.near(tr.doc.resolve(sel.from)))
             } catch {

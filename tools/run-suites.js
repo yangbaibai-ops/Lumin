@@ -150,7 +150,15 @@ function runSuite(file, port, timeoutMs, userData) {
     ...process.env,
     LUMIN_DEBUG_PORT: String(port),
     LUMIN_DB: path.join(userData, 'lumin.db'),
-    LUMIN_DRAFTS_DIR: path.join(userData, 'drafts')
+    LUMIN_DRAFTS_DIR: path.join(userData, 'drafts'),
+    // 有套件会**自己再起一个实例**（`--user-data-dir=$LUMIN_ISOLATED_USERDATA`）来验证
+    // 「第二个进程把参数转交给首个实例」（如 _verify-taskbar-jumplist.js 的 C 段、
+    // _verify-encoding.js）。它们读的就是这个变量，缺了它就会退回一个**写死的旧目录名**
+    // （%TEMP%\lumin-keymap-userdata）—— 那跟本运行器起的实例（%TEMP%\lumin-suites-ud）
+    // 不是同一个 profile，于是第二个进程拿不到单实例锁、自己成了首实例、开出的窗口不在
+    // 本运行器的调试端口上，表现成「一个窗口都没多出来」的假失败（实测 25/31，其中 6 条
+    // 全红）。把实例真实目录告诉套件，才能真的走到「转交 → 新窗口」那条路径上。
+    LUMIN_ISOLATED_USERDATA: userData
   }
   const r = spawnSync(process.execPath, [path.join(TOOLS, file)], {
     cwd: ROOT,

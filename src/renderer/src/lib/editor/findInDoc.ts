@@ -7,14 +7,10 @@
 // 只做「块内」匹配：跨段落/标题/列表项的匹配语义（段落之间的换行算不算一个字符、
 // 要不要跨过空行）在各渲染器下不一致 —— 与其猜，不如不跨。
 import type { Node as PMNode } from '@tiptap/pm/model'
-import { findInRuns, type Match, type TextRun } from '../findReplace'
+import { findInRuns, type FindOptions, type Match, type TextRun } from '../findReplace'
 
 /** 文档里全部匹配（文档坐标，按出现顺序） */
-export function findInDoc(
-  doc: PMNode,
-  query: string,
-  opts: { caseSensitive?: boolean } = {}
-): Match[] {
+export function findInDoc(doc: PMNode, query: string, opts: FindOptions = {}): Match[] {
   if (!query) return []
   const out: Match[] = []
   doc.descendants((node, pos) => {

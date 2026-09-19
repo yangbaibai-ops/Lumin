@@ -48,7 +48,14 @@
 | `markdown-ext-associated` | `.markdown` 同样登记 | ✅ `.markdown='Markdown'` |
 | `shortcuts-created` | 开始菜单 + 桌面快捷方式 | ✅ `start=True desktop=True` |
 
-> exe 内嵌图标（第一轮 I-03 已验，产物构建方式未变）：`resources/icon.ico` 的 16/24/32/48/64/128/256 七档负载 **7/7 逐字节命中 `Lumin.exe`**，同一批字节在 `electron.exe` 里 7/7 不存在。
+> exe 内嵌图标（**第二轮图标更换后已复验**，2026-09）：`resources/icon.ico` 的
+> 16/24/32/48/64/128/256 **七档负载 7/7 逐字节命中 `Lumin.exe`**，同一批字节在 `electron.exe`
+> 里 7/7 不存在；GDI+ 抽出的 32×32 中心 8×8 = (178,178,179)（Electron 那份是 (60,66,78)）。
+> 本轮的一个重要教训：**用户交付的 `.ico` 是单档 PNG 压缩条目，GDI+ 读不出来**（`Icon.ToBitmap()`
+> 抛 `Requested range extends past the end of the array`）—— 所以 `icon.ico` 必须由
+> `node tools/pack-ico.js` 从 `resources/icon.png` 打成七档 DIB，不能直接复制交付的成品。
+> 开发态那一侧（`resources/icon.ico` → `userData\icons\lumin-<sha1:8>.ico` 内容寻址副本）
+> 另见 `_verify-taskbar-jumplist.js`（31/31）。
 
 ### 2.2 安装后以裸文件路径运行
 
@@ -210,7 +217,7 @@ Get-ChildItem "$env:APPDATA\Lumin" -Recurse -File | Measure-Object              
 | --- | --- | --- | --- | --- |
 | I-01 | `Lumin-1.0.0-setup.exe /S` | 退出码 0 | 退出码 0，耗时 **20.2 s** | ✅ |
 | I-02 | 检查安装目录 | 可执行文件 + Electron 运行时齐全 | `%LOCALAPPDATA%\Programs\Lumin`，**82 个文件**；`Lumin.exe` **210,974,720 字节** | ✅ |
-| I-03 | exe 内嵌图标 | 是我们的图标，不是 Electron 默认 | `resources/icon.ico` 的 **16/24/32/48/64/128/256 七档负载 7/7 逐字节命中 `Lumin.exe`**；同一批字节在 `electron.exe` 里 **7/7 不存在** | ✅ |
+| I-03 | exe 内嵌图标 | 是我们的图标，不是 Electron 默认 | `resources/icon.ico` 的 **16/24/32/48/64/128/256 七档负载 7/7 逐字节命中 `Lumin.exe`**；同一批字节在 `electron.exe` 里 **7/7 不存在**；GDI+ 抽出的 32×32 中心 luma≈178（Electron 66） | ✅ **已复验**（2026-09 第二轮图标更换后重跑 `_verify-packaging.js` 24/24；旧结论的「待复验」已解除） |
 | I-04 | 文件关联 | `.md` 登记到本应用 | `HKCU\Software\Classes\.md` 默认值 = `Markdown`；`…\Markdown\shell\open\command` = `C:\Users\…\Programs\Lumin\Lumin.exe "%1"` | ✅ |
 | I-05 | 「打开方式」候选 | 扩展名带 OpenWithProgids | `HKCU\Software\Classes\.md\OpenWithProgids` 含 `Markdown` | ✅ |
 | I-06 | 开始菜单快捷方式 | target 指向安装后的 exe、图标同源 | target = `…\Programs\Lumin\Lumin.exe`；args 空；workdir = 安装目录；icon = `Lumin.exe,0` | ✅ |

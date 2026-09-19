@@ -125,12 +125,17 @@ function collapseSidebar(): void {
       </button>
     </div>
 
-    <!-- 内容 -->
+    <!-- 内容：两个面板**都常驻 DOM**，切页签只切显隐。
+         为什么不再用 v-if/Transition（实测过「切到另一个页签再切回来，内容空了」）：
+           * 文件树的数据是 lazily 拉进 dirCache 的，卸载/重挂会走一遍「挂载 → nextTick →
+             初始化键盘焦点」的时序，而焦点初始化依赖**已经渲染出来的行**；一旦这一拍没对上，
+             树就停在「没有任何行」的状态，而且自己没有恢复路径；
+           * 大纲同理：它只读 editor store 的 outline，编辑器实例被重建/切模式时可能正好是空的。
+         常驻之后切页签只是 display 切换 —— 数据、滚动位置、展开状态全部原样保留，
+         这类「切一次就空」的状态机问题从根上没有了（而且省掉每次切换的重挂成本）。 -->
     <div class="mt-1.5 min-h-0 flex-1">
-      <Transition name="fade" mode="out-in">
-        <FileTree v-if="ui.sidebarTab === 'files'" key="files" />
-        <Outline v-else key="outline" />
-      </Transition>
+      <FileTree v-show="ui.sidebarTab === 'files'" />
+      <Outline v-show="ui.sidebarTab === 'outline'" />
     </div>
 
     <!-- 底部 -->

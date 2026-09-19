@@ -33,6 +33,17 @@ export interface ContextMenuItem {
   danger?: boolean
   action: string
   disabled?: boolean
+  /**
+   * 勾选态：菜单项左侧显示一枚对勾（用于「当前已开启」这类开关型条目）。
+   * 与 submenu 标记互不影响，可以同时用。
+   */
+  checked?: boolean
+  /**
+   * 子菜单条目（惰性求值）：菜单项右侧出现 › ，悬停/右方向键展开。
+   * 点这类条目**不**触发 onSelect —— 它只负责展开，真正的动作用子条目回调。
+   * 写成函数是为了每次展开都拿到最新的状态（勾选态会随用户操作变化）。
+   */
+  children?: () => ContextMenuItem[]
 }
 
 export interface ContextMenuState {
@@ -40,6 +51,8 @@ export interface ContextMenuState {
   y: number
   items: ContextMenuItem[]
   onSelect: (action: string) => void
+  /** 面板的无障碍名称（可选）；工具栏右键菜单用它，验收脚本也靠它定位面板 */
+  ariaLabel?: string
 }
 
 // ─── UI 状态壳子 ──────────────────────────────────────────────────────────
@@ -67,6 +80,12 @@ export const useUiStore = defineStore('ui', {
     // 设置浮层（模态面板，X/Esc/遮罩可关，不抢占路由）
     settingsOpen: false,
     settingsSection: 'general',
+    /**
+     * 设置是否要为「调整工具栏」区块做一次定位高亮：
+     * 由工具栏右键菜单的「调整工具项」置位，打开设置后滚到该区块并闪一下边框；
+     * 关闭设置时清除（下次从菜单/状态栏进来不该再高亮）。
+     */
+    toolbarAdjustFocus: false,
     globalSearch: {
       open: false,
       query: '',
@@ -121,6 +140,19 @@ export const useUiStore = defineStore('ui', {
     openSettings(section = 'general'): void {
       this.settingsSection = section
       this.settingsOpen = true
+    },
+    /**
+     * 打开设置并直接落到「调整工具栏」区块。
+     * 用 ui 的一个旗标而不是给设置面板加参数：设置弹层本身就是模态浮层，
+     * 再开一个「调整工具栏」浮层会形成模态套模态（Esc / 遮罩层级都会打架）。
+     */
+    openToolbarAdjust(): void {
+      this.settingsSection = 'editor'
+      this.openSettings('editor')
+      this.toolbarAdjustFocus = true
+    },
+    clearToolbarAdjustFocus(): void {
+      this.toolbarAdjustFocus = false
     },
     closeSettings(): void {
       this.settingsOpen = false

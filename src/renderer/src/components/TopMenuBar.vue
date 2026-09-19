@@ -270,6 +270,7 @@ const GROUPS = computed<Group[]>(() => [
         icon: 'search',
         run: () => useFindStore().show()
       },
+      { labelKey: 'menu.replace', icon: 'pencil', run: () => useFindStore().showReplace() },
       { labelKey: 'menu.globalSearch', icon: 'list-checks', run: () => ui.openGlobalSearch() }
     ]
   },
@@ -325,6 +326,13 @@ const GROUPS = computed<Group[]>(() => [
           ui.sidebarVisible = !ui.sidebarVisible
           settings.set('sidebarVisible', ui.sidebarVisible)
         }
+      },
+      {
+        // 关掉工具栏后唯一的「开关型」入口（右键菜单那条路已被隐藏，看不出可点）；
+        // 项目排序/显隐仍在设置 → 编辑器 → 快捷工具栏里
+        labelKey: 'menu.toggleToolbar',
+        icon: 'settings',
+        run: () => settings.set('toolbarVisible', !settings.toolbarVisible)
       },
       'sep',
       { labelKey: 'menu.wysiwyg', icon: 'eye', run: () => setMode('wysiwyg') },

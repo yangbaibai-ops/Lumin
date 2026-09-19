@@ -20,6 +20,7 @@ import { LANGUAGE_OPTIONS } from '../i18n'
 import type { EditorMode, LinkCreateMode, LinkHistoryEntry, ThemeMode } from '../../../shared/types'
 import Icon from '../components/Icon.vue'
 import SettingsKeymap from '../components/SettingsKeymap.vue'
+import SettingsToolbar from '../components/SettingsToolbar.vue'
 
 const router = useRouter()
 const { t } = useI18n()
@@ -66,6 +67,50 @@ function goAbout(): void {
   void router.push('/about')
 }
 
+// ─── 设置面板可拖动 ──────────────────────────────────────────────────────────
+// 拖动只改一个 transform 偏移（不改布局），因此**不触发任何重排**：面板本身是 fixed 定位的
+// 固定尺寸盒子，平移它就是合成层上的一次位移。位置是会话级的（关掉再开回到居中），
+// 不落库 —— 设置面板的位置不是用户"数据"，记进 SQLite 只会多一份要维护的状态。
+const dragOffset = ref({ x: 0, y: 0 })
+const dragDragging = ref(false)
+
+function resetDialogPosition(): void {
+  dragOffset.value = { x: 0, y: 0 }
+}
+
+/**
+ * 从标题栏开始拖：只认左键，且**不接管按钮上的按下**（关闭按钮要能正常点）。
+ * 用 window 上的 move/up 而不是 setPointerCapture：拖动过程中指针会移出面板，
+ * 捕获在面板上时 mouseup 落在别处也能收尾，但 move 期间的坐标要以窗口为准，
+ * 这里两者都用 window 监听，语义最直白、也不会漏掉"拖到窗口外松手"。
+ */
+function startDialogDrag(e: MouseEvent): void {
+  if (e.button !== 0) return
+  const el = e.target as HTMLElement | null
+  if (el?.closest?.('button, input, select, textarea, a')) return
+  e.preventDefault()
+  const startX = e.clientX
+  const startY = e.clientY
+  const origin = { ...dragOffset.value }
+  dragDragging.value = true
+  const move = (ev: MouseEvent): void => {
+    // 钳制在「面板至少还有一部分留在窗口内」，避免拖丢
+    const maxX = window.innerWidth / 2 - 60
+    const maxY = window.innerHeight / 2 - 40
+    dragOffset.value = {
+      x: Math.max(-maxX, Math.min(maxX, origin.x + (ev.clientX - startX))),
+      y: Math.max(-maxY, Math.min(maxY, origin.y + (ev.clientY - startY)))
+    }
+  }
+  const up = (): void => {
+    dragDragging.value = false
+    window.removeEventListener('mousemove', move)
+    window.removeEventListener('mouseup', up)
+  }
+  window.addEventListener('mousemove', move)
+  window.addEventListener('mouseup', up)
+}
+
 // Esc 关闭（打开时才生效）
 function onKeydown(e: KeyboardEvent): void {
   if (ui.settingsOpen && e.key === 'Escape') ui.closeSettings()
@@ -87,6 +132,8 @@ watch(
   () => ui.settingsOpen,
   (open) => {
     if (!open) return
+    // 每次打开都回到居中：位置是会话级的，不跨次保留
+    resetDialogPosition()
     // 自动保存关闭时清理挂起的落盘定时器，避免“刚关闭又保存”
     if (!settings.autoSave) files.cancelAutoSave()
   }
@@ -203,18 +250,22 @@ function formatTime(ms: number): string {
       class="settings-mask fixed inset-0 z-[120] flex items-center justify-center p-6"
     >
       <!-- 遮罩：点击关闭 -->
-      <div class="absolute inset-0 backdrop-blur-[2px]" @click="ui.closeSettings()" />
+      <!-- 遮罩：点关闭。**只压暗、不模糊** —— 模糊背景会让后面的正文变成一团，
+           而用户常常是「对着正文调设置」，得能看清字；压暗同样把注意力收在面板上。
+           面板自己不再被 backdrop-filter 波及（它是遮罩的兄弟节点，本来就清晰）。 -->
+      <div class="settings-scrim absolute inset-0" @click="ui.closeSettings()" />
 
-      <!-- 面板 -->
+      <!-- 面板：标题栏按住可整体拖动（位移只走 transform，不触发重排） -->
       <div
         class="settings-panel relative flex h-[min(680px,86vh)] w-[min(1080px,94vw)] overflow-hidden rounded-2xl border border-edge bg-panel shadow-2xl"
+        :style="{
+          transform: `translate3d(${dragOffset.x}px, ${dragOffset.y}px, 0)`,
+          transition: dragDragging ? 'none' : undefined
+        }"
+        :class="dragDragging ? 'is-dragging' : ''"
       >
         <!-- 左侧导航 -->
         <nav class="flex w-[196px] flex-none flex-col gap-1 border-r border-edge bg-panel-2/70 p-3">
-          <div class="px-2 pb-2 pt-1">
-            <h1 class="text-[15px] font-semibold text-ink">设置</h1>
-            <p class="text-[11.5px] text-ink-3">个性化你的 Lumin</p>
-          </div>
           <button
             v-for="x in tabs"
             :key="x.id"
@@ -241,21 +292,29 @@ function formatTime(ms: number): string {
 
         <!-- 右侧内容 -->
         <div class="flex min-w-0 flex-1 flex-col">
-          <!-- 面板头：标题 + X 关闭 -->
+          <!-- 面板头：整条 = 拖动把手（标题 + X 关闭） -->
           <header
-            class="flex flex-none items-center justify-between border-b border-edge px-6 py-3.5"
+            class="settings-drag-handle flex flex-none items-center justify-between border-b border-edge px-6 py-3.5"
+            :title="'按住可拖动设置窗口'"
+            @mousedown="startDialogDrag"
           >
             <div>
               <h2 class="text-[15px] font-semibold text-ink">{{ sectionTitle(activeTab) }}</h2>
               <p class="text-[11.5px] text-ink-3">设置将自动保存到本机 SQLite 数据库</p>
             </div>
-            <button
-              class="flex h-8 w-8 items-center justify-center rounded-lg text-ink-3 transition-colors duration-150 hover:bg-panel-2 hover:text-ink"
-              :title="'关闭'"
-              @click="ui.closeSettings()"
-            >
-              <Icon name="close" :size="16" />
-            </button>
+            <div class="flex items-center gap-1">
+              <!-- 只作视觉提示：真正的手柄是整条头部 -->
+              <span class="settings-drag-grip" aria-hidden="true">
+                <Icon name="more" :size="14" />
+              </span>
+              <button
+                class="flex h-8 w-8 items-center justify-center rounded-lg text-ink-3 transition-colors duration-150 hover:bg-panel-2 hover:text-ink"
+                :title="'关闭'"
+                @click="ui.closeSettings()"
+              >
+                <Icon name="x" :size="16" />
+              </button>
+            </div>
           </header>
 
           <div class="min-h-0 flex-1 overflow-y-auto">
@@ -517,6 +576,9 @@ function formatTime(ms: number): string {
 
                   <!-- ── 编辑器 ── -->
                   <template v-else-if="activeTab === 'editor'">
+                    <!-- 快捷工具栏：开关 + 项目排序/显隐（与工具栏空白区右键菜单同一界面） -->
+                    <SettingsToolbar />
+
                     <section class="surface mb-4 p-5">
                       <h3 class="mb-4 text-[13px] font-semibold text-ink">默认编辑器模式</h3>
                       <div class="grid grid-cols-2 gap-2.5">

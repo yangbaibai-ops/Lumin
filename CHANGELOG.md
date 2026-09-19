@@ -77,6 +77,277 @@
 - **工程化**：~~`tools/lib/harness.js` + `tools/run-suites.js`~~ → **本轮已完成**；
   剩余：`files` store 拆分；`store` 里那份为绕循环导入而复制的 `confirmIfDirty` 收敛到 `services/dialog`。
 
+## [Unreleased · 取消节点整选框 + 分屏拖拽重写 + 设置面板压暗可拖] — 拖分隔条不再掉帧、设置不再糊背景（承第二十二轮的另三项）
+
+> 用户报三件事：① 去掉 `.ProseMirror-selectednode` 的紫色外框，并且**取消这套整选逻辑**；
+> ② 分屏拖中间竖线「有点卡」，要求**深度优化、必要时重构，但必须保证速度与性能开销**；
+> ③ 设置面板的背景遮罩「**暗一点就行，不要模糊**」，面板本身保持正常颜色，并且**设置窗口要能在
+> 窗口内被拖动**。
+
+### Fixed
+
+- **不再有节点级整选**（`lib/editor/pointer.ts`）：`filterTransaction` 原先只把**文本块**的
+  `NodeSelection` 降级成文本光标，图片等行内/叶节点仍是整选 —— 那就是紫色外框的来源。
+  现在**任何** `NodeSelection` 都降级为 `TextSelection.near()`：点图片落到图片旁的文本光标，
+  要删图仍然 `Backspace` 即可（`docs/typora-wysiwyg-manual.md` 的键盘习惯不变）。
+  CSS 侧同时摘掉 `.ProseMirror-selectednode { outline: none }`——框已经没有来源了。
+
+### Changed
+
+- **分屏拖拽重构**（`views/EditorView.vue` + `assets/style.css`）：先量化再动手，
+  重文档（400 段）下每帧成本的三块来源与处理：
+
+  | 来源 | 实测 | 处理 |
+  | --- | --- | --- |
+  | 分隔条是 flex 子项，改宽度时它跟着重排、还占掉 11px | 左栏宽度与比例对不上（516 vs 611） | 改成**绝对定位浮层**（`left: var(--split-left)`），不参与两侧布局 |
+  | `.split-dragging *` 的全量 `user-select: none !important` | 开始/结束各一次**全子树**样式重算 ≈ **26ms** | 规则只作用在 `body` 上，并让拖拽中的内容区 `pointer-events: none` |
+  | 每帧写宽度 + 整篇重排 | 写宽度 ≈ 15.6ms、重排无法避免（文本必须按新宽度折行） | 指针事件按 **rAF 合帧**：一帧最多写一次；拖拽期两栏加 `contain: layout paint` 并关过渡 |
+
+  性能基线（`tools/_verify-round-perf.js` 的 p95 门禁，400 段 + 8 个代码块）：
+  **p95 33.3ms / max 33.5ms / over33 21→9**（改之前同一台机 p95 33.4 / **max 66.8** / over33 21）。
+- **pane 宽度只有一个写入方**（本轮发现的真问题）：拖拽期必须绕过 Vue（否则每帧重渲染），
+  但「松手后清 inline 交回 Vue」会留下两份状态 —— Vue 的 `patchStyle` 拿上一次渲染的值比对，
+  而 DOM 已被外部改过，补丁**短路**。实测（隔离实例 + `MutationObserver` 记录 style 属性的
+  每一次写入）：松手后 Vue **一次都没写** pane 的 style，`clearInline` 清完就没人再写，
+  左栏掉到 **516px**（≈ 内容 max-content），而 `settings.splitRatio` 已是 0.5875，两者对不上。
+  现在 `syncPaneLayout()` 是唯一写入方（模式切换、双击复位、拖拽结束都走它），
+  模板不再给两个 pane 挂 `:style`；分隔条位置仍由 Vue 的 CSS 变量绑定驱动。
+- **设置面板遮罩从「模糊」改「压暗」**（`.settings-scrim`）：`backdrop-filter` 去掉，
+  改 `rgb(0 0 0 / 32%)`（暗色主题 42%）——用户常在读文档时顺手调设置，糊掉正文没法看。
+  面板本身不加滤镜，颜色与其它弹层一致。
+- **设置面板可在窗口内拖动**（`SettingsDialog.vue`）：标题栏是把手（`.settings-drag-handle`，
+  `cursor: grab/grabbing` + 拖拽握把图标），位移只走 `translate3d`（不触发布局），
+  拖动中 `transition: none`；越界时**保证面板还有一部分留在视口内**。位置是**会话级**：
+  每次打开回到居中，不跨次保留（`_verify-round-perf.js` 有断言钉住）。
+
+### Fixed（用户运行时报出）
+
+- **`Extraneous non-props attributes (data-toolbar-item)` 警告**：工具栏给「表格」「代码块」
+  两个按钮组件打 `data-toolbar-item` 用来判断右键是否落在项目上，而这两个组件的模板是
+  **两个根节点**（按钮容器 `div` + `Teleport` 到 body 的悬停弹层，见
+  `ToolbarTableButton.vue` / `ToolbarCodeBlockButton.vue`）——Vue 的 fallthrough 只在
+  **单根**组件上生效，多根时属性无处可挂，于是每次渲染都告警，且该属性**根本没落到 DOM**
+  （实际后果：在这两个按钮上右键会被 `isOnItem` 判为空白区，弹出工具栏菜单而不是项目自身菜单）。
+  修法是显式转交：两个组件各加 `defineOptions({ inheritAttrs: false })` + 容器上 `v-bind="$attrs"`。
+  同类多根组件还有 `SidebarRecentButton.vue`（也是 `div` + `Teleport`），但它调用处没传任何属性，
+  不会告警，暂不动。
+  另注：这条 warning 只在开发模式可见——`src/main/index.ts` 里对渲染进程 warning/error 的
+  转发是 `if (is.dev)` 包的，打包版不会打印。验收：`tools/_verify-toolbar-settings.js`
+  新增 2 条（两个按钮的容器确实带 `data-toolbar-item`；在表格按钮上真右键不弹工具栏菜单），37/37。
+
+### Verification（本轮实测）
+
+| 门禁 | 结果 |
+| --- | --- |
+| `tsc --noEmit` + `vue-tsc --noEmit` | exit 0 |
+| `npx eslint --cache .` | **0 error / 0 warning** |
+| `npm run test:unit` | **263/263 pass** |
+| `electron-vite build` | exit 0 |
+| `tools/_verify-round-perf.js`（本季新增，22 条） | **22/22** —— 节点整选不再出现 + 降级后仍可打字；拖拽中 inline 直写、松手后保留终态且与比例一致、模式来回切换不残留宽度；帧率基线 p95 ≤ 34ms；设置遮罩无 `backdrop-filter`、面板可拖、重开复位 |
+| `tools/_verify-toolbar-settings.js`（新增 2 条 → 37 条） | **37/37** |
+| 回归：`_verify-inline-formats`（183/184）/ `_verify-surfaces`（37/37）/ `_regress-layout`（9/9）/ `_regress-cb`（3/3）/ `_regress-divider`（4/4）/ `_verify-sidebar-tree-style`（29/29）/ `_verify-filelist-view`（13/13）/ `_verify-marker-hold`（8/8）/ `_verify-find-replace`（24/24）/ `_verify-toolbar-settings`（37/37）/ `_verify-bars-no-filename`（12/12） | **12/12 套件全绿**（`_verify-inline-formats` 唯一未过项是既有的模板保真差异，与分栏尺寸断言无关，见上一轮记录） |
+
+> 诚实说明：分屏的**布局重排本身省不掉**（文本必须按新宽度重新折行）；本轮消掉的是
+> 每帧重复的中间层（浮层分隔条、全子树样式重算、多写一次宽度）。进一步实验
+> （`content-visibility` / `cssText` 合并写入 / 更大范围 `contain`）实测**没有收益**，
+> 没有采纳。
+
+
+## [Unreleased · 页签常驻修复 + 标记抬手才显示 + 侧栏直角] — 文件/大纲切一次就空、拖选时 `**` 乱冒（承第二十二轮）
+
+> 用户报三件事：① 打开文件夹后「文件 → 大纲 → 文件」切回来什么都不显示，再切大纲也空；
+> ② 拖选加粗文字时两侧 `**` 立刻冒出来，希望**松开鼠标再显示**；③ 去掉「文件 / 大纲」里
+> 选中项的圆角。
+
+### Fixed
+
+- **页签切一次就空**（`AppSidebar.vue`）：内容区原先用 `<Transition mode="out-in">` +
+  `v-if`/`key` 重挂组件，而文件树的数据是**惰性拉进 dirCache** 的、键盘焦点初始化又依赖
+  「已经渲染出来的行」—— 卸载/重挂的时序一旦没对上，树就停在「没有任何行」且**自己没有恢复路径**；
+  大纲同理（只读 editor store 的 outline，编辑器实例重建那一刻可能正好是空的）。
+  改成**两个面板常驻 DOM、切页签只切显隐**（`v-show`）：数据、滚动位置、展开状态全部原样保留，
+  这类状态机问题从根上没有了，也省掉每次切换的重挂成本。
+- **文件树自愈**：切回「文件」页签时若根目录缓存为空（被 `setRoot`/`refreshDir`/事件竞态清过），
+  主动重新拉一次 —— 之前它只读缓存、从不自己拉，缓存空了就永远空着。
+- **`mousedown` 不再落在空处**：焦点初始化只在「文件」页签可见时做，避免隐藏着的树去抢焦点。
+
+### Changed
+
+- **标记在指针抬起后才显示**（`typoraInlineMarks.ts`）：按住左键期间（含拖选全程）把
+  `.md-marker` 的展开装饰折叠，`mouseup`/`pointerup`/`pointercancel` 时立刻恢复。
+  只动「要不要给 `.md-reveal-inline`」，**不碰** `.md-marker` 的折叠机制（那是渲染结构，
+  与光标导航/命中绑在一起）—— 模型、落盘字节、选区语义一个都不动。
+  两处必须踩准（都实测踩过）：
+  * 锚点用 **mousedown** 而不是 pointerdown：pointerdown 在部分环境（含 CDP 合成的输入）
+    不会被派发，押在它上面会「代码看着对、实际不折叠」；
+  * 抑制开关的变化必须**进事务元数据**（`SET_SUPPRESSED`）：PM 只在
+    `docChanged || selectionSet` 时调插件 `apply`，只翻模块布尔量的话空事务会被当成
+    「什么都没变」，标记照样显示；去重也不能用「模块标志是否翻转」，否则 `mousedown`
+    先置位会让派发永远不发生（拖到编辑区外松手后标记回不来）。
+- **侧栏「文件 / 大纲」选中项改直角**：`.tree-row` 去掉 6px 圆角、大纲行去掉 `rounded-lg`，
+  hover/选中底色贯通侧栏整宽（与两侧边界对齐）。
+
+### Verification（本轮实测）
+
+| 门禁 | 结果 |
+| --- | --- |
+| `tsc --noEmit` + `vue-tsc --noEmit` | exit 0 |
+| `npx eslint --cache .` | **0 error / 0 warning** |
+| `npm run test:unit` | **263/263 pass** |
+| `electron-vite build` | exit 0 |
+| `tools/_verify-marker-hold.js`（新增 8 条） | **8/8**，连跑 3 轮稳定（光标在构造内显示 → 按住折叠 → 拖动中仍折叠且实测零宽 → 松开恢复 → 单击不卡住 → 拖到编辑区外松手也恢复） |
+| 回归：`_verify-inline-formats` / `_verify-surfaces` / `_regress-layout` / `_regress-cb` / `_verify-sidebar-tree-style` / `_verify-filelist-view` / `_verify-find-replace` / `_verify-toolbar-settings` / `_verify-bars-no-filename` | 全绿（`_verify-sidebar-tree-style` 的 `row-radius-6` 断言按本轮口径改成 `row-square-corners`） |
+
+### 顺带修的既有问题（与本轮功能相邻）
+
+- `tools/_verify-filelist-view.js` 是**文件列表视图重构后没跟着更新**的老套件：它读
+  `files().docs` / `files().docsLoading` / `files().loadDocs()`（都已迁到 `workspaceDocs` store），
+  在任何实例上都直接抛 `TypeError`；而且它没有统一的 `--- N/M PASS` 结论行，`run-suites.js`
+  会把它记成 `0/0 FAIL`。现在：改用 `workspaceDocs`、自备夹具工作区（不再依赖实例里恰好有工作区）、
+  补齐结论行 —— 13/13。
+
+## [Unreleased · 查找栏折叠替换 + 正则查找 + 大纲去左右留白] — Ctrl+F 只出查找、Ctrl+H 直接出替换（承第二十一轮）
+
+> 用户要三件事：① Ctrl+F 只出现查找，前面给一个折叠三角，点开才出替换；Ctrl+H 直接出替换；
+> ② 查找支持正则表达式；③ 取消左侧边栏「目录」区域左右两侧的间距。
+
+### Added
+
+- **折叠三角**（`FindReplaceBar.vue` 的 `find-disclosure`）：Ctrl+F 只出查找一行，
+  左侧三角朝右；点一下（或 Ctrl+H）下拉出替换行，三角转 90°。为什么这样分：绝大多数查找
+  都不替换，常驻两行会一直占着右上角。
+- **Ctrl+H → 直接出替换**：新命令 `edit.replace`（`useKeymap.ts`，分组「编辑」、可自定义键位）
+  + 菜单动作 `replace`（应用内「编辑」菜单 + 原生菜单「替换」）。栏已开着时按 Ctrl+H 就地展开
+  （不会先关再开）。
+- **正则查找**（默认关）：查找栏新增 `.*` 开关，打开后查询串按正则解释 —— 元字符、`|`、`()`
+  分组都生效；右栏计数在语法错时显示**「表达式无效」**并把输入框与开关标红（不是静默零匹配，
+  也不是抛异常）。正则模式下替换串支持 **`$1` / `$&` / `$$`** 按捕获组展开（`$\`` 与 `$'` 不支持：
+  它们要「命中在整篇里的位置」，而渲染面的文档坐标与纯文本偏移不同源 —— 与其给个大部分时候对的，
+  不如原样保留）。
+
+### Fixed
+
+- **捕获组映射丢了**（本轮自查发现）：`findInRuns` 把块内文本坐标映射回文档坐标时只搬了
+  `from/to`，把 `groups`/`whole` 丢了 —— 结果是渲染面的 `$1` 静默展开成空串，「替换成功了但内容不对」。
+  现在整条匹配对象一起带走，并在单测里钉住（`findInRuns` 的捕获组断言）。
+
+### Changed
+
+- **大纲（侧边栏「目录」页签）去掉左右留白**：容器 `px-2` 撤掉，行的 hover/选中底色铺满侧栏宽度
+  （与「文件」树一致）；行内左侧留白仍由每级缩进负责，缩进参考线不受影响。
+- `edit.findReplace`（Ctrl+F）不再限制 `when: 'notInInput'`：在各家编辑器里 Ctrl+F 都是「就地查找」，
+  在查找框里再按一次应当把它关掉，而不是漏给输入框。
+
+### Verification（本轮实测）
+
+| 门禁 | 结果 |
+| --- | --- |
+| `tsc --noEmit` + `vue-tsc --noEmit` | exit 0 |
+| `npx eslint --cache .` | **0 error / 0 warning** |
+| `npm run test:unit` | **263/263 pass**（`findReplace` 单测由 11 条扩到 23 条：正则元字符/中文码点/非法表达式/零长匹配/捕获组/两位组号/`$`` 与 `$'` 保留/`findInRuns` 带组映射） |
+| `electron-vite build` | exit 0 |
+| `tools/_verify-find-replace.js` | **24/24**（新增：Ctrl+F 只出查找、三角展开/收起、Ctrl+H 直接出替换（开着与关着两种）、非法正则显示「表达式无效」、`$2$1` 端到端展开、关正则后回字面量） |
+
+## [Unreleased · 图标整体更换（第二轮）+ 应用内标识同源] — 桌面交付的 Lumin 图标进了每一个位置（承第二十轮）
+
+> 用户要求：把项目图标换成桌面的 `Lumin.png` / `Lumin.ico`，**各个位置都要换**，并且**不要用引用形式**
+> （怕换设备后显示不出来）。逐位置盘了一遍，真正的坑不在「换哪几个文件」，而在交付的 `.ico` 本身。
+
+### Fixed
+
+- **交付的 `Lumin.ico` 在 Windows 上抽不出图**：它只有**一个 256×256 的 PNG 压缩条目**，而
+  `System.Drawing.Icon.ToBitmap()`（GDI+，资源管理器取图标走的就是这条路）对它抛
+  `Requested range extends past the end of the array` —— **构建和运行都不报错，用户看到的是缺省图标**。
+  做法：保留交付的 `icon.png`（1024×1024）当母图，新增 `tools/pack-ico.js` 把它打成
+  **七档 32 位 BGRA DIB**（16/24/32/48/64/128/256，含 AND 掩码）—— 容器格式与旧图标一致，
+  像素来自交付原图（先 premultiply 再整数框滤波，透明边缘不发黑）。
+
+### Changed
+
+- `resources/icon.png` / `resources/icon.ico` 换成桌面交付的那份（PNG 按字节原样复制，
+  SHA256 `622127C6…`；ICO 由上面那份 PNG 重新打档）。删掉 `resources/icon.svg` /
+  `icon-small.svg` —— 它们是第一/第二版设计的 SVG 母版，都不是现行设计的真相源，留着只会误导。
+- **应用内标识改为图标本图**：启动骨架屏与「关于」页原先用 `Icon.vue` 里那条手绘折线 `logo`，
+  与图标不同源。现在用 `resources/icon.png` 的 **128×128 下采样内嵌成 data URI**
+  （`src/renderer/src/assets/iconPng.ts`，由 `tools/sync-app-icon.js` 生成）——
+  **不引用任何外部文件**，换设备 / 换目录 / 换平台都照常显示。
+- `tools/build-app-icon.js`（旧设计生成器）**默认不再写 `resources/`**：产物落
+  `%TEMP%\lumin-icon-redesign\`，要覆盖得显式加 `--force`。
+- `_verify-packaging.js`：中心区亮度判别按新图标重新标定（32px 中心 8×8 luma≈178 vs Electron 66），
+  并把 PNG-in-ICO 这个坑记在断言旁；顺手修掉两条「复用模式」的假红 —— `LUMIN_PKG_SKIP_BUILD=1`
+  时**不再清空 dist**（那正是要复用的产物），跳过的断言改为 `SKIP` 而不是 FAIL。
+
+### Verification（本轮实测）
+
+| 门禁 | 结果 |
+| --- | --- |
+| `tsc --noEmit` + `vue-tsc --noEmit` | exit 0 |
+| `npx eslint --cache .` | **0 error / 0 warning** |
+| `npm run test:unit` | **251/251 pass**（新增 `tests/toolIcon.test.mjs` 6 条：母图正方形/七档 DIB/负载字节数可复算/ICO 像素确由母图缩出/内嵌标识同步/build 下无旧图标） |
+| `electron-vite build` | exit 0 |
+| `tools/_verify-taskbar-jumplist.js` | **31/31**（快捷方式 icon 指向运行时内容寻址副本，与 `resources/icon.ico` 字节一致） |
+| exe 内嵌图标（独立复核） | 七档负载 **7/7 逐字节命中 `dist/win-unpacked/Lumin.exe`**；同一批字节在 `electron.exe` 里 7/7 不存在；GDI+ 抽出的 32×32 中心 8×8 = (178,178,179) |
+| `node tools/pack-ico.js --check` / `node tools/sync-app-icon.js --check` | 均 exit 0 |
+
+### Docs
+
+- `docs/typora-wysiwyg-manual.md` §4.36 增补「第二轮图标更换记录」（PNG-in-ICO 的坑、判据重标定、
+  单一来源守卫搬进单测）；`docs/packaging-install-test.md` 的 I-03 复验结论同步更新。
+
+## [Unreleased · 快捷工具栏可关可调 + 编辑区右键菜单收窄] — 工具栏空白区右键菜单 / 设置里的显隐与排序（承第十九轮）
+
+> 用户要两件事：① 编辑区工具栏的空白区加右键菜单（关闭工具栏 / 调整工具项），并把
+> 「开关 + 调整」一并放进设置；② 编辑区右键菜单的宽度收窄一点。
+> ①的实现要点是**让工具栏本身变成数据**：此前 24 个按钮是写死在模板里的，
+> 「调顺序 / 关掉某一项」必须先在数据层有一份目录。
+
+### Added
+
+- **快捷工具栏项目目录**（`src/shared/toolbarItems.ts`）：21 个可调整项（侧边栏 / 撤销 / 重做 ‖
+  标题 1-3 ‖ 加粗…行内代码 ‖ 引用…代码块 ‖ 表格…目录），每项带稳定 id、图标、文案 key 与
+  **视觉分组**；分组只在渲染时决定分隔线位置，因此换序只在同组内进行（跨组换序会把分隔线搅乱，
+  在 `moveToolbarItem` 里被拒绝）。同文件给出纯函数：`sanitizeToolbarItems`（丢掉未知 id / 去重 /
+  保留空数组）、`moveToolbarItem`、`insertToolbarItemByOrder`。
+- **工具栏空白区右键菜单**（`Toolbar.vue` 的 `onToolbarContextMenu`）：一级两项 ——
+  「关闭工具栏」「调整工具项」；二级（悬停展开）是**项目勾选列表**，已显示项带勾且排在前面，
+  点一下即从工具栏移除、再点回来即按出厂顺序插回原位。判定「空白」用 `[data-toolbar-item]`：
+  右键落在任意按钮上时不弹这个菜单（与按钮的左键行为一致）。
+- **通用右键菜单支持子菜单**（`ContextMenu.vue`）：条目带 `children` 时右侧出现 `›`，
+  悬停或 → 展开，`checked` 显示勾选态。子菜单是独立浮层，配「安全区 + 160ms 收起宽限」——
+  与编辑器右键菜单同一套指针判定（此前只有编辑器菜单有这套）。
+- **设置 → 编辑器 → 快捷工具栏**（`SettingsToolbar.vue`）：整条栏的开关 + 组内上/下移 +
+  隐藏/加入 + 恢复默认，改动即时生效并落 SQLite。右键菜单的「调整工具项」直接打开这一区块
+  并高亮一下（`ui.toolbarAdjustFocus`），不再另起模态浮层（避免模态套模态）。
+- **视图 → 显示快捷工具栏**（应用内菜单 + 原生菜单 `toggle-toolbar`）：工具栏关掉后右键菜单
+  也随栏消失，这是唯一的「开关型」入口。
+- 设置项 `toolbarVisible` / `toolbarItems`（默认 = 目录顺序，即改动前的工具栏）。
+
+### Changed
+
+- **编辑区右键菜单收窄**：一级面板 `min-width 268 / max-width 320` → **234 / 268**，
+  条目内边距 8px → 7px（最长条目「右侧插入列 + 快捷键」仍完整显示，实测 234px）。
+  二级菜单（190~260）尺寸不动。
+- 工具栏按钮改为**一条通用渲染路径**（图标 + 序号 + 激活态 + 禁用态），行为对齐：
+  撤销/重做用真 `:disabled`（回退栈空时不再「看起来能点」，D24 修复）；
+  源码模式下编辑器命令按钮统一禁用（D25 修复），但侧边栏开关保持可用。
+- 工具栏项目 `data-toolbar-item` / 工具栏根 `data-editor-toolbar`、右键菜单面板
+  `role=menu` + `aria-label` —— 既是无障碍语义，也是验收脚本的定位锚点（不靠 Tailwind 类名）。
+
+### Verification（本轮实测）
+
+| 门禁 | 结果 |
+| --- | --- |
+| `tsc --noEmit` + `vue-tsc --noEmit` | exit 0 |
+| `npx eslint --cache .` | **0 error / 0 warning** |
+| `npm run test:unit` | **245/245 pass**（新增 `tests/toolbarItems.test.mjs` 13 条：清洗/去重/空数组语义/同组换序边界/按目录插回） |
+| `electron-vite build` | exit 0 |
+| `tools/_verify-toolbar-settings.js`（新增 35 条） | **35/35 PASS**（空白区右键 → 两项；按钮上右键不弹；二级勾选列表；关掉某项后 settings 与工具栏同步；关闭工具栏后 DOM 消失；视图菜单与设置开关两条恢复路径；设置里上移/隐藏/加入/恢复默认；编辑区右键菜单 234px） |
+
+### Docs
+
+- `docs/_audit/ui-inventory.md` §1.3：工具栏改为目录驱动后的接线与新增入口说明（表内行号仍是
+  审计当时的快照，未逐行重排）。
+
 ## [Unreleased · CJK 标点旁的加粗 + 打字卡顿] — 中文引号/全角标点旁的 `**…**` 成对 + 每键成本与文档长度解耦（承第十八轮）
 
 > 用户报两件事：① `**一句话**：……押在了**「保存路径」与「Markdown 保真」**这两件……`

@@ -114,8 +114,13 @@ export function useAppActions(): {
         void runExport('epub')
         break
       case 'find':
-        // Ctrl+F / 菜单「查找替换」：打开右上角查找栏（再按一次关闭）
+        // Ctrl+F / 菜单「查找」：打开右上角查找栏（再按一次关闭）。
+        // 只展开查找 —— 替换那一行由栏里的折叠三角或 Ctrl+H 拉出来。
         useFindStore().toggle()
+        break
+      case 'replace':
+        // Ctrl+H / 菜单「替换」：打开查找栏并**直接展开替换行**（栏已开着时就地展开）
+        useFindStore().showReplace()
         break
       case 'global-search':
         ui.openGlobalSearch()
@@ -123,6 +128,10 @@ export function useAppActions(): {
       case 'toggle-sidebar':
         ui.sidebarVisible = !ui.sidebarVisible
         settings.set('sidebarVisible', ui.sidebarVisible)
+        break
+      case 'toggle-toolbar':
+        // 快捷工具栏的显隐（关闭后右键菜单也随栏消失，这是唯一的开关型入口）
+        settings.set('toolbarVisible', !settings.toolbarVisible)
         break
       case 'mode-wysiwyg':
         setMode('wysiwyg')

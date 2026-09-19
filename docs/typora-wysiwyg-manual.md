@@ -529,6 +529,8 @@ tr.replace(0, doc.content.size, new Slice(Fragment.fromArray(children), 0, 0))
 2. `keymap.ts` 段首/段间边界 Backspace（及对称 Delete）显式 `tr.join` 相邻同型段落，并把光标设到两段拼接缝，不再让 PM 走 selectNodeBackward；
 3. `pointer.ts` 增加 **filterTransaction 护栏**：任何事务若要把文本块（段落/标题等）设为 NodeSelection，一律降级为文本光标（节点级整选只保留给图片等叶子）——紫色段选框从机制上不可能出现。
 
+**补丁：整选逻辑整体取消（第二十二轮）**：用户要求「去掉 `.ProseMirror-selectednode` 外层的紫色边框，且取消这个选中的逻辑」。原先护栏只覆盖**文本块**，图片这类叶节点仍会被 PM 做成 `NodeSelection` 并套上主题色描边，于是紫色框仍有来源。现在 `filterTransaction` 把**任何** `NodeSelection` 都降级为 `TextSelection.near(pos, 1)`：点图片落到图片旁边的文本光标，选中态只有文本选区这一种。CSS 里 `.ProseMirror-selectednode { outline: none }` 一并保留为兜底（正常路径下该类不再落地）。删除图片仍按 Typora 习惯：光标落在图片一侧按 `Backspace`/`Delete`。验收见 `tools/_verify-round-perf.js` A 段（`selection` 不是 `NodeSelection`、文档里 `0` 个 `.ProseMirror-selectednode`、图片 `outline` 为 `none`、降级后仍能正常打字）。
+
 **补丁：源码权威重推，实时渲染与刷新语义对齐（本次）**：用户复现出斜体同样滞后（`*5*|` 无法删到 `*5`；`**5**` 在结束标记两星之间回车后，首行 `**5*` 的 5 应实时显示斜体——按 markdown-it，`**5*` = 字面 `*` + 斜体 `5`，此前要刷新才出现）。根因：归一化只是“启发式配对/字面量化”，与 markdown-it 对**边缘源码**（不成对、劈裂、删除收尾）的解析语义不一致。修复（非硬编码）：
 1. **复用同一条解析管线**：`typoraInlineMarks.ts` 新增 `resolveBlockContent` + `parseInlineHtml`——对含 `*~`` 的纯行内文本块，把其原文（标记文本即源码真值）喂给 tiptap-markdown 的 markdown-it parser（与加载/刷新完全同一引擎），解析结果经同一归一化转成标记模型；差异才替换（稳定态零开销），解析不可用回退原启发式。于是 `**5*` 实时即 字面`*`+斜体5、`*5**` 对称同理、`*5` 删尾后按字面量显示；
 2. **零转义保持**：`literalizeStrayMarkers` 把解析产物中“未被样式消费”的裸 `*~`` 包成 mdMarker(literal)（escape:false），否则普通文本里的 `*` 会被 markdown 写出器加 `\`（`**5*` → `\**5*` 源码漂移）；
@@ -1011,11 +1013,46 @@ commands     应用级命令表（composables/useKeymap.ts）：id / i18n 标题
 - **ICO 自己打包**：6 字节头 + 每张 16 字节目录项 + PNG 负载（Vista 起支持），比装一个 `png-to-ico` 更可控。
 - **写完立刻回读校验**，并且**按 32 网格坐标取像素**证明「画出来的就是设计的样子」：圆角外必须 `alpha=0`、笔画正中必须近白、折角内侧必须是底板色（证明确实是 L 不是实心块）、大档上下亮度必须差 >8（渐变在）、小档上下必须完全同色且等于 `#5A5CE8`（平色在）。
 
-**产物**（都在 `resources/`，由脚本生成，勿手改）：
+**产物**（都在 `resources/`）：
 
-- `icon.svg`（母版，给设计/其他平台）、`icon-small.svg`（小尺寸档，方头平色是刻意的，别当手误）
-- `icon.png` 512×512（窗口图标；比 1024 省一半解码内存，够高 DPI）
-- `icon.ico`：**16/24/32/48/64/128/256** 七档（Windows 的任务栏、窗口、快捷方式都读它）
+- ~~`icon.svg` / `icon-small.svg`~~（**已删除**）：它们曾是第一版/第二版设计的 SVG 母版，但都不是当前
+  设计的真相源（用户交付的是位图，没有 SVG 母版），留着只会让人误以为「改它就能改图标」。
+  真要重新生成旧设计母版：`node tools/build-app-icon.js`（默认写 `%TEMP%`，见 §4.36 的脚本警告）。
+- `icon.png` **1024×1024** 带 alpha（窗口图标 + macOS/Linux 打包图标 + ICO 各档的母图）
+- `icon.ico`：**16/24/32/48/64/128/256** **七档**，全部 32 位带 alpha、DIB（BITMAPINFOHEADER +
+  BGRA + AND mask）负载（Windows 的任务栏、窗口、快捷方式都读它），由 `node tools/pack-ico.js`
+  从 `icon.png` 打出
+
+> **图标更换记录（本次 / 第二轮）**：`resources/icon.png` 与 `resources/icon.ico` 已整体换成**用户桌面的
+> 当前图标**（`Lumin.png` 1024×1024 / SHA256 `622127C6…`、`Lumin.ico` 51754 B / SHA256 `0420F0ED…`，
+> 按字节原样复制）。这一轮与上一轮（§4.36 首轮记录）的关键差别：
+>
+> 1. **交付的 `.ico` 不能直接用**：它只有**一个 256×256 的 PNG 压缩条目**，而
+>    `System.Drawing.Icon.ToBitmap()`（GDI+，资源管理器取图标走的就是这条路）对它抛
+>    `Requested range extends past the end of the array` —— **抽不出图 = 缺省图标**，而且构建与运行
+>    都不会报任何错。上一轮交付的 9 档 DIB 没这个问题，所以当时直接复制就能用。
+>    本轮的做法：保留交付的 `icon.png` 当母图，用 `node tools/pack-ico.js` 把它打成
+>    **七档 32 位 BGRA DIB**（含 AND 掩码；档位与旧图标一致：16/24/32/48/64/128/256）。
+>    这样既拿到用户的设计，又是资源管理器读得动的容器格式。
+> 2. **应用内标识不再另画**：骨架屏与「关于」页原先用的是 `Icon.vue` 里那条手绘折线 `logo`，
+>    与图标不同源。现在改成**图标位图本身**（`resources/icon.png` 的 128×128 下采样，
+>    内嵌成 data URI 放在 `src/renderer/src/assets/iconPng.ts`）—— 不引用任何外部文件，
+>    换设备 / 换目录 / 换平台都照常显示（这是用户明确要求的）。
+> 3. **单一来源的守卫从脚本搬进单测**：`tests/toolIcon.test.mjs`（6 条）静态盯着四件事 ——
+>    `icon.ico` 必须是七档 DIB、每档负载字节数可复算、ICO 像素确由 `icon.png` 缩出来、
+>    内嵌位图与 `icon.png` 同步（不同步直接报红）、`build/` 下不许再有 `icon.*`。
+> 4. **`_verify-packaging.js` 的中心区亮度判别重新标定**：现行图标是白底 + 黑色衬线 L，
+>    32px 档中心 8×8 实测 luma≈178，Electron 图标 66（差 112，阈值仍取 60）。
+>    同时在该断言旁记下了 PNG-in-ICO 这个坑，免得下次换图标再踩一遍。
+> 5. `tools/build-app-icon.js`（旧设计生成器）**默认不再写入 `resources/`**：产物落
+>    `%TEMP%\lumin-icon-redesign\`，要覆盖得显式加 `--force`。
+
+
+> **图标更换记录（上一轮 / 已被本轮取代）**：`resources/icon.ico` / `resources/icon.png` 当时换成了用户
+> 交付的 `Lumin_2.*`（源文件 `Lumin_2.ico` 432254 B / SHA256 `605F02DD…`、`Lumin_2.png` 1628821 B /
+> `35C211B4…`，按字节原样复制安装）。这一轮的结论**已被上面的「第二轮」覆盖**，保留下来的只有它的
+> 教训：**档位与负载格式会随交付物变化，别假设它和上一份一样**（那次是 7 档 PNG → 9 档 DIB，这次是
+> 1 档 PNG → 七档 DIB）。
 
 **接线**：
 
@@ -1363,7 +1400,7 @@ docs/typora-wysiwyg-manual.md   # 本文档
 
 **改法**：
 
-- **Windows 运行时统一到一个文件**：窗口图标改成 `process.platform === 'win32' ? appIconIco : appIconPng`（`resources/icon.ico`）—— ICO 里本来就含 16/24/32/48/64/128/256 七档，Windows 会按场景（任务栏 / Alt+Tab / 标题栏 / 高 DPI）自己挑最合适的尺寸，比单张 PNG 更对；于是**窗口 + 任务栏 + 开始菜单快捷方式 + 跳转列表**读的都是 `resources/icon.ico`。
+- **Windows 运行时统一到一个文件**：窗口图标改成 `process.platform === 'win32' ? appIconIco : appIconPng`（`resources/icon.ico`）—— ICO 里本来就含 16/24/32/48/64/128/256 七档（**后来换成用户新设计后为 16/24/32/48/64/72/96/128/256 九档**，见 §4.36 的图标更换记录），Windows 会按场景（任务栏 / Alt+Tab / 标题栏 / 高 DPI）自己挑最合适的尺寸，比单张 PNG 更对；于是**窗口 + 任务栏 + 开始菜单快捷方式 + 跳转列表**读的都是 `resources/icon.ico`。
 - **非 Windows 用 PNG**：macOS/Linux 不吃 ICO，这是「确实需要另一种图标类型」的那种例外，用同一份设计导出的 `resources/icon.png`。
 - **删掉旧图标**：`build/icon.ico`、`build/icon.png`、`build/icon.icns` 全部删除（`build/` 只剩 mac 的 entitlements，与图标无关）。
 - **打包也指到同一个文件**：当时在 `package.json` 里加了一段最小 `build` 配置（`appId: com.lumin.app`、`productName: Lumin`、`win.icon: resources/icon.ico`）—— 不写这段的话 electron-builder 会回去找 `build/icon.ico`（已被我们删掉），反而退化成 Electron 默认图标。**后来这段被移到 `electron-builder.yml` 里成为唯一配置源，`package.json` 的 `build` 字段已删除，见 §4.41。**
@@ -1479,7 +1516,7 @@ parseLaunchIntent(argv, { appPath, cwd }): LaunchIntent
 
 - **A** **构建前先清场**（`no-packaged-instance-holds-dist-before-build` + `dist-cleared-before-build`：不许有 `Lumin.exe` 占着 `dist\`，且上一轮产物必须删得掉，原因见三点五），然后 `npm run build:unpack`（内含 typecheck）成功、`dist/win-unpacked/Lumin.exe` 存在；
 - **A2** **产物冒烟启动**：真起一次、等首页就绪；起不来就自动重建一次再试（`packaged-artifact-boots-after-rebuild`）—— 这条是本轮的血泪（见三点五）；
-- **B** **exe 里真的内嵌了我们的图标**：解析 `resources/icon.ico` 的目录项，断言 7 个尺寸（16/24/32/48/64/128/256）的字节**全部**能在 `Lumin.exe` 里找到，且 **electron.exe 里一个都找不到**（对照组）；再用 `ExtractAssociatedIcon` 取出 32×32 证明「取出来能渲染」；
+- **B** **exe 里真的内嵌了我们的图标**：解析 `resources/icon.ico` 的目录项，断言 7 个尺寸（16/24/32/48/64/128/256）的字节**全部**能在 `Lumin.exe` 里找到，且 **electron.exe 里一个都找不到**（对照组）；再用 `ExtractAssociatedIcon` 取出 32×32 证明「取出来能渲染」；**（⚠️ 这条已改成按目录项动态取档数，因为图标换成新设计后是 9 档；此处的 7/7 数字只对旧图标成立，新图标待复验）**
 - **C** **裸路径打开文件**：用打包后的 exe 直接启动 `Lumin.exe <临时目录>\甲-中文名.md`（隔离 `--user-data-dir` + CDP），断言 `files.current.path`、正文开头 `# 甲文档标题`、内存里的编码是 `utf-8`；
 - **D** **第二实例转发 + 去重**：再启动一次同一个 exe（另一个文件 `乙-第二篇.md`）→ 窗口数 1→2 且新窗口里是乙文件；同一文件再开一次 → 2→2（不会开出第三个窗口）；
 - **E** **打包运行不碰开始菜单**：整段测试前后对 `开始菜单\Programs` 做快照对比（含 mtime），必须完全不变，且不得出现 `Lumin.lnk`；
@@ -1574,7 +1611,7 @@ set LUMIN_PKG_SKIP_BUILD=1 && node tools/_verify-packaging.js   # 复用已有�
 见独立文档 **`docs/packaging-install-test.md`**：在本机用 NSIS 安装包做了完整的装 → 跑 → 卸实测。
 
 - 安装 `Lumin-1.0.0-setup.exe /S`：退出码 0、20.2 s；安装到 `%LOCALAPPDATA%\Programs\Lumin`（82 个文件，`Lumin.exe` 210,974,720 字节）；
-- exe 内嵌图标：`resources/icon.ico` 的 **16/24/32/48/64/128/256 七档负载 7/7 逐字节命中**，同一批字节在 `electron.exe` 里 7/7 不存在；
+- exe 内嵌图标：`resources/icon.ico` 的 **16/24/32/48/64/128/256 七档负载 7/7 逐字节命中**，同一批字节在 `electron.exe` 里 7/7 不存在；**（⚠️ 旧图标的数据；现行图标为 9 档新设计，exe 内嵌结论待复验）**
 - 文件关联：`HKCU\Software\Classes\.md` → ProgID `Markdown` → 命令 `…\Programs\Lumin\Lumin.exe "%1"`（`%1` 即裸路径，正好由 §4.41 的 `launchIntent` 解析）；
 - 打包版以**裸路径**打开中文文档成功（窗口标题 = 文件名，渲染层从 `app.asar` 加载）；
 - 卸载 `/currentuser /S`：退出码 0、10.6 s；安装目录与快捷方式清除；**`%APPDATA%\Lumin` 11027 个文件 / 38 个草稿原样保留**（`deleteAppDataOnUninstall: false` 生效）。

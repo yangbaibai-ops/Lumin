@@ -118,8 +118,8 @@
 
 @theme {
   --font-sans:
-    'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', 'PingFang SC',
-    'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+    'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB',
+    'Microsoft YaHei', sans-serif;
   --font-mono:
     'JetBrains Mono', ui-monospace, 'Cascadia Code', 'SF Mono', Consolas, Menlo, monospace;
 }
@@ -346,6 +346,35 @@
 .settings-panel {
   animation: lm-pop 0.2s cubic-bezier(0.22, 0.9, 0.3, 1.08);
 }
+/* 遮罩：**只压暗、不模糊**。原先用 backdrop-blur，后面的正文糊成一团 —— 而用户常常是
+   「对着正文调设置」，得能看清字。压暗同样能把注意力收在面板上，且面板自己始终清晰。 */
+.settings-scrim {
+  background: rgb(0 0 0 / 32%);
+  animation: lm-fade-in 0.18s ease;
+}
+:root.theme-dark .settings-scrim {
+  /* 深色主题下同样的黑会更"闷"，压得更轻一点 */
+  background: rgb(0 0 0 / 42%);
+}
+/* 拖动把手：整条面板头都能按住拖（按钮上除外，见 startDialogDrag） */
+.settings-drag-handle {
+  cursor: grab;
+}
+.settings-drag-handle:active,
+.settings-panel.is-dragging .settings-drag-handle {
+  cursor: grabbing;
+}
+/* 抓手图标：只是"这条能拖"的视觉提示 */
+.settings-drag-grip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 32px;
+  color: var(--ink-3);
+  transform: rotate(90deg);
+  opacity: 0.7;
+}
 
 .list-enter-active,
 .list-leave-active {
@@ -487,16 +516,32 @@
 }
 
 /* ── 分屏对比视图 ── */
+/* 分隔条 = **绝对定位的浮层**（不再当 flex 子项）。
+   为什么：它是 flex 子项时，每次改两侧宽度都要把它一起重新布局；后来者往往只关心
+   两侧的比例，分隔条本身只是个光标热区。改成 overlay 后，拖拽期间要重新布局的东西
+   少一层，而且热区可以做得比视觉条更宽（更好抓）。 */
 .split-divider {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  z-index: 20;
+  width: 11px;
+  margin-left: -5px; /* 让 11px 热区以「两栏分界线」为中心 */
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 9px;
-  flex: none;
   cursor: col-resize;
   background: transparent;
   transition: background-color 0.15s ease;
   touch-action: none;
+  left: var(--split-left, 50%);
+}
+/* 拖拽期间：热区两侧各扩 6px（更好抓），并且**不要**给分隔条加过渡 ——
+   否则它会追着指针慢慢滑，看起来就像"卡"。 */
+.split-divider.dragging {
+  width: 23px;
+  margin-left: -11px;
+  transition: none;
 }
 .split-divider span {
   width: 3px;
@@ -516,11 +561,18 @@
   height: 56px;
   background: var(--accent);
 }
-/* 拖拽期间禁选中（覆盖全窗口，防止文本/CM 抢选区） */
-.split-dragging,
-.split-dragging * {
-  user-select: none !important;
-  cursor: col-resize !important;
+/* 拖拽期间禁选中。**不要写成 `.split-dragging *`**：那会让整棵子树（编辑器里几百个段落
+   加几十个 CodeMirror）在拖拽开始/结束时各做一次全量样式重算 —— 实测 800 段文档上
+   加/去这个类各 ~26ms，是"一开始拖就顿一下"的主因。只作用在 body 上即可：
+   文本选中由 body 上的 user-select 继承，光标由 body 的 cursor 兜底。 */
+body.split-dragging {
+  user-select: none;
+  cursor: col-resize;
+}
+/* 拖拽期间跳过命中测试（避免在移动的子树上反复做 hover 计算） */
+.split-dragging .editor-scroll,
+.split-dragging textarea.source-editor {
+  pointer-events: none;
 }
 
 /* 分屏专属悬浮芯片：同步滚动开关 */
@@ -620,7 +672,9 @@
   border-radius: 50%;
   background: var(--accent);
   border: 2px solid var(--panel);
-  box-shadow: 0 0 0 1px var(--accent), 0 2px 6px var(--glow);
+  box-shadow:
+    0 0 0 1px var(--accent),
+    0 2px 6px var(--glow);
   transition: transform 0.12s ease;
 }
 .range::-webkit-slider-thumb:hover {
@@ -725,7 +779,9 @@
   color: var(--accent);
   text-decoration: none;
   border-bottom: 1px solid color-mix(in srgb, var(--accent) 35%, transparent);
-  transition: border-color 0.15s ease, background-color 0.15s ease;
+  transition:
+    border-color 0.15s ease,
+    background-color 0.15s ease;
 }
 .md-preview a:hover {
   border-bottom-color: var(--accent);
@@ -1242,7 +1298,9 @@ h6.md-reveal > .md-heading-marker {
   border-bottom: 1px solid transparent;
   background-color: transparent;
   background-clip: padding-box;
-  border-radius: 6px;
+  /* 直角：选中/hover 的底色是「整条贯通」的块，圆角会让它在侧栏里显得是一枚悬浮药丸，
+     与两侧边界对不齐（用户明确要去掉圆角） */
+  border-radius: 0;
   font-size: 13px;
   line-height: 1;
   color: var(--ink-2);
@@ -1538,10 +1596,13 @@ mark.lm-find-mark.lm-current {
   color: var(--ink-3);
 }
 
-/* 选中节点（图片 / 代码块等） */
+/* 选中节点（图片 / 代码块等）：
+   **刻意不给任何外观** —— 不画紫色（主题色）描边、不加圆角。本应用按 Typora 的口径走：
+   节点级整选在正文里没有意义（点图片就是想拖/删它，不是为了看一圈框）。
+   压制逻辑见 lib/editor/pointer.ts 的 filterTransaction：任何 NodeSelection 都降级成
+   普通文本光标，所以这个类基本不会出现；这里留一条「万一出现也不画框」的兜底。 */
 .ProseMirror-selectednode {
-  outline: 2px solid var(--accent);
-  border-radius: 8px;
+  outline: none;
 }
 
 /* ── 链接源码展开（Typora 同款，§4.15）──
@@ -2058,8 +2119,10 @@ li.md-reveal {
    结构：顶部横向常用行 + 分区列表 + 底部「清除最近使用」。
    配色全部走主题令牌，三套主题自动适配；动效为自点击点缩放淡入。 */
 .ecm-panel {
-  min-width: 268px;
-  max-width: 320px;
+  /* 宽度按最长条目（「右侧插入列」+ 快捷键提示）收紧：一级 6 个分类，
+     原先 268px 有近一半是空白，菜单显得比内容大一圈。 */
+  min-width: 234px;
+  max-width: 268px;
   border: 1px solid var(--edge);
   border-radius: 12px;
   background: color-mix(in srgb, var(--elevate) 96%, transparent);
@@ -2102,9 +2165,9 @@ li.md-reveal {
   display: flex;
   width: 100%;
   align-items: center;
-  gap: 8px;
+  gap: 7px;
   border-radius: 8px;
-  padding: 5px 8px;
+  padding: 5px 7px;
   text-align: left;
   font-size: 13px;
   color: var(--ink);

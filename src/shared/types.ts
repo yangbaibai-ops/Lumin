@@ -26,6 +26,14 @@ export interface AppSettings {
   lineHeight: number
   fontFamily: string
   editorMode: EditorMode
+  /** 编辑区顶部快捷工具栏是否显示（关掉后仍可右键工具栏原位置/设置面板重新开启） */
+  toolbarVisible: boolean
+  /**
+   * 快捷工具栏的项目顺序（只列出**显示**的项目 id，空数组 = 全部隐藏）。
+   * 目录、可用项目与清洗规则见 renderer/src/lib/toolbarItems.ts；
+   * 未登记在这里的项目不渲染，登记了但目录里没有的 id 会被丢弃（清洗在渲染时进行）。
+   */
+  toolbarItems: string[]
   sidebarVisible: boolean
   sidebarWidth: number
   splitRatio: number // 分屏对比视图左右宽度比（左面板占比 0.25~0.75）
@@ -360,8 +368,10 @@ export type MenuAction =
   | 'export-word'
   | 'export-epub'
   | 'find'
+  | 'replace'
   | 'global-search'
   | 'toggle-sidebar'
+  | 'toggle-toolbar'
   | 'mode-wysiwyg'
   | 'mode-source'
   | 'mode-split'

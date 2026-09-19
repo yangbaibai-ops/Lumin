@@ -2,10 +2,14 @@
 import { onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import Icon from '../components/Icon.vue'
+import { APP_ICON_PNG_BASE64 } from '../assets/iconPng'
 
 const router = useRouter()
 const version = ref('')
 const platform = ref('')
+
+/** 应用标识 = 应用图标本身（内嵌位图，与桌面图标同源；不依赖外部文件） */
+const appIconSrc = `data:image/png;base64,${APP_ICON_PNG_BASE64}`
 
 /** 返回进入「关于」之前的界面（无历史则回首页） */
 function goBack(): void {
@@ -35,15 +39,16 @@ onMounted(async () => {
 <template>
   <div class="h-full overflow-y-auto">
     <div class="mx-auto flex max-w-[560px] flex-col items-center px-8 pb-16 pt-16 text-center">
-      <div
-        class="relative mb-6 flex h-20 w-20 items-center justify-center rounded-3xl bg-gradient-to-br from-accent to-accent-2 text-white"
+      <!-- 应用图标：直接展示图标位图本身（原先是一个渐变方块 + 线性 logo，与桌面图标不同源） -->
+      <img
+        :src="appIconSrc"
+        alt="Lumin"
+        class="mb-6 h-20 w-20 rounded-[22px]"
         :style="{
           animation: 'lm-pop 0.5s cubic-bezier(0.2, 0.9, 0.3, 1.2)',
           boxShadow: '0 12px 40px var(--glow)'
         }"
-      >
-        <Icon name="logo" :size="40" :stroke-width="4" />
-      </div>
+      />
       <h1 class="text-[28px] font-bold tracking-tight text-ink">Lumin</h1>
       <p class="mt-1 text-[13.5px] font-medium tracking-[0.25em] text-accent">WRITE IN LIGHT.</p>
 

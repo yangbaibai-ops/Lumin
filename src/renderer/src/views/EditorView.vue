@@ -96,6 +96,21 @@ function updateSourceCursor(ta: HTMLTextAreaElement): void {
 // 已删除（手册 §4.59）。
 
 // ── 分屏分隔条拖拽（比例 0.25~0.75，SQLite kv 持久化）──
+//
+// ─── 为什么拖拽要走「直写 DOM」而不是 splitRatio 响应式 ───────────────────────
+// 实测（800 段 + 32 个代码块的文档，Chrome 同机）：
+//   * **一次「改 pane 宽度 + 布局」≈ 16ms**（整篇按新宽度重排，这是主要开销，与 Vue 无关：
+//     直接写 DOM、CSS 变量两条路都和走 Vue 一样，p95 33ms / max 67ms，百万像素级文档必掉帧）；
+//   * `.split-dragging *` 的 `user-select: none !important` 让**整棵子树**在开始/结束拖拽时
+//     各做一次全量样式重算 ≈ 26ms —— 所以那条规则改成只作用在 body 上；
+//   * 分隔条原本是 flex 子项，改宽度时它也要一起重排 —— 现在改成绝对定位浮层。
+// 结论：布局重排本身省不掉（文本必须按新宽度重新折行），能省的是**每帧重复的中间层**：
+//   * 指针事件按 rAF 合帧：一帧最多写一次宽度（浏览器一帧本来也只布局一次，多余的写只会
+//     反复置脏并让 style/布局缓存失效）；
+//   * 拖拽期间**不碰响应式状态**：只改两个 pane 的 inline style 与分隔条位置，
+//     Vue 一次都不重渲染（结束时才写回 splitRatio / 持久化）；
+//   * 拖拽中给两栏加 `contain: layout paint` + 关掉过渡：把重排半径限制在 pane 内部，
+//     并让分隔条不追着指针"慢慢滑"。
 const kernelRef = ref<HTMLElement | null>(null)
 const splitRatio = ref<number>(settings.splitRatio)
 const splitDragging = ref(false)
@@ -104,19 +119,98 @@ function clampRatio(v: number): number {
   return Math.min(0.75, Math.max(0.25, v))
 }
 
+/** 拖拽期间被直接改样式的两个 pane（结束时清理 inline style，交回 Vue 管） */
+interface SplitDragPanes {
+  left: HTMLElement
+  right: HTMLElement
+  divider: HTMLElement | null
+}
+function splitPanes(): SplitDragPanes | null {
+  const host = kernelRef.value
+  if (!host) return null
+  const panes = Array.from(host.children).filter(
+    (el): el is HTMLElement => el instanceof HTMLElement && el.classList.contains('bg-paper')
+  )
+  const left = panes[0]
+  const right = panes[panes.length - 1]
+  if (!left || !right) return null
+  return { left, right, divider: host.querySelector<HTMLElement>('.split-divider') }
+}
+
 function startSplitDrag(e: MouseEvent): void {
   e.preventDefault()
   const host = kernelRef.value
   if (!host) return
+  const panes = splitPanes()
+  if (!panes) return
   const rect = host.getBoundingClientRect()
   splitDragging.value = true
-  const move = (ev: MouseEvent): void => {
-    splitRatio.value = clampRatio((ev.clientX - rect.left) / rect.width)
+  document.body.classList.add('split-dragging')
+  // 拖拽期间关掉两栏的过渡与 `contain`（重排半径限制在 pane 内，别扩散到整页）
+  for (const p of [panes.left, panes.right]) {
+    p.style.transition = 'none'
+    p.style.contain = 'layout paint'
   }
-  const up = (): void => {
+
+  let pendingX: number | null = null
+  let raf = 0
+  /** 一帧只落一次：把比例直接写进 DOM（不触发 Vue） */
+  const apply = (): void => {
+    raf = 0
+    if (pendingX === null) return
+    const ratio = clampRatio((pendingX - rect.left) / rect.width)
+    pendingX = null
+    panes.left.style.flex = '0 0 auto'
+    panes.left.style.width = (ratio * 100).toFixed(4) + '%'
+    panes.right.style.flex = '1 1 0%'
+    // 分隔条跟着分界线走（浮层，不参与两侧重排）
+    const d = kernelRef.value?.querySelector<HTMLElement>('.split-divider')
+    if (d) d.style.left = (ratio * 100).toFixed(4) + '%'
+  }
+  const move = (ev: MouseEvent): void => {
+    pendingX = ev.clientX
+    if (!raf) raf = requestAnimationFrame(apply)
+  }
+  const up = (ev: MouseEvent): void => {
+    if (raf) cancelAnimationFrame(raf)
+    raf = 0
+    // 最后一次指针位置也要落地（否则会有"松手后差一点"的观感）
+    const ratio =
+      ev && typeof ev.clientX === 'number'
+        ? clampRatio((ev.clientX - rect.left) / rect.width)
+        : splitRatio.value
+    // 终态直接落 DOM（不经过 Vue），并且这一份 inline 从此由我们持有、不清除
+    panes.left.style.flex = '0 0 auto'
+    panes.left.style.width = (ratio * 100).toFixed(4) + '%'
+    panes.right.style.flex = '1 1 0%'
+    panes.right.style.width = ''
+    panes.right.style.minWidth = '0'
+    panes.left.style.display = ''
+    panes.right.style.display = ''
+    splitRatio.value = ratio
     splitDragging.value = false
+    document.body.classList.remove('split-dragging')
+    for (const p of [panes.left, panes.right]) {
+      p.style.transition = ''
+      p.style.contain = ''
+    }
     window.removeEventListener('mousemove', move)
     window.removeEventListener('mouseup', up)
+
+    /**
+     * 关于「松手后为什么不把 inline 交回 Vue」：
+     *
+     * 实测（隔离实例 + MutationObserver 记录 style 属性的每一次写入）：松手后 Vue **并没有**
+     * 重写 pane 的 `:style`。Vue 的 patchStyle 是拿「上一次渲染的值」和「新值」比对后再写，
+     * 拖拽期间 DOM 被外部改过（我们直写 inline）、又由 `clearInline` 清空过，Vue 记的
+     * prev/next 与实际 DOM 已经脱节——它认为"没变化"就短路了，于是清完 inline 就没人再写：
+     * 左栏宽度掉到 516px（≈ 内容 max-content），`ratio` 却是 0.5875，两者对不上。
+     *
+     * 结论：pane 宽度**不交给 Vue**。拖拽中直写、拖拽后也直写，唯一的写入方是
+     * `syncPaneLayout()`（模式切换与双击复位也走它），这样"屏幕上的宽度"只有一个主人，
+     * 不会出现两份状态互相覆盖。分隔条位置仍由 Vue 的 CSS 变量绑定驱动。
+     */
+    syncPaneLayout()
     // 拖拽结束才持久化（拖拽过程高频写 kv 无意义）
     settings.set('splitRatio', splitRatio.value)
   }
@@ -385,18 +479,52 @@ watch(
   }
 )
 
-// ─── 布局/显隐由模式驱动的计算样式 ───
-function renderPaneStyle(): Record<string, string> {
-  const m = ui.editorMode
-  if (m === 'source') return { display: 'none' }
-  if (m === 'split') return { flex: '0 0 auto', width: (splitRatio.value * 100).toFixed(2) + '%' }
-  return { flex: '1 1 0%' } // wysiwyg
+// ─── 布局/显隐：**直写 DOM**，不走 `:style` 绑定 ───
+// 注：分隔条是绝对定位浮层（不占位），所以 split 下左栏按比例占宽、右栏吃掉剩下的，
+// 两者相加正好是整条内核宽度，浮层压在分界线上。
+//
+// 为什么不让 Vue 管两个 pane 的 style：拖拽期间必须绕过 Vue 才不会每帧重渲染（见上），
+// 而"拖拽时直写、松手后交回 Vue"会留下两份状态——Vue 的 patchStyle 拿上一次渲染的值比对，
+// DOM 又被外部改过，补丁会短路（实测松手后左栏掉回内容宽度）。所以两块 pane 的
+// 显隐/宽度**只有一个写入方**：这个函数。模式切换、双击复位、拖拽结束都调它。
+const renderPaneRef = ref<HTMLElement | null>(null)
+const sourcePaneRef = ref<HTMLElement | null>(null)
+
+function syncPaneLayout(): void {
+  const left = renderPaneRef.value
+  const right = sourcePaneRef.value
+  if (!left || !right) return
+  const mode = ui.editorMode
+  if (mode === 'split') {
+    left.style.display = ''
+    left.style.flex = '0 0 auto'
+    left.style.width = (splitRatio.value * 100).toFixed(4) + '%'
+    right.style.display = ''
+    right.style.flex = '1 1 0%'
+    right.style.width = ''
+    right.style.minWidth = '0'
+    return
+  }
+  // wysiwyg：渲染面板整幅；source：源码面板整幅。另一个 display:none 但常驻（零重建）
+  const isSource = mode === 'source'
+  const wide = isSource ? right : left
+  const hidden = isSource ? left : right
+  wide.style.display = ''
+  wide.style.flex = '1 1 0%'
+  wide.style.width = ''
+  wide.style.minWidth = '0'
+  hidden.style.display = 'none'
+  hidden.style.flex = ''
+  hidden.style.width = ''
+  hidden.style.minWidth = ''
 }
-function sourcePaneStyle(): Record<string, string> {
-  const m = ui.editorMode
-  if (m === 'wysiwyg') return { display: 'none' }
-  return { flex: '1 1 0%', minWidth: '0' }
-}
+// 显隐/宽度跟着模式与比例走；拖拽中改的是 DOM，不会触发这里（松手后由 up() 自己收尾）
+watch([() => ui.editorMode, splitRatio], () => {
+  void nextTick(syncPaneLayout)
+})
+onMounted(() => {
+  syncPaneLayout()
+})
 /** 全屏源码模式的居中列（focusMode 决定最大宽度）；分屏右栏不居中。
     不加 transition：切模式时从「贴边」到「居中限宽」若带动画会显得慢一拍。 */
 function sourceCenterClass(): string[] {
@@ -513,7 +641,9 @@ onBeforeUnmount(() => {
     @drop.prevent="onDrop"
     @dragover="onDragOver"
   >
-    <Toolbar />
+    <!-- 快捷工具栏：可在设置（编辑器 → 快捷工具栏）或工具栏空白区右键菜单里关掉；
+         关掉后这里是「一片空的编辑区」，不占高度 -->
+    <Toolbar v-if="settings.toolbarVisible" />
 
     <!-- 草稿恢复横幅（文件状态逻辑，与内核无关）；未命名缓冲区没有磁盘文件可比较，文案另给一条 -->
     <Transition name="slide">
@@ -553,11 +683,7 @@ onBeforeUnmount(() => {
       @scroll.capture="onSplitScroll"
     >
       <!-- 渲染面板（Tiptap）：wysiwyg 全宽 / split 左栏 / source 隐藏但常驻 -->
-      <div
-        class="h-full min-w-0 bg-paper"
-        :style="renderPaneStyle()"
-        @contextmenu="onRenderContextMenu"
-      >
+      <div ref="renderPaneRef" class="h-full min-w-0 bg-paper" @contextmenu="onRenderContextMenu">
         <TyporaEditor
           ref="renderRef"
           :key="files.current?.path ?? 'untitled'"
@@ -566,11 +692,13 @@ onBeforeUnmount(() => {
         />
       </div>
 
-      <!-- 分屏分隔条（仅 split 存在；拖动时显示拖拽态） -->
+      <!-- 分屏分隔条（仅 split 存在；拖动时显示拖拽态）
+           绝对定位浮层：位置由 --split-left（比例）驱动，不参与两侧栏的 flex 布局 -->
       <div
         v-if="ui.editorMode === 'split'"
         class="split-divider"
         :class="{ dragging: splitDragging }"
+        :style="{ '--split-left': `${splitRatio * 100}%` }"
         title="拖动调整左右比例（双击复位）"
         @mousedown="startSplitDrag"
         @dblclick="resetSplitRatio"
@@ -579,7 +707,7 @@ onBeforeUnmount(() => {
       </div>
 
       <!-- 源码面板（textarea）：split 右栏 / source 全宽 / wysiwyg 隐藏但常驻 -->
-      <div class="h-full min-w-0 overflow-hidden bg-paper" :style="sourcePaneStyle()">
+      <div ref="sourcePaneRef" class="h-full min-w-0 overflow-hidden bg-paper">
         <div class="h-full">
           <div class="h-full" :class="sourceCenterClass()">
             <textarea

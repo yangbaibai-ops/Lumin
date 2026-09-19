@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useSettingsStore } from '../stores/settings'
 import { useUiStore } from '../stores/ui'
@@ -12,8 +12,18 @@ import ToolbarTableButton from './ToolbarTableButton.vue'
 import ToolbarCodeBlockButton from './ToolbarCodeBlockButton.vue'
 import { shouldCloseOnScrollOrResize } from '../lib/popoverClose'
 import { selectionHasMdStyle } from '../lib/editor/typoraInlineMarks'
+import {
+  DEFAULT_TOOLBAR_ITEMS,
+  insertToolbarItemByOrder,
+  sanitizeToolbarItems,
+  toolbarItemDef,
+  type ToolbarItemDef
+} from '../../../shared/toolbarItems'
 
 // ─── 编辑器工具栏：命令通过 editor store 桥接 Tiptap 内核（解耦）────────────
+// 项目与顺序由 settings.toolbarItems 决定（目录见 shared/toolbarItems.ts）：
+// 渲染时先清洗一遍再补上图标/文案，因此旧版本残留的 id、手改坏的重复项都不会把
+// 工具栏画歪。分组只在渲染时决定分隔线位置（见 groupChanged 的说明）。
 const { t } = useI18n()
 const ui = useUiStore()
 const settings = useSettingsStore()
@@ -43,6 +53,105 @@ const editorModeValue = computed({
   set: (v: string) => setMode(v as 'wysiwyg' | 'source' | 'split')
 })
 
+/** 当前生效的快捷项（已清洗）：settings 是唯一真源，不另立一份 ui 状态 */
+const items = computed<ToolbarItemDef[]>(() =>
+  sanitizeToolbarItems(settings.toolbarItems)
+    .map((id) => toolbarItemDef(id))
+    .filter((d): d is ToolbarItemDef => !!d)
+)
+
+/** 与上一项分组不同 → 画分隔线（第一项不画） */
+function groupChanged(index: number): boolean {
+  if (index <= 0) return false
+  return items.value[index - 1].group !== items.value[index].group
+}
+
+/** 提示文案：标题带序号，其余直接用项目自己的 i18n key */
+function titleOf(d: ToolbarItemDef): string {
+  return d.level ? `${t(d.labelKey)} ${d.level}` : t(d.labelKey)
+}
+
+// ─── 空白区右键菜单 ────────────────────────────────────────────────────────
+// 「空白区域」= 工具栏里没有落在任何一个项目按钮上的位置（右侧弹簧区、分组之间、
+// 单项被隐藏后留下的空档）。判定用 data-toolbar-item：凡项目根节点都带这个属性，
+// 右键落在它内部时交给项目自身（与按钮的左键行为一致），不弹工具栏菜单。
+function isOnItem(target: EventTarget | null): boolean {
+  const el = target as HTMLElement | null
+  return !!el?.closest?.('[data-toolbar-item]')
+}
+
+/**
+ * 工具栏空白区右键：一级给两个动作，二级展开「显示的项目」勾选列表。
+ * 用现成的通用右键菜单（ui.openContextMenu）而不是另起一套：位置钳制、外部点击
+ * 关闭、Esc 关闭都在 ContextMenu.vue 里，这里只负责给出条目。
+ *
+ * 二级做成「勾选当前显示的项目」而不是四组行：既避免在菜单里再引一层分组概念，
+ * 也让「关掉这个按钮」这一最常用的操作一步可达（未勾选项仍在，勾上即回来）。
+ */
+function onToolbarContextMenu(e: MouseEvent): void {
+  if (isOnItem(e.target)) return
+  e.preventDefault()
+  ui.openContextMenu({
+    x: e.clientX,
+    y: e.clientY,
+    ariaLabel: 'toolbar-menu',
+    items: [
+      {
+        action: 'toolbar.hide',
+        label: t('toolbar.hide'),
+        icon: 'x',
+        danger: true
+      },
+      {
+        action: 'toolbar.adjust',
+        label: t('toolbar.adjust'),
+        icon: 'settings',
+        // 共用一个子菜单容器：children 由 ContextMenu.vue 惰性渲染
+        children: () => {
+          const current = new Set(sanitizeToolbarItems(settings.toolbarItems))
+          const list = catalogOrder.value
+          const shown = list.filter((d) => current.has(d.id))
+          const hidden = list.filter((d) => !current.has(d.id))
+          // 已显示的排前面且带勾：右键菜单里最常用的是「关掉某一个」
+          return [...shown, ...hidden].map((d) => ({
+            action: `toolbar.toggle.${d.id}`,
+            label: titleOf(d),
+            icon: d.icon,
+            checked: current.has(d.id)
+          }))
+        }
+      }
+    ],
+    onSelect: (action) => {
+      if (action === 'toolbar.hide') {
+        settings.set('toolbarVisible', false)
+        return
+      }
+      if (action === 'toolbar.adjust') {
+        ui.openToolbarAdjust()
+        return
+      }
+      if (!action.startsWith('toolbar.toggle.')) return
+      toggleItem(action.slice('toolbar.toggle.'.length))
+    }
+  })
+}
+
+/** 目录顺序（出厂顺序）：右键子菜单按它列出所有项目 */
+const catalogOrder = computed<ToolbarItemDef[]>(() =>
+  DEFAULT_TOOLBAR_ITEMS.map((id) => toolbarItemDef(id)).filter((d): d is ToolbarItemDef => !!d)
+)
+
+/** 勾选/取消一个项目：在「显示集合」里加或减，新增项按出厂顺序落位 */
+function toggleItem(id: string): void {
+  const current = sanitizeToolbarItems(settings.toolbarItems)
+  const next = current.includes(id)
+    ? current.filter((x) => x !== id)
+    : insertToolbarItemByOrder(current, id)
+  settings.set('toolbarItems', next)
+}
+
+// ─── 编辑器命令 ────────────────────────────────────────────────────────────
 const exportOpen = ref(false)
 const exportRef = ref<HTMLElement | null>(null)
 const exportPos = ref({ x: 0, y: 0 })
@@ -81,6 +190,14 @@ onBeforeUnmount(() => {
   window.removeEventListener('resize', onWindowScrollOrResize)
 })
 
+/** 工具栏隐藏时把导出弹层一起收掉（否则它会孤零零浮在文档上） */
+watch(
+  () => settings.toolbarVisible,
+  (v) => {
+    if (!v) exportOpen.value = false
+  }
+)
+
 function toggleSidebar(): void {
   ui.sidebarVisible = !ui.sidebarVisible
   settings.set('sidebarVisible', ui.sidebarVisible)
@@ -110,6 +227,89 @@ function canUndo(): boolean {
 function canRedo(): boolean {
   void editorStore.tick
   return editorStore.instance?.can().redo() ?? false
+}
+
+// ─── 单项状态 ──────────────────────────────────────────────────────────────
+// disabled：做不了。这类项目灰着显示而不是消失——位置若随状态进出而跳动（比如回退栈
+//   空时整个按钮不见了），用户会以为按钮丢了。
+// active：当前选区处在该项目对应的格式里。
+function isDisabled(id: string): boolean {
+  void editorStore.tick
+  const ed = editorStore.instance
+  // 侧边栏开关是纯界面动作，源码模式下也照常可用
+  if (id === 'sidebar') return false
+  if (!ed) return true // 源码模式：instance 为 null，编辑器命令全部不可用
+  if (id === 'undo') return !canUndo()
+  if (id === 'redo') return !canRedo()
+  return false
+}
+
+function isItemActive(id: string): boolean {
+  switch (id) {
+    case 'h1':
+      return isActive('heading', { level: 1 })
+    case 'h2':
+      return isActive('heading', { level: 2 })
+    case 'h3':
+      return isActive('heading', { level: 3 })
+    case 'bold':
+    case 'italic':
+    case 'underline':
+    case 'strike':
+    case 'code':
+      return isMdActive(id)
+    case 'quote':
+      return isActive('blockquote')
+    case 'ul':
+      return isActive('bulletList')
+    case 'ol':
+      return isActive('orderedList')
+    case 'task':
+      return isActive('taskList')
+    case 'codeblock':
+      return isActive('codeBlock')
+    default:
+      return false
+  }
+}
+
+function runItem(id: string): void {
+  switch (id) {
+    case 'sidebar':
+      toggleSidebar()
+      return
+    case 'undo':
+      editorStore.instance?.chain().focus().undo().run()
+      return
+    case 'redo':
+      editorStore.instance?.chain().focus().redo().run()
+      return
+    case 'h1':
+      return toggleHeading(1)
+    case 'h2':
+      return toggleHeading(2)
+    case 'h3':
+      return toggleHeading(3)
+    case 'bold':
+    case 'italic':
+    case 'underline':
+    case 'strike':
+    case 'code':
+      return runInline(id)
+    case 'quote':
+    case 'ul':
+    case 'ol':
+    case 'task':
+      return runBlock(id)
+    case 'hr':
+      return insertHr()
+    case 'link':
+      return addLink()
+    case 'image':
+      return addImage()
+    case 'toc':
+      return insertToc()
+  }
 }
 
 function runInline(cmd: 'bold' | 'italic' | 'underline' | 'strike' | 'code'): void {
@@ -186,30 +386,6 @@ function addImage(): void {
   })
 }
 
-const inlineButtons: {
-  icon: string
-  cmd: 'bold' | 'italic' | 'underline' | 'strike' | 'code'
-  name: string
-  titleKey: string
-}[] = [
-  { icon: 'bold', cmd: 'bold', name: 'bold', titleKey: 'editor.bold' },
-  { icon: 'italic', cmd: 'italic', name: 'italic', titleKey: 'editor.italic' },
-  { icon: 'underline', cmd: 'underline', name: 'underline', titleKey: 'editor.underline' },
-  { icon: 'strike', cmd: 'strike', name: 'strike', titleKey: 'editor.strike' },
-  { icon: 'code', cmd: 'code', name: 'code', titleKey: 'editor.inlineCode' }
-]
-const blockButtons: {
-  icon: string
-  cmd: 'quote' | 'ul' | 'ol' | 'task'
-  name: string
-  titleKey: string
-}[] = [
-  { icon: 'quote', cmd: 'quote', name: 'blockquote', titleKey: 'editor.quote' },
-  { icon: 'list', cmd: 'ul', name: 'bulletList', titleKey: 'editor.ul' },
-  { icon: 'list-ordered', cmd: 'ol', name: 'orderedList', titleKey: 'editor.ol' },
-  { icon: 'list-checks', cmd: 'task', name: 'taskList', titleKey: 'editor.task' }
-]
-
 const exportItems: { icon: string; labelKey: string; format: 'pdf' | 'html' | 'word' | 'epub' }[] =
   [
     { icon: 'file', labelKey: 'editor.exportPdf', format: 'pdf' },
@@ -222,115 +398,64 @@ const exportItems: { icon: string; labelKey: string; format: 'pdf' | 'html' | 'w
 <template>
   <div
     class="flex h-11 shrink-0 items-center gap-0.5 overflow-x-auto border-b border-edge bg-app px-3"
+    data-editor-toolbar
     @mousedown.prevent
+    @contextmenu="onToolbarContextMenu"
   >
-    <!-- 侧边栏开关 -->
-    <button
-      class="icon-btn"
-      :title="t('menu.toggleSidebar') + ' (Ctrl+Shift+B)'"
-      @click="toggleSidebar"
-    >
-      <Icon name="panel-left" :size="16" />
-    </button>
+    <!-- 快捷项：顺序 / 显隐完全由 settings.toolbarItems 驱动。
+         分组不同的相邻两项之间画一条竖分隔线（见 script 里的 groupChanged）。 -->
+    <template v-for="(d, i) in items" :key="d.id">
+      <div v-if="groupChanged(i)" class="mx-1.5 h-5 w-px shrink-0 bg-edge" />
 
-    <div class="mx-1.5 h-5 w-px shrink-0 bg-edge" />
+      <!-- 侧边栏开关：自己管理状态（与菜单栏/状态栏共用同一份持久化） -->
+      <button
+        v-if="d.id === 'sidebar'"
+        class="icon-btn"
+        data-toolbar-item
+        :title="t('menu.toggleSidebar') + ' (Ctrl+Shift+B)'"
+        @click="toggleSidebar"
+      >
+        <Icon name="panel-left" :size="16" />
+      </button>
 
-    <!-- 撤销 / 重做 -->
-    <button
-      class="icon-btn"
-      :class="{ 'opacity-40': !canUndo() }"
-      :title="t('editor.undo')"
-      @click="editorStore.instance?.chain().focus().undo().run()"
-    >
-      <Icon name="undo" :size="15" />
-    </button>
-    <button
-      class="icon-btn"
-      :class="{ 'opacity-40': !canRedo() }"
-      :title="t('editor.redo')"
-      @click="editorStore.instance?.chain().focus().redo().run()"
-    >
-      <Icon name="redo" :size="15" />
-    </button>
+      <!-- 段落 / 代码块：自带悬停弹层，单独两个组件 -->
+      <ToolbarTableButton v-else-if="d.id === 'table'" data-toolbar-item />
+      <ToolbarCodeBlockButton v-else-if="d.id === 'codeblock'" data-toolbar-item />
 
-    <div class="mx-1.5 h-5 w-px shrink-0 bg-edge" />
-
-    <!-- 行内格式 -->
-    <button
-      v-for="b in inlineButtons"
-      :key="b.cmd"
-      class="icon-btn"
-      :class="{ active: isMdActive(b.cmd) }"
-      :title="t(b.titleKey)"
-      @click="runInline(b.cmd)"
-    >
-      <Icon :name="b.icon" :size="15" />
-    </button>
-
-    <div class="mx-0.5 h-4 w-px shrink-0 bg-edge" />
-
-    <!-- 标题 -->
-    <button
-      v-for="l in [1, 2, 3]"
-      :key="'h' + l"
-      class="icon-btn"
-      :class="{ active: isActive('heading', { level: l }) }"
-      :title="t('editor.heading') + ' ' + l"
-      @click="toggleHeading(l)"
-    >
-      <Icon name="heading" :size="15" />
-      <span class="ml-0.5 text-[10px] font-bold">{{ l }}</span>
-    </button>
-
-    <div class="mx-0.5 h-4 w-px shrink-0 bg-edge" />
-
-    <!-- 块级（代码块按钮自带「行号」悬停弹层，见 ToolbarCodeBlockButton） -->
-    <button
-      v-for="b in blockButtons"
-      :key="b.cmd"
-      class="icon-btn"
-      :class="{ active: isActive(b.name) }"
-      :title="t(b.titleKey)"
-      @click="runBlock(b.cmd)"
-    >
-      <Icon :name="b.icon" :size="15" />
-    </button>
-    <ToolbarCodeBlockButton />
-
-    <div class="mx-0.5 h-4 w-px shrink-0 bg-edge" />
-
-    <!-- 插入 -->
-    <ToolbarTableButton />
-    <button class="icon-btn" :title="t('editor.hr')" @click="insertHr">
-      <Icon name="hr" :size="15" />
-    </button>
-    <button class="icon-btn" :title="t('editor.link')" @click="addLink">
-      <Icon name="link" :size="15" />
-    </button>
-    <button class="icon-btn" :title="t('editor.image')" @click="addImage">
-      <Icon name="image" :size="15" />
-    </button>
-    <button class="icon-btn" :title="t('editor.toc')" @click="insertToc">
-      <Icon name="list" :size="15" />
-    </button>
-
-    <div class="mx-1.5 h-5 w-px shrink-0 bg-edge" />
+      <!-- 其余项目：一条通用渲染路径（图标 + 序号 + 激活态 + 禁用态） -->
+      <button
+        v-else
+        class="icon-btn"
+        data-toolbar-item
+        :class="{ active: isItemActive(d.id) }"
+        :disabled="isDisabled(d.id)"
+        :title="titleOf(d)"
+        @click="runItem(d.id)"
+      >
+        <Icon :name="d.icon" :size="15" />
+        <span v-if="d.level" class="ml-0.5 text-[10px] font-bold">{{ d.level }}</span>
+      </button>
+    </template>
 
     <!-- 编辑器模式：实时渲染 / 分屏对比 / 源码。
          主控控件放左侧主功能区：右侧文档信息区在窄窗口会被
          overflow-x-auto 裁掉，模式切换必须永远可见。
          分段控件只显示图标（文案在 title/aria-label 上）+ 滑动指示块，比三个文字
          按钮更简约；具体说明悬停即得，模式本身看指示块位置与图标配色。 -->
+    <div v-if="items.length" class="mx-1.5 h-5 w-px shrink-0 bg-edge" />
     <SegmentedControl
       v-model="editorModeValue"
       :items="modeItems"
       :group-label="t('editor.viewMode')"
       class="mx-1"
+      data-toolbar-item
     />
 
-    <div class="min-w-2 flex-1" />
+    <!-- 右侧弹簧区：这里是「空白区域」右键菜单最常用的落点 -->
+    <div class="min-w-2 flex-1" data-toolbar-item />
 
-    <!-- 专注模式 -->
+    <!-- 右侧固定入口：不参与排序/隐藏（避免把工具栏调成「没法切模式、没法导出」）。
+         不加 data-toolbar-item：它们与弹簧区一样属于「非快捷项」，右键与四周的空白同义 -->
     <button
       class="icon-btn"
       :class="{ active: ui.focusMode }"
@@ -342,7 +467,7 @@ const exportItems: { icon: string; labelKey: string; format: 'pdf' | 'html' | 'w
 
     <div class="mx-1 h-5 w-px shrink-0 bg-edge" />
 
-    <!-- 导出 -->
+    <!-- 导出（固定入口，不参与排序） -->
     <div ref="exportRef" class="relative shrink-0">
       <button
         class="icon-btn"

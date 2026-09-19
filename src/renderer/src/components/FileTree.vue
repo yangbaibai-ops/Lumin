@@ -57,13 +57,33 @@ const filtered = computed(() => {
 })
 
 // 树渲染完就挑一个「静息焦点行」（当前文档行，否则第一行）：ARIA tree 随时都得有
-// 且只有一个可 Tab 的行，否则 Tab 进来方向键没反应（见 lib/treeFocus.initRovingFocus）
+// 且只有一个可 Tab 的行，否则 Tab 进来方向键没反应（见 lib/treeFocus.initRovingFocus）。
+// 只在「文件」页签可见时做 —— 面板常驻 DOM（v-show），否则切到大纲时这里会去动焦点。
 watch(
   [filtered, () => files.root],
   () => {
-    void nextTick(() => initRovingFocus())
+    if (ui.sidebarTab !== 'files') return
+    void nextTick(() => {
+      if (ui.sidebarTab !== 'files') return
+      initRovingFocus()
+    })
   },
   { immediate: true }
+)
+
+/**
+ * 切回「文件」页签时自愈：目录缓存可能被别处清掉（`setRoot` 清空、`refreshDir` 删掉子级键、
+ * 或事件竞态），而本组件**只读缓存、从不自己拉**。缓存空了就重新拉一次根目录 ——
+ * 否则会停在「打开着工作区却一个新文件都不显示」，且没有任何恢复路径（用户报的就是这个现象）。
+ */
+watch(
+  () => ui.sidebarTab,
+  (tab) => {
+    if (tab !== 'files' || !files.root) return
+    const root = files.root
+    if (!files.dirCache[root]) void files.loadChildren(root)
+    void nextTick(() => initRovingFocus())
+  }
 )
 
 function onRootContextMenu(e: MouseEvent): void {
@@ -167,7 +187,7 @@ function onDrop(e: DragEvent): void {
       <!-- 工作区树（ARIA tree：方向键移动/展开、Home/End、Enter 打开，见 lib/treeFocus.ts）
            左右内缩 10px = 上面搜索行/页签的同一条竖线，树行的选中药丸与搜索框左缘对齐 -->
       <div
-        class="min-h-0 flex-1 overflow-y-auto px-2.5 pt-1 pb-3"
+        class="min-h-0 flex-1 overflow-y-auto px-0 pt-1 pb-3"
         role="tree"
         data-tree-root
         :aria-label="t('sidebar.files')"

@@ -106,6 +106,7 @@ export function installMenu(): void {
         { role: 'selectAll', label: T('selectAll') },
         { type: 'separator' },
         { label: T('findReplace'), click: () => send('find') },
+        { label: T('replace'), click: () => send('replace') },
         { label: T('globalSearch'), click: () => send('global-search') }
       ]
     },
@@ -113,6 +114,7 @@ export function installMenu(): void {
       label: T('view'),
       submenu: [
         { label: T('toggleSidebar'), click: () => send('toggle-sidebar') },
+        { label: T('toggleToolbar'), click: () => send('toggle-toolbar') },
         { type: 'separator' },
         {
           label: T('editorMode'),

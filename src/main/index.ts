@@ -9,8 +9,10 @@ import { join, resolve } from 'path'
 import { randomUUID } from 'crypto'
 import { pathToFileURL } from 'url'
 import { optimizer, is } from '@electron-toolkit/utils'
-// 窗口图标与任务栏/开始菜单快捷方式/跳转列表**共用同一个文件**（resources/icon.ico，内含 16~256 七档，
-// Windows 会按场景挑最合适的尺寸）；不要在这里另引 PNG，否则同一应用会出现两种图标。
+// 窗口图标与任务栏/开始菜单快捷方式/跳转列表**共用同一个文件**（resources/icon.ico，
+// 现行为七档 16/24/32/48/64/128/256 的 32 位 BGRA DIB，由 tools/pack-ico.js 从
+// resources/icon.png 打出；Windows 会按场景挑最合适的尺寸）；不要在这里另引 PNG，
+// 否则同一应用会出现两种图标。
 import appIconPng from '../../resources/icon.png?asset'
 import { installMenu } from './menu'
 import { registerIpc, attachCloseGuard } from './ipc'

@@ -262,9 +262,10 @@ const MEASURE = `(() => {
       heights.length === 1 && Math.abs(heights[0] - 27) <= 0.6,
       JSON.stringify(heights)
     )
+    // 直角（本轮起）：树行的选中/hover 底色要贯通侧栏整宽，圆形药丸与两侧边界对不齐
     c(
-      'row-radius-6',
-      rows.every((r) => r.radius.startsWith('6px')),
+      'row-square-corners',
+      rows.every((r) => r.radius === '0px' || r.radius === '0'),
       rows[0].radius
     )
     c(

@@ -121,7 +121,7 @@ async function openDoc(path: string): Promise<void> {
     </div>
 
     <!-- 滚动列表 -->
-    <div class="min-h-0 flex-1 overflow-y-auto px-2 pb-4">
+    <div class="min-h-0 flex-1 overflow-y-auto px-0 pb-4">
       <div
         v-if="docsStore.loading && !docsStore.docs.length"
         class="mt-8 flex items-center justify-center gap-2 px-4 text-[12px] text-ink-3"

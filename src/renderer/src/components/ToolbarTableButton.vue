@@ -13,6 +13,11 @@ import Icon from './Icon.vue'
 const { t } = useI18n()
 const editorStore = useEditorStore()
 
+// 模板有两个根节点（按钮容器 + Teleport 到 body 的弹层），属性无法自动继承。
+// 工具栏给本组件打了 `data-toolbar-item`（它靠这个属性判断「右键落在项目上」），
+// 所以关掉自动继承、手动挂到按钮容器上——否则 Vue 每次都警告，且右键会被当成空白区。
+defineOptions({ inheritAttrs: false })
+
 const MAX_ROWS = 8
 const MAX_COLS = 10
 
@@ -126,7 +131,7 @@ window.addEventListener('resize', onWindowScrollOrResize)
 </script>
 
 <template>
-  <div ref="btnRef" class="relative shrink-0" @mouseleave="scheduleClose">
+  <div ref="btnRef" v-bind="$attrs" class="relative shrink-0" @mouseleave="scheduleClose">
     <button
       class="icon-btn"
       :class="{ active: open }"

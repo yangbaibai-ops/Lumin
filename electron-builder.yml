@@ -47,6 +47,10 @@ win:
   executableName: Lumin
   # 图标嵌进 exe 资源：任务栏、Alt+Tab、资源管理器、安装器都用它。必须是 .ico（含多档尺寸），
   # 与开发态用的是同一份设计（resources/icon.ico）。
+  # ⚠️ 这里的 ico 必须是**多档 32 位 BGRA DIB**（含 AND 掩码）：用户交付的成品 ico 只有
+  # 一个 256×256 的 PNG 压缩条目，GDI+ 的 `Icon.ToBitmap()`（资源管理器取图标同一条路）读不了它
+  # （实测抛 Requested range extends past the end of the array → 显示缺省图标）。
+  # 换成新图后跑 `node tools/pack-ico.js` 重新打档（由 resources/icon.png 生成，七档 DIB）。
   icon: resources/icon.ico
   target:
     - target: nsis

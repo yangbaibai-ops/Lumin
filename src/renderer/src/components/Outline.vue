@@ -9,13 +9,15 @@ const editorStore = useEditorStore()
 </script>
 
 <template>
-  <div class="h-full overflow-y-auto px-2 pb-4">
+  <!-- 大纲列表**不做左右内边距、行也用直角**：行自身的 hover/选中底色要铺满侧栏宽度，
+       与「文件」页签（文件树行）的观感一致；行内左侧留白由下面的 paddingLeft 负责 -->
+  <div class="h-full overflow-y-auto pb-4">
     <TransitionGroup name="list">
       <button
         v-for="(h, i) in editorStore.outline"
         :key="`${i}-${h.level}-${h.text}`"
         data-outline-item
-        class="group flex w-full items-center gap-1.5 rounded-lg py-[5px] pr-2 text-left text-[12.5px] transition-colors duration-100"
+        class="group flex w-full items-center gap-1.5 py-[5px] pr-2 text-left text-[12.5px] transition-colors duration-100"
         :class="
           editorStore.activeHeading === h.pos
             ? 'bg-accent-soft text-accent'

@@ -158,10 +158,17 @@ function connect(url, timeoutMs = 6000) {
       ws.send(JSON.stringify({ id: i, method, params }))
     })
   const ev = async (expr) => {
-    const r = await send('Runtime.evaluate', { expression: expr, returnByValue: true, awaitPromise: true })
+    const r = await send('Runtime.evaluate', {
+      expression: expr,
+      returnByValue: true,
+      awaitPromise: true
+    })
     if (r.timedOut) throw new Error('evaluate timeout')
     if (r.result?.exceptionDetails)
-      throw new Error('EXC ' + JSON.stringify(r.result.exceptionDetails.exception?.description ?? '').slice(0, 240))
+      throw new Error(
+        'EXC ' +
+          JSON.stringify(r.result.exceptionDetails.exception?.description ?? '').slice(0, 240)
+      )
     return r.result?.result?.value
   }
   return { ws, ready, send, ev }
@@ -307,7 +314,11 @@ async function ensureNoPackagedInstanceRunning() {
  */
 function clearPreviousArtifacts() {
   const problems = []
-  for (const target of [path.join(DIST, 'win-unpacked'), SETUP_EXE, path.join(DIST, 'latest.yml')]) {
+  for (const target of [
+    path.join(DIST, 'win-unpacked'),
+    SETUP_EXE,
+    path.join(DIST, 'latest.yml')
+  ]) {
     if (!fs.existsSync(target)) continue
     try {
       fs.rmSync(target, { recursive: true, force: true, maxRetries: 5, retryDelay: 400 })
@@ -339,23 +350,43 @@ async function smokeBootArtifact(timeoutMs = 25000) {
 ;(async () => {
   const results = []
   const c = (n, cond, extra) => {
-    results.push((cond ? 'PASS' : 'FAIL') + ' ' + n + (extra ? ' | ' + extra : ''))
-    console.log((cond ? 'PASS' : 'FAIL') + ' ' + n + (extra ? ' | ' + extra : ''))
+    const line = (cond ? 'PASS' : 'FAIL') + ' ' + n + (extra ? ' | ' + extra : '')
+    results.push(line)
+    console.log(line)
   }
+  /**
+   * 明确的 SKIP：**不计入分母**，也不算失败。
+   * 为什么需要它：`LUMIN_PKG_SKIP_BUILD=1`（复用已有产物，迭代时用）时，那些只有重新打包才能
+   * 得出的结论不该被记成 FAIL —— 否则「跳过构建」这条路径永远报红，等于没有这条路径
+   * （实测踩过：**清场那一步还会把要复用的产物删掉**，于是必然找不到 exe）。
+   */
+  const skip = (n, why) => console.log('SKIP ' + n + (why ? ' | ' + why : ''))
 
   // 用户环境快照：全程不得变化
   const startMenuBefore = startMenuSnapshot()
   console.log('START-MENU-BEFORE ' + JSON.stringify(startMenuBefore))
 
   // ── A. build:unpack ──
-  console.log('── A. npm run build:unpack（免安装版）' + (SKIP_BUILD ? ' —— 本轮跳过，复用已有产物' : '') + '──')
+  console.log(
+    '── A. npm run build:unpack（免安装版）' +
+      (SKIP_BUILD ? ' —— 本轮跳过，复用已有产物' : '') +
+      '──'
+  )
   // 先清场：进程清干净 + 自己删掉上一轮产物并确认删得掉。有东西占着 dist 时构建出来的产物可能
   // 「启动即静默退出」（详见 ensureNoPackagedInstanceRunning / clearPreviousArtifacts 的注释）。
+  // ⚠️ 但**跳过构建时必须保留产物** —— 那正是要复用的东西。
   const leftovers = await ensureNoPackagedInstanceRunning()
-  c('no-packaged-instance-holds-dist-before-build', leftovers.length === 0, JSON.stringify(leftovers))
-  const clearProblems = clearPreviousArtifacts()
-  c('dist-cleared-before-build', clearProblems.length === 0, JSON.stringify(clearProblems))
-  if (!SKIP_BUILD) {
+  c(
+    'no-packaged-instance-holds-dist-before-build',
+    leftovers.length === 0,
+    JSON.stringify(leftovers)
+  )
+  if (SKIP_BUILD) {
+    skip('dist-cleared-before-build', '复用已有产物，不清场')
+    skip('build-unpack-succeeds', '复用已有产物')
+  } else {
+    const clearProblems = clearPreviousArtifacts()
+    c('dist-cleared-before-build', clearProblems.length === 0, JSON.stringify(clearProblems))
     const unpack = run('npm run build:unpack')
     console.log(unpack.out.split(/\r?\n/).slice(-12).join('\n'))
     if (!unpack.ok) {
@@ -367,8 +398,6 @@ async function smokeBootArtifact(timeoutMs = 25000) {
       console.log('BUILD-SUSPECT-LINES ' + JSON.stringify(suspects))
     }
     c('build-unpack-succeeds', unpack.ok, `exit=${unpack.code}`)
-  } else {
-    c('build-unpack-succeeds', fs.existsSync(UNPACKED_EXE), 'SKIPPED (复用已有 dist/win-unpacked)')
   }
   c('unpacked-exe-exists', fs.existsSync(UNPACKED_EXE), UNPACKED_EXE)
   if (!fs.existsSync(UNPACKED_EXE)) {
@@ -413,12 +442,24 @@ async function smokeBootArtifact(timeoutMs = 25000) {
   })()
   const exeBytes = fs.readFileSync(UNPACKED_EXE)
   const foundInExe = icoEntries.map((e) => ({ size: e.size, found: exeBytes.includes(e.payload) }))
-  const electronBytes = fs.existsSync(ELECTRON_EXE) ? fs.readFileSync(ELECTRON_EXE) : Buffer.alloc(0)
+  const electronBytes = fs.existsSync(ELECTRON_EXE)
+    ? fs.readFileSync(ELECTRON_EXE)
+    : Buffer.alloc(0)
   const foundInElectron = icoEntries.map((e) => electronBytes.includes(e.payload))
-  console.log('ICON-BYTES ' + JSON.stringify({ sizes: foundInExe.map((f) => f.size), inExe: foundInExe.map((f) => f.found) }))
+  console.log(
+    'ICON-BYTES ' +
+      JSON.stringify({
+        sizes: foundInExe.map((f) => f.size),
+        inExe: foundInExe.map((f) => f.found)
+      })
+  )
   c(
     'exe-embeds-our-icon-bytes',
-    foundInExe.length === 7 && foundInExe.every((f) => f.found),
+    // 档数**按目录项动态算**，别写死 7：图标在 2026-02 换成用户新设计后是 9 档
+    // （16/24/32/48/64/72/96/128/256），写死会让这条在换图标后误报 FAIL。
+    foundInExe.length === icoEntries.length &&
+      foundInExe.length >= 7 &&
+      foundInExe.every((f) => f.found),
     JSON.stringify(foundInExe)
   )
   c(
@@ -431,9 +472,18 @@ async function smokeBootArtifact(timeoutMs = 25000) {
   const electronExtracted = extractIconStats(ELECTRON_EXE, 'electron-control')
   console.log('ICON-EXTRACT ' + JSON.stringify({ ours: extracted, electron: electronExtracted }))
   c('exe-icon-extractable-32px', extracted?.size === '32x32', JSON.stringify(extracted))
-  // 中心区判别（旁证，真正的硬证据是上面的字节比对）：
-  // 我们字形的中心是**接近白**的（实测 176,179,198 —— 白字带一点periwinkle），
-  // Electron 图标中心实测是暗色（60,66,78）。判别用亮度差，实测差 113，阈值取 60 留足余量。
+  // 中心区判别（旁证，真正的硬证据是上面的字节比对）。
+  // 判据：**我们的中心区明显更亮** —— 现行图标是白底 + 黑色衬线 L，32px 档中心 8×8 实测
+  // (178,178,179) → luma≈178；Electron 的图标中心实测是暗色 (60,66,78) → luma≈66（差 112）。
+  // 阈值取 60 留余量（上一版折带 L 是 176,179,198 → luma≈180，同样过）。
+  //
+  // ⚠️ 2026 年换图标时的教训写在这里，免得下次又被同一个坑绊住：用户交付的 `Lumin.ico`
+  // **只有一个 256×256 的 PNG 压缩条目**，而 `Icon.ExtractAssociatedIcon(...).ToBitmap()`
+  // （GDI+，资源管理器取图标走的就是这条路）对 PNG-in-ICO 抛
+  // `Requested range extends past the end of the array` —— 抽不出图，这条断言会拿到 error 对象，
+  // 看着像「打包坏了」，其实是图标容器格式的问题。所以 `resources/icon.ico` 一律用
+  // `node tools/pack-ico.js` 从 `resources/icon.png` 打成**七档 32 位 BGRA DIB**（含 AND 掩码），
+  // 旧图标就是这个格式。想验的话：`node tools/pack-ico.js --check`。
   const lumaOf = (p) =>
     typeof p?.centerR === 'number' ? p.centerR * 0.299 + p.centerG * 0.587 + p.centerB * 0.114 : NaN
   const oursLuma = lumaOf(extracted)
@@ -442,8 +492,18 @@ async function smokeBootArtifact(timeoutMs = 25000) {
     'exe-icon-renders-ours-not-electron',
     Number.isFinite(oursLuma) && Number.isFinite(electronLuma) && oursLuma - electronLuma > 60,
     JSON.stringify({
-      ours: { r: extracted?.centerR, g: extracted?.centerG, b: extracted?.centerB, luma: Math.round(oursLuma) },
-      electron: { r: electronExtracted?.centerR, g: electronExtracted?.centerG, b: electronExtracted?.centerB, luma: Math.round(electronLuma) }
+      ours: {
+        r: extracted?.centerR,
+        g: extracted?.centerG,
+        b: extracted?.centerB,
+        luma: Math.round(oursLuma)
+      },
+      electron: {
+        r: electronExtracted?.centerR,
+        g: electronExtracted?.centerG,
+        b: electronExtracted?.centerB,
+        luma: Math.round(electronLuma)
+      }
     })
   )
 
@@ -567,8 +627,16 @@ async function smokeBootArtifact(timeoutMs = 25000) {
   console.log('── E. 开始菜单不被运行时改动 ──')
   const startMenuAfter = startMenuSnapshot()
   console.log('START-MENU-AFTER ' + JSON.stringify(startMenuAfter))
-  c('packaged-run-does-not-touch-start-menu', startMenuAfter === startMenuBefore, JSON.stringify({ before: startMenuBefore, after: startMenuAfter }))
-  c('packaged-run-creates-no-Lumin-lnk', !fs.existsSync(path.join(START_MENU, 'Lumin.lnk')), path.join(START_MENU, 'Lumin.lnk'))
+  c(
+    'packaged-run-does-not-touch-start-menu',
+    startMenuAfter === startMenuBefore,
+    JSON.stringify({ before: startMenuBefore, after: startMenuAfter })
+  )
+  c(
+    'packaged-run-creates-no-Lumin-lnk',
+    !fs.existsSync(path.join(START_MENU, 'Lumin.lnk')),
+    path.join(START_MENU, 'Lumin.lnk')
+  )
 
   // 收工：杀掉我们起的实例（只匹配隔离 profile）
   killPackaged()
@@ -576,24 +644,44 @@ async function smokeBootArtifact(timeoutMs = 25000) {
 
   // ── F. NSIS 安装包 ──
   // ⚠️ 只构建、绝不运行：运行安装包会在用户机器上写注册表/开始菜单/卸载项。
-  console.log('── F. npm run build:win（NSIS 安装包，不运行）' + (SKIP_BUILD ? ' —— 本轮跳过' : '') + '──')
+  console.log(
+    '── F. npm run build:win（NSIS 安装包，不运行）' + (SKIP_BUILD ? ' —— 本轮跳过' : '') + '──'
+  )
   if (!SKIP_BUILD) {
     const win = run('npm run build:win')
     console.log(win.out.split(/\r?\n/).slice(-14).join('\n'))
     c('build-win-succeeds', win.ok, `exit=${win.code}`)
   } else {
-    c('build-win-succeeds', fs.existsSync(SETUP_EXE), 'SKIPPED (复用已有安装包)')
+    skip('build-win-succeeds', '复用已有安装包')
   }
   const setupExists = fs.existsSync(SETUP_EXE)
-  c('nsis-installer-produced', setupExists, SETUP_EXE)
+  if (SKIP_BUILD && !setupExists) {
+    skip('nsis-installer-produced', '复用模式下没有现成安装包')
+  } else {
+    c('nsis-installer-produced', setupExists, SETUP_EXE)
+  }
   if (setupExists) {
     const size = fs.statSync(SETUP_EXE).size
     const hash = sha256(SETUP_EXE)
-    console.log('INSTALLER ' + JSON.stringify({ file: path.basename(SETUP_EXE), bytes: size, mb: +(size / 1048576).toFixed(1), sha256: hash }))
-    c('installer-size-sane', size > 40 * 1024 * 1024 && size < 400 * 1024 * 1024, `${(size / 1048576).toFixed(1)} MB`)
+    console.log(
+      'INSTALLER ' +
+        JSON.stringify({
+          file: path.basename(SETUP_EXE),
+          bytes: size,
+          mb: +(size / 1048576).toFixed(1),
+          sha256: hash
+        })
+    )
+    c(
+      'installer-size-sane',
+      size > 40 * 1024 * 1024 && size < 400 * 1024 * 1024,
+      `${(size / 1048576).toFixed(1)} MB`
+    )
   }
   const latestYml = path.join(DIST, 'latest.yml')
-  console.log('LATEST-YML ' + (fs.existsSync(latestYml) ? 'present（自动更新的版本清单）' : 'absent'))
+  console.log(
+    'LATEST-YML ' + (fs.existsSync(latestYml) ? 'present（自动更新的版本清单）' : 'absent')
+  )
 
   // ── G. 配置单一来源 + 身份一致（防「死配置」复发）──
   // 背景（实测确认，别凭印象）：electron-builder 的解析顺序是**先读 package.json 的 `build` 字段**，
@@ -605,9 +693,14 @@ async function smokeBootArtifact(timeoutMs = 25000) {
   c(
     'package-json-has-no-build-field',
     !('build' in pkgJson),
-    JSON.stringify({ hasBuild: 'build' in pkgJson, note: '有 build 字段时 electron-builder.yml 会被完全忽略' })
+    JSON.stringify({
+      hasBuild: 'build' in pkgJson,
+      note: '有 build 字段时 electron-builder.yml 会被完全忽略'
+    })
   )
-  const { getConfig } = require(path.join(REPO, 'node_modules', 'app-builder-lib', 'out', 'util', 'config', 'config.js'))
+  const { getConfig } = require(
+    path.join(REPO, 'node_modules', 'app-builder-lib', 'out', 'util', 'config', 'config.js')
+  )
   const eff = await getConfig(REPO, null, null)
   const ymlPath = path.join(REPO, 'electron-builder.yml')
   const ymlText = fs.readFileSync(ymlPath, 'utf-8')
@@ -639,7 +732,10 @@ async function smokeBootArtifact(timeoutMs = 25000) {
     JSON.stringify(effInfo)
   )
   // 身份一致：安装器写进快捷方式的 appId 与应用运行时设置的必须同一个（见 services/taskbar.ts）
-  const taskbarSrc = fs.readFileSync(path.join(REPO, 'src', 'main', 'services', 'taskbar.ts'), 'utf-8')
+  const taskbarSrc = fs.readFileSync(
+    path.join(REPO, 'src', 'main', 'services', 'taskbar.ts'),
+    'utf-8'
+  )
   const codeAppIds = [...taskbarSrc.matchAll(/'(com\.lumin\.app[^']*)'/g)].map((m) => m[1])
   c(
     'appid-matches-code',

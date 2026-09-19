@@ -19,6 +19,14 @@
 //   * 写完**回读校验**，并按网格坐标**取像素**证明「画出来的就是设计的样子」（含折痕明暗差）。
 //
 // 用法：先跑 tools/start-isolated.ps1，再 node tools/build-app-icon.js
+//
+// ⚠️ 本脚本是**旧设计的母版生成器**，默认不再写进 resources/：
+//    现行图标是**用户交付的位图**（`resources/icon.png` 1024×1024 + 由 `tools/pack-ico.js`
+//    从它打出的七档 DIB `resources/icon.ico`）。本脚本画的是上一版「折带 L」，直接写盘会
+//    把用户的设计覆盖掉，于是「开发态一个新图标、装完一个旧图标」重现。
+//    * 默认：产物写到 %TEMP%\lumin-icon-redesign\，只做自检与观感对照，**不碰 resources/**；
+//    * 真要重新生成旧设计：加 `--force`（确认过再敲，见 docs/typora-wysiwyg-manual.md §4.36）。
+//    换图标请改 `resources/icon.png` 后跑 `node tools/pack-ico.js`（保持单一来源）。
 const fs = require('fs')
 const os = require('os')
 const path = require('path')
@@ -27,6 +35,8 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 
 const REPO = path.resolve(__dirname, '..')
 const RES = path.join(REPO, 'resources')
+/** 默认输出目录（隔离，不覆盖现行图标）；`--force` 时才 = resources/ */
+const OUT = process.argv.includes('--force') ? RES : path.join(os.tmpdir(), 'lumin-icon-redesign')
 const PORT = 9222
 
 // ─── 几何（32 网格；改这里等于改图标）────────────────────────────────────────
@@ -446,11 +456,12 @@ function parseIco(b) {
   const pngs = {}
   for (const s of [16, 24, 32, 48, 64, 128, 256, 512]) pngs[s] = await raster(w, s, key)
 
-  fs.writeFileSync(path.join(RES, 'icon.svg'), svgMaster(key), 'utf-8')
-  fs.writeFileSync(path.join(RES, 'icon-small.svg'), svgMaster(key, true), 'utf-8')
-  fs.writeFileSync(path.join(RES, 'icon.png'), pngs[512])
+  fs.mkdirSync(OUT, { recursive: true })
+  fs.writeFileSync(path.join(OUT, 'icon.svg'), svgMaster(key), 'utf-8')
+  fs.writeFileSync(path.join(OUT, 'icon-small.svg'), svgMaster(key, true), 'utf-8')
+  fs.writeFileSync(path.join(OUT, 'icon.png'), pngs[512])
   fs.writeFileSync(
-    path.join(RES, 'icon.ico'),
+    path.join(OUT, 'icon.ico'),
     packIco([16, 24, 32, 48, 64, 128, 256].map((size) => ({ size, png: pngs[size] })))
   )
 
@@ -460,16 +471,18 @@ function parseIco(b) {
     Buffer.from((await w.ev('window.__lmIcon.sheet()')).split(',')[1], 'base64')
   )
 
-  // ── 回读校验 ──
-  const png = fs.readFileSync(path.join(RES, 'icon.png'))
+  // ── 回读校验（读的是本次的产物目录 OUT，不是 resources/）──
+  const png = fs.readFileSync(path.join(OUT, 'icon.png'))
   const pngInfo = pngSize(png)
-  console.log('ICON-PNG ' + JSON.stringify({ bytes: png.length, ...pngInfo, variant: key }))
+  console.log(
+    'ICON-PNG ' + JSON.stringify({ bytes: png.length, ...pngInfo, variant: key, out: OUT })
+  )
   c(
     'icon.png-is-512-squared',
     !!pngInfo && pngInfo.w === 512 && pngInfo.h === 512,
     JSON.stringify(pngInfo)
   )
-  const icoBuf = fs.readFileSync(path.join(RES, 'icon.ico'))
+  const icoBuf = fs.readFileSync(path.join(OUT, 'icon.ico'))
   const dir = parseIco(icoBuf)
   console.log(
     'ICON-ICO ' + JSON.stringify({ bytes: icoBuf.length, entries: dir?.map((d) => d.size) })
@@ -563,10 +576,16 @@ function parseIco(b) {
         refs.push({ file: path.relative(REPO, f), ref: m[0] })
       }
     }
-    const unexpected = refs.filter((r) => r.ref !== 'resources/icon.ico' && r.ref !== 'resources/icon.png')
+    const unexpected = refs.filter(
+      (r) => r.ref !== 'resources/icon.ico' && r.ref !== 'resources/icon.png'
+    )
     console.log('ICON-REFS ' + JSON.stringify(refs))
     c('all-runtime-refs-are-canonical', unexpected.length === 0, JSON.stringify(unexpected))
-    c('only-one-icon-file-for-windows', refs.filter((r) => r.ref === 'resources/icon.ico').length >= 2, JSON.stringify(refs.filter((r) => r.ref === 'resources/icon.ico')))
+    c(
+      'only-one-icon-file-for-windows',
+      refs.filter((r) => r.ref === 'resources/icon.ico').length >= 2,
+      JSON.stringify(refs.filter((r) => r.ref === 'resources/icon.ico'))
+    )
     const staleIcon = ['icon.ico', 'icon.png', 'icon.icns']
       .map((n) => path.join(REPO, 'build', n))
       .filter((p) => fs.existsSync(p))

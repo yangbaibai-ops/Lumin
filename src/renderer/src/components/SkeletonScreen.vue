@@ -1,5 +1,9 @@
 <script setup lang="ts">
-import Icon from './Icon.vue'
+// 应用内标识用的是**内嵌的图标位图**（与桌面图标同源，见 assets/iconPng.ts）：
+// 启动瞬间渲染进程刚起来，走文件路径会依赖「文件在不在、路径对不对」，内嵌没有这个问题。
+import { APP_ICON_PNG_BASE64 } from '../assets/iconPng'
+
+const appIconSrc = `data:image/png;base64,${APP_ICON_PNG_BASE64}`
 </script>
 
 <template>
@@ -36,13 +40,13 @@ import Icon from './Icon.vue'
         </div>
       </div>
     </div>
-    <!-- Logo 呼吸灯 -->
+    <!-- Logo 呼吸灯：应用图标（内嵌位图）+ 字标 -->
     <div class="pointer-events-none absolute inset-0 flex items-center justify-center">
       <div
         class="flex flex-col items-center gap-3"
         style="animation: lm-breathe 1.6s ease-in-out infinite"
       >
-        <Icon name="logo" :size="46" class="text-accent" :stroke-width="4.2" />
+        <img :src="appIconSrc" alt="Lumin" class="h-[46px] w-[46px] rounded-[12px]" />
         <span class="text-sm font-semibold tracking-[0.3em] text-ink-3">LUMIN</span>
       </div>
     </div>
