@@ -1291,7 +1291,10 @@ h6.md-reveal > .md-heading-marker {
   display: flex;
   align-items: center;
   gap: var(--tree-gap);
-  min-height: 27px;
+  /* 行高：27px 时 13px 中文/带降部的拉丁字母（`g`/`y`/`p`）会被 `.tree-label` 的
+     `overflow: hidden` 切掉下缘（用户报「有些字母显示不全」）。29px 给足 16px 行盒，
+     同时行内图标仍是 15px —— 视觉上只是行距松了一点。最低不小于 29px。 */
+  min-height: 29px;
   padding-right: 8px;
   padding-left: calc(var(--tree-pad) + var(--tree-depth, 0) * var(--tree-indent));
   border-top: 1px solid transparent;
@@ -1380,6 +1383,10 @@ h6.md-reveal > .md-heading-marker {
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
+  /* 行盒必须比字形高，否则 `overflow: hidden` 会裁掉 `g`/`y`/`p` 的降部。
+     `line-height: 1`（行盒 = 字号）在 13px 时是 13px，而 CJK/拉丁字形的
+     ascent+descent 实测约 17px —— 这就是「字母显示不全」的直接成因。 */
+  line-height: 1.3;
 }
 
 /* 就地重命名：贴着行高的小输入框，不撑开行 */
@@ -1417,7 +1424,7 @@ h6.md-reveal > .md-heading-marker {
 .tree-empty-hint {
   display: flex;
   align-items: center;
-  min-height: 27px;
+  min-height: 29px;
   padding-left: calc(
     var(--tree-pad) + (var(--tree-depth, 0) + 1) * var(--tree-indent) + var(--tree-slot) -
       var(--tree-slot-pull) + 2 * var(--tree-gap) + var(--tree-icon)
@@ -1699,6 +1706,28 @@ h6.md-reveal::before {
   font-size: 0;
   color: color-mix(in srgb, var(--accent) 70%, var(--ink-3));
 }
+/* ── 「按住鼠标时先别冒 `**`、松开再显示」的隐藏态 ──
+   需求：鼠标按在加粗文字上 / 拖选时，标记不要立刻显形，**松开才显示**。
+
+   实现口径（第二十四轮定稿）：**只去墨，绝不改占位**。
+   按下期间，「本来已显形」的标记把字色变透明（`color: transparent`）——
+   看不见，但 `font-size: inherit` 与占位完全照旧；「本来就折叠」的标记仍然是
+   `font-size: 0`（本来就不可见、不占位），不需要任何额外处理。
+
+   为什么不能改占位（`font-size: 0` 真折叠、或 `position: absolute` 脱离流）：
+   一行里标记的宽度会因此变化（一对 `**` 是 15.5px），而浏览器判光标落点、以及 PM 在拖拽
+   每次 `mousemove` 上重算坐标，都发生在「当时的布局」上 —— 布局一变落点就跑到别的字符
+   （实测：光标在构造内时按下、标记一收起 ⇒ 整行左移 15px，「点在『地』」落到了下一个字；
+   拖拽中途折叠 ⇒ 整段拖选塌成一个光标）。
+   与之配套，`typoraInlineMarks` 在按住期间**冻结显隐装饰**（不重算 `.md-reveal-inline`），
+   于是「谁显形、谁折叠」在手势期间也不会变 —— 两条合起来保证**版面在整个手势里不变**。
+
+   选择器挂在**编辑区根节点**上（`.press-hidden`），不是逐个 `.md-marker` 挂类：
+   标记元素会被 PM 重渲染换掉，挂类会丢；后代选择器不会。 */
+.press-hidden .md-marker:has(> .md-reveal-inline) {
+  color: transparent;
+  animation: none;
+}
 .md-marker:has(> .md-reveal-inline) {
   font-size: inherit;
   animation: md-marker-in 0.12s ease;
@@ -1714,6 +1743,17 @@ h6.md-reveal::before {
 /* 加粗/斜体标记不随正文继承样式（Typora 同款：标记字符保持常规字重） */
 .md-marker[data-md-style='bold'] {
   font-weight: 400;
+}
+
+/* ── 查找命中高亮（.find-hit）──
+   由 typoraInlineMarks 的装饰层给出，位置 = 当前命中的文档范围。
+   为什么不能只靠「命中选成选区」：查找栏开着时焦点在输入框里，编辑区那份是**失焦选区**
+   （浏览器画得很淡），跳转过去一闪就看不见了。这里只画底色、不改字号，
+   所以对光标导航 / 命中测试零影响（与上面 `.md-marker` 的零字号折叠互不相干）。 */
+.find-hit {
+  background: var(--sel);
+  border-radius: 2px;
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 30%, transparent);
 }
 .md-marker[data-md-style='italic'] {
   font-style: normal;

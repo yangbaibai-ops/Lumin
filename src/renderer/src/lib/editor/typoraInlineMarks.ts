@@ -788,53 +788,41 @@ interface EscapeRun {
  * 为什么不是「只在拖选时抑制」：拖选/双击选词/单击落点这几条路径在 PM 里最终都表现为
  * 「selection 变了」，而「用户是不是正按着键」这个信息只有 DOM 事件知道。既然产品要求是
  * 「**按键抬起来的时候再显示出来**」，判据就取字面含义：**指针按住期间折叠、抬起即恢复**。
- * 单击也会先折叠再恢复（同一帧内），人眼看不到；拖选则全程干净。
  *
  * ⚠️ 不能动 `.md-marker` 的折叠机制（`font-size: 0`）：那是**渲染结构**，与光标导航/命中
- * 绑在一起（见 style.css 里的说明）。这里只改「要不要给出 `.md-reveal-inline`」——
- * 与「光标不在构造内」时完全同一条路径，所以模型、落盘字节、选区语义一个都不动。
- */
-let pointerHolding = false
-
-/**
- * 主体按下期间：折叠全部标记（等抬起再显示）。
+ * 绑在一起（见 style.css 里的说明）。
  *
- * 锚点取 **mousedown** 而不是 pointerdown：拖选的语义完全由 mousedown/mousemove/mouseup 承担，
- * 而且 pointerdown 在部分环境（含 CDP 合成的输入）不会被派发 —— 押在它上面会出现
- * 「代码看着对，实际不折叠」。触控/笔的抬起仍由下面的 pointerup/pointercancel 兜住。
- */
-function onMarkerPointerDown(): void {
-  pointerHolding = true
-}
-
-/**
- * 把「按住 / 松开」的变化**送进编辑器的状态机**。
+ * ⚠️⚠️ **「按住期间不显示」= 冻结 + 只去墨，绝不改占位**（第二十四轮定稿，两次翻车后）：
+ *   1. 置位那一刻（`mousedown`）**冻结显隐装饰**（`apply` 里 `pressHeld` 直接返回旧集合）——
+ *      于是从按下列松开，`.md-reveal-inline` 的有无、以及由此决定的标记宽度**全程不变**。
+ *      为什么必须冻结：浏览器判光标落点、PM 每次 `mousemove` 都在重算「指针落在哪个字符」，
+ *      两者都发生在**当时的布局**上；布局一变落点就跑到别的字符（实测：光标在构造内时按下，
+ *      收起标记让整行左移 15px，「点在『地』」落到了下一个字；拖动中途折叠则整段拖选塌成
+ *      一个光标）。
+ *   2. 看不见由 CSS 的 `.press-hidden .md-marker:has(> .md-reveal-inline) { color: transparent }`
+ *      承担：**只去墨、占位照旧**（`position: absolute` / `font-size: 0` 那版会挪动版面，
+ *      正是第 1 条要避免的）。
+ *   3. 松开时先把类摘掉、再 dispatch 一个带 `SET_PRESS` 的空事务催一次重算，让标记按最终
+ *      选区恢复显隐。
  *
- * ⚠️ 这里必须带事务元数据（`SET_SUPPRESSED`），不能只翻模块里的布尔量：
- * PM 只在 `docChanged || selectionSet` 时才调插件的 `apply` —— 单纯 dispatch 一个空事务
- * 会被当成「什么都没变」而直接返回旧装饰集，标记照样显示（实测踩到：
- * 空事务 dispatch 出去，`.md-reveal-inline` 数一个都没少）。
- *
- * 去重口径：**每个视图各记一份「上一次告诉它的值」**，相同就不重复派发。
- * 不能用「模块级标志是否翻转」来判断：`mousedown` 的处理会先把模块标志置位，
- * 于是这里的「翻转检测」永远为假、事务根本不会派发（实测：拖到编辑区外松手后标记回不来）。
+ * 纯观感：模型、落盘字节、选区语义一个都不动。
  */
-const lastSentSuppressed = new WeakMap<EditorView, boolean>()
-
-function setMarkerSuppression(view: EditorView, holding: boolean): void {
-  if (view.isDestroyed) return
-  if (lastSentSuppressed.get(view) === holding) return
-  lastSentSuppressed.set(view, holding)
-  view.dispatch(view.state.tr.setMeta(SET_SUPPRESSED, holding))
-}
+let pressHeld = false
 
 function buildRevealDecorations(
   state: EditorState,
   cache: WeakMap<PMNode, BlockDecos>
 ): DecorationSet {
-  // 按住指针期间一律不展开：整份装饰集为空（含转义反斜杠的拆分 —— 折叠态就是它的
-  // 默认渲染形态，所以空集不会让内容少字符，只是把 `\` 折起来）
-  if (pointerHolding) return DecorationSet.empty
+  // 查找命中**不展开标记**（用户口径：Ctrl+F 命中的加粗文字不该冒出 `**`）。
+  // 查找的选法是程序化的 `.setTextSelection(match.from, match.to)`，与用户手选在状态里
+  // 长得一模一样，只有「查找栏正在高亮」这个事实能区分它 —— 由 find store 通过
+  // `setFindHit(active, …)` 告知（见那里的说明），不引入插件间依赖。
+  //
+  // 注意：「按住鼠标时先别冒 `**`」**不走这里**（不是返回空集）—— 那会改变整行布局，
+  // 而按下的那一刻浏览器正在判光标落点、拖拽期间 PM 每次 `mousemove` 都在算坐标：
+  // 布局一变落点就错（实测：按下即折叠 ⇒ 点加粗字内部落到后面的普通文字；拖拽中途折叠
+  // ⇒ 整段拖选塌成一个光标）。那条走「冻结装饰 + CSS 只去墨」（见 `pressHeld` 的说明）。
+  if (findActive()) return DecorationSet.empty
   const { from, to } = state.selection
   const decos: Decoration[] = []
   state.doc.descendants((node, pos) => {
@@ -1080,45 +1068,239 @@ function toggleStyle(
 
 const inlineMarkPluginKey = new PluginKey('typora-inline-marks')
 
-/**
- * 「抑制开关变了」的事务标记（见 setMarkerSuppression）。
- * 用 `PluginKey.getMeta` 取（PM 会自动做命名空间，避免与别人的 meta 撞键）。
- */
-const SET_SUPPRESSED = new PluginKey<boolean>('typora-inline-marks-suppress')
 /** 上一次算出的显隐装饰集：props.decorations 每次求值都复用它（别重复整篇扫描） */
 let lastRevealDecos: DecorationSet | null = null
+
+/**
+ * 查找命中的**高亮装饰**（用户要求：被查到的文字要高亮显示）。
+ *
+ * 为什么不能只靠「把命中选成选区」：查找栏开着时焦点在输入框里，编辑区那份是**失焦选区**
+ * （浏览器画得很淡），深色主题下几乎看不见；而且跳转命中时那点高亮一闪就没了。
+ * 所以另给一层装饰：`.find-hit` 只画底色，不改字号、不影响命中测试。
+ */
+/** 上一次 `setFindHit` 传进来的范围：只用于跳过重复派发（真值由装饰集保管） */
+let findHitFrom = -1
+let findHitTo = -1
+/** 「查找栏正在高亮」的模块级快照（见 findActive / apply 里的重建条件） */
+let lastFindActive = false
+/** 「上一次**真正重建显隐装饰**时用的查找态」（与上面分开记，见 apply 的说明） */
+let lastRevealFindActive = false
+
+/**
+ * 查找栏是否正在高亮命中处。
+ *
+ * 真值来自 `setFindHit(active, …)`（find store 在打开/关闭/换查询串时告知），
+ * 不走 DOM 类、也不 import find store —— 避免「编辑器内核 ⇄ store」耦合与初始化时序问题。
+ */
+function findActive(): boolean {
+  return lastFindActive
+}
+
+/** 当前活着的编辑器视图（find store 没法把 view 类型带进来，见 setFindHit 的说明） */
+let ownView: {
+  isDestroyed: boolean
+  state: EditorState
+  dispatch: (tr: Transaction) => void
+} | null = null
+
+/** 「查找命中高亮 / 查找态变了」的事务标记 */
+const SET_FIND_HIT = new PluginKey<{
+  range: { from: number; to: number } | null
+  active: boolean
+}>('typora-find-hit')
+
+/**
+ * 「按住/松开指针」的事务标记：只用来在**松开**那一刻催一次显隐装饰重算
+ * （按住期间反过来要**冻结**，见 `apply` 里的说明）。它不带任何文档/选区变更。
+ */
+const SET_PRESS = new PluginKey<boolean>('typora-press-hold')
+
+/**
+ * 由 SET_FIND_HIT 驱动的那份高亮装饰（与显隐装饰**分属两个 state 字段**，互不干扰）。
+ * 位置直接由 `DecorationSet` 保管：文档被编辑后装饰跟随 `tr.mapping` 自动平移。
+ */
+let lastFindHitDecos: DecorationSet = DecorationSet.empty
+
+/** 按给定范围算高亮装饰（越界/空区间 → 空集） */
+function buildFindHitDecos(range: { from: number; to: number } | null, doc: PMNode): DecorationSet {
+  if (!range || range.from < 0 || range.to <= range.from) return DecorationSet.empty
+  const max = doc.content.size
+  const from = Math.min(range.from, max)
+  const to = Math.min(range.to, max)
+  if (to <= from) return DecorationSet.empty
+  return DecorationSet.create(doc, [Decoration.inline(from, to, { class: 'find-hit' })])
+}
+
+/**
+ * 设置（或清除）查找命中高亮。`active=false` 或 `to <= from` 即清除。
+ *
+ * 走**事务**而不是直接改模块量：装饰要重新求值才会落到 DOM 上，而 PM 只在
+ * `docChanged || selectionSet` 或 `props.decorations` 被重新读取时才算 —— 直接改模块量
+ * 什么都不发生（与 SET_FIND_HIT 的踩坑同源）。
+ */
+export function setFindHit(active: boolean, from: number, to: number): void {
+  const next = active && to > from && from >= 0 ? { from, to } : null
+  const same =
+    lastFindActive === active &&
+    ((findHitFrom === (next?.from ?? -1) && findHitTo === (next?.to ?? -1)) ||
+      (findHitFrom < 0 && next === null))
+  if (same) return
+  findHitFrom = next?.from ?? -1
+  findHitTo = next?.to ?? -1
+  lastFindActive = active
+  const view = ownView
+  if (!view || view.isDestroyed) return
+  try {
+    view.dispatch(view.state.tr.setMeta(SET_FIND_HIT, { range: next, active }))
+  } catch {
+    /* 视图状态不可用（正在重建）时忽略：下一次跳转会补上 */
+  }
+}
+
+/**
+ * ─── 选区把成对标记「整对」括进来（仅拖选路径）──────────────────────────────────
+ *
+ * 规则（用户口径）：**只有当选区真的碰到了一个 mdStyle 构造的边界时，才把这一侧的标记
+ * 补进选区**。碰左边补开标记、碰右边补收标记，各自独立。
+ *
+ * 什么叫「碰到边界」：紧邻选区那一侧的节点是**标记节点**（mdMarker），而选区内侧紧邻的
+ * 节点是**有样式的正文**（mdStyle 非空）。
+ *
+ * ⚠️ **不能再拿「两侧样式集合是否不同」当判据**（本轮踩到的真 bug）：
+ * 加粗正文 `SH-058` 里，`0` 有样式而 `5` **没有**（行内标记模型的已知形态：同一段样式正文
+ * 会被拆成多个文本节点）。于是从「镜」拖到 `0` 时，起点 18 的两侧
+ * `kindLeftOf(18)=""`（标记侧无样式）与 `kindRightOf(18)="bold"` 不同 —— 被判成
+ * 「跨出构造」，选区被撑到**段首**（用户报的「把前面的也选中了」）。正确结果是**不动**：
+ * 该选区两侧紧邻的都是正文（标记离得远），没有任何标记需要补。
+ *
+ * **只在指针路径调用**（`handleDOMEvents.mouseup` 里延迟一拍，等 PM 自己的 MouseUp
+ * 流程走完）。为什么不放 `appendTransaction`：那里**每次事务**都跑，「连点两个样式按钮」
+ * 的中间态（选中的正好是刚生成的那段正文，两侧紧邻的正是刚插入的标记）会被撑开，
+ * 随后派生归一化只好把第二个样式套在第一对标记**外层**（实测：`粗+代码` 得到
+ * `` `**abc**` `` 而不是 `` **`abc`** ``，`_verify-inline-formats.js` 的 D 段 4 条从绿变红）。
+ */
+function expandOutsideMarkers(doc: PMNode, from: number, to: number): { from: number; to: number } {
+  if (to <= from) return { from, to }
+  const size = doc.content.size
+  const markSet = (node: PMNode | null | undefined, name: string): boolean =>
+    !!node && node.isText && node.marks.some((m) => m.type.name === name)
+  /**
+   * 位置 \`pos\` 左边紧邻的那个字符（以及它所属文本节点）。
+   *
+   * ⚠️ 用 \`resolve(pos).nodeBefore\` 而不是 \`maybeChild(index - 1)\`：本轮实测后者在同一个
+   * 段落里会给出**错位的节点**（加粗段 \`**SH-058**\` 内的位置 18，左边拿到的却是起始 \`**\`），
+   * 于是把「选区起点落在构造内部」误判成「碰到构造边界」，选区被撑到段首
+   * （用户报的「把前面的也选中了」）。\`nodeBefore\` 直接按偏移取字符所在的文本节点，可靠。
+   */
+  const nodeLeftOf = (pos: number): PMNode | null => {
+    if (pos <= 1 || pos > size) return null
+    try {
+      return doc.resolve(pos).nodeBefore
+    } catch {
+      return null
+    }
+  }
+  /** 位置 \`pos\` 右边紧邻的那个字符所属文本节点 */
+  const nodeRightOf = (pos: number): PMNode | null => {
+    if (pos < 0 || pos >= size) return null
+    try {
+      const $p = doc.resolve(pos)
+      return $p.nodeAfter ?? $p.parent.maybeChild($p.index())
+    } catch {
+      return null
+    }
+  }
+  let f = from
+  let t = to
+  // 左边：紧邻选区的是**标记文本节点**、内侧紧邻的是**有样式正文** ⇒ 把开标记补进来。
+  // 反过来（紧邻的是有样式正文）说明选区起点在构造**内部**、不是边界，不能动 ——
+  // 这正是用户报的那条：\`SH-058\` 内部 \`0\` 与 \`5\` 相邻，曾被误判成边界。
+  const fLeft = nodeLeftOf(f)
+  if (markSet(fLeft, 'mdMarker') && markSet(nodeRightOf(f), 'mdStyle')) {
+    // ⚠️ 跨度必须取**那个标记节点自己的 `nodeSize`**，绝不能用 `resolve(f).start()`：
+    // 那是**所在文本块**（段落）的起点，不是标记的起点。行内标记模型里一个构造后面
+    // 还跟着普通文字时（`全片…在 **SH-058**，靠…`），`resolve(f).start()` 会把选区拉到
+    // 段首 —— 正是用户报的「把前面的也选中了」。`nodeSize` 是结构量，不依赖容器语义。
+    f = Math.max(1, f - (fLeft as PMNode).nodeSize)
+  }
+  // 右边：镜像。
+  // ⚠️ 同理：必须用 `t + 标记节点.nodeSize`，**不能**用 `resolve(t).end()` —— 那是**段落**
+  // 的末尾。用户报的「从『地』拖到『层』，结果把这一行后面的文字全选中」就是它：
+  // 选区终点停在收尾 `**` 的起点（12）时，`resolve(12).end()` 给出段落末尾（30），
+  // 于是选区变成 `[7,30]`。按节点跨度补只前进 2 个字符（到 14），正好把收尾标记括进来。
+  const tRight = nodeRightOf(t)
+  if (markSet(tRight, 'mdMarker') && markSet(nodeLeftOf(t), 'mdStyle')) {
+    t = Math.min(size, t + (tRight as PMNode).nodeSize)
+  }
+  return t > f ? { from: f, to: t } : { from, to }
+}
 
 export const TyporaInlineMarks = Extension.create({
   name: 'typoraInlineMarks',
   /**
-   * 按住指针（拖选进行中）折叠标记、松开即恢复 —— 见文件里 pointerHolding / SET_SUPPRESSED
-   * 的说明。编辑区上听 mousedown 置位，document 上听 mouseup/pointerup/pointercancel 恢复；
-   * 监听挂在 document 上是为了「拖到编辑区外松手」也能恢复（否则标记会永久折叠）。
-   * 生命周期跟着编辑器视图走，`onDestroy` 一定摘干净（多窗口/切文件会反复建销）。
+   * 「按住指针期间不显示标记、松开再显示」。
+   *
+   * 语义：`mousedown` 之后、`mouseup` 之前不显示任何 `**`，松开即按当前选区恢复。
+   * 实现只做两件事（详见 `pressHeld` 与 style.css 的 `.press-hidden`）：
+   *   1. `pressHeld` 置位 ⇒ `apply` **冻结**显隐装饰（手势期间版面一个像素都不动）；
+   *   2. 编辑区根节点挂 `press-hidden` ⇒ CSS 把**已显形**的标记**只去墨、不改占位**。
+   *
+   * 为什么「不给每个 `.md-marker` 挂类」：标记元素会被 PM 的重渲染换掉，挂类会丢；
+   * 挂在根节点上用后代选择器匹配就不会丢。
    */
   onCreate() {
-    const dom = this.editor.view.dom as HTMLElement
-    const up = (): void => {
-      pointerHolding = false
-      setMarkerSuppression(this.editor.view, false)
+    // `setFindHit` 由 find store 调用，那边手上是 Pinia 解包过的编辑器对象（取 `.view`
+    // 会把 `@tiptap/core` 的同构要求带进 store 的类型里）—— 视图在这里自己记一份。
+    ownView = this.editor.view as unknown as typeof ownView
+    const view = this.editor.view as unknown as { dom: HTMLElement; isDestroyed: boolean }
+    if (!view) return
+    const applyPressClass = (): void => {
+      if (view.isDestroyed) return
+      view.dom.classList.toggle('press-hidden', pressHeld)
     }
-    const down = (e: MouseEvent): void => {
+    const onDown = (e: MouseEvent): void => {
       if (e.button !== 0) return // 只认左键
-      onMarkerPointerDown()
-      setMarkerSuppression(this.editor.view, true)
+      pressHeld = true
+      applyPressClass()
     }
-    dom.addEventListener('mousedown', down, true)
-    document.addEventListener('mouseup', up)
-    document.addEventListener('pointerup', up)
-    document.addEventListener('pointercancel', up)
+    const onUp = (): void => {
+      if (!pressHeld) return
+      pressHeld = false
+      applyPressClass()
+      // 冻结了这么久，得按**最终选区**重算一次显隐（空事务 + 元数据；见 apply 的说明）。
+      // 这一步在 PM 自己的 MouseUp 处理之后（本监听挂在 document 上，冒泡晚于 view.dom），
+      // 所以不会干扰它判落点。
+      try {
+        if (!view.isDestroyed) {
+          const v = this.editor.view as unknown as {
+            state: EditorState
+            dispatch: (tr: Transaction) => void
+          }
+          v.dispatch(v.state.tr.setMeta(SET_PRESS, false))
+        }
+      } catch {
+        /* 视图正在销毁时忽略：下一次选区变化会重建 */
+      }
+    }
+    view.dom.addEventListener('mousedown', onDown, true)
+    document.addEventListener('mouseup', onUp)
+    document.addEventListener('pointerup', onUp)
+    document.addEventListener('pointercancel', onUp)
+    // 窗口失焦也要收尾（拖到别的窗口松手时收不到 mouseup，否则标记会一直隐着）
+    window.addEventListener('blur', onUp)
     this.editor.on('destroy', () => {
-      dom.removeEventListener('mousedown', down, true)
-      document.removeEventListener('mouseup', up)
-      document.removeEventListener('pointerup', up)
-      document.removeEventListener('pointercancel', up)
-      // 视图销毁后别把「按住」留在 true 上（下一个文档会继承这个状态）
-      pointerHolding = false
+      pressHeld = false
+      view.dom.removeEventListener('mousedown', onDown, true)
+      document.removeEventListener('mouseup', onUp)
+      document.removeEventListener('pointerup', onUp)
+      document.removeEventListener('pointercancel', onUp)
+      window.removeEventListener('blur', onUp)
       lastRevealDecos = null
+      // 命中高亮跟着文档走：换文件/重建视图后旧的文档位置没有意义
+      findHitFrom = -1
+      findHitTo = -1
+      lastFindHitDecos = DecorationSet.empty
+      if (ownView === this.editor.view) ownView = null
     })
   },
   addCommands() {
@@ -1286,19 +1468,48 @@ export const TyporaInlineMarks = Extension.create({
         },
         state: {
           init: (_config, state) => {
+            lastRevealFindActive = findActive()
             lastRevealDecos = buildRevealDecorations(state, decoCache)
+            lastFindHitDecos = buildFindHitDecos({ from: findHitFrom, to: findHitTo }, state.doc)
             return lastRevealDecos
           },
           /**
-           * 三个重建条件：
+           * 五个重建条件：
            *   * `tr.docChanged` / `tr.selectionSet` —— 原有行为（内容或光标变了要重算）；
            *   * 事务里带着抑制开关的元数据 —— 「按住/松开」本身不改文档也不改选区，
            *     不认这一条的话开关翻了装饰集也不会重建（实测：空事务 dispatch 出去，
-           *     `.md-reveal-inline` 一个都没少）。
+           *     `.md-reveal-inline` 一个都没少）；
+           *   * 事务里带着查找命中的元数据 + 查找态**翻转** —— 命中高亮同样只改模块量 +
+           *     元数据；而「查找开↔关」会改变标记要不要折叠，同样不带 docChanged/selectionSet
+           *     （实测：关掉查找栏后标记一直折叠着，`revealed` 停在 0）；
+           *   * 事务里带着 `SET_PRESS` 元数据 —— 松开鼠标那一刻要按最终选区重算一次
+           *     （按住期间是冻结的，见下）。
+           *
+           * ⚠️ **按住指针期间冻结显隐装饰**（`pressHeld` 时原样返回旧集合）：
+           * 一行里标记的宽度随显隐变化（一对 `**` 是 15.5px），而按下/拖动期间浏览器在判
+           * 光标落点、PM 在每次 `mousemove` 上重算「指针落在哪个字符」—— 布局一变，落点/
+           * 选区终点就跑到别的字符上（本轮实测：光标在加粗构造内时按下，标记一收起整行左移
+           * 15px，「点『地』」于是落到了下一个字）。冻结之后**整个手势期间布局一个像素都不变**，
+           * 而「按住时不显示 `**`」交给 CSS 只去墨、不改占位（见 style.css 的 `.press-hidden`）。
+           * `docChanged` 时**不**冻结：装饰集必须跟着新文档走，否则位置全部失效。
            */
           apply: (tr, oldSet, _oldState, newState) => {
-            const toggled = tr.getMeta(SET_SUPPRESSED) !== undefined
-            if (tr.docChanged || tr.selectionSet || toggled) {
+            const hitMeta = tr.getMeta(SET_FIND_HIT) as
+              { range: { from: number; to: number } | null; active: boolean } | undefined
+            let findToggled = false
+            if (hitMeta !== undefined) {
+              lastFindHitDecos = buildFindHitDecos(hitMeta.range, newState.doc)
+              // 与「上一次**真正重建显隐装饰时**用的查找态」比：`lastFindActive` 在
+              // setFindHit 里已经先更新了，拿它比永远相等（实测踩到过）。
+              findToggled = hitMeta.active !== lastRevealFindActive
+              lastRevealFindActive = hitMeta.active
+            } else if (tr.docChanged && lastFindHitDecos.find().length) {
+              // 文档被编辑 ⇒ 高亮跟着映射平移
+              lastFindHitDecos = lastFindHitDecos.map(tr.mapping, tr.doc)
+            }
+            const pressToggled = tr.getMeta(SET_PRESS) !== undefined
+            if (tr.docChanged || tr.selectionSet || findToggled || pressToggled) {
+              if (pressHeld && !tr.docChanged) return oldSet
               lastRevealDecos = buildRevealDecorations(newState, decoCache)
               return lastRevealDecos
             }
@@ -1311,14 +1522,188 @@ export const TyporaInlineMarks = Extension.create({
            * PM 在 `setProps` / `updateState` 时会重新读 `decorations`，而那时插件 state 里
            * 存的可能还是「开关翻转前」算出来的那一份（两次事务之间的窗口）。
            * 这里按开关现状复算一次并复用（`lastRevealDecos` 缓存，不重复整篇扫描）。
+           *
+           * 两份装饰在这里合流：显隐（`.md-reveal-inline` / 转义拆分）与查找命中高亮
+           * （`.find-hit`）。**必须合并返回**：同一个插件 key 只有一份 `decorations`。
            */
           decorations(state) {
             const cur = this.getState(state) as DecorationSet | undefined
-            if (pointerHolding) return DecorationSet.empty
-            return cur ?? DecorationSet.empty
+            const reveal = cur ?? DecorationSet.empty
+            if (!lastFindHitDecos.find().length) return reveal
+            return reveal.add(state.doc, lastFindHitDecos.find())
+          },
+          /**
+           * ─── 指针路径上的两件事（都在抬起后的 `setTimeout(0)` 里落定）────────────────
+           *
+           * ① **拖选跨出构造 ⇒ 把整对标记括进来**（`expandOutsideMarkers`）。
+           *    延迟一拍再改写选区：PM 的 MouseUp 处理也在这次事件里跑，同步读
+           *    `view.state.selection` 拿到的还是拖拽前的旧选区。只处理非空选区（拖选）。
+           *
+           * ② **行尾点击 ⇒ 光标落到整块末尾**（`**…**|` 而不是 `**…|**`）。
+           *    用户口径：一行末尾是加粗文字（`…**不给眼睛亮起来的机会**`）时，点这一行右侧空白
+           *    应该是「行末之后」，不要在收尾 `**` **之前**停下。
+           *
+           *    ⚠️ 为什么必须「**同步判、延后落**」：
+           *      * 判据要的几何（这一行最后一个可见字符的右缘）只能在**点击当时的布局**上量 ——
+           *        松手即解除 `.press-hidden`、显隐装饰重算，整行会左右移动；
+           *      * 但落点**不能**在同步阶段设：PM 自己的 MouseUp 处理在 `handleDOMEvents`
+           *        之后跑，会把光标按它自己的算法（落到折叠标记**之前**）再写一遍。
+           *        实测：点行尾空白时 `view.posAtCoords` 明明给出**块尾**（`p0: found=20=end`），
+           *        最终光标却停在 18（收尾 `**` 之前）—— 就是被 PM 那一步覆盖的。
+           *
+           *    ⚠️ 旧版错在哪（本轮定位）：判据里写了一条 `if (found.pos >= end) return false`
+           *    —— 而点行尾空白时 `posAtCoords` **恰好**给出块尾，于是这条守卫把唯一需要修正的
+           *    情形全挡掉了，`_verify-round-24.js` 的 D 段也因此把**错误值**（收尾标记之前的
+           *    位置）写成了期望值（期望值的算法是 `contentEnd - 收尾标记长度`，正是旧行为）。
+           *    现在改成：几何判「点在这一行可见文字右侧」（见 `lineEndCaretTarget`），
+           *    落点取**文本块内容末尾**（所有折叠标记之后），并在 PM 收尾之后再写一次。
+           */
+          handleDOMEvents: {
+            mouseup(view, event) {
+              try {
+                const e = event as MouseEvent
+                if (e.button !== 0) return false
+                // 同步判：目标位置在这一刻的布局上量出来（不在这里改选区）
+                const lineEnd = lineEndCaretTarget(view, e)
+                // 延迟落：① 拖选撑标记 → ② 行尾点击（只对折叠选区生效，双击选词不抢）
+                setTimeout(() => {
+                  try {
+                    if (view.isDestroyed) return
+                    finalizeDragSelection(view)
+                    if (lineEnd === null) return
+                    const sel = view.state.selection
+                    if (!sel.empty) return
+                    if (sel.from === lineEnd) return
+                    if (lineEnd < 1 || lineEnd > view.state.doc.content.size) return
+                    view.dispatch(
+                      view.state.tr.setSelection(
+                        TextSelection.near(view.state.doc.resolve(lineEnd), -1)
+                      )
+                    )
+                  } catch {
+                    /* 选区位置失效时忽略 */
+                  }
+                }, 0)
+                return false
+              } catch {
+                return false
+              }
+            }
           }
         }
       })
     ]
   }
 })
+
+/**
+ * 拖选抬起后的终态：把选区**碰到的那一侧**的成对标记括进来（见 `expandOutsideMarkers`）。
+ *
+ * 只需要这一步。为什么不需要「先把终点补到行尾」：浏览器确实会把「拖到文字右侧空白」的
+ * 终点卡在最后一个可见字符之后 —— 而对 `**X**` 这种「收尾标记紧跟在有样式正文后面」的
+ * 形态，那个落点**正好**就是收尾标记的起点，于是 `expandOutsideMarkers` 的右侧规则
+ * （紧邻的是标记 + 内侧是有样式正文）自然会把它补进来。
+ *
+ * ⚠️ 本轮删掉了曾经的 `snapDragHeadToLineEnd`（把终点一律灌到**块尾**）。它的判据
+ * 「鼠标在该行最后一个可见字符右边」是量**元素**的右缘得来的，而 `domAtPos` 在节点边界上
+ * 会返回父元素 —— 量到的就是整幅纸的右缘，判据恒为真，于是**任何**一次行内拖拽都被当成
+ * 「拖到行尾」，用户报的「从『地』拖到『层』却把这一行后面的字全选中了」正是它的产物
+ * （实测 `[7,30]`）。删除后同一手势得 `[7,14]`（= `地方的两层` + 收尾标记），语义正确。
+ */
+function finalizeDragSelection(view: EditorView): void {
+  const cur = view.state.selection
+  if (cur.empty) return
+  const next = expandOutsideMarkers(view.state.doc, cur.from, cur.to)
+  if (next.to <= next.from) return
+  if (next.from === cur.from && next.to === cur.to) return
+  view.dispatch(
+    view.state.tr.setSelection(TextSelection.create(view.state.doc, next.from, next.to))
+  )
+}
+
+/**
+ * 「点在这一行可见文字右侧的空白」⇒ 返回该文本块**内容末尾**的位置（所有折叠标记之后）；
+ * 不是这种点击就返回 `null`。「行尾点击落到整块末尾」的全部判据都在这里。
+ *
+ * 为什么落点取**块内容末尾**而不是「可见文字之后」：收尾 `**` 在折叠态下宽度为 0、排在
+ * 可见文字后面，用户看到的那点空白其实是「标记之后」。用户口径就是 `**…**|`。
+ *
+ * 判据只有几何一条：**指针在该行最后一个可见字符的右缘以右**。
+ *   * 按**文本节点**整段取 `Range.getClientRects()` 的片段矩形（不是量容器元素）——
+ *     折叠标记（`font-size: 0`）的矩形宽 0，天然不计入；
+ *   * 「该行」按与指针的**垂直距离**取最近的一行（换行段落、点在行的上/下方都落到正确那一行），
+ *     不需要任何阈值常量；
+ *   * 点在某字符右半边时指针仍在**该行右缘以左** ⇒ 不触发（不会被行尾规则抢走，
+ *     见 `_verify-line-end-click.js` 的 C/D 两段与 `_verify-round-24.js` 的 D2）。
+ */
+function lineEndCaretTarget(view: EditorView, e: MouseEvent): number | null {
+  if (!view.hasFocus()) return null
+  const found = view.posAtCoords({ left: e.clientX, top: e.clientY })
+  if (!found) return null
+  const $p = view.state.doc.resolve(found.pos)
+  if (!$p.parent.isTextblock) return null
+  const end = $p.end()
+  if (end <= $p.start()) return null // 空块没有「文字右侧」
+  const blockEl = view.nodeDOM($p.before($p.depth)) as HTMLElement | null
+  if (!blockEl || typeof blockEl.getBoundingClientRect !== 'function') return null
+  const hit = lastVisibleCharRightOnLine(blockEl, e.clientY)
+  if (hit === null) return null
+  if (e.clientX <= hit) return null
+  return end
+}
+
+/**
+ * 量出「离指针最近的那一行里，最后一个可见字符的右缘」；**只有点的是最后一行**才返回
+ * （否则返回 `null`，交回 PM 自己处理）。
+ *
+ * 为什么必须限定「最后一行」：换行段落里点中间某行右侧的空白，用户要的是**那一行的行尾**
+ * （= 折行处），不是段尾 —— 无条件返回右缘会让光标跳到段末。
+ * 折叠标记的右缘本来就和可见文字重合（宽 0），所以「最后一行的可见右缘」正好是
+ * 「整块可见文字的末尾」，正是行尾点击要的判据。
+ *
+ * 按**文本节点**整段取矩形（`Range.getClientRects()` 对一个文本节点返回它在每一行上的片段
+ * 矩形），而不是逐字取：折叠态标记（`font-size: 0`）的矩形宽 0，天然被 `width > 0` 跳过。
+ * 行按垂直区间归并，最近的一行按「与指针的垂直距离」取（点在行的上/下方也落到正确那一行），
+ * 全程不需要任何阈值常量。
+ */
+function lastVisibleCharRightOnLine(el: HTMLElement, clientY: number): number | null {
+  const rects: DOMRect[] = []
+  const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT)
+  let n = walker.nextNode()
+  while (n) {
+    const t = n as Text
+    if (t.data.length) {
+      const rng = document.createRange()
+      rng.selectNodeContents(t)
+      for (const r of rng.getClientRects()) if (r.width > 0) rects.push(r as DOMRect)
+    }
+    n = walker.nextNode()
+  }
+  if (!rects.length) return null
+  // 归并成「行」：垂直区间重叠（或差 1px 以内）的算同一行
+  const lines: { top: number; bottom: number; right: number }[] = []
+  for (const r of rects) {
+    const cur = lines.find((l) => r.top <= l.bottom + 1 && r.bottom >= l.top - 1)
+    if (cur) {
+      cur.top = Math.min(cur.top, r.top)
+      cur.bottom = Math.max(cur.bottom, r.bottom)
+      cur.right = Math.max(cur.right, r.right)
+    } else {
+      lines.push({ top: r.top, bottom: r.bottom, right: r.right })
+    }
+  }
+  lines.sort((a, b) => a.top - b.top)
+  const dy = (l: { top: number; bottom: number }): number =>
+    clientY < l.top ? l.top - clientY : clientY > l.bottom ? clientY - l.bottom : 0
+  let best = 0
+  let bestDy = dy(lines[0])
+  for (let i = 1; i < lines.length; i++) {
+    const d = dy(lines[i])
+    if (d < bestDy) {
+      bestDy = d
+      best = i
+    }
+  }
+  if (best !== lines.length - 1) return null // 点的不是最后一行 ⇒ 不动（PM 的折行落点是对的）
+  return lines[best].right
+}

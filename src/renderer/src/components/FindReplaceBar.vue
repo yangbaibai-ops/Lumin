@@ -13,6 +13,7 @@
 import { nextTick, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useFindStore } from '../stores/find'
+import { setFindHit } from '../lib/editor/typoraInlineMarks'
 import { useUiStore } from '../stores/ui'
 import Icon from './Icon.vue'
 
@@ -29,6 +30,18 @@ watch(
     await nextTick()
     queryRef.value?.focus()
     queryRef.value?.select()
+  }
+)
+
+/**
+ * 切到源码面 ⇒ 摘掉渲染面的命中高亮。
+ * 高亮是**文档位置**（文档坐标），源码模式那个位置对应的是另一套字符偏移；
+ * 而渲染面板在源码模式下 `display: none` 仍常驻，装饰不清会在切回来时留下旧位置。
+ */
+watch(
+  () => find.surface,
+  (surface) => {
+    if (surface !== 'wysiwyg') setFindHit(false, -1, -1)
   }
 )
 

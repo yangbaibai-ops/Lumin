@@ -1,4 +1,4 @@
-import { defineStore } from 'pinia'
+﻿import { defineStore } from 'pinia'
 import {
   findMatches,
   isValidQuery,
@@ -8,6 +8,7 @@ import {
   type Match
 } from '../lib/findReplace'
 import { findInDoc } from '../lib/editor/findInDoc'
+import { setFindHit } from '../lib/editor/typoraInlineMarks'
 import { useEditorStore } from './editor'
 import { useFilesStore } from './files'
 import { useUiStore } from './ui'
@@ -103,6 +104,8 @@ export const useFindStore = defineStore('find', {
     hide(): void {
       this.open = false
       this.index = -1
+      // 关掉查找栏 ⇒ 一起摘掉命中高亮（否则那层底色会留在正文里）
+      setFindHit(false, -1, -1)
       // 把焦点还给编辑面，用户接着写
       const ed = useEditorStore()
       const ui = useUiStore()
@@ -146,7 +149,11 @@ export const useFindStore = defineStore('find', {
     select(i: number): void {
       this.index = i
       const m = this.matches[i]
-      if (!m) return
+      if (!m) {
+        // 没有命中（查询串空/无匹配/位置失效）：同步摘掉高亮，避免留一条旧底色
+        if (i < 0) setFindHit(this.open, -1, -1)
+        return
+      }
       if (this.surface === 'source') {
         const ta = document.querySelector<HTMLTextAreaElement>('textarea.source-editor')
         if (!ta) return
@@ -170,6 +177,8 @@ export const useFindStore = defineStore('find', {
       } catch {
         /* 位置非法（文档刚变）时只留下标 */
       }
+      // 另加一层**常显**高亮（`.find-hit`）：失焦选区太淡，跳转后的那点高亮一闪就没
+      if (this.surface === 'wysiwyg') setFindHit(true, m.from, m.to)
     },
     /**
      * 某一处命中该替换成什么文本。

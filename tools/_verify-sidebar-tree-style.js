@@ -1,7 +1,9 @@
 // 验收：侧栏文件树的视觉规范（简约大气 / 大厂风）
 //
 // 断言（全部按 DOM 实测，不写死观感）：
-//  A. 行：等高 27px、圆角 6px、字号 13px；每级缩进 16px（图标槽与文字各测一次）
+//  A. 行：等高 29px、圆角 0（直角）、字号 13px；每级缩进 16px（图标槽与文字各测一次）
+//     行高 29px（原 27px）：`.tree-label` 的 overflow:hidden 会把 13px 字号的降部
+//     （`g`/`y`/`p`）裁掉，行盒必须比字形高（见 CSS 里的说明与断言 row-label-line-height-fits-glyphs）
 //  B. 图标：文件夹与文件**同色且中性**（不再用琥珀色的 warning 混色）；选中时一起转 accent
 //  C. 状态：默认 ink-2；悬停（真实指针）底色 panel-2 + 文字 ink；选中 accent-soft + accent + 500 字重
 //  D. 展开箭头：收起时不变换、展开时正好旋转 90°
@@ -130,6 +132,9 @@ const MEASURE = `(() => {
       labelLeft: labelRect ? Math.round(labelRect.left) : null,
       radius: cs.borderRadius,
       fontSize: cs.fontSize,
+      // 行盒（.tree-label 的 line-height，无单位 → computed 给 px）：必须比字号大，
+      // 否则 overflow:hidden 会裁掉 g/y/p 的降部（用户报「字母显示不全」）
+      labelLineHeight: label ? parseFloat(getComputedStyle(label).lineHeight) || 0 : 0,
       fontWeight: cs.fontWeight,
       color: cs.color,
       bg: cs.backgroundColor,
@@ -258,9 +263,16 @@ const MEASURE = `(() => {
     // A. 几何
     const heights = [...new Set(rows.map((r) => r.height))]
     c(
-      'row-height-27',
-      heights.length === 1 && Math.abs(heights[0] - 27) <= 0.6,
+      'row-height-29',
+      heights.length === 1 && Math.abs(heights[0] - 29) <= 0.6,
       JSON.stringify(heights)
+    )
+    // 行高必须装得下字形：`.tree-label` 的 overflow:hidden 会裁掉降部（`g`/`y`/`p`）。
+    // 判据用 line-height（行盒）而不是实测墨迹 —— 墨迹测量受字体回退影响，行盒是确定值。
+    c(
+      'row-label-line-height-fits-glyphs',
+      rows.every((r) => r.labelLineHeight >= 13 * 1.25 - 0.1),
+      JSON.stringify([...new Set(rows.map((r) => r.labelLineHeight))])
     )
     // 直角（本轮起）：树行的选中/hover 底色要贯通侧栏整宽，圆形药丸与两侧边界对不齐
     c(
