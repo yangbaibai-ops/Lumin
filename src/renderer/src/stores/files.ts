@@ -22,6 +22,33 @@ import {
 } from '../lib/contentSync'
 import { encodingLabel, formatHistoryTime, untitledEncoding, untitledEol } from '../lib/docText'
 
+/**
+ * 统计量的按内容缓存（见下方 getters 的说明）：一起算出「字数 / 行数 / 字符数」，
+ * 内容串没变就直接复用。放在模块级而不是 store state 里 —— 它是纯粹的派生缓存，
+ * 不该进 Vue 响应式系统（也不需要持久化）。
+ */
+let countKey: string | null = null
+let countVal = { words: 0, lines: 0, chars: 0 }
+
+function countsOf(content: string): { words: number; lines: number; chars: number } {
+  if (countKey === content) return countVal
+  countKey = content
+  countVal = { words: 0, lines: 0, chars: content.length }
+  if (!content) {
+    countVal.lines = 0
+    return countVal
+  }
+  countVal.lines = content.split('\n').length
+  // 字符集与主进程 countWords 一致，`-` 放末尾（类内末尾的连字符无需转义）
+  const text = content.replace(/[#>*`_~[\]()!|-]/g, ' ').trim()
+  if (text) {
+    const zh = (text.match(/[\u4e00-\u9fff\u3400-\u4dbf]/g) || []).length
+    const words = (text.match(/[a-zA-Z0-9_]+(?:['’-][a-zA-Z0-9_]+)*/g) || []).length
+    countVal.words = zh + words
+  }
+  return countVal
+}
+
 export interface CurrentDoc {
   path: string | null
   name: string
@@ -73,23 +100,21 @@ export const useFilesStore = defineStore('files', {
     dirty(state): boolean {
       return !!state.current && state.current.content !== state.current.savedContent
     },
+    /* ── 统计量（第二十五轮轻量化）────────────────────────────────────────────
+     * 三个计数原先各自对**全文**做一遍扫描（`replace` + 两次 `match` / `split`），
+     * 而它们都挂在 `current.content` 上 ⇒ 每敲一个键、状态栏一渲染就重算。
+     * 大文档（1MB 级）下这是每键可感的成本，且同一帧里可能被读多次。
+     * 做法：按**内容串身份**缓存一次「一趟扫出三个数」。内容没变就是纯读缓存；
+     * 变了也只扫一遍（原先读三个数要扫三遍）。语义与逐个数完全一致（同一套正则）。
+     */
     wordCount(state): number {
-      if (!state.current) return 0
-      // 字符集与主进程 countWords 一致，`-` 放末尾（类内末尾的连字符无需转义）
-      const text = state.current.content.replace(/[#>*`_~[\]()!|-]/g, ' ').trim()
-      if (!text) return 0
-      const zh = (text.match(/[\u4e00-\u9fff\u3400-\u4dbf]/g) || []).length
-      const words = (text.match(/[a-zA-Z0-9_]+(?:['’-][a-zA-Z0-9_]+)*/g) || []).length
-      return zh + words
+      return countsOf(state.current?.content ?? '').words
     },
     lineCount(state): number {
-      if (!state.current) return 0
-      const content = state.current.content
-      if (!content) return 0
-      return content.split('\n').length
+      return countsOf(state.current?.content ?? '').lines
     },
     charCount(state): number {
-      return state.current ? state.current.content.length : 0
+      return countsOf(state.current?.content ?? '').chars
     },
     /** 真源内容的世代号（每次内容变化 +1；只增不减） */
     contentRev(state): number {

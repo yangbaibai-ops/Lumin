@@ -578,31 +578,31 @@ async function main() {
     sig: '"a "<> "`"<mdMarker(code/start)> "b"<mdStyle(code),mdCodeLiteral> "`"<mdMarker(code/end)> " c"<>'
   })
 
-  // ═══ E. 非 Markdown 标记：下划线（`<u>`）══════════════════════════════════
+  // ═══ E. 下划线：**已移除**（第二十五轮按钮去留审计）════════════════════════
+  // 它唯一的落盘形态是裸 HTML `<u>`，重开即被 htmlPassthrough 转成字面文本
+  // （屏幕上显示 `<u>abc</u>`），与 `**` 嵌套还会丢掉下划线 —— 属于「能写进文件、读不回来」
+  // 的数据损坏类缺陷。因此：工具栏入口删除、`StarterKit.configure({ underline: false })` 显式关闭。
+  // 本段改为**回归断言**：入口与 mark 都不在，且文件里不会长出 `<u>`。
   await openDoc('abc\n')
   await selectRange(0, 3)
-  await clickToolbar('underline')
-  await checkState('下划线 选中文本 + 工具栏', {
-    content: '<u>abc</u>\n',
-    sig: '"abc"<underline>'
-  })
-  // 已知限制（**已定口径：保持现状**）：下划线没有 Markdown 语法，它的序列化形态是**裸 HTML**
-  // `<u>`。若给它开后门（跳过源码重推以保住这个 mark），同一段里的 `**` 会在每次重开时
-  // 指数膨胀（实测 `**<u>a</u>**<u>bc</u>` → `**<u>****a****</u>**<u>**bc</u>` →
-  // 星号 4→8→12……属于**数据损坏级**）；权衡之后当前行为是：
-  // **给带下划线的文本套标记样式时保留「字节稳定」，丢弃下划线**（可解释、可文档化）。
-  // 正确修法是给下划线一个一等 mark（`<u>…</u>` + `escape:false`，与 MdHtml 同思路），
-  // 已登记为后续任务（手册 §4.70 / docs/optimization-program.md）。
-  await openDoc('abc\n')
-  await selectRange(0, 3)
-  await clickToolbar('underline')
-  await selectRange(0, 1)
-  await clickToolbar('bold')
-  const ubm = await state()
-  report.skip(
-    '下划线 + 加粗（下划线无 Markdown 语法，序列化为裸 <u>）',
-    `当前：字节稳定、丢掉下划线 → 实际 ${JSON.stringify(ubm.content)}；给它开后门会让 ` +
-      '`**` 在重开时指数膨胀（实测 4→8→12 颗星），故不采用'
+  const uEntry = JSON.parse(await app.ev(`JSON.stringify((() => {
+    const btns = [...document.querySelectorAll('[data-toolbar-item], .icon-btn')]
+    const has = btns.some((b) => b.getAttribute('title') === '下划线' || b.getAttribute('data-toolbar-item') === 'underline')
+    const ed = window.__L.ed()
+    let cmdOk = false
+    try { cmdOk = !!ed?.commands?.toggleUnderline } catch { cmdOk = false }
+    return { has, cmdOk, marks: ed ? Object.keys(ed.schema.marks) : [] }
+  })())`))
+  report.check(
+    'E 下划线的工具栏入口与 mark 都已移除（不再有「写进去读不回来」的按钮）',
+    uEntry.has === false && uEntry.cmdOk === false && !uEntry.marks.includes('underline'),
+    JSON.stringify(uEntry)
+  )
+  const uDoc = await state()
+  report.check(
+    'E 该文档里没有 `<u>` 这类不可往返的字节',
+    !String(uDoc.content).includes('<u>'),
+    JSON.stringify(uDoc.content)
   )
 
   // ═══ F. 行内公式与链接源码（相邻格式不互相干扰）══════════════════════════

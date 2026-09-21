@@ -1,6 +1,6 @@
 import { createRouter, createWebHashHistory } from 'vue-router'
 import { useFilesStore } from '../stores/files'
-import { useUiStore } from '../stores/ui'
+import { confirmDiscardIfDirty } from '../lib/dialog'
 
 // ─── 路由 ──────────────────────────────────────────────────────────────────
 // 不再有「欢迎页」：Lumin 是写作工具，没有文档时编辑器直接以空白未命名缓冲区出现
@@ -31,19 +31,13 @@ const router = createRouter({
   ]
 })
 
-// 离开编辑器且存在未保存更改时确认
+// 离开编辑器且存在未保存更改时确认。
+// 走 `lib/dialog.ts` 的**唯一实现**：这里原先自己写了一份 `ui.confirm({ title: '有未保存的更改' … })`
+// （硬编码中文），与 `lib/dialog.ts` 顶部「这是唯一实现」的注释直接矛盾 —— 改文案时必漏一处。
 router.beforeEach(async (to, from) => {
   if (from.name === 'editor' && to.name !== 'editor') {
-    const files = useFilesStore()
-    const ui = useUiStore()
-    if (files.dirty) {
-      const ok = await ui.confirm({
-        title: '有未保存的更改',
-        body: '当前文档有未保存的更改，确定要离开吗？',
-        danger: true
-      })
-      if (!ok) return false
-    }
+    const ok = await confirmDiscardIfDirty(useFilesStore().dirty)
+    if (!ok) return false
   }
   return true
 })

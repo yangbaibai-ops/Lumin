@@ -518,26 +518,16 @@ async function main() {
         if (ed.state.doc.textBetween(pos, pos + target.length) === target) from = pos
       }
       if (from < 0) return false
-      // 真实用户只能选中可见文字：先滚动到选区再显示气泡
       ed.chain().focus().setTextSelection({ from, to: from + 4 }).scrollIntoView().run()
       return true
     })()`)
-    if (!selOk) throw new Error('气泡菜单选区未定位')
+    if (!selOk) throw new Error('选区未定位')
+    // 选区气泡菜单**已在第二十五轮删除**（从第二十二轮起就是死码：模板 v-if 恒假、
+    // 与顶部工具栏 + 右键菜单完全重复）。原先这里 3 条 bubble-* 断言随之移除，
+    // 改成一条「气泡 DOM 不再存在」的回归断言，防止哪天又被 `v-if` 复活成第二套 UI。
     await sleep(300)
     record('D', await ev(`(() => {
-      const menu = document.querySelector('.bubble-menu')
-      return [{ n: 'bubble-menu-visible', p: !!menu && menu.querySelectorAll('.bubble-btn').length >= 6, d: 'btns=' + (menu?.querySelectorAll('.bubble-btn').length ?? 0) }]
-    })()`))
-    await clickEl('.bubble-btn[title="加粗"]')
-    await sleep(350)
-    record('D', await ev(`(() => {
-      const ed = window.__vt.ed()
-      const md = ed?.storage.markdown.getMarkdown() ?? ''
-      const menu = document.querySelector('.bubble-menu')
-      return [
-        { n: 'bubble-bold-applied', p: md.includes('**正文段落**'), d: md.slice(0, 60) },
-        { n: 'bubble-stays-open', p: !!menu }
-      ]
+      return [{ n: 'bubble-menu-removed', p: !document.querySelector('.bubble-menu'), d: 'bubble 死码已删' }]
     })()`))
     record('D', await ev(`(() => {
       const ed = window.__vt.ed()

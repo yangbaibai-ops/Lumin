@@ -3,7 +3,7 @@ import { useSettingsStore } from '../stores/settings'
 import { useUiStore } from '../stores/ui'
 import { useEditorStore } from '../stores/editor'
 import { useNotificationsStore } from '../stores/notifications'
-import { exportCss, renderMermaidInHtml } from '../lib/export'
+import { getExportCss, renderMermaidInHtml } from '../lib/export'
 import i18n from '../i18n'
 
 // ─── 导出（渲染层）：基于 Tiptap getHTML() 输出 ────────────────────────────
@@ -28,6 +28,9 @@ export function useExport(): {
     const payload = await buildExportHtml()
     if (!payload) return
     try {
+      // CSS（含 KaTeX 那份）按需取：只在真的要导出时才加载（见 lib/export.ts）。
+      // 放在 try 里面：拉取失败也要变成一条可见的失败通知，而不是静默什么都不发生。
+      const exportCss = await getExportCss()
       let path: string | null = null
       if (format === 'pdf') {
         // Pinia 响应式代理无法通过 IPC 结构化克隆（"could not be cloned"），

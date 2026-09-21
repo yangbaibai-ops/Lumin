@@ -1,12 +1,13 @@
 // ─── 导出服务（渲染层）：getHTML 输出 + 独立排版 CSS + Mermaid 后处理 ──────
-import katexCss from 'katex/dist/katex.min.css?inline'
 import type { EffectiveTheme } from '../../../shared/types'
 
 const proseCss = `
 :root {
-  --edge: #e4e6ea; --ink: #20242b; --ink-2: #4e5766; --ink-3: #8a919e;
-  --accent: #6366f1; --accent-2: #8b5cf6; --accent-soft: rgba(99,102,241,.08);
+  --edge: #e4e6ea; --edge-strong: #d2d5db; --ink: #20242b; --ink-2: #4e5766; --ink-3: #8a919e;
+  --accent: #6b7280; --accent-2: #4b5563; --accent-soft: rgba(17,24,39,.07);
+  --link: #2563eb;
   --ok: #16a34a; --warning: #d97706; --danger: #dc2626;
+  --code-key: #3f6592; --code-key-2: #2b6f8f;
   --code-bg: #f4f5f8; --panel-2: #f0f1f4;
 }
 html, body { margin: 0; padding: 0; }
@@ -23,7 +24,7 @@ body.export-body {
 .md-preview h2 { font-size: 1.5em; padding-bottom: .22em; border-bottom: 1px solid var(--edge); }
 .md-preview h3 { font-size: 1.22em; }
 .md-preview p { margin: .55em 0; }
-.md-preview a { color: var(--accent); text-decoration: none; border-bottom: 1px solid rgba(99,102,241,.35); }
+.md-preview a { color: var(--link); text-decoration: none; border-bottom: 1px solid rgba(37,99,235,.35); }
 .md-preview blockquote {
   margin: .8em 0; padding: .4em 1.1em; border-left: 3px solid var(--edge-strong);
   background: none; color: var(--ink-2);
@@ -59,7 +60,23 @@ body.export-body {
 }
 `
 
-export const exportCss = proseCss + '\n' + katexCss
+/**
+ * 导出用的完整 CSS（排版规则 + KaTeX 样式），**按需加载**。
+ *
+ * 为什么是函数而不是模块级常量：KaTeX 的样式表（含 59 条 `@font-face`）经 `?inline`
+ * 变成字符串后是 **~231KB**，而本模块挂在 `App.vue → useAppActions → useExport`
+ * 这条**静态**依赖链上 —— 常量写法会在模块求值期把它钉进首屏 entry chunk，
+ * 而真正需要它的只有「用户点了导出」这一刻（第二十五轮轻量化）。
+ * 首次调用后缓存字符串，第二次导出不再付解析成本。
+ */
+let exportCssCache: string | null = null
+export async function getExportCss(): Promise<string> {
+  if (exportCssCache === null) {
+    const { default: katexCss } = await import('katex/dist/katex.min.css?inline')
+    exportCssCache = proseCss + '\n' + katexCss
+  }
+  return exportCssCache
+}
 
 /** 把 getHTML 输出中的 mermaid 代码块替换为渲染好的 SVG */
 export async function renderMermaidInHtml(html: string, theme: EffectiveTheme): Promise<string> {

@@ -43,6 +43,9 @@ import {
   stylesOf
 } from './inlineMarkerCore'
 import type { Atom, MarkerSide, StyleKind } from './inlineMarkerCore'
+// 查找命中高亮的**零依赖桥**：store 一侧只认识它，不认识 ProseMirror（见该文件说明 ——
+// 原来 store 直接 import 本模块，把 ~412KB 的 PM 钉进了首屏 entry chunk）。
+import { registerFindHit } from './findBridge'
 // 核心的符号在本文件再导出一次：既有的导入面（其它模块从这里取用）保持不变
 export {
   KIND_OF_MARKER,
@@ -1249,6 +1252,9 @@ export const TyporaInlineMarks = Extension.create({
    * 挂在根节点上用后代选择器匹配就不会丢。
    */
   onCreate() {
+    // 查找高亮的桥：store 只依赖 `lib/editor/findBridge.ts`（零依赖），实现在这里注册。
+    // 这样 `stores/find.ts` 不必 import 本模块，首屏 entry chunk 也就不会被拖进 ProseMirror。
+    registerFindHit(setFindHit)
     // `setFindHit` 由 find store 调用，那边手上是 Pinia 解包过的编辑器对象（取 `.view`
     // 会把 `@tiptap/core` 的同构要求带进 store 的类型里）—— 视图在这里自己记一份。
     ownView = this.editor.view as unknown as typeof ownView
@@ -1300,6 +1306,8 @@ export const TyporaInlineMarks = Extension.create({
       findHitFrom = -1
       findHitTo = -1
       lastFindHitDecos = DecorationSet.empty
+      // 注销查找高亮的桥：视图销毁后 store 再调 setFindHit 就是空操作（不该打到旧视图上）
+      registerFindHit(null)
       if (ownView === this.editor.view) ownView = null
     })
   },

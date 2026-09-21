@@ -1,9 +1,11 @@
 <script setup lang="ts">
-import { nextTick, ref, watch } from 'vue'
+import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useUiStore } from '../stores/ui'
 import Icon from './Icon.vue'
 
 const ui = useUiStore()
+const { t } = useI18n()
 const inputEl = ref<HTMLInputElement | null>(null)
 const promptValue = ref('')
 
@@ -20,12 +22,25 @@ watch(
   }
 )
 
-function onKeydown(e: KeyboardEvent): void {
-  if (e.key === 'Escape') {
-    ui.resolveConfirm(false)
-    ui.resolvePrompt(null)
-  }
+function closeByEscape(confirmResult = false, promptResult: string | null = null): void {
+  if (ui.confirmState) ui.resolveConfirm(confirmResult)
+  else if (ui.promptState) ui.resolvePrompt(promptResult)
 }
+
+function onKeydown(e: KeyboardEvent): void {
+  if (e.key === 'Escape') closeByEscape()
+}
+
+/**
+ * Esc 关对话框：监听器挂在 **document** 上，不是模板里那层 `@keydown`。
+ *
+ * 原来写在遮罩 div 上（`@keydown="onKeydown"`），而那个 div **不可聚焦**、内容里也没有
+ * 初始焦点元素（prompt 的输入框要等 `nextTick` 才 focus），于是按键事件永远不会冒泡到它
+ * —— 那条 Escape 一直是失效的（审计 R9）。挂 document 之后，无论焦点在遮罩、输入框还是
+ * 按钮上都能收到；`ui.resolve*` 在无对话框时是空操作，不会误伤。
+ */
+onMounted(() => document.addEventListener('keydown', onKeydown))
+onBeforeUnmount(() => document.removeEventListener('keydown', onKeydown))
 </script>
 
 <template>
@@ -35,7 +50,6 @@ function onKeydown(e: KeyboardEvent): void {
         v-if="ui.confirmState || ui.promptState"
         class="fixed inset-0 z-[150] flex items-center justify-center bg-black/30 backdrop-blur-[2px]"
         @click.self="ui.confirmState ? ui.resolveConfirm(false) : ui.resolvePrompt(null)"
-        @keydown="onKeydown"
       >
         <Transition name="pop" appear>
           <div
@@ -60,7 +74,7 @@ function onKeydown(e: KeyboardEvent): void {
               <p class="mb-6 text-[13px] leading-relaxed text-ink-2">{{ ui.confirmState.body }}</p>
               <div class="flex justify-end gap-2">
                 <button class="btn btn-ghost px-4 py-2" @click="ui.resolveConfirm(false)">
-                  取消
+                  {{ t('common.cancel') }}
                 </button>
                 <button
                   class="btn px-4 py-2"
@@ -71,7 +85,7 @@ function onKeydown(e: KeyboardEvent): void {
                   "
                   @click="ui.resolveConfirm(true)"
                 >
-                  确定
+                  {{ t('common.confirm') }}
                 </button>
               </div>
             </template>
@@ -88,13 +102,13 @@ function onKeydown(e: KeyboardEvent): void {
               />
               <div class="flex justify-end gap-2">
                 <button class="btn btn-ghost px-4 py-2" @click="ui.resolvePrompt(null)">
-                  取消
+                  {{ t('common.cancel') }}
                 </button>
                 <button
                   class="btn btn-primary px-4 py-2"
                   @click="ui.resolvePrompt(promptValue.trim() || null)"
                 >
-                  确定
+                  {{ t('common.confirm') }}
                 </button>
               </div>
             </template>

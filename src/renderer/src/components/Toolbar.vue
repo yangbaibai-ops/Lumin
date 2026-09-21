@@ -168,14 +168,17 @@ function toggleExport(): void {
 
 function onDocClick(e: MouseEvent): void {
   if (exportOpen.value && exportRef.value && !exportRef.value.contains(e.target as Node)) {
-    const panel = (e.target as HTMLElement).closest?.('.fixed.z-\\[100\\]')
+    // 用**语义锚点**判断「点到的是不是本菜单自己的弹层」：原判据是 Tailwind 生成的
+    // 类名 `.fixed.z-\[100\]`，而表格选择器与代码块弹层用的是同一串类名 ——
+    // 点它们会顺手把导出菜单一起收掉（审计 F8）。这里改成各自的数据锚点。
+    const panel = (e.target as HTMLElement).closest?.('[data-export-pop], [data-export-pop-anchor]')
     if (!panel) exportOpen.value = false
   }
 }
 /** 滚动/缩放收起导出菜单：菜单内部滚动不收起（见 lib/popoverClose.ts） */
 function onWindowScrollOrResize(e: Event): void {
   if (!exportOpen.value) return
-  const panel = document.querySelector<HTMLElement>('.export-pop')
+  const panel = document.querySelector<HTMLElement>('[data-export-pop]')
   if (!shouldCloseOnScrollOrResize(e, panel)) return
   exportOpen.value = false
 }
@@ -254,7 +257,6 @@ function isItemActive(id: string): boolean {
       return isActive('heading', { level: 3 })
     case 'bold':
     case 'italic':
-    case 'underline':
     case 'strike':
     case 'code':
       return isMdActive(id)
@@ -292,7 +294,6 @@ function runItem(id: string): void {
       return toggleHeading(3)
     case 'bold':
     case 'italic':
-    case 'underline':
     case 'strike':
     case 'code':
       return runInline(id)
@@ -302,7 +303,9 @@ function runItem(id: string): void {
     case 'task':
       return runBlock(id)
     case 'hr':
-      return insertHr()
+      // 工具栏不再放分割线按钮（与手打 `---`+Enter、顶部菜单栏、右键菜单等价，
+      // 见 shared/toolbarItems.ts 的说明）；旧设置里残留的 id 落到这里就是无操作。
+      return
     case 'link':
       return addLink()
     case 'image':
@@ -312,23 +315,21 @@ function runItem(id: string): void {
   }
 }
 
-function runInline(cmd: 'bold' | 'italic' | 'underline' | 'strike' | 'code'): void {
+function runInline(cmd: 'bold' | 'italic' | 'strike' | 'code'): void {
   const ed = editorStore.instance
   if (!ed) return
   const chain = ed.chain().focus()
   if (cmd === 'bold') chain.toggleMdBold().run()
   else if (cmd === 'italic') chain.toggleMdItalic().run()
-  else if (cmd === 'underline') chain.toggleUnderline().run()
   else if (cmd === 'strike') chain.toggleMdStrike().run()
   else chain.toggleMdCode().run()
 }
 
 /** 行内样式激活态（真实文本标记模型：mdStyle mark） */
-function isMdActive(cmd: 'bold' | 'italic' | 'underline' | 'strike' | 'code'): boolean {
+function isMdActive(cmd: 'bold' | 'italic' | 'strike' | 'code'): boolean {
   void editorStore.tick
   const ed = editorStore.instance
   if (!ed) return false
-  if (cmd === 'underline') return ed.isActive('underline')
   const kind =
     cmd === 'bold' ? 'bold' : cmd === 'italic' ? 'italic' : cmd === 'strike' ? 'strike' : 'code'
   try {
@@ -352,10 +353,6 @@ function runBlock(cmd: 'quote' | 'ul' | 'ol' | 'task'): void {
   else chain.toggleTaskList().run()
 }
 
-function insertHr(): void {
-  editorStore.instance?.chain().focus().setHorizontalRule().run()
-}
-
 /** 在光标处插入文档目录 */
 function insertToc(): void {
   const ed = editorStore.instance
@@ -367,7 +364,8 @@ function insertToc(): void {
 function addLink(): void {
   const ed = editorStore.instance
   if (!ed) return
-  void ui.prompt('插入链接', 'https://example.com').then((href) => {
+  // 文案走 i18n（editorMenu.linkPrompt/linkPlaceholder 早就有，之前这里硬编码中文）
+  void ui.prompt(t('editorMenu.linkPrompt'), t('editorMenu.linkPlaceholder')).then((href) => {
     if (href === null) return
     if (href.trim() === '') {
       ed.chain().focus().unsetLink().run()
@@ -380,7 +378,7 @@ function addLink(): void {
 function addImage(): void {
   const ed = editorStore.instance
   if (!ed) return
-  void ui.prompt('插入图片', '图片地址 / 相对路径').then((src) => {
+  void ui.prompt(t('editorMenu.imagePrompt'), t('editorMenu.imagePlaceholder')).then((src) => {
     if (!src) return
     ed.chain().focus().setImage({ src: src.trim() }).run()
   })
@@ -413,6 +411,7 @@ const exportItems: { icon: string; labelKey: string; format: 'pdf' | 'html' | 'w
         class="icon-btn"
         data-toolbar-item
         :title="t('menu.toggleSidebar') + ' (Ctrl+Shift+B)'"
+        :aria-label="t('menu.toggleSidebar')"
         @click="toggleSidebar"
       >
         <Icon name="panel-left" :size="16" />
@@ -422,7 +421,9 @@ const exportItems: { icon: string; labelKey: string; format: 'pdf' | 'html' | 'w
       <ToolbarTableButton v-else-if="d.id === 'table'" data-toolbar-item />
       <ToolbarCodeBlockButton v-else-if="d.id === 'codeblock'" data-toolbar-item />
 
-      <!-- 其余项目：一条通用渲染路径（图标 + 序号 + 激活态 + 禁用态） -->
+      <!-- 其余项目：一条通用渲染路径（图标 + 序号 + 激活态 + 禁用态）。
+          同时给 title 与 aria-label：全局 tooltip 悬停时会**摘掉 title**
+          再自己画一层，屏读器那时就读不到可访问名了（审计 F4）。 -->
       <button
         v-else
         class="icon-btn"
@@ -430,6 +431,7 @@ const exportItems: { icon: string; labelKey: string; format: 'pdf' | 'html' | 'w
         :class="{ active: isItemActive(d.id) }"
         :disabled="isDisabled(d.id)"
         :title="titleOf(d)"
+        :aria-label="titleOf(d)"
         @click="runItem(d.id)"
       >
         <Icon :name="d.icon" :size="15" />
@@ -460,6 +462,7 @@ const exportItems: { icon: string; labelKey: string; format: 'pdf' | 'html' | 'w
       class="icon-btn"
       :class="{ active: ui.focusMode }"
       :title="t('editor.focus') + ' (Ctrl+Shift+F)'"
+      :aria-label="t('editor.focus')"
       @click="ui.focusMode = !ui.focusMode"
     >
       <Icon name="maximize" :size="15" />
@@ -473,13 +476,22 @@ const exportItems: { icon: string; labelKey: string; format: 'pdf' | 'html' | 'w
         class="icon-btn"
         :class="{ active: exportOpen }"
         :title="t('editor.export')"
+        :aria-label="t('editor.export')"
+        :aria-expanded="exportOpen"
+        aria-haspopup="menu"
+        data-export-pop-anchor
         @click="toggleExport"
       >
         <Icon name="download" :size="15" />
       </button>
     </div>
 
-    <button class="icon-btn" :title="t('settings.title')" @click="ui.openSettings()">
+    <button
+      class="icon-btn"
+      :title="t('settings.title')"
+      :aria-label="t('settings.title')"
+      @click="ui.openSettings()"
+    >
       <Icon name="settings" :size="15" />
     </button>
 
@@ -491,6 +503,7 @@ const exportItems: { icon: string; labelKey: string; format: 'pdf' | 'html' | 'w
         <div
           v-if="exportOpen"
           class="export-pop fixed z-[100] w-[190px] rounded-xl border border-edge bg-elevate p-1.5"
+          data-export-pop
           :style="{
             boxShadow: 'var(--shadow-2)',
             left: exportPos.x + 'px',

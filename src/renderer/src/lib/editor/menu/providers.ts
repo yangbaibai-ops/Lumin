@@ -133,7 +133,6 @@ export function createDefaultProviders(
           items: pick(actions, [
             'format.bold',
             'format.italic',
-            'format.underline',
             'format.strike',
             'format.inlineCode'
           ])

@@ -4,8 +4,8 @@
 //  A. 查找命中的样子：命中处**高亮**（`.find-hit` 有底色），且命中的加粗文字**不冒出 `**`**
 //     （查找的选法是程序化的 `setTextSelection`，与用户手选在状态里长得一样，只有「查找栏
 //     正在高亮」这个全局事实能区分）。关掉查找栏后标记恢复正常的「光标所在构造才展开」。
-//  B. 侧栏文件树行高：29px，且标签行盒（line-height）大于字号 —— 降部不会被 `overflow:hidden`
-//     裁掉。这条与 `_verify-sidebar-tree-style.js` 的 `row-height-29` 互为双保险。
+//  B. 侧栏文件树行高（本轮 32px），且标签行盒（line-height）大于字号 —— 降部不会被 `overflow:hidden`
+//     裁掉。这条与 `_verify-sidebar-tree-style.js` 的 `row-height-32` 互为双保险。
 //  C. 选区跨出构造时把**整对标记**括进来：`**诊所** 全片` 里选到「全片」时选区必须覆盖
 //     两侧的 `**`；只选构造内部（或完全在构造内）不扩。
 //  D. 行尾点击：一行只有 `**诊室（底层空间）**` 时，点在最后一个可见字符右侧 ⇒ 光标落到
@@ -340,8 +340,8 @@ async function main() {
       report.skip('B-tree-rows', '当前实例没有可量的文件树行')
     } else {
       report.check(
-        'B 树行高 29px（原 27px 会切掉降部）',
-        b.heights.length === 1 && Math.abs(b.heights[0] - 29) <= 0.6,
+        'B 树行高 32px（29px 之后用户仍嫌偏挤，本轮再松一档）',
+        b.heights.length === 1 && Math.abs(b.heights[0] - 32) <= 0.6,
         JSON.stringify(b.heights)
       )
       const lh = parseFloat(String(b.lineHeights[0]))

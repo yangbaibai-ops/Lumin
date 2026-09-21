@@ -162,6 +162,16 @@ async function main() {
     el.remove()
     return v
   })()`)
+  // 副色（accent）的**实测计算值**：色条必须与它不同（「色条是灰的、不是强调色」这条
+  // 判据原来写死了旧的紫色字面量 `99,102,241`，换了副色就永远成立 —— 改成跟令牌比）。
+  const accent = await ev(`(() => {
+    const el = document.createElement('div')
+    el.style.color = 'var(--accent)'
+    document.body.appendChild(el)
+    const v = getComputedStyle(el).color
+    el.remove()
+    return v
+  })()`)
   const barContrast = contrast(editing.borderLeftColor, paper)
   console.log(
     'TOKEN --edge-strong = ' +
@@ -188,8 +198,8 @@ async function main() {
   )
   c(
     'bar-is-gray-not-accent',
-    !/99,\s*102,\s*241/.test(editing.borderLeftColor),
-    editing.borderLeftColor
+    editing.borderLeftColor !== accent,
+    `bar=${editing.borderLeftColor} accent=${accent}`
   )
   c(
     'no-background',

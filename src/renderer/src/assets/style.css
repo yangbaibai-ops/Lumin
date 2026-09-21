@@ -17,8 +17,29 @@
  *
  * 承载「比纸略灰」的面（改动纸色时逐个复核，套件里量的是**关系**不是绝对值）：
  *   --code-bg（代码块 / 行内代码 / CodeMirror 编辑框）、--panel-2（表头 / 悬停底色 / kbd 芯片）、
- *   --edge / --edge-strong（分隔线 / 引用色条 / 边框）、--sel（选区）、--accent-soft（选中药丸）。
- * 与纸同色、只靠边框表达的面（front matter 块、气泡菜单、浮层）见各自规则处的注释。 */
+ *   --edge / --edge-strong（分隔线 / 引用色条 / 边框）、--sel（自绘淡底：查找命中）、
+ *   --accent-soft（选中药丸）。
+ * 与纸同色、只靠边框表达的面（front matter 块、气泡菜单、浮层）见各自规则处的注释。
+ *
+ * ── 副色（accent 家族）用**中性灰**，不用彩色 ──────────────────────────────────
+ * 参照 Typora：界面里的「强调」不靠色相，靠**明度差**（淡底 + 深一点的图标/文字）。
+ *   --accent      图标 / 焦点环 / 边框 / 勾选态（要能在底面上看见）
+ *   --accent-soft 选中淡底（半透明灰，压在纸或外壳上都看得见）
+ *   --accent-ink  淡底之上的文字（比 --accent 更重，保证可读）
+ *   --accent-2    次级强调（极少数地方，如渐变的另一端）
+ *   --marker      **源码标记符的墨色**（`**`、`*`、`~~`、`` ` ``、`#`、`\`）：比 --ink-3 还淡一档，
+ *                 三主题都是「贴近背景」的方向 —— 浅色下更浅、深色下更暗（对比度都是 ~2–3.4:1）。
+ *                 它**不跟副色走**：副色要能当图标/焦点环（对比度得够），标记符反过来要**退到背景里**。
+ * 三个主题各自取值不同，但**都必须是低饱和度的灰**（套件 `_verify-neutral-accent.js`
+ * 按「通道极差」断言，不看具体色值）。
+ *
+ * **文字选区不归我们管**：`::selection` 的 author 规则**一条都不留** —— 第二十五轮把最后那条
+ * `.code-edit-input::selection` 也删了（它守的是早已被 CodeMirror 取代的「透明 textarea +
+ * 高亮层」旧架构，属死码）。选区颜色就是浏览器默认（系统 Highlight）。
+ * 插入符（`caret-color`）跟随正文色 `--ink`，不再用高亮色。
+ *
+ * 链接（`--link`）与目录条目（`--toc-link`）仍是**蓝色**：链接要一眼认出来，
+ * 中性灰会让它和正文混在一起（Typora 的链接也是蓝的）。 */
 :root,
 .theme-light {
   --app: #f2f3f7;
@@ -33,22 +54,35 @@
   --ink: #20242b;
   --ink-2: #4e5766;
   --ink-3: #8a919e;
-  --accent: #6366f1;
-  --accent-2: #8b5cf6;
-  --accent-soft: rgba(99, 102, 241, 0.1);
-  --accent-ink: #4338ca;
-  --toc-link: #2563eb;
+  /* 副色 = 中性灰（浅色）：图标/焦点环 #6b7280、淡底 7% 墨、淡底上的文字 #374151。
+     --accent-2 取更深一档（渐变另一端 / 次级强调），保证与白字的对比度 */
+  --accent: #6b7280;
+  --accent-2: #4b5563;
+  --accent-soft: rgba(17, 24, 39, 0.07);
+  --accent-ink: #374151;
+  --link: #2563eb;
+  --toc-link: var(--link);
+  /* 源码标记符（`**`、`*`、`~~`、`` ` ``、`#`、`\`）的墨色：比 --ink-3 更淡一档。
+     用户口径「标记符再浅一点的灰色」；像 Typora 那样只在需要时轻轻透出来，
+     不跟正文抢注意力（对纸约 2.3:1，够看见但不抢眼）。 */
+  --marker: #a4aab4;
   --danger: #dc2626;
   --warning: #d97706;
   --ok: #16a34a;
-  --glow: rgba(99, 102, 241, 0.16);
+  --glow: rgba(17, 24, 39, 0.12);
   --code-bg: #f1f2f5;
-  --sel: rgba(99, 102, 241, 0.22);
-  --block-hover: rgba(99, 102, 241, 0.05);
-  --block-active: rgba(99, 102, 241, 0.075);
+  /* 自绘淡底（查找命中）：灰，不是紫。原生文字选区走浏览器默认，不用这个令牌 */
+  --sel: rgba(17, 24, 39, 0.11);
+  --block-hover: rgba(17, 24, 39, 0.04);
+  /* 实心主按钮：与副色解耦 —— 它要保证「白字压在底色上」可读，深灰最稳 */
+  --btn-solid: #4b5563;
+  --btn-solid-2: #374151;
+  --btn-ink: #ffffff;
+  /* 代码高亮的两档「结构色」：偏蓝的板岩色，与字符串绿 / 数字琥珀区分开，且不沾紫 */
+  --code-key: #3f6592;
+  --code-key-2: #2b6f8f;
   --shadow-1: 0 1px 2px rgba(16, 24, 40, 0.06);
   --shadow-2: 0 8px 28px rgba(16, 24, 40, 0.1);
-  --editor-bg: transparent;
   color-scheme: light;
 }
 
@@ -65,22 +99,29 @@
   --ink: #e8eaef;
   --ink-2: #a8afbc;
   --ink-3: #6d7483;
-  --accent: #818cf8;
-  --accent-2: #a78bfa;
-  --accent-soft: rgba(129, 140, 248, 0.13);
-  --accent-ink: #c7d2fe;
-  --toc-link: #60a5fa;
+  /* 副色 = 中性灰（深色）：暗底上 --accent 要够亮（图标/焦点环），淡底上的文字用 --accent-ink */
+  --accent: #8a919e;
+  --accent-2: #6b7280;
+  --accent-soft: rgba(255, 255, 255, 0.08);
+  --accent-ink: #dcdfe5;
+  --link: #60a5fa;
+  --toc-link: var(--link);
+  /* 深色下「更淡」= 更贴近背景（对比度更低），不是更亮：约 3.4:1 */
+  --marker: #666c78;
   --danger: #f87171;
   --warning: #fbbf24;
   --ok: #4ade80;
-  --glow: rgba(129, 140, 248, 0.15);
+  --glow: rgba(255, 255, 255, 0.1);
   --code-bg: #1a1d26;
-  --sel: rgba(129, 140, 248, 0.3);
-  --block-hover: rgba(129, 140, 248, 0.06);
-  --block-active: rgba(129, 140, 248, 0.1);
+  --sel: rgba(255, 255, 255, 0.16);
+  --block-hover: rgba(255, 255, 255, 0.05);
+  --btn-solid: #4b5563;
+  --btn-solid-2: #39414f;
+  --btn-ink: #f3f4f6;
+  --code-key: #8ab4e8;
+  --code-key-2: #7fc4e0;
   --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.4);
   --shadow-2: 0 10px 32px rgba(0, 0, 0, 0.55);
-  --editor-bg: transparent;
   color-scheme: dark;
 }
 
@@ -97,22 +138,29 @@
   --ink: #4a3b2a;
   --ink-2: #7c6a50;
   --ink-3: #a5947a;
-  --accent: #b45309;
-  --accent-2: #d97706;
-  --accent-soft: rgba(180, 83, 9, 0.11);
-  --accent-ink: #92400e;
-  --toc-link: #1d4ed8;
+  /* 副色 = **暖**中性灰（羊皮纸主题保留暖调，但不再是琥珀色强调） */
+  --accent: #8a7f6b;
+  --accent-2: #6f6555;
+  --accent-soft: rgba(90, 74, 48, 0.09);
+  --accent-ink: #5c5140;
+  --link: #1d4ed8;
+  --toc-link: var(--link);
+  /* 暖灰的淡标记墨（约 2.1:1） */
+  --marker: #b3a894;
   --danger: #b91c1c;
   --warning: #b45309;
   --ok: #15803d;
-  --glow: rgba(180, 83, 9, 0.12);
+  --glow: rgba(90, 74, 48, 0.12);
   --code-bg: #efe4c9;
-  --sel: rgba(180, 83, 9, 0.2);
-  --block-hover: rgba(180, 83, 9, 0.055);
-  --block-active: rgba(180, 83, 9, 0.09);
+  --sel: rgba(90, 74, 48, 0.14);
+  --block-hover: rgba(90, 74, 48, 0.05);
+  --btn-solid: #6b5c46;
+  --btn-solid-2: #57492f;
+  --btn-ink: #fdf8ec;
+  --code-key: #4a6a92;
+  --code-key-2: #2b6f8f;
   --shadow-1: 0 1px 2px rgba(97, 74, 32, 0.08);
   --shadow-2: 0 8px 28px rgba(97, 74, 32, 0.14);
-  --editor-bg: transparent;
   color-scheme: light;
 }
 
@@ -171,14 +219,18 @@
     user-select: none;
   }
 
-  ::selection {
-    background: var(--sel);
-  }
-
   input,
   textarea {
     user-select: text;
   }
+
+  /* 文字选区**不写 author 规则**：撤掉原来的 `::selection { background: var(--sel) }`，
+     选区就用浏览器默认色（系统 Highlight）。
+
+     为什么改成默认：1) 用户口径 —— 选中文字「用默认颜色即可，无需紫色」；
+     2) 默认色由系统/浏览器给，明暗主题下都自带正确的文字反色（HighlightText），
+        我们自己涂一层半透明色时，一旦底色接近（如淡灰底 + 淡灰选中）就会看不见。
+     现在**一条 author `::selection` 都不留**（唯一那条 `.code-edit-input` 已随旧架构删除）。 */
 
   /* 全局滚动条：细直方条（正长方形、无圆角） */
   ::-webkit-scrollbar {
@@ -219,26 +271,6 @@
     transform: none;
   }
 }
-@keyframes lm-slide-up {
-  from {
-    opacity: 0;
-    transform: translateY(10px);
-  }
-  to {
-    opacity: 1;
-    transform: none;
-  }
-}
-@keyframes lm-slide-in-right {
-  from {
-    opacity: 0;
-    transform: translateX(16px);
-  }
-  to {
-    opacity: 1;
-    transform: none;
-  }
-}
 @keyframes lm-shimmer {
   from {
     background-position: 200% 0;
@@ -254,16 +286,6 @@
   }
   50% {
     opacity: 1;
-  }
-}
-@keyframes lm-caret-blink {
-  0%,
-  45% {
-    opacity: 1;
-  }
-  50%,
-  95% {
-    opacity: 0;
   }
 }
 
@@ -427,9 +449,11 @@
 .btn:active {
   transform: scale(0.96);
 }
+/* 实心主按钮用**自己的**令牌，不跟着副色走：副色在深色主题下必须够亮（图标/焦点环），
+   而「白字压在按钮上」要的是够深 —— 两个角色互相拉扯，分开最省事（见令牌区注释）。 */
 .btn-primary {
-  background: linear-gradient(135deg, var(--accent), var(--accent-2));
-  color: #fff;
+  background: linear-gradient(135deg, var(--btn-solid), var(--btn-solid-2));
+  color: var(--btn-ink);
   box-shadow: 0 2px 10px var(--glow);
 }
 .btn-primary:hover {
@@ -505,11 +529,9 @@
   white-space: pre-wrap;
   overflow-wrap: break-word;
   overflow-y: auto;
-  caret-color: var(--accent);
+  caret-color: var(--ink);
 }
-.source-editor::selection {
-  background: var(--sel);
-}
+/* 源码面不写 `::selection`：用浏览器默认（与正文一致）。 */
 /* 分屏右侧面板：减上下留白、去底部大留白，贴合对比面板密度 */
 .source-editor--split {
   padding: 1.25rem 1.5rem 4rem;
@@ -775,16 +797,18 @@ body.split-dragging {
 .md-preview p {
   margin: 0.55em 0;
 }
+/* 链接 = 蓝色（--link），**不跟副色**：副色改成中性灰之后，链接若也变灰就和正文分不开了。
+   目录条目用的是同一个令牌（--toc-link: var(--link)）。 */
 .md-preview a {
-  color: var(--accent);
+  color: var(--link);
   text-decoration: none;
-  border-bottom: 1px solid color-mix(in srgb, var(--accent) 35%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--link) 35%, transparent);
   transition:
     border-color 0.15s ease,
     background-color 0.15s ease;
 }
 .md-preview a:hover {
-  border-bottom-color: var(--accent);
+  border-bottom-color: var(--link);
   background: var(--accent-soft);
 }
 .md-preview strong {
@@ -975,7 +999,10 @@ body.split-dragging {
   max-width: 100%;
 }
 
-/* ─── 代码高亮（highlight.js 自定义配色） ─── */
+/* ─── 代码高亮（highlight.js 自定义配色） ───
+   两档「结构色」用**板岩蓝**（--code-key / --code-key-2），不跟副色走：
+   副色改成中性灰之后，关键字/标签/属性若沿用副色会与正文灰糊在一起；
+   板岩蓝与字符串绿（--ok）、数字琥珀（--warning）区分得开，且不沾紫。 */
 .hljs {
   color: var(--ink);
 }
@@ -988,7 +1015,7 @@ body.split-dragging {
 .hljs-selector-tag,
 .hljs-literal,
 .hljs-doctag {
-  color: var(--accent);
+  color: var(--code-key);
 }
 .hljs-string,
 .hljs-regexp,
@@ -1004,14 +1031,14 @@ body.split-dragging {
 .hljs-title,
 .hljs-section,
 .hljs-name {
-  color: var(--accent-2);
+  color: var(--code-key-2);
 }
 .hljs-attr,
 .hljs-attribute,
 .hljs-variable,
 .hljs-template-variable,
 .hljs-type {
-  color: var(--accent-ink);
+  color: var(--code-key);
 }
 .hljs-built_in,
 .hljs-builtin-name,
@@ -1019,7 +1046,7 @@ body.split-dragging {
   color: var(--warning);
 }
 .hljs-tag {
-  color: var(--accent);
+  color: var(--code-key);
 }
 .hljs-deletion {
   color: var(--danger);
@@ -1051,7 +1078,7 @@ body.split-dragging {
   font-size: var(--editor-size, 17px);
   line-height: var(--editor-lh, 1.9);
   color: var(--ink);
-  caret-color: var(--accent);
+  caret-color: var(--ink);
   overflow: hidden;
 }
 .md-block .md-raw::placeholder {
@@ -1061,7 +1088,7 @@ body.split-dragging {
 /* 行内可编辑容器 */
 .md-block-inner {
   outline: none;
-  caret-color: var(--accent);
+  caret-color: var(--ink);
   min-height: calc(var(--editor-size, 17px) * var(--editor-lh, 1.9));
   cursor: text;
 }
@@ -1077,10 +1104,11 @@ body.split-dragging {
   cursor: default;
 }
 
-/* 行内样式标记符：默认隐藏，光标进入 / 悬停 / 选区相交时显示 */
+/* 行内样式标记符：默认隐藏，光标进入 / 悬停 / 选区相交时显示。
+   墨色 = `--marker`（淡灰）：这是**源码符号**，退到背景里即可，不跟副色走 */
 .md-meta {
   display: none;
-  color: color-mix(in srgb, var(--accent) 75%, var(--ink-3));
+  color: var(--marker);
   opacity: 0.85;
   user-select: none;
   font-weight: normal;
@@ -1098,10 +1126,6 @@ code.md-reveal > .md-meta {
   display: inline;
   animation: lm-fade-in 0.12s ease;
 }
-code.md-reveal > .md-meta,
-code:hover > .md-meta {
-  color: var(--accent);
-}
 
 /* 标题标记符（Typora：光标进入标题时显示 #，退格可去标题） */
 h1 > .md-heading-marker,
@@ -1110,7 +1134,7 @@ h3 > .md-heading-marker,
 h4 > .md-heading-marker,
 h5 > .md-heading-marker,
 h6 > .md-heading-marker {
-  color: color-mix(in srgb, var(--accent) 65%, var(--ink-3));
+  color: var(--marker);
   opacity: 0.9;
 }
 h1.md-reveal > .md-heading-marker,
@@ -1142,71 +1166,6 @@ h6.md-reveal > .md-heading-marker {
 .md-math {
   cursor: pointer;
 }
-.md-math-input {
-  width: 9em;
-  background: var(--panel);
-  border: 1.5px solid var(--accent);
-  border-radius: 6px;
-  padding: 2px 8px;
-  font-family: var(--font-mono);
-  font-size: 0.85em;
-  color: var(--ink);
-  outline: none;
-  box-shadow: 0 0 0 3px var(--accent-soft);
-}
-
-/* 代码块原位编辑：高亮层 + 透明 textarea（样式与静态代码框一致） */
-.code-edit-box {
-  position: relative;
-  margin: 0.8em 0;
-  background: var(--code-bg);
-  border: 1px solid var(--edge);
-  border-radius: 12px;
-  overflow: hidden;
-  box-shadow: 0 0 0 3px var(--accent-soft);
-}
-.code-edit-highlight,
-.code-edit-input {
-  margin: 0;
-  padding: 14px 16px;
-  font-family: var(--font-mono);
-  font-size: 0.86em;
-  line-height: 1.6;
-  white-space: pre-wrap;
-  word-break: break-all;
-  tab-size: 2;
-}
-.code-edit-highlight {
-  position: absolute;
-  inset: 0;
-  overflow: hidden;
-  pointer-events: none;
-  background: transparent;
-  color: var(--ink);
-}
-.code-edit-highlight code {
-  background: transparent;
-  padding: 0;
-}
-.code-edit-input {
-  position: relative;
-  display: block;
-  width: 100%;
-  min-height: 100%;
-  border: none;
-  background: transparent;
-  color: transparent;
-  caret-color: var(--accent);
-  resize: none;
-  outline: none;
-  overflow: hidden;
-  field-sizing: content;
-}
-.code-edit-input::selection {
-  background: var(--sel);
-  color: transparent;
-}
-
 /* 目录（[TOC] 渲染结果）：对齐 Typora 的朴素嵌套列表——没有外框 / 底色 / 左侧色条，
    只有按层级缩进的圆点与文字；点击条目平滑滚动到对应标题（见 stores/editor.jumpToHeading）。
    条目默认是**蓝色**（--toc-link，三套主题各自调过对比度：浅色 blue-600 / 深色 blue-400 /
@@ -1261,13 +1220,17 @@ h6.md-reveal > .md-heading-marker {
 
 /* ─── 侧栏文件树 ───────────────────────────────────────────────────────────────
    设计取向：像 VS Code / Obsidian 那样「安静但有结构」。四个决定：
-   1) 一排 = 27px 行盒 + 上下各 1px 透明边（background-clip: padding-box），底色药丸实际
-      25px：上下相邻的悬停/选中不会糊成一整块 54px，行距节奏仍是 27px；
+   1) 一排 = 31px 行盒 + 上下各 1px 透明边（background-clip: padding-box），底色块实际
+      29px：上下相邻的悬停/选中不会糊成一整块，行距节奏仍是 31px（用户后续口径：
+      行高再松一点 —— 27px 会裁降部、29px 仍偏挤，现在按 32px 走）；
    2) 缩进走固定 16px 网格（4 + depth * 16，容器再内缩 10px 与搜索框同一条竖线）。
       层级不只靠缩进：1px 低对比度缩进参考线（画在子级容器上，正落在父级箭头中线，且抬到
       行底色之上，悬停/选中都不会把它切断）+ 文件夹图标内部浅填充（容器）/ 文件图标纯描边（内容）；
-   3) 状态三档：静止 ink-2 / 悬停 panel-2 + ink / 当前 accent-soft + accent（**不做左侧色条**：
-   用户明确不要那条竖条，选中态只靠浅色底 + accent 图标 + accent-ink 文字表达）。
+   3) 状态三档：静止 ink-2 / 悬停 panel-2 + ink / 当前 accent-soft + accent + **左侧 3px 浅灰色条**。
+      色条是后来的口径（此前一版明确不要，本轮按新口径加回来，但**用浅灰**不用强调色）：
+      `--ink-3` 在三主题里都是「浅灰」那一档，压在半透明淡底上足够看清又不抢眼。
+      用 `::before` 而不是 `border-left`：border 参与盒模型会把行内内容右推 3px，
+      而各级缩进是按 --tree-pad/--tree-indent 精确算的（套件逐级量过 labelLeft）。
       选中文字走 accent-ink —— accent 落在 accent-soft 上只有 3.8:1，够不到正文可读线；
    4) 箭头 14px 图形放进 14px 槽，再用 -2px 外边距收近文件夹：原来 12px 图形悬在 16px 槽里，
       又小又离文件夹远。文件夹图标一律与文件图标同色（--ink-3），不靠颜色区分类型。
@@ -1292,9 +1255,9 @@ h6.md-reveal > .md-heading-marker {
   align-items: center;
   gap: var(--tree-gap);
   /* 行高：27px 时 13px 中文/带降部的拉丁字母（`g`/`y`/`p`）会被 `.tree-label` 的
-     `overflow: hidden` 切掉下缘（用户报「有些字母显示不全」）。29px 给足 16px 行盒，
-     同时行内图标仍是 15px —— 视觉上只是行距松了一点。最低不小于 29px。 */
-  min-height: 29px;
+     `overflow: hidden` 切掉下缘（用户报「有些字母显示不全」）→ 29px 修好裁切但行距偏挤；
+     现在 32px（= 30px 行盒 + 上下各 1px 透明边），图标仍是 15px，呼吸感更足。 */
+  min-height: 32px;
   padding-right: 8px;
   padding-left: calc(var(--tree-pad) + var(--tree-depth, 0) * var(--tree-indent));
   border-top: 1px solid transparent;
@@ -1323,6 +1286,20 @@ h6.md-reveal > .md-heading-marker {
   background-clip: padding-box;
   color: var(--accent);
   font-weight: 500;
+}
+/* 选中项左侧的**浅灰色条**（用户口径）：3px、贴行左缘、与行同高。
+   用 `::before` 而不是 `border-left`：border 参与盒模型会把内容右推 3px，
+   而侧栏各级缩进是按 --tree-pad/--tree-indent 精确算的（套件逐级量过 labelLeft）。
+   色条不吃事件（pointer-events: none），点击落点仍是行本身。 */
+.tree-row.is-current::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  background: var(--ink-3);
+  pointer-events: none;
 }
 .tree-row.is-current > .tree-label {
   color: var(--accent-ink);
@@ -1424,7 +1401,7 @@ h6.md-reveal > .md-heading-marker {
 .tree-empty-hint {
   display: flex;
   align-items: center;
-  min-height: 29px;
+  min-height: 32px;
   padding-left: calc(
     var(--tree-pad) + (var(--tree-depth, 0) + 1) * var(--tree-indent) + var(--tree-slot) -
       var(--tree-slot-pull) + 2 * var(--tree-gap) + var(--tree-icon)
@@ -1463,11 +1440,6 @@ h6.md-reveal > .md-heading-marker {
   border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent);
   border-radius: 10px;
   color: var(--accent-ink);
-}
-
-/* 焦点/打字机模式下的辅助类 */
-.typewriter-scroll {
-  scroll-behavior: smooth;
 }
 
 /* ─────────────────────── 侧边栏过渡 / 查找标记 ─────────────────────── */
@@ -1547,31 +1519,6 @@ h6.md-reveal > .md-heading-marker {
   }
 }
 
-mark.lm-find-mark {
-  background: color-mix(in srgb, var(--warning) 35%, transparent);
-  color: inherit;
-  border-radius: 3px;
-  outline: 1px solid color-mix(in srgb, var(--warning) 55%, transparent);
-  padding: 0 1px;
-}
-mark.lm-find-mark.lm-current {
-  background: color-mix(in srgb, var(--warning) 65%, transparent);
-  outline: 2px solid var(--warning);
-}
-
-.mermaid-error pre {
-  border-color: color-mix(in srgb, var(--danger) 45%, transparent);
-}
-
-.code-wrap {
-  position: relative;
-  cursor: text;
-}
-.code-lang {
-  user-select: none;
-  pointer-events: none;
-}
-
 /* 全局搜索高亮 */
 .gs-hl {
   color: var(--warning);
@@ -1588,7 +1535,7 @@ mark.lm-find-mark.lm-current {
 .editor-content .ProseMirror {
   outline: none;
   min-height: 60vh;
-  caret-color: var(--accent);
+  caret-color: var(--ink);
 }
 .editor-content .ProseMirror:focus {
   outline: none;
@@ -1613,12 +1560,12 @@ mark.lm-find-mark.lm-current {
 }
 
 /* ── 链接源码展开（Typora 同款，§4.15）──
-   展开态的「原文标签」保持链接外观（主题色 + 下边框，与 .md-preview a 一致）；
+   展开态的「原文标签」保持链接外观（--link + 下边框，与 .md-preview a 一致）；
    新增的 `[`、`](`、网址、`)` 等字符以浅灰呈现，一眼区分「正文 vs 语法」 */
 .md-link-source {
-  color: var(--accent);
+  color: var(--link);
   text-decoration: none;
-  border-bottom: 1px solid color-mix(in srgb, var(--accent) 35%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--link) 35%, transparent);
 }
 .md-link-syntax {
   color: var(--ink-3);
@@ -1704,7 +1651,8 @@ h6.md-reveal::before {
    （删一个 * 即把 ** 变 *） */
 .md-marker {
   font-size: 0;
-  color: color-mix(in srgb, var(--accent) 70%, var(--ink-3));
+  /* 淡灰的源码标记墨（用户口径：标记符再浅一点）；见令牌区 `--marker` 的说明 */
+  color: var(--marker);
 }
 /* ── 「按住鼠标时先别冒 `**`、松开再显示」的隐藏态 ──
    需求：鼠标按在加粗文字上 / 拖选时，标记不要立刻显形，**松开才显示**。
@@ -1783,7 +1731,8 @@ h6.md-reveal::before {
    （`C:Usersx`），所以装饰永远给它 `.md-reveal-inline`（= 常显暗色），不参与光标显隐。 */
 .md-escape-backslash {
   font-size: 0;
-  color: var(--ink-3);
+  /* 与 `**` 同一档淡灰（同一个「源码符号」语义） */
+  color: var(--marker);
 }
 .md-escape-backslash.md-reveal-inline {
   font-size: inherit;
@@ -1811,9 +1760,8 @@ h6.md-reveal::before {
   white-space: pre;
   cursor: default;
 }
-.md-preview pre[data-md-frontmatter]::selection {
-  background: var(--sel);
-}
+
+/* front matter 也不再单独改选区色（原来那条会盖掉浏览器默认） */
 
 /* ── 数学公式（KaTeX）──
    行内公式：原文留在文档里（`$…$` 是一个带 mdMath mark 的文本节点），渲染成公式靠**装饰**：
@@ -1967,7 +1915,7 @@ li.md-reveal {
   color: var(--ink);
   outline: none;
   resize: vertical;
-  caret-color: var(--accent);
+  caret-color: var(--ink);
 }
 
 /* ── 任务列表 ── */

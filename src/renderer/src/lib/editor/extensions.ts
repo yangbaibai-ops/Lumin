@@ -102,6 +102,12 @@ export const editorExtensions: Extensions = [
     italic: false,
     strike: false,
     code: false,
+    // 下划线：第二十五轮**显式关闭**。它此前靠 StarterKit 默认注册而存在，但 Markdown
+    // 没有下划线语法 —— 落盘是裸 HTML `<u>`，重开即退化成字面文本（屏幕上就是
+    // `<u>abc</u>` 这几个字符），与 `**` 嵌套还会丢掉下划线（数据损坏类缺陷）。
+    // 关掉后 `Ctrl+U` 不再被它吞掉，工具栏与右键菜单里的入口也已一并移除。
+    // 将来若要恢复，正确做法是做成一等 mark（`escape:false`，同 MdHtml），而不是重开它。
+    underline: false,
     link: {
       openOnClick: false,
       autolink: true,

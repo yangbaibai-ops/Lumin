@@ -13,7 +13,8 @@
 import { nextTick, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useFindStore } from '../stores/find'
-import { setFindHit } from '../lib/editor/typoraInlineMarks'
+// 零依赖桥：本组件在 App.vue 的静态依赖链上，直接 import 编辑器内核会把 PM 拖进首屏
+import { setFindHit } from '../lib/editor/findBridge'
 import { useUiStore } from '../stores/ui'
 import Icon from './Icon.vue'
 

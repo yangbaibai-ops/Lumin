@@ -129,11 +129,12 @@ export function buildEditorMenuActions(
         chain().setParagraph().run()
       }
     },
+    // 标题 1/2/3 此前标着 Ctrl+1/2/3，但全仓**没有任何绑定**（grep `Mod-1` = 0）——
+    // 「照着提示按键什么也不会发生」是比不显示更糟的缺陷，所以把假提示去掉。
     'paragraph.h1': {
       id: 'paragraph.h1',
       labelKey: 'editorMenu.heading1',
       icon: 'heading',
-      shortcut: 'Ctrl+1',
       run: () => {
         chain().toggleHeading({ level: 1 }).run()
       }
@@ -142,7 +143,6 @@ export function buildEditorMenuActions(
       id: 'paragraph.h2',
       labelKey: 'editorMenu.heading2',
       icon: 'heading',
-      shortcut: 'Ctrl+2',
       run: () => {
         chain().toggleHeading({ level: 2 }).run()
       }
@@ -151,7 +151,6 @@ export function buildEditorMenuActions(
       id: 'paragraph.h3',
       labelKey: 'editorMenu.heading3',
       icon: 'heading',
-      shortcut: 'Ctrl+3',
       run: () => {
         chain().toggleHeading({ level: 3 }).run()
       }
@@ -216,19 +215,14 @@ export function buildEditorMenuActions(
         chain().toggleMdItalic().run()
       }
     },
-    'format.underline': {
-      id: 'format.underline',
-      labelKey: 'editorMenu.underline',
-      icon: 'underline',
-      shortcut: 'Ctrl+U',
-      run: () => {
-        chain().toggleUnderline().run()
-      }
-    },
+    // 『format.underline』已在第二十五轮**删除**：它唯一能落盘的形式是裸 HTML `<u>`，
+    // 重开文档即退化成字面文本（见 shared/toolbarItems.ts 的说明）。
     'format.strike': {
       id: 'format.strike',
       labelKey: 'editorMenu.strike',
       icon: 'strike',
+      // 快捷键提示要跟**真实绑定**一致：`Mod-Shift-x`（typoraInlineMarks 的 addKeyboardShortcuts）
+      shortcut: 'Ctrl+Shift+X',
       run: () => {
         chain().toggleMdStrike().run()
       }
@@ -237,6 +231,8 @@ export function buildEditorMenuActions(
       id: 'format.inlineCode',
       labelKey: 'editorMenu.inlineCode',
       icon: 'code',
+      // 真实绑定是 `Mod-e`（typoraInlineMarks），此前菜单里不显示 —— 有键就写出来
+      shortcut: 'Ctrl+E',
       run: () => {
         chain().toggleMdCode().run()
       }
@@ -247,8 +243,8 @@ export function buildEditorMenuActions(
       id: 'insert.link',
       labelKey: 'editorMenu.link',
       icon: 'link',
-      shortcut: 'Ctrl+K',
-      // 对话框期间先收起菜单由 UI 负责；取消（null）视为未执行
+      // 这里原先标 `Ctrl+K`，但 Ctrl+K 实际绑的是「打开快捷键设置」（lib/keymap 的
+      // help.keymap），链接压根没有快捷键 —— 提示键必须跟着真实绑定走，宁可不写。
       run: async () => {
         const href = await prompt({
           titleKey: 'editorMenu.linkPrompt',

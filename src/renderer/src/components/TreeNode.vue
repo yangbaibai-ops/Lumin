@@ -159,7 +159,8 @@ function onDragStart(e: DragEvent): void {
 <template>
   <div>
     <!-- 一行的解剖：16px 的箭头槽（文件行留空以对齐）→ 15px 类型图标 → 文件名。
-         缩进由 --tree-depth 在 CSS 里算（8 + depth * 16），行高固定 27px 让整棵树等距。
+         缩进由 --tree-depth 在 CSS 里算（4 + depth * 16），行高由 `.tree-row` 的 min-height（32px）
+         统一，让整棵树等距；选中项左侧的浅灰色条是 `.tree-row.is-current::before` 画的（不占盒模型）。
 
          ARIA：这是 tree 里的一行（role="treeitem"，容器在 FileTree.vue）。
          tabindex 用 roving tabindex —— 整棵树只有一个可 Tab 到的行（键盘焦点所在行），

@@ -9,7 +9,6 @@
 // 位置记录沿用 EditorView 视图位置记忆的同一思路：PM 位置 + 记录时长度 + 滚动比例。
 // 存比例而非 scrollTop，是为了窗口大小/字体/主题变化后仍能落在同一「进度」上。
 import { watch } from 'vue'
-import { TextSelection } from '@tiptap/pm/state'
 import i18n from '../i18n'
 import { useEditorStore } from '../stores/editor'
 import { useFilesStore } from '../stores/files'
@@ -145,6 +144,10 @@ async function applyPosition(slot: SessionSlot): Promise<void> {
   // 落点可能正好在块边界（表格单元格、列表项等 inline content 之外），
   // TextSelection 会直接拒绝并告警 —— 与 EditorView.placePmCursor 同样先 near 修正
   try {
+    // 动态 import：顶层静态 import 会把整份 ProseMirror（~412KB）钉进首屏 entry chunk，
+    // 而本文件在 `App.vue → useAppActions` 的静态依赖链上。真正需要它时编辑器已经存在
+    // （`waitEditorForDoc` 等过），模块缓存必然已命中，所以这里不会多一次网络/解析。
+    const { TextSelection } = await import('@tiptap/pm/state')
     const $pos = ed.state.doc.resolve(pos)
     if (!$pos.parent.isTextblock) pos = TextSelection.near($pos, 1)?.from ?? pos
   } catch {

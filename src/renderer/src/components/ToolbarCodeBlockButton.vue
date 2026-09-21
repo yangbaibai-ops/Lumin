@@ -129,6 +129,9 @@ function toggleCodeBlock(): void {
   editorStore.instance?.chain().focus().toggleCodeBlock().run()
 }
 
+/** 源码模式下没有编辑器实例：按钮灰显（此前可点但静默无效，见工具栏审计 F1） */
+const disabled = computed(() => !editorStore.instance)
+
 function toggleLineNumbers(): void {
   // 与设置面板共用同一个 setting：立即应用到已打开的代码块，并持久化到 SQLite
   settings.set('codeLineNumbers', !settings.codeLineNumbers)
@@ -141,6 +144,8 @@ function toggleLineNumbers(): void {
       class="icon-btn"
       :class="{ active }"
       :title="t('editor.codeBlock')"
+      :aria-label="t('editor.codeBlock')"
+      :disabled="disabled"
       @click="toggleCodeBlock"
       @mouseenter="onButtonEnter"
     >

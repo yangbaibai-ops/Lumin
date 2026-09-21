@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, defineAsyncComponent, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { useAppActions } from './composables/useAppActions'
@@ -12,17 +12,29 @@ import AppSidebar from './components/AppSidebar.vue'
 import TopMenuBar from './components/TopMenuBar.vue'
 import NotificationCenter from './components/NotificationCenter.vue'
 import ModalHost from './components/ModalHost.vue'
-import ContextMenu from './components/ContextMenu.vue'
-import EditorContextMenu from './components/EditorContextMenu.vue'
-import GlobalSearch from './components/GlobalSearch.vue'
-import FindReplaceBar from './components/FindReplaceBar.vue'
-import LocalHistoryDialog from './components/LocalHistoryDialog.vue'
 import SkeletonScreen from './components/SkeletonScreen.vue'
-import SettingsDialog from './components/SettingsDialog.vue'
 import GlobalTooltip from './components/GlobalTooltip.vue'
 import Icon from './components/Icon.vue'
 import { installGlobalTooltip } from './lib/tooltip'
 import { installLinkNotificationActions } from './lib/linkOpen'
+
+/**
+ * 「按需出现」的浮层一律异步加载（第二十五轮轻量化）。
+ *
+ * 这批组件（设置面板 49KB 源码、全局搜索、查找栏、本地历史、两个右键菜单）**首屏一个都不显示**：
+ * 设置要 Ctrl+,、查找要 Ctrl+F、右键菜单要真的右键。此前它们在 `App.vue` 里静态 import，
+ * 于是「欢迎页 + 一个文档都没打开」也要解析执行它们（含其依赖）—— 而 App.vue 在 entry chunk 里。
+ * 改成 `defineAsyncComponent` 之后，它们只在被 `v-if` 真正渲染时拉取。
+ *
+ * 保留静态 import 的是**首屏就要看到**的那几个：外壳（AppSidebar / TopMenuBar）、
+ * 启动骨架、通知中心（任何时刻都可能来一条通知）、浮层宿主、图标与全局 tooltip。
+ */
+const ContextMenu = defineAsyncComponent(() => import('./components/ContextMenu.vue'))
+const EditorContextMenu = defineAsyncComponent(() => import('./components/EditorContextMenu.vue'))
+const GlobalSearch = defineAsyncComponent(() => import('./components/GlobalSearch.vue'))
+const FindReplaceBar = defineAsyncComponent(() => import('./components/FindReplaceBar.vue'))
+const LocalHistoryDialog = defineAsyncComponent(() => import('./components/LocalHistoryDialog.vue'))
+const SettingsDialog = defineAsyncComponent(() => import('./components/SettingsDialog.vue'))
 
 const router = useRouter()
 const { t } = useI18n()

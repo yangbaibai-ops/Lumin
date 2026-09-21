@@ -1,4 +1,4 @@
-﻿import { defineStore } from 'pinia'
+import { defineStore } from 'pinia'
 import {
   findMatches,
   isValidQuery,
@@ -8,7 +8,9 @@ import {
   type Match
 } from '../lib/findReplace'
 import { findInDoc } from '../lib/editor/findInDoc'
-import { setFindHit } from '../lib/editor/typoraInlineMarks'
+// 查找命中高亮走**零依赖桥**（不直接 import 编辑器内核）：后者会把 ~412KB 的 ProseMirror
+// 拖进首屏 entry chunk，而本 store 在 App.vue 的静态依赖链上（详见 findBridge.ts）。
+import { setFindHit } from '../lib/editor/findBridge'
 import { useEditorStore } from './editor'
 import { useFilesStore } from './files'
 import { useUiStore } from './ui'

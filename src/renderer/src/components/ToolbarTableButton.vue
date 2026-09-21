@@ -136,6 +136,8 @@ window.addEventListener('resize', onWindowScrollOrResize)
       class="icon-btn"
       :class="{ active: open }"
       :title="t('editor.table')"
+      :aria-label="t('editor.table')"
+      :disabled="!editorStore.instance"
       @click="onButtonClick"
       @mouseenter="onButtonEnter"
     >

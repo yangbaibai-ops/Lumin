@@ -263,8 +263,8 @@ const MEASURE = `(() => {
     // A. 几何
     const heights = [...new Set(rows.map((r) => r.height))]
     c(
-      'row-height-29',
-      heights.length === 1 && Math.abs(heights[0] - 29) <= 0.6,
+      'row-height-32',
+      heights.length === 1 && Math.abs(heights[0] - 32) <= 0.6,
       JSON.stringify(heights)
     )
     // 行高必须装得下字形：`.tree-label` 的 overflow:hidden 会裁掉降部（`g`/`y`/`p`）。
@@ -381,7 +381,7 @@ const MEASURE = `(() => {
     await sleep(900)
     const sel = JSON.parse(
       await w.ev(
-        `(() => { const el = document.querySelector('[data-tree-row].bg-accent-soft') || [...document.querySelectorAll('[data-tree-row]')].find((r) => r.textContent.includes('guide')); const cs = getComputedStyle(el); const icon = getComputedStyle(el.querySelector('svg')); return JSON.stringify({ bg: cs.backgroundColor, color: cs.color, weight: cs.fontWeight, icon: icon.color }) })()`
+        `(() => { const el = document.querySelector('[data-tree-row].bg-accent-soft') || [...document.querySelectorAll('[data-tree-row]')].find((r) => r.textContent.includes('guide')); const cs = getComputedStyle(el); const icon = getComputedStyle(el.querySelector('svg')); const bar = getComputedStyle(el, '::before'); const rb = el.getBoundingClientRect(); return JSON.stringify({ bg: cs.backgroundColor, color: cs.color, weight: cs.fontWeight, icon: icon.color, barWidth: parseFloat(bar.width) || 0, barColor: bar.backgroundColor, barContent: bar.content, rowLeft: Math.round(rb.left), rowHeight: Math.round(rb.height * 10) / 10 }) })()`
       )
     )
     console.log(
@@ -399,6 +399,48 @@ const MEASURE = `(() => {
       JSON.stringify({ icon: sel.icon, accent: m.tokens.accent })
     )
     c('selected-weight-500', sel.weight === '500', sel.weight)
+    // 选中项左侧的**浅灰色条**（用户口径）：3px、贴行左缘、与行同高、且是**灰**的（低饱和）
+    const barRgb = (() => {
+      const n = (sel.barColor || '').match(/-?\d*\.?\d+/g)
+      return n ? n.map(Number) : null
+    })()
+    const barSpread = barRgb ? Math.max(...barRgb.slice(0, 3)) - Math.min(...barRgb.slice(0, 3)) : NaN
+    const barAlpha = barRgb && barRgb.length > 3 ? barRgb[3] : 1
+    console.log('SELECTED-BAR ' + JSON.stringify({ w: sel.barWidth, color: sel.barColor, spread: barSpread }))
+    c(
+      'selected-left-bar-3px-gray',
+      sel.barContent !== 'none' &&
+        Math.abs(sel.barWidth - 3) <= 0.6 &&
+        barSpread <= 40 &&
+        barAlpha > 0.5,
+      JSON.stringify({ w: sel.barWidth, color: sel.barColor, spread: barSpread, alpha: barAlpha })
+    )
+    // 色条不能把行内内容右推（缩进是按 --tree-pad 精确算的）：用 ::before 不占盒模型，
+    // 所以「同一行挂上/摘掉 is-current」时 label 左缘必须完全一致（不依赖夹具里有同级行）。
+    const shift = await w.ev(
+      `(() => {
+        const el = document.querySelector('[data-tree-row].bg-accent-soft') || [...document.querySelectorAll('[data-tree-row]')].find((r) => r.classList.contains('is-current'))
+        if (!el) return 'no-current'
+        const pick = () => { const l = [...el.children].find((c) => c.tagName === 'SPAN' && c.textContent.trim()); return l ? Math.round(l.getBoundingClientRect().left * 10) / 10 : -1 }
+        const withBar = pick()
+        el.classList.remove('is-current')
+        const without = pick()
+        el.classList.add('is-current')
+        return JSON.stringify({ withBar, without, delta: Math.round((withBar - without) * 10) / 10 })
+      })()`
+    )
+    const shiftObj = (() => {
+      try {
+        return JSON.parse(String(shift))
+      } catch {
+        return { delta: String(shift) }
+      }
+    })()
+    c(
+      'selected-left-bar-does-not-shift-content',
+      shiftObj.delta === 0,
+      `挂/摘选中态 labelLeft 差=${shiftObj.delta}（${shiftObj.withBar} vs ${shiftObj.without}）`
+    )
     // 选中项悬停：底色比选中态略强（同色系加深，不换成 panel-2）
     const selRect = JSON.parse(
       await w.ev(

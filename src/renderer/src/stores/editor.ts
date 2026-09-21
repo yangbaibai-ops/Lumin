@@ -45,11 +45,12 @@ export const useEditorStore = defineStore('editor', {
     bind(editor: Editor): void {
       // markRaw：编辑器实例不参与 Vue 深度响应式（性能与兼容性）
       this.editor = markRaw(editor)
-      editor.on('transaction', () => {
+      editor.on('transaction', ({ transaction }) => {
         this.tick++
-        // 每次事务都刷新大纲（保证跳转位置新鲜），内部做差异跳过，
-        // 标题集合不变时只原位更新 pos，不重建数组、不触发列表重渲染
-        this.refreshOutline()
+        // 大纲只在**文档真的变了**时重算（第二十五轮轻量化）：`refreshOutline` 要遍历整篇
+        // 文本块，而事务里绝大多数是纯选区变化（每次点/移动光标都会来一发）。
+        // 标题的 pos 在纯选区事务里不可能变，跳过是安全的。
+        if (transaction.docChanged) this.refreshOutline()
       })
       editor.on('selectionUpdate', () => {
         this.tick++

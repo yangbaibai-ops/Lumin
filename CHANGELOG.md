@@ -77,6 +77,200 @@
 - **工程化**：~~`tools/lib/harness.js` + `tools/run-suites.js`~~ → **本轮已完成**；
   剩余：`files` store 拆分；`store` 里那份为绕循环导入而复制的 `confirmIfDirty` 收敛到 `services/dialog`。
 
+## [Unreleased · 轻量化 + 按钮去留 + 代码收敛 + 树行高] — 首屏 entry −53%，删死码与坏按钮（承第二十五轮）
+
+> 用户八项要求：① 侧栏文件树行高再加一点、选中项前加浅灰色条；② 探索更轻量化的方式（保持功能完整）；
+> ③ 审查文章界面按钮的去留与成本；④ 遍历项目检查解耦/减量/复用并改正；⑤ 样式再优化（更简约大气）；
+> ⑥ 只对本对话的改动做测试；⑦ git 提交；⑧ 完成后关机。
+
+### Changed — 轻量化（先量后改，全部有前后对照）
+
+- **首屏 entry chunk 1,615,729 B → 764,073 B（−53%）**，三段改动：
+  1. **切断 ProseMirror 走私通道**（−691KB）：`stores/find.ts` 原先直接
+     `import { setFindHit } from '../lib/editor/typoraInlineMarks'`，而那模块静态 import
+     `@tiptap/core` + `@tiptap/pm/{state,model,view}`；`prosemirror-state` 的 deps 又链到 model +
+     transform + **view**，于是「import 一个函数」把整份 ProseMirror 钉进 entry。而本 store 挂在
+     `App.vue → useAppActions → stores/find` 这条**静态**链上 —— 连欢迎页都要付这份钱。
+     新增 **`lib/editor/findBridge.ts`（零依赖）**：编辑器在 `onCreate` 里
+     `registerFindHit(setFindHit)`、`destroy` 里注销；store/`FindReplaceBar` 只认这座桥。
+     `lib/session.ts` 的 `TextSelection` 也从顶层静态 import 改成**用到时动态 import**
+     （那时编辑器必然已加载，模块缓存直接命中）。
+     复验：`out/renderer/index-*.js` 里 `class Transform` / `prosemirror` / `tiptap` **全部消失**。
+  2. **KaTeX 样式表延迟加载**（−231KB）：`lib/export.ts` 的 `import katex.min.css?inline` 是
+     模块求值期的常量（含 59 条 `@font-face`），而该模块在 `App.vue → useAppActions → useExport`
+     静态链上。改成 `getExportCss()`（首次导出时动态 import 并缓存）。
+  3. **按需出现的浮层改异步组件**（−80KB）+ **语言包按需加载**（−160KB）：
+     `App.vue` 里设置面板/全局搜索/查找栏/本地历史/两个右键菜单改 `defineAsyncComponent`
+     （首屏一个都不显示）；`i18n/index.ts` 静态只留 `zh-CN`，其余语言由 `ensureLanguage()`
+     在**切换前**拉取并 `setLocaleMessage`（先装包再切 locale，避免一帧原始 key）。
+- **冷启动实测（`tools/_probe-startup.js`，三连跑取中位）**：页面可见 651→665ms、
+  首屏可用 956→969ms、RSS 398→399MB —— **在噪声内没变**。诚实结论：这段墙钟由
+  Electron 进程启动（~500ms）与 `EditorView` 那 2.5MB chunk（开文档必付）主导，
+  首屏 JS 少 850KB 只换来 FCP 208→190ms。**要真降启动时间，得动 Electron 侧或编辑器内核**，
+  不是拆 entry（见下「没做的」）。
+- **每键成本：统计量一趟扫完 + 大纲只在文档变化时重算**：
+  `stores/files.ts` 的 `wordCount`/`lineCount`/`charCount` 原先各自全文扫一遍（三个 getter 挂在
+  `current.content` 上，打字时每代都重算）；现在按**内容串身份**缓存，一趟扫出三个数。
+  `stores/editor.ts` 的 `transaction` 监听原先**每个事务**都重算大纲（纯选区变化也跑），
+  现在只在 `transaction.docChanged` 时跑。
+
+### Changed — 样式收敛（第 5 项的落地口径）
+
+第 5 项「样式再优化、更简约大气」本轮**没有再做一次视觉重做**，而是把重复与不一致收干净
+（视觉上因此更「齐」而不是更「花」）：
+- 删除 15 条永不匹配的 CSS 与 3 个死 keyframes、2 个死变量（约 190 行）——`style.css` 从
+  2,459 行降到 2,326 行，规则集与「实际会被渲染成什么」重新对齐；
+- 把 `.bubble-*` 那套与工具栏重复的第二套浮层 UI 整块删掉（少一套视觉语言）；
+- 侧栏树行高 27→29→**32px**、选中项加 3px 浅灰条：与「安静但有结构」的既有口径一致；
+- 上一轮的中性灰副色 + 默认选区 + 更淡的标记符继续生效（截图核对见
+  `tools/_shot-theme.js` 三主题整窗与选区特写）。
+**进一步的美化（间距节奏、字号阶梯、圆角统一）没有做**：审计指出的真正阻塞项是
+`style.css` 单文件 2,300 行、且 32 个组件里只有 3 个有 `<style>` —— 在拆文件之前做视觉微调，
+只会让「谁覆盖谁」更难维护；这条留给下一轮（拆 CSS 需要三主题目视核对，不能静态判）。
+
+### Removed — 按钮去留（审计结论，含成本）
+
+- **选区气泡菜单整块删除**（`TyporaEditor.vue` 77 行 + `style.css` 40 行 + 旧套件 3 条断言）：
+  它从第二十二轮起就是 `BUBBLE_MENU_ENABLED = false` 的死码（模板 `v-if` 恒假），
+  但**每次选区变化仍在重算气泡状态**；功能与顶部工具栏 + 编辑器右键菜单 100% 重复。
+  `README.md` 与手册把它记成「已交付」也一并改掉。
+- **下划线按钮删除**（外加 `StarterKit.configure({ underline: false })`）：这是**唯一语义不可
+  Markdown 往返**的生产按钮 —— 落盘裸 HTML `<u>`，重开被 `htmlPassthrough` 转成字面文本
+  （屏幕上就是 `<u>abc</u>`），与 `**` 嵌套还会丢掉下划线（数据损坏类）。宁可摘掉入口，
+  也不留一个会坏文件的按钮；将来要恢复就做成一等 mark（`escape:false`，同 MdHtml）。
+  连带删除 `editor.underline` / `editorMenu.underline`（三语包）、`format.underline`、
+  `providers.ts` 的分节项，并更新 `_verify-inline-formats.js` 的 E 段。
+- **分割线按钮从工具栏目录移除**：与手打 `---`/`***` + Enter 完全等价（输入规则），
+  另有顶部菜单栏与右键菜单两条图形入口；`editor.hr` 的 i18n 保留（菜单栏还在用）。
+- **15 条已证实永不匹配的 CSS + 3 个死 keyframes + 2 个死变量**（约 190 行）：
+  `.code-edit-*`（旧「透明 textarea + 高亮层」架构，早被 CodeMirror 取代）、`.md-math-input`、
+  `.typewriter-scroll`、`mark.lm-find-mark`/`.lm-current`、`.mermaid-error pre`、
+  `.code-wrap`/`.code-lang`、`lm-slide-up`/`lm-slide-in-right`/`lm-caret-blink`、
+  `--block-active`/`--editor-bg`（三个主题各声明一份，零 `var()` 引用）。
+
+### Fixed — 工具栏与对话框（审计里的「看着能用其实没用」）
+
+- **源码模式下表格/代码块按钮灰显**：`editorStore.instance === null` 时它们此前可点但静默无效
+  （通用路径早有 `:disabled`，这两个独立组件漏了）。
+- **链接/图片的 prompt 文案走 i18n**：原先硬编码中文（`'插入链接'`/`'插入图片'`），
+  而 `editorMenu.linkPrompt/imagePrompt` 早就有三语文案。
+- **编辑器右键菜单的假快捷键提示**：`insert.link` 标的 `Ctrl+K` 实际绑的是「打开快捷键设置」、
+  标题 1/2/3 标的 `Ctrl+1/2/3` 全仓**没有任何绑定**（照着按什么也不会发生）；同时把
+  `format.strike`/`format.inlineCode` **真实存在却没显示**的快捷键补上。
+- **导出弹层的关闭判据改成语义锚点**（`data-export-pop` / `data-export-pop-anchor`）：
+  原判据是 Tailwind 生成的类名 `.fixed.z-\[100\]`，而表格/代码块弹层用同一串类名 ——
+  点它们会顺手把导出菜单一起收掉。
+- **确认对话框的 Esc 真的能关了**：`@keydown` 挂在**不可聚焦**的遮罩 div 上，事件永远冒泡不到
+  它（那条 Escape 一直是失效的）；改成挂 `document`。顺带把硬编码的「确定/取消」换成
+  `common.confirm`/`common.cancel`（三语早已存在，只是没接线）。
+- **路由守卫复用 `lib/dialog.ts`**：`router/index.ts` 自己又写了一份脏确认（硬编码中文），
+  与 `lib/dialog.ts` 顶部「这是唯一实现」的注释直接矛盾。
+- **工具栏按钮补 `aria-label`**（除 `title` 外）：全局 tooltip 悬停时会**摘掉 `title`**，
+  屏读器那时读不到可访问名。
+
+### Added
+
+- `tools/_probe-startup.js`：可重复的冷启动/资源基线（三段计时 + navigation timing + JS 堆 +
+  全部 electron 进程常驻内存），自己起实例、自己轮询调试端口，**专治「量到旧页面」**
+  （实测踩过：端口上有手工实例时量出 148ms 的假冷启动）。
+- `docs/_audit/lumin-lighter-audit.md`：轻量化审计报告（体积逐段归属、12 项机会与风险、
+  8 项「看似能省但不划算」）。
+- `tools/_verify-neutral-accent.js` 的 N5 改为「**一条 author `::selection` 都不留**」
+  （唯一那条 `.code-edit-input` 随旧架构删除，N5b 相应移除）。
+
+### Docs
+
+- 手册新增：轻量化取舍与「没做/不建议做」的量化理由、按钮去留台账、树行高与选中色条口径。
+- 清理失真文档：`README.md` 的「选区气泡菜单 ✅」、手册 §3.8 的气泡菜单实现说明。
+
+### 没做的（量化理由写在审计报告与手册里）
+
+- **代码块 CodeMirror 虚拟化**（响应性最大一笔，实测 `eq` 41% + StyleModule `mount` 32% 的 CPU
+  都在「每块一个 EditorView 实例」上）：会动编辑器内核与 8 个套件的既有前提，本轮不做。
+- **`@codemirror/language-data` 换 16 种显式语言**（省 ~1.4MB 产物）：会收窄「任意语言高亮」，
+  与「功能完整」冲突，不做。
+- **主进程 `ensureShortcut`/`jumpList` 挪到 ready-to-show、electron-store 延迟实例化**（估 10–40ms）：
+  对 665ms 的墙钟无意义，不做。
+- **tools/ 的 85 个脚本迁到统一 harness**（19,963 行）：按「改到谁迁谁」推进，不做大爆炸迁移。
+
+### Verification（本轮实测）
+
+| 门禁 | 结果 |
+| --- | --- |
+| `vue-tsc --noEmit` + `tsc --noEmit` | exit 0 |
+| `npx eslint --cache .` | **0 error / 0 warning** |
+| `npm run test:unit`（`node --test tests/*.test.mjs`） | **263/263**（`toolbarItems` 的两条夹具换了真实存在的 id —— 它们原先用 `underline`/`hr`，那两个已不在目录里） |
+| `electron-vite build` | exit 0 |
+| 首屏 entry chunk | 1,615,729 B → **764,073 B（−53%）**；产物里不再有 `class Transform`/`prosemirror`/`tiptap` |
+| 冷启动三连跑（`_probe-startup.js`） | 页面 651→665ms、首屏 956→969ms、RSS 398→399MB（**噪声内不变**，诚实结论见上） |
+| `tools/_verify-sidebar-tree-style.js` | **32/32**（行高 32px、选中项 3px 浅灰条、且色条不推移行内内容） |
+| `tools/_verify-neutral-accent.js` | **10/10**（三主题副色是灰、无历史紫、淡底可辨、**一条 author `::selection` 都不留**、插入符=正文色、链接蓝、按钮对比度、代码结构色蓝、标记符更淡） |
+| `tools/_verify-round-24.js` / `_verify-marker-hold.js` / `_verify-drag-selection.js` / `_verify-line-end-click.js` | 15/16 + 1 SKIP / 11/11 / 10/10 / 7/7 |
+| `tools/_verify-toolbar-settings.js`（32 条定制断言，此前不在默认矩阵） | **37/37** —— 含「右键空白区弹菜单」「逐项隐藏/恢复」 |
+| `tools/_verify-inline-formats.js` | **171/173 PASS、0 FAIL**（E 段改为「下划线入口与 mark 都已移除」的回归断言） |
+| `tools/_verify-find-replace.js` / `_verify-surfaces.js` / `_verify-blockquote-style.js` / `_verify-toc-style-scroll.js` / `_regress-layout.js` / `_regress-cb.js` / `_verify-i18n.js` | 24/24 / 37/37 / 13/13 / 23/23 / 9/9 / 3/3 / 通过 |
+
+> **两个既有失败（不是本轮引入，已用基线复跑或机制证明）**：
+> * `tools/_verify-export-fix.js`（0/0，退出码 1）：它靠 monkey-patch `window.luminAPI.export.pdf`
+>   来截获调用，而 `contextBridge.exposeInMainWorld` 暴露的对象是**只读**的 —— 补丁根本不生效，
+>   于是走了真实导出（弹原生保存对话框）、`__exportCapture` 永远为 null。机制与本轮改动无关
+>   （证据：探针里 `luminAPI.export.pdf = …` 替换后仍调用真实 IPC）。
+> * `tools/_verify-menu-export-submenu.js`（12/15）：探针爬 Vue 组件内部结构找菜单分组，
+>   早已与重构后的结构脱节（上一轮已用 `git stash` 复跑基线确认同样红）。
+
+## [Unreleased · 副色改中性灰 + 文字选区走浏览器默认] — 去掉紫色（承第二十四轮）
+
+> 用户口径：① 副色（accent）原来以紫色为主 ⇒ 改成**浅灰为主**，像 Typora 那样靠明度差不靠色相；
+> ② 选中文字的颜色「用默认颜色即可，无需紫色」；③ 加粗 `**` 这类**源码符号的颜色再浅一点**。
+
+### Changed
+
+- **副色（accent 家族）改中性灰**：浅色 `#6b7280` / 深色 `#8a919e` / 羊皮纸暖灰 `#8a7f6b`，
+  配套 `--accent-soft`（选中淡底，浅色 7% 墨 / 深色 8% 白）、`--accent-ink`（淡底上的文字）、
+  `--accent-2`（次级强调）。凡是跟着副色走的地方（图标、焦点环、工具/侧栏选中态、开关、
+  勾选态、引用条以外的强调、`--glow`、块悬停底色、`**` 标记的着色…）**一起变灰**，无需逐个改。
+  判据写成性质而不是色值：**通道极差 ≤ 40 且不是紫/品红**（暖灰/冷灰都算灰）。
+- **实心主按钮与副色解耦**（新增 `--btn-solid` / `--btn-solid-2` / `--btn-ink`）：
+  深色主题的 `--accent` 必须够亮（暗底上的图标/焦点环），而「白字压在按钮上」要的是够深 ——
+  一个令牌兼两个角色必然有一头不达标。三主题实测按钮文字对比度 **7.56 / 6.87 / 6.11 : 1**。
+- **代码高亮的结构色独立成板岩蓝**（新增 `--code-key` / `--code-key-2`）：关键字/标签/属性
+  原来借用副色，副色变灰之后会与正文灰糊在一起；板岩蓝与字符串绿、数字琥珀区分得开，也不沾紫。
+- **链接保持蓝色**（新增 `--link`，目录条目 `--toc-link: var(--link)`）：灰副色下链接跟着变灰
+  就和正文分不开了。
+- **标记符的墨色再淡一档**（新增 `--marker` 令牌，用户第三条口径）：`**`/`*`/`~~`/`` ` `` 这些
+  源码符号原来是 `color-mix(副色 70%, --ink-3)`，副色变灰之后偏重、抢正文注意力。现在三主题
+  都往**贴近背景**的方向取值 —— 浅色 `#a4aab4`（对纸 **2.28:1**，比 `--ink-3` 的 3.09:1 更淡）、
+  深色 `#666c78`（3.49:1；深色下「更淡」= 更暗，不是更亮）、羊皮纸 `#b3a894`（2.14:1）。
+  同一个令牌一并收掉 `.md-meta`（代码围栏 / 行内代码的标记）、`h1~h6 > .md-heading-marker`（`#`）
+  与 `.md-escape-backslash`（`\`）—— 它们原先各写一套 `color-mix`，语义其实是同一个「源码符号」。
+- **插入符跟随正文色**：`caret-color` 从 `var(--accent)` 改成 `var(--ink)`（6 处）。
+
+### Fixed
+
+- **文字选区交回浏览器默认**：撤掉全部 author `::selection` 规则（原来 5 处：全局、源码面、
+  front matter、代码块编辑层）。用户口径之外还有一条硬理由：默认色自带正确的文字反色
+  （`HighlightText`），而自己涂半透明色时，一旦底色接近（淡灰底 + 淡灰选中）就会看不见。
+  唯一保留的是 `.code-edit-input::selection`（那层 textarea 的文字是透明的，不能让系统去
+  「反色画文字」；底色取系统 `Highlight`、`color` 继续 `transparent`，观感与默认一致）。
+  `--sel` 令牌因此只剩「自绘淡底（查找命中）」一个用途，注释与套件措辞同步改过。
+- **导出 HTML 的引用色条一直是正文色**：`export.ts` 的独立排版 CSS 里引用了 `var(--edge-strong)`
+  但 `:root` **没定义**这个令牌 —— 失效的 `var()` 在计算值阶段回退成 `currentColor`。
+  本轮补齐（顺带把导出主题的紫色也换成中性灰 + `--link`）。
+- `tools/_verify-blockquote-style.js` 的 `bar-is-gray-not-accent` 原来写死旧紫色字面量
+  （`99,102,241`），换副色后永远成立、等于没守；改成跟**实测的 `--accent` 计算值**比。
+
+### Verification
+
+| 门禁 | 结果 |
+| --- | --- |
+| `tsc --noEmit` + `vue-tsc --noEmit` | exit 0 |
+| `npx eslint --cache .` | **0 error / 0 warning** |
+| `npm run test:unit` | **263/263 pass** |
+| `electron-vite build` | exit 0 |
+| `tools/_verify-neutral-accent.js`（新增，11 条） | **11/11** —— 三主题副色家族都是灰（极差 21/24/26、20/21/9、31/26/28，且都不是紫）、令牌里零历史紫色值、淡底药丸在纸/壳上可辨（1.15/1.23/1.15 与 1.15/1.20/1.14）、自绘淡底对纸可辨（1.25/1.61/1.24）、正文选区无 author `::selection`、代码块编辑层底色 = 系统 `Highlight` 且文字透明、插入符 = `--ink`、链接是蓝色且与副色不同、主按钮对比度 7.56/6.87/6.11:1、代码结构色是蓝色系、**标记符墨色 = `--marker` 且比 `--ink-3` / 副色都更淡**（浅色实测 2.28:1 vs ink3 3.09:1 vs 副色 4.71:1；深色 3.49 / 3.92 / 5.81；羊皮纸 2.14 / 2.69 / 3.59） |
+| 截图人工核对（`tools/_shot-theme.js`） | 三主题整窗 + 浅/深「真实拖拽选中」特写：选区是**系统蓝底白字**，工具栏/侧栏/引用条/表头/代码块都是中性灰；标记符特写：浅色 `**` = rgb(164,170,180)、深色 = rgb(102,108,120)（都比改前更贴近背景） |
+| 回归 14 套件 | **0 FAIL**（`_verify-surfaces` T 段量的是关系，换令牌仍全绿；`_verify-sidebar-tree-style`、`_verify-toc-style-scroll`、`_verify-blockquote-style`、`_verify-theme-auto`、`_verify-inline-formats` 183/184 等） |
+
 ## [Unreleased · 查找命中高亮不露标记 + 树行高 + 选区含标记 + 行尾落点] — 四项交互口径（承第二十三轮）
 
 > 用户报四件事：① 查找命中的文字要高亮，且命中的加粗文字**不要冒出 `**`**（除非鼠标选中）；

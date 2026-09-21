@@ -30,6 +30,14 @@ export interface ToolbarItemDef {
  * 工具栏项目目录（顺序即默认顺序）。
  * 注意：这里只登记**可调整的快捷项**；右侧固定的导出/设置等入口不受工具栏开关
  * 以外的控制，也不参与排序，因此不在目录里。
+ *
+ * ── 第二十五轮的两处删除（按钮去留审计的结论）────────────────────────────────
+ *   * `underline`：**唯一语义不可 Markdown 往返的按钮**。它写出的是裸 HTML `<u>`，
+ *     重开文档时被 htmlPassthrough 转成字面文本（屏幕上就是 `<u>abc</u>` 这几个字符），
+ *     与任何标记样式嵌套还会直接丢掉下划线 —— 属于「能写进文件、读不回来」的数据损坏类。
+ *     与其留一个会坏文件的入口，不如先摘掉（要恢复就该做成一等 mark，见 CHANGELOG）。
+ *   * `hr`：与「打 `---`/`***` 再回车」完全等价（keymap 的输入规则），
+ *     且顶部菜单栏 + 编辑器右键菜单各有一条图形入口，工具栏上占一个 30px 位不划算。
  */
 export const TOOLBAR_ITEMS: ToolbarItemDef[] = [
   { id: 'sidebar', group: 'history', icon: 'panel-left', labelKey: 'menu.toggleSidebar' },
@@ -42,7 +50,6 @@ export const TOOLBAR_ITEMS: ToolbarItemDef[] = [
 
   { id: 'bold', group: 'inline', icon: 'bold', labelKey: 'editor.bold' },
   { id: 'italic', group: 'inline', icon: 'italic', labelKey: 'editor.italic' },
-  { id: 'underline', group: 'inline', icon: 'underline', labelKey: 'editor.underline' },
   { id: 'strike', group: 'inline', icon: 'strike', labelKey: 'editor.strike' },
   { id: 'code', group: 'inline', icon: 'code', labelKey: 'editor.inlineCode' },
 
@@ -53,7 +60,6 @@ export const TOOLBAR_ITEMS: ToolbarItemDef[] = [
   { id: 'codeblock', group: 'block', icon: 'braces', labelKey: 'editor.codeBlock' },
 
   { id: 'table', group: 'insert', icon: 'table', labelKey: 'editor.table' },
-  { id: 'hr', group: 'insert', icon: 'hr', labelKey: 'editor.hr' },
   { id: 'link', group: 'insert', icon: 'link', labelKey: 'editor.link' },
   { id: 'image', group: 'insert', icon: 'image', labelKey: 'editor.image' },
   { id: 'toc', group: 'insert', icon: 'list', labelKey: 'editor.toc' }

@@ -796,7 +796,7 @@ async function main() {
   )
 
   report.check(
-    'T7 选中态药丸（accent-soft）与选区高亮在纸 / 外壳上都看得清',
+    'T7 选中态药丸（accent-soft）与自绘淡底（--sel，查找命中）在纸 / 外壳上都看得清',
     themeRows.every((r) => {
       const pillPaper = contrast(onPaper(r.tokens.accentSoft, r.tokens.paper), r.tokens.paper)
       const pillChrome = contrast(onChrome(r.tokens.accentSoft, r.tokens.app), r.tokens.app)
@@ -807,7 +807,7 @@ async function main() {
       const pillPaper = contrast(onPaper(r.tokens.accentSoft, r.tokens.paper), r.tokens.paper)
       const pillChrome = contrast(onChrome(r.tokens.accentSoft, r.tokens.app), r.tokens.app)
       const selPaper = contrast(onPaper(r.tokens.sel, r.tokens.paper), r.tokens.paper)
-      return `药丸/纸=${rat(pillPaper)}:1 药丸/壳=${rat(pillChrome)}:1 选区/纸=${rat(selPaper)}:1`
+      return `药丸/纸=${rat(pillPaper)}:1 药丸/壳=${rat(pillChrome)}:1 自绘淡底/纸=${rat(selPaper)}:1`
     })
   )
 

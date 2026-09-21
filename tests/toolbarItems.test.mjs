@@ -74,9 +74,11 @@ test('move：跨组 / 越界 / 未知 id 一律原样返回（UI 可直接调）
 })
 
 test('move：中间隔着一项时，方向正确（一次只挪一格）', () => {
-  assert.deepEqual(moveToolbarItem(['bold', 'italic', 'underline'], 'underline', -1), [
+  // 夹具用**当前目录里真实存在**的同一组项（`italic`/`code` 都属 inline 组）——
+  // 原先用 `underline`，而它在第二十五轮被移出目录，未知 id 会直接原样返回。
+  assert.deepEqual(moveToolbarItem(['bold', 'italic', 'code'], 'code', -1), [
     'bold',
-    'underline',
+    'code',
     'italic'
   ])
 })
@@ -91,7 +93,8 @@ test('insert：落在出厂顺序里「它前面最近的已显示项」之后',
 })
 
 test('insert：前面的同类项都没显示时放到最前', () => {
-  assert.deepEqual(insertToolbarItemByOrder(['hr'], 'bold'), ['bold', 'hr'])
+  // 夹具同样只用目录里真实存在的 id（`table` 属 insert 组，排在 `bold` 之后）
+  assert.deepEqual(insertToolbarItemByOrder(['table'], 'bold'), ['bold', 'table'])
 })
 
 test('insert：已存在 / 未知 id 不动列表', () => {

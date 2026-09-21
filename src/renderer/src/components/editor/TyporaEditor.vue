@@ -1,15 +1,13 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import { onBeforeUnmount, watch } from 'vue'
 import { useEditor, EditorContent } from '@tiptap/vue-3'
 import type { Editor } from '@tiptap/core'
 import { buildEditorExtensions } from '../../lib/editor/extensions'
 import { openLinkTarget } from '../../lib/linkOpen'
 import { getMarkdown } from '../../lib/editor/markdownStorage'
-import { selectionHasMdStyle } from '../../lib/editor/typoraInlineMarks'
 import { useEditorStore } from '../../stores/editor'
 import { useFilesStore } from '../../stores/files'
 import { useUiStore } from '../../stores/ui'
-import Icon from '../Icon.vue'
 
 // ─── Typora 式所见即所得编辑器（开发文档「步骤 2」的高阶封装）────────────────
 // - Tiptap(ProseMirror) AST 内核 + tiptap-markdown 双向转换
@@ -91,7 +89,6 @@ const editor = useEditor({
   },
   onSelectionUpdate: ({ editor: ed }) => {
     updateCursor(ed)
-    updateBubbleMenu(ed)
   },
   onDestroy: () => {
     editorStore.unbind()
@@ -167,9 +164,6 @@ watch(() => files.contentRev, applyStoreContent)
 // ── 大纲滚动联动 ──
 let outlineTimer: ReturnType<typeof setTimeout> | null = null
 function onScroll(e: Event): void {
-  // 滚动时气泡跟随选区（coordsAtPos 为视口坐标，直接重算即可）
-  const ed = editor.value
-  if (ed) updateBubbleMenu(ed)
   if (outlineTimer) return
   outlineTimer = setTimeout(() => {
     outlineTimer = null
@@ -202,180 +196,19 @@ onBeforeUnmount(() => {
   window.removeEventListener('beforeunload', onWindowBeforeUnload)
 })
 
-// ── 自绘选区浮动菜单 ──
-/**
- * 选中文字后的浮动格式工具栏开关。
- * 目前按需求「暂时禁用」：实现完整保留（定位计算、贴边钳制、样式、按钮全在），
- * 把这里改回 true 即可原样恢复，无需其它改动。
- * 禁用时 updateBubbleMenu 直接返回，气泡永不显示；模板处再兜一层判断，
- * 避免将来别处置位 bubbleVisible 时意外弹出。
- */
-const BUBBLE_MENU_ENABLED = false
-const bubbleVisible = ref(false)
-const bubblePos = ref({ top: 0, left: 0 })
-// 气泡的绝对定位上下文：模板根节点 .typora-container（position:relative）
-const containerRef = ref<HTMLElement | null>(null)
-
-function updateBubbleMenu(ed: Editor): void {
-  if (!BUBBLE_MENU_ENABLED) {
-    bubbleVisible.value = false
-    return
-  }
-  const { from, to, empty } = ed.state.selection
-  if (empty) {
-    bubbleVisible.value = false
-    return
-  }
-  try {
-    const start = ed.view.coordsAtPos(from)
-    const end = ed.view.coordsAtPos(to)
-    // 必须以气泡的定位上下文（.typora-container）为参考系计算，
-    // 不能用 ed.view.dom（.ProseMirror）的 rect：两者之间隔着
-    // editor-content 的 px-6/pt-10 内边距与滚动容器，会导致气泡
-    // 向左上偏移且随滚动漂移
-    const host = containerRef.value ?? ed.view.dom
-    const hostRect = host.getBoundingClientRect()
-    // 选区完全滚出可视区时隐藏气泡（coordsAtPos 返回视口外坐标）
-    if (end.bottom < hostRect.top || start.top > hostRect.bottom) {
-      bubbleVisible.value = false
-      return
-    }
-    // 贴边钳制：选区部分可见时气泡留在容器可视范围内，绝不跑到窗口外
-    const rawLeft = (start.left + end.right) / 2 - hostRect.left
-    const left = Math.min(Math.max(rawLeft, 8), Math.max(hostRect.width - 8, 8))
-    bubblePos.value = {
-      top: Math.max(start.top - hostRect.top - 44, 8),
-      left
-    }
-    bubbleVisible.value = true
-  } catch {
-    bubbleVisible.value = false
-  }
-}
-
-const bubbleActive = computed(() => {
-  void editorStore.tick
-  const ed = editor.value
-  if (!ed) return { bold: false, italic: false, underline: false, strike: false, code: false }
-  return {
-    bold: selectionHasMdStyle(ed, 'bold'),
-    italic: selectionHasMdStyle(ed, 'italic'),
-    underline: ed.isActive('underline'),
-    strike: selectionHasMdStyle(ed, 'strike'),
-    code: selectionHasMdStyle(ed, 'code')
-  }
-})
-
-function runBubble(cmd: string): void {
-  const ed = editor.value
-  if (!ed) return
-  switch (cmd) {
-    case 'toggleBold':
-      ed.chain().focus().toggleMdBold().run()
-      break
-    case 'toggleItalic':
-      ed.chain().focus().toggleMdItalic().run()
-      break
-    case 'toggleUnderline':
-      ed.chain().focus().toggleUnderline().run()
-      break
-    case 'toggleStrike':
-      ed.chain().focus().toggleMdStrike().run()
-      break
-    case 'toggleCode':
-      ed.chain().focus().toggleMdCode().run()
-      break
-  }
-}
-
-function addLink(): void {
-  const ed = editor.value
-  if (!ed) return
-  void ui.prompt('插入链接', 'https://example.com').then((href) => {
-    if (href === null) return
-    if (href.trim() === '') {
-      ed.chain().focus().unsetLink().run()
-      return
-    }
-    ed.chain().focus().extendMarkRange('link').setLink({ href: href.trim() }).run()
-  })
-}
-
-function clearFormats(): void {
-  editor.value?.chain().focus().clearNodes().unsetAllMarks().run()
-}
+// ── 选区浮动菜单：**已删除**（第二十五轮；审计结论见下）─────────────────────────
+// 它从第二十二轮起就被 `BUBBLE_MENU_ENABLED = false` 永久关闭：模板 `v-if` 恒假、
+// `updateBubbleMenu` 提前返回，但**每次选区变化仍在重算气泡状态**（纯浪费），
+// 组件里 77 行 + `style.css` 40 行 + `verify-tiptap.js` 3 条断言都是死码；
+// 而 `README.md` 与手册还把它记成「已交付」。功能上它与顶部工具栏 + 编辑器右键菜单
+// **完全重复**（同 5 个行内格式 + 链接），因此删掉而不是留着「以后可能开」。
+// 若将来真想要选区气泡，正确做法是重新实现成一个独立组件（而不是复活这段死码）。
 
 defineExpose({ editor, syncNow })
 </script>
 
 <template>
-  <div
-    ref="containerRef"
-    class="typora-container relative h-full"
-    :class="{ 'focus-mode': ui.focusMode }"
-  >
-    <!-- 自绘选区浮动菜单（当前由 BUBBLE_MENU_ENABLED 关闭，见 script 顶部说明） -->
-    <Transition name="pop">
-      <div
-        v-if="BUBBLE_MENU_ENABLED && bubbleVisible && editor"
-        class="bubble-menu absolute z-50"
-        :style="{
-          top: bubblePos.top + 'px',
-          left: bubblePos.left + 'px',
-          transform: 'translateX(-50%)'
-        }"
-        @mousedown.prevent
-      >
-        <button
-          class="bubble-btn"
-          :class="{ 'is-active': bubbleActive.bold }"
-          title="加粗"
-          @click="runBubble('toggleBold')"
-        >
-          <Icon name="bold" :size="14" />
-        </button>
-        <button
-          class="bubble-btn"
-          :class="{ 'is-active': bubbleActive.italic }"
-          title="斜体"
-          @click="runBubble('toggleItalic')"
-        >
-          <Icon name="italic" :size="14" />
-        </button>
-        <button
-          class="bubble-btn"
-          :class="{ 'is-active': bubbleActive.underline }"
-          title="下划线"
-          @click="runBubble('toggleUnderline')"
-        >
-          <Icon name="underline" :size="14" />
-        </button>
-        <button
-          class="bubble-btn"
-          :class="{ 'is-active': bubbleActive.strike }"
-          title="删除线"
-          @click="runBubble('toggleStrike')"
-        >
-          <Icon name="strike" :size="14" />
-        </button>
-        <button
-          class="bubble-btn"
-          :class="{ 'is-active': bubbleActive.code }"
-          title="行内代码"
-          @click="runBubble('toggleCode')"
-        >
-          <Icon name="code" :size="14" />
-        </button>
-        <span class="bubble-divider" />
-        <button class="bubble-btn" title="链接" @click="addLink">
-          <Icon name="link" :size="14" />
-        </button>
-        <button class="bubble-btn" title="清除格式" @click="clearFormats">
-          <Icon name="x" :size="14" />
-        </button>
-      </div>
-    </Transition>
-
+  <div class="typora-container relative h-full" :class="{ 'focus-mode': ui.focusMode }">
     <!-- 编辑区 -->
     <div class="editor-scroll h-full overflow-y-auto" @scroll.passive="onScroll">
       <div
