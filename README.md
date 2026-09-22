@@ -11,10 +11,10 @@
 
 ## 功能
 
-- ✅ **所见即所得编辑**：Tiptap v3 + `tiptap-markdown` 双向转换；标题 / 加粗 / 斜体 / 删除线 / 下划线 / 行内代码 / 引用 / 有序无序列表 / 任务列表 / 表格 / 图片 / 链接 / 分割线
+- ✅ **所见即所得编辑**：Tiptap v3 + `tiptap-markdown` 双向转换；标题 / 加粗 / 斜体 / 删除线 / 行内代码 / 引用 / 有序无序列表 / 任务列表 / 表格 / 图片 / 链接 / 分割线
 - ✅ **动态输入语法**：`# ` 标题、`- ` 列表、`[ ] ` 任务列表
 - ✅ **光标感知标记符**：块级用 ProseMirror Decoration，行内用 DOM 类（本版 PM 的行内 Decoration 移除有缺陷，见 `lib/editor/markers.ts` 注释）
-- ✅ **选区气泡菜单**：加粗 / 斜体 / 下划线 / 删除线 / 行内代码 / 链接 / 清除格式
+- ✅ **格式化入口：快捷工具栏 + 编辑器右键菜单 + 顶部菜单栏**（三处同一套动作；工具栏可整体关闭、逐项显隐与排序）
 - ✅ **代码块**：CodeMirror 6 NodeView 内嵌编辑、语言切换（语法高亮按需加载）、行号、折叠、括号闭合与补全
 - ✅ **Mermaid 图表**：```` ```mermaid ```` 代码块自动渲染为 SVG，点击回到源码编辑（`securityLevel: 'strict'`）
 - ✅ **大纲**：标题自动收集、滚动联动高亮、点击跳转
@@ -32,7 +32,7 @@
 |---|---|
 | 运行时 | Electron 39（内置 Node 22） |
 | 界面 | Vue 3.5 · Pinia 4 · Vue Router 5 · vue-i18n 11 · Tailwind CSS 4 |
-| 编辑内核 | Tiptap v3（StarterKit / Table / TaskList / Image / Underline / Placeholder）· `tiptap-markdown` · CodeMirror 6 · Mermaid 11 · KaTeX 0.18 |
+| 编辑内核 | Tiptap v3（StarterKit / Table / TaskList / Image / Placeholder）· `tiptap-markdown` · CodeMirror 6 · Mermaid 11 · KaTeX 0.18 |
 | 持久化 | `node:sqlite`（`DatabaseSync` + FTS5 trigram），零原生依赖 |
 | 构建 | electron-vite 5 · electron-builder 26 · TypeScript 5.9 · ESLint 9（flat config）· Prettier 3 |
 

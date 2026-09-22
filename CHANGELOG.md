@@ -77,6 +77,68 @@
 - **工程化**：~~`tools/lib/harness.js` + `tools/run-suites.js`~~ → **本轮已完成**；
   剩余：`files` store 拆分；`store` 里那份为绕循环导入而复制的 `confirmIfDirty` 收敛到 `services/dialog`。
 
+## [Unreleased · 讨论里列的问题逐项核实与修复] — 引用快捷键 / 专注模式 / 文档失真
+
+> 用户口径：把前两轮讨论（工具栏的必要性与成本、产品定位与工具栏是否冲突）里我列出的
+> **全部问题和 bug** 修掉。做法：**先逐项实测**，能复现的才改；复现不了的按「结论：不是 bug」记录。
+
+### 核实结论（两条我说错了，这里更正）
+
+| 讨论里的说法 | 实测 | 结论 |
+| --- | --- | --- |
+| 右键菜单把删除线的键标成 `Ctrl+Shift+X`，而 Tiptap 内建是 `Mod-Shift-s`，所以**提示是假的** | `typoraInlineMarks.addKeyboardShortcuts` 里**真的绑了** `'Mod-Shift-x' → toggleMdStrike()`；`Mod-Shift-s` 那条内建虽然被 `file.saveAs` 挡住，但我们从不依赖它 | **不是 bug**，提示与真实绑定一致。我当时只查了 Tiptap 的扩展，漏查了我们自己的 keymap |
+| 工具栏弹簧区带 `data-toolbar-item`，会**吞掉空白区右键**（审计里的 A1 悬案） | 实测右键弹簧区 **menuOpen=true**（能弹）；分段控件上右键 menuOpen=false（正确）。原因：弹簧区是 `min-w-2 flex-1` 在 `items-center` 行里，**高 0px**，命中测试落不到它身上，那个属性是惰性的 | **不是 bug**，A1 结案。属性冗余但无害，且套件按 `[data-toolbar-item]` 计数，故**保持原样** |
+
+### Fixed
+
+- **引用（blockquote）没有任何可用快捷键**：Tiptap 自带的是 `Mod-Shift-b`，而 `Mod+Shift+B` 被本应用的
+  「切换侧栏」（`view.toggleSidebar`，全局捕获阶段）占用 → 内建那条**永远按不出来**，右键菜单里这条
+  动作此前也不显示任何键。现在在 `lib/editor/keymap.ts` 的 `TyporaKeymap` 里补 **`Mod-Shift-q`**
+  （与 Typora 的引用快捷键一致；与 27 条应用级默认键无冲突，因为它是编辑器级绑定），
+  并在 `lib/editor/menu/actions.ts` 的 `paragraph.quote` 上写出 `Ctrl+Shift+Q` 提示。
+  实测：段落 → 引用 ✓、再按一次切回 ✓、右键菜单显示 `引用 Ctrl+Shift+Q` ✓、`Ctrl+Shift+B` 仍切侧栏 ✓。
+- **专注模式名不副实（定位冲突的那一条）**：`focusMode` 原先只收窄正文列（1140px）+ 压暗侧栏，
+  **最显眼的 44px 常驻工具栏却留着** —— 与本产品「纸面优先的 Typora 式写作」定位相抵。
+  现在专注模式下**工具栏一并隐藏**（`EditorView.vue`：`v-if="settings.toolbarVisible && !ui.focusMode"`）。
+  退路不受影响：`Ctrl+Shift+F`、视图菜单、状态栏都能切回来，所以顶栏**故意保留**。
+  实测：进入专注 → 写作区顶边 76 → **32**（省下 44px）、退出即恢复。
+  连带修：查找浮条是按写作区顶边定位的，工具栏显隐/专注切换后**必须重新量一次**，
+  否则会悬在旧高度 —— `FindReplaceBar.vue` 新增对 `[settings.toolbarVisible, ui.focusMode]` 的 watch。
+  实测：普通态浮条 y=86（内核顶 76+10），切到专注后 **y=42**（内核顶 32+10）✓。
+- **对外文档仍在宣传已被移除的功能**（README 是产品的功能清单，等于定位的对外表述）：
+  * `README.md`：删掉「✅ 选区气泡菜单：加粗/斜体/下划线/…」（该组件第 25 轮已删）、
+    功能列表里的「下划线」、技术栈表里的 `Underline`；补一条真实的
+    「✅ 格式化入口：快捷工具栏 + 编辑器右键菜单 + 顶部菜单栏（三处同一套动作；工具栏可整体关闭、
+    逐项显隐与排序）」。
+  * `docs/typora-wysiwyg-manual.md`：§3.8 标题改为「选区浮动菜单（气泡菜单 · 已移除）」并在节首
+    加显著说明（正文保留，作为「自绘浮动层」的原理与踩坑记录 —— 坐标系/视口钳制/焦点保持这些结论
+    对今天的查找浮条、弹层、右键菜单仍然有效）；架构树里那一行标注已移除；文件职责表里
+    `TyporaEditor.vue` 的后缀去掉气泡菜单；§3.x 两处「气泡菜单 …」改成仍在用的浮层；
+    §5「步骤 8」标注气泡菜单部分已移除。
+
+### 记录更正（我自己的错误）
+
+- 第 25 轮 CHANGELOG 写的「清理失真文档：`README.md` 的『选区气泡菜单 ✅』、手册 §3.8 的气泡菜单
+  实现说明」**两处都不准确**：`git show 7c56bdf --name-only` 里**没有 `README.md`**（最近 8 个提交
+  也都没碰过它），手册那 83 行新增里也没有 §3.8 的更正。也就是说：**代码删了、对外表述没跟上，
+  我还在 CHANGELOG 里登记为已完成**。本轮把 README 与手册 §3.8 真正改到位，并留下这条更正记录 ——
+  它是「同一批动作有多套手工维护的入口/清单」这一成本的实例，而这次踩的是我自己。
+
+### Verification
+
+| 门禁 | 结果 |
+| --- | --- |
+| `vue-tsc --noEmit` / `eslint --cache .` / `electron-vite build` | exit 0 / 0 error 0 warning / exit 0 |
+| `npm run test:unit` | **263/263** |
+| `tools/_verify-toolbar-settings.js`（工具栏显隐/排序/空白右键） | **37/37** |
+| `tools/_verify-find-replace.js`（我改了 FindReplaceBar 的定位 watch） | **24/24** |
+| `tools/_verify-inline-formats.js`（格式键与工具栏动作的相邻面） | **182/182** |
+| `tools/_verify-bars-no-filename.js` | **12/12** |
+| 修复验收探针（临时，已删；**6/6 PASS**） | `Ctrl+Shift+Q` 段落→引用、再按切回；专注模式隐藏工具栏（内核顶 76→32）、退出恢复；查找浮条普通态 y=86 / 专注态 y=42（都 = 内核顶 + 10） |
+| 二次探针（临时，已删；**2/2 PASS**） | `Ctrl+Shift+B` 仍切侧栏（新键没抢）；右键菜单「段落」子菜单里 `引用 Ctrl+Shift+Q` 真的渲染出来 |
+| `_verify-keymap.js` | **SKIP**（它要 dev server，不在默认矩阵）——本轮没有改 `useKeymap.ts` 的命令表（`git status` 可证），新增的 `Mod-Shift-q` 是**编辑器级**绑定，故「命令表 27 条 / 无重复默认键」不受影响；上面那条 `Ctrl+Shift+B` 探针直接覆盖了「新键没抢旧键」的风险 |
+| `_verify-editor-menu.js` | 0/0（该套件在本环境本来就不产出断言，非本轮回归） |
+
 ## [Unreleased · 查找：不压工具栏 + 精确落位 + Typora 命中配色]
 
 > 用户口径（三条）：① Ctrl+F 的查找/替换组件**会遮挡快捷工具栏**；

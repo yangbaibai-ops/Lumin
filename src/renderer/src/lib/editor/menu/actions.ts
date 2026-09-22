@@ -159,6 +159,9 @@ export function buildEditorMenuActions(
       id: 'paragraph.quote',
       labelKey: 'editorMenu.quote',
       icon: 'quote',
+      // 真实绑定 `Mod-Shift-q`（lib/editor/keymap.ts 的 TyporaKeymap）：Tiptap 自带的
+      // `Mod-Shift-b` 被「切换侧栏」占用，按不出来 —— 所以这里写的是我们补的那条键
+      shortcut: 'Ctrl+Shift+Q',
       run: () => {
         chain().toggleBlockquote().run()
       }

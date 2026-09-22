@@ -15,12 +15,14 @@ import { useI18n } from 'vue-i18n'
 import { useFindStore } from '../stores/find'
 // 零依赖桥：本组件在 App.vue 的静态依赖链上，直接 import 编辑器内核会把 PM 拖进首屏
 import { setFindHit } from '../lib/editor/findBridge'
+import { useSettingsStore } from '../stores/settings'
 import { useUiStore } from '../stores/ui'
 import Icon from './Icon.vue'
 
 const { t } = useI18n()
 const find = useFindStore()
 const ui = useUiStore()
+const settings = useSettingsStore()
 
 const queryRef = ref<HTMLInputElement | null>(null)
 
@@ -53,6 +55,15 @@ onMounted(() => {
 onBeforeUnmount(() => {
   window.removeEventListener('resize', placeBar)
 })
+
+// 写作区顶边会随「工具栏显隐 / 专注模式」变化，位置得跟着重算，否则浮条会悬在旧高度上
+watch(
+  () => [settings.toolbarVisible, ui.focusMode],
+  async () => {
+    await nextTick()
+    placeBar()
+  }
+)
 
 // 打开那一刻再量一次（工具栏显隐、窗口尺寸都可能刚变过；等一帧让布局落定）
 watch(

@@ -642,8 +642,12 @@ onBeforeUnmount(() => {
     @dragover="onDragOver"
   >
     <!-- 快捷工具栏：可在设置（编辑器 → 快捷工具栏）或工具栏空白区右键菜单里关掉；
-         关掉后这里是「一片空的编辑区」，不占高度 -->
-    <Toolbar v-if="settings.toolbarVisible" />
+         关掉后这里是「一片空的编辑区」，不占高度。
+         **专注模式下一并隐藏**（用户口径：本产品定位是「纸面优先」的 Typora 式写作，
+         而专注模式此前只收窄正文列 + 压暗侧栏，最显眼的 44px 常驻 chrome 却留着 ——
+         名不副实）。退出方式不受影响：Ctrl+Shift+F、视图菜单、状态栏「专注」都能切回来，
+         所以这里不隐藏顶栏（留着那条退路）。 -->
+    <Toolbar v-if="settings.toolbarVisible && !ui.focusMode" />
 
     <!-- 草稿恢复横幅（文件状态逻辑，与内核无关）；未命名缓冲区没有磁盘文件可比较，文案另给一条 -->
     <Transition name="slide">

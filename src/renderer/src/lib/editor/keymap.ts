@@ -241,7 +241,19 @@ export const TyporaKeymap = Extension.create({
         // selectNodeForward 段级整选路径）
         if (!editor.state.selection.empty) return false
         return joinTextblockAtBoundary(editor, 'forward')
-      }
+      },
+
+      /**
+       * 引用（blockquote）：**补一条真能按出来的键**。
+       *
+       * Tiptap 的 Blockquote 自带 `Mod-Shift-b`，而 `Mod+Shift+B` 被本应用的「切换侧栏」
+       * （`view.toggleSidebar`，全局捕获阶段监听 window）占用 —— 于是内建那条**永远按不出来**，
+       * 而右键菜单里这条动作也没有任何快捷键提示（编辑 › 段落 › 引用）。
+       * 这里补 `Mod-Shift-q`：与 Typora 的引用快捷键一致，且与现有 27 条应用级默认键无冲突
+       * （实测：`_verify-keymap.js` 的「无重复默认键」不受影响，因为它是**编辑器级**绑定）。
+       * 提示写在 `lib/editor/menu/actions.ts` 的 `paragraph.quote` 上，两边必须一致。
+       */
+      'Mod-Shift-q': ({ editor }) => editor.commands.toggleBlockquote()
     }
   }
 })

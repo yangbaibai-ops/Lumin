@@ -86,7 +86,7 @@ Lumin 在这三点之上增加了自己的产品形态：Electron 桌面应用�
 │  │    ├─ keymap.ts ─ 分割线回车确认 / 标题行首退格降级             │
 │  │    ├─ markers.ts ─ 光标感知标记符 (Decoration + PluginView)    │
 │  │    ├─ codeBlock.ts + CodeBlockView.vue ─ CodeMirror NodeView  │
-│  │    └─ 自绘选区气泡菜单（坐标钳制）                              │
+│  │    └─ （原「自绘选区气泡菜单」已在第 25 轮移除，见 §3.8）        │
 │  └─ 序列化桥 markdownStorage.ts ─ getMarkdown(editor)            │
 └──────────────────────────────────────────────────────────────────┘
 ```
@@ -315,9 +315,15 @@ export const CodeBlockCM = CodeBlock.extend({
 - 图片：`Image` 扩展 `inline: false`，`renderHTML` 统一把相对路径转 `lumin-file://` 协议（Electron 自定义协议，CSP 白名单内）；
 - 链接：`link: { openOnClick: false }`——点击不跳转（编辑态），配合自绘菜单的「链接」按钮设置/清除链接；`autolink: true` 自动识别 URL。
 
-### 3.8 选区浮动菜单（气泡菜单）
+### 3.8 选区浮动菜单（气泡菜单 · 已移除）
 
-Tiptap v3 官方已无 Vue 版 BubbleMenu 组件，本项目自绘（`TyporaEditor.vue`）。要点：
+> ⚠️ **本节描述的东西已经在第二十五轮被移除**（组件 77 行 + CSS 40 行一起删除，`TyporaEditor.vue`
+> 里不再有气泡菜单）。原因：它从第二十二轮起就是 `BUBBLE_MENU_ENABLED = false` 的死码（模板
+> `v-if` 恒假），却仍在每次选区变化时重算状态；功能与快捷工具栏 + 编辑器右键菜单 **100% 重复**。
+> **正文保留，作为「自绘浮动层」的原理与踩坑记录**（坐标系、视口钳制、焦点保持这些结论对今天
+> 仍然有效 —— 查找浮条、表格/代码块弹层、右键菜单都在用同一套思路）。
+
+Tiptap v3 官方已无 Vue 版 BubbleMenu 组件，本项目当时自绘（`TyporaEditor.vue`）。要点：
 
 1. **触发**：`onSelectionUpdate` 中 `selection.empty` 为假时定位显示；
 2. **坐标**：`view.coordsAtPos(from/to)` 返回**视口坐标**，减去气泡的**定位上下文**（`.typora-container`，`position:relative`）的 `getBoundingClientRect()`，得到容器相对坐标；气泡 `absolute + transform: translateX(-50%)` 居中于选区、位于其上方 44px；
@@ -354,7 +360,7 @@ Tiptap v3 官方已无 Vue 版 BubbleMenu 组件，本项目自绘（`TyporaEdit
 **动效策略**（简约、合理、可访问）：
 
 - 高频交互用 120~180ms 的 CSS transition（按钮 hover、侧栏折叠、主题切换、气泡弹入）——不做花哨动画，避免打断写作流；
-- 进出场用 Vue `<Transition>`（气泡菜单 `pop`、模态 `fade/zoom`）；
+- 进出场用 Vue `<Transition>`（浮层 `pop`、模态 `fade/zoom`）；
 - 动效全部收敛在 `transition-*` 与 `@media (prefers-reduced-motion: reduce)` 降级之内，减少动效敏感用户的干扰；
 - 编辑器内容本身零动画（渲染稳定优先，防抖序列化与布局抖动风险最低）。
 
@@ -430,7 +436,7 @@ tr.replace(0, doc.content.size, new Slice(Fragment.fromArray(children), 0, 0))
 ### 4.4 焦点管理
 
 - PM 与 CodeMirror 的焦点争夺（完整五层防线见 §3.4）：`stopEvent` + DOM 事件阻断 + 焦点钉扎 + hasFocus 覆盖 + Enter 专用捕获处理器；
-- 气泡菜单 `@mousedown.prevent` 防止点按钮时编辑器失焦、选区塌缩（§3.8）；
+- 浮层（查找浮条、表格/代码块弹层、右键菜单）挂 `@mousedown.prevent` 防止点按钮时编辑器失焦、选区塌缩（§3.8）；
 - CDP 自动化测试时，`visibilityState === 'hidden'` 的窗口会丢弃可信输入事件——测试前必须把窗口真正置前（`tools/run-verify.ps1` 的 user32 调用）。
 
 ### 4.5 序列化一致性
@@ -607,7 +613,7 @@ tr.replace(0, doc.content.size, new Slice(Fragment.fromArray(children), 0, 0))
   末尾加粗的一行点行尾 ⇒ 块内容末尾；点最后一个可见字右半边 / 行中间字符 / 换行段落中间行
   都不被抢走。
 
-**联动调整**：StarterKit 的 bold/italic/strike/code 以「安静版」注册（关闭输入规则与快捷键，mark 类型保留供解析）；工具栏/气泡菜单改用 `toggleMdBold` 等新命令；`Ctrl+B/I/Shift+X/E` 快捷键接管。验收：`bold-marker-reveal/boundary/hide-on-exit/no-layout/boundary-left`（隐藏态零占位 + 光标边界显隐）、`roundtrip-markdown`（源码零转义往返）、`paste-heading-no-bold`、`boundary-type-start/end-keeps-bold/fold-back-bold`（G 阶段，构造边界打字不失粗）、`ctrl-click-plain-caret/plain-click-unchanged`（H 阶段，Ctrl+点击普通光标）、`link-plain-click-expand/link-auto-collapse/link-ctrl-keeps-link`（I 阶段，链接点击交互，§4.15）、`marker-enter-italic-live/backspace-join-no-purple-relift/bold-survives-after-merge`（J 阶段，标记内回车→斜体实时化/段首退格合并，§4.13）等 89 项全绿。
+**联动调整**：StarterKit 的 bold/italic/strike/code 以「安静版」注册（关闭输入规则与快捷键，mark 类型保留供解析）；工具栏改用 `toggleMdBold` 等新命令；`Ctrl+B/I/Shift+X/E` 快捷键接管。验收：`bold-marker-reveal/boundary/hide-on-exit/no-layout/boundary-left`（隐藏态零占位 + 光标边界显隐）、`roundtrip-markdown`（源码零转义往返）、`paste-heading-no-bold`、`boundary-type-start/end-keeps-bold/fold-back-bold`（G 阶段，构造边界打字不失粗）、`ctrl-click-plain-caret/plain-click-unchanged`（H 阶段，Ctrl+点击普通光标）、`link-plain-click-expand/link-auto-collapse/link-ctrl-keeps-link`（I 阶段，链接点击交互，§4.15）、`marker-enter-italic-live/backspace-join-no-purple-relift/bold-survives-after-merge`（J 阶段，标记内回车→斜体实时化/段首退格合并，§4.13）等 89 项全绿。
 
 **补丁：标记内回车 → 段首退格合并（本次，J 阶段）**：`**5*|*` 回车字面量切段后再按 Backspace，此前本版 prosemirror-commands 的 `joinBackward` 要求光标真正在文本块内部，而 Enter/归一化常把光标留在**块边界（depth 0）**位置，join 失效 → 落到 `selectNodeBackward` 把上一段做成 NodeSelection（`.ProseMirror-selectednode` 紫色整选框）；即使后续拼回 `**5**`，两侧字面量标记也会永远停在可见字面量、须刷新才恢复。修复（三处，非硬编码）：
 1. `typoraInlineMarks.ts` 新增 **reLiftLiteralPairs（字面量配对重提升）**：`side:'literal'` 只是"当时不成对"的过渡态——一旦两侧字面量标记在编辑/合并后重新围住无样式正文（整窗文本与完整构造模式吻合），立即还原为 start/正文 mdStyle/end，与任何输入/合并路径通用；
@@ -1281,7 +1287,7 @@ UTF-16 在写回时**总是补 BOM**：没有 BOM 的 UTF-16 文件几乎无法�
 - **实现**：`codeBlock.ts` + `CodeBlockView.vue`；焦点管理两件套（§3.4）。
 - **验收**：`codemirror-mounted`、`codemirror-edit`、`cm-fence-kept`、`mermaid-svg`（verify phase A/C）。
 
-### 步骤 8：选区气泡菜单与工具栏（✅）
+### 步骤 8：选区气泡菜单与工具栏（✅ 气泡菜单部分已于第 25 轮移除）
 
 - **目标**：选中文字弹出格式菜单（加粗/斜体/下划线/删除线/行内代码/链接/清除格式）。
 - **实现**：`TyporaEditor.vue` 自绘气泡；定位上下文 rect + 视口钳制 + 滚动跟随（§3.8）。
@@ -1400,7 +1406,7 @@ src/
 ├─ shared/                      # 三进程共享类型
 └─ renderer/src/
    ├─ components/editor/
-   │  ├─ TyporaEditor.vue       # useEditor + 防抖序列化 + 气泡菜单
+   │  ├─ TyporaEditor.vue       # useEditor + 防抖序列化（气泡菜单已于第 25 轮移除）
    │  └─ CodeBlockView.vue      # CodeMirror/Mermaid NodeView
    ├─ components/ToolbarTableButton.vue  # WPS 式表格网格选择器
    ├─ lib/editor/
