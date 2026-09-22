@@ -100,7 +100,11 @@ const SCANNED = ALL.filter((f) => f !== SELF)
 
 /** 去掉行内代码（`…`）、代码块（``` 围栏）与引用行，只留"正文散文" */
 function proseOnly(text) {
-  const noFence = text.replace(/```[\s\S]*?```/g, '')
+  // ⚠️ 围栏必须按**行首**配对（允许缩进）：原来用的是 `/```[\s\S]*?```/g` —— 它会把正文里
+  // 提到的 ```（例如「只要看到 ```mermaid 就加载」这种叙述）也当成围栏开端，于是**后面所有
+  // 围栏的配对整体错位**，本该被剥掉的代码块内容漏进「散文」里，报出一堆假 mojibake
+  // （实测踩过：CHANGELOG 里一句 ```mermaid 让 1700 行外的一段历史乱码引用变成「正文」）。
+  const noFence = text.replace(/^[ \t]*```[\s\S]*?^[ \t]*```/gm, '')
   return noFence
     .split('\n')
     .filter((l) => !/^\s*>/.test(l))

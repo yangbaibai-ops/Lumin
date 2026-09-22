@@ -77,6 +77,52 @@
 - **工程化**：~~`tools/lib/harness.js` + `tools/run-suites.js`~~ → **本轮已完成**；
   剩余：`files` store 拆分；`store` 里那份为绕循环导入而复制的 `confirmIfDirty` 收敛到 `services/dialog`。
 
+## [Unreleased · O3 语言包收窄] — 删掉 `@codemirror/language-data`，改 15 项显式映射（构建 −0.98MB）
+
+> 来源：桌面《Lumin-待优化清单-2026-09-22.md》§1.B（自查报告 O3）。原状：`CodeBlockView.vue`
+> 用 `languages` 表找 `load()` —— 那张表覆盖 115 种语言，构建产物里留下 **116 个 `import()` 目标
+> （实测合计约 1.6MB）**，而组件自己的语言清单只有 15 种（+ mermaid 走预览）。
+
+### Changed
+
+- **显式映射表**（`components/editor/CodeBlockView.vue`）：14 种走 `@codemirror/lang-*`
+  （javascript / typescript / python / html / css / json / sql / java / go / rust / cpp / php / yaml），
+  `bash` / `ruby` 走 `@codemirror/legacy-modes/mode/{shell,ruby}` + `StreamLanguage.define()`；
+  另加 `LANGUAGE_ALIASES`（`js/jsx/mjs/cjs/ts/tsx/py/htm/xml/svg/sh/shell/zsh/console/yml/c++/cc/cxx/h/hpp/golang/rb/mysql/postgres/sqlite`）
+  与原 `language-data` 的别名口径对齐；认不出来的语言**如实退回纯文本**（与原行为一致）。
+- **取舍写进代码注释**：从此只高亮这 15 种（清单外语言按纯文本渲染）——这正是清单 §3
+  点明的「要么省体积、要么保留任意语言」二选一，用户口径是「需要单独排期的全部同意」，故按文档收窄。
+- `package.json`：删 `@codemirror/language-data`，把 13 个原本只作为它传递依赖的包（12 个 `lang-*` +
+  `legacy-modes`）**升为直接依赖**（版本取当前已装版本）；`package-lock.json` 的根依赖集合同步。
+  ⚠️ 本环境**禁止 npm 联网**（`EALLOWREMOTE`，npmmirror 被策略挡住），所以 lock 是用一次性脚本
+  离线对齐根 entries 的（这些包本来就在 lock 树里）——`tests/lockfile.test.mjs` 6/6 通过，
+  `npm ci` 所需的三条一致性（根集合一致 / 声明项在树里 / 无悬空引用）都成立。
+
+### Added
+
+- `tools/_verify-cb-languages.js`（4 条）：**22 个围栏（15 种语言 + 7 个别名）逐个必须有高亮 span**
+  （CM 的 HighlightStyle 生成的 `<span class="ͼ…">`）、清单外语言（`text` / `makefile`）**必须没有**
+  span（证明是「如实退化成纯文本」而不是静默停摆）、语言选择框仍是 16 项。
+
+### Verification（本轮实测）
+
+| 项 | 结果 |
+| --- | --- |
+| 构建产物 | JS 文件 **191 → 89**（−102 个 chunk）；总体积 **11.56MB → 10.58MB（−1,002KB）**；`EditorView-*.js` 2,509.13 → **2,472.47 kB** |
+| `_verify-cb-languages.js`（新增） | **4/4** |
+| 代码块回归 | `_regress-cb` 3/3、`_verify-cb-button-line-numbers` 26/26（本套件整条链路点工具栏按钮 ⇒ 补了「显式打开工具栏」夹具）、`_verify-md-fidelity` 101/102（1 条按环境 SKIP）、`_verify-surface-stress` 72/72 |
+| `tests/lockfile.test.mjs` / `vue-tsc` / `eslint` | 6/6 / exit 0 / 0 error 0 warning |
+
+**顺带查清的两条既有失败（与 B/E 无关，已登记到清单 §2.I）**：
+`_verify-cb-line-numbers.js` 8/13（设置面板里的开关「真实点击」不生效，5 条断言连带失败）——
+用「把工具栏默认值改回 true」与「stash 掉 B 的改动」两次对照复现，确认它与本轮两项改动都无关；
+`_verify-cb-typing2.js`（0 断言老脚本，硬编码外部工作区路径）报 `no cm`。
+
+**顺带修掉编码门禁的一个假阳性**（`tests/encodingGuard.test.mjs`）：它剥代码块用的是
+`` /```[\s\S]*?```/g `` —— 正文里只要**提到**一次三个反引号（本轮 CHANGELOG 写了
+「只要看到 ```mermaid 就加载」），后面所有围栏的配对就整体错位，本该剥掉的历史乱码引用
+漏成「正文」并报假 mojibake。改成按**行首**配对（允许缩进）：`` /^[ \t]*```[\s\S]*?^[ \t]*```/gm ``。
+
 ## [Unreleased · E 快捷工具栏默认收起] — 写作面优先（清单 §1.E 选项②）
 
 > 来源：桌面《Lumin-待优化清单-2026-09-22.md》§1.E（报告里列为「需要拍板」，用户口径是

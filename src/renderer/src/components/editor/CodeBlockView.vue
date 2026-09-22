@@ -11,9 +11,9 @@ import {
   indentOnInput,
   bracketMatching,
   foldGutter,
-  foldKeymap
+  foldKeymap,
+  StreamLanguage
 } from '@codemirror/language'
-import { languages } from '@codemirror/language-data'
 import {
   autocompletion,
   closeBrackets,
@@ -54,6 +54,84 @@ const LANGUAGES = [
   'yaml',
   'mermaid'
 ]
+
+/**
+ * 语言支持：**显式映射表**（清单 §1.B / 自查报告 O3）。
+ *
+ * 原来用 `@codemirror/language-data` 的 `languages` 表找 `load()` —— 那张表覆盖 115 种语言，
+ * 于是构建产物里留下 **116 个 `import()` 目标（合计约 1.6MB）**，而本组件的语言清单只有 15 种
+ * （+ mermaid 走预览）。现在按清单显式列出来：14 种走 `@codemirror/lang-*`，
+ * `bash` / `ruby` 走 `@codemirror/legacy-modes` + `StreamLanguage`，多出来的体积就不发了。
+ *
+ * ⚠️ 取舍（写清楚，免得后来人以为「任意语言高亮」还在）：**只高亮这 15 种**。
+ * 其余语言的 ``` 块按纯文本渲染（与原行为一致：认不出来就 reconfigure 成空扩展）。
+ */
+type LanguageLoader = () => Promise<Extension>
+
+const LANGUAGE_LOADERS: Record<string, LanguageLoader> = {
+  javascript: () => import('@codemirror/lang-javascript').then((m) => m.javascript()),
+  typescript: () =>
+    import('@codemirror/lang-javascript').then((m) => m.javascript({ typescript: true })),
+  python: () => import('@codemirror/lang-python').then((m) => m.python()),
+  html: () => import('@codemirror/lang-html').then((m) => m.html()),
+  css: () => import('@codemirror/lang-css').then((m) => m.css()),
+  json: () => import('@codemirror/lang-json').then((m) => m.json()),
+  sql: () => import('@codemirror/lang-sql').then((m) => m.sql()),
+  java: () => import('@codemirror/lang-java').then((m) => m.java()),
+  go: () => import('@codemirror/lang-go').then((m) => m.go()),
+  rust: () => import('@codemirror/lang-rust').then((m) => m.rust()),
+  cpp: () => import('@codemirror/lang-cpp').then((m) => m.cpp()),
+  php: () => import('@codemirror/lang-php').then((m) => m.php()),
+  yaml: () => import('@codemirror/lang-yaml').then((m) => m.yaml()),
+  bash: () =>
+    import('@codemirror/legacy-modes/mode/shell').then((m) => StreamLanguage.define(m.shell)),
+  ruby: () =>
+    import('@codemirror/legacy-modes/mode/ruby').then((m) => StreamLanguage.define(m.ruby))
+}
+
+/**
+ * 文档里常见的别名 → 映射表的键（原 `language-data` 认得的那些）。
+ * 清单只列了 `js/ts/py/sh/zsh/yml/c++/cc/rb`，这里把 markdown 生态里同样常见的几个一并收进来
+ * （`jsx/tsx/mjs/cjs`、`htm`、`yml`、`rb`、`golang`、`cxx/hpp`、`shell`）。
+ */
+const LANGUAGE_ALIASES: Record<string, string> = {
+  js: 'javascript',
+  jsx: 'javascript',
+  mjs: 'javascript',
+  cjs: 'javascript',
+  ts: 'typescript',
+  tsx: 'typescript',
+  py: 'python',
+  python3: 'python',
+  htm: 'html',
+  xhtml: 'html',
+  xml: 'html',
+  svg: 'html',
+  sh: 'bash',
+  shell: 'bash',
+  zsh: 'bash',
+  console: 'bash',
+  yml: 'yaml',
+  'c++': 'cpp',
+  cc: 'cpp',
+  cxx: 'cpp',
+  h: 'cpp',
+  hpp: 'cpp',
+  golang: 'go',
+  rb: 'ruby',
+  mysql: 'sql',
+  postgres: 'sql',
+  postgresql: 'sql',
+  sqlite: 'sql'
+}
+
+/** 语言标识 → 映射表的键（大小写不敏感；认不出来返回 null = 按纯文本） */
+function resolveLanguageKey(lang: string): string | null {
+  const key = lang.trim().toLowerCase()
+  if (!key) return null
+  if (LANGUAGE_LOADERS[key]) return key
+  return LANGUAGE_ALIASES[key] ?? null
+}
 
 const editorRef = ref<HTMLElement | null>(null)
 const selectedLanguage = ref<string>(props.node.attrs.language || 'javascript')
@@ -172,15 +250,15 @@ const mdHighlight = syntaxHighlighting(
 async function loadLanguage(lang: string): Promise<void> {
   if (lang === 'mermaid' || !cmView) return
   try {
-    const desc = languages.find(
-      (l) => l.name.toLowerCase() === lang.toLowerCase() || l.alias.includes(lang.toLowerCase())
-    )
-    if (!desc) {
+    const key = resolveLanguageKey(lang)
+    const loader = key ? LANGUAGE_LOADERS[key] : null
+    if (!loader) {
+      // 认不出来的语言：保持纯文本（与原「找不到描述符就清空扩展」一致）
       cmView.dispatch({ effects: languageCompartment.reconfigure([]) })
       return
     }
-    const support = await desc.load()
-    cmView.dispatch({ effects: languageCompartment.reconfigure(support.language) })
+    const support = await loader()
+    cmView.dispatch({ effects: languageCompartment.reconfigure(support) })
   } catch {
     /* 语言加载失败时保持纯文本 */
   }

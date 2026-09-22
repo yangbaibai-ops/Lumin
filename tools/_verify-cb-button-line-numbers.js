@@ -215,6 +215,11 @@ async function main() {
   }
   console.log('BEFORE ' + JSON.stringify(before))
 
+  // 快捷工具栏出厂默认收起（清单 §1.E 选项②），而本套件整条链路都在点工具栏上的代码块按钮
+  // ⇒ 显式打开（不依赖 profile 残留状态；运行器给每个套件用的都是全新 userData）
+  await ev(`(() => { window.__vt.settings().set('toolbarVisible', true); return 'ok' })()`)
+  await sleep(400)
+
   await ev(
     `(async () => { const f = window.__vt.files(); if (f.current) await f.close(); await f.openUntitled(); return 'ok' })()`
   )
