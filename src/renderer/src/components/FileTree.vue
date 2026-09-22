@@ -23,6 +23,44 @@ const ui = useUiStore()
 const router = useRouter()
 const filter = ref('')
 
+/**
+ * ─── 文件名搜索：平常收起成一枚放大镜 ────────────────────────────────────────
+ * 用户口径：这一行要更安静 —— 静息态只留一枚图标，点开才展开成输入框。
+ *
+ * 收起/展开的三条规则（共同目的是「筛选条件不能悄悄消失」）：
+ *   * 点图标 → 展开 + 自动聚焦；
+ *   * **失焦且输入为空** → 收起（有内容就保持展开，否则用户会以为筛选失效了）；
+ *   * `Esc` → 清空并收起（取消语义）；输入框里的 × 只清空、不收起。
+ */
+const searchOpen = ref(false)
+const filterEl = ref<HTMLInputElement | null>(null)
+
+async function openSearch(): Promise<void> {
+  searchOpen.value = true
+  await nextTick()
+  filterEl.value?.focus()
+}
+
+function closeSearch(): void {
+  filter.value = ''
+  searchOpen.value = false
+}
+
+function onSearchBlur(): void {
+  if (!filter.value) searchOpen.value = false
+}
+
+// 离开「文件」页签或关掉工作区时收起：面板是 v-show 常驻的，不收起下次回来会「自己开着」
+watch(
+  () => [ui.sidebarTab, files.root],
+  () => {
+    if (ui.sidebarTab !== 'files' || !files.root) {
+      filter.value = ''
+      searchOpen.value = false
+    }
+  }
+)
+
 /** 侧栏文件视图切换的段定义（与工具栏模式切换共用同一个分段控件） */
 const viewItems = computed<SegmentItem[]>(() => [
   { id: 'tree', icon: 'list-tree', label: t('sidebar.viewTree') },
@@ -228,12 +266,15 @@ function onDrop(e: DragEvent): void {
          为什么仍留在 FileTree 而不是 AppSidebar 的全局底栏：它只服务「文件」页签，
          切到大纲时不该出现；而这里正好是文件面板的底部，视觉上仍是侧栏最下方。
 
-         观感口径（第二次调整）：**这一行只允许一个「有形状的控件」**。
-           * 搜索框去掉 1px 边框，只用一块白面（`--panel`）+ 10px 圆角表达；
-             聚焦时才补一圈 `--accent-soft` 的柔光环 —— 静息态少一条线。
-           * 分段控件走 `variant="quiet"`：没有轨道底、没有发丝边、没有投影，
-             只留一枚滑动的软底块；图标选中态用字色而不是品牌色（旁边就是输入框，
-             一点彩色就会显得跳）。两处控件**同高 28px**，成对出现时是一条齐平的带子。
+         观感口径（第三次调整）：**搜索平常只是一枚放大镜图标**（用户口径：
+         「使其在平常是…只剩一枚放大镜图标，点开才展开成输入框」）。
+           * 收起态：一枚 28×28 的图标按钮（`icon-btn` 自带悬停浅底），带 title/aria-label；
+           * 展开态：点它 → 白面输入框淡入并自动聚焦；**失焦且没输入内容**时自动收起
+             （有内容就保持展开，否则筛选条件会被「藏」进一个看不见的输入框里）；
+             `Esc` 清空并收起；清除按钮仍在。
+           * 中间那层 `flex-1` 容器是收起/展开的公共槽位：收起时图标靠左、剩下的空白
+             自然把分段控件推到右边，展开时输入框占满 —— 不需要额外撑宽的占位元素。
+           * 分段控件仍走 `variant="quiet"`（无轨道/无边框/无投影），与输入框**同高 28px**。
            * 分隔仍是 1px `--edge` + 与页签/树行同一条竖线的 10px 内缩；
              不加阴影、不加底色 —— 保持「安静但有结构」。 -->
     <div
@@ -241,23 +282,44 @@ function onDrop(e: DragEvent): void {
       class="flex flex-none items-center gap-1.5 border-t border-edge px-2.5 pb-1.5 pt-1.5"
       data-sidebar-filetools
     >
-      <div
-        class="flex h-7 min-w-0 flex-1 items-center gap-2 rounded-[10px] bg-panel px-2.5 transition-shadow focus-within:shadow-[0_0_0_3px_var(--accent-soft)]"
-      >
-        <Icon name="search" :size="12.5" class="text-ink-3" />
-        <input
-          v-model="filter"
-          class="w-full bg-transparent text-[12.5px] text-ink outline-none placeholder:text-ink-3"
-          :placeholder="t('sidebar.filterPlaceholder')"
-        />
+      <div class="flex h-7 min-w-0 flex-1 items-center">
         <button
-          v-if="filter"
-          class="text-ink-3 transition-colors hover:text-ink"
-          :aria-label="t('common.close')"
-          @click="filter = ''"
+          v-if="!searchOpen"
+          class="icon-btn !h-7 !w-7"
+          data-sidebar-search-toggle
+          :title="t('sidebar.filterPlaceholder')"
+          :aria-label="t('sidebar.filterPlaceholder')"
+          aria-expanded="false"
+          @click="openSearch"
         >
-          <Icon name="x" :size="12" />
+          <Icon name="search" :size="14" />
         </button>
+        <Transition name="fade">
+          <div
+            v-if="searchOpen"
+            class="flex h-7 w-full min-w-0 items-center gap-2 rounded-[10px] bg-panel px-2.5 transition-shadow focus-within:shadow-[0_0_0_3px_var(--accent-soft)]"
+            data-sidebar-search-box
+          >
+            <Icon name="search" :size="12.5" class="text-ink-3" />
+            <input
+              ref="filterEl"
+              v-model="filter"
+              class="w-full bg-transparent text-[12.5px] text-ink outline-none placeholder:text-ink-3"
+              :placeholder="t('sidebar.filterPlaceholder')"
+              :aria-label="t('sidebar.filterPlaceholder')"
+              @blur="onSearchBlur"
+              @keydown.esc="closeSearch"
+            />
+            <button
+              v-if="filter"
+              class="text-ink-3 transition-colors hover:text-ink"
+              :aria-label="t('common.close')"
+              @click="filter = ''"
+            >
+              <Icon name="x" :size="12" />
+            </button>
+          </div>
+        </Transition>
       </div>
       <!-- 树 / 列表 切换（会话级偏好，非持久化）：与工具栏模式切换同一个分段控件。
            图标已从「chevron-right（= 展开）」换成真正的树形图标，见 Icon.vue 的说明。 -->
