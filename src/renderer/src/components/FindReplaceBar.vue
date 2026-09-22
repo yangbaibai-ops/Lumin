@@ -10,7 +10,7 @@
 // 交互对齐主流编辑器：
 //   Enter 下一个 · Shift+Enter 上一个 · Esc 关闭 · 「区分大小写」开关 ·
 //   「.*」正则开关（默认关，字面量搜索）· 替换只动当前命中 · 全部替换一次改完（可 Ctrl+Z 整体撤销）。
-import { nextTick, ref, watch } from 'vue'
+import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useFindStore } from '../stores/find'
 // 零依赖桥：本组件在 App.vue 的静态依赖链上，直接 import 编辑器内核会把 PM 拖进首屏
@@ -24,11 +24,43 @@ const ui = useUiStore()
 
 const queryRef = ref<HTMLInputElement | null>(null)
 
+/**
+ * 浮条贴的是**写作区顶边**，而不是写死的 62px。
+ *
+ * 用户报的 bug：查找栏会压住快捷工具栏。原来 `top: 62px` 是拍脑袋的常数，而顶部的
+ * 菜单栏（32px）+ 工具栏（44px）= 76px —— 62 正好落在工具栏里。工具栏还能被设置隐藏，
+ * 菜单栏在 Windows 上也可能不显示，所以**必须量实际位置**：
+ * 写作区内核（`[data-editor-kernel]`，三种编辑模式下都是同一个矩形）的顶边 + 10px。
+ * 量不到时退回「工具栏下沿 + 10」，再退回 76。
+ */
+const barTop = ref(76)
+
+function placeBar(): void {
+  const kernel = document.querySelector<HTMLElement>('[data-editor-kernel]')
+  let top = kernel?.getBoundingClientRect().top ?? 0
+  if (!top) {
+    const chrome = document.querySelector<HTMLElement>('.editor-scroll, div.h-11')
+    top = chrome?.getBoundingClientRect().top ?? 66
+  }
+  barTop.value = Math.max(40, Math.round(top + 10))
+}
+
+onMounted(() => {
+  placeBar()
+  window.addEventListener('resize', placeBar)
+})
+
+onBeforeUnmount(() => {
+  window.removeEventListener('resize', placeBar)
+})
+
+// 打开那一刻再量一次（工具栏显隐、窗口尺寸都可能刚变过；等一帧让布局落定）
 watch(
   () => find.open,
   async (open) => {
     if (!open) return
     await nextTick()
+    placeBar()
     queryRef.value?.focus()
     queryRef.value?.select()
   }
@@ -42,7 +74,7 @@ watch(
 watch(
   () => find.surface,
   (surface) => {
-    if (surface !== 'wysiwyg') setFindHit(false, -1, -1)
+    if (surface !== 'wysiwyg') setFindHit(null, -1)
   }
 )
 
@@ -105,6 +137,7 @@ function doReplaceAll(): void {
       class="find-bar"
       role="search"
       :aria-label="t('find.title')"
+      :style="{ top: barTop + 'px' }"
       @keydown="onBarKeydown"
       @keydown.esc.prevent="find.hide()"
     >

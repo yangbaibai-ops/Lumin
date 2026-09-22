@@ -46,6 +46,7 @@ import type { Atom, MarkerSide, StyleKind } from './inlineMarkerCore'
 // 查找命中高亮的**零依赖桥**：store 一侧只认识它，不认识 ProseMirror（见该文件说明 ——
 // 原来 store 直接 import 本模块，把 ~412KB 的 PM 钉进了首屏 entry chunk）。
 import { registerFindHit } from './findBridge'
+import type { FindHitRange } from './findBridge'
 // 核心的符号在本文件再导出一次：既有的导入面（其它模块从这里取用）保持不变
 export {
   KIND_OF_MARKER,
@@ -1075,19 +1076,22 @@ const inlineMarkPluginKey = new PluginKey('typora-inline-marks')
 let lastRevealDecos: DecorationSet | null = null
 
 /**
- * 查找命中的**高亮装饰**（用户要求：被查到的文字要高亮显示）。
+ * 查找命中的**高亮装饰**（用户要求：被查到的文字要有底色，当前命中还要另一种颜色）。
  *
  * 为什么不能只靠「把命中选成选区」：查找栏开着时焦点在输入框里，编辑区那份是**失焦选区**
  * （浏览器画得很淡），深色主题下几乎看不见；而且跳转命中时那点高亮一闪就没了。
- * 所以另给一层装饰：`.find-hit` 只画底色，不改字号、不影响命中测试。
+ * 所以另给一层装饰：`.find-hit`（全部命中）/ `.find-hit-current`（当前命中）只画底色，
+ * 不改字号、不影响命中测试。
  */
-/** 上一次 `setFindHit` 传进来的范围：只用于跳过重复派发（真值由装饰集保管） */
-let findHitFrom = -1
-let findHitTo = -1
+/** 上一次 `setFindHit` 传进来的整批范围 + 当前下标：只用于跳过重复派发（真值由装饰集保管） */
+let findHitRanges: FindHitRange[] | null = null
+let findHitCurrent = -1
 /** 「查找栏正在高亮」的模块级快照（见 findActive / apply 里的重建条件） */
 let lastFindActive = false
 /** 「上一次**真正重建显隐装饰**时用的查找态」（与上面分开记，见 apply 的说明） */
 let lastRevealFindActive = false
+/** 整批高亮的装饰上限：查询串是单个空格时可能命中上万处，画不动也没意义 */
+const FIND_DECO_CAP = 2000
 
 /**
  * 查找栏是否正在高亮命中处。
@@ -1108,7 +1112,8 @@ let ownView: {
 
 /** 「查找命中高亮 / 查找态变了」的事务标记 */
 const SET_FIND_HIT = new PluginKey<{
-  range: { from: number; to: number } | null
+  ranges: FindHitRange[] | null
+  current: number
   active: boolean
 }>('typora-find-hit')
 
@@ -1124,37 +1129,60 @@ const SET_PRESS = new PluginKey<boolean>('typora-press-hold')
  */
 let lastFindHitDecos: DecorationSet = DecorationSet.empty
 
-/** 按给定范围算高亮装饰（越界/空区间 → 空集） */
-function buildFindHitDecos(range: { from: number; to: number } | null, doc: PMNode): DecorationSet {
-  if (!range || range.from < 0 || range.to <= range.from) return DecorationSet.empty
+/** 按给定范围算高亮装饰（越界/空区间 → 跳过；整批超过上限只取前 N 处） */
+function buildFindHitDecos(
+  ranges: FindHitRange[] | null,
+  current: number,
+  doc: PMNode
+): DecorationSet {
+  if (!ranges || !ranges.length) return DecorationSet.empty
   const max = doc.content.size
-  const from = Math.min(range.from, max)
-  const to = Math.min(range.to, max)
-  if (to <= from) return DecorationSet.empty
-  return DecorationSet.create(doc, [Decoration.inline(from, to, { class: 'find-hit' })])
+  const decos: Decoration[] = []
+  const n = Math.min(ranges.length, FIND_DECO_CAP)
+  for (let i = 0; i < n; i++) {
+    const r = ranges[i]
+    if (!r || r.from < 0 || r.to <= r.from) continue
+    const from = Math.min(r.from, max)
+    const to = Math.min(r.to, max)
+    if (to <= from) continue
+    decos.push(
+      Decoration.inline(from, to, {
+        class: i === current ? 'find-hit find-hit-current' : 'find-hit'
+      })
+    )
+  }
+  return decos.length ? DecorationSet.create(doc, decos) : DecorationSet.empty
+}
+
+/** 整批范围是否与上一次完全相同（避免同一批重复派发事务） */
+function sameFindRanges(next: FindHitRange[] | null, current: number): boolean {
+  const prev = findHitRanges
+  if (prev === null || next === null) return prev === next && findHitCurrent === current
+  if (prev.length !== next.length || findHitCurrent !== current) return false
+  for (let i = 0; i < next.length; i++) {
+    if (prev[i].from !== next[i].from || prev[i].to !== next[i].to) return false
+  }
+  return true
 }
 
 /**
- * 设置（或清除）查找命中高亮。`active=false` 或 `to <= from` 即清除。
+ * 设置（或清除）查找命中高亮。`hits = null` / 空数组即清除。
  *
  * 走**事务**而不是直接改模块量：装饰要重新求值才会落到 DOM 上，而 PM 只在
  * `docChanged || selectionSet` 或 `props.decorations` 被重新读取时才算 —— 直接改模块量
  * 什么都不发生（与 SET_FIND_HIT 的踩坑同源）。
  */
-export function setFindHit(active: boolean, from: number, to: number): void {
-  const next = active && to > from && from >= 0 ? { from, to } : null
-  const same =
-    lastFindActive === active &&
-    ((findHitFrom === (next?.from ?? -1) && findHitTo === (next?.to ?? -1)) ||
-      (findHitFrom < 0 && next === null))
-  if (same) return
-  findHitFrom = next?.from ?? -1
-  findHitTo = next?.to ?? -1
+export function setFindHit(hits: FindHitRange[] | null, current: number): void {
+  const ranges = hits && hits.length ? hits : null
+  if (sameFindRanges(ranges, current)) return
+  findHitRanges = ranges
+  findHitCurrent = current
+  const active = !!ranges
   lastFindActive = active
   const view = ownView
   if (!view || view.isDestroyed) return
   try {
-    view.dispatch(view.state.tr.setMeta(SET_FIND_HIT, { range: next, active }))
+    view.dispatch(view.state.tr.setMeta(SET_FIND_HIT, { ranges, current, active }))
   } catch {
     /* 视图状态不可用（正在重建）时忽略：下一次跳转会补上 */
   }
@@ -1303,8 +1331,8 @@ export const TyporaInlineMarks = Extension.create({
       window.removeEventListener('blur', onUp)
       lastRevealDecos = null
       // 命中高亮跟着文档走：换文件/重建视图后旧的文档位置没有意义
-      findHitFrom = -1
-      findHitTo = -1
+      findHitRanges = null
+      findHitCurrent = -1
       lastFindHitDecos = DecorationSet.empty
       // 注销查找高亮的桥：视图销毁后 store 再调 setFindHit 就是空操作（不该打到旧视图上）
       registerFindHit(null)
@@ -1478,7 +1506,7 @@ export const TyporaInlineMarks = Extension.create({
           init: (_config, state) => {
             lastRevealFindActive = findActive()
             lastRevealDecos = buildRevealDecorations(state, decoCache)
-            lastFindHitDecos = buildFindHitDecos({ from: findHitFrom, to: findHitTo }, state.doc)
+            lastFindHitDecos = buildFindHitDecos(findHitRanges, findHitCurrent, state.doc)
             return lastRevealDecos
           },
           /**
@@ -1503,10 +1531,10 @@ export const TyporaInlineMarks = Extension.create({
            */
           apply: (tr, oldSet, _oldState, newState) => {
             const hitMeta = tr.getMeta(SET_FIND_HIT) as
-              { range: { from: number; to: number } | null; active: boolean } | undefined
+              { ranges: FindHitRange[] | null; current: number; active: boolean } | undefined
             let findToggled = false
             if (hitMeta !== undefined) {
-              lastFindHitDecos = buildFindHitDecos(hitMeta.range, newState.doc)
+              lastFindHitDecos = buildFindHitDecos(hitMeta.ranges, hitMeta.current, newState.doc)
               // 与「上一次**真正重建显隐装饰时**用的查找态」比：`lastFindActive` 在
               // setFindHit 里已经先更新了，拿它比永远相等（实测踩到过）。
               findToggled = hitMeta.active !== lastRevealFindActive

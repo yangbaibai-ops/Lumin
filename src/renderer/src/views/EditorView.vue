@@ -676,8 +676,11 @@ onBeforeUnmount(() => {
     <!-- 写作区 = 纸（--paper）：两个 pane 各自整块铺纸，于是 wysiwyg / split / source
          三种模式下「纸」都是同一个矩形，切换模式不会看见底色跳变；pane 之间的分屏
          缝隙仍露出外壳灰（--app），正好充当分隔线。 -->
+    <!-- data-editor-kernel：写作区的语义锚点。查找/替换浮条按它的顶边定位 —— 工具栏可被设置
+         隐藏、菜单栏在 Windows 上也可能不显示，写死像素就会压住工具栏（用户报过这个 bug）。 -->
     <div
       ref="kernelRef"
+      data-editor-kernel
       class="relative flex min-h-0 flex-1"
       :class="{ 'view-restoring': viewRestoring }"
       @scroll.capture="onSplitScroll"

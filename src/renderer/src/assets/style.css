@@ -81,6 +81,12 @@
   /* 自绘淡底（查找命中）：灰，不是紫。原生文字选区走浏览器默认，不用这个令牌 */
   --sel: rgba(17, 24, 39, 0.11);
   --block-hover: rgba(17, 24, 39, 0.04);
+  /* 查找命中（浅色）：取自 Typora github 主题截图采样 —— 命中 #FDECD5 / 当前 #FFCF8F */
+  --find-hit-bg: #fdecd5;
+  --find-hit-ink: inherit;
+  --find-current-bg: #ffcf8f;
+  --find-current-ink: inherit;
+  --find-current-edge: rgb(214 154 74 / 55%);
   /* 实心主按钮：与副色解耦 —— 它要保证「白字压在底色上」可读，深灰最稳 */
   --btn-solid: #4b5563;
   --btn-solid-2: #374151;
@@ -122,6 +128,12 @@
   --code-bg: #1a1d26;
   --sel: rgba(255, 255, 255, 0.16);
   --block-hover: rgba(255, 255, 255, 0.05);
+  /* 查找命中（深色）：参照 Typora night.css 的蓝色高亮（半透明蓝底 + 实蓝当前项 + 白字） */
+  --find-hit-bg: rgb(102 175 233 / 32%);
+  --find-hit-ink: #eef2f8;
+  --find-current-bg: #428bca;
+  --find-current-ink: #ffffff;
+  --find-current-edge: rgb(120 190 240 / 60%);
   --btn-solid: #4b5563;
   --btn-solid-2: #39414f;
   --btn-ink: #f3f4f6;
@@ -161,6 +173,12 @@
   --code-bg: #efe4c9;
   --sel: rgba(90, 74, 48, 0.14);
   --block-hover: rgba(90, 74, 48, 0.05);
+  /* 查找命中（羊皮纸）：跟随浅色的暖色系，但在暖纸上各压深一档才看得出来 */
+  --find-hit-bg: #f3dfae;
+  --find-hit-ink: inherit;
+  --find-current-bg: #e9b96a;
+  --find-current-ink: inherit;
+  --find-current-edge: rgb(160 112 40 / 55%);
   --btn-solid: #6b5c46;
   --btn-solid-2: #57492f;
   --btn-ink: #fdf8ec;
@@ -1700,15 +1718,25 @@ h6.md-reveal::before {
   font-weight: 400;
 }
 
-/* ── 查找命中高亮（.find-hit）──
-   由 typoraInlineMarks 的装饰层给出，位置 = 当前命中的文档范围。
-   为什么不能只靠「命中选成选区」：查找栏开着时焦点在输入框里，编辑区那份是**失焦选区**
-   （浏览器画得很淡），跳转过去一闪就看不见了。这里只画底色、不改字号，
-   所以对光标导航 / 命中测试零影响（与上面 `.md-marker` 的零字号折叠互不相干）。 */
+/* ── 查找命中高亮（.find-hit / .find-hit-current）──
+   由 typoraInlineMarks 的装饰层给出：**整批命中**画一层底色，**当前命中**换一种更重的颜色。
+   用户口径：命中的字符要有底色、当前命中要有（另一种）颜色，「颜色和 Typora 保持一致即可」。
+
+   配色取自 Typora 自己的浅色主题截图（`github` 主题，逐像素采样）：
+     命中底色 `#FDECD5`（淡琥珀/奶色）、当前命中 `#FFCF8F`（更重的琥珀）——
+   两者在 Typora 里就是这样一对「淡底 + 重底」。深色主题参照 Typora `night.css`
+   的**蓝色**命中高亮（typora-issues#5760 明确说 night 主题的搜索高亮是蓝色、其余主题偏黑不可读）：
+   命中 `rgba(102,175,233,.32)`、当前命中实蓝 `#428BCA`（白字）。羊皮纸主题跟随浅色的暖色系，
+   整体压深一档以贴合暖纸。三套值都走令牌，改主题只动这里。 */
 .find-hit {
-  background: var(--sel);
+  background: var(--find-hit-bg);
+  color: var(--find-hit-ink);
   border-radius: 2px;
-  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 30%, transparent);
+}
+.find-hit-current {
+  background: var(--find-current-bg);
+  color: var(--find-current-ink);
+  box-shadow: 0 0 0 1px var(--find-current-edge);
 }
 .md-marker[data-md-style='italic'] {
   font-style: normal;

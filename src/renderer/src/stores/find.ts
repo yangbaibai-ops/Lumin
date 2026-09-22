@@ -11,6 +11,7 @@ import { findInDoc } from '../lib/editor/findInDoc'
 // 查找命中高亮走**零依赖桥**（不直接 import 编辑器内核）：后者会把 ~412KB 的 ProseMirror
 // 拖进首屏 entry chunk，而本 store 在 App.vue 的静态依赖链上（详见 findBridge.ts）。
 import { setFindHit } from '../lib/editor/findBridge'
+import type { FindHitRange } from '../lib/editor/findBridge'
 import { useEditorStore } from './editor'
 import { useFilesStore } from './files'
 import { useUiStore } from './ui'
@@ -32,6 +33,57 @@ import { useUiStore } from './ui'
  *   * `regex`：查询串是否按正则解释（默认否 —— 字面量搜索才是绝大多数人的预期）。
  */
 export type FindSurface = 'wysiwyg' | 'source'
+
+/**
+ * ─── 跳转时的「精确落位」─────────────────────────────────────────────────────
+ * 用户口径：命中多处在上下切换时**不会定位到准确的字符位置**。
+ * 两个原因都修在这里：
+ *   1. 链上的 `scrollIntoView()` 交给 PM 默认实现，它只做**最小滚动** —— 命中会被滚到容器
+ *      边缘，而顶边正好压着工具栏与查找浮条，看起来就像「没跳准」；
+ *   2. 跨行命中按选区 head 算，落点会偏。
+ * 所以改成按命中自己的**几何矩形**（`coordsAtPos` 两端）做一次带安全边的滚动：
+ * 上边留 `FIND_SAFE_TOP`（工具栏 44 + 余量），下边留 `FIND_SAFE_BOTTOM`。
+ * 只补差值（最小滚动），不会把视口猛地拽到中间 —— 连续按「下一个」时观感更稳。
+ */
+const FIND_SAFE_TOP = 56
+const FIND_SAFE_BOTTOM = 16
+
+/** 编辑器视图的最小结构面：只用到这两样，所以本模块不必认识 ProseMirror 类型 */
+type RevealView = {
+  dom: HTMLElement
+  coordsAtPos: (pos: number) => { top: number; bottom: number }
+}
+
+function revealInEditor(ed: unknown, from: number, to: number): void {
+  const view = (ed as { view?: RevealView } | null)?.view
+  if (!view || typeof view.coordsAtPos !== 'function') return
+  const scroller = view.dom.closest('.editor-scroll') as HTMLElement | null
+  if (!scroller) return
+  let a: { top: number; bottom: number }
+  let b: { top: number; bottom: number }
+  try {
+    a = view.coordsAtPos(from)
+    b = view.coordsAtPos(to)
+  } catch {
+    return
+  }
+  const top = Math.min(a.top, b.top)
+  const bottom = Math.max(a.bottom, b.bottom)
+  const box = scroller.getBoundingClientRect()
+  const safeTop = box.top + FIND_SAFE_TOP
+  const safeBottom = box.bottom - FIND_SAFE_BOTTOM
+  if (top < safeTop) scroller.scrollTop -= safeTop - top
+  else if (bottom > safeBottom) scroller.scrollTop += bottom - safeBottom
+}
+
+/** 源码面（textarea 没有 scrollIntoView）：把命中行放到视口偏上三分之一处 */
+function revealInTextarea(ta: HTMLTextAreaElement, pos: number): void {
+  const cs = getComputedStyle(ta)
+  const lh = parseFloat(cs.lineHeight) || parseFloat(cs.fontSize) * 1.6 || 20
+  const padTop = parseFloat(cs.paddingTop) || 0
+  const line = ta.value.slice(0, pos).split('\n').length
+  ta.scrollTop = Math.max(0, padTop + (line - 1) * lh - ta.clientHeight * 0.3)
+}
 
 export const useFindStore = defineStore('find', {
   state: () => ({
@@ -107,7 +159,7 @@ export const useFindStore = defineStore('find', {
       this.open = false
       this.index = -1
       // 关掉查找栏 ⇒ 一起摘掉命中高亮（否则那层底色会留在正文里）
-      setFindHit(false, -1, -1)
+      setFindHit(null, -1)
       // 把焦点还给编辑面，用户接着写
       const ed = useEditorStore()
       const ui = useUiStore()
@@ -153,19 +205,20 @@ export const useFindStore = defineStore('find', {
       const m = this.matches[i]
       if (!m) {
         // 没有命中（查询串空/无匹配/位置失效）：同步摘掉高亮，避免留一条旧底色
-        if (i < 0) setFindHit(this.open, -1, -1)
+        if (i < 0) setFindHit(null, -1)
         return
       }
+      // **整批命中一起交给编辑器**：全部画一层底色（`.find-hit`），当前那个再多一个类
+      // （`.find-hit-current`）—— 用户口径：「匹配的字符要有底色，当前匹配的字符也要有颜色」。
+      const hits: FindHitRange[] = this.matches.map((mm) => ({ from: mm.from, to: mm.to }))
       if (this.surface === 'source') {
         const ta = document.querySelector<HTMLTextAreaElement>('textarea.source-editor')
         if (!ta) return
         // 同样不 focus：聚焦 textarea 会把焦点从查找输入框抢走（下一个 Enter 就废了）；
         // setSelectionRange 不需要焦点也能设置选区，滚动照样生效
         ta.setSelectionRange(m.from, m.to)
-        // 粗略滚动到命中行（textarea 没有 scrollIntoView）
-        const line = ta.value.slice(0, m.from).split('\n').length
-        const lh = ta.scrollHeight / Math.max(1, ta.value.split('\n').length)
-        ta.scrollTop = Math.max(0, (line - 3) * lh)
+        // 把命中行滚到视口偏上三分之一处（默认贴边时会被工具栏/查找栏压住，看起来像「没跳准」）
+        revealInTextarea(ta, m.from)
         return
       }
       const store = useEditorStore()
@@ -175,12 +228,16 @@ export const useFindStore = defineStore('find', {
         // **刻意不 focus**：查找栏的输入框要保持焦点，否则下一次 Enter 会落到正文里
         // （「下一个」是 Enter 触发的，焦点一跑就变成在文档里敲回车 —— 实测把整段写坏）。
         // 不聚焦时编辑器仍会画出选区与命中高亮（主流编辑器就是这个行为）。
-        ed.chain().setTextSelection({ from: m.from, to: m.to }).scrollIntoView().run()
+        ed.chain().setTextSelection({ from: m.from, to: m.to }).run()
+        // 链上的 `scrollIntoView()` 只做「最小滚动」：命中会贴在容器边缘
+        // （顶边正好被工具栏 / 查找栏压住），远距离跳转看着就像「没定位到准确字符」。
+        // 这里按命中自己的几何矩形做一次带安全边的滚动。
+        revealInEditor(ed, m.from, m.to)
       } catch {
         /* 位置非法（文档刚变）时只留下标 */
       }
-      // 另加一层**常显**高亮（`.find-hit`）：失焦选区太淡，跳转后的那点高亮一闪就没
-      if (this.surface === 'wysiwyg') setFindHit(true, m.from, m.to)
+      // 整批常显高亮（`.find-hit` / `.find-hit-current`）：失焦选区太淡，跳转后的高亮一闪就没
+      setFindHit(hits, i)
     },
     /**
      * 某一处命中该替换成什么文本。

@@ -15,9 +15,20 @@
 // 判据（改完必须复验）：构建产物 `out/renderer/assets/index-*.js` 里不再出现 ProseMirror
 // 的特征串（如 `class Transform`）；`_verify-find-replace.js` / `_verify-round-24.js`
 // 的查找高亮断言仍全绿。
+//
+// ── 契约（第二十六轮扩展）────────────────────────────────────────────────────
+// 原来只能高亮**一处**（当前命中）。用户口径：命中的字符要**底色**、当前命中要**另一种颜色**
+// —— 所以现在整批命中一起传过去，由内核层给「全部命中」画一层底色、给「当前命中」多一个类。
+// 参数保持**纯数据**（`{from,to}[]` + 下标），不带任何 ProseMirror 类型，桥依然是零依赖。
 
-/** 高亮实现：`from`/`to` 为文档位置；`active=false` 表示清掉高亮 */
-export type FindHitApplier = (active: boolean, from: number, to: number) => void
+/** 一处命中（文档位置） */
+export interface FindHitRange {
+  from: number
+  to: number
+}
+
+/** 高亮实现：`hits = null` 表示清空；`current` 是当前命中在 `hits` 里的下标（-1 = 无） */
+export type FindHitApplier = (hits: FindHitRange[] | null, current: number) => void
 
 let apply: FindHitApplier | null = null
 
@@ -27,9 +38,9 @@ export function registerFindHit(fn: FindHitApplier | null): void {
 }
 
 /** 请求高亮（无编辑器时静默忽略：还没得高亮） */
-export function setFindHit(active: boolean, from: number, to: number): void {
+export function setFindHit(hits: FindHitRange[] | null, current: number): void {
   try {
-    apply?.(active, from, to)
+    apply?.(hits, current)
   } catch {
     /* 视图正在重建时忽略：下一次跳转会补上 */
   }
