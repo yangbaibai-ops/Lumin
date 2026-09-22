@@ -80,7 +80,11 @@ function closeCurrent(): void {
 </script>
 
 <template>
-  <div class="pointer-events-none fixed bottom-12 right-4 z-[200] flex justify-end">
+  <!-- 通知条：**出现在编辑区上方**（像 Typora），与「检测到未保存的草稿」横幅同一条节奏 ——
+       原来固定在右下角（`fixed bottom-12 right-4`），问题是：长通知会被窗口底边裁掉、
+       底部栏旁边只能显示一小条。现在改成**文档流的顶部条**：宽度仍 384（两侧留白居中），
+       正文可见高度放大到 52vh，进出场动画见 overlays.css 的 `.ntf-*`（改为自上而下）。 -->
+  <div class="pointer-events-none flex flex-none justify-center px-4 pt-3">
     <Transition name="ntf">
       <section
         v-if="active"
@@ -104,7 +108,7 @@ function closeCurrent(): void {
               </p>
               <p
                 v-if="active.body"
-                class="ntf-body mt-1.5 max-h-[38vh] overflow-y-auto whitespace-pre-wrap break-words text-[12.5px] leading-[1.7] text-ink-2"
+                class="ntf-body mt-1.5 max-h-[52vh] overflow-y-auto whitespace-pre-wrap break-words text-[12.5px] leading-[1.7] text-ink-2"
               >
                 {{ active.body }}
               </p>

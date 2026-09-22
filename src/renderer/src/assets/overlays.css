@@ -406,7 +406,8 @@ li.md-reveal {
   background: color-mix(in srgb, var(--danger) 12%, transparent);
   color: var(--danger);
 }
-/* 卡片整体：自下而上淡入 */
+/* 卡片整体：**自上而下**淡入（通知自本轮起出现在编辑区上方，方向跟着位置走；
+   原来是右下角固定条，所以是自下而上） */
 .ntf-enter-active,
 .ntf-leave-active {
   transition:
@@ -416,7 +417,7 @@ li.md-reveal {
 .ntf-enter-from,
 .ntf-leave-to {
   opacity: 0;
-  transform: translateY(10px) scale(0.98);
+  transform: translateY(-10px) scale(0.98);
 }
 /* 内容切换：上一条自左、下一条自右（配合底部 ‹ › 的语义） */
 .ntf-prev-enter-active,

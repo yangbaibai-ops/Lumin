@@ -163,9 +163,9 @@
 | 窗口标题与任务栏标题（`文件名 - Lumin` / `• ` 脏标记 / 多窗口可区分） | `_verify-window-title`(14) | 14 | 强 | 另用 Win32 枚举核对真实原生标题 |
 | 编辑器右键菜单（两级结构、8 个表格动作、最近使用、键盘导航、贴边钳制） | `_verify-editor-menu`(51)、`_verify-editor-menu-extras`(4)、`_verify-link-paste`(3) | 58 | 强 | 矩阵里断言最多的套件 |
 | 全局 tooltip（750ms 延迟、title 接管与还原、响应式 title 不被覆写） | `_verify-tooltip`(6)、`_verify-notify-style`（2 条） | 8 | 强 | 矩阵内覆盖完整 |
-| toast 位置（右下角、不遮底栏） | `_verify-toast-tip.js`（探针，0 断言）；`verify-tiptap.js`（`toast` 相关，**非矩阵**） | 0 | **空缺** | toast 组件已并入通知中心（`legacy-toast-routes-to-center` 有断言），但位置/不遮挡无断言 |
+| 通知条位置（编辑区上方、整张在视口内）+ 进出场动效 | `_verify-toast-tip.js`(16)；`verify-tiptap.js`（`toast` 相关，**非矩阵**） | 16 | 强 | 本轮通知组件从右下角搬到编辑区上方后改写：文档流证据（static + 容器紧邻内核之前）、几何（384 宽 / 不越视口 / 不压状态栏）、动效（CSS 规则 + 真实进出场 opacity 采样）|
 | 通知中心（CRUD、卡片、级别图标、步进切换、多语言、不自动消失、重载存活） | `_verify-notifications`(31) | 31 | 强 | — |
-| 通知落盘 + 窗口作用域隔离 + 跨重启持久化 | `_verify-notify-disk`(8)、`_verify-notify-multiwindow`(21)、`_verify-notify-restart`(6) | 35 | 强 | 三套件分层；`notify-restart` 是两阶段（seed/check），默认矩阵不跑 |
+| 通知落盘 + 窗口作用域隔离 + 跨重启持久化 | `_verify-notify-disk`(8)、`_verify-notify-multiwindow`(21)、`_verify-notify-restart`(6) | 35 | 强 | 三套件分层；`notify-restart` 是两阶段（seed/check，中间由外部硬杀+重启），默认矩阵与 `--all` 都不跑 —— 由 `run-suites.js` 的 `MANUAL` 排除 |
 | 通知卡片样式（宽 384 / 圆角 6 / 无左色条） | `_verify-notify-style`(12) | 12 | 强 | 非破坏式（临时插一条再硬删） |
 | 欢迎页移除后的空态（侧栏空态三入口、文件菜单、路由回落、`/about` 仍在） | `_verify-welcome-removed`(41) | 41 | 强 | — |
 | About 页内容 | `_verify-welcome-removed`（`about-still-works` 1 条） | 1 | 仅间接 | 只验路由可达，不验内容 |

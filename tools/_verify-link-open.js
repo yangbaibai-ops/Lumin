@@ -240,16 +240,20 @@ async function waitEditorReady(marker, ms = 12000) {
 const RESOLVE = (target, baseDir) =>
   `(async () => JSON.stringify(await window.luminAPI.links.resolve(${JSON.stringify(target)}, ${JSON.stringify(baseDir)})))()`
 const HISTORY = `(async () => JSON.stringify(await window.luminAPI.links.history(50)))()`
-/** 通知卡片（右下角）：位置、按钮、是否走了模态确认框 */
+/** 通知卡片：位于**编辑区上方的文档流顶条**（原来在右下角，本轮搬到顶部 —— 断言随之改写） */
 const NTF_CARD = `(() => {
   const card = document.querySelector('.ntf-card')
   if (!card) return 'null'
   const r = card.getBoundingClientRect()
+  const kernel = document.querySelector('[data-editor-kernel]')
   return JSON.stringify({
     x: Math.round(r.left + r.width / 2),
     y: Math.round(r.top + r.height / 2),
+    top: Math.round(r.top),
     right: Math.round(r.right),
     bottom: Math.round(r.bottom),
+    position: getComputedStyle(card).position,
+    kernelTop: kernel ? Math.round(kernel.getBoundingClientRect().top) : null,
     vw: window.innerWidth,
     vh: window.innerHeight,
     title: card.querySelector('p')?.textContent?.trim() ?? null,
@@ -523,7 +527,7 @@ async function main() {
   c('sibling-opens-in-new-window', docC === SIBLING, String(docC))
   if (winC) await closePage(winC)
 
-  // ── D. 端到端：缺失文件 → 右下角通知卡片询问 → 取消 ───────────────────────
+  // ── D. 端到端：缺失文件 → 编辑区上方的通知卡片询问 → 取消 ─────────────────
   fs.rmSync(ASKED, { force: true })
   pt = await linkPoint('询问创建')
   if (pt) await clickCtrl(pt.x, pt.y, 700)
@@ -532,12 +536,21 @@ async function main() {
   const cardState = cardD === 'null' ? null : JSON.parse(cardD)
   c('missing-target-shows-notification-card', !!cardState, String(cardD))
   c(
-    'card-anchored-bottom-right',
-    !!cardState && cardState.right > cardState.vw * 0.6 && cardState.bottom > cardState.vh * 0.6,
+    'card-shown-at-editor-top',
+    // 语义：卡片是**文档流里的一块、排在内核之前**（static，不是右下角浮层），
+    // 且整张在视口内 —— 长通知不会被窗口底边裁掉正是这次搬家的目的。
+    !!cardState &&
+      cardState.position === 'static' &&
+      cardState.top >= 0 &&
+      cardState.bottom <= cardState.vh &&
+      cardState.kernelTop !== null &&
+      cardState.bottom <= cardState.kernelTop + 1,
     JSON.stringify(
       cardState && {
-        right: cardState.right,
+        top: cardState.top,
         bottom: cardState.bottom,
+        kernelTop: cardState.kernelTop,
+        position: cardState.position,
         vw: cardState.vw,
         vh: cardState.vh
       }
@@ -696,9 +709,13 @@ async function main() {
     JSON.stringify(histH3.map((h) => h.target))
   )
   // 直读 SQLite 落盘文件（不是 session）
+  // ⚠️ 路径必须跟着**被测实例的数据目录**走：运行器用 `--user-data-dir=%TEMP%\lumin-suites-ud`
+  // 起隔离实例并把库路径放进 `LUMIN_DB`，写死 `%APPDATA%\lumin` 读的是**用户真实那个库**
+  // （实测：这里恒为 `[]`，连带 `create-mode-persisted-by-click` 读到默认的 ask 而假失败）。
   const onDisk = (() => {
     const { DatabaseSync } = require('node:sqlite')
-    const db = new DatabaseSync(path.join(process.env.APPDATA, 'lumin', 'lumin.db'), {
+    const DB = process.env.LUMIN_DB || path.join(process.env.APPDATA, 'lumin', 'lumin.db')
+    const db = new DatabaseSync(DB, {
       readOnly: true
     })
     const rows = db
@@ -775,7 +792,9 @@ async function main() {
   const modeNow = await ev(`window.__vt.settings().linkCreateMode`)
   const diskMode = (() => {
     const { DatabaseSync } = require('node:sqlite')
-    const db = new DatabaseSync(path.join(process.env.APPDATA, 'lumin', 'lumin.db'), {
+    // 同 H 段：读被测实例的库（LUMIN_DB），别落到用户真实 profile 上
+    const DB = process.env.LUMIN_DB || path.join(process.env.APPDATA, 'lumin', 'lumin.db')
+    const db = new DatabaseSync(DB, {
       readOnly: true
     })
     const kv = db.prepare("SELECT value FROM kv WHERE key = 'settings'").get()

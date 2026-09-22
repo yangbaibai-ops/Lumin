@@ -97,11 +97,21 @@ function parseArgs(argv) {
   return args
 }
 
+/**
+ * **两阶段/需人工介入**的套件：`--all` 里必须排除，否则每轮都报一个假 FAIL。
+ *
+ * `_verify-notify-restart.js` 的用法是 `seed` → **外部杀掉 Electron 并重启** → `check`，
+ * 不带参数跑只会打印用法然后 `exit 1`（运行器读到 `0/0` 记成 FAIL）。
+ * 它验证的是「跨进程重启」这件事，任何自动矩阵都给不了那个重启时机。
+ */
+const MANUAL = new Set(['_verify-notify-restart.js'])
+
 /** 列出 tools 下所有 `_verify-*.js`（用于 --all） */
 function allSuites() {
   return fs
     .readdirSync(TOOLS)
     .filter((f) => /^_verify-.*\.js$/.test(f))
+    .filter((f) => !MANUAL.has(f))
     .sort()
 }
 

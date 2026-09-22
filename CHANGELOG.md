@@ -77,6 +77,58 @@
 - **工程化**：~~`tools/lib/harness.js` + `tools/run-suites.js`~~ → **本轮已完成**；
   剩余：`files` store 拆分；`store` 里那份为绕循环导入而复制的 `confirmIfDirty` 收敛到 `services/dialog`。
 
+## [Unreleased · 通知条搬到编辑区上方] — 位置/动效断言重写，顺手修好三个套件里过期的位置与数据目录假设
+
+> 用户口径：把通知组件移到**编辑界面上方**出现（像 Typora 一样），位置和本项目
+> 「检测到未保存的草稿（比磁盘文件更新）」那条横幅差不多，这样更方便、显示得也更全；
+> 出现和消失要有动效。
+
+### Changed
+
+- **通知中心：右下角浮层 → 编辑区上方的文档流顶条**（`NotificationCenter.vue` 外层容器 +
+  挂载点从 `App.vue` 移到 `EditorView.vue`，紧贴草稿横幅之下、编辑器内核之前）：
+  - 外层容器 `pointer-events-none fixed bottom-12 right-4 z-[200] flex justify-end`
+    → `pointer-events-none flex flex-none justify-center px-4 pt-3`。
+    卡片本体（**宽 384 / 圆角 6px / 图标圆角 8px**）一个字符没改 —— 那三条是被断言钉住的既有口径。
+  - 位置不再是「贴着窗口底边往上长」，而是**文档流里的一块**（`position: static`，容器正好是
+    `[data-editor-kernel]` 的前一个兄弟）。实测卡片 `top=88 / bottom=192`、与内核顶边**齐平**（间距 0）、
+    整张在视口内（`vh=821`）、状态栏顶边 `793` —— 于是**长通知不会再被窗口底边裁掉**。
+  - 正文可见高度 `max-h-[38vh]` → `max-h-[52vh]`（用户要的「显示得更全」；超出仍在卡片内滚动）。
+  - 动效方向跟着位置走：`.ntf-enter-from` / `.ntf-leave-to` 的 `translateY(10px)`
+    → `translateY(-10px) scale(0.98)`（**自上方进场、向上离场**），220ms 时长不变。
+  - **代价（如实说明）**：挂载点在 EditorView 里，所以 `/about` 这类非编辑路由上不再渲染通知条。
+    这是本次的取舍 —— 通知的产生场景（保存/导出/文件树/查找/菜单）全部发生在编辑界面，
+    而要「不遮挡正文、不被底边裁掉」就必须让它参与编辑区的布局。
+
+### Fixed — 顺着这次搬家暴露/发现的套件问题
+
+- `tools/_verify-toast-tip.js`：原来按 `.fixed.bottom-12.right-4` 找容器、断言「距底部 ≥40px /
+  距右边 ≥8px」—— 通知条不再是浮层，这些断言会变成 null 比较（**实现正确也会红**）。
+  改写为 16 条真断言：文档流证据（static + 容器紧邻内核之前）、几何（384 宽 / 整张在视口内 /
+  不压状态栏 / 在内核之上）、动效（CSS 规则 + **真实进出场 opacity 采样**）。顺手迁到 `lib/harness`。
+- `tools/_verify-link-open.js`：`card-anchored-bottom-right` → `card-shown-at-editor-top`
+  （static + 整张在视口内 + 在内核之前）。**另修两个与本轮无关的假失败**：该套件直读 SQLite 时
+  写死 `%APPDATA%\lumin\lumin.db`，读的是**用户真实 profile**，在运行器的隔离实例下恒为 `[]` ——
+  连带 `create-mode-persisted-by-click` 一起假红（59/62 → **62/62**）；改用运行器已经提供的 `LUMIN_DB`。
+- `tools/run-suites.js`：新增 `MANUAL` 排除集，把 `_verify-notify-restart.js` 移出 `--all`。
+  它是两阶段套件（`seed` → **外部硬杀 + 重启** → `check`），不带参数跑只会打印用法并 `exit 1`，
+  运行器读成 `0/0 FAIL` —— 每轮一个**假红**。该套件的真实用法与其 6 条断言保持不变。
+
+### Verification（本轮实测）
+
+| 门禁 | 结果 |
+| --- | --- |
+| `vue-tsc --noEmit` / `tsc --noEmit`（node） | exit 0 |
+| `eslint --cache .` | 0 error |
+| `electron-vite build` | exit 0（`EditorView-*.js` 2,508.71 kB，与搬家前一致） |
+| `node --test tests/*.test.mjs` | **291/291 pass** |
+| `_verify-toast-tip.js` | **16/16**（含真实动效采样：进场 0→1 用时 284ms；离场渐隐 0.939 → 257ms 后离场） |
+| `_verify-notifications.js` | **31/31** |
+| `_verify-notify-style.js` | **11/11** |
+| `_verify-notify-multiwindow.js` | **21/21** |
+| `_verify-link-open.js` | **62/62**（改前 59/62，三条全是过期假设 + 错数据目录） |
+| 截图核对（临时探针，已删） | 长通知整张可见、正文滚动条在卡片内；多条时 `‹ 1/3 ›` 与「全部关闭」正常 |
+
 ## [Unreleased · 按自查报告整改] — 质量信号/隐私/文档与编码门禁/无障碍
 
 > 用户口径：把《Lumin 自查报告 2026-09-22》里的问题都修掉。做法沿用报告里的优先级：

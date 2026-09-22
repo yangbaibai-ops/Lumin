@@ -8,6 +8,7 @@ import { useSettingsStore } from '../stores/settings'
 import { useEditorMenuStore } from '../stores/editorMenu'
 import Toolbar from '../components/Toolbar.vue'
 import StatusBar from '../components/StatusBar.vue'
+import NotificationCenter from '../components/NotificationCenter.vue'
 import TyporaEditor from '../components/editor/TyporaEditor.vue'
 import Icon from '../components/Icon.vue'
 import { measureAllCodeBlocks } from '../lib/editor/codeBlockViews'
@@ -683,6 +684,10 @@ onBeforeUnmount(() => {
         </button>
       </div>
     </Transition>
+
+    <!-- 通知中心：**编辑区上方**（像 Typora），紧接草稿横幅之下、内核之上 —— 文档流里的一块，
+         长通知不会被窗口底边裁掉，也不再挤在底部栏旁边。进出场动画见 overlays.css 的 `.ntf-*`。 -->
+    <NotificationCenter />
 
     <!-- 编辑器内核：渲染面板与源码面板常驻，模式切换仅改布局/显隐（零重建） -->
     <!-- view-restoring：恢复位置期间隐藏内容区，避免「旧位置先闪现→跳转」的抖动 -->

@@ -10,7 +10,6 @@ import { useUiStore } from './stores/ui'
 import { useSettingsStore } from './stores/settings'
 import AppSidebar from './components/AppSidebar.vue'
 import TopMenuBar from './components/TopMenuBar.vue'
-import NotificationCenter from './components/NotificationCenter.vue'
 import ModalHost from './components/ModalHost.vue'
 import SkeletonScreen from './components/SkeletonScreen.vue'
 import GlobalTooltip from './components/GlobalTooltip.vue'
@@ -137,7 +136,8 @@ onMounted(() => {
       </main>
     </div>
 
-    <NotificationCenter />
+    <!-- 通知中心不再挂在这里：它现在出现在**编辑区上方**（像 Typora，与「检测到未保存的草稿」
+         横幅同一条节奏），由 views/EditorView.vue 在工具栏之下、内核之上渲染。 -->
     <ModalHost />
     <ContextMenu />
     <EditorContextMenu />
