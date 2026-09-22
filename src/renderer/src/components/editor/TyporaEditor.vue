@@ -1,12 +1,14 @@
 <script setup lang="ts">
-import { onBeforeUnmount, watch } from 'vue'
+import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useEditor, EditorContent } from '@tiptap/vue-3'
 import type { Editor } from '@tiptap/core'
 import { buildEditorExtensions } from '../../lib/editor/extensions'
 import { openLinkTarget } from '../../lib/linkOpen'
 import { getMarkdown } from '../../lib/editor/markdownStorage'
+import { allowRemoteImage } from '../../lib/remoteImages'
 import { useEditorStore } from '../../stores/editor'
 import { useFilesStore } from '../../stores/files'
+import { useSettingsStore } from '../../stores/settings'
 import { useUiStore } from '../../stores/ui'
 
 // ─── Typora 式所见即所得编辑器（开发文档「步骤 2」的高阶封装）────────────────
@@ -19,7 +21,10 @@ const emit = defineEmits<{ (e: 'update:modelValue', value: string): void }>()
 
 const editorStore = useEditorStore()
 const files = useFilesStore()
+const settings = useSettingsStore()
 const ui = useUiStore()
+/** 编辑器容器：远程图片占位的点击/回车委托挂在这里（见 loadGuardedImage） */
+const containerRef = ref<HTMLElement | null>(null)
 
 let syncTimer: ReturnType<typeof setTimeout> | null = null
 // 卸载中标记：切换文件时旧实例销毁会触发 blur/destroy，
@@ -56,7 +61,9 @@ const editor = useEditor({
   extensions: buildEditorExtensions({
     onOpenLink: (href) => void openLinkTarget(href),
     // 图片相对路径的解析基准 = 当前文档所在目录（未命名文档为侧栏工作区，见 stores/files 的 openUntitled）
-    getDocumentDir: () => files.currentDir ?? null
+    getDocumentDir: () => files.currentDir ?? null,
+    // 远程图片默认不自动加载（隐私，见 lib/remoteImages.ts）：读设置、现取现用
+    getRemoteImagePolicy: () => settings.remoteImages
   }),
   editorProps: {
     attributes: {
@@ -188,12 +195,53 @@ function onWindowBeforeUnload(): void {
 }
 window.addEventListener('beforeunload', onWindowBeforeUnload)
 
+/**
+ * ─── 远程图片占位：点击 / 回车即加载（自查报告 H2）──────────────────────────────
+ * 渲染层把远程图渲染成 `<span class="img-guard" data-src=…>`（没有 `src` 就不会发请求）。
+ * 这里做**就地替换**：把该 src 记进会话白名单（后续重渲染直接出真图），并把占位换成 `<img>`。
+ * 不碰文档：`data-src` 只是视图层的事，保存/导出用的仍是文档里的真实 src。
+ */
+function loadGuardedImage(el: HTMLElement): void {
+  const src = el.getAttribute('data-src')
+  if (!src) return
+  allowRemoteImage(src)
+  const img = document.createElement('img')
+  img.src = src
+  img.alt = el.querySelector('.img-guard__label')?.textContent ?? ''
+  img.loading = 'lazy'
+  el.replaceWith(img)
+}
+
+function onContainerClick(e: MouseEvent): void {
+  const el = (e.target as HTMLElement | null)?.closest?.('.img-guard') as HTMLElement | null
+  if (!el) return
+  e.preventDefault()
+  loadGuardedImage(el)
+}
+
+function onContainerKeydown(e: KeyboardEvent): void {
+  if (e.key !== 'Enter' && e.key !== ' ') return
+  const el = (e.target as HTMLElement | null)?.closest?.('.img-guard') as HTMLElement | null
+  if (!el) return
+  e.preventDefault()
+  loadGuardedImage(el)
+}
+
+onMounted(() => {
+  const el = containerRef.value
+  if (!el) return
+  el.addEventListener('click', onContainerClick)
+  el.addEventListener('keydown', onContainerKeydown)
+})
+
 onBeforeUnmount(() => {
   unmounting = true
   clearTimeout(syncTimer as never)
   clearTimeout(renderTimer as never)
   clearTimeout(outlineTimer as never)
   window.removeEventListener('beforeunload', onWindowBeforeUnload)
+  containerRef.value?.removeEventListener('click', onContainerClick)
+  containerRef.value?.removeEventListener('keydown', onContainerKeydown)
 })
 
 // ── 选区浮动菜单：**已删除**（第二十五轮；审计结论见下）─────────────────────────
@@ -208,7 +256,11 @@ defineExpose({ editor, syncNow })
 </script>
 
 <template>
-  <div class="typora-container relative h-full" :class="{ 'focus-mode': ui.focusMode }">
+  <div
+    ref="containerRef"
+    class="typora-container relative h-full"
+    :class="{ 'focus-mode': ui.focusMode }"
+  >
     <!-- 编辑区 -->
     <div class="editor-scroll h-full overflow-y-auto" @scroll.passive="onScroll">
       <div

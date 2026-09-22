@@ -1011,6 +1011,43 @@ body.split-dragging {
   display: block;
   margin: 0.4em auto;
 }
+/* ── 远程图片占位（隐私闸门，见 lib/remoteImages.ts）────────────────────────
+   浏览时远程图渲染成这个占位（**没有 `src` 就不发请求**）；点击/回车就地换成真图。
+   样式刻意做成"一个空的相框 + 锁标记 + 域名"，一眼看出这里本来有张图、且被挡住了。 */
+.md-preview .img-guard {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5em;
+  max-width: 100%;
+  padding: 0.5em 0.75em;
+  margin: 0.15em 0;
+  border: 1px dashed var(--edge-strong);
+  border-radius: 10px;
+  background: var(--code-bg);
+  color: var(--ink-3);
+  font-size: 0.82em;
+  line-height: 1.4;
+  cursor: pointer;
+  user-select: none;
+}
+.md-preview .img-guard:hover {
+  border-color: var(--accent);
+  color: var(--ink-2);
+}
+.md-preview .img-guard:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+.md-preview .img-guard::before {
+  content: '🔒';
+  font-size: 1em;
+  line-height: 1;
+}
+.md-preview .img-guard__label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .md-preview .katex {
   font-size: 1.06em;
 }

@@ -281,9 +281,11 @@ function createWindow(options: WindowOpenOptions = {}): BrowserWindow {
     mainWindow.show()
   })
 
-  // 外部链接交给系统浏览器
+  // 外部链接交给系统浏览器 —— 一律先过 `safeExternalUrl` 的 scheme 白名单
+  //（不许自己写 `/^https?:\/\//` 这种就地判据：口径只该有一处，见 services/links.ts）
   mainWindow.webContents.setWindowOpenHandler((details) => {
-    if (/^https?:\/\//.test(details.url)) shell.openExternal(details.url)
+    const safe = links.safeExternalUrl(details.url)
+    if (safe) void shell.openExternal(safe)
     return { action: 'deny' }
   })
 

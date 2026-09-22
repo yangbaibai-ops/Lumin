@@ -22,6 +22,11 @@ export interface AppSettings {
   autoSaveInterval: number // 秒
   /** 原生菜单栏（窗口顶部 File/Edit 等）是否可见，默认开 */
   nativeMenuBar: boolean
+  /**
+   * 远程图片加载策略（自查报告 H2）：`click` 默认（点一下才加载，隐私优先）/ `always` 直接加载。
+   * 实现见 `src/renderer/src/lib/remoteImages.ts`。
+   */
+  remoteImages: 'click' | 'always'
   fontSize: number
   lineHeight: number
   fontFamily: string

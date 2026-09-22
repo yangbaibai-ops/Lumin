@@ -16,6 +16,8 @@
     "typecheck:web": "vue-tsc --noEmit -p tsconfig.web.json --composite false",
     "typecheck": "npm run typecheck:node && npm run typecheck:web",
     "test:unit": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test \"tests/*.test.mjs\"",
+    "test:suites": "node tools/run-suites.js",
+    "test:suites:all": "node tools/run-suites.js --all",
     "ci": "npm run typecheck && npm run lint && npm run test:unit && electron-vite build",
     "start": "electron-vite preview",
     "dev": "electron-vite dev --watch",
@@ -23,8 +25,8 @@
     "postinstall": "electron-builder install-app-deps",
     "build:unpack": "npm run build && electron-builder --dir",
     "build:win": "npm run build && electron-builder --win",
-    "build:mac": "npm run build && electron-builder --mac",
-    "build:linux": "npm run build && electron-builder --linux",
+    "build:mac": "node tools/refuse-unverified-platform.js mac",
+    "build:linux": "node tools/refuse-unverified-platform.js linux",
     "dev:isolated": "set LUMIN_DEV_PROFILE=1&& electron-vite dev --watch"
   },
   "engines": {

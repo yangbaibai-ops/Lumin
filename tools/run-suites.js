@@ -32,6 +32,17 @@ const path = require('path')
 const ROOT = path.join(__dirname, '..')
 const TOOLS = __dirname
 
+/**
+ * 「确实没有断言可产出」的套件白名单（**必须写理由**）。
+ *
+ * 背景（自查报告 H1）：判定只看退出码时，一个没产出断言的套件会显示 `0/0 PASS`，
+ * 与「全部通过」只差一个数字。现在零断言一律记 NOASSERT 并让命令失败；
+ * 如果某个套件天生无事可断言（例如它只做一次性清理），把它加到这里并写明原因。
+ */
+const EMPTY_OK = new Set([
+  // 目前为空：所有已知的 0 断言套件都是**该修或该删**的（见 NOASSERT 汇总行）。
+])
+
 /** 默认跑的套件：不 import /src/...、单实例可跑完、覆盖核心回归面 */
 const DEFAULT_SUITES = [
   // ⚠️ 自管实例的套件必须排在**最前面**：它们自己起/杀 Electron（3 轮），
@@ -57,6 +68,11 @@ const DEFAULT_SUITES = [
   '_verify-inline-formats.js', // 行内格式矩阵：工具栏/快捷键/手打标记/组合（标记字符一个不能少）
   '_verify-math.js', // 数学公式（行内 `$…$` / 块级 `$$…$$`）：KaTeX 渲染 + 原文逐字保留
   // 两面一致性（实时渲染 ⇄ 源码）三层：见 docs/wysiwyg-test-plan.md
+  // ── 自查报告整改时接入的四条（原来是「0 断言假通过」或新功能）──
+  '_verify-remote-image.js', // 远程图片隐私闸门：不自动加载 / 点击加载 / 导出仍给真实 src
+  '_verify-a11y.js', // 无障碍基线：icon-only 按钮必须有可访问名 + 状态属性一致
+  '_verify-editor-menu.js', // 编辑器右键菜单（两级结构、分类悬停、动作齐全）
+  '_verify-i18n.js', // 切换语言后顶部菜单文字随之变化（三语）
   '_verify-surfaces.js', // L2 双面端到端矩阵：切面无副作用 / 位置语义 / 状态语义 / 渲染结构
   '_verify-surface-fuzz.js', // L3 生成式语料往返（可复现种子 + 失败最小化）
   '_verify-surface-stress.js' // L4 极端/边界/压力（含 1MB 与 2000 代码块的耗时基线）
@@ -168,18 +184,33 @@ function runSuite(file, port, timeoutMs, userData) {
     maxBuffer: 32 * 1024 * 1024
   })
   const raw = `${r.stdout ?? ''}${r.stderr ?? ''}`
-  // 汇总行两种写法都认：新套件的 `--- N/M PASS`，老套件的 `TOTAL n PASS x FAIL y`
+  // 汇总行三种写法都认：新套件的 `--- N/M PASS`、老套件的 `TOTAL n PASS x FAIL y`、
+  // **以及更老的「逐行 `PASS x` / `FAIL y` 但从不打汇总行」那一批**（自查报告 H1 的第二种成因：
+  // 这类套件其实一直在断言，只是运行器把它们的成绩读成 0/0 —— 实测 `_verify-editor-menu.js`
+  // 51 条、`_verify-notify-style.js` 11 条、`_verify-cb-no-active-line.js` 12 条都是这样被"清零"的）。
   let pass = 0
   let total = 0
+  let fail = 0
   const bar = [...raw.matchAll(/---\s*(\d+)\/(\d+)\s*PASS/g)].pop()
   if (bar) {
     pass = Number(bar[1])
     total = Number(bar[2])
+    fail = Math.max(0, total - pass)
   } else {
     const tot = [...raw.matchAll(/TOTAL\s+(\d+)\s+PASS\s+(\d+)\s+FAIL\s+(\d+)/g)].pop()
     if (tot) {
       pass = Number(tot[2])
       total = Number(tot[1]) - Number(tot[3])
+      fail = Number(tot[3])
+    } else {
+      const lines = raw.split('\n')
+      const okLines = lines.filter((l) => /^\s*PASS\b/.test(l)).length
+      const badLines = lines.filter((l) => /^\s*FAIL\b/.test(l)).length
+      if (okLines + badLines > 0) {
+        pass = okLines
+        fail = badLines
+        total = okLines + badLines
+      }
     }
   }
   const skipped = /NO-APP-PAGE|SKIP: 没有可用窗口|SKIP: 9222 上已有|NO_PINIA|INSTANCE-NOT-READY/.test(raw)
@@ -187,6 +218,7 @@ function runSuite(file, port, timeoutMs, userData) {
     code: typeof r.status === 'number' ? r.status : 1,
     pass,
     total,
+    fail,
     raw,
     skipped: skipped && !total
   }
@@ -240,12 +272,25 @@ async function main() {
       }
     }
     const res = runSuite(file, args.port, args.timeoutMs, userData)
-    // 判定以**套件退出码**为准：套件里 SKIP（已知缺口、缺 dev server）不算失败
-    const status = res.skipped || res.code === 0 ? (res.skipped ? 'SKIP' : 'PASS') : 'FAIL'
+    // 判定以**套件退出码**为准；但「打印了 FAIL 行」也必须算失败
+    // （老套件里存在"只打印、退出码仍 0"的写法，实测 `_verify-notifications.js` 就是这一类）。
+    let status = res.skipped || (res.code === 0 && res.fail === 0) ? (res.skipped ? 'SKIP' : 'PASS') : 'FAIL'
+    /**
+     * ⚠️ **零断言 = NOASSERT，不算通过**（自查报告 H1）。
+     *
+     * 原来只看退出码：一个套件如果**压根没产出断言**（没打印 `--- N/M PASS` / `TOTAL` 行，
+     * 退出 0），终端上显示 `0/0 PASS`，和「全部通过」只差一个数字 —— 于是"绿灯"什么都证明不了。
+     * 实测：非默认矩阵里抽样 8 个套件，**8/8 都是 0/0 却被记成 PASS**
+     * （`_verify-i18n` / `_verify-editor-menu` / `_verify-export-fix2` / `_verify-alt-menu` /
+     * `_verify-toast-tip` / `_verify-notifications` / `_verify-notify-style` / `_verify-cb-no-active-line`）。
+     * 现在把它们单列为 NOASSERT 并让整体退出码非零，逼着人**要么修好、要么删掉**；
+     * 确实"无事可断言"的套件请写进 EMPTY_OK 并注明理由。
+     */
+    if (status === 'PASS' && res.total === 0 && !EMPTY_OK.has(file)) status = 'NOASSERT'
     console.log(
       `\r${status} ${file} | ${res.pass}/${res.total}${selfManaged ? '（自管实例）' : ''}${
         devNeeded ? '（需要 dev server）' : ''
-      }`
+      }${status === 'NOASSERT' ? '  ← 没有产出任何断言，等于没测' : ''}`
     )
     if (status === 'FAIL') {
       const tail = res.raw
@@ -262,10 +307,18 @@ async function main() {
   const failed = rows.filter((r) => r.status === 'FAIL')
   const pass = rows.filter((r) => r.status === 'PASS')
   const skipped = rows.filter((r) => r.status === 'SKIP')
+  const noassert = rows.filter((r) => r.status === 'NOASSERT')
   if (!args.keep) startInstance(args.port, userData, true) // 收尾：别把实例留在 9222 上
-  console.log(`\nTOTAL ${rows.length} PASS ${pass.length} FAIL ${failed.length} SKIP ${skipped.length}`)
+  console.log(
+    `\nTOTAL ${rows.length} PASS ${pass.length} FAIL ${failed.length} SKIP ${skipped.length} NOASSERT ${noassert.length}`
+  )
   if (failed.length) console.log('FAILED ' + failed.map((r) => r.file).join(', '))
-  return failed.length ? 1 : 0
+  if (noassert.length) {
+    console.log('NOASSERT（没有产出断言，等于没测）' + noassert.map((r) => r.file).join(', '))
+    console.log('  → 修好它，或删掉它；确实无事可断言的请加进 run-suites.js 的 EMPTY_OK 并写理由。')
+  }
+  // NOASSERT 与 FAIL 一样让命令失败：否则「绿灯」继续骗人
+  return failed.length || noassert.length ? 1 : 0
 }
 
 main()

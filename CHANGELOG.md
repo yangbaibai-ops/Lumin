@@ -77,6 +77,103 @@
 - **工程化**：~~`tools/lib/harness.js` + `tools/run-suites.js`~~ → **本轮已完成**；
   剩余：`files` store 拆分；`store` 里那份为绕循环导入而复制的 `confirmIfDirty` 收敛到 `services/dialog`。
 
+## [Unreleased · 按自查报告整改] — 质量信号/隐私/文档与编码门禁/无障碍
+
+> 用户口径：把《Lumin 自查报告 2026-09-22》里的问题都修掉。做法沿用报告里的优先级：
+> **P0（当天可完成）全做，P1 做掉，P2/P3 的结构性重构按报告结论留待单独排期**（见文末「本轮未动」）。
+
+### Fixed — 硬伤
+
+- **H1 质量信号失真：零断言被当成通过**（`tools/run-suites.js`）
+  * 判定原来只看退出码，于是「没产出任何断言」的套件显示 `0/0 PASS`，与「全绿」只差一个数字；
+    实测抽样 8 个非默认矩阵套件 **8/8 都是 0/0 却被记成 PASS**。
+  * 现在：`total === 0 && PASS` → **`NOASSERT`**，汇总行单列并让命令**非零退出**（要豁免得写进
+    `EMPTY_OK` 并注明理由）。
+  * **同时发现第二种成因并修掉**：`_verify-editor-menu.js`（51 条）、`_verify-notify-style.js`（11 条）、
+    `_verify-cb-no-active-line.js`（12 条）、`_verify-notifications.js`（31 条）其实一直在断言，
+    只是用老式「逐行 `PASS x` / `FAIL y`」而没有汇总行，被运行器读成 0/0。现在解析器认这种格式，
+    并且**打印了 FAIL 行即判失败**（即使退出码是 0）。
+  * 三个真的只打印不断言的套件补上了断言：`_verify-i18n.js`（5 条：两份语言包确实不同、菜单数量一致、
+    EN 含 File/Help、ZH 含 文件/帮助）、`_verify-alt-menu.js`（3 条：Alt+F 能打开应用内菜单、含文件菜单项）、
+    `_verify-toast-tip.js`（3 条：toast 高于状态栏、右侧留白、tooltip 完整在视口内）。
+  * 两个**永远不可能生效**的导出套件删掉（`_verify-export-fix.js` / `_verify-export-fix2.js`：
+    它们 monkey-patch `contextBridge` 暴露的**只读**对象），其意图改成**纯函数单测**
+    `tests/exportPayload.test.mjs`（5 条）—— 顺带把构造逻辑抽成
+    `src/renderer/src/lib/exportPayload.ts`，并用「先证明 Proxy 本身 clone 不了」的有牙断言钉死：
+    传给 IPC 的必须是普通对象（这正是当年「导出 PDF 必失败」的根因）。
+  * 默认矩阵接入 4 条：`_verify-remote-image.js` / `_verify-a11y.js`（新增）+
+    `_verify-editor-menu.js` / `_verify-i18n.js`（复活）；新增脚本 `npm run test:suites`
+    与 `test:suites:all`（`ci` 保持无头安全，不含 GUI 套件）。
+- **H2 远程图片默认无条件加载（隐私）**
+  * 新增设置 `remoteImages`（`click` 默认 / `always`），实现见 `src/renderer/src/lib/remoteImages.ts`：
+    浏览时远程图渲染成 `<span class="img-guard" data-src=…>` —— **没有 `src` 属性就不会发请求**；
+    点击/回车放行（会话级白名单）并就地换成真 `<img>`；本地图与 `data:` 内联图不受影响。
+  * **导出必须放行**：`getHTML()` 期间由 `beginExportRender()/endExportRender()` 开一个同步窗口，
+    否则导出的文档里图片全丢 —— 这条有单测，也有套件断言。
+  * i18n 三语各加 3 个键（`settings.remoteImages` / `settings.remoteImagesHint` /
+    `editor.imageRemoteHidden`）；占位样式见 `style.css` 的 `.md-preview .img-guard`。
+  * 验收：新增 `tools/_verify-remote-image.js` **7/7**（DOM 里没有任何 http(s) 的 `img`、
+    占位带 `data-src`、`getHTML()` 仍含真实 src、点击后出真图、策略 `always` 直接出图）。
+- **H3 文档与代码一致性没有门禁**
+  * 新增单测 `tests/docsClaims.test.mjs`：① README 正文不许再出现已移除功能（气泡菜单 / 下划线 /
+    Underline）；② README、手册、台账里用代码体引用的仓库路径必须存在（含简写根的宽容解析；
+    历史叙述行、CHANGELOG 这类追加式日志不查）；③ 三语包键数一致。
+  * 用它查出并修掉 4 处真实漂移：手册的 i18n 路径与 fallback（`renderer/src/i18n/locales/*.json` →
+    `src/shared/i18n/*.json`，`fallbackLocale` 早已是 zh-CN）、两个早已移除的临时探针引用、
+    `build/icon.ico`（已删的模板占位图）、`app-update.yml`（打包产物，仓库里没有）。
+  * 另修 `src/main/fileOps.ts` 的陈旧注释：「本仓库连本地历史都还没有」——本地历史早已落地
+    （`database.ts` 历史表 + `ipc.ts` 写盘钩子），现在写清两层的分工。
+- **H4 源码编码没有门禁（一次真实事故）**
+  * 新增单测 `tests/encodingGuard.test.mjs`：扫 `src/tests/tools/docs/build/resources` + 根文档，
+    查 ① `U+FFFD`、② 正文里的 GBK↔UTF-8 双重编码特征（跳过行内代码/引用块，并豁免本文件）、
+    ③ 非 `.ps1` 文本文件不许带 BOM（`.ps1` 反过来要求带，见 `tests/tooling.test.mjs`）。
+  * **它立刻抓到 7 个带 BOM 的文件**（4 个 `.ps1` + 3 个 `_verify-notify-*`），已按规则分别处理；
+    写这份门禁的过程中我自己又用 PowerShell 往返改坏了一次文件（mojibake + BOM），
+    被它当场拦住 —— 这条门禁的价值是实测过的。
+
+### Added — 报告里的 P1/P2 小项
+
+- **O5 无障碍基线**：新增 `tools/_verify-a11y.js`（6/6）—— icon-only 按钮必须有可访问名、
+    根元素有 `lang` 与主题类、侧栏分段控件的 `aria-label`/`aria-selected` 齐全、
+    查找栏展开后 `aria-expanded` 一致。实测当前 0 个缺名按钮。
+- **O6 安全与数据安全断言**：新增 `tests/guards.test.mjs`（5 条）—— 窗口安全三件套不许回退、
+    CSP 必须 `default-src 'self'` + `script-src 'self'`、`shell.openExternal` 一律先过 scheme 白名单、
+    用户文档落盘必须走 `fileOps.writeFile`（直接写盘的文件逐个登记并写理由）、
+    卸载不许删用户数据。**顺带修了一处真实口径分裂**：`src/main/index.ts` 的
+    `setWindowOpenHandler` 原来自己写了 `/^https?:\/\//` 就地判据，现在统一走 `links.safeExternalUrl()`。
+- **S5 不再产出未验证的平台包**：`build:mac` / `build:linux` 改成
+    `tools/refuse-unverified-platform.js` —— 直接失败并打印「为什么不做、要做得先补什么」，
+    而不是让人不小心发出一个没验证过的包。
+
+### Fixed — 整改过程中被既有测试抓住的两处回归（如实记录）
+
+- `resources/icon.png` 换成交付原图后，**应用内标识（内嵌 128×128 位图）没同步** ——
+  被 `tests/toolIcon.test.mjs` 抓住，已跑 `node tools/sync-app-icon.js` 重新生成
+  （这是上一轮换图标时漏掉的一步）。
+- 我一度把 4 个 `.ps1` 的 BOM 当成「多余」删掉，被 `tests/tooling.test.mjs` 抓住：
+  Windows PowerShell 5.1 读非 ASCII 脚本**必须**有 BOM。已复原，并把例外写进编码门禁。
+
+### 本轮未动（按报告结论留待单独排期）
+
+- **S1**（tools/ 比 src/ 大、无统一 harness）、**S2**（`style.css` 2,160 行、32 个组件仅 4 个 scoped）、
+  **S3**（编辑器内核 2,533 行 + 62 处 `setTimeout`）、**S4**（`database.ts` 971 行、无版本化迁移）：
+  都是多天量级、且 S2 需要三主题目视核对的重构，报告里已给出做法与成本。
+- **O1**（mermaid 家族 3.5MB 按需收窄）、**O2**（代码块 CodeMirror 虚拟化）、**O3**
+  （`@codemirror/language-data` 1.4MB 取舍）：报告结论是「需要拍板」，未擅自改行为。
+- **O4**（主进程启动后置项 10–40ms）：报告结论是「不建议做」，维持原样。
+
+### Verification
+
+| 门禁 | 结果 |
+| --- | --- |
+| `npm run test:unit` | **286/286**（本轮 +23：exportPayload 5 / encodingGuard 4 / docsClaims 3 / remoteImages 6 / guards 5；另有既有 263 条全绿） |
+| `vue-tsc` / `tsc` / `eslint --cache .` / `electron-vite build` | exit 0 / exit 0 / **0 error 0 warning** / exit 0 |
+| `tools/_verify-remote-image.js` | **7/7** |
+| `tools/_verify-a11y.js` | **6/6** |
+| 复活的旧套件 | `_verify-editor-menu.js` **51/51**、`_verify-notifications.js` **31/31**、`_verify-cb-no-active-line.js` **12/12**、`_verify-notify-style.js` **11/11**、`_verify-i18n.js` **5/5**、`_verify-alt-menu.js` **3/3**、`_verify-toast-tip.js` **3/3** |
+| 回归批（image 相关改动 + 相邻面） | `_verify-remote-image.js` 7/7 · `_verify-a11y.js` 6/6 · `_verify-editor-menu.js` 51/51 · `_verify-i18n.js` 5/5 · `_verify-local-media.js` 10/10 · `_verify-find-replace.js` 24/24 · `_verify-surfaces.js` 37/37 · `_verify-notifications.js` 31/31；两个**既有**批次敏感项：`_verify-inline-formats.js` 批量里 179/182、**单独跑 182/182**（前一个套件留下的剪贴板/实例状态影响粘贴夹具），`_verify-md-fidelity.js` 批量里退出码非零但自身计数 `102 PASS 101 FAIL 0 SKIP 1`、**单独跑退出码 0** —— 两者都与本轮改动无关（单独跑全绿），已记录为「套件对批次状态敏感」这一类既有问题 |
+| `run-suites.js` 的 NOASSERT 门禁自检 | 故意点名两个空断言套件 → 显示 `NOASSERT` 且退出码 1 |
+
 ## [Unreleased · 应用图标按交付资产重新装档] — 母图换成交付原图，ICO 补到 11 档
 
 > 用户口径：桌面 `Lumin图标/` 里给了 `png/` 与 `ico/` 两套（各 36 个尺寸），

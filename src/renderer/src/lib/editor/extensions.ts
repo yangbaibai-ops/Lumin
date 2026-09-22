@@ -13,6 +13,9 @@ import { TableFidelity } from './tableMarkdown'
 import TaskItem from '@tiptap/extension-task-item'
 import Placeholder from '@tiptap/extension-placeholder'
 import { imageSrcForDoc } from '../imageSrc'
+import { needsRemotePermission } from '../remoteImages'
+import type { RemoteImagePolicy } from '../remoteImages'
+import i18n from '../../i18n'
 import Image from '@tiptap/extension-image'
 import { Markdown } from 'tiptap-markdown'
 import { TyporaMarkers } from './markers'
@@ -67,12 +70,21 @@ const CodeQuiet = Code.extend({
  */
 let documentDirProvider: () => string | null = () => null
 
+/**
+ * 远程图片加载策略的提供者（自查报告 H2）：宿主注入 settings 里的 `remoteImages`；
+ * 默认 `'click'` = 不自动加载远程图（隐私优先，与 Typora / VS Code 同口径）。
+ * 同样是「读的时候现取」：用户在设置里改了开关，下一帧渲染就生效，不用重建编辑器。
+ */
+let remoteImageProvider: () => RemoteImagePolicy = () => 'click'
+
 /** 编辑器扩展集组装入参（宿主可注入的少量应用级行为） */
 export interface EditorExtensionOptions {
   /** Ctrl/Cmd+左键点链接时的打开逻辑（默认交系统默认浏览器） */
   onOpenLink?: (href: string) => void
   /** 当前文档所在目录（图片相对路径的解析基准）；返回 null = 不解析 */
   getDocumentDir?: () => string | null
+  /** 远程图片加载策略（`click` 默认 / `always`）；见 lib/remoteImages.ts */
+  getRemoteImagePolicy?: () => RemoteImagePolicy
 }
 
 /** 默认链接打开：只把网址交给系统默认浏览器（应用内由 lib/linkOpen.ts 覆盖） */
@@ -150,6 +162,26 @@ export const editorExtensions: Extensions = [
   }).extend({
     renderHTML({ HTMLAttributes }) {
       const src = imageSrcForDoc(String(HTMLAttributes.src ?? ''), documentDirProvider())
+      // 远程图片默认**不加载**（隐私，见 lib/remoteImages.ts）：换成带 `data-src` 的占位元素，
+      // 没有 `src` 属性浏览器就不会发请求。点击占位 → 放行并在 DOM 里就地换成真图。
+      // 导出 / getHTML() 期间由 beginExportRender() 放行，导出的文档里图片照旧齐全。
+      if (needsRemotePermission(src, remoteImageProvider())) {
+        // 占位元素上不能带 `src`（带了浏览器就会去请求），原 src 放到 `data-src`
+        const rest = { ...(HTMLAttributes as Record<string, unknown>) }
+        delete rest.src
+        return [
+          'span',
+          {
+            ...rest,
+            class: 'img-guard',
+            'data-src': src,
+            title: i18n.global.t('editor.imageRemoteHidden'),
+            role: 'button',
+            tabindex: '0'
+          },
+          ['span', { class: 'img-guard__label' }, String(HTMLAttributes.alt ?? src)]
+        ]
+      }
       return ['img', { ...HTMLAttributes, src, loading: 'lazy' }]
     }
     // markdown 序列化用 tiptap-markdown 的默认实现（prosemirror-markdown 的 image 规则：
@@ -226,6 +258,7 @@ export const editorExtensions: Extensions = [
  */
 export function buildEditorExtensions(options: EditorExtensionOptions = {}): Extensions {
   documentDirProvider = options.getDocumentDir ?? ((): string | null => null)
+  remoteImageProvider = options.getRemoteImagePolicy ?? ((): RemoteImagePolicy => 'click')
   return editorExtensions.map((e) =>
     e.name === 'typoraPointer'
       ? e.configure({ onOpenLink: options.onOpenLink ?? defaultOpenLink })

@@ -32,6 +32,13 @@ export const defaultSettings: AppSettings = {
   /** 快捷工具栏：默认显示，项目/顺序取目录里的默认值（见 shared/toolbarItems.ts） */
   toolbarVisible: true,
   toolbarItems: [...DEFAULT_TOOLBAR_ITEMS],
+  /**
+   * 远程图片（`![](https://…)`）的加载策略（自查报告 H2）：
+   *   `'click'`（默认）＝ 先挡成占位、点一下才加载 —— 打开别人的笔记不会自动外联（隐私）；
+   *   `'always'` ＝ 旧行为，直接加载。
+   * 见 `src/renderer/src/lib/remoteImages.ts`；导出 HTML 用的是真实 src，不受此设置影响。
+   */
+  remoteImages: 'click' as 'click' | 'always',
   sidebarVisible: true,
   sidebarWidth: 264,
   splitRatio: 0.5,

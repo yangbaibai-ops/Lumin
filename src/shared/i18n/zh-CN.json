@@ -205,7 +205,8 @@
     "dirtyConfirmTitle": "有未保存的更改",
     "dirtyConfirmBody": "当前文档有未保存的更改，确定要离开吗？",
     "deleteConfirmTitle": "删除确认",
-    "deleteConfirmBody": "确定要删除「{name}」吗？此操作不可恢复。"
+    "deleteConfirmBody": "确定要删除「{name}」吗？此操作不可恢复。",
+    "imageRemoteHidden": "远程图片已隐藏（点击加载）"
   },
   "settings": {
     "title": "设置",
@@ -265,7 +266,9 @@
     "historyHint": "每次写盘前留一份「即将被覆盖」的内容，误保存可回滚。关掉后不再新增快照，已有历史仍可查看。",
     "historyLimit": "每个文件最多保留",
     "historyMaxAge": "快照保留时长",
-    "historyDays": "{days} 天"
+    "historyDays": "{days} 天",
+    "remoteImages": "远程图片",
+    "remoteImagesHint": "默认不自动加载（点一下才加载，保护隐私）"
   },
   "toolbar": {
     "hide": "关闭工具栏",

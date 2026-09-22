@@ -336,7 +336,7 @@ Tiptap v3 官方已无 Vue 版 BubbleMenu 组件，本项目当时自绘（`Typo
 
 **多语言（vue-i18n）**：
 
-- 词条按语言分文件（`src/renderer/src/i18n/locales/zh-CN.json` / `en-US.json`），`createI18n({ legacy: false, fallbackLocale: 'en-US' })`——composition API 模式（模板里 `$t()` / 脚本里 `useI18n()`）；
+- 词条按语言分文件（`src/shared/i18n/zh-CN.json` / `en-US.json` / `ru-RU.json`——**第二十五轮从 `src/renderer/src/i18n/locales/` 移到这里**，并改成「静态只留 zh-CN、其余由 `ensureLanguage()` 在切换前拉取」），`createI18n({ legacy: false, fallbackLocale: 'zh-CN' })`——composition API 模式（模板里 `$t()` / 脚本里 `useI18n()`）；
 - `setLanguage(lang)` 同时切换 i18n locale 与 `<html lang>`；
 - UI 文案全部走词条，**编辑器文档内容绝不经过 i18n**（文档是用户数据，不是 UI 文案）——这条边界是解耦的关键。
 
@@ -630,7 +630,7 @@ tr.replace(0, doc.content.size, new Slice(Fragment.fromArray(children), 0, 0))
 
 **补丁：字面量语义落地 ×3（本次）**：① **逐字符打字成样式**——打字识别正则（`typoraInlineMarks.ts` PATTERN/PATTERN_TEST）单星分支加 lookaround `(?<!\*)\*([^*\n]+?)\*(?!\*)`，杜绝输入 `**5**` 到中途 `**5*` 时把 `*5*` 误切为斜体（残星 + 序列化 `\*` 转义）；逐字输入 `*`,`*`,`5`,`*`,`*` 的最终产物为粗体 `**5**`、源码零转义。② **标记内回车字面量切段**（见上方坑位 6）。③ **行首粘贴不裂段**——光标位于构造起点（`|**5**`，pos=run.start）或文档首段边界（pos 0）粘贴内联文本时，PM 把插入合并进当前段落、归一化容错，得到同段 `2**5**`（不再出现 `2\n**5**` 两段）。验证：CDP 实测脚本（`tools/probe-three.js`，验证毕移除）三项断言全过 + 全量矩阵 77/77 全绿。
 
-**补丁：构造边界打字不失粗（本次）**：光标落在粗体 `**5**` 的构造起点打字 `2`，此前因 mdMarker 继承粘连（坑位 7）导致整段字面量、渲染失粗、刷新才恢复；新增 `repairPollutedMarkers` 拆回普通文本后，起点/终点打字均保留粗体（`2**5**`、`2**5**3` 且 `strong` 内容为 `5`），光标移出折叠为纯粗体。验证：`tools/probe-boundary-type.js` 三场景全过 + 矩阵新增 G 阶段 3 项断言，80/80 全绿。
+**补丁：构造边界打字不失粗（本次）**：光标落在粗体 `**5**` 的构造起点打字 `2`，此前因 mdMarker 继承粘连（坑位 7）导致整段字面量、渲染失粗、刷新才恢复；新增 `repairPollutedMarkers` 拆回普通文本后，起点/终点打字均保留粗体（`2**5**`、`2**5**3` 且 `strong` 内容为 `5`），光标移出折叠为纯粗体。验证：`tools/probe-boundary-type.js`（临时探针，验证毕已移除）三场景全过 + 矩阵新增 G 阶段 3 项断言，80/80 全绿。
 
 ### 4.14 鼠标语义：Ctrl/Cmd + 左键 = 普通点击（本次）
 
@@ -1486,7 +1486,7 @@ docs/typora-wysiwyg-manual.md   # 本文档
 **排查发现的三个真问题**：
 
 1. **窗口图标以前只在 Linux 设置**：`src/main/index.ts` 里是 `...(process.platform === 'linux' ? { icon } : {})` —— Windows 下等于没设，任务栏按钮退化用 electron.exe 自带的图标（开发态看着就是 Electron 的 logo）。所以之前换 `icon.png` 对 Windows 根本没生效。
-2. **模板自带的旧图标还在，而且是打包默认读取的位置**：`build/icon.ico`（123 KB）、`build/icon.png`、`build/icon.icns` 是 electron-vite 模板的占位图（旧设计），而 electron-builder 默认就去读 `build/icon.ico` —— 一旦打包就会出现「开发态一个新图标、安装后一个旧图标」。
+2. **模板自带的旧图标还在，而且是打包默认读取的位置**：`build/icon.ico`（123 KB，**已删除**）、`build/icon.png`、`build/icon.icns` 是 electron-vite 模板的占位图（旧设计），而 electron-builder 默认就去读 `build/icon.ico` —— 一旦打包就会出现「开发态一个新图标、安装后一个旧图标」。
 3. **同一个应用读两个文件**：窗口图标读 `resources/icon.png`，而开始菜单快捷方式与跳转列表读 `resources/icon.ico`。
 
 **改法**：
@@ -1595,7 +1595,7 @@ parseLaunchIntent(argv, { appPath, cwd }): LaunchIntent
 
 **⑤ 新增 `src/main/services/updater.ts`：更新能力「装好但默认关闭」**
 
-- 只在**打包态**且**真有发布通道**时才是可用状态：`updateChannelConfigured()` 要求 `resources/app-update.yml` 存在、且 url 主机不是 `example.com/example.org/example.net/localhost` 这类占位值 —— 否则「检查更新」只会永远失败；
+- 只在**打包态**且**真有发布通道**时才是可用状态：`updateChannelConfigured()` 要求打包产物里的 `app-update.yml`（electron-builder 生成，仓库里没有这个文件）存在、且 url 主机不是 `example.com/example.org/example.net/localhost` 这类占位值 —— 否则「检查更新」只会永远失败；
 - `autoDownload = false`：**不偷偷下 100MB 安装包**；`autoInstallOnAppQuit = true` 只在用户已选择下载后才在退出时安装；
 - 检查条件是 `app.isPackaged && settings.autoCheckUpdate && updateChannelConfigured()`，即默认设置（`autoCheckUpdate: false`）下**一条网络请求都不发**；
 - 状态经 `update:status` 推给渲染层，渲染层用通知中心呈现（文案在 i18n 里，主进程只传数据 —— 与既有约定一致，§4.32）。

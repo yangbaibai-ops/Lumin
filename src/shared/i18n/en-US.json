@@ -205,7 +205,8 @@
     "dirtyConfirmTitle": "Unsaved changes",
     "dirtyConfirmBody": "This document has unsaved changes. Leave anyway?",
     "deleteConfirmTitle": "Confirm deletion",
-    "deleteConfirmBody": "Delete \"{name}\"? This cannot be undone."
+    "deleteConfirmBody": "Delete \"{name}\"? This cannot be undone.",
+    "imageRemoteHidden": "Remote image hidden (click to load)"
   },
   "settings": {
     "title": "Settings",
@@ -265,7 +266,9 @@
     "historyHint": "Keeps the content about to be overwritten before each save so a bad save can be rolled back. Turning it off stops new snapshots; existing ones stay viewable.",
     "historyLimit": "Snapshots per file",
     "historyMaxAge": "Keep snapshots for",
-    "historyDays": "{days} days"
+    "historyDays": "{days} days",
+    "remoteImages": "Remote images",
+    "remoteImagesHint": "Do not load automatically (click to load; protects privacy)"
   },
   "toolbar": {
     "hide": "Hide toolbar",

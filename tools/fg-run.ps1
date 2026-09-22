@@ -1,4 +1,4 @@
-﻿# tools/fg-run.ps1 <node-script> [args...] - foreground Electron, then run a node script.
+# tools/fg-run.ps1 <node-script> [args...] - foreground Electron, then run a node script.
 param([Parameter(Mandatory=$true)][string]$Script, [Parameter(ValueFromRemainingArguments=$true)][string[]]$Rest)
 Add-Type -TypeDefinition @"
 using System;

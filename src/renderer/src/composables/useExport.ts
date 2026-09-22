@@ -4,11 +4,14 @@ import { useUiStore } from '../stores/ui'
 import { useEditorStore } from '../stores/editor'
 import { useNotificationsStore } from '../stores/notifications'
 import { getExportCss, renderMermaidInHtml } from '../lib/export'
+import { exportRequest } from '../lib/exportPayload'
+import type { ExportFormat } from '../lib/exportPayload'
+import { beginExportRender, endExportRender } from '../lib/remoteImages'
 import i18n from '../i18n'
 
 // ─── 导出（渲染层）：基于 Tiptap getHTML() 输出 ────────────────────────────
 export function useExport(): {
-  runExport: (format: 'pdf' | 'html' | 'word' | 'epub') => Promise<void>
+  runExport: (format: ExportFormat) => Promise<void>
 } {
   const files = useFilesStore()
   const ui = useUiStore()
@@ -19,46 +22,57 @@ export function useExport(): {
   async function buildExportHtml(): Promise<{ html: string; title: string } | null> {
     if (!files.current) return null
     const editor = editorStore.instance
-    const raw = editor ? editor.getHTML() : `<p>${files.current.content.replace(/\n/g, '<br>')}</p>`
+    // 远程图片的隐私闸门在浏览时把 `<img src>` 换成了占位；导出要的是**真实 HTML**，
+    // 所以在这段同步窗口里放行（见 lib/remoteImages.ts 的 beginExportRender）。
+    let raw: string
+    beginExportRender()
+    try {
+      raw = editor ? editor.getHTML() : `<p>${files.current.content.replace(/\n/g, '<br>')}</p>`
+    } finally {
+      endExportRender()
+    }
     const html = await renderMermaidInHtml(raw, settings.resolveTheme())
     return { html, title: files.current.name.replace(/\.(md|markdown|txt)$/i, '') }
   }
 
-  async function runExport(format: 'pdf' | 'html' | 'word' | 'epub'): Promise<void> {
+  async function runExport(format: ExportFormat): Promise<void> {
     const payload = await buildExportHtml()
     if (!payload) return
     try {
       // CSS（含 KaTeX 那份）按需取：只在真的要导出时才加载（见 lib/export.ts）。
       // 放在 try 里面：拉取失败也要变成一条可见的失败通知，而不是静默什么都不发生。
       const exportCss = await getExportCss()
+      // 请求载荷的构造收口在 lib/exportPayload.ts（纯函数、有单测）：它把 Pinia 代理
+      // **逐个字段摊平成普通对象** —— 代理过不了 IPC 的结构化克隆（"could not be cloned"），
+      // 这是当年「导出 PDF 必失败」的根因。
+      const req = exportRequest(
+        format,
+        { title: payload.title, html: payload.html, css: exportCss },
+        {
+          pdfMargin: settings.export.pdf.margin,
+          pdfPageSize: settings.export.pdf.pageSize,
+          language: settings.language,
+          author: 'Lumin'
+        }
+      )
       let path: string | null = null
       if (format === 'pdf') {
-        // Pinia 响应式代理无法通过 IPC 结构化克隆（"could not be cloned"），
-        // 必须展开为普通对象后再传，否则导出 PDF 必失败
         path = await window.luminAPI.export.pdf(
-          { title: payload.title, html: payload.html, css: exportCss },
-          { margin: settings.export.pdf.margin, pageSize: settings.export.pdf.pageSize }
+          req.args as Parameters<typeof window.luminAPI.export.pdf>[0],
+          req.options as Parameters<typeof window.luminAPI.export.pdf>[1]
         )
       } else if (format === 'html') {
-        path = await window.luminAPI.export.html({
-          title: payload.title,
-          html: payload.html,
-          css: exportCss
-        })
+        path = await window.luminAPI.export.html(
+          req.args as Parameters<typeof window.luminAPI.export.html>[0]
+        )
       } else if (format === 'word') {
-        path = await window.luminAPI.export.word({
-          title: payload.title,
-          html: payload.html,
-          css: exportCss
-        })
+        path = await window.luminAPI.export.word(
+          req.args as Parameters<typeof window.luminAPI.export.word>[0]
+        )
       } else {
-        path = await window.luminAPI.export.epub({
-          title: payload.title,
-          author: 'Lumin',
-          lang: settings.language,
-          html: payload.html,
-          css: exportCss
-        })
+        path = await window.luminAPI.export.epub(
+          req.args as Parameters<typeof window.luminAPI.export.epub>[0]
+        )
       }
       if (path) ui.toast(i18n.global.t('toast.exportedTo', { path }), 'success')
     } catch (e) {

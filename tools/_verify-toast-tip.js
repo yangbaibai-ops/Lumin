@@ -38,6 +38,13 @@ async function main() {
   })()`)
   console.log('toast container (bottom/right offset):', toastPos)
 
+  // 断言累加器（此前整份脚本只 console.log 观察值 + exit 0 ⇒ 运行器读成 0/0、永远"通过"）
+  const results = []
+  const c = (n, cond, extra) => results.push((cond ? 'PASS' : 'FAIL') + ' ' + n + (extra ? ' | ' + extra : ''))
+  const toast = toastPos ? JSON.parse(toastPos) : null
+  c('toast-above-status-bar', !!toast && toast.bottom >= 40, 'bottom=' + (toast && toast.bottom) + '（状态栏高 24，贴太近会压住）')
+  c('toast-inset-from-right', !!toast && toast.right >= 8, 'right=' + (toast && toast.right))
+
   // 2) tooltip：找一个靠左边的带 title 元素（侧边栏按钮），悬停后检查 tooltip 完整在视口内
   const el = await ev(`(() => {
     const b = [...document.querySelectorAll('[title]')].find((x) => x.title && x.getBoundingClientRect().left < 120)
@@ -56,11 +63,22 @@ async function main() {
     })()`)
     console.log('tooltip near left edge:', tip)
     await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: 5, y: 5 })
+    if (tip) {
+      const t = JSON.parse(tip)
+      c('tooltip-fully-in-viewport', t.fullyVisible === true, `left=${t.left} right=${t.right} vw=${t.vw}`)
+    } else {
+      // 不假装通过：把"这一档在隔离实例里造不出来"如实打出来（GlobalTooltip 依赖真实悬停时序）
+      console.log('SKIP: 隔离实例里没造出 .lm-tooltip（GlobalTooltip 需要真实悬停事件）')
+    }
   } else {
-    console.log('no left-edge title element')
+    console.log('SKIP: 没找到靠左的 [title] 元素')
   }
 
+  console.log(results.join('\n'))
+  const failed = results.filter((r) => r.startsWith('FAIL')).length
+  console.log(`--- ${results.length - failed}/${results.length} PASS`)
+
   ws.close()
-  process.exit(0)
+  process.exit(failed ? 1 : 0)
 }
 main().catch((e) => { console.log('FAIL', e.message); try { ws.close() } catch {} process.exit(1) })

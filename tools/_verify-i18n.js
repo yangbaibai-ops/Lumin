@@ -29,13 +29,28 @@ async function main() {
 
   await ev(`(() => { window.__vt.settings().setLanguage('en-US'); return 'ok' })()`)
   await sleep(600)
-  console.log('menu EN:', await ev(getMenus))
+  const en = await ev(getMenus)
+  console.log('menu EN:', en)
 
   await ev(`(() => { window.__vt.settings().setLanguage('zh-CN'); return 'ok' })()`)
   await sleep(600)
-  console.log('menu ZH:', await ev(getMenus))
+  const zh = await ev(getMenus)
+  console.log('menu ZH:', zh)
+
+  // ── 断言（此前这里只 console.log 观察值、然后 exit 0，于是永远"通过"）──
+  const results = []
+  const c = (n, cond, extra) => results.push((cond ? 'PASS' : 'FAIL') + ' ' + n + (extra ? ' | ' + extra : ''))
+  c('menus-rendered', typeof en === 'string' && typeof zh === 'string' && en.includes('|') && zh.includes('|'), `en=${en} zh=${zh}`)
+  c('menu-count-equal', String(en).split('|').length === String(zh).split('|').length, `${String(en).split('|').length} vs ${String(zh).split('|').length}`)
+  c('language-switches-text', en !== zh, '两份文字必须不同')
+  c('english-pack-applied', /^File\(F\)/.test(String(en)) && /Help/.test(String(en)), String(en).slice(0, 40))
+  c('chinese-pack-applied', /^文件\(F\)/.test(String(zh)) && /帮助/.test(String(zh)), String(zh).slice(0, 40))
+
+  console.log(results.join('\n'))
+  const failed = results.filter((r) => r.startsWith('FAIL')).length
+  console.log(`--- ${results.length - failed}/${results.length} PASS`)
 
   ws.close()
-  process.exit(0)
+  process.exit(failed ? 1 : 0)
 }
 main().catch((e) => { console.log('FAIL', e.message); try { ws.close() } catch {} process.exit(1) })

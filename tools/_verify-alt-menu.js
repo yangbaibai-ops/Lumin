@@ -30,10 +30,20 @@ async function main() {
   console.log('closed before Alt+F:', closedBefore)
   console.log('topmenu-drop after Alt+F:', dropOpen)
 
+  // ── 断言（此前只打印观察值、退出口径藏在 process.exit 里 ⇒ 运行器读成 0/0）──
+  const results = []
+  const c = (n, cond, extra) => results.push((cond ? 'PASS' : 'FAIL') + ' ' + n + (extra ? ' | ' + extra : ''))
+  c('menu-closed-initially', closedBefore === true, String(closedBefore))
+  c('alt-f-opens-in-app-menu', typeof dropOpen === 'string' && dropOpen.length > 8, String(dropOpen).slice(0, 60))
+  c('dropdown-has-file-items', /新建|打开/.test(String(dropOpen)), '原生菜单栏若还拦着 Alt，这里拿不到菜单项')
+  console.log(results.join('\n'))
+  const failed = results.filter((r) => r.startsWith('FAIL')).length
+  console.log(`--- ${results.length - failed}/${results.length} PASS`)
+
   // 关闭（按 Esc 或点击空白）
   await ev(`(() => { const app = document.querySelector('#app').__vue_app__; const prov = app._context.provides; const sym = Object.getOwnPropertySymbols(prov).find((s) => { const p = prov[s]; return !!p && typeof p === 'object' && p._s instanceof Map }); const pinia = (sym ? prov[sym] : null); pinia._s.get('ui').toasts = []; return 'ok' })()`)
 
   ws.close()
-  process.exit(closedBefore === true && dropOpen !== null ? 0 : 1)
+  process.exit(failed ? 1 : 0)
 }
 main().catch((e) => { console.log('FAIL', e.message); try { ws.close() } catch {} process.exit(1) })
