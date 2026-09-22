@@ -104,10 +104,7 @@ test('不变量②：面板（--panel/--elevate）不比纸暗；能更亮时必
         continue
       }
       // 深色 / sepia：纸刻意压暗就是为了给面板留出「再亮一档」，这里必须**严格更亮**
-      assert.ok(
-        L.panel > L.paper,
-        `${t}：${key}=${panel} 不比纸 ${paper} 亮（浮层会只剩边框可辨）`
-      )
+      assert.ok(L.panel > L.paper, `${t}：${key}=${panel} 不比纸 ${paper} 亮（浮层会只剩边框可辨）`)
     }
   }
 })

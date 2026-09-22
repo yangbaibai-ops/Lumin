@@ -109,7 +109,9 @@ function doReplaceAll(): void {
       @keydown.esc.prevent="find.hide()"
     >
       <div class="find-row">
-        <!-- 折叠三角：只负责展开/收起「替换」那一行 -->
+        <!-- 折叠三角：只负责展开/收起「替换」那一行。
+             旋转用 scoped 样式里的 transform（模板上的 Tailwind `rotate-90` 写的是 rotate
+             长属性，配 `transition-transform` 不会动 —— 这个坑在 style.css 里记过） -->
         <button
           class="find-btn find-disclosure"
           :class="{ active: find.replaceExpanded }"
@@ -119,43 +121,41 @@ function doReplaceAll(): void {
           data-find-disclosure
           @click="toggleReplace()"
         >
-          <Icon
-            name="chevron-right"
-            :size="13"
-            class="transition-transform duration-150"
-            :class="find.replaceExpanded ? 'rotate-90' : ''"
-          />
+          <Icon name="chevron-right" :size="13" />
         </button>
-        <Icon name="search" :size="13" class="text-ink-3" />
-        <input
-          ref="queryRef"
-          :value="find.query"
-          class="find-input"
-          :class="{ 'is-invalid': !find.queryValid }"
-          type="text"
-          spellcheck="false"
-          :placeholder="t('find.placeholder')"
-          :aria-label="t('find.placeholder')"
-          :aria-invalid="!find.queryValid"
-          data-find-input
-          @input="find.setQuery(($event.target as HTMLInputElement).value)"
-          @keydown="onQueryKeydown"
-        />
-        <span
-          class="find-count"
-          :class="{ empty: !find.queryValid || (find.query !== '' && find.count === 0) }"
-          data-find-count
-        >
-          {{
-            !find.queryValid
-              ? t('find.invalidRegex')
-              : find.query === ''
-                ? ''
-                : find.count === 0
-                  ? t('find.noResults')
-                  : `${find.index + 1}/${find.count}`
-          }}
-        </span>
+        <!-- 输入「组」：放大镜 + 输入框 + 命中计数同处一块软底里（计数不再是浮在右边
+             一个 46px 宽的孤零零数字），焦点环与侧栏搜索一致（3px accent-soft 柔光） -->
+        <div class="find-field" :class="{ 'is-invalid': !find.queryValid }" data-find-field>
+          <Icon name="search" :size="13" class="find-field-icon" />
+          <input
+            ref="queryRef"
+            :value="find.query"
+            class="find-input"
+            type="text"
+            spellcheck="false"
+            :placeholder="t('find.placeholder')"
+            :aria-label="t('find.placeholder')"
+            :aria-invalid="!find.queryValid"
+            data-find-input
+            @input="find.setQuery(($event.target as HTMLInputElement).value)"
+            @keydown="onQueryKeydown"
+          />
+          <span
+            class="find-count"
+            :class="{ empty: !find.queryValid || (find.query !== '' && find.count === 0) }"
+            data-find-count
+          >
+            {{
+              !find.queryValid
+                ? t('find.invalidRegex')
+                : find.query === ''
+                  ? ''
+                  : find.count === 0
+                    ? t('find.noResults')
+                    : `${find.index + 1}/${find.count}`
+            }}
+          </span>
+        </div>
         <button
           class="find-btn"
           :title="t('find.prev')"
@@ -172,8 +172,9 @@ function doReplaceAll(): void {
         >
           <Icon name="chevron-down" :size="13" />
         </button>
+        <span class="find-sep" aria-hidden="true" />
         <button
-          class="find-btn find-case"
+          class="find-btn find-chip find-case"
           :class="{ active: find.caseSensitive }"
           :title="t('find.caseSensitive')"
           :aria-pressed="find.caseSensitive"
@@ -182,7 +183,7 @@ function doReplaceAll(): void {
           Aa
         </button>
         <button
-          class="find-btn find-case"
+          class="find-btn find-chip find-regex"
           :class="{ active: find.regex, 'is-invalid': !find.queryValid }"
           :title="t('find.regexMode')"
           :aria-label="t('find.regexMode')"
@@ -197,23 +198,27 @@ function doReplaceAll(): void {
         </button>
       </div>
 
-      <!-- 替换行：折叠三角展开（Ctrl+H 直接展开） -->
-      <div v-if="find.replaceExpanded" class="find-row" data-find-replace-row>
-        <Icon name="pencil" :size="13" class="text-ink-3" />
-        <input
-          ref="replaceRef"
-          :value="find.replacement"
-          class="find-input"
-          type="text"
-          spellcheck="false"
-          :placeholder="
-            find.regex ? t('find.replacePlaceholderRegex') : t('find.replacePlaceholder')
-          "
-          :aria-label="t('find.replacePlaceholder')"
-          data-find-replace-input
-          @input="find.setReplacement(($event.target as HTMLInputElement).value)"
-          @keydown="onReplaceKeydown"
-        />
+      <!-- 替换行：折叠三角展开（Ctrl+H 直接展开）。
+           左侧留出与「三角 + 间隙」等宽的空档，于是**两个输入框左缘对齐**。 -->
+      <div v-if="find.replaceExpanded" class="find-row find-row-replace" data-find-replace-row>
+        <span class="find-gutter" aria-hidden="true" />
+        <div class="find-field">
+          <Icon name="pencil" :size="13" class="find-field-icon" />
+          <input
+            ref="replaceRef"
+            :value="find.replacement"
+            class="find-input"
+            type="text"
+            spellcheck="false"
+            :placeholder="
+              find.regex ? t('find.replacePlaceholderRegex') : t('find.replacePlaceholder')
+            "
+            :aria-label="t('find.replacePlaceholder')"
+            data-find-replace-input
+            @input="find.setReplacement(($event.target as HTMLInputElement).value)"
+            @keydown="onReplaceKeydown"
+          />
+        </div>
         <button
           class="find-btn find-text find-replace-btn"
           :title="t('find.replace')"
@@ -234,6 +239,14 @@ function doReplaceAll(): void {
 </template>
 
 <style scoped>
+/* ── 查找/替换栏 ──────────────────────────────────────────────────────────────
+   尺寸与间距口径（与侧栏底部那排工具对齐，改完不再「生硬」）：
+     * 控件高 28px、按钮 26px、圆角 8–12px（条 12 / 输入组 9 / 按钮 7）；
+     * 行内间隙 6px、条内边距 8px、两行之间 8px + 1px 发丝线（不是靠 gap 硬挤）；
+     * **输入框不再是「带边框的灰块」**：输入组自己是一块 `--panel-2` 软底，
+       里面的 input 全透明，聚焦时给整组 3px `--accent-soft` 柔光环 —— 与侧栏搜索同一套语言；
+     * 命中计数搬进输入组右端（原来是浮在行中间一个 46px 定宽数字，把视觉节奏切断了）；
+     * 「Aa」「.*」做成等宽小芯片，动作组与开关组之间一条 1px×16px 竖线分隔。 */
 .find-bar {
   position: fixed;
   top: 62px;
@@ -241,64 +254,106 @@ function doReplaceAll(): void {
   z-index: 60;
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  padding: 6px;
-  min-width: 330px;
+  min-width: 384px;
+  max-width: min(560px, 92vw);
+  padding: 8px;
   background: var(--elevate);
   border: 1px solid var(--edge);
-  border-radius: 10px;
+  border-radius: 12px;
   box-shadow: var(--shadow-2);
 }
 .find-row {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 6px;
+  height: 28px;
 }
-.find-input {
-  flex: 1;
+/* 第二行：靠 1px 发丝线 + 对称留白分层，而不是再加一个 gap */
+.find-row-replace {
+  height: auto;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--edge);
+}
+/* 与「折叠三角(22px) + 间隙(6px)」等宽 ⇒ 两行输入框左缘对齐 */
+.find-gutter {
+  flex: none;
+  width: 22px;
+}
+
+.find-field {
+  display: flex;
+  flex: 1 1 auto;
+  align-items: center;
+  gap: 7px;
   min-width: 0;
-  height: 26px;
+  height: 28px;
   padding: 0 8px;
+  background: var(--panel-2);
+  border-radius: 9px;
+  transition: box-shadow 0.16s ease;
+}
+.find-field:focus-within {
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+/* 正则写错：整组描一圈红（比只把边框染色更容易注意到） */
+.find-field.is-invalid {
+  box-shadow: 0 0 0 1px var(--danger);
+}
+.find-field-icon {
+  flex: none;
+  color: var(--ink-3);
+}
+
+.find-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 100%;
+  padding: 0;
   font-size: 12.5px;
   color: var(--ink);
-  background: var(--panel-2);
-  border: 1px solid transparent;
-  border-radius: 6px;
+  background: transparent;
+  border: none;
   outline: none;
 }
-.find-input:focus {
-  border-color: var(--accent);
+.find-input::placeholder {
+  color: var(--ink-3);
 }
-/* 正则表达式写错时把输入框也标红：只有右侧那行小字容易被忽略 */
-.find-input.is-invalid {
-  border-color: var(--danger);
-}
+
 .find-count {
-  min-width: 46px;
-  text-align: right;
+  flex: none;
   font-size: 11.5px;
   color: var(--ink-3);
   font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 .find-count.empty {
   color: var(--danger);
 }
+
 .find-btn {
   display: inline-flex;
+  flex: none;
   align-items: center;
   justify-content: center;
   height: 26px;
-  padding: 0 6px;
+  min-width: 26px;
+  padding: 0 3px;
   color: var(--ink-2);
-  border-radius: 6px;
-  transition: background 0.12s ease;
+  background: transparent;
+  border: none;
+  border-radius: 7px;
+  cursor: pointer;
+  transition:
+    background-color 0.14s ease,
+    color 0.14s ease;
 }
 .find-btn:hover:not(:disabled) {
   background: var(--panel-2);
   color: var(--ink);
 }
 .find-btn:disabled {
-  opacity: 0.4;
+  opacity: 0.35;
 }
 .find-btn.active {
   background: var(--accent-soft);
@@ -308,15 +363,61 @@ function doReplaceAll(): void {
 .find-btn.is-invalid {
   color: var(--danger);
 }
+
+/* 折叠三角：悬停不变底色（它只是个指示器），展开时图形转 90°（transform 可动画） */
 .find-disclosure {
-  padding: 0 2px;
+  min-width: 22px;
+  padding: 0;
+  color: var(--ink-3);
 }
-.find-case {
-  font-size: 11.5px;
+.find-disclosure:hover:not(:disabled) {
+  background: transparent;
+  color: var(--ink-2);
+}
+.find-disclosure.active {
+  background: transparent;
+  color: var(--ink-2);
+}
+.find-disclosure :deep(svg) {
+  transition: transform 0.18s cubic-bezier(0.32, 0.72, 0, 1);
+}
+.find-disclosure.active :deep(svg) {
+  transform: rotate(90deg);
+}
+
+/* 动作组 / 开关组之间的竖分隔（1px × 16px，只用边线色） */
+.find-sep {
+  flex: none;
+  width: 1px;
+  height: 16px;
+  margin: 0 2px;
+  background: var(--edge);
+}
+
+.find-chip {
+  min-width: 28px;
+  font-size: 11px;
   font-weight: 600;
+  letter-spacing: 0.01em;
 }
+
+/* 「替换 / 全部替换」：带 1px 描边的幽灵按钮，比裸文字更像按钮，又不抢输入框 */
 .find-text {
+  height: 26px;
+  padding: 0 9px;
   font-size: 11.5px;
   white-space: nowrap;
+  border: 1px solid var(--edge);
+}
+.find-text:hover:not(:disabled) {
+  background: var(--panel-2);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .find-field,
+  .find-btn,
+  .find-disclosure :deep(svg) {
+    transition: none;
+  }
 }
 </style>

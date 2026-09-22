@@ -77,6 +77,45 @@
 - **工程化**：~~`tools/lib/harness.js` + `tools/run-suites.js`~~ → **本轮已完成**；
   剩余：`files` store 拆分；`store` 里那份为绕循环导入而复制的 `confirmIfDirty` 收敛到 `services/dialog`。
 
+## [Unreleased · 查找/替换栏重做] — 尺寸间距对齐全局语言
+
+> 用户口径：Ctrl+F 出来的查找、替换组件「有一点生硬」，要求更好看、更简约、布局更合理、
+> 大小与间距合适。
+
+### Changed
+
+- **`FindReplaceBar.vue` 的尺寸/间距口径与全局对齐**（原来是 4px 间隙 + 6px 内边距 + 26px 控件
+  + 6px 圆角，和刚收敛过的侧栏/工具栏不是一套语言）：
+  * 控件高 **28px**、按钮 26px、圆角 **12/9/7px**（条 / 输入组 / 按钮）、行内间隙 **6px**、
+    条内边距 **8px**；
+  * 两行之间不再靠 `gap` 硬挤：**1px 发丝线 + 上下各 8px** 留白分层；
+  * 输入框不再当「带边框的灰块」：**输入组**（放大镜 + input + 命中计数）自己是一块
+    `--panel-2` 软底，里面 input 全透明；聚焦给整组 **3px `--accent-soft` 柔光环**
+    —— 与侧栏那个搜索框同一套语言，不再出现「边框突然变强调色」的生硬切换。
+- **布局更合理**：
+  * **命中计数搬进输入组右端**（原来是浮在行中间一个 46px 定宽、右对齐的孤立数字，
+    把视觉节奏切断了）；
+  * **两行输入框左缘严格对齐**：替换行左侧留出与「三角 22px + 间隙 6px」等宽的
+    `.find-gutter`，实测两个 input 的 `x` 都是 930；
+  * 动作组（上一个/下一个）与开关组（Aa / .*）之间加 **1px×16px 竖分隔**，
+    分组一眼可读；「替换 / 全部替换」由裸文字改成**带 1px 描边的幽灵按钮**。
+- **两个真实的实现改进**（顺手修的）：
+  * 折叠三角原来的旋转用 Tailwind `rotate-90`（写的是 `rotate` 长属性）配
+    `transition-transform` —— **根本不会动**（style.css 里记过这个坑）。改成 scoped 样式里
+    对 `svg` 做 `transform: rotate(90deg)` + 0.18s 过渡，现在真的会转。
+  * 正则写错时，红色只描在 1px 边框上很容易被忽略 —— 改成整组 `box-shadow: 0 0 0 1px danger`
+    + 计数区红字「表达式无效」+ 正则芯片红字，三处同时提示。
+- `prefers-reduced-motion: reduce` 下三处过渡全部关闭。
+
+### Verification
+
+| 门禁 | 结果 |
+| --- | --- |
+| `vue-tsc --noEmit` / `eslint --cache .` / `electron-vite build` | exit 0 / 0 error 0 warning / exit 0 |
+| `tools/_verify-find-replace.js`（唯一碰这根栏的套件，24 条：展开/收起、Aa 与 .* 开关、替换当前/全部、Esc 离场、源码面、非法表达式） | **24/24** |
+| `_verify-inline-formats.js` / `_verify-marker-hold.js`（命中高亮与标记的相邻面） | 182/182 / 11/11 |
+| 几何 + 三态截图（临时探针，已删） | 收起 `421×46`、展开 `421×91`、`padding 8px`、`radius 12px`、行高 28px、两行 input 的 `x` 都是 **930**（左缘对齐）；截图核对：软底输入组 + 计数在内、动作/开关之间有竖线、替换行发丝线分层、按钮描边；非法态整组红环 + 红字 + 正则芯片红字 |
+
 ## [Unreleased · 浅色写作区改纯白] — `--paper: #ffffff`
 
 > 用户口径：把**文本编辑区域**在浅色主题下变成**纯白**。
