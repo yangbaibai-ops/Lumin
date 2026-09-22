@@ -2531,3 +2531,69 @@ markdown-it 解析）。这就是「平方级」的来源：成本 ≈ 文档长
   （选中态 = accent-soft + accent）、`_verify-toc-style-scroll`（目录仍是蓝色）、
   `_verify-blockquote-style`、`_verify-theme-auto`、`_verify-inline-formats`（转义反斜杠的字色换了令牌，
   显隐口径不变）等 19 套件 **0 FAIL**。
+
+### 4.73 代码块 CodeMirror 虚拟化（F 项 / O2）：不再「每块一个实例」
+
+**痛点（实测，见桌面《Lumin-F项实施方案-代码块CM虚拟化.md》）**：`CodeBlockView.vue` 是每个代码块一个
+Vue NodeView + 一个完整的 CodeMirror `EditorView`。500 个围栏的文档打开 22.8s、常驻 1.4GB；
+1500 个围栏 >185s（纯散文 572k 字符只要 2.24s ⇒ 瓶颈是**块数**不是字符数）。CPU 剖面里
+`eq` 41% + StyleModule `mount` 32% 都花在「每块建一个 CM」上。
+
+#### 一、三态模型 + 按需挂载
+
+```
+每个代码块 → A. mermaid 态（不变）｜B. 已挂载态（建 CM）｜C. 静态态（<pre class="cb-static">，不建 CM）
+```
+
+挂载条件收在一个**纯函数**里（`lib/editor/codeBlockMountPolicy.ts`）：`视口附近 ∨ 选区所在 ∨ 刚点过`。
+- 视口附近 = 共享的 `IntersectionObserver`（`rootMargin: 600px`）。**观察根用默认视口**：
+  IntersectionObserver 的相交矩形会被祖先裁剪，分屏下「在自己那个滚动容器里被滚出去」同样算不相交，
+  所以不用给两个 pane 各建 observer（风险 R8 的对策）。
+- 选区所在 = `props.editor.on('selectionUpdate')` 里判「选区是否落在本节点范围内」。这条同时解决
+  「按键路由」与「用户正在打字」——正在编辑的块**永远不会**被卸掉。
+- 没有 `IntersectionObserver` 的环境直接 `near = true`：宁可不省，也不能让代码块不可编辑。
+
+#### 二、卸载顺序不能反（契约）
+
+```
+syncToNode()  →  teardownCm()  →  记高度 → 切静态态（minHeight 固定） →  unregisterCodeBlockHandle()
+```
+少第 1 步会丢字符（CM 里最后几个字符还没写回节点）；少最后一步会让 `findCodeBlockHandle` 命中
+「没有 CM 的块」。另外 `keymap.ts` 的「代码块后空段行首 Backspace」原来**找不到句柄也 `return true`**
+（按键被吃掉）—— 虚拟化之后「屏幕外的块没有句柄」是常态，已改成 `if (!handle) return false`（风险 R1）。
+
+静态态的 `.cb-static` 在字号/字体/行高/内边距上**刻意抄 CM 的那一套**（12.5px / `--font-mono` / 1.65 /
+`padding: 10px 4px 14px`），加上卸载时记下的 `minHeight`，所以挂/卸切换时高度几乎不差（实测漂移 < 1%，
+滚动不跳）。行号用 CSS 计数器那一栏（`.cb-static-gutter`）跟着设置走。
+
+离开视口附近**延迟 500ms** 才卸（来回滚一点不该反复挂/卸）；点静态块会挂上并把光标交给 CM
+（事件**不** `preventDefault`，让 PM 先把光标放进块里 ⇒ 选区条件也成立）。
+
+#### 三、实测前后对比（同一台机器、同一探针、每个状态都新建隔离 profile）
+
+| 文档 | 改前：打开 / CM 实例 | 改后：打开 / CM 实例 |
+| --- | --- | --- |
+| 120 个围栏（≈7k 字符） | 1,070ms / **120** | **193ms / 4** |
+| 180 个围栏（≈10.5k 字符） | 9,101ms / **180** | **184ms / 4** |
+
+CM 实例数从「等于块数」变成「视口附近那几块」（两次都是 4），打开耗时 −82% / −98%。
+`mounted` 数与块数解耦，所以**不需要**再加「单文档最大挂载数」这道闸（P3 的调参项据此关闭）。
+
+#### 四、验收
+
+* 新增 `tools/_verify-cb-virtualization.js`（9 条，已进默认矩阵）：60 块文档里 `.cm-editor` ≤ 12、
+  视口内三块必挂、滚到第 40 块后它挂上且高度漂移 ≤ 20%、滚过去后挂载数仍小、
+  **选区落进屏幕外的第 55 块必须强制挂载**、来回滚（挂/卸 churn）之后第一块仍**可打字**（守丢字符与
+  `hasFocus` 守卫计数两条风险）、换文档后旧块全卸且新文档照常。
+* 既有套件：`_regress-cb` 3/3、`_verify-cb-button-line-numbers` 26/26、`_verify-cb-no-active-line`、
+  `_regress-layout` 9/9、`_regress-source-roundtrip` 4/4、`_repro-rapidenter` 4/4、`_verify-md-fidelity`
+  101/102、`_verify-toc-style-scroll` 23/23、`_verify-surfaces` 37/37（它的「代码块走 CM 渲染」一条
+  改成**接受两种形态**：远块是静态态，等宽字体仍然成立）、`_verify-cb-languages` 5/5
+  （改成**逐个滚进视野再量**，否则量到的是一堆静态态 ⇒ 假失败）。
+* **未做**：P2「静态态也做语法高亮」。理由：挂载边距是 600px（约两屏），静态块在正常阅读中
+  基本不会出现在屏幕上（快滚时可能一闪）；要做的话用 Lezer 解析器 + `highlightTree` 生成静态 HTML，
+  不为高亮再建 CM 实例。留作独立一步。
+* 回滚点：把 `shouldMountCm()` 改成恒真（一行）即回到「每块一个 CM」的旧行为；
+  卸载延迟是常量 `UNMOUNT_DELAY_MS`，视口边距是 `CODE_MOUNT_MARGIN_PX`。
+* 顺带：`heavyMode`（≥200 围栏自动降级源码模式）**保持不变**——虚拟化之后这个阈值原则上可以放宽
+  （方案 §6 提到 200 → 800），但那是一次独立的行为取舍，本轮不动。

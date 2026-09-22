@@ -165,6 +165,8 @@
 | 全局 tooltip（750ms 延迟、title 接管与还原、响应式 title 不被覆写） | `_verify-tooltip`(6)、`_verify-notify-style`（2 条） | 8 | 强 | 矩阵内覆盖完整 |
 | 通知带形态与位置（编辑区上方整幅 / 空态不占位 / 无级别图标与级别名）+ 进出场动效（含高度） | `_verify-toast-tip.js`(21)；`verify-tiptap.js`（`toast` 相关，**非矩阵**） | 21 | 强 | 三轮改写的产物：位置（static + 紧邻内核之前 + 整幅铺满编辑区宽）、形态（组件无盒子；带只有底部 1px 分界 + 顶部内高光）、动效（CSS 规则 + 真实进出场采样：opacity 0→1 与带高 0→终值的中间值）|
 | 通知中心（CRUD、顶部通知区、级别图标、步进切换、多语言、不自动消失、重载存活） | `_verify-notifications`(32) | 32 | 强 | — |
+| **代码块 CM 虚拟化（F 项 / O2）**：按需挂载 / 高度稳定 / 选区保护 / churn 后可打字 | `_verify-cb-virtualization`(9)、`_regress-cb`(3)、`_verify-cb-button-line-numbers`(26)、`_verify-cb-no-active-line`(12)、`_verify-cb-languages`(5) | 55 | 强 | 60 块文档里 `.cm-editor` ≤ 12 且滚到哪挂到哪；实测 120 块打开 1070→**193ms**、CM 实例 120→**4**；180 块 9101→**184ms**、180→**4** |
+| 代码块语言高亮矩阵（15 种 + 别名；清单外退化为纯文本） | `_verify-cb-languages`(5) | 5 | 强 | ⚠️ 虚拟化之后必须**逐个围栏滚进视野再量**（否则量到的是一堆静态态 ⇒ 假失败） |
 | 通知落盘 + 窗口作用域隔离 + 跨重启持久化 | `_verify-notify-disk`(8)、`_verify-notify-multiwindow`(21)、`_verify-notify-restart`(6) | 35 | 强 | 三套件分层；`notify-restart` 是两阶段（seed/check，中间由外部硬杀+重启），默认矩阵与 `--all` 都不跑 —— 由 `run-suites.js` 的 `MANUAL` 排除 |
 | 通知带样式与版式（整幅中性淡底 + 只有底部 1px 分界 + 顶部内高光；两列栅格 + 标题/正文共用 measure + 信息条与标题首行结构对齐；空态连元素都不渲染；长正文就地滚动） | `_verify-notify-style`(22) | 22 | 强 | 非破坏式（临时插一条再硬删）；四轮改写：旧口径「宽 384 / 圆角 6」→「无盒子」→「整幅带 + 空态不占位」→「版式重排（栅格/measure/对齐）」 |
 | **通知策略（哪些动作不发通知）** | 反向断言只有 `_verify-link-open` 的一条（`no-created-notification`）；其余被取消的成功类通知**无断言** | 1 | 仅间接 | ⚠️ **缺口**：口径写在 `stores/ui.ts` 的 `toast()` 注释里（失败/降级、需作答、结果不在界面上的三类才发），但没有套件守「保存 / 重命名 / 删除 / 全部替换 / 切换保存方式 / 已创建」这些**不得再发通知**——有人加回去矩阵不会红。真要守，可在 `_verify-notifications` 里加一组「动作 → 不得新增通知」的负向断言 |
@@ -241,14 +243,14 @@
 
 ### 3.1 三类清单
 
-**A. 在默认矩阵里（`run-suites.js` `DEFAULT_SUITES`，32 条）** —— 不需要 dev server，逐个起全新隔离实例：
+**A. 在默认矩阵里（`run-suites.js` `DEFAULT_SUITES`，33 条）** —— 不需要 dev server，逐个起全新隔离实例：
 
-`_verify-session-last-closed`（自管实例）、`_verify-md-fidelity`、`_verify-draft-banner`、`_verify-new-document`、`_verify-session`、`_verify-single-instance`（自管实例）、`_verify-local-media`、`_verify-encoding`、`_verify-wave3`、`_regress-layout`、`_regress-split-live`、`_regress-cb`、`_regress-divider`、`_regress-fileswitch`、`_regress-source-roundtrip`、`_repro-rapidenter`、`_verify-find-replace`、`_verify-inline-formats`、`_verify-math`、`_verify-remote-image`、`_verify-a11y`、`_verify-editor-menu`、`_verify-i18n`、`_verify-surfaces`、`_verify-surface-fuzz`、`_verify-surface-stress`、`_verify-toc`、`_verify-notifications`、`_verify-toolbar-settings`、`_verify-cb-languages`、`_verify-mermaid-gate`、`_verify-neutral-accent`。
+`_verify-session-last-closed`（自管实例）、`_verify-md-fidelity`、`_verify-draft-banner`、`_verify-new-document`、`_verify-session`、`_verify-single-instance`（自管实例）、`_verify-local-media`、`_verify-encoding`、`_verify-wave3`、`_regress-layout`、`_regress-split-live`、`_regress-cb`、`_regress-divider`、`_regress-fileswitch`、`_regress-source-roundtrip`、`_repro-rapidenter`、`_verify-find-replace`、`_verify-inline-formats`、`_verify-math`、`_verify-remote-image`、`_verify-a11y`、`_verify-editor-menu`、`_verify-i18n`、`_verify-surfaces`、`_verify-surface-fuzz`、`_verify-surface-stress`、`_verify-toc`、`_verify-notifications`、`_verify-toolbar-settings`、`_verify-cb-languages`、`_verify-cb-virtualization`、`_verify-mermaid-gate`、`_verify-neutral-accent`。
 
-> **本轮（清单 §2.I）从 `--all` 提上来的 6 条**：`_verify-toc`（由两条 0 断言探针合并升级）、
-> `_verify-notifications`(32)、`_verify-toolbar-settings`(37)、`_verify-cb-languages`(4)、
-> `_verify-mermaid-gate`(4)、`_verify-neutral-accent`(10)。实测整轮 **32/32 PASS**（另有 4 条断言
-> 按环境如实 SKIP —— SKIP 不算失败，见下）。
+> **本轮（清单 §2.I / §2.F）从 `--all` 提上来的 7 条**：`_verify-toc`（由两条 0 断言探针合并升级）、
+> `_verify-notifications`(32)、`_verify-toolbar-settings`(37)、`_verify-cb-languages`(5)、
+> `_verify-cb-virtualization`(9，F 项新增)、`_verify-mermaid-gate`(4)、`_verify-neutral-accent`(10)。
+> 实测整轮 **33/33 PASS**（另有 4 条断言按环境如实 SKIP —— SKIP 不算失败，见下）。
 
 **B. 只在 `--all` 里（42 个 `_verify-*` + 1 个 `MANUAL`）** —— 其中 **4 个必须 dev server**（`import('/src/…')`），`--all` 下才会真跑，否则标 SKIP：
 

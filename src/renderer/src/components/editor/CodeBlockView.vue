@@ -1,6 +1,6 @@
 <script setup lang="ts">
 // ─── 代码块 NodeView：CodeMirror 6 嵌入 + 语言切换 + Mermaid 渲染 ───────────
-import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { NodeViewWrapper, nodeViewProps } from '@tiptap/vue-3'
 import { Compartment, EditorState, type Extension } from '@codemirror/state'
 import { EditorView, keymap, lineNumbers, drawSelection } from '@codemirror/view'
@@ -31,6 +31,7 @@ import {
   unregisterCodeBlockHandle,
   type CodeBlockHandle
 } from '../../lib/editor/codeBlockViews'
+import { shouldMountCm, watchCodeBlockMount } from '../../lib/editor/codeBlockMountPolicy'
 
 const props = defineProps(nodeViewProps)
 const settings = useSettingsStore()
@@ -323,7 +324,111 @@ const handle: CodeBlockHandle = {
   focusCmAtEnd,
   requestMeasure: () => cmView?.requestMeasure()
 }
-registerCodeBlockHandle(handle)
+
+// ─── 代码块虚拟化（F 项 / O2）：三态 + 按需挂载 ───────────────────────────────
+//
+// 状态：`nearViewport`（共享 observer 给的相交结果）、`selectionInside`（选区/光标在不在这个块里）、
+// `activated`（用户刚点过它）。三者任一成立就挂 CM —— 判定本身是纯函数（codeBlockMountPolicy）。
+//
+// ⚠️ 契约（施工图 §1/§2，改错就崩）：
+//   * **卸载顺序不能反**：`syncToNode()`（把 CM 里最后几个字符落进文档）→ `teardownCm()` →
+//     记高度 → 切静态态 → 注销句柄；少了第 1 步会丢字符，少了最后一步会让键盘路由命中
+//     「没有 CM 的块」。
+//   * **高度必须固定**：切静态态前记下当前高度当 `minHeight`，否则滚动会跳（风险 R3）。
+//   * 静态态**不是**不可编辑：它只是「还没轮到挂 CM」，点一下（或选区落进来）就挂上。
+const blockRef = ref<unknown>(null)
+const nearViewport = ref(false)
+const selectionInside = ref(false)
+const activated = ref(false)
+/** 静态态的高度下限（卸载时记下的挂载态高度）——防滚动跳动 */
+const staticMinHeight = ref<number | null>(null)
+let stopMountWatch: (() => void) | null = null
+let handleRegistered = false
+/** 离开视口附近后延迟多久才真卸（P3.2：来回滚一点不该反复挂/卸） */
+const UNMOUNT_DELAY_MS = 500
+let unmountDelayTimer: ReturnType<typeof setTimeout> | null = null
+
+/**
+ * 拿到本块的 DOM 元素。
+ * `ref` 挂在 `<node-view-wrapper>` 上：它可能是组件实例（取 `$el`）也可能是元素本身
+ * （Tiptap 的包装组件在不同版本里两种形态都出现过），所以这里统一归一化。
+ */
+function blockEl(): Element | null {
+  const v = blockRef.value
+  if (!v) return null
+  if (v instanceof Element) return v
+  const el = (v as { $el?: unknown }).$el
+  return el instanceof Element ? el : null
+}
+
+const cmMounted = computed(
+  () =>
+    selectedLanguage.value !== 'mermaid' &&
+    shouldMountCm({
+      near: nearViewport.value,
+      selectionInside: selectionInside.value,
+      activated: activated.value
+    })
+)
+
+/** 选区/光标是否落在本节点范围内（PM 的 selectionUpdate 里刷新；computed 读不到 PM state 变化） */
+function refreshSelectionInside(): void {
+  const pos = props.getPos as (() => number) | undefined
+  const at = typeof pos === 'function' ? pos() : undefined
+  if (typeof at !== 'number') {
+    selectionInside.value = false
+    return
+  }
+  const { from, to } = props.editor.state.selection
+  selectionInside.value = from >= at && to <= at + props.node.nodeSize
+}
+
+/** 静态态的文本（与节点内容一致；行号 gutter 用行数生成） */
+const staticLines = computed(() => (props.node.textContent || '').split('\n').length)
+const staticGutter = computed(() =>
+  Array.from({ length: staticLines.value }, (_, i) => String(i + 1)).join('\n')
+)
+
+/** 挂载：建 CM（复用既有创建函数）+ 应用语言（+ 选区在本块内时把光标交给 CM） */
+async function mountCmForVirtualization(): Promise<void> {
+  if (cmView || selectedLanguage.value === 'mermaid') return
+  await nextTick()
+  if (cmView || !blockEl()) return
+  staticMinHeight.value = null
+  initCm()
+  if (!handleRegistered) {
+    registerCodeBlockHandle(handle)
+    handleRegistered = true
+  }
+  void loadLanguage(selectedLanguage.value)
+  // 选区已经在这个块里（例如键盘路径刚把光标交给本块）⇒ 把焦点/光标移交 CM
+  if (selectionInside.value) focusCmAtEnd()
+}
+
+/** 卸载：先落盘、再拆、记高度、注销句柄（顺序见上方注释） */
+function unmountCmForVirtualization(): void {
+  if (!cmView) return
+  syncToNode()
+  const el = blockEl()
+  const h = el ? Math.round(el.getBoundingClientRect().height) : 0
+  teardownCm()
+  staticMinHeight.value = h > 0 ? h : null
+  if (handleRegistered) {
+    unregisterCodeBlockHandle(handle)
+    handleRegistered = false
+  }
+}
+
+/**
+ * 静态态被按下：满足「刚点过」这个挂载条件（P3 的「点开即挂」）。
+ *
+ * 刻意**不** `preventDefault` / 不 `.stop`：让事件继续冒泡给 ProseMirror，由它把光标放进
+ * 这个代码块节点 —— 于是 `selectionInside` 也跟着变真，挂载流程会把焦点与光标交给 CM。
+ * （挂载态那个容器的 `.stop` 是另一回事：那里要防的是 PM 把焦点从 CM 抢走。）
+ */
+function activateFromStatic(): void {
+  activated.value = true
+}
 
 /** 捕获阶段拦截 Enter：走 CM 状态事务，并用 setState 强制整文档重建。
     嵌套于 ProseMirror 的 CM 增量重绘（docView.update）在本环境不可靠：
@@ -429,9 +534,9 @@ watch(selectedLanguage, async (lang) => {
     return
   }
   // 从 mermaid 切到其它语言：等 v-else 的 CM 容器挂载后按需创建视图
+  // （是否真建由挂载策略决定：远处/未激活的块保持静态态，见 codeBlockMountPolicy）
   await nextTick()
-  initCm()
-  void loadLanguage(lang)
+  if (cmMounted.value) void mountCmForVirtualization()
 })
 
 // 设置里切换「代码块行号」即时生效（折叠槽仍在，只去掉行号）
@@ -642,17 +747,60 @@ function teardownCm(): void {
 }
 
 onMounted(() => {
+  // 视口观察（代码块虚拟化）：两个分支都要观察 —— 它决定的是「这个块该不该挂 CM」。
+  // 观察根用默认视口（祖先裁剪由 IntersectionObserver 自己处理，分屏下也准）。
+  const el = blockEl()
+  if (el) {
+    stopMountWatch = watchCodeBlockMount(el, (near) => {
+      if (near) {
+        // 回到视口附近：马上挂（并撤销可能正在倒计时的卸载）
+        if (unmountDelayTimer) {
+          clearTimeout(unmountDelayTimer)
+          unmountDelayTimer = null
+        }
+        nearViewport.value = true
+        return
+      }
+      // 离开视口附近：**延迟 500ms 再卸**（P3.2）——来回滚一点就挂/卸会白花两次 CM 构造
+      if (unmountDelayTimer) clearTimeout(unmountDelayTimer)
+      unmountDelayTimer = setTimeout(() => {
+        unmountDelayTimer = null
+        nearViewport.value = false
+      }, UNMOUNT_DELAY_MS)
+    })
+  } else {
+    // 理论上不会发生（模板根节点必然挂出来）；真发生就当作「在视口内」，不能把块卡成静态
+    nearViewport.value = true
+  }
+  props.editor.on('selectionUpdate', refreshSelectionInside)
+  refreshSelectionInside()
+
   if (selectedLanguage.value === 'mermaid') {
     // 视口门：容器挂出来之后才知道要不要渲染（见 armMermaidObserver 的注释）
     void nextTick(() => armMermaidObserver())
     return
   }
-  initCm()
-  void loadLanguage(selectedLanguage.value)
+  // 不再无条件建 CM：能不能建由挂载策略决定（见 codeBlockMountPolicy 的注释）
+  if (cmMounted.value) void mountCmForVirtualization()
+})
+
+// 挂载态变化 → 建/拆 CM。两个方向都要走各自的流程（卸载顺序见 mountCmForVirtualization 上方注释）
+watch(cmMounted, (on) => {
+  if (on) void mountCmForVirtualization()
+  else unmountCmForVirtualization()
 })
 
 onBeforeUnmount(() => {
-  unregisterCodeBlockHandle(handle)
+  // onBeforeUnmount 也要走「注销句柄」这条路：虚拟化之后句柄只在挂载期存在
+  if (handleRegistered) {
+    unregisterCodeBlockHandle(handle)
+    handleRegistered = false
+  }
+  props.editor.off('selectionUpdate', refreshSelectionInside)
+  stopMountWatch?.()
+  stopMountWatch = null
+  if (unmountDelayTimer) clearTimeout(unmountDelayTimer)
+  unmountDelayTimer = null
   teardownCm()
   teardownMermaidObserver()
   if (pinTimer) clearTimeout(pinTimer)
@@ -788,7 +936,7 @@ function commitMermaid(): void {
 </script>
 
 <template>
-  <node-view-wrapper class="code-block-wrapper">
+  <node-view-wrapper ref="blockRef" class="code-block-wrapper">
     <div class="code-block-header">
       <span class="code-block-lang-label">{{ selectedLanguage }}</span>
       <select v-model="selectedLanguage" class="code-block-select">
@@ -808,7 +956,10 @@ function commitMermaid(): void {
       >
         <!-- 视口门未放行（还没轮到它进视口）时展示源码占位：块有高度、可点击进源码编辑，
              不会是一个空洞；放行后 SVG 一到位就替换掉它 -->
-        <pre v-if="!mermaidSvg" class="mermaid-placeholder"><code>{{ props.node.textContent }}</code></pre>
+        <pre
+          v-if="!mermaidSvg"
+          class="mermaid-placeholder"
+        ><code>{{ props.node.textContent }}</code></pre>
         <!-- eslint-disable-next-line vue/no-v-html -- mermaidSvg 是 mermaid.render() 在 securityLevel:'strict' 下生成的 SVG（见本文件 mermaid 初始化），不是文档原文 -->
         <div v-else v-html="mermaidSvg" />
       </div>
@@ -822,6 +973,21 @@ function commitMermaid(): void {
         @blur="commitMermaid"
       />
     </div>
+
+    <!-- 代码块虚拟化的**静态态**（F 项 / O2）：没有轮到挂 CM 的块只渲染等宽文本 + 行号，
+         不建 CodeMirror 实例。点一下就激活（下一拍挂 CM 并把光标交给它）。
+         `minHeight` 是卸载时记下的挂载态高度 —— 没有它，滚动进/出边距会跳（风险 R3）。 -->
+    <pre
+      v-else-if="!cmMounted"
+      class="cb-static"
+      :style="staticMinHeight ? { minHeight: staticMinHeight + 'px' } : null"
+      :data-cb-static="'1'"
+      @mousedown.stop="activateFromStatic"
+    ><span
+        v-if="settings.codeLineNumbers"
+        class="cb-static-gutter"
+        aria-hidden="true"
+      >{{ staticGutter }}</span><code class="cb-static-code">{{ props.node.textContent }}</code></pre>
 
     <!-- CodeMirror 代码编辑。
          .stop 阻断事件冒泡到 PM（PM 的 click 处理器会无条件 view.focus()

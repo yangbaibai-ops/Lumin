@@ -103,8 +103,13 @@ function backspaceIntoCodeBlock(editor: Editor): boolean {
     }
     // 光标已处于代码块内容末尾：无需移动选区，把焦点与 DOM 光标移交 CM 即可
     // （与「空段行首退格」路径的终态一致：焦点在 CM、后续输入进代码）
+    //
+    // ⚠️ **找不到句柄时必须 return false（交回 PM），不能吞掉按键**（F 项 P0 / 风险 R1）：
+    // 代码块虚拟化之后「屏幕外的块没有 CM、也就没有句柄」会成为常态，若这里仍 `return true`，
+    // 用户会遇到「按退格没反应」——按键被吃掉而什么都没发生。
     const handle = findCodeBlockHandle(codeStart)
-    if (handle) handle.focusCmAtEnd()
+    if (!handle) return false
+    handle.focusCmAtEnd()
     return true
   }
   let codePos = -1

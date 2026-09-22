@@ -81,6 +81,7 @@ const DEFAULT_SUITES = [
   '_verify-notifications.js', // 通知中心整体（CRUD / 顶部通知带 / 步进 / 多语言 / 重载存活 / 兼容层）
   '_verify-toolbar-settings.js', // 快捷工具栏：空白区右键菜单 + 显隐与排序设置
   '_verify-cb-languages.js', // 代码块语言高亮矩阵（15 种 + 别名，清单外退化为纯文本）
+  '_verify-cb-virtualization.js', // 代码块 CM 虚拟化：按需挂载 / 高度稳定 / 选区保护 / churn 后可打字
   '_verify-mermaid-gate.js', // mermaid 视口门 + 首屏不预加载（清单 §2.G）
   '_verify-neutral-accent.js' // 副色必须是低饱和灰（通道极差断言）
 ]

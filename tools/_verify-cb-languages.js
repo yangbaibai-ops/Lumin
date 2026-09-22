@@ -7,6 +7,9 @@
 //
 // 判据取 DOM：CodeMirror 高亮时会把 token 包进 `<span class="ͼ…">`（HighlightStyle 生成的类名），
 // 纯文本行则只有 `<div class="cm-line">文字</div>`。两边都要验：正例必须有 span，反例必须没有。
+//
+// ⚠️ F 项（代码块 CM 虚拟化）之后**只有视口附近的块才挂 CM**：所以本套件对每个围栏
+// **逐个滚进视野**再量（否则量到的是一堆静态态，得到「没有高亮」的假失败 —— 实测踩过）。
 'use strict'
 const { connect, settle, sleep, openDocWith, Reporter, fatal } = require('./lib/harness')
 
@@ -57,6 +60,42 @@ const PROBE = `(() => {
   })
 })()`
 
+/** 单个代码块（按文档顺序的第 idx 个，1-based）的高亮状态 */
+const ONE = (idx) => `(() => {
+  const b = [...document.querySelectorAll('.code-block-wrapper')][${idx - 1}]
+  if (!b) return JSON.stringify({ missing: true })
+  const c = b.querySelector('.cm-content')
+  const html = c ? c.innerHTML : ''
+  return JSON.stringify({
+    mounted: !!b.querySelector('.cm-editor'),
+    staticState: !!b.querySelector('.cb-static'),
+    spans: (html.match(/<span/g) || []).length,
+    text: (c ? c.textContent : (b.querySelector('.cb-static-code')?.textContent ?? '')).slice(0, 24)
+  })
+})()`
+
+/** 把第 idx 个块滚进视野（虚拟化之后只有视口附近的块才挂 CM） */
+const SCROLL = (idx) => `(() => {
+  const b = [...document.querySelectorAll('.code-block-wrapper')][${idx - 1}]
+  if (!b) return 'missing'
+  b.scrollIntoView({ block: 'center' })
+  return 'ok'
+})()`
+
+/**
+ * 等第 idx 个块挂上 CM（`wantSpans` 时还要等语言 chunk 到位、出现高亮 span）。
+ * 语言是按需 `import()` 的：只等「挂上」会读到一个还没配好语言的空文档（实测踩过 yaml 假失败）。
+ */
+async function waitMounted(ev, idx, wantSpans) {
+  let last = null
+  for (let i = 0; i < 40; i++) {
+    last = JSON.parse(await ev(ONE(idx)))
+    if (last.mounted && (!wantSpans || last.spans > 0)) return last
+    await sleep(100)
+  }
+  return last
+}
+
 async function main() {
   const app = await connect()
   const { ev } = app
@@ -67,39 +106,45 @@ async function main() {
   await sleep(1200)
 
   const expect = CASES.length + UNKNOWN.length
-  // 语言 chunk 是**按需 import** 的：轮询到「块数齐了 且 每个正例都出现高亮 span」为止
-  let probe = null
-  for (let i = 0; i < 100; i++) {
-    probe = JSON.parse(await ev(PROBE))
-    const positives = probe.items.slice(0, CASES.length)
-    if (probe.count >= expect && positives.every((it) => it.spans > 0)) break
-    await sleep(150)
-  }
-  report.note('实测 ' + JSON.stringify(probe))
-
+  const blocks = await ev(`document.querySelectorAll('.code-block-wrapper').length`)
+  report.note(`文档里共 ${blocks} 个代码块（期望 ${expect}）`)
   report.check(
-    'all-code-blocks-mounted',
-    !!probe && probe.count === expect,
-    `blocks=${probe && probe.count} 期望 ${expect}（${CASES.length} 个正例 + ${UNKNOWN.length} 个反例）`
+    'doc-has-all-fixtures',
+    blocks === expect,
+    `blocks=${blocks} 期望 ${expect}（${CASES.length} 个正例 + ${UNKNOWN.length} 个反例）`
   )
 
+  // 逐个滚进视野再量高亮：虚拟化之后「没滚到」的块是静态态（无 CM、也无语法高亮）
   const missing = []
-  CASES.forEach(([lang], i) => {
-    const it = probe.items[i]
-    if (!it || it.spans === 0) missing.push(`${lang}(spans=${it ? it.spans : 'n/a'})`)
-  })
+  const notMounted = []
+  for (let i = 1; i <= CASES.length; i++) {
+    const [lang] = CASES[i - 1]
+    await ev(SCROLL(i))
+    const st = await waitMounted(ev, i, true)
+    if (!st.mounted) notMounted.push(lang)
+    else if (!st.spans) missing.push(`${lang}(spans=0)`)
+  }
+  report.check(
+    'every-case-mounts-when-scrolled-in',
+    notMounted.length === 0,
+    notMounted.length ? `滚入后仍未挂载：${notMounted.join(', ')}` : `${CASES.length} 个围栏滚入后都挂上了 CM`
+  )
   report.check(
     'all-15-languages-plus-aliases-highlight',
     missing.length === 0,
     missing.length ? `没有高亮的：${missing.join(', ')}` : `${CASES.length} 个围栏全部出现高亮 span`
   )
 
+  // 清单外的语言：滚进去也**不该**有高亮 span（如实退化成纯文本，而不是静默不加载）
   const noise = []
-  UNKNOWN.forEach(([lang], k) => {
-    const it = probe.items[CASES.length + k]
-    if (!it) noise.push(`${lang}(缺块)`)
-    else if (it.spans > 0) noise.push(`${lang}(spans=${it.spans})`)
-  })
+  for (let k = 0; k < UNKNOWN.length; k++) {
+    const [lang] = UNKNOWN[k]
+    const idx = CASES.length + k + 1
+    await ev(SCROLL(idx))
+    const st = await waitMounted(ev, idx)
+    if (!st.mounted) noise.push(`${lang}(未挂载)`)
+    else if (st.spans > 0) noise.push(`${lang}(spans=${st.spans})`)
+  }
   report.check(
     'unknown-languages-fall-back-to-plain-text',
     noise.length === 0,

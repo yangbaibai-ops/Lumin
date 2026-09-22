@@ -224,9 +224,12 @@ const RENDER_SPECS = [
   },
   {
     id: 'code-block',
-    // 代码块不是 `pre`：它是 CodeMirror 的 NodeView（`.code-block-wrapper` 里挂 `.cm-editor`）
-    sel: '.md-preview .code-block-wrapper .cm-content',
-    why: '代码块走 CodeMirror 渲染（等宽字体）',
+    // 代码块不是 `pre`：它是 CodeMirror 的 NodeView（`.code-block-wrapper` 里挂 `.cm-editor`）。
+    // ⚠️ F 项（代码块 CM 虚拟化）之后**离视口较远的块**是静态态（`.cb-static`，只有等宽文本、
+    // 不建 CM）—— 本夹具的代码块在文档末尾，正是这种情况。所以这里**两种形态都接受**，
+    // 但都要求等宽字体（静态态的字体/行高刻意与 CM 一致，见 overlays.css 的 .cb-static）。
+    sel: '.md-preview .code-block-wrapper .cm-content, .md-preview .code-block-wrapper .cb-static-code',
+    why: '代码块走 CodeMirror 或静态等宽渲染（等宽字体）',
     ok: (m) => m.exists && /mono|Consolas|Menlo|Courier|JetBrains/i.test(m.fontFamily)
   },
   {

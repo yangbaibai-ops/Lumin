@@ -72,6 +72,58 @@
 - **工程化**：~~`tools/lib/harness.js` + `tools/run-suites.js`~~ → **本轮已完成**；
   剩余：`files` store 拆分；`store` 里那份为绕循环导入而复制的 `confirmIfDirty` 收敛到 `services/dialog`。
 
+## [Unreleased · F 代码块 CodeMirror 虚拟化（O2）] — 不再「每块一个实例」：120 块打开 1070→193ms、CM 120→4
+
+> 来源：桌面《Lumin-待优化清单-2026-09-22.md》§2.F 与配套施工图《Lumin-F项实施方案-代码块CM虚拟化.md》。
+> 原状：每个代码块一个 Vue NodeView + 一个完整 CodeMirror `EditorView`；500 围栏文档打开 22.8s /
+> 常驻 1.4GB，1500 围栏 >185s —— 瓶颈是**块数**不是字符数（纯散文 572k 字符只要 2.24s）。
+
+### Added
+
+- **`src/renderer/src/lib/editor/codeBlockMountPolicy.ts`**：挂载判定（**纯函数** `shouldMountCm()`：
+  `视口附近 ∨ 选区所在 ∨ 刚点过`）+ 一个**共享的** `IntersectionObserver`（`CODE_MOUNT_MARGIN_PX = 600`，
+  按块登记/注销）。观察根用默认视口 —— IntersectionObserver 的相交矩形会被祖先裁剪，分屏下也准，
+  不必给两个 pane 各建 observer。没有 `IntersectionObserver` 的环境直接放行（宁可不省，不能不可编辑）。
+- **`tools/_verify-cb-virtualization.js`**（9 条，已进默认矩阵）：60 块文档里 `.cm-editor` ≤ 12、
+  视口内三块必挂、滚到第 40 块才挂且高度漂移 ≤ 20%、滚过后挂载数仍小、**选区落进屏幕外的第 55 块
+  必须强制挂载**、来回滚（挂/卸 churn）之后第一块仍**可打字**（同时守「卸载丢字符」与
+  「`hasFocus` 守卫计数不归零」两条风险）、换文档后旧块全卸且新文档照常。
+
+### Changed
+
+- **`CodeBlockView.vue` 三态**：mermaid 态（不变）/ **已挂载态**（视口附近、选区所在或刚点过）/
+  **静态态**（`<pre class="cb-static">` 等宽文本 + CSS 行号，**不建 CM**）。
+  挂载条件变化由 `watch(cmMounted)` 驱动；**卸载顺序**是
+  `syncToNode()`（先落盘最后几个字符）→ `teardownCm()` → 记高度 → 静态态 `minHeight` 固定 →
+  `unregisterCodeBlockHandle()`（否则 `findCodeBlockHandle` 会命中没有 CM 的块）。
+  离开视口附近**延迟 500ms** 才卸（来回滚一点不该反复挂/卸）；点静态块会挂上并把光标交给 CM
+  （事件**不** `preventDefault`，让 PM 先把光标放进块里 ⇒ 选区条件也成立）。
+- **静态态与 CM 同一套排版**（`overlays.css` 的 `.cb-static`：12.5px / `--font-mono` / 1.65 /
+  `padding: 10px 4px 14px`，行号走 `.cb-static-gutter`），配合 `minHeight` ⇒ 挂/卸切换高度几乎不差。
+- **`keymap.ts`（P0 / 风险 R1）**：「代码块后空段行首 Backspace」原来**找不到句柄也 `return true`**
+  （按键被吃掉）—— 虚拟化后「屏幕外的块没有句柄」是常态，已改成 `if (!handle) return false`。
+- 两条既有套件的**契约更新**（它们原来假定「代码块一定有 CM」）：
+  * `_verify-surfaces.js` 的「代码块走 CM 渲染」改成**接受两种形态**（远块是静态态，等宽字体仍成立）；
+  * `_verify-cb-languages.js` 改成**逐个围栏滚进视野再量**（否则量到的是一堆静态态 ⇒ 假失败），
+    并顺手把「等语言 chunk 到位」也并进轮询（原来只等挂载，会读到未配语言的空文档）。
+
+### Verification（本轮实测）
+
+| 项 | 结果 |
+| --- | --- |
+| **前后对比**（同一机器/探针，每个状态新建隔离 profile） | 120 围栏（≈7k 字符）：打开 **1,070ms → 193ms**、CM 实例 **120 → 4**；180 围栏（≈10.5k 字符）：打开 **9,101ms → 184ms**、CM 实例 **180 → 4** |
+| 默认矩阵（33 条，含新套件） | **33/33 PASS**（`NOASSERT 0`；另有 4 条断言按环境如实 SKIP） |
+| 代码块相邻面 | `_regress-cb` 3/3、`_verify-cb-button-line-numbers` 26/26、`_verify-cb-languages` 5/5、`_regress-layout` 9/9、`_regress-source-roundtrip` 4/4、`_repro-rapidenter` 4/4、`_verify-md-fidelity` 101/102、`_verify-toc-style-scroll` 23/23、`_verify-surfaces` 37/37、`_verify-surface-stress` 72/72 |
+| `vue-tsc` / `eslint` / `electron-vite build` | exit 0 / 0 error 0 warning / exit 0（`EditorView-*.js` 2,477.59 kB） |
+| 单测 | 299/299 |
+
+**未做（如实记录）**：施工图的 **P2「静态态也做语法高亮」**。理由：挂载边距 600px（约两屏），
+静态块在正常阅读中基本不会出现在屏幕上（只有快滚时一闪）；真要做就用 Lezer 解析器 + `highlightTree`
+生成静态 HTML，不为高亮再建 CM 实例 —— 留作独立一步。
+另：`heavyMode`（≥200 围栏自动降级源码模式）**保持不变**，虚拟化之后这个阈值原则上可放宽
+（方案 §6 提到 200 → 800），但那是一次独立的行为取舍。
+回滚点：`shouldMountCm()` 改成恒真即回到旧行为；`UNMOUNT_DELAY_MS` / `CODE_MOUNT_MARGIN_PX` 两个常量。
+
 ## [Unreleased · H 文档体系拆分] — 手册按章拆、CHANGELOG 归档老轮次、台账分离已完成
 
 > 来源：桌面《Lumin-待优化清单-2026-09-22.md》§2.H。原状：`docs/typora-wysiwyg-manual.md`
