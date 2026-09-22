@@ -64,40 +64,34 @@ function collapseSidebar(): void {
     }"
     :class="ui.focusMode ? 'opacity-40 saturate-50' : ''"
   >
-    <!-- 头部（**一行**：品牌 + 当前工作区 + 动作）────────────────────────────────
-         原来是两行：`h-11` 的品牌行放「最近 / 新建 / 打开文件夹」三个图标，紧接着又是一行
-         工作区名（点名字＝切换文件夹，右侧还有刷新）。三处问题：
-           ① 「打开文件夹」与下一行的工作区名重复（同一个动作相隔 24px 出现两次）；
-           ② 它用的 `folder-plus` 在惯例里是「**新建**文件夹」，用户会读错（本轮用户原话就是
-              「新建文件夹」）—— 现在只在**没有工作区**时保留一个语义正确的 `folderOpen` 入口；
-           ③ 两行合计约 69px 的 chrome，而这两行说的其实是同一件事（当前在哪个文件夹）。
-         合并之后：品牌 + `📁 工作区名`（点击＝切换文件夹）+ 「最近 / 新建 / 刷新」，
-         高度 `h-11 + 工作区行` → **一行 h-10**，顶部 chrome 省掉约 29px，且不再有重复入口。 -->
+    <!-- 头部（一行：**当前工作区在左** + 动作在右）────────────────────────────
+         用户口径：品牌字「Lumin」去掉；文件夹名靠左，不要靠右（靠右时与右侧动作挤在一起、
+         还要靠截断让位，观感差）。
+         所以这一行只讲一件事 —— 当前在哪个文件夹：左边是 `📁 名字`（`flex-1` 吃掉弹性空间，
+         点击＝切换文件夹），右边是「最近 / 新建 / 刷新」。品牌身份交给窗口标题与关于页。 -->
     <div class="flex h-10 flex-none items-center gap-1.5 border-b border-edge px-3">
-      <span class="flex-none text-[13.5px] font-semibold tracking-wide text-ink">Lumin</span>
-      <div class="flex-1" />
-
-      <!-- 当前工作区：有工作区 → 名字就是「切换文件夹」入口；没有 → 一个语义正确的打开入口 -->
       <button
         v-if="files.root"
-        class="flex min-w-0 max-w-[150px] cursor-pointer items-center gap-1.5 rounded-md px-1.5 py-0.5 text-[11px] font-medium tracking-[0.02em] text-ink-3 transition-colors hover:bg-panel-2 hover:text-ink-2"
+        class="flex h-7 min-w-0 flex-1 items-center gap-1.5 rounded-md px-1.5 text-left text-[12px] font-medium text-ink-2 transition-colors hover:bg-panel-2 hover:text-ink"
         :title="files.root + '\n' + t('open.openFolder')"
         :aria-label="t('open.openFolder')"
         data-sidebar-workspace
         @click="files.openFolder()"
       >
-        <Icon name="folder" :size="11" class="flex-none" />
+        <Icon name="folder" :size="13" class="flex-none text-ink-3" />
         <span class="truncate">{{ workspaceName }}</span>
       </button>
+      <!-- 没有工作区时：同一个位置就是一个语义正确的「打开文件夹」入口（不再是图标 + 空白） -->
       <button
         v-else
-        class="icon-btn !h-6.5 !w-6.5"
+        class="flex h-7 min-w-0 flex-1 items-center gap-1.5 rounded-md px-1.5 text-left text-[12px] font-medium text-ink-3 transition-colors hover:bg-panel-2 hover:text-ink-2"
         :title="t('open.openFolder')"
         :aria-label="t('open.openFolder')"
         data-sidebar-workspace
         @click="files.openFolder()"
       >
-        <Icon name="folderOpen" :size="14" />
+        <Icon name="folderOpen" :size="13" class="flex-none" />
+        <span class="truncate">{{ t('open.openFolder') }}</span>
       </button>
 
       <!-- 动作：最近文档（写作时切换文档的最短路径）→ 新建文件（最高频）→ 刷新（仅工作区） -->
