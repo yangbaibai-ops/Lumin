@@ -321,6 +321,23 @@
 | `_verify-cb-typing`、`_verify-cb-typing2`、`_verify-cb-typing3` | 三代同题探针（代码块打字/回车），已被 `_regress-cb`(3) + `_repro-rapidenter`(2) 取代 |
 | `_verify-export-fix`、`_verify-export-fix2`、`_test-export-full`、`_test-pdf`、`_test-mermaid`、`_trigger-export` | 「曾经修过一个导出 bug」的一次性复现脚本。⚠️ 归档前先按 §2 第 1 条把导出产物断言补上，否则导出这条线**彻底归零** |
 | `_verify-3tasks`、`_verify-alt-menu`、`_verify-bs-md`、`_verify-cb-delete-fix`、`_verify-toc`、`_verify-toc-load`、`_verify-i18n`、`_verify-theme-auto`、`_verify-toast-tip` | 0 断言探针。**但 `_verify-toc`/`_verify-toc-load`/`_verify-i18n`/`_verify-theme-auto` 承载的功能在别处没有覆盖** —— 先按 §2 第 8/11/14 条升级成 harness 套件，再归档原始探针 |
+
+### 3.6 `--all` 全量复核结果（2026-09，68 条：56 PASS / 10 FAIL / 1 SKIP / 1 NOASSERT）
+
+> 做法：`node tools/run-suites.js --all`。下面每条都写清**是不是本轮（清单 A–J）造成的**，
+> 以及证据。✅ = 本轮已修。
+
+| 套件 | 结果 | 判定与证据 |
+| --- | --- | --- |
+| ✅ `_verify-welcome-removed` | 31/34 → **34/34** | **本轮 E 造成的**（工具栏默认收起后 `toolbar.found === false`，而该段断言要求工具栏存在）+ 它自己把环境跳过写成 `FAIL … \| SKIP: …`（§1.C 同类）。已补「显式打开工具栏」夹具 + 改走 skip 通道 |
+| `_verify-cb-line-numbers` | 8/13 | **既有**（设置面板开关的真实点击不生效）。三轮对照复现：把工具栏默认值改回 `true`、把 B 项改动 stash 掉，它照样红 ⇒ 与本轮改动无关 |
+| `_verify-sidebar-handle` | 3/21 | **既有（选择器过期）**：它找 `button.absolute.left-0`，而 `AppSidebar.vue` 里已经没有这个类（更早的侧栏重构改过结构）；同题的 `_verify-sidebar-handle-style` 用新选择器 **19/19 通过** |
+| `_verify-open-file-dedup` / `_verify-open-file-routing` / `_verify-save-as-workspace` | 0/0 FAIL | **既有（运行器的 dev-server 探测漏判）**：三者间接 `import('/src/…')`，`needsDevServer()` 的静态正则没识别出来，于是跑在构建产物上并报 `Failed to fetch dynamically imported module: file:///D:/src/…`（按本文件 §3.1 的口径它们**本该被标 SKIP**） |
+| `_verify-packaging` | 2/4 | **既有（环境）**：`electron-builder` 在本环境跑不起来（离线/权限，与 `npm install` 的 `EALLOWREMOTE` 同一类限制），不是代码回归 |
+| `_verify-menu-export-submenu` | 12/15 | **待查**：`WIRING` 探针靠 `__vueParentComponent` 从菜单按钮往上找 `GROUPS`（`setupState.GROUPS`），拿不到时 3 条接线断言全空。该套件不在默认矩阵，本轮未动它相关代码 |
+| `_verify-editor-menu-extras` | 5/7 | **待查**：`file-tree-menu-still-works` / `usage-row-on-disk`（文件树右键菜单 + 落库），很可能需要工作区夹具；本轮未动文件树 |
+| `_verify-rename-fix` | 0/0 **NOASSERT** | **待修/待删**：运行期一条断言都没产出（我的静态扫描没抓出来，因为文件里确实有 Reporter）。要么补断言，要么按 §2.I 的口径删掉 |
+| `_verify-keymap` | SKIP | **正确跳过**：需要 dev server（`import('/src/…')`），`--all` 下如实标 SKIP |
 | `_check-cm-drag`、`_check-heading-rule`、`_check-table-edit` | 「确认是环境抖动而非真实回归」的最小复测脚本，环境（Chromium 节流/焦点）问题已由 harness 的 `transitionTo()` 式轮询解决 |
 
 - ✅ **已完成（清单 §2.I，2026-09 收口）**：

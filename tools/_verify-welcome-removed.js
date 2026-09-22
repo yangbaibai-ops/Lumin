@@ -167,6 +167,8 @@ async function main() {
   const results = []
   const c = (n, cond, extra) =>
     results.push((cond ? 'PASS' : 'FAIL') + ' ' + n + (extra ? ' | ' + extra : ''))
+  /** 环境不具备时如实 SKIP —— **不要**用 `c(name, false, 'SKIP: …')` 写成 FAIL 行（见 G 段注释） */
+  const skip = (n, why) => results.push('SKIP ' + n + (why ? ' | ' + why : ''))
 
   const pages = await appPages()
   if (!pages.length) {
@@ -231,6 +233,12 @@ async function main() {
   await send('Page.enable')
   await send('Page.bringToFront')
   await settle(ev)
+
+  // C 段要断言「工具栏里不再有『打开文件/最近文档』按钮」⇒ 必须先让工具栏**显示出来**：
+  // 快捷工具栏出厂默认收起（清单 §1.E 选项②），工具栏不在 DOM 里时 `found === false`，
+  // 那条断言会以「找不到工具栏」而不是「按钮确实没了」的形式失败（实测踩过）。
+  await ev(`(() => { window.__L.settings().set('toolbarVisible', true); return 'ok' })()`)
+  await sleep(400)
 
   // 关掉工作区以露出侧栏空态（跑完在 finally 里还原）。
   // hadRoot 必须声明在 try 之外：finally 里要用到。
@@ -716,8 +724,11 @@ async function main() {
 
     // ── G. 最近文档 / 最近文件夹 → **新窗口**打开（当前窗口不受影响）──────────
     if (!hadRoot) {
-      c('recent-file-opens-in-new-window', false, 'SKIP: 无工作区，无法放夹具')
-      c('recent-folder-opens-in-new-window', false, 'SKIP')
+      // ⚠️ 这里原来是 `c(..., false, 'SKIP: …')` —— 把「环境不具备」写成了 FAIL 行，
+      // 运行器按「打印过 FAIL 行」判定，于是这个套件在自己的跳过路径上必然报红
+      // （清单 §1.C 同一类问题：SKIP 不该算失败）。现在如实走 skip 通道。
+      skip('recent-file-opens-in-new-window', '无工作区，无法放夹具')
+      skip('recent-folder-opens-in-new-window', '无工作区，无法放夹具')
     } else {
       const fixDir = path.join(hadRoot, 'lumin-verify-open')
       const docA = path.join(fixDir, 'doc-a.md')

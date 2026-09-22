@@ -72,6 +72,30 @@
 - **工程化**：~~`tools/lib/harness.js` + `tools/run-suites.js`~~ → **本轮已完成**；
   剩余：`files` store 拆分；`store` 里那份为绕循环导入而复制的 `confirmIfDirty` 收敛到 `services/dialog`。
 
+## [Unreleased · `--all` 全量矩阵复核] — 修掉本轮 E 造成的一条 + 登记其余既有失败
+
+> 收尾动作：`node tools/run-suites.js --all`（68 条：56 PASS / 10 FAIL / 1 SKIP / 1 NOASSERT）。
+> 逐条判定「是不是本轮清单 A–J 造成的」，结果写进 `docs/_audit/coverage-matrix.md` §3.6。
+
+### Fixed
+
+- `_verify-welcome-removed.js` **31/34 → 34/34**，两处都在这一条里：
+  * **本轮 E 造成的**：C 段断言「工具栏里不再有『打开文件/最近文档』按钮」，但它要求
+    `toolbar.found === true` —— 工具栏出厂默认收起后工具栏不在 DOM 里，于是以「找不到工具栏」失败。
+    已补「显式打开工具栏」夹具（断言因此仍然在测它本来的东西）。
+  * **它自己的 SKIP-as-FAIL**：环境不具备时写的是 `c(name, false, 'SKIP: …')` —— 打印了 FAIL 行，
+    运行器按「打印过 FAIL 行」判定 ⇒ 在自己的跳过路径上必然报红（与清单 §1.C 同类）。
+    新增 `skip()` 通道，如实打 `SKIP` 行。
+
+### Docs
+
+- `docs/_audit/coverage-matrix.md` 新增 **§3.6「`--all` 全量复核结果」**：10 条 FAIL + 1 NOASSERT
+  逐条给出判定与证据 —— 1 条本轮已修（上）、3 条既有（cb-line-numbers：三轮对照复现证明与 B/E 无关；
+  sidebar-handle：选择器过期，同题 style 套件 19/19；packaging：本环境跑不了 electron-builder）、
+  3 条运行器 dev-server 探测漏判（`open-file-dedup` / `open-file-routing` / `save-as-workspace`
+  本该按 §3.1 口径标 SKIP）、2 条待查（`menu-export-submenu` 的 `GROUPS` 遍历、`editor-menu-extras`
+  的文件树右键）、1 条 NOASSERT 待修/待删（`rename-fix`）。
+
 ## [Unreleased · F 代码块 CodeMirror 虚拟化（O2）] — 不再「每块一个实例」：120 块打开 1070→193ms、CM 120→4
 
 > 来源：桌面《Lumin-待优化清单-2026-09-22.md》§2.F 与配套施工图《Lumin-F项实施方案-代码块CM虚拟化.md》。
