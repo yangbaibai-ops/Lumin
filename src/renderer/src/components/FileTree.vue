@@ -38,6 +38,7 @@ const filter = ref('')
  */
 const searchOpen = ref(false)
 const filterEl = ref<HTMLInputElement | null>(null)
+const shellEl = ref<HTMLElement | null>(null)
 
 async function openSearch(): Promise<void> {
   searchOpen.value = true
@@ -56,8 +57,23 @@ function closeSearch(): void {
   searchOpen.value = false
 }
 
+/**
+ * 失焦收起 —— **延迟一拍再判**（逐帧实测抓到的第二次闪烁）。
+ *
+ * `blur` 常常只是「用户又点了一下壳里的东西」的前半段：`mousedown` 先把焦点从输入框拿走
+ * （blur 触发），`click` 才在同一个壳里发生。若在 blur 里同步收起，就会得到
+ * 「收起 → 这一下 click 又展开」= 宽度先缩再长，眼睛看到的就是闪一下。
+ * 于是：有内容直接保持展开；空内容也延到下一拍，看焦点是否仍落在壳内（是就不收）。
+ * 图标上还加了 `@mousedown.prevent`：mousedown 根本不抢焦点，blur 压根不发生。
+ */
 function onSearchBlur(): void {
-  if (!filter.value) searchOpen.value = false
+  if (filter.value) return
+  void nextTick(() => {
+    if (!searchOpen.value) return
+    const active = document.activeElement
+    if (shellEl.value && active && shellEl.value.contains(active)) return
+    searchOpen.value = false
+  })
 }
 
 // 离开「文件」页签或关掉工作区时收起：面板是 v-show 常驻的，不收起下次回来会「自己开着」
@@ -300,18 +316,27 @@ function onDrop(e: DragEvent): void {
       data-sidebar-filetools
     >
       <div class="flex h-7 min-w-0 flex-1 items-center">
-        <div class="file-search" :class="{ 'file-search--open': searchOpen }" data-sidebar-search>
+        <div
+          ref="shellEl"
+          class="file-search"
+          :class="{ 'file-search--open': searchOpen }"
+          data-sidebar-search
+        >
           <button
             class="file-search__icon"
             :data-sidebar-search-toggle="searchOpen ? undefined : 'true'"
             :title="t('sidebar.filterPlaceholder')"
             :aria-label="t('sidebar.filterPlaceholder')"
             :aria-expanded="searchOpen ? 'true' : 'false'"
+            @mousedown.prevent
             @click="onSearchIcon"
           >
             <Icon name="search" :size="14" />
           </button>
-          <Transition name="fade">
+          <!-- 输入框的进出**不做淡入**，只做离场淡出（见 scoped 样式）：
+               `name` 故意不叫 `fade` —— 全局 `.fade-enter-*` 会把淡入加回来，
+               而淡入正是「外壳已经变宽、里面却还是空条」那一闪的来源。 -->
+          <Transition name="search">
             <input
               v-if="searchOpen"
               ref="filterEl"
@@ -374,9 +399,15 @@ function onDrop(e: DragEvent): void {
   border-radius: 10px;
   background: transparent;
   overflow: hidden;
+  /* 焦点环也参与过渡、并**延后 60ms** 才出现（逐帧实测的修正）：
+     展开瞬间输入框就拿到了焦点，若环立刻出现，会在「还只有 28px 的小方块」上先亮一圈
+     再跟着长开 —— 眼睛看到的就是展开时闪一下。延后到外壳已经长到 ~100px 时再淡入，
+     观感变成「字段长开的同时光环浮现」。 */
+  box-shadow: 0 0 0 0 transparent;
   transition:
     width 0.2s cubic-bezier(0.32, 0.72, 0, 1),
-    background-color 0.2s ease;
+    background-color 0.2s ease,
+    box-shadow 0.16s ease 0.06s;
 }
 .file-search--open {
   width: 100%;
@@ -441,17 +472,21 @@ function onDrop(e: DragEvent): void {
   color: var(--ink);
 }
 
-/* 过渡只留透明度：`fade` 是全局定义（opacity 0.18s），这里把输入框的入场收短一档，
-   让它跟着宽度揭示的节奏出现，而不是「先亮后挤」。 */
-.file-search__input.fade-enter-active {
-  transition: opacity 0.14s ease 0.04s;
+/* 输入框的过渡**只做离场**：收起时文字跟着宽度一起收进去（0.16s 淡出），
+   而不是「啪」地消失。入场刻意什么都不写 —— 没有 opacity 动画，占位文字从第一帧
+   就跟着 `overflow: hidden` 的揭示一起出现，不会再出现「外壳已变宽、里面是空条」。 */
+.file-search__input.search-leave-active {
+  transition: opacity 0.16s ease;
+}
+.file-search__input.search-leave-to {
+  opacity: 0;
 }
 
 @media (prefers-reduced-motion: reduce) {
   .file-search,
   .file-search__icon,
   .file-search__clear,
-  .file-search__input.fade-enter-active {
+  .file-search__input.search-leave-active {
     transition: none;
   }
 }
