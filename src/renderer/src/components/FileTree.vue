@@ -24,13 +24,17 @@ const router = useRouter()
 const filter = ref('')
 
 /**
- * ─── 文件名搜索：平常收起成一枚放大镜 ────────────────────────────────────────
- * 用户口径：这一行要更安静 —— 静息态只留一枚图标，点开才展开成输入框。
+ * ─── 文件名搜索：平常收起成一枚放大镜，点开长出输入框 ──────────────────────
+ * 用户口径：① 静息态只留一枚图标；② 展开/收起要有好看的动效；
+ * ③ **失焦时不能闪烁**（上一版就是两个兄弟元素重叠：按钮立刻出现、旧输入框还在淡出，
+ *    两个都占着 flex-1 槽位 → 中间帧抖动）。
+ * 这一版结构上只有**一个**会变形的元素（`.file-search` 外壳），放大镜按钮从不卸载，
+ * 动画只动外壳的 `width` / 背景色 + 输入框的一次短淡入（见 template 上的说明与 scoped 样式）。
  *
- * 收起/展开的三条规则（共同目的是「筛选条件不能悄悄消失」）：
- *   * 点图标 → 展开 + 自动聚焦；
- *   * **失焦且输入为空** → 收起（有内容就保持展开，否则用户会以为筛选失效了）；
- *   * `Esc` → 清空并收起（取消语义）；输入框里的 × 只清空、不收起。
+ * 收起规则三条，共同目的是「筛选条件不能悄悄消失」：
+ *   * 失焦且输入为空 → 收起；
+ *   * 失焦但有内容 → 保持展开（否则条件会被藏进一个看不见的输入框里）；
+ *   * `Esc` → 清空并收起；× 只清空、不收起。
  */
 const searchOpen = ref(false)
 const filterEl = ref<HTMLInputElement | null>(null)
@@ -39,6 +43,12 @@ async function openSearch(): Promise<void> {
   searchOpen.value = true
   await nextTick()
   filterEl.value?.focus()
+}
+
+/** 放大镜：收起时点开；展开时（它已经是输入框的前缀）点它只是把焦点交给输入框 */
+function onSearchIcon(): void {
+  if (searchOpen.value) filterEl.value?.focus()
+  else void openSearch()
 }
 
 function closeSearch(): void {
@@ -266,15 +276,22 @@ function onDrop(e: DragEvent): void {
          为什么仍留在 FileTree 而不是 AppSidebar 的全局底栏：它只服务「文件」页签，
          切到大纲时不该出现；而这里正好是文件面板的底部，视觉上仍是侧栏最下方。
 
-         观感口径（第三次调整）：**搜索平常只是一枚放大镜图标**（用户口径：
-         「使其在平常是…只剩一枚放大镜图标，点开才展开成输入框」）。
-           * 收起态：一枚 28×28 的图标按钮（`icon-btn` 自带悬停浅底），带 title/aria-label；
-           * 展开态：点它 → 白面输入框淡入并自动聚焦；**失焦且没输入内容**时自动收起
-             （有内容就保持展开，否则筛选条件会被「藏」进一个看不见的输入框里）；
-             `Esc` 清空并收起；清除按钮仍在。
-           * 中间那层 `flex-1` 容器是收起/展开的公共槽位：收起时图标靠左、剩下的空白
-             自然把分段控件推到右边，展开时输入框占满 —— 不需要额外撑宽的占位元素。
-           * 分段控件仍走 `variant="quiet"`（无轨道/无边框/无投影），与输入框**同高 28px**。
+         观感口径（第三 / 四次调整）：**搜索平常只是一枚放大镜，点开才展开成输入框**，
+         并且展开/收起要有动效、**失焦时不能闪**。
+           * 结构上只有**一个**会在 DOM 里变形的元素 `.file-search`（外壳）：收起 28px 宽、
+             透明底；展开 100% 宽、白面底。放大镜按钮**始终在壳里、从不卸载**，
+             于是没有「按钮与正在淡出的输入框同时存在」的中间帧 —— 上一版的闪烁正是
+             两个兄弟元素重叠 + 宽度瞬变造成的（实测：失焦瞬间按钮立刻出现、旧输入框还在
+             淡出，两个都占着 `flex-1` 槽位）。
+           * 动画只动三样：`width`（28px ⇄ 100%，0.2s 缓出）、`background-color`（透明 ⇄ 白面）、
+             以及输入框自身的一次短淡入。外壳 `overflow: hidden` 让输入框随宽度**被揭示**，
+             而不是「先出现再被挤」—— 这也是没有宽度抖动的原因。
+           * 左右内缩恒为 7px：收起时 7 + 图标 14 + 7 = 28px，图标正好居中；展开时图标位置
+             **一个像素都不动**，视觉上就是「同一枚放大镜长出了一个输入框」。
+           * 收起规则（目的都是「筛选条件不能悄悄消失」）：失焦且为空 → 收起；
+             失焦但有内容 → 保持展开；`Esc` → 清空并收起；× 只清空不收起；
+             切页签 / 关工作区也收起（面板是 `v-show` 常驻的，否则下次回来会「自己开着」）。
+           * 分段控件仍走 `variant="quiet"`（无轨道/无边框/无投影），与外壳**同高 28px**。
            * 分隔仍是 1px `--edge` + 与页签/树行同一条竖线的 10px 内缩；
              不加阴影、不加底色 —— 保持「安静但有结构」。 -->
     <div
@@ -283,43 +300,38 @@ function onDrop(e: DragEvent): void {
       data-sidebar-filetools
     >
       <div class="flex h-7 min-w-0 flex-1 items-center">
-        <button
-          v-if="!searchOpen"
-          class="icon-btn !h-7 !w-7"
-          data-sidebar-search-toggle
-          :title="t('sidebar.filterPlaceholder')"
-          :aria-label="t('sidebar.filterPlaceholder')"
-          aria-expanded="false"
-          @click="openSearch"
-        >
-          <Icon name="search" :size="14" />
-        </button>
-        <Transition name="fade">
-          <div
-            v-if="searchOpen"
-            class="flex h-7 w-full min-w-0 items-center gap-2 rounded-[10px] bg-panel px-2.5 transition-shadow focus-within:shadow-[0_0_0_3px_var(--accent-soft)]"
-            data-sidebar-search-box
+        <div class="file-search" :class="{ 'file-search--open': searchOpen }" data-sidebar-search>
+          <button
+            class="file-search__icon"
+            :data-sidebar-search-toggle="searchOpen ? undefined : 'true'"
+            :title="t('sidebar.filterPlaceholder')"
+            :aria-label="t('sidebar.filterPlaceholder')"
+            :aria-expanded="searchOpen ? 'true' : 'false'"
+            @click="onSearchIcon"
           >
-            <Icon name="search" :size="12.5" class="text-ink-3" />
+            <Icon name="search" :size="14" />
+          </button>
+          <Transition name="fade">
             <input
+              v-if="searchOpen"
               ref="filterEl"
               v-model="filter"
-              class="w-full bg-transparent text-[12.5px] text-ink outline-none placeholder:text-ink-3"
+              class="file-search__input"
               :placeholder="t('sidebar.filterPlaceholder')"
               :aria-label="t('sidebar.filterPlaceholder')"
               @blur="onSearchBlur"
               @keydown.esc="closeSearch"
             />
-            <button
-              v-if="filter"
-              class="text-ink-3 transition-colors hover:text-ink"
-              :aria-label="t('common.close')"
-              @click="filter = ''"
-            >
-              <Icon name="x" :size="12" />
-            </button>
-          </div>
-        </Transition>
+          </Transition>
+          <button
+            v-if="searchOpen && filter"
+            class="file-search__clear"
+            :aria-label="t('common.close')"
+            @click="filter = ''"
+          >
+            <Icon name="x" :size="12" />
+          </button>
+        </div>
       </div>
       <!-- 树 / 列表 切换（会话级偏好，非持久化）：与工具栏模式切换同一个分段控件。
            图标已从「chevron-right（= 展开）」换成真正的树形图标，见 Icon.vue 的说明。 -->
@@ -334,3 +346,113 @@ function onDrop(e: DragEvent): void {
     </div>
   </div>
 </template>
+
+<style scoped>
+/* ── 文件名搜索：一枚会「长出输入框」的放大镜 ────────────────────────────────
+   只有一个元素在变：外壳 `.file-search`。收起 28px 宽（7 + 图标 14 + 7，图标正好居中）、
+   透明底；展开 100% 宽、白面底。放大镜按钮**始终在壳里**（不卸载），所以不存在
+   「按钮与正在淡出的输入框同框」的中间帧 —— 这正是上一版失焦闪烁的根因。
+
+   动画只动三个便宜的属性，且都在合成/绘制层里：
+     * `width` 28px ⇄ 100%（0.2s 缓出）：输入框被 `overflow: hidden` **揭示**出来，
+       而不是「先出现再被挤」，所以不会抖；
+     * `background-color` 透明 ⇄ `--panel`（与宽度同长）；
+     * 输入框自身一次 0.14s 的淡入（`transition-behavior` 无关，纯 opacity）。
+   左内缩恒为 7px ⇒ 展开时图标一个像素都不动，观感就是「同一枚放大镜长出了输入框」。
+
+   宽度是布局属性，但这一行只有这两个控件、且都 `flex-none`，外层又是 `overflow`
+   不受影响；0.2s 的宽度过渡在 264px 的侧栏里不会掉帧（实测拖拽期同层级的
+   宽度过渡是流畅的，见 style.css 里侧栏宽度过渡的既有结论）。 */
+.file-search {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 8px;
+  width: 28px;
+  height: 28px;
+  padding: 0 7px;
+  border-radius: 10px;
+  background: transparent;
+  overflow: hidden;
+  transition:
+    width 0.2s cubic-bezier(0.32, 0.72, 0, 1),
+    background-color 0.2s ease;
+}
+.file-search--open {
+  width: 100%;
+  background: var(--panel);
+}
+/* 聚焦光环只加在已展开的壳上（收起时它只是一枚图标，不该有输入框的观感） */
+.file-search--open:focus-within {
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.file-search__icon {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  color: var(--ink-3);
+  background: transparent;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  transition: color 0.15s ease;
+}
+.file-search__icon:hover {
+  color: var(--ink-2);
+}
+.file-search--open .file-search__icon {
+  cursor: text;
+  color: var(--ink-3);
+}
+
+.file-search__input {
+  flex: 1 1 auto;
+  min-width: 0;
+  width: 100%;
+  background: transparent;
+  border: none;
+  outline: none;
+  font-size: 12.5px;
+  color: var(--ink);
+}
+.file-search__input::placeholder {
+  color: var(--ink-3);
+}
+
+.file-search__clear {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--ink-3);
+  cursor: pointer;
+  transition: color 0.15s ease;
+}
+.file-search__clear:hover {
+  color: var(--ink);
+}
+
+/* 过渡只留透明度：`fade` 是全局定义（opacity 0.18s），这里把输入框的入场收短一档，
+   让它跟着宽度揭示的节奏出现，而不是「先亮后挤」。 */
+.file-search__input.fade-enter-active {
+  transition: opacity 0.14s ease 0.04s;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .file-search,
+  .file-search__icon,
+  .file-search__clear,
+  .file-search__input.fade-enter-active {
+    transition: none;
+  }
+}
+</style>
