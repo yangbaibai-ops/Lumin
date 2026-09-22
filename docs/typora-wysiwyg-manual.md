@@ -672,7 +672,7 @@ Typora 官方行为（support.typoraio.cn/Links/）：**Ctrl/Cmd+点击**链接�
 | `./a/b.md`、`../x` | `relative` | 系统默认应用（`shell.openPath`） |
 | `C:\a\b`、`\\server\share`、`/home/a` | `absolute` | 系统默认应用 |
 
-- **目标不存在 → 询问是否创建**：询问**融合进右下角通知中心的可交互卡片**（带「创建并打开 / 取消」按钮，不弹模态、不打断写作，答完自动收起；同一目标只占一张卡片）。策略可由 **设置 → 链接 → 目标不存在时** 三态控制：总是创建 / 每次询问（默认）/ 从不创建；父目录缺失会一并 `mkdir -p`。链接以分隔符结尾（`./notes/`）判定为文件夹，否则为文件。
+- **目标不存在 → 询问是否创建**：询问**融合进编辑区上方的通知区**（像 Typora 一样直接在上面那块区域展示内容，**不是一个长方形卡片**；带「创建并打开 / 取消」按钮，不弹模态、不打断写作，答完自动收起；同一目标只占一条通知）。策略可由 **设置 → 链接 → 目标不存在时** 三态控制：总是创建 / 每次询问（默认）/ 从不创建；父目录缺失会一并 `mkdir -p`。链接以分隔符结尾（`./notes/`）判定为文件夹，否则为文件。
   - 实现要点：通知表新增 `actions` / `payload` 两列（JSON 文本，旧库走 `ALTER TABLE` 升级），因此**按钮与负载随通知一起持久化**；点击时按 `payload.kind` 找渲染层注册表（`lib/notificationActions.ts`）里的处理器执行，不会出现「按钮还在、逻辑没了」的死按钮。负载只存「原始链接 + 当时的基准目录」，处理器会**重新解析**——等待期间文件若已被别处创建，会直接落到「打开」分支。
 - **非文本目标不凭空创建**：`.png`/`.pdf` 之类已经存在时交系统默认应用；不存在时直接提示「该类型的文件无法新建」——造一个空的二进制文件没有意义。
 - **安全**：`shell.openExternal` 只放行 http/https/mailto 白名单（任意 scheme 交给系统处理器是历史上的高危面，如 `javascript:`、`ms-msdt:`）；分类前先排除 Windows 盘符（`C:\x` 会被 `new URL()` 误判成 scheme `c:`）；创建文件用 `flag: 'wx'`——**绝不覆盖**已有内容。`file://` URL 先 `fileURLToPath` 再按路径规则处理。
@@ -749,7 +749,7 @@ Lumin 是写作工具，没有文档时就该是一篇空白稿纸——Typora�
 **改了什么**：
 
 1. **首帧骨架屏内联进 `index.html`**（纯 HTML/CSS，不用 JS，中性半透明灰因此适配明/暗/羊皮纸主题）：窗口出现时立刻是「应用骨架 + 呼吸的 LUMIN」，Vue 挂载时整棵 `#app` 子树被替换。这是 FCP 从 668ms → 280ms 的原因——首帧不再等模块脚本执行 + Vue 挂载骨架组件。
-2. **渲染层启动链路重排**（`renderer/src/main.ts`）：主题/语言 + 本窗口要打开的文档留在关键路径上；通知中心与右键菜单「最近使用」的 hydrate 改到 `requestIdleCallback`（它们只影响卡片与菜单次要分区），并且不再互相串行等待。
+2. **渲染层启动链路重排**（`renderer/src/main.ts`）：主题/语言 + 本窗口要打开的文档留在关键路径上；通知中心与右键菜单「最近使用」的 hydrate 改到 `requestIdleCallback`（它们只影响顶部通知区与菜单次要分区），并且不再互相串行等待。
 3. **多窗口会话恢复错峰创建**（`main/index.ts` + `services/session.ts`）：`planRestore()` 改为按 `savedAt` 倒序（**用户最后停留的窗口排第一**），首个窗口先建、等它 `did-finish-load` 后再建其余（兜底 1.5s），避免 N 个渲染进程同时抢 CPU/磁盘。
 4. **主进程初始化顺序**：`registerIpc()` 保持在窗口之前（渲染层启动即发 IPC），`installMenu()`（原生菜单）挪到窗口创建之后——它不影响首屏。
 5. **dev 侧预打包与预热**（`electron.vite.config.ts`）：`optimizeDeps.include` 列出真实用到的 specifier（含 `@tiptap/pm/*` 这类子路径，只写根包名覆盖不到），`server.warmup.clientFiles` 预热首屏链路，消除首次进入编辑器时 "new dependencies optimized, reloading" 造成的二次加载。
@@ -1599,7 +1599,7 @@ parseLaunchIntent(argv, { appPath, cwd }): LaunchIntent
 - `autoDownload = false`：**不偷偷下 100MB 安装包**；`autoInstallOnAppQuit = true` 只在用户已选择下载后才在退出时安装；
 - 检查条件是 `app.isPackaged && settings.autoCheckUpdate && updateChannelConfigured()`，即默认设置（`autoCheckUpdate: false`）下**一条网络请求都不发**；
 - 状态经 `update:status` 推给渲染层，渲染层用通知中心呈现（文案在 i18n 里，主进程只传数据 —— 与既有约定一致，§4.32）。
-- **与规格的一处有意偏差**：只有 `available` / `downloaded` / `error` 三种状态发通知，`checking` / `not-available` 只 `console.info`。原因是本应用的通知中心是**持久卡片**而不是自动消失的 toast（§4.32），「没找到更新」这种一次性的中间态做成卡片会一直躺在那里等人手动关。
+- **与规格的一处有意偏差**：只有 `available` / `downloaded` / `error` 三种状态发通知，`checking` / `not-available` 只 `console.info`。原因是本应用的通知中心是**持久通知**而不是自动消失的 toast（§4.32），「没找到更新」这种一次性的中间态做成持久通知会一直躺在那里等人手动关。
 
 **⑥ 新增 `tools/_verify-packaging.js`（24 项，本次的重点）**
 

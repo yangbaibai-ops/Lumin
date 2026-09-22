@@ -163,10 +163,10 @@
 | 窗口标题与任务栏标题（`文件名 - Lumin` / `• ` 脏标记 / 多窗口可区分） | `_verify-window-title`(14) | 14 | 强 | 另用 Win32 枚举核对真实原生标题 |
 | 编辑器右键菜单（两级结构、8 个表格动作、最近使用、键盘导航、贴边钳制） | `_verify-editor-menu`(51)、`_verify-editor-menu-extras`(4)、`_verify-link-paste`(3) | 58 | 强 | 矩阵里断言最多的套件 |
 | 全局 tooltip（750ms 延迟、title 接管与还原、响应式 title 不被覆写） | `_verify-tooltip`(6)、`_verify-notify-style`（2 条） | 8 | 强 | 矩阵内覆盖完整 |
-| 通知条位置（编辑区上方、整张在视口内）+ 进出场动效 | `_verify-toast-tip.js`(16)；`verify-tiptap.js`（`toast` 相关，**非矩阵**） | 16 | 强 | 本轮通知组件从右下角搬到编辑区上方后改写：文档流证据（static + 容器紧邻内核之前）、几何（384 宽 / 不越视口 / 不压状态栏）、动效（CSS 规则 + 真实进出场 opacity 采样）|
-| 通知中心（CRUD、卡片、级别图标、步进切换、多语言、不自动消失、重载存活） | `_verify-notifications`(31) | 31 | 强 | — |
+| 通知条位置（编辑区上方、整条在视口内、**无盒子**）+ 进出场动效 | `_verify-toast-tip.js`(17)；`verify-tiptap.js`（`toast` 相关，**非矩阵**） | 17 | 强 | 本轮两次改写：先随组件从右下角搬到编辑区上方，再随「取消长方形组件」补上无边框/圆角/阴影/毛玻璃/底色的断言；动效是 CSS 规则 + 真实进出场 opacity 采样两路证据 |
+| 通知中心（CRUD、顶部通知区、级别图标、步进切换、多语言、不自动消失、重载存活） | `_verify-notifications`(32) | 32 | 强 | — |
 | 通知落盘 + 窗口作用域隔离 + 跨重启持久化 | `_verify-notify-disk`(8)、`_verify-notify-multiwindow`(21)、`_verify-notify-restart`(6) | 35 | 强 | 三套件分层；`notify-restart` 是两阶段（seed/check，中间由外部硬杀+重启），默认矩阵与 `--all` 都不跑 —— 由 `run-suites.js` 的 `MANUAL` 排除 |
-| 通知卡片样式（宽 384 / 圆角 6 / 无左色条） | `_verify-notify-style`(12) | 12 | 强 | 非破坏式（临时插一条再硬删） |
+| 通知条样式（**不是长方形组件**：无边框/圆角/阴影/毛玻璃/底色 + 铺满可读栏宽 + 长正文就地滚动） | `_verify-notify-style`(15) | 15 | 强 | 非破坏式（临时插一条再硬删）；本轮取消卡片样式后改写（旧口径是「宽 384 / 圆角 6」） |
 | 欢迎页移除后的空态（侧栏空态三入口、文件菜单、路由回落、`/about` 仍在） | `_verify-welcome-removed`(41) | 41 | 强 | — |
 | About 页内容 | `_verify-welcome-removed`（`about-still-works` 1 条） | 1 | 仅间接 | 只验路由可达，不验内容 |
 | 图标与打包资源（exe 嵌我们的图标、反证 electron 图标） | `_verify-packaging`（B 段 ~7 条） | 7 | 强 | 逐像素比对 |
@@ -232,7 +232,7 @@
 | 15 | **大纲滚动联动高亮** | README 明列「滚动联动高亮」；现在只有「大纲非空」（`_regress-layout` L8） | 扩写 `_regress-layout.js`：它已能读大纲项并验证「源码模式清空」。加「滚动正文到第 3 个标题 → 断言大纲第 3 项带 active 类」 |
 | 16 | **导出设置页 + 其余设置页签的导航回归** | `SettingsDialog.vue` 有 6 个页签，但没有一条断言「6 个都在、都能打开、内容非空」 | 扩写 `_verify-keymap.js`（已有 `settings-keymap-tab-renders`）：一次遍历 6 个页签点击并断言各自根节点出现 + 无裸 i18n key。是本节里性价比最高的一条 |
 | 17 | **启动耗时 / 输入延迟 / 关窗耗时**（3 个基准） | 已有 3 个基准脚本（`_startup-bench.js`、`_measure-latency.js`、`_time-close.js`），但都只打印、不判定，**性能回归不会红** | 给三者各加一条阈值断言（`report.check('启动首窗可见 ≤ Xms', ms <= X)`）；`_startup-bench` 需要生产包，可只在 `--all` 或人工跑，但断言必须写进脚本 |
-| 18 | **toast 位置与不遮挡底栏 / About 页内容** | 两条都是「修过但没守住」的小面。toast 已并入通知中心，位置断言随组件迁移丢失；About 只验路由可达 | 扩写 `_verify-notify-style.js`（它已能量卡片几何 + 检查既有行不变）：同样的量测方式量 toast 的 `bottom/right` 与状态栏矩形是否相交；About 在 `_verify-welcome-removed.js` 的 `about-still-works` 后面加两条内容断言 |
+| 18 | **toast 位置与不遮挡底栏 / About 页内容** | 位置这一半**已补齐**：`_verify-toast-tip.js` 现在 17 条断言（编辑区上方、整条在视口内、不压状态栏、无盒子、真实进出场动效采样），`_verify-notify-style.js` 15 条覆盖样式与就地滚动。剩 About 页内容只验路由可达 | About 在 `_verify-welcome-removed.js` 的 `about-still-works` 后面加两条内容断言 |
 
 ---
 

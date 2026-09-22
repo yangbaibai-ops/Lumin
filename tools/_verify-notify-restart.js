@@ -65,8 +65,8 @@ const SNAP = `(() => JSON.stringify({
   slot: window.luminAPI.app.sessionSlot,
   doc: window.__vt.files ? window.__vt.files().current?.path ?? null : null,
   store: window.__vt.notif().items.map((n) => n.title),
-  cards: document.querySelectorAll('.ntf-card').length,
-  cardTitle: document.querySelector('.ntf-card p')?.textContent?.trim() ?? null
+  cards: document.querySelectorAll('.ntf-item').length,
+  cardTitle: document.querySelector('.ntf-item p')?.textContent?.trim() ?? null
 }))()`
 
 const pages = async () =>

@@ -1,6 +1,6 @@
-// 验证：通知条改为「编辑区上方」的文档流顶条之后，四件事仍然成立 ——
-//   1) 位置：卡片排在 [data-editor-kernel] **之前**、整张在视口内、不被窗口底边裁掉；
-//   2) 布局：卡片是 static（真占位），不是 fixed/absolute 的浮层；
+// 验证：通知条改成「编辑区上方那块区域里直接展示内容」（不是一个长方形组件）之后，四件事仍然成立 ——
+//   1) 位置：通知条排在 [data-editor-kernel] **之前**、整条在视口内、不被窗口底边裁掉；
+//   2) 布局：是 static（真占位）而不是 fixed/absolute 浮层；且**没有盒子**（无边框/圆角/阴影/毛玻璃/底色）；
 //   3) 动效：进场自上方淡入、离场向上淡出（CSS 规则 + 真实采样两路证据）；
 //   4) tooltip：悬停贴左缘的元素时完整显示在视口内。
 //
@@ -15,28 +15,31 @@ const { connect, settle, sleep, Reporter, fatal } = require('./lib/harness')
 const MARK_ANIM = '动效采样-' + Date.now()
 const MARK_POS = '位置校验-' + Date.now()
 
-/** 页面侧：卡片几何 + 文档流证据 + 状态栏顶边 */
+/** 页面侧：通知条几何 + 文档流证据 + 「不是长方形组件」证据 + 状态栏顶边 */
 const GEOM = `(() => {
-  const card = document.querySelector('.ntf-card')
-  if (!card) return JSON.stringify({ cards: 0 })
-  const r = card.getBoundingClientRect()
+  const item = document.querySelector('.ntf-item')
+  if (!item) return JSON.stringify({ cards: 0 })
+  const r = item.getBoundingClientRect()
+  const cs = getComputedStyle(item)
   const kernel = document.querySelector('[data-editor-kernel]')
   const kr = kernel ? kernel.getBoundingClientRect() : null
-  const strip = card.parentElement
+  const strip = item.parentElement
   const bar = document.querySelector('[data-status-encoding]')
   const statusEl = bar ? bar.closest('div[class*="h-7"]') : null
   const statusTop = statusEl ? statusEl.getBoundingClientRect().top : window.innerHeight
   return JSON.stringify({
-    count: document.querySelectorAll('.ntf-card').length,
+    count: document.querySelectorAll('.ntf-item').length,
     width: Math.round(r.width),
     left: Math.round(r.left),
     top: Math.round(r.top),
     bottom: Math.round(r.bottom),
-    position: getComputedStyle(card).position,
+    position: cs.position,
     stripPosition: strip ? getComputedStyle(strip).position : null,
+    // 「取消长方形组件」：无边框 / 无圆角 / 无阴影 / 无毛玻璃 / 无底色
+    box: { border: cs.borderTopWidth, radius: cs.borderTopLeftRadius, shadow: cs.boxShadow, blur: cs.backdropFilter, bg: cs.backgroundColor },
     gapToKernel: kr ? Math.round(kr.top - r.bottom) : null,
     aboveKernel: kr ? r.top < kr.top : null,
-    // 文档流证据：卡片的容器在 DOM 里正好是编辑器内核的**前一个兄弟**
+    // 文档流证据：通知条的容器在 DOM 里正好是编辑器内核的**前一个兄弟**
     stripBeforeKernel: !!(strip && strip.nextElementSibling && strip.nextElementSibling.hasAttribute('data-editor-kernel')),
     fitsViewport: r.left >= 0 && r.right <= window.innerWidth && r.top >= 0 && r.bottom <= window.innerHeight,
     aboveStatusBar: Math.round(r.bottom) <= Math.round(statusTop) + 1,
@@ -98,7 +101,7 @@ async function main() {
         const t0 = performance.now()
         const series = []
         for (;;) {
-          const el = document.querySelector('.ntf-card')
+          const el = document.querySelector('.ntf-item')
           series.push(el ? Math.round(parseFloat(getComputedStyle(el).opacity) * 1000) / 1000 : null)
           if (series.length >= 2 && series[series.length - 1] === 1 && series[series.length - 2] === 1) break
           if (performance.now() - t0 > 3000) break
@@ -108,7 +111,7 @@ async function main() {
       })()`)
     )
     await sleep(200)
-    const after = await ev(`(async () => { const l = await window.luminAPI.notifications.list({ includeClosed: true }); const m = l.find((x) => x.title === ${JSON.stringify(MARK_ANIM)}); return JSON.stringify({ id: m ? m.id : null, cards: document.querySelectorAll('.ntf-card').length }) })()`)
+    const after = await ev(`(async () => { const l = await window.luminAPI.notifications.list({ includeClosed: true }); const m = l.find((x) => x.title === ${JSON.stringify(MARK_ANIM)}); return JSON.stringify({ id: m ? m.id : null, cards: document.querySelectorAll('.ntf-item').length }) })()`)
     const info = JSON.parse(after)
     const first = enter.series.find((v) => v !== null)
     const last = [...enter.series].reverse().find((v) => v !== null)
@@ -118,18 +121,18 @@ async function main() {
       `首帧=${first} 末帧=${last} 采样=${enter.series.length} 用时=${enter.ms}ms`
     )
 
-    // 离场采样：点 X 之后卡片应「先淡出、再消失」（离场期间计数仍为 1 且 opacity < 1）
+    // 离场采样：点 X 之后通知条应「先淡出、再消失」（离场期间计数仍为 1 且 opacity < 1）
     const leave = JSON.parse(
       await ev(`(async () => {
-        const before = document.querySelectorAll('.ntf-card').length
-        const b = Array.from(document.querySelectorAll('.ntf-card button')).find((x) => (x.getAttribute('aria-label') || '').includes('关闭此通知'))
+        const before = document.querySelectorAll('.ntf-item').length
+        const b = Array.from(document.querySelectorAll('.ntf-item button')).find((x) => (x.getAttribute('aria-label') || '').includes('关闭此通知'))
         if (!b) return JSON.stringify({ noButton: true })
         b.click()
         const t0 = performance.now()
         const series = []
         for (;;) {
-          const el = document.querySelector('.ntf-card')
-          series.push({ cards: document.querySelectorAll('.ntf-card').length, op: el ? Math.round(parseFloat(getComputedStyle(el).opacity) * 1000) / 1000 : null })
+          const el = document.querySelector('.ntf-item')
+          series.push({ cards: document.querySelectorAll('.ntf-item').length, op: el ? Math.round(parseFloat(getComputedStyle(el).opacity) * 1000) / 1000 : null })
           if (series[series.length - 1].cards === 0 && performance.now() - t0 > 60) break
           if (performance.now() - t0 > 3000) break
           await new Promise((r) => setTimeout(r, 25))
@@ -148,23 +151,28 @@ async function main() {
     )
     if (info.id !== null && !created.includes(info.id)) created.push(info.id)
   } else {
-    report.skip('enter-really-animates', `库中已有 ${before} 条未关闭通知，卡片不会重新挂载（CSS 规则那条已覆盖）`)
-    report.skip('leave-really-animates', `库中已有 ${before} 条未关闭通知，离场采样会误测旧卡片`)
+    report.skip('enter-really-animates', `库中已有 ${before} 条未关闭通知，通知条不会重新挂载（CSS 规则那条已覆盖）`)
+    report.skip('leave-really-animates', `库中已有 ${before} 条未关闭通知，离场采样会误测旧的通知条`)
   }
 
-  // ─── 2) 位置：文档流顶条，在编辑器内核之前、整张在视口内 ───
+  // ─── 2) 位置：文档流顶条，在编辑器内核之前、整条在视口内；且**不是长方形组件** ───
   await ev(`(() => { window.__L.ui().toast(${JSON.stringify(MARK_POS)}, 'success'); return 'ok' })()`)
   await sleep(500)
   const pos = JSON.parse(await ev(GEOM))
   report.note('几何 ' + JSON.stringify(pos))
-  report.check('card-rendered', pos.count === 1, `cards=${pos.count}`)
-  report.check('width-384', pos.width === 384, `w=${pos.width} vw=${pos.vw}`)
-  report.check('in-document-flow', pos.position === 'static' && pos.stripPosition === 'static', `card=${pos.position} strip=${pos.stripPosition}`)
+  report.check('notice-rendered', pos.count === 1, `items=${pos.count}`)
+  report.check(
+    'no-card-box',
+    pos.box.border === '0px' && pos.box.radius === '0px' && pos.box.shadow === 'none' && pos.box.blur === 'none' && pos.box.bg === 'rgba(0, 0, 0, 0)',
+    JSON.stringify(pos.box)
+  )
+  report.check('uses-horizontal-room', pos.width >= 480, `w=${pos.width}（旧实现固定 384 窄条）vw=${pos.vw}`)
+  report.check('in-document-flow', pos.position === 'static' && pos.stripPosition === 'static', `item=${pos.position} strip=${pos.stripPosition}`)
   report.check('strip-is-previous-sibling-of-kernel', pos.stripBeforeKernel === true, `stripBeforeKernel=${pos.stripBeforeKernel}`)
-  report.check('above-editor-kernel', pos.aboveKernel === true, `card.bottom=${pos.bottom} 距内核 ${pos.gapToKernel}px`)
+  report.check('above-editor-kernel', pos.aboveKernel === true, `item.bottom=${pos.bottom} 距内核 ${pos.gapToKernel}px`)
   report.check('fully-inside-viewport', pos.fitsViewport === true, `top=${pos.top} bottom=${pos.bottom} vh=${pos.vh}`)
   report.check('not-clipped-by-window-bottom', pos.bottom < pos.vh - 24, `bottom=${pos.bottom} vh=${pos.vh}（状态栏 h-7=28px）`)
-  report.check('above-status-bar', pos.aboveStatusBar === true, `card.bottom=${pos.bottom} statusTop=${pos.statusTop}`)
+  report.check('above-status-bar', pos.aboveStatusBar === true, `item.bottom=${pos.bottom} statusTop=${pos.statusTop}`)
 
   // 清理：硬删本脚本造出来的行（不动库里既有通知）
   const list = JSON.parse(

@@ -77,6 +77,47 @@
 - **工程化**：~~`tools/lib/harness.js` + `tools/run-suites.js`~~ → **本轮已完成**；
   剩余：`files` store 拆分；`store` 里那份为绕循环导入而复制的 `confirmIfDirty` 收敛到 `services/dialog`。
 
+## [Unreleased · 通知条取消长方形样式] — 内容直接展示在编辑区上方那块区域里（像 Typora）
+
+> 用户口径：**不是把原来的通知卡片原样挪到上面**，而是取消长方形组件，把通知的标题/说明等
+> 直接放在编辑区上方那块区域里展示。
+
+### Changed
+
+- `NotificationCenter.vue` 去掉卡片外壳：不再有 `rounded-md` + `border border-edge` + 底色 +
+  阴影 + 毛玻璃 + `min-h-[104px]` + 固定 `w-[min(384px,…)]`。现在整条是**外壳底色上的一段内容**：
+  级别色图标 + 标题一行，正文与操作按钮另起一行，右侧是「级别 · 时间 + ‹ n/m › + 全部关闭 + ✕」
+  （原来这些在卡片底栏里）。容器类名 `.ntf-card` 不再存在，改为 `.ntf-item`（外加
+  `data-notification-center` / `data-ntf-item` / `data-ntf-meta` / `data-ntf-count` 稳定钩子）。
+- 宽度：写死的 384px 窄条 → `w-full max-w-[820px]`（在编辑区内居中）。用户要的「显示得更全」
+  现在有两层含义：横向用上了整栏宽度（长正文不再在 384px 里折成一团），纵向正文上限 `max-h-[46vh]`
+  且**在区域内就地滚动**（不再把编辑区一路往下推，也不会被窗口底边裁掉）。
+- `overlays.css`：`.ntf-card` 的背景/阴影/毛玻璃声明删除，只留 `.ntf-item` 的进出场 transition；
+  级别不再有底色方块（`LEVEL.tint` 一并删掉，只保留文字色令牌）。
+- 级别识别方式不变：仍靠**图标颜色 + 级别名**（`text-accent` / `text-ok` / `text-warning` / `text-danger`），
+  三套主题自动适配。
+
+### Verification（本轮实测）
+
+| 门禁 | 结果 |
+| --- | --- |
+| `vue-tsc --noEmit` | exit 0 |
+| `eslint --cache .` | 0 error |
+| `electron-vite build` | exit 0（`EditorView-*.js` 2,508.50 kB） |
+| `node --test tests/*.test.mjs` | **291/291 pass** |
+| `_verify-toast-tip.js` | **17/17**（新增 `no-card-box`、`uses-horizontal-room`；动效真实采样仍在：进场 0→1、离场渐隐后消失） |
+| `_verify-notifications.js` | **32/32**（`compact-width-and-taller`+`smaller-radius` → `no-card-box`+`uses-horizontal-room`+`shown-above-editor-kernel`；meta/count 改从 `data-*` 钩子读） |
+| `_verify-notify-style.js` | **15/15**（改写为「不是长方形组件」：无边框/圆角/阴影/毛玻璃/底色 + 铺满可读栏宽 + 长正文就地滚动；替掉旧的 384/6px/8px 三条） |
+| `_verify-notify-multiwindow.js` / `_verify-link-open.js` | **21/21** / **62/62**（选择器与断言随新结构更新；link-open 的「卡片位置」→「通知在编辑区上方且无盒子」） |
+| `_verify-a11y.js` | **6/6**（按钮迁移后 icon-only 可访问名不变） |
+| 截图核对（临时探针，已删） | 浅色/深色/长正文三张：短通知就是一行文字（标题左、级别·时间与步进靠右）；长正文在区域内滚动且带操作按钮 |
+
+### Docs
+
+- 手册 §链接（目标不存在 → 询问是否创建）与更新检查章节的「右下角/卡片」口径改为
+  「编辑区上方的通知区、不是长方形卡片」；覆盖矩阵的 toast/通知两行按新语义与新断言数更新；
+  `docs/_audit/ui-inventory.md` §1.9 标注为审计快照并说明行号与「卡片」口径已过期。
+
 ## [Unreleased · 通知条搬到编辑区上方] — 位置/动效断言重写，顺手修好三个套件里过期的位置与数据目录假设
 
 > 用户口径：把通知组件移到**编辑界面上方**出现（像 Typora 一样），位置和本项目

@@ -240,11 +240,12 @@ async function waitEditorReady(marker, ms = 12000) {
 const RESOLVE = (target, baseDir) =>
   `(async () => JSON.stringify(await window.luminAPI.links.resolve(${JSON.stringify(target)}, ${JSON.stringify(baseDir)})))()`
 const HISTORY = `(async () => JSON.stringify(await window.luminAPI.links.history(50)))()`
-/** 通知卡片：位于**编辑区上方的文档流顶条**（原来在右下角，本轮搬到顶部 —— 断言随之改写） */
+/** 通知条：位于**编辑区上方那块区域**里（不是长方形组件）—— 本轮取消卡片样式后随之改写 */
 const NTF_CARD = `(() => {
-  const card = document.querySelector('.ntf-card')
+  const card = document.querySelector('.ntf-item')
   if (!card) return 'null'
   const r = card.getBoundingClientRect()
+  const cs = getComputedStyle(card)
   const kernel = document.querySelector('[data-editor-kernel]')
   return JSON.stringify({
     x: Math.round(r.left + r.width / 2),
@@ -252,7 +253,8 @@ const NTF_CARD = `(() => {
     top: Math.round(r.top),
     right: Math.round(r.right),
     bottom: Math.round(r.bottom),
-    position: getComputedStyle(card).position,
+    position: cs.position,
+    box: { border: cs.borderTopWidth, radius: cs.borderTopLeftRadius, shadow: cs.boxShadow },
     kernelTop: kernel ? Math.round(kernel.getBoundingClientRect().top) : null,
     vw: window.innerWidth,
     vh: window.innerHeight,
@@ -262,9 +264,9 @@ const NTF_CARD = `(() => {
     modalOpen: !!(window.__vt.ui().confirmState || window.__vt.ui().promptState)
   })
 })()`
-/** 卡片上的按钮坐标：primary=true 取主按钮，false 取次按钮 */
+/** 通知条上的按钮坐标：primary=true 取主按钮，false 取次按钮 */
 const NTF_BTN = (primary) => `(() => {
-  const card = document.querySelector('.ntf-card')
+  const card = document.querySelector('.ntf-item')
   const sel = ${JSON.stringify(primary ? '.ntf-action.is-primary' : '.ntf-action:not(.is-primary)')}
   const btn = card?.querySelector(sel)
   if (!btn) return 'null'
@@ -527,37 +529,41 @@ async function main() {
   c('sibling-opens-in-new-window', docC === SIBLING, String(docC))
   if (winC) await closePage(winC)
 
-  // ── D. 端到端：缺失文件 → 编辑区上方的通知卡片询问 → 取消 ─────────────────
+  // ── D. 端到端：缺失文件 → 编辑区上方的通知条询问 → 取消 ─────────────────
   fs.rmSync(ASKED, { force: true })
   pt = await linkPoint('询问创建')
   if (pt) await clickCtrl(pt.x, pt.y, 700)
   const cardD = await ev(NTF_CARD)
   console.log('D-card ' + cardD)
   const cardState = cardD === 'null' ? null : JSON.parse(cardD)
-  c('missing-target-shows-notification-card', !!cardState, String(cardD))
+  c('missing-target-shows-notification', !!cardState, String(cardD))
   c(
-    'card-shown-at-editor-top',
-    // 语义：卡片是**文档流里的一块、排在内核之前**（static，不是右下角浮层），
-    // 且整张在视口内 —— 长通知不会被窗口底边裁掉正是这次搬家的目的。
+    'notice-shown-above-editor',
+    // 语义：通知是**编辑区上方那块区域里的一块、排在内核之前**（static，不是角落浮层），
+    // 整条在视口内、且没有盒子（本轮取消了长方形样式）。
     !!cardState &&
       cardState.position === 'static' &&
       cardState.top >= 0 &&
       cardState.bottom <= cardState.vh &&
       cardState.kernelTop !== null &&
-      cardState.bottom <= cardState.kernelTop + 1,
+      cardState.bottom <= cardState.kernelTop + 1 &&
+      cardState.box.border === '0px' &&
+      cardState.box.radius === '0px' &&
+      cardState.box.shadow === 'none',
     JSON.stringify(
       cardState && {
         top: cardState.top,
         bottom: cardState.bottom,
         kernelTop: cardState.kernelTop,
         position: cardState.position,
+        box: cardState.box,
         vw: cardState.vw,
         vh: cardState.vh
       }
     )
   )
   c(
-    'card-keeps-action-buttons',
+    'notice-keeps-action-buttons',
     !!cardState && cardState.actions.length === 2,
     JSON.stringify(cardState?.actions)
   )

@@ -1,6 +1,7 @@
 // 验收：全局通知中心
 // A. 数据层：SQLite CRUD（增/查/改/合并/软关闭/全关/硬删/清理）+ 跨渲染层重载持久化
-// B. 界面层：单卡片、宽高、无左侧色条、级别图标+文字、标题/详情、X、不自动消失、
+// B. 界面层：单条通知、**不是长方形组件**（无边框/圆角/阴影/毛玻璃/底色）、铺满可读栏宽、
+//    在编辑区上方、无左侧色条、级别图标+文字、标题/详情、X、不自动消失、
 //    ‹ n/m › 切换（默认最新）、全部关闭、多语言、动效
 const CDP = 'http://127.0.0.1:9222/json'
 let ws, id = 0
@@ -16,7 +17,7 @@ async function clickPoint(x, y) {
 /** 点击卡片内某个按钮（按 aria-label 精确定位，避免依赖顺序） */
 async function clickByLabel(label) {
   const p = await ev(`(() => {
-    const el = Array.from(document.querySelectorAll('.ntf-card button')).find((b) => b.getAttribute('aria-label') === ${JSON.stringify(label)} || b.getAttribute('title') === ${JSON.stringify(label)})
+    const el = Array.from(document.querySelectorAll('.ntf-item button')).find((b) => b.getAttribute('aria-label') === ${JSON.stringify(label)} || b.getAttribute('title') === ${JSON.stringify(label)})
     if (!el) return null
     const r = el.getBoundingClientRect()
     return JSON.stringify({ x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2) })
@@ -27,34 +28,46 @@ async function clickByLabel(label) {
   return true
 }
 const CARD = `(() => {
-  const cards = Array.from(document.querySelectorAll('.ntf-card'))
-  const card = cards[0]
-  if (!card) return JSON.stringify({ cards: 0 })
-  const r = card.getBoundingClientRect()
-  const cs = getComputedStyle(card)
-  const icon = card.querySelector('span svg')
-  const title = card.querySelector('p')?.textContent?.trim() ?? ''
-  const footer = Array.from(card.querySelectorAll('footer span')).map((s) => s.textContent.trim()).filter(Boolean)
-  const navBtns = Array.from(card.querySelectorAll('footer button')).map((b) => b.getAttribute('aria-label') || b.textContent.trim())
+  const items = Array.from(document.querySelectorAll('.ntf-item'))
+  const item = items[0]
+  if (!item) return JSON.stringify({ cards: 0 })
+  const r = item.getBoundingClientRect()
+  const cs = getComputedStyle(item)
+  const strip = item.parentElement
+  const kernel = document.querySelector('[data-editor-kernel]')
+  const icon = item.querySelector('span svg')
+  const title = item.querySelector('p')?.textContent?.trim() ?? ''
+  const meta = item.querySelector('[data-ntf-meta]')
+  const count = item.querySelector('[data-ntf-count]')?.textContent?.trim() ?? ''
+  const navBtns = Array.from(meta?.querySelectorAll('button') ?? []).map((b) => b.getAttribute('aria-label') || b.textContent.trim())
   return JSON.stringify({
-    cards: cards.length,
+    cards: items.length,
     width: Math.round(r.width),
     height: Math.round(r.height),
-    padding: cs.padding,
+    top: Math.round(r.top),
+    bottom: Math.round(r.bottom),
+    // 「不是长方形组件」的判据：无边框、无圆角、无阴影、无毛玻璃、无底色
+    borderWidth: cs.borderTopWidth,
     radius: cs.borderTopLeftRadius,
-    shadow: cs.boxShadow !== 'none',
+    shadow: cs.boxShadow,
     blur: cs.backdropFilter,
+    background: cs.backgroundColor,
+    position: cs.position,
+    stripBeforeKernel: !!(strip && strip.nextElementSibling && strip.nextElementSibling.hasAttribute('data-editor-kernel')),
+    kernelTop: kernel ? Math.round(kernel.getBoundingClientRect().top) : null,
+    padding: cs.padding,
     transition: cs.transitionDuration,
-    leftBars: card.querySelectorAll('span.absolute').length,
+    leftBars: item.querySelectorAll('span.absolute').length,
     title,
-    body: card.querySelector('p + p, .ntf-body')?.textContent?.trim() ?? '',
-    footer,
+    body: item.querySelector('p + p, .ntf-body')?.textContent?.trim() ?? '',
+    metaText: meta?.textContent?.trim() ?? '',
+    count,
     iconPaths: icon ? icon.querySelectorAll('path, circle, rect').length : 0,
     iconD: icon ? Array.from(icon.querySelectorAll('path')).map((p) => p.getAttribute('d')).join('|') : null,
     iconColor: icon ? getComputedStyle(icon.parentElement).color : null,
     navBtns,
-    footerFits: (() => { const f = card.querySelector('footer'); return !!f && f.scrollWidth <= f.clientWidth + 1 })(),
-    closeBtn: !!Array.from(card.querySelectorAll('button')).find((b) => (b.getAttribute('aria-label') || '').includes('关闭此通知') || (b.getAttribute('title') || '').includes('关闭此通知'))
+    metaFits: !!meta && meta.scrollWidth <= meta.clientWidth + 1,
+    closeBtn: !!Array.from(item.querySelectorAll('button')).find((b) => (b.getAttribute('aria-label') || '').includes('关闭此通知') || (b.getAttribute('title') || '').includes('关闭此通知'))
   })
 })()`
 
@@ -145,7 +158,7 @@ async function main() {
   c('close-all-marks-everything', all.beforeCount === 2 && all.closedCount === 2 && all.afterCount === 0, JSON.stringify(all))
 
   // ── B. 界面层 ────────────────────────────────────────────────────────────
-  // 造三条通知（含标题/详情），并确认只渲染一张卡片
+  // 造三条通知（含标题/详情），并确认只渲染一条
   await ev(`(async () => {
     const n = window.__vt.notif()
     await n.notify({ level: 'info', title: '通知标题一', body: '第一条通知的详细内容' })
@@ -156,24 +169,30 @@ async function main() {
   await sleep(600)
   const card = JSON.parse(await ev(CARD))
   console.log('CARD ' + JSON.stringify(card))
-  c('only-one-card', card.cards === 1, 'cards=' + card.cards)
-  // 卡片尺寸与圆角按当前设计：宽 384、小圆角 6px（rounded-md）。此前写死 400/12px 已与实现脱节。
-  c('compact-width-and-taller', card.width === 384 && card.height >= 96, `w=${card.width} h=${card.height}`)
-  c('smaller-radius', card.radius === '6px', 'radius=' + card.radius)
-  c('footer-fits', card.footerFits === true, JSON.stringify({ footerFits: card.footerFits, footer: card.footer }))
+  c('only-one-notice', card.cards === 1, 'items=' + card.cards)
+  // 本轮口径：**通知不再是一个长方形组件**（无边框/圆角/阴影/毛玻璃/底色），
+  // 内容直接展示在编辑区上方那块区域里；宽度不再是写死的 384，而是铺满可读栏宽。
+  c(
+    'no-card-box',
+    card.borderWidth === '0px' && card.radius === '0px' && card.shadow === 'none' && card.blur === 'none' && card.background === 'rgba(0, 0, 0, 0)',
+    JSON.stringify({ border: card.borderWidth, radius: card.radius, shadow: card.shadow, blur: card.blur, bg: card.background })
+  )
+  c('uses-horizontal-room', card.width >= 480, `w=${card.width}`)
+  c('shown-above-editor-kernel', card.position === 'static' && card.stripBeforeKernel === true && card.bottom <= card.kernelTop + 1, JSON.stringify({ position: card.position, stripBeforeKernel: card.stripBeforeKernel, bottom: card.bottom, kernelTop: card.kernelTop }))
+  c('meta-fits', card.metaFits === true, JSON.stringify({ metaFits: card.metaFits, meta: card.metaText }))
   c('no-left-color-bar', card.leftBars === 0, 'leftBars=' + card.leftBars)
   c('has-title-and-body', card.title === '报错标题三' && card.body === '第三条通知的详细内容', JSON.stringify({ t: card.title, b: card.body }))
-  c('default-shows-newest', card.title === '报错标题三' && card.footer.includes('1/3'), JSON.stringify(card.footer))
-  c('level-label-from-i18n', card.footer.includes('报错'), JSON.stringify(card.footer))
+  c('default-shows-newest', card.title === '报错标题三' && card.count === '1/3', JSON.stringify({ t: card.title, count: card.count }))
+  c('level-label-from-i18n', card.metaText.includes('报错'), card.metaText)
   c('has-close-button', card.closeBtn === true, JSON.stringify(card.navBtns))
   c('has-stepper-and-close-all', card.navBtns.length >= 3, JSON.stringify(card.navBtns))
-  c('animated-card', parseFloat(card.transition) > 0 && card.blur !== 'none', `transition=${card.transition} blur=${card.blur}`)
+  c('animated-notice', parseFloat(card.transition) > 0, `transition=${card.transition}`)
 
   // 级别图标各不相同（依次切换三条通知）
   const iconFingerprints = []
   for (let i = 0; i < 3; i++) {
     const snap = JSON.parse(await ev(CARD))
-    iconFingerprints.push({ title: snap.title, iconD: snap.iconD, color: snap.iconColor, label: snap.footer.find((f) => LEVELS.some((l) => l.zh === f)) })
+    iconFingerprints.push({ title: snap.title, iconD: snap.iconD, color: snap.iconColor, label: LEVELS.find((l) => snap.metaText.includes(l.zh))?.level ?? null })
     await clickByLabel('下一条通知')
     await sleep(450)
   }
@@ -190,11 +209,11 @@ async function main() {
   await clickByLabel('下一条通知')
   await sleep(400)
   const older = JSON.parse(await ev(CARD))
-  c('next-shows-older', older.title === '告警标题二' && older.footer.includes('2/3'), JSON.stringify({ t: older.title, f: older.footer }))
+  c('next-shows-older', older.title === '告警标题二' && older.count === '2/3', JSON.stringify({ t: older.title, count: older.count }))
   await clickByLabel('上一条通知')
   await sleep(400)
   const newer = JSON.parse(await ev(CARD))
-  c('prev-shows-newer', newer.title === '报错标题三' && newer.footer.includes('1/3'), JSON.stringify({ t: newer.title, f: newer.footer }))
+  c('prev-shows-newer', newer.title === '报错标题三' && newer.count === '1/3', JSON.stringify({ t: newer.title, count: newer.count }))
 
   // 不自动消失：等待 6 秒仍在
   await sleep(6000)
@@ -208,13 +227,13 @@ async function main() {
   const openInDb = await ev(`(async () => (await window.luminAPI.notifications.list()).length)()`)
   console.log('AFTER-CLOSE ' + JSON.stringify(afterClose) + ' dbOpen=' + openInDb)
   c('close-button-works', closedFirst === true && afterClose.cards === 1 && openInDb === 2, JSON.stringify({ afterClose: afterClose.title, openInDb }))
-  c('counter-updates', afterClose.footer.includes('1/2'), JSON.stringify(afterClose.footer))
+  c('counter-updates', afterClose.count === '1/2', JSON.stringify(afterClose.count))
 
   // 多语言：切到英文看级别文案
   await ev(`window.__vt.settings().set('language', 'en-US')`)
   await sleep(600)
   const en = JSON.parse(await ev(CARD))
-  c('i18n-en', en.footer.includes('Warning') || en.footer.includes('Notice'), JSON.stringify(en.footer))
+  c('i18n-en', en.metaText.includes('Warning') || en.metaText.includes('Notice'), en.metaText)
   await ev(`window.__vt.settings().set('language', 'zh-CN')`)
   await sleep(600)
 
@@ -230,14 +249,14 @@ async function main() {
   })()`)
   for (let i = 0; i < 60; i++) { await sleep(250); if ((await ev(`window.__vt.ui().booting ? 'booting' : 'ready'`)) === 'ready') break }
   await sleep(500)
-  const restored = JSON.parse(await ev(`(() => JSON.stringify({ storeCount: window.__vt.notif().items.length, cards: document.querySelectorAll('.ntf-card').length, title: document.querySelector('.ntf-card p')?.textContent?.trim() ?? null }))()`))
+  const restored = JSON.parse(await ev(`(() => JSON.stringify({ storeCount: window.__vt.notif().items.length, cards: document.querySelectorAll('.ntf-item').length, title: document.querySelector('.ntf-item p')?.textContent?.trim() ?? null }))()`))
   console.log('AFTER-RELOAD ' + JSON.stringify(restored))
   c('survives-renderer-reload', restored.storeCount === 2 && restored.cards === 1, JSON.stringify(restored))
 
   // 全部关闭（一并关闭）
   const closeAllOk = await clickByLabel('全部关闭')
   await sleep(700)
-  const emptyUi = JSON.parse(await ev(`(() => JSON.stringify({ cards: document.querySelectorAll('.ntf-card').length, store: window.__vt.notif().items.length }))()`))
+  const emptyUi = JSON.parse(await ev(`(() => JSON.stringify({ cards: document.querySelectorAll('.ntf-item').length, store: window.__vt.notif().items.length }))()`))
   const dbOpen = await ev(`(async () => (await window.luminAPI.notifications.list()).length)()`)
   console.log('CLOSE-ALL-UI ' + JSON.stringify(emptyUi) + ' dbOpen=' + dbOpen)
   c('close-all-button', closeAllOk === true && emptyUi.cards === 0 && dbOpen === 0, JSON.stringify({ emptyUi, dbOpen }))
@@ -248,7 +267,7 @@ async function main() {
   const legacy = JSON.parse(await ev(CARD))
   const legacyDb = await ev(`(async () => (await window.luminAPI.notifications.list()).length)()`)
   console.log('LEGACY-TOAST ' + JSON.stringify(legacy) + ' dbOpen=' + legacyDb)
-  c('legacy-toast-routes-to-center', legacy.cards === 1 && legacy.title === '已保存' && legacy.footer.includes('已完成'), JSON.stringify({ t: legacy.title, f: legacy.footer }))
+  c('legacy-toast-routes-to-center', legacy.cards === 1 && legacy.title === '已保存' && legacy.metaText.includes('已完成'), JSON.stringify({ t: legacy.title, meta: legacy.metaText }))
   c('legacy-toast-merges-repeat', legacyDb === 1, 'dbOpen=' + legacyDb)
 
   // 复原：把测试期间的通知全部关闭并清掉历史行

@@ -61,7 +61,7 @@ const SETUP_VT = `(() => {
 })()`
 const SNAP = `(() => JSON.stringify({
   store: window.__vt.notif().items.map((n) => n.title),
-  cards: document.querySelectorAll('.ntf-card').length,
+  cards: document.querySelectorAll('.ntf-item').length,
   slot: window.luminAPI.app.sessionSlot
 }))()`
 

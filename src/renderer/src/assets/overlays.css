@@ -306,18 +306,18 @@ li.md-reveal {
 /* 图片：规则在文件上部（`.md-preview img` 那一段）已经有完整一份，
    这里原先重复了一遍、且因为位置更靠后会覆盖上面的行内排版 —— 删掉重复项 */
 
-/* ── 全局通知中心（单卡片：级别图标 + 标题 + 详情 + 切换/关闭）── */
-.ntf-card {
-  background: color-mix(in srgb, var(--elevate) 94%, transparent);
-  box-shadow: var(--shadow-2);
-  backdrop-filter: blur(14px);
+/* ── 全局通知中心（单条：级别图标 + 标题 + 详情 + 切换/关闭）──
+   注意：**通知条不是一个长方形组件**（用户口径：像 Typora 一样，直接把内容展示在
+   编辑区上方那块区域里）。所以这里没有背景、边框、圆角、阴影、毛玻璃 ——
+   `.ntf-item` 只剩排版与动效，视觉上就是外壳底色上的一行通知。 */
+.ntf-item {
   /* 只在出现/消失时动，避免与内容切换动效互相干扰 */
   transition:
     opacity 0.22s ease,
     transform 0.22s cubic-bezier(0.22, 1, 0.36, 1);
 }
 .ntf-body {
-  /* 长详情只在卡片内滚动，不撑高整张卡片 */
+  /* 长详情只在这块区域内滚动，不把编辑区一路往下推 */
   scrollbar-width: thin;
 }
 /* 可交互通知的操作按钮：主/次/危险三档，配色全部取主题令牌（三套主题自动适配） */
