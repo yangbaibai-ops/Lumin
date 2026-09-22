@@ -201,26 +201,44 @@ function runSuite(file, port, timeoutMs, userData) {
   let pass = 0
   let total = 0
   let fail = 0
-  const bar = [...raw.matchAll(/---\s*(\d+)\/(\d+)\s*PASS/g)].pop()
-  if (bar) {
+  let skip = 0
+  // ⚠️ **SKIP 不是 FAIL**（清单 §1.C.1）：`--- N/M PASS` 里的 M 是「断言总数」，含 SKIP
+  // （Reporter 的 total = passed + failed + skipped），所以 `M - N` **不等于**失败数 ——
+  // 老写法把它当失败数，于是「FAIL 0 SKIP 1」的套件被判 FAIL：实测 `_verify-md-fidelity.js`
+  // （101/102）、`_verify-round-24.js`（15/16）、`_verify-theme-auto.js` 退出码 0、FAIL 0，
+  // 却每轮报红。现在优先认三个数分开写的 `TOTAL … FAIL … SKIP …`；
+  // 退到老格式或只有 `--- N/M PASS` 时，用 **SKIP 行数**从 M 里扣掉再算失败数。
+  const skipLines = raw.split('\n').filter((l) => /^\s*SKIP\b/.test(l)).length
+  const full = [
+    ...raw.matchAll(/TOTAL\s+(\d+)\s+PASS\s+(\d+)\s+FAIL\s+(\d+)\s+SKIP\s+(\d+)/g)
+  ].pop()
+  const tot = full
+    ? null
+    : [...raw.matchAll(/TOTAL\s+(\d+)\s+PASS\s+(\d+)\s+FAIL\s+(\d+)/g)].pop()
+  const bar = full || tot ? null : [...raw.matchAll(/---\s*(\d+)\/(\d+)\s*PASS/g)].pop()
+  if (full) {
+    total = Number(full[1])
+    pass = Number(full[2])
+    fail = Number(full[3])
+    skip = Number(full[4])
+  } else if (tot) {
+    pass = Number(tot[2])
+    fail = Number(tot[3])
+    skip = Math.max(0, Number(tot[1]) - pass - fail)
+    total = pass + fail + skip
+  } else if (bar) {
     pass = Number(bar[1])
     total = Number(bar[2])
-    fail = Math.max(0, total - pass)
+    skip = Math.min(skipLines, Math.max(0, total - pass))
+    fail = Math.max(0, total - pass - skip)
   } else {
-    const tot = [...raw.matchAll(/TOTAL\s+(\d+)\s+PASS\s+(\d+)\s+FAIL\s+(\d+)/g)].pop()
-    if (tot) {
-      pass = Number(tot[2])
-      total = Number(tot[1]) - Number(tot[3])
-      fail = Number(tot[3])
-    } else {
-      const lines = raw.split('\n')
-      const okLines = lines.filter((l) => /^\s*PASS\b/.test(l)).length
-      const badLines = lines.filter((l) => /^\s*FAIL\b/.test(l)).length
-      if (okLines + badLines > 0) {
-        pass = okLines
-        fail = badLines
-        total = okLines + badLines
-      }
+    const lines = raw.split('\n')
+    const okLines = lines.filter((l) => /^\s*PASS\b/.test(l)).length
+    const badLines = lines.filter((l) => /^\s*FAIL\b/.test(l)).length
+    if (okLines + badLines > 0) {
+      pass = okLines
+      fail = badLines
+      total = okLines + badLines
     }
   }
   const skipped = /NO-APP-PAGE|SKIP: 没有可用窗口|SKIP: 9222 上已有|NO_PINIA|INSTANCE-NOT-READY/.test(raw)
@@ -229,6 +247,7 @@ function runSuite(file, port, timeoutMs, userData) {
     pass,
     total,
     fail,
+    skip,
     raw,
     skipped: skipped && !total
   }
@@ -282,9 +301,14 @@ async function main() {
       }
     }
     const res = runSuite(file, args.port, args.timeoutMs, userData)
-    // 判定以**套件退出码**为准；但「打印了 FAIL 行」也必须算失败
-    // （老套件里存在"只打印、退出码仍 0"的写法，实测 `_verify-notifications.js` 就是这一类）。
-    let status = res.skipped || (res.code === 0 && res.fail === 0) ? (res.skipped ? 'SKIP' : 'PASS') : 'FAIL'
+    /**
+     * 判定只看两件事：**套件退出码**与**打印过的 FAIL 行**（老套件里存在"只打印、退出码仍 0"
+     * 的写法，实测 `_verify-notifications.js` 就是这一类）。
+     * ⚠️ SKIP **不参与**失败判定（清单 §1.C.1）：环境不支持而如实 SKIP 的断言不该把整轮判红 ——
+     * 它们在行尾单独显示 `SKIP n`，整体退出码也不受 SKIP 影响。
+     */
+    let status = res.code === 0 && res.fail === 0 ? 'PASS' : 'FAIL'
+    if (res.skipped && res.total === 0) status = 'SKIP'
     /**
      * ⚠️ **零断言 = NOASSERT，不算通过**（自查报告 H1）。
      *
@@ -298,9 +322,11 @@ async function main() {
      */
     if (status === 'PASS' && res.total === 0 && !EMPTY_OK.has(file)) status = 'NOASSERT'
     console.log(
-      `\r${status} ${file} | ${res.pass}/${res.total}${selfManaged ? '（自管实例）' : ''}${
-        devNeeded ? '（需要 dev server）' : ''
-      }${status === 'NOASSERT' ? '  ← 没有产出任何断言，等于没测' : ''}`
+      `\r${status} ${file} | ${res.pass}/${res.total}${res.skip ? ` SKIP ${res.skip}` : ''}${
+        selfManaged ? '（自管实例）' : ''
+      }${devNeeded ? '（需要 dev server）' : ''}${
+        status === 'NOASSERT' ? '  ← 没有产出任何断言，等于没测' : ''
+      }`
     )
     if (status === 'FAIL') {
       const tail = res.raw
@@ -310,7 +336,7 @@ async function main() {
         .join('\n    ')
       if (tail) console.log('    ' + tail)
     }
-    rows.push({ file, status, pass: res.pass, total: res.total })
+    rows.push({ file, status, pass: res.pass, total: res.total, skip: res.skip })
     if (!args.keep) await sleep(500)
   }
 
@@ -322,6 +348,9 @@ async function main() {
   console.log(
     `\nTOTAL ${rows.length} PASS ${pass.length} FAIL ${failed.length} SKIP ${skipped.length} NOASSERT ${noassert.length}`
   )
+  const skippedAssertions = rows.reduce((n, r) => n + (r.skip || 0), 0)
+  if (skippedAssertions)
+    console.log(`（另有 ${skippedAssertions} 条断言按环境如实 SKIP —— SKIP 不算失败，见清单 §1.C.1）`)
   if (failed.length) console.log('FAILED ' + failed.map((r) => r.file).join(', '))
   if (noassert.length) {
     console.log('NOASSERT（没有产出断言，等于没测）' + noassert.map((r) => r.file).join(', '))

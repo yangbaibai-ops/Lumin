@@ -590,10 +590,47 @@ const MEASURE = `(() => {
     await sleep(500)
 
     // G. 三主题令牌驱动 + 截图
+    //
+    // ⚠️ 这里是清单 §1.C.2 记的「批次敏感」现场：原来 `set('theme')` 之后**固定 sleep 900ms**
+    // 就去读计算样式，10 套件批量跑时（机器更忙、样式重算与过渡更慢）会读到**上一套主题**的颜色，
+    // 于是单独跑 32/32、批量跑 29/32。
+    //
+    // 只等「CSS 变量变了」还不够 —— 侧栏/行/body 都在 `transition: background-color` 上，
+    // 变量一换就立刻读，读到的是**过渡途中的插值色**（实测：dark 那一轮 sel 仍是 light 的
+    // rgba(17,24,39,.07)）。所以判据取「变量已换 + 关键颜色**连续两次采样相同**（过渡结束）」。
     const themeSeen = {}
+    let prevPaper = null
     for (const th of ['light', 'dark', 'sepia']) {
       await w.ev(`(() => { window.__S.settings().set('theme', '${th}'); return 'ok' })()`)
-      await sleep(900)
+      let settled = false
+      let lastSig = null
+      for (let i = 0; i < 60; i++) {
+        const probe = JSON.parse(
+          await w.ev(`(() => {
+            const cs = getComputedStyle(document.documentElement)
+            const row = document.querySelector('[data-tree-row]')
+            return JSON.stringify({
+              cls: document.documentElement.className,
+              paper: cs.getPropertyValue('--paper').trim(),
+              rowBg: row ? getComputedStyle(row).backgroundColor : '',
+              bodyBg: getComputedStyle(document.body).backgroundColor
+            })
+          })()`)
+        )
+        const sig = `${probe.rowBg}|${probe.bodyBg}`
+        if (probe.cls.includes(`theme-${th}`) && probe.paper && probe.paper !== prevPaper) {
+          if (sig === lastSig) {
+            prevPaper = probe.paper
+            settled = true
+            break
+          }
+          lastSig = sig
+        } else {
+          lastSig = null
+        }
+        await sleep(50)
+      }
+      if (!settled) console.log(`WARN 主题 ${th} 在 3s 内没切到位（继续量，断言会如实反映）`)
       const t = JSON.parse(await w.ev(MEASURE))
       themeSeen[th] = {
         sel: t.rows.find((r) => r.bg !== 'rgba(0, 0, 0, 0)')?.bg || null,

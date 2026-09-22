@@ -1105,16 +1105,46 @@ async function main() {
   } catch {
     clipboardSaved = undefined
   }
-  if (clipboardSaved === null) {
+  // ⚠️ 清单 §1.C.3：这套夹具依赖**真实系统剪贴板**。批量跑时（机器更忙、或别的进程在动剪贴板）
+  // 一次 `Set-Clipboard` 可能没真正生效，随后的 Ctrl+V 就粘出**上一次的内容**，表现成
+  // 「粘贴后少字符」的假回归（实测批量 179/182、单独 182/182）。所以先写一个哨兵值并读回校验，
+  // 确认读写通路可用；每次写完也读回校验，不一致就**如实 SKIP**，不把它算成编辑器丢字符。
+  const CLIP_SENTINEL = `lumin-clip-${Date.now()}`
+  let clipUsable = false
+  if (clipboardSaved !== null) {
+    try {
+      writeClipboard(CLIP_SENTINEL)
+      clipUsable = (readClipboard() ?? '').trim() === CLIP_SENTINEL
+    } catch {
+      clipUsable = false
+    }
+  }
+  if (clipboardSaved === null || !clipUsable) {
     report.skip(
       '真实剪贴板粘贴（字节保真）',
-      'Set-Clipboard/Get-Clipboard 不可用（非 Windows 或权限受限）——请手工复跑'
+      clipboardSaved === null
+        ? 'Set-Clipboard/Get-Clipboard 不可用（非 Windows 或权限受限）——请手工复跑'
+        : `剪贴板读回校验失败（写 ${CLIP_SENTINEL} 后读到的不是它）—— 环境问题，不当成编辑器缺陷`
     )
   } else {
     for (const md of ['**2****2**', '**a * b**', '**加粗**']) {
       await openDoc('\n')
       await caretAt(0)
       writeClipboard(md)
+      const back = (() => {
+        try {
+          return readClipboard()
+        } catch {
+          return null
+        }
+      })()
+      if ((back ?? '').trim() !== md) {
+        report.skip(
+          `真实粘贴 ${md}`,
+          `剪贴板没写进去（读回=${JSON.stringify((back ?? '').slice(0, 40))}）—— 环境问题`
+        )
+        continue
+      }
       await sleep(250)
       await pressKey(app.send, { key: 'v', code: 'KeyV', vk: 86, modifiers: 2 })
       await sleep(400)

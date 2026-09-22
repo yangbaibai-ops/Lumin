@@ -77,6 +77,40 @@
 - **工程化**：~~`tools/lib/harness.js` + `tools/run-suites.js`~~ → **本轮已完成**；
   剩余：`files` store 拆分；`store` 里那份为绕循环导入而复制的 `confirmIfDirty` 收敛到 `services/dialog`。
 
+## [Unreleased · 套件诚实性三处（清单 §1.C）] — SKIP 不再算失败 / 主题切换改轮询 / 剪贴板先哨兵校验
+
+> 来源：桌面《Lumin-待优化清单-2026-09-22.md》§1.C。三处都是「信号不诚实」：要么把正常的 SKIP
+> 判成红灯，要么让机器负载决定成败，要么让真实剪贴板混进结论。
+
+### Fixed
+
+- **C1 SKIP 被当成 FAIL**（`tools/run-suites.js`）——判定原来有两处会把 SKIP 算成失败：
+  ① `--- N/M PASS` 里的 M 是**断言总数**（含 SKIP，`Reporter.total = passed + failed + skipped`），
+  老写法 `fail = M - N` 于是把 SKIP 当失败；② 状态判定用 `skipped || (code===0 && fail===0)`。
+  实测后果：`_verify-md-fidelity.js`（101/102）、`_verify-round-24.js`（15/16）、
+  `_verify-theme-auto.js` 退出码 0、FAIL 0，却**每轮报红**。现在：优先认三数分开写的
+  `TOTAL … FAIL … SKIP …`；退到老格式或 `--- N/M PASS` 时用 **SKIP 行数**从 M 里扣掉；
+  状态只看「退出码 + FAIL 行」，SKIP 单独在行尾显示（`PASS x/y SKIP n`），并在一轮结束时
+  汇总「另有 N 条断言按环境如实 SKIP —— SKIP 不算失败」。
+- **C2 批次敏感**（`tools/_verify-sidebar-tree-style.js`）——主题循环原来是
+  `set('theme')` + **固定 `sleep(900)`** 就读计算样式；批量跑（机器更忙）时会读到上一套主题的颜色，
+  实测单独 32/32、批量 29/32。改成**轮询双条件**：`<html>` 的 `theme-*` 类到位 + `--paper`
+  真的换了 + **关键颜色连续两次采样相同**（侧栏/行/body 都在 `transition: background-color` 上，
+  只等变量变会读到**过渡途中的插值色** —— 这正是先前 30/32 里 `sel`/`body` 仍是上一套值的原因）。
+- **C3 系统剪贴板污染**（`tools/_verify-inline-formats.js`）——粘贴夹具依赖**真实剪贴板**，
+  批量和单独跑结果不同（179/182 vs 182/182）。现在：① 开头写一个**哨兵值**并读回校验，
+  确认读写通路可用；② 每次 `writeClipboard(md)` 后**读回比对**，不一致就 `SKIP` 并注明是环境问题
+  （不再把它算成「编辑器丢字符」的假回归）。
+
+### Verification（本轮实测）
+
+| 项 | 结果 |
+| --- | --- |
+| 三个曾被记红的套件 | `_verify-round-24.js` **PASS 15/16 SKIP 1**、`_verify-md-fidelity.js` **PASS 101/102 SKIP 1**、`_verify-theme-auto.js` **PASS 11/11**（改前均记 FAIL） |
+| 靶子验证（临时假套件，已删） | 故意打印 `FAIL` 并 `exit 1` 的假套件仍被记 **FAIL**；零断言的假套件仍被记 **NOASSERT** —— 放宽 SKIP 没有削弱另两道闸 |
+| C2 | `_verify-sidebar-tree-style.js` 单独 **32/32**；风格批次（surfaces 37 / neutral-accent 10 / tree-style 32 / toc-style-scroll 23 / segmented-control 16 / a11y 6）**6/6 全绿** |
+| C3 | `_verify-inline-formats.js` **182/182** |
+
 ## [Unreleased · S4 数据库版本化迁移] — `services/migrations.ts` + 临时库单测
 
 > 来源：桌面《Lumin-待优化清单-2026-09-22.md》§1.A（自查报告 S4）。原状：163 行顺序幂等 DDL
