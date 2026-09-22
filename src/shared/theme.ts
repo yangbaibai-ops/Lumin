@@ -9,11 +9,12 @@
 // 钉在一起（逐主题比对 + 三主题的表面不变量），任何一边改了纸色忘了另一边，`npm run ci` 就红。
 //
 // 取值口径（改这里必须同步改 style.css 的 `--paper`，反之亦然）：
-//   light  近白但**不是纯白**（#fcfcfb：减眩，纯白留给浮在纸上的 --panel / --elevate）
+//   light  **纯白**（用户口径：浅色主题下写作区要纯白；代价是与 --panel/--elevate 同色，
+//          面板改由 1px 边框 + 投影立起来）
 //   dark   深色纸（比外壳 --app=#0b0d12 亮一档，否则侧栏与正文糊在一起）
 //   sepia  暖纸
 export const PAPER_BY_THEME = {
-  light: '#fcfcfb',
+  light: '#ffffff',
   dark: '#12141a',
   sepia: '#faf4e4'
 } as const

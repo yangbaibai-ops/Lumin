@@ -84,12 +84,29 @@ test('不变量①：纸比外壳（chrome）亮 —— 三主题都成立', () 
   }
 })
 
-test('不变量②：面板（--panel/--elevate）比纸再亮一档', () => {
+test('不变量②：面板（--panel/--elevate）不比纸暗；能更亮时必须更亮', () => {
   for (const t of THEMES) {
     for (const key of ['--panel', '--elevate']) {
+      const panel = TOKENS[t][key]
+      const paper = TOKENS[t]['--paper']
+      const L = { panel: luminance(hex(panel)), paper: luminance(hex(paper)) }
+      // 底线：面板**永远不能比纸暗**（否则浮层看起来像凹进去的洞）
       assert.ok(
-        luminance(hex(TOKENS[t][key])) > luminance(hex(TOKENS[t]['--paper'])),
-        `${t}：${key}=${TOKENS[t][key]} 不比纸 ${TOKENS[t]['--paper']} 亮（浮层会只剩边框可辨）`
+        L.panel >= L.paper,
+        `${t}：${key}=${panel} 比纸 ${paper} 暗（L ${f(L.panel)} vs ${f(L.paper)}）`
+      )
+      // 浅色主题的纸是**纯白**（用户口径）：#ffffff 已是亮度上限，这一档明度差不存在，
+      // 浮层改由 1px --edge 边框 + --shadow-2 投影立起来（所有对话框/菜单/气泡都带这两样）。
+      // 因此只要求「同色」，但**必须真的是纯白** —— 否则说明纸被改成了近白又没同步这条例外。
+      if (t === 'light') {
+        assert.equal(paper.toLowerCase(), '#ffffff', `light：纸应为纯白，实际 ${paper}`)
+        assert.equal(panel.toLowerCase(), '#ffffff', `light：${key} 应同为纯白，实际 ${panel}`)
+        continue
+      }
+      // 深色 / sepia：纸刻意压暗就是为了给面板留出「再亮一档」，这里必须**严格更亮**
+      assert.ok(
+        L.panel > L.paper,
+        `${t}：${key}=${panel} 不比纸 ${paper} 亮（浮层会只剩边框可辨）`
       )
     }
   }

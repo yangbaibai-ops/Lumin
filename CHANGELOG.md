@@ -77,6 +77,39 @@
 - **工程化**：~~`tools/lib/harness.js` + `tools/run-suites.js`~~ → **本轮已完成**；
   剩余：`files` store 拆分；`store` 里那份为绕循环导入而复制的 `confirmIfDirty` 收敛到 `services/dialog`。
 
+## [Unreleased · 浅色写作区改纯白] — `--paper: #ffffff`
+
+> 用户口径：把**文本编辑区域**在浅色主题下变成**纯白**。
+
+### Changed
+
+- **浅色主题的写作区（纸）`--paper: #fcfcfb → #ffffff`**（`style.css` 的 `.theme-light` 块）：
+  编辑器渲染面、源码面、设置里的排版预览、启动骨架的正文区全部跟着变纯白（它们都铺这个令牌）。
+  连带的口径变化，都已写进注释与测试：
+  * **与外壳的明度差反而更大**：`--app` 仍是 `#f2f3f7`，纸/外壳对比度 1.09 → **1.12**
+    （不变量①「纸比外壳亮」更强了）；正文对纸的对比度也从 15.3 提到 **15.57**。
+  * **与 `--panel`/`--elevate` 同色**（浅色下 `#ffffff` 是亮度上限，这一档明度差不可能再有）：
+    对话框 / 菜单 / 气泡 / 输入框这些浮层改由 **1px `--edge` 边框 + `--shadow-2` 投影**立起来
+    —— 它们本来就都带边框或投影，实机截图核对无「浮层融进纸里」的情况。深色 / sepia 不受影响，
+    仍是「面板比纸再亮一档」。
+  * `src/shared/theme.ts` 的窗口底色镜像（主进程防闪白用）同步为 `#ffffff`；
+    `tests/themeTokens.test.mjs` 会把两边钉在一起，不同步就会红。
+- `tests/themeTokens.test.mjs` 的**不变量②**按新口径重写：底线改为「面板**不比纸暗**」；
+  深色 / sepia 仍要求**严格更亮**（保留原意图）；浅色则要求「纸与面板都是纯白」——
+  如果哪天有人把纸改回近白却没同步这条例外，这里会红。
+
+### Verification
+
+| 门禁 | 结果 |
+| --- | --- |
+| `npm run test:unit`（263 条） | **263/263**（含重写后的不变量②、窗口底色与 `--paper` 逐主题一致） |
+| 数值关系（测试打印） | ink/paper 对比度 `light 15.57 / dark 15.29 / sepia 9.81`；面/纸对比度 light `codeBg 1.119 / panel2 1.193 / edge 1.25 / edgeStrong 1.47`（阈值 1.05 / 1.08 / 1.1 / 1.25 全部通过，且比改前更高） |
+| `vue-tsc --noEmit` / `electron-vite build` | exit 0 / exit 0 |
+| `tools/_verify-surfaces.js`（T 段就是「写作区铺 --paper + 与外壳的关系」） | **37/37** |
+| `_verify-neutral-accent.js` / `_verify-sidebar-tree-style.js` / `_verify-toc-style-scroll.js` / `_verify-theme-auto.js` / `_verify-blockquote-style.js` / `_verify-marker-hold.js` / `_verify-segmented-control.js` | 10/10 / 32/32 / 23/23 / 11/11 / 13/13 / 11/11 / 16/16 |
+| 计算样式探针（临时，已删；5/5 PASS） | `--paper` 解析为 `rgb(255,255,255)`；**渲染面 = 源码面 = `rgb(255,255,255)`**；外壳 `rgb(242,243,247)`（两段式不塌）；代码块 `rgb(241,242,245)` 在白纸上仍可辨 |
+| 实机截图（三主题整窗） | `lumin-theme-light.png`：侧栏浅灰 + 写作区纯白，边界清楚；深色 / sepia 未受影响 |
+
 ## [Unreleased · 侧栏文件工具贴底 + 观感收敛] — 搜索与树/列表切换移到面板下方并重做样式
 
 > 用户口径：① 侧栏顶部的「搜索文件名」和「树 / 列表」切换放在上面太影响视觉，移到下方；
