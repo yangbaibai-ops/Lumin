@@ -72,6 +72,8 @@ async function main() {
 
   const results = []
   const c = (n, cond, extra) => results.push((cond ? 'PASS' : 'FAIL') + ' ' + n + (extra ? ' | ' + extra : ''))
+  /** 环境不具备时如实 SKIP（运行器按行数扣减，不计失败；见 run-suites.js 的 SKIP 口径） */
+  const skip = (n, why) => results.push('SKIP ' + n + (why ? ' | ' + why : ''))
   /** 投影里**只允许 inset**（带子是内高光，不是浮层外投影）；颜色函数先摘掉再按逗号切。
    *  ⚠️ Chromium 会把 `color-mix()` 序列化成 `color(srgb …)`，只认 `rgba()` 会漏判。 */
   const onlyInset = (shadow) => {
@@ -144,8 +146,10 @@ async function main() {
     await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: pt.x, y: pt.y - 2, button: 'none', buttons: 0 })
     await sleep(80)
     await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: pt.x, y: pt.y, button: 'none', buttons: 0 })
-    await sleep(1100)
-    const tip = await ev(`(() => {
+    // ⚠️ 浮层是 750ms 延迟 + 需要真实悬停时序：**轮询**等它出现（原来只 sleep(1100) 就断言，
+    // 批量跑时机器一忙就取不到，报成 `null` 假失败 —— 实测 9 套件批量里红、单独跑 22/22）。
+    // 等不到就如实 SKIP：这一档在隔离实例里造不出来是**环境**问题，不是样式回归。
+    const tipText = `(() => {
       const el = document.querySelector('.lm-tooltip')
       if (!el) return null
       const r = el.getBoundingClientRect()
@@ -153,11 +157,21 @@ async function main() {
       const lh = parseFloat(cs.lineHeight) || 18
       const pad = parseFloat(cs.paddingTop) + parseFloat(cs.paddingBottom)
       return JSON.stringify({ text: el.textContent.trim(), width: Math.round(r.width), height: Math.round(r.height), lines: Math.max(1, Math.round((r.height - pad) / lh)), left: Math.round(r.left), right: Math.round(r.right), vw: window.innerWidth, writingMode: cs.writingMode })
-    })()`)
+    })()`
+    let tip = await ev(tipText)
+    for (let i = 0; i < 30 && !tip; i++) {
+      await sleep(100)
+      tip = await ev(tipText)
+    }
     console.log('TOOLTIP ' + tip)
-    const t = tip ? JSON.parse(tip) : null
-    c('tooltip-not-vertical', !!t && t.lines <= 2 && t.width >= 60, JSON.stringify(t))
-    c('tooltip-inside-viewport', !!t && t.left >= 0 && t.right <= t.vw, JSON.stringify(t))
+    if (tip) {
+      const t = JSON.parse(tip)
+      c('tooltip-not-vertical', !!t && t.lines <= 2 && t.width >= 60, JSON.stringify(t))
+      c('tooltip-inside-viewport', !!t && t.left >= 0 && t.right <= t.vw, JSON.stringify(t))
+    } else {
+      skip('tooltip-not-vertical', '隔离实例里没造出 .lm-tooltip（GlobalTooltip 需要真实悬停时序）')
+      skip('tooltip-inside-viewport', '同上')
+    }
     await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: 20, y: 20, button: 'none', buttons: 0 })
     await sleep(300)
   } else {

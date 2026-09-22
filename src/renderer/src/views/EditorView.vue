@@ -635,11 +635,85 @@ function onDragOver(e: DragEvent): void {
   e.dataTransfer!.dropEffect = 'copy'
 }
 
+// ─── 草稿恢复弹窗：焦点 / Tab 循环 / 「不选就不能编辑」的按键闸门 ───────────────
+//
+// 用户口径：这条提示改成**独立弹窗**，不做出选择就不能继续编辑这个文档。
+// 按键闸门挂在 document 的**捕获阶段**，所以 wysiwyg 的 ProseMirror 与源码面的 textarea
+// 都被挡住，不需要分别去 disable 两个编辑器；只放行 Tab（焦点循环）与回车/空格（按钮自身激活）。
+const draftRestoreRef = ref<HTMLButtonElement | null>(null)
+const draftDiscardRef = ref<HTMLButtonElement | null>(null)
+
+function blockDraftKeys(e: Event): void {
+  if (!files.draftRestore) return
+  // 键盘：只放行 Tab（焦点循环）与回车/空格（按钮自身激活）；Esc 也吞掉（必须明确选一个）
+  if (e instanceof KeyboardEvent) {
+    const key = e.key
+    if (key === 'Tab' || key === 'Enter' || key === ' ' || key === 'Spacebar') return
+  }
+  e.preventDefault()
+  e.stopPropagation()
+}
+
+/**
+ * 未做选择前，任何**写入途径**都要挡住 —— 只挡键盘是不够的：
+ * IME 组字、粘贴、拖放、以及 CDP 的 `Input.insertText` 都不产生 keydown，
+ * 却都能把内容写进文档（实测就是这条把 `modal-blocks-editing-until-chosen` 打红了）。
+ * 所以除了按键闸门，还要：
+ *   * `setEditable(false)` —— 渲染面的 ProseMirror（DOM 变 contenteditable=false，浏览器不再接受输入）；
+ *   * 源码面 textarea 加 `:readonly`（见模板）；
+ *   * 捕获阶段一并吞掉 beforeinput / paste / cut / drop。
+ */
+function blockDraftWrites(e: Event): void {
+  if (!files.draftRestore) return
+  e.preventDefault()
+  e.stopPropagation()
+}
+
+const DRAFT_WRITE_EVENTS = ['beforeinput', 'paste', 'cut', 'drop'] as const
+
+/** Tab 只在两个按钮之间循环（弹窗里没有别的可聚焦元素，别让焦点跑到工具栏上） */
+function onDraftModalKeydown(e: KeyboardEvent): void {
+  if (e.key !== 'Tab') return
+  const discard = draftDiscardRef.value
+  const restore = draftRestoreRef.value
+  if (!discard || !restore) return
+  const active = document.activeElement
+  if (e.shiftKey) {
+    if (active === discard) {
+      e.preventDefault()
+      restore.focus()
+    }
+  } else if (active === restore) {
+    e.preventDefault()
+    discard.focus()
+  }
+}
+
+watch(
+  () => !!files.draftRestore,
+  (open) => {
+    if (open) {
+      // 焦点默认给「恢复」→ 回车即恢复（危险动作「丢弃」不占默认焦点）
+      void nextTick(() => draftRestoreRef.value?.focus())
+      document.addEventListener('keydown', blockDraftKeys, true)
+      for (const name of DRAFT_WRITE_EVENTS) document.addEventListener(name, blockDraftWrites, true)
+    } else {
+      document.removeEventListener('keydown', blockDraftKeys, true)
+      for (const name of DRAFT_WRITE_EVENTS) document.removeEventListener(name, blockDraftWrites, true)
+    }
+    // 渲染面：弹窗开着时不可编辑（DOM 层面就拒绝输入，连 IME/粘贴都进不来）
+    editorStore.instance?.setEditable(!open)
+  },
+  { immediate: true }
+)
+
 onMounted(() => {
   editorStore.setActive(ui.editorMode !== 'source')
   if (!files.current) void files.openUntitled()
 })
 onBeforeUnmount(() => {
+  document.removeEventListener('keydown', blockDraftKeys, true)
+  for (const name of DRAFT_WRITE_EVENTS) document.removeEventListener(name, blockDraftWrites, true)
   void files.flushAll()
 })
 </script>
@@ -659,34 +733,10 @@ onBeforeUnmount(() => {
          所以这里不隐藏顶栏（留着那条退路）。 -->
     <Toolbar v-if="settings.toolbarVisible && !ui.focusMode" />
 
-    <!-- 草稿恢复横幅（文件状态逻辑，与内核无关）；未命名缓冲区没有磁盘文件可比较，文案另给一条 -->
-    <Transition name="slide">
-      <div
-        v-if="files.draftRestore"
-        class="restore-bar mx-4 mt-3 flex items-center gap-3 px-4 py-2.5 text-[13px]"
-      >
-        <span class="flex-1">{{
-          files.draftRestore.path
-            ? i18n.global.t('editor.restoreDraft')
-            : i18n.global.t('editor.restoreDraftUntitled')
-        }}</span>
-        <button
-          class="btn btn-primary !px-3 !py-1 text-[12px]"
-          @click="files.applyDraftRestore(true)"
-        >
-          {{ i18n.global.t('common.restore') }}
-        </button>
-        <button
-          class="btn btn-ghost !px-3 !py-1 text-[12px]"
-          @click="files.applyDraftRestore(false)"
-        >
-          {{ i18n.global.t('common.discard') }}
-        </button>
-      </div>
-    </Transition>
-
-    <!-- 通知中心：**编辑区上方**（像 Typora），紧接草稿横幅之下、内核之上 —— 文档流里的一块，
-         长通知不会被窗口底边裁掉，也不再挤在底部栏旁边。进出场动画见 overlays.css 的 `.ntf-*`。 -->
+    <!-- 通知中心：**编辑区上方**（像 Typora），紧接工具栏之下、内核之上 —— 文档流里的一块，
+         长通知不会被窗口底边裁掉，也不再挤在底部栏旁边。进出场动画见 overlays.css 的 `.ntf-*`。
+         ⚠️ 草稿提示**不在这里**：它已经改成独立弹窗（见下面的 `.draft-modal`），
+         因为「当前内容和磁盘不一样」这件事必须先做选择，不能和通知混在一起。 -->
     <NotificationCenter />
 
     <!-- 编辑器内核：渲染面板与源码面板常驻，模式切换仅改布局/显隐（零重建） -->
@@ -746,6 +796,7 @@ onBeforeUnmount(() => {
               :class="{ 'source-editor--split': ui.editorMode === 'split' }"
               :value="files.current?.content ?? ''"
               spellcheck="false"
+              :readonly="!!files.draftRestore"
               @input="onSourceInput"
               @keydown.tab="onSourceTab"
               @click="updateSourceCursor($event.target as HTMLTextAreaElement)"
@@ -771,5 +822,71 @@ onBeforeUnmount(() => {
     </div>
 
     <StatusBar />
+
+    <!-- ── 草稿恢复弹窗（文件状态逻辑，与内核无关）─────────────────────────────
+         触发条件不变：打开文档时发现「当前内容与磁盘不一致」的未保存草稿（`files.draftRestore`）。
+         用户口径：**取消**原来那条内联提示的样式与位置，改成**独立弹窗**；不做出选择就不能继续
+         编辑这个文档。所以这里：
+           * 不是通知、不进 NotificationCenter、也不与通知带混排；
+           * 遮罩**点击不关闭**（`@click.self` 里什么都不做）、Esc 不关闭 —— 必须明确选一个；
+           * 打开时把焦点给「恢复」（回车即恢复），Tab 只在两个按钮之间循环；
+           * `blockDraftKeys` 在捕获阶段吞掉除 Tab/回车/空格外的一切按键 —— 渲染面与源码面
+             （textarea）两种编辑态都挡得住，不需要分别去 disable 两个编辑器。 -->
+    <Teleport to="body">
+      <Transition name="fade">
+        <div
+          v-if="files.draftRestore"
+          class="draft-modal fixed inset-0 z-[160] flex items-center justify-center bg-black/30 backdrop-blur-[2px]"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="draft-modal-title"
+        >
+          <Transition name="pop" appear>
+            <div
+              class="w-[400px] max-w-[90vw] rounded-2xl border border-edge bg-elevate p-6"
+              :style="{ boxShadow: 'var(--shadow-2)' }"
+              @keydown="onDraftModalKeydown"
+            >
+              <div class="mb-3 flex items-center gap-3">
+                <div
+                  class="flex h-9 w-9 flex-none items-center justify-center rounded-full bg-accent-soft text-accent"
+                >
+                  <Icon name="info" :size="17" />
+                </div>
+                <h3 id="draft-modal-title" class="text-[15px] font-semibold text-ink">
+                  {{ i18n.global.t('editor.draftTitle') }}
+                </h3>
+              </div>
+              <p class="mb-2 text-[13px] leading-relaxed text-ink">
+                {{
+                  files.draftRestore.path
+                    ? i18n.global.t('editor.restoreDraft')
+                    : i18n.global.t('editor.restoreDraftUntitled')
+                }}
+              </p>
+              <p class="mb-6 text-[12.5px] leading-relaxed text-ink-3">
+                {{ i18n.global.t('editor.draftHint') }}
+              </p>
+              <div class="flex justify-end gap-2">
+                <button
+                  ref="draftDiscardRef"
+                  class="btn btn-ghost px-4 py-2"
+                  @click="files.applyDraftRestore(false)"
+                >
+                  {{ i18n.global.t('common.discard') }}
+                </button>
+                <button
+                  ref="draftRestoreRef"
+                  class="btn btn-primary px-4 py-2"
+                  @click="files.applyDraftRestore(true)"
+                >
+                  {{ i18n.global.t('common.restore') }}
+                </button>
+              </div>
+            </div>
+          </Transition>
+        </div>
+      </Transition>
+    </Teleport>
   </div>
 </template>

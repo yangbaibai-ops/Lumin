@@ -2597,3 +2597,46 @@ CM 实例数从「等于块数」变成「视口附近那几块」（两次都�
   卸载延迟是常量 `UNMOUNT_DELAY_MS`，视口边距是 `CODE_MOUNT_MARGIN_PX`。
 * 顺带：`heavyMode`（≥200 围栏自动降级源码模式）**保持不变**——虚拟化之后这个阈值原则上可以放宽
   （方案 §6 提到 200 → 800），但那是一次独立的行为取舍，本轮不动。
+
+### 4.74 草稿提示改成**独立强制弹窗**（先选「恢复 / 丢弃」才能继续编辑）
+
+**用户口径**：取消「检测到未保存的草稿（比磁盘文件更新）」原来那条提示的样式与位置；
+当当前内容与磁盘文件不一致要触发这个提示时，改成**单独弹窗**，不做出选择就无法继续编辑此文档。
+
+#### 一、形态：从「编辑区上方的内联横幅」到「独立弹窗」
+
+- 触发条件**完全不变**（`files.draftRestore`：打开文档时发现未保存草稿，且它比磁盘文件新；
+  未命名缓冲区走另一条文案）。变的只是呈现与强制性：
+  * 弹窗挂在 `EditorView.vue` 里（`<Teleport to="body">`），沿用 `ModalHost` 的对话框语言
+    （半透明遮罩 + 圆角卡片 + `--shadow-2`），但**不进通知中心、也不与通知带混排**；
+  * 遮罩 `@click.self` **什么都不做**（点外面不关）、Esc 也**不关** —— 必须明确点一个；
+  * 打开时焦点给「恢复」（回车即恢复），Tab 只在「丢弃 / 恢复」之间循环；
+  * `role="dialog"` + `aria-modal="true"` + `aria-labelledby`（标题元素带 id）。
+
+#### 二、「不选就不能编辑」要挡住的是**所有写入途径**，不只是键盘
+
+第一版只加了键盘闸门（捕获阶段吞 keydown），结果被自己的套件当场打红：
+`Input.insertText`（CDP 的文本插入，等同 IME 组字 / 粘贴那一类）**不产生 keydown**，
+照样把 `BLOCKED` 写进了文档 —— 这正是中文输入法路径上的真实漏洞。修法是三层一起上：
+
+| 层 | 做法 | 挡住什么 |
+| --- | --- | --- |
+| 渲染面 | `editorStore.instance?.setEditable(false)`（DOM 变 `contenteditable=false`） | 键盘、IME、粘贴、拖放 —— 浏览器层面就拒绝 |
+| 源码面 | `textarea.source-editor` 加 `:readonly` | 同上（源码模式下编辑的是它） |
+| 事件层 | 捕获阶段吞掉 `keydown`（放行 Tab/回车/空格）与 `beforeinput / paste / cut / drop` | 兜底：任何漏网的写入途径 |
+
+#### 三、验收
+
+* `tools/_verify-draft-banner.js` **27/27**（原 25 条 + 本轮新增两条）：
+  * `modal-blocks-editing-until-chosen`：弹窗开着时**真的往编辑器里打字**（先聚焦渲染面/源码面，
+    再 `Input.insertText` + 一次 `keyDown`），文档内容必须一字未变（这条最初是红的，见上表）；
+  * `modal-esc-does-not-close`：Esc 之后弹窗仍在。
+  另把 `restore-brings-content-back` 的判据从全等改成「去掉结尾换行后相等」—— 序列化会把 markdown
+  规整成结尾带换行（`# hello draft` → `# hello draft\n`），不是内容差异；本轮在恢复前多插了一段等待，
+  时序一变就撞上规整后的值（假失败）。
+* `_verify-new-document` 23/23（同一条 `banner` 探针换成 `.draft-modal`）、
+  `_verify-notifications` 32/32、`_verify-notify-style` 22/22、`_verify-toast-tip` 21/21、
+  `_verify-surfaces` 37/37、`_verify-a11y` 6/6、`_verify-i18n` 5/5、`_verify-session` 17/17、
+  `_regress-layout` 9/9、`_verify-local-media` 10/10。
+* 新增 i18n 键 `editor.draftTitle` / `editor.draftHint`（三语同步）；`sidebar.css` 里原来那套
+  `.restore-bar` / `.draft-reveal` 样式随之删除（`.draft-modal` 只留遮罩兜底与最小高度）。

@@ -163,6 +163,8 @@
     "continue": "继续写作…",
     "restoreDraft": "检测到未保存的草稿（比磁盘文件更新）",
     "restoreDraftUntitled": "检测到上次未保存的内容",
+    "draftTitle": "未保存的草稿",
+    "draftHint": "选择「恢复」或「丢弃」后才能继续编辑这个文档。",
     "bold": "加粗",
     "italic": "斜体",
     "strike": "删除线",

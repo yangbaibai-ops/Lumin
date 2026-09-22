@@ -86,8 +86,8 @@ const SNAP = `JSON.stringify({
   doc: window.__N.files().current?.path ?? null,
   name: window.__N.files().current?.name ?? null,
   dirty: !!window.__N.files().dirty,
-  banner: !!document.querySelector('.restore-bar'),
-  bannerText: document.querySelector('.restore-bar')?.textContent?.trim() ?? null,
+  banner: !!document.querySelector('.draft-modal'),
+  bannerText: document.querySelector('.draft-modal')?.textContent?.trim() ?? null,
   treeRows: document.querySelectorAll('aside [data-tree-row]').length
 })`
 

@@ -163,6 +163,8 @@
     "continue": "Keep writing…",
     "restoreDraft": "Unsaved draft detected (newer than the file on disk)",
     "restoreDraftUntitled": "Unsaved content from your last session detected",
+    "draftTitle": "Unsaved draft",
+    "draftHint": "Choose Restore or Discard before you can keep editing this document.",
     "bold": "Bold",
     "italic": "Italic",
     "strike": "Strikethrough",

@@ -176,8 +176,8 @@
 
 | 来源 | 控件 id/选择器 | 显示文案（i18n key） | 绑定的动作/命令 | 是否接线 | 备注 |
 |---|---|---|---|---|---|
-| EditorView.vue:529 | 草稿横幅 → 恢复 | `common.restore` | `files.applyDraftRestore(true)` | 是 | — |
-| EditorView.vue:535 | 草稿横幅 → 丢弃 | `common.discard` | `files.applyDraftRestore(false)` | 是 | — |
+| EditorView.vue | 草稿弹窗 → 恢复 | `common.restore` | `files.applyDraftRestore(true)` | 是 | 本轮从「编辑区上方的内联横幅」改成**独立弹窗**（强制选择） |
+| EditorView.vue | 草稿弹窗 → 丢弃 | `common.discard` | `files.applyDraftRestore(false)` | 是 | 同上；弹窗 `role=dialog` + `aria-modal` + `aria-labelledby` |
 | EditorView.vue:563 | `.split-divider` | `title="拖动调整左右比例（双击复位）"`（硬编码） | `startSplitDrag` / `resetSplitRatio` | 是 | 文案硬编码（D15） |
 | EditorView.vue:595 | `.split-sync-chip` | `title` 三元 `同步滚动已开启（点击关闭）`/`开启同步滚动`；正文 `同步滚动`（均硬编码） | `settings.set('syncScroll', !)` | 是 | 文案硬编码（D15）；与设置面板同一 setting |
 | TyporaEditor.vue:329-375 | `.bubble-btn` × 7 | 硬编码 `加粗/斜体/下划线/删除线/行内代码/链接/清除格式` | `toggleMdBold/Italic/Underline/Strike/Code`、`addLink`、`clearFormats` | **否（永不渲染）** | `BUBBLE_MENU_ENABLED=false`（:213）整块死代码（D3） |

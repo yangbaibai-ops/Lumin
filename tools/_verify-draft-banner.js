@@ -84,8 +84,8 @@ const SETUP = `(() => {
 const SNAP = `JSON.stringify({
   slot: window.luminAPI.app.sessionSlot,
   docName: window.__vt.files().current?.name ?? null,
-  banner: !!document.querySelector('.restore-bar'),
-  bannerText: document.querySelector('.restore-bar')?.textContent?.trim() ?? null,
+  banner: !!document.querySelector('.draft-modal'),
+  bannerText: document.querySelector('.draft-modal')?.textContent?.trim() ?? null,
   draftContent: window.__vt.files().draftRestore?.content ?? null
 })`
 
@@ -198,11 +198,51 @@ const saveDraft = (keyExpr, content, filePath = null) =>
       !!pending.bannerText && pending.bannerText.includes(untitledLabel),
       JSON.stringify({ text: pending.bannerText, label: untitledLabel })
     )
+    // ★ 本轮新口径：提示改成**独立弹窗**且是强制的 —— 不选就不能继续编辑这个文档。
+    //   这里真的往编辑器里打字（先聚焦渲染面/源码面），文档内容必须一个字都没变；
+    //   Esc 也不能把弹窗关掉（必须明确选恢复或丢弃）。
+    const beforeType = await w1.ev(`window.__vt.files().current?.content`)
+    await w1.ev(`(() => {
+      const el = document.querySelector('.ProseMirror') || document.querySelector('textarea.source-editor')
+      if (el) el.focus()
+      return 'ok'
+    })()`)
+    await w1.send('Input.insertText', { text: 'BLOCKED' })
+    await w1.send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'x', text: 'x' })
+    await w1.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'x' })
+    await sleep(250)
+    await w1.send('Input.dispatchKeyEvent', {
+      type: 'keyDown',
+      key: 'Escape',
+      code: 'Escape',
+      windowsVirtualKeyCode: 27
+    })
+    await w1.send('Input.dispatchKeyEvent', {
+      type: 'keyUp',
+      key: 'Escape',
+      code: 'Escape',
+      windowsVirtualKeyCode: 27
+    })
+    await sleep(250)
+    const afterType = await w1.ev(`window.__vt.files().current?.content`)
+    c(
+      'modal-blocks-editing-until-chosen',
+      afterType === beforeType,
+      JSON.stringify({ beforeType, afterType })
+    )
+    c('modal-esc-does-not-close', (await snap(w1)).banner === true, 'Esc 不该关掉它')
+
     await w1.ev(`(async () => { await window.__vt.files().applyDraftRestore(true); return 'ok' })()`)
     await sleep(300)
     const restored = await w1.ev(`window.__vt.files().current?.content`)
     const afterRestore = await snap(w1)
-    c('restore-brings-content-back', restored === '# hello draft', JSON.stringify(restored))
+    // 判据按语义比：序列化会把 markdown 规整成「结尾带换行」（`# hello draft` → `# hello draft\n`），
+    // 这不是丢/多内容。原来用全等，本轮在恢复前多插了一段「尝试打字」的等待，时序一变就撞上规整后的值。
+    c(
+      'restore-brings-content-back',
+      typeof restored === 'string' && restored.replace(/\s+$/, '') === '# hello draft',
+      JSON.stringify(restored)
+    )
     c(
       'restore-consumes-draft',
       afterRestore.banner === false && (await w1.ev(loadOwn)) === null,

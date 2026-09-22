@@ -127,17 +127,10 @@
   transform: scale(0.96) translateY(4px);
 }
 
-.slide-enter-active,
-.slide-leave-active {
-  transition:
-    opacity 0.2s ease,
-    transform 0.2s ease;
-}
-.slide-enter-from,
-.slide-leave-to {
-  opacity: 0;
-  transform: translateY(8px);
-}
+/* `.slide-*` 已随草稿提示的重做删除：那条横幅原来用 `Transition name="slide"`
+   （只动 opacity/transform，高度是瞬变）；现在它和通知带一样走
+   `grid-template-rows 0fr↔1fr` 的 `-reveal` 机制（见 sidebar.css 的 `.draft-reveal-*`），
+   全仓已无 `name="slide"` 的调用点。 */
 
 .page-enter-active,
 .page-leave-active {

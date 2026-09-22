@@ -221,12 +221,16 @@
   height: auto;
 }
 
-/* 草稿恢复横幅 */
-.restore-bar {
-  background: var(--accent-soft);
-  border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent);
-  border-radius: 10px;
-  color: var(--accent-ink);
+/* 草稿恢复**弹窗**（本轮从「编辑区上方的内联提示」改成独立弹窗：必须先选「恢复/丢弃」才能继续编辑）。
+   外观沿用 ModalHost 的对话框语言（半透明遮罩 + 圆角卡片 + 同款阴影），
+   结构类写在模板里（Tailwind），这里只补两点行为样式：
+   遮罩不吃点击穿透（弹窗是强制的），卡片最小高度让标题/两行说明稳定。 */
+.draft-modal {
+  /* 兜底：确保遮罩一定盖住状态栏与工具栏（z 与 ModalHost 的 150 同档、草稿弹窗更靠前） */
+  pointer-events: auto;
+}
+.draft-modal > div {
+  min-height: 172px;
 }
 
 /* ─────────────────────── 侧边栏过渡 / 查找标记 ─────────────────────── */

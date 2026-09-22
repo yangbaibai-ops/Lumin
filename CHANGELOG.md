@@ -72,6 +72,46 @@
 - **工程化**：~~`tools/lib/harness.js` + `tools/run-suites.js`~~ → **本轮已完成**；
   剩余：`files` store 拆分；`store` 里那份为绕循环导入而复制的 `confirmIfDirty` 收敛到 `services/dialog`。
 
+## [Unreleased · 草稿提示改成独立强制弹窗] — 不选「恢复 / 丢弃」就不能编辑这个文档
+
+> 用户口径：取消「检测到未保存的草稿（比磁盘文件更新）」那条提示原来的样式与位置；当文档当前内容
+> 与磁盘文件不一样、需要触发这个提示时，改成**单独弹窗**，不做出选择就无法继续编辑此文档。
+
+### Changed
+
+- **形态**：编辑区上方那条内联提示（`.restore-bar` + `.draft-reveal`）整块撤掉，改成挂在
+  `EditorView.vue` 的**独立弹窗**（`<Teleport to="body">`，沿用 ModalHost 的对话框语言：半透明遮罩 +
+  圆角卡片 + `--shadow-2`）。触发条件**不变**（`files.draftRestore`），变的只是呈现与强制性：
+  * `role="dialog"` + `aria-modal="true"` + `aria-labelledby`；
+  * 遮罩 `@click.self` **什么都不做**、Esc **不关** —— 必须明确选一个；
+  * 打开时焦点给「恢复」（回车即恢复，危险的「丢弃」不占默认焦点），Tab 只在两个按钮间循环；
+  * 它**不是通知**：既不进 `NotificationCenter`、也不与通知带混排（那块区域只剩通知）。
+- 新增 i18n 键 `editor.draftTitle`（「未保存的草稿」）与 `editor.draftHint`（「选择「恢复」或「丢弃」
+  后才能继续编辑这个文档。」），三语同步；`sidebar.css` 里那套横幅样式随之删除。
+
+### Fixed
+
+- **「不选就不能编辑」第一版只挡了键盘，被自己的套件当场打红**：捕获阶段吞 `keydown` 挡不住
+  `Input.insertText`（CDP 的文本插入，等同 **IME 组字 / 粘贴**那一类 —— 不产生 keydown），
+  文档照样被写进 `BLOCKED`。这正是中文输入法路径上的真实漏洞。改成三层一起挡：
+  | 层 | 做法 | 挡什么 |
+  | --- | --- | --- |
+  | 渲染面 | `editorStore.instance?.setEditable(false)` | 键盘/IME/粘贴/拖放（DOM 层直接拒绝） |
+  | 源码面 | `textarea.source-editor` 加 `:readonly` | 源码模式下编辑的就是它 |
+  | 事件层 | 捕获阶段吞 `keydown`（放行 Tab/回车/空格）与 `beforeinput / paste / cut / drop` | 兜底 |
+- `_verify-draft-banner` 的 `restore-brings-content-back` 由全等改成「去掉结尾换行后相等」：
+  序列化会把 markdown 规整成结尾带换行（`# hello draft` → `# hello draft\n`），不是内容差异 ——
+  本轮在恢复前多插了一段等待，时序一变就撞上规整后的值（假失败）。
+
+### Verification（本轮实测）
+
+| 项 | 结果 |
+| --- | --- |
+| `_verify-draft-banner` | **27/27**（原 25 + 新增 `modal-blocks-editing-until-chosen`、`modal-esc-does-not-close`） |
+| 相邻套件 | `_verify-new-document` 23/23、`_verify-notifications` 32/32、`_verify-notify-style` 22/22、`_verify-toast-tip` 21/21、`_verify-surfaces` 37/37、`_verify-a11y` 6/6、`_verify-i18n` 5/5、`_verify-session` 17/17、`_regress-layout` 9/9、`_verify-local-media` 10/10 |
+| 实测（隔离实例 + 截图核对，临时探针已删） | `role=dialog` / `aria-modal=true` / 标题「未保存的草稿」/ 按钮「丢弃 · 恢复」/ 焦点在「恢复」；`.ProseMirror` 的 `contenteditable=false`、源码 textarea `readOnly=true`；整窗截图确认遮罩盖住工具栏与侧栏、卡片居中 |
+| 门禁 | `vue-tsc` exit 0、`eslint` 0 error 0 warning、`electron-vite build` exit 0、单测 299/299 |
+
 ## [Unreleased · UI 三处微调] — 正文列左右内缩 40→56px / 侧栏底部那一行去掉 / H1–H3 改整枚字形
 
 > 用户口径：① 稍微增加编辑区域内容与左右两侧的间隔；② 由我判断侧栏下方的「设置 / 关于 / 折叠」
