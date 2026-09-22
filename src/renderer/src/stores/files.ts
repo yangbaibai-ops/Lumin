@@ -11,6 +11,7 @@ import { ancestorDirs, isInside, samePath } from '../lib/pathUtils'
 import { errorReason } from '../lib/errors'
 import { confirmDiscardIfDirty } from '../lib/dialog'
 import { draftKeyFor, restorableDraft } from '../lib/draftRules'
+import { docLoad, isHeavyDoc } from '../lib/largeDoc'
 import {
   createLedger,
   markApplied,
@@ -79,6 +80,13 @@ export const useFilesStore = defineStore('files', {
     expanded: new Set<string>() as Set<string>,
     current: null as CurrentDoc | null,
     draftRestore: null as DraftInfo | null,
+    /**
+     * 本次打开的文档是否触发了「大文档降级」（见 lib/largeDoc.ts）：
+     * 置真时 openPath 已把会话模式切到 source，EditorView 会**不挂载渲染面板**，
+     * 从而一个 CodeMirror NodeView 都不建（否则即使切到源码模式，隐藏但常驻的渲染面板
+     * 照样会把 500 个实例建出来 —— 实测 14.7s / 1.6GB）。每次打开/新建都会重置。
+     */
+    heavyMode: false,
     saveTimer: null as ReturnType<typeof setTimeout> | null,
     draftTimer: null as ReturnType<typeof setTimeout> | null,
     saving: false,
@@ -275,6 +283,21 @@ export const useFilesStore = defineStore('files', {
         // 显式替换意图：同一路径再次打开（外部改动后重载、另一个窗口的会话恢复）时
         // 编辑器不会重建（:key 只看 path），必须靠世代号让它换内容
         this.noteExternalReplace()
+        /**
+         * ─── 大文档降级闸（本轮）─────────────────────────────────────────────────
+         * 代码围栏是唯一的性能悬崖：实测 500 块 → 打开 22.8s、1500 块 → >185s 且进程常驻
+         * 1.4GB（根因：每个代码块一个 CodeMirror 实例，见 lib/largeDoc.ts 的实测数字）。
+         * 超阈值就**直接进源码模式**：一个 CM NodeView 都不建，打开回到秒级、内存回到基线。
+         * 只改会话状态（`ui.editorMode`），**不落库** —— 用户的持久偏好（settings.editorMode）
+         * 不受影响，随时可以手动切回实时渲染。正常文档（几万字）远在阈值之下，不会碰到这条路。
+         */
+        const load = docLoad(opened.content)
+        this.heavyMode = isHeavyDoc(opened.content)
+        if (this.heavyMode) {
+          const ui = useUiStore()
+          ui.editorMode = 'source'
+          ui.toast(i18n.global.t('toast.heavyDocSourceMode', { fences: load.fences }), 'warning')
+        }
         // 草稿恢复检查：只有「内容确实不同 + 确实比磁盘新」才值得打扰用户
         const draft = await window.luminAPI.drafts.load(this.draftKey(path))
         if (restorableDraft(draft, opened.content, opened.path, opened.mtimeMs)) {
@@ -302,6 +325,8 @@ export const useFilesStore = defineStore('files', {
       }
       this.currentDir = this.root
       this.draftRestore = null
+      // 未命名缓冲区永远是空白起步：不携带上一份文档的降级标记
+      this.heavyMode = false
       // 显式替换意图：上一份文档若也是未命名（:key 同为 'untitled'），编辑器不会重建，
       // 得靠世代号让它换成这份空白缓冲
       this.noteExternalReplace()
@@ -329,6 +354,7 @@ export const useFilesStore = defineStore('files', {
     close(): void {
       this.current = null
       this.draftRestore = null
+      this.heavyMode = false
       useWorkspaceDocsStore().invalidate()
     },
     draftKey(path: string | null): string {

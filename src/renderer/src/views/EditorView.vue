@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { TextSelection } from '@tiptap/pm/state'
 import { useFilesStore } from '../stores/files'
 import { useUiStore } from '../stores/ui'
@@ -285,6 +285,15 @@ const viewPosMem = ref<ViewPosMem | null>(null)
 // 若先显示旧位置再跳会闪一帧；隐藏到恢复完成再一次性呈现（visibility:hidden
 // 保留布局，滚动测量正常，耗时仅数毫秒）。
 const viewRestoring = ref(false)
+
+/**
+ * 重文档降级：**源码模式下不挂载渲染面板**（见 lib/largeDoc.ts 的实测数字）。
+ *
+ * `files.heavyMode` 只在「打开文件时判定为超阈值」时置真（打开动作里已把会话模式切成 source），
+ * 不会因为编辑过程中内容变大而中途卸载编辑器 —— 那会把未同步的输入丢掉。
+ * 用户若主动切回 wysiwyg / split，这里就重新挂载（代价是他的选择，并且有降级提示告知过）。
+ */
+const skipRenderPane = computed(() => files.heavyMode && ui.editorMode === 'source')
 
 /** 距文档开头的内容比例（Tiptap：按 PM pos / doc 长度；源码：offset / len） */
 function anchorRatio(mem: ViewPosMem): number {
@@ -689,8 +698,17 @@ onBeforeUnmount(() => {
       :class="{ 'view-restoring': viewRestoring }"
       @scroll.capture="onSplitScroll"
     >
-      <!-- 渲染面板（Tiptap）：wysiwyg 全宽 / split 左栏 / source 隐藏但常驻 -->
-      <div ref="renderPaneRef" class="h-full min-w-0 bg-paper" @contextmenu="onRenderContextMenu">
+      <!-- 渲染面板（Tiptap）：wysiwyg 全宽 / split 左栏 / source 隐藏但常驻。
+           ⚠️ **唯一的例外**：重文档降级（见 lib/largeDoc.ts 与本文件 skipRenderPane）——
+           代码围栏是唯一的性能悬崖（实测 500 块 → 22.8s 打开 / 1500 块 → >185s 且常驻 1.4GB），
+           而「隐藏但常驻」意味着即使切到源码模式，那 500 个 CodeMirror 实例照样会被建出来
+           （实测降级后仍是 500 实例 / 14.7s / 1.6GB）。所以这种情况**整块不挂载**。 -->
+      <div
+        v-if="!skipRenderPane"
+        ref="renderPaneRef"
+        class="h-full min-w-0 bg-paper"
+        @contextmenu="onRenderContextMenu"
+      >
         <TyporaEditor
           ref="renderRef"
           :key="files.current?.path ?? 'untitled'"

@@ -351,7 +351,8 @@
     "eolChanged": "Line endings switched to {eol}",
     "savedWithEncoding": "Saved as {enc}",
     "historyRestored": "Loaded the version from {time} — save to apply",
-    "historyNeedsFile": "Local history is only available for documents saved on disk"
+    "historyNeedsFile": "Local history is only available for documents saved on disk",
+    "heavyDocSourceMode": "This document has {fences} code blocks; live rendering would be very slow, so it was opened in source mode"
   },
   "editorMenu": {
     "copy": "Copy",

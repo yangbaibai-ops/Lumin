@@ -39,7 +39,9 @@ export const useEditorStore = defineStore('editor', {
     writeIntent: null as Author | null,
     tick: 0,
     outline: [] as OutlineItem[],
-    activeHeading: -1
+    activeHeading: -1,
+    /** 大纲防抖定时器（见 scheduleRefreshOutline；`_` 前缀表示不是对外状态） */
+    _outlineTimer: null as ReturnType<typeof setTimeout> | null
   }),
   actions: {
     bind(editor: Editor): void {
@@ -50,7 +52,11 @@ export const useEditorStore = defineStore('editor', {
         // 大纲只在**文档真的变了**时重算（第二十五轮轻量化）：`refreshOutline` 要遍历整篇
         // 文本块，而事务里绝大多数是纯选区变化（每次点/移动光标都会来一发）。
         // 标题的 pos 在纯选区事务里不可能变，跳过是安全的。
-        if (transaction.docChanged) this.refreshOutline()
+        //
+        // **再加一层防抖（本轮，500k 字符实测每键 2.9ms 里有一部分就是它）**：
+        // `refreshOutline` 是 O(全文) 扫描，连续打字时每个字符都扫一遍整篇纯属浪费 ——
+        // 大纲面板 250ms 才更新一次，肉眼无感；停手后必定补一次（不会漏）。
+        if (transaction.docChanged) this.scheduleRefreshOutline()
       })
       editor.on('selectionUpdate', () => {
         this.tick++
@@ -58,10 +64,23 @@ export const useEditorStore = defineStore('editor', {
       this.applyActive()
     },
     unbind(): void {
+      if (this._outlineTimer) clearTimeout(this._outlineTimer)
+      this._outlineTimer = null
       this.editor = null
       this.instance = null
       this.outline = []
       this.activeHeading = -1
+    },
+    /**
+     * 防抖重算大纲（见 `bind` 里的说明）：连续打字期间最多每 250ms 扫一次全文，
+     * 停手后必补一次。切换文档/卸载时会清掉挂起的定时器，避免对已销毁的编辑器做扫描。
+     */
+    scheduleRefreshOutline(): void {
+      if (this._outlineTimer) clearTimeout(this._outlineTimer)
+      this._outlineTimer = setTimeout(() => {
+        this._outlineTimer = null
+        if (this.editor) this.refreshOutline()
+      }, 250) as unknown as ReturnType<typeof setTimeout>
     },
     /** 模式驱动：编辑器视图激活 ⇔ instance=editor；源码模式 ⇔ instance=null */
     setActive(active: boolean): void {
