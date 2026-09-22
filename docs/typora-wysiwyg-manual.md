@@ -3685,8 +3685,7 @@ if (!app.requestSingleInstanceLock()) app.quit()
 **转义反斜杠的拆分渲染 + 按光标显隐（与 `**` 同机制：折叠零占位 / 显示暗色 / 连续段整体显隐 /
 两段各显各的 / 键盘 ←→ 跨边界 / 三主题各两条）**、**真实剪贴板粘贴逐字节**，每条都查
 **字节 + 光标 + 每个 text 节点的 marks**，末尾再做「保存→重开→再序列化」的往返），
-已进 `run-suites.js` 默认矩阵；取证脚本 `tools/_probe-taskA.js`（四条写入路径）、
-`tools/_probe-taskB.js`（转义渲染、逐 span 显隐与三主题）、`tools/_probe-paste.js`（真剪贴板粘贴）。
+已进 `run-suites.js` 默认矩阵；取证脚本 `tools/_probe-taskA.js`（四条写入路径）、`tools/_probe-taskB.js`（转义渲染、逐 span 显隐与三主题）、`tools/_probe-paste.js`（真剪贴板粘贴）**已按清单 §2.I 删除** —— 对应结论已固化进 `_verify-inline-formats.js` 的 182 条断言。
 
 **已知边界（本轮明确保留，不是遗漏）**：
 
@@ -3704,9 +3703,8 @@ if (!app.requestSingleInstanceLock()) app.quit()
 
 > 报障 ①：`**一句话**：……押在了**「保存路径」与「Markdown 保真」**这两件……**写盘不是原子操作…**`
 > 这一整段在实时渲染区里**加粗变成字面星号**、加粗区间整体错位。
-> 报障 ②：「写入内容变的非常卡，非常非常卡」。两件都**先取证再改**，取证脚本
-> `tools/_probe-fixture.js`（三条写入路径）、`tools/_probe-perf.js`（每键耗时 + markdown-it 计数 +
-> CPU 采样）、`tools/_probe-md-baseline.js`（markdown-it 对照基准）、`tools/_probe-cjk-flank.js`（改动半径）。
+> 报障 ②：「写入内容变的非常卡，非常非常卡」。两件都**先取证再改**，取证脚本 `tools/_probe-fixture.js`（三条写入路径，**已按清单 §2.I 删除**）、`tools/_probe-cjk-flank.js`（改动半径，**已按清单 §2.I 删除**）、
+> `tools/_probe-perf.js`（每键耗时 + markdown-it 计数 + CPU 采样）、`tools/_probe-md-baseline.js`（markdown-it 对照基准）—— 后两个作为常驻测量工具保留。
 
 #### 一、加粗变成字面星号：根因**不在**本仓库的字面量化，在 markdown-it 的 flanking 判定
 
@@ -3822,7 +3820,7 @@ markdown-it 解析）。这就是「平方级」的来源：成本 ≈ 文档长
 而 2000 个围栏代码块要建 2000 个 CodeMirror 实例，其中一部分是**跨帧（rAF/requestMeasure）异步完成**的
 ——窗口被遮挡时 rAF 被节流，这批工作就顺延到**下一个 evaluate**，于是「装载 54s + 切面 1.4s」与
 「装载 62s + 切面 21.9s」是**同一份工作量在两次测量里的不同归因**（实测同一构建两种归因都出现过）。
-排查时用的探针留在 `tools/_probe-fences-total.js`（全程 CPU 采样）、`_probe-fences-hot2.js`、
+排查时用的探针留在 `tools/_probe-fences-total.js`（全程 CPU 采样）、`_probe-fences-hot2.js`（**已按清单 §2.I 删除**）、
 `_probe-modeswitch.js`；CPU 采样显示本轮代码只占 0.6~1.8ms（`blockInventory`），
 热点是 PM/Vue 侧的 `DOMSelection.eq` / `StyleModule.mount` / `EditorView` 构造与 GC。
 
