@@ -1,0 +1,246 @@
+/* ─── sidebar.css ─────────────────────────────────────────────────────────────
+ * 侧栏文件树 / 面板过渡
+ *
+ * 由原 style.css（2398 行单文件）按语义段落切出（自查报告 S2）：本片对应原第 1283–1522 行。
+ * **顺序即层叠顺序**，入口 style.css 只做 @import，不许重排这些分片。
+ */
+
+/* ─── 侧栏文件树 ───────────────────────────────────────────────────────────────
+   设计取向：像 VS Code / Obsidian 那样「安静但有结构」。四个决定：
+   1) 一排 = 31px 行盒 + 上下各 1px 透明边（background-clip: padding-box），底色块实际
+      29px：上下相邻的悬停/选中不会糊成一整块，行距节奏仍是 31px（用户后续口径：
+      行高再松一点 —— 27px 会裁降部、29px 仍偏挤，现在按 32px 走）；
+   2) 缩进走固定 16px 网格（4 + depth * 16，容器再内缩 10px 与搜索框同一条竖线）。
+      层级不只靠缩进：1px 低对比度缩进参考线（画在子级容器上，正落在父级箭头中线，且抬到
+      行底色之上，悬停/选中都不会把它切断）+ 文件夹图标内部浅填充（容器）/ 文件图标纯描边（内容）；
+   3) 状态三档：静止 ink-2 / 悬停 panel-2 + ink / 当前 accent-soft + accent + **左侧 3px 浅灰色条**。
+      色条是后来的口径（此前一版明确不要，本轮按新口径加回来，但**用浅灰**不用强调色）：
+      `--ink-3` 在三主题里都是「浅灰」那一档，压在半透明淡底上足够看清又不抢眼。
+      用 `::before` 而不是 `border-left`：border 参与盒模型会把行内内容右推 3px，
+      而各级缩进是按 --tree-pad/--tree-indent 精确算的（套件逐级量过 labelLeft）。
+      选中文字走 accent-ink —— accent 落在 accent-soft 上只有 3.8:1，够不到正文可读线；
+   4) 箭头 14px 图形放进 14px 槽，再用 -2px 外边距收近文件夹：原来 12px 图形悬在 16px 槽里，
+      又小又离文件夹远。文件夹图标一律与文件图标同色（--ink-3），不靠颜色区分类型。
+   两个坑写在这里免得再踩：
+   * 底色一律写 background-color：background 简写、以及任何更高特异性的状态规则，都会把
+     background-clip 悄悄重置回 border-box，1px 内缩就没了；
+   * 箭头旋转必须用 transform（Tailwind v4 的 rotate-90 写的是 rotate 长属性，
+     配 transition-transform 不会动——这个坑侧栏把手那里踩过一次）。 */
+[data-tree-root] {
+  --tree-pad: 4px; /* 行内左侧起步内边距（容器 10px + 4px = 14px 内容起点） */
+  --tree-indent: 16px; /* 每级缩进步长 */
+  --tree-slot: 14px; /* 箭头槽宽度 */
+  --tree-slot-pull: 2px; /* 箭头图形在 24 网格里居中、两侧自带留白，靠它视觉上拉近文件夹 */
+  --tree-gap: 6px; /* 行内元素间距 */
+  --tree-icon: 15px; /* 类型图标尺寸（与 Vue 侧 :size="15" 对齐） */
+  --tree-rail: color-mix(in srgb, var(--ink-3) 38%, transparent);
+}
+
+.tree-row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: var(--tree-gap);
+  /* 行高：27px 时 13px 中文/带降部的拉丁字母（`g`/`y`/`p`）会被 `.tree-label` 的
+     `overflow: hidden` 切掉下缘（用户报「有些字母显示不全」）→ 29px 修好裁切但行距偏挤；
+     现在 32px（= 30px 行盒 + 上下各 1px 透明边），图标仍是 15px，呼吸感更足。 */
+  min-height: 32px;
+  padding-right: 8px;
+  padding-left: calc(var(--tree-pad) + var(--tree-depth, 0) * var(--tree-indent));
+  border-top: 1px solid transparent;
+  border-bottom: 1px solid transparent;
+  background-color: transparent;
+  background-clip: padding-box;
+  /* 直角：选中/hover 的底色是「整条贯通」的块，圆角会让它在侧栏里显得是一枚悬浮药丸，
+     与两侧边界对不齐（用户明确要去掉圆角） */
+  border-radius: 0;
+  font-size: 13px;
+  line-height: 1;
+  color: var(--ink-2);
+  cursor: pointer;
+  user-select: none;
+  transition:
+    background-color 0.13s ease,
+    color 0.13s ease;
+}
+.tree-row:hover {
+  background-color: var(--panel-2);
+  background-clip: padding-box;
+  color: var(--ink);
+}
+.tree-row.is-current {
+  background-color: var(--accent-soft);
+  background-clip: padding-box;
+  color: var(--accent);
+  font-weight: 500;
+}
+/* 选中项左侧的**浅灰色条**（用户口径）：3px、贴行左缘、与行同高。
+   用 `::before` 而不是 `border-left`：border 参与盒模型会把内容右推 3px，
+   而侧栏各级缩进是按 --tree-pad/--tree-indent 精确算的（套件逐级量过 labelLeft）。
+   色条不吃事件（pointer-events: none），点击落点仍是行本身。 */
+.tree-row.is-current::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  background: var(--ink-3);
+  pointer-events: none;
+}
+.tree-row.is-current > .tree-label {
+  color: var(--accent-ink);
+}
+/* 键盘焦点必须看得见：ARIA tree 用 roving tabindex，鼠标点击不该出现描边
+   （:focus-visible 只在键盘/Tab 时生效），所以只给 focus-visible 加环。
+   只画环、不改底色 —— 改底色会把选中态的药丸覆盖掉。 */
+.tree-row:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+/* 当前项也要有悬停反馈，但只比选中态略强一点，不换色系 */
+.tree-row.is-current:hover {
+  background-color: color-mix(in srgb, var(--accent) 16%, transparent);
+  background-clip: padding-box;
+}
+
+.tree-chevron-slot {
+  display: flex;
+  width: var(--tree-slot);
+  height: var(--tree-slot);
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  margin-right: calc(-1 * var(--tree-slot-pull));
+}
+.tree-chevron {
+  color: var(--ink-3);
+  stroke-width: 2.1;
+  transition:
+    transform 0.16s cubic-bezier(0.4, 0, 0.2, 1),
+    color 0.13s ease;
+}
+.tree-chevron.is-open {
+  transform: rotate(90deg);
+}
+.tree-row:hover .tree-chevron {
+  color: var(--ink-2);
+}
+
+.tree-icon {
+  flex: none;
+  color: var(--ink-3);
+  transition: color 0.13s ease;
+}
+/* 文件夹图标给一点内部填充（形状线索，不动颜色令牌）：实心=容器、描边=内容。
+   强度（20%）刻意低于状态底色，否则静止的图标比悬停/选中还抢眼 */
+.tree-row[data-tree-type='directory'] .tree-icon {
+  fill: color-mix(in srgb, currentColor 20%, transparent);
+}
+.tree-row.is-current .tree-icon {
+  color: var(--accent);
+}
+
+.tree-label {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  /* 行盒必须比字形高，否则 `overflow: hidden` 会裁掉 `g`/`y`/`p` 的降部。
+     `line-height: 1`（行盒 = 字号）在 13px 时是 13px，而 CJK/拉丁字形的
+     ascent+descent 实测约 17px —— 这就是「字母显示不全」的直接成因。 */
+  line-height: 1.3;
+}
+
+/* 就地重命名：贴着行高的小输入框，不撑开行 */
+.tree-rename-input {
+  min-width: 0;
+  flex: 1;
+  height: 19px;
+  padding: 0 4px;
+  border: 1px solid var(--accent);
+  border-radius: 4px;
+  background: var(--panel);
+  color: var(--ink);
+  font-size: 13px;
+  outline: none;
+}
+
+/* 缩进参考线：画在「子级容器」上（容器带着父级的 --tree-depth），正落在父级箭头中线上；
+   抬到行底色之上（z-index: 1），悬停/选中药丸不会把线切断 */
+[data-tree-children] {
+  position: relative;
+}
+[data-tree-children]::before {
+  content: '';
+  position: absolute;
+  z-index: 1;
+  top: -1px;
+  bottom: 0;
+  left: calc(var(--tree-pad) + var(--tree-depth, 0) * var(--tree-indent) + var(--tree-slot) / 2);
+  width: 1px;
+  background: var(--tree-rail);
+  pointer-events: none;
+}
+
+/* 空文件夹提示：与同级子项文字左对齐，且占满一行高度（不再把下面几行顶歪） */
+.tree-empty-hint {
+  display: flex;
+  align-items: center;
+  min-height: 32px;
+  padding-left: calc(
+    var(--tree-pad) + (var(--tree-depth, 0) + 1) * var(--tree-indent) + var(--tree-slot) -
+      var(--tree-slot-pull) + 2 * var(--tree-gap) + var(--tree-icon)
+  );
+  font-size: 12px;
+  color: color-mix(in srgb, var(--ink-3) 30%, var(--ink-2));
+}
+
+/* 展开/收起：轻量淡入 + 2px 下沉，不带缩放（列表用的 .list-* 带 scale，观感更重） */
+.tree-enter-active,
+.tree-leave-active {
+  transition:
+    opacity 0.14s ease,
+    transform 0.14s ease;
+}
+.tree-enter-from,
+.tree-leave-to {
+  opacity: 0;
+  transform: translateY(-2px);
+}
+
+/* mermaid 容器 */
+.md-mermaid {
+  display: flex;
+  justify-content: center;
+  margin: 0.8em 0;
+}
+.md-mermaid svg {
+  max-width: 100%;
+  height: auto;
+}
+
+/* 草稿恢复横幅 */
+.restore-bar {
+  background: var(--accent-soft);
+  border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent);
+  border-radius: 10px;
+  color: var(--accent-ink);
+}
+
+/* ─────────────────────── 侧边栏过渡 / 查找标记 ─────────────────────── */
+.sidebar-enter-active,
+.sidebar-leave-active {
+  transition:
+    width 0.28s cubic-bezier(0.4, 0, 0.2, 1),
+    opacity 0.22s ease;
+}
+.sidebar-enter-from,
+.sidebar-leave-to {
+  width: 0 !important;
+  opacity: 0;
+}
+.sidebar-leave-active {
+  overflow: hidden;
+}

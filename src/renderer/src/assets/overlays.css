@@ -1,0 +1,660 @@
+/* ─── overlays.css ─────────────────────────────────────────────────────────────
+ * 浮层与菜单（编辑器右键菜单 / 设置 / 对话框 / 标记动效）
+ *
+ * 由原 style.css（2398 行单文件）按语义段落切出（自查报告 S2）：本片对应原第 1745–2398 行。
+ * **顺序即层叠顺序**，入口 style.css 只做 @import，不许重排这些分片。
+ */
+
+@keyframes md-marker-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+/* 加粗/斜体标记不随正文继承样式（Typora 同款：标记字符保持常规字重） */
+.md-marker[data-md-style='bold'] {
+  font-weight: 400;
+}
+
+/* ── 查找命中高亮（.find-hit / .find-hit-current）──
+   由 typoraInlineMarks 的装饰层给出：**整批命中**画一层底色，**当前命中**换一种更重的颜色。
+   用户口径：命中的字符要有底色、当前命中要有（另一种）颜色，「颜色和 Typora 保持一致即可」。
+
+   配色取自 Typora 自己的浅色主题截图（`github` 主题，逐像素采样）：
+     命中底色 `#FDECD5`（淡琥珀/奶色）、当前命中 `#FFCF8F`（更重的琥珀）——
+   两者在 Typora 里就是这样一对「淡底 + 重底」。深色主题参照 Typora `night.css`
+   的**蓝色**命中高亮（typora-issues#5760 明确说 night 主题的搜索高亮是蓝色、其余主题偏黑不可读）：
+   命中 `rgba(102,175,233,.32)`、当前命中实蓝 `#428BCA`（白字）。羊皮纸主题跟随浅色的暖色系，
+   整体压深一档以贴合暖纸。三套值都走令牌，改主题只动这里。 */
+.find-hit {
+  background: var(--find-hit-bg);
+  color: var(--find-hit-ink);
+  border-radius: 2px;
+}
+.find-hit-current {
+  background: var(--find-current-bg);
+  color: var(--find-current-ink);
+  box-shadow: 0 0 0 1px var(--find-current-edge);
+}
+.md-marker[data-md-style='italic'] {
+  font-style: normal;
+}
+/* 字面量标记（不配对/切段残留的 '*' 等）：当作普通字符原样显示可编辑 */
+.md-marker[data-side='literal'] {
+  font-size: inherit;
+  font-weight: inherit;
+  font-style: inherit;
+  color: inherit;
+}
+
+/* 转义反斜杠（`\*`）：模型里是**一个** MdEscape 文本节点（含反斜杠，逐字写回），
+   渲染时由装饰拆成两个 span（typoraInlineMarks.escapeDecorations）——
+   反斜杠单独着色，被转义的字面字符保持正文样式。
+   显隐与 `.md-marker` **同一套机制**：默认 `font-size: 0` 零占位折叠
+   （不用 display:none —— 那会破坏浏览器光标导航与命中，与 `.md-marker`
+   的取舍完全一致）；光标/选区落在该转义段内（或紧贴段两端）时装饰给**同一个
+   span** 加上 `.md-reveal-inline`，字号恢复 inherit、以暗色显现（带与 `.md-marker`
+   同一条淡入动画，避免过场跳字）。连续转义段（`\*\*\*\*`）整段统一判定 ——
+   4 个反斜杠同显同隐，判据与 folding 参数都对齐 `.md-marker`。
+   颜色用主题令牌 --ink-3（light/dark/sepia 三套主题各自定义），
+   实测与正文色（--ink）都不同 → 可读且不喧宾夺主。
+   被转义的字面字符本身（`.md-escape-char`）始终正常显示。
+   例外：**非标点的 `\X`**（Windows 路径 `C:\Users\x` 的 `\U`/`\x`、孤立反斜杠）在模型里
+   同样是 MdEscape 节点，但**不是** CommonMark 的转义 —— 折叠它会让路径少字符
+   （`C:Usersx`），所以装饰永远给它 `.md-reveal-inline`（= 常显暗色），不参与光标显隐。 */
+.md-escape-backslash {
+  font-size: 0;
+  /* 与 `**` 同一档淡灰（同一个「源码符号」语义） */
+  color: var(--marker);
+}
+.md-escape-backslash.md-reveal-inline {
+  font-size: inherit;
+  animation: md-marker-in 0.12s ease;
+}
+.md-escape-char {
+  color: inherit;
+}
+
+/* ── YAML front matter 块（文档开头的元数据，原样保留）──
+   WYSIWYG 里只读（atom 节点）：改 YAML 走源码模式。样式上刻意与正文区分，
+   避免用户以为它是一段普通正文；限高可滚动，长 front matter 不挤占视线 */
+.md-preview pre[data-md-frontmatter] {
+  margin: 0 0 1.1em;
+  padding: 10px 12px;
+  max-height: 15em;
+  overflow: auto;
+  font-family: var(--font-mono);
+  font-size: 0.82em;
+  line-height: 1.6;
+  color: var(--ink-2);
+  background: color-mix(in srgb, var(--ink-3) 7%, transparent);
+  border-left: 3px solid color-mix(in srgb, var(--accent) 55%, transparent);
+  border-radius: 0 6px 6px 0;
+  white-space: pre;
+  cursor: default;
+}
+
+/* front matter 也不再单独改选区色（原来那条会盖掉浏览器默认） */
+
+/* ── 数学公式（KaTeX）──
+   行内公式：原文留在文档里（`$…$` 是一个带 mdMath mark 的文本节点），渲染成公式靠**装饰**：
+   旁边的 .md-math-rendered 是 KaTeX 输出，原文那一段被加上 .md-math-source 折叠掉
+   （`font-size: 0` 而不是 `display: none` —— 后者会破坏浏览器的光标导航，与行内标记同一套处理）。
+   光标落进公式时装饰消失，原文自动露出来可编辑。 */
+.md-preview .md-math-source {
+  font-size: 0;
+}
+.md-preview .md-math-rendered {
+  font-size: inherit;
+  padding: 0 0.1em;
+}
+/* 块级公式：独占一块、居中、可横向滚动（长公式不撑破版心） */
+.md-preview .md-math-block {
+  margin: 0.9em 0;
+  padding: 2px 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  text-align: center;
+  cursor: default;
+}
+.md-preview .md-math-block .katex-display {
+  margin: 0;
+}
+.md-preview .md-math-error {
+  color: var(--danger);
+  font-family: var(--font-mono);
+  font-size: 0.9em;
+}
+
+/* 无序列表：始终显示圆点（与 Typora 一致）。
+   输入 '- ' 后 input rule 将其转为 bulletList，圆点由 ul 的 list-style:disc 渲染；
+   光标在项内也不把圆点替换为 '- ' 标记（用户期望的渲染形态） */
+li.md-reveal {
+  list-style: inherit;
+}
+
+/* ── 气泡菜单 ── */
+.bubble-menu {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  background: var(--elevate);
+  border: 1px solid var(--edge);
+  border-radius: 10px;
+  padding: 4px;
+  box-shadow: var(--shadow-2);
+}
+.bubble-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 7px;
+  color: var(--ink-2);
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  transition:
+    background-color 0.12s ease,
+    color 0.12s ease;
+}
+.bubble-btn:hover {
+  background: var(--panel-2);
+  color: var(--ink);
+}
+.bubble-btn.is-active {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+.bubble-divider {
+  width: 1px;
+  height: 16px;
+  margin: 0 4px;
+  background: var(--edge);
+}
+
+/* ── 代码块 NodeView（CodeMirror 嵌入）── */
+.code-block-wrapper {
+  margin: 0.8em 0;
+  border: 1px solid var(--edge);
+  border-radius: 12px;
+  background: var(--code-bg);
+  overflow: hidden;
+}
+.code-block-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 5px 10px;
+  background: color-mix(in srgb, var(--panel-2) 70%, transparent);
+  border-bottom: 1px solid var(--edge);
+}
+.code-block-lang-label {
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+.code-block-select {
+  appearance: none;
+  border: 1px solid var(--edge-strong);
+  background: var(--panel);
+  color: var(--ink-2);
+  border-radius: 6px;
+  font-size: 11.5px;
+  padding: 2px 22px 2px 8px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='%238a919e' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 6px center;
+  cursor: pointer;
+}
+.cm-editor-container .cm-editor {
+  background: transparent;
+}
+.cm-editor-container .cm-editor.cm-focused {
+  outline: none;
+}
+.cm-editor-container .cm-scroller {
+  overflow: auto;
+  padding: 0 4px;
+}
+
+/* Mermaid 图表块 */
+.mermaid-block .mermaid-render {
+  padding: 14px 16px;
+  display: flex;
+  justify-content: center;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+.mermaid-block .mermaid-render:hover {
+  background: var(--block-hover);
+}
+.mermaid-block .mermaid-render svg {
+  max-width: 100%;
+  height: auto;
+}
+.mermaid-source-input {
+  width: 100%;
+  min-height: 130px;
+  border: none;
+  background: transparent;
+  padding: 14px 16px;
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--ink);
+  outline: none;
+  resize: vertical;
+  caret-color: var(--ink);
+}
+
+/* ── 任务列表 ── */
+.md-preview ul[data-type='taskList'] {
+  list-style: none;
+  padding-left: 0.3em;
+}
+.md-preview ul[data-type='taskList'] li {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+/* 复选框与首行文字平齐：label 撑成与「首行行盒」同高并内部垂直居中，
+   使复选框中心线与第一行文字中心线重合（多行内容时仍对齐首行）；取代
+   旧 margin-top 下推导致的割裂感 */
+.md-preview ul[data-type='taskList'] li > label {
+  display: flex;
+  align-items: center;
+  flex: none;
+  height: calc(var(--editor-lh, 1.9) * 1em);
+  margin-top: 0;
+  cursor: pointer;
+}
+.md-preview ul[data-type='taskList'] li > div {
+  flex: 1;
+  min-width: 0;
+}
+/* 任务内容段落：首行顶格，保证与 label 行盒同一起点、后续行正常换行留白 */
+.md-preview ul[data-type='taskList'] li > div > p {
+  margin: 0.15em 0;
+}
+.md-preview ul[data-type='taskList'] li > div > p:first-child {
+  margin-top: 0;
+}
+.md-preview ul[data-type='taskList'] input[type='checkbox'] {
+  width: 14px;
+  height: 14px;
+  flex: none;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+/* 表格容器（Tiptap tableWrapper）：表格自身的横向滚动与统一外边距都交给它 */
+.md-preview .tableWrapper {
+  overflow-x: auto;
+  margin: 0.9em 0;
+}
+/* 表格已由 wrapper 提供外边距，这里清零，避免 0.9em 叠加成 1.8em */
+.md-preview .tableWrapper > table {
+  margin: 0;
+}
+
+/* 图片：规则在文件上部（`.md-preview img` 那一段）已经有完整一份，
+   这里原先重复了一遍、且因为位置更靠后会覆盖上面的行内排版 —— 删掉重复项 */
+
+/* ── 全局通知中心（单卡片：级别图标 + 标题 + 详情 + 切换/关闭）── */
+.ntf-card {
+  background: color-mix(in srgb, var(--elevate) 94%, transparent);
+  box-shadow: var(--shadow-2);
+  backdrop-filter: blur(14px);
+  /* 只在出现/消失时动，避免与内容切换动效互相干扰 */
+  transition:
+    opacity 0.22s ease,
+    transform 0.22s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.ntf-body {
+  /* 长详情只在卡片内滚动，不撑高整张卡片 */
+  scrollbar-width: thin;
+}
+/* 可交互通知的操作按钮：主/次/危险三档，配色全部取主题令牌（三套主题自动适配） */
+.ntf-action {
+  border: 1px solid var(--edge);
+  border-radius: 9px;
+  padding: 5px 13px;
+  font-size: 12.5px;
+  line-height: 1.25;
+  color: var(--ink-2);
+  white-space: nowrap;
+  cursor: pointer;
+  transition:
+    background-color 0.15s ease,
+    border-color 0.15s ease,
+    color 0.15s ease,
+    transform 0.12s ease;
+}
+.ntf-action:hover {
+  border-color: var(--edge-strong);
+  background: var(--panel-2);
+  color: var(--ink);
+}
+.ntf-action:active {
+  transform: scale(0.97);
+}
+.ntf-action:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+.ntf-action.is-primary {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--accent-ink);
+  font-weight: 500;
+}
+.ntf-action.is-primary:hover {
+  background: color-mix(in srgb, var(--accent) 88%, #000);
+  border-color: color-mix(in srgb, var(--accent) 88%, #000);
+  color: var(--accent-ink);
+}
+.ntf-action.is-danger {
+  border-color: color-mix(in srgb, var(--danger) 45%, var(--edge));
+  color: var(--danger);
+}
+.ntf-action.is-danger:hover {
+  background: color-mix(in srgb, var(--danger) 12%, transparent);
+  border-color: var(--danger);
+  color: var(--danger);
+}
+.ntf-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  flex: none;
+  border-radius: 8px;
+  color: var(--ink-3);
+  cursor: pointer;
+  transition:
+    background-color 0.15s ease,
+    color 0.15s ease,
+    transform 0.12s ease;
+}
+.ntf-icon-btn:hover {
+  background: var(--panel-2);
+  color: var(--ink);
+}
+.ntf-icon-btn:active {
+  transform: scale(0.9);
+}
+.ntf-text-btn {
+  flex: none;
+  border-radius: 8px;
+  padding: 3px 8px;
+  font-size: 11.5px;
+  color: var(--ink-3);
+  white-space: nowrap;
+  cursor: pointer;
+  transition:
+    background-color 0.15s ease,
+    color 0.15s ease;
+}
+.ntf-text-btn:hover {
+  background: color-mix(in srgb, var(--danger) 12%, transparent);
+  color: var(--danger);
+}
+/* 卡片整体：自下而上淡入 */
+.ntf-enter-active,
+.ntf-leave-active {
+  transition:
+    opacity 0.22s ease,
+    transform 0.22s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.ntf-enter-from,
+.ntf-leave-to {
+  opacity: 0;
+  transform: translateY(10px) scale(0.98);
+}
+/* 内容切换：上一条自左、下一条自右（配合底部 ‹ › 的语义） */
+.ntf-prev-enter-active,
+.ntf-next-enter-active,
+.ntf-prev-leave-active,
+.ntf-next-leave-active {
+  transition:
+    opacity 0.16s ease,
+    transform 0.16s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.ntf-prev-enter-from,
+.ntf-next-leave-to {
+  opacity: 0;
+  transform: translateX(-10px);
+}
+.ntf-next-enter-from,
+.ntf-prev-leave-to {
+  opacity: 0;
+  transform: translateX(10px);
+}
+
+/* ── 编辑器右键菜单 ──────────────────────────────────────────────────────────
+   结构：顶部横向常用行 + 分区列表 + 底部「清除最近使用」。
+   配色全部走主题令牌，三套主题自动适配；动效为自点击点缩放淡入。 */
+.ecm-panel {
+  /* 宽度按最长条目（「右侧插入列」+ 快捷键提示）收紧：一级 6 个分类，
+     原先 268px 有近一半是空白，菜单显得比内容大一圈。 */
+  min-width: 234px;
+  max-width: 268px;
+  border: 1px solid var(--edge);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--elevate) 96%, transparent);
+  box-shadow: var(--shadow-2);
+  backdrop-filter: blur(14px);
+  outline: none;
+  transform-origin: top left;
+}
+.ecm-tool {
+  display: inline-flex;
+  flex: 1 1 0;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  border-radius: 8px;
+  padding: 6px 4px;
+  font-size: 11px;
+  line-height: 1.1;
+  color: var(--ink-2);
+  cursor: pointer;
+  transition:
+    background-color 0.14s ease,
+    color 0.14s ease;
+}
+.ecm-tool:hover:not(:disabled) {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+.ecm-tool:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+.ecm-section {
+  padding: 6px 8px 3px;
+  font-size: 10.5px;
+  letter-spacing: 0.02em;
+  color: var(--ink-3);
+}
+.ecm-item {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: 7px;
+  border-radius: 8px;
+  padding: 5px 7px;
+  text-align: left;
+  font-size: 13px;
+  color: var(--ink);
+  cursor: pointer;
+  transition:
+    background-color 0.1s ease,
+    color 0.1s ease;
+}
+.ecm-item .ecm-icon {
+  color: var(--ink-3);
+}
+.ecm-item.is-active:not(:disabled) {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+.ecm-item.is-active:not(:disabled) .ecm-icon {
+  color: var(--accent);
+}
+.ecm-item.is-danger {
+  color: var(--danger);
+}
+.ecm-item.is-danger .ecm-icon {
+  color: var(--danger);
+}
+.ecm-item.is-danger.is-active:not(:disabled),
+.ecm-item.is-danger:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--danger) 12%, transparent);
+  color: var(--danger);
+}
+.ecm-item:disabled {
+  opacity: 0.38;
+  cursor: default;
+}
+.ecm-key {
+  flex: none;
+  font-size: 10.5px;
+  color: var(--ink-3);
+  font-variant-numeric: tabular-nums;
+}
+.ecm-foot {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: 6px;
+  border-radius: 8px;
+  padding: 5px 8px;
+  font-size: 11.5px;
+  color: var(--ink-3);
+  cursor: pointer;
+  transition:
+    background-color 0.14s ease,
+    color 0.14s ease;
+}
+.ecm-foot:hover {
+  background: color-mix(in srgb, var(--danger) 10%, transparent);
+  color: var(--danger);
+}
+.ecm-item.is-open,
+.ecm-item.is-open .ecm-caret {
+  color: var(--accent);
+}
+.ecm-item.is-open {
+  background: var(--accent-soft);
+}
+.ecm-caret {
+  flex: none;
+  color: var(--ink-3);
+}
+/* 二级菜单：贴在一级分类行右侧，独立浮层 */
+.ecm-sub {
+  min-width: 190px;
+  max-width: 260px;
+}
+.ecm-sub .ecm-section {
+  padding: 6px 8px 4px;
+}
+/* 一级列表与二级列表都自带宽高上限并吞掉滚轮链式滚动：
+   否则在菜单上滚动会滚到底下的文档，进而触发「滚动关闭菜单」 */
+.ecm-cats,
+.ecm-sub > div {
+  max-height: min(64vh, 520px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.ecm-enter-active,
+.ecm-leave-active {
+  transition:
+    opacity 0.12s ease,
+    transform 0.12s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.ecm-enter-from,
+.ecm-leave-to {
+  opacity: 0;
+  transform: scale(0.96);
+}
+/* 二级用更轻的横向滑入，避免与一级的缩放动效打架 */
+.ecm-sub-enter-active,
+.ecm-sub-leave-active {
+  transition:
+    opacity 0.1s ease,
+    transform 0.1s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.ecm-sub-enter-from,
+.ecm-sub-leave-to {
+  opacity: 0;
+  transform: translateX(-6px);
+}
+
+/* ── 全局 tooltip（接管原生 title，统一主题样式）── */
+.lm-tooltip {
+  position: fixed;
+  z-index: 9999;
+  /* 必须显式 width: max-content：浮层用 left 定位，若目标贴近视口右缘，
+     收缩适应（shrink-to-fit）会把可用宽度算成「视口右边 − left」的极小值，
+     文字被压成一列竖排。显式取 max-content 后宽度只由内容决定（再由
+     max-width 封顶），钳制逻辑量到的宽度也才是真实宽度。 */
+  width: max-content;
+  max-width: 340px;
+  padding: 5px 10px;
+  border-radius: 7px;
+  background: var(--elevate);
+  color: var(--ink-2);
+  border: 1px solid var(--edge);
+  box-shadow: var(--shadow-2);
+  font-size: 12px;
+  line-height: 1.5;
+  pointer-events: none;
+  user-select: none;
+  white-space: normal;
+  word-break: break-word;
+}
+.lm-tooltip.is-above {
+  transform: translate(-50%, calc(-100% - 7px));
+}
+.lm-tooltip.is-below {
+  transform: translate(-50%, 7px);
+}
+.lm-tip-enter-active,
+.lm-tip-leave-active {
+  transition: opacity 0.14s ease;
+}
+.lm-tip-enter-from,
+.lm-tip-leave-to {
+  opacity: 0;
+}
+
+/* 设置 → 链接：历史记录行的增删动效（删除时离场行脱离文档流，其余行平滑上移） */
+.link-row-enter-active,
+.link-row-leave-active,
+.link-row-move {
+  transition:
+    opacity 0.18s ease,
+    transform 0.18s cubic-bezier(0.2, 0.9, 0.3, 1);
+}
+.link-row-enter-from {
+  opacity: 0;
+  transform: translateY(-6px);
+}
+.link-row-leave-to {
+  opacity: 0;
+  transform: translateX(10px);
+}
+.link-row-leave-active {
+  position: absolute;
+  left: 0;
+  right: 0;
+}

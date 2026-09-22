@@ -1,0 +1,354 @@
+/* ─── markdown.css ─────────────────────────────────────────────────────────────
+ * Markdown 预览排版（md-preview）与远程图片占位
+ *
+ * 由原 style.css（2398 行单文件）按语义段落切出（自查报告 S2）：本片对应原第 775–1122 行。
+ * **顺序即层叠顺序**，入口 style.css 只做 @import，不许重排这些分片。
+ */
+
+/* ─────────────────────── Markdown 预览排版（md-preview） ─────────────────────── */
+.md-preview {
+  font-family: var(--editor-font, var(--font-sans));
+  font-size: var(--editor-size, 17px);
+  line-height: var(--editor-lh, 1.9);
+  color: var(--ink);
+  word-break: break-word;
+  user-select: text;
+  cursor: text;
+}
+.md-preview > *:first-child {
+  margin-top: 0;
+}
+.md-preview h1,
+.md-preview h2,
+.md-preview h3,
+.md-preview h4,
+.md-preview h5,
+.md-preview h6 {
+  font-weight: 700;
+  line-height: 1.35;
+  margin: 1.3em 0 0.55em;
+  letter-spacing: -0.01em;
+}
+.md-preview h1 {
+  font-size: 1.95em;
+  padding-bottom: 0.28em;
+  border-bottom: 1px solid var(--edge);
+}
+.md-preview h2 {
+  font-size: 1.5em;
+  padding-bottom: 0.22em;
+  border-bottom: 1px solid var(--edge);
+}
+.md-preview h3 {
+  font-size: 1.22em;
+}
+.md-preview h4 {
+  font-size: 1.08em;
+}
+.md-preview h5 {
+  font-size: 0.98em;
+}
+.md-preview h6 {
+  font-size: 0.9em;
+  color: var(--ink-2);
+}
+.md-preview p {
+  margin: 0.55em 0;
+}
+/* 链接 = 蓝色（--link），**不跟副色**：副色改成中性灰之后，链接若也变灰就和正文分不开了。
+   目录条目用的是同一个令牌（--toc-link: var(--link)）。 */
+.md-preview a {
+  color: var(--link);
+  text-decoration: none;
+  border-bottom: 1px solid color-mix(in srgb, var(--link) 35%, transparent);
+  transition:
+    border-color 0.15s ease,
+    background-color 0.15s ease;
+}
+.md-preview a:hover {
+  border-bottom-color: var(--link);
+  background: var(--accent-soft);
+}
+.md-preview strong {
+  font-weight: 700;
+}
+.md-preview em {
+  font-style: italic;
+}
+.md-preview del {
+  color: var(--ink-3);
+}
+.md-preview blockquote {
+  margin: 0.8em 0;
+  padding: 0.4em 1.1em;
+  /* 经典引用样式：只用一条灰色前置色条，不加底色/圆角，避免与正文的强调色抢视觉 */
+  border-left: 3px solid var(--edge-strong);
+  background: none;
+  color: var(--ink-2);
+}
+.md-preview blockquote p {
+  margin: 0.3em 0;
+}
+.md-preview ul,
+.md-preview ol {
+  margin: 0.55em 0;
+  padding-left: 1.7em;
+}
+.md-preview ul {
+  list-style: disc;
+}
+.md-preview ol {
+  list-style: decimal;
+}
+.md-preview ul ul {
+  list-style: circle;
+}
+.md-preview ul ul ul {
+  list-style: square;
+}
+.md-preview li {
+  margin: 0.22em 0;
+}
+.md-preview li > p {
+  margin: 0.2em 0;
+}
+.md-preview ul:has(> li > input[type='checkbox']) {
+  list-style: none;
+  padding-left: 0.4em;
+}
+.md-preview li > input[type='checkbox'] {
+  appearance: none;
+  width: 15px;
+  height: 15px;
+  margin-right: 8px;
+  border: 1.5px solid var(--edge-strong);
+  border-radius: 4px;
+  vertical-align: -2px;
+  cursor: pointer;
+  position: relative;
+  transition: all 0.15s ease;
+}
+.md-preview li > input[type='checkbox']:checked {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+.md-preview li > input[type='checkbox']:checked::after {
+  content: '';
+  position: absolute;
+  left: 4px;
+  top: 1px;
+  width: 4px;
+  height: 8px;
+  border: solid #fff;
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+}
+.md-preview code {
+  font-family: var(--font-mono);
+  font-size: 0.88em;
+  background: var(--code-bg);
+  border-radius: 5px;
+  padding: 0.15em 0.4em;
+}
+/* ── mdStyle 的样式集合：主样式由标签承担，集合里**其余**样式靠属性选择器补齐 ──
+   例：`**粗体里的 `代码`**` 渲染成 <strong data-md-styles="bold code">（PM 里同一种 mark
+   只能挂一个，所以不能渲染成嵌套的 <strong><code>），代码那部分的外观就来自这里。
+   取值与上面的标签规则保持一致，避免同一个样式出现两种外观。 */
+.md-preview [data-md-styles~='bold'] {
+  font-weight: 700;
+}
+.md-preview [data-md-styles~='italic'] {
+  font-style: italic;
+}
+.md-preview [data-md-styles~='strike'] {
+  text-decoration: line-through;
+}
+.md-preview [data-md-styles~='code'] {
+  font-family: var(--font-mono);
+  font-size: 0.88em;
+  background: var(--code-bg);
+  border-radius: 5px;
+  padding: 0.15em 0.4em;
+}
+.md-preview pre {
+  margin: 0.8em 0;
+  padding: 14px 16px;
+  border-radius: 12px;
+  background: var(--code-bg);
+  border: 1px solid var(--edge);
+  overflow-x: auto;
+  line-height: 1.6;
+}
+.md-preview pre code {
+  background: none;
+  padding: 0;
+  font-size: 0.86em;
+}
+.md-preview table {
+  border-collapse: collapse;
+  margin: 0.9em 0;
+  /* 始终占满整个写作区宽度：auto 布局会把多余空间按内容分配（用 fixed 会把列
+     均分/压窄，且 fixed 下单元格 min-width 会被忽略）。列数多到「各列 min-width
+     之和」超过容器时表格自然溢出，由 .tableWrapper 的 overflow-x 出横向滚动，
+     而不是把列挤到读不了。注意不能用 display:block 做滚动容器——那会让内部的
+     匿名表格退化为 auto+shrink-to-fit，表格实际只占内容宽度，撑不满写作区。 */
+  width: 100%;
+  table-layout: auto;
+  font-size: 0.95em;
+}
+/* 表头底色：**必须同时挂 thead 与 th**。
+   导出的 HTML 走 markdown-it，那一边有 <thead>；而编辑器里 TipTap 渲染的是 <tbody> 里的
+   <th>（没有 thead）—— 只写 thead 的话编辑器里的表头与纸同色，整个表头只剩 1px 边框，
+   在近白的纸上就像掉了块（实测：th 的计算底色是 rgba(0,0,0,0)，对比 1:1）。 */
+.md-preview thead,
+.md-preview th {
+  background: var(--panel-2);
+}
+.md-preview th,
+.md-preview td {
+  border: 1px solid var(--edge);
+  padding: 7px 13px;
+  text-align: left;
+  /* 每个单元格的最小宽度：列多到总宽超过容器时由横向滚动承载，保证最小可读宽度 */
+  min-width: 96px;
+  word-break: break-word;
+  overflow-wrap: break-word;
+}
+.md-preview th {
+  font-weight: 600;
+}
+.md-preview tbody tr {
+  transition: background-color 0.12s ease;
+}
+.md-preview tbody tr:hover {
+  background: var(--block-hover);
+}
+.md-preview hr {
+  border: none;
+  height: 1px;
+  margin: 1.8em 0;
+  background: var(--edge);
+}
+.md-preview img {
+  max-width: 100%;
+  border-radius: 10px;
+  box-shadow: var(--shadow-2);
+  /* 图片是**行内**节点（Markdown 的 `![alt](src)` 本来就是行内语法）：
+     默认按行内排版，能与文字同行、也能被链接包住 */
+  display: inline-block;
+  vertical-align: middle;
+}
+/* 段落里只有一张图（源码里独占一段）→ 仍按块级显示：居中、独占一行。
+   这样「独立成段的图片」观感与改成行内之前一致，而段落中间的图片不再把段落拆开 */
+.md-preview p > img:only-child {
+  display: block;
+  margin: 0.4em auto;
+}
+/* ── 远程图片占位（隐私闸门，见 lib/remoteImages.ts）────────────────────────
+   浏览时远程图渲染成这个占位（**没有 `src` 就不发请求**）；点击/回车就地换成真图。
+   样式刻意做成"一个空的相框 + 锁标记 + 域名"，一眼看出这里本来有张图、且被挡住了。 */
+.md-preview .img-guard {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5em;
+  max-width: 100%;
+  padding: 0.5em 0.75em;
+  margin: 0.15em 0;
+  border: 1px dashed var(--edge-strong);
+  border-radius: 10px;
+  background: var(--code-bg);
+  color: var(--ink-3);
+  font-size: 0.82em;
+  line-height: 1.4;
+  cursor: pointer;
+  user-select: none;
+}
+.md-preview .img-guard:hover {
+  border-color: var(--accent);
+  color: var(--ink-2);
+}
+.md-preview .img-guard:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+.md-preview .img-guard::before {
+  content: '🔒';
+  font-size: 1em;
+  line-height: 1;
+}
+.md-preview .img-guard__label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.md-preview .katex {
+  font-size: 1.06em;
+}
+.md-preview .katex-display {
+  margin: 0.8em 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 2px 0;
+}
+.md-preview svg {
+  max-width: 100%;
+}
+
+/* ─── 代码高亮（highlight.js 自定义配色） ───
+   两档「结构色」用**板岩蓝**（--code-key / --code-key-2），不跟副色走：
+   副色改成中性灰之后，关键字/标签/属性若沿用副色会与正文灰糊在一起；
+   板岩蓝与字符串绿（--ok）、数字琥珀（--warning）区分得开，且不沾紫。 */
+.hljs {
+  color: var(--ink);
+}
+.hljs-comment,
+.hljs-quote {
+  color: var(--ink-3);
+  font-style: italic;
+}
+.hljs-keyword,
+.hljs-selector-tag,
+.hljs-literal,
+.hljs-doctag {
+  color: var(--code-key);
+}
+.hljs-string,
+.hljs-regexp,
+.hljs-addition {
+  color: var(--ok);
+}
+.hljs-number,
+.hljs-symbol,
+.hljs-bullet,
+.hljs-meta {
+  color: var(--warning);
+}
+.hljs-title,
+.hljs-section,
+.hljs-name {
+  color: var(--code-key-2);
+}
+.hljs-attr,
+.hljs-attribute,
+.hljs-variable,
+.hljs-template-variable,
+.hljs-type {
+  color: var(--code-key);
+}
+.hljs-built_in,
+.hljs-builtin-name,
+.hljs-function {
+  color: var(--warning);
+}
+.hljs-tag {
+  color: var(--code-key);
+}
+.hljs-deletion {
+  color: var(--danger);
+}
+.hljs-emphasis {
+  font-style: italic;
+}
+.hljs-strong {
+  font-weight: 700;
+}

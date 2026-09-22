@@ -1,0 +1,229 @@
+/* ─── chrome.css ─────────────────────────────────────────────────────────────
+ * 外壳装饰（折叠把手 / 状态栏 / 启动骨架）
+ *
+ * 由原 style.css（2398 行单文件）按语义段落切出（自查报告 S2）：本片对应原第 1523–1744 行。
+ * **顺序即层叠顺序**，入口 style.css 只做 @import，不许重排这些分片。
+ */
+
+/* ─────────────────────── 左缘展开把手（侧边栏折叠时）─────────────────────── */
+/* 一条从窗口左缘「探出来」的小药丸：中性玻璃质感 + 悬停染色 + 轻投影。
+   位移与淡入都走 transform/opacity（合成层），并且**显式用 transform 属性**——
+   Tailwind v4 的 translate-* 工具类写的是 `translate` 长属性；若过渡只声明
+   `transform`，位移根本不会被动画化，表现就是「啪地跳出来」：这正是之前
+   「动效卡卡的」的根因。 */
+.sidebar-handle {
+  position: absolute;
+  left: 0;
+  top: 50%;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 56px;
+  border: 1px solid var(--edge);
+  border-left: 0;
+  border-radius: 0 12px 12px 0;
+  background: color-mix(in srgb, var(--elevate) 92%, transparent);
+  color: var(--ink-3);
+  backdrop-filter: blur(10px);
+  box-shadow: var(--shadow-2);
+  cursor: pointer;
+  /* 收起态：整体退到窗口之外（而非只挪几像素），不留「露出一条边」的脏像素 */
+  transform: translate3d(-100%, -50%, 0);
+  opacity: 0;
+  pointer-events: none;
+  will-change: transform, opacity;
+  transition:
+    transform 0.3s cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 0.22s ease,
+    color 0.15s ease,
+    box-shadow 0.22s ease;
+}
+.sidebar-handle.is-shown {
+  transform: translate3d(0, -50%, 0);
+  opacity: 1;
+  pointer-events: auto;
+}
+.sidebar-handle:hover {
+  color: var(--accent);
+  box-shadow:
+    var(--shadow-2),
+    0 0 0 3px var(--accent-soft);
+  /* 悬停时再往外探 2px，提示「可以点」 */
+  transform: translate3d(2px, -50%, 0);
+}
+.sidebar-handle:focus-visible {
+  outline: none;
+  color: var(--accent);
+  box-shadow:
+    var(--shadow-2),
+    0 0 0 3px var(--accent-soft);
+}
+@media (prefers-reduced-motion: reduce) {
+  .sidebar-handle {
+    transition: opacity 0.15s ease;
+  }
+}
+
+/* 全局搜索高亮 */
+.gs-hl {
+  color: var(--warning);
+  font-style: normal;
+  font-weight: 700;
+  background: color-mix(in srgb, var(--warning) 16%, transparent);
+  border-radius: 3px;
+  padding: 0 1px;
+}
+
+/* ═══════════════ Tiptap（ProseMirror）所见即所得编辑器 ═══════════════ */
+
+/* 编辑区容器 */
+.editor-content .ProseMirror {
+  outline: none;
+  min-height: 60vh;
+  caret-color: var(--ink);
+}
+.editor-content .ProseMirror:focus {
+  outline: none;
+}
+
+/* 空文档占位提示 */
+.editor-content .ProseMirror p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  float: left;
+  height: 0;
+  pointer-events: none;
+  color: var(--ink-3);
+}
+
+/* 选中节点（图片 / 代码块等）：
+   **刻意不给任何外观** —— 不画紫色（主题色）描边、不加圆角。本应用按 Typora 的口径走：
+   节点级整选在正文里没有意义（点图片就是想拖/删它，不是为了看一圈框）。
+   压制逻辑见 lib/editor/pointer.ts 的 filterTransaction：任何 NodeSelection 都降级成
+   普通文本光标，所以这个类基本不会出现；这里留一条「万一出现也不画框」的兜底。 */
+.ProseMirror-selectednode {
+  outline: none;
+}
+
+/* ── 链接源码展开（Typora 同款，§4.15）──
+   展开态的「原文标签」保持链接外观（--link + 下边框，与 .md-preview a 一致）；
+   新增的 `[`、`](`、网址、`)` 等字符以浅灰呈现，一眼区分「正文 vs 语法」 */
+.md-link-source {
+  color: var(--link);
+  text-decoration: none;
+  border-bottom: 1px solid color-mix(in srgb, var(--link) 35%, transparent);
+}
+.md-link-syntax {
+  color: var(--ink-3);
+}
+
+/* ── 光标感知标记符（ProseMirror Decoration + CSS 生成内容）──
+   光标进入节点/样式时展开语法标记，移出即隐藏，内容本身不含标记字符 */
+
+/* 标题：光标进入时给出浅色级别提示（H1~H6 小徽章，非可编辑源码标记）。
+   绝对定位到正文左侧留白（px-10 内边距），不占用文本布局、不挤压标题 */
+h1.md-reveal,
+h2.md-reveal,
+h3.md-reveal,
+h4.md-reveal,
+h5.md-reveal,
+h6.md-reveal {
+  position: relative;
+}
+h1.md-reveal::before,
+h2.md-reveal::before,
+h3.md-reveal::before,
+h4.md-reveal::before,
+h5.md-reveal::before,
+h6.md-reveal::before {
+  position: absolute;
+  left: -2.2rem;
+  top: 50%;
+  transform: translateY(-50%);
+  padding: 1px 6px;
+  border: 1px solid var(--edge);
+  border-radius: 5px;
+  background: var(--panel-2);
+  color: var(--ink-3);
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  line-height: 1.5;
+  white-space: nowrap;
+  user-select: none;
+  pointer-events: none;
+}
+h1.md-reveal::before {
+  content: 'H1';
+  /* h1 底部有 padding-bottom(0.28em)+边框，盒子中心低于文字行中心约 5px，向上补偿 */
+  top: calc(50% - 5px);
+}
+h2.md-reveal::before {
+  content: 'H2';
+  top: calc(50% - 3px);
+}
+h3.md-reveal::before {
+  content: 'H3';
+}
+h4.md-reveal::before {
+  content: 'H4';
+}
+h5.md-reveal::before {
+  content: 'H5';
+}
+h6.md-reveal::before {
+  content: 'H6';
+}
+
+/* 代码块（CodeMirror）聚焦时不触碰 PM 选区/装饰，仅用 :has 隐藏标题等级徽章，
+   避免“点击代码块后光标被抢回标题” */
+.ProseMirror:has(.cm-editor:focus-within) h1.md-reveal::before,
+.ProseMirror:has(.cm-editor:focus-within) h2.md-reveal::before,
+.ProseMirror:has(.cm-editor:focus-within) h3.md-reveal::before,
+.ProseMirror:has(.cm-editor:focus-within) h4.md-reveal::before,
+.ProseMirror:has(.cm-editor:focus-within) h5.md-reveal::before,
+.ProseMirror:has(.cm-editor:focus-within) h6.md-reveal::before {
+  display: none;
+}
+
+/* 引用：编辑态不再显示 "> " 前缀（灰色色条已足够表意） */
+
+/* ── 行内标记（真实文本标记模型：.md-marker span 即源码字符）──
+   默认零占位（font-size:0——不占任何布局位，'正文段落 **加粗** 与'
+   收起时渲染为 '正文段落 加粗 与'，无占位空隙）；标记文本节点仍在，
+   光标可正常导航/落位（display:none 会破坏浏览器光标导航与 Enter
+   切段语义）。光标落在样式范围内时 PM 装饰包上 .md-reveal-inline，
+   标记以正常字号显现（带淡入）并着色——可被选中、编辑
+   （删一个 * 即把 ** 变 *） */
+.md-marker {
+  font-size: 0;
+  /* 淡灰的源码标记墨（用户口径：标记符再浅一点）；见令牌区 `--marker` 的说明 */
+  color: var(--marker);
+}
+/* ── 「按住鼠标时先别冒 `**`、松开再显示」的隐藏态 ──
+   需求：鼠标按在加粗文字上 / 拖选时，标记不要立刻显形，**松开才显示**。
+
+   实现口径（第二十四轮定稿）：**只去墨，绝不改占位**。
+   按下期间，「本来已显形」的标记把字色变透明（`color: transparent`）——
+   看不见，但 `font-size: inherit` 与占位完全照旧；「本来就折叠」的标记仍然是
+   `font-size: 0`（本来就不可见、不占位），不需要任何额外处理。
+
+   为什么不能改占位（`font-size: 0` 真折叠、或 `position: absolute` 脱离流）：
+   一行里标记的宽度会因此变化（一对 `**` 是 15.5px），而浏览器判光标落点、以及 PM 在拖拽
+   每次 `mousemove` 上重算坐标，都发生在「当时的布局」上 —— 布局一变落点就跑到别的字符
+   （实测：光标在构造内时按下、标记一收起 ⇒ 整行左移 15px，「点在『地』」落到了下一个字；
+   拖拽中途折叠 ⇒ 整段拖选塌成一个光标）。
+   与之配套，`typoraInlineMarks` 在按住期间**冻结显隐装饰**（不重算 `.md-reveal-inline`），
+   于是「谁显形、谁折叠」在手势期间也不会变 —— 两条合起来保证**版面在整个手势里不变**。
+
+   选择器挂在**编辑区根节点**上（`.press-hidden`），不是逐个 `.md-marker` 挂类：
+   标记元素会被 PM 重渲染换掉，挂类会丢；后代选择器不会。 */
+.press-hidden .md-marker:has(> .md-reveal-inline) {
+  color: transparent;
+  animation: none;
+}
+.md-marker:has(> .md-reveal-inline) {
+  font-size: inherit;
+  animation: md-marker-in 0.12s ease;
+}

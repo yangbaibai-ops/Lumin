@@ -1,0 +1,166 @@
+/* ─── editor.css ─────────────────────────────────────────────────────────────
+ * 编辑器块（代码块 / 表格 / 公式 / 查找命中）
+ *
+ * 由原 style.css（2398 行单文件）按语义段落切出（自查报告 S2）：本片对应原第 1123–1282 行。
+ * **顺序即层叠顺序**，入口 style.css 只做 @import，不许重排这些分片。
+ */
+
+/* ─────────────────────── 编辑器块（所见即所得） ─────────────────────── */
+/* Typora 式极简：编辑中的块不做背景/色条提示，仅在行内标记符层面反馈。
+   padding 放在可编辑容器上，保证点击块整行（含边缘空白）都能放置光标 */
+.md-block {
+  position: relative;
+  margin: 0 -12px;
+}
+.md-block-inner {
+  padding: 1px 12px;
+}
+.md-block .md-raw {
+  width: 100%;
+  background: transparent;
+  border: none;
+  outline: none;
+  resize: none;
+  font-family: var(--editor-font, var(--font-sans));
+  font-size: var(--editor-size, 17px);
+  line-height: var(--editor-lh, 1.9);
+  color: var(--ink);
+  caret-color: var(--ink);
+  overflow: hidden;
+}
+.md-block .md-raw::placeholder {
+  color: var(--ink-3);
+}
+
+/* 行内可编辑容器 */
+.md-block-inner {
+  outline: none;
+  caret-color: var(--ink);
+  min-height: calc(var(--editor-size, 17px) * var(--editor-lh, 1.9));
+  cursor: text;
+}
+.md-block-inner:empty::before {
+  content: attr(data-placeholder);
+  color: var(--ink-3);
+  pointer-events: none;
+}
+.md-block-inner a {
+  cursor: text;
+}
+.md-block-inner img {
+  cursor: default;
+}
+
+/* 行内样式标记符：默认隐藏，光标进入 / 悬停 / 选区相交时显示。
+   墨色 = `--marker`（淡灰）：这是**源码符号**，退到背景里即可，不跟副色走 */
+.md-meta {
+  display: none;
+  color: var(--marker);
+  opacity: 0.85;
+  user-select: none;
+  font-weight: normal;
+  font-style: normal;
+  text-decoration: none;
+}
+strong:hover > .md-meta,
+em:hover > .md-meta,
+del:hover > .md-meta,
+code:hover > .md-meta,
+strong.md-reveal > .md-meta,
+em.md-reveal > .md-meta,
+del.md-reveal > .md-meta,
+code.md-reveal > .md-meta {
+  display: inline;
+  animation: lm-fade-in 0.12s ease;
+}
+
+/* 标题标记符（Typora：光标进入标题时显示 #，退格可去标题） */
+h1 > .md-heading-marker,
+h2 > .md-heading-marker,
+h3 > .md-heading-marker,
+h4 > .md-heading-marker,
+h5 > .md-heading-marker,
+h6 > .md-heading-marker {
+  color: var(--marker);
+  opacity: 0.9;
+}
+h1.md-reveal > .md-heading-marker,
+h2.md-reveal > .md-heading-marker,
+h3.md-reveal > .md-heading-marker,
+h4.md-reveal > .md-heading-marker,
+h5.md-reveal > .md-heading-marker,
+h6.md-reveal > .md-heading-marker {
+  display: inline;
+  animation: lm-fade-in 0.12s ease;
+}
+
+/* 表格行内编辑（Typora：编辑单元格时显示 | 标记，无整行高亮） */
+.md-block-inner th,
+.md-block-inner td {
+  cursor: text;
+}
+.md-cell-pipe {
+  color: var(--ink-3);
+  opacity: 0.6;
+}
+.md-block-inner th.md-reveal > .md-cell-pipe,
+.md-block-inner td.md-reveal > .md-cell-pipe {
+  display: inline;
+  animation: lm-fade-in 0.12s ease;
+}
+
+/* 公式行内编辑 */
+.md-math {
+  cursor: pointer;
+}
+/* 目录（[TOC] 渲染结果）：对齐 Typora 的朴素嵌套列表——没有外框 / 底色 / 左侧色条，
+   只有按层级缩进的圆点与文字；点击条目平滑滚动到对应标题（见 stores/editor.jumpToHeading）。
+   条目默认是**蓝色**（--toc-link，三套主题各自调过对比度：浅色 blue-600 / 深色 blue-400 /
+   羊皮纸 blue-700——那边 --accent 是琥珀色，直接用 accent 就不是蓝的了）。 */
+.md-toc {
+  margin: 0.9em 0;
+}
+
+.md-toc .toc-item {
+  position: relative;
+  display: block;
+  padding-left: calc(1.15em + var(--toc-depth, 0) * 1.15em);
+  font-size: 1em;
+  line-height: 1.75;
+  color: var(--toc-link);
+  text-decoration: none;
+  border-bottom: none;
+  cursor: pointer;
+  transition: color 0.15s ease;
+}
+
+/* 圆点用 ::before 画，层级越深字重越轻（与 Typora 的 disc → circle → square 一致） */
+.md-toc .toc-item::before {
+  content: '•';
+  position: absolute;
+  left: calc(var(--toc-depth, 0) * 1.15em);
+  color: var(--ink-3);
+  transition: color 0.15s ease;
+}
+.md-toc .toc-item[data-level='2']::before {
+  content: '◦';
+}
+.md-toc .toc-item[data-level='3']::before,
+.md-toc .toc-item[data-level='4']::before {
+  content: '▪';
+  font-size: 0.9em;
+}
+
+/* 悬停时文字与圆点一起变色：把链接色往正文色混一点（浅色变深、深色变亮），
+   不额外加令牌，也不会从蓝跳到紫 */
+.md-toc .toc-item:hover {
+  color: color-mix(in srgb, var(--toc-link) 78%, var(--ink));
+}
+.md-toc .toc-item:hover::before {
+  color: color-mix(in srgb, var(--toc-link) 78%, var(--ink));
+}
+
+.md-toc .md-toc-empty {
+  font-size: 0.9em;
+  color: var(--ink-3);
+}

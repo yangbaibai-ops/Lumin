@@ -13,18 +13,34 @@
 // 数值口径：WCAG 相对亮度 + 对比度（sRGB，见 WCAG 2.1 定义）。
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { readFileSync } from 'node:fs'
+import { readdirSync, readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
 import { PAPER_BY_THEME } from '../src/shared/theme.ts'
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..')
-const CSS = readFileSync(join(ROOT, 'src/renderer/src/assets/style.css'), 'utf-8')
+/**
+ * 令牌的读取口径：**把 assets 下所有 CSS 分片按 style.css 的 @import 顺序拼起来**看。
+ *
+ * 为什么不是只读 style.css：自查报告 S2 把那份 2398 行的单文件按语义拆成了
+ * theme/base/components/markdown/editor/sidebar/chrome/overlays 八片，style.css 只剩 @import。
+ * 按入口的 @import 顺序拼装，既能继续断言「令牌就在包里」，也不会因为下一次再拆文件而假红。
+ */
+function readAllCss() {
+  const dir = join(ROOT, 'src/renderer/src/assets')
+  const entry = readFileSync(join(dir, 'style.css'), 'utf-8')
+  const order = [...entry.matchAll(/@import\s+'\.\/([\w.-]+\.css)'/g)].map((m) => m[1])
+  const files = order.length
+    ? order
+    : readdirSync(dir).filter((f) => f.endsWith('.css') && f !== 'style.css')
+  return files.map((f) => readFileSync(join(dir, f), 'utf-8')).join('\n')
+}
+const CSS = readAllCss()
 
 /** 取出某个主题块的令牌表（注释先剥掉，块内没有嵌套大括号） */
 function themeTokens(name) {
   const m = new RegExp(`\\.theme-${name}\\s*\\{([^}]*)\\}`).exec(CSS)
-  assert.ok(m, `style.css 里找不到 .theme-${name} 的令牌块`)
+  assert.ok(m, `CSS 分片里找不到 .theme-${name} 的令牌块`)
   const body = m[1].replace(/\/\*[\s\S]*?\*\//g, '')
   const out = {}
   for (const t of body.matchAll(/(--[\w-]+)\s*:\s*([^;]+);/g)) out[t[1]] = t[2].trim()

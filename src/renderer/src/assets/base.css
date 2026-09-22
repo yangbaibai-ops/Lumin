@@ -1,0 +1,224 @@
+/* ─── base.css ─────────────────────────────────────────────────────────────
+ * 基础层（reset / body / 滚动条）与动效 keyframes
+ *
+ * 由原 style.css（2398 行单文件）按语义段落切出（自查报告 S2）：本片对应原第 220–437 行。
+ * **顺序即层叠顺序**，入口 style.css 只做 @import，不许重排这些分片。
+ */
+
+/* ─────────────────────────── 基础层 ─────────────────────────── */
+@layer base {
+  *,
+  ::before,
+  ::after {
+    border-color: var(--edge);
+  }
+
+  html,
+  body,
+  #app {
+    height: 100%;
+    overflow: hidden;
+  }
+
+  body {
+    background: var(--app);
+    color: var(--ink);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+    transition:
+      background-color 0.35s ease,
+      color 0.35s ease;
+    user-select: none;
+  }
+
+  input,
+  textarea {
+    user-select: text;
+  }
+
+  /* 文字选区**不写 author 规则**：撤掉原来的 `::selection { background: var(--sel) }`，
+     选区就用浏览器默认色（系统 Highlight）。
+
+     为什么改成默认：1) 用户口径 —— 选中文字「用默认颜色即可，无需紫色」；
+     2) 默认色由系统/浏览器给，明暗主题下都自带正确的文字反色（HighlightText），
+        我们自己涂一层半透明色时，一旦底色接近（如淡灰底 + 淡灰选中）就会看不见。
+     现在**一条 author `::selection` 都不留**（唯一那条 `.code-edit-input` 已随旧架构删除）。 */
+
+  /* 全局滚动条：细直方条（正长方形、无圆角） */
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: color-mix(in srgb, var(--ink-3) 38%, transparent);
+    border-radius: 0;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: color-mix(in srgb, var(--ink-3) 58%, transparent);
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-corner {
+    background: transparent;
+  }
+}
+
+/* ─────────────────────────── 动效 ─────────────────────────── */
+@keyframes lm-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@keyframes lm-pop {
+  from {
+    opacity: 0;
+    transform: scale(0.96) translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes lm-shimmer {
+  from {
+    background-position: 200% 0;
+  }
+  to {
+    background-position: -200% 0;
+  }
+}
+@keyframes lm-breathe {
+  0%,
+  100% {
+    opacity: 0.55;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+.fade-enter-active,
+.fade-leave-active {
+  transition: opacity 0.18s ease;
+}
+.fade-enter-from,
+.fade-leave-to {
+  opacity: 0;
+}
+
+.pop-enter-active {
+  transition:
+    opacity 0.16s ease,
+    transform 0.16s cubic-bezier(0.2, 0.9, 0.3, 1.2);
+}
+.pop-leave-active {
+  transition:
+    opacity 0.12s ease,
+    transform 0.12s ease;
+}
+.pop-enter-from,
+.pop-leave-to {
+  opacity: 0;
+  transform: scale(0.96) translateY(4px);
+}
+
+.slide-enter-active,
+.slide-leave-active {
+  transition:
+    opacity 0.2s ease,
+    transform 0.2s ease;
+}
+.slide-enter-from,
+.slide-leave-to {
+  opacity: 0;
+  transform: translateY(8px);
+}
+
+.page-enter-active,
+.page-leave-active {
+  transition:
+    opacity 0.22s ease,
+    transform 0.22s ease;
+}
+.page-enter-from {
+  opacity: 0;
+  transform: translateY(10px);
+}
+.page-leave-to {
+  opacity: 0;
+  transform: translateY(-6px);
+}
+
+/* 设置浮层（SettingsDialog）：遮罩淡入 + 面板微弹 */
+.overlay-enter-active,
+.overlay-leave-active {
+  transition: opacity 0.2s ease;
+}
+.overlay-enter-active .settings-panel,
+.overlay-leave-active .settings-panel {
+  transition: transform 0.2s cubic-bezier(0.22, 0.9, 0.3, 1.08);
+}
+.overlay-enter-from,
+.overlay-leave-to {
+  opacity: 0;
+}
+.overlay-enter-from .settings-panel {
+  transform: translateY(10px) scale(0.985);
+}
+.overlay-leave-to .settings-panel {
+  transform: translateY(6px) scale(0.99);
+}
+
+/* 设置浮层（SettingsDialog）：入场动画（关闭即时，见组件注释） */
+.settings-mask {
+  animation: lm-fade-in 0.18s ease;
+}
+.settings-panel {
+  animation: lm-pop 0.2s cubic-bezier(0.22, 0.9, 0.3, 1.08);
+}
+/* 遮罩：**只压暗、不模糊**。原先用 backdrop-blur，后面的正文糊成一团 —— 而用户常常是
+   「对着正文调设置」，得能看清字。压暗同样能把注意力收在面板上，且面板自己始终清晰。 */
+.settings-scrim {
+  background: rgb(0 0 0 / 32%);
+  animation: lm-fade-in 0.18s ease;
+}
+:root.theme-dark .settings-scrim {
+  /* 深色主题下同样的黑会更"闷"，压得更轻一点 */
+  background: rgb(0 0 0 / 42%);
+}
+/* 拖动把手：整条面板头都能按住拖（按钮上除外，见 startDialogDrag） */
+.settings-drag-handle {
+  cursor: grab;
+}
+.settings-drag-handle:active,
+.settings-panel.is-dragging .settings-drag-handle {
+  cursor: grabbing;
+}
+/* 抓手图标：只是"这条能拖"的视觉提示 */
+.settings-drag-grip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 32px;
+  color: var(--ink-3);
+  transform: rotate(90deg);
+  opacity: 0.7;
+}
+
+.list-enter-active,
+.list-leave-active {
+  transition:
+    opacity 0.25s ease,
+    transform 0.25s ease;
+}
+.list-enter-from,
+.list-leave-to {
+  opacity: 0;
+  transform: translateY(-6px) scale(0.98);
+}
