@@ -198,7 +198,7 @@ const GROUPS = computed<Group[]>(() => [
           }
         }
       },
-      { labelKey: 'menu.openFolder', icon: 'folder-plus', run: () => files.openFolder() },
+      { labelKey: 'menu.openFolder', icon: 'folderOpen', run: () => files.openFolder() },
       'sep',
       // 一级项 + 悬停二级：最近文档 / 最近文件夹（二级里用共用的 RecentList 组件）
       { labelKey: 'open.recent', icon: 'clock', slot: 'recentFiles' },
