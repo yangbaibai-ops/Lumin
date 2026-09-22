@@ -47,6 +47,7 @@ import type { Atom, MarkerSide, StyleKind } from './inlineMarkerCore'
 // 原来 store 直接 import 本模块，把 ~412KB 的 PM 钉进了首屏 entry chunk）。
 import { registerFindHit } from './findBridge'
 import type { FindHitRange } from './findBridge'
+import { deferAfterPmEvent } from './defer'
 // 核心的符号在本文件再导出一次：既有的导入面（其它模块从这里取用）保持不变
 export {
   KIND_OF_MARKER,
@@ -1602,7 +1603,7 @@ export const TyporaInlineMarks = Extension.create({
                 // 同步判：目标位置在这一刻的布局上量出来（不在这里改选区）
                 const lineEnd = lineEndCaretTarget(view, e)
                 // 延迟落：① 拖选撑标记 → ② 行尾点击（只对折叠选区生效，双击选词不抢）
-                setTimeout(() => {
+                deferAfterPmEvent(() => {
                   try {
                     if (view.isDestroyed) return
                     finalizeDragSelection(view)
@@ -1619,7 +1620,7 @@ export const TyporaInlineMarks = Extension.create({
                   } catch {
                     /* 选区位置失效时忽略 */
                   }
-                }, 0)
+                })
                 return false
               } catch {
                 return false

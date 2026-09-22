@@ -77,6 +77,38 @@
 - **工程化**：~~`tools/lib/harness.js` + `tools/run-suites.js`~~ → **本轮已完成**；
   剩余：`files` store 拆分；`store` 里那份为绕循环导入而复制的 `confirmIfDirty` 收敛到 `services/dialog`。
 
+## [Unreleased · S3 第一期] — `lib/editor/defer.ts`：把「躲开 PM 事件顺序」的延后一拍收口
+
+> 来源：桌面《Lumin-待优化清单-2026-09-22.md》§1.D 第 1 步（自查报告 S3）。编辑器里有一批
+> `setTimeout(fn, 0)` 不是防抖也不是节流，而是「必须等 ProseMirror 自己那一轮处理跑完」；
+> 它们散在十几处，每处都要重读注释才敢改。
+
+### Added
+
+- **`src/renderer/src/lib/editor/defer.ts`**：`deferAfterPmEvent(fn) => cancel`。模块头把两类
+  真实约束写清楚了：① 同步 dispatch 会被 PM 自己的 MouseUp/Blur 处理覆盖（实测：点行尾空白时
+  `posAtCoords` 给出块尾，最终光标停在收尾 `**` 之前）；② 松手瞬间 `.pressHidden` 解除、
+  显隐装饰重算、整行左右移动，所以**判据同步量、落点延后写**。文件里同时写明
+  **不能用微任务替代**（`queueMicrotask`/`Promise.then` 仍在本轮 PM 事件内）。
+- `tests/defer.test.mjs`（4 条）：同步阶段不执行 / 顺序是「同步 → 延后」/ 连续两次
+  `await Promise` 仍未执行（证明微任务不能替代）/ `cancel()` 撤销后永不执行。
+
+### Changed
+
+- 已收口到 `deferAfterPmEvent()` 的三处（「新写的 + 下次改到的」口径，不全量替换）：
+  `lib/editor/pointer.ts`（点击链接 → 展开源码）、`lib/editor/typoraInlineMarks.ts`
+  （`handleDOMEvents.mouseup` 的拖选撑标记 + 行尾落点）、
+  `components/editor/TyporaEditor.vue`（`onCreate` 后的 `normalizeMdMarkers()`）。
+
+### Verification（本轮实测）
+
+| 项 | 结果 |
+| --- | --- |
+| 单测 | 295 → **299/299**（新增 4 条） |
+| `vue-tsc` / `eslint` | exit 0 / 0 error 0 warning |
+| `electron-vite build` | exit 0（`EditorView-*.js` 2,507.58 kB） |
+| 编辑器内核套件 | `_verify-drag-selection` 10/10、`_verify-line-end-click` 7/7、`_verify-marker-hold` 11/11、`_verify-inline-formats` 182/182、`_verify-find-replace` 24/24、`_verify-round-24` 15/16 SKIP 1 —— **6/6 全绿** |
+
 ## [Unreleased · 套件诚实性三处（清单 §1.C）] — SKIP 不再算失败 / 主题切换改轮询 / 剪贴板先哨兵校验
 
 > 来源：桌面《Lumin-待优化清单-2026-09-22.md》§1.C。三处都是「信号不诚实」：要么把正常的 SKIP

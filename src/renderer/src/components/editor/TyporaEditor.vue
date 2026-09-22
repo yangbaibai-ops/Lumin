@@ -5,6 +5,7 @@ import type { Editor } from '@tiptap/core'
 import { buildEditorExtensions } from '../../lib/editor/extensions'
 import { openLinkTarget } from '../../lib/linkOpen'
 import { getMarkdown } from '../../lib/editor/markdownStorage'
+import { deferAfterPmEvent } from '../../lib/editor/defer'
 import { allowRemoteImage } from '../../lib/remoteImages'
 import { useEditorStore } from '../../stores/editor'
 import { useFilesStore } from '../../stores/files'
@@ -91,8 +92,9 @@ const editor = useEditor({
     files.markContentApplied('wysiwyg')
     updateCursor(ed)
     // 真实文本标记模型：初始解析产物只有 legacy bold 等 mark，
-    // 归一化一次把标记文本写入文档（后续由 appendTransaction 自动维护）
-    setTimeout(() => ed.commands.normalizeMdMarkers(), 0)
+    // 归一化一次把标记文本写入文档（后续由 appendTransaction 自动维护）。
+    // 延后一拍：onCreate 时首个事务还在 PM 手里，同步改会被它自己的初始化覆盖。
+    deferAfterPmEvent(() => ed.commands.normalizeMdMarkers())
   },
   onSelectionUpdate: ({ editor: ed }) => {
     updateCursor(ed)

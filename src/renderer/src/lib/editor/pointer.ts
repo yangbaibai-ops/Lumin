@@ -27,6 +27,7 @@ import { Extension, Mark } from '@tiptap/core'
 import type { RawCommands } from '@tiptap/core'
 import { Plugin, PluginKey, TextSelection, NodeSelection } from '@tiptap/pm/state'
 import type { Node as PMNode } from '@tiptap/pm/model'
+import { deferAfterPmEvent } from './defer'
 
 // 自定义命令类型声明（tiptap v3 命令合并，命名空间形式）
 declare module '@tiptap/core' {
@@ -329,11 +330,11 @@ export const TyporaPointer = Extension.create<TyporaPointerOptions>({
 
               // 普通左键：点击链接 → 展开源码。
               // 注意：不能在 mousedown 事件回调里同步 dispatch（实测 PM 的
-              // DOM 不随事务重建，视图停留旧 DOM），用 setTimeout(0) 延后；
+              // DOM 不随事务重建，视图停留旧 DOM），用 deferAfterPmEvent 延后；
               // 且需先落光标（点到哪光标在哪）再展开，避免选区留在旧位置
               if (linkRun && ppos >= 0) {
                 event.preventDefault()
-                setTimeout(() => {
+                deferAfterPmEvent(() => {
                   if (view.isDestroyed) return
                   const sel = TextSelection.near(view.state.doc.resolve(ppos))
                   if (!view.state.selection.eq(sel)) {
@@ -342,7 +343,7 @@ export const TyporaPointer = Extension.create<TyporaPointerOptions>({
                   const cur = runAt(view.state.doc, ppos, 'link')
                   if (cur) expandRun(view, cur)
                   view.focus()
-                }, 0)
+                })
                 return true
               }
               return false
