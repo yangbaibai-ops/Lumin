@@ -132,7 +132,7 @@
 | `fontFamily` | 设置›编辑器三按钮（`SettingsDialog.vue:640-656`） | `FONT_OPTIONS[0]`（Inter/sans） | `stores/settings.ts:29`（`--editor-font`） | ✅ | 选项源自 `shared/defaults.ts:5-19` |
 | `editorMode` | 设置›编辑器（`SettingsDialog.vue:523-552`） | `'wysiwyg'` | `renderer/src/main.ts:46`（`ui.editorMode`） | ✅ | 运行时切换走 `composables/useEditorMode.ts` |
 | `sidebarVisible` | 设置›通用（`SettingsDialog.vue:509-513`）；侧栏收起按钮 | `true` | `stores/ui.ts` / `AppSidebar.vue:54` / `App.vue:74` | ✅ | |
-| `toolbarVisible`（本轮新增） | 设置›编辑器›快捷工具栏（`SettingsToolbar.vue`）；视图菜单「显示快捷工具栏」；工具栏空白区右键「关闭工具栏」 | `true` | `views/EditorView.vue`（`<Toolbar v-if>`） | ✅ | 关闭后右键菜单随栏消失，故保留菜单入口 |
+| `toolbarVisible` | 设置›编辑器›快捷工具栏（`SettingsToolbar.vue`）；视图菜单「显示快捷工具栏」；工具栏空白区右键「关闭工具栏」 | ~~`true`~~ → **`false`**（清单 §1.E 选项②：默认收起，写作面优先；已存在的用户设置不受影响） | `views/EditorView.vue`（`<Toolbar v-if>`） | ✅ | 关闭后右键菜单随栏消失，故保留菜单入口 |
 | `toolbarItems`（本轮新增） | 设置›编辑器›快捷工具栏（`SettingsToolbar.vue`）；工具栏空白区右键「调整工具项」的二级勾选列表 | 目录顺序（`shared/toolbarItems.ts` 的 `DEFAULT_TOOLBAR_ITEMS`，21 项） | `components/Toolbar.vue`（`sanitizeToolbarItems` → 目录查表 → 渲染） | ✅ | **有兜底**：未知 id / 重复项在渲染前清洗；空数组 = 全部隐藏（不回退默认） |
 | `sidebarWidth` | **无设置面板入口**，侧栏拖拽 | `264` | `AppSidebar.vue:24-25`（get/set，clamp 200-420） | ✅ | 读入路径不 clamp，仅写入时 clamp |
 | `splitRatio` | **无设置面板入口**，分屏拖拽/双击复位 | `0.5` | `EditorView.vue:100,392`（左栏 `width`） | ⚠️ | **加载时不 clamp**，仅拖拽时 clamp → 见 F12 |

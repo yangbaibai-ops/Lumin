@@ -100,6 +100,10 @@ async function main() {
   const backupMode = await app.ev(`window.__L.ui().editorMode`)
   await app.ev(`(() => { window.__L.ui().editorMode = 'wysiwyg'; return 'ok' })()`)
   await sleep(350)
+  // 快捷工具栏出厂默认收起（清单 §1.E 选项②），而本套件的源码面用例要按工具栏上的
+  // 模式分段控件切面（`clickMode(app, 2)`）⇒ 显式打开，别依赖 profile 残留状态
+  await app.ev(`(() => { window.__L.settings().set('toolbarVisible', true); return 'ok' })()`)
+  await sleep(300)
   await openDocWith(app, MD, 'find-replace.md')
   await waitEditor(app.ev)
   await sleep(400)

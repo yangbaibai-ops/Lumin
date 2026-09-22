@@ -123,6 +123,9 @@ const PROBE = `(() => {
     if ((await w.ev(SETUP)) === 'ok' && (await w.ev(`window.__G.ui().booting ? 'booting' : 'ready'`)) === 'ready') break
   }
   await w.ev(SETUP)
+  // 快捷工具栏出厂默认**收起**（清单 §1.E 选项②），而本套件要量工具栏里的分段控件 ⇒ 显式打开
+  await w.ev(`(() => { window.__G.settings().set('toolbarVisible', true); return 'ok' })()`)
+  await sleep(400)
   const probe = async () => JSON.parse(await w.ev(PROBE))
   const clickSeg = async (which, index) => {
     const pos = JSON.parse(

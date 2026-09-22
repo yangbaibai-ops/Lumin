@@ -56,7 +56,7 @@ const SETUP = `(() => {
   if (!app) return 'no-app'
   const sym = Object.getOwnPropertySymbols(app._context.provides).find((s) => { const p = app._context.provides[s]; return !!p && typeof p === 'object' && p._s instanceof Map })
   const pinia = app._context.provides[sym]
-  window.__B = { files: () => pinia._s.get('files'), ui: () => pinia._s.get('ui') }
+  window.__B = { files: () => pinia._s.get('files'), ui: () => pinia._s.get('ui'), settings: () => pinia._s.get('settings') }
   return 'ok'
 })()`
 
@@ -116,6 +116,9 @@ const PROBE = `(() => {
   await w.ready
   await w.send('Page.enable')
   await w.ev(SETUP)
+  // 快捷工具栏出厂默认收起（清单 §1.E 选项②），本套件要断言「工具栏里不出现文件名」⇒ 显式打开
+  await w.ev(`(() => { window.__B.settings().set('toolbarVisible', true); return 'ok' })()`)
+  await sleep(300)
 
   try {
     // ① 没有文档时

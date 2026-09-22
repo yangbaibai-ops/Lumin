@@ -77,6 +77,37 @@
 - **工程化**：~~`tools/lib/harness.js` + `tools/run-suites.js`~~ → **本轮已完成**；
   剩余：`files` store 拆分；`store` 里那份为绕循环导入而复制的 `confirmIfDirty` 收敛到 `services/dialog`。
 
+## [Unreleased · E 快捷工具栏默认收起] — 写作面优先（清单 §1.E 选项②）
+
+> 来源：桌面《Lumin-待优化清单-2026-09-22.md》§1.E（报告里列为「需要拍板」，用户口径是
+> 「需要单独排期和拍板的全部同意」，故按文档给出的选项 ② 实现）。
+
+### Changed
+
+- `src/shared/defaults.ts`：`toolbarVisible: true → **false**` —— 本产品是「纸面优先」的写作工具，
+  最显眼的那条 44px 常驻 chrome 恰在正文上方；而它承载的动作**三处重复**（快捷工具栏 /
+  编辑器右键菜单 / 顶部菜单栏），收起来不丢功能。三条重新打开的入口都在：视图 → 显示快捷工具栏
+  （应用内 + 原生菜单 `toggle-toolbar`）、设置 → 编辑器 → 快捷工具栏、工具栏空白区右键（栏在时可见）。
+  **已存在的用户设置不受影响**（落在 kv 里，只有全新 profile 才拿到新默认值）。
+- `tools/lib/harness.js` 新增 `showToolbar(app)`：打开工具栏并**等它真的挂上**
+  （返回是否等到）。运行器给每个套件用的都是全新 userData，所以「默认收起」每个套件都会生效。
+- 夹具显式打开工具栏（用 `showToolbar` 或各自的 store 访问器）：
+  `_regress-layout` / `_regress-divider` / `_regress-source-roundtrip`（用 `clickMode` 切面）、
+  `_verify-find-replace`（源码面用例）、`_verify-inline-formats`（整套在点工具栏按钮）、
+  `_regress-split-live`（模式分段控件 + 几何）、`_verify-segmented-control`、`_verify-bars-no-filename`。
+- `tools/README.md` 补两条规矩：要量工具栏的套件必须 `await showToolbar(app)`；SKIP 不算失败。
+- `tests/toolbarItems.test.mjs` 的默认值断言改为 `false`（并写明为什么是刻意收起的）；
+  README 的功能清单、`docs/_audit/i18n-and-settings.md` 的设置矩阵同步。
+
+### Verification（本轮实测）
+
+| 项 | 结果 |
+| --- | --- |
+| `tests/toolbarItems.test.mjs` | 13/13（默认值断言已翻转） |
+| 工具栏相关套件 | `_verify-segmented-control` 16/16、`_verify-bars-no-filename` 12/12、`_verify-inline-formats` 182/182、`_regress-split-live` 8/8、`_verify-toolbar-settings` 37/37、`_verify-find-replace` 24/24 |
+| 默认矩阵全量（26 条） | 第一轮暴露 3 条真回归（`_regress-layout` 6/9、`_regress-divider` 0/1、`_regress-source-roundtrip` 3/4 —— 全是「用工具栏分段控件切面」的夹具）→ 补夹具后 **26/26 全绿** |
+| `eslint --cache .` | 0 error 0 warning |
+
 ## [Unreleased · O1 mermaid 按需（视口门 + 干掉首屏预加载）] — 远处不渲染，`mermaid.core` 不再首屏取
 
 > 来源：桌面《Lumin-待优化清单-2026-09-22.md》§2.G。原状：`CodeBlockView.vue` 的 `onMounted`

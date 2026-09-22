@@ -60,6 +60,10 @@ async function main() {
     })`)
   )
   await app.ev(`(() => { window.__L.settings().set('autoSave', false); return 'ok' })()`)
+  // 快捷工具栏出厂默认收起（清单 §1.E 选项②）；本套件要按工具栏上的模式分段控件切面，
+  // 且工具栏的高度会影响编辑区几何 ⇒ 显式打开，别依赖 profile 里残留的状态
+  await app.ev(`(() => { window.__L.settings().set('toolbarVisible', true); return 'ok' })()`)
+  await sleep(300)
 
   fs.rmSync(WS, { recursive: true, force: true })
   fs.mkdirSync(WS, { recursive: true })

@@ -172,6 +172,24 @@ async function waitEditor(ev, ms = 10000) {
   return false
 }
 
+/**
+ * 让**快捷工具栏**显示出来，并等它真的挂上（返回是否等到）。
+ *
+ * 为什么夹具必须显式打开：工具栏**出厂默认收起**（清单 §1.E 选项②，`shared/defaults.ts`），
+ * 而运行器给每个套件用的都是全新 userData ⇒ 默认值每次都生效。
+ * 要量工具栏里的控件（尤其 `clickMode` 点的模式分段控件）的套件，请在 `waitEditor()` 之后
+ * 先 `await showToolbar(app)`，不要依赖 profile 里残留的状态。
+ */
+async function showToolbar(app, ms = 4000) {
+  await app.ev(`(() => { window.__L.settings().set('toolbarVisible', true); return 'ok' })()`)
+  const end = Date.now() + ms
+  while (Date.now() < end) {
+    if (await app.ev(`!!document.querySelector('[role="tablist"]')`)) return true
+    await sleep(100)
+  }
+  return false
+}
+
 /** connect：等页面 → attach → 返回句柄（不自动 settle，调用方按需） */
 async function connect({ port = DEFAULT_PORT, timeoutMs = 30000, bringToFront = true } = {}) {
   const page = await waitForAppPage({ port, timeoutMs })
@@ -417,6 +435,7 @@ module.exports = {
   inject,
   settle,
   waitEditor,
+  showToolbar,
   key,
   pressKey,
   insertText,

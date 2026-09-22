@@ -310,7 +310,9 @@ async function main() {
     await app.ev(`JSON.stringify({ autoSave: window.__L.settings().autoSave })`)
   )
   await app.ev(`(() => { window.__L.settings().set('autoSave', false); return 'ok' })()`)
-  await sleep(150)
+  // 快捷工具栏出厂默认**收起**（清单 §1.E 选项②），而本套件整套都在点工具栏按钮 ⇒ 显式打开
+  await app.ev(`(() => { window.__L.settings().set('toolbarVisible', true); return 'ok' })()`)
+  await sleep(300)
 
   // ═══ A. 工具栏按钮：空光标（缺陷 1）═══════════════════════════════════════
   // 期望：`**|**`（标记字符成对留着、光标在正中间），接着打字 → `**文字**`

@@ -26,9 +26,13 @@ test('目录：id 唯一、字段齐全（渲染期靠 id 找定义）', () => {
   assert.equal(toolbarItemDef('不存在的项目'), undefined)
 })
 
-test('默认设置与目录一致：出厂顺序 = 目录顺序，且默认显示工具栏', () => {
+test('默认设置与目录一致：出厂顺序 = 目录顺序，且工具栏默认**收起**（清单 §1.E 选项②）', () => {
   assert.deepEqual(defaultSettings.toolbarItems, DEFAULT_TOOLBAR_ITEMS)
-  assert.equal(defaultSettings.toolbarVisible, true)
+  assert.equal(
+    defaultSettings.toolbarVisible,
+    false,
+    '默认收起是刻意的：写作面优先，且工具栏动作在右键菜单/顶部菜单里各有一份'
+  )
   // 默认项必须是目录的子集，否则清洗会悄悄丢掉它
   assert.deepEqual(sanitizeToolbarItems(defaultSettings.toolbarItems), DEFAULT_TOOLBAR_ITEMS)
 })

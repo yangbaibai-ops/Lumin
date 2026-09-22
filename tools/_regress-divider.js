@@ -6,7 +6,7 @@
 //
 // 跑法：node tools/_regress-divider.js（先起隔离实例）
 
-const { connect, settle, waitEditor, sleep, Reporter, clickMode, waitRestored, clickAt, fatal } =
+const { connect, settle, waitEditor, showToolbar, sleep, Reporter, clickMode, waitRestored, clickAt, fatal } =
   require('./lib/harness')
 
 /** 左栏（渲染面板）占内核容器的比例 */
@@ -29,7 +29,8 @@ async function main() {
     await app.ev(`JSON.stringify({ mode: window.__L.ui().editorMode, ratio: window.__L.settings().splitRatio })`)
   )
   await app.ev(`(async () => { if (!window.__L.files().current) await window.__L.files().openUntitled(); return 'ok' })()`)
-  await waitEditor(app.ev)
+    // 工具栏出厂默认收起（清单 §1.E）⇒ 用 clickMode 切面的套件必须显式打开它
+  await showToolbar(app)
   await app.ev(`(() => {
     const md = ['# 标题', '正文段落。', '', '\`\`\`js', 'x', '\`\`\`'].join('\\n')
     window.__L.files().setContent(md, 'external')

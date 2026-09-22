@@ -7,7 +7,7 @@
 //
 // 跑法：node tools/_regress-layout.js（先起隔离实例）
 
-const { connect, settle, waitEditor, sleep, Reporter, clickMode, waitRestored, key, fatal } =
+const { connect, settle, waitEditor, showToolbar, sleep, Reporter, clickMode, waitRestored, key, fatal } =
   require('./lib/harness')
 
 const MD = [
@@ -33,7 +33,8 @@ async function main() {
   await app.ev(`(() => { window.__L.ui().editorMode = 'wysiwyg'; return 'ok' })()`)
   await sleep(400)
   await app.ev(`(async () => { if (!window.__L.files().current) await window.__L.files().openUntitled(); return 'ok' })()`)
-  await waitEditor(app.ev)
+  // 工具栏出厂默认收起（清单 §1.E）⇒ 用 clickMode 切面的套件必须显式打开它
+  await showToolbar(app)
   await app.ev(`(() => {
     window.__L.files().setContent(${JSON.stringify(MD)}, 'external')
     window.__L.ed().commands.setContent(${JSON.stringify(MD)}, { emitUpdate: false })

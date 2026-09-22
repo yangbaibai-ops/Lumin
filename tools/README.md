@@ -45,6 +45,13 @@ main().then((c) => process.exit(c)).catch(fatal)
 7. **别把状态留给下一个套件**：改过设置/工作区/文档的脚本要复原（隔离实例的下一个套件会复用进程）。
 8. **中文源文件一律 UTF-8 无 BOM**（`.ps1` 例外，必须带 BOM），见 `tests/encodingGuard.test.mjs`；
    **不要用 PowerShell 的 `Get-Content`/`Set-Content` 往返改这些文件**（会把 UTF-8 变成 mojibake）。
+9. **要量快捷工具栏的套件必须显式打开它**：`await showToolbar(app)`（harness 提供）。
+   工具栏**出厂默认收起**（清单 §1.E 选项②），而运行器给每个套件用的都是全新 userData ⇒
+   默认值每次都生效 —— 不显式打开的套件会拿不到 `[role="tablist"]`（模式分段控件），
+   表现成「切面没生效」的假失败（实测 `_regress-layout` / `_regress-divider` /
+   `_regress-source-roundtrip` / `_verify-find-replace` 都踩过）。
+10. **SKIP 不算失败**（运行器口径）：环境不支持就如实 `report.skip(...)`，别把 SKIP 写成 FAIL，
+   也别用退出码表达 SKIP —— 运行器只把「退出码非 0」与「打印过 FAIL 行」判红。
 
 ## 现状与迁移进度
 
