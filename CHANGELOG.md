@@ -77,6 +77,35 @@
 - **工程化**：~~`tools/lib/harness.js` + `tools/run-suites.js`~~ → **本轮已完成**；
   剩余：`files` store 拆分；`store` 里那份为绕循环导入而复制的 `confirmIfDirty` 收敛到 `services/dialog`。
 
+## [Unreleased · 侧栏文件工具贴底] — 搜索与树/列表切换移到面板下方
+
+> 用户口径：侧栏顶部的「搜索文件名」和「树 / 列表」切换放在上面太影响视觉，移到下方，
+> 且保持大气好看、简约简洁。
+
+### Changed
+
+- **`FileTree.vue` 的「搜索 + 视图切换」从面板顶部移到**文件面板底部**（`data-sidebar-filetools`）：
+  顶部从此只剩「工作区名 → 页签 → 树」，视线第一落点不再被一个输入框抢走。
+  布局仍是「内容 flex-1 + 工具带 flex-none」，所以工具带**永远贴在侧栏最下方**，
+  且只在**打开了工作区**时出现（没有工作区时仍是那三个图标 + 提示文案的空态）。
+- 为什么留在 `FileTree` 而不是并进 `AppSidebar` 的全局底栏（设置 / 关于 / 收起）：
+  它只服务「文件」页签 —— 切到大纲时不该出现；放在这里视觉上同样是侧栏最下方，
+  语义上仍属于文件面板。
+- 贴底后的样式口径（保持「安静但有结构」）：一条 1px `--edge` 分隔线 + 与页签/树行同一条
+  竖线的 10px 内缩；搜索框沿用原来的 `rounded-lg` + 1px 边框 + 白底面板（不新造视觉语言），
+  不加阴影、不加底色、不改变分段控件的形态。树区底部内边距 `pb-3 → pb-1.5`（工具带自带间距，
+  避免两段留白叠加）。顺带给清除按钮补了 `aria-label`。
+
+### Verification
+
+| 门禁 | 结果 |
+| --- | --- |
+| `vue-tsc --noEmit` / `eslint --cache .` / `electron-vite build` | exit 0 / 0 error 0 warning / exit 0 |
+| `tools/_verify-sidebar-tree-style.js` | **32/32**（树行几何、选中态、缩进、空目录提示对齐） |
+| `tools/_verify-segmented-control.js` | **16/16**（侧栏那个分段控件被移动过：指示块位置仍与激活段重合、点击仍切视图） |
+| `tools/_verify-filelist-view.js` / `_verify-rename.js` / `_verify-round-24.js` / `_verify-bars-no-filename.js` | 13/13 / 13/13 / 15/16 + 1 SKIP / 12/12 |
+| 几何 + 截图核对（临时探针，已删） | 工具带 top 732 / bottom 778（`aside` 底 821）、树区 **149→732** 紧贴工具带、`input` placeholder=`搜索文件名…`、`[data-sidebar-filetools]` 恰好 1 个；截图确认「分隔线 + 搜索框 + 分段控件」与下方「设置 / 关于 / 收起」两行结构清晰 |
+
 ## [Unreleased · 轻量化 + 按钮去留 + 代码收敛 + 树行高] — 首屏 entry −53%，删死码与坏按钮（承第二十五轮）
 
 > 用户八项要求：① 侧栏文件树行高再加一点、选中项前加浅灰色条；② 探索更轻量化的方式（保持功能完整）；

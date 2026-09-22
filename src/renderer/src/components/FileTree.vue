@@ -146,33 +146,6 @@ function onDrop(e: DragEvent): void {
 
 <template>
   <div class="flex h-full flex-col" @drop="onDrop" @dragover.prevent>
-    <!-- 搜索 + 视图切换（树 / 列表） -->
-    <div v-if="files.root" class="px-2.5 pb-1.5">
-      <div class="flex items-center gap-1.5">
-        <div
-          class="flex min-w-0 flex-1 items-center gap-2 rounded-lg border border-edge bg-panel px-2.5 py-1.5 transition-colors focus-within:border-accent"
-        >
-          <Icon name="search" :size="13" class="text-ink-3" />
-          <input
-            v-model="filter"
-            class="w-full bg-transparent text-[12.5px] text-ink outline-none placeholder:text-ink-3"
-            :placeholder="t('sidebar.filterPlaceholder')"
-          />
-          <button v-if="filter" class="text-ink-3 hover:text-ink" @click="filter = ''">
-            <Icon name="x" :size="12" />
-          </button>
-        </div>
-        <!-- 树 / 列表 切换（会话级偏好，非持久化）：与工具栏模式切换同一个分段控件 -->
-        <SegmentedControl
-          v-model="filesViewValue"
-          :items="viewItems"
-          size="sm"
-          :group-label="t('sidebar.filesView')"
-          class="flex-none"
-        />
-      </div>
-    </div>
-
     <!-- 列表视图：工作区全部 Markdown 文章（含元数据） -->
     <div
       v-if="files.root && ui.sidebarFilesView === 'list'"
@@ -185,9 +158,9 @@ function onDrop(e: DragEvent): void {
     <!-- 树视图 -->
     <template v-else-if="files.root">
       <!-- 工作区树（ARIA tree：方向键移动/展开、Home/End、Enter 打开，见 lib/treeFocus.ts）
-           左右内缩 10px = 上面搜索行/页签的同一条竖线，树行的选中药丸与搜索框左缘对齐 -->
+           左右内缩 10px = 页签与下方搜索行的同一条竖线，树行的选中药丸与搜索框左缘对齐 -->
       <div
-        class="min-h-0 flex-1 overflow-y-auto px-0 pt-1 pb-3"
+        class="min-h-0 flex-1 overflow-y-auto px-0 pt-1 pb-1.5"
         role="tree"
         data-tree-root
         :aria-label="t('sidebar.files')"
@@ -248,6 +221,45 @@ function onDrop(e: DragEvent): void {
       </div>
 
       <p class="mt-4 text-[11.5px] leading-relaxed text-ink-3/80">{{ t('open.hint') }}</p>
+    </div>
+
+    <!-- 搜索 + 视图切换（树 / 列表）：**贴底**成一条独立的工具带
+         （用户口径：这两件东西放在顶部太抢视觉，压到面板下方更干净）。
+         为什么仍留在 FileTree 而不是 AppSidebar 的全局底栏：它只服务「文件」页签，
+         切到大纲时不该出现；而这里正好是文件面板的底部，视觉上仍是侧栏最下方。
+         一条 1px 分隔线 + 与上方一致的内缩（2.5 = 10px，与页签/树行同一条竖线），
+         不加阴影、不加底色 —— 保持「安静但有结构」。 -->
+    <div
+      v-if="files.root"
+      class="flex flex-none items-center gap-1.5 border-t border-edge px-2.5 pb-1.5 pt-1.5"
+      data-sidebar-filetools
+    >
+      <div
+        class="flex min-w-0 flex-1 items-center gap-2 rounded-lg border border-edge bg-panel px-2.5 py-1.5 transition-colors focus-within:border-accent"
+      >
+        <Icon name="search" :size="13" class="text-ink-3" />
+        <input
+          v-model="filter"
+          class="w-full bg-transparent text-[12.5px] text-ink outline-none placeholder:text-ink-3"
+          :placeholder="t('sidebar.filterPlaceholder')"
+        />
+        <button
+          v-if="filter"
+          class="text-ink-3 transition-colors hover:text-ink"
+          :aria-label="t('common.close')"
+          @click="filter = ''"
+        >
+          <Icon name="x" :size="12" />
+        </button>
+      </div>
+      <!-- 树 / 列表 切换（会话级偏好，非持久化）：与工具栏模式切换同一个分段控件 -->
+      <SegmentedControl
+        v-model="filesViewValue"
+        :items="viewItems"
+        size="sm"
+        :group-label="t('sidebar.filesView')"
+        class="flex-none"
+      />
     </div>
   </div>
 </template>
