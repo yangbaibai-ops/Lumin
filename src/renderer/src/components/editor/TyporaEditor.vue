@@ -269,7 +269,9 @@ defineExpose({ editor, syncNow })
         class="mx-auto transition-all duration-300"
         :class="ui.focusMode ? 'max-w-[1140px]' : 'max-w-[1320px]'"
       >
-        <EditorContent :editor="editor" class="editor-content px-10 pt-10 pb-40" />
+        <!-- 正文列的左右内缩：40px → **56px**（用户口径「稍微增加编辑区内容与左右两侧的间隔」）。
+             通知带（NotificationCenter）与查找栏用的内缩要跟着这里走，见 overlays.css 的同名注释。 -->
+        <EditorContent :editor="editor" class="editor-content px-14 pt-10 pb-40" />
       </div>
     </div>
   </div>

@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { useRouter } from 'vue-router'
 import { useFilesStore } from '../stores/files'
 import { useSettingsStore } from '../stores/settings'
 import { useUiStore } from '../stores/ui'
@@ -14,7 +13,6 @@ const { t } = useI18n()
 const files = useFilesStore()
 const settings = useSettingsStore()
 const ui = useUiStore()
-const router = useRouter()
 
 const workspaceName = computed(() => files.root?.split(/[\\/]/).filter(Boolean).pop() || '')
 
@@ -45,14 +43,10 @@ function onDragStart(e: MouseEvent): void {
 }
 
 /**
- * 收起侧栏：改内存状态 + 落库。
- * 写成方法而不是模板内联多语句 —— prettier 会把内联多语句的分号吃掉（`a = 1 b()`），
- * Vue 模板编译器随即报 "Error parsing JavaScript expression"。
+ * 收起侧栏（`ui.sidebarVisible = false` + 落库）随底部那一行一起去掉了：
+ * 现在只有菜单「视图 → 显示侧边栏」与 Ctrl+Shift+B 两条入口，它们直接改同一个状态。
+ * 需要恢复一个鼠标入口时，把它放回侧栏头部（而不是底部整行）。
  */
-function collapseSidebar(): void {
-  ui.sidebarVisible = false
-  settings.set('sidebarVisible', false)
-}
 </script>
 
 <template>
@@ -147,30 +141,12 @@ function collapseSidebar(): void {
       <Outline v-show="ui.sidebarTab === 'outline'" />
     </div>
 
-    <!-- 底部 -->
-    <div class="flex flex-none items-center gap-0.5 border-t border-edge px-2 py-1.5">
-      <button
-        class="flex flex-1 items-center gap-2 rounded-lg px-2 py-1.5 text-[12px] text-ink-3 transition-colors hover:bg-panel-2 hover:text-ink"
-        @click="ui.openSettings()"
-      >
-        <Icon name="settings" :size="13" />
-        {{ t('settings.title') }}
-      </button>
-      <button
-        class="flex flex-1 items-center gap-2 rounded-lg px-2 py-1.5 text-[12px] text-ink-3 transition-colors hover:bg-panel-2 hover:text-ink"
-        @click="router.push('/about')"
-      >
-        <Icon name="info" :size="13" />
-        {{ t('about.title') }}
-      </button>
-      <button
-        class="icon-btn !h-6.5 !w-6.5"
-        :title="t('sidebar.collapse') + ' (Ctrl+Shift+B)'"
-        @click="collapseSidebar"
-      >
-        <Icon name="panel-left" :size="14" />
-      </button>
-    </div>
+    <!-- 底部原先有一行「设置 / 关于 Lumin / 收起侧边栏」——本轮去掉（用户口径：确认是否还需要，
+         不需要就优化掉）。三条功能都另有入口，且都不是唯一入口：
+           * 设置 → 顶部菜单「帮助 → 设置」（应用内菜单；原生菜单同源）
+           * 关于 → 顶部菜单「帮助 → 关于」
+           * 收起侧边栏 → 顶部菜单「视图 → 显示侧边栏」+ Ctrl+Shift+B
+         去掉之后侧栏只剩「头部工作区 + 文件/大纲」，底部那条分隔线也不再需要。 -->
 
     <!-- 拖拽手柄 -->
     <div

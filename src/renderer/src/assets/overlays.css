@@ -374,9 +374,10 @@ li.md-reveal {
   border-bottom: 1px solid var(--edge);
   box-shadow: inset 0 1px 0 0 color-mix(in srgb, var(--elevate) 55%, transparent);
 }
-/* 内衬：左右 40px = 写作区正文列的内缩，于是通知的标题与正文首字上下对齐 */
+/* 内衬：左右 56px = 写作区正文列的内缩（`TyporaEditor.vue` 的 `px-14`），
+   于是通知的标题与正文首字与文档正文上下对齐 */
 .ntf-item {
-  padding: 11px 40px 13px;
+  padding: 11px 56px 13px;
 }
 /* 两列栅格：左列文本（可压缩，measure 由各元素自己限宽），右列信息条（内容宽度、不压缩）。
    用栅格而不是 flex + gap，是为了让「标题首行」与「右侧信息条」天然同一条基线。 */

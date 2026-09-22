@@ -215,9 +215,9 @@
 | AppSidebar.vue:100 | 刷新 | **硬编码 `刷新`** | `files.refreshDir(root)` | 是 | 未走 i18n（D14） |
 | AppSidebar.vue:111 | 标签：文件 | `sidebar.files` | `ui.sidebarTab='files'` | 是 | — |
 | AppSidebar.vue:111 | 标签：大纲 | `sidebar.outline` | `ui.sidebarTab='outline'` | 是 | — |
-| AppSidebar.vue:138 | 设置 | `settings.title` | `ui.openSettings()` | 是 | — |
-| AppSidebar.vue:145 | 关于 | `about.title` | `router.push('/about')` | 是 | — |
-| AppSidebar.vue:152 | 收起侧边栏 | `sidebar.collapse` + `(Ctrl+Shift+B)` | `ui.sidebarVisible=false` + 持久化 | 是 | — |
+| ~~AppSidebar.vue:138~~ | ~~设置~~ | `settings.title` | `ui.openSettings()` | **已删** | 本轮去掉侧栏底部那一行；设置仍在「帮助 → 设置」（应用内菜单）等入口 |
+| ~~AppSidebar.vue:145~~ | ~~关于~~ | `about.title` | `router.push('/about')` | **已删** | 同上；关于仍在「帮助 → 关于」与设置导航里 |
+| ~~AppSidebar.vue:152~~ | ~~收起侧边栏~~ | `sidebar.collapse`（该 i18n 键已随之删除） | `ui.sidebarVisible=false` + 持久化 | **已删** | 折叠仍有「视图 → 显示侧边栏」+ Ctrl+Shift+B；展开用 `App.vue` 的左缘把手（`.sidebar-handle`） |
 | AppSidebar.vue:162 | 宽度拖拽手柄 | — | `settings.set('sidebarWidth', clamp 200..420)` | 是 | 无 aria/键盘替代 |
 | FileTree.vue:136 | 过滤输入框 | `sidebar.filterPlaceholder` | 本地 `filter` ref | 是 | — |
 | FileTree.vue:141 | 清空过滤 | 图标 x | `filter=''` | 是 | 无 title/aria（S3） |
@@ -513,8 +513,8 @@
 | 段落（引用/列表/代码块/分割线/升降标题） | ❌ | ✅（整组） | ❌ | 工具栏（无升降标题、无「转为正文」） | ⚠️ 原生菜单没有「段落」概念；工具栏缺 2 项 |
 | 重新加载 | ✅ `role:reload` | ❌ | ❌ | 无 | ⚠️ 不可达（D1）；默认 Ctrl+R 疑生效 |
 | 开发者工具 | ✅ `role:toggleDevTools` | ❌ | ❌ | 无 | ⚠️ 不可达；默认 Ctrl+Shift+I 疑生效 |
-| 设置 | ✅ | ✅ | ✅ `Mod+,` | 工具栏、侧栏底部、状态栏保存弹层 | ✅ 六处入口 |
-| 关于 | ✅ | ✅ | ⚠️ 未绑 | 侧栏底部、设置导航 | ✅ |
+| 设置 | ✅ | ✅ | ✅ `Mod+,` | 工具栏、状态栏保存弹层（侧栏底部那处本轮已删） | ✅ 五处入口 |
+| 关于 | ✅ | ✅ | ⚠️ 未绑 | 设置导航（侧栏底部那处本轮已删） | ✅ |
 | 项目主页 | ✅（URL 是占位符） | ❌ | ❌ | 无 | ⚠️ D26 |
 | 最小化 | ❌ | ❌ | ⚠️ 未绑 | 系统标题栏 | ⚠️ 命令存在但无入口 |
 

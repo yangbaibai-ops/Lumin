@@ -6,8 +6,11 @@
 // 都有延迟，因此所有可见性断言都走「先确认相反态 → 移动 → 轮询到期望态」的
 // transitionTo()，既不会因延迟误判，也不会把遗留状态当成通过。
 const CDP = 'http://127.0.0.1:9222/json'
-const IN_PX = 31 // 阈值内（阈值 32）
-const OUT_PX = 33 // 阈值外
+// 阈值常量要与**实现**一致（App.vue：EDGE_SHOW_PX = 120 / EDGE_HIDE_PX = 200，双阈值迟滞）。
+// ⚠️ 这里原来是 31/33（更早一版热区只有 32px 时的数）——阈值改成 120/200 之后那两条断言
+// 测的是「远离阈值」的两个坐标，翻转永远不发生，于是报 `1 -> 1` 的假失败。
+const IN_PX = 100 // 阈值内（显示阈值 120）
+const OUT_PX = 260 // 阈值外（隐藏阈值 200）
 const FAR_PX = 700 // 远离左缘
 let ws
 let id = 0
@@ -29,7 +32,10 @@ async function clickAt(x, y) {
 /** 强制出帧：后台窗口会节流 CSS transition，否则 computed style 读数不收敛 */
 async function frame() { await send('Page.captureScreenshot', { format: 'jpeg', quality: 1 }) }
 
-const HANDLE = 'button.absolute.left-0'
+// ⚠️ 选择器本轮更新过一次：折叠态的展开把手现在挂在 `App.vue` 的 `.sidebar-handle` 上
+// （样式在 CSS 分片里，不再是 `absolute left-0` 那串 Tailwind 原子类 —— 更早的侧栏重构改过结构，
+// 老选择器匹配不到任何元素，于是整套 21 条断言全红而看不出真因）。
+const HANDLE = 'button.sidebar-handle'
 const snapshot = `(() => {
   const btn = document.querySelector(${JSON.stringify(HANDLE)})
   if (!btn) return JSON.stringify({ present: false, sidebarVisible: window.__vt.ui().sidebarVisible, opacity: null })
@@ -105,7 +111,13 @@ async function main() {
   c('handle-exists-when-collapsed', hidden.present === true)
   c('hidden-opacity-0', hidden.opacity === '0', hidden.opacity)
   c('hidden-pointer-events-none', hidden.pointerEvents === 'none', hidden.pointerEvents)
-  c('hidden-offscreen-4px', hidden.rect?.left === -4, 'left=' + hidden.rect?.left)
+  // 收起态：整体退到窗口之外（`translate3d(-100%)`，不是「只露 4px」——
+  // 那次改动就是为了不留一条脏像素，所以断言改成「整块都在左边界之外」）
+  c(
+    'hidden-fully-offscreen',
+    !!hidden.rect && hidden.rect.left + hidden.rect.w <= 0,
+    JSON.stringify(hidden.rect)
+  )
   c('no-hit-test-at-edge', hidden.at2InHandle === false, hidden.at2)
   c('aria-tooltip', hidden.aria === '展开侧边栏', hidden.aria)
 
@@ -113,7 +125,15 @@ async function main() {
   const r20 = await transitionTo(20, cy, '1')
   console.log('X=20      ' + JSON.stringify(r20.after))
   c('threshold-inside-20px', r20.ok, `${r20.before.opacity} -> ${r20.after.opacity}`)
-  c('slid-in', r20.after.rect?.left === 0 && r20.after.rect?.w === 18 && r20.after.rect?.h === 48, JSON.stringify(r20.after.rect))
+  // 把手本体是 22×56（旧版 18×48）；指针此刻就压在上面，所以会吃到 hover 那 2px 外探
+  c(
+    'slid-in',
+    (r20.after.rect?.left ?? -1) >= 0 &&
+      (r20.after.rect?.left ?? 99) <= 2 &&
+      r20.after.rect?.w === 22 &&
+      r20.after.rect?.h === 56,
+    JSON.stringify(r20.after.rect)
+  )
   c('interactive-at-edge', r20.after.at2InHandle === true, `${r20.after.at2InHandle} (${r20.after.at2})`)
   const centerY = r20.after.cy ?? cy
 

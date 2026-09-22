@@ -107,7 +107,7 @@ async function main() {
   c('band-hairline-bottom-only', item.band.borderBottom === '1px' && item.band.borderTop === '0px' && item.band.borderLeft === '0px' && item.band.borderRight === '0px', JSON.stringify(item.band))
   c('band-is-translucent-wash', alphaOf(item.band.bg) > 0 && alphaOf(item.band.bg) < 1, `bandBg=${item.band.bg} alpha=${alphaOf(item.band.bg)}`)
   c('band-spans-editor-width', Math.abs(item.band.left - item.kernel.left) <= 1 && Math.abs(item.band.right - item.kernel.right) <= 1, JSON.stringify({ band: [item.band.left, item.band.right], kernel: [item.kernel.left, item.kernel.right] }))
-  c('content-aligns-with-document-column', item.item.padLeft === '40px', 'paddingLeft=' + item.item.padLeft + '（写作区正文列是 px-10=40px）')
+  c('content-aligns-with-document-column', item.item.padLeft === '56px', 'paddingLeft=' + item.item.padLeft + '（写作区正文列是 px-14=56px）')
   c('uses-horizontal-room', item.width >= 480, `w=${item.width}（旧实现固定 384）`)
 
   // 版式（本轮重排）：两列栅格；标题与正文共用同一条 measure；信息条与标题首行**结构对齐**

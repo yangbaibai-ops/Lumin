@@ -44,9 +44,11 @@ export const TOOLBAR_ITEMS: ToolbarItemDef[] = [
   { id: 'undo', group: 'history', icon: 'undo', labelKey: 'editor.undo' },
   { id: 'redo', group: 'history', icon: 'redo', labelKey: 'editor.redo' },
 
-  { id: 'h1', group: 'heading', icon: 'heading', labelKey: 'editor.heading', level: 1 },
-  { id: 'h2', group: 'heading', icon: 'heading', labelKey: 'editor.heading', level: 2 },
-  { id: 'h3', group: 'heading', icon: 'heading', labelKey: 'editor.heading', level: 3 },
+  // 标题：icon 直接画「H1/H2/H3」整枚字形（见 Icon.vue 的 heading-1/2/3），
+  // 不再用「H 图标 + 拼一个数字 span」那种字重/基线都对不齐的写法。
+  { id: 'h1', group: 'heading', icon: 'heading-1', labelKey: 'editor.heading', level: 1 },
+  { id: 'h2', group: 'heading', icon: 'heading-2', labelKey: 'editor.heading', level: 2 },
+  { id: 'h3', group: 'heading', icon: 'heading-3', labelKey: 'editor.heading', level: 3 },
 
   { id: 'bold', group: 'inline', icon: 'bold', labelKey: 'editor.bold' },
   { id: 'italic', group: 'inline', icon: 'italic', labelKey: 'editor.italic' },

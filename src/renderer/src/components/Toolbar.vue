@@ -435,7 +435,9 @@ const exportItems: { icon: string; labelKey: string; format: 'pdf' | 'html' | 'w
         @click="runItem(d.id)"
       >
         <Icon :name="d.icon" :size="15" />
-        <span v-if="d.level" class="ml-0.5 text-[10px] font-bold">{{ d.level }}</span>
+        <!-- 标题按钮的层级已经画在图标里（heading-1/2/3 = H + 数字同一套描边），
+             不再额外拼一个数字 span —— 那会造成字重/基线不一致（详见 Icon.vue 的注释）。
+             层级信息仍在 title/aria-label 里（见 titleOf）。 -->
       </button>
     </template>
 

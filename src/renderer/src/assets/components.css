@@ -111,7 +111,9 @@
   display: block;
   width: 100%;
   height: 100%;
-  padding: 2.5rem 1.5rem 10rem;
+  /* 左右内缩与正文列同一节奏（用户口径：编辑区内容与两侧的间隔稍微加大）：
+     源码面紧凑些，但不能再贴着边 —— 24px → 40px；分屏变体见下。 */
+  padding: 2.5rem 2.5rem 10rem;
   border: none;
   outline: none;
   resize: none;
@@ -127,9 +129,9 @@
   caret-color: var(--ink);
 }
 /* 源码面不写 `::selection`：用浏览器默认（与正文一致）。 */
-/* 分屏右侧面板：减上下留白、去底部大留白，贴合对比面板密度 */
+/* 分屏右侧面板：减上下留白、去底部大留白，贴合对比面板密度（左右 24 → 32px） */
 .source-editor--split {
-  padding: 1.25rem 1.5rem 4rem;
+  padding: 1.25rem 2rem 4rem;
 }
 
 /* ── 分屏对比视图 ── */

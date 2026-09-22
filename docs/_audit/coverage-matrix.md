@@ -331,7 +331,7 @@
 | --- | --- | --- |
 | ✅ `_verify-welcome-removed` | 31/34 → **34/34** | **本轮 E 造成的**（工具栏默认收起后 `toolbar.found === false`，而该段断言要求工具栏存在）+ 它自己把环境跳过写成 `FAIL … \| SKIP: …`（§1.C 同类）。已补「显式打开工具栏」夹具 + 改走 skip 通道 |
 | `_verify-cb-line-numbers` | 8/13 | **既有**（设置面板开关的真实点击不生效）。三轮对照复现：把工具栏默认值改回 `true`、把 B 项改动 stash 掉，它照样红 ⇒ 与本轮改动无关 |
-| `_verify-sidebar-handle` | 3/21 | **既有（选择器过期）**：它找 `button.absolute.left-0`，而 `AppSidebar.vue` 里已经没有这个类（更早的侧栏重构改过结构）；同题的 `_verify-sidebar-handle-style` 用新选择器 **19/19 通过** |
+| ✅ `_verify-sidebar-handle` | 3/21 → **21/21** | **既有（选择器过期 + 三处常量与现设计脱节）**：它找 `button.absolute.left-0`，而把手早已换成 `App.vue` 的 `.sidebar-handle`；热区常量 31/33 是旧版 32px 热区的数（实现已是 120/200）、把手尺寸 18×48 → 22×56、「收起只露 4px」→ 现设计整体退到窗口外。本轮一并修正（同题 `-style` 套件 19/19） |
 | `_verify-open-file-dedup` / `_verify-open-file-routing` / `_verify-save-as-workspace` | 0/0 FAIL | **既有（运行器的 dev-server 探测漏判）**：三者间接 `import('/src/…')`，`needsDevServer()` 的静态正则没识别出来，于是跑在构建产物上并报 `Failed to fetch dynamically imported module: file:///D:/src/…`（按本文件 §3.1 的口径它们**本该被标 SKIP**） |
 | `_verify-packaging` | 2/4 | **既有（环境）**：`electron-builder` 在本环境跑不起来（离线/权限，与 `npm install` 的 `EALLOWREMOTE` 同一类限制），不是代码回归 |
 | `_verify-menu-export-submenu` | 12/15 | **待查**：`WIRING` 探针靠 `__vueParentComponent` 从菜单按钮往上找 `GROUPS`（`setupState.GROUPS`），拿不到时 3 条接线断言全空。该套件不在默认矩阵，本轮未动它相关代码 |

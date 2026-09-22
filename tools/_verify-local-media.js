@@ -213,11 +213,16 @@ async function click(w, selector, textFilter) {
     c('工作区外的图片：拒绝（位置闸）', outsideMedia === 'error', String(outsideMedia))
 
     // ── ③ 回归：本轮抽成方法的四个 UI 处理器 ──
-    const sidebarBtn = await w.ev(`window.__M.app.config.globalProperties.$t('sidebar.collapse')`)
-    await click(w, `aside button[title^=${JSON.stringify(String(sidebarBtn))}]`)
+    // 侧栏折叠：底部那一行（设置/关于/收起）本轮已删掉，鼠标入口换成顶部菜单
+    // 「视图 → 显示侧边栏」（键盘 Ctrl+Shift+B 同源）。这里点真实菜单项，
+    // 断言的行为不变：折起来之后 `ui.sidebarVisible` 变 false（并且会落库）。
+    const $t = (k) => w.ev(`window.__M.app.config.globalProperties.$t(${JSON.stringify(k)})`)
+    await click(w, '.topmenu-root > button', await $t('menu.view'))
+    await sleep(300)
+    await click(w, '.topmenu-drop button', await $t('menu.toggleSidebar'))
     await sleep(400)
     const collapsed = await w.ev(`window.__M.ui().sidebarVisible`)
-    c('侧栏「收起」仍生效（collapseSidebar）', collapsed === false, String(collapsed))
+    c('侧栏开关仍生效（视图菜单 → 显示侧边栏）', collapsed === false, String(collapsed))
 
     // 重新展开，方便后续步骤
     await w.ev(`(window.__M.ui().sidebarVisible = true, 'ok')`)

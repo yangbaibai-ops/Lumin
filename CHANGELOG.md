@@ -72,6 +72,49 @@
 - **工程化**：~~`tools/lib/harness.js` + `tools/run-suites.js`~~ → **本轮已完成**；
   剩余：`files` store 拆分；`store` 里那份为绕循环导入而复制的 `confirmIfDirty` 收敛到 `services/dialog`。
 
+## [Unreleased · UI 三处微调] — 正文列左右内缩 40→56px / 侧栏底部那一行去掉 / H1–H3 改整枚字形
+
+> 用户口径：① 稍微增加编辑区域内容与左右两侧的间隔；② 由我判断侧栏下方的「设置 / 关于 / 折叠」
+> 是否还需要，不需要就优化掉；③ 顶部栏 H1/H2/H3 的字体显示很怪，优化显示样式。
+
+### Changed
+
+- **正文列左右内缩 40px → 56px**：`TyporaEditor.vue` 的 `editor-content` 由 `px-10` 改 `px-14`
+  （实测计算值 `40px 56px 160px`）。源码面同步放宽（`.source-editor` 左右 24 → 40px、
+  `.source-editor--split` 24 → 32px）；通知带跟着对齐同一列（`padding: 11px 56px 13px`，
+  它的「与正文列对齐」断言也改成 56px）。
+- **侧栏底部那一行整行删除**（设置 / 关于 Lumin / 收起侧边栏）。判断依据是「三条功能都另有入口，
+  且都不是唯一入口」：设置与关于在顶部「帮助」菜单（应用内菜单与原生菜单同源），
+  折叠在「视图 → 显示侧边栏」+ `Ctrl+Shift+B`；而**展开**本来就有 `App.vue` 的左缘把手
+  （`.sidebar-handle`，指针进左缘热区即滑出）。删除后侧栏只剩「工作区头部 + 文件/大纲」。
+  随之删掉 `AppSidebar.vue` 里只服务于那一行的 `collapseSidebar()`、以及已成为死键的
+  `sidebar.collapse`（三语同步；`sidebar.expand` 仍被左缘把手使用，保留）。
+  `_verify-local-media.js` 的「侧栏收起仍生效」改成驱动**同一条真实入口**（视图菜单项），
+  断言的行为（`ui.sidebarVisible === false`）不变。
+- **H1 / H2 / H3 改成整枚描边字形**：新增 `heading-1/2/3` 图标（H 与数字**同一套 1.8px 描边**，
+  沿用 lucide 的几何），`shared/toolbarItems.ts` 的三个标题项指向它们，工具栏不再额外拼一个
+  `<span>` 数字。原因（实测旧写法）：图标是 15px 描边、数字是 10px **粗体**正文，字重/颜色/基线
+  三者都对不齐（数字基线偏移 8px、字重 700 对描边 1.8），放大看就是「H 1」两个元素并排 ——
+  正是用户说的「很怪」。层级信息仍在 `title` / `aria-label`（「标题 1」）里，可访问性不变。
+
+### Fixed（顺带修掉一条 `--all` 里的既有失败）
+
+- `_verify-sidebar-handle.js` **3/21 → 21/21**：
+  * 选择器 `button.absolute.left-0` 早已被更早的侧栏重构换成 `.sidebar-handle`（改用当前选择器）；
+  * 三处常量/期望与现设计脱节：热区 `31/33` 是旧版 32px 热区的数（实现已是 `EDGE_SHOW_PX=120` /
+    `EDGE_HIDE_PX=200`）⇒ 改成 100/260；把手尺寸 18×48 → **22×56**；「收起只露 4px」→
+    现设计是 `translate3d(-100%)` **整体退到窗口外**，断言改为「整块在左边界之外」。
+  这条已从 `docs/_audit/coverage-matrix.md` §3.6 的失败清单里划掉。
+
+### Verification（本轮实测）
+
+| 项 | 结果 |
+| --- | --- |
+| 几何（隔离实例实测） | `editor-content` padding = `40px 56px 160px`；侧栏 `aside` 内已无「设置 / 关于 / 收起」三个按钮；标题按钮 `span` 数 = 0、`svg` = 1（整枚字形） |
+| 截图核对（临时探针，已删） | H1/H2/H3 放大图：三者与相邻的 B/I 图标同一套描边、同色、同基线；整窗图：正文列左右留白变宽、侧栏底部那一行消失、底部只剩状态栏 |
+| 受影响套件 | `_verify-notify-style` 22/22、`_verify-local-media` 10/10、`_verify-sidebar-handle` 21/21、`_verify-sidebar-handle-style` 19/19、`_verify-a11y` 6/6、`_verify-segmented-control` 16/16、`_verify-toolbar-settings` 37/37、`_verify-welcome-removed` 34/34、`_verify-inline-formats` 182/182、`_verify-surfaces` 37/37、`_regress-layout` 9/9、`_verify-i18n` 5/5、`_verify-toc-style-scroll` 23/23 |
+| 门禁 | `vue-tsc` exit 0、`eslint` 0 error 0 warning、`electron-vite build` exit 0、单测 299/299 |
+
 ## [Unreleased · `--all` 全量矩阵复核] — 修掉本轮 E 造成的一条 + 登记其余既有失败
 
 > 收尾动作：`node tools/run-suites.js --all`（68 条：56 PASS / 10 FAIL / 1 SKIP / 1 NOASSERT）。
