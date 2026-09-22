@@ -343,7 +343,11 @@ watch(selectedLanguage, async (lang) => {
     // 观察器恢复），并退出源码态——否则再切回 mermaid 会看到残留的 textarea
     editingMermaid.value = false
     teardownCm()
-    void renderMermaid()
+    // 容器是刚挂出来的：先挂视口门（门已开时它是空操作，紧接着的 render 才是要的）
+    void nextTick(() => {
+      armMermaidObserver()
+      void renderMermaid()
+    })
     return
   }
   // 从 mermaid 切到其它语言：等 v-else 的 CM 容器挂载后按需创建视图
@@ -561,7 +565,8 @@ function teardownCm(): void {
 
 onMounted(() => {
   if (selectedLanguage.value === 'mermaid') {
-    void renderMermaid()
+    // 视口门：容器挂出来之后才知道要不要渲染（见 armMermaidObserver 的注释）
+    void nextTick(() => armMermaidObserver())
     return
   }
   initCm()
@@ -571,6 +576,7 @@ onMounted(() => {
 onBeforeUnmount(() => {
   unregisterCodeBlockHandle(handle)
   teardownCm()
+  teardownMermaidObserver()
   if (pinTimer) clearTimeout(pinTimer)
   pinTimer = null
   if (extSyncTimer) clearTimeout(extSyncTimer)
@@ -587,7 +593,56 @@ const mermaidRenderRef = ref<HTMLElement | null>(null)
 const mermaidEditHeight = ref<number | null>(null)
 let mermaidRenderTimer: ReturnType<typeof setTimeout> | null = null
 
+/**
+ * ─── 视口门（清单 §2.G / O1）────────────────────────────────────────────────
+ * mermaid 家族是构建产物里最重的一坨：`mermaid.core` 1.23MB + `cynefin` 1.30MB +
+ * `cytoscape` 0.96MB ≈ **3.5MB**（懒加载）。只要文档里有一个 ```mermaid 块，
+ * 原来的 onMounted 就会 `import('mermaid')` —— 哪怕它远在屏幕外、用户只是翻过去。
+ * 现在：**进入视口附近 200px 才真正 import + 渲染**；在此之前块内展示源码占位
+ * （既有高度、可点击回到源码编辑，与原错误兜底是同一套标记）。
+ *
+ * 为什么 rootMargin 取 200px：块从「未渲染」变成「图表」会有高度变化，
+ * 提前 200px 放行 ⇒ 变化发生在**屏幕外**，正常滚动不会看到跳动。
+ * 导出不受影响：那条路走 `renderMermaidInHtml(html)`，与编辑器视图解耦。
+ */
+const mermaidNearViewport = ref(false)
+let mermaidObserver: IntersectionObserver | null = null
+
+/** 放行视口门：只放行一次，随后按需渲染（幂等） */
+function openMermaidGate(): void {
+  if (mermaidNearViewport.value) return
+  mermaidNearViewport.value = true
+  teardownMermaidObserver()
+  void renderMermaid()
+}
+
+function teardownMermaidObserver(): void {
+  mermaidObserver?.disconnect()
+  mermaidObserver = null
+}
+
+/** 在图表容器上挂观察器（容器还没挂出来时由调用方稍后重试） */
+function armMermaidObserver(): void {
+  if (mermaidNearViewport.value || mermaidObserver) return
+  const el = mermaidRenderRef.value
+  if (!el || typeof IntersectionObserver === 'undefined') {
+    // 没有观察器（老环境 / 容器未挂载）：直接放行，宁可不省这 3.5MB，也不能不渲染
+    openMermaidGate()
+    return
+  }
+  mermaidObserver = new IntersectionObserver(
+    (entries) => {
+      if (entries.some((e) => e.isIntersecting)) openMermaidGate()
+    },
+    // 上下各提前 200px 放行（左右不限）
+    { rootMargin: '200px 0px 200px 0px' }
+  )
+  mermaidObserver.observe(el)
+}
+
 async function renderMermaid(): Promise<void> {
+  // 视口门未开就不 import —— 观察器放行时会自己回来调一次
+  if (!mermaidNearViewport.value) return
   try {
     const mod = await import('mermaid')
     mod.default.initialize({
@@ -669,11 +724,15 @@ function commitMermaid(): void {
         v-if="!editingMermaid"
         ref="mermaidRenderRef"
         class="mermaid-render"
+        :data-mermaid-gated="mermaidNearViewport ? null : 'pending'"
         title="点击编辑源码"
         @click="startMermaidEdit"
       >
+        <!-- 视口门未放行（还没轮到它进视口）时展示源码占位：块有高度、可点击进源码编辑，
+             不会是一个空洞；放行后 SVG 一到位就替换掉它 -->
+        <pre v-if="!mermaidSvg" class="mermaid-placeholder"><code>{{ props.node.textContent }}</code></pre>
         <!-- eslint-disable-next-line vue/no-v-html -- mermaidSvg 是 mermaid.render() 在 securityLevel:'strict' 下生成的 SVG（见本文件 mermaid 初始化），不是文档原文 -->
-        <div v-html="mermaidSvg" />
+        <div v-else v-html="mermaidSvg" />
       </div>
       <textarea
         v-else

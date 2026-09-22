@@ -182,7 +182,30 @@ async function connect({ port = DEFAULT_PORT, timeoutMs = 30000, bringToFront = 
 }
 
 /**
- * 把**被测实例的窗口**重新提到前台（`Page.bringToFront`）。
+ * 订阅 CDP **事件**（`connect()` 返回的句柄只处理带 id 的响应，事件默认被丢掉）。
+ *
+ * 什么时候需要它：要证明「某个懒加载 chunk 到底有没有被取」这类**页面侧看不到**的事 ——
+ * 页面里的 `performance.getEntriesByType('resource')` 在本应用（Electron + 本地文件）里
+ * **恒为空数组**（实测 resTotal = 0），拿它做断言只会永远通过，是假绿。
+ * 用法：`const off = watchEvents(app, (m) => { if (m.method === 'Network.requestWillBeSent') … })`
+ * 实现是**包一层**原有的 onmessage，所以 `send` / `ev` 不受影响；返回取消订阅的函数。
+ */
+function watchEvents(app, onEvent) {
+  const prev = app.sock.onmessage
+  app.sock.onmessage = (e) => {
+    try {
+      onEvent(JSON.parse(e.data))
+    } catch {
+      /* 事件解析失败不影响响应处理 */
+    }
+    if (prev) prev(e)
+  }
+  return () => {
+    app.sock.onmessage = prev
+  }
+}
+
+/** 把**被测实例的窗口**重新提到前台（`Page.bringToFront`）。
  *
  * 为什么需要单独一个可重复调用的入口：`connect()` 只在挂载时提一次前台，而
  * `ed.isFocused` 依赖 `document.hasFocus()` —— 只要用户**自己的** Lumin 窗口
@@ -388,6 +411,7 @@ module.exports = {
   attach,
   connect,
   bringToFront,
+  watchEvents,
   PINIA,
   INJECT,
   inject,

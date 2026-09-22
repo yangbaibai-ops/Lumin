@@ -238,6 +238,18 @@ li.md-reveal {
   max-width: 100%;
   height: auto;
 }
+/* 视口门未放行时的源码占位：只是「还没轮到渲染」的等价物，视觉上按源码块排
+   （等宽、淡色、可选择），不抢注意力。它让块**保持有高度**，放行后换图不会有跳动。 */
+.mermaid-block .mermaid-placeholder {
+  margin: 0;
+  width: 100%;
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--ink-3);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
 .mermaid-source-input {
   width: 100%;
   min-height: 130px;

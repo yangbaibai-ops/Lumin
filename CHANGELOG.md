@@ -77,6 +77,50 @@
 - **工程化**：~~`tools/lib/harness.js` + `tools/run-suites.js`~~ → **本轮已完成**；
   剩余：`files` store 拆分；`store` 里那份为绕循环导入而复制的 `confirmIfDirty` 收敛到 `services/dialog`。
 
+## [Unreleased · O1 mermaid 按需（视口门 + 干掉首屏预加载）] — 远处不渲染，`mermaid.core` 不再首屏取
+
+> 来源：桌面《Lumin-待优化清单-2026-09-22.md》§2.G。原状：`CodeBlockView.vue` 的 `onMounted`
+> 只要看到 ```mermaid 就 `import('mermaid')` 并渲染 —— 哪怕块远在屏幕外。
+
+### Changed
+
+- **视口门**（`components/editor/CodeBlockView.vue`）：用 `IntersectionObserver`
+  （`rootMargin: 200px`）把「import + 渲染」推迟到块**进入视口附近**才发生；门未开时块内是
+  **源码占位**（`.mermaid-placeholder`，等宽淡色、可点击进源码编辑），所以块始终有高度、
+  不会是个空洞，放行后 SVG 一到位就替换。容器带 `data-mermaid-gated="pending"` 便于验收。
+  提前 200px 放行 ⇒ 「源码→图表」的高度变化发生在**屏幕外**，正常滚动看不到跳动。
+  导出不受影响（那条路走 `renderMermaidInHtml(html)`，与编辑器视图解耦）。
+- **干掉首屏预加载**（`electron.vite.config.ts`）：实测**Vite 默认的 modulePreload 会把
+  `mermaid.core`（1.23MB）在首屏就取**（路由 chunk 的「动态 import 依赖」被插成
+  `<link rel=modulepreload>`，与文档里有没有 mermaid 块无关）——这跟「mermaid 按需」的初衷相反。
+  现在 `build.modulePreload.resolveDependencies` 把 `mermaid` / `cynefin` / `cytoscape` 一族
+  从预加载依赖里剔掉，真正需要时由 `import('mermaid')` 现取。
+
+### Added
+
+- `tools/lib/harness.js`：`watchEvents(app, onEvent)` —— 订阅 CDP **事件**（原来的句柄只处理带 id
+  的响应）。用于验证「某个懒加载 chunk 到底有没有被取」这类页面侧看不到的事。
+- `tools/_verify-mermaid-gate.js`（4 条）：① 远处块不渲染（无 `svg` + `pending` + 有占位）；
+  ② 启动后 `link[rel=modulepreload]` 里**不含** mermaid 一族；③ 滚入视口后渲染出来、占位被替换；
+  ④ chunk 变成「滚入才取」。
+
+### Verification（本轮实测）
+
+| 项 | 结果 |
+| --- | --- |
+| `_verify-mermaid-gate.js`（新增） | **4/4** |
+| mermaid 既有回归 | `_verify-mermaid-blur.js` 22/22、`_verify-mermaid-cross-block.js` 18/18 |
+| 代码块回归 | `_regress-cb.js` 3/3、`_verify-math.js` 7/7 |
+| `vue-tsc` / `eslint` / `electron-vite build` | exit 0 / 0 error / exit 0（`EditorView-*.js` 2,509.13 kB） |
+
+**过程中查清的两件事（如实记录）**：
+1. 页面侧的 `performance.getEntriesByType('resource')` 在本应用里**恒为空**（实测 `resTotal=0`），
+   用它写「没有取某个 chunk」这种否定断言会**永远通过**（假绿）——已改为读
+   `link[rel=modulepreload]`（可靠）+ CDP 事件（只作参考：`file://` 下 Network 事件并不完整）。
+2. 顺带发现 `tools/_verify-cb-typing.js`（老式 0 断言脚本，要求外面先摆好一份带代码块的文档）
+   在矩阵里会直接崩（`Cannot read properties of null`）——**与本次改动无关**，已登记到清单 §2.I
+   （老脚本迁移/归档）一起处理。
+
 ## [Unreleased · S3 第一期] — `lib/editor/defer.ts`：把「躲开 PM 事件顺序」的延后一拍收口
 
 > 来源：桌面《Lumin-待优化清单-2026-09-22.md》§1.D 第 1 步（自查报告 S3）。编辑器里有一批
