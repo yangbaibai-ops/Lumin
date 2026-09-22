@@ -59,16 +59,17 @@ export function useAppActions(): {
 
   async function openFolderDialog(): Promise<void> {
     if (!(await confirmIfDirty())) return
+    // 不发通知：文件树本身就是「打开成功了」的结果（见 stores/ui.ts 里 toast() 的分流口径）
     await files.openFolder()
-    ui.toast(i18n.global.t('toast.folderOpened'), 'success')
   }
 
   async function saveDoc(): Promise<void> {
-    if (await files.save()) ui.toast(i18n.global.t('toast.saved'), 'success')
+    // 不发通知：保存结果的可见反馈是窗口标题的脏标记与状态栏（同上）
+    await files.save()
   }
 
   async function saveAsDoc(): Promise<void> {
-    if (await files.saveAs()) ui.toast(i18n.global.t('toast.saved'), 'success')
+    await files.saveAs()
   }
 
   /** 编辑器内核 / 导出随渲染层剥离：保留入口，占位提示 */

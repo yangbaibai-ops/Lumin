@@ -77,6 +77,66 @@
 - **工程化**：~~`tools/lib/harness.js` + `tools/run-suites.js`~~ → **本轮已完成**；
   剩余：`files` store 拆分；`store` 里那份为绕循环导入而复制的 `confirmIfDirty` 收敛到 `services/dialog`。
 
+## [Unreleased · 通知重做（四）：版式重排 + 通知降噪（保存等常规成功不再通知）]
+
+> 用户口径：① 重构通知的布局与元素排版，使其更合理、更具审美；② 「保存文件」这类无需通知的
+> 取消掉，保留必要的通知。
+
+### Changed — 版式（`NotificationCenter.vue` + `overlays.css`）
+
+- **两列栅格**取代 `flex + gap`：`grid-template-columns: minmax(0,1fr) auto` + 24px 列间距 ——
+  左列文本可压缩、右列信息条按内容宽，且两者**天然从同一条顶线开始**。
+- **信息条与标题首行结构对齐**：`.ntf-meta { height: 20px }` 就是标题行高
+  （标题 `line-height: 20px`），删掉了原来 `margin-top: -3px` 的魔术补正 ——
+  实测 `titleTop=87 / metaTop=87 / metaHeight=20`。
+- **标题与正文共用同一条 measure（720px）**：此前标题能一路顶到右侧 ✕ 底下（行宽近 990px）。
+  长标题现在换行在可读宽度内，信息条仍留在首行右侧。
+- **间距节奏**：内衬 `padding: 11px 40px 13px`；正文 `margin-top: 4px`；按钮组 `margin-top: 12px`；
+  分隔竖线 `12px` 高、左右 `8px`。短通知（标题+一行说明）整条 **70px**。
+- **操作按钮改走全局 `.btn` 家族口径**：次按钮 `--edge-strong` 描边、hover 走副色淡底
+  （与 `.btn-outline` 一致）；**主按钮改用 `--btn-solid/--btn-solid-2/--btn-ink/--glow`**
+  （与 `.btn-primary` 同一套令牌）—— 之前主按钮拿副色（中性灰）当底、又拿 `--accent-ink` 当字，
+  对比度只有 2 档；现在浅色/深色下都是实心渐变 + 光晕 + 高对比文字（截图核对）。
+- 图标按钮圆角 8→7px、步进合成一簇（`.ntf-steps`：‹ 计数 › 等宽居中）。
+
+### Changed — 通知降噪（10 个调用点）
+
+**口径**（写进 `stores/ui.ts` 的 `toast()` 注释，作为以后加通知时的判据）：
+只发三类 —— **失败/降级**、**需要用户作答**、**结果不在界面上**；动作结果在界面上已经可见的
+常规成功**一律不发**。
+
+| 取消（动作结果就在界面里） | 保留（必要） |
+| --- | --- |
+| 保存 / 另存为（4 处：文件菜单、应用内菜单、`saveWithEncoding`）—— 标题脏标记与状态栏就是反馈 | 打开失败、保存失败、导出失败、重命名失败、链接协议被拦、重文档降级源码模式、会话恢复时文件已不在、更新检查失败 |
+| 打开文件夹 / 关闭工作区 —— 文件树即结果 | 链接目标不存在时的「创建并打开 / 取消」（需要作答） |
+| 重命名 / 删除成功 —— 那一行会跟着变 | 导出成功（落盘路径）、更新检查结果、「功能待接入」占位（结果不在界面上） |
+| 切换保存方式 —— 状态栏与勾选态会变 | |
+| 全部替换 —— 查找栏自己的计数会变 | |
+| 链接「已新建并打开」—— 文件随即被打开 | |
+
+随之**真正成为死键**并已从三份语言包删除的 10 个键：`toast.saved`、`toast.folderOpened`、
+`toast.workspaceClosed`、`toast.fileRenamed`、`toast.fileDeleted`、`toast.manualSave`、
+`toast.autoSaveOn`、`toast.savedWithEncoding`、`find.replaced`、`links.created`
+（三语键集合仍完全一致）。`docs/_audit/i18n-and-settings.md` 的占位符表与死键说明同步更新。
+
+### Verification（本轮实测）
+
+| 门禁 | 结果 |
+| --- | --- |
+| `vue-tsc --noEmit` / `eslint --cache .` | exit 0 / 0 error |
+| `electron-vite build` | exit 0（`EditorView-*.js` 2,507.47 kB） |
+| `node --test tests/*.test.mjs` | **291/291 pass**（含三语键集合一致性） |
+| `_verify-notify-style.js` | **22/22**：新增 `two-column-grid`、`title-and-body-share-measure`（720px）、`meta-aligns-with-title-line`（真实几何 top/height 对齐，非负 margin）；空态不占位、整幅带、只剩 3 个操作图标等原有断言全绿 |
+| `_verify-toast-tip.js` / `_verify-notifications.js` | **21/21** / **32/32** |
+| `_verify-link-open.js` | **63/63**：`created-notification-shown` → **`no-created-notification`**（反向断言：`links:created` 不再产生）+ `card-closed-after-accept` |
+| 受影响的既有流程回归 | `_verify-find-replace`(24/24，全部替换不再弹通知)、`_verify-new-document`(23/23)、`_verify-encoding`(34/34，以编码保存不再弹通知)、`_verify-session`(17/17)、`_verify-wave3`(23/23)、`_verify-rename`(13/13) |
+| 截图核对（临时探针，已删） | 短通知 70px / 长标题在 720px 内换行且信息条仍在首行 / 多条步进 / 长正文 + 三个操作按钮（主按钮实心渐变）/ 深色主题 |
+
+### Docs
+
+- 覆盖矩阵新增一行「**通知策略（哪些动作不发通知）**」并**如实标为缺口**：口径写在代码注释里，
+  但没有套件守「不得再发」的负向断言（只有 link-open 那一条）。
+
 ## [Unreleased · 通知重做（三）：去级别 + 整幅带设计 + 空态不占位 + 高度动效]
 
 > 用户口径：① 取消通知的图标和告警等级的提示，保留标题、信息、操作按钮和关闭按钮；

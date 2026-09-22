@@ -207,15 +207,16 @@ const GROUPS = computed<Group[]>(() => [
       {
         labelKey: 'menu.save',
         icon: 'save',
+        // 保存成功不发通知（脏标记/状态栏就是反馈）；失败本身由 files.save() 内部报错
         run: async () => {
-          if (await files.save()) ui.toast(t('toast.saved'), 'success')
+          await files.save()
         }
       },
       {
         labelKey: 'menu.saveAs',
         icon: 'copy',
         run: async () => {
-          if (await files.saveAs()) ui.toast(t('toast.saved'), 'success')
+          await files.saveAs()
         }
       },
       'sep',

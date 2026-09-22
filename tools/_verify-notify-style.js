@@ -22,13 +22,19 @@ const SHAPE = `(() => {
   const kernel = document.querySelector('[data-editor-kernel]')
   const body = item.querySelector('.ntf-body')
   const meta = item.querySelector('[data-ntf-meta]')
+  const titleEl = item.querySelector('.ntf-title')
+  const row = item.querySelector('.ntf-row')
   const icons = Array.from(item.querySelectorAll('svg'))
   return JSON.stringify({
     items: items.length,
     width: Math.round(r.width),
     height: Math.round(r.height),
     // 组件本身：无边框 / 无圆角 / 无底色 / 无外投影（面属于「带」，不属于组件）
-    item: { border: ics.borderTopWidth, radius: ics.borderTopLeftRadius, bg: ics.backgroundColor, shadow: ics.boxShadow, padLeft: ics.paddingLeft },
+    item: { border: ics.borderTopWidth, radius: ics.borderTopLeftRadius, bg: ics.backgroundColor, shadow: ics.boxShadow, padLeft: ics.paddingLeft, padTop: ics.paddingTop, padBottom: ics.paddingBottom },
+    // 版式：两列栅格 + 标题/正文共用 measure + 信息条与标题首行同高
+    row: row ? { display: getComputedStyle(row).display, colGap: getComputedStyle(row).columnGap } : null,
+    titleBox: titleEl ? { top: Math.round(titleEl.getBoundingClientRect().top), maxW: getComputedStyle(titleEl).maxWidth, lineHeight: getComputedStyle(titleEl).lineHeight } : null,
+    metaBox: meta ? { top: Math.round(meta.getBoundingClientRect().top), height: Math.round(meta.getBoundingClientRect().height) } : null,
     // 带：整幅 + 只有底部 1px 分界 + 顶部内高光 + 半透明中性淡底
     band: scs ? {
       left: Math.round(sr.left), right: Math.round(sr.right), width: Math.round(sr.width),
@@ -103,6 +109,19 @@ async function main() {
   c('band-spans-editor-width', Math.abs(item.band.left - item.kernel.left) <= 1 && Math.abs(item.band.right - item.kernel.right) <= 1, JSON.stringify({ band: [item.band.left, item.band.right], kernel: [item.kernel.left, item.kernel.right] }))
   c('content-aligns-with-document-column', item.item.padLeft === '40px', 'paddingLeft=' + item.item.padLeft + '（写作区正文列是 px-10=40px）')
   c('uses-horizontal-room', item.width >= 480, `w=${item.width}（旧实现固定 384）`)
+
+  // 版式（本轮重排）：两列栅格；标题与正文共用同一条 measure；信息条与标题首行**结构对齐**
+  c('two-column-grid', item.row?.display === 'grid' && parseFloat(item.row.colGap) >= 16, JSON.stringify(item.row))
+  c(
+    'title-and-body-share-measure',
+    item.titleBox?.maxW === '720px' && item.bodyMaxW === '720px',
+    `title.maxW=${item.titleBox?.maxW} body.maxW=${item.bodyMaxW}`
+  )
+  c(
+    'meta-aligns-with-title-line',
+    !!item.titleBox && !!item.metaBox && Math.abs(item.metaBox.top - item.titleBox.top) <= 1 && Math.abs(item.metaBox.height - parseFloat(item.titleBox.lineHeight)) <= 1,
+    JSON.stringify({ titleTop: item.titleBox?.top, titleLineHeight: item.titleBox?.lineHeight, metaTop: item.metaBox?.top, metaHeight: item.metaBox?.height })
+  )
 
   // ③ 级别图标与级别名都没了：只剩关闭键一个图标，文案里不出现级别名
   c('no-level-icon', item.iconCount === 1 && /关闭此通知/.test(item.iconNames.join('|')), `icons=${item.iconCount} ${item.iconNames.join('|')}`)

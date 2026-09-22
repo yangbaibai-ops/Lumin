@@ -48,7 +48,7 @@ async function commitRename(): Promise<void> {
   if (!draft || draft === props.node.name) return
   try {
     await files.renameNode(props.node, props.parentDir, draft)
-    ui.toast(t('toast.fileRenamed'), 'success')
+    // 改名成功不发通知：文件树里的那一行就是结果（失败才发，见下）
   } catch {
     ui.toast(t('toast.renameFailed'), 'error')
   }
@@ -144,8 +144,8 @@ async function handleAction(action: string): Promise<void> {
       danger: true
     })
     if (ok) {
+      // 删除成功不发通知：那行会从树里消失，本身就是结果
       await files.removeNode(props.node, props.parentDir)
-      ui.toast(t('toast.fileDeleted'), 'success')
     }
   }
 }

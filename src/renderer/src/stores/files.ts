@@ -522,14 +522,8 @@ export const useFilesStore = defineStore('files', {
       const cur = this.current
       if (!cur) return false
       cur.encoding = encoding
-      const ok = await this.save()
-      if (ok) {
-        useUiStore().toast(
-          i18n.global.t('toast.savedWithEncoding', { enc: encodingLabel(encoding) }),
-          'success'
-        )
-      }
-      return ok
+      // 成功不发通知（保存类一律不发，状态栏的编码标签就是结果）；失败由 save() 自己报错
+      return await this.save()
     },
     /**
      * 把某个历史版本载入编辑器（**不直接写盘**）。

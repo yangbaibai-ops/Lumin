@@ -53,7 +53,11 @@
 
 ### 1.3 占位符与复数一致性
 
-含占位符的 key 共 **24 个**，三语的占位符集合**逐一比对完全一致**：
+含占位符的 key 共 **24 个**（快照口径），三语的占位符集合**逐一比对完全一致**：
+
+> 后续更新（通知降噪）：`find.replaced`（`{count}`）与 `toast.savedWithEncoding`（`{enc}`）
+> 随「取消不必要的成功通知」一起从三份语言包删除（见本文 §1 与 §5 的说明），
+> 现行占位符 key 为 **22 个**；下表的行号/计数保留快照原样。
 
 | key | 占位符 |
 | --- | --- |
@@ -62,7 +66,7 @@
 | `editor.exportedTo` | `{path}` |
 | `editor.resultCount` | `{current}` `{total}` |
 | `editor.tableSize` | `{rows}` `{cols}` |
-| `find.replaced` | `{count}` |
+| ~~`find.replaced`~~ | `{count}`（已删除：全部替换不再发通知） |
 | `keymap.conflictWith` | `{names}` |
 | `keymap.customizedCount` | `{n}` |
 | `links.confirmDir` / `links.confirmFile` | `{path}` |
@@ -75,7 +79,7 @@
 | `toast.eolChanged` | `{eol}` |
 | `toast.exportedTo` | `{path}` |
 | `toast.historyRestored` | `{time}` |
-| `toast.reopenedWithEncoding` / `toast.savedWithEncoding` | `{enc}` |
+| `toast.reopenedWithEncoding` | `{enc}`（`toast.savedWithEncoding` 已随通知降噪删除） |
 | `update.availableBody` / `update.downloadedBody` | `{version}` |
 | `update.errorBody` | `{message}` |
 
@@ -103,6 +107,11 @@
   **后续更新（通知条改版）**：用户口径是「取消通知的图标与级别提示」，级别名不再出现在界面上，
   这 4 个键随之**真正成为死键** —— 已从三份语言包里一并删除（`NotificationLevel` 类型与
   SQLite 里的 `level` 列保持不变，数据层仍按级别合并/隔离）。本节表格是当时的快照，未回填。
+- **后续更新（通知降噪）**：`toast.saved` / `toast.folderOpened` / `toast.workspaceClosed` /
+  `toast.fileRenamed` / `toast.fileDeleted` / `toast.manualSave` / `toast.autoSaveOn` /
+  `toast.savedWithEncoding` / `find.replaced` / `links.created` 共 10 个键，因「动作结果在界面上
+  已经可见的常规成功不再发通知」而成为死键，已从三份语言包删除（口径见 `stores/ui.ts` 的
+  `toast()` 注释）。保留下来的是失败/降级、需要用户作答、结果不在界面上的三类。
 - 这 59 条不是「翻译资源的浪费」这么简单：其中绝大多数**正好对应界面上写死的中文**（见第 3 节 S1/S2/S3）。即「词条已备好，代码没用」。
 
 ---

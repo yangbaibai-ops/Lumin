@@ -68,8 +68,8 @@ function closeCurrent(): void {
         <div class="ntf-item" data-ntf-item>
           <!-- 内容切换：上一条自左、下一条自右（配合 ‹ › 的语义） -->
           <Transition :name="dir === 'prev' ? 'ntf-prev' : 'ntf-next'" mode="out-in">
-            <div :key="active.id" class="flex items-start gap-4">
-              <div class="min-w-0 flex-1">
+            <div :key="active.id" class="ntf-row">
+              <div class="ntf-content">
                 <p class="ntf-title">{{ active.title }}</p>
                 <p v-if="active.body" class="ntf-body">{{ active.body }}</p>
 
@@ -89,31 +89,34 @@ function closeCurrent(): void {
                 </div>
               </div>
 
-              <!-- 右侧信息条：时间 · （多条时的步进与全部关闭）· 关闭本条 -->
+              <!-- 右侧信息条：时间 · （多条时的步进与全部关闭）· 关闭本条；
+                   整条与标题首行同高（.ntf-meta 的 height 就是标题行高） -->
               <div class="ntf-meta" data-ntf-meta>
                 <span class="ntf-time tabular-nums">{{ timeText }}</span>
 
                 <template v-if="total > 1">
                   <span class="ntf-sep" />
-                  <button
-                    class="ntf-icon-btn ntf-icon-btn--sm"
-                    :title="t('notifications.prev')"
-                    :aria-label="t('notifications.prev')"
-                    @click="step(-1)"
-                  >
-                    <Icon name="chevron-left" :size="14" />
-                  </button>
-                  <span class="ntf-count tabular-nums" data-ntf-count>
-                    {{ notifications.activeIndex + 1 }}/{{ total }}
+                  <span class="ntf-steps">
+                    <button
+                      class="ntf-icon-btn ntf-icon-btn--sm"
+                      :title="t('notifications.prev')"
+                      :aria-label="t('notifications.prev')"
+                      @click="step(-1)"
+                    >
+                      <Icon name="chevron-left" :size="14" />
+                    </button>
+                    <span class="ntf-count tabular-nums" data-ntf-count>
+                      {{ notifications.activeIndex + 1 }}/{{ total }}
+                    </span>
+                    <button
+                      class="ntf-icon-btn ntf-icon-btn--sm"
+                      :title="t('notifications.next')"
+                      :aria-label="t('notifications.next')"
+                      @click="step(1)"
+                    >
+                      <Icon name="chevron-right" :size="14" />
+                    </button>
                   </span>
-                  <button
-                    class="ntf-icon-btn ntf-icon-btn--sm"
-                    :title="t('notifications.next')"
-                    :aria-label="t('notifications.next')"
-                    @click="step(1)"
-                  >
-                    <Icon name="chevron-right" :size="14" />
-                  </button>
                   <button
                     class="ntf-text-btn"
                     :title="t('notifications.closeAll')"

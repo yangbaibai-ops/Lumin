@@ -197,8 +197,8 @@ async function handleAction(action: string): Promise<void> {
   } else if (action === 'refresh') {
     await files.refreshDir(files.root)
   } else if (action === 'close') {
+    // 关闭工作区不发通知：文件树立刻清空，结果已在界面上
     await files.setRoot(null)
-    ui.toast(t('toast.workspaceClosed'), 'success')
   }
 }
 

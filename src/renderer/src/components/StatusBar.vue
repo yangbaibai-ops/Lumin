@@ -65,7 +65,7 @@ function chooseSaveMode(manual: boolean): void {
   if (settings.autoSave === !manual) return
   settings.set('autoSave', !manual)
   if (manual) files.cancelAutoSave()
-  ui.toast(manual ? t('toast.manualSave') : t('toast.autoSaveOn'), manual ? 'info' : 'success')
+  // 不发通知：状态栏这一格与菜单里的勾选态会立刻变成新值，结果已在界面上
 }
 
 /**

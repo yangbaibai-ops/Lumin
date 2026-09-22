@@ -95,13 +95,8 @@ async function createAndOpen(res: LinkResolveResult): Promise<void> {
     await record(res, 'declined', false)
     return
   }
-  const name = await window.luminAPI.file.basename(absPath).catch(() => absPath)
-  void useNotificationsStore().notify({
-    level: 'success',
-    title: t('links.created'),
-    body: name,
-    mergeKey: 'links:created'
-  })
+  // 不发「已创建」通知：文件已在目标位置、并且紧接着就被打开（新窗口或默认应用），
+  // 结果就在眼前；同一次询问刚收起一条通知，再弹一条只会让人以为又出了事
   await openResolved(res, res.action, true)
 }
 

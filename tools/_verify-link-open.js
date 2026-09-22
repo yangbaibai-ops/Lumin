@@ -634,11 +634,17 @@ async function main() {
     !!rowE && rowE.action === 'window' && rowE.created === true && rowE.count === 2,
     JSON.stringify(rowE)
   )
-  c(
-    'created-notification-shown',
-    hasNotif(await ev(NOTIF_TITLES), 'success', '新建'),
-    await ev(NOTIF_TITLES)
+  // 用户口径（通知降噪）：**「已创建」这种「结果就在眼前」的成功不再发通知** ——
+  // 文件已经建好、新窗口也已经开着，再弹一条只会让人以为又出了事。
+  // 所以这里反过来断言：那次 `links:created` 通知不再产生（询问卡片本身照旧会收起）。
+  const afterAccept = JSON.parse(
+    await ev(`(() => JSON.stringify({
+      hasCreatedKey: window.__vt.notifications().items.some((n) => (n.mergeKey || '') === 'links:created'),
+      titles: window.__vt.notifications().items.map((n) => n.level + ':' + n.title)
+    }))()`)
   )
+  c('no-created-notification', afterAccept.hasCreatedKey === false, JSON.stringify(afterAccept))
+  c('card-closed-after-accept', (await ev(LINK_CARD)) === 'gone', await ev(LINK_CARD))
   if (winE) await closePage(winE)
 
   // ── F. 危险协议：拒绝且不调用 openExternal ───────────────────────────────

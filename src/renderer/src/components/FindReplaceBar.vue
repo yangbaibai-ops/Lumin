@@ -136,8 +136,8 @@ function toggleReplace(): void {
 }
 
 function doReplaceAll(): void {
-  const n = find.replaceAll()
-  if (n > 0) ui.toast(t('find.replaced', { count: n }), 'success')
+  // 「已替换 N 处」不发通知：查找栏自己的计数会立刻变成 0/N，文档也当场变了
+  find.replaceAll()
 }
 </script>
 

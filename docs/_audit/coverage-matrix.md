@@ -166,7 +166,8 @@
 | 通知带形态与位置（编辑区上方整幅 / 空态不占位 / 无级别图标与级别名）+ 进出场动效（含高度） | `_verify-toast-tip.js`(21)；`verify-tiptap.js`（`toast` 相关，**非矩阵**） | 21 | 强 | 三轮改写的产物：位置（static + 紧邻内核之前 + 整幅铺满编辑区宽）、形态（组件无盒子；带只有底部 1px 分界 + 顶部内高光）、动效（CSS 规则 + 真实进出场采样：opacity 0→1 与带高 0→终值的中间值）|
 | 通知中心（CRUD、顶部通知区、级别图标、步进切换、多语言、不自动消失、重载存活） | `_verify-notifications`(32) | 32 | 强 | — |
 | 通知落盘 + 窗口作用域隔离 + 跨重启持久化 | `_verify-notify-disk`(8)、`_verify-notify-multiwindow`(21)、`_verify-notify-restart`(6) | 35 | 强 | 三套件分层；`notify-restart` 是两阶段（seed/check，中间由外部硬杀+重启），默认矩阵与 `--all` 都不跑 —— 由 `run-suites.js` 的 `MANUAL` 排除 |
-| 通知带样式（整幅中性淡底 + 只有底部 1px 分界 + 顶部内高光；空态连元素都不渲染；长正文就地滚动 + 可读行宽） | `_verify-notify-style`(19) | 19 | 强 | 非破坏式（临时插一条再硬删）；三轮改写：旧口径「宽 384 / 圆角 6」→「无盒子」→「整幅带 + 空态不占位」 |
+| 通知带样式与版式（整幅中性淡底 + 只有底部 1px 分界 + 顶部内高光；两列栅格 + 标题/正文共用 measure + 信息条与标题首行结构对齐；空态连元素都不渲染；长正文就地滚动） | `_verify-notify-style`(22) | 22 | 强 | 非破坏式（临时插一条再硬删）；四轮改写：旧口径「宽 384 / 圆角 6」→「无盒子」→「整幅带 + 空态不占位」→「版式重排（栅格/measure/对齐）」 |
+| **通知策略（哪些动作不发通知）** | 反向断言只有 `_verify-link-open` 的一条（`no-created-notification`）；其余被取消的成功类通知**无断言** | 1 | 仅间接 | ⚠️ **缺口**：口径写在 `stores/ui.ts` 的 `toast()` 注释里（失败/降级、需作答、结果不在界面上的三类才发），但没有套件守「保存 / 重命名 / 删除 / 全部替换 / 切换保存方式 / 已创建」这些**不得再发通知**——有人加回去矩阵不会红。真要守，可在 `_verify-notifications` 里加一组「动作 → 不得新增通知」的负向断言 |
 | 欢迎页移除后的空态（侧栏空态三入口、文件菜单、路由回落、`/about` 仍在） | `_verify-welcome-removed`(41) | 41 | 强 | — |
 | About 页内容 | `_verify-welcome-removed`（`about-still-works` 1 条） | 1 | 仅间接 | 只验路由可达，不验内容 |
 | 图标与打包资源（exe 嵌我们的图标、反证 electron 图标） | `_verify-packaging`（B 段 ~7 条） | 7 | 强 | 逐像素比对 |
@@ -232,7 +233,7 @@
 | 15 | **大纲滚动联动高亮** | README 明列「滚动联动高亮」；现在只有「大纲非空」（`_regress-layout` L8） | 扩写 `_regress-layout.js`：它已能读大纲项并验证「源码模式清空」。加「滚动正文到第 3 个标题 → 断言大纲第 3 项带 active 类」 |
 | 16 | **导出设置页 + 其余设置页签的导航回归** | `SettingsDialog.vue` 有 6 个页签，但没有一条断言「6 个都在、都能打开、内容非空」 | 扩写 `_verify-keymap.js`（已有 `settings-keymap-tab-renders`）：一次遍历 6 个页签点击并断言各自根节点出现 + 无裸 i18n key。是本节里性价比最高的一条 |
 | 17 | **启动耗时 / 输入延迟 / 关窗耗时**（3 个基准） | 已有 3 个基准脚本（`_startup-bench.js`、`_measure-latency.js`、`_time-close.js`），但都只打印、不判定，**性能回归不会红** | 给三者各加一条阈值断言（`report.check('启动首窗可见 ≤ Xms', ms <= X)`）；`_startup-bench` 需要生产包，可只在 `--all` 或人工跑，但断言必须写进脚本 |
-| 18 | **toast 位置与不遮挡底栏 / About 页内容** | 位置这一半**已补齐**：`_verify-toast-tip.js` 现在 21 条断言（编辑区上方整幅带、整条在视口内、不压状态栏、组件无盒子、真实进出场动效采样含带高动画），`_verify-notify-style.js` 19 条覆盖形态、空态不占位与就地滚动。剩 About 页内容只验路由可达 | About 在 `_verify-welcome-removed.js` 的 `about-still-works` 后面加两条内容断言 |
+| 18 | **toast 位置与不遮挡底栏 / About 页内容** | 位置这一半**已补齐**：`_verify-toast-tip.js` 现在 21 条断言（编辑区上方整幅带、整条在视口内、不压状态栏、组件无盒子、真实进出场动效采样含带高动画），`_verify-notify-style.js` 22 条覆盖形态、版式、空态不占位与就地滚动。剩 About 页内容只验路由可达 | About 在 `_verify-welcome-removed.js` 的 `about-still-works` 后面加两条内容断言 |
 
 ---
 
