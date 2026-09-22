@@ -400,12 +400,6 @@
     "pasteFailed": "Cannot read the clipboard, use Ctrl+V instead"
   },
   "notifications": {
-    "level": {
-      "info": "Notice",
-      "success": "Done",
-      "warning": "Warning",
-      "error": "Error"
-    },
     "prev": "Previous notification",
     "next": "Next notification",
     "close": "Dismiss this notification",

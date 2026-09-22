@@ -1,6 +1,6 @@
-// 验收（非破坏式）：通知条样式 —— 本轮口径是**取消长方形组件**（像 Typora 一样把内容
-// 直接展示在编辑区上方那块区域里），所以这里量的是「没有盒子」+「真的用上了横向空间」，
-// 而不是旧的「宽 384 / 圆角 6px / 图标圆角 8px」。
+// 验收（非破坏式）：通知的形态与样式 ——
+//   ① 空态不占位（没有通知时整块不存在）；② 有通知时是**编辑区上方一整幅带**（不是浮层卡片、
+//   不是圆角盒子）；③ 级别图标与级别名都没了，只留标题 / 说明 / 操作 / 关闭；④ 长正文就地滚动。
 // 只在库里临时插一条带标记的通知，量完硬删，并校验既有通知一行未变。
 const CDP = 'http://127.0.0.1:9222/json'
 const MARK = '样式校验-' + Date.now()
@@ -10,33 +10,42 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 function send(m, p) { return new Promise((r) => { const i = ++id; pending.set(i, r); ws.send(JSON.stringify({ id: i, method: m, params: p })) }) }
 async function ev(e) { const r = await send('Runtime.evaluate', { expression: e, returnByValue: true, awaitPromise: true }); if (r.result && r.result.exceptionDetails) throw new Error('EXC ' + JSON.stringify(r.result.exceptionDetails).slice(0, 400)); return r.result?.result?.value }
 const SNAP = `(async () => { const all = await window.luminAPI.notifications.list({ includeClosed: true }); return JSON.stringify(all.map((n) => n.id + '|' + n.level + '|' + n.title + '|' + (n.closedAt !== null)).sort()) })()`
-const ITEM = `(() => {
+const SHAPE = `(() => {
   const items = Array.from(document.querySelectorAll('.ntf-item'))
   const item = items[0]
-  if (!item) return JSON.stringify({ items: 0 })
+  if (!item) return JSON.stringify({ items: 0, bandHeight: document.querySelector('.ntf-reveal') ? Math.round(document.querySelector('.ntf-reveal').getBoundingClientRect().height) : 0 })
   const r = item.getBoundingClientRect()
-  const cs = getComputedStyle(item)
+  const ics = getComputedStyle(item)
   const strip = item.closest('.ntf-strip')
   const sr = strip ? strip.getBoundingClientRect() : null
-  const meta = item.querySelector('[data-ntf-meta]')
+  const scs = strip ? getComputedStyle(strip) : null
+  const kernel = document.querySelector('[data-editor-kernel]')
   const body = item.querySelector('.ntf-body')
+  const meta = item.querySelector('[data-ntf-meta]')
+  const icons = Array.from(item.querySelectorAll('svg'))
   return JSON.stringify({
     items: items.length,
     width: Math.round(r.width),
     height: Math.round(r.height),
-    stripWidth: sr ? Math.round(sr.width) : null,
-    border: cs.borderTopWidth,
-    radius: cs.borderTopLeftRadius,
-    shadow: cs.boxShadow,
-    blur: cs.backdropFilter,
-    background: cs.backgroundColor,
-    title: item.querySelector('p')?.textContent?.trim() ?? '',
-    iconCount: item.querySelectorAll('svg').length,
+    // 组件本身：无边框 / 无圆角 / 无底色 / 无外投影（面属于「带」，不属于组件）
+    item: { border: ics.borderTopWidth, radius: ics.borderTopLeftRadius, bg: ics.backgroundColor, shadow: ics.boxShadow, padLeft: ics.paddingLeft },
+    // 带：整幅 + 只有底部 1px 分界 + 顶部内高光 + 半透明中性淡底
+    band: scs ? {
+      left: Math.round(sr.left), right: Math.round(sr.right), width: Math.round(sr.width),
+      borderTop: scs.borderTopWidth, borderRight: scs.borderRightWidth, borderBottom: scs.borderBottomWidth, borderLeft: scs.borderLeftWidth,
+      radius: scs.borderTopLeftRadius, bg: scs.backgroundColor, shadow: scs.boxShadow, padLeft: scs.paddingLeft
+    } : null,
+    kernel: kernel ? { left: Math.round(kernel.getBoundingClientRect().left), right: Math.round(kernel.getBoundingClientRect().right) } : null,
+    title: item.querySelector('.ntf-title, p')?.textContent?.trim() ?? '',
+    text: item.textContent.trim(),
+    iconCount: icons.length,
+    iconNames: icons.map((s) => (s.parentElement?.getAttribute('aria-label') || s.parentElement?.getAttribute('title') || 'plain')),
     metaText: meta?.textContent?.trim() ?? '',
     metaFits: !!meta && meta.scrollWidth <= meta.clientWidth + 1,
     bodyFits: !!body && body.scrollWidth <= body.clientWidth + 1,
     bodyOverflowY: body ? getComputedStyle(body).overflowY : null,
-    bodyMaxH: body ? getComputedStyle(body).maxHeight : null
+    bodyMaxH: body ? getComputedStyle(body).maxHeight : null,
+    bodyMaxW: body ? getComputedStyle(body).maxWidth : null
   })
 })()`
 
@@ -55,30 +64,54 @@ async function main() {
     return 'ok'
   })()`)
 
+  const results = []
+  const c = (n, cond, extra) => results.push((cond ? 'PASS' : 'FAIL') + ' ' + n + (extra ? ' | ' + extra : ''))
+  /** 投影里**只允许 inset**（带子是内高光，不是浮层外投影）；颜色函数先摘掉再按逗号切。
+   *  ⚠️ Chromium 会把 `color-mix()` 序列化成 `color(srgb …)`，只认 `rgba()` 会漏判。 */
+  const onlyInset = (shadow) => {
+    const parts = String(shadow).replace(/rgba?\([^)]*\)|color\([^)]*\)/g, 'C').split(',').map((s) => s.trim()).filter(Boolean)
+    return parts.length > 0 && parts.every((p) => p.includes('inset'))
+  }
+  /** rgba 的 alpha（'rgba(17, 24, 39, 0.07)' → 0.07） */
+  const alphaOf = (bg) => {
+    const m = /rgba?\(([^)]+)\)/.exec(String(bg))
+    const parts = m ? m[1].split(',').map((s) => parseFloat(s)) : []
+    return parts.length === 4 ? parts[3] : 1
+  }
+
   const before = JSON.parse(await ev(SNAP))
   console.log('ROWS(before) ' + JSON.stringify(before))
 
-  const created = JSON.parse(await ev(`(async () => JSON.stringify(await window.__vt.notif().notify({ level: 'warning', title: ${JSON.stringify(MARK)}, body: '这是一条用于量取通知条样式的临时通知，量完即删。它可以很长，长到需要在区域内滚动。' })))()`))
-  await sleep(700)
-  const item = JSON.parse(await ev(ITEM))
-  console.log('ITEM ' + JSON.stringify(item))
+  // ① 空态：没有通知时整块不存在（不占位、不影响观感）
+  const empty = JSON.parse(await ev(SHAPE))
+  const emptyDom = JSON.parse(await ev(`(() => JSON.stringify({
+    hasElement: !!document.querySelector('.ntf-reveal, .ntf-strip, .ntf-item'),
+    kernelTop: Math.round(document.querySelector('[data-editor-kernel]').getBoundingClientRect().top)
+  }))()`))
+  c('empty-state-has-no-banner', empty.items === 0 && empty.bandHeight === 0 && emptyDom.hasElement === false, `items=${empty.items} bandHeight=${empty.bandHeight} hasElement=${emptyDom.hasElement}`)
 
-  const results = []
-  const c = (n, cond, extra) => results.push((cond ? 'PASS' : 'FAIL') + ' ' + n + (extra ? ' | ' + extra : ''))
-  // 「取消长方形组件」的四条硬证据：无边框、无圆角、无阴影、无毛玻璃、无底色
-  c('no-border', item.border === '0px', 'border=' + item.border)
-  c('no-radius', item.radius === '0px', 'radius=' + item.radius)
-  c('no-shadow-and-blur', item.shadow === 'none' && item.blur === 'none', `shadow=${item.shadow} blur=${item.blur}`)
-  c('no-background', item.background === 'rgba(0, 0, 0, 0)', 'bg=' + item.background)
-  // 铺满可读栏宽（旧的 384px 窄条是这次要取消的东西）
+  const created = JSON.parse(await ev(`(async () => JSON.stringify(await window.__vt.notif().notify({ level: 'warning', title: ${JSON.stringify(MARK)}, body: '这是一条用于量取通知带形态的临时通知，量完即删。它可以很长，长到需要在区域内滚动。' })))()`))
+  await sleep(700)
+  const item = JSON.parse(await ev(SHAPE))
+  console.log('SHAPE ' + JSON.stringify(item))
+
+  // ② 形态：整幅带而不是浮层卡片
+  c('no-card-outline', item.item.border === '0px' && item.item.radius === '0px' && item.item.bg === 'rgba(0, 0, 0, 0)', JSON.stringify(item.item))
+  c('no-outer-shadow', item.item.shadow === 'none' && onlyInset(item.band.shadow), `item=${item.item.shadow} band=${item.band.shadow}`)
+  c('band-hairline-bottom-only', item.band.borderBottom === '1px' && item.band.borderTop === '0px' && item.band.borderLeft === '0px' && item.band.borderRight === '0px', JSON.stringify(item.band))
+  c('band-is-translucent-wash', alphaOf(item.band.bg) > 0 && alphaOf(item.band.bg) < 1, `bandBg=${item.band.bg} alpha=${alphaOf(item.band.bg)}`)
+  c('band-spans-editor-width', Math.abs(item.band.left - item.kernel.left) <= 1 && Math.abs(item.band.right - item.kernel.right) <= 1, JSON.stringify({ band: [item.band.left, item.band.right], kernel: [item.kernel.left, item.kernel.right] }))
+  c('content-aligns-with-document-column', item.item.padLeft === '40px', 'paddingLeft=' + item.item.padLeft + '（写作区正文列是 px-10=40px）')
   c('uses-horizontal-room', item.width >= 480, `w=${item.width}（旧实现固定 384）`)
-  c('within-strip', item.stripWidth !== null && item.width <= item.stripWidth, `item=${item.width} strip=${item.stripWidth}`)
+
+  // ③ 级别图标与级别名都没了：只剩关闭键一个图标，文案里不出现级别名
+  c('no-level-icon', item.iconCount === 1 && /关闭此通知/.test(item.iconNames.join('|')), `icons=${item.iconCount} ${item.iconNames.join('|')}`)
+  c('no-level-label', !/(通知|已完成|告警|报错|Warning|Notice|Error)$/.test(item.metaText) && /^\d{1,2}:\d{2}$/.test(item.metaText), 'meta=' + item.metaText)
+
   c('shows-marker', item.title === MARK, item.title)
   c('single-notice-amid-existing', item.items === 1, `items=${item.items}（库中未关闭通知数 > 1 时仍只渲染一条）`)
-  c('icon-rendered', item.iconCount >= 1, 'svg=' + item.iconCount)
   c('meta-and-body-no-overflow', item.metaFits === true && item.bodyFits === true, JSON.stringify({ metaFits: item.metaFits, bodyFits: item.bodyFits, meta: item.metaText }))
-  // 长正文只在这块区域内滚动（不再把编辑区一路往下推，也不再被窗口底边裁掉）
-  c('long-body-scrolls-in-place', item.bodyOverflowY === 'auto' && parseFloat(item.bodyMaxH) > 0, `overflowY=${item.bodyOverflowY} maxH=${item.bodyMaxH}`)
+  c('long-body-scrolls-in-place', item.bodyOverflowY === 'auto' && parseFloat(item.bodyMaxH) > 0 && parseFloat(item.bodyMaxW) > 0 && parseFloat(item.bodyMaxW) <= 760, `overflowY=${item.bodyOverflowY} maxH=${item.bodyMaxH} maxW=${item.bodyMaxW}`)
 
   // 关闭键的 tooltip：不得被压成竖排（贴着区域右缘时收缩适应会算出极窄可用宽度）
   const closeBtn = await ev(`(() => {
@@ -100,13 +133,12 @@ async function main() {
       const cs = getComputedStyle(el)
       const lh = parseFloat(cs.lineHeight) || 18
       const pad = parseFloat(cs.paddingTop) + parseFloat(cs.paddingBottom)
-      return JSON.stringify({ text: el.textContent.trim(), width: Math.round(r.width), height: Math.round(r.height), lines: Math.max(1, Math.round((r.height - pad) / lh)), left: Math.round(r.left), right: Math.round(r.right), vw: window.innerWidth, writingMode: cs.writingMode, wordBreak: cs.wordBreak })
+      return JSON.stringify({ text: el.textContent.trim(), width: Math.round(r.width), height: Math.round(r.height), lines: Math.max(1, Math.round((r.height - pad) / lh)), left: Math.round(r.left), right: Math.round(r.right), vw: window.innerWidth, writingMode: cs.writingMode })
     })()`)
     console.log('TOOLTIP ' + tip)
     const t = tip ? JSON.parse(tip) : null
     c('tooltip-not-vertical', !!t && t.lines <= 2 && t.width >= 60, JSON.stringify(t))
     c('tooltip-inside-viewport', !!t && t.left >= 0 && t.right <= t.vw, JSON.stringify(t))
-    // 移开鼠标收起浮层
     await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: 20, y: 20, button: 'none', buttons: 0 })
     await sleep(300)
   } else {
@@ -115,12 +147,22 @@ async function main() {
 
   // 清理：硬删临时通知（不动既有行，也不调用 clearClosed）
   await ev(`(async () => { const n = window.__vt.notif(); await n.remove(${created.id}); return 'ok' })()`)
-  await sleep(400)
+  await sleep(500)
   const after = JSON.parse(await ev(SNAP))
-  const cleanedUi = await ev(`document.querySelectorAll('.ntf-item').length`)
-  console.log('ROWS(after)  ' + JSON.stringify(after) + ' items=' + cleanedUi)
+  const cleaned = JSON.parse(await ev(SHAPE))
+  const afterDom = JSON.parse(await ev(`(() => JSON.stringify({
+    hasElement: !!document.querySelector('.ntf-reveal, .ntf-strip, .ntf-item'),
+    kernelTop: Math.round(document.querySelector('[data-editor-kernel]').getBoundingClientRect().top)
+  }))()`))
+  console.log('ROWS(after)  ' + JSON.stringify(after) + ' items=' + cleaned.items + ' bandHeight=' + cleaned.bandHeight)
   c('existing-rows-untouched', JSON.stringify(after) === JSON.stringify(before), JSON.stringify({ before, after }))
   c('marker-removed', !after.some((r) => r.includes(MARK)), MARK)
+  // ④ 消失之后又回到「不占位」的空态：DOM 里连元素都没有，且正文起点回到创建前的位置
+  c(
+    'back-to-empty-state',
+    cleaned.items === 0 && cleaned.bandHeight === 0 && afterDom.hasElement === false && Math.abs(afterDom.kernelTop - emptyDom.kernelTop) <= 1,
+    `items=${cleaned.items} bandHeight=${cleaned.bandHeight} hasElement=${afterDom.hasElement} kernelTop ${emptyDom.kernelTop} → ${afterDom.kernelTop}`
+  )
 
   console.log(results.join('\n'))
   const failed = results.filter((r) => r.startsWith('FAIL')).length

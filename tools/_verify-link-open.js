@@ -240,12 +240,14 @@ async function waitEditorReady(marker, ms = 12000) {
 const RESOLVE = (target, baseDir) =>
   `(async () => JSON.stringify(await window.luminAPI.links.resolve(${JSON.stringify(target)}, ${JSON.stringify(baseDir)})))()`
 const HISTORY = `(async () => JSON.stringify(await window.luminAPI.links.history(50)))()`
-/** 通知条：位于**编辑区上方那块区域**里（不是长方形组件）—— 本轮取消卡片样式后随之改写 */
+/** 通知：位于**编辑区上方那一整幅带**里（不是浮层卡片、不是圆角盒子）—— 本轮改样式后随之改写 */
 const NTF_CARD = `(() => {
   const card = document.querySelector('.ntf-item')
   if (!card) return 'null'
   const r = card.getBoundingClientRect()
   const cs = getComputedStyle(card)
+  const strip = card.closest('.ntf-strip')
+  const scs = strip ? getComputedStyle(strip) : null
   const kernel = document.querySelector('[data-editor-kernel]')
   return JSON.stringify({
     x: Math.round(r.left + r.width / 2),
@@ -254,7 +256,8 @@ const NTF_CARD = `(() => {
     right: Math.round(r.right),
     bottom: Math.round(r.bottom),
     position: cs.position,
-    box: { border: cs.borderTopWidth, radius: cs.borderTopLeftRadius, shadow: cs.boxShadow },
+    // 组件不是盒子；面在「带」上（只有底部 1px 分界 + 顶部内高光）
+    box: { border: cs.borderTopWidth, radius: cs.borderTopLeftRadius, bg: cs.backgroundColor, bandBorderBottom: scs ? scs.borderBottomWidth : null, bandShadow: scs ? scs.boxShadow : null },
     kernelTop: kernel ? Math.round(kernel.getBoundingClientRect().top) : null,
     vw: window.innerWidth,
     vh: window.innerHeight,
@@ -539,8 +542,8 @@ async function main() {
   c('missing-target-shows-notification', !!cardState, String(cardD))
   c(
     'notice-shown-above-editor',
-    // 语义：通知是**编辑区上方那块区域里的一块、排在内核之前**（static，不是角落浮层），
-    // 整条在视口内、且没有盒子（本轮取消了长方形样式）。
+    // 语义：通知是**编辑区上方那一整幅带里的一块、排在内核之前**（static，不是角落浮层），
+    // 整条在视口内；组件本身没有盒子（面在带上：底部 1px 分界 + 顶部内高光）。
     !!cardState &&
       cardState.position === 'static' &&
       cardState.top >= 0 &&
@@ -549,7 +552,9 @@ async function main() {
       cardState.bottom <= cardState.kernelTop + 1 &&
       cardState.box.border === '0px' &&
       cardState.box.radius === '0px' &&
-      cardState.box.shadow === 'none',
+      cardState.box.bg === 'rgba(0, 0, 0, 0)' &&
+      cardState.box.bandBorderBottom === '1px' &&
+      /inset/.test(cardState.box.bandShadow || ''),
     JSON.stringify(
       cardState && {
         top: cardState.top,

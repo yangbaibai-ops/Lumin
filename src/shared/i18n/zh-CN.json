@@ -400,12 +400,6 @@
     "pasteFailed": "无法读取剪贴板，请用 Ctrl+V 粘贴"
   },
   "notifications": {
-    "level": {
-      "info": "通知",
-      "success": "已完成",
-      "warning": "告警",
-      "error": "报错"
-    },
     "prev": "上一条通知",
     "next": "下一条通知",
     "close": "关闭此通知",

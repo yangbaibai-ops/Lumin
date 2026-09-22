@@ -1,7 +1,7 @@
 // 验收：全局通知中心
 // A. 数据层：SQLite CRUD（增/查/改/合并/软关闭/全关/硬删/清理）+ 跨渲染层重载持久化
-// B. 界面层：单条通知、**不是长方形组件**（无边框/圆角/阴影/毛玻璃/底色）、铺满可读栏宽、
-//    在编辑区上方、无左侧色条、级别图标+文字、标题/详情、X、不自动消失、
+// B. 界面层：单条通知、**组件本身不是盒子**（面在编辑区上方一整幅「带」上）、
+//    在编辑区上方、无级别图标与级别名、标题/详情、X、不自动消失、
 //    ‹ n/m › 切换（默认最新）、全部关闭、多语言、动效
 const CDP = 'http://127.0.0.1:9222/json'
 let ws, id = 0
@@ -33,50 +33,45 @@ const CARD = `(() => {
   if (!item) return JSON.stringify({ cards: 0 })
   const r = item.getBoundingClientRect()
   const cs = getComputedStyle(item)
-  const strip = item.parentElement
+  const strip = item.closest('.ntf-strip')
+  const reveal = item.closest('.ntf-reveal')
+  const scs = strip ? getComputedStyle(strip) : null
   const kernel = document.querySelector('[data-editor-kernel]')
-  const icon = item.querySelector('span svg')
+  const icons = Array.from(item.querySelectorAll('svg'))
   const title = item.querySelector('p')?.textContent?.trim() ?? ''
   const meta = item.querySelector('[data-ntf-meta]')
   const count = item.querySelector('[data-ntf-count]')?.textContent?.trim() ?? ''
-  const navBtns = Array.from(meta?.querySelectorAll('button') ?? []).map((b) => b.getAttribute('aria-label') || b.textContent.trim())
+  const metaBtns = Array.from(meta?.querySelectorAll('button') ?? [])
+  const navBtns = metaBtns.map((b) => b.getAttribute('aria-label') || b.textContent.trim())
+  // 关闭键永远是信息条里最后一个按钮（它的可访问名会随语言变，不能按中文文案去找）
+  const closeBtnEl = metaBtns.length ? metaBtns[metaBtns.length - 1] : null
   return JSON.stringify({
     cards: items.length,
     width: Math.round(r.width),
     height: Math.round(r.height),
     top: Math.round(r.top),
     bottom: Math.round(r.bottom),
-    // 「不是长方形组件」的判据：无边框、无圆角、无阴影、无毛玻璃、无底色
+    // 组件不是盒子：无边框 / 无圆角 / 无底色；面在「带」上（底部 1px 分界 + 顶部内高光）
     borderWidth: cs.borderTopWidth,
     radius: cs.borderTopLeftRadius,
-    shadow: cs.boxShadow,
-    blur: cs.backdropFilter,
     background: cs.backgroundColor,
+    band: scs ? { borderBottom: scs.borderBottomWidth, radius: scs.borderTopLeftRadius, shadow: scs.boxShadow } : null,
     position: cs.position,
-    stripBeforeKernel: !!(strip && strip.nextElementSibling && strip.nextElementSibling.hasAttribute('data-editor-kernel')),
+    stripBeforeKernel: !!(reveal && reveal.nextElementSibling && reveal.nextElementSibling.hasAttribute('data-editor-kernel')),
     kernelTop: kernel ? Math.round(kernel.getBoundingClientRect().top) : null,
-    padding: cs.padding,
     transition: cs.transitionDuration,
-    leftBars: item.querySelectorAll('span.absolute').length,
+    bandTransition: reveal ? getComputedStyle(reveal).transitionDuration : null,
+    iconCount: icons.length,
     title,
     body: item.querySelector('p + p, .ntf-body')?.textContent?.trim() ?? '',
     metaText: meta?.textContent?.trim() ?? '',
     count,
-    iconPaths: icon ? icon.querySelectorAll('path, circle, rect').length : 0,
-    iconD: icon ? Array.from(icon.querySelectorAll('path')).map((p) => p.getAttribute('d')).join('|') : null,
-    iconColor: icon ? getComputedStyle(icon.parentElement).color : null,
+    closeLabel: closeBtnEl ? closeBtnEl.getAttribute('aria-label') : null,
     navBtns,
     metaFits: !!meta && meta.scrollWidth <= meta.clientWidth + 1,
-    closeBtn: !!Array.from(item.querySelectorAll('button')).find((b) => (b.getAttribute('aria-label') || '').includes('关闭此通知') || (b.getAttribute('title') || '').includes('关闭此通知'))
+    closeBtn: !!closeBtnEl
   })
 })()`
-
-const LEVELS = [
-  { level: 'info', zh: '通知' },
-  { level: 'success', zh: '已完成' },
-  { level: 'warning', zh: '告警' },
-  { level: 'error', zh: '报错' }
-]
 
 async function main() {
   const targets = await (await fetch(CDP)).json()
@@ -170,39 +165,78 @@ async function main() {
   const card = JSON.parse(await ev(CARD))
   console.log('CARD ' + JSON.stringify(card))
   c('only-one-notice', card.cards === 1, 'items=' + card.cards)
-  // 本轮口径：**通知不再是一个长方形组件**（无边框/圆角/阴影/毛玻璃/底色），
-  // 内容直接展示在编辑区上方那块区域里；宽度不再是写死的 384，而是铺满可读栏宽。
+  // 本轮口径：**组件本身不是盒子**（无边框/圆角/底色）—— 面在「带」上，
+  // 而带是编辑区上方一整幅（只有底部 1px 分界 + 顶部内高光），宽度不再写死 384。
   c(
     'no-card-box',
-    card.borderWidth === '0px' && card.radius === '0px' && card.shadow === 'none' && card.blur === 'none' && card.background === 'rgba(0, 0, 0, 0)',
-    JSON.stringify({ border: card.borderWidth, radius: card.radius, shadow: card.shadow, blur: card.blur, bg: card.background })
+    card.borderWidth === '0px' && card.radius === '0px' && card.background === 'rgba(0, 0, 0, 0)',
+    JSON.stringify({ border: card.borderWidth, radius: card.radius, bg: card.background })
+  )
+  c(
+    'band-shape',
+    !!card.band && card.band.borderBottom === '1px' && card.band.radius === '0px' && /inset/.test(card.band.shadow),
+    JSON.stringify(card.band)
   )
   c('uses-horizontal-room', card.width >= 480, `w=${card.width}`)
   c('shown-above-editor-kernel', card.position === 'static' && card.stripBeforeKernel === true && card.bottom <= card.kernelTop + 1, JSON.stringify({ position: card.position, stripBeforeKernel: card.stripBeforeKernel, bottom: card.bottom, kernelTop: card.kernelTop }))
   c('meta-fits', card.metaFits === true, JSON.stringify({ metaFits: card.metaFits, meta: card.metaText }))
-  c('no-left-color-bar', card.leftBars === 0, 'leftBars=' + card.leftBars)
   c('has-title-and-body', card.title === '报错标题三' && card.body === '第三条通知的详细内容', JSON.stringify({ t: card.title, b: card.body }))
   c('default-shows-newest', card.title === '报错标题三' && card.count === '1/3', JSON.stringify({ t: card.title, count: card.count }))
-  c('level-label-from-i18n', card.metaText.includes('报错'), card.metaText)
-  c('has-close-button', card.closeBtn === true, JSON.stringify(card.navBtns))
+  // 用户口径：级别图标与级别名都取消 —— 右侧信息条里只剩时间与操作按钮，
+  // 且切换三条通知时**看不出级别差异**（同一条带子、同一套图标）。
+  const levelWord = /通知|已完成|告警|报错|Notice|Warning|Error|Done/
+  c(
+    'no-level-icon-or-label',
+    card.iconCount === 3 && /^\d{1,2}:\d{2}/.test(card.metaText) && !levelWord.test(card.metaText),
+    `icons=${card.iconCount}（只有步进 2 + 关闭 1）meta=${card.metaText}`
+  )
+  c('has-close-button', card.closeBtn === true && card.closeLabel === '关闭此通知', JSON.stringify({ closeBtn: card.closeBtn, closeLabel: card.closeLabel }))
   c('has-stepper-and-close-all', card.navBtns.length >= 3, JSON.stringify(card.navBtns))
-  c('animated-notice', parseFloat(card.transition) > 0, `transition=${card.transition}`)
+  // 动效挂在整条带上（`.ntf-reveal`），且过渡只在进出场类上声明 —— 所以按**规则声明**判定
+  const bandAnim = JSON.parse(
+    await ev(`(() => {
+      const all = []
+      const collect = (sheet) => {
+        let rules = []
+        try { rules = Array.from(sheet.cssRules || []) } catch { return }
+        for (const r of rules) {
+          if (r.styleSheet) collect(r.styleSheet)
+          else if (r.selectorText) all.push(r)
+        }
+      }
+      for (const s of Array.from(document.styleSheets)) collect(s)
+      const norm = (s) => String(s).replace(/\\s+/g, '')
+      const hit = all.find((r) => norm(r.selectorText).includes('.ntf-reveal-enter-active'))
+      return JSON.stringify({
+        dur: hit ? hit.style.getPropertyValue('transition-duration') : null,
+        prop: hit ? hit.style.getPropertyValue('transition-property') : null,
+        rows: hit ? hit.style.getPropertyValue('grid-template-rows') : null
+      })
+    })()`)
+  )
+  c(
+    'animated-notice',
+    parseFloat(bandAnim.dur) > 0 && /grid-template-rows/.test(bandAnim.prop || ''),
+    `duration=${bandAnim.dur} property=${bandAnim.prop}`
+  )
 
-  // 级别图标各不相同（依次切换三条通知）
-  const iconFingerprints = []
+  // 依次切换三条通知：标题随步进变化、且**不再有级别视觉差异**（同一条带子、同一套图标）
+  const switcher = []
   for (let i = 0; i < 3; i++) {
     const snap = JSON.parse(await ev(CARD))
-    iconFingerprints.push({ title: snap.title, iconD: snap.iconD, color: snap.iconColor, label: LEVELS.find((l) => snap.metaText.includes(l.zh))?.level ?? null })
+    switcher.push({ title: snap.title, iconCount: snap.iconCount, meta: snap.metaText })
     await clickByLabel('下一条通知')
     await sleep(450)
   }
   // 切了 3 次回到起点（循环）
   const backToStart = JSON.parse(await ev(CARD))
-  console.log('ICONS ' + JSON.stringify(iconFingerprints) + ' -> ' + backToStart.title)
-  const uniqueIcons = new Set(iconFingerprints.map((f) => String(f.iconD)))
-  const uniqueColors = new Set(iconFingerprints.map((f) => String(f.color)))
-  c('level-icons-distinct', uniqueIcons.size === 3, iconFingerprints.map((f) => f.label + ':' + String(f.iconD).slice(0, 24)).join(' || '))
-  c('level-colors-distinct', uniqueColors.size === 3, JSON.stringify([...uniqueColors]))
+  console.log('SWITCH ' + JSON.stringify(switcher) + ' -> ' + backToStart.title)
+  c('titles-rotate-with-stepper', new Set(switcher.map((s) => s.title)).size === 3, JSON.stringify(switcher.map((s) => s.title)))
+  c(
+    'no-level-visual-difference',
+    switcher.every((s) => s.iconCount === 3) && switcher.every((s) => /^\d{1,2}:\d{2}/.test(s.meta) && !levelWord.test(s.meta)),
+    JSON.stringify(switcher.map((s) => ({ t: s.title, icons: s.iconCount, meta: s.meta })))
+  )
   c('stepper-wraps-around', backToStart.title === '报错标题三', backToStart.title)
 
   // 切换顺序：› 显示更旧的一条
@@ -229,11 +263,16 @@ async function main() {
   c('close-button-works', closedFirst === true && afterClose.cards === 1 && openInDb === 2, JSON.stringify({ afterClose: afterClose.title, openInDb }))
   c('counter-updates', afterClose.count === '1/2', JSON.stringify(afterClose.count))
 
-  // 多语言：切到英文看级别文案
+  // 多语言：切到英文后右侧信息条上的可访问名（关闭键）随之变化
+  // （级别名已按用户口径从界面上取消，所以这里改测关闭键的 aria-label）
   await ev(`window.__vt.settings().set('language', 'en-US')`)
   await sleep(600)
   const en = JSON.parse(await ev(CARD))
-  c('i18n-en', en.metaText.includes('Warning') || en.metaText.includes('Notice'), en.metaText)
+  c(
+    'i18n-en',
+    !!en.closeLabel && en.closeLabel !== '关闭此通知' && !/[\u4e00-\u9fff]/.test(en.closeLabel),
+    `closeLabel=${en.closeLabel}（中文时为 ${card.closeLabel}）`
+  )
   await ev(`window.__vt.settings().set('language', 'zh-CN')`)
   await sleep(600)
 
@@ -267,7 +306,7 @@ async function main() {
   const legacy = JSON.parse(await ev(CARD))
   const legacyDb = await ev(`(async () => (await window.luminAPI.notifications.list()).length)()`)
   console.log('LEGACY-TOAST ' + JSON.stringify(legacy) + ' dbOpen=' + legacyDb)
-  c('legacy-toast-routes-to-center', legacy.cards === 1 && legacy.title === '已保存' && legacy.metaText.includes('已完成'), JSON.stringify({ t: legacy.title, meta: legacy.metaText }))
+  c('legacy-toast-routes-to-center', legacy.cards === 1 && legacy.title === '已保存', JSON.stringify({ t: legacy.title, meta: legacy.metaText }))
   c('legacy-toast-merges-repeat', legacyDb === 1, 'dbOpen=' + legacyDb)
 
   // 复原：把测试期间的通知全部关闭并清掉历史行

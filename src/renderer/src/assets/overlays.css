@@ -306,19 +306,94 @@ li.md-reveal {
 /* 图片：规则在文件上部（`.md-preview img` 那一段）已经有完整一份，
    这里原先重复了一遍、且因为位置更靠后会覆盖上面的行内排版 —— 删掉重复项 */
 
-/* ── 全局通知中心（单条：级别图标 + 标题 + 详情 + 切换/关闭）──
-   注意：**通知条不是一个长方形组件**（用户口径：像 Typora 一样，直接把内容展示在
-   编辑区上方那块区域里）。所以这里没有背景、边框、圆角、阴影、毛玻璃 ——
-   `.ntf-item` 只剩排版与动效，视觉上就是外壳底色上的一行通知。 */
+/* ── 全局通知带（编辑区上方一整幅：标题 / 说明 / 操作 + 关闭）──────────────────
+   本轮口径（用户）：① 取消级别图标与级别名，只留标题、说明、操作与关闭；② 重新设计，
+   要「有设计感」又与项目审美一致；③ **没有通知时不许占位**（不能常驻一条空带）；
+   ④ 通知带挤开正文时要带动效。
+
+   设计落点：
+   * 形态 —— **与编辑区同宽的整幅带**，不是浮层卡片、不是圆角盒子：中性淡底
+     （`--accent-soft`，与侧栏选中/草稿横幅同一族）+ 底部 1px 分界 + 顶部 1px 内高光。
+     强调只靠**明度差**，不用色相（主题文件头就写着「副色用中性灰」）。
+   * 节奏 —— 左右内缩 40px，与写作区正文列（`px-10`）对齐；标题 13.5/500、说明 12.5/1.7，
+     时间是等宽数字；右侧信息条用 1px 竖线分隔成「时间 | 步进 | 关闭」三簇。
+   * 动效 —— 进场/离场把**高度（grid-template-rows 0fr↔1fr）、透明度、位移**一起动：
+     正文是被这条带子「推」下去的，而不是被瞬间顶下去（没有盒子高度也想动就只能这样）。 */
+.ntf-reveal {
+  display: grid;
+  grid-template-rows: 1fr;
+  flex: none;
+}
+.ntf-strip {
+  /* 0fr 时靠这两行把内容裁干净：否则内容会溢出到 0 高度之外 */
+  min-height: 0;
+  overflow: hidden;
+  background: var(--accent-soft);
+  border-bottom: 1px solid var(--edge);
+  box-shadow: inset 0 1px 0 0 color-mix(in srgb, var(--elevate) 55%, transparent);
+}
+/* 内衬：左右 40px = 写作区正文列的内缩，于是通知的标题与正文首字上下对齐 */
 .ntf-item {
-  /* 只在出现/消失时动，避免与内容切换动效互相干扰 */
-  transition:
-    opacity 0.22s ease,
-    transform 0.22s cubic-bezier(0.22, 1, 0.36, 1);
+  padding: 10px 40px 12px;
+}
+.ntf-title {
+  font-size: 13.5px;
+  font-weight: 500;
+  line-height: 1.5;
+  color: var(--ink);
 }
 .ntf-body {
-  /* 长详情只在这块区域内滚动，不把编辑区一路往下推 */
+  /* 长详情在这块区域内就地滚动（不把编辑区一路往下推），并限一个可读行宽 */
+  margin-top: 3px;
+  max-width: 720px;
+  max-height: 46vh;
+  overflow-y: auto;
+  font-size: 12.5px;
+  line-height: 1.7;
+  color: var(--ink-2);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
   scrollbar-width: thin;
+}
+.ntf-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+}
+/* 右侧信息条：时间 | 步进 | 关闭，簇之间用 1px 竖线分隔 */
+.ntf-meta {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 4px;
+  /* 与标题基线对齐：标题行高 1.5×13.5 ≈ 20px，图标按钮 26px ⇒ 上移 3px */
+  margin-top: -3px;
+}
+.ntf-time,
+.ntf-count {
+  font-size: 11.5px;
+  color: var(--ink-3);
+}
+.ntf-sep {
+  width: 1px;
+  height: 13px;
+  margin: 0 5px;
+  background: var(--edge);
+}
+.ntf-reveal-enter-active,
+.ntf-reveal-leave-active {
+  transition:
+    grid-template-rows 0.26s cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 0.2s ease,
+    transform 0.26s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.ntf-reveal-enter-from,
+.ntf-reveal-leave-to {
+  grid-template-rows: 0fr;
+  opacity: 0;
+  transform: translateY(-8px);
 }
 /* 可交互通知的操作按钮：主/次/危险三档，配色全部取主题令牌（三套主题自动适配） */
 .ntf-action {
@@ -383,6 +458,12 @@ li.md-reveal {
     color 0.15s ease,
     transform 0.12s ease;
 }
+/* 步进用的紧凑档（信息条里与时间同高） */
+.ntf-icon-btn--sm {
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+}
 .ntf-icon-btn:hover {
   background: var(--panel-2);
   color: var(--ink);
@@ -392,8 +473,8 @@ li.md-reveal {
 }
 .ntf-text-btn {
   flex: none;
-  border-radius: 8px;
-  padding: 3px 8px;
+  border-radius: 6px;
+  padding: 3px 7px;
   font-size: 11.5px;
   color: var(--ink-3);
   white-space: nowrap;
@@ -406,20 +487,7 @@ li.md-reveal {
   background: color-mix(in srgb, var(--danger) 12%, transparent);
   color: var(--danger);
 }
-/* 卡片整体：**自上而下**淡入（通知自本轮起出现在编辑区上方，方向跟着位置走；
-   原来是右下角固定条，所以是自下而上） */
-.ntf-enter-active,
-.ntf-leave-active {
-  transition:
-    opacity 0.22s ease,
-    transform 0.22s cubic-bezier(0.22, 1, 0.36, 1);
-}
-.ntf-enter-from,
-.ntf-leave-to {
-  opacity: 0;
-  transform: translateY(-10px) scale(0.98);
-}
-/* 内容切换：上一条自左、下一条自右（配合底部 ‹ › 的语义） */
+/* 内容切换：上一条自左、下一条自右（与 ‹ › 的语义一致） */
 .ntf-prev-enter-active,
 .ntf-next-enter-active,
 .ntf-prev-leave-active,

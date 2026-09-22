@@ -99,7 +99,10 @@
 | **合计** | **59** | |
 
 **说明**
-- `notifications.level.info/success/warning/error` 曾疑似死键，经复核为**动态拼接使用**（`NotificationCenter.vue:142` 的 ``t(`notifications.level.${active.level}`)``），**不计入死键**。
+- ~~`notifications.level.info/success/warning/error` 曾疑似死键，经复核为**动态拼接使用**（`NotificationCenter.vue:142` 的 ``t(`notifications.level.${active.level}`)``），**不计入死键**。~~
+  **后续更新（通知条改版）**：用户口径是「取消通知的图标与级别提示」，级别名不再出现在界面上，
+  这 4 个键随之**真正成为死键** —— 已从三份语言包里一并删除（`NotificationLevel` 类型与
+  SQLite 里的 `level` 列保持不变，数据层仍按级别合并/隔离）。本节表格是当时的快照，未回填。
 - 这 59 条不是「翻译资源的浪费」这么简单：其中绝大多数**正好对应界面上写死的中文**（见第 3 节 S1/S2/S3）。即「词条已备好，代码没用」。
 
 ---
@@ -184,7 +187,7 @@
 | 占位符不一致 | 无（24 个 key 三语完全一致） |
 | key 大小写/拼写不一致 | 无 |
 | 中文漏译进 en/ru | 无（en/ru 无任何 CJK 字符） |
-| `notifications.level.*` 疑似死键 | **误报**，`NotificationCenter.vue:142` 动态拼接使用 |
+| `notifications.level.*` 疑似死键 | 当时是**误报**（`NotificationCenter.vue:142` 动态拼接使用）；**通知条改版后级别名不再上界面，已删除这 4 个键**（见 §1 说明） |
 | `historyLimitPerFile` 0/负数 | **有兜底**，`database.ts:661` 的 `isFinite && >0` 判空后回落 `shared/history.ts:73` 默认 30 |
 | `historyMaxAgeDays` 0/负数 | **有兜底**，同上（`:662` → `history.ts:74` 默认 30 天） |
 | `defaultEol` 非法值 | **有兜底**，`lib/docText.ts:17` 的 `isEol()` 校验后回落 `'lf'` |
