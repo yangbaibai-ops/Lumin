@@ -241,18 +241,33 @@
 
 ### 3.1 三类清单
 
-**A. 在默认矩阵里（`run-suites.js` `DEFAULT_SUITES`，21 个）** —— 不需要 dev server，逐个起全新隔离实例：
+**A. 在默认矩阵里（`run-suites.js` `DEFAULT_SUITES`，32 条）** —— 不需要 dev server，逐个起全新隔离实例：
 
-`_verify-session-last-closed`（自管实例）、`_verify-md-fidelity`、`_verify-draft-banner`、`_verify-new-document`、`_verify-session`、`_verify-single-instance`（自管实例）、`_verify-local-media`、`_verify-encoding`、`_verify-wave3`、`_regress-layout`、`_regress-split-live`、`_regress-cb`、`_regress-divider`、`_regress-fileswitch`、`_regress-source-roundtrip`、`_repro-rapidenter`、`_verify-find-replace`、`_verify-math`、`_verify-surfaces`、`_verify-surface-fuzz`、`_verify-surface-stress`。
+`_verify-session-last-closed`（自管实例）、`_verify-md-fidelity`、`_verify-draft-banner`、`_verify-new-document`、`_verify-session`、`_verify-single-instance`（自管实例）、`_verify-local-media`、`_verify-encoding`、`_verify-wave3`、`_regress-layout`、`_regress-split-live`、`_regress-cb`、`_regress-divider`、`_regress-fileswitch`、`_regress-source-roundtrip`、`_repro-rapidenter`、`_verify-find-replace`、`_verify-inline-formats`、`_verify-math`、`_verify-remote-image`、`_verify-a11y`、`_verify-editor-menu`、`_verify-i18n`、`_verify-surfaces`、`_verify-surface-fuzz`、`_verify-surface-stress`、`_verify-toc`、`_verify-notifications`、`_verify-toolbar-settings`、`_verify-cb-languages`、`_verify-mermaid-gate`、`_verify-neutral-accent`。
 
-**B. 只在 `--all` 里（65 个 `_verify-*`）** —— 其中 **4 个必须 dev server**（`import('/src/…')`），`--all` 下才会真跑，否则标 SKIP：
+> **本轮（清单 §2.I）从 `--all` 提上来的 6 条**：`_verify-toc`（由两条 0 断言探针合并升级）、
+> `_verify-notifications`(32)、`_verify-toolbar-settings`(37)、`_verify-cb-languages`(4)、
+> `_verify-mermaid-gate`(4)、`_verify-neutral-accent`(10)。实测整轮 **32/32 PASS**（另有 4 条断言
+> 按环境如实 SKIP —— SKIP 不算失败，见下）。
+
+**B. 只在 `--all` 里（42 个 `_verify-*` + 1 个 `MANUAL`）** —— 其中 **4 个必须 dev server**（`import('/src/…')`），`--all` 下才会真跑，否则标 SKIP：
 
 `_verify-keymap`、`_verify-open-file-dedup`、`_verify-open-file-routing`、`_verify-save-as-workspace`。
 
-其余 61 个 `_verify-*` 属于「有真断言但没进默认矩阵」：`_verify-3tasks`、`_verify-alt-menu`、`_verify-backspace-enter-cb`、`_verify-bars-no-filename`、`_verify-blockquote-style`、`_verify-bs-md`、`_verify-cb-button-line-numbers`、`_verify-cb-delete-fix`、`_verify-cb-line-numbers`、`_verify-cb-no-active-line`、`_verify-cb-typing`、`_verify-cb-typing2`、`_verify-cb-typing3`、`_verify-editor-menu`、`_verify-editor-menu-extras`、`_verify-export-fix`、`_verify-export-fix2`、`_verify-filelist-view`、`_verify-i18n`、`_verify-link-open`、`_verify-link-paste`、`_verify-links`、`_verify-menu-export-submenu`、`_verify-mermaid-blur`、`_verify-mermaid-cross-block`、`_verify-new-window-clean`、`_verify-notifications`、`_verify-notify-disk`、`_verify-notify-multiwindow`、`_verify-notify-restart`、`_verify-notify-style`、`_verify-packaging`、`_verify-rename`、`_verify-rename-fix`、`_verify-segmented-control`、`_verify-sidebar-handle`、`_verify-sidebar-handle-style`、`_verify-sidebar-tree-style`、`_verify-table-width`、`_verify-taskbar-jumplist`、`_verify-theme-auto`、`_verify-toast-tip`、`_verify-toc`、`_verify-toc-load`、`_verify-toc-style-scroll`、`_verify-tooltip`、`_verify-welcome-removed`、`_verify-window-title` 等（含下述 0 断言的探针）。
+其余 42 个「有真断言但没进默认矩阵」（完整清单以 `node tools/run-suites.js --all` 为准）：
 
-> ⚠️ **`--all` 里混着一批 0 断言探针**（`_verify-3tasks`、`_verify-alt-menu`、`_verify-backspace-enter-cb`、`_verify-bs-md`、`_verify-cb-delete-fix`、`_verify-cb-typing`/`2`/`3`、`_verify-export-fix`/`2`、`_verify-i18n`、`_verify-theme-auto`、`_verify-toast-tip`、`_verify-toc`、`_verify-toc-load`）。
-> 它们只打印观察值、仅在抛异常时 `FAIL`。`run-suites.js` 用**退出码**判定，所以它们在矩阵里显示 **PASS 0/0** —— 这是**假绿**：代码坏了、只是没抛异常，矩阵照样全绿。建议在 `run-suites.js` 里把 `total === 0 && !SKIP` 标成 `PROBE`（或非零退出），别混进 PASS 计数。
+`_verify-alt-menu`、`_verify-bars-no-filename`、`_verify-blockquote-style`、`_verify-cb-button-line-numbers`、`_verify-cb-line-numbers`、`_verify-cb-no-active-line`、`_verify-drag-selection`、`_verify-editor-menu-extras`、`_verify-filelist-view`、`_verify-link-open`、`_verify-link-paste`、`_verify-links`、`_verify-marker-hold`、`_verify-menu-export-submenu`、`_verify-mermaid-blur`、`_verify-mermaid-cross-block`、`_verify-new-window-clean`、`_verify-notify-disk`、`_verify-notify-multiwindow`、`_verify-notify-style`、`_verify-packaging`、`_verify-rename`、`_verify-rename-fix`、`_verify-round-24`、`_verify-round-perf`、`_verify-segmented-control`、`_verify-sidebar-handle`、`_verify-sidebar-handle-style`、`_verify-sidebar-tree-style`、`_verify-table-width`、`_verify-taskbar-jumplist`、`_verify-theme-auto`、`_verify-toast-tip`、`_verify-toc-style-scroll`、`_verify-tooltip`、`_verify-welcome-removed`、`_verify-window-title` 等。
+
+另外 `_verify-notify-restart` 是**两阶段**套件（`seed` → 外部硬杀重启 → `check`），由
+`run-suites.js` 的 `MANUAL` 集排除：不带参数跑只会打印用法并退出 1，进矩阵就是每轮一个假红。
+
+> ✅ **0 断言探针已清空**（曾经的问题：`--all` 里混着一批只打印、不断言的脚本，被记成 `PASS 0/0`）。
+> 现在 `run-suites.js` 把「零断言」记成 **NOASSERT 并让整轮失败**（H1 的落地），且这批脚本已按
+> §2.I 处理完：`_verify-3tasks` / `_verify-backspace-enter-cb` / `_verify-bs-md` /
+> `_verify-cb-delete-fix` / `_verify-cb-typing{,,2,3}` **删除**（其功能已由 `_verify-editor-menu`、
+> `_verify-notifications`、`_verify-new-document`、`_verify-rename`、`_regress-cb`、
+> `_verify-inline-formats` 接管）；`_verify-toc` + `_verify-toc-load` **升级并合并**成一条
+> 7 断言的 harness 套件（TOC 在本仓库没有别的覆盖）。实测默认矩阵 `NOASSERT 0`。
 
 **C. 一次性探针 / 基准 / 截图 / 辅助类（0 断言，不该当套件）**：
 `_check-cm-drag`、`_check-heading-rule`、`_check-new-window`、`_check-table-edit`、`_check-windowstate`（读 kv）、`_set-windowstate`（写 kv）、`_exp-hidden`、`_exp-ta-hidden`、`_measure-latency`、`_shot-heading-badge`（截图）、`_btn-check`、`_time-close`、`_startup-bench`、`_trigger-export`、`_test-export-full`、`_test-mermaid`、`_test-pdf`、`_repro-backspace-after-cb`、`_repro-cb-delete`、`_repro-cb-delete2`、`_repro-heading-cm`、`_repro-heading-cm2`、`_repro-paste`、`_repro-sourcemode`、`_repro-split`。
@@ -261,10 +276,9 @@
 
 | 建议 | 理由 |
 |---|---|
-| `_verify-notifications.js`(31) | 断言最多且全绿面广（通知中心整体），却只在 `--all` |
-| `_verify-editor-menu.js`(51) | 全仓断言最多的单套件（编辑器右键菜单 51 条），只在 `--all` |
-| `_verify-window-title.js`(14) | 每窗口体验的基础项；无需 dev server |
-| `_verify-menu-export-submenu.js`(15) | 导出唯一入口；无需 dev server |
+| ✅ `_verify-notifications.js`(32)、`_verify-toolbar-settings.js`(37)、`_verify-toc.js`(7)、`_verify-cb-languages.js`(4)、`_verify-mermaid-gate.js`(4)、`_verify-neutral-accent.js`(10) | **本轮已纳入默认矩阵**（§2.I），整轮 32/32 |
+| `_verify-window-title.js`(14) | 每窗口体验的基础项；无需 dev server（仍未纳入） |
+| `_verify-menu-export-submenu.js`(15) | 导出唯一入口；无需 dev server（仍未纳入） |
 | `_verify-taskbar-jumplist.js`(39) / `_verify-packaging.js`(30) | 系统集成；但两者都会起额外进程/构建，建议放「显式点名」档（`--suite=`）而不是默认 |
 | `_verify-rename.js`(13) + `_verify-rename-fix.js`(9) | 数据破坏面，且 `_verify-rename-fix` 守的是用户真实踩过的 UNIQUE 冲突 |
 | `_verify-links.js`(12) + `_verify-link-paste.js`(3) | 编辑核心；无需 dev server |
@@ -284,7 +298,8 @@
 
 | 问题 | 证据 | 影响 |
 |---|---|---|
-| 假绿：0 断言探针混进 `--all` 并计为 PASS | 见 §3.1 的 ⚠️ | 矩阵数字不可信 |
+| 假绿：0 断言探针混进 `--all` 并计为 PASS | 见 §3.1 的 ✅ | **已修**：`run-suites.js` 把零断言记 `NOASSERT` 并让整轮失败；那批探针已删/升级（见 §3.5） |
+| SKIP 被当成 FAIL | `--- N/M PASS` 的 M 含 SKIP，老写法 `fail = M - N` 把如实 SKIP 的断言判红（实测 `_verify-md-fidelity` 101/102、`_verify-round-24` 15/16、`_verify-theme-auto` 每轮报红） | **已修**（清单 §1.C.1）：优先认 `TOTAL … FAIL … SKIP …`，退路用 SKIP 行数扣减；状态只看退出码 + FAIL 行 |
 | 断言重叠/双份真相 | `_verify-sidebar-handle.js`(19) 与 `_verify-sidebar-handle-style.js`(19) 覆盖同一把手（阈值/迟滞/外观各写一遍）；`_verify-cb-line-numbers.js`(13) 与 `_verify-cb-button-line-numbers.js`(26) 都验「行号开关 → gutter 变化 → 落库」 | 维护成本翻倍，改样式要同时改两处 |
 | 老套件各抄一份 CDP 骨架 | `_check-*`/`_exp-*`/`_repro-*`/`_verify-3tasks` 等 ~25 个文件里都有各自的 `const CDP = 'http://127.0.0.1:9222/json'` + `attach` + 按 `Symbol(pinia)` 取 store（生产构建下 symbol 描述会被压掉 → 只在 dev 页面能跑） | 与 `lib/harness.js` 头注释里写明的踩坑一模一样，属于「新套件已收口、老套件仍在漂移」 |
 | 自管实例的套件排在最前是硬约定 | `run-suites.js` 注释：「自管实例的套件必须排在最前面」 | 往 `DEFAULT_SUITES` 前面插新套件会静默打乱（`_verify-session-last-closed` / `_verify-single-instance` 需要 9222 空闲） |
@@ -306,7 +321,12 @@
 | `_verify-3tasks`、`_verify-alt-menu`、`_verify-bs-md`、`_verify-cb-delete-fix`、`_verify-toc`、`_verify-toc-load`、`_verify-i18n`、`_verify-theme-auto`、`_verify-toast-tip` | 0 断言探针。**但 `_verify-toc`/`_verify-toc-load`/`_verify-i18n`/`_verify-theme-auto` 承载的功能在别处没有覆盖** —— 先按 §2 第 8/11/14 条升级成 harness 套件，再归档原始探针 |
 | `_check-cm-drag`、`_check-heading-rule`、`_check-table-edit` | 「确认是环境抖动而非真实回归」的最小复测脚本，环境（Chromium 节流/焦点）问题已由 harness 的 `transitionTo()` 式轮询解决 |
 
-**不建议归档**：`_regress-*` 6 个（都在默认矩阵、都有断言）、`_repro-rapidenter`（在默认矩阵、守着「丢字」类数据损坏）、`_verify-session-last-closed` / `_verify-single-instance`（自管实例，矩阵前两位）。
+- ✅ **已完成（清单 §2.I，2026-09 收口）**：
+  * 0 断言脚本：`_verify-3tasks`、`_verify-backspace-enter-cb`、`_verify-bs-md`、`_verify-cb-delete-fix`、`_verify-cb-typing{,,2,3}` **已删除**（功能由 `_verify-editor-menu` / `_verify-notifications` / `_verify-new-document` / `_verify-rename` / `_regress-cb` / `_verify-inline-formats` 接管）；
+    `_verify-toc` + `_verify-toc-load` **升级并合并**成一条 7 断言的 harness 套件并纳入默认矩阵。
+  * 一次性探针：14 个 `_probe-*` 逐条核对，删掉 8 个（`_probe-cjk-flank` / `_probe-fixture` / `_probe-four` / `_probe-paste` / `_probe-taskA` / `_probe-taskB` / `_probe-fences-hot{,2}`），
+    保留 6 个**常驻测量工具**（`_probe-startup` / `_probe-perf` / `_probe-fences-total` / `_probe-modeswitch` / `_probe-cpu-top` / `_probe-md-baseline`）并在 `tools/README.md` 里列成表。
+- 仍未归档（保留建议）：`_repro-*` 里的一次性复现、`_check-*`/`_exp-*` 手工调试脚本、导出/打包类一次性脚本 —— 见下表。
 
 ---
 

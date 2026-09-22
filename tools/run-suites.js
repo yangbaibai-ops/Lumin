@@ -75,7 +75,14 @@ const DEFAULT_SUITES = [
   '_verify-i18n.js', // 切换语言后顶部菜单文字随之变化（三语）
   '_verify-surfaces.js', // L2 双面端到端矩阵：切面无副作用 / 位置语义 / 状态语义 / 渲染结构
   '_verify-surface-fuzz.js', // L3 生成式语料往返（可复现种子 + 失败最小化）
-  '_verify-surface-stress.js' // L4 极端/边界/压力（含 1MB 与 2000 代码块的耗时基线）
+  '_verify-surface-stress.js', // L4 极端/边界/压力（含 1MB 与 2000 代码块的耗时基线）
+  // ── 清单 §2.I 收口时「从 --all 提进默认矩阵」的一批（有价值且单实例可跑完）──
+  '_verify-toc.js', // 目录 [TOC]：插入 / 渲染 / 点击跳转 / 往返 / 重载还原（原两条 0 断言探针合并升级）
+  '_verify-notifications.js', // 通知中心整体（CRUD / 顶部通知带 / 步进 / 多语言 / 重载存活 / 兼容层）
+  '_verify-toolbar-settings.js', // 快捷工具栏：空白区右键菜单 + 显隐与排序设置
+  '_verify-cb-languages.js', // 代码块语言高亮矩阵（15 种 + 别名，清单外退化为纯文本）
+  '_verify-mermaid-gate.js', // mermaid 视口门 + 首屏不预加载（清单 §2.G）
+  '_verify-neutral-accent.js' // 副色必须是低饱和灰（通道极差断言）
 ]
 
 /** 自己管理 Electron 实例的套件（运行器不替它们起实例） */

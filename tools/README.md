@@ -56,7 +56,21 @@ main().then((c) => process.exit(c)).catch(fatal)
 ## 现状与迁移进度
 
 - 默认矩阵：见 `run-suites.js` 的 `DEFAULT_SUITES`（不 import `/src/...`、单实例能跑完、覆盖核心回归面）。
-- 全量：`npm run test:suites:all`（74 个 `_verify-*` + 6 个 `_regress-*` + 9 个 `_repro-*`）。
+- 全量：`npm run test:suites:all`（68 个 `_verify-*` + 6 个 `_regress-*` + 9 个 `_repro-*`）。
 - 迁移进度：**改到谁迁谁**。迁移过的脚本会在文件头注明"已用 harness"；剩下的老脚本仍能跑，
   但新写的必须用 harness（这条由 review 把关，不加自动门禁 —— 自动检查"是否 import harness"
   会把一批历史脚本变成噪音）。
+
+## 常驻的测量/分析工具（**不是**套件，别删）
+
+这些 `_probe-*` 刻意保留：它们是「改之前先量一遍」的尺子，清单里的性能项（O1/O2/O3、冷启动）
+都靠它们做前后对照。清单 §2.I 收口时逐条核对过，其余一次性探针已删除。
+
+| 工具 | 用途 | 跑法 |
+| --- | --- | --- |
+| `_probe-startup.js` | 冷启动 / 内存基线：页面可见、首屏、编辑器就绪、RSS（三连跑取中位） | `node tools/_probe-startup.js` |
+| `_probe-perf.js` | 打字每键耗时量化 + 热点定位 | `node tools/_probe-perf.js`（需隔离实例） |
+| `_probe-fences-total.js` | 2000 围栏文档「装载 + 切面」全程 CPU 归因 | `node tools/_probe-fences-total.js` |
+| `_probe-modeswitch.js` | 围栏文档「切到源码」耗时（性能回退的现场尺子） | `node tools/_probe-modeswitch.js` |
+| `_probe-cpu-top.js` | 读 `.cpuprofile`，按 functionName + 位置聚合 self time | `node tools/_probe-cpu-top.js <profile>` |
+| `_probe-md-baseline.js` | markdown-it 对照基准（CJK flanking 夹具的 strong 数量与内容） | `node tools/_probe-md-baseline.js` |

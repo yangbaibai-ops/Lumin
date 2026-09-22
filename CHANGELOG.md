@@ -77,6 +77,58 @@
 - **工程化**：~~`tools/lib/harness.js` + `tools/run-suites.js`~~ → **本轮已完成**；
   剩余：`files` store 拆分；`store` 里那份为绕循环导入而复制的 `confirmIfDirty` 收敛到 `services/dialog`。
 
+## [Unreleased · I tools/ 收口：0 断言脚本清空 + 常驻探针定编 + 默认矩阵 26→32]
+
+> 来源：桌面《Lumin-待优化清单-2026-09-22.md》§2.I。原状：`tools/` 178 文件 / 31,896 行
+> （比 `src/` 还大），其中 14 个 `_probe-*` 里不少是一次性调试脚本，`--all` 里还混着 0 断言探针。
+
+### Removed（15 个文件）
+
+- **0 断言脚本 7 个**（功能在别处有覆盖，逐条核对过）：`_verify-3tasks`（老 UI 的菜单/toast/重命名 →
+  `_verify-editor-menu` / `_verify-notifications` / `_verify-new-document` / `_verify-rename`）、
+  `_verify-backspace-enter-cb`、`_verify-bs-md`、`_verify-cb-delete-fix`、`_verify-cb-typing`、
+  `_verify-cb-typing2`、`_verify-cb-typing3`（代码块打字/回车/退格 → `_regress-cb` +
+  `_verify-inline-formats` + `_verify-surfaces`）。后三个在矩阵里本来就会崩（要求外面先摆好文档）。
+- **一次性探针 8 个**：`_probe-cjk-flank`、`_probe-fixture`、`_probe-four`、`_probe-paste`、
+  `_probe-taskA`、`_probe-taskB`、`_probe-fences-hot`、`_probe-fences-hot2`
+  （对应的问题都已修好并有套件守着；取证结论都留在 CHANGELOG/手册里）。
+- `_verify-toc-load`：内容并进升级后的 `_verify-toc`（见下）。
+
+### Added / Changed
+
+- **`_verify-toc.js` 从「0 断言探针」升级为 7 条断言的 harness 套件**（TOC 在本仓库没有别的覆盖，
+  所以按「先升级、再归档原始探针」办）：插入目录建节点 / 渲染三个标题链接 / 点击跳转把光标落到目标标题
+  （判据是「光标所在块是 heading 且邻近文本是该标题」，不再赌固定偏移）/ markdown 往返仍是 `[TOC]` /
+  重载 `[TOC]` 还原为目录节点 / **围栏代码里的 `[TOC]` 必须保持字面文本**（新的边界断言）。
+- **默认矩阵 26 → 32**（把有价值的旧套件从 `--all` 提上来）：`_verify-toc`(7)、
+  `_verify-notifications`(32)、`_verify-toolbar-settings`(37)、`_verify-cb-languages`(4)、
+  `_verify-mermaid-gate`(4)、`_verify-neutral-accent`(10)。
+- `tools/README.md`：把 **6 个常驻测量工具**列成表（`_probe-startup` 冷启动/RSS、`_probe-perf`
+  每键耗时、`_probe-fences-total` 2000 围栏 CPU 归因、`_probe-modeswitch` 切面耗时、
+  `_probe-cpu-top` profile 聚合、`_probe-md-baseline` markdown-it 对照基准），并写明「这些别删」。
+
+### Verification（本轮实测）
+
+| 项 | 结果 |
+| --- | --- |
+| 默认矩阵（32 条） | **32/32 PASS**（另有 4 条断言按环境如实 SKIP；`NOASSERT 0`） |
+| `_verify-toc.js` | **7/7**（新增的「围栏内 `[TOC]` 保持文本」也通过） |
+| `tools/` 体量 | 文件 145 → 128、`_verify-*` 76 → 68、`_probe-*` 14 → 6（保留的 6 个已登记为常驻工具） |
+
+## [Unreleased · J 覆盖台账同步] — 矩阵条数/新增与删除/NOASSERT 与 SKIP 口径
+
+> 来源：桌面《Lumin-待优化清单-2026-09-22.md》§2.J。台账（`docs/_audit/coverage-matrix.md`）
+> 没跟上这几轮的变化：新套件、复活/删除的套件、`NOASSERT` 与 SKIP 口径都没记。
+
+### Docs
+
+- §3.1 A/B 两段重写：默认矩阵 **32 条**（逐个点名）+ 「从 `--all` 提上来的 6 条」+ 实测 32/32；
+  `--all` 侧改为「42 个有真断言但不在默认矩阵」并注明**完整清单以 `run-suites.js --all` 为准**
+  （不再手工维护一份必然漂移的长名单）；`_verify-notify-restart` 记入 `MANUAL` 排除的理由。
+- 0 断言那段的 ⚠️ 改成 ✅：**NOASSERT 已是硬门禁**（零断言 = 整轮失败），那批探针已删/升级。
+- §3.2「建议纳入矩阵」勾掉本轮已纳入的 6 条；§3.4 新增/更新两行口径（假绿已修、SKIP 不再算失败）；
+  §3.5 增加「已完成（2026-09 收口）」小节，写清删了哪些、保留哪些、为什么。
+
 ## [Unreleased · O3 语言包收窄] — 删掉 `@codemirror/language-data`，改 15 项显式映射（构建 −0.98MB）
 
 > 来源：桌面《Lumin-待优化清单-2026-09-22.md》§1.B（自查报告 O3）。原状：`CodeBlockView.vue`
