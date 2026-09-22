@@ -26,6 +26,7 @@ import {
   type PruneOptions
 } from '../../shared/history'
 import { defaultSettings } from '../../shared/defaults'
+import { runMigrations } from './migrations'
 
 /** 惰性加载 node:sqlite 的 DatabaseSync 构造函数。
  *  electron-vite(Rollup) 会把顶层 import 的 require 提升到 bundle 顶部、先于
@@ -182,200 +183,13 @@ class LuminDatabase {
     this.db = new DatabaseSyncCtor(dbPath)
     this.db.exec('PRAGMA journal_mode = WAL')
     this.db.exec('PRAGMA synchronous = NORMAL')
-    this.migrate()
-  }
-
-  private migrate(): void {
-    this.db.exec(`
-      CREATE TABLE IF NOT EXISTS documents (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        path TEXT UNIQUE NOT NULL,
-        title TEXT NOT NULL,
-        content TEXT NOT NULL DEFAULT '',
-        created_at INTEGER NOT NULL,
-        modified_at INTEGER NOT NULL,
-        last_opened INTEGER NOT NULL,
-        word_count INTEGER DEFAULT 0,
-        tags TEXT DEFAULT '[]',
-        is_pinned INTEGER DEFAULT 0,
-        is_archived INTEGER DEFAULT 0
-      );
-      CREATE INDEX IF NOT EXISTS idx_documents_last_opened ON documents(last_opened);
-    `)
-    // 应用状态键值表：设置 / 工作区等 UI 状态持久化（JSON 值）
-    this.db.exec(`
-      CREATE TABLE IF NOT EXISTS kv (
-        key TEXT PRIMARY KEY,
-        value TEXT NOT NULL,
-        updated_at INTEGER NOT NULL
-      );
-    `)
-    // 通知中心：跨会话保留（关闭用 closed_at 软删除，便于日后做历史面板）。
-    // scope = 窗口作用域（services/windowScope）：通知属于「产生它的那个窗口」，
-    // 多窗口各自独立，不会一条提示在所有窗口同时弹出。
-    this.db.exec(`
-      CREATE TABLE IF NOT EXISTS notifications (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        scope TEXT NOT NULL DEFAULT '',
-        level TEXT NOT NULL DEFAULT 'info',
-        title TEXT NOT NULL,
-        body TEXT NOT NULL DEFAULT '',
-        merge_key TEXT NOT NULL DEFAULT '',
-        created_at INTEGER NOT NULL,
-        closed_at INTEGER
-      );
-    `)
-    // 可交互通知：卡片上的操作按钮 + 负载（JSON 文本）。
-    // 建表时已存在则走 ADD COLUMN（SQLite 不支持 IF NOT EXISTS 加列），
-    // 旧库升级后历史行取默认值（纯消息通知，actions 为空数组）。
-    const notifCols = this.db.prepare('PRAGMA table_info(notifications)').all() as unknown as {
-      name: string
-    }[]
-    const hasCol = (n: string): boolean => notifCols.some((c) => c.name === n)
-    if (!hasCol('actions')) {
-      this.db.exec("ALTER TABLE notifications ADD COLUMN actions TEXT NOT NULL DEFAULT '[]'")
-    }
-    if (!hasCol('payload')) {
-      this.db.exec("ALTER TABLE notifications ADD COLUMN payload TEXT NOT NULL DEFAULT ''")
-    }
-    if (!hasCol('scope')) {
-      this.db.exec("ALTER TABLE notifications ADD COLUMN scope TEXT NOT NULL DEFAULT ''")
-      // 旧库里的通知是「全局共享」时期的产物，无法归属到任何窗口，一次性清掉，
-      // 否则它们会在所有窗口都查不到（查询按 scope 过滤）却永久占着表空间。
-      this.db.exec("DELETE FROM notifications WHERE scope = ''")
-    }
-    // 索引必须等 scope 列确定存在后再建（旧库此时才刚 ALTER 出来）
-    this.db.exec(`
-      CREATE INDEX IF NOT EXISTS idx_notifications_scope_open
-        ON notifications(scope, closed_at, created_at DESC);
-    `)
-    // 旧索引被 (scope, closed_at, created_at) 覆盖，去掉避免写放大
-    this.db.exec('DROP INDEX IF EXISTS idx_notifications_open')
-    // ── 文档级元数据（Wave 2）：编码 / 行尾 / BOM ──────────────────────────────
-    // 以前编码活在这一进程的 current 上、再配一张 kv 表（fileEncodings），
-    // 结果是「两个窗口开同一文件各说各话、重启后还得靠 kv 兜」。现在落进 documents：
-    // 权威、可查、跟着文件走。空串 = 尚未记录（按判定链/默认值处理）。
-    const docCols = this.db.prepare('PRAGMA table_info(documents)').all() as unknown as {
-      name: string
-    }[]
-    const hasDocCol = (n: string): boolean => docCols.some((c) => c.name === n)
-    if (!hasDocCol('encoding')) {
-      this.db.exec("ALTER TABLE documents ADD COLUMN encoding TEXT NOT NULL DEFAULT ''")
-    }
-    if (!hasDocCol('eol')) {
-      this.db.exec("ALTER TABLE documents ADD COLUMN eol TEXT NOT NULL DEFAULT ''")
-    }
-    if (!hasDocCol('had_bom')) {
-      this.db.exec('ALTER TABLE documents ADD COLUMN had_bom INTEGER NOT NULL DEFAULT 0')
-    }
-    this.migrateFileEncodings()
-    // 编辑器右键菜单的动作使用记录：驱动「最近使用」分区（跨会话保留）
-    this.db.exec(`
-      CREATE TABLE IF NOT EXISTS menu_usage (
-        action_id TEXT PRIMARY KEY,
-        count INTEGER NOT NULL DEFAULT 0,
-        last_used INTEGER NOT NULL
-      );
-      CREATE INDEX IF NOT EXISTS idx_menu_usage_last_used ON menu_usage(last_used DESC);
-    `)
-    // 链接打开历史：设置面板可查看/删除/清空（跨会话保留，避免只活在 session 里）
-    this.db.exec(`
-      CREATE TABLE IF NOT EXISTS link_history (
-        target TEXT PRIMARY KEY,
-        kind TEXT NOT NULL DEFAULT 'file',
-        resolved_path TEXT,
-        action TEXT NOT NULL DEFAULT 'external',
-        created_entry INTEGER NOT NULL DEFAULT 0,
-        count INTEGER NOT NULL DEFAULT 1,
-        created_at INTEGER NOT NULL,
-        last_used INTEGER NOT NULL
-      );
-      CREATE INDEX IF NOT EXISTS idx_link_history_last_used ON link_history(last_used DESC);
-    `)
-    // 本地历史（Wave 2 数据安全）：每次写盘前把**即将被覆盖的那一版**留一份。
-    // 为什么要有：现在保存成功就清草稿，一次误保存（全选删除后 Ctrl+S）无法挽回 ——
-    // 对写作工具这是信誉问题。抽稀策略在 shared/history.ts（纯函数，有单测）。
-    this.db.exec(`
-      CREATE TABLE IF NOT EXISTS documents_history (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        path TEXT NOT NULL,
-        saved_at INTEGER NOT NULL,
-        size INTEGER NOT NULL DEFAULT 0,
-        preview TEXT NOT NULL DEFAULT '',
-        content TEXT NOT NULL,
-        encoding TEXT NOT NULL DEFAULT '',
-        eol TEXT NOT NULL DEFAULT ''
-      );
-      CREATE INDEX IF NOT EXISTS idx_history_path_saved
-        ON documents_history(path, saved_at DESC);
-    `)
-    // FTS5：trigram 分词器（对中日韩文本支持子串匹配；支持片段高亮）
-    const ftsRow = this.db
-      .prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='documents_fts'")
-      .get() as { sql: string } | undefined
-    if (ftsRow && !ftsRow.sql.includes('trigram')) {
-      this.db.exec('DROP TABLE documents_fts')
-    }
-    this.db.exec(`
-      CREATE VIRTUAL TABLE IF NOT EXISTS documents_fts USING fts5(
-        title, content,
-        tokenize = 'trigram case_sensitive 0'
-      );
-    `)
-    // 已有文档重建索引（旧表被替换 / 首次迁移时）
-    const indexed = this.db.prepare('SELECT COUNT(*) AS c FROM documents_fts').get() as unknown as {
-      c: number
-    }
-    if (indexed.c === 0) {
-      const rows = this.db.prepare('SELECT id, title, content FROM documents').all() as unknown as {
-        id: number
-        title: string
-        content: string
-      }[]
-      const del = this.db.prepare('DELETE FROM documents_fts WHERE rowid = ?')
-      const ins = this.db.prepare(
-        'INSERT INTO documents_fts (rowid, title, content) VALUES (?, ?, ?)'
-      )
-      for (const row of rows) {
-        del.run(row.id)
-        ins.run(row.id, row.title, row.content)
-      }
-    }
-  }
-
-  /**
-   * 一次性迁移：老的 kv `fileEncodings`（`{ [小写路径]: 编码 }`，插入序当 LRU）→ `documents` 表。
-   * 迁完把 kv 键清掉并打标记，避免每次启动都扫一遍；取不到 documents 行（文件还没进索引）
-   * 的条目保留在 kv 里作兜底 —— 宁可多留一点，也不要让用户手选的编码凭空丢。
-   */
-  private migrateFileEncodings(): void {
-    if (this.kvGet<boolean>('fileEncodingsMigrated', false)) return
-    const map = this.kvGet<Record<string, string> | null>('fileEncodings', null)
-    if (map && typeof map === 'object') {
-      const rows = this.db.prepare('SELECT path FROM documents').all() as unknown as {
-        path: string
-      }[]
-      const byLower = new Map(rows.map((r) => [r.path.replace(/\//g, '\\').toLowerCase(), r.path]))
-      const leftover: Record<string, string> = {}
-      let migrated = 0
-      for (const [key, enc] of Object.entries(map)) {
-        const path = byLower.get(key)
-        if (!path) {
-          leftover[key] = enc
-          continue
-        }
-        this.db
-          .prepare("UPDATE documents SET encoding = ? WHERE path = ? AND encoding = ''")
-          .run(enc, path)
-        migrated += 1
-      }
-      this.kvSet('fileEncodings', leftover)
+    // 建表 / 加列 / 索引 / 一次性数据迁移全部在 services/migrations.ts 里按**版本**跑
+    // （自查报告 S4；那边不 import electron，所以能用单测直接建临时库验）
+    const migrated = runMigrations(this.db)
+    if (migrated.ran.length) {
       // 主进程 console 输出一律 ASCII（见 tests/mainConsoleAscii.test.mjs）
-      console.log(
-        `[db] encoding metadata migration: ${migrated} rows into documents, ${Object.keys(leftover).length} rows left in kv`
-      )
+      console.log(`[db] schema migration: v${migrated.from} -> v${migrated.to}`)
     }
-    this.kvSet('fileEncodingsMigrated', true)
   }
 
   /** 文档的编码/行尾/BOM 元数据（权威来源；文档还没进索引时返回 null） */

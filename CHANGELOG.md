@@ -77,6 +77,41 @@
 - **工程化**：~~`tools/lib/harness.js` + `tools/run-suites.js`~~ → **本轮已完成**；
   剩余：`files` store 拆分；`store` 里那份为绕循环导入而复制的 `confirmIfDirty` 收敛到 `services/dialog`。
 
+## [Unreleased · S4 数据库版本化迁移] — `services/migrations.ts` + 临时库单测
+
+> 来源：桌面《Lumin-待优化清单-2026-09-22.md》§1.A（自查报告 S4）。原状：163 行顺序幂等 DDL
+> 散在 `database.ts`，末尾挂着一次性迁移 `migrateFileEncodings()` —— 能用，但**没有版本号**，
+> 无法表达「这一步只在 v2→v3 时跑」，也看不出某个库落在哪一版。
+
+### Changed
+
+- **新增 `src/main/services/migrations.ts`**（264 行）：`SCHEMA_VERSION` / `MIGRATIONS` 步骤表 /
+  `readSchemaVersion(db)` / `runMigrations(db)`。从 `user_version + 1` 开始依次执行未跑过的步骤，
+  **每步成功后就地写下版本号**（崩溃后重跑只重做未完成的那一步）。此后新增改动一律追加一步，
+  形如 `{ version: 2, up: (db) => … }`，对更老的库天然生效。
+  - ⚠️ 该文件**不 import electron**（只吃 `node:sqlite` 的 db 句柄），所以单测能直接建临时库跑它。
+  - 原有 DDL 原样收成 **migration 1**（保持幂等 ⇒ 对老库/新库都安全），**SQL 语义一字不改**：
+    尤其 `DELETE FROM notifications WHERE scope = ''` 那条一次性清理与 FTS 的 trigram 检查都保持原样。
+  - `migrateFileEncodings()` 也搬进 migration 1（它本来就是一次性迁移的形态），
+    内部自带的 kv 读写（`kvGet`/`kvSet`）与 `LuminDatabase` 的同名方法**同语义**。
+- `database.ts`：删掉 `migrate()` 与 `migrateFileEncodings()`（−185 行，1089 → 904），
+  constructor 改调 `runMigrations(this.db)`，首次迁移时打一行 **ASCII** 日志
+  `[db] schema migration: v0 -> v1`（主进程 console 必须是 ASCII，见 `tests/mainConsoleAscii.test.mjs`）。
+- **唯一一处行为差异（如实记录）**：FTS「空表重建索引」原来**每次启动**都检查一次，现在只在
+  migration 1 里跑一次 —— 语义等价：那次重建只在「FTS 表被 DROP 重建」时才有意义，而
+  DROP/CREATE 本身就发生在 migration 1 内；将来若再换分词器，会作为新的一步迁移做同样的重建。
+
+### Verification（本轮实测）
+
+| 门禁 | 结果 |
+| --- | --- |
+| `tests/migrations.test.mjs`（新增，`node:sqlite` 临时库） | **4/4**：① 空库 → `user_version=1`、六张表 + FTS(trigram) + documents 三列元数据全在；② 重复跑 4 次幂等不抛错；③ 老库（documents+kv+无 scope 列的 notifications）→ 补齐 `actions/payload/scope`、无归属老通知被清掉；④ kv `fileEncodings` → `documents.encoding`（路径小写+反斜杠归一）、对不上的条目留在 kv、`fileEncodingsMigrated` 打标记、再跑不覆盖 |
+| 单测总量 | 291 → **295/295** |
+| `vue-tsc` / `tsc -p tsconfig.node.json` | exit 0 / exit 0 |
+| `eslint --cache .` | **0 error / 0 warning**（新增文件按 prettier 规整过） |
+| `electron-vite build` | exit 0（`EditorView-*.js` 2,507.47 kB 不变） |
+| 真库路径回归 | `_verify-notify-disk.js` 8/8（直读 `lumin.db` 的表/列/索引）、`_verify-encoding.js` 34/34（文档级元数据）、`_verify-session.js` 17/17 |
+
 ## [Unreleased · 通知重做（四）：版式重排 + 通知降噪（保存等常规成功不再通知）]
 
 > 用户口径：① 重构通知的布局与元素排版，使其更合理、更具审美；② 「保存文件」这类无需通知的
