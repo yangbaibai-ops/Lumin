@@ -77,6 +77,51 @@
 - **工程化**：~~`tools/lib/harness.js` + `tools/run-suites.js`~~ → **本轮已完成**；
   剩余：`files` store 拆分；`store` 里那份为绕循环导入而复制的 `confirmIfDirty` 收敛到 `services/dialog`。
 
+## [Unreleased · 应用图标按交付资产重新装档] — 母图换成交付原图，ICO 补到 11 档
+
+> 用户口径：桌面 `Lumin图标/` 里给了 `png/` 与 `ico/` 两套（各 36 个尺寸），
+> 要求把项目图标换成这套、并把**合适的尺寸放到正确的位置**。
+
+### 先核实：交付的东西到底是什么
+
+| 核查项 | 结果 |
+| --- | --- |
+| `png/Lumin-size-1024-*.png`（母图）vs 项目原 `resources/icon.png` | 同为 1024×1024 的**同一设计**：逐像素比 1,048,576 个像素里只有 1,647 个不同、最大通道差 **3/255**（等于重新导出了一次）；缩到 32×32 后只有 7 个像素差 ≤2 |
+| `ico/` 目录里的 36 个文件 | **不是 ICO**：文件头是 PNG（`89 50 4E 47`），只是扩展名写成了 `.ico` —— 正是 `electron-builder.yml` 与 `tools/_verify-packaging.js` 里记过的那个坑（PNG-in-ICO 在 GDI+ `Icon.ToBitmap()` 路径上取不到图，资源管理器会显示缺省图标）。**不能直接用** |
+| 交付的各档 PNG vs「母图按框滤波缩到该档」 | 取景/留白**一致**（16/20/32/64/128/256 逐档边距与墨迹占比完全相同，其余档差 ≤3%），说明各档就是同一张图的等比缩放，没有为小尺寸单独改形 |
+| 现有打包产物 | `dist/win-unpacked/Lumin.exe` 与 `dist/Lumin-1.0.0-setup.exe` 抽出来的 32×32 图标与 `resources/icon.ico` **一致**（同像素值）→ 安装器图标本来就已经跟着应用图标走，`nsis.installerIcon` 无需另配 |
+
+**结论：这套设计项目里本来就在用**（上一轮换图标用的就是它）。所以本轮不是「换一张新图」，
+而是把交付资产**按项目的正确位置装档**，并把尺寸档补齐。
+
+### Changed
+
+- `resources/icon.png` ← 交付的 **1024×1024 母图**（733,821 B）。它是**唯一**该进仓库的 PNG：
+  主进程的窗口图标（非 Windows 分支 `import appIconPng from '../../resources/icon.png?asset'`）
+  与 electron-builder 的 linux/mac `icon` 都用它。其余 35 个尺寸**不放进仓库** ——
+  ICO 由这张母图生成，放进来只会变成没人读的死重量。
+- `resources/icon.ico` 由 `node tools/pack-ico.js` 重新打档（**这是 yml 里写明的换图流程**）：
+  **7 档 → 11 档**（372,526 B → 440,766 B，全部是 32 位 BGRA DIB + AND 掩码）。
+  原有 7 档（16/24/32/48/64/128/256）的负载**字节完全不变**，新增 **20 / 40 / 72 / 96**：
+  它们分别对应 125%（16→20、32→40）、150% / 175% 与任务栏大图标；缺了这几档时 Windows
+  只能拿 32 或 128 去插值，任务栏与 Alt+Tab 会发糊。交付目录里本来就有这几档，
+  说明设计在这些尺寸下是过审的。
+- `tools/pack-ico.js`：`SIZES` 补上 20/40/72/96 并写清「为什么是这几档」；
+  顺带更正注释里「档位都整除母图尺寸」的说法 —— `downscale` 用的是按边界的面积加权框滤波，
+  非整数倍率（1024/20、/72、/96）一样正确，不会退化成最近邻。
+
+### Verification
+
+| 项 | 结果 |
+| --- | --- |
+| `node tools/pack-ico.js`（自带自检） | `WROTE resources/icon.ico`；11 档全是 DIB，自检通过 |
+| `node tools/pack-ico.js --check` | `{"entries":[16,20,24,32,40,48,64,72,96,128,256],"ok":true}` |
+| `electron-vite build` + `electron-builder --win` | exit 0；`dist/win-unpacked/Lumin.exe` 与 `dist/Lumin-1.0.0-setup.exe` 重新产出 |
+| 打包复验（与 `_verify-packaging.js` 的 B 段同口径；临时脚本已删） | 11 档负载在 `dist/win-unpacked/Lumin.exe`（211,300,864 B）里**逐字节全部命中 11/11**；安装器 `Lumin-1.0.0-setup.exe`（130,620,381 B）同样 **11/11**；反证：`node_modules/electron/dist/electron.exe` **0/11** |
+| 抽取渲染（.NET `Icon.ExtractAssociatedIcon().ToBitmap()`，与资源管理器同一条 GDI+ 路径） | 从新 exe 抽出 32×32 正常出图（未触发 PNG-in-ICO 的 `Requested range extends past the end of the array`），人工核对为「白底圆角卡片 + 黑色衬线 L + 纸纹」 |
+| 运行时（开发态窗口 / 任务栏）图标路径 | 启动后 `%TEMP%\lumin-icons\` 里生成了**按新内容哈希命名**的副本 `lumin-a549bc29.ico`（440,766 B），与 `resources/icon.ico` **逐字节一致**；旧的 `lumin-3c76e6c5.ico` 是上一版 —— 这正是 `taskbar.runtimeIconPath()` 用内容哈希换路径来击穿 Windows 图标缓存的机制 |
+| 仓库体积 | 图标资产 372,526 + 733,751 → **440,766 + 733,821 B**（净 +68KB，全部落在 exe 资源里，安装包 130MB 量级下无感） |
+
 ## [Unreleased · 讨论里列的问题逐项核实与修复] — 引用快捷键 / 专注模式 / 文档失真
 
 > 用户口径：把前两轮讨论（工具栏的必要性与成本、产品定位与工具栏是否冲突）里我列出的
