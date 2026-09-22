@@ -24,8 +24,18 @@ export interface SegmentItem {
 const props = defineProps<{
   modelValue: string
   items: SegmentItem[]
-  /** 轨道整体尺寸：md = 工具栏（30px），sm = 侧栏头部（26px） */
+  /** 轨道整体尺寸：md = 工具栏（30px），sm = 侧栏底部文件工具带（28px） */
   size?: 'sm' | 'md'
+  /**
+   * 视觉档位：
+   *   `track`（默认）= 有轨道底 + 内阴影，指示块是抬升白块（带发丝边 + 轻投影）——
+   *     适合**单独出现**在工具栏里，需要一个明确的控件边界；
+   *   `quiet` = 轨道透明、指示块只留一枚软底块（无边框无投影）——
+   *     适合**与搜索框并排**贴在侧栏底部：两个「带边框 + 投影」的控件并排会互相抢视觉。
+   * 两个档位的**几何完全一致**（quiet 只把边框改成透明、去掉底色与投影），
+   * 所以切换档位不会引起任何位移，验收里那些几何断言也不受影响。
+   */
+  variant?: 'track' | 'quiet'
   /** 分组无障碍名称（已本地化）；渲染成根元素的 aria-label */
   groupLabel: string
   /** 是否显示文字标签（窄控件默认只显示图标 + 提示） */
@@ -42,14 +52,15 @@ const activeIndex = computed(() =>
     props.items.findIndex((i) => i.id === props.modelValue)
   )
 )
-const pad = computed(() => (props.size === 'sm' ? 2 : 2))
-const height = computed(() => (props.size === 'sm' ? 26 : 30))
+const pad = computed(() => 2)
+const height = computed(() => (props.size === 'sm' ? 28 : 30))
 const innerHeight = computed(() => height.value - pad.value * 2 - 2) // 减去上下 padding 与 1px 边框
 </script>
 
 <template>
   <div
     class="seg"
+    :class="{ 'seg--quiet': variant === 'quiet' }"
     role="tablist"
     :aria-label="groupLabel"
     :style="{ height: `${height}px`, padding: `${pad}px` }"
@@ -144,6 +155,25 @@ const innerHeight = computed(() => height.value - pad.value * 2 - 2) // 减去�
 }
 .seg-label {
   letter-spacing: 0.01em;
+}
+
+/* ── 安静档（variant="quiet"）：与搜索框并排时不抢视觉 ──────────────────────
+   只把「轨道底色 / 发丝边 / 内阴影」去掉，指示块换成软底块；
+   **边框保留但改透明** —— 这样高度、内缩、指示块定位的算式与 track 档逐像素一致，
+   换档不会引起任何位移（`1px 边框 + 2px padding` 的几何被 `innerHeight` 依赖着）。 */
+.seg--quiet {
+  border-color: transparent;
+  background: transparent;
+  box-shadow: none;
+}
+.seg--quiet .seg-thumb {
+  background: var(--panel-2);
+  box-shadow: none;
+}
+/* 安静档里选中项也不再用品牌色点图标：旁边就是搜索框，彩色会显得跳。
+   改用「更深的字色 + 轻微加粗」表达选中，颜色只在悬停时微微加深。 */
+.seg--quiet .seg-btn.active :deep(svg) {
+  color: var(--ink);
 }
 
 @media (prefers-reduced-motion: reduce) {

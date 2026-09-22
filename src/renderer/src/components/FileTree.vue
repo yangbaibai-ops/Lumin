@@ -25,7 +25,7 @@ const filter = ref('')
 
 /** 侧栏文件视图切换的段定义（与工具栏模式切换共用同一个分段控件） */
 const viewItems = computed<SegmentItem[]>(() => [
-  { id: 'tree', icon: 'chevron-right', label: t('sidebar.viewTree') },
+  { id: 'tree', icon: 'list-tree', label: t('sidebar.viewTree') },
   { id: 'list', icon: 'list', label: t('sidebar.viewList') }
 ])
 const filesViewValue = computed({
@@ -227,17 +227,24 @@ function onDrop(e: DragEvent): void {
          （用户口径：这两件东西放在顶部太抢视觉，压到面板下方更干净）。
          为什么仍留在 FileTree 而不是 AppSidebar 的全局底栏：它只服务「文件」页签，
          切到大纲时不该出现；而这里正好是文件面板的底部，视觉上仍是侧栏最下方。
-         一条 1px 分隔线 + 与上方一致的内缩（2.5 = 10px，与页签/树行同一条竖线），
-         不加阴影、不加底色 —— 保持「安静但有结构」。 -->
+
+         观感口径（第二次调整）：**这一行只允许一个「有形状的控件」**。
+           * 搜索框去掉 1px 边框，只用一块白面（`--panel`）+ 10px 圆角表达；
+             聚焦时才补一圈 `--accent-soft` 的柔光环 —— 静息态少一条线。
+           * 分段控件走 `variant="quiet"`：没有轨道底、没有发丝边、没有投影，
+             只留一枚滑动的软底块；图标选中态用字色而不是品牌色（旁边就是输入框，
+             一点彩色就会显得跳）。两处控件**同高 28px**，成对出现时是一条齐平的带子。
+           * 分隔仍是 1px `--edge` + 与页签/树行同一条竖线的 10px 内缩；
+             不加阴影、不加底色 —— 保持「安静但有结构」。 -->
     <div
       v-if="files.root"
       class="flex flex-none items-center gap-1.5 border-t border-edge px-2.5 pb-1.5 pt-1.5"
       data-sidebar-filetools
     >
       <div
-        class="flex min-w-0 flex-1 items-center gap-2 rounded-lg border border-edge bg-panel px-2.5 py-1.5 transition-colors focus-within:border-accent"
+        class="flex h-7 min-w-0 flex-1 items-center gap-2 rounded-[10px] bg-panel px-2.5 transition-shadow focus-within:shadow-[0_0_0_3px_var(--accent-soft)]"
       >
-        <Icon name="search" :size="13" class="text-ink-3" />
+        <Icon name="search" :size="12.5" class="text-ink-3" />
         <input
           v-model="filter"
           class="w-full bg-transparent text-[12.5px] text-ink outline-none placeholder:text-ink-3"
@@ -252,11 +259,13 @@ function onDrop(e: DragEvent): void {
           <Icon name="x" :size="12" />
         </button>
       </div>
-      <!-- 树 / 列表 切换（会话级偏好，非持久化）：与工具栏模式切换同一个分段控件 -->
+      <!-- 树 / 列表 切换（会话级偏好，非持久化）：与工具栏模式切换同一个分段控件。
+           图标已从「chevron-right（= 展开）」换成真正的树形图标，见 Icon.vue 的说明。 -->
       <SegmentedControl
         v-model="filesViewValue"
         :items="viewItems"
         size="sm"
+        variant="quiet"
         :group-label="t('sidebar.filesView')"
         class="flex-none"
       />
