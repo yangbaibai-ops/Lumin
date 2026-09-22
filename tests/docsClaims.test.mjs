@@ -14,7 +14,7 @@
 // 或代码体里（本文件的规则只管"正文散文"）。
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { readFileSync, existsSync } from 'node:fs'
+import { readFileSync, existsSync, readdirSync } from 'node:fs'
 import { join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -45,7 +45,18 @@ test('文档里引用的仓库路径都存在（README / 手册 / 台账）', ()
   // 为什么**不含 CHANGELOG.md**：它是追加式历史记录，每条都描述"当时"的状态，
   // 里面出现后来被删掉的文件名是正确的（例如 `_verify-export-fix.js`）。
   // 这里只查"活文档"——README / 手册 / 台账——它们描述的是**现在**。
-  const docs = ['README.md', 'docs/typora-wysiwyg-manual.md', 'docs/optimization-program.md']
+  //
+  // ⚠️ 手册按章拆到 `docs/manual/*.md` 之后（清单 §2.H），活文档的集合变成「索引 + 各章」：
+  // 只扫索引会漏掉各章里引用的路径，所以这里把 `docs/manual/` 下的分片**一起**扫。
+  const docs = [
+    'README.md',
+    'docs/typora-wysiwyg-manual.md',
+    'docs/optimization-program.md',
+    ...readdirSync(join(ROOT, 'docs/manual'))
+      .filter((f) => f.endsWith('.md'))
+      .sort()
+      .map((f) => `docs/manual/${f}`)
+  ]
   // 只认「以仓库根为起点、带已知扩展名」的引用，避免把叙述性名字当路径。
   // ⚠️ 结尾必须有 `\b`：否则 `...zh-CN.json` 会被 `\.js` 抢先匹配成 `...zh-CN.js`
   //（踩过：`js` 在交替里排在 `json` 前面，正则回溯后恰好命中前缀）。
