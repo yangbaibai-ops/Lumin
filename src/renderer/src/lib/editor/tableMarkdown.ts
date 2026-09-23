@@ -6,15 +6,39 @@
 //   * 分隔行永远写裸 `---` → 列对齐丢失；
 //   * 单元格内容不转义 → 内容里的 `|` 被当成列分隔符，**整行结构被拆坏**。
 // 所以这里接管 `table` 节点的 markdown 序列化：分隔行按各列表头的 align 生成，
-// 单元格内容渲染后再把竖线转义。复杂表格（合并单元格 / 一格多块）仍退回 HTML 输出
-// —— 那是 Markdown 表格语法表达不了的东西，硬拼成管道表才是真的丢结构。
+// 单元格内容渲染后再把竖线转义。只有「Markdown 管道语法真的表达不了」的表格
+// （合并单元格 / 单元格里出现段落以外的块）才退回 HTML 输出。
+//
+// ── 根因（用户报障：单元格里按一下回车，整张表在 .md 里变成一整段 HTML）────────
+//
+// 复现链只有两步，缺一不可：
+//   1. 单元格里回车 → 编辑器在格子里多出**第二个段落**（Tiptap 默认 splitBlock，行为本身没问题）；
+//   2. 这里的判据原来是 `cell.childCount !== 1 ⇒ 复杂表格 ⇒ 退回 HTML`，
+//      于是一个**不含任何内容的空段落**就把整张表打成了 HTML：
+//      `<table style="min-width: 50px;">…`。这段 HTML 一旦落盘，再打开时 markdown-it
+//      只把它当 HTML 块解析 ⇒ **管道表结构丢失**（不是显示问题，是数据问题）。
+//
+// 判据过宽就是根因：空段落没有任何内容可保真，多段落也并非表达不了 ——
+// GFM 的单元格可以用行内 `<br>` 表达多行。所以现在：
+//   * 判据只看「有没有段落以外的块」与「合并单元格」；
+//   * 渲染时把单元格里的段落**合成一段行内序列**（非空段落之间插 hardBreak，
+//     配合 `state.inTable = true` 就会写成 `<br>`；前导/尾随/中间的空段落直接丢掉）；
+//   * 合成之后再交给 `renderInline` **一次**渲染 —— 必须是一次调用：
+//     标记符开合是状态机，分多次渲染再拼接会把闭合标记推到后面的内容里
+//     （实测会写出 `**实测痛点**<br>**` 这种尾巴上多一个空 `**` 的坏结构）。
+//
+// ⚠️ 只改序列化侧，**不动编辑器行为**：单元格里回车仍然照旧切段落（用户没有要求改这个）。
 import { Table } from '@tiptap/extension-table'
-import { DOMSerializer } from '@tiptap/pm/model'
+import { DOMSerializer, Fragment } from '@tiptap/pm/model'
 import type { Node as PMNode } from '@tiptap/pm/model'
 import type { MarkdownSerializerStateLike } from './markdownTypes'
 import { delimiterRow, escapeCellPipes, type CellAlign } from './tableAlign'
 
-/** 表格能否用 Markdown 管道语法表达：表头在第一行、没有合并单元格、每格只有一个块 */
+/**
+ * 表格能否用 Markdown 管道语法表达：
+ * 表头在第一行、没有合并单元格、每格只由**段落**组成（段数不限 —— 多段用行内 `<br>` 表达）。
+ * 空段落不影响判定（它在管道表里没有写法，渲染时会被丢掉，且不含任何内容）。
+ */
 function isSimpleTable(node: PMNode): boolean {
   let ok = true
   node.forEach((row, _offset, rowIndex) => {
@@ -22,13 +46,15 @@ function isSimpleTable(node: PMNode): boolean {
       const wantHeader = rowIndex === 0
       if ((cell.type.name === 'tableHeader') !== wantHeader) ok = false
       if (Number(cell.attrs.colspan ?? 1) > 1 || Number(cell.attrs.rowspan ?? 1) > 1) ok = false
-      if (cell.childCount !== 1) ok = false
+      cell.forEach((block) => {
+        if (block.type.name !== 'paragraph') ok = false
+      })
     })
   })
   return ok
 }
 
-/** 复杂表格退回 HTML（Markdown 表格语法没有合并单元格/多块单元格的概念） */
+/** 复杂表格退回 HTML（合并单元格 / 单元格里有代码块·列表这类块 —— 管道语法表达不了） */
 function writeTableHtml(state: MarkdownSerializerStateLike, node: PMNode): void {
   try {
     const dom = DOMSerializer.fromSchema(node.type.schema).serializeNode(node)
@@ -39,6 +65,73 @@ function writeTableHtml(state: MarkdownSerializerStateLike, node: PMNode): void 
     /* 序列化失败时什么都不写（宁可空，也不要写出一半的坏结构） */
   }
   state.closeBlock(node)
+}
+
+/** 只由标记符字符组成（`**` / `*` / `` ` `` / `~~` …）的行内文本 = 标记符本身 */
+function isMarkerOnly(node: PMNode): boolean {
+  return node.isText === true && /^[*_`~]+$/.test(node.text ?? '')
+}
+
+/**
+ * 把单元格的段落合成**一段**行内序列：非空段落之间插一个 `hardBreak`
+ * （`state.inTable` 会让它写成 `<br>`），空段落丢掉。
+ * 单元格里没有任何有内容的段落时返回 null（= 空格子）。
+ *
+ * ⚠️ **换行位置上的标记符要归位**（这是「回车那一下」留下的坑）：
+ * 本编辑器的标记符是**真实文本**，光标停在「**实测痛点**」这种被样式包住的文字末尾时，
+ * 回车的切点正好落在**内容与闭合标记符之间**，于是闭合的 `**` 被留在**第二个段落**里
+ * （实测结构：段 0 = [`**`, 实测痛点]、段 1 = [`**`]；打一行字后段 1 = [第二行, `**`]）。
+ * 直接把两段拼成 `**实测痛点<br>第二行**` 虽然也能解析，但那个 `<br>` 落在了标记符对内，
+ * 再存一次就会漂（实测第二次序列化出 `****<br**>` 这种坏结构）。
+ * 所以这里把**紧跟换行的、只由标记符组成的尾巴**提到 `<br>` 之前 ——
+ * 换行就落在样式之外，输出稳定（`**实测痛点**<br>第二行`），也才是作者写下回车时的本意。
+ */
+function cellInlineNode(cell: PMNode): PMNode | null {
+  const schema = cell.type.schema
+  const paragraphType = schema.nodes.paragraph
+  const hardBreakType = schema.nodes.hardBreak
+  if (!paragraphType) return null
+  const parts: PMNode[] = []
+  /** 已排进 parts 的「纯标记符」节点数：奇数 = 此刻有一个样式对**只开了没合** */
+  let markerOpen = 0
+  cell.forEach((block) => {
+    if (block.type.name !== 'paragraph') return
+    if (!block.textContent.trim()) return // 空段落：丢（无内容可保真，管道表也没有它的写法）
+    const nodes: PMNode[] = []
+    block.forEach((inline) => nodes.push(inline))
+    let cut = nodes.length
+    while (cut > 0 && isMarkerOnly(nodes[cut - 1])) cut--
+    const tailNodes = nodes.slice(cut)
+    const bodyNodes = nodes.slice(0, cut)
+    const bodyHasMarker = bodyNodes.some(isMarkerOnly)
+    const first = parts.length === 0
+    if (!first) {
+      // 上一段留了个「只开没合」的样式对，而这一段的身体里没有标记符
+      // ⇒ 这一段尾巴上的标记符就是它的闭合符：提到 `<br>` 之前（见上方长注释）
+      if (markerOpen % 2 === 1 && tailNodes.length > 0 && !bodyHasMarker) {
+        parts.push(...tailNodes)
+        markerOpen += tailNodes.length
+        if (hardBreakType) parts.push(hardBreakType.create())
+        parts.push(...bodyNodes)
+        return
+      }
+      if (hardBreakType) parts.push(hardBreakType.create())
+    }
+    parts.push(...bodyNodes, ...tailNodes)
+    markerOpen += tailNodes.length + bodyNodes.filter(isMarkerOnly).length
+  })
+  if (!parts.some((n) => !isMarkerOnly(n) && n.type.name !== 'hardBreak')) return null
+  return paragraphType.create(null, Fragment.fromArray(parts))
+}
+
+/** 渲染一格：合成 → 一次 `renderInline` → 就地转义竖线（截出来必须立刻写回，见文件头注释） */
+function renderCell(state: MarkdownSerializerStateLike, cell: PMNode): void {
+  const inline = cellInlineNode(cell)
+  if (!inline) return
+  const start = state.out.length
+  state.renderInline(inline)
+  const rendered = state.out.slice(start)
+  state.out = state.out.slice(0, start) + escapeCellPipes(rendered)
 }
 
 function serializeTable(state: MarkdownSerializerStateLike, node: PMNode): void {
@@ -52,14 +145,7 @@ function serializeTable(state: MarkdownSerializerStateLike, node: PMNode): void 
     state.write('| ')
     row.forEach((cell, _cellOffset, colIndex) => {
       if (colIndex) state.write(' | ')
-      const content = cell.firstChild
-      if (content && content.textContent.trim()) {
-        // 先把这一格渲染进输出缓冲，再把竖线转义 —— 逐字符写没法插转义
-        const start = state.out.length
-        state.renderInline(content)
-        const rendered = state.out.slice(start)
-        state.out = state.out.slice(0, start) + escapeCellPipes(rendered)
-      }
+      renderCell(state, cell)
     })
     state.write(' |')
     state.ensureNewLine()
