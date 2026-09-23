@@ -146,8 +146,10 @@ onMounted(() => {
     <LocalHistoryDialog />
     <SettingsDialog />
     <GlobalTooltip />
-    <Transition name="fade">
-      <SkeletonScreen v-if="ui.booting" />
-    </Transition>
+    <!-- 启动遮罩（骨架屏）：只在 `ui.booting` 期间盖住界面，避免露出半初始化的 UI。
+         **它不再带过场动画**（用户口径：取消打开应用时的遮罩过场动画）——
+         启动就绪后直接消失，不做淡出。不用 `<Transition>` 包它即可；
+         `.fade-*` 那套 CSS 仍被设置浮层/全局搜索/草稿弹窗用着，别删。 -->
+    <SkeletonScreen v-if="ui.booting" />
   </div>
 </template>

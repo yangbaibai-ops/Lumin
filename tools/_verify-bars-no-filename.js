@@ -171,27 +171,32 @@ const PROBE = `(() => {
       withDoc.statusKeeps.saveColor === withDoc.statusKeeps.statColor,
     JSON.stringify({ save: withDoc.statusKeeps?.saveColor, stat: withDoc.statusKeeps?.statColor })
   )
-  // 本轮：列表条目的**入场**动画已取消（离场保留）——直接查 CSSOM，别靠肉眼看
-  const animRules = JSON.parse(
-    await w.ev(`(() => {
-      let listEnter = 0
-      let linkEnter = 0
-      for (const sheet of document.styleSheets) {
-        let rules = []
-        try { rules = [...sheet.cssRules] } catch { continue }
-        for (const r of rules) {
-          if (!r.selectorText) continue
-          if (r.selectorText.includes('.list-enter-active')) listEnter += 1
-          if (r.selectorText.includes('.link-row-enter-active')) linkEnter += 1
-        }
-      }
-      return JSON.stringify({ listEnter, linkEnter })
+  // 启动遮罩（骨架屏）**不再有过场动画**（用户口径：取消打开应用时的遮罩过场动画）：
+  // 切到 booting 时它立刻出现且不带任何 `*-enter-active`；切回就绪时**立刻**从 DOM 消失 ——
+  // 有 fade 时它会多留 ~200ms，这条就是用来钉住「没有那 200ms」的。
+  const mask = JSON.parse(
+    await w.ev(`(async () => {
+      const ui = window.__B.ui()
+      const pick = () => [...document.querySelectorAll('div')].find((d) => (d.className || '').toString().includes('fixed inset-0'))
+      ui.booting = true
+      await new Promise((r) => setTimeout(r, 80))
+      const el = pick()
+      const enterClass = el ? [...el.classList].filter((c) => c.includes('enter')) : []
+      const dur = el ? getComputedStyle(el).transitionDuration : null
+      ui.booting = false
+      await new Promise((r) => setTimeout(r, 60))
+      return JSON.stringify({
+        appeared: !!el,
+        enterClass,
+        transitionDuration: dur,
+        goneAfter60ms: !pick()
+      })
     })()`)
   )
   c(
-    'list-item-enter-animation-removed',
-    animRules.listEnter === 0 && animRules.linkEnter === 0,
-    JSON.stringify(animRules)
+    'boot-mask-has-no-transition',
+    mask.appeared === true && mask.enterClass.length === 0 && mask.goneAfter60ms === true,
+    JSON.stringify(mask)
   )
     c('statusbar-keeps-counts', withDoc.statusKeeps?.counts === true, JSON.stringify(withDoc.status?.text))
     c('statusbar-keeps-theme-and-language', withDoc.statusKeeps?.hasSwitchers === true, JSON.stringify(withDoc.statusKeeps))

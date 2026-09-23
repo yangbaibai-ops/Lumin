@@ -72,11 +72,11 @@
 - **工程化**：~~`tools/lib/harness.js` + `tools/run-suites.js`~~ → **本轮已完成**；
   剩余：`files` store 拆分；`store` 里那份为绕循环导入而复制的 `confirmIfDirty` 收敛到 `services/dialog`。
 
-## [Unreleased · 默认为手动保存 + 状态栏保存格去噪 + 取消列表入场动画]
+## [Unreleased · 默认为手动保存 + 状态栏保存格去噪 + 取消启动遮罩过场]
 
 > 用户口径：① 保存模式默认改**手动保存**；手动时状态栏不要再显示「手动保存」四个字；
 > 自动保存时那一格的文字不要用强调色、统一成同一种灰，并取消前面的小圆点。
-> ② 取消「项目出场」的动画。
+> ② 取消出场的动画 —— 澄清后指「**打开应用时那块遮罩的过场动画**」。
 
 ### Changed
 
@@ -91,10 +91,12 @@
   可见文字变短之后，界面上仍要说清「现在是哪种保存」以及「点它能换」。
 - **那一格去掉强调色与小圆点**：删掉 `bg-ok` / `bg-warning` 的状态点（以及保存中的 ping 动画），
   文字也不再走 `text-ok` / `text-warning`，与状态栏其它统计项**同一个灰**（实测两处都是 `rgb(138,145,158)`）。
-- **取消列表条目的入场动画**（"项目出场"）：`.list-enter-*`（文件树 / 文件列表 / 大纲 / 全局搜索结果）
-  与 `.link-row-enter-*`（设置里的链接历史）整组删除 —— 列表项直接出现。
-  在打开大文件夹/长大纲时，逐条淡入会拖出一串「慢慢冒出来」的观感。
-  **离场与位移动画保留**（删除/过滤掉一条时的淡出+上移是「东西没了」的必要反馈）。
+- **取消启动遮罩的过场动画**（用户澄清：指「打开应用时那块遮罩的过场」）：
+  `App.vue` 里 `<SkeletonScreen v-if="ui.booting" />` 外面的 `<Transition name="fade">` 去掉 ——
+  骨架屏仍在（启动期间盖住半初始化的 UI、避免闪色），但**就绪后直接消失，不再淡出**。
+  `.fade-*` 那套 CSS 保留（设置浮层 / 全局搜索 / 草稿弹窗还在用）。
+  > 我上一版把「项目出场」理解成了**列表条目**的入场动画并删掉了 `.list-enter-*` / `.link-row-enter-*`，
+  > 那是误读 —— 本版已**原样恢复**（文件树 / 文件列表 / 大纲 / 全局搜索结果的行照旧淡入）。
 
 ### Verification（本轮实测）
 
@@ -102,9 +104,9 @@
 | --- | --- |
 | 全新 profile 的默认值 | `settings().autoSave === false`、状态栏显示「已保存」（**没有**「手动保存」字样） |
 | 状态栏几何/样式实测 | `saveText = 已保存`、`title = 保存方式：手动保存`、`hasDot = false`、保存文字色 `rgb(138,145,158)` == 状态栏默认灰；截图核对：与「0 字 0 行…」同灰、无圆点 |
-| 列表入场 | CSSOM 实测 `.list-enter-active` / `.link-row-enter-active` 规则数均为 **0** |
-| 套件 | `tools/_verify-bars-no-filename.js` 从 11 条加到 **16 条**（新增：那格说状态不说模式 / 无圆点 / 同灰 / 列表入场动画已移除），并**纳入默认矩阵** |
-| 单元测试 | `tests/settingsDefaults.test.mjs` 新增「默认手动保存 + 间隔仍为正数」；**单测 301/301** |
+| 列表入场 | 上一版误删的两组入场规则**已恢复**（CSSOM 里 `.list-enter-active` / `.link-row-enter-active` 回来了）；`_verify-sidebar-tree-style` 32/32、`_verify-filelist-view` 13/13、`_verify-toc-style-scroll` 23/23 |
+| 启动遮罩 | 套件新增 `boot-mask-has-no-transition`：把 `ui.booting` 打开后骨架屏立刻出现且**不带任何 `*-enter-active`**；关掉后 **60ms 内**从 DOM 消失（有 fade 时会多留 ~200ms，这条就是钉住「没有那 200ms」） |
+| 套件 | `tools/_verify-bars-no-filename.js` **16 条**并纳入默认矩阵；单元测试 **301/301** |
 | 门禁 | 默认矩阵 **36/36 PASS**（`NOASSERT 0`）、`vue-tsc`/`eslint`/`build` exit 0 |
 
 ## [Unreleased · 右侧大纲：可拖宽 + 箭头方向修好] — 并把 Icon.vue 的静态快照 bug 一起修掉
