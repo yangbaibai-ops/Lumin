@@ -289,9 +289,17 @@ async function main() {
     console.log('B ' + JSON.stringify(b))
     c('sidebar-empty-state-shown', b.root === null, 'root=' + b.root)
     c('empty-state-hub-removed', b.hub === false, 'aside .empty-hub 不该再存在')
+    // 注意用**精确相等**（不是 includes）：头部那枚「打开文件夹」是可访问名里含「打开文件」的
+    // 超串，`includes('打开文件')` 会把它误判成空态按钮（实测踩过）
     c(
-      'empty-state-has-no-entry-buttons',
-      !b.asideButtons.some((x) => /新建文档|打开文件|打开文件夹/.test(x)),
+      'empty-state-hub-buttons-removed',
+      !b.asideButtons.some((x) => x === '新建文档' || x === '打开文件'),
+      JSON.stringify(b.asideButtons)
+    )
+    // 用户口径补一条：头部那枚「打开文件夹」**要保留**（本轮先删后按口径恢复）
+    c(
+      'sidebar-header-keeps-open-folder',
+      b.asideButtons.some((x) => /打开文件夹/.test(x)),
       JSON.stringify(b.asideButtons)
     )
     c(

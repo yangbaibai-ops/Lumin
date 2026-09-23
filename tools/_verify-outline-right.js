@@ -220,6 +220,26 @@ async function main() {
   report.check('doc-switch-has-no-enter-leave-class', animSeen === 0, `animSeen=${animSeen}`)
   report.check('doc-switch-never-overlaps-rows', maxN <= 5, `max=${maxN}（有动画时旧行会残留 ⇒ >5）`)
 
+  // ③e 大纲里**不该出现语法标记**（用户报障：`### 林一鸣（**男主，21岁**）` 在目录里带着 `**`）。
+  //     本编辑器的标记符是真实文本，所以行文字要按 mark 过滤（见 lib/editor/outlineText.ts）。
+  const md = ['### 林一鸣（**男主，21岁，大四或刚毕业待业**）', '', '## 带 `code` 的标题', ''].join('\n')
+  await openDocWith(app, md, 'outline-marker.md')
+  await sleep(900)
+  const labels = JSON.parse(
+    await ev(`JSON.stringify([...document.querySelectorAll('[data-outline-panel] [data-outline-item]')].map((el) => el.textContent.replace(/\\s+/g, ' ').trim()))`)
+  )
+  report.note('带标记的标题 → ' + JSON.stringify(labels))
+  report.check(
+    'outline-strips-syntax-markers',
+    labels.length === 2 && labels.every((x) => !x.includes('*') && !x.includes('`')),
+    JSON.stringify(labels)
+  )
+  report.check(
+    'outline-keeps-heading-text',
+    labels[0] === '林一鸣（男主，21岁，大四或刚毕业待业）' && labels[1] === '带 code 的标题',
+    JSON.stringify(labels)
+  )
+
   // ④ 关掉设置 → 回到默认结构（页签回来、右侧面板消失）
   await ev(`(() => { window.__L.settings().set('outlineOnRight', false); return 'ok' })()`)
   await sleep(600)

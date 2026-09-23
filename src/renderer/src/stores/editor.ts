@@ -3,6 +3,7 @@ import { markRaw } from 'vue'
 import type { Editor } from '@tiptap/core'
 import type { Author } from '../lib/contentSync'
 import { scrollContainerTo, smoothScrollToElement } from '../lib/editor/smoothScroll'
+import { headingPlainText } from '../lib/editor/outlineText'
 
 // ─── 编辑器实例桥接（解耦：工具栏 / 大纲 / 导出等通过此 store 与内核通信）──
 // 持久化模型：编辑器在 EditorView 里常驻挂载（模式切换只改布局，不再 v-if
@@ -125,7 +126,9 @@ export const useEditorStore = defineStore('editor', {
         if (node.type.name === 'heading') {
           items.push({
             level: node.attrs.level as number,
-            text: node.textContent || '（无标题）',
+            // ⚠️ 用 headingPlainText 而不是 node.textContent：标记符是**真实文本**，
+            //    直接 textContent 会让大纲里带出 `**`（用户报障）。见 lib/editor/outlineText.ts。
+            text: headingPlainText(node),
             pos: contentPos + 1
           })
         }
