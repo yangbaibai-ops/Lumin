@@ -789,17 +789,13 @@ li.md-reveal {
   opacity: 0;
 }
 
-/* 设置 → 链接：历史记录行的增删动效（删除时离场行脱离文档流，其余行平滑上移） */
-.link-row-enter-active,
+/* 设置 → 链接：历史记录行的增删动效（删除时离场行脱离文档流，其余行平滑上移）。
+   与列表项同口径：**入场不做动画**（用户口径：取消项目出场的动画），只保留离场与位移。 */
 .link-row-leave-active,
 .link-row-move {
   transition:
     opacity 0.18s ease,
     transform 0.18s cubic-bezier(0.2, 0.9, 0.3, 1);
-}
-.link-row-enter-from {
-  opacity: 0;
-  transform: translateY(-6px);
 }
 .link-row-leave-to {
   opacity: 0;

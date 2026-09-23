@@ -204,14 +204,18 @@
   opacity: 0.7;
 }
 
-.list-enter-active,
+/* 列表条目（文件树 / 文件列表 / 大纲 / 全局搜索结果）的进出场：
+   **入场动画已取消**（用户口径：取消项目出场的动画）—— 列表项就该直接出现，
+   逐条淡入在打开大文件夹/长大纲时会拖出一串「慢慢冒出来」的观感。
+   只保留**离场**（删除/过滤掉一条时的淡出+上移），那是「东西没了」的必要反馈。 */
 .list-leave-active {
   transition:
-    opacity 0.25s ease,
-    transform 0.25s ease;
+    opacity 0.2s ease,
+    transform 0.2s ease;
 }
-.list-enter-from,
 .list-leave-to {
   opacity: 0;
   transform: translateY(-6px) scale(0.98);
 }
+/* 进场：不做任何过渡（上面的 .list-enter-* 规则整组删除即为此意；
+   这里显式留一条注释，免得以后有人以为是漏写） */

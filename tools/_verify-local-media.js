@@ -229,18 +229,12 @@ async function click(w, selector, textFilter) {
     await sleep(300)
 
     // 状态栏：保存方式弹层 →「打开设置…」（openGeneralSettings）
+    // ⚠️ 定位方式本轮改过：原来靠**拼出那一格的文案**再按文字找按钮，而那一格现在只说状态、
+    // 不再显示「手动保存」（保存方式移到了 title/弹层里）⇒ 老写法必然 no-chip。
+    // 改用组件给的稳定钩子 `data-save-cell`（与 data-outline-toggle 同一套做法）。
     const openSettings = await w.ev(`(async () => {
       const t = window.__M.app.config.globalProperties.$t
-      const files = window.__M.files()
-      const s = window.__M.settings()
-      const label = !s.autoSave
-        ? t('statusbar.manualSave')
-        : files.saving
-          ? t('editor.saving')
-          : files.dirty
-            ? t('editor.unsaved')
-            : t('editor.saved')
-      const chip = [...document.querySelectorAll('button')].find((b) => (b.textContent || '').trim().includes(label))
+      const chip = document.querySelector('[data-save-cell]')
       if (!chip) return 'no-chip'
       chip.click()
       await new Promise((r) => setTimeout(r, 300))

@@ -84,11 +84,24 @@ const PROBE = `(() => {
     toolbar: inBar(toolbar),
     status: inBar(status),
     statusKeeps: status
-      ? {
-          saveLabel: /已保存|未保存|Saved|Unsaved/.test(status.innerText || ''),
-          counts: /\\d+/.test(status.innerText || ''),
-          hasSwitchers: !!status.querySelector('button[title]')
-        }
+      ? (() => {
+          const saveBtn = [...status.querySelectorAll('button')].find((b) =>
+            /已保存|未保存|保存中|Saved|Unsaved|Saving/.test(b.textContent || '')
+          )
+          const saveSpan = saveBtn ? saveBtn.querySelector('span') : null
+          return {
+            saveLabel: /已保存|未保存|Saved|Unsaved/.test(status.innerText || ''),
+            counts: /\\d+/.test(status.innerText || ''),
+            hasSwitchers: !!status.querySelector('button[title]'),
+            // 本轮新增：那格只说「状态」不说「保存方式」，且不带圆点、不用强调色
+            saveText: saveBtn ? (saveBtn.textContent || '').trim() : null,
+            saveDot: saveBtn ? !!saveBtn.querySelector('.rounded-full') : null,
+            saveColor: saveSpan ? getComputedStyle(saveSpan).color : null,
+            // 参照色取状态栏自身的默认字色（--ink-3）：保存状态文字应当与它**完全一致**，
+            // 而不是 --ok / --warning 那两档强调色
+            statColor: getComputedStyle(status).color
+          }
+        })()
       : null,
     staleTitles: divs
       .filter((d) => cls(d).includes('h-11 shrink-0') || cls(d).includes('h-7 shrink-0'))
@@ -143,6 +156,43 @@ const PROBE = `(() => {
     c('window-title-still-shows-filename', withDoc.windowTitle === 'visible-name-check.md - Lumin', JSON.stringify(withDoc.windowTitle))
     c('toolbar-still-has-buttons', (withDoc.toolbar?.buttons || 0) >= 8, 'buttons=' + withDoc.toolbar?.buttons)
     c('statusbar-keeps-save-state', withDoc.statusKeeps?.saveLabel === true, JSON.stringify(withDoc.statusKeeps))
+  // 本轮：那格**只说状态、不说保存方式**（手动模式下不再一直写着「手动保存」）
+  c(
+    'statusbar-save-cell-shows-state-not-mode',
+    !!withDoc.statusKeeps?.saveText &&
+      /已保存|未保存|保存中|Saved|Unsaved|Saving/.test(withDoc.statusKeeps.saveText) &&
+      !/手动保存|Manual/.test(withDoc.statusKeeps.saveText),
+    JSON.stringify(withDoc.statusKeeps?.saveText)
+  )
+  c('statusbar-save-cell-has-no-dot', withDoc.statusKeeps?.saveDot === false, JSON.stringify(withDoc.statusKeeps?.saveDot))
+  c(
+    'statusbar-save-cell-is-same-gray',
+    !!withDoc.statusKeeps?.saveColor &&
+      withDoc.statusKeeps.saveColor === withDoc.statusKeeps.statColor,
+    JSON.stringify({ save: withDoc.statusKeeps?.saveColor, stat: withDoc.statusKeeps?.statColor })
+  )
+  // 本轮：列表条目的**入场**动画已取消（离场保留）——直接查 CSSOM，别靠肉眼看
+  const animRules = JSON.parse(
+    await w.ev(`(() => {
+      let listEnter = 0
+      let linkEnter = 0
+      for (const sheet of document.styleSheets) {
+        let rules = []
+        try { rules = [...sheet.cssRules] } catch { continue }
+        for (const r of rules) {
+          if (!r.selectorText) continue
+          if (r.selectorText.includes('.list-enter-active')) listEnter += 1
+          if (r.selectorText.includes('.link-row-enter-active')) linkEnter += 1
+        }
+      }
+      return JSON.stringify({ listEnter, linkEnter })
+    })()`)
+  )
+  c(
+    'list-item-enter-animation-removed',
+    animRules.listEnter === 0 && animRules.linkEnter === 0,
+    JSON.stringify(animRules)
+  )
     c('statusbar-keeps-counts', withDoc.statusKeeps?.counts === true, JSON.stringify(withDoc.status?.text))
     c('statusbar-keeps-theme-and-language', withDoc.statusKeeps?.hasSwitchers === true, JSON.stringify(withDoc.statusKeeps))
     c('no-filename-in-bar-tooltips', withDoc.staleTitles.length === 0, JSON.stringify(withDoc.staleTitles))

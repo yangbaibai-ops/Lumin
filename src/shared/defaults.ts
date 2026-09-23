@@ -22,7 +22,16 @@ export const FONT_OPTIONS: { value: string; label: string }[] = [
 export const defaultSettings: AppSettings = {
   theme: 'auto',
   language: 'zh-CN',
-  autoSave: true,
+  /**
+   * 自动保存：**出厂改为「手动保存」**（用户口径）。
+   *
+   * 为什么默认关：写作工具的默认行为应当尊重作者的节奏 —— 自动保存会在你还没写完一句时
+   * 就把半成品写进磁盘（外部同步盘/版本工具会看到一串中间态）。手动保存下仍有**崩溃保护**：
+   * 关窗/异常退出时仍会写草稿（`drafts` 那套与 `autoSave` 无关），所以「手动」不等于「丢字」。
+   * 已存在的用户设置不受影响（它落在 kv 里，只有全新 profile 才拿到这个默认值）。
+   * 想在状态栏切回来：点状态栏最左那格（保存状态），弹层里选「自动保存」。
+   */
+  autoSave: false,
   autoSaveInterval: 3,
   nativeMenuBar: true,
   fontSize: 17,

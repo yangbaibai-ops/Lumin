@@ -48,16 +48,25 @@ onMounted(async () => {
 })
 onBeforeUnmount(() => document.removeEventListener('mousedown', onDocClick))
 
+/**
+ * 状态栏最左那格的文字：**只显示「文档状态」，不再显示保存方式**（用户口径）。
+ *
+ * 原来手动模式会一直写着「手动保存」——那是模式名，不是状态，选过一次之后就是重复噪音。
+ * 现在两种模式都只说状态（保存中 / 未保存的更改 / 已保存），
+ * 保存方式本身放在点击后弹出的那一层里（那里仍然写着「自动保存 / 手动保存」）。
+ */
 const saveLabel = computed(() => {
   if (!files.current) return ''
-  // 手动保存模式：明确提示“未开启自动保存”（点击此区域可选择保存方式）
-  if (!settings.autoSave) return t('statusbar.manualSave')
   if (files.saving) return t('editor.saving')
   if (files.dirty) return t('editor.unsaved')
   return t('editor.saved')
 })
 
-const saveNeutral = computed(() => !!files.current && !settings.autoSave)
+/** 弹层与无障碍名：格子上的可见文字只剩状态，保存方式要在这里说清楚 */
+const saveModeLabel = computed(() =>
+  settings.autoSave ? t('statusbar.autoSave') : t('statusbar.manualSave')
+)
+const saveTriggerLabel = computed(() => `${t('statusbar.saveMode')}：${saveModeLabel.value}`)
 
 /** 选择保存方式：自动保存（开）或手动保存（关） */
 function chooseSaveMode(manual: boolean): void {
@@ -101,33 +110,14 @@ const themes: { mode: ThemeMode; icon: string; labelKey: string }[] = [
       <div ref="saveRef" class="relative flex items-center">
         <button
           class="group flex cursor-pointer items-center gap-1.5 rounded-md px-1.5 py-0.5 -ml-1.5 transition-colors hover:bg-panel-2"
-          :title="saveLabel"
+          data-save-cell
+          :title="saveTriggerLabel"
+          :aria-label="saveTriggerLabel"
           @click="saveOpen = !saveOpen"
         >
-          <!-- 手动保存模式：不显示状态圆点；文字不加强调色（沿用底部默认色） -->
-          <span v-if="!saveNeutral" class="relative flex h-1.5 w-1.5">
-            <span
-              v-if="files.saving"
-              class="absolute inline-flex h-full w-full animate-ping rounded-full bg-warning opacity-60"
-            />
-            <span
-              class="relative inline-flex h-1.5 w-1.5 rounded-full"
-              :class="files.saving ? 'bg-warning' : files.dirty ? 'bg-warning' : 'bg-ok'"
-            />
-          </span>
-          <span
-            :class="
-              saveNeutral
-                ? ''
-                : files.saving
-                  ? 'text-warning'
-                  : files.dirty
-                    ? 'text-warning'
-                    : 'text-ok'
-            "
-          >
-            {{ saveLabel }}
-          </span>
+          <!-- 状态文字：**一律与状态栏同色**（用户口径：不要强调色、不要前面的小圆点）。
+               保存中/未保存的更改/已保存 三态只靠文字区分；保存方式在弹层里说。 -->
+          <span>{{ saveLabel }}</span>
           <!-- <Icon name="chevron-up" :size="10" class="opacity-60 transition-transform duration-150" :class="saveOpen ? 'rotate-180' : ''" /> -->
         </button>
 
