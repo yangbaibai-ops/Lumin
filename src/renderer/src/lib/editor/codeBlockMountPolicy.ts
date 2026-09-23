@@ -90,8 +90,3 @@ export function watchCodeBlockMount(el: Element, cb: MountListener): () => void 
     obs.unobserve(el)
   }
 }
-
-/** 仅供探针/自检：当前被观察的块数（组件卸载后应当归零） */
-export function codeBlockWatchCount(): number {
-  return watchers.size
-}

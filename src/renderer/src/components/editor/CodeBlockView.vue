@@ -404,6 +404,12 @@ const cmMounted = computed(
     })
 )
 
+/**
+ * 语言下拉框要不要渲染（P3）：挂载态要，mermaid 块也要（它没有 CM，切回代码语言全靠它）；
+ * 只有「静态态的非 mermaid 块」不渲染 —— 那一项的 DOM/内存代价见模板里的注释。
+ */
+const showLangSelect = computed(() => cmMounted.value || selectedLanguage.value === 'mermaid')
+
 /** 选区/光标是否落在本节点范围内（PM 的 selectionUpdate 里刷新；computed 读不到 PM state 变化） */
 function refreshSelectionInside(): void {
   const pos = props.getPos as (() => number) | undefined
@@ -992,11 +998,21 @@ function commitMermaid(): void {
 
 <template>
   <node-view-wrapper ref="blockRef" class="code-block-wrapper">
-    <div class="code-block-header">
+    <div class="code-block-header" data-cb-header>
       <span class="code-block-lang-label">{{ selectedLanguage }}</span>
-      <select v-model="selectedLanguage" class="code-block-select">
+      <!-- P3 内存第一刀：**静态态不渲染那个 16 项的 `<select>`**。
+           实测 1500 块的文档里，光是这一项就是 24,000 个元素 + 24,000 个文本节点，外加
+           Chromium 给每个 `<option>` 建的内部 shadow DOM（`Performance.getMetrics` 的 Nodes
+           里约 14 万）—— 是这台"内存账"上最大的一笔。屏幕上看得到的块**永远**是挂载态
+           （观察器有 600px 提前量），所以静态态的 select 谁也看不到。
+           换成同几何的 span 占位（同一套 class / box 模型、只是去掉箭头与光标）⇒ 块高与
+           挂载态一致，滚动不跳。mermaid 块没有 CM，必须一直留着 select（否则没法切回代码）。 -->
+      <select v-if="showLangSelect" v-model="selectedLanguage" class="code-block-select">
         <option v-for="lang in LANGUAGES" :key="lang" :value="lang">{{ lang }}</option>
       </select>
+      <span v-else class="code-block-select code-block-select-static" aria-hidden="true">{{
+        selectedLanguage
+      }}</span>
     </div>
 
     <!-- Mermaid 图表模式 -->

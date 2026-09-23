@@ -17,8 +17,9 @@
 //   * 打开时间分两段报：`open`（openPath 返回）与 `render`（块 DOM 稳定）。CDP 的
 //     Runtime.evaluate 会阻塞到主线程空闲，所以 openPath 的 await 本身就含了绝大部分装载；
 //     `render` 补上 NodeView 挂载与首屏排版那一段；
-//   * heavyMode（≥200 围栏自动进源码模式）会把「打开」变成源码模式的开销 —— 探针照实报
-//     `heavy` 与**切回渲染面**的耗时，绝不拿源码模式的数字冒充渲染面。
+//   * heavyMode（围栏数 ≥ `HEAVY_FENCES` 自动进源码模式，F 项 P3 之后是 800）会把「打开」
+//     变成源码模式的开销 —— 探针照实报 `heavy` 与**切回渲染面**的耗时，绝不拿源码模式的
+//     数字冒充渲染面。
 //
 // 内存：只统计命令行里带本实例 userData 的 electron 进程（用户自己的 Lumin 实例不算进来，
 // 实测不加这条会虚高几百 MB）。

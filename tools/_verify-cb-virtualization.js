@@ -69,6 +69,53 @@ async function main() {
     `head=${JSON.stringify(shape.head)} tail=${JSON.stringify(shape.tail)}`
   )
 
+  // ⑩ P3：静态态**不渲染语言下拉**（那份 16 项 `<option>` 是内存账单上最大的一笔：
+  //    1500 块的文档里 24,000 个 option + Chromium 给每个 option 建的内部 shadow DOM），
+  //    但头部高度必须与挂载态**一致** —— 否则滚进滚出时块高会变、滚动位置会跳。
+  const headerGeom = JSON.parse(
+    await ev(`(() => {
+      const blocks = [...document.querySelectorAll('.code-block-wrapper')]
+      const h = (b) => Math.round(b.querySelector('[data-cb-header]').getBoundingClientRect().height)
+      const statics = blocks.filter((b) => b.querySelector('.cb-static'))
+      const mounted = blocks.filter((b) => b.querySelector('.cm-editor'))
+      return JSON.stringify({
+        staticCount: statics.length,
+        mountedCount: mounted.length,
+        staticSelects: statics.filter((b) => b.querySelector('select')).length,
+        staticOptionCount: statics.reduce((n, b) => n + b.querySelectorAll('option').length, 0),
+        staticHeights: [...new Set(statics.map(h))],
+        mountedHeights: [...new Set(mounted.map(h))],
+        options: document.querySelectorAll('.code-block-select option').length,
+        selectCount: document.querySelectorAll('.code-block-select').length
+      })
+    })()`)
+  )
+  report.note('头部几何 ' + JSON.stringify(headerGeom))
+  report.check(
+    'static-block-has-no-language-select',
+    headerGeom.staticCount > 0 && headerGeom.staticSelects === 0 && headerGeom.staticOptionCount === 0,
+    JSON.stringify({
+      static: headerGeom.staticCount,
+      selectInStatic: headerGeom.staticSelects,
+      optionsInStatic: headerGeom.staticOptionCount
+    })
+  )
+  report.check(
+    'static-matches-mounted-header-height',
+    headerGeom.staticHeights.length === 1 &&
+      headerGeom.mountedHeights.length === 1 &&
+      headerGeom.staticHeights[0] === headerGeom.mountedHeights[0],
+    JSON.stringify({
+      static: headerGeom.staticHeights,
+      mounted: headerGeom.mountedHeights
+    })
+  )
+  report.check(
+    'option-count-bounded-by-mounted-blocks',
+    headerGeom.options <= headerGeom.mountedCount * 16 && headerGeom.options > 0,
+    JSON.stringify({ options: headerGeom.options, mounted: headerGeom.mountedCount })
+  )
+
   // ② 滚到远处（第 40 块）→ 它必须挂上，且高度变化很小（③）
   const before = JSON.parse(await ev(scrollToBlock(40)))
   await sleep(1200)

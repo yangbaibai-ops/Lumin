@@ -3,12 +3,21 @@
 // 背景（实测，见桌面《待优化清单》F 项）：代码围栏是唯一的性能悬崖 —— 500 块文档打开 22.8s、
 // 1500 块 >185s 且进程常驻 1.4GB；而纯散文 572k 字符只要 2.24s。降级闸按"围栏块数 / 字符数"
 // 判定，超阈值直接进源码模式。
+//
+// ⚠️ F 项 P3 之后围栏阈值从 200 抬到 **800**（施工图 §6，用户已拍板）：虚拟化之后
+// 「每块一个 CM」的悬崖没了 —— 探针实测 500 围栏可用 1,157ms、CM 实例峰值 10 个。
+// 下面那条 `HEAVY_FENCES === 800` 是**刻意把这个产品决策钉住**：改它就得同时改这里的说明。
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { HEAVY_CHARS, HEAVY_FENCES, docLoad, isHeavyDoc } from '../src/renderer/src/lib/largeDoc.ts'
 
 const fence = '```js\nconst a = 1\n```\n'
 const prose = (n) => '这是一段散文。'.repeat(n)
+
+test('围栏阈值是 800（F 项 P3 的取舍；虚拟化前是 200）', () => {
+  assert.equal(HEAVY_FENCES, 800, '改了阈值就要同步改这条断言与 largeDoc.ts 的说明')
+  assert.equal(HEAVY_CHARS, 1_000_000)
+})
 
 test('围栏按对计数（``` 与 ~~~ 都算，含 0–3 空格缩进）', () => {
   assert.equal(docLoad(fence).fences, 1)

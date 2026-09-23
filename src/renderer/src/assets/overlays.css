@@ -212,6 +212,14 @@ li.md-reveal {
   background-position: right 6px center;
   cursor: pointer;
 }
+/* 静态态那个「同几何占位」（P3）：与 .code-block-select 完全同一套盒模型
+   （border / padding / font-size 都继承上面那条），只去掉下拉箭头与手型光标 ——
+   这样「静态 ↔ 挂载」切换时头部高度不变，滚动不会跳。 */
+.code-block-select-static {
+  background-image: none;
+  cursor: default;
+  user-select: none;
+}
 .cm-editor-container .cm-editor {
   background: transparent;
 }

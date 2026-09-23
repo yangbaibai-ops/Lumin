@@ -72,6 +72,53 @@
 - **工程化**：~~`tools/lib/harness.js` + `tools/run-suites.js`~~ → **本轮已完成**；
   剩余：`files` store 拆分；`store` 里那份为绕循环导入而复制的 `confirmIfDirty` 收敛到 `services/dialog`。
 
+## [Unreleased · F 项 P3：收敛与调优] — 静态态不再渲染 16 个 `<option>`（1500 围栏可用 3013→1236ms、RSS 1030→800MB）
+
+> 施工图《Lumin-F项实施方案-代码块CM虚拟化》阶段 **P3「收敛与调优」**：点开即挂 / 离屏即卸
+> 两条 P1 就已落地并有断言；这一阶段做三件事 —— **静态态瘦身**、**降级闸放宽**、**清死码**。
+
+### Changed
+
+- **静态态不再渲染语言下拉**（P3 的第一刀，对着 P0 的归因砍）：P0 量出来「1500 块的文档里
+  每块一个 `<select>` × 16 个 `<option>` = 24,000 个元素 + 24,000 个文本节点」，外加 Chromium
+  新版 `<select>` 给每个 option 建的**内部 shadow DOM**（`Performance.getMetrics` 的 `Nodes`
+  里约 14 万，是整张内存账上最大的一笔）。屏幕上看得到的块**永远**是挂载态（观察器 600px
+  提前量），静态态的 select 谁也看不到 ⇒ 换成**同几何的 `span` 占位**
+  （`.code-block-select-static`：同一套 class / box 模型，只去掉箭头与手型光标），
+  块高与挂载态**逐像素一致**（有断言），滚动不跳。mermaid 块没有 CM，**一直保留** select
+  （否则没法切回代码语言）。
+- **`HEAVY_FENCES` 200 → 800**（施工图 §6 的取舍，用户已拍板）：虚拟化之后「每块一个 CM」的
+  悬崖没了 —— 实测 500 围栏的文档**直接进实时渲染**可用 900ms。为什么停在 800 而不是更高：
+  1500 围栏打开后常驻仍是 800MB（验收线 <600MB），默认把它开进实时渲染等于默认吃 800MB。
+  单测里加了一条 `HEAVY_FENCES === 800` 把这个产品决策钉住（改阈值必须同时改说明）。
+- **清死码**：删掉 `codeBlockMountPolicy.ts` 里没人调用的 `codeBlockWatchCount()`。
+
+### Verification（P0 探针复测；每个尺寸一个全新隔离实例，`out/_probe-cb-scale-p3.txt`）
+
+| 围栏 | 打开 ms | 渲染面 ms | **可用 ms** | 验收线 | CM 峰值 | 静态块 | select 选项 | 打开后模式 | RSS 前→后 |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 500 | 294 | 606 | **900** | ≤2,000 ✓ | 6 | 494 | **96**（原 8,000） | wysiwyg（不再降级） | 509→**625MB** |
+| 1500 | 382 | 854（切面） | **1,236** | ≤5,000 ✓ | 10 | 1,490 | **160**（原 24,000） | source→手动切 | 510→**800MB** |
+
+与 P0 基线（同一支探针）对比：DOM 节点 500 围栏 84,186 → **19,662**、1500 围栏 220,426 → **106,030**；
+元素 34,873 → 11,031；文本节点 33,270 → 7,932；可用耗时 1500 围栏 **3,013 → 1,236ms**；
+RSS 1500 围栏 924 → **800MB**（最初的 1,384MB 基线 ⇒ **−42%**）。
+
+**内存这条仍未达线（<600MB），如实记**：1500 个代码块 = 1500 个 Vue NodeView 组件 + 11,031 个
+元素，剩下的 ~290MB（198KB/块）是这层结构本身的成本（JS 堆只占其中 105MB，其余是 DOM/样式/
+布局与 RSS 余量）。再往下要动的是「一个块一个 NodeView」这个架构本身，不在 F 项范围内。
+
+### Verification（套件）
+
+- `tools/_verify-cb-virtualization.js` **18/18**（15 → 18）：新增
+  `static-block-has-no-language-select`（静态块里 0 个 select、0 个 option）、
+  `static-matches-mounted-header-height`（静态与挂载的头部高度**完全相等**）、
+  `option-count-bounded-by-mounted-blocks`（option 总数 ≤ 挂载块数 × 16）。
+- 受影响的 8 条套件全绿：`_verify-cb-languages` 5/5（它逐个滚进视野再量，块是挂载态）、
+  `_verify-cb-button-line-numbers` 26/26、`_verify-cb-no-active-line` 12/12、`_regress-cb` 3/3、
+  `_regress-layout` 9/9、`_verify-surfaces` 37/37、`_verify-md-fidelity` 101/102（1 条既有 SKIP）。
+- 单元测试 **314/314**；`vue-tsc` / `eslint` 0 error / 0 warning；`electron-vite build` exit 0。
+
 ## [Unreleased · F 项 P2：静态态语法高亮] — 不建 CM 也给静态块上色（1500 围栏代价约 55ms、内存无差）
 
 > 施工图《Lumin-F项实施方案-代码块CM虚拟化》阶段 **P2「静态语法高亮（视觉不掉档）」**。
