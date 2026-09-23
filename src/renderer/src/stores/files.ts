@@ -333,8 +333,17 @@ export const useFilesStore = defineStore('files', {
       // 未命名缓冲区没有路径，草稿按窗口（会话槽位）区分；主进程还会把「无主草稿」
       // 交给它认领（别的窗口单独关闭/崩溃留下的正文）。空白缓冲区只有真拿到
       // 非空草稿才弹横幅 —— 空草稿在这里没有任何恢复意义。
+      //
+      // ⚠️ **等 IPC 回来时这份空白缓冲可能已经不再是当前文档了**（启动时它只是占位，
+      // 会话恢复/打开文件会在这期间替换 `current`）——那时再把草稿挂上去，就会弹出一个
+      // 谁都不认领的「未保存的草稿」，紧接着被 `openPath` 清掉 ⇒ 用户看到**闪一下**的弹窗。
+      // 所以这里先记住自己这一份，回来时确认还是它才挂草稿（启动竞态的另一半就堵在这里；
+      // 另一半是「启动期间别开占位缓冲」，见 EditorView 的 onMounted）。
+      const buffer = this.current
       const draft = await window.luminAPI.drafts.untitledDraft()
-      if (restorableDraft(draft, this.current.content, null, null)) this.draftRestore = draft
+      if (this.current === buffer && restorableDraft(draft, this.current.content, null, null)) {
+        this.draftRestore = draft
+      }
     },
     async newDocInWorkspace(): Promise<void> {
       if (!this.root) {

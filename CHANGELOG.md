@@ -72,6 +72,46 @@
 - **工程化**：~~`tools/lib/harness.js` + `tools/run-suites.js`~~ → **本轮已完成**；
   剩余：`files` store 拆分；`store` 里那份为绕循环导入而复制的 `confirmIfDirty` 收敛到 `services/dialog`。
 
+## [Unreleased · 修掉「打开应用闪一下未保存的草稿弹窗」]
+
+> 用户报障：打开应用**有概率**出现「未保存的草稿」提示，不到 0.5s 就消失了。
+
+### 分析（启动时序上的竞态）
+
+冷启动时两条径在抢时序：
+
+1. `EditorView.onMounted` 见 `files.current` 为空 ⇒ 开一份**占位空白缓冲**（`openUntitled()`）；
+   它随后 `await drafts.untitledDraft()` 做「无主草稿」检查，命中就把 `draftRestore` 置上 ⇒ **弹窗出现**；
+2. 同一时刻 `main.ts` 还在跑会话恢复：`restoreSession()` → `openPath(sessionDoc)`，
+   而 `openPath` 里有 `this.draftRestore = null` ⇒ **弹窗被清掉**。
+
+谁先谁后取决于两条 IPC/文件读取的耗时（草稿检查是一次 IPC，会话恢复是「读会话 + 读文件 + 解析」），
+所以是**有概率**；而一旦「先弹后被清」，用户看到的就是闪一下（<0.5s）的弹窗。
+换言之：**弹窗代表的那份草稿并不属于当前要打开的文档**，它是占位缓冲的产物。
+
+### 修法（三处配套 + 一处收口）
+
+- `EditorView.onMounted`：**启动期间（`ui.booting`）不开占位空白缓冲** —— 竞态的一端直接消失；
+- `main.ts`：**会话恢复之后**再决定「要不要一份空白缓冲」（`if (!files.current) await files.openUntitled()`），
+  于是空白缓冲（以及它可能触发的草稿弹窗）只会在文档已经定下来之后出现；
+- `files.openUntitled()`：`await drafts.untitledDraft()` 回来后**先确认这份缓冲还是当前文档**
+  （`this.current === buffer`）才挂草稿 —— 堵住「IPC 往返期间 current 已被替换」的另一半；
+- 收口（不赌先后）：草稿弹窗的渲染条件加 `&& !ui.booting` —— **初始化期间一律不渲染**，
+  等 `booting` 落下、草稿若仍挂着才出现。那才是真需要用户决定的那一次。
+
+### Verification（只跑与这个问题相关的）
+
+- `tools/_verify-draft-banner.js` **28/28**：新增断言 `booting-suppresses-draft-modal`
+  —— 把 `draftRestore` 置上并让 `ui.booting=true`，300ms 内 DOM 里**不该有** `.draft-modal`；
+  `booting` 落下后**应当出现**（草稿没被吞掉）；
+- `vue-tsc` / `eslint` / `electron-vite build` exit 0。
+
+> 如实说明：我用合成现场（未命名草稿 + 会话指向一个真实文件；小文件与 ~600KB 大文件都试过）
+> **没能复现**那次闪烁 —— 旧构建下弹窗一次都没出现。所以上面的结论来自**读代码路径**，
+> 而不是复现：竞态的窗口很窄，合成现场的耗时比与用户机器不同。
+> 修法是「让闪烁在结构上不可能」（弹窗在初始化期间不渲染），因此不依赖复现。
+> 如果你还看到它，告诉我，我加一条「谁在什么时候置的 draftRestore」的打点再看。
+
 ## [Unreleased · 找到真正的启动遮罩：index.html 里的首帧骨架屏，已删除]
 
 > 用户反馈「打开应用**依然**有启动遮罩层和骨架图和入场动画」。

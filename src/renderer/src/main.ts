@@ -105,6 +105,13 @@ async function bootstrap(): Promise<void> {
     }
   }
 
+  // ⚠️ 会话恢复**之后**才决定「要不要一份空白缓冲」（用户报障的根因就在这个时序上）：
+  // 以前是 EditorView 一挂载就 `openUntitled()` 占位，而会话恢复同时还在跑 —— 占位缓冲会去查
+  // 一次「无主草稿」，把草稿弹窗拉起来；随后 openPath 打开真正的文档又把 draftRestore 清空，
+  // 于是用户看到**闪一下就不见**的「未保存的草稿」。现在这里统一收口：
+  // 会话/启动参数已经决定了文档就直接用，没决定才补空白缓冲（此时草稿弹窗才是该弹的）。
+  if (!files.current) await files.openUntitled()
+
   // 会话跟踪：此后文档/光标/滚动变化会节流写回本窗口的会话槽位
   installSessionTracking()
   // 「本窗口当前文档」上报：供主进程做「一个文件只开一个窗口」判断

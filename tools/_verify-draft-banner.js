@@ -445,6 +445,32 @@ const saveDraft = (keyExpr, content, filePath = null) =>
       JSON.stringify(await w1.ev(`window.__vt.files().current?.content`))
     )
 
+    // ★ 启动期间**绝不渲染**草稿弹窗（用户报障：打开应用有概率闪一下草稿提示，<0.5s 就消失）。
+    //   现场是两条径抢时序：占位/会话恢复某一条先把 draftRestore 置上，紧接着 openPath 又把它清掉。
+    //   现在不赌先后：`ui.booting` 期间弹窗不渲染；booting 落下后草稿若仍在，才出现。
+    //   这条直接钉住契约本身，不需要复现那个竞态。
+    const bootGate = JSON.parse(
+      await w1.ev(`(async () => {
+        const f = window.__vt.files()
+        const ui = window.__vt.ui()
+        const backup = f.draftRestore
+        f.draftRestore = { key: 'boot-gate-probe', path: null, content: 'x', mtimeMs: Date.now() }
+        ui.booting = true
+        await new Promise((r) => setTimeout(r, 300))
+        const duringBoot = !!document.querySelector('.draft-modal')
+        ui.booting = false
+        await new Promise((r) => setTimeout(r, 300))
+        const afterBoot = !!document.querySelector('.draft-modal')
+        f.draftRestore = backup
+        return JSON.stringify({ duringBoot, afterBoot })
+      })()`)
+    )
+    c(
+      'booting-suppresses-draft-modal',
+      bootGate.duringBoot === false && bootGate.afterBoot === true,
+      JSON.stringify(bootGate)
+    )
+
     // 收尾：把本套件动过的草稿清干净（不碰用户数据之外的东西）
     await w1.ev(`(async () => { await window.luminAPI.drafts.remove(${FILE_KEY}); return 'ok' })()`)
     await w1.ev(

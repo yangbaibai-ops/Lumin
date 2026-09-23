@@ -711,7 +711,12 @@ watch(
 
 onMounted(() => {
   editorStore.setActive(ui.editorMode !== 'source')
-  if (!files.current) void files.openUntitled()
+  // ⚠️ **启动期间不要开这份占位缓冲**（`ui.booting` 为真 = 会话恢复还没跑完）：
+  // 这里开出来的空白缓冲区会去查一次「无主草稿」，于是可能把「未保存的草稿」弹窗拉起来；
+  // 紧接着会话恢复打开真正的文档（`openPath` 里会把 `draftRestore` 清空）⇒ 弹窗**闪一下就不见**。
+  // 用户报的就是这个：打开应用有概率闪一个草稿提示。
+  // 交给 main.ts 在会话恢复**之后**决定：有会话文档就用它，没有才补一份空白缓冲（见 main.ts 末尾）。
+  if (!files.current && !ui.booting) void files.openUntitled()
 })
 onBeforeUnmount(() => {
   document.removeEventListener('keydown', blockDraftKeys, true)
@@ -845,8 +850,14 @@ onBeforeUnmount(() => {
              （textarea）两种编辑态都挡得住，不需要分别去 disable 两个编辑器。 -->
     <Teleport to="body">
       <Transition name="fade">
+        <!-- ⚠️ `&& !ui.booting`：**启动期间一律不渲染草稿弹窗**（用户报障的收口那一刀）。
+             启动时 `draftRestore` 可能被抢先置上（占位缓冲的草稿检查 / 会话恢复的草稿检查），
+             紧接着又被 `openPath` 清掉 —— 结果就是弹窗**闪一下（<0.5s）就消失**。
+             这里不赌"谁先谁后"：初始化没结束就不弹；等 `booting` 落下（main.ts 会话恢复跑完），
+             草稿若仍挂着，它才出现 —— 那才是真需要用户决定的那一次。
+             另两处配套：EditorView 启动期间不开占位缓冲、main.ts 在会话恢复之后再补空白缓冲。 -->
         <div
-          v-if="files.draftRestore"
+          v-if="files.draftRestore && !ui.booting"
           class="draft-modal fixed inset-0 z-[160] flex items-center justify-center bg-black/30 backdrop-blur-[2px]"
           role="dialog"
           aria-modal="true"
