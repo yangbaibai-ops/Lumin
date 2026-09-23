@@ -124,6 +124,22 @@ async function main() {
     forced === true,
     '选区落进屏幕外的第 55 块 ⇒ 必须挂 CM（否则键盘路由/打字都会错）'
   )
+  // ④b 强制挂载之后，**光标要真的交给那个 CM**（`mountCmForVirtualization` 里的
+  //     `focusCmAtEnd()`）—— 否则用户按键还是打不进这个块。
+  let caretInCm = false
+  for (let i = 0; i < 25; i++) {
+    caretInCm =
+      (await ev(
+        `(() => { const b = document.querySelectorAll('.code-block-wrapper')[54]; const cm = b && b.querySelector('.cm-editor'); return !!cm && cm.contains(document.activeElement) })()`
+      )) === true
+    if (caretInCm) break
+    await sleep(120)
+  }
+  report.check(
+    'forced-mount-takes-the-caret',
+    caretInCm === true,
+    '第 55 块强制挂载后焦点应在它的 .cm-editor 里'
+  )
 
   // ⑥ 来回滚（挂/卸churn）之后，视口里的块仍然**可打字**：这条守 R2（卸载前先 syncToNode ⇒ 不丢字符）
   // 与 R5（hasFocus 守卫计数归零 ⇒ PM 不失聪）
@@ -177,8 +193,69 @@ async function main() {
       typeof firstCode.first === 'string' && firstCode.first.includes('ZZ'),
       JSON.stringify(firstCode.first)
     )
+
+    // ⑦ 重挂之后的 **CM 扩展**还在不在：括号自动配对（`closeBrackets()` + 它的 keymap）。
+    //    审计 §F.3 点名「卸载/重挂必须保住括号补全的 keymap 注册」—— 这条就是守它的：
+    //    重挂时若漏掉任何一条扩展（或 keymap 被替换），打 `(` 就只会写进一个 `(`。
+    await app.send('Input.insertText', { text: '(' })
+    await sleep(500)
+    const bracketed = JSON.parse(
+      await ev(`(() => {
+        let first = null
+        window.__L.ed().state.doc.descendants((n) => {
+          if (first === null && n.type.name === 'codeBlock') first = n.textContent
+          return true
+        })
+        return JSON.stringify({ first })
+      })()`)
+    )
+    report.note('重挂后打 `(` → ' + JSON.stringify(bracketed.first))
+    report.check(
+      'bracket-autoclose-after-remount',
+      typeof bracketed.first === 'string' && bracketed.first.includes('()'),
+      JSON.stringify(bracketed.first)
+    )
+    // ⑧ 静态态**不是**只读：`mousedown` 一下就要挂 CM（P3「点开即挂」）。
+    //    为什么用合成事件而不是真实点击：屏幕上能点到的块**必然**已经被观察器挂上了
+    //    （观察器有 600px 提前量），真实点击只会点到已经挂载的块 —— 实测就是这样
+    //    （第一版用 scrollIntoView 再点，结果 wasStatic=false）。
+    //    `activated` 这条路的现实场景是「程序化跳转后立刻点」（观察器回调还没跑），
+    //    这里直接派发同一个事件到静态块上，验证的是同一条处理链。
+    const farStatic = JSON.parse(
+      await ev(`(async () => {
+        const blocks = [...document.querySelectorAll('.code-block-wrapper')]
+        // 找最后一个仍是静态态的块（它必然离视口很远）
+        let idx = -1
+        for (let i = blocks.length - 1; i >= 0; i--) {
+          if (blocks[i].querySelector('.cb-static')) { idx = i; break }
+        }
+        if (idx < 0) return '{"err":"no-static-block"}'
+        const pre = blocks[idx].querySelector('.cb-static')
+        pre.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }))
+        return JSON.stringify({ idx, dispatched: true })
+      })()`)
+    )
+    let activatedMount = false
+    for (let i = 0; i < 25; i++) {
+      await sleep(120)
+      const ok = await ev(
+        `(() => { const b = document.querySelectorAll('.code-block-wrapper')[${farStatic.idx ?? 0}]; return !!(b && b.querySelector('.cm-editor')) })()`
+      )
+      if (ok === true) {
+        activatedMount = true
+        break
+      }
+    }
+    report.note('静态块 mousedown → 挂载 ' + JSON.stringify({ ...farStatic, activatedMount }))
+    report.check(
+      'static-block-activates-on-mousedown',
+      farStatic.dispatched === true && activatedMount === true,
+      JSON.stringify({ idx: farStatic.idx, mounted: activatedMount })
+    )
   } else {
     report.check('first-block-still-typable-after-churn', false, '滚回顶部后第一块没挂上 CM')
+    report.check('bracket-autoclose-after-remount', false, '滚回顶部后第一块没挂上 CM')
+    report.check('static-block-activates-on-mousedown', false, '滚回顶部后第一块没挂上 CM')
   }
 
   // ⑤ 换文档：旧文档的块全部卸载，新文档照常工作
