@@ -12,8 +12,10 @@ import {
   bracketMatching,
   foldGutter,
   foldKeymap,
-  StreamLanguage
+  StreamLanguage,
+  type Language
 } from '@codemirror/language'
+import type { Parser } from '@lezer/common'
 import {
   autocompletion,
   closeBrackets,
@@ -31,7 +33,12 @@ import {
   unregisterCodeBlockHandle,
   type CodeBlockHandle
 } from '../../lib/editor/codeBlockViews'
-import { shouldMountCm, watchCodeBlockMount } from '../../lib/editor/codeBlockMountPolicy'
+import {
+  shouldMountCm,
+  watchCodeBlockMount,
+  STATIC_HIGHLIGHT
+} from '../../lib/editor/codeBlockMountPolicy'
+import { registerStaticParser, staticHighlightHtml } from '../../lib/editor/staticHighlight'
 
 const props = defineProps(nodeViewProps)
 const settings = useSettingsStore()
@@ -132,6 +139,18 @@ function resolveLanguageKey(lang: string): string | null {
   if (!key) return null
   if (LANGUAGE_LOADERS[key]) return key
   return LANGUAGE_ALIASES[key] ?? null
+}
+
+/**
+ * 从语言扩展里取出 Lezer 解析器（静态态高亮要用，P2）。
+ *
+ * 两种形态都要认：`@codemirror/lang-*` 返回 `LanguageSupport`（解析器在 `.language` 上），
+ * `StreamLanguage.define()` 返回的就是 `Language` 本身。取不到就返回 null（静态态按纯文本）。
+ */
+function parserOf(ext: Extension): Parser | null {
+  const asSupport = ext as { language?: Language }
+  const lang = asSupport.language ?? (ext as unknown as Language)
+  return (lang as { parser?: Parser }).parser ?? null
 }
 
 const editorRef = ref<HTMLElement | null>(null)
@@ -260,6 +279,14 @@ async function loadLanguage(lang: string): Promise<void> {
     }
     const support = await loader()
     cmView.dispatch({ effects: languageCompartment.reconfigure(support) })
+    /**
+     * 登记解析器：静态态要**用同一套语法**上色（P2），但它不能建 CM 实例。
+     * 只在这里登记 = 只有「本会话真的挂载过这个语言」的块才会在静态态被解析；
+     * 屏幕外从没露过面的块保持纯文本 —— 绝不为了上色去 `import()` 语言包
+     * （1500 块的文档里那就是几十次额外 chunk 加载）。见 lib/editor/staticHighlight.ts。
+     */
+    const parser = parserOf(support)
+    if (key && parser) registerStaticParser(key, parser)
   } catch {
     /* 语言加载失败时保持纯文本 */
   }
@@ -342,6 +369,12 @@ const selectionInside = ref(false)
 const activated = ref(false)
 /** 静态态的高度下限（卸载时记下的挂载态高度）——防滚动跳动 */
 const staticMinHeight = ref<number | null>(null)
+/**
+ * 这个块**曾经挂载过**没有（P2 静态高亮的开关）。
+ * 置真点在挂载流程里（那时语言解析器才登记），此后卸载成静态态就沿用高亮片段；
+ * 从没挂载过的块一直是纯文本（并在屏幕外）—— 见 staticHtml 的注释。
+ */
+const wasMounted = ref(false)
 let stopMountWatch: (() => void) | null = null
 let handleRegistered = false
 /** 离开视口附近后延迟多久才真卸（P3.2：来回滚一点不该反复挂/卸） */
@@ -389,6 +422,27 @@ const staticGutter = computed(() =>
   Array.from({ length: staticLines.value }, (_, i) => String(i + 1)).join('\n')
 )
 
+/**
+ * 静态态代码区的内容（P2）：带 token class 的 HTML（语言解析器已登记时），
+ * 否则是纯转义文本 —— 两种都能直接 `v-html`：文本自己走 `escapeHtml`，
+ * class 只来自 `staticHighlight.ts` 里的常量表（不含任何用户输入）。
+ * 只在**静态态**才算（挂载态根本不渲染这个 `<pre>`）。
+ */
+const staticHtml = computed(() => {
+  const text = props.node.textContent || ''
+  if (!STATIC_HIGHLIGHT || cmMounted.value || selectedLanguage.value === 'mermaid') {
+    return escapeHtml(text)
+  }
+  /**
+   * 只给**挂载过**的块上色（`wasMounted`）：语言解析器是懒加载的，块挂载时才会登记；
+   * 从没露过面的块保持纯文本 —— 它本来就在屏幕外，而且能省掉一次「全文档静态块重渲染」
+   * （实测那一版把 1500 围栏的可用耗时从 2695ms 拖到 3451ms、RSS +155MB）。
+   * 详见 lib/editor/staticHighlight.ts 的登记表注释。
+   */
+  if (!wasMounted.value) return escapeHtml(text)
+  return staticHighlightHtml(text, resolveLanguageKey(selectedLanguage.value))
+})
+
 /** 挂载：建 CM（复用既有创建函数）+ 应用语言（+ 选区在本块内时把光标交给 CM） */
 async function mountCmForVirtualization(): Promise<void> {
   if (cmView || selectedLanguage.value === 'mermaid') return
@@ -396,6 +450,7 @@ async function mountCmForVirtualization(): Promise<void> {
   if (cmView || !blockEl()) return
   staticMinHeight.value = null
   initCm()
+  wasMounted.value = true
   if (!handleRegistered) {
     registerCodeBlockHandle(handle)
     handleRegistered = true
@@ -987,7 +1042,8 @@ function commitMermaid(): void {
         v-if="settings.codeLineNumbers"
         class="cb-static-gutter"
         aria-hidden="true"
-      >{{ staticGutter }}</span><code class="cb-static-code">{{ props.node.textContent }}</code></pre>
+      >{{ staticGutter }}</span><!-- eslint-disable-next-line vue/no-v-html -- staticHtml 只可能是「escapeHtml 过的文本 + 我们自己的 lm-tok-* span 壳」（见 lib/editor/staticHighlight.ts 的安全说明），不含任何未转义的用户输入 -->
+      <code class="cb-static-code" v-html="staticHtml" /></pre>
 
     <!-- CodeMirror 代码编辑。
          .stop 阻断事件冒泡到 PM（PM 的 click 处理器会无条件 view.focus()

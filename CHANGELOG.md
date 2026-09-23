@@ -72,6 +72,60 @@
 - **工程化**：~~`tools/lib/harness.js` + `tools/run-suites.js`~~ → **本轮已完成**；
   剩余：`files` store 拆分；`store` 里那份为绕循环导入而复制的 `confirmIfDirty` 收敛到 `services/dialog`。
 
+## [Unreleased · F 项 P2：静态态语法高亮] — 不建 CM 也给静态块上色（1500 围栏代价约 55ms、内存无差）
+
+> 施工图《Lumin-F项实施方案-代码块CM虚拟化》阶段 **P2「静态语法高亮（视觉不掉档）」**。
+> P1 之后静态态是纯等宽文本：块从「挂载态」被卸下来的那一刻颜色会掉一下（程序化跳转、
+> 快速滚动时可能正好看见）。P2 用 Lezer 的 `highlightTree` 给静态态上色 —— **一个 CM 实例都不建**。
+
+### Added
+
+- **`src/renderer/src/lib/editor/staticHighlight.ts`**：自带一套 `lm-tok-*` class 的
+  `tagHighlighter`（`highlightTree` + `escapeHtml` 拼 HTML，纯函数）+ 一张「已加载语言 → 解析器」
+  的登记表。两处刻意的设计写进了文件头：
+  1. **不用 CM 生成的 class** —— `syntaxHighlighting(HighlightStyle)` 挂在 StyleModule 上，而
+     StyleModule 随**最后一个**用它的 CM 实例销毁而卸载（「块都卸完 → 颜色集体消失」）；
+  2. **不为屏幕外的块 `import()` 语言包** —— 解析器只在块挂载时登记。
+- **`assets/overlays.css`**：`.lm-tok-*` 九条配色，与 `CodeBlockView.vue` 的 `mdHighlight`
+  一一对应（改一边会被 `tests/staticHighlight.test.mjs` 的 CSS 一致性断言抓住）。
+- **`tests/staticHighlight.test.mjs`**（**7 条**，单测 306 → **313**）：转义（`v-html` 的前提）、
+  token 包壳后**去标签逐字等于原文**、语言没登记时退化成纯文本、登记后才上色、class 与 CSS
+  一一对应、真实 JS 语法树的 tag 覆盖（≥3 种 token 且含注释）。
+
+### Changed
+
+- `CodeBlockView.vue`：静态态代码区改 `v-html="staticHtml"`（内容只可能是「escapeHtml 过的文本 +
+  我们自己的 span 壳」，`staticHighlight.ts` 里有安全说明；eslint-disable 处也写了理由）。
+
+### 一处走错又量回来的设计（如实记录）
+
+第一版把登记表做成**响应式**（登记表一变 → 全文档静态块重算重渲染），想让「所有静态块」都上色。
+实测（1500 围栏、全新隔离实例）：可用耗时 **2695 → 3451ms**、RSS 924 → **1079MB** —— 为了给
+**屏幕外、用户根本看不到**的块上色，把打开文档拖慢一秒多、多吃一百多 MB。
+改成 **`wasMounted` 门**（挂载过的块才在静态态上色）：
+
+| 1500 围栏 | 可用耗时 | RSS（打开后） |
+| --- | --- | --- |
+| 响应式全量（走错那版） | 3451ms | 1079MB |
+| `wasMounted` 门（现在） | **3013ms** | **1030MB** |
+| `STATIC_HIGHLIGHT = false`（同构建只切开关） | 2958ms | 1036MB |
+
+⇒ P2 的真实代价约 **55ms**、内存**在噪声内**。口径：用户能看到的块永远处于挂载态（观察器 600px
+提前量），滚过去的块保留颜色；从没露过面的块保持纯文本。
+
+### Verification
+
+- `tools/_verify-cb-virtualization.js` 12 → **15 条**（默认矩阵内）：新增
+  `static-state-keeps-syntax-colors`（静态块里 `[class*="lm-tok-"]` ≥ 2；实测 4 个 token、
+  首段是 `<span class="lm-tok-keyword">function</span> …`）、`static-highlight-does-not-change-text`
+  （静态态 `textContent` 与节点文本逐字相同）、`never-mounted-block-stays-plain`（从没挂载过的
+  块 0 个 token，含那块 python）；另把 P0 里那条**靠模拟按键的括号断言换掉**了 —— 经 CDP 注入
+  文本时 CM 内部选区不一定跟得上，实测同一构建两次跑一次配对一次不配对（随机红），改成
+  `cm-extensions-rebuilt-after-remount`：重挂后 `lineNumbers()/foldGutter()/drawSelection()`
+  自己渲出来的 `.cm-lineNumbers` / `.cm-foldGutter` / `.cm-selectionLayer` 必须都在
+  （实测三个都 true）；keymap 的**行为**仍由 `_regress-cb.js` 守。
+- 15/15 PASS；单元测试 **313/313**；`vue-tsc` / `eslint` 0 error / 0 warning；`electron-vite build` exit 0。
+
 ## [Unreleased · F 项 P0：代码块虚拟化的观测与护栏] — 500/1500 围栏打开达标（1136ms / 2695ms），内存仍超线（671/924MB）
 
 > 施工图《Lumin-F项实施方案-代码块CM虚拟化》的阶段 **P0「观测与护栏」（不改行为）**。

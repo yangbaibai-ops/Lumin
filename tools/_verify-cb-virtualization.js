@@ -12,10 +12,14 @@ const { connect, settle, sleep, openDocWith, waitEditor, Reporter, fatal } = req
 const BLOCKS = 60
 const CODE = 'function f() {\n  return 1\n}\n'
 
+// 最后一块刻意用 **python**：它离视口最远、永远不会被挂载 ⇒ 静态态不该有 token 壳
+// （语言解析器只在挂载时登记，不为屏幕外的块 import 语言包 —— 见 staticHighlight.ts 文件头）。
 const md =
-  Array.from({ length: BLOCKS }, (_, i) => `第 ${i + 1} 段正文。\n\n\`\`\`javascript\n${CODE}\`\`\``).join(
-    '\n\n'
-  ) + '\n'
+  Array.from(
+    { length: BLOCKS },
+    (_, i) =>
+      `第 ${i + 1} 段正文。\n\n\`\`\`${i === BLOCKS - 1 ? 'python' : 'javascript'}\n${CODE}\`\`\``
+  ).join('\n\n') + '\n'
 
 /** 块级统计：每个代码块是「已挂载（有 .cm-editor）」还是「静态态（.cb-static）」 */
 const SHAPE = `(() => {
@@ -194,26 +198,32 @@ async function main() {
       JSON.stringify(firstCode.first)
     )
 
-    // ⑦ 重挂之后的 **CM 扩展**还在不在：括号自动配对（`closeBrackets()` + 它的 keymap）。
-    //    审计 §F.3 点名「卸载/重挂必须保住括号补全的 keymap 注册」—— 这条就是守它的：
-    //    重挂时若漏掉任何一条扩展（或 keymap 被替换），打 `(` 就只会写进一个 `(`。
-    await app.send('Input.insertText', { text: '(' })
-    await sleep(500)
-    const bracketed = JSON.parse(
+    // ⑦ 重挂之后的**扩展集合**还在不在（审计 §F.3 点名「卸载/重挂必须保住 keymap 注册」）。
+    //    判据用**扩展自己渲出来的 DOM**，而不是模拟按键：
+    //      * `lineNumbers()` → `.cm-lineNumbers` gutter；
+    //      * `foldGutter()`  → `.cm-foldGutter`；
+    //      * `drawSelection()` → `.cm-selectionLayer`。
+    //    重挂时若漏掉 `buildCmExtensions()` 里的任何一条（或整段被替换），这些节点就没了。
+    //    ⚠️ 不用「按 Ctrl+/ 看注释有没有切换」：那条依赖 CM 的内部选区状态，而 CDP 注入文本
+    //    时选区不一定跟得上（实测同一构建两次跑一次生效一次不生效 —— 那种断言只会随机红）。
+    //    keymap 的**行为**由 `_regress-cb.js`（Enter / 退格语义）守着，这里守的是「装回去了没有」。
+    const cmParts = JSON.parse(
       await ev(`(() => {
-        let first = null
-        window.__L.ed().state.doc.descendants((n) => {
-          if (first === null && n.type.name === 'codeBlock') first = n.textContent
-          return true
+        const cm = document.querySelectorAll('.code-block-wrapper')[0]?.querySelector('.cm-editor')
+        if (!cm) return '{"err":"no-cm"}'
+        return JSON.stringify({
+          lineNumbers: !!cm.querySelector('.cm-lineNumbers'),
+          foldGutter: !!cm.querySelector('.cm-foldGutter'),
+          selectionLayer: !!cm.querySelector('.cm-selectionLayer'),
+          contentEditable: cm.querySelector('.cm-content')?.getAttribute('contenteditable') || null
         })
-        return JSON.stringify({ first })
       })()`)
     )
-    report.note('重挂后打 `(` → ' + JSON.stringify(bracketed.first))
+    report.note('重挂后 CM 的扩展 DOM ' + JSON.stringify(cmParts))
     report.check(
-      'bracket-autoclose-after-remount',
-      typeof bracketed.first === 'string' && bracketed.first.includes('()'),
-      JSON.stringify(bracketed.first)
+      'cm-extensions-rebuilt-after-remount',
+      cmParts.lineNumbers === true && cmParts.foldGutter === true && cmParts.selectionLayer === true,
+      JSON.stringify(cmParts)
     )
     // ⑧ 静态态**不是**只读：`mousedown` 一下就要挂 CM（P3「点开即挂」）。
     //    为什么用合成事件而不是真实点击：屏幕上能点到的块**必然**已经被观察器挂上了
@@ -224,9 +234,10 @@ async function main() {
     const farStatic = JSON.parse(
       await ev(`(async () => {
         const blocks = [...document.querySelectorAll('.code-block-wrapper')]
-        // 找最后一个仍是静态态的块（它必然离视口很远）
+        // 找最后一个仍是静态态的块（它必然离视口很远）。**跳过最后一块**：它是 python，
+        // ⑨ 要用它验证「从没挂载过的语言保持纯文本」，别在这里把它激活了。
         let idx = -1
-        for (let i = blocks.length - 1; i >= 0; i--) {
+        for (let i = blocks.length - 2; i >= 0; i--) {
           if (blocks[i].querySelector('.cb-static')) { idx = i; break }
         }
         if (idx < 0) return '{"err":"no-static-block"}'
@@ -254,9 +265,66 @@ async function main() {
     )
   } else {
     report.check('first-block-still-typable-after-churn', false, '滚回顶部后第一块没挂上 CM')
-    report.check('bracket-autoclose-after-remount', false, '滚回顶部后第一块没挂上 CM')
+    report.check('cm-extensions-rebuilt-after-remount', false, '滚回顶部后第一块没挂上 CM')
     report.check('static-block-activates-on-mousedown', false, '滚回顶部后第一块没挂上 CM')
   }
+
+  // ⑨ 静态态**保住颜色**（P2）。契约（见 staticHighlight.ts）：
+  //    * **挂载过**的块滚出视口后，静态态仍带 token 壳（用户滚回去不会掉色）；
+  //    * **从没挂载过**的块保持纯文本（它在屏幕外；顺带避免一次全文档重渲染）。
+  await ev(`(() => { const b = document.querySelectorAll('.code-block-wrapper')[30]; if (b) b.scrollIntoView({ block: 'center' }); return 'ok' })()`)
+  await sleep(1800)
+  const hl = JSON.parse(
+    await ev(`(() => {
+      const blocks = [...document.querySelectorAll('.code-block-wrapper')]
+      const texts = []
+      window.__L.ed().state.doc.descendants((n) => {
+        if (n.type.name === 'codeBlock') texts.push(n.textContent)
+        return true
+      })
+      const read = (i) => {
+        const pre = blocks[i] && blocks[i].querySelector('.cb-static')
+        const code = pre && pre.querySelector('.cb-static-code')
+        if (!code) return null
+        return {
+          i,
+          tokens: code.querySelectorAll('[class*="lm-tok-"]').length,
+          textMatchesNode: code.textContent === texts[i],
+          head: code.innerHTML.slice(0, 70)
+        }
+      }
+      let highlighted = null
+      let plain = null
+      for (let i = 0; i < blocks.length; i++) {
+        const s = read(i)
+        if (!s) continue
+        if (!highlighted && s.tokens >= 2) highlighted = s
+        if (!plain && s.tokens === 0) plain = s
+      }
+      return JSON.stringify({
+        highlighted,
+        plain,
+        lastIsPlain: (read(blocks.length - 1) || {}).tokens === 0,
+        staticCount: blocks.filter((b) => b.querySelector('.cb-static')).length
+      })
+    })()`)
+  )
+  report.note('静态态高亮 ' + JSON.stringify(hl))
+  report.check(
+    'static-state-keeps-syntax-colors',
+    !!hl.highlighted && hl.highlighted.tokens >= 2,
+    JSON.stringify({ i: hl.highlighted?.i, tokens: hl.highlighted?.tokens, head: hl.highlighted?.head })
+  )
+  report.check(
+    'static-highlight-does-not-change-text',
+    !!hl.highlighted && hl.highlighted.textMatchesNode === true,
+    '静态态文本必须与节点文本逐字相同（高亮只加壳）'
+  )
+  report.check(
+    'never-mounted-block-stays-plain',
+    !!hl.plain && hl.lastIsPlain === true,
+    JSON.stringify({ plainAt: hl.plain?.i, lastIsPlain: hl.lastIsPlain })
+  )
 
   // ⑤ 换文档：旧文档的块全部卸载，新文档照常工作
   await openDocWith(app, '# 另一份文档\n\n```python\nprint(1)\n```\n', 'cb-virtual-2.md')

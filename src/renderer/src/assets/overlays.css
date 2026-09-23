@@ -252,6 +252,19 @@ li.md-reveal {
   color: inherit;
   white-space: pre;
 }
+/* 静态态的语法高亮 token（F 项 P2）。**与 CodeBlockView.vue 里 mdHighlight 的规则一一对应**：
+   那张表是 CM 挂载态的配色，这里用应用自己的 class 复刻一份 —— 刻意不用 CM 生成的 class，
+   因为 CM 的 StyleModule 随最后一个实例销毁而卸载，「块都卸完 → 颜色集体消失」。
+   改一边记得改另一边（tests/staticHighlight.test.mjs 会守住映射表的完整性）。 */
+.lm-tok-keyword { color: var(--accent); }
+.lm-tok-name { color: var(--accent-ink); }
+.lm-tok-function { color: var(--warning); }
+.lm-tok-value { color: var(--warning); }
+.lm-tok-type { color: var(--warning); }
+.lm-tok-operator { color: var(--accent-2); }
+.lm-tok-comment { color: var(--ink-3); font-style: italic; }
+.lm-tok-string { color: var(--ok); }
+.lm-tok-invalid { color: var(--danger); }
 
 /* Mermaid 图表块 */
 .mermaid-block .mermaid-render {
