@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { computed } from 'vue'
 // 轻量内联 SVG 图标集（lucide 风格描边图标）
 const props = withDefaults(defineProps<{ name: string; size?: number; strokeWidth?: number }>(), {
   size: 16,
@@ -215,13 +216,19 @@ const ICONS: Record<string, string[]> = {
   ]
 }
 
-const elements = ICONS[props.name] || ICONS.info
-
-function parts(): {
+/**
+ * ⚠️ 必须是 **computed**，不能像原来那样在 setup 里调一次 `parts()` 再解构：
+ * 那样得到的是一份**静态快照**，`name` 变化时图标不会跟着换。
+ * 实测踩到过：右侧大纲面板的折叠/展开按钮写的是
+ * `:name="expanded ? 'chevron-right' : 'chevron-left'"`，宽度、aria-label、title 都跟着状态变了，
+ * 只有箭头**永远是同一个**（用户报障：「不论收起还是展开，按钮都是 <」）。
+ */
+const parts = computed<{
   paths: string[]
   circles: { cx: number; cy: number; r: number }[]
   rects: { x: number; y: number; w: number; h: number; rx: number }[]
-} {
+}>(() => {
+  const elements = ICONS[props.name] || ICONS.info
   const paths: string[] = []
   const circles: { cx: number; cy: number; r: number }[] = []
   const rects: { x: number; y: number; w: number; h: number; rx: number }[] = []
@@ -236,9 +243,7 @@ function parts(): {
     }
   }
   return { paths, circles, rects }
-}
-
-const { paths, circles, rects } = parts()
+})
 </script>
 
 <template>
@@ -254,10 +259,10 @@ const { paths, circles, rects } = parts()
     aria-hidden="true"
     class="shrink-0"
   >
-    <path v-for="(d, i) in paths" :key="'p' + i" :d="d" />
-    <circle v-for="(c, i) in circles" :key="'c' + i" :cx="c.cx" :cy="c.cy" :r="c.r" />
+    <path v-for="(d, i) in parts.paths" :key="'p' + i" :d="d" />
+    <circle v-for="(c, i) in parts.circles" :key="'c' + i" :cx="c.cx" :cy="c.cy" :r="c.r" />
     <rect
-      v-for="(r, i) in rects"
+      v-for="(r, i) in parts.rects"
       :key="'r' + i"
       :x="r.x"
       :y="r.y"

@@ -1,10 +1,13 @@
 <script setup lang="ts">
 // 右侧大纲面板（三栏模式）：设置里打开「大纲放在编辑区右侧」后，它出现在编辑区右侧，
-// 于是左侧文件树与大纲可以同时看到。面板本身支持折叠/展开：
-//   * 展开 = 220px，顶部一行「大纲 + 收起箭头」+ 大纲列表（复用 `Outline.vue`）；
-//   * 折叠 = 34px 窄轨，只留一个展开箭头 —— 不用浮层把手，是为了「永远看得见、点得到」，
-//     也不需要额外的指针热区逻辑。
-// 折叠状态落在设置里（kv），重启后保持。
+// 于是左侧文件树与大纲可以同时看到。
+//
+//   * 宽度**可拖**：左缘 5px 的拖拽手柄（与左侧栏的手柄同一套做法、同一档钳位 160~420），
+//     宽度落在 `outlineRightWidth`，重启保持；
+//   * 折叠 / 展开：折叠 = 34px 窄轨（只留一个箭头），展开 = 设定宽度；
+//     箭头方向跟着状态翻转（展开时是「›」= 收起，折叠时是「‹」= 展开）。
+//     注意 Icon.vue 的 `name` 必须是**响应式**的，否则箭头不会跟着换（本轮修掉的那个 bug）。
+import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useSettingsStore } from '../stores/settings'
 import Outline from './Outline.vue'
@@ -13,17 +16,61 @@ import Icon from './Icon.vue'
 const { t } = useI18n()
 const settings = useSettingsStore()
 
+/** 折叠态固定 34px；展开态用设置里的宽度（拖拽即写回，钳位见 setter） */
+const width = computed({
+  get: () => settings.outlineRightWidth,
+  set: (v: number) => settings.set('outlineRightWidth', Math.max(160, Math.min(420, v)))
+})
+const panelWidth = computed(() => (settings.outlineRightExpanded ? width.value : 34))
+
 function toggle(): void {
   settings.set('outlineRightExpanded', !settings.outlineRightExpanded)
+}
+
+// ── 拖拽调宽：手柄在面板**左缘**，所以宽度 = 窗口右缘到指针的距离 ──
+const dragging = ref(false)
+function onDragStart(e: MouseEvent): void {
+  if (!settings.outlineRightExpanded) return // 折叠态是窄轨，先展开再拖
+  dragging.value = true
+  document.body.style.cursor = 'col-resize'
+  document.body.style.userSelect = 'none'
+  const move = (ev: MouseEvent): void => {
+    width.value = window.innerWidth - ev.clientX
+  }
+  const up = (): void => {
+    dragging.value = false
+    document.body.style.cursor = ''
+    document.body.style.userSelect = ''
+    document.removeEventListener('mousemove', move)
+    document.removeEventListener('mouseup', up)
+  }
+  document.addEventListener('mousemove', move)
+  document.addEventListener('mouseup', up)
+  e.preventDefault()
 }
 </script>
 
 <template>
   <aside
     data-outline-panel
-    class="flex h-full flex-none flex-col border-l border-edge bg-app transition-[width] duration-200"
-    :class="settings.outlineRightExpanded ? 'w-[220px]' : 'w-[34px]'"
+    class="relative flex h-full flex-none flex-col border-l border-edge bg-app"
+    :class="dragging ? '' : 'transition-[width] duration-200'"
+    :style="{ width: panelWidth + 'px' }"
   >
+    <!-- 左缘拖拽手柄（与 AppSidebar 的手柄同一套做法：5px 热区，悬停显色） -->
+    <div
+      v-if="settings.outlineRightExpanded"
+      class="absolute -left-[3px] top-0 z-20 h-full w-[5px] cursor-col-resize opacity-0 transition-opacity hover:opacity-100"
+      :class="dragging ? 'opacity-100' : ''"
+      data-outline-resize
+      @mousedown="onDragStart"
+    >
+      <div
+        class="mx-auto h-full w-px transition-colors"
+        :class="dragging ? 'bg-accent' : 'bg-transparent'"
+      />
+    </div>
+
     <div
       class="flex flex-none items-center gap-1 border-b border-edge py-1.5"
       :class="settings.outlineRightExpanded ? 'justify-between pl-3 pr-1.5' : 'justify-center px-1'"

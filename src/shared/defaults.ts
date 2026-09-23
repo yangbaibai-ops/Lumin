@@ -60,6 +60,8 @@ export const defaultSettings: AppSettings = {
   outlineOnRight: false,
   /** 右侧大纲面板是否展开（仅 `outlineOnRight` 打开时有意义；默认展开） */
   outlineRightExpanded: true,
+  /** 右侧大纲面板宽度（px，可拖左缘调整；钳在 160~420） */
+  outlineRightWidth: 220,
   splitRatio: 0.5,
   syncScroll: false,
   codeLineNumbers: true,

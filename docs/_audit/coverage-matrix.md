@@ -116,7 +116,7 @@
 | 会话恢复：文档 + 光标 + 滚动比例 + 路由 | `_verify-session`(17)、`tests/session.test.mjs`(9) | 26 | 强 | 用页面 reload 走真实恢复路径（argv → bootstrap → restoreSession） |
 | 「单独关窗 vs 整体退出」的恢复语义 | `_verify-session-last-closed`(8)、`tests/session.test.mjs`(9) | 17 | 强 | 自管实例、3 轮真实起杀 |
 | 会话开关（`restoreSession=false` → 落在编辑器） | `_verify-session`（`toggle-off-shows-welcome`、`toggle-on-restores-again`） | 2 | 强 | 注意断言名还叫 *welcome*，实际已是「落到编辑器」 |
-| **大纲三栏模式（大纲放编辑区右侧）** | `_verify-outline-right`(15)、`tests/settingsDefaults.test.mjs`(1) | 16 | 强 | 出厂默认关（默认结构不变，单测钉住）；打开后左栏只剩文件树、右侧面板 220px 且列出标题、折叠成 34px 窄轨、关掉即还原；套件自身还原现场 |
+| **大纲三栏模式（大纲放编辑区右侧）** | `_verify-outline-right`(22)、`tests/settingsDefaults.test.mjs`(1) | 23 | 强 | 出厂默认关（默认结构不变，单测钉住）；打开后左栏只剩文件树、右侧面板列出标题、折叠成 34px 窄轨、关掉即还原；另守**箭头方向随状态翻转**（Icon.vue 响应式 bug）与**左缘拖宽 + 160/420 钳位**；套件自身还原现场 |
 | **表格保真（单元格回车不毁表）** | `_verify-table-fidelity`(15)、`_verify-table-width`(25)、`_verify-md-fidelity`(102) | 142 | 强 | 用户报障：单元格里回车 ⇒ 整张表退化成 HTML。判据含「回车这一步源码**逐字节不变**且幂等」「历史上已写成『一格两段』的文档仍写回管道表」「合并单元格照旧退回 HTML」；1 条 SKIP 见 §3.6 |
 | 草稿横幅只在真需要时出现（假阳性回归） | `_verify-draft-banner`(27)、`tests/drafts.test.mjs`(11)、`tests/filesRules.test.mjs`(9) | 47 | 强 | 含无主草稿归属、跨窗口隔离、重开空白缓冲区、重启后行为；本轮起横幅=**独立强制弹窗**，另加两条「不选就不能编辑 / Esc 不关」的断言 |
 | 崩溃/关窗草稿恢复正文 | `_verify-draft-banner`（③⑦⑧ 共 ~8 条）、`_verify-session-last-closed` C | 10 | 强 | 含「恢复后消耗掉草稿」 |
@@ -340,6 +340,7 @@
 | `_verify-editor-menu-extras` | 5/7 | **待查**：`file-tree-menu-still-works` / `usage-row-on-disk`（文件树右键菜单 + 落库），很可能需要工作区夹具；本轮未动文件树 |
 | `_verify-rename-fix` | 0/0 **NOASSERT** | **待修/待删**：运行期一条断言都没产出（我的静态扫描没抓出来，因为文件里确实有 Reporter）。要么补断言，要么按 §2.I 的口径删掉 |
 | `_verify-keymap` | SKIP | **正确跳过**：需要 dev server（`import('/src/…')`），`--all` 下如实标 SKIP |
+| **`_regress-cb` / `_repro-rapidenter` / `_regress-split-live` / `_verify-session-last-closed` / `_verify-draft-banner` / `_verify-surface-stress`** | 单独跑全绿；**全量连跑时偶发红** | **环境/时序敏感的套件**（CDP 键注入偶发丢失、实例起停竞态、绝对耗时上限）。实测同一提交连跑两轮，红的是不同套件、单独跑又全绿；已按同样口径在 `_verify-table-enter` 里加了「键注入重试 + 记明重试次数」的兜底，其余套件暂留 —— **判定红之前先单独跑一遍** |
 | `_verify-table-fidelity` 的 `typed-cell-idempotent` | **SKIP（记名的已知问题）** | 行内标记符模型在**解析**时把 `<br>` 读回样式对**内**：`**实测痛点**<br>第二行` 重灌一次会再序列化成 `**实测痛点<br>**第二行`（随后是不动点，不再继续漂）。任何「加粗文字 + 硬换行」都一样（正文里的 Shift+Enter 同样），**与表格无关**，属行内标记符模型那条线，本轮不动它 |
 | `_check-cm-drag`、`_check-heading-rule`、`_check-table-edit` | 「确认是环境抖动而非真实回归」的最小复测脚本，环境（Chromium 节流/焦点）问题已由 harness 的 `transitionTo()` 式轮询解决 |
 
