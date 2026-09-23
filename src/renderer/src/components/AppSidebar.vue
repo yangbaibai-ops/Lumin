@@ -87,18 +87,9 @@ function onDragStart(e: MouseEvent): void {
         <Icon name="folder" :size="13" class="flex-none text-ink-3" />
         <span class="truncate">{{ workspaceName }}</span>
       </button>
-      <!-- 没有工作区时：同一个位置就是一个语义正确的「打开文件夹」入口（不再是图标 + 空白） -->
-      <button
-        v-else
-        class="flex h-7 min-w-0 flex-1 items-center gap-1.5 rounded-md px-1.5 text-left text-[12px] font-medium text-ink-3 transition-colors hover:bg-panel-2 hover:text-ink-2"
-        :title="t('open.openFolder')"
-        :aria-label="t('open.openFolder')"
-        data-sidebar-workspace
-        @click="files.openFolder()"
-      >
-        <Icon name="folderOpen" :size="13" class="flex-none" />
-        <span class="truncate">{{ t('open.openFolder') }}</span>
-      </button>
+      <!-- 没有工作区时：**这个位置不放东西**（用户口径：没打开文件夹时，侧栏不要出现
+           「打开文件夹」这类按钮）。原来这里是一个「打开文件夹」文字按钮，
+           现在只是空位；打开文件夹仍可从顶部「文件」菜单或 Ctrl+O 走。 -->
 
       <!-- 动作：最近文档（写作时切换文档的最短路径）→ 新建文件（最高频）→ 刷新（仅工作区） -->
       <SidebarRecentButton />

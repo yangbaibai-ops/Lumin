@@ -1,11 +1,8 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { useRouter } from 'vue-router'
 import { useFilesStore } from '../stores/files'
 import { useUiStore } from '../stores/ui'
-import { confirmIfDirty } from '../composables/useAppActions'
-import { openExternalFile } from '../lib/openFile'
 import {
   activeTreePath,
   focusFirstAvailableRow,
@@ -20,7 +17,6 @@ import SegmentedControl, { type SegmentItem } from './SegmentedControl.vue'
 const { t } = useI18n()
 const files = useFilesStore()
 const ui = useUiStore()
-const router = useRouter()
 const filter = ref('')
 
 /**
@@ -166,21 +162,8 @@ function onRootContextMenu(e: MouseEvent): void {
   })
 }
 
-/** 侧栏空态里的三个入口（原欢迎页的能力，见 template 里的空态区块） */
-async function newDoc(): Promise<void> {
-  if (!(await confirmIfDirty())) return
-  await files.newDocInWorkspace()
-  await router.push('/editor')
-}
-
-async function openFileDialog(): Promise<void> {
-  if (!(await confirmIfDirty())) return
-  const path = await window.luminAPI.file.chooseOpenFile()
-  if (!path) return
-  // 落点规则见 lib/openFile.ts（无工作区 → 本窗口 + 侧栏切到该文件的文件夹）
-  await openExternalFile(path)
-  await router.push('/editor')
-}
+/** 侧栏空态那三个入口（新建 / 打开文件 / 打开文件夹）随空态区块一起删掉了 ——
+    没有工作区时侧栏不再放任何入口按钮（用户口径）。入口仍在顶部「文件」菜单与快捷键里。 */
 
 async function handleAction(action: string): Promise<void> {
   if (!files.root) return
@@ -254,38 +237,11 @@ function onDrop(e: DragEvent): void {
       </div>
     </template>
 
-    <!-- 未打开工作区：空态只留三个图标按钮（新建 / 打开文件 / 打开文件夹），
-         文案走 title（全局 tooltip）+ aria-label（读屏可读），侧栏保持干净 -->
-    <div v-else class="empty-hub flex min-h-0 flex-1 flex-col items-center px-4 pt-8 text-center">
-      <div class="flex items-center gap-2">
-        <button
-          class="icon-btn border border-edge"
-          :title="t('open.newDoc')"
-          :aria-label="t('open.newDoc')"
-          @click="newDoc"
-        >
-          <Icon name="file-plus" :size="16" />
-        </button>
-        <button
-          class="icon-btn border border-edge"
-          :title="t('open.openFile')"
-          :aria-label="t('open.openFile')"
-          @click="openFileDialog"
-        >
-          <Icon name="folderOpen" :size="16" />
-        </button>
-        <button
-          class="icon-btn border border-edge"
-          :title="t('open.openFolder')"
-          :aria-label="t('open.openFolder')"
-          @click="files.openFolder()"
-        >
-          <Icon name="folder-plus" :size="16" />
-        </button>
-      </div>
-
-      <p class="mt-4 text-[11.5px] leading-relaxed text-ink-3/80">{{ t('open.hint') }}</p>
-    </div>
+    <!-- 未打开工作区：**什么都不放**（用户口径：没打开文件夹时，侧栏不要出现
+         「新建文档 / 打开文件 / 打开文件夹」这些按钮和提示）。
+         原来这里是一组三枚图标按钮 + 一行 `open.hint` 提示，现已整块删除。
+         入口都还在别处：顶部菜单「文件」、快捷键（Ctrl+N / Ctrl+O）、以及侧栏头部的
+         「打开文件夹 / 新建文件」两个按钮 —— 侧栏空着就是空着。 -->
 
     <!-- 搜索 + 视图切换（树 / 列表）：**贴底**成一条独立的工具带
          （用户口径：这两件东西放在顶部太抢视觉，压到面板下方更干净）。
