@@ -11,11 +11,13 @@
 // 取值口径（改这里必须同步改 style.css 的 `--paper`，反之亦然）：
 //   light  **纯白**（用户口径：浅色主题下写作区要纯白；代价是与 --panel/--elevate 同色，
 //          面板改由 1px 边框 + 投影立起来）
-//   dark   深色纸（比外壳 --app=#0b0d12 亮一档，否则侧栏与正文糊在一起）
+//   dark   中性灰的纸（比外壳 --app=#2b2e33 亮一档，否则侧栏与正文糊在一起）。
+//          暗色从近黑（#0b0d12 / #12141a）改成浅灰，是用户口径：不要纯黑、像 Typora，
+//          且**编辑区比侧栏更浅一点**。
 //   sepia  暖纸
 export const PAPER_BY_THEME = {
   light: '#ffffff',
-  dark: '#12141a',
+  dark: '#35383d',
   sepia: '#faf4e4'
 } as const
 

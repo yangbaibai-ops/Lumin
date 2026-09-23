@@ -103,47 +103,52 @@
 }
 
 .theme-dark {
-  /* 外壳比纸再暗一档：纸抬到 #12141a、外壳压到 #0b0d12，于是「纸比 chrome 亮」在暗色下
-     也成立（改动前是反的：外壳比正文亮）。两者都还在原来的近黑色域里，气质不变。 */
-  --app: #0b0d12;
-  --paper: #12141a;
-  --panel: #16181f;
-  --panel-2: #1e2129;
-  --elevate: #1c1f27;
-  --edge: #272b35;
-  --edge-strong: #363b48;
-  --ink: #e8eaef;
-  --ink-2: #a8afbc;
-  --ink-3: #6d7483;
+  /* 暗色 = **中性灰，不是纯黑**（用户口径：像 Typora 那样用浅灰；并且编辑区要比侧边栏更浅一档）。
+     层次关系（由亮到暗）：浮层/面板 > 纸（编辑区）> 外壳（=侧栏）—— 纸比壳亮一档，
+     于是「写作区是纸、chrome 是壳」这条关系在暗色下同样成立（`_verify-surfaces` 的 T 段守着）。
+     改前是近黑色域（--app #0b0d12 / --paper #12141a），看着像纯黑；现在整体抬到中性灰。 */
+  --app: #2b2e33;
+  --paper: #35383d;
+  /* 不变量（tests/themeTokens.test.mjs ②）：暗色下 --panel/--elevate 必须**严格亮于纸**，
+     否则浮层看起来像凹进去的洞；--panel-2 还要亮到能在纸上当表头底（CDP 的 T6 判 ≥1.1:1）。 */
+  --panel: #3a3d43;
+  --panel-2: #44484f;
+  --elevate: #454a51;
+  --edge: #4a4d54;
+  --edge-strong: #5b606a;
+  --ink: #e6e8ec;
+  --ink-2: #b3b8c0;
+  --ink-3: #8a9099;
   /* 副色 = 中性灰（深色）：暗底上 --accent 要够亮（图标/焦点环），淡底上的文字用 --accent-ink */
-  --accent: #8a919e;
-  --accent-2: #6b7280;
-  --accent-soft: rgba(255, 255, 255, 0.08);
-  --accent-ink: #dcdfe5;
-  --link: #60a5fa;
+  --accent: #9aa0aa;
+  --accent-2: #7d838d;
+  --accent-soft: rgba(255, 255, 255, 0.09);
+  --accent-ink: #e2e5ea;
+  --link: #6cb0f5;
   --toc-link: var(--link);
-  /* 深色下「更淡」= 更贴近背景（对比度更低），不是更亮：约 3.4:1 */
-  --marker: #666c78;
+  /* 深色下「更淡」= 更贴近背景（对比度更低），不是更亮：比 --ink-3 / --accent 都更暗 */
+  --marker: #6e747d;
   --danger: #f87171;
   --warning: #fbbf24;
   --ok: #4ade80;
   --glow: rgba(255, 255, 255, 0.1);
-  --code-bg: #1a1d26;
-  --sel: rgba(255, 255, 255, 0.16);
-  --block-hover: rgba(255, 255, 255, 0.05);
+  /* 代码块底色比纸再暗一档：在抬亮后的纸上仍然读得出「内嵌一块」 */
+  --code-bg: #303338;
+  --sel: rgba(255, 255, 255, 0.18);
+  --block-hover: rgba(255, 255, 255, 0.06);
   /* 查找命中（深色）：参照 Typora night.css 的蓝色高亮（半透明蓝底 + 实蓝当前项 + 白字） */
   --find-hit-bg: rgb(102 175 233 / 32%);
   --find-hit-ink: #eef2f8;
   --find-current-bg: #428bca;
   --find-current-ink: #ffffff;
   --find-current-edge: rgb(120 190 240 / 60%);
-  --btn-solid: #4b5563;
-  --btn-solid-2: #39414f;
+  --btn-solid: #5a616d;
+  --btn-solid-2: #464d58;
   --btn-ink: #f3f4f6;
   --code-key: #8ab4e8;
   --code-key-2: #7fc4e0;
-  --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.4);
-  --shadow-2: 0 10px 32px rgba(0, 0, 0, 0.55);
+  --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.35);
+  --shadow-2: 0 10px 32px rgba(0, 0, 0, 0.5);
   color-scheme: dark;
 }
 
