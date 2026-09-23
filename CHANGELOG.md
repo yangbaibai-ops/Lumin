@@ -72,6 +72,55 @@
 - **工程化**：~~`tools/lib/harness.js` + `tools/run-suites.js`~~ → **本轮已完成**；
   剩余：`files` store 拆分；`store` 里那份为绕循环导入而复制的 `confirmIfDirty` 收敛到 `services/dialog`。
 
+## [Unreleased · 没打开文件夹时侧栏不再放「新建/打开」入口]
+
+> 用户口径：没打开任何文件夹时，左侧侧栏不要出现「新建文档 / 打开文件 / 打开文件夹」这些按钮和提示。
+
+### Removed
+
+- `FileTree.vue` 的**未打开工作区空态整块删除**：原先是一组三枚图标按钮（新建文档 / 打开文件 /
+  打开文件夹，文案在 `title` + `aria-label` 上）+ 一行 `open.hint` 快捷键提示（「Ctrl+O 打开文件 ·
+  Ctrl+Shift+P 搜索文档」）。现在侧栏空着就是空着。
+- `AppSidebar.vue` 头部那一格的**「打开文件夹」占位按钮**（无工作区时显示）一并去掉 ——
+  它的可见文字正是「打开文件夹」，留着就还是同一类入口。
+- 随之删掉 `FileTree.vue` 里仅供空态使用的 `newDoc()` / `openFileDialog()` 两个方法，
+  以及它们的三个 import（`useRouter` / `confirmIfDirty` / `openExternalFile`）。
+
+入口都还在：顶部「文件」菜单、快捷键（Ctrl+N / Ctrl+O），以及侧栏头部的「打开文件夹 / 新建文件」
+两个按钮（有工作区时那个位置是工作区名，点击也是切换文件夹）。
+
+### Verification
+
+- `tools/_verify-welcome-removed.js` **33/33**：B 段断言整段重写为「空态不再有任何入口」——
+  `empty-state-hub-removed`（`aside .empty-hub` 不该存在）、`empty-state-has-no-entry-buttons`
+  （侧栏里找不到「新建文档/打开文件/打开文件夹」这些可访问名）、`empty-state-has-no-hint-text`
+  （侧栏文字里没有 `Ctrl+O` / `Ctrl+Shift+P` 提示）；
+- 顺带修掉这个套件里一条**早就失效的定位**：C 段找工具栏原来按类名链 `h-11` + `overflow-x-auto`，
+  而工具栏高度早就是 `h-10` 了 ⇒ 那条 `toolbar-open-button-removed` 一直以「找不到工具栏」的形式红着。
+  改用 Toolbar 根节点上现成的 `data-editor-toolbar`。
+- `vue-tsc` / `eslint` / `electron-vite build` exit 0。
+
+## [Unreleased · 浅色外壳改成 #FAFAFA（Typora 观感）]
+
+> 用户口径：侧边栏、顶部栏这些 chrome 的颜色改成 `#FAFAFA`，像 Typora 一样。
+
+### Changed
+
+- `theme.css` 浅色（`:root, .theme-light`）的 **`--app: #f2f3f7 → #fafafa`**。
+  `--app` 就是外观上所有「壳」的底色：侧边栏、顶部菜单栏、快捷工具栏、状态栏、以及窗口底色/
+  分屏缝隙。写作区的纸仍是**纯白 `#ffffff`**（不变）—— 两者对比度约 **1.04:1**，
+  差距刻意很小，分层靠 1px `--edge` 边框与投影（Typora 的浅色也是这个路子）。
+- 深色（`#2b2e33`）与羊皮纸（`#f1e9d5`）不动：这条口径说的是浅色的壳。
+
+### Verification
+
+- `tests/themeTokens.test.mjs` 全绿：`--paper(#ffffff) > --app(#fafafa)` 仍严格成立；
+  浅色下 `--panel/--elevate` 必须等于纸（`#ffffff`）的那条例外不变；
+- `tools/_verify-surfaces.js` **37/37**：T2 要求「纸比壳亮」的对比度 ≥ 1.03 —— 实测 **1.043** ✓
+  （浅色三主题、`body` 就是壳色、三主题纸色互不相同都仍然成立）；
+- `tools/_verify-sidebar-tree-style.js` **32/32**（选中态/悬停态在新壳色上仍可辨）、
+  `tools/_verify-a11y.js` **6/6**；单元测试 **302/302**；`vue-tsc` / `eslint` / `electron-vite build` exit 0。
+
 ## [Unreleased · 右侧大纲切文档不再闪/乱：去掉大纲的进出场动画]
 
 > 用户口径：目录在右侧时，切换不同文档「目录会闪烁、动画有点混乱」，优化或干脆取消动画。

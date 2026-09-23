@@ -322,9 +322,10 @@ async function main() {
     await closeAnyPopover(ev)
 
     // 工具栏不应再有「打开」按钮（能力已移到侧栏与菜单，避免三处重复）
-    // ⚠️ 定位方式本轮修过：原来按类名链找（`h-11` + `overflow-x-auto`），而工具栏高度早就改成
-    //    `h-10` 了 ⇒ `found:false` 假红（这条断言之前一直是"找不到工具栏"）。改用组件给的稳定钩子
-    //    `data-editor-toolbar`（Toolbar.vue 根节点上）。
+    // ⚠️ 定位方式本轮改成组件给的稳定钩子 `data-editor-toolbar`（Toolbar.vue 根节点上）：
+    //    原来按类名链找（`h-11` + `overflow-x-auto`）——类名一被改动，这条断言就以
+    //    「找不到工具栏」的形式红掉（实测：工作区里出现过一次未提交的高度类名改动，
+    //    它一变这条就假红）。钩子与视觉类名解耦，以后调高度不会再影响它。
     const toolbar = JSON.parse(
       await ev(`(() => {
         const bar = document.querySelector('[data-editor-toolbar]')
