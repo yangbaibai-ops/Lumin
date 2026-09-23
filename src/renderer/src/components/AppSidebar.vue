@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useFilesStore } from '../stores/files'
 import { useSettingsStore } from '../stores/settings'
@@ -15,6 +15,18 @@ const settings = useSettingsStore()
 const ui = useUiStore()
 
 const workspaceName = computed(() => files.root?.split(/[\\/]/).filter(Boolean).pop() || '')
+
+/**
+ * 打开「大纲放在编辑区右侧」时，把左栏页签收回「文件」——
+ * 否则 `ui.sidebarTab` 停在 'outline' 时，左栏既没有页签可切、又只能显示文件树，
+ * 状态和界面对不上（下次关掉三栏模式会突然跳回大纲页签，看着像 bug）。
+ */
+watch(
+  () => settings.outlineOnRight,
+  (on) => {
+    if (on) ui.sidebarTab = 'files'
+  }
+)
 
 // ── 拖拽调整宽度 ──
 const dragging = ref(false)
@@ -109,8 +121,10 @@ function onDragStart(e: MouseEvent): void {
       </button>
     </div>
 
-    <!-- 标签页 -->
-    <div class="flex flex-none gap-1 px-2.5 pt-2">
+    <!-- 标签页：仅在**非三栏模式**下出现。
+         打开「大纲放在编辑区右侧」后，左栏只承担文件树，页签行整行隐藏
+         （这样目录与大纲才能同时看到，而且左栏不再有两套并存的导航语义）。 -->
+    <div v-if="!settings.outlineOnRight" class="flex flex-none gap-1 px-2.5 pt-2">
       <button
         v-for="tab in ['files', 'outline'] as const"
         :key="tab"
@@ -135,10 +149,11 @@ function onDragStart(e: MouseEvent): void {
              树就停在「没有任何行」的状态，而且自己没有恢复路径；
            * 大纲同理：它只读 editor store 的 outline，编辑器实例被重建/切模式时可能正好是空的。
          常驻之后切页签只是 display 切换 —— 数据、滚动位置、展开状态全部原样保留，
-         这类「切一次就空」的状态机问题从根上没有了（而且省掉每次切换的重挂成本）。 -->
+         这类「切一次就空」的状态机问题从根上没有了（而且省掉每次切换的重挂成本）。
+         三栏模式下：树常显、左栏里的大纲整块不显示（大纲这时在编辑区右侧）。 -->
     <div class="mt-1.5 min-h-0 flex-1">
-      <FileTree v-show="ui.sidebarTab === 'files'" />
-      <Outline v-show="ui.sidebarTab === 'outline'" />
+      <FileTree v-show="settings.outlineOnRight || ui.sidebarTab === 'files'" />
+      <Outline v-show="!settings.outlineOnRight && ui.sidebarTab === 'outline'" />
     </div>
 
     <!-- 底部原先有一行「设置 / 关于 Lumin / 收起侧边栏」——本轮去掉（用户口径：确认是否还需要，

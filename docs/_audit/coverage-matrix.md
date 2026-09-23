@@ -116,6 +116,7 @@
 | 会话恢复：文档 + 光标 + 滚动比例 + 路由 | `_verify-session`(17)、`tests/session.test.mjs`(9) | 26 | 强 | 用页面 reload 走真实恢复路径（argv → bootstrap → restoreSession） |
 | 「单独关窗 vs 整体退出」的恢复语义 | `_verify-session-last-closed`(8)、`tests/session.test.mjs`(9) | 17 | 强 | 自管实例、3 轮真实起杀 |
 | 会话开关（`restoreSession=false` → 落在编辑器） | `_verify-session`（`toggle-off-shows-welcome`、`toggle-on-restores-again`） | 2 | 强 | 注意断言名还叫 *welcome*，实际已是「落到编辑器」 |
+| **大纲三栏模式（大纲放编辑区右侧）** | `_verify-outline-right`(15)、`tests/settingsDefaults.test.mjs`(1) | 16 | 强 | 出厂默认关（默认结构不变，单测钉住）；打开后左栏只剩文件树、右侧面板 220px 且列出标题、折叠成 34px 窄轨、关掉即还原；套件自身还原现场 |
 | **表格保真（单元格回车不毁表）** | `_verify-table-fidelity`(15)、`_verify-table-width`(25)、`_verify-md-fidelity`(102) | 142 | 强 | 用户报障：单元格里回车 ⇒ 整张表退化成 HTML。判据含「回车这一步源码**逐字节不变**且幂等」「历史上已写成『一格两段』的文档仍写回管道表」「合并单元格照旧退回 HTML」；1 条 SKIP 见 §3.6 |
 | 草稿横幅只在真需要时出现（假阳性回归） | `_verify-draft-banner`(27)、`tests/drafts.test.mjs`(11)、`tests/filesRules.test.mjs`(9) | 47 | 强 | 含无主草稿归属、跨窗口隔离、重开空白缓冲区、重启后行为；本轮起横幅=**独立强制弹窗**，另加两条「不选就不能编辑 / Esc 不关」的断言 |
 | 崩溃/关窗草稿恢复正文 | `_verify-draft-banner`（③⑦⑧ 共 ~8 条）、`_verify-session-last-closed` C | 10 | 强 | 含「恢复后消耗掉草稿」 |

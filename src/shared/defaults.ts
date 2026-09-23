@@ -49,6 +49,17 @@ export const defaultSettings: AppSettings = {
   remoteImages: 'click' as 'click' | 'always',
   sidebarVisible: true,
   sidebarWidth: 264,
+  /**
+   * 大纲放在**编辑区右侧**（三栏：左文件树 | 中编辑区 | 右大纲）。
+   *
+   * 默认 **false = 沿用原来的结构**（左栏里切「文件 / 大纲」页签）——用户口径明确要求默认不变，
+   * 这是给「想同时看到目录和大纲」的人的显式开关。
+   * 打开后：左栏只剩文件树（页签行整行隐藏），大纲固定显示在编辑区右侧，可折叠/展开
+   * （折叠态是一条 34px 的窄轨，点箭头展开）。落在 kv 里，重启后保持。
+   */
+  outlineOnRight: false,
+  /** 右侧大纲面板是否展开（仅 `outlineOnRight` 打开时有意义；默认展开） */
+  outlineRightExpanded: true,
   splitRatio: 0.5,
   syncScroll: false,
   codeLineNumbers: true,

@@ -83,6 +83,7 @@ const DEFAULT_SUITES = [
   '_verify-cb-languages.js', // 代码块语言高亮矩阵（15 种 + 别名，清单外退化为纯文本）
   '_verify-cb-virtualization.js', // 代码块 CM 虚拟化：按需挂载 / 高度稳定 / 选区保护 / churn 后可打字
   '_verify-table-fidelity.js', // 表格保真：单元格回车不再退化成 HTML / 空段丢弃 / 多段用 <br> / 幂等
+  '_verify-outline-right.js', // 三栏模式：大纲放右侧（左栏只剩文件树 / 右侧可折叠展开 / 关掉即还原）
   '_verify-mermaid-gate.js', // mermaid 视口门 + 首屏不预加载（清单 §2.G）
   '_verify-neutral-accent.js' // 副色必须是低饱和灰（通道极差断言）
 ]

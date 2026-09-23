@@ -57,7 +57,11 @@ const CARD = `(() => {
     background: cs.backgroundColor,
     band: scs ? { borderBottom: scs.borderBottomWidth, radius: scs.borderTopLeftRadius, shadow: scs.boxShadow } : null,
     position: cs.position,
-    stripBeforeKernel: !!(reveal && reveal.nextElementSibling && reveal.nextElementSibling.hasAttribute('data-editor-kernel')),
+    // 带子必须在内核**之前**（契约是「在编辑区上方、文档流里的一块」，不是「必须是内核的前一个兄弟」）。
+    // ⚠️ 原来比的是 reveal.nextElementSibling 有没有 data-editor-kernel —— 三栏模式给内核套了
+    // 一层横排容器（编辑区 + 右侧大纲）之后，下一个兄弟变成那个容器，这条会假红（实测矩阵里红过一次）。
+    // 注意：这段代码整体在模板字符串里，**注释里不能出现反引号**（会提前结束模板串）。
+    stripBeforeKernel: !!(reveal && kernel && (reveal.compareDocumentPosition(kernel) & Node.DOCUMENT_POSITION_FOLLOWING)),
     kernelTop: kernel ? Math.round(kernel.getBoundingClientRect().top) : null,
     transition: cs.transitionDuration,
     bandTransition: reveal ? getComputedStyle(reveal).transitionDuration : null,

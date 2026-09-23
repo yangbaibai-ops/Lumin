@@ -40,6 +40,10 @@
     "removeRecent": "Remove from list",
     "hint": "Ctrl+O to open a file · Ctrl+Shift+P to search documents"
   },
+  "outline": {
+    "collapse": "Collapse outline",
+    "expand": "Expand outline"
+  },
   "sidebar": {
     "files": "Files",
     "outline": "Outline",
@@ -241,6 +245,8 @@
     "reset": "Reset to defaults",
     "restoreSession": "Restore the last session on startup",
     "restoreSessionDesc": "Reopen the documents from last time and put the caret and scroll position back (each window restores its own)",
+    "outlineRight": "Outline on the right",
+    "outlineRightDesc": "Three-column layout: the left sidebar keeps only the file tree and the outline is pinned to the right of the editor (collapsible), so both are visible at once. Off = the original sidebar-tab structure",
     "autoCheckUpdate": "Check for updates automatically",
     "autoCheckUpdateDesc": "Show a notification when a new version is available. Only works in packaged builds with a configured update channel; off by default.",
     "links": "Links",

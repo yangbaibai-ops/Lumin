@@ -72,6 +72,41 @@
 - **工程化**：~~`tools/lib/harness.js` + `tools/run-suites.js`~~ → **本轮已完成**；
   剩余：`files` store 拆分；`store` 里那份为绕循环导入而复制的 `confirmIfDirty` 收敛到 `services/dialog`。
 
+## [Unreleased · 大纲可放编辑区右侧（三栏模式，可选）] — 目录与大纲同时可见，右侧大纲可折叠
+
+> 用户口径：加一个设置，把大纲放到编辑区右边（三栏：左目录 | 中编辑区 | 右大纲），
+> 这样目录和大纲能同时看到；**默认沿用当前结构**（左栏里切「文件 / 大纲」页签），
+> 三栏只在显式打开后生效；打开后大纲支持折叠/展开。
+
+### Added
+
+- 新设置 **`outlineOnRight`（大纲放在编辑区右侧，出厂 false）** + **`outlineRightExpanded`（右侧大纲是否展开，出厂 true）**，
+  落在 kv 里（重启保持）；类型见 `shared/types.ts`，默认值见 `shared/defaults.ts`。
+- 设置入口：**设置 → 一般 → 大纲放在编辑区右侧**（一行说明 + 开关）。打开时会顺手把右侧面板设为
+  展开、并把左栏页签收回「文件」—— 否则开完开关可能看到「左栏还停在大纲页签」或「右侧是折叠窄轨」。
+- 新组件 **`OutlinePanel.vue`**：挂在编辑区右侧，复用既有的 `Outline.vue`。
+  展开 = 220px（顶部一行「大纲 + 收起箭头」+ 标题列表）；折叠 = **34px 窄轨**，只留一个展开箭头。
+  带 `data-outline-panel` / `data-outline-toggle` 两个钩子，`aria-expanded` 随状态翻转。
+  折叠态刻意**不做浮层把手**：窄轨永远看得见、点得到，也不需要额外热区逻辑。
+
+### Changed
+
+- 打开三栏后：`AppSidebar` 的页签行**整行隐藏**，左栏只显示文件树（两套导航语义不同时并存）；
+  `EditorView` 里编辑区与右侧大纲同处一个横排容器（内核仍是 `flex-1`，
+  `data-editor-kernel` 这个查找栏/套件依赖的锚点语义没变）。
+- 关闭（默认）时结构**一字不变**：页签回来、右侧面板消失。
+
+### Verification（本轮实测）
+
+| 项 | 结果 |
+| --- | --- |
+| 出厂默认 | `tests/settingsDefaults.test.mjs` 钉住 `outlineOnRight === false`（默认沿用原结构）、`outlineRightExpanded === true`；**单测 300/300** |
+| 几何实测（隔离实例，临时探针已删） | 关闭：内核 264→1304、左栏有「文件/大纲」页签、无右侧面板；开启：面板 **1084→1304（220px）**、内核缩到 264→1084、页签消失、面板列出文档标题；折叠：面板 **34px**、列表消失、`aria-expanded=false`、按钮名变「展开大纲」；再展开回 220px |
+| 新增套件 | `tools/_verify-outline-right.js`（**15 条**，已进默认矩阵）：默认结构不变 / 设置开关真实可点 / 三栏几何 / 标题列表 / 折叠与展开（含 aria）/ 关掉即还原；套件自身**还原现场**，不污染后续套件 |
+| 相邻套件 | `_regress-layout` 9/9、`_verify-surfaces` 37/37、`_verify-a11y` 6/6、`_verify-i18n` 5/5、`_verify-toc-style-scroll` 23/23、`_verify-session` 17/17 |
+| i18n | 新增 `settings.outlineRight` / `outlineRightDesc` 与顶层 `outline.collapse` / `outline.expand`，三语同步（`i18nAndIpc` 绿） |
+| 门禁 | 默认矩阵 **35/35 PASS**（`NOASSERT 0`）、`vue-tsc`/`eslint`/`build` exit 0 |
+
 ## [Unreleased · 深色主题改中性灰] — 不再近黑；编辑区比侧栏浅一档（像 Typora）
 
 > 用户口径：深色主题不要把整体变成纯黑色，而是像 Typora 一样用浅灰色，而且**编辑区域要比侧边栏更浅一点**。

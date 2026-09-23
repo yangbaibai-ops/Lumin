@@ -9,6 +9,7 @@ import { useEditorMenuStore } from '../stores/editorMenu'
 import Toolbar from '../components/Toolbar.vue'
 import StatusBar from '../components/StatusBar.vue'
 import NotificationCenter from '../components/NotificationCenter.vue'
+import OutlinePanel from '../components/OutlinePanel.vue'
 import TyporaEditor from '../components/editor/TyporaEditor.vue'
 import Icon from '../components/Icon.vue'
 import { measureAllCodeBlocks } from '../lib/editor/codeBlockViews'
@@ -699,7 +700,8 @@ watch(
       for (const name of DRAFT_WRITE_EVENTS) document.addEventListener(name, blockDraftWrites, true)
     } else {
       document.removeEventListener('keydown', blockDraftKeys, true)
-      for (const name of DRAFT_WRITE_EVENTS) document.removeEventListener(name, blockDraftWrites, true)
+      for (const name of DRAFT_WRITE_EVENTS)
+        document.removeEventListener(name, blockDraftWrites, true)
     }
     // 渲染面：弹窗开着时不可编辑（DOM 层面就拒绝输入，连 IME/粘贴都进不来）
     editorStore.instance?.setEditable(!open)
@@ -745,80 +747,89 @@ onBeforeUnmount(() => {
          三种模式下「纸」都是同一个矩形，切换模式不会看见底色跳变；pane 之间的分屏
          缝隙仍露出外壳灰（--app），正好充当分隔线。 -->
     <!-- data-editor-kernel：写作区的语义锚点。查找/替换浮条按它的顶边定位 —— 工具栏可被设置
-         隐藏、菜单栏在 Windows 上也可能不显示，写死像素就会压住工具栏（用户报过这个 bug）。 -->
-    <div
-      ref="kernelRef"
-      data-editor-kernel
-      class="relative flex min-h-0 flex-1"
-      :class="{ 'view-restoring': viewRestoring }"
-      @scroll.capture="onSplitScroll"
-    >
-      <!-- 渲染面板（Tiptap）：wysiwyg 全宽 / split 左栏 / source 隐藏但常驻。
+         隐藏、菜单栏在 Windows 上也可能不显示，写死像素就会压住工具栏（用户报过这个 bug）。
+         ⚠️ 这一行是「编辑区 + 右侧大纲」的**横排容器**：三栏模式（设置里打开
+         「大纲放在编辑区右侧」）下右侧多一块 `OutlinePanel`，内核本身照旧 flex-1。
+         内核的定位语义（`data-editor-kernel`）没变，所以查找栏/各套件的锚点选择器不受影响。 -->
+    <div class="flex min-h-0 flex-1">
+      <div
+        ref="kernelRef"
+        data-editor-kernel
+        class="relative flex min-h-0 flex-1"
+        :class="{ 'view-restoring': viewRestoring }"
+        @scroll.capture="onSplitScroll"
+      >
+        <!-- 渲染面板（Tiptap）：wysiwyg 全宽 / split 左栏 / source 隐藏但常驻。
            ⚠️ **唯一的例外**：重文档降级（见 lib/largeDoc.ts 与本文件 skipRenderPane）——
            代码围栏是唯一的性能悬崖（实测 500 块 → 22.8s 打开 / 1500 块 → >185s 且常驻 1.4GB），
            而「隐藏但常驻」意味着即使切到源码模式，那 500 个 CodeMirror 实例照样会被建出来
            （实测降级后仍是 500 实例 / 14.7s / 1.6GB）。所以这种情况**整块不挂载**。 -->
-      <div
-        v-if="!skipRenderPane"
-        ref="renderPaneRef"
-        class="h-full min-w-0 bg-paper"
-        @contextmenu="onRenderContextMenu"
-      >
-        <TyporaEditor
-          ref="renderRef"
-          :key="files.current?.path ?? 'untitled'"
-          :model-value="files.current?.content ?? ''"
-          @update:model-value="onEditorUpdate"
-        />
-      </div>
+        <div
+          v-if="!skipRenderPane"
+          ref="renderPaneRef"
+          class="h-full min-w-0 bg-paper"
+          @contextmenu="onRenderContextMenu"
+        >
+          <TyporaEditor
+            ref="renderRef"
+            :key="files.current?.path ?? 'untitled'"
+            :model-value="files.current?.content ?? ''"
+            @update:model-value="onEditorUpdate"
+          />
+        </div>
 
-      <!-- 分屏分隔条（仅 split 存在；拖动时显示拖拽态）
+        <!-- 分屏分隔条（仅 split 存在；拖动时显示拖拽态）
            绝对定位浮层：位置由 --split-left（比例）驱动，不参与两侧栏的 flex 布局 -->
-      <div
-        v-if="ui.editorMode === 'split'"
-        class="split-divider"
-        :class="{ dragging: splitDragging }"
-        :style="{ '--split-left': `${splitRatio * 100}%` }"
-        title="拖动调整左右比例（双击复位）"
-        @mousedown="startSplitDrag"
-        @dblclick="resetSplitRatio"
-      >
-        <span />
-      </div>
+        <div
+          v-if="ui.editorMode === 'split'"
+          class="split-divider"
+          :class="{ dragging: splitDragging }"
+          :style="{ '--split-left': `${splitRatio * 100}%` }"
+          title="拖动调整左右比例（双击复位）"
+          @mousedown="startSplitDrag"
+          @dblclick="resetSplitRatio"
+        >
+          <span />
+        </div>
 
-      <!-- 源码面板（textarea）：split 右栏 / source 全宽 / wysiwyg 隐藏但常驻 -->
-      <div ref="sourcePaneRef" class="h-full min-w-0 overflow-hidden bg-paper">
-        <div class="h-full">
-          <div class="h-full" :class="sourceCenterClass()">
-            <textarea
-              ref="sourceRef"
-              class="source-editor"
-              :class="{ 'source-editor--split': ui.editorMode === 'split' }"
-              :value="files.current?.content ?? ''"
-              spellcheck="false"
-              :readonly="!!files.draftRestore"
-              @input="onSourceInput"
-              @keydown.tab="onSourceTab"
-              @click="updateSourceCursor($event.target as HTMLTextAreaElement)"
-              @keyup="updateSourceCursor($event.target as HTMLTextAreaElement)"
-              @select="updateSourceCursor($event.target as HTMLTextAreaElement)"
-            />
+        <!-- 源码面板（textarea）：split 右栏 / source 全宽 / wysiwyg 隐藏但常驻 -->
+        <div ref="sourcePaneRef" class="h-full min-w-0 overflow-hidden bg-paper">
+          <div class="h-full">
+            <div class="h-full" :class="sourceCenterClass()">
+              <textarea
+                ref="sourceRef"
+                class="source-editor"
+                :class="{ 'source-editor--split': ui.editorMode === 'split' }"
+                :value="files.current?.content ?? ''"
+                spellcheck="false"
+                :readonly="!!files.draftRestore"
+                @input="onSourceInput"
+                @keydown.tab="onSourceTab"
+                @click="updateSourceCursor($event.target as HTMLTextAreaElement)"
+                @keyup="updateSourceCursor($event.target as HTMLTextAreaElement)"
+                @select="updateSourceCursor($event.target as HTMLTextAreaElement)"
+              />
+            </div>
           </div>
         </div>
+
+        <!-- 同步滚动开关（分屏专属悬浮芯片，SQLite kv 持久化） -->
+        <button
+          v-if="ui.editorMode === 'split'"
+          class="split-sync-chip"
+          :class="{ active: settings.syncScroll }"
+          :title="settings.syncScroll ? '同步滚动已开启（点击关闭）' : '开启同步滚动'"
+          @click="toggleSyncScroll"
+        >
+          <Icon name="sync-scroll" :size="13" />
+          <span>同步滚动</span>
+          <span v-if="settings.syncScroll" class="split-sync-dot" />
+        </button>
       </div>
 
-      <!-- 同步滚动开关（分屏专属悬浮芯片，SQLite kv 持久化） -->
-      <button
-        v-if="ui.editorMode === 'split'"
-        class="split-sync-chip"
-        :class="{ active: settings.syncScroll }"
-        :title="settings.syncScroll ? '同步滚动已开启（点击关闭）' : '开启同步滚动'"
-        @click="toggleSyncScroll"
-      >
-        <Icon name="sync-scroll" :size="13" />
-        <span>同步滚动</span>
-        <span v-if="settings.syncScroll" class="split-sync-dot" />
-      </button>
+      <!-- 右侧大纲（三栏模式）：设置里打开「大纲放在编辑区右侧」时才出现。
+           它与左侧文件树同时可见，自身可折叠/展开（见 OutlinePanel.vue）。 -->
+      <OutlinePanel v-if="settings.outlineOnRight" />
     </div>
 
     <StatusBar />

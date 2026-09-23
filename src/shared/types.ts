@@ -41,6 +41,10 @@ export interface AppSettings {
   toolbarItems: string[]
   sidebarVisible: boolean
   sidebarWidth: number
+  /** 大纲放在编辑区右侧（三栏：左文件树 | 中编辑区 | 右大纲）；默认 false = 沿用左栏页签结构 */
+  outlineOnRight: boolean
+  /** 右侧大纲面板是否展开（仅 outlineOnRight 打开时有意义） */
+  outlineRightExpanded: boolean
   splitRatio: number // 分屏对比视图左右宽度比（左面板占比 0.25~0.75）
   syncScroll: boolean // 分屏对比视图左右滚动进度同步
   codeLineNumbers: boolean // 代码块是否显示行号，默认开

@@ -40,6 +40,10 @@
     "removeRecent": "从列表移除",
     "hint": "Ctrl+O 打开文件 · Ctrl+Shift+P 搜索文档"
   },
+  "outline": {
+    "collapse": "收起大纲",
+    "expand": "展开大纲"
+  },
   "sidebar": {
     "files": "文件",
     "outline": "大纲",
@@ -241,6 +245,8 @@
     "reset": "恢复默认设置",
     "restoreSession": "启动时恢复上次会话",
     "restoreSessionDesc": "重新打开上次的文档，并把光标与滚动位置放回原处（多窗口时各窗口分别恢复）",
+    "outlineRight": "大纲放在编辑区右侧",
+    "outlineRightDesc": "三栏布局：左侧只保留文件目录，大纲固定在编辑区右侧（可折叠/展开），于是目录与大纲能同时看到；关闭时沿用原来的「左栏里切文件/大纲页签」结构",
     "autoCheckUpdate": "自动检查更新",
     "autoCheckUpdateDesc": "有新版本时在通知中心提示。仅在打包版且配置了更新渠道后生效，默认关闭。",
     "links": "链接",

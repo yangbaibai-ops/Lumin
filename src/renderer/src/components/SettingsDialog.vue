@@ -55,6 +55,21 @@ function toggleMenuBar(): void {
   settings.set('nativeMenuBar', !settings.nativeMenuBar)
 }
 
+/**
+ * 大纲放在编辑区右侧（三栏）。
+ * 打开时顺手把右侧面板设为展开、并把左栏页签收回「文件」——
+ * 否则开完开关看到的可能是「左栏还停在大纲页签」或「右侧大纲是折叠的窄轨」，
+ * 与「打开就能同时看到目录和大纲」的预期不符。
+ */
+function toggleOutlineRight(): void {
+  const on = !settings.outlineOnRight
+  settings.set('outlineOnRight', on)
+  if (on) {
+    settings.set('outlineRightExpanded', true)
+    ui.sidebarTab = 'files'
+  }
+}
+
 /** 自动保存开关：关闭时取消未触发的磁盘定时器（草稿崩溃保护不受影响） */
 function toggleAutoSave(): void {
   const v = !settings.autoSave
@@ -402,6 +417,25 @@ function formatTime(ms: number): string {
                           class="switch"
                           :class="{ on: settings.nativeMenuBar }"
                           @click="toggleMenuBar"
+                        />
+                      </div>
+                    </section>
+
+                    <section class="surface mb-4 p-5">
+                      <div class="flex items-center justify-between gap-4">
+                        <div>
+                          <p class="text-[13.5px] text-ink">{{ t('settings.outlineRight') }}</p>
+                          <p class="mt-0.5 text-[12px] text-ink-3">
+                            {{ t('settings.outlineRightDesc') }}
+                          </p>
+                        </div>
+                        <button
+                          class="switch"
+                          :class="{ on: settings.outlineOnRight }"
+                          :aria-checked="settings.outlineOnRight"
+                          role="switch"
+                          :aria-label="t('settings.outlineRight')"
+                          @click="toggleOutlineRight"
                         />
                       </div>
                     </section>
