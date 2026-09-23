@@ -72,6 +72,47 @@
 - **工程化**：~~`tools/lib/harness.js` + `tools/run-suites.js`~~ → **本轮已完成**；
   剩余：`files` store 拆分；`store` 里那份为绕循环导入而复制的 `confirmIfDirty` 收敛到 `services/dialog`。
 
+## [Unreleased · 找到真正的启动遮罩：index.html 里的首帧骨架屏，已删除]
+
+> 用户反馈「打开应用**依然**有启动遮罩层和骨架图和入场动画」。
+> 上一版删的是 Vue 的 `SkeletonScreen`，**没删到真正的那一层** —— 这次用 CDP 抓启动帧定位到了。
+
+### 定位过程（抓帧实测，不是猜）
+
+写临时探针：直接拉起 Electron（独立 `--user-data-dir` + 独立调试端口），从进程启动起每 40ms 轮询，
+一连上页面就每 ~100ms 采样一次「页面文本 / 骨架块数 / 全窗遮罩 / 内核可见性」并截图：
+
+| 时刻 | 现场 |
+| --- | --- |
+| +561ms | `bodyText = "LUMIN"`、`fullCovers = ["lm-boot"]`、`skeletons = 0` ⇒ **整窗被一段 HTML 骨架屏盖着** |
+| +675ms | 正常界面（菜单/侧栏/编辑器都在），`fullCovers = []` |
+
+即：**`src/renderer/index.html` 里那段纯 HTML/CSS 首帧骨架屏**（`.lm-boot`：假顶栏 + 假侧栏 +
+假正文 + 居中的「LUMIN」呼吸字，心跳 keyframes `lm-breathe`）—— 它在窗口第一帧就可见，
+直到 Vue 挂载才被 `#app` 替换掉。上一版删掉的 `SkeletonScreen` 只是它之后的第二层。
+
+### Removed
+
+- **`index.html` 里那段 `.lm-boot` 骨架屏整段删除**（标记 + 内联 `<style>` + 呼吸动画）。
+  `#app` 现在是个空容器：窗口从 `ready-to-show` 起只有主进程设定的纸色背景（`themeBackground()`），
+  随后直接是正常界面 —— **没有遮罩、没有骨架、没有任何进场动画**，与 Typora 的开法一致。
+- 顺带少了 ~2.5KB 内联 CSS/标记与一次整窗绘制。
+- 文件里留了注释说明「别再往这儿加首帧骨架」，并加了单测守着（见下）。
+
+### Verification
+
+- **抓帧复测**：`+565ms` 时 `bodyText = ""`、`fullCovers = []`、`skeletons = 0`（只剩纸色背景），
+  `+694ms` 正常界面 —— 中间**没有任何遮罩帧**；
+- 新增单测 `tests/bootFirstPaint.test.mjs`：`index.html` 里不许再有 `.lm-boot` 标记、呼吸动画 keyframes
+  或内联 `<style>`（CDP 断言抓不到它 —— Vue 挂载后那棵子树已被替换，只有"文件里根本没写"才钉得住）；
+  **单测 302/302**；
+- `_verify-bars-no-filename` 16/16（`boot-mask-removed`：DOM 里没有骨架块与全窗遮罩）；
+- `vue-tsc` / `eslint` / `electron-vite build` exit 0。
+
+> 说明：这次没有再报启动耗时中位数 —— 测量时你自己那个 Lumin 实例还在跑（`electron.exe .`），
+> 进程 RSS 会把它的也算进去（实测求和到 828MB），数字不可比。上一版在干净环境下的对比仍然有效
+> （首屏可用 985 → 953ms）。
+
 ## [Unreleased · 去掉启动骨架屏（遮罩）] — 打开应用不再有进场动画/骨架图，启动实测略快
 
 > 用户口径：取消打开应用时的进场动画（应用初始化 UI 的那层遮罩动画），**去掉骨架图**，同时加快启动速度。
