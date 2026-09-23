@@ -208,6 +208,8 @@
     "cursor": "行 {line}，列 {col}",
     "dirtyConfirmTitle": "有未保存的更改",
     "dirtyConfirmBody": "当前文档有未保存的更改，确定要离开吗？",
+    "saveAfterReopenTitle": "这份内容是按别的编码重新解释的",
+    "saveAfterReopenBody": "当前内容是按「{enc}」重新解释磁盘字节得到的（很可能就是乱码），**不是**编码转换的结果。按现在这样写回会覆盖磁盘上的原始内容 —— 确认保存？",
     "deleteConfirmTitle": "删除确认",
     "deleteConfirmBody": "确定要删除「{name}」吗？此操作不可恢复。",
     "imageRemoteHidden": "远程图片已隐藏（点击加载）"
@@ -344,6 +346,7 @@
     "createFailed": "创建失败",
     "renameFailed": "重命名失败",
     "reopenedWithEncoding": "已按 {enc} 重新打开",
+    "encodingReopenAutoSaveSkipped": "为避免把乱码写回磁盘，本次自动保存已跳过（当前是按「{enc}」重新解释的内容）；确认编码无误后请手动保存。",
     "encodingFailed": "无法按该编码重新打开",
     "encodingNeedsRestart": "编码功能需要重启应用后生效（主进程未热更新）",
     "eolChanged": "行尾已切换为 {eol}",

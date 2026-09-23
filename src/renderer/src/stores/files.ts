@@ -87,6 +87,19 @@ export const useFilesStore = defineStore('files', {
      * 照样会把 500 个实例建出来 —— 实测 14.7s / 1.6GB）。每次打开/新建都会重置。
      */
     heavyMode: false,
+    /**
+     * 「当前缓冲区是按某个编码**重新解释磁盘字节**得到的」（`reopenWithEncoding` 之后为真）。
+     *
+     * 为什么需要这个标记（用户报障的数据损坏路径）：把 UTF-8 文件按 GBK 重新打开 → 缓冲区里是乱码；
+     * 此时若发生**自动保存**，乱码就按 gbk 写回磁盘 —— 原始内容永久丢失，再切回 UTF-8 读到的
+     * 也只是这份坏数据。所以：
+     *   * 自动保存：见到这个标记**直接不落盘**，只提示一次（见 scheduleSave）；
+     *   * 手动保存：先弹确认（见 save），用户明确点了才写。
+     * 打开新文档 / 成功保存后清掉。
+     */
+    reopenedWithEncoding: false,
+    /** 「自动保存因重新解释而被跳过」的提示只弹一次，避免每次防抖都刷屏 */
+    reopenAutoSaveWarned: false,
     saveTimer: null as ReturnType<typeof setTimeout> | null,
     draftTimer: null as ReturnType<typeof setTimeout> | null,
     saving: false,
@@ -280,6 +293,9 @@ export const useFilesStore = defineStore('files', {
           eol: opened.eol
         }
         this.draftRestore = null
+        // 新打开的文档：清掉「按编码重新解释过」的标记（那是上一个文档的状态）
+        this.reopenedWithEncoding = false
+        this.reopenAutoSaveWarned = false
         // 显式替换意图：同一路径再次打开（外部改动后重载、另一个窗口的会话恢复）时
         // 编辑器不会重建（:key 只看 path），必须靠世代号让它换内容
         this.noteExternalReplace()
@@ -325,8 +341,10 @@ export const useFilesStore = defineStore('files', {
       }
       this.currentDir = this.root
       this.draftRestore = null
-      // 未命名缓冲区永远是空白起步：不携带上一份文档的降级标记
+      // 未命名缓冲区永远是空白起步：不携带上一份文档的降级标记，也不带「重新解释过」的标记
       this.heavyMode = false
+      this.reopenedWithEncoding = false
+      this.reopenAutoSaveWarned = false
       // 显式替换意图：上一份文档若也是未命名（:key 同为 'untitled'），编辑器不会重建，
       // 得靠世代号让它换成这份空白缓冲
       this.noteExternalReplace()
@@ -404,6 +422,22 @@ export const useFilesStore = defineStore('files', {
       // 草稿防抖（脏了才写，用于崩溃恢复；干净文档不写，见 writeDraft）
       this.draftTimer = setTimeout(() => this.writeDraft(), 1200)
       if (this.current?.path && settings.autoSave) {
+        /**
+         * ⚠️ **按编码重新打开之后，自动保存不许落盘**（用户报障的那条数据损坏路径）：
+         * 用错误编码重新解释出来的缓冲区里就是乱码；它一旦被自动写回，磁盘上的原始内容就没了，
+         * 「再切回原来的编码」读到的也只是这份坏数据。手动保存仍允许，但会先弹一次确认（见 save()）。
+         */
+        if (this.reopenedWithEncoding) {
+          if (!this.reopenAutoSaveWarned) {
+            this.reopenAutoSaveWarned = true
+            const enc = encodingLabel(this.current.encoding)
+            useUiStore().toast(
+              i18n.global.t('toast.encodingReopenAutoSaveSkipped', { enc }),
+              'warning'
+            )
+          }
+          return
+        }
         this.saveTimer = setTimeout(() => this.save(), delay)
       }
     },
@@ -431,6 +465,24 @@ export const useFilesStore = defineStore('files', {
       if (!this.current) return false
       if (!this.current.path) {
         return this.saveAs()
+      }
+      /**
+       * ⚠️ **按编码重新解释过之后再保存，先问一次**（用户报障的数据损坏路径）：
+       * 缓冲区里很可能是乱码，写回会把磁盘上的原始内容覆盖掉 —— 这个动作不可逆，
+       * 所以必须让用户明确点一下，而不是等他发现「切回原编码也回不来了」。
+       * 自动保存那条路已经在 scheduleSave 里直接跳过了（不会走到这里）。
+       */
+      if (this.reopenedWithEncoding) {
+        const ui = useUiStore()
+        const enc = encodingLabel(this.current.encoding)
+        const ok = await ui.confirm({
+          title: i18n.global.t('editor.saveAfterReopenTitle'),
+          body: i18n.global.t('editor.saveAfterReopenBody', { enc }),
+          danger: true
+        })
+        if (!ok) return false
+        this.reopenedWithEncoding = false
+        this.reopenAutoSaveWarned = false
       }
       this.saving = true
       try {
@@ -591,6 +643,9 @@ export const useFilesStore = defineStore('files', {
         cur.hadBom = opened.hadBom
         cur.eol = opened.eol
         this.draftRestore = null
+        // 标记「这份缓冲区是按 enc 重新解释出来的」：自动保存跳过、手动保存先确认（见 state 注释）
+        this.reopenedWithEncoding = true
+        this.reopenAutoSaveWarned = false
         useWorkspaceDocsStore().bumpMtime(cur.path)
         useUiStore().toast(
           i18n.global.t('toast.reopenedWithEncoding', { enc: encodingLabel(concrete) }),

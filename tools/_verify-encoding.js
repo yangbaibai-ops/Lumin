@@ -3,6 +3,8 @@
 // 覆盖：
 //  A. 解码：UTF-8、UTF-8 BOM、UTF-16LE(BOM)、GBK、Shift_JIS、Windows-1251
 //  B. 重新打开：先用 windows-1252 打开 GBK 文件（乱码）→ reopenWithEncoding('gbk') 恢复且文档干净
+//  B2. 乱码缓冲区**不许落盘**（用户报障「切回原编码内容变了」的数据损坏路径）：
+//      重新解释后自动保存跳过 + 提醒一次；手动保存先弹确认，取消不写、确定才写
 //  C. 保存回写：GBK 文件保存后字节仍是 GBK；UTF-8 BOM 文件保存后 BOM 还在
 //  D. 设置生效：同一串字节（C4 E3 BA C3）在 gbk / windows-1252 下解出不同文本；设置确实落库
 //  E. 菜单：一级「选择编码重新打开」+ 二级全编码列表 + 当前编码被标记 + 真实点击切换
@@ -33,6 +35,8 @@ const T_1251 = '# Русский тест\n\nЭто текст в кодиров
 const AMBIG_BYTES = Buffer.from([0xc4, 0xe3, 0xba, 0xc3])
 const AMBIG_GBK = '你好'
 const AMBIG_1252 = 'ÄãºÃ'
+/** 「点错编码」看到的样子：把 GBK 字节按 windows-1252 解 —— B2 段要用它做缓冲区内容 */
+const T_GBK_MOJIBAKE = iconv.decode(iconv.encode(T_GBK, 'gbk'), 'windows-1252')
 
 function get(p) {
   return new Promise((res, rej) => {
@@ -173,12 +177,29 @@ const SETUP = `(() => {
   fs.writeFileSync(F.win1251, iconv.encode(T_1251, 'windows-1251'))
   fs.writeFileSync(F.ambig, AMBIG_BYTES)
 
+  /**
+   * 套件里没人能点对话框：默认把 `ui.confirm` 换成固定回答 —— 与本套件无关的保存路径
+   * 一旦弹确认框就会把整轮挂死（`await` 永远不返回）。B2 段要测**真**对话框时临时还原，测完换回来。
+   */
+  const stubConfirm = (answer) =>
+    w.ev(
+      `(() => { const ui = window.__E.ui(); if (!window.__REAL_CONFIRM) window.__REAL_CONFIRM = ui.confirm; ui.confirm = async () => ${answer ? 'true' : 'false'}; return 'ok' })()`
+    )
+  const useRealConfirm = () =>
+    w.ev(
+      `(() => { const ui = window.__E.ui(); if (window.__REAL_CONFIRM) ui.confirm = window.__REAL_CONFIRM; return 'ok' })()`
+    )
+  /** 通知是落库的：用前后差集看「这次动作新发了哪条」，历史通知不会干扰断言 */
+  const NOTIF_SNAP = `(async () => JSON.stringify((await window.luminAPI.notifications.list({ includeClosed: true })).map((n) => n.level + '|' + n.title)))()`
+  const ZH = JSON.parse(fs.readFileSync(path.join(REPO, 'src/shared/i18n/zh-CN.json'), 'utf-8'))
+
   try {
     // 工作区设到夹具目录（侧栏树/编码无关，但 openPath 走文件 API，不需要工作区）
     await w.ev(
       `(async () => { await window.__E.files().openUntitled(); await window.__E.files().setRoot(${JSON.stringify(dir)}); return 'ok' })()`
     )
     await sleep(900)
+    await stubConfirm(true)
 
     /** 打开文件并把编码一起读出来 */
     const open = async (p) => {
@@ -375,6 +396,241 @@ const SETUP = `(() => {
       after.dirty === false && after.saved === true,
       JSON.stringify({ dirty: after.dirty, saved: after.saved })
     )
+
+    // ── B2. 「重新解释过的缓冲区」不许自动落盘（用户报障的数据损坏路径）──
+    // 用户口径：切到 GBK 内容确实变了，但再切回 UTF-8 时显示的**不是**原来那份文字。
+    // 实测：来回切本身是无损的（B 段已证），丢掉内容的是**中间有一次写盘** ——
+    // 乱码缓冲区被自动保存（或顺手 Ctrl+S）盖回磁盘，之后再切回原编码读到的就是这份坏数据。
+    // 所以这里就测那条写盘路径：假设用户点错编码（1252）看到乱码 → 继续编辑 → 落盘必须被拦住。
+    await w.ev(`(() => { window.__E.settings().set('language', 'zh-CN'); return 'ok' })()`)
+    await sleep(300)
+    const autoSaveWas = await w.ev(`window.__E.settings().autoSave`)
+    const autoSaveIntervalWas = await w.ev(`window.__E.settings().autoSaveInterval`)
+    const pristinGbk = iconv.encode(T_GBK, 'gbk')
+    const EDITED_GARBAGE = T_GBK_MOJIBAKE + '\n乱码期间又敲了一行。\n'
+
+    // 点错编码：1252 解 GBK 字节 → 乱码（文档自身仍然「干净」，磁盘也还没被动过）
+    await w.ev(
+      `(async () => { await window.__E.files().reopenWithEncoding('windows-1252'); return 'ok' })()`
+    )
+    await sleep(600)
+    const wrongEnc = JSON.parse(
+      await w.ev(
+        `(() => { const f = window.__E.files(); return JSON.stringify({ enc: f.current.encoding, content: f.current.content, garbled: f.current.content !== ${JSON.stringify(T_GBK)}, flag: f.reopenedWithEncoding === true }) })()`
+      )
+    )
+    console.log('B2-wrong-encoding ' + JSON.stringify(wrongEnc))
+    c(
+      'reopen-remembers-it-was-reinterpreted',
+      wrongEnc.enc === 'windows-1252' && wrongEnc.garbled === true && wrongEnc.flag === true,
+      JSON.stringify({ enc: wrongEnc.enc, garbled: wrongEnc.garbled, flag: wrongEnc.flag })
+    )
+    c(
+      'wrong-encoding-decode-matches-1252-bytes',
+      wrongEnc.content === T_GBK_MOJIBAKE,
+      JSON.stringify({ head: wrongEnc.content.slice(0, 10) })
+    )
+
+    // ① 乱码 + 继续编辑 + 自动保存开着 → 一个字节都不许写盘，并提醒用户一次
+    await w.ev(
+      `(() => { window.__E.settings().set('autoSave', true); window.__E.settings().set('autoSaveInterval', 1); return 'ok' })()`
+    )
+    await sleep(300)
+    const notifBefore = JSON.parse(await w.ev(NOTIF_SNAP))
+    await w.ev(
+      `(() => { window.__E.files().setContent(${JSON.stringify(EDITED_GARBAGE)}); return 'ok' })()`
+    )
+    await sleep(2000)
+    const afterAuto = JSON.parse(
+      await w.ev(
+        `(() => { const f = window.__E.files(); return JSON.stringify({ dirty: f.dirty, flag: f.reopenedWithEncoding === true, enc: f.current.encoding }) })()`
+      )
+    )
+    const autoBytes = fs.readFileSync(F.gbk)
+    // 提醒里写的是**当前这份缓冲区是按哪个编码解出来的**（此刻就是用户点错的那个）
+    const warnTitle = ZH.toast.encodingReopenAutoSaveSkipped.replace('{enc}', 'Windows-1252')
+    const newNotifs = JSON.parse(await w.ev(NOTIF_SNAP)).filter((x) => !notifBefore.includes(x))
+    console.log(
+      'B2-autosave ' +
+        JSON.stringify({ ...afterAuto, bytesIntact: autoBytes.equals(pristinGbk), newNotifs })
+    )
+    c(
+      'auto-save-skipped-after-encoding-reopen',
+      autoBytes.equals(pristinGbk),
+      JSON.stringify({ bytes: autoBytes.length, intact: autoBytes.equals(pristinGbk) })
+    )
+    c(
+      'auto-save-skip-warns-user',
+      newNotifs.includes('warning|' + warnTitle),
+      JSON.stringify(newNotifs)
+    )
+    c(
+      'unsaved-edit-still-pending-after-skip',
+      afterAuto.dirty === true && afterAuto.flag === true,
+      JSON.stringify(afterAuto)
+    )
+
+    // 提醒只发一次：再敲一次仍然不写盘，但不再刷屏
+    await w.ev(
+      `(() => { window.__E.files().setContent(${JSON.stringify(EDITED_GARBAGE + '再敲一下。\n')}); return 'ok' })()`
+    )
+    await sleep(2000)
+    const warnedTwice = JSON.parse(await w.ev(NOTIF_SNAP)).filter((x) => x === 'warning|' + warnTitle)
+    console.log('B2-warn-once ' + JSON.stringify({ warnCount: warnedTwice.length }))
+    c('auto-save-skip-warns-once', warnedTwice.length === 1, String(warnedTwice.length))
+    c(
+      'auto-save-still-skipped-on-second-edit',
+      fs.readFileSync(F.gbk).equals(pristinGbk),
+      'ok'
+    )
+    await w.ev(
+      `(() => { window.__E.settings().set('autoSave', ${JSON.stringify(autoSaveWas)}); window.__E.settings().set('autoSaveInterval', ${JSON.stringify(autoSaveIntervalWas)}); return 'ok' })()`
+    )
+    await sleep(300)
+
+    // ② 手动保存：必须先问一次；**取消就一个字节都不写**（flag 仍然武装着）
+    await useRealConfirm()
+    await w.ev(
+      `(() => { window.__SAVE = 'pending'; void window.__E.files().save().then((v) => { window.__SAVE = v }); return 'started' })()`
+    )
+    let dlg = null
+    for (let i = 0; i < 30 && !dlg; i++) {
+      await sleep(120)
+      dlg = JSON.parse(
+        await w.ev(
+          `(() => { const s = window.__E.ui().confirmState; if (!s) return 'null'; const hs = [...document.querySelectorAll('h3')].map((h) => (h.textContent || '').trim()); return JSON.stringify({ title: s.title, body: s.body, danger: !!s.danger, domTitles: hs, pending: window.__SAVE }) })()`
+        )
+      )
+    }
+    console.log('B2-confirm-cancel ' + JSON.stringify(dlg))
+    c(
+      'manual-save-after-reopen-asks-first',
+      !!dlg &&
+        dlg.danger === true &&
+        dlg.title === ZH.editor.saveAfterReopenTitle &&
+        dlg.domTitles.includes(ZH.editor.saveAfterReopenTitle) &&
+        dlg.body.includes('Windows-1252'),
+      JSON.stringify({
+        title: dlg?.title,
+        danger: dlg?.danger,
+        hasEnc: dlg?.body?.includes('Windows-1252')
+      })
+    )
+    c(
+      'save-waits-for-user-answer',
+      !!dlg && dlg.pending === 'pending',
+      JSON.stringify(dlg && { pending: dlg.pending })
+    )
+    await w.ev(`(() => { window.__E.ui().resolveConfirm(false); return 'ok' })()`)
+    let saveResult = null
+    for (let i = 0; i < 20 && saveResult === null; i++) {
+      await sleep(120)
+      saveResult = await w.ev(`window.__SAVE`)
+    }
+    const afterCancel = JSON.parse(
+      await w.ev(
+        `(() => { const f = window.__E.files(); return JSON.stringify({ dirty: f.dirty, flag: f.reopenedWithEncoding === true }) })()`
+      )
+    )
+    console.log('B2-cancel ' + JSON.stringify({ saveResult, ...afterCancel }))
+    c('cancel-save-does-not-write', saveResult === false && fs.readFileSync(F.gbk).equals(pristinGbk), JSON.stringify({ saveResult }))
+    c(
+      'cancel-keeps-guard-armed',
+      afterCancel.dirty === true && afterCancel.flag === true,
+      JSON.stringify(afterCancel)
+    )
+
+    // ③ 用户改回正确编码、确认要写：这时才允许落盘，且写下去的必须**就是用户看到的那份文字**
+    //    （注意：写盘用的是**当前编码**。上一步的乱码缓冲区若真被写下去，盘上会变回原始字节 ——
+    //     「看着变了、切回来却对得上」正是这个原因的一体两面，所以这里必须切回 gbk 再验。）
+    //    切编码本身对**脏**文档还会先问一次「放弃未保存的修改」—— 那一步先自动同意。
+    await stubConfirm(true)
+    await w.ev(
+      `(async () => { await window.__E.files().reopenWithEncoding('gbk'); return 'ok' })()`
+    )
+    await sleep(600)
+    await w.ev(
+      `(() => { window.__E.files().setContent(${JSON.stringify(T_GBK + '\n确认后保存的一行。\n')}); return 'ok' })()`
+    )
+    await sleep(700)
+    await useRealConfirm()
+    const preWrite = await w.ev(`window.__E.files().current.content`)
+    await w.ev(
+      `(() => { window.__SAVE = 'pending'; void window.__E.files().save().then((v) => { window.__SAVE = v }); return 'started' })()`
+    )
+    let dlg2 = null
+    for (let i = 0; i < 30 && !dlg2; i++) {
+      await sleep(120)
+      dlg2 = JSON.parse(
+        await w.ev(
+          `(() => { const s = window.__E.ui().confirmState; return JSON.stringify(s ? { title: s.title, body: s.body } : null) })()`
+        )
+      )
+    }
+    if (dlg2) await w.ev(`(() => { window.__E.ui().resolveConfirm(true); return 'ok' })()`)
+    let confirmed = null
+    for (let i = 0; i < 40 && confirmed === null; i++) {
+      await sleep(120)
+      confirmed = await w.ev(`window.__SAVE`)
+    }
+    await sleep(400)
+    const wroteBytes = fs.readFileSync(F.gbk)
+    // 当前编码是 gbk → 盘上的字节要按 gbk 解回「屏幕上那份文字」
+    const wroteText = iconv.decode(wroteBytes, 'gbk')
+    const afterConfirm = JSON.parse(
+      await w.ev(
+        `(() => { const f = window.__E.files(); return JSON.stringify({ dirty: f.dirty, flag: f.reopenedWithEncoding === true, enc: f.current.encoding }) })()`
+      )
+    )
+    console.log(
+      'B2-confirm ' +
+        JSON.stringify({
+          asked: !!dlg2,
+          confirmed,
+          wroteHead: wroteText.slice(0, 12),
+          sameAsBuffer: wroteText === preWrite,
+          overWrotePristine: !wroteBytes.equals(pristinGbk),
+          ...afterConfirm
+        })
+    )
+    c(
+      'confirm-dialog-names-current-encoding',
+      !!dlg2 && dlg2.body.includes('GBK'),
+      JSON.stringify({ body: dlg2?.body?.slice(0, 40) })
+    )
+    c(
+      'confirm-save-writes-what-user-sees',
+      !!dlg2 &&
+        confirmed === true &&
+        wroteText === preWrite &&
+        wroteText.includes('确认后保存的一行。') &&
+        !wroteBytes.equals(pristinGbk),
+      JSON.stringify({ asked: !!dlg2, confirmed, sameAsBuffer: wroteText === preWrite })
+    )
+    c(
+      'confirm-clears-guard',
+      afterConfirm.flag === false && afterConfirm.dirty === false,
+      JSON.stringify(afterConfirm)
+    )
+
+    // ④ 确认过一次之后不该再问（只在「刚重新解释过」之后问一次）
+    await w.ev(
+      `(() => { window.__SAVE = 'pending'; void window.__E.files().save().then((v) => { window.__SAVE = v }); return 'started' })()`
+    )
+    await sleep(900)
+    const secondSave = JSON.parse(
+      await w.ev(
+        `(() => JSON.stringify({ result: window.__SAVE, asking: !!window.__E.ui().confirmState }))()`
+      )
+    )
+    console.log('B2-second-save ' + JSON.stringify(secondSave))
+    c(
+      'second-save-does-not-ask-again',
+      secondSave.result === true && secondSave.asking === false,
+      JSON.stringify(secondSave)
+    )
+    // 后面的段落（C/D/E）照旧：确认框换成自动同意，避免任何一处把整轮挂死
+    await stubConfirm(true)
 
     // ── C. 保存回写 ──
     const newGbkText = T_GBK + '\n追加一行 new line。\n'

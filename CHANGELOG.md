@@ -72,9 +72,64 @@
 - **工程化**：~~`tools/lib/harness.js` + `tools/run-suites.js`~~ → **本轮已完成**；
   剩余：`files` store 拆分；`store` 里那份为绕循环导入而复制的 `confirmIfDirty` 收敛到 `services/dialog`。
 
+## [Unreleased · 侧栏「打开文件夹」恢复 + 目录不显示语法标记 + 切编码来回切不再毁内容]
+
+> 用户口径（同一轮三条报障）：① 没打开任何文件夹时，左侧侧栏上方工具栏的「打开文件夹」要保留；
+> ② 标题源码是 `### 林一鸣（**男主，21岁，大四或刚毕业待业**）` 这种，目录里也把 `**` 显示出来了，
+> 目录不要显示这类字符；③ 切换成 GBK 内容确实会变，可再切回 UTF-8 时显示的文字和之前不一样，查明原因并修复。
+
+### ① 侧栏头部「打开文件夹」按新口径保留
+
+- 上一版把侧栏空态入口连同**头部那枚「打开文件夹」**一起删了，这一版把那**一枚**恢复
+  （`AppSidebar.vue` 头部的 `v-else` 分支，`data-sidebar-workspace`）。
+  空态那三枚图标按钮（新建文档 / 打开文件 / 打开文件夹）与 `open.hint` 提示仍然不出现 ——
+  两条口径并不冲突：「空态不放入口」保留，「头部那枚在有/无工作区时都在」恢复。
+
+### ② 目录 / 大纲不显示语法标记
+
+- 新增 `src/renderer/src/lib/editor/outlineText.ts` 的 `headingPlainText(node, fallback)`：
+  取标题的**纯文本** —— 跳过带 `mdMarker` 标记的文本节点（`**`、`*`、反引号这些标记字符本身就是
+  这种节点），`hardBreak` 折成空格；`stores/editor.ts` 的 `refreshOutline()` 改用它。
+- 只影响目录显示，**不动文档内容**：标题里那几个字符仍旧原样在正文里（另加单测钉住这一点）。
+
+### ③ 切编码来回切「内容不一致」：根因与修复
+
+**根因不是「切换」本身。** 在隔离实例里逐步量过：打开 UTF-8 文件 → 切 GBK（内容确实变样）→
+切回 UTF-8 → **内容与最初逐字一致**，磁盘字节也一个没动。真正丢内容的，是**中间夹了一次写盘**：
+按错误编码重新解释出来的缓冲区（乱码）一旦被自动保存（或顺手 Ctrl+S）写回，磁盘上的原始内容
+就被这份坏数据覆盖；之后用户再「切回原编码」读到的自然和之前不一样 —— 报障现象就是这条链路。
+
+- `stores/files.ts`：`reopenWithEncoding()` 成功后打标记 `reopenedWithEncoding`；
+  - **自动保存直接跳过**（`scheduleSave()` 里提前 return，并**只提醒一次**）—— 这是数据损坏路径的闸门；
+  - **手动保存先弹一次确认**（danger 样式，文案点名当前编码）：取消就一个字节都不写、标记继续武装；
+    确认后才写（写的是屏幕上那份文字按当前编码落盘），随后标记清除，不会反复问。
+- 三语文案：`editor.saveAfterReopenTitle` / `editor.saveAfterReopenBody` /
+  `toast.encodingReopenAutoSaveSkipped`（中 / 英 / 俄齐平）。
+
+### Verification
+
+- `tools/_verify-encoding.js` **37 → 52 条**（**49 PASS / 0 FAIL / 3 SKIP**；SKIP 是生产构建下拿不到
+  `setupState` 的既有三条，同一行为有 DOM 断言覆盖）。新增 15 条全打在这次的行为上，实测证据：
+  `auto-save-skipped-after-encoding-reopen`（乱码缓冲区 + 继续编辑 + 自动保存 1s → 磁盘 `intact: true`，
+  59 字节没动）、`auto-save-skip-warns-user`（warning 通知点名「Windows-1252」）、
+  `unsaved-edit-still-pending-after-skip`（`dirty: true`，内容留在缓冲区里等用户）、
+  `auto-save-skip-warns-once`（`warnCount: 1`）、`auto-save-still-skipped-on-second-edit`、
+  `manual-save-after-reopen-asks-first`（danger 对话框，标题 / 正文都命中当前编码）、
+  `save-waits-for-user-answer`（`pending: "pending"` —— 没答之前不写）、
+  `cancel-save-does-not-write`（`saveResult: false`，磁盘仍未动）、`cancel-keeps-guard-armed`、
+  `confirm-save-writes-what-user-sees`（`sameAsBuffer: true`）、`confirm-clears-guard`、
+  `second-save-does-not-ask-again`；另有 `wrong-encoding-decode-matches-1252-bytes`
+  （应用侧 1252 解码与 iconv 逐字一致，证明乱码不是"解码器不一致"造成的）。
+- `tools/_verify-wave3.js`（另一个会走 `reopenWithEncoding` 的套件）**23/23**；
+  单元测试 **306/306**（含三语 key 平齐、设置默认值、目录纯文本的 4 条）；
+  `eslint` 0 error / 0 warning；`vue-tsc` / `tsc` / `electron-vite build` exit 0。
+
 ## [Unreleased · 没打开文件夹时侧栏不再放「新建/打开」入口]
 
 > 用户口径：没打开任何文件夹时，左侧侧栏不要出现「新建文档 / 打开文件 / 打开文件夹」这些按钮和提示。
+
+> ⚠️ 本节第二条（侧栏头部那枚「打开文件夹」）**已在下一条按新口径恢复** ——
+> 用户后来明确：那一枚要保留，去掉的是空态里那组图标按钮与快捷键提示。见上一节 ①。
 
 ### Removed
 
