@@ -82,6 +82,7 @@ const DEFAULT_SUITES = [
   '_verify-toolbar-settings.js', // 快捷工具栏：空白区右键菜单 + 显隐与排序设置
   '_verify-cb-languages.js', // 代码块语言高亮矩阵（15 种 + 别名，清单外退化为纯文本）
   '_verify-cb-virtualization.js', // 代码块 CM 虚拟化：按需挂载 / 高度稳定 / 选区保护 / churn 后可打字
+  '_verify-table-enter.js', // 表格单元格回车不毁表格：不切段落 / 源码逐字节不变 / 合并单元格仍退回 HTML
   '_verify-mermaid-gate.js', // mermaid 视口门 + 首屏不预加载（清单 §2.G）
   '_verify-neutral-accent.js' // 副色必须是低饱和灰（通道极差断言）
 ]

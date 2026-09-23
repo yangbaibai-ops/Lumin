@@ -190,6 +190,28 @@ export const TyporaKeymap = Extension.create({
 
     return {
       Enter: ({ editor }) => {
+        // ★ 表格单元格里回车 = **跳到下一格**（最后一格时补一行），与 Tab 完全同语义。
+        //
+        // 为什么不是「切段落」：GFM 管道表的单元格里没有「多段」这个写法，切出新段落后
+        // 表格序列化器会把整张表判成「复杂表格」⇒ **退化成 HTML**，落盘后 markdown-it 只当
+        // HTML 块解析 —— **表格结构损坏**（用户报障的正是这条路径，见 tableMarkdown.ts 的长注释）。
+        //
+        // 为什么也不是「插入硬换行 `<br>`」（试过，退回来了）：本编辑器的标记符是**真实文本**
+        // （§4.13 的模型），光标停在「**实测痛点**」这种已被样式包住的文字末尾时，硬换行会被插在
+        // 内容与**闭合标记符之间**，序列化出来是 `| **实测痛点**<br>** |` —— 尾巴上多一个没有内容的
+        // `**`（重新解析就是两个字面星号，等于污染正文）。跳到下一格则完全不动单元格内容，
+        // 没有任何往返风险。
+        // 光标所在段为空时交给默认逻辑（空单元格里回车 = 切一个空段落，序列化器会丢掉它）。
+        {
+          const { state } = editor
+          const inCell = editor.isActive('tableCell') || editor.isActive('tableHeader')
+          if (inCell && state.selection.empty) {
+            if (editor.commands.goToNextCell()) return true
+            if (!editor.can().addRowAfter()) return false
+            return editor.chain().addRowAfter().goToNextCell().run()
+          }
+        }
+
         // 注意：光标落在语法标记字符内部（如 '**5*|*'）时按回车 = 普通
         // 文本切段（`**5*` / `*`）。派生归一化对不成对构造按字面量处理，
         // 不再自动改写样式，也不会崩溃（详见 typoraInlineMarks.ts）。
