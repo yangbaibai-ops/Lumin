@@ -110,7 +110,8 @@ async function bootstrap(): Promise<void> {
   // 「本窗口当前文档」上报：供主进程做「一个文件只开一个窗口」判断
   installOpenDocTracking()
 
-  // 初始化完成后立即结束骨架屏（不再人为拖延 600ms，加快启动/渲染速度）
+  // 初始化完成：把「已就绪」信号置位（启动打点与套件用它判断，界面本身不再有遮罩 ——
+  // 骨架屏已按用户口径移除，初始化期间看到的就是正常界面）
   ui.booting = false
   // 打点等一帧：booting=false 只是改了状态，用户看到内容要等下一次绘制
   await nextTick()

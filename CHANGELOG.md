@@ -72,6 +72,41 @@
 - **工程化**：~~`tools/lib/harness.js` + `tools/run-suites.js`~~ → **本轮已完成**；
   剩余：`files` store 拆分；`store` 里那份为绕循环导入而复制的 `confirmIfDirty` 收敛到 `services/dialog`。
 
+## [Unreleased · 去掉启动骨架屏（遮罩）] — 打开应用不再有进场动画/骨架图，启动实测略快
+
+> 用户口径：取消打开应用时的进场动画（应用初始化 UI 的那层遮罩动画），**去掉骨架图**，同时加快启动速度。
+
+### Removed
+
+- **`SkeletonScreen.vue` 整个删掉**，`App.vue` 里 `<SkeletonScreen v-if="ui.booting" />` 及其 import 一并移除。
+  原先启动全程盖着一块不透明骨架屏（外加一层淡出 Transition），现在**初始化期间看到的就是正常界面**：
+  外壳立刻可见，文档到位就出现 —— 没有任何进场动画、没有遮罩层。
+- 顺带从首屏路径上消失了：骨架屏组件本身 + 它内嵌的 `assets/iconPng.ts`（24.7KB 的 base64 图标位图，
+  只有骨架屏用它）。`iconPng.ts` **文件保留**（手册里有它的说明，docsClaims 会校验被文档引用的路径存在）。
+- `ui.booting` 这个**就绪信号保留**（启动打点与多个套件用它判断"是否已就绪"），只是不再驱动任何渲染。
+
+### Performance（`tools/_probe-startup.js`，各 3 次冷启动取中位数，同一台机器）
+
+| 指标 | 去掉骨架屏前 | 去掉后 | 变化 |
+| --- | --- | --- | --- |
+| 页面可用 | 652ms | **640ms** | −12ms |
+| 首屏可用 | 985ms | **953ms** | −32ms |
+| 编辑器就绪 | 986ms | **954ms** | −32ms |
+| RSS | 393MB | **388MB** | −5MB |
+| 首屏内容绘制（FCP） | 220ms | **204ms** | −16ms |
+
+**如实说明**：这 ~640ms 的绝大部分是 **Electron 自身的进程/窗口启动**（页面脚本还没开始跑），
+渲染层从 `boot-start` 到 `doc-visible` 只有 ~120ms（改动前后都是这个量级）。
+所以这次是「**去掉遮罩 + 少解析一个组件与它内嵌的 24.7KB 图标**」带来的小幅加速，
+不是数量级的提速；要再快就得动主进程窗口策略（`ready-to-show` 时机）或进一步拆首屏包。
+
+### Verification（只跑了与本次改动相关的项）
+
+- `tools/_verify-bars-no-filename.js` **16/16**：断言 `boot-mask-removed`
+  —— DOM 里不再有骨架块（`.skeleton`）与那层 `fixed inset-0` 遮罩；
+- 启动数字见上表（`_probe-startup.js` 每项 3 次冷启动）；
+- `vue-tsc` / `eslint` / `electron-vite build` exit 0。
+
 ## [Unreleased · 默认为手动保存 + 状态栏保存格去噪 + 取消启动遮罩过场]
 
 > 用户口径：① 保存模式默认改**手动保存**；手动时状态栏不要再显示「手动保存」四个字；

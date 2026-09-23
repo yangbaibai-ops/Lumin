@@ -11,7 +11,6 @@ import { useSettingsStore } from './stores/settings'
 import AppSidebar from './components/AppSidebar.vue'
 import TopMenuBar from './components/TopMenuBar.vue'
 import ModalHost from './components/ModalHost.vue'
-import SkeletonScreen from './components/SkeletonScreen.vue'
 import GlobalTooltip from './components/GlobalTooltip.vue'
 import Icon from './components/Icon.vue'
 import { installGlobalTooltip } from './lib/tooltip'
@@ -146,10 +145,10 @@ onMounted(() => {
     <LocalHistoryDialog />
     <SettingsDialog />
     <GlobalTooltip />
-    <!-- 启动遮罩（骨架屏）：只在 `ui.booting` 期间盖住界面，避免露出半初始化的 UI。
-         **它不再带过场动画**（用户口径：取消打开应用时的遮罩过场动画）——
-         启动就绪后直接消失，不做淡出。不用 `<Transition>` 包它即可；
-         `.fade-*` 那套 CSS 仍被设置浮层/全局搜索/草稿弹窗用着，别删。 -->
-    <SkeletonScreen v-if="ui.booting" />
+    <!-- 启动遮罩（骨架屏）**已移除**（用户口径：取消打开应用时的进场动画，去掉骨架图）。
+         原先这里在 `ui.booting` 期间盖一层 SkeletonScreen（外加一层淡出 Transition），
+         代价是：启动全程被一块不透明遮罩挡住 + 组件与它内嵌的图标 PNG 进了首屏路径。
+         现在初始化期间界面就是正常界面（外壳立刻可见，文档到位就出现）——
+         `ui.booting` 这个**就绪信号**保留（启动打点与套件仍用它判断"是否已就绪"）。 -->
   </div>
 </template>

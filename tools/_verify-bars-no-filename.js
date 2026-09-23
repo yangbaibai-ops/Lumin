@@ -171,33 +171,15 @@ const PROBE = `(() => {
       withDoc.statusKeeps.saveColor === withDoc.statusKeeps.statColor,
     JSON.stringify({ save: withDoc.statusKeeps?.saveColor, stat: withDoc.statusKeeps?.statColor })
   )
-  // 启动遮罩（骨架屏）**不再有过场动画**（用户口径：取消打开应用时的遮罩过场动画）：
-  // 切到 booting 时它立刻出现且不带任何 `*-enter-active`；切回就绪时**立刻**从 DOM 消失 ——
-  // 有 fade 时它会多留 ~200ms，这条就是用来钉住「没有那 200ms」的。
+  // 启动遮罩（骨架屏）**已整体移除**（用户口径：取消打开应用时的进场动画 + 去掉骨架图）：
+  // 初始化期间看到的就是正常界面，DOM 里不该再有骨架块或那层不透明遮罩。
   const mask = JSON.parse(
-    await w.ev(`(async () => {
-      const ui = window.__B.ui()
-      const pick = () => [...document.querySelectorAll('div')].find((d) => (d.className || '').toString().includes('fixed inset-0'))
-      ui.booting = true
-      await new Promise((r) => setTimeout(r, 80))
-      const el = pick()
-      const enterClass = el ? [...el.classList].filter((c) => c.includes('enter')) : []
-      const dur = el ? getComputedStyle(el).transitionDuration : null
-      ui.booting = false
-      await new Promise((r) => setTimeout(r, 60))
-      return JSON.stringify({
-        appeared: !!el,
-        enterClass,
-        transitionDuration: dur,
-        goneAfter60ms: !pick()
-      })
-    })()`)
+    await w.ev(`(() => JSON.stringify({
+      skeleton: document.querySelectorAll('.skeleton').length,
+      cover: [...document.querySelectorAll('div')].filter((d) => (d.className || '').toString().includes('fixed inset-0')).length
+    }))()`)
   )
-  c(
-    'boot-mask-has-no-transition',
-    mask.appeared === true && mask.enterClass.length === 0 && mask.goneAfter60ms === true,
-    JSON.stringify(mask)
-  )
+  c('boot-mask-removed', mask.skeleton === 0 && mask.cover === 0, JSON.stringify(mask))
     c('statusbar-keeps-counts', withDoc.statusKeeps?.counts === true, JSON.stringify(withDoc.status?.text))
     c('statusbar-keeps-theme-and-language', withDoc.statusKeeps?.hasSwitchers === true, JSON.stringify(withDoc.statusKeeps))
     c('no-filename-in-bar-tooltips', withDoc.staleTitles.length === 0, JSON.stringify(withDoc.staleTitles))
