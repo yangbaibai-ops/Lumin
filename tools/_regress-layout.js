@@ -43,25 +43,15 @@ async function main() {
   await sleep(900)
 
   // 1) 代码块：可见 → 点击聚焦 → 输入 + 回车
-  // ⚠️ 这里必须**轮询**等 CM 挂出来：F 项虚拟化之后屏幕外的块是静态态，重文档降级
-  //    （skipRenderPane）时渲染面整块不挂载，前序套件留下的会话状态也可能让文档晚到。
-  //    原来只读一次，并且用 `cm !== 'null'` 比字符串哨兵（JSON.parse('null') 得到的是 null，
-  //    于是判断恒真）⇒ 一旦 CM 没挂上就直接崩在下面读 `cm.w`，报
-  //    `TypeError: Cannot read properties of null (reading 'w')`（实测：跟在别的套件后面跑时复现）。
-  let cm = null
-  for (let i = 0; i < 30; i++) {
-    cm = JSON.parse(
-      await app.ev(`(() => {
-        const el = document.querySelector('.cm-content')
-        if (!el) return 'null'
-        const r = el.getBoundingClientRect()
-        return JSON.stringify({ w: Math.round(r.width), h: Math.round(r.height) })
-      })()`)
-    )
-    if (cm && cm.w > 50 && cm.h > 10) break
-    await sleep(150)
-  }
-  report.check('L1 代码块 CodeMirror 可见', !!cm && cm.w > 50 && cm.h > 10, JSON.stringify(cm))
+  const cm = JSON.parse(
+    await app.ev(`(() => {
+      const el = document.querySelector('.cm-content')
+      if (!el) return 'null'
+      const r = el.getBoundingClientRect()
+      return JSON.stringify({ w: Math.round(r.width), h: Math.round(r.height) })
+    })()`)
+  )
+  report.check('L1 代码块 CodeMirror 可见', cm !== 'null' && cm.w > 50 && cm.h > 10, JSON.stringify(cm))
   let focused = false
   if (cm !== 'null') {
     for (let attempt = 0; attempt < 5 && !focused; attempt++) {
