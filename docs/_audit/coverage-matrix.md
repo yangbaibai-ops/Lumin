@@ -168,7 +168,7 @@
 | 全局 tooltip（750ms 延迟、title 接管与还原、响应式 title 不被覆写） | `_verify-tooltip`(6)、`_verify-notify-style`（2 条） | 8 | 强 | 矩阵内覆盖完整 |
 | 通知带形态与位置（编辑区上方整幅 / 空态不占位 / 无级别图标与级别名）+ 进出场动效（含高度） | `_verify-toast-tip.js`(21)；`verify-tiptap.js`（`toast` 相关，**非矩阵**） | 21 | 强 | 三轮改写的产物：位置（static + 紧邻内核之前 + 整幅铺满编辑区宽）、形态（组件无盒子；带只有底部 1px 分界 + 顶部内高光）、动效（CSS 规则 + 真实进出场采样：opacity 0→1 与带高 0→终值的中间值）|
 | 通知中心（CRUD、顶部通知区、级别图标、步进切换、多语言、不自动消失、重载存活） | `_verify-notifications`(32) | 32 | 强 | — |
-| **代码块 CM 虚拟化（F 项 / O2）**：按需挂载 / 高度稳定 / 选区保护 / churn 后可打字 | `_verify-cb-virtualization`(9)、`_regress-cb`(3)、`_verify-cb-button-line-numbers`(26)、`_verify-cb-no-active-line`(12)、`_verify-cb-languages`(5) | 55 | 强 | 60 块文档里 `.cm-editor` ≤ 12 且滚到哪挂到哪；实测 120 块打开 1070→**193ms**、CM 实例 120→**4**；180 块 9101→**184ms**、180→**4** |
+| **代码块 CM 虚拟化（F 项 / O2）**：按需挂载 / 高度稳定 / 选区保护 / churn 后可打字 / 静态态高亮 / 静态态无 select | `_verify-cb-virtualization`(18)、`_regress-cb`(3)、`_verify-cb-button-line-numbers`(26)、`_verify-cb-no-active-line`(12)、`_verify-cb-languages`(5) | 64 | 强 | 60 块文档里 `.cm-editor` ≤ 12 且滚到哪挂到哪；实测 120 块打开 1070→**193ms**、CM 实例 120→**4**；180 块 9101→**184ms**、180→**4**。P0 探针（`tools/_probe-cb-scale.js`，每尺寸一个全新隔离实例）：500 围栏可用 **900ms**（CM 峰值 6）、1500 围栏 **1236ms**（CM 峰值 10）、RSS 625 / 800MB。P2 静态态带 `lm-tok-*`（不建 CM）；P3 静态态不渲染 16 项 `<option>`（1500 围栏 24,000→160，两态头部高度一致） |
 | 代码块语言高亮矩阵（15 种 + 别名；清单外退化为纯文本） | `_verify-cb-languages`(5) | 5 | 强 | ⚠️ 虚拟化之后必须**逐个围栏滚进视野再量**（否则量到的是一堆静态态 ⇒ 假失败） |
 | 通知落盘 + 窗口作用域隔离 + 跨重启持久化 | `_verify-notify-disk`(8)、`_verify-notify-multiwindow`(21)、`_verify-notify-restart`(6) | 35 | 强 | 三套件分层；`notify-restart` 是两阶段（seed/check，中间由外部硬杀+重启），默认矩阵与 `--all` 都不跑 —— 由 `run-suites.js` 的 `MANUAL` 排除 |
 | 通知带样式与版式（整幅中性淡底 + 只有底部 1px 分界 + 顶部内高光；两列栅格 + 标题/正文共用 measure + 信息条与标题首行结构对齐；空态连元素都不渲染；长正文就地滚动） | `_verify-notify-style`(22) | 22 | 强 | 非破坏式（临时插一条再硬删）；四轮改写：旧口径「宽 384 / 圆角 6」→「无盒子」→「整幅带 + 空态不占位」→「版式重排（栅格/measure/对齐）」 |
@@ -252,7 +252,8 @@
 
 > **本轮（清单 §2.I / §2.F）从 `--all` 提上来的 7 条**：`_verify-toc`（由两条 0 断言探针合并升级）、
 > `_verify-notifications`(32)、`_verify-toolbar-settings`(37)、`_verify-cb-languages`(5)、
-> `_verify-cb-virtualization`(9，F 项新增)、`_verify-mermaid-gate`(4)、`_verify-neutral-accent`(10)。
+> `_verify-cb-virtualization`(**18**，F 项新增；P0/P2/P3 各补了护栏与静态态断言)、
+> `_verify-mermaid-gate`(4)、`_verify-neutral-accent`(10)。
 > 实测整轮 **33/33 PASS**（另有 4 条断言按环境如实 SKIP —— SKIP 不算失败，见下）。
 
 **B. 只在 `--all` 里（42 个 `_verify-*` + 1 个 `MANUAL`）** —— 其中 **4 个必须 dev server**（`import('/src/…')`），`--all` 下才会真跑，否则标 SKIP：
