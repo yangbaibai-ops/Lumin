@@ -153,7 +153,11 @@ function onDragStart(e: MouseEvent): void {
          三栏模式下：树常显、左栏里的大纲整块不显示（大纲这时在编辑区右侧）。 -->
     <div class="mt-1.5 min-h-0 flex-1">
       <FileTree v-show="settings.outlineOnRight || ui.sidebarTab === 'files'" />
-      <Outline v-show="!settings.outlineOnRight && ui.sidebarTab === 'outline'" />
+      <!-- 三栏模式下左栏这份大纲**整块不挂载**（v-if）：它永远不可见，留着只是白渲染一份 ——
+           切文档时 DOM 里还会同时存在两套大纲行（用户在右侧看到的"闪"与这类重复渲染有关）。
+           关掉三栏时再挂回来；仍然是「常驻 DOM + v-show 切页签」的老规矩（那套是修
+           「切走再切回内容空了」的）。 -->
+      <Outline v-if="!settings.outlineOnRight" v-show="ui.sidebarTab === 'outline'" />
     </div>
 
     <!-- 底部原先有一行「设置 / 关于 Lumin / 收起侧边栏」——本轮去掉（用户口径：确认是否还需要，

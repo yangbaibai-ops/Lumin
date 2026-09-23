@@ -72,6 +72,36 @@
 - **工程化**：~~`tools/lib/harness.js` + `tools/run-suites.js`~~ → **本轮已完成**；
   剩余：`files` store 拆分；`store` 里那份为绕循环导入而复制的 `confirmIfDirty` 收敛到 `services/dialog`。
 
+## [Unreleased · 右侧大纲切文档不再闪/乱：去掉大纲的进出场动画]
+
+> 用户口径：目录在右侧时，切换不同文档「目录会闪烁、动画有点混乱」，优化或干脆取消动画。
+
+### 分析
+
+`Outline.vue` 的行原来包在 `<TransitionGroup name="list">` 里。切文档时**所有行一起换 key**
+（key 是 `序号-级别-文本`），于是旧行全部走 `list-leave`、新行全部走 `list-enter`；
+而 `.list-leave-active` 没写 `position: absolute`，离场的行在 0.25s 过渡里**仍占着文档流** ——
+新旧两批同时存在（列表高度翻倍、行位互相重叠），看起来就是「闪一下 + 动画乱」。
+
+### Changed
+
+- **大纲列表去掉进出场动画**（`TransitionGroup` → 普通列表）：换文档时直接换掉，一行不留。
+  大纲是**导航**，不需要「出现感」；这条也是用户明确给的选项（"干脆取消动画"）。
+  `.list-*` 那套 CSS 保留（文件树 / 文件列表 / 全局搜索结果仍在用）。
+- 顺带：三栏模式下左栏那份大纲改成 **`v-if` 整块不挂载**（原先只是 `v-show` 隐藏）——
+  它永远不可见，留着白渲染一份，切文档时 DOM 里还会同时存在两套大纲行。
+
+### Verification（只跑与这个问题相关的）
+
+`tools/_verify-outline-right.js` **24/24**，其中新增两条切文档断言（在右侧面板作用域内高频采样 600ms）：
+
+| 断言 | 判据 |
+| --- | --- |
+| `doc-switch-has-no-enter-leave-class` | 采样期间**没有任何一帧**的行带 `list-enter/leave` 类（动画确实没了） |
+| `doc-switch-never-overlaps-rows` | 行数**从不超过**新文档的标题数（有动画时旧行会残留 ⇒ 超） |
+
+`vue-tsc` / `eslint` / `electron-vite build` exit 0。
+
 ## [Unreleased · 修掉「打开应用闪一下未保存的草稿弹窗」]
 
 > 用户报障：打开应用**有概率**出现「未保存的草稿」提示，不到 0.5s 就消失了。

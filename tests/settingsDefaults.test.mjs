@@ -26,5 +26,8 @@ test('保存方式：出厂默认**手动保存**（用户口径）', () => {
     false,
     '默认手动：自动保存会把半成品随时写进磁盘；手动模式下仍有草稿崩溃保护，不等于丢字'
   )
-  assert.ok(defaultSettings.autoSaveInterval > 0, '间隔仍要有正数默认值，便于用户切回自动保存时直接用')
+  assert.ok(
+    defaultSettings.autoSaveInterval > 0,
+    '间隔仍要有正数默认值，便于用户切回自动保存时直接用'
+  )
 })

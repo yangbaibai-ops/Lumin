@@ -184,6 +184,42 @@ async function main() {
   const minned = JSON.parse(await ev(SHAPE))
   report.check('drag-clamps-at-min', minned.panel.width === 160, JSON.stringify(minned.panel))
 
+  // ③d 切文档时大纲**不能再有进出场动画**（用户报障：右侧大纲切文档会闪、动画很乱）。
+  //     机理：TransitionGroup 下所有行一起换 key ⇒ 旧行全离场、新行全入场，而 `.list-leave-active`
+  //     没有脱离文档流 ⇒ 0.25s 内新旧两批同时占位（高度翻倍、互相撞），看起来就是闪+乱。
+  //     判据取两条：① 切文档过程中**从不出现** `list-enter/leave` 类；② 行数**从不超过**新文档的标题数
+  //     （有动画时旧行还在，行数会短暂超过）。
+  const shapeA = ['# 甲一', '', '## 甲二', '', '### 甲三', ''].join('\n')
+  const shapeB = ['# 乙一', '', '## 乙二', '', '### 乙三', '', '#### 乙四', '', '##### 乙五', ''].join('\n')
+  await openDocWith(app, shapeA, 'outline-switch-a.md')
+  await sleep(800)
+  // 只数**右侧面板**里的行：左栏那份大纲在三栏模式下已不挂载，但选择器仍要限定作用域，
+  // 否则以后再加一处大纲就会把这条断言带偏（实测第一版就是这么错的：数到了两套行）
+  const panelItems = `[...document.querySelectorAll('[data-outline-panel] [data-outline-item]')]`
+  const countA = await ev(`${panelItems}.length`)
+  await ev(`(() => { window.__L.files().setContent(${JSON.stringify(shapeB)}, 'external'); return 'ok' })()`)
+  // 切文档过程中高频采样：类名与行数
+  const samples = JSON.parse(
+    await ev(`(async () => {
+      const out = []
+      const t0 = performance.now()
+      while (performance.now() - t0 < 600) {
+        const items = ${panelItems}
+        const anim = items.filter((el) => /list-(enter|leave)/.test(el.className)).length
+        out.push({ n: items.length, anim })
+        await new Promise((r) => requestAnimationFrame(r))
+      }
+      return JSON.stringify(out)
+    })()`)
+  )
+  const maxN = Math.max(...samples.map((s) => s.n))
+  const animSeen = samples.filter((s) => s.anim > 0).length
+  report.note(
+    `切文档采样 ${samples.length} 帧：甲=${countA} 行，最多 ${maxN} 行，带进出场类的帧 ${animSeen}`
+  )
+  report.check('doc-switch-has-no-enter-leave-class', animSeen === 0, `animSeen=${animSeen}`)
+  report.check('doc-switch-never-overlaps-rows', maxN <= 5, `max=${maxN}（有动画时旧行会残留 ⇒ >5）`)
+
   // ④ 关掉设置 → 回到默认结构（页签回来、右侧面板消失）
   await ev(`(() => { window.__L.settings().set('outlineOnRight', false); return 'ok' })()`)
   await sleep(600)
