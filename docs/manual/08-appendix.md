@@ -2640,3 +2640,58 @@ CM 实例数从「等于块数」变成「视口附近那几块」（两次都�
   `_regress-layout` 9/9、`_verify-local-media` 10/10。
 * 新增 i18n 键 `editor.draftTitle` / `editor.draftHint`（三语同步）；`sidebar.css` 里原来那套
   `.restore-bar` / `.draft-reveal` 样式随之删除（`.draft-modal` 只留遮罩兜底与最小高度）。
+
+### 4.75 三处版式微调：通知操作按钮靠右 / 分屏左栏滚动条贴左 / 分隔条「抓住」动效
+
+**用户口径**：① 通知的布局、结构与样式再优化，操作按钮放右边（原来在左边）；② 分屏时渲染面（左栏）
+的滚动条也放左边；③ 分隔条的鼠标点击动效自然一点。
+
+#### 一、通知：操作按钮从「正文下方（左）」搬到行内右侧
+
+`.ntf-row` 从两列栅格（文本 · 信息条）扩成三列（文本 · **操作按钮** · 信息条）：按钮列 `auto`、
+`justify-content: flex-end`、与标题首行同一条基线（沿用 `align-items: start` 的那条 20px 起始线 ——
+所以 `_verify-notify-style` 的「信息条与标题首行对齐」仍然成立）。窄窗口允许换行，但两枚按钮仍成组靠右。
+实测：内容 320–976、按钮 1000–1147、信息条 1171–1248（窗口右缘 1304 − 内衬 56 = 1248 ✓）。
+
+#### 二、分屏：左栏滚动条贴左
+
+`.editor-scroll` 在 `ui.editorMode === 'split'` 时加 `editor-scroll--split-left`：
+容器 `direction: rtl`（Chromium 里纵向滚动条跟着书写方向走 ⇒ 贴左），**内容再 `direction: ltr` 复位**
+（否则标点、数字与西文混排、列表编号的方向会跟着翻）。滚动条仍占那 6px 布局宽度，
+所以两栏正文几何完全不变（实测 pane 520 / 滚动容器 520 / 内容 514），只是滚动条换了一侧：
+两侧各自贴外缘，中间分界线干净。
+
+#### 三、分隔条：按下只「加深一度」，不加宽
+
+把手平时 3×36（`--edge-strong`）；hover 变 3×56 + `--accent`（**宽度始终 3px**，只动高度与颜色）。
+**按下 / 拖拽期间宽度、高度、发光、缩放全不变**，只把颜色从 `--accent` 走到更深一档的 `--accent-ink`
+（三主题各一档，见 `theme.css`）。热区仍从 11px 扩到 23px（为了好抓），但它的底是**透明**的 ——
+`:active` 与 `.dragging` 都撤掉 hover 的软底，所以视觉上不会出现「点一下就变宽」。
+
+| 状态 | 把手尺寸 | 把手颜色 | 热区 |
+| --- | --- | --- | --- |
+| 静止 | 3×36 | `--edge-strong` | 11px 透明 |
+| hover | 3×56 | `--accent` | 11px `--accent-soft` |
+| **按下 / 拖拽** | **3×56（不变）** | **`--accent-ink`（深一档）** | 23px **透明** |
+
+实测：idle 3×36 `rgb(210,213,219)` → 按下 3×56 `rgb(55,65,81)`（= `--accent-ink`）→
+拖拽中 3×56 同色、热区 23px 透明 → 松开回到 3×36。
+（`:hover` 那一档在隔离窗口里量不到 —— CDP 的 `mouseMoved` 不产生真实 hover 命中，
+所以 hover 只由 CSS 声明保证，按下/拖拽两档是实测的。）
+
+#### 四、顺带修掉两条「批量跑才出现」的假失败（`_verify-surfaces`）
+
+- **T 段主题循环**由 `sleep(900)` 改成轮询：批量跑时主题还没落地就量，令牌会落后一档
+  （实测 dark 读到 light 的纸色、sepia 读到 dark 的）。稳定性判据必须**同时**包含实际表面色
+  （body 与两个 pane 的计算色）—— 只等 CSS 变量不够：`body` 的 `background-color` 还有 ~300ms 过渡，
+  实测读到过渡中间色 `rgb(19,21,26)` 而外壳是 `rgb(11,13,18)`，于是「body 就是外壳色」判红。
+- **F2**（分屏左栏跟上且账本收敛）同样由定长 sleep 改成轮询到条件成立：批量负载下
+  「右栏输入 → 序列化 → 回灌左栏 → 账本收敛」这条链 900ms 走不完（实测 `leftHas=false / stale=true`，
+  单独跑 37/37）。轮询只去掉假红，不会造假绿：一直不收敛仍然判红。
+
+验收：默认矩阵 **33/33**（`NOASSERT 0`）；`_regress-divider` 4/4、`_regress-split-live` 8/8、
+`_verify-surfaces` 37/37、`_verify-link-open` 63/63（它点的是 `.ntf-action`，按钮换位置不受影响）、
+`_verify-notify-style` 22/22、`_verify-notifications` 32/32、`_verify-toast-tip` 21/21、
+`_regress-layout` 9/9、`_verify-segmented-control` 16/16、`_verify-cb-virtualization` 9/9。
+另：单独跑时 `_verify-editor-menu` 51/51、`_verify-surface-stress` 72/72 ——
+全量连跑里那两条红是**负载相关**的（stress 的「1MB 切回渲染 ≤26s」实测 38s，属机器忙/前序套件 GC 压力）。

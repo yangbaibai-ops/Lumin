@@ -72,6 +72,52 @@
 - **工程化**：~~`tools/lib/harness.js` + `tools/run-suites.js`~~ → **本轮已完成**；
   剩余：`files` store 拆分；`store` 里那份为绕循环导入而复制的 `confirmIfDirty` 收敛到 `services/dialog`。
 
+## [Unreleased · UI 三处] — 通知操作按钮移到右侧 / 分屏左栏滚动条贴左 / 分隔条加「抓住」动效
+
+> 用户口径：① 再优化通知的布局、结构与样式，把操作按钮放到**右边**（原来在左边）；
+> ② 进入分屏视图时，渲染面（左栏）的滚动条放到**左边**而不是右边；
+> ③ 分屏中间拖动比例的组件，鼠标**点上去不要变宽，只是颜色加深一度**。
+
+### Changed
+
+- **通知：操作按钮从「正文下面（左侧）」搬到行内**右侧**。**
+  `.ntf-row` 由两列栅格（文本 · 信息条）改成三列（文本 · **操作按钮** · 信息条），
+  按钮列右对齐、与标题首行同一条基线（沿用 `align-items: start` 的同一条 20px 起始线，
+  不破坏 `_verify-notify-style` 的「信息条与标题首行对齐」断言）；窄窗口允许换行但仍成组靠右。
+  实测：内容 320–976、按钮 1000–1147、信息条 1171–1248（窗口右缘 1304 − 内衬 56 = 1248 ✓）。
+- **分屏：左栏（渲染面）的滚动条移到左边。** `.editor-scroll` 在 `ui.editorMode === 'split'` 时
+  加 `editor-scroll--split-left`：容器 `direction: rtl`（Chromium 里纵向滚动条跟着书写方向走 ⇒ 贴左），
+  内容再 `direction: ltr` 复位（否则标点/数字/列表编号的排版方向会跟着翻）。
+  滚动条仍占那 6px 布局宽度 ⇒ 两栏正文几何完全不变（实测 pane 520 / 滚动容器 520 / 内容 514），
+  两侧滚动条各自贴外缘、中间分界线干净。
+- **分隔条：按下时**只把颜色加深一度**（不加宽）。** 把手平时 3×36（`--edge-strong`），
+  hover 变 3×56 + `--accent`（宽度始终 3px）；**按下 / 拖拽期间宽度、高度、发光、缩放全都不变**，
+  只把颜色从 `--accent` 走到更深一档的 `--accent-ink`（三主题各自的一档，见 `theme.css`）。
+  热区仍会从 11px 扩到 23px —— 那是为了好抓，且它的底是**透明**的（`:active` 与 `.dragging` 都撤掉
+  hover 的软底），所以视觉上不会出现「点一下就变宽」。
+  实测四态：idle 3×36 `rgb(210,213,219)` → **按下 3×56 `rgb(55,65,81)`（= `--accent-ink`）** →
+  拖拽中 3×56 同色、热区 23px 透明 → 松开回到 3×36。
+
+### Fixed（顺带：两条「批量跑才出现」的假失败）
+
+- `_verify-surfaces` 的 **T 段主题循环**由 `sleep(900)` 改成轮询：批量跑时主题还没落地就量，
+  令牌会**落后一档**（dark 读到 light 的纸色、sepia 读到 dark 的），T2 假红。
+  稳定性判据必须同时包含**实际表面色**（body 与两个 pane 的计算色）—— 只等 CSS 变量不够：
+  `body` 的 `background-color` 还有 ~300ms 过渡，实测读到过渡中间色 `rgb(19,21,26)`
+  而外壳是 `rgb(11,13,18)`，于是「body 就是外壳色」判红。
+- 同套件的 **F2**（分屏左栏跟上且账本收敛）也由 `sleep(900)` 改成轮询到条件成立：
+  「右栏输入 → 序列化 → 回灌左栏 → 账本收敛」这条链在批量负载下 900ms 走不完
+  （实测 `leftHas=false / stale=true`，单独跑 37/37）。轮询只去掉假红、不会造假绿：不收敛仍判红。
+
+### Verification（本轮实测）
+
+| 项 | 结果 |
+| --- | --- |
+| 默认矩阵（33 条） | **33/33 PASS**（`NOASSERT 0`） |
+| 受影响套件 | `_regress-divider` 4/4、`_regress-split-live` 8/8、`_verify-surfaces` 37/37、`_verify-link-open` 63/63（通知操作按钮）、`_verify-notify-style` 22/22、`_verify-notifications` 32/32、`_verify-toast-tip` 21/21、`_regress-layout` 9/9、`_verify-segmented-control` 16/16、`_verify-cb-virtualization` 9/9 |
+| 几何实测（隔离实例 + 截图，临时探针已删） | 见上：通知三列位置、分屏 `direction: rtl` + 内容 `ltr` 且两侧几何不变、分隔条三段状态 |
+| 门禁 | `vue-tsc` exit 0、`eslint` 0 error 0 warning、`electron-vite build` exit 0 |
+
 ## [Unreleased · 草稿提示改成独立强制弹窗] — 不选「恢复 / 丢弃」就不能编辑这个文档
 
 > 用户口径：取消「检测到未保存的草稿（比磁盘文件更新）」那条提示原来的样式与位置；当文档当前内容

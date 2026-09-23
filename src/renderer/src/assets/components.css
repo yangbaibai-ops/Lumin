@@ -135,6 +135,19 @@
 }
 
 /* ── 分屏对比视图 ── */
+
+/* 分屏时：左侧（渲染面）的滚动条移到**左边**（用户口径）。
+   做法是经典的 RTL 容器技巧 —— Chromium 里纵向滚动条跟着容器的书写方向走（RTL ⇒ 贴左），
+   而滚动条占的仍是那 6px 布局宽度，所以两栏的正文几何完全不变，只是滚动条换了一侧。
+   ⚠️ 必须把内容重新置回 LTR：否则正文的排版方向（标点、数字与西文混排、列表编号）会跟着翻。
+   只作用于纵轴（`overflow-x` 本来就是 visible/hidden），不会带来横向滚动条换边的问题。 */
+.editor-scroll--split-left {
+  direction: rtl;
+}
+.editor-scroll--split-left > * {
+  direction: ltr;
+}
+
 /* 分隔条 = **绝对定位的浮层**（不再当 flex 子项）。
    为什么：它是 flex 子项时，每次改两侧宽度都要把它一起重新布局；后来者往往只关心
    两侧的比例，分隔条本身只是个光标热区。改成 overlay 后，拖拽期间要重新布局的东西
@@ -156,29 +169,50 @@
   left: var(--split-left, 50%);
 }
 /* 拖拽期间：热区两侧各扩 6px（更好抓），并且**不要**给分隔条加过渡 ——
-   否则它会追着指针慢慢滑，看起来就像"卡"。 */
+   否则它会追着指针慢慢滑，看起来就像"卡"。
+   底保持**透明**：热区变宽只是为了好抓，视觉上不该出现一条更宽的色带
+   （用户口径：点上去不要变宽）。 */
 .split-divider.dragging {
   width: 23px;
   margin-left: -11px;
   transition: none;
+  background: transparent;
 }
+/* 把手本体：平时一根 3px 短竖条；hover 只把它**变高 + 变 accent 色**（宽度始终 3px）。
+   按下（鼠标按住 / 拖拽中）**不加宽、不加高、不发光、不缩放** —— 用户口径是「只是颜色加深一度」，
+   所以这一档只把颜色从 `--accent` 走到更深一档的 `--accent-ink`（三主题各自的一档，见 theme.css）。 */
 .split-divider span {
   width: 3px;
   height: 36px;
-  border-radius: 2px;
+  border-radius: 3px;
   background: var(--edge-strong, var(--edge));
   transition:
-    height 0.15s ease,
-    background-color 0.15s ease;
+    height 0.18s cubic-bezier(0.22, 1, 0.36, 1),
+    background-color 0.14s ease;
 }
-.split-divider:hover,
-.split-divider.dragging {
+.split-divider:hover {
+  /* hover 的软底仍留在 11px 热区上（这是「可抓」的提示，本轮不动它） */
   background: var(--accent-soft);
 }
-.split-divider:hover span,
-.split-divider.dragging span {
+/* 按下那一刻连这层软底也撤掉：用户口径是「点上去只是颜色加深一度」，
+   所以整条热区在按下期间不该有任何底色（`.dragging` 那条同理，覆盖整段拖拽）。 */
+.split-divider:active,
+.split-divider.dragging {
+  background: transparent;
+}
+.split-divider:hover span {
   height: 56px;
   background: var(--accent);
+}
+/* `:active` = 指针按下那一刻（哪怕还没移动）；`.dragging` 覆盖整段拖拽 ——
+   两者给同一档终态，所以按住不放不会有二次跳变。整档**只改颜色**。 */
+.split-divider:active span,
+.split-divider.dragging span {
+  width: 3px;
+  height: 56px;
+  background: var(--accent-ink);
+  box-shadow: none;
+  transform: none;
 }
 /* 拖拽期间禁选中。**不要写成 `.split-dragging *`**：那会让整棵子树（编辑器里几百个段落
    加几十个 CodeMirror）在拖拽开始/结束时各做一次全量样式重算 —— 实测 800 段文档上

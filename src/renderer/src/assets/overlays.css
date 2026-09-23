@@ -379,11 +379,13 @@ li.md-reveal {
 .ntf-item {
   padding: 11px 56px 13px;
 }
-/* 两列栅格：左列文本（可压缩，measure 由各元素自己限宽），右列信息条（内容宽度、不压缩）。
-   用栅格而不是 flex + gap，是为了让「标题首行」与「右侧信息条」天然同一条基线。 */
+/* 三列栅格：① 文本（可压缩，measure 由各元素自己限宽）② 操作按钮（有才占位）
+   ③ 右侧信息条（内容宽度、不压缩）。用栅格而不是 flex + gap，是为了让「标题首行」
+   与「右侧信息条」「操作按钮」天然同一条基线。
+   ⚠️ ② 是本轮加的：操作按钮原来在文本列**下面（左侧）**，用户口径要放右边。 */
 .ntf-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) auto auto;
   column-gap: 24px;
   align-items: start;
 }
@@ -411,12 +413,15 @@ li.md-reveal {
   overflow-wrap: anywhere;
   scrollbar-width: thin;
 }
+/* 操作按钮列：右对齐、与标题首行对齐（不再压在正文下面）。
+   窄窗口下允许换行（两枚按钮仍靠右成组），不挤掉右侧信息条。 */
 .ntf-actions {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
+  justify-content: flex-end;
+  align-self: start;
   gap: 8px;
-  margin-top: 12px;
 }
 /* 右侧信息条：时间 | 步进 | 关闭，簇之间用 1px 竖线分隔。
    height 取标题行高（20px）—— 于是它与标题首行**天然对齐**，不需要负 margin 之类的补正。 */

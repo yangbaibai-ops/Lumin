@@ -263,8 +263,14 @@ defineExpose({ editor, syncNow })
     class="typora-container relative h-full"
     :class="{ 'focus-mode': ui.focusMode }"
   >
-    <!-- 编辑区 -->
-    <div class="editor-scroll h-full overflow-y-auto" @scroll.passive="onScroll">
+    <!-- 编辑区。
+         分屏时给滚动容器加 `editor-scroll--split-left`：把**左侧（渲染面）**的滚动条移到左边，
+         于是两侧滚动条各自贴外缘、中间分界线干净（做法与坑见 components.css 的同名注释）。 -->
+    <div
+      class="editor-scroll h-full overflow-y-auto"
+      :class="{ 'editor-scroll--split-left': ui.editorMode === 'split' }"
+      @scroll.passive="onScroll"
+    >
       <div
         class="mx-auto transition-all duration-300"
         :class="ui.focusMode ? 'max-w-[1140px]' : 'max-w-[1320px]'"

@@ -685,8 +685,30 @@ async function main() {
     await app.ev(
       `(async () => { await window.__L.settings().setTheme(${JSON.stringify(th)}); return 'ok' })()`
     )
-    await sleep(900)
-    const m = await readJson(app, SURFACE_PROBE)
+    // ⚠️ 这里原来是 `sleep(900)` 就量 —— 批量跑（10 套件连着跑、机器忙）时主题还没落地，
+    // 量到的令牌会**落后一档**（实测：dark 读到 light 的纸色、sepia 读到 dark 的），T2 于是假红。
+    // 改成轮询到「类名就是本主题 **且** 两次读到的令牌与**实际表面色**都完全一致」为止（最长 ~5s）。
+    // ⚠️ 必须把 body / pane 的计算色也并进稳定性判据：令牌（CSS 变量）换类名就立刻变，
+    //    但 body 的 background-color 还有 ~300ms 过渡 —— 只等令牌会读到过渡中间色
+    //    （实测 dark 读到 rgb(19,21,26)、壳是 rgb(11,13,18)，T2 的「body 就是外壳色」判红）。
+    let m = null
+    let prevKey = ''
+    for (let i = 0; i < 40; i++) {
+      await sleep(130)
+      m = await readJson(app, SURFACE_PROBE)
+      const key =
+        m.theme +
+        '|' +
+        JSON.stringify(m.tokens) +
+        '|' +
+        JSON.stringify(m.body) +
+        '|' +
+        JSON.stringify(m.pane && m.pane.bg) +
+        '|' +
+        JSON.stringify(m.sourcePane && m.sourcePane.bg)
+      if (m.theme === `theme-${th}` && key === prevKey) break
+      prevKey = key
+    }
     const s = m.surfaces
     themeRows.push({
       theme: th,
@@ -833,21 +855,28 @@ async function main() {
     ta.dispatchEvent(new Event('input', { bubbles: true }))
     return JSON.stringify({ author: f.contentAuthor, stale: f.contentIsStale('wysiwyg') })
   })()`)
-  await sleep(900)
-  const splitAfter = JSON.parse(
-    await app.ev(`JSON.stringify({
-      stale: window.__L.files().contentIsStale('wysiwyg'),
-      leftHas: (() => {
-        const ed = window.__L.ed()
-        if (!ed) return false
-        let ok = false
-        ed.state.doc.descendants((n) => {
-          if (n.type.name === 'heading' && n.textContent.includes('分屏乙')) ok = true
-        })
-        return ok
-      })()
-    })`)
-  )
+  // ⚠️ 原来也是 `sleep(900)` 就断言：批量跑时「右栏输入 → 序列化 → 回灌左栏 → 账本收敛」
+  // 这条链可能还没走完，F2 于是假红（实测 leftHas=false / stale=true，单独跑 37/37）。
+  // 改成轮询到条件成立（最长 ~5s）；一直不成立仍然判红 —— 轮询只会去掉假红，不会造假绿。
+  let splitAfter = { leftHas: false, stale: true }
+  for (let i = 0; i < 40; i++) {
+    await sleep(130)
+    splitAfter = JSON.parse(
+      await app.ev(`JSON.stringify({
+        stale: window.__L.files().contentIsStale('wysiwyg'),
+        leftHas: (() => {
+          const ed = window.__L.ed()
+          if (!ed) return false
+          let ok = false
+          ed.state.doc.descendants((n) => {
+            if (n.type.name === 'heading' && n.textContent.includes('分屏乙')) ok = true
+          })
+          return ok
+        })()
+      })`)
+    )
+    if (splitAfter.leftHas === true && splitAfter.stale === false) break
+  }
   const splitInParsed = JSON.parse(splitIn)
   report.check(
     'F1 分屏右栏输入：作者=source、左侧标记为落后',

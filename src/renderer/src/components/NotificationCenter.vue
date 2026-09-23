@@ -72,21 +72,23 @@ function closeCurrent(): void {
               <div class="ntf-content">
                 <p class="ntf-title">{{ active.title }}</p>
                 <p v-if="active.body" class="ntf-body">{{ active.body }}</p>
+              </div>
 
-                <!-- 操作按钮（可交互通知，如「创建并打开 / 取消」）：
-                     点击即收起本条，再按 payload.kind 派发给注册的处理器 -->
-                <div v-if="active.actions.length" class="ntf-actions">
-                  <button
-                    v-for="a in active.actions"
-                    :key="a.id"
-                    class="ntf-action"
-                    :class="actionToneClass(a.tone)"
-                    :disabled="busy"
-                    @click="runAction(a.id)"
-                  >
-                    {{ a.label }}
-                  </button>
-                </div>
+              <!-- 操作按钮（可交互通知，如「创建并打开 / 取消」）：点击即收起本条，
+                   再按 payload.kind 派发给注册的处理器。
+                   ⚠️ 位置在本轮改过：原来挂在**标题/正文下面（左侧）**，用户口径是「操作按钮放在右边」——
+                   现在它是行内独立一列，排在正文与右侧信息条之间，与标题首行同一条基线。 -->
+              <div v-if="active.actions.length" class="ntf-actions">
+                <button
+                  v-for="a in active.actions"
+                  :key="a.id"
+                  class="ntf-action"
+                  :class="actionToneClass(a.tone)"
+                  :disabled="busy"
+                  @click="runAction(a.id)"
+                >
+                  {{ a.label }}
+                </button>
               </div>
 
               <!-- 右侧信息条：时间 · （多条时的步进与全部关闭）· 关闭本条；
