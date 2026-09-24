@@ -72,6 +72,36 @@
 - **工程化**：~~`tools/lib/harness.js` + `tools/run-suites.js`~~ → **本轮已完成**；
   剩余：`files` store 拆分；`store` 里那份为绕循环导入而复制的 `confirmIfDirty` 收敛到 `services/dialog`。
 
+## [Unreleased · 设置（第四轮）：全页只有一条滚动条（内层滚动容器也拆掉）]
+
+> 用户口径：「还是限制了，它有自己的滚动条，而不是整个界面的滚动条」。
+> 第三轮虽然去掉了卡片外框，但内容区仍是一个 `overflow-y: auto` 的内层滚动容器 ——
+> 滚动条长在内容区里，而不是界面右侧那一条。
+
+### Changed
+
+- **拆掉内层滚动容器**：`.settings-body` 不再 `overflow-y: auto`（改成 `overflow-visible`），
+  `.settings-page` 自己变成唯一的滚动容器（`overflow-y: auto`）。
+  长页签整页一起滚，滚动条就是窗口右侧那一条。
+- **顶栏与左导航吸顶**（`position: sticky`）：滚长页签时「设置 / 关闭」一直在、
+  页签列表也一直在（Typora 的偏好设置就是这个行为）；左导航从「可滚动列」改成
+  「6 项不超高、永久吸顶」，因此它自己不带任何滚动条。
+- `.settings-card` 改成 `align-items: flex-start`（导航要能粘住，拉伸就粘不住）。
+
+### Verification
+
+- 新增/改写断言：`_verify-round-perf` 里那条「内容区可滚动」改成
+  **`C 全页只有一条滚动条：页面自己那条，内部没有滚动容器`** —— 实测
+  `pageOverflow: auto / pageDelta: 98 / innerScrollables: **0** / bodyOverflow: visible`。
+  同心实测（临时探针，跑完即删）确认滚到底后 `topbarTop: 0`、`navTop: 60`（吸顶生效）。
+- 顺手修掉那条断言的判据：居中改成按**它所在那一行**的中心算（`expectedLeft`），
+  而不是 `window.innerWidth` —— 整页出现滚动条时可视宽度少 ~15px，旧判据会假红（实测差 3px）。
+  现在实测 `left: 159 = expectedLeft: 159`、`cardW: 980`。**25/25 PASS**。
+- 视觉：`out/_settings-scroll-{editor,appearance}.png`（滚到底时顶栏与导航仍在位、右侧只有一条滚动条）。
+- 其余设置相关套件：`_verify-toolbar-settings` 38/38、`_verify-link-open` 64/64、
+  `_verify-cb-line-numbers` 13/13、`_verify-cb-button-line-numbers` 26/26、`_verify-a11y` 9/9、
+  `_verify-i18n` 5/5、`_verify-local-media` 10/10；`eslint` 0 error / 0 warning；`vue-tsc` 0；build 0。
+
 ## [Unreleased · 设置（第三轮）：去掉「限制组件」，设置项与导航直接铺在界面上]
 
 > 用户口径：「设置界面不要有限制组件，直接显示在界面上，像 Typora 一样，设置项和导航直接在界面上」。

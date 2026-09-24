@@ -261,6 +261,12 @@ async function main() {
     const body = document.querySelector('.settings-body')
     const navItems = [...document.querySelectorAll('.settings-nav-item')]
     const active = navItems.filter((b) => b.classList.contains('is-active'))
+    // 「全页只有一条滚动条」：内部**不允许**再有滚动容器（用户口径：它有自己的滚动条
+    // 而不是整个界面的滚动条）。这里连同 page 自己一起数，便于输出诊断。
+    const isScroller = (el) => {
+      const s = getComputedStyle(el)
+      return (s.overflowY === 'auto' || s.overflowY === 'scroll') && el.scrollHeight > el.clientHeight
+    }
     return JSON.stringify({
       found: true,
       covers: Math.round(r.width) >= window.innerWidth - 1 && Math.round(r.height) >= window.innerHeight - 1,
@@ -273,10 +279,10 @@ async function main() {
       navBg: nav ? getComputedStyle(nav).backgroundColor : null,
       bodyBg: body ? getComputedStyle(body).backgroundColor : null,
       closeLabel: (document.querySelector('[data-settings-close]')?.textContent || '').trim(),
-      scrollables: [...document.querySelectorAll('.settings-page *')].filter((el) => {
-        const s = getComputedStyle(el)
-        return (s.overflowY === 'auto' || s.overflowY === 'scroll') && el.scrollHeight > el.clientHeight
-      }).length
+      pageOverflow: pc.overflowY,
+      pageDelta: page.scrollHeight - page.clientHeight,
+      bodyOverflow: body ? getComputedStyle(body).overflowY : null,
+      innerScrollables: [...page.querySelectorAll('*')].filter(isScroller).length
     })
   })()`).then(JSON.parse)
   console.log('C1 ' + JSON.stringify(c1))
@@ -301,9 +307,14 @@ async function main() {
     JSON.stringify({ items: c1.navItems, active: c1.activeItems })
   )
   report.check(
-    'C 内容区可滚动（不是固定高的小盒）',
-    c1.scrollables >= 1,
-    JSON.stringify({ scrollables: c1.scrollables })
+    'C 全页只有一条滚动条：页面自己那条，内部没有滚动容器',
+    c1.pageOverflow === 'auto' && c1.innerScrollables === 0 && c1.bodyOverflow === 'visible',
+    JSON.stringify({
+      pageOverflow: c1.pageOverflow,
+      pageDelta: c1.pageDelta,
+      innerScrollables: c1.innerScrollables,
+      bodyOverflow: c1.bodyOverflow
+    })
   )
   report.check(
     'C 关闭入口是一枚带文案的按钮（不再只有一个 X）',
@@ -344,11 +355,15 @@ async function main() {
     const nav = document.querySelector('.settings-nav')
     const body = document.querySelector('.settings-body')
     const cr = card.getBoundingClientRect(), nr = nav.getBoundingClientRect(), br = body.getBoundingClientRect()
+    const row = card.parentElement
+    const rr = row.getBoundingClientRect()
     return JSON.stringify({
       win: window.innerWidth,
       cardW: Math.round(cr.width),
       left: Math.round(cr.left),
-      expectedLeft: Math.round((window.innerWidth - cr.width) / 2),
+      // 「居中」的判据用**它所在那一行**的中心，而不是 window.innerWidth ——
+      // 整页出现滚动条时可视宽度会少 ~15px（第一版就因此差了 3px 假红）。
+      expectedLeft: Math.round(rr.left + (rr.width - cr.width) / 2),
       gap: Math.round(br.left - nr.right),
       navW: Math.round(nr.width)
     })

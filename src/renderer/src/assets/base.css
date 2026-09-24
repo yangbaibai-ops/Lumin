@@ -153,6 +153,9 @@
    结构是「顶栏 + 左导航 + 纸面内容区」，样式收口成下面这组 class —— 六个页签因此观感一致，
    组件里也不再逐处写 Tailwind 长串。 */
 .settings-page {
+  /* **整页就是那个滚动容器**（用户口径：「它有自己的滚动条，而不是整个界面的滚动条」）：
+     长页签由这一条滚动条滚，顶栏与左导航吸顶；内部不再有任何 overflow 容器。 */
+  overflow-y: auto;
   animation: lm-fade-in 0.16s ease;
 }
 /* 顶栏与卡片共用同一个最大宽度 ⇒「设置」标题与卡片左缘对齐（整页不再散到两边） */
@@ -163,7 +166,8 @@
   max-width: 980px;
 }
 .settings-topbar {
-  /* 顶栏比侧栏头部（h-10）略高：整页的第一行要有"页面标题"的分量 */
+  /* 顶栏比侧栏头部（h-10）略高：整页的第一行要有"页面标题"的分量。
+     `sticky`（在模板上）保证滚长页签时它一直在 —— 关设置的出口不该被滚走。 */
   background: var(--app);
 }
 .settings-topbar-btn {
@@ -197,16 +201,19 @@
    只靠「居中的 980px 宽度 + 两栏间距 + 组与组之间的细线」来分层。 */
 .settings-card {
   display: flex;
-  min-height: 0;
-  flex: 1;
+  /* 顶对齐：左导航要能 sticky 吸顶（拉伸会让它一直占满整列，粘不住） */
+  align-items: flex-start;
   margin: 0 auto 28px;
   width: 100%;
   max-width: 980px;
 }
 .settings-nav {
+  /* 吸在顶栏下面：滚长页签时页签列表常驻（Typora 的偏好设置也是这个行为）。
+     6 个分组不会超高，所以它自己不需要滚动条。 */
+  position: sticky;
+  top: 60px;
   width: 190px;
   flex: none;
-  overflow-y: auto;
   padding: 2px 0;
 }
 .settings-nav-item {
