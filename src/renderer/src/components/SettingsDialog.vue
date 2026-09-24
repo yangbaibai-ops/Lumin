@@ -250,9 +250,11 @@ function formatTime(ms: number): string {
         </div>
       </header>
 
-      <!-- 主体：一张居中的大卡（左导航 + 纸面内容）。用户口径「聚焦正中间、设最大宽度、
-           别让侧边栏和设置项离太远」—— 宽度锁 980px，导航 190px，两者始终贴在一起。 -->
-      <div class="flex min-h-0 flex-1 px-6 pt-6">
+      <!-- 主体：**直接铺在界面上的两栏**（左导航 + 内容），没有卡片外框。
+           用户口径：「设置界面不要有限制组件，直接显示在界面上，像 Typora 一样，
+           设置项和导航直接在界面上」。仍然居中限宽 980px（上一轮的口径），
+           分层只靠「两栏间距 + 组间细线」。 -->
+      <div class="flex min-h-0 flex-1 px-6 pt-4">
         <div class="settings-card">
           <!-- 左导航 -->
           <nav class="settings-nav" :aria-label="t('settings.title')">
@@ -269,10 +271,10 @@ function formatTime(ms: number): string {
             </button>
           </nav>
 
-          <!-- 内容区：纸面 -->
+          <!-- 内容区：与导航同一底色（--app），设置项直接列在界面上 -->
           <div class="settings-body flex min-w-0 flex-1 flex-col">
             <div class="min-h-0 flex-1 overflow-y-auto">
-              <div class="settings-column px-7 pb-12 pt-6">
+              <div class="settings-column px-8 pb-12 pt-1">
                 <h2 class="settings-section-title">{{ sectionTitle(activeTab) }}</h2>
                 <Transition name="page" mode="out-in">
                   <div :key="activeTab">

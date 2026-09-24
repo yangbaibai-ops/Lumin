@@ -301,14 +301,41 @@ async function main() {
     JSON.stringify({ items: c1.navItems, active: c1.activeItems })
   )
   report.check(
-    'C 内容区是可滚动的纸面（不是固定高的小盒）',
-    c1.scrollables >= 1 && typeof c1.bodyBg === 'string',
-    JSON.stringify({ scrollables: c1.scrollables, bodyBg: c1.bodyBg })
+    'C 内容区可滚动（不是固定高的小盒）',
+    c1.scrollables >= 1,
+    JSON.stringify({ scrollables: c1.scrollables })
   )
   report.check(
     'C 关闭入口是一枚带文案的按钮（不再只有一个 X）',
     c1.closeLabel.length > 0,
     JSON.stringify({ closeLabel: c1.closeLabel })
+  )
+
+  // C1a 没有「限制组件」：整页里**不该再有卡片外框/底色**（用户口径：设置项与导航直接显示在界面上）
+  const boxless = await ev(`(() => {
+    const card = document.querySelector('.settings-card')
+    const group = document.querySelector('.set-card')
+    const cs = getComputedStyle(card), gs = getComputedStyle(group)
+    const transparent = (v) => !v || v === 'rgba(0, 0, 0, 0)' || v === 'transparent'
+    return JSON.stringify({
+      cardBorder: [cs.borderTopWidth, cs.borderLeftWidth, cs.borderRightWidth, cs.borderBottomWidth].join(','),
+      cardBg: cs.backgroundColor,
+      cardRadius: cs.borderTopLeftRadius,
+      groupBg: gs.backgroundColor,
+      groupBorderTop: gs.borderTopWidth,
+      groupBorderBottom: gs.borderBottomWidth
+    })
+  })()`).then(JSON.parse)
+  console.log('C1a ' + JSON.stringify(boxless))
+  report.check(
+    'C 没有限制组件：主体与每组设置都不再有外框/底色',
+    boxless.cardBorder === '0px,0px,0px,0px' &&
+      boxless.cardRadius === '0px' &&
+      (!boxless.cardBg || boxless.cardBg === 'rgba(0, 0, 0, 0)') &&
+      (!boxless.groupBg || boxless.groupBg === 'rgba(0, 0, 0, 0)') &&
+      boxless.groupBorderTop === '0px' &&
+      boxless.groupBorderBottom === '1px',
+    JSON.stringify(boxless)
   )
 
   // C1b 居中 + 最大宽度（用户口径：聚焦在界面正中间并设最大宽度，侧边栏与设置项别离太远）

@@ -191,9 +191,10 @@
   border-color: var(--accent);
   color: var(--accent);
 }
-/* 设置主体 = **一张居中的大卡**：左导航 + 纸面内容同处一卡。
-   用户口径：「聚焦在界面的正中间并设置最大宽度（类似 Typora），现在侧边栏和设置项离得太远」
-   —— 宽度收在 980px、左导航 190px，导航与内容始终贴在一起；窗口再宽也只是留白变多。 */
+/* 设置主体 = **直接铺在界面上的两栏**（用户口径：不要"限制组件"，像 Typora 一样
+   设置项与导航直接显示在界面上）。
+   所以这里**没有卡片外框**：导航与内容都是同一个页面底色（--app），
+   只靠「居中的 980px 宽度 + 两栏间距 + 组与组之间的细线」来分层。 */
 .settings-card {
   display: flex;
   min-height: 0;
@@ -201,25 +202,18 @@
   margin: 0 auto 28px;
   width: 100%;
   max-width: 980px;
-  overflow: hidden;
-  border: 1px solid var(--edge);
-  border-radius: 14px;
-  background: var(--paper);
 }
 .settings-nav {
   width: 190px;
   flex: none;
   overflow-y: auto;
-  padding: 12px;
-  border-right: 1px solid var(--edge);
-  /* 导航比纸面暗半档：一眼分得清「哪边是导航」 */
-  background: color-mix(in srgb, var(--panel-2) 40%, transparent);
+  padding: 2px 0;
 }
 .settings-nav-item {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 8px 10px;
+  padding: 7px 10px;
   border-radius: 8px;
   text-align: left;
   font-size: 13px;
@@ -230,7 +224,7 @@
   background: var(--panel-2);
   color: var(--ink);
 }
-/* 当前分组：沿用侧栏选中态（accent-soft + accent），整页里也一样认得出 */
+/* 当前分组：沿用侧栏选中态（accent-soft + accent），直接铺在界面上也认得出 */
 .settings-nav-item.is-active {
   background: var(--accent-soft);
   color: var(--accent);
@@ -240,19 +234,20 @@
   min-width: 0;
 }
 .settings-section-title {
-  margin-bottom: 18px;
+  margin-bottom: 20px;
   font-size: 17px;
   font-weight: 600;
   letter-spacing: -0.01em;
   color: var(--ink);
 }
-/* 卡片：纸面上的一档浅底 + 1px 边（浅色主题下 paper 与 panel 同为 #fff，
-   所以这里**不能**沿用 .surface 的白底，否则卡片在纸面上看不见） */
+/* 一组设置：**没有卡片背景/边框**，只用「一条细线 + 组标题」分段（Typora 的做法） */
 .set-card {
-  padding: 18px 20px;
-  border: 1px solid var(--edge);
-  border-radius: 12px;
-  background: color-mix(in srgb, var(--panel-2) 45%, transparent);
+  padding-bottom: 20px;
+  border-bottom: 1px solid var(--edge);
+}
+.set-card:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
 }
 .set-card-title {
   margin-bottom: 14px;
@@ -260,14 +255,13 @@
   font-weight: 600;
   color: var(--ink);
 }
-/* 卡片之间统一留白（含折叠块），不再逐处手写 mt-4/mb-4 */
+/* 组之间与行之间都用细线分层（行内细线是 Typora 那套"设置项直接列在界面上"的观感） */
 .set-card + .set-card,
 .set-card + .set-fold,
 .set-fold + .set-card,
 .set-fold + .set-fold {
-  margin-top: 14px;
+  margin-top: 20px;
 }
-/* 一行设置：左说明 + 右控件；多行之间自动留白（原来靠各处手写 mt-5/mb-2，间距不一致） */
 .set-row {
   display: flex;
   align-items: center;
@@ -278,6 +272,8 @@
 .set-row + div,
 div + .set-row {
   margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid color-mix(in srgb, var(--edge) 60%, transparent);
 }
 .set-row-label {
   font-size: 13.5px;
@@ -292,17 +288,21 @@ div + .set-row {
 /* ─── 折叠块（<details>）─────────────────────────────────────────────────────
    用户口径：「该展示的展示，该折叠的折叠」。信息类/低频内容（工具项排序、打开历史、
    支持的格式、详细说明）默认收起，只留一行标题 —— 这就是「简约」的另一半。
-   原生的 <details>/<summary> 自带键盘与展开语义，不需要任何 JS。 */
+   原生的 <details>/<summary> 自带键盘与展开语义，不需要任何 JS。
+   视觉上同样**不加框**：一行标题 + 一条细线。 */
 .set-fold {
-  border: 1px solid var(--edge);
-  border-radius: 12px;
-  background: color-mix(in srgb, var(--panel-2) 45%, transparent);
+  padding-bottom: 18px;
+  border-bottom: 1px solid var(--edge);
+}
+.set-fold:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
 }
 .set-fold > summary {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 14px 20px;
+  padding: 4px 0;
   cursor: pointer;
   list-style: none;
   font-size: 13px;
@@ -326,19 +326,15 @@ div + .set-row {
   color: var(--ink-3);
 }
 .set-fold-body {
-  padding: 0 20px 18px;
+  padding: 10px 0 2px;
 }
-/* 卡片里做折叠（如「打开历史」在链接卡片内）时去掉外框，只留标题行 */
+/* 组内做折叠（如「打开历史」「调整工具项」）时连那条细线也去掉，只留标题行 */
 .set-fold--plain {
-  border: none;
-  border-radius: 0;
-  background: none;
+  padding-bottom: 0;
+  border-bottom: none;
 }
 .set-fold--plain > summary {
-  padding: 10px 0;
-}
-.set-fold--plain .set-fold-body {
-  padding: 0 0 4px;
+  padding: 2px 0;
 }
 
 .list-enter-active,

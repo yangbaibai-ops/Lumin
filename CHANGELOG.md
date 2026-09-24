@@ -72,6 +72,36 @@
 - **工程化**：~~`tools/lib/harness.js` + `tools/run-suites.js`~~ → **本轮已完成**；
   剩余：`files` store 拆分；`store` 里那份为绕循环导入而复制的 `confirmIfDirty` 收敛到 `services/dialog`。
 
+## [Unreleased · 设置（第三轮）：去掉「限制组件」，设置项与导航直接铺在界面上]
+
+> 用户口径：「设置界面不要有限制组件，直接显示在界面上，像 Typora 一样，设置项和导航直接在界面上」。
+> 上一轮虽然已经居中限宽，但仍然是一张「卡片」（`border + radius + bg-paper`）+ 每组一张小卡 ——
+> 就是用户说的「限制组件」。
+
+### Changed
+
+- **删掉所有容器盒子**：`.settings-card` 从「980px 的圆角卡片」改成**纯布局容器**
+  （无边框、无圆角、无底色）；`.settings-body` 不再铺 `--paper`，与导航同用页面底色（`--app`）；
+  `.set-card` 从「浅底 + 外框的小卡」改成**无背景、无边框的分组**，只用一条
+  `border-bottom: 1px solid var(--edge)` 与下一组分隔。折叠块（`.set-fold`）同样去框，只留标题行 + 细线。
+- 行与行之间也用一条淡细线分隔（`color-mix(--edge 60%)`）—— 这就是 Typora「设置项直接列在界面上」
+  的那套观感：分层只靠**标题 + 细线 + 间距**，不再靠盒子。
+- 保留上一轮的口径：仍然**居中限宽 980px**（实测 `card left=162 = (1304−980)/2`）、
+  左导航 190px、导航与内容 `gap=0`；只是不再有任何「卡片」外观。
+
+### Verification
+
+- `tools/_verify-round-perf.js` 24 → **25 条**：新增
+  `C 没有限制组件：主体与每组设置都不再有外框/底色` —— 实测 `.settings-card` 四边 `0px`、
+  `border-radius: 0px`、底色透明；`.set-card` 底色透明、`border-top: 0px`、`border-bottom: 1px`。
+  同时把原来那条「内容区是可滚动的纸面」改名为「内容区可滚动」（它现在**不是**纸面了，
+  断言不再提「纸面」，避免文案与实现脱节）。**25/25 PASS**。
+- 视觉：`out/_settings-page-{general,editor,appearance,export,links,dark,sepia}.png` 全部按新形态重截；
+  实测 `{win:[1304,821], card:[162,64,980,729], nav:[162,64,190,729], body:[352,64,790,729]}`。
+- 其余设置相关套件：`_verify-toolbar-settings` 38/38、`_verify-link-open` 64/64、
+  `_verify-cb-line-numbers` 13/13、`_verify-cb-button-line-numbers` 26/26、`_verify-a11y` 9/9、
+  `_verify-i18n` 5/5；单元测试 320/320；`vue-tsc` / `eslint` 0 error / 0 warning；build exit 0。
+
 ## [Unreleased · 设置（第二轮）：居中限宽（Typora 式）+ 选项重构（该折叠的折叠）]
 
 > 用户口径：① 让设置聚焦在界面正中间并设最大宽度（类似 Typora）—— 现在侧边栏和设置项离得太远，
