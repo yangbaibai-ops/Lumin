@@ -171,19 +171,35 @@ function syncNow(): void {
 watch(() => files.contentRev, applyStoreContent)
 
 // ── 大纲滚动联动 ──
+// 判定规则：**滚动容器上沿往下 90px 那条线**上方最后一个标题 = 当前章节。
+// 边界规则（用户报障「点最后一个标题，目录却高亮倒数第三」）：
+//   * 文档最后一屏里常常有好几个标题都落在 90px 线**下面**，于是那条线一直停在倒数第三个
+//     标题所属的章节上 —— 光靠 90px 规则，最末尾那几节永远轮不到高亮。补一条**到底即点亮
+//     最后一条**：滚动区域真的滚到底（1px 容差，躲开亚像素）时，当前章节就是最后一节。
+//     ⚠️ 必须先确认**可滚动**：短文档 scrollHeight ≈ clientHeight，不加这条会在没滚动的情况下
+//     就点亮最后一条（整篇都在首屏里时，正确的答案是第一条，不是最后一条）。
+//   * 刚点过目录时用 store 的 `activePinnedUntil` 挡住侦测（点的那条必须亮着，见那里注释）。
 let outlineTimer: ReturnType<typeof setTimeout> | null = null
 function onScroll(e: Event): void {
   if (outlineTimer) return
+  const el = e.target as HTMLElement
   outlineTimer = setTimeout(() => {
     outlineTimer = null
     const ed2 = editor.value
     if (!ed2) return
-    const container = (e.target as HTMLElement).getBoundingClientRect().top
+    // 点目录之后的一小段「高亮锁」：这段时间只认用户点的那一条
+    if (Date.now() < editorStore.activePinnedUntil) return
+    const container = el.getBoundingClientRect().top
+    const outline = editorStore.outline
     let active = -1
-    for (const item of editorStore.outline) {
+    for (const item of outline) {
       const top = ed2.view.coordsAtPos(item.pos).top
       if (top - container <= 90) active = item.pos
       else break
+    }
+    const scrollable = el.scrollHeight > el.clientHeight + 1
+    if (scrollable && outline.length && el.scrollTop + el.clientHeight >= el.scrollHeight - 1) {
+      active = outline[outline.length - 1].pos
     }
     editorStore.activeHeading = active
   }, 80)
@@ -270,6 +286,8 @@ defineExpose({ editor, syncNow })
       class="editor-scroll h-full overflow-y-auto"
       :class="{ 'editor-scroll--split-left': ui.editorMode === 'split' }"
       @scroll.passive="onScroll"
+      @wheel.passive="editorStore.releaseActiveHeadingPin()"
+      @touchstart.passive="editorStore.releaseActiveHeadingPin()"
     >
       <div
         class="mx-auto transition-all duration-300"

@@ -612,6 +612,47 @@ commands     应用级命令表（composables/useKeymap.ts）：id / i18n 标题
 - 回归：分段控件 16/16、工具栏去文件名 12/12、会话 16/16、去欢迎页 32 项通过（另 2 项为既有的隔离实例环境跳过）、旧目录用例 `_verify-toc.js` 的插入/点击/往返仍正常（3 个条目、点击后光标落在「二级标题B」、Markdown 仍往返成 `[TOC]`）；`npm run typecheck:web` 0 error。
 - 顺带修了验收脚手架在**全新配置目录**下的三处隐含假设（侧栏默认收起、标签页可能停在大纲、编辑器模式跨会话持久化），并给 `tools/*.ps1` 补了 UTF-8 BOM——PowerShell 5.1 会把「无 BOM 的 UTF-8」按 ANSI 解码，中文注释里的引号会把脚本整体解析搞崩。
 
+### 4.33.1 目录高亮：点最后一条却亮到倒数第三条（末屏边界）+ 这几种逻辑的术语
+
+**用户报障**：最后三个标题挨得很近（同一屏能显示）。点**最后一个**标题时，本应最后一条高亮，
+但目录只高亮到倒数第三 —— 因为文档最后一屏显示的就是那三个标题。
+
+**根因**：侧栏大纲的「当前章节」是**滚动侦测**算出来的（`TyporaEditor.onScroll`）：取「滚动容器
+上沿往下 90px 那条线」上方最后一个标题。点最后一个标题时容器已经滚到底，那条线离最后一个标题
+还有一两屏，于是它停在倒数第三个标题所属的章节上 —— 侦测结果把用户点的那条**覆盖**掉了。
+
+**两条修法（都在，缺一不可）**：
+
+1. `stores/editor.ts` 的 `jumpToHeading()`：点击**立刻**点亮被点的那条并**上锁**
+   （`activePinnedUntil = now + 800ms`）。立刻是为了让平滑滚动那 300–500ms 里高亮不被「中途经过
+   的章节」带走；上锁是为了不让侦测覆盖。真实滚动（`wheel` / `touchstart`，挂在 `.editor-scroll`）
+   会**提前解锁**，到期也自动解锁 —— 锁不是永久的，用户一滚就回到「跟随阅读位置」。
+2. `TyporaEditor.onScroll()`：**到底就点亮最后一条**。先判 `scrollHeight > clientHeight + 1`
+   确认真的可滚动（短文档不判这条会在没滚动的情况下就点亮最后一条），再用 1px 容差判到底。
+   这是滚动侦测的经典边界：末屏那几个标题都在 90px 判定线**下面**，没有这条规则它们永远轮不到高亮。
+
+**验收**：`tools/_verify-outline-nav.js`（7 条，已进默认矩阵）—— 11 个标题的专门夹具
+（前 8 节各占近一屏、最后 3 节很短，复现「三节同屏」）。实测：点最后一条**立刻** `activeIdx=10`
+（`scrollTop` 才 162，平滑滚动刚起步）→ 落定后仍 `activeIdx=10` 且 `atBottom=true`；
+不点、直接 `scrollTop=scrollHeight` → `activeIdx=10`；点第 5 条 → `activeIdx=4`；
+点完最后一条再 wheel 滚一格 → `activeIdx` 10 → 4（侦测重新接管）。
+**「套件确实抓得住这个 bug」也当场验过**：把第 2 条规则临时改成 `false &&` 重新构建 → 套件立刻红两条
+（`activeIdx` 落到 **7**，即「最后一个越过 90px 线的标题」——正是用户描述的现象），改回来即绿。
+
+**术语（用户问「这两种逻辑有没有官方术语」）** —— 有，分三档说清楚哪些是公认名、哪些只是描述性说法：
+
+| 逻辑 | 术语 | 性质 |
+| --- | --- | --- |
+| 从**滚动位置**反推「现在读到哪一节」 | **scroll spy / scrollspy**（Bootstrap 把这个模式做成了同名组件，术语由此普及）；也叫 scroll-position tracking / active-section tracking | 公认名 |
+| 那个面板本身 | **table of contents (TOC)** / **outline**（VS Code 叫 Outline，Typora 叫「大纲」）；`<nav>` 里的一组 jump links | 公认名 |
+| 点条目 → 跳过去 | **anchor navigation / fragment navigation**（HTML 的 `#fragment` 跳转）；这套交互统称 **TOC navigation** | 公认名 |
+| 本 bug 这一类 | **scrollspy 的「末屏/底部边界」问题**（last-section / bottom-of-page edge case） | 描述性（社区说法） |
+| 「到底即点亮最后一条」 | **bottom clamp**（到边界就钳住）；Bootstrap 的 Scrollspy 文档也专门交代了这个边界行为 | 描述性 |
+| 「点谁就钉住谁」 | **pinned / latched / sticky active item**；实现层面叫 **manual override**（手动覆盖侦测）或 **user-intent lock**；从 UI 反馈角度也叫 **optimistic highlight**（先亮，等真实状态追上来） | 描述性（没有单一官方名） |
+
+相邻但**不是**同一件事的两个术语（容易被混谈）：**`scroll-margin`** 是「跳转落点留白」的 CSS 属性；
+**scroll anchoring**（滚动锚定）是浏览器在内容变化时**保持视觉位置不跳**的机制。
+
 ### 4.34 侧栏文件树重做：单色图标 + 16px 网格 + 三种状态（本次）
 
 **用户要求**：重新设计左侧侧栏文件树的样式，**不要太花里胡哨，简约大气**，符合项目与「大厂」审美。

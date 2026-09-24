@@ -44,7 +44,7 @@
 | 超链接：手打语法成形、点击展开源码、移开收敛、破坏语法保字面、空标签不崩 | `_verify-links`(12)、`verify-tiptap.js` I（**非矩阵**） | 12 + 4 | 强 | 矩阵内覆盖完整 |
 | 粘贴：markdown 链接 / 块级 markdown / HTML | `_verify-link-paste`(3)；`verify-tiptap.js` G（`paste-md-blocks`、`paste-heading-editable` 等，**非矩阵**）；`_repro-paste.js`（探针） | 3 + 6 | 部分 | 只验了右键菜单「粘贴」；`Ctrl+V` 通道未断言 |
 | 双面一致性：实时渲染 ⇄ 源码 ⇄ 分屏（I1–I12） | `_verify-surfaces`(18)、`_verify-surface-fuzz`(5)、`_verify-surface-stress`(8×12 用例)、`_regress-split-live`(5)、`_regress-fileswitch`(5) | 151+ | 强 | L2/L3/L4 三层齐；L3 为 500 篇生成语料（seed 777）、L4 为 12 个压力用例（1MB / 2000 围栏 / 100k 混合） |
-| 大纲：标题收集、点击跳转、源码面清空 | `_regress-layout`（L8/L9 2 条）、`_verify-toc-style-scroll`（`outline-click-also-smooth`） | 3 | 部分 | **滚动联动高亮（active heading follows scroll）无断言** |
+| 大纲：标题收集、点击跳转、源码面清空、**滚动联动高亮** | `_verify-outline-nav`(**7**，本轮新增：滚动联动高亮 + 末屏边界)、`_regress-layout`（L8/L9 2 条）、`_verify-toc-style-scroll`（`outline-click-also-smooth`） | 10 | 强 | 2026-09-24 补齐：此前「滚动联动高亮无断言」的缺口由 `_verify-outline-nav` 填上（点最后一条立刻亮 / 落地后仍亮 / 不点直接滚到底也亮最后一条 / 自己滚一格后侦测重新接管）；**边界规则**见 `TyporaEditor.onScroll` 的「到底即点亮最后一条」与 store 的 `activePinnedUntil` |
 | `[TOC]` 目录节点：插入 / 渲染 / 点击跳转 / markdown 往返 | `_verify-toc.js`、`_verify-toc-load.js`（**探针，0 断言**）；`_verify-toc-style-scroll`(21，样式 + 平滑滚动) | 21 | 部分 | 插入与反向解析只有探针；样式与滚动有真断言 |
 | 引用 blockquote 样式（3px 灰条、无底色圆角、编辑态无 `>`） | `_verify-blockquote-style`(12) | 12 | 强 | 含三主题令牌、markdown 原文不变、开关仍可用 |
 | front matter / 行内与块级 HTML / 任务列表复选框的保真 | `_verify-md-fidelity`（H1–H4、I1–I3 共 7 条）、`tests/frontmatter.test.mjs`(11) | 18 | 强 | front matter 单测很细（`...` 收尾、CRLF、空块不认） |
@@ -235,7 +235,7 @@
 | 12 | **语法高亮按需加载 / 括号闭合与补全 / 代码块折叠** | README 明列代码块的这四项卖点。只有 `fold-gutter-kept` 1 条碰到折叠（且只断言 gutter 存在） | 扩写 `_verify-mermaid-blur.js`（它已有「语言切到 javascript → CM 建立」的机制）：切到 js/python 后断言 `.cm-content` 里出现 token 类名（高亮已加载）；输入 `(` 断言自动补 `)`。折叠点击断言 `.cm-foldGutter` 行数变化 |
 | 13 | **选区气泡菜单（7 个按钮）** | README 明列的编辑核心入口。矩阵内零断言，只有非矩阵的 `verify-tiptap.js` 验了 3 项 | 扩写 `_verify-links.js`（它已有「真实选区 → 工具栏插入链接 → 点击展开源码」的选区机制）：在选区上断言 `.bubble-menu` 出现、7 个按钮齐全，逐个点击断言 markdown 变化。`verify-tiptap.js` D 段的选择器与断言可直接搬 |
 | 14 | **`[TOC]` 插入与反向解析** | README 明列功能；现在只有 `_verify-toc.js` / `_verify-toc-load.js` 两个探针（0 断言） | 把两个探针合起来升级成 harness 套件（`_verify-toc-style-scroll.js` 已有 21 条断言可作模板）：插入 `[TOC]` → 断言标题列表与文档标题一致 → 点条目 → 断言光标落到标题 → 断言 markdown 往返仍是 `[TOC]` |
-| 15 | **大纲滚动联动高亮** | README 明列「滚动联动高亮」；现在只有「大纲非空」（`_regress-layout` L8） | 扩写 `_regress-layout.js`：它已能读大纲项并验证「源码模式清空」。加「滚动正文到第 3 个标题 → 断言大纲第 3 项带 active 类」 |
+| 15 | ~~**大纲滚动联动高亮**~~ **已补齐（2026-09-24）** | README 明列「滚动联动高亮」；此前只有「大纲非空」（`_regress-layout` L8） | 新开 `_verify-outline-nav.js`（7 条，已进默认矩阵）：点目录立刻点亮 + 落定后仍亮、不点直接滚到底点亮最后一条、中间那条照常、wheel 后侦测重新接管。没扩写 `_regress-layout` 的原因：这边要构造「最后一屏三个标题」的**专门夹具**，塞进通用布局套件里不划算 |
 | 16 | **导出设置页 + 其余设置页签的导航回归** | `SettingsDialog.vue` 有 6 个页签，但没有一条断言「6 个都在、都能打开、内容非空」 | 扩写 `_verify-keymap.js`（已有 `settings-keymap-tab-renders`）：一次遍历 6 个页签点击并断言各自根节点出现 + 无裸 i18n key。是本节里性价比最高的一条 |
 | 17 | **启动耗时 / 输入延迟 / 关窗耗时**（3 个基准） | 已有 3 个基准脚本（`_startup-bench.js`、`_measure-latency.js`、`_time-close.js`），但都只打印、不判定，**性能回归不会红** | 给三者各加一条阈值断言（`report.check('启动首窗可见 ≤ Xms', ms <= X)`）；`_startup-bench` 需要生产包，可只在 `--all` 或人工跑，但断言必须写进脚本 |
 | 18 | **toast 位置与不遮挡底栏 / About 页内容** | 位置这一半**已补齐**：`_verify-toast-tip.js` 现在 21 条断言（编辑区上方整幅带、整条在视口内、不压状态栏、组件无盒子、真实进出场动效采样含带高动画），`_verify-notify-style.js` 22 条覆盖形态、版式、空态不占位与就地滚动。剩 About 页内容只验路由可达 | About 在 `_verify-welcome-removed.js` 的 `about-still-works` 后面加两条内容断言 |
@@ -246,9 +246,9 @@
 
 ### 3.1 三类清单
 
-**A. 在默认矩阵里（`run-suites.js` `DEFAULT_SUITES`，33 条）** —— 不需要 dev server，逐个起全新隔离实例：
+**A. 在默认矩阵里（`run-suites.js` `DEFAULT_SUITES`，**37 条**）** —— 不需要 dev server，逐个起全新隔离实例：
 
-`_verify-session-last-closed`（自管实例）、`_verify-md-fidelity`、`_verify-draft-banner`、`_verify-new-document`、`_verify-session`、`_verify-single-instance`（自管实例）、`_verify-local-media`、`_verify-encoding`、`_verify-wave3`、`_regress-layout`、`_regress-split-live`、`_regress-cb`、`_regress-divider`、`_regress-fileswitch`、`_regress-source-roundtrip`、`_repro-rapidenter`、`_verify-find-replace`、`_verify-inline-formats`、`_verify-math`、`_verify-remote-image`、`_verify-a11y`、`_verify-editor-menu`、`_verify-i18n`、`_verify-surfaces`、`_verify-surface-fuzz`、`_verify-surface-stress`、`_verify-toc`、`_verify-notifications`、`_verify-toolbar-settings`、`_verify-cb-languages`、`_verify-cb-virtualization`、`_verify-mermaid-gate`、`_verify-neutral-accent`。
+`_verify-session-last-closed`（自管实例）、`_verify-md-fidelity`、`_verify-draft-banner`、`_verify-new-document`、`_verify-session`、`_verify-single-instance`（自管实例）、`_verify-local-media`、`_verify-encoding`、`_verify-wave3`、`_regress-layout`、`_regress-split-live`、`_regress-cb`、`_regress-divider`、`_regress-fileswitch`、`_regress-source-roundtrip`、`_repro-rapidenter`、`_verify-find-replace`、`_verify-inline-formats`、`_verify-math`、`_verify-remote-image`、`_verify-a11y`、`_verify-editor-menu`、`_verify-i18n`、`_verify-surfaces`、`_verify-surface-fuzz`、`_verify-surface-stress`、`_verify-toc`、`_verify-notifications`、`_verify-toolbar-settings`、`_verify-cb-languages`、`_verify-cb-virtualization`、`_verify-mermaid-gate`、`_verify-neutral-accent`、`_verify-outline-nav`（新增，2026-09-24）、`_verify-table-fidelity`、`_verify-outline-right`、`_verify-bars-no-filename`。
 
 > **本轮（清单 §2.I / §2.F）从 `--all` 提上来的 7 条**：`_verify-toc`（由两条 0 断言探针合并升级）、
 > `_verify-notifications`(32)、`_verify-toolbar-settings`(37)、`_verify-cb-languages`(5)、

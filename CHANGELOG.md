@@ -72,6 +72,40 @@
 - **工程化**：~~`tools/lib/harness.js` + `tools/run-suites.js`~~ → **本轮已完成**；
   剩余：`files` store 拆分；`store` 里那份为绕循环导入而复制的 `confirmIfDirty` 收敛到 `services/dialog`。
 
+## [Unreleased · 目录高亮：点最后一条不再被「末屏边界」顶回倒数第三]
+
+> 用户口径：最后三个标题挨得很近（同一屏能显示）。点**最后一个**标题时本应最后一条高亮，
+> 但目录只高亮到倒数第三 —— 因为文档最后一屏显示的就是那三个标题。
+
+### Fixed
+
+- **根因**：侧栏大纲的「当前章节」是滚动侦测算的（`TyporaEditor.onScroll`：取「滚动容器上沿往下
+  90px 那条线」上方最后一个标题）。点最后一个标题时容器已经滚到底，那条线离最后一个标题还有
+  一两屏，于是它停在倒数第三个标题的章节上 —— 侦测结果把用户点的那条**覆盖**掉了。
+  **两条修法都在，缺一不可**：
+  1. `stores/editor.ts` `jumpToHeading()`：点击**立刻**点亮被点的那条并**上锁**
+     （`activePinnedUntil = now + 800ms`）。立刻是为了平滑滚动那 300–500ms 里高亮不被中途经过的
+     章节带走；上锁是为了不让侦测覆盖。真实滚动（`wheel` / `touchstart`）**提前解锁**，到期也自动
+     解锁 —— 锁不是永久的。
+  2. `TyporaEditor.onScroll()`：**到底就点亮最后一条**（先判 `scrollHeight > clientHeight + 1`
+     确认真的可滚动，再用 1px 容差判到底）。末屏那几个标题都在 90px 判定线**下面**，
+     没有这条规则它们永远轮不到高亮。
+
+### Verification
+
+- 新增 `tools/_verify-outline-nav.js`（**7 条**，已进默认矩阵）：11 个标题的专门夹具（前 8 节各占
+  近一屏、最后 3 节很短 ⇒ 复现「三节同屏」）。实测：点最后一条**立刻** `activeIdx=10`
+  （`scrollTop` 才 162，平滑滚动刚起步）→ 落定后仍 `activeIdx=10` 且 `atBottom=true`；
+  不点、直接 `scrollTop=scrollHeight` → `activeIdx=10`；点第 5 条 → `activeIdx=4`；
+  点完最后一条再 wheel 滚一格 → `activeIdx` 10 → 4（侦测重新接管）。**7/7 PASS**。
+- **套件确实抓得住这个 bug**：把第 2 条规则临时改成 `false &&` 重新构建 → 套件立刻红两条
+  （`activeIdx` 落到 **7**，即「最后一个越过 90px 线的标题」，正是用户描述的现象）；改回即绿。
+- 相关套件全绿：`_verify-outline-right` 26/26、`_verify-toc-style-scroll` 23/23、
+  `_regress-layout` 9/9、`_verify-toc` 7/7；单元测试 **314/314**；`vue-tsc` / `eslint` 0 error /
+  0 warning；`electron-vite build` exit 0。
+- 手册新增 **§4.33.1**：这条 bug 的根因与修法，外加用户问的**术语**（scrollspy / TOC /
+  anchor navigation / bottom clamp / pinned active item …，并标出哪些是公认名、哪些只是描述性说法）。
+
 ## [Unreleased · 顶部菜单像原生菜单栏一样「悬停跟随切换」]
 
 > 用户口径：当顶部工具栏打开的状态可以切换 —— 比如打开「文件」、「文件」是展开的，

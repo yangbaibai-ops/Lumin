@@ -17,6 +17,13 @@ export interface OutlineItem {
   pos: number
 }
 
+/**
+ * 点目录之后的「高亮锁」时长（ms）：这段时间内**只认用户点的那一条**，
+ * 滚动侦测不许改 `activeHeading`（理由见 state 里 `activePinnedUntil` 的注释）。
+ * 800ms 的取法：平滑滚动本身约 300–500ms + 滚动侦测那 80ms 防抖 + 一点余量。
+ */
+const ACTIVE_PIN_MS = 800
+
 export const useEditorStore = defineStore('editor', {
   state: () => ({
     /** 常驻编辑器实例（markRaw，不参与深度响应式）；文件切换时随组件重建 */
@@ -41,6 +48,17 @@ export const useEditorStore = defineStore('editor', {
     tick: 0,
     outline: [] as OutlineItem[],
     activeHeading: -1,
+    /**
+     * 点目录之后的**高亮锁**截止时间戳（`Date.now()` 毫秒）。
+     *
+     * 为什么需要它（用户报障）：滚动侦测（`TyporaEditor.onScroll`）按「滚动容器上沿往下 90px
+     * 那条线」决定当前章节 —— 而**文档最后一屏**里最后几个标题都在这条线下面。点最后一个标题
+     * 时容器已经滚到底、那条线落在倒数第三个标题上，于是高亮被侦测结果覆盖回倒数第三条
+     * （「本应最后一条高亮，目录却回到倒数第三」）。
+     * 现在：点击**立刻**点亮被点的那条并锁住一小段；真实滚动（wheel / touch）会提前解锁，
+     * 到期也自动解锁 —— 锁不是永久的，用户一滚就回到「跟随阅读位置」。
+     */
+    activePinnedUntil: 0,
     /** 大纲防抖定时器（见 scheduleRefreshOutline；`_` 前缀表示不是对外状态） */
     _outlineTimer: null as ReturnType<typeof setTimeout> | null
   }),
@@ -162,6 +180,15 @@ export const useEditorStore = defineStore('editor', {
     jumpToHeading(pos: number): void {
       const editor = this.instance ?? this.editor
       if (!editor || !this.active) return
+      /**
+       * 立刻点亮被点的那一条 + 上锁（用户报障的那一条）：
+       *   * **立刻**：平滑滚动要 300–500ms，期间滚动侦测会一路把高亮带到中途经过的章节上；
+       *     点完马上亮才是「我点的就是它」；
+       *   * **上锁**：文档最后一屏那几个标题都在 90px 判定线之下，锁之外会被侦测结果覆盖
+       *     （倒数第三）。锁在真实滚动或到期时释放，见 `activePinnedUntil`。
+       */
+      this.activeHeading = pos
+      this.activePinnedUntil = Date.now() + ACTIVE_PIN_MS
       const view = editor.view
       const container = view.dom.closest('.editor-scroll') as HTMLElement | null
       const before = container?.scrollTop ?? 0
@@ -178,6 +205,13 @@ export const useEditorStore = defineStore('editor', {
       // （页面不可见时 rAF 不会触发，此时直接瞬时定位，免得回前台才莫名滚动）
       if (document.hidden) smoothScrollToElement(container, target)
       else requestAnimationFrame(() => smoothScrollToElement(container, target))
+    },
+    /**
+     * 提前释放「点目录的高亮锁」：真实滚动（wheel / touch）时调用 ——
+     * 用户一旦自己滚，就说明他想看的是「跟随阅读位置」，锁必须让位。
+     */
+    releaseActiveHeadingPin(): void {
+      this.activePinnedUntil = 0
     }
   }
 })
