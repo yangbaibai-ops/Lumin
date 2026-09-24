@@ -147,61 +147,117 @@
   transform: translateY(-6px);
 }
 
-/* 设置浮层（SettingsDialog）：遮罩淡入 + 面板微弹 */
-.overlay-enter-active,
-.overlay-leave-active {
-  transition: opacity 0.2s ease;
+/* ─── 设置页（SettingsDialog）：**整页**，不再是浮在窗口上的小盒子 ─────────────────
+   用户口径：「打开设置界面不要弹出一个小的窗口在原窗口的上方，而是占据整个界面，
+   同时重构优化下设置的样式」。所以这里没有遮罩（整页自己就是那层）、没有拖动把手；
+   结构是「顶栏 + 左导航 + 纸面内容区」，样式收口成下面这组 class —— 六个页签因此观感一致，
+   组件里也不再逐处写 Tailwind 长串。 */
+.settings-page {
+  animation: lm-fade-in 0.16s ease;
 }
-.overlay-enter-active .settings-panel,
-.overlay-leave-active .settings-panel {
-  transition: transform 0.2s cubic-bezier(0.22, 0.9, 0.3, 1.08);
+.settings-topbar {
+  /* 顶栏比侧栏头部（h-10）略高：整页的第一行要有"页面标题"的分量 */
+  background: var(--app);
 }
-.overlay-enter-from,
-.overlay-leave-to {
-  opacity: 0;
-}
-.overlay-enter-from .settings-panel {
-  transform: translateY(10px) scale(0.985);
-}
-.overlay-leave-to .settings-panel {
-  transform: translateY(6px) scale(0.99);
-}
-
-/* 设置浮层（SettingsDialog）：入场动画（关闭即时，见组件注释） */
-.settings-mask {
-  animation: lm-fade-in 0.18s ease;
-}
-.settings-panel {
-  animation: lm-pop 0.2s cubic-bezier(0.22, 0.9, 0.3, 1.08);
-}
-/* 遮罩：**只压暗、不模糊**。原先用 backdrop-blur，后面的正文糊成一团 —— 而用户常常是
-   「对着正文调设置」，得能看清字。压暗同样能把注意力收在面板上，且面板自己始终清晰。 */
-.settings-scrim {
-  background: rgb(0 0 0 / 32%);
-  animation: lm-fade-in 0.18s ease;
-}
-:root.theme-dark .settings-scrim {
-  /* 深色主题下同样的黑会更"闷"，压得更轻一点 */
-  background: rgb(0 0 0 / 42%);
-}
-/* 拖动把手：整条面板头都能按住拖（按钮上除外，见 startDialogDrag） */
-.settings-drag-handle {
-  cursor: grab;
-}
-.settings-drag-handle:active,
-.settings-panel.is-dragging .settings-drag-handle {
-  cursor: grabbing;
-}
-/* 抓手图标：只是"这条能拖"的视觉提示 */
-.settings-drag-grip {
+.settings-topbar-btn {
   display: inline-flex;
   align-items: center;
-  justify-content: center;
-  width: 24px;
-  height: 32px;
+  gap: 6px;
+  height: 30px;
+  padding: 0 10px;
+  border-radius: 8px;
+  font-size: 12.5px;
+  color: var(--ink-2);
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+.settings-topbar-btn:hover {
+  background: var(--panel-2);
+  color: var(--ink);
+}
+/* 关闭是主要出口：给它一档更明确的样式（其余按钮保持安静） */
+.settings-topbar-btn--close {
+  border: 1px solid var(--edge-strong);
+  background: var(--panel);
+  color: var(--ink);
+}
+.settings-topbar-btn--close:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.settings-nav {
+  background: var(--app);
+}
+.settings-nav-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  text-align: left;
+  font-size: 13px;
+  color: var(--ink-2);
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+.settings-nav-item:hover {
+  background: var(--panel-2);
+  color: var(--ink);
+}
+/* 当前分组：沿用侧栏选中态（accent-soft + accent），整页里也一样认得出 */
+.settings-nav-item.is-active {
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-weight: 500;
+}
+.settings-column {
+  /* 内容列宽由组件上的 max-w 控制（720px）；这里只负责小屏时的左右呼吸 */
+  min-width: 0;
+}
+.settings-section-title {
+  margin-bottom: 18px;
+  font-size: 17px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+}
+/* 卡片：纸面上的一档浅底 + 1px 边（浅色主题下 paper 与 panel 同为 #fff，
+   所以这里**不能**沿用 .surface 的白底，否则卡片在纸面上看不见） */
+.set-card {
+  margin-bottom: 16px;
+  padding: 20px;
+  border: 1px solid var(--edge);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--panel-2) 45%, transparent);
+}
+.set-card:last-child {
+  margin-bottom: 0;
+}
+.set-card-title {
+  margin-bottom: 16px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink);
+}
+/* 一行设置：左说明 + 右控件；多行之间自动留白（原来靠各处手写 mt-5/mb-2，间距不一致） */
+.set-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+.set-row + .set-row,
+.set-row + div,
+div + .set-row {
+  margin-top: 18px;
+}
+.set-row-label {
+  font-size: 13.5px;
+  color: var(--ink);
+}
+.set-row-desc {
+  margin-top: 2px;
+  font-size: 12px;
+  line-height: 1.6;
   color: var(--ink-3);
-  transform: rotate(90deg);
-  opacity: 0.7;
 }
 
 .list-enter-active,

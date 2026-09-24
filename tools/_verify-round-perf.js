@@ -247,101 +247,97 @@ async function main() {
     `p95=${b.p95} max=${b.max} over33=${b.over33} frames=${b.frames}`
   )
 
-  // ═══ C. 设置面板 ═══
+  // ═══ C. 设置页（整页，不再是小窗浮层）═══
+  // 用户口径：「打开设置界面不要弹出一个小的窗口在原窗口的上方，而是占据整个界面」。
+  // 原来这一节验的是「遮罩压暗 / 面板可拖动 / 拖完位置保留」——那套交互已经删掉，改为验整页形态。
   await ev(`(() => { window.__L.ui().openSettings('editor'); return 'ok' })()`)
   await sleep(700)
   const c1 = await ev(`(() => {
-    const scrim = document.querySelector('.settings-scrim')
-    const panel = document.querySelector('.settings-panel')
-    const handle = document.querySelector('.settings-drag-handle')
-    if (!scrim || !panel) return JSON.stringify({ found: false })
-    const sc = getComputedStyle(scrim); const pc = getComputedStyle(panel)
-    const h = handle ? getComputedStyle(handle) : null
-    return JSON.stringify({ found: true,
-      scrimBackdrop: sc.backdropFilter || sc.webkitBackdropFilter,
-      scrimAnim: sc.animationName,
-      scrimBg: sc.backgroundColor,
-      panelBackdrop: pc.backdropFilter || pc.webkitBackdropFilter,
-      panelBg: pc.backgroundColor,
-      panelTransform: pc.transform,
-      handleCursor: h ? h.cursor : null,
-      oldMaskBlur: document.querySelector('.settings-mask .backdrop-blur-\\\\[2px\\\\]') ? true : false })
+    const page = document.querySelector('[data-settings-page]')
+    if (!page) return JSON.stringify({ found: false })
+    const pc = getComputedStyle(page)
+    const r = page.getBoundingClientRect()
+    const nav = document.querySelector('.settings-nav')
+    const body = document.querySelector('.settings-body')
+    const navItems = [...document.querySelectorAll('.settings-nav-item')]
+    const active = navItems.filter((b) => b.classList.contains('is-active'))
+    return JSON.stringify({
+      found: true,
+      covers: Math.round(r.width) >= window.innerWidth - 1 && Math.round(r.height) >= window.innerHeight - 1,
+      position: pc.position,
+      opacityBg: pc.backgroundColor,
+      hasScrim: !!document.querySelector('.settings-scrim, .settings-mask'),
+      hasDragHandle: !!document.querySelector('.settings-drag-handle'),
+      navItems: navItems.length,
+      activeItems: active.length,
+      navBg: nav ? getComputedStyle(nav).backgroundColor : null,
+      bodyBg: body ? getComputedStyle(body).backgroundColor : null,
+      closeLabel: (document.querySelector('[data-settings-close]')?.textContent || '').trim(),
+      scrollables: [...document.querySelectorAll('.settings-page *')].filter((el) => {
+        const s = getComputedStyle(el)
+        return (s.overflowY === 'auto' || s.overflowY === 'scroll') && el.scrollHeight > el.clientHeight
+      }).length
+    })
   })()`).then(JSON.parse)
   console.log('C1 ' + JSON.stringify(c1))
   report.check(
-    'C 遮罩存在且不再模糊背景',
-    c1.found === true && (c1.scrimBackdrop === 'none' || !c1.scrimBackdrop),
-    `backdrop=${c1.scrimBackdrop}`
+    'C 设置是整页：铺满窗口且 fixed',
+    c1.found === true && c1.covers === true && c1.position === 'fixed',
+    JSON.stringify({ covers: c1.covers, position: c1.position })
   )
   report.check(
-    'C 遮罩是压暗的（有暗色底色）',
-    /rgba?\(/.test(c1.scrimBg || '') && c1.scrimBg !== 'rgba(0, 0, 0, 0)',
-    c1.scrimBg
+    'C 整页不透明（不再是浮在正文上的半透明遮罩）',
+    /rgb/.test(c1.opacityBg || '') && !/rgba\(0, 0, 0, 0\)/.test(c1.opacityBg || ''),
+    String(c1.opacityBg)
   )
   report.check(
-    'C 面板本身不模糊（清晰）',
-    c1.panelBackdrop === 'none' || !c1.panelBackdrop,
-    `panelBackdrop=${c1.panelBackdrop}`
+    'C 旧的遮罩与拖动把手都已删除',
+    c1.hasScrim === false && c1.hasDragHandle === false,
+    JSON.stringify({ scrim: c1.hasScrim, dragHandle: c1.hasDragHandle })
   )
   report.check(
-    'C 标题栏是拖动把手（grab 光标）',
-    c1.handleCursor === 'grab',
-    String(c1.handleCursor)
+    'C 左导航 6 个分组且恰有一个当前项',
+    c1.navItems === 6 && c1.activeItems === 1,
+    JSON.stringify({ items: c1.navItems, active: c1.activeItems })
+  )
+  report.check(
+    'C 内容区是可滚动的纸面（不是固定高的小盒）',
+    c1.scrollables >= 1 && typeof c1.bodyBg === 'string',
+    JSON.stringify({ scrollables: c1.scrollables, bodyBg: c1.bodyBg })
+  )
+  report.check(
+    'C 关闭入口是一枚带文案的按钮（不再只有一个 X）',
+    c1.closeLabel.length > 0,
+    JSON.stringify({ closeLabel: c1.closeLabel })
   )
 
-  // 拖标题栏：位移只走 transform
-  const hp = await ev(`(() => {
-    const h = document.querySelector('.settings-drag-handle')
-    const r = h.getBoundingClientRect()
-    return JSON.stringify({ x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2) })
-  })()`).then(JSON.parse)
-  await mouse('mouseMoved', hp.x, hp.y, 0)
-  await mouse('mousePressed', hp.x, hp.y, 1)
-  await sleep(80)
-  await mouse('mouseMoved', hp.x + 120, hp.y + 60, 1)
-  await sleep(150)
+  // 切页签：内容跟着换（整页的导航仍然按同一套状态工作）
+  await ev(`(() => { const b = [...document.querySelectorAll('.settings-nav-item')].find((x) => x.textContent.includes('外观')); b && b.click(); return 'ok' })()`)
+  await sleep(500)
   const c2 = await ev(`(() => {
-    const p = document.querySelector('.settings-panel')
-    const r = p.getBoundingClientRect()
-    return JSON.stringify({ transform: getComputedStyle(p).transform,
-      dragging: p.classList.contains('is-dragging'),
-      handleCursor: getComputedStyle(document.querySelector('.settings-drag-handle')).cursor })
+    const active = [...document.querySelectorAll('.settings-nav-item')].filter((b) => b.classList.contains('is-active'))
+    const title = (document.querySelector('.settings-section-title')?.textContent || '').trim()
+    const tab = window.__L.ui().settingsSection
+    return JSON.stringify({ active: active.length, title, tab })
   })()`).then(JSON.parse)
-  await mouse('mouseReleased', hp.x + 120, hp.y + 60, 0)
-  await sleep(200)
-  const c3 = await ev(`(() => {
-    const p = document.querySelector('.settings-panel')
-    return JSON.stringify({ transform: getComputedStyle(p).transform, dragging: p.classList.contains('is-dragging') })
-  })()`).then(JSON.parse)
-  console.log('C2 ' + JSON.stringify(c2) + ' C3 ' + JSON.stringify(c3))
+  console.log('C2 ' + JSON.stringify(c2))
   report.check(
-    'C 拖动后位移体现在 transform 上',
-    /matrix/.test(c2.transform) && c2.transform !== 'none',
-    c2.transform
-  )
-  report.check(
-    'C 拖动中把手光标变 grabbing',
-    c2.handleCursor === 'grabbing',
-    String(c2.handleCursor)
-  )
-  report.check(
-    'C 松手后拖动态结束、位移保留',
-    c3.dragging === false && c3.transform === c2.transform,
-    JSON.stringify(c3)
+    'C 点左导航切分组：状态与标题一起变',
+    c2.active === 1 && c2.tab === 'appearance' && c2.title.length > 0,
+    JSON.stringify(c2)
   )
 
-  // 关掉再开：位置回到居中（会话级）
-  await ev(`(() => { window.__L.ui().closeSettings(); return 'ok' })()`)
-  await sleep(300)
-  await ev(`(() => { window.__L.ui().openSettings('editor'); return 'ok' })()`)
-  await sleep(600)
-  const c4 = await ev(
-    `(() => getComputedStyle(document.querySelector('.settings-panel')).transform)()`
-  )
+  // Esc 关闭（浮层时代的行为要保留）
+  await ev(`(() => {
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+    return 'ok'
+  })()`)
+  await sleep(400)
+  const c3 = await ev(`JSON.stringify({ open: window.__L.ui().settingsOpen, page: !!document.querySelector('[data-settings-page]') })`).then(JSON.parse)
   report.check(
-    'C 重新打开回到居中（位置不跨次保留）',
-    c4 === 'none' || /matrix\(1, 0, 0, 1, 0, 0\)/.test(c4),
-    String(c4)
+    'C Esc 关闭整页设置',
+    c3.open === false && c3.page === false,
+    JSON.stringify(c3)
   )
 
   await ev(`(() => { window.__L.ui().closeSettings(); return 'ok' })()`)

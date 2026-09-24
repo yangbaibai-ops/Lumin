@@ -72,6 +72,46 @@
 - **工程化**：~~`tools/lib/harness.js` + `tools/run-suites.js`~~ → **本轮已完成**；
   剩余：`files` store 拆分；`store` 里那份为绕循环导入而复制的 `confirmIfDirty` 收敛到 `services/dialog`。
 
+## [Unreleased · 设置改成整页（不再是浮在窗口上的小盒子）+ 样式重构]
+
+> 用户口径：「打开设置界面不要弹出一个小的窗口在原窗口的上方，而是占据整个界面，
+> 同时重构优化下设置的样式」。
+
+### Changed
+
+- **设置 = 整页**：根节点从 `settings-mask（遮罩）+ settings-panel（1080×680 的居中卡片）` 改成
+  `[data-settings-page]`（`fixed inset-0` 不透明 + `role="dialog"`），实测 **1304×821 = 整个窗口**
+  （窗口同尺寸），结构是「顶栏（设置 + 提示 + 关于 + 关闭）→ 左导航（236px，6 个分组）→
+  纸面内容区（`bg-paper`，可滚动，内容列 720px 居中）」。
+- **删掉整套「拖动小窗」**：`dragOffset` / `dragging` / `startDialogDrag` / `resetDialogPosition`
+  与 `.settings-drag-handle` / `.settings-drag-grip` / `.settings-panel.is-dragging` 样式全部移除
+  （整页没有可拖的意义）；顺带删掉 `base.css` 里没人用的 `.overlay-*` 过渡块（浮层时代残留）。
+  关闭入口是顶栏那枚**带文案**的按钮（`关闭`，i18n `common.close`），Esc 仍然可关。
+- **样式重构**：五个重复率最高的 Tailwind 长串收成一组 class（`base.css`：
+  `.settings-topbar(-btn)` / `.settings-nav(-item)` / `.settings-section-title` / `.set-card(-title)` /
+  `.set-row(-label/-desc)`）—— 18 张卡片、12 行设置、11 个标签、9 段说明、8 个卡片标题都换成了它们。
+  `.set-row + .set-row` 统一了行间距（原来各处手写 `mt-5`/`mb-2`，间距不一致）。
+  **卡片没有沿用 `.surface`**：浅色主题下 `--panel` 与 `--paper` 同为 `#ffffff`，白底卡片在纸面上
+  看不见 —— 改用 `color-mix(in srgb, var(--panel-2) 45%, transparent)` + 1px `--edge`，三套主题都成立。
+- 顺手把两处硬编码文案接上 i18n：副标题改用新 key `settings.persistHint`（三语齐平），
+  顶栏「关于 Lumin」改用既有 `menu.about`。
+
+### Verification
+
+- **视觉**：隔离实例截图两张（`out/_settings-page-{general,editor}.png`）——整页形态、
+  左导航当前项高亮、卡片在纸面上可辨；`shape` 实测 `{win:[1304,821], page:[1304,821], navItems:6}`。
+- `tools/_verify-round-perf.js` **22/22**：C 段（原来验「遮罩压暗 / 面板可拖动 / 拖完位置保留」）
+  **按新形态重写**成 8 条 —— 整页铺满窗口且 `fixed`、不透明、**旧的遮罩与拖动把手都不存在**、
+  左导航 6 个分组且恰有一个当前项、内容区是可滚动的纸面、关闭是带文案的按钮、
+  点左导航切分组（状态与标题一起变）、Esc 关闭整页。
+- 受影响的套件：`_verify-toolbar-settings` 37/37、`_verify-link-open` 63/63（它读的
+  `.settings-panel` 跟着改成 `[data-settings-page]`）、`_verify-local-media` 10/10、
+  `_verify-outline-right` 26/26、`_verify-cb-button-line-numbers` 26/26。
+- **顺带修掉一条长期红的预存失败**：`_verify-cb-line-numbers` 8/13 → **13/13**。
+  根因是套件量开关坐标前不滚动，而设置页内容比窗口高、那个开关常在折叠线以下（真实点击落到
+  视口外）—— 改成先 `scrollIntoView({block:'center'})` 再量。
+- 单元测试 **320/320**；`vue-tsc` / `eslint` 0 error / 0 warning；`electron-vite build` exit 0。
+
 ## [Unreleased · 目录高亮（第二轮）：判定规则重写成纯函数 —— 末尾几节不再被跳过，点谁就亮谁]
 
 > 用户第二轮口径：「还不行 —— 现在直接跳过倒数第二和倒数第三；我点的是倒数第三个，但大纲亮到

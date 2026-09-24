@@ -216,6 +216,7 @@
   },
   "settings": {
     "title": "设置",
+    "persistHint": "改动即时保存到本机数据库",
     "general": "通用",
     "editor": "编辑器",
     "keymap": "快捷键",

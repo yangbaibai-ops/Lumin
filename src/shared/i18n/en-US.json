@@ -216,6 +216,7 @@
   },
   "settings": {
     "title": "Settings",
+    "persistHint": "Changes are saved to the local database instantly",
     "general": "General",
     "editor": "Editor",
     "keymap": "Shortcuts",

@@ -769,7 +769,7 @@ async function main() {
   await sleep(700)
   const tabState = JSON.parse(
     await ev(`(() => {
-      const panel = document.querySelector('.settings-panel')
+      const panel = document.querySelector('[data-settings-page]')
       const rows = panel ? [...panel.querySelectorAll('section')].length : 0
       const modeBtn = [...(panel?.querySelectorAll('button') ?? [])].find((b) => b.textContent.trim() === '总是创建')
       const r = modeBtn?.getBoundingClientRect()
@@ -824,7 +824,7 @@ async function main() {
   // 单条删除（UI）
   const delPos = JSON.parse(
     await ev(`(() => {
-      const panel = document.querySelector('.settings-panel')
+      const panel = document.querySelector('[data-settings-page]')
       const row = panel?.querySelector('.relative.space-y-2 > div')
       const btn = row?.querySelector('button')
       if (!btn) return 'null'

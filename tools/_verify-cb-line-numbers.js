@@ -72,10 +72,14 @@ const GUTTER = `(() => {
 
 async function switchRect() {
   return await ev(`(() => {
-    const sec = Array.from(document.querySelectorAll('.settings-panel section')).find((s) => s.textContent.includes(${JSON.stringify(LABEL)}))
+    const sec = Array.from(document.querySelectorAll('[data-settings-page] section')).find((s) => s.textContent.includes(${JSON.stringify(LABEL)}))
     if (!sec) return null
     const btn = sec.querySelector('button.switch')
     if (!btn) return null
+    // ⚠️ 先滚进视口再量：设置页的内容列比窗口高，这个开关经常在折叠线以下 ——
+    //    不滚的话量到的是视口外的坐标，真实点击会落到没人接的地方（这条套件长期 8/13 就是这个原因，
+    //    已在本轮登记并修掉）。
+    btn.scrollIntoView({ block: 'center' })
     const r = btn.getBoundingClientRect()
     return JSON.stringify({ x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2), on: btn.classList.contains('on'), label: sec.querySelector('p')?.textContent ?? '' })
   })()`)

@@ -1,8 +1,15 @@
 <script setup lang="ts">
-// ─── 设置：浮层（Modal）面板 ────────────────────────────────────────────────
-// 覆盖在项目视图之上，带遮罩与 X / Esc / 点击遮罩关闭——不再占据路由与整页，
-// 提供大厂主流的「模态设置中心」交互。所有设置项均经由 settings store
-// （SQLite kv 持久化）读写；原生菜单栏/自动保存等系统级设置即时同步主进程。
+// ─── 设置：**整页**（占据整个界面，不再是浮在窗口上的小盒子）────────────────────
+//
+// 用户口径：「打开设置界面不要弹出一个小的窗口在原窗口的上方，而是占据整个界面，
+// 同时重构优化下设置的样式」。所以：
+//   * 根节点是 `fixed inset-0` 的不透明整页（顶栏 + 左导航 + 纸面内容区），
+//     **没有遮罩层**（后面没有东西需要压暗，整页自己就是那层）；
+//   * 去掉了「拖动小窗」那一整套（dragOffset / startDialogDrag / is-dragging 样式）——
+//     整页没有可拖的意义；
+//   * 样式收口成一组 class（`.settings-*`，见 assets/base.css）：卡片、行、说明文字
+//     不再逐处写 Tailwind 长串，六个页签观感一致。
+// 所有设置项仍经 settings store（SQLite kv 持久化）读写，原生菜单栏/自动保存等即时同步主进程。
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
@@ -77,53 +84,11 @@ function toggleAutoSave(): void {
   if (!v) files.cancelAutoSave()
 }
 
+// ─── 关于页入口 ──────────────────────────────────────────────────────────────
+// 顶栏那一枚「关于 Lumin」：先收起设置再走路由（否则设置整页会把关于页盖住）
 function goAbout(): void {
   ui.closeSettings()
   void router.push('/about')
-}
-
-// ─── 设置面板可拖动 ──────────────────────────────────────────────────────────
-// 拖动只改一个 transform 偏移（不改布局），因此**不触发任何重排**：面板本身是 fixed 定位的
-// 固定尺寸盒子，平移它就是合成层上的一次位移。位置是会话级的（关掉再开回到居中），
-// 不落库 —— 设置面板的位置不是用户"数据"，记进 SQLite 只会多一份要维护的状态。
-const dragOffset = ref({ x: 0, y: 0 })
-const dragDragging = ref(false)
-
-function resetDialogPosition(): void {
-  dragOffset.value = { x: 0, y: 0 }
-}
-
-/**
- * 从标题栏开始拖：只认左键，且**不接管按钮上的按下**（关闭按钮要能正常点）。
- * 用 window 上的 move/up 而不是 setPointerCapture：拖动过程中指针会移出面板，
- * 捕获在面板上时 mouseup 落在别处也能收尾，但 move 期间的坐标要以窗口为准，
- * 这里两者都用 window 监听，语义最直白、也不会漏掉"拖到窗口外松手"。
- */
-function startDialogDrag(e: MouseEvent): void {
-  if (e.button !== 0) return
-  const el = e.target as HTMLElement | null
-  if (el?.closest?.('button, input, select, textarea, a')) return
-  e.preventDefault()
-  const startX = e.clientX
-  const startY = e.clientY
-  const origin = { ...dragOffset.value }
-  dragDragging.value = true
-  const move = (ev: MouseEvent): void => {
-    // 钳制在「面板至少还有一部分留在窗口内」，避免拖丢
-    const maxX = window.innerWidth / 2 - 60
-    const maxY = window.innerHeight / 2 - 40
-    dragOffset.value = {
-      x: Math.max(-maxX, Math.min(maxX, origin.x + (ev.clientX - startX))),
-      y: Math.max(-maxY, Math.min(maxY, origin.y + (ev.clientY - startY)))
-    }
-  }
-  const up = (): void => {
-    dragDragging.value = false
-    window.removeEventListener('mousemove', move)
-    window.removeEventListener('mouseup', up)
-  }
-  window.addEventListener('mousemove', move)
-  window.addEventListener('mouseup', up)
 }
 
 // Esc 关闭（打开时才生效）
@@ -142,14 +107,12 @@ watch(
   { immediate: true }
 )
 
-// 打开时记住上一次所在分组（复用 ui.settingsSection）
+// 打开时：自动保存关着的清掉挂起的落盘定时器，避免「刚关掉设置又保存一次」
+// （链接历史的刷新在上面那个 [settingsOpen, activeTab] 的 watch 里，别重复写两处）
 watch(
   () => ui.settingsOpen,
   (open) => {
     if (!open) return
-    // 每次打开都回到居中：位置是会话级的，不跨次保留
-    resetDialogPosition()
-    // 自动保存关闭时清理挂起的落盘定时器，避免“刚关闭又保存”
     if (!settings.autoSave) files.cancelAutoSave()
   }
 )
@@ -258,92 +221,79 @@ function formatTime(ms: number): string {
 
 <template>
   <Teleport to="body">
-    <!-- 注：Teleport 内层 Transition 的 leave 卸载在此版本偶发残留，
-         改为即时显隐 + 入场动画（关闭无需离场过渡） -->
+    <!-- 设置 = **整页**（用户口径：不要弹一个小窗口盖在原窗口上）。
+         `fixed inset-0` + 不透明底色 ⇒ 顶栏/侧栏/正文全被盖住，没有遮罩层、也不可拖动。
+         z-[120] 与原来的浮层同档：通知带（z 更高）仍然浮在它上面，确认框（z-[150]）照样能弹。 -->
     <div
       v-if="ui.settingsOpen"
-      class="settings-mask fixed inset-0 z-[120] flex items-center justify-center p-6"
+      class="settings-page fixed inset-0 z-[120] flex flex-col bg-app text-ink"
+      role="dialog"
+      aria-modal="true"
+      :aria-label="t('settings.title')"
+      data-settings-page
     >
-      <!-- 遮罩：点击关闭 -->
-      <!-- 遮罩：点关闭。**只压暗、不模糊** —— 模糊背景会让后面的正文变成一团，
-           而用户常常是「对着正文调设置」，得能看清字；压暗同样把注意力收在面板上。
-           面板自己不再被 backdrop-filter 波及（它是遮罩的兄弟节点，本来就清晰）。 -->
-      <div class="settings-scrim absolute inset-0" @click="ui.closeSettings()" />
-
-      <!-- 面板：标题栏按住可整体拖动（位移只走 transform，不触发重排） -->
-      <div
-        class="settings-panel relative flex h-[min(680px,86vh)] w-[min(1080px,94vw)] overflow-hidden rounded-2xl border border-edge bg-panel shadow-2xl"
-        :style="{
-          transform: `translate3d(${dragOffset.x}px, ${dragOffset.y}px, 0)`,
-          transition: dragDragging ? 'none' : undefined
-        }"
-        :class="dragDragging ? 'is-dragging' : ''"
+      <!-- 顶栏：整页的身份与出口（左边是「设置」，右边是「关于」与关闭） -->
+      <header
+        class="settings-topbar flex h-12 flex-none items-center justify-between border-b border-edge px-5"
       >
-        <!-- 左侧导航 -->
-        <nav class="flex w-[196px] flex-none flex-col gap-1 border-r border-edge bg-panel-2/70 p-3">
+        <div class="flex min-w-0 items-center gap-2">
+          <Icon name="settings" :size="15" class="flex-none text-ink-3" />
+          <h1 class="text-[14px] font-semibold text-ink">{{ t('settings.title') }}</h1>
+          <span class="ml-2 hidden truncate text-[11.5px] text-ink-3 sm:inline">
+            {{ t('settings.persistHint') }}
+          </span>
+        </div>
+        <div class="flex flex-none items-center gap-1">
+          <button class="settings-topbar-btn" @click="goAbout">
+            <Icon name="info" :size="14" />
+            {{ t('menu.about') }}
+          </button>
+          <button
+            class="settings-topbar-btn settings-topbar-btn--close"
+            data-settings-close
+            :title="t('common.close')"
+            @click="ui.closeSettings()"
+          >
+            <Icon name="x" :size="15" />
+            {{ t('common.close') }}
+          </button>
+        </div>
+      </header>
+
+      <div class="flex min-h-0 flex-1">
+        <!-- 左导航：整页的第一栏（与侧栏同一套行样式，只是更宽一点） -->
+        <nav
+          class="settings-nav flex w-[236px] flex-none flex-col gap-0.5 overflow-y-auto border-r border-edge p-3"
+          :aria-label="t('settings.title')"
+        >
           <button
             v-for="x in tabs"
             :key="x.id"
-            class="flex items-center gap-2.5 rounded-lg px-3 py-2 text-left text-[13px] transition-all duration-150"
-            :class="
-              activeTab === x.id
-                ? 'bg-accent-soft text-accent'
-                : 'text-ink-2 hover:bg-panel hover:text-ink'
-            "
+            class="settings-nav-item"
+            :class="{ 'is-active': activeTab === x.id }"
+            :aria-current="activeTab === x.id ? 'page' : undefined"
             @click="switchTab(x.id)"
           >
-            <Icon :name="x.icon" :size="14" />
-            {{ x.label }}
-          </button>
-          <div class="flex-1" />
-          <button
-            class="flex items-center gap-2.5 rounded-lg px-3 py-2 text-left text-[13px] text-ink-3 transition-colors hover:bg-panel hover:text-ink"
-            @click="goAbout"
-          >
-            <Icon name="info" :size="14" />
-            关于 Lumin
+            <Icon :name="x.icon" :size="15" class="flex-none" />
+            <span class="min-w-0 flex-1 truncate">{{ x.label }}</span>
           </button>
         </nav>
 
-        <!-- 右侧内容 -->
-        <div class="flex min-w-0 flex-1 flex-col">
-          <!-- 面板头：整条 = 拖动把手（标题 + X 关闭） -->
-          <header
-            class="settings-drag-handle flex flex-none items-center justify-between border-b border-edge px-6 py-3.5"
-            :title="'按住可拖动设置窗口'"
-            @mousedown="startDialogDrag"
-          >
-            <div>
-              <h2 class="text-[15px] font-semibold text-ink">{{ sectionTitle(activeTab) }}</h2>
-              <p class="text-[11.5px] text-ink-3">设置将自动保存到本机 SQLite 数据库</p>
-            </div>
-            <div class="flex items-center gap-1">
-              <!-- 只作视觉提示：真正的手柄是整条头部 -->
-              <span class="settings-drag-grip" aria-hidden="true">
-                <Icon name="more" :size="14" />
-              </span>
-              <button
-                class="flex h-8 w-8 items-center justify-center rounded-lg text-ink-3 transition-colors duration-150 hover:bg-panel-2 hover:text-ink"
-                :title="'关闭'"
-                @click="ui.closeSettings()"
-              >
-                <Icon name="x" :size="16" />
-              </button>
-            </div>
-          </header>
-
+        <!-- 内容区：纸面（与编辑区的纸同色，读起来像「一页」而不是「一张卡片」） -->
+        <div class="settings-body flex min-w-0 flex-1 flex-col bg-paper">
           <div class="min-h-0 flex-1 overflow-y-auto">
-            <div class="mx-auto max-w-[680px] px-7 py-6">
+            <div class="settings-column mx-auto w-full max-w-[720px] px-8 pb-16 pt-7">
+              <h2 class="settings-section-title">{{ sectionTitle(activeTab) }}</h2>
               <Transition name="page" mode="out-in">
                 <div :key="activeTab">
                   <!-- ── 通用 ── -->
                   <template v-if="activeTab === 'general'">
-                    <section class="surface mb-4 p-5">
-                      <h3 class="mb-4 text-[13px] font-semibold text-ink">语言</h3>
-                      <div class="flex items-center justify-between gap-4">
+                    <section class="set-card">
+                      <h3 class="set-card-title">语言</h3>
+                      <div class="set-row">
                         <div>
-                          <p class="text-[13.5px] text-ink">界面语言</p>
-                          <p class="mt-0.5 text-[12px] text-ink-3">界面显示语言</p>
+                          <p class="set-row-label">界面语言</p>
+                          <p class="set-row-desc">界面显示语言</p>
                         </div>
                         <div class="flex rounded-lg bg-panel-2 p-0.5">
                           <button
@@ -363,11 +313,11 @@ function formatTime(ms: number): string {
                       </div>
                     </section>
 
-                    <section class="surface mb-4 p-5">
-                      <div class="flex items-center justify-between gap-4">
+                    <section class="set-card">
+                      <div class="set-row">
                         <div>
-                          <p class="text-[13.5px] text-ink">自动保存</p>
-                          <p class="mt-0.5 text-[12px] text-ink-3">
+                          <p class="set-row-label">自动保存</p>
+                          <p class="set-row-desc">
                             编辑时自动保存到磁盘（间隔
                             {{ settings.autoSaveInterval }} 秒）；手动模式下仅在保存按钮 / Ctrl+S
                             时写入，也可点击底部状态栏的保存状态区域随时切换保存方式
@@ -403,11 +353,11 @@ function formatTime(ms: number): string {
                       </div>
                     </section>
 
-                    <section class="surface mb-4 p-5">
-                      <div class="flex items-center justify-between gap-4">
+                    <section class="set-card">
+                      <div class="set-row">
                         <div>
-                          <p class="text-[13.5px] text-ink">顶部菜单栏</p>
-                          <p class="mt-0.5 text-[12px] text-ink-3">
+                          <p class="set-row-label">顶部菜单栏</p>
+                          <p class="set-row-desc">
                             窗口顶部的应用菜单（文件(F) / 编辑(E) / 视图(V) /
                             帮助(H)）；关闭后界面更纯净，快捷键（Ctrl+N/O/S、Alt+F/E/V/H
                             等）照常生效
@@ -421,11 +371,11 @@ function formatTime(ms: number): string {
                       </div>
                     </section>
 
-                    <section class="surface mb-4 p-5">
-                      <div class="flex items-center justify-between gap-4">
+                    <section class="set-card">
+                      <div class="set-row">
                         <div>
-                          <p class="text-[13.5px] text-ink">{{ t('settings.outlineRight') }}</p>
-                          <p class="mt-0.5 text-[12px] text-ink-3">
+                          <p class="set-row-label">{{ t('settings.outlineRight') }}</p>
+                          <p class="set-row-desc">
                             {{ t('settings.outlineRightDesc') }}
                           </p>
                         </div>
@@ -440,11 +390,11 @@ function formatTime(ms: number): string {
                       </div>
                     </section>
 
-                    <section class="surface mb-4 p-5">
-                      <div class="flex items-center justify-between gap-4">
+                    <section class="set-card">
+                      <div class="set-row">
                         <div>
-                          <p class="text-[13.5px] text-ink">{{ t('settings.restoreSession') }}</p>
-                          <p class="mt-0.5 text-[12px] text-ink-3">
+                          <p class="set-row-label">{{ t('settings.restoreSession') }}</p>
+                          <p class="set-row-desc">
                             {{ t('settings.restoreSessionDesc') }}
                           </p>
                         </div>
@@ -459,11 +409,11 @@ function formatTime(ms: number): string {
 
                     <!-- 自动检查更新：默认关闭。真正联网还要求「打包版 + 配了更新渠道」，
                            两个条件不满足时即使打开也不会有任何请求（见 main/services/updater.ts）。 -->
-                    <section class="surface mb-4 p-5">
-                      <div class="flex items-center justify-between gap-4">
+                    <section class="set-card">
+                      <div class="set-row">
                         <div>
-                          <p class="text-[13.5px] text-ink">{{ t('settings.autoCheckUpdate') }}</p>
-                          <p class="mt-0.5 text-[12px] text-ink-3">
+                          <p class="set-row-label">{{ t('settings.autoCheckUpdate') }}</p>
+                          <p class="set-row-desc">
                             {{ t('settings.autoCheckUpdateDesc') }}
                           </p>
                         </div>
@@ -477,11 +427,11 @@ function formatTime(ms: number): string {
                     </section>
 
                     <!-- 编码：默认编码 + 一行说明（临时切换走「文件 → 选择编码重新打开」） -->
-                    <section class="surface p-5">
-                      <h3 class="mb-3 text-[13px] font-semibold text-ink">
+                    <section class="set-card">
+                      <h3 class="set-card-title">
                         {{ t('settings.encoding') }}
                       </h3>
-                      <div class="flex items-center justify-between gap-4">
+                      <div class="set-row">
                         <p class="text-[12.5px] text-ink-2">{{ t('settings.defaultEncoding') }}</p>
                         <select
                           class="input select min-w-[190px]"
@@ -506,11 +456,11 @@ function formatTime(ms: number): string {
                     </section>
 
                     <!-- 行尾：只管新建/未命名文档；已有文件按它自己原本的行尾保存（见 shared/eol.ts） -->
-                    <section class="surface mt-4 p-5">
-                      <h3 class="mb-3 text-[13px] font-semibold text-ink">
+                    <section class="set-card mt-4">
+                      <h3 class="set-card-title">
                         {{ t('settings.defaultEol') }}
                       </h3>
-                      <div class="flex items-center justify-between gap-4">
+                      <div class="set-row">
                         <p class="text-[12.5px] text-ink-2">{{ t('settings.defaultEol') }}</p>
                         <select
                           class="input select min-w-[190px]"
@@ -535,10 +485,10 @@ function formatTime(ms: number): string {
                     </section>
 
                     <!-- 本地历史：总开关 + 保留策略（策略本身是 shared/history.ts 的纯函数） -->
-                    <section class="surface mt-4 p-5" data-setting-history>
-                      <div class="flex items-center justify-between gap-4">
+                    <section class="set-card mt-4" data-setting-history>
+                      <div class="set-row">
                         <div>
-                          <p class="text-[13.5px] text-ink">{{ t('settings.historyEnabled') }}</p>
+                          <p class="set-row-label">{{ t('settings.historyEnabled') }}</p>
                           <p class="mt-0.5 text-[12px] leading-relaxed text-ink-3">
                             {{ t('settings.historyHint') }}
                           </p>
@@ -593,11 +543,11 @@ function formatTime(ms: number): string {
                       </div>
                     </section>
 
-                    <section class="surface p-5">
-                      <div class="flex items-center justify-between gap-4">
+                    <section class="set-card">
+                      <div class="set-row">
                         <div>
-                          <p class="text-[13.5px] text-ink">侧边栏</p>
-                          <p class="mt-0.5 text-[12px] text-ink-3">默认显示左侧边栏</p>
+                          <p class="set-row-label">侧边栏</p>
+                          <p class="set-row-desc">默认显示左侧边栏</p>
                         </div>
                         <button
                           class="switch"
@@ -613,8 +563,8 @@ function formatTime(ms: number): string {
                     <!-- 快捷工具栏：开关 + 项目排序/显隐（与工具栏空白区右键菜单同一界面） -->
                     <SettingsToolbar />
 
-                    <section class="surface mb-4 p-5">
-                      <h3 class="mb-4 text-[13px] font-semibold text-ink">默认编辑器模式</h3>
+                    <section class="set-card">
+                      <h3 class="set-card-title">默认编辑器模式</h3>
                       <div class="grid grid-cols-2 gap-2.5">
                         <button
                           v-for="m in modes"
@@ -649,13 +599,11 @@ function formatTime(ms: number): string {
                       </div>
                     </section>
 
-                    <section class="surface mb-4 p-5">
-                      <div class="flex items-center justify-between gap-4">
+                    <section class="set-card">
+                      <div class="set-row">
                         <div>
-                          <p class="text-[13.5px] text-ink">分屏同步滚动</p>
-                          <p class="mt-0.5 text-[12px] text-ink-3">
-                            分屏对比视图中左右两侧按滚动进度同步
-                          </p>
+                          <p class="set-row-label">分屏同步滚动</p>
+                          <p class="set-row-desc">分屏对比视图中左右两侧按滚动进度同步</p>
                         </div>
                         <button
                           class="switch"
@@ -665,11 +613,11 @@ function formatTime(ms: number): string {
                       </div>
                     </section>
 
-                    <section class="surface mb-4 p-5">
-                      <div class="flex items-center justify-between gap-4">
+                    <section class="set-card">
+                      <div class="set-row">
                         <div>
-                          <p class="text-[13.5px] text-ink">代码块行号</p>
-                          <p class="mt-0.5 text-[12px] text-ink-3">
+                          <p class="set-row-label">代码块行号</p>
+                          <p class="set-row-desc">
                             在代码块左侧显示行号；关闭后代码块只显示代码文本
                           </p>
                         </div>
@@ -681,8 +629,8 @@ function formatTime(ms: number): string {
                       </div>
                     </section>
 
-                    <section class="surface mb-4 p-5">
-                      <h3 class="mb-4 text-[13px] font-semibold text-ink">字体与排版</h3>
+                    <section class="set-card">
+                      <h3 class="set-card-title">字体与排版</h3>
                       <div class="mb-5">
                         <div class="mb-2 flex items-center justify-between">
                           <span class="text-[12.5px] text-ink-2">字号</span>
@@ -753,8 +701,8 @@ function formatTime(ms: number): string {
                       </div>
                     </section>
 
-                    <section class="surface p-5">
-                      <h3 class="mb-4 text-[13px] font-semibold text-ink">预览效果</h3>
+                    <section class="set-card">
+                      <h3 class="set-card-title">预览效果</h3>
                       <!-- 排版预览 = 一小块纸：用 --paper（不再是 --app/60），与真实写作区同色 -->
                       <div
                         class="md-preview rounded-xl border border-edge bg-paper p-5"
@@ -784,7 +732,7 @@ function formatTime(ms: number): string {
 
                   <!-- ── 外观 ── -->
                   <template v-else-if="activeTab === 'appearance'">
-                    <section class="surface p-5">
+                    <section class="set-card">
                       <h3 class="mb-1 text-[13px] font-semibold text-ink">主题</h3>
                       <p class="mb-4 text-[12px] text-ink-3">切换主题会立即生效，并伴随平滑过渡</p>
                       <div class="grid grid-cols-2 gap-3">
@@ -859,8 +807,8 @@ function formatTime(ms: number): string {
 
                   <!-- ── 导出 ── -->
                   <template v-else-if="activeTab === 'export'">
-                    <section class="surface mb-4 p-5">
-                      <h3 class="mb-4 text-[13px] font-semibold text-ink">PDF 导出</h3>
+                    <section class="set-card">
+                      <h3 class="set-card-title">PDF 导出</h3>
                       <div class="mb-5">
                         <div class="mb-2 flex items-center justify-between">
                           <span class="text-[12.5px] text-ink-2">页边距</span>
@@ -911,8 +859,8 @@ function formatTime(ms: number): string {
                       </div>
                     </section>
 
-                    <section class="surface p-5">
-                      <h3 class="mb-4 text-[13px] font-semibold text-ink">支持的格式</h3>
+                    <section class="set-card">
+                      <h3 class="set-card-title">支持的格式</h3>
                       <div class="space-y-2.5">
                         <div
                           v-for="row in [
@@ -948,7 +896,7 @@ function formatTime(ms: number): string {
                   </template>
 
                   <template v-else-if="activeTab === 'links'">
-                    <section class="surface mb-4 p-5">
+                    <section class="set-card">
                       <h3 class="mb-1 text-[13.5px] text-ink">
                         {{ t('settings.linksCreateMode') }}
                       </h3>
@@ -974,9 +922,9 @@ function formatTime(ms: number): string {
                       </div>
                     </section>
 
-                    <section class="surface p-5">
+                    <section class="set-card">
                       <div class="mb-1 flex items-center justify-between gap-3">
-                        <h3 class="text-[13.5px] text-ink">{{ t('settings.linksHistory') }}</h3>
+                        <h3 class="set-row-label">{{ t('settings.linksHistory') }}</h3>
                         <button
                           v-if="linkHistory.length"
                           class="rounded-lg border border-edge px-2.5 py-1 text-[12px] text-ink-2 transition-colors hover:border-edge-strong hover:text-ink"
