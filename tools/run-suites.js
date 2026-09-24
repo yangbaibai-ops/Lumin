@@ -89,7 +89,8 @@ const DEFAULT_SUITES = [
   '_verify-mermaid-gate.js', // mermaid 视口门 + 首屏不预加载（清单 §2.G）
   '_verify-neutral-accent.js', // 副色必须是低饱和灰（通道极差断言）
   // ── 第九轮提进默认矩阵（纯合成事件：不依赖窗口出帧，适合批量跑）──
-  '_verify-sidebar-search.js' // Ctrl+F 的去向：焦点在文件面板里搜文件名，否则搜正文（含两个边界）
+  '_verify-sidebar-search.js', // Ctrl+F 的去向：焦点在文件面板里搜文件名，否则搜正文（含两个边界）
+  '_verify-rename.js' // 文件树就地重命名 + 新建文件（内容区切过去 / 无边框输入框 / 脏了先问）
 ]
 
 /** 自己管理 Electron 实例的套件（运行器不替它们起实例） */

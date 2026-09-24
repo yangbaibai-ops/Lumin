@@ -161,6 +161,7 @@ function onDragStart(e: DragEvent): void {
     <!-- 一行的解剖：16px 的箭头槽（文件行留空以对齐）→ 15px 类型图标 → 文件名。
          缩进由 --tree-depth 在 CSS 里算（4 + depth * 16），行高由 `.tree-row` 的 min-height（32px）
          统一，让整棵树等距；选中项左侧的浅灰色条是 `.tree-row.is-current::before` 画的（不占盒模型）。
+         改名中的行带 `.is-renaming`（浅面底色）——输入框本身无边框，靠它提供位置感。
 
          ARIA：这是 tree 里的一行（role="treeitem"，容器在 FileTree.vue）。
          tabindex 用 roving tabindex —— 整棵树只有一个可 Tab 到的行（键盘焦点所在行），
@@ -169,7 +170,7 @@ function onDragStart(e: DragEvent): void {
          type（← 收起 / → 展开的语义差别）、current（Tab 进树时的落点）。 -->
     <div
       class="tree-row"
-      :class="{ 'is-current': isCurrent }"
+      :class="{ 'is-current': isCurrent, 'is-renaming': renaming }"
       role="treeitem"
       data-tree-row
       :data-depth="depth"

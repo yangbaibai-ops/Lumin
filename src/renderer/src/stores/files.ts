@@ -233,10 +233,13 @@ export const useFilesStore = defineStore('files', {
         return false
       }
     },
-    /** 新建文件（默认名）并让其在目录树中就地重命名（新建即改名）。
+    /** 新建文件（默认名）：**内容区切到它** + 在目录树里就地重命名（新建即可改名）。
      *  用唯一的「未命名[-n].md」占位创建，创建后置 pendingRenamePath，
      *  对应 TreeNode 挂载后自动进入重命名编辑状态。 */
     async newFileAt(dir: string): Promise<string | null> {
+      // 新建会把当前文档从内容区换掉，与「打开文件」同一口径：脏了先问
+      // （问在创建之前 —— 用户取消时不该在磁盘上留下一个空文件）
+      if (!(await confirmDiscardIfDirty(this.dirty))) return null
       const base = '未命名'
       let name = `${base}.md`
       let i = 1
@@ -245,7 +248,13 @@ export const useFilesStore = defineStore('files', {
         i += 1
       }
       const path = await this.createFileAt(dir, name)
-      if (path) this.pendingRenamePath = path
+      if (!path) return null
+      // 内容区跟着切到新文件（用户口径）；打不开也照样进改名 —— 用户至少能改个名再重试
+      await this.openPath(path)
+      // ⚠️ 顺序不能反：`openPath` 会让编辑器按新 path 重建并抢焦点，改名输入框必须**最后**
+      // 拿焦点（反过来的话输入框刚聚焦就被编辑器夺走 → blur 立刻按默认名「未命名.md」提交，
+      // 用户看到的就是「刚新建就自动结束改名」）。
+      this.pendingRenamePath = path
       return path
     },
     async removeNode(node: FileNode, parentDir: string): Promise<void> {

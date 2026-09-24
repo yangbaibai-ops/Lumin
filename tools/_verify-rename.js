@@ -3,9 +3,13 @@
 // 断言（都按 DOM + 真实文件系统结果判定，不靠截图）：
 //  A. 文件行右键弹出上下文菜单，含「重命名 / 删除」（文件夹行内还有新建项）
 //  B. 点「重命名」→ 行内出现 .tree-rename-input，且**预填当前文件名、自动聚焦、扩展名不被选中**
+//  B2.输入框**没有边框**（用户口径：改名时不要有围着文件名的框），
+//     且改名的行有 .is-renaming 浅面底色 + 输入框底色与行底色确实不同（无边框也要看得出来在编辑）
 //  C. 改主干名 + 回车 → 磁盘上真的改了名（旧文件消失、新文件出现）
 //  D. 树上的行文字同步更新
 //  E. Esc 取消时磁盘不变
+//  F. **新建文件**：内容区切到新文件（files.current 与树上的 data-tree-current 都是它），
+//     并且改名输入框**最后**拿到焦点（顺序反了会「刚新建就自动按默认名提交」）
 //
 // 为什么不用键盘注入 F2 之类：主进程窗口不一定是 OS 前台，按键会被丢掉（本项目踩过这个坑），
 // 所以走真实指针 + 真实菜单点击这条路。
@@ -186,6 +190,49 @@ const MENU = `[...document.querySelectorAll('div.fixed')].filter((d) => String(d
       JSON.stringify({ s: before.selStart, e: before.selEnd })
     )
 
+    // ── B2. 输入框无边框（用户口径），但「正在改名」仍看得出来 ──
+    // 量 computedStyle 而不是读 CSS 文件：断言的是**最终渲染结果**，
+    // 谁（scoped 样式 / Tailwind / 主题变量）写的都不影响判定。
+    const box = JSON.parse(
+      await w.ev(`(() => {
+        const input = document.querySelector('.tree-rename-input')
+        if (!input) return JSON.stringify({ err: 'no-input' })
+        const row = input.closest('[data-tree-row]')
+        const ci = getComputedStyle(input)
+        const cr = row ? getComputedStyle(row) : null
+        return JSON.stringify({
+          borderTop: ci.borderTopWidth,
+          borderRight: ci.borderRightWidth,
+          borderBottom: ci.borderBottomWidth,
+          borderLeft: ci.borderLeftWidth,
+          borderStyle: ci.borderTopStyle,
+          inputBg: ci.backgroundColor,
+          rowIsRenaming: row ? row.className.includes('is-renaming') : false,
+          rowBg: cr ? cr.backgroundColor : null
+        })
+      })()`)
+    )
+    console.log('RENAME-BOX ' + JSON.stringify(box))
+    const noBorder =
+      ['borderTop', 'borderRight', 'borderBottom', 'borderLeft'].every((k) => box[k] === '0px') ||
+      box.borderStyle === 'none'
+    c(
+      'rename-input-has-no-border',
+      noBorder,
+      JSON.stringify({
+        t: box.borderTop,
+        r: box.borderRight,
+        b: box.borderBottom,
+        l: box.borderLeft,
+        style: box.borderStyle
+      })
+    )
+    c(
+      'rename-row-still-shows-editing-state',
+      box.rowIsRenaming === true && box.rowBg !== box.inputBg,
+      `is-renaming=${box.rowIsRenaming} / 行底=${box.rowBg} / 输入框底=${box.inputBg}（两者必须不同，否则无边框的字段看不见）`
+    )
+
     // ── C/D. 改主干名 + 回车 → 磁盘与树都变 ──
     // 注意：用真实文本输入（Input.insertText），它会**替换已选中的主干**、保留 .md ——
     // 这正是应用的设计（startRename 只选主干）。直接用 setter 写整串会把扩展名一起换掉。
@@ -261,6 +308,100 @@ const MENU = `[...document.querySelectorAll('div.fixed')].filter((d) => String(d
         fs.existsSync(escPath) &&
         !fs.existsSync(path.join(dir, 'should-not-exist.md')),
       JSON.stringify(cancelled)
+    )
+
+    // ── F. 新建文件：脏了就**先问**（且问了才建） ─────────────────────────
+    // 新建会把内容区从当前文档换走，所以与「打开文件」同一口径：脏了先确认。
+    // 直接改 content 而不走 setContent：那条路会排自动保存，夹具不该顺手写盘。
+    const dirtySet = await w.ev(`(() => {
+      const f = window.__R.files()
+      if (!f.current) return 'no-current'
+      f.current.content = 'DIRTY-FIXTURE'
+      window.__F = f.newFileAt(${JSON.stringify(dir)})
+      return f.dirty === true ? 'dirty' : 'not-dirty'
+    })()`)
+    await sleep(700)
+    const ask = JSON.parse(
+      await w.ev(`(() => {
+        const ui = window.__R.ui()
+        return JSON.stringify({
+          dialog: ui.confirmState ? ui.confirmState.title : null,
+          names: ${JSON.stringify(fs.readdirSync(dir))}
+        })
+      })()`)
+    )
+    console.log('NEWFILE-DIRTY ' + JSON.stringify({ dirtySet, ask }))
+    c(
+      'new-file-asks-before-discarding-dirty-doc',
+      dirtySet === 'dirty' && typeof ask.dialog === 'string',
+      `dirty=${dirtySet} / 对话框标题=${ask.dialog}`
+    )
+    await w.ev(`(() => { window.__R.ui().resolveConfirm(false); return 'ok' })()`)
+    await sleep(900)
+    const aborted = JSON.parse(
+      await w.ev(`(async () => {
+        const p = await window.__F
+        const f = window.__R.files()
+        return JSON.stringify({ returned: p, names: ${JSON.stringify(fs.readdirSync(dir))}, stillDirty: f.dirty })
+      })()`)
+    )
+    console.log('NEWFILE-ABORT ' + JSON.stringify(aborted))
+    c(
+      'new-file-cancel-creates-nothing',
+      aborted.returned === null &&
+        !aborted.names.some((n) => n.startsWith('未命名')) &&
+        aborted.stillDirty === true,
+      JSON.stringify(aborted)
+    )
+
+    // ── F2. 干净时新建：内容区切到新文件 + 改名输入框最后拿焦点 ─────────────
+    await w.ev(`(() => { const f = window.__R.files(); f.current.content = f.current.savedContent; return 'ok' })()`)
+    await sleep(200)
+    const created = JSON.parse(
+      await w.ev(`(async () => {
+        const f = window.__R.files()
+        const p = await f.newFileAt(${JSON.stringify(dir)})
+        await new Promise((r) => setTimeout(r, 1500))
+        const cur = f.current
+        const curRow = document.querySelector('[data-tree-row][data-tree-current="true"]')
+        const input = document.querySelector('.tree-rename-input')
+        return JSON.stringify({
+          path: p,
+          currentPath: cur ? cur.path : null,
+          currentContent: cur ? cur.content : null,
+          treeCurrent: curRow ? curRow.getAttribute('data-tree-path') : null,
+          inputAppeared: !!input,
+          inputValue: input ? input.value : null,
+          inputFocused: input ? document.activeElement === input : false,
+          editorReady: !!window.__R.files()
+        })
+      })()`)
+    )
+    console.log(
+      'NEWFILE ' +
+        JSON.stringify({ ...created, onDisk: created.path ? fs.existsSync(created.path) : false })
+    )
+    c(
+      'new-file-switches-content-area',
+      !!created.path && created.currentPath === created.path && created.currentContent === '',
+      `newFileAt → ${created.path} / current.path=${created.currentPath} / 内容长度=${created.currentContent === null ? 'null' : created.currentContent.length}`
+    )
+    c(
+      'new-file-is-marked-current-in-tree',
+      created.treeCurrent === created.path,
+      `data-tree-current=${created.treeCurrent}`
+    )
+    c(
+      'new-file-enters-inline-rename',
+      created.inputAppeared === true && created.inputValue === '未命名.md',
+      JSON.stringify({ appeared: created.inputAppeared, value: created.inputValue })
+    )
+    // 顺序断言：`openPath` 会让编辑器重建并抢焦点，改名输入框必须**最后**拿焦点。
+    // 反过来的表现就是这条 false（输入框刚聚焦就被抢走 → blur 立刻按默认名提交）。
+    c(
+      'new-file-rename-input-holds-focus',
+      created.inputFocused === true,
+      `activeElement 是改名输入框=${created.inputFocused}`
     )
   } finally {
     await w.ev(`(async () => { await window.__R.files().close(); return 'ok' })()`).catch(() => {})
