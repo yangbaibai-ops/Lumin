@@ -111,8 +111,15 @@ function onDragStart(e: MouseEvent): void {
       >
         <Icon name="file-plus" :size="14" />
       </button>
+      <!-- 「刷新」只在**列表视图**下出现（用户口径：保留，但只在列表视图下显示）。
+           为什么它只对列表视图有意义：树视图看的是「文件夹里有什么」，而主进程的 `fs.watch`
+           已经盯住了**结构变化**（新增 / 删除 / 改名），实测外部改动 ~0.33s 就自动进树了；
+           列表视图看的是每篇文章的**元数据**（修改时间 / 字数 / 预览），而 `fs.watch` 的
+           `change`（只改内容、不 rename）事件按设计被过滤掉了 —— 那种时候刷新才真的有事可做
+           （实测：不刷新时「修改于」不变，刷新后才变成文件真实 mtime）。
+           工作区根节点的右键菜单里另有同一动作（见 FileTree 的 onRootContextMenu）。 -->
       <button
-        v-if="files.root"
+        v-if="files.root && ui.sidebarFilesView === 'list'"
         class="icon-btn !h-6.5 !w-6.5"
         :title="t('sidebar.refresh')"
         :aria-label="t('sidebar.refresh')"
