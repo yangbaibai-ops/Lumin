@@ -95,6 +95,83 @@ async function main() {
   await ev(`(() => { window.__L.store('find').hide(); return 'ok' })()`)
   await sleep(300)
 
+  // ── 侧栏底部那条工具带（搜索 + 树/列表）：默认隐藏、悬停侧栏才出现 ────────────
+  // 用户口径：平时收起来，鼠标放到侧边栏上才显示。
+  // 它同时是一条**可访问性**问题：`visibility:hidden` 的元素不可聚焦，如果只有 `:hover`
+  // 一个显示条件，纯键盘用户就永远够不到搜索与视图切换 —— 所以这里连键盘那条路一起验。
+  const TOOLS = `(() => {
+    const el = document.querySelector('[data-sidebar-filetools]')
+    if (!el) return JSON.stringify({ missing: true })
+    const cs = getComputedStyle(el)
+    const btn = el.querySelector('[data-sidebar-search-toggle]')
+    const r = btn ? btn.getBoundingClientRect() : null
+    return JSON.stringify({
+      visibility: cs.visibility,
+      opacity: Number(cs.opacity),
+      height: Math.round(el.getBoundingClientRect().height),
+      toggleRect: r ? { w: Math.round(r.width), h: Math.round(r.height) } : null
+    })
+  })()`
+
+  // 先把指针挪到窗口右上角（远离侧栏），确保量到的是「没有悬停」的初始态
+  await app.send('Input.dispatchMouseEvent', {
+    type: 'mouseMoved',
+    x: 900,
+    y: 400,
+    button: 'none',
+    buttons: 0
+  })
+  await ev(`(() => { document.body.dispatchEvent(new MouseEvent('mousedown', { bubbles: true })); return 'ok' })()`)
+  await sleep(400)
+  const hidden = JSON.parse(await ev(TOOLS))
+  report.check(
+    'sidebar-tools-hidden-by-default',
+    hidden.visibility === 'hidden' && hidden.opacity === 0 && hidden.height > 0,
+    JSON.stringify(hidden)
+  )
+
+  // 真实指针移到侧栏上 → 显示（且仍然占位：高度不变 ⇒ 上面的树不会跳）
+  await app.send('Input.dispatchMouseEvent', {
+    type: 'mouseMoved',
+    x: 100,
+    y: 300,
+    button: 'none',
+    buttons: 0
+  })
+  await sleep(400)
+  const hovered = JSON.parse(await ev(TOOLS))
+  report.check(
+    'sidebar-tools-visible-on-hover',
+    hovered.visibility === 'visible' && hovered.opacity === 1 && hovered.height === hidden.height,
+    JSON.stringify(hovered)
+  )
+
+  // 键盘路径：指针移开（隐藏）后把焦点放进侧栏（树行）→ 工具带必须重新可见，
+  // 否则 `visibility:hidden` 让它既不可见也不可聚焦 = 纯键盘用户拿不到这两个控件。
+  await app.send('Input.dispatchMouseEvent', {
+    type: 'mouseMoved',
+    x: 900,
+    y: 400,
+    button: 'none',
+    buttons: 0
+  })
+  await sleep(400)
+  const left = JSON.parse(await ev(TOOLS))
+  const focused = await ev(`(() => {
+    const row = document.querySelector('aside [data-tree-root] [role="treeitem"], aside .tree-label')
+    if (!row) return 'no-row'
+    const el = row.closest('[tabindex]') || row
+    el.focus?.()
+    return document.activeElement === el || document.activeElement?.closest('aside') ? 'ok' : 'no-focus'
+  })()`)
+  await sleep(350)
+  const viaKeyboard = JSON.parse(await ev(TOOLS))
+  report.check(
+    'sidebar-tools-visible-when-sidebar-focused',
+    left.visibility === 'hidden' && focused === 'ok' && viaKeyboard.visibility === 'visible',
+    JSON.stringify({ afterLeave: left.visibility, focused, viaKeyboard: viaKeyboard.visibility })
+  )
+
   return report.finish()
 }
 

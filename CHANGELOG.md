@@ -72,6 +72,32 @@
 - **工程化**：~~`tools/lib/harness.js` + `tools/run-suites.js`~~ → **本轮已完成**；
   剩余：`files` store 拆分；`store` 里那份为绕循环导入而复制的 `confirmIfDirty` 收敛到 `services/dialog`。
 
+## [Unreleased · 侧栏底部那条工具带默认隐藏（鼠标放到侧栏上才出现）]
+
+> 用户口径：左侧侧边栏下方那条「搜索 + 树/列表切换」的工具，调成隐藏的，
+> 当鼠标放到侧边栏上面的时候才显示出来。
+
+### Changed
+
+- `FileTree.vue` 的底部工具带（`data-sidebar-filetools`）默认隐藏，显示规则写在
+  `assets/overlays.css`（要选到祖先 `aside:hover`，而 `aside` 不在本组件模板里，scoped 样式选不到）。
+  **三条显示条件**，后两条都是「不能把它藏没」的兜底：
+  - `aside:hover` —— 鼠标在侧栏上（用户要的那条）；
+  - `aside:focus-within` —— 键盘 Tab 进侧栏时也显示。`visibility:hidden` 的元素**不可聚焦**，
+    少了这条，纯键盘用户永远够不到搜索与视图切换（`:hover` 对键盘用户不存在）；
+  - `.filetools--pinned`（搜索框开着）—— 与文件树既有的「筛选条件不能悄悄消失」同口径：
+    失焦但筛选条件还在时，输入框不能跟着一起消失。
+- 用 `visibility` 而不是 `display`：**保持占位高度**，悬停时上面的树不会跳一行
+  （实测两态高度都是 **41px**）。
+
+### Verification
+
+- `tools/_verify-a11y.js` 6 → **9 条**（默认矩阵内）：
+  `sidebar-tools-hidden-by-default`（`visibility: hidden` / `opacity: 0` / `height: 41`）、
+  `sidebar-tools-visible-on-hover`（真实指针移到侧栏上 → `visible` / `opacity: 1` / 高度仍 41px）、
+  `sidebar-tools-visible-when-sidebar-focused`（指针移开后 `hidden` → 焦点进侧栏 → `visible`）。
+  **9/9 PASS**。
+
 ## [Unreleased · F 项 P3：收敛与调优] — 静态态不再渲染 16 个 `<option>`（1500 围栏可用 3013→1236ms、RSS 1030→800MB）
 
 > 施工图《Lumin-F项实施方案-代码块CM虚拟化》阶段 **P3「收敛与调优」**：点开即挂 / 离屏即卸

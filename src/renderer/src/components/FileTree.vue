@@ -265,11 +265,22 @@ function onDrop(e: DragEvent): void {
              切页签 / 关工作区也收起（面板是 `v-show` 常驻的，否则下次回来会「自己开着」）。
            * 分段控件仍走 `variant="quiet"`（无轨道/无边框/无投影），与外壳**同高 28px**。
            * 分隔仍是 1px `--edge` + 与页签/树行同一条竖线的 10px 内缩；
-             不加阴影、不加底色 —— 保持「安静但有结构」。 -->
+             不加阴影、不加底色 —— 保持「安静但有结构」。
+
+          ── 默认隐藏、悬停侧栏才出现（用户口径：这一条工具带平时收起来）──────────────
+          规则写在 `assets/overlays.css`（要选到祖先 `aside:hover`，而 `aside` 不在本组件的
+          模板里，scoped 样式选不到它）。三个显示条件，都是「不能把它藏没」的兜底：
+            * `aside:hover`        —— 鼠标在侧栏上（用户口径要的那条）；
+            * `aside:focus-within` —— 键盘 Tab 进侧栏（树行可聚焦）时也显示，否则纯键盘
+              用户永远够不到搜索与视图切换（`visibility:hidden` 的元素不可聚焦）；
+            * `filetools--pinned`  —— **搜索框开着**时一直显示（含「失焦但筛选条件还在」
+              那种情况）：筛选条件不能悄悄消失，这与上面那三条收起规则同一个口径。
+          用 `visibility` 而不是 `display`：保持占位高度，悬停时上面的树不会跳一行。 -->
     <div
       v-if="files.root"
       class="flex flex-none items-center gap-1.5 border-t border-edge px-2.5 pb-1.5 pt-1.5"
       data-sidebar-filetools
+      :class="{ 'filetools--pinned': searchOpen }"
     >
       <div class="flex h-7 min-w-0 flex-1 items-center">
         <div
