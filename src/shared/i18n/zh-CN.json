@@ -345,7 +345,6 @@
     "exportedTo": "已导出到：{path}",
     "createFailed": "创建失败",
     "renameFailed": "重命名失败",
-    "reopenedWithEncoding": "已按 {enc} 重新打开",
     "encodingReopenAutoSaveSkipped": "为避免把乱码写回磁盘，本次自动保存已跳过（当前是按「{enc}」重新解释的内容）；确认编码无误后请手动保存。",
     "encodingFailed": "无法按该编码重新打开",
     "encodingNeedsRestart": "编码功能需要重启应用后生效（主进程未热更新）",

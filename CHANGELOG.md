@@ -72,6 +72,26 @@
 - **工程化**：~~`tools/lib/harness.js` + `tools/run-suites.js`~~ → **本轮已完成**；
   剩余：`files` store 拆分；`store` 里那份为绕循环导入而复制的 `confirmIfDirty` 收敛到 `services/dialog`。
 
+## [Unreleased · 以其他编码重新打开不再弹通知]
+
+> 用户口径：优化通知逻辑，以其他编码打开的时候不弹出提示通知。
+
+### Changed
+
+- `stores/files.ts` 的 `reopenWithEncoding()`：去掉那条「已按 xx 编码重新打开」的 success toast。
+  口径与 `stores/ui.ts` 里「动作结果在界面上已经可见的常规成功一律不发通知」一致 ——
+  重新解释的结果**当场可见**（正文变了、状态栏那个编码格变了、菜单里当前编码打了勾）。
+  **失败仍然弹**（那是「点了没反应」的唯一反馈）。
+- 三语里的 `toast.reopenedWithEncoding` 这个 key 一并删掉（三个包同时删，保持平齐）。
+- **保留** `toast.encodingReopenAutoSaveSkipped`（乱码缓冲区 + 自动保存开着才发的那条 warning）：
+  它说的不是「我换了编码」，而是「**这次自动保存我没做**」—— 属于必须让用户知道的事。
+
+### Verification
+
+- `tools/_verify-encoding.js` 新增 `reopen-with-encoding-emits-no-notification`：用通知库的**前后差集**
+  证明重新打开**一条通知都没发**（实测 `B3-reopen-notify []`），而不是「我没看见有弹窗」。
+  该套件 **53 条：50 PASS / 0 FAIL / 3 SKIP**（SKIP 是生产构建拿不到 setupState 的既有三条）。
+
 ## [Unreleased · 侧栏底部那条工具带默认隐藏（鼠标放到侧栏上才出现）]
 
 > 用户口径：左侧侧边栏下方那条「搜索 + 树/列表切换」的工具，调成隐藏的，

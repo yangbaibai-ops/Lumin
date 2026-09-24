@@ -397,6 +397,25 @@ const SETUP = `(() => {
       JSON.stringify({ dirty: after.dirty, saved: after.saved })
     )
 
+    // ── B3. 重新打开**不发通知**（用户口径：以其他编码打开时不要弹提示）──
+    // 重新解释的结果**当场可见**（正文变了、状态栏那个编码格变了、菜单里当前编码打了勾），
+    // 与 `stores/ui.ts` 里「动作结果在界面上已经可见的常规成功一律不发通知」是同一条口径。
+    // 这里用通知库的前后差集证明「确实一条都没发」—— 而不是「我没看见有弹窗」。
+    const notifBeforeReopen = JSON.parse(await w.ev(NOTIF_SNAP))
+    await w.ev(
+      `(async () => { await window.__E.files().reopenWithEncoding('windows-1252'); return 'ok' })()`
+    )
+    await sleep(700)
+    const freshReopenNotifs = JSON.parse(await w.ev(NOTIF_SNAP)).filter(
+      (x) => !notifBeforeReopen.includes(x)
+    )
+    console.log('B3-reopen-notify ' + JSON.stringify(freshReopenNotifs))
+    c(
+      'reopen-with-encoding-emits-no-notification',
+      freshReopenNotifs.length === 0,
+      JSON.stringify(freshReopenNotifs)
+    )
+
     // ── B2. 「重新解释过的缓冲区」不许自动落盘（用户报障的数据损坏路径）──
     // 用户口径：切到 GBK 内容确实变了，但再切回 UTF-8 时显示的**不是**原来那份文字。
     // 实测：来回切本身是无损的（B 段已证），丢掉内容的是**中间有一次写盘** ——
@@ -933,13 +952,15 @@ const SETUP = `(() => {
     await sleep(500)
 
     // ── F. i18n ──
+    // 注意：这里**不再**列 `toast.reopenedWithEncoding` —— 用户口径「以其他编码打开不弹提示」
+    // 之后那条文案连同 key 一起删了（三个语言包同时删，保持平齐；B3 段断言确实一条通知都不发）。
     const KEYS = [
       ['encoding', 'auto'],
       ['menu', 'reopenWithEncoding'],
       ['settings', 'encoding'],
       ['settings', 'encodingHint'],
       ['settings', 'defaultEncoding'],
-      ['toast', 'reopenedWithEncoding'],
+      ['toast', 'encodingReopenAutoSaveSkipped'],
       ['toast', 'encodingFailed'],
       ['statusbar', 'encodingTooltip']
     ]

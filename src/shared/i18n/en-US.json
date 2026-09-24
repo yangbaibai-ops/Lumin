@@ -345,7 +345,6 @@
     "exportedTo": "Exported to: {path}",
     "createFailed": "Creation failed",
     "renameFailed": "Rename failed",
-    "reopenedWithEncoding": "Reopened as {enc}",
     "encodingReopenAutoSaveSkipped": "Auto-save skipped to avoid writing mojibake back to disk (content is currently reinterpreted as “{enc}”). Save manually once you are sure about the encoding.",
     "encodingFailed": "Could not reopen with that encoding",
     "encodingNeedsRestart": "Encoding needs an app restart to take effect (main process is not hot-reloaded)",

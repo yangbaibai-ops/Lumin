@@ -647,10 +647,13 @@ export const useFilesStore = defineStore('files', {
         this.reopenedWithEncoding = true
         this.reopenAutoSaveWarned = false
         useWorkspaceDocsStore().bumpMtime(cur.path)
-        useUiStore().toast(
-          i18n.global.t('toast.reopenedWithEncoding', { enc: encodingLabel(concrete) }),
-          'success'
-        )
+        /**
+         * **不弹「已按 xx 编码重新打开」的通知**（用户口径）。这与 `stores/ui.ts` 里
+         * 「动作结果在界面上已经可见的常规成功一律不发通知」是同一条口径 ——
+         * 重新解释的结果**当场就看得见**（正文变了、状态栏那个编码格跟着变、菜单里
+         * 当前编码打了勾），再弹一条纯属噪声。
+         * 失败仍然弹（见下面的 catch）：那条是「点了没反应」的唯一反馈。
+         */
         return true
       } catch (err) {
         // 带上原因，别让用户和后来的我们都只能看到一句「失败了」（真出问题时这条日志就是线索）
