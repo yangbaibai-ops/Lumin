@@ -18,11 +18,15 @@ export interface OutlineItem {
 }
 
 /**
- * 点目录之后的「高亮锁」时长（ms）：这段时间内**只认用户点的那一条**，
- * 滚动侦测不许改 `activeHeading`（理由见 state 里 `activePinnedUntil` 的注释）。
- * 800ms 的取法：平滑滚动本身约 300–500ms + 滚动侦测那 80ms 防抖 + 一点余量。
+ * 点目录/大纲后的「高亮锁」：**锁住期间滚动侦测不许改 `activeHeading`**，只认用户点的那一条。
+ *
+ * 为什么是布尔锁而不是「N 毫秒后自动解锁」（第二轮报障的根因）：平滑滚动落地后侦测立刻重算，
+ * 而末屏那几个标题压不到判定线 ⇒ 高亮被挪到「判定线算出来的那条」（点倒数第三、亮到倒数第四）。
+ * 现在解锁只发生在**用户自己的滚动意图**上：`wheel` / `touchstart` / 按下指针 / 按键
+ * （见 `TyporaEditor.vue` 模板上的四个监听器都调 `releaseActiveHeadingPin()`）。
  */
-const ACTIVE_PIN_MS = 800
+export const ACTIVE_PIN_NOTE =
+  '点目录时锁住高亮；用户自己滚动（wheel/触摸/指针/按键）才解锁 —— 见 releaseActiveHeadingPin()'
 
 export const useEditorStore = defineStore('editor', {
   state: () => ({
@@ -49,16 +53,10 @@ export const useEditorStore = defineStore('editor', {
     outline: [] as OutlineItem[],
     activeHeading: -1,
     /**
-     * 点目录之后的**高亮锁**截止时间戳（`Date.now()` 毫秒）。
-     *
-     * 为什么需要它（用户报障）：滚动侦测（`TyporaEditor.onScroll`）按「滚动容器上沿往下 90px
-     * 那条线」决定当前章节 —— 而**文档最后一屏**里最后几个标题都在这条线下面。点最后一个标题
-     * 时容器已经滚到底、那条线落在倒数第三个标题上，于是高亮被侦测结果覆盖回倒数第三条
-     * （「本应最后一条高亮，目录却回到倒数第三」）。
-     * 现在：点击**立刻**点亮被点的那条并锁住一小段；真实滚动（wheel / touch）会提前解锁，
-     * 到期也自动解锁 —— 锁不是永久的，用户一滚就回到「跟随阅读位置」。
+     * 「点目录的高亮锁」是否生效 —— 见 `ACTIVE_PIN_NOTE`。
+     * `applyActive()`（编辑器卸载/切模式/换文档）会复位，避免它跨文档残留。
      */
-    activePinnedUntil: 0,
+    activePinned: false,
     /** 大纲防抖定时器（见 scheduleRefreshOutline；`_` 前缀表示不是对外状态） */
     _outlineTimer: null as ReturnType<typeof setTimeout> | null
   }),
@@ -134,6 +132,8 @@ export const useEditorStore = defineStore('editor', {
         this.outline = []
         this.activeHeading = -1
       }
+      // 换文档 / 切模式 / 卸载编辑器时把「点目录的高亮锁」也复位，别让它跨文档残留
+      this.activePinned = false
     },
     refreshOutline(): void {
       const editor = this.instance ?? this.editor
@@ -181,14 +181,14 @@ export const useEditorStore = defineStore('editor', {
       const editor = this.instance ?? this.editor
       if (!editor || !this.active) return
       /**
-       * 立刻点亮被点的那一条 + 上锁（用户报障的那一条）：
+       * 立刻点亮被点的那一条 + **上锁**（用户两轮报障都是这一条）：
        *   * **立刻**：平滑滚动要 300–500ms，期间滚动侦测会一路把高亮带到中途经过的章节上；
-       *     点完马上亮才是「我点的就是它」；
-       *   * **上锁**：文档最后一屏那几个标题都在 90px 判定线之下，锁之外会被侦测结果覆盖
-       *     （倒数第三）。锁在真实滚动或到期时释放，见 `activePinnedUntil`。
+       *     点完马上亮才是「我点的就是它」。
+       *   * **上锁**：末屏那几个标题压不到判定线，解锁后侦测会把高亮挪走（点倒数第三、亮到
+       *     倒数第四）。锁只在**用户自己滚动**时释放，见 `releaseActiveHeadingPin()`。
        */
       this.activeHeading = pos
-      this.activePinnedUntil = Date.now() + ACTIVE_PIN_MS
+      this.activePinned = true
       const view = editor.view
       const container = view.dom.closest('.editor-scroll') as HTMLElement | null
       const before = container?.scrollTop ?? 0
@@ -201,17 +201,31 @@ export const useEditorStore = defineStore('editor', {
         (at.node.nodeType === Node.TEXT_NODE ? at.node.parentElement : (at.node as HTMLElement)) ??
         null
       if (!target) return
-      // 下一帧再滚：排在 Tiptap 排队的那次 focus 之后，避免动画被它打断
-      // （页面不可见时 rAF 不会触发，此时直接瞬时定位，免得回前台才莫名滚动）
-      if (document.hidden) smoothScrollToElement(container, target)
-      else requestAnimationFrame(() => smoothScrollToElement(container, target))
+      /**
+       * 下一帧再滚：排在 Tiptap 那次 `focus()` 排队的瞬时滚动之后，避免动画被它打断。
+       *
+       * ⚠️ **不能只依赖 rAF**（实测踩到）：窗口被别的窗口遮住时 Chromium 可能根本不派发
+       * rAF 回调，而 `document.hidden` 仍是 false —— 于是点目录**完全没反应**（探针里量到
+       * `scrollTop` 一直是 0）。所以 rAF 与一个 120ms 的兜底定时器**谁先到谁生效**（只跑一次）。
+       */
+      let kicked = false
+      const kick = (): void => {
+        if (kicked) return
+        kicked = true
+        smoothScrollToElement(container, target)
+      }
+      if (document.hidden) kick()
+      else {
+        requestAnimationFrame(kick)
+        setTimeout(kick, 120)
+      }
     },
     /**
-     * 提前释放「点目录的高亮锁」：真实滚动（wheel / touch）时调用 ——
-     * 用户一旦自己滚，就说明他想看的是「跟随阅读位置」，锁必须让位。
+     * 释放「点目录的高亮锁」：**用户自己的滚动意图**发生时调用（wheel / 触摸 / 按下指针 / 按键）
+     * —— 一旦用户自己滚，就说明他想看的是「跟随阅读位置」，锁必须让位。
      */
     releaseActiveHeadingPin(): void {
-      this.activePinnedUntil = 0
+      this.activePinned = false
     }
   }
 })

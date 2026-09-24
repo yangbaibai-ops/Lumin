@@ -6,6 +6,7 @@ import { buildEditorExtensions } from '../../lib/editor/extensions'
 import { openLinkTarget } from '../../lib/linkOpen'
 import { getMarkdown } from '../../lib/editor/markdownStorage'
 import { deferAfterPmEvent } from '../../lib/editor/defer'
+import { activeHeadingIndex } from '../../lib/editor/scrollSpy'
 import { allowRemoteImage } from '../../lib/remoteImages'
 import { useEditorStore } from '../../stores/editor'
 import { useFilesStore } from '../../stores/files'
@@ -171,14 +172,13 @@ function syncNow(): void {
 watch(() => files.contentRev, applyStoreContent)
 
 // ── 大纲滚动联动 ──
-// 判定规则：**滚动容器上沿往下 90px 那条线**上方最后一个标题 = 当前章节。
-// 边界规则（用户报障「点最后一个标题，目录却高亮倒数第三」）：
-//   * 文档最后一屏里常常有好几个标题都落在 90px 线**下面**，于是那条线一直停在倒数第三个
-//     标题所属的章节上 —— 光靠 90px 规则，最末尾那几节永远轮不到高亮。补一条**到底即点亮
-//     最后一条**：滚动区域真的滚到底（1px 容差，躲开亚像素）时，当前章节就是最后一节。
-//     ⚠️ 必须先确认**可滚动**：短文档 scrollHeight ≈ clientHeight，不加这条会在没滚动的情况下
-//     就点亮最后一条（整篇都在首屏里时，正确的答案是第一条，不是最后一条）。
-//   * 刚点过目录时用 store 的 `activePinnedUntil` 挡住侦测（点的那条必须亮着，见那里注释）。
+// 判定规则抽在 `lib/editor/scrollSpy.ts`（纯函数 + 单测）：判定线（容器上沿往下 90px）之上最后
+// 一个标题 = 当前章节；文档末尾那几节压不到判定线时**按剩余滚动距离等分**依次点亮
+// （用户两轮报障的边界：旧行为是停在倒数第四；加个「到底就跳最后」的补丁又会跳过中间两节）。
+//
+// ⚠️ 刚点过目录时用 store 的 `activePinned` 挡住侦测：**点的那条必须亮着**，直到用户自己滚动
+// （wheel / 触摸 / 按键 / 按下指针）为止 —— 之前是「800ms 后自动解锁」，结果平滑滚动落地后侦测
+// 立刻把高亮从我点的那条挪走（用户第二轮报障：点倒数第三、亮到倒数第四）。
 let outlineTimer: ReturnType<typeof setTimeout> | null = null
 function onScroll(e: Event): void {
   if (outlineTimer) return
@@ -187,21 +187,16 @@ function onScroll(e: Event): void {
     outlineTimer = null
     const ed2 = editor.value
     if (!ed2) return
-    // 点目录之后的一小段「高亮锁」：这段时间只认用户点的那一条
-    if (Date.now() < editorStore.activePinnedUntil) return
-    const container = el.getBoundingClientRect().top
+    if (editorStore.activePinned) return // 用户点的那条还没让位（见 store 的注释）
+    const cTop = el.getBoundingClientRect().top
     const outline = editorStore.outline
-    let active = -1
-    for (const item of outline) {
-      const top = ed2.view.coordsAtPos(item.pos).top
-      if (top - container <= 90) active = item.pos
-      else break
-    }
-    const scrollable = el.scrollHeight > el.clientHeight + 1
-    if (scrollable && outline.length && el.scrollTop + el.clientHeight >= el.scrollHeight - 1) {
-      active = outline[outline.length - 1].pos
-    }
-    editorStore.activeHeading = active
+    const tops = outline.map((it) => ed2.view.coordsAtPos(it.pos).top - cTop)
+    const idx = activeHeadingIndex({
+      tops,
+      scrollTop: el.scrollTop,
+      maxScroll: el.scrollHeight - el.clientHeight
+    })
+    editorStore.activeHeading = idx < 0 ? -1 : outline[idx].pos
   }, 80)
 }
 
@@ -288,6 +283,8 @@ defineExpose({ editor, syncNow })
       @scroll.passive="onScroll"
       @wheel.passive="editorStore.releaseActiveHeadingPin()"
       @touchstart.passive="editorStore.releaseActiveHeadingPin()"
+      @pointerdown="editorStore.releaseActiveHeadingPin()"
+      @keydown="editorStore.releaseActiveHeadingPin()"
     >
       <div
         class="mx-auto transition-all duration-300"
