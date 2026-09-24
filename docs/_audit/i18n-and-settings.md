@@ -79,7 +79,7 @@
 | `toast.eolChanged` | `{eol}` |
 | `toast.exportedTo` | `{path}` |
 | `toast.historyRestored` | `{time}` |
-| `toast.reopenedWithEncoding` | `{enc}`（`toast.savedWithEncoding` 已随通知降噪删除） |
+| `toast.reopenedWithEncoding` | **已删**（`toast.savedWithEncoding` 之后，同样随通知降噪删除：用户口径「以其他编码打开不弹提示」；`toast.encodingReopenAutoSaveSkipped` 是另一回事 —— 它说的是「这次自动保存我没做」） |
 | `update.availableBody` / `update.downloadedBody` | `{version}` |
 | `update.errorBody` | `{message}` |
 

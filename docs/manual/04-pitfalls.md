@@ -795,17 +795,19 @@ UTF-16 在写回时**总是补 BOM**：没有 BOM 的 UTF-16 文件几乎无法�
 - **文件 → 选择编码重新打开**（一级）→ 悬停二级：**自动检测 + 全部编码**，**当前生效的那个打勾并高亮**（沿用「导出」二级菜单的结构与样式，新增 `active` 标记）；
 - **状态栏**：文档打开时在统计与主题切换之间显示当前编码名（专有名，如 `GBK`）+ tooltip。
 
-`stores/files.reopenWithEncoding()` 三个要点：脏文档先问（就地写 `ui.confirm`，**没有**引 `composables/useAppActions.confirmIfDirty`——那个模块反过来依赖本 store，会循环导入）；换进来时 **savedContent 一起更新 = 标记为干净**（语义是「重新解释磁盘字节」，磁盘没变，不该留成未保存态）；成功 toast（`toast.reopenedWithEncoding` 带 `{enc}`）。保存按当前编码 + `hadBom` 写回（`file:write(p, content, encoding, hadBom)`），UTF-8 BOM 文件存完 BOM 仍在。
+`stores/files.reopenWithEncoding()` 三个要点：脏文档先问（就地写 `ui.confirm`，**没有**引 `composables/useAppActions.confirmIfDirty`——那个模块反过来依赖本 store，会循环导入）；换进来时 **savedContent 一起更新 = 标记为干净**（语义是「重新解释磁盘字节」，磁盘没变，不该留成未保存态）；**不弹成功 toast**（用户口径「以其他编码打开不弹提示」—— 重新解释的结果当场可见：正文变了、状态栏编码格变了、菜单里当前编码打了勾；失败仍弹）。保存按当前编码 + `hadBom` 写回（`file:write(p, content, encoding, hadBom)`），UTF-8 BOM 文件存完 BOM 仍在。
 
-**验收**：`tools/_verify-encoding.js` **34/34**（隔离实例 + Node/iconv-lite 写出的真实夹具 + 真实指针点击）：
+**验收**：`tools/_verify-encoding.js` **53 条（50 PASS / 0 FAIL / 3 SKIP）**（隔离实例 + Node/iconv-lite 写出的真实夹具 + 真实指针点击；3 条 SKIP 是生产构建拿不到 `setupState` 的既有项，同一行为有 DOM 断言）：
 
 - **解码**：UTF-8 → `utf-8`；UTF-8 BOM → `utf-8-bom` 且 `hadBom=true`（正文不含 BOM 字符）；UTF-16LE(BOM) → `utf-16le`；GBK 正文与期望**逐字相等**（中文系统判定为 `gb18030`，GBK 超集，允许两者之一）；Shift_JIS / Windows-1251 用显式编码打开，正文与编码都对；三条自动检测（两种 UTF-8 + UTF-16LE）全判对。
 - **显式选择压过 BOM**（复核时补的 3 条）：带 BOM 的文件显式按 `windows-1252` 打开 → 正文确实变了（不再等于 UTF-8 文本）、`hadBom=false`（即菜单对 BOM 文件不再是「点了没反应」）；`reopenWithEncoding('utf-8')` → 正文干净（首字符码点 35 而非 `U+FEFF`）、`hadBom=false`、`dirty=false`，随后保存 → 文件头前三字节变成 `[35, 32, 228]`（BOM 被去掉）；断言后把夹具还原成带 BOM，供后面「保存保留 BOM」的用例继续验。
 - **重新打开**：`reopenWithEncoding('windows-1252')` 打开 GBK 文件 → 正文确实乱码（`# ÖÐÎÄ G…`）；再 `reopenWithEncoding('gbk')` → 正文恢复、`encoding='gbk'`、**`dirty === false`**。
+- **重新打开不发通知**（B3，用户口径）：用通知库的**前后差集**证明重新打开一条通知都没发（`B3-reopen-notify []`）—— 不是「我没看见有弹窗」。
+- **乱码缓冲区不许落盘**（B2，数据损坏那条路）：按错误编码重新解释后继续编辑、自动保存开着 → 磁盘 59 字节一个没动、warning 通知点名当前编码且只发一次；手动保存先弹 danger 确认（`pending:"pending"` 时确实没写），取消 → `saveResult:false`、磁盘不动、标记继续武装；确认 → 写入的正是屏幕上那份文字（`sameAsBuffer:true`）、标记清除、第二次保存不再问。
 - **保存回写**：GBK 文件改内容保存 → 磁盘 80 字节、`iconv.decode(bytes,'gbk')` 与文本完全相等，且这些字节**不等于** UTF-8 编码（没偷偷写成 UTF-8）；UTF-8 BOM 文件保存后前三字节仍是 `EF BB BF`，其余等于新文本。
 - **设置生效**：同一串字节 `C4 E3 BA C3` 在两种编码下都合法 → 默认编码 `gbk` 解出「你好」、`windows-1252` 解出「ÄãºÃ」，两次不同且各自正确；**node:sqlite 直读隔离实例 DB** 断言 `settings.defaultEncoding === 'windows-1252'` 已落库，`fileEncodings` 记忆表 5 条。
 - **菜单**：`setupState.GROUPS` 里文件菜单含 `menu.reopenWithEncoding`，二级 **14 项**且 `active` 恰为 `['GBK']`；同时用真实指针展开做 DOM 断言（14 行、GBK 行 `bg-accent-soft` + 打勾、其余无勾）；**真实点击**「Windows-1252」→ `files.current.encoding` 变为 `windows-1252` 且正文变乱码。
-- **i18n**：三语 8 个 key 齐全；切到 `en-US` 后重开菜单，一级项文本变成 `Reopen with Encoding`。
+- **i18n**：三语 8 个 key 齐全（`toast.reopenedWithEncoding` 已随「不弹提示」删除，换成 `toast.encodingReopenAutoSaveSkipped`）；切到 `en-US` 后重开菜单，一级项文本变成 `Reopen with Encoding`。
 - **状态栏**：`[data-status-encoding]` 文本含 `GBK`，title 是那句 tooltip。
 
 **回归**：打开落点 22/22、会话 16/16、另存为切工作区 17/17、工具栏去文件名 12/12、导出二级菜单 15/15、目录样式与平滑滚动 23/23；`npm run typecheck` 两工程 0 error；改动文件 eslint 0 error（`src/main/fileOps.ts` 那条 `no-useless-escape` 是既有正则的存量问题，不在本次 diff 内）。
