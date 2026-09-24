@@ -383,6 +383,18 @@ function close(): void {
   active.value = null
 }
 
+/**
+ * 悬停一级菜单：**已经有菜单展开时**跟随鼠标切到另一个一级菜单（原生菜单栏的行为）。
+ *
+ * 用户口径：打开「文件」并保持展开，鼠标移到「编辑」时「编辑」也要展开。
+ * 刻意加了 `if (!active.value) return` 这个前提 —— 没有展开时悬停不该弹出菜单，
+ * 否则鼠标从工具栏划过就会一路弹出好几层（那是另一种毛病，不是原生行为）。
+ */
+function onGroupHover(g: Group): void {
+  if (!active.value || active.value.key === g.key) return
+  openGroup(g)
+}
+
 async function runLeaf(leaf: Leaf): Promise<void> {
   close()
   try {
@@ -492,6 +504,8 @@ onBeforeUnmount(() => {
         :ref="(el) => setBtnRef(g.key, el as Element | null)"
         class="rounded-md px-2 py-0.5 transition-colors"
         :class="active?.key === g.key ? 'bg-panel-2 text-ink' : 'hover:bg-panel-2 hover:text-ink'"
+        :data-topmenu-group="g.key"
+        @mouseenter="onGroupHover(g)"
         @click="active?.key === g.key ? close() : openGroup(g)"
       >
         {{ t(g.labelKey) }}

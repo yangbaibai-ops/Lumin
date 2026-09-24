@@ -72,6 +72,27 @@
 - **工程化**：~~`tools/lib/harness.js` + `tools/run-suites.js`~~ → **本轮已完成**；
   剩余：`files` store 拆分；`store` 里那份为绕循环导入而复制的 `confirmIfDirty` 收敛到 `services/dialog`。
 
+## [Unreleased · 顶部菜单像原生菜单栏一样「悬停跟随切换」]
+
+> 用户口径：当顶部工具栏打开的状态可以切换 —— 比如打开「文件」、「文件」是展开的，
+> 在展开的时候移动到「编辑」，「编辑」也会展开，就像原生工具栏一样的行为。
+
+### Changed
+
+- `TopMenuBar.vue`：一级菜单加 `@mouseenter="onGroupHover(g)"` —— **已经有菜单展开时**
+  跟随鼠标切到另一个一级菜单（真实指针实测：悬停前弹层 `left: 8`、首项「新建」；
+  悬停「编辑」后 `left: 66`、首项「撤销」，且「编辑」按钮拿到高亮态）。
+  刻意保留 `if (!active.value) return`：没有展开时悬停**不该**弹菜单，
+  否则鼠标从工具栏划过就会一路弹出好几层 —— 那不是原生行为。
+- 一级按钮加 `data-topmenu-group`（断言与定位用；既有套件用的 `.topmenu-root > button` 选择器不受影响）。
+
+### Verification
+
+- `tools/_verify-new-document.js` 23 → **25 条**（默认矩阵内）：
+  `topmenu-hover-switches-open-group`（用**真实指针** `Input.dispatchMouseEvent` 的 `mouseMoved`，
+  不是合成 click —— 要验的就是 hover 这条路径）、
+  `topmenu-hover-does-not-open-when-closed`（关掉菜单后划过不再弹）。**25/25 PASS**。
+
 ## [Unreleased · 以其他编码重新打开不再弹通知]
 
 > 用户口径：优化通知逻辑，以其他编码打开的时候不弹出提示通知。

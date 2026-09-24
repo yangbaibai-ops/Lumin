@@ -298,6 +298,90 @@ async function clickFileMenuItem(w, label) {
       JSON.stringify(menuItems)
     )
 
+    // ── ①b 顶部菜单栏：已有菜单展开时，鼠标移到相邻一级菜单要**跟着切换**（原生菜单栏行为）──
+    //   用户口径：打开「文件」保持展开，鼠标移到「编辑」时「编辑」也要展开。
+    //   这里必须用**真实指针**（Input.dispatchMouseEvent 的 mouseMoved）而不是合成 click ——
+    //   要验的就是 hover 这条路径。两条断言：展开时跟随切换 / 没展开时划过不弹。
+    await w1.send('Page.bringToFront').catch(() => {})
+    await sleep(200)
+    const hoverGeom = JSON.parse(
+      await w1.ev(`(() => {
+        const t = window.__N.app.config.globalProperties.$t
+        const btns = [...document.querySelectorAll('.topmenu-root > button')]
+        const f = btns.find((b) => (b.textContent || '').trim() === t('menu.file'))
+        const e = btns.find((b) => (b.textContent || '').trim() === t('menu.edit'))
+        if (!f || !e) return 'null'
+        f.click()
+        const fr = f.getBoundingClientRect()
+        const er = e.getBoundingClientRect()
+        return JSON.stringify({
+          fileX: Math.round(fr.left + fr.width / 2),
+          y: Math.round(fr.top + fr.height / 2),
+          editX: Math.round(er.left + er.width / 2)
+        })
+      })()`)
+    )
+    await sleep(450)
+    const dropOpen = JSON.parse(
+      await w1.ev(`(() => {
+        const d = document.querySelector('.topmenu-drop')
+        return d
+          ? JSON.stringify({
+              left: Math.round(d.getBoundingClientRect().left),
+              first: (d.querySelector('button')?.textContent || '').trim()
+            })
+          : 'null'
+      })()`)
+    )
+    await w1.send('Input.dispatchMouseEvent', {
+      type: 'mouseMoved',
+      x: hoverGeom.editX,
+      y: hoverGeom.y,
+      button: 'none',
+      buttons: 0
+    })
+    await sleep(450)
+    const afterHover = JSON.parse(
+      await w1.ev(`(() => {
+        const t = window.__N.app.config.globalProperties.$t
+        const d = document.querySelector('.topmenu-drop')
+        const e = [...document.querySelectorAll('.topmenu-root > button')].find(
+          (b) => (b.textContent || '').trim() === t('menu.edit')
+        )
+        return d
+          ? JSON.stringify({
+              left: Math.round(d.getBoundingClientRect().left),
+              first: (d.querySelector('button')?.textContent || '').trim(),
+              editActive: e ? e.className.includes('bg-panel-2') : null
+            })
+          : 'null'
+      })()`)
+    )
+    const undoLabel = await w1.ev(`window.__N.app.config.globalProperties.$t('menu.undo')`)
+    console.log('TOPMENU-HOVER ' + JSON.stringify({ hoverGeom, dropOpen, afterHover, undoLabel }))
+    c(
+      'topmenu-hover-switches-open-group',
+      !!dropOpen &&
+        !!afterHover &&
+        afterHover.first === undoLabel &&
+        afterHover.left > dropOpen.left &&
+        afterHover.editActive === true,
+      JSON.stringify({ opened: dropOpen, hovered: afterHover })
+    )
+    // 关掉菜单后再划一次：**没有展开时悬停不该弹菜单**（否则鼠标划过工具栏会一路弹）
+    await w1.ev(`(() => { document.body.dispatchEvent(new MouseEvent('mousedown', { bubbles: true })); return 'ok' })()`)
+    await sleep(350)
+    await w1.send('Input.dispatchMouseEvent', {
+      type: 'mouseMoved',
+      x: hoverGeom.fileX,
+      y: hoverGeom.y,
+      button: 'none',
+      buttons: 0
+    })
+    await sleep(300)
+    const noDrop = await w1.ev(`!document.querySelector('.topmenu-drop')`)
+    c('topmenu-hover-does-not-open-when-closed', noDrop === true, String(noDrop))
+
     // 真实点这条菜单项 → 新窗口
     await clickFileMenuItem(w1, newLabel)
     const n1 = await freshWindow()
