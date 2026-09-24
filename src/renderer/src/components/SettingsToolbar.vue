@@ -128,7 +128,7 @@ onBeforeUnmount(() => {
 <template>
   <section
     ref="sectionRef"
-    class="surface mb-4 p-5 transition-shadow duration-300"
+    class="set-card transition-shadow duration-300"
     :class="highlight ? 'ring-2 ring-accent' : ''"
     data-setting-toolbar
   >
@@ -147,112 +147,121 @@ onBeforeUnmount(() => {
       />
     </div>
 
-    <div class="mt-5 border-t border-edge pt-4">
-      <div class="mb-3 flex items-center justify-between gap-3">
-        <p class="text-[13px] font-semibold text-ink">{{ t('toolbar.adjust') }}</p>
+    <!-- 19 项的排序/显隐是**低频**操作（用户口径：该折叠的折叠）⇒ 默认收起，
+         只留一行「调整工具项 (19/19)」；展开后才是那一长列。 -->
+    <details class="set-fold set-fold--plain mt-2" data-setting-toolbar-fold>
+      <summary>
+        <Icon name="chevron-right" :size="13" class="set-fold-chevron" />
+        {{ t('toolbar.adjust') }}
+        <span class="set-fold-hint">{{
+          t('toolbar.shownCount', { n: shown.length, total: TOOLBAR_ITEMS.length })
+        }}</span>
+        <span class="flex-1" />
         <button
-          class="btn btn-outline flex-none px-3 py-1.5 text-[12.5px]"
+          class="btn btn-outline flex-none px-2.5 py-1 text-[12px]"
           :disabled="toolbarOff"
           :title="t('toolbar.reset')"
           data-setting-toolbar-reset
-          @click="reset"
+          @click.prevent="reset"
         >
-          <Icon name="refresh" :size="13" />
+          <Icon name="refresh" :size="12" />
           {{ t('toolbar.reset') }}
         </button>
-      </div>
+      </summary>
 
       <!-- 已显示：顺序即工具栏上的顺序，同组内可上/下移 -->
-      <div class="rounded-xl border border-edge" :class="toolbarOff ? 'opacity-50' : ''">
-        <div class="border-b border-edge px-3 py-2 text-[11.5px] text-ink-3">
-          {{ t('toolbar.shownCount', { n: shown.length, total: TOOLBAR_ITEMS.length }) }}
+      <div class="set-fold-body">
+        <div class="rounded-xl border border-edge" :class="toolbarOff ? 'opacity-50' : ''">
+          <div class="border-b border-edge px-3 py-2 text-[11.5px] text-ink-3">
+            {{ t('toolbar.shownCount', { n: shown.length, total: TOOLBAR_ITEMS.length }) }}
+          </div>
+
+          <p
+            v-if="!shown.length"
+            class="px-3.5 py-5 text-center text-[12.5px] text-ink-3"
+            data-setting-toolbar-empty
+          >
+            {{ t('toolbar.allHidden') }}
+          </p>
+
+          <template v-for="(d, i) in shown" :key="d.id">
+            <!-- 分组小标题：让「同组才能换序」这条规则在界面上可见 -->
+            <p
+              v-if="i === 0 || shown[i - 1].group !== d.group"
+              class="px-3 pt-2.5 text-[11px] font-medium text-ink-3"
+            >
+              {{ t(groupLabelKeys[d.group]) }}
+            </p>
+            <div
+              class="flex items-center gap-2 px-3 py-1.5"
+              :class="i === shown.length - 1 ? '' : 'border-b border-edge/60'"
+              :data-setting-toolbar-item="d.id"
+            >
+              <span class="flex h-6 w-6 flex-none items-center justify-center text-ink-3">
+                <Icon :name="d.icon" :size="14" />
+              </span>
+              <span class="min-w-0 flex-1 truncate text-[13px] text-ink">{{ labelOf(d) }}</span>
+              <button
+                class="icon-btn h-6 w-6"
+                :disabled="toolbarOff || !canMove(d.id, -1)"
+                :title="t('toolbar.moveUp')"
+                :aria-label="t('toolbar.moveUp')"
+                @click="move(d.id, -1)"
+              >
+                <Icon name="chevron-up" :size="13" />
+              </button>
+              <button
+                class="icon-btn h-6 w-6"
+                :disabled="toolbarOff || !canMove(d.id, 1)"
+                :title="t('toolbar.moveDown')"
+                :aria-label="t('toolbar.moveDown')"
+                @click="move(d.id, 1)"
+              >
+                <Icon name="chevron-down" :size="13" />
+              </button>
+              <button
+                class="icon-btn h-6 w-6"
+                :disabled="toolbarOff"
+                :title="t('toolbar.hideItem')"
+                :aria-label="t('toolbar.hideItem')"
+                @click="hide(d.id)"
+              >
+                <Icon name="x" :size="13" />
+              </button>
+            </div>
+          </template>
         </div>
 
-        <p
-          v-if="!shown.length"
-          class="px-3.5 py-5 text-center text-[12.5px] text-ink-3"
-          data-setting-toolbar-empty
-        >
-          {{ t('toolbar.allHidden') }}
-        </p>
-
-        <template v-for="(d, i) in shown" :key="d.id">
-          <!-- 分组小标题：让「同组才能换序」这条规则在界面上可见 -->
-          <p
-            v-if="i === 0 || shown[i - 1].group !== d.group"
-            class="px-3 pt-2.5 text-[11px] font-medium text-ink-3"
-          >
-            {{ t(groupLabelKeys[d.group]) }}
-          </p>
+        <!-- 未显示：点「加入」即按目录顺序回到工具栏 -->
+        <div v-if="hidden.length" class="mt-3 rounded-xl border border-dashed border-edge">
+          <div class="border-b border-edge/60 px-3 py-2 text-[11.5px] text-ink-3">
+            {{ t('toolbar.hiddenCount', { n: hidden.length }) }}
+          </div>
           <div
+            v-for="(d, i) in hidden"
+            :key="d.id"
             class="flex items-center gap-2 px-3 py-1.5"
-            :class="i === shown.length - 1 ? '' : 'border-b border-edge/60'"
-            :data-setting-toolbar-item="d.id"
+            :class="i === hidden.length - 1 ? '' : 'border-b border-edge/60'"
+            :data-setting-toolbar-hidden-item="d.id"
           >
             <span class="flex h-6 w-6 flex-none items-center justify-center text-ink-3">
               <Icon :name="d.icon" :size="14" />
             </span>
-            <span class="min-w-0 flex-1 truncate text-[13px] text-ink">{{ labelOf(d) }}</span>
-            <button
-              class="icon-btn h-6 w-6"
-              :disabled="toolbarOff || !canMove(d.id, -1)"
-              :title="t('toolbar.moveUp')"
-              :aria-label="t('toolbar.moveUp')"
-              @click="move(d.id, -1)"
-            >
-              <Icon name="chevron-up" :size="13" />
-            </button>
-            <button
-              class="icon-btn h-6 w-6"
-              :disabled="toolbarOff || !canMove(d.id, 1)"
-              :title="t('toolbar.moveDown')"
-              :aria-label="t('toolbar.moveDown')"
-              @click="move(d.id, 1)"
-            >
-              <Icon name="chevron-down" :size="13" />
-            </button>
+            <span class="min-w-0 flex-1 truncate text-[13px] text-ink-2">{{ labelOf(d) }}</span>
             <button
               class="icon-btn h-6 w-6"
               :disabled="toolbarOff"
-              :title="t('toolbar.hideItem')"
-              :aria-label="t('toolbar.hideItem')"
-              @click="hide(d.id)"
+              :title="t('toolbar.showItem')"
+              :aria-label="t('toolbar.showItem')"
+              @click="show(d.id)"
             >
-              <Icon name="x" :size="13" />
+              <Icon name="plus" :size="13" />
             </button>
           </div>
-        </template>
-      </div>
-
-      <!-- 未显示：点「加入」即按目录顺序回到工具栏 -->
-      <div v-if="hidden.length" class="mt-3 rounded-xl border border-dashed border-edge">
-        <div class="border-b border-edge/60 px-3 py-2 text-[11.5px] text-ink-3">
-          {{ t('toolbar.hiddenCount', { n: hidden.length }) }}
         </div>
-        <div
-          v-for="(d, i) in hidden"
-          :key="d.id"
-          class="flex items-center gap-2 px-3 py-1.5"
-          :class="i === hidden.length - 1 ? '' : 'border-b border-edge/60'"
-          :data-setting-toolbar-hidden-item="d.id"
-        >
-          <span class="flex h-6 w-6 flex-none items-center justify-center text-ink-3">
-            <Icon :name="d.icon" :size="14" />
-          </span>
-          <span class="min-w-0 flex-1 truncate text-[13px] text-ink-2">{{ labelOf(d) }}</span>
-          <button
-            class="icon-btn h-6 w-6"
-            :disabled="toolbarOff"
-            :title="t('toolbar.showItem')"
-            :aria-label="t('toolbar.showItem')"
-            @click="show(d.id)"
-          >
-            <Icon name="plus" :size="13" />
-          </button>
-        </div>
-      </div>
 
-      <p class="mt-3 text-[11.5px] leading-relaxed text-ink-3">{{ t('toolbar.hint') }}</p>
-    </div>
+        <p class="mt-3 text-[11.5px] leading-relaxed text-ink-3">{{ t('toolbar.hint') }}</p>
+      </div>
+    </details>
   </section>
 </template>

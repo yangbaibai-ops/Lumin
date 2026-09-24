@@ -311,6 +311,33 @@ async function main() {
     JSON.stringify({ closeLabel: c1.closeLabel })
   )
 
+  // C1b 居中 + 最大宽度（用户口径：聚焦在界面正中间并设最大宽度，侧边栏与设置项别离太远）
+  const geom = await ev(`(() => {
+    const card = document.querySelector('.settings-card')
+    const nav = document.querySelector('.settings-nav')
+    const body = document.querySelector('.settings-body')
+    const cr = card.getBoundingClientRect(), nr = nav.getBoundingClientRect(), br = body.getBoundingClientRect()
+    return JSON.stringify({
+      win: window.innerWidth,
+      cardW: Math.round(cr.width),
+      left: Math.round(cr.left),
+      expectedLeft: Math.round((window.innerWidth - cr.width) / 2),
+      gap: Math.round(br.left - nr.right),
+      navW: Math.round(nr.width)
+    })
+  })()`).then(JSON.parse)
+  console.log('C1b ' + JSON.stringify(geom))
+  report.check(
+    'C 设置卡居中且宽度封顶 980px',
+    geom.cardW <= 980 && Math.abs(geom.left - geom.expectedLeft) <= 2,
+    JSON.stringify(geom)
+  )
+  report.check(
+    'C 左导航与内容区相邻（不再左右分离）',
+    geom.gap <= 2 && geom.navW <= 220,
+    JSON.stringify({ gap: geom.gap, navW: geom.navW })
+  )
+
   // 切页签：内容跟着换（整页的导航仍然按同一套状态工作）
   await ev(`(() => { const b = [...document.querySelectorAll('.settings-nav-item')].find((x) => x.textContent.includes('外观')); b && b.click(); return 'ok' })()`)
   await sleep(500)

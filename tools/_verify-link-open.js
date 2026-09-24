@@ -767,6 +767,16 @@ async function main() {
   // ── I. 设置 → 链接页签（真实点击）────────────────────────────────────────
   await ev(`(() => { window.__vt.ui().openSettings('links'); return 'ok' })()`)
   await sleep(700)
+  // ⚠️ 本轮起「打开历史」默认**折叠**（用户口径：该折叠的折叠）—— 折叠时里面的行
+  //    没有布局（getBoundingClientRect 全 0），真实点击会落空，所以先展开再量。
+  const histFold = await ev(`(() => {
+    const d = document.querySelector('[data-links-history-fold]')
+    if (!d) return 'no-fold'
+    d.open = true
+    return d.open === true ? 'opened' : 'failed'
+  })()`)
+  await sleep(300)
+  c('history-fold-present-and-opens', histFold === 'opened', String(histFold))
   const tabState = JSON.parse(
     await ev(`(() => {
       const panel = document.querySelector('[data-settings-page]')

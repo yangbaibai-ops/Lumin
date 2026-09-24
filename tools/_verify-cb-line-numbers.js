@@ -74,7 +74,9 @@ async function switchRect() {
   return await ev(`(() => {
     const sec = Array.from(document.querySelectorAll('[data-settings-page] section')).find((s) => s.textContent.includes(${JSON.stringify(LABEL)}))
     if (!sec) return null
-    const btn = sec.querySelector('button.switch')
+    // ⚠️ 精确到「代码块行号」那一枚：本轮起它和「分屏同步滚动」同处一张卡，
+    //    取 card 里第一个 switch 会拿到另一个开关（曾经因此红过一轮）。
+    const btn = sec.querySelector('button.switch[aria-label="代码块行号"]') || sec.querySelector('button.switch')
     if (!btn) return null
     // ⚠️ 先滚进视口再量：设置页的内容列比窗口高，这个开关经常在折叠线以下 ——
     //    不滚的话量到的是视口外的坐标，真实点击会落到没人接的地方（这条套件长期 8/13 就是这个原因，

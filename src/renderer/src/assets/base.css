@@ -155,6 +155,13 @@
 .settings-page {
   animation: lm-fade-in 0.16s ease;
 }
+/* 顶栏与卡片共用同一个最大宽度 ⇒「设置」标题与卡片左缘对齐（整页不再散到两边） */
+.settings-wrap {
+  margin-left: auto;
+  margin-right: auto;
+  width: 100%;
+  max-width: 980px;
+}
 .settings-topbar {
   /* 顶栏比侧栏头部（h-10）略高：整页的第一行要有"页面标题"的分量 */
   background: var(--app);
@@ -184,8 +191,29 @@
   border-color: var(--accent);
   color: var(--accent);
 }
+/* 设置主体 = **一张居中的大卡**：左导航 + 纸面内容同处一卡。
+   用户口径：「聚焦在界面的正中间并设置最大宽度（类似 Typora），现在侧边栏和设置项离得太远」
+   —— 宽度收在 980px、左导航 190px，导航与内容始终贴在一起；窗口再宽也只是留白变多。 */
+.settings-card {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  margin: 0 auto 28px;
+  width: 100%;
+  max-width: 980px;
+  overflow: hidden;
+  border: 1px solid var(--edge);
+  border-radius: 14px;
+  background: var(--paper);
+}
 .settings-nav {
-  background: var(--app);
+  width: 190px;
+  flex: none;
+  overflow-y: auto;
+  padding: 12px;
+  border-right: 1px solid var(--edge);
+  /* 导航比纸面暗半档：一眼分得清「哪边是导航」 */
+  background: color-mix(in srgb, var(--panel-2) 40%, transparent);
 }
 .settings-nav-item {
   display: flex;
@@ -209,7 +237,6 @@
   font-weight: 500;
 }
 .settings-column {
-  /* 内容列宽由组件上的 max-w 控制（720px）；这里只负责小屏时的左右呼吸 */
   min-width: 0;
 }
 .settings-section-title {
@@ -222,20 +249,23 @@
 /* 卡片：纸面上的一档浅底 + 1px 边（浅色主题下 paper 与 panel 同为 #fff，
    所以这里**不能**沿用 .surface 的白底，否则卡片在纸面上看不见） */
 .set-card {
-  margin-bottom: 16px;
-  padding: 20px;
+  padding: 18px 20px;
   border: 1px solid var(--edge);
   border-radius: 12px;
   background: color-mix(in srgb, var(--panel-2) 45%, transparent);
 }
-.set-card:last-child {
-  margin-bottom: 0;
-}
 .set-card-title {
-  margin-bottom: 16px;
+  margin-bottom: 14px;
   font-size: 13px;
   font-weight: 600;
   color: var(--ink);
+}
+/* 卡片之间统一留白（含折叠块），不再逐处手写 mt-4/mb-4 */
+.set-card + .set-card,
+.set-card + .set-fold,
+.set-fold + .set-card,
+.set-fold + .set-fold {
+  margin-top: 14px;
 }
 /* 一行设置：左说明 + 右控件；多行之间自动留白（原来靠各处手写 mt-5/mb-2，间距不一致） */
 .set-row {
@@ -247,7 +277,7 @@
 .set-row + .set-row,
 .set-row + div,
 div + .set-row {
-  margin-top: 18px;
+  margin-top: 16px;
 }
 .set-row-label {
   font-size: 13.5px;
@@ -258,6 +288,57 @@ div + .set-row {
   font-size: 12px;
   line-height: 1.6;
   color: var(--ink-3);
+}
+/* ─── 折叠块（<details>）─────────────────────────────────────────────────────
+   用户口径：「该展示的展示，该折叠的折叠」。信息类/低频内容（工具项排序、打开历史、
+   支持的格式、详细说明）默认收起，只留一行标题 —— 这就是「简约」的另一半。
+   原生的 <details>/<summary> 自带键盘与展开语义，不需要任何 JS。 */
+.set-fold {
+  border: 1px solid var(--edge);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--panel-2) 45%, transparent);
+}
+.set-fold > summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 14px 20px;
+  cursor: pointer;
+  list-style: none;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink);
+}
+.set-fold > summary::-webkit-details-marker {
+  display: none;
+}
+.set-fold > summary .set-fold-chevron {
+  flex: none;
+  color: var(--ink-3);
+  transition: transform 0.15s ease;
+}
+.set-fold[open] > summary .set-fold-chevron {
+  transform: rotate(90deg);
+}
+.set-fold > summary .set-fold-hint {
+  font-weight: 400;
+  font-size: 12px;
+  color: var(--ink-3);
+}
+.set-fold-body {
+  padding: 0 20px 18px;
+}
+/* 卡片里做折叠（如「打开历史」在链接卡片内）时去掉外框，只留标题行 */
+.set-fold--plain {
+  border: none;
+  border-radius: 0;
+  background: none;
+}
+.set-fold--plain > summary {
+  padding: 10px 0;
+}
+.set-fold--plain .set-fold-body {
+  padding: 0 0 4px;
 }
 
 .list-enter-active,

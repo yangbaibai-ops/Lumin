@@ -480,6 +480,16 @@ const PINIA = `(() => {
     }
 
     // ── E. 设置区块里的排序 / 隐藏 / 加入 / 恢复默认 ──────────────────────────
+    // ⚠️ 本轮起「调整工具项」整段**默认折叠**（用户口径：该折叠的折叠），所以先展开它。
+    const foldOpen = await ev(`(() => {
+      const d = document.querySelector('[data-setting-toolbar-fold]')
+      if (!d) return 'no-fold'
+      d.open = true
+      return d.open === true ? 'opened' : 'failed'
+    })()`)
+    await sleep(300)
+    c('toolbar-items-fold-present-and-opens', foldOpen === 'opened', String(foldOpen))
+
     // E1 上移：拿**组内非首位**的项（斜体）验证与上一项互换；
     //    组内首位（加粗 / 一级标题 / 引用 / 表格）的上移必须是禁用的 —— 那是设计，不是缺陷。
     const beforeMove = JSON.parse(await evAt('STATE', STATE))
