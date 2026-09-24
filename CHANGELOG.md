@@ -72,6 +72,32 @@
 - **工程化**：~~`tools/lib/harness.js` + `tools/run-suites.js`~~ → **本轮已完成**；
   剩余：`files` store 拆分；`store` 里那份为绕循环导入而复制的 `confirmIfDirty` 收敛到 `services/dialog`。
 
+## [Unreleased · 设置（第六轮）：导航项等长左对齐（280px）+ 主体上方留白 pt-16]
+
+> 用户口径：「增长设置中导航项的长度，即使每个导航项的文字多少都不一样，也要把每个按钮的长度
+> 变成一样的，但是全体按钮左对齐，并且文字也是左对齐显示，而且把设置上面的 pt-4 改成 pt-16」。
+
+### Changed
+
+- **导航项等长**：`.settings-nav` 190 → 232 → **280px**；`.settings-nav-item` 补上 `width: 100%`
+  与 `justify-content: flex-start`。
+  ⚠️ `width: 100%` 不能省：`<button>` 的 `width: auto` 在 Chromium 里**按内容收缩**，
+  只写 `display: flex` 会得到「每项长度跟着文案变」的效果（这正是用户看到的现象）；
+  现在六项宽度实测 **`[280,280,280,280,280,280]`**、左缘实测 **`[179×6]`**（等长 + 全体左对齐），
+  图标在左、文字紧随其右（`iconLeft 191 / textLeft 216`）。
+- **主体上方留白** `pt-4` → **`pt-16`**（实测顶栏下缘到卡片上缘 **64px**）。
+
+### Verification
+
+- `tools/_verify-round-perf.js` 25 → **28 条**，新增三条把这次的口径钉住：
+  `C 导航项等长（撑满导航栏）且全体左对齐`、`C 导航项文字左对齐（图标在文字左侧）`、
+  `C 设置主体上方留白 = 64px（pt-16）`；导航宽上界 260 → 320。**28/28 PASS**。
+- 视觉：`out/_settings-page-{general,editor,appearance,export,links,dark,sepia}.png` 全部重截；
+  实测 `{win:[1304,821], card:[179,112,940,…], nav:[179,112,280,…], body:[489,112,630,…]}`。
+- 其余设置相关套件：`_verify-toolbar-settings` 38/38、`_verify-link-open` 64/64、
+  `_verify-cb-line-numbers` 13/13、`_verify-a11y` 9/9、`_verify-i18n` 5/5；单元测试 320/320；
+  `eslint` 0 error / 0 warning；`vue-tsc` 0；`electron-vite build` exit 0。
+
 ## [Unreleased · 设置（第五轮）：观感打磨 —— 导航项加长、内容收窄、修好被拉宽的下拉]
 
 > 用户口径：「现在不好看，请把导航项加长一点，界面布局、颜色、样式更合理」。

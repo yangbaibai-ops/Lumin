@@ -215,15 +215,21 @@
      6 个分组不会超高，所以它自己不需要滚动条。 */
   position: sticky;
   top: 64px;
-  width: 232px;
+  /* 280px：用户口径「增长导航项的长度」，并且每个项都撑满这一栏 */
+  width: 280px;
   flex: none;
   padding: 2px 0;
 }
 .settings-nav-item {
   display: flex;
   align-items: center;
+  justify-content: flex-start;
   gap: 10px;
-  /* 导航项做"长"一点：更宽的一栏 + 更高的行（原来是 190px/7px 内边距，显得很短促） */
+  /* 每项**等长**（撑满导航栏）且文字左对齐 —— 用户口径：不管文案多长，
+     按钮长度必须一样、全体左对齐、文字也左对齐。
+     ⚠️ `width: 100%` 不能省：`<button>` 的 `width: auto` 在 Chromium 里按内容收缩，
+     只写 `display: flex` 会得到「每项长度跟着文字变」的效果（实测过）。 */
+  width: 100%;
   padding: 9px 12px;
   border-radius: 9px;
   text-align: left;

@@ -255,7 +255,7 @@ function formatTime(ms: number): string {
 
       <!-- 主体：两栏直接铺在界面上（无卡片外框），整页一起滚动 ⇒ 只有一条滚动条。
            左导航 `sticky` 吸顶：滚动长页签时它一直可见（Typora 的页签列表也是常驻的）。 -->
-      <div class="flex px-6 pt-4">
+      <div class="flex px-6 pt-16">
         <div class="settings-card">
           <!-- 左导航 -->
           <nav class="settings-nav" :aria-label="t('settings.title')">

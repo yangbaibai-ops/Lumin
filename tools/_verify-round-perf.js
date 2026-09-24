@@ -377,8 +377,51 @@ async function main() {
   report.check(
     'C 左导航与内容区靠在一起（不是隔着半个窗口）',
     // 30px 的两栏间距是刻意的呼吸位；这里守的是「别像旧版那样一个贴最左、一个在剩余区域居中」
-    geom.gap <= 60 && geom.navW <= 260,
+    geom.gap <= 60 && geom.navW <= 320,
     JSON.stringify({ gap: geom.gap, navW: geom.navW })
+  )
+
+  // C1c 导航项等长 + 左对齐 + 上方留白（用户口径：不管文案多长，按钮长度必须一样、
+  //     全体左对齐、文字也左对齐；主体上方的 pt-4 改成 pt-16）
+  const navGeom = await ev(`(() => {
+    const nav = document.querySelector('.settings-nav')
+    const items = [...document.querySelectorAll('.settings-nav-item')]
+    const rects = items.map((b) => b.getBoundingClientRect())
+    const widths = rects.map((r) => Math.round(r.width))
+    const lefts = rects.map((r) => Math.round(r.left))
+    const first = items[0]
+    const icon = first?.querySelector('svg')?.getBoundingClientRect()
+    const text = first?.querySelector('span')?.getBoundingClientRect()
+    const card = document.querySelector('.settings-card').getBoundingClientRect()
+    const bar = document.querySelector('.settings-topbar').getBoundingClientRect()
+    return JSON.stringify({
+      navW: Math.round(nav.getBoundingClientRect().width),
+      widths,
+      lefts,
+      uniform: new Set(widths).size === 1,
+      leftAligned: new Set(lefts).size === 1,
+      iconLeft: icon ? Math.round(icon.left) : null,
+      textLeft: text ? Math.round(text.left) : null,
+      topGap: Math.round(card.top - bar.bottom)
+    })
+  })()`).then(JSON.parse)
+  console.log('C1c ' + JSON.stringify(navGeom))
+  report.check(
+    'C 导航项等长（撑满导航栏）且全体左对齐',
+    navGeom.uniform === true &&
+      navGeom.leftAligned === true &&
+      navGeom.widths[0] === navGeom.navW,
+    JSON.stringify({ widths: navGeom.widths, navW: navGeom.navW, lefts: navGeom.lefts })
+  )
+  report.check(
+    'C 导航项文字左对齐（图标在文字左侧）',
+    navGeom.textLeft !== null && navGeom.iconLeft !== null && navGeom.textLeft > navGeom.iconLeft,
+    JSON.stringify({ iconLeft: navGeom.iconLeft, textLeft: navGeom.textLeft })
+  )
+  report.check(
+    'C 设置主体上方留白 = 64px（pt-16）',
+    navGeom.topGap === 64,
+    `topGap=${navGeom.topGap}`
   )
 
   // 切页签：内容跟着换（整页的导航仍然按同一套状态工作）
