@@ -10,7 +10,7 @@
 //   * 样式收口成一组 class（`.settings-*`，见 assets/base.css）：卡片、行、说明文字
 //     不再逐处写 Tailwind 长串，六个页签观感一致。
 // 所有设置项仍经 settings store（SQLite kv 持久化）读写，原生菜单栏/自动保存等即时同步主进程。
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { useSettingsStore } from '../stores/settings'
@@ -57,6 +57,94 @@ function switchTab(id: string): void {
   ui.settingsSection = id
 }
 
+// ─── 搜索（设置项 / 导航 / 描述）────────────────────────────────────────────
+// 用户口径：「为设置增加可以搜索的功能，包括设置项和导航、描述等」。
+//
+// 做法是**按渲染出来的文本过滤**（不是手写一份索引表 —— 那种表一定会和模板漂移）：
+//   * 搜索时把**所有页签**都渲染出来（`tabShown()`：搜索态下六页全真），于是能跨页签搜；
+//   * 逐个 `.set-row` / `.set-fold` 看它的 `textContent` 是否含关键词（描述、控件文案、
+//     分组标题都在里面）；命中的留下，没命中的加 `.is-filtered-out`（display:none）；
+//   * 组里一条都不剩就整组隐藏；页签里一条都不剩就整页签隐藏；
+//   * 导航项永远都在（不重排），但没命中的压暗、有命中的显示条数 —— 点一下就清空搜索并切过去；
+//   * 页签标题本身命中时（例如搜「编辑器」），该页签整体保留（按页名搜 = 看这页）。
+const searchEl = ref<HTMLInputElement | null>(null)
+const query = ref('')
+const searching = computed(() => query.value.trim().length > 0)
+/** 每个页签的命中条数（给导航项上的小徽标用） */
+const hits = ref<Record<string, number>>({})
+const totalHits = computed(() => Object.values(hits.value).reduce((a, b) => a + b, 0))
+/** 内容区根节点：过滤时从这里往下找 */
+const contentEl = ref<HTMLElement | null>(null)
+
+/** 某个页签这次要不要渲染：平时只渲染当前页签，搜索时六页全渲染（跨页签搜索的前提） */
+function tabShown(id: string): boolean {
+  return searching.value || activeTab.value === id
+}
+
+function tabLabel(id: string): string {
+  return tabs.value.find((x) => x.id === id)?.label ?? ''
+}
+
+/** 按当前关键词过滤已渲染的 DOM（幂等，可反复调用） */
+function applyFilter(): void {
+  const root = contentEl.value
+  if (!root) return
+  const q = query.value.trim().toLowerCase()
+  const counts: Record<string, number> = {}
+  for (const tab of root.querySelectorAll<HTMLElement>('[data-settings-tab]')) {
+    const id = tab.dataset.settingsTab ?? ''
+    // 页名命中 ⇒ 整页保留（"搜页签名 = 看这页"），否则逐条按文本过滤
+    const labelHit = !!q && tabLabel(id).toLowerCase().includes(q)
+    const units = [...tab.querySelectorAll<HTMLElement>('.set-row, .set-fold')]
+    /**
+     * 「快捷键」页签有自己的搜索框与行结构（`SettingsKeymap`，不是 `.set-row`）——
+     * 没有可过滤的行时**整页按文本匹配**（命令名/按键都在 textContent 里），
+     * 否则搜「保存」会把这一页整个藏掉、看起来像搜不到。
+     */
+    if (units.length === 0) {
+      const textHit = !q || labelHit || (tab.textContent || '').toLowerCase().includes(q)
+      tab.classList.toggle('is-filtered-out', !!q && !textHit)
+      counts[id] = q && textHit ? 1 : 0
+      continue
+    }
+    let n = 0
+    for (const unit of units) {
+      const hit = !q || labelHit || (unit.textContent || '').toLowerCase().includes(q)
+      unit.classList.toggle('is-filtered-out', !!q && !hit)
+      if (q && hit) n += 1
+    }
+    // 组：组标题命中 ⇒ 整组保留；否则组内一条都不剩就整组隐藏
+    for (const card of tab.querySelectorAll<HTMLElement>('.set-card')) {
+      const titleHit =
+        !!q &&
+        (labelHit ||
+          (card.querySelector('.set-card-title')?.textContent || '').toLowerCase().includes(q))
+      const anyRow = [...card.querySelectorAll<HTMLElement>('.set-row, .set-fold')].some(
+        (u) => !u.classList.contains('is-filtered-out')
+      )
+      card.classList.toggle('is-filtered-out', !!q && !titleHit && !anyRow)
+    }
+    counts[id] = q ? n : 0
+    tab.classList.toggle('is-filtered-out', !!q && n === 0)
+  }
+  hits.value = counts
+}
+
+/** 关键词 / 页签 / 开关变化后重新过滤（等 DOM 更新完再跑） */
+watch([query, activeTab, () => ui.settingsOpen], () => {
+  void nextTick(applyFilter)
+})
+
+function clearSearch(): void {
+  query.value = ''
+}
+
+/** 点导航项：搜索态下先清空搜索（否则"切到一页却只看到它的过滤结果"很绕） */
+function onNavClick(id: string): void {
+  if (searching.value) query.value = ''
+  switchTab(id)
+}
+
 /** 顶部菜单栏开关：控制应用内菜单栏（TopMenuBar）显隐，持久化即可 */
 function toggleMenuBar(): void {
   settings.set('nativeMenuBar', !settings.nativeMenuBar)
@@ -91,12 +179,45 @@ function goAbout(): void {
   void router.push('/about')
 }
 
-// Esc 关闭（打开时才生效）
-function onKeydown(e: KeyboardEvent): void {
-  if (ui.settingsOpen && e.key === 'Escape') ui.closeSettings()
+/**
+ * 键盘：Esc 与 `/`（打开设置时才生效）。
+ *  * Esc：**搜索框里有词就先清搜索**，空了才关设置 —— 否则用户想清搜索却把整页关了；
+ *  * `/`：聚焦设置搜索框（GitHub 等应用的「快速查找」键）。
+ *    ⚠️ **不抢 Ctrl+F**：那是编辑器的查找栏，而应用级快捷键在渲染层的捕获阶段**比本组件先注册**
+ *    （设置页挂载时它早就在了），stopPropagation 拦不住 —— 实测按下 Ctrl+F 会「设置搜索聚焦了、
+ *    编辑器查找栏也弹了」这种两头都动的状态。要抢这个键得改全局快捷键的分发，是另一件事。
+ *    这里只在焦点不在输入类元素上时接管 `/`（否则那个字符都打不出来）。
+ */
+function isEditable(target: EventTarget | null): boolean {
+  const el = target as HTMLElement | null
+  if (!el) return false
+  return (
+    el.tagName === 'INPUT' ||
+    el.tagName === 'TEXTAREA' ||
+    el.tagName === 'SELECT' ||
+    el.isContentEditable === true
+  )
 }
-onMounted(() => window.addEventListener('keydown', onKeydown))
-onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
+
+function onKeydown(e: KeyboardEvent): void {
+  if (!ui.settingsOpen) return
+  if (e.key === 'Escape') {
+    if (searching.value) {
+      e.preventDefault()
+      clearSearch()
+      return
+    }
+    ui.closeSettings()
+    return
+  }
+  if (e.key === '/' && !e.ctrlKey && !e.metaKey && !e.altKey && !isEditable(e.target)) {
+    e.preventDefault()
+    searchEl.value?.focus()
+    searchEl.value?.select()
+  }
+}
+onMounted(() => window.addEventListener('keydown', onKeydown, true))
+onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown, true))
 
 // 切到「链接」页签时读取历史（每次打开设置面板都刷新，避免看到过期数据）
 watch(
@@ -236,6 +357,32 @@ function formatTime(ms: number): string {
             </span>
           </div>
           <div class="flex flex-none items-center gap-1">
+            <!-- 搜索：设置项 / 导航（页签名）/ 描述全文都在这一个框里搜
+                 （`Ctrl/⌘+F` 聚焦；有词时右侧出现清除按钮） -->
+            <div class="settings-search">
+              <Icon name="search" :size="13" class="settings-search__icon" />
+              <input
+                ref="searchEl"
+                v-model="query"
+                type="text"
+                class="settings-search__input"
+                :placeholder="t('settings.searchPlaceholder')"
+                :aria-label="t('settings.searchPlaceholder')"
+                data-settings-search
+                spellcheck="false"
+                @keydown.esc.prevent="clearSearch()"
+              />
+              <button
+                v-if="searching"
+                class="settings-search__clear"
+                :title="t('common.close')"
+                :aria-label="t('common.close')"
+                data-settings-search-clear
+                @click="clearSearch()"
+              >
+                <Icon name="x" :size="12" />
+              </button>
+            </div>
             <button class="settings-topbar-btn" @click="goAbout">
               <Icon name="info" :size="14" />
               {{ t('menu.about') }}
@@ -263,28 +410,62 @@ function formatTime(ms: number): string {
               v-for="x in tabs"
               :key="x.id"
               class="settings-nav-item"
-              :class="{ 'is-active': activeTab === x.id }"
-              :aria-current="activeTab === x.id ? 'page' : undefined"
-              @click="switchTab(x.id)"
+              :aria-current="activeTab === x.id && !searching ? 'page' : undefined"
+              :class="{
+                'is-active': activeTab === x.id && !searching,
+                'is-muted': searching && (hits[x.id] ?? 0) === 0
+              }"
+              :data-settings-nav="x.id"
+              @click="onNavClick(x.id)"
             >
               <Icon :name="x.icon" :size="15" class="flex-none" />
               <span class="min-w-0 flex-1 truncate">{{ x.label }}</span>
+              <span
+                v-if="searching && (hits[x.id] ?? 0) > 0"
+                class="settings-nav-item__count"
+                :data-settings-nav-count="x.id"
+                >{{ hits[x.id] }}</span
+              >
             </button>
           </nav>
 
           <!-- 内容区：与导航同一底色（--app），设置项直接列在界面上。
-               **没有内层滚动容器** —— 长页签由整页那条滚动条滚（用户口径）。 -->
+               **没有内层滚动容器** —— 长页签由整页那条滚动条滚（用户口径）。
+               搜索态下六个页签**全部渲染**（`v-show`），于是能跨页签搜；
+               平时只渲染当前页签。 -->
           <div class="settings-body min-w-0 flex-1">
-            <div class="settings-column px-8 pb-12 pt-1">
-              <h2 class="settings-section-title">{{ sectionTitle(activeTab) }}</h2>
-              <Transition name="page" mode="out-in">
-                <div :key="activeTab">
+            <div ref="contentEl" class="settings-column px-8 pb-12 pt-1" data-settings-content>
+              <h2 v-if="!searching" class="settings-section-title">
+                {{ sectionTitle(activeTab) }}
+              </h2>
+              <p
+                v-if="searching && totalHits === 0"
+                class="settings-no-match"
+                data-settings-no-match
+              >
+                {{ t('settings.searchNoMatch') }}
+              </p>
+              <!-- ⚠️ `v-if` 与 `v-for` 不能同挂一个元素（Vue 3 里 v-if 优先级更高、拿不到 `tab`），
+                   所以外面套一层 `<template v-for>`，条件写在内层 div 上。 -->
+              <template v-for="tab in tabs" :key="tab.id">
+                <div v-if="tabShown(tab.id)" class="settings-tab" :data-settings-tab="tab.id">
+                  <!-- 搜索态下每页自带小标题（否则只剩一列设置项，分不清来自哪一页） -->
+                  <h3
+                    v-if="searching"
+                    class="settings-search-heading"
+                    :data-settings-tab-heading="tab.id"
+                  >
+                    {{ tab.label }}
+                    <span v-if="(hits[tab.id] ?? 0) > 0" class="settings-search-heading__count">{{
+                      hits[tab.id]
+                    }}</span>
+                  </h3>
                   <!-- ── 通用 ──
-                       用户口径：「该展示的展示，该折叠的折叠 … 尽可能简约简介」。
-                       原来是 7 张单行卡片 + 2 张散卡（很长一列，滚动半天）；现在按主题合并成
-                       3 张卡（界面 / 保存与会话 / 文本与编码）+ 1 个折叠块（高级），
-                       低频与信息性的内容（详细说明、自动检查更新）默认收起。 -->
-                  <template v-if="activeTab === 'general'">
+                     用户口径：「该展示的展示，该折叠的折叠 … 尽可能简约简介」。
+                     原来是 7 张单行卡片 + 2 张散卡（很长一列，滚动半天）；现在按主题合并成
+                     3 张卡（界面 / 保存与会话 / 文本与编码）+ 1 个折叠块（高级），
+                     低频与信息性的内容（详细说明、自动检查更新）默认收起。 -->
+                  <template v-if="tab.id === 'general'">
                     <section class="set-card">
                       <h3 class="set-card-title">界面</h3>
                       <div class="set-row">
@@ -525,7 +706,7 @@ function formatTime(ms: number): string {
                   </template>
 
                   <!-- ── 编辑器 ── -->
-                  <template v-else-if="activeTab === 'editor'">
+                  <template v-else-if="tab.id === 'editor'">
                     <!-- 快捷工具栏：开关常显；19 项排序/显隐是低频操作，收在折叠里（SettingsToolbar 内部） -->
                     <SettingsToolbar />
 
@@ -667,7 +848,7 @@ function formatTime(ms: number): string {
                   </template>
 
                   <!-- ── 外观 ── -->
-                  <template v-else-if="activeTab === 'appearance'">
+                  <template v-else-if="tab.id === 'appearance'">
                     <section class="set-card">
                       <h3 class="set-card-title">主题</h3>
                       <div class="grid grid-cols-4 gap-2.5">
@@ -729,7 +910,7 @@ function formatTime(ms: number): string {
                   </template>
 
                   <!-- ── 导出 ── -->
-                  <template v-else-if="activeTab === 'export'">
+                  <template v-else-if="tab.id === 'export'">
                     <section class="set-card">
                       <h3 class="set-card-title">PDF 导出</h3>
                       <div class="set-row">
@@ -816,11 +997,11 @@ function formatTime(ms: number): string {
                   </template>
 
                   <!-- 链接：Ctrl/Cmd+左键打开链接时的行为与历史 -->
-                  <template v-else-if="activeTab === 'keymap'">
+                  <template v-else-if="tab.id === 'keymap'">
                     <SettingsKeymap />
                   </template>
 
-                  <template v-else-if="activeTab === 'links'">
+                  <template v-else-if="tab.id === 'links'">
                     <section class="set-card">
                       <h3 class="mb-1 text-[13.5px] text-ink">
                         {{ t('settings.linksCreateMode') }}
@@ -937,7 +1118,7 @@ function formatTime(ms: number): string {
                     </section>
                   </template>
                 </div>
-              </Transition>
+              </template>
             </div>
           </div>
         </div>

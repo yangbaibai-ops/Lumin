@@ -195,10 +195,109 @@
   border-color: var(--accent);
   color: var(--accent);
 }
-/* 设置主体 = **直接铺在界面上的两栏**（用户口径：不要"限制组件"，像 Typora 一样
+/* ─── 搜索（设置项 / 导航 / 描述）─────────────────────────────────────────────
+   用户口径：「为设置增加可以搜索的功能，包括设置项和导航、描述等」。
+   过滤是**按渲染出来的文本**做的（见 SettingsDialog 的 applyFilter），
+   这里只管三件事：搜索框外观、命中条数徽标、被过滤掉的元素不再占位。 */
+.settings-search {
+  position: relative;
+  display: flex;
+  align-items: center;
+  width: 210px;
+  height: 30px;
+  margin-right: 4px;
+  border: 1px solid var(--edge-strong);
+  border-radius: 8px;
+  background: var(--panel);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.settings-search:focus-within {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+.settings-search__icon {
+  flex: none;
+  margin-left: 9px;
+  color: var(--ink-3);
+}
+.settings-search__input {
+  min-width: 0;
+  flex: 1;
+  height: 100%;
+  padding: 0 8px;
+  border: none;
+  background: transparent;
+  color: var(--ink);
+  font-size: 12.5px;
+  outline: none;
+}
+.settings-search__input::placeholder {
+  color: var(--ink-3);
+}
+.settings-search__clear {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  margin-right: 4px;
+  border-radius: 6px;
+  color: var(--ink-3);
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+.settings-search__clear:hover {
+  background: var(--panel-2);
+  color: var(--ink);
+}
+/* 被过滤掉的：不占位（行、折叠块、整组、整页签都用这一个 class） */
+.settings-page .is-filtered-out {
+  display: none;
+}
+/* 导航项上的命中条数 */
+.settings-nav-item__count {
+  flex: none;
+  min-width: 18px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 11px;
+  font-weight: 600;
+  text-align: center;
+}
+/* 搜索态下"没命中的页签"压暗（不隐藏：导航不重排，点一下就能清搜索切过去） */
+.settings-nav-item.is-muted {
+  opacity: 0.45;
+}
+/* 搜索态下每页的小标题 + 命中数 */
+.settings-search-heading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 18px 0 10px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink);
+}
+.settings-tab:first-child .settings-search-heading {
+  margin-top: 0;
+}
+.settings-search-heading__count {
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 11px;
+}
+.settings-no-match {
+  padding: 40px 0;
+  text-align: center;
+  font-size: 13px;
+  color: var(--ink-3);
+}/* 设置主体 = **直接铺在界面上的两栏**（用户口径：不要"限制组件"，像 Typora 一样
    设置项与导航直接显示在界面上）。
    所以这里**没有卡片外框**：导航与内容都是同一个页面底色（--app），
-   只靠「居中的 980px 宽度 + 两栏间距 + 组与组之间的细线」来分层。 */
+   只靠「居中的宽度 + 两栏间距 + 组与组之间的细线」来分层。 */
 .settings-card {
   display: flex;
   /* 顶对齐：左导航要能 sticky 吸顶（拉伸会让它一直占满整列，粘不住） */

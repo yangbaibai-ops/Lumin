@@ -217,6 +217,8 @@
   "settings": {
     "title": "设置",
     "persistHint": "改动即时保存到本机数据库",
+    "searchPlaceholder": "搜索设置（设置项 / 描述 / 页签）",
+    "searchNoMatch": "没有匹配的设置项",
     "general": "通用",
     "editor": "编辑器",
     "keymap": "快捷键",

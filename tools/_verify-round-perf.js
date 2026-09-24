@@ -440,6 +440,147 @@ async function main() {
     JSON.stringify(c2)
   )
 
+  // ═══ D. 设置搜索（设置项 / 导航 / 描述）═══
+  // 用户口径：「为设置增加可以搜索的功能，包括设置项和导航、描述等」。
+  // 过滤是按**渲染出来的文本**做的（关键词同时命中设置项文案、描述、分组标题、页签名）。
+  const SEARCH_STATE = `(() => {
+    const visible = (el) => el && getComputedStyle(el).display !== 'none'
+    const rows = [...document.querySelectorAll('[data-settings-content] .set-row, [data-settings-content] .set-fold')]
+    const vis = rows.filter(visible)
+    const nav = [...document.querySelectorAll('[data-settings-nav]')].map((b) => ({
+      id: b.dataset.settingsNav,
+      count: b.querySelector('[data-settings-nav-count]')?.textContent?.trim() ?? null,
+      muted: b.classList.contains('is-muted')
+    }))
+    return JSON.stringify({
+      q: document.querySelector('[data-settings-search]')?.value ?? '',
+      tabs: [...document.querySelectorAll('[data-settings-tab]')].filter(visible).map((t) => t.dataset.settingsTab),
+      rowsVisible: vis.length,
+      rowsTotal: rows.length,
+      noMatch: !!document.querySelector('[data-settings-no-match]'),
+      nav
+    })
+  })()`
+  const typeSearch = (text) => `(() => {
+    const el = document.querySelector('[data-settings-search]')
+    el.focus()
+    el.value = ${JSON.stringify(text)}
+    el.dispatchEvent(new Event('input', { bubbles: true }))
+    return 'ok'
+  })()`
+
+  await ev(`(() => { window.__L.ui().openSettings('general'); return 'ok' })()`)
+  await sleep(600)
+  const d0 = await ev(SEARCH_STATE).then(JSON.parse)
+  report.check(
+    'D 没搜索时只渲染当前页签（不是六页全渲染）',
+    d0.tabs.length === 1 && d0.tabs[0] === 'general' && d0.rowsVisible === d0.rowsTotal,
+    JSON.stringify({ tabs: d0.tabs, rows: d0.rowsVisible })
+  )
+
+  // D1 跨页签：搜「行号」应该只留「编辑器」页的那一条（当前页签是通用）
+  await ev(typeSearch('行号'))
+  await sleep(400)
+  const d1 = await ev(SEARCH_STATE).then(JSON.parse)
+  console.log('D1 ' + JSON.stringify(d1))
+  report.check(
+    'D 跨页签搜索：搜「行号」命中编辑器页的那一条',
+    d1.tabs.length === 1 &&
+      d1.tabs[0] === 'editor' &&
+      d1.rowsVisible === 1 &&
+      d1.nav.find((x) => x.id === 'editor')?.count === '1' &&
+      d1.nav.filter((x) => x.muted).length === 5,
+    JSON.stringify({ tabs: d1.tabs, rows: d1.rowsVisible, nav: d1.nav })
+  )
+
+  // D2 描述/文案也参与匹配：搜「手动模式」（只出现在自动保存那一行的**描述**里）
+  await ev(typeSearch('手动模式'))
+  await sleep(400)
+  const d2 = await ev(SEARCH_STATE).then(JSON.parse)
+  console.log('D2 ' + JSON.stringify(d2))
+  report.check(
+    'D 描述文本参与匹配：搜「手动模式」命中自动保存那一条',
+    d2.tabs.length === 1 && d2.tabs[0] === 'general' && d2.rowsVisible === 1,
+    JSON.stringify({ tabs: d2.tabs, rows: d2.rowsVisible })
+  )
+
+  // D3 没有可过滤行的页签（快捷键页有自己的搜索框与行结构，不是 .set-row）整页按文本匹配。
+  //    用「另存为」：这个词只出现在快捷键页（探针核对过 —— 通用页那行描述写的是 `Ctrl+S`）。
+  await ev(typeSearch('另存为'))
+  await sleep(400)
+  const d3 = await ev(SEARCH_STATE).then(JSON.parse)
+  console.log('D3 ' + JSON.stringify(d3))
+  report.check(
+    'D 快捷键页（无 .set-row 结构）整页按文本匹配',
+    d3.tabs.length === 1 &&
+      d3.tabs[0] === 'keymap' &&
+      d3.nav.find((x) => x.id === 'keymap')?.count === '1',
+    JSON.stringify({ tabs: d3.tabs, keymap: d3.nav.find((x) => x.id === 'keymap') })
+  )
+
+  // D4 无匹配：给出提示，且六个页签都不显示
+  await ev(typeSearch('zzz-不存在'))
+  await sleep(400)
+  const d4 = await ev(SEARCH_STATE).then(JSON.parse)
+  report.check(
+    'D 无匹配时给提示且不留下空页签',
+    d4.tabs.length === 0 && d4.noMatch === true,
+    JSON.stringify({ tabs: d4.tabs, noMatch: d4.noMatch })
+  )
+
+  // D5 Esc：第一次只清搜索（页面还在），第二次才关
+  await ev(`(() => { document.querySelector('[data-settings-search]').focus(); return 'ok' })()`)
+  const esc = async () => {
+    await send('Input.dispatchKeyEvent', { type: 'rawKeyDown', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 })
+    await send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 })
+    await sleep(350)
+  }
+  await ev(typeSearch('行号'))
+  await sleep(300)
+  await esc()
+  const d5a = await ev(`JSON.stringify({
+    q: document.querySelector('[data-settings-search]')?.value ?? '',
+    open: window.__L.ui().settingsOpen,
+    tabs: [...document.querySelectorAll('[data-settings-tab]')].filter((t) => getComputedStyle(t).display !== 'none').map((t) => t.dataset.settingsTab)
+  })`).then(JSON.parse)
+  await esc()
+  const d5b = await ev(`JSON.stringify({ open: window.__L.ui().settingsOpen, page: !!document.querySelector('[data-settings-page]') })`).then(JSON.parse)
+  console.log('D5 ' + JSON.stringify({ d5a, d5b }))
+  report.check(
+    'D Esc 先清搜索、再关页面（不会一按就把设置关了）',
+    d5a.q === '' && d5a.open === true && d5a.tabs.length === 1 && d5b.open === false,
+    JSON.stringify({ d5a, d5b })
+  )
+  await ev(`(() => { window.__L.ui().openSettings('general'); return 'ok' })()`)
+  await sleep(400)
+
+  // D6 `/` 聚焦设置搜索框（**不是** Ctrl+F：那个键是编辑器的查找栏，且应用级快捷键
+  //    在渲染层捕获阶段比设置页先注册，拦不住 —— 组件注释里记了这条实测）
+  await ev(`(() => { document.querySelector('[data-settings-search]')?.blur(); return 'ok' })()`)
+  await send('Input.dispatchKeyEvent', {
+    type: 'rawKeyDown',
+    key: '/',
+    code: 'Slash',
+    windowsVirtualKeyCode: 191
+  })
+  await send('Input.dispatchKeyEvent', {
+    type: 'keyUp',
+    key: '/',
+    code: 'Slash',
+    windowsVirtualKeyCode: 191
+  })
+  await sleep(400)
+  const d6 = await ev(`JSON.stringify({
+    searchFocused: document.activeElement?.hasAttribute('data-settings-search') === true,
+    findBar: !!document.querySelector('[data-find-disclosure]')
+  })`).then(JSON.parse)
+  console.log('D6 ' + JSON.stringify(d6))
+  report.check(
+    'D 「/」聚焦设置搜索（且不触发编辑器的查找栏）',
+    d6.searchFocused === true && d6.findBar === false,
+    JSON.stringify(d6)
+  )
+
   // Esc 关闭（浮层时代的行为要保留）
   await ev(`(() => {
     window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
