@@ -375,8 +375,9 @@ async function main() {
     JSON.stringify(geom)
   )
   report.check(
-    'C 左导航与内容区相邻（不再左右分离）',
-    geom.gap <= 2 && geom.navW <= 220,
+    'C 左导航与内容区靠在一起（不是隔着半个窗口）',
+    // 30px 的两栏间距是刻意的呼吸位；这里守的是「别像旧版那样一个贴最左、一个在剩余区域居中」
+    geom.gap <= 60 && geom.navW <= 260,
     JSON.stringify({ gap: geom.gap, navW: geom.navW })
   )
 

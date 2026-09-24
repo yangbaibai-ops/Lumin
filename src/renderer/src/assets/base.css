@@ -203,16 +203,19 @@
   display: flex;
   /* 顶对齐：左导航要能 sticky 吸顶（拉伸会让它一直占满整列，粘不住） */
   align-items: flex-start;
+  gap: 30px;
   margin: 0 auto 28px;
   width: 100%;
-  max-width: 980px;
+  /* 940（不是更宽的 1000）：内容列 ≈ 680 ⇒ 左侧标签与右侧控件不至于隔太远，
+     宽窗口下也仍然居中（用户口径：「界面布局更合理」）。 */
+  max-width: 940px;
 }
 .settings-nav {
   /* 吸在顶栏下面：滚长页签时页签列表常驻（Typora 的偏好设置也是这个行为）。
      6 个分组不会超高，所以它自己不需要滚动条。 */
   position: sticky;
-  top: 60px;
-  width: 190px;
+  top: 64px;
+  width: 232px;
   flex: none;
   padding: 2px 0;
 }
@@ -220,12 +223,16 @@
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 7px 10px;
-  border-radius: 8px;
+  /* 导航项做"长"一点：更宽的一栏 + 更高的行（原来是 190px/7px 内边距，显得很短促） */
+  padding: 9px 12px;
+  border-radius: 9px;
   text-align: left;
   font-size: 13px;
   color: var(--ink-2);
   transition: background-color 0.15s ease, color 0.15s ease;
+}
+.settings-nav-item + .settings-nav-item {
+  margin-top: 2px;
 }
 .settings-nav-item:hover {
   background: var(--panel-2);
@@ -241,15 +248,18 @@
   min-width: 0;
 }
 .settings-section-title {
-  margin-bottom: 20px;
-  font-size: 17px;
+  margin-bottom: 22px;
+  padding-bottom: 14px;
+  /* 页头与内容之间一条细线：没有盒子时靠它把「这一页在讲什么」与设置项分开 */
+  border-bottom: 1px solid var(--edge);
+  font-size: 18px;
   font-weight: 600;
   letter-spacing: -0.01em;
   color: var(--ink);
 }
 /* 一组设置：**没有卡片背景/边框**，只用「一条细线 + 组标题」分段（Typora 的做法） */
 .set-card {
-  padding-bottom: 20px;
+  padding-bottom: 22px;
   border-bottom: 1px solid var(--edge);
 }
 .set-card:last-child {
@@ -257,30 +267,37 @@
   padding-bottom: 0;
 }
 .set-card-title {
-  margin-bottom: 14px;
+  margin-bottom: 10px;
   font-size: 13px;
   font-weight: 600;
   color: var(--ink);
 }
-/* 组之间与行之间都用细线分层（行内细线是 Typora 那套"设置项直接列在界面上"的观感） */
+/* 组之间留白（行间不再画线：改用「悬停底色 + 间距」，更接近现代设置界面的观感） */
 .set-card + .set-card,
 .set-card + .set-fold,
 .set-fold + .set-card,
 .set-fold + .set-fold {
-  margin-top: 20px;
+  margin-top: 22px;
 }
+/* 一行设置：左说明 + 右控件。整行可悬停（负外边距让底色铺到组宽），
+   这样"哪些是一行的整体"一眼看得出来，不必靠分隔线 */
 .set-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 16px;
+  margin: 0 -12px;
+  padding: 10px 12px;
+  border-radius: 9px;
+  transition: background-color 0.12s ease;
+}
+.set-row:hover {
+  background: color-mix(in srgb, var(--panel-2) 55%, transparent);
 }
 .set-row + .set-row,
 .set-row + div,
 div + .set-row {
-  margin-top: 16px;
-  padding-top: 16px;
-  border-top: 1px solid color-mix(in srgb, var(--edge) 60%, transparent);
+  margin-top: 2px;
 }
 .set-row-label {
   font-size: 13.5px;
@@ -309,12 +326,18 @@ div + .set-row {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 4px 0;
+  margin: 0 -10px;
+  padding: 9px 10px;
+  border-radius: 9px;
   cursor: pointer;
   list-style: none;
   font-size: 13px;
   font-weight: 600;
   color: var(--ink);
+  transition: background-color 0.12s ease;
+}
+.set-fold > summary:hover {
+  background: color-mix(in srgb, var(--panel-2) 55%, transparent);
 }
 .set-fold > summary::-webkit-details-marker {
   display: none;
@@ -341,7 +364,11 @@ div + .set-row {
   border-bottom: none;
 }
 .set-fold--plain > summary {
-  padding: 2px 0;
+  padding: 9px 0;
+  margin: 0;
+}
+.set-fold--plain > summary:hover {
+  background: none;
 }
 
 .list-enter-active,

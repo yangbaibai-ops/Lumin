@@ -412,7 +412,7 @@ function formatTime(ms: number): string {
                         <p class="set-row-desc">{{ t('settings.historyLimit') }}</p>
                         <div class="flex gap-2">
                           <select
-                            class="input select w-[110px]"
+                            class="input select !w-[110px] shrink-0"
                             :value="String(settings.historyLimitPerFile)"
                             :aria-label="t('settings.historyLimit')"
                             data-setting-history-limit
@@ -428,7 +428,7 @@ function formatTime(ms: number): string {
                             </option>
                           </select>
                           <select
-                            class="input select w-[130px]"
+                            class="input select !w-[130px] shrink-0"
                             :value="String(settings.historyMaxAgeDays)"
                             :aria-label="t('settings.historyMaxAge')"
                             data-setting-history-age
@@ -452,7 +452,7 @@ function formatTime(ms: number): string {
                       <div class="set-row">
                         <p class="set-row-label">{{ t('settings.defaultEncoding') }}</p>
                         <select
-                          class="input select w-[190px]"
+                          class="input select !w-[190px] shrink-0"
                           :value="settings.defaultEncoding"
                           :aria-label="t('settings.defaultEncoding')"
                           @change="
@@ -471,7 +471,7 @@ function formatTime(ms: number): string {
                       <div class="set-row">
                         <p class="set-row-label">{{ t('settings.defaultEol') }}</p>
                         <select
-                          class="input select w-[190px]"
+                          class="input select !w-[190px] shrink-0"
                           :value="settings.defaultEol"
                           :aria-label="t('settings.defaultEol')"
                           data-setting-eol
