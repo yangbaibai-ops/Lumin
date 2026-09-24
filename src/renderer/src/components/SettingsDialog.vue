@@ -346,7 +346,10 @@ function formatTime(ms: number): string {
       data-settings-page
     >
       <!-- 顶栏：整页的身份与出口（左边是「设置」，右边是「关于」与关闭）。
-           `sticky` ⇒ 页面滚动时它一直可见（关设置的出口不该被滚走）。 -->
+           `sticky` ⇒ 页面滚动时它一直可见（关设置的出口不该被滚走）。
+           按钮直接用项目自己的两档：`.btn.btn-ghost`（文字按钮）与 `.icon-btn`（图标按钮，
+           与侧栏/工具栏上那排图标按钮同款：无边框、悬停浅底）—— 用户口径「关闭按钮的样式和
+           项目不符，请优化，使其更简约简洁」。 -->
       <header class="settings-topbar sticky top-0 z-10 flex h-12 items-center border-b border-edge">
         <div class="settings-wrap flex items-center justify-between px-6">
           <div class="flex min-w-0 items-center gap-2">
@@ -357,8 +360,33 @@ function formatTime(ms: number): string {
             </span>
           </div>
           <div class="flex flex-none items-center gap-1">
-            <!-- 搜索：设置项 / 导航（页签名）/ 描述全文都在这一个框里搜
-                 （`Ctrl/⌘+F` 聚焦；有词时右侧出现清除按钮） -->
+            <button class="btn btn-ghost px-3 py-1.5 text-[12.5px]" @click="goAbout">
+              <Icon name="info" :size="14" />
+              {{ t('menu.about') }}
+            </button>
+            <button
+              class="icon-btn"
+              data-settings-close
+              :title="t('common.close')"
+              :aria-label="t('common.close')"
+              @click="ui.closeSettings()"
+            >
+              <Icon name="x" :size="16" />
+            </button>
+          </div>
+        </div>
+      </header>
+
+      <!-- 主体：两栏直接铺在界面上（无卡片外框），整页一起滚动 ⇒ 只有一条滚动条。
+           左导航 `sticky` 吸顶：滚动长页签时它一直可见（Typora 的页签列表也是常驻的）。 -->
+      <!-- 主体：两栏直接铺在界面上（无卡片外框），整页一起滚动 ⇒ 只有一条滚动条。
+           **留白落在两栏自己身上**（导航 64px 内边距 + 内容列 pt-16），不放在这一行上：
+           这样导航一进页面就停在顶栏下沿、并且 `sticky` 一钉就再也不会随页面动
+           （用户口径：① 搜索框放到导航栏上方；② 导航不随界面滚动）。 -->
+      <div class="flex px-6">
+        <div class="settings-card">
+          <!-- 左导航：搜索框在最上面（搜设置项 / 描述 / 页签名），下面是六个分组 -->
+          <nav class="settings-nav" :aria-label="t('settings.title')">
             <div class="settings-search">
               <Icon name="search" :size="13" class="settings-search__icon" />
               <input
@@ -383,29 +411,6 @@ function formatTime(ms: number): string {
                 <Icon name="x" :size="12" />
               </button>
             </div>
-            <button class="settings-topbar-btn" @click="goAbout">
-              <Icon name="info" :size="14" />
-              {{ t('menu.about') }}
-            </button>
-            <button
-              class="settings-topbar-btn settings-topbar-btn--close"
-              data-settings-close
-              :title="t('common.close')"
-              @click="ui.closeSettings()"
-            >
-              <Icon name="x" :size="15" />
-              {{ t('common.close') }}
-            </button>
-          </div>
-        </div>
-      </header>
-
-      <!-- 主体：两栏直接铺在界面上（无卡片外框），整页一起滚动 ⇒ 只有一条滚动条。
-           左导航 `sticky` 吸顶：滚动长页签时它一直可见（Typora 的页签列表也是常驻的）。 -->
-      <div class="flex px-6 pt-16">
-        <div class="settings-card">
-          <!-- 左导航 -->
-          <nav class="settings-nav" :aria-label="t('settings.title')">
             <button
               v-for="x in tabs"
               :key="x.id"
@@ -431,10 +436,9 @@ function formatTime(ms: number): string {
 
           <!-- 内容区：与导航同一底色（--app），设置项直接列在界面上。
                **没有内层滚动容器** —— 长页签由整页那条滚动条滚（用户口径）。
-               搜索态下六个页签**全部渲染**（`v-show`），于是能跨页签搜；
-               平时只渲染当前页签。 -->
+               搜索态下六个页签**全部渲染**，于是能跨页签搜；平时只渲染当前页签。 -->
           <div class="settings-body min-w-0 flex-1">
-            <div ref="contentEl" class="settings-column px-8 pb-12 pt-1" data-settings-content>
+            <div ref="contentEl" class="settings-column px-8 pb-12 pt-16" data-settings-content>
               <h2 v-if="!searching" class="settings-section-title">
                 {{ sectionTitle(activeTab) }}
               </h2>

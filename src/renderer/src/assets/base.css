@@ -170,31 +170,10 @@
      `sticky`（在模板上）保证滚长页签时它一直在 —— 关设置的出口不该被滚走。 */
   background: var(--app);
 }
-.settings-topbar-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  height: 30px;
-  padding: 0 10px;
-  border-radius: 8px;
-  font-size: 12.5px;
-  color: var(--ink-2);
-  transition: background-color 0.15s ease, color 0.15s ease;
-}
-.settings-topbar-btn:hover {
-  background: var(--panel-2);
-  color: var(--ink);
-}
-/* 关闭是主要出口：给它一档更明确的样式（其余按钮保持安静） */
-.settings-topbar-btn--close {
-  border: 1px solid var(--edge-strong);
-  background: var(--panel);
-  color: var(--ink);
-}
-.settings-topbar-btn--close:hover {
-  border-color: var(--accent);
-  color: var(--accent);
-}
+/* 顶栏右侧那两枚按钮直接用项目自己的 `.btn.btn-ghost` / `.icon-btn`
+   （与侧栏、工具栏上的图标按钮同款：无边框、悬停浅底）——
+   用户口径「关闭按钮的样式和项目不符，请优化，使其更简约简洁」。 */
+
 /* ─── 搜索（设置项 / 导航 / 描述）─────────────────────────────────────────────
    用户口径：「为设置增加可以搜索的功能，包括设置项和导航、描述等」。
    过滤是**按渲染出来的文本**做的（见 SettingsDialog 的 applyFilter），
@@ -203,9 +182,10 @@
   position: relative;
   display: flex;
   align-items: center;
-  width: 210px;
+  /* 放在导航栏上方 ⇒ 跟着导航那一栏的宽度走（用户口径①） */
+  width: 100%;
   height: 30px;
-  margin-right: 4px;
+  margin-bottom: 10px;
   border: 1px solid var(--edge-strong);
   border-radius: 8px;
   background: var(--panel);
@@ -310,14 +290,15 @@
   max-width: 940px;
 }
 .settings-nav {
-  /* 吸在顶栏下面：滚长页签时页签列表常驻（Typora 的偏好设置也是这个行为）。
+  /* **真·固定**（用户口径：导航不要随界面滚动）：
+     `top` 取顶栏高度（48px），并且把"设置上方的留白"做成导航自己的 `padding-top` ——
+     于是它一进页面就停在 48、`sticky` 一钉之后位置**一个像素都不动**（内容照常滚）。
      6 个分组不会超高，所以它自己不需要滚动条。 */
   position: sticky;
-  top: 64px;
-  /* 280px：用户口径「增长导航项的长度」，并且每个项都撑满这一栏 */
+  top: 48px;
   width: 280px;
   flex: none;
-  padding: 2px 0;
+  padding: 64px 0 0;
 }
 .settings-nav-item {
   display: flex;

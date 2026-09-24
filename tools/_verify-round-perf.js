@@ -278,7 +278,15 @@ async function main() {
       activeItems: active.length,
       navBg: nav ? getComputedStyle(nav).backgroundColor : null,
       bodyBg: body ? getComputedStyle(body).backgroundColor : null,
-      closeLabel: (document.querySelector('[data-settings-close]')?.textContent || '').trim(),
+      closeLabel: (() => {
+        const b = document.querySelector('[data-settings-close]')
+        return ((b?.getAttribute('aria-label') || b?.getAttribute('title') || '') + '').trim()
+      })(),
+      closeIsIconBtn: document.querySelector('[data-settings-close]')?.classList.contains('icon-btn') === true,
+      closeBorder: (() => {
+        const b = document.querySelector('[data-settings-close]')
+        return b ? getComputedStyle(b).borderTopWidth : null
+      })(),
       pageOverflow: pc.overflowY,
       pageDelta: page.scrollHeight - page.clientHeight,
       bodyOverflow: body ? getComputedStyle(body).overflowY : null,
@@ -317,9 +325,13 @@ async function main() {
     })
   )
   report.check(
-    'C 关闭入口是一枚带文案的按钮（不再只有一个 X）',
-    c1.closeLabel.length > 0,
-    JSON.stringify({ closeLabel: c1.closeLabel })
+    'C 关闭入口用项目自己的图标按钮（无边框 + 有可访问名）',
+    c1.closeIsIconBtn === true && c1.closeBorder === '0px' && c1.closeLabel.length > 0,
+    JSON.stringify({
+      isIconBtn: c1.closeIsIconBtn,
+      border: c1.closeBorder,
+      label: c1.closeLabel
+    })
   )
 
   // C1a 没有「限制组件」：整页里**不该再有卡片外框/底色**（用户口径：设置项与导航直接显示在界面上）
@@ -394,6 +406,8 @@ async function main() {
     const text = first?.querySelector('span')?.getBoundingClientRect()
     const card = document.querySelector('.settings-card').getBoundingClientRect()
     const bar = document.querySelector('.settings-topbar').getBoundingClientRect()
+    const search = document.querySelector('[data-settings-search]')
+    const title = document.querySelector('.settings-section-title')
     return JSON.stringify({
       navW: Math.round(nav.getBoundingClientRect().width),
       widths,
@@ -402,7 +416,15 @@ async function main() {
       leftAligned: new Set(lefts).size === 1,
       iconLeft: icon ? Math.round(icon.left) : null,
       textLeft: text ? Math.round(text.left) : null,
-      topGap: Math.round(card.top - bar.bottom)
+      // 留白现在落在内容列上（导航那边是它自己的 padding-top）
+      topGap: title ? Math.round(title.getBoundingClientRect().top - bar.bottom) : null,
+      searchInNav: !!search && nav.contains(search),
+      searchTop: search ? Math.round(search.getBoundingClientRect().top) : null,
+      firstItemTop: items[0] ? Math.round(items[0].getBoundingClientRect().top) : null,
+      searchAboveFirstItem:
+        !!search && !!items[0]
+          ? search.getBoundingClientRect().bottom <= items[0].getBoundingClientRect().top + 1
+          : false
     })
   })()`).then(JSON.parse)
   console.log('C1c ' + JSON.stringify(navGeom))
@@ -422,6 +444,57 @@ async function main() {
     'C 设置主体上方留白 = 64px（pt-16）',
     navGeom.topGap === 64,
     `topGap=${navGeom.topGap}`
+  )
+  report.check(
+    'C 搜索框在导航栏上方（在 .settings-nav 内、且在第一个导航项之前）',
+    navGeom.searchInNav === true && navGeom.searchAboveFirstItem === true,
+    JSON.stringify({
+      inNav: navGeom.searchInNav,
+      searchTop: navGeom.searchTop,
+      firstItemTop: navGeom.firstItemTop
+    })
+  )
+
+  // C1d 导航**不随页面滚动**（用户口径②）：滚到底之后它仍在原位（一个像素都不动）
+  const navPinned = await ev(`(async () => {
+    const page = document.querySelector('[data-settings-page]')
+    const item = document.querySelector('.settings-nav-item')
+    const search = document.querySelector('[data-settings-search]')
+    const before = {
+      item: Math.round(item.getBoundingClientRect().top),
+      search: Math.round(search.getBoundingClientRect().top),
+      bar: Math.round(document.querySelector('.settings-topbar').getBoundingClientRect().bottom)
+    }
+    page.scrollTop = page.scrollHeight
+    await new Promise((r) => setTimeout(r, 300))
+    const after = {
+      item: Math.round(item.getBoundingClientRect().top),
+      search: Math.round(search.getBoundingClientRect().top),
+      bar: Math.round(document.querySelector('.settings-topbar').getBoundingClientRect().bottom),
+      scrolled: Math.round(page.scrollTop)
+    }
+    page.scrollTop = 0
+    await new Promise((r) => setTimeout(r, 200))
+    return JSON.stringify({ before, after })
+  })()`).then(JSON.parse)
+  console.log('C1d ' + JSON.stringify(navPinned))
+  report.check(
+    'C 导航不随页面滚动（滚到底仍在原位）',
+    navPinned.after.scrolled > 0 &&
+      navPinned.after.item === navPinned.before.item &&
+      navPinned.after.search === navPinned.before.search,
+    JSON.stringify(navPinned)
+  )
+  report.check(
+    'C 搜索框与内容标题同高（都在顶栏下沿 + 64px），导航项在其下方',
+    // 容差 2px：顶栏下沿/内边距都可能落在亚像素上（实测 113 vs 112）
+    Math.abs(navPinned.before.search - (navPinned.before.bar + 64)) <= 2 &&
+      navGeom.firstItemTop > navPinned.before.search,
+    JSON.stringify({
+      search: navPinned.before.search,
+      barBottom: navPinned.before.bar,
+      firstItemTop: navGeom.firstItemTop
+    })
   )
 
   // 切页签：内容跟着换（整页的导航仍然按同一套状态工作）

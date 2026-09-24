@@ -72,6 +72,36 @@
 - **工程化**：~~`tools/lib/harness.js` + `tools/run-suites.js`~~ → **本轮已完成**；
   剩余：`files` store 拆分；`store` 里那份为绕循环导入而复制的 `confirmIfDirty` 收敛到 `services/dialog`。
 
+## [Unreleased · 设置（第八轮）：搜索框移到导航栏上方 + 导航真·固定 + 关闭按钮改回项目样式]
+
+> 用户口径：① 把搜索框放在设置侧边导航栏的上方；② 固定设置侧边栏不要随界面滚动；
+> ③ 关闭按钮的样式和项目不符，请优化，使其更简约简洁。
+
+### Changed
+
+- **搜索框挪到左导航最上方**（顶栏里那个位置留给「关于 / 关闭」）：宽度跟导航栏走（280px），
+  与内容列的标题同高。
+- **导航真·固定**：`sticky` 的 `top` 取顶栏高度（48px），并把「设置上方的留白」做成**导航自己的**
+  `padding-top: 64px`（内容列同样 pt-16）—— 于是导航一进页面就停在 48，钉住之后**一个像素都不动**。
+  上一版是 `top: 64px` + 留白放在两栏容器上 ⇒ 导航会先跟着滚 48px 再钉住，
+  用户看到的正是「随界面滚动」。
+- **关闭按钮换成项目自己的 `.icon-btn`**（与侧栏/工具栏那排图标按钮同款：30×30、无边框、悬停浅底）
+  + `title`/`aria-label`；顶栏的「关于 Lumin」改用 `.btn.btn-ghost`。
+  为此专用的 `.settings-topbar-btn` / `--close` 两条 CSS 一并删掉（清死码）。
+
+### Verification
+
+- `tools/_verify-round-perf.js` 35 → **38 条**，新增三条把这三件事钉住：
+  `C 搜索框在导航栏上方（在 .settings-nav 内、且在第一个导航项之前）`、
+  `C 导航不随页面滚动（滚到底仍在原位）`（实测滚到底后搜索框/首项 `top` 仍 112/113，`pageDelta 164`）、
+  `C 搜索框与内容标题同高（都在顶栏下沿 + 64px），导航项在其下方`；
+  「关闭入口」那条改成验**是项目里的 `.icon-btn`、无边框、有可访问名**。**38/38 PASS**。
+- 视觉：`out/_settings-page-*.png`、`out/_settings-search-{hit,none}.png`、
+  `out/_settings-scroll-{editor,appearance}.png` 全部重截（滚动截图里可见导航与搜索框完全没动）。
+- 其余设置相关套件：`_verify-toolbar-settings` 38/38、`_verify-link-open` 64/64、
+  `_verify-cb-line-numbers` 13/13、`_verify-a11y` 9/9、`_verify-i18n` 5/5；
+  单元测试 320/320；`eslint` 0 error / 0 warning；`vue-tsc` 0；`electron-vite build` exit 0。
+
 ## [Unreleased · 设置（第七轮）：加上搜索 —— 设置项 / 描述 / 导航页签都能搜]
 
 > 用户口径：「请为设置增加可以搜索的功能，包括设置项和导航、描述等」。
