@@ -64,6 +64,15 @@ export const useUiStore = defineStore('ui', {
     sidebarTab: 'files' as 'files' | 'outline',
     /** 文件标签页展示形态：树 / 列表（Typora 式元数据列表） */
     sidebarFilesView: 'tree' as 'tree' | 'list',
+    /**
+     * 「请把焦点交给侧栏的文件搜索框」的信号（自增计数器，0 = 还没请求过）。
+     *
+     * 为什么是计数器而不是一个 boolean：搜索框的展开/收起状态、失焦规则、DOM 引用都在
+     * `FileTree.vue` 内部（那是一枚会「长出输入框」的放大镜，收起规则三条），
+     * 把它搬进 store 等于把三段动画状态机拆成两半。这里只发一个**可以被重复触发的请求**：
+     * 消费方（FileTree）watch 到数字变化就 `openSearch()` —— 连续按两次 Ctrl+F 也能再聚焦。
+     */
+    sidebarSearchTick: 0,
     editorMode: 'wysiwyg' as EditorMode,
     focusMode: false,
     typewriterMode: false,
@@ -169,6 +178,17 @@ export const useUiStore = defineStore('ui', {
     },
     closeSettings(): void {
       this.settingsOpen = false
+    },
+    /**
+     * 请侧栏的文件搜索框接管焦点（消费方见 `FileTree.vue`）。
+     *
+     * 触发点是「用户人在侧栏里按 Ctrl+F」：那时他要搜的是**文件名**，不是正文
+     * （正文查找栏在编辑区，由 `find` 命令照常打开）。所以这里不改可见性 ——
+     * 侧栏不可见时焦点根本不可能落在文件面板里，路由判定已经把那种情况排除掉了。
+     */
+    requestSidebarSearch(): void {
+      this.sidebarTab = 'files'
+      this.sidebarSearchTick += 1
     },
     openGlobalSearch(): void {
       this.globalSearch.open = true

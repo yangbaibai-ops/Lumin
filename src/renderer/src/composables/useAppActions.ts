@@ -77,6 +77,21 @@ export function useAppActions(): {
     ui.toast(`${feature}: ${i18n.global.t('common.pending')}`, 'info')
   }
 
+  /**
+   * 焦点是否落在侧栏的**文件面板**里（文件树 / 列表 / 底部那行搜索与视图切换都在这个容器内）。
+   *
+   * 两个边界说清楚：
+   *   * 侧栏里的**大纲**面板不算 —— 大纲是对当前正文的导航，在那里按 Ctrl+F 想找的仍是正文；
+   *   * 侧栏头部（工作区名 / 最近 / 新建 / 刷新）也不算：那几枚按钮点完焦点不在面板里，
+   *     此时 Ctrl+F 落回正文查找（想找文件名的话，点一下文件树任意一行即可）。
+   * `closest` 存在性判断只为防御非元素 activeElement（如 SVG 环境下的 document 自身）。
+   */
+  function isFocusInSidebarFiles(): boolean {
+    return typeof document === 'undefined'
+      ? false
+      : !!document.activeElement?.closest?.('[data-sidebar-files]')
+  }
+
   function handleMenu(action: string): void {
     const a = action as MenuAction
     switch (a) {
@@ -117,6 +132,16 @@ export function useAppActions(): {
       case 'find':
         // Ctrl+F / 菜单「查找」：打开右上角查找栏（再按一次关闭）。
         // 只展开查找 —— 替换那一行由栏里的折叠三角或 Ctrl+H 拉出来。
+        //
+        // 例外：**焦点在侧栏的文件面板里**时，Ctrl+F 进侧栏的文件名搜索（用户口径）。
+        // 判定用「焦点落在哪个容器」而不是「鼠标在哪、侧栏是否可见」：
+        //   * 文件树的行、底部搜索行、树/列表切换都在 `[data-sidebar-files]` 里，
+        //     点一下它们焦点就进去了 —— 正是「人在侧栏里」的可判定证据；
+        //   * 焦点在大纲 / 编辑区 / 其它任何地方（含没有工作区时）→ 照旧是正文查找。
+        if (files.root && isFocusInSidebarFiles()) {
+          ui.requestSidebarSearch()
+          break
+        }
         useFindStore().toggle()
         break
       case 'replace':

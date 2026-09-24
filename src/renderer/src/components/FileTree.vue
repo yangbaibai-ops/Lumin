@@ -72,6 +72,20 @@ function onSearchBlur(): void {
   })
 }
 
+/**
+ * 侧栏里的 Ctrl+F（`ui.requestSidebarSearch()`）→ 展开并聚焦这里的文件名搜索框。
+ *
+ * 路由判定在 `useAppActions` 的 `find` 命令里（只有焦点落在本容器内才会走到这儿），
+ * 这里只管「把搜索框打开、把光标放进去」—— 复用同一个 `openSearch()`，
+ * 于是收起规则、动画、焦点环全都跟手动点放大镜一模一样，没有第二套状态。
+ */
+watch(
+  () => ui.sidebarSearchTick,
+  () => {
+    if (files.root) void openSearch()
+  }
+)
+
 // 离开「文件」页签或关掉工作区时收起：面板是 v-show 常驻的，不收起下次回来会「自己开着」
 watch(
   () => [ui.sidebarTab, files.root],
@@ -192,7 +206,7 @@ function onDrop(e: DragEvent): void {
 </script>
 
 <template>
-  <div class="flex h-full flex-col" @drop="onDrop" @dragover.prevent>
+  <div class="flex h-full flex-col" data-sidebar-files @drop="onDrop" @dragover.prevent>
     <!-- 列表视图：工作区全部 Markdown 文章（含元数据） -->
     <div
       v-if="files.root && ui.sidebarFilesView === 'list'"
@@ -292,7 +306,7 @@ function onDrop(e: DragEvent): void {
           <button
             class="file-search__icon"
             :data-sidebar-search-toggle="searchOpen ? undefined : 'true'"
-            :title="t('sidebar.filterPlaceholder')"
+            :title="t('sidebar.filterPlaceholder') + ' (Ctrl+F)'"
             :aria-label="t('sidebar.filterPlaceholder')"
             :aria-expanded="searchOpen ? 'true' : 'false'"
             @mousedown.prevent
