@@ -95,6 +95,9 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onDocKeydown))
       <div
         v-if="ui.globalSearch.open"
         class="fixed inset-0 z-[140] flex items-start justify-center bg-black/30 pt-[12vh] backdrop-blur-[2px]"
+        role="dialog"
+        aria-modal="true"
+        :aria-label="$t('menu.globalSearch')"
         @click.self="ui.closeGlobalSearch()"
       >
         <Transition name="pop" appear>

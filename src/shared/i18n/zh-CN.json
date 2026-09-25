@@ -279,7 +279,12 @@
     "historyMaxAge": "快照保留时长",
     "historyDays": "{days} 天",
     "remoteImages": "远程图片",
-    "remoteImagesHint": "默认不自动加载（点一下才加载，保护隐私）"
+    "remoteImagesHint": "默认不自动加载（点一下才加载，保护隐私）",
+    "nativeMenuBar": "顶部菜单栏",
+    "syncScroll": "分屏同步滚动",
+    "codeLineNumbers": "代码块行号",
+    "sidebarToggle": "侧边栏",
+    "autoSaveToggle": "自动保存"
   },
   "toolbar": {
     "hide": "关闭工具栏",

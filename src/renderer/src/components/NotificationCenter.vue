@@ -64,7 +64,15 @@ function closeCurrent(): void {
        （见 overlays.css 的 `.ntf-reveal-*`），于是「带子挤开正文」本身就是动画。 -->
   <Transition name="ntf-reveal">
     <div v-if="active" class="ntf-reveal">
-      <div class="ntf-strip" data-notification-center>
+      <!-- `role="status"` + `aria-live="polite"`：通知出现/切换时要被读屏器播报
+           （审计 §8：全仓此前没有一处 live region，"出错/导出完成"这类信息只对看得见的人存在） -->
+      <div
+        class="ntf-strip"
+        data-notification-center
+        role="status"
+        aria-live="polite"
+        aria-atomic="true"
+      >
         <div class="ntf-item" data-ntf-item>
           <!-- 内容切换：上一条自左、下一条自右（配合 ‹ › 的语义） -->
           <Transition :name="dir === 'prev' ? 'ntf-prev' : 'ntf-next'" mode="out-in">

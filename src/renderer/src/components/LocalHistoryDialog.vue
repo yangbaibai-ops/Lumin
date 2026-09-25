@@ -77,6 +77,9 @@ watch(open, (v) => {
       v-if="open"
       class="fixed inset-0 z-[70] flex items-start justify-center bg-black/40 pt-[12vh]"
       data-local-history
+      role="dialog"
+      aria-modal="true"
+      :aria-label="t('history.title')"
       @click.self="ui.closeLocalHistory()"
     >
       <div

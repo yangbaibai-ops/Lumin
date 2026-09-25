@@ -26,6 +26,7 @@ const HISTORY_AGE_CHOICES = [7, 30, 90, 365]
 import { LANGUAGE_OPTIONS } from '../i18n'
 import type { EditorMode, LinkCreateMode, LinkHistoryEntry, ThemeMode } from '../../../shared/types'
 import Icon from '../components/Icon.vue'
+import SettingSwitch from '../components/SettingSwitch.vue'
 import SettingsKeymap from '../components/SettingsKeymap.vue'
 import SettingsToolbar from '../components/SettingsToolbar.vue'
 
@@ -145,9 +146,9 @@ function onNavClick(id: string): void {
   switchTab(id)
 }
 
-/** 顶部菜单栏开关：控制应用内菜单栏（TopMenuBar）显隐，持久化即可 */
-function toggleMenuBar(): void {
-  settings.set('nativeMenuBar', !settings.nativeMenuBar)
+/** 顶部菜单栏开关：控制应用内菜单栏（TopMenuBar）显隐。SettingSwitch 传新值进来，不再自己取反 */
+function toggleMenuBar(v: boolean): void {
+  settings.set('nativeMenuBar', v)
 }
 
 /**
@@ -156,18 +157,16 @@ function toggleMenuBar(): void {
  * 否则开完开关看到的可能是「左栏还停在大纲页签」或「右侧大纲是折叠的窄轨」，
  * 与「打开就能同时看到目录和大纲」的预期不符。
  */
-function toggleOutlineRight(): void {
-  const on = !settings.outlineOnRight
-  settings.set('outlineOnRight', on)
-  if (on) {
+function toggleOutlineRight(v: boolean): void {
+  settings.set('outlineOnRight', v)
+  if (v) {
     settings.set('outlineRightExpanded', true)
     ui.sidebarTab = 'files'
   }
 }
 
-/** 自动保存开关：关闭时取消未触发的磁盘定时器（草稿崩溃保护不受影响） */
-function toggleAutoSave(): void {
-  const v = !settings.autoSave
+/** 自动保存开关：SettingSwitch 传新值进来；关闭时取消未触发的磁盘定时器（草稿崩溃保护不受影响） */
+function toggleAutoSave(v: boolean): void {
   settings.set('autoSave', v)
   if (!v) files.cancelAutoSave()
 }
@@ -497,11 +496,10 @@ function formatTime(ms: number): string {
                           <p class="set-row-label">侧边栏</p>
                           <p class="set-row-desc">启动时显示左侧边栏</p>
                         </div>
-                        <button
-                          class="switch"
-                          :class="{ on: settings.sidebarVisible }"
-                          :aria-label="'侧边栏'"
-                          @click="settings.set('sidebarVisible', !settings.sidebarVisible)"
+                        <SettingSwitch
+                          :model-value="settings.sidebarVisible"
+                          :label="t('settings.sidebarToggle')"
+                          @update:model-value="(v) => settings.set('sidebarVisible', v)"
                         />
                       </div>
                       <div class="set-row">
@@ -509,10 +507,10 @@ function formatTime(ms: number): string {
                           <p class="set-row-label">顶部菜单栏</p>
                           <p class="set-row-desc">关闭后界面更纯净（快捷键照常生效）</p>
                         </div>
-                        <button
-                          class="switch"
-                          :class="{ on: settings.nativeMenuBar }"
-                          @click="toggleMenuBar"
+                        <SettingSwitch
+                          :model-value="settings.nativeMenuBar"
+                          :label="t('settings.nativeMenuBar')"
+                          @update:model-value="toggleMenuBar"
                         />
                       </div>
                       <div class="set-row">
@@ -520,13 +518,10 @@ function formatTime(ms: number): string {
                           <p class="set-row-label">{{ t('settings.outlineRight') }}</p>
                           <p class="set-row-desc">三栏布局：目录与大细同时可见（可折叠）</p>
                         </div>
-                        <button
-                          class="switch"
-                          :class="{ on: settings.outlineOnRight }"
-                          :aria-checked="settings.outlineOnRight"
-                          role="switch"
-                          :aria-label="t('settings.outlineRight')"
-                          @click="toggleOutlineRight"
+                        <SettingSwitch
+                          :model-value="settings.outlineOnRight"
+                          :label="t('settings.outlineRight')"
+                          @update:model-value="toggleOutlineRight"
                         />
                       </div>
                     </section>
@@ -538,10 +533,10 @@ function formatTime(ms: number): string {
                           <p class="set-row-label">自动保存</p>
                           <p class="set-row-desc">手动模式下用 Ctrl+S / 状态栏保存</p>
                         </div>
-                        <button
-                          class="switch"
-                          :class="{ on: settings.autoSave }"
-                          @click="toggleAutoSave"
+                        <SettingSwitch
+                          :model-value="settings.autoSave"
+                          :label="t('settings.autoSave')"
+                          @update:model-value="toggleAutoSave"
                         />
                       </div>
                       <div v-if="settings.autoSave" class="set-row">
@@ -571,12 +566,10 @@ function formatTime(ms: number): string {
                           <p class="set-row-label">{{ t('settings.restoreSession') }}</p>
                           <p class="set-row-desc">恢复上次的文档、光标与滚动位置</p>
                         </div>
-                        <button
-                          class="switch"
-                          :class="{ on: settings.restoreSession }"
-                          :aria-checked="settings.restoreSession"
-                          :aria-label="t('settings.restoreSession')"
-                          @click="settings.set('restoreSession', !settings.restoreSession)"
+                        <SettingSwitch
+                          :model-value="settings.restoreSession"
+                          :label="t('settings.restoreSession')"
+                          @update:model-value="(v) => settings.set('restoreSession', v)"
                         />
                       </div>
                       <div class="set-row">
@@ -584,12 +577,11 @@ function formatTime(ms: number): string {
                           <p class="set-row-label">{{ t('settings.historyEnabled') }}</p>
                           <p class="set-row-desc">每次保存前留一份可回滚的快照</p>
                         </div>
-                        <button
-                          class="switch"
-                          :class="{ on: settings.historyEnabled }"
-                          :aria-label="t('settings.historyEnabled')"
+                        <SettingSwitch
+                          :model-value="settings.historyEnabled"
+                          :label="t('settings.historyEnabled')"
                           data-setting-history-switch
-                          @click="settings.set('historyEnabled', !settings.historyEnabled)"
+                          @update:model-value="(v) => settings.set('historyEnabled', v)"
                         />
                       </div>
                       <!-- 保留策略只在历史开着时出现（关掉时它是灰的、白白占两行） -->
@@ -697,12 +689,10 @@ function formatTime(ms: number): string {
                             <p class="set-row-label">{{ t('settings.autoCheckUpdate') }}</p>
                             <p class="set-row-desc">仅打包版且配置了更新渠道时生效</p>
                           </div>
-                          <button
-                            class="switch"
-                            :class="{ on: settings.autoCheckUpdate }"
-                            :aria-checked="settings.autoCheckUpdate"
-                            :aria-label="t('settings.autoCheckUpdate')"
-                            @click="settings.set('autoCheckUpdate', !settings.autoCheckUpdate)"
+                          <SettingSwitch
+                            :model-value="settings.autoCheckUpdate"
+                            :label="t('settings.autoCheckUpdate')"
+                            @update:model-value="(v) => settings.set('autoCheckUpdate', v)"
                           />
                         </div>
                       </div>
@@ -745,11 +735,10 @@ function formatTime(ms: number): string {
                           <p class="set-row-label">分屏同步滚动</p>
                           <p class="set-row-desc">左右两侧按滚动进度同步</p>
                         </div>
-                        <button
-                          class="switch"
-                          :class="{ on: settings.syncScroll }"
-                          :aria-label="'分屏同步滚动'"
-                          @click="settings.set('syncScroll', !settings.syncScroll)"
+                        <SettingSwitch
+                          :model-value="settings.syncScroll"
+                          :label="t('settings.syncScroll')"
+                          @update:model-value="(v) => settings.set('syncScroll', v)"
                         />
                       </div>
                       <div class="set-row">
@@ -757,11 +746,10 @@ function formatTime(ms: number): string {
                           <p class="set-row-label">代码块行号</p>
                           <p class="set-row-desc">在代码块左侧显示行号</p>
                         </div>
-                        <button
-                          class="switch"
-                          :class="{ on: settings.codeLineNumbers }"
-                          :aria-label="'代码块行号'"
-                          @click="settings.set('codeLineNumbers', !settings.codeLineNumbers)"
+                        <SettingSwitch
+                          :model-value="settings.codeLineNumbers"
+                          :label="t('settings.codeLineNumbers')"
+                          @update:model-value="(v) => settings.set('codeLineNumbers', v)"
                         />
                       </div>
                     </section>

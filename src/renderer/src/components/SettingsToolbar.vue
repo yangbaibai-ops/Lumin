@@ -22,6 +22,7 @@ import {
   type ToolbarItemDef
 } from '../../../shared/toolbarItems'
 import Icon from './Icon.vue'
+import SettingSwitch from './SettingSwitch.vue'
 
 const { t } = useI18n()
 const settings = useSettingsStore()
@@ -137,13 +138,11 @@ onBeforeUnmount(() => {
         <p class="text-[13.5px] text-ink">{{ t('toolbar.visible') }}</p>
         <p class="mt-0.5 text-[12px] leading-relaxed text-ink-3">{{ t('toolbar.visibleDesc') }}</p>
       </div>
-      <button
-        class="switch"
-        :class="{ on: settings.toolbarVisible }"
-        :aria-checked="settings.toolbarVisible"
-        :aria-label="t('toolbar.visible')"
+      <SettingSwitch
+        :model-value="settings.toolbarVisible"
+        :label="t('toolbar.visible')"
         data-setting-toolbar-switch
-        @click="settings.set('toolbarVisible', !settings.toolbarVisible)"
+        @update:model-value="(v) => settings.set('toolbarVisible', v)"
       />
     </div>
 

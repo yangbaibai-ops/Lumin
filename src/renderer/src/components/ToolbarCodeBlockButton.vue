@@ -183,7 +183,7 @@ function toggleLineNumbers(): void {
           @click="toggleLineNumbers"
         >
           <span>{{ t('editor.codeLineNumbers') }}</span>
-          <span class="switch" :class="{ on: settings.codeLineNumbers }" />
+          <span class="switch" :class="{ on: settings.codeLineNumbers }" aria-hidden="true" />
         </button>
       </div>
     </Transition>

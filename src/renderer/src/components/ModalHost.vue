@@ -49,6 +49,9 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onKeydown))
       <div
         v-if="ui.confirmState || ui.promptState"
         class="fixed inset-0 z-[150] flex items-center justify-center bg-black/30 backdrop-blur-[2px]"
+        role="dialog"
+        aria-modal="true"
+        :aria-label="ui.confirmState?.title ?? ui.promptState?.title ?? t('common.confirm')"
         @click.self="ui.confirmState ? ui.resolveConfirm(false) : ui.resolvePrompt(null)"
       >
         <Transition name="pop" appear>

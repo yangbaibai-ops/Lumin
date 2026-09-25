@@ -72,6 +72,44 @@
 - **工程化**：~~`tools/lib/harness.js` + `tools/run-suites.js`~~ → **本轮已完成**；
   剩余：`files` store 拆分；`store` 里那份为绕循环导入而复制的 `confirmIfDirty` 收敛到 `services/dialog`。
 
+## [Unreleased · 可访问性（第十五轮）：开关收口成唯一实现 + 浮层对话框语义 + live region]
+
+> 依据：桌面清单 §8（UI 与可访问性）里"读屏器 / 键盘用户根本用不了"的那几条。
+
+### Fixed
+
+- **开关只有一个实现了**（新增 `components/SettingSwitch.vue`）：设置页里同一个 `.switch` 原有
+  **十份手写副本**，其中七份既没有 `role="switch"` 也没有 `aria-checked`（读屏器只念"按钮"，
+  不念开还是关），可访问名还有三处写死中文。现在统一走组件（真 `<button>` + `role="switch"`
+  + `aria-checked` + 必填 `label`）；`toggleMenuBar` / `toggleAutoSave` / `toggleOutlineRight`
+  改成**接收新值**（原来自己取反，与组件 emit 的语义会打架）。
+  代码块行号那个 `<span class="switch">` 只是视觉轨道（外层 `<button>` 本就是 `role="switch"`），
+  给它加 `aria-hidden="true"` 而不是再造控件。
+- **三个浮层有了对话框语义**：`GlobalSearch` / `ModalHost`（确认与输入框）/ `LocalHistoryDialog`
+  此前都是纯 `div` —— 读屏器不会说"弹出了对话框"。现在都有 `role="dialog"` + `aria-modal="true"`
+  + 取自 i18n 的可访问名（草稿恢复弹窗本来就对，未动）。
+- **补上 live region**：此前全仓没有任何 `aria-live` / `role="status"`，保存结果、出错、导出完成
+  都只对看得见的人存在。现在通知带是 `role="status" aria-live="polite" aria-atomic="true"`，
+  状态栏保存态是 `aria-live="polite"`。
+- i18n 补 5 个键（三语）：`settings.nativeMenuBar` / `syncScroll` / `codeLineNumbers` /
+  `sidebarToggle` / `autoSaveToggle`（可访问名不再写死中文）。
+
+### Verification
+
+- `tools/_verify-a11y.js` 9 → **12 条**（进默认矩阵）：开关必须声明 role + 状态 + 可访问名
+  （通用页 7 个 + 编辑器页 2 个，合计 ≥9 且零缺失）、三个浮层都有 dialog 语义与可访问名、
+  存在 live region 且覆盖通知带与状态栏。
+- ⚠️ 这条断言**当场抓到一个真 bug**：重构脚本插 import 时，`SettingsDialog.vue` 里 `Icon` 的路径是
+  `../components/Icon.vue`（不是 `./Icon.vue`），插入点没匹配上，于是 `<SettingSwitch>` 成了
+  **未知元素**；Vue 在生产构建下**不报警**，页面照常渲染、只是开关全没了（实测 `setRows: 11`
+  而 `.switch: 0`）。断言先报出"0 个开关"才定位到这一行 —— 生产构建下未知组件会静默降级，
+  这个坑值得记住。
+- 同时修掉两处**套件自身**的假红：设置页是 `v-if` 的整页浮层（不先打开就量到 0 个），
+  且一次只渲染当前页签（要分通用 / 编辑器两个页签量才凑齐 9 个）。
+- 回归：`_verify-toolbar-settings` 38/38（按 `button.switch` 定位，组件化后仍是 button）、
+  `_verify-cb-line-numbers` 13/13；默认矩阵 **43/43 PASS**、0 FAIL、0 FLAKY；单元 **324 条**；
+  `eslint --max-warnings 0` 0 problem；`vue-tsc` / `tsc`(node) 0；build exit 0。
+
 ## [Unreleased · 合规（第十四轮）：第三方许可声明 + 关于页改成说事实]
 
 > 依据：桌面清单 §5（依赖 / 许可 / 合规）剩下的两条 P1。

@@ -116,8 +116,10 @@ const themes: { mode: ThemeMode; icon: string; labelKey: string }[] = [
           @click="saveOpen = !saveOpen"
         >
           <!-- 状态文字：**一律与状态栏同色**（用户口径：不要强调色、不要前面的小圆点）。
-               保存中/未保存的更改/已保存 三态只靠文字区分；保存方式在弹层里说。 -->
-          <span>{{ saveLabel }}</span>
+               保存中/未保存的更改/已保存 三态只靠文字区分；保存方式在弹层里说。
+               `aria-live="polite"`：读屏器用户按 Ctrl+S 后需要**听到**结果
+               （审计 §8：全仓此前没有一处 live region，保存/出错都不会被播报）。 -->
+          <span aria-live="polite">{{ saveLabel }}</span>
           <!-- <Icon name="chevron-up" :size="10" class="opacity-60 transition-transform duration-150" :class="saveOpen ? 'rotate-180' : ''" /> -->
         </button>
 

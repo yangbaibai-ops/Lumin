@@ -172,6 +172,121 @@ async function main() {
     JSON.stringify({ afterLeave: left.visibility, focused, viaKeyboard: viaKeyboard.visibility })
   )
 
+  // ── 开关：必须有 role="switch" + aria-checked（审计 §8：10 处手写里 7 处两者都缺）──────
+  // ⚠️ 开关全在设置页里，而设置页是 `v-if` 的整页浮层 —— 不先打开它，量到的就是 0 个。
+  // 打开后**轮询等它挂载**（固定 sleep 在这类大组件上不稳：第一版就是等 600ms 后量到 0 个假红）。
+  // ⚠️ 设置页一次只渲染**当前页签**（`v-if="tabShown(...)"`），所以分两个页签量：
+  // 通用 7 个开关 + 编辑器 2 个（同步滚动 / 代码块行号），合起来才是全部 9 个。
+  const measureSwitches = async (section) => {
+    await ev(`(() => { window.__L.ui().openSettings('${section}'); return 'ok' })()`)
+    for (let i = 0; i < 20; i++) {
+      await sleep(150)
+      if (await ev(`!!document.querySelector('[data-settings-page] .switch')`)) break
+    }
+    return JSON.parse(
+      await ev(`(() => {
+        const all = [...document.querySelectorAll('.switch')]
+        const real = all.filter((el) => el.tagName === 'BUTTON' || el.getAttribute('role') === 'switch')
+        const missingRole = all.filter((el) => el.getAttribute('role') !== 'switch' && el.tagName === 'BUTTON')
+        const missingChecked = real.filter((el) => !['true', 'false'].includes(el.getAttribute('aria-checked') || ''))
+        const missingName = real.filter((el) => !(el.getAttribute('aria-label') || el.getAttribute('title')))
+        return JSON.stringify({
+          section: '${section}',
+          total: all.length,
+          real: real.length,
+          missingRole: missingRole.length,
+          missingChecked: missingChecked.length,
+          missingName: missingName.length,
+          sample: real.slice(0, 3).map((el) => el.getAttribute('aria-checked'))
+        })
+      })()`)
+    )
+  }
+  const general = await measureSwitches('general')
+  const editorTab = await measureSwitches('editor')
+  await ev(`(() => { window.__L.ui().closeSettings(); return 'ok' })()`)
+  await sleep(300)
+  const switches = {
+    general,
+    editor: editorTab,
+    realCount: general.real + editorTab.real,
+    missingRole: general.missingRole + editorTab.missingRole,
+    missingChecked: general.missingChecked + editorTab.missingChecked,
+    missingName: general.missingName + editorTab.missingName
+  }
+  report.check(
+    'switches-declare-role-and-state',
+    switches.realCount >= 9 &&
+      switches.missingRole === 0 &&
+      switches.missingChecked === 0 &&
+      switches.missingName === 0,
+    JSON.stringify(switches)
+  )
+
+  // ── 浮层：三个都要有 role="dialog" + aria-modal（读屏器才会说"弹出了对话框"）─────
+  const overlay = async (openExpr, sel) => {
+    await ev(openExpr)
+    await sleep(400)
+    const r = JSON.parse(
+      await ev(`(() => {
+        const el = document.querySelector(${JSON.stringify(sel)})
+        if (!el) return JSON.stringify({ missing: true })
+        return JSON.stringify({
+          role: el.getAttribute('role'),
+          modal: el.getAttribute('aria-modal'),
+          label: !!(el.getAttribute('aria-label') || el.getAttribute('aria-labelledby'))
+        })
+      })()`)
+    )
+    await ev(`(() => { window.__L.ui().closeGlobalSearch?.(); window.__L.ui().confirmState && window.__L.ui().resolveConfirm(false); window.__L.ui().localHistory.open = false; return 'ok' })()`)
+    await sleep(300)
+    return r
+  }
+  const gs = await overlay(
+    `(() => { window.__L.ui().openGlobalSearch(); return 'ok' })()`,
+    '[role="dialog"][aria-modal="true"]'
+  )
+  await ev(
+    `(() => { window.__L.ui().confirm({ title: 'x', body: 'y' }); return 'ok' })()`
+  )
+  await sleep(400)
+  const confirmDialog = JSON.parse(
+    await ev(`(() => {
+      const el = [...document.querySelectorAll('[aria-modal="true"]')].pop()
+      return JSON.stringify({ role: el?.getAttribute('role') ?? null, label: !!(el?.getAttribute('aria-label')) })
+    })()`)
+  )
+  await ev(`(() => { const ui = window.__L.ui(); if (ui.confirmState) ui.resolveConfirm(false); return 'ok' })()`)
+  await sleep(300)
+  report.check(
+    'overlays-declare-dialog-semantics',
+    gs.role === 'dialog' && gs.modal === 'true' && gs.label === true && confirmDialog.role === 'dialog' && confirmDialog.label === true,
+    JSON.stringify({ globalSearch: gs, confirm: confirmDialog })
+  )
+
+  // ── live region：状态栏保存态与通知带都必须可被播报 ──────────────────────────
+  // 通知带是 `v-if="active"` 的（没有通知时整块不存在），所以先造一条通知再看
+  await ev(
+    `(() => { window.__L.notifications().notify({ level: 'info', title: 'a11y probe' }); return 'ok' })()`
+  )
+  await sleep(600)
+  const live = JSON.parse(
+    await ev(`(() => {
+      const liveEls = [...document.querySelectorAll('[aria-live], [role="status"], [role="alert"]')]
+      return JSON.stringify({
+        count: liveEls.length,
+        hasStatusBar: !!document.querySelector('footer [aria-live], [aria-live="polite"]'),
+        hasNotificationStrip: !!document.querySelector('[data-notification-center][role="status"]'),
+        tags: liveEls.map((el) => el.getAttribute('aria-live') || el.getAttribute('role')).slice(0, 4)
+      })
+    })()`)
+  )
+  report.check(
+    'has-live-regions',
+    live.count >= 2 && live.hasNotificationStrip === true && live.hasStatusBar === true,
+    JSON.stringify(live)
+  )
+
   return report.finish()
 }
 
