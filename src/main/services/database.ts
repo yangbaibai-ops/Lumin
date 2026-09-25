@@ -571,15 +571,19 @@ class LuminDatabase {
     if (last && last.content === entry.content) return null
     const savedAt = entry.savedAt ?? Date.now()
     const preview = historyPreview(entry.content)
+    // 字节数**写入时**算好（`bytes` 列，见 migrations 的 migration2）：
+    // 抽稀每次保存都要知道每条历史占多少字节，现算 `LENGTH(content)` 等于每次都把
+    // 历史正文全解码一遍（实测 64MB 历史 ≈ 90ms，而这是每次保存都付的）。
     const info = this.db
       .prepare(
-        `INSERT INTO documents_history (path, saved_at, size, preview, content, encoding, eol)
-         VALUES (?, ?, ?, ?, ?, ?, ?)`
+        `INSERT INTO documents_history (path, saved_at, size, bytes, preview, content, encoding, eol)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
       )
       .run(
         entry.path,
         savedAt,
         entry.content.length,
+        Buffer.byteLength(entry.content, 'utf8'),
         preview,
         entry.content,
         entry.encoding ?? '',
@@ -643,10 +647,23 @@ class LuminDatabase {
     }
   }
 
-  /** 抽稀：按 shared/history.ts 的纯函数策略删（每文件条数 + 年龄 + 全库条数 + 全库字节） */
+  /**
+   * 抽稀：按 shared/history.ts 的纯函数策略删（每文件条数 + 年龄 + 全库条数 + 全库字节）。
+   *
+   * 策略本身仍在纯函数里（那是唯一真相），这里只把两处**每次保存都要付**的代价压掉
+   * （审计 §2 P2「主进程同步 SQLite 在大库时会卡顿」）：
+   *
+   *  1. 字节数读**写入时记下的 `bytes` 列**，而不是现算 `LENGTH(content)`：
+   *     后者对 TEXT 求的是**字符数**，SQLite 必须按 UTF-8 逐字解码整篇正文。
+   *     实测（2000 条 × 30 万字符 ≈ 1.6GB 历史）一次扫描 **2.3 秒**；按 64MB 字节上限
+   *     压过之后仍有 ~90ms —— 而这是**每次保存**都要付的（同步 API，直接卡住窗口）。
+   *     读 `bytes` 只碰行头，与正文体积无关（列与回填见 migrations 的 migration2）。
+   *  2. 删除包在**一个显式事务**里：以前是 N 次 `stmt.run(id)`，每次一个隐式事务；
+   *     全库上限 2000 条，一次抽稀删几百条就是几百次提交。
+   */
   pruneHistory(now = Date.now()): number {
     const rows = this.db
-      .prepare('SELECT id, path, saved_at, LENGTH(content) AS bytes FROM documents_history')
+      .prepare('SELECT id, path, saved_at, bytes FROM documents_history')
       .all() as unknown as { id: number; path: string; saved_at: number; bytes: number }[]
     if (rows.length === 0) return 0
     const drop = planHistoryPrune(
@@ -655,7 +672,18 @@ class LuminDatabase {
     )
     if (!drop.length) return 0
     const stmt = this.db.prepare('DELETE FROM documents_history WHERE id = ?')
-    for (const id of drop) stmt.run(id)
+    this.db.exec('BEGIN')
+    try {
+      for (const id of drop) stmt.run(id)
+      this.db.exec('COMMIT')
+    } catch (err) {
+      try {
+        this.db.exec('ROLLBACK')
+      } catch {
+        /* 保留原始错误 */
+      }
+      throw err
+    }
     return drop.length
   }
 

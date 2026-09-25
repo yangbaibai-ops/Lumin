@@ -20,7 +20,7 @@
 // 只会让老库和新库走出不同的状态。
 
 /** 当前 schema 版本。加一步迁移就 +1，并在 `MIGRATIONS` 末尾追加。 */
-export const SCHEMA_VERSION = 1
+export const SCHEMA_VERSION = 2
 
 /** 只依赖 `node:sqlite`，不依赖 electron */
 type Db = import('node:sqlite').DatabaseSync
@@ -236,8 +236,40 @@ function migration1(db: Db): void {
   }
 }
 
+/**
+ * 迁移 2：历史表加一列 `bytes`（UTF-8 字节数）。
+ *
+ * 为什么需要（审计 §2 P2「主进程同步 SQLite 在大库时会卡顿」）：
+ * `pruneHistory` 每次保存都要知道每条历史**占多少字节**，而它原来现算
+ * `LENGTH(content)` —— 那是对 TEXT 求字符数，SQLite 得把整篇正文解码一遍。
+ * 实测（2000 条 × 30 万字符 ≈ 1.6GB 历史）：一次扫描 **2.3 秒**；按字节上限把历史
+ * 压到 64MB 后仍有 ~90ms，而这是**每次保存**都要付的（主进程同步 API，直接卡住窗口）。
+ *
+ * 改成"写入时就记下字节数"之后，抽稀只需要读行头（id/path/saved_at/bytes），
+ * 与正文体积无关。`size` 列保持原语义（字符数，界面显示用），不动它。
+ *
+ * 回填用 `LENGTH(CAST(content AS BLOB))`：只在这**一次**迁移里付一次全表扫描的代价。
+ */
+function migration2(db: Db): void {
+  const cols = db.prepare('PRAGMA table_info(documents_history)').all() as unknown as {
+    name: string
+  }[]
+  if (!cols.some((c) => c.name === 'bytes')) {
+    db.exec('ALTER TABLE documents_history ADD COLUMN bytes INTEGER NOT NULL DEFAULT 0')
+  }
+  // 回填历史行：`bytes = 0` 只可能是"从没写过字节数"（空正文的真实字节数也是 0，
+  // 回填成 0 无害）。已经有值的行不重算，避免每次启动都扫一遍正文。
+  // ⚠️ SQLite 里字符串字面量只能用单引号：`""` 会被当成**标识符**（报 no such column）。
+  db.exec(
+    "UPDATE documents_history SET bytes = LENGTH(CAST(content AS BLOB)) WHERE bytes = 0 AND content <> ''"
+  )
+}
+
 /** 迁移步骤表：**只许追加**，不许改已发布步骤的语义（见文件头注释） */
-const MIGRATIONS: { version: number; up: (db: Db) => void }[] = [{ version: 1, up: migration1 }]
+const MIGRATIONS: { version: number; up: (db: Db) => void }[] = [
+  { version: 1, up: migration1 },
+  { version: 2, up: migration2 }
+]
 
 /** 读当前库的 schema 版本（无用户表时 SQLite 返回 0） */
 export function readSchemaVersion(db: Db): number {
