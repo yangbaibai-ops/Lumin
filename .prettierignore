@@ -7,3 +7,5 @@ tsconfig.*.json
 # Markdown 保真夹具必须保持原样：`prettier --write .` 会重排表格、合并软换行，
 # 而那正是这些夹具要检出的东西（见 tools/_verify-md-fidelity.js）
 tools/fixtures
+# 生成物：内容必须与生成器逐字节一致，格式化会把它改得对不上（见 tools/doc-tokens.js）
+docs/design-tokens.md

@@ -22,12 +22,13 @@
 
 ```powershell
 npm ci                       # 与 lockfile 完全一致
-npm run ci                   # typecheck + lint(--max-warnings 0) + 单测 + notices:check + docs:facts:check + build
-npm run test:suites          # 默认矩阵（43+ 条 CDP 套件，起隔离实例）
+npm run ci                   # typecheck + lint(--max-warnings 0) + 单测 + notices:check + docs:facts:check + docs:tokens:check + build
+npm run test:suites          # 默认矩阵（55+ 条 CDP 套件，起隔离实例）
 ```
 
-- `npm run test:suites` **必须** `FAIL 0 / NOASSERT 0`（`FLAKY` 要逐条看过：那条是不是真的环境问题）。
 - 文档数字若漂了：`npm run docs:facts:write` 重算后**一起提交**（别手改那些数字）。
+- 设计令牌表（`docs/design-tokens.md`）同理：改了 `theme.css` / `sidebar.css` 之后跑
+  `npm run docs:tokens:write`（CI 里由 `docs:tokens:check` 与 `tests/designTokens.test.mjs` 守着）。
 - 依赖变了：`npm run notices` 重算 `THIRD-PARTY-NOTICES.md`（`notices:check` 会拦）。
 
 ## 3. 打包
@@ -49,18 +50,18 @@ Get-ChildItem dist\*.exe | Get-FileHash -Algorithm SHA256
 
 ## 4. 冒烟清单（人工，10 分钟）
 
-| # | 动作 | 期望 |
-|---|---|---|
-| 1 | 双击安装包 → 安装 → 启动 | 窗口出现、无未签名拦截以外的报错 |
-| 2 | 首次启动 | 没有工作区时是空态而不是报错 |
-| 3 | 打开一个文件夹工作区 | 文件树列出 `.md`，点开能编辑 |
-| 4 | 打字 → Ctrl+S | 状态栏从"未保存"到"已保存"，磁盘内容一致 |
-| 5 | 关窗再启动 | 恢复上次文档与光标（`restoreSession` 默认开） |
-| 6 | 粘贴一张截图进正文 | 图片落在 `<工作区>/assets/`，能渲染（见 `_verify-image-insert.js`） |
-| 7 | 导出 PDF 一次 | 生成的文件能打开、中文不乱码 |
-| 8 | 设置 → 高级 → 复制诊断信息 | 复制到一段**不含文档内容**的环境事实 |
-| 9 | 帮助 → 关于 | 版本与 `package.json` 一致、第三方许可能展开 |
-| 10 | 卸载 | 卸载后用户数据目录按预期保留/清理（见 `docs/packaging-install-test.md`） |
+| #   | 动作                       | 期望                                                                     |
+| --- | -------------------------- | ------------------------------------------------------------------------ |
+| 1   | 双击安装包 → 安装 → 启动   | 窗口出现、无未签名拦截以外的报错                                         |
+| 2   | 首次启动                   | 没有工作区时是空态而不是报错                                             |
+| 3   | 打开一个文件夹工作区       | 文件树列出 `.md`，点开能编辑                                             |
+| 4   | 打字 → Ctrl+S              | 状态栏从"未保存"到"已保存"，磁盘内容一致                                 |
+| 5   | 关窗再启动                 | 恢复上次文档与光标（`restoreSession` 默认开）                            |
+| 6   | 粘贴一张截图进正文         | 图片落在 `<工作区>/assets/`，能渲染（见 `_verify-image-insert.js`）      |
+| 7   | 导出 PDF 一次              | 生成的文件能打开、中文不乱码                                             |
+| 8   | 设置 → 高级 → 复制诊断信息 | 复制到一段**不含文档内容**的环境事实                                     |
+| 9   | 帮助 → 关于                | 版本与 `package.json` 一致、第三方许可能展开                             |
+| 10  | 卸载                       | 卸载后用户数据目录按预期保留/清理（见 `docs/packaging-install-test.md`） |
 
 ## 5. 已知的"不要做"
 
