@@ -2,12 +2,13 @@
   "name": "lumin",
   "version": "1.0.0",
   "description": "Lumin —— 所见即所得的 Markdown 编辑器（Electron + Vue 3 + Tiptap）",
+  "license": "MIT",
+  "private": true,
   "main": "./out/main/index.js",
   "author": {
     "name": "yang_bai_bai",
     "email": "yang_bai_bai@163.com"
   },
-  "homepage": "https://electron-vite.org",
   "scripts": {
     "format": "prettier --write .",
     "lint": "eslint --cache .",

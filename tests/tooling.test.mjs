@@ -78,9 +78,22 @@ test('夹具库与 EXPECT.json 必须一一对应', () => {
 
 test('套件统一入口存在且默认清单里的套件都在', () => {
   const src = fs.readFileSync(path.join(TOOLS, 'run-suites.js'), 'utf-8')
-  const listed = [...src.matchAll(/'( _verify[^']*|_verify[^']*)'/g)].map((m) => m[1])
-  assert.ok(listed.length >= 5, `默认清单太少：${listed.length}`)
-  for (const f of listed) {
-    assert.ok(fs.existsSync(path.join(TOOLS, f)), `run-suites 默认清单里的 ${f} 不存在`)
+  /**
+   * 清单里的**任何**套件文件名都要被这条守到 —— 不只是 `_verify-*`。
+   *
+   * 原来正则写的是 `_verify[^']*`，于是默认清单里的 6 个 `_regress-*` 与 1 个 `_repro-*`
+   * 落在覆盖之外：把它们改名/写错，`run-suites.js` 的 `filter(existsSync)` 会**静默丢弃**，
+   * 矩阵照旧全绿而覆盖悄悄变少（与 NOASSERT 想解决的"绿灯什么都证明不了"是同一类问题）。
+   */
+  const listed = [...src.matchAll(/'(_(?:verify|regress|repro)-[^']*\.js)'/g)].map((m) => m[1])
+  assert.ok(listed.length >= 20, `默认清单太少：${listed.length}`)
+  const unique = [...new Set(listed)]
+  for (const f of unique) {
+    assert.ok(fs.existsSync(path.join(TOOLS, f)), `run-suites 清单里的 ${f} 不存在`)
+  }
+  // 清单里出现过的每一类前缀都要被上面那条正则覆盖到（防止以后又漏一类）
+  const prefixes = new Set(unique.map((f) => f.split('-')[0]))
+  for (const p of prefixes) {
+    assert.match(p, /^_(verify|regress|repro)$/, `清单里出现了未被守护的套件前缀：${p}`)
   }
 })

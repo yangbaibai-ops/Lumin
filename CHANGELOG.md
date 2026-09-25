@@ -72,6 +72,41 @@
 - **工程化**：~~`tools/lib/harness.js` + `tools/run-suites.js`~~ → **本轮已完成**；
   剩余：`files` store 拆分；`store` 里那份为绕循环导入而复制的 `confirmIfDirty` 收敛到 `services/dialog`。
 
+## [Unreleased · 工程化/合规/基础可访问性（第十二轮）：许可证与元数据 + 套件清单不再静默丢档 + 全局焦点环与减少动效]
+
+> 依据：桌面清单 §5（许可与合规）、§10（测试与工程化）、§8（可访问性）里"小改动、高收益"的几条。
+
+### Added
+
+- **`LICENSE`（MIT）**：README 一直声明 MIT，而仓库里既没有 LICENSE 文件、`package.json` 也没有
+  `license` 字段 —— 法律上等于"保留所有权利"，与对外声明直接矛盾。
+- **全局 `:focus-visible` 焦点环**与**全局 `prefers-reduced-motion` 兜底**（`base.css`）：
+  前者补上"`outline: none` 15 处 vs `:focus-visible` 4 条"造成的键盘不可见焦点（WCAG 2.4.7）；
+  后者让无限循环动画与画面过渡尊重系统偏好（WCAG 2.3.3）。两条都只在 `base.css` 写一次，
+  以后不必逐组件重复。减少动效用 0.01ms 时长而非 `animation: none`（后者会让
+  `transitionend/animationend` 永不到来，依赖它清理离场节点的浮层会留在 DOM 里）。
+
+### Changed
+
+- `package.json`：补 `"license": "MIT"` 与 `"private": true`（防止把 `lumin@1.0.0` 误发到公共
+  registry）；删掉模板残留的 `"homepage": "https://electron-vite.org"`。
+- 原生菜单「帮助 → 主页」原来打开 `https://github.com`（GitHub 首页，不是本仓库）→ 整项删除，
+  原位留注释：等真实仓库地址确定后再加回来（指向无关站点比没有这一项更糟）。
+- `tools/run-suites.js`：`allSuites()` 三类前缀一起收（原来只收 `_verify-*`，导致 8 个 `_repro-*`
+  既不在默认矩阵、也不在 `--all`，永远没人跑）；清单里列了但盘上不存在的套件**明确指出并非零退出**
+  （原来 `filter(existsSync)` 静默丢弃 —— 改个名就能让覆盖变少而矩阵仍全绿）。
+- `tests/tooling.test.mjs`：清单守卫正则覆盖三类前缀（原来只匹配 `_verify`，默认矩阵里 6 个
+  `_regress-*` + 1 个 `_repro-*` 在覆盖之外）。
+
+### Verification
+
+- 产物核对：构建后 `out/renderer/assets/index-*.css` 里 `focus-visible` **3 → 5**、
+  `prefers-reduced-motion` **3 → 4**（确认兜底真的进了产物）。
+- 回归：`_verify-a11y` 9/9、`_verify-segmented-control` 16/16、`_verify-bars-no-filename` 16/16、
+  `_verify-neutral-accent` 10/10、`_verify-toolbar-settings` 38/38。
+- 实测：`--suite=_verify-not-exist.js` → 打印缺失清单 + `exit 1`（不再静默变绿）。
+- 单元 323 条全绿；eslint 0/0；vue-tsc / tsc(node) 0；build exit 0。
+
 ## [Unreleased · 安全（第十一轮）：文档链接不再能打开可执行文件 + CSP 收敛成唯一真相源]
 
 > 依据：桌面《Lumin-项目改进清单-2026-09-24.md》§4（安全边界）的两条 P1。

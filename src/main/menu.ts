@@ -12,7 +12,7 @@
 // 注意：这里**故意不设 accelerator**。应用级快捷键由渲染层的命令注册表统一接管
 // （renderer/src/lib/keymap/），用户可以在「设置 → 快捷键」里改；若原生菜单也绑一份，
 // 就会出现「用户改了键但原生那份照旧触发」的两套真相 + 重复触发。
-import { app, BrowserWindow, Menu, shell } from 'electron'
+import { app, BrowserWindow, Menu } from 'electron'
 import type { MenuItemConstructorOptions } from 'electron'
 import { settingsStore } from './store'
 import { db } from './services/database'
@@ -169,8 +169,13 @@ export function installMenu(): void {
       label: T('help'),
       submenu: [
         { label: T('settings'), click: () => send('settings') },
-        { label: T('about'), click: () => send('about') },
-        { label: T('homepage'), click: () => shell.openExternal('https://github.com') }
+        { label: T('about'), click: () => send('about') }
+        // 这里原来有一项「主页」→ `shell.openExternal('https://github.com')`：
+        // 打开的是 **GitHub 首页**，不是本项目的仓库（`package.json` 的 homepage 也还是
+        // electron-vite 脚手架模板值）。指向一个无关站点比没有这一项更糟 —— 用户点了会以为
+        // 自己走错了地方。等仓库地址确定后再加回来：
+        //   { label: T('homepage'), click: () => shell.openExternal(<真实仓库地址>) }
+        // 同时记得把 `package.json` 的 homepage/repository 补上。
       ]
     }
   ]

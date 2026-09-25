@@ -131,10 +131,18 @@ function parseArgs(argv) {
 const MANUAL = new Set(['_verify-notify-restart.js'])
 
 /** 列出 tools 下所有 `_verify-*.js`（用于 --all） */
+/**
+ * 列出 tools 下所有套件（用于 `--all`）。
+ *
+ * ⚠️ 这里必须收**三类前缀**，不能只收 `_verify-*`：
+ * 本仓库的套件按用途分了三种命名（`_verify-*` 功能验收 / `_regress-*` 回归 /
+ * `_repro-*` 缺陷复现），只收 `_verify-*` 会让 `_repro-*` 里那些**既不在默认矩阵、
+ * 也不在 `--all`** 的脚本永远没人跑（实测：8 个）。
+ */
 function allSuites() {
   return fs
     .readdirSync(TOOLS)
-    .filter((f) => /^_verify-.*\.js$/.test(f))
+    .filter((f) => /^_(verify|regress|repro)-.*\.js$/.test(f))
     .filter((f) => !MANUAL.has(f))
     .sort()
 }
@@ -280,6 +288,16 @@ function runSuite(file, port, timeoutMs, userData) {
 async function main() {
   const args = parseArgs(process.argv)
   let suites = args.suite ?? (args.all ? allSuites() : DEFAULT_SUITES)
+  /**
+   * 清单里写了但盘上不存在的套件：**必须报出来并让命令失败**。
+   * 原来是一句 `filter(existsSync)` 静默丢弃 —— 一次重命名就能让覆盖悄悄变少而矩阵照旧全绿
+   * （与 NOASSERT 想解决的"绿灯什么都证明不了"是同一类问题）。
+   */
+  const missing = suites.filter((s) => !fs.existsSync(path.join(TOOLS, s)))
+  if (missing.length) {
+    console.log(`清单里列了但盘上不存在（改名/删除后没同步清单？）：${missing.join(', ')}`)
+    return 1
+  }
   suites = suites.filter((s) => fs.existsSync(path.join(TOOLS, s)))
   if (!suites.length) {
     console.log('没有可跑的套件')

@@ -13,6 +13,28 @@
     border-color: var(--edge);
   }
 
+  /**
+   * ─── 键盘焦点：**全局兜底** ───────────────────────────────────────────────
+   * 背景（审计结论）：全仓 `outline: none` 出现 15 处，而 `:focus-visible` 只有 4 条 ——
+   * 结果是用 Tab 走工具栏图标、侧栏图标按钮、设置页所有开关/分段按钮、滑杆时**完全看不到焦点在哪**
+   * （WCAG 2.4.7 违规）。
+   *
+   * 口径：
+   *   * 只对 `:focus-visible` 生效 —— 鼠标点击不出现描边（输入框类自己已有更细的焦点环，
+   *     它们的规则更具体，会盖掉这条兜底）；
+   *   * 用 `outline` 而不是 `box-shadow`：不参与布局、不被 `overflow: hidden` 裁掉；
+   *   * `outline-offset: 2px` 让它退到控件外侧，不糊住边框与图标。
+   * 树行（`.tree-row:focus-visible`）与 `.input:focus` 是刻意更精细的实现，保持不变即可。
+   */
+  :focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+  /* 能滚但不该抢 Tab 的容器（如编辑器滚动区）不要出现兜底描边 */
+  [tabindex='-1']:focus-visible {
+    outline: none;
+  }
+
   html,
   body,
   #app {
@@ -467,4 +489,26 @@ div + .set-row {
 .list-leave-to {
   opacity: 0;
   transform: translateY(-6px) scale(0.98);
+}
+
+/**
+ * ─── 尊重「减少动效」偏好（WCAG 2.3.3）───────────────────────────────────────
+ * 背景（审计结论）：全仓只有 5 处 `prefers-reduced-motion`，而 `lm-shimmer`（骨架，1.6s 无限循环）、
+ * `sync-pulse`（同步指示，1.6s 无限循环）、body 的 0.35s 主题过渡、以及 `.fade/.pop/.page/.list`
+ * 四组过渡都没有保护 —— 对前庭功能敏感的用户等于关不掉。
+ *
+ * 口径：**兜底 + 以后不用再逐处写**。用极短时长而不是 `animation: none`：
+ * 有些组件靠 `transitionend/animationend` 收尾（例如浮层的离场清理），
+ * 直接 `none` 会让那些事件永远不来（本轮刚在测试里踩过这个坑，见 _verify-draft-banner 的说明）。
+ * 0.01ms 的时长既让动画"看不见"，又保证事件照常触发。
+ */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  ::before,
+  ::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }
