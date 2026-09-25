@@ -177,6 +177,7 @@
     "saved": "已保存",
     "saving": "保存中…",
     "unsaved": "未保存的更改",
+    "saveFailed": "未保存（保存失败）",
     "words": "字",
     "lines": "行",
     "chars": "字符",
@@ -469,7 +470,9 @@
     "prev": "上一条通知",
     "next": "下一条通知",
     "close": "关闭此通知",
-    "closeAll": "全部关闭"
+    "closeAll": "全部关闭",
+    "saveFailedTitle": "保存失败：{name}",
+    "saveFailedBody": "原因：{reason}。内容仍安全保存在本地草稿里，程序会按指数退避自动重试（最长 60 秒一次）。"
   },
   "statusbar": {
     "saveMode": "保存方式",
@@ -480,6 +483,7 @@
     "encodingTooltip": "当前文档编码（文件 → 选择编码重新打开）",
     "eolTooltip": "当前行尾：{eol} —— 点击切换 LF / CRLF（立即写回）",
     "saveModeDetail": "保存方式：{mode}",
+    "saveFailedDetail": "保存失败：{reason}（仍在自动重试，期间内容安全保存在草稿里）",
     "tagsTooltip": "标签（逗号分隔，用于归类与搜索）",
     "tagsPlaceholder": "例如：小说, 第一章, 草稿",
     "addTags": "添加标签"

@@ -113,9 +113,14 @@ onBeforeUnmount(() => document.removeEventListener('mousedown', onDocClick))
  * 原来手动模式会一直写着「手动保存」——那是模式名，不是状态，选过一次之后就是重复噪音。
  * 现在两种模式都只说状态（保存中 / 未保存的更改 / 已保存），
  * 保存方式本身放在点击后弹出的那一层里（那里仍然写着「自动保存 / 手动保存」）。
+ *
+ * 写盘失败是**独立的一态**（审计 §2 P1）：磁盘满 / 只读 / 被占用时内容只在内存与草稿里，
+ * 这时还说"未保存的更改"会让人以为"待会儿会自动存"，而它其实一直在失败（重试退避到 60 秒）。
+ * 所以这一格会变成 danger 色，并且**同时**在通知中心留一张持久的卡片（见 files.saveNow）。
  */
 const saveLabel = computed(() => {
   if (!files.current) return ''
+  if (files.saveError) return t('editor.saveFailed')
   if (files.saving) return t('editor.saving')
   if (files.dirty) return t('editor.unsaved')
   return t('editor.saved')
@@ -125,11 +130,15 @@ const saveLabel = computed(() => {
 const saveModeLabel = computed(() =>
   settings.autoSave ? t('statusbar.autoSave') : t('statusbar.manualSave')
 )
-const saveTriggerLabel = computed(() =>
-  t('statusbar.saveModeDetail', { mode: saveModeLabel.value })
-)
 
-/** 选择保存方式：自动保存（开）或手动保存（关） */
+/** 失败那一格的悬停/无障碍名：把原因与"正在重试"说清楚（文字只有四个字，放不下原因） */
+const saveTriggerLabel = computed(() => {
+  if (files.saveError) {
+    return t('statusbar.saveFailedDetail', { reason: files.saveError })
+  }
+  return t('statusbar.saveModeDetail', { mode: saveModeLabel.value })
+})
+
 function chooseSaveMode(manual: boolean): void {
   saveOpen.value = false
   if (settings.autoSave === !manual) return
@@ -171,7 +180,9 @@ const themes: { mode: ThemeMode; icon: string; labelKey: string }[] = [
       <div ref="saveRef" class="relative flex items-center">
         <button
           class="group flex cursor-pointer items-center gap-1.5 rounded-md px-1.5 py-0.5 -ml-1.5 transition-colors hover:bg-panel-2"
+          :class="files.saveError ? 'text-danger' : ''"
           data-save-cell
+          :data-save-error="files.saveError ?? undefined"
           :title="saveTriggerLabel"
           :aria-label="saveTriggerLabel"
           @click="saveOpen = !saveOpen"

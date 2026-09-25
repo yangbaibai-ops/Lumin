@@ -177,6 +177,7 @@
     "saved": "Saved",
     "saving": "Saving…",
     "unsaved": "Unsaved changes",
+    "saveFailed": "Unsaved (save failed)",
     "words": "words",
     "lines": "lines",
     "chars": "chars",
@@ -469,7 +470,9 @@
     "prev": "Previous notification",
     "next": "Next notification",
     "close": "Dismiss this notification",
-    "closeAll": "Dismiss all"
+    "closeAll": "Dismiss all",
+    "saveFailedTitle": "Save failed: {name}",
+    "saveFailedBody": "Reason: {reason}. Your text is still safe in a local draft; the app keeps retrying with exponential backoff (up to once every 60s)."
   },
   "statusbar": {
     "saveMode": "Save mode",
@@ -480,6 +483,7 @@
     "encodingTooltip": "Document encoding (File → Reopen with encoding)",
     "eolTooltip": "Line endings: {eol} — click to switch LF / CRLF (saves immediately)",
     "saveModeDetail": "Save mode: {mode}",
+    "saveFailedDetail": "Save failed: {reason} (still retrying automatically; your text is safe in a local draft)",
     "tagsTooltip": "Tags (comma separated; used for grouping and search)",
     "tagsPlaceholder": "e.g. novel, chapter-1, draft",
     "addTags": "Add tags"

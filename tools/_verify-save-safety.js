@@ -140,7 +140,9 @@ async function main() {
       `flush 前 store.dirty=${c.storeDirtyBefore}；点击另一个文件后弹确认=${JSON.stringify(c.asked)}（应为字符串）且仍停在原文档`
     )
     // 取消这次确认，恢复干净状态
-    await ev(`(() => { const ui = window.__L.ui(); if (ui.confirmState) ui.resolveConfirm(false); return 'ok' })()`)
+    await ev(
+      `(() => { const ui = window.__L.ui(); if (ui.confirmState) ui.resolveConfirm(false); return 'ok' })()`
+    )
     await sleep(400)
 
     // ── D. 写盘返回真实 mtime ─────────────────────────────────────────────
@@ -184,7 +186,92 @@ async function main() {
       e.r1 === true && e.r2 === true && (e.disk === '并发二' || e.dirty === true),
       `两次保存都成功，磁盘是完整的一份（不出现交错内容）：${JSON.stringify(e.disk)} / dirty=${e.dirty}`
     )
+
+    // ── F. 写盘失败必须**看得见**（审计 §2 P1：退避重试 + 持久通知 + 状态栏红态）──
+    // 造一个真实会失败的写盘：把文件设成只读（Windows 上 rename 覆盖只读文件 = EPERM，
+    // 实测 `fs.chmodSync(file, 0o444)` 之后 `fs.rename` 必失败）。
+    // 用户视角的对应场景是"文件被别的程序占用 / 磁盘满 / 只读盘"。
+    fs.chmodSync(fileA, 0o444)
+    const f1 = JSON.parse(
+      await ev(`(async () => {
+        const f = window.__L.files()
+        f.setContent('只读写不进去', 'external')
+        const ok = await f.save()
+        // 状态栏那一格：失败要变成 danger 色 + 专属文案（不能还写着"未保存的更改"）
+        const cell = document.querySelector('[data-save-cell]')
+        return JSON.stringify({
+          ok,
+          saveError: f.saveError,
+          retryScheduled: f.saveRetryDelay > 0,
+          cellText: (cell?.textContent ?? '').trim(),
+          cellError: cell?.getAttribute('data-save-error') ?? null,
+          dangerClass: (cell?.className ?? '').includes('text-danger')
+        })
+      })()`)
+    )
+    report.note('F ' + JSON.stringify(f1))
+    report.check(
+      'failed-save-reports-false-and-keeps-error',
+      f1.ok === false && typeof f1.saveError === 'string' && f1.saveError.length > 0,
+      `ok=${f1.ok} reason=${f1.saveError}`
+    )
+    report.check(
+      'failed-save-schedules-backoff-retry',
+      f1.retryScheduled === true,
+      `退避延时 > 0（失败后必须继续尝试落盘，不能一停手就永远不试）`
+    )
+    report.check(
+      'status-bar-shows-failure-state',
+      f1.cellError !== null && f1.dangerClass === true && f1.cellText !== '',
+      JSON.stringify({
+        cellText: f1.cellText,
+        cellError: f1.cellError,
+        dangerClass: f1.dangerClass
+      })
+    )
+    const notified = JSON.parse(
+      await ev(`(async () => {
+        const list = await window.luminAPI.notifications.list({ includeClosed: true })
+        // 通知里不带 mergeKey（它在库里只用于合并），按"error 级 + 标题含文件名"找
+        const hit = list.find((n) => n.level === 'error' && String(n.title).includes('alpha.md'))
+        return JSON.stringify({ total: list.length, hit: hit ? { level: hit.level, title: hit.title, body: hit.body, closed: hit.closedAt } : null })
+      })()`)
+    )
+    report.check(
+      'failed-save-leaves-persistent-notification',
+      !!notified.hit && notified.hit.closed === null && String(notified.hit.body).length > 0,
+      JSON.stringify(notified.hit)
+    )
+
+    // 恢复可写后：错误态要**自动消失**（否则用户永远看到一格红的）
+    fs.chmodSync(fileA, 0o666)
+    const f2 = JSON.parse(
+      await ev(`(async () => {
+        const f = window.__L.files()
+        const ok = await f.save()
+        const cell = document.querySelector('[data-save-cell]')
+        return JSON.stringify({
+          ok,
+          saveError: f.saveError,
+          dirty: f.dirty,
+          cellError: cell?.getAttribute('data-save-error') ?? null,
+          cellText: (cell?.textContent ?? '').trim()
+        })
+      })()`)
+    )
+    report.note('F2 ' + JSON.stringify(f2))
+    report.check(
+      'successful-save-clears-failure-state',
+      f2.ok === true && f2.saveError === null && f2.cellError === null && f2.dirty === false,
+      JSON.stringify(f2)
+    )
   } finally {
+    // F 段把 alpha.md 设成了只读：先恢复可写，否则 Windows 上删目录会失败
+    try {
+      fs.chmodSync(fileA, 0o666)
+    } catch {
+      /* ignore */
+    }
     await ev(`(async () => {
       await window.luminAPI.drafts.remove(${JSON.stringify(DRAFT_KEY_A)})
       await window.__L.files().setRoot(null)

@@ -6,6 +6,7 @@ import { useSettingsStore } from './settings'
 import { useWorkspaceDocsStore } from './workspaceDocs'
 import { useRecentStore } from './recent'
 import { useUiStore } from './ui'
+import { useNotificationsStore } from './notifications'
 import i18n from '../i18n'
 import { ancestorDirs, isInside, samePath } from '../lib/pathUtils'
 import { errorReason } from '../lib/errors'
@@ -117,6 +118,17 @@ export const useFilesStore = defineStore('files', {
     lastDraftAt: 0,
     /** 上一次写盘失败的退避延时（ms，0 = 没在退避）；成功即清零 */
     saveRetryDelay: 0,
+    /**
+     * 上一次写盘失败的原因（null = 没有失败记录）。
+     *
+     * 审计 §2 P1「自动保存失败后不重试」的**可见性**那一半：退避重试早已有，
+     * 但失败只在一条会消失的 toast 里说过一次 —— 之后状态栏仍然只写"未保存的更改"，
+     * 用户完全看不出"它已经试过、而且一直在失败"。磁盘满 / 只读 / 被占用时，
+     * 内容就只存在于内存与草稿里，用户必须**当场知道**。
+     */
+    saveError: null as string | null,
+    /** 失败后最近一次排定的重试时刻（状态栏说明"正在重试"用） */
+    saveRetryAt: 0,
     saving: false,
     /** 写盘进行中的 Promise（串行化用：同一时刻只允许一次写盘，见 save 的说明） */
     savePromise: null as Promise<boolean> | null,
@@ -601,6 +613,8 @@ export const useFilesStore = defineStore('files', {
         doc.mtimeMs = mtimeMs
         doc.savedContent = snapshot
         this.saveRetryDelay = 0
+        this.saveRetryAt = 0
+        this.saveError = null
         useRecentStore().touchFile(doc.path)
         // 列表视图就地刷新该条目的修改时间（若列表已打开）
         useWorkspaceDocsStore().bumpMtime(doc.path)
@@ -614,13 +628,29 @@ export const useFilesStore = defineStore('files', {
         return true
       } catch (err) {
         // 带上原因：写盘失败的原因（只读、被占用、磁盘满）决定用户下一步怎么做
-        useUiStore().toast(
-          i18n.global.t('toast.saveFailedDetail', { reason: errorReason(err) }),
-          'error'
-        )
+        const reason = errorReason(err)
+        useUiStore().toast(i18n.global.t('toast.saveFailedDetail', { reason }), 'error')
+        /**
+         * 状态栏红态 + 通知中心里一张**不会自己消失**的卡片（审计 §2 P1 的另一半）。
+         *
+         * 为什么必须是持久的：失败只讲一次的话，用户低头写完一段再抬头，看到的还是
+         * "未保存的更改"——分不清"待保存"和"存不进去"。而这两种情况的处置完全不同
+         * （前者什么都不用做，后者要立刻腾磁盘/关掉占用它的程序/另存到别处）。
+         * `mergeKey` 固定：反复重试失败只更新同一张卡，不刷屏。
+         */
+        this.saveError = reason
+        void useNotificationsStore()
+          .notify({
+            level: 'error',
+            title: i18n.global.t('notifications.saveFailedTitle', { name: doc.name }),
+            body: i18n.global.t('notifications.saveFailedBody', { reason }),
+            mergeKey: `save-failed:${doc.path}`
+          })
+          .catch(() => {})
         // 失败后不放弃：指数退避重试（5s → 10s → … → 60s 封顶）。
         // 此前失败后不再重排定时器，用户一停手就再也不会尝试落盘（只靠草稿兜）。
         this.saveRetryDelay = Math.min(this.saveRetryDelay ? this.saveRetryDelay * 2 : 5000, 60000)
+        this.saveRetryAt = Date.now() + this.saveRetryDelay
         if (this.current === doc && doc.content !== doc.savedContent) {
           clearTimeout(this.saveTimer as never)
           this.saveTimer = setTimeout(() => void this.save(), this.saveRetryDelay)
