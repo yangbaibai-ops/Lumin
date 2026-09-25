@@ -327,9 +327,25 @@ export function registerIpc(slots: SlotRegistry): void {
       content: string,
       encoding: ConcreteEncoding = 'utf-8',
       hadBom = false,
-      eol?: Eol
+      eol?: Eol,
+      expectMtimeMs?: number | null
     ) => {
       const fp = pathGrants.assertAuthorized(p, 'write')
+      /**
+       * ─── 外部改动检测（审计 §2 P1：别处改了同一文件，保存时静默覆盖）─────────────
+       * 渲染层把它上次读/写这份文件时的真实 mtime 一起传过来；写之前先 stat 一次：
+       * 不一致 ⇒ 在我们编辑期间有别的程序动过它（git 切分支 / 同步盘 / 另一个编辑器）。
+       * 这时**不写**，把冲突与磁盘当前 mtime 回报给渲染层，由用户决定
+       * （覆盖 / 另存为 / 重载），而不是无声地把别人的改动盖掉。
+       * 容差 1ms：同一版本的文件两次 stat 在个别文件系统上可能差一点点小数位。
+       * 拿不到 stat（文件已被删除）不算冲突：那条路该由"父目录不存在"等既有检查去报。
+       */
+      if (typeof expectMtimeMs === 'number' && expectMtimeMs > 0) {
+        const st = await stat(fp).catch(() => null)
+        if (st && Math.abs(st.mtimeMs - expectMtimeMs) > 1) {
+          return { mtimeMs: st.mtimeMs, conflict: true as const }
+        }
+      }
       // 本地历史（Wave 2 数据安全）：写盘前把**即将被覆盖的那一版**留一份快照。
       // 放在主进程而不是渲染层：所有写盘路径（保存/另存为/以后的回滚写回）都经过这里，
       // 不会因为某个调用点忘了调用而漏掉历史。
@@ -338,7 +354,7 @@ export function registerIpc(slots: SlotRegistry): void {
       // 保存时同步元数据 + 全文索引
       db.upsertDocument({ path: fp, title: path.basename(fp), content, encoding, eol, hadBom })
       // 回真实 mtime：渲染层用它判断「磁盘是否被外部改过」，用 Date.now() 冒充会永远失效
-      return { mtimeMs }
+      return { mtimeMs, conflict: false as const }
     }
   )
   /**

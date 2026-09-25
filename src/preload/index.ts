@@ -61,8 +61,10 @@ const api: LuminAPI = {
     // 主进程会让该文件**已记录的编码**优先（见 ipc.ts 的 file:read 注释）
     read: (path, encoding, opts) => ipcRenderer.invoke('file:read', path, encoding, opts),
     // eol：文档记录的行尾（'lf'/'crlf'）。主进程在写盘前展开，见 shared/eol.ts
-    write: (path, content, encoding, hadBom, eol) =>
-      ipcRenderer.invoke('file:write', path, content, encoding, hadBom, eol),
+    // expectMtimeMs：我们上次读/写这份文件时的真实 mtime —— 主进程用它检测**外部改动**
+    // （不一致就不写，回报 conflict；见 ipc.ts 的 file:write 与审计 §2 P1）
+    write: (path, content, encoding, hadBom, eol, expectMtimeMs) =>
+      ipcRenderer.invoke('file:write', path, content, encoding, hadBom, eol, expectMtimeMs),
     rememberEncoding: (path, encoding) =>
       ipcRenderer.invoke('file:rememberEncoding', path, encoding),
     readDir: (dir) => ipcRenderer.invoke('file:readDir', dir),

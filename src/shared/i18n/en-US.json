@@ -178,6 +178,9 @@
     "saving": "Saving…",
     "unsaved": "Unsaved changes",
     "saveFailed": "Unsaved (save failed)",
+    "saveConflictShort": "Unsaved (file changed elsewhere)",
+    "saveConflictTitle": "{name} was changed on disk by another program",
+    "saveConflictBody": "What you are editing no longer matches the file on disk (git branch switch, sync folder, or another editor), so nothing was written. Saving anyway would overwrite the on-disk version; you can cancel and then pick Save as or Reopen from the notification centre.",
     "words": "words",
     "lines": "lines",
     "chars": "chars",
@@ -473,7 +476,11 @@
     "close": "Dismiss this notification",
     "closeAll": "Dismiss all",
     "saveFailedTitle": "Save failed: {name}",
-    "saveFailedBody": "Reason: {reason}. Your text is still safe in a local draft; the app keeps retrying with exponential backoff (up to once every 60s)."
+    "saveFailedBody": "Reason: {reason}. Your text is still safe in a local draft; the app keeps retrying with exponential backoff (up to once every 60s).",
+    "saveConflictTitle": "{name} was modified outside Lumin",
+    "saveConflictBody": "This save was stopped to avoid overwriting what another program wrote. You can save a copy instead, or reopen the on-disk version (discarding your changes).",
+    "saveConflictSaveAs": "Save as…",
+    "saveConflictReload": "Reopen (discard my changes)"
   },
   "statusbar": {
     "saveMode": "Save mode",

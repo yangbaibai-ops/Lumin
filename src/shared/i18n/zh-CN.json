@@ -178,6 +178,9 @@
     "saving": "保存中…",
     "unsaved": "未保存的更改",
     "saveFailed": "未保存（保存失败）",
+    "saveConflictShort": "未保存（磁盘已被外部修改）",
+    "saveConflictTitle": "{name} 在磁盘上已被其它程序修改",
+    "saveConflictBody": "你正在编辑的这一份，与磁盘上的内容已经不一致了（可能是 git 切换分支、同步盘或别的编辑器改的），所以这次**没有写入**。继续保存会覆盖掉磁盘上的那一版；也可以取消，然后在通知中心里选择「另存为」或「重新打开」。",
     "words": "字",
     "lines": "行",
     "chars": "字符",
@@ -473,7 +476,11 @@
     "close": "关闭此通知",
     "closeAll": "全部关闭",
     "saveFailedTitle": "保存失败：{name}",
-    "saveFailedBody": "原因：{reason}。内容仍安全保存在本地草稿里，程序会按指数退避自动重试（最长 60 秒一次）。"
+    "saveFailedBody": "原因：{reason}。内容仍安全保存在本地草稿里，程序会按指数退避自动重试（最长 60 秒一次）。",
+    "saveConflictTitle": "「{name}」在磁盘上已被外部修改",
+    "saveConflictBody": "为避免覆盖别人（或别的程序）写进去的内容，这次保存被拦下了。你可以另存为一份，或以磁盘上的版本重新打开（放弃当前修改）。",
+    "saveConflictSaveAs": "另存为…",
+    "saveConflictReload": "重新打开（放弃我的修改）"
   },
   "statusbar": {
     "saveMode": "保存方式",

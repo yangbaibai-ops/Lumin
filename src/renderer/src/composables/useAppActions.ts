@@ -9,6 +9,8 @@ import { useEditorMode } from './useEditorMode'
 import { flushSession } from '../lib/session'
 import { openExternalFile } from '../lib/openFile'
 import { confirmDiscardIfDirty } from '../lib/dialog'
+import { registerNotificationActions } from '../lib/notificationActions'
+import { SAVE_CONFLICT_KIND } from '../lib/saveConflict'
 import type { MenuAction } from '../../../shared/types'
 
 /** 未保存更改确认：薄适配器 —— 文案与语义只有一份，在 lib/dialog */
@@ -205,6 +207,25 @@ export function useAppActions(): {
   }
 
   // ── 事件绑定 ──
+  /**
+   * 外部改动冲突通知卡片上的两个按钮（审计 §2 P1）。
+   *
+   * 为什么是通知而不是把确认框扩成三选一：确认框只有两键，而冲突有三条出路
+   * （覆盖 → 手动保存时问的那一次；另存为 / 重新打开 → 这里）。通知卡支持按钮，
+   * 而且它会一直留在通知中心里 —— 用户什么时候决定都行，不会因为对话框被关掉而丢。
+   */
+  registerNotificationActions(SAVE_CONFLICT_KIND, async (n, actionId) => {
+    const path = String(n.payload?.path ?? '')
+    if (actionId === 'save-as') {
+      await files.saveAs()
+      return
+    }
+    if (actionId === 'reload' && path) {
+      // `discardChanges`：用户在卡片上**明确点过**"放弃我的改动"，这里不再问第二次
+      await files.openPath(path, { discardChanges: true })
+    }
+  })
+
   const offMenu = window.luminAPI.events.on('menu:action', (payload) => handleMenu(String(payload)))
   const offClose = window.luminAPI.events.on('app:before-close', () => void requestClose())
   const media = window.matchMedia('(prefers-color-scheme: dark)')

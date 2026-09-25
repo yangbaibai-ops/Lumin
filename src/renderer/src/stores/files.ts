@@ -13,6 +13,7 @@ import { errorReason } from '../lib/errors'
 import { confirmDiscardIfDirty } from '../lib/dialog'
 import { flushEditorBeforeReplace } from '../lib/editorFlush'
 import { draftKeyFor, restorableDraft } from '../lib/draftRules'
+import { SAVE_CONFLICT_KIND } from '../lib/saveConflict'
 import { docLoad, isHeavyDoc } from '../lib/largeDoc'
 import {
   createLedger,
@@ -354,7 +355,12 @@ export const useFilesStore = defineStore('files', {
     },
 
     // ── 文档 ──
-    async openPath(path: string): Promise<boolean> {
+    /**
+     * @param opts.discardChanges 明确表示"这次重开就是要放弃缓冲区里的修改"（不再问一次）。
+     *   只有**用户刚刚点过**的入口才该传：外部改动冲突通知里的「重新打开（放弃我的改动）」。
+     *   普通入口（树/列表点击）不能传 —— 那正是"同一路径重开会静默回滚"那条缺陷的入口。
+     */
+    async openPath(path: string, opts: { discardChanges?: boolean } = {}): Promise<boolean> {
       // 换文档之前先把编辑器里挂起的变更落地（防抖 250ms 窗口内的输入否则会随旧实例一起消失）。
       // 这是**兜底**：会弹「未保存」确认的那些入口在 `confirmDiscardIfDirty` 里已经刷过一次。
       flushEditorBeforeReplace()
@@ -375,12 +381,25 @@ export const useFilesStore = defineStore('files', {
        */
       const same = samePath(this.current?.path, path)
       if (same) {
-        if (this.dirty) {
+        if (this.dirty && !opts.discardChanges) {
           if (!(await confirmDiscardIfDirty(() => this.dirty))) return false
           if (!samePath(this.current?.path, path)) return false // 问的期间文档被换掉了
-        } else {
+        } else if (!this.dirty && !opts.discardChanges) {
+          /**
+           * 同路径 + 干净 → 不重读磁盘（内容本来就一致），但**草稿检查必须照跑**：
+           * 草稿可能比磁盘新（另一个窗口或上一次运行写的），那份内容是用户唯一的一份 ——
+           * 直接短路会把"检测到未保存的草稿"这条横幅一起省掉
+           * （实测：`_verify-draft-banner.js` 的 newer-file-draft-shows-banner 等三条当场变红）。
+           */
+          const cur = this.current
+          if (cur) {
+            const draft = await window.luminAPI.drafts.load(this.draftKey(path))
+            if (restorableDraft(draft, cur.content, cur.path, cur.mtimeMs))
+              this.draftRestore = draft
+          }
           return true
         }
+        // discardChanges 且脏：继续往下走（重新读盘就是这次动作的目的）
       }
       try {
         // 编码走设置里的「默认编码」（默认 auto = 主进程按判定链猜）。
@@ -557,7 +576,7 @@ export const useFilesStore = defineStore('files', {
           }
           return
         }
-        this.saveTimer = setTimeout(() => this.save(), delay)
+        this.saveTimer = setTimeout(() => void this.saveAutomatically(), delay)
       }
     },
     /** 关闭自动保存时取消尚未触发的磁盘落盘（草稿写入不受影响） */
@@ -597,7 +616,7 @@ export const useFilesStore = defineStore('files', {
       if (!this.current) return false
       if (!this.current.path) return this.saveAs()
       if (this.savePromise) await this.savePromise.catch(() => false)
-      const p = this.saveNow()
+      const p = this.saveNow(false)
       this.savePromise = p
       try {
         return await p
@@ -605,8 +624,24 @@ export const useFilesStore = defineStore('files', {
         if (this.savePromise === p) this.savePromise = null
       }
     },
-    /** `save()` 的实体（不含并发闸门）。口径见 `save()` 的说明 */
-    async saveNow(): Promise<boolean> {
+    /** 自动保存走这里（见 scheduleSave）：冲突时**不弹模态**，见 saveNow 的说明 */
+    async saveAutomatically(): Promise<boolean> {
+      if (!this.current?.path) return false
+      if (this.savePromise) await this.savePromise.catch(() => false)
+      const p = this.saveNow(true)
+      this.savePromise = p
+      try {
+        return await p
+      } finally {
+        if (this.savePromise === p) this.savePromise = null
+      }
+    },
+    /**
+     * `save()` 的实体（不含并发闸门）。口径见 `save()` 的说明。
+     * @param auto true = 这一次是自动保存：外部改动冲突时**不弹模态框**，改成
+     *   "失败态 + 通知卡片"，见下面 conflict 分支的说明。
+     */
+    async saveNow(auto = false): Promise<boolean> {
       const doc = this.current
       if (!doc?.path) return false
       /**
@@ -633,30 +668,56 @@ export const useFilesStore = defineStore('files', {
       try {
         // 按文档当前编码 + 行尾写回（编码来源：打开时判定出来的，或用户「选择编码重新打开」选的；
         // 行尾交给主进程展开 —— 这里传的是元数据，不是转换过的文本）
-        const { mtimeMs } = await window.luminAPI.file.write(
+        // 第 6 个参数是"我上次读/写这份文件时的 mtime"：主进程据此检测**外部改动**（审计 §2 P1）
+        const first = await window.luminAPI.file.write(
           doc.path,
           snapshot,
           doc.encoding,
           doc.hadBom,
-          doc.eol
+          doc.eol,
+          doc.mtimeMs
         )
-        // 真实 mtime（不再是 Date.now() 冒充）—— 冲突检测与列表排序都依赖它
-        doc.mtimeMs = mtimeMs
-        doc.savedContent = snapshot
-        this.saveRetryDelay = 0
-        this.saveRetryAt = 0
-        this.saveError = null
-        useRecentStore().touchFile(doc.path)
-        // 列表视图就地刷新该条目的修改时间（若列表已打开）
-        useWorkspaceDocsStore().bumpMtime(doc.path)
-        if (this.current === doc && doc.content === snapshot) {
-          // 没有新输入：文档与磁盘一致 → 草稿可以清掉（此时它没有恢复价值）
-          await window.luminAPI.drafts.remove(this.draftKey(doc.path))
-        } else if (this.current === doc) {
-          // await 期间又有输入：保持脏，重排一次保存与草稿（不静默把新内容吞掉）
-          this.scheduleSave()
+        /**
+         * ─── 外部改动冲突：别处改了同一文件（审计 §2 P1）────────────────────────
+         * 主进程**没有写入**（写之前 stat 发现 mtime 变了），把磁盘当前 mtime 回报过来。
+         * 这里绝不能把它当成保存成功：那正是"无声覆盖"的老毛病。
+         *
+         * 两条路：
+         *   * **手动保存** → 当场问一次（"磁盘上这一份已被其它程序改过，仍要覆盖吗？"）——
+         *     用户就在键盘前，问是自然的；
+         *   * **自动保存** → **不弹模态**（那会把正在写作的人从行文里拽出来，而且他可能
+         *     只是想先看看），改成"失败态 + 一张带按钮的持久通知"：
+         *     状态栏那一格变红（复用 saveError），通知卡上有「另存为」「重新打开（放弃我的改动）」。
+         */
+        if (first.conflict) {
+          const overwrite = auto
+            ? false
+            : await useUiStore().confirm({
+                title: i18n.global.t('editor.saveConflictTitle', { name: doc.name }),
+                body: i18n.global.t('editor.saveConflictBody'),
+                danger: true
+              })
+          if (!overwrite) {
+            this.noteSaveConflict(doc, first.mtimeMs)
+            return false
+          }
+          // 用户选择覆盖：以磁盘当前 mtime 为新基线再写一次（这次比对必然通过）
+          const forced = await window.luminAPI.file.write(
+            doc.path,
+            snapshot,
+            doc.encoding,
+            doc.hadBom,
+            doc.eol,
+            first.mtimeMs
+          )
+          if (forced.conflict) {
+            // 极端情况：两次之间又被改了。同样不覆盖，交给用户
+            this.noteSaveConflict(doc, forced.mtimeMs)
+            return false
+          }
+          return this.finishSave(doc, snapshot, forced.mtimeMs)
         }
-        return true
+        return this.finishSave(doc, snapshot, first.mtimeMs)
       } catch (err) {
         // 带上原因：写盘失败的原因（只读、被占用、磁盘满）决定用户下一步怎么做
         const reason = errorReason(err)
@@ -680,16 +741,78 @@ export const useFilesStore = defineStore('files', {
           .catch(() => {})
         // 失败后不放弃：指数退避重试（5s → 10s → … → 60s 封顶）。
         // 此前失败后不再重排定时器，用户一停手就再也不会尝试落盘（只靠草稿兜）。
+        // ⚠️ 自动保存的重试也走 `saveAutomatically()`：否则自动保存这一路重启之后
+        // 会退化成"弹模态"（手动保存那条路才会弹），把正在写作的人拽出来。
         this.saveRetryDelay = Math.min(this.saveRetryDelay ? this.saveRetryDelay * 2 : 5000, 60000)
         this.saveRetryAt = Date.now() + this.saveRetryDelay
         if (this.current === doc && doc.content !== doc.savedContent) {
           clearTimeout(this.saveTimer as never)
-          this.saveTimer = setTimeout(() => void this.save(), this.saveRetryDelay)
+          this.saveTimer = setTimeout(
+            () => void (auto ? this.saveAutomatically() : this.save()),
+            this.saveRetryDelay
+          )
         }
         return false
       } finally {
         this.saving = false
       }
+    },
+    /**
+     * 保存成功后的共同收尾（mtime 记账 + 最近列表 + 草稿/续排）。
+     * 抽出来是因为"直接写成功"与"用户选择覆盖后再写"两条路要一模一样地记账。
+     */
+    async finishSave(doc: CurrentDoc, snapshot: string, mtimeMs: number): Promise<boolean> {
+      doc.mtimeMs = mtimeMs
+      doc.savedContent = snapshot
+      this.saveRetryDelay = 0
+      this.saveRetryAt = 0
+      this.saveError = null
+      useRecentStore().touchFile(doc.path as string)
+      // 列表视图就地刷新该条目的修改时间（若列表已打开）
+      useWorkspaceDocsStore().bumpMtime(doc.path as string)
+      if (this.current === doc && doc.content === snapshot) {
+        // 没有新输入：文档与磁盘一致 → 草稿可以清掉（此时它没有恢复价值）
+        await window.luminAPI.drafts.remove(this.draftKey(doc.path as string))
+      } else if (this.current === doc) {
+        // await 期间又有输入：保持脏，重排一次保存与草稿（不静默把新内容吞掉）
+        this.scheduleSave()
+      }
+      return true
+    },
+    /**
+     * 外部改动冲突：**不写入**，只把状态说清楚 + 给两条出路（审计 §2 P1）。
+     *
+     * 状态：`saveError` → 状态栏那一格变红、悬停给出原因（复用 W17 那套失败可见性）。
+     * 出路：一张持久通知，按钮「另存为」「重新打开（放弃我的改动）」（处理器见 useAppActions）。
+     * 不排自动重试：冲突不会自己消失，反复重试只是每 60 秒失败一次 —— 必须等用户决定。
+     * `doc.mtimeMs` **保持不动**：下次保存仍然会被判成冲突（这正是我们要的：
+     * 在用户明确选择覆盖之前，绝不覆盖）。
+     */
+    noteSaveConflict(doc: CurrentDoc, diskMtimeMs: number): void {
+      this.saveError = i18n.global.t('editor.saveConflictShort')
+      this.saveRetryDelay = 0
+      this.saveRetryAt = 0
+      void useNotificationsStore()
+        .notify({
+          level: 'warning',
+          title: i18n.global.t('notifications.saveConflictTitle', { name: doc.name }),
+          body: i18n.global.t('notifications.saveConflictBody'),
+          mergeKey: `save-conflict:${doc.path}`,
+          actions: [
+            {
+              id: 'save-as',
+              label: i18n.global.t('notifications.saveConflictSaveAs'),
+              tone: 'primary'
+            },
+            {
+              id: 'reload',
+              label: i18n.global.t('notifications.saveConflictReload'),
+              tone: 'ghost'
+            }
+          ],
+          payload: { kind: SAVE_CONFLICT_KIND, path: doc.path, diskMtimeMs }
+        })
+        .catch(() => {})
     },
     async saveAs(): Promise<boolean> {
       if (!this.current) return false

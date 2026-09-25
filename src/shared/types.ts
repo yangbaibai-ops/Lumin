@@ -556,9 +556,19 @@ export interface LuminAPI {
       encoding?: ConcreteEncoding,
       hadBom?: boolean,
       /** 文档记录的行尾：主进程写盘前展开（内存里的文本永远是 LF，见 shared/eol） */
-      eol?: Eol
-      /** 写盘后磁盘上的真实 mtimeMs（渲染层用它取代 `Date.now()` 的假值，见 stores/files.save） */
-    ) => Promise<{ mtimeMs: number }>
+      eol?: Eol,
+      /**
+       * 我们上次读/写这份文件时的真实 mtime。主进程写之前会 stat 比对：
+       * 不一致 ⇒ 有别的程序改过它 ⇒ **不写**，回报 `conflict: true`（外部改动检测，审计 §2 P1）。
+       * 传 null/省略 = 不做这层检查（导出、新建空文件这类"就是要写"的场景）。
+       */
+      expectMtimeMs?: number | null
+    ) => Promise<{
+      /** 磁盘上的真实 mtimeMs（渲染层用它取代 `Date.now()` 的假值，见 stores/files.save） */
+      mtimeMs: number
+      /** true = 检测到外部改动、**这次没有写入**（磁盘当前 mtime 在 mtimeMs 里） */
+      conflict?: boolean
+    }>
     /** 记住某文件的编码（「选择编码重新打开」用；权威来源是 documents 表，kv 只兜底） */
     rememberEncoding: (path: string, encoding: ConcreteEncoding) => Promise<void>
     readDir: (dir: string) => Promise<FileNode[]>

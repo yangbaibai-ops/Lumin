@@ -111,6 +111,8 @@ const DEFAULT_SUITES = [
   '_verify-history-restore.js',
   // ── 文件生命周期：目录改名/删除后的路径一致性（索引 / 历史 / 最近列表 / 不许 mkdir 复活）──
   '_verify-file-lifecycle.js',
+  // ── 外部改动检测：保存时不许静默覆盖别的程序写进去的版本（覆盖 / 另存为 / 重载）──
+  '_verify-external-change.js',
   // ── 第十一轮：路径授权闸（工作区外拒绝读写，正常流程全部放行）──
   '_verify-path-grants.js',
   // ── 第十二轮：关于页说的是事实（真实依赖清单 + 第三方许可声明，不硬编码）──
