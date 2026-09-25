@@ -107,7 +107,9 @@ const DEFAULT_SUITES = [
   // ── 第十四轮：诊断信息（环境事实 + 隐私边界：不含文档内容与最近文件清单）──
   '_verify-diagnostics.js',
   // ── 第十五轮：文档标签（状态栏编辑 → SQLite → 列表展示与按标签过滤）──
-  '_verify-tags.js'
+  '_verify-tags.js',
+  // ── 第十六轮：全局搜索索引（从未打开过的文档也能搜到）+ 命中定位 ──
+  '_verify-search-index.js'
 ]
 
 /** 自己管理 Electron 实例的套件（运行器不替它们起实例） */

@@ -13,8 +13,10 @@ import type { FileNode, WorkspaceDoc } from '../shared/types'
 import type { ConcreteEncoding, EncodingId } from '../shared/encodings'
 import { detectEol, toEol, toLf, type Eol } from '../shared/eol'
 import { isMediaExtension, isWithinAnyRoot } from '../shared/media'
+// 「哪些文件算文档」的唯一实现在 shared（可单测）：fileOps 只是**重新导出**给历史调用点
+import { MD_EXT_RE } from '../shared/docExt'
 
-export const MD_EXT_RE = /\.(md|markdown|mdown|mkd|txt)$/i
+export { MD_EXT_RE }
 
 /**
  * 该绝对路径能否经 `lumin-file://` 送出（两道闸，见 main/index.ts 的 protocol.handle 注释）：

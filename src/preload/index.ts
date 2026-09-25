@@ -98,7 +98,15 @@ const api: LuminAPI = {
   },
   workspace: {
     getRoot: () => ipcRenderer.invoke('workspace:getRoot'),
-    setRoot: (path) => ipcRenderer.invoke('workspace:setRoot', path)
+    setRoot: (path) => ipcRenderer.invoke('workspace:setRoot', path),
+    // 全文索引：状态查询 + 手动重建（后台索引在 setRoot 时自动起，见 services/workspaceIndex）
+    indexStatus: () => ipcRenderer.invoke('workspace:indexStatus'),
+    reindex: () => ipcRenderer.invoke('workspace:reindex'),
+    onIndexProgress: (fn) => {
+      const handler = (_e: unknown, s: unknown): void => fn(s as never)
+      ipcRenderer.on('workspace:indexProgress', handler)
+      return () => ipcRenderer.removeListener('workspace:indexProgress', handler)
+    }
   },
   drafts: {
     save: (key, content, path) => ipcRenderer.invoke('drafts:save', key, content, path),

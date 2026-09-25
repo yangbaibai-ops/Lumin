@@ -338,6 +338,51 @@ class LuminDatabase {
     return row ? this.rowToMeta(row) : null
   }
 
+  /**
+   * **只**为全文搜索建索引：写入 path / title / content / modified_at(=文件 mtime) / word_count，
+   * 但**不碰 `last_opened`**（也不动 tags / is_pinned）。
+   *
+   * 为什么不复用 `upsertDocument`：那个方法把 `last_opened` 设成 now，
+   * 于是"工作区里从未打开过的文件"会挤进「最近文档」—— 索引是**后台行为**，
+   * 不该改变用户的"最近"语义（审计 §7 第 17 条的落地细节）。
+   *
+   * `modified_at` 存**文件 mtime** 而不是 now：下次索引靠它跳过没变的文件
+   * （见 `indexedMtimes()` 与 `services/workspaceIndex`）。
+   */
+  indexDocumentForSearch(filePath: string, title: string, content: string, mtimeMs: number): void {
+    const now = Date.now()
+    this.db
+      .prepare(
+        `INSERT INTO documents
+           (path, title, content, created_at, modified_at, last_opened, word_count, tags, is_pinned,
+            is_archived, encoding, eol, had_bom)
+         VALUES (?, ?, ?, ?, ?, 0, ?, '[]', 0, 0, '', '', 0)
+         ON CONFLICT(path) DO UPDATE SET
+           title = excluded.title,
+           content = excluded.content,
+           modified_at = excluded.modified_at,
+           word_count = excluded.word_count`
+      )
+      .run(filePath, title, content, now, mtimeMs, countWords(content))
+    const row = this.getRow(filePath)
+    if (!row) return
+    this.scheduleFtsIndex(row.id, row.title, row.content)
+  }
+
+  /**
+   * 已索引文档的 mtime 表，**键为小写路径**（Windows 不区分大小写）。
+   * 索引器一次取全：逐篇查库在几千篇的工作区上就是几千次查询。
+   */
+  indexedMtimes(): Record<string, number> {
+    const rows = this.db.prepare('SELECT path, modified_at FROM documents').all() as unknown as {
+      path: string
+      modified_at: number
+    }[]
+    const out: Record<string, number> = {}
+    for (const r of rows) out[r.path.toLowerCase()] = r.modified_at
+    return out
+  }
+
   touchOpened(filePath: string, title?: string): void {
     const now = Date.now()
     this.db.prepare('UPDATE documents SET last_opened = ? WHERE path = ?').run(now, filePath)

@@ -503,9 +503,11 @@
     "searching": "Searching…",
     "noMatch": "No matching content",
     "hintIndexed": "Full-text search across indexed documents",
-    "hintEmpty": "Open or save a document to enable full-text search",
+    "hintEmpty": "Workspace documents are indexed in the background; you can also open or save one to search",
     "hintSelect": "Select",
-    "engine": "SQLite FTS5 full-text index"
+    "engine": "SQLite FTS5 full-text index",
+    "indexing": "Indexing… {n} scanned",
+    "indexReady": "Index ready ({n} files)"
   },
   "dialog": {
     "allFiles": "All files",

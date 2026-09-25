@@ -95,6 +95,19 @@ export interface AppSettings {
 export type NotificationLevel = 'info' | 'success' | 'warning' | 'error'
 
 /**
+ * 工作区全文索引的进度（`workspace:indexStatus`）。
+ * 索引是**后台**行为：打开工作区后自动跑，把从未打开过的文档也收进搜索。
+ */
+export interface IndexStatus {
+  /** 正在索引的根（null = 空闲） */
+  root: string | null
+  /** 本次看过多少篇（含跳过的） */
+  scanned: number
+  /** 本次真正写进索引多少篇 */
+  indexed: number
+  running: boolean
+}
+/**
  * 通知卡片上的操作按钮。
  * 文案（label）与 title/body 一样是「已本地化的成品文本」并随通知一起持久化——
  * 应用重启后卡片仍能正确显示按钮；点击时按 payload.kind 找渲染层注册的处理器执行，
@@ -526,6 +539,12 @@ export interface LuminAPI {
   workspace: {
     getRoot: () => Promise<string | null>
     setRoot: (path: string | null) => Promise<void>
+    /** 全文索引进度：`running` + `scanned/indexed`（从未打开过的文档也在后台被收进搜索） */
+    indexStatus: () => Promise<IndexStatus>
+    /** 手动重建索引（换机器 / 库被清过 / 怀疑索引不全时用） */
+    reindex: () => Promise<IndexStatus>
+    /** 订阅索引进度；返回取消订阅的函数 */
+    onIndexProgress: (fn: (s: IndexStatus) => void) => () => void
   }
   drafts: {
     save: (key: string, content: string, path: string | null) => Promise<void>

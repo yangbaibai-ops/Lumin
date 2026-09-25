@@ -503,9 +503,11 @@
     "searching": "搜索中…",
     "noMatch": "未找到匹配内容",
     "hintIndexed": "全局搜索已索引的文档内容",
-    "hintEmpty": "打开或保存文档后即可全文搜索",
+    "hintEmpty": "工作区里的文档会在后台建立索引；也可以直接打开或保存一篇来搜索",
     "hintSelect": "选择",
-    "engine": "SQLite FTS5 全文索引"
+    "engine": "SQLite FTS5 全文索引",
+    "indexing": "正在索引… 已看 {n} 篇",
+    "indexReady": "索引就绪（{n} 篇）"
   },
   "dialog": {
     "allFiles": "所有文件",

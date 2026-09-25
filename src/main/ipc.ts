@@ -20,6 +20,7 @@ import * as session from './services/session'
 import * as openDocs from './services/openDocs'
 import * as pathGrants from './services/pathGrants'
 import * as taskbar from './services/taskbar'
+import * as workspaceIndex from './services/workspaceIndex'
 import { onSettingsChanged } from './services/updater'
 import { installMenu } from './menu'
 import { mainT } from './i18n'
@@ -496,6 +497,27 @@ export function registerIpc(slots: SlotRegistry): void {
     else stopWorkspaceWatch()
     // 换工作区时顺手清掉上一轮崩溃残留的写盘临时文件（里面是用户全文的副本）——不阻塞返回
     if (root) void sweepTempFiles(root)
+    // 全文索引：**后台**把从未打开过的文档也收进搜索（审计 §7 第 17 条）。
+    // 不 await：索引是后台行为，返回工作区根目录不该被几千篇文档的读取拖住。
+    if (root) {
+      void workspaceIndex.indexWorkspace(root).catch(() => {})
+    } else {
+      workspaceIndex.cancelIndex() // 关掉工作区 = 取消正在跑的索引
+    }
+  })
+  /** 索引进度（设置/搜索面板显示"已索引 n 篇"与"正在索引…"） */
+  ipcMain.handle('workspace:indexStatus', () => workspaceIndex.indexStatus())
+  /** 手动重建索引（低频：换机器、库被清过、怀疑索引不全时用） */
+  ipcMain.handle('workspace:reindex', async () => {
+    const ws = db.kvGet<{ root: string | null }>('workspace', { root: null })
+    if (!ws.root) return { root: null, scanned: 0, indexed: 0, running: false }
+    return workspaceIndex.indexWorkspace(ws.root)
+  })
+  // 索引进度推给所有窗口（搜索面板据此显示"正在索引… / 已索引 n 篇"）
+  workspaceIndex.onIndexProgress((s) => {
+    for (const win of BrowserWindow.getAllWindows()) {
+      if (!win.isDestroyed()) win.webContents.send('workspace:indexProgress', s)
+    }
   })
 
   // ── 数据库（文档元数据 / 全文搜索）──

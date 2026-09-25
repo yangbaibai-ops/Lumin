@@ -3,16 +3,25 @@ import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 import { useFilesStore } from '../stores/files'
+import { useFindStore } from '../stores/find'
 import { useUiStore } from '../stores/ui'
 import { confirmIfDirty } from '../composables/useAppActions'
 import { highlightSegments } from '../lib/highlight'
-import type { SearchResult } from '../../../shared/types'
+import type { IndexStatus, SearchResult } from '../../../shared/types'
 import Icon from './Icon.vue'
 
 const ui = useUiStore()
 const files = useFilesStore()
+const find = useFindStore()
 const router = useRouter()
 const { t } = useI18n()
+
+/**
+ * 全文索引进度（审计 §7 第 17 条）：打开工作区后主进程在**后台**把「从未打开过」的
+ * 文档也收进搜索。这里把"还在索引"如实显示出来 —— 否则用户会把"搜不到"当成"没有"。
+ */
+const indexStatus = ref<IndexStatus>({ root: null, scanned: 0, indexed: 0, running: false })
+let offIndexProgress: (() => void) | null = null
 
 const inputEl = ref<HTMLInputElement | null>(null)
 const activeIdx = ref(0)
@@ -51,10 +60,18 @@ watch(
 )
 
 async function openResult(r: SearchResult): Promise<void> {
+  const query = ui.globalSearch.query.trim()
   ui.closeGlobalSearch()
   if (!(await confirmIfDirty())) return
   if (await files.openPath(r.path)) {
     await router.push('/editor')
+    // 定位到命中处（审计 §7 第 17 条：点结果不该只把文件打开、还得让用户再 Ctrl+F 一次）：
+    // 把查询串填进查找栏并选中第一处命中 —— 这复用**已验收的**查找替换机制
+    // （两个编辑面都支持高亮与滚动定位），而不是另写一套"文本偏移 → 编辑器位置"的映射。
+    if (query) {
+      find.setQuery(query)
+      find.show()
+    }
   }
 }
 
@@ -87,8 +104,18 @@ function onDocKeydown(e: KeyboardEvent): void {
   }
 }
 
-onMounted(() => document.addEventListener('keydown', onDocKeydown))
-onBeforeUnmount(() => document.removeEventListener('keydown', onDocKeydown))
+onMounted(async () => {
+  document.addEventListener('keydown', onDocKeydown)
+  offIndexProgress = window.luminAPI.workspace.onIndexProgress((s) => {
+    indexStatus.value = s
+  })
+  indexStatus.value = await window.luminAPI.workspace.indexStatus().catch(() => indexStatus.value)
+})
+onBeforeUnmount(() => {
+  document.removeEventListener('keydown', onDocKeydown)
+  offIndexProgress?.()
+  offIndexProgress = null
+})
 </script>
 
 <template>
@@ -118,8 +145,29 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onDocKeydown))
                 :placeholder="$t('common.searchPlaceholder')"
                 spellcheck="false"
               />
+              <!-- 索引态：正在索引时如实说"还在索引"，否则用户会把"搜不到"当成"没有" -->
               <span
-                v-if="ui.globalSearch.docs"
+                v-if="indexStatus.running"
+                class="flex items-center gap-1 rounded-md bg-panel-2 px-2 py-0.5 text-[11px] tabular-nums text-ink-2b"
+                data-index-status
+              >
+                <Icon
+                  name="refresh"
+                  :size="11"
+                  class="animate-spin"
+                  style="animation-duration: 1.4s"
+                />
+                {{ t('globalSearch.indexing', { n: indexStatus.scanned }) }}
+              </span>
+              <span
+                v-else-if="indexStatus.root"
+                class="rounded-md bg-panel-2 px-2 py-0.5 text-[11px] tabular-nums text-ink-2b"
+                data-index-status
+              >
+                {{ t('globalSearch.indexReady', { n: indexStatus.indexed }) }}
+              </span>
+              <span
+                v-else-if="ui.globalSearch.docs"
                 class="rounded-md bg-panel-2 px-2 py-0.5 text-[11px] tabular-nums text-ink-2b"
               >
                 {{ t('globalSearch.indexedCount', { n: ui.globalSearch.docs }) }}
@@ -149,6 +197,7 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onDocKeydown))
                   :key="r.path"
                   class="flex w-full items-start gap-3 rounded-xl px-3 py-2.5 text-left transition-colors duration-100"
                   :class="i === activeIdx ? 'bg-accent-soft' : 'hover:bg-panel-2'"
+                  data-search-result
                   @mouseenter="activeIdx = i"
                   @click="openResult(r)"
                 >

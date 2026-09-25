@@ -11,7 +11,7 @@
 import fs from 'fs/promises'
 import path from 'path'
 import { fileURLToPath } from 'url'
-import { MD_EXT_RE } from '../fileOps'
+import { MD_EXT_RE } from '../../shared/docExt'
 import type { LinkResolveResult, LinkTargetKind } from '../../shared/types'
 
 /**
