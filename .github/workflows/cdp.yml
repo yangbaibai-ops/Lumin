@@ -1,0 +1,61 @@
+# ─── CDP 套件的夜间 / 手动运行（**不阻塞 PR**）────────────────────────────────
+#
+# 为什么单独一条、为什么非阻塞（清单 §10「CI 不跑任何 CDP 套件（有意）」）：
+# 编辑器这类行为密集的软件，真正会坏的（布局、同步、快捷键、文件树、导出）全在 CDP 套件里；
+# 但那些套件需要真实桌面会话（窗口焦点、单实例锁、真实按键），在 GitHub runner 上**可能不稳**。
+# 所以口径是：**跑得起来就当额外证据，跑不起来只通知、不拦合并**（continue-on-error）。
+#
+# 跑哪些：`--ci-subset` —— 由**可测量的判据**推出：默认矩阵里源码不含
+# `dispatchKeyEvent` / `dispatchMouseEvent` / `Input.insertText` 的套件（真实输入会被
+# "窗口不在前台"吃掉，那是无头环境唯一稳不住的东西）。判据在 run-suites.js 的 ciSubset()，
+# 往套件里加真实按键，它会自动出局 —— 不需要人来维护第二张名单。
+name: CDP suites (nightly)
+
+on:
+  schedule:
+    # UTC 18:10 = 北京时间 02:10，避开整点拥挤
+    - cron: '10 18 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cdp-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  cdp:
+    runs-on: windows-latest
+    timeout-minutes: 60
+    # 只通知不阻塞：这条 job 红不该让 PR 变红
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: 安装依赖
+        run: npm ci
+
+      - name: 生产构建（套件跑的是 out/ 里的产物）
+        run: npx electron-vite build
+
+      - name: CDP 子集（不注入真实输入的那批）
+        run: node tools/run-suites.js --ci-subset
+        env:
+          # runner 上多显示器/GPU 都不存在，交给 Chromium 用软件渲染
+          ELECTRON_DISABLE_GPU: '1'
+
+      - name: 失败时上传日志（隔离实例的启动日志与套件输出）
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cdp-logs
+          path: |
+            ${{ runner.temp }}/lumin-suites-*.log
+          if-no-files-found: ignore
+          retention-days: 7

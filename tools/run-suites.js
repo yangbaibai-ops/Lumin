@@ -112,7 +112,17 @@ const SELF_MANAGED = new Set([
 ])
 
 function parseArgs(argv) {
-  const args = { suite: null, all: false, keep: false, port: 9222, timeoutMs: 420000, retry: 1 }
+  const args = {
+    suite: null,
+    all: false,
+    keep: false,
+    port: 9222,
+    timeoutMs: 420000,
+    retry: 1,
+    tier: null,
+    probe: false,
+    ciSubset: false
+  }
   for (const a of argv.slice(2)) {
     if (a === '--all') args.all = true
     else if (a === '--keep') args.keep = true
@@ -121,6 +131,12 @@ function parseArgs(argv) {
     else if (a.startsWith('--timeout=')) args.timeoutMs = Number(a.slice('--timeout='.length))
     // 失败重跑次数（默认 1）。见 README 里「FLAKY 与 FAIL 的区别」
     else if (a.startsWith('--retry=')) args.retry = Math.max(0, Number(a.slice('--retry='.length)))
+    // 按档挑套件：`--tier=fast` / `--tier=fast,needs-build`（分档见 tierOf）
+    else if (a.startsWith('--tier=')) args.tier = a.slice('--tier='.length).split(',').filter(Boolean)
+    // 显式跑"探针/遗留"清单（默认只列不判，见 probeSuites）
+    else if (a === '--probe') args.probe = true
+    // CI 子集：默认矩阵里不注入真实输入的那批（见 ciSubset）
+    else if (a === '--ci-subset') args.ciSubset = true
   }
   return args
 }
@@ -158,6 +174,68 @@ function needsDevServer(file) {
   } catch {
     return false
   }
+}
+
+/**
+ * 套件分档（清单 §10「覆盖矩阵不完整」建议 ③：让"哪一档该在什么时候跑"变成**数据**）。
+ *
+ *   fast        —— 默认矩阵（`DEFAULT_SUITES`）：纯合成事件为主，不需要人看着，回归时首选
+ *   needs-build —— 要对着新构建/新实例跑，或在 `--all` 里按需点名（含 `_probe-*` 探针）
+ *   needs-dev   —— 页面里 `import('/src/...')`，必须先起 `npm run dev` 的 5173
+ *   manual      —— 需要人工介入（重启进程 / 真打包），任何自动矩阵都替代不了
+ *
+ * 分档只在**这一处**维护（不往 79 个套件文件里各插一行注解：那样改一次口径要动 79 个文件，
+ * 而且注解与现实漂移时没人会发现）。`tests/tooling.test.mjs` 会守着三件事：
+ * 每个套件恰好落在一档、`fast` 必须都真在 `DEFAULT_SUITES` 里、`needs-dev` 必须与
+ * `needsDevServer()` 的实测结果一致。
+ */
+const TIER_MANUAL = new Set(['_verify-notify-restart.js', '_verify-packaging.js'])
+/** 需要 dev server 的套件：与 needsDevServer() 的实测结果必须完全一致（tooling 测试守） */
+const TIER_DEV = new Set([
+  '_verify-keymap.js',
+  '_verify-open-file-dedup.js',
+  '_verify-open-file-routing.js',
+  '_verify-save-as-workspace.js'
+])
+
+function tierOf(file) {
+  if (TIER_MANUAL.has(file)) return 'manual'
+  if (TIER_DEV.has(file)) return 'needs-dev'
+  return DEFAULT_SUITES.includes(file) ? 'fast' : 'needs-build'
+}
+
+/**
+ * **不产出断言的"探针"与遗留脚本**（清单 §10 P1「0 断言探针在冒充 PASS」）。
+ *
+ * 它们不该混进判定（`_probe-*` 是排查用的临时脚本，`verify-tiptap.js` 已弃用，见其文件头），
+ * 但也不能像以前那样**完全不可见** —— 那正是审计说的问题：一个从不产出断言的脚本
+ * 和一条 38 断言的套件在终端上长得一样。现在每轮矩阵末尾都会把这份名单打出来。
+ * 用 `--probe` 显式跑它们（那时**照常判定**，红就是红）。
+ */
+function probeSuites() {
+  const probes = fs.readdirSync(TOOLS).filter((f) => /^_probe-.*\.js$/.test(f))
+  if (fs.existsSync(path.join(TOOLS, 'verify-tiptap.js'))) probes.push('verify-tiptap.js')
+  return probes.sort()
+}
+
+/**
+ * **CI 子集**（清单 §10「CI 不跑任何 CDP 套件」那条的落地）：默认矩阵里
+ * *不注入真实输入* 的那批 —— 判据是**可测量的**：源码里不出现
+ * `dispatchKeyEvent` / `dispatchMouseEvent` / `insertText`（真实按键与指针会被
+ * "窗口不在前台"吃掉，那是无头 runner 上唯一稳不住的东西）。
+ *
+ * 于是「哪些套件适合进 CI」不再靠人挑：改一条套件、往里面加真实按键，它就自动出局。
+ * workflow 用 `node tools/run-suites.js --ci-subset` 跑它，且**不阻塞 PR**（只通知）。
+ */
+const REAL_INPUT = /dispatchKeyEvent|dispatchMouseEvent|Input\.insertText/
+function ciSubset() {
+  return DEFAULT_SUITES.filter((f) => {
+    try {
+      return !REAL_INPUT.test(fs.readFileSync(path.join(TOOLS, f), 'utf-8'))
+    } catch {
+      return false
+    }
+  })
 }
 
 /**
@@ -292,6 +370,14 @@ function runSuite(file, port, timeoutMs, userData) {
 async function main() {
   const args = parseArgs(process.argv)
   let suites = args.suite ?? (args.all ? allSuites() : DEFAULT_SUITES)
+  if (args.probe) suites = probeSuites()
+  if (args.ciSubset) suites = ciSubset()
+  if (args.tier) {
+    // 按档挑：档位是数据（tierOf），所以「今晚只跑 fast 那一档」不需要再记一张表
+    const before = suites.length
+    suites = suites.filter((s) => args.tier.includes(tierOf(s)))
+    console.log(`--tier=${args.tier.join(',')} → ${suites.length}/${before} 个套件`)
+  }
   /**
    * 清单里写了但盘上不存在的套件：**必须报出来并让命令失败**。
    * 原来是一句 `filter(existsSync)` 静默丢弃 —— 一次重命名就能让覆盖悄悄变少而矩阵照旧全绿
@@ -309,7 +395,14 @@ async function main() {
   }
 
   const userData = path.join(os.tmpdir(), `lumin-suites-ud`)
-  console.log(`## CDP 套件矩阵（${suites.length} 个，端口 ${args.port}，实例数据目录 ${userData}）`)
+  const tierCount = {}
+  for (const s of suites) tierCount[tierOf(s)] = (tierCount[tierOf(s)] ?? 0) + 1
+  console.log(
+    `## CDP 套件矩阵（${suites.length} 个，端口 ${args.port}，实例数据目录 ${userData}）` +
+      `\n## 分档：${Object.entries(tierCount)
+        .map(([k, v]) => `${k}×${v}`)
+        .join(' / ')}（fast=默认回归 / needs-build=要对着新构建 / needs-dev=要 5173 / manual=要人看着）`
+  )
   // 开场先收尾：上一轮留下的实例、以及人工起的隔离实例都会占着 9222，
   // 把第一个套件（可能是自管实例的）顶掉 —— 先清掉临时目录下的实例再开始。
   startInstance(args.port, userData, true)
@@ -323,7 +416,7 @@ async function main() {
       rows.push({ file, status: 'SKIP', pass: 0, total: 0 })
       continue
     }
-    process.stdout.write(`… ${file} `)
+    process.stdout.write(`… [${tierOf(file)}] ${file} `)
     const selfManaged = SELF_MANAGED.has(file)
     if (!selfManaged) {
       let inst = startInstance(args.port, userData)
@@ -437,13 +530,45 @@ async function main() {
     console.log('NOASSERT（没有产出断言，等于没测）' + noassert.map((r) => r.file).join(', '))
     console.log('  → 修好它，或删掉它；确实无事可断言的请加进 run-suites.js 的 EMPTY_OK 并写理由。')
   }
+  // 探针/遗留脚本的**普查**：默认不判它们，但必须让人看见它们存在
+  // （清单 §10：以前这批"从不产出断言的脚本"在终端上和真套件长得一模一样）
+  if (!args.probe) {
+    const probes = probeSuites()
+    if (probes.length) {
+      console.log(
+        `未纳入判定（探针/遗留，共 ${probes.length} 个）：${probes.join(', ')}\n` +
+          '  → 想跑它们：node tools/run-suites.js --probe（那时照常判定，红就是红）'
+      )
+    }
+  }
   // NOASSERT 与 FAIL 一样让命令失败：否则「绿灯」继续骗人
   return failed.length || noassert.length ? 1 : 0
 }
 
-main()
-  .then((code) => process.exit(code))
-  .catch((e) => {
-    console.error('ERROR ' + (e && e.stack ? e.stack : e))
-    process.exit(1)
-  })
+/**
+ * 只有**直接跑**（`node tools/run-suites.js`）才执行矩阵。
+ * `require()` 它（例如 tests/tooling.test.mjs 要核对分档与清单）只拿导出，不起实例。
+ */
+if (require.main === module) {
+  main()
+    .then((code) => process.exit(code))
+    .catch((e) => {
+      console.error('ERROR ' + (e && e.stack ? e.stack : e))
+      process.exit(1)
+    })
+}
+
+// 供测试核对的单一真相（分档、清单、套件全集都在这里，不另抄一份）
+module.exports = {
+  DEFAULT_SUITES,
+  TIER_DEV,
+  TIER_MANUAL,
+  EMPTY_OK,
+  SELF_MANAGED,
+  MANUAL,
+  allSuites,
+  probeSuites,
+  ciSubset,
+  needsDevServer,
+  tierOf
+}

@@ -1,11 +1,14 @@
 # ─── CI：类型 / 风格 / 单元测试 / 构建 ─────────────────────────────────────────
 #
-# 为什么只有这些、不含 CDP 套件：`tools/_verify-*.js` 需要**真实桌面会话**（鼠标键盘、窗口焦点、
-# 单实例锁），在无头 runner 上跑不稳。那部分留在本地按需跑（跑法见 README 与各套件文件头）。
+# 为什么只有这些、不含 CDP 套件：`tools/_verify-*.js` 需要**真实桌面会话**（窗口焦点、
+# 单实例锁、真实按键），在无头 runner 上跑不稳。那部分留在本地按需跑（跑法见 README 与
+# 各套件文件头），另有一条**不阻塞 PR** 的夜间 job：`.github/workflows/cdp.yml`。
 #
 # 门禁口径（本地 `npm run ci` 与这里完全一致）：
 #   npm run typecheck  双工程（tsc + vue-tsc）
-#   npm run lint       ESLint flat config，0 error / 0 warning
+#   npm run lint       ESLint flat config，0 error / 0 warning（阈值写在 lint 脚本里，
+#                      两侧不靠命令行参数对齐 —— 原来这里写 `-- --max-warnings 0`，
+#                      而本地脚本没写，于是"完全一致"只是注释里的一句话）
 #   npm run test:unit  node --test（纯逻辑，毫秒级）
 #   build              electron-vite build
 name: CI
@@ -15,6 +18,10 @@ on:
     branches: [main, master]
   pull_request:
   workflow_dispatch:
+
+# 最小权限：CI 只需要读仓库（默认 token 权限可能更宽）
+permissions:
+  contents: read
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -40,7 +47,7 @@ jobs:
         run: npm run typecheck
 
       - name: 代码风格（ESLint，0 warning 门槛）
-        run: npm run lint -- --max-warnings 0
+        run: npm run lint
 
       - name: 单元测试（node --test）
         run: npm run test:unit

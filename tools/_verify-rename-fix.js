@@ -117,12 +117,24 @@ async function main() {
   }
 
   // ── 夹具目录：必须落在工作区内（file:rename 有工作区校验）────────────────
-  const root = await ev(`(async () => await window.luminAPI.workspace.getRoot())()`)
+  // 没开工作区就**自己开一个**（夹具放 %TEMP% 下）：原来直接 SKIP → 0 断言 →
+  // 运行器记 NOASSERT（"没产出断言等于没测"）。套件要自足，不能赌上一条套件的状态。
+  let root = await ev(`(async () => await window.luminAPI.workspace.getRoot())()`)
   if (!root || typeof root !== 'string') {
-    console.log('SKIP: 未打开工作区（file:rename 受工作区校验保护）')
-    await send('Page.close').catch(() => {})
-    ws.close()
-    return
+    root = path.join(os.tmpdir(), 'lumin-verify-rename-ws')
+    fs.rmSync(root, { recursive: true, force: true })
+    fs.mkdirSync(root, { recursive: true })
+    await ev(
+      `(async () => { await window.luminAPI.workspace.setRoot(${JSON.stringify(root)}); return 'ok' })()`
+    )
+    await sleep(600)
+    const check = await ev(`(async () => await window.luminAPI.workspace.getRoot())()`)
+    if (check !== root) {
+      console.log(`SKIP: 工作区无法建立（file:rename 受工作区校验保护）；getRoot=${check}`)
+      await send('Page.close').catch(() => {})
+      ws.close()
+      return
+    }
   }
   DIR = path.join(root, DIR_NAME)
   A = path.join(DIR, 'a-source.md')
@@ -135,7 +147,9 @@ async function main() {
 
   const queryDb = (fn) => {
     const { DatabaseSync } = require('node:sqlite')
-    const db = new DatabaseSync(path.join(process.env.APPDATA, 'lumin', 'lumin.db'))
+    // 同 _verify-editor-menu-extras：路径要跟着被测实例走（运行器把真实路径放在 LUMIN_DB）
+    const dbPath = process.env.LUMIN_DB || path.join(process.env.APPDATA, 'lumin', 'lumin.db')
+    const db = new DatabaseSync(dbPath)
     try {
       return fn(db)
     } finally {

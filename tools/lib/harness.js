@@ -239,6 +239,32 @@ async function bringToFront(app) {
   }
 }
 
+/**
+ * 真实按键注入前的**取焦点重试循环**（清单 §10：flaky 表里
+ * `_verify-inline-formats` / `_verify-rename` / `_verify-new-document` /
+ * `_verify-keymap` / `_repro-rapidenter` 都栽在同一件事上 —— 被测窗口不在 OS 前台时
+ * CDP 注入的按键会丢，套件里表现为 `NO-FOCUS` 或"敲了没反应"的假红）。
+ *
+ * 每次重试都重新 `Page.bringToFront`（只提一次不够：用户自己的 Lumin 窗口随时可能抢回焦点），
+ * 再问页面 `document.hasFocus()`。返回 false = 拿不到焦点，调用方应**如实 SKIP**，
+ * 不要判红 —— 那是环境不满足，不是被测代码坏了（口径见清单 §1.C.1）。
+ *
+ * 用法：
+ *   if (!(await ensureFocus(app))) { report.skip('真实按键段', '窗口拿不到焦点'); return report.finish() }
+ */
+async function ensureFocus(app, { tries = 15, gapMs = 200 } = {}) {
+  for (let i = 0; i < tries; i += 1) {
+    await bringToFront(app)
+    try {
+      if (await app.ev(`document.hasFocus()`)) return true
+    } catch {
+      return false
+    }
+    await sleep(gapMs)
+  }
+  return false
+}
+
 // ─── 输入模拟（统一从这里取，别各写各的坐标算法）─────────────────────────────
 async function key(send, type, keyName, code, vk) {
   await send('Input.dispatchKeyEvent', {
@@ -429,6 +455,7 @@ module.exports = {
   attach,
   connect,
   bringToFront,
+  ensureFocus,
   watchEvents,
   PINIA,
   INJECT,

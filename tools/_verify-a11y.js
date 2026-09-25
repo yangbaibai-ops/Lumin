@@ -8,7 +8,16 @@
 //   3. 页面语言与主题类必须在根元素上（读屏器与样式都靠它）。
 //
 // 跑法：node tools/run-suites.js --suite=_verify-a11y.js
-const { connect, settle, sleep, openDocWith, pressKey, Reporter, fatal } = require('./lib/harness')
+const {
+  connect,
+  settle,
+  sleep,
+  openDocWith,
+  pressKey,
+  ensureFocus,
+  Reporter,
+  fatal
+} = require('./lib/harness')
 const os = require('os')
 const path = require('path')
 const fs = require('fs')
@@ -300,6 +309,13 @@ async function main() {
   })()`
   const rowFocused = await ev(focusRow)
   report.check('tree-row-focusable', rowFocused === 'ok', String(rowFocused))
+
+  // 下面这一段要**真实按键**（F2 / Shift+F10 / Delete / 方向键）：先把焦点抢回来。
+  // 窗口不在前台时 CDP 注入的按键会丢（清单 §10 的 flaky 表），拿不到就如实 SKIP。
+  if (!(await ensureFocus(app))) {
+    report.skip('文件树/分隔条键盘段', '被测窗口拿不到 OS 焦点（真实按键会丢）')
+    return report.finish()
+  }
 
   await pressKey(app.send, { key: 'F2', code: 'F2', vk: 113 })
   await sleep(400)

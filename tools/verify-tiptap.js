@@ -1,11 +1,22 @@
-// tools/verify-tiptap.js — Tiptap 内核验收矩阵
-// 用法：node tools/verify-tiptap.js （需要 npm run dev + LUMIN_DEBUG_PORT=9222）
-// 建议由 tools/run-verify.ps1 包裹执行：先置前台窗口再跑本脚本。
-// 输出每项 PASS/FAIL，最后打印汇总；任何一项失败 → exit 1
+// tools/verify-tiptap.js — Tiptap 内核验收矩阵（**遗留资产，已弃用**）
+//
+// ⚠️ 状态（清单 §10 P0 的处理）：这个文件
+//   * **不在任何矩阵里**（文件名不带 `_` 前缀，`run-suites.js` 收不到它）；
+//   * 它曾经守的气泡菜单 / input rules / 标记符 / 表格 / 粘贴那几块，现在**主要覆盖
+//     已经迁进默认矩阵**：`_verify-inline-formats`、`_regress-cb`、`_verify-table-fidelity`、
+//     `_verify-math`、`_verify-md-fidelity`、`_verify-link-paste`、`_repro-*` 等；
+//   * 保留它是为了**历史对照**（1473 行 / 百来条具名断言仍然有参考价值），并且它的
+//     硬编码绝对路径已经改成 `%TEMP%` + `LUMIN_TIPTAP_DIR`，换台机器也能跑起来。
+// 想跑它（需要 dev server + `LUMIN_DEBUG_PORT=9222` 的 dev 实例）：
+//   npm run dev  然后  node tools/verify-tiptap.js
+// 不要再把它当"E2E 层"写进文档（手册 §6 已改成实际矩阵）。
 const CDP = 'http://127.0.0.1:9222/json'
-const TEST_DIR = 'D:/code_workspace/Lumin-test-workspace'
-const TEST_PATH = TEST_DIR + '/tipverify.md'
-const USER_WS = 'C:/Users/yangbaibai/Desktop/新建文件夹'
+const fs = require('fs')
+const os = require('os')
+const path = require('path')
+/** 夹具工作区：默认落在 %TEMP% 下（此前写死 D:/code_workspace/... ，换机器即废） */
+const TEST_DIR = process.env.LUMIN_TIPTAP_DIR || path.join(os.tmpdir(), 'lumin-tiptap-ws')
+const TEST_PATH = path.join(TEST_DIR, 'tipverify.md')
 
 const TEST_MD = [
   '# 验收标题',
@@ -205,7 +216,15 @@ async function main() {
   if (!bootOk) process.exit(2)
 
   // 切到测试工作区并写入验收文件（清掉历史调试期残留的草稿，避免
-  // 草稿恢复逻辑用旧内容覆盖验收文件）
+  // 草稿恢复逻辑用旧内容覆盖验收文件）。
+  // 先记住**原来的工作区**，跑完还原 —— 原来那句写死 `C:/Users/yangbaibai/Desktop/新建文件夹`，
+  // 换台机器/换个用户就还原到一个不存在的位置（清单 §10）。
+  try {
+    fs.mkdirSync(TEST_DIR, { recursive: true })
+  } catch {
+    /* 已存在即可 */
+  }
+  const originalWs = await ev(`(async () => await window.luminAPI.workspace.getRoot())()`)
   await ev(`window.luminAPI.workspace.setRoot(${JSON.stringify(TEST_DIR)}).then(() => 'ok')`)
   await ev(`window.luminAPI.drafts.remove('file-' + encodeURIComponent(${JSON.stringify(TEST_PATH)}.toLowerCase())).then(() => 'ok').catch(() => 'ok')`)
   await ev(
@@ -1431,8 +1450,14 @@ async function main() {
     })()`))
   })
 
-  // ═══ 清理：恢复用户工作区 ═══
-  await ev(`window.luminAPI.workspace.setRoot(${JSON.stringify(USER_WS)}).then(() => 'ok')`)
+  // ═══ 清理：还原**跑之前那个工作区**（不再写死某个人的桌面路径）═══
+  if (typeof originalWs === 'string' && originalWs) {
+    await ev(
+      `window.luminAPI.workspace.setRoot(${JSON.stringify(originalWs)}).then(() => 'ok').catch(() => 'ok')`
+    )
+  } else {
+    await ev(`window.luminAPI.workspace.setRoot(null).then(() => 'ok').catch(() => 'ok')`)
+  }
 
   // 控制台错误收集
   const realErrors = logErrors.filter(

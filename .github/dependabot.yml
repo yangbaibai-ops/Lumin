@@ -1,0 +1,32 @@
+# 依赖与 action 的自动更新（清单 §10 P2：action 用可变标签 @v4 时的替代方案）
+#
+# 为什么不是把 action pin 到 commit SHA：SHA 只能人工核对，写错一个字符就静默失效；
+# dependabot 会在 **PR 里**把 action 的版本（含 SHA 形式）提出来，由评审时看到 diff。
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    commit-message:
+      prefix: 'ci'
+
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: monthly
+    # 依赖面很大（Tiptap / Mermaid / KaTeX / Electron…）：一次开一个 PR 便于回滚
+    open-pull-requests-limit: 3
+    groups:
+      # 同类小版本合到一个 PR，避免刷屏
+      electron-vite-plugin:
+        patterns:
+          - 'electron-vite'
+          - 'electron-builder'
+          - 'vite'
+          - '@vitejs/*'
+      types:
+        patterns:
+          - '@types/*'
+    commit-message:
+      prefix: 'deps'

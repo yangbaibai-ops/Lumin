@@ -1,9 +1,13 @@
 // 收尾验收：A) 三主题下菜单配色  B) 文件树右键菜单未被影响  C) menu_usage 落盘
+const fs = require('fs')
 const path = require('path')
 const os = require('os')
 const { DatabaseSync } = require('node:sqlite')
 const CDP = 'http://127.0.0.1:9222/json'
-const DB = path.join(os.homedir(), 'AppData', 'Roaming', 'lumin', 'lumin.db')
+// 库路径必须跟着**被测实例的数据目录**走：运行器用 --user-data-dir=%TEMP%\lumin-suites-ud
+// 并把真实路径放在 LUMIN_DB 里；写死 %APPDATA% 时读到的是**用户自己的库**（本轮修掉：
+// 那会让"menu_usage 落盘"永远读到另一份数据而判红）
+const DB = process.env.LUMIN_DB || path.join(os.homedir(), 'AppData', 'Roaming', 'lumin', 'lumin.db')
 let ws, id = 0
 const pending = new Map()
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
@@ -80,14 +84,22 @@ const MD = JSON.stringify(['# T', '', '段落一'].join('\n'))
   await sleep(400)
 
   // ── B) 文件树右键菜单回归 ───────────────────────────────────────────────
+  // ⚠️ 自己造工作区夹具，**不依赖上一条套件留下的状态**（原来用 aside 里写死的 y=170
+  // 赌那里有一行文件树 —— 前一条套件若关掉了工作区，这条就假红，实测如此）。
   await ev(`window.__vt.menu().close()`)
   await ev(`(() => { window.__vt.ui().sidebarVisible = true; return 'ok' })()`)
-  await sleep(600)
+  await sleep(400)
+  const wsDir = path.join(os.tmpdir(), 'lumin-editor-menu-ws')
+  fs.rmSync(wsDir, { recursive: true, force: true })
+  fs.mkdirSync(wsDir, { recursive: true })
+  fs.writeFileSync(path.join(wsDir, 'a.md'), '# A\n\n正文\n', 'utf-8')
+  await ev(`(async () => { await window.__vt.files().setRoot(${JSON.stringify(wsDir)}); return 'ok' })()`)
+  await sleep(900)
   const treePt = JSON.parse(await ev(`(() => {
-    const aside = document.querySelector('aside')
-    if (!aside) return JSON.stringify({ x: -1, y: -1 })
-    const r = aside.getBoundingClientRect()
-    return JSON.stringify({ x: Math.round(r.left + 60), y: Math.round(r.top + 170) })
+    const row = document.querySelector('aside [data-tree-row]') || document.querySelector('aside .tree-label')
+    if (!row) return JSON.stringify({ x: -1, y: -1 })
+    const r = row.getBoundingClientRect()
+    return JSON.stringify({ x: Math.round(r.left + 60), y: Math.round(r.top + r.height / 2) })
   })()`))
   console.log('TREE-PT ' + JSON.stringify(treePt))
   await rightClick(treePt.x, treePt.y)

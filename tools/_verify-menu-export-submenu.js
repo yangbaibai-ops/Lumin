@@ -67,9 +67,12 @@ const WIRING = `(() => {
   const t = (k) => window.__M.app.config.globalProperties.$t(k)
   const fileBtn = [...document.querySelectorAll('button')].find((b) => b.textContent.trim() === t('menu.file'))
   if (!fileBtn) return JSON.stringify({ err: 'no file button' })
+  // ⚠️ 组件实例只在 dev 构建里挂着（生产构建没有 __vueParentComponent）——
+  // 拿不到就如实 SKIP 这组断言，不判红（见清单 §1.C.1 的口径）
+  if (!fileBtn.__vueParentComponent) return JSON.stringify({ err: 'prod-build，拿不到组件实例' })
   let inst = fileBtn.__vueParentComponent
   let groups = null
-  for (let i = 0; inst && i < 6 && !groups; i++) {
+  for (let i = 0; inst && i < 12 && !groups; i++) {
     if (inst.setupState?.GROUPS) groups = inst.setupState.GROUPS
     inst = inst.parent
   }
@@ -221,6 +224,9 @@ const SUB = `(() => {
     c('esc-then-closes-menu', menuAfterEsc2.open === false, JSON.stringify(menuAfterEsc2))
 
     // ── ⑦ 动作接线（读组件菜单数据，不执行导出：点击会弹系统「另存为」对话框） ──
+    // 这组断言要求**组件实例**（Vue 的 dev-only 内部属性）。生产构建里拿不到时如实 SKIP：
+    // 「环境不满足就报红」会把一整轮矩阵变成噪音（清单 §1.C.1 的口径），
+    // 但也不能假通过 —— 所以要跑这组就起 dev server（`npm run dev` + `--all`）。
     const wiring = JSON.parse(await w.ev(WIRING))
     console.log('WIRING ' + JSON.stringify(wiring))
     const want = [
@@ -229,20 +235,26 @@ const SUB = `(() => {
       ['menu.exportWord', 'word'],
       ['menu.exportEpub', 'epub']
     ]
-    c('wiring-submenu-label', wiring.labelKey === 'menu.export', JSON.stringify(wiring.labelKey))
-    c(
-      'wiring-four-leaf-labels',
-      JSON.stringify((wiring.children ?? []).map((x) => x.labelKey)) === JSON.stringify(want.map(([k]) => k)),
-      JSON.stringify((wiring.children ?? []).map((x) => x.labelKey))
-    )
-    c(
-      'wiring-each-calls-runExport',
-      want.every(([labelKey, fmt]) => {
-        const ch = (wiring.children ?? []).find((x) => x.labelKey === labelKey)
-        return !!ch && ch.src.includes(`runExport("${fmt}")`)
-      }),
-      JSON.stringify((wiring.children ?? []).map((x) => x.src))
-    )
+    if (wiring.err) {
+      for (const name of ['wiring-submenu-label', 'wiring-four-leaf-labels', 'wiring-each-calls-runExport']) {
+        results.push(`SKIP ${name} | ${wiring.err}`)
+      }
+    } else {
+      c('wiring-submenu-label', wiring.labelKey === 'menu.export', JSON.stringify(wiring.labelKey))
+      c(
+        'wiring-four-leaf-labels',
+        JSON.stringify((wiring.children ?? []).map((x) => x.labelKey)) === JSON.stringify(want.map(([k]) => k)),
+        JSON.stringify((wiring.children ?? []).map((x) => x.labelKey))
+      )
+      c(
+        'wiring-each-calls-runExport',
+        want.every(([labelKey, fmt]) => {
+          const ch = (wiring.children ?? []).find((x) => x.labelKey === labelKey)
+          return !!ch && ch.src.includes(`runExport("${fmt}")`)
+        }),
+        JSON.stringify((wiring.children ?? []).map((x) => x.src))
+      )
+    }
 
     // 普通项点击仍会关闭菜单（复用与二级项相同的 runLeaf 路径；这里点「保存」不弹对话框）
     await openFileMenu()

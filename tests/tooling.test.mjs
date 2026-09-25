@@ -97,3 +97,57 @@ test('套件统一入口存在且默认清单里的套件都在', () => {
     assert.match(p, /^_(verify|regress|repro)$/, `清单里出现了未被守护的套件前缀：${p}`)
   }
 })
+
+test('套件分档：每个套件恰好落在一档，且 needs-dev 与实测一致', () => {
+  /**
+   * 分档是"哪一档该在什么时候跑"的**数据**（清单 §10 建议 ③）：`--tier=fast` 靠它挑套件。
+   * 这里守住三件事，否则档位会慢慢漂成一个没人信的标签：
+   *   ① 每个套件文件都能得到一档（tierOf 有兜底，但档名必须是四个之一）；
+   *   ② `TIER_DEV` 与 `needsDevServer()` 的实测**完全一致**（漏登记 = 那档跑不起来）；
+   *   ③ `manual` 的两个套件不在 `--all` 的自动清单里（人工介入的不能混进自动矩阵）。
+   */
+  const m = require(path.join(TOOLS, 'run-suites.js'))
+  const files = m.allSuites()
+  assert.ok(files.length >= 60, `套件全集太少：${files.length}`)
+  const TIERS = new Set(['fast', 'needs-build', 'needs-dev', 'manual'])
+  for (const f of files) {
+    assert.ok(TIERS.has(m.tierOf(f)), `${f} 落到了未知档位 ${m.tierOf(f)}`)
+  }
+  for (const f of fs.readdirSync(TOOLS).filter((x) => /^_(verify|regress|repro)-.*\.js$/.test(x))) {
+    assert.equal(
+      m.needsDevServer(f),
+      m.TIER_DEV.has(f),
+      `${f} 的 needs-dev 档与实测不符（实测 needsDevServer=${m.needsDevServer(f)}）`
+    )
+  }
+  for (const f of m.MANUAL) {
+    assert.ok(!files.includes(f), `manual 档的 ${f} 不该出现在自动矩阵里`)
+    assert.equal(m.tierOf(f), 'manual', `${f} 应在 manual 档`)
+  }
+  // fast 档 = 默认矩阵（两者是同一件事的两面）
+  for (const f of m.DEFAULT_SUITES) {
+    assert.equal(m.tierOf(f), 'fast', `默认矩阵里的 ${f} 不在 fast 档`)
+  }
+})
+
+test('探针/遗留脚本被点名登记（不判定，但必须可见）', () => {
+  /**
+   * 清单 §10 P1：约 15 个"0 断言探针"在冒充 PASS —— 运行器现在把 `total === 0` 记 NOASSERT，
+   * 但 `_probe-*` 与 `verify-tiptap.js` **根本不在扫描范围内**，于是连 NOASSERT 都不会被记。
+   * 这条守住"它们仍然存在且仍被登记"：名单是数据（probeSuites），每轮矩阵末尾打印出来，
+   * `--probe` 可以显式跑（那时照常判定）。
+   */
+  const m = require(path.join(TOOLS, 'run-suites.js'))
+  const probes = m.probeSuites()
+  assert.ok(probes.length >= 5, `探针名单太少：${probes.length}（是不是把 _probe-* 删光了？）`)
+  for (const f of probes) {
+    assert.ok(fs.existsSync(path.join(TOOLS, f)), `probeSuites 里的 ${f} 不存在`)
+    assert.ok(!m.allSuites().includes(f), `${f} 不该同时出现在自动矩阵里（那会重复判定）`)
+  }
+  // 探针文件不能被顺手改名成 _verify-* 而不改这份名单
+  const mismatched = fs
+    .readdirSync(TOOLS)
+    .filter((f) => /^_probe-.*\.js$/.test(f))
+    .filter((f) => !probes.includes(f))
+  assert.deepEqual(mismatched, [], `这些探针没被 probeSuites 收到：${mismatched.join(', ')}`)
+})

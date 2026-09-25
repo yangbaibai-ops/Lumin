@@ -1,0 +1,78 @@
+name: Bug 报告
+description: 报告一个可复现的问题（打包版优先说明版本与平台）
+title: '[Bug] '
+labels: ['bug']
+body:
+  - type: markdown
+    attributes:
+      value: |
+        感谢反馈。请尽量把"版本 / 平台 / 是不是打包版 / 复现步骤"写全 ——
+        这四项决定了我们能不能在本地复现（仓库的验收套件全部依赖"能在本机跑起来"）。
+
+  - type: input
+    id: version
+    attributes:
+      label: 版本
+      description: 应用内「帮助 → 关于」或 `package.json` 里的版本号
+      placeholder: '例如 1.0.0'
+    validations:
+      required: true
+
+  - type: dropdown
+    id: platform
+    attributes:
+      label: 平台
+      options:
+        - Windows 10/11
+        - macOS
+        - Linux
+        - 其他（请在复现步骤里说明）
+    validations:
+      required: true
+
+  - type: dropdown
+    id: packaged
+    attributes:
+      label: 是否打包版
+      description: 打包版（安装包/exe）与开发态（`npm run dev`）的行为可能不同
+      options:
+        - 打包版（安装包 / 绿色版 exe）
+        - 开发态（npm run dev）
+        - 不确定
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: 复现步骤
+      description: 从打开应用开始，一步一行；能附上示例 `.md` 更好
+      placeholder: |
+        1. 打开 Lumin，打开文件夹 …
+        2. 新建文件，输入 …
+        3. 保存后 …
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: 期望行为
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: 实际行为
+      description: 有截图/录屏/控制台输出请一并贴上（主进程日志：`%TEMP%\lumin-build.log`）
+    validations:
+      required: true
+
+  - type: textarea
+    id: extra
+    attributes:
+      label: 其他
+      description: 文档大小、是不是大文档、有没有开自动保存/本地历史等，能帮助缩小范围
+    validations:
+      required: false

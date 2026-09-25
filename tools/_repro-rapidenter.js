@@ -16,6 +16,7 @@ const {
   settle,
   waitEditor,
   sleep,
+  ensureFocus,
   Reporter,
   key,
   clickCenter,
@@ -67,6 +68,13 @@ async function main() {
   await openDocWith(app, MD, 'rapidenter.md')
   await waitEditor(app.ev)
   await sleep(400)
+
+  // 这一段是**真实按键注入**：窗口不在 OS 前台时按键会被丢掉（清单 §10 的 flaky 表
+  // 实测本套件批跑偶发 3/4），所以先跑取焦点重试循环，拿不到就如实 SKIP。
+  if (!(await ensureFocus(app))) {
+    report.skip('rapidenter', '被测窗口拿不到 OS 焦点（真实按键会丢）')
+    return report.finish()
+  }
 
   // 点进代码块行尾
   const box = await app.ev(`(() => {
