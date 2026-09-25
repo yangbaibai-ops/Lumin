@@ -354,7 +354,7 @@ function formatTime(ms: number): string {
           <div class="flex min-w-0 items-center gap-2">
             <Icon name="settings" :size="15" class="flex-none text-ink-3" />
             <h1 class="text-[14px] font-semibold text-ink">{{ t('settings.title') }}</h1>
-            <span class="ml-2 hidden truncate text-[11.5px] text-ink-3 sm:inline">
+            <span class="ml-2 hidden truncate text-[11.5px] text-ink-2b sm:inline">
               {{ t('settings.persistHint') }}
             </span>
           </div>
@@ -483,7 +483,7 @@ function formatTime(ms: number): string {
                             :class="
                               settings.language === opt.value
                                 ? 'bg-panel text-ink shadow-sm'
-                                : 'text-ink-3 hover:text-ink-2'
+                                : 'text-ink-2b hover:text-ink-2'
                             "
                             @click="settings.setLanguage(opt.value)"
                           >
@@ -883,7 +883,7 @@ function formatTime(ms: number): string {
                             <Icon
                               :name="th.icon"
                               :size="13"
-                              :class="settings.theme === th.mode ? 'text-accent' : 'text-ink-3'"
+                              :class="settings.theme === th.mode ? 'text-accent' : 'text-ink-2b'"
                             />
                             <span class="min-w-0 flex-1 truncate text-[12.5px] text-ink">{{
                               th.label
@@ -980,7 +980,7 @@ function formatTime(ms: number): string {
                               <Icon :name="row.icon" :size="13" />
                             </span>
                             <p class="min-w-0 flex-1 text-[12.5px] text-ink">{{ row.name }}</p>
-                            <p class="truncate text-[11.5px] text-ink-3">{{ row.desc }}</p>
+                            <p class="truncate text-[11.5px] text-ink-2b">{{ row.desc }}</p>
                           </div>
                         </div>
                         <p class="set-row-desc mt-3">在编辑器工具栏点击「导出」即可使用。</p>
@@ -998,7 +998,7 @@ function formatTime(ms: number): string {
                       <h3 class="mb-1 text-[13.5px] text-ink">
                         {{ t('settings.linksCreateMode') }}
                       </h3>
-                      <p class="mb-4 text-[12px] text-ink-3">
+                      <p class="mb-4 text-[12px] text-ink-2b">
                         {{ t('settings.linksCreateModeDesc') }}
                       </p>
                       <div class="grid grid-cols-3 gap-2">
@@ -1042,7 +1042,7 @@ function formatTime(ms: number): string {
                           </div>
                           <p
                             v-if="!linkHistory.length"
-                            class="rounded-xl border border-dashed border-edge px-3.5 py-6 text-center text-[12.5px] text-ink-3"
+                            class="rounded-xl border border-dashed border-edge px-3.5 py-6 text-center text-[12.5px] text-ink-2b"
                           >
                             {{ t('settings.linksHistoryEmpty') }}
                           </p>
@@ -1059,7 +1059,7 @@ function formatTime(ms: number): string {
                               class="flex items-center gap-3 rounded-xl border border-edge px-3.5 py-2"
                             >
                               <span
-                                class="flex h-7 w-7 flex-none items-center justify-center rounded-lg bg-panel-2 text-ink-3"
+                                class="flex h-7 w-7 flex-none items-center justify-center rounded-lg bg-panel-2 text-ink-2b"
                               >
                                 <Icon name="link" :size="13" />
                               </span>
@@ -1068,7 +1068,7 @@ function formatTime(ms: number): string {
                                   {{ item.target }}
                                 </p>
                                 <p
-                                  class="mt-0.5 truncate text-[11.5px] text-ink-3"
+                                  class="mt-0.5 truncate text-[11.5px] text-ink-2b"
                                   :title="item.path ?? ''"
                                 >
                                   {{ formatTime(item.lastUsed) }} ·
@@ -1076,7 +1076,7 @@ function formatTime(ms: number): string {
                                 </p>
                               </div>
                               <span
-                                class="flex-none rounded-md bg-panel-2 px-1.5 py-0.5 text-[11px] text-ink-3"
+                                class="flex-none rounded-md bg-panel-2 px-1.5 py-0.5 text-[11px] text-ink-2b"
                               >
                                 {{ linkKindLabel(item.kind) }}
                               </span>
@@ -1097,7 +1097,7 @@ function formatTime(ms: number): string {
                                 {{ t('settings.linksCreatedBadge') }}
                               </span>
                               <button
-                                class="flex h-7 w-7 flex-none items-center justify-center rounded-lg text-ink-3 transition-colors hover:bg-panel-2 hover:text-danger"
+                                class="flex h-7 w-7 flex-none items-center justify-center rounded-lg text-ink-2b transition-colors hover:bg-panel-2 hover:text-danger"
                                 :title="t('settings.linksForget')"
                                 @click="forgetLink(item.target)"
                               >

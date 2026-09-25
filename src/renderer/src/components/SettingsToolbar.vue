@@ -136,7 +136,7 @@ onBeforeUnmount(() => {
     <div class="flex items-start gap-4">
       <div class="min-w-0 flex-1">
         <p class="text-[13.5px] text-ink">{{ t('toolbar.visible') }}</p>
-        <p class="mt-0.5 text-[12px] leading-relaxed text-ink-3">{{ t('toolbar.visibleDesc') }}</p>
+        <p class="mt-0.5 text-[12px] leading-relaxed text-ink-2b">{{ t('toolbar.visibleDesc') }}</p>
       </div>
       <SettingSwitch
         :model-value="settings.toolbarVisible"
@@ -171,13 +171,13 @@ onBeforeUnmount(() => {
       <!-- 已显示：顺序即工具栏上的顺序，同组内可上/下移 -->
       <div class="set-fold-body">
         <div class="rounded-xl border border-edge" :class="toolbarOff ? 'opacity-50' : ''">
-          <div class="border-b border-edge px-3 py-2 text-[11.5px] text-ink-3">
+          <div class="border-b border-edge px-3 py-2 text-[11.5px] text-ink-2b">
             {{ t('toolbar.shownCount', { n: shown.length, total: TOOLBAR_ITEMS.length }) }}
           </div>
 
           <p
             v-if="!shown.length"
-            class="px-3.5 py-5 text-center text-[12.5px] text-ink-3"
+            class="px-3.5 py-5 text-center text-[12.5px] text-ink-2b"
             data-setting-toolbar-empty
           >
             {{ t('toolbar.allHidden') }}
@@ -187,7 +187,7 @@ onBeforeUnmount(() => {
             <!-- 分组小标题：让「同组才能换序」这条规则在界面上可见 -->
             <p
               v-if="i === 0 || shown[i - 1].group !== d.group"
-              class="px-3 pt-2.5 text-[11px] font-medium text-ink-3"
+              class="px-3 pt-2.5 text-[11px] font-medium text-ink-2b"
             >
               {{ t(groupLabelKeys[d.group]) }}
             </p>
@@ -196,7 +196,7 @@ onBeforeUnmount(() => {
               :class="i === shown.length - 1 ? '' : 'border-b border-edge/60'"
               :data-setting-toolbar-item="d.id"
             >
-              <span class="flex h-6 w-6 flex-none items-center justify-center text-ink-3">
+              <span class="flex h-6 w-6 flex-none items-center justify-center text-ink-2b">
                 <Icon :name="d.icon" :size="14" />
               </span>
               <span class="min-w-0 flex-1 truncate text-[13px] text-ink">{{ labelOf(d) }}</span>
@@ -233,7 +233,7 @@ onBeforeUnmount(() => {
 
         <!-- 未显示：点「加入」即按目录顺序回到工具栏 -->
         <div v-if="hidden.length" class="mt-3 rounded-xl border border-dashed border-edge">
-          <div class="border-b border-edge/60 px-3 py-2 text-[11.5px] text-ink-3">
+          <div class="border-b border-edge/60 px-3 py-2 text-[11.5px] text-ink-2b">
             {{ t('toolbar.hiddenCount', { n: hidden.length }) }}
           </div>
           <div
@@ -243,7 +243,7 @@ onBeforeUnmount(() => {
             :class="i === hidden.length - 1 ? '' : 'border-b border-edge/60'"
             :data-setting-toolbar-hidden-item="d.id"
           >
-            <span class="flex h-6 w-6 flex-none items-center justify-center text-ink-3">
+            <span class="flex h-6 w-6 flex-none items-center justify-center text-ink-2b">
               <Icon :name="d.icon" :size="14" />
             </span>
             <span class="min-w-0 flex-1 truncate text-[13px] text-ink-2">{{ labelOf(d) }}</span>
@@ -259,7 +259,7 @@ onBeforeUnmount(() => {
           </div>
         </div>
 
-        <p class="mt-3 text-[11.5px] leading-relaxed text-ink-3">{{ t('toolbar.hint') }}</p>
+        <p class="mt-3 text-[11.5px] leading-relaxed text-ink-2b">{{ t('toolbar.hint') }}</p>
       </div>
     </details>
   </section>

@@ -65,11 +65,13 @@ onMounted(async () => {
 
       <div class="mt-8 grid w-full grid-cols-2 gap-3">
         <div class="surface p-4">
-          <p class="text-[11px] uppercase tracking-[0.12em] text-ink-3">{{ t('about.version') }}</p>
+          <p class="text-[11px] uppercase tracking-[0.12em] text-ink-2b">
+            {{ t('about.version') }}
+          </p>
           <p class="mt-1 text-[15px] font-semibold text-ink">v{{ version }}</p>
         </div>
         <div class="surface p-4">
-          <p class="text-[11px] uppercase tracking-[0.12em] text-ink-3">
+          <p class="text-[11px] uppercase tracking-[0.12em] text-ink-2b">
             {{ t('about.platform') }}
           </p>
           <p class="mt-1 text-[15px] font-semibold text-ink capitalize">{{ platform }}</p>
@@ -77,7 +79,7 @@ onMounted(async () => {
       </div>
 
       <div class="mt-8 w-full" data-about-deps>
-        <h2 class="mb-3 text-[12px] font-semibold uppercase tracking-[0.14em] text-ink-3">
+        <h2 class="mb-3 text-[12px] font-semibold uppercase tracking-[0.14em] text-ink-2b">
           {{ t('about.stack') }}
           <span class="ml-1 font-normal normal-case tracking-normal text-ink-3/80">
             {{ t('about.stackCount', { n: deps.length }) }}
@@ -100,7 +102,7 @@ onMounted(async () => {
            按需展开 —— 300 个包的表格直接塞进 DOM 会让这一页变重 -->
       <div v-if="notices" class="mt-8 w-full" data-about-licenses>
         <button
-          class="flex w-full items-center justify-center gap-1.5 text-[12px] font-semibold uppercase tracking-[0.14em] text-ink-3 transition-colors hover:text-accent"
+          class="flex w-full items-center justify-center gap-1.5 text-[12px] font-semibold uppercase tracking-[0.14em] text-ink-2b transition-colors hover:text-accent"
           :aria-expanded="showLicenses ? 'true' : 'false'"
           data-about-licenses-toggle
           @click="showLicenses = !showLicenses"
@@ -113,7 +115,7 @@ onMounted(async () => {
             :class="showLicenses ? 'rotate-90' : ''"
           />
         </button>
-        <p v-if="!showLicenses" class="mt-2 text-[12px] text-ink-3">
+        <p v-if="!showLicenses" class="mt-2 text-[12px] text-ink-2b">
           {{ t('about.licensesHint') }}
         </p>
         <div
@@ -127,7 +129,7 @@ onMounted(async () => {
         </div>
       </div>
 
-      <p class="mt-10 text-[12px] text-ink-3">{{ t('about.license') }}</p>
+      <p class="mt-10 text-[12px] text-ink-2b">{{ t('about.license') }}</p>
 
       <button class="btn btn-outline mt-6 px-5 py-2 text-[13px]" @click="goBack">
         <Icon name="chevron-right" :size="14" class="rotate-180" />

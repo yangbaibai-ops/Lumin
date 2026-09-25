@@ -230,13 +230,13 @@ const cmTheme = EditorView.theme({
 
 const mdHighlight = syntaxHighlighting(
   HighlightStyle.define([
-    { tag: t.keyword, color: 'var(--accent)' },
+    { tag: t.keyword, color: 'var(--code-key)' },
     {
       tag: [t.name, t.deleted, t.character, t.propertyName, t.macroName],
       color: 'var(--accent-ink)'
     },
-    { tag: [t.function(t.variableName), t.labelName], color: 'var(--warning)' },
-    { tag: [t.color, t.constant(t.name), t.standard(t.name)], color: 'var(--warning)' },
+    { tag: [t.function(t.variableName), t.labelName], color: 'var(--code-num)' },
+    { tag: [t.color, t.constant(t.name), t.standard(t.name)], color: 'var(--code-num)' },
     { tag: [t.definition(t.name), t.separator], color: 'var(--ink-2)' },
     {
       tag: [
@@ -249,21 +249,21 @@ const mdHighlight = syntaxHighlighting(
         t.self,
         t.namespace
       ],
-      color: 'var(--warning)'
+      color: 'var(--code-num)'
     },
     {
       tag: [t.operator, t.operatorKeyword, t.url, t.escape, t.regexp, t.link, t.special(t.string)],
-      color: 'var(--accent-2)'
+      color: 'var(--code-key-2)'
     },
-    { tag: [t.meta, t.comment], color: 'var(--ink-3)', fontStyle: 'italic' },
+    { tag: [t.meta, t.comment], color: 'var(--code-com)', fontStyle: 'italic' },
     { tag: t.strong, fontWeight: '700' },
     { tag: t.emphasis, fontStyle: 'italic' },
     { tag: t.strikethrough, textDecoration: 'line-through' },
-    { tag: t.link, color: 'var(--accent-2)', textDecoration: 'underline' },
+    { tag: t.link, color: 'var(--code-key-2)', textDecoration: 'underline' },
     { tag: t.heading, fontWeight: '700', color: 'var(--accent)' },
     { tag: [t.atom, t.bool, t.special(t.variableName)], color: 'var(--warning)' },
-    { tag: [t.processingInstruction, t.string, t.inserted], color: 'var(--ok)' },
-    { tag: t.invalid, color: 'var(--danger)' }
+    { tag: [t.processingInstruction, t.string, t.inserted], color: 'var(--code-str)' },
+    { tag: t.invalid, color: 'var(--code-invalid)' }
   ])
 )
 

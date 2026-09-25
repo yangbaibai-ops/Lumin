@@ -90,7 +90,7 @@ watch(open, (v) => {
         <header class="flex items-center gap-2 border-b border-edge px-4 py-3">
           <Icon name="clock" :size="15" />
           <h2 class="text-[13.5px] font-semibold text-ink">{{ t('history.title') }}</h2>
-          <span class="truncate text-[12px] text-ink-3">{{ fileName }}</span>
+          <span class="truncate text-[12px] text-ink-2b">{{ fileName }}</span>
           <div class="flex-1" />
           <button
             v-if="entries.length"
@@ -110,12 +110,12 @@ watch(open, (v) => {
         </header>
 
         <div class="min-h-0 flex-1 overflow-y-auto p-2">
-          <p v-if="ui.localHistory.loading" class="px-3 py-6 text-center text-[12.5px] text-ink-3">
+          <p v-if="ui.localHistory.loading" class="px-3 py-6 text-center text-[12.5px] text-ink-2b">
             {{ t('common.loading') }}
           </p>
           <p
             v-else-if="!entries.length"
-            class="px-3 py-8 text-center text-[12.5px] leading-relaxed text-ink-3"
+            class="px-3 py-8 text-center text-[12.5px] leading-relaxed text-ink-2b"
             data-history-empty
           >
             {{ t('history.empty') }}
@@ -135,7 +135,7 @@ watch(open, (v) => {
                 <span class="min-w-0 flex-1 truncate text-[12.5px] text-ink">{{
                   e.preview || t('history.blankSnapshot')
                 }}</span>
-                <span class="shrink-0 tabular-nums text-[11.5px] text-ink-3">{{
+                <span class="shrink-0 tabular-nums text-[11.5px] text-ink-2b">{{
                   formatSize(e.size)
                 }}</span>
                 <Icon name="undo" :size="13" class="shrink-0 text-ink-3" />
@@ -144,7 +144,7 @@ watch(open, (v) => {
           </ul>
         </div>
 
-        <footer class="border-t border-edge px-4 py-2.5 text-[11.5px] leading-relaxed text-ink-3">
+        <footer class="border-t border-edge px-4 py-2.5 text-[11.5px] leading-relaxed text-ink-2b">
           {{ t('history.hint') }}
         </footer>
       </div>

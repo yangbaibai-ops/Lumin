@@ -29,7 +29,7 @@
   overflow: hidden;
 }
 .md-block .md-raw::placeholder {
-  color: var(--ink-3);
+  color: var(--ink-2b);
 }
 
 /* 行内可编辑容器 */
@@ -41,7 +41,7 @@
 }
 .md-block-inner:empty::before {
   content: attr(data-placeholder);
-  color: var(--ink-3);
+  color: var(--ink-2b);
   pointer-events: none;
 }
 .md-block-inner a {
@@ -100,7 +100,7 @@ h6.md-reveal > .md-heading-marker {
   cursor: text;
 }
 .md-cell-pipe {
-  color: var(--ink-3);
+  color: var(--ink-2b);
   opacity: 0.6;
 }
 .md-block-inner th.md-reveal > .md-cell-pipe,
@@ -139,7 +139,7 @@ h6.md-reveal > .md-heading-marker {
   content: '•';
   position: absolute;
   left: calc(var(--toc-depth, 0) * 1.15em);
-  color: var(--ink-3);
+  color: var(--ink-2b);
   transition: color 0.15s ease;
 }
 .md-toc .toc-item[data-level='2']::before {
@@ -162,5 +162,5 @@ h6.md-reveal > .md-heading-marker {
 
 .md-toc .md-toc-empty {
   font-size: 0.9em;
-  color: var(--ink-3);
+  color: var(--ink-2b);
 }

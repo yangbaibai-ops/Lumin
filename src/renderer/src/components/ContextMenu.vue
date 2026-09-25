@@ -243,7 +243,7 @@ const subStyle = computed(() => ({
               v-if="item.children"
               name="chevron-right"
               :size="13"
-              class="flex-none text-ink-3"
+              class="flex-none text-ink-2b"
             />
           </button>
         </template>

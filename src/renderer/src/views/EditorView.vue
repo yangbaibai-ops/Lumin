@@ -907,7 +907,7 @@ onBeforeUnmount(() => {
                     : i18n.global.t('editor.restoreDraftUntitled')
                 }}
               </p>
-              <p class="mb-6 text-[12.5px] leading-relaxed text-ink-3">
+              <p class="mb-6 text-[12.5px] leading-relaxed text-ink-2b">
                 {{ i18n.global.t('editor.draftHint') }}
               </p>
               <div class="flex justify-end gap-2">

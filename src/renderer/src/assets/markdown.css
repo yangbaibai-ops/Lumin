@@ -76,7 +76,7 @@
   font-style: italic;
 }
 .md-preview del {
-  color: var(--ink-3);
+  color: var(--ink-2b);
 }
 .md-preview blockquote {
   margin: 0.8em 0;
@@ -257,7 +257,7 @@
   border: 1px dashed var(--edge-strong);
   border-radius: 10px;
   background: var(--code-bg);
-  color: var(--ink-3);
+  color: var(--ink-2b);
   font-size: 0.82em;
   line-height: 1.4;
   cursor: pointer;
@@ -303,7 +303,7 @@
 }
 .hljs-comment,
 .hljs-quote {
-  color: var(--ink-3);
+  color: var(--ink-2b);
   font-style: italic;
 }
 .hljs-keyword,

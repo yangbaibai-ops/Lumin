@@ -123,7 +123,7 @@ function isValid(c: ResolvedCommand): boolean {
         </span>
         <div class="min-w-0 flex-1">
           <h3 class="text-[13.5px] text-ink">{{ t('keymap.title') }}</h3>
-          <p class="mt-1 text-[12px] leading-relaxed text-ink-3">{{ t('keymap.desc') }}</p>
+          <p class="mt-1 text-[12px] leading-relaxed text-ink-2b">{{ t('keymap.desc') }}</p>
         </div>
         <button
           class="btn btn-outline flex-none px-3 py-1.5 text-[12.5px]"
@@ -142,13 +142,13 @@ function isValid(c: ResolvedCommand): boolean {
         <Icon name="search" :size="13" class="flex-none text-ink-3" />
         <input
           v-model="filter"
-          class="keymap-search w-full bg-transparent text-[12.5px] text-ink outline-none placeholder:text-ink-3"
+          class="keymap-search w-full bg-transparent text-[12.5px] text-ink outline-none placeholder:text-ink-2b"
           :placeholder="t('keymap.searchPlaceholder')"
         />
-        <button v-if="filter" class="flex-none text-ink-3 hover:text-ink" @click="filter = ''">
+        <button v-if="filter" class="flex-none text-ink-2b hover:text-ink" @click="filter = ''">
           <Icon name="x" :size="12" />
         </button>
-        <span class="flex-none text-[11.5px] text-ink-3">
+        <span class="flex-none text-[11.5px] text-ink-2b">
           {{ t('keymap.customizedCount', { n: customizedCount }) }}
         </span>
       </div>
@@ -190,7 +190,7 @@ function isValid(c: ResolvedCommand): boolean {
             <template v-else-if="c.keys && isValid(c)">
               <kbd v-for="k in specToChips(c.keys)" :key="k" class="key-chip">{{ k }}</kbd>
             </template>
-            <span v-else class="text-[11.5px] text-ink-3">{{ t('keymap.unbound') }}</span>
+            <span v-else class="text-[11.5px] text-ink-2b">{{ t('keymap.unbound') }}</span>
           </span>
 
           <span class="flex flex-none items-center gap-1">
@@ -214,13 +214,13 @@ function isValid(c: ResolvedCommand): boolean {
             </button>
           </span>
         </div>
-        <p v-if="!g.items.length" class="px-2 py-3 text-[12px] text-ink-3">
+        <p v-if="!g.items.length" class="px-2 py-3 text-[12px] text-ink-2b">
           {{ t('keymap.noMatch') }}
         </p>
       </div>
     </section>
 
-    <p class="px-1 text-[11.5px] leading-relaxed text-ink-3">{{ t('keymap.hint') }}</p>
+    <p class="px-1 text-[11.5px] leading-relaxed text-ink-2b">{{ t('keymap.hint') }}</p>
   </div>
 </template>
 

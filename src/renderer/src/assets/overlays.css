@@ -197,7 +197,7 @@ li.md-reveal {
   font-weight: 600;
   letter-spacing: 0.06em;
   text-transform: uppercase;
-  color: var(--ink-3);
+  color: var(--ink-2b);
 }
 .code-block-select {
   appearance: none;
@@ -251,7 +251,7 @@ li.md-reveal {
   flex: none;
   padding: 0 6px 0 3px;
   text-align: right;
-  color: var(--ink-3);
+  color: var(--ink-2b);
   user-select: none;
   white-space: pre;
 }
@@ -264,15 +264,15 @@ li.md-reveal {
    那张表是 CM 挂载态的配色，这里用应用自己的 class 复刻一份 —— 刻意不用 CM 生成的 class，
    因为 CM 的 StyleModule 随最后一个实例销毁而卸载，「块都卸完 → 颜色集体消失」。
    改一边记得改另一边（tests/staticHighlight.test.mjs 会守住映射表的完整性）。 */
-.lm-tok-keyword { color: var(--accent); }
+.lm-tok-keyword { color: var(--code-key); }
 .lm-tok-name { color: var(--accent-ink); }
-.lm-tok-function { color: var(--warning); }
-.lm-tok-value { color: var(--warning); }
-.lm-tok-type { color: var(--warning); }
-.lm-tok-operator { color: var(--accent-2); }
-.lm-tok-comment { color: var(--ink-3); font-style: italic; }
-.lm-tok-string { color: var(--ok); }
-.lm-tok-invalid { color: var(--danger); }
+.lm-tok-function { color: var(--code-num); }
+.lm-tok-value { color: var(--code-num); }
+.lm-tok-type { color: var(--code-num); }
+.lm-tok-operator { color: var(--code-key-2); }
+.lm-tok-comment { color: var(--ink-2b); font-style: italic; }
+.lm-tok-string { color: var(--code-str); }
+.lm-tok-invalid { color: var(--code-invalid); }
 
 /* ─── 侧栏底部工具带（搜索 + 树/列表切换）：默认隐藏，悬停侧栏才出现 ──────────────
    用户口径：这一条平时收起来，鼠标放到侧边栏上才显示。
@@ -316,7 +316,7 @@ aside:focus-within [data-sidebar-filetools],
   font-family: var(--font-mono);
   font-size: 12.5px;
   line-height: 1.6;
-  color: var(--ink-3);
+  color: var(--ink-2b);
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
@@ -474,7 +474,7 @@ aside:focus-within [data-sidebar-filetools],
 .ntf-time,
 .ntf-count {
   font-size: 11.5px;
-  color: var(--ink-3);
+  color: var(--ink-2b);
 }
 .ntf-sep {
   width: 1px;
@@ -599,7 +599,7 @@ aside:focus-within [data-sidebar-filetools],
   padding: 3px 6px;
   margin-left: 4px;
   font-size: 11.5px;
-  color: var(--ink-3);
+  color: var(--ink-2b);
   white-space: nowrap;
   cursor: pointer;
   transition:
@@ -674,7 +674,7 @@ aside:focus-within [data-sidebar-filetools],
   padding: 6px 8px 3px;
   font-size: 10.5px;
   letter-spacing: 0.02em;
-  color: var(--ink-3);
+  color: var(--ink-2b);
 }
 .ecm-item {
   display: flex;
@@ -719,7 +719,7 @@ aside:focus-within [data-sidebar-filetools],
 .ecm-key {
   flex: none;
   font-size: 10.5px;
-  color: var(--ink-3);
+  color: var(--ink-2b);
   font-variant-numeric: tabular-nums;
 }
 .ecm-foot {
@@ -730,7 +730,7 @@ aside:focus-within [data-sidebar-filetools],
   border-radius: 8px;
   padding: 5px 8px;
   font-size: 11.5px;
-  color: var(--ink-3);
+  color: var(--ink-2b);
   cursor: pointer;
   transition:
     background-color 0.14s ease,

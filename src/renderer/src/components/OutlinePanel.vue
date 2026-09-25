@@ -77,7 +77,7 @@ function onDragStart(e: MouseEvent): void {
     >
       <span
         v-if="settings.outlineRightExpanded"
-        class="truncate text-[12px] font-medium text-ink-3"
+        class="truncate text-[12px] font-medium text-ink-2b"
         >{{ t('sidebar.outline') }}</span
       >
       <button

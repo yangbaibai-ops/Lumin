@@ -124,7 +124,7 @@ async function openDoc(path: string): Promise<void> {
     <div class="min-h-0 flex-1 overflow-y-auto px-0 pb-4">
       <div
         v-if="docsStore.loading && !docsStore.docs.length"
-        class="mt-8 flex items-center justify-center gap-2 px-4 text-[12px] text-ink-3"
+        class="mt-8 flex items-center justify-center gap-2 px-4 text-[12px] text-ink-2b"
       >
         <Icon name="refresh" :size="13" class="animate-spin" style="animation-duration: 1.2s" />
         {{ t('sidebar.loading') }}
@@ -197,7 +197,7 @@ async function openDoc(path: string): Promise<void> {
 
       <div
         v-else
-        class="mt-10 flex flex-col items-center gap-2.5 px-4 text-center text-[12px] leading-relaxed text-ink-3"
+        class="mt-10 flex flex-col items-center gap-2.5 px-4 text-center text-[12px] leading-relaxed text-ink-2b"
       >
         <Icon name="file" :size="24" :stroke-width="1.3" class="text-ink-3/50" />
         <p v-if="props.filter">

@@ -171,3 +171,68 @@ test('承载「比纸略灰」的面在白纸上仍可辨识（代码块 / 表�
   }
   console.log('面/纸对比度 ' + JSON.stringify(seen))
 })
+
+/**
+ * ─── 文字可读性矩阵（WCAG AA）────────────────────────────────────────────────
+ *
+ * 为什么把它们钉在**单测**里（审计 §8 的直接结论）：
+ *   * `--ink-3` 长期被当**正文级**文字用（设置项描述、placeholder、状态栏次要信息），
+ *     而它在这三套底色上分别是 2.66 / 2.86 / 2.22 —— **三主题全不达标**，羊皮纸下近乎不可读；
+ *   * 代码块的语法高亮直接复用语义色（`--ok`/`--warning`/`--ink-3`），而 `--code-bg` 比纸还暗
+ *     一档：浅色下字符串 2.94、数字 2.85、注释 2.83，护眼纸注释只有 **2.33**（读不清）。
+ * 修法是**分档**（`--ink-2` / `--ink-2b` 承担正文，`--ink-3` 退回装饰）＋ 代码块专用四色；
+ * 这条测试把「每一档都必须达标」变成可复算的数值断言，改色值时会当场红。
+ *
+ * 口径：正文与「次要正文」按 WCAG AA 的 4.5:1；装饰/图标按 3:1（图形）。
+ */
+test('文字对比度矩阵：正文/次要正文 ≥ 4.5:1，装饰与图标 ≥ 3:1（三主题）', () => {
+  const SURFACES = ['--app', '--paper', '--panel-2']
+  const report = {}
+  for (const t of THEMES) {
+    report[t] = {}
+    for (const ink of ['--ink', '--ink-2', '--ink-2b']) {
+      for (const bg of SURFACES) {
+        const c = contrast(TOKENS[t][ink], TOKENS[t][bg])
+        report[t][`${ink}/${bg}`] = Number(c.toFixed(2))
+        assert.ok(
+          c >= 4.5,
+          `${t}：${ink}=${TOKENS[t][ink]} 对 ${bg}=${TOKENS[t][bg]} 只有 ${f(c)}:1（正文级要求 ≥ 4.5）`
+        )
+      }
+    }
+    // 装饰档（--ink-3）与副色（--accent，图标/焦点环）按图形 3:1
+    for (const gfx of ['--ink-3', '--accent']) {
+      const c = contrast(TOKENS[t][gfx], TOKENS[t]['--app'])
+      report[t][`${gfx}/--app`] = Number(c.toFixed(2))
+      assert.ok(
+        c >= 3,
+        `${t}：${gfx}=${TOKENS[t][gfx]} 对 --app 只有 ${f(c)}:1（图标/装饰要求 ≥ 3）`
+      )
+    }
+  }
+  console.log('文字/底对比度 ' + JSON.stringify(report))
+})
+
+test('代码块配色：四档 token 对 --code-bg 均 ≥ 4.5:1（三主题）', () => {
+  const report = {}
+  for (const t of THEMES) {
+    const bg = TOKENS[t]['--code-bg']
+    report[t] = {}
+    for (const tok of [
+      '--code-key',
+      '--code-key-2',
+      '--code-str',
+      '--code-num',
+      '--code-com',
+      '--code-invalid'
+    ]) {
+      const c = contrast(TOKENS[t][tok], bg)
+      report[t][tok] = Number(c.toFixed(2))
+      assert.ok(
+        c >= 4.5,
+        `${t}：${tok}=${TOKENS[t][tok]} 对 --code-bg=${bg} 只有 ${f(c)}:1（代码是正文级字号，要求 ≥ 4.5）`
+      )
+    }
+  }
+  console.log('代码块配色对比度 ' + JSON.stringify(report))
+})

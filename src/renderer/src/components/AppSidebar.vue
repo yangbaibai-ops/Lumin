@@ -91,7 +91,7 @@ function onDragStart(e: MouseEvent): void {
            空态那三枚按钮才不要）。 -->
       <button
         v-else
-        class="flex h-7 min-w-0 flex-1 items-center gap-1.5 rounded-md px-1.5 text-left text-[12px] font-medium text-ink-3 transition-colors hover:bg-panel-2 hover:text-ink-2"
+        class="flex h-7 min-w-0 flex-1 items-center gap-1.5 rounded-md px-1.5 text-left text-[12px] font-medium text-ink-2b transition-colors hover:bg-panel-2 hover:text-ink-2"
         :title="t('open.openFolder')"
         :aria-label="t('open.openFolder')"
         data-sidebar-workspace
@@ -137,7 +137,7 @@ function onDragStart(e: MouseEvent): void {
         v-for="tab in ['files', 'outline'] as const"
         :key="tab"
         class="relative flex flex-1 items-center justify-center gap-1.5 rounded-lg py-1.5 text-[12.5px] font-medium transition-all duration-200"
-        :class="ui.sidebarTab === tab ? 'text-ink' : 'text-ink-3 hover:text-ink-2'"
+        :class="ui.sidebarTab === tab ? 'text-ink' : 'text-ink-2b hover:text-ink-2'"
         @click="ui.sidebarTab = tab"
       >
         <Icon :name="tab === 'files' ? 'file' : 'list'" :size="13" />

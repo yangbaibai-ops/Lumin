@@ -44,7 +44,7 @@ const editorStore = useEditorStore()
       class="mt-6 flex flex-col items-center gap-2 px-4 text-center"
     >
       <Icon name="heading" :size="24" :stroke-width="1.3" class="text-ink-3/60" />
-      <p class="text-[12px] leading-relaxed text-ink-3">{{ t('sidebar.emptyOutline') }}</p>
+      <p class="text-[12px] leading-relaxed text-ink-2b">{{ t('sidebar.emptyOutline') }}</p>
     </div>
   </div>
 </template>

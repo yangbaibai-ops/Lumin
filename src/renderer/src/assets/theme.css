@@ -67,6 +67,23 @@
   --ink: #20242b;
   --ink-2: #4e5766;
   --ink-3: #8a919e;
+  /* ─── 第四档「墨」：--ink-2b（次要正文，>= 4.5:1）─────────────────────────────
+     审计结论：三主题里 --ink-3 都被当**正文级**文字用过（设置项描述、placeholder、
+     状态栏次要信息），而它在这三套底色上分别是 2.66 / 2.86 / 2.22 —— 三主题全不达标，
+     羊皮纸下近乎不可读。修法是**分档**而不是整体加深：
+       --ink   正文        （对纸 >= 7:1，tests/themeTokens.test.mjs 已守）
+       --ink-2 次要正文     （对 app/paper/panel-2 均 >= 4.5:1）
+       --ink-2b 第三档正文  （同上；比 --ink-2 再淡一点，但仍然达标）
+       --ink-3 装饰/图标    （只要求 >= 3:1，不再用于正文 —— 本轮已把正文用法全部改掉） */
+  --ink-2b: #606977;
+  /* ─── 代码块专用配色（对 --code-bg >= 4.5:1）───────────────────────────────────
+     审计结论：语法高亮直接复用语义色（--ok/--warning/--ink-3），而 --code-bg 比纸还暗一档，
+     于是浅色下字符串 2.94、数字 2.85、注释 2.83；护眼纸注释只有 2.33 —— 代码块「读不清」。
+     这四档按各自的 --code-bg 单独校准，与语义色解耦（语义色还要照顾别处的用法）。 */
+  --code-str: #166534;
+  --code-num: #92400e;
+  --code-com: #626a76;
+  --code-invalid: #b91c1c;
   /* 副色 = 中性灰（浅色）：图标/焦点环 #6b7280、淡底 7% 墨、淡底上的文字 #374151。
      --accent-2 取更深一档（渐变另一端 / 次级强调），保证与白字的对比度 */
   --accent: #6b7280;
@@ -122,6 +139,11 @@
   --ink: #e6e8ec;
   --ink-2: #b3b8c0;
   --ink-3: #8a9099;
+  --ink-2b: #b3b8c0;
+  --code-str: #4ade80;
+  --code-num: #fbbf24;
+  --code-com: #9aa3ad;
+  --code-invalid: #f87171;
   /* 副色 = 中性灰（深色）：暗底上 --accent 要够亮（图标/焦点环），淡底上的文字用 --accent-ink */
   --accent: #9aa0aa;
   --accent-2: #7d838d;
@@ -166,8 +188,13 @@
   --edge: #e5d8ba;
   --edge-strong: #d6c6a0;
   --ink: #4a3b2a;
-  --ink-2: #7c6a50;
-  --ink-3: #a5947a;
+  --ink-2: #6b5b40;
+  --ink-3: #94836a;
+  --ink-2b: #6f5f45;
+  --code-str: #166534;
+  --code-num: #92400e;
+  --code-com: #6b5b40;
+  --code-invalid: #b91c1c;
   /* 副色 = **暖**中性灰（羊皮纸主题保留暖调，但不再是琥珀色强调） */
   --accent: #8a7f6b;
   --accent-2: #6f6555;
@@ -193,8 +220,10 @@
   --btn-solid: #6b5c46;
   --btn-solid-2: #57492f;
   --btn-ink: #fdf8ec;
-  --code-key: #4a6a92;
-  --code-key-2: #2b6f8f;
+  /* 板岩蓝压深一档：原 #4a6a92 对 --code-bg(#efe4c9) 只有 4.409:1，代码正文级字号要 >= 4.5 */
+  --code-key: #456088;
+  /* 同理 #2b6f8f 在暖纸上只有 4.402:1 */
+  --code-key-2: #266480;
   --shadow-1: 0 1px 2px rgba(97, 74, 32, 0.08);
   --shadow-2: 0 8px 28px rgba(97, 74, 32, 0.14);
   color-scheme: light;
@@ -218,6 +247,7 @@
   --color-edge-strong: var(--edge-strong);
   --color-ink: var(--ink);
   --color-ink-2: var(--ink-2);
+  --color-ink-2b: var(--ink-2b);
   --color-ink-3: var(--ink-3);
   --color-accent: var(--accent);
   --color-accent-2: var(--accent-2);

@@ -244,7 +244,7 @@ function onDrop(e: DragEvent): void {
           class="mt-6 flex flex-col items-center gap-2 px-4 text-center"
         >
           <Icon name="folder" :size="26" :stroke-width="1.3" class="text-ink-3/60" />
-          <p class="text-[12px] leading-relaxed text-ink-3">
+          <p class="text-[12px] leading-relaxed text-ink-2b">
             {{ t('sidebar.emptyFolder') }}<br />{{ t('sidebar.emptyFolderHint') }}
           </p>
         </div>

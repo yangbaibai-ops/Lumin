@@ -112,13 +112,13 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onDocKeydown))
               <input
                 ref="inputEl"
                 v-model="ui.globalSearch.query"
-                class="flex-1 bg-transparent text-[14.5px] text-ink outline-none placeholder:text-ink-3"
+                class="flex-1 bg-transparent text-[14.5px] text-ink outline-none placeholder:text-ink-2b"
                 :placeholder="$t('common.searchPlaceholder')"
                 spellcheck="false"
               />
               <span
                 v-if="ui.globalSearch.docs"
-                class="rounded-md bg-panel-2 px-2 py-0.5 text-[11px] tabular-nums text-ink-3"
+                class="rounded-md bg-panel-2 px-2 py-0.5 text-[11px] tabular-nums text-ink-2b"
               >
                 {{ ui.globalSearch.docs }} 篇索引
               </span>
@@ -131,7 +131,7 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onDocKeydown))
             <div class="max-h-[46vh] overflow-y-auto p-2">
               <div
                 v-if="ui.globalSearch.loading"
-                class="flex items-center justify-center gap-2 py-10 text-[13px] text-ink-3"
+                class="flex items-center justify-center gap-2 py-10 text-[13px] text-ink-2b"
               >
                 <span class="h-1.5 w-1.5 animate-ping rounded-full bg-accent" />
                 搜索中…
@@ -147,7 +147,7 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onDocKeydown))
                   @click="openResult(r)"
                 >
                   <span
-                    class="mt-0.5 flex h-8 w-8 flex-none items-center justify-center rounded-lg bg-panel-2 text-ink-3"
+                    class="mt-0.5 flex h-8 w-8 flex-none items-center justify-center rounded-lg bg-panel-2 text-ink-2b"
                   >
                     <Icon name="file" :size="14" />
                   </span>
@@ -157,7 +157,7 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onDocKeydown))
                       <span
                         v-if="r.titleSnippet"
                         class="truncate text-[12px]"
-                        :class="i === activeIdx ? 'text-accent' : 'text-ink-3'"
+                        :class="i === activeIdx ? 'text-accent' : 'text-ink-2b'"
                       >
                         <template v-for="(seg, si) in highlightSegments(r.titleSnippet)" :key="si"
                           ><em v-if="seg.hit" class="gs-hl">{{ seg.text }}</em
@@ -174,7 +174,7 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onDocKeydown))
                         ><template v-else>{{ seg.text }}</template></template
                       >
                     </span>
-                    <span class="mt-0.5 block truncate text-[11px] text-ink-3">{{ r.path }}</span>
+                    <span class="mt-0.5 block truncate text-[11px] text-ink-2b">{{ r.path }}</span>
                   </span>
                   <Icon name="chevron-right" :size="14" class="mt-2 flex-none text-ink-3" />
                 </button>
@@ -185,12 +185,12 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onDocKeydown))
                 class="flex flex-col items-center gap-2 py-12 text-center"
               >
                 <Icon name="search" :size="24" :stroke-width="1.3" class="text-ink-3/50" />
-                <p class="text-[13px] text-ink-3">未找到匹配内容</p>
+                <p class="text-[13px] text-ink-2b">未找到匹配内容</p>
               </div>
 
               <div v-else class="flex flex-col items-center gap-2 py-12 text-center">
                 <Icon name="sparkles" :size="24" :stroke-width="1.3" class="text-ink-3/50" />
-                <p class="text-[13px] text-ink-3">
+                <p class="text-[13px] text-ink-2b">
                   {{
                     ui.globalSearch.docs
                       ? '全局搜索已索引的文档内容'
@@ -202,7 +202,7 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onDocKeydown))
 
             <!-- 底部提示 -->
             <div
-              class="flex items-center gap-3 border-t border-edge px-4 py-2 text-[11px] text-ink-3"
+              class="flex items-center gap-3 border-t border-edge px-4 py-2 text-[11px] text-ink-2b"
             >
               <span class="flex items-center gap-1"
                 ><kbd class="rounded border border-edge bg-panel-2 px-1 py-px">↑↓</kbd> 选择</span

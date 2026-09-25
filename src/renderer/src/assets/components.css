@@ -242,7 +242,7 @@ body.split-dragging {
   border: 1px solid var(--edge);
   border-radius: 999px;
   background: var(--elevate);
-  color: var(--ink-3);
+  color: var(--ink-2b);
   font-size: 12px;
   font-weight: 500;
   box-shadow: var(--shadow-1, 0 2px 8px rgba(0, 0, 0, 0.06));
@@ -299,7 +299,7 @@ body.split-dragging {
   box-shadow: 0 0 0 3px var(--accent-soft);
 }
 .input::placeholder {
-  color: var(--ink-3);
+  color: var(--ink-2b);
 }
 
 .select {

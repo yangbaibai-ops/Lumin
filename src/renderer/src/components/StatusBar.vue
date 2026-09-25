@@ -103,7 +103,7 @@ const themes: { mode: ThemeMode; icon: string; labelKey: string }[] = [
 
 <template>
   <div
-    class="flex h-7 shrink-0 items-center gap-3 border-t border-edge bg-app px-3 text-[11.5px] text-ink-3"
+    class="flex h-7 shrink-0 items-center gap-3 border-t border-edge bg-app px-3 text-[11.5px] text-ink-2b"
   >
     <!-- 左侧：文档状态 + 保存方式（点击弹出竖向选择） -->
     <template v-if="files.current">
@@ -130,7 +130,7 @@ const themes: { mode: ThemeMode; icon: string; labelKey: string }[] = [
             :style="{ boxShadow: 'var(--shadow-2)' }"
           >
             <p
-              class="px-2.5 pb-1 pt-1.5 text-[10.5px] font-medium uppercase tracking-wide text-ink-3"
+              class="px-2.5 pb-1 pt-1.5 text-[10.5px] font-medium uppercase tracking-wide text-ink-2b"
             >
               {{ t('statusbar.saveMode') }}
             </p>
@@ -142,7 +142,7 @@ const themes: { mode: ThemeMode; icon: string; labelKey: string }[] = [
               <Icon
                 name="refresh"
                 :size="14"
-                :class="settings.autoSave ? 'mt-0.5 text-accent' : 'mt-0.5 text-ink-3'"
+                :class="settings.autoSave ? 'mt-0.5 text-accent' : 'mt-0.5 text-ink-2b'"
               />
               <span class="min-w-0 flex-1">
                 <span
@@ -150,7 +150,7 @@ const themes: { mode: ThemeMode; icon: string; labelKey: string }[] = [
                   :class="settings.autoSave ? 'text-accent' : 'text-ink'"
                   >{{ t('statusbar.autoSave') }}</span
                 >
-                <span class="mt-0.5 block text-[11px] leading-snug text-ink-3">{{
+                <span class="mt-0.5 block text-[11px] leading-snug text-ink-2b">{{
                   t('settings.autoSaveDesc', { sec: settings.autoSaveInterval })
                 }}</span>
               </span>
@@ -169,7 +169,7 @@ const themes: { mode: ThemeMode; icon: string; labelKey: string }[] = [
               <Icon
                 name="save"
                 :size="14"
-                :class="!settings.autoSave ? 'mt-0.5 text-accent' : 'mt-0.5 text-ink-3'"
+                :class="!settings.autoSave ? 'mt-0.5 text-accent' : 'mt-0.5 text-ink-2b'"
               />
               <span class="min-w-0 flex-1">
                 <span
@@ -177,7 +177,7 @@ const themes: { mode: ThemeMode; icon: string; labelKey: string }[] = [
                   :class="!settings.autoSave ? 'text-accent' : 'text-ink'"
                   >{{ t('statusbar.manualSave') }}</span
                 >
-                <span class="mt-0.5 block text-[11px] leading-snug text-ink-3"
+                <span class="mt-0.5 block text-[11px] leading-snug text-ink-2b"
                   >Ctrl+S {{ t('common.save') }}</span
                 >
               </span>
@@ -190,7 +190,7 @@ const themes: { mode: ThemeMode; icon: string; labelKey: string }[] = [
             </button>
             <div class="my-1 border-t border-edge" />
             <button
-              class="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-[12px] text-ink-3 transition-colors hover:bg-panel-2 hover:text-ink-2"
+              class="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-[12px] text-ink-2b transition-colors hover:bg-panel-2 hover:text-ink-2"
               @click="openGeneralSettings"
             >
               <Icon name="settings" :size="12" />

@@ -56,7 +56,7 @@ function clearCurrent(): void {
   <div>
     <p
       v-if="!items.length"
-      class="rounded-lg border border-dashed border-edge px-2.5 py-2 text-[11.5px] leading-relaxed text-ink-3"
+      class="rounded-lg border border-dashed border-edge px-2.5 py-2 text-[11.5px] leading-relaxed text-ink-2b"
     >
       {{ kind === 'folders' ? t('open.emptyFolders') : t('open.emptyRecent') }}
     </p>
@@ -78,15 +78,17 @@ function clearCurrent(): void {
             :size="13"
             :class="
               kind === 'folders'
-                ? 'text-ink-3'
+                ? 'text-ink-2b'
                 : isPinned(item.path)
                   ? 'rotate-45 text-accent'
-                  : 'text-ink-3'
+                  : 'text-ink-2b'
             "
           />
           <span class="min-w-0 flex-1">
             <span class="block truncate text-[12.5px] text-ink">{{ label(item) }}</span>
-            <span v-if="!dense" class="block truncate text-[11px] text-ink-3">{{ sub(item) }}</span>
+            <span v-if="!dense" class="block truncate text-[11px] text-ink-2b">{{
+              sub(item)
+            }}</span>
           </span>
         </button>
 
@@ -120,7 +122,7 @@ function clearCurrent(): void {
 
     <button
       v-if="items.length"
-      class="mt-1 flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-[12px] text-ink-3 transition-colors hover:bg-panel-2 hover:text-danger"
+      class="mt-1 flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-[12px] text-ink-2b transition-colors hover:bg-panel-2 hover:text-danger"
       @click="clearCurrent"
     >
       <Icon name="trash" :size="13" />

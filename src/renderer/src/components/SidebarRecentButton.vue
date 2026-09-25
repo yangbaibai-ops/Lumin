@@ -105,7 +105,7 @@ onBeforeUnmount(() => {
         }"
       >
         <p
-          class="px-2.5 pb-1 pt-1.5 text-[11px] font-medium uppercase tracking-[0.08em] text-ink-3"
+          class="px-2.5 pb-1 pt-1.5 text-[11px] font-medium uppercase tracking-[0.08em] text-ink-2b"
         >
           {{ t('open.recent') }}
         </p>

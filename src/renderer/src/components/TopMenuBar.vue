@@ -529,7 +529,7 @@ onBeforeUnmount(() => {
             @mouseleave="onSubRowLeave"
             @click="(e) => placeSub(e.currentTarget as HTMLElement, it)"
           >
-            <span class="flex h-4 w-4 items-center justify-center text-ink-3">
+            <span class="flex h-4 w-4 items-center justify-center text-ink-2b">
               <Icon v-if="it.icon" :name="it.icon" :size="13" />
             </span>
             <span class="min-w-0 flex-1 truncate">{{ t(it.labelKey) }}</span>
@@ -542,7 +542,7 @@ onBeforeUnmount(() => {
             @mouseenter="closeSub"
             @click="runLeaf(it)"
           >
-            <span class="flex h-4 w-4 items-center justify-center text-ink-3">
+            <span class="flex h-4 w-4 items-center justify-center text-ink-2b">
               <Icon v-if="it.icon" :name="it.icon" :size="13" />
             </span>
             <span class="min-w-0 flex-1 truncate">{{ it.label ?? t(it.labelKey ?? '') }}</span>
@@ -566,7 +566,7 @@ onBeforeUnmount(() => {
           @mouseleave="scheduleSubClose"
         >
           <p
-            class="px-2.5 pb-1 pt-1.5 text-[11px] font-medium uppercase tracking-[0.08em] text-ink-3"
+            class="px-2.5 pb-1 pt-1.5 text-[11px] font-medium uppercase tracking-[0.08em] text-ink-2b"
           >
             {{ t(subOpen.labelKey) }}
           </p>
@@ -602,7 +602,7 @@ onBeforeUnmount(() => {
                 :data-encoding-item="child.label ?? child.labelKey ?? ''"
                 @click="runLeaf(child)"
               >
-                <span class="flex h-4 w-4 items-center justify-center text-ink-3">
+                <span class="flex h-4 w-4 items-center justify-center text-ink-2b">
                   <Icon v-if="child.icon" :name="child.icon" :size="13" />
                 </span>
                 <span class="min-w-0 flex-1 truncate">{{
