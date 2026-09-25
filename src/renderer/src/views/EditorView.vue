@@ -811,7 +811,7 @@ onBeforeUnmount(() => {
           class="split-divider"
           :class="{ dragging: splitDragging }"
           :style="{ '--split-left': `${splitRatio * 100}%` }"
-          title="拖动调整左右比例（双击复位）"
+          :title="i18n.global.t('editor.splitDividerTitle')"
           @mousedown="startSplitDrag"
           @dblclick="resetSplitRatio"
         >
@@ -844,11 +844,13 @@ onBeforeUnmount(() => {
           v-if="ui.editorMode === 'split'"
           class="split-sync-chip"
           :class="{ active: settings.syncScroll }"
-          :title="settings.syncScroll ? '同步滚动已开启（点击关闭）' : '开启同步滚动'"
+          :title="
+            i18n.global.t(settings.syncScroll ? 'editor.syncScrollOn' : 'editor.syncScrollOff')
+          "
           @click="toggleSyncScroll"
         >
           <Icon name="sync-scroll" :size="13" />
-          <span>同步滚动</span>
+          <span>{{ i18n.global.t('settings.syncScroll') }}</span>
           <span v-if="settings.syncScroll" class="split-sync-dot" />
         </button>
       </div>

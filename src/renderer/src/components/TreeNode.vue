@@ -189,7 +189,7 @@ async function handleAction(action: string): Promise<void> {
       try {
         await files.removeNode(props.node, props.parentDir)
       } catch (err) {
-        ui.toast(`${t('toast.deleteFailed')}：${errorReason(err)}`, 'error')
+        ui.toast(t('toast.deleteFailedDetail', { reason: errorReason(err) }), 'error')
       }
     }
   }

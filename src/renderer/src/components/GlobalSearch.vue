@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 import { useFilesStore } from '../stores/files'
 import { useUiStore } from '../stores/ui'
@@ -11,6 +12,7 @@ import Icon from './Icon.vue'
 const ui = useUiStore()
 const files = useFilesStore()
 const router = useRouter()
+const { t } = useI18n()
 
 const inputEl = ref<HTMLInputElement | null>(null)
 const activeIdx = ref(0)
@@ -120,9 +122,13 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onDocKeydown))
                 v-if="ui.globalSearch.docs"
                 class="rounded-md bg-panel-2 px-2 py-0.5 text-[11px] tabular-nums text-ink-2b"
               >
-                {{ ui.globalSearch.docs }} 篇索引
+                {{ t('globalSearch.indexedCount', { n: ui.globalSearch.docs }) }}
               </span>
-              <button class="icon-btn !h-7 !w-7" title="关闭 (Esc)" @click="ui.closeGlobalSearch()">
+              <button
+                class="icon-btn !h-7 !w-7"
+                :title="`${t('common.close')} (Esc)`"
+                @click="ui.closeGlobalSearch()"
+              >
                 <Icon name="x" :size="14" />
               </button>
             </div>
@@ -134,7 +140,7 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onDocKeydown))
                 class="flex items-center justify-center gap-2 py-10 text-[13px] text-ink-2b"
               >
                 <span class="h-1.5 w-1.5 animate-ping rounded-full bg-accent" />
-                搜索中…
+                {{ t('globalSearch.searching') }}
               </div>
 
               <TransitionGroup v-else-if="ui.globalSearch.results.length" name="list">
@@ -185,16 +191,14 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onDocKeydown))
                 class="flex flex-col items-center gap-2 py-12 text-center"
               >
                 <Icon name="search" :size="24" :stroke-width="1.3" class="text-ink-3/50" />
-                <p class="text-[13px] text-ink-2b">未找到匹配内容</p>
+                <p class="text-[13px] text-ink-2b">{{ t('globalSearch.noMatch') }}</p>
               </div>
 
               <div v-else class="flex flex-col items-center gap-2 py-12 text-center">
                 <Icon name="sparkles" :size="24" :stroke-width="1.3" class="text-ink-3/50" />
                 <p class="text-[13px] text-ink-2b">
                   {{
-                    ui.globalSearch.docs
-                      ? '全局搜索已索引的文档内容'
-                      : '打开或保存文档后即可全文搜索'
+                    t(ui.globalSearch.docs ? 'globalSearch.hintIndexed' : 'globalSearch.hintEmpty')
                   }}
                 </p>
               </div>
@@ -205,19 +209,21 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onDocKeydown))
               class="flex items-center gap-3 border-t border-edge px-4 py-2 text-[11px] text-ink-2b"
             >
               <span class="flex items-center gap-1"
-                ><kbd class="rounded border border-edge bg-panel-2 px-1 py-px">↑↓</kbd> 选择</span
+                ><kbd class="rounded border border-edge bg-panel-2 px-1 py-px">↑↓</kbd>
+                {{ t('globalSearch.hintSelect') }}</span
               >
               <span class="flex items-center gap-1"
                 ><kbd class="rounded border border-edge bg-panel-2 px-1 py-px">Enter</kbd>
-                打开</span
+                {{ t('common.open') }}</span
               >
               <span class="flex items-center gap-1"
-                ><kbd class="rounded border border-edge bg-panel-2 px-1 py-px">Esc</kbd> 关闭</span
+                ><kbd class="rounded border border-edge bg-panel-2 px-1 py-px">Esc</kbd>
+                {{ t('common.close') }}</span
               >
               <div class="flex-1" />
               <span class="flex items-center gap-1.5">
                 <Icon name="dot" :size="8" class="text-ok" />
-                SQLite FTS5 全文索引
+                {{ t('globalSearch.engine') }}
               </span>
             </div>
           </div>

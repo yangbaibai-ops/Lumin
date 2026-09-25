@@ -75,7 +75,6 @@ export const useUiStore = defineStore('ui', {
     sidebarSearchTick: 0,
     editorMode: 'wysiwyg' as EditorMode,
     focusMode: false,
-    typewriterMode: false,
     confirmState: null as (ConfirmOptions & { resolve: (v: boolean) => void }) | null,
     promptState: null as {
       title: string

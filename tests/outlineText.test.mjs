@@ -27,6 +27,8 @@ const schema = new Schema({
 
 const marker = (s) => schema.text(s, [schema.marks.mdMarker.create({ style: 'bold' })])
 const heading = (children) => schema.nodes.heading.create({ level: 3 }, children)
+/** 兜底文案由调用方给（界面层传 t('outline.untitled')）：这里固定成中文那份便于断言 */
+const UNTITLED = '（无标题）'
 
 test('headingPlainText：跳过 mdMarker 的标记文本（`**` 不进大纲）', () => {
   // `### 林一鸣（**男主，21岁**）`
@@ -37,7 +39,7 @@ test('headingPlainText：跳过 mdMarker 的标记文本（`**` 不进大纲）'
     marker('**'),
     schema.text('）')
   ])
-  assert.equal(headingPlainText(h), '林一鸣（男主，21岁）')
+  assert.equal(headingPlainText(h, UNTITLED), '林一鸣（男主，21岁）')
 })
 
 test('headingPlainText：行内代码 / 删除线 / 斜体的标记也一并去掉', () => {
@@ -50,18 +52,21 @@ test('headingPlainText：行内代码 / 删除线 / 斜体的标记也一并去�
     schema.text('旧'),
     marker('~~')
   ])
-  assert.equal(headingPlainText(h), 'npm run dev 与 旧')
+  assert.equal(headingPlainText(h, UNTITLED), 'npm run dev 与 旧')
 })
 
 test('headingPlainText：正文里的字面星号要留着（只按 mark 过滤，不按字符剥）', () => {
   // 转义过的 `\*` 是正文（没有 mdMarker），大纲里应当看得见
   const h = heading([schema.text('5 * 3 = 15')])
-  assert.equal(headingPlainText(h), '5 * 3 = 15')
+  assert.equal(headingPlainText(h, UNTITLED), '5 * 3 = 15')
 })
 
-test('headingPlainText：硬换行折成空格，全空时给兜底文案', () => {
+test('headingPlainText：硬换行折成空格，全空时用调用方给的兜底文案', () => {
   const h = heading([schema.text('第一行'), schema.nodes.hardBreak.create(), schema.text('第二行')])
-  assert.equal(headingPlainText(h), '第一行 第二行')
-  assert.equal(headingPlainText(heading([marker('**'), marker('**')])), '（无标题）')
+  assert.equal(headingPlainText(h, UNTITLED), '第一行 第二行')
+  assert.equal(headingPlainText(heading([marker('**'), marker('**')]), UNTITLED), '（无标题）')
   assert.equal(headingPlainText(heading([]), '空标题'), '空标题')
+  // 兜底文案由调用方提供（界面层传 t('outline.untitled')）：这个模块不 import i18n，
+  // 否则单测会在 `node --test` 下解析不了渲染层的目录导入
+  assert.equal(headingPlainText(heading([]), ''), '')
 })

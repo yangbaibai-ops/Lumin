@@ -4,6 +4,7 @@ import type { Editor } from '@tiptap/core'
 import type { Author } from '../lib/contentSync'
 import { scrollContainerTo, smoothScrollToElement } from '../lib/editor/smoothScroll'
 import { headingPlainText } from '../lib/editor/outlineText'
+import i18n from '../i18n'
 
 // ─── 编辑器实例桥接（解耦：工具栏 / 大纲 / 导出等通过此 store 与内核通信）──
 // 持久化模型：编辑器在 EditorView 里常驻挂载（模式切换只改布局，不再 v-if
@@ -25,9 +26,6 @@ export interface OutlineItem {
  * 现在解锁只发生在**用户自己的滚动意图**上：`wheel` / `touchstart` / 按下指针 / 按键
  * （见 `TyporaEditor.vue` 模板上的四个监听器都调 `releaseActiveHeadingPin()`）。
  */
-export const ACTIVE_PIN_NOTE =
-  '点目录时锁住高亮；用户自己滚动（wheel/触摸/指针/按键）才解锁 —— 见 releaseActiveHeadingPin()'
-
 export const useEditorStore = defineStore('editor', {
   state: () => ({
     /** 常驻编辑器实例（markRaw，不参与深度响应式）；文件切换时随组件重建 */
@@ -53,7 +51,7 @@ export const useEditorStore = defineStore('editor', {
     outline: [] as OutlineItem[],
     activeHeading: -1,
     /**
-     * 「点目录的高亮锁」是否生效 —— 见 `ACTIVE_PIN_NOTE`。
+     * 「点目录的高亮锁」是否生效 —— 语义见上方那段的说明。
      * `applyActive()`（编辑器卸载/切模式/换文档）会复位，避免它跨文档残留。
      */
     activePinned: false,
@@ -146,7 +144,8 @@ export const useEditorStore = defineStore('editor', {
             level: node.attrs.level as number,
             // ⚠️ 用 headingPlainText 而不是 node.textContent：标记符是**真实文本**，
             //    直接 textContent 会让大纲里带出 `**`（用户报障）。见 lib/editor/outlineText.ts。
-            text: headingPlainText(node),
+            //    兜底文案（无标题）走语言包 —— 纯文本工具不 import i18n，本地化留在调用点。
+            text: headingPlainText(node, i18n.global.t('outline.untitled')),
             pos: contentPos + 1
           })
         }

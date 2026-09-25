@@ -237,42 +237,64 @@ watch(
   }
 )
 
-const themes: { mode: ThemeMode; icon: string; label: string; desc: string; colors: string[] }[] = [
+// 选项表写成 computed：文案来自语言包，**语言切换时标题/说明要跟着变**
+// （写成模块级常量的话，切换语言后这一屏会停在旧语言 —— 见审计 §10）
+const themes = computed<
+  { mode: ThemeMode; icon: string; label: string; desc: string; colors: string[] }[]
+>(() => [
   {
     mode: 'auto',
     icon: 'monitor',
-    label: '跟随系统',
-    desc: '随系统外观自动切换',
+    label: t('settings.themeAuto'),
+    desc: t('settings.themeAutoDesc'),
     colors: ['#f5f6f8', '#0f1116']
   },
   {
     mode: 'light',
     icon: 'sun',
-    label: '浅色',
-    desc: '明亮清爽的日间主题',
+    label: t('settings.themeLight'),
+    desc: t('settings.themeLightDesc'),
     colors: ['#f5f6f8', '#ffffff']
   },
   {
     mode: 'dark',
     icon: 'moon',
-    label: '深色',
-    desc: '护眼的夜间主题',
+    label: t('settings.themeDark'),
+    desc: t('settings.themeDarkDesc'),
     colors: ['#0f1116', '#16181f']
   },
   {
     mode: 'sepia',
     icon: 'book',
-    label: '羊皮纸',
-    desc: '温暖的阅读护眼模式',
+    label: t('settings.themeSepia'),
+    desc: t('settings.themeSepiaDesc'),
     colors: ['#f1e9d5', '#faf4e4']
   }
-]
+])
 
-const modes: { mode: EditorMode; icon: string; label: string; desc: string }[] = [
-  { mode: 'wysiwyg', icon: 'eye', label: '实时渲染', desc: '所见即所得，点击块即可编辑' },
-  { mode: 'split', icon: 'columns', label: '分屏对比', desc: '左右实时对比渲染与源码，拖拽调比例' },
-  { mode: 'source', icon: 'source', label: '源码模式', desc: '显示原始 Markdown 语法' }
-]
+const modes = computed<{ mode: EditorMode; icon: string; label: string; desc: string }[]>(() => [
+  { mode: 'wysiwyg', icon: 'eye', label: t('editor.wysiwyg'), desc: t('settings.modeWysiwygDesc') },
+  {
+    mode: 'split',
+    icon: 'columns',
+    label: t('settings.modeSplit'),
+    desc: t('settings.modeSplitDesc')
+  },
+  {
+    mode: 'source',
+    icon: 'source',
+    label: t('menu.source'),
+    desc: t('settings.modeSourceDesc')
+  }
+])
+
+/** 导出页那张「支持的格式」表：格式名是品牌名（不翻译），说明走语言包 */
+const exportFormats = computed<{ icon: string; name: string; desc: string }[]>(() => [
+  { icon: 'file', name: 'PDF', desc: t('settings.exportPdfDesc') },
+  { icon: 'code', name: 'HTML', desc: t('settings.exportHtmlDesc') },
+  { icon: 'file', name: 'Word (.doc)', desc: t('settings.exportWordDesc') },
+  { icon: 'book', name: 'EPUB', desc: t('settings.exportEpubDesc') }
+])
 
 function sectionTitle(id: string): string {
   const x = tabs.value.find((y) => y.id === id)
@@ -470,10 +492,10 @@ function formatTime(ms: number): string {
                      低频与信息性的内容（详细说明、自动检查更新）默认收起。 -->
                   <template v-if="tab.id === 'general'">
                     <section class="set-card">
-                      <h3 class="set-card-title">界面</h3>
+                      <h3 class="set-card-title">{{ t('settings.cardInterface') }}</h3>
                       <div class="set-row">
                         <div>
-                          <p class="set-row-label">界面语言</p>
+                          <p class="set-row-label">{{ t('settings.language') }}</p>
                         </div>
                         <div class="flex rounded-lg bg-panel-2 p-0.5">
                           <button
@@ -493,8 +515,8 @@ function formatTime(ms: number): string {
                       </div>
                       <div class="set-row">
                         <div>
-                          <p class="set-row-label">侧边栏</p>
-                          <p class="set-row-desc">启动时显示左侧边栏</p>
+                          <p class="set-row-label">{{ t('settings.sidebarToggle') }}</p>
+                          <p class="set-row-desc">{{ t('settings.sidebarDesc') }}</p>
                         </div>
                         <SettingSwitch
                           :model-value="settings.sidebarVisible"
@@ -504,8 +526,8 @@ function formatTime(ms: number): string {
                       </div>
                       <div class="set-row">
                         <div>
-                          <p class="set-row-label">顶部菜单栏</p>
-                          <p class="set-row-desc">关闭后界面更纯净（快捷键照常生效）</p>
+                          <p class="set-row-label">{{ t('settings.nativeMenuBar') }}</p>
+                          <p class="set-row-desc">{{ t('settings.nativeMenuBarDesc') }}</p>
                         </div>
                         <SettingSwitch
                           :model-value="settings.nativeMenuBar"
@@ -516,7 +538,7 @@ function formatTime(ms: number): string {
                       <div class="set-row">
                         <div>
                           <p class="set-row-label">{{ t('settings.outlineRight') }}</p>
-                          <p class="set-row-desc">三栏布局：目录与大细同时可见（可折叠）</p>
+                          <p class="set-row-desc">{{ t('settings.outlineRightShort') }}</p>
                         </div>
                         <SettingSwitch
                           :model-value="settings.outlineOnRight"
@@ -527,11 +549,11 @@ function formatTime(ms: number): string {
                     </section>
 
                     <section class="set-card">
-                      <h3 class="set-card-title">保存与会话</h3>
+                      <h3 class="set-card-title">{{ t('settings.cardSession') }}</h3>
                       <div class="set-row">
                         <div>
-                          <p class="set-row-label">自动保存</p>
-                          <p class="set-row-desc">手动模式下用 Ctrl+S / 状态栏保存</p>
+                          <p class="set-row-label">{{ t('settings.autoSave') }}</p>
+                          <p class="set-row-desc">{{ t('settings.autoSaveManualHint') }}</p>
                         </div>
                         <SettingSwitch
                           :model-value="settings.autoSave"
@@ -540,14 +562,14 @@ function formatTime(ms: number): string {
                         />
                       </div>
                       <div v-if="settings.autoSave" class="set-row">
-                        <p class="set-row-desc">间隔</p>
+                        <p class="set-row-desc">{{ t('settings.interval') }}</p>
                         <div class="flex flex-1 items-center gap-3">
                           <input
                             type="range"
                             class="range flex-1"
                             min="1"
                             max="30"
-                            :aria-label="'自动保存间隔'"
+                            :aria-label="t('settings.autoSaveInterval')"
                             :value="settings.autoSaveInterval"
                             @input="
                               settings.set(
@@ -564,7 +586,7 @@ function formatTime(ms: number): string {
                       <div class="set-row">
                         <div>
                           <p class="set-row-label">{{ t('settings.restoreSession') }}</p>
-                          <p class="set-row-desc">恢复上次的文档、光标与滚动位置</p>
+                          <p class="set-row-desc">{{ t('settings.restoreSessionDesc') }}</p>
                         </div>
                         <SettingSwitch
                           :model-value="settings.restoreSession"
@@ -575,7 +597,7 @@ function formatTime(ms: number): string {
                       <div class="set-row">
                         <div>
                           <p class="set-row-label">{{ t('settings.historyEnabled') }}</p>
-                          <p class="set-row-desc">每次保存前留一份可回滚的快照</p>
+                          <p class="set-row-desc">{{ t('settings.historyEnabledDesc') }}</p>
                         </div>
                         <SettingSwitch
                           :model-value="settings.historyEnabled"
@@ -625,7 +647,7 @@ function formatTime(ms: number): string {
                     </section>
 
                     <section class="set-card">
-                      <h3 class="set-card-title">文本与编码</h3>
+                      <h3 class="set-card-title">{{ t('settings.cardText') }}</h3>
                       <div class="set-row">
                         <p class="set-row-label">{{ t('settings.defaultEncoding') }}</p>
                         <select
@@ -668,7 +690,7 @@ function formatTime(ms: number): string {
                       <details class="set-fold set-fold--plain">
                         <summary>
                           <Icon name="chevron-right" :size="13" class="set-fold-chevron" />
-                          <span class="set-fold-hint">编码与行尾说明</span>
+                          <span class="set-fold-hint">{{ t('settings.encodingFoldHint') }}</span>
                         </summary>
                         <div class="set-fold-body">
                           <p class="set-row-desc">{{ t('settings.encodingHint') }}</p>
@@ -681,13 +703,13 @@ function formatTime(ms: number): string {
                     <details class="set-fold">
                       <summary>
                         <Icon name="chevron-right" :size="13" class="set-fold-chevron" />
-                        高级
+                        {{ t('settings.advanced') }}
                       </summary>
                       <div class="set-fold-body">
                         <div class="set-row">
                           <div>
                             <p class="set-row-label">{{ t('settings.autoCheckUpdate') }}</p>
-                            <p class="set-row-desc">仅打包版且配置了更新渠道时生效</p>
+                            <p class="set-row-desc">{{ t('settings.autoCheckUpdateHint') }}</p>
                           </div>
                           <SettingSwitch
                             :model-value="settings.autoCheckUpdate"
@@ -705,7 +727,7 @@ function formatTime(ms: number): string {
                     <SettingsToolbar />
 
                     <section class="set-card">
-                      <h3 class="set-card-title">默认编辑器模式</h3>
+                      <h3 class="set-card-title">{{ t('settings.editorMode') }}</h3>
                       <div class="grid grid-cols-3 gap-2.5">
                         <button
                           v-for="m in modes"
@@ -729,11 +751,11 @@ function formatTime(ms: number): string {
                     </section>
 
                     <section class="set-card">
-                      <h3 class="set-card-title">编辑行为</h3>
+                      <h3 class="set-card-title">{{ t('settings.cardEditBehavior') }}</h3>
                       <div class="set-row">
                         <div>
-                          <p class="set-row-label">分屏同步滚动</p>
-                          <p class="set-row-desc">左右两侧按滚动进度同步</p>
+                          <p class="set-row-label">{{ t('settings.syncScroll') }}</p>
+                          <p class="set-row-desc">{{ t('settings.syncScrollDesc') }}</p>
                         </div>
                         <SettingSwitch
                           :model-value="settings.syncScroll"
@@ -743,8 +765,8 @@ function formatTime(ms: number): string {
                       </div>
                       <div class="set-row">
                         <div>
-                          <p class="set-row-label">代码块行号</p>
-                          <p class="set-row-desc">在代码块左侧显示行号</p>
+                          <p class="set-row-label">{{ t('settings.codeLineNumbers') }}</p>
+                          <p class="set-row-desc">{{ t('settings.codeLineNumbersDesc') }}</p>
                         </div>
                         <SettingSwitch
                           :model-value="settings.codeLineNumbers"
@@ -756,16 +778,16 @@ function formatTime(ms: number): string {
 
                     <!-- 字体与排版 + 就地预览：合成一张卡（预览就在滑杆下面，改一下立刻看到） -->
                     <section class="set-card">
-                      <h3 class="set-card-title">字体与排版</h3>
+                      <h3 class="set-card-title">{{ t('settings.cardTypography') }}</h3>
                       <div class="set-row">
-                        <p class="set-row-desc">字号</p>
+                        <p class="set-row-desc">{{ t('settings.fontSize') }}</p>
                         <div class="flex flex-1 items-center gap-3">
                           <input
                             type="range"
                             class="range flex-1"
                             min="13"
                             max="26"
-                            aria-label="字号"
+                            :aria-label="t('settings.fontSize')"
                             :value="settings.fontSize"
                             @input="
                               settings.set(
@@ -780,7 +802,7 @@ function formatTime(ms: number): string {
                         </div>
                       </div>
                       <div class="set-row">
-                        <p class="set-row-desc">行高</p>
+                        <p class="set-row-desc">{{ t('settings.lineHeight') }}</p>
                         <div class="flex flex-1 items-center gap-3">
                           <input
                             type="range"
@@ -788,7 +810,7 @@ function formatTime(ms: number): string {
                             min="1.3"
                             max="2.6"
                             step="0.1"
-                            aria-label="行高"
+                            :aria-label="t('settings.lineHeight')"
                             :value="settings.lineHeight"
                             @input="
                               settings.set(
@@ -803,7 +825,7 @@ function formatTime(ms: number): string {
                         </div>
                       </div>
                       <div class="set-row">
-                        <p class="set-row-desc">正文字体</p>
+                        <p class="set-row-desc">{{ t('settings.fontFamilyLabel') }}</p>
                         <div class="flex gap-1.5">
                           <button
                             v-for="f in FONT_OPTIONS"
@@ -817,7 +839,11 @@ function formatTime(ms: number): string {
                             @click="settings.set('fontFamily', f.value)"
                           >
                             {{
-                              f.label === 'sans' ? '无衬线' : f.label === 'serif' ? '衬线' : '等宽'
+                              f.label === 'sans'
+                                ? t('settings.fontSansShort')
+                                : f.label === 'serif'
+                                  ? t('settings.fontSerifShort')
+                                  : t('settings.fontMonoShort')
                             }}
                           </button>
                         </div>
@@ -832,8 +858,10 @@ function formatTime(ms: number): string {
                         }"
                       >
                         <p style="margin: 0">
-                          正文预览：所见即所得，支持 <strong>加粗</strong>、<em>斜体</em> 与
-                          <code>行内代码</code>。
+                          {{ t('settings.previewLead') }} <strong>{{ t('editor.bold') }}</strong
+                          >{{ t('settings.previewSep') }}<em>{{ t('editor.italic') }}</em>
+                          {{ t('settings.previewAnd') }} <code>{{ t('editor.inlineCode') }}</code
+                          >{{ t('settings.previewDot') }}
                         </p>
                       </div>
                     </section>
@@ -842,7 +870,7 @@ function formatTime(ms: number): string {
                   <!-- ── 外观 ── -->
                   <template v-else-if="tab.id === 'appearance'">
                     <section class="set-card">
-                      <h3 class="set-card-title">主题</h3>
+                      <h3 class="set-card-title">{{ t('settings.theme') }}</h3>
                       <div class="grid grid-cols-4 gap-2.5">
                         <button
                           v-for="th in themes"
@@ -904,16 +932,16 @@ function formatTime(ms: number): string {
                   <!-- ── 导出 ── -->
                   <template v-else-if="tab.id === 'export'">
                     <section class="set-card">
-                      <h3 class="set-card-title">PDF 导出</h3>
+                      <h3 class="set-card-title">{{ t('settings.pdfCard') }}</h3>
                       <div class="set-row">
-                        <p class="set-row-desc">页边距</p>
+                        <p class="set-row-desc">{{ t('settings.pdfMargin') }}</p>
                         <div class="flex flex-1 items-center gap-3">
                           <input
                             type="range"
                             class="range flex-1"
                             min="8"
                             max="50"
-                            aria-label="页边距"
+                            :aria-label="t('settings.pdfMargin')"
                             :value="settings.export.pdf.margin"
                             @input="
                               settings.set('export', {
@@ -931,7 +959,7 @@ function formatTime(ms: number): string {
                         </div>
                       </div>
                       <div class="set-row">
-                        <p class="set-row-desc">页面尺寸</p>
+                        <p class="set-row-desc">{{ t('settings.pdfPageSize') }}</p>
                         <div class="flex gap-1.5">
                           <button
                             v-for="size in ['A4', 'A5', 'Letter'] as const"
@@ -959,18 +987,13 @@ function formatTime(ms: number): string {
                     <details class="set-fold">
                       <summary>
                         <Icon name="chevron-right" :size="13" class="set-fold-chevron" />
-                        支持的格式
+                        {{ t('settings.exportFormats') }}
                         <span class="set-fold-hint">PDF · HTML · Word · EPUB</span>
                       </summary>
                       <div class="set-fold-body">
                         <div class="space-y-2">
                           <div
-                            v-for="row in [
-                              { icon: 'file', name: 'PDF', desc: '矢量排版，适合打印与分享' },
-                              { icon: 'code', name: 'HTML', desc: '保留样式与交互的网页文件' },
-                              { icon: 'file', name: 'Word (.doc)', desc: 'Word 可直接打开编辑' },
-                              { icon: 'book', name: 'EPUB', desc: '标准 epub 3 电子书格式' }
-                            ]"
+                            v-for="row in exportFormats"
                             :key="row.name"
                             class="flex items-center gap-3 rounded-xl border border-edge px-3.5 py-2"
                           >
@@ -983,7 +1006,7 @@ function formatTime(ms: number): string {
                             <p class="truncate text-[11.5px] text-ink-2b">{{ row.desc }}</p>
                           </div>
                         </div>
-                        <p class="set-row-desc mt-3">在编辑器工具栏点击「导出」即可使用。</p>
+                        <p class="set-row-desc mt-3">{{ t('settings.exportUsageHint') }}</p>
                       </div>
                     </details>
                   </template>

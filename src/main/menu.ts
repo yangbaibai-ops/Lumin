@@ -15,36 +15,19 @@
 import { app, BrowserWindow, Menu } from 'electron'
 import type { MenuItemConstructorOptions } from 'electron'
 import { settingsStore } from './store'
-import { db } from './services/database'
-import { defaultSettings } from '../shared/defaults'
-import type { AppSettings, Language } from '../shared/types'
-import zhCN from '../shared/i18n/zh-CN.json'
-import enUS from '../shared/i18n/en-US.json'
-import ruRU from '../shared/i18n/ru-RU.json'
+import { mainLanguage, mainT } from './i18n'
 
 function send(action: string): void {
   const win = BrowserWindow.getFocusedWindow()
   if (win) win.webContents.send('menu:action', action)
 }
 
-/** 语言包（与渲染层同一份文件）；新增语言 = 在这里登记一行 */
-const LOCALES: Record<Language, { menu: Record<string, string> }> = {
-  'zh-CN': zhCN as { menu: Record<string, string> },
-  'en-US': enUS as { menu: Record<string, string> },
-  'ru-RU': ruRU as { menu: Record<string, string> }
-}
-
-/** 当前语言：以持久化设置里的为准（缺省中文） */
-function currentLanguage(): Language {
-  const settings = db.kvGet<AppSettings>('settings', defaultSettings)
-  const lang = settings?.language
-  return lang && lang in LOCALES ? lang : 'zh-CN'
-}
-
-/** 取菜单文案；缺键时回退中文包，再缺就回退 key（绝不显示 undefined） */
+/**
+ * 取菜单文案：语言包与「当前语言」的判定都收在 `main/i18n.ts`（进程内唯一入口）。
+ * 这里只负责补上 `menu.` 前缀 —— 菜单键在语言包里就是 `menu.*` 那一块。
+ */
 function t(key: string): string {
-  const pack = LOCALES[currentLanguage()]
-  return pack.menu[key] ?? LOCALES['zh-CN'].menu[key] ?? key
+  return mainT(`menu.${key}`)
 }
 
 export function installMenu(): void {
@@ -125,7 +108,7 @@ export function installMenu(): void {
           ]
         },
         { label: T('focus'), click: () => send('toggle-focus') },
-        { label: T('typewriter'), click: () => send('toggle-typewriter') },
+        // 「打字机模式」已摘掉：它此前只弹一句「功能待接入」（审计 §7）
         { type: 'separator' },
         {
           label: T('theme'),
@@ -183,5 +166,5 @@ export function installMenu(): void {
   Menu.setApplicationMenu(Menu.buildFromTemplate(template))
   // 自检日志（**ASCII**，便于脚本 grep）：验收脚本读实例 stdout 就能确认
   // 「原生菜单确实按新语言重建了」—— 菜单栏默认隐藏，页面侧看不到它，这是唯一可自动验证的观察点。
-  console.log(`[menu] rebuilt lang=${currentLanguage()} top=${template.length}`)
+  console.log(`[menu] rebuilt lang=${mainLanguage()} top=${template.length}`)
 }

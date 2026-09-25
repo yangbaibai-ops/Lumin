@@ -10,7 +10,6 @@ import { flushSession } from '../lib/session'
 import { openExternalFile } from '../lib/openFile'
 import { confirmDiscardIfDirty } from '../lib/dialog'
 import type { MenuAction } from '../../../shared/types'
-import i18n from '../i18n'
 
 /** 未保存更改确认：薄适配器 —— 文案与语义只有一份，在 lib/dialog */
 export async function confirmIfDirty(): Promise<boolean> {
@@ -70,11 +69,6 @@ export function useAppActions(): {
 
   async function saveAsDoc(): Promise<void> {
     await files.saveAs()
-  }
-
-  /** 编辑器内核 / 导出随渲染层剥离：保留入口，占位提示 */
-  function pendingRefactor(feature: string): void {
-    ui.toast(`${feature}: ${i18n.global.t('common.pending')}`, 'info')
   }
 
   /**
@@ -171,9 +165,8 @@ export function useAppActions(): {
       case 'toggle-focus':
         ui.focusMode = !ui.focusMode
         break
-      case 'toggle-typewriter':
-        pendingRefactor('打字机模式')
-        break
+      // 「打字机模式」这一档已整体摘掉（菜单项 + Ctrl+Shift+T + 状态字段）：
+      // 它此前只是一句「功能待接入」的提示，留着等于承诺一个不存在的能力（审计 §7）。
       case 'settings':
         ui.openSettings()
         break

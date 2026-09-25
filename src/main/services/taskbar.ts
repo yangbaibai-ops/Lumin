@@ -13,8 +13,9 @@ import { tmpdir } from 'os'
 import { basename, dirname, join } from 'path'
 import type { JumpListCategory, JumpListItem } from 'electron'
 import { db } from './database'
+import { mainT } from '../i18n'
 import { defaultSettings } from '../../shared/defaults'
-import type { AppSettings, Language } from '../../shared/types'
+import type { AppSettings } from '../../shared/types'
 // 应用图标的 ICO：任务栏/开始菜单只认 exe/dll/ico 里的图标资源，PNG 在这里没用
 import appIconIco from '../../../resources/icon.ico?asset'
 
@@ -96,31 +97,13 @@ export { NEW_WINDOW_SWITCH, OPEN_FILE_PREFIX } from './launchIntent'
 import { NEW_WINDOW_SWITCH, OPEN_FILE_PREFIX } from './launchIntent'
 
 /** 任务名（Tasks 分类里的那条）：与「应用名」那条区分开，见文件头的说明 */
-const TASK_TITLE: Record<Language, string> = {
-  'zh-CN': '新建窗口',
-  'en-US': 'New Window',
-  'ru-RU': 'Новое окно'
-}
+const TASK_TITLE = (): string => mainT('menu.newWindow')
 /** 最多列几篇最近文档：跳转列表不宜过长 */
 export const MAX_RECENT = 8
 
-const CATEGORY_NAME: Record<Language, string> = {
-  'zh-CN': '最近打开',
-  'en-US': 'Recent',
-  'ru-RU': 'Недавние'
-}
+const CATEGORY_NAME = (): string => mainT('taskbar.recent')
 
-const NEW_WINDOW_DESC: Record<Language, string> = {
-  'zh-CN': '在新的 Lumin 窗口中打开',
-  'en-US': 'Open in a new Lumin window',
-  'ru-RU': 'Открыть в новом окне Lumin'
-}
-
-/** 主进程没有 i18n 实例，这里按落库的语言取词（与渲染层共用同一份 Language 联合） */
-function language(): Language {
-  const s = db.kvGet<AppSettings>('settings', defaultSettings)
-  return s.language ?? 'zh-CN'
-}
+const NEW_WINDOW_DESC = (): string => mainT('taskbar.openInNewWindow')
 
 /** 最近文档取「应用里那份」列表（settings.recentFiles）：用户在界面上清空它时，跳转列表也跟着空 */
 
@@ -404,7 +387,7 @@ function jumpListIconPath(): string {
 export function refreshJumpList(): JumpListStatus {
   if (process.platform !== 'win32') return { status: 'skipped', tasks: 0, recent: 0 }
   try {
-    const lang = language()
+    const taskTitle = TASK_TITLE()
     const recents = db
       .kvGet<AppSettings>('settings', defaultSettings)
       .recentFiles.slice(0, MAX_RECENT)
@@ -415,8 +398,8 @@ export function refreshJumpList(): JumpListStatus {
         type: 'task',
         program: process.execPath,
         args: launchArgs([NEW_WINDOW_SWITCH]),
-        title: TASK_TITLE[lang],
-        description: NEW_WINDOW_DESC[lang],
+        title: taskTitle,
+        description: NEW_WINDOW_DESC(),
         iconPath: jumpListIconPath(),
         iconIndex: 0
       }
@@ -436,14 +419,14 @@ export function refreshJumpList(): JumpListStatus {
     const categories: JumpListCategory[] = [
       { type: 'tasks', items: tasks },
       ...(recentItems.length
-        ? [{ type: 'custom' as const, name: CATEGORY_NAME[lang], items: recentItems }]
+        ? [{ type: 'custom' as const, name: CATEGORY_NAME(), items: recentItems }]
         : [])
     ]
 
     const status = app.setJumpList(categories)
     debugLog(
       `jumplist status=${status} tasks=${tasks.length} recent=${recentItems.length} ` +
-        `title="${TASK_TITLE[lang]}" args="${launchArgs([NEW_WINDOW_SWITCH])}"`
+        `title="${taskTitle}" args="${launchArgs([NEW_WINDOW_SWITCH])}"`
     )
     return { status, tasks: tasks.length, recent: recentItems.length }
   } catch (err) {

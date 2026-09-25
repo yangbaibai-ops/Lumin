@@ -15,8 +15,15 @@ import type { Node as PMNode } from '@tiptap/pm/model'
 /** 标记文本的 mark 名（与 typoraInlineMarks.ts 里的 `name: 'mdMarker'` 保持一致） */
 const MARKER_MARK = 'mdMarker'
 
-/** 取标题节点的纯文本（跳过所有 `mdMarker` 文本）；全空时回落到 fallback */
-export function headingPlainText(node: PMNode, fallback = '（无标题）'): string {
+/**
+ * 取标题节点的纯文本（跳过所有 `mdMarker` 文本）；全空时返回 `fallback`。
+ *
+ * `fallback` **必须由调用方给**：兜底文案（「（无标题）」）是界面文案，得走语言包，
+ * 而这个模块是纯文本工具（单测直接 import 它）。在这里 import i18n 会把 Vue/语言包
+ * 拖进单测的依赖链（`node --test` 解析不了 `import '../i18n'` 这种目录导入），
+ * 所以本地化留在调用点（见 stores/editor.ts 传 `t('outline.untitled')`）。
+ */
+export function headingPlainText(node: PMNode, fallback: string): string {
   let text = ''
   node.descendants((child) => {
     if (child.isText) {

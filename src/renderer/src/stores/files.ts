@@ -257,7 +257,7 @@ export const useFilesStore = defineStore('files', {
       // 新建会把当前文档从内容区换掉，与「打开文件」同一口径：脏了先问
       // （问在创建之前 —— 用户取消时不该在磁盘上留下一个空文件）
       if (!(await confirmDiscardIfDirty(() => this.dirty))) return null
-      const base = '未命名'
+      const base = i18n.global.t('common.untitled')
       let name = `${base}.md`
       let i = 1
       while (await window.luminAPI.file.exists(await window.luminAPI.file.join(dir, name))) {
@@ -437,7 +437,7 @@ export const useFilesStore = defineStore('files', {
         await this.openUntitled()
         return
       }
-      const base = '未命名'
+      const base = i18n.global.t('common.untitled')
       let name = `${base}.md`
       let i = 1
       while (await window.luminAPI.file.exists(await window.luminAPI.file.join(this.root, name))) {
@@ -614,7 +614,10 @@ export const useFilesStore = defineStore('files', {
         return true
       } catch (err) {
         // 带上原因：写盘失败的原因（只读、被占用、磁盘满）决定用户下一步怎么做
-        useUiStore().toast(`${i18n.global.t('toast.saveFailed')}：${errorReason(err)}`, 'error')
+        useUiStore().toast(
+          i18n.global.t('toast.saveFailedDetail', { reason: errorReason(err) }),
+          'error'
+        )
         // 失败后不放弃：指数退避重试（5s → 10s → … → 60s 封顶）。
         // 此前失败后不再重排定时器，用户一停手就再也不会尝试落盘（只靠草稿兜）。
         this.saveRetryDelay = Math.min(this.saveRetryDelay ? this.saveRetryDelay * 2 : 5000, 60000)
@@ -772,9 +775,13 @@ export const useFilesStore = defineStore('files', {
          */
         return true
       } catch (err) {
-        // 带上原因，别让用户和后来的我们都只能看到一句「失败了」（真出问题时这条日志就是线索）
-        console.error('[encoding] 按编码重新打开失败:', err)
-        useUiStore().toast(`${i18n.global.t('toast.encodingFailed')}：${errorReason(err)}`, 'error')
+        // 带上原因，别让用户和后来的我们都只能看到一句「失败了」（真出问题时这条日志就是线索）。
+        // 日志用英文：主进程/渲染层的 console 走 Windows 控制台代码页，中文会乱码（见 mainConsoleAscii 的说明）
+        console.error('[encoding] reopen with encoding failed:', err)
+        useUiStore().toast(
+          i18n.global.t('toast.encodingFailedDetail', { reason: errorReason(err) }),
+          'error'
+        )
         return false
       }
     },

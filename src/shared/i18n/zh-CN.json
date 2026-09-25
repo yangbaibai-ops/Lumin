@@ -43,7 +43,8 @@
   "outline": {
     "collapse": "收起大纲",
     "expand": "展开大纲",
-    "resize": "调整大纲宽度"
+    "resize": "调整大纲宽度",
+    "untitled": "（无标题）"
   },
   "sidebar": {
     "files": "文件",
@@ -215,7 +216,11 @@
     "saveAfterReopenBody": "当前内容是按「{enc}」重新解释磁盘字节得到的（很可能就是乱码），**不是**编码转换的结果。按现在这样写回会覆盖磁盘上的原始内容 —— 确认保存？",
     "deleteConfirmTitle": "删除确认",
     "deleteConfirmBody": "确定要删除「{name}」吗？会移入系统回收站（可在回收站里还原）。",
-    "imageRemoteHidden": "远程图片已隐藏（点击加载）"
+    "imageRemoteHidden": "远程图片已隐藏（点击加载）",
+    "editSource": "点击编辑源码",
+    "splitDividerTitle": "拖动调整左右比例（双击复位）",
+    "syncScrollOn": "同步滚动已开启（点击关闭）",
+    "syncScrollOff": "开启同步滚动"
   },
   "settings": {
     "title": "设置",
@@ -287,7 +292,45 @@
     "syncScroll": "分屏同步滚动",
     "codeLineNumbers": "代码块行号",
     "sidebarToggle": "侧边栏",
-    "autoSaveToggle": "自动保存"
+    "autoSaveToggle": "自动保存",
+    "themeAutoDesc": "随系统外观自动切换",
+    "themeLightDesc": "明亮清爽的日间主题",
+    "themeDarkDesc": "护眼的夜间主题",
+    "themeSepiaDesc": "温暖的阅读护眼模式",
+    "modeWysiwygDesc": "所见即所得，点击块即可编辑",
+    "modeSplit": "分屏对比",
+    "modeSplitDesc": "左右实时对比渲染与源码，拖拽调比例",
+    "modeSourceDesc": "显示原始 Markdown 语法",
+    "cardInterface": "界面",
+    "nativeMenuBarDesc": "关闭后界面更纯净（快捷键照常生效）",
+    "outlineRightShort": "三栏布局：目录与大纲同时可见（可折叠）",
+    "cardSession": "保存与会话",
+    "autoSaveManualHint": "手动模式下用 Ctrl+S / 状态栏保存",
+    "interval": "间隔",
+    "historyEnabledDesc": "每次保存前留一份可回滚的快照",
+    "cardText": "文本与编码",
+    "encodingFoldHint": "编码与行尾说明",
+    "advanced": "高级",
+    "autoCheckUpdateHint": "仅打包版且配置了更新渠道时生效",
+    "cardEditBehavior": "编辑行为",
+    "syncScrollDesc": "左右两侧按滚动进度同步",
+    "codeLineNumbersDesc": "在代码块左侧显示行号",
+    "cardTypography": "字体与排版",
+    "fontFamilyLabel": "正文字体",
+    "fontSansShort": "无衬线",
+    "fontSerifShort": "衬线",
+    "fontMonoShort": "等宽",
+    "previewLead": "正文预览：所见即所得，支持",
+    "previewAnd": "与",
+    "previewDot": "。",
+    "pdfCard": "PDF 导出",
+    "exportFormats": "支持的格式",
+    "exportPdfDesc": "矢量排版，适合打印与分享",
+    "exportHtmlDesc": "保留样式与交互的网页文件",
+    "exportWordDesc": "Word 可直接打开编辑",
+    "exportEpubDesc": "标准 epub 3 电子书格式",
+    "exportUsageHint": "在编辑器工具栏点击「导出」即可使用。",
+    "previewSep": "、"
   },
   "toolbar": {
     "hide": "关闭工具栏",
@@ -370,7 +413,10 @@
     "eolChanged": "行尾已切换为 {eol}",
     "historyRestored": "已载入 {time} 的历史版本，保存后生效",
     "historyNeedsFile": "本地历史只对已保存到磁盘的文档可用",
-    "heavyDocSourceMode": "这篇文档有 {fences} 个代码块，实时渲染会明显卡顿（最多要几分钟），已用源码模式打开"
+    "heavyDocSourceMode": "这篇文档有 {fences} 个代码块，实时渲染会明显卡顿（最多要几分钟），已用源码模式打开",
+    "saveFailedDetail": "保存失败：{reason}",
+    "encodingFailedDetail": "按编码重新打开失败：{reason}",
+    "deleteFailedDetail": "删除失败：{reason}"
   },
   "editorMenu": {
     "copy": "复制",
@@ -432,7 +478,8 @@
     "openSettings": "打开设置…",
     "switchLanguage": "切换语言",
     "encodingTooltip": "当前文档编码（文件 → 选择编码重新打开）",
-    "eolTooltip": "当前行尾：{eol} —— 点击切换 LF / CRLF（立即写回）"
+    "eolTooltip": "当前行尾：{eol} —— 点击切换 LF / CRLF（立即写回）",
+    "saveModeDetail": "保存方式：{mode}"
   },
   "keymap": {
     "title": "快捷键",
@@ -482,5 +529,25 @@
     "clearTitle": "清空本地历史",
     "clearBody": "将删除当前文档的全部历史快照，且不可恢复。确定吗？",
     "hint": "点击某一条会把它载入编辑器（不会直接写盘）：看清了再 Ctrl+S 保存。"
+  },
+  "globalSearch": {
+    "indexedCount": "{n} 篇已索引",
+    "searching": "搜索中…",
+    "noMatch": "未找到匹配内容",
+    "hintIndexed": "全局搜索已索引的文档内容",
+    "hintEmpty": "打开或保存文档后即可全文搜索",
+    "hintSelect": "选择",
+    "engine": "SQLite FTS5 全文索引"
+  },
+  "dialog": {
+    "allFiles": "所有文件"
+  },
+  "taskbar": {
+    "recent": "最近打开",
+    "openInNewWindow": "在新的 Lumin 窗口中打开"
+  },
+  "export": {
+    "tocTitle": "目录",
+    "pdfEmpty": "PDF 渲染返回空内容"
   }
 }

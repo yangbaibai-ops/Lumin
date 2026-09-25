@@ -43,7 +43,8 @@
   "outline": {
     "collapse": "Collapse outline",
     "expand": "Expand outline",
-    "resize": "Resize outline panel"
+    "resize": "Resize outline panel",
+    "untitled": "(Untitled)"
   },
   "sidebar": {
     "files": "Files",
@@ -215,7 +216,11 @@
     "saveAfterReopenBody": "The buffer currently holds the disk bytes reinterpreted as “{enc}” (likely mojibake) — this is **not** an encoding conversion. Writing it back now overwrites the original content. Save anyway?",
     "deleteConfirmTitle": "Confirm deletion",
     "deleteConfirmBody": "Delete \"{name}\"? It will be moved to the system recycle bin (you can restore it from there).",
-    "imageRemoteHidden": "Remote image hidden (click to load)"
+    "imageRemoteHidden": "Remote image hidden (click to load)",
+    "editSource": "Click to edit source",
+    "splitDividerTitle": "Drag to resize the panes; double-click to reset",
+    "syncScrollOn": "Sync scrolling is on (click to turn off)",
+    "syncScrollOff": "Turn on sync scrolling"
   },
   "settings": {
     "title": "Settings",
@@ -243,7 +248,7 @@
     "themeLight": "Light",
     "themeDark": "Dark",
     "themeSepia": "Sepia",
-    "themeAuto": "Follow system",
+    "themeAuto": "System",
     "themeDesc": "Theme changes apply instantly with a smooth transition",
     "sidebar": "Sidebar",
     "sidebarDesc": "Show the left sidebar by default",
@@ -287,7 +292,45 @@
     "syncScroll": "Synchronized scrolling in split view",
     "codeLineNumbers": "Code block line numbers",
     "sidebarToggle": "Sidebar",
-    "autoSaveToggle": "Auto save"
+    "autoSaveToggle": "Auto save",
+    "themeAutoDesc": "Follows your system appearance",
+    "themeLightDesc": "Bright, clean daytime theme",
+    "themeDarkDesc": "Eye-friendly night theme",
+    "themeSepiaDesc": "Warm reading mode",
+    "modeWysiwygDesc": "WYSIWYG — click any block to edit",
+    "modeSplit": "Split view",
+    "modeSplitDesc": "Rendered and source side by side; drag the divider to resize",
+    "modeSourceDesc": "Shows raw Markdown syntax",
+    "cardInterface": "Interface",
+    "nativeMenuBarDesc": "Hides the menu bar; keyboard shortcuts still work",
+    "outlineRightShort": "Three-pane layout: file tree and outline together (collapsible)",
+    "cardSession": "Saving & session",
+    "autoSaveManualHint": "In manual mode, save with Ctrl+S or the status bar",
+    "interval": "Interval",
+    "historyEnabledDesc": "Keeps one rollback snapshot before each save",
+    "cardText": "Text & encoding",
+    "encodingFoldHint": "Encoding and line endings",
+    "advanced": "Advanced",
+    "autoCheckUpdateHint": "Only applies to packaged builds that have an update channel",
+    "cardEditBehavior": "Editing behaviour",
+    "syncScrollDesc": "Syncs both panes by scroll progress",
+    "codeLineNumbersDesc": "Shows line numbers beside code blocks",
+    "cardTypography": "Font & typography",
+    "fontFamilyLabel": "Body font",
+    "fontSansShort": "Sans",
+    "fontSerifShort": "Serif",
+    "fontMonoShort": "Mono",
+    "previewLead": "Live preview: WYSIWYG, with",
+    "previewAnd": "and",
+    "previewDot": ".",
+    "pdfCard": "PDF export",
+    "exportFormats": "Supported formats",
+    "exportPdfDesc": "Vector layout, good for printing and sharing",
+    "exportHtmlDesc": "Web page that keeps styling and links",
+    "exportWordDesc": "Opens directly in Word for editing",
+    "exportEpubDesc": "Standard EPUB 3 e-book format",
+    "exportUsageHint": "Use Export from the editor toolbar.",
+    "previewSep": ", "
   },
   "toolbar": {
     "hide": "Hide toolbar",
@@ -370,7 +413,10 @@
     "eolChanged": "Line endings switched to {eol}",
     "historyRestored": "Loaded the version from {time} — save to apply",
     "historyNeedsFile": "Local history is only available for documents saved on disk",
-    "heavyDocSourceMode": "This document has {fences} code blocks; live rendering would be very slow, so it was opened in source mode"
+    "heavyDocSourceMode": "This document has {fences} code blocks; live rendering would be very slow, so it was opened in source mode",
+    "saveFailedDetail": "Save failed: {reason}",
+    "encodingFailedDetail": "Reopening with this encoding failed: {reason}",
+    "deleteFailedDetail": "Delete failed: {reason}"
   },
   "editorMenu": {
     "copy": "Copy",
@@ -432,7 +478,8 @@
     "openSettings": "Open Settings…",
     "switchLanguage": "Switch Language",
     "encodingTooltip": "Document encoding (File → Reopen with encoding)",
-    "eolTooltip": "Line endings: {eol} — click to switch LF / CRLF (saves immediately)"
+    "eolTooltip": "Line endings: {eol} — click to switch LF / CRLF (saves immediately)",
+    "saveModeDetail": "Save mode: {mode}"
   },
   "keymap": {
     "title": "Keyboard shortcuts",
@@ -482,5 +529,25 @@
     "clearTitle": "Clear local history",
     "clearBody": "All snapshots of this document will be deleted permanently. Continue?",
     "hint": "Clicking an entry loads it into the editor (nothing is written to disk): review, then Ctrl+S."
+  },
+  "globalSearch": {
+    "indexedCount": "{n} indexed",
+    "searching": "Searching…",
+    "noMatch": "No matching content",
+    "hintIndexed": "Full-text search across indexed documents",
+    "hintEmpty": "Open or save a document to enable full-text search",
+    "hintSelect": "Select",
+    "engine": "SQLite FTS5 full-text index"
+  },
+  "dialog": {
+    "allFiles": "All files"
+  },
+  "taskbar": {
+    "recent": "Recent",
+    "openInNewWindow": "Open in a new Lumin window"
+  },
+  "export": {
+    "tocTitle": "Contents",
+    "pdfEmpty": "PDF rendering returned an empty result"
   }
 }

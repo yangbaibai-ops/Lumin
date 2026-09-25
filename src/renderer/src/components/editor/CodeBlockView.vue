@@ -1022,7 +1022,7 @@ function commitMermaid(): void {
         ref="mermaidRenderRef"
         class="mermaid-render"
         :data-mermaid-gated="mermaidNearViewport ? null : 'pending'"
-        title="点击编辑源码"
+        :title="$t('editor.editSource')"
         @click="startMermaidEdit"
       >
         <!-- 视口门未放行（还没轮到它进视口）时展示源码占位：块有高度、可点击进源码编辑，

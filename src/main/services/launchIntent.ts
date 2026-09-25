@@ -105,7 +105,9 @@ export function parseLaunchIntent(argv: string[], opts: ParseOptions): LaunchInt
 
     if (arg === '--') {
       afterTerminator = true
-      intent.ignored.push('--（其后参数按 Chromium 约定忽略）')
+      // 诊断文本（写进 %TEMP%\lumin-build.log 的 `ignored` 字段）一律 ASCII：
+      // 主进程的文本落点可能是控制台/日志查看器，中文在 Windows 代码页下会乱码
+      intent.ignored.push('-- (remaining args ignored per Chromium convention)')
       continue
     }
     if (afterTerminator) continue
@@ -133,7 +135,7 @@ export function parseLaunchIntent(argv: string[], opts: ParseOptions): LaunchInt
 
     const abs = safeResolve(arg, opts.cwd)
     if (!abs) {
-      intent.ignored.push(`${arg}（路径无法解析）`)
+      intent.ignored.push(`${arg} (path could not be resolved)`)
       continue
     }
     // 可执行文件自身 / 应用目录：开发态 `electron .`、以及我们自己的快捷方式都会传进来
@@ -141,14 +143,14 @@ export function parseLaunchIntent(argv: string[], opts: ParseOptions): LaunchInt
     if (appPath && samePath(abs, appPath)) continue
 
     if (!existsSync(abs)) {
-      intent.ignored.push(`${arg}（路径不存在）`)
+      intent.ignored.push(`${arg} (path does not exist)`)
       continue
     }
     let isDir: boolean
     try {
       isDir = statSync(abs).isDirectory()
     } catch {
-      intent.ignored.push(`${arg}（无法读取）`)
+      intent.ignored.push(`${arg} (unreadable)`)
       continue
     }
     if (isDir) intent.openFolder ??= abs

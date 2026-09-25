@@ -152,13 +152,6 @@ export function useKeymap(actions: ReturnType<typeof useAppActions>): void {
       run: () => handleMenu('toggle-focus')
     },
     {
-      id: 'view.typewriterMode',
-      titleKey: 'keymap.typewriterMode',
-      groupKey: 'keymap.groupView',
-      defaultKeys: 'Mod+Shift+T',
-      run: () => handleMenu('toggle-typewriter')
-    },
-    {
       id: 'view.modeWysiwyg',
       titleKey: 'editor.wysiwyg',
       groupKey: 'keymap.groupView',

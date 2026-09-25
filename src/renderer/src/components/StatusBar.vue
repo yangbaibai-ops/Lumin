@@ -66,7 +66,9 @@ const saveLabel = computed(() => {
 const saveModeLabel = computed(() =>
   settings.autoSave ? t('statusbar.autoSave') : t('statusbar.manualSave')
 )
-const saveTriggerLabel = computed(() => `${t('statusbar.saveMode')}：${saveModeLabel.value}`)
+const saveTriggerLabel = computed(() =>
+  t('statusbar.saveModeDetail', { mode: saveModeLabel.value })
+)
 
 /** 选择保存方式：自动保存（开）或手动保存（关） */
 function chooseSaveMode(manual: boolean): void {

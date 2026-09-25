@@ -1,6 +1,7 @@
 // ─── 主进程：导出服务（PDF / HTML / Word / EPUB）────────────────────────────
 import { app, BrowserWindow, dialog } from 'electron'
 import fs from 'fs/promises'
+import { mainLanguage, mainT } from './i18n'
 import type { ExportPayload, EpubMeta } from '../shared/types'
 
 // ─── 最小 ZIP 写入器（STORE 存储，无压缩 —— 足以生成合法 EPUB）─────────────
@@ -96,8 +97,10 @@ async function saveWithDialog(
 }
 
 function buildHtml(payload: ExportPayload): string {
+  // `lang` 也跟着界面语言走：写死 zh-CN 时，英文/俄文用户的导出件会被浏览器
+  // 按中文断行与字体回退处理（整篇排版都会偏）
   return `<!doctype html>
-<html lang="zh-CN">
+<html lang="${mainLanguage()}">
 <head>
 <meta charset="utf-8" />
 <title>${escapeHtml(payload.title)}</title>
@@ -161,7 +164,7 @@ export async function exportPdf(
       margins: { top: marginInch, bottom: marginInch, left: marginInch, right: marginInch }
     })
     if (!data || data.length === 0) {
-      throw new Error('printToPDF 返回空内容')
+      throw new Error(mainT('export.pdfEmpty'))
     }
     await fs.writeFile(resultFilePath, data)
     return resultFilePath
@@ -196,7 +199,7 @@ export async function exportEpub(meta: EpubMeta): Promise<string | null> {
   const navXhtml = `<?xml version="1.0" encoding="utf-8"?>
 <!DOCTYPE html>
 <html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops" lang="${meta.lang || 'zh-CN'}">
-<head><meta charset="utf-8"/><title>目录</title></head>
+<head><meta charset="utf-8"/><title>${mainT('export.tocTitle')}</title></head>
 <body><nav epub:type="toc"><ol><li><a href="chapter1.xhtml">${escapeHtml(meta.title)}</a></li></ol></nav></body>
 </html>`
 

@@ -198,7 +198,8 @@ export const editorExtensions: Extensions = [
   TaskListTight,
   TaskItem.configure({ nested: true }),
   Placeholder.configure({
-    placeholder: '在此开始写作…（输入 # 创建标题）'
+    // 传函数而不是字符串：扩展集是模块级常量，写死字符串的话切语言后占位符不会跟着变
+    placeholder: () => i18n.global.t('editor.placeholder')
   }),
   CodeBlockCM,
   TyporaInputRules,

@@ -21,6 +21,7 @@ import * as pathGrants from './services/pathGrants'
 import * as taskbar from './services/taskbar'
 import { onSettingsChanged } from './services/updater'
 import { installMenu } from './menu'
+import { mainT } from './i18n'
 import { scopeOfSender } from './services/windowScope'
 import { getRememberedEncoding, rememberEncoding } from './services/encoding'
 import type { ConcreteEncoding, EncodingId } from '../shared/encodings'
@@ -320,7 +321,7 @@ export function registerIpc(slots: SlotRegistry): void {
       properties: ['openFile'],
       filters: [
         { name: 'Markdown', extensions: ['md', 'markdown', 'mdown', 'mkd', 'txt'] },
-        { name: '所有文件', extensions: ['*'] }
+        { name: mainT('dialog.allFiles'), extensions: ['*'] }
       ]
     })
     const picked = r.canceled || !r.filePaths.length ? null : r.filePaths[0]
