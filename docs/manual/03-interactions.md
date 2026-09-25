@@ -55,7 +55,7 @@ Backspace: ({ editor }) => {
 
 **键盘优先级（关键坑）**：Tiptap v3 把每个扩展的 `addKeyboardShortcuts` 变成独立 keymap 插件，按扩展 `priority`（默认 100）降序执行，先返回 true 的绑定胜出。core 的 Enter/Backspace（`splitBlock`/`joinBackward` 链）默认优先于一般用户扩展，因此自定义键盘语义的扩展必须显式设置 `priority: 200`（`TyporaKeymap` 即是），否则拦截永远不会生效；条件不匹配时返回 false 交还后续绑定，不影响其他按键行为。
 
-本项目验收矩阵（`tools/verify-tiptap.js`）覆盖：`task-enter-semantics`（任务列表回车语义）、`heading-backspace-unheading`（标题行首退格降级且不影响上一行）、`hr-enter-rule`（分割线回车确认）。
+本项目验收矩阵（`tools/_verify-input-rules.js` 的 D 段）覆盖：任务列表回车语义、标题行首退格降级且不影响上一行、分割线回车确认（`---` 不立即转、回车后才转）。
 
 ### 3.3 光标感知标记符（源码的「浮现」）
 

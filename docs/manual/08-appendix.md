@@ -27,8 +27,9 @@ src/
    ├─ stores/editor.ts          # 实例/大纲/activeHeading
    └─ assets/style.css          # .md-preview 渲染样式 + md-reveal 标记样式
 tools/
-├─ verify-tiptap.js             # 45 项 CDP 验收矩阵
-└─ run-verify.ps1               # 置前窗口 + 执行验收
+├─ run-suites.js                # CDP 套件矩阵入口（默认 58 条；--all/--tier/--suite/--probe）
+├─ lib/harness.js               # 套件公共骨架（连 CDP / 注入 pinia / 输入模拟）
+└─ _verify-*.js                 # 各领域验收套件（清单见 tools/README.md）
 docs/typora-wysiwyg-manual.md   # 本文档
 ```
 
@@ -2065,9 +2066,10 @@ if (!app.requestSingleInstanceLock()) app.quit()
 1. **设置面板等约 60 处文案硬编码中文**（词条已存在于语言包 → 属于「翻译做完了没接上」），
    同类还有 `AboutView` 整页、`ModalHost` 的「取消/确定」、浮动工具条 title、全局搜索面板、
    原生对话框「所有文件」、未命名文档名、router 离开确认（与已本地化的 `lib/dialog.ts` 重复）。
-2. **`tools/verify-tiptap.js`（1473 行 / 114 断言）不在任何矩阵里**：它守着气泡菜单、input rules、
-   光标标记符、表格编辑、全局搜索、粘贴 —— 硬编码绝对路径 + 写死 dev server + 不用 harness，
-   所以运行器解析不了它的输出。**它守的功能在矩阵里等于没守**（下一轮第一优先）。
+2. **~~`tools/verify-tiptap.js`（1473 行 / 114 断言）不在任何矩阵里~~ —— 已删除**（审计 §10 P0 的最终处理）：
+   它守的 input rules / 光标标记符 / 表格编辑 / 粘贴等已在后续轮次补进默认矩阵
+   （`_verify-input-rules.js` 22 条 + `_verify-inline-formats` / `_verify-table-fidelity` /
+   `_verify-md-fidelity` / `_verify-link-paste`），见手册 §6.2 的历史说明。
 3. **矩阵「假绿」**：`--all` 里约 15 个 0 断言探针（`_verify-i18n`/`-theme-auto`/`-toc`/`-export-fix*`…）
    只打印观察值，运行器按退出码判定 → 显示 `PASS 0/0`。建议加 `PROBE` 判定（`total === 0` 不算 PASS）。
 

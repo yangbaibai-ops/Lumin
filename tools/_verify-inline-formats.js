@@ -726,7 +726,7 @@ async function main() {
                visibility: cs.visibility, opacity: cs.opacity, w: r.width, h: r.height }
     }
     // 「可见」与 .md-marker 的既有断言**同一口径**：fontSize 不为 0 + display 不是 none
-    // + visibility 可见 + 有实际宽度（verify-tiptap 的标记隐藏态断的就是 rect 宽度 === 0）
+    // + visibility 可见 + 有实际宽度（隐藏态断的就是 rect 宽度 === 0）
     const visible = (el) => {
       const s = style(el)
       return !!s && s.fontSize !== '0px' && s.display !== 'none' &&

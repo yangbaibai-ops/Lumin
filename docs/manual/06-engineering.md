@@ -26,14 +26,16 @@ CDP 套件需要真实桌面会话（窗口焦点、单实例锁、真实按键�
 套件自身的口径（这几条是README「质量门禁」的展开，也是踩过的坑）：
 `NOASSERT`（一条断言都没产出的套件）与 `FAIL` 一样让命令失败；缺失的套件名会让命令失败而不是被静默丢弃；
 环境不满足（窗口拿不到焦点、没出帧）**如实 SKIP**，SKIP 不算失败；首次红、重跑绿记 `FLAKY` 并单独列出。
-分档（fast / needs-build / needs-dev / manual）与探针普查（`_probe-*`、`verify-tiptap.js`）在
+分档（fast / needs-build / needs-dev / manual）与探针普查（`_probe-*`）在
 `run-suites.js` 里是数据，`tests/tooling.test.mjs` 守着它们不漂。
 
-> 历史说明：`tools/verify-tiptap.js`（1473 行 / 百余条具名断言）是早期唯一的 CDP 资产，
-> **已弃用**（不在任何矩阵里；它守的气泡菜单 / input rules / 标记符 / 表格 / 粘贴已由默认矩阵里的
+> 历史说明：`tools/verify-tiptap.js`（1488 行 / 85 条具名断言）是早期唯一的 CDP 资产，**已删除**——
+> 它不在任何矩阵里、换机不可跑（清单 §10 P0）。它的独有覆盖先补进默认矩阵
+> （新增 `_verify-input-rules.js`：块级快捷输入 `# `/`- `/`1. `/`> `/围栏、任务列表与
+> Markdown 链接两条自研规则、回车与退格语义、表格按钮的两条入口），其余部分早已由
 > `_verify-inline-formats`、`_regress-cb`、`_verify-table-fidelity`、`_verify-md-fidelity`、
-> `_verify-link-paste` 等接管）。它的硬编码绝对路径已改成 `%TEMP%` + `LUMIN_TIPTAP_DIR`，
-> 想跑仍需要 `npm run dev` 起的 dev 实例。**不要再把它当 E2E 层的证据引用。**
+> `_verify-link-paste` 等接管（git 历史仍可查）。
+> 它守的键语义口径留在 `_verify-input-rules.js` 的 D 段里，不要再引用那个文件名当证据。
 
 
 ### 6.3 性能策略

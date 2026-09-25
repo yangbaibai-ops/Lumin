@@ -170,7 +170,7 @@ function parseArgs(argv) {
     // 按档挑套件：`--tier=fast` / `--tier=fast,needs-build`（分档见 tierOf）
     else if (a.startsWith('--tier='))
       args.tier = a.slice('--tier='.length).split(',').filter(Boolean)
-    // 显式跑"探针/遗留"清单（默认只列不判，见 probeSuites）
+    // 显式跑探针清单（默认只列不判，见 probeSuites）
     else if (a === '--probe') args.probe = true
     // CI 子集：默认矩阵里不注入真实输入的那批（见 ciSubset）
     else if (a === '--ci-subset') args.ciSubset = true
@@ -242,17 +242,22 @@ function tierOf(file) {
 }
 
 /**
- * **不产出断言的"探针"与遗留脚本**（清单 §10 P1「0 断言探针在冒充 PASS」）。
+ * **不产出断言的"探针"**（清单 §10 P1「0 断言探针在冒充 PASS」）。
  *
- * 它们不该混进判定（`_probe-*` 是排查用的临时脚本，`verify-tiptap.js` 已弃用，见其文件头），
- * 但也不能像以前那样**完全不可见** —— 那正是审计说的问题：一个从不产出断言的脚本
- * 和一条 38 断言的套件在终端上长得一样。现在每轮矩阵末尾都会把这份名单打出来。
- * 用 `--probe` 显式跑它们（那时**照常判定**，红就是红）。
+ * 它们不该混进判定（`_probe-*` 是排查/基准用的临时脚本），但也不能像以前那样**完全不可见** ——
+ * 那正是审计说的问题：一个从不产出断言的脚本和一条 38 断言的套件在终端上长得一样。
+ * 现在每轮矩阵末尾都会把这份名单打出来，`--probe` 可显式跑（那时**照常判定**，红就是红）。
+ *
+ * 历史上这里还额外登记过 `tools/verify-tiptap.js`（1488 行的遗留 CDP 矩阵）：它守的
+ * input rules / 任务列表 / 链接 / 表格选择器 / 回车与退格语义已经迁进默认矩阵
+ * （`_verify-input-rules.js` + `_verify-inline-formats.js` + `_verify-table-fidelity.js` 等），
+ * 所以那个文件**已删除**（清单 §10 P0「不在任何矩阵、换机不可跑」的最终处理），名单里不再需要特例。
  */
 function probeSuites() {
-  const probes = fs.readdirSync(TOOLS).filter((f) => /^_probe-.*\.js$/.test(f))
-  if (fs.existsSync(path.join(TOOLS, 'verify-tiptap.js'))) probes.push('verify-tiptap.js')
-  return probes.sort()
+  return fs
+    .readdirSync(TOOLS)
+    .filter((f) => /^_probe-.*\.js$/.test(f))
+    .sort()
 }
 
 /**
@@ -572,13 +577,13 @@ async function main() {
     console.log('NOASSERT（没有产出断言，等于没测）' + noassert.map((r) => r.file).join(', '))
     console.log('  → 修好它，或删掉它；确实无事可断言的请加进 run-suites.js 的 EMPTY_OK 并写理由。')
   }
-  // 探针/遗留脚本的**普查**：默认不判它们，但必须让人看见它们存在
+  // 探针脚本的**普查**：默认不判它们，但必须让人看见它们存在
   // （清单 §10：以前这批"从不产出断言的脚本"在终端上和真套件长得一模一样）
   if (!args.probe) {
     const probes = probeSuites()
     if (probes.length) {
       console.log(
-        `未纳入判定（探针/遗留，共 ${probes.length} 个）：${probes.join(', ')}\n` +
+        `未纳入判定（探针，共 ${probes.length} 个）：${probes.join(', ')}\n` +
           '  → 想跑它们：node tools/run-suites.js --probe（那时照常判定，红就是红）'
       )
     }

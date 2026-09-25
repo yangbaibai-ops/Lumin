@@ -86,7 +86,10 @@
 ### 步骤 13：自动化验收矩阵（✅）
 
 - **目标**：核心体验可回归。
-- **实现**：`tools/verify-tiptap.js`（CDP 连接 `LUMIN_DEBUG_PORT=9222` 的窗口，`Runtime.evaluate` + `Input.dispatchKeyEvent/insertText` 驱动，45 项断言）+ `tools/run-verify.ps1`（user32 置前窗口）。
-- **验收**：`45/45 PASS` 且 `console-errors: 0`。
+- **实现**：`tools/run-suites.js` + `tools/lib/harness.js`（默认矩阵：CDP 连接隔离实例，`Runtime.evaluate` + `Input.dispatchKeyEvent/insertText` 驱动；单条 `--suite=<文件名>` 可点跑）。
+- **验收**：`node tools/run-suites.js` 全绿（PASS/FAIL/FLAKY/SKIP/NOASSERT 五个口径见 §6.2）。
+
+> 历史：这一层最早是 `tools/verify-tiptap.js`（已删除：不在任何矩阵里、换机不可跑；覆盖迁进矩阵后移除，
+> 见 §6.2 的历史说明）+ `tools/run-verify.ps1`（user32 置前窗口）。
 
 ---

@@ -130,12 +130,13 @@ test('套件分档：每个套件恰好落在一档，且 needs-dev 与实测一
   }
 })
 
-test('探针/遗留脚本被点名登记（不判定，但必须可见）', () => {
+test('探针脚本被点名登记（不判定，但必须可见）', () => {
   /**
    * 清单 §10 P1：约 15 个"0 断言探针"在冒充 PASS —— 运行器现在把 `total === 0` 记 NOASSERT，
-   * 但 `_probe-*` 与 `verify-tiptap.js` **根本不在扫描范围内**，于是连 NOASSERT 都不会被记。
+   * 但 `_probe-*` **根本不在扫描范围内**，于是连 NOASSERT 都不会被记。
    * 这条守住"它们仍然存在且仍被登记"：名单是数据（probeSuites），每轮矩阵末尾打印出来，
    * `--probe` 可以显式跑（那时照常判定）。
+   * （历史上这里还登记过一个 `verify-tiptap.js`；它守的覆盖迁进矩阵后已删除，见 run-suites 的注释。）
    */
   const m = require(path.join(TOOLS, 'run-suites.js'))
   const probes = m.probeSuites()

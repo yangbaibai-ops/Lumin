@@ -16,6 +16,8 @@ const {
   sleep,
   bringToFront,
   insertText,
+  pressKey,
+  clickCenter,
   openDocWith,
   waitEditor,
   Reporter,
@@ -269,6 +271,191 @@ async function main() {
     first(orderedTask).t === 'orderedList',
     JSON.stringify(first(orderedTask))
   )
+
+  // ── D. 键语义与表格选择器（manual §3 曾把这些算在 verify-tiptap 的账上）────────
+  // 删掉那个遗留资产之前，这几条必须先在矩阵里有归属：
+  //   D1 任务项里按回车 → 新任务项（task-enter-semantics）
+  //   D2 标题行首退格 → 降级成段落，且不吞上一行（heading-backspace-unheading）
+  //   D3 `---` 之后按回车（hr-enter-rule / hr-text-kept 的实际口径）
+  //   D4 工具栏表格选择器点 2×3 → 真插一张 2 行 3 列的表（table-grid-picker）
+  const ENTER = { key: 'Enter', code: 'Enter', vk: 13 }
+  const BACKSPACE = { key: 'Backspace', code: 'Backspace', vk: 8 }
+
+  await openDocWith(app, '', 'input-rules.md')
+  await waitEditor(ev)
+  if (!(await focusEditor())) return skipAll()
+  await typeChars('- [ ] 任务A')
+  await pressKey(send, ENTER)
+  await sleep(250)
+  await typeChars('任务B')
+  const taskEnter = JSON.parse(await ev(PROBE))
+  report.note('D1 ' + JSON.stringify(taskEnter))
+  report.check(
+    'D1 任务项里回车 → 新任务项（仍是任务列表，两项都未勾选）',
+    first(taskEnter).t === 'taskList' &&
+      (first(taskEnter).items ?? []).length === 2 &&
+      (first(taskEnter).items ?? []).every((c) => c === false) &&
+      taskEnter.content.startsWith('- [ ] 任务A\n- [ ] 任务B'),
+    JSON.stringify({ block: first(taskEnter), md: taskEnter.content })
+  )
+
+  // D2：上一段 + 标题，光标挪到标题行首按退格
+  await openDocWith(app, '上一行\n\n# 标题\n', 'input-rules.md')
+  await waitEditor(ev)
+  /** 把光标放到标题块首（带焦点重试 —— 程序化 focus 要等一拍才算数） */
+  const focusHeadingStart = async (attempts = 10) => {
+    for (let i = 0; i < attempts; i++) {
+      await bringToFront(app)
+      const r = await ev(`(() => {
+        const ed = window.__L.ed()
+        const doc = ed.state.doc
+        let pos = 0
+        for (let j = 0; j < doc.childCount; j++) {
+          if (doc.child(j).type.name === 'heading') break
+          pos += doc.child(j).nodeSize
+        }
+        ed.commands.focus(pos + 1)
+        return ed.isFocused ? 'ok' : 'NO-FOCUS'
+      })()`)
+      if (r === 'ok') {
+        await sleep(120)
+        return true
+      }
+      await sleep(250)
+    }
+    return false
+  }
+  if (await focusHeadingStart()) {
+    await pressKey(send, BACKSPACE)
+    await sleep(400)
+    const unheading = JSON.parse(await ev(PROBE))
+    report.note('D2 ' + JSON.stringify(unheading))
+    report.check(
+      'D2 标题行首退格 → 降级成段落，且上一行原样保留',
+      unheading.blocks[1]?.t === 'paragraph' &&
+        unheading.blocks[1]?.text === '标题' &&
+        unheading.blocks[0]?.text === '上一行',
+      JSON.stringify(unheading.blocks)
+    )
+  } else {
+    report.skip('D2 标题行首退格', '编辑器拿不到焦点（窗口不是前台）')
+  }
+
+  // D3：`---` 之后回车（这条以前叫 hr-enter-rule；先量清实际口径再断言）
+  await openDocWith(app, '', 'input-rules.md')
+  await waitEditor(ev)
+  if (!(await focusEditor())) return skipAll()
+  await typeChars('---')
+  await pressKey(send, ENTER)
+  await sleep(400)
+  const hrEnter = JSON.parse(await ev(PROBE))
+  report.note('D3 ' + JSON.stringify(hrEnter))
+  /**
+   * 实测口径（与 verify-tiptap 里 `hr-not-immediate` / `hr-enter-rule` 两条同名断言一致）：
+   * `---` **不立即**变分割线（`HorizontalRule.extend({ addInputRules: () => [] })` 把输入规则置空），
+   * 但**按回车确认**后会被"源码权威重推"成 horizontalRule，落盘就是 `---`。
+   * 这就是 Typora 的行为，也解释了为什么 A7 的"保持段落"只在**没有回车**时成立。
+   */
+  report.check(
+    'D3 `---` 不立即转、**回车确认**后转分割线（延迟到 Enter，落盘 `---`）',
+    first(hrEnter).t === 'horizontalRule' && hrEnter.content.startsWith('---'),
+    JSON.stringify({ blocks: hrEnter.blocks, md: hrEnter.content })
+  )
+
+  /**
+   * D4：工具栏表格按钮的**两条**入口（实测口径，与 verify-tiptap 的
+   * `table-picker-visible` / `table-grid-picker-2x3` / `table-default-3x3` 对齐）：
+   *   * **点一下**按钮 → 直接插一张 **3×3**（不是"打开选择器"！组件里 `onButtonClick` 就是 insertTable(3,3)）；
+   *   * **悬停** ≥300ms → 尺寸选择器出现 → 点某个格子插 N×M。
+   * ⚠️ 每次都要**先把鼠标挪开**：`mouseenter` 只在"从外面进来"时触发，鼠标本来就停在按钮上时
+   * 再发一次 mouseMoved 不会开选择器（而且上一次交互可能把 popover 留在打开态）。
+   */
+  const pickerProbe = () =>
+    ev(`(() => {
+      const ed = window.__L.ed()
+      const n = ed ? ed.state.doc.child(0) : null
+      const rows = n && n.type.name === 'table' ? n.childCount : 0
+      return JSON.stringify({
+        type: n ? n.type.name : null,
+        rows,
+        cols: rows ? n.child(0).childCount : 0,
+        popover: !!document.querySelector('.table-size-popover')
+      })
+    })()`)
+  const parkMouse = async () => {
+    await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: 5, y: 400 })
+    await sleep(350)
+  }
+
+  await openDocWith(app, '', 'input-rules.md')
+  await waitEditor(ev)
+  await ev(`(() => {
+    const s = window.__L.settings()
+    window.__toolbarBackup = { visible: s.toolbarVisible, items: JSON.stringify(s.toolbarItems) }
+    if (!s.toolbarItems.includes('table')) s.set('toolbarItems', [...s.toolbarItems, 'table'])
+    s.set('toolbarVisible', true)
+    return 'ok'
+  })()`)
+  await sleep(600)
+  // 表格按钮是**自带组件的工具条项**，只有 `data-toolbar-item`、没有 `data-toolbar-item-id`
+  //（Toolbar.vue 只给自己渲染的那几项打 id）⇒ 用当前语言包里的 `editor.table` 文案定位，
+  // 不写死中文（这个 profile 是 zh-CN，但套件不该假设语言）。
+  const lang = await ev(`window.__L.settings().language`)
+  const tableLabel = require(`../src/shared/i18n/${lang}.json`).editor.table
+  const tableSelector = `[data-toolbar-item] button[aria-label="${tableLabel}"]`
+
+  await parkMouse()
+  await clickCenter(send, ev, tableSelector)
+  await sleep(500)
+  const clicked = JSON.parse(await pickerProbe())
+  report.note('D4a ' + JSON.stringify({ lang, ...clicked }))
+  report.check(
+    'D4a 点表格按钮 → 直接插一张 3×3（默认尺寸）',
+    clicked.type === 'table' && clicked.rows === 3 && clicked.cols === 3,
+    JSON.stringify(clicked)
+  )
+
+  await parkMouse()
+  await openDocWith(app, '', 'input-rules.md')
+  await waitEditor(ev)
+  const tableRect = JSON.parse(
+    await ev(`(() => {
+      const b = document.querySelector(${JSON.stringify(tableSelector)})
+      if (!b) return 'null'
+      const r = b.getBoundingClientRect()
+      return JSON.stringify({ x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2) })
+    })()`)
+  )
+  if (tableRect && tableRect !== null) {
+    await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: tableRect.x, y: tableRect.y })
+    await sleep(600)
+    const hovered = JSON.parse(await pickerProbe())
+    report.note('D4b-hover ' + JSON.stringify(hovered))
+    const picked = hovered.popover ? await clickCenter(send, ev, '[aria-label="2 × 3"]') : false
+    await sleep(500)
+    const grid = JSON.parse(await pickerProbe())
+    report.note('D4b ' + JSON.stringify({ hoveredPopover: hovered.popover, picked, ...grid }))
+    report.check(
+      'D4b 悬停出选择器、点 2×3 → 真插一张 2 行 3 列的表',
+      hovered.popover === true && picked === true && grid.rows === 2 && grid.cols === 3,
+      JSON.stringify({ hovered: hovered.popover, picked, ...grid })
+    )
+  } else {
+    report.skip('D4b 悬停出选择器', '工具条上没有表格按钮')
+  }
+  // 复原工具条设置（下一轮套件从干净状态开始）
+  await ev(`(() => {
+    const s = window.__L.settings()
+    const b = window.__toolbarBackup
+    if (b) {
+      s.set('toolbarItems', JSON.parse(b.items))
+      s.set('toolbarVisible', b.visible)
+    }
+    return 'ok'
+  })()`)
+  // 收尾把鼠标停到角落里：这条套件有意移动过指针（悬停出选择器），
+  // 别把"指针正停在某个工具条按钮上"留给下一轮（那会让 hover 类断言莫名其妙地先亮一次）
+  await parkMouse()
 
   app.close()
   return report.finish()
