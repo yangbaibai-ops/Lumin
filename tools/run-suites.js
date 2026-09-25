@@ -77,6 +77,7 @@ const DEFAULT_SUITES = [
   '_repro-rapidenter.js', // 快速连续回车不丢行（CM / PM / store 三处一致）
   '_verify-find-replace.js', // 编辑器内查找替换（两个编辑面 / 替换与全部替换 / 大小写）
   '_verify-inline-formats.js', // 行内格式矩阵：工具栏/快捷键/手打标记/组合（标记字符一个不能少）
+  '_verify-input-rules.js', // Markdown 输入规则：`# `/`- `/`1. `/`> `/围栏/任务列表/链接（原 verify-tiptap 的独有覆盖）
   '_verify-math.js', // 数学公式（行内 `$…$` / 块级 `$$…$$`）：KaTeX 渲染 + 原文逐字保留
   // 两面一致性（实时渲染 ⇄ 源码）三层：见 docs/wysiwyg-test-plan.md
   // ── 自查报告整改时接入的四条（原来是「0 断言假通过」或新功能）──
