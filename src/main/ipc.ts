@@ -12,6 +12,7 @@ import {
 import path from 'path'
 import os from 'os'
 import { watch, existsSync, readFileSync, type FSWatcher } from 'fs'
+import { mkdir } from 'fs/promises'
 import * as fileOps from './fileOps'
 import * as exportSvc from './export'
 import * as drafts from './drafts'
@@ -21,6 +22,8 @@ import * as openDocs from './services/openDocs'
 import * as pathGrants from './services/pathGrants'
 import * as taskbar from './services/taskbar'
 import * as workspaceIndex from './services/workspaceIndex'
+import * as dbBackup from './services/dbBackup'
+import * as workspaceBackup from './services/workspaceBackup'
 import { onSettingsChanged } from './services/updater'
 import { installMenu } from './menu'
 import { mainT } from './i18n'
@@ -483,6 +486,11 @@ export function registerIpc(slots: SlotRegistry): void {
     if (partial.language) installMenu()
     // 用户刚打开「自动检查更新」时立刻查一次，否则要等下次启动，像开关没反应
     onSettingsChanged(partial)
+    // 备份：刚打开开关或刚换了目录时，先看该不该立即备一份 ——
+    // 换到新目录后目录是空的，`isBackupDue` 会判为"该备"，用户马上就能看到第一份
+    if (partial.backupAuto !== undefined || partial.backupDir !== undefined) {
+      void dbBackup.maybeAutoBackup()
+    }
     return merged
   })
   ipcMain.handle('workspace:getRoot', () => {
@@ -541,6 +549,50 @@ export function registerIpc(slots: SlotRegistry): void {
     db.checkpoint()
     const { before, after } = db.vacuum()
     return { before, after, saved: Math.max(0, before - after) }
+  })
+
+  /**
+   * 备份（审计 §2 P1）。两条路都是**用户可见的动作**，所以返回值必须能解释清楚：
+   * 库备份失败不 reject（后台行为也会调它），把原因放在返回值里由界面提示；
+   * 工作区快照取消（另存为对话框点了取消）返回 null，不是错误。
+   */
+  ipcMain.handle('backup:status', () => dbBackup.backupStatus())
+  ipcMain.handle('backup:run', () => dbBackup.runBackup('manual'))
+  ipcMain.handle('backup:chooseDir', async () => {
+    const current = dbBackup.backupDir()
+    const r = await dialog.showOpenDialog(BrowserWindow.getFocusedWindow()!, {
+      title: mainT('settings.backupChooseDir'),
+      defaultPath: current,
+      properties: ['openDirectory', 'createDirectory']
+    })
+    const picked = r.canceled || !r.filePaths.length ? null : r.filePaths[0]
+    if (picked) {
+      const merged = deepMerge(db.kvGet<AppSettings>('settings', defaultSettings), {
+        backupDir: picked
+      })
+      db.kvSet('settings', merged)
+      // 换目录后目录是空的 → 立刻补第一份（不然用户要等到"明天"才看到有备份）
+      void dbBackup.maybeAutoBackup()
+    }
+    return dbBackup.backupStatus()
+  })
+  ipcMain.handle('backup:useDefaultDir', () => {
+    const merged = deepMerge(db.kvGet<AppSettings>('settings', defaultSettings), {
+      backupDir: null
+    })
+    db.kvSet('settings', merged)
+    return dbBackup.backupStatus()
+  })
+  ipcMain.handle('backup:revealDir', async () => {
+    const dir = dbBackup.backupDir()
+    // 目录可能还没建过（新 profile / 刚换目录）：先建出来，否则 shell 打开会报错
+    await mkdir(dir, { recursive: true }).catch(() => {})
+    return shell.openPath(dir)
+  })
+  ipcMain.handle('backup:snapshotWorkspace', async () => {
+    const root = db.kvGet<{ root: string | null }>('workspace', { root: null }).root
+    if (!root) throw new Error('WORKSPACE_NOT_OPEN')
+    return workspaceBackup.snapshotWorkspace(root)
   })
 
   // ── 通知中心（SQLite 持久化，按窗口作用域隔离）──

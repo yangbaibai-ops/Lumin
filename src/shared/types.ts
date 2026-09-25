@@ -75,6 +75,16 @@ export interface AppSettings {
    * 只有打包版 + publish 配了真实渠道时才会真的去查，开发态一律不查（见 main/services/updater.ts）。
    */
   autoCheckUpdate: boolean
+  /**
+   * 自动备份 SQLite 库到 `backupDir`（默认开：数据安全优先）。
+   * 判重与轮换规则见 shared/backup.ts（纯函数，有单测）。
+   */
+  backupAuto: boolean
+  /**
+   * 备份目录。null/空 = 用默认的 `<userData>/backups`。
+   * 允许指到**别的盘**：和原库同盘时，一次磁盘故障会把两份一起带走。
+   */
+  backupDir: string | null
   recentFiles: RecentFile[]
   /** 最近打开过的文件夹（工作区） */
   recentFolders: RecentFolder[]
@@ -386,6 +396,62 @@ export interface EpubMeta {
   css: string
 }
 
+// ─── 备份（审计 §2 P1：此前没有任何自动备份 / 工作区级导出）─────────────────
+/** 备份目录里的一份库备份 */
+export interface BackupFileInfo {
+  name: string
+  size: number
+  mtimeMs: number
+}
+
+/** 备份现状（设置界面据此显示目录、份数与上次时间） */
+export interface BackupStatus {
+  /** 当前生效的备份目录 */
+  dir: string
+  /** 是否用的默认目录（`<userData>/backups`）—— 默认目录和原库同盘，界面上会提示换盘 */
+  isDefaultDir: boolean
+  auto: boolean
+  keep: number
+  /** 最近一次成功备份的时刻；null = 从来没有过 */
+  lastMs: number | null
+  files: BackupFileInfo[]
+}
+
+/** 一次库备份的结果（失败也返回对象，由界面提示原因） */
+export interface BackupResult {
+  ok: boolean
+  /** 写出的备份文件；失败时为 null */
+  path: string | null
+  bytes: number
+  dir: string
+  kept: number
+  removed: number
+  error?: string
+  /** auto = 启动/定时触发，manual = 用户点按钮 */
+  kind: 'auto' | 'manual'
+}
+
+/** 工作区快照里被跳过的条目统计（跳过了多少要如实告诉用户） */
+export interface SnapshotSkipped {
+  /** 隐藏目录与点文件 */
+  hidden: number
+  /** 写盘临时文件（`*.lumin-tmp`） */
+  temp: number
+  /** 单个超过上限的大文件 */
+  huge: number
+  /** 总量到顶之后剩下的文件 */
+  overflow: number
+}
+
+/** 工作区快照结果 */
+export interface SnapshotResult {
+  path: string
+  files: number
+  bytes: number
+  zipBytes: number
+  skipped: SnapshotSkipped
+}
+
 export type MenuAction =
   | 'new'
   | 'new-window'
@@ -601,6 +667,24 @@ export interface LuminAPI {
     html: (payload: ExportPayload) => Promise<string | null>
     word: (payload: ExportPayload) => Promise<string | null>
     epub: (meta: EpubMeta) => Promise<string | null>
+  }
+  /**
+   * 备份（审计 §2 P1）：定时把 SQLite 库复制到用户指定目录 + 按需导出工作区快照 zip。
+   * 库文件本身就是完整的一份（历史、标签、设置全在里面），所以"备份"= 复制文件。
+   */
+  backup: {
+    /** 现状：目录、份数、上次时间、是否自动 */
+    status: () => Promise<BackupStatus>
+    /** 立刻备份一次（失败也在返回值里，不 reject） */
+    run: () => Promise<BackupResult>
+    /** 选一个备份目录并选中它（取消返回当前状态，dir 不变） */
+    chooseDir: () => Promise<BackupStatus>
+    /** 退回默认目录（`<userData>/backups`） */
+    useDefaultDir: () => Promise<BackupStatus>
+    /** 在文件管理器里打开备份目录；返回空字符串表示成功 */
+    revealDir: () => Promise<string>
+    /** 把当前工作区打成 zip（走另存为对话框；取消返回 null） */
+    snapshotWorkspace: () => Promise<SnapshotResult | null>
   }
   shell: {
     openExternal: (url: string) => void

@@ -17,6 +17,8 @@ import { useSettingsStore } from '../stores/settings'
 import { useFilesStore } from '../stores/files'
 import { useUiStore } from '../stores/ui'
 import { FONT_OPTIONS } from '../../../shared/defaults'
+// 字节数格式化只有一份（审计 §10「重复实现」）：数据库维护与备份共用
+import { formatBytes } from '../../../shared/backup'
 import { ENCODINGS, type EncodingId } from '../../../shared/encodings'
 import { EOL_OPTIONS, eolLabel, type Eol } from '../../../shared/eol'
 
@@ -24,7 +26,13 @@ import { EOL_OPTIONS, eolLabel, type Eol } from '../../../shared/eol'
 const HISTORY_LIMIT_CHOICES = [10, 20, 30, 50, 100]
 const HISTORY_AGE_CHOICES = [7, 30, 90, 365]
 import { LANGUAGE_OPTIONS } from '../i18n'
-import type { EditorMode, LinkCreateMode, LinkHistoryEntry, ThemeMode } from '../../../shared/types'
+import type {
+  BackupStatus,
+  EditorMode,
+  LinkCreateMode,
+  LinkHistoryEntry,
+  ThemeMode
+} from '../../../shared/types'
 import Icon from '../components/Icon.vue'
 import SettingSwitch from '../components/SettingSwitch.vue'
 import SettingsKeymap from '../components/SettingsKeymap.vue'
@@ -223,6 +231,8 @@ watch(
   () => [ui.settingsOpen, activeTab.value] as const,
   ([open, tab]) => {
     if (open && tab === 'links') void loadLinkHistory()
+    // 备份现状（目录/份数/上次时间）也在「通用」页签里，同样每次刷新
+    if (open && tab === 'general') void refreshBackup()
   },
   { immediate: true }
 )
@@ -370,11 +380,135 @@ async function runDbMaintenance(kind: 'check' | 'rebuild' | 'vacuum'): Promise<v
   }
 }
 
-/** 字节数 → 人读（KB/MB）：只用于维护结果的提示 */
-function formatBytes(n: number): string {
-  if (n < 1024) return `${n} B`
-  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`
-  return `${(n / 1024 / 1024).toFixed(1)} MB`
+/** 字节数 → 人读：**唯一实现**在 shared/backup.ts（备份与数据库维护两处都用它） */
+
+// ─── 备份（审计 §2 P1：此前没有任何自动备份 / 工作区级导出）────────────────────
+// 两条路：① 主进程每 24 小时把 SQLite 库复制到 `backupDir`（保留 7 份）；
+// ② 用户点一下把整个工作区打成 zip。这里只负责显示现状 + 触发，判断都在主进程。
+const backupState = ref<BackupStatus | null>(null)
+const backupBusy = ref(false)
+
+async function refreshBackup(): Promise<void> {
+  try {
+    backupState.value = await window.luminAPI.backup.status()
+  } catch {
+    backupState.value = null
+  }
+}
+
+/** 备份目录：默认 = `<userData>/backups`（与程序数据同盘，界面上提示换盘） */
+const backupDirLabel = computed(() => {
+  const s = backupState.value
+  if (!s) return ''
+  return s.isDefaultDir ? t('settings.backupDefaultDir') : s.dir
+})
+
+/** 上次备份时刻（语言本地化；从没备过给一句明确的话，而不是"1970"） */
+const backupLastLabel = computed(() => {
+  const ms = backupState.value?.lastMs
+  if (!ms) return t('settings.backupLastNever')
+  return t('settings.backupLastAt', { when: new Date(ms).toLocaleString() })
+})
+
+/** 备份目录里现存的份数 */
+const backupCountLabel = computed(() =>
+  t('settings.backupCount', { n: backupState.value?.files.length ?? 0 })
+)
+
+async function runBackupNow(): Promise<void> {
+  if (backupBusy.value) return
+  backupBusy.value = true
+  try {
+    const r = await window.luminAPI.backup.run()
+    if (r.ok) {
+      ui.toast(
+        t('settings.backupDone', {
+          name: r.path ? r.path.split(/[\\/]/).pop() : '',
+          size: formatBytes(r.bytes)
+        }),
+        'success'
+      )
+    } else {
+      ui.toast(t('settings.backupFailed', { reason: r.error ?? '' }), 'error')
+    }
+    await refreshBackup()
+  } finally {
+    backupBusy.value = false
+  }
+}
+
+/**
+ * 把主进程那边的备份口径**同步回 settings store**。
+ *
+ * 为什么必须有这一步：`backup:chooseDir` 是直接写 kv 的（它不经过 store），
+ * 而 store 的 `persist()` 会把**整份** AppSettings 回写 —— store 里的 `backupDir`
+ * 还停在旧值（默认 profile 是 null），于是用户选完目录之后只要再动任何一个设置开关，
+ * 目录就被悄悄打回默认。实测症状就是「选了别的盘，重启后变回默认目录」。
+ */
+function syncBackupSettings(): void {
+  const s = backupState.value
+  if (!s) return
+  settings.$patch({ backupDir: s.isDefaultDir ? null : s.dir, backupAuto: s.auto })
+}
+
+async function chooseBackupDir(): Promise<void> {
+  if (backupBusy.value) return
+  backupBusy.value = true
+  try {
+    backupState.value = await window.luminAPI.backup.chooseDir()
+    syncBackupSettings()
+    await refreshBackup()
+  } finally {
+    backupBusy.value = false
+  }
+}
+
+async function useDefaultBackupDir(): Promise<void> {
+  backupState.value = await window.luminAPI.backup.useDefaultDir()
+  syncBackupSettings()
+  await refreshBackup()
+}
+
+async function revealBackupDir(): Promise<void> {
+  await window.luminAPI.backup.revealDir()
+}
+
+/**
+ * 导出工作区快照（zip）。
+ * 被跳过的条目要**如实报出来**：用户以为备份完整、真出事时才发现少了一半，
+ * 比一开始就知道"跳过了 12 个大文件"糟糕得多。
+ */
+async function exportWorkspaceSnapshot(): Promise<void> {
+  if (backupBusy.value) return
+  backupBusy.value = true
+  try {
+    const r = await window.luminAPI.backup.snapshotWorkspace()
+    if (!r) return // 另存为对话框取消
+    const skipped = r.skipped.hidden + r.skipped.temp + r.skipped.huge + r.skipped.overflow
+    ui.toast(
+      t('settings.backupSnapshotDone', {
+        n: r.files,
+        size: formatBytes(r.zipBytes),
+        skipped: skipped ? t('settings.backupSnapshotSkipped', { n: skipped }) : ''
+      }),
+      'success'
+    )
+  } catch (err) {
+    const reason = err instanceof Error ? err.message : String(err)
+    ui.toast(
+      t('settings.backupSnapshotFailed', {
+        reason:
+          reason === 'WORKSPACE_NOT_OPEN'
+            ? t('settings.backupNoWorkspace')
+            : reason === 'WORKSPACE_EMPTY'
+              ? t('settings.backupSnapshotEmpty')
+              : reason
+      }),
+      'error'
+    )
+  } finally {
+    backupBusy.value = false
+  }
 }
 
 function sectionTitle(id: string): string {
@@ -799,6 +933,91 @@ function formatTime(ms: number): string {
                             @update:model-value="(v) => settings.set('autoCheckUpdate', v)"
                           />
                         </div>
+                      </div>
+                    </details>
+
+                    <!-- 备份（审计 §2 P1）：历史库此前是**唯一副本**，且和文档躺在同一个盘 -->
+                    <details class="set-fold" data-backup-block>
+                      <summary>
+                        <Icon name="chevron-right" :size="13" class="set-fold-chevron" />
+                        {{ t('settings.backup') }}
+                      </summary>
+                      <div class="set-fold-body">
+                        <p class="set-row-desc">{{ t('settings.backupHint') }}</p>
+
+                        <div class="set-row mt-3" :title="t('settings.backupAutoDesc')">
+                          <div>
+                            <p class="set-row-label">{{ t('settings.backupAuto') }}</p>
+                            <p class="set-row-desc">{{ t('settings.backupAutoDesc') }}</p>
+                          </div>
+                          <SettingSwitch
+                            :model-value="settings.backupAuto !== false"
+                            :label="t('settings.backupAuto')"
+                            @update:model-value="
+                              (v) => {
+                                settings.set('backupAuto', v)
+                                void refreshBackup()
+                              }
+                            "
+                          />
+                        </div>
+
+                        <div class="set-row">
+                          <div class="min-w-0">
+                            <p class="set-row-label">{{ t('settings.backupDir') }}</p>
+                            <p class="set-row-desc break-all" data-backup-dir>
+                              {{ backupDirLabel }}
+                            </p>
+                            <p v-if="backupState?.isDefaultDir" class="set-row-desc">
+                              {{ t('settings.backupDirSameDisk') }}
+                            </p>
+                            <p class="set-row-desc" data-backup-count>
+                              {{ backupCountLabel }} · {{ backupLastLabel }}
+                            </p>
+                          </div>
+                          <div class="flex shrink-0 flex-wrap justify-end gap-2">
+                            <button
+                              class="rounded-lg border border-edge px-3 py-1.5 text-[12.5px] text-ink-2 transition-colors hover:border-edge-strong hover:text-ink disabled:opacity-50"
+                              :disabled="backupBusy"
+                              data-backup-choose-dir
+                              @click="chooseBackupDir()"
+                            >
+                              {{ t('settings.backupChooseDir') }}
+                            </button>
+                            <button
+                              v-if="backupState && !backupState.isDefaultDir"
+                              class="rounded-lg border border-edge px-3 py-1.5 text-[12.5px] text-ink-2 transition-colors hover:border-edge-strong hover:text-ink"
+                              data-backup-default-dir
+                              @click="useDefaultBackupDir()"
+                            >
+                              {{ t('settings.backupUseDefault') }}
+                            </button>
+                            <button
+                              class="rounded-lg border border-edge px-3 py-1.5 text-[12.5px] text-ink-2 transition-colors hover:border-edge-strong hover:text-ink"
+                              data-backup-open-dir
+                              @click="revealBackupDir()"
+                            >
+                              {{ t('settings.backupOpenDir') }}
+                            </button>
+                            <button
+                              class="rounded-lg border border-edge px-3 py-1.5 text-[12.5px] text-ink-2 transition-colors hover:border-edge-strong hover:text-ink disabled:opacity-50"
+                              :disabled="backupBusy"
+                              data-backup-run
+                              @click="runBackupNow()"
+                            >
+                              {{ t('settings.backupRunNow') }}
+                            </button>
+                            <button
+                              class="rounded-lg border border-edge px-3 py-1.5 text-[12.5px] text-ink-2 transition-colors hover:border-edge-strong hover:text-ink disabled:opacity-50"
+                              :disabled="backupBusy"
+                              data-backup-snapshot
+                              @click="exportWorkspaceSnapshot()"
+                            >
+                              {{ t('settings.backupSnapshot') }}
+                            </button>
+                          </div>
+                        </div>
+                        <p class="set-row-desc">{{ t('settings.backupSnapshotDesc') }}</p>
                       </div>
                     </details>
 

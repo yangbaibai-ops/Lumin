@@ -86,6 +86,17 @@ export const defaultSettings: AppSettings = {
   historyMaxAgeDays: HISTORY_MAX_AGE_MS / (24 * 60 * 60 * 1000),
   // 自动检查更新：默认关 —— 用户没要求就别联网，也别让通知中心多出无意义卡片
   autoCheckUpdate: false,
+  /**
+   * 自动备份：默认**开**（数据安全优先）。
+   *
+   * 本地历史是"写错了还能回去"的最后一层，而它自己就躺在 `%APPDATA%\Lumin` 里，
+   * 和历史库同一个盘、同一个目录 —— 没有副本。默认开一天一份、保留 7 份，
+   * 代价是几十 MB 磁盘，换来的是磁盘误删/同步盘回滚时的兜底（见 main/services/dbBackup.ts）。
+   * 已存在的用户设置不受影响（落在 kv 里，只有全新 profile 才拿到这个默认值）。
+   */
+  backupAuto: true,
+  /** 备份目录：null = 默认的 `<userData>/backups`（用户可以指到别的盘，界面里可选） */
+  backupDir: null,
   recentFiles: [],
   recentFolders: [],
   pinnedFiles: [],

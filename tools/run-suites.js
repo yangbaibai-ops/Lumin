@@ -52,6 +52,10 @@ const DEFAULT_SUITES = [
   // ⚠️ 自管实例的套件必须排在**最前面**：它们自己起/杀 Electron（3 轮），
   //    需要 9222 空闲，所以运行器不能先给它起一个实例。
   '_verify-session-last-closed.js',
+  // 备份验收也要自管实例：它靠 `LUMIN_EXPORT_DIR`（仅开发态的"另存为"旁路，
+  // 见 src/main/testPaths.ts）跳过原生对话框，而环境变量必须在**实例启动前**给到。
+  // 它用 9234，所以不占运行器的 9222。
+  '_verify-backup.js',
   '_verify-md-fidelity.js', // Markdown 往返保真（Wave 1）
   '_verify-draft-banner.js', // 草稿横幅（未命名缓冲区的归属）
   '_verify-new-document.js', // 新建 / Ctrl+N / Ctrl+S 落点
@@ -120,7 +124,9 @@ const DEFAULT_SUITES = [
 const SELF_MANAGED = new Set([
   '_verify-session-last-closed.js',
   // 它自己起「首个实例 + 第二个实例」，并用 9231 而不是 9222，故不占运行器的实例
-  '_verify-single-instance.js'
+  '_verify-single-instance.js',
+  // 它要用 LUMIN_EXPORT_DIR 起实例（工作区快照会弹原生「另存为」），端口 9234
+  '_verify-backup.js'
 ])
 
 function parseArgs(argv) {

@@ -27,6 +27,7 @@ import { recordBuildStamp, recordLaunchIntent } from './services/buildStamp'
 import { devProfileDir } from './devProfile'
 import { parseLaunchIntent, type LaunchIntent } from './services/launchIntent'
 import { initUpdater } from './services/updater'
+import { startAutoBackup } from './services/dbBackup'
 import { bindWindowScope, scopeOfSlot } from './services/windowScope'
 import * as pathGrants from './services/pathGrants'
 import { defaultSettings } from '../shared/defaults'
@@ -488,6 +489,9 @@ app.whenReady().then(() => {
   // 自动更新：默认不检查（设置里关着、或 publish 还是占位地址时都不会联网）。
   // 放在窗口创建之后：更新检查再重要也不该跟首屏抢时间。
   initUpdater()
+  // 自动备份数据库（审计 §2 P1）：延迟 20 秒再跑第一次，之后每 6 小时看一次该不该备。
+  // 同样放在窗口之后 —— 复制库文件、checkpoint WAL 都会占用主进程，不该压在首屏上。
+  startAutoBackup()
 
   app.on('activate', function () {
     if (BrowserWindow.getAllWindows().length === 0) createWindow({ sessionSlot: claimFreshSlot() })

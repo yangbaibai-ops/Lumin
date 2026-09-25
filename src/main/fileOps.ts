@@ -13,6 +13,7 @@ import type { FileNode, WorkspaceDoc } from '../shared/types'
 import type { ConcreteEncoding, EncodingId } from '../shared/encodings'
 import { detectEol, toEol, toLf, type Eol } from '../shared/eol'
 import { isMediaExtension, isWithinAnyRoot } from '../shared/media'
+import { TEMP_SUFFIX_RE } from '../shared/tempName'
 // 「哪些文件算文档」的唯一实现在 shared（可单测）：fileOps 只是**重新导出**给历史调用点
 import { MD_EXT_RE } from '../shared/docExt'
 
@@ -274,6 +275,32 @@ export async function writeBinary(filePath: string, bytes: Uint8Array): Promise<
 }
 
 /**
+ * 把已有文件**原子地**复制到目标路径（备份库文件用）。
+ *
+ * 为什么不复用 `writeBinary`：那要求先把整份内容读进内存，而 SQLite 库可以有几百 MB，
+ * 备份时把库读进 Buffer 只是白白吃一份内存。`fs.copyFile` 让内核搬字节，我们只补上
+ * `writeFile` 那套同样的纪律：**同目录临时文件 → fsync → rename**，
+ * 这样备份目录里永远不会出现一个"写到一半的库"（用户以为有备份、其实那份是坏的）。
+ */
+export async function copyFileAtomic(source: string, dest: string): Promise<void> {
+  await fs.mkdir(path.dirname(dest), { recursive: true })
+  const tmp = `${dest}.${randomUUID().slice(0, 8)}.lumin-tmp`
+  try {
+    await fs.copyFile(source, tmp)
+    const handle = await fs.open(tmp, 'r+')
+    try {
+      await handle.sync()
+    } finally {
+      await handle.close()
+    }
+    await fs.rename(tmp, dest)
+  } catch (err) {
+    await fs.rm(tmp, { force: true }).catch(() => {})
+    throw err
+  }
+}
+
+/**
  * 生成不冲突的文件名（`note.png` → `note-1.png`），与「新建文件」同一套编号规则。
  * 只用于插入图片这类"给我一个能用的名字"的场景。
  */
@@ -299,8 +326,9 @@ export async function importImage(source: string, dir: string, baseName: string)
   return target
 }
 
-/** 写盘临时文件名的后缀（`<name>.<8位随机>.lumin-tmp`）—— 清理扫描与文档口径共用一份 */
-export const TEMP_SUFFIX_RE = /\.[0-9a-f]{8}\.lumin-tmp$/i
+/** 写盘临时文件名的后缀（`<name>.<8位随机>.lumin-tmp`）—— 唯一实现在 shared/tempName.ts，
+ *  另一处读者是 `shared/backup.ts`（导出工作区快照时跳过临时文件）；这里重新导出保持既有调用点。 */
+export { TEMP_SUFFIX_RE }
 
 /**
  * 清理目录树里残留的写盘临时文件（打开工作区时跑一次）。

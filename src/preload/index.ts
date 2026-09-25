@@ -155,6 +155,15 @@ const api: LuminAPI = {
     word: (payload: ExportPayload) => ipcRenderer.invoke('export:word', payload),
     epub: (meta: EpubMeta) => ipcRenderer.invoke('export:epub', meta)
   },
+  // 备份（审计 §2 P1）：库定时备份到指定目录 + 工作区快照 zip
+  backup: {
+    status: () => ipcRenderer.invoke('backup:status'),
+    run: () => ipcRenderer.invoke('backup:run'),
+    chooseDir: () => ipcRenderer.invoke('backup:chooseDir'),
+    useDefaultDir: () => ipcRenderer.invoke('backup:useDefaultDir'),
+    revealDir: () => ipcRenderer.invoke('backup:revealDir'),
+    snapshotWorkspace: () => ipcRenderer.invoke('backup:snapshotWorkspace')
+  },
   shell: {
     openExternal: (url) => ipcRenderer.send('shell:openExternal', url),
     openPath: (path) => ipcRenderer.invoke('shell:openPath', path)

@@ -4,6 +4,10 @@ import fs from 'fs/promises'
 import path from 'path'
 import { mainLanguage, mainT } from './i18n'
 import * as fileOps from './fileOps'
+// ZIP 写入器抽到 main/zip.ts（导出与工作区备份共用；STORE / DEFLATE 两种）
+import { zipStore } from './zip'
+// 验收旁路（仅开发态）也抽出去了：导出与备份都要用它跳过原生对话框
+import { testOutputDir } from './testPaths'
 // HTML 转义唯一实现在 shared/html.ts：导出模板里的标题会进 <title>/<dc:title> 与属性位置，
 // 少转引号等于让标题里的 `"` 直接闭合标签（审计 §10「重复实现」）
 import { escapeHtml } from '../shared/html'
@@ -20,93 +24,6 @@ import {
 } from '../shared/epub'
 import type { ExportPayload, EpubMeta } from '../shared/types'
 
-// ─── 最小 ZIP 写入器（STORE 存储，无压缩 —— 足以生成合法 EPUB）─────────────
-const crcTable = (() => {
-  const table = new Uint32Array(256)
-  for (let n = 0; n < 256; n++) {
-    let c = n
-    for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1
-    table[n] = c >>> 0
-  }
-  return table
-})()
-
-function crc32(buf: Buffer): number {
-  let c = 0xffffffff
-  for (let i = 0; i < buf.length; i++) c = crcTable[(c ^ buf[i]) & 0xff] ^ (c >>> 8)
-  return (c ^ 0xffffffff) >>> 0
-}
-
-interface ZipEntry {
-  name: string
-  data: Buffer
-}
-
-function zipStore(entries: ZipEntry[]): Buffer {
-  const chunks: Buffer[] = []
-  const central: Buffer[] = []
-  let offset = 0
-  const now = new Date()
-  const dosTime =
-    ((now.getHours() << 11) | (now.getMinutes() << 5) | (now.getSeconds() >> 1)) & 0xffff
-  const dosDate =
-    (((now.getFullYear() - 1980) << 9) | ((now.getMonth() + 1) << 5) | now.getDate()) & 0xffff
-
-  for (const entry of entries) {
-    const nameBuf = Buffer.from(entry.name, 'utf-8')
-    const crc = crc32(entry.data)
-    const local = Buffer.alloc(30)
-    local.writeUInt32LE(0x04034b50, 0)
-    local.writeUInt16LE(20, 4) // version
-    local.writeUInt16LE(0x0800, 6) // utf-8 flag
-    local.writeUInt16LE(0, 8) // store
-    local.writeUInt16LE(dosTime, 10)
-    local.writeUInt16LE(dosDate, 12)
-    local.writeUInt32LE(crc, 14)
-    local.writeUInt32LE(entry.data.length, 18)
-    local.writeUInt32LE(entry.data.length, 22)
-    local.writeUInt16LE(nameBuf.length, 26)
-    local.writeUInt16LE(0, 28)
-    chunks.push(local, nameBuf, entry.data)
-
-    const cen = Buffer.alloc(46)
-    cen.writeUInt32LE(0x02014b50, 0)
-    cen.writeUInt16LE(20, 4)
-    cen.writeUInt16LE(20, 6)
-    cen.writeUInt16LE(0x0800, 8)
-    cen.writeUInt16LE(0, 10)
-    cen.writeUInt16LE(dosTime, 12)
-    cen.writeUInt16LE(dosDate, 14)
-    cen.writeUInt32LE(crc, 16)
-    cen.writeUInt32LE(entry.data.length, 20)
-    cen.writeUInt32LE(entry.data.length, 24)
-    cen.writeUInt16LE(nameBuf.length, 28)
-    cen.writeUInt32LE(offset, 42)
-    central.push(cen, nameBuf)
-    offset += 30 + nameBuf.length + entry.data.length
-  }
-
-  const centralBuf = Buffer.concat(central)
-  const end = Buffer.alloc(22)
-  end.writeUInt32LE(0x06054b50, 0)
-  end.writeUInt16LE(entries.length, 8)
-  end.writeUInt16LE(entries.length, 10)
-  end.writeUInt32LE(centralBuf.length, 12)
-  end.writeUInt32LE(offset, 16)
-  return Buffer.concat([...chunks, centralBuf, end])
-}
-
-/**
- * 验收旁路：`LUMIN_EXPORT_DIR` 存在（且**不是打包版**）时跳过「另存为」对话框，
- * 直接写进该目录的默认文件名。存在的理由：原生对话框自动化取消不了，
- * 没有这条路，导出这条功能就只能靠人眼看（审计 §7 第 18 条要求"导出质量"可验）。
- * 与 `LUMIN_TRUSTED_PATHS` 同一口径：**仅开发态生效**，打包版忽略。
- */
-function exportTestDir(): string | null {
-  const dir = process.env['LUMIN_EXPORT_DIR']
-  return dir && !app.isPackaged ? dir : null
-}
-
 // ─── 通用：保存对话框 + 写入 ───────────────────────────────────────────────
 async function saveWithDialog(
   defaultName: string,
@@ -114,7 +31,7 @@ async function saveWithDialog(
   data: Buffer
 ): Promise<string | null> {
   const win = BrowserWindow.getFocusedWindow()
-  const testDir = exportTestDir()
+  const testDir = testOutputDir()
   const result = testDir
     ? { canceled: false, filePath: path.join(testDir, defaultName) }
     : await dialog.showSaveDialog(win!, {
@@ -167,7 +84,7 @@ export async function exportPdf(
   pdfSettings: { margin: number; pageSize: 'A4' | 'A5' | 'Letter' }
 ): Promise<string | null> {
   const win = BrowserWindow.getFocusedWindow()
-  const testDir = exportTestDir()
+  const testDir = testOutputDir()
   const defaultName = `${payload.title || 'document'}.pdf`
   const result = testDir
     ? { canceled: false, filePath: path.join(testDir, defaultName) }
@@ -234,7 +151,7 @@ export async function exportPdf(
 }
 
 export async function exportEpub(meta: EpubMeta): Promise<string | null> {
-  const testDir = exportTestDir()
+  const testDir = testOutputDir()
   const defaultName = `${meta.title || 'document'}.epub`
   const result = testDir
     ? { canceled: false, filePath: path.join(testDir, defaultName) }
