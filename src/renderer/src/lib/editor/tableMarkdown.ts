@@ -32,7 +32,8 @@ import { Table } from '@tiptap/extension-table'
 import { DOMSerializer, Fragment } from '@tiptap/pm/model'
 import type { Node as PMNode } from '@tiptap/pm/model'
 import type { MarkdownSerializerStateLike } from './markdownTypes'
-import { delimiterRow, escapeCellPipes, type CellAlign } from './tableAlign'
+// 显式 .ts：本模块要被 tests/tableMarkdown.test.mjs 直接加载（Node 的 ESM 不做扩展名补全）
+import { delimiterRow, escapeCellPipes, type CellAlign } from './tableAlign.ts'
 
 /**
  * 表格能否用 Markdown 管道语法表达：
@@ -134,7 +135,12 @@ function renderCell(state: MarkdownSerializerStateLike, cell: PMNode): void {
   state.out = state.out.slice(0, start) + escapeCellPipes(rendered)
 }
 
-function serializeTable(state: MarkdownSerializerStateLike, node: PMNode): void {
+/**
+ * 表格 → Markdown 的**纯序列化函数**（导出给 `tests/tableMarkdown.test.mjs` 直接调，
+ * 不必起编辑器：它只依赖 `state` 的几个方法、`delimiterRow`/`escapeCellPipes` 与节点结构）。
+ * 复杂表格退回 HTML 的那条分支需要 DOM，单测里给 `document` 一个最小桩即可。
+ */
+export function serializeTable(state: MarkdownSerializerStateLike, node: PMNode): void {
   if (!isSimpleTable(node)) {
     writeTableHtml(state, node)
     return

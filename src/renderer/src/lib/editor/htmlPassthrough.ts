@@ -21,7 +21,8 @@
 //   * 块级 HTML 是原子节点：不能在 WYSIWYG 里就地编辑（改它走源码模式），
 //     与 front matter 节点同一套语义。
 import { Mark, Node } from '@tiptap/core'
-import { escapeHtml } from '../utils/html'
+// 显式 .ts：本模块要被 tests/markdownRulePatches.test.mjs 直接加载（Node 的 ESM 不做扩展名补全）
+import { escapeHtml } from '../utils/html.ts'
 
 /** markdown-it 实例（只用到 renderer.rules） */
 interface MdHtmlInstance {

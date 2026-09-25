@@ -29,8 +29,8 @@ import type {
  *    → 给 taskList 也挂上同样的 `tight` 属性。
  */
 
-/** markdown-it 的渲染器规则会被反复包装：同一个函数只补一次 */
-function patchBulletListOpen(md: MarkdownItLike): void {
+/** markdown-it 的渲染器规则会被反复包装：同一个函数只补一次（导出给单测直接调） */
+export function patchBulletListOpen(md: MarkdownItLike): void {
   const original = md.renderer.rules.bullet_list_open as MarkdownItRendererRule | undefined
   if (original && (original as MarkdownItRendererRule & PatchedRule).__luminPatched) return
   const wrapped: MarkdownItRendererRule = (tokens, idx, options, env, self) => {
