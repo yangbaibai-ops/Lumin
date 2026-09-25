@@ -358,6 +358,30 @@ export const useFilesStore = defineStore('files', {
       // 换文档之前先把编辑器里挂起的变更落地（防抖 250ms 窗口内的输入否则会随旧实例一起消失）。
       // 这是**兜底**：会弹「未保存」确认的那些入口在 `confirmDiscardIfDirty` 里已经刷过一次。
       flushEditorBeforeReplace()
+      /**
+       * ─── 同一路径再次打开（审计 §3 P1）─────────────────────────────────────────
+       * 树/列表双击当前正在编辑的那一条、或菜单里的"重新打开"，走的都是这条路。旧行为：
+       *   * 调用点的脏确认写的是 `files.dirty && files.current?.path !== path` ——
+       *     **同一路径直接放行**（那一句的前提是"同路径=没换文档，不用问"）；
+       *   * 于是下面重新 read 磁盘内容 + `noteExternalReplace()`，编辑器按世代号把
+       *     **磁盘上的旧版**回灌进来 —— 用户看到的是"我刚写的自己没了"，
+       *     若接着触发保存，磁盘也会退回旧版（草稿还在，但没有任何提示）。
+       *
+       * 现在在**唯一入口**（本函数）上补两条，所有调用点自动受益：
+       *   1. 同路径 + 脏 → 先问（确认走原来的换文档语义；取消就原样返回，内容一个字不动）；
+       *   2. 同路径 + 干净 → **直接短路**：内容与磁盘本来就一致，重读只会白跑一遍
+       *      read/upsert/最近列表，还会无谓地重建编辑器视图。
+       * 注意判据用 `samePath`（Windows 大小写/分隔符不敏感），不能用 `===`。
+       */
+      const same = samePath(this.current?.path, path)
+      if (same) {
+        if (this.dirty) {
+          if (!(await confirmDiscardIfDirty(() => this.dirty))) return false
+          if (!samePath(this.current?.path, path)) return false // 问的期间文档被换掉了
+        } else {
+          return true
+        }
+      }
       try {
         // 编码走设置里的「默认编码」（默认 auto = 主进程按判定链猜）。
         // softDefault=true：这是**软默认** —— 该文件已记录的编码优先，既避免「改了全局默认后

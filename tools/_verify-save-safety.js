@@ -114,6 +114,13 @@ async function main() {
     const c = JSON.parse(
       await ev(`(async () => {
         const f = window.__L.files()
+        /**
+         * 先把 alpha 刷干净再重开 —— 它此刻是**脏**的（B 段敲了 600 个字符），
+         * 而"同一路径再次打开"按新语义会**先问**（审计 §3 P1：不许静默回滚未落盘的编辑），
+         * 不先保存的话这里会弹出确认把整套件卡住。
+         * C 段真正要测的是"点另一个文件时 flush 挂起的编辑器变更"，这个前置动作不该抢戏。
+         */
+        await f.save()
         await f.openPath(${JSON.stringify(fileA)})
         await new Promise((r) => setTimeout(r, 400))
         const ed = window.__L.ed()
@@ -264,6 +271,67 @@ async function main() {
       'successful-save-clears-failure-state',
       f2.ok === true && f2.saveError === null && f2.cellError === null && f2.dirty === false,
       JSON.stringify(f2)
+    )
+
+    // ── G. 同一路径再次打开：脏了必须先问，干净时直接短路（审计 §3 P1）─────────
+    // 旧行为：调用点的脏确认写的是 `dirty && current.path !== path` —— 同一路径直接放行，
+    // 于是重新读盘 + 外部替换把**磁盘上的旧版**回灌进来，用户刚写的就没了。
+    const g1 = JSON.parse(
+      await ev(`(async () => {
+        const f = window.__L.files()
+        f.setContent('未落盘的新内容-G', 'external')
+        window.__pendingOpen = 'pending'
+        f.openPath(f.current.path).then((r) => { window.__pendingOpen = r })
+        await new Promise((r) => setTimeout(r, 400))
+        return JSON.stringify({
+          asked: !!window.__L.ui().confirmState,
+          content: f.current.content,
+          result: window.__pendingOpen
+        })
+      })()`)
+    )
+    report.note('G1 ' + JSON.stringify(g1))
+    report.check(
+      'same-path-reopen-asks-when-dirty',
+      g1.asked === true && g1.result === 'pending',
+      JSON.stringify({ asked: g1.asked, result: g1.result })
+    )
+    await ev(
+      `(() => { const ui = window.__L.ui(); if (ui.confirmState) ui.resolveConfirm(false); return 'ok' })()`
+    )
+    await sleep(500)
+    const g2 = JSON.parse(
+      await ev(`(() => JSON.stringify({
+        content: window.__L.files().current.content,
+        dirty: window.__L.files().dirty,
+        result: window.__pendingOpen
+      }))()`)
+    )
+    report.check(
+      'same-path-reopen-cancel-keeps-edits',
+      g2.result === false && g2.content === '未落盘的新内容-G' && g2.dirty === true,
+      JSON.stringify(g2)
+    )
+    // 干净时同路径重开：直接短路 —— 用「同一个文档对象」证明它没有重读（重读会新建对象）
+    const g3 = JSON.parse(
+      await ev(`(async () => {
+        const f = window.__L.files()
+        await f.save()
+        f.current.__mark = 'kept'
+        const ok = await f.openPath(f.current.path)
+        return JSON.stringify({
+          ok,
+          asked: !!window.__L.ui().confirmState,
+          sameObject: f.current.__mark === 'kept',
+          content: f.current.content
+        })
+      })()`)
+    )
+    report.note('G3 ' + JSON.stringify(g3))
+    report.check(
+      'same-path-reopen-clean-short-circuits',
+      g3.ok === true && g3.asked === false && g3.sameObject === true,
+      JSON.stringify(g3)
     )
   } finally {
     // F 段把 alpha.md 设成了只读：先恢复可写，否则 Windows 上删目录会失败
