@@ -52,16 +52,21 @@ main().then((c) => process.exit(c)).catch(fatal)
    `_regress-source-roundtrip` / `_verify-find-replace` 都踩过）。
 10. **SKIP 不算失败**（运行器口径）：环境不支持就如实 `report.skip(...)`，别把 SKIP 写成 FAIL，
    也别用退出码表达 SKIP —— 运行器只把「退出码非 0」与「打印过 FAIL 行」判红。
+11. **要验"打包态"就对着产物跑，别在 dev 里推理**：`_verify-packaging-fast.js`（自管实例、端口 9225）
+    只对着 `dist/win-unpacked/Lumin.exe` 断言 CSP / `lumin-file://` 图片 / asar 懒加载 / `isPackaged`。
+    它**自己不做构建**：没有产物就如实 SKIP 并提示先跑 `npm run build:unpack`。
+    这条规矩是踩出来的：打包态**首屏相对图片**曾因"文档 → 窗口"登记慢一拍而 404，
+    而浏览器对失败的 `<img>` 不会重试 —— dev 里永远看不到，只有对着产物跑才暴露（已修）。
 
 ## 现状与迁移进度
 
 <!-- facts:begin（由 tools/doc-facts.js 生成，勿手改）-->
 
-- `tools/` 共 **188 个文件 / 41794 行**（`.js`/`.mjs`/`.ps1`/`.md`）；
-- 套件文件 **106 个**（_regress-* 6 / _repro-* 9 / _verify-* 91），默认矩阵 **58 个**，分档：fast 58 / needs-build 43 / needs-dev 4 / manual 1；
+- `tools/` 共 **189 个文件 / 42082 行**（`.js`/`.mjs`/`.ps1`/`.md`）；
+- 套件文件 **107 个**（_regress-* 6 / _repro-* 9 / _verify-* 92），默认矩阵 **58 个**，分档：fast 58 / needs-build 44 / needs-dev 4 / manual 1；
 - 另有 **7 个**探针/遗留脚本默认只列不判（`--probe` 显式跑）；
 - 单元测试 **64 个** `tests/*.test.mjs`；Markdown 往返夹具 **31 份**（exact 16 / normalized 15）；
-- `docs/manual/` **8 份 / 4374 行**，`docs/` 下共 **20 份** md。
+- `docs/manual/` **8 份 / 4375 行**，`docs/` 下共 **20 份** md。
 
 <!-- facts:end -->
 

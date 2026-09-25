@@ -143,7 +143,9 @@ const SELF_MANAGED = new Set([
   // 它要用 LUMIN_EXPORT_DIR 起实例（工作区快照会弹原生「另存为」），端口 9234
   '_verify-backup.js',
   // 它要在实例起来**之前**往 --user-data-dir 里种草稿夹具（ps1 会先删目录），端口 9235
-  '_verify-draft-gc.js'
+  '_verify-draft-gc.js',
+  // 它起的是**打包后的 exe**（dist/win-unpacked），端口 9225，而且不能用运行器的隔离 profile
+  '_verify-packaging-fast.js'
 ])
 
 function parseArgs(argv) {

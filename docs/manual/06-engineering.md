@@ -15,7 +15,8 @@
 | 单元 | `node --test`（`tests/*.test.mjs`，三百多条断言） | 纯函数与数据规则：草稿/会话/编码/行尾/内联标记/表格对齐/查找替换/大文档降级/语言包与 IPC 契约/路径与授权闸/工具链自检 | 每次 `npm run ci` |
 | 静态门禁 | 三条（`docsClaims` / `encodingGuard` / `i18nHardcoded`+`i18nKeys`+`tooling`） | 文档不许出现已移除功能且引用的路径必须存在；`.ps1` 含非 ASCII 必须有 BOM；界面文案不得硬编码中文、语言包不得有死键；套件清单与分档不许漂 | 每次 `npm run ci` |
 | E2E（CDP） | `tools/run-suites.js` + `tools/lib/harness.js`（79 个套件文件） | 在**隔离实例**（临时 userData + 调试端口）里驱动真实页面：编辑面往返、文件树、会话恢复、导出、主题、无障碍、i18n 三语、窗口与通知…… | 本地按需：默认矩阵 43 条，`--all` 全量 |
-| 打包 | `_verify-packaging.js`（manual 档） | 真打包 + 启动 exe + 打包态 CSP | 发版前手动 |
+| 打包 | `_verify-packaging-fast.js`（**快组**，自管实例端口 9225；`needs-build` 档） | 只对着 `dist/win-unpacked` 产物：`<meta>` CSP 逐字等于 `shared/csp.ts`、CSP 真的拦远程 `connect-src`、`lumin-file://` 本地图片能显示、asar 里的懒加载 chunk 可用、`app.isPackaged` 为真 | 发版前 / 改到主进程与 CSP 时：先 `npm run build:unpack`，再 `--suite=_verify-packaging-fast.js` |
+| 打包（慢组） | `_verify-packaging.js`（manual 档） | 真打包全链路：exe 内嵌图标逐像素、裸路径参数、第二实例转发、NSIS 产物与 SHA256、配置单一来源 | 发版前手动 |
 
 **CI 跑什么、不跑什么、为什么**：`.github/workflows/ci.yml` 只跑类型/风格/单测/构建 ——
 CDP 套件需要真实桌面会话（窗口焦点、单实例锁、真实按键），在无头 runner 上不稳，硬跑只会

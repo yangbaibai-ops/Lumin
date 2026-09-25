@@ -239,6 +239,23 @@ function createWindow(options: WindowOpenOptions = {}): BrowserWindow {
     }
   })
 
+  /**
+   * 「哪个窗口开着哪个文档」这张表**当场登记启动参数里的文件**（审计 §6 P2 打包态覆盖时实测到的缺口）。
+   *
+   * 为什么不能只靠渲染层上报（`renderer/lib/openFile.ts` 的 `installOpenDocTracking`）：
+   * 那条 IPC 要等窗口加载完、首次渲染才到，而这篇文档里的相对图片（`![](./a.png)`）
+   * **在首帧就会去请求 `lumin-file://`** —— 协议白名单（`isServableMedia`）查的正是这张表。
+   * 晚一步的后果是首屏图片被协议 404，而浏览器对失败的 `<img>` **不会自己重试**：
+   * 用户双击一个带相对图片的 .md 看到的是破图（切走再切回来才好）。
+   * 打包态实测可复现（`_verify-packaging-fast.js` 的 F5：首次测量 naturalWidth=0、
+   * 主进程日志 `[protocol] refused lumin-file request: …`；手动补报同一路径后立刻 1024）。
+   * 主进程此刻**已经知道**这件事（openFile 就是它自己从启动参数解出来的），没理由等渲染层告诉它。
+   *
+   * 渲染层的上报仍然是"文档切换"的唯一来源（这只补上**启动那一篇**），
+   * 同时它也让「一个文件只开一个窗口」的判据在首帧就成立。
+   */
+  if (openFile) openDocs.setWindowDoc(mainWindow, openFile)
+
   // 会话槽位归属：窗口被「单独关闭」时**保留**它的槽位并标记「已关闭」——
   // 用户关窗往往就是「今天先这样」，下次启动要回到刚才那篇文档（只清掉槽位的话，
   // 重启后只剩工作区文件夹、文档变成不落在任何位置的未命名缓冲区）。
