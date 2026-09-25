@@ -94,6 +94,7 @@ const DEFAULT_SUITES = [
   '_verify-toolbar-settings.js', // 快捷工具栏：空白区右键菜单 + 显隐与排序设置
   '_verify-settings-layout.js', // 设置页在 940×600 / 125% 缩放下的横向布局（导航跟窗口走 + 主题卡 3 列）
   '_verify-zorder.js', // 浮层叠放顺序：--z-* 令牌真的到 DOM + 实测顺序（70 < 120 < 140 < 150…）
+  '_verify-visual-scale.js', // 视觉尺度：字号令牌生效 + 计算字号/圆角都落在文档化档位里
   '_verify-cb-languages.js', // 代码块语言高亮矩阵（15 种 + 别名，清单外退化为纯文本）
   '_verify-cb-virtualization.js', // 代码块 CM 虚拟化：按需挂载 / 高度稳定 / 选区保护 / churn 后可打字
   '_verify-table-fidelity.js', // 表格保真：单元格回车不再退化成 HTML / 空段丢弃 / 多段用 <br> / 幂等

@@ -294,6 +294,15 @@
     'Microsoft YaHei', sans-serif;
   --font-mono:
     'JetBrains Mono', ui-monospace, 'Cascadia Code', 'SF Mono', Consolas, Menlo, monospace;
+  /* ── 界面字号的两档主力（审计 §8 P2「字号 20 档 / Tailwind 任意值 194 处」）──────────
+   * 这两个值是实测里用得最多的两档：`text-[12.5px]` 40 处、`text-[12px]` 28 处 ——
+   * 收成令牌后这两档共 68 处从"任意值"变成语义类，**px 一个都没改**。
+   * 其余各档仍以字面量存在，但已被 `tests/visualScale.test.mjs` 的**闭集**钉住：
+   * 想加一个新字号，必须先把它写进那份档位表（= 显式做一次决定，而不是随手写个新 px）。
+   * 命名不用 `text-xs`/`text-sm`：那是 Tailwind 内置档（0.75rem/0.875rem），覆盖它们会改掉
+   * 全仓既有用法；`ui` 前缀表示"本项目界面尺度"。 */
+  --text-ui: 12.5px;
+  --text-ui-sm: 12px;
 }
 
 @theme inline {

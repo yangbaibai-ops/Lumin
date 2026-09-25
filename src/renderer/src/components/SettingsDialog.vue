@@ -626,7 +626,7 @@ function formatTime(ms: number): string {
             </span>
           </div>
           <div class="flex flex-none items-center gap-1">
-            <button class="btn btn-ghost px-3 py-1.5 text-[12.5px]" @click="goAbout">
+            <button class="btn btn-ghost px-3 py-1.5 text-ui" @click="goAbout">
               <Icon name="info" :size="14" />
               {{ t('menu.about') }}
             </button>
@@ -747,7 +747,7 @@ function formatTime(ms: number): string {
                           <button
                             v-for="opt in languageOptions"
                             :key="opt.value"
-                            class="rounded-md px-3 py-1 text-[12.5px] font-medium transition-all"
+                            class="rounded-md px-3 py-1 text-ui font-medium transition-all"
                             :class="
                               settings.language === opt.value
                                 ? 'bg-panel text-ink shadow-sm'
@@ -824,7 +824,7 @@ function formatTime(ms: number): string {
                               )
                             "
                           />
-                          <span class="w-9 text-right text-[12px] text-ink-2"
+                          <span class="w-9 text-right text-ui-sm text-ink-2"
                             >{{ settings.autoSaveInterval }}s</span
                           >
                         </div>
@@ -1007,7 +1007,7 @@ function formatTime(ms: number): string {
                           </div>
                           <div class="flex shrink-0 flex-wrap justify-end gap-2">
                             <button
-                              class="rounded-lg border border-edge px-3 py-1.5 text-[12.5px] text-ink-2 transition-colors hover:border-edge-strong hover:text-ink disabled:opacity-50"
+                              class="rounded-lg border border-edge px-3 py-1.5 text-ui text-ink-2 transition-colors hover:border-edge-strong hover:text-ink disabled:opacity-50"
                               :disabled="backupBusy"
                               data-backup-choose-dir
                               @click="chooseBackupDir()"
@@ -1016,21 +1016,21 @@ function formatTime(ms: number): string {
                             </button>
                             <button
                               v-if="backupState && !backupState.isDefaultDir"
-                              class="rounded-lg border border-edge px-3 py-1.5 text-[12.5px] text-ink-2 transition-colors hover:border-edge-strong hover:text-ink"
+                              class="rounded-lg border border-edge px-3 py-1.5 text-ui text-ink-2 transition-colors hover:border-edge-strong hover:text-ink"
                               data-backup-default-dir
                               @click="useDefaultBackupDir()"
                             >
                               {{ t('settings.backupUseDefault') }}
                             </button>
                             <button
-                              class="rounded-lg border border-edge px-3 py-1.5 text-[12.5px] text-ink-2 transition-colors hover:border-edge-strong hover:text-ink"
+                              class="rounded-lg border border-edge px-3 py-1.5 text-ui text-ink-2 transition-colors hover:border-edge-strong hover:text-ink"
                               data-backup-open-dir
                               @click="revealBackupDir()"
                             >
                               {{ t('settings.backupOpenDir') }}
                             </button>
                             <button
-                              class="rounded-lg border border-edge px-3 py-1.5 text-[12.5px] text-ink-2 transition-colors hover:border-edge-strong hover:text-ink disabled:opacity-50"
+                              class="rounded-lg border border-edge px-3 py-1.5 text-ui text-ink-2 transition-colors hover:border-edge-strong hover:text-ink disabled:opacity-50"
                               :disabled="backupBusy"
                               data-backup-run
                               @click="runBackupNow()"
@@ -1038,7 +1038,7 @@ function formatTime(ms: number): string {
                               {{ t('settings.backupRunNow') }}
                             </button>
                             <button
-                              class="rounded-lg border border-edge px-3 py-1.5 text-[12.5px] text-ink-2 transition-colors hover:border-edge-strong hover:text-ink disabled:opacity-50"
+                              class="rounded-lg border border-edge px-3 py-1.5 text-ui text-ink-2 transition-colors hover:border-edge-strong hover:text-ink disabled:opacity-50"
                               :disabled="backupBusy"
                               data-backup-snapshot
                               @click="exportWorkspaceSnapshot()"
@@ -1061,7 +1061,7 @@ function formatTime(ms: number): string {
                         <p class="set-row-desc">{{ t('settings.dbMaintenanceHint') }}</p>
                         <div class="mt-3 flex flex-wrap gap-2">
                           <button
-                            class="rounded-lg border border-edge px-3 py-1.5 text-[12.5px] text-ink-2 transition-colors hover:border-edge-strong hover:text-ink disabled:opacity-50"
+                            class="rounded-lg border border-edge px-3 py-1.5 text-ui text-ink-2 transition-colors hover:border-edge-strong hover:text-ink disabled:opacity-50"
                             :disabled="dbBusy"
                             data-db-check
                             @click="runDbMaintenance('check')"
@@ -1069,7 +1069,7 @@ function formatTime(ms: number): string {
                             {{ t('settings.dbCheck') }}
                           </button>
                           <button
-                            class="rounded-lg border border-edge px-3 py-1.5 text-[12.5px] text-ink-2 transition-colors hover:border-edge-strong hover:text-ink disabled:opacity-50"
+                            class="rounded-lg border border-edge px-3 py-1.5 text-ui text-ink-2 transition-colors hover:border-edge-strong hover:text-ink disabled:opacity-50"
                             :disabled="dbBusy"
                             data-db-reindex
                             @click="runDbMaintenance('rebuild')"
@@ -1077,7 +1077,7 @@ function formatTime(ms: number): string {
                             {{ t('settings.dbReindex') }}
                           </button>
                           <button
-                            class="rounded-lg border border-edge px-3 py-1.5 text-[12.5px] text-ink-2 transition-colors hover:border-edge-strong hover:text-ink disabled:opacity-50"
+                            class="rounded-lg border border-edge px-3 py-1.5 text-ui text-ink-2 transition-colors hover:border-edge-strong hover:text-ink disabled:opacity-50"
                             :disabled="dbBusy"
                             data-db-vacuum
                             @click="runDbMaintenance('vacuum')"
@@ -1091,21 +1091,21 @@ function formatTime(ms: number): string {
                     <!-- 恢复默认：低频且有破坏性（连语言与主题一起复位）⇒ 放最底下 + 二次确认 -->
                     <div class="mt-4 flex flex-wrap items-center justify-end gap-2">
                       <button
-                        class="rounded-lg border border-edge px-3 py-1.5 text-[12.5px] text-ink-2 transition-colors hover:border-edge-strong hover:text-ink"
+                        class="rounded-lg border border-edge px-3 py-1.5 text-ui text-ink-2 transition-colors hover:border-edge-strong hover:text-ink"
                         data-settings-diagnostics
                         @click="copyDiagnostics()"
                       >
                         {{ t('settings.copyDiagnostics') }}
                       </button>
                       <button
-                        class="rounded-lg border border-edge px-3 py-1.5 text-[12.5px] text-ink-2 transition-colors hover:border-edge-strong hover:text-ink"
+                        class="rounded-lg border border-edge px-3 py-1.5 text-ui text-ink-2 transition-colors hover:border-edge-strong hover:text-ink"
                         data-settings-open-logs
                         @click="openLogDir()"
                       >
                         {{ t('settings.openLogDir') }}
                       </button>
                       <button
-                        class="rounded-lg border border-edge px-3 py-1.5 text-[12.5px] text-ink-2 transition-colors hover:border-[color-mix(in_srgb,var(--danger)_45%,transparent)] hover:text-danger"
+                        class="rounded-lg border border-edge px-3 py-1.5 text-ui text-ink-2 transition-colors hover:border-[color-mix(in_srgb,var(--danger)_45%,transparent)] hover:text-danger"
                         data-settings-reset
                         @click="resetAllSettings()"
                       >
@@ -1135,7 +1135,7 @@ function formatTime(ms: number): string {
                           @click="settings.set('editorMode', m.mode)"
                         >
                           <Icon :name="m.icon" :size="16" class="mx-auto" />
-                          <span class="mt-1.5 block text-[12.5px] font-medium">{{ m.label }}</span>
+                          <span class="mt-1.5 block text-ui font-medium">{{ m.label }}</span>
                         </button>
                       </div>
                       <p class="set-row-desc mt-3">
@@ -1176,7 +1176,7 @@ function formatTime(ms: number): string {
                           <button
                             v-for="p in remoteImagePolicies"
                             :key="p.value"
-                            class="whitespace-nowrap rounded-lg border px-3 py-1.5 text-[12.5px] transition-all duration-150"
+                            class="whitespace-nowrap rounded-lg border px-3 py-1.5 text-ui transition-all duration-150"
                             :class="
                               settings.remoteImages === p.value
                                 ? 'border-accent bg-accent-soft text-accent'
@@ -1211,7 +1211,7 @@ function formatTime(ms: number): string {
                               )
                             "
                           />
-                          <span class="w-10 text-right text-[12px] text-ink-2"
+                          <span class="w-10 text-right text-ui-sm text-ink-2"
                             >{{ settings.fontSize }}px</span
                           >
                         </div>
@@ -1234,7 +1234,7 @@ function formatTime(ms: number): string {
                               )
                             "
                           />
-                          <span class="w-10 text-right text-[12px] text-ink-2">{{
+                          <span class="w-10 text-right text-ui-sm text-ink-2">{{
                             settings.lineHeight.toFixed(1)
                           }}</span>
                         </div>
@@ -1245,7 +1245,7 @@ function formatTime(ms: number): string {
                           <button
                             v-for="f in FONT_OPTIONS"
                             :key="f.label"
-                            class="rounded-lg border px-3 py-1.5 text-[12.5px] transition-all duration-150"
+                            class="rounded-lg border px-3 py-1.5 text-ui transition-all duration-150"
                             :class="
                               settings.fontFamily === f.value
                                 ? 'border-accent bg-accent-soft text-accent'
@@ -1337,7 +1337,7 @@ function formatTime(ms: number): string {
                               :size="13"
                               :class="settings.theme === th.mode ? 'text-accent' : 'text-ink-2b'"
                             />
-                            <span class="min-w-0 flex-1 truncate text-[12.5px] text-ink">{{
+                            <span class="min-w-0 flex-1 truncate text-ui text-ink">{{
                               th.label
                             }}</span>
                             <Icon
@@ -1377,7 +1377,7 @@ function formatTime(ms: number): string {
                               })
                             "
                           />
-                          <span class="w-11 text-right text-[12px] text-ink-2"
+                          <span class="w-11 text-right text-ui-sm text-ink-2"
                             >{{ settings.export.pdf.margin }}mm</span
                           >
                         </div>
@@ -1388,7 +1388,7 @@ function formatTime(ms: number): string {
                           <button
                             v-for="size in ['A4', 'A5', 'Letter'] as const"
                             :key="size"
-                            class="rounded-lg border px-3.5 py-1.5 text-[12.5px] transition-all duration-150"
+                            class="rounded-lg border px-3.5 py-1.5 text-ui transition-all duration-150"
                             :class="
                               settings.export.pdf.pageSize === size
                                 ? 'border-accent bg-accent-soft text-accent'
@@ -1426,7 +1426,7 @@ function formatTime(ms: number): string {
                             >
                               <Icon :name="row.icon" :size="13" />
                             </span>
-                            <p class="min-w-0 flex-1 text-[12.5px] text-ink">{{ row.name }}</p>
+                            <p class="min-w-0 flex-1 text-ui text-ink">{{ row.name }}</p>
                             <p class="truncate text-[11.5px] text-ink-2b">{{ row.desc }}</p>
                           </div>
                         </div>
@@ -1448,7 +1448,7 @@ function formatTime(ms: number): string {
                       <h3 class="mb-1 text-[13.5px] text-ink">
                         {{ t('settings.linksCreateMode') }}
                       </h3>
-                      <p class="mb-4 text-[12px] text-ink-2b">
+                      <p class="mb-4 text-ui-sm text-ink-2b">
                         {{ t('settings.linksCreateModeDesc') }}
                       </p>
                       <div class="grid grid-cols-3 gap-2">
@@ -1484,7 +1484,7 @@ function formatTime(ms: number): string {
                             <p class="set-row-desc">{{ t('settings.linksHistoryDesc') }}</p>
                             <button
                               v-if="linkHistory.length"
-                              class="flex-none rounded-lg border border-edge px-2.5 py-1 text-[12px] text-ink-2 transition-colors hover:border-edge-strong hover:text-ink"
+                              class="flex-none rounded-lg border border-edge px-2.5 py-1 text-ui-sm text-ink-2 transition-colors hover:border-edge-strong hover:text-ink"
                               @click="clearLinkHistory()"
                             >
                               {{ t('settings.linksClear') }}
@@ -1492,7 +1492,7 @@ function formatTime(ms: number): string {
                           </div>
                           <p
                             v-if="!linkHistory.length"
-                            class="rounded-xl border border-dashed border-edge px-3.5 py-6 text-center text-[12.5px] text-ink-2b"
+                            class="rounded-xl border border-dashed border-edge px-3.5 py-6 text-center text-ui text-ink-2b"
                           >
                             {{ t('settings.linksHistoryEmpty') }}
                           </p>

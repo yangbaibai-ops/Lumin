@@ -123,10 +123,10 @@ function isValid(c: ResolvedCommand): boolean {
         </span>
         <div class="min-w-0 flex-1">
           <h3 class="text-[13.5px] text-ink">{{ t('keymap.title') }}</h3>
-          <p class="mt-1 text-[12px] leading-relaxed text-ink-2b">{{ t('keymap.desc') }}</p>
+          <p class="mt-1 text-ui-sm leading-relaxed text-ink-2b">{{ t('keymap.desc') }}</p>
         </div>
         <button
-          class="btn btn-outline flex-none px-3 py-1.5 text-[12.5px]"
+          class="btn btn-outline flex-none px-3 py-1.5 text-ui"
           :disabled="customizedCount === 0"
           :title="t('keymap.resetAll')"
           @click="resetAll"
@@ -142,7 +142,7 @@ function isValid(c: ResolvedCommand): boolean {
         <Icon name="search" :size="13" class="flex-none text-ink-3" />
         <input
           v-model="filter"
-          class="keymap-search w-full bg-transparent text-[12.5px] text-ink outline-none placeholder:text-ink-2b"
+          class="keymap-search w-full bg-transparent text-ui text-ink outline-none placeholder:text-ink-2b"
           :placeholder="t('keymap.searchPlaceholder')"
         />
         <button v-if="filter" class="flex-none text-ink-2b hover:text-ink" @click="filter = ''">
@@ -214,7 +214,7 @@ function isValid(c: ResolvedCommand): boolean {
             </button>
           </span>
         </div>
-        <p v-if="!g.items.length" class="px-2 py-3 text-[12px] text-ink-2b">
+        <p v-if="!g.items.length" class="px-2 py-3 text-ui-sm text-ink-2b">
           {{ t('keymap.noMatch') }}
         </p>
       </div>

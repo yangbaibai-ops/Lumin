@@ -218,7 +218,7 @@ const themes: { mode: ThemeMode; icon: string; labelKey: string }[] = [
               />
               <span class="min-w-0 flex-1">
                 <span
-                  class="block text-[12.5px] font-medium"
+                  class="block text-ui font-medium"
                   :class="settings.autoSave ? 'text-accent' : 'text-ink'"
                   >{{ t('statusbar.autoSave') }}</span
                 >
@@ -245,7 +245,7 @@ const themes: { mode: ThemeMode; icon: string; labelKey: string }[] = [
               />
               <span class="min-w-0 flex-1">
                 <span
-                  class="block text-[12.5px] font-medium"
+                  class="block text-ui font-medium"
                   :class="!settings.autoSave ? 'text-accent' : 'text-ink'"
                   >{{ t('statusbar.manualSave') }}</span
                 >
@@ -262,7 +262,7 @@ const themes: { mode: ThemeMode; icon: string; labelKey: string }[] = [
             </button>
             <div class="my-1 border-t border-edge" />
             <button
-              class="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-[12px] text-ink-2b transition-colors hover:bg-panel-2 hover:text-ink-2"
+              class="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-ui-sm text-ink-2b transition-colors hover:bg-panel-2 hover:text-ink-2"
               @click="openGeneralSettings"
             >
               <Icon name="settings" :size="12" />
@@ -369,7 +369,7 @@ const themes: { mode: ThemeMode; icon: string; labelKey: string }[] = [
           <button
             v-for="th in themes"
             :key="th.mode"
-            class="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-left text-[12.5px] transition-colors duration-100"
+            class="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-left text-ui transition-colors duration-100"
             :class="
               settings.theme === th.mode
                 ? 'bg-accent-soft text-accent'

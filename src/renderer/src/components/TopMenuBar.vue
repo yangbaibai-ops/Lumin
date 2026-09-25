@@ -499,7 +499,7 @@ onBeforeUnmount(() => {
 
 <template>
   <div
-    class="topmenu-root flex h-8 shrink-0 items-center gap-0.5 border-b border-edge bg-app px-2 text-[12.5px] text-ink-2 select-none"
+    class="topmenu-root flex h-8 shrink-0 items-center gap-0.5 border-b border-edge bg-app px-2 text-ui text-ink-2 select-none"
   >
     <template v-for="g in GROUPS" :key="g.key">
       <button
@@ -525,7 +525,7 @@ onBeforeUnmount(() => {
           <!-- 二级：悬停展开右侧浮层（最近文档 / 最近文件夹） -->
           <button
             v-else-if="isSub(it)"
-            class="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-left text-[12.5px] text-ink transition-colors duration-100"
+            class="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-left text-ui text-ink transition-colors duration-100"
             :class="subOpen?.labelKey === it.labelKey ? 'bg-panel-2' : 'hover:bg-panel-2'"
             @mouseenter="(e) => placeSub(e.currentTarget as HTMLElement, it)"
             @mouseleave="onSubRowLeave"
@@ -539,7 +539,7 @@ onBeforeUnmount(() => {
           </button>
           <button
             v-else
-            class="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-left text-[12.5px] transition-colors duration-100"
+            class="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-left text-ui transition-colors duration-100"
             :class="it.danger ? 'text-danger hover:bg-danger/10' : 'text-ink hover:bg-panel-2'"
             @mouseenter="closeSub"
             @click="runLeaf(it)"
@@ -593,7 +593,7 @@ onBeforeUnmount(() => {
               <div v-if="child === 'sep'" class="my-1 h-px bg-edge" />
               <button
                 v-else
-                class="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-left text-[12.5px] transition-colors duration-100"
+                class="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-left text-ui transition-colors duration-100"
                 :class="
                   child.danger
                     ? 'text-danger hover:bg-danger/10'

@@ -98,7 +98,7 @@ async function clearCurrent(): Promise<void> {
             "
           />
           <span class="min-w-0 flex-1">
-            <span class="block truncate text-[12.5px] text-ink">{{ label(item) }}</span>
+            <span class="block truncate text-ui text-ink">{{ label(item) }}</span>
             <span v-if="!dense" class="block truncate text-[11px] text-ink-2b">{{
               sub(item)
             }}</span>
@@ -138,7 +138,7 @@ async function clearCurrent(): Promise<void> {
 
     <button
       v-if="items.length"
-      class="mt-1 flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-[12px] text-ink-2b transition-colors hover:bg-panel-2 hover:text-danger"
+      class="mt-1 flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-ui-sm text-ink-2b transition-colors hover:bg-panel-2 hover:text-danger"
       @click="clearCurrent"
     >
       <Icon name="trash" :size="13" />

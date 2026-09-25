@@ -90,11 +90,11 @@ watch(open, (v) => {
         <header class="flex items-center gap-2 border-b border-edge px-4 py-3">
           <Icon name="clock" :size="15" />
           <h2 class="text-[13.5px] font-semibold text-ink">{{ t('history.title') }}</h2>
-          <span class="truncate text-[12px] text-ink-2b">{{ fileName }}</span>
+          <span class="truncate text-ui-sm text-ink-2b">{{ fileName }}</span>
           <div class="flex-1" />
           <button
             v-if="entries.length"
-            class="btn btn-ghost px-2 py-1 text-[12px]"
+            class="btn btn-ghost px-2 py-1 text-ui-sm"
             data-history-clear
             @click="clearAll"
           >
@@ -110,12 +110,12 @@ watch(open, (v) => {
         </header>
 
         <div class="min-h-0 flex-1 overflow-y-auto p-2">
-          <p v-if="ui.localHistory.loading" class="px-3 py-6 text-center text-[12.5px] text-ink-2b">
+          <p v-if="ui.localHistory.loading" class="px-3 py-6 text-center text-ui text-ink-2b">
             {{ t('common.loading') }}
           </p>
           <p
             v-else-if="!entries.length"
-            class="px-3 py-8 text-center text-[12.5px] leading-relaxed text-ink-2b"
+            class="px-3 py-8 text-center text-ui leading-relaxed text-ink-2b"
             data-history-empty
           >
             {{ t('history.empty') }}
@@ -129,10 +129,10 @@ watch(open, (v) => {
                 @click="restore(e)"
               >
                 <Icon name="clock" :size="13" class="shrink-0 text-ink-3" />
-                <span class="w-[150px] shrink-0 tabular-nums text-[12.5px] text-ink-2">
+                <span class="w-[150px] shrink-0 tabular-nums text-ui text-ink-2">
                   {{ formatTime(e.savedAt) }}
                 </span>
-                <span class="min-w-0 flex-1 truncate text-[12.5px] text-ink">{{
+                <span class="min-w-0 flex-1 truncate text-ui text-ink">{{
                   e.preview || t('history.blankSnapshot')
                 }}</span>
                 <span class="shrink-0 tabular-nums text-[11.5px] text-ink-2b">{{

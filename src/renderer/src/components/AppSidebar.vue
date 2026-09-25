@@ -97,7 +97,7 @@ function onDragStart(e: MouseEvent): void {
     <div class="flex h-10 flex-none items-center gap-1.5 border-b border-edge px-3">
       <button
         v-if="files.root"
-        class="flex h-7 min-w-0 flex-1 items-center gap-1.5 rounded-md px-1.5 text-left text-[12px] font-medium text-ink-2 transition-colors hover:bg-panel-2 hover:text-ink"
+        class="flex h-7 min-w-0 flex-1 items-center gap-1.5 rounded-md px-1.5 text-left text-ui-sm font-medium text-ink-2 transition-colors hover:bg-panel-2 hover:text-ink"
         :title="files.root + '\n' + t('open.openFolder')"
         :aria-label="t('open.openFolder')"
         data-sidebar-workspace
@@ -110,7 +110,7 @@ function onDragStart(e: MouseEvent): void {
            空态那三枚按钮才不要）。 -->
       <button
         v-else
-        class="flex h-7 min-w-0 flex-1 items-center gap-1.5 rounded-md px-1.5 text-left text-[12px] font-medium text-ink-2b transition-colors hover:bg-panel-2 hover:text-ink-2"
+        class="flex h-7 min-w-0 flex-1 items-center gap-1.5 rounded-md px-1.5 text-left text-ui-sm font-medium text-ink-2b transition-colors hover:bg-panel-2 hover:text-ink-2"
         :title="t('open.openFolder')"
         :aria-label="t('open.openFolder')"
         data-sidebar-workspace
@@ -155,7 +155,7 @@ function onDragStart(e: MouseEvent): void {
       <button
         v-for="tab in ['files', 'outline'] as const"
         :key="tab"
-        class="relative flex flex-1 items-center justify-center gap-1.5 rounded-lg py-1.5 text-[12.5px] font-medium transition-all duration-200"
+        class="relative flex flex-1 items-center justify-center gap-1.5 rounded-lg py-1.5 text-ui font-medium transition-all duration-200"
         :class="ui.sidebarTab === tab ? 'text-ink' : 'text-ink-2b hover:text-ink-2'"
         @click="ui.sidebarTab = tab"
       >

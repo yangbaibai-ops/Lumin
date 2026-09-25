@@ -136,7 +136,7 @@ onBeforeUnmount(() => {
     <div class="flex items-start gap-4">
       <div class="min-w-0 flex-1">
         <p class="text-[13.5px] text-ink">{{ t('toolbar.visible') }}</p>
-        <p class="mt-0.5 text-[12px] leading-relaxed text-ink-2b">{{ t('toolbar.visibleDesc') }}</p>
+        <p class="mt-0.5 text-ui-sm leading-relaxed text-ink-2b">{{ t('toolbar.visibleDesc') }}</p>
       </div>
       <SettingSwitch
         :model-value="settings.toolbarVisible"
@@ -157,7 +157,7 @@ onBeforeUnmount(() => {
         }}</span>
         <span class="flex-1" />
         <button
-          class="btn btn-outline flex-none px-2.5 py-1 text-[12px]"
+          class="btn btn-outline flex-none px-2.5 py-1 text-ui-sm"
           :disabled="toolbarOff"
           :title="t('toolbar.reset')"
           data-setting-toolbar-reset
@@ -177,7 +177,7 @@ onBeforeUnmount(() => {
 
           <p
             v-if="!shown.length"
-            class="px-3.5 py-5 text-center text-[12.5px] text-ink-2b"
+            class="px-3.5 py-5 text-center text-ui text-ink-2b"
             data-setting-toolbar-empty
           >
             {{ t('toolbar.allHidden') }}

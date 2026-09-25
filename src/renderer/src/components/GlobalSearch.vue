@@ -211,7 +211,7 @@ onBeforeUnmount(() => {
                       <span class="truncate text-[13.5px] font-medium text-ink">{{ r.title }}</span>
                       <span
                         v-if="r.titleSnippet"
-                        class="truncate text-[12px]"
+                        class="truncate text-ui-sm"
                         :class="i === activeIdx ? 'text-accent' : 'text-ink-2b'"
                       >
                         <template v-for="(seg, si) in highlightSegments(r.titleSnippet)" :key="si"
@@ -222,7 +222,7 @@ onBeforeUnmount(() => {
                     </span>
                     <span
                       v-if="r.bodySnippet"
-                      class="mt-0.5 block truncate text-[12px] leading-relaxed text-ink-2"
+                      class="mt-0.5 block truncate text-ui-sm leading-relaxed text-ink-2"
                     >
                       <template v-for="(seg, si) in highlightSegments(r.bodySnippet)" :key="si"
                         ><em v-if="seg.hit" class="gs-hl">{{ seg.text }}</em

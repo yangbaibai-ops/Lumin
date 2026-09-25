@@ -154,7 +154,7 @@ window.addEventListener('resize', onWindowScrollOrResize)
         @mouseenter="onPopoverEnter"
         @mouseleave="scheduleClose"
       >
-        <div class="mb-2 text-[12px] text-ink-2">
+        <div class="mb-2 text-ui-sm text-ink-2">
           {{ t('editor.tableSize', { rows: hoverR + 1, cols: hoverC + 1 }) }}
         </div>
         <div v-for="r in rowIdx" :key="r" class="flex gap-1">

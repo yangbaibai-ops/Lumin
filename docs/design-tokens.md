@@ -19,6 +19,12 @@ npm run docs:tokens:write
   `tests/zIndexStack.test.mjs`（不许再有数字字面量、顺序严格递增、令牌都有出处）与
   `tools/_verify-zorder.js`（真实浮层的**计算样式**确实是这些数字，顺序也在运行时成立）。
   容器内部的局部叠放仍可用 Tailwind 自己的 `z-10/z-50`（作用域只有那个容器）。
+- **界面字号**：主力两档已收成 Tailwind 令牌 `text-ui`（12.5px，原 `text-[12.5px]` 40 处）与
+  `text-ui-sm`（12px，原 28 处）—— 共 **68 处**任意值类变成语义类（px 一个都没改）。
+  其余各档仍是字面量，但**档位是闭集**：`tests/visualScale.test.mjs` 守着"源码里不许出现表外字号 /
+  表内不许有没人用的档"与"任意值类总数只减不增（本轮 220 → 152）"；
+  `tools/_verify-visual-scale.js` 守运行时那一半（令牌类真的生成、计算字号与圆角都落在档位表里，
+  设置页整页抽检）。正文排版那一套是 em（相对 `--editor-size`），不属于界面档位。
 
 <!-- tokens:begin（由 tools/doc-tokens.js 生成，勿手改）-->
 
@@ -26,7 +32,7 @@ npm run docs:tokens:write
 |---|---|
 | 定义令牌的文件 | `src/renderer/src/assets/theme.css` / `src/renderer/src/assets/sidebar.css` |
 | 声明块 | 7 个 |
-| 令牌总数 | 177 |
+| 令牌总数 | 179 |
 | 重复定义（同一声明块内） | 0 |
 
 > 这张表由 `node tools/doc-tokens.js --write` 生成，`npm run docs:tokens:check` 校验；
@@ -201,14 +207,16 @@ npm run docs:tokens:write
 | `--z-editor-menu-sub` | `171` |
 | `--z-tooltip-global` | `9999` |
 
-**@theme**（第 208 行起，2 个）
+**@theme**（第 208 行起，4 个）
 
 | 令牌 | 值 |
 |---|---|
 | `--font-sans` | `'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif` |
 | `--font-mono` | `'JetBrains Mono', ui-monospace, 'Cascadia Code', 'SF Mono', Consolas, Menlo, monospace` |
+| `--text-ui` | `12.5px` |
+| `--text-ui-sm` | `12px` |
 
-**@theme inline**（第 216 行起，21 个）
+**@theme inline**（第 219 行起，21 个）
 
 | 令牌 | 值 |
 |---|---|

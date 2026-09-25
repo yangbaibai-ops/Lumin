@@ -401,7 +401,7 @@ const subStyle = computed(() => ({
           v-for="(sub, si) in subItems"
           :key="sub.action"
           :ref="(el) => (subRefs[si] = el as HTMLElement | null)"
-          class="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-left text-[12.5px] text-ink transition-colors duration-100 hover:bg-panel-2"
+          class="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-left text-ui text-ink transition-colors duration-100 hover:bg-panel-2"
           :class="[
             sub.disabled ? 'cursor-default opacity-40' : '',
             si === subCursor ? 'bg-panel-2' : ''

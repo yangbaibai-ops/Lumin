@@ -22,7 +22,7 @@ const editorStore = useEditorStore()
       v-for="(h, i) in editorStore.outline"
       :key="`${i}-${h.level}-${h.text}`"
       data-outline-item
-      class="group flex w-full items-center gap-1.5 py-[5px] pr-2 text-left text-[12.5px] transition-colors duration-100"
+      class="group flex w-full items-center gap-1.5 py-[5px] pr-2 text-left text-ui transition-colors duration-100"
       :class="
         editorStore.activeHeading === h.pos
           ? 'bg-accent-soft text-accent'
@@ -44,7 +44,7 @@ const editorStore = useEditorStore()
       class="mt-6 flex flex-col items-center gap-2 px-4 text-center"
     >
       <Icon name="heading" :size="24" :stroke-width="1.3" class="text-ink-3/60" />
-      <p class="text-[12px] leading-relaxed text-ink-2b">{{ t('sidebar.emptyOutline') }}</p>
+      <p class="text-ui-sm leading-relaxed text-ink-2b">{{ t('sidebar.emptyOutline') }}</p>
     </div>
   </div>
 </template>
