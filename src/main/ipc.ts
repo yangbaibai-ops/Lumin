@@ -359,7 +359,7 @@ export function registerIpc(slots: SlotRegistry): void {
   ipcMain.handle('history:clear', (_, p?: string) =>
     db.clearHistory(p ? path.resolve(p) : undefined)
   )
-  /** 本地历史：条数统计（设置面板显示用） */
+  /** 本地历史：条数 / 文件数 / 字节（设置面板显示 + 抽稀前后对比用） */
   ipcMain.handle('history:stats', () => db.historyStats())
   /** 「选择编码重新打开」用：把用户显式选的编码记进每文件记忆表 */
   ipcMain.handle('file:rememberEncoding', (_, p: string, encoding: ConcreteEncoding) => {
@@ -530,6 +530,18 @@ export function registerIpc(slots: SlotRegistry): void {
   )
   ipcMain.handle('db:setTags', (_, p: string, tags: string[]) => db.setTags(path.resolve(p), tags))
   ipcMain.handle('db:stats', () => db.stats())
+  /**
+   * 数据库维护（审计 §2 P1：全仓无 VACUUM / integrity_check / 重建索引入口）。
+   * 三条都只在用户显式点击时跑 —— 尤其 VACUUM 会重建整个库，不该放在启动路径上。
+   */
+  ipcMain.handle('db:integrityCheck', () => db.integrityCheck())
+  ipcMain.handle('db:rebuildIndex', () => ({ rebuilt: db.rebuildFtsIndex() }))
+  ipcMain.handle('db:vacuum', () => {
+    // 先把 WAL 收进去再压缩，不然压缩完 -wal 里还留着一份旧数据
+    db.checkpoint()
+    const { before, after } = db.vacuum()
+    return { before, after, saved: Math.max(0, before - after) }
+  })
 
   // ── 通知中心（SQLite 持久化，按窗口作用域隔离）──
   // 通知属于「产生它的那个窗口」：作用域由主进程从 IPC 发送方反查（渲染进程无法指定），

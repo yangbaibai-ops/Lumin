@@ -111,7 +111,9 @@ const DEFAULT_SUITES = [
   // ── 第十六轮：全局搜索索引（从未打开过的文档也能搜到）+ 命中定位 ──
   '_verify-search-index.js',
   // ── 第十七轮：导出质量（EPUB 拆章带图 / PDF 页码页眉 / 原子写）──
-  '_verify-export-quality.js'
+  '_verify-export-quality.js',
+  // ── 第十八轮：数据库维护（完整性检查 / 重建索引 / 压缩）──
+  '_verify-db-maintenance.js'
 ]
 
 /** 自己管理 Electron 实例的套件（运行器不替它们起实例） */

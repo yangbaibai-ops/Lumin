@@ -301,7 +301,17 @@
     "copyDiagnostics": "复制诊断信息",
     "openLogDir": "打开日志目录",
     "diagnosticsCopied": "诊断信息已复制到剪贴板（不含文档内容）",
-    "exportNote": "导出说明：HTML / Word 都是「HTML 文档」——Word 能直接打开编辑，但它不是真正的 .docx（OOXML）；EPUB 按一级标题拆章并内嵌本地图片；PDF 带页码与页眉。"
+    "exportNote": "导出说明：HTML / Word 都是「HTML 文档」——Word 能直接打开编辑，但它不是真正的 .docx（OOXML）；EPUB 按一级标题拆章并内嵌本地图片；PDF 带页码与页眉。",
+    "dbMaintenance": "数据库维护",
+    "dbMaintenanceHint": "检查完整性、重建搜索索引、压缩数据库。三项都只在点击时执行（压缩会重建整个库，大库可能要几秒）。",
+    "dbCheck": "检查完整性",
+    "dbReindex": "重建搜索索引",
+    "dbVacuum": "压缩数据库",
+    "dbCheckOk": "数据库完整性检查通过",
+    "dbCheckFailed": "完整性检查发现问题：{detail}",
+    "dbReindexed": "已重建搜索索引（{n} 篇文档）",
+    "dbVacuumed": "数据库已压缩，释放 {saved}",
+    "dbMaintenanceFailed": "维护操作失败：{reason}"
   },
   "toolbar": {
     "hide": "关闭工具栏",

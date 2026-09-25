@@ -335,6 +335,48 @@ function openLogDir(): void {
   void window.luminAPI.app.openLogDir()
 }
 
+// ─── 数据库维护（审计 §2 P1：全仓无 VACUUM / integrity_check / 重建索引入口）──
+// 三条都只在用户点击时跑：`VACUUM` 会重建整个库（耗时与库大小成正比），
+// 重建索引会重写全部 FTS 行 —— 放在启动路径上等于每次开窗都做一遍。
+const dbBusy = ref(false)
+async function runDbMaintenance(kind: 'check' | 'rebuild' | 'vacuum'): Promise<void> {
+  if (dbBusy.value) return
+  dbBusy.value = true
+  try {
+    if (kind === 'check') {
+      const r = await window.luminAPI.db.integrityCheck()
+      ui.toast(
+        r.ok
+          ? t('settings.dbCheckOk')
+          : t('settings.dbCheckFailed', { detail: r.detail.slice(0, 120) }),
+        r.ok ? 'success' : 'error'
+      )
+    } else if (kind === 'rebuild') {
+      const r = await window.luminAPI.db.rebuildIndex()
+      ui.toast(t('settings.dbReindexed', { n: r.rebuilt }), 'success')
+    } else {
+      const r = await window.luminAPI.db.vacuum()
+      ui.toast(t('settings.dbVacuumed', { saved: formatBytes(r.saved) }), 'success')
+    }
+  } catch (err) {
+    ui.toast(
+      t('settings.dbMaintenanceFailed', {
+        reason: err instanceof Error ? err.message : String(err)
+      }),
+      'error'
+    )
+  } finally {
+    dbBusy.value = false
+  }
+}
+
+/** 字节数 → 人读（KB/MB）：只用于维护结果的提示 */
+function formatBytes(n: number): string {
+  if (n < 1024) return `${n} B`
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`
+  return `${(n / 1024 / 1024).toFixed(1)} MB`
+}
+
 function sectionTitle(id: string): string {
   const x = tabs.value.find((y) => y.id === id)
   return x ? x.label : ''
@@ -756,6 +798,43 @@ function formatTime(ms: number): string {
                             :label="t('settings.autoCheckUpdate')"
                             @update:model-value="(v) => settings.set('autoCheckUpdate', v)"
                           />
+                        </div>
+                      </div>
+                    </details>
+
+                    <!-- 数据库维护：低频、有破坏性（VACUUM 会重建库）⇒ 放最底下，单独一片 -->
+                    <details class="set-fold">
+                      <summary>
+                        <Icon name="chevron-right" :size="13" class="set-fold-chevron" />
+                        {{ t('settings.dbMaintenance') }}
+                      </summary>
+                      <div class="set-fold-body">
+                        <p class="set-row-desc">{{ t('settings.dbMaintenanceHint') }}</p>
+                        <div class="mt-3 flex flex-wrap gap-2">
+                          <button
+                            class="rounded-lg border border-edge px-3 py-1.5 text-[12.5px] text-ink-2 transition-colors hover:border-edge-strong hover:text-ink disabled:opacity-50"
+                            :disabled="dbBusy"
+                            data-db-check
+                            @click="runDbMaintenance('check')"
+                          >
+                            {{ t('settings.dbCheck') }}
+                          </button>
+                          <button
+                            class="rounded-lg border border-edge px-3 py-1.5 text-[12.5px] text-ink-2 transition-colors hover:border-edge-strong hover:text-ink disabled:opacity-50"
+                            :disabled="dbBusy"
+                            data-db-reindex
+                            @click="runDbMaintenance('rebuild')"
+                          >
+                            {{ t('settings.dbReindex') }}
+                          </button>
+                          <button
+                            class="rounded-lg border border-edge px-3 py-1.5 text-[12.5px] text-ink-2 transition-colors hover:border-edge-strong hover:text-ink disabled:opacity-50"
+                            :disabled="dbBusy"
+                            data-db-vacuum
+                            @click="runDbMaintenance('vacuum')"
+                          >
+                            {{ t('settings.dbVacuum') }}
+                          </button>
                         </div>
                       </div>
                     </details>

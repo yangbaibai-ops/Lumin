@@ -121,7 +121,11 @@ const api: LuminAPI = {
     listRecent: (limit) => ipcRenderer.invoke('db:listRecent', limit),
     setPinned: (path, pinned) => ipcRenderer.invoke('db:setPinned', path, pinned),
     setTags: (path, tags) => ipcRenderer.invoke('db:setTags', path, tags),
-    stats: () => ipcRenderer.invoke('db:stats')
+    stats: () => ipcRenderer.invoke('db:stats'),
+    // 数据库维护（审计 §2 P1：VACUUM / integrity_check / 重建索引此前全无入口）
+    integrityCheck: () => ipcRenderer.invoke('db:integrityCheck'),
+    rebuildIndex: () => ipcRenderer.invoke('db:rebuildIndex'),
+    vacuum: () => ipcRenderer.invoke('db:vacuum')
   },
   // 本地历史（Wave 2 数据安全）：保存前留快照，可查看/回滚
   history: {

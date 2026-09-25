@@ -246,18 +246,36 @@ export function readSchemaVersion(db: Db): number {
 }
 
 /**
- * 把库跑到最新版本：从 `user_version + 1` 开始依次执行未跑过的步骤，
- * 每步成功后就地写下版本号（崩溃后重跑只会重做**未完成**的那一步）。
+ * 把库跑到最新版本：从 `user_version + 1` 开始依次执行未跑过的步骤。
+ *
+ * **整轮包在事务里**（审计 §2 P1：此前每步各自 exec，中途失败会留下
+ * "表改了一半、user_version 还停在旧值"的库 —— 下次启动从头再跑一遍，
+ * 对 ALTER TABLE 这类不可重入的步骤就是直接崩）。
+ * `PRAGMA user_version` 在事务里同样生效（SQLite 允许），所以"结构改动 + 版本号"
+ * 要么一起生效、要么一起回滚。注意：`VACUUM` 不能放进事务 —— 迁移列表里不要用它。
+ *
  * 返回实际跑了哪些步骤，调用方可以据此打一行 ASCII 日志。
  */
 export function runMigrations(db: Db): { from: number; to: number; ran: number[] } {
   const from = readSchemaVersion(db)
   const ran: number[] = []
-  for (const step of MIGRATIONS) {
-    if (step.version <= from) continue
-    step.up(db)
-    db.exec(`PRAGMA user_version = ${step.version}`)
-    ran.push(step.version)
+  const pending = MIGRATIONS.filter((s) => s.version > from)
+  if (!pending.length) return { from, to: SCHEMA_VERSION, ran }
+  db.exec('BEGIN')
+  try {
+    for (const step of pending) {
+      step.up(db)
+      db.exec(`PRAGMA user_version = ${step.version}`)
+      ran.push(step.version)
+    }
+    db.exec('COMMIT')
+  } catch (err) {
+    try {
+      db.exec('ROLLBACK')
+    } catch {
+      /* 回滚也失败时保留原始错误 */
+    }
+    throw err
   }
   return { from, to: SCHEMA_VERSION, ran }
 }

@@ -301,7 +301,17 @@
     "copyDiagnostics": "Copy diagnostics",
     "openLogDir": "Open log folder",
     "diagnosticsCopied": "Diagnostics copied to the clipboard (no document content)",
-    "exportNote": "Export notes: HTML and Word are both HTML documents — Word opens them for editing, but they are not real .docx (OOXML). EPUB splits by top-level headings and embeds local images; PDF gets page numbers and a header."
+    "exportNote": "Export notes: HTML and Word are both HTML documents — Word opens them for editing, but they are not real .docx (OOXML). EPUB splits by top-level headings and embeds local images; PDF gets page numbers and a header.",
+    "dbMaintenance": "Database maintenance",
+    "dbMaintenanceHint": "Check integrity, rebuild the search index, compact the database. All three run only on click (compaction rebuilds the whole file and can take a few seconds on large databases).",
+    "dbCheck": "Check integrity",
+    "dbReindex": "Rebuild search index",
+    "dbVacuum": "Compact database",
+    "dbCheckOk": "Database integrity check passed",
+    "dbCheckFailed": "Integrity check reported problems: {detail}",
+    "dbReindexed": "Search index rebuilt ({n} documents)",
+    "dbVacuumed": "Database compacted, {saved} reclaimed",
+    "dbMaintenanceFailed": "Maintenance failed: {reason}"
   },
   "toolbar": {
     "hide": "Hide toolbar",

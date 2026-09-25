@@ -3,6 +3,7 @@
 import type { DatabaseSync } from 'node:sqlite'
 import { app } from 'electron'
 import path from 'path'
+import { statSync } from 'fs'
 import type {
   AppNotification,
   AppSettings,
@@ -176,9 +177,12 @@ class LuminDatabase {
   /** 待重建索引的文档：rowid → 最新标题与正文（同一文件只保留最后一次） */
   private pendingFts = new Map<number, { title: string; content: string }>()
   private ftsTimer: NodeJS.Timeout | null = null
+  /** 库文件路径（VACUUM 前后要比字节数，见 fileSizeBytes） */
+  readonly path: string
 
   constructor() {
     const dbPath = path.join(app.getPath('userData'), 'lumin.db')
+    this.path = dbPath
     const DatabaseSyncCtor = requireDatabaseSync()
     this.db = new DatabaseSyncCtor(dbPath)
     this.db.exec('PRAGMA journal_mode = WAL')
@@ -639,14 +643,14 @@ class LuminDatabase {
     }
   }
 
-  /** 抽稀：按 shared/history.ts 的纯函数策略删（每个文件留最近 N 条 + 年龄 + 全库上限） */
+  /** 抽稀：按 shared/history.ts 的纯函数策略删（每文件条数 + 年龄 + 全库条数 + 全库字节） */
   pruneHistory(now = Date.now()): number {
     const rows = this.db
-      .prepare('SELECT id, path, saved_at FROM documents_history')
-      .all() as unknown as { id: number; path: string; saved_at: number }[]
+      .prepare('SELECT id, path, saved_at, LENGTH(content) AS bytes FROM documents_history')
+      .all() as unknown as { id: number; path: string; saved_at: number; bytes: number }[]
     if (rows.length === 0) return 0
     const drop = planHistoryPrune(
-      rows.map((r) => ({ id: r.id, path: r.path, savedAt: r.saved_at })),
+      rows.map((r) => ({ id: r.id, path: r.path, savedAt: r.saved_at, bytes: r.bytes })),
       { ...this.historyPolicy(), now }
     )
     if (!drop.length) return 0
@@ -663,11 +667,98 @@ class LuminDatabase {
     return Number(info.changes ?? 0)
   }
 
-  historyStats(): { entries: number; files: number } {
+  historyStats(): { entries: number; files: number; bytes: number } {
     const row = this.db
-      .prepare('SELECT COUNT(*) AS entries, COUNT(DISTINCT path) AS files FROM documents_history')
-      .get() as unknown as { entries: number; files: number }
-    return { entries: Number(row?.entries ?? 0), files: Number(row?.files ?? 0) }
+      .prepare(
+        'SELECT COUNT(*) AS entries, COUNT(DISTINCT path) AS files, COALESCE(SUM(LENGTH(content)), 0) AS bytes FROM documents_history'
+      )
+      .get() as unknown as { entries: number; files: number; bytes: number }
+    return {
+      entries: Number(row?.entries ?? 0),
+      files: Number(row?.files ?? 0),
+      bytes: Number(row?.bytes ?? 0)
+    }
+  }
+
+  /**
+   * ─── 数据库维护（审计 §2 P1：全仓无 VACUUM / integrity_check / 重建索引入口）──
+   * 三条都做成一件事一个方法，UI 直接调，返回值给用户看。
+   */
+
+  /** `PRAGMA integrity_check`：库结构是否损坏（返回 `ok` 或具体问题列表） */
+  integrityCheck(): { ok: boolean; detail: string } {
+    const rows = this.db.prepare('PRAGMA integrity_check').all() as unknown as Record<
+      string,
+      unknown
+    >[]
+    const lines = rows.map((r) => String(Object.values(r)[0] ?? ''))
+    const ok = lines.length === 1 && lines[0].toLowerCase() === 'ok'
+    return { ok, detail: lines.join('; ') || 'no-result' }
+  }
+
+  /**
+   * 把 FTS 索引按 `documents` 全量重建（库损坏/FTS 与真实文件不一致时的修复路径）。
+   * 先清空 FTS 再按行重插 —— 事务包裹，失败不会留下"空的索引"。
+   *
+   * ⚠️ 必须 `SELECT id` 而**不是** `SELECT rowid`：`documents` 声明了
+   * `id INTEGER PRIMARY KEY`，SQLite 会把 `rowid` 这个别名映射成 `id` 列，
+   * 于是拿 `row.rowid` 得到的是 `undefined`，绑定时报
+   * "Provided value cannot be bound to SQLite parameter 1"（这条是实测踩出来的）。
+   */
+  rebuildFtsIndex(): number {
+    const rows = this.db.prepare('SELECT id, title, content FROM documents').all() as unknown as {
+      id: number
+      title: string
+      content: string
+    }[]
+    this.db.exec('BEGIN')
+    try {
+      this.db.exec('DELETE FROM documents_fts')
+      const ins = this.db.prepare(
+        'INSERT INTO documents_fts (rowid, title, content) VALUES (?, ?, ?)'
+      )
+      for (const r of rows) ins.run(r.id, r.title, clipForIndex(r.content))
+      this.db.exec('COMMIT')
+    } catch (err) {
+      try {
+        this.db.exec('ROLLBACK')
+      } catch {
+        /* 保留原始错误 */
+      }
+      throw err
+    }
+    return rows.length
+  }
+
+  /**
+   * `VACUUM`：把删掉的行真正还给文件系统（SQLite 不会自动收缩文件）。
+   * 代价是**重建整个库**，所以只在用户显式点「压缩数据库」时跑，不在启动时跑。
+   * @returns 压缩前/后的字节数（给用户一个"省了多少"的数）
+   */
+  vacuum(): { before: number; after: number } {
+    const before = this.fileSizeBytes()
+    // VACUUM 不能在事务里跑（SQLite 明确禁止）—— 迁移里也不许用它
+    this.db.exec('VACUUM')
+    const after = this.fileSizeBytes()
+    return { before, after }
+  }
+
+  /** 预写日志落盘 + 截断（配合 VACUUM：不然 -wal 里还是旧数据） */
+  checkpoint(): void {
+    this.db.exec('PRAGMA wal_checkpoint(TRUNCATE)')
+  }
+
+  /** 库文件（含 -wal）的字节数：给"压缩前/后"一个可比的数 */
+  fileSizeBytes(): number {
+    let total = 0
+    for (const suffix of ['', '-wal']) {
+      try {
+        total += statSync(this.path + suffix).size
+      } catch {
+        /* 文件不存在时按 0 计 */
+      }
+    }
+    return total
   }
 
   stats(): { docs: number; fts: number } {

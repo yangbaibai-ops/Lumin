@@ -6,6 +6,7 @@ import {
   HISTORY_KEEP_NEWEST_PER_FILE,
   HISTORY_LIMIT_PER_FILE,
   HISTORY_MAX_AGE_MS,
+  HISTORY_MAX_BYTES,
   historyPreview,
   planHistoryPrune
 } from '../src/shared/history.ts'
@@ -99,4 +100,51 @@ test('planHistoryPrune：边界（空表 / 恰好等于上限 / 同一时刻）'
     [1],
     '同一时刻按 id 兜底：留下后写入的那两条'
   )
+})
+
+// ─── 字节上限（审计 §2 P1：以前只按条数封顶，一条快照可能几百 KB）──────────────
+test('planHistoryPrune：全库字节超限时从最老的开始丢', () => {
+  const now = 10 * DAY
+  const entries = Array.from({ length: 5 }, (_, i) => ({
+    id: i + 1,
+    path: 'a.md',
+    savedAt: now - i * HOUR,
+    bytes: 1000
+  }))
+  // 上限 3000 字节 → 只能留 3 条（最新的三条：id 1/2/3）
+  assert.deepEqual(
+    planHistoryPrune(entries, { maxBytes: 3000, maxTotal: 999, now }).sort((a, b) => a - b),
+    [4, 5]
+  )
+})
+
+test('planHistoryPrune：字节上限是硬闸（不看 keepNewestPerFile）', () => {
+  const now = 10 * DAY
+  // 单文件 4 条、每条 1000 字节、上限 1500：哪怕 keepNewest=3 也只剩 1 条
+  const entries = Array.from({ length: 4 }, (_, i) => ({
+    id: i + 1,
+    path: 'a.md',
+    savedAt: now - i * HOUR,
+    bytes: 1000
+  }))
+  const drop = planHistoryPrune(entries, {
+    maxBytes: 1500,
+    maxTotal: 999,
+    keepNewestPerFile: 3,
+    now
+  })
+  assert.deepEqual(
+    drop.sort((a, b) => a - b),
+    [2, 3, 4]
+  )
+})
+
+test('planHistoryPrune：没有 bytes 字段时字节那条不误删（缺省 0）', () => {
+  const now = 10 * DAY
+  const entries = [
+    { id: 1, path: 'a.md', savedAt: now },
+    { id: 2, path: 'a.md', savedAt: now - HOUR }
+  ]
+  assert.deepEqual(planHistoryPrune(entries, { maxBytes: 1, now }), [], '算不出字节就不删')
+  assert.ok(HISTORY_MAX_BYTES >= 16 * 1024 * 1024, '字节上限不该小于 16MB（要能留住几天的几版）')
 })

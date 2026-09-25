@@ -561,13 +561,19 @@ export interface LuminAPI {
     setPinned: (path: string, pinned: boolean) => Promise<void>
     setTags: (path: string, tags: string[]) => Promise<void>
     stats: () => Promise<{ docs: number; fts: number }>
+    /** 数据库维护：完整性检查（`PRAGMA integrity_check`） */
+    integrityCheck: () => Promise<{ ok: boolean; detail: string }>
+    /** 数据库维护：按 `documents` 全量重建 FTS 索引（库损坏 / 索引不一致时的修复路径） */
+    rebuildIndex: () => Promise<{ rebuilt: number }>
+    /** 数据库维护：`VACUUM`（把删掉的行还给文件系统）；返回压缩前/后字节数 */
+    vacuum: () => Promise<{ before: number; after: number; saved: number }>
   }
   /** 本地历史（Wave 2 数据安全）：每次写盘前留一份「即将被覆盖」的快照，可查看/回滚 */
   history: {
     list: (path: string, limit?: number) => Promise<HistoryEntryMeta[]>
     get: (id: number) => Promise<HistoryEntry | null>
     clear: (path?: string) => Promise<number>
-    stats: () => Promise<{ entries: number; files: number }>
+    stats: () => Promise<{ entries: number; files: number; bytes: number }>
   }
   /**
    * 通知中心（持久化在 SQLite notifications 表，跨会话保留）。
