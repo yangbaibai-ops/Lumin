@@ -42,6 +42,7 @@ import {
   type CloseGuardState
 } from '../shared/closeGuard'
 import { beginShutdown } from './services/shutdown'
+import { serializeWrite } from './services/writeQueue'
 import type {
   AppSettings,
   EpubMeta,
@@ -53,8 +54,8 @@ import type {
   SessionSlot
 } from '../shared/types'
 
-const closeConfirmed = new WeakSet<BrowserWindow>()
-/** 每个窗口的关窗兜底计时器（收到心跳就重置） */
+const closeConfirmed =
+  new WeakSet<BrowserWindow>() /** 每个窗口的关窗兜底计时器（收到心跳就重置） */
 const closeTimers = new WeakMap<BrowserWindow, ReturnType<typeof setTimeout>>()
 /** 每个窗口的关窗时序（判据见 shared/closeGuard.ts） */
 const closeGuardState = new WeakMap<BrowserWindow, CloseGuardState>()
@@ -346,15 +347,25 @@ export function registerIpc(slots: SlotRegistry): void {
           return { mtimeMs: st.mtimeMs, conflict: true as const }
         }
       }
-      // 本地历史（Wave 2 数据安全）：写盘前把**即将被覆盖的那一版**留一份快照。
-      // 放在主进程而不是渲染层：所有写盘路径（保存/另存为/以后的回滚写回）都经过这里，
-      // 不会因为某个调用点忘了调用而漏掉历史。
-      await recordHistoryBeforeOverwrite(fp, encoding, eol)
-      const mtimeMs = await fileOps.writeFile(fp, content, encoding, hadBom, eol)
-      // 保存时同步元数据 + 全文索引
-      db.upsertDocument({ path: fp, title: path.basename(fp), content, encoding, eol, hadBom })
-      // 回真实 mtime：渲染层用它判断「磁盘是否被外部改过」，用 Date.now() 冒充会永远失效
-      return { mtimeMs, conflict: false as const }
+      /**
+       * 同一个目标的写盘**按路径串行化**（审计 §2 P1：同一文件被两个窗口打开并各自保存）。
+       *
+       * 渲染层的 `savePromise` 只能管住**同一个 store**（= 同一个窗口）；两个窗口是两个 store。
+       * 临时文件名已经带随机后缀（不会再出现"A 的头 + B 的尾"混写），但两次写仍是并发提交的、
+       * 落盘顺序不确定。串行化让它们按到达顺序依次落盘，配合上面的 mtime 冲突检测，
+       * 后到的那次要么拿到冲突（不写）、要么写出完整的一份。
+       */
+      return serializeWrite(fp, async () => {
+        // 本地历史（Wave 2 数据安全）：写盘前把**即将被覆盖的那一版**留一份快照。
+        // 放在主进程而不是渲染层：所有写盘路径（保存/另存为/以后的回滚写回）都经过这里，
+        // 不会因为某个调用点忘了调用而漏掉历史。
+        await recordHistoryBeforeOverwrite(fp, encoding, eol)
+        const mtimeMs = await fileOps.writeFile(fp, content, encoding, hadBom, eol)
+        // 保存时同步元数据 + 全文索引
+        db.upsertDocument({ path: fp, title: path.basename(fp), content, encoding, eol, hadBom })
+        // 回真实 mtime：渲染层用它判断「磁盘是否被外部改过」，用 Date.now() 冒充会永远失效
+        return { mtimeMs, conflict: false as const }
+      })
     }
   )
   /**

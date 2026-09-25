@@ -15,6 +15,7 @@ import { optimizer, is } from '@electron-toolkit/utils'
 // 否则同一应用会出现两种图标。
 import appIconPng from '../../resources/icon.png?asset'
 import { installMenu } from './menu'
+import { mainT } from './i18n'
 import { registerIpc, attachCloseGuard } from './ipc'
 import { isServableMedia } from './fileOps'
 import * as links from './services/links'
@@ -387,7 +388,27 @@ app.whenReady().then(() => {
     createWindow({ sessionSlot: claimFreshSlot(), noWorkspace: true })
   })
   ipcMain.on('app:openInNewWindow', (_event, path: string) => {
-    if (path) createWindow({ openFile: path, sessionSlot: claimFreshSlot() })
+    if (!path) return
+    /**
+     * 去重（审计 §2 P1：同一个文件被两个窗口打开并各自保存）：
+     * 常规打开路径一直有这道闸（`window:focusByDoc` / `openFile.ts`），但"在新窗口打开"
+     * 这里以前直接建窗 —— 侧栏右键与文档内链接都走它。两个窗口各持一份缓冲区、
+     * 各自保存，正文可能互相覆盖（现在还有外部改动检测兜底，但那是"报冲突"，
+     * 不如一开始就不让它发生）。命中已开窗口就把那个窗口唤到前面，并给它一张提示。
+     */
+    const existing = openDocs.findWindowWithDoc(path)
+    if (existing) {
+      openDocs.focusWindow(existing)
+      const slot = slotOfWindow.get(existing.id) ?? null
+      db.addNotification(slot === null ? '' : scopeOfSlot(slot), {
+        level: 'info',
+        title: mainT('open.alreadyOpenTitle'),
+        body: mainT('open.alreadyOpenBody', { name: path.split(/[\\/]/).pop() ?? path }),
+        mergeKey: `open-already:${path}`
+      })
+      return
+    }
+    createWindow({ openFile: path, sessionSlot: claimFreshSlot() })
   })
   ipcMain.on('app:openFolderInNewWindow', (_event, path: string) => {
     if (path) createWindow({ openFolder: path, sessionSlot: claimFreshSlot() })

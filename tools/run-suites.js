@@ -113,6 +113,8 @@ const DEFAULT_SUITES = [
   '_verify-file-lifecycle.js',
   // ── 外部改动检测：保存时不许静默覆盖别的程序写进去的版本（覆盖 / 另存为 / 重载）──
   '_verify-external-change.js',
+  // ── 「在新窗口打开」去重：同一个文件不许开在两个窗口里各自保存 ──
+  '_verify-open-in-new-window.js',
   // ── 第十一轮：路径授权闸（工作区外拒绝读写，正常流程全部放行）──
   '_verify-path-grants.js',
   // ── 第十二轮：关于页说的是事实（真实依赖清单 + 第三方许可声明，不硬编码）──

@@ -26,7 +26,9 @@
     "pin": "Pin to top",
     "unpin": "Unpin",
     "removeRecent": "Remove from list",
-    "hint": "Ctrl+O to open a file · Ctrl+Shift+P to search documents"
+    "hint": "Ctrl+O to open a file · Ctrl+Shift+P to search documents",
+    "alreadyOpenTitle": "This file is already open in another window",
+    "alreadyOpenBody": "Switched back to the window showing {name}: editing the same file in two windows means the two copies overwrite each other."
   },
   "outline": {
     "collapse": "Collapse outline",

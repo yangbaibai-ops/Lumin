@@ -26,7 +26,9 @@
     "pin": "固定到顶部",
     "unpin": "取消固定",
     "removeRecent": "从列表移除",
-    "hint": "Ctrl+O 打开文件 · Ctrl+Shift+P 搜索文档"
+    "hint": "Ctrl+O 打开文件 · Ctrl+Shift+P 搜索文档",
+    "alreadyOpenTitle": "这个文件已经在一个窗口里打开了",
+    "alreadyOpenBody": "已为你切回「{name}」所在的那个窗口：同一个文件开在两个窗口里各自保存会互相覆盖。"
   },
   "outline": {
     "collapse": "收起大纲",
