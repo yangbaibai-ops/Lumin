@@ -6,6 +6,7 @@ import { useFilesStore } from '../stores/files'
 import { useUiStore } from '../stores/ui'
 import { activeTreePath } from '../lib/treeFocus'
 import { confirmDiscardIfDirty } from '../lib/dialog'
+import { errorReason } from '../lib/errors'
 import Icon from './Icon.vue'
 
 const props = defineProps<{
@@ -49,8 +50,11 @@ async function commitRename(): Promise<void> {
   try {
     await files.renameNode(props.node, props.parentDir, draft)
     // 改名成功不发通知：文件树里的那一行就是结果（失败才发，见下）
-  } catch {
-    ui.toast(t('toast.renameFailed'), 'error')
+  } catch (err) {
+    // 目标已存在是**可预期**的冲突，给一句能指导下一步的话；
+    // 其余失败（占用/只读/权限）保留原来的通用文案
+    const exists = String(err instanceof Error ? err.message : err).includes('TARGET_EXISTS')
+    ui.toast(t(exists ? 'toast.renameExists' : 'toast.renameFailed'), exists ? 'warning' : 'error')
   }
 }
 
@@ -87,7 +91,8 @@ async function onToggle(e: MouseEvent): Promise<void> {
 
 async function open(): Promise<void> {
   // 打开另一篇文档前先问（脏的是**当前**文档；点的就是它自己则不用问）
-  if (!(await confirmDiscardIfDirty(files.dirty && files.current?.path !== props.node.path))) return
+  if (!(await confirmDiscardIfDirty(() => files.dirty && files.current?.path !== props.node.path)))
+    return
   if (await files.openPath(props.node.path)) {
     // 已在编辑器路由内则由事件驱动，无需导航
     document.dispatchEvent(new CustomEvent('lumin:file-opened'))
@@ -144,8 +149,12 @@ async function handleAction(action: string): Promise<void> {
       danger: true
     })
     if (ok) {
-      // 删除成功不发通知：那行会从树里消失，本身就是结果
-      await files.removeNode(props.node, props.parentDir)
+      // 删除成功不发通知：那行会从树里消失，本身就是结果；失败与"不支持回收站"才提示
+      try {
+        await files.removeNode(props.node, props.parentDir)
+      } catch (err) {
+        ui.toast(`${t('toast.deleteFailed')}：${errorReason(err)}`, 'error')
+      }
     }
   }
 }

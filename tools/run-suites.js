@@ -16,7 +16,11 @@
 //   node tools/run-suites.js --suite=_verify-session.js,_verify-md-fidelity.js
 //   node tools/run-suites.js --all --port=9223   # 全量（需要 dev server，失败会标 SKIP）
 //   node tools/run-suites.js --keep              # 跑完不关实例（调试用）
+//   node tools/run-suites.js --retry=0           # 关掉失败重跑（默认 1 次，见下面的 FLAKY）
 //
+// 判定档位：PASS / **FLAKY**（首次红、重跑绿：环境敏感，不判失败但会单独列出）/
+//           FAIL（重跑仍红 = 真回归）/ SKIP（环境不支持，如实跳过）/
+//           NOASSERT（一条断言都没产出 = 没测）。
 // 约定：套件只允许连 `--remote-debugging-port` 暴露的页面，绝不 kill 进程；
 //       实例由本脚本管理，绝不碰用户自己的 `%APPDATA%\lumin`。
 //
@@ -91,7 +95,9 @@ const DEFAULT_SUITES = [
   // ── 第九轮提进默认矩阵（纯合成事件：不依赖窗口出帧，适合批量跑）──
   '_verify-sidebar-search.js', // Ctrl+F 的去向：焦点在文件面板里搜文件名，否则搜正文（含两个边界）
   '_verify-rename.js', // 文件树就地重命名 + 新建文件（内容区切过去 / 无边框输入框 / 脏了先问）
-  '_verify-sidebar-refresh.js' // 头部「刷新」只在列表视图下出现，且真的能刷新列表元数据
+  '_verify-sidebar-refresh.js', // 头部「刷新」只在列表视图下出现，且真的能刷新列表元数据
+  // ── 第十轮：数据安全（保存期输入 / 草稿最大等待 / 换文档前 flush / 真实 mtime）──
+  '_verify-save-safety.js'
 ]
 
 /** 自己管理 Electron 实例的套件（运行器不替它们起实例） */
@@ -102,13 +108,15 @@ const SELF_MANAGED = new Set([
 ])
 
 function parseArgs(argv) {
-  const args = { suite: null, all: false, keep: false, port: 9222, timeoutMs: 420000 }
+  const args = { suite: null, all: false, keep: false, port: 9222, timeoutMs: 420000, retry: 1 }
   for (const a of argv.slice(2)) {
     if (a === '--all') args.all = true
     else if (a === '--keep') args.keep = true
     else if (a.startsWith('--suite=')) args.suite = a.slice('--suite='.length).split(',').filter(Boolean)
     else if (a.startsWith('--port=')) args.port = Number(a.slice('--port='.length))
     else if (a.startsWith('--timeout=')) args.timeoutMs = Number(a.slice('--timeout='.length))
+    // 失败重跑次数（默认 1）。见 README 里「FLAKY 与 FAIL 的区别」
+    else if (a.startsWith('--retry=')) args.retry = Math.max(0, Number(a.slice('--retry='.length)))
   }
   return args
 }
@@ -326,6 +334,34 @@ async function main() {
     let status = res.code === 0 && res.fail === 0 ? 'PASS' : 'FAIL'
     if (res.skipped && res.total === 0) status = 'SKIP'
     /**
+     * ─── 失败重跑一次：**FLAKY 与 FAIL 分开**（默认 `--retry=1`）─────────────────
+     *
+     * 为什么要有这一档：CDP 套件住在真实桌面里 —— 机器忙、窗口被遮挡、首帧还没稳定时，
+     * 「等布局/等焦点/等帧」类断言会随机红一条。实测：同一套件批跑红、单独重跑绿
+     * （本轮 `_regress-cb` / `_verify-cb-virtualization` / `_verify-outline-right` 三条都这样）。
+     * 混在一起报 FAIL 的后果是**没人再信红灯**，真回归反而被当成噪音。
+     *
+     * 口径：重跑一次（**全新实例**），过了记 `FLAKY`（打印出来、不判失败），
+     * 两次都红才是 `FAIL` —— 真回归不会因为重跑而变绿。
+     */
+    let retries = 0
+    let firstRun = null
+    while (status === 'FAIL' && retries < args.retry) {
+      retries += 1
+      if (firstRun === null) firstRun = `${res.pass}/${res.total}`
+      if (!selfManaged) {
+        const again = startInstance(args.port, userData)
+        if (again.code !== 0) break
+      }
+      const retryRes = runSuite(file, args.port, args.timeoutMs, userData)
+      if (retryRes.code === 0 && retryRes.fail === 0 && retryRes.total > 0) {
+        status = 'FLAKY'
+        res.pass = retryRes.pass
+        res.total = retryRes.total
+        res.skip = retryRes.skip
+      }
+    }
+    /**
      * ⚠️ **零断言 = NOASSERT，不算通过**（自查报告 H1）。
      *
      * 原来只看退出码：一个套件如果**压根没产出断言**（没打印 `--- N/M PASS` / `TOTAL` 行，
@@ -341,8 +377,8 @@ async function main() {
       `\r${status} ${file} | ${res.pass}/${res.total}${res.skip ? ` SKIP ${res.skip}` : ''}${
         selfManaged ? '（自管实例）' : ''
       }${devNeeded ? '（需要 dev server）' : ''}${
-        status === 'NOASSERT' ? '  ← 没有产出任何断言，等于没测' : ''
-      }`
+        status === 'FLAKY' ? `  ← 首次 ${firstRun} 红、重跑绿（环境敏感，不是回归）` : ''
+      }${status === 'NOASSERT' ? '  ← 没有产出任何断言，等于没测' : ''}`
     )
     if (status === 'FAIL') {
       const tail = res.raw
@@ -352,7 +388,7 @@ async function main() {
         .join('\n    ')
       if (tail) console.log('    ' + tail)
     }
-    rows.push({ file, status, pass: res.pass, total: res.total, skip: res.skip })
+    rows.push({ file, status, pass: res.pass, total: res.total, skip: res.skip, firstRun })
     if (!args.keep) await sleep(500)
   }
 
@@ -360,13 +396,20 @@ async function main() {
   const pass = rows.filter((r) => r.status === 'PASS')
   const skipped = rows.filter((r) => r.status === 'SKIP')
   const noassert = rows.filter((r) => r.status === 'NOASSERT')
+  const flaky = rows.filter((r) => r.status === 'FLAKY')
   if (!args.keep) startInstance(args.port, userData, true) // 收尾：别把实例留在 9222 上
   console.log(
-    `\nTOTAL ${rows.length} PASS ${pass.length} FAIL ${failed.length} SKIP ${skipped.length} NOASSERT ${noassert.length}`
+    `\nTOTAL ${rows.length} PASS ${pass.length} FAIL ${failed.length} SKIP ${skipped.length} NOASSERT ${noassert.length} FLAKY ${flaky.length}`
   )
   const skippedAssertions = rows.reduce((n, r) => n + (r.skip || 0), 0)
   if (skippedAssertions)
     console.log(`（另有 ${skippedAssertions} 条断言按环境如实 SKIP —— SKIP 不算失败，见清单 §1.C.1）`)
+  if (flaky.length) {
+    console.log(
+      'FLAKY（重跑绿：环境敏感，未判失败；若某条反复出现在这里，请按"套件不稳"修而不是忽略）' +
+        flaky.map((r) => `${r.file}(首次 ${r.firstRun})`).join(', ')
+    )
+  }
   if (failed.length) console.log('FAILED ' + failed.map((r) => r.file).join(', '))
   if (noassert.length) {
     console.log('NOASSERT（没有产出断言，等于没测）' + noassert.map((r) => r.file).join(', '))

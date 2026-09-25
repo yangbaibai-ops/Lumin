@@ -105,12 +105,19 @@ export interface SlotRegistry {
   slotOf: (windowId: number) => number | null
   /** 当前所有活动窗口占用的槽位 */
   liveSlots: () => number[]
+  /**
+   * 本次运行**已经分配出去**的槽位（含启动时按恢复计划预留、窗口还没建出来的那些）。
+   * 草稿归属要它：那些窗口只是错峰创建，它们的草稿不该被启动窗口抢走。
+   */
+  plannedSlots: () => number[]
   /** 某个窗口实例的 uid（写草稿时落在草稿上，用来区分「谁写的」） */
   uidOf: (windowId: number) => string | null
   /** 当前所有活动窗口实例的 uid（写草稿的窗口还活着 → 那份草稿不叫「无主」） */
   liveUids: () => string[]
   /** 该窗口能不能认领「无主草稿」：只有本次运行的启动窗口可以 */
   mayClaimUntitledDraft: (windowId: number) => boolean
+  /** 该窗口的槽位是不是本次启动恢复出来的（草稿归属要用，见 shared/drafts 的 mySlotRestored） */
+  slotRestored: (slot: number | null) => boolean
 }
 
 /**
@@ -217,9 +224,11 @@ export function registerIpc(slots: SlotRegistry): void {
       // 放在主进程而不是渲染层：所有写盘路径（保存/另存为/以后的回滚写回）都经过这里，
       // 不会因为某个调用点忘了调用而漏掉历史。
       await recordHistoryBeforeOverwrite(fp, encoding, eol)
-      await fileOps.writeFile(fp, content, encoding, hadBom, eol)
+      const mtimeMs = await fileOps.writeFile(fp, content, encoding, hadBom, eol)
       // 保存时同步元数据 + 全文索引
       db.upsertDocument({ path: fp, title: path.basename(fp), content, encoding, eol, hadBom })
+      // 回真实 mtime：渲染层用它判断「磁盘是否被外部改过」，用 Date.now() 冒充会永远失效
+      return { mtimeMs }
     }
   )
   /** 本地历史：某个文件的快照列表（新的在前；不含正文） */
@@ -253,16 +262,20 @@ export function registerIpc(slots: SlotRegistry): void {
     const fs = await import('fs/promises')
     await fs.mkdir(fp, { recursive: true })
   })
-  ipcMain.handle('file:remove', (_, p: string) => {
+  ipcMain.handle('file:remove', async (_, p: string) => {
     const fp = fileOps.assertWorkspacePath(p)
+    // 顺序要紧：**先删盘再删索引**。反过来的话 `trashItem`/`rm` 失败时，
+    // 文件还在而搜索与最近列表里已经找不到它了（表现为"文件莫名消失"）。
+    const result = await fileOps.removeEntry(fp)
     db.deleteDocument(fp)
-    return fileOps.removeEntry(fp)
+    return result
   })
-  ipcMain.handle('file:rename', (_, o: string, n: string) => {
+  ipcMain.handle('file:rename', async (_, o: string, n: string) => {
     const from = fileOps.assertWorkspacePath(o)
     const to = fileOps.assertWorkspacePath(n)
+    // 先改盘再改索引：目标已存在时 `renameEntry` 会抛 TARGET_EXISTS，此时索引不该动
+    await fileOps.renameEntry(from, to)
     db.renameDocument(from, to)
-    return fileOps.renameEntry(from, to)
   })
   ipcMain.handle('file:exists', (_, p: string) => fileOps.exists(path.resolve(p)))
   ipcMain.handle('file:chooseOpenFile', async () => {
@@ -341,6 +354,8 @@ export function registerIpc(slots: SlotRegistry): void {
     db.kvSet('workspace', ws)
     if (root) startWorkspaceWatch(root)
     else stopWorkspaceWatch()
+    // 换工作区时顺手清掉上一轮崩溃残留的写盘临时文件（里面是用户全文的副本）——不阻塞返回
+    if (root) void sweepTempFiles(root)
   })
 
   // ── 数据库（文档元数据 / 全文搜索）──
@@ -450,11 +465,14 @@ export function registerIpc(slots: SlotRegistry): void {
   ipcMain.handle('drafts:untitledDraft', (event) => {
     const win = BrowserWindow.fromWebContents(event.sender)
     if (!win) return null
+    const mySlot = slots.slotOf(win.id)
     return drafts.takeUntitledDraft({
-      ownKey: untitledDraftKey(slots.slotOf(win.id)),
+      ownKey: untitledDraftKey(mySlot),
       myUid: slots.uidOf(win.id),
       liveUids: slots.liveUids(),
       liveSlots: slots.liveSlots(),
+      plannedSlots: slots.plannedSlots(),
+      mySlotRestored: slots.slotRestored(mySlot),
       mayClaimOrphan: slots.mayClaimUntitledDraft(win.id)
     })
   })
@@ -497,9 +515,25 @@ export function registerIpc(slots: SlotRegistry): void {
   ipcMain.handle('links:forget', (_, target: string) => db.forgetLinkOpen(target))
   ipcMain.handle('links:clear', () => db.clearLinkHistory())
 
-  // 启动时若已记住工作区，恢复对根目录的监听
+  // 启动时若已记住工作区，恢复对根目录的监听 + 扫一遍崩溃残留的写盘临时文件
   const existingRoot = db.kvGet<{ root: string | null }>('workspace', { root: null }).root
-  if (existingRoot) startWorkspaceWatch(existingRoot)
+  if (existingRoot) {
+    startWorkspaceWatch(existingRoot)
+    void sweepTempFiles(existingRoot)
+  }
+}
+
+/**
+ * 清掉工作区里残留的写盘临时文件（`<name>.<8位随机>.lumin-tmp`）。
+ * 只在**打开/恢复工作区**时跑一次；失败只记一行 ASCII 日志，不影响任何主流程。
+ */
+async function sweepTempFiles(root: string): Promise<void> {
+  try {
+    const removed = await fileOps.cleanStaleTempFiles(root)
+    if (removed) console.log(`[tempfiles] swept ${removed} stale lumin-tmp file(s)`)
+  } catch {
+    /* 清理失败不该影响打开工作区 */
+  }
 }
 
 /** 窗口关闭前：给渲染进程保存机会（quitting 用于区分「整体退出」与「单独关窗」） */

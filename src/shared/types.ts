@@ -451,7 +451,8 @@ export interface LuminAPI {
       hadBom?: boolean,
       /** 文档记录的行尾：主进程写盘前展开（内存里的文本永远是 LF，见 shared/eol） */
       eol?: Eol
-    ) => Promise<void>
+      /** 写盘后磁盘上的真实 mtimeMs（渲染层用它取代 `Date.now()` 的假值，见 stores/files.save） */
+    ) => Promise<{ mtimeMs: number }>
     /** 记住某文件的编码（「选择编码重新打开」用；权威来源是 documents 表，kv 只兜底） */
     rememberEncoding: (path: string, encoding: ConcreteEncoding) => Promise<void>
     readDir: (dir: string) => Promise<FileNode[]>
@@ -459,7 +460,9 @@ export interface LuminAPI {
     scanWorkspace: (root: string) => Promise<WorkspaceDoc[]>
     createFile: (path: string) => Promise<void>
     createDir: (path: string) => Promise<void>
-    remove: (path: string) => Promise<void>
+    /** 删除（优先走系统回收站；`trashed: false` 表示该位置不支持回收站、已永久删除） */
+    remove: (path: string) => Promise<{ trashed: boolean }>
+    /** 重命名。目标已存在时 rejects（`TARGET_EXISTS`），不会静默覆盖 */
     rename: (oldPath: string, newPath: string) => Promise<void>
     exists: (path: string) => Promise<boolean>
     chooseOpenFile: () => Promise<string | null>

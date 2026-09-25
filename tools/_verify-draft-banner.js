@@ -21,8 +21,21 @@ const fs = require('fs')
 const os = require('os')
 const path = require('path')
 const http = require('http')
+const crypto = require('crypto')
 
 const DRAFTS_DIR = process.env.LUMIN_DRAFTS_DIR || ''
+
+/**
+ * 草稿键 → 盘上的文件名。
+ *
+ * ⚠️ 这里**故意重复**主进程的命名规则（`src/main/drafts.ts` 的 `keyToFile`）：
+ * 本套件要断言的是"盘上真的出现了/真的没有那份文件"，所以必须知道文件叫什么。
+ * 规则本身也是本轮改动的一部分：文件名从"把键里非字母数字折叠成 `_`"改成
+ * **sha1(键) 前 16 位** —— 旧的折叠写法会让 `a b.md` 与 `a_20b.md` 撞成同一个文件，
+ * 后写的草稿覆盖先写的（两份文档的未保存内容互相顶掉）。改规则本身有断言守着，见本文件 ⑧。
+ */
+const draftFile = (key) =>
+  path.join(DRAFTS_DIR, `${crypto.createHash('sha1').update(key).digest('hex').slice(0, 16)}.json`)
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 
@@ -111,6 +124,26 @@ async function attach(page) {
 }
 
 const snap = async (w) => JSON.parse(await w.ev(SNAP))
+
+/**
+ * 等「草稿弹窗从 DOM 里消失」。
+ *
+ * 为什么不能只 sleep 后直接断言：弹窗外层包着 `<Transition name="fade">`，
+ * `v-if` 变假之后节点要等**离场过渡结束**（transitionend）才被移除，而离场过渡挂在**帧**上 ——
+ * 窗口被别的窗口挡住时 Chromium 会暂停出帧，transitionend 永远不来，节点就一直留在 DOM 里
+ * （实测：本套件 ③④ 与「booting 抑制弹窗」三条会因此假红，`draftRestore` 早已是 null）。
+ * 这里用两件事压掉它：**强制一帧**（截屏会让渲染器无条件出一帧）＋ 轮询。
+ */
+async function waitModalGone(w, ms = 2500) {
+  const end = Date.now() + ms
+  for (;;) {
+    await w.send('Page.captureScreenshot', { format: 'jpeg', quality: 1 }).catch(() => {})
+    const gone = !(await w.ev(`!!document.querySelector('.draft-modal')`))
+    if (gone) return true
+    if (Date.now() > end) return false
+    await sleep(120)
+  }
+}
 
 /** 本窗口的未命名草稿键（与 store 的规则一致） */
 const ownKey = `'untitled-' + (window.luminAPI.app.sessionSlot ?? 0)`
@@ -245,7 +278,7 @@ const saveDraft = (keyExpr, content, filePath = null) =>
     )
     c(
       'restore-consumes-draft',
-      afterRestore.banner === false && (await w1.ev(loadOwn)) === null,
+      (await waitModalGone(w1)) && (await w1.ev(loadOwn)) === null,
       JSON.stringify(afterRestore)
     )
 
@@ -261,7 +294,7 @@ const saveDraft = (keyExpr, content, filePath = null) =>
     const sameFile = await snap(w1)
     c(
       'same-content-file-draft-no-banner',
-      sameFile.banner === false && sameFile.draftContent === null,
+      sameFile.draftContent === null && (await waitModalGone(w1, 800)),
       JSON.stringify(sameFile)
     )
 
@@ -321,7 +354,7 @@ const saveDraft = (keyExpr, content, filePath = null) =>
       console.log('SKIP ⑦: 未提供 LUMIN_DRAFTS_DIR（无法构造「写它的窗口已经不在了」的草稿）')
     } else {
       fs.writeFileSync(
-        path.join(DRAFTS_DIR, `${ORPHAN_KEY}.json`),
+        draftFile(ORPHAN_KEY),
         JSON.stringify({
           key: ORPHAN_KEY,
           path: null,
@@ -376,7 +409,7 @@ const saveDraft = (keyExpr, content, filePath = null) =>
       const w2Slot = await w2.ev(`window.luminAPI.app.sessionSlot`)
       const foreignKey = `untitled-${w2Slot}`
       fs.writeFileSync(
-        path.join(DRAFTS_DIR, `${foreignKey}.json`),
+        draftFile(foreignKey),
         JSON.stringify({
           key: foreignKey,
           path: null,
@@ -389,10 +422,8 @@ const saveDraft = (keyExpr, content, filePath = null) =>
       await w2.ev(reopenBlank)
       await sleep(500)
       const foreign = await snap(w2)
-      const parked = JSON.parse(
-        fs.readFileSync(path.join(DRAFTS_DIR, 'untitled-orphan.json'), 'utf-8')
-      )
-      const ownGone = !fs.existsSync(path.join(DRAFTS_DIR, `${foreignKey}.json`))
+      const parked = JSON.parse(fs.readFileSync(draftFile('untitled-orphan'), 'utf-8'))
+      const ownGone = !fs.existsSync(draftFile(foreignKey))
       c(
         'foreign-draft-not-shown',
         foreign.banner === false && foreign.draftContent === null,
@@ -449,27 +480,60 @@ const saveDraft = (keyExpr, content, filePath = null) =>
     //   现场是两条径抢时序：占位/会话恢复某一条先把 draftRestore 置上，紧接着 openPath 又把它清掉。
     //   现在不赌先后：`ui.booting` 期间弹窗不渲染；booting 落下后草稿若仍在，才出现。
     //   这条直接钉住契约本身，不需要复现那个竞态。
-    const bootGate = JSON.parse(
-      await w1.ev(`(async () => {
-        const f = window.__vt.files()
-        const ui = window.__vt.ui()
-        const backup = f.draftRestore
-        f.draftRestore = { key: 'boot-gate-probe', path: null, content: 'x', mtimeMs: Date.now() }
-        ui.booting = true
-        await new Promise((r) => setTimeout(r, 300))
-        const duringBoot = !!document.querySelector('.draft-modal')
-        ui.booting = false
-        await new Promise((r) => setTimeout(r, 300))
-        const afterBoot = !!document.querySelector('.draft-modal')
-        f.draftRestore = backup
-        return JSON.stringify({ duringBoot, afterBoot })
-      })()`)
-    )
+    //
+    //   ⚠️ 两次测量之间都要**强制出一帧**（截屏）：弹窗外面那层 `<Transition name="fade">` 的
+    //   离场节点要等 transitionend 才被移除，而窗口被遮挡时 Chromium 暂停出帧 —— 不强制就会量到
+    //   "上一个状态的残留节点"，把契约本身判红（实测踩过）。
+    const frame = () => w1.send('Page.captureScreenshot', { format: 'jpeg', quality: 1 })
+    await w1.ev(`(() => {
+      const f = window.__vt.files()
+      window.__bootBackup = f.draftRestore
+      f.draftRestore = { key: 'boot-gate-probe', path: null, content: 'x', mtimeMs: Date.now() }
+      window.__vt.ui().booting = true
+      return 'ok'
+    })()`)
+    await frame()
+    await sleep(200)
+    const duringBoot = await w1.ev(`!!document.querySelector('.draft-modal')`)
+    await w1.ev(`(() => { window.__vt.ui().booting = false; return 'ok' })()`)
+    await frame()
+    await sleep(200)
+    const afterBoot = await w1.ev(`!!document.querySelector('.draft-modal')`)
+    await w1.ev(`(() => { window.__vt.files().draftRestore = window.__bootBackup; return 'ok' })()`)
     c(
       'booting-suppresses-draft-modal',
-      bootGate.duringBoot === false && bootGate.afterBoot === true,
-      JSON.stringify(bootGate)
+      duringBoot === false && afterBoot === true,
+      JSON.stringify({ duringBoot, afterBoot })
     )
+
+    // ⑧ 草稿文件名 = sha1(键)：**两个"折叠后会撞名"的键必须落在不同文件上**
+    //    旧规则把键里非 `[A-Za-z0-9_-]` 全折叠成 `_`，于是下面两个键算出来是同一个文件名
+    //    （`file-c_3A_2Ftmp_2Fa_20b_md`）—— 两份文档的草稿互相覆盖，丢的是用户没保存过的正文。
+    if (DRAFTS_DIR) {
+      const k1 = 'file-' + encodeURIComponent('c:/tmp/a b.md')
+      const k2 = 'file-' + encodeURIComponent('c:/tmp/a_20b.md')
+      await w1.ev(`(async () => {
+        await window.luminAPI.drafts.save(${JSON.stringify(k1)}, 'first', null)
+        await window.luminAPI.drafts.save(${JSON.stringify(k2)}, 'second', null)
+        return 'ok'
+      })()`)
+      const d1 = JSON.parse(fs.readFileSync(draftFile(k1), 'utf-8'))
+      const d2 = JSON.parse(fs.readFileSync(draftFile(k2), 'utf-8'))
+      c(
+        'draft-file-names-do-not-collide',
+        draftFile(k1) !== draftFile(k2) && d1.content === 'first' && d2.content === 'second',
+        JSON.stringify({
+          same: draftFile(k1) === draftFile(k2),
+          first: d1.content,
+          second: d2.content
+        })
+      )
+      await w1.ev(`(async () => {
+        await window.luminAPI.drafts.remove(${JSON.stringify(k1)})
+        await window.luminAPI.drafts.remove(${JSON.stringify(k2)})
+        return 'ok'
+      })()`)
+    }
 
     // 收尾：把本套件动过的草稿清干净（不碰用户数据之外的东西）
     await w1.ev(`(async () => { await window.luminAPI.drafts.remove(${FILE_KEY}); return 'ok' })()`)

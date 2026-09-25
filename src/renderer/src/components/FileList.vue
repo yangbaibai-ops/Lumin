@@ -97,7 +97,7 @@ const timeTitleFmt = computed(
 
 async function openDoc(path: string): Promise<void> {
   // 打开另一篇文档前先问（唯一实现在 lib/dialog）
-  if (!(await confirmDiscardIfDirty(files.dirty && files.current?.path !== path))) return
+  if (!(await confirmDiscardIfDirty(() => files.dirty && files.current?.path !== path))) return
   if (await files.openPath(path)) {
     document.dispatchEvent(new CustomEvent('lumin:file-opened'))
   }

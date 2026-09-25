@@ -14,7 +14,7 @@ import i18n from '../i18n'
 
 /** 未保存更改确认：薄适配器 —— 文案与语义只有一份，在 lib/dialog */
 export async function confirmIfDirty(): Promise<boolean> {
-  return confirmDiscardIfDirty(useFilesStore().dirty)
+  return confirmDiscardIfDirty(() => useFilesStore().dirty)
 }
 
 /**

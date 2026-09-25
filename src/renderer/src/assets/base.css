@@ -184,7 +184,7 @@
   align-items: center;
   /* 放在导航栏上方 ⇒ 跟着导航那一栏的宽度走（用户口径①） */
   width: 100%;
-  height: 30px;
+  height: 38px;
   margin-bottom: 10px;
   border: 1px solid var(--edge-strong);
   border-radius: 8px;

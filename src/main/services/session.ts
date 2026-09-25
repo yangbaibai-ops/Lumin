@@ -18,6 +18,15 @@ export const MAX_RESTORE_WINDOWS = 5
 const claimed = new Set<number>()
 
 /**
+ * 其中**属于本次启动恢复计划**的那些槽位（`planRestore()` 一次性预留的）。
+ *
+ * 与 `claimed` 的区别是语义上的：`claimed` 里既有"恢复出来的老窗口"，也有"用户新开的窗口"。
+ * 草稿归属必须区分这两者 —— 同一个槽位号，前者是"我上次没保存的正文"（该还给用户），
+ * 后者是"上一个住户留下的"（该挪走，绝不能弹给一个刚按了 Ctrl+N 的空白窗口，见 §4.49）。
+ */
+const restored = new Set<number>()
+
+/**
  * 应用是否正在整体退出。只有「整体退出」才保留各窗口槽位；用户单独关掉某个窗口时
  * 要清空它的槽位，否则下次启动会把已经关掉的窗口又拉回来。
  * 放在这里作为单一事实来源：index.ts（窗口生命周期）与 ipc.ts（关闭守卫）都要用。
@@ -108,6 +117,22 @@ export function claimSlot(index?: number): number {
  * 见 markSlotClosed），释放它反而会让后来的窗口拿到同一个号、认领到别人的草稿。
  * 原先这里有个没人调用的 releaseSlot()，已删（真要释放，3 行就能加回来）。
  *//**
+ * 本次运行**已经分配出去**的槽位（含启动时按恢复计划一次性预留的那些）。
+ *
+ * 草稿归属要用它：某个槽位的草稿如果属于"这次要恢复的窗口"，就不该被别的窗口抢走。
+ * 与 `liveSlots`（已经建出窗口的槽位）不同——恢复计划算出来时就会把槽位全部占上，
+ * 而窗口是错峰创建的（先建第一个、首帧之后再建其余），所以"计划内"才是正确的判据。
+ */
+export function claimedSlots(): number[] {
+  return [...claimed]
+}
+
+/** 该槽位是不是本次启动恢复出来的（决定"槽位里那份草稿算不算我的"，见 restored 的说明） */
+export function isRestoredSlot(slot: number | null): boolean {
+  return slot !== null && restored.has(slot)
+}
+
+/**
  * 启动时应当重建的窗口清单：读 kv → 交给纯函数判定（shared/session.ts 的
  * planRestoreFromSlots，有单测）→ 落回 kv 的副作用在这里做。
  *
@@ -136,5 +161,6 @@ export function planRestore(): { index: number; slot: SessionSlot }[] {
   })
 
   for (const w of windows) claimed.add(w.index)
+  for (const w of windows) restored.add(w.index)
   return windows
 }

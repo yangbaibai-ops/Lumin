@@ -15,6 +15,8 @@ import Icon from '../components/Icon.vue'
 import { measureAllCodeBlocks } from '../lib/editor/codeBlockViews'
 import { confirmIfDirty } from '../composables/useAppActions'
 import { openExternalFile } from '../lib/openFile'
+import { registerEditorFlush, currentEditorFlush } from '../lib/editorFlush'
+import { useEditorMode } from '../composables/useEditorMode'
 import i18n from '../i18n'
 
 // ─── 编辑器页面：工具栏 + 实时渲染/分屏对比/源码三模式 + 状态栏 ────────────
@@ -26,6 +28,12 @@ const ui = useUiStore()
 const editorStore = useEditorStore()
 const settings = useSettingsStore()
 const editorMenu = useEditorMenuStore()
+/**
+ * 「编辑器里挂起的变更现在就得落地」的登记：数据层（stores/files、lib/dialog）在换文档 /
+ * 关窗 / 判断脏之前会调它，而它只会调到这里 —— 见 lib/editorFlush.ts 的说明。
+ * 登记的是`useEditorMode` 里那份唯一的 flush 实现（防抖窗口内的序列化 + 账本记账）。
+ */
+const { flushWysiwyg } = useEditorMode()
 
 /**
  * 渲染面板右键：先按点击位置校正选区（右键点在哪就作用于哪，表格识别才准确；
@@ -711,6 +719,7 @@ watch(
 
 onMounted(() => {
   editorStore.setActive(ui.editorMode !== 'source')
+  registerEditorFlush(flushWysiwyg)
   // ⚠️ **启动期间不要开这份占位缓冲**（`ui.booting` 为真 = 会话恢复还没跑完）：
   // 这里开出来的空白缓冲区会去查一次「无主草稿」，于是可能把「未保存的草稿」弹窗拉起来；
   // 紧接着会话恢复打开真正的文档（`openPath` 里会把 `draftRestore` 清空）⇒ 弹窗**闪一下就不见**。
@@ -721,7 +730,13 @@ onMounted(() => {
 onBeforeUnmount(() => {
   document.removeEventListener('keydown', blockDraftKeys, true)
   for (const name of DRAFT_WRITE_EVENTS) document.removeEventListener(name, blockDraftWrites, true)
-  void files.flushAll()
+  // ⚠️ 顺序：**不能**先摘登记再 flushAll —— flushAll 自己要在最前面刷一次编辑器
+  // （防抖窗口里的输入否则既不落盘也不写草稿）。所以这里交给它收尾，
+  // 并按**身份**摘掉登记（用户快速 /about → /editor 往返时，新实例已经登记过自己的了，
+  // 无脑置 null 会把新实例的登记抹掉）。
+  void files.flushAll().finally(() => {
+    if (currentEditorFlush() === flushWysiwyg) registerEditorFlush(null)
+  })
 })
 </script>
 

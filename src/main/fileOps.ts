@@ -1,6 +1,9 @@
 // ─── 主进程：安全的文件系统操作 ────────────────────────────────────────────
 import fs from 'fs/promises'
 import path from 'path'
+import { randomUUID } from 'crypto'
+import { shell } from 'electron'
+import type { Dirent } from 'fs'
 import { pathToFileURL } from 'url'
 import { db } from './services/database'
 import { decodeBuffer, encodeText } from './services/encoding'
@@ -196,9 +199,14 @@ export async function scanWorkspace(root: string): Promise<WorkspaceDoc[]> {
  * 三个细节：
  *  1. 临时文件与目标**同目录**（跨盘 rename 不是原子操作）；
  *  2. 先 `fsync` 再 rename —— 保证 rename 生效时数据已经落盘，而不是只改了目录项；
- *  3. 临时文件名固定（`<name>.lumin-tmp`）而不是带时间戳：崩溃残留的那一份会在下次写入时
- *     被直接覆盖（自愈），不会在工作区里越积越多；扩展名不在 `.md` 白名单里，也不会进文件树。
- *     同一个文件不会有两个窗口同时写（见 openDocs 的「一个文件只开一个窗口」）。
+ *  3. 临时文件名带**随机后缀**（`<name>.<8位随机>.lumin-tmp`）：固定名在「同一文件被两个
+ *     窗口同时写」时会让两个 fd 从偏移 0 互相覆盖、各自 rename，落盘的是 A 的头 + B 的尾。
+ *     随机后缀下两个写入者各写各的临时文件，最后 rename 的是**完整**的一份
+ *     （仍是"后到者胜"，但不会再产生混合内容）。残留由启动时的 `cleanStaleTempFiles` 扫掉。
+ *     扩展名不在 `.md` 白名单里，也不会进文件树。
+ *
+ * @returns 写盘后磁盘上的**真实 mtimeMs** —— 渲染层据此把 `mtimeMs` 记成真实值，
+ *   而不是用 `Date.now()` 冒充（冒充会让"外部是否改过"这类判断永远失效）。
  */
 export async function writeFile(
   filePath: string,
@@ -206,13 +214,13 @@ export async function writeFile(
   encoding: ConcreteEncoding = 'utf-8',
   hadBom = false,
   eol?: Eol
-): Promise<void> {
+): Promise<number> {
   // 行尾在**这一层**统一展开：所有落盘路径（保存、另存为、导出走的都是这里）都不会漏。
   // eol 缺省 = 不做行尾处理（老调用方行为不变）。
   const text = eol ? toEol(content, eol) : content
   const bytes = encodeText(text, encoding, hadBom)
   await fs.mkdir(path.dirname(filePath), { recursive: true })
-  const tmp = `${filePath}.lumin-tmp`
+  const tmp = `${filePath}.${randomUUID().slice(0, 8)}.lumin-tmp`
   let handle: Awaited<ReturnType<typeof fs.open>> | null = null
   try {
     handle = await fs.open(tmp, 'w')
@@ -227,6 +235,43 @@ export async function writeFile(
     await fs.rm(tmp, { force: true }).catch(() => {})
     throw err
   }
+  // rename 之后再 stat：此刻磁盘上的就是刚写进去的那一份
+  const st = await fs.stat(filePath)
+  return st.mtimeMs
+}
+
+/** 写盘临时文件名的后缀（`<name>.<8位随机>.lumin-tmp`）—— 清理扫描与文档口径共用一份 */
+export const TEMP_SUFFIX_RE = /\.[0-9a-f]{8}\.lumin-tmp$/i
+
+/**
+ * 清理目录树里残留的写盘临时文件（打开工作区时跑一次）。
+ *
+ * 为什么必须有：崩溃/断电时临时文件不会被 catch 分支清掉，而它里面是**用户全文的副本**
+ * （隐私 + 磁盘占用）。以前靠"下次写同一个文件时被覆盖"自愈 —— 改成随机名之后那条路没了，
+ * 必须显式扫。跳过隐藏目录与 node_modules（它们不该有我们的临时文件，也不该被慢扫）。
+ */
+export async function cleanStaleTempFiles(root: string): Promise<number> {
+  let removed = 0
+  const walk = async (dir: string): Promise<void> => {
+    let entries: Dirent[]
+    try {
+      entries = await fs.readdir(dir, { withFileTypes: true })
+    } catch {
+      return
+    }
+    for (const e of entries) {
+      const p = path.join(dir, e.name)
+      if (e.isDirectory()) {
+        if (e.name.startsWith('.') || e.name === 'node_modules') continue
+        await walk(p)
+      } else if (TEMP_SUFFIX_RE.test(e.name)) {
+        await fs.rm(p, { force: true }).catch(() => {})
+        removed += 1
+      }
+    }
+  }
+  await walk(root)
+  return removed
 }
 
 /** 生成不冲突的文件名：base.md → base-1.md */
@@ -251,11 +296,40 @@ export async function exists(p: string): Promise<boolean> {
   }
 }
 
-export async function removeEntry(p: string): Promise<void> {
-  await fs.rm(p, { recursive: true, force: true })
+/**
+ * 删除文件/目录：**先走系统回收站**，而不是直接 `fs.rm`。
+ *
+ * 为什么：右键菜单里紧挨着「重命名」的就是这个不可逆动作，写作工具里"误删整个文件夹"
+ * 是不可原谅的损失 —— 回收站是**系统已经内置**的撤销机制，没有理由自己再造一个。
+ *
+ * 降级策略是**明确告知**而不是静默兜底：部分位置（网络盘、FAT/exFAT 移动盘、
+ * 组策略禁用回收站）`shell.trashItem` 会失败。这时仍然完成删除（否则用户在这些位置
+ * 根本删不掉文件），但把 `trashed: false` 回报给渲染层，由它给一条"已永久删除"的提示。
+ */
+export async function removeEntry(p: string): Promise<{ trashed: boolean }> {
+  try {
+    await shell.trashItem(p)
+    return { trashed: true }
+  } catch {
+    await fs.rm(p, { recursive: true, force: true })
+    return { trashed: false }
+  }
 }
 
+/**
+ * 重命名。**目标已存在时拒绝**（抛 `TARGET_EXISTS`）——
+ * 此前直接 `fs.rename` 在 Windows 上会静默替换目标文件（`MoveFileEx` 的替换语义），
+ * 用户"把 a.md 改成 b.md"会毁掉 b.md，而且对 b.md 而言这是"新文件"，本地历史里也没有它。
+ *
+ * 只改大小写（`a.md` → `A.md`）不算冲突：Windows 文件系统大小写不敏感，
+ * `exists()` 对这种目标永远为真，必须按"同一路径"放行，否则改大小写会永远失败。
+ */
 export async function renameEntry(oldPath: string, newPath: string): Promise<void> {
+  const same =
+    process.platform === 'win32'
+      ? path.resolve(oldPath).toLowerCase() === path.resolve(newPath).toLowerCase()
+      : path.resolve(oldPath) === path.resolve(newPath)
+  if (!same && (await exists(newPath))) throw new Error('TARGET_EXISTS')
   await fs.rename(oldPath, newPath)
 }
 

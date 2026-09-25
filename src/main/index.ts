@@ -353,6 +353,11 @@ app.whenReady().then(() => {
   registerIpc({
     slotOf: (windowId) => slotOfWindow.get(windowId) ?? null,
     liveSlots: () => [...new Set(slotOfWindow.values())],
+    // 计划内的槽位（含还没建出来的窗口）：草稿归属判据，见 SlotRegistry.plannedSlots
+    plannedSlots: () => session.claimedSlots(),
+    // 恢复出来的槽位 vs 新开的槽位：同一个槽位号里那份"写它的窗口已不在"的草稿
+    // 到底是"我上次没保存的"还是"上一个住户的"，靠这个信号区分
+    slotRestored: (slot) => session.isRestoredSlot(slot),
     uidOf: (windowId) => uidOfWindow.get(windowId) ?? null,
     liveUids: () => [...new Set(uidOfWindow.values())],
     mayClaimUntitledDraft: (windowId) => windowId === startupWindowId

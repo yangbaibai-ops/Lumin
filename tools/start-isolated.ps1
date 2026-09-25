@@ -116,7 +116,11 @@ if (-not $ok) {
   Write-Host "INSTANCE-NOT-READY (stdout=$outLog stderr=$errLog)"
   exit 3
 }
-Start-Sleep -Seconds 3
+# 首帧之后的**稳定期**：套件在页面 side 要量布局/挂载/焦点，而这些东西要等一次真正的布局+绘制。
+# 3s 在空闲机器上够，机器忙时（用户在用同一个桌面 / 同时跑别的实例）会不够 ——
+# 表现是"某些套件随机假红"：代码块全静态（viewport 高度还没算出来）、focused=false、按键没落地。
+# 5s 是折中：不显著拖慢矩阵（每套件多 2s），但把这类假红压掉。
+Start-Sleep -Seconds 5
 $pages = @((Invoke-RestMethod "http://127.0.0.1:$Port/json/list" -TimeoutSec 2) | Where-Object { $_.type -eq 'page' })
 Write-Host ("ISOLATED-READY pages=" + $pages.Count + " titles=" + (($pages | ForEach-Object { $_.title }) -join ','))
 if ($pages.Count -ne 1) { Write-Host 'WARN: 窗口数不为 1（可能是旧实例残留）' }

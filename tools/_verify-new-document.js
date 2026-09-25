@@ -187,7 +187,9 @@ async function clickFileMenuItem(w, label) {
   )
   c(
     'static-save-without-path-goes-to-save-as',
-    /if \(!this\.current\.path\) \{\s*return this\.saveAs\(\)/.test(saveBlock),
+    // 判据是**语义**（没有路径时走另存为），不是格式：允许 `{ return ... }` 与单行两种写法，
+    // 也允许 `this.current?.path` 的可选链形式（本轮 save 拆出 saveNow 时踩过一次这种假红）
+    /if \(!this\.current\??\.path\)\s*\{?\s*return this\.saveAs\(\)/.test(saveBlock),
     saveBlock.replace(/\s+/g, ' ').slice(0, 160)
   )
   c(

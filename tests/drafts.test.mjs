@@ -11,12 +11,13 @@ import { planUntitledDraft } from '../src/shared/drafts.ts'
 
 const draft = (content, ownerUid) => ({ key: 'x', path: null, content, savedAt: 1000, ownerUid })
 
-/** 常见上下文：本窗口是槽位 1、uid 'me'；槽位 0 的窗口还活着 */
+/** 常见上下文：本窗口是槽位 1、uid 'me'；槽位 0 的窗口还活着；本窗口是**恢复出来的** */
 const ctx = (over = {}) => ({
   ownKey: 'untitled-1',
   myUid: 'me',
   liveUids: ['other-live'],
   liveSlots: [0],
+  mySlotRestored: true,
   mayClaimOrphan: false,
   ...over
 })
@@ -68,27 +69,56 @@ test('旧数据没有 uid：按「槽位还占着吗」判断归属', () => {
   ])
 })
 
-test('别人留在我这一格的正文：不展示、不覆盖，挪到停放键（槽位号被复用时的场景）', () => {
+test('上一次运行留下的、**就是我这一格**的正文 → 直接展示（重启后 uid 必变，但槽位号是我的）', () => {
+  // 这一条是本轮修掉的核心缺陷：旧实现把"uid 不同"一律当成"不是我写的"→ park，
+  // 于是每个恢复出来的窗口都把自己的草稿挪到停放键，后面的窗口还会覆盖前面的，
+  // 结果「谁的正文活下来」取决于停放顺序（多窗口下只剩一份）。
   const steps = planUntitledDraft(ctx(), [
-    { key: 'untitled-1', data: draft('上一个住户的正文', 'someone-else') }
+    { key: 'untitled-1', data: draft('上次没保存的正文', 'gone') }
+  ])
+  assert.deepEqual(ops(steps), ['show'])
+  assert.equal(steps[0].draft.content, '上次没保存的正文')
+})
+
+test('写它的窗口**还活着**（槽位被复用给另一个活窗口）→ 不展示、不覆盖，挪到停放键', () => {
+  const steps = planUntitledDraft(ctx(), [
+    { key: 'untitled-1', data: draft('另一个活窗口的正文', 'other-live') }
+  ])
+  assert.deepEqual(ops(steps), ['park:untitled-1'])
+})
+
+test('槽位不是恢复来的（Ctrl+N 新窗口恰好拿到被复用的旧槽位号）→ 上一个住户的正文要挪走，不能弹', () => {
+  // 这条守的是 §4.49 那个老 bug：用户明确按了 Ctrl+N 要一篇空白，
+  // 不能因为"槽位号被复用、那一格还留着别人的草稿"而弹「检测到上次未保存的内容」。
+  const steps = planUntitledDraft(ctx({ mySlotRestored: false, mayClaimOrphan: false }), [
+    { key: 'untitled-1', data: draft('上一个住户的正文', 'gone') }
   ])
   assert.deepEqual(ops(steps), ['park:untitled-1'])
 })
 
 test('停放后仍可被启动窗口认领（同一批输入里两步都给）', () => {
   const steps = planUntitledDraft(ctx({ mayClaimOrphan: true }), [
-    { key: 'untitled-1', data: draft('上一个住户的正文', 'someone-else') }
+    { key: 'untitled-1', data: draft('另一个活窗口的正文', 'other-live') }
   ])
   assert.deepEqual(ops(steps), ['park:untitled-1'])
   // park 之后那份落在停放键上，下一轮（或本轮的后续）按「无主」认领
   const next = planUntitledDraft(ctx({ mayClaimOrphan: true }), [
-    { key: 'untitled-orphan', data: draft('上一个住户的正文', 'someone-else') }
+    { key: 'untitled-orphan', data: draft('另一个活窗口的正文', 'other-live') }
   ])
   assert.deepEqual(ops(next), ['adopt:untitled-orphan'])
 })
 
-test('历史遗留键 untitled 与停放键都算未命名草稿（升级后能被认领一次）', () => {
-  for (const key of ['untitled', 'untitled-orphan']) {
+test('本次要恢复的槽位（plannedSlots）→ 启动窗口不许抢它（窗口只是还没建出来）', () => {
+  const onDisk = [
+    { key: 'untitled-2', data: draft('还没建出来的那个窗口的正文', 'gone') },
+    { key: 'untitled-orphan', data: draft('真正的无主正文', 'gone-2') }
+  ]
+  const steps = planUntitledDraft(ctx({ mayClaimOrphan: true, plannedSlots: [0, 2] }), onDisk)
+  assert.deepEqual(ops(steps), ['adopt:untitled-orphan'])
+})
+
+test('带序号的停放键也算未命名草稿（可以有多份，不再互相覆盖）', () => {
+  for (const key of ['untitled-orphan', 'untitled-orphan-2', 'untitled-orphan-17', 'untitled']) {
     const steps = planUntitledDraft(ctx({ mayClaimOrphan: true }), [
       { key, data: draft('遗留正文', 'old-run') }
     ])

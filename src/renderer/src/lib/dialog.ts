@@ -17,6 +17,7 @@
 
 import { useUiStore } from '../stores/ui'
 import i18n from '../i18n'
+import { flushEditorBeforeReplace } from './editorFlush'
 
 /** 直接问「未保存的更改要丢弃吗」（调用方已确认确实有未保存内容） */
 export async function confirmDiscardChanges(): Promise<boolean> {
@@ -28,8 +29,25 @@ export async function confirmDiscardChanges(): Promise<boolean> {
   })
 }
 
-/** 脏了才问；干净直接放行（返回 true = 可以继续） */
-export async function confirmDiscardIfDirty(dirty: boolean): Promise<boolean> {
-  if (!dirty) return true
+/**
+ * 「脏不脏」的判据：常量，或**惰性求值**的探针。
+ *
+ * 为什么允许传函数：实时渲染面是**防抖 250ms** 才把内容写进 store 的，调用方若在进入本函数
+ * **之前**就 eager 地算好 `files.dirty`，那段时间里的输入不在账上 —— 于是"刚打完字点另一个
+ * 文件"既不弹确认、内容也丢（本轮修掉的那条）。传函数则在 flush **之后**才取判据，账是准的。
+ */
+export type DirtyProbe = boolean | (() => boolean)
+
+/**
+ * 脏了才问；干净直接放行（返回 true = 可以继续）。
+ *
+ * ⚠️ 进入任何"要不要丢弃"的判断之前，先把编辑器里挂起的变更刷进 store
+ * （见 `lib/editorFlush.ts`）。这是所有换文档/关闭入口的公共前置动作，放在这里
+ * 比在每个调用点各写一遍可靠。
+ */
+export async function confirmDiscardIfDirty(dirty: DirtyProbe): Promise<boolean> {
+  flushEditorBeforeReplace()
+  const isDirty = typeof dirty === 'function' ? dirty() : dirty
+  if (!isDirty) return true
   return confirmDiscardChanges()
 }

@@ -10,6 +10,7 @@ import i18n from '../i18n'
 import { ancestorDirs, isInside, samePath } from '../lib/pathUtils'
 import { errorReason } from '../lib/errors'
 import { confirmDiscardIfDirty } from '../lib/dialog'
+import { flushEditorBeforeReplace } from '../lib/editorFlush'
 import { draftKeyFor, restorableDraft } from '../lib/draftRules'
 import { docLoad, isHeavyDoc } from '../lib/largeDoc'
 import {
@@ -28,6 +29,16 @@ import { encodingLabel, formatHistoryTime, untitledEncoding, untitledEol } from 
  * 内容串没变就直接复用。放在模块级而不是 store state 里 —— 它是纯粹的派生缓存，
  * 不该进 Vue 响应式系统（也不需要持久化）。
  */
+/**
+ * ─── 草稿的两个时间常数 ────────────────────────────────────────────────────────
+ * `DRAFT_DEBOUNCE_MS` 是尾沿防抖：停止输入 1.2s 后写一份。
+ * `DRAFT_MAX_WAIT_MS` 是**最大等待**：只有尾沿的话，连续打字（间隔 < 1.2s）会把定时器
+ * 无限推迟 —— 实测「每 200ms 改一次、持续 12s」期间**一份草稿都没写**，
+ * 而用户最投入的连续写作恰恰是最不希望丢稿的时候。加上限后最坏 10s 必有一份。
+ */
+const DRAFT_DEBOUNCE_MS = 1200
+const DRAFT_MAX_WAIT_MS = 10_000
+
 let countKey: string | null = null
 let countVal = { words: 0, lines: 0, chars: 0 }
 
@@ -102,7 +113,13 @@ export const useFilesStore = defineStore('files', {
     reopenAutoSaveWarned: false,
     saveTimer: null as ReturnType<typeof setTimeout> | null,
     draftTimer: null as ReturnType<typeof setTimeout> | null,
+    /** 上一次草稿写盘的时刻（ms）。草稿的"最大等待"靠它算，见 DRAFT_MAX_WAIT_MS */
+    lastDraftAt: 0,
+    /** 上一次写盘失败的退避延时（ms，0 = 没在退避）；成功即清零 */
+    saveRetryDelay: 0,
     saving: false,
+    /** 写盘进行中的 Promise（串行化用：同一时刻只允许一次写盘，见 save 的说明） */
+    savePromise: null as Promise<boolean> | null,
     /** 新建文件后需要自动进入就地重命名的路径（TreeNode 消费后清空） */
     pendingRenamePath: null as string | null,
     /**
@@ -239,7 +256,7 @@ export const useFilesStore = defineStore('files', {
     async newFileAt(dir: string): Promise<string | null> {
       // 新建会把当前文档从内容区换掉，与「打开文件」同一口径：脏了先问
       // （问在创建之前 —— 用户取消时不该在磁盘上留下一个空文件）
-      if (!(await confirmDiscardIfDirty(this.dirty))) return null
+      if (!(await confirmDiscardIfDirty(() => this.dirty))) return null
       const base = '未命名'
       let name = `${base}.md`
       let i = 1
@@ -257,19 +274,59 @@ export const useFilesStore = defineStore('files', {
       this.pendingRenamePath = path
       return path
     },
+    /**
+     * 删除文件/目录（主进程优先走系统回收站）。
+     *
+     * 两种"正在编辑的文档被删掉"都要照顾到，否则会出现"删了又自己长回来"：
+     *  * 删的就是它 → 关掉缓冲区（现有行为）；
+     *  * 删的是**它所在的目录** → 保留正文，把它降级成**未命名缓冲区**：路径没了，
+     *    保存时会走「另存为」而不是在旧目录里把文件复活（`fileOps.writeFile` 会 `mkdir -p`，
+     *    而 `current.path` 还在旧路径上时，下一次保存就会重建那个目录）。
+     */
     async removeNode(node: FileNode, parentDir: string): Promise<void> {
-      await window.luminAPI.file.remove(node.path)
-      if (this.current?.path === node.path) {
-        this.current = null
+      const { trashed } = await window.luminAPI.file.remove(node.path)
+      if (!trashed) {
+        // 该位置不支持回收站（网络盘 / FAT 盘 / 组策略）：已经永久删除了，必须说清楚
+        useUiStore().toast(i18n.global.t('toast.deletePermanent'), 'warning')
+      }
+      if (this.current?.path) {
+        if (samePath(this.current.path, node.path)) {
+          // 删的就是正在编辑的这一篇：按用户意图关掉它（内容已在回收站 + 本地历史里）
+          this.current = null
+          useWorkspaceDocsStore().invalidate()
+        } else if (isInside(node.path, this.current.path)) {
+          // 删的是它所在的目录：正文要留住，所以降级成未命名缓冲区（见 detachCurrentDoc）
+          this.detachCurrentDoc()
+        }
       }
       await this.refreshDir(parentDir)
+    },
+    /**
+     * 把当前文档从磁盘路径上"摘下来"（它所在的目录已被删除）：
+     * 正文留在缓冲区里，`path` 置空、`savedContent` 置空 ——
+     * 后者让脏标记亮起、让草稿继续写，用户不会以为"已经保存过了"；
+     * 前者让下一次保存走「另存为」，而不是在旧目录里 `mkdir -p` 把目录复活（`fileOps.writeFile` 会建目录）。
+     * `name` 保留：另存为对话框的默认文件名还要用它。
+     */
+    detachCurrentDoc(): void {
+      if (!this.current) return
+      this.current.path = null
+      this.current.savedContent = ''
+      this.draftRestore = null
+      useWorkspaceDocsStore().invalidate()
     },
     async renameNode(node: FileNode, parentDir: string, newName: string): Promise<void> {
       const newPath = await window.luminAPI.file.join(parentDir, newName)
       await window.luminAPI.file.rename(node.path, newPath)
-      if (this.current?.path === node.path) {
-        this.current.path = newPath
-        this.current.name = newName
+      if (this.current?.path) {
+        if (samePath(this.current.path, node.path)) {
+          this.current.path = newPath
+          this.current.name = newName
+        } else if (isInside(node.path, this.current.path)) {
+          // 改的是**它所在的目录**：把当前文档的路径一起搬到新目录下
+          // （否则继续编辑会保存回旧目录，产生一份"幽灵副本"）
+          this.current.path = newPath + this.current.path.slice(node.path.length)
+        }
       }
       await this.refreshDir(parentDir)
     },
@@ -279,6 +336,9 @@ export const useFilesStore = defineStore('files', {
 
     // ── 文档 ──
     async openPath(path: string): Promise<boolean> {
+      // 换文档之前先把编辑器里挂起的变更落地（防抖 250ms 窗口内的输入否则会随旧实例一起消失）。
+      // 这是**兜底**：会弹「未保存」确认的那些入口在 `confirmDiscardIfDirty` 里已经刷过一次。
+      flushEditorBeforeReplace()
       try {
         // 编码走设置里的「默认编码」（默认 auto = 主进程按判定链猜）。
         // softDefault=true：这是**软默认** —— 该文件已记录的编码优先，既避免「改了全局默认后
@@ -388,6 +448,8 @@ export const useFilesStore = defineStore('files', {
       if (path) await this.openPath(path)
     },
     close(): void {
+      // 关掉当前文档同样要先把编辑器里挂起的变更刷进 store（否则它们连草稿都进不去）
+      flushEditorBeforeReplace()
       this.current = null
       this.draftRestore = null
       this.heavyMode = false
@@ -428,8 +490,13 @@ export const useFilesStore = defineStore('files', {
       clearTimeout(this.saveTimer as never)
       clearTimeout(this.draftTimer as never)
       const delay = settings.autoSave ? Math.max(settings.autoSaveInterval, 1) * 1000 : 30000
-      // 草稿防抖（脏了才写，用于崩溃恢复；干净文档不写，见 writeDraft）
-      this.draftTimer = setTimeout(() => this.writeDraft(), 1200)
+      // 草稿：尾沿防抖 1.2s，但**距上一份草稿超过 10s 就立刻写**（上限见 DRAFT_MAX_WAIT_MS 的说明）。
+      // 脏了才写、干净文档不写（见 writeDraft）。
+      if (this.dirty && Date.now() - this.lastDraftAt >= DRAFT_MAX_WAIT_MS) {
+        void this.writeDraft()
+      } else {
+        this.draftTimer = setTimeout(() => void this.writeDraft(), DRAFT_DEBOUNCE_MS)
+      }
       if (this.current?.path && settings.autoSave) {
         /**
          * ⚠️ **按编码重新打开之后，自动保存不许落盘**（用户报障的那条数据损坏路径）：
@@ -463,6 +530,9 @@ export const useFilesStore = defineStore('files', {
     async writeDraft(): Promise<void> {
       const cur = this.current
       if (!cur) return
+      // 记账时机放在写之前：无论写成功还是失败都算"尝试过一次"，
+      // 否则失败时会因为 lastDraftAt 不前进而变成每次按键都重试（打满 IPC）。
+      this.lastDraftAt = Date.now()
       const key = this.draftKey(cur.path)
       if (cur.content === cur.savedContent) {
         if (this.draftRestore?.key !== key) await window.luminAPI.drafts.remove(key)
@@ -470,11 +540,32 @@ export const useFilesStore = defineStore('files', {
       }
       await window.luminAPI.drafts.save(key, cur.content, cur.path)
     },
+    /**
+     * 保存当前文档。两条与"丢稿"直接相关的并发口径：
+     *
+     *  1. **串行化**：同一时刻只允许一次写盘。临时文件名已经带随机后缀（见 fileOps.writeFile），
+     *     但并发写同一文件在语义上仍然是坏的（后写者可能带着更旧的内容）。后来的调用**等**前一次。
+     *  2. **快照比对**：写盘是异步的，`await` 期间用户可能继续输入。所以进 `file.write` 之前先抓住
+     *     当时的内容与文档对象；回来之后只认"那一份"的账：`savedContent = snapshot`（磁盘上确实是它）。
+     *     若 `content` 已经更多，就**保持 dirty** 并排下一轮 —— 绝不能把新内容标成"已保存"
+     *     （那会连草稿一起删掉，新内容永久丢失；这正是本轮修掉的那个缺陷）。
+     */
     async save(): Promise<boolean> {
       if (!this.current) return false
-      if (!this.current.path) {
-        return this.saveAs()
+      if (!this.current.path) return this.saveAs()
+      if (this.savePromise) await this.savePromise.catch(() => false)
+      const p = this.saveNow()
+      this.savePromise = p
+      try {
+        return await p
+      } finally {
+        if (this.savePromise === p) this.savePromise = null
       }
+    },
+    /** `save()` 的实体（不含并发闸门）。口径见 `save()` 的说明 */
+    async saveNow(): Promise<boolean> {
+      const doc = this.current
+      if (!doc?.path) return false
       /**
        * ⚠️ **按编码重新解释过之后再保存，先问一次**（用户报障的数据损坏路径）：
        * 缓冲区里很可能是乱码，写回会把磁盘上的原始内容覆盖掉 —— 这个动作不可逆，
@@ -483,7 +574,7 @@ export const useFilesStore = defineStore('files', {
        */
       if (this.reopenedWithEncoding) {
         const ui = useUiStore()
-        const enc = encodingLabel(this.current.encoding)
+        const enc = encodingLabel(doc.encoding)
         const ok = await ui.confirm({
           title: i18n.global.t('editor.saveAfterReopenTitle'),
           body: i18n.global.t('editor.saveAfterReopenBody', { enc }),
@@ -494,27 +585,43 @@ export const useFilesStore = defineStore('files', {
         this.reopenAutoSaveWarned = false
       }
       this.saving = true
+      // 快照：写进去的是**这一份**，回来核对账目也只认它
+      const snapshot = doc.content
       try {
         // 按文档当前编码 + 行尾写回（编码来源：打开时判定出来的，或用户「选择编码重新打开」选的；
         // 行尾交给主进程展开 —— 这里传的是元数据，不是转换过的文本）
-        await window.luminAPI.file.write(
-          this.current.path,
-          this.current.content,
-          this.current.encoding,
-          this.current.hadBom,
-          this.current.eol
+        const { mtimeMs } = await window.luminAPI.file.write(
+          doc.path,
+          snapshot,
+          doc.encoding,
+          doc.hadBom,
+          doc.eol
         )
-        const stat = await window.luminAPI.file.exists(this.current.path)
-        if (stat) this.current.mtimeMs = Date.now()
-        this.current.savedContent = this.current.content
-        await window.luminAPI.drafts.remove(this.draftKey(this.current.path))
-        useRecentStore().touchFile(this.current.path)
+        // 真实 mtime（不再是 Date.now() 冒充）—— 冲突检测与列表排序都依赖它
+        doc.mtimeMs = mtimeMs
+        doc.savedContent = snapshot
+        this.saveRetryDelay = 0
+        useRecentStore().touchFile(doc.path)
         // 列表视图就地刷新该条目的修改时间（若列表已打开）
-        useWorkspaceDocsStore().bumpMtime(this.current.path)
+        useWorkspaceDocsStore().bumpMtime(doc.path)
+        if (this.current === doc && doc.content === snapshot) {
+          // 没有新输入：文档与磁盘一致 → 草稿可以清掉（此时它没有恢复价值）
+          await window.luminAPI.drafts.remove(this.draftKey(doc.path))
+        } else if (this.current === doc) {
+          // await 期间又有输入：保持脏，重排一次保存与草稿（不静默把新内容吞掉）
+          this.scheduleSave()
+        }
         return true
       } catch (err) {
         // 带上原因：写盘失败的原因（只读、被占用、磁盘满）决定用户下一步怎么做
         useUiStore().toast(`${i18n.global.t('toast.saveFailed')}：${errorReason(err)}`, 'error')
+        // 失败后不放弃：指数退避重试（5s → 10s → … → 60s 封顶）。
+        // 此前失败后不再重排定时器，用户一停手就再也不会尝试落盘（只靠草稿兜）。
+        this.saveRetryDelay = Math.min(this.saveRetryDelay ? this.saveRetryDelay * 2 : 5000, 60000)
+        if (this.current === doc && doc.content !== doc.savedContent) {
+          clearTimeout(this.saveTimer as never)
+          this.saveTimer = setTimeout(() => void this.save(), this.saveRetryDelay)
+        }
         return false
       } finally {
         this.saving = false
@@ -631,7 +738,7 @@ export const useFilesStore = defineStore('files', {
         return false
       }
       // 脏文档先问（唯一实现在 lib/dialog：只依赖 ui store，所以 store 用也不会循环导入）
-      if (!(await confirmDiscardIfDirty(this.dirty))) return false
+      if (!(await confirmDiscardIfDirty(() => this.dirty))) return false
       try {
         const opened: OpenedFile = await window.luminAPI.file.read(cur.path, encoding)
         // 主进程/preload 是**构建产物**，不像渲染层那样热更新：若应用是在本次改动之前启动的，
@@ -701,6 +808,10 @@ export const useFilesStore = defineStore('files', {
     async flushAll(): Promise<void> {
       clearTimeout(this.saveTimer as never)
       clearTimeout(this.draftTimer as never)
+      // ⚠️ 关窗/退出这条路径以前**不刷编辑器**：`beforeunload` 里那次 flush 发生在
+      // 主进程已经决定关窗之后，写进 store 也来不及落盘。所以先在这里同步刷一次 ——
+      // 顺序是「刷编辑器 → 看脏不脏 → 保存 / 写草稿」，账目才是准的。
+      flushEditorBeforeReplace()
       // 有路径的文档直接落盘；未命名文档仅写草稿（下次启动恢复），避免关闭时弹出保存对话框
       if (this.dirty && this.current?.path) await this.save()
       await this.writeDraft().catch(() => {})

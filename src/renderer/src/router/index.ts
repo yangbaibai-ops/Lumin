@@ -36,7 +36,7 @@ const router = createRouter({
 // （硬编码中文），与 `lib/dialog.ts` 顶部「这是唯一实现」的注释直接矛盾 —— 改文案时必漏一处。
 router.beforeEach(async (to, from) => {
   if (from.name === 'editor' && to.name !== 'editor') {
-    const ok = await confirmDiscardIfDirty(useFilesStore().dirty)
+    const ok = await confirmDiscardIfDirty(() => useFilesStore().dirty)
     if (!ok) return false
   }
   return true
