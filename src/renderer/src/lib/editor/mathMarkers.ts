@@ -15,8 +15,10 @@
 // （否则「价格 $5 和 $6」会被吃成公式 —— 各家编辑器都踩过这个坑）。
 import { Mark, Node } from '@tiptap/core'
 import katex from 'katex'
-import { escapeHtml } from '../utils/html'
-import { matchBlockMath, matchInlineMath } from '../mathScan'
+// 显式 .ts：这两个模块要被 tests/mathMarkers.test.mjs 直接加载，而 Node 的 ESM 不做扩展名补全
+// （与本仓库 other 处同一口径，见 shared/defaults.ts 的注释）
+import { escapeHtml } from '../utils/html.ts'
+import { matchBlockMath, matchInlineMath } from '../mathScan.ts'
 
 /** KaTeX 渲染成 HTML 字符串。**失败不抛**：公式写错不该让整篇文档崩掉 */
 export function renderMath(source: string, display: boolean): string {
