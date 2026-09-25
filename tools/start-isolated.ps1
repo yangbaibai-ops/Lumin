@@ -91,6 +91,11 @@ if ($NoDevServer -or [string]::IsNullOrWhiteSpace($RendererUrl)) {
   $env:ELECTRON_RENDERER_URL = $RendererUrl
 }
 $env:LUMIN_DEBUG_PORT = "$Port"
+# 测试期的**信任路径**：路径授权闸（src/main/services/pathGrants）默认只放行
+# 工作区 / 用户选过 / 会话说 / 打开过 / 拖入的路径，而套件习惯"自己造夹具再直接 openPath"。
+# 这里把 %TEMP% 声明成信任范围 —— 只在**未打包**实例上生效（打包产物忽略该变量，
+# 见 grantTrustedPathsFromEnv 的说明），且隔离实例本来就只用临时数据目录。
+$env:LUMIN_TRUSTED_PATHS = $env:TEMP
 # 日志按 user-data-dir 分文件：同一台机器上并行跑两套隔离实例时不会互相抢句柄
 $outLog = Join-Path $env:TEMP ("lumin-instance-" + $leaf + "-out.log")
 $errLog = Join-Path $env:TEMP ("lumin-instance-" + $leaf + "-err.log")

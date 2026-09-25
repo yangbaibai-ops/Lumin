@@ -72,6 +72,41 @@
 - **工程化**：~~`tools/lib/harness.js` + `tools/run-suites.js`~~ → **本轮已完成**；
   剩余：`files` store 拆分；`store` 里那份为绕循环导入而复制的 `confirmIfDirty` 收敛到 `services/dialog`。
 
+## [Unreleased · 安全（第十三轮）：路径授权闸 —— 渲染层不再能静默读写任意路径]
+
+> 依据：桌面清单 §4 第 2 条（P1）。这是 §4 的最后一条，安全边界三件套齐了
+> （链接可执行拦截 / CSP 单一真相源 / 路径授权）。
+
+### Security
+
+- **`file:read` / `file:write` / `file:exists` / `file:fileUrl` 现在要过授权表**
+  （新增 `src/main/services/pathGrants.ts`）。此前它们只做 `path.resolve` —— 渲染层任何一处注入
+  就拿到"用户权限下的全盘任意读写"。授权来源只有七个：工作区根、用户对话框选过的、
+  启动参数带的、当前打开的文档（文件可读写、所在目录只读）、会话记录的、以前打开过的文档（只读）、
+  用户拖进窗口的文件（只读且必须已存在）。**read / write 分档**：只读来源不能升级成写。
+  拒绝时抛 `PATH_NOT_AUTHORIZED: <path>`。
+- 口径写在 `pathGrants.ts` 文件头：**这不是能力沙箱**（拖放那条 IPC 渲染层可调，被完全控制的
+  渲染层仍能"先申请、再读"）。它挡的是"文档内容驱动的路径"与"静默的任意访问"。
+- 测试期信任范围 `LUMIN_TRUSTED_PATHS`（`start-isolated.ps1` 设 `%TEMP%`）：
+  **只在 `is.dev`（未打包）时生效**，打包产物忽略该变量 —— 否则任何启动器一行环境变量
+  就能打开授权表，那才是真后门。
+
+### Fixed
+
+- `_verify-encoding.js` 的 **0/0 崩溃模式**：该套件有 4 处"点一下 → `sleep(500)` → 查 DOM"，
+  机器忙时顶部菜单/二级浮层还没渲染 → `querySelector('.topmenu-sub')` 为 null → 紧接的
+  `querySelectorAll` 抛异常，整条套件以 0/0 收场（实测 1/3 概率）。现在用
+  `waitForSelector()` 等条件 + 显式 null 分支。连跑三次：崩溃模式消失，余下的负载抖动由 FLAKY 档兜。
+
+### Verification
+
+- 新增 `tools/_verify-path-grants.js`（进默认矩阵）**9/9**：工作区外读 / 写 / 存在性探测三样全部拒绝
+  （且被拒的写真的没落盘）；工作区内读写、以前打开过的文档只读、拖入文件只读、
+  打开文档的同目录兄弟只读。夹具放在用户主目录下（不在 `%TEMP%`），否则会被测试期信任范围放行。
+- 回归：`_verify-session` **17/17**（加授权闸后先出现 8/17，正是它暴露了"测试期信任范围"的必要性）、
+  `_verify-save-safety` 7/7、`_verify-surface-stress` 单跑 72/72。
+- 默认矩阵 **41 → 42 条**；单元 323 条；eslint 0/0；vue-tsc / tsc(node) 0；build exit 0。
+
 ## [Unreleased · 工程化/合规/基础可访问性（第十二轮）：许可证与元数据 + 套件清单不再静默丢档 + 全局焦点环与减少动效]
 
 > 依据：桌面清单 §5（许可与合规）、§10（测试与工程化）、§8（可访问性）里"小改动、高收益"的几条。

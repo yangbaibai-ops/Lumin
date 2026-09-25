@@ -28,6 +28,7 @@ import { devProfileDir } from './devProfile'
 import { parseLaunchIntent, type LaunchIntent } from './services/launchIntent'
 import { initUpdater } from './services/updater'
 import { bindWindowScope, scopeOfSlot } from './services/windowScope'
+import * as pathGrants from './services/pathGrants'
 import { defaultSettings } from '../shared/defaults'
 import { PAPER_BY_THEME } from '../shared/theme'
 import { PROD_CSP } from '../shared/csp'
@@ -164,6 +165,9 @@ interface WindowOpenOptions {
  */
 function createWindow(options: WindowOpenOptions = {}): BrowserWindow {
   const { openFile, openFolder, noWorkspace, sessionSlot } = options
+  // 启动参数里带的文件 / 文件夹是**主进程自己解析出来的**，天然可信 → 登记为授权路径
+  // （否则"双击一个工作区外的 .md"会在 file:read 的授权闸上被拦掉）
+  pathGrants.grantStartup(openFile, openFolder)
   const existing = BrowserWindow.getAllWindows()
   const isFirst = existing.length === 0
   const windowUid = randomUUID()
@@ -346,6 +350,9 @@ function startup(label: string): void {
 
 app.whenReady().then(() => {
   startup('app-ready')
+  // 开发/测试专用：把 LUMIN_TRUSTED_PATHS 里的目录加进路径授权表（打包态忽略，见 pathGrants 的说明）
+  const trusted = pathGrants.grantTrustedPathsFromEnv(is.dev, process.env.LUMIN_TRUSTED_PATHS)
+  if (trusted) console.log(`[grants] trusted paths from env: ${trusted}`)
   // 历史版本 electron-store 数据一次性迁入 SQLite kv（kv 已有数据时跳过）
   migrateLegacyStores()
   // 顺序要点：IPC 必须在任何窗口加载之前注册（渲染层启动就会发 IPC）；

@@ -637,6 +637,12 @@ async function onDrop(e: DragEvent): Promise<void> {
     return
   }
   if (!(await confirmIfDirty())) return
+  // 拖放的路径只有渲染层拿得到 → 先向主进程登记一次**只读**授权（见 services/pathGrants 的说明：
+  // 授权闸默认只放行工作区 / 用户选过 / 会话说 / 打开过的路径，不登记就会打不开）
+  if (!(await window.luminAPI.file.authorizeUserPath(path))) {
+    ui.toast(i18n.global.t('toast.openFailed'), 'error')
+    return
+  }
   await openExternalFile(path)
 }
 function onDragOver(e: DragEvent): void {

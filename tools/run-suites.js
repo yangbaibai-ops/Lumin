@@ -97,7 +97,9 @@ const DEFAULT_SUITES = [
   '_verify-rename.js', // 文件树就地重命名 + 新建文件（内容区切过去 / 无边框输入框 / 脏了先问）
   '_verify-sidebar-refresh.js', // 头部「刷新」只在列表视图下出现，且真的能刷新列表元数据
   // ── 第十轮：数据安全（保存期输入 / 草稿最大等待 / 换文档前 flush / 真实 mtime）──
-  '_verify-save-safety.js'
+  '_verify-save-safety.js',
+  // ── 第十一轮：路径授权闸（工作区外拒绝读写，正常流程全部放行）──
+  '_verify-path-grants.js'
 ]
 
 /** 自己管理 Electron 实例的套件（运行器不替它们起实例） */

@@ -77,6 +77,8 @@ const api: LuminAPI = {
       }
     },
     fileUrl: (path) => ipcRenderer.invoke('file:fileUrl', path),
+    // 拖进窗口的文件：路径只有渲染层拿得到，由它登记一次只读授权（见 services/pathGrants）
+    authorizeUserPath: (path) => ipcRenderer.invoke('file:authorizeUserPath', path),
     dirname: (path) => ipcRenderer.invoke('file:dirname', path),
     join: (dir, name) => ipcRenderer.invoke('file:join', dir, name),
     basename: (path) => ipcRenderer.invoke('file:basename', path)

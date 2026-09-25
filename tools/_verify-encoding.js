@@ -25,6 +25,24 @@ const USER_DATA =
 const DB_PATH = process.env.LUMIN_DB || path.join(USER_DATA, 'lumin.db')
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 
+/**
+ * 等一个选择器出现（默认 4s）。
+ *
+ * 为什么必须有：本套件多处是"点一下 → sleep(500) → 查 DOM"，而顶部菜单/二级浮层的渲染
+ * 在机器忙时会慢过这个固定等待 —— 表现是 `document.querySelector('.topmenu-sub')` 为 null，
+ * 紧接着 `.querySelectorAll` 抛异常，整条套件以 **0/0** 收场（实测 1/3 概率，看起来像代码坏了）。
+ * 固定 sleep 永远压不住这类抖动，"等条件"才可以。
+ */
+async function waitForSelector(w, sel, ms = 4000) {
+  const end = Date.now() + ms
+  for (;;) {
+    const ok = await w.ev(`!!document.querySelector(${JSON.stringify(sel)})`).catch(() => false)
+    if (ok) return true
+    if (Date.now() > end) return false
+    await sleep(120)
+  }
+}
+
 // ─── 夹具文本（各语言都放一点，确保不是 ASCII 蒙对）──────────────────────────
 const T_UTF8 = '# 你好，UTF-8\n\n正文 content 一行。\n'
 const T_GBK = '# 中文 GBK 测试\n\n这是 GBK 编码的正文，含标点：你好，世界。\n'
@@ -905,9 +923,13 @@ const SETUP = `(() => {
 
     // 真实点击「Windows-1252」那一行 → 文档编码应随之变化
     // （先 scrollIntoView：二级可能被钳成可滚动面板，目标行不一定在首屏）
+    // ⚠️ 这里原先直接 `sub.querySelectorAll`：二级浮层没渲染出来时 `sub` 为 null，
+    // 整条套件会以 `TypeError: ... reading 'querySelectorAll'` 崩掉、报 0/0（机器忙时实测 1/3 概率）。
+    // 固定 sleep 等渲染永远不够稳，改成"先等元素 + 显式返回原因"。
+    await waitForSelector(w, '.topmenu-sub', 4000)
     const clickTarget = JSON.parse(
       await w.ev(
-        `(() => { const sub = document.querySelector('.topmenu-sub'); const b = [...sub.querySelectorAll('button')].find((x) => (x.textContent || '').includes('Windows-1252')); if (!b) return '{"err":"no-item"}'; b.scrollIntoView({ block: 'nearest' }); const r = b.getBoundingClientRect(); return JSON.stringify({ x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2), visible: r.top >= 0 && r.bottom <= window.innerHeight }) })()`
+        `(() => { const sub = document.querySelector('.topmenu-sub'); if (!sub) return '{"err":"no-submenu"}'; const b = [...sub.querySelectorAll('button')].find((x) => (x.textContent || '').includes('Windows-1252')); if (!b) return '{"err":"no-item"}'; b.scrollIntoView({ block: 'nearest' }); const r = b.getBoundingClientRect(); return JSON.stringify({ x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2), visible: r.top >= 0 && r.bottom <= window.innerHeight }) })()`
       )
     )
     console.log('E-target ' + JSON.stringify(clickTarget))

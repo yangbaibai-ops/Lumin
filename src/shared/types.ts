@@ -475,6 +475,11 @@ export interface LuminAPI {
     chooseSaveFile: (name: string, ext: string, dir?: string | null) => Promise<string | null>
     chooseFolder: () => Promise<string | null>
     getPathForFile: (file: File) => string | null
+    /**
+     * 把「用户拖进窗口的文件」登记为只读授权（拖放路径主进程看不到，必须由渲染层申请一次）。
+     * 返回 false = 该路径不存在或不可用。口径见主进程 services/pathGrants。
+     */
+    authorizeUserPath: (path: string) => Promise<boolean>
     fileUrl: (path: string) => Promise<string>
     dirname: (path: string) => Promise<string>
     join: (dir: string, name: string) => Promise<string>

@@ -16,6 +16,7 @@ import * as drafts from './drafts'
 import * as links from './services/links'
 import * as session from './services/session'
 import * as openDocs from './services/openDocs'
+import * as pathGrants from './services/pathGrants'
 import * as taskbar from './services/taskbar'
 import { onSettingsChanged } from './services/updater'
 import { installMenu } from './menu'
@@ -187,7 +188,8 @@ export function registerIpc(slots: SlotRegistry): void {
   ipcMain.handle(
     'file:read',
     async (_, p: string, encoding: EncodingId = 'auto', opts: { softDefault?: boolean } = {}) => {
-      const fp = path.resolve(p)
+      // 授权校验（见 services/pathGrants 的口径：工作区 / 用户选过 / 会话说 / 打开过 / 拖入）
+      const fp = pathGrants.assertAuthorized(p, 'read')
       const remembered = getRememberedEncoding(fp)
       // 软默认（打开文件时的设置默认值）让位给该文件的记录；显式指定则压过记录
       const requested: EncodingId = opts?.softDefault && remembered ? remembered : encoding
@@ -219,7 +221,7 @@ export function registerIpc(slots: SlotRegistry): void {
       hadBom = false,
       eol?: Eol
     ) => {
-      const fp = path.resolve(p)
+      const fp = pathGrants.assertAuthorized(p, 'write')
       // 本地历史（Wave 2 数据安全）：写盘前把**即将被覆盖的那一版**留一份快照。
       // 放在主进程而不是渲染层：所有写盘路径（保存/另存为/以后的回滚写回）都经过这里，
       // 不会因为某个调用点忘了调用而漏掉历史。
@@ -277,7 +279,9 @@ export function registerIpc(slots: SlotRegistry): void {
     await fileOps.renameEntry(from, to)
     db.renameDocument(from, to)
   })
-  ipcMain.handle('file:exists', (_, p: string) => fileOps.exists(path.resolve(p)))
+  ipcMain.handle('file:exists', (_, p: string) =>
+    fileOps.exists(pathGrants.assertAuthorized(p, 'read'))
+  )
   ipcMain.handle('file:chooseOpenFile', async () => {
     const win = BrowserWindow.getFocusedWindow()
     const r = await dialog.showOpenDialog(win!, {
@@ -287,7 +291,10 @@ export function registerIpc(slots: SlotRegistry): void {
         { name: '所有文件', extensions: ['*'] }
       ]
     })
-    return r.canceled || !r.filePaths.length ? null : r.filePaths[0]
+    const picked = r.canceled || !r.filePaths.length ? null : r.filePaths[0]
+    // 用户亲手选的 → 读写授权（见 services/pathGrants）
+    if (picked) pathGrants.grantFileReadWrite(picked)
+    return picked
   })
   /**
    * 「保存到哪」对话框。`dir` = 对话框**默认落在的文件夹**（渲染层给：未命名文档传侧栏工作区，
@@ -304,7 +311,10 @@ export function registerIpc(slots: SlotRegistry): void {
         defaultPath,
         filters: [{ name: ext.toUpperCase(), extensions: [ext] }]
       })
-      return r.canceled || !r.filePath ? null : r.filePath
+      const picked = r.canceled || !r.filePath ? null : r.filePath
+      // 用户亲手选的保存位置 → 读写授权（否则紧接着的 file:write 会被授权闸拦下）
+      if (picked) pathGrants.grantFileReadWrite(picked)
+      return picked
     }
   )
   ipcMain.handle('file:chooseFolder', async () => {
@@ -312,8 +322,21 @@ export function registerIpc(slots: SlotRegistry): void {
     const r = await dialog.showOpenDialog(win!, {
       properties: ['openDirectory', 'createDirectory']
     })
-    return r.canceled || !r.filePaths.length ? null : r.filePaths[0]
+    const picked = r.canceled || !r.filePaths.length ? null : r.filePaths[0]
+    if (picked) pathGrants.grantDir(picked)
+    return picked
   })
+  /**
+   * 把用户**拖进窗口**的那个路径登记为只读授权。
+   *
+   * 为什么需要这条 IPC：拖放由渲染层收到 `File` 后用 `webUtils.getPathForFile` 取路径，
+   * 主进程完全不知道这次用户意图 —— 没有它，拖入文件会被授权闸拦掉（功能回退）。
+   * 口径见 services/pathGrants 的说明：它把"静默的任意路径访问"收窄成"一次显式的、可审计的申请"，
+   * **不是**沙箱边界；并且只对**已存在**的文件授予只读。
+   */
+  ipcMain.handle('file:authorizeUserPath', (_, p: string) =>
+    pathGrants.grantDroppedRead(path.resolve(p))
+  )
   ipcMain.handle('file:getPathForFile', (_, file: File) => {
     try {
       return webUtils.getPathForFile(file)
@@ -321,7 +344,9 @@ export function registerIpc(slots: SlotRegistry): void {
       return null
     }
   })
-  ipcMain.handle('file:fileUrl', (_, p: string) => fileOps.toFileUrl(path.resolve(p)))
+  ipcMain.handle('file:fileUrl', (_, p: string) =>
+    fileOps.toFileUrl(pathGrants.assertAuthorized(p, 'read'))
+  )
   ipcMain.handle('file:dirname', (_, p: string) => path.dirname(p))
   ipcMain.handle('file:join', (_, dir: string, name: string) => path.join(dir, name))
   ipcMain.handle('file:basename', (_, p: string) => path.basename(p))
