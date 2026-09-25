@@ -69,14 +69,16 @@ export async function readFileInfo(
   encoding: ConcreteEncoding
   hadBom: boolean
   eol: Eol
+  /** 解码时出现过替换字符（`U+FFFD`）→「打开→保存」不会字节相等，界面要如实提示 */
+  hadReplacement: boolean
 }> {
   const stat = await fs.stat(filePath)
   const raw = await fs.readFile(filePath)
-  const { text, encoding, hadBom } = decodeBuffer(raw, requested, remembered)
+  const { text, encoding, hadBom, hadReplacement } = decodeBuffer(raw, requested, remembered)
   // 行尾是**文档级元数据**：这里判定一次并归一内存形态（LF），
   // 写回时再由 writeFile 展开回去，见 shared/eol.ts
   const eol = detectEol(text)
-  return { content: toLf(text), mtimeMs: stat.mtimeMs, encoding, hadBom, eol }
+  return { content: toLf(text), mtimeMs: stat.mtimeMs, encoding, hadBom, eol, hadReplacement }
 }
 
 export async function readDir(dir: string): Promise<FileNode[]> {

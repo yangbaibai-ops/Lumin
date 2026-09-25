@@ -335,6 +335,11 @@ export interface OpenedFile {
   hadBom: boolean
   /** 文件原本的行尾（内存内容已归一为 LF；写回时按它还原） */
   eol: Eol
+  /**
+   * 解码时出现过替换字符（`U+FFFD`）—— 有字节没解出来（或原文含它）。
+   * 界面据此提示"这次打开→保存不会字节相等"，见 shared/encodingMemory.ts。
+   */
+  hadReplacement: boolean
 }
 
 export interface DraftInfo {
@@ -568,6 +573,11 @@ export interface LuminAPI {
       mtimeMs: number
       /** true = 检测到外部改动、**这次没有写入**（磁盘当前 mtime 在 mtimeMs 里） */
       conflict?: boolean
+      /**
+       * true = 当前编码表示不了正文里的某些字符（decode→encode 往返对不上），
+       * 这次写盘把它们换成了 `?`。界面据此提示"改用 UTF-8 再存"。
+       */
+      lossy?: boolean
     }>
     /** 记住某文件的编码（「选择编码重新打开」用；权威来源是 documents 表，kv 只兜底） */
     rememberEncoding: (path: string, encoding: ConcreteEncoding) => Promise<void>

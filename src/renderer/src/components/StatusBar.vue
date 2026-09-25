@@ -295,7 +295,13 @@ const themes: { mode: ThemeMode; icon: string; labelKey: string }[] = [
     <span
       v-if="files.current"
       class="flex items-center gap-1 tabular-nums"
-      :title="t('statusbar.encodingTooltip')"
+      :class="files.current.hadReplacement ? 'text-warning' : ''"
+      :title="
+        files.current.hadReplacement
+          ? t('statusbar.encodingReplaced')
+          : t('statusbar.encodingTooltip')
+      "
+      :data-encoding-replaced="files.current.hadReplacement ? '1' : undefined"
       data-status-encoding
     >
       <Icon name="globe" :size="12" />

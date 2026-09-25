@@ -28,8 +28,14 @@ import { onSettingsChanged } from './services/updater'
 import { installMenu } from './menu'
 import { mainT } from './i18n'
 import { scopeOfSender } from './services/windowScope'
-import { getRememberedEncoding, rememberEncoding } from './services/encoding'
-import type { ConcreteEncoding, EncodingId } from '../shared/encodings'
+import {
+  decodeBuffer,
+  encodeText,
+  getRememberedEncoding,
+  rememberEncoding
+} from './services/encoding'
+import { isUtf8Family, type ConcreteEncoding, type EncodingId } from '../shared/encodings'
+import { roundTripLossy } from '../shared/encodingMemory'
 import type { Eol } from '../shared/eol'
 import { untitledDraftKey } from '../shared/drafts'
 import { db } from './services/database'
@@ -299,7 +305,17 @@ export function registerIpc(slots: SlotRegistry): void {
     async (_, p: string, encoding: EncodingId = 'auto', opts: { softDefault?: boolean } = {}) => {
       // 授权校验（见 services/pathGrants 的口径：工作区 / 用户选过 / 会话说 / 打开过 / 拖入）
       const fp = pathGrants.assertAuthorized(p, 'read')
-      const remembered = getRememberedEncoding(fp)
+      /**
+       * 外部改动检测的另一半（审计 §2 P1：「过期记忆把合法 UTF-8 解成乱码」）：
+       * 先 stat 拿到**当前 mtime**，再问"上次记下的编码还算不算数" ——
+       * 文件被 git 切分支 / 同步盘换掉之后 mtime 会变，那时旧记忆必须作废、
+       * 回到判定链重新判（否则用户看到的是一屏乱码，继续编辑再保存就把乱码写回磁盘）。
+       */
+      const currentMtimeMs = await stat(fp).then(
+        (st) => st.mtimeMs,
+        () => null
+      )
+      const remembered = getRememberedEncoding(fp, currentMtimeMs)
       // 软默认（打开文件时的设置默认值）让位给该文件的记录；显式指定则压过记录
       const requested: EncodingId = opts?.softDefault && remembered ? remembered : encoding
       const {
@@ -307,17 +323,19 @@ export function registerIpc(slots: SlotRegistry): void {
         mtimeMs,
         encoding: used,
         hadBom,
-        eol
+        eol,
+        hadReplacement
       } = await fileOps.readFileInfo(fp, requested, remembered)
-      // 记回去的条件：用户显式指定过、或自动判定出非 UTF-8（纯 UTF-8 文件不占条目）
+      // 记回去的条件：用户显式指定过、或自动判定出非 UTF-8（纯 UTF-8 文件不占条目）。
+      // 连同**这次的 mtime** 一起记，下次据此判断记忆有没有过期。
       if (encoding !== 'auto' || (used !== 'utf-8' && used !== 'utf-8-bom')) {
-        rememberEncoding(fp, used)
+        rememberEncoding(fp, used, mtimeMs)
       }
       const name = path.basename(fp)
       // 打开即建立/刷新数据库索引（元数据 + 全文 + 编码/行尾/BOM）
       db.upsertDocument({ path: fp, title: name, content, encoding: used, eol, hadBom })
       db.touchOpened(fp, name)
-      return { path: fp, name, content, mtimeMs, encoding: used, hadBom, eol }
+      return { path: fp, name, content, mtimeMs, encoding: used, hadBom, eol, hadReplacement }
     }
   )
   ipcMain.handle(
@@ -360,11 +378,27 @@ export function registerIpc(slots: SlotRegistry): void {
         // 放在主进程而不是渲染层：所有写盘路径（保存/另存为/以后的回滚写回）都经过这里，
         // 不会因为某个调用点忘了调用而漏掉历史。
         await recordHistoryBeforeOverwrite(fp, encoding, eol)
+        /**
+         * 非 UTF-8 保存前的**往返比对**（审计 §2 P1：编码往返可能静默改字节）。
+         * GB18030/Shift_JIS 这些编码里表示不了的字符（emoji、西里尔字母…）会被换成 `?` ——
+         * 这是不可逆的内容变化，用户必须**当场知道**（提示他改用 UTF-8 再存），
+         * 而不是事后从 git diff 里发现。UTF-8 家族不需要比（它表示一切）。
+         */
+        let lossy = false
+        if (!isUtf8Family(encoding)) {
+          try {
+            const bytes = encodeText(content, encoding, hadBom)
+            const back = decodeBuffer(bytes, encoding).text
+            lossy = roundTripLossy(content, back)
+          } catch {
+            lossy = true // 编都编不出来：同样属于"这次写盘会改字"
+          }
+        }
         const mtimeMs = await fileOps.writeFile(fp, content, encoding, hadBom, eol)
         // 保存时同步元数据 + 全文索引
         db.upsertDocument({ path: fp, title: path.basename(fp), content, encoding, eol, hadBom })
         // 回真实 mtime：渲染层用它判断「磁盘是否被外部改过」，用 Date.now() 冒充会永远失效
-        return { mtimeMs, conflict: false as const }
+        return { mtimeMs, conflict: false as const, lossy }
       })
     }
   )

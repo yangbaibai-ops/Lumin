@@ -78,6 +78,11 @@ export interface CurrentDoc {
    * 已有文件用打开时判定出来的；未命名文档用设置里的默认行尾。
    */
   eol: Eol
+  /**
+   * 打开这份文件时解码出现过替换字符（`U+FFFD`）—— 界面要如实提示：
+   * 「打开→保存」不会字节相等（那些字节会变成 `EF BF BD`）。见 shared/encodingMemory.ts。
+   */
+  hadReplacement: boolean
 }
 
 let untitledSeq = 1
@@ -113,6 +118,8 @@ export const useFilesStore = defineStore('files', {
     reopenedWithEncoding: false,
     /** 「自动保存因重新解释而被跳过」的提示只弹一次，避免每次防抖都刷屏 */
     reopenAutoSaveWarned: false,
+    /** 「当前编码存不下某些字符」的提示只弹一次（每次自动保存都弹等于骚扰） */
+    lossyEncodingWarned: false,
     saveTimer: null as ReturnType<typeof setTimeout> | null,
     draftTimer: null as ReturnType<typeof setTimeout> | null,
     /** 上一次草稿写盘的时刻（ms）。草稿的"最大等待"靠它算，见 DRAFT_MAX_WAIT_MS */
@@ -429,12 +436,15 @@ export const useFilesStore = defineStore('files', {
           savedContent: opened.content,
           encoding: opened.encoding,
           hadBom: opened.hadBom,
-          eol: opened.eol
+          eol: opened.eol,
+          hadReplacement: !!opened.hadReplacement
         }
         this.draftRestore = null
         // 新打开的文档：清掉「按编码重新解释过」的标记（那是上一个文档的状态）
         this.reopenedWithEncoding = false
         this.reopenAutoSaveWarned = false
+        // 「这个编码存不下某些字符」的提示对每份文档只弹一次：换文档就复位
+        this.lossyEncodingWarned = false
         // 显式替换意图：同一路径再次打开（外部改动后重载、另一个窗口的会话恢复）时
         // 编辑器不会重建（:key 只看 path），必须靠世代号让它换内容
         this.noteExternalReplace()
@@ -476,7 +486,9 @@ export const useFilesStore = defineStore('files', {
         // 未命名文档还没有真实编码：用设置里的默认（auto 时落成 utf-8，保存时按它写）
         encoding: untitledEncoding(useSettingsStore().defaultEncoding),
         hadBom: false,
-        eol: untitledEol(useSettingsStore().defaultEol)
+        eol: untitledEol(useSettingsStore().defaultEol),
+        // 未命名文档没有"解码"这一步，自然也没有替换字符
+        hadReplacement: false
       }
       this.currentDir = this.root
       this.draftRestore = null
@@ -685,6 +697,25 @@ export const useFilesStore = defineStore('files', {
           doc.eol,
           doc.mtimeMs
         )
+        /**
+         * 非 UTF-8 编码表示不了的字符：主进程做了 decode→encode 往返比对并回报 `lossy`
+         * （审计 §2 P1「编码往返可能静默改字节」）。这里发一张**持久通知**而不是一闪而过的
+         * toast：这是"内容已经被改成 `?`"的事实，用户可能需要回头再看一眼（要不要改存 UTF-8）。
+         * 每份文档只提醒一次（`mergeKey` 固定，反复保存也只是一张卡），换文档时标记复位。
+         */
+        if (first.lossy && !this.lossyEncodingWarned) {
+          this.lossyEncodingWarned = true
+          void useNotificationsStore()
+            .notify({
+              level: 'warning',
+              title: i18n.global.t('toast.encodingLossySave', {
+                enc: encodingLabel(doc.encoding)
+              }),
+              body: doc.name,
+              mergeKey: `encoding-lossy:${doc.path}`
+            })
+            .catch(() => {})
+        }
         /**
          * ─── 外部改动冲突：别处改了同一文件（审计 §2 P1）────────────────────────
          * 主进程**没有写入**（写之前 stat 发现 mtime 变了），把磁盘当前 mtime 回报过来。

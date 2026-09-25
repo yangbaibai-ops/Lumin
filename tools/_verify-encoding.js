@@ -1131,6 +1131,95 @@ const SETUP = `(() => {
         statusEnc.split('|')[1].length > 4,
       String(statusEnc).split('|')[1] ?? ''
     )
+
+    // ── H. 编码往返的诚实性（审计 §2 P1「编码往返可能静默改字节」）─────────────
+    // 三条：有损解码要**如实上报**、过期记忆要**失效**、非 UTF-8 存不下字符要**提示**。
+    const H_BAD = path.join(dir, 'bad-utf8.md')
+    const H_GBK = path.join(dir, 'stale-memory.md')
+    const H_LOSSY = path.join(dir, 'lossy-save.md')
+    // 一段**非法 UTF-8**（0x80 是孤立的续接字节）：按 UTF-8 解必然出现替换字符
+    fs.writeFileSync(
+      H_BAD,
+      Buffer.concat([
+        Buffer.from('# 正文\n\nA', 'utf-8'),
+        Buffer.from([0x80]),
+        Buffer.from('B\n', 'utf-8')
+      ])
+    )
+    fs.writeFileSync(H_GBK, iconv.encode(T_GBK, 'gbk'))
+    fs.writeFileSync(H_LOSSY, iconv.encode(T_GBK, 'gbk'))
+
+    // H1：显式 utf-8 解非法字节 → hadReplacement=true + 状态栏亮起警告
+    await w.ev(`(() => { window.__E.settings().set('defaultEncoding', 'utf-8'); return 'ok' })()`)
+    await sleep(400)
+    const h1open = await open(H_BAD)
+    const h1 = JSON.parse(
+      await w.ev(
+        `(() => { const f = window.__E.files(); const el = document.querySelector('[data-status-encoding]'); return JSON.stringify({ had: f.current.hadReplacement === true, enc: f.current.encoding, marked: el ? el.getAttribute('data-encoding-replaced') : null }) })()`
+      )
+    )
+    console.log('H1 ' + JSON.stringify({ ...h1open, ...h1 }))
+    c(
+      'replacement-char-detected',
+      h1.had === true && h1open.content.includes('\uFFFD'),
+      JSON.stringify({ had: h1.had, content: h1open.content })
+    )
+    c('statusbar-flags-replacement', h1.marked === '1', JSON.stringify(h1))
+
+    // H2：记忆附 mtime —— 文件被外部换成合法 UTF-8 之后，旧记忆（gbk）必须失效
+    await w.ev(`(() => { window.__E.settings().set('defaultEncoding', 'gbk'); return 'ok' })()`)
+    await sleep(400)
+    const h2a = await open(H_GBK)
+    await sleep(200)
+    // 未改动时重开：记忆**仍然有效** → 还是 gbk（这一步是下面那条的对照）
+    const h2mid = await open(H_GBK)
+    const NEW_UTF8 = '# 换成了 UTF-8\n\n这段是合法 UTF-8，旧记忆不该再拿 gbk 去解。\n'
+    fs.writeFileSync(H_GBK, Buffer.from(NEW_UTF8, 'utf-8'))
+    // 把"设置里的默认编码"退回 auto：这样只有**记忆**能把这份文件强行按 gbk 解 ——
+    // 如果记忆没失效，第二条断言就会看到乱码（这正是要修的缺陷）
+    await w.ev(`(() => { window.__E.settings().set('defaultEncoding', 'auto'); return 'ok' })()`)
+    await sleep(400)
+    const h2b = await open(H_GBK)
+    console.log(
+      'H2 ' +
+        JSON.stringify({
+          first: h2a.encoding,
+          mid: h2mid.encoding,
+          second: h2b.encoding,
+          content: h2b.content
+        })
+    )
+    c(
+      'stale-encoding-memory-expires',
+      h2a.encoding === 'gbk' &&
+        h2mid.encoding === 'gbk' &&
+        h2b.encoding === 'utf-8' &&
+        h2b.content === NEW_UTF8,
+      JSON.stringify({ first: h2a.encoding, mid: h2mid.encoding, second: h2b.encoding })
+    )
+
+    // H3：非 UTF-8 表示不了的字符 → 保存时提示（进通知中心），且磁盘上如实是 '?'
+    // 注意必须**显式用 gbk**：GB18030 是"全 Unicode 变换格式"，emoji 也编得出来（往返一致、
+    // 不算有损）；真正会丢字的正是 GBK / Shift_JIS / windows-1251 这些窄编码。
+    await w.ev(`(() => { window.__E.settings().set('defaultEncoding', 'gbk'); return 'ok' })()`)
+    await sleep(400)
+    const notifBefore3 = JSON.parse(await w.ev(NOTIF_SNAP))
+    const h3a = await open(H_LOSSY)
+    const h3ok = await w.ev(
+      `(async () => { const f = window.__E.files(); f.current.content = '# 中文\\n\\n带 emoji 🎯 的一段\\n'; return await f.save() })()`
+    )
+    await sleep(500)
+    const h3notifs = JSON.parse(await w.ev(NOTIF_SNAP)).filter((x) => !notifBefore3.includes(x))
+    const h3disk = iconv.decode(fs.readFileSync(H_LOSSY), 'gbk')
+    console.log(
+      'H3 ' +
+        JSON.stringify({ saved: h3ok, first: h3a.encoding, newNotifs: h3notifs, disk: h3disk })
+    )
+    c(
+      'lossy-save-warns-and-replaces',
+      h3ok === true && h3notifs.some((n) => n.startsWith('warning|')) && h3disk.includes('?'),
+      JSON.stringify({ saved: h3ok, enc: h3a.encoding, newNotifs: h3notifs, disk: h3disk })
+    )
   } finally {
     // 隔离实例里的东西清掉：关闭当前文档，避免影响后续套件
     await w.ev(`(async () => { await window.__E.files().close(); return 'ok' })()`).catch(() => {})

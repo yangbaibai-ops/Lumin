@@ -8,6 +8,8 @@ import {
   type ConcreteEncoding,
   type EncodingId
 } from '../../shared/encodings'
+// 两条纯规则（替换字符检测 / 记忆新鲜度）放在 shared：那边不 import electron，可单测
+import { encodingMemoryIsFresh, hasReplacementChar } from '../../shared/encodingMemory'
 
 /**
  * ─── 文件编码的判定与编解码 ────────────────────────────────────────────────────
@@ -76,6 +78,12 @@ export interface DecodeResult {
   encoding: ConcreteEncoding
   /** 文件是否带 BOM（写回时要保持一致） */
   hadBom: boolean
+  /**
+   * 解码结果里出现了替换字符 `U+FFFD`（审计 §2 P1：编码往返可能**静默**改字节）。
+   * 有它就意味着"打开→保存"不会字节相等（那些字节会被写成 `EF BF BD`），
+   * 所以必须让用户看见（状态栏 + 保存提示），而不是让他从 git diff 里发现。
+   */
+  hadReplacement: boolean
 }
 
 /**
@@ -99,44 +107,51 @@ export function decodeBuffer(
   remembered?: EncodingId | null
 ): DecodeResult {
   const bom = sniffBom(buf)
+  // 每个分支都要带上 `hadReplacement`（漏一个就等于"这条路上静默改字节没人知道"）
+  const out = (text: string, encoding: ConcreteEncoding, hadBom: boolean): DecodeResult => ({
+    text,
+    encoding,
+    hadBom,
+    hadReplacement: hasReplacementChar(text)
+  })
 
   // 1) 显式指定：用户的选择优先于 BOM（但属于该编码的 BOM 要摘掉并记住）
   if (requested !== 'auto') {
     const keepBom = bom !== null && bomBelongsTo(requested, bom.id)
-    return {
-      text: decodeAs(keepBom ? buf.subarray(bom.length) : buf, requested),
-      encoding: requested,
+    return out(
+      decodeAs(keepBom ? buf.subarray(bom.length) : buf, requested),
+      requested,
       // 「UTF-8」这一项按语义就是不带 BOM：选它等于顺手把 BOM 去掉
-      hadBom: keepBom && requested !== 'utf-8'
-    }
+      keepBom && requested !== 'utf-8'
+    )
   }
 
   // 2) BOM
   if (bom) {
     const body = buf.subarray(bom.length)
     if (bom.id === 'utf-16le' || bom.id === 'utf-16be') {
-      return { text: iconv.decode(body, iconvName(bom.id)), encoding: bom.id, hadBom: true }
+      return out(iconv.decode(body, iconvName(bom.id)), bom.id, true)
     }
-    return { text: new TextDecoder('utf-8').decode(body), encoding: 'utf-8-bom', hadBom: true }
+    return out(new TextDecoder('utf-8').decode(body), 'utf-8-bom', true)
   }
 
   // 3) 上次记住的
   if (remembered && remembered !== 'auto') {
-    return { text: decodeAs(buf, remembered), encoding: remembered, hadBom: false }
+    return out(decodeAs(buf, remembered), remembered, false)
   }
 
   // 4) 严格 UTF-8
   if (isStrictUtf8(buf)) {
-    return { text: new TextDecoder('utf-8').decode(buf), encoding: 'utf-8', hadBom: false }
+    return out(new TextDecoder('utf-8').decode(buf), 'utf-8', false)
   }
 
   // 5) 系统语言兜底
   const guess = localeFallback()
   try {
-    return { text: decodeAs(buf, guess), encoding: guess, hadBom: false }
+    return out(decodeAs(buf, guess), guess, false)
   } catch {
     // 6) 保险：utf-8 有损解码（不会抛）
-    return { text: new TextDecoder('utf-8').decode(buf), encoding: 'utf-8', hadBom: false }
+    return out(new TextDecoder('utf-8').decode(buf), 'utf-8', false)
   }
 }
 
@@ -157,6 +172,12 @@ function decodeAs(buf: Buffer, id: ConcreteEncoding): string {
 // 重启后仍在）。下面这个 kv 表只保留给「文件还没进索引」的极少数情况兜底
 // （见 database.migrateFileEncodings：迁移时把能对上的条目搬进 documents，剩下的留在这里）。
 const KV_KEY = 'fileEncodings'
+/**
+ * 「记忆 + 记录时的 mtime」：**过期记忆会骗人**（审计 §2 P1）。
+ * 文件被外部换掉（git 切分支 / 同步盘）之后，旧记忆会把合法的 UTF-8 解成乱码，
+ * 用户继续编辑再保存就把乱码写回磁盘。所以记忆必须**与它当时的文件版本绑在一起**。
+ */
+const MTIME_KEY = 'fileEncodingMtimes'
 const MAX_REMEMBERED = 200
 
 function normKey(p: string): string {
@@ -167,11 +188,50 @@ function loadMap(): Record<string, ConcreteEncoding> {
   return db.kvGet<Record<string, ConcreteEncoding>>(KV_KEY, {})
 }
 
+function loadMtimes(): Record<string, number> {
+  return db.kvGet<Record<string, number>>(MTIME_KEY, {})
+}
+
+/** 某文件"记下编码时的 mtime"（没有记录 → null） */
+function rememberedMtime(filePath: string): number | null {
+  const m = loadMtimes()[normKey(filePath)]
+  return typeof m === 'number' && Number.isFinite(m) ? m : null
+}
+
+/** 把这条记忆（编码 + mtime）整体忘掉：过期的记忆留着只会继续骗人 */
+function forgetEncoding(filePath: string): void {
+  const key = normKey(filePath)
+  const mtimes = loadMtimes()
+  if (key in mtimes) {
+    delete mtimes[key]
+    db.kvSet(MTIME_KEY, mtimes)
+  }
+  const map = loadMap()
+  if (key in map) {
+    delete map[key]
+    db.kvSet(KV_KEY, map)
+  }
+  // documents 那一列也清掉（否则它还是"权威来源"）
+  if (db.getDocumentMeta(filePath)) db.setDocumentTextMeta(filePath, { encoding: '' })
+}
+
 /**
  * 该文件上次记住的编码（没有则 null）。
  * 先查 documents（权威），再退回 kv 兜底表。
+ *
+ * @param currentMtimeMs 文件**现在**的 mtime；给了就做新鲜度校验：
+ *   与记录时不一致 ⇒ 记忆过期 ⇒ 忘掉它并返回 null（回到判定链重新判）。
+ *   这样"文件被外部换成 UTF-8"之后不会被旧记忆解成乱码。
  */
-export function getRememberedEncoding(filePath: string): ConcreteEncoding | null {
+export function getRememberedEncoding(
+  filePath: string,
+  currentMtimeMs?: number | null
+): ConcreteEncoding | null {
+  const recorded = rememberedMtime(filePath)
+  if (!encodingMemoryIsFresh(recorded, currentMtimeMs)) {
+    forgetEncoding(filePath)
+    return null
+  }
   const meta = db.getDocumentMeta(filePath)
   if (meta?.encoding) return meta.encoding as ConcreteEncoding
   const map = loadMap()
@@ -181,9 +241,24 @@ export function getRememberedEncoding(filePath: string): ConcreteEncoding | null
 /**
  * 记住某文件的编码。
  * 文档已在索引里 → 写 documents（权威）；否则按老办法写 kv 兜底表（重复写入会挪到队尾 = 最近使用）。
+ * `mtimeMs` 一并记下：下次打开时据此判断这份记忆有没有过期（见 getRememberedEncoding）。
  */
-export function rememberEncoding(filePath: string, encoding: ConcreteEncoding): void {
+export function rememberEncoding(
+  filePath: string,
+  encoding: ConcreteEncoding,
+  mtimeMs?: number | null
+): void {
   const key = normKey(filePath)
+  if (typeof mtimeMs === 'number' && Number.isFinite(mtimeMs)) {
+    const mtimes = loadMtimes()
+    delete mtimes[key]
+    mtimes[key] = mtimeMs
+    const keys = Object.keys(mtimes)
+    if (keys.length > MAX_REMEMBERED) {
+      for (const k of keys.slice(0, keys.length - MAX_REMEMBERED)) delete mtimes[k]
+    }
+    db.kvSet(MTIME_KEY, mtimes)
+  }
   if (db.getDocumentMeta(filePath)) {
     db.setDocumentTextMeta(filePath, { encoding })
     // 顺手把兜底表里的同名条目清掉，避免两处不一致
