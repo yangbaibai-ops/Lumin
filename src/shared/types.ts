@@ -16,6 +16,12 @@ export interface ExportSettings {
 }
 
 export interface AppSettings {
+  /**
+   * 设置的 schema 版本（口径与迁移表见 `shared/settingsSchema.ts`）。
+   * kv 里缺这个字段 = 老数据，读设置时会被归一、补上版本号并写回。
+   * **只新增带默认值的设置项不需要动它**；删键/改名/改语义时才 +1 并补一条迁移。
+   */
+  settingsVersion: number
   theme: ThemeMode
   language: Language
   autoSave: boolean

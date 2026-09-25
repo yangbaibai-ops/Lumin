@@ -2,6 +2,7 @@ import type { AppSettings } from './types'
 // 显式 .ts：defaults 会被 tests/*.test.mjs 直接加载，而 Node 的 ESM 解析不做扩展名补全（见 §4.56）
 import { HISTORY_LIMIT_PER_FILE, HISTORY_MAX_AGE_MS } from './history.ts'
 import { DEFAULT_TOOLBAR_ITEMS } from './toolbarItems.ts'
+import { SETTINGS_SCHEMA_VERSION } from './settingsSchema.ts'
 
 export const FONT_OPTIONS: { value: string; label: string }[] = [
   {
@@ -20,6 +21,8 @@ export const FONT_OPTIONS: { value: string; label: string }[] = [
 ]
 
 export const defaultSettings: AppSettings = {
+  /** 当前 schema 版本（审计 §6 P2）：改设置项的形状/语义时才 +1，见 shared/settingsSchema.ts */
+  settingsVersion: SETTINGS_SCHEMA_VERSION,
   theme: 'auto',
   language: 'zh-CN',
   /**

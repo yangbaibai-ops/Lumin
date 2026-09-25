@@ -40,6 +40,7 @@ import type { Eol } from '../shared/eol'
 import { untitledDraftKey } from '../shared/drafts'
 import { db } from './services/database'
 import { defaultSettings } from '../shared/defaults'
+import { normalizeSettings } from '../shared/settingsSchema'
 import { buildDiagnosticsText, safeLaunchArgs } from '../shared/diagnostics'
 import {
   CLOSE_FALLBACK_MS,
@@ -213,7 +214,7 @@ export function registerIpc(slots: SlotRegistry): void {
    *   * 错误通知只取 level/title/时间，**不带 body**（body 里可能是文档片段）。
    */
   ipcMain.handle('app:getDiagnostics', (event) => {
-    const settings = db.kvGet<AppSettings>('settings', defaultSettings)
+    const settings = readSettings()
     // 通知按「窗口作用域」隔离（见 shared/types 的 AppNotification 说明），
     // 所以取的是**这个窗口**最近的错误 —— 正是用户看到的那些
     const errors = db
@@ -578,9 +579,23 @@ export function registerIpc(slots: SlotRegistry): void {
   ipcMain.handle('file:basename', (_, p: string) => path.basename(p))
 
   // ── 设置 / 工作区（SQLite kv 持久化）──
-  ipcMain.handle('settings:getAll', () => db.kvGet<AppSettings>('settings', defaultSettings))
+  /**
+   * 读设置：**唯一入口**（审计 §6 P2「设置没有 schema 版本，删改设置项会留孤儿值」）。
+   * 归一化顺手做三件事：丢掉 defaults 里没有的键、补上缺的键、盖上 `settingsVersion`；
+   * 只要结果与 kv 里那份不同就写回一次（第二次读就不再写，见 shared/settingsSchema.ts）。
+   */
+  const readSettings = (): AppSettings => {
+    const { settings, changed } = normalizeSettings(
+      db.kvGet<AppSettings>('settings', defaultSettings),
+      defaultSettings
+    )
+    if (changed) db.kvSet('settings', settings)
+    return settings
+  }
+  ipcMain.handle('settings:getAll', () => readSettings())
   ipcMain.handle('settings:update', (_, partial: Partial<AppSettings>) => {
-    const merged = deepMerge(db.kvGet<AppSettings>('settings', defaultSettings), partial)
+    // 先读（顺手归一）再合并，最后**再过一次归一**：渲染层多送的键不该进库
+    const merged = normalizeSettings(deepMerge(readSettings(), partial), defaultSettings).settings
     db.kvSet('settings', merged)
     // 同步原生主题（Windows 标题栏颜色 / prefers-color-scheme）：
     // 切换主题时标题栏也要随之切换，否则顶部原生标题栏颜色不跟随应用主题
@@ -674,9 +689,10 @@ export function registerIpc(slots: SlotRegistry): void {
     })
     const picked = r.canceled || !r.filePaths.length ? null : r.filePaths[0]
     if (picked) {
-      const merged = deepMerge(db.kvGet<AppSettings>('settings', defaultSettings), {
-        backupDir: picked
-      })
+      const merged = normalizeSettings(
+        deepMerge(readSettings(), { backupDir: picked }),
+        defaultSettings
+      ).settings
       db.kvSet('settings', merged)
       // 换目录后目录是空的 → 立刻补第一份（不然用户要等到"明天"才看到有备份）
       void dbBackup.maybeAutoBackup()
@@ -684,9 +700,10 @@ export function registerIpc(slots: SlotRegistry): void {
     return dbBackup.backupStatus()
   })
   ipcMain.handle('backup:useDefaultDir', () => {
-    const merged = deepMerge(db.kvGet<AppSettings>('settings', defaultSettings), {
-      backupDir: null
-    })
+    const merged = normalizeSettings(
+      deepMerge(readSettings(), { backupDir: null }),
+      defaultSettings
+    ).settings
     db.kvSet('settings', merged)
     return dbBackup.backupStatus()
   })

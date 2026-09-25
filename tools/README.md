@@ -60,7 +60,7 @@ main().then((c) => process.exit(c)).catch(fatal)
 - `tools/` 共 **187 个文件 / 42668 行**（`.js`/`.mjs`/`.ps1`/`.md`）；
 - 套件文件 **104 个**（_regress-* 6 / _repro-* 9 / _verify-* 89），默认矩阵 **56 个**，分档：fast 56 / needs-build 43 / needs-dev 4 / manual 1；
 - 另有 **8 个**探针/遗留脚本默认只列不判（`--probe` 显式跑）；
-- 单元测试 **60 个** `tests/*.test.mjs`；Markdown 往返夹具 **31 份**（exact 16 / normalized 15）；
+- 单元测试 **61 个** `tests/*.test.mjs`；Markdown 往返夹具 **31 份**（exact 16 / normalized 15）；
 - `docs/manual/` **8 份 / 4367 行**，`docs/` 下共 **20 份** md。
 
 <!-- facts:end -->
