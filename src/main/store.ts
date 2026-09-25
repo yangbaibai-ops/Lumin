@@ -1,7 +1,6 @@
 // ─── 主进程：持久化存储 ────────────────────────────────────────────────────
 // 设置 / 工作区状态统一落 SQLite kv 表（见 services/database.ts）；
 // electron-store 仅保留为历史版本配置的一次性迁移源。
-import { app } from 'electron'
 import Store from 'electron-store'
 import { defaultSettings } from '../shared/defaults'
 import { db } from './services/database'
@@ -33,6 +32,3 @@ export function migrateLegacyStores(): void {
     })
   }
 }
-
-/** 应用数据目录（草稿等） */
-export const dataDir = app.getPath('userData')

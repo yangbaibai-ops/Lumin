@@ -274,19 +274,6 @@ export async function cleanStaleTempFiles(root: string): Promise<number> {
   return removed
 }
 
-/** 生成不冲突的文件名：base.md → base-1.md */
-export async function uniquePath(dir: string, name: string): Promise<string> {
-  const ext = path.extname(name)
-  const stem = path.basename(name, ext)
-  let candidate = path.join(dir, `${stem}${ext}`)
-  let i = 1
-  while (await exists(candidate)) {
-    candidate = path.join(dir, `${stem}-${i}${ext}`)
-    i += 1
-  }
-  return candidate
-}
-
 export async function exists(p: string): Promise<boolean> {
   try {
     await fs.access(p)

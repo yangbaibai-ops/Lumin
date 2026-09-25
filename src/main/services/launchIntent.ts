@@ -159,8 +159,3 @@ export function parseLaunchIntent(argv: string[], opts: ParseOptions): LaunchInt
 
   return intent
 }
-
-/** 意图是否什么都没要求（用于「无参数 → 聚焦已有窗口」这类判断） */
-export function isEmptyIntent(intent: LaunchIntent): boolean {
-  return !intent.newWindow && !intent.openFile && !intent.openFolder
-}

@@ -105,16 +105,17 @@ npm run build       # 生产构建
 
 ```
 src/
-├── main/                 # 主进程（19 文件 / ~4.6k 行）
+├── main/                 # 主进程（文件数与行数见下表「代码规模」）
 │   ├── index.ts          #   窗口生命周期、单实例、会话恢复计划、自定义协议、安全兜底
 │   ├── ipc.ts            #   全部 IPC handler（含路径校验）
 │   ├── fileOps.ts        #   文件读写（**原子写**）、扫描、路径校验
 │   ├── drafts.ts         #   草稿 I/O；归属判定抽到 shared/drafts.ts（纯函数，有单测）
 │   ├── menu.ts           #   原生菜单（隐藏；保留系统级可访问性）
-│   └── services/         #   database / encoding / session / windowScope / taskbar / links / updater…
+│   ├── i18n.ts           #   主进程取词入口（原生菜单 / 对话框 / 跳转列表 / 导出模板共用）
+│   └── services/         #   database / encoding / session / windowScope / taskbar / links / pathGrants / updater…
 ├── preload/              # contextBridge → window.luminAPI（渲染层唯一的进程边界）
 ├── shared/               # 跨进程共享的类型与**纯函数**（可单测）
-└── renderer/src/         # 渲染层（86 文件 / ~15.4k 行）
+└── renderer/src/         # 渲染层
     ├── views/            #   EditorView（三模式布局）/ AboutView
     ├── components/       #   顶栏、侧栏、文件树、工具栏、状态栏、设置、全局搜索、编辑器组件…
     ├── stores/           #   Pinia：files（文件树+当前文档）/ workspaceDocs（列表视图派生缓存）/ settings / ui / editor / notifications / editorMenu
@@ -126,6 +127,27 @@ tools/                    # 验收脚手架：lib/harness.js（骨架）+ run-su
 tools/fixtures/md/        # Markdown 往返保真夹具 + EXPECT.json（预期即契约）
 docs/                     # 手册 / 整改方案 / 打包实测
 ```
+
+### 代码规模
+
+<!-- facts:begin（由 tools/doc-facts.js 生成，勿手改）-->
+
+| 范围 | 文件 | 行数 |
+|---|---|---|
+| `src/main` | 23 | 5314 |
+| `src/preload` | 2 | 184 |
+| `src/shared` | 13 | 1662 |
+| `src/renderer` | 114 | 22737 |
+| `src 合计` | 152 | 29897 |
+
+口径：`src/main`/`preload`/`shared` 数 `.ts`，`src/renderer` 数 `.ts`+`.vue`（含子目录）。
+
+<!-- facts:end -->
+
+> 这几个数字**不要手写**：`npm run docs:facts:write` 重算，`npm run docs:facts:check`
+> 在 `npm run ci` 里校验 —— 手写数字必然会漂（README 曾经写着「renderer 86 文件 / ~15.4k 行」，
+> 实测已是 114 / 22.7k，而没有任何测试会红）。
+
 
 **内核要点**（动手前先读这些文件的注释）：
 
@@ -164,13 +186,14 @@ docs/                     # 手册 / 整改方案 / 打包实测
 |---|---|---|
 | **本地历史 / 版本回滚** | ✅ 已有：每次写盘前留一份「即将被覆盖」的快照（每文件 30 条 / 30 天 / 全库 2000 条），
 文件菜单「本地历史…」可查看并载入编辑器（载入≠写盘，看清了再保存） | 保留策略做成可配（Wave 2 剩余） |
-| **Markdown 往返保真** | ✅ 判级器 + **31 份夹具** + 三层套件（文档级/幂等/字节级）；`exact 9 / normalized 14 / lossy 8`（lossy 全部是 `EXPECT.json` 里写了 why 与修法的已知缺口）。反斜杠转义（`\*`）已原样往返 | 逐条修剩余缺口（嵌套样式、行内 HTML、表格对齐…） |
+| **Markdown 往返保真** | ✅ 判级器 + **31 份夹具** + 三层套件（文档级/幂等/字节级）；`exact 16 / normalized 15 / lossy 0`（分类计数由 `EXPECT.json` 实测，`npm run test:unit` 里有一条对账；`normalized` 每条都写了 why 与修法） | 逐条修剩余缺口（嵌套样式、行内 HTML、表格对齐…） |
 | **EOL（CRLF/LF）** | ✅ 行尾是文档级元数据：打开时判定（按多数）、内存一律 LF、写盘时还原；状态栏可点切换。多窗口一致性还没做 | Wave 2 剩余 |
-| **查找替换 / 打字机模式** | ❌ 菜单里有入口，点了提示「功能待接入」 | 待排期（查找替换优先） |
+| **查找替换** | ✅ 已实现：`Ctrl+F`（焦点在文件面板时改搜文件名）、正则 + 捕获组（`$1`）、大小写、全部替换、两个编辑面（Tiptap / 源码 textarea） | 无 |
+| **打字机模式** | ⛔ 已**摘掉**（原先菜单与 `Ctrl+Shift+T` 只弹一句「功能待接入」——留着一个不存在的入口等于承诺不存在的功能） | 若要做，按"光标行居中"重写后再放入口 |
 | 编辑器 ⇄ store 同步 | ✅ **单向数据流账本**：三个编辑面（Tiptap / 源码 textarea / 代码块 CM）共用 `rev + author + applied`，不存在第二条同步通道 | 嵌套样式（`mdStyle` 支持样式集合） |
-| 文件树键盘可达 | ✅ `role="tree"` + roving tabindex + 方向键/Home/End/Enter（`lib/treeFocus.ts`） | 拖放排序、F2 重命名可用键盘入口 |
-| 自动更新 / 代码签名 | ❌ `publish` 仍是占位；未签名（Windows 会提示未知发布者） | 待决策 |
-| 跨平台 | ⚠️ mac / Linux 未验证 | 明确暂缓 |
+| 文件树键盘可达 | ✅ `role="tree"` + roving tabindex + 方向键/Home/End/Enter（`lib/treeFocus.ts`）；`F2` 重命名、`Delete` 删除、`Shift+F10`/菜单键唤出上下文菜单（`TreeNode.vue`） | 拖放排序 |
+| 自动更新 / 代码签名 | ❌ `publish` 仍是占位、未签名（Windows 会提示未知发布者）。两条都**卡在外部资源**（证书、真实仓库地址），所以不发明占位 URL | 拿到证书与地址后一起做 |
+| 跨平台 | ⚠️ mac / Linux 未验证（`npm run build:mac` / `build:linux` 会明确拒绝，而不是产出一个没验过的包） | 明确暂缓 |
 
 ---
 

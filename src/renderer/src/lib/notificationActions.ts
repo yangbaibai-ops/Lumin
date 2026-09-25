@@ -20,11 +20,6 @@ export function registerNotificationActions(
   handlers.set(kind, handler)
 }
 
-/** 某类通知是否已有处理器（供调试/自检使用） */
-export function hasNotificationActions(kind: string): boolean {
-  return handlers.has(kind)
-}
-
 /**
  * 派发一次按钮点击。
  * @returns 是否找到了处理器；未注册时返回 false（调用方仍会收起卡片，不会出现死按钮）

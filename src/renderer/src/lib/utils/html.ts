@@ -6,7 +6,3 @@ export function escapeHtml(s: string): string {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
 }
-
-export function escapeAttr(s: string): string {
-  return escapeHtml(s)
-}
