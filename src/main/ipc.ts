@@ -499,6 +499,13 @@ export function registerIpc(slots: SlotRegistry): void {
   })
   ipcMain.handle('shell:openPath', async (_, p: string) => {
     const abs = path.resolve(p)
+    /**
+     * 纵深防御：可执行 / 脚本类**永远不交给系统 shell**。
+     * 正常路径上渲染层已经用 `links:resolve` 的 `unsafe-target` 拦过一次（有提示、有记录），
+     * 这里是最后一道闸 —— 渲染层任何一处漏判都不会变成"文档里点一下就运行本地程序"。
+     * 返回一句可识别的原因（而不是静默失败），渲染层会把它显示出来。
+     */
+    if (links.isUnsafeOpenTarget(abs)) return 'UNSAFE_OPEN_TARGET'
     // shell.openPath 返回空字符串表示成功，否则是系统给的错误信息
     return shell.openPath(abs)
   })

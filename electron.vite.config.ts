@@ -2,6 +2,24 @@ import { resolve } from 'path'
 import { defineConfig } from 'electron-vite'
 import vue from '@vitejs/plugin-vue'
 import tailwindcss from '@tailwindcss/vite'
+import type { Plugin } from 'vite'
+import { CSP_PLACEHOLDER, cspMetaTag, devCsp, PROD_CSP } from './src/shared/csp'
+
+/**
+ * 把 `index.html` 里的 `<!--LUMIN_CSP-->` 占位替换成真的 CSP meta 标签。
+ *
+ * 为什么用构建期注入而不是手写两份：CSP 只能有一份真相源（`src/shared/csp.ts`），
+ * 主进程的响应头读的是同一个常量。dev 与 prod 的差别只有"要不要放行 HMR 的 ws"。
+ */
+function cspPlugin(isDev: boolean): Plugin {
+  return {
+    name: 'lumin-csp',
+    transformIndexHtml(html) {
+      if (!html.includes(CSP_PLACEHOLDER)) return html
+      return html.replace(CSP_PLACEHOLDER, cspMetaTag(isDev ? devCsp() : PROD_CSP))
+    }
+  }
+}
 
 /**
  * 开发/生产都以「启动」为约束来配：
@@ -11,7 +29,7 @@ import tailwindcss from '@tailwindcss/vite'
  *    transform 的等待提前到启动阶段；
  *  - build：不手工拆 chunk（原因见下方注释），保持 Vite 默认的「按动态 import 边界拆包」。
  */
-export default defineConfig({
+export default defineConfig(({ command }) => ({
   main: {},
   preload: {},
   renderer: {
@@ -20,7 +38,7 @@ export default defineConfig({
         '@renderer': resolve('src/renderer/src')
       }
     },
-    plugins: [vue(), tailwindcss()],
+    plugins: [vue(), tailwindcss(), cspPlugin(command === 'serve')],
     optimizeDeps: {
       // 按「代码里真实出现的 specifier」列：子路径包（@tiptap/pm/state 等）必须单独列，
       // 只写根包名不会覆盖子路径，仍会在首次进入编辑器时触发重新预打包。
@@ -100,4 +118,4 @@ export default defineConfig({
       }
     }
   }
-})
+}))

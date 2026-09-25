@@ -321,6 +321,7 @@
     "errScheme": "Unsupported link protocol (only http/https/mailto and local paths are allowed)",
     "errNoBase": "The document is unsaved and no workspace is open, so the relative link cannot be resolved",
     "errInvalid": "The link is empty or malformed",
+    "errUnsafeTarget": "For safety, Lumin will not open executable files or scripts (.exe/.bat/.ps1/.lnk …) straight from a document. Check the source in File Explorer and open it there instead.",
     "errCannotCreate": "This file type cannot be created (only text files and folders)",
     "errNeverCreate": "Skipped as configured: target does not exist",
     "errCreate": "Could not create",

@@ -175,6 +175,13 @@ export async function openLinkTarget(rawTarget: string): Promise<void> {
     fail(t('links.errInvalid'))
     return
   }
+  // 可执行 / 脚本类：**安全拦截**，不是"打不开"（见 main/services/links 的 UNSAFE_TARGET_EXT）。
+  // 文案里要把"为什么"说清楚，否则用户只会以为功能坏了。
+  if (res.blocked === 'unsafe-target') {
+    fail(t('links.errUnsafeTarget'), target)
+    await record(res, 'declined', false)
+    return
+  }
 
   // ① 网址：交系统默认浏览器（协议白名单在主进程再次校验）
   if (res.kind === 'url') {

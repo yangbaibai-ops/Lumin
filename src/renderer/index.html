@@ -3,11 +3,14 @@
   <head>
     <meta charset="UTF-8" />
     <title>Lumin</title>
-    <!-- https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP -->
-    <meta
-      http-equiv="Content-Security-Policy"
-      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https: file: lumin-file:; font-src 'self' data:; connect-src 'self' ws: wss:; media-src 'self' data:"
-    />
+    <!--
+      CSP：**唯一真相源在 src/shared/csp.ts**，构建期由 electron.vite.config.ts 的插件把下面
+      这个占位注释替换成真的 <meta http-equiv="Content-Security-Policy">（dev / prod 各一份）。
+      为什么不再手写在这里：此前这里是**第二份** CSP，而且与主进程那份不一致
+      （少 `lumin-file:` 与 `media-src`、多 `ws:`）—— "哪份生效"取决于 webRequest 对 file:// 的
+      行为，两份不一致时安全边界根本说不清。守卫测试断言此处不再出现硬编码 CSP。
+    -->
+    <!--LUMIN_CSP-->
     <!--
       ⚠️ 这里原来有一段**纯 HTML/CSS 的首帧骨架屏**（`.lm-boot`：假顶栏 + 假侧栏 + 假正文 +
       居中的「LUMIN」呼吸字（心跳 keyframes `lm-breathe`）。它在 window 第一帧就可见，

@@ -411,6 +411,13 @@ async function main() {
     ['sub/', 'relative', 'default-app', null],
     [ABS_FILE, 'absolute', 'default-app', null],
     ['C:\\definitely\\not\\here.md', 'absolute', 'default-app', null],
+    // ── 安全：可执行 / 脚本类**不交给系统打开**（文档是不可信输入）──────────────
+    // 规格见 main/services/links 的 UNSAFE_TARGET_EXT：`.exe/.bat/.ps1/.lnk/...` 一律拦，
+    // 不存在的也不允许"创建并打开"（createType 必须被清成 null）。
+    ['C:\\Windows\\System32\\calc.exe', 'absolute', 'external', 'unsafe-target'],
+    ['evil.bat', 'file', 'external', 'unsafe-target'],
+    ['./payload.ps1', 'relative', 'external', 'unsafe-target'],
+    ['shortcut.lnk', 'file', 'external', 'unsafe-target'],
     ['', 'url', 'external', 'invalid']
   ]
   const resolved = {}
@@ -423,6 +430,34 @@ async function main() {
       JSON.stringify(r)
     )
   }
+  c(
+    'unsafe-targets-are-neutralized',
+    // 安全拦截必须**同时**做到三件事，只拦 openPath 不够：
+    //  ① blocked 标记为 unsafe-target（渲染层据此给"为什么"的提示并记账）
+    //  ② action 不是 window / default-app（否则别处仍可能打开它）
+    //  ③ 不许"创建并打开"（createType 为 null，否则用户点一下就凭空得到并运行一个 .bat）
+    ['C:\\Windows\\System32\\calc.exe', 'evil.bat', './payload.ps1', 'shortcut.lnk'].every((t) => {
+      const r = resolved[t]
+      // 注意**不要**断言 exists：`calc.exe` 在本机是真的存在的，存在与否不影响判定 ——
+      // 要钉的是"即使它存在也不会被交给系统打开"（action 不是 default-app/window）。
+      return r.blocked === 'unsafe-target' && r.action === 'external' && r.createType === null
+    }),
+    JSON.stringify(
+      ['C:\\Windows\\System32\\calc.exe', 'evil.bat', './payload.ps1', 'shortcut.lnk'].map((t) => {
+        const r = resolved[t]
+        return { t, blocked: r.blocked, action: r.action, createType: r.createType }
+      })
+    )
+  )
+  // 主进程最后一道闸：即便绕过 resolver 直接调 shell:openPath，也不许运行可执行文件
+  const gate = await ev(
+    `(async () => await window.luminAPI.shell.openPath('C:\\\\Windows\\\\System32\\\\calc.exe'))()`
+  )
+  c(
+    'shell-openpath-refuses-executables',
+    gate === 'UNSAFE_OPEN_TARGET',
+    `shell:openPath 的返回：${JSON.stringify(gate)}（应为 UNSAFE_OPEN_TARGET，绝不能真的运行它）`
+  )
   c(
     'exists-flags-correct',
     resolved['sibling.md'].exists === true &&

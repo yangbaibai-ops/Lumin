@@ -253,7 +253,7 @@ export interface LinkResolveResult {
   /** 建议的打开方式 */
   action: LinkOpenAction
   /** 非 null 表示该链接不应被打开，值为原因码（协议不支持 / 空链接 / 缺少基准目录） */
-  blocked: 'unsupported-scheme' | 'invalid' | 'missing-base' | null
+  blocked: 'unsupported-scheme' | 'invalid' | 'missing-base' | 'unsafe-target' | null
 }
 
 /** 一次链接打开动作（写入 SQLite link_history） */

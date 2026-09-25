@@ -24,6 +24,65 @@ const EXTERNAL_SCHEMES = new Set(['http:', 'https:', 'mailto:'])
 /** Windows 盘符绝对路径：new URL() 会把 `C:\x` 误判成 scheme 为 `c:` 的 URL */
 const WIN_DRIVE_RE = /^[a-zA-Z]:[\\/]/
 
+/**
+ * **绝不交给系统「用默认应用打开」的扩展名**：这些是可执行文件 / 脚本 / 快捷方式，
+ * 「打开」它们等于**运行**它们。
+ *
+ * 为什么必须在这里拦：文档内容是**不可信输入**（可能来自网络、别人发来的 .md）。
+ * 此前 `[点我](C:\Windows\System32\calc.exe)` 这样的链接会一路走到 `shell.openPath` ——
+ * 用户点一下链接就执行了本地程序，而链接在 Markdown 里通常只被当作普通内容。
+ * 这类"文档 → 本地代码执行"是 Markdown 编辑器最经典的攻击面（同类编辑器出过同类 CVE）。
+ *
+ * 口径是"**只列明确危险的**"：pdf / 图片 / 文本 / office 文档等仍然照旧交给系统默认应用 ——
+ * 那是产品的正常能力（`[x](../other/file.pdf)`）。黑名单不可能穷尽，所以配套的口径是：
+ * **可执行类一律拒绝 + 其余保持原行为**，而不是"只允许白名单里的扩展名"（那会砍掉正常用法）。
+ */
+const UNSAFE_TARGET_EXT = new Set([
+  '.exe',
+  '.com',
+  '.bat',
+  '.cmd',
+  '.ps1',
+  '.psm1',
+  '.psd1',
+  '.vbs',
+  '.vbe',
+  '.js',
+  '.jse',
+  '.wsf',
+  '.wsh',
+  '.ws',
+  '.msi',
+  '.msp',
+  '.msix',
+  '.lnk',
+  '.url',
+  '.reg',
+  '.hta',
+  '.cpl',
+  '.jar',
+  '.pif',
+  '.gadget',
+  '.application',
+  '.appref-ms',
+  '.chm',
+  '.msc',
+  '.dll',
+  '.scr',
+  '.inf',
+  '.job',
+  '.shb',
+  '.sys',
+  '.ocx',
+  '.grp',
+  '.settingcontent-ms'
+])
+
+/** 该路径是不是「打开即执行」的类型（导出给套件与 resolver 共用同一份口径） */
+export function isUnsafeOpenTarget(p: string): boolean {
+  return UNSAFE_TARGET_EXT.has(path.extname(p).toLowerCase())
+}
+
 /** 含路径分隔符（用于区分「文件名」与「相对路径」） */
 const HAS_SEP_RE = /[\\/]/
 
@@ -110,6 +169,15 @@ export async function resolveLinkTarget(
   result.exists = entryType !== null
   result.entryType = entryType
   if (entryType !== null) result.createType = null
+  /**
+   * 可执行 / 脚本类：**一律不交给系统打开**（见 UNSAFE_TARGET_EXT 的说明）。
+   * 判据只看扩展名，不看是否存在 —— 不存在的 .exe 也不允许"创建并打开"。
+   */
+  if (entryType !== 'directory' && isUnsafeOpenTarget(abs)) {
+    result.action = 'external'
+    result.createType = null
+    return { ...result, blocked: 'unsafe-target' }
+  }
   // 同级文件名交给 Lumin 新窗口（Lumin 只吃文本类；其余格式交系统默认应用更合适）；
   // 路径类一律交系统默认应用（文件夹由资源管理器/访达打开）
   result.action =
@@ -131,6 +199,8 @@ export async function createLinkTarget(
   type: 'file' | 'directory'
 ): Promise<{ ok: boolean; error?: string }> {
   if (!abs || !path.isAbsolute(abs)) return { ok: false, error: 'invalid-path' }
+  // 纵深防御：即便渲染层绕过了 resolve 的判定，也不许在盘上凭空造出可执行文件
+  if (type === 'file' && isUnsafeOpenTarget(abs)) return { ok: false, error: 'unsafe-target' }
   if (await statType(abs)) return { ok: false, error: 'exists' }
   try {
     if (type === 'directory') {

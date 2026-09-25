@@ -12,6 +12,8 @@ import assert from 'node:assert/strict'
 import { readFileSync, readdirSync, statSync } from 'node:fs'
 import { join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
+// 共享常量直接 import .ts（node --test 的类型剥离）：断言"两处用的是同一份"，而不是比字符串
+import { PROD_CSP, devCsp } from '../src/shared/csp.ts'
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..')
 const read = (p) => readFileSync(join(ROOT, p), 'utf8')
@@ -26,12 +28,19 @@ test('窗口安全三件套不许回退（contextIsolation / nodeIntegration / s
   assert.doesNotMatch(src, /allowRunningInsecureContent:\s*true/, '不允许混内容')
 })
 
-test('CSP：默认自限 + 脚本只允许 self', () => {
+test('CSP：默认自限 + 脚本只允许 self（唯一真相源 = src/shared/csp.ts）', () => {
   const html = read('src/renderer/index.html')
-  const csp = /content="([^"]*Content-Security-Policy[^"]*|default-src[^"]*)"/.exec(html)
-  const meta = /<meta[^>]*http-equiv="Content-Security-Policy"[^>]*>/i.exec(html)
-  assert.ok(meta, 'index.html 必须有 CSP meta')
-  const content = meta[0]
+  // 单一真相源：index.html 里**只有占位**，不许再出现硬编码的 CSP meta
+  assert.match(html, /<!--LUMIN_CSP-->/, 'index.html 必须保留 CSP 占位注释（构建期注入）')
+  // 判"没有硬编码"前先剥掉 HTML 注释：注释里**解释**这段历史是正当的
+  // （本轮就在这里写了"此前是什么样"，不剥注释会把说明文字当成硬编码，属于假红）
+  const htmlNoComments = html.replace(/<!--[\s\S]*?-->/g, '')
+  assert.doesNotMatch(
+    htmlNoComments,
+    /<meta[^>]*http-equiv="Content-Security-Policy"/i,
+    'index.html 不许再手写 CSP（真相源在 src/shared/csp.ts，由 electron.vite.config.ts 注入）'
+  )
+  const content = PROD_CSP
   assert.match(content, /default-src\s+'self'/, 'default-src 必须是 self')
   assert.match(
     content,
@@ -43,7 +52,21 @@ test('CSP：默认自限 + 脚本只允许 self', () => {
     /script-src[^;]*unsafe-(inline|eval)/,
     'script-src 不许开 unsafe-inline / unsafe-eval'
   )
-  void csp
+  // 打包态不许放行任意 ws:/wss:（那是"万一被注入"时的数据外发通道；dev 由 devCsp() 单独放行）
+  assert.doesNotMatch(content, /connect-src[^;]*\bwss?:/, '生产 CSP 的 connect-src 不许含 ws:/wss:')
+  // 本地图片/音视频必须被放行（否则打包态文档里的相对路径图片全加载不出来）
+  assert.match(content, /img-src[^;]*lumin-file:/, 'img-src 必须放行 lumin-file:')
+  assert.match(content, /media-src[^;]*lumin-file:/, 'media-src 必须放行 lumin-file:')
+  // 主进程的响应头必须用同一个常量，而不是再写一遍字面量
+  const main = read('src/main/index.ts')
+  assert.match(main, /'Content-Security-Policy':\s*\[PROD_CSP\]/, '主进程必须用共享的 PROD_CSP')
+  assert.doesNotMatch(
+    main,
+    /'Content-Security-Policy':\s*\[\s*['"]default-src/,
+    '主进程不许内联写 CSP 字面量'
+  )
+  // dev 与 prod 的差别只有 ws（HMR）
+  assert.match(devCsp(), /connect-src[^;]*ws:/, 'dev CSP 必须放行 ws（HMR）')
 })
 
 test('openExternal 一律先过 scheme 白名单', () => {

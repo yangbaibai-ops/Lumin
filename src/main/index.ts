@@ -30,6 +30,7 @@ import { initUpdater } from './services/updater'
 import { bindWindowScope, scopeOfSlot } from './services/windowScope'
 import { defaultSettings } from '../shared/defaults'
 import { PAPER_BY_THEME } from '../shared/theme'
+import { PROD_CSP } from '../shared/csp'
 
 // 本地文件协议（用于 Markdown 内相对路径图片，兼容 dev/prod 与 CSP）
 protocol.registerSchemesAsPrivileged([
@@ -309,16 +310,16 @@ function createWindow(options: WindowOpenOptions = {}): BrowserWindow {
     if (safe) void shell.openExternal(safe)
   })
 
-  // 生产环境强化 CSP（仅首次注册）
+  // 生产环境强化 CSP（仅首次注册）。
+  // ⚠️ 内容来自 `src/shared/csp.ts` 的**唯一常量**，与渲染层 `<meta>` 里那份逐字相同：
+  // 此前两处各写一份、内容还不一致（少了 lumin-file:/media-src），"哪份生效"无从判断。
   if (!is.dev && !cspInstalled) {
     cspInstalled = true
     mainWindow.webContents.session.webRequest.onHeadersReceived((details, callback) => {
       callback({
         responseHeaders: {
           ...details.responseHeaders,
-          'Content-Security-Policy': [
-            "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https: file:; font-src 'self' data:; connect-src 'self'"
-          ]
+          'Content-Security-Policy': [PROD_CSP]
         }
       })
     })

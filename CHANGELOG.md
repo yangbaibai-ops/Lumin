@@ -72,6 +72,36 @@
 - **工程化**：~~`tools/lib/harness.js` + `tools/run-suites.js`~~ → **本轮已完成**；
   剩余：`files` store 拆分；`store` 里那份为绕循环导入而复制的 `confirmIfDirty` 收敛到 `services/dialog`。
 
+## [Unreleased · 安全（第十一轮）：文档链接不再能打开可执行文件 + CSP 收敛成唯一真相源]
+
+> 依据：桌面《Lumin-项目改进清单-2026-09-24.md》§4（安全边界）的两条 P1。
+
+### Security
+
+- **文档链接不再能打开可执行文件 / 脚本**：`[点我](C:\Windows\System32\calc.exe)` 这类链接此前
+  会一路走到 `shell.openPath`，用户点一下链接就执行了本地程序（文档是不可信输入）。
+  现在 `services/links.ts` 用 `UNSAFE_TARGET_EXT`（.exe/.bat/.cmd/.ps1/.vbs/.js/.lnk/.msi/
+  .scr/.hta/.cpl/.jar/.chm/.msc/.dll/.reg 等 30+ 类）判定为 `blocked='unsafe-target'`，
+  `action` 不再交给系统、`createType` 被清掉（不许"创建并打开"）；
+  `shell:openPath` 再拦一道（返回 `UNSAFE_OPEN_TARGET`），`createLinkTarget` 拒绝凭空造可执行文件。
+  pdf / 图片 / office 文档等**照旧**交给系统默认应用（那是正常能力，没有一起收紧）。
+- **CSP 收敛成唯一真相源**：此前 `index.html` 的 meta 与主进程响应头各写一份、内容还不一致
+  （少了 `lumin-file:`/`media-src`）—— "哪份生效"取决于 `webRequest` 对 `file://` 的行为，
+  打包态的安全边界说不清。现在常量只有 `src/shared/csp.ts` 一份：`index.html` 留
+  `<!--LUMIN_CSP-->` 占位、构建期由 `lumin-csp` 插件注入 meta，主进程响应头用同一个 `PROD_CSP`。
+  同时收窄：`connect-src` 去掉 `ws:`/`wss:`（打包态不需要 HMR），补上
+  `object-src 'none'` / `base-uri 'none'` / `form-action 'none'` / `frame-src 'none'` /
+  `frame-ancestors 'none'`。
+
+### Verification
+
+- `tools/_verify-link-open.js` 64 → **70/70**（新增危险目标分类行 + 拦截三件事的聚合断言 +
+  "直接调 `shell:openPath` 也被拒"）。
+- `tests/guards.test.mjs` 的 CSP 断言升级为"单一真相源"守卫（index.html 不许手写 CSP、
+  主进程必须用共享常量、生产 connect-src 不许含 ws:、img/media 必须放行 lumin-file:）。
+- 回归：`_verify-local-media` 10/10、`_verify-links` 12/12、`_verify-remote-image` 7/7；
+  单元 323 条全绿；eslint 0/0；vue-tsc / tsc(node) 0；build exit 0。
+
 ## [Unreleased · 数据安全（第十轮）：保存期输入不再被吞 + 草稿最大等待 + 换文档前刷编辑器 + 删除进回收站]
 
 > 依据：桌面《Lumin-项目改进清单-2026-09-24.md》的 P0/P1（数据安全与写盘链路）。

@@ -321,6 +321,7 @@
     "errScheme": "不支持的链接协议（仅支持 http/https/mailto 与本地路径）",
     "errNoBase": "当前文档尚未保存，且未打开工作区，无法解析相对链接",
     "errInvalid": "链接为空或格式不正确",
+    "errUnsafeTarget": "出于安全考虑，Lumin 不会从文档里直接打开可执行文件或脚本（.exe/.bat/.ps1/.lnk 等）。请在资源管理器里确认来源后再手动打开。",
     "errCannotCreate": "该类型的文件无法新建（只支持新建文本类文件或文件夹）",
     "errNeverCreate": "已按设置跳过：目标不存在",
     "errCreate": "新建失败",
