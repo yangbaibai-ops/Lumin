@@ -5,6 +5,7 @@ import { useFilesStore } from '../stores/files'
 import { useWorkspaceDocsStore } from '../stores/workspaceDocs'
 import { useSettingsStore } from '../stores/settings'
 import { confirmDiscardIfDirty } from '../lib/dialog'
+import { docMatchesFilter } from '../lib/tags'
 import Icon from './Icon.vue'
 
 // ─── 文件列表视图（Typora 式侧边栏「列表」）────────────────────────────────
@@ -31,17 +32,8 @@ watch(
 )
 
 const items = computed(() => {
-  const q = props.filter.trim().toLowerCase()
-  let list = docsStore.docs
-  if (q) {
-    list = list.filter(
-      (d) =>
-        d.name.toLowerCase().includes(q) ||
-        d.relPath.toLowerCase().includes(q) ||
-        d.preview.toLowerCase().includes(q)
-    )
-  }
-  return list
+  // 过滤逻辑在 lib/tags.ts（纯函数、有单测）：文件名 / 相对路径 / 预览 / **标签** 任一处命中
+  return docsStore.docs.filter((d) => docMatchesFilter(d, props.filter))
 })
 
 const currentPath = computed(() => files.current?.path ?? null)
@@ -191,6 +183,24 @@ async function openDoc(path: string): Promise<void> {
             class="mt-1.5 line-clamp-2 text-[11.5px] leading-[1.6] text-ink-3/90"
           >
             {{ doc.preview }}
+          </span>
+
+          <!-- 标签：最多显示 4 个，多出来的折成 +n（标签的编辑入口在状态栏那一格） -->
+          <span v-if="doc.tags?.length" class="mt-1.5 flex flex-wrap items-center gap-1">
+            <span
+              v-for="tag in doc.tags.slice(0, 4)"
+              :key="tag"
+              class="rounded-md px-1.5 py-px text-[10.5px] leading-[1.5]"
+              :class="
+                doc.path === currentPath
+                  ? 'bg-accent-soft text-accent/90'
+                  : 'bg-panel-2 text-ink-2b'
+              "
+              >{{ tag }}</span
+            >
+            <span v-if="doc.tags.length > 4" class="text-[10.5px] text-ink-3/80"
+              >+{{ doc.tags.length - 4 }}</span
+            >
           </span>
         </button>
       </TransitionGroup>

@@ -136,6 +136,9 @@ export async function scanWorkspace(root: string): Promise<WorkspaceDoc[]> {
   const MAX_DOCS = 4000
   const MAX_DEPTH = 24
   let cancelled = false
+  // 标签一次取全（`documents.tags`），扫描时逐条附着 —— 列表视图要按标签过滤，
+  // 逐个文件查库在 4000 篇的工作区上是 4000 次查询。键统一小写比较：Windows 路径不区分大小写。
+  const tagIndex = db.tagsByPath()
 
   async function walk(dir: string, relDir: string, depth: number): Promise<void> {
     if (cancelled || depth > MAX_DEPTH) return
@@ -163,7 +166,8 @@ export async function scanWorkspace(root: string): Promise<WorkspaceDoc[]> {
             relPath: relDir,
             path: p,
             mtimeMs: stat.mtimeMs,
-            preview: await readPreviewHead(p)
+            preview: await readPreviewHead(p),
+            tags: tagIndex[p.toLowerCase()] ?? []
           })
         } catch {
           /* 读取失败的条目跳过 */

@@ -1,12 +1,14 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useFilesStore } from '../stores/files'
 import { useSettingsStore } from '../stores/settings'
 import { useUiStore } from '../stores/ui'
+import { useWorkspaceDocsStore } from '../stores/workspaceDocs'
 import { LANGUAGE_OPTIONS, nextLanguage } from '../i18n'
 import { encodingOf } from '../../../shared/encodings'
 import { eolLabel } from '../../../shared/eol'
+import { formatTagsInput, parseTagsInput } from '../lib/tags'
 import Icon from './Icon.vue'
 import type { ThemeMode } from '../../../shared/types'
 
@@ -14,6 +16,63 @@ const { t } = useI18n()
 const files = useFilesStore()
 const settings = useSettingsStore()
 const ui = useUiStore()
+
+// ─── 当前文档的标签（SQLite `documents.tags`）────────────────────────────────
+// 审计 §7 第 19 条：标签的 DB 与 IPC 早就有，**界面一处都没有**。
+// 读：`db.getDocument(path)`（返回 DocMeta，含 tags）；写：`db.setTags(path, tags)`。
+// 未落盘的文档没有 DB 行 —— 这时按钮给一句"先保存"，而不是静默无反应。
+const docTags = ref<string[]>([])
+
+async function loadTags(): Promise<void> {
+  const p = files.current?.path
+  if (!p) {
+    docTags.value = []
+    return
+  }
+  try {
+    const meta = await window.luminAPI.db.getDocument(p)
+    docTags.value = meta?.tags ?? []
+  } catch {
+    docTags.value = []
+  }
+}
+// 换文档 / 首次保存（有了路径）都要重新读
+watch(
+  () => files.current?.path ?? null,
+  () => void loadTags(),
+  { immediate: true }
+)
+
+const tagsLabel = computed(() =>
+  docTags.value.length ? docTags.value.join(' · ') : t('statusbar.addTags')
+)
+
+/** 编辑标签：一个输入框，逗号分隔（解析与去重在 lib/tags.ts） */
+async function editTags(): Promise<void> {
+  const p = files.current?.path
+  if (!p) {
+    ui.toast(t('toast.tagsNeedSave'), 'warning')
+    return
+  }
+  const input = await ui.prompt(
+    t('statusbar.tagsTooltip'),
+    t('statusbar.tagsPlaceholder'),
+    formatTagsInput(docTags.value)
+  )
+  if (input === null || input === undefined) return
+  const tags = parseTagsInput(input)
+  try {
+    await window.luminAPI.db.setTags(p, tags)
+    docTags.value = tags
+    // 列表视图的标签来自工作区扫描的缓存 → 标脏让它下次进入时重扫
+    useWorkspaceDocsStore().invalidate()
+  } catch (err) {
+    ui.toast(
+      t('toast.tagsFailed', { reason: err instanceof Error ? err.message : String(err) }),
+      'error'
+    )
+  }
+}
 
 const langShort = computed(
   () => LANGUAGE_OPTIONS.find((o) => o.value === settings.language)?.short ?? 'EN'
@@ -246,6 +305,23 @@ const themes: { mode: ThemeMode; icon: string; labelKey: string }[] = [
     >
       <Icon name="align-left" :size="12" />
       <span>{{ currentEolLabel }}</span>
+    </button>
+
+    <!--
+      标签：**唯一编辑入口**（审计 §7 第 19 条：标签的 DB/IPC 早就有、界面一处都没有）。
+      放在状态栏的文档信息区（与编码/行尾同处）：它是文档级元数据，点一下即可改。
+      列表视图会把这些标签画在每条上，并按标签过滤。
+    -->
+    <button
+      v-if="files.current"
+      class="flex max-w-[220px] items-center gap-1 rounded-md px-1.5 py-0.5 transition-colors hover:bg-panel-2 hover:text-ink-2"
+      :title="t('statusbar.tagsTooltip')"
+      :aria-label="t('statusbar.tagsTooltip')"
+      data-status-tags
+      @click="editTags()"
+    >
+      <Icon name="tag" :size="12" class="flex-none" />
+      <span class="truncate">{{ tagsLabel }}</span>
     </button>
 
     <!-- 右侧：主题 / 语言 -->

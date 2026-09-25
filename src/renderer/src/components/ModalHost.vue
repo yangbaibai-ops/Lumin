@@ -100,6 +100,7 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onKeydown))
                 ref="inputEl"
                 v-model="promptValue"
                 class="input mb-6"
+                data-prompt-input
                 :placeholder="ui.promptState.placeholder"
                 @keydown.enter="ui.resolvePrompt(promptValue.trim() || null)"
               />

@@ -382,7 +382,9 @@
     "encodingNotSaved": "这份文档还没保存到磁盘，无法按其他编码重新读取",
     "imageNeedsWorkspace": "先把文档保存下来（或打开一个工作区），图片才能存进 assets/ 目录",
     "imageInsertFailed": "插入图片失败：{reason}",
-    "copyFailed": "复制失败"
+    "copyFailed": "复制失败",
+    "tagsNeedSave": "先把文档保存到磁盘，标签才会落库",
+    "tagsFailed": "保存标签失败：{reason}"
   },
   "editorMenu": {
     "copy": "复制",
@@ -443,7 +445,10 @@
     "switchLanguage": "切换语言",
     "encodingTooltip": "当前文档编码（文件 → 选择编码重新打开）",
     "eolTooltip": "当前行尾：{eol} —— 点击切换 LF / CRLF（立即写回）",
-    "saveModeDetail": "保存方式：{mode}"
+    "saveModeDetail": "保存方式：{mode}",
+    "tagsTooltip": "标签（逗号分隔，用于归类与搜索）",
+    "tagsPlaceholder": "例如：小说, 第一章, 草稿",
+    "addTags": "添加标签"
   },
   "keymap": {
     "title": "快捷键",

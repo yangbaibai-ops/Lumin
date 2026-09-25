@@ -381,6 +381,24 @@ class LuminDatabase {
       .run(JSON.stringify(tags), filePath)
   }
 
+  /**
+   * 全部文档的标签，**键为小写路径**（Windows 路径不区分大小写）。
+   * 工作区扫描要一次拿到所有标签附着到每篇文档上（列表视图按标签过滤），
+   * 逐个文件查库在几千篇的工作区上就是几千次查询。
+   */
+  tagsByPath(): Record<string, string[]> {
+    const rows = this.db.prepare('SELECT path, tags FROM documents').all() as unknown as {
+      path: string
+      tags: string
+    }[]
+    const out: Record<string, string[]> = {}
+    for (const r of rows) {
+      const tags = this.parseTags(r.tags)
+      if (tags.length) out[r.path.toLowerCase()] = tags
+    }
+    return out
+  }
+
   listRecent(limit = 30): DocMeta[] {
     const rows = this.db
       .prepare('SELECT * FROM documents WHERE is_archived = 0 ORDER BY last_opened DESC LIMIT ?')

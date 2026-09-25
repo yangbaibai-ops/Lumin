@@ -323,6 +323,7 @@ function onDrop(e: DragEvent): void {
               ref="filterEl"
               v-model="filter"
               class="file-search__input"
+              data-sidebar-filter
               :placeholder="t('sidebar.filterPlaceholder')"
               :aria-label="t('sidebar.filterPlaceholder')"
               @blur="onSearchBlur"

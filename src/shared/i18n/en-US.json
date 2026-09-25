@@ -382,7 +382,9 @@
     "encodingNotSaved": "This document is not saved to disk yet, so it cannot be re-read with another encoding",
     "imageNeedsWorkspace": "Save this document first (or open a workspace) so the image can be stored in assets/",
     "imageInsertFailed": "Could not insert the image: {reason}",
-    "copyFailed": "Copy failed"
+    "copyFailed": "Copy failed",
+    "tagsNeedSave": "Save the document first so tags can be stored",
+    "tagsFailed": "Could not save tags: {reason}"
   },
   "editorMenu": {
     "copy": "Copy",
@@ -443,7 +445,10 @@
     "switchLanguage": "Switch Language",
     "encodingTooltip": "Document encoding (File → Reopen with encoding)",
     "eolTooltip": "Line endings: {eol} — click to switch LF / CRLF (saves immediately)",
-    "saveModeDetail": "Save mode: {mode}"
+    "saveModeDetail": "Save mode: {mode}",
+    "tagsTooltip": "Tags (comma separated; used for grouping and search)",
+    "tagsPlaceholder": "e.g. novel, chapter-1, draft",
+    "addTags": "Add tags"
   },
   "keymap": {
     "title": "Keyboard shortcuts",

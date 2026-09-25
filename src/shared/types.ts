@@ -294,6 +294,11 @@ export interface WorkspaceDoc {
   mtimeMs: number
   /** 正文头部预览（去除 Markdown 符号后的一段纯文本） */
   preview: string
+  /**
+   * 标签（来自 `documents.tags`，SQLite 持久化）。
+   * 唯一编辑入口在状态栏那一格（`statusbar.tags`）；列表视图按它过滤与展示。
+   */
+  tags: string[]
 }
 
 export interface OpenedFile {
