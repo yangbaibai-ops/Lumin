@@ -191,7 +191,9 @@
     "editSource": "点击编辑源码",
     "splitDividerTitle": "拖动调整左右比例（双击复位）",
     "syncScrollOn": "同步滚动已开启（点击关闭）",
-    "syncScrollOff": "开启同步滚动"
+    "syncScrollOff": "开启同步滚动",
+    "imageFromFile": "选择本地图片…",
+    "imageFromUrl": "输入图片 URL…"
   },
   "settings": {
     "title": "设置",
@@ -374,7 +376,9 @@
     "saveFailedDetail": "保存失败：{reason}",
     "encodingFailedDetail": "按编码重新打开失败：{reason}",
     "deleteFailedDetail": "删除失败：{reason}",
-    "encodingNotSaved": "这份文档还没保存到磁盘，无法按其他编码重新读取"
+    "encodingNotSaved": "这份文档还没保存到磁盘，无法按其他编码重新读取",
+    "imageNeedsWorkspace": "先把文档保存下来（或打开一个工作区），图片才能存进 assets/ 目录",
+    "imageInsertFailed": "插入图片失败：{reason}"
   },
   "editorMenu": {
     "copy": "复制",
@@ -495,7 +499,8 @@
     "engine": "SQLite FTS5 全文索引"
   },
   "dialog": {
-    "allFiles": "所有文件"
+    "allFiles": "所有文件",
+    "images": "图片"
   },
   "taskbar": {
     "recent": "最近打开",

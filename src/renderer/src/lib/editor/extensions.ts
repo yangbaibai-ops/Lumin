@@ -21,6 +21,7 @@ import { Markdown } from 'tiptap-markdown'
 import { TyporaMarkers } from './markers'
 import { TyporaInputRules } from './inputRules'
 import { TyporaKeymap } from './keymap'
+import { ImagePaste } from './imagePaste'
 import { CodeBlockCM } from './codeBlock'
 import { MarkdownPaste } from './markdownPaste'
 import { TyporaInlineMarks, MdStyle, MdMarker, MdCodeLiteral, MdEscape } from './typoraInlineMarks'
@@ -203,6 +204,8 @@ export const editorExtensions: Extensions = [
   }),
   CodeBlockCM,
   TyporaInputRules,
+  // 图片：粘贴剪贴板 / 拖入文件 → 落进工作区 assets/ 并插入相对路径（见 lib/insertImage.ts）
+  ImagePaste,
   // 粘贴修复：先注册 MarkdownPaste 接管 clipboardTextParser（someProp 取
   // 首个非 null），Markdown 自带的 inline-only 解析器被禁用
   MarkdownPaste,

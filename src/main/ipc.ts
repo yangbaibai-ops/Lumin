@@ -266,6 +266,41 @@ export function registerIpc(slots: SlotRegistry): void {
       return { mtimeMs }
     }
   )
+  /**
+   * 写**二进制**（粘贴进编辑器的图片）：授权闸与文本写一致，但**不碰编码与行尾**。
+   * 渲染层把剪贴板里的图片字节交过来，落盘后再由 `lumin-file://` 渲染。
+   */
+  ipcMain.handle('file:writeBinary', async (_, p: string, bytes: Uint8Array) => {
+    const fp = pathGrants.assertAuthorized(p, 'write')
+    await fileOps.writeBinary(fp, bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes))
+  })
+  /**
+   * 把一张外部图片复制进工作区（拖入 / 「选择文件…」用）。
+   * `source` 只需**读**授权（拖入时渲染层已申请过、选择文件时这里刚授权），
+   * `dir` 需要**写**授权 —— 只可能落在工作区或已打开文档所在目录里。
+   */
+  ipcMain.handle('file:importImage', async (_, source: string, dir: string, baseName: string) => {
+    const src = pathGrants.assertAuthorized(source, 'read')
+    const dest = pathGrants.assertAuthorized(dir, 'write')
+    return fileOps.importImage(src, dest, baseName)
+  })
+  /** 「选择文件…」：原生对话框选一张图片，选中的路径登记读写授权后返回 */
+  ipcMain.handle('file:chooseImage', async () => {
+    const win = BrowserWindow.getFocusedWindow()
+    const r = await dialog.showOpenDialog(win!, {
+      properties: ['openFile'],
+      filters: [
+        {
+          name: mainT('dialog.images'),
+          extensions: ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'svg', 'avif']
+        },
+        { name: mainT('dialog.allFiles'), extensions: ['*'] }
+      ]
+    })
+    const picked = r.canceled || !r.filePaths.length ? null : r.filePaths[0]
+    if (picked) pathGrants.grantFileReadWrite(picked)
+    return picked
+  })
   /** 本地历史：某个文件的快照列表（新的在前；不含正文） */
   ipcMain.handle('history:list', (_, p: string, limit = 30) =>
     db.listHistory(path.resolve(p), limit)

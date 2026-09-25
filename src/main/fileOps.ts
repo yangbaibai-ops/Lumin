@@ -240,6 +240,57 @@ export async function writeFile(
   return st.mtimeMs
 }
 
+/**
+ * 写**二进制**（粘贴进编辑器的图片等）：与 `writeFile` 同一套原子写
+ * （同目录临时文件 → fsync → rename，随机后缀），只是不碰编码与行尾。
+ *
+ * 为什么不让渲染层自己拼 `file:write`：那是**文本**通道（会做编码/行尾处理），
+ * 把 PNG 字节塞进去等于先按 UTF-8 解读再编码，图必然坏。
+ */
+export async function writeBinary(filePath: string, bytes: Uint8Array): Promise<void> {
+  await fs.mkdir(path.dirname(filePath), { recursive: true })
+  const tmp = `${filePath}.${randomUUID().slice(0, 8)}.lumin-tmp`
+  let handle: Awaited<ReturnType<typeof fs.open>> | null = null
+  try {
+    handle = await fs.open(tmp, 'w')
+    await handle.writeFile(bytes)
+    await handle.sync()
+    await handle.close()
+    handle = null
+    await fs.rename(tmp, filePath)
+  } catch (err) {
+    if (handle) await handle.close().catch(() => {})
+    await fs.rm(tmp, { force: true }).catch(() => {})
+    throw err
+  }
+}
+
+/**
+ * 生成不冲突的文件名（`note.png` → `note-1.png`），与「新建文件」同一套编号规则。
+ * 只用于插入图片这类"给我一个能用的名字"的场景。
+ */
+export async function uniqueName(dir: string, name: string): Promise<string> {
+  const ext = path.extname(name)
+  const stem = path.basename(name, ext)
+  let candidate = path.join(dir, `${stem}${ext}`)
+  let i = 1
+  while (await exists(candidate)) {
+    candidate = path.join(dir, `${stem}-${i}${ext}`)
+    i += 1
+  }
+  return candidate
+}
+
+/**
+ * 把一张**外部图片**复制进目标目录（拖入 / 「选择文件…」都走这里），返回写入后的绝对路径。
+ * 名字冲突时自动编号，绝不覆盖已有文件。
+ */
+export async function importImage(source: string, dir: string, baseName: string): Promise<string> {
+  const target = await uniqueName(dir, baseName)
+  await fs.copyFile(source, target)
+  return target
+}
+
 /** 写盘临时文件名的后缀（`<name>.<8位随机>.lumin-tmp`）—— 清理扫描与文档口径共用一份 */
 export const TEMP_SUFFIX_RE = /\.[0-9a-f]{8}\.lumin-tmp$/i
 

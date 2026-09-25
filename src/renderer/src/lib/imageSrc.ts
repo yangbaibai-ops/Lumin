@@ -62,3 +62,39 @@ export function imageSrcForDoc(src: string, docDir: string | null): string {
     .join('/')
   return `lumin-file:///${urlPath}`
 }
+
+/**
+ * `fromDir` → `to` 的相对路径（要上溯时用 `..`，分隔符跟随 `fromDir`）。
+ *
+ * 为什么需要：插入图片时把文件放进**工作区的 `assets/`**，而 Markdown 里的相对路径是
+ * **相对文档**解析的（见 `imageSrcForDoc`）—— 文档在 `notes/` 里时就得写 `../assets/x.png`，
+ * 否则渲染层按 `notes/assets/x.png` 去找，图直接裂掉。
+ *
+ * 两个盘符不同时相对不了：原样返回绝对路径（`imageSrcForDoc` 认绝对路径）。
+ * 纯函数（无 node path / 无 electron），有单测：`tests/imageSrc.test.mjs`。
+ */
+export function relativeDocPath(fromDir: string, to: string): string {
+  if (!fromDir) return to
+  const norm = (p: string): string => p.replace(/\\/g, '/').replace(/\/+$/, '')
+  const a = norm(fromDir)
+  const b = norm(to)
+  const driveA = /^([a-zA-Z]:)/.exec(a)?.[1]?.toLowerCase() ?? ''
+  const driveB = /^([a-zA-Z]:)/.exec(b)?.[1]?.toLowerCase() ?? ''
+  if (driveA !== driveB) return to
+  const partsA = a.split('/').filter(Boolean)
+  const partsB = b.split('/').filter(Boolean)
+  let i = 0
+  // Windows 盘符与路径大小写不敏感：比较时统一小写（但输出保留原文）
+  while (
+    i < partsA.length &&
+    i < partsB.length &&
+    partsA[i].toLowerCase() === partsB[i].toLowerCase()
+  ) {
+    i += 1
+  }
+  if (i === 0) return to
+  const up = partsA.length - i
+  const rest = partsB.slice(i)
+  if (!up) return rest.length ? rest.join('/') : '.'
+  return [...Array(up).fill('..'), ...rest].join('/')
+}

@@ -191,7 +191,9 @@
     "editSource": "Click to edit source",
     "splitDividerTitle": "Drag to resize the panes; double-click to reset",
     "syncScrollOn": "Sync scrolling is on (click to turn off)",
-    "syncScrollOff": "Turn on sync scrolling"
+    "syncScrollOff": "Turn on sync scrolling",
+    "imageFromFile": "Choose a local image…",
+    "imageFromUrl": "Enter an image URL…"
   },
   "settings": {
     "title": "Settings",
@@ -374,7 +376,9 @@
     "saveFailedDetail": "Save failed: {reason}",
     "encodingFailedDetail": "Reopening with this encoding failed: {reason}",
     "deleteFailedDetail": "Delete failed: {reason}",
-    "encodingNotSaved": "This document is not saved to disk yet, so it cannot be re-read with another encoding"
+    "encodingNotSaved": "This document is not saved to disk yet, so it cannot be re-read with another encoding",
+    "imageNeedsWorkspace": "Save this document first (or open a workspace) so the image can be stored in assets/",
+    "imageInsertFailed": "Could not insert the image: {reason}"
   },
   "editorMenu": {
     "copy": "Copy",
@@ -495,7 +499,8 @@
     "engine": "SQLite FTS5 full-text index"
   },
   "dialog": {
-    "allFiles": "All files"
+    "allFiles": "All files",
+    "images": "Images"
   },
   "taskbar": {
     "recent": "Recent",

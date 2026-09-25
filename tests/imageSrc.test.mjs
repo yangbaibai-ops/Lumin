@@ -8,7 +8,8 @@ import {
   imageSrcForDoc,
   isAbsolutePath,
   isExternalImageSrc,
-  joinDocPath
+  joinDocPath,
+  relativeDocPath
 } from '../src/renderer/src/lib/imageSrc.ts'
 
 test('远程 / 内联图片原样返回', () => {
@@ -67,4 +68,26 @@ test('URL 转义：空格 / 中文 / # 不会把 URL 拆坏', () => {
 
 test('POSIX 绝对路径（mac/Linux 场景）保留根', () => {
   assert.equal(joinDocPath('/home/u/notes', '../img/a.png'), '/home/u/img/a.png')
+})
+
+// ─── relativeDocPath：插入图片时算"相对当前文档"的 src ───────────────────────
+// 图片统一放进工作区的 assets/，而 markdown 里的相对路径是相对**文档**解析的：
+// 文档在 notes/ 里就得写 ../assets/x.png，否则渲染层按 notes/assets/x.png 去找，图裂掉。
+test('relativeDocPath：同盘同目录 / 子目录 / 上溯', () => {
+  assert.equal(relativeDocPath('D:\\ws', 'D:\\ws\\assets\\a.png'), 'assets/a.png')
+  assert.equal(relativeDocPath('D:\\ws\\notes', 'D:\\ws\\assets\\a.png'), '../assets/a.png')
+  assert.equal(relativeDocPath('D:\\ws\\a\\b', 'D:\\ws\\assets\\x.png'), '../../assets/x.png')
+  assert.equal(relativeDocPath('D:\\ws\\notes', 'D:\\ws\\notes\\img\\a.png'), 'img/a.png')
+})
+
+test('relativeDocPath：大小写与分隔符混用不影响结果', () => {
+  assert.equal(relativeDocPath('d:/WS/notes', 'D:\\ws\\assets\\a.png'), '../assets/a.png')
+})
+
+test('relativeDocPath：不同盘符相对不了就退回绝对路径', () => {
+  assert.equal(relativeDocPath('C:\\ws', 'D:\\ws\\assets\\a.png'), 'D:\\ws\\assets\\a.png')
+})
+
+test('relativeDocPath：没有基准目录时原样返回', () => {
+  assert.equal(relativeDocPath('', 'D:\\ws\\assets\\a.png'), 'D:\\ws\\assets\\a.png')
 })

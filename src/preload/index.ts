@@ -70,6 +70,11 @@ const api: LuminAPI = {
     chooseOpenFile: () => ipcRenderer.invoke('file:chooseOpenFile'),
     chooseSaveFile: (name, ext, dir) => ipcRenderer.invoke('file:chooseSaveFile', name, ext, dir),
     chooseFolder: () => ipcRenderer.invoke('file:chooseFolder'),
+    // 图片：二进制写（粘贴）与「把外部图片复制进工作区」（拖入 / 选文件）
+    writeBinary: (path, bytes) => ipcRenderer.invoke('file:writeBinary', path, bytes),
+    importImage: (source, dir, baseName) =>
+      ipcRenderer.invoke('file:importImage', source, dir, baseName),
+    chooseImage: () => ipcRenderer.invoke('file:chooseImage'),
     getPathForFile: (file) => {
       try {
         return webUtils.getPathForFile(file)

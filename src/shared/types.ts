@@ -484,6 +484,18 @@ export interface LuminAPI {
      */
     chooseSaveFile: (name: string, ext: string, dir?: string | null) => Promise<string | null>
     chooseFolder: () => Promise<string | null>
+    /**
+     * 写**二进制**（粘贴进编辑器的图片）：文本通道 `write` 会做编码/行尾处理，
+     * 拿它写 PNG 必然坏，所以单开一条。授权闸与文本写一致。
+     */
+    writeBinary: (path: string, bytes: Uint8Array) => Promise<void>
+    /**
+     * 把一张外部图片复制进目标目录（拖入 / 「选择文件…」）：
+     * 名字冲突自动编号、绝不覆盖，返回写入后的**绝对路径**。
+     */
+    importImage: (source: string, dir: string, baseName: string) => Promise<string>
+    /** 「选择文件…」：原生对话框选一张图片（选中的路径登记读写授权） */
+    chooseImage: () => Promise<string | null>
     getPathForFile: (file: File) => string | null
     /**
      * 把「用户拖进窗口的文件」登记为只读授权（拖放路径主进程看不到，必须由渲染层申请一次）。

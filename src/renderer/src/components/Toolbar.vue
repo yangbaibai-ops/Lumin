@@ -11,6 +11,7 @@ import SegmentedControl, { type SegmentItem } from './SegmentedControl.vue'
 import ToolbarTableButton from './ToolbarTableButton.vue'
 import ToolbarCodeBlockButton from './ToolbarCodeBlockButton.vue'
 import { shouldCloseOnScrollOrResize } from '../lib/popoverClose'
+import { insertImageFromPath, insertImageFromUrl } from '../lib/insertImage'
 import { selectionHasMdStyle } from '../lib/editor/typoraInlineMarks'
 import {
   DEFAULT_TOOLBAR_ITEMS,
@@ -378,9 +379,35 @@ function addLink(): void {
 function addImage(): void {
   const ed = editorStore.instance
   if (!ed) return
-  void ui.prompt(t('editorMenu.imagePrompt'), t('editorMenu.imagePlaceholder')).then((src) => {
-    if (!src) return
-    ed.chain().focus().setImage({ src: src.trim() }).run()
+  const insert = (src: string): void => {
+    ed.chain().focus().setImage({ src }).run()
+  }
+  // 三条入口：贴过来的图/拖进来的图由编辑区自己接管（lib/editor/imagePaste），
+  // 按钮这里给两个选择 —— 选本地文件（复制进工作区 assets/）或手打远程 URL。
+  // 之前只有"输入 URL"一条路，剪贴板与本地文件都无处可去（审计 §7 第 16 条）。
+  const el = document.querySelector('[data-toolbar-item-id="image"]')
+  const r = el?.getBoundingClientRect()
+  ui.openContextMenu({
+    x: Math.round(r?.left ?? 120),
+    y: Math.round((r?.bottom ?? 80) + 4),
+    ariaLabel: t('editorMenu.imagePrompt'),
+    items: [
+      { label: t('editor.imageFromFile'), icon: 'folder', action: 'image-file' },
+      { label: t('editor.imageFromUrl'), icon: 'link', action: 'image-url' }
+    ],
+    onSelect: (action) => {
+      if (action === 'image-file') {
+        void window.luminAPI.file
+          .chooseImage()
+          .then((path) => (path ? insertImageFromPath(insert, path) : false))
+      } else {
+        void ui
+          .prompt(t('editorMenu.imagePrompt'), t('editorMenu.imagePlaceholder'))
+          .then((src) => {
+            if (src) insertImageFromUrl(insert, src)
+          })
+      }
+    }
   })
 }
 
@@ -428,6 +455,7 @@ const exportItems: { icon: string; labelKey: string; format: 'pdf' | 'html' | 'w
         v-else
         class="icon-btn"
         data-toolbar-item
+        :data-toolbar-item-id="d.id"
         :class="{ active: isItemActive(d.id) }"
         :disabled="isDisabled(d.id)"
         :title="titleOf(d)"

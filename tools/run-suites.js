@@ -101,7 +101,9 @@ const DEFAULT_SUITES = [
   // ── 第十一轮：路径授权闸（工作区外拒绝读写，正常流程全部放行）──
   '_verify-path-grants.js',
   // ── 第十二轮：关于页说的是事实（真实依赖清单 + 第三方许可声明，不硬编码）──
-  '_verify-about.js'
+  '_verify-about.js',
+  // ── 第十三轮：插入图片（粘贴 / 拖入 / 选文件三条入口共用一份落点与命名规则）──
+  '_verify-image-insert.js'
 ]
 
 /** 自己管理 Electron 实例的套件（运行器不替它们起实例） */
