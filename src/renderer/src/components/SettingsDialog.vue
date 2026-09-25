@@ -599,13 +599,13 @@ function formatTime(ms: number): string {
   <Teleport to="body">
     <!-- 设置 = **整页**（用户口径：不要弹一个小窗口盖在原窗口上）。
          `fixed inset-0` + 不透明底色 ⇒ 顶栏/侧栏/正文全被盖住，没有遮罩层、也不可拖动。
-         z-[120] 与原来的浮层同档：通知带（z 更高）仍然浮在它上面，确认框（z-[150]）照样能弹。 -->
+         `--z-page` 与原来的浮层同档：通知带（z 更高）仍然浮在它上面，确认框（`--z-modal`）照样能弹。 -->
     <!-- 设置 = **整页**，而且**只有一条滚动条**（就是页面自己那条）。
          用户口径：「不要有限制组件 … 它有自己的滚动条，而不是整个界面的滚动条」——
          所以这里不再有内层 `overflow-y: auto` 的滚动容器：整页滚动，顶栏与左导航吸顶。 -->
     <div
       v-if="ui.settingsOpen"
-      class="settings-page fixed inset-0 z-[120] bg-app text-ink"
+      class="settings-page fixed inset-0 z-[var(--z-page)] bg-app text-ink"
       role="dialog"
       aria-modal="true"
       :aria-label="t('settings.title')"

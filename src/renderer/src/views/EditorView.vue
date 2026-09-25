@@ -951,7 +951,7 @@ onBeforeUnmount(() => {
              另两处配套：EditorView 启动期间不开占位缓冲、main.ts 在会话恢复之后再补空白缓冲。 -->
         <div
           v-if="files.draftRestore && !ui.booting"
-          class="draft-modal fixed inset-0 z-[160] flex items-center justify-center bg-scrim backdrop-blur-[2px]"
+          class="draft-modal fixed inset-0 z-[var(--z-critical)] flex items-center justify-center bg-scrim backdrop-blur-[2px]"
           role="dialog"
           aria-modal="true"
           aria-labelledby="draft-modal-title"

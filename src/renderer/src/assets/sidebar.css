@@ -187,7 +187,7 @@
 [data-tree-children]::before {
   content: '';
   position: absolute;
-  z-index: 1;
+  z-index: var(--z-raise);
   top: -1px;
   bottom: 0;
   left: calc(var(--tree-pad) + var(--tree-depth, 0) * var(--tree-indent) + var(--tree-slot) / 2);

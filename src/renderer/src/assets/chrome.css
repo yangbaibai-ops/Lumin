@@ -15,7 +15,7 @@
   position: absolute;
   left: 0;
   top: 50%;
-  z-index: 20;
+  z-index: var(--z-grip);
   display: flex;
   align-items: center;
   justify-content: center;

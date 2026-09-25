@@ -158,7 +158,7 @@ function toggleLineNumbers(): void {
       <div
         v-if="open"
         ref="popRef"
-        class="code-block-popover fixed z-[100] rounded-xl border border-edge bg-elevate p-1.5"
+        class="code-block-popover fixed z-[var(--z-popover)] rounded-xl border border-edge bg-elevate p-1.5"
         :style="{
           boxShadow: 'var(--shadow-2)',
           width: POP_WIDTH + 'px',

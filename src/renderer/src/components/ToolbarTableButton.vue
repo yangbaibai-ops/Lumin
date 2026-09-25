@@ -149,7 +149,7 @@ window.addEventListener('resize', onWindowScrollOrResize)
     <Transition name="pop">
       <div
         v-if="open"
-        class="table-size-popover fixed z-[100] rounded-xl border border-edge bg-elevate p-3"
+        class="table-size-popover fixed z-[var(--z-popover)] rounded-xl border border-edge bg-elevate p-3"
         :style="{ boxShadow: 'var(--shadow-2)', left: popPos.x + 'px', top: popPos.y + 'px' }"
         @mouseenter="onPopoverEnter"
         @mouseleave="scheduleClose"

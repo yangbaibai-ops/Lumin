@@ -99,7 +99,8 @@ test('设计令牌：消费端的 var(--x) 都有出处（运行时注入的几�
   )
   const dangling = new Set()
   for (const file of fs.readdirSync(ASSETS).filter((f) => f.endsWith('.css'))) {
-    const css = fs.readFileSync(path.join(ASSETS, file), 'utf-8')
+    // **注释先剥掉**：注释里常写"用法示例"（`var(--z-xxx)` 这种），那是文档不是消费点
+    const css = fs.readFileSync(path.join(ASSETS, file), 'utf-8').replace(/\/\*[\s\S]*?\*\//g, '')
     for (const m of css.matchAll(/var\((--[a-z0-9-]+)/gi)) {
       if (!defined.has(m[1]) && !RUNTIME_TOKENS.includes(m[1])) dangling.add(m[1])
     }

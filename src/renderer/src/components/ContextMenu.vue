@@ -338,13 +338,13 @@ const subStyle = computed(() => ({
 
 <template>
   <!-- role=menu + aria-label 是工具栏右键菜单的定位锚点：
-       验收脚本与读屏器都靠它，而不是靠 Tailwind 生成的 z-[160] 类名 -->
+       验收脚本与读屏器都靠它，而不是靠 Tailwind 生成的那条 z-index 类名（现在是 `--z-critical`） -->
   <Teleport to="body">
     <Transition name="pop">
       <div
         v-if="ui.contextMenu"
         ref="menuRef"
-        class="fixed z-[160] min-w-[172px] rounded-xl border border-edge bg-elevate p-1.5 shadow-xl outline-none"
+        class="fixed z-[var(--z-critical)] min-w-[172px] rounded-xl border border-edge bg-elevate p-1.5 shadow-xl outline-none"
         role="menu"
         tabindex="-1"
         :aria-label="ui.contextMenu.ariaLabel ?? undefined"
@@ -392,7 +392,7 @@ const subStyle = computed(() => ({
       <div
         v-if="ui.contextMenu && openIndex !== null && subItems.length"
         ref="subRef"
-        class="fixed z-[161] min-w-[168px] max-w-[260px] rounded-xl border border-edge bg-elevate p-1.5 shadow-xl"
+        class="fixed z-[var(--z-critical-sub)] min-w-[168px] max-w-[260px] rounded-xl border border-edge bg-elevate p-1.5 shadow-xl"
         :style="subStyle"
         role="menu"
         aria-label="submenu"

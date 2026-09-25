@@ -196,7 +196,7 @@ function onDragStart(e: MouseEvent): void {
 
     <!-- 拖拽手柄（同时是键盘可调的分隔条：见 onResizeKeydown） -->
     <div
-      class="absolute -right-[3px] top-0 z-20 h-full w-[5px] cursor-col-resize opacity-0 transition-opacity hover:opacity-100 focus-visible:opacity-100"
+      class="absolute -right-[3px] top-0 z-[var(--z-grip)] h-full w-[5px] cursor-col-resize opacity-0 transition-opacity hover:opacity-100 focus-visible:opacity-100"
       :class="dragging ? 'opacity-100' : ''"
       role="separator"
       aria-orientation="vertical"

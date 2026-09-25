@@ -11,14 +11,22 @@ npm run docs:tokens:write
 - 三个主题（light / dark / sepia）各自的取值都能在下面看到；
   对比度门禁见 `tests/colorRelations.test.mjs` 与 §8 的对比度表。
 - `npm run docs:tokens:check` 在 CI 里守着"表与 CSS 一致"。
+- **叠放层级（`--z-*`）是主题无关的**，所以它们在 `theme.css` 单独那段 `:root` 里（不参与三个主题块的
+  集合比对）。顺序就是规格：`--z-grip(20) < --z-chip(30) < --z-dialog(70) < --z-tooltip(90)
+  < --z-popover(100) < --z-page(120) < --z-search(140) < --z-modal(150) < --z-modal-sub(151)
+  < --z-critical(160) < --z-critical-sub(161) < --z-editor-menu(170) < --z-editor-menu-sub(171)
+  < --z-tooltip-global(9999)`。两条门禁守着它：
+  `tests/zIndexStack.test.mjs`（不许再有数字字面量、顺序严格递增、令牌都有出处）与
+  `tools/_verify-zorder.js`（真实浮层的**计算样式**确实是这些数字，顺序也在运行时成立）。
+  容器内部的局部叠放仍可用 Tailwind 自己的 `z-10/z-50`（作用域只有那个容器）。
 
 <!-- tokens:begin（由 tools/doc-tokens.js 生成，勿手改）-->
 
 | 口径 | 值 |
 |---|---|
 | 定义令牌的文件 | `src/renderer/src/assets/theme.css` / `src/renderer/src/assets/sidebar.css` |
-| 声明块 | 6 个 |
-| 令牌总数 | 162 |
+| 声明块 | 7 个 |
+| 令牌总数 | 177 |
 | 重复定义（同一声明块内） | 0 |
 
 > 这张表由 `node tools/doc-tokens.js --write` 生成，`npm run docs:tokens:check` 校验；
@@ -173,14 +181,34 @@ npm run docs:tokens:write
 | `--shadow-1` | `0 1px 2px rgba(97, 74, 32, 0.08)` |
 | `--shadow-2` | `0 8px 28px rgba(97, 74, 32, 0.14)` |
 
-**@theme**（第 178 行起，2 个）
+**:root**（第 179 行起，15 个）
+
+| 令牌 | 值 |
+|---|---|
+| `--z-raise` | `1` |
+| `--z-grip` | `20` |
+| `--z-chip` | `30` |
+| `--z-dialog` | `70` |
+| `--z-tooltip` | `90` |
+| `--z-popover` | `100` |
+| `--z-page` | `120` |
+| `--z-search` | `140` |
+| `--z-modal` | `150` |
+| `--z-modal-sub` | `151` |
+| `--z-critical` | `160` |
+| `--z-critical-sub` | `161` |
+| `--z-editor-menu` | `170` |
+| `--z-editor-menu-sub` | `171` |
+| `--z-tooltip-global` | `9999` |
+
+**@theme**（第 208 行起，2 个）
 
 | 令牌 | 值 |
 |---|---|
 | `--font-sans` | `'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif` |
 | `--font-mono` | `'JetBrains Mono', ui-monospace, 'Cascadia Code', 'SF Mono', Consolas, Menlo, monospace` |
 
-**@theme inline**（第 186 行起，21 个）
+**@theme inline**（第 216 行起，21 个）
 
 | 令牌 | 值 |
 |---|---|

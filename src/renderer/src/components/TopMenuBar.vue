@@ -517,7 +517,7 @@ onBeforeUnmount(() => {
     <Teleport to="body">
       <div
         v-if="active"
-        class="topmenu-drop fixed z-[150] w-[248px] overflow-hidden rounded-xl border border-edge bg-elevate p-1.5 shadow-2xl"
+        class="topmenu-drop fixed z-[var(--z-modal)] w-[248px] overflow-hidden rounded-xl border border-edge bg-elevate p-1.5 shadow-2xl"
         :style="{ left: panelStyle.left, top: panelStyle.top, boxShadow: 'var(--shadow-2)' }"
       >
         <template v-for="(it, i) in active.items" :key="i">
@@ -556,7 +556,7 @@ onBeforeUnmount(() => {
       <Transition name="pop">
         <div
           v-if="active && subOpen"
-          class="topmenu-drop topmenu-sub fixed z-[151] overflow-y-auto overscroll-contain rounded-xl border border-edge bg-elevate p-1.5"
+          class="topmenu-drop topmenu-sub fixed z-[var(--z-modal-sub)] overflow-y-auto overscroll-contain rounded-xl border border-edge bg-elevate p-1.5"
           :style="{
             boxShadow: 'var(--shadow-2)',
             width: subOpen.slot ? '300px' : '220px',

@@ -156,7 +156,7 @@
   position: absolute;
   top: 0;
   bottom: 0;
-  z-index: 20;
+  z-index: var(--z-grip);
   width: 11px;
   margin-left: -5px; /* 让 11px 热区以「两栏分界线」为中心 */
   display: flex;
@@ -233,7 +233,7 @@ body.split-dragging {
   position: absolute;
   top: 12px;
   right: 14px;
-  z-index: 30;
+  z-index: var(--z-chip);
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -376,7 +376,7 @@ body.split-dragging {
 
 .tooltip {
   position: absolute;
-  z-index: 90;
+  z-index: var(--z-tooltip);
   padding: 4px 9px;
   border-radius: 7px;
   background: var(--elevate);

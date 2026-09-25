@@ -236,7 +236,7 @@ const subStyle = computed(() => ({ left: `${subPos.value.left}px`, top: `${subPo
       <div
         v-if="menu.open"
         ref="menuRef"
-        class="ecm-panel fixed z-[170] select-none"
+        class="ecm-panel fixed z-[var(--z-editor-menu)] select-none"
         :style="panelStyle"
         tabindex="-1"
         role="menu"
@@ -296,7 +296,7 @@ const subStyle = computed(() => ({ left: `${subPos.value.left}px`, top: `${subPo
       <div
         v-if="menu.open && menu.activeSection"
         ref="subRef"
-        class="ecm-panel ecm-sub fixed z-[171] select-none"
+        class="ecm-panel ecm-sub fixed z-[var(--z-editor-menu-sub)] select-none"
         :style="subStyle"
         role="menu"
         @mouseenter="onEnterSub"

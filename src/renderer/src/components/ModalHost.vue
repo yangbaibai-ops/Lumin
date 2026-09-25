@@ -48,7 +48,7 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onKeydown))
     <Transition name="fade">
       <div
         v-if="ui.confirmState || ui.promptState"
-        class="fixed inset-0 z-[150] flex items-center justify-center bg-scrim backdrop-blur-[2px]"
+        class="fixed inset-0 z-[var(--z-modal)] flex items-center justify-center bg-scrim backdrop-blur-[2px]"
         role="dialog"
         aria-modal="true"
         :aria-label="ui.confirmState?.title ?? ui.promptState?.title ?? t('common.confirm')"

@@ -532,7 +532,7 @@ const exportItems: { icon: string; labelKey: string; format: 'pdf' | 'html' | 'w
       <Transition name="pop">
         <div
           v-if="exportOpen"
-          class="export-pop fixed z-[100] w-[190px] rounded-xl border border-edge bg-elevate p-1.5"
+          class="export-pop fixed z-[var(--z-popover)] w-[190px] rounded-xl border border-edge bg-elevate p-1.5"
           data-export-pop
           :style="{
             boxShadow: 'var(--shadow-2)',

@@ -79,7 +79,7 @@ function onDragStart(e: MouseEvent): void {
          键盘可用方向键调宽，见 onResizeKeydown） -->
     <div
       v-if="settings.outlineRightExpanded"
-      class="absolute -left-[3px] top-0 z-20 h-full w-[5px] cursor-col-resize opacity-0 transition-opacity hover:opacity-100 focus-visible:opacity-100"
+      class="absolute -left-[3px] top-0 z-[var(--z-grip)] h-full w-[5px] cursor-col-resize opacity-0 transition-opacity hover:opacity-100 focus-visible:opacity-100"
       :class="dragging ? 'opacity-100' : ''"
       role="separator"
       aria-orientation="vertical"

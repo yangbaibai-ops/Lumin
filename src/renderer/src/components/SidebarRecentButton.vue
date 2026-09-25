@@ -96,7 +96,7 @@ onBeforeUnmount(() => {
       <div
         v-if="open"
         ref="panelRef"
-        class="topmenu-drop fixed z-[120] rounded-xl border border-edge bg-elevate p-1.5"
+        class="topmenu-drop fixed z-[var(--z-page)] rounded-xl border border-edge bg-elevate p-1.5"
         :style="{
           boxShadow: 'var(--shadow-2)',
           width: POP_WIDTH + 'px',
