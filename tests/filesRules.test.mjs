@@ -6,9 +6,13 @@ import {
   RECENT_FILES_LIMIT,
   RECENT_FOLDERS_LIMIT,
   baseNameOf,
+  planMigratePinned,
+  planMigrateWithin,
   planRecentFolderList,
+  planRemovePinnedWithin,
   planRemoveRecent,
   planRemoveRecentFolder,
+  planRemoveWithin,
   planTogglePin,
   planTouchRecent,
   planTouchRecentFolder
@@ -140,4 +144,64 @@ test('docText：编码显示名与历史时间格式', () => {
   assert.equal(encodingLabel('gb18030'), 'GB18030')
   const t = formatHistoryTime(new Date(2026, 0, 2, 3, 4).getTime())
   assert.equal(t, '2026-01-02 03:04')
+})
+
+// ─── 目录改名/删除时最近列表的搬迁与清理（审计 §2 P1 第 124 条）───────────────
+// 主进程会把 documents / documents_history 的 path 按前缀重写，渲染层这份
+// "最近打开过什么"必须跟着走 —— 否则菜单里点一下就是"文件不存在"。
+
+const recentItem = (path) => ({ path, title: baseNameOf(path), openedAt: 1 })
+
+test('planMigrateWithin：只搬目录**之内**的条目，且按目录边界判定', () => {
+  const list = [
+    recentItem('D:\\ws\\sub\\a.md'),
+    recentItem('D:\\ws\\sub\\deep\\b.md'),
+    recentItem('D:\\ws\\SUB\\C.MD'), // 大小写不同：同一个目录，照样要搬
+    recentItem('D:\\ws\\sub2\\x.md'), // 同名前缀：**不许**被搬（这是本条的关键）
+    recentItem('D:\\ws\\other.md'),
+    recentItem('D:\\ws\\sub') // 目录自身
+  ]
+  const out = planMigrateWithin(list, 'D:\\ws\\sub', 'D:\\ws\\renamed')
+  assert.deepEqual(
+    out.map((x) => x.path),
+    [
+      'D:\\ws\\renamed\\a.md',
+      'D:\\ws\\renamed\\deep\\b.md',
+      'D:\\ws\\renamed\\C.MD',
+      'D:\\ws\\sub2\\x.md',
+      'D:\\ws\\other.md',
+      'D:\\ws\\renamed'
+    ]
+  )
+  // 顺序与其它字段保持不变（列表顺序是用户看到的东西）
+  assert.equal(out[0].openedAt, 1)
+  assert.equal(out[0].title, 'a.md')
+})
+
+test('planMigrateWithin / planRemoveWithin：空列表与不相关目录都是空操作', () => {
+  assert.deepEqual(planMigrateWithin([], 'D:\\ws\\sub', 'D:\\ws\\x'), [])
+  const list = [recentItem('D:\\ws\\a.md')]
+  assert.deepEqual(planMigrateWithin(list, 'D:\\other', 'D:\\x'), list)
+  assert.deepEqual(planRemoveWithin(list, 'D:\\other'), list)
+})
+
+test('planRemoveWithin / planRemovePinnedWithin：删目录时把里面的条目清掉（含大小写）', () => {
+  const list = [
+    recentItem('D:\\ws\\sub\\a.md'),
+    recentItem('D:\\WS\\SUB\\B.MD'),
+    recentItem('D:\\ws\\sub2\\x.md'),
+    recentItem('D:\\ws\\keep.md')
+  ]
+  assert.deepEqual(
+    planRemoveWithin(list, 'D:\\ws\\sub').map((x) => x.path),
+    ['D:\\ws\\sub2\\x.md', 'D:\\ws\\keep.md']
+  )
+  assert.deepEqual(
+    planRemovePinnedWithin(['D:\\ws\\sub\\a.md', 'D:\\ws\\sub2\\x.md'], 'D:\\ws\\sub'),
+    ['D:\\ws\\sub2\\x.md']
+  )
+  assert.deepEqual(
+    planMigratePinned(['D:\\ws\\sub\\a.md', 'D:\\ws\\sub2\\x.md'], 'D:\\ws\\sub', 'D:\\ws\\r'),
+    ['D:\\ws\\r\\a.md', 'D:\\ws\\sub2\\x.md']
+  )
 })

@@ -109,6 +109,8 @@ const DEFAULT_SUITES = [
   '_verify-close-guard.js',
   // ── 载入历史某一版：脏了先问 + 载入后立刻有草稿、并排上保存 ──
   '_verify-history-restore.js',
+  // ── 文件生命周期：目录改名/删除后的路径一致性（索引 / 历史 / 最近列表 / 不许 mkdir 复活）──
+  '_verify-file-lifecycle.js',
   // ── 第十一轮：路径授权闸（工作区外拒绝读写，正常流程全部放行）──
   '_verify-path-grants.js',
   // ── 第十二轮：关于页说的是事实（真实依赖清单 + 第三方许可声明，不硬编码）──

@@ -8,6 +8,7 @@ import {
   parentDir,
   samePath
 } from '../src/renderer/src/lib/pathUtils.ts'
+import { migratePathWithin } from '../src/shared/paths.ts'
 
 test('normPath：分隔符归一 + 去尾分隔符 + 小写', () => {
   assert.equal(normPath('D:/Notes/Sub/'), 'd:\\notes\\sub')
@@ -41,4 +42,37 @@ test('ancestorDirs：从根到文件的父目录链（含根）', () => {
     'D:\\ws\\x\\y'
   ])
   assert.deepEqual(ancestorDirs('D:\\ws', 'D:\\other\\z.md'), [])
+})
+
+// migratePathWithin（shared/paths.ts）：目录改名时把子孙路径搬到新目录下。
+// 这条判据的两种错法都很坏：用字符串替换首段会把同名前缀目录（`sub` vs `sub2`）一起改掉；
+// 漏搬则会让索引/历史/最近列表继续指着旧路径（审计 §2 P1 第 124 条）。
+test('migratePathWithin：按目录边界搬相对后缀，同名前缀目录不受影响', () => {
+  assert.equal(
+    migratePathWithin('D:\\ws\\sub\\a.md', 'D:\\ws\\sub', 'D:\\ws\\renamed'),
+    'D:\\ws\\renamed\\a.md'
+  )
+  assert.equal(
+    migratePathWithin('D:\\ws\\sub\\deep\\b.md', 'D:\\ws\\sub', 'D:\\ws\\renamed'),
+    'D:\\ws\\renamed\\deep\\b.md'
+  )
+  // 目录自身
+  assert.equal(
+    migratePathWithin('D:\\ws\\sub', 'D:\\ws\\sub', 'D:\\ws\\renamed'),
+    'D:\\ws\\renamed'
+  )
+  // 同名前缀：`sub2` 不是 `sub` 的子项
+  assert.equal(migratePathWithin('D:\\ws\\sub2\\x.md', 'D:\\ws\\sub', 'D:\\ws\\renamed'), null)
+  // 完全不相干
+  assert.equal(migratePathWithin('D:\\other\\x.md', 'D:\\ws\\sub', 'D:\\ws\\renamed'), null)
+  // 大小写不敏感（Windows），但**保留原路径自己的大小写**
+  assert.equal(
+    migratePathWithin('d:\\WS\\SUB\\A.MD', 'D:\\ws\\sub', 'D:\\ws\\renamed'),
+    'D:\\ws\\renamed\\A.MD'
+  )
+  // 新目录带尾分隔符也算同一个意思
+  assert.equal(
+    migratePathWithin('D:\\ws\\sub\\a.md', 'D:\\ws\\sub\\', 'D:\\ws\\r\\'),
+    'D:\\ws\\r\\a.md'
+  )
 })

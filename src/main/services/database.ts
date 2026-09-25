@@ -27,6 +27,8 @@ import {
   type PruneOptions
 } from '../../shared/history'
 import { defaultSettings } from '../../shared/defaults'
+// 目录改名时按**目录边界**搬路径（纯字符串实现，与渲染层共用同一份；见 shared/paths.ts）
+import { migratePathWithin, samePath } from '../../shared/paths'
 import { runMigrations } from './migrations'
 
 /** 惰性加载 node:sqlite 的 DatabaseSync 构造函数。
@@ -416,6 +418,61 @@ class LuminDatabase {
     this.db
       .prepare('UPDATE documents SET path = ?, title = ? WHERE path = ?')
       .run(newPath, path.basename(newPath), oldPath)
+  }
+
+  /**
+   * **目录**改名/搬家：把这个目录下所有子孙文档的索引路径一起搬过去
+   * （审计 §2 P1 第 124 条：`renameDocument` 只管被重命名的那个节点本身，
+   * 目录改名后所有子文档的 `documents.path` / `documents_history.path` 还指着旧路径 ——
+   * 搜索、最近列表、标签、本地历史于是全部对不上号，而磁盘上文件已经搬走了）。
+   *
+   * 为什么不在 SQL 里做前缀替换：`REPLACE(path, old, new)` 会把 `D:\ws\sub2\x`
+   * 也算进 `D:\ws\sub` 的替换里（同名前缀），而 SQLite 的字符串函数没法做目录边界判断。
+   * 受影响的行数很小（一个目录下的文档数），取出来用 `migratePathWithin` 判边界再逐行改。
+   *
+   * 目标行已存在时（同一个库先索引过新位置的同名文件）按 `renameDocument` 的口径处理：
+   * 先清掉旧的目标行（索引只是「打开过的文件」的缓存），避免撞 `documents.path` 的 UNIQUE。
+   */
+  renameDirectory(oldDir: string, newDir: string): number {
+    const docs = this.db.prepare('SELECT id, path FROM documents').all() as unknown as {
+      id: number
+      path: string
+    }[]
+    const renamed: { id: number; from: string; to: string }[] = []
+    for (const row of docs) {
+      if (samePath(row.path, oldDir)) continue // 目录本身不是文档
+      const to = migratePathWithin(row.path, oldDir, newDir)
+      if (to) renamed.push({ id: row.id, from: row.path, to })
+    }
+    if (!renamed.length) return 0
+
+    const updateDoc = this.db.prepare('UPDATE documents SET path = ?, title = ? WHERE id = ?')
+    const updateHist = this.db.prepare('UPDATE documents_history SET path = ? WHERE path = ?')
+    const deleteStaleDoc = this.db.prepare('DELETE FROM documents_fts WHERE rowid = ?')
+    this.db.exec('BEGIN')
+    try {
+      for (const item of renamed) {
+        const clash = this.db.prepare('SELECT id FROM documents WHERE path = ?').get(item.to) as
+          { id: number } | undefined
+        if (clash && clash.id !== item.id) {
+          deleteStaleDoc.run(clash.id)
+          this.db.prepare('DELETE FROM documents WHERE id = ?').run(clash.id)
+        }
+        updateDoc.run(item.to, path.basename(item.to), item.id)
+        // 历史表按路径索引（列表/回滚都按 path 查）：同一个文档的历史必须跟着走，
+        // 否则用户在新路径下打开「本地历史」会看到空列表（而快照其实还在库里）
+        updateHist.run(item.to, item.from)
+      }
+      this.db.exec('COMMIT')
+    } catch (err) {
+      try {
+        this.db.exec('ROLLBACK')
+      } catch {
+        /* 保留原始错误 */
+      }
+      throw err
+    }
+    return renamed.length
   }
 
   setPinned(filePath: string, pinned: boolean): void {

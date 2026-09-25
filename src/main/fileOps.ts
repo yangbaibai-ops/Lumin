@@ -228,7 +228,18 @@ export async function writeFile(
   // eol 缺省 = 不做行尾处理（老调用方行为不变）。
   const text = eol ? toEol(content, eol) : content
   const bytes = encodeText(text, encoding, hadBom)
-  await fs.mkdir(path.dirname(filePath), { recursive: true })
+  /**
+   * 父目录**必须已经存在**，绝不 `mkdir -p`（审计 §2 P1 第 124 条）。
+   *
+   * 以前这里是 `fs.mkdir(dirname, { recursive: true })`：目录被别处删掉/改名之后
+   * 继续编辑并保存，就会把那个目录凭空重建、文件以旧名复活 —— 用户以为已经删掉的东西
+   * 又回来了，而且他没有任何提示。文档写入的正确语义是"写进一个已存在的目录"；
+   * 需要新建目录的场景（新建文件/文件夹、另存为到新目录）都由用户显式动作先建目录。
+   * 抛一个可识别的错误码，渲染层据此给一句本地化提示（见 renderer/lib/errors.ts）。
+   */
+  const dir = path.dirname(filePath)
+  const parent = await fs.stat(dir).catch(() => null)
+  if (!parent?.isDirectory()) throw new Error('PARENT_MISSING')
   const tmp = `${filePath}.${randomUUID().slice(0, 8)}.lumin-tmp`
   let handle: Awaited<ReturnType<typeof fs.open>> | null = null
   try {

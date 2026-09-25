@@ -2,9 +2,13 @@ import { defineStore } from 'pinia'
 import type { RecentFile, RecentFolder } from '../../../shared/types'
 import { useSettingsStore } from './settings'
 import {
+  planMigratePinned,
+  planMigrateWithin,
   planRecentFolderList,
+  planRemovePinnedWithin,
   planRemoveRecent,
   planRemoveRecentFolder,
+  planRemoveWithin,
   planTogglePin,
   planTouchRecent,
   planTouchRecentFolder
@@ -80,6 +84,23 @@ export const useRecentStore = defineStore('recent', {
     },
     clearFiles(): void {
       useSettingsStore().set('recentFiles', [])
+    },
+    /**
+     * 目录被改名/搬家：把最近文档、置顶、最近文件夹里落在该目录内的路径一起搬过去。
+     * 不搬的话菜单里的"最近打开"点一下就是"文件不存在"（审计 §2 P1 第 124 条）。
+     */
+    migrateWithin(fromDir: string, toDir: string): void {
+      const settings = useSettingsStore()
+      settings.set('recentFiles', planMigrateWithin(settings.recentFiles, fromDir, toDir))
+      settings.set('pinnedFiles', planMigratePinned(settings.pinnedFiles, fromDir, toDir))
+      settings.set('recentFolders', planMigrateWithin(settings.recentFolders ?? [], fromDir, toDir))
+    },
+    /** 目录被删除：把落在它里面的条目从三份列表里去掉（留着就是一堆死链） */
+    dropWithin(dir: string): void {
+      const settings = useSettingsStore()
+      settings.set('recentFiles', planRemoveWithin(settings.recentFiles, dir))
+      settings.set('pinnedFiles', planRemovePinnedWithin(settings.pinnedFiles, dir))
+      settings.set('recentFolders', planRemoveWithin(settings.recentFolders ?? [], dir))
     },
     clearFolders(): void {
       useSettingsStore().set('recentFolders', [])

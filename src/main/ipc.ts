@@ -12,7 +12,7 @@ import {
 import path from 'path'
 import os from 'os'
 import { watch, existsSync, readFileSync, type FSWatcher } from 'fs'
-import { mkdir } from 'fs/promises'
+import { mkdir, stat } from 'fs/promises'
 import * as fileOps from './fileOps'
 import * as exportSvc from './export'
 import * as drafts from './drafts'
@@ -418,9 +418,20 @@ export function registerIpc(slots: SlotRegistry): void {
   ipcMain.handle('file:rename', async (_, o: string, n: string) => {
     const from = fileOps.assertWorkspacePath(o)
     const to = fileOps.assertWorkspacePath(n)
+    // ⚠️ 必须在改盘**之前**判断它是目录还是文件：`from` 改完名就不存在了，
+    // 那时 stat 只会失败（第一版就是这么写的 —— 目录被当成文件走 `renameDocument`，
+    // 子孙文档的索引与历史全部留在旧路径上，验收套件当场抓住）
+    const isDir = await stat(from).then(
+      (st) => st.isDirectory(),
+      () => false
+    )
     // 先改盘再改索引：目标已存在时 `renameEntry` 会抛 TARGET_EXISTS，此时索引不该动
     await fileOps.renameEntry(from, to)
-    db.renameDocument(from, to)
+    // 目录改名要把**子孙文档**的索引一起搬（审计 §2 P1 第 124 条）：
+    // 只改被重命名那个节点的话，子文档的 path/history 还指着旧路径，
+    // 搜索、最近列表、标签、本地历史全部对不上号
+    if (isDir) db.renameDirectory(from, to)
+    else db.renameDocument(from, to)
   })
   ipcMain.handle('file:exists', (_, p: string) =>
     fileOps.exists(pathGrants.assertAuthorized(p, 'read'))

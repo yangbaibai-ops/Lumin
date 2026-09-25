@@ -40,3 +40,24 @@ export function parentDir(p: string): string {
   if (i === 2 && /^[a-zA-Z]:/.test(trimmed)) return trimmed.slice(0, 3) // `C:\x` → `C:\`
   return trimmed.slice(0, i)
 }
+
+/**
+ * 目录改名/搬家时，把 `p` 从 `fromDir` 之内搬到 `toDir` 下的同一相对位置；
+ * `p` 不在 `fromDir` 之内时返回 null（调用方据此跳过）。
+ *
+ * 为什么要**按相对后缀**搬而不是字符串替换首段（审计 §2 P1 第 124 条）：
+ * `replace('D:\\ws\\sub', 'D:\\ws\\renamed')` 会把 `D:\\ws\\sub2\\x.md`
+ * 也变成 `D:\\ws\\renamed2\\x.md` —— 同名前缀的两个目录会互相污染。
+ * 这里用 `isInsideByString` 判边界（`C:\Docs` 不把 `C:\Docs2` 算内部），
+ * 再取"分隔符之后的那一段"原样拼到新目录下。
+ */
+export function migratePathWithin(p: string, fromDir: string, toDir: string): string | null {
+  if (!isInsideByString(fromDir, p)) return null
+  const from = normPath(fromDir)
+  const to = toDir.replace(/[\\/]+$/, '')
+  const target = normPath(p)
+  if (target === from) return to
+  // 用**原路径**的后缀（保留它自己的大小写），只替换目录那一段
+  const suffix = p.replace(/[\\/]+$/, '').slice(fromDir.replace(/[\\/]+$/, '').length)
+  return to + suffix
+}

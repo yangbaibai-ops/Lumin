@@ -311,6 +311,10 @@ export const useFilesStore = defineStore('files', {
           this.detachCurrentDoc()
         }
       }
+      // 最近文档 / 置顶 / 最近文件夹里的死链一起清掉
+      // （单个文件被删：删它那一条；目录被删：删它里面的所有条目）
+      if (node.type === 'directory') useRecentStore().dropWithin(node.path)
+      else useRecentStore().removeFile(node.path)
       await this.refreshDir(parentDir)
     },
     /**
@@ -340,6 +344,9 @@ export const useFilesStore = defineStore('files', {
           this.current.path = newPath + this.current.path.slice(node.path.length)
         }
       }
+      // 目录改名：最近文档 / 置顶 / 最近文件夹里的子孙路径也要跟着搬
+      // （主进程那边已经重写了 documents 与 documents_history 的 path）
+      if (node.type === 'directory') useRecentStore().migrateWithin(node.path, newPath)
       await this.refreshDir(parentDir)
     },
     dirnameOf(p: string): Promise<string> {

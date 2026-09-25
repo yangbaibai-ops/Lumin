@@ -6,6 +6,9 @@
  *   * 「去重 + 置顶 + 截断」这类**容易写错又不容易发现**的逻辑散在四个 action 里。
  * 现在把「列表怎么变」抽成纯函数（输入旧列表 → 输出新列表），store 只负责落盘。
  */
+// 目录改名/删除时的路径搬迁与清理：目录边界判定与"搬相对后缀"的唯一实现在 shared/paths.ts
+// （显式 .ts：本文件会被 tests/filesRules.test.mjs 直接加载，Node 的 ESM 不做扩展名补全）
+import { isInsideByString, migratePathWithin } from '../../../shared/paths.ts'
 
 export interface RecentItem {
   path: string
@@ -42,6 +45,46 @@ export function planTouchRecent(
 
 export function planRemoveRecent(list: RecentItem[], path: string): RecentItem[] {
   return (list ?? []).filter((r) => r.path !== path)
+}
+
+/**
+ * 目录改名/搬家：把列表里**落在该目录内**的路径一起搬到新目录下（审计 §2 P1 第 124 条）。
+ *
+ * 为什么最近列表也要跟着搬：`documents` 索引与本地历史都由主进程按前缀重写了，
+ * 但"最近打开过什么"这份列表活在渲染层的设置里 —— 不搬的话，菜单里的最近文档
+ * 仍然指向旧路径，点一下就是"文件不存在"。搬的时候用 `migratePathWithin`
+ * （目录边界 + 保留条目自己的名字与时间），列表顺序完全不动。
+ */
+export function planMigrateWithin<T extends { path: string }>(
+  list: T[],
+  fromDir: string,
+  toDir: string
+): T[] {
+  return (list ?? []).map((item) => {
+    const next = migratePathWithin(item.path, fromDir, toDir)
+    return next && next !== item.path ? { ...item, path: next } : item
+  })
+}
+
+/** 目录被删：把落在它里面的条目从列表里去掉（留着就是一堆点了报错的死链） */
+export function planRemoveWithin<T extends { path: string }>(list: T[], dir: string): T[] {
+  return (list ?? []).filter((item) => !isInsideByString(dir, item.path))
+}
+
+/** 置顶路径列表的两种变更（置顶只是个字符串集合） */
+export function planMigratePinned(list: string[], fromDir: string, toDir: string): string[] {
+  return planMigrateWithin(
+    (list ?? []).map((path) => ({ path })),
+    fromDir,
+    toDir
+  ).map((x) => x.path)
+}
+
+export function planRemovePinnedWithin(list: string[], dir: string): string[] {
+  return planRemoveWithin(
+    (list ?? []).map((path) => ({ path })),
+    dir
+  ).map((x) => x.path)
 }
 
 /** 置顶/取消置顶（顺序无关：只当集合用） */

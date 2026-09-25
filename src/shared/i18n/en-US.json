@@ -405,6 +405,7 @@
     "renameFailed": "Rename failed",
     "renameExists": "A file with that name already exists here — rename cancelled (nothing was overwritten)",
     "deletePermanent": "This location has no recycle bin — the file was deleted permanently",
+    "saveParentMissing": "Save failed: the folder that held this file no longer exists (deleted or renamed elsewhere). Use Save as to store it somewhere else.",
     "encodingReopenAutoSaveSkipped": "Auto-save skipped to avoid writing mojibake back to disk (content is currently reinterpreted as “{enc}”). Save manually once you are sure about the encoding.",
     "encodingNeedsRestart": "Encoding needs an app restart to take effect (main process is not hot-reloaded)",
     "eolChanged": "Line endings switched to {eol}",

@@ -405,6 +405,7 @@
     "renameFailed": "重命名失败",
     "renameExists": "同目录下已经有同名文件了，重命名未执行（不会覆盖已有文件）",
     "deletePermanent": "该位置不支持回收站，文件已被永久删除",
+    "saveParentMissing": "保存失败：文件所在的文件夹已经不存在了（可能在别处被删除或改名）。请用「另存为」把它存到别的地方。",
     "encodingReopenAutoSaveSkipped": "为避免把乱码写回磁盘，本次自动保存已跳过（当前是按「{enc}」重新解释的内容）；确认编码无误后请手动保存。",
     "encodingNeedsRestart": "编码功能需要重启应用后生效（主进程未热更新）",
     "eolChanged": "行尾已切换为 {eol}",
