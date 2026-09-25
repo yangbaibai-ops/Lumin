@@ -72,7 +72,9 @@ async function main() {
   fs.writeFileSync(alpha, '# alpha\n\n正文 A。\n')
   fs.writeFileSync(beta, '# beta\n\n正文 B。\n')
 
-  await app.ev(`(async () => { await window.__L.files().openPath(${JSON.stringify(alpha)}); return 'ok' })()`)
+  await app.ev(
+    `(async () => { await window.__L.files().openPath(${JSON.stringify(alpha)}); return 'ok' })()`
+  )
   await sleep(800)
   await waitEditor(app.ev)
   await clickMode(app, 1) // split
@@ -92,7 +94,10 @@ async function main() {
   const right2 = JSON.parse(right)
   report.check(
     'R1 源码面输入记进账本（作者=source、Tiptap 落后）',
-    right2.err === null && right2.bumped === true && right2.author === 'source' && right2.stale === true,
+    right2.err === null &&
+      right2.bumped === true &&
+      right2.author === 'source' &&
+      right2.stale === true,
     right
   )
   await sleep(800)
@@ -130,7 +135,52 @@ async function main() {
   const left2 = JSON.parse(left)
   report.check('L1 左侧输入 → 右 textarea 跟上', left2.rightHas === true, left)
   report.check('L2 左侧输入已落进真源', left2.storeHas === true, left)
-  report.check('L3 作者记成 wysiwyg 且账本收敛', left2.author === 'wysiwyg' && left2.stale === false, left)
+  report.check(
+    'L3 作者记成 wysiwyg 且账本收敛',
+    left2.author === 'wysiwyg' && left2.stale === false,
+    left
+  )
+
+  // ── P. 分屏：左侧序列化不许把右侧的光标与滚动顶到末尾（审计 §3 P2）──
+  // 「左侧序列化」用一次作者=wysiwyg 的内容写入来模拟（真实路径就是 Tiptap 防抖后落库）。
+  const caret = JSON.parse(
+    await app.ev(`(async () => {
+      const f = window.__L.files()
+      // 先把文档写长：不然右栏没有滚动余地，"滚动不被打断"那条断言是空转（before=0）
+      f.setContent(
+        Array.from({ length: 160 }, (_, i) => '第 ' + (i + 1) + ' 行内容，用于制造可滚动的右栏。').join('\\n'),
+        'wysiwyg'
+      )
+      await new Promise((r) => setTimeout(r, 400))
+      const ta = document.querySelector('textarea.source-editor')
+      ta.focus()
+      const n = Math.round(ta.value.length * 0.4)
+      ta.setSelectionRange(n, n)
+      ta.scrollTop = Math.round((ta.scrollHeight - ta.clientHeight) * 0.5)
+      const scrollBefore = ta.scrollTop
+      f.setContent(ta.value + '\\n\\n## 左侧序列化新增\\n', 'wysiwyg')
+      await new Promise((r) => setTimeout(r, 500))
+      const ta2 = document.querySelector('textarea.source-editor')
+      return JSON.stringify({
+        want: n,
+        got: ta2.selectionStart,
+        end: ta2.value.length,
+        scrollBefore,
+        scrollAfter: ta2.scrollTop
+      })
+    })()`)
+  )
+  report.note('P ' + JSON.stringify(caret))
+  report.check(
+    'P1 左侧序列化后右侧光标还在原处（不再被顶到末尾）',
+    Math.abs(caret.got - caret.want) < 20 && caret.got < caret.end - 5,
+    JSON.stringify(caret)
+  )
+  report.check(
+    'P2 右侧滚动位置不被打断（护栏：实测 value setter 本身不动 scrollTop）',
+    caret.scrollBefore > 0 && Math.abs(caret.scrollAfter - caret.scrollBefore) < 60,
+    `before=${caret.scrollBefore} after=${caret.scrollAfter}`
+  )
 
   // ── 切文件：编辑器按 :key 重建，内容跟着换 ──
   const swapped = JSON.parse(
@@ -150,7 +200,10 @@ async function main() {
   )
   report.check(
     'S1 切文件后两个面都换成新文档',
-    swapped.path === beta && swapped.editorHas === true && swapped.textareaHas === true && swapped.stale === false,
+    swapped.path === beta &&
+      swapped.editorHas === true &&
+      swapped.textareaHas === true &&
+      swapped.stale === false,
     JSON.stringify(swapped)
   )
 

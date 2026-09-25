@@ -95,6 +95,45 @@ function updateSourceCursor(ta: HTMLTextAreaElement): void {
   ui.cursor = { line: lines.length, col: lines[lines.length - 1].length + 1 }
 }
 
+/**
+ * 分屏下左侧序列化不许把右侧的**光标与滚动顶到末尾**（审计 §3 P2）。
+ *
+ * 这不是我们写的代码在动光标，而是 HTML 规范本身：`value` setter 在"新值 ≠ 当前值"时
+ * 会把选区移到末尾。右侧 textarea 是声明式副本（`:value`），左侧每 250ms 序列化一次落库 ——
+ * 只要右栏内容跟着变，正在对照阅读/校对的人就被弹回文末（小而频繁的打断）。
+ *
+ * 所以在值**真的**变化时保存并恢复选区与滚动：变化前后光标位置都是"用户放在那儿的"，
+ * 恢复到原处才是对的行为。注意"自己输入"那条路径不会进这里（DOM 值已经等于新值，
+ * 浏览器不动光标，我们也不动）。
+ *
+ * 实测（本机 Chromium，见 tools/_regress-split-live.js 的 P 段反向对照）：
+ *   * `value` setter **确实**把光标移到末尾（1364 → 3424，即文末）；
+ *   * `scrollTop` **没有**被它改（1659 → 1659）—— 所以下面那行恢复滚动是**护栏**
+ *     （别的内核/别的情形下不保证），真正的修复点是恢复选区。
+ */
+watch(
+  () => files.current?.content ?? '',
+  (next) => {
+    const ta = sourceRef.value
+    if (!ta || ta.value === next) return
+    const selStart = ta.selectionStart ?? 0
+    const selEnd = ta.selectionEnd ?? selStart
+    const scrollTop = ta.scrollTop
+    void nextTick(() => {
+      // 等 Vue 把新值写进 DOM 之后再恢复；期间若又来了更新，这次就作废
+      // （下一次 watch 回调会带着更新的值再恢复一次）
+      if (sourceRef.value !== ta || ta.value !== next) return
+      const len = next.length
+      try {
+        ta.setSelectionRange(Math.min(selStart, len), Math.min(selEnd, len))
+      } catch {
+        /* 选区非法时保持浏览器默认 */
+      }
+      ta.scrollTop = scrollTop
+    })
+  }
+)
+
 // ─── 分屏双向同步（IDEA 式对比）──
 // 两条方向都由**同一个账本**驱动，没有第二套判断：
 //   左（实时渲染）→ 右（源码）：Tiptap 防抖序列化 → files store（作者 wysiwyg）
