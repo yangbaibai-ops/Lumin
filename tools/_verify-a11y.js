@@ -8,7 +8,7 @@
 //   3. 页面语言与主题类必须在根元素上（读屏器与样式都靠它）。
 //
 // 跑法：node tools/run-suites.js --suite=_verify-a11y.js
-const { connect, settle, sleep, openDocWith, Reporter, fatal } = require('./lib/harness')
+const { connect, settle, sleep, openDocWith, pressKey, Reporter, fatal } = require('./lib/harness')
 const os = require('os')
 const path = require('path')
 const fs = require('fs')
@@ -285,6 +285,187 @@ async function main() {
     'has-live-regions',
     live.count >= 2 && live.hasNotificationStrip === true && live.hasStatusBar === true,
     JSON.stringify(live)
+  )
+
+  // ── 文件树：行的键盘动作（审计 §8「重命名 / 删除只能鼠标」）─────────────────
+  // 判据：焦点落在某一行上时，F2 进就地重命名、Esc 退出；Shift+F10 唤出上下文菜单，
+  // 菜单有名字、↑↓ 有键盘高亮、Esc 关闭后焦点**回到那一行**（否则键盘用户掉到 body）。
+  const focusRow = `(() => {
+    const row = [...document.querySelectorAll('[data-tree-row]')].find((r) =>
+      (r.dataset.treePath || '').endsWith('a.md')
+    )
+    if (!row) return 'no-row'
+    row.focus()
+    return document.activeElement === row ? 'ok' : 'no-focus'
+  })()`
+  const rowFocused = await ev(focusRow)
+  report.check('tree-row-focusable', rowFocused === 'ok', String(rowFocused))
+
+  await pressKey(app.send, { key: 'F2', code: 'F2', vk: 113 })
+  await sleep(400)
+  const renaming = JSON.parse(
+    await ev(`(() => {
+      const input = document.querySelector('[data-tree-row] input')
+      return JSON.stringify({
+        hasInput: !!input,
+        focused: !!input && document.activeElement === input,
+        value: input ? input.value : null,
+        selected: input ? input.selectionEnd : null
+      })
+    })()`)
+  )
+  report.check(
+    'tree-F2-starts-rename',
+    renaming.hasInput && renaming.focused && renaming.value === 'a.md',
+    JSON.stringify(renaming)
+  )
+  await pressKey(app.send, { key: 'Escape', code: 'Escape', vk: 27 })
+  await sleep(350)
+  const renameCancelled = await ev(`!document.querySelector('[data-tree-row] input')`)
+  report.check('tree-Esc-cancels-rename', renameCancelled === true, String(renameCancelled))
+
+  // Shift+F10：唤出本行的菜单（key=ContextMenu 那条路走同一个 openMenuAt）
+  await ev(focusRow)
+  await pressKey(app.send, { key: 'F10', code: 'F10', vk: 121, modifiers: 8 })
+  await sleep(500)
+  const menu = JSON.parse(
+    await ev(`(() => {
+      const panel = document.querySelector('[role="menu"]')
+      if (!panel) return JSON.stringify({ open: false })
+      const items = [...panel.querySelectorAll('[role="menuitem"]')]
+      return JSON.stringify({
+        open: true,
+        label: panel.getAttribute('aria-label') || '',
+        count: items.length,
+        tabbable: items.filter((el) => el.getAttribute('tabindex') !== '-1').length,
+        focusedPanel: document.activeElement === panel
+      })
+    })()`)
+  )
+  report.check(
+    'tree-ShiftF10-opens-labelled-menu',
+    menu.open === true &&
+      menu.count >= 3 &&
+      menu.label.includes('a.md') &&
+      menu.tabbable === 0 &&
+      menu.focusedPanel === true,
+    JSON.stringify(menu)
+  )
+
+  // ↑↓ 键盘高亮：默认没有高亮，第一次 ↓ 落到第一项，再 ↓ 落到第二项。
+  // ⚠️ 判据必须按**类名分词**比对：菜单项本来就带 `hover:bg-panel-2`，
+  // 用 `className.includes('bg-panel-2')` 会把它算成高亮（第一版就是这么假红的）。
+  const LIT = `(() => {
+    const items = [...document.querySelectorAll('[role="menu"] [role="menuitem"]')]
+    const lit = items
+      .map((el, i) => (el.className.split(/\\s+/).includes('bg-panel-2') ? i : -1))
+      .filter((i) => i >= 0)
+    return JSON.stringify({ lit, labels: items.map((el) => el.textContent.trim()) })
+  })()`
+  await pressKey(app.send, { key: 'ArrowDown', code: 'ArrowDown', vk: 40 })
+  await sleep(250)
+  const highlighted = JSON.parse(await ev(LIT))
+  await pressKey(app.send, { key: 'ArrowDown', code: 'ArrowDown', vk: 40 })
+  await sleep(250)
+  const moved = JSON.parse(await ev(LIT))
+  report.check(
+    'tree-menu-arrowdown-highlights',
+    highlighted.lit.length === 1 && highlighted.lit[0] === 0 && moved.lit.length === 1 && moved.lit[0] === 1,
+    JSON.stringify({ first: highlighted, second: moved })
+  )
+
+  // Esc：关菜单并把焦点还给那一行
+  await pressKey(app.send, { key: 'Escape', code: 'Escape', vk: 27 })
+  await sleep(350)
+  const restored = JSON.parse(
+    await ev(`(() => {
+      const row = [...document.querySelectorAll('[data-tree-row]')].find((r) =>
+        (r.dataset.treePath || '').endsWith('a.md')
+      )
+      return JSON.stringify({
+        menuGone: !document.querySelector('[role="menu"]'),
+        focusBack: !!row && document.activeElement === row
+      })
+    })()`)
+  )
+  report.check(
+    'tree-menu-esc-closes-and-restores-focus',
+    restored.menuGone === true && restored.focusBack === true,
+    JSON.stringify(restored)
+  )
+
+  // Delete：走确认框（这里只开、只关，不真的删掉夹具）
+  await pressKey(app.send, { key: 'Delete', code: 'Delete', vk: 46 })
+  await sleep(500)
+  const delDialog = JSON.parse(
+    await ev(`(() => {
+      const el = [...document.querySelectorAll('[aria-modal="true"]')].pop()
+      return JSON.stringify({ dialog: !!el, text: el ? el.textContent.trim().slice(0, 40) : '' })
+    })()`)
+  )
+  await ev(`(() => { const ui = window.__L.ui(); if (ui.confirmState) ui.resolveConfirm(false); return 'ok' })()`)
+  await sleep(300)
+  report.check('tree-Delete-asks-confirmation', delDialog.dialog === true, JSON.stringify(delDialog))
+
+  // ── 分隔条：role="separator" + 方向键调宽（此前是纯鼠标）────────────────────
+  const SEP = `(() => {
+    const side = document.querySelector('[data-sidebar-resize]')
+    const outline = document.querySelector('[data-outline-resize]')
+    const desc = (el) =>
+      el
+        ? {
+            role: el.getAttribute('role'),
+            orientation: el.getAttribute('aria-orientation'),
+            label: (el.getAttribute('aria-label') || '').trim(),
+            now: Number(el.getAttribute('aria-valuenow')),
+            min: Number(el.getAttribute('aria-valuemin')),
+            max: Number(el.getAttribute('aria-valuemax')),
+            tab: el.getAttribute('tabindex')
+          }
+        : null
+    return JSON.stringify({ sidebar: desc(side), outline: desc(outline) })
+  })()`
+  const seps = JSON.parse(await ev(SEP))
+  report.check(
+    'separators-declare-role-and-range',
+    seps.sidebar?.role === 'separator' &&
+      seps.sidebar.orientation === 'vertical' &&
+      !!seps.sidebar.label &&
+      seps.sidebar.tab === '0' &&
+      seps.sidebar.now >= seps.sidebar.min &&
+      seps.sidebar.now <= seps.sidebar.max,
+    JSON.stringify(seps.sidebar)
+  )
+  await ev(`(() => { document.querySelector('[data-sidebar-resize]').focus(); return 'ok' })()`)
+  const widthBefore = Number(await ev(`window.__L.settings().sidebarWidth`))
+  await pressKey(app.send, { key: 'ArrowRight', code: 'ArrowRight', vk: 39 })
+  await sleep(400)
+  const widthAfter = Number(await ev(`window.__L.settings().sidebarWidth`))
+  report.check(
+    'sidebar-resize-arrow-keys',
+    widthAfter === widthBefore + 16,
+    JSON.stringify({ before: widthBefore, after: widthAfter })
+  )
+  // Home/End 到边界（同时验证钳位与 aria-valuenow 同步）
+  await pressKey(app.send, { key: 'End', code: 'End', vk: 35 })
+  await sleep(400)
+  const clamped = JSON.parse(
+    await ev(`(() => {
+      const el = document.querySelector('[data-sidebar-resize]')
+      return JSON.stringify({ width: window.__L.settings().sidebarWidth, now: Number(el.getAttribute('aria-valuenow')) })
+    })()`)
+  )
+  report.check(
+    'sidebar-resize-clamped-and-reported',
+    clamped.width === 420 && clamped.now === 420,
+    JSON.stringify(clamped)
+  )
+  await pressKey(app.send, { key: 'Home', code: 'Home', vk: 36 })
+  await sleep(400)
+  report.check(
+    'sidebar-resize-home-min',
+    Number(await ev(`window.__L.settings().sidebarWidth`)) === 200,
+    String(await ev(`window.__L.settings().sidebarWidth`))
   )
 
   return report.finish()

@@ -42,7 +42,8 @@
   },
   "outline": {
     "collapse": "Collapse outline",
-    "expand": "Expand outline"
+    "expand": "Expand outline",
+    "resize": "Resize outline panel"
   },
   "sidebar": {
     "files": "Files",
@@ -70,7 +71,8 @@
     "listEmpty": "No Markdown files in this workspace yet",
     "listEmptyHint": "Create or import articles in the file tree to see them here",
     "loading": "Loading…",
-    "modifiedAt": "Modified {time}"
+    "modifiedAt": "Modified {time}",
+    "resize": "Resize sidebar"
   },
   "menu": {
     "file": "File(F)",
@@ -132,7 +134,8 @@
     "newFile": "New File",
     "newFolder": "New Folder",
     "rename": "Rename",
-    "delete": "Delete"
+    "delete": "Delete",
+    "menuLabel": "File actions"
   },
   "find": {
     "title": "Find and replace",

@@ -94,16 +94,18 @@ function clearCurrent(): void {
 
         <template v-if="kind === 'files'">
           <button
-            class="icon-btn !h-6 !w-6 opacity-0 group-hover:opacity-100"
+            class="icon-btn !h-6 !w-6 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100"
             :class="{ active: isPinned(item.path) }"
             :title="isPinned(item.path) ? t('open.unpin') : t('open.pin')"
+            :aria-label="isPinned(item.path) ? t('open.unpin') : t('open.pin')"
             @click="recent.togglePin(item.path)"
           >
             <Icon name="pin" :size="12" />
           </button>
           <button
-            class="icon-btn !h-6 !w-6 opacity-0 hover:!text-danger group-hover:opacity-100"
+            class="icon-btn !h-6 !w-6 opacity-0 hover:!text-danger group-hover:opacity-100 group-focus-within:opacity-100"
             :title="t('open.removeRecent')"
+            :aria-label="t('open.removeRecent')"
             @click="recent.removeFile(item.path)"
           >
             <Icon name="x" :size="12" />
@@ -111,8 +113,9 @@ function clearCurrent(): void {
         </template>
         <button
           v-else
-          class="icon-btn !h-6 !w-6 opacity-0 hover:!text-danger group-hover:opacity-100"
+          class="icon-btn !h-6 !w-6 opacity-0 hover:!text-danger group-hover:opacity-100 group-focus-within:opacity-100"
           :title="t('open.removeRecent')"
+          :aria-label="t('open.removeRecent')"
           @click="recent.removeFolder(item.path)"
         >
           <Icon name="x" :size="12" />

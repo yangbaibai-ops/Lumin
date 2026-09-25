@@ -14,10 +14,19 @@ const ui = useUiStore()
 const menuRef = ref<HTMLElement | null>(null)
 const subRef = ref<HTMLElement | null>(null)
 const rowRefs = ref<Record<number, HTMLElement | null>>({})
+const subRefs = ref<Record<number, HTMLElement | null>>({})
 const pos = ref({ left: 0, top: 0 })
 const subPos = ref({ left: 0, top: 0 })
 /** 已展开的条目下标（null = 无子菜单展开） */
 const openIndex = ref<number | null>(null)
+
+// ─── 键盘状态（详见下方 onMenuKeydown）──────────────────────────────────────
+/** 一级面板的键盘高亮（与"展开了哪一项"分开：普通条目也能被高亮） */
+const cursorIndex = ref<number | null>(null)
+/** 二级子菜单的键盘高亮 */
+const subCursor = ref<number | null>(null)
+/** 打开菜单前的焦点元素（关闭后归还给它，否则键盘用户会掉到 body 上） */
+let restoreFocusTo: HTMLElement | null = null
 
 const items = computed<ContextMenuItem[]>(() => ui.contextMenu?.items ?? [])
 
@@ -71,16 +80,40 @@ watch(
   () => ui.contextMenu,
   (c) => {
     openIndex.value = null
+    cursorIndex.value = null
+    subCursor.value = null
     if (!c) return
     pos.value = { left: c.x, top: c.y }
+    // 记住唤起菜单时的焦点元素，关闭后归还（见 closeAndRestore 的说明）
+    restoreFocusTo = (document.activeElement as HTMLElement | null) ?? null
     void place()
+    // 焦点进菜单：面板自身可聚焦（tabindex=-1），这样 ↑↓/Esc 才收得到
+    requestAnimationFrame(() => menuRef.value?.focus())
   }
 )
 
+// 键盘高亮跟随（长菜单要滚动跟住光标；高亮本身由 cursorIndex / subCursor 驱动）
+watch(cursorIndex, (i) => {
+  if (i === null) return
+  rowRefs.value[i]?.scrollIntoView({ block: 'nearest' })
+})
+
+// 子菜单高亮同理（子菜单可能高于视口，长列表要靠它跟住光标）
+watch(subCursor, (i) => {
+  if (i === null) return
+  subRefs.value[i]?.scrollIntoView({ block: 'nearest' })
+})
+
 watch(openIndex, (idx) => {
-  if (idx === null) return
+  if (idx === null) {
+    subCursor.value = null
+    return
+  }
   cancelSubClose()
   void placeSub()
+  // 展开即把二级高亮放到第一个可选项：→ 之后直接按回车就能执行（无需先 ↓）
+  const children = ui.contextMenu?.items[idx]?.children?.() ?? []
+  subCursor.value = enabledIndexes(children)[0] ?? null
 })
 
 // ─── 子菜单的「悬停意图」宽限与安全区（与 EditorContextMenu 同一套判据）──────
@@ -159,7 +192,7 @@ function pick(item: ContextMenuItem): void {
   // 带子菜单的条目只负责展开，不触发业务回调
   if (item.children) return
   const handler = ui.contextMenu?.onSelect
-  ui.closeContextMenu()
+  closeAndRestore()
   handler?.(item.action)
 }
 
@@ -179,8 +212,109 @@ function pickSub(item: ContextMenuItem): void {
   if (item.disabled) return
   if (item.children) return
   const handler = ui.contextMenu?.onSelect
-  ui.closeContextMenu()
+  closeAndRestore()
   handler?.(item.action)
+}
+
+// ─── 键盘可达（审计 §8：「重命名 / 删除只能鼠标」）────────────────────────────
+// 菜单此前只有 `role="menu"` / `role="menuitem"` 的语义，却没有任何键盘路径：
+// 打开时焦点不进菜单、方向键/回车不生效、关闭后焦点也不归还。
+// 这里的口径与系统菜单一致：↑↓ 在可选项之间移动、→ 展开子菜单并把高亮交给它、
+// ← 退回一级、Enter/Space 激活、Esc 关闭并把焦点还给触发元素。
+//
+// 为什么焦点始终留在**一级面板**、二级只记下标：
+// 两级是各自独立的浮层，来回搬 DOM 焦点会带来一串边界情况（子菜单重渲染、
+// 焦点落在被移除的节点上、Tab 顺序被破坏）；由面板统一收键、用两个下标记状态，
+// 既满足 WAI-ARIA menu 模式的按键口径，又只有一条焦点路径。
+
+/** 可选项的下标（跳过 disabled —— 键盘不该停在灰掉的条目上） */
+function enabledIndexes(list: ContextMenuItem[]): number[] {
+  return list.map((it, i) => (it.disabled ? -1 : i)).filter((i) => i >= 0)
+}
+
+/** 在可选下标集合里按 delta 环绕走一步（还没高亮时：↓ 取首个、↑ 取末个） */
+function step(enabled: number[], cur: number | null, delta: number): number | null {
+  if (!enabled.length) return null
+  if (cur === null || !enabled.includes(cur))
+    return delta > 0 ? enabled[0] : enabled[enabled.length - 1]
+  const at = enabled.indexOf(cur)
+  return enabled[(at + delta + enabled.length) % enabled.length]
+}
+
+/** ↑↓ 在一级面板里移动高亮（环绕） */
+function moveCursor(delta: number): void {
+  const list = ui.contextMenu?.items ?? []
+  const next = step(enabledIndexes(list), cursorIndex.value, delta)
+  if (next === null) return
+  cursorIndex.value = next
+  // 高亮落到带子菜单的条目上就顺手展开（与鼠标悬停同一套行为），否则收起旧的二级
+  openIndex.value = list[next]?.children ? next : null
+}
+
+/** ↑↓ 在已展开的子菜单里移动高亮（环绕） */
+function moveSubCursor(delta: number): void {
+  subCursor.value = step(enabledIndexes(subItems.value), subCursor.value, delta)
+}
+
+function closeAndRestore(): void {
+  ui.closeContextMenu()
+  // 归还焦点：菜单是从键盘/鼠标唤起的，关闭后应当回到触发它的那个元素上
+  const el = restoreFocusTo
+  restoreFocusTo = null
+  if (el && document.contains(el)) el.focus?.()
+}
+
+function onMenuKeydown(e: KeyboardEvent): void {
+  const list = ui.contextMenu?.items ?? []
+  const inSub = openIndex.value !== null
+  switch (e.key) {
+    case 'ArrowDown':
+      e.preventDefault()
+      if (inSub) moveSubCursor(1)
+      else moveCursor(1)
+      break
+    case 'ArrowUp':
+      e.preventDefault()
+      if (inSub) moveSubCursor(-1)
+      else moveCursor(-1)
+      break
+    case 'ArrowRight': {
+      // → 只对"有子菜单"的条目有效；已在子菜单里则不动
+      if (inSub) break
+      const i = cursorIndex.value
+      if (i !== null && list[i]?.children) {
+        e.preventDefault()
+        openIndex.value = i
+      }
+      break
+    }
+    case 'ArrowLeft':
+      // ← 退回一级（子菜单未展开时是空操作，焦点本来就在面板上）
+      if (inSub) {
+        e.preventDefault()
+        cancelSubClose()
+        openIndex.value = null
+      }
+      break
+    case 'Enter':
+    case ' ': {
+      e.preventDefault()
+      if (inSub) {
+        const sub = subCursor.value === null ? null : subItems.value[subCursor.value]
+        if (sub) pickSub(sub)
+        break
+      }
+      const item = cursorIndex.value === null ? null : list[cursorIndex.value]
+      if (!item) break
+      if (item.children) openIndex.value = cursorIndex.value
+      else pick(item)
+      break
+    }
+    case 'Escape':
+      e.preventDefault()
+      closeAndRestore()
+      break
+  }
 }
 
 /** 当前展开条目的子菜单内容（惰性求值，拿到最新勾选态） */
@@ -210,10 +344,12 @@ const subStyle = computed(() => ({
       <div
         v-if="ui.contextMenu"
         ref="menuRef"
-        class="fixed z-[160] min-w-[172px] rounded-xl border border-edge bg-elevate p-1.5 shadow-xl"
+        class="fixed z-[160] min-w-[172px] rounded-xl border border-edge bg-elevate p-1.5 shadow-xl outline-none"
         role="menu"
+        tabindex="-1"
         :aria-label="ui.contextMenu.ariaLabel ?? undefined"
         :style="panelStyle"
+        @keydown="onMenuKeydown"
       >
         <template v-for="(item, index) in items" :key="item.action">
           <button
@@ -224,9 +360,10 @@ const subStyle = computed(() => ({
                 ? 'text-danger hover:bg-[color-mix(in_srgb,var(--danger)_10%,transparent)]'
                 : 'text-ink hover:bg-panel-2',
               item.disabled ? 'cursor-default opacity-40' : '',
-              index === openIndex ? 'bg-panel-2' : ''
+              index === openIndex || index === cursorIndex ? 'bg-panel-2' : ''
             ]"
             role="menuitem"
+            tabindex="-1"
             :aria-haspopup="item.children ? 'menu' : undefined"
             :aria-expanded="item.children ? index === openIndex : undefined"
             :disabled="item.disabled"
@@ -261,12 +398,17 @@ const subStyle = computed(() => ({
         aria-label="submenu"
       >
         <button
-          v-for="sub in subItems"
+          v-for="(sub, si) in subItems"
           :key="sub.action"
+          :ref="(el) => (subRefs[si] = el as HTMLElement | null)"
           class="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-left text-[12.5px] text-ink transition-colors duration-100 hover:bg-panel-2"
-          :class="sub.disabled ? 'cursor-default opacity-40' : ''"
-          role="menuitemcheckbox"
-          :aria-checked="sub.checked"
+          :class="[
+            sub.disabled ? 'cursor-default opacity-40' : '',
+            si === subCursor ? 'bg-panel-2' : ''
+          ]"
+          :role="sub.checked === undefined ? 'menuitem' : 'menuitemcheckbox'"
+          tabindex="-1"
+          :aria-checked="sub.checked === undefined ? undefined : sub.checked"
           :disabled="sub.disabled"
           @click="pickSub(sub)"
         >

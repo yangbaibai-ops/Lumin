@@ -16,10 +16,13 @@ import Icon from './Icon.vue'
 const { t } = useI18n()
 const settings = useSettingsStore()
 
-/** 折叠态固定 34px；展开态用设置里的宽度（拖拽即写回，钳位见 setter） */
+/** 折叠态固定 34px；展开态用设置里的宽度（拖拽与键盘都走这一档钳位） */
+const OUTLINE_MIN = 160
+const OUTLINE_MAX = 420
 const width = computed({
   get: () => settings.outlineRightWidth,
-  set: (v: number) => settings.set('outlineRightWidth', Math.max(160, Math.min(420, v)))
+  set: (v: number) =>
+    settings.set('outlineRightWidth', Math.max(OUTLINE_MIN, Math.min(OUTLINE_MAX, v)))
 })
 const panelWidth = computed(() => (settings.outlineRightExpanded ? width.value : 34))
 
@@ -29,6 +32,21 @@ function toggle(): void {
 
 // ── 拖拽调宽：手柄在面板**左缘**，所以宽度 = 窗口右缘到指针的距离 ──
 const dragging = ref(false)
+
+/**
+ * 键盘调宽（与 AppSidebar 同一口径）：本面板在右边，所以「把分隔条往左拖」＝变宽，
+ * 即 ← 是加宽、→ 是变窄 —— 方向跟的是**分隔条的移动方向**，不是宽度的增减。
+ */
+function onResizeKeydown(e: KeyboardEvent): void {
+  const step = e.shiftKey ? 40 : 16
+  if (e.key === 'ArrowLeft') width.value = width.value + step
+  else if (e.key === 'ArrowRight') width.value = width.value - step
+  else if (e.key === 'Home') width.value = OUTLINE_MAX
+  else if (e.key === 'End') width.value = OUTLINE_MIN
+  else return
+  e.preventDefault()
+}
+
 function onDragStart(e: MouseEvent): void {
   if (!settings.outlineRightExpanded) return // 折叠态是窄轨，先展开再拖
   dragging.value = true
@@ -57,13 +75,22 @@ function onDragStart(e: MouseEvent): void {
     :class="dragging ? '' : 'transition-[width] duration-200'"
     :style="{ width: panelWidth + 'px' }"
   >
-    <!-- 左缘拖拽手柄（与 AppSidebar 的手柄同一套做法：5px 热区，悬停显色） -->
+    <!-- 左缘拖拽手柄（与 AppSidebar 的手柄同一套做法：5px 热区，悬停显色；
+         键盘可用方向键调宽，见 onResizeKeydown） -->
     <div
       v-if="settings.outlineRightExpanded"
-      class="absolute -left-[3px] top-0 z-20 h-full w-[5px] cursor-col-resize opacity-0 transition-opacity hover:opacity-100"
+      class="absolute -left-[3px] top-0 z-20 h-full w-[5px] cursor-col-resize opacity-0 transition-opacity hover:opacity-100 focus-visible:opacity-100"
       :class="dragging ? 'opacity-100' : ''"
+      role="separator"
+      aria-orientation="vertical"
+      :aria-label="t('outline.resize')"
+      :aria-valuenow="width"
+      :aria-valuemin="OUTLINE_MIN"
+      :aria-valuemax="OUTLINE_MAX"
+      tabindex="0"
       data-outline-resize
       @mousedown="onDragStart"
+      @keydown="onResizeKeydown"
     >
       <div
         class="mx-auto h-full w-px transition-colors"

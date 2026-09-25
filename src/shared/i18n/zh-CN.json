@@ -42,7 +42,8 @@
   },
   "outline": {
     "collapse": "收起大纲",
-    "expand": "展开大纲"
+    "expand": "展开大纲",
+    "resize": "调整大纲宽度"
   },
   "sidebar": {
     "files": "文件",
@@ -70,7 +71,8 @@
     "listEmpty": "工作区中还没有 Markdown 文件",
     "listEmptyHint": "在文件树中新建或导入文章后即可在此查看",
     "loading": "加载中…",
-    "modifiedAt": "修改于 {time}"
+    "modifiedAt": "修改于 {time}",
+    "resize": "调整侧边栏宽度"
   },
   "menu": {
     "file": "文件(F)",
@@ -132,7 +134,8 @@
     "newFile": "新建文件",
     "newFolder": "新建文件夹",
     "rename": "重命名",
-    "delete": "删除"
+    "delete": "删除",
+    "menuLabel": "文件操作"
   },
   "find": {
     "title": "查找替换",

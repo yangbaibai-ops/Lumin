@@ -29,11 +29,30 @@ watch(
 )
 
 // ── 拖拽调整宽度 ──
+// 上下限写成常量：拖动钳制与键盘 Home/End 用的是同一组边界（只能有一处真相）
+const SIDEBAR_MIN = 200
+const SIDEBAR_MAX = 420
+
 const dragging = ref(false)
 const width = computed({
   get: () => settings.sidebarWidth,
-  set: (v) => settings.set('sidebarWidth', Math.max(200, Math.min(420, v)))
+  set: (v) => settings.set('sidebarWidth', Math.max(SIDEBAR_MIN, Math.min(SIDEBAR_MAX, v)))
 })
+
+/**
+ * 手柄的键盘路径：role="separator" 的窗体分隔条本该能用方向键调（WAI-ARIA），
+ * 而它此前是**纯鼠标**的 —— 键盘用户无法改变侧栏宽度，只能忍着默认值。
+ * 口径与浏览器/资源管理器一致：← → 单步 16px，按住 Shift 走 40px，Home/End 到两端。
+ */
+function onResizeKeydown(e: KeyboardEvent): void {
+  const step = e.shiftKey ? 40 : 16
+  if (e.key === 'ArrowLeft') width.value = width.value - step
+  else if (e.key === 'ArrowRight') width.value = width.value + step
+  else if (e.key === 'Home') width.value = SIDEBAR_MIN
+  else if (e.key === 'End') width.value = SIDEBAR_MAX
+  else return
+  e.preventDefault()
+}
 
 function onDragStart(e: MouseEvent): void {
   dragging.value = true
@@ -175,11 +194,20 @@ function onDragStart(e: MouseEvent): void {
            * 收起侧边栏 → 顶部菜单「视图 → 显示侧边栏」+ Ctrl+Shift+B
          去掉之后侧栏只剩「头部工作区 + 文件/大纲」，底部那条分隔线也不再需要。 -->
 
-    <!-- 拖拽手柄 -->
+    <!-- 拖拽手柄（同时是键盘可调的分隔条：见 onResizeKeydown） -->
     <div
-      class="absolute -right-[3px] top-0 z-20 h-full w-[5px] cursor-col-resize opacity-0 transition-opacity hover:opacity-100"
+      class="absolute -right-[3px] top-0 z-20 h-full w-[5px] cursor-col-resize opacity-0 transition-opacity hover:opacity-100 focus-visible:opacity-100"
       :class="dragging ? 'opacity-100' : ''"
+      role="separator"
+      aria-orientation="vertical"
+      :aria-label="t('sidebar.resize')"
+      :aria-valuenow="width"
+      :aria-valuemin="SIDEBAR_MIN"
+      :aria-valuemax="SIDEBAR_MAX"
+      tabindex="0"
+      data-sidebar-resize
       @mousedown="onDragStart"
+      @keydown="onResizeKeydown"
     >
       <div
         class="mx-auto h-full w-px transition-colors"

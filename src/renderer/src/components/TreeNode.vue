@@ -102,6 +102,40 @@ async function open(): Promise<void> {
 function onContextMenu(e: MouseEvent): void {
   e.preventDefault()
   e.stopPropagation()
+  openMenuAt(e.clientX, e.clientY)
+}
+
+/**
+ * 行的键盘操作（审计 §8：此前文件树**只能用鼠标**重命名/删除 —— 键盘用户能浏览、
+ * 却够不到那四个菜单动作，只能绕到"打开文件"对话框）。
+ *
+ * 口径与资源管理器 / VS Code 一致：F2 重命名、Delete 删除、
+ * Shift+F10 与"菜单键"（ContextMenu）唤出上下文菜单。
+ * 方向键/Home/End/Enter/Space 由 lib/treeFocus 在容器层处理，这里只补这三条，
+ * 并且**只在编辑态之外**生效（重命名输入框里按 F2 不该再触发一次）。
+ */
+function onRowKeydown(e: KeyboardEvent): void {
+  if (renaming.value) return
+  if (e.key === 'F2') {
+    e.preventDefault()
+    void startRename()
+    return
+  }
+  if (e.key === 'Delete') {
+    e.preventDefault()
+    void handleAction('delete')
+    return
+  }
+  if (e.key === 'ContextMenu' || (e.shiftKey && e.key === 'F10')) {
+    e.preventDefault()
+    const r = (e.currentTarget as HTMLElement).getBoundingClientRect()
+    // 菜单贴着行的右下角弹出（键盘没有指针坐标，用行本身当锚点）
+    openMenuAt(Math.round(r.left + 24), Math.round(r.bottom - 4))
+  }
+}
+
+/** 在给定坐标弹出本行的上下文菜单（鼠标右键与键盘唤出共用这一条） */
+function openMenuAt(x: number, y: number): void {
   const items: { label: string; icon?: string; action: string; danger?: boolean }[] = []
   if (props.node.type === 'directory') {
     items.push(
@@ -118,9 +152,11 @@ function onContextMenu(e: MouseEvent): void {
   items.push({ label: t('context.rename'), icon: 'pencil', action: 'rename' })
   items.push({ label: t('context.delete'), icon: 'trash', action: 'delete', danger: true })
   ui.openContextMenu({
-    x: e.clientX,
-    y: e.clientY,
+    x,
+    y,
     items,
+    // 无名称的 menu 在读屏器里只是一句"菜单"，加个名字说明它作用于哪一项
+    ariaLabel: `${props.node.name} — ${t('context.menuLabel')}`,
     onSelect: (action) => void handleAction(action)
   })
 }
@@ -176,7 +212,10 @@ function onDragStart(e: DragEvent): void {
          tabindex 用 roving tabindex —— 整棵树只有一个可 Tab 到的行（键盘焦点所在行），
          其余 -1；方向键移动与 Home/End 见 lib/treeFocus.ts（DOM 顺序即 ARIA 遍历顺序）。
          data-tree-* 是键盘导航要读的最小元数据：path（身份）、parent（← 回父项）、
-         type（← 收起 / → 展开的语义差别）、current（Tab 进树时的落点）。 -->
+         type（← 收起 / → 展开的语义差别）、current（Tab 进树时的落点）。
+
+         行的按键（onRowKeydown）：F2 重命名、Delete 删除、Shift+F10 / 菜单键唤出上下文菜单。
+         aria-keyshortcuts 把这三条报给读屏器（不写的话只能靠用户猜）。 -->
     <div
       class="tree-row"
       :class="{ 'is-current': isCurrent, 'is-renaming': renaming }"
@@ -190,12 +229,14 @@ function onDragStart(e: DragEvent): void {
       :aria-expanded="node.type === 'directory' ? isOpen : undefined"
       :aria-selected="isCurrent"
       :aria-level="depth + 1"
+      :aria-keyshortcuts="renaming ? undefined : 'F2 Delete Shift+F10'"
       :tabindex="activeTreePath === node.path ? 0 : -1"
       :style="{ '--tree-depth': depth }"
       :draggable="!renaming"
       @focus="activeTreePath = node.path"
       @click="onToggle"
       @contextmenu="onContextMenu"
+      @keydown="onRowKeydown"
       @dragstart="onDragStart"
     >
       <span class="tree-chevron-slot">
