@@ -493,6 +493,11 @@ export interface LuminAPI {
       notices: string | null
     }>
     confirmClose: () => Promise<void>
+    /**
+     * 关窗流程中的心跳：主进程据此把兜底时限往后推（慢盘/大文件下别强杀正在落盘的窗口）。
+     * 见 shared/closeGuard.ts 与 main/ipc.ts 的 attachCloseGuard。
+     */
+    closeProgress: () => void
     minimize: () => void
     toggleMaximize: () => void
     close: () => void

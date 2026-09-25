@@ -36,6 +36,8 @@ const api: LuminAPI = {
     getDiagnostics: () => ipcRenderer.invoke('app:getDiagnostics'),
     openLogDir: () => ipcRenderer.invoke('app:openLogDir'),
     confirmClose: () => ipcRenderer.invoke('app:confirmClose'),
+    /** 关窗流程中的心跳：主进程据此延长兜底时限（见 main/ipc.ts 的 attachCloseGuard） */
+    closeProgress: () => ipcRenderer.send('app:closeProgress'),
     minimize: () => ipcRenderer.send('app:minimize'),
     toggleMaximize: () => ipcRenderer.send('app:toggleMaximize'),
     close: () => ipcRenderer.send('app:close'),

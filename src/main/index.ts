@@ -29,6 +29,7 @@ import { parseLaunchIntent, type LaunchIntent } from './services/launchIntent'
 import { initUpdater } from './services/updater'
 import { startAutoBackup } from './services/dbBackup'
 import { gcDrafts } from './drafts'
+import { beginShutdown } from './services/shutdown'
 import { bindWindowScope, scopeOfSlot } from './services/windowScope'
 import * as pathGrants from './services/pathGrants'
 import { defaultSettings } from '../shared/defaults'
@@ -78,6 +79,7 @@ const uidOfWindow = new Map<number, string>()
 let startupWindowId: number | null = null
 app.on('before-quit', () => {
   session.markQuitting()
+  beginShutdown('before-quit')
   // 退出前把排队的全文索引落盘（索引是节流的，见 services/database.ts 的 scheduleFtsIndex）
   try {
     db.flushFtsIndex()

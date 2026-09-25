@@ -185,10 +185,22 @@ export function useAppActions(): {
   // 因此这里不再保留任何硬编码按键判断（避免两套真相/重复触发）。
 
   // ── 关闭守卫：保存全部并放行 ──
+  /**
+   * 主进程的兜底从"固定 2.5 秒"改成了"心跳停了才强杀"（审计 §2 P1：慢盘/大文件下
+   * `flushAll()` 没跑完窗口就没了，丢的正是用户以为已保存的那一段）。所以这里在落盘期间
+   * **按秒发心跳**：只要还在干活，主进程就一直等；卡死超过 2.5 秒才兜底，
+   * 总时长另有 30 秒上限（见 shared/closeGuard.ts）。
+   */
   async function requestClose(): Promise<void> {
-    await files.flushAll()
-    // 会话位置（光标/滚动）也补一次：窗口销毁前最后的状态
-    await flushSession()
+    const beat = setInterval(() => window.luminAPI.app.closeProgress(), 1000)
+    window.luminAPI.app.closeProgress()
+    try {
+      await files.flushAll()
+      // 会话位置（光标/滚动）也补一次：窗口销毁前最后的状态
+      await flushSession()
+    } finally {
+      clearInterval(beat)
+    }
     await window.luminAPI.app.confirmClose()
   }
 

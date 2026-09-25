@@ -35,6 +35,13 @@ import { untitledDraftKey } from '../shared/drafts'
 import { db } from './services/database'
 import { defaultSettings } from '../shared/defaults'
 import { buildDiagnosticsText, safeLaunchArgs } from '../shared/diagnostics'
+import {
+  CLOSE_FALLBACK_MS,
+  noteCloseProgress,
+  shouldForceClose,
+  type CloseGuardState
+} from '../shared/closeGuard'
+import { beginShutdown } from './services/shutdown'
 import type {
   AppSettings,
   EpubMeta,
@@ -47,6 +54,10 @@ import type {
 } from '../shared/types'
 
 const closeConfirmed = new WeakSet<BrowserWindow>()
+/** 每个窗口的关窗兜底计时器（收到心跳就重置） */
+const closeTimers = new WeakMap<BrowserWindow, ReturnType<typeof setTimeout>>()
+/** 每个窗口的关窗时序（判据见 shared/closeGuard.ts） */
+const closeGuardState = new WeakMap<BrowserWindow, CloseGuardState>()
 
 // ── 工作区文件监听：外部软件增删/改名文件时，实时推送渲染进程刷新目录树 ──
 let workspaceWatcher: FSWatcher | null = null
@@ -239,6 +250,19 @@ export function registerIpc(slots: SlotRegistry): void {
       // 窗口无需再等 2.5s 兜底定时器（否则每次关窗都固定延迟 2.5 秒）
       win.close()
     }
+  })
+  /**
+   * 关窗流程里的心跳：渲染层还在落盘 → 兜底计时器重置（审计 §2 P1「2.5s 强杀」）。
+   * 只在**已经开始关窗**（closeGuardState 里有记录）且还没放行时才有意义；
+   * 其它时候是空操作，不需要鉴权（它只是"我还活着"这一个 bit，不携带任何数据）。
+   */
+  ipcMain.on('app:closeProgress', (event) => {
+    const win = BrowserWindow.fromWebContents(event.sender)
+    if (!win || win.isDestroyed() || closeConfirmed.has(win)) return
+    const state = closeGuardState.get(win)
+    if (!state) return
+    noteCloseProgress(state, Date.now())
+    armCloseFallback(win)
   })
   ipcMain.on('app:minimize', () => BrowserWindow.getFocusedWindow()?.minimize())
   ipcMain.on('app:toggleMaximize', () => {
@@ -769,19 +793,70 @@ async function sweepTempFiles(root: string): Promise<void> {
   }
 }
 
-/** 窗口关闭前：给渲染进程保存机会（quitting 用于区分「整体退出」与「单独关窗」） */
+/**
+ * 窗口关闭前：给渲染进程保存机会（quitting 用于区分「整体退出」与「单独关窗」）。
+ *
+ * ─── 兜底为什么不再是"固定 2.5 秒"（审计 §2 P1）────────────────────────────────
+ * 原来到点无条件 `win.close()`，慢盘 / 大文件下 `flushAll()` 还没跑完窗口就没了 ——
+ * 丢的正是"用户以为已经保存"的那一段。现在：
+ *   * 渲染层在关窗流程里**按秒发心跳**（`app:closeProgress`，见 useAppActions 的 requestClose）；
+ *   * 每收到一次心跳就把兜底计时器重置（"还在落盘就继续等"）；
+ *   * 连续 `CLOSE_FALLBACK_MS` 没有心跳 → 认定它卡住，强制关闭；
+ *   * 总时长到 `CLOSE_FALLBACK_MAX_MS` → 无论有没有心跳都强制关闭
+ *     （不能让一个挂死的渲染进程把"关不掉窗口"变成新问题）。
+ * 判据本身是纯函数 `shouldForceClose`（shared/closeGuard.ts，有单测）。
+ */
 export function attachCloseGuard(win: BrowserWindow): void {
+  /**
+   * Windows 关机 / 注销（审计 §2 P2：此前全仓没有 `session-end`）。
+   *
+   * ⚠️ 这是 **BrowserWindow** 的事件（不是 app 的）：每个窗口各收到一次。系统不会等我们，
+   * 也不保证逐窗 `close` 事件都来得及走完 —— 能做的只有"**尽早**让这个窗口开始落盘"
+   * （草稿是原子写的，半途被杀也不会留下坏文件），而不是等兜底强杀那一刻（那时窗口里
+   * 没写出去的内容就真没了）。所以这里直接复用关窗那条路：`before-close` → `flushAll`。
+   */
+  win.on('session-end', () => {
+    session.markQuitting()
+    beginShutdown('session-end')
+    if (!win.isDestroyed() && !closeConfirmed.has(win)) {
+      win.webContents.send('app:before-close', { quitting: true })
+    }
+  })
+
   win.on('close', (e) => {
     if (closeConfirmed.has(win)) return
     e.preventDefault()
+    const now = Date.now()
+    closeGuardState.set(win, { startedAtMs: now, lastProgressMs: now })
     win.webContents.send('app:before-close', { quitting: session.isQuitting() })
-    // 兜底：渲染进程 2.5s 内未响应则强制关闭
-    const timer = setTimeout(() => {
-      if (!win.isDestroyed()) {
-        closeConfirmed.add(win)
-        win.close()
-      }
-    }, 2500)
-    win.once('closed', () => clearTimeout(timer))
+    armCloseFallback(win)
+    win.once('closed', () => {
+      const timer = closeTimers.get(win)
+      if (timer) clearTimeout(timer)
+      closeTimers.delete(win)
+      closeGuardState.delete(win)
+    })
   })
+}
+
+/** 排一轮兜底：到点先问判据，该等就再排一轮（心跳会把它重置得更早） */
+function armCloseFallback(win: BrowserWindow): void {
+  const prev = closeTimers.get(win)
+  if (prev) clearTimeout(prev)
+  const timer = setTimeout(() => {
+    if (win.isDestroyed()) return
+    const state = closeGuardState.get(win)
+    const decision = state
+      ? shouldForceClose(state, Date.now())
+      : { force: true, waitedMs: 0, reason: 'stalled' as const }
+    if (!decision.force) {
+      armCloseFallback(win)
+      return
+    }
+    // 主进程 console 一律 ASCII（tests/mainConsoleAscii.test.mjs）
+    console.log(`[close] force after ${decision.waitedMs}ms (${decision.reason})`)
+    closeConfirmed.add(win)
+    win.close()
+  }, CLOSE_FALLBACK_MS)
+  closeTimers.set(win, timer)
 }
