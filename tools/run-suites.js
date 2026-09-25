@@ -103,7 +103,9 @@ const DEFAULT_SUITES = [
   // ── 第十二轮：关于页说的是事实（真实依赖清单 + 第三方许可声明，不硬编码）──
   '_verify-about.js',
   // ── 第十三轮：插入图片（粘贴 / 拖入 / 选文件三条入口共用一份落点与命名规则）──
-  '_verify-image-insert.js'
+  '_verify-image-insert.js',
+  // ── 第十四轮：诊断信息（环境事实 + 隐私边界：不含文档内容与最近文件清单）──
+  '_verify-diagnostics.js'
 ]
 
 /** 自己管理 Electron 实例的套件（运行器不替它们起实例） */

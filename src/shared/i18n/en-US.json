@@ -297,7 +297,10 @@
     "previewSep": ", ",
     "resetConfirm": "All settings return to their defaults (language and theme included). Continue?",
     "remoteImagesClick": "Load on click",
-    "remoteImagesAlways": "Load automatically"
+    "remoteImagesAlways": "Load automatically",
+    "copyDiagnostics": "Copy diagnostics",
+    "openLogDir": "Open log folder",
+    "diagnosticsCopied": "Diagnostics copied to the clipboard (no document content)"
   },
   "toolbar": {
     "hide": "Hide toolbar",
@@ -378,7 +381,8 @@
     "deleteFailedDetail": "Delete failed: {reason}",
     "encodingNotSaved": "This document is not saved to disk yet, so it cannot be re-read with another encoding",
     "imageNeedsWorkspace": "Save this document first (or open a workspace) so the image can be stored in assets/",
-    "imageInsertFailed": "Could not insert the image: {reason}"
+    "imageInsertFailed": "Could not insert the image: {reason}",
+    "copyFailed": "Copy failed"
   },
   "editorMenu": {
     "copy": "Copy",
@@ -509,5 +513,20 @@
   "export": {
     "tocTitle": "Contents",
     "pdfEmpty": "PDF rendering returned an empty result"
+  },
+  "diagnostics": {
+    "title": "Lumin diagnostics",
+    "note": "This file contains no document content and no list of recently opened files — safe to paste anywhere.",
+    "versions": "Versions",
+    "devBuild": " (dev)",
+    "platform": "Platform",
+    "startedAt": "Launched",
+    "paths": "Data locations",
+    "db": "Database",
+    "log": "Log ({label})",
+    "args": "Launch arguments",
+    "settings": "Settings snapshot",
+    "errors": "Recent errors (up to 10, titles only)",
+    "none": "(none)"
   }
 }

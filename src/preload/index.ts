@@ -32,6 +32,9 @@ const api: LuminAPI = {
     getVersion: () => ipcRenderer.invoke('app:getVersion'),
     getPlatform: () => ipcRenderer.invoke('app:getPlatform'),
     getAbout: () => ipcRenderer.invoke('app:getAbout'),
+    // 诊断信息（纯文本，不含文档内容）与"打开日志目录"（不接受参数：固定打开我们自己的日志目录）
+    getDiagnostics: () => ipcRenderer.invoke('app:getDiagnostics'),
+    openLogDir: () => ipcRenderer.invoke('app:openLogDir'),
     confirmClose: () => ipcRenderer.invoke('app:confirmClose'),
     minimize: () => ipcRenderer.send('app:minimize'),
     toggleMaximize: () => ipcRenderer.send('app:toggleMaximize'),

@@ -10,6 +10,7 @@ import {
   type IpcMainInvokeEvent
 } from 'electron'
 import path from 'path'
+import os from 'os'
 import { watch, existsSync, readFileSync, type FSWatcher } from 'fs'
 import * as fileOps from './fileOps'
 import * as exportSvc from './export'
@@ -29,6 +30,7 @@ import type { Eol } from '../shared/eol'
 import { untitledDraftKey } from '../shared/drafts'
 import { db } from './services/database'
 import { defaultSettings } from '../shared/defaults'
+import { buildDiagnosticsText, safeLaunchArgs } from '../shared/diagnostics'
 import type {
   AppSettings,
   EpubMeta,
@@ -180,6 +182,51 @@ export function registerIpc(slots: SlotRegistry): void {
     }
     return { version: exportSvc.appVersion(), platform: process.platform, deps, notices }
   })
+  /**
+   * 诊断信息（审计 §9 P1）：把"用户说卡/闪退"变成可修问题的前置条件。
+   *
+   * 只收集**环境事实**：版本、数据位置、日志路径、启动参数、设置快照、最近的错误标题。
+   * 组装与"该去掉什么"在 `shared/diagnostics.ts`（纯函数、有单测）；这里只负责取数：
+   *   * 设置快照里的 recentFiles/recentFolders 会被那边剔除（那是"看过什么"，不是环境）；
+   *   * 错误通知只取 level/title/时间，**不带 body**（body 里可能是文档片段）。
+   */
+  ipcMain.handle('app:getDiagnostics', (event) => {
+    const settings = db.kvGet<AppSettings>('settings', defaultSettings)
+    // 通知按「窗口作用域」隔离（见 shared/types 的 AppNotification 说明），
+    // 所以取的是**这个窗口**最近的错误 —— 正是用户看到的那些
+    const errors = db
+      .listNotifications(scopeOfSender(event.sender), { includeClosed: true, limit: 50 })
+      .filter((n) => n.level === 'error')
+      .slice(-10)
+      .map((n) => ({ level: n.level, title: n.title, createdAt: n.createdAt }))
+    return buildDiagnosticsText(
+      {
+        appVersion: exportSvc.appVersion(),
+        platform: process.platform,
+        arch: process.arch,
+        electron: process.versions.electron ?? '',
+        chrome: process.versions.chrome ?? '',
+        node: process.versions.node ?? '',
+        v8: process.versions.v8 ?? '',
+        packaged: app.isPackaged,
+        userData: app.getPath('userData'),
+        dbPath: path.join(app.getPath('userData'), 'lumin.db'),
+        logs: [
+          { label: 'build', path: path.join(os.tmpdir(), 'lumin-build.log') },
+          { label: 'startup', path: path.join(os.tmpdir(), 'lumin-startup.log') }
+        ],
+        launchArgs: safeLaunchArgs(process.argv),
+        settings,
+        recentErrors: errors
+      },
+      mainT
+    )
+  })
+  /**
+   * 打开日志目录：**不接受渲染层传路径**（否则就是一个"打开任意目录"的洞），
+   * 固定打开我们自己的日志目录（%TEMP%）。
+   */
+  ipcMain.handle('app:openLogDir', () => shell.openPath(os.tmpdir()))
   ipcMain.handle('app:confirmClose', (event) => {
     const win = BrowserWindow.fromWebContents(event.sender)
     if (win && !win.isDestroyed()) {

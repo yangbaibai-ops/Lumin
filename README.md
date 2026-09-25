@@ -134,11 +134,11 @@ docs/                     # 手册 / 整改方案 / 打包实测
 
 | 范围 | 文件 | 行数 |
 |---|---|---|
-| `src/main` | 23 | 5400 |
-| `src/preload` | 2 | 189 |
-| `src/shared` | 13 | 1674 |
-| `src/renderer` | 117 | 23049 |
-| `src 合计` | 155 | 30312 |
+| `src/main` | 23 | 5447 |
+| `src/preload` | 2 | 192 |
+| `src/shared` | 14 | 1782 |
+| `src/renderer` | 117 | 23082 |
+| `src 合计` | 156 | 30503 |
 
 口径：`src/main`/`preload`/`shared` 数 `.ts`，`src/renderer` 数 `.ts`+`.vue`（含子目录）。
 
@@ -175,6 +175,8 @@ docs/                     # 手册 / 整改方案 / 打包实测
 |---|---|
 | `docs/typora-wysiwyg-manual.md` | **事实上的设计手册**：每个模块的取舍、踩过的坑、历次修复记录（按 §4.x 检索） |
 | `docs/optimization-program.md` | **整改方案**：按波次排的问题清单与验收口径（Wave 1~5） |
+| `docs/electron-upgrade.md` | **Electron 升级评估**：实装版本与 EOL 事实、升级步骤与要复验的清单 |
+| `RELEASE.md` | **发布检查清单**：版本号来源、全绿门禁、打包与校验和、10 分钟人工冒烟 |
 | `docs/packaging-install-test.md` | 安装 / 卸载链路的实测报告 |
 | `CHANGELOG.md` | 按 Keep a Changelog 汇出的变更记录 |
 
@@ -193,6 +195,8 @@ docs/                     # 手册 / 整改方案 / 打包实测
 | 编辑器 ⇄ store 同步 | ✅ **单向数据流账本**：三个编辑面（Tiptap / 源码 textarea / 代码块 CM）共用 `rev + author + applied`，不存在第二条同步通道 | 嵌套样式（`mdStyle` 支持样式集合） |
 | 文件树键盘可达 | ✅ `role="tree"` + roving tabindex + 方向键/Home/End/Enter（`lib/treeFocus.ts`）；`F2` 重命名、`Delete` 删除、`Shift+F10`/菜单键唤出上下文菜单（`TreeNode.vue`） | 拖放排序 |
 | 自动更新 / 代码签名 | ❌ `publish` 仍是占位、未签名（Windows 会提示未知发布者）。两条都**卡在外部资源**（证书、真实仓库地址），所以不发明占位 URL | 拿到证书与地址后一起做 |
+| **Electron 版本** | ⚠️ 实装 **39.8.10**（`^39.2.6` 锁死在 39），而 39 已于 **2026-05-05 EOL**（Chromium 落后约 10 个大版本）—— 实测事实与复验清单见 `docs/electron-upgrade.md` | 单独分支升到受支持 major + 跑完整矩阵（含打包态） |
+| 诊断与日志 | ✅ 设置 → 高级：「复制诊断信息」（版本 / 平台 / Electron / 数据位置 / 启动参数 / 设置快照 / 最近错误标题，**不含文档内容与最近文件清单**）＋「打开日志目录」 | 崩溃转储（`crashReporter`）等有上报渠道时再谈 |
 | 跨平台 | ⚠️ mac / Linux 未验证（`npm run build:mac` / `build:linux` 会明确拒绝，而不是产出一个没验过的包） | 明确暂缓 |
 
 ---

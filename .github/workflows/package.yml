@@ -1,0 +1,63 @@
+# ─── 打包工件（手动触发，不阻塞 PR）──────────────────────────────────────────
+#
+# 审计 §9「[P2] 无 CI 产物/发布工件」：CI 只做 typecheck/lint/unit/build，不产安装包。
+# 这里补一个 `workflow_dispatch` 的打包 job：产出 `Lumin-<ver>-setup.exe` + SHA256，
+# 直接给测试者用（**不需要签名**也能先发；签名缺证书，见 RELEASE.md §0）。
+#
+# 与 `cdp.yml` 一样刻意**不放在 push/PR 上**：打包要几分钟、还要下载 Electron 产物，
+# 每次提交都跑纯属浪费。发版时手动点一下，或由 release 流程调用。
+name: Package (manual)
+
+on:
+  workflow_dispatch:
+    inputs:
+      unpack_only:
+        description: '只出解包目录（快，用来先确认能起来）'
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: package-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  package:
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: 安装依赖
+        run: npm ci
+
+      - name: 门禁（类型/风格/单测/文档数字/许可声明）
+        run: npm run ci
+
+      - name: 打包
+        run: npm run ${{ inputs.unpack_only && 'build:unpack' || 'build:win' }}
+
+      - name: 计算 SHA256（把校验和写进 artifact 说明）
+        shell: pwsh
+        run: |
+          Get-ChildItem dist -Recurse -Include *.exe, *.zip, *.blockmap |
+            ForEach-Object { "$($_.Name)  $((Get-FileHash $_.FullName -Algorithm SHA256).Hash)" } |
+            Tee-Object -FilePath dist\SHA256SUMS.txt
+
+      - name: 上传工件
+        uses: actions/upload-artifact@v4
+        with:
+          name: lumin-windows-${{ github.run_number }}
+          path: |
+            dist/*.exe
+            dist/*.blockmap
+            dist/SHA256SUMS.txt
+          if-no-files-found: warn
+          retention-days: 14

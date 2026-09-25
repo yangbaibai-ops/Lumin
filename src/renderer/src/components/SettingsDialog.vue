@@ -316,6 +316,25 @@ async function resetAllSettings(): Promise<void> {
   if (ok) await settings.reset()
 }
 
+/**
+ * 诊断信息（审计 §9 P1）：把"我这边卡/闪退"变成我们能修的问题。
+ * 文案由主进程按 `shared/diagnostics.ts` 组装（**不含文档内容**），这里只负责复制到剪贴板。
+ */
+async function copyDiagnostics(): Promise<void> {
+  try {
+    const text = await window.luminAPI.app.getDiagnostics()
+    await navigator.clipboard.writeText(text)
+    ui.toast(t('settings.diagnosticsCopied'), 'success')
+  } catch {
+    ui.toast(t('toast.copyFailed'), 'error')
+  }
+}
+
+/** 打开日志目录（主进程固定打开 `%TEMP%`，不接受路径参数） */
+function openLogDir(): void {
+  void window.luminAPI.app.openLogDir()
+}
+
 function sectionTitle(id: string): string {
   const x = tabs.value.find((y) => y.id === id)
   return x ? x.label : ''
@@ -742,7 +761,21 @@ function formatTime(ms: number): string {
                     </details>
 
                     <!-- 恢复默认：低频且有破坏性（连语言与主题一起复位）⇒ 放最底下 + 二次确认 -->
-                    <div class="mt-4 flex justify-end">
+                    <div class="mt-4 flex flex-wrap items-center justify-end gap-2">
+                      <button
+                        class="rounded-lg border border-edge px-3 py-1.5 text-[12.5px] text-ink-2 transition-colors hover:border-edge-strong hover:text-ink"
+                        data-settings-diagnostics
+                        @click="copyDiagnostics()"
+                      >
+                        {{ t('settings.copyDiagnostics') }}
+                      </button>
+                      <button
+                        class="rounded-lg border border-edge px-3 py-1.5 text-[12.5px] text-ink-2 transition-colors hover:border-edge-strong hover:text-ink"
+                        data-settings-open-logs
+                        @click="openLogDir()"
+                      >
+                        {{ t('settings.openLogDir') }}
+                      </button>
                       <button
                         class="rounded-lg border border-edge px-3 py-1.5 text-[12.5px] text-ink-2 transition-colors hover:border-[color-mix(in_srgb,var(--danger)_45%,transparent)] hover:text-danger"
                         data-settings-reset

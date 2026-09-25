@@ -297,7 +297,10 @@
     "previewSep": "、",
     "resetConfirm": "所有设置都会回到默认值（语言与主题也会一并恢复），继续吗？",
     "remoteImagesClick": "点击后加载",
-    "remoteImagesAlways": "自动加载"
+    "remoteImagesAlways": "自动加载",
+    "copyDiagnostics": "复制诊断信息",
+    "openLogDir": "打开日志目录",
+    "diagnosticsCopied": "诊断信息已复制到剪贴板（不含文档内容）"
   },
   "toolbar": {
     "hide": "关闭工具栏",
@@ -378,7 +381,8 @@
     "deleteFailedDetail": "删除失败：{reason}",
     "encodingNotSaved": "这份文档还没保存到磁盘，无法按其他编码重新读取",
     "imageNeedsWorkspace": "先把文档保存下来（或打开一个工作区），图片才能存进 assets/ 目录",
-    "imageInsertFailed": "插入图片失败：{reason}"
+    "imageInsertFailed": "插入图片失败：{reason}",
+    "copyFailed": "复制失败"
   },
   "editorMenu": {
     "copy": "复制",
@@ -509,5 +513,20 @@
   "export": {
     "tocTitle": "目录",
     "pdfEmpty": "PDF 渲染返回空内容"
+  },
+  "diagnostics": {
+    "title": "Lumin 诊断信息",
+    "note": "本文件不含文档内容，也不含最近打开过的文件清单；可以直接贴出来。",
+    "versions": "版本",
+    "devBuild": "（开发态）",
+    "platform": "平台",
+    "startedAt": "本次启动",
+    "paths": "数据位置",
+    "db": "数据库",
+    "log": "日志（{label}）",
+    "args": "启动参数",
+    "settings": "设置快照",
+    "errors": "最近的错误（最多 10 条，只留标题）",
+    "none": "（无）"
   }
 }

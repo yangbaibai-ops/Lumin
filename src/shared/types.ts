@@ -443,6 +443,13 @@ export interface LuminAPI {
     startupNoWorkspace: boolean
     /** 本窗口的会话槽位索引（主进程分配，用于会话恢复）；null = 本窗口不参与会话 */
     sessionSlot: number | null
+    /**
+     * 诊断信息（纯文本，可直接贴进 issue）：版本 / 平台 / 数据位置 / 启动参数 /
+     * 设置快照 / 最近的错误标题。**不含文档内容，也不含最近打开的文件清单**。
+     */
+    getDiagnostics: () => Promise<string>
+    /** 打开日志目录（`%TEMP%`）：不接受参数，固定打开我们自己的目录 */
+    openLogDir: () => Promise<string>
   }
   file: {
     /**
