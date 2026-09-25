@@ -72,6 +72,43 @@
 - **工程化**：~~`tools/lib/harness.js` + `tools/run-suites.js`~~ → **本轮已完成**；
   剩余：`files` store 拆分；`store` 里那份为绕循环导入而复制的 `confirmIfDirty` 收敛到 `services/dialog`。
 
+## [Unreleased · 合规（第十四轮）：第三方许可声明 + 关于页改成说事实]
+
+> 依据：桌面清单 §5（依赖 / 许可 / 合规）剩下的两条 P1。
+
+### Added
+
+- **`THIRD-PARTY-NOTICES.md`**（`npm run notices` → `tools/gen-notices.js`）：300 个包的许可分布表 +
+  逐包「名称 / 版本 / 许可 / 仓库」清单。数据来自 `package-lock.json` 与各包 `package.json`，
+  范围是**生产依赖闭包**（从 `dependencies` 沿 lock 的依赖图 BFS，含传递依赖）。
+  为什么不"把 lock 里所有非 dev 的都列上"：lock 的 `dev` 标记不可靠（实测 `vite`/`rollup`/`typescript`
+  的 `dev` 是 undefined），那样会列出 500+ 个、一半不随产物分发 —— 而本文件标题是"随产物分发"的声明。
+  实测分布：MIT 250 / ISC 36 / BSD-3-Clause 5 / BSD-2-Clause 2 / Apache-2.0 1 / Python-2.0 1 /
+  (MPL-2.0 OR Apache-2.0) 1 / Unlicense 1 / BlueOak-1.0.0 1 / (MIT OR CC0-1.0) 1，**无 UNKNOWN、无 GPL 族**。
+- `npm run notices` / `notices:check`，并把 `notices:check` 加进 `npm run ci` —— 依赖一变而声明没重生成，
+  门禁直接红（否则这类文件必然悄悄漂）。
+- 主进程 `app:getAbout`：把**构建产物里的事实**（`package.json` 的 dependencies +
+  `THIRD-PARTY-NOTICES.md` 全文）交给渲染层（渲染层读不到任意路径，与路径授权闸口径一致）。
+
+### Changed
+
+- **关于页的技术栈不再是硬编码数组**：原先那张表列着 `Marked.js` 与 `highlight.js` ——
+  本仓库根本没有这两个依赖（`package.json` / `node_modules` / `src` 三处 grep 皆空），而真正随产物分发的
+  Tiptap / KaTeX / Mermaid / CodeMirror 一个没提。现在渲染真实依赖（39 项，悬停显示 `名称@版本`），
+  并新增「开源许可」区块（默认收起、点击展开声明全文，`aria-expanded` 同步）。
+- 关于页文案全部接入 i18n（原来 7 处硬编码中文）；三语新增
+  `about.platform` / `about.stackCount` / `about.licenses` / `about.licensesHint`。
+
+### Verification
+
+- 新增 `tools/_verify-about.js`（进默认矩阵）**6/6**：依赖与 `package.json` 逐项一致（39/39）、
+  无幻影依赖、声明全文可取、源码里不再有 `const stack = [...]`（判前先剥注释）、
+  页面渲染出 39 个 chip、点开后含 MIT 与表格。
+- `tests/guards.test.mjs` 新增第 6 条：LICENSE 存在 / `license`+`private` 齐 / notices 存在 /
+  `ci` 必须校验 notices / 打包配置不许排除它 / 声明正文必须含两张表。
+- 默认矩阵 **42 → 43 条**（43/43 PASS、0 FAIL、0 FLAKY）；单元 **324 条**；`eslint --max-warnings 0`
+  0 problem；`vue-tsc` / `tsc`(node) 0；`electron-vite build` exit 0。
+
 ## [Unreleased · 安全（第十三轮）：路径授权闸 —— 渲染层不再能静默读写任意路径]
 
 > 依据：桌面清单 §4 第 2 条（P1）。这是 §4 的最后一条，安全边界三件套齐了

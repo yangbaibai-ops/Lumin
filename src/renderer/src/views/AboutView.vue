@@ -1,12 +1,23 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
+import { useI18n } from 'vue-i18n'
 import Icon from '../components/Icon.vue'
 import { APP_ICON_PNG_BASE64 } from '../assets/iconPng'
 
+const { t } = useI18n()
 const router = useRouter()
 const version = ref('')
 const platform = ref('')
+/**
+ * 技术栈**不再是硬编码数组**：从构建产物里的 `package.json` 读真实依赖（见 app:getAbout）。
+ * 原先那张表里写着 `Marked.js` 与 `highlight.js` —— 本仓库根本没有这两个依赖，
+ * 而 Tiptap / KaTeX / Mermaid / CodeMirror 这些真正的重头一个没提。陈述失实比没有更糟。
+ */
+const deps = ref<{ name: string; version: string }[]>([])
+/** 第三方许可声明全文（`THIRD-PARTY-NOTICES.md`，由 `npm run notices` 生成） */
+const notices = ref<string | null>(null)
+const showLicenses = ref(false)
 
 /** 应用标识 = 应用图标本身（内嵌位图，与桌面图标同源；不依赖外部文件） */
 const appIconSrc = `data:image/png;base64,${APP_ICON_PNG_BASE64}`
@@ -17,22 +28,18 @@ function goBack(): void {
   else router.push('/')
 }
 
-const stack = [
-  'Electron',
-  'Vue 3',
-  'CodeMirror 6',
-  'Marked.js',
-  'KaTeX',
-  'Mermaid',
-  'highlight.js',
-  'Tailwind CSS v4',
-  'Pinia',
-  'Vue Router'
-]
+/** 依赖名去掉 scope 前缀，只用于展示（`@tiptap/starter-kit` → `starter-kit`） */
+const depLabel = (name: string): string => name.replace(/^@[^/]+\//, '')
+
+/** 许可清单按需渲染：全文 300 行，塞进 DOM 会拖慢这一页 */
+const noticesBlocks = computed(() => (notices.value ? notices.value.split('\n') : []))
 
 onMounted(async () => {
-  version.value = await window.luminAPI.app.getVersion()
-  platform.value = await window.luminAPI.app.getPlatform()
+  const info = await window.luminAPI.app.getAbout()
+  version.value = info.version
+  platform.value = info.platform
+  deps.value = info.deps
+  notices.value = info.notices
 })
 </script>
 
@@ -53,41 +60,78 @@ onMounted(async () => {
       <p class="mt-1 text-[13.5px] font-medium tracking-[0.25em] text-accent">WRITE IN LIGHT.</p>
 
       <p class="mt-6 max-w-[440px] text-[13.5px] leading-relaxed text-ink-2">
-        Lumin 是一款基于 Electron 构建的跨平台桌面 Markdown
-        编辑器，以「所见即所得」为核心设计理念，致力于提供媲美 Typora 的沉浸式写作体验。
+        {{ t('about.desc') }}
       </p>
 
       <div class="mt-8 grid w-full grid-cols-2 gap-3">
         <div class="surface p-4">
-          <p class="text-[11px] uppercase tracking-[0.12em] text-ink-3">版本</p>
+          <p class="text-[11px] uppercase tracking-[0.12em] text-ink-3">{{ t('about.version') }}</p>
           <p class="mt-1 text-[15px] font-semibold text-ink">v{{ version }}</p>
         </div>
         <div class="surface p-4">
-          <p class="text-[11px] uppercase tracking-[0.12em] text-ink-3">平台</p>
+          <p class="text-[11px] uppercase tracking-[0.12em] text-ink-3">
+            {{ t('about.platform') }}
+          </p>
           <p class="mt-1 text-[15px] font-semibold text-ink capitalize">{{ platform }}</p>
         </div>
       </div>
 
-      <div class="mt-8 w-full">
+      <div class="mt-8 w-full" data-about-deps>
         <h2 class="mb-3 text-[12px] font-semibold uppercase tracking-[0.14em] text-ink-3">
-          技术栈
+          {{ t('about.stack') }}
+          <span class="ml-1 font-normal normal-case tracking-normal text-ink-3/80">
+            {{ t('about.stackCount', { n: deps.length }) }}
+          </span>
         </h2>
         <div class="flex flex-wrap justify-center gap-2">
           <span
-            v-for="s in stack"
-            :key="s"
-            class="rounded-full border border-edge bg-panel px-3 py-1 text-[12px] text-ink-2 transition-colors duration-150 hover:border-accent hover:text-accent"
+            v-for="d in deps"
+            :key="d.name"
+            data-about-dep
+            class="rounded-full border border-edge bg-panel px-3 py-1 text-[11.5px] text-ink-2 transition-colors duration-150 hover:border-accent hover:text-accent"
+            :title="`${d.name}@${d.version}`"
           >
-            {{ s }}
+            {{ depLabel(d.name) }}
           </span>
         </div>
       </div>
 
-      <p class="mt-10 text-[12px] text-ink-3">免费 · 开源 · 现代化 — 让写作如光般通透</p>
+      <!-- 开源许可：全文来自 THIRD-PARTY-NOTICES.md（npm run notices 生成），
+           按需展开 —— 300 个包的表格直接塞进 DOM 会让这一页变重 -->
+      <div v-if="notices" class="mt-8 w-full" data-about-licenses>
+        <button
+          class="flex w-full items-center justify-center gap-1.5 text-[12px] font-semibold uppercase tracking-[0.14em] text-ink-3 transition-colors hover:text-accent"
+          :aria-expanded="showLicenses ? 'true' : 'false'"
+          data-about-licenses-toggle
+          @click="showLicenses = !showLicenses"
+        >
+          {{ t('about.licenses') }}
+          <Icon
+            name="chevron-right"
+            :size="13"
+            class="transition-transform duration-150"
+            :class="showLicenses ? 'rotate-90' : ''"
+          />
+        </button>
+        <p v-if="!showLicenses" class="mt-2 text-[12px] text-ink-3">
+          {{ t('about.licensesHint') }}
+        </p>
+        <div
+          v-else
+          class="mt-2 max-h-[320px] overflow-y-auto rounded-lg border border-edge bg-panel p-3 text-left"
+          data-about-notices
+        >
+          <pre class="whitespace-pre-wrap break-words text-[11px] leading-relaxed text-ink-2">{{
+            noticesBlocks.join('\n')
+          }}</pre>
+        </div>
+      </div>
+
+      <p class="mt-10 text-[12px] text-ink-3">{{ t('about.license') }}</p>
 
       <button class="btn btn-outline mt-6 px-5 py-2 text-[13px]" @click="goBack">
         <Icon name="chevron-right" :size="14" class="rotate-180" />
-        返回
+        {{ t('about.back') }}
       </button>
     </div>
   </div>

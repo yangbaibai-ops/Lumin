@@ -31,6 +31,7 @@ const api: LuminAPI = {
   app: {
     getVersion: () => ipcRenderer.invoke('app:getVersion'),
     getPlatform: () => ipcRenderer.invoke('app:getPlatform'),
+    getAbout: () => ipcRenderer.invoke('app:getAbout'),
     confirmClose: () => ipcRenderer.invoke('app:confirmClose'),
     minimize: () => ipcRenderer.send('app:minimize'),
     toggleMaximize: () => ipcRenderer.send('app:toggleMaximize'),

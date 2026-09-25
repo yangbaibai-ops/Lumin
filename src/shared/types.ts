@@ -398,6 +398,16 @@ export interface LuminAPI {
   app: {
     getVersion: () => Promise<string>
     getPlatform: () => Promise<string>
+    /**
+     * 「关于」页的事实来源：真实依赖清单 + 第三方许可声明全文
+     * （都从构建产物里读，见 main/ipc.ts 的 `app:getAbout`）。
+     */
+    getAbout: () => Promise<{
+      version: string
+      platform: string
+      deps: { name: string; version: string }[]
+      notices: string | null
+    }>
     confirmClose: () => Promise<void>
     minimize: () => void
     toggleMaximize: () => void

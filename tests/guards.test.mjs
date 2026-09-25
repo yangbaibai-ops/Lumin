@@ -9,7 +9,7 @@
 // 这些都能静态查清，所以放进单测 —— 谁把它们改坏了，`npm run ci` 立刻红。
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { readFileSync, readdirSync, statSync } from 'node:fs'
+import { readFileSync, readdirSync, statSync, existsSync } from 'node:fs'
 import { join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 // 共享常量直接 import .ts（node --test 的类型剥离）：断言"两处用的是同一份"，而不是比字符串
@@ -146,4 +146,29 @@ test('落盘：用户文档必须走 fileOps.writeFile（原子写），直接�
 test('卸载不许删用户数据（写作类应用的底线）', () => {
   const yml = read('electron-builder.yml')
   assert.match(yml, /deleteAppDataOnUninstall:\s*false/, 'deleteAppDataOnUninstall 必须为 false')
+})
+
+test('许可与第三方声明：LICENSE 存在、声明会被打进产物、且门禁校验它是最新的', () => {
+  // 背景（审计 §5）：README 一直声明 MIT，而仓库既没有 LICENSE 也没有 package.json 的 license 字段；
+  // 打包产物里第三方库的版权声明又被 Rollup 全剥掉了。这一条把"补上的东西不会悄悄回退"钉住。
+  assert.ok(existsSync(join(ROOT, 'LICENSE')), 'LICENSE 文件必须存在')
+  const pkg = JSON.parse(read('package.json'))
+  assert.equal(pkg.license, 'MIT', 'package.json 必须有 license 字段（与 README/LICENSE 一致）')
+  assert.equal(pkg.private, true, 'package.json 必须是 private（防止误发布到公共 registry）')
+  assert.ok(
+    existsSync(join(ROOT, 'THIRD-PARTY-NOTICES.md')),
+    'THIRD-PARTY-NOTICES.md 必须存在（npm run notices）'
+  )
+  assert.ok(
+    pkg.scripts.notices && pkg.scripts['notices:check'],
+    '必须有 notices / notices:check 脚本'
+  )
+  assert.match(pkg.scripts.ci, /notices:check/, 'CI 门禁必须校验许可声明是最新的（否则会悄悄漂）')
+  const yml = read('electron-builder.yml')
+  assert.doesNotMatch(yml, /THIRD-PARTY-NOTICES/, '打包配置不许排除许可声明文件')
+  // 声明的正文里要带许可分布与包清单（防止生成脚本退化成空文件）
+  const notices = read('THIRD-PARTY-NOTICES.md')
+  assert.match(notices, /\| 许可 \| 包数量 \|/, '声明里必须有许可分布表')
+  assert.match(notices, /\| 包 \| 版本 \| 许可 \| 仓库 \|/, '声明里必须有包清单表')
+  assert.match(notices, /MIT/, '声明里必须出现 MIT')
 })

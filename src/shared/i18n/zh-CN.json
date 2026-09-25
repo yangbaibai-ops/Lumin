@@ -337,7 +337,11 @@
     "stack": "技术栈",
     "license": "免费 · 开源 · 现代化",
     "github": "GitHub",
-    "back": "返回"
+    "back": "返回",
+    "platform": "平台",
+    "stackCount": "共 {n} 项",
+    "licenses": "开源许可",
+    "licensesHint": "点击展开第三方许可声明（由 npm run notices 生成）"
   },
   "toast": {
     "fileCreated": "已创建文件",

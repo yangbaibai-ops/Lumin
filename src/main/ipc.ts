@@ -1,5 +1,6 @@
 // ─── 主进程：IPC 注册 ─────────────────────────────────────────────────────
 import {
+  app,
   ipcMain,
   dialog,
   BrowserWindow,
@@ -9,7 +10,7 @@ import {
   type IpcMainInvokeEvent
 } from 'electron'
 import path from 'path'
-import { watch, existsSync, type FSWatcher } from 'fs'
+import { watch, existsSync, readFileSync, type FSWatcher } from 'fs'
 import * as fileOps from './fileOps'
 import * as exportSvc from './export'
 import * as drafts from './drafts'
@@ -147,6 +148,37 @@ export function registerIpc(slots: SlotRegistry): void {
   // ── 应用 ──
   ipcMain.handle('app:getVersion', () => exportSvc.appVersion())
   ipcMain.handle('app:getPlatform', () => process.platform)
+  /**
+   * 「关于」页需要的事实：真实依赖清单 + 第三方许可声明。
+   *
+   * 为什么要走主进程：这两样都是**构建产物里的文件**（`package.json` 的 `dependencies`
+   * 与根目录的 `THIRD-PARTY-NOTICES.md`），渲染层读不到（也不该读）任意路径 ——
+   * 与路径授权闸的口径一致。之前关于页把技术栈**硬编码在组件里**，于是列着 `Marked.js`
+   * 与 `highlight.js` 这两个本仓库根本不存在的依赖，而真正的重头
+   * （Tiptap / KaTeX / Mermaid / CodeMirror）一个没提。现在改成从产物里读事实，页面不可能再说假话。
+   */
+  ipcMain.handle('app:getAbout', () => {
+    const readJson = (p: string): Record<string, unknown> | null => {
+      try {
+        return JSON.parse(readFileSync(p, 'utf-8')) as Record<string, unknown>
+      } catch {
+        return null
+      }
+    }
+    const appPath = app.getAppPath()
+    const pkg = readJson(path.join(appPath, 'package.json'))
+    const deps = Object.entries((pkg?.dependencies as Record<string, string> | undefined) ?? {})
+      .map(([name, range]) => ({ name, version: String(range).replace(/^[\^~]/, '') }))
+      .sort((a, b) => a.name.localeCompare(b.name))
+    // 许可声明：打包后位于 asar 根（与 package.json 同级）；读不到给 null，由页面隐藏该区块
+    let notices: string | null = null
+    try {
+      notices = readFileSync(path.join(appPath, 'THIRD-PARTY-NOTICES.md'), 'utf-8')
+    } catch {
+      notices = null
+    }
+    return { version: exportSvc.appVersion(), platform: process.platform, deps, notices }
+  })
   ipcMain.handle('app:confirmClose', (event) => {
     const win = BrowserWindow.fromWebContents(event.sender)
     if (win && !win.isDestroyed()) {

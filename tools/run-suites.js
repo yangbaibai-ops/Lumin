@@ -99,7 +99,9 @@ const DEFAULT_SUITES = [
   // ── 第十轮：数据安全（保存期输入 / 草稿最大等待 / 换文档前 flush / 真实 mtime）──
   '_verify-save-safety.js',
   // ── 第十一轮：路径授权闸（工作区外拒绝读写，正常流程全部放行）──
-  '_verify-path-grants.js'
+  '_verify-path-grants.js',
+  // ── 第十二轮：关于页说的是事实（真实依赖清单 + 第三方许可声明，不硬编码）──
+  '_verify-about.js'
 ]
 
 /** 自己管理 Electron 实例的套件（运行器不替它们起实例） */
