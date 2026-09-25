@@ -41,13 +41,13 @@ import {
   patchRedundantEmphasis,
   styleList,
   stylesOf
-} from './inlineMarkerCore'
-import type { Atom, MarkerSide, StyleKind } from './inlineMarkerCore'
+} from './inlineMarkerCore.ts'
+import type { Atom, MarkerSide, StyleKind } from './inlineMarkerCore.ts'
 // 查找命中高亮的**零依赖桥**：store 一侧只认识它，不认识 ProseMirror（见该文件说明 ——
 // 原来 store 直接 import 本模块，把 ~412KB 的 PM 钉进了首屏 entry chunk）。
-import { registerFindHit } from './findBridge'
-import type { FindHitRange } from './findBridge'
-import { deferAfterPmEvent } from './defer'
+import { registerFindHit } from './findBridge.ts'
+import type { FindHitRange } from './findBridge.ts'
+import { deferAfterPmEvent } from './defer.ts'
 // 核心的符号在本文件再导出一次：既有的导入面（其它模块从这里取用）保持不变
 export {
   KIND_OF_MARKER,
@@ -74,8 +74,8 @@ export {
   styleList,
   stylesOf,
   toLiteral
-} from './inlineMarkerCore'
-export type { Atom, MarkerSide, StyleKind } from './inlineMarkerCore'
+} from './inlineMarkerCore.ts'
+export type { Atom, MarkerSide, StyleKind } from './inlineMarkerCore.ts'
 
 // 自定义命令类型声明（tiptap v3 命令合并，命名空间形式）
 declare module '@tiptap/core' {
