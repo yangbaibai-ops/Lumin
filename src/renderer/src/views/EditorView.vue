@@ -277,6 +277,27 @@ function resetSplitRatio(): void {
   settings.set('splitRatio', splitRatio.value)
 }
 
+/**
+ * 分隔条的**键盘路径**（审计 §8 P2「纯鼠标交互：分屏分隔条 / 侧栏宽度手柄 / mermaid 预览」）。
+ *
+ * 语义照 ARIA APG 的 window splitter：`role="separator"` + `aria-orientation="vertical"` 时
+ * 它就是**可聚焦的 widget**，必须带 `aria-valuenow/min/max` 并响应方向键。
+ * 步长与侧栏宽度手柄（`AppSidebar.onResizeKeydown`）保持一致：2%，按住 Shift 走 10%；
+ * Home/End/Enter/Space 复位到 1:1（与双击同一档）。
+ */
+function onSplitKeydown(e: KeyboardEvent): void {
+  if (e.key === 'Home' || e.key === 'End' || e.key === 'Enter' || e.key === ' ') {
+    e.preventDefault()
+    resetSplitRatio()
+    return
+  }
+  if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return
+  e.preventDefault()
+  const step = e.shiftKey ? 0.1 : 0.02
+  splitRatio.value = clampRatio(splitRatio.value + (e.key === 'ArrowRight' ? step : -step))
+  settings.set('splitRatio', splitRatio.value)
+}
+
 // ─── 分屏同步滚动 ───
 // scroll 事件不冒泡但可捕获：在内核容器挂 capture 监听，分屏时左右任意一栏
 // 滚动（含左侧代码块的 CodeMirror 内部滚动）都按「滚动进度比」映射到另一栏。
@@ -844,15 +865,25 @@ onBeforeUnmount(() => {
         </div>
 
         <!-- 分屏分隔条（仅 split 存在；拖动时显示拖拽态）
-           绝对定位浮层：位置由 --split-left（比例）驱动，不参与两侧栏的 flex 布局 -->
+           绝对定位浮层：位置由 --split-left（比例）驱动，不参与两侧栏的 flex 布局。
+           键盘路径见 onSplitKeydown：它是 role="separator" 的**可聚焦** widget（ARIA APG
+           window splitter），所以必须有 aria-valuenow/min/max 与方向键支持 -->
         <div
           v-if="ui.editorMode === 'split'"
           class="split-divider"
           :class="{ dragging: splitDragging }"
           :style="{ '--split-left': `${splitRatio * 100}%` }"
+          role="separator"
+          aria-orientation="vertical"
+          tabindex="0"
+          :aria-label="i18n.global.t('editor.splitDividerTitle')"
+          :aria-valuemin="25"
+          :aria-valuemax="75"
+          :aria-valuenow="Math.round(splitRatio * 100)"
           :title="i18n.global.t('editor.splitDividerTitle')"
           @mousedown="startSplitDrag"
           @dblclick="resetSplitRatio"
+          @keydown="onSplitKeydown"
         >
           <span />
         </div>

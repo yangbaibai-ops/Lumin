@@ -56,7 +56,8 @@ async function main() {
     await app.ev(`JSON.stringify({
       mode: window.__L.ui().editorMode,
       autoSave: window.__L.settings().autoSave,
-      recentFiles: window.__L.settings().recentFiles
+      recentFiles: window.__L.settings().recentFiles,
+      splitRatio: window.__L.settings().splitRatio
     })`)
   )
   await app.ev(`(() => { window.__L.settings().set('autoSave', false); return 'ok' })()`)
@@ -207,10 +208,74 @@ async function main() {
     JSON.stringify(swapped)
   )
 
+  // ── K. 分隔条的键盘路径（审计 §8 P2「纯鼠标交互：分屏分隔条」）──
+  //
+  // 口径：**语义 + 行为**两路一起断言。语义（role/aria/tabindex）说明它"能被键盘够到"，
+  // 行为说明方向键真的改比例并落盘。按键用合成 KeyboardEvent 直接派发到分隔条上：
+  // 本套件的实测经验是 CDP 注入的真实按键在窗口不是 OS 前台时会丢（见清单 §10 的 flaky 表），
+  // 而这里要验的是**处理器本身**（`@keydown` 接线），合成事件恰好是更确定的证据。
+  const kbd = JSON.parse(
+    await app.ev(`(async () => {
+      const d = document.querySelector('.split-divider')
+      if (!d) return JSON.stringify({ missing: true })
+      const read = () => document.querySelector('.split-divider')
+      const now = () => Number(read()?.getAttribute('aria-valuenow'))
+      const before = {
+        role: d.getAttribute('role'),
+        orientation: d.getAttribute('aria-orientation'),
+        tabIndex: d.tabIndex,
+        label: d.getAttribute('aria-label'),
+        min: d.getAttribute('aria-valuemin'),
+        max: d.getAttribute('aria-valuemax'),
+        now: now()
+      }
+      d.focus()
+      const focused = document.activeElement === d
+      const press = (key, shift) =>
+        read().dispatchEvent(new KeyboardEvent('keydown', { key, shiftKey: !!shift, bubbles: true, cancelable: true }))
+      press('ArrowRight')
+      await new Promise((r) => setTimeout(r, 250))
+      const step = { now: now(), stored: window.__L.settings().splitRatio }
+      press('ArrowRight', true)
+      await new Promise((r) => setTimeout(r, 250))
+      const shift = now()
+      press('Home')
+      await new Promise((r) => setTimeout(r, 250))
+      const home = now()
+      return JSON.stringify({ before, focused, step, shift, home })
+    })()`)
+  )
+  report.note('K ' + JSON.stringify(kbd))
+  report.check(
+    'K1 分隔条是键盘可达的 separator（role / orientation / tabindex / aria-value*）',
+    kbd.before?.role === 'separator' &&
+      kbd.before?.orientation === 'vertical' &&
+      kbd.before?.tabIndex === 0 &&
+      !!kbd.before?.label &&
+      Number(kbd.before?.min) === 25 &&
+      Number(kbd.before?.max) === 75 &&
+      Number.isFinite(kbd.before?.now),
+    JSON.stringify(kbd.before)
+  )
+  report.check('K2 它能真的拿到焦点', kbd.focused === true, String(kbd.focused))
+  report.check(
+    'K3 ArrowRight 加 2% 并落进设置（持久化）',
+    Math.abs(kbd.step?.now - (kbd.before?.now + 2)) <= 1 &&
+      Math.abs(kbd.step?.stored * 100 - kbd.step?.now) <= 1,
+    JSON.stringify(kbd.step)
+  )
+  report.check(
+    'K4 Shift+ArrowRight 走 10%',
+    Math.abs(kbd.shift - (kbd.step?.now + 10)) <= 1,
+    `shift=${kbd.shift} step=${kbd.step?.now}`
+  )
+  report.check('K5 Home 复位到 50%', kbd.home === 50, `home=${kbd.home}`)
+
   // 收尾：恢复设置与模式
   await app.ev(`(() => {
     window.__L.ui().editorMode = ${JSON.stringify(backup.mode)}
     window.__L.settings().set('autoSave', ${backup.autoSave})
+    window.__L.settings().set('splitRatio', ${JSON.stringify(backup.splitRatio ?? 0.5)})
     return 'ok'
   })()`)
   fs.rmSync(WS, { recursive: true, force: true })

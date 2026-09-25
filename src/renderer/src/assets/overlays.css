@@ -300,9 +300,19 @@ aside:focus-within [data-sidebar-filetools],
   visibility: visible;
 }
 
-/* Mermaid 图表块 */
+/* Mermaid 图表块。
+   `.mermaid-render` 是 `<button>`（审计 §8 P2「纯鼠标交互」：原来是个 `<div @click>`，
+   键盘用户根本够不到"进源码编辑"这个动作）—— 这里把按钮的默认外观全部抹掉，
+   视觉与原来的 div 完全一致：宽度撑满、透明底、无边框、字体继承、居中。 */
 .mermaid-block .mermaid-render {
+  appearance: none;
+  width: 100%;
   padding: 14px 16px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: inherit;
   display: flex;
   justify-content: center;
   cursor: pointer;

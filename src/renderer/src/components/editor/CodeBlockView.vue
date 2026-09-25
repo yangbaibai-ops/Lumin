@@ -1057,9 +1057,13 @@ function commitMermaid(): void {
 
     <!-- Mermaid 图表模式 -->
     <div v-if="selectedLanguage === 'mermaid'" class="mermaid-block">
-      <div
+      <!-- 预览本体是 <button>，不是 <div @click>：它是"打开源码编辑"这个动作
+           （审计 §8 P2「纯鼠标交互」）。样式在 overlays.css 里把按钮默认外观全部抹掉，
+           键盘用户 Tab 得到它、Enter/Space 就能进源码编辑。 -->
+      <button
         v-if="!editingMermaid"
         ref="mermaidRenderRef"
+        type="button"
         class="mermaid-render"
         :data-mermaid-gated="mermaidNearViewport ? null : 'pending'"
         :title="$t('editor.editSource')"
@@ -1073,7 +1077,7 @@ function commitMermaid(): void {
         ><code>{{ props.node.textContent }}</code></pre>
         <!-- eslint-disable-next-line vue/no-v-html -- mermaidSvg 是 mermaid.render() 在 securityLevel:'strict' 下生成的 SVG（见本文件 mermaid 初始化），不是文档原文 -->
         <div v-else v-html="mermaidSvg" />
-      </div>
+      </button>
       <textarea
         v-else
         ref="mermaidInputRef"
