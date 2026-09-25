@@ -296,6 +296,26 @@ const exportFormats = computed<{ icon: string; name: string; desc: string }[]>((
   { icon: 'book', name: 'EPUB', desc: t('settings.exportEpubDesc') }
 ])
 
+/**
+ * 远程图片策略（SQLite 里就是 `settings.remoteImages: 'click' | 'always'`）：
+ * 这个设置此前**没有任何界面入口** —— `lib/remoteImages.ts` 一直在按它工作，
+ * 用户却改不了（对话框里的文案键 `settings.remoteImages*` 也就一直是死键）。
+ */
+const remoteImagePolicies = computed<{ value: 'click' | 'always'; label: string }[]>(() => [
+  { value: 'click', label: t('settings.remoteImagesClick') },
+  { value: 'always', label: t('settings.remoteImagesAlways') }
+])
+
+/** 恢复默认设置：store 里早有 `reset()`，但此前没有任何界面能调到它 */
+async function resetAllSettings(): Promise<void> {
+  const ok = await ui.confirm({
+    title: t('settings.reset'),
+    body: t('settings.resetConfirm'),
+    danger: true
+  })
+  if (ok) await settings.reset()
+}
+
 function sectionTitle(id: string): string {
   const x = tabs.value.find((y) => y.id === id)
   return x ? x.label : ''
@@ -496,6 +516,7 @@ function formatTime(ms: number): string {
                       <div class="set-row">
                         <div>
                           <p class="set-row-label">{{ t('settings.language') }}</p>
+                          <p class="set-row-desc">{{ t('settings.languageDesc') }}</p>
                         </div>
                         <div class="flex rounded-lg bg-panel-2 p-0.5">
                           <button
@@ -535,7 +556,7 @@ function formatTime(ms: number): string {
                           @update:model-value="toggleMenuBar"
                         />
                       </div>
-                      <div class="set-row">
+                      <div class="set-row" :title="t('settings.outlineRightDesc')">
                         <div>
                           <p class="set-row-label">{{ t('settings.outlineRight') }}</p>
                           <p class="set-row-desc">{{ t('settings.outlineRightShort') }}</p>
@@ -594,7 +615,7 @@ function formatTime(ms: number): string {
                           @update:model-value="(v) => settings.set('restoreSession', v)"
                         />
                       </div>
-                      <div class="set-row">
+                      <div class="set-row" :title="t('settings.historyHint')">
                         <div>
                           <p class="set-row-label">{{ t('settings.historyEnabled') }}</p>
                           <p class="set-row-desc">{{ t('settings.historyEnabledDesc') }}</p>
@@ -706,7 +727,7 @@ function formatTime(ms: number): string {
                         {{ t('settings.advanced') }}
                       </summary>
                       <div class="set-fold-body">
-                        <div class="set-row">
+                        <div class="set-row" :title="t('settings.autoCheckUpdateDesc')">
                           <div>
                             <p class="set-row-label">{{ t('settings.autoCheckUpdate') }}</p>
                             <p class="set-row-desc">{{ t('settings.autoCheckUpdateHint') }}</p>
@@ -719,6 +740,17 @@ function formatTime(ms: number): string {
                         </div>
                       </div>
                     </details>
+
+                    <!-- 恢复默认：低频且有破坏性（连语言与主题一起复位）⇒ 放最底下 + 二次确认 -->
+                    <div class="mt-4 flex justify-end">
+                      <button
+                        class="rounded-lg border border-edge px-3 py-1.5 text-[12.5px] text-ink-2 transition-colors hover:border-[color-mix(in_srgb,var(--danger)_45%,transparent)] hover:text-danger"
+                        data-settings-reset
+                        @click="resetAllSettings()"
+                      >
+                        {{ t('settings.reset') }}
+                      </button>
+                    </div>
                   </template>
 
                   <!-- ── 编辑器 ── -->
@@ -773,6 +805,28 @@ function formatTime(ms: number): string {
                           :label="t('settings.codeLineNumbers')"
                           @update:model-value="(v) => settings.set('codeLineNumbers', v)"
                         />
+                      </div>
+                      <div class="set-row" :title="t('settings.remoteImagesHint')">
+                        <div>
+                          <p class="set-row-label">{{ t('settings.remoteImages') }}</p>
+                          <p class="set-row-desc">{{ t('settings.remoteImagesHint') }}</p>
+                        </div>
+                        <div class="flex gap-1.5">
+                          <button
+                            v-for="p in remoteImagePolicies"
+                            :key="p.value"
+                            class="whitespace-nowrap rounded-lg border px-3 py-1.5 text-[12.5px] transition-all duration-150"
+                            :class="
+                              settings.remoteImages === p.value
+                                ? 'border-accent bg-accent-soft text-accent'
+                                : 'border-edge text-ink-2 hover:border-edge-strong'
+                            "
+                            :aria-pressed="settings.remoteImages === p.value"
+                            @click="settings.set('remoteImages', p.value)"
+                          >
+                            {{ p.label }}
+                          </button>
+                        </div>
                       </div>
                     </section>
 

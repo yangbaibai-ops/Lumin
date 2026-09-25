@@ -737,7 +737,9 @@ export const useFilesStore = defineStore('files', {
       const cur = this.current
       // 未落盘的文档没有「磁盘字节」可重新解释：不要静默返回 false（否则用户只会看到「点了没反应」）
       if (!cur?.path) {
-        useUiStore().toast(i18n.global.t('toast.encodingFailed'), 'error')
+        // 「还没落盘」是**另一种**失败：没有磁盘字节可重新解释。文案要说清这一点，
+        // 否则用户只看到「重新打开失败」，不知道先按 Ctrl+S
+        useUiStore().toast(i18n.global.t('toast.encodingNotSaved'), 'error')
         return false
       }
       // 脏文档先问（唯一实现在 lib/dialog：只依赖 ui store，所以 store 用也不会循环导入）

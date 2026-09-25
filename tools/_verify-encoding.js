@@ -979,11 +979,14 @@ const SETUP = `(() => {
     const KEYS = [
       ['encoding', 'auto'],
       ['menu', 'reopenWithEncoding'],
-      ['settings', 'encoding'],
       ['settings', 'encodingHint'],
       ['settings', 'defaultEncoding'],
       ['toast', 'encodingReopenAutoSaveSkipped'],
-      ['toast', 'encodingFailed'],
+      // 「按 xx 编码重新打开失败」改成带 {reason} 占位符的那条（拼接中文全角冒号在
+      // en/ru 里是错的）；「还没落盘」是另一种失败，另有编码（toast.encodingNotSaved）。
+      // 原来的 settings.encoding / toast.encodingFailed 已随 i18n 死键清理删除。
+      ['toast', 'encodingFailedDetail'],
+      ['toast', 'encodingNotSaved'],
       ['statusbar', 'encodingTooltip']
     ]
     for (const loc of ['zh-CN', 'en-US', 'ru-RU']) {

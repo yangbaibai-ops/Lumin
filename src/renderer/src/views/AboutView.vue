@@ -49,15 +49,17 @@ onMounted(async () => {
       <!-- 应用图标：直接展示图标位图本身（原先是一个渐变方块 + 线性 logo，与桌面图标不同源） -->
       <img
         :src="appIconSrc"
-        alt="Lumin"
+        :alt="t('app.name')"
         class="mb-6 h-20 w-20 rounded-[22px]"
         :style="{
           animation: 'lm-pop 0.5s cubic-bezier(0.2, 0.9, 0.3, 1.2)',
           boxShadow: '0 12px 40px var(--glow)'
         }"
       />
-      <h1 class="text-[28px] font-bold tracking-tight text-ink">Lumin</h1>
-      <p class="mt-1 text-[13.5px] font-medium tracking-[0.25em] text-accent">WRITE IN LIGHT.</p>
+      <h1 class="text-[28px] font-bold tracking-tight text-ink">{{ t('app.name') }}</h1>
+      <p class="mt-1 text-[13.5px] font-medium uppercase tracking-[0.25em] text-accent">
+        {{ t('app.tagline') }}
+      </p>
 
       <p class="mt-6 max-w-[440px] text-[13.5px] leading-relaxed text-ink-2">
         {{ t('about.desc') }}
