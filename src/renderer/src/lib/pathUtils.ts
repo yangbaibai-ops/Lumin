@@ -1,35 +1,19 @@
 /**
  * ─── 路径工具（渲染层共用）──────────────────────────────────────────────────
- * 「同一个文件」「是否在某个文件夹里」这两件事在主进程（services/openDocs）与渲染层
- * （lib/openFile、stores/files）都要判，因此抽成独立模块，避免 store ↔ lib 互相 import
- * 形成环，也保证两边判据完全一致（Windows 大小写不敏感 + 分隔符归一 + 目录边界）。
+ * 「同一个文件」「是否在某个文件夹里」这两件事在主进程与渲染层都要判，因此**纯字符串**
+ * 的那半边收在 `src/shared/paths.ts`（一份实现、一份单测；审计 §10「重复实现」），
+ * 这里只做渲染层自己的两件事：目录链计算（`ancestorDirs`）与对外保持原有 API。
+ *
+ * ⚠️ 这里的 `isInside` 是**字面**比较（不解析 `..`）。要防"工作区逃逸"请用主进程那份
+ * （`src/main/pathGuard.ts`，会 resolve）。
  */
+import { isInsideByString, normPath, parentDir, samePath } from '../../../shared/paths.ts'
 
-/** 路径归一：正反斜杠统一、去掉尾部分隔符、Windows 下转小写 */
-export function normPath(p: string): string {
-  return p.replace(/\//g, '\\').replace(/\\+$/, '').toLowerCase()
-}
+export { normPath, samePath, parentDir }
 
-/** 两个路径是否指向同一个文件 */
-export function samePath(a: string | null | undefined, b: string | null | undefined): boolean {
-  return !!a && !!b && normPath(a) === normPath(b)
-}
-
-/** p 是否位于 dir 之内（含 dir 自身）；按目录边界比较，`C:\Docs` 不会把 `C:\Docs2` 判成内部 */
+/** p 是否**字面上**位于 dir 之内（含 dir 自身）；按目录边界比较，`C:\Docs` 不包含 `C:\Docs2` */
 export function isInside(dir: string | null | undefined, p: string): boolean {
-  if (!dir) return false
-  const d = normPath(dir)
-  const t = normPath(p)
-  return t === d || t.startsWith(d + '\\')
-}
-
-/** 取父目录（与主进程 path.dirname 等价，避免为了算父目录再走一次 IPC） */
-export function parentDir(p: string): string {
-  const trimmed = p.replace(/[\\/]+$/, '')
-  const i = Math.max(trimmed.lastIndexOf('\\'), trimmed.lastIndexOf('/'))
-  if (i < 0) return ''
-  if (i === 2 && /^[a-zA-Z]:/.test(trimmed)) return trimmed.slice(0, 3) // `C:\x` → `C:\`
-  return trimmed.slice(0, i)
+  return isInsideByString(dir, p)
 }
 
 /** 从 root 到 p 的父目录链（含 root 与 p 的父目录），用于在侧栏里逐级展开到某个文件 */

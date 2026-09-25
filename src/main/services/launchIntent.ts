@@ -1,5 +1,7 @@
 import { existsSync, statSync } from 'fs'
 import { resolve } from 'path'
+// 路径比较**一份实现**：纯字符串那份在 shared（有单测），主进程不再自己抄一份 norm
+import { samePath } from '../../shared/paths'
 
 /**
  * ─── 启动意图解析（纯函数，可单测）─────────────────────────────────────────────
@@ -47,11 +49,6 @@ export interface ParseOptions {
 }
 
 /** Windows 路径比较：大小写不敏感 + 分隔符统一（与主进程其余地方的口径一致） */
-function samePath(a: string, b: string): boolean {
-  const norm = (p: string): string => p.replace(/\//g, '\\').replace(/\\+$/, '').toLowerCase()
-  return norm(a) === norm(b)
-}
-
 /** 解析失败（抛异常）时返回 null，绝不因为一个坏参数让启动挂掉 */
 function safeResolve(p: string, cwd: string): string | null {
   try {

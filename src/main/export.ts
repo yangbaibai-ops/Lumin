@@ -2,6 +2,9 @@
 import { app, BrowserWindow, dialog } from 'electron'
 import fs from 'fs/promises'
 import { mainLanguage, mainT } from './i18n'
+// HTML 转义唯一实现在 shared/html.ts：导出模板里的标题会进 <title>/<dc:title> 与属性位置，
+// 少转引号等于让标题里的 `"` 直接闭合标签（审计 §10「重复实现」）
+import { escapeHtml } from '../shared/html'
 import type { ExportPayload, EpubMeta } from '../shared/types'
 
 // ─── 最小 ZIP 写入器（STORE 存储，无压缩 —— 足以生成合法 EPUB）─────────────
@@ -112,9 +115,11 @@ function buildHtml(payload: ExportPayload): string {
 </html>`
 }
 
-function escapeHtml(s: string): string {
-  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-}
+/**
+ * HTML 转义：**唯一实现**在 `shared/html.ts`（渲染层若要用也是那一份）。
+ * 此前这里只转 `&<>` —— 而标题会出现在 `<title>`、`<dc:title>` 与属性位置上，
+ * 少转引号就等于让标题里的 `"` 直接闭合标签（审计 §10「重复实现」）。
+ */
 
 export async function exportHtml(payload: ExportPayload): Promise<string | null> {
   const html = buildHtml(payload)

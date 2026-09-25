@@ -6,6 +6,7 @@ import { shell } from 'electron'
 import type { Dirent } from 'fs'
 import { pathToFileURL } from 'url'
 import { db } from './services/database'
+import { isInside } from './pathGuard'
 import { decodeBuffer, encodeText } from './services/encoding'
 import * as openDocs from './services/openDocs'
 import type { FileNode, WorkspaceDoc } from '../shared/types'
@@ -32,10 +33,11 @@ export function normalize(p: string): string {
   return path.normalize(p)
 }
 
-export function isInside(dir: string, p: string): boolean {
-  const rel = path.relative(path.resolve(dir), path.resolve(p))
-  return rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel))
-}
+/**
+ * 工作区逃逸护栏：**唯一实现**在 `src/main/pathGuard.ts`（会解析 `..`，且有单测）。
+ * 这里导入并重新导出，保持既有调用点不变。
+ */
+export { isInside }
 
 /** 校验工作区内的路径（防路径遍历） */
 export function assertWorkspacePath(p: string): string {

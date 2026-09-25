@@ -1,8 +1,8 @@
-/** HTML 转义工具（渲染安全） */
-export function escapeHtml(s: string): string {
-  return s
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-}
+// ─── HTML 转义（渲染层入口）─────────────────────────────────────────────────
+//
+// 审计 §10「重复实现」：`escapeHtml` 以前在 `main/export.ts` 与这里各一份，
+// 而两份的差别是致命的（导出那份少转引号 → 标题里的引号能直接闭合标签）。
+// 现在**唯一实现**在 `src/shared/html.ts`（五个字符都转），导出模板与渲染层都用它；
+// 这个文件只保留原有导入路径（`lib/editor/*` 与 `CodeBlockView.vue` 都从这儿取），
+// 免得为了去重去改五处调用点。
+export { escapeHtml } from '../../../../shared/html.ts'
