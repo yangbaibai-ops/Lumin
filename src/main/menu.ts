@@ -16,6 +16,7 @@ import { app, BrowserWindow, Menu } from 'electron'
 import type { MenuItemConstructorOptions } from 'electron'
 import { settingsStore } from './store'
 import { mainLanguage, mainT } from './i18n'
+import { EXPORT_FORMATS } from '../shared/exportFormats'
 
 function send(action: string): void {
   const win = BrowserWindow.getFocusedWindow()
@@ -64,12 +65,11 @@ export function installMenu(): void {
         { type: 'separator' },
         {
           label: T('export'),
-          submenu: [
-            { label: T('exportPdf'), click: () => send('export-pdf') },
-            { label: T('exportHtml'), click: () => send('export-html') },
-            { label: T('exportWord'), click: () => send('export-word') },
-            { label: T('exportEpub'), click: () => send('export-epub') }
-          ]
+          // 导出子菜单从**唯一清单**派生（审计 §6 P2）：加一种格式不用再来这里补一行
+          submenu: EXPORT_FORMATS.map((f) => ({
+            label: T(f.labelKey),
+            click: () => send(f.menuAction)
+          }))
         },
         { type: 'separator' },
         isMac

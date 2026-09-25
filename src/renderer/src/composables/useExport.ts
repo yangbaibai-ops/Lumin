@@ -55,25 +55,28 @@ export function useExport(): {
           author: 'Lumin'
         }
       )
-      let path: string | null = null
-      if (format === 'pdf') {
-        path = await window.luminAPI.export.pdf(
-          req.args as Parameters<typeof window.luminAPI.export.pdf>[0],
-          req.options as Parameters<typeof window.luminAPI.export.pdf>[1]
-        )
-      } else if (format === 'html') {
-        path = await window.luminAPI.export.html(
-          req.args as Parameters<typeof window.luminAPI.export.html>[0]
-        )
-      } else if (format === 'word') {
-        path = await window.luminAPI.export.word(
-          req.args as Parameters<typeof window.luminAPI.export.word>[0]
-        )
-      } else {
-        path = await window.luminAPI.export.epub(
-          req.args as Parameters<typeof window.luminAPI.export.epub>[0]
-        )
+      /**
+       * 发送表：`Record<ExportFormat, …>` —— **少一个格式 TypeScript 当场报错**，
+       * 不再靠 if/else 链的最后一个 else 兜底（原先 epub 是 else 分支，
+       * 将来加一种格式忘了改这里，它会静默走成 epub）。
+       */
+      const senders: Record<
+        ExportFormat,
+        (req: ReturnType<typeof exportRequest>) => Promise<string | null>
+      > = {
+        pdf: (r) =>
+          window.luminAPI.export.pdf(
+            r.args as Parameters<typeof window.luminAPI.export.pdf>[0],
+            r.options as Parameters<typeof window.luminAPI.export.pdf>[1]
+          ),
+        html: (r) =>
+          window.luminAPI.export.html(r.args as Parameters<typeof window.luminAPI.export.html>[0]),
+        word: (r) =>
+          window.luminAPI.export.word(r.args as Parameters<typeof window.luminAPI.export.word>[0]),
+        epub: (r) =>
+          window.luminAPI.export.epub(r.args as Parameters<typeof window.luminAPI.export.epub>[0])
       }
+      const path = await senders[format](req)
       if (path) ui.toast(i18n.global.t('toast.exportedTo', { path }), 'success')
     } catch (e) {
       // 失败原因作为「详情」展示：标题保持一行可扫读，细节不丢（同类失败自动合并为一条）

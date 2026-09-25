@@ -16,6 +16,8 @@ import { confirmIfDirty, newDocumentWindow } from '../composables/useAppActions'
 import { openExternalFile, openInWindowOrFocus } from '../lib/openFile'
 import { ENCODINGS } from '../../../shared/encodings'
 import { EOL_OPTIONS } from '../../../shared/eol'
+// 导出格式的唯一清单（应用内菜单的二级项从它派生）
+import { EXPORT_FORMATS } from '../../../shared/exportFormats'
 import RecentList from './RecentList.vue'
 import Icon from './Icon.vue'
 
@@ -220,16 +222,16 @@ const GROUPS = computed<Group[]>(() => [
         }
       },
       'sep',
-      // 一级「导出」+ 悬停二级：具体格式收进二级菜单，一级菜单保持短（children 列表）
+      // 一级「导出」+ 悬停二级：具体格式收进二级菜单，一级菜单保持短（children 列表）。
+      // 二级项从**唯一清单**派生（审计 §6 P2）：加一种格式不用再回来补一行
       {
         labelKey: 'menu.export',
         icon: 'download',
-        children: [
-          { labelKey: 'menu.exportPdf', icon: 'file', run: () => runExport('pdf') },
-          { labelKey: 'menu.exportHtml', icon: 'code', run: () => runExport('html') },
-          { labelKey: 'menu.exportWord', icon: 'file', run: () => runExport('word') },
-          { labelKey: 'menu.exportEpub', icon: 'book', run: () => runExport('epub') }
-        ]
+        children: EXPORT_FORMATS.map((f) => ({
+          labelKey: f.labelKey,
+          icon: f.icon,
+          run: () => runExport(f.id)
+        }))
       },
       // 本地历史（Wave 2）：保存前的快照可查看/载入（未落盘文档没有历史）
       {

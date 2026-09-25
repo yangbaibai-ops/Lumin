@@ -11,6 +11,7 @@ import { openExternalFile } from '../lib/openFile'
 import { confirmDiscardIfDirty } from '../lib/dialog'
 import { registerNotificationActions } from '../lib/notificationActions'
 import { SAVE_CONFLICT_KIND } from '../lib/saveConflict'
+import { exportFormatByAction } from '../../../shared/exportFormats'
 import type { MenuAction } from '../../../shared/types'
 
 /** 未保存更改确认：薄适配器 —— 文案与语义只有一份，在 lib/dialog */
@@ -90,6 +91,16 @@ export function useAppActions(): {
 
   function handleMenu(action: string): void {
     const a = action as MenuAction
+    /**
+     * 导出先走**清单查表**（审计 §6 P2「格式清单存在 5 处」）：`export-pdf/html/word/epub`
+     * 这四条不再各写一个 case —— 加一种格式只改 `shared/exportFormats.ts`，
+     * 这里与快捷键表、原生菜单、设置页那张表都自动跟上。
+     */
+    const exportHit = exportFormatByAction(a)
+    if (exportHit) {
+      void runExport(exportHit.id)
+      return
+    }
     switch (a) {
       case 'new':
         // 新窗口 + 工作区不变 + 未命名文档（Ctrl+S 时再选保存位置），见 newDocumentWindow
@@ -112,18 +123,6 @@ export function useAppActions(): {
         break
       case 'save-as':
         void saveAsDoc()
-        break
-      case 'export-pdf':
-        void runExport('pdf')
-        break
-      case 'export-html':
-        void runExport('html')
-        break
-      case 'export-word':
-        void runExport('word')
-        break
-      case 'export-epub':
-        void runExport('epub')
         break
       case 'find':
         // Ctrl+F / 菜单「查找」：打开右上角查找栏（再按一次关闭）。

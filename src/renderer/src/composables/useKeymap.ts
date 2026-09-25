@@ -3,6 +3,7 @@ import { useRouter } from 'vue-router'
 import { useUiStore } from '../stores/ui'
 import { useSettingsStore } from '../stores/settings'
 import { installKeymap, type KeymapCommand } from '../lib/keymap/service'
+import { EXPORT_FORMATS } from '../../../shared/exportFormats'
 import type { useAppActions } from './useAppActions'
 
 /**
@@ -67,34 +68,14 @@ export function useKeymap(actions: ReturnType<typeof useAppActions>): void {
       defaultKeys: 'Mod+Shift+S',
       run: () => handleMenu('save-as')
     },
-    {
-      id: 'file.exportPdf',
-      titleKey: 'menu.exportPdf',
+    // 四个导出命令从**唯一清单**派生（审计 §6 P2）：加一种格式只改 shared/exportFormats.ts
+    ...EXPORT_FORMATS.map((f) => ({
+      id: f.commandId,
+      titleKey: f.labelKey,
       groupKey: 'keymap.groupExport',
-      defaultKeys: 'Mod+Shift+E',
-      run: () => handleMenu('export-pdf')
-    },
-    {
-      id: 'file.exportHtml',
-      titleKey: 'menu.exportHtml',
-      groupKey: 'keymap.groupExport',
-      defaultKeys: null,
-      run: () => handleMenu('export-html')
-    },
-    {
-      id: 'file.exportWord',
-      titleKey: 'menu.exportWord',
-      groupKey: 'keymap.groupExport',
-      defaultKeys: null,
-      run: () => handleMenu('export-word')
-    },
-    {
-      id: 'file.exportEpub',
-      titleKey: 'menu.exportEpub',
-      groupKey: 'keymap.groupExport',
-      defaultKeys: null,
-      run: () => handleMenu('export-epub')
-    },
+      defaultKeys: f.defaultKeys,
+      run: () => handleMenu(f.menuAction)
+    })),
     {
       id: 'file.closeWindow',
       titleKey: 'keymap.closeWindow',

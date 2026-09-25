@@ -24,6 +24,8 @@ import { EOL_OPTIONS, eolLabel, type Eol } from '../../../shared/eol'
 // 主题缩略图的三套色（审计 §8 P2「token 未覆盖的硬编码色」）：原来写死在下面的 themes 里，
 // 已成第二份真值且漂了（深色样机画的是近黑，而深色主题早改成中性灰）
 import { PREVIEW_BY_THEME } from '../../../shared/theme'
+// 导出格式的唯一清单（设置页那张表、原生菜单、快捷键表都从它派生，审计 §6 P2）
+import { EXPORT_FORMATS } from '../../../shared/exportFormats'
 
 /** 本地历史的可选项（保留策略见 shared/history.ts；这里只给几档常用值） */
 const HISTORY_LIMIT_CHOICES = [10, 20, 30, 50, 100]
@@ -312,13 +314,10 @@ const modes = computed<{ mode: EditorMode; icon: string; label: string; desc: st
   }
 ])
 
-/** 导出页那张「支持的格式」表：格式名是品牌名（不翻译），说明走语言包 */
-const exportFormats = computed<{ icon: string; name: string; desc: string }[]>(() => [
-  { icon: 'file', name: 'PDF', desc: t('settings.exportPdfDesc') },
-  { icon: 'code', name: 'HTML', desc: t('settings.exportHtmlDesc') },
-  { icon: 'file', name: 'Word (.doc)', desc: t('settings.exportWordDesc') },
-  { icon: 'book', name: 'EPUB', desc: t('settings.exportEpubDesc') }
-])
+/** 导出页那张「支持的格式」表：从**唯一清单**派生（审计 §6 P2「格式清单存在 5 处」） */
+const exportFormats = computed<{ icon: string; name: string; desc: string }[]>(() =>
+  EXPORT_FORMATS.map((f) => ({ icon: f.icon, name: f.brand, desc: t(f.descKey) }))
+)
 
 /**
  * 远程图片策略（SQLite 里就是 `settings.remoteImages: 'click' | 'always'`）：
