@@ -57,6 +57,18 @@ body.export-body {
 @media print {
   .md-preview { padding: 0; max-width: none; }
   .md-preview pre { white-space: pre-wrap; }
+  /* Pagination (audit §7-18: previously this block only tweaked padding):
+     keep headings with their body, never split code/table/img/quote across pages,
+     and avoid single-line orphans/widows. */
+  .md-preview h1, .md-preview h2, .md-preview h3 {
+    break-after: avoid-page; page-break-after: avoid;
+  }
+  .md-preview pre, .md-preview table, .md-preview img, .md-preview blockquote,
+  .md-preview ul[data-type="taskList"] li {
+    break-inside: avoid; page-break-inside: avoid;
+  }
+  .md-preview p, .md-preview li { orphans: 3; widows: 3; }
+  .md-preview { overflow-wrap: break-word; }
 }
 `
 

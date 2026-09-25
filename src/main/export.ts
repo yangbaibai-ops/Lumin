@@ -1,10 +1,23 @@
 // ─── 主进程：导出服务（PDF / HTML / Word / EPUB）────────────────────────────
 import { app, BrowserWindow, dialog } from 'electron'
 import fs from 'fs/promises'
+import path from 'path'
 import { mainLanguage, mainT } from './i18n'
+import * as fileOps from './fileOps'
 // HTML 转义唯一实现在 shared/html.ts：导出模板里的标题会进 <title>/<dc:title> 与属性位置，
 // 少转引号等于让标题里的 `"` 直接闭合标签（审计 §10「重复实现」）
 import { escapeHtml } from '../shared/html'
+// PDF 页眉/页脚模板（纯函数）：Chromium 只替换 `.pageNumber` / `.totalPages` 这几个类
+import { pdfFooterTemplate, pdfHeaderTemplate } from '../shared/pdfTemplates'
+// EPUB 组装（拆章 / 图片内嵌 / nav / opf）是纯函数，在 shared 里且有单测
+import {
+  buildChapterXhtml,
+  buildNavXhtml,
+  buildOpf,
+  embedImagePath,
+  rewriteImageSrcs,
+  splitChapters
+} from '../shared/epub'
 import type { ExportPayload, EpubMeta } from '../shared/types'
 
 // ─── 最小 ZIP 写入器（STORE 存储，无压缩 —— 足以生成合法 EPUB）─────────────
@@ -83,6 +96,17 @@ function zipStore(entries: ZipEntry[]): Buffer {
   return Buffer.concat([...chunks, centralBuf, end])
 }
 
+/**
+ * 验收旁路：`LUMIN_EXPORT_DIR` 存在（且**不是打包版**）时跳过「另存为」对话框，
+ * 直接写进该目录的默认文件名。存在的理由：原生对话框自动化取消不了，
+ * 没有这条路，导出这条功能就只能靠人眼看（审计 §7 第 18 条要求"导出质量"可验）。
+ * 与 `LUMIN_TRUSTED_PATHS` 同一口径：**仅开发态生效**，打包版忽略。
+ */
+function exportTestDir(): string | null {
+  const dir = process.env['LUMIN_EXPORT_DIR']
+  return dir && !app.isPackaged ? dir : null
+}
+
 // ─── 通用：保存对话框 + 写入 ───────────────────────────────────────────────
 async function saveWithDialog(
   defaultName: string,
@@ -90,12 +114,18 @@ async function saveWithDialog(
   data: Buffer
 ): Promise<string | null> {
   const win = BrowserWindow.getFocusedWindow()
-  const result = await dialog.showSaveDialog(win!, {
-    defaultPath: defaultName,
-    filters: [{ name: ext.toUpperCase(), extensions: [ext] }]
-  })
+  const testDir = exportTestDir()
+  const result = testDir
+    ? { canceled: false, filePath: path.join(testDir, defaultName) }
+    : await dialog.showSaveDialog(win!, {
+        defaultPath: defaultName,
+        filters: [{ name: ext.toUpperCase(), extensions: [ext] }]
+      })
   if (result.canceled || !result.filePath) return null
-  await fs.writeFile(result.filePath, data)
+  // **原子写**（临时文件 + fsync + rename，与文档保存同一套）：
+  // 审计点名导出用的是裸 `fs.writeFile` —— 写一半崩掉会留下一个"看起来是文档、
+  // 打开却是半截"的文件，而用户不会知道该删它。
+  await fileOps.writeBinary(result.filePath, data)
   return result.filePath
 }
 
@@ -137,10 +167,14 @@ export async function exportPdf(
   pdfSettings: { margin: number; pageSize: 'A4' | 'A5' | 'Letter' }
 ): Promise<string | null> {
   const win = BrowserWindow.getFocusedWindow()
-  const result = await dialog.showSaveDialog(win!, {
-    defaultPath: `${payload.title || 'document'}.pdf`,
-    filters: [{ name: 'PDF', extensions: ['pdf'] }]
-  })
+  const testDir = exportTestDir()
+  const defaultName = `${payload.title || 'document'}.pdf`
+  const result = testDir
+    ? { canceled: false, filePath: path.join(testDir, defaultName) }
+    : await dialog.showSaveDialog(win!, {
+        defaultPath: defaultName,
+        filters: [{ name: 'PDF', extensions: ['pdf'] }]
+      })
   if (result.canceled || !result.filePath) return null
   const resultFilePath = result.filePath
 
@@ -162,16 +196,29 @@ export async function exportPdf(
     await new Promise((resolve) => setTimeout(resolve, 250))
 
     const marginInch = pdfSettings.margin / 25.4
+    // ── 页眉页脚（审计 §7 第 18 条）：此前 `headerTemplate|footerTemplate` 全仓 0 命中 ──
+    // Chromium 的模板是**独立 HTML 片段**（不继承页面样式）：必须自带 font-size/颜色，
+    // 且只有 `.pageNumber` / `.totalPages` / `.title` / `.date` 这几个类会被替换。
+    // 上下边距要给页眉页脚留位置，否则它们会被正文压住（Chromium 把它们画在边距区里）。
+    const headerFooterGap = 0.45 // inch
     const data = await printWin.webContents.printToPDF({
       pageSize: pdfSettings.pageSize,
       printBackground: true,
       landscape: false,
-      margins: { top: marginInch, bottom: marginInch, left: marginInch, right: marginInch }
+      displayHeaderFooter: true,
+      headerTemplate: pdfHeaderTemplate(payload.title, marginInch),
+      footerTemplate: pdfFooterTemplate(marginInch),
+      margins: {
+        top: Math.max(marginInch, headerFooterGap),
+        bottom: Math.max(marginInch, headerFooterGap),
+        left: marginInch,
+        right: marginInch
+      }
     })
     if (!data || data.length === 0) {
       throw new Error(mainT('export.pdfEmpty'))
     }
-    await fs.writeFile(resultFilePath, data)
+    await fileOps.writeBinary(resultFilePath, data)
     return resultFilePath
   } catch (err) {
     // 导出失败不留半成品：删除可能已写入的损坏文件后向上抛，由渲染层提示
@@ -187,43 +234,36 @@ export async function exportPdf(
 }
 
 export async function exportEpub(meta: EpubMeta): Promise<string | null> {
-  const result = await dialog.showSaveDialog(BrowserWindow.getFocusedWindow()!, {
-    defaultPath: `${meta.title || 'document'}.epub`,
-    filters: [{ name: 'EPUB', extensions: ['epub'] }]
-  })
+  const testDir = exportTestDir()
+  const defaultName = `${meta.title || 'document'}.epub`
+  const result = testDir
+    ? { canceled: false, filePath: path.join(testDir, defaultName) }
+    : await dialog.showSaveDialog(BrowserWindow.getFocusedWindow()!, {
+        defaultPath: defaultName,
+        filters: [{ name: 'EPUB', extensions: ['epub'] }]
+      })
   if (result.canceled || !result.filePath) return null
 
-  const chapterId = 'ch1'
-  const contentXhtml = `<?xml version="1.0" encoding="utf-8"?>
-<!DOCTYPE html>
-<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops" lang="${meta.lang || 'zh-CN'}">
-<head><meta charset="utf-8"/><title>${escapeHtml(meta.title)}</title><link rel="stylesheet" type="text/css" href="styles.css"/></head>
-<body><article class="md-preview">${meta.html}</article></body>
-</html>`
-
-  const navXhtml = `<?xml version="1.0" encoding="utf-8"?>
-<!DOCTYPE html>
-<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops" lang="${meta.lang || 'zh-CN'}">
-<head><meta charset="utf-8"/><title>${mainT('export.tocTitle')}</title></head>
-<body><nav epub:type="toc"><ol><li><a href="chapter1.xhtml">${escapeHtml(meta.title)}</a></li></ol></nav></body>
-</html>`
-
-  const opf = `<?xml version="1.0" encoding="utf-8"?>
-<package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="uid">
-  <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
-    <dc:identifier id="uid">lumin-${Date.now()}</dc:identifier>
-    <dc:title>${escapeHtml(meta.title)}</dc:title>
-    <dc:language>${meta.lang || 'zh-CN'}</dc:language>
-    <dc:creator>${escapeHtml(meta.author || 'Lumin')}</dc:creator>
-    <meta property="dcterms:modified">${new Date().toISOString().replace(/\.\d+Z$/, 'Z')}</meta>
-  </metadata>
-  <manifest>
-    <item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/>
-    <item id="${chapterId}" href="chapter1.xhtml" media-type="application/xhtml+xml"/>
-    <item id="css" href="styles.css" media-type="text/css"/>
-  </manifest>
-  <spine><itemref idref="${chapterId}"/></spine>
-</package>`
+  const lang = meta.lang || mainLanguage()
+  const tocTitle = mainT('export.tocTitle')
+  // ── 拆章 + 内嵌本地图片（审计 §7 第 18 条）────────────────────────────────
+  // 之前不管文档多大都只打一个 chapter1.xhtml，且 ZIP 里没有图片：
+  // 正文里的本地图是 lumin-file://，阅读器不认 → 导出的书里图全裂。
+  const chapters = splitChapters(meta.html, meta.title || tocTitle)
+  // 图片：把每章用到的本地 src 落成 ZIP 条目（重名按内容去重）
+  const mapping: Record<string, string> = {}
+  const embedded: { name: string; data: Buffer }[] = []
+  for (const chapter of chapters) {
+    for (const src of chapter.images) {
+      if (mapping[src]) continue
+      const bytes = await readLocalImage(src)
+      if (!bytes) continue // 读不到（权限/已删除）就保持原样，不阻塞整本书
+      const name = `img-${embedded.length + 1}${imageExtOf(src)}`
+      mapping[src] = embedImagePath(name)
+      embedded.push({ name, data: bytes })
+    }
+  }
+  const withImages = chapters.map((c) => ({ ...c, html: rewriteImageSrcs(c.html, mapping) }))
 
   const container = `<?xml version="1.0" encoding="utf-8"?>
 <container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container">
@@ -231,15 +271,67 @@ export async function exportEpub(meta: EpubMeta): Promise<string | null> {
 </container>`
 
   const zip = zipStore([
+    // mimetype 必须是**第一个**条目且不压缩（EPUB 规范）
     { name: 'mimetype', data: Buffer.from('application/epub+zip', 'utf-8') },
     { name: 'META-INF/container.xml', data: Buffer.from(container, 'utf-8') },
-    { name: 'OEBPS/content.opf', data: Buffer.from(opf, 'utf-8') },
-    { name: 'OEBPS/nav.xhtml', data: Buffer.from(navXhtml, 'utf-8') },
-    { name: 'OEBPS/chapter1.xhtml', data: Buffer.from(contentXhtml, 'utf-8') },
+    {
+      name: 'OEBPS/content.opf',
+      data: Buffer.from(
+        buildOpf({
+          title: meta.title,
+          author: meta.author || 'Lumin',
+          lang,
+          chapters: withImages.length,
+          images: embedded.map((e) => e.name),
+          id: `lumin-${Date.now()}`,
+          modified: new Date().toISOString().replace(/\.\d+Z$/, 'Z')
+        }),
+        'utf-8'
+      )
+    },
+    {
+      name: 'OEBPS/nav.xhtml',
+      data: Buffer.from(buildNavXhtml(withImages, { title: meta.title, lang, tocTitle }), 'utf-8')
+    },
+    ...withImages.map((c, i) => ({
+      name: `OEBPS/chapter-${i + 1}.xhtml`,
+      data: Buffer.from(buildChapterXhtml(c, { title: meta.title, lang, css: meta.css }), 'utf-8')
+    })),
+    ...embedded.map((e) => ({ name: `OEBPS/${embedImagePath(e.name)}`, data: e.data })),
     { name: 'OEBPS/styles.css', data: Buffer.from(meta.css, 'utf-8') }
   ])
-  await fs.writeFile(result.filePath, zip)
+  // 原子写（临时文件 + fsync + rename）：导出件也不该出现"写了一半"的文件
+  await fileOps.writeBinary(result.filePath, zip)
   return result.filePath
+}
+
+/** 图片扩展名（从 src 里取，取不到按 .png —— 只影响 EPUB 里的 media-type 与文件名） */
+function imageExtOf(src: string): string {
+  const m = /\.(png|jpe?g|gif|webp|svg|avif)(?:[?#]|$)/i.exec(src)
+  return m ? `.${m[1].toLowerCase()}` : '.png'
+}
+
+/**
+ * 读一张**本地**图片的字节（EPUB 内嵌用）。
+ *   * `lumin-file:///…` 是渲染层给本地图的 URL：解码后就是绝对路径；
+ *   * 只放行媒体扩展名 + `isServableMedia`（工作区或已打开文档目录之内）——
+ *     导出是"把磁盘上的文件塞进 ZIP"，没有这道闸就等于给了渲染层一个任意读文件的通道。
+ * 读不到返回 null（调用方保持原 src，不阻塞整本书）。
+ */
+async function readLocalImage(src: string): Promise<Buffer | null> {
+  try {
+    let p = src
+    if (/^lumin-file:/i.test(src)) {
+      const u = new URL(src)
+      p = decodeURIComponent(u.pathname.replace(/^\//, ''))
+    } else if (!path.isAbsolute(src)) {
+      return null // 相对路径需要文档目录才能解析：渲染层给的已经是 lumin-file:// 绝对 URL
+    }
+    if (!fileOps.isServableMedia(p)) return null
+    return await fs.readFile(p)
+  } catch {
+    return null
+  }
 }
 
 export function appVersion(): string {

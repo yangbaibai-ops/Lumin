@@ -109,7 +109,9 @@ const DEFAULT_SUITES = [
   // ── 第十五轮：文档标签（状态栏编辑 → SQLite → 列表展示与按标签过滤）──
   '_verify-tags.js',
   // ── 第十六轮：全局搜索索引（从未打开过的文档也能搜到）+ 命中定位 ──
-  '_verify-search-index.js'
+  '_verify-search-index.js',
+  // ── 第十七轮：导出质量（EPUB 拆章带图 / PDF 页码页眉 / 原子写）──
+  '_verify-export-quality.js'
 ]
 
 /** 自己管理 Electron 实例的套件（运行器不替它们起实例） */
@@ -134,13 +136,15 @@ function parseArgs(argv) {
   for (const a of argv.slice(2)) {
     if (a === '--all') args.all = true
     else if (a === '--keep') args.keep = true
-    else if (a.startsWith('--suite=')) args.suite = a.slice('--suite='.length).split(',').filter(Boolean)
+    else if (a.startsWith('--suite='))
+      args.suite = a.slice('--suite='.length).split(',').filter(Boolean)
     else if (a.startsWith('--port=')) args.port = Number(a.slice('--port='.length))
     else if (a.startsWith('--timeout=')) args.timeoutMs = Number(a.slice('--timeout='.length))
     // 失败重跑次数（默认 1）。见 README 里「FLAKY 与 FAIL 的区别」
     else if (a.startsWith('--retry=')) args.retry = Math.max(0, Number(a.slice('--retry='.length)))
     // 按档挑套件：`--tier=fast` / `--tier=fast,needs-build`（分档见 tierOf）
-    else if (a.startsWith('--tier=')) args.tier = a.slice('--tier='.length).split(',').filter(Boolean)
+    else if (a.startsWith('--tier='))
+      args.tier = a.slice('--tier='.length).split(',').filter(Boolean)
     // 显式跑"探针/遗留"清单（默认只列不判，见 probeSuites）
     else if (a === '--probe') args.probe = true
     // CI 子集：默认矩阵里不注入真实输入的那批（见 ciSubset）
@@ -334,9 +338,7 @@ function runSuite(file, port, timeoutMs, userData) {
   const full = [
     ...raw.matchAll(/TOTAL\s+(\d+)\s+PASS\s+(\d+)\s+FAIL\s+(\d+)\s+SKIP\s+(\d+)/g)
   ].pop()
-  const tot = full
-    ? null
-    : [...raw.matchAll(/TOTAL\s+(\d+)\s+PASS\s+(\d+)\s+FAIL\s+(\d+)/g)].pop()
+  const tot = full ? null : [...raw.matchAll(/TOTAL\s+(\d+)\s+PASS\s+(\d+)\s+FAIL\s+(\d+)/g)].pop()
   const bar = full || tot ? null : [...raw.matchAll(/---\s*(\d+)\/(\d+)\s*PASS/g)].pop()
   if (full) {
     total = Number(full[1])
@@ -363,7 +365,8 @@ function runSuite(file, port, timeoutMs, userData) {
       total = okLines + badLines
     }
   }
-  const skipped = /NO-APP-PAGE|SKIP: 没有可用窗口|SKIP: 9222 上已有|NO_PINIA|INSTANCE-NOT-READY/.test(raw)
+  const skipped =
+    /NO-APP-PAGE|SKIP: 没有可用窗口|SKIP: 9222 上已有|NO_PINIA|INSTANCE-NOT-READY/.test(raw)
   return {
     code: typeof r.status === 'number' ? r.status : 1,
     pass,
@@ -409,7 +412,9 @@ async function main() {
     `## CDP 套件矩阵（${suites.length} 个，端口 ${args.port}，实例数据目录 ${userData}）` +
       `\n## 分档：${Object.entries(tierCount)
         .map(([k, v]) => `${k}×${v}`)
-        .join(' / ')}（fast=默认回归 / needs-build=要对着新构建 / needs-dev=要 5173 / manual=要人看着）`
+        .join(
+          ' / '
+        )}（fast=默认回归 / needs-build=要对着新构建 / needs-dev=要 5173 / manual=要人看着）`
   )
   // 开场先收尾：上一轮留下的实例、以及人工起的隔离实例都会占着 9222，
   // 把第一个套件（可能是自管实例的）顶掉 —— 先清掉临时目录下的实例再开始。
@@ -435,7 +440,9 @@ async function main() {
         inst = startInstance(args.port, userData)
       }
       if (inst.code !== 0) {
-        console.log(`\rFAIL ${file} | 隔离实例没起来（exit ${inst.code}）\n${inst.text.trim().slice(0, 200)}`)
+        console.log(
+          `\rFAIL ${file} | 隔离实例没起来（exit ${inst.code}）\n${inst.text.trim().slice(0, 200)}`
+        )
         if (inst.code === 2) {
           console.log(
             '    提示：调试端口被别的 Electron 实例占着。先关掉它（多半是上一轮留下的隔离实例）：\n' +
@@ -526,7 +533,9 @@ async function main() {
   )
   const skippedAssertions = rows.reduce((n, r) => n + (r.skip || 0), 0)
   if (skippedAssertions)
-    console.log(`（另有 ${skippedAssertions} 条断言按环境如实 SKIP —— SKIP 不算失败，见清单 §1.C.1）`)
+    console.log(
+      `（另有 ${skippedAssertions} 条断言按环境如实 SKIP —— SKIP 不算失败，见清单 §1.C.1）`
+    )
   if (flaky.length) {
     console.log(
       'FLAKY（重跑绿：环境敏感，未判失败；若某条反复出现在这里，请按"套件不稳"修而不是忽略）' +

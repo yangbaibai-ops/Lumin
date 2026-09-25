@@ -300,7 +300,8 @@
     "remoteImagesAlways": "Load automatically",
     "copyDiagnostics": "Copy diagnostics",
     "openLogDir": "Open log folder",
-    "diagnosticsCopied": "Diagnostics copied to the clipboard (no document content)"
+    "diagnosticsCopied": "Diagnostics copied to the clipboard (no document content)",
+    "exportNote": "Export notes: HTML and Word are both HTML documents — Word opens them for editing, but they are not real .docx (OOXML). EPUB splits by top-level headings and embeds local images; PDF gets page numbers and a header."
   },
   "toolbar": {
     "hide": "Hide toolbar",

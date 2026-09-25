@@ -1094,6 +1094,9 @@ function formatTime(ms: number): string {
                           </div>
                         </div>
                         <p class="set-row-desc mt-3">{{ t('settings.exportUsageHint') }}</p>
+                        <!-- 格式的**如实说明**（审计 §7 第 18 条：Word 若要真 docx 得引入
+                             OOXML 写出，否则必须明确标注是降级格式，而不能含糊过去） -->
+                        <p class="set-row-desc mt-1">{{ t('settings.exportNote') }}</p>
                       </div>
                     </details>
                   </template>
