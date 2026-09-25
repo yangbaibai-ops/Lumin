@@ -74,6 +74,8 @@ const api: LuminAPI = {
     remove: (path) => ipcRenderer.invoke('file:remove', path),
     rename: (oldPath, newPath) => ipcRenderer.invoke('file:rename', oldPath, newPath),
     exists: (path) => ipcRenderer.invoke('file:exists', path),
+    /** 只要 mtime（外部改动检测用；不必把整篇正文搬过来） */
+    mtime: (path) => ipcRenderer.invoke('file:mtime', path),
     chooseOpenFile: () => ipcRenderer.invoke('file:chooseOpenFile'),
     chooseSaveFile: (name, ext, dir) => ipcRenderer.invoke('file:chooseSaveFile', name, ext, dir),
     chooseFolder: () => ipcRenderer.invoke('file:chooseFolder'),

@@ -43,6 +43,24 @@ async function waitForSelector(w, sel, ms = 4000) {
   }
 }
 
+/**
+ * 等一个**条件表达式**为真（默认 3s）。
+ *
+ * 与 `waitForSelector` 的区别：这里等的是**状态**而不是元素 —— 例如
+ * "那条每文件编码记录真的从库里删掉了"。固定 `sleep(300)` 只是碰运气：
+ * 机器忙时下一次读到的还是上一版记录，断言就假红（实测 `default-encoding-1252-applies`
+ * 就是这么红的：删了行、但没等到删除生效就重开了文件）。
+ */
+async function waitUntil(w, expr, ms = 3000) {
+  const end = Date.now() + ms
+  for (;;) {
+    const ok = await w.ev(expr).catch(() => false)
+    if (ok === true) return true
+    if (Date.now() > end) return false
+    await sleep(120)
+  }
+}
+
 // ─── 夹具文本（各语言都放一点，确保不是 ASCII 蒙对）──────────────────────────
 const T_UTF8 = '# 你好，UTF-8\n\n正文 content 一行。\n'
 const T_GBK = '# 中文 GBK 测试\n\n这是 GBK 编码的正文，含标点：你好，世界。\n'
@@ -322,12 +340,19 @@ const SETUP = `(() => {
       `(async () => { await window.__E.files().openPath(${JSON.stringify(F.utf8bom)}); return 'ok' })()`
     )
     await sleep(500)
-    const x2 = await w.ev(
-      `(async () => { const ok = await window.__E.files().reopenWithEncoding('utf-8'); const cur = window.__E.files().current; return JSON.stringify({ ok, content: cur.content, encoding: cur.encoding, hadBom: cur.hadBom, dirty: window.__E.files().dirty }) })()`
-    ).then(JSON.parse)
+    const x2 = await w
+      .ev(
+        `(async () => { const ok = await window.__E.files().reopenWithEncoding('utf-8'); const cur = window.__E.files().current; return JSON.stringify({ ok, content: cur.content, encoding: cur.encoding, hadBom: cur.hadBom, dirty: window.__E.files().dirty }) })()`
+      )
+      .then(JSON.parse)
     console.log(
       'A2-reopen-utf8 ' +
-        JSON.stringify({ enc: x2.encoding, hadBom: x2.hadBom, dirty: x2.dirty, bait: x2.content.charCodeAt(0) })
+        JSON.stringify({
+          enc: x2.encoding,
+          hadBom: x2.hadBom,
+          dirty: x2.dirty,
+          bait: x2.content.charCodeAt(0)
+        })
     )
     c(
       'explicit-utf8-strips-bom',
@@ -349,7 +374,10 @@ const SETUP = `(() => {
       JSON.stringify({ first3: [...noBom.subarray(0, 3)] })
     )
     // 把夹具还原成「带 BOM」原样：后面 C 段还要验「保存保留 BOM」
-    fs.writeFileSync(F.utf8bom, Buffer.concat([Buffer.from([0xef, 0xbb, 0xbf]), Buffer.from(T_UTF8, 'utf-8')]))
+    fs.writeFileSync(
+      F.utf8bom,
+      Buffer.concat([Buffer.from([0xef, 0xbb, 0xbf]), Buffer.from(T_UTF8, 'utf-8')])
+    )
     // 记录也要一起还原：上面两次**显式**试读（windows-1252 / utf-8）会把每文件编码记录改掉，
     // 而 Wave 2 尾巴之后「该文件的记录 > 设置里的默认编码」——C 段依赖它被当成 BOM 文件打开
     await w.ev(
@@ -512,14 +540,12 @@ const SETUP = `(() => {
       `(() => { window.__E.files().setContent(${JSON.stringify(EDITED_GARBAGE + '再敲一下。\n')}); return 'ok' })()`
     )
     await sleep(2000)
-    const warnedTwice = JSON.parse(await w.ev(NOTIF_SNAP)).filter((x) => x === 'warning|' + warnTitle)
+    const warnedTwice = JSON.parse(await w.ev(NOTIF_SNAP)).filter(
+      (x) => x === 'warning|' + warnTitle
+    )
     console.log('B2-warn-once ' + JSON.stringify({ warnCount: warnedTwice.length }))
     c('auto-save-skip-warns-once', warnedTwice.length === 1, String(warnedTwice.length))
-    c(
-      'auto-save-still-skipped-on-second-edit',
-      fs.readFileSync(F.gbk).equals(pristinGbk),
-      'ok'
-    )
+    c('auto-save-still-skipped-on-second-edit', fs.readFileSync(F.gbk).equals(pristinGbk), 'ok')
     await w.ev(
       `(() => { window.__E.settings().set('autoSave', ${JSON.stringify(autoSaveWas)}); window.__E.settings().set('autoSaveInterval', ${JSON.stringify(autoSaveIntervalWas)}); return 'ok' })()`
     )
@@ -570,7 +596,11 @@ const SETUP = `(() => {
       )
     )
     console.log('B2-cancel ' + JSON.stringify({ saveResult, ...afterCancel }))
-    c('cancel-save-does-not-write', saveResult === false && fs.readFileSync(F.gbk).equals(pristinGbk), JSON.stringify({ saveResult }))
+    c(
+      'cancel-save-does-not-write',
+      saveResult === false && fs.readFileSync(F.gbk).equals(pristinGbk),
+      JSON.stringify({ saveResult })
+    )
     c(
       'cancel-keeps-guard-armed',
       afterCancel.dirty === true && afterCancel.flag === true,
@@ -741,10 +771,21 @@ const SETUP = `(() => {
       JSON.stringify({ enc: d2.encoding, content: d2.content })
     )
 
-    await w.ev(`(async () => { await window.luminAPI.db.deleteDocument(${JSON.stringify(F.ambig)}) ; return 'ok' })()`)
-    await sleep(300)
+    await w.ev(
+      `(async () => { await window.luminAPI.db.deleteDocument(${JSON.stringify(F.ambig)}) ; return 'ok' })()`
+    )
+    // 等"这条记录真的没了"再重开：后面的断言依赖"没有每文件记忆"这个**状态**，
+    // 而不是"调用过 deleteDocument"。固定 sleep(300) 在机器忙时会落后于删除生效
+    // （读到上一版记录 → `default-encoding-1252-applies` 假红，实测过）。
+    const recordGone = await waitUntil(
+      w,
+      `(async () => (await window.luminAPI.db.getDocument(${JSON.stringify(F.ambig)})) === null)()`,
+      3000
+    )
     const d3 = await open(F.ambig)
-    console.log('D-1252-fresh ' + JSON.stringify({ enc: d3.encoding, content: d3.content }))
+    console.log(
+      'D-1252-fresh ' + JSON.stringify({ recordGone, enc: d3.encoding, content: d3.content })
+    )
     c(
       'default-encoding-1252-applies',
       d3.content === AMBIG_1252 && d3.encoding === 'windows-1252' && d3.content !== d1.content,
@@ -853,26 +894,42 @@ const SETUP = `(() => {
         `(() => { const b = [...document.querySelectorAll('button')].find((x) => /文件\\(F\\)|File\\(F\\)/.test(x.textContent || '')); const r = b.getBoundingClientRect(); return JSON.stringify({ x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2) }) })()`
       )
     )
-    await w.send('Input.dispatchMouseEvent', {
-      type: 'mouseMoved',
-      x: fileBtnRect.x,
-      y: fileBtnRect.y
-    })
-    await w.send('Input.dispatchMouseEvent', {
-      type: 'mousePressed',
-      x: fileBtnRect.x,
-      y: fileBtnRect.y,
-      button: 'left',
-      clickCount: 1
-    })
-    await w.send('Input.dispatchMouseEvent', {
-      type: 'mouseReleased',
-      x: fileBtnRect.x,
-      y: fileBtnRect.y,
-      button: 'left',
-      clickCount: 1
-    })
-    await sleep(500)
+    /**
+     * 打开「文件」菜单。原来是一次点击 + `sleep(500)`，机器忙时一级菜单还没渲染出来，
+     * 后面 7 条 DOM 断言一起红（表现像功能坏了）。现在：点完**等菜单真的出现**，
+     * 没出现就再点一次（最多 3 次）—— 顶部菜单是**悬停/点击**两套交互，重复点击是安全的。
+     */
+    const openFileMenu = async () => {
+      await w.send('Input.dispatchMouseEvent', {
+        type: 'mouseMoved',
+        x: fileBtnRect.x,
+        y: fileBtnRect.y
+      })
+      await w.send('Input.dispatchMouseEvent', {
+        type: 'mousePressed',
+        x: fileBtnRect.x,
+        y: fileBtnRect.y,
+        button: 'left',
+        clickCount: 1
+      })
+      await w.send('Input.dispatchMouseEvent', {
+        type: 'mouseReleased',
+        x: fileBtnRect.x,
+        y: fileBtnRect.y,
+        button: 'left',
+        clickCount: 1
+      })
+    }
+    let menuRows = 0
+    for (let i = 0; i < 3 && menuRows === 0; i += 1) {
+      await openFileMenu()
+      await waitForSelector(w, '.topmenu-drop button', 2500)
+      menuRows =
+        Number(
+          await w.ev(`document.querySelectorAll('.topmenu-drop button').length`).catch(() => 0)
+        ) || 0
+      if (!menuRows) await sleep(200)
+    }
     // 一级行：按 data 找不到，就用「导出」同款结构里的文本找
     const openSub = await w.ev(`(() => {
       const rows = [...document.querySelectorAll('.topmenu-drop button')]
@@ -885,12 +942,17 @@ const SETUP = `(() => {
     if (openSub !== 'no-row') {
       const r = JSON.parse(openSub)
       await w.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: r.x, y: r.y })
-      await sleep(600)
-      subItems = JSON.parse(
-        await w.ev(
-          `(() => { const sub = document.querySelector('.topmenu-sub'); if (!sub) return 'null'; return JSON.stringify([...sub.querySelectorAll('button')].map((b) => ({ text: (b.textContent || '').trim(), active: b.className.includes('bg-accent-soft'), hasCheck: !!b.querySelector('svg') }))) })()`
+      // 悬停展开二级：等二级里的按钮真的出现（原来 sleep(600) 同样不够稳）
+      await waitForSelector(w, '.topmenu-sub button', 4000)
+      for (let i = 0; i < 12; i += 1) {
+        subItems = JSON.parse(
+          await w.ev(
+            `(() => { const sub = document.querySelector('.topmenu-sub'); if (!sub) return 'null'; return JSON.stringify([...sub.querySelectorAll('button')].map((b) => ({ text: (b.textContent || '').trim(), active: b.className.includes('bg-accent-soft'), hasCheck: !!b.querySelector('svg') }))) })()`
+          )
         )
-      )
+        if (Array.isArray(subItems) && subItems.length >= 14) break
+        await sleep(150)
+      }
     }
     console.log('E-submenu ' + JSON.stringify(subItems))
     const domRows = Array.isArray(subItems) ? subItems.length : 0
@@ -919,7 +981,11 @@ const SETUP = `(() => {
       `(() => { const s = document.querySelector('.topmenu-sub'); if (!s) return 'null'; const r = s.getBoundingClientRect(); return JSON.stringify({ bottom: Math.round(r.bottom), inner: window.innerHeight, scrollable: s.scrollHeight > s.clientHeight + 1 }) })()`
     )
     console.log('E-clamp ' + clamped)
-    c('submenu-clamped-to-viewport', clamped !== 'null' && JSON.parse(clamped).bottom <= JSON.parse(clamped).inner, clamped)
+    c(
+      'submenu-clamped-to-viewport',
+      clamped !== 'null' && JSON.parse(clamped).bottom <= JSON.parse(clamped).inner,
+      clamped
+    )
 
     // 真实点击「Windows-1252」那一行 → 文档编码应随之变化
     // （先 scrollIntoView：二级可能被钳成可滚动面板，目标行不一定在首屏）

@@ -375,8 +375,7 @@ export const useFilesStore = defineStore('files', {
        *
        * 现在在**唯一入口**（本函数）上补两条，所有调用点自动受益：
        *   1. 同路径 + 脏 → 先问（确认走原来的换文档语义；取消就原样返回，内容一个字不动）；
-       *   2. 同路径 + 干净 → **直接短路**：内容与磁盘本来就一致，重读只会白跑一遍
-       *      read/upsert/最近列表，还会无谓地重建编辑器视图。
+       *   2. 同路径 + 干净 → 只有"**重开不会带来任何变化**"时才短路（见下面的判据）。
        * 注意判据用 `samePath`（Windows 大小写/分隔符不敏感），不能用 `===`。
        */
       const same = samePath(this.current?.path, path)
@@ -386,20 +385,29 @@ export const useFilesStore = defineStore('files', {
           if (!samePath(this.current?.path, path)) return false // 问的期间文档被换掉了
         } else if (!this.dirty && !opts.discardChanges) {
           /**
-           * 同路径 + 干净 → 不重读磁盘（内容本来就一致），但**草稿检查必须照跑**：
-           * 草稿可能比磁盘新（另一个窗口或上一次运行写的），那份内容是用户唯一的一份 ——
-           * 直接短路会把"检测到未保存的草稿"这条横幅一起省掉
-           * （实测：`_verify-draft-banner.js` 的 newer-file-draft-shows-banner 等三条当场变红）。
+           * 同路径 + 干净：短路的前提是"重开确实什么都不会变"。两件事会变，必须放行：
+           *   1. **磁盘被外部改过**（mtime 变了）→ 重开才是"载入最新内容"；
+           *   2. **生效的默认编码变了**（设置里换成别的编码）→ 重开才会按新编码重新解释，
+           *      这也是"改了默认编码想对当前文件生效"的唯一路径
+           *      （实测：`_verify-encoding.js` 的 `default-encoding-1252-applies` 因此变红）。
+           * 另外草稿检查在两条路上都要跑：草稿可能比磁盘新，那是用户唯一的一份
+           * （实测：`_verify-draft-banner.js` 的三条断言）。
            */
           const cur = this.current
           if (cur) {
             const draft = await window.luminAPI.drafts.load(this.draftKey(path))
             if (restorableDraft(draft, cur.content, cur.path, cur.mtimeMs))
               this.draftRestore = draft
+            const settings = useSettingsStore()
+            const encodingWillChange =
+              settings.defaultEncoding !== 'auto' && settings.defaultEncoding !== cur.encoding
+            const diskMtime = await window.luminAPI.file.mtime(path).catch(() => null)
+            const diskUnchanged =
+              diskMtime !== null && cur.mtimeMs !== null && Math.abs(diskMtime - cur.mtimeMs) <= 1
+            if (!encodingWillChange && diskUnchanged) return true
           }
-          return true
         }
-        // discardChanges 且脏：继续往下走（重新读盘就是这次动作的目的）
+        // 上面没短路的情况：继续往下走，重新读盘就是这次动作的目的
       }
       try {
         // 编码走设置里的「默认编码」（默认 auto = 主进程按判定链猜）。

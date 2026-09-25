@@ -31,6 +31,12 @@ import { defaultSettings } from '../../shared/defaults'
 import { migratePathWithin, samePath } from '../../shared/paths'
 import { runMigrations } from './migrations'
 
+/**
+ * kv 里那份「每文件编码兜底」的键名（唯一实现在 `services/encoding.ts` 的 KV_KEY）。
+ * 这里只读/删这一份兜底，不改写它的语义；两边必须一致，所以把字面量写在一处并注明来源。
+ */
+const ENCODING_KV_KEY = 'fileEncodings'
+
 /** 惰性加载 node:sqlite 的 DatabaseSync 构造函数。
  *  electron-vite(Rollup) 会把顶层 import 的 require 提升到 bundle 顶部、先于
  *  suppressWarnings 的 process.emitWarning 过滤器执行，导致 node:sqlite 的
@@ -404,6 +410,25 @@ class LuminDatabase {
       this.db.prepare('DELETE FROM documents_fts WHERE rowid = ?').run(row.id)
     }
     this.db.prepare('DELETE FROM documents WHERE path = ?').run(filePath)
+    this.forgetEncodingMemory(filePath)
+  }
+
+  /**
+   * 顺手清掉 kv 里那份**每文件编码兜底**（`services/encoding.ts` 的 `fileEncodings`）。
+   *
+   * 为什么必须清：编码记忆的权威来源是 `documents.encoding`，kv 那份只是"文件还没进索引"
+   * 时的兜底。而 `file:read` 的顺序是「先 rememberEncoding 再 upsertDocument」——
+   * 第一次读某个文件时索引行还不存在，记忆**只会落在 kv 里**。于是"删掉索引行"之后
+   * 那份兜底还在：文件删了再建、或明确要求"忘掉这个文件"时，仍按**旧编码**解出乱码
+   * （实测：`_verify-encoding.js` 的 `default-encoding-1252-applies` 就是这么红的）。
+   * 键的归一化与 encoding.ts 的 normKey 保持一致（反斜杠 + 小写）。
+   */
+  private forgetEncodingMemory(filePath: string): void {
+    const key = filePath.replace(/\//g, '\\').toLowerCase()
+    const map = this.kvGet<Record<string, string>>(ENCODING_KV_KEY, {})
+    if (!map || !(key in map)) return
+    delete map[key]
+    this.kvSet(ENCODING_KV_KEY, map)
   }
 
   renameDocument(oldPath: string, newPath: string): void {

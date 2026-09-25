@@ -463,6 +463,17 @@ export function registerIpc(slots: SlotRegistry): void {
   ipcMain.handle('file:exists', (_, p: string) =>
     fileOps.exists(pathGrants.assertAuthorized(p, 'read'))
   )
+  /**
+   * 只要 mtime（不要内容）：渲染层判断"同一个文件自上次打开后有没有被外部改过"。
+   * 为什么单开一条：`file:read` 会把整篇正文搬过来（还要解码 + 建索引），
+   * 而"同路径再次打开"的短路判断只需要一个时间戳（见 stores/files.ts 的 openPath）。
+   * 文件不存在返回 null。
+   */
+  ipcMain.handle('file:mtime', async (_, p: string) => {
+    const fp = pathGrants.assertAuthorized(p, 'read')
+    const st = await stat(fp).catch(() => null)
+    return st ? st.mtimeMs : null
+  })
   ipcMain.handle('file:chooseOpenFile', async () => {
     const win = BrowserWindow.getFocusedWindow()
     const r = await dialog.showOpenDialog(win!, {

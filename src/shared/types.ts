@@ -581,6 +581,12 @@ export interface LuminAPI {
     /** 重命名。目标已存在时 rejects（`TARGET_EXISTS`），不会静默覆盖 */
     rename: (oldPath: string, newPath: string) => Promise<void>
     exists: (path: string) => Promise<boolean>
+    /**
+     * 只要 mtime（文件不存在 → null）。渲染层用它判断"同一个文件自上次打开后有没有被外部改过"：
+     * `file:read` 会把整篇正文搬过来（还要解码 + 建索引），而这个判断只需要一个时间戳
+     * （见 stores/files.ts 的 openPath 短路判据）。文件不存在返回 null。
+     */
+    mtime: (path: string) => Promise<number | null>
     chooseOpenFile: () => Promise<string | null>
     /**
      * 「保存到哪」对话框。`dir` 是对话框**默认落在的文件夹**：
