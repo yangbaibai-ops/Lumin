@@ -22,6 +22,12 @@ let updateSubscribed = false
 let changeSubscribed = false
 
 /**
+ * hydrate 的单调序号：并发的多次 `hydrate()` 里**只有最后发起的那次**能写状态
+ * （见 `hydrate()` 里的说明：否则一次早发晚到的快照会把列表与高亮重置回旧状态）。
+ */
+let hydrateSeq = 0
+
+/**
  * ─── 通知中心 store（窗口私有）─────────────────────────────────────────────
  * 职责：持有「本窗口未关闭通知」的内存镜像，并把每次变更同步到 SQLite（主进程）。
  * 数据流是单向的：store 是唯一入口 → IPC → 数据库；UI（NotificationCenter.vue）
@@ -81,8 +87,20 @@ export const useNotificationsStore = defineStore('notifications', {
           void this.onUpdateStatus(payload as UpdateStatus)
         })
       }
+      /**
+       * ─── 「最新的一次 hydrate 才算数」（审计 §2 数据安全：通知卡片会莫名少几条）───
+       * 每次变更主进程都会回一条 `notifications:changed`，而连续几次变更（例如连发三条通知、
+       * 或一次批量关闭）会让**多个 hydrate 同时在飞**。它们各自的 `list()` 是不同时刻的快照，
+       * 先发出的那次可能**后**落地：那时它会用自己的旧快照覆盖 `items`，
+       * 并且因为「当前 activeId 不在我这份旧快照里」而把高亮**重置回最旧的那条** ——
+       * 表现就是"连发三条通知，带子上却停在第 1 条，`n/m` 也不对"（实测：
+       * `_verify-notifications.js` 的 `default-shows-newest` 等 16 条断言红）。
+       * 用一个单调序号丢弃过期结果：只有最后发起的那次能写状态。
+       */
+      const seq = ++hydrateSeq
       try {
         const rows = await window.luminAPI.notifications.list()
+        if (seq !== hydrateSeq) return // 已经有更晚的一次 hydrate：这次的结果是过期快照
         this.items = rows
         if (this.activeId == null || !rows.some((n) => n.id === this.activeId)) {
           this.activeId = rows[0]?.id ?? null
