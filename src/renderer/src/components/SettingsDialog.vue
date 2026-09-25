@@ -21,6 +21,9 @@ import { FONT_OPTIONS } from '../../../shared/defaults'
 import { formatBytes } from '../../../shared/backup'
 import { ENCODINGS, type EncodingId } from '../../../shared/encodings'
 import { EOL_OPTIONS, eolLabel, type Eol } from '../../../shared/eol'
+// 主题缩略图的三套色（审计 §8 P2「token 未覆盖的硬编码色」）：原来写死在下面的 themes 里，
+// 已成第二份真值且漂了（深色样机画的是近黑，而深色主题早改成中性灰）
+import { PREVIEW_BY_THEME } from '../../../shared/theme'
 
 /** 本地历史的可选项（保留策略见 shared/history.ts；这里只给几档常用值） */
 const HISTORY_LIMIT_CHOICES = [10, 20, 30, 50, 100]
@@ -250,35 +253,46 @@ watch(
 // 选项表写成 computed：文案来自语言包，**语言切换时标题/说明要跟着变**
 // （写成模块级常量的话，切换语言后这一屏会停在旧语言 —— 见审计 §10）
 const themes = computed<
-  { mode: ThemeMode; icon: string; label: string; desc: string; colors: string[] }[]
+  {
+    mode: ThemeMode
+    icon: string
+    label: string
+    desc: string
+    preview: { shell: string; paper: string; line: string }
+  }[]
 >(() => [
   {
     mode: 'auto',
     icon: 'monitor',
     label: t('settings.themeAuto'),
     desc: t('settings.themeAutoDesc'),
-    colors: ['#f5f6f8', '#0f1116']
+    // 跟随系统的样机 = 浅色外壳 + 深色纸（一张图说明"两边都可能是它"）
+    preview: {
+      shell: PREVIEW_BY_THEME.light.shell,
+      paper: PREVIEW_BY_THEME.dark.paper,
+      line: PREVIEW_BY_THEME.dark.line
+    }
   },
   {
     mode: 'light',
     icon: 'sun',
     label: t('settings.themeLight'),
     desc: t('settings.themeLightDesc'),
-    colors: ['#f5f6f8', '#ffffff']
+    preview: PREVIEW_BY_THEME.light
   },
   {
     mode: 'dark',
     icon: 'moon',
     label: t('settings.themeDark'),
     desc: t('settings.themeDarkDesc'),
-    colors: ['#0f1116', '#16181f']
+    preview: PREVIEW_BY_THEME.dark
   },
   {
     mode: 'sepia',
     icon: 'book',
     label: t('settings.themeSepia'),
     desc: t('settings.themeSepiaDesc'),
-    colors: ['#f1e9d5', '#faf4e4']
+    preview: PREVIEW_BY_THEME.sepia
   }
 ])
 
@@ -1276,19 +1290,22 @@ function formatTime(ms: number): string {
                         >
                           <div
                             class="flex h-12 items-center justify-center"
-                            :style="{ background: th.colors[0] }"
+                            :style="{ background: th.preview.shell }"
                           >
                             <div
-                              class="h-7 w-12 rounded-md border border-black/5"
-                              :style="{ background: th.colors[1] }"
+                              class="h-7 w-12 rounded-md border"
+                              :style="{
+                                background: th.preview.paper,
+                                borderColor: th.preview.line
+                              }"
                             >
                               <div
-                                class="mt-1.5 h-1 w-7 rounded-sm bg-black/15"
-                                style="margin-left: 4px"
+                                class="mt-1.5 h-1 w-7 rounded-sm"
+                                :style="{ background: th.preview.line, marginLeft: '4px' }"
                               />
                               <div
-                                class="mt-1 h-1 w-9 rounded-sm bg-black/10"
-                                style="margin-left: 4px"
+                                class="mt-1 h-1 w-9 rounded-sm"
+                                :style="{ background: th.preview.line, marginLeft: '4px' }"
                               />
                             </div>
                           </div>

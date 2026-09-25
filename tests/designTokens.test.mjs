@@ -33,11 +33,12 @@ const RUNTIME_TOKENS = [
 ]
 
 /**
- * 消费端允许的**硬编码颜色上限**（当前实测值）。
- * 它们不是"待办"，而是历史遗留：新增颜色一律走令牌。这条断言的意义是
- * **只能减少、不能增加** —— 想加一个就必须先减一个（或把这次改动写进 CHANGELOG 之前先想清楚）。
+ * 消费端允许的**硬编码颜色上限**。
+ * 审计 §8 P2 列过的那一批（开关白钮 `#fff`、任务勾 `#fff`、下拉箭头 `%238a919e`、
+ * `--shadow-1` 的 rgba 兜底）已全部收进令牌，所以上限收到 **0**：
+ * 新增颜色一律先定义令牌，别再往组件 CSS 里写色值。
  */
-const LITERAL_COLOR_CEILING = { hex: 7, rgb: 4 }
+const LITERAL_COLOR_CEILING = { hex: 0, rgb: 0 }
 
 test('设计令牌：docs/design-tokens.md 的表与 CSS 一致（改了 CSS 就跑 docs:tokens:write）', () => {
   const doc = fs.readFileSync(path.join(ROOT, 'docs/design-tokens.md'), 'utf-8')
@@ -116,9 +117,12 @@ test('设计令牌：消费端只能减少硬编码颜色，不许新增（新�
     // 定义文件本身就是色值的家（theme.css / sidebar.css 的令牌声明）
     if (tokens.SOURCES.some((s) => s.endsWith('/' + file))) continue
     const css = fs.readFileSync(path.join(ASSETS, file), 'utf-8')
+    // **注释先剥掉**：注释里写 "旧值是 #FDECD5"、"底色 rgba(0,0,0,0)" 这类说明是文档，
+    // 不是声明 —— 把它们算成"硬编码色"会让上限永远收不到 0（也会逼着人别在注释里提色值）。
+    const code = css.replace(/\/\*[\s\S]*?\*\//g, '')
     // 只数个数（把命中位置记下来是为了失败时能一眼看出在哪 —— 这里只留文件名，够用）
-    for (const hit of css.matchAll(/#[0-9a-f]{3,8}\b/gi)) stats.hex.push(`${file}:${hit[0]}`)
-    stats.rgb.push(...[...css.matchAll(/\b(?:rgba?|hsla?)\(/g)].map(() => file))
+    for (const hit of code.matchAll(/#[0-9a-f]{3,8}\b/gi)) stats.hex.push(`${file}:${hit[0]}`)
+    stats.rgb.push(...[...code.matchAll(/\b(?:rgba?|hsla?)\(/g)].map(() => file))
   }
   assert.ok(
     stats.hex.length <= LITERAL_COLOR_CEILING.hex && stats.rgb.length <= LITERAL_COLOR_CEILING.rgb,

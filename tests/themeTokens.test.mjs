@@ -16,7 +16,7 @@ import assert from 'node:assert/strict'
 import { readdirSync, readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
-import { PAPER_BY_THEME } from '../src/shared/theme.ts'
+import { PAPER_BY_THEME, PREVIEW_BY_THEME } from '../src/shared/theme.ts'
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..')
 /**
@@ -57,6 +57,24 @@ function hex(v) {
   return [0, 2, 4].map((i) => parseInt(h.slice(i, i + 2), 16))
 }
 
+/** 半透明色（`rgba(...)` / `rgb(r g b / a)`）：把前景按 alpha 合成到不透明背景上再比 */
+function rgba(v) {
+  const m = /^rgba?\(\s*([\d.]+)[,\s]+([\d.]+)[,\s]+([\d.]+)(?:[,/\s]+([\d.]+%?))?\s*\)$/i.exec(
+    String(v).trim()
+  )
+  assert.ok(m, `不是合法的 rgb/rgba 色值：${v}`)
+  const raw = m[4]
+  const a = raw === undefined ? 1 : raw.endsWith('%') ? parseFloat(raw) / 100 : parseFloat(raw)
+  return { rgb: [1, 2, 3].map((i) => Number(m[i])), a }
+}
+
+/** 把半透明前景压到不透明背景上（用于"遮罩压暗了多少"这类判断） */
+function over(fg, bg) {
+  const f = rgba(fg)
+  const b = Array.isArray(bg) ? bg : hex(bg)
+  return f.rgb.map((c, i) => c * f.a + b[i] * (1 - f.a))
+}
+
 /** WCAG 相对亮度 */
 function luminance(rgb) {
   const [r, g, b] = rgb.map((v) => {
@@ -66,9 +84,10 @@ function luminance(rgb) {
   return 0.2126 * r + 0.7152 * g + 0.0722 * b
 }
 
-/** WCAG 对比度（亮/暗自动排序，≥1） */
+/** WCAG 对比度（亮/暗自动排序，≥1）；两个参数都可以是 hex 串或 [r,g,b] */
 function contrast(a, b) {
-  const [x, y] = [luminance(hex(a)), luminance(hex(b))]
+  const asRgb = (v) => (Array.isArray(v) ? v : hex(v))
+  const [x, y] = [luminance(asRgb(a)), luminance(asRgb(b))]
   return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05)
 }
 
@@ -235,4 +254,61 @@ test('代码块配色：四档 token 对 --code-bg 均 ≥ 4.5:1（三主题）'
     }
   }
   console.log('代码块配色对比度 ' + JSON.stringify(report))
+})
+
+/**
+ * ─── 表单控件 / 遮罩 / 主题缩略图（审计 §8 P2「token 未覆盖的硬编码色」）─────────────
+ *
+ * 这一组守的是**原来写死在组件 CSS 里的那几个颜色**：
+ *   * 开关圆钮与任务勾选框的勾原来是 `#fff`，浅色下压 --accent 有 4.8:1，但**深色下只有
+ *     2.63:1**（图形要求 ≥ 3:1）——现在两档走 --control-on / --control-ink，逐主题断言；
+ *   * 遮罩原来是 `bg-black/30` 这类字面量，现在走 --scrim（这里只断言"确实是半透明深色"，
+ *     因为遮罩不是"要被看清楚的图形"，而是"要被看穿的层"）；
+ *   * 设置页那张主题缩略图原来是第二份真值（且已经漂了：深色样机画的是近黑），现在
+ *     shell/paper 与 CSS 令牌逐主题对账，line 必须在自己那块纸上看得见。
+ */
+test('表单控件：圆钮 / 勾 对"开"的填充 ≥ 3:1（三主题，正是审计实测的 2.63:1 那一条）', () => {
+  const report = {}
+  for (const t of THEMES) {
+    const c = contrast(TOKENS[t]['--control-ink'], TOKENS[t]['--control-on'])
+    report[t] = Number(c.toFixed(2))
+    assert.ok(
+      c >= 3,
+      `${t}：--control-ink=${TOKENS[t]['--control-ink']} 对 --control-on=${TOKENS[t]['--control-on']} ` +
+        `只有 ${f(c)}:1（图形要求 ≥ 3）`
+    )
+  }
+  console.log('控件开关对比度 ' + JSON.stringify(report))
+})
+
+test('遮罩（--scrim）：半透明、压暗纸面，且不是"几乎看不见"的一层', () => {
+  for (const t of THEMES) {
+    const { a } = rgba(TOKENS[t]['--scrim'])
+    assert.ok(
+      a >= 0.25 && a <= 0.6,
+      `${t}：--scrim 的 alpha=${a}，遮罩要么压不住要么糊死底下的内容`
+    )
+    const dimmed = over(TOKENS[t]['--scrim'], TOKENS[t]['--paper'])
+    const c = contrast(dimmed, TOKENS[t]['--paper'])
+    assert.ok(c >= 1.3, `${t}：遮罩压在纸上只有 ${f(c)}:1，用户看不出"底下被挡住了"`)
+  }
+})
+
+test('主题缩略图（shared/theme.ts）与令牌逐主题对账，且内部线在自己那块纸上看得见', () => {
+  for (const t of THEMES) {
+    const p = PREVIEW_BY_THEME[t]
+    assert.equal(p.shell.toLowerCase(), TOKENS[t]['--app'].toLowerCase(), `${t}：样机外壳 ≠ --app`)
+    assert.equal(
+      p.paper.toLowerCase(),
+      TOKENS[t]['--paper'].toLowerCase(),
+      `${t}：样机纸色 ≠ --paper（缩略图会指向另一个主题）`
+    )
+    assert.equal(
+      p.paper.toLowerCase(),
+      PAPER_BY_THEME[t].toLowerCase(),
+      `${t}：样机纸色 ≠ PAPER_BY_THEME`
+    )
+    const c = contrast(over(p.line, p.paper), p.paper)
+    assert.ok(c >= 1.1, `${t}：样机内部线在自己那块纸上只有 ${f(c)}:1，看不出是"文字线"`)
+  }
 })

@@ -114,6 +114,16 @@
   --btn-solid: #4b5563;
   --btn-solid-2: #374151;
   --btn-ink: #ffffff;
+  /* ── 表单控件（开关 / 任务勾选框）的两档（审计 §8 P2「token 未覆盖的硬编码色」）──────────
+     --control-on  "开"的填充（开关轨道 / 勾选框底）
+     --control-ink 压在上面的圆钮 / 勾
+     原来这里是写死的 `#fff`：浅色下白钮压 --accent 4.8:1 没问题，**深色下白钮压 --accent
+     (#9aa0aa) 只有 2.63:1**（图形要求 ≥ 3:1，审计已实测）。所以深色的 --control-on 刻意
+     **不跟 --accent 走**，另取一档更深的灰；两者都比对由 tests/themeTokens.test.mjs 钉死。 */
+  --control-on: #6b7280;
+  --control-ink: #ffffff;
+  /* 遮罩（对话框 / 全局搜索 / 草稿弹窗）：压暗底下的内容，不是"颜色"而是"整层不透明度" */
+  --scrim: rgba(16, 24, 40, 0.32);
   /* 代码高亮的两档「结构色」：偏蓝的板岩色，与字符串绿 / 数字琥珀区分开，且不沾紫 */
   --code-key: #3f6592;
   --code-key-2: #2b6f8f;
@@ -170,6 +180,11 @@
   --btn-solid: #5a616d;
   --btn-solid-2: #464d58;
   --btn-ink: #f3f4f6;
+  /* 圆钮 / 勾不跟 --accent 走：白钮压 #9aa0aa 只有 2.63:1，这里取 --accent 更深一档的灰使
+     「钮 ⇄ 轨道」达到 3.94:1；钮本身用 --ink（比纯白柔和，深色下不刺眼） */
+  --control-on: #6b7280;
+  --control-ink: #e6e8ec;
+  --scrim: rgba(0, 0, 0, 0.45);
   --code-key: #8ab4e8;
   --code-key-2: #7fc4e0;
   --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.35);
@@ -220,6 +235,10 @@
   --btn-solid: #6b5c46;
   --btn-solid-2: #57492f;
   --btn-ink: #fdf8ec;
+  /* 暖纸下 --accent(#8a7f6b) 对白钮已有 3.9:1，这里保持同一档；钮取 --elevate（暖白） */
+  --control-on: #8a7f6b;
+  --control-ink: #fdf8ec;
+  --scrim: rgba(74, 59, 42, 0.34);
   /* 板岩蓝压深一档：原 #4a6a92 对 --code-bg(#efe4c9) 只有 4.409:1，代码正文级字号要 >= 4.5 */
   --code-key: #456088;
   /* 同理 #2b6f8f 在暖纸上只有 4.402:1 */
@@ -256,4 +275,8 @@
   --color-danger: var(--danger);
   --color-warning: var(--warning);
   --color-ok: var(--ok);
+  /* 遮罩要能用 Tailwind 类写（`bg-scrim`），这样组件里不再出现 bg-black/30 这类字面色 */
+  --color-scrim: var(--scrim);
+  --color-control-on: var(--control-on);
+  --color-control-ink: var(--control-ink);
 }

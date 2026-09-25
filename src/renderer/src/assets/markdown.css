@@ -129,8 +129,9 @@
   transition: all 0.15s ease;
 }
 .md-preview li > input[type='checkbox']:checked {
-  background: var(--accent);
-  border-color: var(--accent);
+  /* 勾选框的"开"填充与勾同开关一套令牌（深色下原 #fff 压在 --accent 上只有 2.63:1） */
+  background: var(--control-on);
+  border-color: var(--control-on);
 }
 .md-preview li > input[type='checkbox']:checked::after {
   content: '';
@@ -139,7 +140,7 @@
   top: 1px;
   width: 4px;
   height: 8px;
-  border: solid #fff;
+  border: solid var(--control-ink);
   border-width: 0 2px 2px 0;
   transform: rotate(45deg);
 }

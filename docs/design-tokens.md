@@ -18,7 +18,7 @@ npm run docs:tokens:write
 |---|---|
 | 定义令牌的文件 | `src/renderer/src/assets/theme.css` / `src/renderer/src/assets/sidebar.css` |
 | 声明块 | 6 个 |
-| 令牌总数 | 150 |
+| 令牌总数 | 162 |
 | 重复定义（同一声明块内） | 0 |
 
 > 这张表由 `node tools/doc-tokens.js --write` 生成，`npm run docs:tokens:check` 校验；
@@ -26,7 +26,7 @@ npm run docs:tokens:write
 
 ### src/renderer/src/assets/theme.css
 
-**:root, .theme-light**（第 6 行起，41 个）
+**:root, .theme-light**（第 6 行起，44 个）
 
 | 令牌 | 值 |
 |---|---|
@@ -67,12 +67,15 @@ npm run docs:tokens:write
 | `--btn-solid` | `#4b5563` |
 | `--btn-solid-2` | `#374151` |
 | `--btn-ink` | `#ffffff` |
+| `--control-on` | `#6b7280` |
+| `--control-ink` | `#ffffff` |
+| `--scrim` | `rgba(16, 24, 40, 0.32)` |
 | `--code-key` | `#3f6592` |
 | `--code-key-2` | `#2b6f8f` |
 | `--shadow-1` | `0 1px 2px rgba(16, 24, 40, 0.06)` |
 | `--shadow-2` | `0 8px 28px rgba(16, 24, 40, 0.1)` |
 
-**.theme-dark**（第 62 行起，41 个）
+**.theme-dark**（第 67 行起，44 个）
 
 | 令牌 | 值 |
 |---|---|
@@ -113,12 +116,15 @@ npm run docs:tokens:write
 | `--btn-solid` | `#5a616d` |
 | `--btn-solid-2` | `#464d58` |
 | `--btn-ink` | `#f3f4f6` |
+| `--control-on` | `#6b7280` |
+| `--control-ink` | `#e6e8ec` |
+| `--scrim` | `rgba(0, 0, 0, 0.45)` |
 | `--code-key` | `#8ab4e8` |
 | `--code-key-2` | `#7fc4e0` |
 | `--shadow-1` | `0 1px 2px rgba(0, 0, 0, 0.35)` |
 | `--shadow-2` | `0 10px 32px rgba(0, 0, 0, 0.5)` |
 
-**.theme-sepia**（第 113 行起，41 个）
+**.theme-sepia**（第 122 行起，44 个）
 
 | 令牌 | 值 |
 |---|---|
@@ -159,19 +165,22 @@ npm run docs:tokens:write
 | `--btn-solid` | `#6b5c46` |
 | `--btn-solid-2` | `#57492f` |
 | `--btn-ink` | `#fdf8ec` |
+| `--control-on` | `#8a7f6b` |
+| `--control-ink` | `#fdf8ec` |
+| `--scrim` | `rgba(74, 59, 42, 0.34)` |
 | `--code-key` | `#456088` |
 | `--code-key-2` | `#266480` |
 | `--shadow-1` | `0 1px 2px rgba(97, 74, 32, 0.08)` |
 | `--shadow-2` | `0 8px 28px rgba(97, 74, 32, 0.14)` |
 
-**@theme**（第 165 行起，2 个）
+**@theme**（第 178 行起，2 个）
 
 | 令牌 | 值 |
 |---|---|
 | `--font-sans` | `'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif` |
 | `--font-mono` | `'JetBrains Mono', ui-monospace, 'Cascadia Code', 'SF Mono', Consolas, Menlo, monospace` |
 
-**@theme inline**（第 173 行起，18 个）
+**@theme inline**（第 186 行起，21 个）
 
 | 令牌 | 值 |
 |---|---|
@@ -193,6 +202,9 @@ npm run docs:tokens:write
 | `--color-danger` | `var(--danger)` |
 | `--color-warning` | `var(--warning)` |
 | `--color-ok` | `var(--ok)` |
+| `--color-scrim` | `var(--scrim)` |
+| `--color-control-on` | `var(--control-on)` |
+| `--color-control-ink` | `var(--control-ink)` |
 
 
 ### src/renderer/src/assets/sidebar.css

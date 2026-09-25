@@ -136,9 +136,9 @@ docs/                     # 手册 / 整改方案 / 打包实测
 |---|---|---|
 | `src/main` | 31 | 6982 |
 | `src/preload` | 2 | 219 |
-| `src/shared` | 23 | 2636 |
-| `src/renderer` | 119 | 24140 |
-| `src 合计` | 175 | 33977 |
+| `src/shared` | 23 | 2653 |
+| `src/renderer` | 119 | 24157 |
+| `src 合计` | 175 | 34011 |
 
 口径：`src/main`/`preload`/`shared` 数 `.ts`，`src/renderer` 数 `.ts`+`.vue`（含子目录）。
 

@@ -22,3 +22,20 @@ export const PAPER_BY_THEME = {
 } as const
 
 export type PaperTheme = keyof typeof PAPER_BY_THEME
+
+// ─── 设置页「主题缩略图」的颜色（小样机）─────────────────────────────────────
+//
+// 那张缩略图以前把三套色**写死在组件里**，于是成了第二份真值，而且已经漂了：
+// 深色样机画的是近黑（`#0f1116` / `#16181f`），而深色主题早就按用户口径改成中性灰
+// （`--app #2b2e33` / `--paper #35383d`）—— 用户按缩略图选"深色"，选到的却是另一种深色。
+// 现在 `paper` 直接引用 `PAPER_BY_THEME`，`shell` 与 CSS 的 `--app` 由
+// `tests/themeTokens.test.mjs` 逐主题对账（单测穷举，组件里就不再出现字面色值）。
+//
+// `line` = 样机窗口里那两条"文字线"与边框：它压在**那个主题自己的纸上**，
+// 所以深色要用白线、浅色/暖纸用黑线（单测按"线的合成色对纸 ≥ 1.1:1"守住"看得见"）。
+export const PREVIEW_BY_THEME: Record<PaperTheme, { shell: string; paper: string; line: string }> =
+  {
+    light: { shell: '#fafafa', paper: PAPER_BY_THEME.light, line: 'rgba(16, 24, 40, 0.16)' },
+    dark: { shell: '#2b2e33', paper: PAPER_BY_THEME.dark, line: 'rgba(255, 255, 255, 0.24)' },
+    sepia: { shell: '#f1e9d5', paper: PAPER_BY_THEME.sepia, line: 'rgba(90, 74, 48, 0.18)' }
+  }

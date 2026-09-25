@@ -123,7 +123,7 @@ onBeforeUnmount(() => {
     <Transition name="fade">
       <div
         v-if="ui.globalSearch.open"
-        class="fixed inset-0 z-[140] flex items-start justify-center bg-black/30 pt-[12vh] backdrop-blur-[2px]"
+        class="fixed inset-0 z-[140] flex items-start justify-center bg-scrim pt-[12vh] backdrop-blur-[2px]"
         role="dialog"
         aria-modal="true"
         :aria-label="$t('menu.globalSearch')"
