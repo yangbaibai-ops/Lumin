@@ -8,6 +8,13 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { planUntitledDraft } from '../src/shared/drafts.ts'
+import {
+  DRAFT_GC_MAX_AGE_MS,
+  FILE_DRAFT_PREFIX,
+  fileDraftKey,
+  isFileDraftKey,
+  planDraftGc
+} from '../src/shared/drafts.ts'
 
 const draft = (content, ownerUid) => ({ key: 'x', path: null, content, savedAt: 1000, ownerUid })
 
@@ -139,4 +146,84 @@ test('文件草稿（file-<路径>）不参与未命名草稿的判定', () => {
     { key: 'file-d_3a_5cx_md', data: draft('某篇文档的草稿', 'gone') }
   ])
   assert.deepEqual(ops(steps), [])
+})
+
+// ─── 草稿目录的垃圾回收（审计 §2 P1：`userData/drafts` 只增不减）───────────────
+//
+// 这块的失败方式是**不可逆**的：判错一条就是删掉用户没保存过的正文。
+// 所以负例（"不该删的"）比正例更重要，下面每条正例都配了对应的负例。
+
+const DAY = 24 * 60 * 60 * 1000
+const NOW = 1_800_000_000_000
+
+/** 造一个 GC 候选条目 */
+const gcEntry = (name, key, ageDays, size = 100) => ({
+  name,
+  key,
+  mtimeMs: NOW - ageDays * DAY,
+  size
+})
+
+test('GC：写盘临时文件（*.tmp）无论多新都删 —— 它根本不是草稿，没人读得到它', () => {
+  const plan = planDraftGc([gcEntry('a1b2c3d4e5f60718.json.deadbeef.tmp', null, 0)], NOW)
+  assert.deepEqual(plan, [{ name: 'a1b2c3d4e5f60718.json.deadbeef.tmp', reason: 'tmp', size: 100 }])
+})
+
+test('GC：有磁盘正本的草稿超过 30 天才删（文档一保存它就被清，躺着说明早没用了）', () => {
+  const old = gcEntry('abc.json', fileDraftKey('D:\\ws\\a.md'), 31)
+  const edge = gcEntry('edge.json', fileDraftKey('D:\\ws\\b.md'), 30) // 刚好 30 天：留着
+  const fresh = gcEntry('fresh.json', fileDraftKey('D:\\ws\\c.md'), 1)
+  const plan = planDraftGc([old, edge, fresh], NOW)
+  assert.deepEqual(
+    plan.map((x) => [x.name, x.reason]),
+    [['abc.json', 'stale-file']]
+  )
+})
+
+test('GC：**未命名草稿永不按时间删**（那是没有磁盘正本的正文，用户唯一的一份）', () => {
+  const entries = [
+    gcEntry('u0.json', 'untitled-0', 400),
+    gcEntry('u1.json', 'untitled-7', 400),
+    gcEntry('orph.json', 'untitled-orphan', 400),
+    gcEntry('orph2.json', 'untitled-orphan-2', 400),
+    gcEntry('legacy.json', 'untitled', 400)
+  ]
+  assert.deepEqual(planDraftGc(entries, NOW), [])
+})
+
+test('GC：连 JSON 都解不开的旧文件才清（新草稿是原子写的，不会再产生截断文件）', () => {
+  const brokenOld = gcEntry('broken.json', null, 31)
+  const brokenNew = gcEntry('broken-new.json', null, 2)
+  const plan = planDraftGc([brokenOld, brokenNew], NOW)
+  assert.deepEqual(
+    plan.map((x) => x.reason),
+    ['unreadable']
+  )
+})
+
+test('GC：不认识的键与非 .json 文件一律不碰（草稿目录里可能就是有别的东西）', () => {
+  const entries = [
+    gcEntry('whatever.json', 'some-other-key', 900),
+    gcEntry('readme.txt', null, 900),
+    gcEntry('noext', null, 900),
+    gcEntry('a.json.bak', null, 900)
+  ]
+  assert.deepEqual(planDraftGc(entries, NOW), [])
+})
+
+test('GC：mtime 缺失/非数字时不删（判据不成立就保守）', () => {
+  assert.deepEqual(planDraftGc([gcEntry('x.json', fileDraftKey('D:\\a.md'), 0, 10)], NOW), [])
+  const nan = { name: 'y.json', key: fileDraftKey('D:\\b.md'), mtimeMs: Number.NaN, size: 1 }
+  assert.deepEqual(planDraftGc([nan], NOW), [])
+})
+
+test('草稿键的构造只有一份（渲染层写、主进程清理共用 shared/drafts.ts）', () => {
+  // 大写路径要折叠成小写：Windows 上同一个文件的两种大小写写法必须是**同一个键**，
+  // 否则 GC 会把"同一个文件的另一份草稿"当成两回事（也要能对上 file- 前缀）
+  assert.equal(fileDraftKey('D:\\WS\\A.md'), fileDraftKey('d:\\ws\\a.md'))
+  assert.ok(isFileDraftKey(fileDraftKey('D:\\ws\\a.md')))
+  assert.ok(!isFileDraftKey('untitled-0'))
+  assert.ok(!isFileDraftKey('untitled-orphan'))
+  assert.equal(FILE_DRAFT_PREFIX, 'file-')
+  assert.ok(DRAFT_GC_MAX_AGE_MS >= 7 * DAY, '保留期不该短于一周（草稿是用户唯一的副本）')
 })

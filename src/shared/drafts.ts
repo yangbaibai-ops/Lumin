@@ -70,6 +70,25 @@ export function untitledDraftSlot(key: string): number | null {
   return m ? Number(m[1]) : null
 }
 
+/**
+ * 有路径的文档，草稿键 = `file-` + `encodeURIComponent(小写路径)`。
+ *
+ * 放在 shared 是因为**写**（渲染层的 draftRules）与**清理**（主进程的草稿 GC）
+ * 必须用同一套编码：GC 靠 `file-` 前缀认出"这份草稿对应一个磁盘文件"，
+ * 前缀一漂，清理规则就悄悄失效（或者反过来删错东西）。
+ */
+export const FILE_DRAFT_PREFIX = 'file-'
+
+/** 某个路径的草稿键 */
+export function fileDraftKey(path: string): string {
+  return FILE_DRAFT_PREFIX + encodeURIComponent(path.toLowerCase())
+}
+
+/** 是不是"有磁盘正本"的草稿键 */
+export function isFileDraftKey(key: string): boolean {
+  return key.startsWith(FILE_DRAFT_PREFIX)
+}
+
 // ─── 「这份草稿该不该给某个窗口」的判定（纯函数，可单测）──────────────────────
 // 把判定从 I/O 里抽出来的理由：这块语义连续出过三次真 bug（见 manual §4.44/§4.45/§4.49），
 // 而它原先埋在 main/drafts.ts 的文件读写里，只能靠 40 秒级的端到端套件验证。
@@ -201,4 +220,76 @@ export function planUntitledDraft(
   }
   if (best) steps.push({ op: 'adopt', from: best.key, draft: best.data })
   return steps
+}
+
+// ─── 草稿目录的垃圾回收（纯函数，可单测）────────────────────────────────────
+// 审计 §2 P1：「`userData/drafts` 只增不减」。
+//
+// 三条规则，**保守到近乎偏执**，因为删错一份就等于删掉用户没保存过的正文：
+//   1. `*.tmp`（写盘临时文件）—— 崩溃在 writeFile 与 rename 之间的残留，
+//      它**不是**草稿（`listDrafts` 也读不到它），随时可删；
+//   2. `file-*` 草稿超过 `maxAgeMs` 未被动过 —— 它对应一个**磁盘正本**：
+//      文档保存成功时那份草稿会被删掉、关闭时也会被清，能在盘上躺 30 天说明
+//      那个文件早已保存/早已不在。**有正本的草稿不是"唯一副本"，删掉不冒丢稿的风险**；
+//   3. 连 JSON 都解不开的旧文件超过 `maxAgeMs` —— 现在草稿是原子写的，不会再产生
+//      截断文件；这些只会是历史版本非原子写留下的，而且它们**本来就无法恢复**
+//      （`loadDraft` 解析失败即返回 null）。
+//
+// 明确**不删**的东西：任何 `untitled*` 键（含停放键与历史兼容键）—— 那是没有磁盘正本的
+// 正文，是用户唯一的一份；以及任何不认识的键/非 `.json` 文件（可能是别的东西）。
+
+/** 默认保留期：超过这么久没动过的 `file-*` 草稿才会被清理 */
+export const DRAFT_GC_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000
+
+/** 我们自己的写盘临时文件名（`<sha1-16>.json.<8位十六进制>.tmp`，见 main/drafts.ts） */
+export const DRAFT_TMP_RE = /\.[0-9a-f]{8}\.tmp$/i
+
+/** 草稿目录里的一个条目（主进程列目录 + 解析后传进来） */
+export interface DraftGcEntry {
+  name: string
+  /** 解析出来的键；解析失败或非 `.json` 文件为 null */
+  key: string | null
+  mtimeMs: number
+  size: number
+}
+
+export type DraftGcReason =
+  /** 写盘临时文件的残留 */
+  | 'tmp'
+  /** 有磁盘正本的草稿，太久没动 */
+  | 'stale-file'
+  /** 连 JSON 都解不开的旧文件 */
+  | 'unreadable'
+
+export interface DraftGcPlan {
+  name: string
+  reason: DraftGcReason
+  size: number
+}
+
+/**
+ * 该删哪些（返回的每一项都写明**为什么**，便于在日志与验收里核对）。
+ * 时间判据用 `age > maxAgeMs` 而不是 `>=`：边界上宁可留着。
+ * `mtimeMs` 是 NaN/缺失时同样 **不删**（判据不成立就保守）。
+ */
+export function planDraftGc(
+  entries: readonly DraftGcEntry[],
+  nowMs: number,
+  maxAgeMs: number = DRAFT_GC_MAX_AGE_MS
+): DraftGcPlan[] {
+  const out: DraftGcPlan[] = []
+  for (const e of entries) {
+    if (DRAFT_TMP_RE.test(e.name)) {
+      out.push({ name: e.name, reason: 'tmp', size: e.size })
+      continue
+    }
+    if (!e.name.endsWith('.json')) continue // 不认识的条目：不碰
+    if (!(nowMs - e.mtimeMs > maxAgeMs)) continue // 太新：一律留着
+    if (e.key === null) {
+      out.push({ name: e.name, reason: 'unreadable', size: e.size })
+      continue
+    }
+    if (isFileDraftKey(e.key)) out.push({ name: e.name, reason: 'stale-file', size: e.size })
+  }
+  return out
 }

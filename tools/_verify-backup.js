@@ -18,7 +18,7 @@ const os = require('os')
 const path = require('path')
 const fs = require('fs')
 const { spawnSync } = require('child_process')
-const { connect, settle, sleep, Reporter, fatal } = require('./lib/harness')
+const { connect, settle, sleep, startIsolated, Reporter, fatal } = require('./lib/harness')
 
 const PORT = 9234
 const ROOT = path.resolve(__dirname, '..')
@@ -35,27 +35,10 @@ const PNG = Buffer.from(
   'base64'
 )
 
-/** 走项目标准的隔离实例入口（起/杀都按 --user-data-dir 精确匹配，不碰用户自己的 profile） */
+/** 走项目标准的隔离实例入口（起/杀都按 --user-data-dir 精确匹配，不碰用户自己的 profile）。
+ *  LUMIN_EXPORT_DIR 由 powershell 继承 → Start-Process 再传给 Electron（见 lib/harness.startIsolated） */
 function isolated(userData, port, cleanupOnly = false) {
-  const args = [
-    '-NoProfile',
-    '-ExecutionPolicy',
-    'Bypass',
-    '-File',
-    path.join(__dirname, 'start-isolated.ps1'),
-    '-UserData',
-    userData,
-    '-Port',
-    String(port)
-  ]
-  if (cleanupOnly) args.push('-CleanupOnly')
-  // LUMIN_EXPORT_DIR 由 powershell 继承 → Start-Process 再传给 Electron（start-isolated.ps1 不动它）
-  const r = spawnSync('powershell', args, {
-    cwd: ROOT,
-    env: { ...process.env, LUMIN_EXPORT_DIR: OUT },
-    stdio: 'ignore'
-  })
-  return r.status
+  return startIsolated({ userData, port, env: { LUMIN_EXPORT_DIR: OUT }, cleanupOnly })
 }
 
 function makeFixtures() {

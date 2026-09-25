@@ -13,16 +13,21 @@
 //     直接断言 `OEBPS/chapter-N.xhtml`、`OEBPS/images/img-N.png` 与图片原始字节都在；
 //   * PDF：断言是合法 PDF（`%PDF-` 开头、`%%EOF` 结尾）且页眉页脚模板由单测钉住
 //     （见 tests/pdfTemplates.test.mjs：`.pageNumber`/`.totalPages` 必须在模板里）。
-const { spawn } = require('child_process')
 const os = require('os')
 const path = require('path')
 const fs = require('fs')
-const http = require('http')
-const { Reporter, sleep, fatal } = require('./lib/harness')
+const {
+  connect,
+  Reporter,
+  settle,
+  sleep,
+  startIsolated,
+  spawnApp,
+  fatal
+} = require('./lib/harness')
 
 const PORT = 9233
-const ROOT = path.resolve(__dirname, '..')
-const ELECTRON = path.join(ROOT, 'node_modules', '.bin', 'electron.cmd')
+const UD = path.join(os.tmpdir(), 'lumin-export-ud')
 
 /** 1×1 PNG（合法、可被 Chromium 打开） */
 const PNG = Buffer.from(
@@ -30,102 +35,44 @@ const PNG = Buffer.from(
   'base64'
 )
 
-const get = (p) =>
-  new Promise((res, rej) => {
-    http
-      .get({ host: '127.0.0.1', port: PORT, path: p }, (r) => {
-        let d = ''
-        r.on('data', (c) => (d += c))
-        r.on('end', () => res(JSON.parse(d)))
-      })
-      .on('error', rej)
-  })
-
-function connect(url) {
-  let id = 0
-  const pending = new Map()
-  const ws = new WebSocket(url)
-  const ready = new Promise((res, rej) => {
-    ws.onopen = res
-    ws.onerror = rej
-  })
-  ws.onmessage = (e) => {
-    const m = JSON.parse(e.data)
-    if (m.id && pending.has(m.id)) {
-      pending.get(m.id)(m)
-      pending.delete(m.id)
-    }
-  }
-  const send = (method, params) =>
-    new Promise((res) => {
-      const i = ++id
-      pending.set(i, res)
-      ws.send(JSON.stringify({ id: i, method, params }))
-    })
-  const ev = async (expr) => {
-    const r = await send('Runtime.evaluate', {
-      expression: expr,
-      returnByValue: true,
-      awaitPromise: true
-    })
-    if (r.result?.exceptionDetails)
-      throw new Error('EXC ' + JSON.stringify(r.result.exceptionDetails).slice(0, 240))
-    return r.result?.result?.value
-  }
-  return { ws, ready, send, ev }
-}
-
 async function main() {
   const report = new Reporter('导出质量：EPUB 拆章带图 / PDF 页码页眉 / 原子写')
   const ws = path.join(os.tmpdir(), 'lumin-export-ws')
   const out = path.join(os.tmpdir(), 'lumin-export-out')
-  const ud = path.join(os.tmpdir(), 'lumin-export-ud')
-  for (const d of [ws, out, ud]) fs.rmSync(d, { recursive: true, force: true })
+  for (const d of [ws, out, UD]) fs.rmSync(d, { recursive: true, force: true })
   fs.mkdirSync(path.join(ws, 'assets'), { recursive: true })
   fs.mkdirSync(out, { recursive: true })
-  fs.mkdirSync(ud, { recursive: true })
   const pngPath = path.join(ws, 'assets', 'pic.png')
   fs.writeFileSync(pngPath, PNG)
 
-  const proc = spawn('cmd.exe', ['/c', ELECTRON, '.', `--user-data-dir=${ud}`], {
-    cwd: ROOT,
-    env: {
-      ...process.env,
-      // 调试端口靠**环境变量**开（见 main/index.ts:54）——只传命令行开关是不生效的，
-      // 第一版就是这么"实例没起来"的
-      LUMIN_DEBUG_PORT: String(PORT),
-      LUMIN_EXPORT_DIR: out,
-      LUMIN_TRUSTED_PATHS: os.tmpdir()
-    },
-    stdio: 'ignore',
-    detached: false
+  // 先按 user-data-dir 清掉上一轮残留（端口若还被占着，连到的会是旧 profile 的窗口）
+  startIsolated({ userData: UD, port: PORT, cleanupOnly: true })
+  const proc = spawnApp({
+    userData: UD,
+    port: PORT,
+    env: { LUMIN_EXPORT_DIR: out, LUMIN_TRUSTED_PATHS: os.tmpdir() }
   })
 
-  let page = null
-  for (let i = 0; i < 60 && !page; i += 1) {
-    await sleep(500)
-    try {
-      page = (await get('/json/list')).find((t) => t.type === 'page')
-    } catch {
-      /* 还没起来 */
-    }
-  }
-  if (!page) {
-    console.log('SKIP: 实例没起来')
+  const w = await connect({ port: PORT, timeoutMs: 40000 }).catch(() => null)
+  if (!w) {
+    report.skip('导出质量', '实例没起来')
     try {
       proc.kill()
     } catch {
       /* ignore */
     }
-    return 0
+    startIsolated({ userData: UD, port: PORT, cleanupOnly: true })
+    return report.finish()
   }
-
-  const w = connect(page.webSocketDebuggerUrl)
-  await w.ready
-  await w.send('Page.enable')
-  for (let i = 0; i < 40; i += 1) {
-    await sleep(300)
-    if ((await w.ev(`document.querySelector('#app')?.__vue_app__ ? 'y' : 'n'`)) === 'y') break
+  if (!(await settle(w.ev))) {
+    report.skip('导出质量', '页面没就绪')
+    try {
+      proc.kill()
+    } catch {
+      /* ignore */
+    }
+    startIsolated({ userData: UD, port: PORT, cleanupOnly: true })
+    return report.finish()
   }
 
   try {
@@ -219,7 +166,7 @@ async function main() {
     report.check('exports-leave-no-temp-files', leftovers.length === 0, JSON.stringify(leftovers))
   } finally {
     try {
-      w.ws.close()
+      if (w) w.close()
     } catch {
       /* ignore */
     }
@@ -228,6 +175,8 @@ async function main() {
     } catch {
       /* ignore */
     }
+    // cmd.exe 是壳：按 user-data-dir 精确收尾，别留一个占着 9233 的实例
+    startIsolated({ userData: UD, port: PORT, cleanupOnly: true })
   }
 
   return report.finish()

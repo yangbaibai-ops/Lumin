@@ -56,6 +56,9 @@ const DEFAULT_SUITES = [
   // 见 src/main/testPaths.ts）跳过原生对话框，而环境变量必须在**实例启动前**给到。
   // 它用 9234，所以不占运行器的 9222。
   '_verify-backup.js',
+  // 草稿 GC 验的是**启动路径**对已有文件的处理：夹具必须在实例起来之前躺在
+  // `--user-data-dir` 里，所以不能用运行器那个"先删数据目录再起"的实例。端口 9235。
+  '_verify-draft-gc.js',
   '_verify-md-fidelity.js', // Markdown 往返保真（Wave 1）
   '_verify-draft-banner.js', // 草稿横幅（未命名缓冲区的归属）
   '_verify-new-document.js', // 新建 / Ctrl+N / Ctrl+S 落点
@@ -126,7 +129,9 @@ const SELF_MANAGED = new Set([
   // 它自己起「首个实例 + 第二个实例」，并用 9231 而不是 9222，故不占运行器的实例
   '_verify-single-instance.js',
   // 它要用 LUMIN_EXPORT_DIR 起实例（工作区快照会弹原生「另存为」），端口 9234
-  '_verify-backup.js'
+  '_verify-backup.js',
+  // 它要在实例起来**之前**往 --user-data-dir 里种草稿夹具（ps1 会先删目录），端口 9235
+  '_verify-draft-gc.js'
 ])
 
 function parseArgs(argv) {

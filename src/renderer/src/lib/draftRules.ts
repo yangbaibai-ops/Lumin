@@ -8,14 +8,15 @@
  * 所以判定必须能被 `node --test` 直接钉住，而不要藏在 store 里。
  */
 
-import { untitledDraftKey } from '../../../shared/drafts.ts'
+import { fileDraftKey, untitledDraftKey } from '../../../shared/drafts.ts'
 import type { DraftInfo } from '../../../shared/types'
 import { samePath } from './pathUtils.ts'
 
 /** 草稿键：有路径按文件；未命名按窗口槽位（同一窗口的未命名缓冲只有一个） */
 export function draftKeyFor(path: string | null, sessionSlot: number | null): string {
   if (!path) return untitledDraftKey(sessionSlot)
-  return 'file-' + encodeURIComponent(path.toLowerCase())
+  // 键的构造放在 shared：主进程的草稿 GC 靠 `file-` 前缀认"有磁盘正本"，两处必须一致
+  return fileDraftKey(path)
 }
 
 /**

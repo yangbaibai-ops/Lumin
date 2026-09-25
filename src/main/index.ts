@@ -28,6 +28,7 @@ import { devProfileDir } from './devProfile'
 import { parseLaunchIntent, type LaunchIntent } from './services/launchIntent'
 import { initUpdater } from './services/updater'
 import { startAutoBackup } from './services/dbBackup'
+import { gcDrafts } from './drafts'
 import { bindWindowScope, scopeOfSlot } from './services/windowScope'
 import * as pathGrants from './services/pathGrants'
 import { defaultSettings } from '../shared/defaults'
@@ -356,6 +357,10 @@ app.whenReady().then(() => {
   if (trusted) console.log(`[grants] trusted paths from env: ${trusted}`)
   // 历史版本 electron-store 数据一次性迁入 SQLite kv（kv 已有数据时跳过）
   migrateLegacyStores()
+  // 草稿目录的垃圾回收（审计 §2 P1：`userData/drafts` 只增不减）：
+  // 清掉写盘临时文件残留与"有磁盘正本、且 30 天没动过"的 file-* 草稿。
+  // 不 await：它只碰我们自己的草稿目录，不该拖慢首屏；失败也不影响启动。
+  void gcDrafts().catch(() => {})
   // 顺序要点：IPC 必须在任何窗口加载之前注册（渲染层启动就会发 IPC）；
   // 原生菜单不影响首屏，放到窗口创建之后再装。
   // 注入「窗口 ↔ 槽位」归属：草稿认领要看「还有哪些窗口活着」，那份状态只有这里持有。

@@ -14,10 +14,13 @@ import { createHash, randomUUID } from 'crypto'
 import { app } from 'electron'
 import type { DraftInfo } from '../shared/types'
 import {
+  DRAFT_GC_MAX_AGE_MS,
   isOrphanDraftKey,
   nextOrphanDraftKey,
   ORPHAN_UNTITLED_DRAFT_KEY,
-  planUntitledDraft
+  planDraftGc,
+  planUntitledDraft,
+  type DraftGcEntry
 } from '../shared/drafts'
 
 const draftsDir = path.join(app.getPath('userData'), 'drafts')
@@ -208,6 +211,78 @@ export async function countParkedDrafts(): Promise<number> {
   const onDisk = await listDrafts()
   return onDisk.filter((d) => isOrphanDraftKey(d.key) && (d.data?.content.trim() ?? '') !== '')
     .length
+}
+
+export interface DraftGcResult {
+  /** 扫到多少个条目 */
+  scanned: number
+  /** 删掉多少个 */
+  removed: number
+  /** 删掉的字节数（写进日志，便于确认"目录只增不减"真的止住了） */
+  bytes: number
+}
+
+/**
+ * 草稿目录的垃圾回收（启动时跑一次，见 index.ts）。
+ *
+ * 判据全在纯函数 `planDraftGc` 里（有单测）；这里只负责列目录、解析、删文件。
+ * 解析失败的条目**也要报给判据**（key = null）：那种文件本来就无法恢复，
+ * 只是"过多久才清"的问题，而这条判断不该只活在主进程的 I/O 里。
+ */
+export async function gcDrafts(
+  nowMs: number = Date.now(),
+  maxAgeMs: number = DRAFT_GC_MAX_AGE_MS
+): Promise<DraftGcResult> {
+  let names: string[]
+  try {
+    names = await fs.readdir(draftsDir)
+  } catch {
+    return { scanned: 0, removed: 0, bytes: 0 } // 目录还不存在 = 没有草稿
+  }
+  const entries: DraftGcEntry[] = []
+  for (const name of names) {
+    try {
+      const st = await fs.stat(path.join(draftsDir, name))
+      if (!st.isFile()) continue
+      let key: string | null = null
+      if (name.endsWith('.json')) {
+        try {
+          const data = JSON.parse(
+            await fs.readFile(path.join(draftsDir, name), 'utf-8')
+          ) as DraftInfo
+          // 旧文件没有 key 字段：文件名就是键（与 loadDraft 的兜底口径一致）
+          key = typeof data.key === 'string' ? data.key : name.slice(0, -'.json'.length)
+        } catch {
+          key = null
+        }
+      }
+      entries.push({ name, key, mtimeMs: st.mtimeMs, size: st.size })
+    } catch {
+      /* 读不到的条目跳过 */
+    }
+  }
+
+  const plan = planDraftGc(entries, nowMs, maxAgeMs)
+  let removed = 0
+  let bytes = 0
+  for (const item of plan) {
+    try {
+      await fs.rm(path.join(draftsDir, item.name), { force: true })
+      removed += 1
+      bytes += item.size
+    } catch {
+      /* 删不掉就下次再试：清理是尽力而为，不该影响启动 */
+    }
+  }
+  // 主进程 console 一律 ASCII（tests/mainConsoleAscii.test.mjs）
+  if (removed) {
+    const by = plan.reduce<Record<string, number>>((acc, x) => {
+      acc[x.reason] = (acc[x.reason] ?? 0) + 1
+      return acc
+    }, {})
+    console.log(`[drafts] gc removed ${removed} (${JSON.stringify(by)})`)
+  }
+  return { scanned: entries.length, removed, bytes }
 }
 
 /** 主停放键（保留导出是为了兼容外部引用） */

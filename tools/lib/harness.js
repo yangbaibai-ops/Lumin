@@ -23,6 +23,8 @@
 
 const DEFAULT_PORT = Number(process.env.LUMIN_DEBUG_PORT || 9222)
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
+const path = require('path')
+const { spawnSync, spawn } = require('child_process')
 
 function cdpUrl(port, pathname = '/json') {
   return `http://127.0.0.1:${port}${pathname}`
@@ -277,8 +279,20 @@ async function key(send, type, keyName, code, vk) {
 
 /** 敲一个组合键（默认按下+抬起），modifiers 见 CDP Input.dispatchKeyEvent */
 async function pressKey(send, { key: k, code, vk, modifiers = 0 }) {
-  await send('Input.dispatchKeyEvent', { type: 'keyDown', key: k, code, windowsVirtualKeyCode: vk, modifiers })
-  await send('Input.dispatchKeyEvent', { type: 'keyUp', key: k, code, windowsVirtualKeyCode: vk, modifiers })
+  await send('Input.dispatchKeyEvent', {
+    type: 'keyDown',
+    key: k,
+    code,
+    windowsVirtualKeyCode: vk,
+    modifiers
+  })
+  await send('Input.dispatchKeyEvent', {
+    type: 'keyUp',
+    key: k,
+    code,
+    windowsVirtualKeyCode: vk,
+    modifiers
+  })
 }
 
 async function insertText(send, text) {
@@ -300,15 +314,101 @@ async function centerOf(ev, selector) {
 async function clickSelector(send, ev, selector) {
   const p = await centerOf(ev, selector)
   if (!p) return false
-  await send('Input.dispatchMouseEvent', { type: 'mousePressed', x: p.x, y: p.y, button: 'left', clickCount: 1 })
-  await send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: p.x, y: p.y, button: 'left', clickCount: 1 })
+  await send('Input.dispatchMouseEvent', {
+    type: 'mousePressed',
+    x: p.x,
+    y: p.y,
+    button: 'left',
+    clickCount: 1
+  })
+  await send('Input.dispatchMouseEvent', {
+    type: 'mouseReleased',
+    x: p.x,
+    y: p.y,
+    button: 'left',
+    clickCount: 1
+  })
   return true
 }
 
 /** 点页面坐标 */
 async function clickAt(send, x, y) {
-  await send('Input.dispatchMouseEvent', { type: 'mousePressed', x, y, button: 'left', clickCount: 1 })
-  await send('Input.dispatchMouseEvent', { type: 'mouseReleased', x, y, button: 'left', clickCount: 1 })
+  await send('Input.dispatchMouseEvent', {
+    type: 'mousePressed',
+    x,
+    y,
+    button: 'left',
+    clickCount: 1
+  })
+  await send('Input.dispatchMouseEvent', {
+    type: 'mouseReleased',
+    x,
+    y,
+    button: 'left',
+    clickCount: 1
+  })
+}
+
+/**
+ * 直接起一个 **不经过 `start-isolated.ps1`** 的实例。
+ *
+ * 为什么需要它：ps1 的第 2 步会**先删掉 `--user-data-dir`**（保证每个套件都从全新 profile 开始），
+ * 而有一类套件验的正是**启动路径对已有文件的处理** —— 草稿 GC、迁移、备份轮换的夹具
+ * 必须在实例起来之前就躺在数据目录里，删掉就没得验了。
+ *
+ * 收尾**不要**只 `proc.kill()`：我们是通过 `cmd.exe /c electron.cmd` 起的，
+ * 杀掉 cmd 不保证 Electron 跟着走。一律用
+ * `startIsolated({ userData, port, cleanupOnly: true })`（按 `--user-data-dir` 精确杀进程树）。
+ *
+ * ⚠️ 起之前建议先 `startIsolated({ ..., cleanupOnly: true })` 清一遍：
+ *    否则端口可能还被上一轮没杀干净的实例占着，套件会连到**上一个 profile** 的窗口上。
+ */
+function spawnApp({ userData, port = 9222, env = {} } = {}) {
+  const ROOT = path.join(__dirname, '..', '..')
+  const electron = path.join(ROOT, 'node_modules', '.bin', 'electron.cmd')
+  return spawn('cmd.exe', ['/c', electron, '.', `--user-data-dir=${userData}`], {
+    cwd: ROOT,
+    // 调试端口靠**环境变量**开（见 main/index.ts）——只传命令行开关是不生效的
+    env: { ...process.env, LUMIN_DEBUG_PORT: String(port), ...env },
+    stdio: 'ignore',
+    detached: false
+  })
+}
+
+/**
+ * 起/收一个**隔离实例**（项目标准入口 `tools/start-isolated.ps1`）。
+ *
+ * 什么时候需要它：套件必须在**实例启动前**摆好前置状态或环境变量 —— 典型两类：
+ *   * 往 `--user-data-dir` 里预置文件（启动路径上的行为才验得到，例如草稿 GC、备份轮换）；
+ *   * 传只有启动时读得到的开发态开关（例如 `LUMIN_EXPORT_DIR`，见 src/main/testPaths.ts）。
+ *
+ * ⚠️ 它会**先删掉 `--user-data-dir`**：要保留预置文件时用 `spawnApp()`（见上）。
+ * 实现要点：`env` 由 powershell 继承 → `Start-Process` 再传给 Electron
+ * （ps1 只覆盖 `LUMIN_DEBUG_PORT` / `LUMIN_TRUSTED_PATHS`，其余原样透过）。
+ * `cleanupOnly` 会按 user-data-dir **精确**杀掉实例并删数据目录（连子进程一起），
+ * 所以收尾一律用它，而不是 `proc.kill()`。
+ *
+ * @returns powershell 退出码（0 = READY；`cleanupOnly` 时为 0 = CLEANED）
+ */
+function startIsolated({ userData, port = 9222, env = {}, cleanupOnly = false } = {}) {
+  const args = [
+    '-NoProfile',
+    '-ExecutionPolicy',
+    'Bypass',
+    '-File',
+    path.join(__dirname, '..', 'start-isolated.ps1'),
+    '-UserData',
+    userData,
+    '-Port',
+    String(port)
+  ]
+  if (cleanupOnly) args.push('-CleanupOnly')
+  const r = spawnSync('powershell', args, {
+    cwd: path.join(__dirname, '..', '..'),
+    env: { ...process.env, ...env },
+    stdio: 'ignore'
+  })
+  return r.status
 }
 
 /**
@@ -473,6 +573,8 @@ module.exports = {
   clickCenter,
   waitRestored,
   openDocWith,
+  startIsolated,
+  spawnApp,
   Reporter,
   fatal
 }
