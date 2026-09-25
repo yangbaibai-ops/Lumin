@@ -91,6 +91,7 @@ const DEFAULT_SUITES = [
   '_verify-toc.js', // 目录 [TOC]：插入 / 渲染 / 点击跳转 / 往返 / 重载还原（原两条 0 断言探针合并升级）
   '_verify-notifications.js', // 通知中心整体（CRUD / 顶部通知带 / 步进 / 多语言 / 重载存活 / 兼容层）
   '_verify-toolbar-settings.js', // 快捷工具栏：空白区右键菜单 + 显隐与排序设置
+  '_verify-settings-layout.js', // 设置页在 940×600 / 125% 缩放下的横向布局（导航跟窗口走 + 主题卡 3 列）
   '_verify-cb-languages.js', // 代码块语言高亮矩阵（15 种 + 别名，清单外退化为纯文本）
   '_verify-cb-virtualization.js', // 代码块 CM 虚拟化：按需挂载 / 高度稳定 / 选区保护 / churn 后可打字
   '_verify-table-fidelity.js', // 表格保真：单元格回车不再退化成 HTML / 空段丢弃 / 多段用 <br> / 幂等

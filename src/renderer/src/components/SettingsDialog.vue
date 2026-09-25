@@ -1287,7 +1287,13 @@ function formatTime(ms: number): string {
                   <template v-else-if="tab.id === 'appearance'">
                     <section class="set-card">
                       <h3 class="set-card-title">{{ t('settings.theme') }}</h3>
-                      <div class="grid grid-cols-4 gap-2.5">
+                      <!-- 主题卡：宽窗口 4 列；**窄窗口 3 列**（审计 §8 P2「最小窗口 940×600
+                           下设置页横向偏紧」）—— 940×600 与 1366@125% 缩放（逻辑宽 1093）
+                           都落在 3 列这一档，这时每张卡约 205px，缩略图与标签不再挤在一起。 -->
+                      <div
+                        class="grid grid-cols-3 gap-2.5 min-[1180px]:grid-cols-4"
+                        data-theme-grid
+                      >
                         <button
                           v-for="th in themes"
                           :key="th.mode"
