@@ -14,6 +14,7 @@ const {
   settle,
   waitEditor,
   sleep,
+  ensureFocus,
   Reporter,
   key,
   clickCenter,
@@ -61,6 +62,17 @@ async function focusCodeBlock(app) {
     return !!el && el.isConnected && (document.activeElement === el || el.contains(document.activeElement))
   })()`
   for (let i = 0; i < 6; i++) {
+    /**
+     * 先点**静态态**那个 `<pre class="cb-static">`：代码块视图是虚拟化的
+     * （`shouldMountCm`：视口附近 / 选区在内 / 刚点过 —— 见 lib/editor/codeBlockMountPolicy.ts），
+     * 而"点一下激活"正是产品自身的交互路径（静态块的 mousedown → activateFromStatic → 下一拍挂 CM）。
+     *
+     * 不先激活的话，本套件的结果会取决于"窗口有没有真的在渲染"：实测用户自己的 Lumin
+     * 窗口在前台时，被测窗口的 IntersectionObserver 拿不到 near，代码块停在静态态，
+     * 于是 A/B 两段假红（`focused=false`、`.cm-content` 根本不存在）。
+     */
+    await clickCenter(app.send, app.ev, 'pre.cb-static')
+    await sleep(150)
     await clickCenter(app.send, app.ev, '.cm-content')
     await sleep(220)
     if (await app.ev(isFocused)) {
@@ -80,15 +92,38 @@ async function main() {
   }
   await app.ev(`(() => { window.__L.ui().editorMode = 'wysiwyg'; return 'ok' })()`)
   await sleep(400)
-  await app.ev(`(async () => { if (!window.__L.files().current) await window.__L.files().openUntitled(); return 'ok' })()`)
+  await app.ev(
+    `(async () => { if (!window.__L.files().current) await window.__L.files().openUntitled(); return 'ok' })()`
+  )
   await waitEditor(app.ev)
 
   // A：代码块内输入 + 回车 + 继续输入（换行不能丢）
   await openDocWith(app, ['正文', '', '```js', 'const a = 1', '```'].join('\n'), 'cb-a.md')
   await sleep(400)
+  console.log(
+    'DBG-A0 ' +
+      (await app.ev(`(() => {
+        const f = window.__L.files()
+        return JSON.stringify({ rev: f.contentRev, author: f.contentAuthor, applied: { ...f.sync.applied } })
+      })()`))
+  )
   const focused = await focusCodeBlock(app)
+  console.log(
+    'DBG-A1 ' +
+      (await app.ev(`(() => {
+        const f = window.__L.files()
+        return JSON.stringify({ rev: f.contentRev, author: f.contentAuthor, applied: { ...f.sync.applied }, stale: f.contentIsStale('codeblock') })
+      })()`))
+  )
   await app.send('Input.insertText', { text: 'hello' })
   await sleep(150)
+  console.log(
+    'DBG-A2 ' +
+      (await app.ev(`(() => {
+        const f = window.__L.files()
+        return JSON.stringify({ rev: f.contentRev, author: f.contentAuthor, applied: { ...f.sync.applied }, stale: f.contentIsStale('codeblock') })
+      })()`))
+  )
   await tapKey(app, 'Enter', 13)
   await sleep(150)
   await app.send('Input.insertText', { text: 'world' })
@@ -96,7 +131,10 @@ async function main() {
   const codeA = await app.ev(CODE_TEXT)
   report.check(
     'A 代码块内输入 + 回车换行',
-    focused === true && typeof codeA === 'string' && codeA.includes('hello') && codeA.includes('world'),
+    focused === true &&
+      typeof codeA === 'string' &&
+      codeA.includes('hello') &&
+      codeA.includes('world'),
     `focused=${focused} code=${JSON.stringify(codeA)}`
   )
 
@@ -139,6 +177,75 @@ async function main() {
     typeof infoC.code === 'string' && infoC.code.endsWith('code line'),
     JSON.stringify(infoC)
   )
+
+  // ── D. 外部整篇替换优先于代码块里的旧文本（审计 §3 P1）───────────────────
+  // 方向判定在 CodeBlockView 里用的是"节点文本是不是我上次对齐的那一份"
+  // （`alignedNodeText`）—— 账本的 applied 会因 250ms 防抖的作者牌而落后一代，
+  // 拿它驱动会把用户输入整段吃掉（这条断言原来就是这么红的）。
+  // 先在**无焦点**下验证"节点被外部改过 ⇒ CM 跟着真源重建"。
+  await openDocWith(app, ['正文', '', '```js', 'OLD-CODE', '```'].join('\n'), 'cb-d.md')
+  await sleep(600)
+  const d1 = JSON.parse(
+    await app.ev(`(async () => {
+      const f = window.__L.files()
+      const read = () => { let c = ''; window.__L.ed().state.doc.descendants((n) => { if (n.type.name === 'codeBlock') c = n.textContent }); return c }
+      const before = { node: read(), cm: document.querySelector('.cm-content')?.textContent ?? null }
+      f.setContent(['正文', '', '\`\`\`js', 'EXTERNAL-NEW', '\`\`\`'].join('\\n'), 'external')
+      await new Promise((r) => setTimeout(r, 900))
+      return JSON.stringify({
+        before,
+        nodeAfter: read(),
+        cmAfter: document.querySelector('.cm-content')?.textContent ?? null
+      })
+    })()`)
+  )
+  report.note('D1 ' + JSON.stringify(d1))
+  report.check(
+    'D1 外部整篇替换后代码块跟着真源重建（旧文本不残留）',
+    d1.before.node === 'OLD-CODE' &&
+      d1.nodeAfter === 'EXTERNAL-NEW' &&
+      d1.cmAfter === 'EXTERNAL-NEW',
+    JSON.stringify(d1)
+  )
+
+  // D2 需要真实按键（外部替换后人在代码块里敲一下）——拿不到焦点就如实跳过
+  if (!(await ensureFocus(app))) {
+    report.skip('D2 外部替换后代码块按键不顶掉外部内容', '窗口拿不到焦点')
+  } else {
+    await openDocWith(app, ['正文', '', '```js', 'OLD-CODE', '```'].join('\n'), 'cb-e.md')
+    await sleep(600)
+    const focusedD = await focusCodeBlock(app)
+    await app.ev(`(async () => {
+      window.__L.files().setContent(['正文', '', '\`\`\`js', 'EXTERNAL-NEW', '\`\`\`'].join('\\n'), 'external')
+      await new Promise((r) => setTimeout(r, 900))
+      return 'ok'
+    })()`)
+    await app.send('Input.insertText', { text: 'X' })
+    await sleep(600)
+    const d2 = JSON.parse(
+      await app.ev(`(() => {
+        let node = ''
+        window.__L.ed().state.doc.descendants((n) => { if (n.type.name === 'codeBlock') node = n.textContent })
+        const cm = document.querySelector('.cm-content')
+        return JSON.stringify({
+          node,
+          cmText: cm ? cm.textContent : null,
+          stale: window.__L.files().contentIsStale('codeblock')
+        })
+      })()`)
+    )
+    report.note('D2 ' + JSON.stringify(d2))
+    report.check(
+      'D2 外部替换后代码块按键不顶掉外部内容',
+      focusedD === true && d2.node.includes('EXTERNAL-NEW') && !d2.node.includes('OLD-CODE'),
+      JSON.stringify(d2)
+    )
+    report.check(
+      'D3 外部替换后代码块这一面与真源一致（没有残留旧文本）',
+      !String(d2.cmText ?? '').includes('OLD-CODE'),
+      JSON.stringify({ stale: d2.stale, cmText: d2.cmText })
+    )
+  }
 
   app.close()
   return report.finish()

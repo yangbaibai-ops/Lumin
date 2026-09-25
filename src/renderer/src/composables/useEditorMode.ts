@@ -32,8 +32,14 @@ export function useEditorMode(): {
     try {
       const storage = ed.storage as { markdown?: { getMarkdown(): string } }
       const md = storage.markdown?.getMarkdown() ?? ''
-      files.setContent(md, 'wysiwyg')
-      editorStore.markFlushed()
+      /**
+       * 作者牌必须**取走**而不是硬写 `'wysiwyg'`（审计 §3 P1）：
+       * 刚才可能是在**代码块里**打字（`noteWrite('codeblock')` 已挂上牌），
+       * 硬写 wysiwyg 会让账本把这代内容的作者记错、`applied` 账目失真
+       * （诊断与断言不可信，理论上还会少一次该有的回灌）。
+       * `consumeWriteIntent()` 顺带做掉 `markFlushed()`（清牌 + 清脏），语义与原来一致。
+       */
+      files.setContent(md, editorStore.consumeWriteIntent())
     } catch {
       /* 序列化失败时保持文件槽现状 */
     }

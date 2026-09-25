@@ -27,6 +27,7 @@ import { tags as t } from '@lezer/highlight'
 import { TextSelection } from '@tiptap/pm/state'
 import { useSettingsStore } from '../../stores/settings'
 import { useEditorStore } from '../../stores/editor'
+import { useFilesStore } from '../../stores/files'
 import { escapeHtml } from '../../lib/utils/html'
 import {
   registerCodeBlockHandle,
@@ -554,6 +555,25 @@ function removeEmptyCodeBlock(): void {
   // 焦点交还 PM（组件即将随节点移除而卸载）
   editor.commands.focus()
 }
+/**
+ * 与 CM 对齐时**节点里的文本**（这一面对"谁更新"的判据）。
+ *
+ * ─── 为什么不用账本的 `contentIsStale('codeblock')` 做方向判定（实测结论）──────
+ * 先按审计建议试了"用 `contentIsStale('codeblock')` 决定要不要写回"，**当场把输入吃掉**：
+ * 左侧 Tiptap 每 250ms 一次序列化落库，而作者牌是按"那次序列化时谁在写"给的 ——
+ * 同一次连续输入里，前面的写入记成 `codeblock`、后面那次可能记成 `wysiwyg`，
+ * 于是 `rev` 前进而 `applied.codeblock` 停在上一代。实测静止态就是
+ * `rev=10 / applied={wysiwyg:10, codeblock:9}` ⇒ `contentIsStale('codeblock')` 恒为真 ⇒
+ * 用户每敲一个字都被判成"我落后了"，于是重建 CM、丢掉这个字（回归套件 A 段立刻变红）。
+ *
+ * 所以方向判定改用**局部且精确**的信号：节点文本是不是我们上次对齐的那一份。
+ * 我们自己的写回会同步更新它；只有"节点被我们之外的写入改过"才会不等 —— 那正是
+ * 外部整篇替换（源码面编辑 / 载入历史 / 切编码 / 切文件）的形态。
+ * 账本仍然记这一面（`markContentApplied('codeblock')`），但它的语义是**账目**，
+ * 不是这一面的驱动信号（见 lib/contentSync.ts 顶部对 `codeblock` 的说明）。
+ */
+let alignedNodeText: string | null = null
+
 function syncToNode(): void {
   if (!cmView) return
   const code = cmView.state.doc.toString()
@@ -562,6 +582,13 @@ function syncToNode(): void {
   const pos = getPos()
   if (typeof pos !== 'number') return
   const editor = props.editor
+  // 节点被我们之外的写入改过 ⇒ 真源优先：重建 CM（哪怕它正拿着焦点），绝不把旧文本写回去。
+  // 旧实现只靠"焦点还在就不覆盖 + 150ms 再等一轮"躲，于是外部替换后人在代码块里敲一下
+  // 就把外部编辑顶掉了（审计 §3 P1）。
+  if (alignedNodeText !== null && props.node.textContent !== alignedNodeText) {
+    applyNodeText(true)
+    return
+  }
   // 挂个牌：这次正文变化的作者是这个代码块（手册 §4.59 的账本）。
   // 序列化是 250ms 防抖的，等它落到 files 时已经看不出谁写的了，所以写回节点
   // 之前先声明；EditorView 的 onEditorUpdate 会消费掉它并记进账本。
@@ -577,6 +604,8 @@ function syncToNode(): void {
     tr.replaceWith(pos + 1, pos + node.nodeSize - 1, tr.doc.type.schema.text(code))
     return true
   })
+  // 写回之后节点文本就是 CM 这一份 ⇒ 记录对齐基准（下次 syncToNode 靠它认"节点被外部改过"）
+  alignedNodeText = code
   pinCmFocus()
 }
 
@@ -632,16 +661,24 @@ function currentNodeText(): string {
   return props.node.textContent
 }
 
-function applyNodeText(): void {
+function applyNodeText(force = false): void {
   if (!cmView || selectedLanguage.value === 'mermaid') return
   const fresh = currentNodeText()
-  if (fresh === cmView.state.doc.toString()) return
-  if (cmView.hasFocus) {
+  if (fresh === cmView.state.doc.toString()) {
+    // 已经一致：也算"这一面渲染到了当前世代"
+    alignedNodeText = fresh
+    useFilesStore().markContentApplied('codeblock')
+    return
+  }
+  if (cmView.hasFocus && !force) {
     // 焦点还在代码块里：说明这份节点文本是**落后的那一边**，等失焦后再对齐
     scheduleApplyNodeText()
     return
   }
   cmView.setState(EditorState.create({ doc: fresh, extensions: buildCmExtensions() }))
+  // 重建之后这一面与真源同代（`force` 那条路是"真源优先，哪怕用户正在这里打字"）
+  alignedNodeText = fresh
+  useFilesStore().markContentApplied('codeblock')
   void loadLanguage(selectedLanguage.value)
 }
 
@@ -712,6 +749,9 @@ function initCm(): void {
     extensions: buildCmExtensions()
   })
   cmView = new EditorView({ state, parent: host })
+  // 建视图时用的就是当前节点文本 ⇒ 记下对齐基准，并让账本也记这一面（账目，不是驱动信号）
+  alignedNodeText = props.node.textContent
+  useFilesStore().markContentApplied('codeblock')
   // CM 默认不给 contentDOM 设 tabindex，浏览器点击不会把焦点交给他；
   // 显式设置后点击代码区即可聚焦输入（配合模板上的事件阻断防 PM 抢焦点）
   cmView.contentDOM.tabIndex = 0

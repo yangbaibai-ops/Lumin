@@ -32,6 +32,16 @@
 // 所以「作者自己写入」这条路径不需要、也不该由代码再判断一次。
 // 只有渲染动作是命令式代码（`setContent` / `setState`）的两个面才需要 `applied`。
 //
+// ⚠️ **`codeblock` 这一面：`applied` 只是账目，不是驱动信号**（实测结论，别照着 wysiwyg 抄）。
+// 代码块的方向判定用的是**局部且精确**的信号「节点文本是不是我上次对齐的那一份」
+// （见 CodeBlockView 的 `alignedNodeText`）：左侧 Tiptap 的序列化是 250ms 防抖的，
+// 同一次连续输入里作者牌可能一次记成 `codeblock`、下一次记成 `wysiwyg`，
+// 于是 `rev` 前进而 `applied.codeblock` 停在上一代 —— 静止态实测就是
+// `rev=10 / applied={wysiwyg:10, codeblock:9}`，`shouldApply(codeblock)` 恒为真。
+// 拿它当"我落后了吗"会把用户敲的每一个字都判成落后并重建 CM（输入被吃掉，
+// `_regress-cb.js` 的 A 段立刻变红）。保留 `markContentApplied('codeblock')` 只为让账目可读
+// （诊断/断言能看出这一面渲染到了哪一代），**不要**用它驱动回灌。
+//
 // 纯函数 + 显式状态：不 import Vue/Pinia，`node --test` 直接跑（tests/contentSync.test.mjs）。
 
 /** 需要命令式回灌的编辑面（渲染动作 = 调内核 API） */
