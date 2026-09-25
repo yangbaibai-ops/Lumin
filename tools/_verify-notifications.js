@@ -3,6 +3,7 @@
 // B. 界面层：单条通知、**组件本身不是盒子**（面在编辑区上方一整幅「带」上）、
 //    在编辑区上方、无级别图标与级别名、标题/详情、X、不自动消失、
 //    ‹ n/m › 切换（默认最新）、全部关闭、多语言、动效
+// C. 「从最近列表移除」的撤销：移除后给一张带「撤销」的通知，点它记录回来（审计 §8 P2）
 const CDP = 'http://127.0.0.1:9222/json'
 let ws, id = 0
 const pending = new Map()
@@ -312,6 +313,70 @@ async function main() {
   console.log('LEGACY-TOAST ' + JSON.stringify(legacy) + ' dbOpen=' + legacyDb)
   c('legacy-toast-routes-to-center', legacy.cards === 1 && legacy.title === '已保存', JSON.stringify({ t: legacy.title, meta: legacy.metaText }))
   c('legacy-toast-merges-repeat', legacyDb === 1, 'dbOpen=' + legacyDb)
+
+  // ── C. 「从最近列表移除」的撤销（审计 §8 P2「危险/不可逆操作还缺确认与撤销」）─────
+  // 单条移除**不弹模态**，而是给一张带「撤销」的通知：通知按钮按 payload.kind 派发，
+  // 处理器在启动时注册（lib/recentUndo.ts）。这一段走**真实 UI 路径**：
+  // 侧栏「最近文档」下拉 → 行内「从列表移除」→ 通知卡上的「撤销」→ 条目回来。
+  const undoSeed = JSON.parse(await ev(`(async () => {
+    const settings = window.__vt.settings()
+    window.__vt.__recentBackup = JSON.stringify(settings.recentFiles)
+    const seed = { path: 'C:\\\\lumin-verify\\\\undo.md', title: 'undo.md', openedAt: Date.now() }
+    settings.set('recentFiles', [seed, ...settings.recentFiles])
+    await new Promise((r) => setTimeout(r, 350))
+    const trigger = Array.from(document.querySelectorAll('aside button')).find((b) => b.getAttribute('title') === '最近文档')
+    if (!trigger) return JSON.stringify({ step: 'no-trigger' })
+    trigger.click()
+    await new Promise((r) => setTimeout(r, 450))
+    const btn = Array.from(document.querySelectorAll('.topmenu-drop button')).find((b) => b.getAttribute('aria-label') === '从列表移除')
+    if (!btn) return JSON.stringify({ step: 'no-remove-button' })
+    const r = btn.getBoundingClientRect()
+    return JSON.stringify({ step: 'ok', x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2) })
+  })()`))
+  console.log('RECENT-UNDO-SEED ' + JSON.stringify(undoSeed))
+  c('recent-remove-row-button', undoSeed.step === 'ok', JSON.stringify(undoSeed))
+  if (undoSeed.step === 'ok') await clickPoint(undoSeed.x, undoSeed.y)
+  await sleep(800)
+  const undo = JSON.parse(await ev(`(async () => {
+    const settings = window.__vt.settings()
+    const dbRows = await window.luminAPI.notifications.list()
+    const row = dbRows.find((n) => n.payload && n.payload.kind === 'recent-removed')
+    const btn = Array.from(document.querySelectorAll('.ntf-item .ntf-action')).find((b) => b.textContent.trim() === '撤销')
+    const r = btn ? btn.getBoundingClientRect() : null
+    return JSON.stringify({
+      removed: !settings.recentFiles.some((x) => x.path === 'C:\\\\lumin-verify\\\\undo.md'),
+      kind: row ? row.payload.kind : null,
+      actions: (row ? row.actions : []).map((a) => a.id),
+      btnText: btn ? btn.textContent.trim() : null,
+      btn: r ? { x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2) } : null,
+      dbDiag: dbRows.map((n) => n.id + '|' + n.title + '|' + (n.payload ? n.payload.kind : '-') + '|' + n.actions.map((a) => a.id).join('+')),
+      storeDiag: window.__vt.notif().items.map((n) => n.id + '|' + n.title + '|' + (n.payload ? n.payload.kind : '-') + '|' + n.actions.map((a) => a.id).join('+'))
+    })
+  })()`))
+  console.log('RECENT-UNDO ' + JSON.stringify(undo))
+  c(
+    'recent-remove-offers-undo',
+    undo.removed === true && undo.kind === 'recent-removed' && undo.actions.includes('undo'),
+    JSON.stringify({ removed: undo.removed, kind: undo.kind, actions: undo.actions })
+  )
+  c(
+    'recent-remove-undo-button',
+    undo.btnText === '撤销' && !!undo.btn,
+    JSON.stringify({ btnText: undo.btnText })
+  )
+  if (undo.btn) await clickPoint(undo.btn.x, undo.btn.y)
+  await sleep(900)
+  const restoredRecent = JSON.parse(await ev(`(() => {
+    const settings = window.__vt.settings()
+    const back = settings.recentFiles.some((x) => x.path === 'C:\\\\lumin-verify\\\\undo.md')
+    settings.set('recentFiles', JSON.parse(window.__vt.__recentBackup))
+    const trigger = Array.from(document.querySelectorAll('aside button')).find((b) => b.getAttribute('title') === '最近文档')
+    if (trigger && document.querySelector('.topmenu-drop')) trigger.click()
+    return JSON.stringify({ back, open: window.__vt.notif().items.length })
+  })()`))
+  console.log('RECENT-UNDO-APPLIED ' + JSON.stringify(restoredRecent))
+  c('recent-remove-undo-restores', restoredRecent.back === true, JSON.stringify(restoredRecent))
+  await sleep(300)
 
   // 复原：把测试期间的通知全部关闭并清掉历史行
   const cleaned = await ev(`(async () => { await window.luminAPI.notifications.closeAll(); const n = await window.luminAPI.notifications.clearClosed(); const left = await window.luminAPI.notifications.list({ includeClosed: true }); window.__vt.notif().items = []; window.__vt.notif().activeId = null; return JSON.stringify({ cleared: n, left: left.length }) })()`)

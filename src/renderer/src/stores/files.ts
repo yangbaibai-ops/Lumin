@@ -322,7 +322,8 @@ export const useFilesStore = defineStore('files', {
       // 最近文档 / 置顶 / 最近文件夹里的死链一起清掉
       // （单个文件被删：删它那一条；目录被删：删它里面的所有条目）
       if (node.type === 'directory') useRecentStore().dropWithin(node.path)
-      else useRecentStore().removeFile(node.path)
+      // undo=false：这次移除是"删文件"的副作用，不是用户在最近列表上的动作
+      else useRecentStore().removeFile(node.path, false)
       await this.refreshDir(parentDir)
     },
     /**

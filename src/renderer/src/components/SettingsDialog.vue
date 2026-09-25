@@ -547,12 +547,29 @@ async function loadLinkHistory(): Promise<void> {
   }
 }
 
+/**
+ * 删除单条链接记录 / 清空全部：**都要先确认**（审计 §8 P2「危险/不可逆操作还缺确认与撤销」）。
+ * 与本地历史浮层的「清空」同一套口径（`ui.confirm` + danger）—— 这两处原先不一致：
+ * 本地历史问了，链接历史没问。单条删除同样不可恢复（打开次数与时间会随行一起没）。
+ */
 async function forgetLink(target: string): Promise<void> {
+  const ok = await ui.confirm({
+    title: t('settings.linksForgetTitle'),
+    body: t('settings.linksForgetBody', { target }),
+    danger: true
+  })
+  if (!ok) return
   await window.luminAPI.links.forget(target).catch(() => {})
   await loadLinkHistory()
 }
 
 async function clearLinkHistory(): Promise<void> {
+  const ok = await ui.confirm({
+    title: t('settings.linksClearTitle'),
+    body: t('settings.linksClearBody'),
+    danger: true
+  })
+  if (!ok) return
   await window.luminAPI.links.clear().catch(() => 0)
   await loadLinkHistory()
 }

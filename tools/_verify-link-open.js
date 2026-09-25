@@ -896,6 +896,21 @@ async function main() {
     })
     await sleep(800)
   }
+  /**
+   * 删除**必须先确认**（审计 §8 P2「危险/不可逆操作还缺确认与撤销」）。
+   * 这一步以前是"点一下直接删"，现在点完先弹模态：先断言它真的问了，再同意。
+   */
+  const asked = JSON.parse(
+    await ev(
+      `(() => { const ui = window.__vt.ui(); return JSON.stringify({ asked: !!ui.confirmState, title: ui.confirmState ? ui.confirmState.title : null }) })()`
+    )
+  )
+  console.log('I-forget-ask ' + JSON.stringify(asked))
+  c('ui-delete-asks-first', asked.asked === true, JSON.stringify(asked))
+  await ev(
+    `(() => { const ui = window.__vt.ui(); if (ui.confirmState) ui.resolveConfirm(true); return 'ok' })()`
+  )
+  await sleep(900)
   const histI = JSON.parse(await ev(HISTORY))
   console.log('I-forget ' + JSON.stringify({ targetBefore, remaining: histI.map((h) => h.target) }))
   c(

@@ -12,6 +12,7 @@
     "restore": "Restore",
     "discard": "Discard",
     "untitled": "Untitled",
+    "undo": "Undo",
     "searchPlaceholder": "Search all indexed documents (FTS5 full-text index)…",
     "loading": "Loading…"
   },
@@ -26,6 +27,8 @@
     "pin": "Pin to top",
     "unpin": "Unpin",
     "removeRecent": "Remove from list",
+    "removeRecentDone": "Removed “{name}” from the list",
+    "clearCurrentBody": "This clears every entry in this list (pinned ones included). Files on disk are not touched. Continue?",
     "hint": "Ctrl+O to open a file · Ctrl+Shift+P to search documents",
     "alreadyOpenTitle": "This file is already open in another window",
     "alreadyOpenBody": "Switched back to the window showing {name}: editing the same file in two windows means the two copies overwrite each other."
@@ -246,6 +249,10 @@
     "linksHistoryEmpty": "No records yet",
     "linksForget": "Delete this record",
     "linksClear": "Clear all records",
+    "linksForgetTitle": "Delete this link record",
+    "linksForgetBody": "Deletes the open record for “{target}” (its count and timestamps cannot be restored). Continue?",
+    "linksClearTitle": "Clear link history",
+    "linksClearBody": "Deletes every link-open record permanently. Continue?",
     "linksCount": "Opened {count} times",
     "linksCreatedBadge": "Created",
     "defaultEncoding": "Default encoding",

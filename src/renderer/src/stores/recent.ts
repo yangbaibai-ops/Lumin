@@ -1,7 +1,10 @@
 import { defineStore } from 'pinia'
 import type { RecentFile, RecentFolder } from '../../../shared/types'
 import { useSettingsStore } from './settings'
+import { useNotificationsStore } from './notifications'
+import i18n from '../i18n'
 import {
+  RECENT_REMOVE_KIND,
   planMigratePinned,
   planMigrateWithin,
   planRecentFolderList,
@@ -9,6 +12,8 @@ import {
   planRemoveRecent,
   planRemoveRecentFolder,
   planRemoveWithin,
+  planRestoreRecent,
+  planRestoreRecentFolder,
   planTogglePin,
   planTouchRecent,
   planTouchRecentFolder
@@ -56,9 +61,18 @@ export const useRecentStore = defineStore('recent', {
       const settings = useSettingsStore()
       settings.set('recentFiles', planTouchRecent(settings.recentFiles, path, Date.now()))
     },
-    removeFile(path: string): void {
+    /**
+     * 从最近列表里去掉一条。
+     * @param undo 要不要给「撤销」通知。**默认给**（用户在列表上亲手点的移除）；
+     *   文件被删除/改名等"顺带清掉死链"的场景传 `false` —— 那时用户已经在处理别的事，
+     *   再飘一张"已从列表移除"的卡只会让人觉得应用在自言自语（`files.removeNode`）。
+     */
+    removeFile(path: string, undo = true): void {
       const settings = useSettingsStore()
+      const entry = (settings.recentFiles ?? []).find((r) => r.path === path)
+      if (!entry) return
       settings.set('recentFiles', planRemoveRecent(settings.recentFiles, path))
+      if (undo) offerUndo('files', entry)
     },
     /** 置顶/取消置顶（置顶项在列表里永远排前面，不受 30 条上限挤掉） */
     togglePin(path: string): void {
@@ -75,7 +89,10 @@ export const useRecentStore = defineStore('recent', {
     },
     removeFolder(dir: string): void {
       const settings = useSettingsStore()
+      const entry = (settings.recentFolders ?? []).find((f) => f.path === dir)
+      if (!entry) return
       settings.set('recentFolders', planRemoveRecentFolder(settings.recentFolders ?? [], dir))
+      offerUndo('folders', entry)
     },
     /** 最近文件夹列表：并入「当前工作区」（老用户可能没记录过，避免空列表） */
     folderList(root: string | null): RecentFolder[] {
@@ -105,6 +122,18 @@ export const useRecentStore = defineStore('recent', {
     clearFolders(): void {
       useSettingsStore().set('recentFolders', [])
     },
+    /**
+     * 撤销一次「从列表移除」：按原时间放回（`planRestoreRecent*`）。
+     * 由 `lib/recentUndo.ts` 注册的通知处理器调用 —— 点通知卡上的「撤销」走到这里。
+     */
+    restoreFile(entry: RecentFile): void {
+      const settings = useSettingsStore()
+      settings.set('recentFiles', planRestoreRecent(settings.recentFiles, entry))
+    },
+    restoreFolder(entry: RecentFolder): void {
+      const settings = useSettingsStore()
+      settings.set('recentFolders', planRestoreRecentFolder(settings.recentFolders ?? [], entry))
+    },
     /** 清空全部历史（含置顶）：最近列表的下拉里有这个入口 */
     clearAll(): void {
       const settings = useSettingsStore()
@@ -114,3 +143,33 @@ export const useRecentStore = defineStore('recent', {
     }
   }
 })
+
+/**
+ * 移除一条记录后给一张带「撤销」的通知（审计 §8 P2「危险/不可逆操作还缺确认与撤销」）。
+ *
+ * 为什么这里用**撤销**而不是二次确认：这份列表是"我开过什么"，删掉一条不碰磁盘上的文件，
+ * 也不影响任何数据 —— 弹模态反而比误点更烦。给一张能撤销的通知是更合适的代价。
+ * 而**整份清空**（RecentList 的「清除记录」、链接历史的「清空」）是不可逆的，那些走确认。
+ *
+ * 负载里带上被移除的整条记录（可 JSON 序列化），重启后卡片上的按钮仍然可用；
+ * 处理器按 `RECENT_REMOVE_KIND` 在启动时注册（`lib/recentUndo.ts`）。
+ */
+function offerUndo(list: 'files' | 'folders', entry: RecentFile | RecentFolder): void {
+  const name = 'title' in entry ? entry.title : entry.name
+  void useNotificationsStore()
+    .notify({
+      level: 'info',
+      title: i18n.global.t('open.removeRecentDone', { name }),
+      actions: [{ id: 'undo', label: i18n.global.t('common.undo'), tone: 'ghost' }],
+      /**
+       * ⚠️ `{ ...entry }` 不是多余的：`entry` 来自 settings store 的 state，
+       * 是个 **Pinia 响应式 Proxy**，而 Proxy 过不了 IPC 的结构化克隆
+       * （`An object could not be cloned`）—— 通知会静默退化成"只在本会话可见"，
+       * 重启后卡片和它的撤销按钮一起消失。展开一次拿到普通对象再发。
+       */
+      payload: { kind: RECENT_REMOVE_KIND, list, entry: { ...entry } },
+      // 同一个路径只占一个卡片位（反复移除/撤销不会刷屏）
+      mergeKey: `recent-removed:${entry.path}`
+    })
+    .catch(() => {})
+}

@@ -12,6 +12,7 @@
     "restore": "恢复",
     "discard": "丢弃",
     "untitled": "未命名",
+    "undo": "撤销",
     "searchPlaceholder": "全局搜索文档内容（FTS5 全文索引）…",
     "loading": "载入中…"
   },
@@ -26,6 +27,8 @@
     "pin": "固定到顶部",
     "unpin": "取消固定",
     "removeRecent": "从列表移除",
+    "removeRecentDone": "已从列表移除「{name}」",
+    "clearCurrentBody": "将从这份列表里移除全部记录（含置顶项）。磁盘上的文件不会被删除。确定吗？",
     "hint": "Ctrl+O 打开文件 · Ctrl+Shift+P 搜索文档",
     "alreadyOpenTitle": "这个文件已经在一个窗口里打开了",
     "alreadyOpenBody": "已为你切回「{name}」所在的那个窗口：同一个文件开在两个窗口里各自保存会互相覆盖。"
@@ -246,6 +249,10 @@
     "linksHistoryEmpty": "暂无记录",
     "linksForget": "删除该记录",
     "linksClear": "清空记录",
+    "linksForgetTitle": "删除这条链接记录",
+    "linksForgetBody": "将删除「{target}」的打开记录（打开次数与时间无法恢复）。确定吗？",
+    "linksClearTitle": "清空链接历史",
+    "linksClearBody": "将删除全部链接打开记录，且不可恢复。确定吗？",
     "linksCount": "打开 {count} 次",
     "linksCreatedBadge": "已新建",
     "defaultEncoding": "默认编码",

@@ -8,6 +8,7 @@ import { useI18n } from 'vue-i18n'
 import type { RecentFile, RecentFolder } from '../../../shared/types'
 import { useFilesStore } from '../stores/files'
 import { useRecentStore } from '../stores/recent'
+import { useUiStore } from '../stores/ui'
 import Icon from './Icon.vue'
 
 const props = withDefaults(
@@ -26,6 +27,7 @@ const emit = defineEmits<{ (e: 'select', path: string): void }>()
 const { t } = useI18n()
 const files = useFilesStore()
 const recent = useRecentStore()
+const ui = useUiStore()
 
 /** 文档：置顶优先 + 按打开时间倒序（排序规则在 store 的 getter 里）；文件夹：并入当前工作区后按时间倒序 */
 const items = computed<RecentFile[] | RecentFolder[]>(() => {
@@ -45,8 +47,19 @@ function isPinned(path: string): boolean {
   return recent.pinnedPaths.has(path)
 }
 
-/** 清空当前这一类（文件夹：只清文件夹；文档：连置顶一起清 —— 置顶属于文档列表的语义） */
-function clearCurrent(): void {
+/**
+ * 清空当前这一类（文件夹：只清文件夹；文档：连置顶一起清 —— 置顶属于文档列表的语义）。
+ *
+ * **整份清空要先问**（审计 §8 P2「危险/不可逆操作还缺确认与撤销」）：它不像单条移除那样
+ * 能靠"再打开一次"补回来，而且文档那份连置顶一起清。单条移除走撤销通知（见 stores/recent）。
+ */
+async function clearCurrent(): Promise<void> {
+  const ok = await ui.confirm({
+    title: props.kind === 'folders' ? t('open.clearFolders') : t('open.clearRecent'),
+    body: t('open.clearCurrentBody'),
+    danger: true
+  })
+  if (!ok) return
   if (props.kind === 'folders') recent.clearFolders()
   else recent.clearAll()
 }

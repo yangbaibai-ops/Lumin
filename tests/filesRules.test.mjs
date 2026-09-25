@@ -13,6 +13,8 @@ import {
   planRemoveRecent,
   planRemoveRecentFolder,
   planRemoveWithin,
+  planRestoreRecent,
+  planRestoreRecentFolder,
   planTogglePin,
   planTouchRecent,
   planTouchRecentFolder
@@ -204,4 +206,54 @@ test('planRemoveWithin / planRemovePinnedWithin：删目录时把里面的条目
     planMigratePinned(['D:\\ws\\sub\\a.md', 'D:\\ws\\sub2\\x.md'], 'D:\\ws\\sub', 'D:\\ws\\r'),
     ['D:\\ws\\r\\a.md', 'D:\\ws\\sub2\\x.md']
   )
+})
+
+// ─── 撤销「从列表移除」（审计 §8 P2「危险/不可逆操作还缺撤销」）────────────────────
+
+test('planRestoreRecent：按原时间插回原位置，不刷新时间、不重复插', () => {
+  const a = { path: 'C:\\ws\\a.md', title: 'a.md', openedAt: 300 }
+  const b = { path: 'C:\\ws\\b.md', title: 'b.md', openedAt: 200 }
+  const c = { path: 'C:\\ws\\c.md', title: 'c.md', openedAt: 100 }
+  const removed = planRemoveRecent([a, b, c], b.path)
+  assert.deepEqual(
+    removed.map((x) => x.path),
+    [a.path, c.path]
+  )
+
+  // 放回：按 openedAt 倒序（b 在 a 之后、c 之前），并且**保留原来的时间**
+  const back = planRestoreRecent(removed, b)
+  assert.deepEqual(
+    back.map((x) => x.path),
+    [a.path, b.path, c.path]
+  )
+  assert.equal(back[1].openedAt, 200)
+
+  // 连点两次「撤销」不会插两条
+  assert.deepEqual(
+    planRestoreRecent(back, b).map((x) => x.path),
+    [a.path, b.path, c.path]
+  )
+})
+
+test('planRestoreRecent / Folder：放回后仍受上限约束，且空列表是合法输入', () => {
+  const full = Array.from({ length: RECENT_FILES_LIMIT }, (_, i) => ({
+    path: `C:\\ws\\f${i}.md`,
+    title: `f${i}.md`,
+    openedAt: 1000 - i
+  }))
+  const oldest = { path: 'C:\\ws\\old.md', title: 'old.md', openedAt: 1 }
+  const back = planRestoreRecent(full, oldest)
+  assert.equal(back.length, RECENT_FILES_LIMIT)
+  // 它本来就在 30 条之外（时间最旧）⇒ 放回后仍被上限挤掉，而不是把列表撑成 31 条
+  assert.ok(!back.some((x) => x.path === oldest.path))
+
+  const folder = { path: 'C:\\ws\\sub', name: 'sub', openedAt: 42 }
+  assert.deepEqual(planRestoreRecentFolder([], folder), [folder])
+  assert.deepEqual(planRestoreRecent([], oldest), [oldest])
+  const folders = Array.from({ length: RECENT_FOLDERS_LIMIT }, (_, i) => ({
+    path: `C:\\ws\\d${i}`,
+    name: `d${i}`,
+    openedAt: 500 - i
+  }))
+  assert.equal(planRestoreRecentFolder(folders, folder).length, RECENT_FOLDERS_LIMIT)
 })

@@ -15,6 +15,7 @@ import GlobalTooltip from './components/GlobalTooltip.vue'
 import Icon from './components/Icon.vue'
 import { installGlobalTooltip } from './lib/tooltip'
 import { installLinkNotificationActions } from './lib/linkOpen'
+import { installRecentUndoAction } from './lib/recentUndo'
 
 /**
  * 「按需出现」的浮层一律异步加载（第二十五轮轻量化）。
@@ -48,6 +49,8 @@ useWindowTitle()
 installGlobalTooltip()
 // 通知卡片上的按钮按 payload.kind 派发，需在启动时把业务处理器接上
 installLinkNotificationActions()
+// 最近列表「移除」的撤销按钮（同样按 payload.kind 派发）
+installRecentUndoAction()
 
 /**
  * 左缘展开把手的热区（px，可按手感调整）。

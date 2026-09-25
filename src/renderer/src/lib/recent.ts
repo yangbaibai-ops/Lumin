@@ -27,6 +27,12 @@ export const RECENT_FILES_LIMIT = 30
 /** 最近文件夹最多留多少条 */
 export const RECENT_FOLDERS_LIMIT = 12
 
+/**
+ * 通知负载的 kind：点「撤销」时由 `lib/recentUndo.ts` 接手的处理器按它派发。
+ * 常量放在这个**纯函数模块**里，是为了让 store 与处理器双方都能引用而不形成循环 import。
+ */
+export const RECENT_REMOVE_KIND = 'recent-removed'
+
 /** 路径最后一段（文件名/文件夹名）；纯字符串处理，不碰文件系统 */
 export function baseNameOf(p: string): string {
   return p.split(/[\\/]/).filter(Boolean).pop() || p
@@ -45,6 +51,21 @@ export function planTouchRecent(
 
 export function planRemoveRecent(list: RecentItem[], path: string): RecentItem[] {
   return (list ?? []).filter((r) => r.path !== path)
+}
+
+/**
+ * 撤销「从列表移除」：把条目按原 `openedAt` 放回列表（审计 §8 P2「危险/不可逆操作还缺撤销」）。
+ *
+ * 规则与 `planTouchRecent` 不同：**不刷新时间**、**不置顶**，只把它插回按时间排序的原位置，
+ * 并重新受上限约束（列表本来就被截断过）。同路径已存在时原样返回 —— 连点两次「撤销」不会插两条。
+ */
+export function planRestoreRecent(
+  list: RecentItem[],
+  entry: RecentItem,
+  limit = RECENT_FILES_LIMIT
+): RecentItem[] {
+  if ((list ?? []).some((r) => r.path === entry.path)) return list ?? []
+  return [...(list ?? []), entry].sort((a, b) => b.openedAt - a.openedAt).slice(0, limit)
 }
 
 /**
@@ -107,6 +128,16 @@ export function planTouchRecentFolder(
 
 export function planRemoveRecentFolder(list: RecentFolderItem[], dir: string): RecentFolderItem[] {
   return (list ?? []).filter((f) => f.path !== dir)
+}
+
+/** 撤销「从列表移除」（最近文件夹）：同上一条，只插回原位、不刷新时间 */
+export function planRestoreRecentFolder(
+  list: RecentFolderItem[],
+  entry: RecentFolderItem,
+  limit = RECENT_FOLDERS_LIMIT
+): RecentFolderItem[] {
+  if ((list ?? []).some((f) => f.path === entry.path)) return list ?? []
+  return [...(list ?? []), entry].sort((a, b) => b.openedAt - a.openedAt).slice(0, limit)
 }
 
 /**
