@@ -34,6 +34,19 @@ function scrollEl(): HTMLElement | null {
   return dom ? (dom.closest('.editor-scroll') as HTMLElement | null) : null
 }
 
+/**
+ * 源码模式的编辑面（分屏右栏 / 全屏源码模式，同一个常驻 textarea）。
+ *
+ * 为什么会话快照要专门看它：源码模式下 `applyActive()` 会把 `editorStore.instance`
+ * **置为 null**（见 stores/editor.ts），于是老实现只能存下 `pos=1, len=0` ——
+ * "重启回到原处"这个承诺在源码模式下根本不成立（审计 §3 P1）。
+ * 长度口径与 Tiptap 的 `doc.content.size` 不同（这里是字符数），但**两端自洽**：
+ * 存的时候读它、还原的时候也读它，比例换算因此仍然正确。
+ */
+function sourceTextarea(): HTMLTextAreaElement | null {
+  return document.querySelector<HTMLTextAreaElement>('textarea.source-editor')
+}
+
 function scrollRatioOf(el: HTMLElement | null): number {
   if (!el) return 0
   const max = el.scrollHeight - el.clientHeight
@@ -56,14 +69,23 @@ function snapshot(): SessionSlot | null {
   const folder = files.root
   if (!doc && !folder) return null
   const ed = useEditorStore().instance
-  const size = ed ? ed.state.doc.content.size : 0
-  const pos = ed ? Math.min(Math.max(1, ed.state.selection.from), Math.max(1, size)) : 1
+  let size = ed ? ed.state.doc.content.size : 0
+  let pos = ed ? Math.min(Math.max(1, ed.state.selection.from), Math.max(1, size)) : 1
+  if (!ed) {
+    // 源码模式（或编辑器尚未挂载）：光标只能从 textarea 读。
+    // `selectionStart` 是 0 基，会话槽位统一 1 基（与 PM 的 from 一致）。
+    const ta = sourceTextarea()
+    if (ta) {
+      size = ta.value.length
+      pos = Math.min(Math.max(1, ta.selectionStart + 1), Math.max(1, size))
+    }
+  }
   return {
     path: doc?.path ?? null, // null = 未命名缓冲区（下次启动按空文档处理，草稿另有保护）
     folder,
     pos,
     len: size,
-    scrollRatio: scrollRatioOf(scrollEl()),
+    scrollRatio: scrollRatioOf(ed ? scrollEl() : sourceTextarea()),
     savedAt: Date.now()
   }
 }
@@ -116,15 +138,29 @@ export function installSessionTracking(): void {
 }
 
 /** 等待编辑器装载「正确的文档」：新文档刚打开时 TyporaEditor 会按 :key 重建，
- *  只判实例存在会拿到旧的（还是未命名缓冲区），故用文档长度做锚。 */
+ *  只判实例存在会拿到旧的（还是未命名缓冲区），故用文档长度做锚。
+ *
+ *  **源码模式要在这里放行**：那时编辑面是 textarea，Tiptap 实例永远不会出现
+ *  （`applyActive()` 会清空它），不认这一点的话源码模式下每次恢复都要白等满 4 秒。
+ *  判据必须是 `ui.editorMode === 'source'`，**不能**只看"textarea 里有没有内容" ——
+ *  textarea 在实时渲染模式下也**常驻 DOM**（只是被隐藏），拿它当锚会让这里提前返回，
+ *  此时 Tiptap 还没挂上，位置就落空了（实测：B 段的光标/滚动恢复直接变 1/0）。 */
 async function waitEditorForDoc(lenHint: number, timeout = 4000): Promise<void> {
   const t0 = Date.now()
+  const sourceMode = (): boolean => useUiStore().editorMode === 'source'
   for (;;) {
     const ed = useEditorStore().instance
     if (ed && ed.view?.dom?.isConnected) {
       const size = ed.state.doc.content.size
       const near = lenHint <= 0 || Math.abs(size - lenHint) <= Math.max(64, lenHint * 0.5)
       if (near) return
+    } else if (sourceMode()) {
+      const ta = sourceTextarea()
+      if (ta && ta.value.length > 0) {
+        const near =
+          lenHint <= 0 || Math.abs(ta.value.length - lenHint) <= Math.max(64, lenHint * 0.5)
+        if (near) return
+      }
     }
     if (Date.now() - t0 > timeout) return
     await new Promise((r) => setTimeout(r, 16))
@@ -135,7 +171,27 @@ async function waitEditorForDoc(lenHint: number, timeout = 4000): Promise<void> 
 async function applyPosition(slot: SessionSlot): Promise<void> {
   await waitEditorForDoc(slot.len)
   const ed = useEditorStore().instance
-  if (!ed) return
+  if (!ed) {
+    // 源码模式：编辑面是 textarea（Tiptap 实例为 null）。同样按比例回退、同样 clamp。
+    // 只在**确实处于源码模式**时走这条路：实时渲染下实例还没挂上时什么都不该做
+    // （那时 textarea 是隐藏的常驻元素，往里写光标等于什么都没恢复）。
+    if (useUiStore().editorMode !== 'source') return
+    const ta = sourceTextarea()
+    if (!ta) return
+    const size = ta.value.length
+    const ratio = slot.len > 0 ? slot.pos / slot.len : 0
+    const at = slot.pos > 0 && slot.pos <= size ? slot.pos : Math.round(ratio * size)
+    const caret = Math.max(0, Math.min(at - 1, size))
+    try {
+      ta.setSelectionRange(caret, caret)
+    } catch {
+      /* 位置非法时保持浏览器默认 */
+    }
+    applyScrollRatio(ta, slot.scrollRatio)
+    requestAnimationFrame(() => applyScrollRatio(ta, slot.scrollRatio))
+    setTimeout(() => applyScrollRatio(ta, slot.scrollRatio), 120)
+    return
+  }
   const size = ed.state.doc.content.size
   // 文档内容变了（外部编辑/长度不同）→ 按比例回退，避免越界
   const ratio = slot.len > 0 ? slot.pos / slot.len : 0

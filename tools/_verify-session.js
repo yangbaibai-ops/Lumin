@@ -103,6 +103,7 @@ const INJECT = `(() => {
     files: () => pinia._s.get('files'),
     settings: () => pinia._s.get('settings'),
     notifications: () => pinia._s.get('notifications'),
+    ui: () => pinia._s.get('ui'),
     ed: () => pinia._s.get('editor')?.instance ?? null
   }
   return 'ok'
@@ -293,6 +294,80 @@ async function main() {
     s1.restoreSession === true,
     'restoreSession=' + s1.restoreSession
   )
+
+  // ── B2. 源码模式的光标也要恢复（审计 §3 P1）─────────────────────────────
+  // 源码模式下 `applyActive()` 会把 Tiptap 实例置为 null，旧快照只能存下 pos=1/len=0 ——
+  // "重启回到原处"在源码模式下不成立。现在从 textarea 读，还原时也落回 textarea。
+  await ev(`(() => { window.__L.ui().editorMode = 'source'; return 'ok' })()`)
+  await sleep(700)
+  const placedSrc = JSON.parse(
+    await ev(`(() => {
+      const ta = document.querySelector('textarea.source-editor')
+      if (!ta) return 'null'
+      const n = Math.round(ta.value.length * 0.5)
+      ta.focus()
+      ta.setSelectionRange(n, n)
+      // 会话的光标节流靠 ui.cursor 变化驱动（EditorView 的 @select/@keyup/@click 都会更新它）
+      ta.dispatchEvent(new Event('select', { bubbles: true }))
+      ta.dispatchEvent(new Event('keyup', { bubbles: true }))
+      return JSON.stringify({ n, len: ta.value.length, scrollTop: ta.scrollTop })
+    })()`)
+  )
+  console.log('B2-1 ' + JSON.stringify(placedSrc))
+  await sleep(1500)
+  const slotSrc = readKvSession().slots[s0.slot]
+  console.log('B2-2-slot ' + JSON.stringify(slotSrc))
+  c(
+    'source-mode-slot-pos',
+    typeof slotSrc?.pos === 'number' && Math.abs(slotSrc.pos - (placedSrc.n + 1)) < 12,
+    JSON.stringify({ pos: slotSrc?.pos, want: placedSrc.n + 1 })
+  )
+  c(
+    'source-mode-slot-len',
+    typeof slotSrc?.len === 'number' && Math.abs(slotSrc.len - placedSrc.len) < 12,
+    JSON.stringify({ len: slotSrc?.len, want: placedSrc.len })
+  )
+
+  // 让模式**落库**再 reload：重启后 ui.editorMode 从 settings.editorMode 初始化
+  await ev(`(async () => {
+    window.__L.settings().set('editorMode', 'source')
+    for (let i = 0; i < 60; i++) {
+      const s = await window.luminAPI.settings.getAll()
+      if (s.editorMode === 'source') return 'persisted'
+      await new Promise((r) => setTimeout(r, 50))
+    }
+    return 'TIMEOUT'
+  })()`)
+  await send('Page.reload')
+  await sleep(1500)
+  await settle(ev)
+  await sleep(1200)
+  const afterSrc = JSON.parse(
+    await ev(`(() => {
+      const ta = document.querySelector('textarea.source-editor')
+      return JSON.stringify({
+        mode: window.__L.ui().editorMode,
+        path: window.__L.files().current?.path ?? null,
+        caret: ta ? ta.selectionStart : null,
+        len: ta ? ta.value.length : null
+      })
+    })()`)
+  )
+  console.log('B2-3-after-reload ' + JSON.stringify(afterSrc))
+  c('source-mode-kept-across-reload', afterSrc.mode === 'source', String(afterSrc.mode))
+  c('source-mode-doc-restored', afterSrc.path === DOC, String(afterSrc.path))
+  c(
+    'source-mode-caret-restored',
+    typeof afterSrc.caret === 'number' && Math.abs(afterSrc.caret - placedSrc.n) < 30,
+    JSON.stringify({ caret: afterSrc.caret, want: placedSrc.n })
+  )
+  // 复原成实时渲染：后面的段落按 PM 光标量，别让模式留在源码
+  await ev(`(async () => {
+    window.__L.ui().editorMode = 'wysiwyg'
+    window.__L.settings().set('editorMode', 'wysiwyg')
+    return 'ok'
+  })()`)
+  await sleep(600)
 
   // ── C. 开关：关 → 进欢迎页；开着时打开文档 → 再打开开关 → 又恢复 ─────────
   // 语义（主流同款）：会话记录的是「当前状态」。关掉恢复后应用停在欢迎页/未命名
