@@ -107,6 +107,8 @@ const DEFAULT_SUITES = [
   '_verify-save-safety.js',
   // ── 关窗兜底：慢落盘不再被 2.5 秒强杀（心跳延长；会话结束走同一条 before-close）──
   '_verify-close-guard.js',
+  // ── 载入历史某一版：脏了先问 + 载入后立刻有草稿、并排上保存 ──
+  '_verify-history-restore.js',
   // ── 第十一轮：路径授权闸（工作区外拒绝读写，正常流程全部放行）──
   '_verify-path-grants.js',
   // ── 第十二轮：关于页说的是事实（真实依赖清单 + 第三方许可声明，不硬编码）──

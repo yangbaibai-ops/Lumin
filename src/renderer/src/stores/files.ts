@@ -746,10 +746,24 @@ export const useFilesStore = defineStore('files', {
       const cur = this.current
       if (!cur) return false
       if (cur.path && !samePath(cur.path, entry.path)) return false
-      cur.content = entry.content
-      // 强制同步：这是一次显式外部替换，不能让它被回声过滤吞掉（同 reopenWithEncoding）
-      this.noteExternalReplace()
-      cur.mtimeMs = cur.mtimeMs ?? null
+      /**
+       * 有未保存修改时**先问**（审计 §2 P1）。点一下就把刚写的一大段换掉是不可接受的：
+       * 历史里的那一版再老也是"已经落过盘"的，而当前缓冲区里可能是用户刚写的、
+       * 还没有任何副本的一段。`confirmDiscardIfDirty` 会先把编辑器里挂起的变更刷进 store
+       * （不然"脏不脏"用的是 250ms 防抖前的老账）。
+       */
+      if (!(await confirmDiscardIfDirty(() => this.dirty))) return false
+      // 问的这段时间里文档可能被换掉了（浮层是模态的，但这条入口不止一处）——账要对得上
+      if (this.current !== cur) return false
+      /**
+       * 走 `setContent(…, 'external')` 而不是直接给 `cur.content` 赋值（审计 §2 P1 的另一半）：
+       * 它会计一次外部替换的账，并**排上保存与草稿**。直接赋值那条路既不排保存也不写草稿 ——
+       * 源码模式下连草稿都不会被重写，1.2 秒后旧草稿还可能被新内容覆盖。
+       */
+      this.setContent(entry.content, 'external')
+      // 立刻补一份草稿：载入历史是"把缓冲区换成另一个版本"，用户按 Ctrl+S 之前它只在内存里
+      // （崩溃就没了）。`scheduleSave` 的草稿是 1.2s 防抖的，这里不等它。
+      void this.writeDraft()
       useUiStore().toast(
         i18n.global.t('toast.historyRestored', { time: formatHistoryTime(entry.savedAt) }),
         'success'
