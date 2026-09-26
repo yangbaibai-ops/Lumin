@@ -99,6 +99,17 @@
   --danger: #dc2626;
   --warning: #d97706;
   --ok: #16a34a;
+  /* ─── 语义色的**文本档**（审计 §8 P1「--ink-3 被当正文用」的同族问题）────────────
+     语义色（accent/danger/warning/ok）同时承担两个角色，而两者的要求是**相反**的：
+       * 图形/图标/底色：要够饱和（对底 ≥ 3:1 即可）；
+       * 文字：要 ≥ 4.5:1 —— 实测 `text-warning` 对纸只有 3.19、`text-ok` 3.30、
+         深色下 `text-accent` 4.47 / `text-danger` 4.25，全都够不到正文线。
+     修法与 `--ink-2b` / `--code-*` 同一套路：另立一档**文本专用**的颜色，
+     图形那档一个像素都不动（按钮、焦点环、圆点的观感完全不变）。
+     这一档对纸与 panel-2 都要 ≥ 4.5:1，由 tests/themeTokens.test.mjs 守住。 */
+  --danger-ink: #b91c1c;
+  --warning-ink: #92400e;
+  --ok-ink: #166534;
   --glow: rgba(17, 24, 39, 0.12);
   --code-bg: #f1f2f5;
   /* 自绘淡底（查找命中）：灰，不是紫。原生文字选区走浏览器默认，不用这个令牌 */
@@ -166,6 +177,11 @@
   --danger: #f87171;
   --warning: #fbbf24;
   --ok: #4ade80;
+  /* 语义色的**文本档**（深色主题）：暗底上的文字要往亮走（与浅色主题方向相反），
+     图形那档不动。判据与浅色块同：对纸与 panel-2 都 ≥ 4.5:1。 */
+  --danger-ink: #fca5a5;
+  --warning-ink: #fcd34d;
+  --ok-ink: #86efac;
   --glow: rgba(255, 255, 255, 0.1);
   /* 代码块底色比纸再暗一档：在抬亮后的纸上仍然读得出「内嵌一块」 */
   --code-bg: #303338;
@@ -222,6 +238,11 @@
   --danger: #b91c1c;
   --warning: #b45309;
   --ok: #15803d;
+  /* 语义色的**文本档**（护眼纸）：暖底上再压深一档（`--warning` 4.57 是擦线过的，
+     文本档留出余量；`--ok` 同理）—— 图形那档不动。 */
+  --danger-ink: #991b1b;
+  --warning-ink: #92400e;
+  --ok-ink: #166534;
   --glow: rgba(90, 74, 48, 0.12);
   --code-bg: #efe4c9;
   --sel: rgba(90, 74, 48, 0.14);
@@ -324,6 +345,11 @@
   --color-danger: var(--danger);
   --color-warning: var(--warning);
   --color-ok: var(--ok);
+  /* 文本档（见各主题块里的说明）：`text-danger-ink` / `text-warning-ink` / `text-ok-ink`
+     是**文字**要用的类；`text-danger` 这类留给图标与底色上的图形 */
+  --color-danger-ink: var(--danger-ink);
+  --color-warning-ink: var(--warning-ink);
+  --color-ok-ink: var(--ok-ink);
   /* 遮罩要能用 Tailwind 类写（`bg-scrim`），这样组件里不再出现 bg-black/30 这类字面色 */
   --color-scrim: var(--scrim);
   --color-control-on: var(--control-on);

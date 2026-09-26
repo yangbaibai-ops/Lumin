@@ -166,7 +166,7 @@ async function openDoc(path: string): Promise<void> {
             />
             <span
               class="truncate text-ui font-medium tracking-[-0.01em]"
-              :class="doc.path === currentPath ? 'text-accent' : 'text-ink'"
+              :class="doc.path === currentPath ? 'text-accent-ink' : 'text-ink'"
             >
               {{ titleOf(doc) }}
             </span>

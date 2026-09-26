@@ -358,7 +358,7 @@ const subStyle = computed(() => ({
             class="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-left text-[13px] transition-colors duration-100"
             :class="[
               item.danger
-                ? 'text-danger hover:bg-[color-mix(in_srgb,var(--danger)_10%,transparent)]'
+                ? 'text-danger-ink hover:bg-[color-mix(in_srgb,var(--danger)_10%,transparent)]'
                 : 'text-ink hover:bg-panel-2',
               item.disabled ? 'cursor-default opacity-40' : '',
               index === openIndex || index === cursorIndex ? 'bg-panel-2' : ''

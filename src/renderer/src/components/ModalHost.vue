@@ -66,8 +66,8 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onKeydown))
                   class="flex h-9 w-9 items-center justify-center rounded-full"
                   :class="
                     ui.confirmState.danger
-                      ? 'bg-[color-mix(in_srgb,var(--danger)_12%,transparent)] text-danger'
-                      : 'bg-accent-soft text-accent'
+                      ? 'bg-[color-mix(in_srgb,var(--danger)_12%,transparent)] text-danger-ink'
+                      : 'bg-accent-soft text-accent-ink'
                   "
                 >
                   <Icon :name="ui.confirmState.danger ? 'trash' : 'info'" :size="17" />

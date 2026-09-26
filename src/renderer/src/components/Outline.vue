@@ -25,7 +25,7 @@ const editorStore = useEditorStore()
       class="group flex w-full items-center gap-1.5 py-[5px] pr-2 text-left text-ui transition-colors duration-100"
       :class="
         editorStore.activeHeading === h.pos
-          ? 'bg-accent-soft text-accent'
+          ? 'bg-accent-soft text-accent-ink'
           : 'text-ink-2 hover:bg-panel-2 hover:text-ink'
       "
       :style="{ paddingLeft: `${10 + (h.level - 1) * 14}px` }"

@@ -221,7 +221,7 @@ onBeforeUnmount(() => {
                       <span
                         v-if="r.titleSnippet"
                         class="truncate text-ui-sm"
-                        :class="i === activeIdx ? 'text-accent' : 'text-ink-2b'"
+                        :class="i === activeIdx ? 'text-accent-ink' : 'text-ink-2b'"
                       >
                         <template v-for="(seg, si) in highlightSegments(r.titleSnippet)" :key="si"
                           ><em v-if="seg.hit" class="gs-hl">{{ seg.text }}</em

@@ -248,6 +248,34 @@ test('文字对比度矩阵：正文/次要正文 ≥ 4.5:1，装饰与图标 �
   console.log('文字/底对比度 ' + JSON.stringify(report))
 })
 
+test('语义色的**文本档**对纸与 panel-2 都 ≥ 4.5:1（三主题）', () => {
+  /**
+   * 审计 §8 P1 的同族问题：语义色（accent/danger/warning/ok）同时当"图形"和"文字"用，
+   * 而两者的要求相反 —— 图形 ≥3:1 就够，文字要 ≥4.5:1。实测（未加文本档之前）：
+   *   * 浅色 `text-warning` 对纸 **3.19**、`text-ok` **3.30**；
+   *   * 深色 `text-accent` 对纸 **4.47**、`text-danger` **4.25**（擦线不达标）；
+   *   * 护眼纸 `text-accent` 对纸 **3.59**（最差的一处）。
+   * 修法是**分档**（与 `--ink-2b` / `--code-*` 同一套路）：另立 `--accent-ink` /
+   * `--danger-ink` / `--warning-ink` / `--ok-ink` 作为文字专用色，图形那档一个像素不动。
+   * 这条测试把"文字档必须达标"钉成可复算的数值，改色值时会当场红。
+   */
+  const report = {}
+  for (const t of THEMES) {
+    report[t] = {}
+    for (const ink of ['--accent-ink', '--danger-ink', '--warning-ink', '--ok-ink']) {
+      for (const bg of ['--paper', '--panel-2']) {
+        const c = contrast(TOKENS[t][ink], TOKENS[t][bg])
+        report[t][`${ink}/${bg}`] = Number(c.toFixed(2))
+        assert.ok(
+          c >= 4.5,
+          `${t}：${ink}=${TOKENS[t][ink]} 对 ${bg}=${TOKENS[t][bg]} 只有 ${f(c)}:1（文字档要求 ≥ 4.5）`
+        )
+      }
+    }
+  }
+  console.log('语义色文本档对比度 ' + JSON.stringify(report))
+})
+
 test('代码块配色：四档 token 对 --code-bg 均 ≥ 4.5:1（三主题）', () => {
   const report = {}
   for (const t of THEMES) {

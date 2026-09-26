@@ -116,7 +116,7 @@ async function clearCurrent(): Promise<void> {
             <Icon name="pin" :size="12" />
           </button>
           <button
-            class="icon-btn !h-6 !w-6 opacity-0 hover:!text-danger group-hover:opacity-100 group-focus-within:opacity-100"
+            class="icon-btn !h-6 !w-6 opacity-0 hover:!text-danger-ink group-hover:opacity-100 group-focus-within:opacity-100"
             :title="t('open.removeRecent')"
             :aria-label="t('open.removeRecent')"
             @click="recent.removeFile(item.path)"
@@ -126,7 +126,7 @@ async function clearCurrent(): Promise<void> {
         </template>
         <button
           v-else
-          class="icon-btn !h-6 !w-6 opacity-0 hover:!text-danger group-hover:opacity-100 group-focus-within:opacity-100"
+          class="icon-btn !h-6 !w-6 opacity-0 hover:!text-danger-ink group-hover:opacity-100 group-focus-within:opacity-100"
           :title="t('open.removeRecent')"
           :aria-label="t('open.removeRecent')"
           @click="recent.removeFolder(item.path)"
@@ -138,7 +138,7 @@ async function clearCurrent(): Promise<void> {
 
     <button
       v-if="items.length"
-      class="mt-1 flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-ui-sm text-ink-2b transition-colors hover:bg-panel-2 hover:text-danger"
+      class="mt-1 flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-ui-sm text-ink-2b transition-colors hover:bg-panel-2 hover:text-danger-ink"
       @click="clearCurrent"
     >
       <Icon name="trash" :size="13" />

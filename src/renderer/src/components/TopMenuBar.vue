@@ -548,7 +548,7 @@ onBeforeUnmount(() => {
           <button
             v-else
             class="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-left text-ui transition-colors duration-100"
-            :class="it.danger ? 'text-danger hover:bg-danger/10' : 'text-ink hover:bg-panel-2'"
+            :class="it.danger ? 'text-danger-ink hover:bg-danger/10' : 'text-ink hover:bg-panel-2'"
             @mouseenter="closeSub"
             @click="runLeaf(it)"
           >
@@ -604,9 +604,9 @@ onBeforeUnmount(() => {
                 class="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-left text-ui transition-colors duration-100"
                 :class="
                   child.danger
-                    ? 'text-danger hover:bg-danger/10'
+                    ? 'text-danger-ink hover:bg-danger/10'
                     : child.active
-                      ? 'bg-accent-soft text-accent'
+                      ? 'bg-accent-soft text-accent-ink'
                       : 'text-ink hover:bg-panel-2'
                 "
                 :data-encoding-item="child.label ?? child.labelKey ?? ''"

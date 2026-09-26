@@ -168,13 +168,13 @@ function isValid(c: ResolvedCommand): boolean {
           <!-- 冲突：同一个键被多条命令占用 -->
           <span
             v-if="c.conflictWith.length"
-            class="flex flex-none items-center gap-1 text-[11.5px] text-warning"
+            class="flex flex-none items-center gap-1 text-[11.5px] text-warning-ink"
             :title="t('keymap.conflictWith', { names: conflictNames(c) })"
           >
             <Icon name="alert-triangle" :size="12" />
             {{ t('keymap.conflict') }}
           </span>
-          <span v-else-if="c.customized" class="flex-none text-[11.5px] text-accent">{{
+          <span v-else-if="c.customized" class="flex-none text-[11.5px] text-accent-ink">{{
             t('keymap.customized')
           }}</span>
 
@@ -182,7 +182,7 @@ function isValid(c: ResolvedCommand): boolean {
           <span class="flex flex-none items-center gap-1">
             <template v-if="recordingId === c.id">
               <span
-                class="key-recording rounded-md border border-accent px-2 py-0.5 text-[11.5px] text-accent"
+                class="key-recording rounded-md border border-accent px-2 py-0.5 text-[11.5px] text-accent-ink"
               >
                 {{ t('keymap.pressKeys') }}
               </span>

@@ -57,7 +57,7 @@ onMounted(async () => {
         }"
       />
       <h1 class="text-[28px] font-bold tracking-tight text-ink">{{ t('app.name') }}</h1>
-      <p class="mt-1 text-[13.5px] font-medium uppercase tracking-[0.25em] text-accent">
+      <p class="mt-1 text-[13.5px] font-medium uppercase tracking-[0.25em] text-accent-ink">
         {{ t('app.tagline') }}
       </p>
 
@@ -92,7 +92,7 @@ onMounted(async () => {
             v-for="d in deps"
             :key="d.name"
             data-about-dep
-            class="rounded-full border border-edge bg-panel px-3 py-1 text-[11.5px] text-ink-2 transition-colors duration-150 hover:border-accent hover:text-accent"
+            class="rounded-full border border-edge bg-panel px-3 py-1 text-[11.5px] text-ink-2 transition-colors duration-150 hover:border-accent hover:text-accent-ink"
             :title="`${d.name}@${d.version}`"
           >
             {{ depLabel(d.name) }}
@@ -104,7 +104,7 @@ onMounted(async () => {
            按需展开 —— 300 个包的表格直接塞进 DOM 会让这一页变重 -->
       <div v-if="notices" class="mt-8 w-full" data-about-licenses>
         <button
-          class="flex w-full items-center justify-center gap-1.5 text-ui-sm font-semibold uppercase tracking-[0.14em] text-ink-2b transition-colors hover:text-accent"
+          class="flex w-full items-center justify-center gap-1.5 text-ui-sm font-semibold uppercase tracking-[0.14em] text-ink-2b transition-colors hover:text-accent-ink"
           :aria-expanded="showLicenses ? 'true' : 'false'"
           data-about-licenses-toggle
           @click="showLicenses = !showLicenses"

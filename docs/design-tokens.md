@@ -32,7 +32,7 @@ npm run docs:tokens:write
 |---|---|
 | 定义令牌的文件 | `src/renderer/src/assets/theme.css` / `src/renderer/src/assets/sidebar.css` |
 | 声明块 | 7 个 |
-| 令牌总数 | 179 |
+| 令牌总数 | 191 |
 | 重复定义（同一声明块内） | 0 |
 
 > 这张表由 `node tools/doc-tokens.js --write` 生成，`npm run docs:tokens:check` 校验；
@@ -40,7 +40,7 @@ npm run docs:tokens:write
 
 ### src/renderer/src/assets/theme.css
 
-**:root, .theme-light**（第 6 行起，44 个）
+**:root, .theme-light**（第 6 行起，47 个）
 
 | 令牌 | 值 |
 |---|---|
@@ -69,6 +69,9 @@ npm run docs:tokens:write
 | `--danger` | `#dc2626` |
 | `--warning` | `#d97706` |
 | `--ok` | `#16a34a` |
+| `--danger-ink` | `#b91c1c` |
+| `--warning-ink` | `#92400e` |
+| `--ok-ink` | `#166534` |
 | `--glow` | `rgba(17, 24, 39, 0.12)` |
 | `--code-bg` | `#f1f2f5` |
 | `--sel` | `rgba(17, 24, 39, 0.11)` |
@@ -89,7 +92,7 @@ npm run docs:tokens:write
 | `--shadow-1` | `0 1px 2px rgba(16, 24, 40, 0.06)` |
 | `--shadow-2` | `0 8px 28px rgba(16, 24, 40, 0.1)` |
 
-**.theme-dark**（第 67 行起，44 个）
+**.theme-dark**（第 71 行起，47 个）
 
 | 令牌 | 值 |
 |---|---|
@@ -118,6 +121,9 @@ npm run docs:tokens:write
 | `--danger` | `#f87171` |
 | `--warning` | `#fbbf24` |
 | `--ok` | `#4ade80` |
+| `--danger-ink` | `#fca5a5` |
+| `--warning-ink` | `#fcd34d` |
+| `--ok-ink` | `#86efac` |
 | `--glow` | `rgba(255, 255, 255, 0.1)` |
 | `--code-bg` | `#303338` |
 | `--sel` | `rgba(255, 255, 255, 0.18)` |
@@ -138,7 +144,7 @@ npm run docs:tokens:write
 | `--shadow-1` | `0 1px 2px rgba(0, 0, 0, 0.35)` |
 | `--shadow-2` | `0 10px 32px rgba(0, 0, 0, 0.5)` |
 
-**.theme-sepia**（第 122 行起，44 个）
+**.theme-sepia**（第 130 行起，47 个）
 
 | 令牌 | 值 |
 |---|---|
@@ -167,6 +173,9 @@ npm run docs:tokens:write
 | `--danger` | `#b91c1c` |
 | `--warning` | `#b45309` |
 | `--ok` | `#15803d` |
+| `--danger-ink` | `#991b1b` |
+| `--warning-ink` | `#92400e` |
+| `--ok-ink` | `#166534` |
 | `--glow` | `rgba(90, 74, 48, 0.12)` |
 | `--code-bg` | `#efe4c9` |
 | `--sel` | `rgba(90, 74, 48, 0.14)` |
@@ -187,7 +196,7 @@ npm run docs:tokens:write
 | `--shadow-1` | `0 1px 2px rgba(97, 74, 32, 0.08)` |
 | `--shadow-2` | `0 8px 28px rgba(97, 74, 32, 0.14)` |
 
-**:root**（第 179 行起，15 个）
+**:root**（第 191 行起，15 个）
 
 | 令牌 | 值 |
 |---|---|
@@ -207,7 +216,7 @@ npm run docs:tokens:write
 | `--z-editor-menu-sub` | `171` |
 | `--z-tooltip-global` | `9999` |
 
-**@theme**（第 208 行起，4 个）
+**@theme**（第 220 行起，4 个）
 
 | 令牌 | 值 |
 |---|---|
@@ -216,7 +225,7 @@ npm run docs:tokens:write
 | `--text-ui` | `12.5px` |
 | `--text-ui-sm` | `12px` |
 
-**@theme inline**（第 219 行起，21 个）
+**@theme inline**（第 231 行起，24 个）
 
 | 令牌 | 值 |
 |---|---|
@@ -238,6 +247,9 @@ npm run docs:tokens:write
 | `--color-danger` | `var(--danger)` |
 | `--color-warning` | `var(--warning)` |
 | `--color-ok` | `var(--ok)` |
+| `--color-danger-ink` | `var(--danger-ink)` |
+| `--color-warning-ink` | `var(--warning-ink)` |
+| `--color-ok-ink` | `var(--ok-ink)` |
 | `--color-scrim` | `var(--scrim)` |
 | `--color-control-on` | `var(--control-on)` |
 | `--color-control-ink` | `var(--control-ink)` |
