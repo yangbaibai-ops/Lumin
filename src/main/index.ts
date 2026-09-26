@@ -15,6 +15,7 @@ import { optimizer, is } from '@electron-toolkit/utils'
 // 否则同一应用会出现两种图标。
 import appIconPng from '../../resources/icon.png?asset'
 import { installMenu } from './menu'
+import { canRestoreWindow } from './windowPlacement'
 import { mainT } from './i18n'
 import { registerIpc, attachCloseGuard } from './ipc'
 import { isServableMedia } from './fileOps'
@@ -123,14 +124,16 @@ interface WindowState {
   isMaximized: boolean
 }
 
-/** 校验保存的窗口位置是否仍落在某个显示器工作区内（防止显示器配置变化后窗口跑到屏幕外） */
+/**
+ * 保存过的窗口位置还能不能用（尺寸够大 + 与某个显示器工作区相交）。
+ * 纯规则抽在 `main/windowPlacement.ts`（不 import electron，有单测）——
+ * 这里只负责把「当前显示器的工作区」喂进去。
+ */
 function validWindowBounds(s: WindowState): boolean {
-  return screen.getAllDisplays().some((d) => {
-    const a = d.workArea
-    return (
-      s.x < a.x + a.width && s.x + s.width > a.x && s.y < a.y + a.height && s.y + s.height > a.y
-    )
-  })
+  return canRestoreWindow(
+    s,
+    screen.getAllDisplays().map((d) => d.workArea)
+  )
 }
 
 function saveWindowState(win: BrowserWindow): void {
@@ -185,7 +188,8 @@ function createWindow(options: WindowOpenOptions = {}): BrowserWindow {
 
   if (isFirst) {
     const state = db.kvGet<WindowState | null>('windowState', null)
-    if (state && state.width >= 940 && state.height >= 600 && validWindowBounds(state)) {
+    // 尺寸与位置的判据都在 canRestoreWindow 里（含"小于最小窗口不采用"）
+    if (state && validWindowBounds(state)) {
       x = state.x
       y = state.y
       width = state.width
