@@ -119,5 +119,13 @@
   "nested-styles.md": {
     "class": "exact",
     "why": "嵌套样式原样往返（本轮修好）：① `mdStyle` 的样式从单个值改成**集合**（`styles: StyleKind[]`，PM 里同一种 mark 只能挂一个，嵌套必须靠集合）；② 标记物化改成按**样式栈**开关（前后两段样式集合取公共前缀不动，只开关差集），于是写出 `**粗体里的 `行内代码` 应该整段加粗**` 而不是外层提前合上的孤儿标记；③ 行内代码的遗留 mark 原本 `excludes: '_'`（排斥一切），解析时会把外层粗体丢掉，现已放开。"
+  },
+  "footnotes.md": {
+    "class": "exact",
+    "why": "脚注原样透传（本轮修好）：inline 规则在 link 之前认领 [^n] → MdFootnote mark（escape:false 逐字写回）；block 规则在 reference 之前认领 [^n]: 定义行及其缩进续行 → FootnoteDef 原子节点。修之前是 lossy：markdown-it 把定义行当**链接引用定义**吃掉，正文里的 [^1] 变成链接、定义文本被塞进链接目标。"
+  },
+  "definition-lists.md": {
+    "class": "normalized",
+    "why": "定义列表没有语法节点（markdown-it 无 deflist 插件）：术语\\n: 定义 按普通段落解析，写回时软换行按 CommonMark 合并成一行（breaks:false 的既定口径）—— 行数 7→4，内容保义、不丢字。"
   }
 }

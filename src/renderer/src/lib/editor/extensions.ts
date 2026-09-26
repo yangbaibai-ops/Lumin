@@ -27,6 +27,7 @@ import { MarkdownPaste } from './markdownPaste'
 import { TyporaInlineMarks, MdStyle, MdMarker, MdCodeLiteral, MdEscape } from './typoraInlineMarks'
 import { Frontmatter } from './frontmatter'
 import { HtmlBlock, MdHtml } from './htmlPassthrough'
+import { FootnoteDef, MdFootnote } from './footnotePassthrough'
 import { MathBlock, MdMath } from './mathMarkers'
 import { MathPreview } from './mathPreview'
 import { BulletListMarked, TaskListTight } from './listMarkers'
@@ -244,6 +245,9 @@ export const editorExtensions: Extensions = [
   Frontmatter,
   // 块级 HTML 原文（`<div>`/`<!-- 注释 -->`/`<details>`）：Markdown 表达不了就整段原样留
   HtmlBlock,
+  // 脚注：行内 `[^1]` 与块级 `[^1]: …` 都**原样透传**（见 footnotePassthrough.ts 的成因说明）
+  MdFootnote,
+  FootnoteDef,
   // 块级公式（`$$…$$`）：独占块的原子节点，屏幕上用 KaTeX 渲染（见 mathMarkers.ts）
   MathBlock,
   // 行内公式的 KaTeX 预览（光标不在公式上时用渲染结果替换原文）

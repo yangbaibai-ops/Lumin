@@ -51,6 +51,7 @@
 | **行内标记的字节保真**：字面量化补齐「样式正文」这一档（`**2****2**` 等逐字节留住）+ 真实粘贴丢字符（tiptap mark 粘贴规则）+ 转义反斜杠拆 span（第二十轮行为修订：**从「暗色常显」改为跟 `**` 一样按光标显隐 + 连续段整体显隐**） | ✅ 已完成（2026-09-17 第十九轮，修订见第二十轮） | 本轮 |
 | ~~**下一轮第一优先**：`tools/verify-tiptap.js`（1473 行 / 114 断言）迁进矩阵 + 运行器加 `PROBE` 判定（现约 15 个 0 断言探针在冒充 PASS）~~ | ✅ 已完成：`PROBE/NOASSERT` 口径落地（`run-suites.js` 的 `total === 0` 不再算 PASS，探针名单每轮打印）；那个遗留文件守的 input rules / 键语义 / 表格按钮已补进 `_verify-input-rules.js`（22 条），其余由既有套件接管，**文件已删除**（2026-09-24，审计 §10 P0） | 本轮 |
 | **打包态常驻覆盖 + 首屏相对图片缺陷**（审计 §6 P2 / §11 第 1 条）：新增 `_verify-packaging-fast.js`（对着 `dist/win-unpacked` 产物，6 条断言：CSP meta 单一真相源、CSP 真的拦 `connect-src`、`lumin-file://` 图片、asar 懒加载、`app.isPackaged`）；**它当场抓到一个真 bug** —— 双击带相对图片的 .md 时，「文档 → 窗口」登记要等渲染层首帧后的 IPC，而图片在首帧就请求 `lumin-file://`，协议白名单没查到 → **首屏破图且浏览器不会重试**（dev 态永远复现不了）。修法：主进程在 `createWindow` 里用自己解析出的 `openFile` **当场登记**（同时让「一个文件只开一个窗口」的首帧判据也成立） | ✅ 已完成（2026-09-24，实测 F5 先红后绿：首次测量 `naturalWidth=0` + 主进程 `[protocol] refused …` → 修后 1024） | 本轮 |
+| **脚注往返保真**（审计 §3「Markdown 往返保真风险清单」里标注"完全没处理 / 高"的那条）：先加两份夹具把现状量出来 —— 实测比审计写的更糟：markdown-it 把 `[^1]: 定义` 当**链接引用定义**吃掉，正文里的 `[^1]` 变成链接、定义文本被塞进链接目标，没配对的 `[^2]` 还被转义（`footnotes.md` = **lossy**）。修法照既有"不透明透传"家族（HTML/frontmatter/公式）：新增 `lib/editor/footnotePassthrough.ts` —— 行内规则在 `link` **之前**认领 `[^n]` → `MdFootnote` mark（`escape:false` 逐字写回）；块级规则在 `reference` 之前认领定义行及其缩进续行 → `FootnoteDef` 原子节点。`footnotes.md` 现为 **exact**；定义列表量到是 `normalized`（无 deflist 节点，退化成段落对、软换行按 CommonMark 合并），已按仓库口径写进 `EXPECT.json` 的 why | ✅ 已完成（2026-09-24；反向对照：关掉解析钩子 → 该夹具立刻回到 lossy） | 本轮 |
 ---
 
 ---
