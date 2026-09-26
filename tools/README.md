@@ -57,12 +57,40 @@ main().then((c) => process.exit(c)).catch(fatal)
     它**自己不做构建**：没有产物就如实 SKIP 并提示先跑 `npm run build:unpack`。
     这条规矩是踩出来的：打包态**首屏相对图片**曾因"文档 → 窗口"登记慢一拍而 404，
     而浏览器对失败的 `<img>` 不会重试 —— dev 里永远看不到，只有对着产物跑才暴露（已修）。
+12. **靠真实按键/帧的套件：拿不到前置条件就 `preconditionSkip`，不要 `throw new Error`**
+    （清单 §10 P1「已知 flaky 的套件没有隔离」）。用户自己那套 Lumin 可能正占着前台，
+    于是 CDP 注入的按键会丢 —— 那看着像产品缺陷，实际是环境。骨架给了公共入口：
+
+    ```js
+    const { preconditionSkip, fatal } = require('./lib/harness')
+    // …等焦点若干次之后仍然没拿到：
+    throw preconditionSkip('编辑器拿不到焦点（真实输入会打到 body 上）——环境抖动，不算失败')
+    main().then((c) => process.exit(c)).catch(fatal) // fatal 把它按 SKIP 结算（exit 0）
+    ```
+
+    运行器认得 `SKIP: 前置条件不满足` 前缀并记 **SKIP**（不是 FAIL、也不是 0 断言的 NOASSERT）；
+    两侧字面口径由 `tests/tooling.test.mjs` 守着。
+
+    **已知欠账**（实测清点 2026-09-24：登记套件 **110 个**，其中 **34 个**注入真实按键；
+    已有守卫的 **12 个** = `preconditionSkip` **1 个** + `ensureFocus`/`report.skip` 窗口级兜底 **11 个**，
+    于是**剩 22 个两者都没有**）。清点命令（数字是量出来的，不是估的）：
+
+    ```powershell
+    Get-ChildItem tools -Filter "_*.js" | ? Name -match "^_(verify|regress|repro)-" |
+      ? { Select-String -Path $_.FullName -Pattern "dispatchKeyEvent|pressKey\(|Input\.insertText" -Quiet } |
+      ? { -not (Select-String -Path $_.FullName -Pattern "preconditionSkip\(|SKIP: 没有可用窗口|SKIP: 9222 上已有" -Quiet) } |
+      % Name
+    ```
+
+    按"改到谁就顺手迁谁"逐步收口（`_regress-cb` / `_repro-rapidenter` 用的是 `ensureFocus` +
+    `report.skip` 那条老路径，效果同样是如实 SKIP；`_verify-inline-formats.js` 本轮从硬失败迁到
+    `preconditionSkip`）。上面那 22 个名字就是当前欠账清单 —— 收口一个就少一个。
 
 ## 现状与迁移进度
 
 <!-- facts:begin（由 tools/doc-facts.js 生成，勿手改）-->
 
-- `tools/` 共 **193 个文件 / 42369 行**（`.js`/`.mjs`/`.ps1`/`.md`）；
+- `tools/` 共 **193 个文件 / 42426 行**（`.js`/`.mjs`/`.ps1`/`.md`）；
 - 套件文件 **109 个**（_regress-* 6 / _repro-* 9 / _verify-* 94），默认矩阵 **60 个**，分档：fast 60 / needs-build 44 / needs-dev 4 / manual 1；
 - 另有 **7 个**探针/遗留脚本默认只列不判（`--probe` 显式跑）；
 - 单元测试 **71 个** `tests/*.test.mjs`；Markdown 往返夹具 **33 份**（exact 17 / normalized 16）；

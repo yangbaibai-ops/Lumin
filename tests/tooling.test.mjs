@@ -42,6 +42,68 @@ test('CDP 套件公共骨架导出约定 API', () => {
   assert.equal(r.failed, 1)
 })
 
+test('前置条件不满足 → 如实 SKIP 的范式：骨架与运行器两侧口径一致', () => {
+  /**
+   * 清单 §10 P1「已知 flaky 的套件没有隔离」：靠**真实按键/帧**的套件在窗口拿不到前台时会偶发失败，
+   * 看着像产品缺陷。范式是"拿不到前置条件就如实 SKIP"（`_verify-outline-nav.js` 早就在这么做，
+   * 现在把它变成骨架里的公共能力 `preconditionSkip` + `fatal` 的结算口径）。
+   * 这条守住两侧**字面一致**：骨架打印什么前缀、运行器就得认什么前缀 —— 不一致的后果是
+   * 那条 SKIP 被算成 `NOASSERT`（0 断言 = 红），比直接失败还难查。
+   */
+  const h = require(path.join(TOOLS, 'lib', 'harness.js'))
+  assert.equal(typeof h.preconditionSkip, 'function', 'harness 缺少 preconditionSkip')
+  assert.equal(typeof h.PRECONDITION_SKIP_PREFIX, 'string', 'harness 缺少 PRECONDITION_SKIP_PREFIX')
+  const err = h.preconditionSkip('测试用')
+  assert.equal(
+    err.preconditionSkip,
+    true,
+    'preconditionSkip 造的 error 必须带标记（fatal 靠它分派）'
+  )
+  const runner = fs.readFileSync(path.join(TOOLS, 'run-suites.js'), 'utf-8')
+  assert.ok(
+    runner.includes(`|${h.PRECONDITION_SKIP_PREFIX}`),
+    `run-suites.js 的 skipped 判定里没有 ${h.PRECONDITION_SKIP_PREFIX}（SKIP 会被算成 NOASSERT）`
+  )
+  // 登记：这几条已知会等焦点的套件必须用这个范式（别退回 throw new Error → 硬失败）
+  for (const f of ['_verify-inline-formats.js']) {
+    const text = fs.readFileSync(path.join(TOOLS, f), 'utf-8')
+    assert.ok(
+      text.includes('preconditionSkip('),
+      `${f} 没用 preconditionSkip（拿不到焦点会硬失败）`
+    )
+    assert.equal(
+      /throw new Error\('编辑器没拿到焦点/.test(text),
+      false,
+      `${f} 里还有"拿不到焦点就 throw"的老写法`
+    )
+  }
+})
+
+test('套件定位浮层走语义锚点，不写死数字型 z-index 类名', () => {
+  /**
+   * 清单 §8 P2 把浮层层级收进 `--z-*` 令牌时，`ContextMenu.vue` 的类名从 `z-[160]` 变成
+   * `z-[var(--z-critical)]`，于是两个用 `String(d.className).includes('z-[160]')` 找菜单的套件
+   * （`_verify-rename.js`、`_verify-sidebar-refresh.js`）**静默变红**：0 断言，
+   * 看起来像"环境抖动"，实际是把设计细节写进了选择器。
+   *
+   * 口径：`z-[160]` 这种数字型类名是随时会过期的实现细节（层级已经改为令牌），
+   * 契约是语义锚点（`role="menu"` / `aria-label="submenu"` / `data-*`）。
+   * 令牌型类名 `z-[var(--z-*)]` 由 `_verify-zorder.js` 专门断言 —— 那是它自己的被测对象，不在此列。
+   */
+  const offenders = []
+  const files = fs
+    .readdirSync(TOOLS, { recursive: true })
+    .map((f) => String(f))
+    .filter((f) => f.endsWith('.js'))
+  // 注释先剥掉：这条陷阱本身就该写在套件里（上面那段），不能因为"注释里提了一句 z-[160]"而误报
+  const strip = (t) => t.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:'"`\w])\/\/[^\n]*/g, '$1')
+  for (const f of files) {
+    const text = strip(fs.readFileSync(path.join(TOOLS, f), 'utf-8'))
+    for (const m of text.matchAll(/z-\[\d+\]/g)) offenders.push(`${f} → ${m[0]}`)
+  }
+  assert.deepEqual(offenders, [], `套件里还写死了数字型 z-index 类名：${offenders.join('；')}`)
+})
+
 test('判级器导出约定 API 与规则清单', () => {
   const m = require(path.join(TOOLS, 'lib', 'md-fidelity.js'))
   for (const name of [

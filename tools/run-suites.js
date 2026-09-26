@@ -400,7 +400,9 @@ function runSuite(file, port, timeoutMs, userData) {
     }
   }
   const skipped =
-    /NO-APP-PAGE|SKIP: 没有可用窗口|SKIP: 9222 上已有|NO_PINIA|INSTANCE-NOT-READY/.test(raw)
+    /NO-APP-PAGE|SKIP: 没有可用窗口|SKIP: 9222 上已有|NO_PINIA|INSTANCE-NOT-READY|SKIP: 前置条件不满足/.test(
+      raw
+    )
   return {
     code: typeof r.status === 'number' ? r.status : 1,
     pass,

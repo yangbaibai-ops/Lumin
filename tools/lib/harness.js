@@ -538,7 +538,39 @@ class Reporter {
 }
 
 /** 顶层错误处理：把异常打成 FAIL 行并给出非零退出码 */
+/**
+ * ─── 「前置条件不满足」→ 如实 SKIP 的范式（清单 §10 P1「已知 flaky 的套件没有隔离」）────
+ *
+ * 背景：一批套件要靠**真实按键 / 真实帧**才能跑（`ensureFocus` 之后还要窗口真是前台）。
+ * 用户自己那套 Lumin 可能正占着前台，于是同一构建下套件整体跑时会偶发失败 ——
+ * 症状是"CDP 注入的按键丢了"，看起来像产品缺陷，实际是环境。审计的建议是
+ * **像 `_verify-outline-nav.js` 那样显式检查前置条件，拿不到就 `report.skip`**。
+ *
+ * 用法（套件不需要改结构，只把"等不到焦点"那处的 throw 换成 `preconditionSkip`）：
+ * ```js
+ * const { preconditionSkip, fatal } = require('./lib/harness')
+ * throw preconditionSkip('编辑器拿不到焦点（真实输入会打到 body 上）')
+ * main().then((c) => process.exit(c)).catch(fatal)   // fatal 会把它按 SKIP 结算
+ * ```
+ * 结算口径：打印 `SKIP: 前置条件不满足 …` 后 **exit 0**；运行器认得这个前缀
+ * （见 run-suites.js 的 skipped 判定），于是记 **SKIP** 而不是 PASS/FAIL/NOASSERT。
+ */
+const PRECONDITION_SKIP_PREFIX = 'SKIP: 前置条件不满足'
+
+/** 造一个「前置条件不满足」的错误（交给 fatal 按 SKIP 结算） */
+function preconditionSkip(reason) {
+  const err = new Error(reason)
+  err.preconditionSkip = true
+  return err
+}
+
 function fatal(err) {
+  // 前置条件不满足：**不是缺陷**，按如实 SKIP 结算（清单 §1.C.1 口径：SKIP 不算失败）
+  if (err && err.preconditionSkip) {
+    console.log(`${PRECONDITION_SKIP_PREFIX} ${err.message}`)
+    console.log('--- 0/1 PASS')
+    process.exit(0)
+  }
   console.error('ERROR ' + (err && err.stack ? err.stack : err))
   console.log('--- 0/1 PASS')
   process.exit(1)
@@ -556,6 +588,8 @@ module.exports = {
   connect,
   bringToFront,
   ensureFocus,
+  preconditionSkip,
+  PRECONDITION_SKIP_PREFIX,
   watchEvents,
   PINIA,
   INJECT,

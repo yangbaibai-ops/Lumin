@@ -70,8 +70,13 @@ function connect(url) {
   return { ws, ready, send, ev }
 }
 
-/** 上下文菜单：ContextMenu.vue 的浮层（z-[160] 的 fixed 面板） */
-const MENU = `[...document.querySelectorAll('div.fixed')].filter((d) => String(d.className).includes('z-[160]'))[0] ?? null`
+/**
+ * 上下文菜单：ContextMenu.vue 的浮层。定位锚点走 **role 语义**（子菜单固定 aria-label="submenu"），
+ * 不认 Tailwind 的 z-index 类名 —— 层级收进 `--z-*` 令牌那次，`z-[160]` 变成了
+ * `z-[var(--z-critical)]`，这条套件就静默红了（0 断言，看着像环境问题）。
+ * 契约：`role="menu"` / `role="menuitem"`；`_verify-toolbar-settings.js` 早就是同一口径。
+ */
+const MENU = `document.querySelector('[role="menu"]:not([aria-label="submenu"])')`
 
 ;(async () => {
   const results = []
