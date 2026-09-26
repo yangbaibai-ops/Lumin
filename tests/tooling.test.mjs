@@ -119,6 +119,28 @@ test('判级器导出约定 API 与规则清单', () => {
   assert.ok(m.RULES.length >= 15, '规则清单太短')
 })
 
+test('tsconfig 的增量缓存不许落在仓库根目录（审计 §6「仓库卫生」）', () => {
+  /**
+   * 症状：根目录躺着 `tsconfig.web.tsbuildinfo`（115KB）与 `.tscheck.log` / `dev-run.log`。
+   * 它们被 `.gitignore` 挡住了，所以"没进仓库"，但每次 `typecheck` 都会在根目录刷一遍 ——
+   * 一个"源码目录里会长出构建垃圾"的仓库，早晚有人把它当成源码的一部分。
+   * 口径：`composite: true` 的工程必须显式把 `tsBuildInfoFile` 指进 node_modules/.cache。
+   */
+  const files = fs.readdirSync(ROOT).filter((f) => /^tsconfig(\..+)?\.json$/.test(f))
+  assert.ok(files.length >= 3, `只找到 ${files.length} 个 tsconfig，路径可能不对`)
+  const stripJsonc = (t) => t.replace(/^\s*\/\/.*$/gm, '')
+  for (const f of files) {
+    const cfg = JSON.parse(stripJsonc(fs.readFileSync(path.join(ROOT, f), 'utf-8')))
+    const co = cfg.compilerOptions
+    if (!co || co.composite !== true) continue
+    assert.match(
+      String(co.tsBuildInfoFile ?? ''),
+      /^node_modules\/\.cache\//,
+      `${f} 开了 composite 却没把 tsBuildInfoFile 指进 node_modules/.cache（会在根目录留 *.tsbuildinfo）`
+    )
+  }
+})
+
 test('夹具库与 EXPECT.json 必须一一对应', () => {
   const expect = JSON.parse(fs.readFileSync(path.join(FIXTURES, 'EXPECT.json'), 'utf-8'))
   const fixtures = fs.readdirSync(FIXTURES).filter((f) => f.endsWith('.md'))

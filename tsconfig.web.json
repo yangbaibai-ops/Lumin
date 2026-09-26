@@ -8,6 +8,8 @@
   ],
   "compilerOptions": {
     "composite": true,
+    // 增量缓存写进 node_modules/.cache（审计 §6「仓库卫生」）
+    "tsBuildInfoFile": "node_modules/.cache/tsconfig.web.tsbuildinfo",
     "baseUrl": ".",
     "allowImportingTsExtensions": true,
     "paths": {
