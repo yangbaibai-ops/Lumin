@@ -94,7 +94,7 @@ main().then((c) => process.exit(c)).catch(fatal)
 - 套件文件 **109 个**（_regress-* 6 / _repro-* 9 / _verify-* 94），默认矩阵 **60 个**，分档：fast 60 / needs-build 44 / needs-dev 4 / manual 1；
 - 另有 **7 个**探针/遗留脚本默认只列不判（`--probe` 显式跑）；
 - 单元测试 **73 个** `tests/*.test.mjs`；Markdown 往返夹具 **33 份**（exact 17 / normalized 16）；
-- `docs/manual/` **8 份 / 4375 行**，`docs/` 下共 **20 份** md。
+- `docs/manual/` **8 份 / 4378 行**，`docs/` 下共 **20 份** md。
 
 <!-- facts:end -->
 

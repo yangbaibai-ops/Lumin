@@ -77,3 +77,29 @@ test('docs：CHANGELOG 的版本段都带日期（[Unreleased] 除外）', () =>
     assert.match(v.tail, /- \d{4}-\d{2}-\d{2}/, `版本段 \`${v.name}\` 缺少日期`)
   }
 })
+
+test('docs：工程手册的套件数字与 run-suites.js 实测一致（审计 §10 P1）', () => {
+  /**
+   * `docs/manual/06-engineering.md` 的 §6 写过「79 个套件文件 / 默认矩阵 43 条」，
+   * 而实测是另一回事（套件长了一轮又一轮）。数字漂了的后果与 README 那条一样：
+   * 有人会照着过期数字判断"覆盖到底够不够"。
+   *
+   * 这里不生成文档（手册是散文），只**对账**：手册里那三个数字必须等于 run-suites.js 的实测。
+   * 改套件规模时要么同步手册，要么把话说成不带数字（后者请顺手删掉这条断言里的对应行）。
+   */
+  const m = require(path.join(ROOT, 'tools', 'run-suites.js'))
+  const manual = fs.readFileSync(path.join(ROOT, 'docs', 'manual', '06-engineering.md'), 'utf-8')
+  const files = fs
+    .readdirSync(path.join(ROOT, 'tools'))
+    .filter((f) => /^_(verify|regress|repro)-.*\.js$/.test(f)).length
+  const all = m.allSuites().length
+  const def = m.DEFAULT_SUITES.length
+  assert.ok(files > 0 && all > 0 && def > 0, '实测数字异常，检查 run-suites.js 的导出')
+  assert.match(
+    manual,
+    new RegExp(`\\*\\*${files} 个套件文件\\*\\*`),
+    `手册应写着 ${files} 个套件文件`
+  )
+  assert.match(manual, new RegExp(`收录 ${all}`), `手册应写着 --all 收录 ${all}`)
+  assert.match(manual, new RegExp(`默认矩阵 \\*\\*${def} 条\\*\\*`), `手册应写着默认矩阵 ${def} 条`)
+})

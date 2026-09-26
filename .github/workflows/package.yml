@@ -44,6 +44,13 @@ jobs:
       - name: 打包
         run: npm run ${{ inputs.unpack_only && 'build:unpack' || 'build:win' }}
 
+      - name: 打包态快速验收（CSP / lumin-file 图片 / asar 懒加载）
+        # 审计 §6 P2「打包态代码路径缺乏常驻覆盖」：这套件此前既不在默认矩阵、也没有任何
+        # 自动运行入口（ci.yml / cdp.yml 都只取 fast 档）—— 而它守的正是"只有对着产物跑才暴露"
+        # 的那一类缺陷（实测抓到过：首屏相对图片在打包态 404、dev 里永远复现不了）。
+        # 没有产物时套件自己会如实 SKIP，所以 `unpack_only` 或产物缺失都不会假红。
+        run: node tools/run-suites.js --suite=_verify-packaging-fast.js
+
       - name: 计算 SHA256（把校验和写进 artifact 说明）
         shell: pwsh
         run: |
