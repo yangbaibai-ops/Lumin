@@ -16,7 +16,7 @@
 //   ② **末屏边界**：文档最后几节很短时，它们的标题压不到判定线上（滚到底也压不到）。
 //      旧行为 = 高亮停在倒数第四；我第一版补的「到底就点亮最后一条」又会**跳过**中间那两节。
 //      现在是**按剩余滚动距离等分**依次点亮（`lib/editor/scrollSpy.ts`，纯函数另有单测）。
-const { connect, settle, sleep, openDocWith, waitEditor, bringToFront, Reporter, fatal } = require('./lib/harness')
+const { connect, settle, sleep, openDocWith, waitEditor, framesAlive, Reporter, fatal } = require('./lib/harness')
 
 const LONG = 7
 const SHORT = 4
@@ -73,25 +73,10 @@ const setScroll = (x) => `(() => {
 const state = async (ev) => JSON.parse(await ev(STATE))
 
 /**
- * 这个窗口**在不在产生帧**（`requestAnimationFrame` 会不会被派发）。
- *
- * 为什么要先问这一句：滚动事件与平滑滚动都挂在**帧**上。窗口被别的窗口挡住时 Chromium 会暂停
- * 出帧（实测：用户自己的 Lumin 在前台时，探针里 `scrollTop` 一直 0、滚动事件一个不来）。
- * 那种情况下「点目录没滚动」「侦测没重算」全是环境造成的 —— 与其红一片，不如**如实 SKIP**
- * （`SKIP 不算失败`，见 tools/run-suites.js 的口径）。
+ * 这个窗口**在不在产生帧**：实现提到了骨架里（`harness.framesAlive`）—— 审计 §10 P1 对
+ * 这段的评价是"这是正确做法，应推广"，于是它成了公共能力，其它依赖出帧的套件不用再抄一份。
+ * 本套件仍然用"只跳过依赖帧的那几条断言"的写法（前两条断言不依赖帧，没必要一起丢）。
  */
-async function framesAlive(app, ms = 2500) {
-  for (let i = 0; i < 3; i++) {
-    await bringToFront(app)
-    await app.ev(`(() => { window.__RAF = 'pending'; requestAnimationFrame(() => { window.__RAF = 'ok' }); return 'ok' })()`)
-    const end = Date.now() + Math.round(ms / 3)
-    while (Date.now() < end) {
-      if ((await app.ev('window.__RAF')) === 'ok') return true
-      await sleep(100)
-    }
-  }
-  return false
-}
 
 async function main() {
   const app = await connect()

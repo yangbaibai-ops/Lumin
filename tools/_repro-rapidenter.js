@@ -16,7 +16,7 @@ const {
   settle,
   waitEditor,
   sleep,
-  ensureFocus,
+  requireFocus,
   Reporter,
   key,
   clickCenter,
@@ -70,11 +70,9 @@ async function main() {
   await sleep(400)
 
   // 这一段是**真实按键注入**：窗口不在 OS 前台时按键会被丢掉（清单 §10 的 flaky 表
-  // 实测本套件批跑偶发 3/4），所以先跑取焦点重试循环，拿不到就如实 SKIP。
-  if (!(await ensureFocus(app))) {
-    report.skip('rapidenter', '被测窗口拿不到 OS 焦点（真实按键会丢）')
-    return report.finish()
-  }
+  // 实测本套件批跑偶发 3/4）。统一口径：拿不到焦点就如实 SKIP 整个套件
+  // （`requireFocus` → `fatal` 结算成 `SKIP: 前置条件不满足`，见 tools/README 规则 12）。
+  await requireFocus(app, '快速回车段')
 
   // 点进代码块行尾
   const box = await app.ev(`(() => {

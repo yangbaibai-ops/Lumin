@@ -267,6 +267,52 @@ async function ensureFocus(app, { tries = 15, gapMs = 200 } = {}) {
   return false
 }
 
+/**
+ * `ensureFocus` 的"直接 SKIP"版本：拿不到焦点就抛 `preconditionSkip`（由 `fatal` 结算成 SKIP）。
+ *
+ * 用法（省掉每个套件各写一遍"返回 false 就 report.skip"）：
+ * ```js
+ * await requireFocus(app, 'Ctrl+N 段')   // 拿不到就 SKIP 整个套件
+ * ```
+ * 什么时候该用它、什么时候该用 `report.skip`：**整个套件都靠真实输入**时用这个；
+ * 只有一段依赖输入、其余断言仍值得跑时，用 `report.skip` 只跳过那一段
+ * （`_verify-outline-nav.js` 就是后者）。
+ */
+async function requireFocus(app, what = '真实按键段', opts) {
+  if (await ensureFocus(app, opts)) return
+  throw preconditionSkip(
+    `${what}：拿不到 OS 焦点（CDP 注入的按键会丢）——环境抖动，不是产品缺陷`
+  )
+}
+
+/**
+ * 这个窗口**在不在产生帧**（`requestAnimationFrame` 会不会被派发）。
+ *
+ * 为什么要先问这一句：滚动事件与平滑滚动都挂在**帧**上。窗口被别的窗口挡住时 Chromium 会暂停
+ * 出帧（实测：用户自己的 Lumin 在前台时，探针里 `scrollTop` 一直 0、滚动事件一个不来）。
+ * 从 `_verify-outline-nav.js` 提上来（审计 §10 P1 的评价是"这是正确做法，应推广"）。
+ */
+async function framesAlive(app, ms = 2500) {
+  for (let i = 0; i < 3; i++) {
+    await bringToFront(app)
+    await app.ev(
+      `(() => { window.__RAF = 'pending'; requestAnimationFrame(() => { window.__RAF = 'ok' }); return 'ok' })()`
+    )
+    const end = Date.now() + Math.round(ms / 3)
+    while (Date.now() < end) {
+      if ((await app.ev('window.__RAF')) === 'ok') return true
+      await sleep(100)
+    }
+  }
+  return false
+}
+
+/** `framesAlive` 的"直接 SKIP"版本：窗口不出帧就抛 `preconditionSkip` */
+async function requireFrames(app, what = '依赖出帧的断言', ms) {
+  if (await framesAlive(app, ms)) return
+  throw preconditionSkip(`${what}：窗口不产生帧（多半被别的窗口遮挡）——请在窗口可见时重跑`)
+}
+
 // ─── 输入模拟（统一从这里取，别各写各的坐标算法）─────────────────────────────
 async function key(send, type, keyName, code, vk) {
   await send('Input.dispatchKeyEvent', {
@@ -588,6 +634,9 @@ module.exports = {
   connect,
   bringToFront,
   ensureFocus,
+  requireFocus,
+  framesAlive,
+  requireFrames,
   preconditionSkip,
   PRECONDITION_SKIP_PREFIX,
   watchEvents,

@@ -19,6 +19,9 @@ const fs = require('fs')
 const os = require('os')
 const path = require('path')
 const http = require('http')
+// 只借骨架的"前置条件"能力：真实按键拿不到焦点时如实 SKIP（本文件有自己的 connect/key 实现，
+// 与 harness 的那套并存 —— 这条套件要在**多个窗口**之间切换，用自己的句柄更直接）。
+const { requireFocus, fatal } = require('./lib/harness')
 
 const ROOT = path.resolve(__dirname, '..')
 const DRAFTS_DIR = process.env.LUMIN_DRAFTS_DIR || ''
@@ -109,9 +112,13 @@ async function attach(page) {
 }
 
 /** 真实 Ctrl+N（渲染层命令表 file.new）。注入按键前必须把目标窗口抬到前台，
- *  否则 CDP 的输入会落到当前前台窗口上（多窗口下踩过）。 */
+ *  否则 CDP 的输入会落到当前前台窗口上（多窗口下踩过）。
+ *  拿不到焦点就**如实 SKIP**（审计 §10 P1 / tools/README 规则 12）：那是环境，
+ *  不是产品缺陷 —— 之前它会硬跑下去，然后报一条"Ctrl+N 没反应"的假红。 */
 async function pressCtrlN(w) {
-  await w.send('Page.bringToFront').catch(() => {})
+  await requireFocus(w, 'Ctrl+N 段')
+  // 拿到 `document.hasFocus()` 之后还要**再等一拍**：前台切换是异步的，焦点到位 ≠ 窗口已经
+  // 真正接收 OS 键盘输入（原来这里就有一个 400ms 的等待，迁到 requireFocus 时不能顺手删掉）。
   await sleep(400)
   for (const type of ['rawKeyDown', 'keyUp']) {
     await w.send('Input.dispatchKeyEvent', {
@@ -128,8 +135,8 @@ async function pressCtrlN(w) {
 
 /** Alt+F 打开文件菜单 → 点指定文案的条目（与 _verify-new-window-clean.js 同一路径） */
 async function clickFileMenuItem(w, label) {
-  await w.send('Page.bringToFront').catch(() => {})
-  await sleep(400)
+  await requireFocus(w, 'Alt+F 文件菜单段')
+  await sleep(400) // 同上：焦点到位后还要给前台切换留一拍
   for (const type of ['rawKeyDown', 'keyUp']) {
     await w.send('Input.dispatchKeyEvent', {
       type,
@@ -480,6 +487,8 @@ async function clickFileMenuItem(w, label) {
   w1.ws.close()
   if (failed) process.exit(1)
 })().catch((e) => {
+  // 前置条件不满足（拿不到焦点）→ 交给 fatal 按 SKIP 结算；其它错误保持原样（红）
+  if (e && e.preconditionSkip) return fatal(e)
   console.error('ERROR', e.message)
   process.exit(1)
 })

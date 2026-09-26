@@ -104,6 +104,78 @@ test('套件定位浮层走语义锚点，不写死数字型 z-index 类名', ()
   assert.deepEqual(offenders, [], `套件里还写死了数字型 z-index 类名：${offenders.join('；')}`)
 })
 
+test('注入真实按键的套件必须有前置守卫，或登记在**只减不增**的欠账名单里', () => {
+  /**
+   * 清单 §10 P1「已知 flaky 的套件没有隔离」。口径（两条都不许破）：
+   *   ① 任何注入真实按键的套件，要么有守卫（`preconditionSkip` / `requireFocus` / `requireFrames` /
+   *      `ensureFocus` / 窗口级 SKIP），要么在 `FOCUS_GUARD_BACKLOG` 里点名 —— 名单存在是为了
+   *      **让欠账可见**，而不是"允许随便加"；
+   *   ② 名单只能变小：一旦某条套件补上了守卫，它必须从名单里删掉（自清理），
+   *      且名单长度不得超过当前实测欠账数（写死上限，防止有人往里塞新名字）。
+   */
+  const files = fs.readdirSync(TOOLS).filter((f) => /^_(verify|regress|repro)-.*\.js$/.test(f))
+  const INJECT = /dispatchKeyEvent|pressKey\(|Input\.insertText/
+  const GUARD =
+    /preconditionSkip\(|requireFocus\(|requireFrames\(|ensureFocus\(|SKIP: 没有可用窗口|SKIP: 9222 上已有|INSTANCE-NOT-READY|NO-APP-PAGE/
+  const injects = files.filter((f) => INJECT.test(fs.readFileSync(path.join(TOOLS, f), 'utf-8')))
+  assert.ok(injects.length >= 20, `只找到 ${injects.length} 个注入按键的套件，扫描口径可能不对`)
+
+  /**
+   * 欠账名单（实测口径：`dispatchKeyEvent` / `pressKey(` / `Input.insertText` 命中，
+   * 且不含上面任一守卫标记）。清点命令抄在 `tools/README.md` 规则 12 里，数字要一致。
+   */
+  const FOCUS_GUARD_BACKLOG = new Set([
+    '_regress-layout.js',
+    '_regress-source-roundtrip.js',
+    '_repro-backspace-after-cb.js',
+    '_repro-cb-delete.js',
+    '_repro-cb-delete2.js',
+    '_repro-paste.js',
+    '_repro-sourcemode.js',
+    '_repro-split.js',
+    '_verify-alt-menu.js',
+    '_verify-cb-no-active-line.js',
+    '_verify-cb-virtualization.js',
+    '_verify-find-replace.js',
+    '_verify-input-rules.js',
+    '_verify-mermaid-blur.js',
+    '_verify-mermaid-cross-block.js',
+    '_verify-round-perf.js',
+    '_verify-sidebar-search.js',
+    '_verify-table-fidelity.js',
+    '_verify-wave3.js'
+  ])
+
+  const unguarded = injects.filter(
+    (f) => !GUARD.test(fs.readFileSync(path.join(TOOLS, f), 'utf-8'))
+  )
+  const unlisted = unguarded.filter((f) => !FOCUS_GUARD_BACKLOG.has(f))
+  assert.deepEqual(
+    unlisted,
+    [],
+    `这些套件注入真实按键却没有前置守卫，也没登记在欠账名单里：${unlisted.join(', ')}`
+  )
+  const stale = [...FOCUS_GUARD_BACKLOG].filter((f) => !unguarded.includes(f))
+  assert.deepEqual(
+    stale,
+    [],
+    `欠账名单里这些已经补上守卫（或文件没了），请删掉：${stale.join(', ')}`
+  )
+  assert.ok(
+    FOCUS_GUARD_BACKLOG.size <= 19,
+    `欠账名单变长了（${FOCUS_GUARD_BACKLOG.size}）—— 名单只能缩短，别把新套件塞进来`
+  )
+  // 已收口的三个点名登记：它们是"迁移完成的样例"，回退了要红
+  for (const f of [
+    '_verify-inline-formats.js',
+    '_verify-new-document.js',
+    '_repro-rapidenter.js',
+    '_verify-outline-nav.js'
+  ]) {
+    assert.ok(!FOCUS_GUARD_BACKLOG.has(f), `${f} 不该回到欠账名单里（它已经用上守卫了）`)
+  }
+})
+
 test('判级器导出约定 API 与规则清单', () => {
   const m = require(path.join(TOOLS, 'lib', 'md-fidelity.js'))
   for (const name of [
