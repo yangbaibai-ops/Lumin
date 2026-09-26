@@ -842,7 +842,15 @@ function formatTime(ms: number): string {
                           <p class="set-row-label">{{ t('settings.language') }}</p>
                           <p class="set-row-desc">{{ t('settings.languageDesc') }}</p>
                         </div>
-                        <div class="flex rounded-lg bg-panel-2 p-0.5">
+                        <!-- 分段控件的语义（审计 §8 P1「同一个分段控件有 2 种实现」）：
+                             每组给 role="group" + aria-label，每个按钮给 aria-pressed ——
+                             读屏器才读得出"当前选的是哪一个"。视觉统一到 SegmentedControl
+                             是后续项（组件要求每段带图标，文字型分组要先把 icon 变成可选）。 -->
+                        <div
+                          class="flex rounded-lg bg-panel-2 p-0.5"
+                          role="group"
+                          :aria-label="t('settings.language')"
+                        >
                           <button
                             v-for="opt in languageOptions"
                             :key="opt.value"
@@ -852,6 +860,7 @@ function formatTime(ms: number): string {
                                 ? 'bg-panel text-ink shadow-sm'
                                 : 'text-ink-2b hover:text-ink-2'
                             "
+                            :aria-pressed="settings.language === opt.value"
                             @click="settings.setLanguage(opt.value)"
                           >
                             {{ opt.label }}
@@ -1237,7 +1246,11 @@ function formatTime(ms: number): string {
 
                     <section class="set-card">
                       <h3 class="set-card-title">{{ t('settings.editorMode') }}</h3>
-                      <div class="grid grid-cols-3 gap-2.5">
+                      <div
+                        class="grid grid-cols-3 gap-2.5"
+                        role="group"
+                        :aria-label="t('settings.editorMode')"
+                      >
                         <button
                           v-for="m in modes"
                           :key="m.mode"
@@ -1248,6 +1261,7 @@ function formatTime(ms: number): string {
                               : 'border-edge text-ink-2 hover:border-edge-strong hover:text-ink'
                           "
                           :title="m.desc"
+                          :aria-pressed="settings.editorMode === m.mode"
                           @click="settings.set('editorMode', m.mode)"
                         >
                           <Icon :name="m.icon" :size="16" class="mx-auto" />
@@ -1288,7 +1302,11 @@ function formatTime(ms: number): string {
                           <p class="set-row-label">{{ t('settings.remoteImages') }}</p>
                           <p class="set-row-desc">{{ t('settings.remoteImagesHint') }}</p>
                         </div>
-                        <div class="flex gap-1.5">
+                        <div
+                          class="flex gap-1.5"
+                          role="group"
+                          :aria-label="t('settings.remoteImages')"
+                        >
                           <button
                             v-for="p in remoteImagePolicies"
                             :key="p.value"
@@ -1385,7 +1403,11 @@ function formatTime(ms: number): string {
                       </div>
                       <div class="set-row">
                         <p class="set-row-desc">{{ t('settings.fontFamilyLabel') }}</p>
-                        <div class="flex gap-1.5">
+                        <div
+                          class="flex gap-1.5"
+                          role="group"
+                          :aria-label="t('settings.fontFamilyLabel')"
+                        >
                           <button
                             v-for="f in FONT_OPTIONS"
                             :key="f.label"
@@ -1395,6 +1417,7 @@ function formatTime(ms: number): string {
                                 ? 'border-accent bg-accent-soft text-accent-ink'
                                 : 'border-edge text-ink-2 hover:border-edge-strong'
                             "
+                            :aria-pressed="settings.fontFamily === f.value"
                             @click="settings.set('fontFamily', f.value)"
                           >
                             {{
@@ -1528,7 +1551,11 @@ function formatTime(ms: number): string {
                       </div>
                       <div class="set-row">
                         <p class="set-row-desc">{{ t('settings.pdfPageSize') }}</p>
-                        <div class="flex gap-1.5">
+                        <div
+                          class="flex gap-1.5"
+                          role="group"
+                          :aria-label="t('settings.pdfPageSize')"
+                        >
                           <button
                             v-for="size in ['A4', 'A5', 'Letter'] as const"
                             :key="size"
@@ -1538,6 +1565,7 @@ function formatTime(ms: number): string {
                                 ? 'border-accent bg-accent-soft text-accent-ink'
                                 : 'border-edge text-ink-2 hover:border-edge-strong'
                             "
+                            :aria-pressed="settings.export.pdf.pageSize === size"
                             @click="
                               settings.set('export', {
                                 ...settings.export,
@@ -1595,7 +1623,11 @@ function formatTime(ms: number): string {
                       <p class="mb-4 text-ui-sm text-ink-2b">
                         {{ t('settings.linksCreateModeDesc') }}
                       </p>
-                      <div class="grid grid-cols-3 gap-2">
+                      <div
+                        class="grid grid-cols-3 gap-2"
+                        role="group"
+                        :aria-label="t('settings.linksCreateMode')"
+                      >
                         <button
                           v-for="m in createModes"
                           :key="m.value"
