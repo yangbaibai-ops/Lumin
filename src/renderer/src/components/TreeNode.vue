@@ -3,8 +3,10 @@ import { computed, nextTick, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { FileNode } from '../../../shared/types'
 import { useFilesStore } from '../stores/files'
-import { useUiStore } from '../stores/ui'
+import { useUiStore, type ContextMenuItem } from '../stores/ui'
 import { activeTreePath } from '../lib/treeFocus'
+import { samePath, ancestorDirs } from '../lib/pathUtils'
+import { beginTreeDrag, canDropOn, draggingTree, endTreeDrag } from '../lib/treeMove'
 import { confirmDiscardIfDirty } from '../lib/dialog'
 import { errorReason } from '../lib/errors'
 import Icon from './Icon.vue'
@@ -136,7 +138,7 @@ function onRowKeydown(e: KeyboardEvent): void {
 
 /** 在给定坐标弹出本行的上下文菜单（鼠标右键与键盘唤出共用这一条） */
 function openMenuAt(x: number, y: number): void {
-  const items: { label: string; icon?: string; action: string; danger?: boolean }[] = []
+  const items: ContextMenuItem[] = []
   if (props.node.type === 'directory') {
     items.push(
       { label: t('context.newFile'), icon: 'file-plus', action: 'new-file' },
@@ -150,6 +152,15 @@ function openMenuAt(x: number, y: number): void {
     })
   }
   items.push({ label: t('context.rename'), icon: 'pencil', action: 'rename' })
+  // 「移动到…」：拖放的**键盘等价入口**（取舍与候选范围见 moveTargets 的说明）
+  if (files.root) {
+    items.push({
+      label: t('fileTree.moveTo'),
+      icon: 'folderOpen',
+      action: 'move-to',
+      children: moveTargets
+    })
+  }
   items.push({ label: t('context.delete'), icon: 'trash', action: 'delete', danger: true })
   ui.openContextMenu({
     x,
@@ -159,6 +170,53 @@ function openMenuAt(x: number, y: number): void {
     ariaLabel: `${props.node.name} — ${t('context.menuLabel')}`,
     onSelect: (action) => void handleAction(action)
   })
+}
+
+/**
+ * ─── 「移动到…」子菜单（键盘可达的那一半）────────────────────────────────────────
+ *
+ * 拖放只可能用鼠标完成，所以同一件事必须有第二条路：这一条挂在已有的行右键菜单上，
+ * 于是 `Shift+F10` / 菜单键 → `↓` 到「移动到…」→ `→` 展开 → `Enter` 选目标 ——
+ * 全程键盘（菜单的按键口径见 `ContextMenu.vue` 的说明），且与拖放**共用同一条**
+ * `files.moveNode()`（判定、失败提示、撤销卡都没有第二份实现）。
+ *
+ * 候选范围（**这里就是本轮明确的取舍**）：工作区根 + 该项的祖先链 + `dirCache` 里
+ * 已经有的目录（= 用户在树里展开过、或它就在祖先链上的目录）。
+ *   * 为什么不弹系统"选择文件夹"对话框：那会把目标选到工作区之外，落点判定、相对路径、
+ *     最近列表迁移全都要另立一套口径（本轮只做工作区内的移动）；
+ *   * 为什么不递归预扫整棵子树：每次右键都要走一遍磁盘 IPC，代价与收益不成比例。
+ *   * 代价：没展开过的深层目录要先在树里点开一次才能成为候选 —— 记在
+ *     `docs/manual/09-components.md` 的欠账里。
+ * 不合法的目标（自己 / 自己的子孙 / 当前所在目录）由 `canDropOn` 直接过滤掉，
+ * 于是菜单里**只会出现真的会搬的那些目录**（按下去不会有"什么都没发生"的情况）。
+ */
+function moveTargets(): ContextMenuItem[] {
+  const root = files.root
+  if (!root) return []
+  const source = { path: props.node.path, type: props.node.type }
+  const dirs = new Set<string>([
+    root,
+    ...ancestorDirs(root, props.node.path),
+    ...Object.keys(files.dirCache)
+  ])
+  const out: ContextMenuItem[] = []
+  for (const dir of dirs) {
+    if (!canDropOn(source, dir, root)) continue
+    out.push({ label: dirLabel(dir, root), icon: 'folder', action: `move-to:${dir}` })
+  }
+  return out
+}
+
+/** 候选目标在菜单里显示什么：工作区根用名字，其余用相对工作区的路径（比绝对路径短得多）。
+ *  这些路径全部来自同一个工作区（根 / 祖先链 / dirCache），所以"根是它的字符串前缀"成立；
+ *  标签只影响观感，真正的落点走的是 action 里那个**原样**的路径。 */
+function dirLabel(dir: string, root: string): string {
+  if (samePath(dir, root)) return t('fileTree.moveToRoot')
+  const rel = dir
+    .replace(/[\\/]+$/, '')
+    .slice(root.replace(/[\\/]+$/, '').length)
+    .replace(/^[\\/]+/, '')
+  return rel ? rel.replace(/\\/g, '/') : t('fileTree.moveToRoot')
 }
 
 async function handleAction(action: string): Promise<void> {
@@ -178,6 +236,12 @@ async function handleAction(action: string): Promise<void> {
     if (name) await files.createDirAt(props.node.path, name)
   } else if (action === 'rename') {
     void startRename()
+  } else if (action.startsWith('move-to:')) {
+    // 子菜单条目把目标目录编在 action 里（路径原样，含反斜杠）；失败提示在 store 里
+    await files.moveNode(
+      { path: props.node.path, type: props.node.type },
+      action.slice('move-to:'.length)
+    )
   } else if (action === 'delete') {
     const ok = await ui.confirm({
       title: t('editor.deleteConfirmTitle'),
@@ -195,9 +259,67 @@ async function handleAction(action: string): Promise<void> {
   }
 }
 
+/**
+ * ─── 拖放：把这一行拖到某个**文件夹行**上（审计缺口：此前只有 dragstart，onDrop 是空的）──
+ *
+ * 分工：
+ *   * `dragstart`（源行）把路径写进 `dataTransfer`（正规通道，外部/未来都能读），
+ *     并在 `lib/treeMove` 的信箱里记下"谁在被拖"——Chromium 在 `dragover` 期间读不到
+ *     `dataTransfer` 的内容（受保护的数据存储），而落点高亮必须**当场**判断合不合法；
+ *   * `dragover`（文件夹行）合法才 `preventDefault`（不合法就让浏览器显示"禁止"光标，
+ *     并且不会派发 drop —— 这比"先收下再报错"更符合桌面文件管理器的口径）；
+ *   * `drop` 落到 `files.moveNode()`，那边做两趟判定（纯字符串 + 一次 exists 探测）后
+ *     复用 `file.rename` 通道；重名 / 自己进自己 / 越界都在**落下那一刻**明确提示；
+ *   * 高亮只有一个全局值 `ui.dropTargetPath`：容器上的 `dragend` 能兜底清掉它
+ *     （Esc 取消、拖到窗外这类"没有 drop"的结束方式都走这里）。
+ *
+ * 为什么只有文件夹行是落点：本轮的题目是"移动到文件夹"（不做任意排序，理由见 treeMove.ts）。
+ * 拖到**文件行**上什么都不发生（那不是一个目录），拖到空白区 = 移到工作区根（见 FileTree.vue）。
+ */
 function onDragStart(e: DragEvent): void {
   e.dataTransfer?.setData('text/plain', props.node.path)
-  e.dataTransfer!.effectAllowed = 'copy'
+  // copyMove：内部拖放显示"移动"手势；带出去的仍然只是 text/plain（不是文件），
+  // 不改变原有的跨应用行为（此前是 'copy'）
+  if (e.dataTransfer) e.dataTransfer.effectAllowed = 'copyMove'
+  beginTreeDrag({ path: props.node.path, type: props.node.type })
+}
+
+function onDragEnd(): void {
+  endTreeDrag()
+  ui.dropTargetPath = null
+}
+
+/** 这一行现在值不值得高亮：目录行 + 有内部拖拽 + 落点合法（判定见 lib/treeMove.canDropOn） */
+function isDroppable(): boolean {
+  if (props.node.type !== 'directory') return false
+  const src = draggingTree()
+  return !!src && !!files.root && canDropOn(src, props.node.path, files.root)
+}
+
+function onDragOver(e: DragEvent): void {
+  if (!isDroppable()) return
+  e.preventDefault()
+  if (e.dataTransfer) e.dataTransfer.dropEffect = 'move'
+  ui.dropTargetPath = props.node.path
+}
+
+function onDragLeave(e: DragEvent): void {
+  // 行内有子元素（图标/文字/箭头槽），在它们之间移动也会触发 dragleave：
+  // relatedTarget 仍在行内就不算离开，否则高亮会一路闪
+  const to = e.relatedTarget as Node | null
+  if (to && (e.currentTarget as HTMLElement).contains(to)) return
+  if (ui.dropTargetPath === props.node.path) ui.dropTargetPath = null
+}
+
+async function onDrop(e: DragEvent): Promise<void> {
+  if (!isDroppable()) return
+  e.preventDefault()
+  // 别冒泡到 FileTree 的容器：那里的兜底落点是"工作区根"，否则拖到子目录里会变成移到根
+  e.stopPropagation()
+  ui.dropTargetPath = null
+  const src = draggingTree()
+  endTreeDrag()
+  if (src) await files.moveNode(src, props.node.path)
 }
 </script>
 
@@ -215,10 +337,17 @@ function onDragStart(e: DragEvent): void {
          type（← 收起 / → 展开的语义差别）、current（Tab 进树时的落点）。
 
          行的按键（onRowKeydown）：F2 重命名、Delete 删除、Shift+F10 / 菜单键唤出上下文菜单。
-         aria-keyshortcuts 把这三条报给读屏器（不写的话只能靠用户猜）。 -->
+         aria-keyshortcuts 把这三条报给读屏器（不写的话只能靠用户猜）。
+
+         拖放（见 script 里那一段说明）：整行可拖（`draggable`，改名中除外）；只有**文件夹行**
+         是落点，被悬停时带 `.is-drop-target`（文件夹行可由 `data-tree-type="directory"` 定位）。 -->
     <div
       class="tree-row"
-      :class="{ 'is-current': isCurrent, 'is-renaming': renaming }"
+      :class="{
+        'is-current': isCurrent,
+        'is-renaming': renaming,
+        'is-drop-target': ui.dropTargetPath === node.path
+      }"
       role="treeitem"
       data-tree-row
       :data-depth="depth"
@@ -238,6 +367,10 @@ function onDragStart(e: DragEvent): void {
       @contextmenu="onContextMenu"
       @keydown="onRowKeydown"
       @dragstart="onDragStart"
+      @dragend="onDragEnd"
+      @dragover="onDragOver"
+      @dragleave="onDragLeave"
+      @drop="onDrop"
     >
       <span class="tree-chevron-slot">
         <Icon

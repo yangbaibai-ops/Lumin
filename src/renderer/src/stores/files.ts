@@ -9,6 +9,8 @@ import { useUiStore } from './ui'
 import { useNotificationsStore } from './notifications'
 import i18n from '../i18n'
 import { ancestorDirs, isInside, samePath } from '../lib/pathUtils'
+import { activeTreePath } from '../lib/treeFocus'
+import { planMove, type MoveRejectReason, type MoveSource } from '../lib/treeMove'
 import { errorReason } from '../lib/errors'
 import { confirmDiscardIfDirty } from '../lib/dialog'
 import { flushEditorBeforeReplace } from '../lib/editorFlush'
@@ -102,19 +104,40 @@ let untitledSeq = 1
  */
 export const RENAME_KIND = 'rename'
 
-/** 起一张「已重命名，可撤销」的卡片（同一路径只占一位，反复改名不刷屏） */
+/**
+ * 落点被拒时的提示文案（`MoveRejectReason` → i18n 键）。
+ *
+ * 为什么是一张表而不是 if/else：这条映射与纯函数里的原因枚举**一一对应**，
+ * 以后加一种拒绝原因，TypeScript 会在这里当场报缺键（漏一条就等于静默吞掉一次拖放）。
+ * `into-self` 与 `into-descendant` 共用一句：对用户来说都是"你不能把文件夹搬进它自己里"。
+ */
+const MOVE_REJECT_TOAST: Record<MoveRejectReason, string> = {
+  'outside-workspace': 'toast.moveOutside',
+  'into-self': 'toast.moveIntoSelf',
+  'into-descendant': 'toast.moveIntoSelf',
+  'target-exists': 'toast.moveExists'
+}
+
+/**
+ * 起一张「已重命名 / 已移动，可撤销」的卡片（同一路径只占一位，反复操作不刷屏）。
+ * @param titleKey 卡片标题。移动复用同一张卡（同一个 `RENAME_KIND`：撤销的动作与改名完全一样，
+ *   都是"把路径搬回去"），只是标题要说"移动"而不是"重命名"。
+ */
 function offerRenameUndo(p: {
   oldPath: string
   newPath: string
   type: 'file' | 'directory'
   name: string
+  titleKey?: string
 }): void {
+  // titleKey 只用于这一句话，不进 payload：通知会被持久化，载荷里只该有撤销真正需要的东西
+  const { titleKey, ...payload } = p
   void useNotificationsStore()
     .notify({
       level: 'info',
-      title: i18n.global.t('toast.renamedTo', { name: p.name }),
+      title: i18n.global.t(titleKey ?? 'toast.renamedTo', { name: p.name }),
       actions: [{ id: 'undo', label: i18n.global.t('common.undo'), tone: 'ghost' }],
-      payload: { kind: RENAME_KIND, ...p },
+      payload: { kind: RENAME_KIND, ...payload },
       mergeKey: `renamed:${p.newPath}`
     })
     .catch(() => {})
@@ -401,6 +424,25 @@ export const useFilesStore = defineStore('files', {
       // （主进程那边已经重写了 documents 与 documents_history 的 path）
       if (type === 'directory') useRecentStore().migrateWithin(oldPath, newPath)
     },
+    /**
+     * 搬家（移动 / 撤销移动）之后，那些**按路径记着**的会话状态要跟着走。
+     *
+     * 与 `applyRenameFixups` 的分工：那一段管"文档路径 + 最近列表"（改名与移动共用），
+     * 这里管另外两样 `applyRenameFixups` 不管的东西 ——
+     *   * `currentDir`：正文里相对路径图片的解析基准。**改名的目录不变**，所以那边不需要；
+     *     一旦目录真的换了（移动、撤销移动），不更新就会拿旧目录去解析图片，直到下次打开才纠正；
+     *   * 键盘焦点行（roving tabindex 的单一真相）：旧路径的行没了以后，整棵树会没有一个
+     *     `tabindex=0` 的行 —— Tab 进来方向键全都没反应。
+     */
+    async syncPathKeyedState(fromPath: string, toPath: string): Promise<void> {
+      if (this.current?.path) {
+        this.currentDir = await window.luminAPI.file.dirname(this.current.path)
+      }
+      const focused = activeTreePath.value
+      if (focused && isInside(fromPath, focused)) {
+        activeTreePath.value = toPath + focused.slice(fromPath.length)
+      }
+    },
     async renameNode(node: FileNode, parentDir: string, newName: string): Promise<void> {
       const newPath = await window.luminAPI.file.join(parentDir, newName)
       await window.luminAPI.file.rename(node.path, newPath)
@@ -414,6 +456,64 @@ export const useFilesStore = defineStore('files', {
         type: node.type,
         name: newPath.split(/[\\/]/).pop() ?? newName
       })
+    },
+    /**
+     * ─── 把文件 / 目录**移动到另一个文件夹**（文件树拖放与右键「移动到…」的唯一实现）─────
+     *
+     * 移动 = 换一个目标路径的 rename：走的是同一条 `file.rename` IPC（目标已存在时主进程抛
+     * TARGET_EXISTS，**绝不覆盖**）。这里只做三件事：算目标路径、收尾同步、给一条撤销出路。
+     *
+     * 判定全部收在纯函数 `planMove` 里（`tests/treeMove.test.mjs` 逐条钉住）。磁盘探测是异步的，
+     * 所以分两趟：第一趟纯字符串拿到目标路径 → `file:exists` 探一次 → 把结果**注入**纯函数再判一次。
+     * 这样「重名不覆盖」这条规则的唯一实现仍在纯函数里，不会长出第二份。
+     *
+     * 失败一律**明确提示**（拖放最怕静默什么都不发生）：非法落点给警告、重名给警告、
+     * IPC 抛错给错误 + 原因；同父目录是**无操作**，不提示、也不产生一次无意义的 rename。
+     *
+     * @returns 是否真的搬了（调用方据此决定要不要收尾）
+     */
+    async moveNode(source: MoveSource, targetDir: string): Promise<boolean> {
+      const root = this.root
+      if (!root) return false
+      const probe = planMove(source, targetDir, root)
+      const taken = probe.kind === 'move' ? await window.luminAPI.file.exists(probe.to) : false
+      const plan = planMove(source, targetDir, root, () => taken)
+      if (plan.kind === 'noop') return false
+      if (plan.kind === 'reject') {
+        useUiStore().toast(i18n.global.t(MOVE_REJECT_TOAST[plan.reason]), 'warning')
+        return false
+      }
+      try {
+        await window.luminAPI.file.rename(plan.from, plan.to)
+      } catch (err) {
+        // 占用 / 只读 / 目标目录已被删除……原因决定用户下一步怎么做，必须带上
+        useUiStore().toast(i18n.global.t('toast.moveFailed', { reason: errorReason(err) }), 'error')
+        return false
+      }
+      // 当前文档路径 +（目录搬家时的）最近列表：与重命名**共用同一段**，不写第二份
+      this.applyRenameFixups(plan.from, plan.to, source.type)
+      // 目录真的换了：图片基准目录与键盘焦点行跟着走（见 syncPathKeyedState）
+      await this.syncPathKeyedState(plan.from, plan.to)
+      /**
+       * 只有这两个目录的内容变了。**刻意不用 `refreshDir`**：它会把这两个目录下"已展开"的
+       * 子目录缓存整片删掉，而 `expanded` 里还留着那些路径 ⇒ 它们会渲染成"空文件夹"
+       * （改名路径下已是既有现象；但移动的落点常常是根目录，一次就会清掉整棵树，必须避开）。
+       * 移动不会让任何目录消失，所以「只重新读这两个目录」是完整且最小的刷新。
+       */
+      await this.loadChildren(plan.fromDir)
+      await this.loadChildren(plan.toDir)
+      useWorkspaceDocsStore().invalidate()
+      // 把落点目录展开：拖进折叠的文件夹时，这是"搬到哪去了"最直接的答案
+      this.expanded.add(plan.toDir)
+      // 与改名同一张撤销卡（同一个 kind：撤销就是"把路径搬回去"），只是标题说"移动"
+      offerRenameUndo({
+        oldPath: plan.from,
+        newPath: plan.to,
+        type: source.type,
+        name: plan.name,
+        titleKey: 'toast.movedTo'
+      })
+      return true
     },
     /**
      * 撤销一次改名：把路径搬回去，并让当前文档 / 最近列表跟着搬（走同一段 `applyRenameFixups`）。
@@ -432,6 +532,8 @@ export const useFilesStore = defineStore('files', {
       }
       const parentDir = await window.luminAPI.file.dirname(payload.oldPath)
       this.applyRenameFixups(payload.newPath, payload.oldPath, payload.type)
+      // 被撤销的可能是一次**移动**（同一张通知卡）：目录换了，图片基准与键盘焦点行也要跟着回去
+      await this.syncPathKeyedState(payload.newPath, payload.oldPath)
       await this.refreshDir(parentDir)
       return true
     },

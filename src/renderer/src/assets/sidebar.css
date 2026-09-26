@@ -179,6 +179,18 @@
   background-clip: padding-box;
 }
 
+/* 拖放落点：被悬停的**文件夹行**（拖拽期间最多只有一行亮着，见 ui.dropTargetPath）。
+   用 `--accent-soft` 铺底 + 1.5px 的 `--accent` 内描边：前者与"当前打开的那一篇"同色系，
+   后者才是"这里可以放"的明确信号 —— 只铺底色的话，与选中态几乎分不出来。
+   内描边（inset box-shadow）不占盒模型：树行的缩进是按 --tree-pad/--tree-indent 精算的，
+   用 border 会把内容右推、整棵树的左缘对不齐。 */
+.tree-row.is-drop-target {
+  background-color: var(--accent-soft);
+  background-clip: padding-box;
+  color: var(--accent-ink);
+  box-shadow: inset 0 0 0 1.5px var(--accent);
+}
+
 /* 缩进参考线：画在「子级容器」上（容器带着父级的 --tree-depth），正落在父级箭头中线上；
    抬到行底色之上（z-index: 1），悬停/选中药丸不会把线切断 */
 [data-tree-children] {

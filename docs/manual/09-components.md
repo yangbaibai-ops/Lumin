@@ -22,8 +22,11 @@
   （`role="tablist"` / `role="tab"` + `aria-selected`，`FileTree.vue`、`Toolbar.vue` 已用）。
 - ⚠️ 仍欠账（审计 §8 P1「同一个分段控件有 2 种实现」）：设置页里还有 **6 处内联按钮组** ——
   `SettingsDialog.vue` 的语言、编辑模式、远程图片、正文字体、PDF 页面尺寸、链接创建。
-  其中 4 处连 `aria-pressed` 都没有（键鼠用户看不出"当前选中哪个"）。
-  改法：换成 `SegmentedControl` 的 quiet 变体（组件已有 variant），并把选中态交给它。
+  **可访问性那一半已经补上**（六组统一 `role="group"` + `aria-label` + 每个按钮 `aria-pressed`，
+  读屏器读得出"当前选的是哪一个"）；剩下的是**视觉统一**：换成 `SegmentedControl` 的 quiet 变体。
+  组件目前要求每段带 `icon`（`SegmentItem.icon` 必填），而这六组是纯文字分组 ——
+  先把 icon 变成可选，再逐组迁移，迁移时记得让 `tests/a11ySemantics.test.mjs` 与
+  `_verify-settings-layout.js` 保持绿。
 
 ## 9.3 滑杆（.range）
 
@@ -62,7 +65,17 @@
 - 悬停才出现的按钮：必须同时有 `group-focus-within:opacity-100`（否则键盘用户 Tab 到它却看不见）。
 - 守卫：`tests/a11ySemantics.test.mjs`（以 mermaid 预览按钮为样例）。
 
-## 9.7 新增控件时的检查清单
+## 9.7 文件树内的「移动到文件夹」
+
+- ✅ 唯一实现：`src/renderer/src/lib/treeMove.ts` 的 `planMove`（纯函数，`tests/treeMove.test.mjs` 守着）
+  + `src/renderer/src/stores/files.ts` 的 `moveNode`（走既有的 `file.rename` 通道，目标已存在时拒绝）。
+- ✅ 两个入口共用同一条实现：拖行到**文件夹行**（或树里的空白区 = 工作区根），
+  以及行右键菜单里的「移动到…」子菜单（`Shift+F10` / 菜单键 → `↓` → `→` → `Enter`，全程键盘）。
+- ⚠️ 仍欠账：键盘那条路的候选目录只列**工作区根 + 该项的祖先 + 已经展开过（`dirCache` 里有缓存）的目录** ——
+  没点开过的深层目录要先在树里展开一次才能成为候选；跨工作区移动、以及「文件树内任意排序」都不支持
+  （排序没有可持久化的位置，一次外部改动 / 重新读盘就打回原形，收益与承诺都不成立）。
+
+## 9.8 新增控件时的检查清单
 
 1. 先在上面找到**已有实现**；找不到再新建，并**在本文件登记**（这一章就是"组件清单"本身）。
 2. 交互语义三件套：键盘可达（Tab 顺序 + Enter/Space/方向键）→ 焦点可见（`:focus-visible`）
