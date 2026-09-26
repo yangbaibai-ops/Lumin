@@ -55,4 +55,45 @@ CDP 套件需要真实桌面会话（窗口焦点、单实例锁、真实按键�
 - CSP 白名单 + `lumin-file://` 协议隔离本地资源；
 - 打开文件只读自己的工作区根目录。
 
+### 6.5 依赖体检
+
+审计 §5 的几条（registry 隐式指向第三方镜像 / Node 版本口径不一 / 生产链路里的弃用包）
+现在的口径与判据：
+
+- **依赖源**：项目根有 `.npmrc`，显式声明 `registry`（默认 npmmirror —— 国内网络下 `npm ci`
+  从几分钟降到几十秒）。完整性由 lockfile 的 `integrity`（sha512）保证：镜像改了内容 npm 会拒绝安装。
+  `tests/dependencyPolicy.test.mjs` 守住"lock 里每个 tarball 的主机 == `.npmrc` 配的 registry"
+  且每条都有哈希 —— 换源时不可能漏改 lock。
+- **Node 版本**：`package.json` 的 `engines.node` 是**有界**范围 `>=22 <25`（此前是 `>=22`：
+  本机跑 Node 26 也叫"符合声明"，但产物并不保证能跑）。同一条测试会对账三份 workflow 里的
+  `node-version`，越界即红。
+- **已弃用包**：以 lockfile 的 `deprecated` 字段为准，名单**只减不增**（新增一个就红，
+  逼着人当场决定换掉还是写下原因）。当前 5 个：
+  `boolean`（打包期生产依赖，上游未换）、`lodash.isequal`（electron-updater 的生产依赖，
+  作者建议改用 `node:util.isDeepStrictEqual` 但未发新版）、`glob` / `inflight` / `rimraf`
+  （仅 dev 链路，等上游升级）。
+
+**联网实测（2026-09-26，`npm outdated` / `npm view`）**：`electron` 已装 39.8.10、最新 **44.4.5**
+（落后 5 个大版本，Chromium 相应落后 —— 这是本清单里**最大的已知风险**，升级涉及原生依赖与
+全套 CDP 矩阵，必须单独分支，计划与复验步骤见 `docs/electron-upgrade.md`）；`mermaid`
+11.17.2 → 12.0.0、`eslint` 9.39.4 → 10.11.0、`@types/node` 22.20.1 → 26.6.3（与运行时版本口径
+不一致，属于"类型定义超前"）、`katex` 0.18.5 → 0.18.9、`iconv-lite` 0.6.3 → 0.7.3，
+其余多为补丁级更新。
+
+**环境限制（诚实登记）**：本机 npm 被策略禁用了远程包获取（安装时报
+`EALLOWREMOTE ... Fetching packages of type "remote" have been disabled`，只有 registry 读操作
+可用）。因此**所有会改动 lockfile 的动作**都没在这一轮做：把 `electron` / `electron-builder`
+的 `^` 收成 `~`、用 `overrides` 顶掉上面的弃用包、统一两份 KaTeX、以及 Electron 大版本升级 ——
+它们都需要一次能联网的 `npm install`（`npm install --package-lock-only` 也行）来同步 lock。
+在能联网的环境里，命令与顺序是：
+
+```powershell
+# ① 收紧规格（package.json）→ ② 同步 lock → ③ 跑门禁
+npm install --package-lock-only
+npm run ci
+```
+
+> 现在 package.json 与 package-lock.json 的依赖规格**是一致的**（`npm ci` 可跑）——
+> 改动规格却不重生成 lock 会让 `npm ci` 直接失败，所以那一半必须与 lock 一起提交。
+
 ---
