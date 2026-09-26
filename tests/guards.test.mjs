@@ -148,6 +148,38 @@ test('卸载不许删用户数据（写作类应用的底线）', () => {
   assert.match(yml, /deleteAppDataOnUninstall:\s*false/, 'deleteAppDataOnUninstall 必须为 false')
 })
 
+test('窗口级拖放的落点判定：内层认领过的拖放不再往下判（审计 §7 复查）', () => {
+  /**
+   * 背景：图片拖入是内核 `handleDrop`（`lib/editor/imagePaste.ts`）在处理，它 `preventDefault`
+   * 但**不 stopPropagation**，事件继续冒泡到 `EditorView.vue` 的窗口级 `onDrop`；而后者只认
+   * .md/.txt 后缀 —— 于是拖一张 png 进来会「图片真的插进去了 + 同时弹一条不支持的文件类型」。
+   *
+   * 为什么这条只能是**静态**守卫（诚实说明）：CDP 里造出来的 `File` 没有真实文件系统路径，
+   * `webUtils.getPathForFile()` 会返回空串，外层 handler 在"没路径"处就 return 了 ——
+   * 也就是说从合成事件走**到不了**那条 toast 分支，用它做运行时断言等于什么都没验。
+   * 真拖放要在用户机器上手动确认（拖一张 png 进编辑区：图片进正文、**没有** error 提示）。
+   * 静态守卫至少保证那一行短路不会被人顺手删掉。
+   */
+  const src = read('src/renderer/src/views/EditorView.vue')
+  const at = src.indexOf('async function onDrop(')
+  assert.ok(at > 0, 'EditorView.vue 里找不到 onDrop')
+  const body = src.slice(at, at + 400)
+  assert.match(
+    body,
+    /if \(e\.defaultPrevented\) return/,
+    'onDrop 必须先用 e.defaultPrevented 短路（内层已经处理过这次拖放）'
+  )
+  const dragOver = src.slice(
+    src.indexOf('function onDragOver('),
+    src.indexOf('function onDragOver(') + 200
+  )
+  assert.match(
+    dragOver,
+    /preventDefault\(\)/,
+    'onDragOver 仍要 preventDefault（否则浏览器会打开这个文件）'
+  )
+})
+
 test('许可与第三方声明：LICENSE 存在、声明会被打进产物、且门禁校验它是最新的', () => {
   // 背景（审计 §5）：README 一直声明 MIT，而仓库既没有 LICENSE 也没有 package.json 的 license 字段；
   // 打包产物里第三方库的版权声明又被 Rollup 全剥掉了。这一条把"补上的东西不会悄悄回退"钉住。

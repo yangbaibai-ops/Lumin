@@ -104,14 +104,23 @@ async function main() {
   )
 
   // ── ② 渲染：<img> 真的加载出来了（lumin-file:// 协议 + 媒体白名单） ──────────
-  await sleep(600)
-  const rendered = JSON.parse(
-    await ev(`JSON.stringify((() => {
-      const img = document.querySelector('.ProseMirror img')
-      if (!img) return { found: false }
-      return { found: true, src: img.getAttribute('src') || '', w: img.naturalWidth, complete: img.complete }
-    })())`)
-  )
+  /**
+   * 这里**必须轮询**，不能睡固定时长（实测本套件在整轮矩阵里偶发 8/9：`image-renders` 红、
+   * 单独重跑立刻绿）。原因是图片经 `lumin-file://` 走协议层 + 磁盘 IO，机器忙时 600ms 不一定够；
+   * 而"等够 600ms"本身也没有语义 —— 有语义的是"最终会不会渲染出来"。
+   */
+  let rendered = { found: false }
+  for (let i = 0; i < 24; i += 1) {
+    rendered = JSON.parse(
+      await ev(`JSON.stringify((() => {
+        const img = document.querySelector('.ProseMirror img')
+        if (!img) return { found: false }
+        return { found: true, src: img.getAttribute('src') || '', w: img.naturalWidth, complete: img.complete }
+      })())`)
+    )
+    if (rendered.found && rendered.complete && rendered.w > 0) break
+    await sleep(250)
+  }
   report.check(
     'image-renders',
     rendered.found === true && rendered.complete === true && rendered.w > 0,

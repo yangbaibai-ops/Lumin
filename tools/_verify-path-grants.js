@@ -46,10 +46,13 @@ async function main() {
   const inWsSub = path.join(ws, 'sub', 'nested.md')
   const outFile = path.join(outside, 'secret.md')
   const outNew = path.join(outside, 'brand-new.md')
+  /** 链接激活授权（A4 用）：工作区外、且没被"打开过/会话记录过"的第三个文件 */
+  const linked = path.join(outside, 'linked.md')
   fs.writeFileSync(inWs, '# inside\n', 'utf-8')
   fs.writeFileSync(inWsSub, '# nested\n', 'utf-8')
   fs.writeFileSync(outFile, '# outside\n', 'utf-8')
   fs.writeFileSync(dropped, '# dropped\n', 'utf-8')
+  fs.writeFileSync(linked, '# linked\n', 'utf-8')
 
   try {
     // ── A. 拒绝侧：先把工作区设成 ws，则 outside 下的路径谁都没授权过 ──
@@ -84,6 +87,43 @@ async function main() {
       'refused-write-left-no-file',
       !fs.existsSync(outNew),
       '被拒绝的写必须真的没落盘'
+    )
+
+    /**
+     * ── A3. `shell:openPath` 的授权闸（审计 §4 P1「任意路径执行入口」） ──
+     *
+     * 这个 handler 是"把路径交给系统默认应用"的入口：此前只有扩展名黑名单，任何非可执行路径
+     * 都会被交出去。现在它必须**先过路径授权**（返回 `PATH_NOT_AUTHORIZED`）。
+     *
+     * 为什么敢在这里调它：`outNew` 是一个**不存在**的路径，所以即使闸门被摘掉，
+     * `shell.openPath` 也只会返回"文件不存在"，不会在机器上打开任何应用 —— 断言本身是安全的。
+     */
+    const aOpen = await ev(
+      `window.luminAPI.shell.openPath(${JSON.stringify(outNew)}).then((v) => String(v)).catch((e) => String(e.message ?? e))`
+    )
+    report.check(
+      'outside-path-shell-open-refused',
+      String(aOpen).includes('PATH_NOT_AUTHORIZED'),
+      `把未授权路径交给系统默认应用：${aOpen}（要拦在 openPath 之前，而不是交给系统后再报错）`
+    )
+
+    /**
+     * ── A4. 链接激活的只读授权：`links:resolve` 之后**只读**放行 ──
+     *
+     * 用户点了正文里的链接时，渲染层会先 `links.resolve(target, baseDir)`；主进程在那一步为
+     * 解析到的目标登记一条只读授权（否则 A3 的闸门会把"打开工作区外的链接目标"这个正常功能
+     * 一起挡掉）。这里只验"登记"这一半，**不真的** `shell.openPath` —— 那会在用户机器上
+     * 打开外部应用。
+     */
+    const linkBefore = await ev(read(linked))
+    await ev(
+      `window.luminAPI.links.resolve('linked.md', ${JSON.stringify(outside)}).then(() => 'ok')`
+    )
+    const linkAfter = await ev(read(linked))
+    report.check(
+      'link-activation-grants-readonly',
+      String(linkBefore).includes('PATH_NOT_AUTHORIZED') && linkAfter === 'ok',
+      `resolve 前=${linkBefore} resolve 后=${linkAfter}（用户点过的链接目标该放行只读）`
     )
 
     // ── B. 放行侧 1：工作区内（含子目录）读写都在 ──

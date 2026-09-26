@@ -71,26 +71,30 @@ main().then((c) => process.exit(c)).catch(fatal)
     运行器认得 `SKIP: 前置条件不满足` 前缀并记 **SKIP**（不是 FAIL、也不是 0 断言的 NOASSERT）；
     两侧字面口径由 `tests/tooling.test.mjs` 守着。
 
-    **已知欠账**（实测清点 2026-09-24：登记套件 **110 个**，其中 **34 个**注入真实按键；
-    已有守卫的 **12 个** = `preconditionSkip` **1 个** + `ensureFocus`/`report.skip` 窗口级兜底 **11 个**，
-    于是**剩 22 个两者都没有**）。清点命令（数字是量出来的，不是估的）：
+    **已知欠账**（实测清点 2026-09-26：`_verify|_regress|_repro` 前缀的套件 **110 个**，
+    其中 **34 个**注入真实按键；已有守卫的 **15 个** —— `preconditionSkip` / `requireFocus` /
+    `requireFrames` / `ensureFocus` / 窗口级 SKIP 各算一种，于是**剩 19 个没有任何守卫**）。
+    清点命令（数字是量出来的，不是估的；口径与 `tests/tooling.test.mjs` 那条守卫逐字一致）：
 
     ```powershell
     Get-ChildItem tools -Filter "_*.js" | ? Name -match "^_(verify|regress|repro)-" |
       ? { Select-String -Path $_.FullName -Pattern "dispatchKeyEvent|pressKey\(|Input\.insertText" -Quiet } |
-      ? { -not (Select-String -Path $_.FullName -Pattern "preconditionSkip\(|SKIP: 没有可用窗口|SKIP: 9222 上已有" -Quiet) } |
+      ? { -not (Select-String -Path $_.FullName -Pattern "preconditionSkip\(|requireFocus\(|requireFrames\(|ensureFocus\(|SKIP: 没有可用窗口|SKIP: 9222 上已有" -Quiet) } |
       % Name
     ```
 
-    按"改到谁就顺手迁谁"逐步收口（`_regress-cb` / `_repro-rapidenter` 用的是 `ensureFocus` +
-    `report.skip` 那条老路径，效果同样是如实 SKIP；`_verify-inline-formats.js` 本轮从硬失败迁到
-    `preconditionSkip`）。上面那 22 个名字就是当前欠账清单 —— 收口一个就少一个。
+    收口方式：**改到谁就顺手迁谁**。已迁的样例：`_verify-inline-formats.js`（硬失败 →
+    `preconditionSkip`）、`_verify-new-document.js`（Ctrl+N / Alt+F 两段用 `requireFocus`）、
+    `_repro-rapidenter.js`（`ensureFocus` + `report.skip` → `requireFocus`）、
+    `_verify-outline-nav.js`（自带出帧探测 → 骨架的 `framesAlive`）。
+    那 19 个名字**同时写进了 `tests/tooling.test.mjs` 的欠账名单**：名单只减不增（加了守卫却
+    不删登记会红，往上限之上加新名字也会红），所以"还剩多少"这件事不需要靠人记。
 
 ## 现状与迁移进度
 
 <!-- facts:begin（由 tools/doc-facts.js 生成，勿手改）-->
 
-- `tools/` 共 **192 个文件 / 42417 行**（`.js`/`.mjs`/`.ps1`/`.md`）；
+- `tools/` 共 **192 个文件 / 42529 行**（`.js`/`.mjs`/`.ps1`/`.md`）；
 - 套件文件 **109 个**（_regress-* 6 / _repro-* 9 / _verify-* 94），默认矩阵 **60 个**，分档：fast 60 / needs-build 44 / needs-dev 4 / manual 1；
 - 另有 **7 个**探针/遗留脚本默认只列不判（`--probe` 显式跑）；
 - 单元测试 **73 个** `tests/*.test.mjs`；Markdown 往返夹具 **33 份**（exact 17 / normalized 16）；
@@ -103,6 +107,27 @@ main().then((c) => process.exit(c)).catch(fatal)
 - 迁移进度：**改到谁迁谁**。迁移过的脚本会在文件头注明"已用 harness"；剩下的老脚本仍能跑，
   但新写的必须用 harness（这条由 review 把关，不加自动门禁 —— 自动检查"是否 import harness"
   会把一批历史脚本变成噪音）。
+
+## 不在默认矩阵里的套件：**什么时候必须跑**（清单 §10 P1）
+
+默认矩阵（`DEFAULT_SUITES`，60 条）是"纯合成事件、单实例能跑完、覆盖核心回归面"的那一批。
+剩下 49 条按需跑 —— 但"按需"不等于"想不起来就跑"：下面这张表就是触发条件，
+改动落在哪一块就顺手跑对应那条（`--suite=` 支持逗号分隔的多条）。
+
+| 套件 | 触发条件 |
+| --- | --- |
+| `_verify-packaging-fast.js`（自管实例，端口 9225） | 改**主进程 / CSP / 资源协议 / 打包配置**之后：先 `npm run build:unpack`，再 `node tools/run-suites.js --suite=_verify-packaging-fast.js`。`package.yml` 打完包也会自动跑一次 |
+| `_verify-packaging.js`（manual 慢组） | **发版前**手动：真打包 + exe 图标逐像素 + 文件关联双击 + 第二实例转发 + SHA256 |
+| `_verify-link-open.js`（64 条断言） | 改链接解析 / `UNSAFE_TARGET_EXT` / 路径授权（`pathGrants`）之后 |
+| `_verify-round-perf.js`（38 条） | 改编辑器渲染、大文档路径、代码块挂载策略之后 |
+| `_verify-sidebar-tree-style.js`（32 条） | 改文件树样式之后（**窗口可见时跑**：被遮挡时不出帧，会如实 SKIP） |
+| `_verify-cb-line-numbers.js` | 改代码块行号 / 装订线之后 |
+| `_verify-keymap.js`、`_verify-open-file-dedup.js`、`_verify-open-file-routing.js`、`_verify-save-as-workspace.js` | 这 4 条 `import('/src/...')`，**必须先起 dev server（5173）**：`npm run dev` 另开一个终端，再 `node tools/run-suites.js --tier=needs-dev` |
+| `_verify-notify-restart.js`（manual） | 人工三步：种一条通知 → 杀进程 → 重启后确认它还在（进程重启语义只能人看着验） |
+
+`--all` 一次跑完自动能跑的全部（109 条，含默认矩阵与上面这些）；`--probe` 单跑 7 个探针。
+判定口径不因"按需"而放松：`FAIL` / `NOASSERT` 一律让命令非零退出，`FLAKY` 会单独列出来
+（首次红、重跑绿），SKIP 如实计数、不算失败（清单 §1.C.1）。
 
 ## 常驻的测量/分析工具（**不是**套件，别删）
 

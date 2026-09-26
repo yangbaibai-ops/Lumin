@@ -533,8 +533,9 @@ async function main() {
      * 原来只看退出码：一个套件如果**压根没产出断言**（没打印 `--- N/M PASS` / `TOTAL` 行，
      * 退出 0），终端上显示 `0/0 PASS`，和「全部通过」只差一个数字 —— 于是"绿灯"什么都证明不了。
      * 实测：非默认矩阵里抽样 8 个套件，**8/8 都是 0/0 却被记成 PASS**
-     * （`_verify-i18n` / `_verify-editor-menu` / `_verify-export-fix2` / `_verify-alt-menu` /
-     * `_verify-toast-tip` / `_verify-notifications` / `_verify-notify-style` / `_verify-cb-no-active-line`）。
+     * （`_verify-i18n` / `_verify-editor-menu` / `_verify-alt-menu` / `_verify-toast-tip` /
+     * `_verify-notifications` / `_verify-notify-style` / `_verify-cb-no-active-line`，
+     * 外加当时还存在、后来随覆盖补齐被删掉的 `_verify-export-fix2`）。
      * 现在把它们单列为 NOASSERT 并让整体退出码非零，逼着人**要么修好、要么删掉**；
      * 确实"无事可断言"的套件请写进 EMPTY_OK 并注明理由。
      */
