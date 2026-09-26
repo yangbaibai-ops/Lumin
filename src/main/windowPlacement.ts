@@ -59,3 +59,23 @@ export function canRestoreWindow(
   if (saved.width < min.width || saved.height < min.height) return false
   return intersectsAnyWorkArea(saved, areas)
 }
+
+/**
+ * 关窗时该往 kv 里写什么。
+ *
+ * **为什么不是"直接存 getBounds()"**：最大化状态下 `getBounds()` 给的是**被撑满的屏幕矩形**，
+ * 存下来之后下次先按这个大尺寸建窗（用户会看到窗口"从全屏缩回"的一下），再叠加 `isMaximized`
+ * → 两步跳变。Electron 为此给了 `getNormalBounds()`：它返回"如果现在还原，会回到的那个矩形"。
+ * 所以规则是：**最大化时存 normalBounds，非最大化时存 bounds**；`isMaximized` 单独记，
+ * 供下次还原后决定要不要再最大化。
+ *
+ * 纯函数（调用方把两个矩形取好传进来）—— 这条规则此前埋在 `saveWindowState` 里没人测。
+ */
+export function windowStateFor(input: {
+  bounds: Rect
+  normalBounds: Rect
+  isMaximized: boolean
+}): SavedWindow {
+  const b = input.isMaximized ? input.normalBounds : input.bounds
+  return { x: b.x, y: b.y, width: b.width, height: b.height, isMaximized: input.isMaximized }
+}

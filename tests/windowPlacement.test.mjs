@@ -9,7 +9,8 @@ import {
   MIN_WINDOW_HEIGHT,
   MIN_WINDOW_WIDTH,
   canRestoreWindow,
-  intersectsAnyWorkArea
+  intersectsAnyWorkArea,
+  windowStateFor
 } from '../src/main/windowPlacement.ts'
 
 /** 一块 1920×1080 的显示器（工作区扣掉任务栏 40px） */
@@ -88,4 +89,22 @@ test('canRestoreWindow：坏数据与空显示器列表都退回默认尺寸（�
 
 test('canRestoreWindow：最大化标志不参与判定（它只决定"还原时要不要最大化"）', () => {
   assert.equal(canRestoreWindow(saved({ isMaximized: true }), [PRIMARY]), true)
+})
+
+test('windowStateFor：最大化时存正常尺寸，非最大化时存当前 bounds', () => {
+  const bounds = { x: 0, y: 0, width: 1920, height: 1080 } // 被撑满的屏幕矩形
+  const normalBounds = { x: 120, y: 90, width: 1320, height: 860 }
+  assert.deepEqual(windowStateFor({ bounds, normalBounds, isMaximized: true }), {
+    ...normalBounds,
+    isMaximized: true
+  })
+  assert.deepEqual(windowStateFor({ bounds, normalBounds, isMaximized: false }), {
+    ...bounds,
+    isMaximized: false
+  })
+  // 存下来的记录本身仍要通过"可恢复"判定（两者是同一条链的两端）
+  assert.equal(
+    canRestoreWindow(windowStateFor({ bounds, normalBounds, isMaximized: true }), [PRIMARY]),
+    true
+  )
 })

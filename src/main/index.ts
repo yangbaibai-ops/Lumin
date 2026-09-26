@@ -15,7 +15,7 @@ import { optimizer, is } from '@electron-toolkit/utils'
 // 否则同一应用会出现两种图标。
 import appIconPng from '../../resources/icon.png?asset'
 import { installMenu } from './menu'
-import { canRestoreWindow } from './windowPlacement'
+import { canRestoreWindow, windowStateFor } from './windowPlacement'
 import { mainT } from './i18n'
 import { registerIpc, attachCloseGuard } from './ipc'
 import { isServableMedia } from './fileOps'
@@ -35,7 +35,7 @@ import { beginShutdown } from './services/shutdown'
 import { bindWindowScope, scopeOfSlot } from './services/windowScope'
 import * as pathGrants from './services/pathGrants'
 import { defaultSettings } from '../shared/defaults'
-import { PAPER_BY_THEME } from '../shared/theme'
+import { paperForTheme } from '../shared/theme'
 import { PROD_CSP } from '../shared/csp'
 
 // 本地文件协议（用于 Markdown 内相对路径图片，兼容 dev/prod 与 CSP）
@@ -107,12 +107,7 @@ function claimFreshSlot(): number {
 // 否则窗口在页面首次绘制前会先露出一块别的颜色。镜像值见 shared/theme.ts，
 // 与 style.css 的一致性由 tests/themeTokens.test.mjs 在 `npm run ci` 里钉住。
 function themeBackground(): string {
-  const theme = db.kvGet('settings', defaultSettings).theme
-  if (theme === 'dark') return PAPER_BY_THEME.dark
-  if (theme === 'sepia') return PAPER_BY_THEME.sepia
-  if (theme === 'auto')
-    return nativeTheme.shouldUseDarkColors ? PAPER_BY_THEME.dark : PAPER_BY_THEME.light
-  return PAPER_BY_THEME.light
+  return paperForTheme(db.kvGet('settings', defaultSettings).theme, nativeTheme.shouldUseDarkColors)
 }
 
 /** 窗口位置/大小持久化（记住上次关闭时的位置与尺寸） */
@@ -137,15 +132,16 @@ function validWindowBounds(s: WindowState): boolean {
 }
 
 function saveWindowState(win: BrowserWindow): void {
-  const isMaximized = win.isMaximized()
-  const b = isMaximized ? win.getNormalBounds() : win.getBounds()
-  db.kvSet('windowState', {
-    x: b.x,
-    y: b.y,
-    width: b.width,
-    height: b.height,
-    isMaximized
-  } satisfies WindowState)
+  // 「最大化时存 normalBounds」这条规则抽在 windowPlacement.ts（有单测）：
+  // 存 getBounds() 会把"被撑满的屏幕矩形"当成还原尺寸，下次先按大尺寸建窗再最大化，多一次跳变。
+  db.kvSet(
+    'windowState',
+    windowStateFor({
+      bounds: win.getBounds(),
+      normalBounds: win.getNormalBounds(),
+      isMaximized: win.isMaximized()
+    }) satisfies WindowState
+  )
 }
 
 // 生产环境 CSP 只注册一次（session 为所有窗口共享，避免重复监听）

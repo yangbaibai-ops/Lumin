@@ -16,7 +16,7 @@ import assert from 'node:assert/strict'
 import { readdirSync, readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
-import { PAPER_BY_THEME, PREVIEW_BY_THEME } from '../src/shared/theme.ts'
+import { PAPER_BY_THEME, PREVIEW_BY_THEME, paperForTheme } from '../src/shared/theme.ts'
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..')
 /**
@@ -101,6 +101,22 @@ test('窗口底色（shared/theme.ts）与 style.css 的 --paper 逐主题一致
       `${t}：窗口底色 ${PAPER_BY_THEME[t]} ≠ 纸色 ${TOKENS[t]['--paper']}（启动会闪一下别的颜色）`
     )
   }
+})
+
+/**
+ * 建窗时那个 `backgroundColor` 的取值规则（此前埋在 `main/index.ts` 的 `themeBackground()` 里）。
+ * 它错了的表现是"启动瞬间先露出一块别的颜色再被写作区盖住"（防闪白失效），
+ * 只在深色/羊皮纸下、只在那一帧可见 —— 所以规则纯化后在这里穷举。
+ */
+test('paperForTheme：显式主题用自己的纸色，auto 跟随系统偏好', () => {
+  assert.equal(paperForTheme('light', true), PAPER_BY_THEME.light, '显式浅色不跟随系统')
+  assert.equal(paperForTheme('light', false), PAPER_BY_THEME.light)
+  assert.equal(paperForTheme('dark', false), PAPER_BY_THEME.dark, '显式深色不跟随系统')
+  assert.equal(paperForTheme('dark', true), PAPER_BY_THEME.dark)
+  assert.equal(paperForTheme('sepia', true), PAPER_BY_THEME.sepia)
+  assert.equal(paperForTheme('sepia', false), PAPER_BY_THEME.sepia)
+  assert.equal(paperForTheme('auto', true), PAPER_BY_THEME.dark)
+  assert.equal(paperForTheme('auto', false), PAPER_BY_THEME.light)
 })
 
 test('不变量①：纸比外壳（chrome）亮 —— 三主题都成立', () => {

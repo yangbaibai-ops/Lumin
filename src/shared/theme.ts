@@ -23,6 +23,25 @@ export const PAPER_BY_THEME = {
 
 export type PaperTheme = keyof typeof PAPER_BY_THEME
 
+/**
+ * 当前该用哪个纸色（主进程建窗时的 `backgroundColor` 用它）。
+ *
+ * **为什么单独一条纯函数**：这段四分支映射此前写在 `main/index.ts` 的 `themeBackground()` 里，
+ * 而它的错误表现很隐蔽 —— 启动瞬间先露出一块别的颜色再被写作区盖住（"闪白"），
+ * 只在深色/羊皮纸主题下、且只在启动那一帧可见，人工点几乎抓不到。
+ * 现在规则纯化：`theme` 与"系统是否偏好深色"都由调用方取好传进来，`node --test` 直接跑
+ *（tests/themeTokens.test.mjs）。
+ */
+export function paperForTheme(
+  theme: 'light' | 'dark' | 'sepia' | 'auto',
+  systemPrefersDark: boolean
+): string {
+  if (theme === 'dark') return PAPER_BY_THEME.dark
+  if (theme === 'sepia') return PAPER_BY_THEME.sepia
+  if (theme === 'auto') return systemPrefersDark ? PAPER_BY_THEME.dark : PAPER_BY_THEME.light
+  return PAPER_BY_THEME.light
+}
+
 // ─── 设置页「主题缩略图」的颜色（小样机）─────────────────────────────────────
 //
 // 那张缩略图以前把三套色**写死在组件里**，于是成了第二份真值，而且已经漂了：
