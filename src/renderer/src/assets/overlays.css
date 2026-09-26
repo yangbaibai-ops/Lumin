@@ -277,7 +277,7 @@ li.md-reveal {
 .lm-tok-value { color: var(--code-num); }
 .lm-tok-type { color: var(--code-num); }
 .lm-tok-operator { color: var(--code-key-2); }
-.lm-tok-comment { color: var(--ink-2b); font-style: italic; }
+.lm-tok-comment { color: var(--code-com); font-style: italic; }
 .lm-tok-string { color: var(--code-str); }
 .lm-tok-invalid { color: var(--code-invalid); }
 

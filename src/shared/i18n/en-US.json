@@ -557,6 +557,7 @@
     "hint": "Clicking an entry loads it into the editor (nothing is written to disk): review, then Ctrl+S."
   },
   "globalSearch": {
+    "hits": "{n} documents found",
     "indexedCount": "{n} indexed",
     "searching": "Searching…",
     "noMatch": "No matching content",

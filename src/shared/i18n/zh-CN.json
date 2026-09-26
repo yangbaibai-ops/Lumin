@@ -556,6 +556,7 @@
     "hint": "点击某一条会把它载入编辑器（不会直接写盘）：看清了再 Ctrl+S 保存。"
   },
   "globalSearch": {
+    "hits": "找到 {n} 篇文档",
     "indexedCount": "{n} 篇已索引",
     "searching": "搜索中…",
     "noMatch": "未找到匹配内容",

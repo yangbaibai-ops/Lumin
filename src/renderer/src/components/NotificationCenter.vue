@@ -64,13 +64,15 @@ function closeCurrent(): void {
        （见 overlays.css 的 `.ntf-reveal-*`），于是「带子挤开正文」本身就是动画。 -->
   <Transition name="ntf-reveal">
     <div v-if="active" class="ntf-reveal">
-      <!-- `role="status"` + `aria-live="polite"`：通知出现/切换时要被读屏器播报
-           （审计 §8：全仓此前没有一处 live region，"出错/导出完成"这类信息只对看得见的人存在） -->
+      <!-- `role`/`aria-live` 按级别切换（审计 §8 P1「无 `aria-live`」的收尾）：
+           * 错误：`role="alert"` + `assertive` —— 失败必须**立刻**打断播报（全仓此前 `role="alert"`
+             一处都没有，出错只对看得见的人存在）；
+           * 其余（成功/提示/进度）：`status` + `polite`，等读屏器念完当前句子再说。 -->
       <div
         class="ntf-strip"
         data-notification-center
-        role="status"
-        aria-live="polite"
+        :role="active.level === 'error' ? 'alert' : 'status'"
+        :aria-live="active.level === 'error' ? 'assertive' : 'polite'"
         aria-atomic="true"
       >
         <div class="ntf-item" data-ntf-item>

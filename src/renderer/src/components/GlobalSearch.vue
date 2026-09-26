@@ -184,6 +184,12 @@ onBeforeUnmount(() => {
               </button>
             </div>
 
+            <!-- 命中数播报（审计 §8 P1「无 `aria-live`」）：结果**看得见**，但读屏器不知道
+                 "这次搜到几条"。`sr-only` 不占视觉位置，只在结果数变化时播报一次。 -->
+            <span class="sr-only" role="status" aria-live="polite">{{
+              t('globalSearch.hits', { n: ui.globalSearch.results.length })
+            }}</span>
+
             <!-- 结果区 -->
             <div class="max-h-[46vh] overflow-y-auto p-2">
               <div

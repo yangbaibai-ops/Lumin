@@ -100,7 +100,9 @@ async function openDoc(path: string): Promise<void> {
   <div class="flex h-full flex-col">
     <!-- 顶栏：文章数 + 刷新（Typora 式极简弱化） -->
     <div class="flex flex-none items-center gap-2 px-3 pb-1.5">
-      <span class="flex-1 truncate text-[11px] text-ink-3/80">
+      <!-- 审计 §8 P1：这一行原来用 `text-ink-3/80`（11px 小字再叠 80% 透明）——三主题下都远低于
+           正文级对比度。列表元信息属"次要正文"，用 `--ink-2b`（专门为此加的档）而不是装饰色。 -->
+      <span class="flex-1 truncate text-ui-sm text-ink-2b">
         {{ t('sidebar.docsCount', { n: items.length }) }}
       </span>
       <button
@@ -142,13 +144,13 @@ async function openDoc(path: string): Promise<void> {
           <span class="flex items-baseline justify-between gap-2 text-[10.5px] leading-none">
             <span
               class="truncate"
-              :class="doc.path === currentPath ? 'text-accent/75' : 'text-ink-3/75'"
+              :class="doc.path === currentPath ? 'text-accent/75' : 'text-ink-2b'"
             >
               {{ folderOf(doc) }}
             </span>
             <span
               class="flex-none tabular-nums"
-              :class="doc.path === currentPath ? 'text-accent/70' : 'text-ink-3/60'"
+              :class="doc.path === currentPath ? 'text-accent/70' : 'text-ink-2b'"
             >
               {{ timeFmt.format(doc.mtimeMs) }}
             </span>
@@ -160,7 +162,7 @@ async function openDoc(path: string): Promise<void> {
               name="file"
               :size="13"
               class="flex-none"
-              :class="doc.path === currentPath ? 'text-accent/80' : 'text-ink-3/60'"
+              :class="doc.path === currentPath ? 'text-accent/80' : 'text-ink-3'"
             />
             <span
               class="truncate text-ui font-medium tracking-[-0.01em]"
@@ -171,17 +173,14 @@ async function openDoc(path: string): Promise<void> {
             <span
               v-if="extOf(doc)"
               class="flex-none text-[10.5px] leading-none"
-              :class="doc.path === currentPath ? 'text-accent/60' : 'text-ink-3/65'"
+              :class="doc.path === currentPath ? 'text-accent/60' : 'text-ink-2b'"
             >
               {{ extOf(doc) }}
             </span>
           </span>
 
           <!-- 正文预览：次要信息，最多两行 -->
-          <span
-            v-if="doc.preview"
-            class="mt-1.5 line-clamp-2 text-[11.5px] leading-[1.6] text-ink-3/90"
-          >
+          <span v-if="doc.preview" class="mt-1.5 line-clamp-2 text-ui-sm leading-[1.6] text-ink-2b">
             {{ doc.preview }}
           </span>
 
@@ -198,7 +197,7 @@ async function openDoc(path: string): Promise<void> {
               "
               >{{ tag }}</span
             >
-            <span v-if="doc.tags.length > 4" class="text-[10.5px] text-ink-3/80"
+            <span v-if="doc.tags.length > 4" class="text-[10.5px] text-ink-2b"
               >+{{ doc.tags.length - 4 }}</span
             >
           </span>
@@ -209,7 +208,8 @@ async function openDoc(path: string): Promise<void> {
         v-else
         class="mt-10 flex flex-col items-center gap-2.5 px-4 text-center text-ui-sm leading-relaxed text-ink-2b"
       >
-        <Icon name="file" :size="24" :stroke-width="1.3" class="text-ink-3/50" />
+        <!-- 装饰性空态图标：旁边就是解释文字，所以 aria-hidden（对比度要求也不适用于纯装饰图形） -->
+        <Icon name="file" :size="24" :stroke-width="1.3" class="text-ink-3/50" aria-hidden="true" />
         <p v-if="props.filter">
           {{ t('sidebar.noMatch') }}
         </p>
