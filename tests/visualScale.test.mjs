@@ -179,3 +179,39 @@ test('Tailwind 任意值总数只减不增（本轮 220 → 152）', () => {
     `任意值类从 ${ARBITRARY_CEILING} 涨到了 ${total} —— 新样式请用令牌或现有档位（这条上限只能往下调）`
   )
 })
+
+test('圆角：命名工具类（rounded / rounded-lg / …）也是闭集', () => {
+  /**
+   * 为什么连"命名档"也要管：`rounded-lg` / `rounded-2xl` / `rounded-full` 的**字面量**不在源码里
+   * （Tailwind 自己展开成 px / 9999px），静态闭集看不到它们 —— 于是"加一个新圆角档"可以绕过
+   * `RADIUS_TIERS`（比如 `rounded-3xl` = 24px 就没人拦）。这里把**在用的命名档**也收成闭集：
+   * 新增一档必须先登记，顺便回答"它展开成多少 px、要不要进 RADIUS_TIERS"。
+   * 运行时那一半见 `tools/_verify-visual-scale.js` 的 V5（真的量计算值）。
+   */
+  const NAMED = [
+    'rounded',
+    'rounded-sm',
+    'rounded-md',
+    'rounded-lg',
+    'rounded-xl',
+    'rounded-2xl',
+    'rounded-full'
+  ]
+  const used = new Set()
+  for (const f of walkSrc()) {
+    const text = fs.readFileSync(f, 'utf-8')
+    for (const m of text.matchAll(
+      /(?<![\w-])rounded(-(?:none|xs|sm|md|lg|xl|2xl|3xl|4xl|full))?(?![\w-])/g
+    )) {
+      used.add(m[0])
+    }
+  }
+  const extra = [...used].filter((c) => !NAMED.includes(c)).sort()
+  assert.deepEqual(
+    extra,
+    [],
+    `出现了没登记的命名圆角档：${extra.join(', ')}（先确认它展开成多少 px，再决定是否进 RADIUS_TIERS）`
+  )
+  const unused = NAMED.filter((c) => !used.has(c))
+  assert.deepEqual(unused, [], `这些命名圆角档已经没人用了：${unused.join(', ')}（请删掉）`)
+})
