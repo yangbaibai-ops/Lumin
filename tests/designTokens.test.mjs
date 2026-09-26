@@ -112,6 +112,41 @@ test('设计令牌：消费端的 var(--x) 都有出处（运行时注入的几�
   )
 })
 
+test('设计令牌：导出模板的 :root 与浅色主题逐条一致（导出件不许自带一套色）', () => {
+  /**
+   * `src/renderer/src/lib/export.ts` 的 `proseCss` 是一份**独立 HTML** 的排版样式：它拿不到
+   * 运行时的 CSS 变量，只能写死字面量。写死没问题，问题在"漂" —— 实测曾有两处：
+   * `--code-bg` 是 #f4f5f8 而令牌是 #f1f2f5、`--panel-2` 是 #f0f1f4 而令牌是 #e9ebf0，
+   * 于是导出的 PDF/HTML 与编辑器里的观感悄悄不同，而且**没有任何东西会发现**。
+   * 口径：导出模板里出现的令牌，值必须等于 theme.css 第一个 `:root` 块（浅色主题）。
+   */
+  const src = fs.readFileSync(
+    path.join(ROOT, 'src', 'renderer', 'src', 'lib', 'export.ts'),
+    'utf-8'
+  )
+  const start = src.indexOf('const proseCss = `')
+  const block = src.slice(start, src.indexOf('html, body {', start))
+  const exportVars = new Map(
+    [...block.matchAll(/--([\w-]+)\s*:\s*([^;]+);/g)].map((m) => [m[1], m[2].trim()])
+  )
+  assert.ok(exportVars.size >= 15, `只解析到 ${exportVars.size} 个导出令牌，解析口径可能不对`)
+  const light = tokens.collectTokens().flatMap((s) => s.blocks)[0]
+  assert.ok(light && light.tokens.length >= 20, 'theme.css 的第一个 :root 块没解析出来')
+  const norm = (v) =>
+    v
+      .replace(/\s+/g, '')
+      .replace(/(\d)\.(\d)/g, '$1.$2')
+      .toLowerCase()
+  const problems = []
+  for (const [name, value] of exportVars) {
+    const token = light.tokens.find((t) => t.name === `--${name}`)
+    if (!token) problems.push(`--${name} 在浅色主题里没有对应令牌`)
+    else if (norm(token.value) !== norm(value))
+      problems.push(`--${name}: 导出=${value} 令牌=${token.value}`)
+  }
+  assert.deepEqual(problems, [], `导出模板的色值与浅色令牌不一致：${problems.join('；')}`)
+})
+
 test('设计令牌：消费端只能减少硬编码颜色，不许新增（新颜色请走令牌）', () => {
   const stats = { hex: [], rgb: [] }
   for (const file of fs.readdirSync(ASSETS).filter((f) => f.endsWith('.css'))) {
