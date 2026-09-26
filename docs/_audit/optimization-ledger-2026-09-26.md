@@ -114,8 +114,8 @@
 | **目标字数 / 阅读时长** | **本轮已做** | `src/shared/readingTime.ts`（唯一字数实现，主进程复用）+ 状态栏两格 + `_verify-bars-no-filename.js` 22/22；`40469d5` |
 | **表格列对齐可设置** | **本轮已做** | `lib/editor/tableColumnAlign.ts` + 工具栏四项 + 端到端断言（`_verify-table-fidelity.js` 19/20+1SKIP）；`40469d5`（并修掉命令层重复派发的真 bug） |
 | **设置 / 快捷键导入导出** | **本轮已做** | `src/shared/settingsFile.ts` + 三条 IPC + 设置页两个按钮；`40469d5` |
-| 文件树内拖放移动 | 进行中 | 本文件写作时由并行实现补上（见下一次提交） |
-| 跨文件（工作区级）替换 | 未做 | 搜索已做、替换只作用于当前文档 |
+| **文件树内拖放移动** | **本轮已做**（移动到文件夹；刻意不做任意排序） | `lib/treeMove.ts`（纯规则）+ `files.moveNode` + 右键「移动到…」键盘路径 + 撤销卡；`tests/treeMove.test.mjs` 11/52；`e0e20ab` |
+| **跨文件（工作区级）替换** | **本轮已做** | `shared/workspaceReplace.ts`（纯逻辑）+ `main/services/workspaceReplace.ts`（IO 编排）+ `workspace:replaceAll` + 全局搜索里的替换行；`tests/workspaceReplace.test.mjs` 15/59；`2104822` |
 | 表格列宽拖拽 | 未做 | `extensions.ts` 里 `resizable: false`（列宽进 Markdown 无标准语法，需要一个落点方案） |
 | 拼写检查 | 未做 | 需接 `session.setSpellCheckerLanguages` 并解决自绘右键菜单与原生建议的冲突；**需真机实测** |
 | 导入（Word/HTML/批量） | 未做 | 导出的对称面；目前可打开扩展名只有 Markdown 家族 |
@@ -139,8 +139,10 @@
 - 语义色当文字用：**本轮已修** —— 新增 `--accent-ink`/`--danger-ink`/`--warning-ink`/`--ok-ink`
   文本档（三主题），把文字用法全部迁过去，图形色不变；门禁 `tests/themeTokens.test.mjs`
   要求四个文本档对纸与 panel-2 都 ≥4.5（实测最低 4.84）；`05629b2`。
-- **分段控件未收口**：设置页仍有 6 处内联按钮组（其中 4 处连 `aria-pressed` 都没有）——
-  换 `SegmentedControl` 的 quiet 变体即可，属"改到谁迁谁"的剩余项。
+- **分段控件未收口（可访问性那一半已补）**：设置页 6 处内联按钮组本轮统一补了
+  `role="group"` + `aria-label` + `aria-pressed`（读屏器能读出"当前选的是哪一个"，`9ead730`）；
+  **视觉统一到 `SegmentedControl` 仍未做** —— 该组件要求每段带图标（`SegmentItem.icon` 必填），
+  文字型分组要先改组件接口，属"改到谁迁谁"的剩余项。
 - 组件清单文档：**本轮已补** `docs/manual/09-components.md`（含欠账点名）+ 索引与路径门禁；`0e52f49`。
 
 ## §9 发布、运维与可观测性（3 条）
@@ -164,9 +166,14 @@
 **部分 / 未做**：
 - flaky 欠账：仍有 19 条注入真实按键的套件没有守卫（名单在 `tests/tooling.test.mjs`，只减不增）；
 - 单测覆盖：`stores/files.ts` 的状态机仍无直接单测（拆出来就能测，见 §6.2）；
-- 文档规模：CHANGELOG 归档进行中（`docs/changelog/archive-0*.md`）；
+- 文档规模：**CHANGELOG 已按轮次归档两册**（本轮 `docs/changelog/archive-02.md`，逐字校验；
+  主文件 155KB/52 段 → 6KB/2 段，`664de5e`）；README 的数字账目早由生成式门禁接管；
 - 重复实现：菜单定位已收（本轮 `menuPlacement.ts`，`7a503fe`）；**popover 仍 2 份**；
-- 零引用大文件补测：≈44 个 ≥80 行 `src` 文件在 `tests/` 里零引用；
+- 零引用大文件补测：实测口径下 ≥80 行 **123** 个、零引用 **31 → 26**（本轮补 5 个模块：
+  `launchIntent` / `footnotePassthrough` / `cjkEmphasis` / `inputRules` / `menu/providers`，
+  合计 68 test / 244 assert，`2cbad2c`）；**主因不是"不值得测"而是"测不动"** ——
+  src 里大量相对 import 不带扩展名、Node 原生 ESM 解析不了（新增测试侧解析助手绕开），
+  另有 12 个 `.vue`（仓库无 @vue/test-utils）与只能靠 CDP 的主进程模块；
 - CI 加固：actions 仍 `@v4`（未 pin SHA）、无 CODEOWNERS/CONTRIBUTING/SECURITY。
 
 ## §11 需要实测才能定论（10 条）
@@ -184,7 +191,29 @@
 
 ---
 
-## 仍未做 / 外部阻塞（汇总，按建议优先级）
+## 本轮（收尾批次）发现并修掉的真缺陷
+
+这几条**不在清单原文里**，是"补测试 / 补断言 / 迁移范式"时被守卫抓出来的，都已修复并留下回归：
+
+1. **任务列表输入规则在非首项上改错项**：`inputRules.ts` 用 `$from.index(itemDepth)` 当"第几个列表项"，
+   而 prosemirror 的 `ResolvedPos.index(d)` 是"层 d 那个节点的第几个**子节点**" ⇒ 恒为 0 ⇒
+   `[x] ` 敲在第二项会把**第一项**勾上；同一处还按"文本全等"找目标，导致在有正文的项上**静默失效**
+   （真实编辑器里只留下被转义的 `\[x\]`）。修法：`index(itemDepth - 1)` + `startsWith` 候选 +
+   取离光标最近者 + 连尾随空格一起剥。回归：`tests/inputRules.test.mjs` 15/15、
+   `_verify-input-rules.js` E 段、真编辑器探针 3/3（`4aa7968`）。
+2. **表格列对齐的命令层重复派发**：命令里自己 `view.dispatch(tr)`，Tiptap 命令层又派发一次 ⇒
+   点一下抛 `RangeError: Applying a mismatched transaction`（纯函数层完全正确）。
+   修法：用命令拿到的 `state`/`dispatch`。回归：`_verify-table-fidelity.js` 的列对齐段（`40469d5`）。
+3. **两条用 Tailwind z 类名找菜单的验收套件**：z 层级收进令牌后类名从 `z-[160]` 变成
+   `z-[var(--z-critical)]`，两条套件静默变红（0 断言，看着像环境抖动）。
+   修法：改语义锚点 `role="menu"`；并加守卫禁止工具链写死数字型 z 类名（`e42b679`）。
+4. **测试用 `index(depth + 1)` 的同类错误**已写进列表代码注释（`tableColumnAlign.ts` 与
+   `menu/context.ts` 的 `colIndex`）——后者目前只被"rows 禁用判据"消费，未改，登记在此。
+5. **`refreshDir` 级联删缓存**导致已展开子目录渲染成"空文件夹"（既有缺口）：
+   本轮的 `moveNode` 特意改用两次 `loadChildren` 避开；`renameNode`/`undoRename`/右键刷新仍走老路，
+   **未改**，登记在此。
+
+
 
 1. **Electron 39 → 44 升级**（最高风险，需联网安装 + 独立分支 + 完整矩阵；计划已写在 `docs/electron-upgrade.md`）。
 2. **`stores/files.ts` 拆分 + 状态机单测**（§6.2/§10.7）：拆出编码/EOL/标签等纯逻辑后补 6~10 条断言。
