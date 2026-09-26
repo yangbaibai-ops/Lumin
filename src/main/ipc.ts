@@ -10,7 +10,6 @@ import {
   type IpcMainInvokeEvent
 } from 'electron'
 import path from 'path'
-import os from 'os'
 import { watch, existsSync, readFileSync, type FSWatcher } from 'fs'
 import { mkdir, stat } from 'fs/promises'
 import * as fileOps from './fileOps'
@@ -20,6 +19,7 @@ import * as links from './services/links'
 import * as session from './services/session'
 import * as openDocs from './services/openDocs'
 import * as pathGrants from './services/pathGrants'
+import * as appLog from './services/appLog'
 import * as taskbar from './services/taskbar'
 import * as workspaceIndex from './services/workspaceIndex'
 import * as dbBackup from './services/dbBackup'
@@ -236,8 +236,9 @@ export function registerIpc(slots: SlotRegistry): void {
         userData: app.getPath('userData'),
         dbPath: path.join(app.getPath('userData'), 'lumin.db'),
         logs: [
-          { label: 'build', path: path.join(os.tmpdir(), 'lumin-build.log') },
-          { label: 'startup', path: path.join(os.tmpdir(), 'lumin-startup.log') }
+          // 落点见 services/appLog.ts：`<userData>/logs/app.log`（打包态不再往 %TEMP% 写
+          // cwd/appPath/argv，也没有"列在诊断里却从来不存在"的第二条日志 —— 审计 §4 P2 / §9 P1）
+          { label: 'app', path: appLog.logPath() }
         ],
         launchArgs: safeLaunchArgs(process.argv),
         settings,
@@ -248,9 +249,10 @@ export function registerIpc(slots: SlotRegistry): void {
   })
   /**
    * 打开日志目录：**不接受渲染层传路径**（否则就是一个"打开任意目录"的洞），
-   * 固定打开我们自己的日志目录（%TEMP%）。
+   * 固定打开我们自己的日志目录 —— `<userData>/logs`（与 `app:getDiagnostics` 里报告的位置
+   * 是同一个函数算出来的，见 services/appLog.ts）。
    */
-  ipcMain.handle('app:openLogDir', () => shell.openPath(os.tmpdir()))
+  ipcMain.handle('app:openLogDir', () => shell.openPath(appLog.logDir()))
   ipcMain.handle('app:confirmClose', (event) => {
     const win = BrowserWindow.fromWebContents(event.sender)
     if (win && !win.isDestroyed()) {

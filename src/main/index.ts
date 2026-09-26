@@ -38,6 +38,26 @@ import * as pathGrants from './services/pathGrants'
 import { defaultSettings } from '../shared/defaults'
 import { paperForTheme } from '../shared/theme'
 import { PROD_CSP } from '../shared/csp'
+import { recordFatal } from './services/appLog'
+
+/**
+ * ─── 主进程崩溃 / 未处理 rejection 留证据（审计 §9 P1）────────────────────────
+ *
+ * 此前主进程异常只在终端上出现（打包态用户根本看不到），用户报「闪退」时我们手里没有任何
+ * 现场。现在把异常落一行到 `<userData>/logs/app.log`（位置/轮转见 services/appLog.ts）。
+ *
+ * 口径：
+ *   * `unhandledRejection` —— 只记，不改变行为（Node 默认也只是警告）；
+ *   * `uncaughtException` —— 记完 **仍然退出**：Node 对未捕获异常的默认行为就是中止进程，
+ *     这里只是让"崩了"留下证据，不是把崩溃吞掉（吞掉会让应用停在一个半坏的状态里）。
+ */
+process.on('unhandledRejection', (reason) => {
+  recordFatal('unhandledRejection', reason)
+})
+process.on('uncaughtException', (err) => {
+  recordFatal('uncaughtException', err)
+  process.exit(1)
+})
 
 // 本地文件协议（用于 Markdown 内相对路径图片，兼容 dev/prod 与 CSP）
 protocol.registerSchemesAsPrivileged([

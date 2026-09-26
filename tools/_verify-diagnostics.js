@@ -32,7 +32,15 @@ async function main() {
   )
   report.check(
     'diagnostics-has-paths',
-    /userData: /.test(text) && /lumin\.db/.test(text) && /lumin-build\.log/.test(text),
+    /**
+     * 日志那一项通过后为 `<userData>/logs/app.log`（审计 §4 P2：此前是
+     * `%TEMP%\lumin-build.log`，还列了一条从来不存在的 `lumin-startup.log`）。
+     * 这里断言三件事：userData、数据库、**日志落在同一个 profile 目录里**（不是临时目录）。
+     */
+    /userData: /.test(text) &&
+      /lumin\.db/.test(text) &&
+      /logs[\\/]app\.log/.test(text) &&
+      !/lumin-build\.log/.test(text),
     text
       .split('\n')
       .filter((l) => /userData|lumin\.db|\.log/.test(l))
