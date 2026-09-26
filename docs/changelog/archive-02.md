@@ -1,0 +1,1860 @@
+# CHANGELOG 归档（第二册）
+
+> 从 `CHANGELOG.md` 拆出（清单 §10 P2：主文件规模已经超过人工同步能力）。
+> 这一册是 `docs/changelog/archive-01.md`（较老的 40 轮）**之后**的一段历史：
+> `## [1.0.0] - 2026-09-24` 之后的全部历史小节，共 **50 个**。
+> 主文件随后只留 `## [Unreleased]` + 最新版本段 `## [1.0.0]` + 一条指向本册的链接。
+> 内容逐字来自原 `CHANGELOG.md`（含空行与 CRLF 行尾），未做任何改写、删减或重新总结。
+
+> ⚠️ 本文是历史记录：可能引用当时存在、后来被删除或改名的文件 —— CHANGELOG 是追加式历史，
+> 旧条目按当时的事实记录，不追改。
+
+---
+
+## [Unreleased · 可读性（第十六轮）：墨色分档 + 代码块专用配色，三主题全部达到 WCAG AA]
+
+> 依据：桌面清单 §8 里"信息不可读"的两条（清单里唯一被定性为"属信息不可读而非打磨"的问题）。
+> 修法全部是**数值可复算**的，并由单测把每一档钉住。
+
+### Fixed
+
+- **正文级文字的可读性**：`--ink-3` 长期被当正文用（设置项描述、placeholder、状态栏次要信息），
+  实测三主题只有 **2.66 / 2.86 / 2.22**（护眼纸下连大字的 3:1 都不过）。现在是**四档墨色**：
+  `--ink`（正文 ≥7:1）→ `--ink-2`（次要正文）→ **`--ink-2b`（新增，第三档正文，仍 ≥4.5）**
+  → `--ink-3`（**退回装饰/图标**，只要求 ≥3:1）。
+  护眼纸的 `--ink-2` 4.30 → 5.43、`--ink-3` 2.44 → 3.04；浅色/深色的 `--ink-3` 本就 ≥3，未动。
+  正文级用法整体迁移：**27 条 CSS 规则** + **71 处 Tailwind 类**；装饰性的 8 条规则与 22 处
+  （图标/箭头/分隔把手/带 `/60` 的刻意很淡项）按选择器与行的判据显式保留（保留清单在重构日志里）。
+- **代码块语法高亮**：原来直接复用语义色，而 `--code-bg` 比纸暗一档 —— 浅色下字符串 2.94、
+  数字 2.85、注释 2.83，护眼纸注释只有 **2.33**（读不清）。现在有专用四色
+  `--code-str` / `--code-num` / `--code-com` / `--code-invalid`，keyword 与 operator 改用已有的
+  板岩蓝 `--code-key` / `--code-key-2`（原来借的是 `--accent` / `--accent-2`，深色下只有 3.32、
+  护眼纸下 3.12）。静态态 `.lm-tok-*` 与 CM 的 HighlightStyle **两张表同步改**。
+
+### Verification
+
+- `tests/themeTokens.test.mjs` 5 → **7 条**，新增两条可复算的对比度矩阵（复用该文件既有的 WCAG 实现
+  与令牌读取器，不另写一份）：
+  * 文字矩阵：`--ink`/`--ink-2`/`--ink-2b` 对 app / paper / panel-2 **全部 ≥ 4.5**；
+    `--ink-3` / `--accent` 对 app **≥ 3**。实测（浅色 / 深色 / 护眼纸）：正文 14.92 / 11.11 / 8.90，
+    次要 6.99 / 6.83 / 5.43，第三档 5.32 / 6.83 / 5.11；装饰档 3.04 / 4.24 / 3.04。
+  * 代码块矩阵：六档对 `--code-bg` 全部 ≥ 4.5（浅色 4.88–6.37、深色 4.58–7.59、护眼纸 5.06–5.64）。
+  这条测试**当场抓到两个我挑漏的值**（护眼纸 `--code-key` 4.409、`--code-key-2` 4.402），
+  压深后转绿 —— 把可读性写成数值断言的价值就在这里。
+- 视觉复核：`out/_theme-{light,sepia,dark}-code.png` 与 `out/_theme-{sepia,dark}-settings.png`
+  逐张看过：护眼纸下的代码注释从"几乎看不见"变成清楚可读，三级层次仍在。
+- 回归：`_verify-neutral-accent` 10/10、`_verify-surfaces` 37/37、`_verify-bars-no-filename` 16/16；
+  默认矩阵 **43/43 PASS**、0 FAIL、0 FLAKY；单元 **324 → 326 条**；
+  `eslint --max-warnings 0` 0 problem；`vue-tsc` / `tsc`(node) 0；build exit 0。
+
+## [Unreleased · 可访问性（第十五轮）：开关收口成唯一实现 + 浮层对话框语义 + live region]
+
+> 依据：桌面清单 §8（UI 与可访问性）里"读屏器 / 键盘用户根本用不了"的那几条。
+
+### Fixed
+
+- **开关只有一个实现了**（新增 `components/SettingSwitch.vue`）：设置页里同一个 `.switch` 原有
+  **十份手写副本**，其中七份既没有 `role="switch"` 也没有 `aria-checked`（读屏器只念"按钮"，
+  不念开还是关），可访问名还有三处写死中文。现在统一走组件（真 `<button>` + `role="switch"`
+  + `aria-checked` + 必填 `label`）；`toggleMenuBar` / `toggleAutoSave` / `toggleOutlineRight`
+  改成**接收新值**（原来自己取反，与组件 emit 的语义会打架）。
+  代码块行号那个 `<span class="switch">` 只是视觉轨道（外层 `<button>` 本就是 `role="switch"`），
+  给它加 `aria-hidden="true"` 而不是再造控件。
+- **三个浮层有了对话框语义**：`GlobalSearch` / `ModalHost`（确认与输入框）/ `LocalHistoryDialog`
+  此前都是纯 `div` —— 读屏器不会说"弹出了对话框"。现在都有 `role="dialog"` + `aria-modal="true"`
+  + 取自 i18n 的可访问名（草稿恢复弹窗本来就对，未动）。
+- **补上 live region**：此前全仓没有任何 `aria-live` / `role="status"`，保存结果、出错、导出完成
+  都只对看得见的人存在。现在通知带是 `role="status" aria-live="polite" aria-atomic="true"`，
+  状态栏保存态是 `aria-live="polite"`。
+- i18n 补 5 个键（三语）：`settings.nativeMenuBar` / `syncScroll` / `codeLineNumbers` /
+  `sidebarToggle` / `autoSaveToggle`（可访问名不再写死中文）。
+
+### Verification
+
+- `tools/_verify-a11y.js` 9 → **12 条**（进默认矩阵）：开关必须声明 role + 状态 + 可访问名
+  （通用页 7 个 + 编辑器页 2 个，合计 ≥9 且零缺失）、三个浮层都有 dialog 语义与可访问名、
+  存在 live region 且覆盖通知带与状态栏。
+- ⚠️ 这条断言**当场抓到一个真 bug**：重构脚本插 import 时，`SettingsDialog.vue` 里 `Icon` 的路径是
+  `../components/Icon.vue`（不是 `./Icon.vue`），插入点没匹配上，于是 `<SettingSwitch>` 成了
+  **未知元素**；Vue 在生产构建下**不报警**，页面照常渲染、只是开关全没了（实测 `setRows: 11`
+  而 `.switch: 0`）。断言先报出"0 个开关"才定位到这一行 —— 生产构建下未知组件会静默降级，
+  这个坑值得记住。
+- 同时修掉两处**套件自身**的假红：设置页是 `v-if` 的整页浮层（不先打开就量到 0 个），
+  且一次只渲染当前页签（要分通用 / 编辑器两个页签量才凑齐 9 个）。
+- 回归：`_verify-toolbar-settings` 38/38（按 `button.switch` 定位，组件化后仍是 button）、
+  `_verify-cb-line-numbers` 13/13；默认矩阵 **43/43 PASS**、0 FAIL、0 FLAKY；单元 **324 条**；
+  `eslint --max-warnings 0` 0 problem；`vue-tsc` / `tsc`(node) 0；build exit 0。
+
+## [Unreleased · 合规（第十四轮）：第三方许可声明 + 关于页改成说事实]
+
+> 依据：桌面清单 §5（依赖 / 许可 / 合规）剩下的两条 P1。
+
+### Added
+
+- **`THIRD-PARTY-NOTICES.md`**（`npm run notices` → `tools/gen-notices.js`）：300 个包的许可分布表 +
+  逐包「名称 / 版本 / 许可 / 仓库」清单。数据来自 `package-lock.json` 与各包 `package.json`，
+  范围是**生产依赖闭包**（从 `dependencies` 沿 lock 的依赖图 BFS，含传递依赖）。
+  为什么不"把 lock 里所有非 dev 的都列上"：lock 的 `dev` 标记不可靠（实测 `vite`/`rollup`/`typescript`
+  的 `dev` 是 undefined），那样会列出 500+ 个、一半不随产物分发 —— 而本文件标题是"随产物分发"的声明。
+  实测分布：MIT 250 / ISC 36 / BSD-3-Clause 5 / BSD-2-Clause 2 / Apache-2.0 1 / Python-2.0 1 /
+  (MPL-2.0 OR Apache-2.0) 1 / Unlicense 1 / BlueOak-1.0.0 1 / (MIT OR CC0-1.0) 1，**无 UNKNOWN、无 GPL 族**。
+- `npm run notices` / `notices:check`，并把 `notices:check` 加进 `npm run ci` —— 依赖一变而声明没重生成，
+  门禁直接红（否则这类文件必然悄悄漂）。
+- 主进程 `app:getAbout`：把**构建产物里的事实**（`package.json` 的 dependencies +
+  `THIRD-PARTY-NOTICES.md` 全文）交给渲染层（渲染层读不到任意路径，与路径授权闸口径一致）。
+
+### Changed
+
+- **关于页的技术栈不再是硬编码数组**：原先那张表列着 `Marked.js` 与 `highlight.js` ——
+  本仓库根本没有这两个依赖（`package.json` / `node_modules` / `src` 三处 grep 皆空），而真正随产物分发的
+  Tiptap / KaTeX / Mermaid / CodeMirror 一个没提。现在渲染真实依赖（39 项，悬停显示 `名称@版本`），
+  并新增「开源许可」区块（默认收起、点击展开声明全文，`aria-expanded` 同步）。
+- 关于页文案全部接入 i18n（原来 7 处硬编码中文）；三语新增
+  `about.platform` / `about.stackCount` / `about.licenses` / `about.licensesHint`。
+
+### Verification
+
+- 新增 `tools/_verify-about.js`（进默认矩阵）**6/6**：依赖与 `package.json` 逐项一致（39/39）、
+  无幻影依赖、声明全文可取、源码里不再有 `const stack = [...]`（判前先剥注释）、
+  页面渲染出 39 个 chip、点开后含 MIT 与表格。
+- `tests/guards.test.mjs` 新增第 6 条：LICENSE 存在 / `license`+`private` 齐 / notices 存在 /
+  `ci` 必须校验 notices / 打包配置不许排除它 / 声明正文必须含两张表。
+- 默认矩阵 **42 → 43 条**（43/43 PASS、0 FAIL、0 FLAKY）；单元 **324 条**；`eslint --max-warnings 0`
+  0 problem；`vue-tsc` / `tsc`(node) 0；`electron-vite build` exit 0。
+
+## [Unreleased · 安全（第十三轮）：路径授权闸 —— 渲染层不再能静默读写任意路径]
+
+> 依据：桌面清单 §4 第 2 条（P1）。这是 §4 的最后一条，安全边界三件套齐了
+> （链接可执行拦截 / CSP 单一真相源 / 路径授权）。
+
+### Security
+
+- **`file:read` / `file:write` / `file:exists` / `file:fileUrl` 现在要过授权表**
+  （新增 `src/main/services/pathGrants.ts`）。此前它们只做 `path.resolve` —— 渲染层任何一处注入
+  就拿到"用户权限下的全盘任意读写"。授权来源只有七个：工作区根、用户对话框选过的、
+  启动参数带的、当前打开的文档（文件可读写、所在目录只读）、会话记录的、以前打开过的文档（只读）、
+  用户拖进窗口的文件（只读且必须已存在）。**read / write 分档**：只读来源不能升级成写。
+  拒绝时抛 `PATH_NOT_AUTHORIZED: <path>`。
+- 口径写在 `pathGrants.ts` 文件头：**这不是能力沙箱**（拖放那条 IPC 渲染层可调，被完全控制的
+  渲染层仍能"先申请、再读"）。它挡的是"文档内容驱动的路径"与"静默的任意访问"。
+- 测试期信任范围 `LUMIN_TRUSTED_PATHS`（`start-isolated.ps1` 设 `%TEMP%`）：
+  **只在 `is.dev`（未打包）时生效**，打包产物忽略该变量 —— 否则任何启动器一行环境变量
+  就能打开授权表，那才是真后门。
+
+### Fixed
+
+- `_verify-encoding.js` 的 **0/0 崩溃模式**：该套件有 4 处"点一下 → `sleep(500)` → 查 DOM"，
+  机器忙时顶部菜单/二级浮层还没渲染 → `querySelector('.topmenu-sub')` 为 null → 紧接的
+  `querySelectorAll` 抛异常，整条套件以 0/0 收场（实测 1/3 概率）。现在用
+  `waitForSelector()` 等条件 + 显式 null 分支。连跑三次：崩溃模式消失，余下的负载抖动由 FLAKY 档兜。
+
+### Verification
+
+- 新增 `tools/_verify-path-grants.js`（进默认矩阵）**9/9**：工作区外读 / 写 / 存在性探测三样全部拒绝
+  （且被拒的写真的没落盘）；工作区内读写、以前打开过的文档只读、拖入文件只读、
+  打开文档的同目录兄弟只读。夹具放在用户主目录下（不在 `%TEMP%`），否则会被测试期信任范围放行。
+- 回归：`_verify-session` **17/17**（加授权闸后先出现 8/17，正是它暴露了"测试期信任范围"的必要性）、
+  `_verify-save-safety` 7/7、`_verify-surface-stress` 单跑 72/72。
+- 默认矩阵 **41 → 42 条**；单元 323 条；eslint 0/0；vue-tsc / tsc(node) 0；build exit 0。
+
+## [Unreleased · 工程化/合规/基础可访问性（第十二轮）：许可证与元数据 + 套件清单不再静默丢档 + 全局焦点环与减少动效]
+
+> 依据：桌面清单 §5（许可与合规）、§10（测试与工程化）、§8（可访问性）里"小改动、高收益"的几条。
+
+### Added
+
+- **`LICENSE`（MIT）**：README 一直声明 MIT，而仓库里既没有 LICENSE 文件、`package.json` 也没有
+  `license` 字段 —— 法律上等于"保留所有权利"，与对外声明直接矛盾。
+- **全局 `:focus-visible` 焦点环**与**全局 `prefers-reduced-motion` 兜底**（`base.css`）：
+  前者补上"`outline: none` 15 处 vs `:focus-visible` 4 条"造成的键盘不可见焦点（WCAG 2.4.7）；
+  后者让无限循环动画与画面过渡尊重系统偏好（WCAG 2.3.3）。两条都只在 `base.css` 写一次，
+  以后不必逐组件重复。减少动效用 0.01ms 时长而非 `animation: none`（后者会让
+  `transitionend/animationend` 永不到来，依赖它清理离场节点的浮层会留在 DOM 里）。
+
+### Changed
+
+- `package.json`：补 `"license": "MIT"` 与 `"private": true`（防止把 `lumin@1.0.0` 误发到公共
+  registry）；删掉模板残留的 `"homepage": "https://electron-vite.org"`。
+- 原生菜单「帮助 → 主页」原来打开 `https://github.com`（GitHub 首页，不是本仓库）→ 整项删除，
+  原位留注释：等真实仓库地址确定后再加回来（指向无关站点比没有这一项更糟）。
+- `tools/run-suites.js`：`allSuites()` 三类前缀一起收（原来只收 `_verify-*`，导致 8 个 `_repro-*`
+  既不在默认矩阵、也不在 `--all`，永远没人跑）；清单里列了但盘上不存在的套件**明确指出并非零退出**
+  （原来 `filter(existsSync)` 静默丢弃 —— 改个名就能让覆盖变少而矩阵仍全绿）。
+- `tests/tooling.test.mjs`：清单守卫正则覆盖三类前缀（原来只匹配 `_verify`，默认矩阵里 6 个
+  `_regress-*` + 1 个 `_repro-*` 在覆盖之外）。
+
+### Verification
+
+- 产物核对：构建后 `out/renderer/assets/index-*.css` 里 `focus-visible` **3 → 5**、
+  `prefers-reduced-motion` **3 → 4**（确认兜底真的进了产物）。
+- 回归：`_verify-a11y` 9/9、`_verify-segmented-control` 16/16、`_verify-bars-no-filename` 16/16、
+  `_verify-neutral-accent` 10/10、`_verify-toolbar-settings` 38/38。
+- 实测：`--suite=_verify-not-exist.js` → 打印缺失清单 + `exit 1`（不再静默变绿）。
+- 单元 323 条全绿；eslint 0/0；vue-tsc / tsc(node) 0；build exit 0。
+
+## [Unreleased · 安全（第十一轮）：文档链接不再能打开可执行文件 + CSP 收敛成唯一真相源]
+
+> 依据：桌面《Lumin-项目改进清单-2026-09-24.md》§4（安全边界）的两条 P1。
+
+### Security
+
+- **文档链接不再能打开可执行文件 / 脚本**：`[点我](C:\Windows\System32\calc.exe)` 这类链接此前
+  会一路走到 `shell.openPath`，用户点一下链接就执行了本地程序（文档是不可信输入）。
+  现在 `services/links.ts` 用 `UNSAFE_TARGET_EXT`（.exe/.bat/.cmd/.ps1/.vbs/.js/.lnk/.msi/
+  .scr/.hta/.cpl/.jar/.chm/.msc/.dll/.reg 等 30+ 类）判定为 `blocked='unsafe-target'`，
+  `action` 不再交给系统、`createType` 被清掉（不许"创建并打开"）；
+  `shell:openPath` 再拦一道（返回 `UNSAFE_OPEN_TARGET`），`createLinkTarget` 拒绝凭空造可执行文件。
+  pdf / 图片 / office 文档等**照旧**交给系统默认应用（那是正常能力，没有一起收紧）。
+- **CSP 收敛成唯一真相源**：此前 `index.html` 的 meta 与主进程响应头各写一份、内容还不一致
+  （少了 `lumin-file:`/`media-src`）—— "哪份生效"取决于 `webRequest` 对 `file://` 的行为，
+  打包态的安全边界说不清。现在常量只有 `src/shared/csp.ts` 一份：`index.html` 留
+  `<!--LUMIN_CSP-->` 占位、构建期由 `lumin-csp` 插件注入 meta，主进程响应头用同一个 `PROD_CSP`。
+  同时收窄：`connect-src` 去掉 `ws:`/`wss:`（打包态不需要 HMR），补上
+  `object-src 'none'` / `base-uri 'none'` / `form-action 'none'` / `frame-src 'none'` /
+  `frame-ancestors 'none'`。
+
+### Verification
+
+- `tools/_verify-link-open.js` 64 → **70/70**（新增危险目标分类行 + 拦截三件事的聚合断言 +
+  "直接调 `shell:openPath` 也被拒"）。
+- `tests/guards.test.mjs` 的 CSP 断言升级为"单一真相源"守卫（index.html 不许手写 CSP、
+  主进程必须用共享常量、生产 connect-src 不许含 ws:、img/media 必须放行 lumin-file:）。
+- 回归：`_verify-local-media` 10/10、`_verify-links` 12/12、`_verify-remote-image` 7/7；
+  单元 323 条全绿；eslint 0/0；vue-tsc / tsc(node) 0；build exit 0。
+
+## [Unreleased · 数据安全（第十轮）：保存期输入不再被吞 + 草稿最大等待 + 换文档前刷编辑器 + 删除进回收站]
+
+> 依据：桌面《Lumin-项目改进清单-2026-09-24.md》的 P0/P1（数据安全与写盘链路）。
+> 每条都有套件或单测钉住；清单里标"待实测"的都补了实测数字。
+
+### Fixed（全部是"静默丢字 / 写坏"这一类）
+
+- **保存期间继续输入会被判成「已保存」**（`stores/files.ts`）：`save()` 在 `await` 回来后读的是
+  **当前**内容，于是写盘期间敲进去的字被记成已保存、脏标记消失、草稿还被删掉 —— 没有任何落盘路径。
+  现在进 `file.write` 之前先抓**快照**（内容 + 文档对象），回来只认那一份账；内容变了就保持 dirty
+  并重排一次保存。同一文件同一时刻只允许一次写盘（`savePromise` 串行化），手动 Ctrl+S 与自动保存
+  不再并发。写盘失败也不再"一停了之"：指数退避重试（5s→…→60s 封顶）。
+- **换文档 / 关窗前不刷编辑器**（新增 `renderer/lib/editorFlush.ts`）：Tiptap 是防抖 250ms 才把
+  内容序列化进 store 的，紧接着换文档时那段输入既不在账上（不弹「未保存」确认）也会随旧实例卸载
+  而消失。现在 `confirmDiscardIfDirty` 的判据支持**惰性探针**并在取判据**之前**先 flush；
+  `openPath` / `close` / `flushAll` 三处兜底；EditorView 挂载时登记、卸载时按身份摘除。
+- **连续打字期间一份草稿都没有**：纯尾沿防抖（1.2s）会被连续输入无限推迟 ——
+  实测「每 200ms 改一次、持续 12s」期间**一份草稿都没写**。现在加**最大等待 10s**。
+- **多窗口重启后只剩一份未命名草稿**：`planUntitledDraft` 现在区分「槽位是**恢复来的**」与
+  「槽位被新窗口复用」（新增 `mySlotRestored` + `SlotRegistry.slotRestored`），恢复的窗口拿回
+  **自己那一格**的正文；`plannedSlots` 让"还没建出来的窗口"的草稿不被启动窗口抢走；
+  `parkDraft` 改成「先写后删 + 从不覆盖」（停放键可带序号 `untitled-orphan-2/3/…`）——
+  旧实现在"停放键里那份更新"时**无条件删源**，那一步丢掉的正是一个窗口里没保存过的正文。
+- **草稿互相顶掉**：草稿文件名从"把键里非字母数字折叠成 `_`"改成 **sha1(键) 前 16 位** ——
+  旧规则下 `a b.md` 与 `a_20b.md` 会算成同一个文件名（后写覆盖先写）。草稿本身也改成原子写。
+- **删除不可恢复**：`removeEntry` 改走 `shell.trashItem`（系统内置的撤销机制）；回收站不可用的
+  位置（网络盘 / FAT 盘 / 组策略）仍然删除，但回报 `trashed:false` 并由 UI 明确提示"已永久删除"。
+  删除顺序也改成**先删盘再删索引**（旧顺序失败时会留下"文件还在、搜索里却没了"）。
+- **重命名静默覆盖同名文件**：`renameEntry` 目标已存在时抛 `TARGET_EXISTS`
+  （Windows 的 `MoveFileEx` 带替换语义）；只改大小写不算冲突。UI 给一句能指导下一步的提示。
+- **删/改目录后当前文档会"复活"旧路径**：删除当前文档所在的目录 → 降级为未命名缓冲区
+  （正文留住、保存走另存为，不会在旧路径 `mkdir -p` 把目录建回来）；改名 → 当前文档路径跟着搬。
+- **写盘临时文件名固定**：`<name>.lumin-tmp` → `<name>.<8 位随机>.lumin-tmp`，两个窗口同时写同一
+  文件时不会再各写各的同一临时文件、最后拼成"A 的头 + B 的尾"；并新增启动时清理残留临时文件
+  （里面有用户全文的副本）。
+- **mtime 用 `Date.now()` 冒充**：`fileOps.writeFile` 现在返回写盘后的**真实 mtimeMs**，
+  渲染层不再伪造（冲突检测、列表排序、草稿新旧判定都依赖它）。
+
+### Changed（测试基建：把"随机假红"变成可判读的信号）
+
+- `tools/run-suites.js` 新增 **FLAKY 档**（默认 `--retry=1`）：套件首次红、**换全新实例重跑绿**
+  记 FLAKY（打印出来但不判失败）；两次都红才是 FAIL。这一轮实测到三条套件（`_regress-cb`、
+  `_verify-cb-virtualization`、`_verify-outline-right`）在批跑里红、单独重跑绿 ——
+  混报 FAIL 的后果是"没人再信红灯"，真回归反而被当成噪音。
+- `tools/start-isolated.ps1` 的首帧稳定期 3s → **5s**：机器忙时布局还没算完，套件会量到
+  "代码块全静态 / 焦点没落下 / 按键没到"这类中间态（同一批里随机红一条的另一个来源）。
+  （改这个文件后必须确认它仍是 **UTF-8 with BOM** —— Windows PowerShell 5.1 读无 BOM 的
+  UTF-8 会按 ANSI 解码、直接语法错误；`tests/encodingGuard.test.mjs` 守着这条。）
+
+### Verification
+
+- 新增 `tools/_verify-save-safety.js`（进默认矩阵）**7/7**：保存期输入保持 dirty、磁盘上是快照、
+  草稿不被删、连续输入 11s 时草稿非空、换文档前 flush 触发确认、mtime 来自磁盘、并发保存串行化。
+- `tests/drafts.test.mjs` 13 → **14 条**：新增"恢复的槽位拿回自己的正文""非恢复槽位（Ctrl+N 复用
+  旧号）仍 park""带序号的停放键可被认领"。
+- `tools/_verify-draft-banner.js` 28 → **29 条**（新增"草稿文件名不撞键"）；并按**帧**修掉三处假红：
+  离场过渡要等 `transitionend`，窗口被遮挡时 Chromium 暂停出帧、事件永不来 →
+  改为强制截屏出一帧 + 轮询。
+- 默认套件矩阵 **40 → 41 条**；单元 322 → **323 条**；`eslint` 0 error / 0 warning；
+  `vue-tsc` / `tsc`(node) 0；`electron-vite build` exit 0。
+
+## [Unreleased · 侧栏（第九轮）：Ctrl+F 分流进文件搜索 + 新建文件切内容区 + 改名去掉边框 + 「刷新」只在列表视图]
+
+> 用户口径：① 当在侧边栏按 `Ctrl+F` 时，请进入侧边栏的搜索而不是文档的搜索和查找；
+> ② 讨论下侧边栏「新建文件」旁边的「刷新」有没有必要保留；
+> ③ 重命名文档时取消文档名周围的边框，且新建文件时内容区也切换展示到新建的文档。
+
+### Added
+
+- **`Ctrl+F` 按焦点分流**（`composables/useAppActions.ts` 的 `find` 命令）：
+  * 焦点在**侧栏文件面板**里（文件树的行 / 列表 / 底部那条搜索与视图切换 —— 统一挂在
+    `[data-sidebar-files]` 上）→ 展开并聚焦侧栏的**文件名搜索**，**不**打开正文查找栏；
+  * 其它任何位置（编辑区、侧栏头部的工作区按钮、侧栏的大纲页签、没有工作区时）→ 照旧打开正文查找栏。
+  请求通道是 `ui.requestSidebarSearch()`（自增的 `sidebarSearchTick`）：搜索框的展开/收起、
+  失焦规则、DOM 引用都在 `FileTree.vue` 内部那台「会生长出输入框的放大镜」状态机里，
+  没有把它拆成两半。放大镜的悬停提示补上 `(Ctrl+F)`（不写出来的话没人知道侧栏里也能按）。
+- `tools/_verify-sidebar-search.js`（新增，进默认矩阵）：**两个方向**都验 —— 只验「侧栏里 Ctrl+F
+  进侧栏搜索」的话，把正文查找整个弄丢也照样全绿。10/10 PASS。
+
+### Changed
+
+- **重命名输入框去掉边框**（`assets/sidebar.css` 的 `.tree-rename-input`）：原来那圈 1px accent 描边
+  去掉，换成「正在改名的那一行」铺一层 `.is-renaming` 浅面底（`--panel-2`）——
+  无边框的白色字段在三套主题里都有对比，也不会「鼠标一移开就与背景同色」。
+  `padding-left` 4px → 5px：原来那 1px 边框也占位，去掉后文字会左移一个像素。
+  实测（浅色主题）：输入框底 `rgb(255,255,255)` / 行底 `rgb(233,235,240)`，四边宽度全 `0px`。
+- **新建文件即切内容区**（`stores/files.ts` 的 `newFileAt`）：新建后**打开**这个新文件，
+  内容区跟着切过去（此前只创建 + 进就地改名，正文还停在上一个文档）。
+  两处顺序/口径上的讲究：
+  * 脏文档**先问再建**（与「打开文件」同一口径）—— 用户点「取消」时不会在磁盘上白留一个空文件；
+  * `openPath` 之后**才**置 `pendingRenamePath`：编辑器重建时会抢焦点，改名输入框必须最后拿焦点，
+    反过来会「刚新建就按默认名 `未命名.md` 自动提交改名」。
+
+### Discussed → 已按讨论结果实现（用户口径：「保留，但只在列表视图下显示」）
+
+- **「刷新」按钮只在列表视图下出现**（`AppSidebar.vue`：`v-if="files.root && ui.sidebarFilesView === 'list'"`），
+  树视图下头部从三颗图标回到两颗。依据是这一轮量到的三组数：
+  * 外部**新建 / 改名**文件 → 主进程 `fs.watch` 让树在 **328ms / 327ms** 内自动更新
+    （只认结构变化 + 300ms 防抖），所以它对这一大类是**冗余**的；
+  * 外部**只改内容**（不产生 rename 事件，`change` 按设计被过滤）→ 列表视图的「修改于」
+    **不会**自己更新（实测 `1790255638024` → 同一个值不动），调用一次 `refreshDir` 之后
+    才变成文件真实的 `1790255641127` —— 这是它唯一独有的作用，而这一作用只落在
+    **列表视图的元数据**上（树视图看的是名字与结构，本来就不受影响）；
+  * 它同时是「递归监听起不来」时的兜底（`fs.watch` 的 catch 分支），而工作区根节点的
+    右键菜单里**另有**同一动作 —— 所以隐藏起来不算丢掉入口。
+- `tools/_verify-sidebar-refresh.js`（新增，进默认矩阵）**6/6 PASS**：无工作区没有它 /
+  树视图没有它 / 列表视图有它且在「新建文件」右侧 / **它还真的有用**（外部只改内容后列表仍是旧值，
+  点它之后「修改于」追平磁盘真实 mtime，实测差 < 2s）/ 树视图的右键菜单里仍有「刷新」。
+
+### Verification
+
+- 默认套件矩阵 **37 → 40 条**（新增 `_verify-rename.js`、`_verify-sidebar-search.js`、
+  `_verify-sidebar-refresh.js`，都是纯合成事件、不依赖窗口出帧，适合批量跑）：
+  **新增的三条全绿**（`_verify-sidebar-search` 10/10、`_verify-rename` 21/21、`_verify-sidebar-refresh` 6/6）。
+  两轮完整批跑各出现 **1 条环境性假红**，且两轮不是同一条 ——
+  第一轮 `_repro-rapidenter` 3/4（那条用**真实按键注入**且没有「重新提前台」的循环，
+  窗口不在前台时按键被丢掉，表现成 `store=1`）；第二轮 `_verify-md-fidelity` 99/102
+  （它的历史策略段依赖「设置改完 300ms 内主进程已生效」，机器忙时来不及，表现成
+  `historyEnabled=false` 仍写进 2 条快照）。两条**单独重跑立刻全绿**（4/4、101/102），
+  且都不经过本轮改动的任何代码路径 —— 如实记为环境性假红，不算通过。
+- `tools/_verify-rename.js` 13 → **21 条**：新增「输入框无边框」「改名的行仍有编辑态（底色与输入框不同）」
+  「新建文件切换内容区（`files.current` 与 `data-tree-current` 都是新文件）」「新建时脏文档先问、
+  取消则一个文件都不建」「新建后改名输入框最后拿焦点」。
+- `tools/_verify-sidebar-search.js` **10/10**：A 段（焦点在文件树行 → 侧栏搜索开、输入框拿到焦点、
+  真打一个 `alp` 只剩 `alpha.md`、再按一次仍在侧栏）· B 段（焦点在编辑区 → 正文查找开、侧栏搜索不开）·
+  C 段（侧栏头部 / 大纲条目两个边界仍走正文查找）· 提示语含 `Ctrl+F`。
+- 截图：`out/_rename-borderless.png`（改名中，无边框 + 该行浅面底）、
+  `out/_newfile-content.png`（内容区切到新文件 `未命名.md`）、
+  `out/_sidebar-search-ctrl-f.png`（焦点在树里按 Ctrl+F：侧栏搜索展开且**正文查找栏不在**）。
+- 门禁：单元测试 **320/320**；`eslint` 0 error / 0 warning；`vue-tsc` 0；`tsc`(node) 0；
+  `electron-vite build` exit 0。
+
+## [Unreleased · 设置（第八轮）：搜索框移到导航栏上方 + 导航真·固定 + 关闭按钮改回项目样式]
+
+> 用户口径：① 把搜索框放在设置侧边导航栏的上方；② 固定设置侧边栏不要随界面滚动；
+> ③ 关闭按钮的样式和项目不符，请优化，使其更简约简洁。
+
+### Changed
+
+- **搜索框挪到左导航最上方**（顶栏里那个位置留给「关于 / 关闭」）：宽度跟导航栏走（280px），
+  与内容列的标题同高。
+- **导航真·固定**：`sticky` 的 `top` 取顶栏高度（48px），并把「设置上方的留白」做成**导航自己的**
+  `padding-top: 64px`（内容列同样 pt-16）—— 于是导航一进页面就停在 48，钉住之后**一个像素都不动**。
+  上一版是 `top: 64px` + 留白放在两栏容器上 ⇒ 导航会先跟着滚 48px 再钉住，
+  用户看到的正是「随界面滚动」。
+- **关闭按钮换成项目自己的 `.icon-btn`**（与侧栏/工具栏那排图标按钮同款：30×30、无边框、悬停浅底）
+  + `title`/`aria-label`；顶栏的「关于 Lumin」改用 `.btn.btn-ghost`。
+  为此专用的 `.settings-topbar-btn` / `--close` 两条 CSS 一并删掉（清死码）。
+
+### Verification
+
+- `tools/_verify-round-perf.js` 35 → **38 条**，新增三条把这三件事钉住：
+  `C 搜索框在导航栏上方（在 .settings-nav 内、且在第一个导航项之前）`、
+  `C 导航不随页面滚动（滚到底仍在原位）`（实测滚到底后搜索框/首项 `top` 仍 112/113，`pageDelta 164`）、
+  `C 搜索框与内容标题同高（都在顶栏下沿 + 64px），导航项在其下方`；
+  「关闭入口」那条改成验**是项目里的 `.icon-btn`、无边框、有可访问名**。**38/38 PASS**。
+- 视觉：`out/_settings-page-*.png`、`out/_settings-search-{hit,none}.png`、
+  `out/_settings-scroll-{editor,appearance}.png` 全部重截（滚动截图里可见导航与搜索框完全没动）。
+- 其余设置相关套件：`_verify-toolbar-settings` 38/38、`_verify-link-open` 64/64、
+  `_verify-cb-line-numbers` 13/13、`_verify-a11y` 9/9、`_verify-i18n` 5/5；
+  单元测试 320/320；`eslint` 0 error / 0 warning；`vue-tsc` 0；`electron-vite build` exit 0。
+
+## [Unreleased · 设置（第七轮）：加上搜索 —— 设置项 / 描述 / 导航页签都能搜]
+
+> 用户口径：「请为设置增加可以搜索的功能，包括设置项和导航、描述等」。
+
+### Added
+
+- **设置搜索框**（顶栏里，`Ctrl+F` 抢不过编辑器查找栏所以绑的是 **`/`**）：输入即过滤，
+  覆盖**设置项文案 / 描述文字 / 分组标题 / 导航页签名**（甚至控件上的文字，如「自动检测」）。
+- 交互细节：
+  * **跨页签搜**：搜索态下六个页签全部渲染（平时只渲染当前页签），于是搜「行号」能直接找到
+    「编辑器 → 编辑行为 → 代码块行号」，尽管当前停在「通用」；
+  * 结果按页签分组（每页一个小标题 + 命中条数），导航项上是**命中条数徽标**、没命中的压暗
+    （不隐藏，避免导航重排）；点导航项 = 清空搜索并切过去；
+  * 搜不到时给一句「没有匹配的设置项」，不留下空页签；
+  * **Esc 先把搜索清掉**，再按一次才关设置；搜索框右侧有清除按钮；
+  * 没有可过滤行的页签（「快捷键」有自己的搜索框与行结构）整页按文本匹配 —— 否则搜「另存为」
+    会把这一页整个藏掉、看起来像搜不到。
+
+### 实现要点
+
+- 过滤是**按渲染出来的文本**做的（`applyFilter` 遍历 `.set-row / .set-fold / .set-card / [data-settings-tab]`），
+  刻意**不写静态索引表** —— 那种表一定会在下次改模板时漂移。
+- `v-if` 与 `v-for` 不能同挂一个元素（Vue 3 里 `v-if` 优先级更高、拿不到 `tab`）：外层是
+  `<template v-for>`、条件写在内层 div 上（第一版直接同挂，vue-tsc 当场报 `Property 'tab' does not exist`）。
+
+### Verification
+
+- `tools/_verify-round-perf.js` 28 → **35 条**，其中 7 条守搜索：
+  `D 没搜索时只渲染当前页签`、`D 跨页签搜索：搜「行号」命中编辑器页的那一条`
+  （实测只剩 editor 页 1 条、导航徽标 `1`、其余 5 项 muted）、
+  `D 描述文本参与匹配：搜「手动模式」`（该词只在自动保存那行的描述里）、
+  `D 快捷键页（无 .set-row 结构）整页按文本匹配`（搜「另存为」只留 keymap，徽标 1）、
+  `D 无匹配时给提示且不留下空页签`、`D Esc 先清搜索、再关页面`、
+  `D 「/」聚焦设置搜索（且不触发编辑器的查找栏）`。**35/35 PASS**。
+- 视觉：`out/_settings-search-{hit,none}.png`（命中态：导航徽标 + 按页分组的结果；
+  无匹配态：居中提示 + 导航全压暗）；常规的 7 张 `_settings-page-*.png` 一并重截。
+- 其余设置相关套件：`_verify-toolbar-settings` 38/38、`_verify-link-open` 64/64、
+  `_verify-cb-line-numbers` 13/13、`_verify-outline-right` 26/26、`_verify-a11y` 9/9、
+  `_verify-i18n` 5/5（新增两个 key `settings.searchPlaceholder` / `searchNoMatch` 三语齐平）；
+  单元测试 320/320；`eslint` 0 error / 0 warning；`vue-tsc` 0；`electron-vite build` exit 0。
+
+## [Unreleased · 设置（第六轮）：导航项等长左对齐（280px）+ 主体上方留白 pt-16]
+
+> 用户口径：「增长设置中导航项的长度，即使每个导航项的文字多少都不一样，也要把每个按钮的长度
+> 变成一样的，但是全体按钮左对齐，并且文字也是左对齐显示，而且把设置上面的 pt-4 改成 pt-16」。
+
+### Changed
+
+- **导航项等长**：`.settings-nav` 190 → 232 → **280px**；`.settings-nav-item` 补上 `width: 100%`
+  与 `justify-content: flex-start`。
+  ⚠️ `width: 100%` 不能省：`<button>` 的 `width: auto` 在 Chromium 里**按内容收缩**，
+  只写 `display: flex` 会得到「每项长度跟着文案变」的效果（这正是用户看到的现象）；
+  现在六项宽度实测 **`[280,280,280,280,280,280]`**、左缘实测 **`[179×6]`**（等长 + 全体左对齐），
+  图标在左、文字紧随其右（`iconLeft 191 / textLeft 216`）。
+- **主体上方留白** `pt-4` → **`pt-16`**（实测顶栏下缘到卡片上缘 **64px**）。
+
+### Verification
+
+- `tools/_verify-round-perf.js` 25 → **28 条**，新增三条把这次的口径钉住：
+  `C 导航项等长（撑满导航栏）且全体左对齐`、`C 导航项文字左对齐（图标在文字左侧）`、
+  `C 设置主体上方留白 = 64px（pt-16）`；导航宽上界 260 → 320。**28/28 PASS**。
+- 视觉：`out/_settings-page-{general,editor,appearance,export,links,dark,sepia}.png` 全部重截；
+  实测 `{win:[1304,821], card:[179,112,940,…], nav:[179,112,280,…], body:[489,112,630,…]}`。
+- 其余设置相关套件：`_verify-toolbar-settings` 38/38、`_verify-link-open` 64/64、
+  `_verify-cb-line-numbers` 13/13、`_verify-a11y` 9/9、`_verify-i18n` 5/5；单元测试 320/320；
+  `eslint` 0 error / 0 warning；`vue-tsc` 0；`electron-vite build` exit 0。
+
+## [Unreleased · 设置（第五轮）：观感打磨 —— 导航项加长、内容收窄、修好被拉宽的下拉]
+
+> 用户口径：「现在不好看，请把导航项加长一点，界面布局、颜色、样式更合理」。
+
+### Changed
+
+- **导航项加长**：左栏 190 → **232px**，项内边距 `7/10` → **`9/12`**、项间距 2px、圆角 9px ——
+  原来的项又窄又短促，现在是一列舒展的页签（仍不带任何滚动条、仍吸顶）。
+- **内容收窄**：整卡 `max-width` 1000 → **940px**（内容列 ≈678px）⇒ 左侧标签与右侧开关/下拉不再
+  隔着半个屏幕（宽窗口尤其明显）。行内边距 `9/10` → `10/12`，并给整行加了**悬停底色**。
+- **分层方式换了一档**：行与行之间不再画细线，改成「悬停底色 + 间距」；组与组之间仍留一条细线，
+  页头（页签标题）下方新增一条细线 —— 没有盒子时靠它把「这一页在讲什么」与设置项分开。
+  页签标题 17 → **18px**。
+- **修一个真 bug（本轮截图才发现）**：第二轮我把这些下拉从 `min-w-[190px]` 改成了 `w-[190px]`，
+  但 `base.css` 里的 `.input { width: 100% }` 是**未分层** CSS、优先级高于 Tailwind 工具类 ⇒
+  下拉被拉成整行宽，把同一行的标签挤成了「默认编 / 码」两行（截图里一直看得见）。
+  现在改成 `!w-[…] shrink-0` 让宽度真正生效，标签回到一行。
+
+### Verification
+
+- 视觉：`out/_settings-page-{general,editor,appearance,export,links,dark,sepia}.png` 全部重截；
+  实测 `{win:[1304,821], card:[179,64,940,…], nav:[179,64,232,…], body:[441,64,678,…]}` ——
+  卡片仍精确居中（`left=179 = (可视宽−940)/2`），导航与内容间隔 **30px**（刻意的呼吸位）。
+- `tools/_verify-round-perf.js` 里那条断言跟着口径走：**「C 左导航与内容区靠在一起（不是隔着半个窗口）」**
+  （判据 gap ≤ 60；旧版是「一个贴最左 + 一个在剩余区域居中」），导航宽上界 220 → 260。**25/25 PASS**。
+- 其余设置相关套件：`_verify-toolbar-settings` 38/38、`_verify-link-open` 64/64、
+  `_verify-cb-line-numbers` 13/13、`_verify-a11y` 9/9、`_verify-i18n` 5/5；单元测试 320/320；
+  `eslint` 0 error / 0 warning；`vue-tsc` 0；`electron-vite build` exit 0。
+
+## [Unreleased · 设置（第四轮）：全页只有一条滚动条（内层滚动容器也拆掉）]
+
+> 用户口径：「还是限制了，它有自己的滚动条，而不是整个界面的滚动条」。
+> 第三轮虽然去掉了卡片外框，但内容区仍是一个 `overflow-y: auto` 的内层滚动容器 ——
+> 滚动条长在内容区里，而不是界面右侧那一条。
+
+### Changed
+
+- **拆掉内层滚动容器**：`.settings-body` 不再 `overflow-y: auto`（改成 `overflow-visible`），
+  `.settings-page` 自己变成唯一的滚动容器（`overflow-y: auto`）。
+  长页签整页一起滚，滚动条就是窗口右侧那一条。
+- **顶栏与左导航吸顶**（`position: sticky`）：滚长页签时「设置 / 关闭」一直在、
+  页签列表也一直在（Typora 的偏好设置就是这个行为）；左导航从「可滚动列」改成
+  「6 项不超高、永久吸顶」，因此它自己不带任何滚动条。
+- `.settings-card` 改成 `align-items: flex-start`（导航要能粘住，拉伸就粘不住）。
+
+### Verification
+
+- 新增/改写断言：`_verify-round-perf` 里那条「内容区可滚动」改成
+  **`C 全页只有一条滚动条：页面自己那条，内部没有滚动容器`** —— 实测
+  `pageOverflow: auto / pageDelta: 98 / innerScrollables: **0** / bodyOverflow: visible`。
+  同心实测（临时探针，跑完即删）确认滚到底后 `topbarTop: 0`、`navTop: 60`（吸顶生效）。
+- 顺手修掉那条断言的判据：居中改成按**它所在那一行**的中心算（`expectedLeft`），
+  而不是 `window.innerWidth` —— 整页出现滚动条时可视宽度少 ~15px，旧判据会假红（实测差 3px）。
+  现在实测 `left: 159 = expectedLeft: 159`、`cardW: 980`。**25/25 PASS**。
+- 视觉：`out/_settings-scroll-{editor,appearance}.png`（滚到底时顶栏与导航仍在位、右侧只有一条滚动条）。
+- 其余设置相关套件：`_verify-toolbar-settings` 38/38、`_verify-link-open` 64/64、
+  `_verify-cb-line-numbers` 13/13、`_verify-cb-button-line-numbers` 26/26、`_verify-a11y` 9/9、
+  `_verify-i18n` 5/5、`_verify-local-media` 10/10；`eslint` 0 error / 0 warning；`vue-tsc` 0；build 0。
+
+## [Unreleased · 设置（第三轮）：去掉「限制组件」，设置项与导航直接铺在界面上]
+
+> 用户口径：「设置界面不要有限制组件，直接显示在界面上，像 Typora 一样，设置项和导航直接在界面上」。
+> 上一轮虽然已经居中限宽，但仍然是一张「卡片」（`border + radius + bg-paper`）+ 每组一张小卡 ——
+> 就是用户说的「限制组件」。
+
+### Changed
+
+- **删掉所有容器盒子**：`.settings-card` 从「980px 的圆角卡片」改成**纯布局容器**
+  （无边框、无圆角、无底色）；`.settings-body` 不再铺 `--paper`，与导航同用页面底色（`--app`）；
+  `.set-card` 从「浅底 + 外框的小卡」改成**无背景、无边框的分组**，只用一条
+  `border-bottom: 1px solid var(--edge)` 与下一组分隔。折叠块（`.set-fold`）同样去框，只留标题行 + 细线。
+- 行与行之间也用一条淡细线分隔（`color-mix(--edge 60%)`）—— 这就是 Typora「设置项直接列在界面上」
+  的那套观感：分层只靠**标题 + 细线 + 间距**，不再靠盒子。
+- 保留上一轮的口径：仍然**居中限宽 980px**（实测 `card left=162 = (1304−980)/2`）、
+  左导航 190px、导航与内容 `gap=0`；只是不再有任何「卡片」外观。
+
+### Verification
+
+- `tools/_verify-round-perf.js` 24 → **25 条**：新增
+  `C 没有限制组件：主体与每组设置都不再有外框/底色` —— 实测 `.settings-card` 四边 `0px`、
+  `border-radius: 0px`、底色透明；`.set-card` 底色透明、`border-top: 0px`、`border-bottom: 1px`。
+  同时把原来那条「内容区是可滚动的纸面」改名为「内容区可滚动」（它现在**不是**纸面了，
+  断言不再提「纸面」，避免文案与实现脱节）。**25/25 PASS**。
+- 视觉：`out/_settings-page-{general,editor,appearance,export,links,dark,sepia}.png` 全部按新形态重截；
+  实测 `{win:[1304,821], card:[162,64,980,729], nav:[162,64,190,729], body:[352,64,790,729]}`。
+- 其余设置相关套件：`_verify-toolbar-settings` 38/38、`_verify-link-open` 64/64、
+  `_verify-cb-line-numbers` 13/13、`_verify-cb-button-line-numbers` 26/26、`_verify-a11y` 9/9、
+  `_verify-i18n` 5/5；单元测试 320/320；`vue-tsc` / `eslint` 0 error / 0 warning；build exit 0。
+
+## [Unreleased · 设置（第二轮）：居中限宽（Typora 式）+ 选项重构（该折叠的折叠）]
+
+> 用户口径：① 让设置聚焦在界面正中间并设最大宽度（类似 Typora）—— 现在侧边栏和设置项离得太远，
+> 界面放大时不好看；② 重构设置的选项，该展示的展示、该折叠的折叠，用好下拉框/按钮/折叠；
+> ③ 尽可能简约简洁。
+
+### Changed（布局：居中 + 限宽）
+
+- 新增 `.settings-card`（**居中、封顶 980px**、圆角 + 1px 边）把「左导航 + 纸面内容」装进**同一张卡**；
+  顶栏内层用同一个 `.settings-wrap`（同样 980px）⇒ 「设置」标题与卡片左缘对齐。
+  实测（1304×821 的窗口）：卡片 **980×721、left=162 = (1304−980)/2**（精确居中）、
+  左导航 **190px**、导航右缘与内容左缘 **gap=0**（旧版是「导航贴最左 + 内容在剩余区域居中」，
+  宽窗口下两者隔着一大片空白）。左导航也从 236px 收窄到 190px（标签本来就很短）。
+
+### Changed（选项重构：能折就折、能并就并）
+
+- **通用**：原来 7 张单行卡 + 2 张散卡（一长列，滚半天）⇒ **3 张按主题合并的卡 + 1 个折叠块**：
+  「界面」（语言 / 侧边栏 / 顶部菜单栏 / 大纲在右侧）、「保存与会话」（自动保存 + 间隔 /
+  恢复上次会话 / 本地历史 + 保留策略）、「文本与编码」（默认编码 / 默认行尾 + 折叠的详细说明）、
+  以及折叠的「高级」（自动检查更新）。**本地历史的两个下拉只在历史开着时出现**（关掉时本来是两个灰控件）。
+  逐条描述也压成一行（如「关闭后界面更纯净（快捷键照常生效）」）。
+- **编辑器**：19 行的「调整工具项」**整段折叠**（标题行带 `已显示 19 / 19 项` 与「恢复默认」）；
+  三种编辑器模式从 2×2 大卡改成**一排三个紧凑按钮 + 一行说明**（选中项的描述就显示在下面）；
+  「分屏同步滚动 / 代码块行号」合成一张「编辑行为」卡；排版预览并进「字体与排版」卡（就在滑杆下方，
+  改一下立刻看到）。
+- **外观**：主题四选从 2×2 大卡改成 **4 列紧凑**（每条的文字描述改成 `title` 提示，卡片只留
+  「缩略图 + 图标 + 名称 + 选中对勾」）。
+- **导出**：页边距滑杆与页面尺寸并成一张卡；「支持的格式」**折叠**（标题行给出 `PDF · HTML · Word · EPUB`）。
+- **链接**：打开历史**折叠**（标题行是「最近打开的链接 + 条数」），「清空」按钮移进折叠体内，
+  不再重复一遍行标题。
+- CSS 侧配套：`.settings-wrap` / `.settings-card` / `.settings-nav` / `.set-fold` / `.set-fold--plain`
+  与统一的「相邻卡片间距」规则；删掉 `.set-card:last-child` 那条旧规则。折叠用原生
+  `<details>/<summary>`（键盘与展开语义免费，零 JS），箭头随 `[open]` 旋转。
+
+### Verification
+
+- 视觉：`out/_settings-page-{general,editor,appearance,export,links,dark,sepia}.png`（7 张，隔离实例截图）；
+  实测 `{win:[1304,821], card:[162,72,980,721], nav:[163,73,190,719], body:[353,73,788,719]，6 个分组、3 卡 2 折叠}`
+  —— 通用页签默认**没有**展开任何折叠。
+- `tools/_verify-round-perf.js` 22 → **24 条**（新增两条把这次的口径钉住：
+  `C 设置卡居中且宽度封顶 980px`、`C 左导航与内容区相邻（不再左右分离）`）。**24/24 PASS**。
+- `tools/_verify-toolbar-settings.js` 37 → **38**（新增「工具项折叠存在且能展开」，E 段先展开再测）、
+  `tools/_verify-link-open.js` 63 → **64**（同上，I 段先展开历史再量/点）。均全绿。
+- `tools/_verify-cb-line-numbers.js` 13/13：改成用 `aria-label="代码块行号"` **精确选那一枚开关**
+  —— 它现在和「分屏同步滚动」同处一张卡，取卡里第一个 `button.switch` 会点错（本轮实测红过一次）。
+- 其余相关套件：`_verify-cb-button-line-numbers` 26/26、`_verify-a11y` 9/9、`_verify-i18n` 5/5、
+  `_verify-local-media` 10/10、`_verify-outline-right` 26/26；单元测试 **320/320**；
+  `vue-tsc` / `tsc` / `eslint` 0 error / 0 warning；`electron-vite build` exit 0。
+  （批跑时 `_verify-round-perf` 会因「窗口被遮挡 ⇒ 不产生帧」而量不到帧率，单独重跑 24/24 —— 见手册 §4.73.1 的同类口径。）
+
+## [Unreleased · 设置改成整页（不再是浮在窗口上的小盒子）+ 样式重构]
+
+> 用户口径：「打开设置界面不要弹出一个小的窗口在原窗口的上方，而是占据整个界面，
+> 同时重构优化下设置的样式」。
+
+### Changed
+
+- **设置 = 整页**：根节点从 `settings-mask（遮罩）+ settings-panel（1080×680 的居中卡片）` 改成
+  `[data-settings-page]`（`fixed inset-0` 不透明 + `role="dialog"`），实测 **1304×821 = 整个窗口**
+  （窗口同尺寸），结构是「顶栏（设置 + 提示 + 关于 + 关闭）→ 左导航（236px，6 个分组）→
+  纸面内容区（`bg-paper`，可滚动，内容列 720px 居中）」。
+- **删掉整套「拖动小窗」**：`dragOffset` / `dragging` / `startDialogDrag` / `resetDialogPosition`
+  与 `.settings-drag-handle` / `.settings-drag-grip` / `.settings-panel.is-dragging` 样式全部移除
+  （整页没有可拖的意义）；顺带删掉 `base.css` 里没人用的 `.overlay-*` 过渡块（浮层时代残留）。
+  关闭入口是顶栏那枚**带文案**的按钮（`关闭`，i18n `common.close`），Esc 仍然可关。
+- **样式重构**：五个重复率最高的 Tailwind 长串收成一组 class（`base.css`：
+  `.settings-topbar(-btn)` / `.settings-nav(-item)` / `.settings-section-title` / `.set-card(-title)` /
+  `.set-row(-label/-desc)`）—— 18 张卡片、12 行设置、11 个标签、9 段说明、8 个卡片标题都换成了它们。
+  `.set-row + .set-row` 统一了行间距（原来各处手写 `mt-5`/`mb-2`，间距不一致）。
+  **卡片没有沿用 `.surface`**：浅色主题下 `--panel` 与 `--paper` 同为 `#ffffff`，白底卡片在纸面上
+  看不见 —— 改用 `color-mix(in srgb, var(--panel-2) 45%, transparent)` + 1px `--edge`，三套主题都成立。
+- 顺手把两处硬编码文案接上 i18n：副标题改用新 key `settings.persistHint`（三语齐平），
+  顶栏「关于 Lumin」改用既有 `menu.about`。
+
+### Verification
+
+- **视觉**：隔离实例截图两张（`out/_settings-page-{general,editor}.png`）——整页形态、
+  左导航当前项高亮、卡片在纸面上可辨；`shape` 实测 `{win:[1304,821], page:[1304,821], navItems:6}`。
+- `tools/_verify-round-perf.js` **22/22**：C 段（原来验「遮罩压暗 / 面板可拖动 / 拖完位置保留」）
+  **按新形态重写**成 8 条 —— 整页铺满窗口且 `fixed`、不透明、**旧的遮罩与拖动把手都不存在**、
+  左导航 6 个分组且恰有一个当前项、内容区是可滚动的纸面、关闭是带文案的按钮、
+  点左导航切分组（状态与标题一起变）、Esc 关闭整页。
+- 受影响的套件：`_verify-toolbar-settings` 37/37、`_verify-link-open` 63/63（它读的
+  `.settings-panel` 跟着改成 `[data-settings-page]`）、`_verify-local-media` 10/10、
+  `_verify-outline-right` 26/26、`_verify-cb-button-line-numbers` 26/26。
+- **顺带修掉一条长期红的预存失败**：`_verify-cb-line-numbers` 8/13 → **13/13**。
+  根因是套件量开关坐标前不滚动，而设置页内容比窗口高、那个开关常在折叠线以下（真实点击落到
+  视口外）—— 改成先 `scrollIntoView({block:'center'})` 再量。
+- 单元测试 **320/320**；`vue-tsc` / `eslint` 0 error / 0 warning；`electron-vite build` exit 0。
+
+## [Unreleased · 目录高亮（第二轮）：判定规则重写成纯函数 —— 末尾几节不再被跳过，点谁就亮谁]
+
+> 用户第二轮口径：「还不行 —— 现在直接跳过倒数第二和倒数第三；我点的是倒数第三个，但大纲亮到
+> 倒数第四。」第一轮的修法（bottom clamp + 800ms 自动解锁）确实不够，两个根因都换了修法。
+
+### Fixed
+
+- **判定规则重写**：抽成纯函数 **`src/renderer/src/lib/editor/scrollSpy.ts`**（配
+  `tests/scrollSpy.test.mjs` **6 条**单测）。常规规则不变（判定线之上最后一个标题）；关键是
+  **末尾补偿**：末屏那几节的标题压不到判定线上（滚到底也压不到），于是从「滚到底时能压线的
+  最后一个标题」压线那一刻起，把**剩余滚动距离平分给「它 + 后面追不上的那几条」**依次点亮 ——
+  滚到底正好是最后一条。旧的 `bottom clamp`（到底 = 最后一条）会**跳过**中间那两节（用户第二轮
+  报障的正是这个「跳过」），现在被这一条规则取代。
+  实现上先换算成**文档坐标**再算：第一版直接用相对偏移，在不可滚动 / 标题已越过判定线时会算出
+  负的起点，把高亮甩到最后一条（单测当场抓到）。
+- **点击锁改成「用户自己滚动才解锁」**：`stores/editor.ts` 的 `activePinned`（原来是
+  `activePinnedUntil = now + 800ms`，到期自动解锁）。平滑滚动落地后侦测立刻重算，而末屏那几节
+  压不到判定线 ⇒ 高亮被挪到「判定线算出来的那条」：**点倒数第三、亮到倒数第四**。现在解锁只发生在
+  `wheel` / `touchstart` / 按下指针 / 按键（`.editor-scroll` 上四个监听器），文件/模式切换时复位。
+- **顺带修掉「点目录完全没反应」**：平滑滚动原本只挂在 `requestAnimationFrame` 上，而窗口被遮挡时
+  Chromium 可能**根本不派发 rAF**（`document.hidden` 仍是 false）—— 探针实测 `scrollTop` 一直是 0。
+  现在 rAF 与 120ms 兜底定时器**谁先到谁生效**（只跑一次）。
+
+### Verification
+
+- `tools/_verify-outline-nav.js` 7 → **13 条**（默认矩阵内），夹具改为「前 7 节各占近一屏 + 末尾 4 节
+  很短」（更贴用户那个布局）。一次完整跑的实测：点第 6 条 → `scrollTop 0→2084`；
+  点最后一条立刻 `activeIdx=10`、落定后仍 `10` 且 `atBottom=true`；**点倒数第 3 条 → `activeIdx=8`**
+  （`scrollTop=maxScroll`，正是旧代码会亮成倒数第四的几何）；点倒数第 2 条 → `9`；点第 5 条 → `4`；
+  **末尾细采样（30px 一步）序列 `[4,5,6,7,8,9,10]`**（一节不跳过、严格递增）；滚到底 = 最后一条；
+  wheel 一格 → `pinned` 转 false、高亮回到侦测（10 → 3）。
+- **套件确实抓得住这两个根因**（都当场验过）：① 「末尾补偿」临时改成 `false &&` → 红两条
+  （`activeIdx` 落到 **7**）；② 点击锁临时「设完立刻置 false」→ 红四条，其中
+  `click-3rd-from-last-stays-on-3rd` 实测 `activeIdx=10`（点倒数第三、亮到最后一条）。
+- **窗口不产生帧时如实 SKIP**：滚动事件与平滑滚动都挂在帧上，窗口被遮挡时都不跑（实测用户自己的
+  Lumin 在前台时隔离实例里 `scrollTop` 恒为 0）。套件开跑先问「rAF 会不会被派发」，不会就把 11 条
+  滚动相关断言标 SKIP 并写明原因，不制造假红。
+- 相关套件全绿：`_verify-outline-right` 26/26、`_verify-toc-style-scroll` 23/23、`_regress-layout` 9/9、
+  `_verify-toc` 7/7、`_regress-split-live` 8/8；单元测试 **320/320**（314 + 6）；
+  `vue-tsc` / `tsc` / `eslint` 0 error / 0 warning；`electron-vite build` exit 0。
+- 手册 §4.33.1 重写为**最终形态**（两个根因、三条修法、两处「套件抓得住」的实验、帧被暂停时的
+  SKIP 口径）；覆盖台账里那一行同步成 13 条。
+
+## [Unreleased · 目录高亮：点最后一条不再被「末屏边界」顶回倒数第三]
+
+> 用户口径：最后三个标题挨得很近（同一屏能显示）。点**最后一个**标题时本应最后一条高亮，
+> 但目录只高亮到倒数第三 —— 因为文档最后一屏显示的就是那三个标题。
+
+### Fixed
+
+- **根因**：侧栏大纲的「当前章节」是滚动侦测算的（`TyporaEditor.onScroll`：取「滚动容器上沿往下
+  90px 那条线」上方最后一个标题）。点最后一个标题时容器已经滚到底，那条线离最后一个标题还有
+  一两屏，于是它停在倒数第三个标题的章节上 —— 侦测结果把用户点的那条**覆盖**掉了。
+  **两条修法都在，缺一不可**：
+  1. `stores/editor.ts` `jumpToHeading()`：点击**立刻**点亮被点的那条并**上锁**
+     （`activePinnedUntil = now + 800ms`）。立刻是为了平滑滚动那 300–500ms 里高亮不被中途经过的
+     章节带走；上锁是为了不让侦测覆盖。真实滚动（`wheel` / `touchstart`）**提前解锁**，到期也自动
+     解锁 —— 锁不是永久的。
+  2. `TyporaEditor.onScroll()`：**到底就点亮最后一条**（先判 `scrollHeight > clientHeight + 1`
+     确认真的可滚动，再用 1px 容差判到底）。末屏那几个标题都在 90px 判定线**下面**，
+     没有这条规则它们永远轮不到高亮。
+
+### Verification
+
+- 新增 `tools/_verify-outline-nav.js`（**7 条**，已进默认矩阵）：11 个标题的专门夹具（前 8 节各占
+  近一屏、最后 3 节很短 ⇒ 复现「三节同屏」）。实测：点最后一条**立刻** `activeIdx=10`
+  （`scrollTop` 才 162，平滑滚动刚起步）→ 落定后仍 `activeIdx=10` 且 `atBottom=true`；
+  不点、直接 `scrollTop=scrollHeight` → `activeIdx=10`；点第 5 条 → `activeIdx=4`；
+  点完最后一条再 wheel 滚一格 → `activeIdx` 10 → 4（侦测重新接管）。**7/7 PASS**。
+- **套件确实抓得住这个 bug**：把第 2 条规则临时改成 `false &&` 重新构建 → 套件立刻红两条
+  （`activeIdx` 落到 **7**，即「最后一个越过 90px 线的标题」，正是用户描述的现象）；改回即绿。
+- 相关套件全绿：`_verify-outline-right` 26/26、`_verify-toc-style-scroll` 23/23、
+  `_regress-layout` 9/9、`_verify-toc` 7/7；单元测试 **314/314**；`vue-tsc` / `eslint` 0 error /
+  0 warning；`electron-vite build` exit 0。
+- 手册新增 **§4.33.1**：这条 bug 的根因与修法，外加用户问的**术语**（scrollspy / TOC /
+  anchor navigation / bottom clamp / pinned active item …，并标出哪些是公认名、哪些只是描述性说法）。
+
+## [Unreleased · 顶部菜单像原生菜单栏一样「悬停跟随切换」]
+
+> 用户口径：当顶部工具栏打开的状态可以切换 —— 比如打开「文件」、「文件」是展开的，
+> 在展开的时候移动到「编辑」，「编辑」也会展开，就像原生工具栏一样的行为。
+
+### Changed
+
+- `TopMenuBar.vue`：一级菜单加 `@mouseenter="onGroupHover(g)"` —— **已经有菜单展开时**
+  跟随鼠标切到另一个一级菜单（真实指针实测：悬停前弹层 `left: 8`、首项「新建」；
+  悬停「编辑」后 `left: 66`、首项「撤销」，且「编辑」按钮拿到高亮态）。
+  刻意保留 `if (!active.value) return`：没有展开时悬停**不该**弹菜单，
+  否则鼠标从工具栏划过就会一路弹出好几层 —— 那不是原生行为。
+- 一级按钮加 `data-topmenu-group`（断言与定位用；既有套件用的 `.topmenu-root > button` 选择器不受影响）。
+
+### Verification
+
+- `tools/_verify-new-document.js` 23 → **25 条**（默认矩阵内）：
+  `topmenu-hover-switches-open-group`（用**真实指针** `Input.dispatchMouseEvent` 的 `mouseMoved`，
+  不是合成 click —— 要验的就是 hover 这条路径）、
+  `topmenu-hover-does-not-open-when-closed`（关掉菜单后划过不再弹）。**25/25 PASS**。
+
+## [Unreleased · 以其他编码重新打开不再弹通知]
+
+> 用户口径：优化通知逻辑，以其他编码打开的时候不弹出提示通知。
+
+### Changed
+
+- `stores/files.ts` 的 `reopenWithEncoding()`：去掉那条「已按 xx 编码重新打开」的 success toast。
+  口径与 `stores/ui.ts` 里「动作结果在界面上已经可见的常规成功一律不发通知」一致 ——
+  重新解释的结果**当场可见**（正文变了、状态栏那个编码格变了、菜单里当前编码打了勾）。
+  **失败仍然弹**（那是「点了没反应」的唯一反馈）。
+- 三语里的 `toast.reopenedWithEncoding` 这个 key 一并删掉（三个包同时删，保持平齐）。
+- **保留** `toast.encodingReopenAutoSaveSkipped`（乱码缓冲区 + 自动保存开着才发的那条 warning）：
+  它说的不是「我换了编码」，而是「**这次自动保存我没做**」—— 属于必须让用户知道的事。
+
+### Verification
+
+- `tools/_verify-encoding.js` 新增 `reopen-with-encoding-emits-no-notification`：用通知库的**前后差集**
+  证明重新打开**一条通知都没发**（实测 `B3-reopen-notify []`），而不是「我没看见有弹窗」。
+  该套件 **53 条：50 PASS / 0 FAIL / 3 SKIP**（SKIP 是生产构建拿不到 setupState 的既有三条）。
+
+## [Unreleased · 侧栏底部那条工具带默认隐藏（鼠标放到侧栏上才出现）]
+
+> 用户口径：左侧侧边栏下方那条「搜索 + 树/列表切换」的工具，调成隐藏的，
+> 当鼠标放到侧边栏上面的时候才显示出来。
+
+### Changed
+
+- `FileTree.vue` 的底部工具带（`data-sidebar-filetools`）默认隐藏，显示规则写在
+  `assets/overlays.css`（要选到祖先 `aside:hover`，而 `aside` 不在本组件模板里，scoped 样式选不到）。
+  **三条显示条件**，后两条都是「不能把它藏没」的兜底：
+  - `aside:hover` —— 鼠标在侧栏上（用户要的那条）；
+  - `aside:focus-within` —— 键盘 Tab 进侧栏时也显示。`visibility:hidden` 的元素**不可聚焦**，
+    少了这条，纯键盘用户永远够不到搜索与视图切换（`:hover` 对键盘用户不存在）；
+  - `.filetools--pinned`（搜索框开着）—— 与文件树既有的「筛选条件不能悄悄消失」同口径：
+    失焦但筛选条件还在时，输入框不能跟着一起消失。
+- 用 `visibility` 而不是 `display`：**保持占位高度**，悬停时上面的树不会跳一行
+  （实测两态高度都是 **41px**）。
+
+### Verification
+
+- `tools/_verify-a11y.js` 6 → **9 条**（默认矩阵内）：
+  `sidebar-tools-hidden-by-default`（`visibility: hidden` / `opacity: 0` / `height: 41`）、
+  `sidebar-tools-visible-on-hover`（真实指针移到侧栏上 → `visible` / `opacity: 1` / 高度仍 41px）、
+  `sidebar-tools-visible-when-sidebar-focused`（指针移开后 `hidden` → 焦点进侧栏 → `visible`）。
+  **9/9 PASS**。
+
+## [Unreleased · F 项 P3：收敛与调优] — 静态态不再渲染 16 个 `<option>`（1500 围栏可用 3013→1236ms、RSS 1030→800MB）
+
+> 施工图《Lumin-F项实施方案-代码块CM虚拟化》阶段 **P3「收敛与调优」**：点开即挂 / 离屏即卸
+> 两条 P1 就已落地并有断言；这一阶段做三件事 —— **静态态瘦身**、**降级闸放宽**、**清死码**。
+
+### Changed
+
+- **静态态不再渲染语言下拉**（P3 的第一刀，对着 P0 的归因砍）：P0 量出来「1500 块的文档里
+  每块一个 `<select>` × 16 个 `<option>` = 24,000 个元素 + 24,000 个文本节点」，外加 Chromium
+  新版 `<select>` 给每个 option 建的**内部 shadow DOM**（`Performance.getMetrics` 的 `Nodes`
+  里约 14 万，是整张内存账上最大的一笔）。屏幕上看得到的块**永远**是挂载态（观察器 600px
+  提前量），静态态的 select 谁也看不到 ⇒ 换成**同几何的 `span` 占位**
+  （`.code-block-select-static`：同一套 class / box 模型，只去掉箭头与手型光标），
+  块高与挂载态**逐像素一致**（有断言），滚动不跳。mermaid 块没有 CM，**一直保留** select
+  （否则没法切回代码语言）。
+- **`HEAVY_FENCES` 200 → 800**（施工图 §6 的取舍，用户已拍板）：虚拟化之后「每块一个 CM」的
+  悬崖没了 —— 实测 500 围栏的文档**直接进实时渲染**可用 900ms。为什么停在 800 而不是更高：
+  1500 围栏打开后常驻仍是 800MB（验收线 <600MB），默认把它开进实时渲染等于默认吃 800MB。
+  单测里加了一条 `HEAVY_FENCES === 800` 把这个产品决策钉住（改阈值必须同时改说明）。
+- **清死码**：删掉 `codeBlockMountPolicy.ts` 里没人调用的 `codeBlockWatchCount()`。
+
+### Verification（P0 探针复测；每个尺寸一个全新隔离实例，`out/_probe-cb-scale-p3.txt`）
+
+| 围栏 | 打开 ms | 渲染面 ms | **可用 ms** | 验收线 | CM 峰值 | 静态块 | select 选项 | 打开后模式 | RSS 前→后 |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 500 | 294 | 606 | **900** | ≤2,000 ✓ | 6 | 494 | **96**（原 8,000） | wysiwyg（不再降级） | 509→**625MB** |
+| 1500 | 382 | 854（切面） | **1,236** | ≤5,000 ✓ | 10 | 1,490 | **160**（原 24,000） | source→手动切 | 510→**800MB** |
+
+与 P0 基线（同一支探针）对比：DOM 节点 500 围栏 84,186 → **19,662**、1500 围栏 220,426 → **106,030**；
+元素 34,873 → 11,031；文本节点 33,270 → 7,932；可用耗时 1500 围栏 **3,013 → 1,236ms**；
+RSS 1500 围栏 924 → **800MB**（最初的 1,384MB 基线 ⇒ **−42%**）。
+
+**内存这条仍未达线（<600MB），如实记**：1500 个代码块 = 1500 个 Vue NodeView 组件 + 11,031 个
+元素，剩下的 ~290MB（198KB/块）是这层结构本身的成本（JS 堆只占其中 105MB，其余是 DOM/样式/
+布局与 RSS 余量）。再往下要动的是「一个块一个 NodeView」这个架构本身，不在 F 项范围内。
+
+### Verification（套件）
+
+- `tools/_verify-cb-virtualization.js` **18/18**（15 → 18）：新增
+  `static-block-has-no-language-select`（静态块里 0 个 select、0 个 option）、
+  `static-matches-mounted-header-height`（静态与挂载的头部高度**完全相等**）、
+  `option-count-bounded-by-mounted-blocks`（option 总数 ≤ 挂载块数 × 16）。
+- 受影响的 8 条套件全绿：`_verify-cb-languages` 5/5（它逐个滚进视野再量，块是挂载态）、
+  `_verify-cb-button-line-numbers` 26/26、`_verify-cb-no-active-line` 12/12、`_regress-cb` 3/3、
+  `_regress-layout` 9/9、`_verify-surfaces` 37/37、`_verify-md-fidelity` 101/102（1 条既有 SKIP）。
+- 单元测试 **314/314**；`vue-tsc` / `eslint` 0 error / 0 warning；`electron-vite build` exit 0。
+
+## [Unreleased · F 项 P2：静态态语法高亮] — 不建 CM 也给静态块上色（1500 围栏代价约 55ms、内存无差）
+
+> 施工图《Lumin-F项实施方案-代码块CM虚拟化》阶段 **P2「静态语法高亮（视觉不掉档）」**。
+> P1 之后静态态是纯等宽文本：块从「挂载态」被卸下来的那一刻颜色会掉一下（程序化跳转、
+> 快速滚动时可能正好看见）。P2 用 Lezer 的 `highlightTree` 给静态态上色 —— **一个 CM 实例都不建**。
+
+### Added
+
+- **`src/renderer/src/lib/editor/staticHighlight.ts`**：自带一套 `lm-tok-*` class 的
+  `tagHighlighter`（`highlightTree` + `escapeHtml` 拼 HTML，纯函数）+ 一张「已加载语言 → 解析器」
+  的登记表。两处刻意的设计写进了文件头：
+  1. **不用 CM 生成的 class** —— `syntaxHighlighting(HighlightStyle)` 挂在 StyleModule 上，而
+     StyleModule 随**最后一个**用它的 CM 实例销毁而卸载（「块都卸完 → 颜色集体消失」）；
+  2. **不为屏幕外的块 `import()` 语言包** —— 解析器只在块挂载时登记。
+- **`assets/overlays.css`**：`.lm-tok-*` 九条配色，与 `CodeBlockView.vue` 的 `mdHighlight`
+  一一对应（改一边会被 `tests/staticHighlight.test.mjs` 的 CSS 一致性断言抓住）。
+- **`tests/staticHighlight.test.mjs`**（**7 条**，单测 306 → **313**）：转义（`v-html` 的前提）、
+  token 包壳后**去标签逐字等于原文**、语言没登记时退化成纯文本、登记后才上色、class 与 CSS
+  一一对应、真实 JS 语法树的 tag 覆盖（≥3 种 token 且含注释）。
+
+### Changed
+
+- `CodeBlockView.vue`：静态态代码区改 `v-html="staticHtml"`（内容只可能是「escapeHtml 过的文本 +
+  我们自己的 span 壳」，`staticHighlight.ts` 里有安全说明；eslint-disable 处也写了理由）。
+
+### 一处走错又量回来的设计（如实记录）
+
+第一版把登记表做成**响应式**（登记表一变 → 全文档静态块重算重渲染），想让「所有静态块」都上色。
+实测（1500 围栏、全新隔离实例）：可用耗时 **2695 → 3451ms**、RSS 924 → **1079MB** —— 为了给
+**屏幕外、用户根本看不到**的块上色，把打开文档拖慢一秒多、多吃一百多 MB。
+改成 **`wasMounted` 门**（挂载过的块才在静态态上色）：
+
+| 1500 围栏 | 可用耗时 | RSS（打开后） |
+| --- | --- | --- |
+| 响应式全量（走错那版） | 3451ms | 1079MB |
+| `wasMounted` 门（现在） | **3013ms** | **1030MB** |
+| `STATIC_HIGHLIGHT = false`（同构建只切开关） | 2958ms | 1036MB |
+
+⇒ P2 的真实代价约 **55ms**、内存**在噪声内**。口径：用户能看到的块永远处于挂载态（观察器 600px
+提前量），滚过去的块保留颜色；从没露过面的块保持纯文本。
+
+### Verification
+
+- `tools/_verify-cb-virtualization.js` 12 → **15 条**（默认矩阵内）：新增
+  `static-state-keeps-syntax-colors`（静态块里 `[class*="lm-tok-"]` ≥ 2；实测 4 个 token、
+  首段是 `<span class="lm-tok-keyword">function</span> …`）、`static-highlight-does-not-change-text`
+  （静态态 `textContent` 与节点文本逐字相同）、`never-mounted-block-stays-plain`（从没挂载过的
+  块 0 个 token，含那块 python）；另把 P0 里那条**靠模拟按键的括号断言换掉**了 —— 经 CDP 注入
+  文本时 CM 内部选区不一定跟得上，实测同一构建两次跑一次配对一次不配对（随机红），改成
+  `cm-extensions-rebuilt-after-remount`：重挂后 `lineNumbers()/foldGutter()/drawSelection()`
+  自己渲出来的 `.cm-lineNumbers` / `.cm-foldGutter` / `.cm-selectionLayer` 必须都在
+  （实测三个都 true）；keymap 的**行为**仍由 `_regress-cb.js` 守。
+- 15/15 PASS；单元测试 **313/313**；`vue-tsc` / `eslint` 0 error / 0 warning；`electron-vite build` exit 0。
+
+## [Unreleased · F 项 P0：代码块虚拟化的观测与护栏] — 500/1500 围栏打开达标（1136ms / 2695ms），内存仍超线（671/924MB）
+
+> 施工图《Lumin-F项实施方案-代码块CM虚拟化》的阶段 **P0「观测与护栏」（不改行为）**。
+> P1「最小虚拟化」已在前面那轮落地（见文件后部《F 代码块 CodeMirror 虚拟化》一节）；这一阶段只做
+> 两件事：把**可复现的数字**固定下来，把**卸载/重挂的契约**钉进套件 —— 后面 P2/P3 每一刀都对着这组数字砍。
+
+### Added
+
+- **`tools/_probe-cb-scale.js`**（常驻探针，P0 的观测工具）：`LUMIN_PROBE_FENCES=500,1500` 逐个尺寸量
+  「**真实文件打开**」（`files().openPath()`，真读盘 / 真解码 / 真判定 heavyMode）的
+  打开耗时、渲染面耗时、CM 实例峰值、静态块数，并带**内存归因**（`Performance.getMetrics`：
+  DOM 节点 / LayoutObject / 监听器 / JS 堆）+ 按隔离 userData 过滤的 electron 常驻内存。
+  两个坑写在文件注释里：① **每个尺寸必须新起一个隔离实例**（同一实例连着开两篇时，第二篇的
+  「打开前 RSS」还背着上一篇的堆：实测 673MB 起步，拿它当基线就是把上一轮的账记到这一轮）；
+  ② heavyMode（≥200 围栏自动进源码模式）下**不能拿源码模式的耗时冒充渲染面**，探针照实报
+  `heavy` 与「切回渲染面」的耗时。
+
+### Verification（P0 实测，每尺寸一个全新隔离实例，`out/_probe-cb-scale-p0-before.txt`）
+
+| 围栏 | 字符 | 打开 ms | 切渲染面 ms | 可用 ms | 验收线 | CM 峰值 | 静态块 | RSS 前→后 |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 500 | 21,780 | 196 | 940 | **1,136** | ≤2,000 ✓ | **10**（原 500） | 490 | 509→671MB |
+| 1500 | 66,780 | 502 | 2,193 | **2,695** | ≤5,000 ✓ | **10**（原 1500） | 1,490 | 510→924MB ✗（线是 <600MB） |
+
+**内存归因（1500 围栏）**：DOM 节点 347 → **220,426**（+147/块）· 真实元素 34,873 + 文本节点 31,773
+（**每块 23 元素 / 21 文本**，其中 `<select>` 的 16 个 `<option>` 就占 24,000 个元素、24,000 个文本）·
+LayoutObject 151 → 17,062 · 监听器 113 → 5,289 · JS 堆 10 → 70MB · RSS Δ **+417MB（每块 285KB）**。
+`Performance` 的 `Nodes` 比「元素+文本」多出约 15 万 —— Chromium 新版 `<select>` 会给**每个 `<option>`
+建内部 shadow DOM**，这部分全记在这一件事上。⇒ P3「收敛与调优」的第一刀就是**静态态不要再渲染 16 个
+`<option>`**（屏幕上能看到的块必然已经挂了 CM，静态块的 select 谁也看不到）。
+
+时间达标（CM 实例从「每块一个」变成个位数），内存这一条**如实记未达**。
+
+### Added（护栏）
+
+- `tools/_verify-cb-virtualization.js` 9 → **12 条**（默认矩阵内），新增的三条正是审计 §F.3 点名的
+  「卸载/重挂必须保住」的东西：
+  - `bracket-autoclose-after-remount`：来回滚（挂→卸→再挂）之后打一个 `(`，文档里必须是 `()` ——
+    重挂若漏掉 `closeBrackets()` 或它的 keymap，只会写进一个 `(`（实测 `ZZ(` → `ZZ()` 通过）；
+  - `forced-mount-takes-the-caret`：选区落进屏幕外的块而强制挂载后，**焦点要真的在它的 `.cm-editor` 里**
+    （否则键盘还是打不进这个块）；
+  - `static-block-activates-on-mousedown`：往静态块上派发 `mousedown` ⇒ 它必须挂上 CM
+    （`activated` 那条路）。**为什么用合成事件**：屏幕上能点到的块必然已被观察器挂上（600px 提前量），
+    真实点击永远点不到静态块 —— 第一版就是 `scrollIntoView` 再点，实测 `wasStatic=false`。
+
+## [Unreleased · 侧栏「打开文件夹」恢复 + 目录不显示语法标记 + 切编码来回切不再毁内容]
+
+> 用户口径（同一轮三条报障）：① 没打开任何文件夹时，左侧侧栏上方工具栏的「打开文件夹」要保留；
+> ② 标题源码是 `### 林一鸣（**男主，21岁，大四或刚毕业待业**）` 这种，目录里也把 `**` 显示出来了，
+> 目录不要显示这类字符；③ 切换成 GBK 内容确实会变，可再切回 UTF-8 时显示的文字和之前不一样，查明原因并修复。
+
+### ① 侧栏头部「打开文件夹」按新口径保留
+
+- 上一版把侧栏空态入口连同**头部那枚「打开文件夹」**一起删了，这一版把那**一枚**恢复
+  （`AppSidebar.vue` 头部的 `v-else` 分支，`data-sidebar-workspace`）。
+  空态那三枚图标按钮（新建文档 / 打开文件 / 打开文件夹）与 `open.hint` 提示仍然不出现 ——
+  两条口径并不冲突：「空态不放入口」保留，「头部那枚在有/无工作区时都在」恢复。
+
+### ② 目录 / 大纲不显示语法标记
+
+- 新增 `src/renderer/src/lib/editor/outlineText.ts` 的 `headingPlainText(node, fallback)`：
+  取标题的**纯文本** —— 跳过带 `mdMarker` 标记的文本节点（`**`、`*`、反引号这些标记字符本身就是
+  这种节点），`hardBreak` 折成空格；`stores/editor.ts` 的 `refreshOutline()` 改用它。
+- 只影响目录显示，**不动文档内容**：标题里那几个字符仍旧原样在正文里（另加单测钉住这一点）。
+
+### ③ 切编码来回切「内容不一致」：根因与修复
+
+**根因不是「切换」本身。** 在隔离实例里逐步量过：打开 UTF-8 文件 → 切 GBK（内容确实变样）→
+切回 UTF-8 → **内容与最初逐字一致**，磁盘字节也一个没动。真正丢内容的，是**中间夹了一次写盘**：
+按错误编码重新解释出来的缓冲区（乱码）一旦被自动保存（或顺手 Ctrl+S）写回，磁盘上的原始内容
+就被这份坏数据覆盖；之后用户再「切回原编码」读到的自然和之前不一样 —— 报障现象就是这条链路。
+
+- `stores/files.ts`：`reopenWithEncoding()` 成功后打标记 `reopenedWithEncoding`；
+  - **自动保存直接跳过**（`scheduleSave()` 里提前 return，并**只提醒一次**）—— 这是数据损坏路径的闸门；
+  - **手动保存先弹一次确认**（danger 样式，文案点名当前编码）：取消就一个字节都不写、标记继续武装；
+    确认后才写（写的是屏幕上那份文字按当前编码落盘），随后标记清除，不会反复问。
+- 三语文案：`editor.saveAfterReopenTitle` / `editor.saveAfterReopenBody` /
+  `toast.encodingReopenAutoSaveSkipped`（中 / 英 / 俄齐平）。
+
+### Verification
+
+- `tools/_verify-encoding.js` **37 → 52 条**（**49 PASS / 0 FAIL / 3 SKIP**；SKIP 是生产构建下拿不到
+  `setupState` 的既有三条，同一行为有 DOM 断言覆盖）。新增 15 条全打在这次的行为上，实测证据：
+  `auto-save-skipped-after-encoding-reopen`（乱码缓冲区 + 继续编辑 + 自动保存 1s → 磁盘 `intact: true`，
+  59 字节没动）、`auto-save-skip-warns-user`（warning 通知点名「Windows-1252」）、
+  `unsaved-edit-still-pending-after-skip`（`dirty: true`，内容留在缓冲区里等用户）、
+  `auto-save-skip-warns-once`（`warnCount: 1`）、`auto-save-still-skipped-on-second-edit`、
+  `manual-save-after-reopen-asks-first`（danger 对话框，标题 / 正文都命中当前编码）、
+  `save-waits-for-user-answer`（`pending: "pending"` —— 没答之前不写）、
+  `cancel-save-does-not-write`（`saveResult: false`，磁盘仍未动）、`cancel-keeps-guard-armed`、
+  `confirm-save-writes-what-user-sees`（`sameAsBuffer: true`）、`confirm-clears-guard`、
+  `second-save-does-not-ask-again`；另有 `wrong-encoding-decode-matches-1252-bytes`
+  （应用侧 1252 解码与 iconv 逐字一致，证明乱码不是"解码器不一致"造成的）。
+- `tools/_verify-wave3.js`（另一个会走 `reopenWithEncoding` 的套件）**23/23**；
+  单元测试 **306/306**（含三语 key 平齐、设置默认值、目录纯文本的 4 条）；
+  `eslint` 0 error / 0 warning；`vue-tsc` / `tsc` / `electron-vite build` exit 0。
+
+## [Unreleased · 没打开文件夹时侧栏不再放「新建/打开」入口]
+
+> 用户口径：没打开任何文件夹时，左侧侧栏不要出现「新建文档 / 打开文件 / 打开文件夹」这些按钮和提示。
+
+> ⚠️ 本节第二条（侧栏头部那枚「打开文件夹」）**已在下一条按新口径恢复** ——
+> 用户后来明确：那一枚要保留，去掉的是空态里那组图标按钮与快捷键提示。见上一节 ①。
+
+### Removed
+
+- `FileTree.vue` 的**未打开工作区空态整块删除**：原先是一组三枚图标按钮（新建文档 / 打开文件 /
+  打开文件夹，文案在 `title` + `aria-label` 上）+ 一行 `open.hint` 快捷键提示（「Ctrl+O 打开文件 ·
+  Ctrl+Shift+P 搜索文档」）。现在侧栏空着就是空着。
+- `AppSidebar.vue` 头部那一格的**「打开文件夹」占位按钮**（无工作区时显示）一并去掉 ——
+  它的可见文字正是「打开文件夹」，留着就还是同一类入口。
+- 随之删掉 `FileTree.vue` 里仅供空态使用的 `newDoc()` / `openFileDialog()` 两个方法，
+  以及它们的三个 import（`useRouter` / `confirmIfDirty` / `openExternalFile`）。
+
+入口都还在：顶部「文件」菜单、快捷键（Ctrl+N / Ctrl+O），以及侧栏头部的「打开文件夹 / 新建文件」
+两个按钮（有工作区时那个位置是工作区名，点击也是切换文件夹）。
+
+### Verification
+
+- `tools/_verify-welcome-removed.js` **33/33**：B 段断言整段重写为「空态不再有任何入口」——
+  `empty-state-hub-removed`（`aside .empty-hub` 不该存在）、`empty-state-has-no-entry-buttons`
+  （侧栏里找不到「新建文档/打开文件/打开文件夹」这些可访问名）、`empty-state-has-no-hint-text`
+  （侧栏文字里没有 `Ctrl+O` / `Ctrl+Shift+P` 提示）；
+- 顺带修掉这个套件里一条**早就失效的定位**：C 段找工具栏原来按类名链 `h-11` + `overflow-x-auto`，
+  而工具栏高度早就是 `h-10` 了 ⇒ 那条 `toolbar-open-button-removed` 一直以「找不到工具栏」的形式红着。
+  改用 Toolbar 根节点上现成的 `data-editor-toolbar`。
+- `vue-tsc` / `eslint` / `electron-vite build` exit 0。
+
+## [Unreleased · 浅色外壳改成 #FAFAFA（Typora 观感）]
+
+> 用户口径：侧边栏、顶部栏这些 chrome 的颜色改成 `#FAFAFA`，像 Typora 一样。
+
+### Changed
+
+- `theme.css` 浅色（`:root, .theme-light`）的 **`--app: #f2f3f7 → #fafafa`**。
+  `--app` 就是外观上所有「壳」的底色：侧边栏、顶部菜单栏、快捷工具栏、状态栏、以及窗口底色/
+  分屏缝隙。写作区的纸仍是**纯白 `#ffffff`**（不变）—— 两者对比度约 **1.04:1**，
+  差距刻意很小，分层靠 1px `--edge` 边框与投影（Typora 的浅色也是这个路子）。
+- 深色（`#2b2e33`）与羊皮纸（`#f1e9d5`）不动：这条口径说的是浅色的壳。
+
+### Verification
+
+- `tests/themeTokens.test.mjs` 全绿：`--paper(#ffffff) > --app(#fafafa)` 仍严格成立；
+  浅色下 `--panel/--elevate` 必须等于纸（`#ffffff`）的那条例外不变；
+- `tools/_verify-surfaces.js` **37/37**：T2 要求「纸比壳亮」的对比度 ≥ 1.03 —— 实测 **1.043** ✓
+  （浅色三主题、`body` 就是壳色、三主题纸色互不相同都仍然成立）；
+- `tools/_verify-sidebar-tree-style.js` **32/32**（选中态/悬停态在新壳色上仍可辨）、
+  `tools/_verify-a11y.js` **6/6**；单元测试 **302/302**；`vue-tsc` / `eslint` / `electron-vite build` exit 0。
+
+## [Unreleased · 右侧大纲切文档不再闪/乱：去掉大纲的进出场动画]
+
+> 用户口径：目录在右侧时，切换不同文档「目录会闪烁、动画有点混乱」，优化或干脆取消动画。
+
+### 分析
+
+`Outline.vue` 的行原来包在 `<TransitionGroup name="list">` 里。切文档时**所有行一起换 key**
+（key 是 `序号-级别-文本`），于是旧行全部走 `list-leave`、新行全部走 `list-enter`；
+而 `.list-leave-active` 没写 `position: absolute`，离场的行在 0.25s 过渡里**仍占着文档流** ——
+新旧两批同时存在（列表高度翻倍、行位互相重叠），看起来就是「闪一下 + 动画乱」。
+
+### Changed
+
+- **大纲列表去掉进出场动画**（`TransitionGroup` → 普通列表）：换文档时直接换掉，一行不留。
+  大纲是**导航**，不需要「出现感」；这条也是用户明确给的选项（"干脆取消动画"）。
+  `.list-*` 那套 CSS 保留（文件树 / 文件列表 / 全局搜索结果仍在用）。
+- 顺带：三栏模式下左栏那份大纲改成 **`v-if` 整块不挂载**（原先只是 `v-show` 隐藏）——
+  它永远不可见，留着白渲染一份，切文档时 DOM 里还会同时存在两套大纲行。
+
+### Verification（只跑与这个问题相关的）
+
+`tools/_verify-outline-right.js` **24/24**，其中新增两条切文档断言（在右侧面板作用域内高频采样 600ms）：
+
+| 断言 | 判据 |
+| --- | --- |
+| `doc-switch-has-no-enter-leave-class` | 采样期间**没有任何一帧**的行带 `list-enter/leave` 类（动画确实没了） |
+| `doc-switch-never-overlaps-rows` | 行数**从不超过**新文档的标题数（有动画时旧行会残留 ⇒ 超） |
+
+`vue-tsc` / `eslint` / `electron-vite build` exit 0。
+
+## [Unreleased · 修掉「打开应用闪一下未保存的草稿弹窗」]
+
+> 用户报障：打开应用**有概率**出现「未保存的草稿」提示，不到 0.5s 就消失了。
+
+### 分析（启动时序上的竞态）
+
+冷启动时两条径在抢时序：
+
+1. `EditorView.onMounted` 见 `files.current` 为空 ⇒ 开一份**占位空白缓冲**（`openUntitled()`）；
+   它随后 `await drafts.untitledDraft()` 做「无主草稿」检查，命中就把 `draftRestore` 置上 ⇒ **弹窗出现**；
+2. 同一时刻 `main.ts` 还在跑会话恢复：`restoreSession()` → `openPath(sessionDoc)`，
+   而 `openPath` 里有 `this.draftRestore = null` ⇒ **弹窗被清掉**。
+
+谁先谁后取决于两条 IPC/文件读取的耗时（草稿检查是一次 IPC，会话恢复是「读会话 + 读文件 + 解析」），
+所以是**有概率**；而一旦「先弹后被清」，用户看到的就是闪一下（<0.5s）的弹窗。
+换言之：**弹窗代表的那份草稿并不属于当前要打开的文档**，它是占位缓冲的产物。
+
+### 修法（三处配套 + 一处收口）
+
+- `EditorView.onMounted`：**启动期间（`ui.booting`）不开占位空白缓冲** —— 竞态的一端直接消失；
+- `main.ts`：**会话恢复之后**再决定「要不要一份空白缓冲」（`if (!files.current) await files.openUntitled()`），
+  于是空白缓冲（以及它可能触发的草稿弹窗）只会在文档已经定下来之后出现；
+- `files.openUntitled()`：`await drafts.untitledDraft()` 回来后**先确认这份缓冲还是当前文档**
+  （`this.current === buffer`）才挂草稿 —— 堵住「IPC 往返期间 current 已被替换」的另一半；
+- 收口（不赌先后）：草稿弹窗的渲染条件加 `&& !ui.booting` —— **初始化期间一律不渲染**，
+  等 `booting` 落下、草稿若仍挂着才出现。那才是真需要用户决定的那一次。
+
+### Verification（只跑与这个问题相关的）
+
+- `tools/_verify-draft-banner.js` **28/28**：新增断言 `booting-suppresses-draft-modal`
+  —— 把 `draftRestore` 置上并让 `ui.booting=true`，300ms 内 DOM 里**不该有** `.draft-modal`；
+  `booting` 落下后**应当出现**（草稿没被吞掉）；
+- `vue-tsc` / `eslint` / `electron-vite build` exit 0。
+
+> 如实说明：我用合成现场（未命名草稿 + 会话指向一个真实文件；小文件与 ~600KB 大文件都试过）
+> **没能复现**那次闪烁 —— 旧构建下弹窗一次都没出现。所以上面的结论来自**读代码路径**，
+> 而不是复现：竞态的窗口很窄，合成现场的耗时比与用户机器不同。
+> 修法是「让闪烁在结构上不可能」（弹窗在初始化期间不渲染），因此不依赖复现。
+> 如果你还看到它，告诉我，我加一条「谁在什么时候置的 draftRestore」的打点再看。
+
+## [Unreleased · 找到真正的启动遮罩：index.html 里的首帧骨架屏，已删除]
+
+> 用户反馈「打开应用**依然**有启动遮罩层和骨架图和入场动画」。
+> 上一版删的是 Vue 的 `SkeletonScreen`，**没删到真正的那一层** —— 这次用 CDP 抓启动帧定位到了。
+
+### 定位过程（抓帧实测，不是猜）
+
+写临时探针：直接拉起 Electron（独立 `--user-data-dir` + 独立调试端口），从进程启动起每 40ms 轮询，
+一连上页面就每 ~100ms 采样一次「页面文本 / 骨架块数 / 全窗遮罩 / 内核可见性」并截图：
+
+| 时刻 | 现场 |
+| --- | --- |
+| +561ms | `bodyText = "LUMIN"`、`fullCovers = ["lm-boot"]`、`skeletons = 0` ⇒ **整窗被一段 HTML 骨架屏盖着** |
+| +675ms | 正常界面（菜单/侧栏/编辑器都在），`fullCovers = []` |
+
+即：**`src/renderer/index.html` 里那段纯 HTML/CSS 首帧骨架屏**（`.lm-boot`：假顶栏 + 假侧栏 +
+假正文 + 居中的「LUMIN」呼吸字，心跳 keyframes `lm-breathe`）—— 它在窗口第一帧就可见，
+直到 Vue 挂载才被 `#app` 替换掉。上一版删掉的 `SkeletonScreen` 只是它之后的第二层。
+
+### Removed
+
+- **`index.html` 里那段 `.lm-boot` 骨架屏整段删除**（标记 + 内联 `<style>` + 呼吸动画）。
+  `#app` 现在是个空容器：窗口从 `ready-to-show` 起只有主进程设定的纸色背景（`themeBackground()`），
+  随后直接是正常界面 —— **没有遮罩、没有骨架、没有任何进场动画**，与 Typora 的开法一致。
+- 顺带少了 ~2.5KB 内联 CSS/标记与一次整窗绘制。
+- 文件里留了注释说明「别再往这儿加首帧骨架」，并加了单测守着（见下）。
+
+### Verification
+
+- **抓帧复测**：`+565ms` 时 `bodyText = ""`、`fullCovers = []`、`skeletons = 0`（只剩纸色背景），
+  `+694ms` 正常界面 —— 中间**没有任何遮罩帧**；
+- 新增单测 `tests/bootFirstPaint.test.mjs`：`index.html` 里不许再有 `.lm-boot` 标记、呼吸动画 keyframes
+  或内联 `<style>`（CDP 断言抓不到它 —— Vue 挂载后那棵子树已被替换，只有"文件里根本没写"才钉得住）；
+  **单测 302/302**；
+- `_verify-bars-no-filename` 16/16（`boot-mask-removed`：DOM 里没有骨架块与全窗遮罩）；
+- `vue-tsc` / `eslint` / `electron-vite build` exit 0。
+
+> 说明：这次没有再报启动耗时中位数 —— 测量时你自己那个 Lumin 实例还在跑（`electron.exe .`），
+> 进程 RSS 会把它的也算进去（实测求和到 828MB），数字不可比。上一版在干净环境下的对比仍然有效
+> （首屏可用 985 → 953ms）。
+
+## [Unreleased · 去掉启动骨架屏（遮罩）] — 打开应用不再有进场动画/骨架图，启动实测略快
+
+> 用户口径：取消打开应用时的进场动画（应用初始化 UI 的那层遮罩动画），**去掉骨架图**，同时加快启动速度。
+
+### Removed
+
+- **`SkeletonScreen.vue` 整个删掉**，`App.vue` 里 `<SkeletonScreen v-if="ui.booting" />` 及其 import 一并移除。
+  原先启动全程盖着一块不透明骨架屏（外加一层淡出 Transition），现在**初始化期间看到的就是正常界面**：
+  外壳立刻可见，文档到位就出现 —— 没有任何进场动画、没有遮罩层。
+- 顺带从首屏路径上消失了：骨架屏组件本身 + 它内嵌的 `assets/iconPng.ts`（24.7KB 的 base64 图标位图，
+  只有骨架屏用它）。`iconPng.ts` **文件保留**（手册里有它的说明，docsClaims 会校验被文档引用的路径存在）。
+- `ui.booting` 这个**就绪信号保留**（启动打点与多个套件用它判断"是否已就绪"），只是不再驱动任何渲染。
+
+### Performance（`tools/_probe-startup.js`，各 3 次冷启动取中位数，同一台机器）
+
+| 指标 | 去掉骨架屏前 | 去掉后 | 变化 |
+| --- | --- | --- | --- |
+| 页面可用 | 652ms | **640ms** | −12ms |
+| 首屏可用 | 985ms | **953ms** | −32ms |
+| 编辑器就绪 | 986ms | **954ms** | −32ms |
+| RSS | 393MB | **388MB** | −5MB |
+| 首屏内容绘制（FCP） | 220ms | **204ms** | −16ms |
+
+**如实说明**：这 ~640ms 的绝大部分是 **Electron 自身的进程/窗口启动**（页面脚本还没开始跑），
+渲染层从 `boot-start` 到 `doc-visible` 只有 ~120ms（改动前后都是这个量级）。
+所以这次是「**去掉遮罩 + 少解析一个组件与它内嵌的 24.7KB 图标**」带来的小幅加速，
+不是数量级的提速；要再快就得动主进程窗口策略（`ready-to-show` 时机）或进一步拆首屏包。
+
+### Verification（只跑了与本次改动相关的项）
+
+- `tools/_verify-bars-no-filename.js` **16/16**：断言 `boot-mask-removed`
+  —— DOM 里不再有骨架块（`.skeleton`）与那层 `fixed inset-0` 遮罩；
+- 启动数字见上表（`_probe-startup.js` 每项 3 次冷启动）；
+- `vue-tsc` / `eslint` / `electron-vite build` exit 0。
+
+## [Unreleased · 默认为手动保存 + 状态栏保存格去噪 + 取消启动遮罩过场]
+
+> 用户口径：① 保存模式默认改**手动保存**；手动时状态栏不要再显示「手动保存」四个字；
+> 自动保存时那一格的文字不要用强调色、统一成同一种灰，并取消前面的小圆点。
+> ② 取消出场的动画 —— 澄清后指「**打开应用时那块遮罩的过场动画**」。
+
+### Changed
+
+- **默认保存方式：自动 → 手动**（`defaults.ts` 的 `autoSave: false`）。
+  理由写进注释：自动保存会在作者还没写完一句时就把半成品写进磁盘（外部同步盘/版本工具会看到一串中间态）；
+  而**手动不等于丢字** —— 关窗/异常退出仍会写草稿（`drafts` 那套与 `autoSave` 无关），关窗也有脏确认。
+  已有用户设置不受影响（落在 kv 里，只有全新 profile 拿到新默认值）；想切回来点状态栏最左那格即可。
+- **状态栏最左那格只说「状态」，不再说保存方式**：手动模式下不再一直写着「手动保存」
+  （那是模式名不是状态，选过一次就是重复噪音）。两模式统一显示 `保存中 / 未保存的更改 / 已保存`；
+  保存方式移到点击后的弹层里（那里仍写着「自动保存 / 手动保存」，弹层文案没动）。
+  格子的 `title` / `aria-label` 改成「保存方式：手动保存」这类**说明当前模式**的文案 ——
+  可见文字变短之后，界面上仍要说清「现在是哪种保存」以及「点它能换」。
+- **那一格去掉强调色与小圆点**：删掉 `bg-ok` / `bg-warning` 的状态点（以及保存中的 ping 动画），
+  文字也不再走 `text-ok` / `text-warning`，与状态栏其它统计项**同一个灰**（实测两处都是 `rgb(138,145,158)`）。
+- **取消启动遮罩的过场动画**（用户澄清：指「打开应用时那块遮罩的过场」）：
+  `App.vue` 里 `<SkeletonScreen v-if="ui.booting" />` 外面的 `<Transition name="fade">` 去掉 ——
+  骨架屏仍在（启动期间盖住半初始化的 UI、避免闪色），但**就绪后直接消失，不再淡出**。
+  `.fade-*` 那套 CSS 保留（设置浮层 / 全局搜索 / 草稿弹窗还在用）。
+  > 我上一版把「项目出场」理解成了**列表条目**的入场动画并删掉了 `.list-enter-*` / `.link-row-enter-*`，
+  > 那是误读 —— 本版已**原样恢复**（文件树 / 文件列表 / 大纲 / 全局搜索结果的行照旧淡入）。
+
+### Verification（本轮实测）
+
+| 项 | 结果 |
+| --- | --- |
+| 全新 profile 的默认值 | `settings().autoSave === false`、状态栏显示「已保存」（**没有**「手动保存」字样） |
+| 状态栏几何/样式实测 | `saveText = 已保存`、`title = 保存方式：手动保存`、`hasDot = false`、保存文字色 `rgb(138,145,158)` == 状态栏默认灰；截图核对：与「0 字 0 行…」同灰、无圆点 |
+| 列表入场 | 上一版误删的两组入场规则**已恢复**（CSSOM 里 `.list-enter-active` / `.link-row-enter-active` 回来了）；`_verify-sidebar-tree-style` 32/32、`_verify-filelist-view` 13/13、`_verify-toc-style-scroll` 23/23 |
+| 启动遮罩 | 套件新增 `boot-mask-has-no-transition`：把 `ui.booting` 打开后骨架屏立刻出现且**不带任何 `*-enter-active`**；关掉后 **60ms 内**从 DOM 消失（有 fade 时会多留 ~200ms，这条就是钉住「没有那 200ms」） |
+| 套件 | `tools/_verify-bars-no-filename.js` **16 条**并纳入默认矩阵；单元测试 **301/301** |
+| 门禁 | 默认矩阵 **36/36 PASS**（`NOASSERT 0`）、`vue-tsc`/`eslint`/`build` exit 0 |
+
+## [Unreleased · 右侧大纲：可拖宽 + 箭头方向修好] — 并把 Icon.vue 的静态快照 bug 一起修掉
+
+> 用户口径：① 大纲在右侧时也要能调整宽度；② 现在不论收起还是展开，按钮都是「<」，请修正。
+
+### Fixed
+
+- **箭头方向永远不变**（用户报障）——根因不在面板，而在**图标组件本身**：
+  `Icon.vue` 原来是在 setup 里调一次 `parts()` 再解构，`paths/circles/rects` 是**静态快照**，
+  `name` 变了也不会重算。于是面板的宽度、`aria-label`、`title` 都跟着状态翻转，**只有箭头永远是同一个**。
+  改成 `computed` 之后：展开 = `chevron-right`（`m9 18 6-6-6-6`，指向右 = 收起），
+  折叠 = `chevron-left`（`m15 18-6-6 6-6`，指向左 = 展开），实测两态的 `path d` 确实不同。
+  这是**组件级**修复，任何「动态 name」的图标都跟着受益。
+
+### Added
+
+- **右侧大纲可拖宽**：左缘 5px 拖拽手柄（与左侧栏同一套做法），宽度落在新设置
+  `outlineRightWidth`（出厂 220，钳位 **160~420**），重启保持；折叠态是窄轨，
+  不出现手柄（先展开再拖）。拖拽期间关掉宽度过渡，避免「追着指针慢慢滑」。
+
+### Verification（本轮实测）
+
+| 项 | 结果 |
+| --- | --- |
+| 图标两态（实测 `path d`） | 展开 `m9 18 6-6-6-6` + aria「收起大纲」；折叠 `m15 18-6-6 6-6` + aria「展开大纲」 |
+| 拖宽 | 从 220 拖左 60px ⇒ 面板 **280px** 且设置同步为 280（重启保持）；越界钳位实测 **160**（下限），套件另测 **420**（上限） |
+| 套件 | `tools/_verify-outline-right.js` **22 条**（原 15 + 箭头方向 2 条 + 折叠态无手柄 + 拖宽/持久化/两端钳位 4 条），已进默认矩阵 |
+| 门禁 | 默认矩阵 **35/35 PASS**（`NOASSERT 0`）、单测 300/300、`vue-tsc`/`eslint`/`build` exit 0 |
+
+## [Unreleased · 大纲可放编辑区右侧（三栏模式，可选）] — 目录与大纲同时可见，右侧大纲可折叠
+
+> 用户口径：加一个设置，把大纲放到编辑区右边（三栏：左目录 | 中编辑区 | 右大纲），
+> 这样目录和大纲能同时看到；**默认沿用当前结构**（左栏里切「文件 / 大纲」页签），
+> 三栏只在显式打开后生效；打开后大纲支持折叠/展开。
+
+### Added
+
+- 新设置 **`outlineOnRight`（大纲放在编辑区右侧，出厂 false）** + **`outlineRightExpanded`（右侧大纲是否展开，出厂 true）**，
+  落在 kv 里（重启保持）；类型见 `shared/types.ts`，默认值见 `shared/defaults.ts`。
+- 设置入口：**设置 → 一般 → 大纲放在编辑区右侧**（一行说明 + 开关）。打开时会顺手把右侧面板设为
+  展开、并把左栏页签收回「文件」—— 否则开完开关可能看到「左栏还停在大纲页签」或「右侧是折叠窄轨」。
+- 新组件 **`OutlinePanel.vue`**：挂在编辑区右侧，复用既有的 `Outline.vue`。
+  展开 = 220px（顶部一行「大纲 + 收起箭头」+ 标题列表）；折叠 = **34px 窄轨**，只留一个展开箭头。
+  带 `data-outline-panel` / `data-outline-toggle` 两个钩子，`aria-expanded` 随状态翻转。
+  折叠态刻意**不做浮层把手**：窄轨永远看得见、点得到，也不需要额外热区逻辑。
+
+### Changed
+
+- 打开三栏后：`AppSidebar` 的页签行**整行隐藏**，左栏只显示文件树（两套导航语义不同时并存）；
+  `EditorView` 里编辑区与右侧大纲同处一个横排容器（内核仍是 `flex-1`，
+  `data-editor-kernel` 这个查找栏/套件依赖的锚点语义没变）。
+- 关闭（默认）时结构**一字不变**：页签回来、右侧面板消失。
+
+### Verification（本轮实测）
+
+| 项 | 结果 |
+| --- | --- |
+| 出厂默认 | `tests/settingsDefaults.test.mjs` 钉住 `outlineOnRight === false`（默认沿用原结构）、`outlineRightExpanded === true`；**单测 300/300** |
+| 几何实测（隔离实例，临时探针已删） | 关闭：内核 264→1304、左栏有「文件/大纲」页签、无右侧面板；开启：面板 **1084→1304（220px）**、内核缩到 264→1084、页签消失、面板列出文档标题；折叠：面板 **34px**、列表消失、`aria-expanded=false`、按钮名变「展开大纲」；再展开回 220px |
+| 新增套件 | `tools/_verify-outline-right.js`（**15 条**，已进默认矩阵）：默认结构不变 / 设置开关真实可点 / 三栏几何 / 标题列表 / 折叠与展开（含 aria）/ 关掉即还原；套件自身**还原现场**，不污染后续套件 |
+| 相邻套件 | `_regress-layout` 9/9、`_verify-surfaces` 37/37、`_verify-a11y` 6/6、`_verify-i18n` 5/5、`_verify-toc-style-scroll` 23/23、`_verify-session` 17/17 |
+| i18n | 新增 `settings.outlineRight` / `outlineRightDesc` 与顶层 `outline.collapse` / `outline.expand`，三语同步（`i18nAndIpc` 绿） |
+| 门禁 | 默认矩阵 **35/35 PASS**（`NOASSERT 0`）、`vue-tsc`/`eslint`/`build` exit 0 |
+
+## [Unreleased · 深色主题改中性灰] — 不再近黑；编辑区比侧栏浅一档（像 Typora）
+
+> 用户口径：深色主题不要把整体变成纯黑色，而是像 Typora 一样用浅灰色，而且**编辑区域要比侧边栏更浅一点**。
+
+### Changed（`theme.css` 的 `.theme-dark` 全套令牌）
+
+| 角色 | 改前 | 改后 |
+| --- | --- | --- |
+| 外壳 / 侧栏 `--app` | `#0b0d12`（近黑） | **`#2b2e33`**（中性深灰） |
+| 编辑区（纸）`--paper` | `#12141a` | **`#35383d`**（比侧栏亮一档，实测 1.157:1） |
+| 面板 / 浮层 | `#16181f` / `#1c1f27` | `#3a3d43` / `#454a51`（都严格亮于纸） |
+| 分隔线 / hover | `#272b35` / `#1e2129` | `#4a4d54` / `#44484f`（后者也要能在纸上当表头底） |
+| 正文 / 次级 / 三级墨 | `#e8eaef` / `#a8afbc` / `#6d7483` | `#e6e8ec` / `#b3b8c0` / `#8a9099` |
+| 代码块底 / 主按钮 | `#1a1d26` / `#4b5563` | `#303338`（比纸更暗一档）/ `#5a616d` |
+
+- 同步更新**主进程镜像**：`src/shared/theme.ts` 的 `PAPER_BY_THEME.dark` = `#35383d`
+  （主进程读不到 CSS，只镜像这一份给窗口 `backgroundColor`；两边漂移会在启动瞬间闪一下别的颜色，
+  `tests/themeTokens.test.mjs` 把两者逐主题钉在一起）。
+- 浅色与羊皮纸**一个字没动**。
+
+### 调这版时被两条既有断言逼回来的两处（值得记下来）
+
+- **`--panel-2` 不能只求「比外壳亮」**：它同时是 chrome 的 hover 底**和表格表头底**，
+  而表头是画在**纸**上的 —— 放到 `#383b42` 时与纸只有 1.065:1，CDP 的 T6「表头在纸上可辨」判红。
+  最终 `#44484f`（≈1.18:1）。
+- **`--panel` / `--elevate` 必须严格亮于纸**（`tests/themeTokens.test.mjs` 不变量②）：
+  第一版把 `--panel` 放在纸下面（`#33363b` < `#35383d`），单元测试直接红 —— 浮层会像凹进去的洞。
+
+### Verification（本轮实测）
+
+| 项 | 结果 |
+| --- | --- |
+| 关系实测（隔离实例 + 截图，临时探针已删） | `body`/`aside` = `rgb(43,46,51)`、纸 = `rgb(53,56,61)`，纸/壳 **1.157:1**（纸更亮 ✓）；整窗截图确认不再是黑色域 |
+| 单元测试 | `tests/themeTokens.test.mjs` 全绿（纸比壳亮、面板不比纸暗且严格更亮、正文对纸 ≥7:1、代码块/表头/分隔线/引用条在纸上可辨）+ `PAPER_BY_THEME` 与 CSS 逐字一致；**单测 300/300** |
+| 受影响套件 | `_verify-surfaces` 37/37（T 段逐主题量关系）、`_verify-neutral-accent` 10/10、`_verify-sidebar-tree-style` 32/32、`_verify-toc-style-scroll` 23/23 |
+| 门禁 | 默认矩阵 **35/35 PASS**（`NOASSERT 0`）、`vue-tsc`/`eslint`/`build` exit 0 |
+
+## [Unreleased · 表格保真] — 单元格里按回车不再让整张表退化成 HTML（只改序列化，不动编辑行为）
+
+> 用户报障：单元格「**实测痛点**」后按一下回车，`.md` 源码里整张表变成
+> `<table style="min-width: 50px;">…` 一整段 HTML。落盘后再打开，markdown-it 只当 HTML 块解析
+> ⇒ **管道表结构丢失**（数据问题，不是显示问题）。
+
+### 根因（判据过宽，两步复现）
+
+1. 单元格里回车 → Tiptap 默认 `splitBlock` 在格子里多出**第二个段落**（**这是既有行为，本轮没动**）；
+2. `lib/editor/tableMarkdown.ts` 的判据是 `cell.childCount !== 1 ⇒ 复杂表格 ⇒ 退回 HTML` ——
+   一个**不含任何内容的空段落**就把整张表打成了 HTML。
+   空段落没有任何内容可保真、多段落也并非表达不了（GFM 单元格可以用行内 `<br>` 表达多行），
+   所以这条判据本身就是根因。
+
+### Fixed（只改序列化侧）
+
+- `isSimpleTable()`：判据改成「表头在第一行 + 没有合并单元格 + 每格只由**段落**组成」，
+  段数不限；空段落不影响判定。
+- `cellInlineNode()`（新）：把单元格的段落合成**一段**行内序列 —— 空段落丢掉、
+  非空段落之间插 `hardBreak`（`state.inTable` 会写成 `<br>`），再交给 `renderInline` **一次**渲染。
+  必须是一次调用：标记符开合是状态机，分多次渲染再拼接会把闭合标记推到后面的内容里
+  （实测会写出 `**a<br>**` 这种尾巴上多一个空 `**` 的坏结构）。
+- **换行处的标记符归位**：本编辑器的标记符是**真实文本**，光标停在「**实测痛点**」这种被样式包住的
+  文字末尾时，回车切点正好在**内容与闭合标记符之间**，闭合的 `**` 被留在第二个段落里
+  （实测结构：段 0 = [`**`, 实测痛点]、段 1 = [`**`]）。
+  序列化时把「紧跟换行的、只由标记符组成」的尾巴提到 `<br>` **之前** ⇒
+  **回车这一步一个字都不改动源码**（`| **实测痛点** | …` 与回车前逐字节相同），且输出幂等。
+
+### Verification（本轮实测）
+
+| 场景 | 结果 |
+| --- | --- |
+| 用户现场：单元格回车 | `\| **实测痛点** \| 36,005 字符…` —— 与回车前**逐字节相同**（旧行为是整表变 HTML）；重灌一次仍相同 |
+| 回车后再打一行字 | `\| **实测痛点**<br>第二行 \| …`（换行落在样式对之外、无多余 `**`、仍不是 HTML） |
+| 历史坏文档（一格两段 / 一堆空段落） | `\| 一格 \| 两段<br>真有内容 \|` —— 仍写回管道表（旧行为是 HTML） |
+| 合并单元格 | 照旧退回 HTML（管道语法表达不了；**刻意钉住**，用一条断言守着它别被顺手改坏） |
+| 新增套件 | `tools/_verify-table-fidelity.js`（15 条：14 PASS + 1 SKIP，已进默认矩阵） |
+| 门禁 | 默认矩阵 **34/34 PASS**（`NOASSERT 0`）、单测 299/299、`vue-tsc`/`eslint`/`build` exit 0 |
+
+> **已知问题（与表格无关，本轮不动）**：行内标记符模型在**解析**时会把 `<br>` 读回样式对**内** ——
+> `**实测痛点**<br>第二行` 重灌一次会再序列化成 `**实测痛点<br>**第二行`（随后是不动点，不再继续漂）。
+> 任何「加粗文字 + 硬换行」都一样（正文段落里的 Shift+Enter 同样），属行内标记符模型那条线；
+> 套件里以 SKIP 记名，见 `docs/_audit/coverage-matrix.md` §3.6。
+>
+> 另：**已经落盘成 HTML 的文档不会自动修回来** —— 应用侧没有「HTML 表格 → markdown 表格」的转换。
+
+## [Unreleased · UI 三处] — 通知操作按钮移到右侧 / 分屏左栏滚动条贴左 / 分隔条按下只加深一档颜色
+
+> 用户口径：① 再优化通知的布局、结构与样式，把操作按钮放到**右边**（原来在左边）；
+> ② 进入分屏视图时，渲染面（左栏）的滚动条放到**左边**而不是右边；
+> ③ 分屏中间拖动比例的组件，鼠标**点上去不要变宽，只是颜色加深一度**。
+
+### Changed
+
+- **通知：操作按钮从「正文下面（左侧）」搬到行内**右侧**。**
+  `.ntf-row` 由两列栅格（文本 · 信息条）改成三列（文本 · **操作按钮** · 信息条），
+  按钮列右对齐、与标题首行同一条基线（沿用 `align-items: start` 的同一条 20px 起始线，
+  不破坏 `_verify-notify-style` 的「信息条与标题首行对齐」断言）；窄窗口允许换行但仍成组靠右。
+  实测：内容 320–976、按钮 1000–1147、信息条 1171–1248（窗口右缘 1304 − 内衬 56 = 1248 ✓）。
+- **分屏：左栏（渲染面）的滚动条移到左边。** `.editor-scroll` 在 `ui.editorMode === 'split'` 时
+  加 `editor-scroll--split-left`：容器 `direction: rtl`（Chromium 里纵向滚动条跟着书写方向走 ⇒ 贴左），
+  内容再 `direction: ltr` 复位（否则标点/数字/列表编号的排版方向会跟着翻）。
+  滚动条仍占那 6px 布局宽度 ⇒ 两栏正文几何完全不变（实测 pane 520 / 滚动容器 520 / 内容 514），
+  两侧滚动条各自贴外缘、中间分界线干净。
+- **分隔条：按下时**只把颜色加深一度**（不加宽）。** 把手平时 3×36（`--edge-strong`），
+  hover 变 3×56 + `--accent`（宽度始终 3px）；**按下 / 拖拽期间宽度、高度、发光、缩放全都不变**，
+  只把颜色从 `--accent` 走到更深一档的 `--accent-ink`（三主题各自的一档，见 `theme.css`）。
+  热区仍会从 11px 扩到 23px —— 那是为了好抓，且它的底是**透明**的（`:active` 与 `.dragging` 都撤掉
+  hover 的软底），所以视觉上不会出现「点一下就变宽」。
+  实测四态：idle 3×36 `rgb(210,213,219)` → **按下 3×56 `rgb(55,65,81)`（= `--accent-ink`）** →
+  拖拽中 3×56 同色、热区 23px 透明 → 松开回到 3×36。
+
+### Fixed（顺带：两条「批量跑才出现」的假失败）
+
+- `_verify-surfaces` 的 **T 段主题循环**由 `sleep(900)` 改成轮询：批量跑时主题还没落地就量，
+  令牌会**落后一档**（dark 读到 light 的纸色、sepia 读到 dark 的），T2 假红。
+  稳定性判据必须同时包含**实际表面色**（body 与两个 pane 的计算色）—— 只等 CSS 变量不够：
+  `body` 的 `background-color` 还有 ~300ms 过渡，实测读到过渡中间色 `rgb(19,21,26)`
+  而外壳是 `rgb(11,13,18)`，于是「body 就是外壳色」判红。
+- 同套件的 **F2**（分屏左栏跟上且账本收敛）也由 `sleep(900)` 改成轮询到条件成立：
+  「右栏输入 → 序列化 → 回灌左栏 → 账本收敛」这条链在批量负载下 900ms 走不完
+  （实测 `leftHas=false / stale=true`，单独跑 37/37）。轮询只去掉假红、不会造假绿：不收敛仍判红。
+
+### Verification（本轮实测）
+
+| 项 | 结果 |
+| --- | --- |
+| 默认矩阵（33 条） | **33/33 PASS**（`NOASSERT 0`） |
+| 受影响套件 | `_regress-divider` 4/4、`_regress-split-live` 8/8、`_verify-surfaces` 37/37、`_verify-link-open` 63/63（通知操作按钮）、`_verify-notify-style` 22/22、`_verify-notifications` 32/32、`_verify-toast-tip` 21/21、`_regress-layout` 9/9、`_verify-segmented-control` 16/16、`_verify-cb-virtualization` 9/9 |
+| 几何实测（隔离实例 + 截图，临时探针已删） | 见上：通知三列位置、分屏 `direction: rtl` + 内容 `ltr` 且两侧几何不变、分隔条三段状态 |
+| 门禁 | `vue-tsc` exit 0、`eslint` 0 error 0 warning、`electron-vite build` exit 0 |
+
+## [Unreleased · 草稿提示改成独立强制弹窗] — 不选「恢复 / 丢弃」就不能编辑这个文档
+
+> 用户口径：取消「检测到未保存的草稿（比磁盘文件更新）」那条提示原来的样式与位置；当文档当前内容
+> 与磁盘文件不一样、需要触发这个提示时，改成**单独弹窗**，不做出选择就无法继续编辑此文档。
+
+### Changed
+
+- **形态**：编辑区上方那条内联提示（`.restore-bar` + `.draft-reveal`）整块撤掉，改成挂在
+  `EditorView.vue` 的**独立弹窗**（`<Teleport to="body">`，沿用 ModalHost 的对话框语言：半透明遮罩 +
+  圆角卡片 + `--shadow-2`）。触发条件**不变**（`files.draftRestore`），变的只是呈现与强制性：
+  * `role="dialog"` + `aria-modal="true"` + `aria-labelledby`；
+  * 遮罩 `@click.self` **什么都不做**、Esc **不关** —— 必须明确选一个；
+  * 打开时焦点给「恢复」（回车即恢复，危险的「丢弃」不占默认焦点），Tab 只在两个按钮间循环；
+  * 它**不是通知**：既不进 `NotificationCenter`、也不与通知带混排（那块区域只剩通知）。
+- 新增 i18n 键 `editor.draftTitle`（「未保存的草稿」）与 `editor.draftHint`（「选择「恢复」或「丢弃」
+  后才能继续编辑这个文档。」），三语同步；`sidebar.css` 里那套横幅样式随之删除。
+
+### Fixed
+
+- **「不选就不能编辑」第一版只挡了键盘，被自己的套件当场打红**：捕获阶段吞 `keydown` 挡不住
+  `Input.insertText`（CDP 的文本插入，等同 **IME 组字 / 粘贴**那一类 —— 不产生 keydown），
+  文档照样被写进 `BLOCKED`。这正是中文输入法路径上的真实漏洞。改成三层一起挡：
+  | 层 | 做法 | 挡什么 |
+  | --- | --- | --- |
+  | 渲染面 | `editorStore.instance?.setEditable(false)` | 键盘/IME/粘贴/拖放（DOM 层直接拒绝） |
+  | 源码面 | `textarea.source-editor` 加 `:readonly` | 源码模式下编辑的就是它 |
+  | 事件层 | 捕获阶段吞 `keydown`（放行 Tab/回车/空格）与 `beforeinput / paste / cut / drop` | 兜底 |
+- `_verify-draft-banner` 的 `restore-brings-content-back` 由全等改成「去掉结尾换行后相等」：
+  序列化会把 markdown 规整成结尾带换行（`# hello draft` → `# hello draft\n`），不是内容差异 ——
+  本轮在恢复前多插了一段等待，时序一变就撞上规整后的值（假失败）。
+
+### Verification（本轮实测）
+
+| 项 | 结果 |
+| --- | --- |
+| `_verify-draft-banner` | **27/27**（原 25 + 新增 `modal-blocks-editing-until-chosen`、`modal-esc-does-not-close`） |
+| 相邻套件 | `_verify-new-document` 23/23、`_verify-notifications` 32/32、`_verify-notify-style` 22/22、`_verify-toast-tip` 21/21、`_verify-surfaces` 37/37、`_verify-a11y` 6/6、`_verify-i18n` 5/5、`_verify-session` 17/17、`_regress-layout` 9/9、`_verify-local-media` 10/10 |
+| 实测（隔离实例 + 截图核对，临时探针已删） | `role=dialog` / `aria-modal=true` / 标题「未保存的草稿」/ 按钮「丢弃 · 恢复」/ 焦点在「恢复」；`.ProseMirror` 的 `contenteditable=false`、源码 textarea `readOnly=true`；整窗截图确认遮罩盖住工具栏与侧栏、卡片居中 |
+| 门禁 | `vue-tsc` exit 0、`eslint` 0 error 0 warning、`electron-vite build` exit 0、单测 299/299 |
+
+## [Unreleased · UI 三处微调] — 正文列左右内缩 40→56px / 侧栏底部那一行去掉 / H1–H3 改整枚字形
+
+> 用户口径：① 稍微增加编辑区域内容与左右两侧的间隔；② 由我判断侧栏下方的「设置 / 关于 / 折叠」
+> 是否还需要，不需要就优化掉；③ 顶部栏 H1/H2/H3 的字体显示很怪，优化显示样式。
+
+### Changed
+
+- **正文列左右内缩 40px → 56px**：`TyporaEditor.vue` 的 `editor-content` 由 `px-10` 改 `px-14`
+  （实测计算值 `40px 56px 160px`）。源码面同步放宽（`.source-editor` 左右 24 → 40px、
+  `.source-editor--split` 24 → 32px）；通知带跟着对齐同一列（`padding: 11px 56px 13px`，
+  它的「与正文列对齐」断言也改成 56px）。
+- **侧栏底部那一行整行删除**（设置 / 关于 Lumin / 收起侧边栏）。判断依据是「三条功能都另有入口，
+  且都不是唯一入口」：设置与关于在顶部「帮助」菜单（应用内菜单与原生菜单同源），
+  折叠在「视图 → 显示侧边栏」+ `Ctrl+Shift+B`；而**展开**本来就有 `App.vue` 的左缘把手
+  （`.sidebar-handle`，指针进左缘热区即滑出）。删除后侧栏只剩「工作区头部 + 文件/大纲」。
+  随之删掉 `AppSidebar.vue` 里只服务于那一行的 `collapseSidebar()`、以及已成为死键的
+  `sidebar.collapse`（三语同步；`sidebar.expand` 仍被左缘把手使用，保留）。
+  `_verify-local-media.js` 的「侧栏收起仍生效」改成驱动**同一条真实入口**（视图菜单项），
+  断言的行为（`ui.sidebarVisible === false`）不变。
+- **H1 / H2 / H3 改成整枚描边字形**：新增 `heading-1/2/3` 图标（H 与数字**同一套 1.8px 描边**，
+  沿用 lucide 的几何），`shared/toolbarItems.ts` 的三个标题项指向它们，工具栏不再额外拼一个
+  `<span>` 数字。原因（实测旧写法）：图标是 15px 描边、数字是 10px **粗体**正文，字重/颜色/基线
+  三者都对不齐（数字基线偏移 8px、字重 700 对描边 1.8），放大看就是「H 1」两个元素并排 ——
+  正是用户说的「很怪」。层级信息仍在 `title` / `aria-label`（「标题 1」）里，可访问性不变。
+
+### Fixed（顺带修掉一条 `--all` 里的既有失败）
+
+- `_verify-sidebar-handle.js` **3/21 → 21/21**：
+  * 选择器 `button.absolute.left-0` 早已被更早的侧栏重构换成 `.sidebar-handle`（改用当前选择器）；
+  * 三处常量/期望与现设计脱节：热区 `31/33` 是旧版 32px 热区的数（实现已是 `EDGE_SHOW_PX=120` /
+    `EDGE_HIDE_PX=200`）⇒ 改成 100/260；把手尺寸 18×48 → **22×56**；「收起只露 4px」→
+    现设计是 `translate3d(-100%)` **整体退到窗口外**，断言改为「整块在左边界之外」。
+  这条已从 `docs/_audit/coverage-matrix.md` §3.6 的失败清单里划掉。
+
+### Verification（本轮实测）
+
+| 项 | 结果 |
+| --- | --- |
+| 几何（隔离实例实测） | `editor-content` padding = `40px 56px 160px`；侧栏 `aside` 内已无「设置 / 关于 / 收起」三个按钮；标题按钮 `span` 数 = 0、`svg` = 1（整枚字形） |
+| 截图核对（临时探针，已删） | H1/H2/H3 放大图：三者与相邻的 B/I 图标同一套描边、同色、同基线；整窗图：正文列左右留白变宽、侧栏底部那一行消失、底部只剩状态栏 |
+| 受影响套件 | `_verify-notify-style` 22/22、`_verify-local-media` 10/10、`_verify-sidebar-handle` 21/21、`_verify-sidebar-handle-style` 19/19、`_verify-a11y` 6/6、`_verify-segmented-control` 16/16、`_verify-toolbar-settings` 37/37、`_verify-welcome-removed` 34/34、`_verify-inline-formats` 182/182、`_verify-surfaces` 37/37、`_regress-layout` 9/9、`_verify-i18n` 5/5、`_verify-toc-style-scroll` 23/23 |
+| 门禁 | `vue-tsc` exit 0、`eslint` 0 error 0 warning、`electron-vite build` exit 0、单测 299/299 |
+
+## [Unreleased · `--all` 全量矩阵复核] — 修掉本轮 E 造成的一条 + 登记其余既有失败
+
+> 收尾动作：`node tools/run-suites.js --all`（68 条：56 PASS / 10 FAIL / 1 SKIP / 1 NOASSERT）。
+> 逐条判定「是不是本轮清单 A–J 造成的」，结果写进 `docs/_audit/coverage-matrix.md` §3.6。
+
+### Fixed
+
+- `_verify-welcome-removed.js` **31/34 → 34/34**，两处都在这一条里：
+  * **本轮 E 造成的**：C 段断言「工具栏里不再有『打开文件/最近文档』按钮」，但它要求
+    `toolbar.found === true` —— 工具栏出厂默认收起后工具栏不在 DOM 里，于是以「找不到工具栏」失败。
+    已补「显式打开工具栏」夹具（断言因此仍然在测它本来的东西）。
+  * **它自己的 SKIP-as-FAIL**：环境不具备时写的是 `c(name, false, 'SKIP: …')` —— 打印了 FAIL 行，
+    运行器按「打印过 FAIL 行」判定 ⇒ 在自己的跳过路径上必然报红（与清单 §1.C 同类）。
+    新增 `skip()` 通道，如实打 `SKIP` 行。
+
+### Docs
+
+- `docs/_audit/coverage-matrix.md` 新增 **§3.6「`--all` 全量复核结果」**：10 条 FAIL + 1 NOASSERT
+  逐条给出判定与证据 —— 1 条本轮已修（上）、3 条既有（cb-line-numbers：三轮对照复现证明与 B/E 无关；
+  sidebar-handle：选择器过期，同题 style 套件 19/19；packaging：本环境跑不了 electron-builder）、
+  3 条运行器 dev-server 探测漏判（`open-file-dedup` / `open-file-routing` / `save-as-workspace`
+  本该按 §3.1 口径标 SKIP）、2 条待查（`menu-export-submenu` 的 `GROUPS` 遍历、`editor-menu-extras`
+  的文件树右键）、1 条 NOASSERT 待修/待删（`rename-fix`）。
+
+## [Unreleased · F 代码块 CodeMirror 虚拟化（O2）] — 不再「每块一个实例」：120 块打开 1070→193ms、CM 120→4
+
+> 来源：桌面《Lumin-待优化清单-2026-09-22.md》§2.F 与配套施工图《Lumin-F项实施方案-代码块CM虚拟化.md》。
+> 原状：每个代码块一个 Vue NodeView + 一个完整 CodeMirror `EditorView`；500 围栏文档打开 22.8s /
+> 常驻 1.4GB，1500 围栏 >185s —— 瓶颈是**块数**不是字符数（纯散文 572k 字符只要 2.24s）。
+
+### Added
+
+- **`src/renderer/src/lib/editor/codeBlockMountPolicy.ts`**：挂载判定（**纯函数** `shouldMountCm()`：
+  `视口附近 ∨ 选区所在 ∨ 刚点过`）+ 一个**共享的** `IntersectionObserver`（`CODE_MOUNT_MARGIN_PX = 600`，
+  按块登记/注销）。观察根用默认视口 —— IntersectionObserver 的相交矩形会被祖先裁剪，分屏下也准，
+  不必给两个 pane 各建 observer。没有 `IntersectionObserver` 的环境直接放行（宁可不省，不能不可编辑）。
+- **`tools/_verify-cb-virtualization.js`**（9 条，已进默认矩阵）：60 块文档里 `.cm-editor` ≤ 12、
+  视口内三块必挂、滚到第 40 块才挂且高度漂移 ≤ 20%、滚过后挂载数仍小、**选区落进屏幕外的第 55 块
+  必须强制挂载**、来回滚（挂/卸 churn）之后第一块仍**可打字**（同时守「卸载丢字符」与
+  「`hasFocus` 守卫计数不归零」两条风险）、换文档后旧块全卸且新文档照常。
+
+### Changed
+
+- **`CodeBlockView.vue` 三态**：mermaid 态（不变）/ **已挂载态**（视口附近、选区所在或刚点过）/
+  **静态态**（`<pre class="cb-static">` 等宽文本 + CSS 行号，**不建 CM**）。
+  挂载条件变化由 `watch(cmMounted)` 驱动；**卸载顺序**是
+  `syncToNode()`（先落盘最后几个字符）→ `teardownCm()` → 记高度 → 静态态 `minHeight` 固定 →
+  `unregisterCodeBlockHandle()`（否则 `findCodeBlockHandle` 会命中没有 CM 的块）。
+  离开视口附近**延迟 500ms** 才卸（来回滚一点不该反复挂/卸）；点静态块会挂上并把光标交给 CM
+  （事件**不** `preventDefault`，让 PM 先把光标放进块里 ⇒ 选区条件也成立）。
+- **静态态与 CM 同一套排版**（`overlays.css` 的 `.cb-static`：12.5px / `--font-mono` / 1.65 /
+  `padding: 10px 4px 14px`，行号走 `.cb-static-gutter`），配合 `minHeight` ⇒ 挂/卸切换高度几乎不差。
+- **`keymap.ts`（P0 / 风险 R1）**：「代码块后空段行首 Backspace」原来**找不到句柄也 `return true`**
+  （按键被吃掉）—— 虚拟化后「屏幕外的块没有句柄」是常态，已改成 `if (!handle) return false`。
+- 两条既有套件的**契约更新**（它们原来假定「代码块一定有 CM」）：
+  * `_verify-surfaces.js` 的「代码块走 CM 渲染」改成**接受两种形态**（远块是静态态，等宽字体仍成立）；
+  * `_verify-cb-languages.js` 改成**逐个围栏滚进视野再量**（否则量到的是一堆静态态 ⇒ 假失败），
+    并顺手把「等语言 chunk 到位」也并进轮询（原来只等挂载，会读到未配语言的空文档）。
+
+### Verification（本轮实测）
+
+| 项 | 结果 |
+| --- | --- |
+| **前后对比**（同一机器/探针，每个状态新建隔离 profile） | 120 围栏（≈7k 字符）：打开 **1,070ms → 193ms**、CM 实例 **120 → 4**；180 围栏（≈10.5k 字符）：打开 **9,101ms → 184ms**、CM 实例 **180 → 4** |
+| 默认矩阵（33 条，含新套件） | **33/33 PASS**（`NOASSERT 0`；另有 4 条断言按环境如实 SKIP） |
+| 代码块相邻面 | `_regress-cb` 3/3、`_verify-cb-button-line-numbers` 26/26、`_verify-cb-languages` 5/5、`_regress-layout` 9/9、`_regress-source-roundtrip` 4/4、`_repro-rapidenter` 4/4、`_verify-md-fidelity` 101/102、`_verify-toc-style-scroll` 23/23、`_verify-surfaces` 37/37、`_verify-surface-stress` 72/72 |
+| `vue-tsc` / `eslint` / `electron-vite build` | exit 0 / 0 error 0 warning / exit 0（`EditorView-*.js` 2,477.59 kB） |
+| 单测 | 299/299 |
+
+**未做（如实记录）**：施工图的 **P2「静态态也做语法高亮」**。理由：挂载边距 600px（约两屏），
+静态块在正常阅读中基本不会出现在屏幕上（只有快滚时一闪）；真要做就用 Lezer 解析器 + `highlightTree`
+生成静态 HTML，不为高亮再建 CM 实例 —— 留作独立一步。
+另：`heavyMode`（≥200 围栏自动降级源码模式）**保持不变**，虚拟化之后这个阈值原则上可放宽
+（方案 §6 提到 200 → 800），但那是一次独立的行为取舍。
+回滚点：`shouldMountCm()` 改成恒真即回到旧行为；`UNMOUNT_DELAY_MS` / `CODE_MOUNT_MARGIN_PX` 两个常量。
+
+## [Unreleased · H 文档体系拆分] — 手册按章拆、CHANGELOG 归档老轮次、台账分离已完成
+
+> 来源：桌面《Lumin-待优化清单-2026-09-22.md》§2.H。原状：`docs/typora-wysiwyg-manual.md`
+> **3,934 行**、`CHANGELOG.md` **2,581 行**、`docs/optimization-program.md` 台账 **501 行** ——
+> 人类已经很难在里面找到「现在到底是怎么实现的」。
+
+### Changed（三处都是**逐字节搬运 + 行数守恒校验**，没有改写内容）
+
+- **手册**：`docs/typora-wysiwyg-manual.md` 变成**索引**（标题 + 引言 + 指向各章的目录），
+  正文按章拆到 `docs/manual/`：`01-design`(82) / `02-core-internals`(85) / `03-interactions`(205) /
+  `04-pitfalls`(841) / `05-plan`(91) / `06-engineering`(33) / `07-roadmap`(34) / `08-appendix`(2540)。
+  校验：各章合计 3,911 行 + 索引前半段 23 行 = 原文 3,934 行 ✓。
+  **章节内部的小节号（§4.23 之类）一字未动**，所以 CHANGELOG / 台账里「见手册 §4.23」这类引用仍然有效。
+- **CHANGELOG**：主文件只留「基线 `[Unreleased]` 段 + 最近 8 轮」（352 行），较老的 **40 轮**（含
+  「历史主题汇总」）搬到 `docs/changelog/archive-01.md`（2,228 行），主文件末尾留一行指路。
+- **台账**：`docs/optimization-program.md` 只留「现状台账 + Wave 4/5 + 需要拍板 + 明确不建议做的」，
+  Wave 1 – Wave 3.2 及之后各轮的已完成记录（410 行）搬到 `docs/_audit/done.md`，主文件留指路。
+
+### Verification（本轮实测）
+
+| 项 | 结果 |
+| --- | --- |
+| 行数守恒 | 手册 3,911 + 23 = **3,934 ✓**；CHANGELOG 主文件 353 行 + 归档 2,228 行（+ 表头）✓；台账 54 + 410 + 37 + 指针 = **501 ✓** |
+| `tests/docsClaims.test.mjs` | 活文档集合改为「README + 手册索引 + **`docs/manual/*.md` 8 个分片** + 台账」——只扫索引会漏掉各章引用的路径；实测无缺失路径 |
+| 单测 | **299/299**（含编码门禁与路径存在性） |
+| 引用有效性 | 手册各章标题号不变 ⇒ CHANGELOG/台账/代码注释里「见手册 §4.xx」的引用不需要改 |
+
+## [Unreleased · I tools/ 收口：0 断言脚本清空 + 常驻探针定编 + 默认矩阵 26→32]
+
+> 来源：桌面《Lumin-待优化清单-2026-09-22.md》§2.I。原状：`tools/` 178 文件 / 31,896 行
+> （比 `src/` 还大），其中 14 个 `_probe-*` 里不少是一次性调试脚本，`--all` 里还混着 0 断言探针。
+
+### Removed（15 个文件）
+
+- **0 断言脚本 7 个**（功能在别处有覆盖，逐条核对过）：`_verify-3tasks`（老 UI 的菜单/toast/重命名 →
+  `_verify-editor-menu` / `_verify-notifications` / `_verify-new-document` / `_verify-rename`）、
+  `_verify-backspace-enter-cb`、`_verify-bs-md`、`_verify-cb-delete-fix`、`_verify-cb-typing`、
+  `_verify-cb-typing2`、`_verify-cb-typing3`（代码块打字/回车/退格 → `_regress-cb` +
+  `_verify-inline-formats` + `_verify-surfaces`）。后三个在矩阵里本来就会崩（要求外面先摆好文档）。
+- **一次性探针 8 个**：`_probe-cjk-flank`、`_probe-fixture`、`_probe-four`、`_probe-paste`、
+  `_probe-taskA`、`_probe-taskB`、`_probe-fences-hot`、`_probe-fences-hot2`
+  （对应的问题都已修好并有套件守着；取证结论都留在 CHANGELOG/手册里）。
+- `_verify-toc-load`：内容并进升级后的 `_verify-toc`（见下）。
+
+### Added / Changed
+
+- **`_verify-toc.js` 从「0 断言探针」升级为 7 条断言的 harness 套件**（TOC 在本仓库没有别的覆盖，
+  所以按「先升级、再归档原始探针」办）：插入目录建节点 / 渲染三个标题链接 / 点击跳转把光标落到目标标题
+  （判据是「光标所在块是 heading 且邻近文本是该标题」，不再赌固定偏移）/ markdown 往返仍是 `[TOC]` /
+  重载 `[TOC]` 还原为目录节点 / **围栏代码里的 `[TOC]` 必须保持字面文本**（新的边界断言）。
+- **默认矩阵 26 → 32**（把有价值的旧套件从 `--all` 提上来）：`_verify-toc`(7)、
+  `_verify-notifications`(32)、`_verify-toolbar-settings`(37)、`_verify-cb-languages`(4)、
+  `_verify-mermaid-gate`(4)、`_verify-neutral-accent`(10)。
+- `tools/README.md`：把 **6 个常驻测量工具**列成表（`_probe-startup` 冷启动/RSS、`_probe-perf`
+  每键耗时、`_probe-fences-total` 2000 围栏 CPU 归因、`_probe-modeswitch` 切面耗时、
+  `_probe-cpu-top` profile 聚合、`_probe-md-baseline` markdown-it 对照基准），并写明「这些别删」。
+
+### Verification（本轮实测）
+
+| 项 | 结果 |
+| --- | --- |
+| 默认矩阵（32 条） | **32/32 PASS**（另有 4 条断言按环境如实 SKIP；`NOASSERT 0`） |
+| `_verify-toc.js` | **7/7**（新增的「围栏内 `[TOC]` 保持文本」也通过） |
+| `tools/` 体量 | 文件 145 → 128、`_verify-*` 76 → 68、`_probe-*` 14 → 6（保留的 6 个已登记为常驻工具） |
+
+## [Unreleased · J 覆盖台账同步] — 矩阵条数/新增与删除/NOASSERT 与 SKIP 口径
+
+> 来源：桌面《Lumin-待优化清单-2026-09-22.md》§2.J。台账（`docs/_audit/coverage-matrix.md`）
+> 没跟上这几轮的变化：新套件、复活/删除的套件、`NOASSERT` 与 SKIP 口径都没记。
+
+### Docs
+
+- §3.1 A/B 两段重写：默认矩阵 **32 条**（逐个点名）+ 「从 `--all` 提上来的 6 条」+ 实测 32/32；
+  `--all` 侧改为「42 个有真断言但不在默认矩阵」并注明**完整清单以 `run-suites.js --all` 为准**
+  （不再手工维护一份必然漂移的长名单）；`_verify-notify-restart` 记入 `MANUAL` 排除的理由。
+- 0 断言那段的 ⚠️ 改成 ✅：**NOASSERT 已是硬门禁**（零断言 = 整轮失败），那批探针已删/升级。
+- §3.2「建议纳入矩阵」勾掉本轮已纳入的 6 条；§3.4 新增/更新两行口径（假绿已修、SKIP 不再算失败）；
+  §3.5 增加「已完成（2026-09 收口）」小节，写清删了哪些、保留哪些、为什么。
+
+## [Unreleased · O3 语言包收窄] — 删掉 `@codemirror/language-data`，改 15 项显式映射（构建 −0.98MB）
+
+> 来源：桌面《Lumin-待优化清单-2026-09-22.md》§1.B（自查报告 O3）。原状：`CodeBlockView.vue`
+> 用 `languages` 表找 `load()` —— 那张表覆盖 115 种语言，构建产物里留下 **116 个 `import()` 目标
+> （实测合计约 1.6MB）**，而组件自己的语言清单只有 15 种（+ mermaid 走预览）。
+
+### Changed
+
+- **显式映射表**（`components/editor/CodeBlockView.vue`）：14 种走 `@codemirror/lang-*`
+  （javascript / typescript / python / html / css / json / sql / java / go / rust / cpp / php / yaml），
+  `bash` / `ruby` 走 `@codemirror/legacy-modes/mode/{shell,ruby}` + `StreamLanguage.define()`；
+  另加 `LANGUAGE_ALIASES`（`js/jsx/mjs/cjs/ts/tsx/py/htm/xml/svg/sh/shell/zsh/console/yml/c++/cc/cxx/h/hpp/golang/rb/mysql/postgres/sqlite`）
+  与原 `language-data` 的别名口径对齐；认不出来的语言**如实退回纯文本**（与原行为一致）。
+- **取舍写进代码注释**：从此只高亮这 15 种（清单外语言按纯文本渲染）——这正是清单 §3
+  点明的「要么省体积、要么保留任意语言」二选一，用户口径是「需要单独排期的全部同意」，故按文档收窄。
+- `package.json`：删 `@codemirror/language-data`，把 13 个原本只作为它传递依赖的包（12 个 `lang-*` +
+  `legacy-modes`）**升为直接依赖**（版本取当前已装版本）；`package-lock.json` 的根依赖集合同步。
+  ⚠️ 本环境**禁止 npm 联网**（`EALLOWREMOTE`，npmmirror 被策略挡住），所以 lock 是用一次性脚本
+  离线对齐根 entries 的（这些包本来就在 lock 树里）——`tests/lockfile.test.mjs` 6/6 通过，
+  `npm ci` 所需的三条一致性（根集合一致 / 声明项在树里 / 无悬空引用）都成立。
+
+### Added
+
+- `tools/_verify-cb-languages.js`（4 条）：**22 个围栏（15 种语言 + 7 个别名）逐个必须有高亮 span**
+  （CM 的 HighlightStyle 生成的 `<span class="ͼ…">`）、清单外语言（`text` / `makefile`）**必须没有**
+  span（证明是「如实退化成纯文本」而不是静默停摆）、语言选择框仍是 16 项。
+
+### Verification（本轮实测）
+
+| 项 | 结果 |
+| --- | --- |
+| 构建产物 | JS 文件 **191 → 89**（−102 个 chunk）；总体积 **11.56MB → 10.58MB（−1,002KB）**；`EditorView-*.js` 2,509.13 → **2,472.47 kB** |
+| `_verify-cb-languages.js`（新增） | **4/4** |
+| 代码块回归 | `_regress-cb` 3/3、`_verify-cb-button-line-numbers` 26/26（本套件整条链路点工具栏按钮 ⇒ 补了「显式打开工具栏」夹具）、`_verify-md-fidelity` 101/102（1 条按环境 SKIP）、`_verify-surface-stress` 72/72 |
+| `tests/lockfile.test.mjs` / `vue-tsc` / `eslint` | 6/6 / exit 0 / 0 error 0 warning |
+
+**顺带查清的两条既有失败（与 B/E 无关，已登记到清单 §2.I）**：
+`_verify-cb-line-numbers.js` 8/13（设置面板里的开关「真实点击」不生效，5 条断言连带失败）——
+用「把工具栏默认值改回 true」与「stash 掉 B 的改动」两次对照复现，确认它与本轮两项改动都无关；
+`_verify-cb-typing2.js`（0 断言老脚本，硬编码外部工作区路径）报 `no cm`。
+
+**顺带修掉编码门禁的一个假阳性**（`tests/encodingGuard.test.mjs`）：它剥代码块用的是
+`` /```[\s\S]*?```/g `` —— 正文里只要**提到**一次三个反引号（本轮 CHANGELOG 写了
+「只要看到 ```mermaid 就加载」），后面所有围栏的配对就整体错位，本该剥掉的历史乱码引用
+漏成「正文」并报假 mojibake。改成按**行首**配对（允许缩进）：`` /^[ \t]*```[\s\S]*?^[ \t]*```/gm ``。
+
+## [Unreleased · E 快捷工具栏默认收起] — 写作面优先（清单 §1.E 选项②）
+
+> 来源：桌面《Lumin-待优化清单-2026-09-22.md》§1.E（报告里列为「需要拍板」，用户口径是
+> 「需要单独排期和拍板的全部同意」，故按文档给出的选项 ② 实现）。
+
+### Changed
+
+- `src/shared/defaults.ts`：`toolbarVisible: true → **false**` —— 本产品是「纸面优先」的写作工具，
+  最显眼的那条 44px 常驻 chrome 恰在正文上方；而它承载的动作**三处重复**（快捷工具栏 /
+  编辑器右键菜单 / 顶部菜单栏），收起来不丢功能。三条重新打开的入口都在：视图 → 显示快捷工具栏
+  （应用内 + 原生菜单 `toggle-toolbar`）、设置 → 编辑器 → 快捷工具栏、工具栏空白区右键（栏在时可见）。
+  **已存在的用户设置不受影响**（落在 kv 里，只有全新 profile 才拿到新默认值）。
+- `tools/lib/harness.js` 新增 `showToolbar(app)`：打开工具栏并**等它真的挂上**
+  （返回是否等到）。运行器给每个套件用的都是全新 userData，所以「默认收起」每个套件都会生效。
+- 夹具显式打开工具栏（用 `showToolbar` 或各自的 store 访问器）：
+  `_regress-layout` / `_regress-divider` / `_regress-source-roundtrip`（用 `clickMode` 切面）、
+  `_verify-find-replace`（源码面用例）、`_verify-inline-formats`（整套在点工具栏按钮）、
+  `_regress-split-live`（模式分段控件 + 几何）、`_verify-segmented-control`、`_verify-bars-no-filename`。
+- `tools/README.md` 补两条规矩：要量工具栏的套件必须 `await showToolbar(app)`；SKIP 不算失败。
+- `tests/toolbarItems.test.mjs` 的默认值断言改为 `false`（并写明为什么是刻意收起的）；
+  README 的功能清单、`docs/_audit/i18n-and-settings.md` 的设置矩阵同步。
+
+### Verification（本轮实测）
+
+| 项 | 结果 |
+| --- | --- |
+| `tests/toolbarItems.test.mjs` | 13/13（默认值断言已翻转） |
+| 工具栏相关套件 | `_verify-segmented-control` 16/16、`_verify-bars-no-filename` 12/12、`_verify-inline-formats` 182/182、`_regress-split-live` 8/8、`_verify-toolbar-settings` 37/37、`_verify-find-replace` 24/24 |
+| 默认矩阵全量（26 条） | 第一轮暴露 3 条真回归（`_regress-layout` 6/9、`_regress-divider` 0/1、`_regress-source-roundtrip` 3/4 —— 全是「用工具栏分段控件切面」的夹具）→ 补夹具后 **26/26 全绿** |
+| `eslint --cache .` | 0 error 0 warning |
+
+## [Unreleased · O1 mermaid 按需（视口门 + 干掉首屏预加载）] — 远处不渲染，`mermaid.core` 不再首屏取
+
+> 来源：桌面《Lumin-待优化清单-2026-09-22.md》§2.G。原状：`CodeBlockView.vue` 的 `onMounted`
+> 只要看到 ```mermaid 就 `import('mermaid')` 并渲染 —— 哪怕块远在屏幕外。
+
+### Changed
+
+- **视口门**（`components/editor/CodeBlockView.vue`）：用 `IntersectionObserver`
+  （`rootMargin: 200px`）把「import + 渲染」推迟到块**进入视口附近**才发生；门未开时块内是
+  **源码占位**（`.mermaid-placeholder`，等宽淡色、可点击进源码编辑），所以块始终有高度、
+  不会是个空洞，放行后 SVG 一到位就替换。容器带 `data-mermaid-gated="pending"` 便于验收。
+  提前 200px 放行 ⇒ 「源码→图表」的高度变化发生在**屏幕外**，正常滚动看不到跳动。
+  导出不受影响（那条路走 `renderMermaidInHtml(html)`，与编辑器视图解耦）。
+- **干掉首屏预加载**（`electron.vite.config.ts`）：实测**Vite 默认的 modulePreload 会把
+  `mermaid.core`（1.23MB）在首屏就取**（路由 chunk 的「动态 import 依赖」被插成
+  `<link rel=modulepreload>`，与文档里有没有 mermaid 块无关）——这跟「mermaid 按需」的初衷相反。
+  现在 `build.modulePreload.resolveDependencies` 把 `mermaid` / `cynefin` / `cytoscape` 一族
+  从预加载依赖里剔掉，真正需要时由 `import('mermaid')` 现取。
+
+### Added
+
+- `tools/lib/harness.js`：`watchEvents(app, onEvent)` —— 订阅 CDP **事件**（原来的句柄只处理带 id
+  的响应）。用于验证「某个懒加载 chunk 到底有没有被取」这类页面侧看不到的事。
+- `tools/_verify-mermaid-gate.js`（4 条）：① 远处块不渲染（无 `svg` + `pending` + 有占位）；
+  ② 启动后 `link[rel=modulepreload]` 里**不含** mermaid 一族；③ 滚入视口后渲染出来、占位被替换；
+  ④ chunk 变成「滚入才取」。
+
+### Verification（本轮实测）
+
+| 项 | 结果 |
+| --- | --- |
+| `_verify-mermaid-gate.js`（新增） | **4/4** |
+| mermaid 既有回归 | `_verify-mermaid-blur.js` 22/22、`_verify-mermaid-cross-block.js` 18/18 |
+| 代码块回归 | `_regress-cb.js` 3/3、`_verify-math.js` 7/7 |
+| `vue-tsc` / `eslint` / `electron-vite build` | exit 0 / 0 error / exit 0（`EditorView-*.js` 2,509.13 kB） |
+
+**过程中查清的两件事（如实记录）**：
+1. 页面侧的 `performance.getEntriesByType('resource')` 在本应用里**恒为空**（实测 `resTotal=0`），
+   用它写「没有取某个 chunk」这种否定断言会**永远通过**（假绿）——已改为读
+   `link[rel=modulepreload]`（可靠）+ CDP 事件（只作参考：`file://` 下 Network 事件并不完整）。
+2. 顺带发现 `tools/_verify-cb-typing.js`（老式 0 断言脚本，要求外面先摆好一份带代码块的文档）
+   在矩阵里会直接崩（`Cannot read properties of null`）——**与本次改动无关**，已登记到清单 §2.I
+   （老脚本迁移/归档）一起处理。
+
+## [Unreleased · S3 第一期] — `lib/editor/defer.ts`：把「躲开 PM 事件顺序」的延后一拍收口
+
+> 来源：桌面《Lumin-待优化清单-2026-09-22.md》§1.D 第 1 步（自查报告 S3）。编辑器里有一批
+> `setTimeout(fn, 0)` 不是防抖也不是节流，而是「必须等 ProseMirror 自己那一轮处理跑完」；
+> 它们散在十几处，每处都要重读注释才敢改。
+
+### Added
+
+- **`src/renderer/src/lib/editor/defer.ts`**：`deferAfterPmEvent(fn) => cancel`。模块头把两类
+  真实约束写清楚了：① 同步 dispatch 会被 PM 自己的 MouseUp/Blur 处理覆盖（实测：点行尾空白时
+  `posAtCoords` 给出块尾，最终光标停在收尾 `**` 之前）；② 松手瞬间 `.pressHidden` 解除、
+  显隐装饰重算、整行左右移动，所以**判据同步量、落点延后写**。文件里同时写明
+  **不能用微任务替代**（`queueMicrotask`/`Promise.then` 仍在本轮 PM 事件内）。
+- `tests/defer.test.mjs`（4 条）：同步阶段不执行 / 顺序是「同步 → 延后」/ 连续两次
+  `await Promise` 仍未执行（证明微任务不能替代）/ `cancel()` 撤销后永不执行。
+
+### Changed
+
+- 已收口到 `deferAfterPmEvent()` 的三处（「新写的 + 下次改到的」口径，不全量替换）：
+  `lib/editor/pointer.ts`（点击链接 → 展开源码）、`lib/editor/typoraInlineMarks.ts`
+  （`handleDOMEvents.mouseup` 的拖选撑标记 + 行尾落点）、
+  `components/editor/TyporaEditor.vue`（`onCreate` 后的 `normalizeMdMarkers()`）。
+
+### Verification（本轮实测）
+
+| 项 | 结果 |
+| --- | --- |
+| 单测 | 295 → **299/299**（新增 4 条） |
+| `vue-tsc` / `eslint` | exit 0 / 0 error 0 warning |
+| `electron-vite build` | exit 0（`EditorView-*.js` 2,507.58 kB） |
+| 编辑器内核套件 | `_verify-drag-selection` 10/10、`_verify-line-end-click` 7/7、`_verify-marker-hold` 11/11、`_verify-inline-formats` 182/182、`_verify-find-replace` 24/24、`_verify-round-24` 15/16 SKIP 1 —— **6/6 全绿** |
+
+## [Unreleased · 套件诚实性三处（清单 §1.C）] — SKIP 不再算失败 / 主题切换改轮询 / 剪贴板先哨兵校验
+
+> 来源：桌面《Lumin-待优化清单-2026-09-22.md》§1.C。三处都是「信号不诚实」：要么把正常的 SKIP
+> 判成红灯，要么让机器负载决定成败，要么让真实剪贴板混进结论。
+
+### Fixed
+
+- **C1 SKIP 被当成 FAIL**（`tools/run-suites.js`）——判定原来有两处会把 SKIP 算成失败：
+  ① `--- N/M PASS` 里的 M 是**断言总数**（含 SKIP，`Reporter.total = passed + failed + skipped`），
+  老写法 `fail = M - N` 于是把 SKIP 当失败；② 状态判定用 `skipped || (code===0 && fail===0)`。
+  实测后果：`_verify-md-fidelity.js`（101/102）、`_verify-round-24.js`（15/16）、
+  `_verify-theme-auto.js` 退出码 0、FAIL 0，却**每轮报红**。现在：优先认三数分开写的
+  `TOTAL … FAIL … SKIP …`；退到老格式或 `--- N/M PASS` 时用 **SKIP 行数**从 M 里扣掉；
+  状态只看「退出码 + FAIL 行」，SKIP 单独在行尾显示（`PASS x/y SKIP n`），并在一轮结束时
+  汇总「另有 N 条断言按环境如实 SKIP —— SKIP 不算失败」。
+- **C2 批次敏感**（`tools/_verify-sidebar-tree-style.js`）——主题循环原来是
+  `set('theme')` + **固定 `sleep(900)`** 就读计算样式；批量跑（机器更忙）时会读到上一套主题的颜色，
+  实测单独 32/32、批量 29/32。改成**轮询双条件**：`<html>` 的 `theme-*` 类到位 + `--paper`
+  真的换了 + **关键颜色连续两次采样相同**（侧栏/行/body 都在 `transition: background-color` 上，
+  只等变量变会读到**过渡途中的插值色** —— 这正是先前 30/32 里 `sel`/`body` 仍是上一套值的原因）。
+- **C3 系统剪贴板污染**（`tools/_verify-inline-formats.js`）——粘贴夹具依赖**真实剪贴板**，
+  批量和单独跑结果不同（179/182 vs 182/182）。现在：① 开头写一个**哨兵值**并读回校验，
+  确认读写通路可用；② 每次 `writeClipboard(md)` 后**读回比对**，不一致就 `SKIP` 并注明是环境问题
+  （不再把它算成「编辑器丢字符」的假回归）。
+
+### Verification（本轮实测）
+
+| 项 | 结果 |
+| --- | --- |
+| 三个曾被记红的套件 | `_verify-round-24.js` **PASS 15/16 SKIP 1**、`_verify-md-fidelity.js` **PASS 101/102 SKIP 1**、`_verify-theme-auto.js` **PASS 11/11**（改前均记 FAIL） |
+| 靶子验证（临时假套件，已删） | 故意打印 `FAIL` 并 `exit 1` 的假套件仍被记 **FAIL**；零断言的假套件仍被记 **NOASSERT** —— 放宽 SKIP 没有削弱另两道闸 |
+| C2 | `_verify-sidebar-tree-style.js` 单独 **32/32**；风格批次（surfaces 37 / neutral-accent 10 / tree-style 32 / toc-style-scroll 23 / segmented-control 16 / a11y 6）**6/6 全绿** |
+| C3 | `_verify-inline-formats.js` **182/182** |
+
+## [Unreleased · S4 数据库版本化迁移] — `services/migrations.ts` + 临时库单测
+
+> 来源：桌面《Lumin-待优化清单-2026-09-22.md》§1.A（自查报告 S4）。原状：163 行顺序幂等 DDL
+> 散在 `database.ts`，末尾挂着一次性迁移 `migrateFileEncodings()` —— 能用，但**没有版本号**，
+> 无法表达「这一步只在 v2→v3 时跑」，也看不出某个库落在哪一版。
+
+### Changed
+
+- **新增 `src/main/services/migrations.ts`**（264 行）：`SCHEMA_VERSION` / `MIGRATIONS` 步骤表 /
+  `readSchemaVersion(db)` / `runMigrations(db)`。从 `user_version + 1` 开始依次执行未跑过的步骤，
+  **每步成功后就地写下版本号**（崩溃后重跑只重做未完成的那一步）。此后新增改动一律追加一步，
+  形如 `{ version: 2, up: (db) => … }`，对更老的库天然生效。
+  - ⚠️ 该文件**不 import electron**（只吃 `node:sqlite` 的 db 句柄），所以单测能直接建临时库跑它。
+  - 原有 DDL 原样收成 **migration 1**（保持幂等 ⇒ 对老库/新库都安全），**SQL 语义一字不改**：
+    尤其 `DELETE FROM notifications WHERE scope = ''` 那条一次性清理与 FTS 的 trigram 检查都保持原样。
+  - `migrateFileEncodings()` 也搬进 migration 1（它本来就是一次性迁移的形态），
+    内部自带的 kv 读写（`kvGet`/`kvSet`）与 `LuminDatabase` 的同名方法**同语义**。
+- `database.ts`：删掉 `migrate()` 与 `migrateFileEncodings()`（−185 行，1089 → 904），
+  constructor 改调 `runMigrations(this.db)`，首次迁移时打一行 **ASCII** 日志
+  `[db] schema migration: v0 -> v1`（主进程 console 必须是 ASCII，见 `tests/mainConsoleAscii.test.mjs`）。
+- **唯一一处行为差异（如实记录）**：FTS「空表重建索引」原来**每次启动**都检查一次，现在只在
+  migration 1 里跑一次 —— 语义等价：那次重建只在「FTS 表被 DROP 重建」时才有意义，而
+  DROP/CREATE 本身就发生在 migration 1 内；将来若再换分词器，会作为新的一步迁移做同样的重建。
+
+### Verification（本轮实测）
+
+| 门禁 | 结果 |
+| --- | --- |
+| `tests/migrations.test.mjs`（新增，`node:sqlite` 临时库） | **4/4**：① 空库 → `user_version=1`、六张表 + FTS(trigram) + documents 三列元数据全在；② 重复跑 4 次幂等不抛错；③ 老库（documents+kv+无 scope 列的 notifications）→ 补齐 `actions/payload/scope`、无归属老通知被清掉；④ kv `fileEncodings` → `documents.encoding`（路径小写+反斜杠归一）、对不上的条目留在 kv、`fileEncodingsMigrated` 打标记、再跑不覆盖 |
+| 单测总量 | 291 → **295/295** |
+| `vue-tsc` / `tsc -p tsconfig.node.json` | exit 0 / exit 0 |
+| `eslint --cache .` | **0 error / 0 warning**（新增文件按 prettier 规整过） |
+| `electron-vite build` | exit 0（`EditorView-*.js` 2,507.47 kB 不变） |
+| 真库路径回归 | `_verify-notify-disk.js` 8/8（直读 `lumin.db` 的表/列/索引）、`_verify-encoding.js` 34/34（文档级元数据）、`_verify-session.js` 17/17 |
