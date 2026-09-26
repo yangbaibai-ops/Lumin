@@ -22,6 +22,7 @@ import * as pathGrants from './services/pathGrants'
 import * as appLog from './services/appLog'
 import * as taskbar from './services/taskbar'
 import * as workspaceIndex from './services/workspaceIndex'
+import * as workspaceReplace from './services/workspaceReplace'
 import * as dbBackup from './services/dbBackup'
 import * as workspaceBackup from './services/workspaceBackup'
 import { onSettingsChanged } from './services/updater'
@@ -69,7 +70,8 @@ import type {
   NotificationInput,
   NotificationListOptions,
   NotificationPatch,
-  SessionSlot
+  SessionSlot,
+  WorkspaceReplaceRequest
 } from '../shared/types'
 
 const closeConfirmed =
@@ -770,6 +772,23 @@ export function registerIpc(slots: SlotRegistry): void {
       if (!win.isDestroyed()) win.webContents.send('workspace:indexProgress', s)
     }
   })
+  /**
+   * 跨文件（工作区级）替换 —— 全局搜索面板的「全部替换」。
+   *
+   * 为什么在主进程而不是渲染层：要读**磁盘上**的正文（渲染层只有当前文档的缓冲区）、
+   * 按每篇自己的编码/行尾/BOM 写回，并让所有写盘都经过 `fileOps.writeFile` 的原子写。
+   * 判定（哪些文件该改、每处替换成什么、跳过谁）在 `shared/workspaceReplace.ts` 的纯函数里。
+   *
+   * `dryRun=true`（确认框那一趟）只统计"会影响 N 个文件 / M 处"，不落盘。
+   * 历史快照复用保存路径的那一份实现：批量替换改的是**磁盘上的旧版本**，
+   * 用户想找回替换前的内容时，本地历史是唯一入口（Ctrl+Z 管不到别的文件）。
+   */
+  ipcMain.handle('workspace:replaceAll', async (_, req: WorkspaceReplaceRequest, dryRun = false) =>
+    workspaceReplace.runWorkspaceReplace(req, {
+      dryRun,
+      beforeWrite: recordHistoryBeforeOverwrite
+    })
+  )
 
   // ── 数据库（文档元数据 / 全文搜索）──
   ipcMain.handle('db:search', (_, query: string, limit?: number) => db.search(query, limit ?? 30))

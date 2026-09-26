@@ -379,6 +379,21 @@ class LuminDatabase {
   }
 
   /**
+   * 库里有索引的全部文档路径，**原始大小写**。
+   *
+   * 用途：跨文件（工作区级）替换的候选集 —— `documents` 表就是"工作区里有哪几篇文档"的
+   * 现成清单（由 `services/workspaceIndex` 在工作区打开时补齐），不必再走一遍目录树。
+   * 一定要原始大小写：调用方要用这个路径回写 `indexDocumentForSearch`，而 UPSERT 的键是
+   * 路径字符串本身 —— 拿 `indexedMtimes()` 的小写键回写会在大小写敏感的场景下写出第二行。
+   */
+  listDocumentPaths(): string[] {
+    const rows = this.db.prepare('SELECT path FROM documents').all() as unknown as {
+      path: string
+    }[]
+    return rows.map((r) => r.path)
+  }
+
+  /**
    * 已索引文档的 mtime 表，**键为小写路径**（Windows 不区分大小写）。
    * 索引器一次取全：逐篇查库在几千篇的工作区上就是几千次查询。
    */

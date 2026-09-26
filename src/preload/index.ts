@@ -137,6 +137,8 @@ const api: LuminAPI = {
     // 全文索引：状态查询 + 手动重建（后台索引在 setRoot 时自动起，见 services/workspaceIndex）
     indexStatus: () => ipcRenderer.invoke('workspace:indexStatus'),
     reindex: () => ipcRenderer.invoke('workspace:reindex'),
+    // 跨文件（工作区级）替换：dryRun=true 只统计、不落盘（确认框那一趟）
+    replaceAll: (req, dryRun) => ipcRenderer.invoke('workspace:replaceAll', req, dryRun),
     onIndexProgress: (fn) => {
       const handler = (_e: unknown, s: unknown): void => fn(s as never)
       ipcRenderer.on('workspace:indexProgress', handler)

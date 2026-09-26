@@ -402,6 +402,52 @@ export interface SearchResult {
   modifiedAt: number
 }
 
+/**
+ * 跨文件（工作区级）替换的请求（`workspace:replaceAll`）。
+ * 匹配口径与单文档查找/替换**完全一致**（同一份实现，见 shared/findReplace.ts）：
+ * 默认按字面量、正则要显式开、大小写可开关。
+ */
+export interface WorkspaceReplaceRequest {
+  query: string
+  replacement: string
+  caseSensitive?: boolean
+  regex?: boolean
+  /**
+   * 本窗口里**已打开且有未保存修改**的文档：绝不写盘。
+   * 脏标记只有渲染层知道（主进程只见过"哪个窗口开着哪个文档"，见 services/openDocs），
+   * 所以由调用方带过来 —— 漏传的后果是把用户正在编辑的缓冲区从磁盘上换掉。
+   */
+  dirtyPaths?: string[]
+}
+
+/**
+ * 跨文件替换的结果。
+ *
+ * `files`/`occurrences` 是**计划**数（干跑时就是"将会影响多少"），
+ * `written`/`writtenOccurrences` 是**真的落盘成功**的数 —— 两者分开是为了让
+ * 「部分成功」能被如实说出来（3 个成功、2 个失败 + 逐个原因），而不是拿计划数冒充结果。
+ */
+export interface WorkspaceReplaceResult {
+  /** 请求不可执行的原因（null = 执行了；此时什么都没动）。no-workspace = 还没打开工作区 */
+  invalid: 'empty-query' | 'invalid-regex' | 'no-workspace' | null
+  /** 会被改写的文件数（计划） */
+  files: number
+  /** 会被替换的处数（计划） */
+  occurrences: number
+  /** 真正写盘成功的文件数（干跑恒为 0） */
+  written: number
+  /** 真正写盘成功的处数（干跑恒为 0） */
+  writtenOccurrences: number
+  /** 因「有未保存修改」被跳过的文档 */
+  skippedDirty: string[]
+  /** 因「不是 Markdown/纯文本」被跳过的文档 */
+  skippedUnsupported: string[]
+  /** 逐个失败的文档与原因 */
+  failures: { path: string; reason: string }[]
+  /** 这次调用是否真的落了盘（false = 预览） */
+  applied: boolean
+}
+
 export interface ExportPayload {
   title: string
   html: string
@@ -672,6 +718,13 @@ export interface LuminAPI {
     indexStatus: () => Promise<IndexStatus>
     /** 手动重建索引（换机器 / 库被清过 / 怀疑索引不全时用） */
     reindex: () => Promise<IndexStatus>
+    /**
+     * 跨文件（工作区级）替换：把当前查询在**已索引的工作区文档**里替换掉。
+     * `dryRun=true` 只统计「会影响 N 个文件 / M 处」而不落盘（确认框靠它）。
+     * 写盘走 `fileOps.writeFile` 的原子写；跳过有未保存修改的文档、非 Markdown 文件，
+     * 失败的逐个报告（见 WorkspaceReplaceResult）。
+     */
+    replaceAll: (req: WorkspaceReplaceRequest, dryRun?: boolean) => Promise<WorkspaceReplaceResult>
     /** 订阅索引进度；返回取消订阅的函数 */
     onIndexProgress: (fn: (s: IndexStatus) => void) => () => void
   }

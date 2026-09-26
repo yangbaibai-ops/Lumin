@@ -115,6 +115,10 @@
     "paste": "粘贴",
     "selectAll": "全选"
   },
+  "fileTree": {
+    "moveTo": "移动到…",
+    "moveToRoot": "工作区根目录"
+  },
   "context": {
     "openNewWindow": "在新窗口打开",
     "newFile": "新建文件",
@@ -441,6 +445,11 @@
     "renamedTo": "已重命名为「{name}」",
     "renameUndoFailed": "撤销重命名失败（原名字可能已被占用）",
     "renameExists": "同目录下已经有同名文件了，重命名未执行（不会覆盖已有文件）",
+    "movedTo": "已移动「{name}」",
+    "moveExists": "目标文件夹里已经有同名项了，未移动（不会覆盖已有文件）",
+    "moveIntoSelf": "不能把文件夹移动到它自己或它的子文件夹里",
+    "moveOutside": "目标文件夹不在当前工作区里，未移动",
+    "moveFailed": "移动失败：{reason}",
     "deletePermanent": "该位置不支持回收站，文件已被永久删除",
     "saveParentMissing": "保存失败：文件所在的文件夹已经不存在了（可能在别处被删除或改名）。请用「另存为」把它存到别的地方。",
     "encodingReopenAutoSaveSkipped": "为避免把乱码写回磁盘，本次自动保存已跳过（当前是按「{enc}」重新解释的内容）；确认编码无误后请手动保存。",
@@ -604,7 +613,20 @@
     "hintSelect": "选择",
     "engine": "SQLite FTS5 全文索引",
     "indexing": "正在索引… 已看 {n} 篇",
-    "indexReady": "索引就绪（{n} 篇）"
+    "indexReady": "索引就绪（{n} 篇）",
+    "replacePlaceholder": "替换为…",
+    "replaceRunning": "替换中…",
+    "replaceNothing": "没有可替换的内容",
+    "replaceNoWorkspace": "跨文件替换需要一个已打开的工作区",
+    "replaceConfirmTitle": "跨文件替换",
+    "replaceConfirmBody": "将把「{query}」替换为「{replacement}」：影响 {files} 个文件、共 {n} 处，且不可撤销。",
+    "replaceConfirmSkip": "已跳过有未保存修改的文档（未写盘）：{list}",
+    "replaceConfirmIndexing": "注意：全文索引还在建立，尚未索引的文档这次不会被替换。",
+    "replaceConfirmErrors": "有 {n} 个文件这次无法替换、将被跳过：{list}",
+    "replaceDone": "已替换 {files} 个文件、共 {n} 处",
+    "replacePartial": "{ok} 个成功、{failed} 个失败",
+    "replaceFailureList": "失败的文档：{list}",
+    "replaceSkippedList": "已跳过（有未保存修改）：{list}"
   },
   "dialog": {
     "allFiles": "所有文件",

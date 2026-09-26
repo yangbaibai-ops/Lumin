@@ -115,6 +115,10 @@
     "paste": "Paste",
     "selectAll": "Select All"
   },
+  "fileTree": {
+    "moveTo": "Move to…",
+    "moveToRoot": "Workspace root"
+  },
   "context": {
     "openNewWindow": "Open in New Window",
     "newFile": "New File",
@@ -441,6 +445,11 @@
     "renamedTo": "Renamed to \"{name}\"",
     "renameUndoFailed": "Could not undo the rename (the old name may be taken)",
     "renameExists": "A file with that name already exists here — rename cancelled (nothing was overwritten)",
+    "movedTo": "Moved \"{name}\"",
+    "moveExists": "The target folder already has an item with that name — nothing was moved (existing files are never overwritten)",
+    "moveIntoSelf": "A folder cannot be moved into itself or into one of its own subfolders",
+    "moveOutside": "The target folder is not inside the current workspace — nothing was moved",
+    "moveFailed": "Move failed: {reason}",
     "deletePermanent": "This location has no recycle bin — the file was deleted permanently",
     "saveParentMissing": "Save failed: the folder that held this file no longer exists (deleted or renamed elsewhere). Use Save as to store it somewhere else.",
     "encodingReopenAutoSaveSkipped": "Auto-save skipped to avoid writing mojibake back to disk (content is currently reinterpreted as “{enc}”). Save manually once you are sure about the encoding.",
@@ -605,7 +614,20 @@
     "hintSelect": "Select",
     "engine": "SQLite FTS5 full-text index",
     "indexing": "Indexing… {n} scanned",
-    "indexReady": "Index ready ({n} files)"
+    "indexReady": "Index ready ({n} files)",
+    "replacePlaceholder": "Replace with…",
+    "replaceRunning": "Replacing…",
+    "replaceNothing": "Nothing to replace",
+    "replaceNoWorkspace": "Replace in files needs an open workspace",
+    "replaceConfirmTitle": "Replace in files",
+    "replaceConfirmBody": "Replace “{query}” with “{replacement}”: {files} file(s), {n} occurrence(s) in total. This cannot be undone.",
+    "replaceConfirmSkip": "Skipped documents with unsaved changes (not written): {list}",
+    "replaceConfirmIndexing": "Note: the full-text index is still being built, so documents that are not indexed yet will not be replaced.",
+    "replaceConfirmErrors": "{n} file(s) cannot be replaced this time and will be skipped: {list}",
+    "replaceDone": "Replaced {n} occurrence(s) in {files} file(s)",
+    "replacePartial": "{ok} succeeded, {failed} failed",
+    "replaceFailureList": "Failed documents: {list}",
+    "replaceSkippedList": "Skipped (unsaved changes): {list}"
   },
   "dialog": {
     "allFiles": "All files",
