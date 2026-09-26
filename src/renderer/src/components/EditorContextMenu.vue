@@ -7,6 +7,7 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useEditorMenuStore } from '../stores/editorMenu'
+import { placeAtPoint, placeSubmenu } from '../lib/menuPlacement'
 import Icon from './Icon.vue'
 
 const { t } = useI18n()
@@ -17,19 +18,18 @@ const catRefs = ref<Record<string, HTMLElement | null>>({})
 const pos = ref({ left: 0, top: 0 })
 const subPos = ref({ left: 0, top: 0 })
 
-/** 按实测尺寸把菜单钳制在视口内（贴边显示，不溢出） */
+/** 按实测尺寸把菜单钳制在视口内（贴边显示，不溢出）——几何在 lib/menuPlacement（三处共用） */
 function measureAndClamp(): void {
   const el = menuRef.value
   if (!el) return
   // 用 offsetWidth/Height 而不是 getBoundingClientRect：入场动效带 scale，
   // 后者会返回缩放后的尺寸（96%），据此钳制会导致贴边时仍溢出几个像素
-  const w = el.offsetWidth
-  const h = el.offsetHeight
-  const margin = 8
-  pos.value = {
-    left: Math.max(margin, Math.min(menu.x, window.innerWidth - w - margin)),
-    top: Math.max(margin, Math.min(menu.y, window.innerHeight - h - margin))
-  }
+  pos.value = placeAtPoint(
+    menu.x,
+    menu.y,
+    { width: el.offsetWidth, height: el.offsetHeight },
+    { width: window.innerWidth, height: window.innerHeight }
+  )
 }
 
 async function place(): Promise<void> {
@@ -42,7 +42,8 @@ async function place(): Promise<void> {
  * 二级菜单定位：贴在一级面板右侧，**不留缝隙**（重叠 1px），右侧放不下则翻到左侧。
  * 贴死是「指针一定移得进二级」的第一道保障：两块之间不留任何空隙，安全区（见
  * inSafeZone）才是一个连通区域，指针从分类行走向二级的全程都被视为「还在菜单上」。
- * 曾经留 2px 空档，配合 mouseleave 立即收起，就出现了「怎么都移不到二级菜单上」。
+ * 曾经留 2px 空档，配合 mouseleave 立即收起，就出现了「怎么都移不到二级菜单上」——
+ * 这条规则现在三处共用（`lib/menuPlacement` 的 SUBMENU_OVERLAP）。
  */
 async function placeSub(): Promise<void> {
   await nextTick()
@@ -53,14 +54,13 @@ async function placeSub(): Promise<void> {
   const compute = (): void => {
     const row = cat.getBoundingClientRect()
     const panelRect = panel.getBoundingClientRect()
-    const w = sub.offsetWidth
-    const h = sub.offsetHeight
-    const margin = 8
-    const flip = panelRect.right + w > window.innerWidth - margin
-    subPos.value = {
-      left: Math.max(margin, flip ? panelRect.left - w + 1 : panelRect.right - 1),
-      top: Math.max(margin, Math.min(row.top - 6, window.innerHeight - h - margin))
-    }
+    subPos.value = placeSubmenu({
+      parentLeft: panelRect.left,
+      parentRight: panelRect.right,
+      rowTop: row.top,
+      size: { width: sub.offsetWidth, height: sub.offsetHeight },
+      viewport: { width: window.innerWidth, height: window.innerHeight }
+    })
   }
   compute()
   // 补一帧：二级内容换行/字体就绪后尺寸可能变化

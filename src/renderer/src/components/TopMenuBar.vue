@@ -18,6 +18,7 @@ import { ENCODINGS } from '../../../shared/encodings'
 import { EOL_OPTIONS } from '../../../shared/eol'
 // 导出格式的唯一清单（应用内菜单的二级项从它派生）
 import { EXPORT_FORMATS } from '../../../shared/exportFormats'
+import { placeSubmenuX } from '../lib/menuPlacement'
 import RecentList from './RecentList.vue'
 import Icon from './Icon.vue'
 
@@ -442,8 +443,15 @@ function placeSub(rowEl: HTMLElement, sub: SubMenu): void {
     // 二级内容宽度按最宽项估算：RecentList 面板固定 300，children 菜单 220
     const w = sub.slot ? 300 : 220
     const base = panel ?? row
-    const flip = base.right + w > window.innerWidth - 8
-    subStyle.left = `${Math.round(flip ? Math.max(8, base.left - w + 1) : base.right - 1)}px`
+    // 横向落点与两个右键菜单**共用同一条规则**（lib/menuPlacement）：贴死父面板、右侧放不下翻左侧。
+    // 纵向这里不同：不量二级高度，而是钳 top + 按"到窗口底部还剩多少"给 maxHeight（见下）。
+    const x = placeSubmenuX({
+      parentLeft: base.left,
+      parentRight: base.right,
+      width: w,
+      viewportWidth: window.innerWidth
+    })
+    subStyle.left = `${Math.round(x.left)}px`
     const top = Math.round(Math.max(8, Math.min(row.top - 6, window.innerHeight - 120)))
     subStyle.top = `${top}px`
     // 高度必须按「到窗口底部还剩多少」钳制并允许内部滚动：编码那类二级有 14 项（≈480px），
