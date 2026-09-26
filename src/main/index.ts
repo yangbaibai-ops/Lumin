@@ -16,6 +16,7 @@ import { optimizer, is } from '@electron-toolkit/utils'
 import appIconPng from '../../resources/icon.png?asset'
 import { installMenu } from './menu'
 import { canRestoreWindow, windowStateFor } from './windowPlacement'
+import { planOpenRequest } from './openRequest'
 import { mainT } from './i18n'
 import { registerIpc, attachCloseGuard } from './ipc'
 import { isServableMedia } from './fileOps'
@@ -568,30 +569,26 @@ function focusExistingWindow(): void {
  *  ④ 都没有 → 聚焦已有窗口
  */
 function handleOpenRequest(intent: LaunchIntent): void {
-  if (intent.newWindow) {
-    createWindow({
-      openFile: intent.openFile ?? undefined,
-      openFolder: intent.openFolder ?? undefined,
-      // 只有「纯新窗口」才是干净窗口（不继承当前工作区）；带了目标就按目标的落点规则走
-      noWorkspace: !intent.openFile && !intent.openFolder,
-      sessionSlot: claimFreshSlot()
-    })
-    return
-  }
-  if (intent.openFile) {
-    const existing = openDocs.findWindowWithDoc(intent.openFile)
-    if (existing) {
-      openDocs.focusWindow(existing)
+  // 落点规则本身是纯函数（main/openRequest.ts，有单测）；这里只做"问一句 + 照做"。
+  // 问一次就够：`existing` 既是"要不要聚焦"的输入，也是要聚焦的那个窗口（两次调用可能拿到不同对象）。
+  const existing = intent.openFile ? openDocs.findWindowWithDoc(intent.openFile) : null
+  const plan = planOpenRequest(intent, { docAlreadyOpen: existing !== null })
+  switch (plan.kind) {
+    case 'focus-doc':
+      if (existing) openDocs.focusWindow(existing)
       return
-    }
-    createWindow({ openFile: intent.openFile, sessionSlot: claimFreshSlot() })
-    return
+    case 'focus-any':
+      focusExistingWindow()
+      return
+    case 'new-window':
+      createWindow({
+        openFile: plan.openFile,
+        openFolder: plan.openFolder,
+        noWorkspace: plan.noWorkspace,
+        sessionSlot: claimFreshSlot()
+      })
+      return
   }
-  if (intent.openFolder) {
-    createWindow({ openFolder: intent.openFolder, sessionSlot: claimFreshSlot() })
-    return
-  }
-  focusExistingWindow()
 }
 
 /**
