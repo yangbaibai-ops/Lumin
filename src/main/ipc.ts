@@ -55,6 +55,7 @@ import type {
   EpubMeta,
   ExportPayload,
   LinkActivateRecord,
+  LinkResolveResult,
   NotificationInput,
   NotificationListOptions,
   NotificationPatch,
@@ -850,23 +851,55 @@ export function registerIpc(slots: SlotRegistry): void {
   ipcMain.handle('shell:openPath', async (_, p: string) => {
     const abs = path.resolve(p)
     /**
-     * 纵深防御：可执行 / 脚本类**永远不交给系统 shell**。
+     * 纵深防御①：可执行 / 脚本类**永远不交给系统 shell**。
      * 正常路径上渲染层已经用 `links:resolve` 的 `unsafe-target` 拦过一次（有提示、有记录），
      * 这里是最后一道闸 —— 渲染层任何一处漏判都不会变成"文档里点一下就运行本地程序"。
      * 返回一句可识别的原因（而不是静默失败），渲染层会把它显示出来。
      */
     if (links.isUnsafeOpenTarget(abs)) return 'UNSAFE_OPEN_TARGET'
+    /**
+     * 纵深防御②：只把**已授权**的路径交给系统默认应用（清单 §4 P1「`shell:openPath` 是
+     * 任意路径执行入口」）。此前这个 handler 是"给我任意路径，我交给 OS"的直通口，
+     * 而 `pathGrants` 那份授权表（工作区 / 用户挑选 / 拖入 / 当前文档目录 / 会话与历史）
+     * 完全没被它用到 —— 同一份表在 `file:read` 上已经生效（见下面 `assertAuthorized`）。
+     *
+     * 授权来源不只有上面那几类：**用户真的点了文档里的链接**时，`links:resolve` 会为目标
+     * 记一条只读授权（`grantLinkTarget`），所以"打开工作区外的链接目标"这个正常功能仍然可用。
+     * 与 `pathGrants` 的口径一致：这不是能力沙箱，挡的是"文档内容驱动的路径静默落到系统处理器"
+     * 与"渲染层随手把任意路径交出去"这两类，且拒绝原因可识别、可断言。
+     */
+    if (!pathGrants.isAuthorized(abs, 'read')) return 'PATH_NOT_AUTHORIZED'
     // shell.openPath 返回空字符串表示成功，否则是系统给的错误信息
     return shell.openPath(abs)
   })
 
   // ── 链接目标：解析 / 创建 / 历史记录 ──
-  ipcMain.handle('links:resolve', (_, target: string, baseDir: string | null) =>
-    links.resolveLinkTarget(target, baseDir)
-  )
-  ipcMain.handle('links:create', (_, p: string, type: 'file' | 'directory') =>
-    links.createLinkTarget(p, type)
-  )
+  /**
+   * 链接激活时的**只读授权**：`links:resolve` 只由渲染层的链接激活路径调用
+   * （`lib/linkOpen.ts`，用户点了正文里的链接才会走到），所以这里等于"用户意图"的登记。
+   * 口径与"拖进窗口的文件"一致：**必须真实存在**、只读；不存在的目标等 `links:create`
+   * 成功后由那条路径授权。它让 `shell:openPath` 的授权闸不会把正常功能一起挡掉。
+   */
+  const grantLinkTarget = (res: LinkResolveResult): void => {
+    if (!res.path || !res.exists || res.blocked) return
+    if (res.entryType === 'directory') pathGrants.grantDir(res.path)
+    else pathGrants.grantDroppedRead(res.path)
+  }
+  ipcMain.handle('links:resolve', async (_, target: string, baseDir: string | null) => {
+    const res = await links.resolveLinkTarget(target, baseDir)
+    grantLinkTarget(res)
+    return res
+  })
+  ipcMain.handle('links:create', async (_, p: string, type: 'file' | 'directory') => {
+    const res = await links.createLinkTarget(p, type)
+    // 刚由用户操作创建出来的文件/文件夹：给读写/目录授权，紧接着的"打开"才走得通
+    if (res.ok) {
+      const abs = path.resolve(p)
+      if (type === 'directory') pathGrants.grantDir(abs)
+      else pathGrants.grantFileReadWrite(abs)
+    }
+    return res
+  })
   ipcMain.handle('links:record', (_, record: LinkActivateRecord) => db.recordLinkOpen(record))
   ipcMain.handle('links:history', (_, limit?: number) => db.listLinkHistory(limit ?? 50))
   ipcMain.handle('links:forget', (_, target: string) => db.forgetLinkOpen(target))

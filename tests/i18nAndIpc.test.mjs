@@ -132,3 +132,57 @@ test('IPC：主进程注册但没人调的通道必须登记原因（死通道�
   const dead = [...handlers].filter((c) => !invokes.has(c) && !KNOWN_DEAD.has(c)).sort()
   assert.deepEqual(dead, [], '这些通道注册了但没人调用：请删除，或在 KNOWN_DEAD 里写明原因')
 })
+
+test('IPC：shell:openPath 必须过授权闸（顺序也要对：黑名单 → 授权 → 交给系统）', () => {
+  /**
+   * 清单 §4 P1「`shell:openPath` 是任意路径执行入口」。
+   *
+   * 这条守的是**接线**而不是运行时行为（运行时那半在 `tools/_verify-path-grants.js` 里，
+   * 用一条不存在的路径断言拿到 `PATH_NOT_AUTHORIZED` —— 拿不到就说明闸门被摘了）。
+   * 静态守卫的价值在于：把两行闸门不小心删掉时，单元测试立刻红，而不是等一次 CDP 套件。
+   */
+  const text = fs.readFileSync(path.join(ROOT, 'src', 'main', 'ipc.ts'), 'utf-8')
+  const body = text.slice(text.indexOf(`ipcMain.handle('shell:openPath'`))
+  const end = body.indexOf('ipcMain.handle(')
+  const handler = body.slice(0, end > 0 ? end : body.length)
+  const iUnsafe = handler.indexOf('links.isUnsafeOpenTarget(abs)')
+  const iAuth = handler.indexOf(`pathGrants.isAuthorized(abs, 'read')`)
+  const iOpen = handler.indexOf('shell.openPath(abs)')
+  assert.ok(iUnsafe > 0, 'shell:openPath 缺可执行类黑名单闸')
+  assert.ok(iAuth > 0, "shell:openPath 缺 pathGrants.isAuthorized(abs, 'read') 授权闸")
+  assert.ok(iOpen > 0, 'shell:openPath 没有真的调用 shell.openPath')
+  assert.ok(iUnsafe < iAuth && iAuth < iOpen, '三道闸的顺序错了（授权必须在交给系统之前）')
+  // 正常功能不能因此断掉：链接激活时要给目标记一条授权
+  assert.match(text, /grantLinkTarget/, 'links:resolve 没有为目标登记只读授权')
+})
+
+test('IPC：preload 的出站通道白名单与主进程真实发送点一一对应', () => {
+  /**
+   * 清单 §4 P2「`events.on(channel, cb)` 没有通道白名单」。
+   *
+   * 两侧对账（任一方向漂了都要红）：
+   *   * 主进程 `webContents.send(...)` / `sender.send(...)` 的通道 → 必须在 preload 白名单里
+   *     （不在 = 渲染层收不到，功能静默失效）；
+   *   * 白名单里的每条 → 必须真的有发送点（死条目会让人以为"白名单很全"）。
+   */
+  const preload = fs.readFileSync(path.join(ROOT, 'src', 'preload', 'index.ts'), 'utf-8')
+  const block = preload.slice(preload.indexOf('const EVENT_CHANNELS = ['))
+  const listText = block.slice(0, block.indexOf('] as const'))
+  const white = new Set([...listText.matchAll(/'([^']+)'/g)].map((m) => m[1]))
+  assert.ok(white.size >= 5, `白名单只解析到 ${white.size} 条，解析路径可能不对`)
+
+  const outbound = new Set()
+  for (const f of walk(path.join(ROOT, 'src', 'main'))) {
+    const text = fs.readFileSync(f, 'utf-8')
+    for (const m of text.matchAll(/(?:webContents|sender)\.send\(\s*'([^']+)'/g)) outbound.add(m[1])
+  }
+  assert.ok(outbound.size >= 5, `只扫到 ${outbound.size} 个出站通道，扫描口径可能不对`)
+  const notWhitelisted = [...outbound].filter((c) => !white.has(c)).sort()
+  const deadEntries = [...white].filter((c) => !outbound.has(c)).sort()
+  assert.deepEqual(
+    notWhitelisted,
+    [],
+    `主进程发了但 preload 白名单里没有：${notWhitelisted.join(', ')}`
+  )
+  assert.deepEqual(deadEntries, [], `白名单里没有真实发送点（死条目）：${deadEntries.join(', ')}`)
+})

@@ -26,6 +26,26 @@ const sessionSlot: number | null = (() => {
   return Number.isInteger(n) && n >= 0 ? n : null
 })()
 
+/**
+ * 主进程 → 渲染层**出站通道白名单**（清单 §4 P2「`events.on(channel, cb)` 没有通道白名单」）。
+ *
+ * 为什么要有：`ipcRenderer.on` 本身不校验通道名，被注入的页面可以注册任意通道的监听 ——
+ * 虽然当前没有任何"把敏感数据广播到任意通道"的发送点，但这条口子会让"以后随手加一个
+ * 广播通道"变成静默的越权面。白名单是**唯一真相源**：新增出站通道必须同时加进这里，
+ * `tests/i18nAndIpc.test.mjs` 会拿主进程真实的 `webContents.send(...)` 跟它对账
+ * （少登记 = 渲染层收不到；多登记 = 死条目，两条都会被测试拦下）。
+ */
+const EVENT_CHANNELS = [
+  'menu:action',
+  'app:before-close',
+  'workspace:changed',
+  'workspace:indexProgress',
+  'notifications:changed',
+  'update:status'
+] as const
+
+const EVENT_CHANNEL_SET: ReadonlySet<string> = new Set(EVENT_CHANNELS)
+
 // Custom APIs for renderer
 const api: LuminAPI = {
   app: {
@@ -188,6 +208,12 @@ const api: LuminAPI = {
   },
   events: {
     on: (channel, cb) => {
+      // 非白名单通道：不注册、也不抛（抛会把整段初始化打断），留一条 ASCII 警告便于排查。
+      // 返回一个 no-op 取消函数，调用方的 `off?.()` 写法不用改。
+      if (!EVENT_CHANNEL_SET.has(channel)) {
+        console.warn('[preload] refused non-whitelisted event channel:', channel)
+        return () => {}
+      }
       const listener = (_: unknown, payload?: unknown): void => cb(payload)
       ipcRenderer.on(channel, listener)
       return () => ipcRenderer.removeListener(channel, listener)
