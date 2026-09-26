@@ -18,6 +18,7 @@
 - [6. 工程化与质量保障](manual/06-engineering.md)
 - [7. 可扩展性路线图](manual/07-roadmap.md)
 - [8. 附录](manual/08-appendix.md)
+- [9. 组件与控件清单（哪个控件必须用哪个组件）](manual/09-components.md)
 
 ---
 

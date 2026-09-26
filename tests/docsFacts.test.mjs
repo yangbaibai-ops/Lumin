@@ -78,6 +78,32 @@ test('docs：CHANGELOG 的版本段都带日期（[Unreleased] 除外）', () =>
   }
 })
 
+test('docs：组件清单文档存在、被索引，且它点名的组件文件都在（审计 §8 P2）', () => {
+  /**
+   * 审计 §8 P2「没有设计令牌 / 组件清单文档」：令牌文档（`docs/design-tokens.md`）是生成式 + 有门禁的，
+   * 但"哪个控件必须用哪个组件"此前没有任何可查的落点 —— 于是同一个开关攒出三种实现。
+   * 这条守住：① 文档在；② 被手册目录索引到（不然没人会翻到）；
+   * ③ 它**点名的每一个路径都存在**（文档里的路径是最容易烂的东西）。
+   */
+  const rel = 'docs/manual/09-components.md'
+  const file = path.join(ROOT, rel)
+  assert.ok(fs.existsSync(file), `${rel} 必须存在（组件清单：开关/分段/滑杆/浮层/播报）`)
+  const doc = fs.readFileSync(file, 'utf-8')
+  const index = fs.readFileSync(path.join(ROOT, 'docs', 'typora-wysiwyg-manual.md'), 'utf-8')
+  assert.match(index, /manual\/09-components\.md/, '手册目录里没有索引到组件清单')
+  // 必写的几类控件都要在这份清单里出现（否则它退化成一个空壳）
+  for (const key of ['SettingSwitch', 'SegmentedControl', '.range', 'aria-modal', 'aria-live']) {
+    assert.ok(doc.includes(key), `组件清单里应当写到 ${key}`)
+  }
+  // 文档里点名的仓库路径必须存在（`src/...` / `docs/...`；URL 与代码块里的通配已排除）
+  const refs = [...doc.matchAll(/`((?:src|docs)\/[\w./-]+)`/g)].map((m) => m[1])
+  assert.ok(refs.length >= 5, `组件清单只引用了 ${refs.length} 个路径，太少了`)
+  for (const r of refs) {
+    if (r.includes('*')) continue
+    assert.ok(fs.existsSync(path.join(ROOT, r)), `组件清单引用的路径不存在：${r}`)
+  }
+})
+
 test('docs：工程手册的套件数字与 run-suites.js 实测一致（审计 §10 P1）', () => {
   /**
    * `docs/manual/06-engineering.md` 的 §6 写过「79 个套件文件 / 默认矩阵 43 条」，
