@@ -688,6 +688,15 @@ watch(
 // 落点规则与「打开文件 / Ctrl+O」完全一致，统一在 lib/openFile.ts：无工作区 → 本窗口
 // 打开并把侧栏切到该文件的文件夹；已有工作区 → 新窗口打开；已打开同一个文件 → 不重复。
 async function onDrop(e: DragEvent): Promise<void> {
+  /**
+   * 先看内层有没有**已经处理**这次拖放（审计 §7 复查发现的疑似缺陷）。
+   *
+   * 图片粘贴/拖入是内核的 `handleDrop`（`lib/editor/imagePaste.ts`）在做事，它会
+   * `preventDefault` 但**不 stopPropagation**，事件继续冒泡到这里；而这里只认 .md/.txt 后缀，
+   * 于是把一张 png 拖进编辑区会得到两个结果：图片真的插进去了，**同时**弹一条
+   * 「不支持的文件类型」。`defaultPrevented` 就是"内层已经认领"的信号。
+   */
+  if (e.defaultPrevented) return
   const file = e.dataTransfer?.files?.[0]
   if (!file) return
   const path = window.luminAPI.file.getPathForFile(file)
