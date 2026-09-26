@@ -93,6 +93,63 @@ test('文档里引用的仓库路径都存在（README / 手册 / 台账）', ()
   )
 })
 
+test('README「已知限制与路线」表：每条声明都要能落到代码或写出阻塞原因（审计 §10 P2）', () => {
+  /**
+   * 审计 §10 P2 的缺口原文：「文档一致性门禁存在，但只查『禁词 + 路径存在性』……
+   * 它**不检查"功能清单/已知限制"与实现是否一致**」，并点名 README 曾把已实现的查找替换
+   * 写成「菜单里有入口，点了提示功能待接入」（低报也是失真）。
+   *
+   * 这里不试图理解自然语言，只钉两条**可判定**的规则（"宁可少查、不可乱红"）：
+   *   ① 标了 ✅ / ⚠️ 的行必须至少引用一个**存在的**仓库路径（= 有声明的代码证据）；
+   *   ② 标了 ❌ / ⛔ 的行"计划"列不许为空（= 说清卡在哪，而不是留一个 ❌ 就走）。
+   * 表格按行解析时会先合并跨行的单元格（README 里有两行是折行的）。
+   */
+  const lines = read('README.md').split('\n')
+  const start = lines.findIndex((l) => /^##\s+已知限制/.test(l))
+  assert.ok(start > 0, 'README 里找不到「已知限制与路线」章节')
+  /** 把续行并进上一条表格行（表格行以 `|` 开头） */
+  const rows = []
+  for (let i = start; i < lines.length; i += 1) {
+    const l = lines[i]
+    if (/^##\s/.test(l) && i !== start) break
+    if (/^\|/.test(l)) rows.push(l)
+    else if (rows.length && l.trim() && !/^\|/.test(l)) rows[rows.length - 1] += ' ' + l.trim()
+  }
+  const body = rows.filter((r) => !/^\|\s*-{2,}/.test(r) && !/\|\s*项\s*\|/.test(r))
+  assert.ok(body.length >= 8, `只解析到 ${body.length} 条限制，解析口径可能不对`)
+
+  /**
+   * 路径识别比上一条宽容：README 里常写相对简写（`lib/treeFocus.ts`、`shared/history.ts`），
+   * 只要在任一约定根下存在就算"落到了代码"（不逼着作者把每个引用都写全）。
+   */
+  const pathRe =
+    /(?:src|tools|tests|docs|resources|build|lib|components|stores|composables|assets|views|shared|services)\/[\w./@-]+\.(?:json|mjs|css|vue|ts|js|md|ico|png|plist|nsh|yml)\b/g
+  const resolve = (p) =>
+    [p, `src/renderer/${p}`, `src/main/${p}`, `src/${p}`, `src/renderer/src/${p}`].some((c) =>
+      existsSync(join(ROOT, c))
+    )
+  const problems = []
+  for (const row of body) {
+    const cells = row
+      .split('|')
+      .slice(1, -1)
+      .map((c) => c.trim())
+    if (cells.length < 3) continue
+    const [item, status, plan] = cells
+    const done = /✅|⚠️/.test(status)
+    const notDone = /❌|⛔/.test(status)
+    if (done) {
+      const refs = [...status.matchAll(pathRe)].map((m) => m[0])
+      if (!refs.length) problems.push(`「${item}」标了已完成/部分，但没引用任何代码路径`)
+      for (const r of refs) {
+        if (!resolve(r)) problems.push(`「${item}」引用的路径不存在：${r}`)
+      }
+    }
+    if (notDone && !plan) problems.push(`「${item}」标了未实现，却没写清卡在哪（计划列为空）`)
+  }
+  assert.deepEqual(problems, [], 'README 功能清单与实现/阻塞原因对不上：\n' + problems.join('\n'))
+})
+
 test('i18n 三语包的键数一致（既有口径，这里再钉一次）', () => {
   const flat = (o, p = '') =>
     Object.entries(o).flatMap(([k, v]) =>

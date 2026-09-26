@@ -134,11 +134,11 @@ docs/                     # 手册 / 整改方案 / 打包实测
 
 | 范围 | 文件 | 行数 |
 |---|---|---|
-| `src/main` | 34 | 7295 |
-| `src/preload` | 2 | 245 |
-| `src/shared` | 26 | 2949 |
-| `src/renderer` | 122 | 24643 |
-| `src 合计` | 184 | 35132 |
+| `src/main` | 34 | 7423 |
+| `src/preload` | 2 | 254 |
+| `src/shared` | 28 | 3356 |
+| `src/renderer` | 124 | 25308 |
+| `src 合计` | 188 | 36341 |
 
 口径：`src/main`/`preload`/`shared` 数 `.ts`，`src/renderer` 数 `.ts`+`.vue`（含子目录）。
 
@@ -186,18 +186,18 @@ docs/                     # 手册 / 整改方案 / 打包实测
 
 | 项 | 现状 | 计划 |
 |---|---|---|
-| **本地历史 / 版本回滚** | ✅ 已有：每次写盘前留一份「即将被覆盖」的快照（每文件 30 条 / 30 天 / 全库 2000 条），
+| **本地历史 / 版本回滚** | ✅ 已有：每次写盘前留一份「即将被覆盖」的快照（每文件 30 条 / 30 天 / 全库 2000 条，策略在 `src/shared/history.ts`），
 文件菜单「本地历史…」可查看并载入编辑器（载入≠写盘，看清了再保存） | 保留策略做成可配（Wave 2 剩余） |
 | **Markdown 往返保真** | ✅ 判级器 + **33 份夹具** + 三层套件（文档级/幂等/字节级）；`exact 17 / normalized 16 / lossy 0`（分类计数由 `EXPECT.json` 实测，`npm run test:unit` 里有一条对账；`normalized` 每条都写了 why 与修法）。脚注（`[^1]` 与 `[^1]: 定义`）**原样透传**（行内 mark + 块级原子节点，见 `lib/editor/footnotePassthrough.ts`） | 逐条修剩余缺口（定义列表退化成段落对、行内 HTML…） |
-| **EOL（CRLF/LF）** | ✅ 行尾是文档级元数据：打开时判定（按多数）、内存一律 LF、写盘时还原；状态栏可点切换。多窗口一致性还没做 | Wave 2 剩余 |
-| **查找替换** | ✅ 已实现：`Ctrl+F`（焦点在文件面板时改搜文件名）、正则 + 捕获组（`$1`）、大小写、全部替换、两个编辑面（Tiptap / 源码 textarea） | 无 |
+| **EOL（CRLF/LF）** | ✅ 行尾是文档级元数据：打开时判定（按多数）、内存一律 LF、写盘时还原；状态栏可点切换（规则在 `src/shared/eol.ts`）。多窗口一致性还没做 | Wave 2 剩余 |
+| **查找替换** | ✅ 已实现：`Ctrl+F`（焦点在文件面板时改搜文件名）、正则 + 捕获组（`$1`）、大小写、全部替换、两个编辑面（Tiptap / 源码 textarea）；匹配与替换的纯逻辑在 `src/renderer/src/lib/findReplace.ts` | 无 |
 | **打字机模式** | ⛔ 已**摘掉**（原先菜单与 `Ctrl+Shift+T` 只弹一句「功能待接入」——留着一个不存在的入口等于承诺不存在的功能） | 若要做，按"光标行居中"重写后再放入口 |
-| 编辑器 ⇄ store 同步 | ✅ **单向数据流账本**：三个编辑面（Tiptap / 源码 textarea / 代码块 CM）共用 `rev + author + applied`，不存在第二条同步通道 | 嵌套样式（`mdStyle` 支持样式集合） |
+| 编辑器 ⇄ store 同步 | ✅ **单向数据流账本**：三个编辑面（Tiptap / 源码 textarea / 代码块 CM）共用 `rev + author + applied`（实现与口径在 `src/renderer/src/lib/contentSync.ts`），不存在第二条同步通道 | 嵌套样式（`mdStyle` 支持样式集合） |
 | 文件树键盘可达 | ✅ `role="tree"` + roving tabindex + 方向键/Home/End/Enter（`lib/treeFocus.ts`）；`F2` 重命名、`Delete` 删除、`Shift+F10`/菜单键唤出上下文菜单（`TreeNode.vue`） | 拖放排序 |
 | 自动更新 / 代码签名 | ❌ `publish` 仍是占位、未签名（Windows 会提示未知发布者）。两条都**卡在外部资源**（证书、真实仓库地址），所以不发明占位 URL | 拿到证书与地址后一起做 |
 | **Electron 版本** | ⚠️ 实装 **39.8.10**（`^39.2.6` 锁死在 39），而 39 已于 **2026-05-05 EOL**（Chromium 落后约 10 个大版本）—— 实测事实与复验清单见 `docs/electron-upgrade.md` | 单独分支升到受支持 major + 跑完整矩阵（含打包态） |
-| 诊断与日志 | ✅ 设置 → 高级：「复制诊断信息」（版本 / 平台 / Electron / 数据位置 / 启动参数 / 设置快照 / 最近错误标题，**不含文档内容与最近文件清单**）＋「打开日志目录」 | 崩溃转储（`crashReporter`）等有上报渠道时再谈 |
-| 跨平台 | ⚠️ mac / Linux 未验证（`npm run build:mac` / `build:linux` 会明确拒绝，而不是产出一个没验过的包） | 明确暂缓 |
+| 诊断与日志 | ✅ 设置 → 高级：「复制诊断信息」（版本 / 平台 / Electron / 数据位置 / 启动参数 / 设置快照 / 最近错误标题，**不含文档内容与最近文件清单**；组装规则在 `src/shared/diagnostics.ts`）＋「打开日志目录」（`<userData>/logs`，运行日志见 `src/main/services/appLog.ts`） | 崩溃转储（`crashReporter`）等有上报渠道时再谈 |
+| 跨平台 | ⚠️ mac / Linux 未验证（`npm run build:mac` / `build:linux` 会明确拒绝：`tools/refuse-unverified-platform.js`，而不是产出一个没验过的包） | 明确暂缓 |
 
 ---
 
