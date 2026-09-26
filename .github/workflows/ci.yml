@@ -4,13 +4,19 @@
 # 单实例锁、真实按键），在无头 runner 上跑不稳。那部分留在本地按需跑（跑法见 README 与
 # 各套件文件头），另有一条**不阻塞 PR** 的夜间 job：`.github/workflows/cdp.yml`。
 #
-# 门禁口径（本地 `npm run ci` 与这里完全一致）：
-#   npm run typecheck  双工程（tsc + vue-tsc）
-#   npm run lint       ESLint flat config，0 error / 0 warning（阈值写在 lint 脚本里，
-#                      两侧不靠命令行参数对齐 —— 原来这里写 `-- --max-warnings 0`，
-#                      而本地脚本没写，于是"完全一致"只是注释里的一句话）
-#   npm run test:unit  node --test（纯逻辑，毫秒级）
-#   build              electron-vite build
+# 门禁口径（本地 `npm run ci` 与这里一致；`ci` 脚本是唯一真相源，改动请同步两边）：
+#   npm run typecheck        双工程（tsc + vue-tsc）
+#   npm run lint             ESLint flat config，0 error / 0 warning（阈值写在 lint 脚本里，
+#                            两侧不靠命令行参数对齐 —— 原来这里写 `-- --max-warnings 0`，
+#                            而本地脚本没写，于是"完全一致"只是注释里的一句话）
+#   npm run test:unit        node --test（纯逻辑，毫秒级）
+#   npm run notices:check    第三方许可声明与 lockfile 对账（审计 §5）
+#   npm run docs:facts:check 文档里的数字/路径与实测一致（审计 §10）
+#   npm run docs:tokens:check设计令牌文档与 theme.css 一致
+#   electron-vite build      生产构建
+#
+# ⚠️ 审计 §10 P2 曾指出这里**自称"与 npm run ci 完全一致"却漏跑后三条**：于是
+# "许可声明漂了""文档数字过期"在 push/PR 上不会被拦，只有手动打包才暴露。现在补齐。
 name: CI
 
 on:
@@ -51,6 +57,13 @@ jobs:
 
       - name: 单元测试（node --test）
         run: npm run test:unit
+
+      - name: 许可声明、文档数字与令牌（与 npm run ci 同一批门禁）
+        # 审计 §10 P2：这三条只在 npm run ci / package.yml 里跑过，push/PR 上一直没拦
+        run: |
+          npm run notices:check
+          npm run docs:facts:check
+          npm run docs:tokens:check
 
       - name: 生产构建
         run: npx electron-vite build
