@@ -168,6 +168,9 @@
     "image": "Image",
     "table": "Table",
     "tableSize": "{rows} × {cols} table",
+    "tableAlign": "Column alignment",
+    "tableAlignHint": "Set the alignment of the column the cursor is in",
+    "tableAlignNeedTable": "Put the cursor inside a table first",
     "hr": "Divider",
     "raiseHeading": "Raise heading level",
     "lowerHeading": "Lower heading level",
@@ -292,6 +295,11 @@
     "cardEditBehavior": "Editing behaviour",
     "syncScrollDesc": "Syncs both panes by scroll progress",
     "codeLineNumbersDesc": "Shows line numbers beside code blocks",
+    "wordGoal": "Word goal",
+    "wordGoalDesc": "Shows “current / goal” in the status bar; 0 = no goal",
+    "wordGoalHint": "The goal applies to every document (a global setting). Once reached, the status bar cell turns accent-coloured with a check mark — no pop-ups.",
+    "wordGoalNone": "Not set",
+    "wordGoalValue": "{n} words",
     "cardTypography": "Font & typography",
     "fontFamilyLabel": "Body font",
     "fontSansShort": "Sans",
@@ -347,7 +355,22 @@
     "backupSnapshotSkipped": ", {n} item(s) skipped",
     "backupSnapshotFailed": "Snapshot export failed: {reason}",
     "backupNoWorkspace": "no workspace is open",
-    "backupSnapshotEmpty": "nothing to archive in this workspace"
+    "backupSnapshotEmpty": "nothing to archive in this workspace",
+    "exportSettings": "Export settings…",
+    "exportSettingsHint": "Save the current settings and custom shortcuts as a JSON file; recently opened files and folders are never written",
+    "exportSettingsDone": "Settings exported: {path}",
+    "exportSettingsFailed": "Exporting settings failed: {reason}",
+    "importSettings": "Import settings…",
+    "importSettingsConfirm": "Importing replaces the current settings (custom shortcuts included) with the {n} entries in the file; the local recent-file history is untouched. Continue?",
+    "importSettingsDone": "Settings imported ({n} entries)",
+    "importSettingsFailed": "Import failed: {reason}",
+    "importErrNotJson": "The file is not valid JSON",
+    "importErrBadEnvelope": "The file is not a settings export (app / version / payload missing)",
+    "importErrWrongApp": "This file was not exported by Lumin",
+    "importErrUnknownVersion": "The file comes from a newer version and cannot be imported",
+    "importErrUnsafePath": "A local path field in the file is invalid (absolute path, \"..\" or empty)",
+    "importErrTooLarge": "The file is too large; import refused",
+    "importErrReadFailed": "Could not read the file"
   },
   "toolbar": {
     "hide": "Hide toolbar",
@@ -481,7 +504,13 @@
     "linkPlaceholder": "https://example.com",
     "imagePrompt": "Insert image",
     "imagePlaceholder": "Image URL / relative path",
-    "pasteFailed": "Cannot read the clipboard, use Ctrl+V instead"
+    "pasteFailed": "Cannot read the clipboard, use Ctrl+V instead",
+    "tableAlign": {
+      "left": "Align this column left",
+      "center": "Center this column",
+      "right": "Align this column right",
+      "none": "Default alignment for this column (plain ---)"
+    }
   },
   "notifications": {
     "prev": "Previous notification",
@@ -508,7 +537,15 @@
     "saveFailedDetail": "Save failed: {reason} (still retrying automatically; your text is safe in a local draft)",
     "tagsTooltip": "Tags (comma separated; used for grouping and search)",
     "tagsPlaceholder": "e.g. novel, chapter-1, draft",
-    "addTags": "Add tags"
+    "addTags": "Add tags",
+    "readingTime": "{n} min read",
+    "readingTimeHours": "{h} hr read",
+    "readingTimeHourMin": "{h} hr {m} min read",
+    "readingTimeTooltip": "Estimated reading time ({cjk} CJK chars/min, {latin} Latin words/min; mixed text adds both)",
+    "wordGoal": "{current} / {goal} words",
+    "wordGoalTooltip": "Word goal: {current} / {goal} ({percent}%) — click to change in Settings",
+    "wordGoalReachedTooltip": "Word goal reached: {current} / {goal} — click to change in Settings",
+    "wordGoalReached": "Word goal reached"
   },
   "keymap": {
     "title": "Keyboard shortcuts",

@@ -120,7 +120,16 @@ const api: LuminAPI = {
   },
   settings: {
     getAll: () => ipcRenderer.invoke('settings:getAll'),
-    update: (partial: Partial<AppSettings>) => ipcRenderer.invoke('settings:update', partial)
+    update: (partial: Partial<AppSettings>) => ipcRenderer.invoke('settings:update', partial),
+    /**
+     * 设置的导出 / 导入（审计清单「设置/快捷键导入导出」）：
+     * `exportFile` 与 `importFile` 只碰文件对话框与文件字节；信封校验、白名单过滤、
+     * 隐私字段剔除全在 `shared/settingsFile.ts`（纯函数、有单测），渲染层解析成功并确认之后
+     * 才调 `applyImport` 落库。三条通道缺一不可（主进程/渲染层两侧都要登记，见 tests/i18nAndIpc）。
+     */
+    exportFile: (settings: AppSettings) => ipcRenderer.invoke('settings:exportFile', settings),
+    importFile: () => ipcRenderer.invoke('settings:importFile'),
+    applyImport: (patch: Partial<AppSettings>) => ipcRenderer.invoke('settings:applyImport', patch)
   },
   workspace: {
     getRoot: () => ipcRenderer.invoke('workspace:getRoot'),

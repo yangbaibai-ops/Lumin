@@ -10,6 +10,8 @@ import Code from '@tiptap/extension-code'
 import { HorizontalRule } from '@tiptap/extension-horizontal-rule'
 import { TableRow, TableCell, TableHeader } from '@tiptap/extension-table'
 import { TableFidelity } from './tableMarkdown'
+// 「设置当前列对齐」的命令（工具栏表格弹层用；见 tableColumnAlign.ts）
+import { TableColumnAlign } from './tableColumnAlign'
 import TaskItem from '@tiptap/extension-task-item'
 import Placeholder from '@tiptap/extension-placeholder'
 import { imageSrcForDoc } from '../imageSrc'
@@ -194,6 +196,8 @@ export const editorExtensions: Extensions = [
   TableRow,
   TableHeader,
   TableCell,
+  // 列对齐的可设置入口（只加一个命令，不碰节点/序列化；见 tableColumnAlign.ts）
+  TableColumnAlign,
   // 无序列表：保留源码里的 -/*/+ 标记（见 listMarkers.ts）
   BulletListMarked,
   // 任务列表：补 tight 属性，否则每个任务项之间都被塞空行

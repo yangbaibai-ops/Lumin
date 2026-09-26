@@ -88,6 +88,16 @@ export const useSettingsStore = defineStore('settings', {
       this.applyAll()
       this.persist()
     },
+    /**
+     * 应用导入的设置（**整体替换**语义，见主进程 `settings:applyImport` 的说明）：
+     * 落库成功后把主进程归一过的整份设置 `$patch` 回来，主题/语言/字体立刻生效。
+     * 校验（信封、白名单、隐私字段）不在这里 —— 见 `shared/settingsFile.ts`。
+     */
+    async applyImport(patch: Partial<AppSettings>): Promise<void> {
+      const merged = await window.luminAPI.settings.applyImport(patch)
+      this.$patch(merged)
+      this.applyAll()
+    },
     persist(): void {
       clearTimeout((this as unknown as { _t?: ReturnType<typeof setTimeout> })._t)
       const t = setTimeout(() => {

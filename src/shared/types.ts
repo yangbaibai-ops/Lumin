@@ -6,6 +6,8 @@ export type EditorMode = 'wysiwyg' | 'source' | 'split'
 import type { ConcreteEncoding, EncodingId } from './encodings'
 import type { Eol } from './eol'
 import type { HistoryEntry, HistoryEntryMeta } from './history'
+// 设置文件的读取结果（信封/白名单那一套在 shared/settingsFile.ts；这里只要类型）
+import type { SettingsFileReadResult } from './settingsFile'
 export type { HistoryEntry, HistoryEntryMeta }
 export type { ConcreteEncoding, EncodingId, Eol }
 export type Language = 'zh-CN' | 'en-US' | 'ru-RU'
@@ -37,6 +39,15 @@ export interface AppSettings {
   lineHeight: number
   fontFamily: string
   editorMode: EditorMode
+  /**
+   * 目标字数（写作目标；**0 = 未设置**，此时状态栏不显示那一格）。
+   *
+   * 口径：**全局一项设置**，作用于当前打开的任何文档 —— 不按文档分别记。
+   * 理由与取舍写在 `shared/readingTime.ts`（按文档记要引入「路径 → 目标」的持久化映射，
+   * 那意味着动数据库 schema；而实际用法绝大多数是「今天这篇写到 N 字」）。
+   * 进度与达成判定是纯函数 `wordGoalProgress()`，界面只负责显示。
+   */
+  wordGoal: number
   /** 编辑区顶部快捷工具栏是否显示（关掉后仍可右键工具栏原位置/设置面板重新开启） */
   toolbarVisible: boolean
   /**
@@ -638,6 +649,21 @@ export interface LuminAPI {
   settings: {
     getAll: () => Promise<AppSettings>
     update: (partial: Partial<AppSettings>) => Promise<AppSettings>
+    /**
+     * 导出设置（含自定义快捷键）到用户选定的文件；`null` = 取消。
+     * 信封组装、隐私字段剔除都在 `shared/settingsFile.ts`（纯函数、有单测）。
+     */
+    exportFile: (settings: AppSettings) => Promise<string | null>
+    /**
+     * 选一个设置文件并把**原始文本**读回来（`null` = 取消）。
+     * 校验/归一在渲染层走 `shared/settingsFile.ts` —— 主进程不在用户确认之前落库。
+     */
+    importFile: () => Promise<SettingsFileReadResult | null>
+    /**
+     * 应用导入的补丁（**整体替换**语义，不是 `update` 的深合并；理由见 main/ipc.ts）。
+     * 返回归一后的完整设置，渲染层直接 `$patch` 即可让界面立刻生效。
+     */
+    applyImport: (patch: Partial<AppSettings>) => Promise<AppSettings>
   }
   workspace: {
     getRoot: () => Promise<string | null>

@@ -4,10 +4,21 @@
 //  - 直接点击按钮 → 立即插入默认 3×3 表格（表头行 + 2 数据行）；
 //  - 悬停按钮 ~300ms → 弹出网格选择器，以左上角为 1×1，悬停高亮 r×c；
 //  - 点击格子 → 插入对应尺寸；弹出状态下点击按钮仅收起选择器。
-import { computed, onBeforeUnmount, ref } from 'vue'
+//
+// 弹层里还带**列对齐**四项（清单「表格列对齐（可设置）」）：此前 `:---` / `---:`
+// 只能靠手改 Markdown，界面上没有入口。光标在表格里时点这四项即设当前列为左/中/右/默认，
+// 走的是唯一入口 `lib/editor/tableColumnAlign.ts`（改整列 → 分隔行跟着变）。
+import { computed, onBeforeUnmount, ref, toRaw } from 'vue'
+import type { Editor } from '@tiptap/core'
 import { useI18n } from 'vue-i18n'
 import { useEditorStore } from '../stores/editor'
 import { shouldCloseOnScrollOrResize } from '../lib/popoverClose'
+import {
+  applyTableColumnAlign,
+  tableColumnAlign,
+  tableColumnIndex
+} from '../lib/editor/tableColumnAlign'
+import type { AlignValue } from '../lib/editor/tableAlign'
 import Icon from './Icon.vue'
 
 const { t } = useI18n()
@@ -121,6 +132,70 @@ function onCellEnter(r: number, c: number): void {
   hoverC.value = c
 }
 
+// ─── 列对齐（见文件头注释）──────────────────────────────────────────────────
+// 下拉项顺序固定为 左 / 中 / 右 / 默认：位置不随当前状态变化，肌肉记忆成立。
+const alignChoices: { value: AlignValue; icon: string; labelKey: string }[] = [
+  { value: 'left', icon: 'align-left', labelKey: 'editorMenu.tableAlign.left' },
+  { value: 'center', icon: 'align-center', labelKey: 'editorMenu.tableAlign.center' },
+  { value: 'right', icon: 'align-right', labelKey: 'editorMenu.tableAlign.right' },
+  { value: null, icon: 'align-default', labelKey: 'editorMenu.tableAlign.none' }
+]
+
+/** 光标是否落在表格里：不在表格里这四项点了也不会有反应，直接灰显 */
+const inTable = computed(() => {
+  void editorStore.tick
+  const ed = editorStore.instance
+  if (!ed) return false
+  try {
+    return ed.isActive('table')
+  } catch {
+    return false
+  }
+})
+
+/**
+ * store 里的编辑器实例（`markRaw` 的同一个对象）。
+ *
+ * 为什么要这一层：Pinia 的 state 经 `_UnwrapAll` 后，`instance` 的类型丢掉了 Tiptap
+ * `Editor` 的标识（工具函数签名要 `Editor`），运行期显然是同一个实例。
+ * `toRaw` 只去 Vue 的响应式代理（实例本身就是 `markRaw`，不会二次包装），
+ * 类型断言把丢掉的那部分补回来 —— 全组件只此一处转换。
+ */
+function activeEditor(): Editor | null {
+  void editorStore.tick
+  const ed = editorStore.instance
+  return ed ? (toRaw(ed) as unknown as Editor) : null
+}
+
+/** 当前列的对齐（表头行为真源，与分隔行同一处判据） */
+const currentAlign = computed<AlignValue>(() => {
+  const editor = activeEditor()
+  if (!editor) return null
+  const colIndex = tableColumnIndex(editor)
+  if (colIndex === null) return null
+  return tableColumnAlign(editor, colIndex)
+})
+
+function applyAlign(align: AlignValue): void {
+  const editor = activeEditor()
+  if (!editor || !inTable.value) return
+  applyTableColumnAlign(editor, align)
+  open.value = false
+  cancelTimers()
+}
+
+/** 按钮的键盘路径（Tab 到 → Enter/Space 开合弹层；弹层里 Esc 收起） */
+function onButtonKeydown(e: KeyboardEvent): void {
+  if (e.key !== 'Enter' && e.key !== ' ') return
+  e.preventDefault()
+  if (open.value) {
+    open.value = false
+    cancelTimers()
+    return
+  }
+  showPopover()
+}
+
 onBeforeUnmount(() => {
   cancelTimers()
   window.removeEventListener('scroll', onWindowScrollOrResize, true)
@@ -137,8 +212,11 @@ window.addEventListener('resize', onWindowScrollOrResize)
       :class="{ active: open }"
       :title="t('editor.table')"
       :aria-label="t('editor.table')"
+      :aria-expanded="open"
+      aria-haspopup="menu"
       :disabled="!editorStore.instance"
       @click="onButtonClick"
+      @keydown="onButtonKeydown"
       @mouseenter="onButtonEnter"
     >
       <Icon name="table" :size="15" />
@@ -153,6 +231,7 @@ window.addEventListener('resize', onWindowScrollOrResize)
         :style="{ boxShadow: 'var(--shadow-2)', left: popPos.x + 'px', top: popPos.y + 'px' }"
         @mouseenter="onPopoverEnter"
         @mouseleave="scheduleClose"
+        @keydown.esc="open = false"
       >
         <div class="mb-2 text-ui-sm text-ink-2">
           {{ t('editor.tableSize', { rows: hoverR + 1, cols: hoverC + 1 }) }}
@@ -169,6 +248,34 @@ window.addEventListener('resize', onWindowScrollOrResize)
             @mouseenter="onCellEnter(r, c)"
             @click="insertTable(r + 1, c + 1)"
           />
+        </div>
+
+        <!-- 列对齐：光标在表格里才可用（不在表格里点它不会有任何反应，所以灰显 + 提示） -->
+        <div class="mt-2.5 border-t border-edge pt-2">
+          <div class="mb-1.5 text-ui-sm text-ink-2b">
+            {{ t('editor.tableAlign') }}
+          </div>
+          <div
+            class="flex items-center justify-between"
+            :class="inTable ? '' : 'opacity-50'"
+            role="group"
+            :aria-label="t('editor.tableAlign')"
+            :title="inTable ? t('editor.tableAlignHint') : t('editor.tableAlignNeedTable')"
+          >
+            <button
+              v-for="choice in alignChoices"
+              :key="choice.labelKey"
+              class="icon-btn icon-btn-sm"
+              :class="{ active: inTable && currentAlign === choice.value }"
+              :disabled="!inTable"
+              :title="t(choice.labelKey)"
+              :aria-label="t(choice.labelKey)"
+              :aria-pressed="inTable && currentAlign === choice.value"
+              @click="applyAlign(choice.value)"
+            >
+              <Icon :name="choice.icon" :size="14" />
+            </button>
+          </div>
         </div>
       </div>
     </Transition>

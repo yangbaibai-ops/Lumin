@@ -168,6 +168,9 @@
     "image": "图片",
     "table": "表格",
     "tableSize": "{rows} × {cols} 表格",
+    "tableAlign": "列对齐",
+    "tableAlignHint": "设置光标所在那一列的对齐",
+    "tableAlignNeedTable": "先把光标放进表格里",
     "hr": "分割线",
     "raiseHeading": "提升标题级别",
     "lowerHeading": "降低标题级别",
@@ -292,6 +295,11 @@
     "cardEditBehavior": "编辑行为",
     "syncScrollDesc": "左右两侧按滚动进度同步",
     "codeLineNumbersDesc": "在代码块左侧显示行号",
+    "wordGoal": "目标字数",
+    "wordGoalDesc": "状态栏显示「当前 / 目标」；0 = 不设目标",
+    "wordGoalHint": "目标对所有文档生效（全局设置）。达成后状态栏那一格变成强调色并显示对勾，不会弹窗打扰。",
+    "wordGoalNone": "未设置",
+    "wordGoalValue": "{n} 字",
     "cardTypography": "字体与排版",
     "fontFamilyLabel": "正文字体",
     "fontSansShort": "无衬线",
@@ -347,7 +355,22 @@
     "backupSnapshotSkipped": "，跳过 {n} 项",
     "backupSnapshotFailed": "导出快照失败：{reason}",
     "backupNoWorkspace": "还没有打开工作区",
-    "backupSnapshotEmpty": "工作区里没有可归档的文件"
+    "backupSnapshotEmpty": "工作区里没有可归档的文件",
+    "exportSettings": "导出设置…",
+    "exportSettingsHint": "把当前设置与自定义快捷键保存成一个 JSON 文件；最近打开的文件/文件夹不会写进去",
+    "exportSettingsDone": "设置已导出：{path}",
+    "exportSettingsFailed": "导出设置失败：{reason}",
+    "importSettings": "导入设置…",
+    "importSettingsConfirm": "导入会用文件里的设置覆盖当前设置（含自定义快捷键），共 {n} 项；本机的最近文件记录不受影响。继续吗？",
+    "importSettingsDone": "已导入设置（{n} 项）",
+    "importSettingsFailed": "导入失败：{reason}",
+    "importErrNotJson": "文件不是合法的 JSON",
+    "importErrBadEnvelope": "文件结构不是设置导出文件（缺少 app / version / payload）",
+    "importErrWrongApp": "这个文件不是 Lumin 导出的设置文件",
+    "importErrUnknownVersion": "文件版本比当前应用更新，无法导入",
+    "importErrUnsafePath": "文件里的本机路径字段不合法（绝对路径、含 .. 或空值）",
+    "importErrTooLarge": "文件过大，已拒绝导入",
+    "importErrReadFailed": "文件读取失败"
   },
   "toolbar": {
     "hide": "关闭工具栏",
@@ -480,7 +503,13 @@
     "linkPlaceholder": "https://example.com",
     "imagePrompt": "插入图片",
     "imagePlaceholder": "图片地址 / 相对路径",
-    "pasteFailed": "无法读取剪贴板，请用 Ctrl+V 粘贴"
+    "pasteFailed": "无法读取剪贴板，请用 Ctrl+V 粘贴",
+    "tableAlign": {
+      "left": "本列左对齐",
+      "center": "本列居中",
+      "right": "本列右对齐",
+      "none": "本列默认对齐（不写 :---）"
+    }
   },
   "notifications": {
     "prev": "上一条通知",
@@ -507,7 +536,15 @@
     "saveFailedDetail": "保存失败：{reason}（仍在自动重试，期间内容安全保存在草稿里）",
     "tagsTooltip": "标签（逗号分隔，用于归类与搜索）",
     "tagsPlaceholder": "例如：小说, 第一章, 草稿",
-    "addTags": "添加标签"
+    "addTags": "添加标签",
+    "readingTime": "{n} 分钟",
+    "readingTimeHours": "{h} 小时",
+    "readingTimeHourMin": "{h} 小时 {m} 分钟",
+    "readingTimeTooltip": "预计阅读时长（中文 {cjk} 字/分钟、拉丁文 {latin} 词/分钟，混排分别计时后相加）",
+    "wordGoal": "{current} / {goal} 字",
+    "wordGoalTooltip": "目标字数：{current} / {goal}（{percent}%）—— 点击在设置里修改",
+    "wordGoalReachedTooltip": "已达成目标字数：{current} / {goal} —— 点击在设置里修改",
+    "wordGoalReached": "已达成目标字数"
   },
   "keymap": {
     "title": "快捷键",

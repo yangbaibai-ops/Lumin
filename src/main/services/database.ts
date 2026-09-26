@@ -27,6 +27,8 @@ import {
   type PruneOptions
 } from '../../shared/history'
 import { defaultSettings } from '../../shared/defaults'
+// 字数口径的唯一实现（中文按字 + 拉丁按词）：与渲染层状态栏同一份，见 shared/readingTime.ts
+import { measureText } from '../../shared/readingTime'
 // 目录改名时按**目录边界**搬路径（纯字符串实现，与渲染层共用同一份；见 shared/paths.ts）
 import { migratePathWithin, samePath } from '../../shared/paths'
 import { runMigrations } from './migrations'
@@ -160,14 +162,9 @@ function rowToNotification(row: NotificationRow): AppNotification {
   }
 }
 
-/** 与渲染层一致的字数统计（中文字符 + 英文单词） */
+/** 与渲染层一致的字数统计（中文字符 + 英文单词）：实现在 shared/readingTime.ts，两边共用一份 */
 export function countWords(content: string): number {
-  // 字符集与原来完全一致，只是把 `-` 放到末尾（类内末尾的连字符无需转义）
-  const text = content.replace(/[#>*`_~[\]()!|-]/g, ' ').trim()
-  if (!text) return 0
-  const zh = (text.match(/[\u4e00-\u9fff\u3400-\u4dbf]/g) || []).length
-  const words = (text.match(/[a-zA-Z0-9_]+(?:['’-][a-zA-Z0-9_]+)*/g) || []).length
-  return zh + words
+  return measureText(content).words
 }
 
 /** 正文索引的合并窗口：同一文件在这段时间内多次保存，只会重建一次索引 */

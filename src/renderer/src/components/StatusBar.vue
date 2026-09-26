@@ -9,6 +9,13 @@ import { LANGUAGE_OPTIONS, nextLanguage } from '../i18n'
 import { encodingOf } from '../../../shared/encodings'
 import { eolLabel } from '../../../shared/eol'
 import { formatTagsInput, parseTagsInput } from '../lib/tags'
+import {
+  CJK_CHARS_PER_MINUTE,
+  LATIN_WORDS_PER_MINUTE,
+  readingMinutesOf,
+  splitReadingMinutes,
+  wordGoalProgress
+} from '../../../shared/readingTime'
 import Icon from './Icon.vue'
 import type { ThemeMode } from '../../../shared/types'
 
@@ -86,6 +93,46 @@ const currentEncodingLabel = computed(() => {
 
 /** 当前文档的行尾标记（LF / CRLF）——点一下就在两者间切换并写回 */
 const currentEolLabel = computed(() => eolLabel(files.current?.eol ?? 'lf'))
+
+// ─── 阅读时长 / 目标字数（审计清单「目标字数 / 阅读时长」）──────────────────────
+// 两个口径都由 shared/readingTime.ts 的纯函数决定（中文 ~400 字/分钟、拉丁 ~200 词/分钟，
+// 混排时分别计时再相加；空文档 0 分钟、非空至少 1 分钟），这里只负责取数与拼文案。
+const readingTimeLabel = computed(() => {
+  // 走 store 里**已缓存**的拆分计数（files.textMeasure），不在这里重扫全文：
+  // 状态栏每敲一个键就要重算，而字数的缓存已经扫过一遍了（见 stores/files.ts 的 countsOf）
+  const total = readingMinutesOf(files.textMeasure)
+  if (total <= 0) return ''
+  const { hours, minutes } = splitReadingMinutes(total)
+  if (hours === 0) return t('statusbar.readingTime', { n: minutes })
+  if (minutes === 0) return t('statusbar.readingTimeHours', { h: hours })
+  return t('statusbar.readingTimeHourMin', { h: hours, m: minutes })
+})
+
+/** 悬停说明速率：「这个 5 分钟是怎么算出来的」必须查得到，否则它只是个没来由的数字 */
+const readingTimeTooltip = computed(() =>
+  t('statusbar.readingTimeTooltip', { cjk: CJK_CHARS_PER_MINUTE, latin: LATIN_WORDS_PER_MINUTE })
+)
+
+/**
+ * 目标字数（设置里 0 = 未设置 ⇒ 这一格整块不渲染，没设目标的人不该多看到一个 0）。
+ *
+ * 达成提示**不用弹窗、不发通知**：写作中途弹一次框正是"打断打字"的那类打扰；
+ * 这一格转强调色 + 显示对勾已是常驻的醒目反馈（抬眼就在那儿），且随时可以再点开设置改目标。
+ */
+const goal = computed(() => wordGoalProgress(files.wordCount, settings.wordGoal))
+const goalLabel = computed(() =>
+  t('statusbar.wordGoal', { current: files.wordCount, goal: settings.wordGoal })
+)
+const goalTooltip = computed(() => {
+  const args = {
+    current: files.wordCount,
+    goal: settings.wordGoal,
+    percent: Math.round(goal.value.ratio * 100)
+  }
+  return goal.value.reached
+    ? t('statusbar.wordGoalReachedTooltip', args)
+    : t('statusbar.wordGoalTooltip', args)
+})
 
 const themeOpen = ref(false)
 const themeRef = ref<HTMLElement | null>(null)
@@ -180,7 +227,7 @@ const themes: { mode: ThemeMode; icon: string; labelKey: string }[] = [
       <div ref="saveRef" class="relative flex items-center">
         <button
           class="group flex cursor-pointer items-center gap-1.5 rounded-md px-1.5 py-0.5 -ml-1.5 transition-colors hover:bg-panel-2"
-          :class="files.saveError ? 'text-danger' : ''"
+          :class="files.saveError ? 'text-danger-ink' : ''"
           data-save-cell
           :data-save-error="files.saveError ?? undefined"
           :title="saveTriggerLabel"
@@ -214,12 +261,12 @@ const themes: { mode: ThemeMode; icon: string; labelKey: string }[] = [
               <Icon
                 name="refresh"
                 :size="14"
-                :class="settings.autoSave ? 'mt-0.5 text-accent' : 'mt-0.5 text-ink-2b'"
+                :class="settings.autoSave ? 'mt-0.5 text-accent-ink' : 'mt-0.5 text-ink-2b'"
               />
               <span class="min-w-0 flex-1">
                 <span
                   class="block text-ui font-medium"
-                  :class="settings.autoSave ? 'text-accent' : 'text-ink'"
+                  :class="settings.autoSave ? 'text-accent-ink' : 'text-ink'"
                   >{{ t('statusbar.autoSave') }}</span
                 >
                 <span class="mt-0.5 block text-[11px] leading-snug text-ink-2b">{{
@@ -241,12 +288,12 @@ const themes: { mode: ThemeMode; icon: string; labelKey: string }[] = [
               <Icon
                 name="save"
                 :size="14"
-                :class="!settings.autoSave ? 'mt-0.5 text-accent' : 'mt-0.5 text-ink-2b'"
+                :class="!settings.autoSave ? 'mt-0.5 text-accent-ink' : 'mt-0.5 text-ink-2b'"
               />
               <span class="min-w-0 flex-1">
                 <span
                   class="block text-ui font-medium"
-                  :class="!settings.autoSave ? 'text-accent' : 'text-ink'"
+                  :class="!settings.autoSave ? 'text-accent-ink' : 'text-ink'"
                   >{{ t('statusbar.manualSave') }}</span
                 >
                 <span class="mt-0.5 block text-[11px] leading-snug text-ink-2b"
@@ -279,10 +326,46 @@ const themes: { mode: ThemeMode; icon: string; labelKey: string }[] = [
     <!-- 中间：统计 -->
     <template v-if="files.current">
       <span class="tabular-nums">{{ files.wordCount }} {{ t('editor.words') }}</span>
+      <!--
+        目标字数（审计清单「目标字数 / 阅读时长」）：只在设置里填了目标时出现，显示「当前/目标」。
+        达成时转强调色 + 加一个对勾 —— **不用弹窗、不发通知**（见脚本里 goal 的说明）。
+        点一下直接进设置（和保存状态那格弹层里的「打开设置…」同一个入口口径）。
+      -->
+      <button
+        v-if="goal.set"
+        class="flex items-center gap-1 rounded-md px-1.5 py-0.5 tabular-nums transition-colors hover:bg-panel-2"
+        :class="goal.reached ? 'text-accent-ink' : ''"
+        :title="goalTooltip"
+        :aria-label="goalTooltip"
+        :data-word-goal-reached="goal.reached ? '1' : undefined"
+        data-status-word-goal
+        @click="ui.openSettings('editor')"
+      >
+        <Icon v-if="goal.reached" name="check" :size="11" class="flex-none" />
+        <span>{{ goalLabel }}</span>
+      </button>
+      <!--
+        读屏器播报：达成目标在视觉上只是"这一格变色了"，看不见的人不会知道。
+        但**不能**把 aria-live 挂在上面那格上 —— 它每敲一个字都变，会把每次按键都念出来。
+        所以单开一个常驻的 live region，只在达成时才有文字（空文本不播报）。
+      -->
+      <span class="sr-only" role="status" aria-live="polite">{{
+        goal.reached ? t('statusbar.wordGoalReached') : ''
+      }}</span>
       <span class="tabular-nums">{{ files.lineCount }} {{ t('editor.lines') }}</span>
       <span class="hidden tabular-nums sm:inline"
         >{{ files.charCount }} {{ t('editor.chars') }}</span
       >
+      <!-- 预计阅读时长（口径与速率见 shared/readingTime.ts；悬停可查速率） -->
+      <span
+        v-if="readingTimeLabel"
+        class="flex items-center gap-1 tabular-nums"
+        :title="readingTimeTooltip"
+        data-status-reading-time
+      >
+        <Icon name="clock" :size="12" class="flex-none" />
+        <span>{{ readingTimeLabel }}</span>
+      </span>
       <span class="h-3 w-px bg-edge" />
       <span class="tabular-nums">{{
         t('editor.cursor', { line: ui.cursor.line, col: ui.cursor.col })
@@ -295,7 +378,7 @@ const themes: { mode: ThemeMode; icon: string; labelKey: string }[] = [
     <span
       v-if="files.current"
       class="flex items-center gap-1 tabular-nums"
-      :class="files.current.hadReplacement ? 'text-warning' : ''"
+      :class="files.current.hadReplacement ? 'text-warning-ink' : ''"
       :title="
         files.current.hadReplacement
           ? t('statusbar.encodingReplaced')
@@ -372,7 +455,7 @@ const themes: { mode: ThemeMode; icon: string; labelKey: string }[] = [
             class="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-left text-ui transition-colors duration-100"
             :class="
               settings.theme === th.mode
-                ? 'bg-accent-soft text-accent'
+                ? 'bg-accent-soft text-accent-ink'
                 : 'text-ink hover:bg-panel-2'
             "
             @click="pickTheme(th.mode)"

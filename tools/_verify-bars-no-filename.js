@@ -183,6 +183,62 @@ const PROBE = `(() => {
     c('statusbar-keeps-counts', withDoc.statusKeeps?.counts === true, JSON.stringify(withDoc.status?.text))
     c('statusbar-keeps-theme-and-language', withDoc.statusKeeps?.hasSwitchers === true, JSON.stringify(withDoc.statusKeeps))
     c('no-filename-in-bar-tooltips', withDoc.staleTitles.length === 0, JSON.stringify(withDoc.staleTitles))
+
+    // ── 状态栏的新两格：阅读时长 + 目标字数（审计清单「目标字数 / 阅读时长」）──
+    // 判据走**用户能看到的 DOM**（data-status-* 是套件与读屏器共用的锚点），
+    // 而不是直接问 store —— 这一条要证明的是"真的渲染出来了"。
+    const rt = JSON.parse(
+      await w.ev(`(() => {
+        const el = document.querySelector('[data-status-reading-time]')
+        return JSON.stringify({ found: !!el, text: el ? el.textContent.trim() : null, title: el ? el.getAttribute('title') : null })
+      })()`)
+    )
+    console.log('READING-TIME ' + JSON.stringify(rt))
+    c('statusbar-shows-reading-time', rt.found === true, JSON.stringify(rt))
+    // 文案走语言包（默认中文）：「N 分钟」/「N 小时…」；接受三种形态，但不接受空
+    c(
+      'reading-time-has-human-text',
+      !!rt.text && /(分钟|小时|min|мин)/.test(rt.text),
+      JSON.stringify(rt.text)
+    )
+
+    await w.ev(`(() => { window.__B.settings().set('wordGoal', 100); return 'ok' })()`)
+    await sleep(400)
+    const goalOn = JSON.parse(
+      await w.ev(`(() => {
+        const el = document.querySelector('[data-status-word-goal]')
+        return JSON.stringify({
+          found: !!el,
+          text: el ? el.textContent.trim() : null,
+          title: el ? el.getAttribute('title') : null,
+          reached: el ? el.getAttribute('data-word-goal-reached') : null
+        })
+      })()`)
+    )
+    console.log('WORD-GOAL ' + JSON.stringify(goalOn))
+    c('word-goal-cell-appears-when-set', goalOn.found === true, JSON.stringify(goalOn))
+    c(
+      'word-goal-cell-shows-current-over-goal',
+      !!goalOn.text && goalOn.text.includes('100') && /\d/.test(goalOn.text),
+      JSON.stringify(goalOn.text)
+    )
+    // 达成态：把目标压到 1 个字 → 当前文档非空，必然达成（属性由 store 的 goal 计算驱动）
+    await w.ev(`(() => { window.__B.settings().set('wordGoal', 1); return 'ok' })()`)
+    await sleep(400)
+    const goalReached = JSON.parse(
+      await w.ev(`(() => {
+        const el = document.querySelector('[data-status-word-goal]')
+        return JSON.stringify({ reached: el ? el.getAttribute('data-word-goal-reached') : null })
+      })()`)
+    )
+    c('word-goal-marks-reached-state', goalReached.reached === '1', JSON.stringify(goalReached))
+    // 复位：目标 0 = 不设目标 → 那一格必须消失（不能留一个 0/0 的噪声格）
+    await w.ev(`(() => { window.__B.settings().set('wordGoal', 0); return 'ok' })()`)
+    await sleep(400)
+    const goalOff = JSON.parse(
+      await w.ev(`JSON.stringify({ found: !!document.querySelector('[data-status-word-goal]') })`)
+    )
+    c('word-goal-cell-hidden-when-zero', goalOff.found === false, JSON.stringify(goalOff))
   } finally {
     await w.ev(`(async () => { window.__B.files().close(); return 'ok' })()`).catch(() => {})
     fs.rmSync(WS, { recursive: true, force: true })

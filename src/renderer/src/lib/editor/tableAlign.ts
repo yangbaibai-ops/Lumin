@@ -36,3 +36,45 @@ export function delimiterRow(aligns: (CellAlign | string | null | undefined)[]):
 export function escapeCellPipes(text: string): string {
   return text.replace(/(^|[^\\])\|/g, '$1\\|')
 }
+
+// ─── 可设置的列对齐（清单「表格列对齐（可设置）」，此前只有序列化、没有入口）──────
+//
+// 上面两条是**保真**规则（解析出来的 align 怎么写回去）；这一段是**可改**规则：
+// 光标所在的那一列怎么换成另一种对齐。纯逻辑放在这里（不碰编辑器），
+// 因此「列号 → 新的对齐数组 → 分隔行字节」这条链可以脱离编辑器直接单测。
+
+/** 对齐的规范形式：null 表示默认（= Markdown 的裸 `---`，不显式对齐） */
+export type AlignValue = 'left' | 'center' | 'right' | null
+
+/** 界面上可点的四种对齐（三种 + 默认）；顺序即菜单顺序 */
+export const ALIGN_CHOICES: AlignValue[] = ['left', 'center', 'right', null]
+
+/**
+ * 把任意来源的值收敛成规范对齐：
+ * 认不出来的值（脏数据 / 未来新增的 'justify' 之类）一律当默认 ——
+ * 判据与 `delimiterCell` 的 default 分支完全一致，不会出现「界面显示 center、写出来是 `---`」。
+ */
+export function normalizeAlign(value: unknown): AlignValue {
+  return value === 'left' || value === 'center' || value === 'right' ? value : null
+}
+
+/** 规范对齐 → 分隔行里该列的写法（复用 delimiterCell，两种对齐观只有一个真源） */
+export function markdownDelimiter(align: AlignValue | string | null | undefined): string {
+  return delimiterCell(align)
+}
+
+/**
+ * 新的对齐数组：只改第 `colIndex` 列，其余列原样（**不修改入参数组**）。
+ * 越界或列号不是整数时返回浅拷贝本身 —— 调用方仍能安全地拿它写回分隔行。
+ */
+export function applyColumnAlign(
+  aligns: readonly (CellAlign | string | null | undefined)[],
+  colIndex: number,
+  align: AlignValue
+): CellAlign[] {
+  const next = aligns.map((a) => normalizeAlign(a))
+  if (Number.isInteger(colIndex) && colIndex >= 0 && colIndex < next.length) {
+    next[colIndex] = align
+  }
+  return next
+}

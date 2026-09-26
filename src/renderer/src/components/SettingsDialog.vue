@@ -17,6 +17,9 @@ import { useSettingsStore } from '../stores/settings'
 import { useFilesStore } from '../stores/files'
 import { useUiStore } from '../stores/ui'
 import { FONT_OPTIONS } from '../../../shared/defaults'
+// 设置文件的信封校验 / 白名单过滤 / 隐私剔除（纯函数，单测 tests/settingsFile.test.mjs）：
+// 导入的 JSON 是不可信输入，判据全在那边，这里只负责对话框、报错与确认
+import { parseSettingsFile, type SettingsImportErrorCode } from '../../../shared/settingsFile'
 // 字节数格式化只有一份（审计 §10「重复实现」）：数据库维护与备份共用
 import { formatBytes } from '../../../shared/backup'
 import { ENCODINGS, type EncodingId } from '../../../shared/encodings'
@@ -30,8 +33,16 @@ import { EXPORT_FORMATS } from '../../../shared/exportFormats'
 /** 本地历史的可选项（保留策略见 shared/history.ts；这里只给几档常用值） */
 const HISTORY_LIMIT_CHOICES = [10, 20, 30, 50, 100]
 const HISTORY_AGE_CHOICES = [7, 30, 90, 365]
+/**
+ * 目标字数的可选项（0 = 未设置）。
+ * 用**档位选择**而不是自由输入框：一是不必为「输入 12.5 / 负数 / 空」另写一套校验与控件，
+ * 二是现有设置页里「几档常用值」就是这个写法（见上面的 HISTORY_*_CHOICES）。
+ * 档位按中文写作的常见体量排：短评/短文 → 长文 → 章节 → 长篇日更。
+ */
+const WORD_GOAL_CHOICES = [0, 500, 1000, 2000, 3000, 5000, 10000]
 import { LANGUAGE_OPTIONS } from '../i18n'
 import type {
+  AppSettings,
   BackupStatus,
   EditorMode,
   LinkCreateMode,
@@ -337,6 +348,94 @@ async function resetAllSettings(): Promise<void> {
     danger: true
   })
   if (ok) await settings.reset()
+}
+
+// ─── 设置的导出 / 导入（审计清单「设置/快捷键导入导出、恢复默认」里缺的那一半）──
+// 文件长什么样、什么算合法、哪些字段不进文件：全在 `shared/settingsFile.ts`
+// （纯函数、单测 tests/settingsFile.test.mjs）。这里只做三件事：开对话框、报错、确认后落库。
+/** 导入失败的原因码 → 语言包键（**静态映射**：动态拼键会被「死键」守卫拦下，也不好翻译） */
+const IMPORT_ERROR_KEYS: Record<SettingsImportErrorCode, string> = {
+  'not-json': 'settings.importErrNotJson',
+  'bad-envelope': 'settings.importErrBadEnvelope',
+  'wrong-app': 'settings.importErrWrongApp',
+  'unknown-version': 'settings.importErrUnknownVersion',
+  'unsafe-path': 'settings.importErrUnsafePath',
+  'too-large': 'settings.importErrTooLarge',
+  'read-failed': 'settings.importErrReadFailed'
+}
+
+/** 文件操作期间禁用这两个按钮（否则连点两下会叠出两个原生对话框） */
+const settingsFileBusy = ref(false)
+
+/** 错误码 → 人话；`detail` 是字段名（或解析器的一句话），拼在括号里方便用户去定位/手改 */
+function importErrorText(failure: { code: SettingsImportErrorCode; detail?: string }): string {
+  const base = t(IMPORT_ERROR_KEYS[failure.code])
+  return failure.detail ? `${base} (${failure.detail})` : base
+}
+
+/** 导出：写成一个 JSON 文件（用户选路径）。取消 = 什么都不发生；成功才提示落盘路径 */
+async function exportSettingsFile(): Promise<void> {
+  if (settingsFileBusy.value) return
+  settingsFileBusy.value = true
+  try {
+    // 传**界面上这一份**而不是让主进程读库：设置落库是 250ms 节流的，
+    // 刚改完就点导出时库里还是旧值，而用户要的显然是屏幕上看到的这份
+    const plain = JSON.parse(JSON.stringify(settings.$state)) as AppSettings
+    const saved = await window.luminAPI.settings.exportFile(plain)
+    if (saved) ui.toast(t('settings.exportSettingsDone', { path: saved }), 'success')
+  } catch (err) {
+    ui.toast(
+      t('settings.exportSettingsFailed', {
+        reason: err instanceof Error ? err.message : String(err)
+      }),
+      'error'
+    )
+  } finally {
+    settingsFileBusy.value = false
+  }
+}
+
+/**
+ * 导入：选文件 → 解析校验 → 二次确认 → 落库。
+ *
+ * 顺序是刻意的：**文件不合法就不弹确认框**（先告诉用户"为什么不行"，而不是先问一遍
+ * "确定要覆盖吗"）；确认之后才调 `applyImport` —— 主进程那条通道是**整体替换**语义，
+ * 于是文件里没有的自定义快捷键不会被合并回来。
+ */
+async function importSettingsFile(): Promise<void> {
+  if (settingsFileBusy.value) return
+  settingsFileBusy.value = true
+  try {
+    const picked = await window.luminAPI.settings.importFile()
+    if (!picked) return // 用户取消
+    if (!picked.ok) {
+      ui.toast(t('settings.importSettingsFailed', { reason: importErrorText(picked) }), 'error')
+      return
+    }
+    const parsed = parseSettingsFile(picked.text)
+    if (!parsed.ok) {
+      // 形状不对 / 版本不认 / 非法字段：都在这里变成一句能定位原因的话，**不半套用**
+      ui.toast(t('settings.importSettingsFailed', { reason: importErrorText(parsed) }), 'error')
+      return
+    }
+    const ok = await ui.confirm({
+      title: t('settings.importSettings'),
+      body: t('settings.importSettingsConfirm', { n: parsed.applied.length }),
+      danger: true
+    })
+    if (!ok) return
+    await settings.applyImport(parsed.patch)
+    ui.toast(t('settings.importSettingsDone', { n: parsed.applied.length }), 'success')
+  } catch (err) {
+    ui.toast(
+      t('settings.importSettingsFailed', {
+        reason: err instanceof Error ? err.message : String(err)
+      }),
+      'error'
+    )
+  } finally {
+    settingsFileBusy.value = false
+  }
 }
 
 /**
@@ -1088,8 +1187,25 @@ function formatTime(ms: number): string {
                       </div>
                     </details>
 
-                    <!-- 恢复默认：低频且有破坏性（连语言与主题一起复位）⇒ 放最底下 + 二次确认 -->
+                    <!-- 设置的搬运（导出/导入）+ 恢复默认：都是低频动作 ⇒ 放最底下；覆盖性的要二次确认 -->
                     <div class="mt-4 flex flex-wrap items-center justify-end gap-2">
+                      <button
+                        class="rounded-lg border border-edge px-3 py-1.5 text-ui text-ink-2 transition-colors hover:border-edge-strong hover:text-ink disabled:opacity-50"
+                        data-settings-export
+                        :disabled="settingsFileBusy"
+                        :title="t('settings.exportSettingsHint')"
+                        @click="exportSettingsFile()"
+                      >
+                        {{ t('settings.exportSettings') }}
+                      </button>
+                      <button
+                        class="rounded-lg border border-edge px-3 py-1.5 text-ui text-ink-2 transition-colors hover:border-edge-strong hover:text-ink disabled:opacity-50"
+                        data-settings-import
+                        :disabled="settingsFileBusy"
+                        @click="importSettingsFile()"
+                      >
+                        {{ t('settings.importSettings') }}
+                      </button>
                       <button
                         class="rounded-lg border border-edge px-3 py-1.5 text-ui text-ink-2 transition-colors hover:border-edge-strong hover:text-ink"
                         data-settings-diagnostics
@@ -1105,7 +1221,7 @@ function formatTime(ms: number): string {
                         {{ t('settings.openLogDir') }}
                       </button>
                       <button
-                        class="rounded-lg border border-edge px-3 py-1.5 text-ui text-ink-2 transition-colors hover:border-[color-mix(in_srgb,var(--danger)_45%,transparent)] hover:text-danger"
+                        class="rounded-lg border border-edge px-3 py-1.5 text-ui text-ink-2 transition-colors hover:border-[color-mix(in_srgb,var(--danger)_45%,transparent)] hover:text-danger-ink"
                         data-settings-reset
                         @click="resetAllSettings()"
                       >
@@ -1128,7 +1244,7 @@ function formatTime(ms: number): string {
                           class="rounded-xl border px-3 py-3 text-center transition-all duration-150"
                           :class="
                             settings.editorMode === m.mode
-                              ? 'border-accent bg-accent-soft text-accent'
+                              ? 'border-accent bg-accent-soft text-accent-ink'
                               : 'border-edge text-ink-2 hover:border-edge-strong hover:text-ink'
                           "
                           :title="m.desc"
@@ -1179,7 +1295,7 @@ function formatTime(ms: number): string {
                             class="whitespace-nowrap rounded-lg border px-3 py-1.5 text-ui transition-all duration-150"
                             :class="
                               settings.remoteImages === p.value
-                                ? 'border-accent bg-accent-soft text-accent'
+                                ? 'border-accent bg-accent-soft text-accent-ink'
                                 : 'border-edge text-ink-2 hover:border-edge-strong'
                             "
                             :aria-pressed="settings.remoteImages === p.value"
@@ -1188,6 +1304,34 @@ function formatTime(ms: number): string {
                             {{ p.label }}
                           </button>
                         </div>
+                      </div>
+                      <!-- 目标字数（审计清单「目标字数 / 阅读时长」）：0 = 未设置，
+                           设了之后状态栏才出现「当前/目标」那一格；达成时变强调色 + 对勾。 -->
+                      <div class="set-row" :title="t('settings.wordGoalHint')">
+                        <div>
+                          <p class="set-row-label">{{ t('settings.wordGoal') }}</p>
+                          <p class="set-row-desc">{{ t('settings.wordGoalDesc') }}</p>
+                        </div>
+                        <select
+                          class="input select !w-[130px] shrink-0"
+                          :value="String(settings.wordGoal)"
+                          :aria-label="t('settings.wordGoal')"
+                          data-setting-word-goal
+                          @change="
+                            settings.set(
+                              'wordGoal',
+                              Number(($event.target as HTMLSelectElement).value)
+                            )
+                          "
+                        >
+                          <option v-for="n in WORD_GOAL_CHOICES" :key="n" :value="String(n)">
+                            {{
+                              n === 0
+                                ? t('settings.wordGoalNone')
+                                : t('settings.wordGoalValue', { n })
+                            }}
+                          </option>
+                        </select>
                       </div>
                     </section>
 
@@ -1248,7 +1392,7 @@ function formatTime(ms: number): string {
                             class="rounded-lg border px-3 py-1.5 text-ui transition-all duration-150"
                             :class="
                               settings.fontFamily === f.value
-                                ? 'border-accent bg-accent-soft text-accent'
+                                ? 'border-accent bg-accent-soft text-accent-ink'
                                 : 'border-edge text-ink-2 hover:border-edge-strong'
                             "
                             @click="settings.set('fontFamily', f.value)"
@@ -1391,7 +1535,7 @@ function formatTime(ms: number): string {
                             class="rounded-lg border px-3.5 py-1.5 text-ui transition-all duration-150"
                             :class="
                               settings.export.pdf.pageSize === size
-                                ? 'border-accent bg-accent-soft text-accent'
+                                ? 'border-accent bg-accent-soft text-accent-ink'
                                 : 'border-edge text-ink-2 hover:border-edge-strong'
                             "
                             @click="
@@ -1458,7 +1602,7 @@ function formatTime(ms: number): string {
                           class="flex items-center justify-center gap-2 rounded-xl border px-3 py-2.5 text-[13px] transition-all duration-150"
                           :class="
                             settings.linkCreateMode === m.value
-                              ? 'border-accent bg-accent-soft text-accent'
+                              ? 'border-accent bg-accent-soft text-accent-ink'
                               : 'border-edge text-ink-2 hover:border-edge-strong hover:text-ink'
                           "
                           :aria-pressed="settings.linkCreateMode === m.value"
@@ -1534,20 +1678,20 @@ function formatTime(ms: number): string {
                                 class="flex-none rounded-md px-1.5 py-0.5 text-[11px]"
                                 :class="
                                   item.action === 'declined'
-                                    ? 'bg-[color-mix(in_srgb,var(--warning)_18%,transparent)] text-warning'
-                                    : 'bg-accent-soft text-accent'
+                                    ? 'bg-[color-mix(in_srgb,var(--warning)_18%,transparent)] text-warning-ink'
+                                    : 'bg-accent-soft text-accent-ink'
                                 "
                               >
                                 {{ linkActionLabel(item.action) }}
                               </span>
                               <span
                                 v-if="item.created"
-                                class="flex-none rounded-md bg-[color-mix(in_srgb,var(--ok)_16%,transparent)] px-1.5 py-0.5 text-[11px] text-ok"
+                                class="flex-none rounded-md bg-[color-mix(in_srgb,var(--ok)_16%,transparent)] px-1.5 py-0.5 text-[11px] text-ok-ink"
                               >
                                 {{ t('settings.linksCreatedBadge') }}
                               </span>
                               <button
-                                class="flex h-7 w-7 flex-none items-center justify-center rounded-lg text-ink-2b transition-colors hover:bg-panel-2 hover:text-danger"
+                                class="flex h-7 w-7 flex-none items-center justify-center rounded-lg text-ink-2b transition-colors hover:bg-panel-2 hover:text-danger-ink"
                                 :title="t('settings.linksForget')"
                                 @click="forgetLink(item.target)"
                               >

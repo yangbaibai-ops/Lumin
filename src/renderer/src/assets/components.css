@@ -98,6 +98,18 @@
   background: var(--accent-soft);
   color: var(--accent);
 }
+/**
+ * 小号图标按钮：表格弹层里那一行「列对齐」（四个并排，30px 会撑宽弹层）。
+ * 只改尺寸与圆角，颜色/悬停/激活态全走上面的 `.icon-btn`。
+ *
+ * 为什么写进 CSS 而不是在模板上拼 `h-[26px] w-[26px]`：那会加两个 Tailwind 任意值，
+ * 而任意值总数有一条"只减不增"的上限（tests/visualScale.test.mjs，152）。
+ */
+.icon-btn-sm {
+  width: 26px;
+  height: 26px;
+  border-radius: 6px;
+}
 
 /* 视图切换恢复期间隐藏内容区（保留布局，仅供恢复完成后一次性呈现） */
 .view-restoring {

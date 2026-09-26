@@ -36,8 +36,12 @@ export interface DiagnosticsInput {
 /** 翻译函数（主进程传 `mainT`，单测传假的）：诊断文本的头尾标题也走语言包 */
 export type DiagnosticsTranslate = (key: string, params?: Record<string, string | number>) => string
 
-/** 设置快照里必须去掉的键：它们记的是"用户看过哪些文件"，不是环境事实 */
-const PRIVATE_SETTING_KEYS = ['recentFiles', 'recentFolders'] as const
+/**
+ * 设置快照里必须去掉的键：它们记的是"用户看过哪些文件"，不是环境事实。
+ * 导出（`export`）成唯一口径：设置文件的导出/导入也用这一份（见 `shared/settingsFile.ts`），
+ * 免得"哪些字段算隐私"出现第二份清单。
+ */
+export const PRIVATE_SETTING_KEYS = ['recentFiles', 'recentFolders'] as const
 
 /** 设置快照：去掉私有路径清单后按 JSON 输出（键排序，便于对比两次诊断） */
 export function settingsSnapshot(settings: AppSettings): Record<string, unknown> {

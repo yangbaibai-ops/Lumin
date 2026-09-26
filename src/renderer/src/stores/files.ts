@@ -25,6 +25,8 @@ import {
   type SyncLedger
 } from '../lib/contentSync'
 import { encodingLabel, formatHistoryTime, untitledEncoding, untitledEol } from '../lib/docText'
+// 字数口径（中文按字 + 拉丁按词）的唯一实现：状态栏字数、阅读时长、主进程 word_count 共用
+import { measureText, type TextMeasure } from '../../../shared/readingTime'
 
 /**
  * 统计量的按内容缓存（见下方 getters 的说明）：一起算出「字数 / 行数 / 字符数」，
@@ -42,24 +44,25 @@ const DRAFT_DEBOUNCE_MS = 1200
 const DRAFT_MAX_WAIT_MS = 10_000
 
 let countKey: string | null = null
-let countVal = { words: 0, lines: 0, chars: 0 }
+/** 一趟扫出来的四个数：字数（含中文/拉丁的拆分，阅读时长要用拆分）+ 行数 + 字符数 */
+interface DocCounts extends TextMeasure {
+  lines: number
+  chars: number
+}
+let countVal: DocCounts = { cjkChars: 0, latinWords: 0, words: 0, lines: 0, chars: 0 }
 
-function countsOf(content: string): { words: number; lines: number; chars: number } {
+function countsOf(content: string): DocCounts {
   if (countKey === content) return countVal
   countKey = content
-  countVal = { words: 0, lines: 0, chars: content.length }
-  if (!content) {
-    countVal.lines = 0
-    return countVal
-  }
+  countVal = { cjkChars: 0, latinWords: 0, words: 0, lines: 0, chars: content.length }
+  if (!content) return countVal
   countVal.lines = content.split('\n').length
-  // 字符集与主进程 countWords 一致，`-` 放末尾（类内末尾的连字符无需转义）
-  const text = content.replace(/[#>*`_~[\]()!|-]/g, ' ').trim()
-  if (text) {
-    const zh = (text.match(/[\u4e00-\u9fff\u3400-\u4dbf]/g) || []).length
-    const words = (text.match(/[a-zA-Z0-9_]+(?:['’-][a-zA-Z0-9_]+)*/g) || []).length
-    countVal.words = zh + words
-  }
+  // 字数口径的唯一实现在 shared/readingTime.ts（中文按字 + 拉丁按词）：
+  // 状态栏的「阅读时长」按各自速率算，需要**分开**的两个数，所以这里连拆分一起缓存
+  const m = measureText(content)
+  countVal.cjkChars = m.cjkChars
+  countVal.latinWords = m.latinWords
+  countVal.words = m.words
   return countVal
 }
 
@@ -200,6 +203,16 @@ export const useFilesStore = defineStore('files', {
     },
     charCount(state): number {
       return countsOf(state.current?.content ?? '').chars
+    },
+    /**
+     * 中文/拉丁**分开**的计数（阅读时长按两种速率分别计时，需要拆开的两个数）。
+     * 与上面三个 getter 共用同一份按内容缓存的扫描结果 —— 状态栏每敲一键都要读它，
+     * 不能为此再把全文扫一遍。返回新对象不影响缓存：Pinia 的 getter 只在依赖
+     * （`current.content`）变化时重算，缓存的对象本身不参与身份比较。
+     */
+    textMeasure(state): TextMeasure {
+      const c = countsOf(state.current?.content ?? '')
+      return { cjkChars: c.cjkChars, latinWords: c.latinWords, words: c.words }
     },
     /** 真源内容的世代号（每次内容变化 +1；只增不减） */
     contentRev(state): number {

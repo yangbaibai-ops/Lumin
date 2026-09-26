@@ -11,7 +11,7 @@ import {
 } from 'electron'
 import path from 'path'
 import { watch, existsSync, readFileSync, type FSWatcher } from 'fs'
-import { mkdir, stat } from 'fs/promises'
+import { mkdir, readFile, readdir, stat } from 'fs/promises'
 import * as fileOps from './fileOps'
 import * as exportSvc from './export'
 import * as drafts from './drafts'
@@ -41,6 +41,16 @@ import { untitledDraftKey } from '../shared/drafts'
 import { db } from './services/database'
 import { defaultSettings } from '../shared/defaults'
 import { normalizeSettings } from '../shared/settingsSchema'
+import {
+  SETTINGS_FILE_MAX_BYTES,
+  buildSettingsFile,
+  filterSettingsKeys,
+  mergeImportedSettings,
+  serializeSettingsFile,
+  settingsFileName,
+  unsafePathKey
+} from '../shared/settingsFile'
+import { testOutputDir } from './testPaths'
 import { buildDiagnosticsText, safeLaunchArgs } from '../shared/diagnostics'
 import {
   CLOSE_FALLBACK_MS,
@@ -596,27 +606,135 @@ export function registerIpc(slots: SlotRegistry): void {
     return settings
   }
   ipcMain.handle('settings:getAll', () => readSettings())
-  ipcMain.handle('settings:update', (_, partial: Partial<AppSettings>) => {
-    // 先读（顺手归一）再合并，最后**再过一次归一**：渲染层多送的键不该进库
-    const merged = normalizeSettings(deepMerge(readSettings(), partial), defaultSettings).settings
-    db.kvSet('settings', merged)
+  /**
+   * 落库 + 同步所有"设置变了"的副作用（原生主题 / 原生菜单 / 跳转列表 / 更新检查 / 备份）。
+   *
+   * `settings:update`（深合并）与 `settings:applyImport`（整体替换）共用这一条出口 ——
+   * 两条路的入库方式不同，但**副作用必须一模一样**，否则"导入后语言没立刻换""任务栏
+   * 跳转列表还是旧语言"这类问题会专挑一条路漏。
+   */
+  const commitSettings = (next: AppSettings, changed: Partial<AppSettings>): AppSettings => {
+    db.kvSet('settings', next)
     // 同步原生主题（Windows 标题栏颜色 / prefers-color-scheme）：
     // 切换主题时标题栏也要随之切换，否则顶部原生标题栏颜色不跟随应用主题
     nativeTheme.themeSource =
-      merged.theme === 'auto' ? 'system' : merged.theme === 'sepia' ? 'light' : merged.theme
+      next.theme === 'auto' ? 'system' : next.theme === 'sepia' ? 'light' : next.theme
     // 任务栏跳转列表里的分类名/任务描述是本地化文案，最近文档也来自设置：
     // 换语言或最近列表变化（含用户在界面上「清空最近」）时顺手重建
-    if (partial.language || partial.recentFiles) taskbar.refreshJumpList()
+    if (changed.language || changed.recentFiles) taskbar.refreshJumpList()
     // 原生菜单也是本地化文案：换语言必须**立刻重建**，否则要重启才生效（用户按 Alt 看到的还是旧语言）
-    if (partial.language) installMenu()
+    if (changed.language) installMenu()
     // 用户刚打开「自动检查更新」时立刻查一次，否则要等下次启动，像开关没反应
-    onSettingsChanged(partial)
+    onSettingsChanged(changed)
     // 备份：刚打开开关或刚换了目录时，先看该不该立即备一份 ——
     // 换到新目录后目录是空的，`isBackupDue` 会判为"该备"，用户马上就能看到第一份
-    if (partial.backupAuto !== undefined || partial.backupDir !== undefined) {
+    if (changed.backupAuto !== undefined || changed.backupDir !== undefined) {
       void dbBackup.maybeAutoBackup()
     }
-    return merged
+    return next
+  }
+  ipcMain.handle('settings:update', (_, partial: Partial<AppSettings>) =>
+    commitSettings(
+      // 先读（顺手归一）再合并，最后**再过一次归一**：渲染层多送的键不该进库
+      normalizeSettings(deepMerge(readSettings(), partial), defaultSettings).settings,
+      partial
+    )
+  )
+  /**
+   * 导出设置（审计清单「设置/快捷键导入导出、恢复默认」里缺的那一半）。
+   *
+   * 落盘内容 = 当前设置 + 自定义快捷键，写成 `{ app, version, exportedAt, appVersion, payload }`
+   * 的信封；组装、白名单、隐私剔除全在 `shared/settingsFile.ts`（纯函数、有单测）——
+   * `recentFiles` / `recentFolders`（用户看过哪些文件）与本机路径字段（`backupDir`）**不进文件**。
+   *
+   * 为什么设置由渲染层传进来而不是这里读库：设置的持久化是 250ms 节流的，刚改完就点导出时
+   * 库里还是旧值，而用户要的显然是**屏幕上这一份**。
+   */
+  ipcMain.handle('settings:exportFile', async (_, payload: AppSettings) => {
+    const envelope = buildSettingsFile(payload ?? readSettings(), { appVersion: app.getVersion() })
+    const name = settingsFileName(new Date())
+    const testDir = testOutputDir()
+    const picked = testDir
+      ? { canceled: false, filePath: path.join(testDir, name) }
+      : await dialog.showSaveDialog(BrowserWindow.getFocusedWindow()!, {
+          defaultPath: name,
+          filters: [{ name: 'JSON', extensions: ['json'] }]
+        })
+    if (picked.canceled || !picked.filePath) return null
+    // 原子写（临时文件 → fsync → rename，与导出/备份同一条路）：写一半崩掉不该留下半截设置文件
+    await fileOps.writeBinary(
+      picked.filePath,
+      Buffer.from(serializeSettingsFile(envelope), 'utf-8')
+    )
+    return picked.filePath
+  })
+  /**
+   * 选一个设置文件并**只读原始文本**（解析在校验层）。为什么读与用要分两步：导入是覆盖性动作，
+   * 必须"先解析成功、再让用户确认"——确认框只能在渲染层弹（`ui.confirm`），
+   * 主进程不能在用户点「继续」之前就把设置落库。
+   */
+  ipcMain.handle('settings:importFile', async () => {
+    const testDir = testOutputDir()
+    let picked: string | null = null
+    if (testDir) {
+      // 验收旁路（仅开发态）：原生「打开」对话框自动化点不了，改从 `LUMIN_EXPORT_DIR` 里取
+      // **最新**一份 `lumin-settings*.json` —— 于是"导出 → 导入"这条往返在 CDP 里能真跑一遍
+      const files = await readdir(testDir).catch(() => [] as string[])
+      let newest = -1
+      for (const f of files) {
+        if (!/^lumin-settings.*\.json$/.test(f)) continue
+        const st = await stat(path.join(testDir, f)).catch(() => null)
+        if (st?.isFile() && st.mtimeMs > newest) {
+          newest = st.mtimeMs
+          picked = path.join(testDir, f)
+        }
+      }
+    } else {
+      const r = await dialog.showOpenDialog(BrowserWindow.getFocusedWindow()!, {
+        properties: ['openFile'],
+        filters: [
+          { name: 'JSON', extensions: ['json'] },
+          { name: mainT('dialog.allFiles'), extensions: ['*'] }
+        ]
+      })
+      picked = r.canceled || !r.filePaths.length ? null : r.filePaths[0]
+    }
+    if (!picked) return null
+    const st = await stat(picked).catch(() => null)
+    if (!st?.isFile()) return { ok: false as const, path: picked, code: 'read-failed' as const }
+    if (st.size > SETTINGS_FILE_MAX_BYTES) {
+      return { ok: false as const, path: picked, code: 'too-large' as const, size: st.size }
+    }
+    try {
+      return { ok: true as const, path: picked, text: await readFile(picked, 'utf-8') }
+    } catch {
+      return { ok: false as const, path: picked, code: 'read-failed' as const }
+    }
+  })
+  /**
+   * 应用导入的补丁：**整体替换**，不是 `settings:update` 的深合并。
+   *
+   * 为什么必须是替换：`update` 对嵌套对象递归合并，于是"导出方只改过 file.save"的 `keybindings`
+   * 会与本机既有的覆盖项**合并出第三份快捷键表**，而 `keybindings: {}`（导出方没有任何自定义键）
+   * 永远清不掉本机的旧键 —— 那就不叫"把一台机器的设置搬到另一台"了。
+   * 口径：**文件里给了的键整块替换，没给的键保留本机现值**（隐私键不会走到这里，见 settingsFile.ts）。
+   *
+   * 这里又过一遍白名单与路径判据（纵深防御）：渲染层已经校验过，但 IPC 这侧不该相信调用方。
+   */
+  ipcMain.handle('settings:applyImport', (_, patch: Partial<AppSettings>) => {
+    const { kept, unknownKeys, removedPrivate } = filterSettingsKeys(patch)
+    const unsafe = unsafePathKey(kept)
+    if (unsafe) throw new Error(`SETTINGS_IMPORT_UNSAFE_PATH:${unsafe}`)
+    if (unknownKeys.length || removedPrivate.length) {
+      console.log(
+        `[settings] import: ignored ${unknownKeys.length} unknown / ${removedPrivate.length} private key(s)`
+      )
+    }
+    const next = normalizeSettings(
+      mergeImportedSettings(readSettings(), kept as Partial<AppSettings>),
+      defaultSettings
+    ).settings
+    return commitSettings(next, kept as Partial<AppSettings>)
   })
   ipcMain.handle('workspace:getRoot', () => {
     const ws = db.kvGet<{ root: string | null }>('workspace', { root: null })

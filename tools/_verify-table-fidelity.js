@@ -206,6 +206,54 @@ async function main() {
   const merged = String(await content(app))
   report.check('colspan-still-falls-back-to-html', merged.includes('<table'), JSON.stringify(merged.slice(0, 60)))
 
+  // ⑥ 列对齐**可设置**（审计清单能力矩阵：「只保真不可改」）——
+  //    端到端判据：光标放进第 2 列 → 跑命令 → 分隔行逐字节变成 `:---`/`---:`/`:---:`，且仍是管道表。
+  const MD2 = ['| 甲 | 乙 |', '| --- | --- |', '| 1 | 2 |', ''].join('\n')
+  await openDocWith(app, MD2, 'table-column-align.md')
+  await sleep(900)
+  const putInSecondColumn = `(() => {
+    const ed = window.__L.ed()
+    let pos = null
+    ed.state.doc.descendants((n, p) => {
+      if (n.isText && n.text === '2') pos = p
+      return true
+    })
+    if (pos === null) return 'no-cell'
+    ed.chain().focus().setTextSelection(pos).run()
+    return ed.commands.setTableColumnAlign ? 'ok' : 'no-command'
+  })()`
+  const cmdReady = await ev(putInSecondColumn)
+  report.check('column-align-command-registered', cmdReady === 'ok', String(cmdReady))
+  await sleep(400)
+  const aligned = await ev(`(() => { window.__L.ed().commands.setTableColumnAlign('right'); return 'ok' })()`)
+  await sleep(700)
+  const mdRight = String(await content(app))
+  report.note('列对齐 right → ' + JSON.stringify(mdRight.split('\n').slice(0, 2)))
+  report.check(
+    'column-align-right-writes-delimiter',
+    mdRight.split('\n')[1]?.trim() === '| --- | ---: |',
+    JSON.stringify(mdRight.split('\n')[1])
+  )
+  report.check('column-align-keeps-pipe-table', !mdRight.includes('<table'), JSON.stringify(mdRight.slice(0, 40)))
+  report.check('column-align-returns-ok', aligned === 'ok', String(aligned))
+
+  // 复位成「默认对齐」（裸 ---），证明这一列可反复改
+  await ev(`(() => {
+    const ed = window.__L.ed()
+    let pos = null
+    ed.state.doc.descendants((n, p) => { if (n.isText && n.text === '2') pos = p; return true })
+    ed.chain().focus().setTextSelection(pos).run()
+    ed.commands.setTableColumnAlign('none')
+    return 'ok'
+  })()`)
+  await sleep(700)
+  const mdNone = String(await content(app))
+  report.check(
+    'column-align-none-restores-plain-delimiter',
+    mdNone.split('\n')[1]?.trim() === '| --- | --- |',
+    JSON.stringify(mdNone.split('\n')[1])
+  )
+
   app.close()
   process.exit(report.finish())
 }
