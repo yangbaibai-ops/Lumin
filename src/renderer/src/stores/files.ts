@@ -90,6 +90,33 @@ let untitledSeq = 1
 // 未命名文档的编码/行尾、编码显示名、历史时间格式、草稿键与草稿可恢复判定
 // 都是**规则**而非状态：抽到 lib/docText.ts 与 lib/draftRules.ts（纯函数，有单测）。
 
+/**
+ * 改名（重命名）通知的 `payload.kind`：处理器在 `lib/renameUndo.ts` 里按它注册。
+ *
+ * 为什么要有这张卡片：改名看着"不可逆"，其实完全可以退回去（审计 §8 P2「危险/不可逆操作
+ * 还缺确认与撤销」里剩下的一条）。通知会被持久化在 SQLite 里、重启后仍可能被渲染，
+ * 所以按钮的动作只能按 kind 注册，不能是随通知序列化的闭包（与 recentUndo / linkOpen 同一套）。
+ */
+export const RENAME_KIND = 'rename'
+
+/** 起一张「已重命名，可撤销」的卡片（同一路径只占一位，反复改名不刷屏） */
+function offerRenameUndo(p: {
+  oldPath: string
+  newPath: string
+  type: 'file' | 'directory'
+  name: string
+}): void {
+  void useNotificationsStore()
+    .notify({
+      level: 'info',
+      title: i18n.global.t('toast.renamedTo', { name: p.name }),
+      actions: [{ id: 'undo', label: i18n.global.t('common.undo'), tone: 'ghost' }],
+      payload: { kind: RENAME_KIND, ...p },
+      mergeKey: `renamed:${p.newPath}`
+    })
+    .catch(() => {})
+}
+
 export const useFilesStore = defineStore('files', {
   state: () => ({
     root: null as string | null,
@@ -340,23 +367,60 @@ export const useFilesStore = defineStore('files', {
       this.draftRestore = null
       useWorkspaceDocsStore().invalidate()
     },
-    async renameNode(node: FileNode, parentDir: string, newName: string): Promise<void> {
-      const newPath = await window.luminAPI.file.join(parentDir, newName)
-      await window.luminAPI.file.rename(node.path, newPath)
+    /**
+     * 改名的**后续修正**（正向与撤销共用）。
+     *
+     * 为什么抽出来：撤销改名不是"把 `file.rename` 反着调一次"就完了 —— 当前文档的路径、
+     * 最近列表里的子孙路径也得一起搬回去，否则继续编辑会写回旧路径（实测那正是
+     * "保存后生成一份幽灵副本"的成因）。两个方向共用同一段逻辑，才不会漏掉某一半。
+     */
+    applyRenameFixups(oldPath: string, newPath: string, type: FileNode['type']): void {
       if (this.current?.path) {
-        if (samePath(this.current.path, node.path)) {
+        if (samePath(this.current.path, oldPath)) {
           this.current.path = newPath
-          this.current.name = newName
-        } else if (isInside(node.path, this.current.path)) {
+          this.current.name = newPath.split(/[\\/]/).pop() ?? this.current.name
+        } else if (isInside(oldPath, this.current.path)) {
           // 改的是**它所在的目录**：把当前文档的路径一起搬到新目录下
-          // （否则继续编辑会保存回旧目录，产生一份"幽灵副本"）
-          this.current.path = newPath + this.current.path.slice(node.path.length)
+          this.current.path = newPath + this.current.path.slice(oldPath.length)
         }
       }
       // 目录改名：最近文档 / 置顶 / 最近文件夹里的子孙路径也要跟着搬
       // （主进程那边已经重写了 documents 与 documents_history 的 path）
-      if (node.type === 'directory') useRecentStore().migrateWithin(node.path, newPath)
+      if (type === 'directory') useRecentStore().migrateWithin(oldPath, newPath)
+    },
+    async renameNode(node: FileNode, parentDir: string, newName: string): Promise<void> {
+      const newPath = await window.luminAPI.file.join(parentDir, newName)
+      await window.luminAPI.file.rename(node.path, newPath)
+      this.applyRenameFixups(node.path, newPath, node.type)
       await this.refreshDir(parentDir)
+      // 改名是"看起来不可逆、其实完全可以退回去"的操作（审计 §8 P2）：
+      // 给一张带「撤销」的通知卡片，按钮的处理器按 payload.kind 注册（见 lib/renameUndo.ts）
+      offerRenameUndo({
+        oldPath: node.path,
+        newPath,
+        type: node.type,
+        name: newPath.split(/[\\/]/).pop() ?? newName
+      })
+    },
+    /**
+     * 撤销一次改名：把路径搬回去，并让当前文档 / 最近列表跟着搬（走同一段 `applyRenameFixups`）。
+     * 失败（目标名又被占了、原路径已不在）时给一句提示，不静默吞掉。
+     */
+    async undoRename(payload: {
+      oldPath: string
+      newPath: string
+      type: FileNode['type']
+    }): Promise<boolean> {
+      try {
+        await window.luminAPI.file.rename(payload.newPath, payload.oldPath)
+      } catch {
+        useUiStore().toast(i18n.global.t('toast.renameUndoFailed'), 'error')
+        return false
+      }
+      const parentDir = await window.luminAPI.file.dirname(payload.oldPath)
+      this.applyRenameFixups(payload.newPath, payload.oldPath, payload.type)
+      await this.refreshDir(parentDir)
+      return true
     },
     dirnameOf(p: string): Promise<string> {
       return window.luminAPI.file.dirname(p)

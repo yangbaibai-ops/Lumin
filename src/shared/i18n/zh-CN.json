@@ -415,6 +415,8 @@
     "exportFailed": "导出失败",
     "exportedTo": "已导出到：{path}",
     "renameFailed": "重命名失败",
+    "renamedTo": "已重命名为「{name}」",
+    "renameUndoFailed": "撤销重命名失败（原名字可能已被占用）",
     "renameExists": "同目录下已经有同名文件了，重命名未执行（不会覆盖已有文件）",
     "deletePermanent": "该位置不支持回收站，文件已被永久删除",
     "saveParentMissing": "保存失败：文件所在的文件夹已经不存在了（可能在别处被删除或改名）。请用「另存为」把它存到别的地方。",

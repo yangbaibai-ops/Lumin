@@ -16,6 +16,7 @@ import Icon from './components/Icon.vue'
 import { installGlobalTooltip } from './lib/tooltip'
 import { installLinkNotificationActions } from './lib/linkOpen'
 import { installRecentUndoAction } from './lib/recentUndo'
+import { installRenameUndoAction } from './lib/renameUndo'
 
 /**
  * 「按需出现」的浮层一律异步加载（第二十五轮轻量化）。
@@ -51,6 +52,8 @@ installGlobalTooltip()
 installLinkNotificationActions()
 // 最近列表「移除」的撤销按钮（同样按 payload.kind 派发）
 installRecentUndoAction()
+// 文件树「重命名」的撤销按钮（审计 §8 P2：改名此前是单向的）
+installRenameUndoAction()
 
 /**
  * 左缘展开把手的热区（px，可按手感调整）。

@@ -415,6 +415,8 @@
     "exportFailed": "Export failed",
     "exportedTo": "Exported to: {path}",
     "renameFailed": "Rename failed",
+    "renamedTo": "Renamed to \"{name}\"",
+    "renameUndoFailed": "Could not undo the rename (the old name may be taken)",
     "renameExists": "A file with that name already exists here — rename cancelled (nothing was overwritten)",
     "deletePermanent": "This location has no recycle bin — the file was deleted permanently",
     "saveParentMissing": "Save failed: the folder that held this file no longer exists (deleted or renamed elsewhere). Use Save as to store it somewhere else.",

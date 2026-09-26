@@ -315,6 +315,45 @@ const MENU = `document.querySelector('[role="menu"]:not([aria-label="submenu"])'
       JSON.stringify(cancelled)
     )
 
+    // ── E2. 撤销改名（审计 §8 P2「危险/不可逆操作还缺确认与撤销」剩下的一条）──
+    // 判据走**用户真实路径**：卡片上的「撤销」按钮 → 通知注册表 → files store → 真的搬回去。
+    // 只断言 store 方法能跑是不够的 —— 注册表没接上（`installRenameUndoAction` 没被调用）
+    // 时按钮就是个死按钮，而那正是这类"可交互通知"最常见的坏法。
+    const undoCard = JSON.parse(
+      await w.ev(`(() => {
+        const box = document.querySelector('[data-notification-center]')
+        if (!box) return JSON.stringify({ found: false })
+        const btn = [...box.querySelectorAll('button')].find((b) => /撤销/.test(b.textContent))
+        return JSON.stringify({ found: true, hasUndo: !!btn, text: box.textContent.trim().slice(0, 80) })
+      })()`)
+    )
+    console.log('UNDO-CARD ' + JSON.stringify(undoCard))
+    c('rename-offers-undo', undoCard.hasUndo === true, JSON.stringify(undoCard))
+    await w.ev(`(() => {
+      const box = document.querySelector('[data-notification-center]')
+      const btn = box && [...box.querySelectorAll('button')].find((b) => /撤销/.test(b.textContent))
+      if (btn) btn.click()
+      return 'ok'
+    })()`)
+    await sleep(1500)
+    const undoFs = { old: fs.existsSync(oldPath), renamed: fs.existsSync(escPath) }
+    console.log('UNDO-FS ' + JSON.stringify(undoFs))
+    c(
+      'undo-rename-restores-old-path',
+      undoFs.old === true && undoFs.renamed === false,
+      JSON.stringify(undoFs)
+    )
+    const afterUndo = JSON.parse(
+      await w.ev(
+        `JSON.stringify({ names: [...document.querySelectorAll('[data-tree-row]')].map((r) => r.textContent.trim()) })`
+      )
+    )
+    c(
+      'undo-rename-updates-tree',
+      (afterUndo.names ?? []).some((n) => n.includes('alpha')),
+      JSON.stringify(afterUndo.names)
+    )
+
     // ── F. 新建文件：脏了就**先问**（且问了才建） ─────────────────────────
     // 新建会把内容区从当前文档换走，所以与「打开文件」同一口径：脏了先确认。
     // 直接改 content 而不走 setContent：那条路会排自动保存，夹具不该顺手写盘。
