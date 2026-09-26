@@ -328,6 +328,18 @@ body.split-dragging {
   outline: none;
   cursor: pointer;
 }
+/**
+ * 滑杆的**键盘焦点环**（清单 §8 P1「`outline: none` 15 处，却只有 4 条 `:focus-visible`」）。
+ *
+ * 上面那条 `outline: none` 是给指针用的（去掉浏览器默认描边），但全局兜底焦点环写在
+ * `base.css` 的 `@layer base` 里，而本文件是**未分层**规则 —— 层外规则的优先级更高，
+ * 于是设置页那 4 个滑杆（字号 / 行距 / 页宽 / 缩放）键盘聚焦时**完全看不出焦点在哪**，
+ * 属 WCAG 2.4.7 硬违规。这里显式补回来，判据由 `tests/focusVisibility.test.mjs` 守。
+ */
+.range:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
 .range::-webkit-slider-thumb {
   appearance: none;
   width: 14px;

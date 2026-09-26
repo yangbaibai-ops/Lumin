@@ -135,8 +135,11 @@ onBeforeUnmount(() => {
             :style="{ boxShadow: 'var(--shadow-2)' }"
             @keydown="onKeydown"
           >
-            <!-- 输入区 -->
-            <div class="flex items-center gap-3 border-b border-edge px-4 py-3.5">
+            <!-- 输入区：焦点环挂在**这一行**（输入框本身 `outline-none` 是为了干掉浏览器默认描边，
+                 行上的 focus-within 描边才是键盘用户能看见的那个环；同 .settings-search 的做法） -->
+            <div
+              class="flex items-center gap-3 border-b border-edge px-4 py-3.5 transition-colors focus-within:border-accent"
+            >
               <Icon name="search" :size="17" class="text-accent" />
               <input
                 ref="inputEl"
