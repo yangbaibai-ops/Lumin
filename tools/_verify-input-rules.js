@@ -457,6 +457,47 @@ async function main() {
   // 别把"指针正停在某个工具条按钮上"留给下一轮（那会让 hover 类断言莫名其妙地先亮一次）
   await parkMouse()
 
+  /**
+   * ── E. 任务列表规则敲在**非首项**上（回归：曾恒改首项）──────────────────────────
+   *
+   * 判据是**用户能看到的最终字节**：三项目无序列表里，光标放到第二项开头敲 `[x] `，
+   * 期望第二项被勾上且标记被剥掉、第一项与第三项原样。
+   * （纯逻辑那侧由 `tests/inputRules.test.mjs` 覆盖；这一条证明真实编辑器的
+   *  `beforeinput` → inputRules → 事务这条链上的行为一致。）
+   */
+  await openDocWith(app, '- 第一条\n- 第二条\n- 第三条\n', 'input-rules.md')
+  await waitEditor(ev)
+  if (await focusEditor()) {
+    const placed = await ev(`(() => {
+      const ed = window.__L.ed()
+      let target = null
+      ed.state.doc.descendants((n, pos) => {
+        if (n.isText && n.text === '第二条') target = pos
+        return true
+      })
+      if (target === null) return 'no-item'
+      ed.chain().focus().setTextSelection(target).run()
+      return 'ok'
+    })()`)
+    if (placed !== 'ok') {
+      report.skip('E 非首项任务列表', '定位第二项失败：' + placed)
+    } else {
+      await sleep(250)
+      await typeChars('[x] ')
+      const after = String(await ev(`window.__L.files().current.content`))
+      const lines = after.split('\n').filter((l) => l.trim())
+      report.note('E ' + JSON.stringify(lines))
+      report.check(
+        'E 非首项敲 `[x] `：勾的是那一项（回归）',
+        // 整个列表转成任务列表 ⇒ 三项都写成 `- [ ]` / `- [x]` 形式
+        lines[0] === '- [ ] 第一条' && lines[1] === '- [x] 第二条' && lines[2] === '- [ ] 第三条',
+        JSON.stringify(lines)
+      )
+    }
+  } else {
+    report.skip('E 非首项任务列表', '编辑器拿不到焦点（窗口不是前台）')
+  }
+
   app.close()
   return report.finish()
 }

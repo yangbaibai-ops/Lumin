@@ -85,32 +85,62 @@ export const TyporaInputRules = Extension.create({
           const docText = match[0].slice(0, -1) // 例如 '[ ]'（最后一位是刚输入的字符）
           const { doc, tr } = state as EditorState & { tr: Transaction }
 
-          // 定位文档中的匹配文本节点（绝对位置 = descendants 内容坐标 + 1）
+          // 定位文档中**满足全部前置条件**的那一处匹配文本（绝对位置 = 内容坐标 + 1）
+          //
+          // 判据用 `startsWith` 而不是"文本全等"：用户在**已有内容的列表项**开头敲 `[x] `
+          // 时，那一项段落的文本是 `[x] 第二条`（后面的正文还在同一个文本节点里），
+          // 全等匹配会一个候选都找不到 ⇒ 规则静默失效（实测：真实编辑器里只留下被转义的
+          // `\[x\] 第二条`）。`startsWith` 既能命中，又仍受下面两条护栏约束。
+          //
+          // ⚠️ 也不能"取第一个候选就完事"：前面的列表项如果本来就写着字面 `[ ]`，
+          // 第一个候选并不是用户刚敲的那一处。所以：
+          //   ① 每个候选都当场校验「前无序列表项首段开头」；
+          //   ② 有多个候选时取**离当前光标最近**的那个（handler 拿得到真实选区，
+          //      而 core 传进来的 `range.from` 在 Chromium 下可能落后一位 —— 见文件头说明）。
           let textPos = -1
-          doc.descendants((n, cp) => {
-            if (textPos < 0 && n.isText && n.text === docText) textPos = cp + 1
-          })
-          if (textPos < 0) return null
-          const $from = doc.resolve(textPos)
-
-          // 定位外层的 listItem 与其所属列表（只转换无序列表）
           let itemDepth = -1
           let list: PMNode | null = null
-          for (let depth = $from.depth; depth > 0; depth--) {
-            const node = $from.node(depth)
-            if (node.type.name === 'listItem') {
-              itemDepth = depth
-              list = $from.node(depth - 1)
-              break
+          let bestDistance = Number.POSITIVE_INFINITY
+          const cursor = state.selection.from
+          doc.descendants((n, cp) => {
+            if (!n.isText || !n.text || !n.text.startsWith(docText)) return
+            const candidate = cp + 1
+            const $at = doc.resolve(candidate)
+            let depth = -1
+            let owner: PMNode | null = null
+            for (let d = $at.depth; d > 0; d--) {
+              if ($at.node(d).type.name === 'listItem') {
+                depth = d
+                owner = $at.node(d - 1)
+                break
+              }
             }
-          }
-          if (itemDepth < 0 || !list || list.type.name !== 'bulletList') return null
-
-          // 匹配文本必须是该列表项第一个段落的开头
-          if (textPos !== $from.start(itemDepth) + 2) return null
+            if (depth < 0 || !owner || owner.type.name !== 'bulletList') return
+            // 匹配文本必须是该列表项第一个段落的开头（与改动前同一判据）
+            if (candidate !== $at.start(depth) + 2) return
+            const distance = Math.abs(candidate - cursor)
+            if (distance < bestDistance) {
+              bestDistance = distance
+              textPos = candidate
+              itemDepth = depth
+              list = owner
+            }
+          })
+          if (textPos < 0 || itemDepth < 0 || !list) return null
+          const $from = doc.resolve(textPos)
 
           const checked = (match[1] || '').toLowerCase() === 'x'
-          const itemIndex = $from.index(itemDepth)
+          /**
+           * 「第几个列表项」取的是 **`itemDepth - 1`** 那一层的下标（= bulletList 的第几个子节点）。
+           *
+           * 实测校准（prosemirror 的位置语义）：光标在**第二个** listItem 的段落里时
+           * `index(itemDepth) === 0`（item 内第几个子节点 —— 段落），
+           * 而 `index(itemDepth - 1) === 1`（第几个列表项）。
+           * 改前用 `index(itemDepth)` ⇒ 恒为 0 ⇒ `[ ] ` 敲在非首项时：列表照转，
+           * 但用户敲的那一项留着字面标记，**另一个项**被勾上（单元素列表碰巧正确，所以久未暴露）。
+           * 回归由 `tests/inputRules.test.mjs` 与 `tools/_verify-input-rules.js` 两侧守着。
+           */
+          const itemIndex = $from.index(itemDepth - 1)
 
           // 重建顶层内容：把该 bulletList 替换为 taskList，
           // 目标项按语法设置勾选并剥掉开头的 '[ ]' 文本，其余项原样保留。
@@ -133,9 +163,13 @@ export const TyporaInputRules = Extension.create({
               if (index === itemIndex) {
                 const first = c.firstChild
                 if (first && first.isTextblock && first.textContent.startsWith(docText)) {
+                  // 连同尾随空格一起剥掉：`[x] ` 的最后一个字符也是用户刚敲的
+                  const cutLen = first.textContent.startsWith(match[0])
+                    ? match[0].length
+                    : docText.length
                   content = c.content.replaceChild(
                     0,
-                    first.copy(first.content.cut(docText.length, first.content.size))
+                    first.copy(first.content.cut(cutLen, first.content.size))
                   )
                 }
               }

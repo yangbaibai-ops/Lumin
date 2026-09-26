@@ -72,8 +72,12 @@ export function isIndexableFile(name: string): boolean {
 const yieldToLoop = (): Promise<void> => new Promise((r) => setImmediate(r))
 
 /**
- * 该不该读这篇：没索引过、或文件比索引新。**纯函数**（有单测）。
+ * 该不该读这篇：没索引过、或文件比索引新。**纯函数**。
  * `indexedMtime` 为 0/undefined 表示从没索引过。
+ *
+ * ⚠️ 注释里原先写"有单测"，但 `tests/` 里既没有 `shouldIndex` 也没有覆盖这个模块的文件
+ * （审计 §10 P1「≥80 行 src 文件零引用」那一类）。这条**不是**宣称已有覆盖 ——
+ * 覆盖它的活归 `_verify-search-index.js`（端到端）或后续给这个纯函数补一条单测。
  */
 export function shouldIndex(mtimeMs: number, indexedMtime: number | null | undefined): boolean {
   return !indexedMtime || mtimeMs > indexedMtime
