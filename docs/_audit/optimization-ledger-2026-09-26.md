@@ -191,6 +191,24 @@
 
 ---
 
+## 验证快照（本轮收尾，实测）
+
+| 门禁 | 结果 |
+| --- | --- |
+| 单元测试 `node --test "tests/*.test.mjs"` | **690 条全绿**（本轮 596 → 690） |
+| 类型检查 | `tsc -p tsconfig.node.json` **0**；`vue-tsc -p tsconfig.web.json` **0** |
+| 风格 | `eslint --cache --max-warnings 0 .` **0** |
+| 本地全量门禁 `npm run ci` | **exit 0**（typecheck + lint + test:unit + notices:check + docs:facts:check + docs:tokens:check + build） |
+| CDP 默认矩阵 `node tools/run-suites.js` | **60/60 PASS，0 FAIL / 0 NOASSERT / 0 FLAKY**（另有 5 条断言按环境如实 SKIP，SKIP 不算失败） |
+| 打包态 | `npx electron-builder --dir` 产出 `dist/win-unpacked/Lumin.exe`；`_verify-packaging-fast.js` 6/6（对产物跑 CSP / `lumin-file://` / asar 懒加载 / `isPackaged`） |
+
+> 跑矩阵前请清场：杀掉残留的测试实例（命令行含 `Temp\lumin-*` 的 electron 进程）
+> 并删掉 `%TEMP%\lumin-suites-ud` —— 否则会话恢复会把**上一轮套件的夹具文档**带回编辑器，
+> 表现为某些套件读到别的套件的字节（本轮踩到过；用户自己的 `%APPDATA%\Lumin` 实例**不要动**）。
+
+---
+
+
 ## 本轮（收尾批次）发现并修掉的真缺陷
 
 这几条**不在清单原文里**，是"补测试 / 补断言 / 迁移范式"时被守卫抓出来的，都已修复并留下回归：
