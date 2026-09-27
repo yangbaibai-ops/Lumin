@@ -12,6 +12,7 @@ import { useI18n } from 'vue-i18n'
 import { useEditorStore } from '../stores/editor'
 import { useSettingsStore } from '../stores/settings'
 import { shouldCloseOnScrollOrResize } from '../lib/popoverClose'
+import { useHoverPopover } from '../composables/useHoverPopover'
 import Icon from './Icon.vue'
 
 const { t } = useI18n()
@@ -23,64 +24,23 @@ const settings = useSettingsStore()
 defineOptions({ inheritAttrs: false })
 
 const POP_WIDTH = 188
-const OPEN_DELAY = 300
-const CLOSE_DELAY = 180
 
 const btnRef = ref<HTMLElement | null>(null)
 const popRef = ref<HTMLElement | null>(null)
-const open = ref(false)
-const popPos = ref({ x: 0, y: 0 })
 
-let openTimer: ReturnType<typeof setTimeout> | null = null
-let closeTimer: ReturnType<typeof setTimeout> | null = null
-
-function cancelTimers(): void {
-  if (openTimer) {
-    clearTimeout(openTimer)
-    openTimer = null
-  }
-  if (closeTimer) {
-    clearTimeout(closeTimer)
-    closeTimer = null
-  }
-}
-
-/** 打开时留出边距钳制，窄窗口下工具栏可横向滚动，按钮可能贴近右边缘 */
-function showPopover(): void {
-  const rect = btnRef.value?.getBoundingClientRect()
-  if (!rect) return
-  popPos.value = {
-    x: Math.max(8, Math.min(rect.left, window.innerWidth - POP_WIDTH - 8)),
-    y: rect.bottom + 8
-  }
-  open.value = true
-}
-
-function onButtonEnter(): void {
-  if (closeTimer) {
-    clearTimeout(closeTimer)
-    closeTimer = null
-  }
-  openTimer = setTimeout(showPopover, OPEN_DELAY)
-}
-
-function scheduleClose(): void {
-  if (openTimer) {
-    clearTimeout(openTimer)
-    openTimer = null
-  }
-  closeTimer = setTimeout(() => {
-    closeTimer = null
-    open.value = false
-  }, CLOSE_DELAY)
-}
-
-function onPopoverEnter(): void {
-  if (closeTimer) {
-    clearTimeout(closeTimer)
-    closeTimer = null
-  }
-}
+/**
+ * 悬停弹层（开合时序 + 落点）：实现在 `composables/useHoverPopover`，与表格按钮共用
+ * （审计 §10 P1「popover 2 份」——此前两份逐字相同，改一处忘一处就会让两个按钮手感不一致）。
+ * 落点按弹层宽度做右侧钳制：窄窗口下工具栏可横向滚动，按钮可能贴近右边缘。
+ */
+const {
+  open,
+  pos: popPos,
+  onButtonEnter,
+  onPopoverEnter,
+  scheduleClose,
+  cancelTimers
+} = useHoverPopover(btnRef, { width: POP_WIDTH })
 
 /** 点击外部任意处收起（弹层浮在编辑器上方，别让它挡住编辑区的点击） */
 function onDocMouseDown(e: MouseEvent): void {

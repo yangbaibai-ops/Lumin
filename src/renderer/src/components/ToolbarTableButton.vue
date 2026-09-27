@@ -13,6 +13,7 @@ import type { Editor } from '@tiptap/core'
 import { useI18n } from 'vue-i18n'
 import { useEditorStore } from '../stores/editor'
 import { shouldCloseOnScrollOrResize } from '../lib/popoverClose'
+import { useHoverPopover } from '../composables/useHoverPopover'
 import {
   applyTableColumnAlign,
   tableColumnAlign,
@@ -33,60 +34,29 @@ const MAX_ROWS = 8
 const MAX_COLS = 10
 
 const btnRef = ref<HTMLElement | null>(null)
-const open = ref(false)
-const popPos = ref({ x: 0, y: 0 })
 const hoverR = ref(2)
 const hoverC = ref(2)
 
 const rowIdx = computed(() => Array.from({ length: MAX_ROWS }, (_, i) => i))
 const colIdx = computed(() => Array.from({ length: MAX_COLS }, (_, i) => i))
 
-let openTimer: ReturnType<typeof setTimeout> | null = null
-let closeTimer: ReturnType<typeof setTimeout> | null = null
-
-function cancelTimers(): void {
-  if (openTimer) {
-    clearTimeout(openTimer)
-    openTimer = null
-  }
-  if (closeTimer) {
-    clearTimeout(closeTimer)
-    closeTimer = null
-  }
-}
-
-/** 弹出选择器：Teleport 到 body 固定定位（工具栏 overflow 裁剪会吃掉常规弹层） */
-function showPopover(): void {
-  const rect = btnRef.value?.getBoundingClientRect()
-  if (!rect) return
-  popPos.value = { x: rect.left, y: rect.bottom + 8 }
-  open.value = true
-}
-
-function onButtonEnter(): void {
-  if (closeTimer) {
-    clearTimeout(closeTimer)
-    closeTimer = null
-  }
-  openTimer = setTimeout(showPopover, 300)
-}
-
-function scheduleClose(): void {
-  if (openTimer) {
-    clearTimeout(openTimer)
-    openTimer = null
-  }
-  closeTimer = setTimeout(() => {
-    open.value = false
-  }, 180)
-}
-
-function onPopoverEnter(): void {
-  if (closeTimer) {
-    clearTimeout(closeTimer)
-    closeTimer = null
-  }
-}
+/**
+ * 悬停弹层（开合时序 + 落点）：实现在 `composables/useHoverPopover`，与代码块按钮共用
+ * （审计 §10 P1「popover 2 份」）。
+ *
+ * `width: GRID_WIDTH`：网格最宽 10 列，窄窗口下按钮贴近右边缘时要把弹层整体夹回视口内 ——
+ * 这条规则过去只有代码块按钮有，表格这边会溢出（顺带修掉）。
+ */
+const GRID_WIDTH = 236
+const {
+  open,
+  pos: popPos,
+  onButtonEnter,
+  onPopoverEnter,
+  scheduleClose,
+  openNow,
+  cancelTimers
+} = useHoverPopover(btnRef, { width: GRID_WIDTH })
 
 /** 滚动/缩放收起：弹层内部滚动不收起（见 lib/popoverClose.ts） */
 function onWindowScrollOrResize(e: Event): void {
@@ -193,7 +163,8 @@ function onButtonKeydown(e: KeyboardEvent): void {
     cancelTimers()
     return
   }
-  showPopover()
+  // 键盘路径（Enter/Space）：立刻弹层，不该等 300ms 的悬停延迟
+  openNow()
 }
 
 onBeforeUnmount(() => {
