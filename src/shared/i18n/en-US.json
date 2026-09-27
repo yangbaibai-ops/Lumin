@@ -16,6 +16,17 @@
     "searchPlaceholder": "Search all indexed documents (FTS5 full-text index)…",
     "loading": "Loading…"
   },
+  "onboarding": {
+    "title": "Start writing",
+    "body": "Create a document, or open a folder as your workspace to keep your Markdown files together.",
+    "newFile": "New file",
+    "openFolder": "Open folder",
+    "insertSample": "Insert sample document",
+    "sampleNote": "The sample only lives in the editor — nothing is written to disk until you save it.",
+    "sampleTitle": "Sample document",
+    "sampleReplace": "This replaces the unsaved content in the editor with the sample. Nothing is written to disk until you save it.",
+    "sampleDoc": "> **This is a sample inside the editor, not a file on disk.** Press Ctrl+S and Lumin will ask which folder to save it in.\n\n# Welcome to Lumin\n\nA short Markdown sample that shows the syntax you will use most. Edit it right here in **live rendering** mode, or right-click anywhere to see the commands available at the caret.\n\n## Headings\n\nStart a line with one `#` and a space for a level-one heading; `##` is level two and `###` is level three. The outline panel on the left follows this heading tree.\n\n## Emphasis and inline code\n\n**Bold** takes two asterisks, *italic* takes one, `inline code` takes backticks, and ~~strikethrough~~ takes two tildes.\n\n## Code blocks\n\nThree backticks open a code block, and the first line can name the language; highlighting and indentation inside the block are handled by the editor.\n\n```python\n# the language name after the fence decides the highlighting\nname = \"Lumin\"\nprint(\"hello, \" + name)\n```\n\n## Quotes and lists\n\n> A quote starts with `>`. Good for a reminder, a citation, or a single to-do.\n\n- Bullet lists start with `-`\n- Ordered lists start with `1.`\n  - Indent by two spaces for a nested level; Tab indents too\n\n- [ ] Write `- [ ]` at the start of a line for a checkable task\n- [x] A finished one is written `- [x]`\n\n## Tables\n\n| Syntax | Result |\n| --- | --- |\n| `**bold**` | **bold** |\n| `` `code` `` | `code` |\n\n## Formulas\n\nAn inline formula is written $E = mc^2$; a paragraph of its own becomes a display formula:\n\n$$\nx = \\frac13 = 0.3333\n$$\n\nEdit this sample or delete it — it is only a demonstration.\n"
+  },
   "open": {
     "openFolder": "Open Folder",
     "recent": "Recent Documents",
@@ -78,6 +89,7 @@
     "exportHtml": "Export as HTML",
     "exportWord": "Export as Word (.doc)",
     "exportEpub": "Export as EPUB",
+    "print": "Print…",
     "undo": "Undo",
     "redo": "Redo",
     "findReplace": "Find",
@@ -441,6 +453,10 @@
     "openFailed": "Cannot open file",
     "exportFailed": "Export failed",
     "exportedTo": "Exported to: {path}",
+    "printDone": "Sent to the printer",
+    "printCancelled": "Printing canceled",
+    "printFailed": "Printing failed",
+    "printNoReason": "The print system did not report a reason",
     "renameFailed": "Rename failed",
     "renamedTo": "Renamed to \"{name}\"",
     "renameUndoFailed": "Could not undo the rename (the old name may be taken)",

@@ -192,6 +192,17 @@ const api: LuminAPI = {
     word: (payload: ExportPayload) => ipcRenderer.invoke('export:word', payload),
     epub: (meta: EpubMeta) => ipcRenderer.invoke('export:epub', meta)
   },
+  /**
+   * 真打印机打印（审计 §7 第 18 条）。
+   * **不是导出格式**：不落盘、没有输出路径 —— 所以它没有进 `shared/exportFormats`
+   * 那份「导出格式唯一清单」，而是单独一条通道。
+   * 第二个参数就是设置里的 PDF 页面设置（打印没有独立设置：版式与 PDF 导出同源）。
+   * 返回恒为一个结果对象（ok / cancelled / failed + Chromium 的 failureReason）。
+   */
+  print: {
+    document: (payload: ExportPayload, settings) =>
+      ipcRenderer.invoke('print:document', payload, settings)
+  },
   // 备份（审计 §2 P1）：库定时备份到指定目录 + 工作区快照 zip
   backup: {
     status: () => ipcRenderer.invoke('backup:status'),

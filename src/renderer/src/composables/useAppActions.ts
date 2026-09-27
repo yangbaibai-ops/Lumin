@@ -46,7 +46,7 @@ export function useAppActions(): {
   const files = useFilesStore()
   const ui = useUiStore()
   const settings = useSettingsStore()
-  const { runExport } = useExport()
+  const { runExport, runPrint } = useExport()
   const { setMode, cycleMode } = useEditorMode()
 
   async function openFileDialog(): Promise<void> {
@@ -123,6 +123,11 @@ export function useAppActions(): {
         break
       case 'save-as':
         void saveAsDoc()
+        break
+      case 'print':
+        // 打印与导出共用同一份 HTML + CSS，但落点是打印机而不是文件（也不落盘），
+        // 所以它不进 EXPORT_FORMATS 清单，走这条独立动作（Ctrl+P / 菜单「打印…」）。
+        void runPrint()
         break
       case 'find':
         // Ctrl+F / 菜单「查找」：打开右上角查找栏（再按一次关闭）。

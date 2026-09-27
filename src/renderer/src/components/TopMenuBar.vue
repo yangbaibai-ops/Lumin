@@ -28,7 +28,7 @@ const files = useFilesStore()
 const ui = useUiStore()
 const settings = useSettingsStore()
 const editorStore = useEditorStore()
-const { runExport } = useExport()
+const { runExport, runPrint } = useExport()
 const { setMode } = useEditorMode()
 
 // labelKey = i18n 键；label = 直接文案（最近文档这类动态项用文件名，无键可查）
@@ -234,6 +234,9 @@ const GROUPS = computed<Group[]>(() => [
           run: () => runExport(f.id)
         }))
       },
+      // 「打印」紧挨着导出，但它**不来自** EXPORT_FORMATS：那份清单是「导出格式的唯一清单」，
+      // 而打印不落盘、没有输出文件（审计 §7 第 18 条：此前只有 PDF 导出）。Ctrl+P 同一动作。
+      { labelKey: 'menu.print', icon: 'printer', run: () => runPrint() },
       // 本地历史（Wave 2）：保存前的快照可查看/载入（未落盘文档没有历史）
       {
         labelKey: 'menu.localHistory',

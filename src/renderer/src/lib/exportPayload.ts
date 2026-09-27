@@ -63,3 +63,18 @@ export function exportRequest(
   }
   return { args: payload, options: null }
 }
+
+/**
+ * 构造一次**打印**请求（审计 §7 第 18 条：此前只有 PDF 导出，没有真打印机）。
+ *
+ * 打印不是导出格式（不落盘、没有输出路径），但它需要的载荷与选项与 PDF 导出**逐字相同**：
+ * 同一份 HTML + CSS（排版只有一个来源），同一份页面尺寸/边距设置（打印没有独立设置，
+ * 用户在系统打印对话框里还能临时改纸张）。所以这里直接复用 `exportRequest('pdf', …)`，
+ * 而不是另写一份字段拼装 —— 少一处会漂的重复实现。
+ */
+export function printRequest(
+  doc: { title: string; html: string; css: string },
+  opts: ExportOptionsSlice
+): ExportRequest {
+  return exportRequest('pdf', doc, opts)
+}

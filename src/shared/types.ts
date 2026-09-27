@@ -8,6 +8,8 @@ import type { Eol } from './eol'
 import type { HistoryEntry, HistoryEntryMeta } from './history'
 // 设置文件的读取结果（信封/白名单那一套在 shared/settingsFile.ts；这里只要类型）
 import type { SettingsFileReadResult } from './settingsFile'
+// 打印结果三态 + 失败原因（纯函数模块，见 shared/printOptions.ts）
+import type { PrintResult } from './printOptions'
 export type { HistoryEntry, HistoryEntryMeta }
 export type { ConcreteEncoding, EncodingId, Eol }
 export type Language = 'zh-CN' | 'en-US' | 'ru-RU'
@@ -532,6 +534,8 @@ export type MenuAction =
   | 'export-html'
   | 'export-word'
   | 'export-epub'
+  // 打印**不是**导出格式（不落盘），所以它是导出四条之外的一条独立动作
+  | 'print'
   | 'find'
   | 'replace'
   | 'global-search'
@@ -783,6 +787,22 @@ export interface LuminAPI {
     html: (payload: ExportPayload) => Promise<string | null>
     word: (payload: ExportPayload) => Promise<string | null>
     epub: (meta: EpubMeta) => Promise<string | null>
+  }
+  /**
+   * 真打印机打印（审计 §7 第 18 条：此前 `webContents.print(` 全仓 0 命中）。
+   *
+   * **不是导出格式**：不落盘、没有输出路径 —— 所以它不在 `shared/exportFormats`
+   * 那份「导出格式唯一清单」里。排版与 PDF 导出**同源**（主进程复用同一段
+   * buildHtml + 同一个隐藏窗口渲染流程），第二个参数因此就是设置里的 PDF 页面设置。
+   *
+   * 返回值恒为一个对象（**不抛**）：`ok` 已交给打印机 / `cancelled` 用户在系统打印
+   * 对话框里取消（**正常路径**，不是错误）/ `failed` + Chromium 的 `failureReason`。
+   */
+  print: {
+    document: (
+      payload: ExportPayload,
+      settings: AppSettings['export']['pdf']
+    ) => Promise<PrintResult>
   }
   /**
    * 备份（审计 §2 P1）：定时把 SQLite 库复制到用户指定目录 + 按需导出工作区快照 zip。

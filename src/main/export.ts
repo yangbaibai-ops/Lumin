@@ -13,6 +13,9 @@ import { testOutputDir } from './testPaths'
 import { escapeHtml } from '../shared/html'
 // PDF 页眉/页脚模板（纯函数）：Chromium 只替换 `.pageNumber` / `.totalPages` 这几个类
 import { pdfFooterTemplate, pdfHeaderTemplate } from '../shared/pdfTemplates'
+// 打印选项映射 + 回调结果归类（纯函数、零依赖，单测在 tests/printOptions.test.mjs）
+import { buildPrintOptions, classifyPrintResult } from '../shared/printOptions'
+import type { PrintResult } from '../shared/printOptions'
 // EPUB 组装（拆章 / 图片内嵌 / nav / opf）是纯函数，在 shared 里且有单测
 import {
   buildChapterXhtml,
@@ -79,6 +82,49 @@ export async function exportWord(payload: ExportPayload): Promise<string | null>
   return saveWithDialog(`${payload.title || 'document'}.doc`, 'doc', Buffer.from(html, 'utf-8'))
 }
 
+/**
+ * 用隐藏窗口 + 真实 Chromium 排版引擎渲染**导出用的那一份 HTML**，等网页字体与布局
+ * 就绪后交给 `use`，无论成功失败都销毁窗口。
+ *
+ * **PDF 导出与真打印机打印共用这一份**（审计 §7 第 18 条补「打印」时最关键的约束）：
+ * 打印拿到的因此是与 PDF **完全相同**的 HTML + CSS —— 含渲染层那份带 `@media print`
+ * 分页规则的样式表、KaTeX 样式、已渲染成 SVG 的 Mermaid，不存在"第二份排版 CSS"。
+ *
+ * `teardownGraceMs`：打印用得上（见 PRINT_TEARDOWN_GRACE_MS），PDF 导出为 0。
+ */
+async function withRenderedDocument<T>(
+  payload: ExportPayload,
+  use: (win: BrowserWindow) => Promise<T>,
+  teardownGraceMs = 0
+): Promise<T> {
+  const printWin = new BrowserWindow({
+    show: false,
+    width: 960,
+    height: 1200,
+    webPreferences: { sandbox: true, contextIsolation: true }
+  })
+  try {
+    await printWin.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(buildHtml(payload)))
+    // 等待字体与图片/样式全部可用（KaTeX、系统 CJK 等）
+    await printWin.webContents.executeJavaScript(
+      `document.fonts && document.fonts.ready ? document.fonts.ready.then(() => true) : Promise.resolve(true)`
+    )
+    // 再让一次渲染帧稳定（布局/分页计算完成）
+    await new Promise((resolve) => setTimeout(resolve, 250))
+    return await use(printWin)
+  } finally {
+    // 隐藏窗口一律销毁，不留泄漏。宽限期只给打印：那个 webContents 本身就是打印源，
+    // 回调刚返回就 destroy 有可能把还没交给 spooler 的任务一起带走。
+    if (teardownGraceMs > 0 && !printWin.isDestroyed()) {
+      setTimeout(() => {
+        if (!printWin.isDestroyed()) printWin.destroy()
+      }, teardownGraceMs)
+    } else if (!printWin.isDestroyed()) {
+      printWin.destroy()
+    }
+  }
+}
+
 export async function exportPdf(
   payload: ExportPayload,
   pdfSettings: { margin: number; pageSize: 'A4' | 'A5' | 'Letter' }
@@ -95,46 +141,33 @@ export async function exportPdf(
   if (result.canceled || !result.filePath) return null
   const resultFilePath = result.filePath
 
-  // 用隐藏窗口 + 真实 Chromium 排版引擎渲染后再 printToPDF；
-  // 等页面渲染与网页字体完全就绪再打印，避免空白/缺字/未分页
-  const printWin = new BrowserWindow({
-    show: false,
-    width: 960,
-    height: 1200,
-    webPreferences: { sandbox: true, contextIsolation: true }
-  })
   try {
-    await printWin.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(buildHtml(payload)))
-    // 等待字体与图片/样式全部可用（KaTeX、系统 CJK 等）
-    await printWin.webContents.executeJavaScript(
-      `document.fonts && document.fonts.ready ? document.fonts.ready.then(() => true) : Promise.resolve(true)`
-    )
-    // 再让一次渲染帧稳定（布局/分页计算完成）
-    await new Promise((resolve) => setTimeout(resolve, 250))
-
-    const marginInch = pdfSettings.margin / 25.4
-    // ── 页眉页脚（审计 §7 第 18 条）：此前 `headerTemplate|footerTemplate` 全仓 0 命中 ──
-    // Chromium 的模板是**独立 HTML 片段**（不继承页面样式）：必须自带 font-size/颜色，
-    // 且只有 `.pageNumber` / `.totalPages` / `.title` / `.date` 这几个类会被替换。
-    // 上下边距要给页眉页脚留位置，否则它们会被正文压住（Chromium 把它们画在边距区里）。
-    const headerFooterGap = 0.45 // inch
-    const data = await printWin.webContents.printToPDF({
-      pageSize: pdfSettings.pageSize,
-      printBackground: true,
-      landscape: false,
-      displayHeaderFooter: true,
-      headerTemplate: pdfHeaderTemplate(payload.title, marginInch),
-      footerTemplate: pdfFooterTemplate(marginInch),
-      margins: {
-        top: Math.max(marginInch, headerFooterGap),
-        bottom: Math.max(marginInch, headerFooterGap),
-        left: marginInch,
-        right: marginInch
+    const data = await withRenderedDocument(payload, async (printWin) => {
+      const marginInch = pdfSettings.margin / 25.4
+      // ── 页眉页脚（审计 §7 第 18 条）：此前 `headerTemplate|footerTemplate` 全仓 0 命中 ──
+      // Chromium 的模板是**独立 HTML 片段**（不继承页面样式）：必须自带 font-size/颜色，
+      // 且只有 `.pageNumber` / `.totalPages` / `.title` / `.date` 这几个类会被替换。
+      // 上下边距要给页眉页脚留位置，否则它们会被正文压住（Chromium 把它们画在边距区里）。
+      const headerFooterGap = 0.45 // inch
+      const data = await printWin.webContents.printToPDF({
+        pageSize: pdfSettings.pageSize,
+        printBackground: true,
+        landscape: false,
+        displayHeaderFooter: true,
+        headerTemplate: pdfHeaderTemplate(payload.title, marginInch),
+        footerTemplate: pdfFooterTemplate(marginInch),
+        margins: {
+          top: Math.max(marginInch, headerFooterGap),
+          bottom: Math.max(marginInch, headerFooterGap),
+          left: marginInch,
+          right: marginInch
+        }
+      })
+      if (!data || data.length === 0) {
+        throw new Error(mainT('export.pdfEmpty'))
       }
+      return data
     })
-    if (!data || data.length === 0) {
-      throw new Error(mainT('export.pdfEmpty'))
-    }
     await fileOps.writeBinary(resultFilePath, data)
     return resultFilePath
   } catch (err) {
@@ -145,9 +178,75 @@ export async function exportPdf(
       /* ignore */
     }
     throw err
-  } finally {
-    printWin.destroy()
   }
+}
+
+// ─── 真打印机打印（审计 §7 第 18 条：此前 `webContents.print(` 全仓 0 命中）──────────
+//
+// 与 PDF 导出**同源**：同一段 `buildHtml(payload)`（即同一份排版 CSS + 分页规则），
+// 同一个隐藏窗口渲染流程（`withRenderedDocument`）。区别只有落点：
+//   * PDF 导出 → `printToPDF()` 拿到字节，原子写进用户选的文件；
+//   * 打印     → `print()` 弹**系统打印对话框**（`silent: false`），由用户选打印机。
+//
+// ⚠️ **真机打印未经自动化验证**：本仓库的开发机 / CI 没有打印机，系统打印对话框也无法
+// 在无头环境里驱动。可自动验证的只有 `buildPrintOptions`（尺寸/边距映射）与
+// `classifyPrintResult`（结果归类）两条纯函数，见 `tests/printOptions.test.mjs`；
+// 真机验收口径写在交付报告里（需要用户在有打印机的机器上点一次）。
+
+/** 回调兜底时限：个别环境（没装任何打印机、平台在用户关掉对话框后不发通知）不会回调，
+ *  没有这条兜底渲染层 `await` 的 IPC Promise 会永远挂着 —— 那正是"静默吞掉结果"。 */
+const PRINT_CALLBACK_TIMEOUT_MS = 5 * 60 * 1000
+
+/** 回调返回后销毁隐藏窗口前的宽限（打印源就是这个 webContents，见 withRenderedDocument） */
+const PRINT_TEARDOWN_GRACE_MS = 1500
+
+/** 兜底原因：ASCII 诊断文案，与其他主进程错误同一口径（渲染层原样展示） */
+const PRINT_TIMEOUT_REASON = 'no result from the system print dialog (timed out)'
+
+/**
+ * 真打印机打印：复用**与 PDF 导出一模一样**的 HTML + CSS，弹系统打印对话框。
+ *
+ * `printSettings` 就是设置里那份 PDF 页面设置（页面尺寸 + 边距毫米）——
+ * 打印没有独立设置，用户看到的打印结果与导出 PDF 的版式一致。
+ *
+ * 返回值恒为一个 `PrintResult`（**不抛**）：成功 / 用户取消 / 失败三种都给渲染层一个
+ * 可读结果，取消走 `cancelled` 而不是错误（用户点"取消"是正常操作）。
+ */
+export async function printDocument(
+  payload: ExportPayload,
+  printSettings: { margin: number; pageSize: 'A4' | 'A5' | 'Letter' }
+): Promise<PrintResult> {
+  const options = buildPrintOptions({
+    pageSize: printSettings.pageSize,
+    margins: printSettings.margin
+  })
+  return withRenderedDocument(
+    payload,
+    (printWin) =>
+      new Promise<PrintResult>((resolve) => {
+        let settled = false
+        let timer: ReturnType<typeof setTimeout> | null = null
+        const finish = (result: PrintResult): void => {
+          if (settled) return
+          settled = true
+          if (timer) clearTimeout(timer)
+          resolve(result)
+        }
+        timer = setTimeout(
+          () => finish(classifyPrintResult(false, PRINT_TIMEOUT_REASON)),
+          PRINT_CALLBACK_TIMEOUT_MS
+        )
+        try {
+          printWin.webContents.print(options, (success, failureReason) => {
+            finish(classifyPrintResult(success, failureReason))
+          })
+        } catch (err) {
+          // 同步抛（选项非法 / webContents 已销毁）：同样要变成一条可读结果回到渲染层
+          finish(classifyPrintResult(false, err instanceof Error ? err.message : String(err)))
+        }
+      }),
+    PRINT_TEARDOWN_GRACE_MS
+  )
 }
 
 export async function exportEpub(meta: EpubMeta): Promise<string | null> {

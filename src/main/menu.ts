@@ -71,6 +71,9 @@ export function installMenu(): void {
             click: () => send(f.menuAction)
           }))
         },
+        // 「打印」紧挨着导出，但**不来自** EXPORT_FORMATS：那份清单是"导出格式的唯一清单"，
+        // 而打印不落盘、没有输出路径（审计 §7 第 18 条：此前只有 PDF 导出，没有真打印机）。
+        { label: T('print'), click: () => send('print') },
         { type: 'separator' },
         isMac
           ? { role: 'close' as const, label: T('closeWindow') }

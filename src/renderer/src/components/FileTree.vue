@@ -10,8 +10,10 @@ import {
   onTreeKeydown
 } from '../lib/treeFocus'
 import { draggingTree, endTreeDrag } from '../lib/treeMove'
+import { shouldShowOnboarding } from '../lib/onboarding'
 import TreeNode from './TreeNode.vue'
 import FileList from './FileList.vue'
+import OnboardingPanel from './OnboardingPanel.vue'
 import Icon from './Icon.vue'
 import SegmentedControl, { type SegmentItem } from './SegmentedControl.vue'
 
@@ -180,6 +182,24 @@ function onRootContextMenu(e: MouseEvent): void {
 /** 侧栏空态那三个入口（新建 / 打开文件 / 打开文件夹）随空态区块一起删掉了 ——
     没有工作区时侧栏不再放任何入口按钮（用户口径）。入口仍在顶部「文件」菜单与快捷键里。 */
 
+/**
+ * ─── 首次引导：只在"什么都没有"时才出现 ──────────────────────────────────────
+ *
+ * 判定全在纯函数里（`lib/onboarding.ts`，单测 `tests/onboarding.test.mjs` 逐条钉住），
+ * 这里只把两处 store 读出来喂给它。**为什么要看一眼正文**：启动时 `main.ts` 总会补一份
+ * 未命名空白缓冲占位，若只按"有没有 current"判，这块引导在真实启动路径上永远不出现
+ * （等于把审计 §7 的缺口原地留着）—— 所以"未命名 + 空白"才算"还没开始写"。
+ * 打开文件夹、把内容写进去、或文档落到磁盘路径上（打开/另存），它立刻消失。
+ */
+const showOnboarding = computed(() =>
+  shouldShowOnboarding({
+    root: files.root,
+    hasDoc: !!files.current,
+    path: files.current?.path ?? null,
+    content: files.current?.content ?? ''
+  })
+)
+
 async function handleAction(action: string): Promise<void> {
   if (!files.root) return
   if (action === 'new-file') {
@@ -310,7 +330,14 @@ function onTreeDragEnd(): void {
          「新建文档 / 打开文件 / 打开文件夹」这些按钮和提示）。
          原来这里是一组三枚图标按钮 + 一行 `open.hint` 提示，现已整块删除。
          入口都还在别处：顶部菜单「文件」、快捷键（Ctrl+N / Ctrl+O）、以及侧栏头部的
-         「打开文件夹 / 新建文件」两个按钮 —— 侧栏空着就是空着。 -->
+         「打开文件夹 / 新建文件」两个按钮 —— 侧栏空着就是空着。
+
+         唯一的例外是**首次引导块**（审计 §7「首次引导 / 示例文档：无」）：它不挂在
+         "没打开工作区"这个条件上，而是挂在纯函数 `shouldShowOnboarding` 上 ——
+         既要没有工作区，也要没有任何真正在编辑的东西（空白未命名缓冲不算），
+         所以"工作区空着就是空着"这条口径在有工作区时一个字都没变，而第一次打开
+         软件的人终于看得见"新建 / 打开文件夹 / 插入示例"这三条路。 -->
+    <OnboardingPanel v-if="showOnboarding" class="min-h-0 flex-1 overflow-y-auto" />
 
     <!-- 搜索 + 视图切换（树 / 列表）：**贴底**成一条独立的工具带
          （用户口径：这两件东西放在顶部太抢视觉，压到面板下方更干净）。

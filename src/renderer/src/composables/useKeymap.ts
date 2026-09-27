@@ -77,6 +77,17 @@ export function useKeymap(actions: ReturnType<typeof useAppActions>): void {
       run: () => handleMenu(f.menuAction)
     })),
     {
+      // 打印（审计 §7 第 18 条）：**不属于导出格式**（不落盘、没有输出文件），
+      // 所以它不在上面那张清单里，只有这一条独立命令。
+      // Ctrl+P 是各家的打印键；已核对整张表：Mod+P 此前无人占用
+      // （Mod+Shift+P 是全局搜索，两者不同）。
+      id: 'file.print',
+      titleKey: 'menu.print',
+      groupKey: 'keymap.groupExport',
+      defaultKeys: 'Mod+P',
+      run: () => handleMenu('print')
+    },
+    {
       id: 'file.closeWindow',
       titleKey: 'keymap.closeWindow',
       groupKey: 'keymap.groupWindow',

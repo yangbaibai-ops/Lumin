@@ -975,6 +975,16 @@ export function registerIpc(slots: SlotRegistry): void {
   ipcMain.handle('export:word', (_, payload: ExportPayload) => exportSvc.exportWord(payload))
   ipcMain.handle('export:epub', (_, meta: EpubMeta) => exportSvc.exportEpub(meta))
 
+  // ── 真打印机打印（审计 §7 第 18 条：此前 `webContents.print(` 全仓 0 命中）──
+  // **不是导出格式**：不落盘、没有输出路径，所以它不在 `shared/exportFormats` 那份
+  // "导出格式唯一清单"里（往那儿塞会污染清单的语义）。
+  // 排版与 PDF 导出同源（主进程复用同一段 buildHtml + 同一个隐藏窗口渲染流程）。
+  // 结果恒为一个 `PrintResult`（ok / cancelled / failed）—— 取消是正常路径，
+  // 无打印机时 Chromium 的 failureReason 也原样回到渲染层，不会被吞掉。
+  ipcMain.handle('print:document', (_, payload: ExportPayload, s: AppSettings['export']['pdf']) =>
+    exportSvc.printDocument(payload, s)
+  )
+
   // ── 会话恢复：按窗口槽位读写（窗口生命周期在 index.ts）──
   ipcMain.handle('session:get', () => session.readSession())
   ipcMain.handle('session:save', (_, index: number, slot: SessionSlot | null) =>
