@@ -1,7 +1,13 @@
-# 依赖与 action 的自动更新（清单 §10 P2：action 用可变标签 @v4 时的替代方案）
+# ─── 依赖与 action 的自动更新（清单 §10 P2）──────────────────────────────────
 #
-# 为什么不是把 action pin 到 commit SHA：SHA 只能人工核对，写错一个字符就静默失效；
-# dependabot 会在 **PR 里**把 action 的版本（含 SHA 形式）提出来，由评审时看到 diff。
+# 为什么依赖这一步：workflow 里的 action 已 **pin 到 commit SHA**（见三个 workflow 的
+# `uses:` 注释）—— SHA 的唯一缺点是"不会自己动"，而 dependabot 的 github-actions 条目
+# 会在**PR 里**把 SHA 与版本注释一起提出来，由评审时看到 diff。
+# 换句话说：pin SHA 负责"不被静默替换"，dependabot 负责"不被永久忘记"。
+#
+# 覆盖核对（本轮审计实测）：本仓库需要两个 ecosystem，这里**两个都有** ——
+#   * `github-actions`：workflow 里的 `uses:`（有 action 才需要）；
+#   * `npm`：`package.json` 依赖 + `package-lock.json`。
 version: 2
 updates:
   - package-ecosystem: github-actions
@@ -10,6 +16,13 @@ updates:
       interval: monthly
     commit-message:
       prefix: 'ci'
+    # action 只有三个仓库（checkout / setup-node / upload-artifact），一次一个 PR 不至于刷屏
+    open-pull-requests-limit: 5
+    groups:
+      # 三个 action 常常一起动（同一批 Node 运行时升级），合成一个 PR 更好评审
+      actions:
+        patterns:
+          - '*'
 
   - package-ecosystem: npm
     directory: /

@@ -1,0 +1,40 @@
+# ─── CODEOWNERS：谁被自动请求评审（审计 §10 P2「无 CODEOWNERS」）───────────────
+#
+# ⚠️ 占位符待替换：`package.json` 的 author.name 是 `yang_bai_bai`，但那是**包的作者名，
+# 不等于 GitHub 用户名**（仓库里没有任何地方写过真实的 GitHub 登录名）。
+# 下面用的 `@yang_bai_bai` 是**按作者名推的占位**，请维护者换成真实 GitHub 用户名。
+#
+# 为什么要较真这个：CODEOWNERS 里的 `@someone` 若**不是**本仓库有写权限的用户/团队，
+# GitHub 会**静默失败** —— 文件语法没问题、也没有报错，只是永远不请求评审，
+# 等于"看起来有门禁、实际没有"。这类静默失效正是本文件存在的意义，别让它自己变成例子。
+#
+# 语法：`<pattern> <@user 或 @org/team> [<@user> …]`；本文件**不是** YAML，是 gitignore 风格的模式表，
+# 且 `.github/CODEOWNERS` 是这个文件的**首选位置**（根目录 / docs/ 下的同名文件优先级更低）。
+
+# 兜底：默认所有文件归仓库作者（放在文件**末尾**，被下面更具体的规则覆盖）
+* @yang_bai_bai
+
+# ─── 高风险路径：改动会绕开常规测试面，请务必由维护者过一遍 ───────────────────
+
+# CI / 发布链路：action 的 pin、权限位、产物上传口径都在这里（供应链面）
+/.github/ @yang_bai_bai
+# 打包与更新渠道：签名、artifact 命名、publish 占位（发版面）
+/electron-builder.yml @yang_bai_bai
+/dev-app-update.yml @yang_bai_bai
+# 安全边界：路径授权、IPC 白名单、CSP、自定义协议（审计里的"我们认真对待的攻击面"）
+/src/main/ @yang_bai_bai
+/src/preload/ @yang_bai_bai
+# 跨进程真相源：类型 + 纯函数（判定写在这里才测得了）
+/src/shared/ @yang_bai_bai
+# 交付口径文档：改这些等于改对外承诺
+/README.md @yang_bai_bai
+/SECURITY.md @yang_bai_bai
+/RELEASE.md @yang_bai_bai
+# 门禁本身：改 eslint 配置 / 测试骨架等于改"什么算通过"
+/eslint.config.mjs @yang_bai_bai
+/tools/lib/ @yang_bai_bai
+/tests/ @yang_bai_bai
+# 依赖面：lockfile 与许可声明
+/package.json @yang_bai_bai
+/package-lock.json @yang_bai_bai
+/THIRD-PARTY-NOTICES.md @yang_bai_bai
