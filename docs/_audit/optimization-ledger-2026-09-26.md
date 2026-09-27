@@ -196,7 +196,8 @@
 
 冲刺 1（数据安全 9 条）：**全部已完成**。
 冲刺 2：已完成 6 条；代码签名 / 真实渠道为外部阻塞；Electron 升级为独立分支。
-冲刺 3：搜索索引、导出质量、标签、诊断已完成；21（拆分）部分完成 —— `files.ts` 未拆。
+冲刺 3：搜索索引、导出质量、标签、诊断已完成；21（拆分）**部分完成** —— `files.ts` 的判据已抽进
+`lib/filesCore.ts` 并有 23 条单测，但总行数没降、`savePromise` 闸门与"冲突→确认→覆盖"整串仍在 store。
 
 ---
 
@@ -204,11 +205,11 @@
 
 | 门禁 | 结果 |
 | --- | --- |
-| 单元测试 `node --test "tests/*.test.mjs"` | **690 条全绿**（本轮 596 → 690） |
+| 单元测试 `node --test "tests/*.test.mjs"` | **736 条全绿**（本轮 596 → 736） |
 | 类型检查 | `tsc -p tsconfig.node.json` **0**；`vue-tsc -p tsconfig.web.json` **0** |
 | 风格 | `eslint --cache --max-warnings 0 .` **0** |
 | 本地全量门禁 `npm run ci` | **exit 0**（typecheck + lint + test:unit + notices:check + docs:facts:check + docs:tokens:check + build） |
-| CDP 默认矩阵 `node tools/run-suites.js` | **60/60 PASS，0 FAIL / 0 NOASSERT / 0 FLAKY**（另有 5 条断言按环境如实 SKIP，SKIP 不算失败） |
+| CDP 默认矩阵 `node tools/run-suites.js` | **60 个套件：59 PASS / 0 FAIL / 0 NOASSERT / 1 FLAKY** —— `_verify-cb-languages.js` 首跑 3/5、重跑 5/5（审计 flaky 表里的已知项：语言包按需 `import()`，首跑量到未挂载的静态态），**不是回归**；另有 5 条断言按环境如实 SKIP（SKIP 不算失败） |
 | 打包态 | `npx electron-builder --dir` 产出 `dist/win-unpacked/Lumin.exe`；`_verify-packaging-fast.js` 6/6（对产物跑 CSP / `lumin-file://` / asar 懒加载 / `isPackaged`） |
 
 > 跑矩阵前请清场：杀掉残留的测试实例（命令行含 `Temp\lumin-*` 的 electron 进程）
