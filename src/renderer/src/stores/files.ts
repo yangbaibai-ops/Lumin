@@ -27,6 +27,19 @@ import {
   type SyncLedger
 } from '../lib/contentSync'
 import { encodingLabel, formatHistoryTime, untitledEncoding, untitledEol } from '../lib/docText'
+// 保存快照语义 / 草稿时机 / 同路径重开 / 改名路径算术 / 退避延时：纯判据都在 filesCore（有单测）
+import {
+  DRAFT_DEBOUNCE_MS,
+  askedPathStillCurrent,
+  decideSamePathReopen,
+  focusPathAfterMove,
+  nextSaveRetryDelay,
+  planDraftWrite,
+  planReopenWhenClean,
+  planSaveOutcome,
+  renameCurrentDocFixup,
+  snapshotIsSaved
+} from '../lib/filesCore'
 // 字数口径（中文按字 + 拉丁按词）的唯一实现：状态栏字数、阅读时长、主进程 word_count 共用
 import { measureText, type TextMeasure } from '../../../shared/readingTime'
 
@@ -37,13 +50,10 @@ import { measureText, type TextMeasure } from '../../../shared/readingTime'
  */
 /**
  * ─── 草稿的两个时间常数 ────────────────────────────────────────────────────────
- * `DRAFT_DEBOUNCE_MS` 是尾沿防抖：停止输入 1.2s 后写一份。
- * `DRAFT_MAX_WAIT_MS` 是**最大等待**：只有尾沿的话，连续打字（间隔 < 1.2s）会把定时器
- * 无限推迟 —— 实测「每 200ms 改一次、持续 12s」期间**一份草稿都没写**，
- * 而用户最投入的连续写作恰恰是最不希望丢稿的时候。加上限后最坏 10s 必有一份。
+ * 定义在 `lib/filesCore.ts`（与判定它的纯函数放在一起，`tests/filesCore.test.mjs` 覆盖
+ * 1.2s / 10s 两个**恰好等于**的边界）。这里只用到防抖那一个来调度定时器，
+ * 最大等待（10s）由 `planDraftWrite` 内部判。
  */
-const DRAFT_DEBOUNCE_MS = 1200
-const DRAFT_MAX_WAIT_MS = 10_000
 
 let countKey: string | null = null
 /** 一趟扫出来的四个数：字数（含中文/拉丁的拆分，阅读时长要用拆分）+ 行数 + 字符数 */
@@ -409,16 +419,19 @@ export const useFilesStore = defineStore('files', {
      * 为什么抽出来：撤销改名不是"把 `file.rename` 反着调一次"就完了 —— 当前文档的路径、
      * 最近列表里的子孙路径也得一起搬回去，否则继续编辑会写回旧路径（实测那正是
      * "保存后生成一份幽灵副本"的成因）。两个方向共用同一段逻辑，才不会漏掉某一半。
+     *
+     * 「当前文档路径怎么搬」这段路径算术在纯函数 `renameCurrentDocFixup` 里
+     * （大小写/分隔符不敏感、按目录边界判、原后缀原样拼；`tests/filesCore.test.mjs` 逐条钉住）。
      */
     applyRenameFixups(oldPath: string, newPath: string, type: FileNode['type']): void {
-      if (this.current?.path) {
-        if (samePath(this.current.path, oldPath)) {
-          this.current.path = newPath
-          this.current.name = newPath.split(/[\\/]/).pop() ?? this.current.name
-        } else if (isInside(oldPath, this.current.path)) {
-          // 改的是**它所在的目录**：把当前文档的路径一起搬到新目录下
-          this.current.path = newPath + this.current.path.slice(oldPath.length)
+      const cur = this.current
+      if (cur) {
+        const fixup = renameCurrentDocFixup(oldPath, newPath, cur.path, cur.name)
+        // 只有"改的就是它"才换文件名；目录改名时 name 为空串，保持原名不动（与旧实现一致）
+        if (fixup && fixup.name) {
+          cur.name = fixup.name
         }
+        if (fixup) cur.path = fixup.path
       }
       // 目录改名：最近文档 / 置顶 / 最近文件夹里的子孙路径也要跟着搬
       // （主进程那边已经重写了 documents 与 documents_history 的 path）
@@ -438,9 +451,10 @@ export const useFilesStore = defineStore('files', {
       if (this.current?.path) {
         this.currentDir = await window.luminAPI.file.dirname(this.current.path)
       }
-      const focused = activeTreePath.value
-      if (focused && isInside(fromPath, focused)) {
-        activeTreePath.value = toPath + focused.slice(fromPath.length)
+      // 焦点行的搬迁判据在纯函数 focusPathAfterMove 里（按目录边界 + 原后缀原样拼）
+      const moved = focusPathAfterMove(fromPath, toPath, activeTreePath.value)
+      if (moved !== null) {
+        activeTreePath.value = moved
       }
     },
     async renameNode(node: FileNode, parentDir: string, newName: string): Promise<void> {
@@ -564,12 +578,23 @@ export const useFilesStore = defineStore('files', {
        *   1. 同路径 + 脏 → 先问（确认走原来的换文档语义；取消就原样返回，内容一个字不动）；
        *   2. 同路径 + 干净 → 只有"**重开不会带来任何变化**"时才短路（见下面的判据）。
        * 注意判据用 `samePath`（Windows 大小写/分隔符不敏感），不能用 `===`。
+       *
+       * 三条分支的判定本身在纯函数 `decideSamePathReopen` / `planReopenWhenClean` 里
+       * （`tests/filesCore.test.mjs` 覆盖三条分支 + 「问的期间文档被换掉」）。
        */
       const same = samePath(this.current?.path, path)
       if (same) {
-        if (this.dirty && !opts.discardChanges) {
+        if (
+          decideSamePathReopen({
+            currentPath: this.current?.path ?? null,
+            path,
+            dirty: this.dirty,
+            discardChanges: !!opts.discardChanges
+          }) === 'ask'
+        ) {
           if (!(await confirmDiscardIfDirty(() => this.dirty))) return false
-          if (!samePath(this.current?.path, path)) return false // 问的期间文档被换掉了
+          // 问的期间文档被换掉了：原样返回，别按"用户同意了"往下读盘
+          if (!askedPathStillCurrent(this.current?.path ?? null, path)) return false
         } else if (!this.dirty && !opts.discardChanges) {
           /**
            * 同路径 + 干净：短路的前提是"重开确实什么都不会变"。两件事会变，必须放行：
@@ -586,12 +611,19 @@ export const useFilesStore = defineStore('files', {
             if (restorableDraft(draft, cur.content, cur.path, cur.mtimeMs))
               this.draftRestore = draft
             const settings = useSettingsStore()
-            const encodingWillChange =
-              settings.defaultEncoding !== 'auto' && settings.defaultEncoding !== cur.encoding
             const diskMtime = await window.luminAPI.file.mtime(path).catch(() => null)
-            const diskUnchanged =
-              diskMtime !== null && cur.mtimeMs !== null && Math.abs(diskMtime - cur.mtimeMs) <= 1
-            if (!encodingWillChange && diskUnchanged) return true
+            if (
+              planReopenWhenClean({
+                dirty: this.dirty,
+                discardChanges: !!opts.discardChanges,
+                defaultEncoding: settings.defaultEncoding,
+                currentEncoding: cur.encoding,
+                currentMtimeMs: cur.mtimeMs,
+                diskMtimeMs: diskMtime
+              }) === 'short-circuit'
+            ) {
+              return true
+            }
           }
         }
         // 上面没短路的情况：继续往下走，重新读盘就是这次动作的目的
@@ -752,11 +784,17 @@ export const useFilesStore = defineStore('files', {
       clearTimeout(this.saveTimer as never)
       clearTimeout(this.draftTimer as never)
       const delay = settings.autoSave ? Math.max(settings.autoSaveInterval, 1) * 1000 : 30000
-      // 草稿：尾沿防抖 1.2s，但**距上一份草稿超过 10s 就立刻写**（上限见 DRAFT_MAX_WAIT_MS 的说明）。
-      // 脏了才写、干净文档不写（见 writeDraft）。
-      if (this.dirty && Date.now() - this.lastDraftAt >= DRAFT_MAX_WAIT_MS) {
+      // 草稿：尾沿防抖 1.2s，但**距上一份草稿超过 10s 就立刻写**（上限见 filesCore 的说明）。
+      // 脏了才写、干净文档不写（见 writeDraft）。判定在纯函数 planDraftWrite 里，
+      // 两个边界（恰好 1.2s / 恰好 10s）由 tests/filesCore.test.mjs 覆盖。
+      const draftPlan = planDraftWrite({
+        dirty: this.dirty,
+        lastDraftAt: this.lastDraftAt,
+        now: Date.now()
+      })
+      if (draftPlan === 'write-now') {
         void this.writeDraft()
-      } else {
+      } else if (draftPlan === 'debounce') {
         this.draftTimer = setTimeout(() => void this.writeDraft(), DRAFT_DEBOUNCE_MS)
       }
       if (this.current?.path && settings.autoSave) {
@@ -960,9 +998,10 @@ export const useFilesStore = defineStore('files', {
           .catch(() => {})
         // 失败后不放弃：指数退避重试（5s → 10s → … → 60s 封顶）。
         // 此前失败后不再重排定时器，用户一停手就再也不会尝试落盘（只靠草稿兜）。
+        // 退避本身的算术在纯函数 `nextSaveRetryDelay` 里（恰好 0 / 封顶两个边界有单测）。
         // ⚠️ 自动保存的重试也走 `saveAutomatically()`：否则自动保存这一路重启之后
         // 会退化成"弹模态"（手动保存那条路才会弹），把正在写作的人拽出来。
-        this.saveRetryDelay = Math.min(this.saveRetryDelay ? this.saveRetryDelay * 2 : 5000, 60000)
+        this.saveRetryDelay = nextSaveRetryDelay(this.saveRetryDelay)
         this.saveRetryAt = Date.now() + this.saveRetryDelay
         if (this.current === doc && doc.content !== doc.savedContent) {
           clearTimeout(this.saveTimer as never)
@@ -979,6 +1018,11 @@ export const useFilesStore = defineStore('files', {
     /**
      * 保存成功后的共同收尾（mtime 记账 + 最近列表 + 草稿/续排）。
      * 抽出来是因为"直接写成功"与"用户选择覆盖后再写"两条路要一模一样地记账。
+     *
+     * **快照语义**（审计 §2 P1 的 P0 那条）：「要不要清草稿 / 要不要续排」的判据在纯函数
+     * `snapshotIsSaved` + `planSaveOutcome` 里 —— 写盘是异步的，`await` 期间用户可能又敲了字，
+     * 那时 `content !== snapshot`，**绝不能**把新内容标成"已保存"（那会连草稿一起删掉）。
+     * `tests/filesCore.test.mjs` 里"保存期间继续输入不会被标成已保存"就是钉这条的。
      */
     async finishSave(doc: CurrentDoc, snapshot: string, mtimeMs: number): Promise<boolean> {
       doc.mtimeMs = mtimeMs
@@ -989,10 +1033,14 @@ export const useFilesStore = defineStore('files', {
       useRecentStore().touchFile(doc.path as string)
       // 列表视图就地刷新该条目的修改时间（若列表已打开）
       useWorkspaceDocsStore().bumpMtime(doc.path as string)
-      if (this.current === doc && doc.content === snapshot) {
-        // 没有新输入：文档与磁盘一致 → 草稿可以清掉（此时它没有恢复价值）
-        await window.luminAPI.drafts.remove(this.draftKey(doc.path as string))
-      } else if (this.current === doc) {
+      const isStillDoc = this.current === doc
+      const outcome = planSaveOutcome(isStillDoc, snapshotIsSaved(doc, snapshot))
+      if (outcome === 'clear-draft') {
+        // 没有新输入：文档与磁盘一致 → 草稿可以清掉（此时它没有恢复价值）。
+        // ⚠️ 保存期间用户**换了文档**时这个清草稿的动作不做：旧路径的草稿不属于新文档的地盘
+        // （与旧实现一致 —— 那时两个分支都不进），脏文档的草稿交给它自己的下一次 scheduleSave。
+        if (isStillDoc) await window.luminAPI.drafts.remove(this.draftKey(doc.path as string))
+      } else {
         // await 期间又有输入：保持脏，重排一次保存与草稿（不静默把新内容吞掉）
         this.scheduleSave()
       }
