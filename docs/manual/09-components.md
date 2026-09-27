@@ -63,7 +63,12 @@
 - 图标：`src/renderer/src/components/Icon.vue`（`name` + `size`；纯装饰时加 `aria-hidden="true"`）。
 - 只显示图标、**语义靠 title** 的按钮：必须同时给 `aria-label`（读屏器不念 `title` 的场合很多）。
 - 悬停才出现的按钮：必须同时有 `group-focus-within:opacity-100`（否则键盘用户 Tab 到它却看不见）。
-- 守卫：`tests/a11ySemantics.test.mjs`（以 mermaid 预览按钮为样例）。
+- **悬停弹层**（工具栏上的按钮 → 弹出一小块面板）：唯一实现是
+  `src/renderer/src/composables/useHoverPopover.ts`（开合时序 300ms 打开 / 180ms 关闭宽限，
+  落点纯函数 `planPopoverPos`）。**不要再在组件里自己写计时器与定位** —— 两个工具栏按钮此前
+  各写一份逐字相同的实现，改一处忘一处就会让手感分叉；`tests/hoverPopover.test.mjs`
+  有去重守卫。弹层里若要键盘路径，用 `openNow()`（立刻打开，不该等 300ms 的悬停延迟）。
+- 守卫：`tests/a11ySemantics.test.mjs`（以 mermaid 预览按钮为样例）、`tests/hoverPopover.test.mjs`。
 
 ## 9.7 文件树内的「移动到文件夹」
 

@@ -88,7 +88,7 @@
 | # | 项 | 状态 | 证据 |
 | --- | --- | --- | --- |
 | 6.1 | 打包态路径缺常驻覆盖 | **已修（本轮）** | `_verify-packaging-fast.js` 已进 `package.yml`（打包后自动跑，无产物时如实 SKIP）；`9e3d471` |
-| 6.2 | 大文件与职责混杂 | **部分** | `main/index.ts` 已三刀（`windowPlacement.ts`/`openRequest.ts` + 单测）；**`stores/files.ts`（1100+ 行）未拆** —— 见"仍未做" |
+| 6.2 | 大文件与职责混杂 | **本轮大幅推进（仍部分）** | `main/index.ts` 早已三刀（`windowPlacement.ts`/`openRequest.ts` + 单测）；本轮把 `stores/files.ts` 的**五类判据**抽成 `lib/filesCore.ts`（保存快照 / 草稿时序 / 同路径重开三分支 / 改名搬家算术 / 退避延时）并补 **23 条单测**（`tests/filesCore.test.mjs`，`bbd261f`）。**诚实**：`files.ts` 总行数没降（1260 → 1309，多出来的是契约注释），剩下 `savePromise` 并发闸门与"冲突→确认→强制覆盖"整串仍留在 store（每步都夹 IPC/模态框，纯化只能注入假壳，原因写在 `filesCore.ts` 文件头） |
 | 6.3 | 格式清单散落 5 处 | 已修 | `src/shared/exportFormats.ts` 单一清单，五处 import；`0595cbf` |
 | 6.4 | 设置无 schema 版本 | 已修 | `settingsSchema.ts` 版本 + 迁移；`022277f` |
 | 6.5 | 仓库卫生 | **已修（本轮）** | `tsBuildInfoFile` 落 `node_modules/.cache` + 守卫；`5380618` |
@@ -119,11 +119,11 @@
 | 表格列宽拖拽 | 未做 | `extensions.ts` 里 `resizable: false`（列宽进 Markdown 无标准语法，需要一个落点方案） |
 | 拼写检查 | 未做 | 需接 `session.setSpellCheckerLanguages` 并解决自绘右键菜单与原生建议的冲突；**需真机实测** |
 | 导入（Word/HTML/批量） | 未做 | 导出的对称面；目前可打开扩展名只有 Markdown 家族 |
-| 真打印机打印 | 未做 | 只有 PDF 导出；**需真机** |
+| **真打印机打印** | **本轮已做（需真机确认）** | 复用 PDF 导出那条隐藏窗口渲染链（`withRenderedDocument`），`silent:false` 弹系统对话框、`printBackground:true`、三态如实反馈 + 5 分钟兜底；纯函数 `shared/printOptions.ts` + `tests/printOptions.test.mjs` 8 条；`664cdcb`。**本机无打印机，出纸与否必须由用户在真机上点一次** |
+| **首次引导 / 示例文档** | **本轮已做** | `lib/onboarding.ts`（`shouldShowOnboarding` 纯函数）+ `OnboardingPanel.vue`（三入口，绝不静默写盘）+ 三语整篇示例文档；`tests/onboarding.test.mjs` 11 条；`664cdcb`。观感需人工看一眼 |
 | 模板 / 日记 | 未做 | 与"首次引导"同族，属产品范围决策 |
 | 定义列表语法节点 / 引用式链接保真 | 部分 | 现有夹具为 `normalized`（形式改写、语义保留），要 exact 属产品决策 |
 | 双链 / 反向链接面板 | 未做 | 现只做"跟随 + 缺失时可创建" |
-| 首次引导 / 示例文档 | 未做 | 空侧栏刻意留白，但首启零解释 |
 | 真 docx 导出 | 未做 | 现为 HTML 存 `.doc`，设置页已如实说明 |
 
 ## §8 UI / UX 与可访问性（17 条）
@@ -165,16 +165,25 @@
 
 **部分 / 未做**：
 - flaky 欠账：仍有 19 条注入真实按键的套件没有守卫（名单在 `tests/tooling.test.mjs`，只减不增）；
-- 单测覆盖：`stores/files.ts` 的状态机仍无直接单测（拆出来就能测，见 §6.2）；
+- 单测覆盖：**本轮推进** —— `stores/files.ts` 的五类判据已抽成 `lib/filesCore.ts` 并补
+  **23 条状态机单测**（`bbd261f`，覆盖"保存期间继续输入"、草稿 1.2s/10s 边界、同路径重开三分支、
+  改名搬家算术、退避封顶）；仍未直接覆盖的是 `savePromise` 并发闸门与"冲突→确认→覆盖"整串
+  （每步夹 IPC/模态框，见 §6.2）；
 - 文档规模：**CHANGELOG 已按轮次归档两册**（本轮 `docs/changelog/archive-02.md`，逐字校验；
   主文件 155KB/52 段 → 6KB/2 段，`664de5e`）；README 的数字账目早由生成式门禁接管；
-- 重复实现：菜单定位已收（本轮 `menuPlacement.ts`，`7a503fe`）；**popover 仍 2 份**；
+- 重复实现：**已收口** —— 菜单定位 `lib/menuPlacement.ts`（`7a503fe`）、悬停弹层
+  `composables/useHoverPopover.ts` + 纯函数 `planPopoverPos`（`d0b4656`），
+  两处都带"组件里不许再出现本地公式"的去重守卫；
 - 零引用大文件补测：实测口径下 ≥80 行 **123** 个、零引用 **31 → 26**（本轮补 5 个模块：
   `launchIntent` / `footnotePassthrough` / `cjkEmphasis` / `inputRules` / `menu/providers`，
   合计 68 test / 244 assert，`2cbad2c`）；**主因不是"不值得测"而是"测不动"** ——
   src 里大量相对 import 不带扩展名、Node 原生 ESM 解析不了（新增测试侧解析助手绕开），
   另有 12 个 `.vue`（仓库无 @vue/test-utils）与只能靠 CDP 的主进程模块；
-- CI 加固：actions 仍 `@v4`（未 pin SHA）、无 CODEOWNERS/CONTRIBUTING/SECURITY。
+- CI 加固：**已补** —— 8 处 `uses` 全部 pin 到 commit SHA（逐个查 GitHub API 确认 SHA 与
+  `v4.x.y` 标签一致）、新增 `CONTRIBUTING.md` / `SECURITY.md` / `.github/CODEOWNERS`、
+  `dependabot.yml` 的 github-actions 段加分组与 PR 上限（`e8337fb`）；
+  **仍需用户提供真实 GitHub 用户名** —— CODEOWNERS 里的 `@yang_bai_bai` 是占位，
+  写成不存在的用户会让规则**静默失效**（语法正确、无报错、只是不请求评审）。
 
 ## §11 需要实测才能定论（10 条）
 
