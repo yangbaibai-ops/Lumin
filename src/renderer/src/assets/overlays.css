@@ -271,33 +271,83 @@ li.md-reveal {
    那张表是 CM 挂载态的配色，这里用应用自己的 class 复刻一份 —— 刻意不用 CM 生成的 class，
    因为 CM 的 StyleModule 随最后一个实例销毁而卸载，「块都卸完 → 颜色集体消失」。
    改一边记得改另一边（tests/staticHighlight.test.mjs 会守住映射表的完整性）。 */
-.lm-tok-keyword { color: var(--code-key); }
-.lm-tok-name { color: var(--accent-ink); }
-.lm-tok-function { color: var(--code-num); }
-.lm-tok-value { color: var(--code-num); }
-.lm-tok-type { color: var(--code-num); }
-.lm-tok-operator { color: var(--code-key-2); }
-.lm-tok-comment { color: var(--code-com); font-style: italic; }
-.lm-tok-string { color: var(--code-str); }
-.lm-tok-invalid { color: var(--code-invalid); }
+.lm-tok-keyword {
+  color: var(--code-key);
+}
+.lm-tok-name {
+  color: var(--accent-ink);
+}
+.lm-tok-function {
+  color: var(--code-num);
+}
+.lm-tok-value {
+  color: var(--code-num);
+}
+.lm-tok-type {
+  color: var(--code-num);
+}
+.lm-tok-operator {
+  color: var(--code-key-2);
+}
+.lm-tok-comment {
+  color: var(--code-com);
+  font-style: italic;
+}
+.lm-tok-string {
+  color: var(--code-str);
+}
+.lm-tok-invalid {
+  color: var(--code-invalid);
+}
 
-/* ─── 侧栏底部工具带（搜索 + 树/列表切换）：默认隐藏，悬停侧栏才出现 ──────────────
-   用户口径：这一条平时收起来，鼠标放到侧边栏上才显示。
+/* ─── 侧栏底部工具带（搜索 + 刷新 + 树/列表切换）：默认隐藏，悬停侧栏才出现 ──────────
+   用户口径：这一条平时收起来，鼠标放上去才显示，**出现与消失都要有动效**。
    为什么用 `visibility` 而不是 `display`：保持那一行的高度占位 —— 悬停时上面的树不会
    被顶上去一行（否则鼠标一进一出色块就跳）。
    三个显示条件见 FileTree.vue 模板上的说明：鼠标悬停 / 键盘焦点在侧栏内 / 搜索框开着
    （筛选条件不能悄悄消失）。`visibility:hidden` 的元素不可聚焦，所以第二条是纯键盘
-   用户唯一的入口 —— 少了它，搜索与视图切换就只对鼠标用户可达。 */
+   用户唯一的入口 —— 少了它，搜索与视图切换就只对鼠标用户可达。
+
+   ── 动效（本轮补上）──────────────────────────────────────────────────────────
+   此前只有 `transition: opacity .15s`：**显示**有淡入，**隐藏**却是"啪"地消失 ——
+   因为 `visibility` 是离散属性，不带延迟时它会在过渡一开始就翻成 hidden，
+   把仍在淡出的那一帧直接掐掉（用户看到的就是"进去柔和、出来生硬"）。
+   现在两边都成立：
+     * 出现：`opacity` 0→1 + `translateY(6px)`→0（0.18s 缓出，像从下沿"抬起"来），
+       位移与透明度同帧到位，不是先出现再挪；
+     * 消失：同一组过渡反向播完，`visibility` **延迟 0.18s** 才翻（= 等淡出走完），
+       于是"拿开鼠标"也能看到一次淡出，而不是瞬间消失；
+     * 只用 `opacity` / `transform`（都在合成层），元素本身 `position: static` 也不参与
+       重排 —— 这一条贴在面板底部，且与 `visibility` 的占位一起保证树不会跳行。
+   `prefers-reduced-motion` 下三样全关（淡入淡出也关：这里没有信息必须靠动效传达）。 */
 [data-sidebar-filetools] {
   opacity: 0;
   visibility: hidden;
-  transition: opacity 0.15s ease;
+  transform: translateY(6px);
+  transition:
+    opacity 0.18s ease,
+    transform 0.18s cubic-bezier(0.32, 0.72, 0, 1),
+    visibility 0s linear 0.18s;
 }
 aside:hover [data-sidebar-filetools],
 aside:focus-within [data-sidebar-filetools],
 [data-sidebar-filetools].filetools--pinned {
   opacity: 1;
   visibility: visible;
+  transform: none;
+  transition:
+    opacity 0.18s ease,
+    transform 0.18s cubic-bezier(0.32, 0.72, 0, 1),
+    visibility 0s;
+}
+@media (prefers-reduced-motion: reduce) {
+  [data-sidebar-filetools],
+  aside:hover [data-sidebar-filetools],
+  aside:focus-within [data-sidebar-filetools],
+  [data-sidebar-filetools].filetools--pinned {
+    transform: none;
+    transition: none;
+  }
 }
 
 /* Mermaid 图表块。

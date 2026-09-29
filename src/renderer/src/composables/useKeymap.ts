@@ -144,6 +144,15 @@ export function useKeymap(actions: ReturnType<typeof useAppActions>): void {
       run: () => handleMenu('toggle-focus')
     },
     {
+      // 大纲位置（左栏 ⇄ 编辑区右侧）：与鼠标入口同一动作，出厂**不绑键**
+      // （与三条模式命令同一处理：功能可用，但不必占用一个全局键位）
+      id: 'view.outlineSide',
+      titleKey: 'menu.outlineSide',
+      groupKey: 'keymap.groupView',
+      defaultKeys: null,
+      run: () => handleMenu('outline-side')
+    },
+    {
       id: 'view.modeWysiwyg',
       titleKey: 'editor.wysiwyg',
       groupKey: 'keymap.groupView',

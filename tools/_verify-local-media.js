@@ -228,26 +228,27 @@ async function click(w, selector, textFilter) {
     await w.ev(`(window.__M.ui().sidebarVisible = true, 'ok')`)
     await sleep(300)
 
-    // 状态栏：保存方式弹层 →「打开设置…」（openGeneralSettings）
-    // ⚠️ 定位方式本轮改过：原来靠**拼出那一格的文案**再按文字找按钮，而那一格现在只说状态、
-    // 不再显示「手动保存」（保存方式移到了 title/弹层里）⇒ 老写法必然 no-chip。
-    // 改用组件给的稳定钩子 `data-save-cell`（与 data-outline-toggle 同一套做法）。
-    const openSettings = await w.ev(`(async () => {
-      const t = window.__M.app.config.globalProperties.$t
-      const chip = document.querySelector('[data-save-cell]')
-      if (!chip) return 'no-chip'
-      chip.click()
-      await new Promise((r) => setTimeout(r, 300))
-      const item = [...document.querySelectorAll('button')].find((b) => (b.textContent || '').includes(t('statusbar.openSettings')))
-      if (!item) return 'no-item'
-      item.click()
-      await new Promise((r) => setTimeout(r, 300))
-      return window.__M.ui().settingsOpen ? 'opened' : 'not-opened'
+    // 状态栏的「保存方式」弹层已整体删除（§4.81：保存状态那一格连同弹层一起去掉），
+    // 于是原来那条「状态栏『打开设置…』仍生效」的断言**无处可点** —— 这里改成钉住删除本身，
+    // 免得以后又长回一格。设置的其余入口仍在（菜单「帮助 → 设置」/ Ctrl+, / 工具栏齿轮）。
+    const saveCellGone = await w.ev(`(() => {
+      const bar = document.querySelector('[data-status-bar]')
+      return JSON.stringify({
+        saveCell: !!document.querySelector('[data-save-cell]'),
+        barText: bar ? (bar.innerText || '').replace(/\\s+/g, ' ').trim().slice(0, 80) : null
+      })
     })()`)
+    const saveCellState = (() => {
+      try {
+        return JSON.parse(saveCellGone)
+      } catch {
+        return { saveCell: null, barText: null }
+      }
+    })()
     c(
-      '状态栏「打开设置…」仍生效（openGeneralSettings）',
-      openSettings === 'opened',
-      String(openSettings)
+      '状态栏已无「保存状态」那一格（§4.81）',
+      saveCellState.saveCell === false,
+      String(saveCellGone)
     )
     await w.ev(`(window.__M.ui().closeSettings(), 'ok')`)
     await sleep(300)

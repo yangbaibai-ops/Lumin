@@ -6,12 +6,14 @@ import { useSettingsStore } from '../stores/settings'
 import { useUiStore } from '../stores/ui'
 import { useExport } from './useExport'
 import { useEditorMode } from './useEditorMode'
+import { useOutlineSide } from './useOutlineSide'
 import { flushSession } from '../lib/session'
 import { openExternalFile } from '../lib/openFile'
-import { confirmDiscardIfDirty } from '../lib/dialog'
+import { confirmDiscardIfDirty, resolveCloseIntent } from '../lib/dialog'
 import { registerNotificationActions } from '../lib/notificationActions'
 import { SAVE_CONFLICT_KIND } from '../lib/saveConflict'
 import { exportFormatByAction } from '../../../shared/exportFormats'
+import type { CloseReason } from '../../../shared/closePrompt'
 import type { MenuAction } from '../../../shared/types'
 
 /** 未保存更改确认：薄适配器 —— 文案与语义只有一份，在 lib/dialog */
@@ -48,6 +50,7 @@ export function useAppActions(): {
   const settings = useSettingsStore()
   const { runExport, runPrint } = useExport()
   const { setMode, cycleMode } = useEditorMode()
+  const { toggleOutlineSide } = useOutlineSide()
 
   async function openFileDialog(): Promise<void> {
     if (!(await confirmIfDirty())) return
@@ -159,6 +162,10 @@ export function useAppActions(): {
         // 快捷工具栏的显隐（关闭后右键菜单也随栏消失，这是唯一的开关型入口）
         settings.set('toolbarVisible', !settings.toolbarVisible)
         break
+      case 'outline-side':
+        // 大纲位置（原生菜单 / 快捷键那两条路走到这里）：实现只有一份，见 useOutlineSide
+        toggleOutlineSide()
+        break
       case 'mode-wysiwyg':
         setMode('wysiwyg')
         break
@@ -196,11 +203,56 @@ export function useAppActions(): {
    * `flushAll()` 没跑完窗口就没了，丢的正是用户以为已保存的那一段）。所以这里在落盘期间
    * **按秒发心跳**：只要还在干活，主进程就一直等；卡死超过 2.5 秒才兜底，
    * 总时长另有 30 秒上限（见 shared/closeGuard.ts）。
+   *
+   * ── 手动保存模式下要**先问一次**（用户口径，对齐 Typora）────────────────────
+   * 自动保存关着时（本项目出厂默认），关窗前弹「是否保存更改？／如果不保存，您的更改将会丢失。」
+   * （保存 / 不保存 / 取消）。判定与文案在 `lib/dialog.ts` 的 `resolveCloseIntent`，
+   * 纯规则在 `shared/closePrompt.ts`（自动保存开着不问、系统关机不问）。
+   * 三条出路各自要收尾：
+   *   * 保存 → `files.save()`；未命名文档会走「另存为」，**取消/失败就别关窗**（否则等于丢字）；
+   *   * 不保存 → **不**走 `flushAll()`（它会保存有路径的文档！），改成丢掉草稿后直接放行；
+   *   * 取消 → 让主进程撤掉这一轮的守卫（`app:cancelClose`）。不撤的话兜底计时器照跑，
+   *     2.5 秒没心跳就强关 —— 用户点了取消却看着窗口关掉。
+   * 心跳在这三种情况下都得继续发（对话框可能被用户晾着），所以 interval 只在函数末尾清。
    */
-  async function requestClose(): Promise<void> {
-    const beat = setInterval(() => window.luminAPI.app.closeProgress(), 1000)
+  async function requestClose(payload?: { reason?: CloseReason }): Promise<void> {
+    const reason: CloseReason = payload?.reason ?? 'window'
+    // 每轮关窗都从"还没决定不保存"开始：`discardOnClose` 是上一轮可能留下的状态
+    // （见 files store 的 discardCurrentDraft —— 它让窗口销毁时的兜底 flushAll 变成空操作）
+    files.discardOnClose = false
+    /**
+     * 心跳里带 `deciding`：正等用户回答「是否保存更改？」时告诉主进程"这段等待不算卡死"，
+     * 否则用户犹豫超过 30 秒（总上限）会在点「取消」之前被强关（见 main/ipc.ts）。
+     */
+    let deciding = false
+    const beat = setInterval(() => window.luminAPI.app.closeProgress({ deciding }), 1000)
     window.luminAPI.app.closeProgress()
     try {
+      deciding = true
+      const intent = await resolveCloseIntent({
+        autoSave: settings.autoSave,
+        reason,
+        dirty: () => files.dirty
+      })
+      // 用户已经答完了（或者压根没问）：后面的落盘不算"等人"，照常计入兜底时限
+      deciding = false
+      if (intent === 'cancel') {
+        window.luminAPI.app.cancelClose()
+        return
+      }
+      if (intent === 'save') {
+        const ok = await files.save()
+        // 另存为被取消、或写盘失败：**不关窗**（用户以为自己保存了才是最糟的结果）
+        if (!ok) {
+          window.luminAPI.app.cancelClose()
+          return
+        }
+      }
+      if (intent === 'discard') {
+        await files.discardCurrentDraft()
+        await flushSession()
+        return
+      }
       await files.flushAll()
       // 会话位置（光标/滚动）也补一次：窗口销毁前最后的状态
       await flushSession()
@@ -231,7 +283,12 @@ export function useAppActions(): {
   })
 
   const offMenu = window.luminAPI.events.on('menu:action', (payload) => handleMenu(String(payload)))
-  const offClose = window.luminAPI.events.on('app:before-close', () => void requestClose())
+  // `app:before-close` 的 payload 带 `reason`（window / quit / session-end）：
+  // 系统关机（session-end）不弹「是否保存更改？」—— 没人能点那个按钮，见 shared/closePrompt.ts
+  const offClose = window.luminAPI.events.on(
+    'app:before-close',
+    (payload) => void requestClose((payload ?? {}) as { reason?: CloseReason })
+  )
   const media = window.matchMedia('(prefers-color-scheme: dark)')
   const onSystemTheme = (): void => {
     if (settings.theme === 'auto') settings.applyAll()

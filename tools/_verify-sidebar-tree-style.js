@@ -5,7 +5,8 @@
 //     行高 29px（原 27px）：`.tree-label` 的 overflow:hidden 会把 13px 字号的降部
 //     （`g`/`y`/`p`）裁掉，行盒必须比字形高（见 CSS 里的说明与断言 row-label-line-height-fits-glyphs）
 //  B. 图标：文件夹与文件**同色且中性**（不再用琥珀色的 warning 混色）；选中时一起转 accent
-//  C. 状态：默认 ink-2；悬停（真实指针）底色 panel-2 + 文字 ink；选中 accent-soft + accent + 500 字重
+//  C. 状态：默认 ink-2；悬停（真实指针）底色 panel-2 + 文字 ink；选中 accent-soft + accent + 500 字重，
+//     且**没有**左侧那条 3px 浅灰色条（用户口径 §4.79：选中已有三重提示，灰条是第四重噪音）
 //  D. 展开箭头：收起时不变换、展开时正好旋转 90°
 //  E. 空文件夹提示文字与同级子项文字左对齐（±1px）
 //  F. 展开/收起用轻量过渡（≤200ms 内完成且不带 scale）
@@ -399,34 +400,35 @@ const MEASURE = `(() => {
       JSON.stringify({ icon: sel.icon, accent: m.tokens.accent })
     )
     c('selected-weight-500', sel.weight === '500', sel.weight)
-    // 选中项左侧的**浅灰色条**（用户口径）：3px、贴行左缘、与行同高、且是**灰**的（低饱和）
+    // 选中项**不再有左侧那条 3px 浅灰色条**（用户口径，§4.79）：层级靠 1px 参考线表达、
+    // 选中靠底色 + 文字 + 图标三重提示，灰条是"第四重提示 + 中性色与强调色打架"。
+    // 判据用 `::before` 的 content/宽度：没有伪元素时 content 是 'none'（宽度 0 不足以区分
+    // "存在但透明"的写法）。
     const barRgb = (() => {
       const n = (sel.barColor || '').match(/-?\d*\.?\d+/g)
       return n ? n.map(Number) : null
     })()
     const barSpread = barRgb ? Math.max(...barRgb.slice(0, 3)) - Math.min(...barRgb.slice(0, 3)) : NaN
     const barAlpha = barRgb && barRgb.length > 3 ? barRgb[3] : 1
-    console.log('SELECTED-BAR ' + JSON.stringify({ w: sel.barWidth, color: sel.barColor, spread: barSpread }))
+    console.log('SELECTED-BAR ' + JSON.stringify({ w: sel.barWidth, color: sel.barColor, content: sel.barContent, spread: barSpread }))
     c(
-      'selected-left-bar-3px-gray',
-      sel.barContent !== 'none' &&
-        Math.abs(sel.barWidth - 3) <= 0.6 &&
-        barSpread <= 40 &&
-        barAlpha > 0.5,
-      JSON.stringify({ w: sel.barWidth, color: sel.barColor, spread: barSpread, alpha: barAlpha })
+      'selected-row-has-no-left-bar',
+      sel.barContent === 'none' && Math.abs(sel.barWidth) <= 0.6,
+      JSON.stringify({ content: sel.barContent, w: sel.barWidth, color: sel.barColor, alpha: barAlpha })
     )
-    // 色条不能把行内内容右推（缩进是按 --tree-pad 精确算的）：用 ::before 不占盒模型，
-    // 所以「同一行挂上/摘掉 is-current」时 label 左缘必须完全一致（不依赖夹具里有同级行）。
+    // 选中态不能把行内内容右推（缩进是按 --tree-pad 精确算的）：伪元素已删、底色只改
+    // background-color、字重 500 只影响字宽不影响左缘 —— 所以「同一行挂上/摘掉 is-current」
+    // 时 label 左缘必须完全一致（不依赖夹具里有同级行）。
     const shift = await w.ev(
       `(() => {
         const el = document.querySelector('[data-tree-row].bg-accent-soft') || [...document.querySelectorAll('[data-tree-row]')].find((r) => r.classList.contains('is-current'))
         if (!el) return 'no-current'
         const pick = () => { const l = [...el.children].find((c) => c.tagName === 'SPAN' && c.textContent.trim()); return l ? Math.round(l.getBoundingClientRect().left * 10) / 10 : -1 }
-        const withBar = pick()
+        const withCurrent = pick()
         el.classList.remove('is-current')
-        const without = pick()
+        const withoutCurrent = pick()
         el.classList.add('is-current')
-        return JSON.stringify({ withBar, without, delta: Math.round((withBar - without) * 10) / 10 })
+        return JSON.stringify({ withCurrent, withoutCurrent, delta: Math.round((withCurrent - withoutCurrent) * 10) / 10 })
       })()`
     )
     const shiftObj = (() => {
@@ -437,9 +439,9 @@ const MEASURE = `(() => {
       }
     })()
     c(
-      'selected-left-bar-does-not-shift-content',
+      'selected-state-does-not-shift-content',
       shiftObj.delta === 0,
-      `挂/摘选中态 labelLeft 差=${shiftObj.delta}（${shiftObj.withBar} vs ${shiftObj.without}）`
+      `挂/摘选中态 labelLeft 差=${shiftObj.delta}（${shiftObj.withCurrent} vs ${shiftObj.withoutCurrent}）`
     )
     // 选中项悬停：底色比选中态略强（同色系加深，不换成 panel-2）
     const selRect = JSON.parse(

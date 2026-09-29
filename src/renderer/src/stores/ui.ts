@@ -27,6 +27,28 @@ export interface ConfirmOptions {
   danger?: boolean
 }
 
+/**
+ * **三选一**确认框：比 `ConfirmOptions` 多一个"否定但非取消"的出口。
+ *
+ * 为什么需要它（而不是把两键的 `confirm` 用两次）：关窗那条口径里三个答案语义完全不同 ——
+ * 「保存」= 落盘后关闭、「不保存」= 丢弃改动关闭、「取消」= **不关窗**。
+ * 两键对话框表达不了第三种，而"用两张对话框串起来"会让用户在两个弹窗之间二选一，
+ * 最容易出的事故是"我问了保存吗？他以为是取消"。
+ *
+ * 文案由调用方给（本 store 不认识任何业务），`confirmLabel` 是主按钮。
+ */
+export interface TripleConfirmOptions {
+  title: string
+  body: string
+  /** 主按钮文案（关窗场景 = 保存） */
+  confirmLabel: string
+  /** 中间那个出口的文案（关窗场景 = 不保存） */
+  altLabel: string
+}
+
+/** 用户选了哪一个：主按钮 / 中间出口 / 取消（Esc、遮罩点击都算取消） */
+export type TripleConfirmResult = 'confirm' | 'alt' | 'cancel'
+
 export interface ContextMenuItem {
   label: string
   icon?: string
@@ -85,6 +107,9 @@ export const useUiStore = defineStore('ui', {
     editorMode: 'wysiwyg' as EditorMode,
     focusMode: false,
     confirmState: null as (ConfirmOptions & { resolve: (v: boolean) => void }) | null,
+    /** 三选一确认框（关窗「保存 / 不保存 / 取消」）：同一时刻只会有一个对话框 */
+    tripleState: null as
+      (TripleConfirmOptions & { resolve: (v: TripleConfirmResult) => void }) | null,
     promptState: null as {
       title: string
       placeholder: string
@@ -151,6 +176,16 @@ export const useUiStore = defineStore('ui', {
     resolveConfirm(v: boolean): void {
       this.confirmState?.resolve(v)
       this.confirmState = null
+    },
+    /** 三选一确认框（关窗「保存 / 不保存 / 取消」）：见 TripleConfirmOptions 的说明 */
+    confirmTriple(options: TripleConfirmOptions): Promise<TripleConfirmResult> {
+      return new Promise((resolve) => {
+        this.tripleState = { ...options, resolve }
+      })
+    },
+    resolveTriple(v: TripleConfirmResult): void {
+      this.tripleState?.resolve(v)
+      this.tripleState = null
     },
     prompt(title: string, placeholder: string, value = ''): Promise<string | null> {
       return new Promise((resolve) => {

@@ -53,12 +53,15 @@ import Icon from '../components/Icon.vue'
 import SettingSwitch from '../components/SettingSwitch.vue'
 import SettingsKeymap from '../components/SettingsKeymap.vue'
 import SettingsToolbar from '../components/SettingsToolbar.vue'
+import { useOutlineSide } from '../composables/useOutlineSide'
 
 const router = useRouter()
 const { t } = useI18n()
 const settings = useSettingsStore()
 const files = useFilesStore()
 const ui = useUiStore()
+/** 大纲位置开关的唯一实现（顶部工具栏视图区与「视图」菜单共用它） */
+const { setOutlineSide } = useOutlineSide()
 
 /** 页签：文案统一走 i18n（settings.* 命名空间，三语言同步维护） */
 const tabs = computed(() => [
@@ -177,16 +180,12 @@ function toggleMenuBar(v: boolean): void {
 
 /**
  * 大纲放在编辑区右侧（三栏）。
- * 打开时顺手把右侧面板设为展开、并把左栏页签收回「文件」——
- * 否则开完开关看到的可能是「左栏还停在大纲页签」或「右侧大纲是折叠的窄轨」，
- * 与「打开就能同时看到目录和大纲」的预期不符。
+ * 实现收在 `composables/useOutlineSide.ts`（顶部工具栏的视图开关与「视图」菜单共用同一份）：
+ * 打开时顺手把右侧面板设为展开、并把左栏页签收回「文件」；关掉时把左栏页签切到「大纲」。
+ * 这里只做一层转发，避免第二份"打开时要摆正哪些状态"的口径。
  */
 function toggleOutlineRight(v: boolean): void {
-  settings.set('outlineOnRight', v)
-  if (v) {
-    settings.set('outlineRightExpanded', true)
-    ui.sidebarTab = 'files'
-  }
+  setOutlineSide(v)
 }
 
 /** 自动保存开关：SettingSwitch 传新值进来；关闭时取消未触发的磁盘定时器（草稿崩溃保护不受影响） */

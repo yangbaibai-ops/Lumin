@@ -23,7 +23,9 @@ watch(
 )
 
 function closeByEscape(confirmResult = false, promptResult: string | null = null): void {
-  if (ui.confirmState) ui.resolveConfirm(confirmResult)
+  // 三选一对话框的 Esc = **取消**（关窗场景里"取消"是唯一安全的默认：窗口留着、改动还在）
+  if (ui.tripleState) ui.resolveTriple('cancel')
+  else if (ui.confirmState) ui.resolveConfirm(confirmResult)
   else if (ui.promptState) ui.resolvePrompt(promptResult)
 }
 
@@ -47,20 +49,70 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onKeydown))
   <Teleport to="body">
     <Transition name="fade">
       <div
-        v-if="ui.confirmState || ui.promptState"
+        v-if="ui.tripleState || ui.confirmState || ui.promptState"
         class="fixed inset-0 z-[var(--z-modal)] flex items-center justify-center bg-scrim backdrop-blur-[2px]"
         role="dialog"
         aria-modal="true"
-        :aria-label="ui.confirmState?.title ?? ui.promptState?.title ?? t('common.confirm')"
-        @click.self="ui.confirmState ? ui.resolveConfirm(false) : ui.resolvePrompt(null)"
+        :aria-label="
+          ui.tripleState?.title ??
+          ui.confirmState?.title ??
+          ui.promptState?.title ??
+          t('common.confirm')
+        "
+        :data-triple="ui.tripleState ? 'true' : undefined"
+        @click.self="
+          ui.tripleState
+            ? ui.resolveTriple('cancel')
+            : ui.confirmState
+              ? ui.resolveConfirm(false)
+              : ui.resolvePrompt(null)
+        "
       >
         <Transition name="pop" appear>
           <div
             class="w-[380px] max-w-[90vw] rounded-2xl border border-edge bg-elevate p-6 shadow-2xl"
             :style="{ boxShadow: 'var(--shadow-2)' }"
           >
+            <!-- 三选一确认对话框（关窗「保存 / 不保存 / 取消」）：
+                 三个按钮从左到右 = 取消 / 不保存 / 保存，主按钮在最右（Windows 对话框的通行顺序）。
+                 数据类型钩子：`data-triple-*`，套件按它定位（文案会随语言变）。 -->
+            <template v-if="ui.tripleState">
+              <div class="mb-3 flex items-center gap-3">
+                <div
+                  class="flex h-9 w-9 items-center justify-center rounded-full bg-accent-soft text-accent-ink"
+                >
+                  <Icon name="save" :size="17" />
+                </div>
+                <h3 class="text-[15px] font-semibold text-ink">{{ ui.tripleState.title }}</h3>
+              </div>
+              <p class="mb-6 text-[13px] leading-relaxed text-ink-2">{{ ui.tripleState.body }}</p>
+              <div class="flex justify-end gap-2">
+                <button
+                  class="btn btn-ghost px-4 py-2"
+                  data-triple-cancel
+                  @click="ui.resolveTriple('cancel')"
+                >
+                  {{ t('common.cancel') }}
+                </button>
+                <button
+                  class="btn btn-ghost px-4 py-2"
+                  data-triple-alt
+                  @click="ui.resolveTriple('alt')"
+                >
+                  {{ ui.tripleState.altLabel }}
+                </button>
+                <button
+                  class="btn btn-primary px-4 py-2"
+                  data-triple-confirm
+                  @click="ui.resolveTriple('confirm')"
+                >
+                  {{ ui.tripleState.confirmLabel }}
+                </button>
+              </div>
+            </template>
+
             <!-- 确认对话框 -->
-            <template v-if="ui.confirmState">
+            <template v-else-if="ui.confirmState">
               <div class="mb-3 flex items-center gap-3">
                 <div
                   class="flex h-9 w-9 items-center justify-center rounded-full"

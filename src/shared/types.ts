@@ -541,6 +541,9 @@ export type MenuAction =
   | 'global-search'
   | 'toggle-sidebar'
   | 'toggle-toolbar'
+  // 大纲位置（左侧边栏 ⇄ 编辑区右侧）：三条入口共用同一条命令 ——
+  // 原生菜单 / 快捷键走 IPC 到这里，应用内「视图」菜单与工具栏直接调同一个 composable
+  | 'outline-side'
   | 'mode-wysiwyg'
   | 'mode-source'
   | 'mode-split'
@@ -566,10 +569,18 @@ export interface LuminAPI {
     }>
     confirmClose: () => Promise<void>
     /**
+     * 关窗确认里点了「取消」：撤掉主进程这一轮的兜底守卫，窗口继续活着。
+     * 不撤的话兜底计时器照跑（连续 2.5s 没心跳 = 强关；30s 总上限 = 强关），
+     * 用户点了取消却看着窗口关掉。见 main/ipc.ts 的 `app:cancelClose`。
+     */
+    cancelClose: () => void
+    /**
      * 关窗流程中的心跳：主进程据此把兜底时限往后推（慢盘/大文件下别强杀正在落盘的窗口）。
+     * `deciding: true` = 正等用户回答「是否保存更改？」——这一段等待不计入 30 秒总上限
+     * （用户想多久都合法；渲染进程真卡死仍由"心跳停了 2.5 秒"兜底）。
      * 见 shared/closeGuard.ts 与 main/ipc.ts 的 attachCloseGuard。
      */
-    closeProgress: () => void
+    closeProgress: (opts?: { deciding?: boolean }) => void
     minimize: () => void
     toggleMaximize: () => void
     close: () => void

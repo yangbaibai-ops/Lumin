@@ -16,6 +16,11 @@
     "searchPlaceholder": "全局搜索文档内容（FTS5 全文索引）…",
     "loading": "载入中…"
   },
+  "close": {
+    "saveTitle": "是否保存更改？",
+    "saveBody": "如果不保存，您的更改将会丢失。",
+    "dontSave": "不保存"
+  },
   "onboarding": {
     "title": "开始写作",
     "body": "新建一篇文档，或者打开一个文件夹作为工作区，把 Markdown 文件都放在一起。",
@@ -48,7 +53,9 @@
     "collapse": "收起大纲",
     "expand": "展开大纲",
     "resize": "调整大纲宽度",
-    "untitled": "（无标题）"
+    "untitled": "（无标题）",
+    "toRight": "把大纲放到编辑区右侧（三栏）",
+    "toLeft": "把大纲放回左侧边栏"
   },
   "sidebar": {
     "files": "文件",
@@ -97,6 +104,7 @@
     "globalSearch": "全局搜索（全文索引）",
     "toggleSidebar": "切换侧边栏",
     "toggleToolbar": "显示快捷工具栏",
+    "outlineSide": "大纲位置（左/右）",
     "editorMode": "编辑器模式",
     "wysiwyg": "所见即所得（实时渲染）",
     "split": "分屏对比（渲染 + 源码）",
@@ -198,10 +206,6 @@
     "exportHtml": "导出为 HTML",
     "exportWord": "导出为 Word",
     "exportEpub": "导出为 EPUB",
-    "saved": "已保存",
-    "saving": "保存中…",
-    "unsaved": "未保存的更改",
-    "saveFailed": "未保存（保存失败）",
     "saveConflictShort": "未保存（磁盘已被外部修改）",
     "saveConflictTitle": "{name} 在磁盘上已被其它程序修改",
     "saveConflictBody": "你正在编辑的这一份，与磁盘上的内容已经不一致了（可能是 git 切换分支、同步盘或别的编辑器改的），所以这次**没有写入**。继续保存会覆盖掉磁盘上的那一版；也可以取消，然后在通知中心里选择「另存为」或「重新打开」。",
@@ -236,7 +240,6 @@
     "language": "语言",
     "languageDesc": "界面显示语言",
     "autoSave": "自动保存",
-    "autoSaveDesc": "编辑时自动保存到磁盘（间隔 {sec} 秒）",
     "autoSaveInterval": "自动保存间隔",
     "fontSize": "字号",
     "lineHeight": "行高",
@@ -549,16 +552,10 @@
     "saveConflictReload": "重新打开（放弃我的修改）"
   },
   "statusbar": {
-    "saveMode": "保存方式",
-    "autoSave": "自动保存",
-    "manualSave": "手动保存",
-    "openSettings": "打开设置…",
     "switchLanguage": "切换语言",
     "encodingTooltip": "当前文档编码（文件 → 选择编码重新打开）",
     "encodingReplaced": "这份文件里有字节没能按当前编码解出来（已显示为 \uFFFD）—— 直接保存会改写它们的字节，请先确认编码是否选对。",
     "eolTooltip": "当前行尾：{eol} —— 点击切换 LF / CRLF（立即写回）",
-    "saveModeDetail": "保存方式：{mode}",
-    "saveFailedDetail": "保存失败：{reason}（仍在自动重试，期间内容安全保存在草稿里）",
     "tagsTooltip": "标签（逗号分隔，用于归类与搜索）",
     "tagsPlaceholder": "例如：小说, 第一章, 草稿",
     "addTags": "添加标签",

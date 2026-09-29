@@ -136,16 +136,11 @@ const goalTooltip = computed(() => {
 
 const themeOpen = ref(false)
 const themeRef = ref<HTMLElement | null>(null)
-const saveOpen = ref(false)
-const saveRef = ref<HTMLElement | null>(null)
 const version = ref('')
 
 function onDocClick(e: MouseEvent): void {
   if (themeOpen.value && themeRef.value && !themeRef.value.contains(e.target as Node)) {
     themeOpen.value = false
-  }
-  if (saveOpen.value && saveRef.value && !saveRef.value.contains(e.target as Node)) {
-    saveOpen.value = false
   }
 }
 onMounted(async () => {
@@ -155,54 +150,17 @@ onMounted(async () => {
 onBeforeUnmount(() => document.removeEventListener('mousedown', onDocClick))
 
 /**
- * 状态栏最左那格的文字：**只显示「文档状态」，不再显示保存方式**（用户口径）。
+ * 状态栏**不再有"保存状态"那一格**（用户口径，见 §4.81）。
  *
- * 原来手动模式会一直写着「手动保存」——那是模式名，不是状态，选过一次之后就是重复噪音。
- * 现在两种模式都只说状态（保存中 / 未保存的更改 / 已保存），
- * 保存方式本身放在点击后弹出的那一层里（那里仍然写着「自动保存 / 手动保存」）。
- *
- * 写盘失败是**独立的一态**（审计 §2 P1）：磁盘满 / 只读 / 被占用时内容只在内存与草稿里，
- * 这时还说"未保存的更改"会让人以为"待会儿会自动存"，而它其实一直在失败（重试退避到 60 秒）。
- * 所以这一格会变成 danger 色，并且**同时**在通知中心留一张持久的卡片（见 files.saveNow）。
+ * 原先最左边那格写着「保存中 / 未保存的更改 / 已保存」，点开还能切「自动保存 / 手动保存」。
+ * 本轮整块去掉：
+ *   * 保存结果本身已经在别处有反馈 —— 保存成功是"内容落盘 + 标题栏脏标记消失"，
+ *     失败会往通知中心留一张**持久卡片**（`files.saveNow` 那条路），
+ *     而"正在保存"这种瞬时态不值得常驻一行文字；
+ *   * 保存方式改在「设置 → 通用 → 自动保存」里选（唯一入口，不再两处并存）。
+ * 于是保存方式的弹层与它的三个 i18n 键（`statusbar.saveMode` / `autoSave` / `manualSave` …）
+ * 一起删除 —— 留着就是零引用的死键（`tests/i18nKeys.test.mjs` 会红）。
  */
-const saveLabel = computed(() => {
-  if (!files.current) return ''
-  if (files.saveError) return t('editor.saveFailed')
-  if (files.saving) return t('editor.saving')
-  if (files.dirty) return t('editor.unsaved')
-  return t('editor.saved')
-})
-
-/** 弹层与无障碍名：格子上的可见文字只剩状态，保存方式要在这里说清楚 */
-const saveModeLabel = computed(() =>
-  settings.autoSave ? t('statusbar.autoSave') : t('statusbar.manualSave')
-)
-
-/** 失败那一格的悬停/无障碍名：把原因与"正在重试"说清楚（文字只有四个字，放不下原因） */
-const saveTriggerLabel = computed(() => {
-  if (files.saveError) {
-    return t('statusbar.saveFailedDetail', { reason: files.saveError })
-  }
-  return t('statusbar.saveModeDetail', { mode: saveModeLabel.value })
-})
-
-function chooseSaveMode(manual: boolean): void {
-  saveOpen.value = false
-  if (settings.autoSave === !manual) return
-  settings.set('autoSave', !manual)
-  if (manual) files.cancelAutoSave()
-  // 不发通知：状态栏这一格与菜单里的勾选态会立刻变成新值，结果已在界面上
-}
-
-/**
- * 保存方式弹层里点「打开设置…」：先关弹层再进设置。
- * 写成方法而不是模板内联多语句：prettier 会把内联多语句的分号吃掉（变成 `a = 1 b()`），
- * Vue 模板编译器随即报 "Error parsing JavaScript expression"。逻辑进脚本是更稳、更好测的写法。
- */
-function openGeneralSettings(): void {
-  saveOpen.value = false
-  ui.openSettings('general')
-}
 
 /** 主题弹层里选一种主题 */
 function pickTheme(mode: ThemeMode): void {
@@ -219,107 +177,15 @@ const themes: { mode: ThemeMode; icon: string; labelKey: string }[] = [
 </script>
 
 <template>
+  <!-- 整条状态栏**透明**（用户口径）：不铺自己的底色、也不画顶上那条分隔线，
+       于是它不再是"压在页面底下的一条带子"，只剩一行贴在背景上的信息。
+       好处是上面那块「纸」（`bg-paper`）与外壳的过渡不再被一条线切断；
+       代价是极窄窗口下这一行与正文之间没有硬边界 —— 用户明确要的就是这个观感。 -->
   <div
-    class="flex h-7 shrink-0 items-center gap-3 border-t border-edge bg-app px-3 text-[11.5px] text-ink-2b"
+    class="flex h-7 shrink-0 items-center gap-3 bg-transparent px-3 text-[11.5px] text-ink-2b"
+    data-status-bar
   >
-    <!-- 左侧：文档状态 + 保存方式（点击弹出竖向选择） -->
-    <template v-if="files.current">
-      <div ref="saveRef" class="relative flex items-center">
-        <button
-          class="group flex cursor-pointer items-center gap-1.5 rounded-md px-1.5 py-0.5 -ml-1.5 transition-colors hover:bg-panel-2"
-          :class="files.saveError ? 'text-danger-ink' : ''"
-          data-save-cell
-          :data-save-error="files.saveError ?? undefined"
-          :title="saveTriggerLabel"
-          :aria-label="saveTriggerLabel"
-          @click="saveOpen = !saveOpen"
-        >
-          <!-- 状态文字：**一律与状态栏同色**（用户口径：不要强调色、不要前面的小圆点）。
-               保存中/未保存的更改/已保存 三态只靠文字区分；保存方式在弹层里说。
-               `aria-live="polite"`：读屏器用户按 Ctrl+S 后需要**听到**结果
-               （审计 §8：全仓此前没有一处 live region，保存/出错都不会被播报）。 -->
-          <span aria-live="polite">{{ saveLabel }}</span>
-          <!-- <Icon name="chevron-up" :size="10" class="opacity-60 transition-transform duration-150" :class="saveOpen ? 'rotate-180' : ''" /> -->
-        </button>
-
-        <Transition name="pop">
-          <div
-            v-if="saveOpen"
-            class="absolute bottom-7 left-0 z-50 w-[236px] rounded-xl border border-edge bg-elevate p-1.5 shadow-xl"
-            :style="{ boxShadow: 'var(--shadow-2)' }"
-          >
-            <p
-              class="px-2.5 pb-1 pt-1.5 text-[10.5px] font-medium uppercase tracking-wide text-ink-2b"
-            >
-              {{ t('statusbar.saveMode') }}
-            </p>
-            <button
-              class="flex w-full items-start gap-2.5 rounded-lg px-2.5 py-2 text-left transition-colors duration-100"
-              :class="settings.autoSave ? 'bg-accent-soft' : 'hover:bg-panel-2'"
-              @click="chooseSaveMode(false)"
-            >
-              <Icon
-                name="refresh"
-                :size="14"
-                :class="settings.autoSave ? 'mt-0.5 text-accent-ink' : 'mt-0.5 text-ink-2b'"
-              />
-              <span class="min-w-0 flex-1">
-                <span
-                  class="block text-ui font-medium"
-                  :class="settings.autoSave ? 'text-accent-ink' : 'text-ink'"
-                  >{{ t('statusbar.autoSave') }}</span
-                >
-                <span class="mt-0.5 block text-[11px] leading-snug text-ink-2b">{{
-                  t('settings.autoSaveDesc', { sec: settings.autoSaveInterval })
-                }}</span>
-              </span>
-              <span
-                v-if="settings.autoSave"
-                class="mt-0.5 flex h-4 w-4 flex-none items-center justify-center rounded-full bg-accent"
-              >
-                <Icon name="check" :size="10" class="text-white" />
-              </span>
-            </button>
-            <button
-              class="mt-0.5 flex w-full items-start gap-2.5 rounded-lg px-2.5 py-2 text-left transition-colors duration-100"
-              :class="!settings.autoSave ? 'bg-accent-soft' : 'hover:bg-panel-2'"
-              @click="chooseSaveMode(true)"
-            >
-              <Icon
-                name="save"
-                :size="14"
-                :class="!settings.autoSave ? 'mt-0.5 text-accent-ink' : 'mt-0.5 text-ink-2b'"
-              />
-              <span class="min-w-0 flex-1">
-                <span
-                  class="block text-ui font-medium"
-                  :class="!settings.autoSave ? 'text-accent-ink' : 'text-ink'"
-                  >{{ t('statusbar.manualSave') }}</span
-                >
-                <span class="mt-0.5 block text-[11px] leading-snug text-ink-2b"
-                  >Ctrl+S {{ t('common.save') }}</span
-                >
-              </span>
-              <span
-                v-if="!settings.autoSave"
-                class="mt-0.5 flex h-4 w-4 flex-none items-center justify-center rounded-full bg-accent"
-              >
-                <Icon name="check" :size="10" class="text-white" />
-              </span>
-            </button>
-            <div class="my-1 border-t border-edge" />
-            <button
-              class="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-ui-sm text-ink-2b transition-colors hover:bg-panel-2 hover:text-ink-2"
-              @click="openGeneralSettings"
-            >
-              <Icon name="settings" :size="12" />
-              {{ t('statusbar.openSettings') }}
-            </button>
-          </div>
-        </Transition>
-      </div>
-    </template>
-    <span v-else>Lumin — Write in Light.</span>
+    <span v-if="!files.current">Lumin — Write in Light.</span>
 
     <div class="flex-1" />
 

@@ -13,11 +13,10 @@
    2) 缩进走固定 16px 网格（4 + depth * 16，容器再内缩 10px 与搜索框同一条竖线）。
       层级不只靠缩进：1px 低对比度缩进参考线（画在子级容器上，正落在父级箭头中线，且抬到
       行底色之上，悬停/选中都不会把它切断）+ 文件夹图标内部浅填充（容器）/ 文件图标纯描边（内容）；
-   3) 状态三档：静止 ink-2 / 悬停 panel-2 + ink / 当前 accent-soft + accent + **左侧 3px 浅灰色条**。
-      色条是后来的口径（此前一版明确不要，本轮按新口径加回来，但**用浅灰**不用强调色）：
-      `--ink-3` 在三主题里都是「浅灰」那一档，压在半透明淡底上足够看清又不抢眼。
-      用 `::before` 而不是 `border-left`：border 参与盒模型会把行内内容右推 3px，
-      而各级缩进是按 --tree-pad/--tree-indent 精确算的（套件逐级量过 labelLeft）。
+   3) 状态三档：静止 ink-2 / 悬停 panel-2 + ink / 当前 accent-soft + accent-ink + accent 图标 + 字重 500。
+      **不再有左侧那条 3px 浅灰色条**（用户口径，见 §4.79 的取舍）：层级已经由上面那条 1px
+      参考线表达，选中已经有底色 + 文字 + 图标三重提示，那条灰条是"第四重提示、且用中性色
+      与强调色打架"（一灰一蓝说同一件事），去掉后选中态反而更干净。
       选中文字走 accent-ink —— accent 落在 accent-soft 上只有 3.8:1，够不到正文可读线；
    4) 箭头 14px 图形放进 14px 槽，再用 -2px 外边距收近文件夹：原来 12px 图形悬在 16px 槽里，
       又小又离文件夹远。文件夹图标一律与文件图标同色（--ink-3），不靠颜色区分类型。
@@ -74,20 +73,12 @@
   color: var(--accent);
   font-weight: 500;
 }
-/* 选中项左侧的**浅灰色条**（用户口径）：3px、贴行左缘、与行同高。
-   用 `::before` 而不是 `border-left`：border 参与盒模型会把内容右推 3px，
-   而侧栏各级缩进是按 --tree-pad/--tree-indent 精确算的（套件逐级量过 labelLeft）。
-   色条不吃事件（pointer-events: none），点击落点仍是行本身。 */
-.tree-row.is-current::before {
-  content: '';
-  position: absolute;
-  left: 0;
-  top: 0;
-  bottom: 0;
-  width: 3px;
-  background: var(--ink-3);
-  pointer-events: none;
-}
+/* 这里原先还有一条 `.tree-row.is-current::before` 画的**3px 浅灰色条**（贴行左缘、与行同高）。
+   已按用户口径删除：选中态的三重提示（整行 accent-soft 底 + accent-ink 文字 + accent 图标）
+   已经够清楚，而"结构"由上面那条 1px 层级参考线负责 —— 再叠一条**中性灰**色条，既与强调色
+   冲突（一灰一蓝说同一件事），又在层级深时离那一行的内容很远，属于纯噪音。
+   将来若要恢复"贴行左缘的标记"：别用 `border-left`（border 参与盒模型会把内容右推 3px，
+   而各级缩进是按 --tree-pad/--tree-indent 精确算的、套件逐级量过 labelLeft），用伪元素。 */
 .tree-row.is-current > .tree-label {
   color: var(--accent-ink);
 }

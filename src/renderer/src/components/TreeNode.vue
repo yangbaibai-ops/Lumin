@@ -9,6 +9,7 @@ import { samePath, ancestorDirs } from '../lib/pathUtils'
 import { beginTreeDrag, canDropOn, draggingTree, endTreeDrag } from '../lib/treeMove'
 import { confirmDiscardIfDirty } from '../lib/dialog'
 import { errorReason } from '../lib/errors'
+import { useWorkspaceRootMenu } from '../composables/useWorkspaceRootMenu'
 import Icon from './Icon.vue'
 
 const props = defineProps<{
@@ -16,11 +17,21 @@ const props = defineProps<{
   depth: number
   parentDir: string
   filter: string
+  /**
+   * 这一行是不是**工作区顶层文件夹**（树顶那一行）。
+   *
+   * 为什么要这一位：顶层文件夹复用同一套行（箭头/图标/展开收起/子级缩进/拖放落点），
+   * 但它**不是**工作区里的一个普通条目 —— 重命名 / 删除 / 拖动 / 「移动到…」在它身上
+   * 全都是错的动作（删掉它就是删掉整个工作区）。所以这些一并关掉，右键只给根菜单。
+   */
+  isRoot?: boolean
 }>()
 
 const { t } = useI18n()
 const files = useFilesStore()
 const ui = useUiStore()
+/** 工作区根的右键菜单（与 FileTree 空白处同一份实现） */
+const { openWorkspaceRootMenu } = useWorkspaceRootMenu()
 
 const isOpen = computed(() => files.expanded.has(props.node.path))
 const children = computed(() => files.dirCache[props.node.path] ?? [])
@@ -77,9 +88,20 @@ watch(
   { immediate: true }
 )
 
+/**
+ * 搜索过滤下这一层的可见子项。
+ *
+ * 口径：**目录永远留着**、只按名字过滤文件。理由：
+ *   * 目录是"容器"而不是"结果"，藏掉它就等于藏掉它里面所有可能的命中
+ *     （用户搜 `guide` 时，`docs/` 里那篇 `guide.md` 不该因为目录名不叫 guide 而消失）；
+ *   * 与改造前 `FileTree.vue` 在**顶层**的处理完全一致（那时顶层目录也是不过滤的），
+ *     现在只是把同一条口径下沉到这里，于是每一层的行为也一致了。
+ */
 function visibleChildren(): FileNode[] {
   if (!props.filter) return children.value
-  return children.value.filter((c) => c.name.toLowerCase().includes(props.filter.toLowerCase()))
+  return children.value.filter(
+    (c) => c.type === 'directory' || c.name.toLowerCase().includes(props.filter.toLowerCase())
+  )
 }
 
 async function onToggle(e: MouseEvent): Promise<void> {
@@ -118,6 +140,16 @@ function onContextMenu(e: MouseEvent): void {
  */
 function onRowKeydown(e: KeyboardEvent): void {
   if (renaming.value) return
+  // 顶层文件夹没有"重命名/删除"这两件事（见 isRoot 的说明）；方向键那几条照旧
+  // （由容器层的 treeFocus 处理，展开/收起/移动都还成立）
+  if (props.isRoot) {
+    if (e.key === 'ContextMenu' || (e.shiftKey && e.key === 'F10')) {
+      e.preventDefault()
+      const r = (e.currentTarget as HTMLElement).getBoundingClientRect()
+      openWorkspaceRootMenu(Math.round(r.left + 24), Math.round(r.bottom - 4))
+    }
+    return
+  }
   if (e.key === 'F2') {
     e.preventDefault()
     void startRename()
@@ -138,6 +170,12 @@ function onRowKeydown(e: KeyboardEvent): void {
 
 /** 在给定坐标弹出本行的上下文菜单（鼠标右键与键盘唤出共用这一条） */
 function openMenuAt(x: number, y: number): void {
+  // 顶层文件夹：只有「根的菜单」（新建文件/文件夹、刷新、关闭工作区）。
+  // 重命名 / 删除 / 移动到… 在它身上是错的动作（删掉=删掉整个工作区），一律不给。
+  if (props.isRoot) {
+    openWorkspaceRootMenu(x, y)
+    return
+  }
   const items: ContextMenuItem[] = []
   if (props.node.type === 'directory') {
     items.push(
@@ -277,6 +315,9 @@ async function handleAction(action: string): Promise<void> {
  * 拖到**文件行**上什么都不发生（那不是一个目录），拖到空白区 = 移到工作区根（见 FileTree.vue）。
  */
 function onDragStart(e: DragEvent): void {
+  // 顶层文件夹不可拖（拖走整个工作区没有意义）；同时别把路径写进 dataTransfer，
+  // 否则外部程序会把它当成"拖出一个文件夹"来处理
+  if (props.isRoot) return
   e.dataTransfer?.setData('text/plain', props.node.path)
   // copyMove：内部拖放显示"移动"手势；带出去的仍然只是 text/plain（不是文件），
   // 不改变原有的跨应用行为（此前是 'copy'）
@@ -327,7 +368,8 @@ async function onDrop(e: DragEvent): Promise<void> {
   <div>
     <!-- 一行的解剖：16px 的箭头槽（文件行留空以对齐）→ 15px 类型图标 → 文件名。
          缩进由 --tree-depth 在 CSS 里算（4 + depth * 16），行高由 `.tree-row` 的 min-height（32px）
-         统一，让整棵树等距；选中项左侧的浅灰色条是 `.tree-row.is-current::before` 画的（不占盒模型）。
+         统一，让整棵树等距；选中态 = accent-soft 整行底 + accent-ink 文字 + accent 图标
+         （**不再有左侧那条灰色条**，取舍见 sidebar.css 里那段说明与 §4.79）。
          改名中的行带 `.is-renaming`（浅面底色）——输入框本身无边框，靠它提供位置感。
 
          ARIA：这是 tree 里的一行（role="treeitem"，容器在 FileTree.vue）。
@@ -350,6 +392,7 @@ async function onDrop(e: DragEvent): Promise<void> {
       }"
       role="treeitem"
       data-tree-row
+      :data-tree-root-row="isRoot ? 'true' : undefined"
       :data-depth="depth"
       :data-tree-type="node.type"
       :data-tree-path="node.path"
@@ -361,7 +404,7 @@ async function onDrop(e: DragEvent): Promise<void> {
       :aria-keyshortcuts="renaming ? undefined : 'F2 Delete Shift+F10'"
       :tabindex="activeTreePath === node.path ? 0 : -1"
       :style="{ '--tree-depth': depth }"
-      :draggable="!renaming"
+      :draggable="!renaming && !isRoot"
       @focus="activeTreePath = node.path"
       @click="onToggle"
       @contextmenu="onContextMenu"
@@ -414,7 +457,10 @@ async function onDrop(e: DragEvent): Promise<void> {
         :style="{ '--tree-depth': depth }"
       >
         <div v-if="!children.length" class="tree-empty-hint" data-tree-empty-folder>
-          {{ t('sidebar.emptyFolder') }}
+          <template v-if="isRoot">
+            {{ t('sidebar.emptyFolder') }}<br />{{ t('sidebar.emptyFolderHint') }}
+          </template>
+          <template v-else>{{ t('sidebar.emptyFolder') }}</template>
         </div>
         <TreeNode
           v-for="child in visibleChildren()"

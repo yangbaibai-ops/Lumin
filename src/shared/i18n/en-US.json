@@ -16,6 +16,11 @@
     "searchPlaceholder": "Search all indexed documents (FTS5 full-text index)…",
     "loading": "Loading…"
   },
+  "close": {
+    "saveTitle": "Save changes?",
+    "saveBody": "If you don't save, your changes will be lost.",
+    "dontSave": "Don't Save"
+  },
   "onboarding": {
     "title": "Start writing",
     "body": "Create a document, or open a folder as your workspace to keep your Markdown files together.",
@@ -48,7 +53,9 @@
     "collapse": "Collapse outline",
     "expand": "Expand outline",
     "resize": "Resize outline panel",
-    "untitled": "(Untitled)"
+    "untitled": "(Untitled)",
+    "toRight": "Put the outline to the right of the editor (3 columns)",
+    "toLeft": "Put the outline back in the left sidebar"
   },
   "sidebar": {
     "files": "Files",
@@ -97,6 +104,7 @@
     "globalSearch": "Global Search (full-text index)",
     "toggleSidebar": "Toggle Sidebar",
     "toggleToolbar": "Show Shortcut Toolbar",
+    "outlineSide": "Outline position (left/right)",
     "editorMode": "Editor Mode",
     "wysiwyg": "WYSIWYG (Live)",
     "split": "Split View (Rendered + Source)",
@@ -198,10 +206,6 @@
     "exportHtml": "Export as HTML",
     "exportWord": "Export as Word",
     "exportEpub": "Export as EPUB",
-    "saved": "Saved",
-    "saving": "Saving…",
-    "unsaved": "Unsaved changes",
-    "saveFailed": "Unsaved (save failed)",
     "saveConflictShort": "Unsaved (file changed elsewhere)",
     "saveConflictTitle": "{name} was changed on disk by another program",
     "saveConflictBody": "What you are editing no longer matches the file on disk (git branch switch, sync folder, or another editor), so nothing was written. Saving anyway would overwrite the on-disk version; you can cancel and then pick Save as or Reopen from the notification centre.",
@@ -236,7 +240,6 @@
     "language": "Language",
     "languageDesc": "Interface display language",
     "autoSave": "Auto save",
-    "autoSaveDesc": "Save to disk automatically while editing (every {sec}s)",
     "autoSaveInterval": "Auto save interval",
     "fontSize": "Font size",
     "lineHeight": "Line height",
@@ -550,16 +553,10 @@
     "saveConflictReload": "Reopen (discard my changes)"
   },
   "statusbar": {
-    "saveMode": "Save mode",
-    "autoSave": "Auto Save",
-    "manualSave": "Manual Save",
-    "openSettings": "Open Settings…",
     "switchLanguage": "Switch Language",
     "encodingTooltip": "Document encoding (File → Reopen with encoding)",
     "encodingReplaced": "Some bytes in this file could not be decoded with the current encoding (shown as \uFFFD). Saving will rewrite those bytes — check that the encoding is correct.",
     "eolTooltip": "Line endings: {eol} — click to switch LF / CRLF (saves immediately)",
-    "saveModeDetail": "Save mode: {mode}",
-    "saveFailedDetail": "Save failed: {reason} (still retrying automatically; your text is safe in a local draft)",
     "tagsTooltip": "Tags (comma separated; used for grouping and search)",
     "tagsPlaceholder": "e.g. novel, chapter-1, draft",
     "addTags": "Add tags",

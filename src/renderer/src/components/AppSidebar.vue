@@ -6,15 +6,12 @@ import { useSettingsStore } from '../stores/settings'
 import { useUiStore } from '../stores/ui'
 import FileTree from './FileTree.vue'
 import Outline from './Outline.vue'
-import SidebarRecentButton from './SidebarRecentButton.vue'
 import Icon from './Icon.vue'
 
 const { t } = useI18n()
 const files = useFilesStore()
 const settings = useSettingsStore()
 const ui = useUiStore()
-
-const workspaceName = computed(() => files.root?.split(/[\\/]/).filter(Boolean).pop() || '')
 
 /**
  * 打开「大纲放在编辑区右侧」时，把左栏页签收回「文件」——
@@ -89,62 +86,24 @@ function onDragStart(e: MouseEvent): void {
     }"
     :class="ui.focusMode ? 'opacity-40 saturate-50' : ''"
   >
-    <!-- 头部（一行：**当前工作区在左** + 动作在右）────────────────────────────
-         用户口径：品牌字「Lumin」去掉；文件夹名靠左，不要靠右（靠右时与右侧动作挤在一起、
-         还要靠截断让位，观感差）。
-         所以这一行只讲一件事 —— 当前在哪个文件夹：左边是 `📁 名字`（`flex-1` 吃掉弹性空间，
-         点击＝切换文件夹），右边是「最近 / 新建 / 刷新」。品牌身份交给窗口标题与关于页。 -->
-    <div class="flex h-10 flex-none items-center gap-1.5 border-b border-edge px-3">
+    <!-- 有工作区时：**这一行整行不存在**（用户口径）──────────────────────────────
+         去掉的是原先那一行的全部三件东西：
+           * 「📁 文件夹名」—— 现在由**目录树的顶层节点**承担（Typora 式，见 FileTree.vue）；
+           * 「最近文档」按钮 —— 顶部「文件 → 最近文档」与窗口跳转列表里都有；
+           * 「新建文件」按钮 —— 树里任意一行（含顶层文件夹那一行）右键 →「新建文件」；
+           另有「刷新」，它只在列表视图有意义，已跟着移到面板底部的文件工具带。
+         没有工作区时**仍保留一枚「打开文件夹」**：那是鼠标用户唯一的可见入口
+         （首次引导块只在"还没有任何内容"时出现，用过一阵子的用户看不到它）。 -->
+    <div v-if="!files.root" class="flex h-10 flex-none items-center border-b border-edge px-3">
       <button
-        v-if="files.root"
-        class="flex h-7 min-w-0 flex-1 items-center gap-1.5 rounded-md px-1.5 text-left text-ui-sm font-medium text-ink-2 transition-colors hover:bg-panel-2 hover:text-ink"
-        :title="files.root + '\n' + t('open.openFolder')"
-        :aria-label="t('open.openFolder')"
-        data-sidebar-workspace
-        @click="files.openFolder()"
-      >
-        <Icon name="folder" :size="13" class="flex-none text-ink-3" />
-        <span class="truncate">{{ workspaceName }}</span>
-      </button>
-      <!-- 没有工作区时：同一个位置就是一个语义正确的「打开文件夹」入口（用户口径：这个要**保留**；
-           空态那三枚按钮才不要）。 -->
-      <button
-        v-else
         class="flex h-7 min-w-0 flex-1 items-center gap-1.5 rounded-md px-1.5 text-left text-ui-sm font-medium text-ink-2b transition-colors hover:bg-panel-2 hover:text-ink-2"
         :title="t('open.openFolder')"
         :aria-label="t('open.openFolder')"
-        data-sidebar-workspace
+        data-sidebar-open-folder
         @click="files.openFolder()"
       >
         <Icon name="folderOpen" :size="13" class="flex-none" />
         <span class="truncate">{{ t('open.openFolder') }}</span>
-      </button>
-
-      <!-- 动作：最近文档（写作时切换文档的最短路径）→ 新建文件（最高频）→ 刷新（仅工作区） -->
-      <SidebarRecentButton />
-      <button
-        class="icon-btn !h-6.5 !w-6.5"
-        :title="t('context.newFile')"
-        :aria-label="t('context.newFile')"
-        @click="files.root ? files.newFileAt(files.root) : files.newDocInWorkspace()"
-      >
-        <Icon name="file-plus" :size="14" />
-      </button>
-      <!-- 「刷新」只在**列表视图**下出现（用户口径：保留，但只在列表视图下显示）。
-           为什么它只对列表视图有意义：树视图看的是「文件夹里有什么」，而主进程的 `fs.watch`
-           已经盯住了**结构变化**（新增 / 删除 / 改名），实测外部改动 ~0.33s 就自动进树了；
-           列表视图看的是每篇文章的**元数据**（修改时间 / 字数 / 预览），而 `fs.watch` 的
-           `change`（只改内容、不 rename）事件按设计被过滤掉了 —— 那种时候刷新才真的有事可做
-           （实测：不刷新时「修改于」不变，刷新后才变成文件真实 mtime）。
-           工作区根节点的右键菜单里另有同一动作（见 FileTree 的 onRootContextMenu）。 -->
-      <button
-        v-if="files.root && ui.sidebarFilesView === 'list'"
-        class="icon-btn !h-6.5 !w-6.5"
-        :title="t('sidebar.refresh')"
-        :aria-label="t('sidebar.refresh')"
-        @click="files.refreshDir(files.root!)"
-      >
-        <Icon name="refresh" :size="14" />
       </button>
     </div>
 
@@ -157,6 +116,7 @@ function onDragStart(e: MouseEvent): void {
         :key="tab"
         class="relative flex flex-1 items-center justify-center gap-1.5 rounded-lg py-1.5 text-ui font-medium transition-all duration-200"
         :class="ui.sidebarTab === tab ? 'text-ink' : 'text-ink-2b hover:text-ink-2'"
+        :data-sidebar-tab="tab"
         @click="ui.sidebarTab = tab"
       >
         <Icon :name="tab === 'files' ? 'file' : 'list'" :size="13" />

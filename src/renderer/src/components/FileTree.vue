@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
+import type { FileNode } from '../../../shared/types'
 import { useFilesStore } from '../stores/files'
 import { useUiStore } from '../stores/ui'
 import {
@@ -11,6 +12,7 @@ import {
 } from '../lib/treeFocus'
 import { draggingTree, endTreeDrag } from '../lib/treeMove'
 import { shouldShowOnboarding } from '../lib/onboarding'
+import { useWorkspaceRootMenu } from '../composables/useWorkspaceRootMenu'
 import TreeNode from './TreeNode.vue'
 import FileList from './FileList.vue'
 import OnboardingPanel from './OnboardingPanel.vue'
@@ -21,6 +23,8 @@ const { t } = useI18n()
 const files = useFilesStore()
 const ui = useUiStore()
 const filter = ref('')
+/** 工作区根的右键菜单（空白处与顶层文件夹行共用同一份实现，见 useWorkspaceRootMenu） */
+const { openWorkspaceRootMenu } = useWorkspaceRootMenu()
 
 /**
  * ─── 文件名搜索：平常收起成一枚放大镜，点开长出输入框 ──────────────────────
@@ -109,7 +113,40 @@ const filesViewValue = computed({
   get: () => ui.sidebarFilesView,
   set: (v: string) => (ui.sidebarFilesView = v as 'tree' | 'list')
 })
-const rootNodes = computed(() => files.dirCache[files.root ?? ''] ?? [])
+
+/**
+ * ─── 树顶那一行 = 工作区文件夹本身（Typora 式）────────────────────────────────
+ *
+ * 侧栏头部原先有一行「📁 文件夹名 + 最近文档 + 新建文件」，本轮整行去掉（用户口径）：
+ * 文件夹名改为目录树的**顶层节点**，于是「当前在哪个文件夹」这件事由树自己说，
+ * 而且那一行还能展开/收起（头部那行只是一句标题，点了只会弹"重新选择文件夹"）。
+ *
+ * 这个节点是**合成的**（不来自 dirCache）：path 就是工作区根，TreeNode 展开时
+ * 从 `dirCache[root]` 取子项（`setRoot` 已经把它展开并拉过一次，见 stores/files.ts），
+ * 所以顶层文件夹默认就是展开的，首屏不会变成一棵空树。
+ */
+const rootNode = computed<FileNode | null>(() =>
+  files.root
+    ? {
+        type: 'directory',
+        path: files.root,
+        name: files.root.split(/[\\/]/).filter(Boolean).pop() || files.root
+      }
+    : null
+)
+
+/**
+ * 输入筛选时**确保工作区顶层节点是展开的**。
+ *
+ * 顶层文件夹现在可以被收起（§4.79 用户口径），但收起状态下输入搜索会得到一个假象：
+ * 命中项都在那棵收起的子树里，屏幕上却"一行都没有"。这里只在**已收起**时展开一次 ——
+ * 用户自己收起、又没在搜索时不受打扰；已经展开时这个 watch 什么都不做。
+ * （改造前不存在这个状态：那时顶层条目直接铺在树根上，没有可收起的父节点。）
+ */
+watch(filter, (f) => {
+  if (!f || !files.root) return
+  if (!files.expanded.has(files.root)) void files.toggleDir(files.root)
+})
 
 /**
  * 键盘导航（ARIA tree 模式，实现见 lib/treeFocus.ts）。
@@ -126,18 +163,14 @@ function handleTreeKeydown(e: KeyboardEvent): void {
   if (onTreeKeydown(e)) e.preventDefault()
 }
 
-const filtered = computed(() => {
-  if (!filter.value) return rootNodes.value
-  return rootNodes.value.filter(
-    (n) => n.name.toLowerCase().includes(filter.value.toLowerCase()) || n.type === 'directory'
-  )
-})
-
 // 树渲染完就挑一个「静息焦点行」（当前文档行，否则第一行）：ARIA tree 随时都得有
 // 且只有一个可 Tab 的行，否则 Tab 进来方向键没反应（见 lib/treeFocus.initRovingFocus）。
 // 只在「文件」页签可见时做 —— 面板常驻 DOM（v-show），否则切到大纲时这里会去动焦点。
+//
+// 依赖里放**根目录的子项数组**而不是改造前的 `filtered`：顶层文件夹那一行的子级就是它，
+// 它的引用一变（首次加载 / 刷新 / 筛选）树就重渲染了一轮，正是要重挑落点的时候。
 watch(
-  [filtered, () => files.root],
+  [() => files.dirCache[files.root ?? ''], () => files.root, filter],
   () => {
     if (ui.sidebarTab !== 'files') return
     void nextTick(() => {
@@ -163,20 +196,15 @@ watch(
   }
 )
 
+/**
+ * 容器空白处的右键 = 工作区根菜单。**菜单项与动作都在 `useWorkspaceRootMenu` 里**：
+ * 树的顶层文件夹那一行（`TreeNode` 的 isRoot 分支）弹的是同一份，
+ * 否则「空白处能新建文件、文件夹那一行不能」这类不一致会慢慢长出来。
+ */
 function onRootContextMenu(e: MouseEvent): void {
   if (!files.root) return
   e.preventDefault()
-  ui.openContextMenu({
-    x: e.clientX,
-    y: e.clientY,
-    items: [
-      { label: t('context.newFile'), icon: 'file-plus', action: 'new-file' },
-      { label: t('context.newFolder'), icon: 'folder-plus', action: 'new-folder' },
-      { label: t('sidebar.refresh'), icon: 'refresh', action: 'refresh' },
-      { label: t('sidebar.closeWorkspace'), icon: 'x', action: 'close', danger: true }
-    ],
-    onSelect: (action) => void handleAction(action)
-  })
+  openWorkspaceRootMenu(e.clientX, e.clientY)
 }
 
 /** 侧栏空态那三个入口（新建 / 打开文件 / 打开文件夹）随空态区块一起删掉了 ——
@@ -199,26 +227,6 @@ const showOnboarding = computed(() =>
     content: files.current?.content ?? ''
   })
 )
-
-async function handleAction(action: string): Promise<void> {
-  if (!files.root) return
-  if (action === 'new-file') {
-    // 新建即就地重命名（不再弹窗输名）
-    await files.newFileAt(files.root)
-  } else if (action === 'new-folder') {
-    const name = await ui.prompt(
-      t('context.newFolder'),
-      t('sidebar.newFolderHint'),
-      t('context.newFolder')
-    )
-    if (name) await files.createDirAt(files.root, name)
-  } else if (action === 'refresh') {
-    await files.refreshDir(files.root)
-  } else if (action === 'close') {
-    // 关闭工作区不发通知：文件树立刻清空，结果已在界面上
-    await files.setRoot(null)
-  }
-}
 
 /**
  * ─── 容器级的拖放（两种来源，必须分开对待）────────────────────────────────────
@@ -291,7 +299,10 @@ function onTreeDragEnd(): void {
       <FileList :filter="filter" />
     </div>
 
-    <!-- 树视图 -->
+    <!-- 树视图：**顶层那一行就是工作区文件夹本身**（Typora 式）。
+         文件夹名不再占侧栏头部一行标题，而是成为目录树的第一个节点：可展开/收起、
+         可当拖放落点（把条目移回根）、右键就是「根菜单」（新建文件/文件夹、刷新、关闭工作区）。
+         它的子级（工作区里的一级条目）由 TreeNode 递归渲染，缩进自动 +1 级。 -->
     <template v-else-if="files.root">
       <!-- 工作区树（ARIA tree：方向键移动/展开、Home/End、Enter 打开，见 lib/treeFocus.ts）
            左右内缩 10px = 页签与下方搜索行的同一条竖线，树行的选中药丸与搜索框左缘对齐 -->
@@ -304,33 +315,25 @@ function onTreeDragEnd(): void {
         @focusin="ensureRovingFocus()"
         @contextmenu="onRootContextMenu"
       >
-        <TransitionGroup name="list">
-          <TreeNode
-            v-for="node in filtered"
-            :key="node.path"
-            :node="node"
-            :depth="0"
-            :parent-dir="files.root"
-            :filter="filter"
-          />
-        </TransitionGroup>
-        <div
-          v-if="!rootNodes.length && !filter"
-          class="mt-6 flex flex-col items-center gap-2 px-4 text-center"
-        >
-          <Icon name="folder" :size="26" :stroke-width="1.3" class="text-ink-3/60" />
-          <p class="text-ui-sm leading-relaxed text-ink-2b">
-            {{ t('sidebar.emptyFolder') }}<br />{{ t('sidebar.emptyFolderHint') }}
-          </p>
-        </div>
+        <TreeNode
+          v-if="rootNode"
+          :node="rootNode"
+          :depth="0"
+          parent-dir=""
+          :filter="filter"
+          is-root
+        />
+        <!-- 「工作区里一篇 Markdown 都没有」的提示由**折叠在顶层节点里面**的那句承担
+             （见 TreeNode 的 tree-empty-hint，根节点还多一行"右键新建 Markdown 文件"）：
+             改造前这里另有一份"空文件夹"整块提示，顶层节点出现后两块会同时显示。 -->
       </div>
     </template>
 
     <!-- 未打开工作区：**什么都不放**（用户口径：没打开文件夹时，侧栏不要出现
          「新建文档 / 打开文件 / 打开文件夹」这些按钮和提示）。
          原来这里是一组三枚图标按钮 + 一行 `open.hint` 提示，现已整块删除。
-         入口都还在别处：顶部菜单「文件」、快捷键（Ctrl+N / Ctrl+O）、以及侧栏头部的
-         「打开文件夹 / 新建文件」两个按钮 —— 侧栏空着就是空着。
+         入口都还在别处：顶部菜单「文件」、快捷键（Ctrl+N / Ctrl+O），以及侧栏头部
+         在**没有工作区时**保留的那一枚「打开文件夹」（见 AppSidebar.vue）—— 侧栏空着就是空着。
 
          唯一的例外是**首次引导块**（审计 §7「首次引导 / 示例文档：无」）：它不挂在
          "没打开工作区"这个条件上，而是挂在纯函数 `shouldShowOnboarding` 上 ——
@@ -339,7 +342,7 @@ function onTreeDragEnd(): void {
          软件的人终于看得见"新建 / 打开文件夹 / 插入示例"这三条路。 -->
     <OnboardingPanel v-if="showOnboarding" class="min-h-0 flex-1 overflow-y-auto" />
 
-    <!-- 搜索 + 视图切换（树 / 列表）：**贴底**成一条独立的工具带
+    <!-- 搜索 + 刷新（仅列表视图）+ 视图切换（树 / 列表）：**贴底**成一条独立的工具带
          （用户口径：这两件东西放在顶部太抢视觉，压到面板下方更干净）。
          为什么仍留在 FileTree 而不是 AppSidebar 的全局底栏：它只服务「文件」页签，
          切到大纲时不该出现；而这里正好是文件面板的底部，视觉上仍是侧栏最下方。
@@ -422,6 +425,24 @@ function onTreeDragEnd(): void {
           </button>
         </div>
       </div>
+      <!-- 「刷新」（**只在列表视图**）：从侧栏头部搬到这条工具带。
+           为什么它跟着列表视图：树视图看的是"文件夹里有什么"，主进程的 `fs.watch` 已经盯住了
+           结构变化（新增/删除/改名，实测外部改动 ~0.33s 就自动进树了）；而列表视图看的是每篇
+           文章的**元数据**（修改时间 / 字数 / 预览），`fs.watch` 的 `change`（只改内容、不 rename）
+           事件按设计被过滤掉了 —— 那种时候刷新才真的有事可做（实测：不刷新时"修改于"不变，
+           刷新后才变成文件真实 mtime）。
+           头部那一行去掉之后它无处可挂：树/列表两个视图里都能右键空白处 →「刷新」（同一个动作），
+           但"看得见的一枚按钮"只对列表视图有意义，于是放在这里（同一条工具带，悬停侧栏才出现）。 -->
+      <button
+        v-if="ui.sidebarFilesView === 'list'"
+        class="icon-btn !h-7 !w-7 flex-none"
+        :title="t('sidebar.refresh')"
+        :aria-label="t('sidebar.refresh')"
+        data-sidebar-refresh
+        @click="files.refreshDir(files.root!)"
+      >
+        <Icon name="refresh" :size="14" />
+      </button>
       <!-- 树 / 列表 切换（会话级偏好，非持久化）：与工具栏模式切换同一个分段控件。
            图标已从「chevron-right（= 展开）」换成真正的树形图标，见 Icon.vue 的说明。 -->
       <SegmentedControl

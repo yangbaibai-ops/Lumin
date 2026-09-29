@@ -12,7 +12,7 @@
 // 也能让断言全绿 —— 那等于把编辑器的查找功能弄丢了：
 //   A. 焦点在文件树行 → 侧栏文件名搜索展开并拿到焦点，**正文查找栏不开**；
 //   B. 焦点在编辑区   → 正文查找栏开，**侧栏搜索不开**；
-//   C. 边界：焦点在侧栏头部（工作区按钮）/ 侧栏的大纲页签 → 仍走正文查找。
+//   C. 边界：焦点在侧栏**页签**上 / 侧栏的大纲页签 → 仍走正文查找。
 //
 // 按键走**页面内合成 KeyboardEvent**（`window.dispatchEvent`），不用 CDP 真实按键注入：
 // 合成事件同样会经过 keymap 服务的 window 捕获监听（`lib/keymap/service.ts`），
@@ -173,19 +173,22 @@ async function main() {
     await ev(`(() => { window.__L.store('find').hide(); return 'ok' })()`)
     await sleep(300)
 
-    // ── C. 边界：焦点在侧栏头部（工作区按钮）→ 仍走正文查找 ──────────────
+    // ── C. 边界：焦点在侧栏**页签**上（不是文件面板里）→ 仍走正文查找 ──────
+    // （改造前这里点的是"侧栏头部的工作区按钮"；本轮那一行整行去掉了 —— 文件夹名改成
+    //   目录树的顶层节点，页签成了侧栏里最靠上的可聚焦控件，于是边界用例跟着换成它。
+    //   要点不变：`[data-sidebar-files]` **之外**的侧栏区域不该抢走 Ctrl+F。）
     await bringToFront(app)
-    const headFocused = await ev(focusOn('[data-sidebar-workspace]'))
+    const headFocused = await ev(focusOn('[data-sidebar-tab="files"]'))
     await sleep(300)
-    report.note('焦点落到侧栏头部工作区按钮 ' + headFocused)
+    report.note('焦点落到侧栏页签 ' + headFocused)
     await ev(CTRL_F)
     await sleep(450)
     const c1 = JSON.parse(await ev(STATE))
     report.note('C1 ' + JSON.stringify(c1))
     report.check(
-      'ctrl-f-in-sidebar-header-stays-document-find',
-      c1.findOpen === true && c1.sidebarOpen === false,
-      JSON.stringify(c1)
+      'ctrl-f-on-sidebar-tab-stays-document-find',
+      headFocused === true && c1.findOpen === true && c1.sidebarOpen === false,
+      `${JSON.stringify(c1)} / 焦点落在页签上=${headFocused}`
     )
     await ev(`(() => { window.__L.store('find').hide(); return 'ok' })()`)
     await sleep(300)

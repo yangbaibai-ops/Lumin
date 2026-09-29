@@ -37,6 +37,18 @@ export function markQuitting(): void {
   quitting = true
 }
 
+/**
+ * 撤销"正在退出"（**只给一个场景用**）：渲染层在关窗确认里点了「取消」。
+ *
+ * 为什么必须有：`before-quit` 一到就把 `quitting` 置真，而它同时是"窗口槽位要不要保留"的判据
+ * （`index.ts` 的 `closed` 处理）—— 用户取消退出之后，若这个标志还留着，之后**单个**关掉的
+ * 窗口会被当成"整体退出"、槽位照留，下次启动就会把用户明确关掉的窗口又拉回来。
+ * 正常情况下 Electron 会因为窗口没关成而中止这次退出，所以这里只是把状态摆回与事实一致。
+ */
+export function clearQuitting(): void {
+  quitting = false
+}
+
 export function isQuitting(): boolean {
   return quitting
 }

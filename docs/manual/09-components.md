@@ -20,6 +20,10 @@
 
 - ✅ 正式组件：`src/renderer/src/components/SegmentedControl.vue`
   （`role="tablist"` / `role="tab"` + `aria-selected`，`FileTree.vue`、`Toolbar.vue` 已用）。
+- ⚠️ **"二值位置/状态"类开关不要用分段控件**：工具栏里的「大纲位置」（左栏 ⇄ 编辑区右侧）刻意是
+  一枚 `icon-btn` 状态开关（`active` 高亮 = 当前在右侧，提示文案说下一步），理由是工具栏里已经有
+  一枚三段控件，再摆一枚两段的会互相抢视觉；且"分段控件恰好两处"是 `_verify-segmented-control.js`
+  的既有口径（第三枚会让那条断言变三处）。判据：**"选一个模式"用分段控件，"翻一个开关"用状态按钮**。
 - ⚠️ 仍欠账（审计 §8 P1「同一个分段控件有 2 种实现」）：设置页里还有 **6 处内联按钮组** ——
   `SettingsDialog.vue` 的语言、编辑模式、远程图片、正文字体、PDF 页面尺寸、链接创建。
   **可访问性那一半已经补上**（六组统一 `role="group"` + `aria-label` + 每个按钮 `aria-pressed`，

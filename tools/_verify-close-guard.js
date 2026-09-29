@@ -13,6 +13,11 @@
 //   ① 窗口在 3.2 秒时**还活着**（旧实现这时已经被强杀）；
 //   ② 窗口最终消失，且磁盘上是**新的内容**（证明那次慢刷真的跑完了，而不只是窗口多赖了一会儿）。
 //
+// ⚠️ 本套件把**自动保存打开**再关窗：手动保存模式下（出厂默认）关窗会先弹
+//    「是否保存更改？」，没人点按钮就一直在等 —— 那条路（三条出路）由
+//    `_verify-close-save-prompt.js` 专门验收；这里要量的是"慢落盘不被强杀"，
+//    走自动保存那条"不弹框、直接 flush"的路最干净。
+//
 // ⚠️ 没有覆盖的：`session-end`（Windows 关机/注销）没法从页面触发 —— 它的**策略**
 //    （只广播一次、先标记退出）由单测钉住，广播动作与关窗复用同一条 `before-close` 路径。
 const os = require('os')
@@ -48,6 +53,7 @@ async function main() {
   try {
     await ev(`(async () => {
       const f = window.__L.files()
+      window.__L.settings().set('autoSave', true)
       await f.setRoot(${JSON.stringify(WS)})
       await f.openPath(${JSON.stringify(DOC)})
       return 'ok'

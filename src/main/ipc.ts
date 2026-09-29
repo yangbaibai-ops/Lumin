@@ -275,15 +275,46 @@ export function registerIpc(slots: SlotRegistry): void {
     }
   })
   /**
+   * 渲染层在关窗确认里点了「**取消**」：撤掉这一轮的守卫状态，窗口继续活着。
+   *
+   * 不做这件事的后果是实打实的：`closeGuardState` 还留着 → 兜底计时器照跑 →
+   * 连续 2.5 秒没有心跳（用户正在看对话框、没人在落盘）就**强制关窗**；
+   * 即使心跳一直发，30 秒总上限一到照样强杀 —— 用户点了「取消」却眼睁睁看着窗口关掉。
+   * 清掉守卫状态之后，`app:closeProgress` 变成空操作（它本来只在守卫状态存在时才有意义），
+   * 下次 close 会重新起一轮。
+   */
+  ipcMain.on('app:cancelClose', (event) => {
+    const win = BrowserWindow.fromWebContents(event.sender)
+    if (!win || win.isDestroyed()) return
+    const timer = closeTimers.get(win)
+    if (timer) {
+      clearTimeout(timer)
+      closeTimers.delete(win)
+    }
+    closeGuardState.delete(win)
+    // 取消退出：`quitting` 是"窗口槽位要不要保留"的判据，留着会让之后的单独关窗被误当成整体退出
+    session.clearQuitting()
+  })
+  /**
    * 关窗流程里的心跳：渲染层还在落盘 → 兜底计时器重置（审计 §2 P1「2.5s 强杀」）。
    * 只在**已经开始关窗**（closeGuardState 里有记录）且还没放行时才有意义；
    * 其它时候是空操作，不需要鉴权（它只是"我还活着"这一个 bit，不携带任何数据）。
    */
-  ipcMain.on('app:closeProgress', (event) => {
+  ipcMain.on('app:closeProgress', (event, payload?: { deciding?: boolean }) => {
     const win = BrowserWindow.fromWebContents(event.sender)
     if (!win || win.isDestroyed() || closeConfirmed.has(win)) return
     const state = closeGuardState.get(win)
     if (!state) return
+    /**
+     * `deciding: true` = 渲染层正**等人回答**「是否保存更改？」。
+     *
+     * 这段等待不该计入 30 秒总上限：那个上限防的是"渲染进程卡死却一直发心跳"，
+     * 而用户在对话框前想多久都是合法的（Typora 也一样）。不推的话，用户犹豫 30 秒，
+     * 窗口会在他点「取消」之前被强关 —— 那是明明白白的 bug。
+     * 推 `startedAtMs` 之后：卡死仍然会兜底（**心跳停了 2.5 秒**照样强关，
+     * 因为那时 `deciding` 那一路的心跳也停了），只是"人在想"不再被当成卡死。
+     */
+    if (payload && payload.deciding) state.startedAtMs = Date.now()
     noteCloseProgress(state, Date.now())
     armCloseFallback(win)
   })
@@ -1101,7 +1132,7 @@ export function attachCloseGuard(win: BrowserWindow): void {
     session.markQuitting()
     beginShutdown('session-end')
     if (!win.isDestroyed() && !closeConfirmed.has(win)) {
-      win.webContents.send('app:before-close', { quitting: true })
+      win.webContents.send('app:before-close', { quitting: true, reason: 'session-end' })
     }
   })
 
@@ -1110,7 +1141,16 @@ export function attachCloseGuard(win: BrowserWindow): void {
     e.preventDefault()
     const now = Date.now()
     closeGuardState.set(win, { startedAtMs: now, lastProgressMs: now })
-    win.webContents.send('app:before-close', { quitting: session.isQuitting() })
+    // `reason` 决定渲染层要不要弹「是否保存更改？」（见 shared/closePrompt.ts）：
+    //   * window —— 用户点关闭按钮 / 关闭窗口菜单：手动保存且脏了就必须问；
+    //   * quit   —— 退出应用（同样是用户主动的动作，照问）；
+    //   * session-end —— 系统关机/注销（上面那条分支发的是它，不走这里）。
+    //   注意 quit 与 window 的区别只在"槽位要不要保留"上，问不问是同一套口径。
+    const quitting = session.isQuitting()
+    win.webContents.send('app:before-close', {
+      quitting,
+      reason: quitting ? 'quit' : 'window'
+    })
     armCloseFallback(win)
     win.once('closed', () => {
       const timer = closeTimers.get(win)

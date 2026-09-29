@@ -194,25 +194,23 @@ async function main() {
       `两次保存都成功，磁盘是完整的一份（不出现交错内容）：${JSON.stringify(e.disk)} / dirty=${e.dirty}`
     )
 
-    // ── F. 写盘失败必须**看得见**（审计 §2 P1：退避重试 + 持久通知 + 状态栏红态）──
+    // ── F. 写盘失败必须**看得见**（审计 §2 P1：退避重试 + 持久通知）──
     // 造一个真实会失败的写盘：把文件设成只读（Windows 上 rename 覆盖只读文件 = EPERM，
     // 实测 `fs.chmodSync(file, 0o444)` 之后 `fs.rename` 必失败）。
     // 用户视角的对应场景是"文件被别的程序占用 / 磁盘满 / 只读盘"。
+    // ⚠️ §4.81 起状态栏那格「保存状态」整块删了，所以"看得见"只剩**通知中心那张持久卡片**；
+    //    这里顺带钉住"那一格确实不在了"（否则老套件会对着不存在的元素做假断言）。
     fs.chmodSync(fileA, 0o444)
     const f1 = JSON.parse(
       await ev(`(async () => {
         const f = window.__L.files()
         f.setContent('只读写不进去', 'external')
         const ok = await f.save()
-        // 状态栏那一格：失败要变成 danger 色 + 专属文案（不能还写着"未保存的更改"）
-        const cell = document.querySelector('[data-save-cell]')
         return JSON.stringify({
           ok,
           saveError: f.saveError,
           retryScheduled: f.saveRetryDelay > 0,
-          cellText: (cell?.textContent ?? '').trim(),
-          cellError: cell?.getAttribute('data-save-error') ?? null,
-          dangerClass: (cell?.className ?? '').includes('text-danger')
+          saveCellExists: !!document.querySelector('[data-save-cell]')
         })
       })()`)
     )
@@ -228,13 +226,9 @@ async function main() {
       `退避延时 > 0（失败后必须继续尝试落盘，不能一停手就永远不试）`
     )
     report.check(
-      'status-bar-shows-failure-state',
-      f1.cellError !== null && f1.dangerClass === true && f1.cellText !== '',
-      JSON.stringify({
-        cellText: f1.cellText,
-        cellError: f1.cellError,
-        dangerClass: f1.dangerClass
-      })
+      'status-bar-has-no-save-cell',
+      f1.saveCellExists === false,
+      '状态栏不再有「保存状态」那一格（用户口径 §4.81：不论自动还是手动都不显示）'
     )
     const notified = JSON.parse(
       await ev(`(async () => {
@@ -250,26 +244,19 @@ async function main() {
       JSON.stringify(notified.hit)
     )
 
-    // 恢复可写后：错误态要**自动消失**（否则用户永远看到一格红的）
+    // 恢复可写后：错误态要**自动消失**（否则用户永远看到"保存失败"）
     fs.chmodSync(fileA, 0o666)
     const f2 = JSON.parse(
       await ev(`(async () => {
         const f = window.__L.files()
         const ok = await f.save()
-        const cell = document.querySelector('[data-save-cell]')
-        return JSON.stringify({
-          ok,
-          saveError: f.saveError,
-          dirty: f.dirty,
-          cellError: cell?.getAttribute('data-save-error') ?? null,
-          cellText: (cell?.textContent ?? '').trim()
-        })
+        return JSON.stringify({ ok, saveError: f.saveError, dirty: f.dirty })
       })()`)
     )
     report.note('F2 ' + JSON.stringify(f2))
     report.check(
       'successful-save-clears-failure-state',
-      f2.ok === true && f2.saveError === null && f2.cellError === null && f2.dirty === false,
+      f2.ok === true && f2.saveError === null && f2.dirty === false,
       JSON.stringify(f2)
     )
 

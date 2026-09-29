@@ -162,6 +162,17 @@ export const useFilesStore = defineStore('files', {
     current: null as CurrentDoc | null,
     draftRestore: null as DraftInfo | null,
     /**
+     * 「这一轮关窗，用户已经选了**不保存**」（见 `discardCurrentDraft`）。
+     * 只有关窗流程会置真，且 `requestClose` 每次开始关窗时复位 —— 它拦住的是
+     * `EditorView.onBeforeUnmount` 那条兜底 `flushAll()`（否则它会把用户刚丢弃的改动写回去）。
+     */
+    discardOnClose: false,
+    /**
+     * 最近一次草稿写盘（可能还在飞）。只服务一个场景：关窗选「不保存」时要**等它落地再删**，
+     * 否则那次写盘的 IPC 会排在删除之后，把草稿写回磁盘（见 `discardCurrentDraft`）。
+     */
+    draftWrite: null as Promise<void> | null,
+    /**
      * 本次打开的文档是否触发了「大文档降级」（见 lib/largeDoc.ts）：
      * 置真时 openPath 已把会话模式切到 source，EditorView 会**不挂载渲染面板**，
      * 从而一个 CodeMirror NodeView 都不建（否则即使切到源码模式，隐藏但常驻的渲染面板
@@ -830,15 +841,26 @@ export const useFilesStore = defineStore('files', {
     async writeDraft(): Promise<void> {
       const cur = this.current
       if (!cur) return
+      // 用户已经决定"这份改动不要了"（关窗选了不保存）：一次草稿都不许再写
+      if (this.discardOnClose) return
       // 记账时机放在写之前：无论写成功还是失败都算"尝试过一次"，
       // 否则失败时会因为 lastDraftAt 不前进而变成每次按键都重试（打满 IPC）。
       this.lastDraftAt = Date.now()
       const key = this.draftKey(cur.path)
-      if (cur.content === cur.savedContent) {
-        if (this.draftRestore?.key !== key) await window.luminAPI.drafts.remove(key)
-        return
-      }
-      await window.luminAPI.drafts.save(key, cur.content, cur.path)
+      /**
+       * 把这一次写盘挂到 `draftWrite` 上：关窗选「不保存」时要先把**已经飞出去**的那一次等回来，
+       * 再去删草稿 —— 否则它的 IPC 会落在删除**之后**，把草稿又写回磁盘
+       * （实测：断言红，而且下次启动真的会弹"检测到未保存的草稿"）。
+       */
+      const job = (async () => {
+        if (cur.content === cur.savedContent) {
+          if (this.draftRestore?.key !== key) await window.luminAPI.drafts.remove(key)
+          return
+        }
+        await window.luminAPI.drafts.save(key, cur.content, cur.path)
+      })()
+      this.draftWrite = job.catch(() => {})
+      await job
     },
     /**
      * 保存当前文档。两条与"丢稿"直接相关的并发口径：
@@ -1279,14 +1301,46 @@ export const useFilesStore = defineStore('files', {
       // 列表视图按 mtime 排序并缓存，新文件要让它重扫一次才会出现
       useWorkspaceDocsStore().invalidate()
     },
+    /**
+     * 关窗确认里用户选了「**不保存**」：把这一篇的草稿一起丢掉，并且不再落盘。
+     *
+     * 为什么必须连草稿一起删：草稿是崩溃兜底（`writeDraft` 在编辑期间一直在写），
+     * 用户明确说了"更改将会丢失"，下次启动却弹出「检测到未保存的草稿（比磁盘文件更新）」
+     * 让他恢复 —— 那是与刚才那个选择**自相矛盾**的行为。
+     *
+     * 为什么要置 `discardOnClose`：窗口销毁时 `EditorView.onBeforeUnmount` 还会兜底调一次
+     * `flushAll()`，而它会**保存有路径的文档 + 写草稿** —— 不拦住的话，用户刚选的「不保存」
+     * 会在窗口消失前被那条兜底路径推翻（实测：草稿被写了回去，断言红；慢盘上甚至可能真的落盘）。
+     */
+    async discardCurrentDraft(): Promise<void> {
+      // 先抓住"可能正在飞"的那一次草稿写盘，再置标志 —— 顺序反过来的话，
+      // 那次写盘会在我们删完之后落地，草稿又回到磁盘上
+      const inFlight = this.draftWrite
+      this.discardOnClose = true
+      clearTimeout(this.draftTimer as never)
+      this.draftTimer = null
+      if (inFlight) await inFlight.catch(() => {})
+      const cur = this.current
+      if (!cur) return
+      const key = this.draftKey(cur.path)
+      if (this.draftRestore?.key === key) this.draftRestore = null
+      await window.luminAPI.drafts.remove(key).catch(() => {})
+    },
     async flushAll(): Promise<void> {
+      // 用户已经明确说过"这份改动不要了"：保存与草稿都不做（见 discardCurrentDraft 的说明）。
+      // 由 `requestClose` 在每次关窗开始时复位，所以它只可能在本轮关窗内为真。
+      if (this.discardOnClose) return
       clearTimeout(this.saveTimer as never)
       clearTimeout(this.draftTimer as never)
       // ⚠️ 关窗/退出这条路径以前**不刷编辑器**：`beforeunload` 里那次 flush 发生在
       // 主进程已经决定关窗之后，写进 store 也来不及落盘。所以先在这里同步刷一次 ——
       // 顺序是「刷编辑器 → 看脏不脏 → 保存 / 写草稿」，账目才是准的。
       flushEditorBeforeReplace()
-      // 有路径的文档直接落盘；未命名文档仅写草稿（下次启动恢复），避免关闭时弹出保存对话框
+      // 有路径的文档直接落盘；未命名文档仅写草稿（下次启动恢复）。
+      // ⚠️ 走到这里说明"已经决定保存"了：手动保存模式**关窗**时，用户先在
+      //    「是否保存更改？」里选了「保存」（选了「不保存」就根本不会走到这里 ——
+      //    那条路走 `discardCurrentDraft()`，见 useAppActions 的 requestClose）；
+      //    自动保存模式与系统关机则照旧直接落盘、不问（判定见 shared/closePrompt.ts）。
       if (this.dirty && this.current?.path) await this.save()
       await this.writeDraft().catch(() => {})
     },

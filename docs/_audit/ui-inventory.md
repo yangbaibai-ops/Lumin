@@ -204,17 +204,24 @@
 | StatusBar.vue:301 | 语言按钮 | `langShort` + `statusbar.switchLanguage` | `settings.setLanguage(nextLanguage(...))` | 是 | 循环切换三语 |
 | StatusBar.vue:310 | 版本号 | `v{version}` | `app.getVersion()` | 是 | — |
 
-### 1.6 侧边栏（`AppSidebar` / `FileTree` / `TreeNode` / `FileList` / `RecentList` / `SidebarRecentButton` / `Outline`，35 项）
+### 1.6 侧边栏（`AppSidebar` / `FileTree` / `TreeNode` / `FileList` / `RecentList` / `Outline`）
+
+> **本轮（§4.79）变更**：侧栏头部整行去掉（最近文档 / 新建文件 / 工作区名 / 刷新都不在那儿了），
+> 文件夹改当目录树的**顶层节点**；「刷新」只在列表视图下挪到面板底部的文件工具带；
+> 新增工具栏「大纲位置」开关。下表里失效的行按老规矩标 `~~已删~~`，新增的行直接列出。
 
 | 来源 | 控件 id/选择器 | 显示文案（i18n key） | 绑定的动作/命令 | 是否接线 | 备注 |
 |---|---|---|---|---|---|
-| AppSidebar.vue:74 | 最近文档按钮 | `open.recent` | `SidebarRecentButton` → 弹层 | 是 | 条目点击 = 新窗口打开或聚焦已有窗口 |
-| AppSidebar.vue:75 | 新建文件 | `context.newFile` | `files.newFileAt(root)` / `newDocInWorkspace()` | 是 | — |
-| AppSidebar.vue:82 | 打开文件夹 | **硬编码 `打开文件夹`** | `files.openFolder()` | 是 | 未走 i18n（D14） |
-| AppSidebar.vue:92 | 工作区名（可点） | `files.root` + `\n点击重新选择文件夹`（硬编码） | `files.openFolder()` | 是 | 未走 i18n（D14） |
-| AppSidebar.vue:100 | 刷新 | **硬编码 `刷新`** | `files.refreshDir(root)` | 是 | 未走 i18n（D14） |
-| AppSidebar.vue:111 | 标签：文件 | `sidebar.files` | `ui.sidebarTab='files'` | 是 | — |
-| AppSidebar.vue:111 | 标签：大纲 | `sidebar.outline` | `ui.sidebarTab='outline'` | 是 | — |
+| ~~AppSidebar.vue:74~~ | ~~最近文档按钮~~ | `open.recent` | — | **已删** | 组件 `SidebarRecentButton.vue` 一并删除（零引用）；入口仍在「文件 → 最近文档」二级菜单与 Windows 跳转列表 |
+| ~~AppSidebar.vue:75~~ | ~~新建文件（头部）~~ | `context.newFile` | — | **已删** | 改为：树里任意一行（含顶层文件夹行）右键 →「新建文件」 |
+| ~~AppSidebar.vue:82~~ | ~~打开文件夹（头部，无工作区时）~~ | `open.openFolder` | `files.openFolder()` | **保留（改名）** | 现在只在**没有工作区**时出现，钩子从 `data-sidebar-workspace` 改成 `data-sidebar-open-folder` |
+| ~~AppSidebar.vue:92~~ | ~~工作区名（可点）~~ | — | — | **已删** | 文件夹名改由 `FileTree` 的顶层节点承担（Typora 式）：`[data-tree-row][data-tree-root-row="true"]` |
+| ~~AppSidebar.vue:100~~ | ~~刷新（头部）~~ | — | — | **已删** | 见下方 `data-sidebar-refresh`（工具带，仅列表视图） |
+| AppSidebar.vue | 标签：文件 / 大纲 | `sidebar.files` / `sidebar.outline` | `ui.sidebarTab` | 是 | 新增 `data-sidebar-tab="files|outline"` 钩子（套件定位用） |
+| FileTree.vue | 顶层文件夹行 | 工作区文件夹名 | 展开/收起（`files.toggleDir`）、拖放落点、右键根菜单 | 是 | `TreeNode` 的 `isRoot` 分支：不可拖动、无重命名/删除/移动到 |
+| FileTree.vue | 文件工具带 → 刷新（**仅列表视图**） | `sidebar.refresh` | `files.refreshDir(root)` | 是 | 跟着头部一起搬过来；工具带默认隐藏、悬停侧栏才出现（带淡入淡出+位移动效） |
+| Toolbar.vue | 大纲位置开关 | `outline.toRight` / `outline.toLeft` | `useOutlineSide().toggleOutlineSide` | 是 | `data-outline-side`；`aria-pressed` = 当前是否在编辑区右侧；同一开关也在「视图」菜单 / 原生菜单 / 设置页 |
+| ~~AppSidebar.vue:111~~ | ~~标签行（原行号）~~ | `sidebar.files` / `sidebar.outline` | `ui.sidebarTab='files'` | 是 | — |
 | ~~AppSidebar.vue:138~~ | ~~设置~~ | `settings.title` | `ui.openSettings()` | **已删** | 本轮去掉侧栏底部那一行；设置仍在「帮助 → 设置」（应用内菜单）等入口 |
 | ~~AppSidebar.vue:145~~ | ~~关于~~ | `about.title` | `router.push('/about')` | **已删** | 同上；关于仍在「帮助 → 关于」与设置导航里 |
 | ~~AppSidebar.vue:152~~ | ~~收起侧边栏~~ | `sidebar.collapse`（该 i18n 键已随之删除） | `ui.sidebarVisible=false` + 持久化 | **已删** | 折叠仍有「视图 → 显示侧边栏」+ Ctrl+Shift+B；展开用 `App.vue` 的左缘把手（`.sidebar-handle`） |
@@ -242,7 +249,7 @@
 | RecentList.vue:102 | 从列表移除 | `open.removeRecent` | `recent.removeFile` / `removeFolder` | 是 | — |
 | RecentList.vue:121 | 清除记录 | `open.clearRecent` / `open.clearFolders` | `recent.clearAll()` / `clearFolders()` | **行为不符** | 文档分支会连文件夹+置顶一起清（D19） |
 | Outline.vue:14 | 大纲条目 | `h.text`（无标题时 `（无标题）` 硬编码） | `editorStore.jumpToHeading(pos)` | 是 | 硬编码见 D17；空态 `sidebar.emptyOutline` |
-| SidebarRecentButton.vue:83 | 最近文档按钮 | `open.recent` | 弹层 + `openInWindowOrFocus` | 是 | — |
+| ~~SidebarRecentButton.vue:83~~ | ~~最近文档按钮（弹层）~~ | `open.recent` | — | **已删** | 组件已删（零引用）；`RecentList.vue` 仍在「文件」菜单的二级浮层里用 |
 
 ### 1.7 查找 / 替换栏 `FindReplaceBar.vue`（8 项）
 

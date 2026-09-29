@@ -18,6 +18,7 @@
 import { useUiStore } from '../stores/ui'
 import i18n from '../i18n'
 import { flushEditorBeforeReplace } from './editorFlush'
+import { planClosePrompt, type CloseReason } from '../../../shared/closePrompt'
 
 /** 直接问「未保存的更改要丢弃吗」（调用方已确认确实有未保存内容） */
 export async function confirmDiscardChanges(): Promise<boolean> {
@@ -50,4 +51,44 @@ export async function confirmDiscardIfDirty(dirty: DirtyProbe): Promise<boolean>
   const isDirty = typeof dirty === 'function' ? dirty() : dirty
   if (!isDirty) return true
   return confirmDiscardChanges()
+}
+
+/**
+ * ─── 关窗前的「是否保存更改？」（用户口径，对齐 Typora）────────────────────────
+ *
+ * 规则（纯函数 `planClosePrompt` 钉住，单测在 tests/closePrompt.test.mjs）：
+ *   * 自动保存开着 → 不问（改动本来就在写盘路上）；
+ *   * 系统关机/注销（`session-end`）→ 不问（没人能点那个按钮，问了只会把窗口卡住）；
+ *   * 手动保存 + 有未保存改动 → 弹一次「保存 / 不保存 / 取消」。
+ *
+ * 返回值（`proceed` = 没什么要问的，调用方照旧落盘放行）：
+ *   * `save`    —— 用户要保存：调用方去 `files.save()`（未命名文档会走「另存为」）；
+ *   * `discard` —— 用户不要这些改动：调用方**不要保存**，并且把草稿一起丢掉；
+ *   * `cancel`  —— 用户改主意了：**不关窗**（调用方必须让主进程撤掉这一轮的关窗守卫）。
+ *
+ * 与 `confirmDiscardIfDirty` 的两个区别：① 那个是二选一（丢/不丢），这个是三选一；
+ * ② 那个用于**切换文档**（问的是"离开这篇"），这个用于**关窗**（问的是"要不要保存"）。
+ */
+export async function resolveCloseIntent(input: {
+  autoSave: boolean
+  reason: CloseReason
+  dirty: DirtyProbe
+}): Promise<'save' | 'discard' | 'cancel' | 'proceed'> {
+  flushEditorBeforeReplace()
+  const isDirty = typeof input.dirty === 'function' ? input.dirty() : input.dirty
+  if (
+    planClosePrompt({ autoSave: input.autoSave, dirty: isDirty, reason: input.reason }) === 'flush'
+  ) {
+    return 'proceed'
+  }
+  const ui = useUiStore()
+  const choice = await ui.confirmTriple({
+    title: i18n.global.t('close.saveTitle'),
+    body: i18n.global.t('close.saveBody'),
+    confirmLabel: i18n.global.t('common.save'),
+    altLabel: i18n.global.t('close.dontSave')
+  })
+  if (choice === 'confirm') return 'save'
+  if (choice === 'alt') return 'discard'
+  return 'cancel'
 }

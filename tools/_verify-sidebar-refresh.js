@@ -1,5 +1,5 @@
 'use strict'
-// 验收：侧栏头部那一行的「刷新」——**只在列表视图下出现**，且它的独有价值真的接上了
+// 验收：面板底部文件工具带里的「刷新」——**只在列表视图下出现**，且它的独有价值真的接上了
 //
 // 用户口径（第九轮讨论后的决定）：「保留，但只在列表视图下显示」。
 // 依据是这一轮量到的三组数（探针结果，正文见 CHANGELOG）：
@@ -7,10 +7,14 @@
 //   * 外部**只改内容**（没有 rename 事件）→ 列表视图的「修改于」**不会**自己更新，
 //     调用一次 refreshDir 之后才变成文件真实 mtime —— 这是它唯一独有的作用，
 //     而这一作用只落在**列表视图的元数据**上（树视图看的是名字与结构，不受影响）。
-// 所以：树视图下这颗按钮不再渲染（头部从三颗图标回到两颗），列表视图下照旧。
+//
+// ⚠️ 本轮（§4.79）它**从侧栏头部搬到了面板底部的文件工具带**（头部那一行整行去掉了）：
+// 显示口径一个字没变（树视图没有它、列表视图有它、没有工作区时也没有它），
+// 但位置变了、而且工具带**默认隐藏、悬停侧栏才出现** —— 所以点击前必须先真的把鼠标移进侧栏，
+// 否则 `visibility:hidden` 的元素收不到事件（本套件第一版就是在这儿假红的）。
 //
 // 断言分两层，缺一不可：
-//   * **显示规则**：树视图没有它、列表视图有它、没有工作区时也没有它（v-if 与 title 一起验）；
+//   * **显示规则**：树视图没有它、列表视图有它（且**在工具带里**）、没有工作区时整条工具带都不在；
 //   * **它还真的有用**：在列表视图里点它 → 列表那篇的「修改于」追平磁盘真实 mtime
 //     （只验「按钮在不在」的话，把它接成一个空函数也照样全绿）。
 const fs = require('fs')
@@ -21,18 +25,21 @@ const {
   settle,
   sleep,
   clickCenter,
+  centerOf,
   bringToFront,
   Reporter,
   fatal
 } = require('./lib/harness')
 
-/** 侧栏头部那一行里的按钮标题（顺序即渲染顺序） */
-const HEAD_BUTTONS = `(() => {
-  const aside = document.querySelector('aside')
-  if (!aside) return JSON.stringify({ missing: true })
-  const head = aside.firstElementChild
+/** 「刷新」按钮在不在、在不在工具带里（`data-sidebar-refresh` 是它唯一的钩子） */
+const REFRESH = `(() => {
+  const btn = document.querySelector('[data-sidebar-refresh]')
+  const strip = document.querySelector('[data-sidebar-filetools]')
   return JSON.stringify({
-    titles: [...head.querySelectorAll('button')].map((b) => b.title || b.getAttribute('aria-label') || '')
+    present: !!btn,
+    inStrip: !!(btn && strip && strip.contains(btn)),
+    title: btn ? btn.title || btn.getAttribute('aria-label') || '' : null,
+    stripPresent: !!strip
   })
 })()`
 
@@ -46,7 +53,7 @@ async function main() {
   const app = await connect()
   const { ev } = app
   if (!(await settle(ev))) throw new Error('实例未进入就绪状态')
-  const report = new Reporter('侧栏头部「刷新」：只在列表视图下出现，且真的能刷新列表元数据')
+  const report = new Reporter('文件工具带「刷新」：只在列表视图下出现，且真的能刷新列表元数据')
 
   const dir = path.join(os.tmpdir(), 'lumin-sidebar-refresh-ws')
   const file = path.join(dir, 'note.md')
@@ -55,7 +62,7 @@ async function main() {
   fs.writeFileSync(file, '# note\n\n第一版内容\n', 'utf-8')
 
   try {
-    // ── A. 没有工作区：头部只有「最近文档 + 新建文件」 ──
+    // ── A. 没有工作区：整条工具带都不在（头部那一行只剩一枚「打开文件夹」）──
     await ev(`(async () => {
       await window.__L.files().setRoot(null)
       const ui = window.__L.ui()
@@ -63,51 +70,50 @@ async function main() {
       return 'ok'
     })()`)
     await sleep(800)
-    const noRoot = JSON.parse(await ev(HEAD_BUTTONS))
-    report.note('A 无工作区 ' + JSON.stringify(noRoot))
+    const noRoot = JSON.parse(await ev(REFRESH))
+    const openEntry = await ev(`!!document.querySelector('[data-sidebar-open-folder]')`)
+    report.note('A 无工作区 ' + JSON.stringify(noRoot) + ' openFolder=' + openEntry)
     report.check(
       'refresh-hidden-without-workspace',
-      noRoot.titles.includes('新建文件') && !noRoot.titles.includes('刷新'),
-      JSON.stringify(noRoot.titles)
+      noRoot.present === false,
+      `工作区都没开，刷新按钮不该在（present=${noRoot.present}）`
+    )
+    report.check(
+      'open-folder-entry-only-without-workspace',
+      openEntry === true,
+      `没有工作区时头部保留「打开文件夹」=${openEntry}（那是鼠标用户唯一的可见入口）`
     )
 
-    // ── B. 树视图：刷新**不**出现 ──
+    // ── B. 树视图：刷新**不**出现（工具带里也没有它）──
     await ev(`(async () => {
       await window.__L.files().setRoot(${JSON.stringify(dir)})
       window.__L.ui().sidebarFilesView = 'tree'
       return 'ok'
     })()`)
     await sleep(1200)
-    const tree = JSON.parse(await ev(HEAD_BUTTONS))
-    report.note('B 树视图 ' + JSON.stringify(tree))
-    // 注意头部还有一枚「工作区」按钮（title = 路径 + 换行 + 打开文件夹），所以只按标题判定，
-    // 不按数量 —— 数数量会把「工作区那一枚」算进去（第一次跑就是这么假红的）。
+    const tree = JSON.parse(await ev(REFRESH))
+    const treeOpenEntry = await ev(`!!document.querySelector('[data-sidebar-open-folder]')`)
+    report.note('B 树视图 ' + JSON.stringify(tree) + ' openFolder=' + treeOpenEntry)
     report.check(
       'refresh-hidden-in-tree-view',
-      !tree.titles.includes('刷新') && tree.titles.includes('新建文件') && tree.titles.includes('最近文档'),
-      JSON.stringify(tree.titles)
+      tree.present === false && tree.stripPresent === true,
+      `树视图下刷新=${tree.present}（工具带在=${tree.stripPresent}，树由 fs.watch 自更新，不需要刷新）`
+    )
+    report.check(
+      'header-row-gone-when-workspace-open',
+      treeOpenEntry === false,
+      `有工作区时头部那行整行不存在（打开文件夹入口=${treeOpenEntry}）`
     )
 
-    // ── C. 列表视图：刷新出现，且在「新建文件」右侧（顺序不乱） ──
+    // ── C. 列表视图：刷新出现，且**在底部工具带里**（不再是头部那一行）──
     await ev(`(() => { window.__L.ui().sidebarFilesView = 'list'; return 'ok' })()`)
     await sleep(1500)
-    const list = JSON.parse(
-      await ev(`(() => {
-        const head = document.querySelector('aside').firstElementChild
-        const btns = [...head.querySelectorAll('button')].map((b) => ({
-          title: b.title || '',
-          left: Math.round(b.getBoundingClientRect().left)
-        }))
-        return JSON.stringify({ btns })
-      })()`)
-    )
+    const list = JSON.parse(await ev(REFRESH))
     report.note('C 列表视图 ' + JSON.stringify(list))
-    const refresh = list.btns.find((b) => b.title === '刷新')
-    const newFile = list.btns.find((b) => b.title === '新建文件')
     report.check(
       'refresh-shown-in-list-view',
-      !!refresh && !!newFile && refresh.left > newFile.left,
-      JSON.stringify(list.btns)
+      list.present === true && list.inStrip === true && list.title === '刷新',
+      `列表视图下刷新=${list.present} / 在工具带里=${list.inStrip} / title=${list.title}`
     )
 
     // ── D. 它还真的有用：外部只改内容（无 rename）→ 刷新把「修改于」追平磁盘 ──
@@ -133,7 +139,20 @@ async function main() {
     )
 
     await bringToFront(app)
-    const clicked = await clickCenter(app.send, ev, 'aside button[title="刷新"]')
+    // 工具带默认隐藏（悬停侧栏才出现）：先把真实鼠标移进侧栏，等动效走完再点它
+    const listBox = await centerOf(ev, 'aside [data-sidebar-files]')
+    if (listBox) {
+      await app.send('Input.dispatchMouseEvent', {
+        type: 'mouseMoved',
+        x: listBox.x,
+        y: listBox.y,
+        button: 'none'
+      })
+      await sleep(600)
+    }
+    const visible = JSON.parse(await ev(REFRESH))
+    report.note('D-before-click ' + JSON.stringify({ listBox, visible }))
+    const clicked = await clickCenter(app.send, ev, '[data-sidebar-refresh]')
     await sleep(1800)
     const refreshed = JSON.parse(await ev(docMtime('note.md')))
     report.note('D-after-click ' + JSON.stringify({ clicked, refreshed }))

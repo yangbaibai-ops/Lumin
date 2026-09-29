@@ -101,6 +101,9 @@ export function installMenu(): void {
       submenu: [
         { label: T('toggleSidebar'), click: () => send('toggle-sidebar') },
         { label: T('toggleToolbar'), click: () => send('toggle-toolbar') },
+        // 大纲位置（左栏 ⇄ 编辑区右侧）。原生菜单这份文案是**静态**的（菜单在语言/设置变化时才重建），
+        // 所以用中性名词「大纲位置（左/右）」而不是「移到右侧」这种带方向的动词 —— 方向取决于当前状态。
+        { label: T('outlineSide'), click: () => send('outline-side') },
         { type: 'separator' },
         {
           label: T('editorMode'),

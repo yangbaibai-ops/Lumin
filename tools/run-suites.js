@@ -52,6 +52,9 @@ const DEFAULT_SUITES = [
   // ⚠️ 自管实例的套件必须排在**最前面**：它们自己起/杀 Electron（3 轮），
   //    需要 9222 空闲，所以运行器不能先给它起一个实例。
   '_verify-session-last-closed.js',
+  // 关窗「是否保存更改？」的三条出路（保存 / 不保存 / 取消）+ 自动保存开着时不弹框：
+  // 同样是自管实例（关窗会把窗口真的关掉，一个实例验不完四条出路），也占 9222
+  '_verify-close-save-prompt.js',
   // 备份验收也要自管实例：它靠 `LUMIN_EXPORT_DIR`（仅开发态的"另存为"旁路，
   // 见 src/main/testPaths.ts）跳过原生对话框，而环境变量必须在**实例启动前**给到。
   // 它用 9234，所以不占运行器的 9222。
@@ -107,6 +110,9 @@ const DEFAULT_SUITES = [
   '_verify-sidebar-search.js', // Ctrl+F 的去向：焦点在文件面板里搜文件名，否则搜正文（含两个边界）
   '_verify-rename.js', // 文件树就地重命名 + 新建文件（内容区切过去 / 无边框输入框 / 脏了先问）
   '_verify-sidebar-refresh.js', // 头部「刷新」只在列表视图下出现，且真的能刷新列表元数据
+  // 本轮：侧栏头部整行去掉（文件夹成为目录树顶层节点）+ 大纲位置的工具栏/视图菜单入口
+  // + 底部工具带的悬停动效（含"刷新"从头部搬到这条工具带）
+  '_verify-sidebar-root-and-outline-side.js',
   // ── 第十轮：数据安全（保存期输入 / 草稿最大等待 / 换文档前 flush / 真实 mtime）──
   '_verify-save-safety.js',
   // ── 关窗兜底：慢落盘不再被 2.5 秒强杀（心跳延长；会话结束走同一条 before-close）──
@@ -140,6 +146,8 @@ const DEFAULT_SUITES = [
 /** 自己管理 Electron 实例的套件（运行器不替它们起实例） */
 const SELF_MANAGED = new Set([
   '_verify-session-last-closed.js',
+  // 它自己起 4 轮实例（关窗是把窗口真的关掉，一个实例验不完四条出路），端口 9222
+  '_verify-close-save-prompt.js',
   // 它自己起「首个实例 + 第二个实例」，并用 9231 而不是 9222，故不占运行器的实例
   '_verify-single-instance.js',
   // 它要用 LUMIN_EXPORT_DIR 起实例（工作区快照会弹原生「另存为」），端口 9234

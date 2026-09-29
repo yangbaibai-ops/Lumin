@@ -12,6 +12,7 @@ import { useEditorStore } from '../stores/editor'
 import { useFindStore } from '../stores/find'
 import { useExport } from '../composables/useExport'
 import { useEditorMode } from '../composables/useEditorMode'
+import { useOutlineSide } from '../composables/useOutlineSide'
 import { confirmIfDirty, newDocumentWindow } from '../composables/useAppActions'
 import { openExternalFile, openInWindowOrFocus } from '../lib/openFile'
 import { ENCODINGS } from '../../../shared/encodings'
@@ -30,6 +31,7 @@ const settings = useSettingsStore()
 const editorStore = useEditorStore()
 const { runExport, runPrint } = useExport()
 const { setMode } = useEditorMode()
+const { toggleOutlineSide } = useOutlineSide()
 
 // labelKey = i18n 键；label = 直接文案（最近文档这类动态项用文件名，无键可查）
 type Leaf = {
@@ -340,6 +342,14 @@ const GROUPS = computed<Group[]>(() => [
         labelKey: 'menu.toggleToolbar',
         icon: 'settings',
         run: () => settings.set('toolbarVisible', !settings.toolbarVisible)
+      },
+      {
+        // 大纲位置（左栏 ⇄ 编辑区右侧）：与工具栏那枚开关、设置面板同一实现（useOutlineSide）。
+        // 文案跟着状态走（说的是**下一步**），右侧打勾 = 现在大纲在编辑区右侧。
+        label: settings.outlineOnRight ? t('outline.toLeft') : t('outline.toRight'),
+        icon: 'outline-panel',
+        active: settings.outlineOnRight,
+        run: toggleOutlineSide
       },
       'sep',
       { labelKey: 'menu.wysiwyg', icon: 'eye', run: () => setMode('wysiwyg') },

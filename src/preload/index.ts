@@ -56,8 +56,14 @@ const api: LuminAPI = {
     getDiagnostics: () => ipcRenderer.invoke('app:getDiagnostics'),
     openLogDir: () => ipcRenderer.invoke('app:openLogDir'),
     confirmClose: () => ipcRenderer.invoke('app:confirmClose'),
-    /** 关窗流程中的心跳：主进程据此延长兜底时限（见 main/ipc.ts 的 attachCloseGuard） */
-    closeProgress: () => ipcRenderer.send('app:closeProgress'),
+    /** 关窗确认里点了「取消」：让主进程撤掉这一轮的兜底守卫（否则 2.5s/30s 到点仍会强关） */
+    cancelClose: () => ipcRenderer.send('app:cancelClose'),
+    /**
+     * 关窗流程中的心跳：主进程据此延长兜底时限（见 main/ipc.ts 的 attachCloseGuard）。
+     * `deciding: true` = 正等用户回答「是否保存更改？」：主进程会把这一段等待排除在
+     * 30 秒总上限之外（用户在对话框前想多久都合法，卡死仍由"心跳停了"兜底）。
+     */
+    closeProgress: (opts?: { deciding?: boolean }) => ipcRenderer.send('app:closeProgress', opts),
     minimize: () => ipcRenderer.send('app:minimize'),
     toggleMaximize: () => ipcRenderer.send('app:toggleMaximize'),
     close: () => ipcRenderer.send('app:close'),

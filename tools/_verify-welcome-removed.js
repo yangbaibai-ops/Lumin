@@ -352,209 +352,156 @@ async function main() {
       JSON.stringify(toolbar)
     )
 
-    // 侧栏头部：「最近文档」按钮必须在「新建文件」左侧
-    const side = JSON.parse(
+    // ── C. 侧栏「最近文档」按钮已删（§4.79）；它原来的行为搬到「文件 → 最近文档」二级菜单 ──
+    // 改造前：侧栏头部有「最近文档」按钮（在「新建文件」左侧），点开是一个自带滚动条的
+    // 下拉（固定 / 取消固定 / 移除 / 清除记录，且"内部滚动不关、外部滚动关"）。
+    // 现在：侧栏头部**整行**去掉（文件夹成为目录树的顶层节点），最近文档只剩
+    // 「文件 → 最近文档」二级菜单一处 —— 所以这一段改成两件事：
+    //   ① 侧栏确实不再有那两枚按钮（新口径）；
+    //   ② 原来挂在下拉上的**行为**（列出 / 固定 / 清除记录）改在二级菜单上验，
+    //      不因为搬了家就把覆盖悄悄丢掉（RecentList.vue 是同一个组件）。
+    // ⚠️ 「内部滚动不关、外部滚动关」两条**不在这里重验**：它们量的是 `lib/popoverClose`，
+    //    而 TopMenuBar 从来没有滚动收起逻辑（它有自己的一套：外部点击 / Esc / 悬停离开）；
+    //    那条规则仍由 `_verify-editor-menu.js` 的 C 段与工具栏导出弹层覆盖。
+    const sidebarBtns = JSON.parse(
       await ev(`(() => {
         const aside = document.querySelector('aside')
-        if (!aside) return 'null'
-        const head = aside.firstElementChild
-        const btns = [...head.querySelectorAll('button')].map((b) => ({
-          title: b.title || '',
-          x: Math.round(b.getBoundingClientRect().left)
-        }))
-        const recentBtn = btns.find((b) => b.title === '最近文档')
-        const newBtn = btns.find((b) => b.title.startsWith('新建文件') || b.title === '新建文件' || b.title.includes('新建'))
-        if (!recentBtn || !newBtn) return JSON.stringify({ btns, missing: true })
-        const r = recentBtn.x
-        const n = newBtn.x
-        return JSON.stringify({ btns, recentLeft: r, newLeft: n, recentIsLeft: r < n })
+        const titles = aside
+          ? [...aside.querySelectorAll('button')].map((b) => b.title || b.getAttribute('aria-label') || '')
+          : []
+        return JSON.stringify({ titles })
       })()`)
     )
-    console.log('C-sidebar ' + JSON.stringify(side))
+    console.log('C-sidebar ' + JSON.stringify(sidebarBtns))
+    // 只断言「最近文档」那一枚不在了：没有工作区时侧栏里还有**首次引导块**（新建文件 /
+    // 打开文件夹 / 插入示例），那是另一条既定口径（`shouldShowOnboarding`），不该被这里误判。
+    // 「头部整行（含新建文件）不存在」由 `_verify-sidebar-root-and-outline-side.js` 在
+    // **有工作区**的前提下钉住（那里才是它该在的场景）。
     c(
-      'sidebar-recent-button-left-of-new',
-      side !== 'null' && side.recentIsLeft === true,
-      JSON.stringify(side)
+      'sidebar-recent-button-removed',
+      !sidebarBtns.titles.includes('最近文档'),
+      JSON.stringify(sidebarBtns.titles)
     )
 
-    if (side !== 'null' && side.recentIsLeft) {
-      const rect = JSON.parse(
-        await ev(`(() => {
-          const aside = document.querySelector('aside')
-          const btn = [...aside.querySelectorAll('button')].find((b) => b.title === '最近文档')
-          const r = btn.getBoundingClientRect()
-          return JSON.stringify({ x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2) })
-        })()`)
-      )
-      await send('Input.dispatchMouseEvent', {
-        type: 'mousePressed',
-        x: rect.x,
-        y: rect.y,
-        button: 'left',
-        clickCount: 1
-      })
-      await sleep(50)
-      await send('Input.dispatchMouseEvent', {
-        type: 'mouseReleased',
-        x: rect.x,
-        y: rect.y,
-        button: 'left',
-        clickCount: 1
-      })
-      await sleep(600)
-      const panel = JSON.parse(
-        await ev(`(() => {
+    // 文件菜单（Alt+F）→ 悬停「最近文档」→ 二级菜单里做固定 / 清除
+    await send('Input.dispatchKeyEvent', {
+      type: 'rawKeyDown',
+      key: 'f',
+      code: 'KeyF',
+      windowsVirtualKeyCode: 70,
+      modifiers: 1 // Alt
+    })
+    await send('Input.dispatchKeyEvent', {
+      type: 'keyUp',
+      key: 'f',
+      code: 'KeyF',
+      windowsVirtualKeyCode: 70,
+      modifiers: 1
+    })
+    await sleep(600)
+    // 先确认菜单真的开了、并拿到「最近文档」那一行的几何（hoverSub 内部也会查一遍，
+    // 这里多打一行日志是为了失败时能一眼看出是"菜单没开"还是"悬停没生效"）
+    console.log(
+      'C-menu ' +
+        (await ev(`(() => {
           const p = document.querySelector('.topmenu-drop.fixed')
           if (!p) return 'null'
-          const rows = [...p.querySelectorAll('.group')].map((r) => r.textContent.trim())
-          const rect = p.getBoundingClientRect()
+          const row = [...p.querySelectorAll('button')].find((b) => b.textContent.trim() === '最近文档')
+          const r = row ? row.getBoundingClientRect() : null
           return JSON.stringify({
-            title: p.querySelector('p')?.textContent?.trim() ?? null,
-            rows,
-            rect: { left: Math.round(rect.left), top: Math.round(rect.top), w: Math.round(rect.width) },
-            hasClear: [...p.querySelectorAll('button')].some((b) => b.textContent.includes('清除记录'))
+            items: [...p.querySelectorAll('button')].map((b) => b.textContent.trim()).slice(0, 8),
+            rowRect: r ? { x: Math.round(r.left), y: Math.round(r.top), w: Math.round(r.width) } : null
           })
-        })()`)
-      )
-      console.log('C-panel ' + JSON.stringify(panel))
-      c(
-        'sidebar-recent-dropdown-lists',
-        panel !== 'null' && panel.rows.length >= 1,
-        JSON.stringify(panel?.rows)
-      )
-      c(
-        'sidebar-recent-dropdown-anchored',
-        panel !== 'null' && panel.rect.w === 300,
-        JSON.stringify(panel?.rect)
-      )
+        })()`))
+    )
+    const cSub = await hoverSub('最近文档')
+    console.log('C-sub ' + JSON.stringify(cSub.sub))
+    c('recent-entry-lives-in-file-menu', cSub.sub !== null, JSON.stringify(cSub.sub))
+    c(
+      'moved-recent-submenu-lists-seeded-docs',
+      cSub.sub !== null && cSub.sub.rows.some((x) => x.includes('seed-00')),
+      JSON.stringify(cSub.sub?.rows)
+    )
+    const subWidth = await ev(`(() => {
+      const s = document.querySelector('.topmenu-sub')
+      return s ? Math.round(s.getBoundingClientRect().width) : null
+    })()`)
+    c('moved-recent-submenu-width-300', subWidth === 300, 'width=' + subWidth)
 
-      // ── 菜单内滚动：列表自带滚动条时，滚它**不该**把菜单关掉（本次修复点）──
-      // 菜单关闭的监听挂在 window 的捕获阶段，滚动列表同样会冒到 window；
-      // 早期实现不区分「菜单内 / 菜单外」，于是菜单一滚就消失。
-      const scrollState = JSON.parse(
-        await ev(`(() => {
-          const list = document.querySelector('.topmenu-drop.fixed .overflow-y-auto')
-          if (!list) return JSON.stringify({ noList: true })
-          return JSON.stringify({
-            scrollable: list.scrollHeight > list.clientHeight,
-            scrollHeight: list.scrollHeight,
-            clientHeight: list.clientHeight,
-            top: Math.round(list.scrollTop),
-            rect: (() => { const r = list.getBoundingClientRect(); return { x: Math.round(r.left + r.width / 2), y: Math.round(r.top + 20) } })()
-          })
-        })()`)
-      )
-      console.log('C-inner-scroll ' + JSON.stringify(scrollState))
-      if (scrollState.scrollable && scrollState.rect) {
-        await send('Input.dispatchMouseEvent', {
-          type: 'mouseWheel',
-          x: scrollState.rect.x,
-          y: scrollState.rect.y,
-          deltaX: 0,
-          deltaY: 240,
-          button: 'none',
-          buttons: 0
-        })
-        await sleep(500)
-        const after = JSON.parse(
-          await ev(`(() => {
-            const p = document.querySelector('.topmenu-drop.fixed')
-            const list = p?.querySelector('.overflow-y-auto')
-            return JSON.stringify({ open: !!p, top: list ? Math.round(list.scrollTop) : null })
-          })()`)
-        )
-        console.log('C-inner-scroll-after ' + JSON.stringify(after))
-        c(
-          'inner-scroll-keeps-menu-open',
-          after.open === true,
-          JSON.stringify({ before: scrollState.top, after: after.top })
-        )
-        c(
-          'inner-scroll-actually-scrolled',
-          after.top !== null && after.top > scrollState.top,
-          JSON.stringify(after)
-        )
-      } else {
-        c('inner-scroll-keeps-menu-open', false, 'SKIP: 列表不足一屏，无法制造内部滚动')
-        c('inner-scroll-actually-scrolled', false, 'SKIP')
-      }
-
-      // 反向对照：菜单**外部**滚动仍应关闭（原行为不能被这次的修复吃掉）。
-      // 用合成 scroll 事件而非滚轮：此时文档是空白未命名缓冲区、没有可滚动内容，
-      // 滚轮不会产生 scroll 事件。合成事件同样经过 window 捕获，判定路径一致。
-      const outsideDispatch = await ev(`(() => {
-        const el = document.querySelector('.editor-scroll') || document.querySelector('.ProseMirror')
-        if (!el) return 'no-scroll-target'
-        el.dispatchEvent(new Event('scroll'))
-        return 'dispatched'
-      })()`)
-      await sleep(400)
-      const afterOutside = await ev(`!!document.querySelector('.topmenu-drop.fixed')`)
-      console.log('C-outside-scroll ' + JSON.stringify({ outsideDispatch, open: afterOutside }))
-      c(
-        'outside-scroll-still-closes',
-        outsideDispatch === 'dispatched' && afterOutside === false,
-        JSON.stringify({ outsideDispatch, open: afterOutside })
-      )
-
-      // 重新打开菜单，继续后面的固定/清除断言
-      await send('Input.dispatchMouseEvent', {
-        type: 'mousePressed',
-        x: rect.x,
-        y: rect.y,
-        button: 'left',
-        clickCount: 1
+    // 固定第一条 → pinnedFiles 生效（原来在侧栏下拉上验，现在在同一个组件的二级菜单里验）
+    const pinned = await ev(`(() => {
+      const s = document.querySelector('.topmenu-sub')
+      const row = s?.querySelector('.group')
+      const target = row?.querySelector('button[title*="固定"]')
+      if (!target) return 'no-pin-button'
+      target.click()
+      return JSON.stringify({
+        pinned: window.__L.settings().pinnedFiles.length,
+        recents: window.__L.settings().recentFiles.length
       })
-      await sleep(50)
-      await send('Input.dispatchMouseEvent', {
-        type: 'mouseReleased',
-        x: rect.x,
-        y: rect.y,
-        button: 'left',
-        clickCount: 1
-      })
-      await sleep(600)
-
-      // 固定第一条 → pinnedFiles 生效
-      const pinned = await ev(`(() => {
-        const p = document.querySelector('.topmenu-drop.fixed')
-        const row = p?.querySelector('.group')
-        const target = p ? row?.querySelector('button[title*="固定"]') : null
-        if (!target) return 'no-pin-button'
-        target.click()
-        return JSON.stringify({ pinned: window.__L.settings().pinnedFiles.length, recents: window.__L.settings().recentFiles.length })
+    })()`)
+    await sleep(500)
+    console.log('C-pin ' + String(pinned))
+    c('recent-pin-works', String(pinned).includes('"pinned":1'), String(pinned))
+    // 清除记录：**只有拿到有效备份时才跑**（这一步会清空整个最近列表，
+    // 万一后续崩溃又没走到 finally，用户的真实记录就没了 —— 第一版就栽在这）
+    if (!backup) {
+      c('recent-clear-works', false, 'SKIP: 未取得有效备份，跳过破坏性步骤')
+    } else {
+      const cleared = await ev(`(() => {
+        const s = document.querySelector('.topmenu-sub')
+        const btn = [...(s?.querySelectorAll('button') ?? [])].find((b) =>
+          b.textContent.includes('清除记录')
+        )
+        if (!btn) return 'no-clear-button'
+        btn.click()
+        return 'clicked'
       })()`)
+      // 「清除记录」是**不可逆**动作：RecentList 会先弹一个确认模态（`ui.confirm`）——
+      // 必须点掉它才算真的清空（点最后一个按钮 = 主操作，`ModalHost` 的顺序是 取消 → 确认；
+      // 按顺序而不是按文案找，换语言也不受影响）。
       await sleep(500)
-      console.log('C-pin ' + String(pinned))
-      c('sidebar-recent-pin-works', String(pinned).includes('"pinned":1'), String(pinned))
-      // 清除记录：**只有拿到有效备份时才跑**（这一步会清空整个最近列表，
-      // 万一后续崩溃又没走到 finally，用户的真实记录就没了 —— 第一版就栽在这）
-      if (!backup) {
-        c('sidebar-recent-clear-works', false, 'SKIP: 未取得有效备份，跳过破坏性步骤')
-      } else {
-        const cleared = await ev(`(() => {
-          const p = document.querySelector('.topmenu-drop.fixed')
-          const btn = [...(p?.querySelectorAll('button') ?? [])].find((b) => b.textContent.includes('清除记录'))
-          if (!btn) return 'no-clear-button'
-          btn.click()
-          return 'clicked'
-        })()`)
-        await sleep(600)
-        const afterClear = JSON.parse(
-          await ev(
-            `(() => JSON.stringify({ recents: window.__L.settings().recentFiles.length, pinned: window.__L.settings().pinnedFiles.length }))()`
-          )
+      const confirmed = await ev(`(() => {
+        const dlg = document.querySelector('[role="dialog"]')
+        if (!dlg) return 'no-dialog'
+        const btns = [...dlg.querySelectorAll('button')]
+        if (!btns.length) return 'no-buttons'
+        btns[btns.length - 1].click()
+        return 'confirmed'
+      })()`)
+      await sleep(700)
+      const afterClear = JSON.parse(
+        await ev(
+          `(() => JSON.stringify({ recents: window.__L.settings().recentFiles.length, pinned: window.__L.settings().pinnedFiles.length }))()`
         )
-        console.log('C-clear ' + JSON.stringify({ cleared, afterClear }))
-        c(
-          'sidebar-recent-clear-works',
-          cleared === 'clicked' && afterClear.recents === 0,
-          JSON.stringify(afterClear)
-        )
-      }
-      await ev(`(() => { document.body.click(); return 'ok' })()`)
-      await sleep(300)
+      )
+      console.log('C-clear ' + JSON.stringify({ cleared, confirmed, afterClear }))
+      c(
+        'recent-clear-works',
+        cleared === 'clicked' && confirmed === 'confirmed' && afterClear.recents === 0,
+        JSON.stringify({ cleared, confirmed, afterClear })
+      )
     }
+    // 收尾：把「文件」菜单关掉（D 段接下来还要用 Alt+F 打开它 —— 开着的话那一下会把它**收起**）。
+    // 用**真实鼠标点一下编辑区**：TopMenuBar 的「外部点击关闭」挂在 mousedown 上，
+    // `document.body.click()` 只派发 click，关不掉（实测 C-menu-closed=false）。
+    await send('Input.dispatchMouseEvent', {
+      type: 'mousePressed',
+      x: 700,
+      y: 500,
+      button: 'left',
+      clickCount: 1
+    })
+    await send('Input.dispatchMouseEvent', {
+      type: 'mouseReleased',
+      x: 700,
+      y: 500,
+      button: 'left',
+      clickCount: 1
+    })
+    await sleep(500)
+    const menuClosed = await ev(`!document.querySelector('.topmenu-drop')`)
+    console.log('C-menu-closed ' + menuClosed)
 
     // ── D. 文件菜单（Alt+F）：新建/打开/最近 ─────────────────────────────────
     // 先补两条测试种子（C 的「清除记录」把列表清空了），菜单里应列出它们
@@ -638,26 +585,12 @@ async function main() {
           return JSON.stringify({ x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2) })
         })()`)
       )
-      if (row === 'null') return { row: null, sub: null }
-      // 分两步移动（先靠近再落上），保证 mouseenter 触发
-      await send('Input.dispatchMouseEvent', {
-        type: 'mouseMoved',
-        x: row.x - 6,
-        y: row.y,
-        button: 'none',
-        buttons: 0
-      })
-      await sleep(60)
-      await send('Input.dispatchMouseEvent', {
-        type: 'mouseMoved',
-        x: row.x,
-        y: row.y,
-        button: 'none',
-        buttons: 0
-      })
-      await sleep(600)
-      const sub = JSON.parse(
-        await ev(`(() => {
+      if (row === 'null' || row === null) return { row: null, sub: null }
+      // 分两步移动（先靠近再落上），保证 mouseenter 触发；二级浮层是**动效之后**才在 DOM 里，
+      // 所以拿不到就重发一次鼠标位置再等（实测：偶发一次 hover 没生效，
+      // 表现为"菜单明明开着、二级却没出来"，重试后稳定）
+      const readSub = async () => {
+        const raw = await ev(`(() => {
           const s = document.querySelector('.topmenu-sub')
           if (!s) return 'null'
           const panel = document.querySelector('.topmenu-drop:not(.topmenu-sub)')
@@ -671,7 +604,28 @@ async function main() {
             actions: [...s.querySelectorAll('button')].map((b) => b.textContent.trim()).filter(Boolean)
           })
         })()`)
-      )
+        return raw === 'null' ? null : JSON.parse(raw)
+      }
+      let sub = null
+      for (let i = 0; i < 4 && sub === null; i++) {
+        await send('Input.dispatchMouseEvent', {
+          type: 'mouseMoved',
+          x: i === 0 ? row.x - 6 : row.x,
+          y: row.y,
+          button: 'none',
+          buttons: 0
+        })
+        await sleep(i === 0 ? 80 : 400)
+        await send('Input.dispatchMouseEvent', {
+          type: 'mouseMoved',
+          x: row.x,
+          y: row.y,
+          button: 'none',
+          buttons: 0
+        })
+        await sleep(500)
+        sub = await readSub()
+      }
       return { row, sub }
     }
 
@@ -756,7 +710,8 @@ async function main() {
         )
       )
 
-      // ① 最近文档：侧栏下拉里点真实文件 → 新窗口打开该文档
+      // ① 最近文档：「文件 → 最近文档」二级菜单里点真实文件 → 新窗口打开该文档
+      // （§4.79 起侧栏那枚按钮已删；二级菜单与它共用同一个 RecentList 组件与同一个处理器）
       // 先确保没有浮层残留（上一节的 .click() 不会冒泡 mousedown，菜单可能还开着，
       // 此时点按钮会变成「再点一次关掉」——上一版就因此误判为「菜单打不开」）
       await closeAnyPopover(ev)
@@ -766,38 +721,28 @@ async function main() {
         return 'ok'
       })()`)
       await sleep(600)
-      const asideBtn = JSON.parse(
-        await ev(`(() => {
-          const aside = document.querySelector('aside')
-          const btn = [...aside.querySelectorAll('button')].find((b) => b.title === '最近文档')
-          const r = btn.getBoundingClientRect()
-          return JSON.stringify({ x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2) })
-        })()`)
-      )
-      for (const type of ['mousePressed', 'mouseReleased']) {
-        await send('Input.dispatchMouseEvent', {
-          type,
-          x: asideBtn.x,
-          y: asideBtn.y,
-          button: 'left',
-          clickCount: 1
-        })
-        await sleep(50)
-      }
-      await sleep(500)
+      // 打开「文件 → 最近文档」二级菜单（§4.79 起侧栏那枚「最近文档」按钮已删，
+      // 最近文档的入口只剩文件菜单这一处）
+      await ev(`(() => {
+        const b = document.querySelector('[data-topmenu-group="f"]')
+        if (b) b.click()
+        return 'ok'
+      })()`)
+      await sleep(600)
+      await hoverSub('最近文档')
       const diagDoc = await ev(`(() => {
-        const p = document.querySelector('.topmenu-drop.fixed')
+        const s = document.querySelector('.topmenu-sub')
         return JSON.stringify({
-          panel: !!p,
-          text: (p?.textContent ?? '').trim().slice(0, 60),
-          groups: p ? p.querySelectorAll('.group').length : -1,
+          panel: !!s,
+          text: (s?.textContent ?? '').trim().slice(0, 60),
+          groups: s ? s.querySelectorAll('.group').length : -1,
           recents: window.__L.settings().recentFiles.length
         })
       })()`)
       console.log('G-file-diag ' + diagDoc)
       const clickedDoc = await ev(`(() => {
-        const p = document.querySelector('.topmenu-drop.fixed')
-        const row = p?.querySelector('.group button')
+        const s = document.querySelector('.topmenu-sub')
+        const row = s?.querySelector('.group button')
         if (!row) return 'no-row'
         row.click()
         return 'clicked'

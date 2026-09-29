@@ -115,6 +115,7 @@
 |---|---|---|---|---|
 | 会话恢复：文档 + 光标 + 滚动比例 + 路由 | `_verify-session`(17)、`tests/session.test.mjs`(9) | 26 | 强 | 用页面 reload 走真实恢复路径（argv → bootstrap → restoreSession） |
 | 「单独关窗 vs 整体退出」的恢复语义 | `_verify-session-last-closed`(8)、`tests/session.test.mjs`(9) | 17 | 强 | 自管实例、3 轮真实起杀 |
+| **关窗「是否保存更改？」（保存 / 不保存 / 取消）** | `_verify-close-save-prompt`(21)、`tests/closePrompt.test.mjs`(5) | 26 | 强 | 自管实例 4 轮（关窗真会把窗口关掉）；文案逐字对齐 Typora；**取消后必须跨过 2.5s 兜底仍活着**（`app:cancelClose`）、**等 32 秒跨过 30s 总上限也不许被强关**（`deciding` 心跳）、保存失败也不许关窗、不保存则磁盘不动且草稿被删、自动保存开着不弹框；判定规则是纯函数 |
 | 会话开关（`restoreSession=false` → 落在编辑器） | `_verify-session`（`toggle-off-shows-welcome`、`toggle-on-restores-again`） | 2 | 强 | 注意断言名还叫 *welcome*，实际已是「落到编辑器」 |
 | **状态栏保存格（默认手动 / 只说状态 / 无圆点同灰）+ 启动遮罩无过场** | `_verify-bars-no-filename`(16)、`tests/settingsDefaults.test.mjs`(2) | 18 | 强 | 默认 `autoSave=false`（单测钉住）；那格文字不含「手动保存」、无圆点、颜色 == 状态栏默认灰；`boot-mask-has-no-transition`：骨架屏出现时无 `*-enter-active`、关掉后 60ms 内从 DOM 消失（钉住「没有淡出」） |
 | **大纲三栏模式（大纲放编辑区右侧）** | `_verify-outline-right`(22)、`tests/settingsDefaults.test.mjs`(1) | 23 | 强 | 出厂默认关（默认结构不变，单测钉住）；打开后左栏只剩文件树、右侧面板列出标题、折叠成 34px 窄轨、关掉即还原；另守**箭头方向随状态翻转**（Icon.vue 响应式 bug）与**左缘拖宽 + 160/420 钳位**；套件自身还原现场 |

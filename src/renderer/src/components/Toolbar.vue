@@ -6,6 +6,7 @@ import { useUiStore } from '../stores/ui'
 import { useEditorStore } from '../stores/editor'
 import { useExport } from '../composables/useExport'
 import { useEditorMode } from '../composables/useEditorMode'
+import { useOutlineSide } from '../composables/useOutlineSide'
 import Icon from './Icon.vue'
 import SegmentedControl, { type SegmentItem } from './SegmentedControl.vue'
 import ToolbarTableButton from './ToolbarTableButton.vue'
@@ -53,6 +54,20 @@ const editorModeValue = computed({
   get: () => ui.editorMode,
   set: (v: string) => setMode(v as 'wysiwyg' | 'source' | 'split')
 })
+
+// ─── 大纲位置（左侧边栏 ⇄ 编辑区右侧）─────────────────────────────────────────
+// 视图区里的第三枚开关（另外两枚是侧边栏与专注模式）。实现只有一份（useOutlineSide），
+// 顶部「视图」菜单、原生菜单/快捷键、设置面板都指向同一处。
+//
+// 为什么是**状态开关**而不是第二枚分段控件（左/右）：
+//   * 工具栏里已经有一枚三段分段控件（模式），再摆一枚两段的会两个控件互相抢视觉；
+//   * 语义与旁边的侧边栏开关同类（点一下翻一个二值状态，active 高亮 = 当前开着），口径一致；
+//   * 分段控件的"两处使用"是既有验收口径（`_verify-segmented-control.js` 断言 `.seg` 恰好两处）。
+const { onRight: outlineOnRight, toggleOutlineSide } = useOutlineSide()
+/** 提示文案跟着状态走：说的是**下一步会发生什么**（active 高亮则说明"现在在大纲在右侧"） */
+const outlineSideTitle = computed(() =>
+  outlineOnRight.value ? t('outline.toLeft') : t('outline.toRight')
+)
 
 /** 当前生效的快捷项（已清洗）：settings 是唯一真源，不另立一份 ui 状态 */
 const items = computed<ToolbarItemDef[]>(() =>
@@ -482,6 +497,22 @@ const exportItems: { icon: string; labelKey: string; format: 'pdf' | 'html' | 'w
       class="mx-1"
       data-toolbar-item
     />
+
+    <!-- 大纲位置（左栏 ⇄ 编辑区右侧）：视图工具区的第三枚开关。
+         固定入口，不参与工具栏项目的排序/隐藏 —— 位置类开关一旦被隐藏，
+         用户就再也找不到「把大纲搬回来」的那条路（与右侧固定入口同一考量）。 -->
+    <div class="mx-1.5 h-5 w-px shrink-0 bg-edge" />
+    <button
+      class="icon-btn"
+      :class="{ active: outlineOnRight }"
+      :title="outlineSideTitle"
+      :aria-label="outlineSideTitle"
+      :aria-pressed="outlineOnRight ? 'true' : 'false'"
+      data-outline-side
+      @click="toggleOutlineSide()"
+    >
+      <Icon name="outline-panel" :size="15" />
+    </button>
 
     <!-- 右侧弹簧区：这里是「空白区域」右键菜单最常用的落点 -->
     <div class="min-w-2 flex-1" data-toolbar-item />

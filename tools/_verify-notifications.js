@@ -317,25 +317,66 @@ async function main() {
   // ── C. 「从最近列表移除」的撤销（审计 §8 P2「危险/不可逆操作还缺确认与撤销」）─────
   // 单条移除**不弹模态**，而是给一张带「撤销」的通知：通知按钮按 payload.kind 派发，
   // 处理器在启动时注册（lib/recentUndo.ts）。这一段走**真实 UI 路径**：
-  // 侧栏「最近文档」下拉 → 行内「从列表移除」→ 通知卡上的「撤销」→ 条目回来。
+  // 「文件」菜单 → 悬停「最近文档」二级菜单 → 行内「从列表移除」→ 通知卡上的「撤销」→ 条目回来。
+  // ⚠️ §4.79 起侧栏头部那枚「最近文档」按钮已删（头部整行去掉），入口就只剩文件菜单这一处。
   const undoSeed = JSON.parse(await ev(`(async () => {
     const settings = window.__vt.settings()
     window.__vt.__recentBackup = JSON.stringify(settings.recentFiles)
     const seed = { path: 'C:\\\\lumin-verify\\\\undo.md', title: 'undo.md', openedAt: Date.now() }
     settings.set('recentFiles', [seed, ...settings.recentFiles])
     await new Promise((r) => setTimeout(r, 350))
-    const trigger = Array.from(document.querySelectorAll('aside button')).find((b) => b.getAttribute('title') === '最近文档')
-    if (!trigger) return JSON.stringify({ step: 'no-trigger' })
-    trigger.click()
+    // §4.79：侧栏头部那一行（含「最近文档」按钮）已删 —— 最近文档只剩「文件」菜单这一处
+    const menuBtn = document.querySelector('[data-topmenu-group="f"]')
+    if (!menuBtn) return JSON.stringify({ step: 'no-menu-button' })
+    menuBtn.click()
     await new Promise((r) => setTimeout(r, 450))
-    const btn = Array.from(document.querySelectorAll('.topmenu-drop button')).find((b) => b.getAttribute('aria-label') === '从列表移除')
-    if (!btn) return JSON.stringify({ step: 'no-remove-button' })
-    const r = btn.getBoundingClientRect()
-    return JSON.stringify({ step: 'ok', x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2) })
+    const row = [...document.querySelectorAll('.topmenu-drop:not(.topmenu-sub) button')].find(
+      (b) => b.textContent.trim() === '最近文档'
+    )
+    if (!row) return JSON.stringify({ step: 'no-recent-row' })
+    const rr = row.getBoundingClientRect()
+    return JSON.stringify({
+      step: 'hover',
+      x: Math.round(rr.left + rr.width / 2),
+      y: Math.round(rr.top + rr.height / 2)
+    })
   })()`))
   console.log('RECENT-UNDO-SEED ' + JSON.stringify(undoSeed))
-  c('recent-remove-row-button', undoSeed.step === 'ok', JSON.stringify(undoSeed))
-  if (undoSeed.step === 'ok') await clickPoint(undoSeed.x, undoSeed.y)
+  // 真实鼠标移到「最近文档」那一行 → 悬停出二级菜单（与 _verify-welcome-removed 的 hoverSub 同一手法：
+  // 先靠近再落上，保证 mouseenter 真的触发）
+  if (undoSeed.step === 'hover') {
+    await send('Input.dispatchMouseEvent', {
+      type: 'mouseMoved',
+      x: undoSeed.x - 6,
+      y: undoSeed.y,
+      button: 'none',
+      buttons: 0
+    })
+    await sleep(80)
+    await send('Input.dispatchMouseEvent', {
+      type: 'mouseMoved',
+      x: undoSeed.x,
+      y: undoSeed.y,
+      button: 'none',
+      buttons: 0
+    })
+    await sleep(600)
+  }
+  const removeBtn = JSON.parse(await ev(`(() => {
+    const btn = [...document.querySelectorAll('.topmenu-sub button')].find(
+      (b) => b.getAttribute('aria-label') === '从列表移除'
+    )
+    if (!btn) return JSON.stringify({ step: 'no-remove-button' })
+    const r = btn.getBoundingClientRect()
+    return JSON.stringify({
+      step: 'ok',
+      x: Math.round(r.left + r.width / 2),
+      y: Math.round(r.top + r.height / 2)
+    })
+  })()`))
+  console.log('RECENT-UNDO-REMOVE ' + JSON.stringify(removeBtn))
+  c('recent-remove-row-button', removeBtn.step === 'ok', JSON.stringify(removeBtn))
+  if (removeBtn.step === 'ok') await clickPoint(removeBtn.x, removeBtn.y)
   await sleep(800)
   const undo = JSON.parse(await ev(`(async () => {
     const settings = window.__vt.settings()
@@ -370,8 +411,8 @@ async function main() {
     const settings = window.__vt.settings()
     const back = settings.recentFiles.some((x) => x.path === 'C:\\\\lumin-verify\\\\undo.md')
     settings.set('recentFiles', JSON.parse(window.__vt.__recentBackup))
-    const trigger = Array.from(document.querySelectorAll('aside button')).find((b) => b.getAttribute('title') === '最近文档')
-    if (trigger && document.querySelector('.topmenu-drop')) trigger.click()
+    // 关掉可能还开着的「文件」菜单（侧栏那个入口已删，本轮起最近的移除只在菜单里做）
+    document.body.click()
     return JSON.stringify({ back, open: window.__vt.notif().items.length })
   })()`))
   console.log('RECENT-UNDO-APPLIED ' + JSON.stringify(restoredRecent))
