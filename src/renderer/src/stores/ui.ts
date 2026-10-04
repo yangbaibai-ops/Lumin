@@ -104,6 +104,17 @@ export const useUiStore = defineStore('ui', {
      * 消费方（FileTree）watch 到数字变化就 `openSearch()` —— 连续按两次 Ctrl+F 也能再聚焦。
      */
     sidebarSearchTick: 0,
+    /**
+     * 「把大纲放到编辑区右侧」**之前**左栏显示的是哪一页（null = 没有记录）。
+     *
+     * 用户口径（第十轮）：大纲搬去右侧、再搬回左侧之后，左栏要**回到打开前的那一页** ——
+     * 打开前在「文件」就回「文件」，在「大纲」就回「大纲」。
+     * 三栏模式打开期间页签行是隐藏的（左栏只承担文件树），所以这个值只能由
+     * `useOutlineSide` 在**打开的那一刻**记下来（见那里的说明）；一次搬回即消费掉。
+     * 只在会话内有效，不落库：它是"刚才在看哪一页"的临时记忆，重启后无从得知
+     * （启动时若 `outlineOnRight` 已经是 true，没有记录 → 搬回时退回「大纲」）。
+     */
+    sidebarTabBeforeOutlineRight: null as 'files' | 'outline' | null,
     editorMode: 'wysiwyg' as EditorMode,
     focusMode: false,
     confirmState: null as (ConfirmOptions & { resolve: (v: boolean) => void }) | null,

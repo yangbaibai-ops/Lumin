@@ -296,10 +296,12 @@ async function main() {
       !b.asideButtons.some((x) => x === '新建文档' || x === '打开文件'),
       JSON.stringify(b.asideButtons)
     )
-    // 用户口径补一条：头部那枚「打开文件夹」**要保留**（本轮先删后按口径恢复）
+    // 用户口径（§4.84 起改口）：没有工作区时侧栏里**连那一枚「打开文件夹」也不留** ——
+    // 前一轮"先删后恢复"的那条口径已被本轮推翻（用户要求侧栏在没开文件夹时完全空着）。
+    // 入口仍在「文件」菜单（含最近文件夹）与 Ctrl+O 上。
     c(
-      'sidebar-header-keeps-open-folder',
-      b.asideButtons.some((x) => /打开文件夹/.test(x)),
+      'sidebar-header-drops-open-folder-too',
+      b.asideButtons.every((x) => !/打开文件夹/.test(x)),
       JSON.stringify(b.asideButtons)
     )
     c(

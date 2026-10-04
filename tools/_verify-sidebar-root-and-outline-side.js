@@ -34,6 +34,7 @@ const {
   bringToFront,
   clickSelector,
   centerOf,
+  framesAlive,
   Reporter,
   fatal
 } = require('./lib/harness')
@@ -151,7 +152,7 @@ async function main() {
     report.check(
       'no-open-folder-entry-while-workspace-open',
       head.headerOpenFolderBtn === false,
-      `有工作区时头部「打开文件夹」= ${head.headerOpenFolderBtn}（它只在没有工作区时保留）`
+      `有工作区时头部「打开文件夹」= ${head.headerOpenFolderBtn}（§4.84 起这一枚在整个侧栏里都不存在了）`
     )
 
     // ── ① 文件夹成了树的顶层节点（Typora 式）─────────────────────────────
@@ -262,7 +263,9 @@ async function main() {
     const visIdx = props.indexOf('visibility')
     report.check(
       'toolstrip-transitions-opacity-and-transform',
-      props.includes('opacity') && props.includes('transform') && dur(idle.durations).some((d) => d > 0),
+      props.includes('opacity') &&
+        props.includes('transform') &&
+        dur(idle.durations).some((d) => d > 0),
       `property=${idle.props} / duration=${idle.durations}`
     )
     report.check(
@@ -379,7 +382,10 @@ async function main() {
     report.note('after click ' + JSON.stringify(onRight))
     report.check(
       'toolbar-toggle-moves-outline-to-the-right',
-      clicked === true && onRight.setting === true && onRight.panel === true && onRight.expanded === true,
+      clicked === true &&
+        onRight.setting === true &&
+        onRight.panel === true &&
+        onRight.expanded === true,
       `点到按钮=${clicked} / outlineOnRight=${onRight.setting} / 右侧面板=${onRight.panel} / 展开=${onRight.expanded}`
     )
     report.check(
@@ -393,7 +399,8 @@ async function main() {
       `aria-pressed=${onRight.pressed} / title=${onRight.title}（文案说的是**下一步**）`
     )
 
-    // 关掉：大纲回左栏，左栏页签跟着切到「大纲」（看得见刚才那一步的结果）
+    // 关掉：大纲回左栏，左栏页签**恢复成打开前那一页**（第十轮用户口径）。
+    // 这一段开始前页签是「文件」（本套件一开始就设成 files），所以搬回来之后仍应是「文件」。
     await clickSelector(send, ev, '[data-outline-side]')
     await sleep(900)
     const backLeft = JSON.parse(
@@ -401,14 +408,43 @@ async function main() {
         setting: window.__L.settings().outlineOnRight,
         panel: !!document.querySelector('[data-outline-panel]'),
         tab: window.__L.ui().sidebarTab,
+        remember: window.__L.ui().sidebarTabBeforeOutlineRight,
         outlineRows: document.querySelectorAll('[data-outline-item]').length
       }))()`)
     )
     report.note('after second click ' + JSON.stringify(backLeft))
     report.check(
-      'toolbar-toggle-brings-outline-back-to-sidebar',
-      backLeft.setting === false && backLeft.panel === false && backLeft.tab === 'outline',
-      `outlineOnRight=${backLeft.setting} / 右侧面板=${backLeft.panel} / 左栏页签=${backLeft.tab}`
+      'toggle-back-restores-the-files-tab',
+      backLeft.setting === false && backLeft.panel === false && backLeft.tab === 'files',
+      `outlineOnRight=${backLeft.setting} / 右侧面板=${backLeft.panel} / 左栏页签=${backLeft.tab}（打开前是「文件」⇒ 搬回来还是「文件」）`
+    )
+    report.check(
+      'toggle-back-consumes-the-remembered-tab',
+      backLeft.remember === null,
+      `记忆用掉即清空（还留着的话下一次"打开前"的判断会被上一次污染）：${JSON.stringify(backLeft.remember)}`
+    )
+
+    // 另一个方向：打开前停在「大纲」⇒ 搬回来仍是「大纲」
+    await ev(`(() => { window.__L.ui().sidebarTab = 'outline'; return 'ok' })()`)
+    await sleep(400)
+    await clickSelector(send, ev, '[data-outline-side]')
+    await sleep(900)
+    const remembered = await ev(`window.__L.ui().sidebarTabBeforeOutlineRight`)
+    await clickSelector(send, ev, '[data-outline-side]')
+    await sleep(900)
+    const backOutline = JSON.parse(
+      await ev(`(() => JSON.stringify({
+        setting: window.__L.settings().outlineOnRight,
+        tab: window.__L.ui().sidebarTab,
+        remember: window.__L.ui().sidebarTabBeforeOutlineRight,
+        outlineRows: document.querySelectorAll('[data-outline-item]').length
+      }))()`)
+    )
+    report.note('outline-tab round ' + JSON.stringify({ remembered, ...backOutline }))
+    report.check(
+      'toggle-back-restores-the-outline-tab',
+      remembered === 'outline' && backOutline.setting === false && backOutline.tab === 'outline',
+      `打开时记下=${remembered} / 搬回来=${backOutline.tab}（打开前是「大纲」⇒ 搬回来还是「大纲」）`
     )
 
     // ── ② 同一个开关也在「视图」菜单里（文案与开关 title 同源，用相等来找它）──
@@ -444,7 +480,14 @@ async function main() {
         panel: !!document.querySelector('[data-outline-panel]')
       }))()`)
     )
-    report.note('view menu ' + menuClicked + ' ' + JSON.stringify(menuHit) + ' → ' + JSON.stringify(menuResult))
+    report.note(
+      'view menu ' +
+        menuClicked +
+        ' ' +
+        JSON.stringify(menuHit) +
+        ' → ' +
+        JSON.stringify(menuResult)
+    )
     report.check(
       'view-menu-carries-the-same-outline-entry',
       menuClicked === 'ok' && menuHit.found === true,
@@ -466,9 +509,7 @@ async function main() {
       return 'ok'
     })()`)
     await sleep(700)
-    const beforeFilter = await ev(
-      `document.querySelectorAll('[data-tree-row]').length`
-    )
+    const beforeFilter = await ev(`document.querySelectorAll('[data-tree-row]').length`)
     await ev(`(() => {
       const f = window.__L.files()
       f.expanded.delete(f.root)   // 手动收起工作区顶层节点
@@ -477,6 +518,8 @@ async function main() {
       return 'ok'
     })()`)
     await sleep(600)
+    // 出帧与否决定"子行会不会立刻从 DOM 里消失"（见下面那条断言的说明）
+    const framesAliveNow = await framesAlive(app)
     const collapsed = JSON.parse(
       await ev(`(() => {
         const r = document.querySelector('[data-tree-row][data-tree-root-row="true"]')
@@ -488,8 +531,15 @@ async function main() {
     )
     report.check(
       'root-row-can-collapse',
-      beforeFilter >= 3 && collapsed.expanded === 'false' && collapsed.rows === 1,
-      `展开时行数=${beforeFilter} / 收起后 aria-expanded=${collapsed.expanded}、行数=${collapsed.rows}（收起后只剩顶层那一行）`
+      // ⚠️ 子行是包在 `<Transition name="tree">` 里的：窗口被遮挡时 Chromium 不出帧，
+      // 离场过渡走不完 ⇒ 子行会**留在 DOM 里**（行数不回到 1）。那是环境现象（工具 README 里的
+      // "被遮挡时不出帧"），不是产品缺陷 —— 所以语义判据（store + aria-expanded）必须成立，
+      // 行数只在**确实在出帧**时才要求回到 1。
+      beforeFilter >= 3 &&
+        collapsed.expanded === 'false' &&
+        (collapsed.rows === 1 || !framesAliveNow),
+      `展开时行数=${beforeFilter} / 收起后 aria-expanded=${collapsed.expanded}、行数=${collapsed.rows}` +
+        `（出帧=${framesAliveNow}；不出帧时离场过渡可能没走完）`
     )
 
     // 打开侧栏搜索并写入筛选词（合成 input 事件：控制台里改值 + 派发，不注入真实按键）
@@ -535,6 +585,61 @@ async function main() {
       return 'ok'
     })()`)
     await sleep(500)
+
+    // ── ⑩ 没有工作区时：侧栏里**一个按钮、一句提示都没有**（用户口径 §4.84）──────────
+    // 两批东西先后下线：① 空态那三枚图标按钮 + `open.hint` 提示；
+    // ② 侧栏头部「打开文件夹」那一小行（只在没有工作区时出现）；
+    // ③ 首次引导块（标题 + 说明 + 新建文件 / 打开文件夹 / 插入示例 + 示例说明）。
+    // 现在剩下的只有「文件 / 大纲」页签 —— 空着就是空着。
+    await ev(`(async () => {
+      const ui = window.__L.ui()
+      ui.sidebarVisible = true
+      ui.sidebarTab = 'files'
+      window.__L.settings().set('outlineOnRight', false)
+      await window.__L.files().setRoot(null)
+      return 'ok'
+    })()`)
+    await sleep(800)
+    const emptySidebar = JSON.parse(
+      await ev(`(() => {
+        const aside = document.querySelector('aside')
+        const files = document.querySelector('[data-sidebar-files]')
+        const btns = aside ? [...aside.querySelectorAll('button')] : []
+        // 只数**真的看得见**的按钮：大纲面板是 v-show 常驻 DOM 的（切页签不卸载），
+        // 它藏在下面时里面的按钮照样在 DOM 里 —— 那不是"侧栏上显示了一个按钮"。
+        // （这段在模板字符串里，注释中不能出现反引号。）
+        const visible = btns.filter((b) => b.getClientRects().length > 0)
+        const tabBtns = visible.filter((b) => b.hasAttribute('data-sidebar-tab'))
+        const otherBtns = visible.filter((b) => !b.hasAttribute('data-sidebar-tab'))
+        // 「文件区」= 侧栏里页签以下的整块（FileTree 的根容器）
+        const filesText = files ? (files.innerText || '').replace(/\\s+/g, ' ').trim() : ''
+        const filesBtns = files ? files.querySelectorAll('button').length : -1
+        return JSON.stringify({
+          openFolderEntry: !!document.querySelector('[data-sidebar-open-folder]'),
+          tabCount: tabBtns.length,
+          otherButtonCount: otherBtns.length,
+          otherButtons: otherBtns.map((b) => (b.title || b.textContent || '').trim().slice(0, 24)),
+          filesText,
+          filesBtns
+        })
+      })()`)
+    )
+    report.note('empty sidebar ' + JSON.stringify(emptySidebar))
+    report.check(
+      'no-open-folder-row-when-no-workspace',
+      emptySidebar.openFolderEntry === false,
+      `没有工作区时侧栏顶部不再有「打开文件夹」那一行（入口仍在「文件」菜单 / Ctrl+O）`
+    )
+    report.check(
+      'no-workspace-sidebar-has-only-tabs',
+      emptySidebar.tabCount === 2 && emptySidebar.otherButtonCount === 0,
+      `页签 ${emptySidebar.tabCount} 个 / 其它按钮 ${emptySidebar.otherButtonCount} 个 ${JSON.stringify(emptySidebar.otherButtons)}`
+    )
+    report.check(
+      'no-workspace-file-area-is-empty',
+      emptySidebar.filesBtns === 0 && emptySidebar.filesText === '',
+      `文件区按钮 ${emptySidebar.filesBtns} 个、文字 ${JSON.stringify(emptySidebar.filesText)}（首次引导块也已下线）`
+    )
 
     // 收尾：把位置与视图恢复原样（隔离实例的下一个套件会复用进程）
     await ev(`(() => {

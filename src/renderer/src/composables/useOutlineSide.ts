@@ -4,14 +4,19 @@
 // 现在顶部快捷工具栏的视图区、应用内「视图」菜单、原生菜单 + 快捷键都得能用同一件事，
 // 于是把「翻这个开关时顺带要做的两件小事」收在这里，避免各处各写一份、慢慢走样：
 //
-//   * 打开（放到右侧）→ 右侧大纲面板设为**展开**、左栏页签收回「文件」。
+//   * 打开（放到右侧）→ 右侧大纲面板设为**展开**、左栏页签收回「文件」，
+//     并**记住左栏刚才显示的是哪一页**（用户口径：搬回来要回到那一页）。
 //     不这么做的话，用户点完可能看到「左栏还停在大纲页签」或「右侧大纲是一条折叠窄轨」，
 //     与「打开就能同时看到目录与大纲」的预期不符。
-//   * 关掉（放回左侧）→ 左栏页签切到**大纲**：刚才那一步把大纲搬回了左栏，
-//     页签跟着亮起来，用户才看得到「它去哪了」（否则左栏还是文件树，像是没反应）。
+//   * 关掉（放回左侧）→ 左栏页签**恢复成打开前那一页**（第十轮用户口径）：
+//        - 打开前在「文件」⇒ 回「文件」（大纲回左栏了，但用户本来就在看目录，不该被切走）；
+//        - 打开前在「大纲」⇒ 回「大纲」（这也顺带保住了旧行为：刚把大纲搬回来，页签跟着亮，
+//          用户看得到"它去哪了"）；
+//        - 没有记录（例如启动时 `outlineOnRight` 就已经是 true）⇒ 退回「大纲」，
+//          因为那一步刚把大纲搬回左栏，亮起它是最不容易让人迷惑的默认。
 //
 // 与 `AppSidebar.vue` 里那个 `watch(settings.outlineOnRight)` 是同一口径的两半：
-// 那边兜住「任何来源把它改成 true」的收敛，这里负责「顺带把状态摆正」。
+// 那边兜住「任何来源把它改成 true」的收敛（页签收回「文件」），这里负责「顺带把状态摆正」。
 import { computed, type ComputedRef } from 'vue'
 import { useSettingsStore } from '../stores/settings'
 import { useUiStore } from '../stores/ui'
@@ -34,10 +39,13 @@ export function useOutlineSide(): OutlineSide {
     if (settings.outlineOnRight === next) return
     settings.set('outlineOnRight', next)
     if (next) {
+      // 先记账再改页签：顺序反了就永远记成「文件」（那正是要避免的）
+      ui.sidebarTabBeforeOutlineRight = ui.sidebarTab
       settings.set('outlineRightExpanded', true)
       ui.sidebarTab = 'files'
     } else {
-      ui.sidebarTab = 'outline'
+      ui.sidebarTab = ui.sidebarTabBeforeOutlineRight ?? 'outline'
+      ui.sidebarTabBeforeOutlineRight = null
     }
   }
 

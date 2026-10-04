@@ -56,8 +56,12 @@ const GEOM = `(() => {
         }
       : null,
     kernel: kr ? { left: Math.round(kr.left), right: Math.round(kr.right), top: Math.round(kr.top) } : null,
-    // 文档流证据：通知带所在的 reveal 容器正好是编辑器内核的**前一个兄弟**
-    stripBeforeKernel: !!(reveal && reveal.nextElementSibling && reveal.nextElementSibling.hasAttribute('data-editor-kernel')),
+    // 文档流证据：通知带所在的 reveal 容器排在**内核之前**
+    // ⚠️ 判据用 compareDocumentPosition，不判"紧邻的兄弟"：内核外面还套着一层 panes 容器
+    // （div.flex.min-h-0.flex-1，三栏大纲那轮加的），所以 nextElementSibling 是那层容器、
+    // 不是内核本身 —— 实测红过一次（同款修法见 _verify-notifications.js 与手册 §4.83）。
+    // （这段在模板字符串里，注释中不能出现反引号。）
+    stripBeforeKernel: !!(reveal && kernel && (reveal.compareDocumentPosition(kernel) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0),
     fitsViewport: r.left >= 0 && r.right <= window.innerWidth && r.top >= 0 && r.bottom <= window.innerHeight,
     aboveStatusBar: Math.round(r.bottom) <= Math.round(statusTop) + 1,
     vw: window.innerWidth,
@@ -70,9 +74,12 @@ async function main() {
   const app = await connect()
   const { send, ev } = app
   if (!(await settle(ev))) throw new Error('实例未进入就绪状态（ui.booting 未结束）')
-  const report = new Reporter('通知带（编辑区上方整幅）/ 位置与形态 / 进出场动效 / tooltip 边缘显示')
+  const report = new Reporter(
+    '通知带（编辑区上方整幅）/ 位置与形态 / 进出场动效 / tooltip 边缘显示'
+  )
   const openCount = () => ev(`window.__L.notifications().items.length`)
-  const hardRemove = (id) => ev(`(async () => { await window.__L.notifications().remove(${id}); return 'ok' })()`)
+  const hardRemove = (id) =>
+    ev(`(async () => { await window.__L.notifications().remove(${id}); return 'ok' })()`)
 
   // ─── 1) 动效：CSS 规则（确定性）+ 真实进出场采样（需要空库，拿不到就如实 SKIP）───
   const css = JSON.parse(
@@ -135,16 +142,27 @@ async function main() {
    * 只认 `rgba()` 会漏（实测踩过：`color(srgb 1 1 1 / 0.55) 0px 1px 0px 0px inset`）。
    */
   const onlyInset = (shadow) => {
-    const parts = String(shadow).replace(/rgba?\([^)]*\)|color\([^)]*\)/g, 'C').split(',').map((s) => s.trim()).filter(Boolean)
+    const parts = String(shadow)
+      .replace(/rgba?\([^)]*\)|color\([^)]*\)/g, 'C')
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean)
     return parts.length > 0 && parts.every((p) => p.includes('inset'))
   }
   report.check('enter-from-hidden', css.fromOp === '0', `opacity=${css.fromOp}`)
-  report.check('enter-from-above', tyOf(css.fromTf) < 0, `transform=${css.fromTf}（负 Y = 自上而下进场）`)
+  report.check(
+    'enter-from-above',
+    tyOf(css.fromTf) < 0,
+    `transform=${css.fromTf}（负 Y = 自上而下进场）`
+  )
   report.check(
     'enter-rule-collapses-height',
     // 0fr 要真的塌成 0 高度，还要求带子本身 min-height:0 + overflow:hidden
     //（否则 fr 轨道的自动最小尺寸会把 0fr 撑回内容高度）
-    css.fromRows === '0fr' && css.baseRows === '1fr' && /^0/.test(css.strippedMinHeight || '') && css.strippedOverflow === 'hidden',
+    css.fromRows === '0fr' &&
+      css.baseRows === '1fr' &&
+      /^0/.test(css.strippedMinHeight || '') &&
+      css.strippedOverflow === 'hidden',
     `enter-from=${css.fromRows} base=${css.baseRows} stripMinHeight=${css.strippedMinHeight} overflow=${css.strippedOverflow}`
   )
   report.check(
@@ -154,7 +172,10 @@ async function main() {
   )
   report.check(
     'transition-covers-height-opacity-transform',
-    parseFloat(css.dur) > 0 && /grid-template-rows/.test(css.prop) && /opacity/.test(css.prop) && /transform/.test(css.prop),
+    parseFloat(css.dur) > 0 &&
+      /grid-template-rows/.test(css.prop) &&
+      /opacity/.test(css.prop) &&
+      /transform/.test(css.prop),
     `duration=${css.dur} property=${css.prop}`
   )
 
@@ -183,7 +204,9 @@ async function main() {
       })()`)
     )
     await sleep(200)
-    const after = await ev(`(async () => { const l = await window.luminAPI.notifications.list({ includeClosed: true }); const m = l.find((x) => x.title === ${JSON.stringify(MARK_ANIM)}); return JSON.stringify({ id: m ? m.id : null, cards: document.querySelectorAll('.ntf-item').length }) })()`)
+    const after = await ev(
+      `(async () => { const l = await window.luminAPI.notifications.list({ includeClosed: true }); const m = l.find((x) => x.title === ${JSON.stringify(MARK_ANIM)}); return JSON.stringify({ id: m ? m.id : null, cards: document.querySelectorAll('.ntf-item').length }) })()`
+    )
     const info = JSON.parse(after)
     const ops = enter.series.map((s) => s.op)
     const hs = enter.series.map((s) => s.h).filter((h) => h !== null)
@@ -238,19 +261,30 @@ async function main() {
     )
     if (info.id !== null && !created.includes(info.id)) created.push(info.id)
   } else {
-    report.skip('enter-really-animates', `库中已有 ${before} 条未关闭通知，通知条不会重新挂载（CSS 规则那条已覆盖）`)
-    report.skip('leave-really-animates', `库中已有 ${before} 条未关闭通知，离场采样会误测旧的通知条`)
+    report.skip(
+      'enter-really-animates',
+      `库中已有 ${before} 条未关闭通知，通知条不会重新挂载（CSS 规则那条已覆盖）`
+    )
+    report.skip(
+      'leave-really-animates',
+      `库中已有 ${before} 条未关闭通知，离场采样会误测旧的通知条`
+    )
   }
 
   // ─── 2) 形态：编辑区上方一整幅带（不是浮层卡片），整条在视口内 ───
-  await ev(`(() => { window.__L.ui().toast(${JSON.stringify(MARK_POS)}, 'success'); return 'ok' })()`)
+  await ev(
+    `(() => { window.__L.ui().toast(${JSON.stringify(MARK_POS)}, 'success'); return 'ok' })()`
+  )
   await sleep(500)
   const pos = JSON.parse(await ev(GEOM))
   report.note('几何 ' + JSON.stringify(pos))
   report.check('notice-rendered', pos.count === 1, `items=${pos.count}`)
   report.check(
     'component-is-not-a-box',
-    pos.item.border === '0px' && pos.item.radius === '0px' && pos.item.bg === 'rgba(0, 0, 0, 0)' && pos.item.shadow === 'none',
+    pos.item.border === '0px' &&
+      pos.item.radius === '0px' &&
+      pos.item.bg === 'rgba(0, 0, 0, 0)' &&
+      pos.item.shadow === 'none',
     JSON.stringify(pos.item)
   )
   report.check(
@@ -266,16 +300,50 @@ async function main() {
   )
   report.check(
     'band-spans-editor-width',
-    !!pos.band && !!pos.kernel && Math.abs(pos.band.left - pos.kernel.left) <= 1 && Math.abs(pos.band.right - pos.kernel.right) <= 1,
-    JSON.stringify({ band: pos.band && [pos.band.left, pos.band.right], kernel: pos.kernel && [pos.kernel.left, pos.kernel.right] })
+    !!pos.band &&
+      !!pos.kernel &&
+      Math.abs(pos.band.left - pos.kernel.left) <= 1 &&
+      Math.abs(pos.band.right - pos.kernel.right) <= 1,
+    JSON.stringify({
+      band: pos.band && [pos.band.left, pos.band.right],
+      kernel: pos.kernel && [pos.kernel.left, pos.kernel.right]
+    })
   )
-  report.check('uses-horizontal-room', pos.width >= 480, `w=${pos.width}（旧实现固定 384 窄条）vw=${pos.vw}`)
-  report.check('in-document-flow', pos.position === 'static', `item=${pos.position} reveal=${pos.revealPosition}`)
-  report.check('strip-is-previous-sibling-of-kernel', pos.stripBeforeKernel === true, `stripBeforeKernel=${pos.stripBeforeKernel}`)
-  report.check('above-editor-kernel', !!pos.kernel && pos.bottom <= pos.kernel.top + 1, `item.bottom=${pos.bottom} kernel.top=${pos.kernel && pos.kernel.top}`)
-  report.check('fully-inside-viewport', pos.fitsViewport === true, `top=${pos.top} bottom=${pos.bottom} vh=${pos.vh}`)
-  report.check('not-clipped-by-window-bottom', pos.bottom < pos.vh - 24, `bottom=${pos.bottom} vh=${pos.vh}（状态栏 h-7=28px）`)
-  report.check('above-status-bar', pos.aboveStatusBar === true, `item.bottom=${pos.bottom} statusTop=${pos.statusTop}`)
+  report.check(
+    'uses-horizontal-room',
+    pos.width >= 480,
+    `w=${pos.width}（旧实现固定 384 窄条）vw=${pos.vw}`
+  )
+  report.check(
+    'in-document-flow',
+    pos.position === 'static',
+    `item=${pos.position} reveal=${pos.revealPosition}`
+  )
+  report.check(
+    'strip-before-kernel-in-document-order',
+    pos.stripBeforeKernel === true,
+    `stripBeforeKernel=${pos.stripBeforeKernel}`
+  )
+  report.check(
+    'above-editor-kernel',
+    !!pos.kernel && pos.bottom <= pos.kernel.top + 1,
+    `item.bottom=${pos.bottom} kernel.top=${pos.kernel && pos.kernel.top}`
+  )
+  report.check(
+    'fully-inside-viewport',
+    pos.fitsViewport === true,
+    `top=${pos.top} bottom=${pos.bottom} vh=${pos.vh}`
+  )
+  report.check(
+    'not-clipped-by-window-bottom',
+    pos.bottom < pos.vh - 24,
+    `bottom=${pos.bottom} vh=${pos.vh}（状态栏 h-7=28px）`
+  )
+  report.check(
+    'above-status-bar',
+    pos.aboveStatusBar === true,
+    `item.bottom=${pos.bottom} statusTop=${pos.statusTop}`
+  )
 
   // 清理：硬删本脚本造出来的行（不动库里既有通知）
   const list = JSON.parse(
@@ -289,7 +357,11 @@ async function main() {
   for (const id of created) await hardRemove(id)
   await sleep(300)
   const left = await ev(`window.__L.notifications().items.length`)
-  report.check('cleanup-no-residue', left === before, `items ${before} → ${left}（造了 ${created.length} 条并删掉）`)
+  report.check(
+    'cleanup-no-residue',
+    left === before,
+    `items ${before} → ${left}（造了 ${created.length} 条并删掉）`
+  )
 
   // ─── 3) tooltip：找一个靠左边的带 title 元素（侧边栏按钮），悬停后检查完整在视口内 ───
   const el = await ev(`(() => {
@@ -310,10 +382,17 @@ async function main() {
     await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: 5, y: 5 })
     if (tip) {
       const t = JSON.parse(tip)
-      report.check('tooltip-fully-in-viewport', t.fullyVisible === true, `left=${t.left} right=${t.right} vw=${t.vw}`)
+      report.check(
+        'tooltip-fully-in-viewport',
+        t.fullyVisible === true,
+        `left=${t.left} right=${t.right} vw=${t.vw}`
+      )
     } else {
       // 不假装通过：把「这一档在隔离实例里造不出来」如实打出来（GlobalTooltip 依赖真实悬停时序）
-      report.skip('tooltip-fully-in-viewport', '没造出 .lm-tooltip（GlobalTooltip 需要真实悬停事件）')
+      report.skip(
+        'tooltip-fully-in-viewport',
+        '没造出 .lm-tooltip（GlobalTooltip 需要真实悬停事件）'
+      )
     }
   } else {
     report.skip('tooltip-fully-in-viewport', '没找到靠左的 [title] 元素')

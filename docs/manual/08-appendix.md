@@ -43,25 +43,25 @@ docs/typora-wysiwyg-manual.md   # 本文档
 
 ### 附录 C：验收矩阵速查
 
-| 阶段 | 覆盖 |
-|---|---|
-| setup | 窗口可见、pinia 桥接、控制台零错误 |
-| A | 15 项：打开文件 → 全格式渲染（标题/粗斜体/行内码/引用/列表/任务/表格/代码块/mermaid/无源码标记残留/大纲） |
-| B | 10 项：Input Rules + 标记符浮现/隐藏 + 任务列表回车语义 + 往返一致 |
-| C | 8 项：CodeMirror 编辑同步、围栏保持、文件保存、SQLite 落库搜索、重开渲染 |
-| D | 10 项：表格单元格编辑、气泡菜单可见/加粗/保持、导出、主题切换、全局搜索 |
-| E | 5 项：分割线回车确认（不即时转换/回车生效/`---你好` 保留与转义）、标题行首退格降级、设置 SQLite 持久化往返 |
-| F | 24 项：表格按钮默认 3×3、悬停网格选择器 2×3、单元格宽度 CSS、表格占满写作区宽度、代码块真实键入（焦点保持/同步/大纲 DOM 稳定/Enter 换行）、Markdown 粘贴（块级节点/标题标记符/粘贴内容可编辑/标题去粗）、源码模式（进入/编辑/填满高度/切回重建）、分屏对比（进入/右→左/左→右/分隔条拖拽持久化/同步滚动开关与双向滚动映射）；另有 B 阶段行内标记显隐边界断言（真实文本标记模型，§4.13） |
-| G | 3 项：构造边界打字不失粗（起点/终点打字后 `strong` 保留 + 移出折叠为纯粗体，§4.13 坑位 7） |
-| H | 2 项：Ctrl/Cmd+左键退化为普通光标点击（不整选段落/节点、无主题色全选框）、普通左键不受影响（§4.14） |
-| I | 3 项：链接普通点击原地展开（锚点消失、label/syntax 双形态、光标折叠不自动选中、md 不变）、光标移出自动折叠还原、Ctrl+点击保持链接不展开（§4.15） |
-| J | 3 项：标记内回车切段后源码精确两段且首行 5 立即斜体（与刷新一致，零转义）、段首退格合并（单段 `**5**` + 粗体即时还原 + 无 `.ProseMirror-selectednode`）、合并后光标移开粗体保持（§4.13） |
+| 阶段  | 覆盖                                                                                                                                                                                                                                                                                                                                                                                   |
+| ----- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| setup | 窗口可见、pinia 桥接、控制台零错误                                                                                                                                                                                                                                                                                                                                                     |
+| A     | 15 项：打开文件 → 全格式渲染（标题/粗斜体/行内码/引用/列表/任务/表格/代码块/mermaid/无源码标记残留/大纲）                                                                                                                                                                                                                                                                              |
+| B     | 10 项：Input Rules + 标记符浮现/隐藏 + 任务列表回车语义 + 往返一致                                                                                                                                                                                                                                                                                                                     |
+| C     | 8 项：CodeMirror 编辑同步、围栏保持、文件保存、SQLite 落库搜索、重开渲染                                                                                                                                                                                                                                                                                                               |
+| D     | 10 项：表格单元格编辑、气泡菜单可见/加粗/保持、导出、主题切换、全局搜索                                                                                                                                                                                                                                                                                                                |
+| E     | 5 项：分割线回车确认（不即时转换/回车生效/`---你好` 保留与转义）、标题行首退格降级、设置 SQLite 持久化往返                                                                                                                                                                                                                                                                             |
+| F     | 24 项：表格按钮默认 3×3、悬停网格选择器 2×3、单元格宽度 CSS、表格占满写作区宽度、代码块真实键入（焦点保持/同步/大纲 DOM 稳定/Enter 换行）、Markdown 粘贴（块级节点/标题标记符/粘贴内容可编辑/标题去粗）、源码模式（进入/编辑/填满高度/切回重建）、分屏对比（进入/右→左/左→右/分隔条拖拽持久化/同步滚动开关与双向滚动映射）；另有 B 阶段行内标记显隐边界断言（真实文本标记模型，§4.13） |
+| G     | 3 项：构造边界打字不失粗（起点/终点打字后 `strong` 保留 + 移出折叠为纯粗体，§4.13 坑位 7）                                                                                                                                                                                                                                                                                             |
+| H     | 2 项：Ctrl/Cmd+左键退化为普通光标点击（不整选段落/节点、无主题色全选框）、普通左键不受影响（§4.14）                                                                                                                                                                                                                                                                                    |
+| I     | 3 项：链接普通点击原地展开（锚点消失、label/syntax 双形态、光标折叠不自动选中、md 不变）、光标移出自动折叠还原、Ctrl+点击保持链接不展开（§4.15）                                                                                                                                                                                                                                       |
+| J     | 3 项：标记内回车切段后源码精确两段且首行 5 立即斜体（与刷新一致，零转义）、段首退格合并（单段 `**5**` + 粗体即时还原 + 无 `.ProseMirror-selectednode`）、合并后光标移开粗体保持（§4.13）                                                                                                                                                                                               |
 
 运行方式：`$env:LUMIN_DEBUG_PORT='9222'; npm run dev` 后执行 `powershell -NoProfile -ExecutionPolicy Bypass -File tools/run-verify.ps1`。
 
 ---
 
-*本手册随代码演进持续更新；任何涉及编辑器内核的改动（扩展装配、标记、输入规则、序列化桥）都必须先跑通附录 C 的验收矩阵。*
+_本手册随代码演进持续更新；任何涉及编辑器内核的改动（扩展装配、标记、输入规则、序列化桥）都必须先跑通附录 C 的验收矩阵。_
 
 ### 4.39 编码切换的两个加固：强制同步 + 构建自检（本次）
 
@@ -72,6 +72,7 @@ docs/typora-wysiwyg-manual.md   # 本文档
 **但确实找到了一条「能产生完全相同症状」的代码路径**，并把它封掉了：
 
 `src/renderer/src/components/editor/TyporaEditor.vue` 的外部同步 watch 有两条**回声过滤**（启发式）：
+
 1. `if (nv === lastEmitted) return` —— 「store 内容 == 我上次 emit 的文本」当成自身回声；
 2. `if (performance.now() - lastEmitTime < 600) return` —— 600ms 静默窗。
 
@@ -135,7 +136,7 @@ docs/typora-wysiwyg-manual.md   # 本文档
 旧版解析器（原在 `taskbar.ts`）只认自己造的两个开关：
 
 ```ts
-const arg = argv.find((a) => a.startsWith(OPEN_FILE_PREFIX))   // --lumin-open=<encodeURIComponent(path)>
+const arg = argv.find((a) => a.startsWith(OPEN_FILE_PREFIX)) // --lumin-open=<encodeURIComponent(path)>
 return { newWindow: argv.includes(NEW_WINDOW_SWITCH), openFile }
 ```
 
@@ -196,11 +197,11 @@ parseLaunchIntent(argv, { appPath, cwd }): LaunchIntent
 
 **④ 打包态与开发态明确分层**（之前是混着来的，两个身份互相污染）：
 
-| 行为 | 开发态 | 打包态 |
-|---|---|---|
-| 开始菜单快捷方式 | 启动时写（`ensureAppShortcut()`） | **不写**，早退并记日志 `shortcut skipped (packaged; installer owns it)` —— 快捷方式归安装器所有，运行时不越权 |
-| 窗口 `icon` | 传 `runtimeIconPath()`（内容寻址副本） | **不传**：图标已内嵌进 `Lumin.exe`（验收 B 段就是证明），再传一次只会多一条路径依赖 |
-| 跳转列表图标 | `runtimeIconPath()`（按内容换路径，规避 Windows 按路径缓存，§4.35） | `process.execPath`（即 `Lumin.exe`，系统直接取 exe 内嵌图标） |
+| 行为             | 开发态                                                              | 打包态                                                                                                        |
+| ---------------- | ------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| 开始菜单快捷方式 | 启动时写（`ensureAppShortcut()`）                                   | **不写**，早退并记日志 `shortcut skipped (packaged; installer owns it)` —— 快捷方式归安装器所有，运行时不越权 |
+| 窗口 `icon`      | 传 `runtimeIconPath()`（内容寻址副本）                              | **不传**：图标已内嵌进 `Lumin.exe`（验收 B 段就是证明），再传一次只会多一条路径依赖                           |
+| 跳转列表图标     | `runtimeIconPath()`（按内容换路径，规避 Windows 按路径缓存，§4.35） | `process.execPath`（即 `Lumin.exe`，系统直接取 exe 内嵌图标）                                                 |
 
 **⑤ 新增 `src/main/services/updater.ts`：更新能力「装好但默认关闭」**
 
@@ -267,14 +268,14 @@ parseLaunchIntent(argv, { appPath, cwd }): LaunchIntent
 
 **回归**（本次改动不碰编辑器内核，但仍全跑一遍，全部在隔离实例上）：
 
-| 套件 | 结果 |
-|---|---|
-| `_verify-encoding.js` | **34/34** |
-| `_verify-open-file-dedup.js` | **21/21** |
-| `_verify-open-file-routing.js` | **22/22** |
-| `_verify-session.js` | **16/16**（会话恢复没被 `explicitOpen` 判定改坏） |
-| `_verify-taskbar-jumplist.js` | **27/27** |
-| `npm run typecheck` | 0 error |
+| 套件                           | 结果                                              |
+| ------------------------------ | ------------------------------------------------- |
+| `_verify-encoding.js`          | **34/34**                                         |
+| `_verify-open-file-dedup.js`   | **21/21**                                         |
+| `_verify-open-file-routing.js` | **22/22**                                         |
+| `_verify-session.js`           | **16/16**（会话恢复没被 `explicitOpen` 判定改坏） |
+| `_verify-taskbar-jumplist.js`  | **27/27**                                         |
+| `npm run typecheck`            | 0 error                                           |
 
 > taskbar 套件里 `shortcut-icon-is-app-icon` 原本是「路径以 `icon.ico` 结尾 + 文件存在」。§4.35 把开发态图标改成**内容寻址的运行时副本**（`userData\icons\lumin-<sha1:8>.ico`）之后，这条断言就**过时了**（文件名不再叫 `icon.ico`）。已改为更强的一条：后缀 `.ico` + 文件存在 + **字节与 `resources/icon.ico` 完全一致**（实测 `bytesEqual: true`）—— 既排除 electron.exe 的图标，也排除旧设计的残留。
 
@@ -326,14 +327,14 @@ set LUMIN_PKG_SKIP_BUILD=1 && node tools/_verify-packaging.js   # 复用已有�
 
 #### 一、修了什么（逐条给落点与证据）
 
-| 第一轮问题 | 处置 | 落点 | 复测证据 |
-| --- | --- | --- | --- |
-| **中**：卸载后 `.md` 默认值残留 `Markdown`（悬空关联） | 修 | 新增 `build/installer.nsh`（`customUnInstall` + 自己的 `Lumin_UnassociateExtension` 宏），经 `electron-builder.yml` 的 `nsis.include` 挂载 | `.md=''`、`.markdown=''`，且扩展名下 `OpenWithProgids` 子键也删掉 |
-| **中**：Publisher 显示 `example.com` | 修 | `package.json` 的 `author` 改成真实作者（NSIS 的 Publisher 就取自这里） | `Publisher='yang_bai_bai'` |
-| 低：桌面同名快捷方式被覆盖 | **有意保持** | 不改代码 | 见下「三」 |
-| 低：判断「快捷方式未携带 AUMID」 | **前提有误，改断言 + 留兜底** | `taskbar.ts` 的 `backfillInstalledShortcutAumid()`（幂等，正常走「已存在」分支） | 日志 `shortcut aumid already present … aumid=com.lumin.app` |
-| 中（开发期）：dev 与打包版共用 `%APPDATA%\Lumin` 与单实例锁 | 修（opt-in） | 新增 `src/main/devProfile.ts` + `npm run dev:isolated` | 复测全程用 `--user-data-dir` 隔离，用户数据 11027 文件/38 草稿未变 |
-| 低：`InstallLocation` 空 | 修（前半） | `build/installer.nsh` 的 `customInstall` 写 `InstallLocation=$INSTDIR` | `InstallLocation='…\AppData\Local\Programs\Lumin'`；`EstimatedSize` 501.4 MB 属上游估算方式，只记录不处理 |
+| 第一轮问题                                                  | 处置                          | 落点                                                                                                                                       | 复测证据                                                                                                  |
+| ----------------------------------------------------------- | ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------- |
+| **中**：卸载后 `.md` 默认值残留 `Markdown`（悬空关联）      | 修                            | 新增 `build/installer.nsh`（`customUnInstall` + 自己的 `Lumin_UnassociateExtension` 宏），经 `electron-builder.yml` 的 `nsis.include` 挂载 | `.md=''`、`.markdown=''`，且扩展名下 `OpenWithProgids` 子键也删掉                                         |
+| **中**：Publisher 显示 `example.com`                        | 修                            | `package.json` 的 `author` 改成真实作者（NSIS 的 Publisher 就取自这里）                                                                    | `Publisher='yang_bai_bai'`                                                                                |
+| 低：桌面同名快捷方式被覆盖                                  | **有意保持**                  | 不改代码                                                                                                                                   | 见下「三」                                                                                                |
+| 低：判断「快捷方式未携带 AUMID」                            | **前提有误，改断言 + 留兜底** | `taskbar.ts` 的 `backfillInstalledShortcutAumid()`（幂等，正常走「已存在」分支）                                                           | 日志 `shortcut aumid already present … aumid=com.lumin.app`                                               |
+| 中（开发期）：dev 与打包版共用 `%APPDATA%\Lumin` 与单实例锁 | 修（opt-in）                  | 新增 `src/main/devProfile.ts` + `npm run dev:isolated`                                                                                     | 复测全程用 `--user-data-dir` 隔离，用户数据 11027 文件/38 草稿未变                                        |
+| 低：`InstallLocation` 空                                    | 修（前半）                    | `build/installer.nsh` 的 `customInstall` 写 `InstallLocation=$INSTDIR`                                                                     | `InstallLocation='…\AppData\Local\Programs\Lumin'`；`EstimatedSize` 501.4 MB 属上游估算方式，只记录不处理 |
 
 #### 二、根因：漏的那一半在 electron-builder 自带模板里
 
@@ -410,11 +411,11 @@ npm run dev:isolated                            # dev 用独立 profile（%APPDA
 
 #### 二、改法：把草稿的语义写成可判定的三条
 
-| 规则 | 落点 |
-| --- | --- |
-| **只有脏文档才有草稿**：`content === savedContent` 时不写，并把盘上的旧草稿清掉（正等用户决定的横幅除外） | `stores/files.ts` 的 `writeDraft()` |
-| **只有「确实不同」才打扰用户**：内容与即将显示的内容一致 → 不弹；文件草稿还要「确实比磁盘新」，并核对草稿里记的路径（键名对 `.`/`_` 会折叠，理论上会撞键） | `restorableDraft()`（`stores/files.ts`） |
-| **未命名草稿按窗口（会话槽位）隔离**：`untitled-<slot>`；窗口没了留下的那份由主进程判定为「无主草稿」再交给空白缓冲区认领 | 新增 `src/shared/drafts.ts`（键约定，两个进程共用）+ `main/drafts.ts` 的 `takeUntitledDraft()` |
+| 规则                                                                                                                                                       | 落点                                                                                           |
+| ---------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
+| **只有脏文档才有草稿**：`content === savedContent` 时不写，并把盘上的旧草稿清掉（正等用户决定的横幅除外）                                                  | `stores/files.ts` 的 `writeDraft()`                                                            |
+| **只有「确实不同」才打扰用户**：内容与即将显示的内容一致 → 不弹；文件草稿还要「确实比磁盘新」，并核对草稿里记的路径（键名对 `.`/`_` 会折叠，理论上会撞键） | `restorableDraft()`（`stores/files.ts`）                                                       |
+| **未命名草稿按窗口（会话槽位）隔离**：`untitled-<slot>`；窗口没了留下的那份由主进程判定为「无主草稿」再交给空白缓冲区认领                                  | 新增 `src/shared/drafts.ts`（键约定，两个进程共用）+ `main/drafts.ts` 的 `takeUntitledDraft()` |
 
 配套：
 
@@ -465,11 +466,11 @@ npm run dev:isolated                            # dev 用独立 profile（%APPDA
 
 #### 二、改法：槽位不删，改成「已关闭」；恢复时按两种退出方式分流
 
-| 规则 | 落点 |
-| --- | --- |
-| 单独关窗 → 槽位**保留**并标记 `closed`/`closedAt`（只记最后一个被关掉的） | `services/session.ts` 的 `markSlotClosed()`，由 `index.ts` 的 `closed` 处理器调用 |
-| **整体退出**（菜单退出 / 系统关机 / 崩溃）：当时活着的窗口**全部**恢复（原行为不变） | `planRestore()`：优先返回未标记 `closed` 的槽位 |
-| **挨个关窗**：只恢复**最后关掉的那一个**；更早关掉的是用户明确关掉的，不再冒出来 | `planRestore()`：一个存活槽位都没有时，返回 `closedAt` 最新的那个 |
+| 规则                                                                                 | 落点                                                                              |
+| ------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------- |
+| 单独关窗 → 槽位**保留**并标记 `closed`/`closedAt`（只记最后一个被关掉的）            | `services/session.ts` 的 `markSlotClosed()`，由 `index.ts` 的 `closed` 处理器调用 |
+| **整体退出**（菜单退出 / 系统关机 / 崩溃）：当时活着的窗口**全部**恢复（原行为不变） | `planRestore()`：优先返回未标记 `closed` 的槽位                                   |
+| **挨个关窗**：只恢复**最后关掉的那一个**；更早关掉的是用户明确关掉的，不再冒出来     | `planRestore()`：一个存活槽位都没有时，返回 `closedAt` 最新的那个                 |
 
 两个必须一起处理的细节：
 
@@ -482,6 +483,7 @@ npm run dev:isolated                            # dev 用独立 profile（%APPDA
 #### 三、验收（新增套件，自起自灭 3 轮实例）
 
 `node tools/_verify-session-last-closed.js`（独立 userData，**8/8 PASS**）：
+
 - **A** 单独关掉唯一窗口 → 再打开：回到关窗时那篇文档（`doc === alpha.md`，且不是 `Untitled-N.md`），工作区文件夹照旧；
 - **B** 两个窗口（alpha / beta）挨个关掉（最后关的是 alpha）→ 再打开：**只有一个窗口、且是 alpha**，更早关掉的 beta 不再冒出来；
 - **C** 两个窗口一起结束（整进程被杀 ≈ 崩溃/整体退出）→ 再打开：**两个窗口都回来**。
@@ -509,9 +511,9 @@ A~D 段的光标/滚动/开关/文件丢失恢复全部照旧）；`_verify-draf
 任务栏按钮的**图标与名字**不是取窗口自己的 HICON，而是按「**AUMID → 开始菜单快捷方式**」这条链
 去解析的。而开发态我们一直用**同一个** AUMID（`com.lumin.app.dev`）给所有实例：
 
-| 谁 | 写的快捷方式 | 图标指向 |
-| --- | --- | --- |
-| 用户的应用（默认配置目录） | `Lumin (dev).lnk` | `%APPDATA%\lumin\icons\lumin-<hash>.ico`（长期存在） |
+| 谁                                 | 写的快捷方式             | 图标指向                                                  |
+| ---------------------------------- | ------------------------ | --------------------------------------------------------- |
+| 用户的应用（默认配置目录）         | `Lumin (dev).lnk`        | `%APPDATA%\lumin\icons\lumin-<hash>.ico`（长期存在）      |
 | 验收/隔离实例（`--user-data-dir`） | `Lumin (dev) [test].lnk` | `<临时配置目录>\icons\lumin-<hash>.ico`（**跑完就被删**） |
 
 于是：隔离实例一跑，开始菜单里就多了一条**同 AUMID**的快捷方式，而它的图标文件随临时目录一起消失
@@ -529,10 +531,10 @@ A~D 段的光标/滚动/开关/文件丢失恢复全部照旧）；`_verify-draf
 
 #### 二、改法：隔离实例用**独立标识**，并清掉历史残留
 
-| 规则 | 落点 |
-| --- | --- |
-| 开发态按配置目录分流 AUMID：默认配置目录 `com.lumin.app.dev`，隔离实例 `com.lumin.app.dev.test` | `appId()` |
-| 隔离实例的图标副本改放**稳定**目录（`%TEMP%\lumin-icons`），不再随它那个跑完就删的配置目录消失 | `iconDir()` + `runtimeIconPath()` |
+| 规则                                                                                                | 落点                                                    |
+| --------------------------------------------------------------------------------------------------- | ------------------------------------------------------- |
+| 开发态按配置目录分流 AUMID：默认配置目录 `com.lumin.app.dev`，隔离实例 `com.lumin.app.dev.test`     | `appId()`                                               |
+| 隔离实例的图标副本改放**稳定**目录（`%TEMP%\lumin-icons`），不再随它那个跑完就删的配置目录消失      | `iconDir()` + `runtimeIconPath()`                       |
 | 默认配置目录启动时**自愈**：删掉名字里带 `[test]` 的快捷方式（历史版本留下的、带用户 AUMID 的那条） | `removeStaleTestShortcut()`，由 `ensureShortcut()` 调用 |
 
 `appId()` 的打包分支没动（仍是 `com.lumin.app`，与安装器一致），所以打包链路、安装器那条
@@ -574,11 +576,11 @@ A~D 段的光标/滚动/开关/文件丢失恢复全部照旧）；`_verify-draf
 
 #### 一、改之前的三种「新建」（各说各话）
 
-| 入口 | 旧行为 |
-| --- | --- |
-| 文件 → 新建文档 / `Ctrl+N` | 在**当前窗口**的工作区里造一个 `未命名.md` 并打开（还先弹脏数据确认） |
-| 文件 → 新建窗口 / `Ctrl+Shift+N` | 干净窗口：**不继承工作区**，空白 + 未命名文档 |
-| 侧栏空态 / 文件树的「新建文件」 | 在工作区里造文件（本次**保持不动**，那才是它们该有的语义） |
+| 入口                             | 旧行为                                                                |
+| -------------------------------- | --------------------------------------------------------------------- |
+| 文件 → 新建文档 / `Ctrl+N`       | 在**当前窗口**的工作区里造一个 `未命名.md` 并打开（还先弹脏数据确认） |
+| 文件 → 新建窗口 / `Ctrl+Shift+N` | 干净窗口：**不继承工作区**，空白 + 未命名文档                         |
+| 侧栏空态 / 文件树的「新建文件」  | 在工作区里造文件（本次**保持不动**，那才是它们该有的语义）            |
 
 #### 二、改法：一个动作、三个入口共用一份实现
 
@@ -632,10 +634,10 @@ Windows 记的「上次位置」—— 常常不是当前工作区。
 
 #### 二、改法：两半各管一段
 
-| 半 | 落点 | 规则 |
-| --- | --- | --- |
-| 渲染层决定**默认目录**交给主进程 | `stores/files.ts` → `saveAs()` | `const dir = current.path ? currentDir : root` |
-| 主进程拼成 `defaultPath` | `main/ipc.ts` → `file:chooseSaveFile` | `dir && existsSync(dir) ? path.join(dir, name) : name` |
+| 半                               | 落点                                  | 规则                                                   |
+| -------------------------------- | ------------------------------------- | ------------------------------------------------------ |
+| 渲染层决定**默认目录**交给主进程 | `stores/files.ts` → `saveAs()`        | `const dir = current.path ? currentDir : root`         |
+| 主进程拼成 `defaultPath`         | `main/ipc.ts` → `file:chooseSaveFile` | `dir && existsSync(dir) ? path.join(dir, name) : name` |
 
 - **未命名文档**（含 `Ctrl+N` / 文件 → 新建 开出来的那份）→ 传**侧栏当前工作区**；
   于是 Ctrl+S 默认就存进侧栏那个文件夹，落盘后 `syncWorkspaceToPath()` 还会把新文件在树里露出来。
@@ -676,13 +678,13 @@ Ctrl+N 开的新窗口正好是「空白缓冲区」，于是把别人的正文�
 
 #### 二、改法：草稿带**写它的窗口实例**
 
-| 机制 | 落点 |
-| --- | --- |
-| 每个窗口实例一个 uid（`crypto.randomUUID()`），随窗口 argv 下发（`--lumin-window-uid=`，reload 后不变） | `index.ts` `createWindow()` |
-| 写草稿时盖上这个 uid（`DraftInfo.ownerUid`） | `main/ipc.ts` `drafts:save` + `main/drafts.ts` `saveDraft()` |
-| 「是我的」= **uid 相同**（同一个窗口 reload 前后）；「无主」= 写它的窗口已经不在这个进程里 / 来自上一次运行 | `main/drafts.ts` `takeUntitledDraft()` |
-| **只有本次运行的启动窗口**能认领无主草稿（Ctrl+N / 新建窗口是明确要空白，不打扰） | `index.ts` 的 `startupWindowId` + `SlotRegistry.mayClaimUntitledDraft` |
-| 自己这一格留着**别人**的正文时：不弹、也**不覆盖**，先挪到停放键 `untitled-orphan` 等着被启动窗口认领 | `main/drafts.ts` `parkDraft()` |
+| 机制                                                                                                        | 落点                                                                   |
+| ----------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------- |
+| 每个窗口实例一个 uid（`crypto.randomUUID()`），随窗口 argv 下发（`--lumin-window-uid=`，reload 后不变）     | `index.ts` `createWindow()`                                            |
+| 写草稿时盖上这个 uid（`DraftInfo.ownerUid`）                                                                | `main/ipc.ts` `drafts:save` + `main/drafts.ts` `saveDraft()`           |
+| 「是我的」= **uid 相同**（同一个窗口 reload 前后）；「无主」= 写它的窗口已经不在这个进程里 / 来自上一次运行 | `main/drafts.ts` `takeUntitledDraft()`                                 |
+| **只有本次运行的启动窗口**能认领无主草稿（Ctrl+N / 新建窗口是明确要空白，不打扰）                           | `index.ts` 的 `startupWindowId` + `SlotRegistry.mayClaimUntitledDraft` |
+| 自己这一格留着**别人**的正文时：不弹、也**不覆盖**，先挪到停放键 `untitled-orphan` 等着被启动窗口认领       | `main/drafts.ts` `parkDraft()`                                         |
 
 安全性没丢：崩溃 / 单独关窗后的未保存正文，仍会在**下次启动的那个窗口**里被认领（§4.44 的
 数据安全承诺照旧），只是不再往 Ctrl+N 的窗口里塞。
@@ -716,13 +718,13 @@ Ctrl+N 开的新窗口正好是「空白缓冲区」，于是把别人的正文�
 
 #### 改法
 
-| 位置 | 改动 |
-| --- | --- |
-| `TopMenuBar.vue` | 删掉顶部栏右侧的独立按钮；「文件」菜单第一项 = `menu.new`（新建，`file-plus` 图标），动作仍是 `newDocumentWindow()` |
-| i18n ×3 | `menu.new`（新建 / New / Создать）成为这一项的文案；删掉已无人引用的 `menu.newDoc`（三语同步删，键集仍完全一致：357 键） |
-| `useKeymap.ts` | 命令 `file.new`（`Ctrl+N`）的标题 key 改为 `menu.new` —— 设置 → 快捷键里显示的就是「新建」 |
-| `main/menu.ts` | 隐藏的原生菜单那一项也跟着改叫「新建」（仍是同一个 `send('new')`） |
-| 侧栏空态 / 文件树 | 仍用 `open.newDoc`（「新建文档」）—— 那是「在工作区里新建文件」，与菜单里的「新建」是两件事，保持不变 |
+| 位置              | 改动                                                                                                                     |
+| ----------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| `TopMenuBar.vue`  | 删掉顶部栏右侧的独立按钮；「文件」菜单第一项 = `menu.new`（新建，`file-plus` 图标），动作仍是 `newDocumentWindow()`      |
+| i18n ×3           | `menu.new`（新建 / New / Создать）成为这一项的文案；删掉已无人引用的 `menu.newDoc`（三语同步删，键集仍完全一致：357 键） |
+| `useKeymap.ts`    | 命令 `file.new`（`Ctrl+N`）的标题 key 改为 `menu.new` —— 设置 → 快捷键里显示的就是「新建」                               |
+| `main/menu.ts`    | 隐藏的原生菜单那一项也跟着改叫「新建」（仍是同一个 `send('new')`）                                                       |
+| 侧栏空态 / 文件树 | 仍用 `open.newDoc`（「新建文档」）—— 那是「在工作区里新建文件」，与菜单里的「新建」是两件事，保持不变                    |
 
 改完的「文件」菜单：**新建 / 新建窗口 / 打开… / 打开文件夹… / 最近文档 ▸ / 最近文件夹 ▸ /
 保存 / 另存为… / 导出 ▸ / 选择编码重新打开 ▸**。
@@ -757,10 +759,10 @@ Ctrl+N 开的新窗口正好是「空白缓冲区」，于是把别人的正文�
 
 #### 一、数据安全（P0）
 
-| 项 | 改法 | 落点 |
-| --- | --- | --- |
-| **写盘原子化** | 同目录临时文件 → `fsync` → `rename` 覆盖；失败清理临时文件并原样抛出 | `main/fileOps.ts` `writeFile()` |
-| 失败要带原因 | IPC 错误前缀削掉后进 toast（不再只有「保存失败」） | 新增 `renderer/lib/errors.ts`，`stores/files.ts` 的 `save()` / `reopenWithEncoding()` |
+| 项             | 改法                                                                 | 落点                                                                                  |
+| -------------- | -------------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
+| **写盘原子化** | 同目录临时文件 → `fsync` → `rename` 覆盖；失败清理临时文件并原样抛出 | `main/fileOps.ts` `writeFile()`                                                       |
+| 失败要带原因   | IPC 错误前缀削掉后进 toast（不再只有「保存失败」）                   | 新增 `renderer/lib/errors.ts`，`stores/files.ts` 的 `save()` / `reopenWithEncoding()` |
 
 为什么必须：原先 `fs.writeFile` 直接覆盖原文件，写入中途崩溃/断电/磁盘满会把用户唯一的一份稿件截断，
 而当时连本地历史都还没有 —— 这是写作工具最不能接受的一类故障。同分区 `rename` 是原子的，
@@ -768,13 +770,13 @@ Ctrl+N 开的新窗口正好是「空白缓冲区」，于是把别人的正文�
 
 #### 二、门禁可用（P2）
 
-| 项 | 改法 | 实测 |
-| --- | --- | --- |
-| `tools/**` 不进 lint | flat config `ignores` 加 `tools/**`、`build/**`（脚手架是 CommonJS + 一次性脚本，898 个 error 把真问题淹了） | 912 → 14 errors |
-| 行尾不再假报 | `.prettierrc.yaml` 加 `endOfLine: auto`（工作树是 CRLF，默认 LF 校验让**每一行**都报 `Delete ␍`） | 7260 → 0 warnings |
-| 修掉 src 的 14 个 error | 13 个 `no-useless-escape`（正则字符类里的多余转义）+ 1 个缺返回类型 | — |
-| 格式化收口 | `prettier --write src`（41 个文件，纯格式） | — |
-| **结果** | — | **`npm run lint` 0 error / 0 warning（exit 0）** |
+| 项                      | 改法                                                                                                         | 实测                                             |
+| ----------------------- | ------------------------------------------------------------------------------------------------------------ | ------------------------------------------------ |
+| `tools/**` 不进 lint    | flat config `ignores` 加 `tools/**`、`build/**`（脚手架是 CommonJS + 一次性脚本，898 个 error 把真问题淹了） | 912 → 14 errors                                  |
+| 行尾不再假报            | `.prettierrc.yaml` 加 `endOfLine: auto`（工作树是 CRLF，默认 LF 校验让**每一行**都报 `Delete ␍`）            | 7260 → 0 warnings                                |
+| 修掉 src 的 14 个 error | 13 个 `no-useless-escape`（正则字符类里的多余转义）+ 1 个缺返回类型                                          | —                                                |
+| 格式化收口              | `prettier --write src`（41 个文件，纯格式）                                                                  | —                                                |
+| **结果**                | —                                                                                                            | **`npm run lint` 0 error / 0 warning（exit 0）** |
 
 **踩到的坑（值得记住）**：`prettier --write` 会把模板里**内联多语句**的分号吃掉，变成
 `@dblclick=" a = 1 b() "`，Vue 模板编译器随后报 `Error parsing JavaScript expression`，构建直接失败。
@@ -794,11 +796,11 @@ Ctrl+N 开的新窗口正好是「空白缓冲区」，于是把别人的正文�
 
 #### 四、安全加固（P1）
 
-| 项 | 改法 | 落点 |
-| --- | --- | --- |
-| `lumin-file://` 无校验 | **两道白名单**：① 媒体扩展名（图片/音视频/PDF）；② 必须位于「当前工作区」或「某个已打开文档所在目录」之内，否则 404 并记一行日志 | `main/index.ts` `protocol.handle` + `shared/media.ts`（纯函数）+ `fileOps.isServableMedia()` + `openDocs.listOpenDocs()` |
-| 缺 `will-navigate` 兜底 | 只允许停留在自己的页面，其余拦下并交系统浏览器（与 `setWindowOpenHandler`、`shell:openExternal` 白名单同口径） | `main/index.ts` `createWindow` |
-| 搜索结果 `v-html` | 主进程 `snippet()` 改用 U+0001/U+0002 作标记（**数据里不再夹 HTML**），渲染层按段渲染 `<em class="gs-hl">` —— **全程没有 `v-html`**，也就没有转义遗漏的机会 | `main/services/database.ts` + 新增 `renderer/lib/highlight.ts` + `GlobalSearch.vue` |
+| 项                      | 改法                                                                                                                                                        | 落点                                                                                                                     |
+| ----------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| `lumin-file://` 无校验  | **两道白名单**：① 媒体扩展名（图片/音视频/PDF）；② 必须位于「当前工作区」或「某个已打开文档所在目录」之内，否则 404 并记一行日志                            | `main/index.ts` `protocol.handle` + `shared/media.ts`（纯函数）+ `fileOps.isServableMedia()` + `openDocs.listOpenDocs()` |
+| 缺 `will-navigate` 兜底 | 只允许停留在自己的页面，其余拦下并交系统浏览器（与 `setWindowOpenHandler`、`shell:openExternal` 白名单同口径）                                              | `main/index.ts` `createWindow`                                                                                           |
+| 搜索结果 `v-html`       | 主进程 `snippet()` 改用 U+0001/U+0002 作标记（**数据里不再夹 HTML**），渲染层按段渲染 `<em class="gs-hl">` —— **全程没有 `v-html`**，也就没有转义遗漏的机会 | `main/services/database.ts` + 新增 `renderer/lib/highlight.ts` + `GlobalSearch.vue`                                      |
 
 顺带修掉一个**功能缺口**：`![](img/a.png)` 这类相对图片原先按「页面目录」解析（`resolveLocalImageSrc`
 是空实现）→ **渲染不出来**。现在按**文档目录**解析成 `lumin-file:///<绝对路径>`（新增
@@ -829,19 +831,19 @@ Ctrl+N 开的新窗口正好是「空白缓冲区」，于是把别人的正文�
 
 #### 七、本轮验收数字（全部可复跑）
 
-| 门禁 | 结果 |
-| --- | --- |
-| `npm run typecheck` | exit 0 |
-| `npm run lint` | **0 error / 0 warning** |
-| `npm run test:unit` | **57/57** |
-| `npm run ci`（本地等价 CI） | exit 0 |
-| `npm run build` | exit 0 |
-| `_verify-draft-banner.js` | 25/25 |
-| `_verify-new-document.js` | 23/23 |
-| `_verify-session.js` | 17/17 |
-| `_verify-session-last-closed.js` | 8/8 |
-| `_verify-taskbar-jumplist.js` | 31/31 |
-| `_verify-local-media.js`（本轮新增，10 条） | 10/10 |
+| 门禁                                        | 结果                    |
+| ------------------------------------------- | ----------------------- |
+| `npm run typecheck`                         | exit 0                  |
+| `npm run lint`                              | **0 error / 0 warning** |
+| `npm run test:unit`                         | **57/57**               |
+| `npm run ci`（本地等价 CI）                 | exit 0                  |
+| `npm run build`                             | exit 0                  |
+| `_verify-draft-banner.js`                   | 25/25                   |
+| `_verify-new-document.js`                   | 23/23                   |
+| `_verify-session.js`                        | 17/17                   |
+| `_verify-session-last-closed.js`            | 8/8                     |
+| `_verify-taskbar-jumplist.js`               | 31/31                   |
+| `_verify-local-media.js`（本轮新增，10 条） | 10/10                   |
 
 `_verify-local-media.js` 覆盖三块：相对图片按文档目录解析并**真的加载成功**、协议两道闸
 （非媒体文件 404、工作区外图片 404）、以及本轮抽成方法的四个 UI 处理器逐个点一遍。
@@ -868,15 +870,15 @@ Ctrl+N 开的新窗口正好是「空白缓冲区」，于是把别人的正文�
 
 三档分级，等级数字越大越糟（`actual > expected` 即回归）：
 
-| 档 | 含义 |
-| --- | --- |
-| `exact` | 磁盘字节完全没变 |
+| 档           | 含义                                                             |
+| ------------ | ---------------------------------------------------------------- |
+| `exact`      | 磁盘字节完全没变                                                 |
 | `normalized` | 经过**文档化的保义规则**规范化后完全一致：文件被重写，但语义没丢 |
-| `lossy` | 规范化后仍不一致 → 内容/结构真的变了，必须当缺陷处理 |
+| `lossy`      | 规范化后仍不一致 → 内容/结构真的变了，必须当缺陷处理             |
 
 规范化只收「能在 CommonMark 语义上站得住脚」的改写，共 18 条（`RULES` 导出，报告可直接引用）：
 行尾 LF、硬换行两种写法归一、ATX/Setext 标题、列表标记 `*`/`+`/`1)`、引用块、分割线、表格空白与分隔行、
-围栏 `~~~`→``` ```、缩进代码 ↔ 无 info 围栏、强调标记 `__`/`_`、链接尖括号、HTML 实体、引用式链接展开、
+围栏 `~~~`→` `、缩进代码 ↔ 无 info 围栏、强调标记 `__`/`_`、链接尖括号、HTML 实体、引用式链接展开、
 **段落内软换行合并（软换行 ≡ 空格）**、连续空行压缩、非必要转义 `\\` ≡ `\`、
 **不同标记的相邻列表之间的空行无义**（同标记的空行会让列表变松散，那就有义了）。
 
@@ -899,7 +901,7 @@ Ctrl+N 开的新窗口正好是「空白缓冲区」，于是把别人的正文�
 1. **文档级（主断言）**：把夹具装进真实编辑器 → 触发应用**自己的落盘管线**
    （`TyporaEditor` 的 `flushSync`，用 window 的 `beforeunload` 同步触发，正是「关窗落盘」那条真实路径）
    → 读 `files.current.content`（= 文档文本）→ 判级比对。
-   *为什么绕这一道*：Tiptap 只在 **docChanged** 时发 `onUpdate`（还有 250ms 防抖），
+   _为什么绕这一道_：Tiptap 只在 **docChanged** 时发 `onUpdate`（还有 250ms 防抖），
    而 `beforeunload` 的 flush 是同步的 —— 既确定，又不用给产品代码开后门。
 2. **幂等**：把文档文本再装回去走一遍，必须**一字不差**（否则每次保存都在漂，
    git diff 全是噪声，用户会认为编辑器在改他的文件）。已知缺口内的幂等不检查。
@@ -909,16 +911,16 @@ Ctrl+N 开的新窗口正好是「空白缓冲区」，于是把别人的正文�
 
 #### 四、本轮查实并修掉的缺陷（都是「用户会丢内容」那一类）
 
-| 现象 | 根因 | 修法（落点） |
-| --- | --- | --- |
-| 代码块里出现成对反引号（``let a = `x```）时，**一次编辑后整段代码并成一行** | 标记模型的「源码权威重推」把 `codeBlock` 当普通段落处理（PM 里 `isTextblock` 对代码块也为真），拿代码文本再喂 markdown-it，而重推走的 DOMParser **不保留空白** → 换行全塌成空格 | `isVerbatimBlock()`（`type.spec.code === true`）把逐字块排除在归一化之外（`typoraInlineMarks.ts`） |
-| 行内代码里的反斜杠**每保存一次多一层**（非幂等增长） | prose-mirror-markdown 只按**最内层 mark** 的 `escape:false` 决定原样输出，而 `mdStyle(code)` 正文没有这层保护；代码跨度里反斜杠不是转义字符 | 新增 `mdCodeLiteral` mark（空包裹 + `escape:false`），贴在代码样式正文上（`typoraInlineMarks.ts` + `extensions.ts`） |
-| 软换行被写成行尾 `\`（每行都加） | `Markdown.configure({ breaks: true })`：markdown-it 把段内单个换行渲染成 `<br>` → 解析成 hardBreak → 序列化成 `\`。语义从「软换行 ≡ 空格」变成强制换行，GitHub 渲染都不一样 | `breaks: false`；真正的「软换行可往返」需要独立节点，列为 Wave 2 |
-| 无序列表标记被抹平（`*`/`+` → `-`），相邻两个列表被插**两个空行**，再解析并成一个**松散列表** → 每次保存都在漂 | 上游 `bulletListMarker` 固定 `-`；`renderList` 遇到同类型相邻块会 `flushClose(3)` 兜底 | 解析时记录 `bullet`（`parse.setup` 钩子给 `<ul>` 打 `data-bullet`）→ 序列化写回原标记；标记不同时 `flushClose(1)` 只断行不插空行（`listMarkers.ts`） |
-| 任务列表**每个任务项之间都被塞空行**；`1. [ ] x` 变成「空的有序项 + 无序任务列表」 | 任务列表复用无序列表的序列化器，而它读 `node.attrs.tight`，`tight` 只挂在 bulletList/orderedList 上 → `undefined` → 松散；`ol` 形态的任务列表没有 parse 规则 | 给 `taskList` 补 `tight` 属性；parse 规则同时认 `ul/ol[data-type="taskList"]`（`listMarkers.ts`） |
-| 相邻图片被粘成一行；图片后紧跟的标题被吞进同一段 | `Image` 是块级节点，但 tiptap-markdown 给它的是行内序列化器（不换行、不 closeBlock） | 自定义 Image 序列化器：沿用上游写法 + `closeBlock`（`extensions.ts`） |
-| 内容里含 ``` 的代码块，围栏被内容提前闭合 → 后面正文被解析成代码 | 围栏固定写三个反引号 | `codeFenceFor(content)`：围栏长度 ≥ 内容里最长反引号串 + 1（`shared/documentText.ts` + `codeBlock.ts`） |
-| 序列化产出**不含文末换行** → 每次保存都与原文差一个字节 | 上游 serializer 不补 | 文档文本收尾规则 `withFinalNewline()`，收在 `markdownStorage.getMarkdown()`（编辑器内容 → 文档文本的**唯一出口**，否则会与外部同步比较打架、触发 setContent 回滚） |
+| 现象                                                                                                           | 根因                                                                                                                                                                            | 修法（落点）                                                                                                                                                       |
+| -------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 代码块里出现成对反引号（``let a = `x```）时，**一次编辑后整段代码并成一行**                                    | 标记模型的「源码权威重推」把 `codeBlock` 当普通段落处理（PM 里 `isTextblock` 对代码块也为真），拿代码文本再喂 markdown-it，而重推走的 DOMParser **不保留空白** → 换行全塌成空格 | `isVerbatimBlock()`（`type.spec.code === true`）把逐字块排除在归一化之外（`typoraInlineMarks.ts`）                                                                 |
+| 行内代码里的反斜杠**每保存一次多一层**（非幂等增长）                                                           | prose-mirror-markdown 只按**最内层 mark** 的 `escape:false` 决定原样输出，而 `mdStyle(code)` 正文没有这层保护；代码跨度里反斜杠不是转义字符                                     | 新增 `mdCodeLiteral` mark（空包裹 + `escape:false`），贴在代码样式正文上（`typoraInlineMarks.ts` + `extensions.ts`）                                               |
+| 软换行被写成行尾 `\`（每行都加）                                                                               | `Markdown.configure({ breaks: true })`：markdown-it 把段内单个换行渲染成 `<br>` → 解析成 hardBreak → 序列化成 `\`。语义从「软换行 ≡ 空格」变成强制换行，GitHub 渲染都不一样     | `breaks: false`；真正的「软换行可往返」需要独立节点，列为 Wave 2                                                                                                   |
+| 无序列表标记被抹平（`*`/`+` → `-`），相邻两个列表被插**两个空行**，再解析并成一个**松散列表** → 每次保存都在漂 | 上游 `bulletListMarker` 固定 `-`；`renderList` 遇到同类型相邻块会 `flushClose(3)` 兜底                                                                                          | 解析时记录 `bullet`（`parse.setup` 钩子给 `<ul>` 打 `data-bullet`）→ 序列化写回原标记；标记不同时 `flushClose(1)` 只断行不插空行（`listMarkers.ts`）               |
+| 任务列表**每个任务项之间都被塞空行**；`1. [ ] x` 变成「空的有序项 + 无序任务列表」                             | 任务列表复用无序列表的序列化器，而它读 `node.attrs.tight`，`tight` 只挂在 bulletList/orderedList 上 → `undefined` → 松散；`ol` 形态的任务列表没有 parse 规则                    | 给 `taskList` 补 `tight` 属性；parse 规则同时认 `ul/ol[data-type="taskList"]`（`listMarkers.ts`）                                                                  |
+| 相邻图片被粘成一行；图片后紧跟的标题被吞进同一段                                                               | `Image` 是块级节点，但 tiptap-markdown 给它的是行内序列化器（不换行、不 closeBlock）                                                                                            | 自定义 Image 序列化器：沿用上游写法 + `closeBlock`（`extensions.ts`）                                                                                              |
+| 内容里含 ``` 的代码块，围栏被内容提前闭合 → 后面正文被解析成代码                                               | 围栏固定写三个反引号                                                                                                                                                            | `codeFenceFor(content)`：围栏长度 ≥ 内容里最长反引号串 + 1（`shared/documentText.ts` + `codeBlock.ts`）                                                            |
+| 序列化产出**不含文末换行** → 每次保存都与原文差一个字节                                                        | 上游 serializer 不补                                                                                                                                                            | 文档文本收尾规则 `withFinalNewline()`，收在 `markdownStorage.getMarkdown()`（编辑器内容 → 文档文本的**唯一出口**，否则会与外部同步比较打架、触发 setContent 回滚） |
 
 #### 五、判级器/工具链自身踩过的坑（都已修，值得记）
 
@@ -949,13 +951,13 @@ Ctrl+N 开的新窗口正好是「空白缓冲区」，于是把别人的正文�
 
 #### 七、本轮验收数字
 
-| 门禁 | 结果 |
-| --- | --- |
-| `npm run typecheck` | exit 0 |
-| `npm run lint` | 0 error / 0 warning |
-| `npm run test:unit` | **86/86**（57 → 86） |
-| `npm run ci` | exit 0 |
-| `_verify-md-fidelity.js` | **50 PASS / 0 FAIL / 20 SKIP**（30 份夹具；SKIP = `EXPECT.json` 里逐条写明修法的已知缺口） |
+| 门禁                       | 结果                                                                                                                                                              |
+| -------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `npm run typecheck`        | exit 0                                                                                                                                                            |
+| `npm run lint`             | 0 error / 0 warning                                                                                                                                               |
+| `npm run test:unit`        | **86/86**（57 → 86）                                                                                                                                              |
+| `npm run ci`               | exit 0                                                                                                                                                            |
+| `_verify-md-fidelity.js`   | **50 PASS / 0 FAIL / 20 SKIP**（30 份夹具；SKIP = `EXPECT.json` 里逐条写明修法的已知缺口）                                                                        |
 | `node tools/run-suites.js` | **7/7 套件 PASS**：session-last-closed 8/8、md-fidelity 50/70（0 FAIL）、draft-banner 25/25、new-document 23/23、session 17/17、local-media 10/10、encoding 31/31 |
 
 #### 八、已知缺口（`EXPECT.json` 里逐条写了修法，Wave 2 的起点）
@@ -1017,9 +1019,9 @@ Ctrl+N 开的新窗口正好是「空白缓冲区」，于是把别人的正文�
 
 - 新表 `documents_history`（path / saved_at / size / preview / content / encoding / eol）。
 - **快照取自磁盘上现有的字节**（即将被覆盖的那一版），记录点在主进程 `file:write`：
-  * 语义准确 —— 用户想回滚的就是「上次保存时磁盘上的样子」；
-  * 与调用方解耦 —— 保存、另存为、以后的回滚写回都自动有历史，不依赖某个调用点记得调用；
-  * 内容相同不重复留（连按 Ctrl+S 不会灌水）。
+  - 语义准确 —— 用户想回滚的就是「上次保存时磁盘上的样子」；
+  - 与调用方解耦 —— 保存、另存为、以后的回滚写回都自动有历史，不依赖某个调用点记得调用；
+  - 内容相同不重复留（连按 Ctrl+S 不会灌水）。
 - **抽稀策略是纯函数**（`shared/history.ts` 的 `planHistoryPrune`，有单测）：
   每文件最多 30 条；超过 30 天且不是该文件最新 3 条就丢；全库封顶 2000 条。
   数据安全优先于省空间：**每个文件的最新几条不受年龄限制**（全库膨胀交给总量封顶）。
@@ -1037,12 +1039,12 @@ Ctrl+N 开的新窗口正好是「空白缓冲区」，于是把别人的正文�
 
 #### 五、本轮验收数字
 
-| 门禁 | 结果 |
-| --- | --- |
-| `npm run typecheck` / `npm run lint` | exit 0 / 0 error 0 warning |
-| `npm run test:unit` | **97/97**（新增行尾 6 条、历史策略 5 条） |
-| `_verify-md-fidelity.js` | **63 PASS / 0 FAIL / 19 SKIP**（82 条断言；新增行尾 6 条、历史 6 条） |
-| `node tools/run-suites.js` | 7/7 套件 PASS |
+| 门禁                                 | 结果                                                                  |
+| ------------------------------------ | --------------------------------------------------------------------- |
+| `npm run typecheck` / `npm run lint` | exit 0 / 0 error 0 warning                                            |
+| `npm run test:unit`                  | **97/97**（新增行尾 6 条、历史策略 5 条）                             |
+| `_verify-md-fidelity.js`             | **63 PASS / 0 FAIL / 19 SKIP**（82 条断言；新增行尾 6 条、历史 6 条） |
+| `node tools/run-suites.js`           | 7/7 套件 PASS                                                         |
 
 行尾与历史的端到端断言（都是一个真实 Electron 窗口里跑出来的）：
 打开 CRLF 文件 → 判定 `crlf` 且内存无 CR；切 LF → 磁盘 LF；切回 CRLF → 磁盘 CRLF；
@@ -1078,11 +1080,11 @@ Ctrl+N 开的新窗口正好是「空白缓冲区」，于是把别人的正文�
 
 两条都**必漏判**，各自有记录在案的故障：
 
-| 场景 | 旧行为 |
-| --- | --- |
+| 场景                                           | 旧行为                                             |
+| ---------------------------------------------- | -------------------------------------------------- |
 | 按原编码切回来（内容恰好等于上次 emit 的文本） | 规则①把它当回声丢掉 → **状态栏编码变了、正文没变** |
-| 刚打完字就点「恢复草稿 / 切编码」 | 规则②把它丢掉 → 同上 |
-| 每次 modelValue 变化 | 都要做一次**整篇字符串比较**（大文档下的无谓开销） |
+| 刚打完字就点「恢复草稿 / 切编码」              | 规则②把它丢掉 → 同上                               |
+| 每次 modelValue 变化                           | 都要做一次**整篇字符串比较**（大文档下的无谓开销） |
 
 **新实现**：契约定在 store 里 —— **凡是要编辑器换内容的动作都必须自增 `files.syncEpoch`**
 （打开文件、恢复草稿、重新解释编码、载入历史；源码模式切回来走另一条既有路径）。
@@ -1132,13 +1134,13 @@ Ctrl+N 开的新窗口正好是「空白缓冲区」，于是把别人的正文�
 
 #### 四、本轮验收数字
 
-| 门禁 | 结果 |
-| --- | --- |
-| `npm run typecheck` / `npm run lint` | exit 0 / 0 error 0 warning |
-| `npm run test:unit` | **101/101**（新增菜单静态自检 4 条） |
-| `tools/_verify-wave3.js`（新增，19 条） | **19/19 PASS** |
-| `tools/_verify-md-fidelity.js` | 63 PASS / 0 FAIL / 19 SKIP |
-| `node tools/run-suites.js` | **8/8 套件 PASS** |
+| 门禁                                    | 结果                                 |
+| --------------------------------------- | ------------------------------------ |
+| `npm run typecheck` / `npm run lint`    | exit 0 / 0 error 0 warning           |
+| `npm run test:unit`                     | **101/101**（新增菜单静态自检 4 条） |
+| `tools/_verify-wave3.js`（新增，19 条） | **19/19 PASS**                       |
+| `tools/_verify-md-fidelity.js`          | 63 PASS / 0 FAIL / 19 SKIP           |
+| `node tools/run-suites.js`              | **8/8 套件 PASS**                    |
 
 Wave 3 段的端到端断言（真实窗口里跑出来的）：flush 后立刻显式替换仍生效且编辑器确实换成新内容；
 自身回声不改文档、不动光标；`openUntitled` 同 key 也清空编辑器；
@@ -1163,12 +1165,12 @@ Wave 3 段的端到端断言（真实窗口里跑出来的）：flush 后立刻�
 这个 store 原本一份承担四件事：工作区文件树、当前文档 + 草稿 + 自动保存、**列表视图的派生缓存**、
 最近文档/文件夹。拆法按「生命周期是否相同」而不是按行数切：
 
-| 拆出物 | 为什么是它 | 落点 |
-| --- | --- | --- |
-| **列表视图缓存** → 独立 store | 它是一份**派生缓存**（主进程递归扫描的产物），失效条件是「工作区结构变了 / 某篇保存了」，与文档状态无关；只有一个消费者（`FileList.vue`） | `stores/workspaceDocs.ts`（`docs`/`epoch`/`loading` + `load`/`invalidate`/`bumpMtime`/`reset`） |
-| **最近文档/文件夹/置顶的列表规则** → 纯函数 | 「去重 + 置顶 + 截断 + 并入当前工作区」这类容易写错又不容易发现的逻辑散在 4 个 action 里 | `lib/recent.ts`（`planTouchRecent` / `planRemoveRecent` / `planTogglePin` / `planTouchRecentFolder` / `planRemoveRecentFolder` / `planRecentFolderList`） |
-| **草稿键与可恢复判定** → 纯函数 | 这块**出过三次真 bug**（§4.44 空草稿假横幅、§4.45 关窗清槽位、§4.49 跨窗认领），必须能被毫秒级钉住 | `lib/draftRules.ts`（`draftKeyFor` / `restorableDraft`） |
-| **文档文本小工具** → 纯函数 | 未命名文档的编码/行尾、编码显示名、历史时间格式，都是**规则**不是状态 | `lib/docText.ts` |
+| 拆出物                                      | 为什么是它                                                                                                                                | 落点                                                                                                                                                      |
+| ------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **列表视图缓存** → 独立 store               | 它是一份**派生缓存**（主进程递归扫描的产物），失效条件是「工作区结构变了 / 某篇保存了」，与文档状态无关；只有一个消费者（`FileList.vue`） | `stores/workspaceDocs.ts`（`docs`/`epoch`/`loading` + `load`/`invalidate`/`bumpMtime`/`reset`）                                                           |
+| **最近文档/文件夹/置顶的列表规则** → 纯函数 | 「去重 + 置顶 + 截断 + 并入当前工作区」这类容易写错又不容易发现的逻辑散在 4 个 action 里                                                  | `lib/recent.ts`（`planTouchRecent` / `planRemoveRecent` / `planTogglePin` / `planTouchRecentFolder` / `planRemoveRecentFolder` / `planRecentFolderList`） |
+| **草稿键与可恢复判定** → 纯函数             | 这块**出过三次真 bug**（§4.44 空草稿假横幅、§4.45 关窗清槽位、§4.49 跨窗认领），必须能被毫秒级钉住                                        | `lib/draftRules.ts`（`draftKeyFor` / `restorableDraft`）                                                                                                  |
+| **文档文本小工具** → 纯函数                 | 未命名文档的编码/行尾、编码显示名、历史时间格式，都是**规则**不是状态                                                                     | `lib/docText.ts`                                                                                                                                          |
 
 依赖方向是**单向**的：`workspaceDocs` 读 `files.root`；`files` 只在结构变化/保存时调用
 `invalidate()` / `bumpMtime()`。新增单测 `tests/filesRules.test.mjs`（9 条）。
@@ -1209,12 +1211,12 @@ Wave 3 段的端到端断言（真实窗口里跑出来的）：flush 后立刻�
 
 #### 四、本轮验收数字
 
-| 门禁 | 结果 |
-| --- | --- |
-| `npm run typecheck` / `npm run lint` | exit 0 / 0 error 0 warning |
-| `npm run test:unit` | **110/110**（新增 9 条） |
-| `npm run ci` | exit 0 |
-| `node tools/run-suites.js` | **8/8 套件 PASS** |
+| 门禁                                                      | 结果                               |
+| --------------------------------------------------------- | ---------------------------------- |
+| `npm run typecheck` / `npm run lint`                      | exit 0 / 0 error 0 warning         |
+| `npm run test:unit`                                       | **110/110**（新增 9 条）           |
+| `npm run ci`                                              | exit 0                             |
+| `node tools/run-suites.js`                                | **8/8 套件 PASS**                  |
 | `tools/_verify-md-fidelity.js` / `tools/_verify-wave3.js` | 63 PASS / 0 FAIL / 19 SKIP · 19/19 |
 
 #### 五、四波做完之后仍开着的口子（按价值排序）
@@ -1243,11 +1245,11 @@ Wave 3 段的端到端断言（真实窗口里跑出来的）：flush 后立刻�
 
 三种分支一个都不能漏（实测教训）：
 
-| 分支 | 语义 | 漏掉的后果 |
-| --- | --- | --- |
-| `\` + 换行 | 硬换行（并吃掉行尾空格） | 退化成「字面反斜杠 + 软换行」→ 整段被并成一行，`paragraph-breaks` 夹具立刻变红 |
-| `\` + 空格 | 反斜杠不是转义，字面输出 | 空格被当作转义目标 |
-| 其余 | 可转义标点保留 `\X`；不可转义字符本来就原样 | `C:\temp` 会被补成 `C:\\temp`（源码漂移） |
+| 分支       | 语义                                        | 漏掉的后果                                                                     |
+| ---------- | ------------------------------------------- | ------------------------------------------------------------------------------ |
+| `\` + 换行 | 硬换行（并吃掉行尾空格）                    | 退化成「字面反斜杠 + 软换行」→ 整段被并成一行，`paragraph-breaks` 夹具立刻变红 |
+| `\` + 空格 | 反斜杠不是转义，字面输出                    | 空格被当作转义目标                                                             |
+| 其余       | 可转义标点保留 `\X`；不可转义字符本来就原样 | `C:\temp` 会被补成 `C:\\temp`（源码漂移）                                      |
 
 #### 二、三处「不显眼但必须改」的联动
 
@@ -1279,10 +1281,10 @@ Wave 3 段的端到端断言（真实窗口里跑出来的）：flush 后立刻�
 
 #### 五、本轮验收数字
 
-| 门禁 | 结果 |
-| --- | --- |
-| `npm run ci` | exit 0（110/110 单测） |
-| `node tools/run-suites.js` | **8/8 套件 PASS** |
+| 门禁                           | 结果                                                                           |
+| ------------------------------ | ------------------------------------------------------------------------------ |
+| `npm run ci`                   | exit 0（110/110 单测）                                                         |
+| `node tools/run-suites.js`     | **8/8 套件 PASS**                                                              |
 | `tools/_verify-md-fidelity.js` | **67 PASS / 0 FAIL / 17 SKIP**（31 份夹具；exact 9 / normalized 14 / lossy 8） |
 
 ---
@@ -1301,11 +1303,11 @@ Wave 3 段的端到端断言（真实窗口里跑出来的）：flush 后立刻�
 
 新优先级（`file:read` 增加 `opts.softDefault`）：
 
-| 来源 | 何时生效 | 为什么 |
-| --- | --- | --- |
-| **显式指定**（`reopenWithEncoding`、显式 readAs） | 永远优先 | 用户刚点的那个必须听，否则「点了没反应」 |
+| 来源                                                   | 何时生效                                                  | 为什么                                                 |
+| ------------------------------------------------------ | --------------------------------------------------------- | ------------------------------------------------------ |
+| **显式指定**（`reopenWithEncoding`、显式 readAs）      | 永远优先                                                  | 用户刚点的那个必须听，否则「点了没反应」               |
 | **该文件的记录**（`documents.encoding`，兼容 kv 兜底） | 调用方说「这只是设置里的默认值」时（`softDefault: true`） | 它是「这个文件是什么编码」的权威答案，比全局默认更具体 |
-| **自动判定链**（BOM → 记忆 → 严格 UTF-8 → 语言兜底） | 没有记录、也没显式指定 | 兜底 |
+| **自动判定链**（BOM → 记忆 → 严格 UTF-8 → 语言兜底）   | 没有记录、也没显式指定                                    | 兜底                                                   |
 
 实测（`_verify-md-fidelity.js` F 段）：窗口 A 用 auto 打开 GBK 文件并落库 → 窗口 B 打开同一文件，
 **编码与行尾都与库记录一致**；窗口 B 把「默认编码」改成 windows-1252 后重开，**每文件记录仍然优先**。
@@ -1336,10 +1338,10 @@ Wave 3 段的端到端断言（真实窗口里跑出来的）：flush 后立刻�
 
 #### 四、本轮验收数字
 
-| 门禁 | 结果 |
-| --- | --- |
-| `npm run ci` | exit 0（**111/111** 单测） |
-| `node tools/run-suites.js` | **8/8 套件 PASS**（encoding 34/34、wave3 19/19…） |
+| 门禁                           | 结果                                                                         |
+| ------------------------------ | ---------------------------------------------------------------------------- |
+| `npm run ci`                   | exit 0（**111/111** 单测）                                                   |
+| `node tools/run-suites.js`     | **8/8 套件 PASS**（encoding 34/34、wave3 19/19…）                            |
 | `tools/_verify-md-fidelity.js` | **73 PASS / 0 FAIL / 17 SKIP**（90 条断言；新增元数据 4 条 + 历史策略 2 条） |
 
 #### 五、还剩什么（下一轮）
@@ -1357,12 +1359,12 @@ Wave 3 段的端到端断言（真实窗口里跑出来的）：flush 后立刻�
 
 #### 一、收敛之前：四套判断，三种启发式
 
-| 通道 | 收敛前的判断 | 曾经的漏判形态 |
-| --- | --- | --- |
-| Tiptap ⇄ store | 比字符串 `syncedMd === content` + 世代号 `files.syncEpoch` | 「切回原编码」时新旧文本恰好相等 → 状态栏变了、正文不动 |
-| 源码 textarea → Tiptap | **另一条** 200ms `setContent` 定时器（`scheduleSplitSync`） | 分屏里停顿一下的更新被静默窗吞掉 |
-| 切模式时再对齐一次 | `syncEditorContent()` 自己再比一次字符串 | 三处判断对同一件事给出不同结论 |
-| 代码块 CodeMirror | 150ms 防抖 + 「节点文本快照相等就跳过」 | 快照过期（CM 已经又往前跑了几行）→ 用旧文本重建 CM，**快速回车丢字** |
+| 通道                   | 收敛前的判断                                                | 曾经的漏判形态                                                       |
+| ---------------------- | ----------------------------------------------------------- | -------------------------------------------------------------------- |
+| Tiptap ⇄ store         | 比字符串 `syncedMd === content` + 世代号 `files.syncEpoch`  | 「切回原编码」时新旧文本恰好相等 → 状态栏变了、正文不动              |
+| 源码 textarea → Tiptap | **另一条** 200ms `setContent` 定时器（`scheduleSplitSync`） | 分屏里停顿一下的更新被静默窗吞掉                                     |
+| 切模式时再对齐一次     | `syncEditorContent()` 自己再比一次字符串                    | 三处判断对同一件事给出不同结论                                       |
+| 代码块 CodeMirror      | 150ms 防抖 + 「节点文本快照相等就跳过」                     | 快照过期（CM 已经又往前跑了几行）→ 用旧文本重建 CM，**快速回车丢字** |
 
 根因不是某一条写错了，而是**没有唯一的写入者身份**：每个面都在猜「这次变化是不是我自己弄出来的」。
 
@@ -1397,12 +1399,12 @@ Wave 3 段的端到端断言（真实窗口里跑出来的）：flush 后立刻�
 
 #### 三、四个编辑面各自的角色
 
-| 编辑面 | 角色 | 实现要点 |
-| --- | --- | --- |
-| Tiptap 面板 | 命令式副本 | `watch(files.contentRev)` → `contentIsStale('wysiwyg')` 才 `setContent`；分屏下源码面逐键输入时 **200ms 合并重解析（渲染节流，不是第二条真源）** |
-| 源码 textarea | 声明式副本 | 模板 `:value="files.current?.content"` 就是唯一回灌通道：DOM 值已等于新值时浏览器不动光标，所以「自己写的」那条路径不需要代码再判断一次 |
+| 编辑面            | 角色                | 实现要点                                                                                                                                                         |
+| ----------------- | ------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Tiptap 面板       | 命令式副本          | `watch(files.contentRev)` → `contentIsStale('wysiwyg')` 才 `setContent`；分屏下源码面逐键输入时 **200ms 合并重解析（渲染节流，不是第二条真源）**                 |
+| 源码 textarea     | 声明式副本          | 模板 `:value="files.current?.content"` 就是唯一回灌通道：DOM 值已等于新值时浏览器不动光标，所以「自己写的」那条路径不需要代码再判断一次                          |
 | 代码块 CodeMirror | 子编辑面（写 + 读） | 写：`editorStore.noteWrite('codeblock')` 挂牌，序列化时消费成作者；读：节点文本变了才重建，且**触发时重新读节点文本**、**CM 拿着光标时绝不覆盖**（改成再等一轮） |
-| 外部整篇替换 | 作者 = `external` | 打开/草稿/切编码/载入历史统一走 `setContent(..., 'external')` / `noteExternalReplace()` |
+| 外部整篇替换      | 作者 = `external`   | 打开/草稿/切编码/载入历史统一走 `setContent(..., 'external')` / `noteExternalReplace()`                                                                          |
 
 `files.syncEpoch` 与 `editorStore.syncedMd` 一并删除：前者就是账本的 `rev`（且账本还知道是谁写的），
 后者是字符串版本的 `applied.wysiwyg`。`docs/optimization-program.md` 里 Wave 3.2 的那条待办到此收口。
@@ -1415,10 +1417,10 @@ Wave 3 段的端到端断言（真实窗口里跑出来的）：flush 后立刻�
 本轮把 77 个套件统一改成**按结构认 pinia**（`prov[s]` 是对象且 `_s instanceof Map`），并把
 `t.url.includes('5173')` 换成 `index\.html|5173`。A/B 实测（对着 `out/` 构建产物的隔离实例）：
 
-| | 迁移前（HEAD 版本） | 迁移后 |
-| --- | --- | --- |
+|                                                 | 迁移前（HEAD 版本）                                                         | 迁移后     |
+| ----------------------------------------------- | --------------------------------------------------------------------------- | ---------- |
 | 19 个「只按 symbol 名字找、没有结构兜底」的套件 | **13 个直接崩**：`TypeError: Cannot read properties of null (reading '_s')` | **0 个崩** |
-| 其中端到端跑通（exit 0 且有真实输出） | 4 个 | 7 个 |
+| 其中端到端跑通（exit 0 且有真实输出）           | 4 个                                                                        | 7 个       |
 
 剩下的差异都不是 pinia 的问题：`_regress-*` 那几个用的是早已改名的旧选择器（`.mode-seg-btn`，
 现在是 `.seg-btn` / `role="tab"`），`_test-export-full.js` 需要 5173 上的 dev server。
@@ -1427,12 +1429,12 @@ Wave 3 段的端到端断言（真实窗口里跑出来的）：flush 后立刻�
 
 #### 五、本轮验收数字
 
-| 门禁 | 结果 |
-| --- | --- |
-| `npm run ci` | exit 0（**120/120** 单测，新增 `tests/contentSync.test.mjs` 9 条） |
-| `npx eslint .` | 0 error / 0 warning |
+| 门禁                       | 结果                                                                                               |
+| -------------------------- | -------------------------------------------------------------------------------------------------- |
+| `npm run ci`               | exit 0（**120/120** 单测，新增 `tests/contentSync.test.mjs` 9 条）                                 |
+| `npx eslint .`             | 0 error / 0 warning                                                                                |
 | `node tools/run-suites.js` | **9/9 套件 PASS**（新增 `_regress-split-live` 8 条：模式切换 / 右→左 / 左→右 / 账本收敛 / 切文件） |
-| `tools/_verify-wave3.js` | A 段 9 条（含账本作者、落后判定、代码块作者标记）|
+| `tools/_verify-wave3.js`   | A 段 9 条（含账本作者、落后判定、代码块作者标记）                                                  |
 
 #### 六、还剩什么（下一轮）
 
@@ -1484,12 +1486,12 @@ Wave 3 段的端到端断言（真实窗口里跑出来的）：flush 后立刻�
 
 **改法**（三处，都很小）：
 
-| 改动 | 位置 | 说明 |
-| --- | --- | --- |
-| 样式集合 | `MdStyle.attrs.styles: StyleKind[]` | 按固定顺序 `bold → strike → italic → code` 规范化（`styleList()`），顺序固定才能保证「同一份文档每次解析/序列化得到同一串标记」（幂等是套件硬门槛） |
-| DOM 呈现 | `MdStyle.renderHTML` | 只出一个元素：标签取集合里最外那个样式（`strong`/`s`/`em`/`code`），全部样式写进 `data-md-styles="bold code"`，其余样式的外观由 CSS 属性选择器补齐。**不能**渲染成嵌套的 `<strong><code>` —— DOM 回读时同类型 mark 后者会顶掉前者，样式丢失并触发回写 churn |
-| 标记物化 | `normalizeAtoms` + 新的 `materializeStyledRun()` | 按**样式栈**开关：相邻两段取样式集合的公共前缀保持不动，只开关差集 → 标记天然嵌套。单一样式时它退化成原来的「两边各一对」，所以既有行为不变 |
-| 放开互斥 | `CodeQuiet.extend({ excludes: '' })` | 上行默认 `excludes: '_'` 让行内代码排斥一切 mark，嵌套样式在**解析那一刻**就少一半 |
+| 改动     | 位置                                             | 说明                                                                                                                                                                                                                                                        |
+| -------- | ------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 样式集合 | `MdStyle.attrs.styles: StyleKind[]`              | 按固定顺序 `bold → strike → italic → code` 规范化（`styleList()`），顺序固定才能保证「同一份文档每次解析/序列化得到同一串标记」（幂等是套件硬门槛）                                                                                                         |
+| DOM 呈现 | `MdStyle.renderHTML`                             | 只出一个元素：标签取集合里最外那个样式（`strong`/`s`/`em`/`code`），全部样式写进 `data-md-styles="bold code"`，其余样式的外观由 CSS 属性选择器补齐。**不能**渲染成嵌套的 `<strong><code>` —— DOM 回读时同类型 mark 后者会顶掉前者，样式丢失并触发回写 churn |
+| 标记物化 | `normalizeAtoms` + 新的 `materializeStyledRun()` | 按**样式栈**开关：相邻两段取样式集合的公共前缀保持不动，只开关差集 → 标记天然嵌套。单一样式时它退化成原来的「两边各一对」，所以既有行为不变                                                                                                                 |
+| 放开互斥 | `CodeQuiet.extend({ excludes: '' })`             | 上行默认 `excludes: '_'` 让行内代码排斥一切 mark，嵌套样式在**解析那一刻**就少一半                                                                                                                                                                          |
 
 顺带把「按标记配对找构造」的那段扫描改成**深度计数**（`start` +1 / `end` -1），否则外层 `**` 会在
 遇到内层的 `` ` `` 时以为「缺 end」而补一个 `**`，把构造劈成两半 —— 这正是旧的扁平物化写法。
@@ -1527,12 +1529,12 @@ front matter 存在组件 ref 或 store 单独字段里就又出现两处表示 
 
 #### 三、本轮验收数字
 
-| 门禁 | 结果 |
-| --- | --- |
-| `npm run ci` | exit 0（**131/131** 单测：新增 `tests/frontmatter.test.mjs` 11 条） |
-| `npx eslint .` | 0 error / 0 warning |
-| `_verify-md-fidelity.js` | **81 PASS / 0 FAIL / 13 SKIP**（94 条断言；Wave 1 缺口从 8 个减到 6 个） |
-| `node tools/run-suites.js` | 见下一节（矩阵全绿） |
+| 门禁                       | 结果                                                                     |
+| -------------------------- | ------------------------------------------------------------------------ |
+| `npm run ci`               | exit 0（**131/131** 单测：新增 `tests/frontmatter.test.mjs` 11 条）      |
+| `npx eslint .`             | 0 error / 0 warning                                                      |
+| `_verify-md-fidelity.js`   | **81 PASS / 0 FAIL / 13 SKIP**（94 条断言；Wave 1 缺口从 8 个减到 6 个） |
+| `node tools/run-suites.js` | 见下一节（矩阵全绿）                                                     |
 
 **还剩什么**：`table`（列对齐 + 单元格转义竖线）、`html-inline`、`task-lists-ordered`、
 `lists-adjacent-ordered`、`images-inline`、`images-linked` 六个缺口，按内容损坏严重度继续收（下一轮）。
@@ -1567,10 +1569,10 @@ Markdown 允许直接嵌 HTML，而 ProseMirror 的 DOMParser **只认识 schema
 
 解法与 `MdEscape`、front matter 同一套：在 markdown-it 那一层认领（`lib/editor/htmlPassthrough.ts`）：
 
-| 形态 | 进模型 | 写回 |
-| --- | --- | --- |
+| 形态                        | 进模型                                                                  | 写回     |
+| --------------------------- | ----------------------------------------------------------------------- | -------- |
 | 行内（`html_inline` token） | `<span data-md-html>` → `MdHtml` mark（open/close 空 + `escape:false`） | 逐字写回 |
-| 块级（`html_block` token） | `<pre data-md-htmlblock>` → `HtmlBlock` 原子节点 | 原样写回 |
+| 块级（`html_block` token）  | `<pre data-md-htmlblock>` → `HtmlBlock` 原子节点                        | 原样写回 |
 
 **两个踩到的坑**（都写进代码注释了）：
 
@@ -1601,13 +1603,13 @@ WYSIWYG 里行内 HTML **按源码显示**（淡色等宽）：把任意 HTML �
 
 #### 四、本轮验收数字
 
-| 门禁 | 结果 |
-| --- | --- |
-| `npm run ci` | exit 0（**137/137** 单测） |
-| `npx eslint .` | 0 error / 0 warning |
-| `_verify-md-fidelity.js` | **94 PASS / 0 FAIL / 5 SKIP**（99 条断言） |
-| `node tools/run-suites.js` | 见矩阵（全绿） |
-| 夹具分级 | exact **13** / normalized **16** / lossy **2**（四轮累计：8 → 6 → 4 → 2） |
+| 门禁                       | 结果                                                                      |
+| -------------------------- | ------------------------------------------------------------------------- |
+| `npm run ci`               | exit 0（**137/137** 单测）                                                |
+| `npx eslint .`             | 0 error / 0 warning                                                       |
+| `_verify-md-fidelity.js`   | **94 PASS / 0 FAIL / 5 SKIP**（99 条断言）                                |
+| `node tools/run-suites.js` | 见矩阵（全绿）                                                            |
+| 夹具分级                   | exact **13** / normalized **16** / lossy **2**（四轮累计：8 → 6 → 4 → 2） |
 
 #### 五、还剩什么（下一轮）
 
@@ -1629,21 +1631,21 @@ WYSIWYG 里行内 HTML **按源码显示**（淡色等宽）：把任意 HTML �
 
 **改法**：`Image.configure({ inline: true })`。三处配套调整：
 
-| 位置 | 调整 | 为什么 |
-| --- | --- | --- |
-| `extensions.ts` | 删掉自定义的块级 markdown 序列化器（原来补了 `closeBlock`） | 那个序列化器是为了解决「块级图片黏成一行 / 吞掉下一个标题」；行内之后图片在段落里，段落自己负责换行，直接用 tiptap-markdown 的默认实现（prosemirror-markdown 的 image 规则：alt 转义、src 括号转义、title 引号） |
-| `style.css` | `img` 默认 `display: inline-block` + `vertical-align: middle`；`p > img:only-child` 才 `display: block; margin: .4em auto` | 「独立成段的图片」观感与改之前**完全一致**（居中、独占一行），而段落中间的图片不再把段落拆开 |
-| `style.css` | 删掉文件后部**重复的一份** `.md-preview img` 规则 | 它位置更靠后、会覆盖上面的行内排版（重复定义本来就是个隐患） |
+| 位置            | 调整                                                                                                                       | 为什么                                                                                                                                                                                                           |
+| --------------- | -------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `extensions.ts` | 删掉自定义的块级 markdown 序列化器（原来补了 `closeBlock`）                                                                | 那个序列化器是为了解决「块级图片黏成一行 / 吞掉下一个标题」；行内之后图片在段落里，段落自己负责换行，直接用 tiptap-markdown 的默认实现（prosemirror-markdown 的 image 规则：alt 转义、src 括号转义、title 引号） |
+| `style.css`     | `img` 默认 `display: inline-block` + `vertical-align: middle`；`p > img:only-child` 才 `display: block; margin: .4em auto` | 「独立成段的图片」观感与改之前**完全一致**（居中、独占一行），而段落中间的图片不再把段落拆开                                                                                                                     |
+| `style.css`     | 删掉文件后部**重复的一份** `.md-preview img` 规则                                                                          | 它位置更靠后、会覆盖上面的行内排版（重复定义本来就是个隐患）                                                                                                                                                     |
 
 **验收**（三个图片夹具全部 `exact` 且幂等，Wave 1 的 8 个缺口清零）：
 
-| 门禁 | 结果 |
-| --- | --- |
-| `npm run ci` | exit 0（**137/137** 单测） |
-| `npx eslint .` | 0 error / 0 warning |
-| `_verify-md-fidelity.js` | **100 PASS / 0 FAIL / 1 SKIP**（101 条断言；唯一 SKIP 是文档化的字节级行为「保存补文末换行」） |
-| `node tools/run-suites.js` | 9/9 套件 PASS |
-| 夹具分级 | exact **15** / normalized **16** / lossy **0**（四轮累计 lossy：8 → 6 → 4 → 2 → **0**） |
+| 门禁                       | 结果                                                                                           |
+| -------------------------- | ---------------------------------------------------------------------------------------------- |
+| `npm run ci`               | exit 0（**137/137** 单测）                                                                     |
+| `npx eslint .`             | 0 error / 0 warning                                                                            |
+| `_verify-md-fidelity.js`   | **100 PASS / 0 FAIL / 1 SKIP**（101 条断言；唯一 SKIP 是文档化的字节级行为「保存补文末换行」） |
+| `node tools/run-suites.js` | 9/9 套件 PASS                                                                                  |
+| 夹具分级                   | exact **15** / normalized **16** / lossy **0**（四轮累计 lossy：8 → 6 → 4 → 2 → **0**）        |
 
 新增 M 段 2 条端到端断言：段落中间的图片与文字仍在**同一个**段落里；`[![…](…)](url)`
 的两个图片都带着 link mark（外层链接没丢）。
@@ -1658,11 +1660,11 @@ WYSIWYG 里行内 HTML **按源码显示**（淡色等宽）：把任意 HTML �
 
 **边界**（这是这次拆分的关键取舍）：
 
-| 归属 | 放哪 | 理由 |
-| --- | --- | --- |
-| 「列表怎么变」（去重、置顶优先、截断、并入当前工作区） | `lib/recent.ts` 纯函数（**已有单测**） | 规则易测、无状态 |
-| 「把结果落盘 + 给 UI 排好序的视图」 | 新 `stores/recent.ts` | 只做这两件事，94 行 |
-| 数据本身 | 仍在 `settings`（SQLite kv） | **键名不变 ⇒ 升级不需要迁移**，既有套件（`_verify-session` 等断言 `settings.recentFiles`）也不用改 |
+| 归属                                                   | 放哪                                   | 理由                                                                                               |
+| ------------------------------------------------------ | -------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| 「列表怎么变」（去重、置顶优先、截断、并入当前工作区） | `lib/recent.ts` 纯函数（**已有单测**） | 规则易测、无状态                                                                                   |
+| 「把结果落盘 + 给 UI 排好序的视图」                    | 新 `stores/recent.ts`                  | 只做这两件事，94 行                                                                                |
+| 数据本身                                               | 仍在 `settings`（SQLite kv）           | **键名不变 ⇒ 升级不需要迁移**，既有套件（`_verify-session` 等断言 `settings.recentFiles`）也不用改 |
 
 两个设计细节：
 
@@ -1692,11 +1694,11 @@ CSS 变量），所以不存在「另一份主题文件也要同步属性选择�
 
 #### 三、本轮验收数字
 
-| 门禁 | 结果 |
-| --- | --- |
-| `npm run ci` | exit 0（**137/137** 单测） |
-| `npx eslint .` | 0 error / 0 warning |
-| `_verify-md-fidelity.js` | **101 PASS / 0 FAIL / 1 SKIP**（102 条断言） |
+| 门禁                       | 结果                                                                 |
+| -------------------------- | -------------------------------------------------------------------- |
+| `npm run ci`               | exit 0（**137/137** 单测）                                           |
+| `npx eslint .`             | 0 error / 0 warning                                                  |
+| `_verify-md-fidelity.js`   | **101 PASS / 0 FAIL / 1 SKIP**（102 条断言）                         |
 | `node tools/run-suites.js` | **9/9 套件 PASS**（`_verify-session` 仍绿 ⇒ recentFiles 数据键未变） |
 
 ### 4.64 老套件迁移（一）：`_regress-*` 全部 + 最有价值的 `_repro-*`（本次）
@@ -1706,14 +1708,14 @@ CSS 变量），所以不存在「另一份主题文件也要同步属性选择�
 `tools/` 下有 92 个 `_*.js` 脚本，此前**只有 9 个**用公共骨架（`lib/harness.js`），其余各自抄了一遍
 「连 CDP → 找页面 → attach → 注入 store 访问器 → 敲键盘」。本轮把「回归守卫」这一类整批收口：
 
-| 套件 | 断言 | 守什么 |
-| --- | --- | --- |
-| `_regress-layout.js` | 9 | 常驻布局：代码块可聚焦可输入 / 「渲染→分屏→源码→渲染」光标比例保持 / 源码回灌 / `instance=null` / 大纲联动 |
-| `_regress-cb.js` | 3 | 代码块打字 + 回车换行 / 空代码块退格删除 / 段落退格入块尾 |
-| `_regress-divider.js` | 4 | 分屏分隔条拖拽改比例 / 双击复位 / 比例写进设置 |
-| `_regress-fileswitch.js` | 5 | 切文件（`:key` 重建）与「**源码模式下**切文件」 |
-| `_regress-source-roundtrip.js` | 4 | 源码模式往返后代码块仍可聚焦可输入 |
-| `_repro-rapidenter.js` | 4 | 快速连续回车不丢行（CM 可见行 / PM 行 / **store 正文行**三处一致） |
+| 套件                           | 断言 | 守什么                                                                                                     |
+| ------------------------------ | ---- | ---------------------------------------------------------------------------------------------------------- |
+| `_regress-layout.js`           | 9    | 常驻布局：代码块可聚焦可输入 / 「渲染→分屏→源码→渲染」光标比例保持 / 源码回灌 / `instance=null` / 大纲联动 |
+| `_regress-cb.js`               | 3    | 代码块打字 + 回车换行 / 空代码块退格删除 / 段落退格入块尾                                                  |
+| `_regress-divider.js`          | 4    | 分屏分隔条拖拽改比例 / 双击复位 / 比例写进设置                                                             |
+| `_regress-fileswitch.js`       | 5    | 切文件（`:key` 重建）与「**源码模式下**切文件」                                                            |
+| `_regress-source-roundtrip.js` | 4    | 源码模式往返后代码块仍可聚焦可输入                                                                         |
+| `_repro-rapidenter.js`         | 4    | 快速连续回车不丢行（CM 可见行 / PM 行 / **store 正文行**三处一致）                                         |
 
 它们**此前全部发红**，原因不是产品坏了，而是套件自己过期：按中文按钮文字找 `.mode-seg-btn`
 （现在是 `role="tablist"` + 三个 `role="tab"`，且文案可本地化 —— 换语言就整轮跑不了）。
@@ -1746,25 +1748,25 @@ CSS 变量），所以不存在「另一份主题文件也要同步属性选择�
 
 #### 四、剩下 83 个脚本的定位（写清楚，免得后来人以为是死代码）
 
-| 类别 | 例子 | 定位 |
-| --- | --- | --- |
-| 回归守卫（已迁） | `_regress-*`、`_repro-rapidenter` | **进矩阵**，`--- N/M PASS` 机器聚合 |
-| 一次性复现/观察脚本 | `_repro-backspace-after-cb`、`_repro-cb-delete2`、`_repro-heading-cm*`、`_check-*`、`_exp-*` | 当年查某个具体 bug 时的探针，**需要人读输出**，不是断言套件；留着是因为它们记录了「当时怎么看到的」 |
-| 测量/基准 | `_measure-latency`、`_startup-bench`、`_time-close` | 量性能，输出是数字不是 PASS/FAIL |
-| 截图/手工触发 | `_shot-heading-badge`、`_trigger-export`、`_set-windowstate` | 配合人工检查 |
-| 老 `_verify-*` 套件（约 57 个） | `_verify-toc`、`_verify-links`、`_verify-notifications`… | **能跑**（各自打印 `--- N/M PASS`，矩阵能聚合），但仍自带一份 CDP 样板；按「**改到谁就顺手迁谁**」继续收口，一次全迁风险大于收益 |
+| 类别                            | 例子                                                                                         | 定位                                                                                                                             |
+| ------------------------------- | -------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| 回归守卫（已迁）                | `_regress-*`、`_repro-rapidenter`                                                            | **进矩阵**，`--- N/M PASS` 机器聚合                                                                                              |
+| 一次性复现/观察脚本             | `_repro-backspace-after-cb`、`_repro-cb-delete2`、`_repro-heading-cm*`、`_check-*`、`_exp-*` | 当年查某个具体 bug 时的探针，**需要人读输出**，不是断言套件；留着是因为它们记录了「当时怎么看到的」                              |
+| 测量/基准                       | `_measure-latency`、`_startup-bench`、`_time-close`                                          | 量性能，输出是数字不是 PASS/FAIL                                                                                                 |
+| 截图/手工触发                   | `_shot-heading-badge`、`_trigger-export`、`_set-windowstate`                                 | 配合人工检查                                                                                                                     |
+| 老 `_verify-*` 套件（约 57 个） | `_verify-toc`、`_verify-links`、`_verify-notifications`…                                     | **能跑**（各自打印 `--- N/M PASS`，矩阵能聚合），但仍自带一份 CDP 样板；按「**改到谁就顺手迁谁**」继续收口，一次全迁风险大于收益 |
 
 顺带把「迁移后仍可能发红的两类坑」写进 README：`build` 之后必须让实例重新加载；
 手工探针连 9222 前先确认端口上没有上一轮的旧实例（否则验证的是改动前的代码）。
 
 #### 五、本轮验收数字
 
-| 门禁 | 结果 |
-| --- | --- |
-| `npm run ci` | exit 0（**137/137** 单测） |
-| `npx eslint .` | 0 error / 0 warning |
+| 门禁                       | 结果                                                                                                                                                                        |
+| -------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `npm run ci`               | exit 0（**137/137** 单测）                                                                                                                                                  |
+| `npx eslint .`             | 0 error / 0 warning                                                                                                                                                         |
 | `node tools/run-suites.js` | **15/15 套件 PASS**（新增 6 个：`_regress-layout` 9、`_regress-cb` 3、`_regress-divider` 4、`_regress-fileswitch` 5、`_regress-source-roundtrip` 4、`_repro-rapidenter` 4） |
-| `_verify-md-fidelity.js` | **101 PASS / 0 FAIL / 1 SKIP**（夹具 `code-fence.md` 新增「内容末尾带空行」一例） |
+| `_verify-md-fidelity.js`   | **101 PASS / 0 FAIL / 1 SKIP**（夹具 `code-fence.md` 新增「内容末尾带空行」一例）                                                                                           |
 
 #### 六、下一轮起点
 
@@ -1778,10 +1780,10 @@ CSS 变量），所以不存在「另一份主题文件也要同步属性选择�
 
 #### 一、结构：一份查询状态，两个编辑面各自算匹配
 
-| 面 | 在哪儿找 | 位置语义 |
-| --- | --- | --- |
+| 面                           | 在哪儿找                                                  | 位置语义 |
+| ---------------------------- | --------------------------------------------------------- | -------- |
 | `wysiwyg`（实时渲染 / 分屏） | ProseMirror 文档，**按块**找（`lib/editor/findInDoc.ts`） | 文档位置 |
-| `source`（源码模式） | `files.current.content`（= textarea 的值） | 字符偏移 |
+| `source`（源码模式）         | `files.current.content`（= textarea 的值）                | 字符偏移 |
 
 两边的匹配数可能不同（源码里有 `**` 这类标记字符，而文档里它们只是文本），所以计数显示的是
 **当前编辑面**的结果 —— 比显示一个对不上的数字诚实。纯逻辑（转义、查找、循环步进、替换计划、
@@ -1812,13 +1814,13 @@ CSS 变量），所以不存在「另一份主题文件也要同步属性选择�
 
 `tools/_verify-find-replace.js` **12 条**端到端断言：
 
-| 断言 | 覆盖 |
-| --- | --- |
-| F1 | Ctrl+F 打开查找栏 |
-| F2–F5 | 命中 4 处 + 自动选中第一个 + Enter/Shift+Enter 前进后退 + 首尾循环 |
-| F6 | `Aa` 区分大小写（命中数从 4 → 2） |
-| F7–F8 | 「替换」只改当前命中；「全部替换」改完剩下的（并落进 store） |
-| F9 | Esc 关闭 |
+| 断言    | 覆盖                                                                                       |
+| ------- | ------------------------------------------------------------------------------------------ |
+| F1      | Ctrl+F 打开查找栏                                                                          |
+| F2–F5   | 命中 4 处 + 自动选中第一个 + Enter/Shift+Enter 前进后退 + 首尾循环                         |
+| F6      | `Aa` 区分大小写（命中数从 4 → 2）                                                          |
+| F7–F8   | 「替换」只改当前命中；「全部替换」改完剩下的（并落进 store）                               |
+| F9      | Esc 关闭                                                                                   |
 | F10–F12 | 源码面：在 textarea 里找到并选中（**不抢输入框焦点**）、全部替换落进 store、切回渲染面同步 |
 
 #### 四、查找命中高亮与「命中处不露标记」（第二十四轮）
@@ -1836,20 +1838,20 @@ CSS 变量），所以不存在「另一份主题文件也要同步属性选择�
 
 两处必须踩准（都实测踩过）：
 
-* 装饰要**合并**返回：同一个插件 key 只有一份 `props.decorations`，命中高亮与显隐装饰
+- 装饰要**合并**返回：同一个插件 key 只有一份 `props.decorations`，命中高亮与显隐装饰
   必须 `add()` 到一起；分两个 key 会各算各的、后者覆盖前者。
-* 「查找态翻转」必须进**重建条件**：开/关查找栏既不改文档也不改选区，不认它的话关掉
+- 「查找态翻转」必须进**重建条件**：开/关查找栏既不改文档也不改选区，不认它的话关掉
   查找栏后标记会一直折叠着（实测 `revealed` 停在 0）。判据不能拿「setFindHit 里刚更新的
   那个模块量」比（永远相等），要用「上一次**真正重建显隐装饰**时用的值」。
 
 #### 四、本轮验收数字
 
-| 门禁 | 结果 |
-| --- | --- |
-| `npm run ci` | exit 0（**148/148** 单测：新增 `tests/findReplace.test.mjs` 11 条） |
-| `npx eslint .` | 0 error / 0 warning |
-| `node tools/run-suites.js` | **16/16 套件 PASS**（新增 `_verify-find-replace` 12 条） |
-| `_verify-md-fidelity.js` | 101 PASS / 0 FAIL / 1 SKIP（未受影响） |
+| 门禁                       | 结果                                                                |
+| -------------------------- | ------------------------------------------------------------------- |
+| `npm run ci`               | exit 0（**148/148** 单测：新增 `tests/findReplace.test.mjs` 11 条） |
+| `npx eslint .`             | 0 error / 0 warning                                                 |
+| `node tools/run-suites.js` | **16/16 套件 PASS**（新增 `_verify-find-replace` 12 条）            |
+| `_verify-md-fidelity.js`   | 101 PASS / 0 FAIL / 1 SKIP（未受影响）                              |
 
 #### 五、下一轮起点
 
@@ -1864,10 +1866,10 @@ CSS 变量），所以不存在「另一份主题文件也要同步属性选择�
 
 #### 一、两条链路，都遵守「标记文本即源码」
 
-| 形态 | 进文档 | 渲染 | 写回 |
-| --- | --- | --- | --- |
-| 行内 `$…$` | markdown-it 行内规则 → `<span data-md-math>` → 文本带 `MdMath` mark | 装饰：KaTeX 组件插在公式起点 + 原文加类折叠 | `MdMath`（open/close 空 + `escape:false`）**逐字写回** |
-| 块级 `$$…$$` | block 规则 → `<div data-md-math-block data-source=…>` → `MathBlock` 原子节点 | NodeView 里 `katex.renderToString` | 序列化写成多行形态（单行写法归一到它，保义） |
+| 形态         | 进文档                                                                       | 渲染                                        | 写回                                                   |
+| ------------ | ---------------------------------------------------------------------------- | ------------------------------------------- | ------------------------------------------------------ |
+| 行内 `$…$`   | markdown-it 行内规则 → `<span data-md-math>` → 文本带 `MdMath` mark          | 装饰：KaTeX 组件插在公式起点 + 原文加类折叠 | `MdMath`（open/close 空 + `escape:false`）**逐字写回** |
+| 块级 `$$…$$` | block 规则 → `<div data-md-math-block data-source=…>` → `MathBlock` 原子节点 | NodeView 里 `katex.renderToString`          | 序列化写成多行形态（单行写法归一到它，保义）           |
 
 行内之所以用**装饰**而不是自定义节点：模型里公式原文必须留在文档里，序列化才能逐字写回；
 「画成公式」是视图的事，正好是 ProseMirror 装饰的适用场景。交互与行内标记显隐同一套
@@ -1892,12 +1894,12 @@ CSS 变量），所以不存在「另一份主题文件也要同步属性选择�
 
 #### 三、验收
 
-| 门禁 | 结果 |
-| --- | --- |
-| `npm run ci` | exit 0（**157/157** 单测：新增 `tests/mathScan.test.mjs` 9 条） |
-| `npx eslint .` | 0 error / 0 warning |
-| `node tools/run-suites.js` | **17/17 套件 PASS**（新增 `_verify-math` 7 条） |
-| 夹具 | `math.md` 从 normalized 升到 **exact**（16 exact / 15 normalized / **0 lossy**） |
+| 门禁                       | 结果                                                                             |
+| -------------------------- | -------------------------------------------------------------------------------- |
+| `npm run ci`               | exit 0（**157/157** 单测：新增 `tests/mathScan.test.mjs` 9 条）                  |
+| `npx eslint .`             | 0 error / 0 warning                                                              |
+| `node tools/run-suites.js` | **17/17 套件 PASS**（新增 `_verify-math` 7 条）                                  |
+| 夹具                       | `math.md` 从 normalized 升到 **exact**（16 exact / 15 normalized / **0 lossy**） |
 
 `_verify-math.js` 的 7 条断言：原文进文档（含定界符）/ 行内渲染成 KaTeX 且原文折叠 /
 块级成为 `mathBlock` 且渲染成 display 公式 / 下划线与星号没被当斜体加粗 / 落进 store 的正文逐字 /
@@ -1924,10 +1926,10 @@ if (!app.requestSingleInstanceLock()) app.quit()
 
 两个事实，都是实测出来的（第二个已固化成套件里的对照项）：
 
-| 事实 | 怎么测的 | 结果 |
-| --- | --- | --- |
-| 锁本身没问题 | 首个实例在跑时，用同一条代码路径调 `requestSingleInstanceLock()` | `false` —— userData 一致，认得出对方 |
-| `app.quit()` 在 ready 前**不**跳过启动流程 | 最小脚本：`app.whenReady().then(打印)` + `app.quit()` | ready 一到打印照跑 → 回调没被跳过 |
+| 事实                                       | 怎么测的                                                         | 结果                                 |
+| ------------------------------------------ | ---------------------------------------------------------------- | ------------------------------------ |
+| 锁本身没问题                               | 首个实例在跑时，用同一条代码路径调 `requestSingleInstanceLock()` | `false` —— userData 一致，认得出对方 |
+| `app.quit()` 在 ready 前**不**跳过启动流程 | 最小脚本：`app.whenReady().then(打印)` + `app.quit()`            | ready 一到打印照跑 → 回调没被跳过    |
 
 于是第二个进程照样走完 `whenReady`：开 SQLite、写设置、建窗口、装菜单、拉 GPU 进程。它与首个实例
 共用同一个 userData，Chromium 磁盘缓存被两边同时写：`Unable to move the cache: 拒绝访问。(0x5)`、
@@ -1968,11 +1970,11 @@ if (!app.requestSingleInstanceLock()) app.quit()
 
 「先认出控制台、再交给 Node 转码（WriteConsoleW）」这条路走不通，全是实测：
 
-| 想用的信号 | 实测结果 |
-| --- | --- |
-| `process.stderr.isTTY` | 真实控制台与管道下**都是 `undefined`**；Electron 自己把这条 spec 标成「on some machines 不可靠」压掉了（[electron/electron@62b1034](https://github.com/electron/electron/commit/62b1034c6be9a0590d3cea8978927e67650b0a08)） |
-| `new tty.WriteStream(2)` | 控制台侧 `ERR_TTY_INIT_FAILED`（`uv_tty_init` 返回 EPERM）、管道侧同样失败（EBADF） |
-| 子进程 `[Console]::IsOutputRedirected` | 两种落点都是 `True` —— 连「有没有控制台」都问不出来（Electron 是 GUI 子系统进程，`stdio: 'inherit'` 拿到的句柄类型不可信） |
+| 想用的信号                             | 实测结果                                                                                                                                                                                                                    |
+| -------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `process.stderr.isTTY`                 | 真实控制台与管道下**都是 `undefined`**；Electron 自己把这条 spec 标成「on some machines 不可靠」压掉了（[electron/electron@62b1034](https://github.com/electron/electron/commit/62b1034c6be9a0590d3cea8978927e67650b0a08)） |
+| `new tty.WriteStream(2)`               | 控制台侧 `ERR_TTY_INIT_FAILED`（`uv_tty_init` 返回 EPERM）、管道侧同样失败（EBADF）                                                                                                                                         |
+| 子进程 `[Console]::IsOutputRedirected` | 两种落点都是 `True` —— 连「有没有控制台」都问不出来（Electron 是 GUI 子系统进程，`stdio: 'inherit'` 拿到的句柄类型不可信）                                                                                                  |
 
 探测不可靠，就只能让**内容**不依赖探测：**提示改成纯 ASCII**（英文）。ASCII 在任意代码页、
 管道、日志文件里都是对的；而提示的关键信息本来就是命令（`npm run dev:isolated` / 先关掉再
@@ -1988,11 +1990,11 @@ if (!app.requestSingleInstanceLock()) app.quit()
 
 #### 四、验收
 
-| 门禁 | 结果 |
-| --- | --- |
-| `npm run ci` | exit 0（**159/159** 单测：新增 `tests/mainConsoleAscii.test.mjs` 2 条） |
-| `npx eslint .` | 0 error / 0 warning |
-| `node tools/run-suites.js` | **18/18 套件 PASS**（`_verify-single-instance` **14/14**） |
+| 门禁                                                    | 结果                                                                       |
+| ------------------------------------------------------- | -------------------------------------------------------------------------- |
+| `npm run ci`                                            | exit 0（**159/159** 单测：新增 `tests/mainConsoleAscii.test.mjs` 2 条）    |
+| `npx eslint .`                                          | 0 error / 0 warning                                                        |
+| `node tools/run-suites.js`                              | **18/18 套件 PASS**（`_verify-single-instance` **14/14**）                 |
 | 现场复现（同一个 userData 再起一个实例；`npm run dev`） | 四行 ASCII 提示可读、**exit 0**、~0.2s（整条 dev 命令 1314ms）、无缓存报错 |
 
 `tools/_verify-single-instance.js` 自己起「首个实例 + 第二个实例」（独立 userData + 独立调试端口 9231，
@@ -2014,13 +2016,13 @@ if (!app.requestSingleInstanceLock()) app.quit()
 
 #### 一、怎么测（五层，快反馈在下）
 
-| 层 | 位置 | 说明 |
-| --- | --- | --- |
-| L0 纯函数性质 | `tests/*.test.mjs`（进 `ci`） | 生成器可信（种子确定/追加稳定/构造全覆盖/最坏随机源不抛）+ 判据本身不许误报漏报 |
-| L1 黄金夹具 | `_verify-md-fidelity.js` | 31 份夹具三层断言（本轮 101 PASS / 1 SKIP） |
-| L2 双面矩阵 | `_verify-surfaces.js` | 30 条：切面无副作用、textarea = 真源、文档树签名同构、光标语义、dirty/撤销/保存、13 条渲染结构、分屏同世代 |
-| L3 生成式 fuzz | `_verify-surface-fuzz.js` | 60 篇随机组合语料 × 5 类不变量；失败按块/行贪心最小化，给**最小复现** |
-| L4 极端/压力 | `_verify-surface-stress.js` | 12 个用例 × 6 类断言（不崩/结构/切面/内容/三处耗时基线） |
+| 层             | 位置                          | 说明                                                                                                       |
+| -------------- | ----------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| L0 纯函数性质  | `tests/*.test.mjs`（进 `ci`） | 生成器可信（种子确定/追加稳定/构造全覆盖/最坏随机源不抛）+ 判据本身不许误报漏报                            |
+| L1 黄金夹具    | `_verify-md-fidelity.js`      | 31 份夹具三层断言（本轮 101 PASS / 1 SKIP）                                                                |
+| L2 双面矩阵    | `_verify-surfaces.js`         | 30 条：切面无副作用、textarea = 真源、文档树签名同构、光标语义、dirty/撤销/保存、13 条渲染结构、分屏同世代 |
+| L3 生成式 fuzz | `_verify-surface-fuzz.js`     | 60 篇随机组合语料 × 5 类不变量；失败按块/行贪心最小化，给**最小复现**                                      |
+| L4 极端/压力   | `_verify-surface-stress.js`   | 12 个用例 × 6 类断言（不崩/结构/切面/内容/三处耗时基线）                                                   |
 
 三个决定「这套测试能不能信」的设计：**文档树签名**（比两棵 PM 树是否同构，抓「计数一样但位置变了」）、
 **哨兵词**（生成器埋在可见文本里的唯一词，抓吃掉/截断，并能指出丢的是哪一段）、
@@ -2038,12 +2040,12 @@ if (!app.requestSingleInstanceLock()) app.quit()
 
 #### 三、不够好的地方（登记在案）
 
-* **性能**：977KB 文档装载/回灌各 ~16s；2000 个围栏代码块（仅 56KB）装载 ~52s；100 代码块 + 100 表
+- **性能**：977KB 文档装载/回灌各 ~16s；2000 个围栏代码块（仅 56KB）装载 ~52s；100 代码块 + 100 表
   的 98KB 混合文档 ~34s。耗时集中在装载（解析 + 建节点 + 挂编辑器），块数相关的成本线性膨胀 ——
   头号嫌疑是「每个代码块都挂一个 CodeMirror 实例」，建议虚拟化。三条都已立耗时基线守卫。
-* **边角语义**（fuzz 抓到）：空引用代码块内容从空串变一个换行；CR 行尾 + 引用的空行展开与 setext 重排；
+- **边角语义**（fuzz 抓到）：空引用代码块内容从空串变一个换行；CR 行尾 + 引用的空行展开与 setext 重排；
   纯文本下划线补转义（保义但改字节）；HR 与 setext 歧义处结构重排。
-* **测试基建**：`_verify-find-replace.js` 在**成套连跑**时 10/12、单独跑 12/12 → 测试隔离/时序问题
+- **测试基建**：`_verify-find-replace.js` 在**成套连跑**时 10/12、单独跑 12/12 → 测试隔离/时序问题
   （S4，非产品回归），需要加固。
 
 #### 四、验收数字
@@ -2141,14 +2143,14 @@ if (!app.requestSingleInstanceLock()) app.quit()
   于是文件里是显式转义、重开仍是**字面文本**（不会变分割线/围栏），而且**跨编辑器一致**
   （别的 Markdown 编辑器也渲染成字面星号）；实时编辑完全不受影响（转义只发生在落盘那一刻）。
   刻意排除的边界（都写进了实现与单测，避免误伤）：
-  * **反引号代码围栏及其内部内容**（围栏本身就是三个以上反引号，和「整行标记」长得一样；
+  - **反引号代码围栏及其内部内容**（围栏本身就是三个以上反引号，和「整行标记」长得一样；
     围栏里的行是代码内容，改一个字节都不行）→ 扫描时维护「是否在围栏内」的状态。
     只认反引号围栏：本仓库的序列化器（CodeBlock / `codeFenceFor`）只写反引号围栏，
     波浪线整行只会出现在正文里（`~~~~` 正是要转义的那种）；
-  * **原样写回的节点**（HTML 块 / 公式块 / front matter，`attrs.source`）里的行全部跳过
+  - **原样写回的节点**（HTML 块 / 公式块 / front matter，`attrs.source`）里的行全部跳过
     —— 那是用户原文（`getMarkdown(ed)` 把它们作为 `protect` 集合传进去）；
-  * 有前导空白的行不动（缩进代码/续行）、行尾空白保留、`---`/`> `/`1. ` 不在集合里。
-  * **已知边界**：带容器前缀的整行（引用里的 `> ****`、列表项里的 `- ****`）不在本规则
+  - 有前导空白的行不动（缩进代码/续行）、行尾空白保留、`---`/`> `/`1. ` 不在集合里。
+  - **已知边界**：带容器前缀的整行（引用里的 `> ****`、列表项里的 `- ****`）不在本规则
     范围内（规则按「整行只由标记字符组成」判定）——需要时另开一轮按容器前缀处理。
 - 验收：单测 7 条（转义 / 不误伤 / 围栏 / protect / 缩进 / 行尾空白 / 幂等）；CDP 套件里
   两条真断言 —— `****` 行、`~~~~` 行「保存 → 重开」后**是 paragraph（不是
@@ -2165,7 +2167,7 @@ if (!app.requestSingleInstanceLock()) app.quit()
   3. **从磁盘装载同一份源码** → **同样**转义；
   4. 先打 `**2**` 再整段插入 `**2**` → 不转义。但它干净的原因是模型恰好成了
      「两个相邻 strong」（与 CommonMark 解析无关），不是「避开了输入中间态」。
-  ⇒ 报障时的两条推断（「输入中间态把标记锁成字面文本」「一次性写入/粘贴不会这样」）**都被证伪**。
+     ⇒ 报障时的两条推断（「输入中间态把标记锁成字面文本」「一次性写入/粘贴不会这样」）**都被证伪**。
 - **口径修正（本轮的关键判断）**：`**2****2**` 在 CommonMark 里**不是**
   `<strong>2</strong><strong>2</strong>`，而是**一个** `<strong>` 包住字面文本 `2****2`。
   依据是 §6.2 的「3 的倍数」规则：它只在参与配对的某一侧定界符串**同时能开能闭**时生效
@@ -2184,37 +2186,37 @@ if (!app.requestSingleInstanceLock()) app.quit()
   `` ` `` `*` `\` `~` `[` `]` `_` 一律补反斜杠）转义。
 - 改法：把**字面量化下沉到纯逻辑核心**，成为归一化的一步
   （`inlineMarkerCore.literalizeStrayAtoms`，在 `normalizeAtoms` 末尾跑）：
-  * 判据 = `splitStrayMarkerRuns()`：只有 `*` / `~` / `` ` `` 的**连续段**才可能被字面量化；
-  * 无样式正文 → `side:'literal'` 标记原子（原行为：原样序列化，且文本变了还能「配对重提升」）；
-  * **样式正文 → 切成独立原子并标 `verbatim`**（`fromAtoms` 给它贴 `MdEscape` 的
+  - 判据 = `splitStrayMarkerRuns()`：只有 `*` / `~` / `` ` `` 的**连续段**才可能被字面量化；
+  - 无样式正文 → `side:'literal'` 标记原子（原行为：原样序列化，且文本变了还能「配对重提升」）；
+  - **样式正文 → 切成独立原子并标 `verbatim`**（`fromAtoms` 给它贴 `MdEscape` 的
     `escape:false` → 逐字写回，反斜杠一个都不多）；
-  * **不动**的两类：行内代码正文（styles 含 `code`，本来就由 `MdCodeLiteral` 逐字写回）、
+  - **不动**的两类：行内代码正文（styles 含 `code`，本来就由 `MdCodeLiteral` 逐字写回）、
     带链接/下划线等 mark 的**无样式**文本（literal 标记挂不住那些 mark，硬切会把链接
     劈成 `[a](u)*[b](u)` —— 宁可保留那几个反斜杠，也绝不破坏结构）；
-  * 「重推触发判据」抽成 `needsSourceReparse()` 一并进核心并单测钉死 ——
+  - 「重推触发判据」抽成 `needsSourceReparse()` 一并进核心并单测钉死 ——
     **它就是「已字面化标记的重新评估」机制**：文本一变就把整段原文重新喂给 markdown-it，
     判定永远跟着 CommonMark 走。取证显示这条机制原本就在工作，不必另造一套「回滚字面量」。
 - 结果：键入 / 一次性写入 / 装载 `**2****2**` 都得到**与输入逐字节相同**的 `**2****2**`，
   实时渲染 = `<strong>2****2</strong>`（与 GitHub 一致）；同类 `**a * b**`、`*a**b*`、
   `**c****d**` 也不再被补反斜杠（此前分别写成 `**a \* b**`、`*a\*\*b*`）。
 - **顺带查出并修掉「粘贴路径丢字符」**（真实剪贴板 Ctrl+V，上一轮遗留的缺陷）：
-  * 现场：粘贴 `**2****2**` 落成 `**2**2**`（**少两个星号**）；粘贴 `**a * b**` 落成
+  - 现场：粘贴 `**2****2**` 落成 `**2**2**`（**少两个星号**）；粘贴 `**a * b**` 落成
     `**a  b*`。
-  * 定位：先用**真的系统剪贴板** + CDP Ctrl+V 复现（合成 `ClipboardEvent` 走不通：
+  - 定位：先用**真的系统剪贴板** + CDP Ctrl+V 复现（合成 `ClipboardEvent` 走不通：
     实测它被当纯文本直插，语义与真实粘贴不同）；再把同一 slice 用四种方式插入——
     只有加上 `paste` / `uiEvent` 两个 meta 才丢字符（不带 meta → `**2****2**`；
     带 meta → `**2**2**`），最后**忠实复刻 PM 的 appendTransaction 循环**，看到
     keyless 的插件（源码片段即 tiptap `markPasteRule` 的 appendTransaction）在
     `uiEvent === 'paste'` 时把那批定界符当语法消费掉。
-  * 根因：真实粘贴走 `clipboardTextParser`（markdown 解析）→ 得到「一个 legacy bold
+  - 根因：真实粘贴走 `clipboardTextParser`（markdown 解析）→ 得到「一个 legacy bold
     文本节点 `2****2`」，紧接着 tiptap 的 **mark 粘贴规则**又去「把 `**` 换成 mark」，
     字符就此消失（`extensions.ts` 的四个「安静版」mark 此前只关了
     `addInputRules` / `addKeyboardShortcuts`，漏了 `addPasteRules`）。
-  * 修法：四个安静版 mark 连 `addPasteRules` 一起关掉 —— 与 2026-09-16 关掉它们输入
+  - 修法：四个安静版 mark 连 `addPasteRules` 一起关掉 —— 与 2026-09-16 关掉它们输入
     规则**同一个理由**：本模型的样式由**标记文本**派生，任何「吃掉 `**` 换成 mark」
     的自动化都会删掉用户写下的字符；粘贴内容的 Markdown 语义由
     `markdownPaste.clipboardTextParser` + 派生归一化负责。
-  * 结果：真实粘贴 `**2****2**`、`**a * b**`、`**加粗**` 全部逐字节一致（套件新增
+  - 结果：真实粘贴 `**2****2**`、`**a * b**`、`**加粗**` 全部逐字节一致（套件新增
     真剪贴板断言，剪贴板前后保存/复原）。
 
 **六、转义反斜杠的观感：拆成两个 span + 按光标显隐（与 `**` 同一机制；本轮行为修订）**
@@ -2224,33 +2226,33 @@ if (!app.requestSingleInstanceLock()) app.quit()
 - 第一版（上一轮，已修订掉）：把反斜杠画成**暗色常显**。用户反馈：不该一直挂在屏幕上，
   应当**和加粗的 `**` 一样按光标显隐**；而且**连续多个转义要整体显隐**。
 - 现口径（本轮）：
-  * `MdEscape` 的 `renderHTML` 只能给出**一个** span（PM 里一个 mark 的内容洞是连续的，
+  - `MdEscape` 的 `renderHTML` 只能给出**一个** span（PM 里一个 mark 的内容洞是连续的，
     renderHTML 拆不开），所以在**装饰层**拆：`typoraInlineMarks.escapeDecorations()` 把
     `\X` 渲染成 `<span class="md-escape-backslash">\</span><span class="md-escape-char">X</span>`。
     一个文本节点里可能连着**好几处**转义（整行 `\*\*\*\*` 会被 PM 合并成一段），
     所以按字符走而不是只切第一个；
-  * 只对**真的以反斜杠开头**的 `MdEscape` 文本做：同一层 mark 还承担「冗余嵌套强调多出来
+  - 只对**真的以反斜杠开头**的 `MdEscape` 文本做：同一层 mark 还承担「冗余嵌套强调多出来
     那对定界符」的逐字写回（`literalSpan('**')`，内容里**没有**反斜杠），那是字面标记、
     不是转义，不该被画成暗色；
-  * **显隐复用 `.md-marker` 那一套机制与判据**（不另造 CSS）：反斜杠 span 默认
+  - **显隐复用 `.md-marker` 那一套机制与判据**（不另造 CSS）：反斜杠 span 默认
     `font-size: 0`（零占位折叠，**不用 `display:none`** —— 那会破坏浏览器光标导航与命中，
     与 `.md-marker` 的取舍一致）；光标/选区落在该转义段内（或紧贴段的两端）时，
     装饰给**同一个 span** 加上 `.md-reveal-inline`（`class="md-escape-backslash
-    md-reveal-inline"`）→ 字号恢复 `inherit` + 暗色 `--ink-3` + 与 `.md-marker` 同一条
+md-reveal-inline"`）→ 字号恢复 `inherit` + 暗色 `--ink-3` + 与 `.md-marker` 同一条
     `md-marker-in` 淡入动画（避免过场跳字）；
-  * 判据与 `buildRevealDecorations` 里的 mdMarker 构造**逐字一致**：
+  - 判据与 `buildRevealDecorations` 里的 mdMarker 构造**逐字一致**：
     `from <= run.end && to >= run.start`（左右边界均含）。**边界口径**：光标**紧贴**转义段
     两端（`|\*…`、`…*|`）也算「在该构造内」⇒ 显示 —— 与 `**x**` 的光标贴着 `**` 两端时
     标记同样显示完全一致，用户在段首/段尾接着编辑时不会出现「刚打完就看不见」；
-  * **连续转义段整体显隐**（本次要求的核心）：`collectEscapeRuns()` 把「后一个转义单元的反斜杠
+  - **连续转义段整体显隐**（本次要求的核心）：`collectEscapeRuns()` 把「后一个转义单元的反斜杠
     紧跟前一个被转义字符末尾」的单元并成**一段** —— `\*\*\*\*` 的 8 个字符两两相接 = **1 段
     4 个**，光标在段内任一位置 ⇒ 4 个反斜杠**同时**显示 / 同时折叠；中间隔着别的字符就断开，
     `\* \*`（空格）= **2 段**，只显示光标所在那一段。与「一对 `**` + 正文当作一个构造整体显隐」
     同一个思路，只是这里的「构造」是一段连续的转义；
-  * `data-md-escape` 仍由 `MdEscape.renderHTML` 承载（解析规则与既有套件依赖它，语义未变），
+  - `data-md-escape` 仍由 `MdEscape.renderHTML` 承载（解析规则与既有套件依赖它，语义未变），
     `doc.textContent`、模型与落盘字节都不变（拆的、藏的只是渲染层）；
-  * 被转义的字面字符本身（`.md-escape-char`）**始终**正常显示（`color: inherit`）。
-  * **只有「真转义」折叠**（本轮第二处口径判断）：「真转义」= `\` + **ASCII 标点**，
+  - 被转义的字面字符本身（`.md-escape-char`）**始终**正常显示（`color: inherit`）。
+  - **只有「真转义」折叠**（本轮第二处口径判断）：「真转义」= `\` + **ASCII 标点**，
     判据直接复用文件里既有的 `ASCII_PUNCT` 常量（即 `ESCAPED_PUNCT_RE` 用的那一份，
     CommonMark 的可转义集合）。原因是一条**实测出来的**边界：`C:\Users\x` 这类 Windows
     路径在装载路径上**同样是 `MdEscape` 文本节点**（`patchEscapeRule` 的分支 ③ 把不可
@@ -2259,19 +2261,19 @@ if (!app.requestSingleInstanceLock()) app.quit()
     `\X`（含孤立反斜杠、`\` + 空格）一律常显：装饰永远给它 `.md-reveal-inline`（复用同一个
     显隐类的「已展开」态，不新造机制），cursor 进出一律不变。取舍方向是**宁可多显示一个
     反斜杠，也绝不把内容藏起来**；
-  * 样式 `style.css`：`.md-escape-backslash { font-size: 0; color: var(--ink-3) }` +
+  - 样式 `style.css`：`.md-escape-backslash { font-size: 0; color: var(--ink-3) }` +
     `.md-escape-backslash.md-reveal-inline { font-size: inherit; animation: md-marker-in … }`、
     `.md-escape-char { color: inherit }`。`--ink-3` 三套主题各自定义，实测反斜杠色与
     正文色都不同：light `rgb(138,145,158)` vs `rgb(32,36,43)`、dark `rgb(109,116,131)` vs
     `rgb(232,234,239)`、sepia `rgb(165,148,122)` vs `rgb(74,59,42)`。
 - 验收：套件断言 `\*\*\*\*` 拆出 **4 个反斜杠 span + 4 个字面字符 span**、`data-md-escape`
   包裹仍在、**光标在别段 ⇒ 反斜杠折叠不可见**（`font-size: 0` + rect 宽 0 + `display ≠ none`
-  + `visibility: visible`，与 `.md-marker` 隐藏态**同一口径**）、**光标落在段内三处
-  （第一处 / 最后一处 / 选中整段）⇒ 4 个同时可见且暗色**、**连续段整体性**（`\*\*\*\*`
-  光标在 7 个位置都 4 个同显、紧贴段两端也显示）、**两段 `\* \*` 各显各的**（含「光标落在
-  中间空格上只显第 1 段」的边界）、**键盘 ←/→ 跨段边界显隐正确切换**、三主题各两条
-  （折叠 + 显示暗色）、`textContent` 与落盘字节不变、实时键入的 `\*` 同样拆两个 span 且
-  光标移出即折叠、**非标点 `\X`（`C:\a\b`）光标在段外/段内都常显且字节不变**。
+  - `visibility: visible`，与 `.md-marker` 隐藏态**同一口径**）、**光标落在段内三处
+    （第一处 / 最后一处 / 选中整段）⇒ 4 个同时可见且暗色**、**连续段整体性**（`\*\*\*\*`
+    光标在 7 个位置都 4 个同显、紧贴段两端也显示）、**两段 `\* \*` 各显各的**（含「光标落在
+    中间空格上只显第 1 段」的边界）、**键盘 ←/→ 跨段边界显隐正确切换**、三主题各两条
+    （折叠 + 显示暗色）、`textContent` 与落盘字节不变、实时键入的 `\*` 同样拆两个 span 且
+    光标移出即折叠、**非标点 `\X`（`C:\a\b`）光标在段外/段内都常显且字节不变**。
 
 **剩下的已知限制（已定口径：保持现状 + 登记后续任务，不引入膨胀链）**
 
@@ -2285,17 +2287,18 @@ if (!app.requestSingleInstanceLock()) app.quit()
 
 **回归**：`tests/inlineMarkers.test.mjs`（30 条纯逻辑单测：标记对落点 / 归一化光标落点 /
 手打标记识别与字面量化 / **字面量化判据 + 重推判据 + 幂等** / 冗余嵌套判定与渲染规则）
-+ `tests/documentText.test.mjs` 新增 7 条
-（整行标记转义：转义/不误伤/围栏/protect/缩进/行尾空白/幂等）；CDP 套件
-`_verify-inline-formats.js`（**159/160 PASS + 1 SKIP**——SKIP 是「下划线 + 加粗」那条
-已知缺口的登记，不是假绿；其中转义反斜杠显隐一组 **29 条**断言），
-格式 × 操作矩阵：工具栏三种光标情形、四个快捷键、手打标记对、`***粗斜***`、
-粗+斜/粗+码/删+斜/链接+粗/嵌套取消、整行标记的落盘转义与重开语义、
-**样式正文里的裸标记字符不产生转义（键入/一次性写入/装载三条路径）+ 相邻与嵌套不回退**、
-**转义反斜杠的拆分渲染 + 按光标显隐（与 `**` 同机制：折叠零占位 / 显示暗色 / 连续段整体显隐 /
-两段各显各的 / 键盘 ←→ 跨边界 / 三主题各两条）**、**真实剪贴板粘贴逐字节**，每条都查
-**字节 + 光标 + 每个 text 节点的 marks**，末尾再做「保存→重开→再序列化」的往返），
-已进 `run-suites.js` 默认矩阵；取证脚本 `tools/_probe-taskA.js`（四条写入路径）、`tools/_probe-taskB.js`（转义渲染、逐 span 显隐与三主题）、`tools/_probe-paste.js`（真剪贴板粘贴）**已按清单 §2.I 删除** —— 对应结论已固化进 `_verify-inline-formats.js` 的 182 条断言。
+
+- `tests/documentText.test.mjs` 新增 7 条
+  （整行标记转义：转义/不误伤/围栏/protect/缩进/行尾空白/幂等）；CDP 套件
+  `_verify-inline-formats.js`（**159/160 PASS + 1 SKIP**——SKIP 是「下划线 + 加粗」那条
+  已知缺口的登记，不是假绿；其中转义反斜杠显隐一组 **29 条**断言），
+  格式 × 操作矩阵：工具栏三种光标情形、四个快捷键、手打标记对、`***粗斜***`、
+  粗+斜/粗+码/删+斜/链接+粗/嵌套取消、整行标记的落盘转义与重开语义、
+  **样式正文里的裸标记字符不产生转义（键入/一次性写入/装载三条路径）+ 相邻与嵌套不回退**、
+  **转义反斜杠的拆分渲染 + 按光标显隐（与 `**` 同机制：折叠零占位 / 显示暗色 / 连续段整体显隐 /
+  两段各显各的 / 键盘 ←→ 跨边界 / 三主题各两条）**、**真实剪贴板粘贴逐字节**，每条都查
+  **字节 + 光标 + 每个 text 节点的 marks**，末尾再做「保存→重开→再序列化」的往返），
+  已进 `run-suites.js` 默认矩阵；取证脚本 `tools/_probe-taskA.js`（四条写入路径）、`tools/_probe-taskB.js`（转义渲染、逐 span 显隐与三主题）、`tools/_probe-paste.js`（真剪贴板粘贴）**已按清单 §2.I 删除** —— 对应结论已固化进 `_verify-inline-formats.js` 的 182 条断言。
 
 **已知边界（本轮明确保留，不是遗漏）**：
 
@@ -2331,8 +2334,8 @@ if (!app.requestSingleInstanceLock()) app.quit()
 **真根因**：CommonMark 的定界符左右可开/可闭（flanking）判定把 `「` `」` `（` `）` `：` 这类
 **全角/中文标点算作「标点」**，于是
 
-* 开定界符 `押在了` **`**`** `「保存路径」`：后面跟标点、前面既不是空白也不是标点 ⇒ **不是 left-flanking ⇒ 不能开**；
-* 与之配对的 `」` **`**`** `这两件`：同样的镜像原因 ⇒ **不能合**。
+- 开定界符 `押在了` **`**`** `「保存路径」`：后面跟标点、前面既不是空白也不是标点 ⇒ **不是 left-flanking ⇒ 不能开**；
+- 与之配对的 `」` **`**`** `这两件`：同样的镜像原因 ⇒ **不能合**。
 
 下一个 `**` 于是去配更靠后的 `**`，整段的定界符配对**整体错位**，多出来的两处落成字面星号。
 （这也是 VSCode / GitHub 的行为，但中文写作里 `**「…」**`、`**（…）**` 是最常见的加粗写法，
@@ -2361,15 +2364,15 @@ if (!app.requestSingleInstanceLock()) app.quit()
 
 **量化**（`tools/_probe-perf.js`；同一台机器、同一探针、先各跑一遍取稳定值）：
 
-| 场景（末尾逐字输入 100 字，页面内 `performance.now()` 包 `ed.commands.insertContent`） | 修复前 avg/p95/max (ms) | 修复后 avg/p95/max (ms) | 每键 markdown-it 解析次数 |
-| --- | --- | --- | --- |
-| 空段落（对照） | 0.50 / 0.8 / 1.2 | 0.50 / 0.7 / 1.3 | 1 → 1 |
-| 单段 500 字 | 1.17 / 1.6 / 2.0 | 1.12 / 1.6 / 2.5 | 2 → 2 |
-| 单段 3000 字 | 3.75 / 4.6 / 7.8 | 3.62 / 4.5 / 8.2 | 2 → 2 |
-| 8 段 ≈500 字（都有加粗） | 1.77 / 2.5 / 6.7 | **0.63 / 0.9 / 1.5** | 9 → 2 |
-| 50 段 ≈3000 字（都有加粗） | **14.54 / 19.7 / 40.1** | **0.65 / 0.9 / 1.4** | **51 → 2** |
-| 500 字被编辑段 + 2000 字别的段 | 8.08 / 10.9 / 15.6 | 1.04 / 1.8 / 5.4 | 35 → 2 |
-| 500 字被编辑段 + 8000 字别的段 | **69.44 / 116.1 / 122.1** | **1.50 / 2.3 / 6.7** | **136 → 2** |
+| 场景（末尾逐字输入 100 字，页面内 `performance.now()` 包 `ed.commands.insertContent`） | 修复前 avg/p95/max (ms)   | 修复后 avg/p95/max (ms) | 每键 markdown-it 解析次数 |
+| -------------------------------------------------------------------------------------- | ------------------------- | ----------------------- | ------------------------- |
+| 空段落（对照）                                                                         | 0.50 / 0.8 / 1.2          | 0.50 / 0.7 / 1.3        | 1 → 1                     |
+| 单段 500 字                                                                            | 1.17 / 1.6 / 2.0          | 1.12 / 1.6 / 2.5        | 2 → 2                     |
+| 单段 3000 字                                                                           | 3.75 / 4.6 / 7.8          | 3.62 / 4.5 / 8.2        | 2 → 2                     |
+| 8 段 ≈500 字（都有加粗）                                                               | 1.77 / 2.5 / 6.7          | **0.63 / 0.9 / 1.5**    | 9 → 2                     |
+| 50 段 ≈3000 字（都有加粗）                                                             | **14.54 / 19.7 / 40.1**   | **0.65 / 0.9 / 1.4**    | **51 → 2**                |
+| 500 字被编辑段 + 2000 字别的段                                                         | 8.08 / 10.9 / 15.6        | 1.04 / 1.8 / 5.4        | 35 → 2                    |
+| 500 字被编辑段 + 8000 字别的段                                                         | **69.44 / 116.1 / 122.1** | **1.50 / 2.3 / 6.7**    | **136 → 2**               |
 
 CPU 采样（修复前，单段 3000 字）自带时间 top：`normalizeAtoms` 13.3ms、`fromAtoms` 9.3、
 `materializeStyledRun` 8.8、`recognizeTypedMarkers` 5.4、`styleList` 6.4（合计 460ms 采样里
@@ -2416,13 +2419,13 @@ markdown-it 解析）。这就是「平方级」的来源：成本 ≈ 文档长
 `_verify-surface-stress.js` 的这条耗时断言本轮报红（`toSource=18.8~21.9s`，预算 6s）。**逐项排查后判定
 与本轮改动无关**，取证如下（都跑在「只跑这一个用例」的同一台机器上）：
 
-| 构建 | load | toSource | back |
-| --- | --- | --- | --- |
-| 改动前的代码（第一次量） | 53.7s | **1.4s** ✅ | 1.8s |
-| 本轮改动 | 54.5s | 18.8s ❌ | 1.7s |
-| 只留 `normalizeClean` 记忆、撤掉装饰缓存 | 62.2s | 21.8s ❌ | 2.2s |
-| 关掉 CJK 定界符补丁 | 62.4s | 21.9s ❌ | 2.2s |
-| **改动前的代码（复量，同一时段）** | 61.8s | **21.9s** ❌ | 2.1s |
+| 构建                                     | load  | toSource     | back |
+| ---------------------------------------- | ----- | ------------ | ---- |
+| 改动前的代码（第一次量）                 | 53.7s | **1.4s** ✅  | 1.8s |
+| 本轮改动                                 | 54.5s | 18.8s ❌     | 1.7s |
+| 只留 `normalizeClean` 记忆、撤掉装饰缓存 | 62.2s | 21.8s ❌     | 2.2s |
+| 关掉 CJK 定界符补丁                      | 62.4s | 21.9s ❌     | 2.2s |
+| **改动前的代码（复量，同一时段）**       | 61.8s | **21.9s** ❌ | 2.1s |
 
 **结论**：把原代码重新构建再量，同一条断言**同样报红**（21.9s，与改动后的 21.8s 无异）⇒ 这是
 **机器状态/负载**导致的，不是本轮引入的回退；`load` 也从 53.7s 漂到 62s（同一份原代码）。
@@ -2440,14 +2443,14 @@ markdown-it 解析）。这就是「平方级」的来源：成本 ≈ 文档长
 
 #### 六、验收
 
-* 单测 `tests/inlineMarkers.test.mjs` 新增 5 条（`isCjkPunctCode` 分类表、`scanDelimsCjk` 在
+- 单测 `tests/inlineMarkers.test.mjs` 新增 5 条（`isCjkPunctCode` 分类表、`scanDelimsCjk` 在
   `了**「`/`」**这两` 处能开能闭、ASCII 标点不放宽、`_` 保持上游语义、行首行尾/词中/长度计数），
   合计 **222/222**；
-* `tools/_verify-inline-formats.js`：J 组（三条写入路径 × strong 个数与内容 / 无字面量化标记 /
+- `tools/_verify-inline-formats.js`：J 组（三条写入路径 × strong 个数与内容 / 无字面量化标记 /
   `docText` 与 `getMarkdown` 逐字节 / **markdown-it 对照基准**）+ 最小复现 4 条 + K 组性能 5 条
   （空段落/3000 字长段落/3000 字长文档各自的 p95 ≤ 25ms、max ≤ 60ms；文档长度比值 ≤ 2；
   每键 markdown-it 解析 ≤ 4 次），套件 **183/184 PASS + 1 SKIP**（SKIP = 既有的「下划线 + 加粗」缺口）；
-* `tools/lib/harness.js` 新增 `bringToFront(app)` 并在该套件的取焦点重试里每轮调用：用户**自己的**
+- `tools/lib/harness.js` 新增 `bringToFront(app)` 并在该套件的取焦点重试里每轮调用：用户**自己的**
   Lumin 窗口占着前台时，被测实例拿不到焦点会让真实输入类断言报 `NO-FOCUS`（本轮实测复现，
   与代码无关），现在每次重试都重新提一次前台。
 
@@ -2461,12 +2464,12 @@ markdown-it 解析）。这就是「平方级」的来源：成本 ≈ 文档长
 参照 Typora：界面里的「强调」不靠色相。三个角色各司其职，但**都必须是低饱和的灰**
 （暖灰 / 冷灰都算灰，判据见验收里的「通道极差 ≤ 40 且不是紫/品红」）：
 
-| 令牌 | 角色 | 浅色 | 深色 | 羊皮纸 |
-| --- | --- | --- | --- | --- |
-| `--accent` | 图标 / 焦点环 / 边框 / 勾选态 | `#6b7280` | `#8a919e` | `#8a7f6b`（暖灰） |
-| `--accent-soft` | 选中淡底（半透明） | `rgba(17,24,39,.07)` | `rgba(255,255,255,.08)` | `rgba(90,74,48,.09)` |
-| `--accent-ink` | 淡底之上的文字 | `#374151` | `#dcdfe5` | `#5c5140` |
-| `--accent-2` | 次级强调（渐变另一端） | `#4b5563` | `#6b7280` | `#6f6555` |
+| 令牌            | 角色                          | 浅色                 | 深色                    | 羊皮纸               |
+| --------------- | ----------------------------- | -------------------- | ----------------------- | -------------------- |
+| `--accent`      | 图标 / 焦点环 / 边框 / 勾选态 | `#6b7280`            | `#8a919e`               | `#8a7f6b`（暖灰）    |
+| `--accent-soft` | 选中淡底（半透明）            | `rgba(17,24,39,.07)` | `rgba(255,255,255,.08)` | `rgba(90,74,48,.09)` |
+| `--accent-ink`  | 淡底之上的文字                | `#374151`            | `#dcdfe5`               | `#5c5140`            |
+| `--accent-2`    | 次级强调（渐变另一端）        | `#4b5563`            | `#6b7280`               | `#6f6555`            |
 
 深色主题的 `--accent` 必须**够亮**（暗底上的图标/焦点环），而「白字压在按钮上」要的是**够深** ——
 两个角色互相拉扯，所以**实心主按钮改用独立令牌**（`--btn-solid` / `--btn-solid-2` / `--btn-ink`），
@@ -2483,11 +2486,11 @@ markdown-it 解析）。这就是「平方级」的来源：成本 ≈ 文档长
 `color-mix(副色 70%, --ink-3)`，副色变灰之后偏重、抢正文注意力。现在收进**一个新令牌 `--marker`**，
 三主题都往**贴近背景**的方向取值（浅色下更浅、深色下更暗 —— 都是「对比度更低」）：
 
-| 主题 | `--marker` | 标记/纸 | （对照）`--ink-3`/纸 | 副色/纸 |
-| --- | --- | --- | --- | --- |
-| 浅色 | `#a4aab4` | **2.28:1** | 3.09:1 | 4.71:1 |
-| 深色 | `#666c78` | **3.49:1** | 3.92:1 | 5.81:1 |
-| 羊皮纸 | `#b3a894` | **2.14:1** | 2.69:1 | 3.59:1 |
+| 主题   | `--marker` | 标记/纸    | （对照）`--ink-3`/纸 | 副色/纸 |
+| ------ | ---------- | ---------- | -------------------- | ------- |
+| 浅色   | `#a4aab4`  | **2.28:1** | 3.09:1               | 4.71:1  |
+| 深色   | `#666c78`  | **3.49:1** | 3.92:1               | 5.81:1  |
+| 羊皮纸 | `#b3a894`  | **2.14:1** | 2.69:1               | 3.59:1  |
 
 同一个令牌一并收掉另外三处「源码符号」的墨色：`.md-meta`（代码围栏与行内代码的标记）、
 `h1~h6 > .md-heading-marker`（光标在标题里显示的 `#`）、`.md-escape-backslash`（`\`）——
@@ -2510,15 +2513,15 @@ markdown-it 解析）。这就是「平方级」的来源：成本 ≈ 文档长
 
 #### 三、副色改灰暴露出的两处旧问题（顺手修）
 
-* **导出 HTML 的 `--edge-strong` 根本没定义**：`export.ts` 的独立排版 CSS 里 `:root` 少了这个令牌，
+- **导出 HTML 的 `--edge-strong` 根本没定义**：`export.ts` 的独立排版 CSS 里 `:root` 少了这个令牌，
   而引用块用它做 3px 色条 —— 失效的 `var()` 在计算值阶段回退成 `currentColor`，
   于是导出的引用色条一直是**正文色**（深色）。本轮补齐令牌，导出引用条终于和编辑器一致。
-* `tools/_verify-blockquote-style.js` 的 `bar-is-gray-not-accent` 原来写死了旧紫色字面量
+- `tools/_verify-blockquote-style.js` 的 `bar-is-gray-not-accent` 原来写死了旧紫色字面量
   （`99,102,241`）—— 换了副色之后这条永远成立，等于没守。改成跟**实测的 `--accent` 计算值**比。
 
 #### 四、验收
 
-* 新增 `tools/_verify-neutral-accent.js`（11 条，三主题各量一遍）：N1 副色家族是灰
+- 新增 `tools/_verify-neutral-accent.js`（11 条，三主题各量一遍）：N1 副色家族是灰
   （通道极差 ≤ 40 且不是紫/品红）、N2 令牌里不再出现任何历史紫色值、N3 淡底药丸在纸/壳上可辨
   （实测 1.15 / 1.23 / 1.15 与 1.15 / 1.20 / 1.14）、N4 自绘淡底对纸可辨（1.25 / 1.61 / 1.24）、
   N5 正文选区没有 author `::selection`、N5b 代码块编辑层底色是系统 `Highlight` 且文字透明、
@@ -2526,10 +2529,10 @@ markdown-it 解析）。这就是「平方级」的来源：成本 ≈ 文档长
   N9 代码结构色是蓝色系且与正文灰可区分、**N10 标记符墨色 = `--marker` 且比 `--ink-3` 与副色都更淡**
   （先把光标放进加粗构造里让 `**` 真的显形，再量它的计算字色：浅色 2.28:1 / 深色 3.49:1 / 羊皮纸 2.14:1，
   对照 `--ink-3` 分别是 3.09 / 3.92 / 2.69）；**11/11**。
-* 截图人工核对：`tools/_shot-theme.js` 输出三主题整窗 + 浅/深两套「真实拖拽选中」特写
+- 截图人工核对：`tools/_shot-theme.js` 输出三主题整窗 + 浅/深两套「真实拖拽选中」特写
   （选区是系统蓝色高亮 + 白字，工具/侧栏/引用条/表头都是灰的）；另用临时探针拍标记符特写对照改前改后
   （浅色 `**`：改前 rgb(116,123,137) → 改后 rgb(164,170,180)；深色：rgb(129,136,150) → rgb(102,108,120)）。
-* 回归：`_verify-surfaces`（T 段量的是关系，令牌换了仍全绿）、`_verify-sidebar-tree-style`
+- 回归：`_verify-surfaces`（T 段量的是关系，令牌换了仍全绿）、`_verify-sidebar-tree-style`
   （选中态 = accent-soft + accent）、`_verify-toc-style-scroll`（目录仍是蓝色）、
   `_verify-blockquote-style`、`_verify-theme-auto`、`_verify-inline-formats`（转义反斜杠的字色换了令牌，
   显隐口径不变）等 19 套件 **0 FAIL**。
@@ -2548,6 +2551,7 @@ Vue NodeView + 一个完整的 CodeMirror `EditorView`。500 个围栏的文档�
 ```
 
 挂载条件收在一个**纯函数**里（`lib/editor/codeBlockMountPolicy.ts`）：`视口附近 ∨ 选区所在 ∨ 刚点过`。
+
 - 视口附近 = 共享的 `IntersectionObserver`（`rootMargin: 600px`）。**观察根用默认视口**：
   IntersectionObserver 的相交矩形会被祖先裁剪，分屏下「在自己那个滚动容器里被滚出去」同样算不相交，
   所以不用给两个 pane 各建 observer（风险 R8 的对策）。
@@ -2560,6 +2564,7 @@ Vue NodeView + 一个完整的 CodeMirror `EditorView`。500 个围栏的文档�
 ```
 syncToNode()  →  teardownCm()  →  记高度 → 切静态态（minHeight 固定） →  unregisterCodeBlockHandle()
 ```
+
 少第 1 步会丢字符（CM 里最后几个字符还没写回节点）；少最后一步会让 `findCodeBlockHandle` 命中
 「没有 CM 的块」。另外 `keymap.ts` 的「代码块后空段行首 Backspace」原来**找不到句柄也 `return true`**
 （按键被吃掉）—— 虚拟化之后「屏幕外的块没有句柄」是常态，已改成 `if (!handle) return false`（风险 R1）。
@@ -2573,27 +2578,27 @@ syncToNode()  →  teardownCm()  →  记高度 → 切静态态（minHeight 固
 
 #### 三、实测前后对比（同一台机器、同一探针、每个状态都新建隔离 profile）
 
-| 文档 | 改前：打开 / CM 实例 | 改后：打开 / CM 实例 |
-| --- | --- | --- |
-| 120 个围栏（≈7k 字符） | 1,070ms / **120** | **193ms / 4** |
-| 180 个围栏（≈10.5k 字符） | 9,101ms / **180** | **184ms / 4** |
+| 文档                      | 改前：打开 / CM 实例 | 改后：打开 / CM 实例 |
+| ------------------------- | -------------------- | -------------------- |
+| 120 个围栏（≈7k 字符）    | 1,070ms / **120**    | **193ms / 4**        |
+| 180 个围栏（≈10.5k 字符） | 9,101ms / **180**    | **184ms / 4**        |
 
 CM 实例数从「等于块数」变成「视口附近那几块」（两次都是 4），打开耗时 −82% / −98%。
 `mounted` 数与块数解耦，所以**不需要**再加「单文档最大挂载数」这道闸（P3 的调参项据此关闭）。
 
 #### 四、验收
 
-* 新增 `tools/_verify-cb-virtualization.js`（9 条，已进默认矩阵）：60 块文档里 `.cm-editor` ≤ 12、
+- 新增 `tools/_verify-cb-virtualization.js`（9 条，已进默认矩阵）：60 块文档里 `.cm-editor` ≤ 12、
   视口内三块必挂、滚到第 40 块后它挂上且高度漂移 ≤ 20%、滚过去后挂载数仍小、
   **选区落进屏幕外的第 55 块必须强制挂载**、来回滚（挂/卸 churn）之后第一块仍**可打字**（守丢字符与
   `hasFocus` 守卫计数两条风险）、换文档后旧块全卸且新文档照常。
-* 既有套件：`_regress-cb` 3/3、`_verify-cb-button-line-numbers` 26/26、`_verify-cb-no-active-line`、
+- 既有套件：`_regress-cb` 3/3、`_verify-cb-button-line-numbers` 26/26、`_verify-cb-no-active-line`、
   `_regress-layout` 9/9、`_regress-source-roundtrip` 4/4、`_repro-rapidenter` 4/4、`_verify-md-fidelity`
   101/102、`_verify-toc-style-scroll` 23/23、`_verify-surfaces` 37/37（它的「代码块走 CM 渲染」一条
   改成**接受两种形态**：远块是静态态，等宽字体仍然成立）、`_verify-cb-languages` 5/5
   （改成**逐个滚进视野再量**，否则量到的是一堆静态态 ⇒ 假失败）。
-* ~~**未做**：P2「静态态也做语法高亮」~~ → **P2/P3 已补做**，见 §4.73.1。
-* 回滚点：把 `shouldMountCm()` 改成恒真（一行）即回到「每块一个 CM」的旧行为；
+- ~~**未做**：P2「静态态也做语法高亮」~~ → **P2/P3 已补做**，见 §4.73.1。
+- 回滚点：把 `shouldMountCm()` 改成恒真（一行）即回到「每块一个 CM」的旧行为；
   卸载延迟是常量 `UNMOUNT_DELAY_MS`，视口边距是 `CODE_MOUNT_MARGIN_PX`，
   静态态高亮是 `STATIC_HIGHLIGHT`。
 
@@ -2605,10 +2610,10 @@ CM 实例数从「等于块数」变成「视口附近那几块」（两次都�
 （`Performance.getMetrics` 的 DOM 节点 / LayoutObject / 监听器 / JS 堆）+ 按隔离 userData
 过滤的 electron 常驻内存。实测（每尺寸一个全新实例）：
 
-| 围栏 | 字符 | 打开 ms | 切渲染面 ms | 可用 ms | 验收线 | CM 峰值 | 静态块 | RSS 前→后 |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| 500 | 21,780 | ~200 | ~950 | **1,157** | ≤2,000 ✓ | **10**（虚拟化前 500） | 490 | 512→701MB |
-| 1500 | 66,780 | ~535 | ~2,450 | **3,013** | ≤5,000 ✓ | **11**（虚拟化前 1500） | 1,490 | 510→1,030MB |
+| 围栏 | 字符   | 打开 ms | 切渲染面 ms | 可用 ms   | 验收线   | CM 峰值                 | 静态块 | RSS 前→后   |
+| ---- | ------ | ------- | ----------- | --------- | -------- | ----------------------- | ------ | ----------- |
+| 500  | 21,780 | ~200    | ~950        | **1,157** | ≤2,000 ✓ | **10**（虚拟化前 500）  | 490    | 512→701MB   |
+| 1500 | 66,780 | ~535    | ~2,450      | **3,013** | ≤5,000 ✓ | **11**（虚拟化前 1500） | 1,490  | 510→1,030MB |
 
 内存这条**仍未达线**（目标 <600MB）：1500 围栏打开后常驻 1,030MB。归因很清楚 —— 1500 块的文档里
 DOM 节点 22 万+，其中**每块一个的 `<select>`（16 个 `<option>`）= 24,000 个元素 + 24,000 个文本
@@ -2637,11 +2642,11 @@ DOM 节点 22 万+，其中**每块一个的 `<select>`（16 个 `<option>`）= 
 
 - 触发条件**完全不变**（`files.draftRestore`：打开文档时发现未保存草稿，且它比磁盘文件新；
   未命名缓冲区走另一条文案）。变的只是呈现与强制性：
-  * 弹窗挂在 `EditorView.vue` 里（`<Teleport to="body">`），沿用 `ModalHost` 的对话框语言
+  - 弹窗挂在 `EditorView.vue` 里（`<Teleport to="body">`），沿用 `ModalHost` 的对话框语言
     （半透明遮罩 + 圆角卡片 + `--shadow-2`），但**不进通知中心、也不与通知带混排**；
-  * 遮罩 `@click.self` **什么都不做**（点外面不关）、Esc 也**不关** —— 必须明确点一个；
-  * 打开时焦点给「恢复」（回车即恢复），Tab 只在「丢弃 / 恢复」之间循环；
-  * `role="dialog"` + `aria-modal="true"` + `aria-labelledby`（标题元素带 id）。
+  - 遮罩 `@click.self` **什么都不做**（点外面不关）、Esc 也**不关** —— 必须明确点一个；
+  - 打开时焦点给「恢复」（回车即恢复），Tab 只在「丢弃 / 恢复」之间循环；
+  - `role="dialog"` + `aria-modal="true"` + `aria-labelledby`（标题元素带 id）。
 
 #### 二、「不选就不能编辑」要挡住的是**所有写入途径**，不只是键盘
 
@@ -2649,26 +2654,26 @@ DOM 节点 22 万+，其中**每块一个的 `<select>`（16 个 `<option>`）= 
 `Input.insertText`（CDP 的文本插入，等同 IME 组字 / 粘贴那一类）**不产生 keydown**，
 照样把 `BLOCKED` 写进了文档 —— 这正是中文输入法路径上的真实漏洞。修法是三层一起上：
 
-| 层 | 做法 | 挡住什么 |
-| --- | --- | --- |
-| 渲染面 | `editorStore.instance?.setEditable(false)`（DOM 变 `contenteditable=false`） | 键盘、IME、粘贴、拖放 —— 浏览器层面就拒绝 |
-| 源码面 | `textarea.source-editor` 加 `:readonly` | 同上（源码模式下编辑的是它） |
-| 事件层 | 捕获阶段吞掉 `keydown`（放行 Tab/回车/空格）与 `beforeinput / paste / cut / drop` | 兜底：任何漏网的写入途径 |
+| 层     | 做法                                                                              | 挡住什么                                  |
+| ------ | --------------------------------------------------------------------------------- | ----------------------------------------- |
+| 渲染面 | `editorStore.instance?.setEditable(false)`（DOM 变 `contenteditable=false`）      | 键盘、IME、粘贴、拖放 —— 浏览器层面就拒绝 |
+| 源码面 | `textarea.source-editor` 加 `:readonly`                                           | 同上（源码模式下编辑的是它）              |
+| 事件层 | 捕获阶段吞掉 `keydown`（放行 Tab/回车/空格）与 `beforeinput / paste / cut / drop` | 兜底：任何漏网的写入途径                  |
 
 #### 三、验收
 
-* `tools/_verify-draft-banner.js` **27/27**（原 25 条 + 本轮新增两条）：
-  * `modal-blocks-editing-until-chosen`：弹窗开着时**真的往编辑器里打字**（先聚焦渲染面/源码面，
+- `tools/_verify-draft-banner.js` **27/27**（原 25 条 + 本轮新增两条）：
+  - `modal-blocks-editing-until-chosen`：弹窗开着时**真的往编辑器里打字**（先聚焦渲染面/源码面，
     再 `Input.insertText` + 一次 `keyDown`），文档内容必须一字未变（这条最初是红的，见上表）；
-  * `modal-esc-does-not-close`：Esc 之后弹窗仍在。
-  另把 `restore-brings-content-back` 的判据从全等改成「去掉结尾换行后相等」—— 序列化会把 markdown
-  规整成结尾带换行（`# hello draft` → `# hello draft\n`），不是内容差异；本轮在恢复前多插了一段等待，
-  时序一变就撞上规整后的值（假失败）。
-* `_verify-new-document` 23/23（同一条 `banner` 探针换成 `.draft-modal`）、
+  - `modal-esc-does-not-close`：Esc 之后弹窗仍在。
+    另把 `restore-brings-content-back` 的判据从全等改成「去掉结尾换行后相等」—— 序列化会把 markdown
+    规整成结尾带换行（`# hello draft` → `# hello draft\n`），不是内容差异；本轮在恢复前多插了一段等待，
+    时序一变就撞上规整后的值（假失败）。
+- `_verify-new-document` 23/23（同一条 `banner` 探针换成 `.draft-modal`）、
   `_verify-notifications` 32/32、`_verify-notify-style` 22/22、`_verify-toast-tip` 21/21、
   `_verify-surfaces` 37/37、`_verify-a11y` 6/6、`_verify-i18n` 5/5、`_verify-session` 17/17、
   `_regress-layout` 9/9、`_verify-local-media` 10/10。
-* 新增 i18n 键 `editor.draftTitle` / `editor.draftHint`（三语同步）；`sidebar.css` 里原来那套
+- 新增 i18n 键 `editor.draftTitle` / `editor.draftHint`（三语同步）；`sidebar.css` 里原来那套
   `.restore-bar` / `.draft-reveal` 样式随之删除（`.draft-modal` 只留遮罩兜底与最小高度）。
 
 ### 4.75 三处版式微调：通知操作按钮靠右 / 分屏左栏滚动条贴左 / 分隔条「抓住」动效
@@ -2698,11 +2703,11 @@ DOM 节点 22 万+，其中**每块一个的 `<select>`（16 个 `<option>`）= 
 （三主题各一档，见 `theme.css`）。热区仍从 11px 扩到 23px（为了好抓），但它的底是**透明**的 ——
 `:active` 与 `.dragging` 都撤掉 hover 的软底，所以视觉上不会出现「点一下就变宽」。
 
-| 状态 | 把手尺寸 | 把手颜色 | 热区 |
-| --- | --- | --- | --- |
-| 静止 | 3×36 | `--edge-strong` | 11px 透明 |
-| hover | 3×56 | `--accent` | 11px `--accent-soft` |
-| **按下 / 拖拽** | **3×56（不变）** | **`--accent-ink`（深一档）** | 23px **透明** |
+| 状态            | 把手尺寸         | 把手颜色                     | 热区                 |
+| --------------- | ---------------- | ---------------------------- | -------------------- |
+| 静止            | 3×36             | `--edge-strong`              | 11px 透明            |
+| hover           | 3×56             | `--accent`                   | 11px `--accent-soft` |
+| **按下 / 拖拽** | **3×56（不变）** | **`--accent-ink`（深一档）** | 23px **透明**        |
 
 实测：idle 3×36 `rgb(210,213,219)` → 按下 3×56 `rgb(55,65,81)`（= `--accent-ink`）→
 拖拽中 3×56 同色、热区 23px 透明 → 松开回到 3×36。
@@ -2742,11 +2747,11 @@ DOM 节点 22 万+，其中**每块一个的 `<select>`（16 个 `<option>`）= 
 
 #### 二、修法（只改序列化侧）
 
-| 改动 | 说明 |
-| --- | --- |
-| `isSimpleTable()` | 判据改成「表头在第一行 + 没有合并单元格 + 每格只由**段落**组成」，段数不限 |
+| 改动                     | 说明                                                                                                                                       |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| `isSimpleTable()`        | 判据改成「表头在第一行 + 没有合并单元格 + 每格只由**段落**组成」，段数不限                                                                 |
 | `cellInlineNode()`（新） | 把单元格的段落合成**一段**行内序列：空段落丢掉、非空段落之间插 `hardBreak`（`state.inTable` ⇒ `<br>`），再交给 `renderInline` **一次**渲染 |
-| 换行处的标记符归位 | 「紧跟换行的、只由标记符组成」的尾巴提到 `<br>` **之前** |
+| 换行处的标记符归位       | 「紧跟换行的、只由标记符组成」的尾巴提到 `<br>` **之前**                                                                                   |
 
 三条踩过的坑（都是实测，别再走一遍）：
 
@@ -2760,12 +2765,12 @@ DOM 节点 22 万+，其中**每块一个的 `<select>`（16 个 `<option>`）= 
 
 #### 三、验收
 
-| 场景 | 结果 |
-| --- | --- |
-| 用户现场：单元格回车 | `\| **实测痛点** \| 36,005 字符…` —— 与回车前**逐字节相同**（旧行为是整表变 HTML）；重灌一次仍相同 |
-| 回车后再打一行字 | `\| **实测痛点**<br>第二行 \| …`（换行在样式对之外、无多余 `**`、仍不是 HTML） |
-| 历史坏文档（一格两段 / 一堆空段落） | `\| 一格 \| 两段<br>真有内容 \|`（旧行为是 HTML） |
-| 合并单元格 | 照旧退回 HTML（**刻意钉住**：一条断言守着它别被顺手改坏） |
+| 场景                                | 结果                                                                                               |
+| ----------------------------------- | -------------------------------------------------------------------------------------------------- |
+| 用户现场：单元格回车                | `\| **实测痛点** \| 36,005 字符…` —— 与回车前**逐字节相同**（旧行为是整表变 HTML）；重灌一次仍相同 |
+| 回车后再打一行字                    | `\| **实测痛点**<br>第二行 \| …`（换行在样式对之外、无多余 `**`、仍不是 HTML）                     |
+| 历史坏文档（一格两段 / 一堆空段落） | `\| 一格 \| 两段<br>真有内容 \|`（旧行为是 HTML）                                                  |
+| 合并单元格                          | 照旧退回 HTML（**刻意钉住**：一条断言守着它别被顺手改坏）                                          |
 
 新增 `tools/_verify-table-fidelity.js`（15 条：14 PASS + 1 SKIP，已进默认矩阵）。
 相邻套件：`_verify-md-fidelity` 101/102、`_verify-table-width` 25/25、`_verify-surfaces` 37/37、
@@ -2799,13 +2804,13 @@ DOM 节点 22 万+，其中**每块一个的 `<select>`（16 个 `<option>`）= 
 
 #### 二、深色主题：中性灰，编辑区比侧栏浅一档
 
-| 角色 | 改前 | 改后 |
-| --- | --- | --- |
-| 外壳 / 侧栏 `--app` | `#0b0d12` | **`#2b2e33`** |
-| 编辑区（纸）`--paper` | `#12141a` | **`#35383d`**（实测纸/壳 **1.157:1**） |
-| 面板 / 浮层 | `#16181f` / `#1c1f27` | `#3a3d43` / `#454a51`（严格亮于纸） |
-| 表头 / hover `--panel-2` | `#1e2129` | `#44484f` |
-| 代码块底 | `#1a1d26` | `#303338`（比纸再暗一档） |
+| 角色                     | 改前                  | 改后                                   |
+| ------------------------ | --------------------- | -------------------------------------- |
+| 外壳 / 侧栏 `--app`      | `#0b0d12`             | **`#2b2e33`**                          |
+| 编辑区（纸）`--paper`    | `#12141a`             | **`#35383d`**（实测纸/壳 **1.157:1**） |
+| 面板 / 浮层              | `#16181f` / `#1c1f27` | `#3a3d43` / `#454a51`（严格亮于纸）    |
+| 表头 / hover `--panel-2` | `#1e2129`             | `#44484f`                              |
+| 代码块底                 | `#1a1d26`             | `#303338`（比纸再暗一档）              |
 
 主进程镜像同步：`shared/theme.ts` 的 `PAPER_BY_THEME.dark = '#35383d'`（`tests/themeTokens.test.mjs`
 逐主题钉着它与 CSS 一致）。浅色与羊皮纸**一个字没动**。
@@ -2857,12 +2862,12 @@ DOM 节点 22 万+，其中**每块一个的 `<select>`（16 个 `<option>`）= 
 
 #### 二、状态栏那一格：只说状态，不说模式；无圆点、无强调色
 
-| 项 | 改前 | 改后 |
-| --- | --- | --- |
-| 文字 | 手动模式恒显示「手动保存」；自动模式显示保存中/未保存/已保存 | 两模式统一显示 **保存中 / 未保存的更改 / 已保存**（不再出现「手动保存」） |
-| 圆点 | 自动模式带 `bg-ok` / `bg-warning` 小圆点（保存中还 ping） | **整个圆点删掉** |
-| 颜色 | `text-ok` / `text-warning` 强调色 | 与状态栏其它项**同一个灰**（实测都是 `rgb(138,145,158)`） |
-| `title`/`aria-label` | 就是那行文字 | 改成「保存方式：手动保存」——**说明当前模式 + 可点切换** |
+| 项                   | 改前                                                         | 改后                                                                      |
+| -------------------- | ------------------------------------------------------------ | ------------------------------------------------------------------------- |
+| 文字                 | 手动模式恒显示「手动保存」；自动模式显示保存中/未保存/已保存 | 两模式统一显示 **保存中 / 未保存的更改 / 已保存**（不再出现「手动保存」） |
+| 圆点                 | 自动模式带 `bg-ok` / `bg-warning` 小圆点（保存中还 ping）    | **整个圆点删掉**                                                          |
+| 颜色                 | `text-ok` / `text-warning` 强调色                            | 与状态栏其它项**同一个灰**（实测都是 `rgb(138,145,158)`）                 |
+| `title`/`aria-label` | 就是那行文字                                                 | 改成「保存方式：手动保存」——**说明当前模式 + 可点切换**                   |
 
 最后一行是这次改动里唯一需要动脑的地方：可见文字变短之后，界面上仍要能回答
 「现在是哪种保存」与「点它能换吗」，所以把这两条放进 `title`/`aria-label`，
@@ -2902,13 +2907,13 @@ DOM 节点 22 万+，其中**每块一个的 `<select>`（16 个 `<option>`）= 
 
 #### 一、头部整行去掉，文件夹改当树顶那一行
 
-| 项 | 改前 | 改后 |
-| --- | --- | --- |
-| 侧栏第一行 | `📁 文件夹名`（点击重新选文件夹）+ 最近文档 + 新建文件（列表视图还有刷新） | **整行不存在**（只剩页签行） |
-| 文件夹名 | 头部那一行标题 | `FileTree` 的**第一个 `TreeNode`**（`data-tree-root-row="true"`），可展开/收起、可作拖放落点 |
-| 一级条目缩进 | `depth 0` | `depth 1`（`aria-level` 2，`data-tree-parent` = 根路径） |
-| 「刷新」 | 头部按钮（仅列表视图） | 面板底部文件工具带（仍**仅列表视图**；树视图由 `fs.watch` 自更新） |
-| 无工作区时 | 头部同一位置是「打开文件夹」 | **保留**（`data-sidebar-open-folder`）——首次引导块只覆盖"还没有任何内容"的用户 |
+| 项           | 改前                                                                       | 改后                                                                                         |
+| ------------ | -------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
+| 侧栏第一行   | `📁 文件夹名`（点击重新选文件夹）+ 最近文档 + 新建文件（列表视图还有刷新） | **整行不存在**（只剩页签行）                                                                 |
+| 文件夹名     | 头部那一行标题                                                             | `FileTree` 的**第一个 `TreeNode`**（`data-tree-root-row="true"`），可展开/收起、可作拖放落点 |
+| 一级条目缩进 | `depth 0`                                                                  | `depth 1`（`aria-level` 2，`data-tree-parent` = 根路径）                                     |
+| 「刷新」     | 头部按钮（仅列表视图）                                                     | 面板底部文件工具带（仍**仅列表视图**；树视图由 `fs.watch` 自更新）                           |
+| 无工作区时   | 头部同一位置是「打开文件夹」                                               | **整行也不存在**（§4.84 的口径：没开文件夹时侧栏里只剩页签，文件区一个按钮一句提示都没有）   |
 
 顶层那一行**不是**工作区里的普通条目，`TreeNode` 用新的 `isRoot` 分支关掉四件事：
 不可拖动（拖走整个工作区没有意义）、F2 重命名、Delete 删除、「移动到…」；
@@ -2923,8 +2928,8 @@ DOM 节点 22 万+，其中**每块一个的 `<select>`（16 个 `<option>`）= 
 #### 二、大纲位置（左栏 ⇄ 编辑区右侧）：工具栏视图区 + 视图菜单 + 命令表
 
 - 唯一实现是新的 `composables/useOutlineSide.ts`：设置面板那枚开关改成转发它，工具栏与菜单共用。
-  打开时"右侧面板展开 + 左栏页签收回文件"（原有口径）；**关掉时把左栏页签切到大纲**（本轮新增）——
-  大纲被搬回左栏后页签跟着亮起来，否则左栏还是文件树，看着像"点了没反应"。
+  打开时"右侧面板展开 + 左栏页签收回文件"（原有口径）；
+  关掉时**恢复成打开前那一页**（第十轮改成这样，取代了当时"一律切到大纲"的写法；详见 §4.85）。
 - 工具栏那一枚是**状态开关**（`data-outline-side`，active = 现在在右侧），提示文案说下一步；
   刻意**不用第二枚分段控件**：工具栏里已有一枚三段控件，两枚会互相抢视觉，而且
   `_verify-segmented-control.js` 的"分段控件恰好两处"是既有口径。
@@ -2996,12 +3001,12 @@ DOM 节点 22 万+，其中**每块一个的 `<select>`（16 个 `<option>`）= 
 
 #### 二、现在的口径
 
-| 情形 | 关窗时做什么 |
-| --- | --- |
-| 自动保存**开着** | 不问，直接落盘（改动本来就在写盘路上） |
-| 手动保存 + **脏** + 关窗/退出应用 | 弹三选一：**保存 / 不保存 / 取消**（标题「是否保存更改？」，正文「如果不保存，您的更改将会丢失。」） |
-| 手动保存 + 干净 | 不问（没什么可丢的） |
-| **系统关机/注销**（`session-end`） | 不问，直接落盘 —— 系统不会等用户点按钮，弹出来只会把窗口卡在一条没人能回答的对话框上 |
+| 情形                               | 关窗时做什么                                                                                         |
+| ---------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| 自动保存**开着**                   | 不问，直接落盘（改动本来就在写盘路上）                                                               |
+| 手动保存 + **脏** + 关窗/退出应用  | 弹三选一：**保存 / 不保存 / 取消**（标题「是否保存更改？」，正文「如果不保存，您的更改将会丢失。」） |
+| 手动保存 + 干净                    | 不问（没什么可丢的）                                                                                 |
+| **系统关机/注销**（`session-end`） | 不问，直接落盘 —— 系统不会等用户点按钮，弹出来只会把窗口卡在一条没人能回答的对话框上                 |
 
 判定收在纯函数 `shared/closePrompt.ts` 的 `planClosePrompt({ autoSave, dirty, reason })`
 （单测 5 条）：这条规则同时被「默认保存方式」「退出路径」「系统关机」三处口径影响，
@@ -3015,10 +3020,10 @@ DOM 节点 22 万+，其中**每块一个的 `<select>`（16 个 `<option>`）= 
    （`files.discardCurrentDraft()`）：草稿是崩溃兜底、编辑期间一直在写，留着它下次启动就会弹
    "检测到未保存的草稿（比磁盘文件更新）" —— 与用户刚选的"不保存"自相矛盾。
    这条路上有两个**必须堵住的口子**，都是跑套件时实测出来的：
-   * `EditorView.onBeforeUnmount` 还会兜底调一次 `flushAll()`（窗口销毁路径，它会保存有路径的文档 +
+   - `EditorView.onBeforeUnmount` 还会兜底调一次 `flushAll()`（窗口销毁路径，它会保存有路径的文档 +
      写草稿）—— 不拦住的话用户刚选的「不保存」会在窗口消失前被那条兜底推翻。加 `files.discardOnClose`
      让它变成空操作，由 `requestClose` 每轮复位；
-   * 草稿写盘是**发了不等**的（`void this.writeDraft()`）：删除动作可能抢在那次 IPC 之前完成，
+   - 草稿写盘是**发了不等**的（`void this.writeDraft()`）：删除动作可能抢在那次 IPC 之前完成，
      于是草稿在删除**之后**又被写回磁盘。所以先把已经在飞的那一次 await 回来（`files.draftWrite`）再删。
 3. **取消** → 窗口继续活着。这一条**需要主进程配合**，两件事：
    ① 新增 `app:cancelClose`（`main/ipc.ts`）清掉这一轮守卫状态（顺带 `session.clearQuitting()` 复位 ——
@@ -3090,6 +3095,8 @@ DOM 节点 22 万+，其中**每块一个的 `<select>`（16 个 `<option>`）= 
 嗅探它，去掉边框后必然找不到（那条断言会以"状态栏不存在"的形式假红）。
 
 > 想要"底栏也是白纸"而不是"透明"的话，把 `bg-transparent` 换成 `bg-paper` 即可（一个词）。
+> ——**这句后来真的用上了**：见 §4.82 末尾（用户拍板"一张纸到底"，底栏改用纸色，
+> §4.81 这里的"透明"口径随之被取代；"没有保存状态格"与"没有顶部分隔线"两条保留）。
 
 #### 三、验收
 
@@ -3102,3 +3109,247 @@ DOM 节点 22 万+，其中**每块一个的 `<select>`（16 个 `<option>`）= 
   "失败必须看得见"改由**持久通知卡片**那一条承担；
 - `tools/_verify-local-media.js` 里那条「状态栏『打开设置…』仍生效」随弹层一起删掉，
   换成"那一格确实不在了"的边界断言。
+
+### 4.82 顶部菜单栏与快捷工具栏改成「纸」色（与编辑区同色）
+
+**用户口径**：① 把顶部工具栏（应用内菜单栏）和编辑工具栏的颜色改成白色，**和编辑区域一个颜色**；
+② 先提交一次 git，万一不好看可以回退。
+
+#### 一、改了什么
+
+两条栏的根 class：`bg-app` → **`bg-paper`**。
+
+|                               | 改前                       | 改后                                                    |
+| ----------------------------- | -------------------------- | ------------------------------------------------------- |
+| 应用内菜单栏 `TopMenuBar.vue` | `bg-app`（浅色 `#fafafa`） | `bg-paper`（浅色 `#ffffff`，与写作区同色）              |
+| 快捷工具栏 `Toolbar.vue`      | `bg-app`                   | `bg-paper`                                              |
+| 分隔线                        | `border-b border-edge`     | **保留**（给这一条栏一个可辨的下边缘）                  |
+| 深色 / 羊皮纸主题             | 跟随 `--app`               | 跟随 `--paper`（口径是"与编辑区同色"，不是写死 `#fff`） |
+
+#### 二、验收
+
+- `tools/_verify-bars-no-filename.js` 21 → **24 条**，新增：
+  `menu-bar-follows-paper`、`editor-toolbar-follows-paper`（两条栏的 computed background
+  必须**等于 `--paper` 的解析值**）、`bars-differ-from-chrome-in-this-theme`
+  （当前主题下 `--paper` ≠ `--app` —— 否则上面两条等于没验到东西）。
+- 顺带复跑（都是对颜色/主题敏感的套件）：`_verify-surfaces` 37/37、`_verify-neutral-accent` 10/10、
+  `_verify-theme-auto` 11/11、`_verify-toolbar-settings` 38/38、
+  `_verify-sidebar-root-and-outline-side` 31/31，全绿。
+- 视觉留证（隔离实例、浅色主题、1304×821）：`%TEMP%\lumin-bars-full.png`
+  —— 菜单栏 / 工具栏 / 写作区连成同一块白；底栏是一条**没有分隔线**的淡灰信息行。
+
+#### 三、底栏一并改成纸色（用户拍板"一张纸到底"）
+
+§4.82 讨论时给过两条自洽的路：**① 一张纸**（顶栏 + 写作区 + 底栏都用 `--paper`，只留左侧栏是外壳灰）、
+**② 全外壳色**（顶栏退回 `bg-app`，底栏维持透明=淡灰）。判据是"色差 ≥ 约 1.08:1 两段式才立得住，
+且所有 chrome 必须一致"——而浅色主题下 `#fafafa` 与 `#ffffff` 只有 **≈1.04:1**（深色 ≈1.16:1，
+所以两段式只在深色成立），于是选了①。
+
+改动：底栏 `bg-transparent` → **`bg-paper`**（`border-t` 仍然不画 —— 这一行是信息不是带子；
+上方两条栏各自的 `border-b` 已经交代了边界）。于是整个窗口只剩**左侧栏**一处外壳色，
+它也就成了唯一一条真正的分界线。
+套件里那条 `statusbar-is-transparent` 随之换成 **`statusbar-follows-paper`**
+（底栏 computed background 必须等于 `--paper` 的解析值），`statusbar-has-no-top-border` 保留。
+
+### 4.83 状态栏重排：左=文档｜右=视图与入口（并砍掉版本号 / 语言 / 主题 / 阅读时长）
+
+**用户口径**（原话拆条）：去掉版本号、语言切换、主题切换、阅读时间；标签**仅在有标签时**显示；
+布局改成 **左 = 文档（统计/标签），右 = 视图与入口（行列/编码/行尾 + 一个 `⋯`）**。
+
+#### 一、为什么原来读起来是"杂乱且无序"
+
+| 症状               | 具体表现                                                                                        |
+| ------------------ | ----------------------------------------------------------------------------------------------- |
+| 四类东西混在一排   | 文档统计（字/行/字符）、文档元信息（编码/行尾/标签）、**设置**（主题/语言）、**版本号**         |
+| 三段式失衡         | 左边空着、中间被 `flex-1` 顶到正中间、右边挤一堆 —— 三个视觉落点，没有一条扫读路径              |
+| 有重复与低价值项   | 中英混排下"字符"与"字"几乎重复；"行 4"和"行1,列1"两个"行"容易混读；阅读时长由字数推导，增量最低 |
+| 常驻的稀有态与动作 | `UTF-8` / `LF` 都是默认值却常驻；"添加标签"是**动词短语**混在名词堆里                           |
+| 无层级             | 全部同一灰度同一字号，唯一的分隔符只有一处竖线                                                  |
+
+行业口径（写作类 Typora/Notion/Bear 极简 vs IDE 类 VS Code 严格分区）的共识是同一条：
+**状态栏只放"会变化的高频状态"**；默认值不常驻、设置与版本不进状态栏、稀有态才出现。
+
+#### 二、改成了什么
+
+```
+左： 24 字   4 行   31 字符   [目标字数(设了才有)]   [标签(有标签才有)]
+右： 行 1, 列 1    UTF-8    LF    │    ⋯
+                                        ├ 外观：跟随系统 / 浅色 / 深色 / 羊皮纸
+                                        ├ 语言：简体中文 / English / Русский
+                                        ├ 添加标签…
+                                        ├ 设置
+                                        └ 关于 Lumin（版本号在这里，不再在状态栏）
+```
+
+- **删掉**：版本号（`app.getVersion` 那次调用与那个 span 一起去掉；版本只在「关于」页）、
+  语言按钮（`nextLanguage` 循环切换）、主题弹层（原来那枚写着当前主题名的按钮）、
+  预计阅读时长（`data-status-reading-time` 整块）；
+- **标签格**：`v-if="docTags.length"` —— 没标签就不渲染。于是"第一次加标签"必须有别的入口，
+  放进 `⋯`（`data-more-edit-tags`，文案 `statusbar.addTags`），否则就是个死角；
+- **`⋯`**：`data-status-more` + 菜单容器 `data-status-more-menu`，行内钩子
+  `data-more-theme` / `data-more-language` / `data-more-edit-tags` / `data-more-settings` /
+  `data-more-about`。菜单**向上弹**（它在窗口最底边），与原先主题弹层同一个 `pop` 动效；
+- **i18n**：新增 `statusbar.more`；`statusbar.addTags` 保留（"添加标签…"）；删除变成死键的
+  `statusbar.switchLanguage` 与 `statusbar.readingTime` / `readingTimeHours` /
+  `readingTimeHourMin` / `readingTimeTooltip`（`tests/i18nKeys.test.mjs` 会当场判红）；
+  主题/语言的**分组标题**直接复用 `settings.appearance` 与 `settings.language`。
+- **阅读时长的口径保留**：`shared/readingTime.ts` 与它的单测都还在（`wordGoalProgress` 仍被目标字数用），
+  只是不再在界面上显示 —— 删的是"显示"，不是"算法"。
+
+#### 三、验收
+
+- `tools/_verify-bars-no-filename.js` 24 → **26 条**：删掉两条阅读时长断言，
+  新增 `statusbar-has-more-entry`、`statusbar-has-no-reading-time`、`statusbar-has-no-version`、
+  `statusbar-hides-tag-cell-when-no-tags`、`more-menu-holds-low-frequency-entries`
+  （4 个主题 + 3 种语言 + 标签/设置/关于三项都在菜单里）；原来的
+  `statusbar-keeps-theme-and-language` 换成上面的 `⋯` 断言；
+- `tools/_verify-tags.js`（7 条）：① 改成"没标签时**不该有**标签格"，
+  ② 加标签的真实交互改走 `⋯` →「添加标签…」，③ 断言加完之后标签格自己长出来（端到端证明"有标签才显示"）；
+- `tools/_verify-local-media.js`：状态栏主题选择改走 `⋯` 里的 `[data-more-theme="…"]`；
+- 顺带修掉一条**早已过期**的断言：`tools/_verify-toast-tip.js` 的
+  `strip-is-previous-sibling-of-kernel` 用 `nextElementSibling` 判"通知带紧邻内核"，
+  而三栏大纲那轮给内核套了一层 panes 容器（`div.flex.min-h-0.flex-1`）⇒ 它一直是红的
+  （该套件属 `needs-build` 档、不在默认矩阵里，所以没被日常回归发现）。
+  改成 `compareDocumentPosition` 判文档顺序（与 `_verify-notifications.js` 同款修法），
+  断言名改为 `strip-before-kernel-in-document-order`，现在 21/21。
+  **教训**：在这类套件的模板字符串里，注释中不能出现反引号 —— 会提前结束模板串（本轮踩了两次）。
+- **排查用的一次性探针，绝不要复用矩阵的 userData / 9222**：本轮我用
+  `%TEMP%\lumin-suites-ud`（`run-suites.js` 的实例目录）起了个手工探针、往里写了一条通知，
+  结果下一次矩阵里 `_verify-notifications` 假红 7 条（计数与状态被那条通知搅了），
+  再往后还因为**遗留实例占着 9222** 让两条套件变成 NOASSERT（`start-isolated.ps1` 只在**开始时**
+  判端口，起完之后 9222 归谁它就不管了 —— 端口被别的实例占着时它会报出一个"假的 READY"）。
+  正确做法：探针用**独立的** `-UserData`（例如 `%TEMP%\lumin-probe-ud`），收尾时
+  `-CleanupOnly` + 按 user-data-dir 精确杀进程，确认 9222 空闲再跑矩阵。
+
+> 回退方式：这一步是**提交之后**做的，`git checkout -- .` 即可整体丢弃
+> （提交 `74d5e510` 是"底栏透明 + 保存态去掉"的还原点）。
+
+### 4.84 没打开文件夹时侧栏彻底空着；Ctrl+F 在侧栏里改搜文件名
+
+**用户口径**（同一轮三条）：
+
+1. 新建一个**没有打开任何文件夹**的窗口时，取消侧栏最上方那一小行「打开文件夹」；
+2. 同样这种窗口，**文件区里的所有按钮与文字提示**都取消；
+3. 在**左侧侧边栏区域**按 `Ctrl+F`，打开的是**侧栏的搜索**，而不是当前文档内容的搜索。
+
+三条其实是一条：**"没开文件夹"的侧栏要真的空着**，而"人在侧栏里"时快捷键要跟着走。
+
+#### 一、删掉侧栏顶部那一小行「打开文件夹」（第 1 条）
+
+`AppSidebar.vue` 里 `v-if="!files.root"` 的那一行（`data-sidebar-open-folder`，
+图标 + 「打开文件夹」文字）整行删除。
+
+来龙去脉值得记一句：`docs/changelog/archive-02.md` 里记着上一轮"**先删后按口径恢复**"——
+当时用户的说法是"没打开任何文件夹时，左侧侧栏上方工具栏的「打开文件夹」要保留"。
+本轮口径**反转**（要求侧栏空着），所以这一枚也去掉了；有工作区时那一行本来就不存在
+（文件夹名是目录树的顶层节点，§4.79）。打开文件夹的入口仍在：顶部菜单「文件 → 打开文件夹…」
+（含最近的文件夹）、`Ctrl+Shift+O`、以及窗口跳转列表。
+
+#### 二、文件区里连"首次引导块"一起下线（第 2 条）
+
+`FileTree.vue` 里原来还有一块挂在纯函数 `shouldShowOnboarding` 上的**首次引导块**
+（`OnboardingPanel.vue`：标题「开始写作」+ 一句说明 + 新建文件 / 打开文件夹 / 插入示例文档
+三枚按钮 + 示例说明文字）。它的出现条件是"**没有工作区 且 还没有真正在编辑的东西**"，
+也就是用户说的"新建一个没有打开任何文件夹的窗口"——正是要清掉的那一堆按钮和文字。
+
+删干净为原则（不留没有界面的死码），随之下线的还有：
+
+| 删掉的东西                       | 说明                                                              |
+| -------------------------------- | ----------------------------------------------------------------- |
+| `components/OnboardingPanel.vue` | 引导块本体（三枚按钮 + 文案 + 插示例的确认框）                    |
+| `lib/onboarding.ts`              | `shouldShowOnboarding` 纯函数与 `SAMPLE_DOC_KEY`                  |
+| `tests/onboarding.test.mjs`      | 11 条单测（**已删**，随功能一起下线）                             |
+| 三语 `onboarding.*`（9 个键）    | 含整篇 `onboarding.sampleDoc` 示例文档（中/英/俄各一份 Markdown） |
+| 三语 `open.openFolder`           | 只被那一行按钮引用，删完就是死键（`tests/i18nKeys` 当场判红）     |
+
+> **能力变化要说清楚**：**「插入示例文档」这条路没了**（首次启动不再有示例可插）。
+> 「新建文档 / 打开文件 / 打开文件夹」都还有菜单与快捷键入口，只是侧栏里不再重复一遍。
+> 想让首次启动仍有引导的话，正确的做法是给它一个不占侧栏的位置（例如空编辑区里的一层），
+> 而不是把按钮塞回侧栏——那也是本轮之前"欢迎页 → 侧栏空态"一路收敛下来的方向。
+
+#### 三、Ctrl+F：判据从"文件面板内"放宽到"整个左侧栏"（第 3 条）
+
+第八轮做过一次分流，但当时把"侧栏"限定在文件面板 `[data-sidebar-files]` **内部**
+（`isFocusInSidebarFiles()`）。于是下面三种现场仍然会弹出**正文查找栏**，正是用户报的现象：
+
+| 现场                                | 旧判据为什么漏掉                                 |
+| ----------------------------------- | ------------------------------------------------ |
+| 焦点在侧栏**页签**（文件 / 大纲）上 | 页签在 `[data-sidebar-files]` **外面**           |
+| 点在树行之间的**空白**处            | 空白不可聚焦，焦点压根没挪进面板（还在编辑器里） |
+| 鼠标在侧栏里、焦点在编辑器          | 旧判据只看焦点，不看指针                         |
+
+现在：
+
+- 新增区域锚点 `data-sidebar-root`（挂在 `AppSidebar.vue` 的 `<aside>` 上）；
+- 判定收进纯函数 **`lib/ctrlFRoute.ts`**：`有工作区 ∧ 文件面板可见 ∧（焦点在侧栏 ∨ 指针在侧栏）`
+  → `sidebar-files`，否则 `document`；单测 `tests/ctrlFRoute.test.mjs` **6 条**；
+- 现场判定在 `useAppActions.ts` 的 `ctrlFTargetNow()`：读 `document.activeElement.closest('[data-sidebar-root]')`
+  与 `[data-sidebar-root]:hover`（指针那一半必须用真实指针事件，合成事件不会置上 `:hover`）；
+- 消费端不变：`ui.requestSidebarSearch()` → `FileTree.vue` 里 `openSearch()`（展开 + 聚焦）。
+
+两条仍然走正文查找的边界（各有理由，别当漏改）：
+
+1. **没有工作区**：侧栏里根本没有文件名搜索这回事（没有文件名可筛），开了也是空框；
+2. **左栏正在显示大纲**：那份搜索框此刻不可见（文件面板被 `v-show` 藏着），
+   而大纲是对正文的导航 —— 在它上面按 `Ctrl+F`，想找的仍是正文。
+
+#### 四、验收
+
+- `tools/_verify-sidebar-search.js` **10 → 12 条**：A（焦点在树行 → 侧栏搜索，含"真打一个字会过滤"）、
+  B（焦点在编辑区 → 正文查找）、**C（焦点在侧栏页签 → 侧栏搜索，本轮口径反转）**、
+  **D（指针停在侧栏上、焦点在编辑区 → 侧栏搜索）**、E（大纲条目 → 正文查找）、
+  **E2（没有工作区 → 正文查找）**、末条（放大镜 title 里有 `Ctrl+F`）；
+- `tools/_verify-sidebar-root-and-outline-side.js` **31 → 34 条**：新增"没工作区时侧栏里
+  **只剩两个页签**、文件区**按钮 0 个、文字为空**"三条（只数**看得见**的按钮：
+  大纲面板是 `v-show` 常驻 DOM 的，不能把藏着的按钮算进来）；
+- `tools/_verify-sidebar-refresh.js`：把"没有工作区时保留「打开文件夹」"那条**反过来**
+  （`no-open-folder-entry-without-workspace-either`）；
+- `tools/_verify-welcome-removed.js`：`sidebar-header-keeps-open-folder` →
+  `sidebar-header-drops-open-folder-too`（那一条本身就是上一轮"先删后恢复"的产物，本轮按新口径再改）；
+- 单测：删 11 条（onboarding）、加 6 条（ctrlFRoute），合计 **741 → 736**。
+
+> **教训（第三次踩，值得单独记）**：这些套件的探针是**模板字符串**，
+> 注释里出现反引号会提前结束模板串 —— 本轮在 `_verify-toast-tip.js` 与
+> `_verify-sidebar-root-and-outline-side.js` 上各踩了一次，症状是 `node --check` 报
+> "missing ) after argument list"，而错误行指向注释本身。写这类注释时用
+> "（反引号略）"或直接不写符号。
+
+### 4.85 大纲搬回左栏时，恢复到"打开前的那一页"
+
+**用户口径（第十轮，原话）**：「优化一下把大纲放到右侧再放到左侧的逻辑 ——
+如果将大纲放到右侧之前的视图是"文件"，那将大纲再切换到左侧后显示的视图依然是"文件"；
+如果……是"大纲"，那……依然是"大纲"。」
+
+#### 一、改了什么
+
+`composables/useOutlineSide.ts` 里那个开关只多了一件事：**打开时记下左栏当前的页签，关掉时把它放回去**。
+
+| 场景 | 改前 | 改后 |
+| --- | --- | --- |
+| 打开前停在**文件** → 放到右侧 → 搬回左侧 | 页签被切到**大纲** | 仍是**文件**（用户本来在看目录，不该被切走） |
+| 打开前停在**大纲** → 放到右侧 → 搬回左侧 | 页签切到**大纲** | 仍是**大纲**（旧行为在这个方向上恰好一致） |
+| 没有记录（启动时 `outlineOnRight` 已经是 true） | — | 退回**大纲**：那一步刚把大纲搬回左栏，亮起它最不容易让人迷惑 |
+
+记忆放在 `ui.sidebarTabBeforeOutlineRight`（`'files' | 'outline' | null`）：
+
+- **会话内、不落库**：它是"刚才在看哪一页"的临时记忆，重启后无从得知；
+- **只在打开那一刻写**：三栏模式打开期间页签行是隐藏的（`v-if="!settings.outlineOnRight"`），
+  页签不会再变，所以不需要在别处维护；
+- **顺序要紧**：先记账再改页签 —— 反了的话永远记成"文件"，正是要避免的那种结果；
+- **用掉即清空**（`null`）：留着会被上一次的判断污染，下一个"打开前"就不再是真实的现场。
+
+`AppSidebar.vue` 里那个 `watch(settings.outlineOnRight)` 一个字没动：它继续兜住
+"任何来源把 `outlineOnRight` 改成 true"时的收敛（左栏页签收回文件）。
+
+#### 二、验收（按用户要求：**只验这一个功能**）
+
+- `tools/_verify-sidebar-root-and-outline-side.js` **34 → 36 条**：
+  * `toolbar-toggle-brings-outline-back-to-sidebar` 拆成
+    `toggle-back-restores-the-files-tab`（打开前是文件 ⇒ 搬回来还是文件）
+    与 `toggle-back-consumes-the-remembered-tab`（记忆用掉即清空）；
+  * 新增 `toggle-back-restores-the-outline-tab`：先把页签切到「大纲」再走一轮
+    "放到右侧 → 搬回左侧"，断言打开时记下的值 = `outline` 且搬回来仍是「大纲」。
+- `tools/_verify-outline-right.js` 26/26（它只断言三栏开关与页签行本身，与本轮无关，用来确认没碰到）。
+- 本轮**没有**复跑 62 条的默认矩阵、也没有重跑其它既有套件 —— 用户明确要求
+  "只需要测试这个功能，之前已经有的逻辑和功能统统不需要再测试一遍"。
+  （改动面只有一个 composable 里的三行 + 一个 store 字段，`vue-tsc` / `eslint` / build 全绿。）

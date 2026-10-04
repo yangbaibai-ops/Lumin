@@ -21,19 +21,7 @@
     "saveBody": "If you don't save, your changes will be lost.",
     "dontSave": "Don't Save"
   },
-  "onboarding": {
-    "title": "Start writing",
-    "body": "Create a document, or open a folder as your workspace to keep your Markdown files together.",
-    "newFile": "New file",
-    "openFolder": "Open folder",
-    "insertSample": "Insert sample document",
-    "sampleNote": "The sample only lives in the editor — nothing is written to disk until you save it.",
-    "sampleTitle": "Sample document",
-    "sampleReplace": "This replaces the unsaved content in the editor with the sample. Nothing is written to disk until you save it.",
-    "sampleDoc": "> **This is a sample inside the editor, not a file on disk.** Press Ctrl+S and Lumin will ask which folder to save it in.\n\n# Welcome to Lumin\n\nA short Markdown sample that shows the syntax you will use most. Edit it right here in **live rendering** mode, or right-click anywhere to see the commands available at the caret.\n\n## Headings\n\nStart a line with one `#` and a space for a level-one heading; `##` is level two and `###` is level three. The outline panel on the left follows this heading tree.\n\n## Emphasis and inline code\n\n**Bold** takes two asterisks, *italic* takes one, `inline code` takes backticks, and ~~strikethrough~~ takes two tildes.\n\n## Code blocks\n\nThree backticks open a code block, and the first line can name the language; highlighting and indentation inside the block are handled by the editor.\n\n```python\n# the language name after the fence decides the highlighting\nname = \"Lumin\"\nprint(\"hello, \" + name)\n```\n\n## Quotes and lists\n\n> A quote starts with `>`. Good for a reminder, a citation, or a single to-do.\n\n- Bullet lists start with `-`\n- Ordered lists start with `1.`\n  - Indent by two spaces for a nested level; Tab indents too\n\n- [ ] Write `- [ ]` at the start of a line for a checkable task\n- [x] A finished one is written `- [x]`\n\n## Tables\n\n| Syntax | Result |\n| --- | --- |\n| `**bold**` | **bold** |\n| `` `code` `` | `code` |\n\n## Formulas\n\nAn inline formula is written $E = mc^2$; a paragraph of its own becomes a display formula:\n\n$$\nx = \\frac13 = 0.3333\n$$\n\nEdit this sample or delete it — it is only a demonstration.\n"
-  },
   "open": {
-    "openFolder": "Open Folder",
     "recent": "Recent Documents",
     "recentFolders": "Recent Folders",
     "emptyRecent": "No recent documents yet. Create or open a Markdown file to start writing.",
@@ -553,17 +541,13 @@
     "saveConflictReload": "Reopen (discard my changes)"
   },
   "statusbar": {
-    "switchLanguage": "Switch Language",
+    "more": "More (theme / language / tags / settings / about)",
     "encodingTooltip": "Document encoding (File → Reopen with encoding)",
     "encodingReplaced": "Some bytes in this file could not be decoded with the current encoding (shown as \uFFFD). Saving will rewrite those bytes — check that the encoding is correct.",
     "eolTooltip": "Line endings: {eol} — click to switch LF / CRLF (saves immediately)",
     "tagsTooltip": "Tags (comma separated; used for grouping and search)",
     "tagsPlaceholder": "e.g. novel, chapter-1, draft",
-    "addTags": "Add tags",
-    "readingTime": "{n} min read",
-    "readingTimeHours": "{h} hr read",
-    "readingTimeHourMin": "{h} hr {m} min read",
-    "readingTimeTooltip": "Estimated reading time ({cjk} CJK chars/min, {latin} Latin words/min; mixed text adds both)",
+    "addTags": "Add tags…",
     "wordGoal": "{current} / {goal} words",
     "wordGoalTooltip": "Word goal: {current} / {goal} ({percent}%) — click to change in Settings",
     "wordGoalReachedTooltip": "Word goal reached: {current} / {goal} — click to change in Settings",

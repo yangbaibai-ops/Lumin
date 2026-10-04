@@ -2,10 +2,12 @@
 // 验收：文档标签（审计 §7 第 19 条：标签的 DB 与 IPC 早就有、界面一处都没有）
 //
 // 判据：
-//   1. 状态栏有标签格：点它弹输入框，输入解析成标签数组写进 SQLite（`documents.tags`）；
-//   2. 写完之后**状态栏自己**显示这些标签（不用重载）；
-//   3. 列表视图每条画出标签，且**过滤词命中标签**时那条会出现（找文档的主要路径）；
-//   4. 解析规则：中文逗号/顿号/井号前缀/大小写去重（纯函数另有单测，这里验端到端那一步）。
+//   1. 没标签时状态栏**不出现**标签格（用户口径 §4.83：有标签才显示）；
+//   2. 第一次加标签走 `⋯` 菜单 →「添加标签…」：弹输入框，输入解析成标签数组写进 SQLite
+//      （`documents.tags`）—— 这条入口不依赖"已经有标签"，所以不会出现加不上第一个标签的死角；
+//   3. 写完之后**状态栏自己**显示这些标签（不用重载）；
+//   4. 列表视图每条画出标签，且**过滤词命中标签**时那条会出现（找文档的主要路径）；
+//   5. 解析规则：中文逗号/顿号/井号前缀/大小写去重（纯函数另有单测，这里验端到端那一步）。
 const { connect, settle, sleep, openDocWith, Reporter, fatal } = require('./lib/harness')
 const os = require('os')
 const path = require('path')
@@ -42,21 +44,30 @@ async function main() {
     String(await ev(`window.__L.files().current?.path`))
   )
 
-  // ── ① 状态栏标签格在，初始显示"添加标签" ────────────────────────────────────
+  // ── ① 没有标签时**不该有**标签格（用户口径 §4.83：有标签才显示）─────────────
   const initial = await ev(`(() => {
     const btn = document.querySelector('[data-status-tags]')
-    return JSON.stringify({ present: !!btn, label: btn ? btn.textContent.trim() : null })
+    return JSON.stringify({ present: !!btn })
   })()`)
   const init = JSON.parse(String(initial))
-  report.check('status-bar-has-tag-cell', init.present === true && !!init.label, String(initial))
+  report.check('status-bar-hides-tag-cell-when-no-tags', init.present === false, String(initial))
 
-  // ── ② 走真实交互：点标签格 → 提示框 → 输入 → 确定 ──────────────────────────
+  // ── ② 走真实交互：`⋯` 菜单 →「添加标签…」→ 提示框 → 输入 → 确定 ─────────────
+  // ⚠️ 入口从"状态栏那一格"搬到了 `⋯` 菜单：那一格现在**有标签才有**，
+  // 所以"第一次加标签"必须有一个不依赖"已经有标签"的入口（否则就是个死角）。
   // 输入里故意混上：中文逗号、顿号、井号前缀、大小写重复的同一个标签
   const typed = '#小说，第一章、work, Work, 草稿'
   const flow = await ev(`(async () => {
-    const btn = document.querySelector('[data-status-tags]')
-    if (!btn) return JSON.stringify({ err: 'no-tag-cell' })
-    btn.click()
+    const more = document.querySelector('[data-status-more]')
+    if (!more) return JSON.stringify({ err: 'no-more-button' })
+    more.click()
+    let item = null
+    for (let i = 0; i < 25 && !item; i++) {
+      await new Promise((r) => setTimeout(r, 100))
+      item = document.querySelector('[data-more-edit-tags]')
+    }
+    if (!item) return JSON.stringify({ err: 'no-edit-tags-item' })
+    item.click()
     let input = null
     for (let i = 0; i < 25 && !input; i++) {
       await new Promise((r) => setTimeout(r, 100))
@@ -70,7 +81,7 @@ async function main() {
     ok.click()
     return JSON.stringify({ ok: true })
   })()`)
-  report.check('tag-prompt-flow', JSON.parse(String(flow)).ok === true, String(flow))
+  report.check('tag-prompt-flow-via-more-menu', JSON.parse(String(flow)).ok === true, String(flow))
   await sleep(900)
 
   // ── ③ 落库 + 状态栏自己刷新 ────────────────────────────────────────────────
@@ -87,10 +98,10 @@ async function main() {
     JSON.stringify(stored.tags)
   )
   const chipText = String(
-    await ev(`document.querySelector('[data-status-tags]').textContent.trim()`)
+    await ev(`(document.querySelector('[data-status-tags]')?.textContent || '').trim()`)
   )
   report.check(
-    'status-bar-shows-tags',
+    'status-bar-shows-tags-after-adding',
     chipText.includes('小说') && chipText.includes('work'),
     chipText
   )

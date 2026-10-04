@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { useFilesStore } from '../stores/files'
 import { useSettingsStore } from '../stores/settings'
 import { useUiStore } from '../stores/ui'
 import FileTree from './FileTree.vue'
@@ -9,7 +8,6 @@ import Outline from './Outline.vue'
 import Icon from './Icon.vue'
 
 const { t } = useI18n()
-const files = useFilesStore()
 const settings = useSettingsStore()
 const ui = useUiStore()
 
@@ -80,32 +78,21 @@ function onDragStart(e: MouseEvent): void {
 <template>
   <aside
     class="relative z-10 flex h-full flex-none flex-col border-r border-edge bg-app"
+    data-sidebar-root
     :style="{
       width: width + 'px',
       transition: dragging ? 'none' : 'width .28s cubic-bezier(.4,0,.2,1)'
     }"
     :class="ui.focusMode ? 'opacity-40 saturate-50' : ''"
   >
-    <!-- 有工作区时：**这一行整行不存在**（用户口径）──────────────────────────────
-         去掉的是原先那一行的全部三件东西：
-           * 「📁 文件夹名」—— 现在由**目录树的顶层节点**承担（Typora 式，见 FileTree.vue）；
-           * 「最近文档」按钮 —— 顶部「文件 → 最近文档」与窗口跳转列表里都有；
-           * 「新建文件」按钮 —— 树里任意一行（含顶层文件夹那一行）右键 →「新建文件」；
-           另有「刷新」，它只在列表视图有意义，已跟着移到面板底部的文件工具带。
-         没有工作区时**仍保留一枚「打开文件夹」**：那是鼠标用户唯一的可见入口
-         （首次引导块只在"还没有任何内容"时出现，用过一阵子的用户看不到它）。 -->
-    <div v-if="!files.root" class="flex h-10 flex-none items-center border-b border-edge px-3">
-      <button
-        class="flex h-7 min-w-0 flex-1 items-center gap-1.5 rounded-md px-1.5 text-left text-ui-sm font-medium text-ink-2b transition-colors hover:bg-panel-2 hover:text-ink-2"
-        :title="t('open.openFolder')"
-        :aria-label="t('open.openFolder')"
-        data-sidebar-open-folder
-        @click="files.openFolder()"
-      >
-        <Icon name="folderOpen" :size="13" class="flex-none" />
-        <span class="truncate">{{ t('open.openFolder') }}</span>
-      </button>
-    </div>
+    <!-- 顶部原先有一行「打开文件夹」（**只在没有工作区时**出现）——本轮去掉（用户口径）：
+         没有工作区时，侧栏除了「文件 / 大纲」页签之外**什么都不放**（见 §4.84）。
+         去掉的是"没开文件夹时那一小行工具栏"，有工作区时那一行本来就不存在
+         （文件夹名是目录树的顶层节点，见 FileTree.vue）。
+         打开文件夹的入口仍在：顶部菜单「文件 → 打开文件夹」、Ctrl+O 打开文件、
+         以及窗口跳转列表里的最近文件夹 —— 侧栏空着就是空着。
+         `data-sidebar-root` 是给"Ctrl+F 该去哪边"用的区域锚点（见 lib/ctrlFRoute.ts）：
+         焦点或指针落在这一块里，Ctrl+F 就进侧栏的文件名搜索。 -->
 
     <!-- 标签页：仅在**非三栏模式**下出现。
          打开「大纲放在编辑区右侧」后，左栏只承担文件树，页签行整行隐藏

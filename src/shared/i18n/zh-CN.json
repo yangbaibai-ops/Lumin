@@ -21,19 +21,7 @@
     "saveBody": "如果不保存，您的更改将会丢失。",
     "dontSave": "不保存"
   },
-  "onboarding": {
-    "title": "开始写作",
-    "body": "新建一篇文档，或者打开一个文件夹作为工作区，把 Markdown 文件都放在一起。",
-    "newFile": "新建文件",
-    "openFolder": "打开文件夹",
-    "insertSample": "插入示例文档",
-    "sampleNote": "示例只是编辑器里的一段内容，不会写进磁盘；保存时才会问你要存到哪个文件。",
-    "sampleTitle": "示例文档",
-    "sampleReplace": "这会用示例文档替换当前未保存的内容。示例不会写进磁盘，直到你保存它。",
-    "sampleDoc": "> **这是编辑器里的示例，不是磁盘上的文件。** 按 Ctrl+S 保存时，编辑器才会问你要把它存到哪个文件夹。\n\n# 欢迎使用 Lumin\n\n这是一篇 Markdown 示例，用来说明最常用的几种写法。在**实时渲染**模式下直接改，右键任意位置能看当前可用的命令。\n\n## 标题\n\n行首打一个 `#` 号再空格，就是一级标题；`##` 是二级、`###` 是三级。左侧的大纲面板会跟着这张标题表走。\n\n## 强调与行内代码\n\n**粗体**用两个星号，*斜体*用一个，`行内代码`用反引号包起来，~~删除线~~用两个波浪号。\n\n## 代码块\n\n三个反引号开一块代码，第一行可以写语言名；块内高亮与缩进都由编辑器负责。\n\n```python\n# 语言名写在围栏后面，决定高亮规则\nname = \"Lumin\"\nprint(\"hello, \" + name)\n```\n\n## 引用与列表\n\n> 引用用行首的 `>`。适合放一句提醒、一段引文，或者一条待办。\n\n- 无序列表用 `-` 开头\n- 也可以写 `1.` 开头的有序列表\n  - 缩进两格就是下一层，Tab 也能缩进\n\n- [ ] 行首写 `- [ ]` 会变成可勾选的任务\n- [x] 已经做完的那条写成 `- [x]`\n\n## 表格\n\n| 写法 | 效果 |\n| --- | --- |\n| `**粗体**` | **粗体** |\n| `` `代码` `` | `代码` |\n\n## 公式\n\n行内公式写成 $E = mc^2$；单独一段就是块级公式：\n\n$$\nx = \\frac13 = 0.3333\n$$\n\n把这一篇改掉、或者删掉它，都可以——它只是一次示范。\n"
-  },
   "open": {
-    "openFolder": "打开文件夹",
     "recent": "最近文档",
     "recentFolders": "最近文件夹",
     "emptyRecent": "暂无最近文档，创建或打开一个 Markdown 文件开始写作吧",
@@ -552,17 +540,13 @@
     "saveConflictReload": "重新打开（放弃我的修改）"
   },
   "statusbar": {
-    "switchLanguage": "切换语言",
+    "more": "更多（主题 / 语言 / 标签 / 设置 / 关于）",
     "encodingTooltip": "当前文档编码（文件 → 选择编码重新打开）",
     "encodingReplaced": "这份文件里有字节没能按当前编码解出来（已显示为 \uFFFD）—— 直接保存会改写它们的字节，请先确认编码是否选对。",
     "eolTooltip": "当前行尾：{eol} —— 点击切换 LF / CRLF（立即写回）",
     "tagsTooltip": "标签（逗号分隔，用于归类与搜索）",
     "tagsPlaceholder": "例如：小说, 第一章, 草稿",
-    "addTags": "添加标签",
-    "readingTime": "{n} 分钟",
-    "readingTimeHours": "{h} 小时",
-    "readingTimeHourMin": "{h} 小时 {m} 分钟",
-    "readingTimeTooltip": "预计阅读时长（中文 {cjk} 字/分钟、拉丁文 {latin} 词/分钟，混排分别计时后相加）",
+    "addTags": "添加标签…",
     "wordGoal": "{current} / {goal} 字",
     "wordGoalTooltip": "目标字数：{current} / {goal}（{percent}%）—— 点击在设置里修改",
     "wordGoalReachedTooltip": "已达成目标字数：{current} / {goal} —— 点击在设置里修改",

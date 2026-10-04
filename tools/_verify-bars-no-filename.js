@@ -4,8 +4,12 @@
 // --user-data-dir 起的隔离实例上（见 §4.23 的用法）。
 //
 // 断言：① 两条栏里都不出现当前文件名；② 打开文档后工具栏按钮、字数/行数/字符数、
-// 光标位置、主题/语言入口都还在；③ 窗口标题仍显示文件名；④ 两条栏里的 title 提示不再残留文件名；
-// ⑤ 新增（§4.81）：状态栏**没有保存状态那一格**、整条**透明**且不再有顶部分隔线。
+// 光标位置都还在；③ 窗口标题仍显示文件名；④ 两条栏里的 title 提示不再残留文件名；
+// ⑤ §4.81/§4.82：状态栏**没有保存状态那一格**、没有顶部分隔线，
+//    且与菜单栏 / 快捷工具栏 / 编辑区**同为纸色**（"一张纸到底"）；
+// ⑥ §4.83：这一行重排为「左=文档（统计/目标/标签）｜右=视图与入口（行列/编码/行尾 + ⋯）」——
+//    版本号、阅读时长不在这一行里，标签格只在有标签时出现，右上那个 ⋯ 里装着
+//    主题 / 语言 / 加标签 / 设置 / 关于（低频入口的唯一出口）。
 const fs = require('fs')
 const os = require('os')
 const path = require('path')
@@ -92,16 +96,43 @@ const PROBE = `(() => {
     statusFound: !!status,
     toolbar: inBar(toolbar),
     status: inBar(status),
+    // 三条栏的底色（§4.82：顶部菜单栏与快捷工具栏要和编辑区**同色**）：
+    // 判据是"等于 --paper 的解析值"，而不是写死 #fff —— 深色 / 羊皮纸主题各自跟随纸色。
+    // ⚠️ 这段在模板字符串里，注释中**不能出现反引号**（会提前结束模板串）。
+    paints: (() => {
+      const tok = (name) => {
+        const p = document.createElement('span')
+        p.style.color = 'var(' + name + ')'
+        document.body.appendChild(p)
+        const c = getComputedStyle(p).color
+        p.remove()
+        return c
+      }
+      const menu = document.querySelector('.topmenu-root')
+      return {
+        menu: menu ? getComputedStyle(menu).backgroundColor : null,
+        toolbar: toolbar ? getComputedStyle(toolbar).backgroundColor : null,
+        paperToken: tok('--paper'),
+        appToken: tok('--app')
+      }
+    })(),
     statusBar: status
       ? {
-          // 透明口径：不铺自己的底色（computed 为完全透明的 rgba(0,0,0,0)）
+          // 底色口径（§4.82）：整条与编辑区同色（纸）
           bg: getComputedStyle(status).backgroundColor,
           borderTop: getComputedStyle(status).borderTopWidth,
           saveCell: !!status.querySelector('[data-save-cell]'),
           // §4.81：整条里不该再出现任何"保存状态"字样（中英都查）
           saveText: /已保存|未保存|保存中|Saved|Unsaved|Saving/.test(status.innerText || ''),
           counts: /\\d+/.test(status.innerText || ''),
-          hasSwitchers: !!status.querySelector('button[title]')
+          // §4.83：标签格只在**有标签**时出现；右侧那个 ⋯ 是低频入口的唯一出口
+          // （模板字符串里不能出现反引号，所以这里不写那个符号）
+          tagCell: !!status.querySelector('[data-status-tags]'),
+          moreButton: !!status.querySelector('[data-status-more]'),
+          // 阅读时长 / 版本号都从这一行拿掉了（用户口径）
+          readingTime: !!status.querySelector('[data-status-reading-time]'),
+          bodyText: (status.innerText || '').replace(/\\s+/g, ' ').trim(),
+          versionLike: /v\\d+\\.\\d+\\.\\d+/.test(status.innerText || '')
         }
       : null,
     staleTitles: [...document.querySelectorAll('[data-editor-toolbar], [data-status-bar]')].flatMap(
@@ -178,6 +209,22 @@ const PROBE = `(() => {
       (withDoc.toolbar?.buttons || 0) >= 8,
       'buttons=' + withDoc.toolbar?.buttons
     )
+    // ── §4.82：顶部菜单栏与快捷工具栏的底色 = **纸**（与编辑区同色）──
+    c(
+      'menu-bar-follows-paper',
+      !!withDoc.paints?.menu && withDoc.paints.menu === withDoc.paints.paperToken,
+      JSON.stringify({ menu: withDoc.paints?.menu, paper: withDoc.paints?.paperToken })
+    )
+    c(
+      'editor-toolbar-follows-paper',
+      !!withDoc.paints?.toolbar && withDoc.paints.toolbar === withDoc.paints.paperToken,
+      JSON.stringify({ toolbar: withDoc.paints?.toolbar, paper: withDoc.paints?.paperToken })
+    )
+    c(
+      'bars-differ-from-chrome-in-this-theme',
+      withDoc.paints?.paperToken !== withDoc.paints?.appToken,
+      `paper=${withDoc.paints?.paperToken} app=${withDoc.paints?.appToken}（两者相同的话上面两条就没验到东西）`
+    )
     // ── §4.81：状态栏不再有「保存状态」那一格（不论自动还是手动都不显示）+ 整条透明 ──
     c(
       'statusbar-has-no-save-state',
@@ -188,14 +235,14 @@ const PROBE = `(() => {
       })
     )
     c(
-      'statusbar-is-transparent',
-      withDoc.statusBar?.bg === 'rgba(0, 0, 0, 0)',
-      `computed background = ${withDoc.statusBar?.bg}（用户口径：底部栏透明）`
+      'statusbar-follows-paper',
+      !!withDoc.statusBar?.bg && withDoc.statusBar.bg === withDoc.paints?.paperToken,
+      `底栏=${withDoc.statusBar?.bg} / --paper=${withDoc.paints?.paperToken}（"一张纸到底"：底栏与编辑区同色）`
     )
     c(
       'statusbar-has-no-top-border',
       withDoc.statusBar?.borderTop === '0px',
-      `border-top = ${withDoc.statusBar?.borderTop}（透明之后那条分隔线也不该在）`
+      `border-top = ${withDoc.statusBar?.borderTop}（这一行是信息，不该再被画成一条带子）`
     )
     // 启动遮罩（骨架屏）**已整体移除**（用户口径：取消打开应用时的进场动画 + 去掉骨架图）：
     // 初始化期间看到的就是正常界面，DOM 里不该再有骨架块或那层不透明遮罩。
@@ -212,34 +259,68 @@ const PROBE = `(() => {
       JSON.stringify(withDoc.status?.text)
     )
     c(
-      'statusbar-keeps-theme-and-language',
-      withDoc.statusBar?.hasSwitchers === true,
-      JSON.stringify(withDoc.statusBar)
-    )
-    c(
       'no-filename-in-bar-tooltips',
       withDoc.staleTitles.length === 0,
       JSON.stringify(withDoc.staleTitles)
     )
 
-    // ── 状态栏的新两格：阅读时长 + 目标字数（审计清单「目标字数 / 阅读时长」）──
-    // 判据走**用户能看到的 DOM**（data-status-* 是套件与读屏器共用的锚点），
-    // 而不是直接问 store —— 这一条要证明的是"真的渲染出来了"。
-    const rt = JSON.parse(
-      await w.ev(`(() => {
-        const el = document.querySelector('[data-status-reading-time]')
-        return JSON.stringify({ found: !!el, text: el ? el.textContent.trim() : null, title: el ? el.getAttribute('title') : null })
+    // ── §4.83：这一行只留"会变化的状态"，其余收进右侧 `⋯` ──────────────────────
+    c(
+      'statusbar-has-more-entry',
+      withDoc.statusBar?.moreButton === true,
+      JSON.stringify({ moreButton: withDoc.statusBar?.moreButton })
+    )
+    c(
+      'statusbar-has-no-reading-time',
+      withDoc.statusBar?.readingTime === false &&
+        !/(分钟|小时|min read|мин чтения)/.test(withDoc.statusBar?.bodyText || ''),
+      JSON.stringify(withDoc.statusBar?.bodyText)
+    )
+    c(
+      'statusbar-has-no-version',
+      withDoc.statusBar?.versionLike === false,
+      `整条文字 = ${JSON.stringify(withDoc.statusBar?.bodyText)}（版本号只在「关于」里）`
+    )
+    c(
+      'statusbar-hides-tag-cell-when-no-tags',
+      withDoc.statusBar?.tagCell === false,
+      '这一篇没有标签 ⇒ 标签格不该出现（有标签才显示，见 §4.83）'
+    )
+    // `⋯` 菜单 = 低频入口的唯一出口：主题 / 语言 / 加标签 / 设置 / 关于 都要在里面
+    const moreMenu = JSON.parse(
+      await w.ev(`(async () => {
+        const btn = document.querySelector('[data-status-more]')
+        if (!btn) return JSON.stringify({ err: 'no-more-button' })
+        btn.click()
+        await new Promise((r) => setTimeout(r, 350))
+        const box = document.querySelector('[data-status-more-menu]')
+        if (!box) return JSON.stringify({ err: 'no-menu' })
+        const q = (s) => box.querySelectorAll(s).length
+        return JSON.stringify({
+          themes: q('[data-more-theme]'),
+          languages: q('[data-more-language]'),
+          editTags: !!box.querySelector('[data-more-edit-tags]'),
+          settings: !!box.querySelector('[data-more-settings]'),
+          about: !!box.querySelector('[data-more-about]'),
+          text: (box.innerText || '').replace(/\\s+/g, ' ').trim().slice(0, 120)
+        })
       })()`)
     )
-    console.log('READING-TIME ' + JSON.stringify(rt))
-    c('statusbar-shows-reading-time', rt.found === true, JSON.stringify(rt))
-    // 文案走语言包（默认中文）：「N 分钟」/「N 小时…」；接受三种形态，但不接受空
     c(
-      'reading-time-has-human-text',
-      !!rt.text && /(分钟|小时|min|мин)/.test(rt.text),
-      JSON.stringify(rt.text)
+      'more-menu-holds-low-frequency-entries',
+      moreMenu.themes === 4 &&
+        moreMenu.languages === 3 &&
+        moreMenu.editTags === true &&
+        moreMenu.settings === true &&
+        moreMenu.about === true,
+      JSON.stringify(moreMenu)
     )
+    await w.ev(
+      `(document.body.dispatchEvent(new MouseEvent('mousedown', { bubbles: true })), 'ok')`
+    )
+    await sleep(250)
 
+    // ── 目标字数仍在这一行的左半边（审计清单「目标字数 / 阅读时长」只剩前半截）──
     await w.ev(`(() => { window.__B.settings().set('wordGoal', 100); return 'ok' })()`)
     await sleep(400)
     const goalOn = JSON.parse(

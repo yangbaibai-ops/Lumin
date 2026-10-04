@@ -12,6 +12,7 @@ import { openExternalFile } from '../lib/openFile'
 import { confirmDiscardIfDirty, resolveCloseIntent } from '../lib/dialog'
 import { registerNotificationActions } from '../lib/notificationActions'
 import { SAVE_CONFLICT_KIND } from '../lib/saveConflict'
+import { ctrlFTarget, type CtrlFTarget } from '../lib/ctrlFRoute'
 import { exportFormatByAction } from '../../../shared/exportFormats'
 import type { CloseReason } from '../../../shared/closePrompt'
 import type { MenuAction } from '../../../shared/types'
@@ -78,18 +79,22 @@ export function useAppActions(): {
   }
 
   /**
-   * 焦点是否落在侧栏的**文件面板**里（文件树 / 列表 / 底部那行搜索与视图切换都在这个容器内）。
+   * Ctrl+F 的分流现场：把四个事实读出来喂给纯函数 `ctrlFTarget`（规则与理由都在那个文件里）。
    *
-   * 两个边界说清楚：
-   *   * 侧栏里的**大纲**面板不算 —— 大纲是对当前正文的导航，在那里按 Ctrl+F 想找的仍是正文；
-   *   * 侧栏头部（工作区名 / 最近 / 新建 / 刷新）也不算：那几枚按钮点完焦点不在面板里，
-   *     此时 Ctrl+F 落回正文查找（想找文件名的话，点一下文件树任意一行即可）。
-   * `closest` 存在性判断只为防御非元素 activeElement（如 SVG 环境下的 document 自身）。
+   * 判据从「焦点在 `[data-sidebar-files]` 里」放宽成「焦点**或指针**在左侧栏里」（§4.84）：
+   * 用户口径是"在左侧侧边栏区域按 Ctrl+F"，而"人在侧栏里"最常见的形态其实是
+   * **鼠标在侧栏上、焦点还在编辑器里**（点一下树行之间的空白不会把焦点挪进去）。
    */
-  function isFocusInSidebarFiles(): boolean {
-    return typeof document === 'undefined'
-      ? false
-      : !!document.activeElement?.closest?.('[data-sidebar-files]')
+  function ctrlFTargetNow(): CtrlFTarget {
+    if (typeof document === 'undefined') return 'document'
+    const sidebar = document.querySelector('[data-sidebar-root]')
+    const active = document.activeElement
+    return ctrlFTarget({
+      workspaceOpen: !!files.root,
+      filesPanelVisible: settings.outlineOnRight || ui.sidebarTab === 'files',
+      focusInSidebar: !!active?.closest?.('[data-sidebar-root]'),
+      pointerInSidebar: !!sidebar?.matches?.(':hover')
+    })
   }
 
   function handleMenu(action: string): void {
@@ -136,12 +141,11 @@ export function useAppActions(): {
         // Ctrl+F / 菜单「查找」：打开右上角查找栏（再按一次关闭）。
         // 只展开查找 —— 替换那一行由栏里的折叠三角或 Ctrl+H 拉出来。
         //
-        // 例外：**焦点在侧栏的文件面板里**时，Ctrl+F 进侧栏的文件名搜索（用户口径）。
-        // 判定用「焦点落在哪个容器」而不是「鼠标在哪、侧栏是否可见」：
-        //   * 文件树的行、底部搜索行、树/列表切换都在 `[data-sidebar-files]` 里，
-        //     点一下它们焦点就进去了 —— 正是「人在侧栏里」的可判定证据；
-        //   * 焦点在大纲 / 编辑区 / 其它任何地方（含没有工作区时）→ 照旧是正文查找。
-        if (files.root && isFocusInSidebarFiles()) {
+        // 例外：**人在左侧栏里**时，Ctrl+F 进侧栏的文件名搜索（用户口径 §4.84）。
+        // 「人在侧栏里」= 焦点或指针在左侧栏内（详见 lib/ctrlFRoute.ts 的说明）——
+        // 旧判据只看"焦点在文件面板内"，于是页签上 / 侧栏空白处 / 鼠标在侧栏但焦点在编辑器
+        // 这三种情况仍然开着正文查找栏，正是用户报的那个现象。
+        if (ctrlFTargetNow() === 'sidebar-files') {
           ui.requestSidebarSearch()
           break
         }

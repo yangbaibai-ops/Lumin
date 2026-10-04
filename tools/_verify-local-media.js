@@ -253,18 +253,17 @@ async function click(w, selector, textFilter) {
     await w.ev(`(window.__M.ui().closeSettings(), 'ok')`)
     await sleep(300)
 
-    // 状态栏主题选择（pickTheme）：主题按钮上写着**当前**主题名，菜单项写目标主题名
+    // 状态栏 `⋯` 菜单里的主题选择（pickTheme）：§4.83 起主题切换从那一行搬进了 `⋯`，
+    // 判据不变 —— 点一项就真的换主题（并顺手复位成 auto）。
     const themePick = await w.ev(`(async () => {
-      const t = window.__M.app.config.globalProperties.$t
       const s = window.__M.settings()
-      const keys = { auto: 'settings.themeAuto', light: 'settings.themeLight', dark: 'settings.themeDark', sepia: 'settings.themeSepia' }
       const before = s.theme
-      const btn = [...document.querySelectorAll('button')].find((b) => (b.textContent || '').trim().startsWith(t(keys[before])))
-      if (!btn) return 'no-theme-button'
-      btn.click()
+      const more = document.querySelector('[data-status-more]')
+      if (!more) return 'no-more-button'
+      more.click()
       await new Promise((r) => setTimeout(r, 350))
       const target = before === 'sepia' ? 'dark' : 'sepia'
-      const item = [...document.querySelectorAll('button')].find((b) => (b.textContent || '').trim().includes(t(keys[target])))
+      const item = document.querySelector('[data-more-theme="' + target + '"]')
       if (!item) return 'no-theme-item'
       item.click()
       await new Promise((r) => setTimeout(r, 350))

@@ -62,7 +62,7 @@ async function main() {
   fs.writeFileSync(file, '# note\n\n第一版内容\n', 'utf-8')
 
   try {
-    // ── A. 没有工作区：整条工具带都不在（头部那一行只剩一枚「打开文件夹」）──
+    // ── A. 没有工作区：整条工具带都不在，侧栏顶部也**没有**「打开文件夹」那一行（§4.84）──
     await ev(`(async () => {
       await window.__L.files().setRoot(null)
       const ui = window.__L.ui()
@@ -79,9 +79,9 @@ async function main() {
       `工作区都没开，刷新按钮不该在（present=${noRoot.present}）`
     )
     report.check(
-      'open-folder-entry-only-without-workspace',
-      openEntry === true,
-      `没有工作区时头部保留「打开文件夹」=${openEntry}（那是鼠标用户唯一的可见入口）`
+      'no-open-folder-entry-without-workspace-either',
+      openEntry === false,
+      `没有工作区时侧栏顶部也不再有「打开文件夹」=${openEntry}（§4.84：没开文件夹时侧栏空着；入口在「文件」菜单 / Ctrl+O）`
     )
 
     // ── B. 树视图：刷新**不**出现（工具带里也没有它）──
@@ -102,7 +102,7 @@ async function main() {
     report.check(
       'header-row-gone-when-workspace-open',
       treeOpenEntry === false,
-      `有工作区时头部那行整行不存在（打开文件夹入口=${treeOpenEntry}）`
+      `有工作区时头部那行整行不存在（打开文件夹入口=${treeOpenEntry}，§4.84 起整个侧栏都没有它）`
     )
 
     // ── C. 列表视图：刷新出现，且**在底部工具带里**（不再是头部那一行）──
@@ -192,7 +192,9 @@ async function main() {
     )
     await ev(`(() => { window.__L.ui().contextMenu = null; return 'ok' })()`)
   } finally {
-    await ev(`(async () => { await window.__L.files().setRoot(null); return 'ok' })()`).catch(() => {})
+    await ev(`(async () => { await window.__L.files().setRoot(null); return 'ok' })()`).catch(
+      () => {}
+    )
     fs.rmSync(dir, { recursive: true, force: true })
   }
 

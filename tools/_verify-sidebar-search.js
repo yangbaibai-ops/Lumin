@@ -1,29 +1,43 @@
 'use strict'
-// 验收：Ctrl+F 的**去向** —— 人在侧栏的文件面板里就搜文件名，否则照旧搜正文
+// 验收：Ctrl+F 的**去向** —— 人在左侧栏里就搜文件名，否则照旧搜正文
 //
-// 用户口径（第八轮）：
-//   「当在侧边栏点击 ctrl+f 时，请进入侧边栏的搜索而不是文档的搜索和查找。」
+// 用户口径：
+//   第八轮：「当在侧边栏点击 ctrl+f 时，请进入侧边栏的搜索而不是文档的搜索和查找。」
+//   第九轮（本条，§4.84）：「当在左侧侧边栏区域点击 ctrl+f 时，打开的是侧栏的搜索
+//                        而不是当前文档内容的搜索。」——即"侧栏"要按**整个左侧栏**算，
+//                        不再只算文件面板内部；"人在侧栏里"也包括**指针停在侧栏上**
+//                        （点一下树行之间的空白并不会把焦点挪进面板：焦点还在编辑器里）。
 //
-// 也就是：同一个 Ctrl+F 必须按**焦点在哪儿**分流，而不是永远开右上角那条查找栏。
-// 分流实现见 `composables/useAppActions.ts` 的 `find` 分支（判定容器 `[data-sidebar-files]`）
-// 与 `FileTree.vue` 里对 `ui.sidebarSearchTick` 的消费。
+// 分流实现：规则在 `src/renderer/src/lib/ctrlFRoute.ts`（纯函数，单测 `tests/ctrlFRoute.test.mjs`），
+// 现场判定在 `composables/useAppActions.ts` 的 `ctrlFTargetNow()`，
+// 消费端在 `FileTree.vue` 里对 `ui.sidebarSearchTick` 的 watch。
 //
 // 这条套件同时守着**两个方向**，因为只验一个方向的话，「把 Ctrl+F 整个改成侧栏搜索」
 // 也能让断言全绿 —— 那等于把编辑器的查找功能弄丢了：
 //   A. 焦点在文件树行 → 侧栏文件名搜索展开并拿到焦点，**正文查找栏不开**；
 //   B. 焦点在编辑区   → 正文查找栏开，**侧栏搜索不开**；
-//   C. 边界：焦点在侧栏**页签**上 / 侧栏的大纲页签 → 仍走正文查找。
+//   C. 边界①：焦点在侧栏**页签**上 → 也算"在侧栏里"，走侧栏搜索（§4.84 放宽）；
+//   D. 边界②：指针停在侧栏上而焦点在编辑区 → 走侧栏搜索（同上）；
+//   E. 边界③：左栏显示**大纲** / 没有工作区 → 仍走正文查找（那时侧栏没有可用的搜索框）。
 //
 // 按键走**页面内合成 KeyboardEvent**（`window.dispatchEvent`），不用 CDP 真实按键注入：
 // 合成事件同样会经过 keymap 服务的 window 捕获监听（`lib/keymap/service.ts`），
 // 而真实按键要求被测窗口是 OS 前台 —— 用户自己的 Lumin 在前台时那批断言会假红
 // （`tools/lib/harness.js` 的 bringToFront 注释里记着这个坑）。路由判定读的是
-// `document.activeElement`，与事件从哪来无关，所以这条路径足够真实。
+// `document.activeElement` / `aside:hover`，与事件从哪来无关，所以这条路径足够真实。
 const fs = require('fs')
 const os = require('os')
 const path = require('path')
-const { connect, settle, sleep, openDocWith, waitEditor, bringToFront, Reporter, fatal } =
-  require('./lib/harness')
+const {
+  connect,
+  settle,
+  sleep,
+  openDocWith,
+  waitEditor,
+  bringToFront,
+  Reporter,
+  fatal
+} = require('./lib/harness')
 
 /** 合成一次 Ctrl+F（keymap 服务只认带修饰键的组合） */
 const CTRL_F = `(() => {
@@ -143,7 +157,9 @@ async function main() {
     )
 
     // 清掉筛选条件（否则后面切 tab 时筛选还在）
-    await ev(`(() => { const i = document.querySelector('.file-search__input'); if (i) i.value = ''; const ev2 = new Event('input', { bubbles: true }); if (i) i.dispatchEvent(ev2); return 'ok' })()`)
+    await ev(
+      `(() => { const i = document.querySelector('.file-search__input'); if (i) i.value = ''; const ev2 = new Event('input', { bubbles: true }); if (i) i.dispatchEvent(ev2); return 'ok' })()`
+    )
     await sleep(300)
 
     // ── B. 焦点在编辑区（正文）───────────────────────────────────────────
@@ -173,10 +189,9 @@ async function main() {
     await ev(`(() => { window.__L.store('find').hide(); return 'ok' })()`)
     await sleep(300)
 
-    // ── C. 边界：焦点在侧栏**页签**上（不是文件面板里）→ 仍走正文查找 ──────
-    // （改造前这里点的是"侧栏头部的工作区按钮"；本轮那一行整行去掉了 —— 文件夹名改成
-    //   目录树的顶层节点，页签成了侧栏里最靠上的可聚焦控件，于是边界用例跟着换成它。
-    //   要点不变：`[data-sidebar-files]` **之外**的侧栏区域不该抢走 Ctrl+F。）
+    // ── C. 焦点在侧栏**页签**上 → §4.84 起也算"在侧栏里"，走侧栏搜索 ──────────
+    // （旧口径把这里判成正文查找：判据是"焦点在 `[data-sidebar-files]` 内吗"，
+    //   而页签在它外面。用户第九轮报的就是这一类 —— 侧栏里点一下再按 Ctrl+F 却开了正文查找。）
     await bringToFront(app)
     const headFocused = await ev(focusOn('[data-sidebar-tab="files"]'))
     await sleep(300)
@@ -186,14 +201,64 @@ async function main() {
     const c1 = JSON.parse(await ev(STATE))
     report.note('C1 ' + JSON.stringify(c1))
     report.check(
-      'ctrl-f-on-sidebar-tab-stays-document-find',
-      headFocused === true && c1.findOpen === true && c1.sidebarOpen === false,
+      'ctrl-f-on-sidebar-tab-opens-sidebar-search',
+      headFocused === true && c1.sidebarOpen === true && c1.findOpen === false,
       `${JSON.stringify(c1)} / 焦点落在页签上=${headFocused}`
     )
-    await ev(`(() => { window.__L.store('find').hide(); return 'ok' })()`)
+    await ev(`(() => {
+      const input = document.querySelector('.file-search__input')
+      if (input) { input.value = ''; input.dispatchEvent(new Event('input', { bubbles: true })) }
+      window.__L.store('find').hide()
+      return 'ok'
+    })()`)
+    await sleep(400)
+
+    // ── D. 指针停在侧栏上、焦点在编辑区 → 也算"人在侧栏里"，走侧栏搜索 ──────────
+    // 这是最常见的那种现场：鼠标在侧栏里点了一下（点的是行之间的空白 → 焦点没挪进面板），
+    // 然后按 Ctrl+F。判定里 `pointerInSidebar` 就是为它准备的（见 lib/ctrlFRoute.ts）。
+    await bringToFront(app)
+    await ev(`(() => {
+      const ed = window.__L.ed()
+      if (ed) ed.commands.focus()
+      return 'ok'
+    })()`)
+    const barRect = JSON.parse(
+      await ev(`(() => {
+        const row = document.querySelector('[data-tree-row]')
+        if (!row) return JSON.stringify(null)
+        const r = row.getBoundingClientRect()
+        return JSON.stringify({ x: Math.round(r.left + 10), y: Math.round(r.top + r.height / 2) })
+      })()`)
+    )
+    if (barRect) {
+      // 真实指针移动：Chromium 才会把 `aside:hover` 置上（合成事件做不到这一点）
+      for (const type of ['mouseMoved', 'mouseMoved']) {
+        await app.send('Input.dispatchMouseEvent', { type, x: barRect.x, y: barRect.y, buttons: 0 })
+        await sleep(120)
+      }
+    }
+    await sleep(300)
+    const hovered = await ev(`!!document.querySelector('[data-sidebar-root]:hover')`)
+    await ev(CTRL_F)
+    await sleep(450)
+    const d = JSON.parse(await ev(STATE))
+    report.note('D ' + JSON.stringify({ hovered, ...d }))
+    report.check(
+      'ctrl-f-with-pointer-in-sidebar-opens-sidebar-search',
+      hovered === true && d.sidebarOpen === true && d.findOpen === false,
+      `指针在侧栏上=${hovered} / sidebarOpen=${d.sidebarOpen} / findOpen=${d.findOpen}`
+    )
+    await ev(`(() => {
+      const input = document.querySelector('.file-search__input')
+      if (input) { input.value = ''; input.dispatchEvent(new Event('input', { bubbles: true })); input.blur() }
+      window.__L.store('find').hide()
+      return 'ok'
+    })()`)
+    // 把指针挪回编辑区，免得后面几条被"指针还在侧栏上"影响
+    await app.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: 900, y: 400, buttons: 0 })
     await sleep(300)
 
-    // ── C. 边界：焦点在大纲条目上 → 仍走正文查找（大纲是正文的导航，不是文件）──
+    // ── E. 边界：焦点在大纲条目上 → 仍走正文查找（大纲是正文的导航，不是文件）──
     await ev(`(() => { window.__L.ui().sidebarTab = 'outline'; return 'ok' })()`)
     await sleep(600)
     const outFocused = await ev(focusOn('[data-outline-item]'))
@@ -202,13 +267,43 @@ async function main() {
     await ev(CTRL_F)
     await sleep(450)
     const c2 = JSON.parse(await ev(STATE))
-    report.note('C2 ' + JSON.stringify(c2))
+    report.note('E ' + JSON.stringify(c2))
     report.check(
       'ctrl-f-in-outline-stays-document-find',
       outFocused === true && c2.findOpen === true && c2.sidebarOpen === false,
       `${JSON.stringify(c2)} / 焦点落在大纲条目=${outFocused}`
     )
     await ev(`(() => { window.__L.store('find').hide(); return 'ok' })()`)
+
+    // ── E2. 边界：**没有工作区**时 → 仍走正文查找（侧栏里没有文件名搜索这回事）──
+    await ev(`(async () => {
+      window.__L.ui().sidebarTab = 'files'
+      await window.__L.files().setRoot(null)
+      return 'ok'
+    })()`)
+    await sleep(700)
+    await bringToFront(app)
+    await ev(`(() => {
+      const tab = document.querySelector('[data-sidebar-tab="files"]')
+      if (tab) tab.focus()
+      return 'ok'
+    })()`)
+    await sleep(300)
+    await ev(CTRL_F)
+    await sleep(450)
+    const c3 = JSON.parse(await ev(STATE))
+    report.note('E2 ' + JSON.stringify(c3))
+    report.check(
+      'ctrl-f-without-workspace-stays-document-find',
+      c3.findOpen === true && c3.sidebarOpen === false,
+      `${JSON.stringify(c3)}（没有工作区就没有文件名可筛，只能开正文查找）`
+    )
+    await ev(`(() => { window.__L.store('find').hide(); return 'ok' })()`)
+    // 复原工作区，给最后那条提示语断言用
+    await ev(
+      `(async () => { await window.__L.files().setRoot(${JSON.stringify(dir)}); return 'ok' })()`
+    )
+    await sleep(700)
 
     // 提示语里带上快捷键（发现性：不写出来的话没人知道侧栏里也能 Ctrl+F）
     await ev(`(() => { window.__L.ui().sidebarTab = 'files'; return 'ok' })()`)
@@ -222,7 +317,9 @@ async function main() {
       String(tip)
     )
   } finally {
-    await ev(`(async () => { await window.__L.files().close(); await window.__L.files().setRoot(null); return 'ok' })()`).catch(() => {})
+    await ev(
+      `(async () => { await window.__L.files().close(); await window.__L.files().setRoot(null); return 'ok' })()`
+    ).catch(() => {})
     fs.rmSync(dir, { recursive: true, force: true })
   }
 
