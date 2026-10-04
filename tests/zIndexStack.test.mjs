@@ -89,21 +89,31 @@ test('z 令牌：文档化的顺序严格递增（谁压在谁上面是规格，
 
 test('模板里不许再出现数字 z-index（必须走令牌）', () => {
   /**
-   * 口径：**全局浮层**（会互相遮挡的那些）必须走 `--z-*` 令牌。
-   * 容器内部的**局部叠放**仍可用 Tailwind 自己的数字档（现存 `AppSidebar.vue` 的吸顶头部 `z-10`、
-   * `SettingsDialog` 的 sticky 顶栏 `z-10`、`StatusBar` 的 `z-50`）—— 它们的作用域只有那个容器，
-   * 不参与全局顺序，强行套全局令牌反而会让人误以为它们也在这条链上。
-   * 拖拽手柄那两处（侧栏宽度手柄 / 右侧大纲手柄）语义上就是 `--z-grip`，所以也收进令牌了。
+   * 口径：**全局浮层**（会互相遮挡的那些）必须走 `--z-*` 令牌，**命名数字档也一样**。
+   *
+   * 报告 §5.1 的复核结论：这条守卫原来只拦 `z-[数字]` 与 `zIndex: 数字`，于是 Tailwind 的
+   * 命名数字档（`z-10` / `z-50`）从缝里溜了过去 —— `StatusBar` 的 `⋯` 浮层就是 `z-50`，
+   * 比 `--z-dialog(70)` / `--z-page(120)` 都低：本地历史浮层一开就能把它压住。
+   * 现在命名档也拦，只留**一处**显式豁免（Settings 页的吸顶小标题栏，它只在自己那一层里比大小，
+   * 不参与全局顺序 —— 用全局令牌反而会让人误以为它在浮层链上）。
    */
+  const ALLOW = new Set(['src/renderer/src/components/SettingsDialog.vue'])
   const offenders = []
   for (const f of srcFiles(['.vue', '.ts'])) {
+    const rel = path.relative(ROOT, f).replace(/\\/g, '/')
     const text = read(f)
     for (const m of text.matchAll(/z-\[(\d+)\]/g)) {
-      offenders.push(`${path.relative(ROOT, f)} → z-[${m[1]}]`)
+      offenders.push(`${rel} → z-[${m[1]}]`)
     }
     // 内联 style 里写死 z-index 也算
     for (const m of text.matchAll(/zIndex:\s*(\d+)/g)) {
-      offenders.push(`${path.relative(ROOT, f)} → zIndex: ${m[1]}`)
+      offenders.push(`${rel} → zIndex: ${m[1]}`)
+    }
+    // Tailwind 命名数字档（z-0 / z-10 / … / z-50）—— 豁免名单之外一律算违规
+    if (!ALLOW.has(rel)) {
+      for (const m of text.matchAll(/(?<![\w-])z-(\d{1,2})(?![\w-])/g)) {
+        offenders.push(`${rel} → z-${m[1]}`)
+      }
     }
   }
   assert.deepEqual(offenders, [], `这些地方还在写死层级：\n${offenders.join('\n')}`)

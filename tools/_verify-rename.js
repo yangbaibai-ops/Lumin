@@ -71,12 +71,12 @@ function connect(url) {
 }
 
 /**
- * 上下文菜单：ContextMenu.vue 的浮层。定位锚点走 **role 语义**（子菜单固定 aria-label="submenu"），
- * 不认 Tailwind 的 z-index 类名 —— 层级收进 `--z-*` 令牌那次，`z-[160]` 变成了
+ * 上下文菜单：ContextMenu.vue 的浮层。定位锚点走 **role 语义** —— 子菜单用 data-context-submenu
+ * 而不是它的 aria-label（那个走语言包，中文界面是「子菜单」）。不认 Tailwind 的 z-index 类名 —— 层级收进 `--z-*` 令牌那次，`z-[160]` 变成了
  * `z-[var(--z-critical)]`，这条套件就静默红了（0 断言，看着像环境问题）。
  * 契约：`role="menu"` / `role="menuitem"`；`_verify-toolbar-settings.js` 早就是同一口径。
  */
-const MENU = `document.querySelector('[role="menu"]:not([aria-label="submenu"])')`
+const MENU = `document.querySelector('[role="menu"]:not([data-context-submenu])')`
 
 ;(async () => {
   const results = []

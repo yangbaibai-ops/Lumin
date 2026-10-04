@@ -6,7 +6,6 @@ import {
   BrowserWindow,
   webUtils,
   shell,
-  nativeTheme,
   type IpcMainInvokeEvent
 } from 'electron'
 import path from 'path'
@@ -115,27 +114,10 @@ function startWorkspaceWatch(root: string): void {
   }
 }
 
-/** 浅层对象深度合并（嵌套对象递归；数组整体替换） */
-function deepMerge<T extends object>(base: T, patch: Partial<T>): T {
-  const out: Record<string, unknown> = { ...(base as Record<string, unknown>) }
-  for (const [k, v] of Object.entries(patch as Record<string, unknown>)) {
-    if (v === undefined) continue
-    const cur = out[k]
-    if (
-      cur &&
-      typeof cur === 'object' &&
-      !Array.isArray(cur) &&
-      v &&
-      typeof v === 'object' &&
-      !Array.isArray(v)
-    ) {
-      out[k] = deepMerge(cur as Record<string, unknown>, v as Record<string, unknown>)
-    } else {
-      out[k] = v
-    }
-  }
-  return out as T
-}
+/** 浅层对象深度合并（嵌套对象递归；数组整体替换）—— 实现已搬到 shared/settingsSchema.ts，
+ *  因为主进程现在有两个调用方（IPC 的 settings:update 与原生菜单的主题项），留两份迟早会漂 */
+import { deepMerge } from '../shared/settingsSchema'
+import * as appSettings from './services/appSettings'
 
 /**
  * 主进程持有、渲染层问不到的两件事：窗口 ↔ 会话槽位归属。
@@ -405,22 +387,22 @@ export function registerIpc(slots: SlotRegistry): void {
        * （覆盖 / 另存为 / 重载），而不是无声地把别人的改动盖掉。
        * 容差 1ms：同一版本的文件两次 stat 在个别文件系统上可能差一点点小数位。
        * 拿不到 stat（文件已被删除）不算冲突：那条路该由"父目录不存在"等既有检查去报。
-       */
-      if (typeof expectMtimeMs === 'number' && expectMtimeMs > 0) {
-        const st = await stat(fp).catch(() => null)
-        if (st && Math.abs(st.mtimeMs - expectMtimeMs) > 1) {
-          return { mtimeMs: st.mtimeMs, conflict: true as const }
-        }
-      }
-      /**
-       * 同一个目标的写盘**按路径串行化**（审计 §2 P1：同一文件被两个窗口打开并各自保存）。
        *
-       * 渲染层的 `savePromise` 只能管住**同一个 store**（= 同一个窗口）；两个窗口是两个 store。
-       * 临时文件名已经带随机后缀（不会再出现"A 的头 + B 的尾"混写），但两次写仍是并发提交的、
-       * 落盘顺序不确定。串行化让它们按到达顺序依次落盘，配合上面的 mtime 冲突检测，
-       * 后到的那次要么拿到冲突（不写）、要么写出完整的一份。
+       * ⚠️ **这个检测必须在 `serializeWrite` 的临界区里**（本轮修）：放在队列外面时，
+       * 同一文件的两次并发写会**都**通过校验（两边拿到的都是同一个旧 mtime），
+       * 随后按入队顺序各写一次 —— 后到者静默覆盖先写者，而先写者还会在渲染层被标成
+       * "已保存"（`files.ts` 的 `finishSave` 把 `savedContent` 设成自己那一版），
+       * 关窗时也不会提示。移到临界区之后，第二次 stat 看到的是第一次刚写下的 mtime，
+       * 于是如实回报 `conflict`，交给用户决定。回归断言见
+       * `tools/_verify-save-safety.js` 的「同路径并发写」两条。
        */
       return serializeWrite(fp, async () => {
+        if (typeof expectMtimeMs === 'number' && expectMtimeMs > 0) {
+          const st = await stat(fp).catch(() => null)
+          if (st && Math.abs(st.mtimeMs - expectMtimeMs) > 1) {
+            return { mtimeMs: st.mtimeMs, conflict: true as const }
+          }
+        }
         // 本地历史（Wave 2 数据安全）：写盘前把**即将被覆盖的那一版**留一份快照。
         // 放在主进程而不是渲染层：所有写盘路径（保存/另存为/以后的回滚写回）都经过这里，
         // 不会因为某个调用点忘了调用而漏掉历史。
@@ -442,9 +424,26 @@ export function registerIpc(slots: SlotRegistry): void {
           }
         }
         const mtimeMs = await fileOps.writeFile(fp, content, encoding, hadBom, eol)
-        // 保存时同步元数据 + 全文索引
-        db.upsertDocument({ path: fp, title: path.basename(fp), content, encoding, eol, hadBom })
-        // 回真实 mtime：渲染层用它判断「磁盘是否被外部改过」，用 Date.now() 冒充会永远失效
+        /**
+         * 保存时同步元数据 + 全文索引。
+         *
+         * ⚠️ 索引更新失败**不能**把这次保存判成失败（报告 §4.2 P1-3）：磁盘已经写成功了，
+         * 若让 DB 异常抛回渲染层，渲染层会记 `saveError` 并退避重试 —— 而重试仍带着旧的
+         * `mtimeMs`，于是命中上面那条冲突检测，用户看到的是"磁盘已被其它程序改过"
+         * （其实是自己刚写的那一份）。索引只是可再生的派生数据：失败就降级成
+         * "索引未更新 + 落一条日志"，绝不污染保存结果。
+         */
+        try {
+          db.upsertDocument({ path: fp, title: path.basename(fp), content, encoding, eol, hadBom })
+        } catch (err) {
+          appLog.appendLog({
+            level: 'warn',
+            scope: 'file:write',
+            event: 'index-upsert-failed',
+            path: fp,
+            error: err instanceof Error ? err.message : String(err)
+          })
+        }
         return { mtimeMs, conflict: false as const, lossy }
       })
     }
@@ -517,10 +516,20 @@ export function registerIpc(slots: SlotRegistry): void {
   })
   ipcMain.handle('file:remove', async (_, p: string) => {
     const fp = fileOps.assertWorkspacePath(p)
+    /**
+     * 删盘**之前**先判断类型：删完之后 `stat` 只会失败，目录会被当成文件走
+     * `deleteDocument`（那条 SQL 按 `path = ?` 精确匹配，永远命不中目录里的文档）——
+     * 幽灵文档就是这么留下来的（报告 §4.2 P1-1）。
+     */
+    const isDir = await stat(fp).then(
+      (st) => st.isDirectory(),
+      () => false
+    )
     // 顺序要紧：**先删盘再删索引**。反过来的话 `trashItem`/`rm` 失败时，
     // 文件还在而搜索与最近列表里已经找不到它了（表现为"文件莫名消失"）。
     const result = await fileOps.removeEntry(fp)
-    db.deleteDocument(fp)
+    if (isDir) db.deleteDocumentsUnder(fp)
+    else db.deleteDocument(fp)
     return result
   })
   ipcMain.handle('file:rename', async (_, o: string, n: string) => {
@@ -630,14 +639,7 @@ export function registerIpc(slots: SlotRegistry): void {
    * 归一化顺手做三件事：丢掉 defaults 里没有的键、补上缺的键、盖上 `settingsVersion`；
    * 只要结果与 kv 里那份不同就写回一次（第二次读就不再写，见 shared/settingsSchema.ts）。
    */
-  const readSettings = (): AppSettings => {
-    const { settings, changed } = normalizeSettings(
-      db.kvGet<AppSettings>('settings', defaultSettings),
-      defaultSettings
-    )
-    if (changed) db.kvSet('settings', settings)
-    return settings
-  }
+  const readSettings = (): AppSettings => appSettings.readSettings()
   ipcMain.handle('settings:getAll', () => readSettings())
   /**
    * 落库 + 同步所有"设置变了"的副作用（原生主题 / 原生菜单 / 跳转列表 / 更新检查 / 备份）。
@@ -645,13 +647,12 @@ export function registerIpc(slots: SlotRegistry): void {
    * `settings:update`（深合并）与 `settings:applyImport`（整体替换）共用这一条出口 ——
    * 两条路的入库方式不同，但**副作用必须一模一样**，否则"导入后语言没立刻换""任务栏
    * 跳转列表还是旧语言"这类问题会专挑一条路漏。
+   *
+   * 落库本身（kv + 原生主题 + 广播 `settings:changed`）走 `services/appSettings.writeSettings`
+   * —— 那是主进程**唯一**的设置写入口，原生菜单的主题项也走它（报告 §3.2 P0-1/P0-2）。
    */
   const commitSettings = (next: AppSettings, changed: Partial<AppSettings>): AppSettings => {
-    db.kvSet('settings', next)
-    // 同步原生主题（Windows 标题栏颜色 / prefers-color-scheme）：
-    // 切换主题时标题栏也要随之切换，否则顶部原生标题栏颜色不跟随应用主题
-    nativeTheme.themeSource =
-      next.theme === 'auto' ? 'system' : next.theme === 'sepia' ? 'light' : next.theme
+    appSettings.writeSettings(next)
     // 任务栏跳转列表里的分类名/任务描述是本地化文案，最近文档也来自设置：
     // 换语言或最近列表变化（含用户在界面上「清空最近」）时顺手重建
     if (changed.language || changed.recentFiles) taskbar.refreshJumpList()
@@ -860,22 +861,16 @@ export function registerIpc(slots: SlotRegistry): void {
     })
     const picked = r.canceled || !r.filePaths.length ? null : r.filePaths[0]
     if (picked) {
-      const merged = normalizeSettings(
-        deepMerge(readSettings(), { backupDir: picked }),
-        defaultSettings
-      ).settings
-      db.kvSet('settings', merged)
+      // 走唯一写入口（kv + 原生主题 + 广播 settings:changed）——
+      // 直接 kvSet 的话渲染层要等到下次拉取才知道目录变了（报告 §3.2 P0-1）
+      appSettings.patchSettings({ backupDir: picked })
       // 换目录后目录是空的 → 立刻补第一份（不然用户要等到"明天"才看到有备份）
       void dbBackup.maybeAutoBackup()
     }
     return dbBackup.backupStatus()
   })
   ipcMain.handle('backup:useDefaultDir', () => {
-    const merged = normalizeSettings(
-      deepMerge(readSettings(), { backupDir: null }),
-      defaultSettings
-    ).settings
-    db.kvSet('settings', merged)
+    appSettings.patchSettings({ backupDir: null })
     return dbBackup.backupStatus()
   })
   ipcMain.handle('backup:revealDir', async () => {

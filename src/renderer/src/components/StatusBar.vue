@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 import { useFilesStore } from '../stores/files'
@@ -122,7 +122,52 @@ const goalTooltip = computed(() => {
  */
 const menuOpen = ref(false)
 const menuRef = ref<HTMLElement | null>(null)
+/** `⋯` 触发按钮：Esc 关闭菜单后焦点要还给它（ARIA menu 的标准行为） */
+const moreBtnRef = ref<HTMLButtonElement | null>(null)
 const languageOptions = LANGUAGE_OPTIONS
+
+/** 菜单里的可聚焦项（按 DOM 顺序） */
+function menuItems(): HTMLElement[] {
+  return Array.from(menuRef.value?.querySelectorAll<HTMLElement>('[role="menuitem"]') ?? [])
+}
+
+/** 关菜单：默认把焦点还给触发按钮（报告 §5.2：浮层要有菜单语义 + Esc/方向键） */
+function closeMenu(refocus = true): void {
+  menuOpen.value = false
+  if (refocus) void nextTick(() => moreBtnRef.value?.focus())
+}
+
+function toggleMenu(): void {
+  if (menuOpen.value) {
+    closeMenu(false)
+    return
+  }
+  menuOpen.value = true
+  // 打开即把焦点给第一项：键盘用户按 Enter 打开后可以直接上下选（鼠标用户也符合平台惯例）
+  void nextTick(() => menuItems()[0]?.focus())
+}
+
+/**
+ * 菜单键盘导航：↑↓ 循环、Home/End 到两端、Esc 关闭并把焦点还给触发按钮。
+ * 为什么值得写：这是一个十来项的浮层菜单，没有这套语义时键盘用户只能 Tab 走一遍全部项。
+ */
+function onMenuKeydown(e: KeyboardEvent): void {
+  if (e.key === 'Escape') {
+    e.preventDefault()
+    closeMenu()
+    return
+  }
+  if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(e.key)) return
+  const items = menuItems()
+  if (!items.length) return
+  e.preventDefault()
+  const cur = items.indexOf(document.activeElement as HTMLElement)
+  let next = items.length - 1
+  if (e.key === 'ArrowDown') next = (cur + 1) % items.length
+  else if (e.key === 'ArrowUp') next = cur <= 0 ? items.length - 1 : cur - 1
+  else if (e.key === 'Home') next = 0
+  items[next]?.focus()
+}
 
 function onDocClick(e: MouseEvent): void {
   if (menuOpen.value && menuRef.value && !menuRef.value.contains(e.target as Node)) {
@@ -182,7 +227,10 @@ const themes: { mode: ThemeMode; icon: string; labelKey: string }[] = [
     class="flex h-7 shrink-0 items-center gap-2.5 bg-paper px-3 text-[11.5px] text-ink-2b"
     data-status-bar
   >
-    <span v-if="!files.current">Lumin — Write in Light.</span>
+    <!-- 标语只在"没打开文档"时出现（打开文档后这一格让给统计信息）；
+         它走语言包而不是硬编码（报告 §5.4 P2-2）：三语的文案**都是这句英文**品牌语，
+         但至少它现在是"可翻译的"，而不是模板里一段谁也管不到的字符串。 -->
+    <span v-if="!files.current">{{ t('app.name') }} — {{ t('app.tagline') }}</span>
 
     <!-- ── 左：文档（统计 / 目标 / 标签）────────────────────────────────────
          全部是"这一篇是什么"的信息，会随打字变化；一眼扫过去就能读完。 -->
@@ -285,21 +333,26 @@ const themes: { mode: ThemeMode; icon: string; labelKey: string }[] = [
          主题 / 语言 / 设置这些跟当前文档无关，没有文档时也得够得着；菜单向上弹（它在窗口最底边）。 -->
     <div ref="menuRef" class="relative flex items-center">
       <button
+        ref="moreBtnRef"
         class="flex items-center rounded-md px-1.5 py-0.5 transition-colors hover:bg-panel-2 hover:text-ink-2"
         :title="t('statusbar.more')"
         :aria-label="t('statusbar.more')"
         :aria-expanded="menuOpen"
+        aria-haspopup="menu"
         data-status-more
-        @click="menuOpen = !menuOpen"
+        @click="toggleMenu"
       >
         <Icon name="more" :size="14" />
       </button>
       <Transition name="pop">
         <div
           v-if="menuOpen"
-          class="absolute bottom-7 right-0 z-50 w-[188px] rounded-xl border border-edge bg-elevate p-1.5 shadow-xl"
+          class="absolute bottom-7 right-0 z-[var(--z-popover)] w-[188px] rounded-xl border border-edge bg-elevate p-1.5 shadow-xl"
           :style="{ boxShadow: 'var(--shadow-2)' }"
+          role="menu"
+          :aria-label="t('statusbar.more')"
           data-status-more-menu
+          @keydown="onMenuKeydown"
         >
           <p
             class="px-2.5 pb-1 pt-1.5 text-[10.5px] font-medium uppercase tracking-wide text-ink-2b"
@@ -315,6 +368,7 @@ const themes: { mode: ThemeMode; icon: string; labelKey: string }[] = [
                 ? 'bg-accent-soft text-accent-ink'
                 : 'text-ink hover:bg-panel-2'
             "
+            role="menuitem"
             :data-more-theme="th.mode"
             @click="pickTheme(th.mode)"
           >
@@ -338,6 +392,7 @@ const themes: { mode: ThemeMode; icon: string; labelKey: string }[] = [
                 ? 'bg-accent-soft text-accent-ink'
                 : 'text-ink hover:bg-panel-2'
             "
+            role="menuitem"
             :data-more-language="opt.value"
             @click="pickLanguage(opt.value)"
           >
@@ -351,6 +406,7 @@ const themes: { mode: ThemeMode; icon: string; labelKey: string }[] = [
           <button
             v-if="files.current"
             class="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-ui-sm text-ink-2b transition-colors hover:bg-panel-2 hover:text-ink-2"
+            role="menuitem"
             data-more-edit-tags
             @click="editTags()"
           >
@@ -359,6 +415,7 @@ const themes: { mode: ThemeMode; icon: string; labelKey: string }[] = [
           </button>
           <button
             class="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-ui-sm text-ink-2b transition-colors hover:bg-panel-2 hover:text-ink-2"
+            role="menuitem"
             data-more-settings
             @click="openSettingsFromMenu"
           >
@@ -369,6 +426,7 @@ const themes: { mode: ThemeMode; icon: string; labelKey: string }[] = [
                  这里给的是**到关于的入口**，不再显示 `v1.0.0`。 -->
           <button
             class="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-ui-sm text-ink-2b transition-colors hover:bg-panel-2 hover:text-ink-2"
+            role="menuitem"
             data-more-about
             @click="openAboutFromMenu"
           >

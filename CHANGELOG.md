@@ -1,5 +1,97 @@
 ## [Unreleased]
 
+### Fixed
+
+**数据安全：堵住报告点名的三条"静默丢改动"路径（报告 §4.2 P0-1/P0-2/P0-3、P1-2/P1-3）**
+
+- **并发保存不再静默覆盖**：`file:write` 的 mtime 冲突检测原本在 `serializeWrite` **外面** ——
+  同一文件被两个窗口打开并各自保存时，两次写都拿到同一个旧 mtime、都通过校验，
+  后到者覆盖先写者，而先写者还会在渲染层被标成"已保存"（关窗不提示）。
+  现在检测移进队列临界区：第二次 stat 看到的是第一次刚写下的 mtime，如实回报 `conflict`。
+  验收：`_verify-save-safety` 15 → **17 条**（同路径两次并发写必须恰好一次冲突、磁盘上恰好一个赢家，
+  判据用"先把 mtime 回拨 10 秒"保证确定性）。
+- **删除正在编辑的文档/目录前先收口握手区**：编辑器的输入有 250ms 防抖、草稿还有 1.2s 防抖，
+  直接删会把这一段吞掉（回收站与本地历史只覆盖**已写进磁盘**的版本）。现在 `removeNode`
+  先 `flushEditorBeforeReplace()`、脏则立刻写一份草稿；删目录那条路在摘掉路径后再用
+  「未命名」键留一份；删除确认框对"脏的当前文档"多说一句警告（三语）。
+  验收：`_verify-file-lifecycle` 11 → **15 条**。
+- **「不保存」真的会确认关窗**：`requestClose` 原来在 `try` 里 `return`，而 `confirmClose()` 写在
+  `try` 之后 —— 选「不保存」那条路正好跳过了它，窗口只能等主进程 2.5 秒的兜底强杀。
+  现在改成"一条出口 + `closeNow` 标志"。验收：`_verify-close-save-prompt` 21 → **22 条**
+  （点「不保存」到进程退出必须 < 2s）。
+- **保存清草稿前先等在飞的草稿写落地**：`finishSave` 直接 `drafts.remove`，而在飞的
+  `draftWrite` 可能落在它之后 → 草稿被写回 → 下次启动按 `restorableDraft` 弹出**已经被撤销**的内容。
+- **索引写失败不再污染保存结果**：`db.upsertDocument` 失败只降级成"索引未更新 + 一条日志"，
+  不再让渲染层把一次**已经成功落盘**的保存记成失败（那会带着旧 mtime 退避重试 → 假冲突）。
+- **SQLite 补 `busy_timeout = 3000`**：此前只有 WAL/synchronous，外部工具占用库时写会直接
+  SQLITE_BUSY 冒到"保存失败"。
+
+**一致性：索引只增不删（报告 §4.2 P1-1）**
+
+- 删目录时改为按**目录边界前缀**批量删索引（`deleteDocumentsUnder`）：原来只 `deleteDocument(目录路径)`，
+  那条 SQL 按 `path = ?` 精确匹配，永远命不中 —— 幽灵文档会长期留在 `documents`/FTS/`documents_history`
+  里（搜得到、点不开）。工作区索引收尾还会按"本轮真实扫到的路径集合"对账 prune
+  （扫到 MAX_FILES 上限时跳过对账，避免误删）。验收：`_verify-file-lifecycle` 的
+  `delete-directory-prunes-index` 逐路径查库，三篇必须全部为 `null`。
+
+**设置：一份真相 + 原生菜单主题真的生效（报告 §3.2 P0-1/P0-2）**
+
+- 新增 `main/services/appSettings.ts` 作为主进程**唯一**设置写入口（kv + 原生主题 + 广播
+  `settings:changed`）；`ipc.ts` 的 `commitSettings` 与两处"备份目录"写点全部改走它，
+  渲染层订阅新出站通道就地把 store patch 回来（此前主进程直接 `kvSet` 不通知，
+  界面会显示旧值到重启，反之 store 的 `persist` 还会把主进程那一步打回去）。
+- 原生菜单的主题项此前写的是 **electron-store**（`store.ts` 自述它只是历史配置的一次性迁移源），
+  渲染层收到 `theme-changed` 却去 SQLite 重读 ⇒ **点了没反应**。现在改走 `patchSettings({ theme })`，
+  并删掉 `theme-changed` 这条死菜单动作。验收：单测守卫「设置只有一个写入口」
+  （`src/main/**` 除白名单外不许出现 `kvSet('settings'`，`menu.ts` 不许再碰 `settingsStore`）。
+- 删掉 `electron.vite.config.ts` 里零引用的 `@codemirror/language-data` 预构建项（报告 §3.2 P1-3）。
+
+**可访问性与对比度（报告 §5.1/§5.2）**
+
+- **四处对比度漏洞**（含扩面后新抓到的第 5 处）：light `--ink-3` #8a919e→#7d8595、`--link`
+  #2563eb→#1f57dd；dark `--ink-2`/`--ink-2b` #b3b8c0→#b6bbc3、`--ink-3` #8a9099→#949aa6、
+  `--link` #6cb0f5→#84c1f9、`--find-current-bg` #428bca→#3576b0；sepia `--ink-3` #94836a→#8a7a61、
+  `--accent` #8a7f6b→#857a66。实测：`--ink-3/--panel-2` = 3.11/3.25/3.14（原 2.66/2.86/2.77）、
+  `--link/--panel-2` = 5.08/4.80/5.05（原 4.33/4.01）、dark `--ink-2/--elevate` = 4.63（原 4.48）、
+  dark 查找当前命中白字 = 4.81（原 3.63）。`themeTokens.test.mjs` 的面矩阵从 3 个扩到 **4 个**
+  （补 `--elevate`），`--ink-3`/`--accent` 四表面各守 3:1，链接与 find 三色单独成测。
+  导出模板（`lib/export.ts`）同步，`docs/design-tokens.md` 重算。
+- **专注模式把退出入口一起藏掉**（报告 §5.2 P0-2）：工具栏被 `v-if` 卸载时，专注开关（它就在
+  工具栏里）随之消失，而原注释声称"状态栏也能切回来" —— 状态栏并没有那个入口。
+  现在专注模式下多一枚悬浮退出胶囊（右下、半透明、hover/focus 变实、三语标签），并改掉错注释。
+- **状态栏 `⋯` 浮层**：`z-50` → `z-[var(--z-popover)]`（原层级比 dialog/page 都低，会被压住）；
+  补 `role="menu"`/`role="menuitem"`/`aria-haspopup` 与 ↑↓、Home/End、Esc（关闭并把焦点还给触发按钮）。
+  z 守卫从"只拦 `z-[数字]`"扩到**Tailwind 命名数字档**（只留 Settings 页吸顶栏一处豁免）。
+- **侧栏「文件 / 大纲」页签补 tabs 语义**（报告 §5.2 P1-5）：`role=tablist/tab`、`aria-selected`、
+  roving `tabindex`、`aria-controls` ↔ `role=tabpanel`/`aria-labelledby` 闭环，并加 ←/→/Home/End 切换。
+  顺带修正 `_verify-a11y` 里量错控件的断言（它此前量的是文件树里的树/列表分段控件，
+  顶部页签是零覆盖）。`_verify-a11y` 23 → **31 条**。
+
+**i18n（报告 §5.4）**
+
+- 英文硬编码纳入门禁：新增扫描器（模板文本节点里 ≥3 个单词的英文句子 +
+  `aria-label`/`title`/`placeholder`/`alt` 里未绑定的英文），并修掉两处真实案例
+  （状态栏标语改走语言包、`aria-label="submenu"` 走 `t('common.submenu')`）。
+- 删掉 `en-US`/`ru-RU` 里重复的 `toast.encodingLossySave`（JSON 取后者，静默覆盖前者）；
+  俄语 `wordGoalValue` 从 `{n} слов` 改成复数中性的 `Слов: {n}`；设置页备份时间补 locale。
+
+**工程与文档（报告 §6）**
+
+- **端到端接进 PR 门禁**：`cdp.yml` 拆成 `cdp-pr`（`pull_request` + `--ci-subset` + **阻塞**）与
+  `cdp`（夜间/手动 + `continue-on-error`）。此前"合并前没有任何端到端红灯"。
+- **Ctrl+F 的分流改成看"最近一次交互在哪儿"**：原来把"指针此刻悬在侧栏"与"焦点在侧栏"等权，
+  于是"鼠标停在侧栏（上一次交互的残留）→ 点进正文 → Ctrl+F"会打开侧栏的文件名搜索。
+  新增 `lib/pointerRegion.ts` 记指针/焦点交互的时序，`ctrlFTarget` 增加
+  `sidebarPointerRecent` 一档（焦点在侧栏 → 侧栏；最近动的是鼠标且在侧栏 → 侧栏；
+  否则焦点在编辑区 → 正文）。`tests/ctrlFRoute.test.mjs` 6 → 9 条。
+- 子菜单浮层加**语言无关**锚点 `data-context-submenu`：它的 `aria-label` 现在走语言包
+  （中文界面是「子菜单」），4 个套件里 5 处按字面量 `aria-label="submenu"` 定位的选择器
+  全部改用它 —— 否则那条契约会在下次改文案时继续骗人。
+- `docs/_audit/` 纳入 `docsClaims` 扫描域 + 6 份快照加「历史快照」横幅；
+  纳管第一轮即抓出 3 条失效引用（逐条登记理由，不整目录豁免）。
+- 新增 `docs/optimization-waves.md`：逐条记录桌面评审报告各项的处理状态 / 证据 / 验收口径 /
+  剩余工作（波次 1 完成，波次 2 待做清单在文末）。
+
 ### Changed
 
 - **大纲搬回左栏时恢复到"放到右侧之前"的那一页**（用户口径）：

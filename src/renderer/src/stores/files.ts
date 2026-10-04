@@ -379,6 +379,17 @@ export const useFilesStore = defineStore('files', {
       return path
     },
     /**
+     * 这次删除会不会动到"正在编辑的文档"（就是它本身，或它落在被删的目录里）。
+     *
+     * 给两处用：`TreeNode` 的删除确认据此**多说一句"这篇还有未保存的改动"**，
+     * `removeNode` 据此把握手区收口（见那里的说明）。
+     */
+    deleteAffectsCurrentDoc(path: string): boolean {
+      const cur = this.current?.path
+      if (!cur) return false
+      return samePath(cur, path) || isInside(path, cur)
+    },
+    /**
      * 删除文件/目录（主进程优先走系统回收站）。
      *
      * 两种"正在编辑的文档被删掉"都要照顾到，否则会出现"删了又自己长回来"：
@@ -386,8 +397,19 @@ export const useFilesStore = defineStore('files', {
      *  * 删的是**它所在的目录** → 保留正文，把它降级成**未命名缓冲区**：路径没了，
      *    保存时会走「另存为」而不是在旧目录里把文件复活（`fileOps.writeFile` 会 `mkdir -p`，
      *    而 `current.path` 还在旧路径上时，下一次保存就会重建那个目录）。
+     *
+     * ⚠️ **删之前先把握手区收口**（本轮修，见报告 §4.2 P0-2）：编辑器的输入有 250ms 防抖、
+     * 草稿还有 1.2s 防抖，直接删会把这一小段吞掉 —— 回收站与本地历史只覆盖**已经写进磁盘的
+     * 版本**，救不回它。所以：先 `flushEditorBeforeReplace()` 把手握区的输入收进 store，
+     * 脏的话**立刻写一份草稿**（userData/drafts），再真正删除。删目录那条路还会在摘掉路径后
+     * 再用"未命名缓冲"的键留一份，保证那份正文下次启动还能捡回来。
      */
     async removeNode(node: FileNode, parentDir: string): Promise<void> {
+      const affectsCurrent = this.deleteAffectsCurrentDoc(node.path)
+      if (affectsCurrent) {
+        flushEditorBeforeReplace()
+        if (this.dirty) await this.writeDraft().catch(() => {})
+      }
       const { trashed } = await window.luminAPI.file.remove(node.path)
       if (!trashed) {
         // 该位置不支持回收站（网络盘 / FAT 盘 / 组策略）：已经永久删除了，必须说清楚
@@ -395,12 +417,15 @@ export const useFilesStore = defineStore('files', {
       }
       if (this.current?.path) {
         if (samePath(this.current.path, node.path)) {
-          // 删的就是正在编辑的这一篇：按用户意图关掉它（内容已在回收站 + 本地历史里）
+          // 删的就是正在编辑的这一篇：按用户意图关掉它
+          // （正文已在回收站/本地历史里；上面那份草稿是"防抖窗口里的输入"的兜底）
           this.current = null
           useWorkspaceDocsStore().invalidate()
         } else if (isInside(node.path, this.current.path)) {
           // 删的是它所在的目录：正文要留住，所以降级成未命名缓冲区（见 detachCurrentDoc）
           this.detachCurrentDoc()
+          // 路径摘掉之后草稿键变成"未命名"那一档，再留一份 —— 两份都在，任一路径都能捡回来
+          if (this.dirty) await this.writeDraft().catch(() => {})
         }
       }
       // 最近文档 / 置顶 / 最近文件夹里的死链一起清掉
@@ -1061,7 +1086,16 @@ export const useFilesStore = defineStore('files', {
         // 没有新输入：文档与磁盘一致 → 草稿可以清掉（此时它没有恢复价值）。
         // ⚠️ 保存期间用户**换了文档**时这个清草稿的动作不做：旧路径的草稿不属于新文档的地盘
         // （与旧实现一致 —— 那时两个分支都不进），脏文档的草稿交给它自己的下一次 scheduleSave。
-        if (isStillDoc) await window.luminAPI.drafts.remove(this.draftKey(doc.path as string))
+        //
+        // ⚠️ **先等在飞的那次草稿写盘落地再删**（本轮修，见报告 §4.2 P1-2）：`writeDraft` 是
+        // "发了不等"的（`void this.writeDraft()`），删除动作可能抢在它的 IPC 之前完成 ——
+        // 于是草稿在删除**之后**又被写回磁盘。后果是"输入→撤销回原样→保存"这条最常见的路径
+        // 会留一份内容其实与磁盘一致的草稿，下次启动按 `restorableDraft`（savedAt > mtime+1s）
+        // 判为"可恢复"，弹出已经被撤销的内容。`discardCurrentDraft` 用的就是这个顺序，这里对齐。
+        if (isStillDoc) {
+          if (this.draftWrite) await this.draftWrite.catch(() => {})
+          await window.luminAPI.drafts.remove(this.draftKey(doc.path as string))
+        }
       } else {
         // await 期间又有输入：保持脏，重排一次保存与草稿（不静默把新内容吞掉）
         this.scheduleSave()

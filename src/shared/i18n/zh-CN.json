@@ -5,6 +5,7 @@
   },
   "common": {
     "cancel": "取消",
+    "submenu": "子菜单",
     "confirm": "确认",
     "save": "保存",
     "open": "打开",
@@ -158,6 +159,7 @@
     "split": "分屏",
     "source": "源码",
     "focus": "专注模式",
+    "focusExit": "退出专注模式",
     "placeholder": "在此开始写作…（输入 # 创建标题）",
     "restoreDraft": "检测到未保存的草稿（比磁盘文件更新）",
     "restoreDraftUntitled": "检测到上次未保存的内容",
@@ -207,6 +209,7 @@
     "saveAfterReopenBody": "当前内容是按「{enc}」重新解释磁盘字节得到的（很可能就是乱码），**不是**编码转换的结果。按现在这样写回会覆盖磁盘上的原始内容 —— 确认保存？",
     "deleteConfirmTitle": "删除确认",
     "deleteConfirmBody": "确定要删除「{name}」吗？会移入系统回收站（可在回收站里还原）。",
+    "deleteUnsavedWarn": "这一篇还有未保存的改动：删除前会替你留一份本地草稿，下次启动仍可恢复。",
     "imageRemoteHidden": "远程图片已隐藏（点击加载）",
     "editSource": "点击编辑源码",
     "splitDividerTitle": "拖动调整左右比例（双击复位）",

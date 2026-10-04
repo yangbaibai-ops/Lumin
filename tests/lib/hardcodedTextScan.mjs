@@ -309,3 +309,71 @@ export function scanHardcodedText(root = SRC) {
   }
   return offenders
 }
+
+/**
+ * ─── 模板里**用户可见的英文硬编码**（报告 §5.4 P2-2）───────────────────────────
+ *
+ * 为什么单开一路：上面的 CJK 扫描器只能抓中文 —— 于是"本该走语言包的英文"整片漏网。
+ * 报告实测的两处：`StatusBar.vue` 的状态栏标语（纯英文文本节点）与 `ContextMenu.vue:399`
+ * 的 `aria-label="submenu"`（屏幕阅读器会读出来）。这一路只扫**用户会看到/听到**的地方：
+ *   * 模板**文本节点**里 ≥3 个英文单词的句子（`Lumin — Write in Light.`）；
+ *   * `aria-label` / `title` / `placeholder` / `alt` 这些**属性值**里的英文（未绑定的才查，
+ *     `:title="t('…')"` 走语言包的一律放过）。
+ * 刻意**不**扫 `class` / `id` / 事件名 / 变量名 —— 那些不是界面文案，扫了只会淹掉真信号。
+ */
+const VISIBLE_ATTRS = /(?<![:@\w-])(aria-label|title|placeholder|alt)\s*=\s*"([^"]*)"/g
+
+/** 属性里的英文（未绑定、未走语言包、含 ≥1 个英文单词） */
+export function templateEnglishAttrs(tpl) {
+  const offenders = []
+  for (const m of tpl.matchAll(VISIBLE_ATTRS)) {
+    const raw = m[2]
+    if (/\{\{|\$?t\s*\(/.test(raw)) continue
+    if (!/[A-Za-z]{2,}/.test(raw)) continue
+    offenders.push({ kind: 'attr', text: `${m[1]}="${raw.slice(0, 60)}"` })
+  }
+  return offenders
+}
+
+/**
+ * 模板文本节点里的英文句子。
+ *
+ * ⚠️ 只认**同一行里真正夹在标签之间**的文本（`>文本<`）—— 第一版按"去掉标签后剩 ≥3 个单词"
+ * 判定，结果多行标签的 class 续行也被当成文案，一次报出两百多条假阳性（真信号被淹掉）。
+ * 现在的判据来自标签边界本身：`>…<` 之间、不含 `{{`/`t(`、≥3 个英文单词且长度 ≥12。
+ */
+export function templateEnglishText(tpl) {
+  const offenders = []
+  tpl.split('\n').forEach((raw, i) => {
+    const line = raw.replace(/<!--[\s\S]*?-->/g, '')
+    for (const m of line.matchAll(/>([^<>]+)</g)) {
+      const text = m[1].replace(/\s+/g, ' ').trim()
+      if (!text || /\{\{|\$?t\s*\(/.test(text)) continue
+      const words = text.match(/[A-Za-z][A-Za-z'’.-]*/g) ?? []
+      if (words.length >= 3 && text.length >= 12) {
+        offenders.push({ line: i + 1, kind: 'text', text: text.slice(0, 70) })
+      }
+    }
+  })
+  return offenders
+}
+
+/** 扫整个 `src/**\/*.vue` 的模板，返回 `{ rel, line, kind, text }[]` */
+export function scanHardcodedEnglish(root = SRC) {
+  const offenders = []
+  for (const file of walk(root)) {
+    if (!file.endsWith('.vue')) continue
+    const rel = relative(root, file).split(sep).join('/')
+    for (const block of vueBlocks(readFileSync(file, 'utf-8'))) {
+      if (block.kind !== 'template') continue
+      const offset = block.line - 1
+      for (const t of templateEnglishAttrs(block.text)) {
+        offenders.push({ rel, line: t.line ?? offset + 1, kind: t.kind, text: t.text })
+      }
+      for (const t of templateEnglishText(block.text)) {
+        offenders.push({ rel, line: t.line + offset, kind: t.kind, text: t.text })
+      }
+    }
+  }
+  return offenders
+}

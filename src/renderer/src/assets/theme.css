@@ -66,7 +66,7 @@
   --edge-strong: #d2d5db;
   --ink: #20242b;
   --ink-2: #4e5766;
-  --ink-3: #8a919e;
+  --ink-3: #7d8595;
   /* ─── 第四档「墨」：--ink-2b（次要正文，>= 4.5:1）─────────────────────────────
      审计结论：三主题里 --ink-3 都被当**正文级**文字用过（设置项描述、placeholder、
      状态栏次要信息），而它在这三套底色上分别是 2.66 / 2.86 / 2.22 —— 三主题全不达标，
@@ -74,7 +74,11 @@
        --ink   正文        （对纸 >= 7:1，tests/themeTokens.test.mjs 已守）
        --ink-2 次要正文     （对 app/paper/panel-2 均 >= 4.5:1）
        --ink-2b 第三档正文  （同上；比 --ink-2 再淡一点，但仍然达标）
-       --ink-3 装饰/图标    （只要求 >= 3:1，不再用于正文 —— 本轮已把正文用法全部改掉） */
+       --ink-3 装饰/图标    （对 app/paper/panel-2/elevate 均 >= 3:1，不再用于正文 —— 本轮已把正文用法全部改掉）
+                          ※ 报告 §5.1 复核实测：改前 --ink-3 在 --panel-2（行悬停/表头底色）上只有
+                            2.66/2.86/2.77，连"装饰档 3:1"都没到 —— 悬停时图标正落那一层。
+                            本轮按三套底色各自压深/提亮一档（light #7d8595 / dark #949aa6 / sepia #8a7a61），
+                            现在 panel-2 上 3.11/3.25/3.14，paper 上 3.71/4.16/3.80。 */
   --ink-2b: #606977;
   /* ─── 代码块专用配色（对 --code-bg >= 4.5:1）───────────────────────────────────
      审计结论：语法高亮直接复用语义色（--ok/--warning/--ink-3），而 --code-bg 比纸还暗一档，
@@ -90,7 +94,7 @@
   --accent-2: #4b5563;
   --accent-soft: rgba(17, 24, 39, 0.07);
   --accent-ink: #374151;
-  --link: #2563eb;
+  --link: #1f57dd;
   --toc-link: var(--link);
   /* 源码标记符（`**`、`*`、`~~`、`` ` ``、`#`、`\`）的墨色：比 --ink-3 更淡一档。
      用户口径「标记符再浅一点的灰色」；像 Typora 那样只在需要时轻轻透出来，
@@ -158,9 +162,9 @@
   --edge: #4a4d54;
   --edge-strong: #5b606a;
   --ink: #e6e8ec;
-  --ink-2: #b3b8c0;
-  --ink-3: #8a9099;
-  --ink-2b: #b3b8c0;
+  --ink-2: #b6bbc3;
+  --ink-3: #949aa6;
+  --ink-2b: #b6bbc3;
   --code-str: #4ade80;
   --code-num: #fbbf24;
   --code-com: #9aa3ad;
@@ -170,7 +174,7 @@
   --accent-2: #7d838d;
   --accent-soft: rgba(255, 255, 255, 0.09);
   --accent-ink: #e2e5ea;
-  --link: #6cb0f5;
+  --link: #84c1f9;
   --toc-link: var(--link);
   /* 深色下「更淡」= 更贴近背景（对比度更低），不是更亮：比 --ink-3 / --accent 都更暗 */
   --marker: #6e747d;
@@ -190,7 +194,7 @@
   /* 查找命中（深色）：参照 Typora night.css 的蓝色高亮（半透明蓝底 + 实蓝当前项 + 白字） */
   --find-hit-bg: rgb(102 175 233 / 32%);
   --find-hit-ink: #eef2f8;
-  --find-current-bg: #428bca;
+  --find-current-bg: #3576b0;
   --find-current-ink: #ffffff;
   --find-current-edge: rgb(120 190 240 / 60%);
   --btn-solid: #5a616d;
@@ -220,14 +224,14 @@
   --edge-strong: #d6c6a0;
   --ink: #4a3b2a;
   --ink-2: #6b5b40;
-  --ink-3: #94836a;
+  --ink-3: #8a7a61;
   --ink-2b: #6f5f45;
   --code-str: #166534;
   --code-num: #92400e;
   --code-com: #6b5b40;
   --code-invalid: #b91c1c;
   /* 副色 = **暖**中性灰（羊皮纸主题保留暖调，但不再是琥珀色强调） */
-  --accent: #8a7f6b;
+  --accent: #857a66;
   --accent-2: #6f6555;
   --accent-soft: rgba(90, 74, 48, 0.09);
   --accent-ink: #5c5140;

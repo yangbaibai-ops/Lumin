@@ -147,3 +147,31 @@ export function versionOf(raw: Record<string, unknown>): number {
   const v = raw.settingsVersion
   return typeof v === 'number' && Number.isFinite(v) && v >= 0 ? Math.floor(v) : 0
 }
+
+/**
+ * 浅层对象深度合并（嵌套对象递归；数组整体替换；`undefined` 不覆盖）。
+ *
+ * 从 `main/ipc.ts` 搬到这里（报告 §3.2 P0-1 的顺手收口）：主进程现在有两个调用方
+ * （IPC 的 `settings:update` 与原生菜单的主题项），留着两份实现迟早会漂。
+ * 纯函数、无 IO，`tests/settingsPatch.test.mjs` 直接钉住语义（数组替换 / undefined 跳过 / 深合并）。
+ */
+export function deepMerge<T extends object>(base: T, patch: Partial<T>): T {
+  const out: Record<string, unknown> = { ...(base as Record<string, unknown>) }
+  for (const [k, v] of Object.entries(patch as Record<string, unknown>)) {
+    if (v === undefined) continue
+    const cur = out[k]
+    if (
+      cur &&
+      typeof cur === 'object' &&
+      !Array.isArray(cur) &&
+      v &&
+      typeof v === 'object' &&
+      !Array.isArray(v)
+    ) {
+      out[k] = deepMerge(cur as Record<string, unknown>, v as Record<string, unknown>)
+    } else {
+      out[k] = v
+    }
+  }
+  return out as T
+}

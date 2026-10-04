@@ -1,3 +1,5 @@
+> ⚠️ **历史快照（2026-09 前后）**：本文件记录的是**当时**的状态与判断，勿当作现状引用；docs/ 的现状口径见手册与 README。路径引用可能已随代码演进失效（纳入 	ests/docsClaims.test.mjs 前已逐条登记）。
+
 # Lumin 只读静态审计：i18n 完整性与设置项一致性
 
 - **审计范围**：`src/shared/i18n/*.json`、`src/renderer/src/i18n/index.ts`、`src/main/menu.ts`、全部 `t()/$t()/tm()` 调用点；`src/shared/defaults.ts`、`src/shared/types.ts`、`src/renderer/src/components/SettingsDialog.vue`、`src/renderer/src/stores/settings.ts`、`src/main/ipc.ts`、`src/main/services/database.ts`。

@@ -1,3 +1,5 @@
+> ⚠️ **历史快照（2026-09 前后）**：本文件记录的是**当时**的状态与判断，勿当作现状引用；docs/ 的现状口径见手册与 README。路径引用可能已随代码演进失效（纳入 	ests/docsClaims.test.mjs 前已逐条登记）。
+
 # Lumin 面向用户控件接线审计（只读静态审计）
 
 - 审计对象：`D:\code_workspace\Lumin`（Electron 39 / Vue 3.5 / Tiptap 3.31 / vue-i18n 11 / Pinia / SQLite）

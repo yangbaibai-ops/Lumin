@@ -8,9 +8,9 @@ import type { EffectiveTheme } from '../../../shared/types'
 // `tests/designTokens.test.mjs` 会逐条对账。
 const proseCss = `
 :root {
-  --edge: #e4e6ea; --edge-strong: #d2d5db; --ink: #20242b; --ink-2: #4e5766; --ink-3: #8a919e;
+  --edge: #e4e6ea; --edge-strong: #d2d5db; --ink: #20242b; --ink-2: #4e5766; --ink-3: #7d8595;
   --accent: #6b7280; --accent-2: #4b5563; --accent-soft: rgba(17, 24, 39, 0.07);
-  --link: #2563eb;
+  --link: #1f57dd;
   --ok: #16a34a; --warning: #d97706; --danger: #dc2626;
   --code-key: #3f6592; --code-key-2: #2b6f8f;
   --code-bg: #f1f2f5; --panel-2: #e9ebf0;

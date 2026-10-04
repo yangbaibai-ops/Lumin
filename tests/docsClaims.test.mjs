@@ -52,10 +52,24 @@ test('文档里引用的仓库路径都存在（README / 手册 / 台账）', ()
     'README.md',
     'docs/typora-wysiwyg-manual.md',
     'docs/optimization-program.md',
+    // 逐条记录桌面评审报告各项处理状态的活台账（波次 1 = 2026-10-04）
+    'docs/optimization-waves.md',
     ...readdirSync(join(ROOT, 'docs/manual'))
       .filter((f) => f.endsWith('.md'))
       .sort()
-      .map((f) => `docs/manual/${f}`)
+      .map((f) => `docs/manual/${f}`),
+    /**
+     * `docs/_audit/` 也纳入（报告 §6.2 P1）：这几份是**历史快照**，此前不在任何文档门禁的
+     * 扫描域里 —— 于是 `coverage-matrix.md` 里"默认矩阵 21 个 / `tools/verify-tiptap.js`
+     * 1473 行"这类早已作废的说法一直没人拦（那个文件其实已经删了）。
+     * 路径引用会随代码演进而失效，让它们至少在"指向的文件还在不在"这一层受同样的约束。
+     * ⚠️ 历史快照里"当时存在、后来删了"的路径是**正常**的：本文件的行内豁免
+     * （`删除/已删/移除/不存在`）就是给它们准备的通道。
+     */
+    ...readdirSync(join(ROOT, 'docs/_audit'))
+      .filter((f) => f.endsWith('.md'))
+      .sort()
+      .map((f) => `docs/_audit/${f}`)
   ]
   // 只认「以仓库根为起点、带已知扩展名」的引用，避免把叙述性名字当路径。
   // ⚠️ 结尾必须有 `\b`：否则 `...zh-CN.json` 会被 `\.js` 抢先匹配成 `...zh-CN.js`
@@ -71,6 +85,24 @@ test('文档里引用的仓库路径都存在（README / 手册 / 台账）', ()
       existsSync(join(ROOT, c))
     )
   const missing = []
+  /**
+   * `docs/_audit/` 里的**已知历史路径**（报告 §6.2 P1）。
+   *
+   * 这几份是当时的快照：里面提到的文件后来被删/改了名，**在当时是对的**。
+   * 逐条登记而不是整目录豁免 —— 这样"快照里新出现的失效路径"仍然会被拦下
+   * （纳入扫描域的第一轮就抓到下面这三条，正是这个门禁的价值）。
+   */
+  const AUDIT_ALLOW = new Map([
+    [
+      'docs/_audit/coverage-matrix.md → tools/verify-tiptap.js',
+      '该总套件已删除（拆进 harness 与 _verify-* 套件）'
+    ],
+    ['docs/_audit/lumin-lighter-audit.md → tools/verify-tiptap.js', '同上'],
+    [
+      'docs/_audit/ui-inventory.md → src/starter-kit.ts',
+      '该文件从未存在于仓根（当时写的是包内路径 @tiptap/starter-kit）'
+    ]
+  ])
   for (const doc of docs) {
     const seen = new Set()
     read(doc)
@@ -82,6 +114,7 @@ test('文档里引用的仓库路径都存在（README / 手册 / 台账）', ()
           const p = m[0]
           if (seen.has(p)) continue
           seen.add(p)
+          if (AUDIT_ALLOW.has(`${doc} → ${p}`)) continue
           if (!resolve(p)) missing.push(`${doc} → ${p}`)
         }
       })

@@ -538,12 +538,23 @@ async function waitDialog(conn, ms = 5000) {
       console.log('R2 同一个实例再关一次 → 点「不保存」')
       triggerClose(round.conn)
       const dlg2 = await waitDialog(round.conn)
+      const t2 = Date.now()
       clickDialogButton(round.conn, 'alt')
       const closed = await waitExit(round.child)
+      const closeMs = Date.now() - t2
       c(
         'dont-save-closes-the-window',
         dlg2.open === true && closed === true,
         JSON.stringify({ open: dlg2.open, closed })
+      )
+      // ⚠️ 回归项（本轮补）：渲染层必须**显式**发 `app:confirmClose` 放行。
+      // 旧实现里「不保存」那条分支提前 `return`，跳过了确认调用 —— 窗口只能等主进程
+      // 2.5 秒的 stalled 兜底强杀（功能上能关，但白等，且与"显式确认"的意图不符）。
+      // 用时间判定锁住：走兜底 ≥2500ms，显式放行通常 <1000ms，2s 是安全分界。
+      c(
+        'dont-save-confirms-close-explicitly',
+        closed === true && closeMs < 2000,
+        `点「不保存」到进程退出用了 ${closeMs}ms（≥2500ms 说明走的是兜底强杀，不是显式确认）`
       )
       c(
         'dont-save-leaves-the-file-untouched',

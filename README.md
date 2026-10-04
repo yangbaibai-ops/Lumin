@@ -76,12 +76,17 @@ npm run ci          # typecheck + lint + test:unit + build（CI 用的就是它�
 npm run build       # 生产构建
 ```
 
-> **CDP 验收套件不在 CI 里跑**：`tools/_verify-*.js` 需要**真实桌面会话**（鼠标键盘、窗口焦点），
-> 因此按需手动执行。统一入口会**逐个套件起全新隔离实例**（套件会改设置/写草稿/动 kv，串着跑必然互相污染），
+> **CDP 验收套件：PR 上跑子集（阻塞），夜间跑一条更宽的（只通知）**。
+> `tools/_verify-*.js` 需要**真实桌面会话**（鼠标键盘、窗口焦点），而 GitHub runner 是无头的 ——
+> 所以 `.github/workflows/cdp.yml` 分两条 job：`cdp-pr`（`pull_request` 触发，跑
+> `--ci-subset`：源码不含真实输入注入的那批，**红了不许合并**）与 `cdp`（夜间/手动，
+> `continue-on-error: true`，环境抖动只通知）。本地仍然按需手动跑，入口会
+> **逐个套件起全新隔离实例**（套件会改设置/写草稿/动 kv，串着跑必然互相污染），
 > 并把末行的 `--- N/M PASS` 汇总成矩阵：
 >
 > ```powershell
 > node tools/run-suites.js                            # 默认那一组（不需要 dev server）
+> node tools/run-suites.js --ci-subset                # CI 那条子集（= PR 门禁跑的同一批）
 > node tools/run-suites.js --suite=_verify-session.js # 点名跑
 > node tools/run-suites.js --all                      # 全量（多数需要 5173 上的 dev server）
 > ```
@@ -135,11 +140,11 @@ docs/                     # 手册 / 整改方案 / 打包实测
 
 | 范围 | 文件 | 行数 |
 |---|---|---|
-| `src/main` | 35 | 7908 |
-| `src/preload` | 2 | 273 |
-| `src/shared` | 32 | 4006 |
-| `src/renderer` | 129 | 26760 |
-| `src 合计` | 198 | 38947 |
+| `src/main` | 36 | 8035 |
+| `src/preload` | 2 | 279 |
+| `src/shared` | 32 | 4033 |
+| `src/renderer` | 130 | 27087 |
+| `src 合计` | 200 | 39434 |
 
 口径：`src/main`/`preload`/`shared` 数 `.ts`，`src/renderer` 数 `.ts`+`.vue`（含子目录）。
 

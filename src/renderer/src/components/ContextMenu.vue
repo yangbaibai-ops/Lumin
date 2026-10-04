@@ -7,9 +7,14 @@
 // 与编辑器右键菜单（EditorContextMenu.vue）同一套做法，包括「贴死不留缝」
 // 的安全区判定：两块之间不留空隙，指针从一级走向二级的全程都算「还在菜单上」。
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useUiStore, type ContextMenuItem } from '../stores/ui'
 import { placeAtPoint, placeSubmenu } from '../lib/menuPlacement'
 import Icon from './Icon.vue'
+
+// 二级面板的 `aria-label` 走语言包（报告 §5.4 P2-2 的"英文硬编码"那一类：
+// 读屏器会把字面量 `submenu` 念出来，而界面其余部分都是本地化的）
+const { t } = useI18n()
 
 const ui = useUiStore()
 const menuRef = ref<HTMLElement | null>(null)
@@ -388,7 +393,10 @@ const subStyle = computed(() => ({
       </div>
     </Transition>
 
-    <!-- 子菜单：独立浮层 -->
+    <!-- 子菜单：独立浮层。
+         `data-context-submenu` 是给验收套件用的**语言无关**锚点（报告 §5.4 P2-2 的连带修复）：
+         `aria-label` 现在走语言包（中文界面是「子菜单」），套件再按字面量 `submenu` 找就会落空 ——
+         锚点必须与界面文案解耦。 -->
     <Transition name="pop">
       <div
         v-if="ui.contextMenu && openIndex !== null && subItems.length"
@@ -396,7 +404,8 @@ const subStyle = computed(() => ({
         class="fixed z-[var(--z-critical-sub)] min-w-[168px] max-w-[260px] rounded-xl border border-edge bg-elevate p-1.5 shadow-xl"
         :style="subStyle"
         role="menu"
-        aria-label="submenu"
+        data-context-submenu
+        :aria-label="t('common.submenu')"
       >
         <button
           v-for="(sub, si) in subItems"

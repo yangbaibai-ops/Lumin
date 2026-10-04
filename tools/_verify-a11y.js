@@ -45,6 +45,18 @@ const SCAN = `JSON.stringify((() => {
   }
   const seg = document.querySelector('aside .seg')
   const segBtns = seg ? [...seg.querySelectorAll('.seg-btn')] : []
+  /**
+   * 侧栏「文件 / 大纲」页签（报告 §5.2 P1-5）。
+   *
+   * ⚠️ 这条以前量错了控件：断言写的是 aside .seg .seg-btn，而那其实是**文件树里的**
+   * 树/列表分段控件（SegmentedControl.vue）—— 顶部页签当时是裸 button 元素，
+   * 既没有 role=tablist/tab 也没有 aria-selected，却在报告里显示"已覆盖"。
+   * 现在两处各量一次：页签按 ARIA tabs 口径，分段控件照旧。
+   * （注意：这里不许出现反引号 —— 整段是模板字符串，反引号会当场截断它。）
+   */
+  const tabs = [...document.querySelectorAll('[data-sidebar-tablist] [role="tab"]')]
+  const tablist = document.querySelector('[data-sidebar-tablist]')
+  const panels = [...document.querySelectorAll('[role="tabpanel"]')]
   return {
     buttonCount: buttons.length,
     naked,
@@ -52,6 +64,13 @@ const SCAN = `JSON.stringify((() => {
     theme: [...root.classList].filter((c) => c.startsWith('theme-')),
     segPressed: segBtns.map((b) => b.getAttribute('aria-selected')),
     segLabels: segBtns.map((b) => (b.getAttribute('aria-label') || '').trim()),
+    tablistRole: tablist ? tablist.getAttribute('role') : null,
+    tabCount: tabs.length,
+    tabSelected: tabs.map((b) => b.getAttribute('aria-selected')),
+    tabIndexes: tabs.map((b) => b.getAttribute('tabindex')),
+    tabControls: tabs.map((b) => b.getAttribute('aria-controls')),
+    panelIds: panels.map((p) => p.id),
+    panelLabelledBy: panels.map((p) => p.getAttribute('aria-labelledby')),
     disclosure: (() => {
       const d = document.querySelector('[data-find-disclosure]')
       return d ? d.getAttribute('aria-expanded') : 'no-find-bar'
@@ -90,9 +109,35 @@ async function main() {
   report.check('根元素有 lang', !!m.lang, String(m.lang))
   report.check('根元素有主题类', m.theme.length === 1, JSON.stringify(m.theme))
   report.check(
-    '侧栏分段控件：每个段都有 aria-label 且 aria-selected 齐全',
+    '文件树里的树/列表分段控件：每个段都有名且 aria-selected 齐全',
     m.segLabels.length === 2 && m.segLabels.every(Boolean) && m.segPressed.every((v) => v === 'true' || v === 'false'),
     JSON.stringify({ labels: m.segLabels, selected: m.segPressed })
+  )
+  /**
+   * 侧栏顶部页签（报告 §5.2 P1-5）：role=tablist → role=tab + aria-selected + roving tabindex，
+   * 并且每个 tab 都指向真实存在的 tabpanel（aria-controls ↔ id ↔ aria-labelledby 闭环）。
+   * 这条以前量的是上面那个分段控件，页签本身零覆盖。
+   */
+  report.check(
+    '侧栏页签有 tabs 语义：tablist/tab/aria-selected/roving tabindex',
+    m.tablistRole === 'tablist' &&
+      m.tabCount === 2 &&
+      m.tabSelected.filter((v) => v === 'true').length === 1 &&
+      m.tabSelected.every((v) => v === 'true' || v === 'false') &&
+      m.tabIndexes.filter((v) => v === '0').length === 1 &&
+      m.tabIndexes.every((v) => v === '0' || v === '-1'),
+    JSON.stringify({
+      role: m.tablistRole,
+      count: m.tabCount,
+      selected: m.tabSelected,
+      tabindex: m.tabIndexes
+    })
+  )
+  report.check(
+    '侧栏页签指向的 tabpanel 存在且回指页签（aria-controls ↔ id ↔ aria-labelledby）',
+    m.tabControls.every((id) => m.panelIds.includes(id)) &&
+      m.tabControls.every((id) => m.panelLabelledBy.some((lb) => lb === id.replace('panel', 'tab'))),
+    JSON.stringify({ controls: m.tabControls, panels: m.panelIds, labelledBy: m.panelLabelledBy })
   )
 
   // 折叠三角的 aria-expanded 要跟真实状态一致（打开查找栏 → true）
@@ -482,6 +527,89 @@ async function main() {
     'sidebar-resize-home-min',
     Number(await ev(`window.__L.settings().sidebarWidth`)) === 200,
     String(await ev(`window.__L.settings().sidebarWidth`))
+  )
+
+  // ── 专注模式：进去之后必须还有一个**看得见、够得着**的退出出口（报告 §5.2 P0-2）──
+  // 背景：专注模式会把整条快捷工具栏 `v-if` 卸载，而专注开关就在那条工具栏里 —— 原来的
+  // 注释声称"状态栏「专注」也能切回来"，而状态栏里并没有这个入口，鼠标用户等于进去出不来。
+  await ev(`(() => { window.__L.ui().focusMode = true; return 'ok' })()`)
+  await sleep(500)
+  const fx = JSON.parse(
+    await ev(`(() => {
+      const btn = document.querySelector('[data-focus-exit]')
+      if (!btn) return JSON.stringify({ missing: true })
+      const cs = getComputedStyle(btn)
+      const r = btn.getBoundingClientRect()
+      return JSON.stringify({
+        missing: false,
+        visible: cs.visibility === 'visible' && cs.display !== 'none',
+        opacity: Number(cs.opacity),
+        w: Math.round(r.width),
+        h: Math.round(r.height),
+        label: (btn.getAttribute('aria-label') || '').trim()
+      })
+    })()`)
+  )
+  report.check(
+    'focus-mode-keeps-a-visible-exit',
+    fx.missing === false && fx.visible === true && fx.opacity > 0.2 && fx.w > 40 && fx.h > 16,
+    JSON.stringify(fx) + ' —— 专注模式必须留一枚可见的退出胶囊（工具栏里的那枚已随工具栏一起卸载）'
+  )
+  report.check(
+    'focus-exit-has-accessible-name',
+    typeof fx.label === 'string' && fx.label.length > 0,
+    JSON.stringify({ label: fx.label })
+  )
+  await ev(`(() => { document.querySelector('[data-focus-exit]').click(); return 'ok' })()`)
+  await sleep(400)
+  report.check(
+    'focus-exit-button-leaves-focus-mode',
+    (await ev(`String(window.__L.ui().focusMode)`)) === 'false' &&
+      (await ev(`String(!!document.querySelector('[data-focus-exit]'))`)) === 'false',
+    '点了退出胶囊之后应回到普通视图，胶囊本身也应消失'
+  )
+
+  // ── 状态栏 `⋯` 浮层的菜单语义（报告 §5.2 P1-2）：role=menu + menuitem + Esc 关闭并还焦点 ──
+  await ev(`(() => { document.querySelector('[data-status-more]').click(); return 'ok' })()`)
+  await sleep(400)
+  const statusMenu = JSON.parse(
+    await ev(`(() => {
+      const box = document.querySelector('[data-status-more-menu]')
+      if (!box) return JSON.stringify({ missing: true })
+      const items = [...box.querySelectorAll('[role="menuitem"]')]
+      return JSON.stringify({
+        missing: false,
+        role: box.getAttribute('role'),
+        label: (box.getAttribute('aria-label') || '').trim(),
+        items: items.length,
+        focusedIsItem: items.includes(document.activeElement)
+      })
+    })()`)
+  )
+  report.check(
+    'status-more-is-a-menu-with-items',
+    statusMenu.missing === false && statusMenu.role === 'menu' && statusMenu.items >= 5 && !!statusMenu.label,
+    JSON.stringify(menu)
+  )
+  report.check(
+    'status-more-opens-on-first-item',
+    statusMenu.focusedIsItem === true,
+    JSON.stringify({ focusedIsItem: statusMenu.focusedIsItem })
+  )
+  // Esc：关掉浮层并把焦点还给 `⋯` 触发按钮（ARIA menu 的标准行为）
+  await ev(`(() => {
+    const box = document.querySelector('[data-status-more-menu]')
+    box.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+    return 'ok'
+  })()`)
+  await sleep(400)
+  report.check(
+    'status-more-escape-closes-and-refocuses',
+    (await ev(`String(!!document.querySelector('[data-status-more-menu]'))`)) === 'false' &&
+      (await ev(
+        `String(document.activeElement === document.querySelector('[data-status-more]'))`
+      )) === 'true',
+    'Esc 之后浮层应关闭，且焦点回到 `⋯` 按钮'
   )
 
   return report.finish()

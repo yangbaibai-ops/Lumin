@@ -917,3 +917,42 @@ aside:focus-within [data-sidebar-filetools],
   left: 0;
   right: 0;
 }
+
+/**
+ * ─── 专注模式的悬浮退出胶囊（报告 §5.2 P0-2）───────────────────────────────────
+ * 背景：专注模式会把快捷工具栏整条 `v-if` 卸载，而专注模式的开关就在那条工具栏里 ——
+ * 于是"退出入口"跟着一起消失。原来的注释声称"状态栏也能切回来"，但状态栏里并没有这个入口；
+ * 真正的退路只有 Ctrl+Shift+F 与两张菜单（原生菜单恒在），对鼠标用户等于"进去出不来"。
+ *
+ * 观感口径：右下角、半透明、不抢正文；悬停/聚焦才变实。为什么不是右上角：专注模式下
+ * 正文居中且顶栏已隐藏，右上角靠近窗口按钮，误点风险更高。
+ * 只动 `opacity` / `transform`（合成层），`prefers-reduced-motion` 下由 base.css 全局兜底。
+ */
+.focus-exit {
+  position: absolute;
+  right: 16px;
+  bottom: 44px;
+  z-index: var(--z-chip);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  border: 1px solid var(--edge);
+  border-radius: 999px;
+  background: var(--elevate);
+  color: var(--ink-2b);
+  font-size: 11.5px;
+  line-height: 1;
+  opacity: 0.35;
+  box-shadow: var(--shadow-1);
+  transition:
+    opacity 0.18s ease,
+    color 0.18s ease,
+    transform 0.18s ease;
+}
+.focus-exit:hover,
+.focus-exit:focus-visible {
+  opacity: 1;
+  color: var(--ink);
+  transform: translateY(-1px);
+}

@@ -70,7 +70,12 @@ export default defineConfig(({ command }) => ({
         '@codemirror/autocomplete',
         '@codemirror/commands',
         '@codemirror/language',
-        '@codemirror/language-data',
+        /**
+         * ⚠️ 这里曾经列着 `@codemirror/language-data`（报告 §3.2 P1-3 的死配置）：
+         * `src/**` 里**零引用** —— 它带 116 个 `import()` 的语言包，代码块正是为了避开它
+         * 才自己维护显式语言表（见 `components/editor/CodeBlockView.vue`）。列在预构建里
+         * 只会让 dev 首次启动多扫一遍这个包。删掉它，让配置与真实引用一致。
+         */
         '@codemirror/search',
         '@codemirror/state',
         '@codemirror/view',

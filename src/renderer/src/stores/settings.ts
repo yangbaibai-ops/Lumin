@@ -26,6 +26,18 @@ export const useSettingsStore = defineStore('settings', {
       this.$patch(remote)
       this.applyAll()
     },
+    /**
+     * 主进程侧改了设置（原生菜单的主题项、备份目录选择…）→ 就地把 store 对齐。
+     *
+     * 报告 §3.2 P0-1：设置此前是"两处真相" —— 主进程可以直接写 kv 而不通知渲染层，
+     * 界面就会显示旧值直到重启；反过来 store 的 `persist()` 会把整份设置回写、把主进程
+     * 那一步打回去。现在主进程只走 `services/appSettings.ts` 的写入口并广播
+     * `settings:changed`，这里订阅它 —— 谁写的都一样，两侧永远同源。
+     */
+    applyRemote(next: AppSettings): void {
+      this.$patch(next)
+      this.applyAll()
+    },
     /** 应用主题/语言到 DOM */
     applyAll(): void {
       const theme = this.resolveTheme()

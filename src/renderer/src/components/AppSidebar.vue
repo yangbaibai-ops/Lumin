@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, nextTick, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useSettingsStore } from '../stores/settings'
 import { useUiStore } from '../stores/ui'
@@ -69,6 +69,30 @@ function onDragStart(e: MouseEvent): void {
 }
 
 /**
+ * 页签的键盘路径（ARIA tabs 模式）：← → 在两项之间移动并把焦点带过去，Home/End 到两端。
+ * 为什么要有：页签此前只能用鼠标点（`role=tablist` + `tabindex` 的 roving 规则要求
+ * "选中项可 Tab 进入、其余项用方向键到达"），键盘用户否则永远够不到「大纲」页签。
+ */
+function onTabsKeydown(e: KeyboardEvent): void {
+  const order = ['files', 'outline'] as const
+  if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(e.key)) return
+  e.preventDefault()
+  const cur = order.indexOf(ui.sidebarTab as (typeof order)[number])
+  const next =
+    e.key === 'ArrowRight'
+      ? order[(Math.max(0, cur) + 1) % order.length]
+      : e.key === 'ArrowLeft'
+        ? order[(Math.max(0, cur) + order.length - 1) % order.length]
+        : e.key === 'Home'
+          ? order[0]
+          : order[order.length - 1]
+  ui.sidebarTab = next
+  void nextTick(() => {
+    document.querySelector<HTMLElement>(`[data-sidebar-tab="${next}"]`)?.focus()
+  })
+}
+
+/**
  * 收起侧栏（`ui.sidebarVisible = false` + 落库）随底部那一行一起去掉了：
  * 现在只有菜单「视图 → 显示侧边栏」与 Ctrl+Shift+B 两条入口，它们直接改同一个状态。
  * 需要恢复一个鼠标入口时，把它放回侧栏头部（而不是底部整行）。
@@ -77,7 +101,7 @@ function onDragStart(e: MouseEvent): void {
 
 <template>
   <aside
-    class="relative z-10 flex h-full flex-none flex-col border-r border-edge bg-app"
+    class="relative z-[var(--z-raise)] flex h-full flex-none flex-col border-r border-edge bg-app"
     data-sidebar-root
     :style="{
       width: width + 'px',
@@ -96,11 +120,26 @@ function onDragStart(e: MouseEvent): void {
 
     <!-- 标签页：仅在**非三栏模式**下出现。
          打开「大纲放在编辑区右侧」后，左栏只承担文件树，页签行整行隐藏
-         （这样目录与大纲才能同时看到，而且左栏不再有两套并存的导航语义）。 -->
-    <div v-if="!settings.outlineOnRight" class="flex flex-none gap-1 px-2.5 pt-2">
+         （这样目录与大纲才能同时看到，而且左栏不再有两套并存的导航语义）。
+         ── ARIA（报告 §5.2 P1-5）：这一组此前是**裸 button**，没有 role=tablist/tab、没有
+         aria-selected，而 `_verify-a11y.js` 里那条"分段控件"断言量到的其实是文件树里的
+         树/列表控件 —— 顶部页签是零覆盖。本轮补齐 tabs 语义 + 左右方向键切换。 -->
+    <div
+      v-if="!settings.outlineOnRight"
+      class="flex flex-none gap-1 px-2.5 pt-2"
+      role="tablist"
+      :aria-label="t('sidebar.files') + ' / ' + t('sidebar.outline')"
+      data-sidebar-tablist
+      @keydown="onTabsKeydown"
+    >
       <button
         v-for="tab in ['files', 'outline'] as const"
+        :id="`sidebar-tab-${tab}`"
         :key="tab"
+        role="tab"
+        :aria-selected="ui.sidebarTab === tab ? 'true' : 'false'"
+        :aria-controls="`sidebar-panel-${tab}`"
+        :tabindex="ui.sidebarTab === tab ? 0 : -1"
         class="relative flex flex-1 items-center justify-center gap-1.5 rounded-lg py-1.5 text-ui font-medium transition-all duration-200"
         :class="ui.sidebarTab === tab ? 'text-ink' : 'text-ink-2b hover:text-ink-2'"
         :data-sidebar-tab="tab"
@@ -126,12 +165,23 @@ function onDragStart(e: MouseEvent): void {
          这类「切一次就空」的状态机问题从根上没有了（而且省掉每次切换的重挂成本）。
          三栏模式下：树常显、左栏里的大纲整块不显示（大纲这时在编辑区右侧）。 -->
     <div class="mt-1.5 min-h-0 flex-1">
-      <FileTree v-show="settings.outlineOnRight || ui.sidebarTab === 'files'" />
+      <FileTree
+        v-show="settings.outlineOnRight || ui.sidebarTab === 'files'"
+        id="sidebar-panel-files"
+        role="tabpanel"
+        :aria-labelledby="`sidebar-tab-files`"
+      />
       <!-- 三栏模式下左栏这份大纲**整块不挂载**（v-if）：它永远不可见，留着只是白渲染一份 ——
            切文档时 DOM 里还会同时存在两套大纲行（用户在右侧看到的"闪"与这类重复渲染有关）。
            关掉三栏时再挂回来；仍然是「常驻 DOM + v-show 切页签」的老规矩（那套是修
            「切走再切回内容空了」的）。 -->
-      <Outline v-if="!settings.outlineOnRight" v-show="ui.sidebarTab === 'outline'" />
+      <Outline
+        v-if="!settings.outlineOnRight"
+        v-show="ui.sidebarTab === 'outline'"
+        id="sidebar-panel-outline"
+        role="tabpanel"
+        :aria-labelledby="`sidebar-tab-outline`"
+      />
     </div>
 
     <!-- 底部原先有一行「设置 / 关于 Lumin / 收起侧边栏」——本轮去掉（用户口径：确认是否还需要，

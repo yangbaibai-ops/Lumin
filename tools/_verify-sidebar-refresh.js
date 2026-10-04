@@ -176,8 +176,8 @@ async function main() {
           bubbles: true, clientX: Math.round(r.left + 60), clientY: Math.round(r.top + 8)
         }))
         await new Promise((res) => setTimeout(res, 400))
-        // 语义锚点（role=menu，子菜单是 aria-label="submenu"），不认 Tailwind 的 z-index 类名
-        const panel = document.querySelector('[role="menu"]:not([aria-label="submenu"])')
+        // 语义锚点（role=menu；子菜单靠 data-context-submenu 排除 —— 它的 aria-label 走语言包），不认 Tailwind 的 z-index 类名
+        const panel = document.querySelector('[role="menu"]:not([data-context-submenu])')
         return JSON.stringify({
           opened: !!panel,
           items: panel ? [...panel.querySelectorAll('button')].map((b) => b.textContent.trim()) : []

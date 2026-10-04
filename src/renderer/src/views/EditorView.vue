@@ -817,7 +817,7 @@ onBeforeUnmount(() => {
 
 <template>
   <div
-    class="flex h-full min-h-0 flex-col"
+    class="relative flex h-full min-h-0 flex-col"
     :class="{ 'split-dragging': splitDragging }"
     @drop.prevent="onDrop"
     @dragover="onDragOver"
@@ -826,9 +826,26 @@ onBeforeUnmount(() => {
          关掉后这里是「一片空的编辑区」，不占高度。
          **专注模式下一并隐藏**（用户口径：本产品定位是「纸面优先」的 Typora 式写作，
          而专注模式此前只收窄正文列 + 压暗侧栏，最显眼的 44px 常驻 chrome 却留着 ——
-         名不副实）。退出方式不受影响：Ctrl+Shift+F、视图菜单、状态栏「专注」都能切回来，
-         所以这里不隐藏顶栏（留着那条退路）。 -->
+         名不副实）。
+         ⚠️ 但"隐藏工具栏"会把它**自己的退出开关**一起藏掉（那枚开关就在工具栏里）——
+         报告 §5.2 P0-2 实测：原注释声称"状态栏「专注」也能切回来"，而状态栏里并没有这个入口。
+         真正的退路只有 Ctrl+Shift+F 与两张菜单（原生菜单恒在）。所以专注模式下另给一枚
+         **悬浮退出胶囊**（见下面 `.focus-exit`）：鼠标用户不必记快捷键，键盘用户 Tab 一下就到。 -->
     <Toolbar v-if="settings.toolbarVisible && !ui.focusMode" />
+
+    <!-- 专注模式的悬浮退出（报告 §5.2 P0-2）：右下角一枚半透明胶囊，悬停变实。
+         位置右下是为了不压正文（专注模式下正文居中）；它只在 focusMode 时存在。 -->
+    <button
+      v-if="ui.focusMode"
+      class="focus-exit"
+      :title="i18n.global.t('editor.focusExit')"
+      :aria-label="i18n.global.t('editor.focusExit')"
+      data-focus-exit
+      @click="ui.focusMode = false"
+    >
+      <Icon name="x" :size="13" />
+      <span>{{ i18n.global.t('editor.focusExit') }}</span>
+    </button>
 
     <!-- 通知中心：**编辑区上方**（像 Typora），紧接工具栏之下、内核之上 —— 文档流里的一块，
          长通知不会被窗口底边裁掉，也不再挤在底部栏旁边。进出场动画见 overlays.css 的 `.ntf-*`。

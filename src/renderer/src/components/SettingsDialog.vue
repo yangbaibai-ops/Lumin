@@ -518,7 +518,9 @@ const backupDirLabel = computed(() => {
 const backupLastLabel = computed(() => {
   const ms = backupState.value?.lastMs
   if (!ms) return t('settings.backupLastNever')
-  return t('settings.backupLastAt', { when: new Date(ms).toLocaleString() })
+  // ⚠️ 传 locale（报告 §5.4 P2-4）：不传时用的是**系统**区域设置，俄语界面 + 中文系统
+  // 会看到中文格式的日期（同文件列表与通知中心都传了 language，这里此前是漏的）。
+  return t('settings.backupLastAt', { when: new Date(ms).toLocaleString(settings.language) })
 })
 
 /** 备份目录里现存的份数 */

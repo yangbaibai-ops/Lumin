@@ -174,7 +174,13 @@ const PINIA = `(() => {
   // 面板定位走**语义锚点**而不是 Tailwind 生成的 z-[NNN] 类名：
   // 一级面板 = [role=menu][aria-label=toolbar-menu]，子菜单 = [role=menu][aria-label=submenu]
   const PANEL = `document.querySelector('[role="menu"][aria-label="toolbar-menu"]')`
-  const SUBPANEL = `document.querySelector('[role="menu"][aria-label="submenu"]')`
+  /**
+   * 二级面板：**不能按字面量 aria-label="submenu" 找** —— 那个标签现在走语言包
+   * （`t('common.submenu')`：中文界面渲染成「子菜单」），而"把界面文案写死在模板里"
+   * 正是报告 §5.4 P2-2 要修的问题。判据改成结构性的：第一个 menu 面板是 toolbar-menu，
+   * 另一个就是它弹出的子面板。
+   */
+  const SUBPANEL = `[...document.querySelectorAll('[role="menu"]')].find((p) => p.getAttribute('aria-label') !== 'toolbar-menu')`
   const CTX = `(() => {
     const panel = ${PANEL}
     const sub = ${SUBPANEL}
@@ -344,7 +350,7 @@ const PINIA = `(() => {
 
     // 点「加粗」→ settings 与工具栏一起少一项
     const boldPos = await pointOf(
-      `[...document.querySelectorAll('[role="menu"][aria-label="submenu"] button')].find((x) => x.textContent.trim() === '加粗')`
+      `[...document.querySelectorAll('[role="menu"][data-context-submenu] button')].find((x) => x.textContent.trim() === '加粗')`
     )
     await click(boldPos.x, boldPos.y)
     await sleep(600)
@@ -375,7 +381,7 @@ const PINIA = `(() => {
     )
     await hover(adjust2.x, adjust2.y)
     const boldBack = await pointOf(
-      `[...document.querySelectorAll('[role="menu"][aria-label="submenu"] button')].find((x) => x.textContent.trim() === '加粗')`
+      `[...document.querySelectorAll('[role="menu"][data-context-submenu] button')].find((x) => x.textContent.trim() === '加粗')`
     )
     await click(boldBack.x, boldBack.y)
     await sleep(600)

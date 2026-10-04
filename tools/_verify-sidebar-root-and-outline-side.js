@@ -197,7 +197,7 @@ async function main() {
     await sleep(450)
     const rootMenu = JSON.parse(
       await ev(`(() => {
-        const panel = document.querySelector('[role="menu"]:not([aria-label="submenu"])')
+        const panel = document.querySelector('[role="menu"]:not([data-context-submenu])')
         if (!panel) return JSON.stringify({ open: false })
         return JSON.stringify({
           open: true,

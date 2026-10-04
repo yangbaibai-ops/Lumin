@@ -204,3 +204,50 @@ test('许可与第三方声明：LICENSE 存在、声明会被打进产物、且
   assert.match(notices, /\| 包 \| 版本 \| 许可 \| 仓库 \|/, '声明里必须有包清单表')
   assert.match(notices, /MIT/, '声明里必须出现 MIT')
 })
+
+test('设置只有一个写入口（主进程不许绕过去直接写 kv / 写 electron-store）', () => {
+  /**
+   * 报告 §3.2 P0-1/P0-2：设置此前是"两处真相" ——
+   *   * `main/menu.ts` 的原生菜单主题项写的是 **electron-store**（`store.ts` 自述它只是
+   *     历史配置的一次性迁移源），渲染层收到 `theme-changed` 却去 SQLite 重读 ⇒ 点了没反应；
+   *   * `ipc.ts` 里有两处（备份目录选择 / 恢复默认）直接 `db.kvSet('settings', …)`，
+   *     写完不通知渲染层 ⇒ 界面显示旧值到重启（反之 store 的 persist 还会把它打回去）。
+   * 现在主进程侧只有 `services/appSettings.ts` 能写设置
+   * （kv + 原生主题 + 广播 `settings:changed`）。这条守卫把"新增一处旁路"变成 CI 里的红灯。
+   */
+  const menu = read('src/main/menu.ts')
+  assert.doesNotMatch(
+    menu,
+    /settingsStore/,
+    '原生菜单不许再碰 electron-store（它只是历史配置的一次性迁移源，写进去没人读）'
+  )
+  assert.match(
+    menu,
+    /patchSettings\(\{\s*theme:/,
+    '原生菜单的主题项必须走 appSettings.patchSettings'
+  )
+
+  // 允许写 settings 的文件：唯一写入口自己 + 一次性迁移（migrateLegacyStores）
+  const ALLOW = new Set(['src/main/services/appSettings.ts', 'src/main/store.ts'])
+  const offenders = []
+  const walk = (dir) => {
+    for (const name of readdirSync(join(ROOT, dir))) {
+      const rel = `${dir}/${name}`
+      const st = statSync(join(ROOT, rel))
+      if (st.isDirectory()) {
+        walk(rel)
+        continue
+      }
+      if (!name.endsWith('.ts')) continue
+      if (ALLOW.has(rel)) continue
+      if (/kvSet\(\s*['"]settings['"]/.test(read(rel))) offenders.push(rel)
+    }
+  }
+  walk('src/main')
+  assert.deepEqual(
+    offenders,
+    [],
+    '这些文件绕过了唯一写入口直接写 settings（请改用 services/appSettings 的 patchSettings/writeSettings）：\n' +
+      offenders.join('\n')
+  )
+})

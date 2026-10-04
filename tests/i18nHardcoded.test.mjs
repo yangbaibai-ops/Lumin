@@ -19,9 +19,12 @@ import {
   CJK,
   SRC,
   codeOf,
+  scanHardcodedEnglish,
   scanHardcodedText,
   stringsOf,
   templateCjk,
+  templateEnglishAttrs,
+  templateEnglishText,
   walk
 } from './lib/hardcodedTextScan.mjs'
 
@@ -140,5 +143,65 @@ test('界面文案不硬编码中文：新增的必须走语言包（白名单�
     offenders.map((o) => o.rel),
     [],
     `以下位置绕过了语言包（应改成 t('…') 或登记进白名单并写明理由），共 ${offenders.length} 处：\n${lines.join('\n')}`
+  )
+})
+
+/**
+ * ─── 英文硬编码（报告 §5.4 P2-2）──────────────────────────────────────────────
+ *
+ * CJK 扫描器只能抓中文 —— 本该走语言包的**英文**整片漏网。实测的两处：
+ *   ① `StatusBar.vue` 状态栏标语（纯英文文本节点，en/ru 用户看到的是"没翻译的中文产品"）；
+ *   ② `ContextMenu.vue` 二级菜单的 `aria-label="submenu"`（读屏器直接念字面量）。
+ * 这一路只扫**用户看得见/听得见**的地方：模板文本节点里 ≥3 个单词的英文句子，
+ * 以及 `aria-label`/`title`/`placeholder`/`alt` 属性值里的英文（未绑定的）。
+ * 刻意不扫 `class`/`id`/变量名 —— 那些不是界面文案（第一版扫了，一次报出两百多条假阳性）。
+ */
+const ALLOW_EN = [
+  {
+    // 导出格式名是专有名词（PDF/HTML/Word/EPUB 在三种语言里都这么写），不需要翻译
+    match: 'PDF · HTML · Word · EPUB',
+    why: '导出格式专有名词，三语一致'
+  }
+]
+
+test('界面文案不硬编码英文：文本节点与可见属性（白名单只应缩小）', () => {
+  const offenders = scanHardcodedEnglish().filter(
+    (o) => !ALLOW_EN.some((a) => o.text.includes(a.match))
+  )
+  const lines = offenders.map((o) => `${o.rel}:${o.line} [${o.kind}] ${o.text}`)
+  assert.deepEqual(
+    offenders.map((o) => o.rel),
+    [],
+    `以下位置把用户可见的英文写死在模板里（应改成 t('…')，或登记进 ALLOW_EN 并写明理由），共 ${offenders.length} 处：\n${lines.join('\n')}`
+  )
+})
+
+test('英文扫描器自证：认得出真信号，也不把 class 列表当文案', () => {
+  const tpl = `
+<template>
+  <div>
+    <span v-if="!x">Lumin — Write in Light.</span>
+    <button aria-label="submenu" />
+    <div
+      class="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-ui"
+      :class="cond ? 'a b c' : 'd e f'"
+      @click="run($event)"
+    >
+      <span>{{ t('x.y') }}</span>
+      <span :title="label">ok</span>
+    </div>
+  </div>
+</template>`
+  const attrOffenders = templateEnglishAttrs(tpl)
+  const textOffenders = templateEnglishText(tpl)
+  assert.deepEqual(
+    attrOffenders.map((o) => o.text),
+    ['aria-label="submenu"'],
+    `属性扫描应只报 submenu：${JSON.stringify(attrOffenders)}`
+  )
+  assert.deepEqual(
+    textOffenders.map((o) => o.text),
+    ['Lumin — Write in Light.'],
+    `文本扫描应只报标语（class 续行/插值/绑定属性都不算）：${JSON.stringify(textOffenders)}`
   )
 })

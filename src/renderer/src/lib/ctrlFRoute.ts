@@ -30,10 +30,29 @@ export function ctrlFTarget(input: {
   filesPanelVisible: boolean
   /** 焦点是否落在左侧栏内（页签、树行、底部工具带、拖宽手柄都算） */
   focusInSidebar: boolean
-  /** 指针是否停在左侧栏上（`aside:hover`）——"人在侧栏里操作"的另一半证据 */
+  /**
+   * 焦点是否落在**编辑区**里（ProseMirror 正文 / 源码 textarea / 分屏两侧）。
+   *
+   * 为什么把"焦点在编辑区"单列一档（第十轮补，`_verify-sidebar-search` 的 B 段变红暴露的）：
+   * 原来只判「焦点**或**指针在侧栏」—— 于是"鼠标还停在侧栏上、但我已经点进正文要 Ctrl+F 找词"
+   * 这个**最常见**的操作会打开侧栏的文件名搜索（指针是**上一次**交互的残留，焦点才是这一次的意图）。
+   */
+  focusInEditor: boolean
+  /**
+   * **最近一次指针交互**是不是落在侧栏里（`lib/pointerRegion.ts` 记的时序，不是"此刻悬停"）。
+   *
+   * 为什么还要这一档：D 段（"鼠标刚移到侧栏的树行上、焦点还在正文"）与 B 段
+   * （"鼠标停在侧栏、但我已经点进正文"）在"焦点 + 此刻指针"上**完全一样** ——
+   * 只有时间顺序能区分：前者最近动的是鼠标（在侧栏），后者最近动的是焦点（在编辑区）。
+   */
+  sidebarPointerRecent: boolean
+  /** 指针此刻是否停在左侧栏上（`aside:hover`）—— 两者都不沾时的兜底证据 */
   pointerInSidebar: boolean
 }): CtrlFTarget {
   if (!input.workspaceOpen) return 'document'
   if (!input.filesPanelVisible) return 'document'
-  return input.focusInSidebar || input.pointerInSidebar ? 'sidebar-files' : 'document'
+  if (input.focusInSidebar) return 'sidebar-files'
+  if (input.sidebarPointerRecent && input.pointerInSidebar) return 'sidebar-files'
+  if (input.focusInEditor) return 'document'
+  return input.pointerInSidebar ? 'sidebar-files' : 'document'
 }

@@ -320,6 +320,47 @@ async function main() {
       g3.ok === true && g3.asked === false && g3.sameObject === true,
       JSON.stringify(g3)
     )
+
+    // ── H. 同一路径**并发写**：冲突检测必须在写队列临界区内（本轮修）──────────────
+    // 触发场景（真实可达）：同一文件被两个窗口打开，用户各自保存 —— 两次 `file:write`
+    // 几乎同时到达主进程。改造前 stat 校验在 `serializeWrite` **外面**，两边拿到的都是
+    // 同一个旧 mtime ⇒ 两次都通过校验 ⇒ 按入队顺序各写一次 ⇒ 后到者静默覆盖先写者，
+    // 而先写者还会被渲染层标成"已保存"（关窗不提示）。
+    // 判据：两次并发写（同一个 expectMtimeMs）必须**恰好一次**成功、一次拿到 conflict，
+    // 且磁盘上是成功那一次的内容。
+    // ⚠️ 把文件 mtime 先**回拨 10 秒**：这样"第一次写之后 mtime 必然变"是确定性的，
+    //    不依赖两次 rename 的毫秒级间隔（否则同毫秒内写完会漏判，断言变成抛硬币）。
+    const backdated = Date.now() / 1000 - 10
+    fs.utimesSync(fileB, backdated, backdated)
+    const h = JSON.parse(
+      await ev(`(async () => {
+        const p = ${JSON.stringify(fileB)}
+        const st = await window.luminAPI.file.read(p)
+        const expect = st.mtimeMs
+        const [r1, r2] = await Promise.all([
+          window.luminAPI.file.write(p, '# beta\\n\\n并写-A\\n', st.encoding, st.hadBom, st.eol, expect),
+          window.luminAPI.file.write(p, '# beta\\n\\n并写-B\\n', st.encoding, st.hadBom, st.eol, expect)
+        ])
+        const back = await window.luminAPI.file.read(p)
+        return JSON.stringify({
+          expect,
+          c1: r1 && r1.conflict === true,
+          c2: r2 && r2.conflict === true,
+          content: back.content
+        })
+      })()`)
+    )
+    report.note('H ' + JSON.stringify(h))
+    report.check(
+      'concurrent-write-detects-conflict',
+      h.c1 !== h.c2,
+      `两次并发写（同一个 expectMtimeMs=${h.expect}）：conflict = ${h.c1} / ${h.c2} —— 必须恰好一次拿到冲突（改造前两次都会通过校验）`
+    )
+    report.check(
+      'concurrent-write-lands-exactly-one-version',
+      h.content.includes('并写-A') !== h.content.includes('并写-B'),
+      `磁盘上只有一个赢家：${JSON.stringify(h.content)}（两个都在 = 竞态没被串行化；都不在 = 写丢了）`
+    )
   } finally {
     // F 段把 alpha.md 设成了只读：先恢复可写，否则 Windows 上删目录会失败
     try {

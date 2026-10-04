@@ -14,7 +14,7 @@
 // 就会出现「用户改了键但原生那份照旧触发」的两套真相 + 重复触发。
 import { app, BrowserWindow, Menu } from 'electron'
 import type { MenuItemConstructorOptions } from 'electron'
-import { settingsStore } from './store'
+import { patchSettings } from './services/appSettings'
 import { mainLanguage, mainT } from './i18n'
 import { EXPORT_FORMATS } from '../shared/exportFormats'
 
@@ -121,31 +121,19 @@ export function installMenu(): void {
           submenu: [
             {
               label: T('themeAuto'),
-              click: () => {
-                settingsStore.set('theme', 'auto')
-                send('theme-changed')
-              }
+              click: () => patchSettings({ theme: 'auto' })
             },
             {
               label: T('themeLight'),
-              click: () => {
-                settingsStore.set('theme', 'light')
-                send('theme-changed')
-              }
+              click: () => patchSettings({ theme: 'light' })
             },
             {
               label: T('themeDark'),
-              click: () => {
-                settingsStore.set('theme', 'dark')
-                send('theme-changed')
-              }
+              click: () => patchSettings({ theme: 'dark' })
             },
             {
               label: T('themeSepia'),
-              click: () => {
-                settingsStore.set('theme', 'sepia')
-                send('theme-changed')
-              }
+              click: () => patchSettings({ theme: 'sepia' })
             }
           ]
         },

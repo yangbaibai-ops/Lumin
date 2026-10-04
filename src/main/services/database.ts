@@ -192,6 +192,13 @@ class LuminDatabase {
     this.db = new DatabaseSyncCtor(dbPath)
     this.db.exec('PRAGMA journal_mode = WAL')
     this.db.exec('PRAGMA synchronous = NORMAL')
+    /**
+     * `busy_timeout`（报告 §4.2 P1-3）：此前只设了 WAL/synchronous，**没设等待**——
+     * 而 `db:backup` / `db:vacuum` / 用户在外部工具（DB Browser 之类）里打开过这个库时，
+     * 写会立刻抛 SQLITE_BUSY，一路冒到"保存失败"（保存本身其实已经成功落盘了）。
+     * 3 秒是"足够等一次 checkpoint 完成、又不至于让界面觉得卡住"的折中。
+     */
+    this.db.exec('PRAGMA busy_timeout = 3000')
     // 建表 / 加列 / 索引 / 一次性数据迁移全部在 services/migrations.ts 里按**版本**跑
     // （自查报告 S4；那边不 import electron，所以能用单测直接建临时库验）
     const migrated = runMigrations(this.db)
@@ -423,6 +430,62 @@ class LuminDatabase {
     }
     this.db.prepare('DELETE FROM documents WHERE path = ?').run(filePath)
     this.forgetEncodingMemory(filePath)
+  }
+
+  /**
+   * 工作区索引对账（报告 §4.2 P1-1）：删掉**该工作区内、但这一轮没扫到**的索引行。
+   *
+   * `seen` 是本轮真实扫到的**现有**文件路径集合（调用方保证横扫、没被 MAX_FILES 截断）。
+   * 只在这个工作区的前缀范围内对账 —— 别的工作区/单开文档的索引行一根都不动。
+   * 返回删掉的行数。
+   */
+  pruneWorkspace(root: string, seen: string[]): number {
+    const prefix = root.replace(/\//g, '\\').replace(/\\+$/, '').toLowerCase() + '\\'
+    const like = prefix.replace(/[%_\\]/g, (c) => '\\' + c) + '%'
+    const rows = this.db
+      .prepare(
+        "SELECT id, path FROM documents WHERE lower(replace(path, '/', '\\')) LIKE ? ESCAPE '\\'"
+      )
+      .all(like) as unknown as { id: number; path: string }[]
+    const alive = new Set(seen.map((p) => p.replace(/\//g, '\\').replace(/\\+$/, '').toLowerCase()))
+    const gone = rows.filter((r) => !alive.has(r.path.replace(/\//g, '\\').toLowerCase()))
+    for (const r of gone) this.deleteDocument(r.path)
+    return gone.length
+  }
+
+  /**
+   * 删除**目录下所有已索引文档**（报告 §4.2 P1-1「索引只增不删」）。
+   *
+   * 为什么需要它：`file:remove` 对目录只调了 `deleteDocument(目录路径)` —— 那条 SQL 按
+   * `path = ?` 精确匹配，永远命不中任何一行（索引里存的是文件路径，不是目录路径）。
+   * 于是删掉一个目录之后，`documents` / `documents_fts` / `documents_history` 里那一批
+   * **幽灵文档**会长期留着：全局搜索还能搜到、最近/标签里还能看到、点开却打不开。
+   *
+   * 前缀判据：与 `pathGrants.isInside` 同一套语义 —— 必须按**目录边界**匹配，
+   * 否则删 `notes` 会顺手带走 `notes-archive`。大小写不敏感（Windows）。
+   * 返回删掉的行数（测试与日志都用得上）。
+   */
+  deleteDocumentsUnder(dirPath: string): number {
+    const prefix = dirPath.replace(/\//g, '\\').replace(/\\+$/, '').toLowerCase() + '\\'
+    const rows = this.db
+      .prepare(
+        "SELECT id, path FROM documents WHERE lower(replace(path, '/', '\\')) LIKE ? ESCAPE '\\'"
+      )
+      .all(prefix.replace(/[%_\\]/g, (c) => '\\' + c) + '%') as unknown as {
+      id: number
+      path: string
+    }[]
+    for (const r of rows) {
+      this.pendingFts.delete(r.id)
+      this.db.prepare('DELETE FROM documents_fts WHERE rowid = ?').run(r.id)
+      this.forgetEncodingMemory(r.path)
+    }
+    if (rows.length) {
+      this.db
+        .prepare("DELETE FROM documents WHERE lower(replace(path, '/', '\\')) LIKE ? ESCAPE '\\'")
+        .run(prefix.replace(/[%_\\]/g, (c) => '\\' + c) + '%')
+    }
+    return rows.length
   }
 
   /**

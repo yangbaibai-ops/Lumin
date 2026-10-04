@@ -41,7 +41,13 @@ const EVENT_CHANNELS = [
   'workspace:changed',
   'workspace:indexProgress',
   'notifications:changed',
-  'update:status'
+  'update:status',
+  /**
+   * 主进程改了设置（原生菜单的主题项、备份目录选择…）→ 渲染层就地把 store patch 回来。
+   * 这条是报告 §3.2 P0-1 的收口：设置曾经有"两处真相"（主进程直接写 kv、渲染层不知道），
+   * 现在主进程只走 `services/appSettings.ts` 的写入口，写完广播这条。
+   */
+  'settings:changed'
 ] as const
 
 const EVENT_CHANNEL_SET: ReadonlySet<string> = new Set(EVENT_CHANNELS)

@@ -53,7 +53,7 @@ npm run docs:tokens:write
 | `--edge-strong` | `#d2d5db` |
 | `--ink` | `#20242b` |
 | `--ink-2` | `#4e5766` |
-| `--ink-3` | `#8a919e` |
+| `--ink-3` | `#7d8595` |
 | `--ink-2b` | `#606977` |
 | `--code-str` | `#166534` |
 | `--code-num` | `#92400e` |
@@ -63,7 +63,7 @@ npm run docs:tokens:write
 | `--accent-2` | `#4b5563` |
 | `--accent-soft` | `rgba(17, 24, 39, 0.07)` |
 | `--accent-ink` | `#374151` |
-| `--link` | `#2563eb` |
+| `--link` | `#1f57dd` |
 | `--toc-link` | `var(--link)` |
 | `--marker` | `#a4aab4` |
 | `--danger` | `#dc2626` |
@@ -104,9 +104,9 @@ npm run docs:tokens:write
 | `--edge` | `#4a4d54` |
 | `--edge-strong` | `#5b606a` |
 | `--ink` | `#e6e8ec` |
-| `--ink-2` | `#b3b8c0` |
-| `--ink-3` | `#8a9099` |
-| `--ink-2b` | `#b3b8c0` |
+| `--ink-2` | `#b6bbc3` |
+| `--ink-3` | `#949aa6` |
+| `--ink-2b` | `#b6bbc3` |
 | `--code-str` | `#4ade80` |
 | `--code-num` | `#fbbf24` |
 | `--code-com` | `#9aa3ad` |
@@ -115,7 +115,7 @@ npm run docs:tokens:write
 | `--accent-2` | `#7d838d` |
 | `--accent-soft` | `rgba(255, 255, 255, 0.09)` |
 | `--accent-ink` | `#e2e5ea` |
-| `--link` | `#6cb0f5` |
+| `--link` | `#84c1f9` |
 | `--toc-link` | `var(--link)` |
 | `--marker` | `#6e747d` |
 | `--danger` | `#f87171` |
@@ -130,7 +130,7 @@ npm run docs:tokens:write
 | `--block-hover` | `rgba(255, 255, 255, 0.06)` |
 | `--find-hit-bg` | `rgb(102 175 233 / 32%)` |
 | `--find-hit-ink` | `#eef2f8` |
-| `--find-current-bg` | `#428bca` |
+| `--find-current-bg` | `#3576b0` |
 | `--find-current-ink` | `#ffffff` |
 | `--find-current-edge` | `rgb(120 190 240 / 60%)` |
 | `--btn-solid` | `#5a616d` |
@@ -157,13 +157,13 @@ npm run docs:tokens:write
 | `--edge-strong` | `#d6c6a0` |
 | `--ink` | `#4a3b2a` |
 | `--ink-2` | `#6b5b40` |
-| `--ink-3` | `#94836a` |
+| `--ink-3` | `#8a7a61` |
 | `--ink-2b` | `#6f5f45` |
 | `--code-str` | `#166534` |
 | `--code-num` | `#92400e` |
 | `--code-com` | `#6b5b40` |
 | `--code-invalid` | `#b91c1c` |
-| `--accent` | `#8a7f6b` |
+| `--accent` | `#857a66` |
 | `--accent-2` | `#6f6555` |
 | `--accent-soft` | `rgba(90, 74, 48, 0.09)` |
 | `--accent-ink` | `#5c5140` |

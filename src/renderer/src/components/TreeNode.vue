@@ -281,9 +281,13 @@ async function handleAction(action: string): Promise<void> {
       action.slice('move-to:'.length)
     )
   } else if (action === 'delete') {
+    // 删的是"正在编辑且脏"的那一篇（或它所在的目录）时，确认框要多说一句：
+    // 内容会被留成草稿、回收站里也有，但用户得知道"现在删的是手里这份没保存的东西"。
+    const warnUnsaved = files.deleteAffectsCurrentDoc(props.node.path) && files.dirty
+    const body = t('editor.deleteConfirmBody', { name: props.node.name })
     const ok = await ui.confirm({
       title: t('editor.deleteConfirmTitle'),
-      body: t('editor.deleteConfirmBody', { name: props.node.name }),
+      body: warnUnsaved ? `${body}\n${t('editor.deleteUnsavedWarn')}` : body,
       danger: true
     })
     if (ok) {

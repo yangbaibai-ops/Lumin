@@ -549,7 +549,6 @@ export type MenuAction =
   | 'mode-split'
   | 'toggle-focus'
   | 'toggle-typewriter'
-  | 'theme-changed'
   | 'settings'
   | 'about'
 

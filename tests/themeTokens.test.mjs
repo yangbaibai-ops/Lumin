@@ -221,7 +221,10 @@ test('承载「比纸略灰」的面在白纸上仍可辨识（代码块 / 表�
  * 口径：正文与「次要正文」按 WCAG AA 的 4.5:1；装饰/图标按 3:1（图形）。
  */
 test('文字对比度矩阵：正文/次要正文 ≥ 4.5:1，装饰与图标 ≥ 3:1（三主题）', () => {
-  const SURFACES = ['--app', '--paper', '--panel-2']
+  // 面矩阵本轮扩到 4 个（报告 §5.1）：原来看的只有 --app/--paper/--panel-2，
+  // 于是 `--ink-2` 在深色 `--elevate`（菜单/气泡底）上 4.48、`--ink-3` 在 `--panel-2`
+  // （行悬停/表头底色）上 2.66/2.86/2.77 全都漏了过去 —— 而那两处正是图标与次要文字的落点。
+  const SURFACES = ['--app', '--paper', '--panel-2', '--elevate']
   const report = {}
   for (const t of THEMES) {
     report[t] = {}
@@ -235,17 +238,63 @@ test('文字对比度矩阵：正文/次要正文 ≥ 4.5:1，装饰与图标 �
         )
       }
     }
-    // 装饰档（--ink-3）与副色（--accent，图标/焦点环）按图形 3:1
-    for (const gfx of ['--ink-3', '--accent']) {
-      const c = contrast(TOKENS[t][gfx], TOKENS[t]['--app'])
-      report[t][`${gfx}/--app`] = Number(c.toFixed(2))
+    // 装饰档（--ink-3）与副色（--accent，图标/焦点环）按图形 3:1 —— 四个面都要守
+    for (const bg of SURFACES) {
+      for (const gfx of ['--ink-3', '--accent']) {
+        const c = contrast(TOKENS[t][gfx], TOKENS[t][bg])
+        report[t][`${gfx}/${bg}`] = Number(c.toFixed(2))
+        assert.ok(
+          c >= 3,
+          `${t}：${gfx}=${TOKENS[t][gfx]} 对 ${bg}=${TOKENS[t][bg]} 只有 ${f(c)}:1（图标/装饰要求 ≥ 3）`
+        )
+      }
+    }
+    /**
+     * 链接色：它既当**正文级文字**（大纲条目、通知正文里的链接），也落在 panel-2 的悬停底上。
+     * 报告 §5.1 实测改前 light 4.33 / dark 4.01（都差一点），本轮按 4.5 重新校准：
+     * light #2563eb→#1f57dd、dark #6cb0f5→#84c1f9。
+     */
+    for (const bg of SURFACES) {
+      const c = contrast(TOKENS[t]['--link'], TOKENS[t][bg])
+      report[t][`--link/${bg}`] = Number(c.toFixed(2))
       assert.ok(
-        c >= 3,
-        `${t}：${gfx}=${TOKENS[t][gfx]} 对 --app 只有 ${f(c)}:1（图标/装饰要求 ≥ 3）`
+        c >= 4.5,
+        `${t}：--link=${TOKENS[t]['--link']} 对 ${bg}=${TOKENS[t][bg]} 只有 ${f(c)}:1（链接是正文级文字，要求 ≥ 4.5）`
       )
     }
   }
   console.log('文字/底对比度 ' + JSON.stringify(report))
+})
+
+test('查找命中的当前项：白字压深蓝底 ≥ 4.5:1（深色主题）', () => {
+  /**
+   * 报告 §5.1 的第 4 处：深色主题里 `.find-hit-current` 是白字压 `--find-current-bg`，
+   * 改前 `#428bca` 只有 **3.63:1**（三组 find 色此前不在任何断言里）。本轮压深到 `#3576b0`
+   * （4.81:1）。浅色/羊皮纸的当前项用 `inherit`（正文色），对各自的暖色底分别是 9.46 / 7.53，
+   * 一并钉住以免以后被改成白字。
+   */
+  const dark = contrast(TOKENS.dark['--find-current-ink'], TOKENS.dark['--find-current-bg'])
+  assert.ok(
+    dark >= 4.5,
+    `dark：--find-current-ink=${TOKENS.dark['--find-current-ink']} 对 --find-current-bg=${TOKENS.dark['--find-current-bg']} 只有 ${f(dark)}:1`
+  )
+  for (const t of ['light', 'sepia']) {
+    const c = contrast(TOKENS[t]['--ink'], TOKENS[t]['--find-current-bg'])
+    assert.ok(
+      c >= 4.5,
+      `${t}：正文色对 --find-current-bg=${TOKENS[t]['--find-current-bg']} 只有 ${f(c)}:1`
+    )
+  }
+  console.log(
+    'find-current ' +
+      JSON.stringify({
+        dark: Number(dark.toFixed(2)),
+        light: Number(
+          contrast(TOKENS.light['--ink'], TOKENS.light['--find-current-bg']).toFixed(2)
+        ),
+        sepia: Number(contrast(TOKENS.sepia['--ink'], TOKENS.sepia['--find-current-bg']).toFixed(2))
+      })
+  )
 })
 
 test('语义色的**文本档**对纸与 panel-2 都 ≥ 4.5:1（三主题）', () => {

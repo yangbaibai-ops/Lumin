@@ -11,11 +11,23 @@
 # 往套件里加真实按键，它会自动出局 —— 不需要人来维护第二张名单。
 name: CDP suites (nightly)
 
+name: CDP suites (PR gate + nightly)
+
 on:
   schedule:
     # UTC 18:10 = 北京时间 02:10，避开整点拥挤
     - cron: '10 18 * * *'
   workflow_dispatch:
+  # ─── PR 门禁（报告 §6.1/§6.4 的第一条）────────────────────────────────────
+  # 以前这条工作流只跑夜间 + 手动，且 `continue-on-error: true`：**合并前没有任何端到端红灯**。
+  # 编辑器真正会坏的面（布局、同步、快捷键、文件树、导出、保存链路）全在这批套件里，
+  # 而 PR 上只有类型/风格/单测——"单测绿 + 端到端红"这种组合以前根本没人拦。
+  # 现在分两条 job：PR 上跑 `--ci-subset`（不注入真实输入、无头 runner 上稳定）并**阻塞合并**；
+  # 夜间那条照旧只通知（多跑一些、允许环境抖动）。
+  pull_request:
+    paths-ignore:
+      - 'docs/**'
+      - '**/*.md'
 
 permissions:
   contents: read
@@ -25,10 +37,47 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  cdp:
+  # PR 必跑：ci-subset（判据在 run-suites.js 的 ciSubset()，源码不含真实输入注入）
+  cdp-pr:
+    if: github.event_name == 'pull_request'
     runs-on: windows-latest
     timeout-minutes: 60
-    # 只通知不阻塞：这条 job 红不该让 PR 变红
+    steps:
+      # 同 ci.yml：action 一律 pin 到 commit SHA（注释保留人类可读版本号）
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: 安装依赖
+        run: npm ci
+
+      - name: 生产构建（套件跑的是 out/ 里的产物）
+        run: npx electron-vite build
+
+      - name: CDP 子集（不注入真实输入的那批）
+        run: node tools/run-suites.js --ci-subset
+        env:
+          # runner 上多显示器/GPU 都不存在，交给 Chromium 用软件渲染
+          ELECTRON_DISABLE_GPU: '1'
+
+      - name: 失败时上传日志（隔离实例的启动日志与套件输出）
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: cdp-pr-logs
+          path: |
+            ${{ runner.temp }}/lumin-suites-*.log
+          if-no-files-found: ignore
+          retention-days: 7
+
+  cdp:
+    if: github.event_name != 'pull_request'
+    runs-on: windows-latest
+    timeout-minutes: 60
+    # 夜间/手动这条只通知不阻塞：环境抖动不该发红通知
     continue-on-error: true
     steps:
       # 同 ci.yml：action 一律 pin 到 commit SHA（注释保留人类可读版本号）

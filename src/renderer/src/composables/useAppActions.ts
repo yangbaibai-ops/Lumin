@@ -13,9 +13,10 @@ import { confirmDiscardIfDirty, resolveCloseIntent } from '../lib/dialog'
 import { registerNotificationActions } from '../lib/notificationActions'
 import { SAVE_CONFLICT_KIND } from '../lib/saveConflict'
 import { ctrlFTarget, type CtrlFTarget } from '../lib/ctrlFRoute'
+import { installPointerRegionTracker, pointerIsMoreRecentThanFocus } from '../lib/pointerRegion'
 import { exportFormatByAction } from '../../../shared/exportFormats'
 import type { CloseReason } from '../../../shared/closePrompt'
-import type { MenuAction } from '../../../shared/types'
+import type { MenuAction, AppSettings } from '../../../shared/types'
 
 /** 未保存更改确认：薄适配器 —— 文案与语义只有一份，在 lib/dialog */
 export async function confirmIfDirty(): Promise<boolean> {
@@ -79,11 +80,12 @@ export function useAppActions(): {
   }
 
   /**
-   * Ctrl+F 的分流现场：把四个事实读出来喂给纯函数 `ctrlFTarget`（规则与理由都在那个文件里）。
+   * Ctrl+F 的分流现场：把事实读出来喂给纯函数 `ctrlFTarget`（规则与理由都在那个文件里）。
    *
-   * 判据从「焦点在 `[data-sidebar-files]` 里」放宽成「焦点**或指针**在左侧栏里」（§4.84）：
-   * 用户口径是"在左侧侧边栏区域按 Ctrl+F"，而"人在侧栏里"最常见的形态其实是
-   * **鼠标在侧栏上、焦点还在编辑器里**（点一下树行之间的空白不会把焦点挪进去）。
+   * 判据从「焦点在 `[data-sidebar-files]` 里」放宽成「焦点**或指针**在左侧栏里」（§4.84），
+   * 再到第十轮的"**上一次交互**在哪儿"（`lib/pointerRegion.ts`）—— 三次修正的现场都在
+   * `_verify-sidebar-search.js` 的 B/D 两段：那两段的"焦点 + 此刻指针"完全一样，
+   * 只有时间顺序能区分（B 是先动鼠标再点正文，D 是先点正文再动鼠标）。
    */
   function ctrlFTargetNow(): CtrlFTarget {
     if (typeof document === 'undefined') return 'document'
@@ -93,6 +95,8 @@ export function useAppActions(): {
       workspaceOpen: !!files.root,
       filesPanelVisible: settings.outlineOnRight || ui.sidebarTab === 'files',
       focusInSidebar: !!active?.closest?.('[data-sidebar-root]'),
+      focusInEditor: !!active?.closest?.('[data-editor-kernel]'),
+      sidebarPointerRecent: pointerIsMoreRecentThanFocus('sidebar'),
       pointerInSidebar: !!sidebar?.matches?.(':hover')
     })
   }
@@ -190,9 +194,13 @@ export function useAppActions(): {
       case 'about':
         void router.push('/about')
         break
-      case 'theme-changed':
-        void settings.init()
-        break
+      /**
+       * `theme-changed` 这条菜单动作**已删除**（报告 §3.2 P0-2）：原生菜单的主题项以前写
+       * electron-store（那只是历史配置的一次性迁移源）再发这条动作让渲染层 `settings.init()`
+       * 从 SQLite 重读 —— 于是永远读到旧主题，点了没反应。现在菜单直接走主进程的
+       * `services/appSettings.patchSettings()`，由广播通道 `settings:changed` 通知渲染层
+       * （订阅见文件末尾），不需要这条动作。
+       */
     }
   }
 
@@ -231,6 +239,16 @@ export function useAppActions(): {
     let deciding = false
     const beat = setInterval(() => window.luminAPI.app.closeProgress({ deciding }), 1000)
     window.luminAPI.app.closeProgress()
+    /**
+     * "这一轮关窗要真的放行吗"。
+     *
+     * ⚠️ 以前这里靠 `return` 提前退出，而 `confirmClose()` 写在 try 之后 ——
+     * 「不保存」那条路正好 `return`，于是**跳过了确认关窗**，窗口只能等主进程
+     * 2.5 秒的 stalled 兜底强杀才关（功能上能关，但白等，且与"显式确认"的设计意图不符；
+     * 本项的回归断言在 `tools/_verify-close-save-prompt.js`）。
+     * 改成"一条出口 + 一个标志"之后，任何新增分支都不会再漏掉确认（取消/保存失败必须置 false）。
+     */
+    let closeNow = true
     try {
       deciding = true
       const intent = await resolveCloseIntent({
@@ -242,28 +260,26 @@ export function useAppActions(): {
       deciding = false
       if (intent === 'cancel') {
         window.luminAPI.app.cancelClose()
-        return
-      }
-      if (intent === 'save') {
+        closeNow = false
+      } else if (intent === 'save') {
         const ok = await files.save()
         // 另存为被取消、或写盘失败：**不关窗**（用户以为自己保存了才是最糟的结果）
         if (!ok) {
           window.luminAPI.app.cancelClose()
-          return
+          closeNow = false
         }
-      }
-      if (intent === 'discard') {
+      } else if (intent === 'discard') {
         await files.discardCurrentDraft()
         await flushSession()
-        return
+      } else {
+        await files.flushAll()
+        // 会话位置（光标/滚动）也补一次：窗口销毁前最后的状态
+        await flushSession()
       }
-      await files.flushAll()
-      // 会话位置（光标/滚动）也补一次：窗口销毁前最后的状态
-      await flushSession()
     } finally {
       clearInterval(beat)
     }
-    await window.luminAPI.app.confirmClose()
+    if (closeNow) await window.luminAPI.app.confirmClose()
   }
 
   // ── 事件绑定 ──
@@ -293,15 +309,34 @@ export function useAppActions(): {
     'app:before-close',
     (payload) => void requestClose((payload ?? {}) as { reason?: CloseReason })
   )
+  /**
+   * 主进程改了设置（原生菜单的主题项、备份目录选择…）→ 就地 patch store。
+   *
+   * 报告 §3.2 P0-1：设置此前是"两处真相"，主进程写 kv 不通知渲染层 ⇒ 界面显示旧值到重启。
+   * 现在主进程只走 `services/appSettings.ts` 的写入口并广播这条通道（preload 白名单里已登记，
+   * `tests/i18nAndIpc.test.mjs` 双向对账），这里订阅它即可 —— 不再需要"每个调用点自己记得同步"。
+   */
+  const offSettings = window.luminAPI.events.on('settings:changed', (payload) => {
+    if (payload && typeof payload === 'object') settings.applyRemote(payload as AppSettings)
+  })
   const media = window.matchMedia('(prefers-color-scheme: dark)')
   const onSystemTheme = (): void => {
     if (settings.theme === 'auto') settings.applyAll()
   }
   media.addEventListener('change', onSystemTheme)
 
+  /**
+   * 指针区域跟踪（Ctrl+F 分流用，见 `lib/ctrlFRoute.ts` 与 `lib/pointerRegion.ts`）：
+   * 装上之后"最近一次指针交互在侧栏还是编辑区"就有据可查 ——
+   * 只看"焦点 + 此刻悬停"分不清 B 段（先动鼠标再点正文）与 D 段（先点正文再动鼠标）。
+   */
+  const offPointerRegion = installPointerRegionTracker()
+
   onBeforeUnmount(() => {
     offMenu()
     offClose()
+    offSettings()
+    offPointerRegion()
     media.removeEventListener('change', onSystemTheme)
   })
 

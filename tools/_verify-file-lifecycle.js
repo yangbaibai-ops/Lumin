@@ -185,6 +185,141 @@ async function main() {
       fs.existsSync(GONE) === false,
       `目录被复活了：${GONE}`
     )
+
+    // ── D. 删除：脏文档要留草稿 + 目录删除要对账索引（报告 §4.2 P0-2 / P1-1）──────
+    // 这两条此前都没有断言：删除是破坏性操作，而"删了正在编辑的文档"最坏的结果是
+    // 防抖窗口里的那段输入永久消失（回收站与本地历史只覆盖已经写进磁盘的版本）。
+    const DRAFT_TARGET = join(WS, 'draft-target.md')
+    fs.writeFileSync(DRAFT_TARGET, '# 草稿目标\n\n磁盘上的旧正文\n', 'utf-8')
+    await ev(`(async () => {
+      const f = window.__L.files()
+      await f.setRoot(${JSON.stringify(WS)})
+      await f.openPath(${JSON.stringify(DRAFT_TARGET)})
+      return 'ok'
+    })()`)
+    await sleep(900)
+    const d = JSON.parse(
+      await ev(`(async () => {
+        const f = window.__L.files()
+        // 把握手区改脏（不等防抖：这一步就是"用户刚敲完就点了删除"）
+        f.setContent('# 草稿目标\\n\\n刚敲完还没落盘的一段\\n', 'external')
+        const dirtyBefore = f.dirty
+        const key = f.draftKey(${JSON.stringify(DRAFT_TARGET)})
+        await window.luminAPI.drafts.remove(key)
+        await f.removeNode(
+          { path: ${JSON.stringify(DRAFT_TARGET)}, type: 'file', name: 'draft-target.md' },
+          ${JSON.stringify(WS)}
+        )
+        const draft = await window.luminAPI.drafts.load(key)
+        return JSON.stringify({
+          dirtyBefore,
+          draftExists: !!draft && typeof draft.content === 'string',
+          draftHasTyped: !!draft && String(draft.content).includes('刚敲完还没落盘的一段'),
+          currentIsNull: f.current === null
+        })
+      })()`)
+    )
+    report.note('D1 ' + JSON.stringify(d))
+    report.check(
+      'delete-dirty-doc-keeps-draft',
+      d.dirtyBefore === true && d.draftExists === true && d.draftHasTyped === true,
+      JSON.stringify(d) + ' —— 删掉正在编辑的脏文档前必须先写一份草稿（否则那段输入永久消失）'
+    )
+    report.check(
+      'delete-closes-the-buffer',
+      d.currentIsNull === true,
+      '删掉当前文档后缓冲区应关闭'
+    )
+    report.check(
+      'delete-moves-the-file-away',
+      fs.existsSync(DRAFT_TARGET) === false,
+      '删除后文件应已离开原路径（回收站或永久删除）'
+    )
+
+    // ── D2. 目录删除要对账索引 ──
+    // 判据用**逐路径查库**（而不是总行数比大小）：本套件的 userData 里还有别的套件留下的
+    // 索引行，比总数只能证明"没变多"，证明不了"那三行真的没了"。
+    const trioDir = join(WS, 'trio')
+    fs.mkdirSync(trioDir, { recursive: true })
+    const trio = ['x', 'y', 'z'].map((n) => join(trioDir, `${n}.md`))
+    for (const p of trio) fs.writeFileSync(p, `# ${path.basename(p)}\n\n幽灵候选正文\n`, 'utf-8')
+    // 触发一轮索引（换根即可；等它把 trio 里那三篇扫进去）
+    await ev(`(async () => {
+      await window.__L.files().setRoot(${JSON.stringify(join(WS, 'sub'))})
+      return 'ok'
+    })()`)
+    await sleep(400)
+    await ev(`(async () => {
+      await window.__L.files().setRoot(${JSON.stringify(WS)})
+      return 'ok'
+    })()`)
+    await sleep(1800)
+    const freed = JSON.parse(
+      await ev(`(async () => {
+        const f = window.__L.files()
+        const before = []
+        for (const p of ${JSON.stringify(trio)}) {
+          before.push(!!(await window.luminAPI.db.getDocument(p)))
+        }
+        await f.removeNode(
+          { path: ${JSON.stringify(trioDir)}, type: 'directory', name: 'trio' },
+          ${JSON.stringify(WS)}
+        )
+        const after = []
+        for (const p of ${JSON.stringify(trio)}) {
+          after.push(!!(await window.luminAPI.db.getDocument(p)))
+        }
+        return JSON.stringify({ before, after })
+      })()`)
+    )
+    report.note('D2 ' + JSON.stringify(freed))
+    report.check(
+      'delete-directory-prunes-index',
+      freed.before.every(Boolean) && freed.after.every((x) => x === false),
+      `删目录前后逐路径查库：before=${JSON.stringify(freed.before)} after=${JSON.stringify(freed.after)}` +
+        '（after 里还留着 true = 幽灵文档：搜索能搜到、点开打不开）'
+    )
+
+    // ── D3. **外部**删除后重建索引要对账（报告 §4.2 P1-1 的另一半）──────────────
+    // D2 走的是应用内的删除路径（file:remove → deleteDocumentsUnder）；这里走另一条：
+    // 文件在磁盘上被别人删掉（同步盘/git/资源管理器），随后重建索引时必须把那一行对账掉。
+    const ghost = join(WS, 'ghost.md')
+    fs.writeFileSync(ghost, '# ghost\n\n外部删除对账\n', 'utf-8')
+    await ev(`(async () => {
+      // 先把根切走再切回来，强制走一轮完整索引（把 ghost.md 收进索引）
+      await window.__L.files().setRoot(${JSON.stringify(join(WS, 'sub'))})
+      return 'ok'
+    })()`)
+    await sleep(400)
+    await ev(`(async () => {
+      await window.__L.files().setRoot(${JSON.stringify(WS)})
+      return 'ok'
+    })()`)
+    await sleep(1600)
+    const indexed = await ev(
+      `(async () => String(!!(await window.luminAPI.db.getDocument(${JSON.stringify(ghost)}))))()`
+    )
+    fs.rmSync(ghost, { force: true }) // 模拟"别处把文件删了"
+    await ev(`(async () => {
+      // 再切一轮根：索引收尾的对账（pruneWorkspace）应当把这一行扫掉
+      await window.__L.files().setRoot(${JSON.stringify(join(WS, 'sub'))})
+      return 'ok'
+    })()`)
+    await sleep(400)
+    await ev(`(async () => {
+      await window.__L.files().setRoot(${JSON.stringify(WS)})
+      return 'ok'
+    })()`)
+    await sleep(1600)
+    const afterPrune = await ev(
+      `(async () => String(!!(await window.luminAPI.db.getDocument(${JSON.stringify(ghost)}))))()`
+    )
+    report.note('D3 ' + JSON.stringify({ indexed, afterPrune }))
+    report.check(
+      'reindex-prunes-externally-deleted-file',
+      indexed === 'true' && afterPrune === 'false',
+      `建索引时在库=${indexed}，外部删除 + 重建索引之后=${afterPrune}（应 false：否则是幽灵文档）`
+    )
   } finally {
     await ev(`(async () => {
       await window.__L.files().setRoot(null)

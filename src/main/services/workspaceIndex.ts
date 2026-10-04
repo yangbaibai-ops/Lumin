@@ -31,6 +31,8 @@ export interface IndexStatus {
   scanned: number
   /** 本次真正写入索引多少篇 */
   indexed: number
+  /** 本次对账删掉多少条"磁盘上已经没有了"的索引行（报告 §4.2 P1-1；没对账时省略） */
+  pruned?: number
   /** 是否还在跑 */
   running: boolean
 }
@@ -158,6 +160,22 @@ export async function indexWorkspace(root: string): Promise<IndexStatus> {
     }
   }
   if (gen === generation) {
+    /**
+     * ─── 对账：本工作区内**已经不在磁盘上**的索引行要删掉（报告 §4.2 P1-1）───────
+     * 索引此前只有 upsert、没有 prune：外部删文件/删目录、或换了工作区之后，
+     * `documents` / `documents_fts` / `documents_history` 里那一批**幽灵文档**会一直留着
+     * （全局搜索能搜到、最近/标签里看得到、点开打不开）。
+     * 判据只用"这一轮真实扫到的路径集合"：只在本工作区内对账，绝不越界删别的目录的索引；
+     * 扫到 MAX_FILES 上限时**跳过对账**（没扫全就 prune，会把没来得及扫的文档误删）。
+     */
+    if (files.length < MAX_FILES) {
+      try {
+        const removed = db.pruneWorkspace(root, files)
+        if (removed > 0) status = { ...status, pruned: removed }
+      } catch {
+        /* 对账失败不影响这一轮的索引结果 */
+      }
+    }
     status = { ...status, running: false }
     emit()
   }
