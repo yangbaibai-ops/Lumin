@@ -10,8 +10,9 @@
 // 旧文件（键名即文件名）仍然能读：`listDrafts` 对没有 `key` 字段的文件回退用文件名当键。
 import fs from 'fs/promises'
 import path from 'path'
-import { createHash, randomUUID } from 'crypto'
+import { createHash } from 'crypto'
 import { app } from 'electron'
+import { atomicWriteBytes } from './services/atomicWrite'
 import type { DraftInfo } from '../shared/types'
 import {
   DRAFT_GC_MAX_AGE_MS,
@@ -39,21 +40,19 @@ function legacyKeyToFile(key: string): string {
 }
 
 /**
- * 原子写一份草稿：临时文件 + rename。
+ * 原子写一份草稿：同目录临时文件 → **fsync** → rename。
+ *
  * 草稿是崩溃恢复的**唯一**依据，写到一半断电会留下截断的 JSON —— `loadDraft` 解析失败
  * 就返回 null，那份草稿等于失效。所以这里也要原子写（与文件保存同一套道理）。
+ *
+ * ⚠️ 波次 2 补 fsync（报告 §4.2 P2）：此前只做了"临时文件 + rename"，**没有 fsync** ——
+ * rename 只保证目录项可见，数据还在页缓存里，断电/蓝屏时可能留下零长度的草稿。
+ * 现在直接复用 `services/atomicWrite.ts`（与用户文档保存同一条纪律，也有单测钉着）。
  */
 async function writeDraftFile(key: string, data: DraftInfo): Promise<void> {
-  await fs.mkdir(draftsDir, { recursive: true })
-  const target = keyToFile(key)
-  const tmp = `${target}.${randomUUID().slice(0, 8)}.tmp`
-  try {
-    await fs.writeFile(tmp, JSON.stringify(data), 'utf-8')
-    await fs.rename(tmp, target)
-  } catch (err) {
-    await fs.rm(tmp, { force: true }).catch(() => {})
-    throw err
-  }
+  await atomicWriteBytes(keyToFile(key), Buffer.from(JSON.stringify(data), 'utf-8'), {
+    requireParent: false
+  })
 }
 
 export async function saveDraft(

@@ -1,5 +1,28 @@
 ## [Unreleased]
 
+### Fixed
+
+**草稿目录：停放草稿的数量上限 + 总量预算 + 写盘补 fsync（报告 §4.2 P2）**
+
+- 报告的原话是"停放草稿永不 GC 且无总量上限"。查证属实：`planDraftGc` 只清三类 ——
+  写盘临时文件残留、**file-** 草稿超过 30 天、连 JSON 都解不开的旧文件；而未命名/停放草稿
+  是**用户动作**产生的（每关一个未保存的窗口就停放一份），一天能堆几十份，既不过期也没人提醒。
+- `planDraftGc` 增两条判据（纯函数，`tests/drafts.test.mjs` 21 → **26 条**）：
+  - **数量上限** `DRAFT_MAX_UNTITLED = 20`：未命名/停放草稿超过 20 份时淘汰**最旧**的
+    （那正是用户最不可能回去找的），且**不外溢到 file- 草稿**（它们有自己的年龄判据）；
+  - **总量预算** `DRAFT_MAX_TOTAL_BYTES = 32 MB`：超预算时最旧优先淘汰，但**至少留
+    `DRAFT_MIN_KEEP = 3` 份** —— 预算不该把用户仅有的恢复依据删光（拿"整洁"换"丢内容"）。
+    两条新原因 `too-many-untitled` / `size-budget` 会出现在启动日志的 `[drafts] gc removed …` 里。
+- **草稿写盘补 fsync**：原来只有"临时文件 + rename"，而 rename 只保证目录项可见、数据还在
+  页缓存里 —— 断电/蓝屏时可能留下一份零长度草稿（而草稿是崩溃恢复的唯一依据）。
+  现在直接复用 `services/atomicWrite.ts`（与用户文档保存同一条纪律）。
+  顺带把 `DRAFT_TMP_RE` 扩成同时认旧名 `.tmp` 与新名 `.lumin-tmp`（否则升级后旧残留永远清不掉）。
+- 验收：`tests/drafts.test.mjs` **26/26**；默认矩阵 62 条分 5 组跑 ——
+  **60 PASS + 1 FLAKY（`_verify-surface-fuzz` 重跑绿）+ 1 FAIL（`_verify-session-last-closed`，
+  已登记的自管实例抖动套件；同一轮内另一次运行它 8/8 全绿）**，无回归；
+  `_verify-draft-banner` 29/29、`_verify-draft-gc` 6/6、`_verify-close-save-prompt` 22/22、
+  `_verify-save-safety` 17/17、`_verify-new-document` 25/25。
+
 ### Tests
 
 **IO 层单测（报告 §6.2 收口）：SQLite 持久层解耦 + 9 条真库断言**

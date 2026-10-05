@@ -10,6 +10,10 @@ import assert from 'node:assert/strict'
 import { planUntitledDraft } from '../src/shared/drafts.ts'
 import {
   DRAFT_GC_MAX_AGE_MS,
+  DRAFT_MAX_TOTAL_BYTES,
+  DRAFT_MAX_UNTITLED,
+  DRAFT_MIN_KEEP,
+  DRAFT_TMP_RE,
   FILE_DRAFT_PREFIX,
   fileDraftKey,
   isFileDraftKey,
@@ -226,4 +230,81 @@ test('草稿键的构造只有一份（渲染层写、主进程清理共用 shar
   assert.ok(!isFileDraftKey('untitled-orphan'))
   assert.equal(FILE_DRAFT_PREFIX, 'file-')
   assert.ok(DRAFT_GC_MAX_AGE_MS >= 7 * DAY, '保留期不该短于一周（草稿是用户唯一的副本）')
+})
+
+// ─── 波次 2：停放草稿的数量上限 + 目录总字节预算（报告 §4.2 P2）─────────────────
+// 报告的原话是"停放草稿永不 GC 且无总量上限"：年龄判据只清 file- 草稿，
+// 而未命名/停放草稿是**用户动作**产生的（每关一个未保存的窗口就停放一份），
+// 一天就能堆几十份，既不过期也没人提醒。下面把两条新判据钉住。
+
+test('临时文件的正则同时认旧名（.tmp）与新名（.lumin-tmp）', () => {
+  // 波次 2 把草稿写盘改走 atomicWrite（多了 fsync），它的临时名后缀是 .lumin-tmp；
+  // 旧 `.tmp` 残留仍要能被识别，否则升级后这些垃圾文件永远清不掉
+  assert.ok(DRAFT_TMP_RE.test('a1b2c3d4e5f60718.json.deadbeef.tmp'), '旧名')
+  assert.ok(DRAFT_TMP_RE.test('a1b2c3d4e5f60718.json.deadbeef.lumin-tmp'), '新名')
+  assert.ok(!DRAFT_TMP_RE.test('a1b2c3d4e5f60718.json'), '正本不是临时文件')
+})
+
+test('GC：未命名/停放草稿超过上限就淘汰最旧的（年龄判据永远管不到它们）', () => {
+  const keys = []
+  for (let i = 0; i < 25; i++) keys.push(i % 2 === 0 ? `untitled-${i}` : `untitled-orphan-${i}`)
+  // ageDays=1：全部很新 ⇒ 年龄判据一份都不会删，只有新的数量上限能拦住它们
+  const entries = keys.map((k, i) => gcEntry(`k${i}.json`, k, 1, 100))
+  // mtime 全部相同会让"最旧"不确定 —— 让第 i 份比第 i+1 份旧（i 越大越新）
+  entries.forEach((e, i) => {
+    e.mtimeMs = NOW - (25 - i) * 60_000
+  })
+  const plan = planDraftGc(entries, NOW)
+  assert.equal(
+    plan.length,
+    Math.max(0, 25 - DRAFT_MAX_UNTITLED),
+    `应淘汰 ${25 - DRAFT_MAX_UNTITLED} 份（实际 ${plan.length}）`
+  )
+  assert.ok(
+    plan.every((p) => p.reason === 'too-many-untitled'),
+    JSON.stringify(plan.map((p) => p.reason))
+  )
+  // 被淘汰的必须是最旧的：k0..k4 这 5 份
+  const doomed = new Set(plan.map((p) => p.name))
+  for (let i = 0; i < 5; i++) assert.ok(doomed.has(`k${i}.json`), `k${i}.json 应该被淘汰`)
+  for (let i = 5; i < 25; i++) assert.ok(!doomed.has(`k${i}.json`), `k${i}.json 不该被淘汰`)
+})
+
+test('GC：数量上限不外溢到 file- 草稿（它们有自己的年龄判据）', () => {
+  const entries = []
+  for (let i = 0; i < 30; i++)
+    entries.push(gcEntry(`f${i}.json`, fileDraftKey(`D:\\ws\\${i}.md`), 1, 100))
+  assert.deepEqual(planDraftGc(entries, NOW), [], '新鲜的文件草稿不该因为"草稿太多"被删')
+})
+
+test('GC：目录超出总字节预算时最旧优先淘汰，但至少留 DRAFT_MIN_KEEP 份', () => {
+  const mk = (n, sizeMB) =>
+    gcEntry(`b${n}.json`, fileDraftKey(`D:\\ws\\b${n}.md`), 1, sizeMB * 1024 * 1024)
+  const entries = [0, 1, 2, 3, 4].map((i) => {
+    const e = mk(i, 10)
+    e.mtimeMs = NOW - (10 - i) * 60_000 // i 越大越新
+    return e
+  })
+  // 5 × 10MB = 50MB > 32MB 预算 ⇒ 删掉最旧的 2 份（50 → 40 → 30 ≤ 32）
+  const plan = planDraftGc(entries, NOW, DRAFT_GC_MAX_AGE_MS, {
+    maxTotalBytes: DRAFT_MAX_TOTAL_BYTES
+  })
+  assert.deepEqual(
+    plan.map((p) => [p.name, p.reason]),
+    [
+      ['b0.json', 'size-budget'],
+      ['b1.json', 'size-budget']
+    ]
+  )
+
+  // 预算极端小（想删光）时保底仍留 3 份 —— 不能拿"整洁"换"丢内容"
+  const brutal = planDraftGc(entries, NOW, DRAFT_GC_MAX_AGE_MS, { maxTotalBytes: 1 })
+  assert.equal(brutal.length, entries.length - DRAFT_MIN_KEEP, `保底应留 ${DRAFT_MIN_KEEP} 份`)
+})
+
+test('GC：预算之内一份都不删（判据不成立就保守）', () => {
+  const entries = [0, 1, 2].map((i) =>
+    gcEntry(`s${i}.json`, fileDraftKey(`D:\\ws\\s${i}.md`), 1, 1024)
+  )
+  assert.deepEqual(planDraftGc(entries, NOW), [])
 })

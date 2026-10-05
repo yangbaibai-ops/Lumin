@@ -241,8 +241,30 @@ export function planUntitledDraft(
 /** 默认保留期：超过这么久没动过的 `file-*` 草稿才会被清理 */
 export const DRAFT_GC_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000
 
-/** 我们自己的写盘临时文件名（`<sha1-16>.json.<8位十六进制>.tmp`，见 main/drafts.ts） */
-export const DRAFT_TMP_RE = /\.[0-9a-f]{8}\.tmp$/i
+/**
+ * 未命名/停放草稿的**数量上限**（报告 §4.2 P2「停放草稿永不 GC 且无总量上限」）。
+ *
+ * 为什么光有 30 天的年龄上限不够：年龄判据只清"很久没动"的，而停放草稿是**用户动作**
+ * 产生的（每关一个未保存的窗口就停放一份），一天之内就能堆出几十份 —— 它们既不会过期、
+ * 也没有任何东西提醒用户。留最新 20 份：正常写作里"最近 20 个未保存缓冲区"已经远超
+ * 任何真实需要，而被淘汰的是**最旧的**（用户最不可能再回去找的那些）。
+ */
+export const DRAFT_MAX_UNTITLED = 20
+
+/**
+ * 草稿目录的**总字节预算**（报告同一条）。
+ *
+ * 与数量上限互补：一份草稿可以是几 MB（长文），数量不多也能把目录撑大。
+ * 淘汰顺序同样是"最旧优先"，但**至少保留 `DRAFT_MIN_KEEP` 份**——
+ * 不能因为预算就把用户仅有的恢复依据删光（那是拿"整洁"换"丢内容"）。
+ */
+export const DRAFT_MAX_TOTAL_BYTES = 32 * 1024 * 1024
+
+/** 预算淘汰时的保底份数（最新这么多份永远不因预算被删） */
+export const DRAFT_MIN_KEEP = 3
+
+/** 我们自己的写盘临时文件名（`<sha1-16>.json.<8位十六进制>.tmp` 或 `.lumin-tmp`，见 main/drafts.ts） */
+export const DRAFT_TMP_RE = /\.[0-9a-f]{8}\.(?:lumin-)?tmp$/i
 
 /** 草稿目录里的一个条目（主进程列目录 + 解析后传进来） */
 export interface DraftGcEntry {
@@ -260,6 +282,10 @@ export type DraftGcReason =
   | 'stale-file'
   /** 连 JSON 都解不开的旧文件 */
   | 'unreadable'
+  /** 未命名/停放草稿超出了数量上限（留最新 N 份） */
+  | 'too-many-untitled'
+  /** 草稿目录超出总字节预算（最旧优先，保底留 DRAFT_MIN_KEEP 份） */
+  | 'size-budget'
 
 export interface DraftGcPlan {
   name: string
@@ -269,27 +295,73 @@ export interface DraftGcPlan {
 
 /**
  * 该删哪些（返回的每一项都写明**为什么**，便于在日志与验收里核对）。
+ *
+ * 四道判据（顺序即优先级，后一道只在前一道的幸存者里挑）：
+ *  1. `tmp` —— 写盘临时文件的残留（无论多新，它永远不是一份有效草稿）；
+ *  2. `stale-file` / `unreadable` —— 有磁盘正本的旧草稿、连 JSON 都解不开的旧文件（年龄判据）；
+ *  3. `too-many-untitled` —— 未命名/停放草稿超过 `maxUntitled` 份时，淘汰**最旧**的；
+ *  4. `size-budget` —— 目录总字节超过 `maxTotalBytes` 时，最旧优先淘汰，但至少留 `minKeep` 份。
+ *
  * 时间判据用 `age > maxAgeMs` 而不是 `>=`：边界上宁可留着。
  * `mtimeMs` 是 NaN/缺失时同样 **不删**（判据不成立就保守）。
  */
 export function planDraftGc(
   entries: readonly DraftGcEntry[],
   nowMs: number,
-  maxAgeMs: number = DRAFT_GC_MAX_AGE_MS
+  maxAgeMs: number = DRAFT_GC_MAX_AGE_MS,
+  limits: { maxUntitled?: number; maxTotalBytes?: number; minKeep?: number } = {}
 ): DraftGcPlan[] {
+  const maxUntitled = limits.maxUntitled ?? DRAFT_MAX_UNTITLED
+  const maxTotalBytes = limits.maxTotalBytes ?? DRAFT_MAX_TOTAL_BYTES
+  const minKeep = limits.minKeep ?? DRAFT_MIN_KEEP
+
   const out: DraftGcPlan[] = []
+  const doomed = new Set<string>()
+  const kill = (e: DraftGcEntry, reason: DraftGcReason): void => {
+    out.push({ name: e.name, reason, size: e.size })
+    doomed.add(e.name)
+  }
+  const byMtimeDesc = (a: DraftGcEntry, b: DraftGcEntry): number => b.mtimeMs - a.mtimeMs
+
   for (const e of entries) {
     if (DRAFT_TMP_RE.test(e.name)) {
-      out.push({ name: e.name, reason: 'tmp', size: e.size })
+      kill(e, 'tmp')
       continue
     }
     if (!e.name.endsWith('.json')) continue // 不认识的条目：不碰
     if (!(nowMs - e.mtimeMs > maxAgeMs)) continue // 太新：一律留着
     if (e.key === null) {
-      out.push({ name: e.name, reason: 'unreadable', size: e.size })
+      kill(e, 'unreadable')
       continue
     }
-    if (isFileDraftKey(e.key)) out.push({ name: e.name, reason: 'stale-file', size: e.size })
+    if (isFileDraftKey(e.key)) kill(e, 'stale-file')
   }
+
+  // ③ 未命名/停放草稿的数量上限：留最新的 maxUntitled 份
+  const untitled = entries
+    .filter(
+      (e) =>
+        !doomed.has(e.name) &&
+        e.name.endsWith('.json') &&
+        e.key !== null &&
+        isUntitledDraftKey(e.key)
+    )
+    .sort(byMtimeDesc)
+  for (const e of untitled.slice(maxUntitled)) kill(e, 'too-many-untitled')
+
+  // ④ 总字节预算：最旧优先，但至少留 minKeep 份（预算不该把恢复依据删光）
+  const survivors = entries
+    .filter((e) => !doomed.has(e.name) && e.name.endsWith('.json'))
+    .sort((a, b) => a.mtimeMs - b.mtimeMs)
+  let total = survivors.reduce((sum, e) => sum + (Number.isFinite(e.size) ? e.size : 0), 0)
+  let remaining = survivors.length
+  for (const e of survivors) {
+    if (total <= maxTotalBytes) break
+    if (remaining <= minKeep) break
+    kill(e, 'size-budget')
+    total -= Number.isFinite(e.size) ? e.size : 0
+    remaining -= 1
+  }
+
   return out
 }

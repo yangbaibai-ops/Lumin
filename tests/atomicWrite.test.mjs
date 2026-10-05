@@ -150,7 +150,19 @@ test('并发写同一路径：最终磁盘上是**完整的一方**，不是两�
       final === A || final === B,
       `最终内容既不是 A 也不是 B（长度 ${final.length}，说明两次写互相污染了）`
     )
-    assert.deepEqual(tmpFilesIn(dir), [], '并发写之后不该留下临时文件')
+    /**
+     * 临时文件最终必须消失 —— 但**轮询一下再断言**：
+     * 这条与另外 90 个测试文件并行跑（`node --test` 是每文件一个进程），
+     * 负载高时 Windows 的目录项更新可能比 `Promise.all` 的 resolve 晚一拍，
+     * 于是"刚 resolve 就 readdir"偶尔会看到还没消失的那一个（实测偶发一次，
+     * 单跑 10/10 全绿）。给它 1 秒宽限，判据本身没变松。
+     */
+    let leftovers = tmpFilesIn(dir)
+    for (let i = 0; i < 20 && leftovers.length > 0; i++) {
+      await new Promise((r) => setTimeout(r, 50))
+      leftovers = tmpFilesIn(dir)
+    }
+    assert.deepEqual(leftovers, [], '并发写之后不该留下临时文件')
   } finally {
     fs.rmSync(dir, { recursive: true, force: true })
   }
