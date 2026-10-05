@@ -1,5 +1,24 @@
 ## [Unreleased]
 
+### Docs
+
+**Electron 升级第一次尝试的实测记录（39.8.10 → 44.5.1，未完成）**
+
+- 建分支 → 装最新 stable（44.5.1）→ 按 `docs/electron-upgrade.md` §3 的清单跑。
+  **代码侧没有阻碍**：`electron-vite build` 通过、`tsc`/`vue-tsc` 0、bundle 体积与 39 基本一致。
+- 卡点是**本机环境**，不是代码，三条都如实记进了 `docs/electron-upgrade.md` §5：
+  ① npm 的 install-scripts 白名单拦下了 `electron` / `esbuild` / `electron-winstaller` 的安装脚本
+  （二进制要手动补 `node node_modules/electron/install.js`）；
+  ② 这次 install 重排依赖树、剪掉了顶层 `fs-extra@10`（`app-builder-lib` 的硬依赖）——
+  **仓库自己的守卫当场抓到**（`tests/lockfile.test.mjs` 列出 11 条 `… → fs-extra` 悬空引用），
+  再跑一次 `npm install` 也没补回来，带着这样的锁文件不能合；
+  ③ `electron-builder` 在这台机器上多次跑到 packaging 阶段被外部终止 ⇒ 打包态复验做不了。
+- 处置：`main` 与 `node_modules` 已恢复到 39.8.10（`npm ci` + 手动补 electron 二进制，
+  单测回到 **805/805**），分支已删；§3 清单不变，§5 补了一段"下次按这个顺序做"的可执行步骤
+  （先确认安装脚本白名单 → 干净装 → 只改 electron 一个包 → 立刻跑单测看悬空引用 → 再跑矩阵 →
+  打包复验换一台不会被中途杀进程的机器）。
+- 价值：把"这条为什么还没做"从一句判断变成**可复跑的证据链**，并证明仓库的锁文件守卫是有效的。
+
 ### Added
 
 **便携版：免安装 + 数据随身（报告 §P2「功能缺口：便携版」）**

@@ -5,13 +5,13 @@
 
 ## 1. 现状（实测）
 
-| 项 | 值 | 怎么测的 |
-|---|---|---|
-| `package.json` 声明 | `"electron": "^39.2.6"` | `package.json` 的 devDependencies |
-| **实装版本** | `39.8.10` | `node_modules/electron/dist/version` |
-| Chromium | `142.0.7444.265` | 应用内「复制诊断信息」/ `process.versions.chrome` |
-| Node | `22.x` | 同上 |
-| EOL | **2026-05-05**（39 已不在支持窗口内） | Electron 官方只维护最新 3 个 stable major |
+| 项                  | 值                                    | 怎么测的                                          |
+| ------------------- | ------------------------------------- | ------------------------------------------------- |
+| `package.json` 声明 | `"electron": "^39.2.6"`               | `package.json` 的 devDependencies                 |
+| **实装版本**        | `39.8.10`                             | `node_modules/electron/dist/version`              |
+| Chromium            | `142.0.7444.265`                      | 应用内「复制诊断信息」/ `process.versions.chrome` |
+| Node                | `22.x`                                | 同上                                              |
+| EOL                 | **2026-05-05**（39 已不在支持窗口内） | Electron 官方只维护最新 3 个 stable major         |
 
 `^39.2.6` 这个范围**永远升不到 40**：主版本被 `^` 锁死在 39。
 
@@ -53,3 +53,53 @@
 所以这一轮的交付是：**把事实登记清楚 + 给出一条可执行的升级路径**，
 并把版本漂移做成可见的（见 `tests/electronVersion.test.mjs`：本文记录的版本必须与
 `node_modules/electron/dist/version` 一致，不一致就红 —— 免得文档慢慢过期而没人知道）。
+
+## 5. 实测记录：第一次尝试升到 44.5.1（本轮，未完成）
+
+**做了什么**：建 `chore/electron-44` 分支 → `npm install --save-dev electron@44.5.1`
+（最新 stable；39 → 44 跨 5 个 major）→ 按 §3 从第一步开始跑。
+
+**代码侧结果（好消息）**：
+
+| 项                                                           | 结果                                |
+| ------------------------------------------------------------ | ----------------------------------- |
+| `node_modules/electron/dist/version`                         | `44.5.1` ✅                         |
+| `electron-vite build`                                        | 通过（bundle 体积与 39 基本一致）✅ |
+| `tsc -p tsconfig.node.json` / `vue-tsc -p tsconfig.web.json` | 0 ✅                                |
+| 单测                                                         | 802/805（3 条红，见下）             |
+
+即：**应用代码本身在 Electron 44 上没有编译/构建层面的阻碍**。
+
+**卡住的地方（环境，不是代码）**：
+
+1. 本机的 npm 有 **install-scripts 白名单策略**：`electron` 的 postinstall（下载二进制）、
+   `esbuild` 的 postinstall、`electron-winstaller` 的 install 都被拦下
+   （`npm warn install-scripts … not covered by allowScripts`）。
+   electron 的二进制可以手动补（`node node_modules/electron/install.js` ✅），
+   但这说明"一次 `npm install` 就位"在本机不成立。
+2. 这次 install **重排了依赖树**：顶层 `fs-extra@10`（`app-builder-lib` 的硬依赖）被剪掉，
+   只剩各家嵌套的 `fs-extra@9` —— 仓库自己的守卫当场抓到：
+   `tests/lockfile.test.mjs` 的「非 optional 条目没有指向不存在包的悬空引用」列出 11 条
+   `… → fs-extra`（`app-builder-lib`、`electron-builder`、`builder-util`、`dmg-builder` …）。
+   再跑一次 `npm install` 也没补回来。**带着这样的锁文件不能合进 main**。
+3. `electron-builder --win portable` / `--dir` 在本机多次跑到 packaging 阶段被**外部终止**
+   （同一现象本轮也打断了两次长批次 CDP 套件运行）⇒ 打包态复验无法在本机完成。
+
+**因此**：已把 `main` 与 `node_modules` 恢复到 39.8.10（`npm ci` + 手动补 electron 二进制，
+单测回到 805/805），分支删除。§3 的清单**不变**，但下一轮尝试时按下面这条走：
+
+```powershell
+# 0) 先确认 npm 允许安装脚本（否则 electron 二进制根本下不下来）
+npm install-scripts ls                       # 看被拦了哪些
+# 1) 用干净环境装（避免局部剪枝）：删 node_modules 后按锁文件装
+Remove-Item -Recurse -Force node_modules
+npm ci
+node node_modules/electron/install.js        # 若 electron 的 postinstall 仍被拦
+# 2) 只改 electron 一个包，装完立刻验证依赖树完整性（别急着跑构建）
+npm install --save-dev electron@<major>.<minor>.<patch>
+npm run test:unit                            # 其中 lockfile.test.mjs 会盯住悬空引用
+# 3) 再按 §3 的顺序跑门禁与矩阵；打包复验放到一台不会被中途杀掉进程的机器上
+```
+
+**给这条结论加一条守卫**：`tests/lockfile.test.mjs` 里那条"悬空引用"断言正是本次卡点的哨兵
+（它在本轮**真的**拦住了一个不完整的锁文件）。升级时不要跳过单测直接跑构建。

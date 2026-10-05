@@ -231,7 +231,11 @@ PM 内部（`nodesBetween`/`nodeSize`/`isLeaf`）约 490ms、GC 411ms、我们�
 
 - **段落级虚拟化（性能的下一刀）**：本波已把"默认路径"拉回秒级，但"用户坚持渲染"仍要
   +3.4s / 1.2GB；要根治得让 PM 只建视口附近的段落 DOM（大工程，需先立项）。
-- **Electron 升级（§6.3）**：39.8.10 已 EOL；需另立分支 + 全矩阵 + 打包态复验。
+- **Electron 升级（§6.3）**：39.8.10 已 EOL；本轮**已实际尝试升到 44.5.1**（分支 `chore/electron-44`）——
+  代码侧无阻碍（`electron-vite build` / `tsc` / `vue-tsc` 全绿），但被**本机环境**挡住：npm 的
+  install-scripts 白名单拦下 electron/esbuild 的安装脚本、install 重排依赖树剪掉了顶层 `fs-extra@10`
+  （被 `tests/lockfile.test.mjs` 当场抓到 11 条悬空引用）、electron-builder 在 packaging 阶段被外部终止。
+  已恢复到 39.8.10 并删除分支；完整证据与"下次按这个顺序做"写在 `docs/electron-upgrade.md` **§5**。
 - **索引一致性（§4.2 P2）：已全部完成** —— 草稿 GC 上限/预算/fsync、FTS 启动对账、`hadReplacement` 重算（见 §2.8）。
 - **分发链（§7.4 A）：代码侧已完成**（见 §2.9）—— 剩下的是三项外部输入（更新渠道 URL、
   仓库/官网地址、签名证书），拿到后按 `docs/distribution.md` 改一处即可。
