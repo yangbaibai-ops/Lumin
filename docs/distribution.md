@@ -77,7 +77,29 @@ npm run build:win
 `nsis.verifyUpdateCodeSignature: true` 会**校验更新包的签名与发布者**，
 换过包的假更新会被拒绝安装。
 
-## 3. 发版检查清单
+## 3. 便携版（免安装 + 数据随身）
+
+```bash
+npm run build:portable     # 产出 dist/Lumin-<版本>-portable.exe
+```
+
+- **免安装**：`electron-builder.yml` 的 `portable` 段（自解压到临时目录，不写注册表、不建开始菜单）。
+  它**不在** `win.target` 里 —— 默认 `build:win` 只产安装包，发版时不会多出几十 MB 的产物。
+- **数据随身**：便携包运行时会带上 `PORTABLE_EXECUTABLE_DIR`，`main/index.ts` 据此把 userData
+  指到 **exe 同级**的 `LuminData/`（索引、草稿、设置、会话、日志全在里面）。
+  判定与理由见 `src/shared/portable.ts`；不做这一步的话"绿色版"换台机器打开会像"全空了"。
+  - 目录建不出来（U 盘只读/被占用）时**退回 `%APPDATA%` 并在日志里留一行** —— 应用照常能用。
+  - ⚠️ **隐私**：数据跟着 U 盘走 = U 盘丢了数据就丢了，而且插到别人机器上打开时，
+    你的笔记会出现在那台机器上。不想这样就直接用安装版（或把安装版装到非系统盘）。
+- **验收现状（如实）**：配置通过 electron-builder 26.15.3 的 schema 校验（会进到 packaging 阶段）；
+  userData 重定向有 6 条单测 + 一次**运行时实测**（带 `PORTABLE_EXECUTABLE_DIR` 启动，
+  `<dir>/LuminData/` 下出现 logs/缓存/数据库）。**便携包的完整产出**归到打包手动清单
+  （见 [packaging-install-test.md](./packaging-install-test.md)）：发版前补跑一次
+  `npm run build:portable`，确认 `dist/Lumin-<版本>-portable.exe` 存在，双击后数据落在
+  exe 同级 `LuminData/` 且卸载不留注册表项。本轮环境在 packaging 阶段被外部终止、这一步没跑完。
+- 便携包与安装版的文件关联/更新：**都不做**（免安装形态不该改系统设置，也不该被静默更新）。
+
+## 4. 发版检查清单
 
 ```bash
 npm run ci                    # 类型/lint/单测/文档一致性/构建
@@ -89,7 +111,7 @@ npm run build:win             # 打包（设了 CSC_LINK 则自动签名）
 打包产物自检（安装、启动、图标、文件关联、裸路径打开）在
 [packaging-install-test.md](./packaging-install-test.md)；那套会构建 NSIS 安装包并真装一次。
 
-## 4. 为什么这些不做成"写死配置"
+## 5. 为什么这些不做成"写死配置"
 
 - 仓库地址与证书是**作者私有**信息：写进仓库等于把将来要改的东西埋进代码；
 - 更新渠道一旦写死，切换渠道（GitHub Releases → 自建源）就要改代码 + 重新发版；

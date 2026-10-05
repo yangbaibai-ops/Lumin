@@ -44,6 +44,39 @@ import { defaultSettings } from '../shared/defaults'
 import { paperForTheme } from '../shared/theme'
 import { PROD_CSP } from '../shared/csp'
 import { recordFatal } from './services/appLog'
+import { mkdirSync } from 'fs'
+import { portableDataDir } from '../shared/portable'
+
+/**
+ * ─── 便携版：数据跟着 exe 走（报告 §P2「功能缺口：便携版」）────────────────────
+ *
+ * electron-builder 的 `portable` target 运行时会把 `PORTABLE_EXECUTABLE_DIR` 注入环境，
+ * 据此把 userData 改到 exe 旁边（`<exe 同级>/LuminData`）—— 只有这样做，"绿色版"才是
+ * **免安装 + 数据随身**，而不是"免安装但数据仍留在本机的 %APPDATA%"（后者换台机器打开
+ * 会像"全空了"，而旧机器上那份数据还在，最难排查）。
+ *
+ * 三条口径：
+ *   * **不在便携模式时什么都不做**（判定在 shared/portable.ts，纯函数、可单测）；
+ *   * 目录建不出来（U 盘只读/被占用）时**退回 Electron 默认并留一行日志** ——
+ *     宁可数据留在本机，也不能让应用因为写不了 U 盘而起不来；
+ *   * 必须在**任何模块级 userData 读取之前**执行：这就是 `drafts.ts` 的草稿目录
+ *     改成惰性求值的原因（模块级 `const` 会把 import 期的旧路径钉死）。
+ */
+function applyPortableDataDir(): void {
+  const dir = portableDataDir(process.env)
+  if (!dir) return
+  try {
+    mkdirSync(dir, { recursive: true })
+    app.setPath('userData', dir)
+    // 主进程 console 一律 ASCII（见 tests/mainConsoleAscii.test.mjs）
+    console.log(`[portable] userData -> ${dir}`)
+  } catch (err) {
+    console.log(
+      `[portable] fallback to default userData: ${err instanceof Error ? err.message : String(err)}`
+    )
+  }
+}
+applyPortableDataDir()
 
 /**
  * ─── 主进程崩溃 / 未处理 rejection 留证据（审计 §9 P1）────────────────────────

@@ -59,12 +59,29 @@ win:
   # 所以"拿到证书即可签名"这件事已经是一键的：把两个环境变量设上再跑 npm run build:win。
   # Windows 上也可以用 `WIN_CSC_LINK` / `WIN_CSC_KEY_PASSWORD`（同名语义，只作用于 Windows）。
   # 签名后 electron-builder 会把证书的 subject 写进 app-update.yml 的 publisherName，
-  # 与下面 nsis.verifyUpdateCodeSignature 配合 ⇒ 更新包签名不符时**拒绝安装**。
+  # 与下面 win.verifyUpdateCodeSignature 配合 ⇒ 更新包签名不符时**拒绝安装**。
   # 详细步骤与自检：docs/distribution.md（`npm run dist:check` 会打印还缺哪些外部输入）。
+  #
+  # 更新包必须**带有效签名且发布者与已安装版本一致**才允许安装（报告 §7.4 A 的签名那一半）。
+  # ⚠️ 键在 **win** 段（scheme.json 的 WindowsConfiguration.properties），**不在 nsis 段** ——
+  # 放到 nsis 段会被 schema 校验直接拒掉整个配置（本轮实测踩过：`configuration.nsis should be null`）。
+  # 该键默认值本来就是 true，这里显式写出来是**钉住**它：安全相关的默认值不该在升级
+  # electron-builder 时被悄悄改掉。
+  verifyUpdateCodeSignature: true
   target:
     - target: nsis
       arch:
         - x64
+
+# ─── 便携版（免安装；数据随身见 src/shared/portable.ts + main/index.ts）──────────
+# 单独一个 target，**不进 win.target**：默认 `npm run build:win` 只产出安装包，
+# 便携包由 `npm run build:portable` 显式产出（免得每次发版都多一个几十 MB 的产物）。
+portable:
+  artifactName: Lumin-${version}-portable.${ext}
+  # 便携包运行时自解压到临时目录，解包目录名固定成 Lumin 便于复用（不固定则每次都新解一份）
+  unpackDirName: Lumin
+  # 免安装 ⇒ 不请求提权；需要写系统位置时由用户自己以管理员运行
+  requestExecutionLevel: user
 
 nsis:
   # 自定义 NSIS 段（卸载清关联残留、补 InstallLocation）。为什么要这两件事写在 build/installer.nsh 里。
@@ -84,11 +101,6 @@ nsis:
   # ⚠️ **绝对不能改成 true**：它会在卸载时删掉 %APPDATA%\Lumin，而用户的笔记索引、草稿、
   # 设置、会话都在那里。卸载程序删用户数据是写作类应用最不可原谅的行为之一。
   deleteAppDataOnUninstall: false
-  # 更新包必须**带有效签名且发布者与已安装版本一致**才允许安装（报告 §7.4 A 的签名那一半）。
-  # ⚠️ electron-builder 26 的**默认值本来就是 true**（scheme.json 里 `"default": true`）——
-  # 这里显式写出来是**钉住**它：安全相关的默认值不该在升级 electron-builder 时被悄悄改掉。
-  # 未签名的构建同样能装（那时没有签名可比），但一旦开始签名，这条就挡住了"被换掉的更新包"。
-  verifyUpdateCodeSignature: true
 
 # 文件关联：把 .md / .markdown 登记为「可由 Lumin 打开」。**不抢 .txt**（那是通用文本，
 # 抢过来只会惹人烦）。role: Editor 让它在 Windows 的「打开方式」里排到编辑器那一档。

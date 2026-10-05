@@ -2,6 +2,35 @@
 
 ### Added
 
+**便携版：免安装 + 数据随身（报告 §P2「功能缺口：便携版」）**
+
+- 便携版有两种含义，混起来会出一个最难查的问题：**免安装**是打包器给的（`portable` target），
+  而 **数据随身**必须应用自己做 —— Electron 默认仍把 userData 放 `%APPDATA%\Lumin`，
+  于是"绿色版"换台机器打开会像"全空了"，而原机器上那份数据还在。
+- 新增 `src/shared/portable.ts`（纯函数、可单测）：electron-builder 的 portable target 运行时会
+  注入 `PORTABLE_EXECUTABLE_DIR`，据此把 userData 指到 `<exe 同级>/LuminData`。
+  拒绝 `.asar` 路径（只读，改过去必然写不进）；末尾分隔符归一化。
+- `main/index.ts` 在**任何模块级 userData 读取之前**执行：建目录 → `app.setPath('userData', …)`
+  → 记一行 ASCII 日志；建不出来（U 盘只读/被占用）时**退回默认并留日志**（宁可数据留在本机，
+  也不能因为写不了 U 盘而起不来）。
+- 顺带修掉一个会破坏便携版的隐患：`drafts.ts` 原来在**模块级**捕获
+  `app.getPath('userData')` —— 改路径对它无效，便携包里草稿会留在 `%APPDATA%` 而其它数据跟着 exe 走
+  （"一半随身"比不随身更难查）。改成惰性求值，并加了一条**全仓扫描**的守卫测试。
+- 打包：`electron-builder.yml` 新增 `portable` 段（**不放进** `win.target`，免得每次发版都多产一个
+  几十 MB 的包），`npm run build:portable` 显式产出 `Lumin-<版本>-portable.exe`。
+- 验收：新增 `tests/portable.test.mjs` **6 条**（非便携模式绝不改路径、两种分隔符拼接、末尾斜杠与
+  空格归一、拒 asar、主进程真的接上且失败有回退、**全仓无模块级 userData 捕获**、打包 target 与脚本口径）；
+- ⚠️ 过程中修掉一个我自己引入的配置错误：`verifyUpdateCodeSignature` 属于 **win** 段
+  （scheme.json 的 `WindowsConfiguration.properties`），放进 `nsis` 段会让 electron-builder 的
+  schema 校验**拒掉整个配置**（报错只有一句 `configuration.nsis should be null`，极难定位）。
+  实测 `electron-builder --win portable` 已能通过校验并进入 packaging；测试也改成断言"它在哪个段里"。
+- **未跑完的一步（如实记录）**：便携包的完整产出（`npm run build:portable` 到 exe）本轮没跑完 ——
+  本机在 packaging 阶段被外部终止（同一现象本轮也打断了两次长批次套件运行）。已写进
+  `docs/distribution.md` 与打包手动清单，发版前补跑。 **运行时实测**：带 `PORTABLE_EXECUTABLE_DIR` 启动，`<dir>/LuminData/` 里出现了 `logs/`、缓存与
+  数据库等整套数据；未设置该变量时行为与原来一致。
+
+### Added
+
 **分发链：外部输入清单 + 一键切换 + 发版门禁（报告 §7.4 A 可做的部分）**
 
 - 报告这一块点名"真实仓库地址 / 官网 / 更新渠道 / 代码签名证书"——这些值**代码变不出来**，
@@ -16,7 +45,7 @@
     签名环境变量、发版检查清单），并说明"为什么不做成写死配置"。
 - **代码签名一键化**（不改配置文件）：electron-builder 自认 `CSC_LINK` + `CSC_KEY_PASSWORD`
   （Windows 也可用 `WIN_CSC_*`）—— 设了就自动签，没设就产未签名包。`electron-builder.yml`
-  里把安全相关的 `nsis.verifyUpdateCodeSignature: true` **显式钉住**
+  里把安全相关的 `win.verifyUpdateCodeSignature: true` **显式钉住**（它在 win 段——见下面便携版那条的踩坑记录）
   （该版本默认就是 true，写出来是为了升级 electron-builder 时不被悄悄改掉）。
 - 验收：新增 `tests/distribution.test.mjs` **7 条**（占位判定含清单自证、渠道就绪的 generic/github
   两条路、清单五项 id 稳定且每项都有 how/missing、真实仓库现状如实报出、updater 不许自带一份判据、

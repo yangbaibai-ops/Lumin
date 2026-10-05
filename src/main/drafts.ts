@@ -24,19 +24,30 @@ import {
   type DraftGcEntry
 } from '../shared/drafts'
 
-const draftsDir = path.join(app.getPath('userData'), 'drafts')
+/**
+ * 草稿目录。**惰性求值**（波次 2 便携版的那一半）。
+ *
+ * 以前这里是模块级 `const draftsDir = path.join(app.getPath('userData'), 'drafts')` ——
+ * 路径在 **import 期**就被钉死了，于是后面 `app.setPath('userData', …)`（便携版要把数据
+ * 放到 exe 旁边）对它完全无效：便携包里草稿仍写 `%APPDATA%`，而索引/设置写到了 exe 旁边。
+ * 这种"一半随身、一半留在本机"的分裂比不随身更难查（用户在另一台机器上打开会发现
+ * "草稿没了、笔记还在"），所以统一改成按需取 —— 与 `services/database.ts` 的惰性单例同一口径。
+ */
+function draftsDir(): string {
+  return path.join(app.getPath('userData'), 'drafts')
+}
 
 /**
  * 键 → 文件名：sha1 前 16 位。
  * 为什么不用"把非法字符换成 `_`"：那会把不同键映射到同一个文件（见文件头说明）。
  */
 function keyToFile(key: string): string {
-  return path.join(draftsDir, `${createHash('sha1').update(key).digest('hex').slice(0, 16)}.json`)
+  return path.join(draftsDir(), `${createHash('sha1').update(key).digest('hex').slice(0, 16)}.json`)
 }
 
 /** 历史文件名规则（折叠键名）。只用于**读**旧文件，不再用于写。 */
 function legacyKeyToFile(key: string): string {
-  return path.join(draftsDir, `${key.replace(/[^a-zA-Z0-9_-]/g, '_')}.json`)
+  return path.join(draftsDir(), `${key.replace(/[^a-zA-Z0-9_-]/g, '_')}.json`)
 }
 
 /**
@@ -95,7 +106,7 @@ export async function removeDraft(key: string): Promise<void> {
 async function listDrafts(): Promise<{ key: string; data: DraftInfo | null }[]> {
   let names: string[]
   try {
-    names = await fs.readdir(draftsDir)
+    names = await fs.readdir(draftsDir())
   } catch {
     return []
   }
@@ -104,7 +115,7 @@ async function listDrafts(): Promise<{ key: string; data: DraftInfo | null }[]> 
     if (!name.endsWith('.json')) continue
     let data: DraftInfo | null = null
     try {
-      data = JSON.parse(await fs.readFile(path.join(draftsDir, name), 'utf-8')) as DraftInfo
+      data = JSON.parse(await fs.readFile(path.join(draftsDir(), name), 'utf-8')) as DraftInfo
     } catch {
       data = null
     }
@@ -234,20 +245,20 @@ export async function gcDrafts(
 ): Promise<DraftGcResult> {
   let names: string[]
   try {
-    names = await fs.readdir(draftsDir)
+    names = await fs.readdir(draftsDir())
   } catch {
     return { scanned: 0, removed: 0, bytes: 0 } // 目录还不存在 = 没有草稿
   }
   const entries: DraftGcEntry[] = []
   for (const name of names) {
     try {
-      const st = await fs.stat(path.join(draftsDir, name))
+      const st = await fs.stat(path.join(draftsDir(), name))
       if (!st.isFile()) continue
       let key: string | null = null
       if (name.endsWith('.json')) {
         try {
           const data = JSON.parse(
-            await fs.readFile(path.join(draftsDir, name), 'utf-8')
+            await fs.readFile(path.join(draftsDir(), name), 'utf-8')
           ) as DraftInfo
           // 旧文件没有 key 字段：文件名就是键（与 loadDraft 的兜底口径一致）
           key = typeof data.key === 'string' ? data.key : name.slice(0, -'.json'.length)
@@ -266,7 +277,7 @@ export async function gcDrafts(
   let bytes = 0
   for (const item of plan) {
     try {
-      await fs.rm(path.join(draftsDir, item.name), { force: true })
+      await fs.rm(path.join(draftsDir(), item.name), { force: true })
       removed += 1
       bytes += item.size
     } catch {

@@ -32,6 +32,7 @@
     "postinstall": "electron-builder install-app-deps",
     "build:unpack": "npm run build && electron-builder --dir",
     "build:win": "npm run build && electron-builder --win",
+    "build:portable": "npm run build && electron-builder --win portable",
     "build:mac": "node tools/refuse-unverified-platform.js mac",
     "build:linux": "node tools/refuse-unverified-platform.js linux",
     "dev:isolated": "set LUMIN_DEV_PROFILE=1&& electron-vite dev --watch",

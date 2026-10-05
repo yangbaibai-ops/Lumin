@@ -113,14 +113,30 @@ test('工具与运行时同一份判据：updater 不许再自带一份占位域
   assert.match(updater, /isPlaceholderValue\(/, '判据要走共享实现')
 })
 
-test('打包配置：更新包签名校验开着、卸载不删用户数据、publish 解析得出', () => {
+test('打包配置：更新包签名校验开着（在 win 段！）、卸载不删用户数据、publish 解析得出', () => {
   const yml = read('electron-builder.yml')
   const parsed = readPublish(yml)
   assert.equal(parsed.provider, 'generic')
   assert.equal(parsed.url, 'https://example.com/auto-updates')
   assert.equal(isPlaceholderValue(parsed.url), true, '当前就该是占位（发版前要换掉）')
-  // 签名校验：带着"被换掉的更新包"来时必须拒绝
-  assert.match(yml, /^\s*verifyUpdateCodeSignature:\s*true\s*$/m, 'nsis 必须开启更新包签名校验')
+  /**
+   * ⚠️ `verifyUpdateCodeSignature` 属于 **win** 段（scheme.json 的
+   * WindowsConfiguration.properties），**不在 nsis 段** —— 放错位置会被 electron-builder 的
+   * schema 校验直接拒掉**整个配置**，而报错只有一句 `configuration.nsis should be null`（极难定位，
+   * 本轮实测踩过）。所以这条不只断言"文件里出现过这个键"，还钉住它**在哪个段里**。
+   */
+  const winBlock = yml.slice(yml.indexOf('\nwin:'), yml.indexOf('\nportable:'))
+  const nsisBlock = yml.slice(yml.indexOf('\nnsis:'))
+  assert.match(
+    winBlock,
+    /^\s*verifyUpdateCodeSignature:\s*true\s*$/m,
+    'win 段必须显式钉住更新包签名校验'
+  )
+  assert.doesNotMatch(
+    nsisBlock,
+    /verifyUpdateCodeSignature/,
+    '它不属于 nsis 段（放进去整个配置会被拒）'
+  )
   // 卸载绝不删用户数据（笔记索引/草稿/设置都在那里）
   assert.match(yml, /^\s*deleteAppDataOnUninstall:\s*false\s*$/m)
   // 签名靠环境变量开关，配置里不许出现 ${env.CSC_*} 那种"没设就崩"的插值
