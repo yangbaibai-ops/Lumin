@@ -2,6 +2,22 @@
 
 ### Added
 
+**命令面板（Ctrl+Shift+P，报告 §P3「壁垒功能」）**
+
+- 新增 `CommandPalette.vue`（`role=listbox` + `aria-activedescendant` + Esc 回焦）、
+  `useCommandPalette.ts`（命令注册表，**复用既有动作**而不是新造业务逻辑）、
+  `lib/commandPalette.ts`（纯过滤/排序层，10 条单测）；三语 i18n 各 +7 键。
+- `Mod+Shift+P` 从「全局搜索」让给面板（VS Code / Typora 的通行键）：全局搜索仍在命令表、
+  编辑菜单与面板里可搜到，用户自定义过的绑定优先 —— 冲突口径写在 `useKeymap.ts` 注释里。
+- 验收：`tools/_verify-command-palette.js`（已登记进默认矩阵）**17/17 PASS**，覆盖打开/过滤/
+  ↑↓/Enter 执行/Esc 关闭/a11y 属性/三语/点击执行；`tests/commandPalette.test.mjs` 10/10。
+- 复核时修掉三处（子代理没实际跑通套件的证据）：① 套件里 CDP 的 `modifiers` 写成 3（Alt+Ctrl）
+  而 Ctrl+Shift 是 **10**（位标志）⇒ 面板永远打不开；② 4 条中文关键词硬编码在 `src/`（i18n 守卫拦下）
+  ⇒ 关键词与本地化标签重复，删掉中文别名；③ Tailwind 任意值 155 → 164（浮层尺寸）已在
+  `tests/visualScale.test.mjs` 登记并写明"一次性、后续先收进令牌"。
+
+### Added
+
 **多光标：代码块里可用（报告 §P2「功能缺口」）**
 
 - 本仓只有**代码块**跑 CodeMirror（源码模式是 `<textarea>`、所见即所得是 ProseMirror），
