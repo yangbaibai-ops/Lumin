@@ -3,8 +3,16 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { NodeViewWrapper, nodeViewProps } from '@tiptap/vue-3'
 import { Compartment, EditorState, type Extension } from '@codemirror/state'
-import { EditorView, keymap, lineNumbers, drawSelection } from '@codemirror/view'
+import {
+  EditorView,
+  keymap,
+  lineNumbers,
+  drawSelection,
+  rectangularSelection,
+  crosshairCursor
+} from '@codemirror/view'
 import { defaultKeymap, history, historyKeymap } from '@codemirror/commands'
+import { searchKeymap, highlightSelectionMatches, selectNextOccurrence } from '@codemirror/search'
 import {
   syntaxHighlighting,
   HighlightStyle,
@@ -22,7 +30,6 @@ import {
   closeBracketsKeymap,
   completionKeymap
 } from '@codemirror/autocomplete'
-import { searchKeymap, highlightSelectionMatches } from '@codemirror/search'
 import { tags as t } from '@lezer/highlight'
 import { TextSelection } from '@tiptap/pm/state'
 import { useSettingsStore } from '../../stores/settings'
@@ -701,6 +708,23 @@ function buildCmExtensions(): Extension[] {
   return [
     lineNumberCompartment.of(settings.codeLineNumbers ? lineNumbers() : []),
     drawSelection(),
+    /**
+     * ─── 多光标（报告 §P2「功能缺口：多光标」）──────────────────────────────
+     * 没有多光标时，代码块里改十行同样的属性只能一行行来；这是"写作工具里的代码块"
+     * 最常见的实际动作（改 front matter 键名、批量缩进、改 Markdown 表格列）。
+     * 三条缺一不可：
+     *   * `EditorState.allowMultipleSelections` —— 状态层允许**多个选区**（关着时
+     *     后加的选区会把前一个换掉，Alt+点等于白点）；
+     *   * `rectangularSelection()` + `crosshairCursor()` —— Alt 拖拽的**列选择**（对齐的
+     *     多行同时改），光标形状给出"现在是列选择"的提示；
+     *   * `selectNextOccurrence`（Mod-d）—— 键盘路线：选中一个词再按 Mod-d 逐个加选下一个。
+     * ⚠️ 本仓只有**代码块**这一处是 CodeMirror：源码模式是 `<textarea>`（浏览器不提供
+     * 多光标），所见即所得是 ProseMirror（未做）。这个边界写进了 docs/manual 与验收套件，
+     * 别把它当成"全应用支持多光标"。
+     */
+    EditorState.allowMultipleSelections.of(true),
+    rectangularSelection(),
+    crosshairCursor(),
     history(),
     foldGutter(),
     indentOnInput(),
@@ -713,6 +737,8 @@ function buildCmExtensions(): Extension[] {
     languageCompartment.of([]),
     keymap.of([
       ...closeBracketsKeymap,
+      // 选中一个词后按 Mod-d 逐个加选（多光标的键盘入口）
+      { key: 'Mod-d', run: selectNextOccurrence, preventDefault: true },
       // 剔除 Enter 系与 Tab 绑定：其内部 dispatch（state→DOM 重绘）在
       // 嵌套于 ProseMirror 的场景中断裂（state 更新但 DOM 不重绘），
       // 且 preventDefault 会吞掉浏览器原生插入；Enter 由容器的捕获

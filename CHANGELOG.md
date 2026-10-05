@@ -1,5 +1,24 @@
 ## [Unreleased]
 
+### Added
+
+**多光标：代码块里可用（报告 §P2「功能缺口」）**
+
+- 本仓只有**代码块**跑 CodeMirror（源码模式是 `<textarea>`、所见即所得是 ProseMirror），
+  所以多光标先落在代码块 —— 那也是这类写作工具最常需要它的地方（批量改代码 / front matter /
+  Markdown 表格列）。
+- `CodeBlockView.vue` 的 CM 扩展列表补三条（缺一不可）：`EditorState.allowMultipleSelections.of(true)`
+  （状态层允许多选区，关着时后加的选区会把前一个换掉）、`rectangularSelection()` + `crosshairCursor()`
+  （Alt 拖拽列选择）、`Mod-d → selectNextOccurrence`（键盘逐个加选）。
+- 验收：新增 `tools/_verify-multicursor.js`（已登记进默认矩阵）**3 PASS / 0 FAIL / 2 SKIP** ——
+  代码块滚进视野后挂载 CM、Mod-d 后出现 ≥2 个**可见**光标（`.cm-cursor`）、
+  **打一个字符同时落在两处**（判据落在 DOM 与文本上，不看内部对象）。
+- **两条如实 SKIP（不假装通过）**：① Alt+单击加光标 —— `@codemirror/view` 6.43 未导出
+  `clickAddsSelectionRange`，公共 API 拿不到（列选择走 Alt+拖拽，DOM 判据不同）；
+  ② 源码模式那条边界断言 —— 本轮没能用 DOM 确认进入源码模式。
+- **边界写清**：多光标**只在代码块里保证可用**；源码 textarea 与所见即所得面不做（后者要改选择模型
+  与输入法路径，属另一件大工程）。这条同时写进了代码注释、本 CHANGELOG 与台账 §2.11。
+
 ### Docs
 
 **文档收敛：`docs/manual/08-appendix.md` 3516 行拆成「索引 + 5 片」（报告 §6.2 P1）**
