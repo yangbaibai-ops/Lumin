@@ -246,7 +246,7 @@ PM 内部（`nodesBetween`/`nodeSize`/`isLeaf`）约 490ms、GC 411ms、我们�
   `_verify-session-last-closed` 同类。方向是让焦点注入更稳，而不是忽略它。
 - **重构欠账（§3.2 P2-2）**：`files` store（1396 行）与 `SettingsDialog.vue`（1745 行）拆分、
   `main/index.ts` 拆 windows/boot、`tsconfig.shared.json`。
-- **文档收敛（§6.2 P1）**：`docs/manual/08-appendix.md` 3500+ 行按波次拆片（目标 <800 行）。
+- **文档收敛（§6.2 P1）：已完成** —— `docs/manual/08-appendix.md` 3516 行拆成「索引 85 行 + 5 个分片（917 / 793 / 860 / 723 / 158 行）」，内容逐行原样（拆片时 sha256 比对通过），并加了 4 条守卫（索引≤200 行、每片有面包屑且≤1000 行、§4.x 小节恰好出现一次、无 BOM）。
 
 ---
 
