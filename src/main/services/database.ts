@@ -1,9 +1,9 @@
 // ─── SQLite 持久层：文档元数据 + FTS5 全文索引 ────────────────────────────
 // 使用 Electron 内置 Node 的 node:sqlite（DatabaseSync，含 FTS5），零原生依赖
 import type { DatabaseSync } from 'node:sqlite'
-import { app } from 'electron'
 import path from 'path'
-import { statSync } from 'fs'
+import { mkdirSync, statSync } from 'fs'
+import { createRequire } from 'node:module'
 import type {
   AppNotification,
   AppSettings,
@@ -25,13 +25,13 @@ import {
   type HistoryEntry,
   type HistoryEntryMeta,
   type PruneOptions
-} from '../../shared/history'
-import { defaultSettings } from '../../shared/defaults'
+} from '../../shared/history.ts'
+import { defaultSettings } from '../../shared/defaults.ts'
 // 字数口径的唯一实现（中文按字 + 拉丁按词）：与渲染层状态栏同一份，见 shared/readingTime.ts
-import { measureText } from '../../shared/readingTime'
+import { measureText } from '../../shared/readingTime.ts'
 // 目录改名时按**目录边界**搬路径（纯字符串实现，与渲染层共用同一份；见 shared/paths.ts）
-import { migratePathWithin, samePath } from '../../shared/paths'
-import { runMigrations } from './migrations'
+import { migratePathWithin, samePath } from '../../shared/paths.ts'
+import { runMigrations } from './migrations.ts'
 
 /**
  * kv 里那份「每文件编码兜底」的键名（唯一实现在 `services/encoding.ts` 的 KV_KEY）。
@@ -43,11 +43,18 @@ const ENCODING_KV_KEY = 'fileEncodings'
  *  electron-vite(Rollup) 会把顶层 import 的 require 提升到 bundle 顶部、先于
  *  suppressWarnings 的 process.emitWarning 过滤器执行，导致 node:sqlite 的
  *  实验性警告提前打印。改为「函数内 require」后，真正加载发生在过滤器之后，
- *  警告即可被吞掉。 */
+ *  警告即可被吞掉。
+ *
+ *  ⚠️ 波次 2 补：`node --test` 走的是 ESM，模块级 `require` 不存在（`typeof require`
+ *  在这里是 'undefined'，不会抛），所以 ESM 侧用 `createRequire` 兜底 ——
+ *  两条路都只加载 `node:sqlite` 这一个内置模块，行为一致。 */
 function requireDatabaseSync(): (typeof import('node:sqlite'))['DatabaseSync'] {
   // 主进程由 electron-vite 打包为 CommonJS，运行时存在模块级 require
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  return (require('node:sqlite') as typeof import('node:sqlite')).DatabaseSync
+  const req =
+    typeof require === 'function'
+      ? (require as NodeRequire)
+      : createRequire(path.join(process.cwd(), 'index.js'))
+  return (req('node:sqlite') as typeof import('node:sqlite')).DatabaseSync
 }
 
 /**
@@ -185,11 +192,22 @@ class LuminDatabase {
   /** 库文件路径（VACUUM 前后要比字节数，见 fileSizeBytes） */
   readonly path: string
 
-  constructor() {
-    const dbPath = path.join(app.getPath('userData'), 'lumin.db')
-    this.path = dbPath
+  constructor(dbPath?: string) {
+    /**
+     * 库文件路径：**显式传入优先**（测试与组合根），否则问 electron 的 userData。
+     *
+     * ⚠️ 这一层是波次 2 为「IO 层单测」做的解耦（报告 §6.2）：原来 `app.getPath('userData')`
+     * 写在构造函数里、而单例又在模块顶层 `new`，于是 `import` 本模块就等于开库 ——
+     * 在 `node --test` 里直接 ERR_MODULE_NOT_FOUND（没有 electron）。
+     * 现在：electron 用**惰性 require**（只在没传路径时才走），单例改成惰性（首次访问才建），
+     * 单测可以 `initDatabase(临时目录里的路径)` 之后当普通对象用。
+     */
+    const target = dbPath ?? defaultDbPath()
+    this.path = target
+    // 目录不存在就建出来（组合根可能给一个全新目录；electron 的 userData 也可能是首次）
+    mkdirSync(path.dirname(target), { recursive: true })
     const DatabaseSyncCtor = requireDatabaseSync()
-    this.db = new DatabaseSyncCtor(dbPath)
+    this.db = new DatabaseSyncCtor(target)
     this.db.exec('PRAGMA journal_mode = WAL')
     this.db.exec('PRAGMA synchronous = NORMAL')
     /**
@@ -1253,4 +1271,59 @@ class LuminDatabase {
   }
 }
 
-export const db = new LuminDatabase()
+/**
+ * 默认库文件路径：electron 的 `userData/lumin.db`。
+ *
+ * 用**惰性 require** 而不是顶层 `import { app } from 'electron'`：单测进程里没有 electron，
+ * 而顶层 import 会让"`import` 一下这个模块"就失败（报告 §6.2 的现场）。
+ * 主进程跑起来时这段与原来的 `app.getPath('userData')` 完全等价。
+ */
+function defaultDbPath(): string {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const electron = require('electron') as typeof import('electron')
+  return path.join(electron.app.getPath('userData'), 'lumin.db')
+}
+
+/**
+ * 库实例：**惰性单例**（波次 2）。
+ *
+ * 为什么不再在模块顶层 `new`：那样"import 就等于开库"，于是
+ *   ① 单测没法 import（见上）；
+ *   ② 启动顺序被 import 顺序隐式决定（谁先 import 谁先建库）。
+ * 现在：`initDatabase(路径)` 显式指定（测试与将来的多 profile），
+ * 不指定则首次访问 `db` 时用 electron 的 userData —— 对外表现与原来一致。
+ */
+let singleton: LuminDatabase | null = null
+
+/** 打开（或换一个）库文件。返回实例本身，便于测试直接取用。 */
+export function initDatabase(dbPath?: string): LuminDatabase {
+  singleton = new LuminDatabase(dbPath)
+  return singleton
+}
+
+/** 当前库实例（没初始化就用 electron 的 userData 建一个） */
+function activeDb(): LuminDatabase {
+  if (!singleton) singleton = new LuminDatabase()
+  return singleton
+}
+
+/** 关闭并丢弃当前实例（测试收尾 / 退出清理用） */
+export function closeDatabase(): void {
+  singleton?.close()
+  singleton = null
+}
+
+/**
+ * 全局库句柄。**保持 `db.xxx()` 的调用方式不变**（几十处调用点不用改），
+ * 靠一层 Proxy 把每次访问转发给当前实例，并给方法绑上正确的 `this`。
+ */
+export const db: LuminDatabase = new Proxy({} as LuminDatabase, {
+  get(_target, prop, receiver) {
+    const instance = activeDb()
+    const value = Reflect.get(instance as object, prop, receiver)
+    return typeof value === 'function' ? value.bind(instance) : value
+  },
+  has(_target, prop) {
+    return prop in activeDb()
+  }
+})

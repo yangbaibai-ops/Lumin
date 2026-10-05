@@ -2,6 +2,32 @@
 
 ### Tests
 
+**IO 层单测（报告 §6.2 收口）：SQLite 持久层解耦 + 9 条真库断言**
+
+- 与原子写 / 编解码同一个病根，而且是最后一块：`services/database.ts` 顶层
+  `import { app } from 'electron'`，单例又在模块顶层 `new` —— **import 就等于开库**，
+  于是 `node --test` 里直接 `ERR_MODULE_NOT_FOUND`；这片"搜索索引 / 标签 / 历史 / 编码记忆"
+  的持久层此前只能靠 CDP 套件从外面敲。
+- 解耦（三处，都顺手把设计理顺）：
+  - electron 改成**惰性 require**（只有"没显式给路径"时才问 `userData`），
+    并由 `createRequire` 兜底 ESM（主进程是 CJS、`node --test` 是 ESM，两条路行为一致）；
+  - 单例改成**惰性**：`initDatabase(路径)` 显式指定（测试与将来的多 profile），
+    不指定则首次访问 `db` 时用 electron 的 userData —— 对外表现与原来完全一致，
+    顺带去掉"启动顺序被 import 顺序隐式决定"这个隐患；
+  - `db` 句柄改成一层 Proxy 转发给当前实例并绑定 `this` —— 几十处 `db.xxx()` 调用点**一行没改**。
+- `database.ts` 的相对 import 按仓库既有约定写全 `.ts`（`tsconfig.node.json` 的
+  `allowImportingTsExtensions` 就是为这条设的；`tests/migrations.test.mjs` 早已是这个前提）。
+- 新增 `tests/database.test.mjs`（**9 条**，临时目录 + 真 `node:sqlite` 库）：`countWords`/`clipForIndex`、
+  upsert → 读回元数据与 `stats()`、**FTS 保存后立刻可搜 / 删除后搜不到**（幽灵文档那条路）、
+  **`deleteDocumentsUnder` 按目录边界删且不误伤 `notes-archive` 这类同前缀兄弟目录**、
+  `pruneWorkspace` 只对账本工作区、`renameDirectory` 连子孙文档一起搬、标签与置顶可读回、
+  `setDocumentTextMeta` 不覆盖正文、**惰性单例换库文件后是全新空库**。
+- 回归：`_verify-search-index` 10/10、`_verify-db-maintenance` 6/6、`_verify-tags` 7/7、
+  `_verify-encoding` 54/57（3 SKIP）、`_verify-history-restore` 7/7、`_verify-file-lifecycle`；
+  单测 776 → **785/785**。
+
+### Tests
+
 **IO 层单测（报告 §6.2 后半）：编解码抽出纯实现 `services/textCodec.ts` + 16 条字节断言**
 
 - 与原子写同一个病根：`encoding.ts` 顶层 `import { app } from 'electron'`（拿系统语言）与

@@ -140,11 +140,11 @@ docs/                     # 手册 / 整改方案 / 打包实测
 
 | 范围 | 文件 | 行数 |
 |---|---|---|
-| `src/main` | 38 | 8186 |
+| `src/main` | 38 | 8259 |
 | `src/preload` | 2 | 279 |
 | `src/shared` | 32 | 4033 |
 | `src/renderer` | 130 | 27132 |
-| `src 合计` | 202 | 39630 |
+| `src 合计` | 202 | 39703 |
 
 口径：`src/main`/`preload`/`shared` 数 `.ts`，`src/renderer` 数 `.ts`+`.vue`（含子目录）。
 
