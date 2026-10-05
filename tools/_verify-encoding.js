@@ -1166,6 +1166,52 @@ const SETUP = `(() => {
     )
     c('statusbar-flags-replacement', h1.marked === '1', JSON.stringify(h1))
 
+    /**
+     * H1b：**重新解释编码时必须把替换字符标记一起更新**（报告 §4.2 P2）。
+     *
+     * 这份文件的含义是"当前缓冲区里有没有按当前编码解不出来的字节"，所以它只属于
+     * "最近一次解码" —— `reopenWithEncoding` 正是又一次解码。以前这里漏了赋值：
+     * 从 GBK 切到 UTF-8（乱码变 U+FFFD）之后标记还是灭的、切回来还是不灭。
+     */
+    const H_FLAG = path.join(dir, 'reopen-flag.md')
+    fs.writeFileSync(H_FLAG, iconv.encode(T_GBK, 'gbk'))
+    await w.ev(`(() => { window.__E.settings().set('defaultEncoding', 'auto'); return 'ok' })()`)
+    await sleep(400)
+    const h1bOpen = await open(H_FLAG)
+    const flagOf = async () =>
+      JSON.parse(
+        await w.ev(
+          `(() => { const f = window.__E.files(); const el = document.querySelector('[data-status-encoding]'); return JSON.stringify({ had: f.current.hadReplacement === true, enc: f.current.encoding, marked: el ? el.getAttribute('data-encoding-replaced') : null }) })()`
+        )
+      )
+    const h1bBefore = await flagOf()
+    // GBK 字节在 UTF-8 下几乎必然非法 ⇒ 重新解释之后必须亮
+    await w.ev(
+      `(async () => { await window.__E.files().reopenWithEncoding('utf-8'); return 'ok' })()`
+    )
+    await sleep(500)
+    const h1bUtf8 = await flagOf()
+    // 切回 GBK ⇒ 又能正常解出来 ⇒ 必须灭
+    await w.ev(
+      `(async () => { await window.__E.files().reopenWithEncoding('gbk'); return 'ok' })()`
+    )
+    await sleep(500)
+    const h1bBack = await flagOf()
+    console.log(
+      'H1b ' +
+        JSON.stringify({ enc: h1bOpen.encoding, before: h1bBefore, utf8: h1bUtf8, back: h1bBack })
+    )
+    c(
+      'reopen-with-utf8-flags-replacement',
+      h1bUtf8.had === true && h1bUtf8.marked === '1',
+      `按 UTF-8 重新解释 GBK 文件后必须亮起替换字符标记：${JSON.stringify(h1bUtf8)}`
+    )
+    c(
+      'reopen-back-clears-replacement',
+      h1bBack.had === false && h1bBack.marked === null,
+      `切回 GBK 之后标记必须灭掉（标记属于"最近一次解码"）：${JSON.stringify(h1bBack)}`
+    )
+
     // H2：记忆附 mtime —— 文件被外部换成合法 UTF-8 之后，旧记忆（gbk）必须失效
     await w.ev(`(() => { window.__E.settings().set('defaultEncoding', 'gbk'); return 'ok' })()`)
     await sleep(400)

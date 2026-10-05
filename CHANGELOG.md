@@ -2,6 +2,23 @@
 
 ### Fixed
 
+**替换字符标记（状态栏 U+FFFD 警告）跟着解码与保存一起重算（报告 §4.2 P2）**
+
+- 这个标记的含义写在状态栏 tooltip 里："这份文件里有字节没能按当前编码解出来（已显示为
+  U+FFFD）—— 直接保存会改写它们的字节"，可见它属于**最近一次解码**这个事实。查下来有两处漏：
+  - `reopenWithEncoding()`（「用其他编码重新打开」）更新了 content / encoding / hadBom / eol，
+    **唯独没更新 `hadReplacement`** ⇒ 从 GBK 切到 UTF-8（乱码变 U+FFFD）之后标记还是灭的、
+    切回去还是不灭 —— 该亮的没亮、该灭的没灭；
+  - `finishSave()` 之后不重算 ⇒ 用户把那几个坏字符删掉再保存，磁盘上已经没有了，标记却一直红着。
+- 修法：重新解码处按解码结果赋值；保存成功处按**写进去的那一份**快照重算
+  （`hasReplacementChar(snapshot)`，与主进程解码用的是 shared 里同一个纯函数 ——
+  用 snapshot 而不是 `doc.content`：await 期间可能又敲了字，标记要描述磁盘上那一份）。
+- 验收：`_verify-encoding` 57 → **59 条**并新增两步 —— 按 UTF-8 重新解释 GBK 文件后
+  `data-encoding-replaced` 必须变成 `1`、切回 GBK 必须消失（先跑一次确认**会红**，
+  重建后转绿，证明这条断言确实钉的是本次修复）；`_verify-save-safety` 17/17、
+  `_verify-md-fidelity` 106/107（1 SKIP）、`_verify-external-change` 8/8、
+  `_verify-file-lifecycle`；单测 **792/792**、`vue-tsc` 0。
+
 **搜索索引启动对账：`reconcileFts()`（报告 §4.2 P2「FTS 2s 节流，崩溃即不一致」）**
 
 - 报告这一条在**数据层**成立：FTS 写入是 2 秒防抖批量（`FTS_DEBOUNCE_MS`），崩在窗口里就留下

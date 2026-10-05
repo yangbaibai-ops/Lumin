@@ -2,6 +2,8 @@ import { defineStore } from 'pinia'
 import type { DraftInfo, FileNode, HistoryEntry, OpenedFile } from '../../../shared/types'
 import type { ConcreteEncoding, EncodingId } from '../../../shared/encodings'
 import { isEol, otherEol, type Eol } from '../../../shared/eol'
+// 「正文里还有没有 U+FFFD」这条纯规则与主进程解码时用的是**同一个实现**（shared，可单测）
+import { hasReplacementChar } from '../../../shared/encodingMemory'
 import { useSettingsStore } from './settings'
 import { useWorkspaceDocsStore } from './workspaceDocs'
 import { useRecentStore } from './recent'
@@ -1086,6 +1088,17 @@ export const useFilesStore = defineStore('files', {
     async finishSave(doc: CurrentDoc, snapshot: string, mtimeMs: number): Promise<boolean> {
       doc.mtimeMs = mtimeMs
       doc.savedContent = snapshot
+      /**
+       * 落盘之后**重算**"缓冲区里还有没有 U+FFFD"（报告 §4.2 P2 的第二半）。
+       *
+       * 为什么在保存后重算：这个标记的含义是"正文里有会被写成 EF BF BD 的字符"。
+       * 用户在编辑器里把那几个坏字符删掉（或整段重写）之后再保存，磁盘上已经没有它们了，
+       * 标记却还红着 —— 于是用户每次看到都在想"哪来的有损？"，直到关掉文件。
+       * 反过来，把 U+FFFD 粘进正文再保存，落盘的确实就是替换字符，标记也该亮。
+       * 用 `snapshot`（**写进去的那一份**）而不是 `doc.content`：await 期间可能又敲了字，
+       * 标记必须描述"磁盘上那一份"，而不是描述还没落盘的新内容。
+       */
+      doc.hadReplacement = hasReplacementChar(snapshot)
       this.saveRetryDelay = 0
       this.saveRetryAt = 0
       this.saveError = null
@@ -1292,6 +1305,14 @@ export const useFilesStore = defineStore('files', {
         cur.savedContent = opened.content
         cur.mtimeMs = opened.mtimeMs
         cur.encoding = concrete
+        /**
+         * ⚠️ `hadReplacement` **必须跟着这次重新解码一起更新**（报告 §4.2 P2 点名的那条）。
+         * 它的含义是"这份**当前缓冲区**里有字节没能按当前编码解出来"（状态栏那句 tooltip
+         * 就是这么写的），所以它只属于"最近一次解码"这个事实 —— 而这里正是**又一次解码**。
+         * 以前漏了这一行：从 GB18030 切到 UTF-8（乱码变 U+FFFD）之后，状态栏那个警告标记
+         * 还停留在上一次解码的结论上 —— 该亮的没亮、该灭的没灭。
+         */
+        cur.hadReplacement = !!opened.hadReplacement
         // 显式替换内容：让编辑器绕过回声过滤强制同步（否则"切回原编码"可能被当成回声丢掉）
         this.noteExternalReplace()
         cur.hadBom = opened.hadBom
