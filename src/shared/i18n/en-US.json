@@ -584,6 +584,13 @@
     "cycleMode": "Cycle editor mode",
     "openKeymapSettings": "Open shortcut settings"
   },
+  "commandPalette": {
+    "title": "Command Palette",
+    "placeholder": "Type a command name (Ctrl+Shift+P to open)",
+    "empty": "No matching command",
+    "hint": "Type to filter, use Up/Down to move, Enter to run, Esc to close",
+    "resultCount": "{n} commands"
+  },
   "encoding": {
     "auto": "Auto Detect"
   },

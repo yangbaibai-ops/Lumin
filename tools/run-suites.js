@@ -140,7 +140,11 @@ const DEFAULT_SUITES = [
   // ── 第十七轮：导出质量（EPUB 拆章带图 / PDF 页码页眉 / 原子写）──
   '_verify-export-quality.js',
   // ── 第十八轮：数据库维护（完整性检查 / 重建索引 / 压缩）──
-  '_verify-db-maintenance.js'
+  '_verify-db-maintenance.js',
+  // ── 多光标（报告 §P2 功能缺口：代码块支持，源码 textarea 与所见即所得不支持）──
+  '_verify-multicursor.js',
+  // ── 第十九轮：命令面板（Ctrl+Shift+P：打开 / 过滤 / ↑↓ / Enter / Esc / a11y / 三语 / 点击）──
+  '_verify-command-palette.js'
 ]
 
 /** 自己管理 Electron 实例的套件（运行器不替它们起实例） */
@@ -155,7 +159,7 @@ const SELF_MANAGED = new Set([
   // 它要在实例起来**之前**往 --user-data-dir 里种草稿夹具（ps1 会先删目录），端口 9235
   '_verify-draft-gc.js',
   // 它起的是**打包后的 exe**（dist/win-unpacked），端口 9225，而且不能用运行器的隔离 profile
-  '_verify-packaging-fast.js'
+  '_verify-packaging-fast.js',
 ])
 
 function parseArgs(argv) {

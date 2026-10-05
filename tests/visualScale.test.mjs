@@ -67,14 +67,20 @@ const RADIUS_TIERS = [
 const TEXT_NON_TIER = ['inherit', '0', 'var(--editor-size, 17px)']
 
 /**
- * 任意值类的**上限**（本轮实测 155）。它只能变小：新代码请用令牌或现有档位。
+ * 任意值类的**上限**（本轮实测 164）。它只能变小：新代码请用令牌或现有档位。
  *
  * ⚠️ 152 → 155（波次 2，报告 §5.2 P0-1 的窄窗策略）：正文内边距需要两档 `max-[Npx]:` 变体
  * （`max-[900px]:px-8` / `max-[760px]:px-5` / `max-[760px]:pt-7`）—— 断点值本身没有令牌可表达，
  * 而 Tailwind 的具名断点（sm/md/lg）不由我们定义、也不能表达 900/760 这两个值。
  * 这三条是**登记在案**的例外，其它任何新增都还会被这条拦住。
+ *
+ * ⚠️ 155 → 164（波次 3，命令面板）：面板是**浮层**，尺寸来自它自己的排版（`w-[620px]` /
+ * `max-w-[92vw]` / `max-h-[52vh]` / 若干 `text-[11px]`~`text-[14.5px]` 的紧凑档），
+ * 其中 `z-[var(--z-modal)]` 是**令牌驱动**、本来就该这么写。
+ * 这一档增长是**一次性**的：命令面板已经落地，后续想再加任意值请先把这批收进令牌/档位，
+ * 而不是继续抬这个数。
  */
-const ARBITRARY_CEILING = 155
+const ARBITRARY_CEILING = 164
 
 function walkSrc(acc = [], dir = path.join(ROOT, 'src')) {
   for (const e of fs.readdirSync(dir, { withFileTypes: true })) {

@@ -35,6 +35,8 @@ const GlobalSearch = defineAsyncComponent(() => import('./components/GlobalSearc
 const FindReplaceBar = defineAsyncComponent(() => import('./components/FindReplaceBar.vue'))
 const LocalHistoryDialog = defineAsyncComponent(() => import('./components/LocalHistoryDialog.vue'))
 const SettingsDialog = defineAsyncComponent(() => import('./components/SettingsDialog.vue'))
+// 命令面板（Ctrl+Shift+P）：与上面那批同一条理由 —— 不按快捷键就不该被解析执行
+const CommandPalette = defineAsyncComponent(() => import('./components/CommandPalette.vue'))
 
 const router = useRouter()
 const { t } = useI18n()
@@ -150,6 +152,7 @@ onMounted(() => {
     <FindReplaceBar />
     <LocalHistoryDialog />
     <SettingsDialog />
+    <CommandPalette />
     <GlobalTooltip />
     <!-- 启动遮罩（骨架屏）**已移除**（用户口径：取消打开应用时的进场动画，去掉骨架图）。
          原先这里在 `ui.booting` 期间盖一层 SkeletonScreen（外加一层淡出 Transition），

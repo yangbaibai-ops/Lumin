@@ -219,6 +219,24 @@ export function useKeymap(actions: ReturnType<typeof useAppActions>): void {
       groupKey: 'keymap.groupHelp',
       defaultKeys: 'Mod+K',
       run: () => ui.openSettings('keymap')
+    },
+
+    // ── 命令面板 ──
+    /**
+     * ⚠️ 这一条**收回了 `Mod+Shift+P`**：此前它绑在 `edit.globalSearch`（全局搜索）上。
+     *
+     * 按需求把 Ctrl+Shift+P 让给命令面板（VS Code / Typora 的通行键）。服务侧的冲突口径是
+     * 「同一档里后注册者胜」（`lib/keymap/service.ts` 的 findMatch），所以把面板追加在
+     * **命令表末尾**，两条默认键相同时由面板接管 —— 全局搜索本身**没有消失**：
+     * 它仍在命令表里（设置 → 快捷键可改绑）、在「编辑」菜单里、也在命令面板里搜得到。
+     * 这也让"用户自定义过的绑定优先"照常成立：谁改过 globalSearch 的键，那条仍然赢。
+     */
+    {
+      id: 'app.commandPalette',
+      titleKey: 'commandPalette.title',
+      groupKey: 'keymap.groupView',
+      defaultKeys: 'Mod+Shift+P',
+      run: () => ui.toggleCommandPalette()
     }
   ]
 

@@ -130,6 +130,14 @@ export const useUiStore = defineStore('ui', {
     contextMenu: null as ContextMenuState | null,
     cursor: { line: 1, col: 1 },
     booting: true,
+    /**
+     * 命令面板是否打开（Ctrl+Shift+P）。
+     *
+     * 为什么进 store 而不是组件内的 ref：打开它的入口在**快捷键服务**里
+     * （`composables/useKeymap.ts` 的命令表），而组件要能被 store 的旗标驱动 ——
+     * 两者不在同一棵组件树上，用一个旗标让"谁打开的"和"谁关的"都无歧义。
+     */
+    commandPaletteOpen: false,
     // 设置浮层（模态面板，X/Esc/遮罩可关，不抢占路由）
     settingsOpen: false,
     settingsSection: 'general',
@@ -243,6 +251,19 @@ export const useUiStore = defineStore('ui', {
     requestSidebarSearch(): void {
       this.sidebarTab = 'files'
       this.sidebarSearchTick += 1
+    },
+    /**
+     * 命令面板（Ctrl+Shift+P）：与设置/全局搜索同一类**模态浮层**，
+     * 所以同样只用一个旗标表示"开着"，面板自己负责输入、过滤与执行。
+     */
+    openCommandPalette(): void {
+      this.commandPaletteOpen = true
+    },
+    closeCommandPalette(): void {
+      this.commandPaletteOpen = false
+    },
+    toggleCommandPalette(): void {
+      this.commandPaletteOpen = !this.commandPaletteOpen
     },
     openGlobalSearch(): void {
       this.globalSearch.open = true

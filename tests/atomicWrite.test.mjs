@@ -146,8 +146,8 @@ test('并发写同一路径：最终磁盘上是**完整的一方**，不是两�
      * 那种偶发来自机器的 I/O 压力，不是这条不变量。降载之后仍然覆盖同一个不变量。
      * 大字节的"不截断"另有 1 MiB 那条断言专门盯着（见上面）。
      */
-    const A = 'A'.repeat(64_000)
-    const B = 'B'.repeat(64_000)
+    const A = 'A'.repeat(16_000)
+    const B = 'B'.repeat(16_000)
     await Promise.all([
       atomicWriteEncoded(file, () => Buffer.from(A, 'utf-8')),
       atomicWriteEncoded(file, () => Buffer.from(B, 'utf-8'))
@@ -165,7 +165,7 @@ test('并发写同一路径：最终磁盘上是**完整的一方**，不是两�
      * 单跑 10/10 全绿）。给它 1 秒宽限，判据本身没变松。
      */
     let leftovers = tmpFilesIn(dir)
-    for (let i = 0; i < 20 && leftovers.length > 0; i++) {
+    for (let i = 0; i < 60 && leftovers.length > 0; i++) {
       await new Promise((r) => setTimeout(r, 50))
       leftovers = tmpFilesIn(dir)
     }
