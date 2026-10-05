@@ -2,6 +2,33 @@
 
 ### Tests
 
+**IO 层单测（报告 §6.2 后半）：编解码抽出纯实现 `services/textCodec.ts` + 16 条字节断言**
+
+- 与原子写同一个病根：`encoding.ts` 顶层 `import { app } from 'electron'`（拿系统语言）与
+  `import { db }`（编码记忆），于是"打开→保存会不会改字节"这件**写作工具最核心的正确性**
+  在 `node --test` 里根本进不来，只能靠 `_verify-encoding.js`（54 条，要真窗口）从外面敲。
+- 新增 `src/main/services/textCodec.ts`（零 electron / 零 db / 零 IO）：`sniffBom`、`isStrictUtf8`、
+  `localeFallback(locale)`、`decodeBuffer(buf, requested, remembered, locale)`、`encodeText`、
+  `bomBelongsTo`、`decodeAs`；判定链顺序与行为**逐条保持**。系统语言改为**注入**
+  （`encoding.ts` 传 `app.getLocale()`），`encoding.ts` 从 308 行瘦到 148 行，只留编码记忆与产品语义。
+- 新增 `tests/textCodec.test.mjs`（**16 条**）：无 BOM UTF-8、UTF-8 BOM（认得出 + 摘掉 + hadBom）、
+  UTF-16LE/BE、显式编码优先于 BOM（选 UTF-8 = 去掉 BOM）、显式与 BOM 冲突时听用户的、
+  GB18030 中文环境猜对、Shift_JIS 日文猜对而西欧猜错（"按环境猜"的边界）、记忆优先于严格 UTF-8、
+  语言兜底五档映射、非法字节不抛、UTF-16 总写 BOM、往返保真（UTF-8 / 含 BOM / UTF-16LE 逐字符相等）、
+  有损档（Shift_JIS + emoji 变 `?`）。
+- **两条测试写错后更正的记录**（都留在注释里，免得下一轮有人再"修"一遍）：
+  ① `encodeText('a','utf-8',true)` 不写 BOM 是**对的** —— UTF-8 的 BOM 由编码 id `utf-8-bom` 表达，
+  而"显式选 UTF-8"的产品语义就是去掉 BOM；带 BOM 打开的文件其 encoding 就是 `utf-8-bom`，
+  所以"打开→保存"不会掉 BOM（已补一条专门的往返断言）。
+  ② **GB18030 不是有损档**：它是全 Unicode 编码，emoji 也写得进去；真正会丢字的是
+  Shift_JIS / Windows-1252 这类（断言已改用 Shift_JIS）。
+- 回归：`_verify-encoding` 54/57（3 SKIP）、`_verify-save-safety` 17/17、`_verify-file-lifecycle`、
+  `_verify-md-fidelity` 106/107（1 SKIP）、`_verify-external-change` 8/8；单测 760 → **776/776**。
+- 剩余（下一轮）：`database` 的 IO 断言 —— 需要把 `app.getPath('userData')` 从模块顶层挪成
+  "composition root 注入 + 惰性单例"。
+
+### Tests
+
 **IO 层单测（报告 §6.2）：原子写抽出成可单测的模块，配 10 条 IO 断言**
 
 - 报告的原话是"`fileOps.writeFile` / `database` / `encoding` 目前只由本地手动套件背书"。
