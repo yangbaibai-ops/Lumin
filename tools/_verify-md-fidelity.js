@@ -30,13 +30,23 @@
 const fs = require('fs')
 const os = require('os')
 const path = require('path')
-const { connect, settle, waitEditor, appPages, attach, sleep, Reporter, fatal } = require('./lib/harness')
+const {
+  connect,
+  settle,
+  waitEditor,
+  appPages,
+  attach,
+  sleep,
+  Reporter,
+  fatal
+} = require('./lib/harness')
 const { classify, RULES, worseThan, unifiedDiff } = require('./lib/md-fidelity')
 
 const FIXTURE_DIR = path.join(__dirname, 'fixtures', 'md')
 const EXPECT = JSON.parse(fs.readFileSync(path.join(FIXTURE_DIR, 'EXPECT.json'), 'utf-8'))
 const TMP = path.join(os.tmpdir(), 'lumin-md-fidelity')
-const DUMP = process.env.LUMIN_FIDELITY_DUMP || path.join(os.tmpdir(), 'lumin-md-fidelity-report.json')
+const DUMP =
+  process.env.LUMIN_FIDELITY_DUMP || path.join(os.tmpdir(), 'lumin-md-fidelity-report.json')
 const VERBOSE = process.env.LUMIN_FIDELITY_VERBOSE === '1'
 
 /** 触发应用自己的落盘管线（同步），返回文档文本 */
@@ -156,7 +166,9 @@ async function main() {
   }
 
   const opened = await win.ev('window.__L.files().current?.path ?? null')
-  report.note(`跑在${scratchPage ? '新开的临时窗口' : '当前窗口'}；当前文档=${opened ?? '未命名缓冲区'}`)
+  report.note(
+    `跑在${scratchPage ? '新开的临时窗口' : '当前窗口'}；当前文档=${opened ?? '未命名缓冲区'}`
+  )
   report.note(`判级规则 ${RULES.length} 条（tools/lib/md-fidelity.js 的 RULES）`)
 
   // ── 现场备份（这是别人机器上的真实应用，跑完要还原）──
@@ -260,7 +272,9 @@ async function main() {
       )
       await sleep(150)
     }
-    await win.ev(`(async () => { await window.__L.files().openPath(${JSON.stringify(p)}); return 'ok' })()`)
+    await win.ev(
+      `(async () => { await window.__L.files().openPath(${JSON.stringify(p)}); return 'ok' })()`
+    )
     await waitDocLoaded(win.ev)
     await sleep(250)
     const before = fs.readFileSync(p)
@@ -274,7 +288,9 @@ async function main() {
       report.check(
         `字节 打开即保存不改字节 ${c.name}`,
         okNoEdit,
-        okNoEdit ? '' : `长度 ${before.length}→${afterNoEdit.length}；${firstByteDiff(before, afterNoEdit)}`
+        okNoEdit
+          ? ''
+          : `长度 ${before.length}→${afterNoEdit.length}；${firstByteDiff(before, afterNoEdit)}`
       )
     } else {
       report.skip(`字节 打开即保存不改字节 ${c.name}`, c.why ?? 'known')
@@ -291,7 +307,9 @@ async function main() {
       report.check(
         `字节 落盘后保存不改字节 ${c.name}`,
         okEdit,
-        okEdit ? '' : `长度 ${before.length}→${afterEdit.length}；${firstByteDiff(before, afterEdit)}`
+        okEdit
+          ? ''
+          : `长度 ${before.length}→${afterEdit.length}；${firstByteDiff(before, afterEdit)}`
       )
     } else {
       report.skip(`字节 落盘后保存不改字节 ${c.name}`, c.why ?? 'known')
@@ -304,7 +322,12 @@ async function main() {
     }
     dump.bytes.push({
       name: c.name,
-      noEdit: { expect: c.noEdit, ok: okNoEdit, beforeLen: before.length, afterLen: afterNoEdit.length },
+      noEdit: {
+        expect: c.noEdit,
+        ok: okNoEdit,
+        beforeLen: before.length,
+        afterLen: afterNoEdit.length
+      },
       edit: { expect: c.edit, ok: okEdit, beforeLen: before.length, afterLen: afterEdit.length },
       beforeHex: before.toString('hex'),
       afterEditHex: afterEdit.toString('hex')
@@ -314,7 +337,9 @@ async function main() {
   // ── D. 行尾元数据（Wave 2）：判定 / 内存约定 / 切换 / 设置默认 ────────────────
   const eolCase = path.join(TMP, 'eol-check.md')
   fs.writeFileSync(eolCase, Buffer.from('第一行\r\n第二行\r\n', 'utf-8'))
-  await win.ev(`(async () => { await window.__L.files().openPath(${JSON.stringify(eolCase)}); return 'ok' })()`)
+  await win.ev(
+    `(async () => { await window.__L.files().openPath(${JSON.stringify(eolCase)}); return 'ok' })()`
+  )
   await waitDocLoaded(win.ev)
   await sleep(250)
   const openedEol = JSON.parse(
@@ -324,10 +349,20 @@ async function main() {
       encoding: window.__L.files().current?.encoding ?? null
     })`)
   )
-  report.check('行尾 打开 CRLF 文件 → 判定为 crlf', openedEol.eol === 'crlf', JSON.stringify(openedEol))
-  report.check('行尾 内存文本归一为 LF（不含 CR）', openedEol.hasCr === false, `hasCr=${openedEol.hasCr}`)
+  report.check(
+    '行尾 打开 CRLF 文件 → 判定为 crlf',
+    openedEol.eol === 'crlf',
+    JSON.stringify(openedEol)
+  )
+  report.check(
+    '行尾 内存文本归一为 LF（不含 CR）',
+    openedEol.hasCr === false,
+    `hasCr=${openedEol.hasCr}`
+  )
 
-  await win.ev(`(async () => { await window.__L.files().setEol('lf', { save: true }); return 'ok' })()`)
+  await win.ev(
+    `(async () => { await window.__L.files().setEol('lf', { save: true }); return 'ok' })()`
+  )
   await sleep(250)
   const lfBytes = fs.readFileSync(eolCase)
   report.check(
@@ -336,7 +371,9 @@ async function main() {
     JSON.stringify(lfBytes.toString('utf-8'))
   )
 
-  await win.ev(`(async () => { await window.__L.files().setEol('crlf', { save: true }); return 'ok' })()`)
+  await win.ev(
+    `(async () => { await window.__L.files().setEol('crlf', { save: true }); return 'ok' })()`
+  )
   await sleep(250)
   const crlfBytes = fs.readFileSync(eolCase)
   report.check(
@@ -345,7 +382,9 @@ async function main() {
     JSON.stringify(crlfBytes.toString('utf-8'))
   )
   const metaAfter = JSON.parse(
-    await win.ev(`(async () => JSON.stringify(await window.luminAPI.db.getDocument(${JSON.stringify(eolCase)})))()`)
+    await win.ev(
+      `(async () => JSON.stringify(await window.luminAPI.db.getDocument(${JSON.stringify(eolCase)})))()`
+    )
   )
   report.check(
     '行尾 元数据落库（documents.eol）',
@@ -370,7 +409,9 @@ async function main() {
   // ── E. 本地历史（Wave 2 数据安全）：保存前留快照 / 可载入 / 可清空 ────────────
   const histFile = path.join(TMP, 'history-check.md')
   fs.writeFileSync(histFile, Buffer.from('# 第一版\n\n原文。\n', 'utf-8'))
-  await win.ev(`(async () => { await window.__L.files().openPath(${JSON.stringify(histFile)}); return 'ok' })()`)
+  await win.ev(
+    `(async () => { await window.__L.files().openPath(${JSON.stringify(histFile)}); return 'ok' })()`
+  )
   await waitDocLoaded(win.ev)
   await sleep(250)
   // 改内容 → 保存两次（历史里应出现「第一版」与「第二版」两份将被覆盖的内容）
@@ -386,7 +427,9 @@ async function main() {
   })()`)
   await sleep(300)
   const hist = JSON.parse(
-    await win.ev(`(async () => JSON.stringify(await window.luminAPI.history.list(${JSON.stringify(histFile)}, 10)))()`)
+    await win.ev(
+      `(async () => JSON.stringify(await window.luminAPI.history.list(${JSON.stringify(histFile)}, 10)))()`
+    )
   )
   report.check(
     '历史 保存前留快照（3 版内容 → 至少 2 条历史）',
@@ -398,9 +441,12 @@ async function main() {
     Array.isArray(hist) && hist[0]?.preview?.includes('第二版'),
     JSON.stringify(hist?.[0] ?? null)
   )
-  const firstEntry = Array.isArray(hist) && hist.length ? await win.ev(
-    `(async () => JSON.stringify(await window.luminAPI.history.get(${hist[hist.length - 1].id})))()`
-  ) : null
+  const firstEntry =
+    Array.isArray(hist) && hist.length
+      ? await win.ev(
+          `(async () => JSON.stringify(await window.luminAPI.history.get(${hist[hist.length - 1].id})))()`
+        )
+      : null
   const firstParsed = firstEntry ? JSON.parse(firstEntry) : null
   report.check(
     '历史 最早一条是打开时的原文',
@@ -428,11 +474,19 @@ async function main() {
     afterRestore.buffer.includes('第一版') && diskNow.includes('第三版'),
     JSON.stringify({ buffer: afterRestore.buffer.slice(0, 24), disk: diskNow.slice(0, 24) })
   )
-  report.check('历史 载入后标记为未保存', afterRestore.dirty === true, `dirty=${afterRestore.dirty}`)
+  report.check(
+    '历史 载入后标记为未保存',
+    afterRestore.dirty === true,
+    `dirty=${afterRestore.dirty}`
+  )
 
-  const cleared = await win.ev(`(async () => await window.luminAPI.history.clear(${JSON.stringify(histFile)}))()`)
+  const cleared = await win.ev(
+    `(async () => await window.luminAPI.history.clear(${JSON.stringify(histFile)}))()`
+  )
   const afterClear = JSON.parse(
-    await win.ev(`(async () => JSON.stringify(await window.luminAPI.history.list(${JSON.stringify(histFile)}, 10)))()`)
+    await win.ev(
+      `(async () => JSON.stringify(await window.luminAPI.history.list(${JSON.stringify(histFile)}, 10)))()`
+    )
   )
   report.check(
     '历史 可清空',
@@ -447,10 +501,15 @@ async function main() {
 
   // ── F. 多窗口元数据一致性（Wave 2 尾巴）：打开时以库记录为准 ────────────────
   const metaFile = path.join(TMP, 'meta-window.md')
-  fs.writeFileSync(metaFile, require('iconv-lite').encode('# 中文元数据\n\nGBK 正文。\n', 'gb18030'))
+  fs.writeFileSync(
+    metaFile,
+    require('iconv-lite').encode('# 中文元数据\n\nGBK 正文。\n', 'gb18030')
+  )
 
   // 窗口 A：auto 打开（判定出 gb18030 并落库），再把行尾改成 CRLF 保存
-  await win.ev(`(async () => { await window.__L.files().openPath(${JSON.stringify(metaFile)}); return 'ok' })()`)
+  await win.ev(
+    `(async () => { await window.__L.files().openPath(${JSON.stringify(metaFile)}); return 'ok' })()`
+  )
   await waitDocLoaded(win.ev)
   await sleep(300)
   const metaA = JSON.parse(
@@ -459,7 +518,9 @@ async function main() {
       eol: window.__L.files().current?.eol ?? null
     })`)
   )
-  await win.ev(`(async () => { await window.__L.files().setEol('crlf', { save: true }); return 'ok' })()`)
+  await win.ev(
+    `(async () => { await window.__L.files().setEol('crlf', { save: true }); return 'ok' })()`
+  )
   await sleep(300)
 
   // 第二个窗口（同实例、同库）打开同一文件：编码与行尾都必须跟库记录一致
@@ -468,7 +529,9 @@ async function main() {
   if (scratch2) {
     const win2 = await attach(scratch2)
     if (await settle(win2.ev)) {
-      await win2.ev(`(async () => { await window.__L.files().openPath(${JSON.stringify(metaFile)}); return 'ok' })()`)
+      await win2.ev(
+        `(async () => { await window.__L.files().openPath(${JSON.stringify(metaFile)}); return 'ok' })()`
+      )
       await waitDocLoaded(win2.ev)
       await sleep(400)
       metaB = JSON.parse(
@@ -480,9 +543,13 @@ async function main() {
       )
       // 把「设置里的默认编码」改成 windows-1252 后重新打开：库里的每文件记录仍须优先，
       // 否则同一个文件在两个窗口会解出不同内容（这正是「多窗口一致」的含义）
-      await win2.ev(`(() => { window.__L.settings().set('defaultEncoding', 'windows-1252'); return 'ok' })()`)
+      await win2.ev(
+        `(() => { window.__L.settings().set('defaultEncoding', 'windows-1252'); return 'ok' })()`
+      )
       await sleep(200)
-      await win2.ev(`(async () => { await window.__L.files().openPath(${JSON.stringify(metaFile)}); return 'ok' })()`)
+      await win2.ev(
+        `(async () => { await window.__L.files().openPath(${JSON.stringify(metaFile)}); return 'ok' })()`
+      )
       await sleep(500)
       metaB.withDefault = JSON.parse(
         await win2.ev(`JSON.stringify({
@@ -490,19 +557,29 @@ async function main() {
           head: (window.__L.files().current?.content ?? '').slice(0, 12)
         })`)
       )
-      await win2.ev(`(() => { window.__L.settings().set('defaultEncoding', 'auto'); return 'ok' })()`)
+      await win2.ev(
+        `(() => { window.__L.settings().set('defaultEncoding', 'auto'); return 'ok' })()`
+      )
     }
     await win2.send('Page.close').catch(() => {})
     win2.close()
   }
-  report.check('元数据 窗口 A 打开 GBK 文件：判定并落库', metaA.encoding === 'gb18030', JSON.stringify(metaA))
+  report.check(
+    '元数据 窗口 A 打开 GBK 文件：判定并落库',
+    metaA.encoding === 'gb18030',
+    JSON.stringify(metaA)
+  )
   if (metaB) {
     report.check(
       '元数据 窗口 B 打开同一文件：编码与库记录一致',
       metaB.encoding === 'gb18030' && String(metaB.head).includes('中文元数据'),
       JSON.stringify(metaB)
     )
-    report.check('元数据 窗口 B 行尾与库记录一致（CRLF）', metaB.eol === 'crlf', JSON.stringify(metaB))
+    report.check(
+      '元数据 窗口 B 行尾与库记录一致（CRLF）',
+      metaB.eol === 'crlf',
+      JSON.stringify(metaB)
+    )
     report.check(
       '元数据 每文件记录优先于全局默认编码',
       metaB.withDefault?.encoding === 'gb18030' &&
@@ -521,13 +598,31 @@ async function main() {
   // ── G. 本地历史的保留策略可配（Wave 2 尾巴）───────────────────────────────
   const hist2 = path.join(TMP, 'history-policy.md')
   fs.writeFileSync(hist2, Buffer.from('# v0\n', 'utf-8'))
-  await win.ev(`(async () => { await window.__L.files().openPath(${JSON.stringify(hist2)}); return 'ok' })()`)
+  await win.ev(
+    `(async () => { await window.__L.files().openPath(${JSON.stringify(hist2)}); return 'ok' })()`
+  )
   await waitDocLoaded(win.ev)
   await sleep(250)
 
   // 关掉历史：连存几次都不该留新快照
   await win.ev(`(() => { window.__L.settings().set('historyEnabled', false); return 'ok' })()`)
   await sleep(300)
+  /**
+   * ⚠️ 先把"设置真的落库了吗"单独断言一次（波次 2 补）。
+   *
+   * 原来看的只有"历史里有没有新快照"，于是**设置没落库**这条真因会被一句 `entries=2` 掩盖
+   * （现场就是这么查了半天）：渲染层的落库是 250ms 节流的，主进程 `recordHistoryBeforeOverwrite`
+   * 读的是 kv —— 两边没对齐时，快的那个（保存）先跑、慢的那个（设置）后到。
+   * 拆成两条之后，红的时候一眼知道是"设置没到"还是"历史没关"。
+   */
+  const landed = JSON.parse(
+    await win.ev(`(async () => JSON.stringify(await window.luminAPI.settings.getAll()))()`)
+  )
+  report.check(
+    '历史 关闭设置真的落库了',
+    landed?.historyEnabled === false,
+    `主进程读到的 historyEnabled=${landed?.historyEnabled}（false 才能验后面的"不再写快照"）`
+  )
   await win.ev(`(async () => {
     const f = window.__L.files()
     for (const v of ['# v1\\n', '# v2\\n']) { f.setContent(v); await f.save() }
@@ -567,7 +662,9 @@ async function main() {
     `entries=${onEntries?.length} previews=${JSON.stringify(onEntries?.map((e) => e.preview))}`
   )
   await win.ev(`(() => { window.__L.settings().set('historyLimitPerFile', 30); return 'ok' })()`)
-  await win.ev(`(async () => { await window.luminAPI.history.clear(${JSON.stringify(hist2)}); return 'ok' })()`)
+  await win.ev(
+    `(async () => { await window.luminAPI.history.clear(${JSON.stringify(hist2)}); return 'ok' })()`
+  )
   await win.ev(`(async () => { await window.__L.files().close(); return 'ok' })()`)
   await win.ev(
     `(async () => { try { await window.luminAPI.db.deleteDocument(${JSON.stringify(hist2)}) } catch {} return 'ok' })()`
@@ -615,7 +712,9 @@ async function main() {
   })()`)
   report.check(
     'H2 编辑正文后 YAML 逐字不变（且仍在开头）',
-    typeof h2 === 'string' && h2.startsWith(FM_SRC.trimEnd().slice(0, FM_SRC.indexOf('\n---') + 4)) && h2.includes('追加一句。'),
+    typeof h2 === 'string' &&
+      h2.startsWith(FM_SRC.trimEnd().slice(0, FM_SRC.indexOf('\n---') + 4)) &&
+      h2.includes('追加一句。'),
     JSON.stringify(h2).slice(0, 200)
   )
 

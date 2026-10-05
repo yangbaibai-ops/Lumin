@@ -310,6 +310,29 @@ async function main() {
       JSON.stringify({ snap, zipBytes })
     )
 
+    // ── ⑬ 主进程侧写设置 → 渲染层 store 必须被动同步（`settings:changed` 回播）──────
+    // 报告 §3.2 P0-1 的收口：主进程（原生菜单主题、备份目录选择）改设置时，渲染层不再是
+    // "等下次拉取"，而是被广播就地 patch。这条用**备份目录**验：渲染层先放一个假值并落库，
+    // 再调主进程的 `useDefaultDir()`（它直接写 kv + 广播），断言 store 里的值被改回来了
+    // —— 没有广播的话 store 会一直停在假值上（那正是报告里"界面显示旧值到重启"的症状）。
+    const broadcast = JSON.parse(
+      await ev(`(async () => {
+        const s = window.__L.settings()
+        s.set('backupDir', 'D:\\\\lumin-nowhere\\\\fake-backup-dir')
+        await new Promise((r) => setTimeout(r, 600))   // 等渲染层的 250ms 节流落库
+        const before = s.backupDir
+        await window.luminAPI.backup.useDefaultDir()    // 主进程侧写入 → 广播
+        await new Promise((r) => setTimeout(r, 400))
+        return JSON.stringify({ before, after: s.backupDir })
+      })()`)
+    )
+    report.check(
+      'main-side-settings-write-syncs-renderer-store',
+      broadcast.before === 'D:\\lumin-nowhere\\fake-backup-dir' && broadcast.after === null,
+      JSON.stringify(broadcast) +
+        '（after 应回到 null：主进程写了并广播；若仍是假值说明 settings:changed 没到）'
+    )
+
     // ── ⑫ 用 **Windows 自带工具**解压：证明这是个标准的 zip ──────────────────
     fs.mkdirSync(EXTRACT, { recursive: true })
     const unzip = spawnSync(

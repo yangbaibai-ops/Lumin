@@ -1,5 +1,45 @@
 ## [Unreleased]
 
+### Changed
+
+**性能：把"大文档降级闸"按实测重新标定（报告 §4.2 / §7.4 的性能项）**
+
+- 先用**新探针**复测报告的两个数字（`tools/_probe-fences-total.js` / 新增 `tools/_probe-bigprose.js`）：
+  **① 2000 围栏的 56 KB 文档：全程 1450ms**（报告写的是 52–62 s）—— 代码块 CM 虚拟化（F 项）
+  已经解决，500 围栏时 CM 实例峰值 10 个（虚拟化前 500 个），`_verify-cb-virtualization` 18 条守着；
+  **② 977 KB 散文：open 1.97s + render 4.37s = 6.34s、RSS 1272MB** —— 报告说的"1.4GB 常驻"是真的，
+  但慢的不是装载而是 **DOM 稳定**，且**旧阈值没拦住它**。
+- 旧闸的字符阈值 1M 是照旧审计"572,262 字符 → 打开 2.24s"定的，而那句话量的是 `openPath` 返回，
+  用户真正能用的时刻是 DOM 稳定（差 2–3 倍）。CPU 采样证明这 4.4 秒是第三方常数
+  （markdown-it tokenize 717ms、prosemirror-markdown `atBlank` 1168ms、PM 内部约 490ms、GC 411ms），
+  一次改动消不掉 ⇒ 按实测 **17 µs/字符** 标定 5 秒线：`HEAVY_CHARS` **1M → 300k**（围栏仍 800）。
+- 效果（同一份 977 KB 文档，同一探针）：入口从渲染面改为**源码面**，
+  `open` 1965→**454ms**、默认可用 **6340→454ms**、入口常驻 **1272→604MB**、
+  DOM 元素 30,939→**97**；报告验收线（977 KB ≤5s）从 FAIL 变 **PASS**。1.1MB 那档同样：8.59s→**0.53s**。
+- 提示文案按原因区分：新增纯函数 `heavyReason()`（`fences` / `chars`）+ 三语
+  `toast.heavyDocSourceModeChars`（一份 977 KB 的纯散文没几个代码块，说"有 0 个代码块"只会让人困惑）。
+- **诚实标注代价**：用户坚持切回渲染面时成本仍在（+3.4s / ~1.2GB）—— 根治要段落级虚拟化，
+  已记进 `docs/optimization-waves.md` 的波次 2 余项。
+- 单测 `tests/largeDoc.test.mjs` 6 → **8 条**；回归 `_verify-surface-stress` 72/72、
+  `_verify-cb-virtualization` 18/18、单测 749/749。
+
+**修掉波次 1 引入的一处竞态：`settings:changed` 回播会把刚改的设置打回去**
+
+- 现象：`_verify-md-fidelity` 的"历史 关闭后不再写快照"**间歇性**红（`entries=2`）——
+  用户关掉本地历史，快照照写。
+- 根因：回播的是**整份设置快照**，而渲染层的落库是 **250ms 节流**的。序列：
+  `set('historyEnabled', false)`（进队列）→ 上一次落库的**回播**此刻到达（快照取自更早，
+  该键还是 true）→ `applyRemote()` 整份 `$patch` 把它**打回** → 随后的落库把 true 写回 kv
+  → 主进程 `recordHistoryBeforeOverwrite` 读到 true。红与不红取决于那次回播与 `set` 的先后，
+  所以它是间歇的（修复前 3 次跑红 2 次）。
+- 修法：`writeSettings(next, { broadcast })` —— **渲染层发起**的写入只落库不回播
+  （`ipc.ts` 的 `commitSettings` 传 `broadcast: false`，渲染层本来就有这份状态），
+  只有**主进程侧**的改动（原生菜单主题、备份目录选择）才广播，那才是回播存在的理由。
+- 验收：`_verify-md-fidelity` 连跑 3 次 **PASS 0 FLAKY**；`_verify-backup` 新增一条
+  「主进程侧写设置 → 渲染层 store 被动同步」（渲染层先放假值 → 调 `useDefaultDir()` →
+  断言 store 被改回 `null`）并全绿（19/19）；`_verify-md-fidelity` 也补了一条
+  「关闭设置真的落库了」的前置断言 —— 以后这类问题一眼能看出是"设置没到"还是"历史没关"。
+
 ### Fixed
 
 **数据安全：堵住报告点名的三条"静默丢改动"路径（报告 §4.2 P0-1/P0-2/P0-3、P1-2/P1-3）**

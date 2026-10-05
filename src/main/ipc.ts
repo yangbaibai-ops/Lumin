@@ -652,7 +652,14 @@ export function registerIpc(slots: SlotRegistry): void {
    * —— 那是主进程**唯一**的设置写入口，原生菜单的主题项也走它（报告 §3.2 P0-1/P0-2）。
    */
   const commitSettings = (next: AppSettings, changed: Partial<AppSettings>): AppSettings => {
-    appSettings.writeSettings(next)
+    /**
+     * ⚠️ `broadcast: false`（波次 2 修的真问题）：这条路径是**渲染层发起**的写入，
+     * 渲染层本来就有这份状态；回播一份"整份快照"会与它的 250ms 节流落库打架 ——
+     * 上一次落库的回播晚到一步，就会把用户刚改的那条 `$patch` 回去（现场：
+     * `_verify-md-fidelity` 的"历史 关闭后不再写快照"间歇性 `entries=2`）。
+     * 主进程侧自己的改动（原生菜单主题、备份目录）走 `patchSettings()`，那里照旧广播。
+     */
+    appSettings.writeSettings(next, { broadcast: false })
     // 任务栏跳转列表里的分类名/任务描述是本地化文案，最近文档也来自设置：
     // 换语言或最近列表变化（含用户在界面上「清空最近」）时顺手重建
     if (changed.language || changed.recentFiles) taskbar.refreshJumpList()

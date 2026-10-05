@@ -38,14 +38,25 @@ export function syncNativeTheme(theme: AppSettings['theme']): void {
 }
 
 /**
- * 把一份**已经归一**的设置落地并广播。
+ * 把一份**已经归一**的设置落地，并按需广播。
  *
  * 广播通道 `settings:changed` 在 preload 的出站白名单里登记（`EVENT_CHANNELS`），
  * `tests/i18nAndIpc.test.mjs` 会拿主进程真实的 `webContents.send(...)` 与它双向对账。
+ *
+ * ⚠️ `broadcast` 的取舍（波次 2 修的真问题）：**渲染层自己发起的那次写入不要回播**。
+ * 回播的是"整份快照"，而渲染层的落库是 **250ms 节流**的 —— 于是有这么一条真实的竞态：
+ *   1. 渲染层 `set('historyEnabled', false)`（排进 250ms 后的落库队列）；
+ *   2. 上一次落库的**回播**此刻到达（快照取自更早，`historyEnabled` 还是 true）；
+ *   3. `applyRemote()` 整份 `$patch` ⇒ 刚改的那条**被打回**，随后的落库把 true 写回 kv；
+ *   4. 主进程 `recordHistoryBeforeOverwrite` 读到 true ⇒ 明明关了历史，快照照写。
+ * 现场就是 `_verify-md-fidelity` 的"历史 关闭后不再写快照"（`entries=2`），而且**间歇性**
+ * 出现（取决于回播与 `set` 的先后）。所以：渲染层发起的写入只落库、不回播（它本来就有这份状态），
+ * 只有**主进程侧**的改动（原生菜单主题、备份目录选择）才广播 —— 那才是回播存在的理由。
  */
-export function writeSettings(next: AppSettings): AppSettings {
+export function writeSettings(next: AppSettings, opts: { broadcast?: boolean } = {}): AppSettings {
   db.kvSet('settings', next)
   syncNativeTheme(next.theme)
+  if (opts.broadcast === false) return next
   for (const win of BrowserWindow.getAllWindows()) {
     if (!win.isDestroyed()) win.webContents.send('settings:changed', next)
   }

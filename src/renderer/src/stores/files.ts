@@ -16,7 +16,7 @@ import { confirmDiscardIfDirty } from '../lib/dialog'
 import { flushEditorBeforeReplace } from '../lib/editorFlush'
 import { draftKeyFor, restorableDraft } from '../lib/draftRules'
 import { SAVE_CONFLICT_KIND } from '../lib/saveConflict'
-import { docLoad, isHeavyDoc } from '../lib/largeDoc'
+import { docLoad, heavyReason } from '../lib/largeDoc'
 import {
   createLedger,
   markApplied,
@@ -705,11 +705,23 @@ export const useFilesStore = defineStore('files', {
          * 不受影响，随时可以手动切回实时渲染。正常文档（几万字）远在阈值之下，不会碰到这条路。
          */
         const load = docLoad(opened.content)
-        this.heavyMode = isHeavyDoc(opened.content)
-        if (this.heavyMode) {
+        /**
+         * 降级原因分两种（波次 2 补）：`fences` 是"代码块太多"（每块一个 CM 的历史悬崖），
+         * `chars` 是"文档太长"（解析 + PM 建 DOM 的常数，实测 17µs/字符）。提示文案必须
+         * 说对是哪一种 —— 一份 977 KB 的纯散文没有几个代码块，说"有 0 个代码块"只会让人困惑。
+         */
+        const reason = heavyReason(opened.content)
+        this.heavyMode = reason !== null
+        if (reason) {
           const ui = useUiStore()
           ui.editorMode = 'source'
-          ui.toast(i18n.global.t('toast.heavyDocSourceMode', { fences: load.fences }), 'warning')
+          ui.toast(
+            i18n.global.t(
+              reason === 'fences' ? 'toast.heavyDocSourceMode' : 'toast.heavyDocSourceModeChars',
+              { fences: load.fences, chars: load.chars }
+            ),
+            'warning'
+          )
         }
         // 草稿恢复检查：只有「内容确实不同 + 确实比磁盘新」才值得打扰用户
         const draft = await window.luminAPI.drafts.load(this.draftKey(path))
