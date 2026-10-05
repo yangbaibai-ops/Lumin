@@ -1,5 +1,26 @@
 ## [Unreleased]
 
+### Added
+
+**文件类型图标：`.md` / `.markdown` 用自己的文档图标（与应用图标分开）**
+
+- 用户交付了一枚文档图标（纸页 + 折角 + serif "L" + `M↓` 徽标）。它原来是 450×600、
+  非正方形且四角透明 —— 处理成**正方形母图**（裁到实际内容后四周补 8% 透明留白，
+  因为 Windows 文件图标需要呼吸空间、不能顶到边），再交给仓库既有的打包器打成
+  **11 档 32 位 BGRA DIB** 的 `resources/doc-md.ico`。
+- 用户交付的 `.ico` 只有**一个 192² 的 PNG 压缩条目** —— 正是仓库注释里警告过的形态
+  （GDI+ 的 `Icon.ToBitmap()` 读不了它，资源管理器会显示缺省图标），所以没有直接用，
+  而是从 PNG 母图重打。
+- `tools/pack-ico.js` 参数化（`--png` / `--out`，默认行为不变），让"应用图标"与"文档图标"
+  走**同一条打包纪律**；`electron-builder.yml` 的 `fileAssociations[].icon` 两条都指向
+  `resources/doc-md.ico`（exe / 任务栏 / 快捷方式仍用 `resources/icon.ico`）。
+- 新增守卫（`tests/toolIcon.test.mjs`）：文档图标母图必须正方形且 ≥256、ICO 必须每档都是
+  **DIB**（不能是 PNG 压缩档）、必须同时含 16 与 256 档、**必须与应用图标不同**、
+  且 `fileAssociations` 的两条都真的指向它 —— 单测 819 → **820/820**。
+- **装包实测**：`electron-builder --win` 成功产出 `dist/Lumin-1.0.0-setup.exe`，
+  生成的 NSIS 脚本里可见两条关联都注册到 `$INSTDIR\resources\doc-md.ico`：
+  `File "/oname=$INSTDIR\resources\doc-md.ico" …` + `APP_ASSOCIATE "md" … "$INSTDIR\resources\doc-md.ico"`。
+
 ### Docs
 
 **报告逐条覆盖表：新增 `docs/report-coverage.md`**

@@ -262,13 +262,28 @@ function readIco(buf) {
 module.exports = { decodePng, downscale, dibEntry, packIco, readIco, SIZES }
 
 if (require.main === module) {
+  /**
+   * 参数化（波次 3 加的）：默认仍是 `resources/icon.png` → `resources/icon.ico`，
+   * 但**文件类型图标**（`.md` 的文档图标）要单独一份 `resources/doc-md.ico` ——
+   * 它和应用图标必须是两枚不同的图（同族不同形），打包纪律却完全一样：
+   * 母图 PNG → 按档缩放出**每档一条 32 位 BGRA DIB**。
+   * ⚠️ 用户交付的 .ico 往往只有一个 192² 的 PNG 压缩条目，GDI+ 读不了（实测报
+   * `Requested range extends past the end of the array`）—— 所以**永远从这里重打**：
+   *   node tools/pack-ico.js --png resources/doc-md.png --out resources/doc-md.ico
+   */
+  const arg = (name, def) => {
+    const i = process.argv.indexOf(name)
+    return i > -1 && process.argv[i + 1] ? process.argv[i + 1] : def
+  }
+  const pngPath = path.resolve(arg('--png', PNG_PATH))
+  const icoPath = path.resolve(arg('--out', ICO_PATH))
   const check = process.argv.includes('--check')
-  const buf = fs.readFileSync(PNG_PATH)
+  const buf = fs.readFileSync(pngPath)
   const img = decodePng(buf)
   console.log(
     'SRC ' +
       JSON.stringify({
-        file: path.basename(PNG_PATH),
+        file: path.basename(pngPath),
         w: img.width,
         h: img.height,
         bytes: buf.length
@@ -294,14 +309,14 @@ if (require.main === module) {
   )
   if (dir.length !== SIZES.length || dir.some((d) => !d.dib)) throw new Error('打包结果自检失败')
   if (check) {
-    const cur = fs.existsSync(ICO_PATH) ? readIco(fs.readFileSync(ICO_PATH)) : null
+    const cur = fs.existsSync(icoPath) ? readIco(fs.readFileSync(icoPath)) : null
     const ok = !!cur && cur.length === SIZES.length && cur.every((d) => d.dib)
     console.log(
       'CHECK ' +
-        JSON.stringify({ file: path.basename(ICO_PATH), entries: cur?.map((d) => d.size), ok })
+        JSON.stringify({ file: path.basename(icoPath), entries: cur?.map((d) => d.size), ok })
     )
     process.exit(ok ? 0 : 1)
   }
-  fs.writeFileSync(ICO_PATH, ico)
-  console.log('WROTE ' + ICO_PATH)
+  fs.writeFileSync(icoPath, ico)
+  console.log('WROTE ' + icoPath)
 }

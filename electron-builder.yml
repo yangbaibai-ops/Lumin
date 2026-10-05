@@ -118,12 +118,12 @@ fileAssociations:
     name: Markdown
     description: Markdown Document
     role: Editor
-    icon: resources/icon.ico
+    icon: resources/doc-md.ico
   - ext: markdown
     name: Markdown
     description: Markdown Document
     role: Editor
-    icon: resources/icon.ico
+    icon: resources/doc-md.ico
 
 # 自动更新：**这里还是占位地址**，所以运行时不会去检查（services/updater.ts 用
 # shared/distribution.ts 的同一份占位判据识别并直接跳过，避免用户机器上冒出莫名其妙的网络失败通知）。

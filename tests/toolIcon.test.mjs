@@ -176,3 +176,43 @@ test('引用面：src 下只允许 resources/icon.ico 与 resources/icon.png', (
     '没有任何地方引用 resources/icon.ico（任务栏/快捷方式只认 ICO）'
   )
 })
+
+test('文件类型图标：doc-md.ico 必须是**多档 DIB**、由同名母图打出，且与应用图标不同', () => {
+  /**
+   * `.md` 关联用的文档图标：它**必须是另一枚图**（纸页）而不是应用图标 ——
+   * 文件关联复用应用图标是最常见的不专业做法：文件夹里分不清"文档 / 快捷方式 / 程序"。
+   * 同时它必须和 icon.ico 走同一条打包纪律（每档一条 32 位 BGRA DIB），
+   * 否则 GDI+ 取 16/32px 时读不出来（实测报 Requested range extends past the end of the array）。
+   */
+  const DocPng = path.join(ROOT, 'resources', 'doc-md.png')
+  const DocIco = path.join(ROOT, 'resources', 'doc-md.ico')
+  assert.ok(fs.existsSync(DocPng) && fs.existsSync(DocIco), 'resources/doc-md.{png,ico} 必须存在')
+  const size = pngSize(fs.readFileSync(DocPng))
+  assert.equal(size.w, size.h, `文档图标母图必须正方形（当前 ${size.w}×${size.h}）`)
+  assert.ok(size.w >= 256, `母图至少 256px 见方（当前 ${size.w}）`)
+  const entries = icoEntries(fs.readFileSync(DocIco))
+  assert.equal(entries.length, SIZES.length, `档位数应为 ${SIZES.length}，实际 ${entries.length}`)
+  assert.ok(
+    entries.every((e) => e.dib),
+    '每一档都必须是 DIB（PNG 压缩条目在资源管理器里会取不到图标）'
+  )
+  assert.ok(
+    entries.some((e) => e.size === 16) && entries.some((e) => e.size === 256),
+    '必须含 16 与 256'
+  )
+  // 与**应用**图标确实不同（否则这次改动没有意义）
+  assert.notEqual(
+    fs.readFileSync(DocIco).toString('hex'),
+    fs.readFileSync(ICO).toString('hex'),
+    'doc-md.ico 不能就是 icon.ico'
+  )
+  // 打包配置必须真的指向它（两处：.md 与 .markdown）
+  const yml = fs.readFileSync(path.join(ROOT, 'electron-builder.yml'), 'utf-8')
+  const assoc = yml.slice(yml.indexOf('fileAssociations:'))
+  assert.equal(
+    (assoc.match(/icon:\s*resources\/doc-md\.ico/g) ?? []).length,
+    2,
+    'fileAssociations 的两条都要指向 resources/doc-md.ico'
+  )
+  assert.doesNotMatch(assoc, /icon:\s*resources\/icon\.ico/, '关联不该再用应用图标')
+})
