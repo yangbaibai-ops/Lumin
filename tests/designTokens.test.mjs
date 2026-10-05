@@ -29,7 +29,11 @@ const RUNTIME_TOKENS = [
   '--editor-size', // 设置：字号
   '--editor-lh', // 设置：行高
   '--toc-depth', // 目录缩进层级（内联 style）
-  '--tree-depth' // 文件树缩进层级（内联 style）
+  '--tree-depth', // 文件树缩进层级（内联 style）
+  // 波次 2 的窄窗策略：面板宽度从行内 `width` 换成这两个自定义属性，
+  // 好让 `chrome.css` 的 900/760 两档媒体查询用 `min()` 夹住（报告 §5.2 P0-1）
+  '--sidebar-w', // 侧栏宽度（AppSidebar 的内联 style，值来自 settings.sidebarWidth）
+  '--outline-w' // 右侧大纲宽度（OutlinePanel 的内联 style，值来自 settings.outlineRightWidth）
 ]
 
 /**

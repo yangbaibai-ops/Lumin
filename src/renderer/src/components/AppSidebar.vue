@@ -101,10 +101,10 @@ function onTabsKeydown(e: KeyboardEvent): void {
 
 <template>
   <aside
-    class="relative z-[var(--z-raise)] flex h-full flex-none flex-col border-r border-edge bg-app"
+    class="sidebar-root relative z-[var(--z-raise)] flex h-full flex-none flex-col border-r border-edge bg-app"
     data-sidebar-root
     :style="{
-      width: width + 'px',
+      '--sidebar-w': width + 'px',
       transition: dragging ? 'none' : 'width .28s cubic-bezier(.4,0,.2,1)'
     }"
     :class="ui.focusMode ? 'opacity-40 saturate-50' : ''"

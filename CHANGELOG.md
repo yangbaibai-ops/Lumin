@@ -2,6 +2,27 @@
 
 ### Changed
 
+**窄窗策略：两档宽度断点 + 最小窗口尺寸（报告 §5.2 P0-1「全仓零宽度断点」）**
+
+- 报告点名的现象：`@media` 全仓只有 3 处且**全是** `prefers-reduced-motion`，一条宽度断点都没有；
+  侧栏硬钳 200–420、右侧大纲 160–420 ⇒ 窄窗下正文只剩 200–340px。
+- 更前置的一个问题：窗口最小尺寸是 **940×600**，而 1366×768 的笔记本在 150% 缩放下
+  可用逻辑尺寸只有 **911×512** —— "最小窗口"比屏幕还大，窗口必然伸到屏幕外
+  （右边缘的大纲与状态栏 `⋯` 永远够不着）。最小尺寸降到 **760×520**
+  （`windowPlacement.ts` 与 `index.ts` 同源常量，`index.ts` 不再写字面量）。
+- 两档断点（`chrome.css`，面板宽度从行内 `width` 换成 `--sidebar-w` / `--outline-w`
+  自定义属性才可能被媒体查询夹取）：
+  - **≤900px**：右侧大纲 `min(var(--outline-w), 22vw)`；
+  - **≤760px**：侧栏 `30vw`、大纲 `20vw`；正文内边距 56px → 32px（900 档）→ 20px（760 档）
+    （Tailwind 的 `max-[900px]:px-8 max-[760px]:px-5`）。
+  - 百分比是**量出来的**：第一版 34vw/26vw 在 760 视口下正文只剩 **234px**，
+    收到 30vw/20vw 后回到 340px 量级 —— `_verify-a11y` 的窄窗断言把这条钉住了。
+- 验收：`_verify-a11y` 31 → **36 条**（新增两条视口下的"无横向溢出 / 面板被夹住 / 正文仍可用"
+  共 5 条）；`_verify-visual-scale` 5/5、`_verify-outline-right` 26/26、
+  `_verify-sidebar-root-and-outline-side` 36/36、`_regress-layout` 9/9、`_regress-divider` 4/4、
+  `_verify-settings-layout` 7/7；`tests/visualScale.test.mjs` 新增「窄窗两档断点存在」守卫
+  （断点值出现在四处，改一处就得四处对齐）。
+
 **性能：把"大文档降级闸"按实测重新标定（报告 §4.2 / §7.4 的性能项）**
 
 - 先用**新探针**复测报告的两个数字（`tools/_probe-fences-total.js` / 新增 `tools/_probe-bigprose.js`）：

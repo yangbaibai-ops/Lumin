@@ -15,7 +15,12 @@ import { optimizer, is } from '@electron-toolkit/utils'
 // 否则同一应用会出现两种图标。
 import appIconPng from '../../resources/icon.png?asset'
 import { installMenu } from './menu'
-import { canRestoreWindow, windowStateFor } from './windowPlacement'
+import {
+  canRestoreWindow,
+  windowStateFor,
+  MIN_WINDOW_WIDTH,
+  MIN_WINDOW_HEIGHT
+} from './windowPlacement'
 import { planOpenRequest } from './openRequest'
 import { mainT } from './i18n'
 import { registerIpc, attachCloseGuard } from './ipc'
@@ -227,8 +232,10 @@ function createWindow(options: WindowOpenOptions = {}): BrowserWindow {
   const mainWindow = new BrowserWindow({
     width,
     height,
-    minWidth: 940,
-    minHeight: 600,
+    // 与 windowPlacement.ts 的常量同源（波次 2 从 940×600 降到 760×520：
+    // 1366×768 @150% 缩放只有 911×512 可用，旧最小尺寸比屏幕还大）
+    minWidth: MIN_WINDOW_WIDTH,
+    minHeight: MIN_WINDOW_HEIGHT,
     ...(x !== undefined ? { x } : {}),
     ...(y !== undefined ? { y } : {}),
     show: false,

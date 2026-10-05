@@ -4,7 +4,7 @@
 // 生命周期……），里面混着两条**用户看得见、却没人测**的判定：
 //   ① **窗口不要恢复到屏幕外**：显示器拆掉/换分辨率/笔记本外接屏拔掉之后，
 //      上次保存的坐标可能落在任何显示器的工作区之外 —— 恢复上去就是"打开程序没窗口"；
-//   ② **小于最小尺寸的记录不采用**（`minWidth/minHeight` 是 940×600），否则窗口一起来就被夹，
+//   ② **小于最小尺寸的记录不采用**（`minWidth/minHeight` 是 760×520），否则窗口一起来就被夹，
 //      用户看到的是一个"每次都变位置"的窗口。
 // 两条都是纯几何，抽出来后可以用假显示器阵列直接算 —— 不必起 Electron。
 //
@@ -19,9 +19,16 @@ export interface Rect {
   height: number
 }
 
-/** 窗口的最小尺寸（与 `BrowserWindow` 的 minWidth/minHeight 同源：见 index.ts 的 createWindow） */
-export const MIN_WINDOW_WIDTH = 940
-export const MIN_WINDOW_HEIGHT = 600
+/**
+ * 窗口的最小尺寸（与 `BrowserWindow` 的 minWidth/minHeight 同源：见 index.ts 的 createWindow）。
+ *
+ * ⚠️ 波次 2 从 940×600 降到 **760×520**（报告 §5.2 P0-1 的连带修复）：旧值在小屏 + 高缩放下
+ * 根本放不下 —— 1366×768 的笔记本在 150% 缩放下可用逻辑尺寸只有 **911×512**，
+ * 于是"最小窗口"比屏幕还大：窗口必然伸到屏幕外，右边缘（含右侧大纲与状态栏 ⋯）永远够不着。
+ * 降到 760×520 之后，`chrome.css` 的两档窄窗断点（900 / 760）才真正可用。
+ */
+export const MIN_WINDOW_WIDTH = 760
+export const MIN_WINDOW_HEIGHT = 520
 
 /**
  * 矩形是否与任一工作区**相交**（哪怕只露出一角）。

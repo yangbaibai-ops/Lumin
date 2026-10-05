@@ -73,7 +73,7 @@ function onDragStart(e: MouseEvent): void {
     data-outline-panel
     class="relative flex h-full flex-none flex-col border-l border-edge bg-app"
     :class="dragging ? '' : 'transition-[width] duration-200'"
-    :style="{ width: panelWidth + 'px' }"
+    :style="{ '--outline-w': panelWidth + 'px' }"
   >
     <!-- 左缘拖拽手柄（与 AppSidebar 的手柄同一套做法：5px 热区，悬停显色；
          键盘可用方向键调宽，见 onResizeKeydown） -->

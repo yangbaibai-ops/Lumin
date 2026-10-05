@@ -1456,7 +1456,10 @@ function formatTime(ms: number): string {
                       <h3 class="set-card-title">{{ t('settings.theme') }}</h3>
                       <!-- 主题卡：宽窗口 4 列；**窄窗口 3 列**（审计 §8 P2「最小窗口 940×600
                            下设置页横向偏紧」）—— 940×600 与 1366@125% 缩放（逻辑宽 1093）
-                           都落在 3 列这一档，这时每张卡约 205px，缩略图与标签不再挤在一起。 -->
+                           都落在 3 列这一档，这时每张卡约 205px，缩略图与标签不再挤在一起。
+                           ⚠️ 波次 2 把**最小窗口**降到 760×520（见 main/windowPlacement.ts）：
+                           这一档 3 列在 760px 下每张卡约 150px，缩略图会明显变小但仍在网格里；
+                           想再拆一档（760 下 2 列）的话，断点值要同时改这里与窄窗的四处口径。 -->
                       <div
                         class="grid grid-cols-3 gap-2.5 min-[1180px]:grid-cols-4"
                         data-theme-grid

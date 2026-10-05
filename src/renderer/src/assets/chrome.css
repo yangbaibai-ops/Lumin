@@ -66,6 +66,46 @@
   }
 }
 
+/* ═══ 窄窗两档断点（报告 §5.2 P0-1：全仓此前**零宽度断点**）══════════════════════
+ *
+ * 背景：侧栏硬钳 200–420、右侧大纲 160–420（折叠 34），而窗口最小尺寸原先还是 940×600 ——
+ * 1366×768 的笔记本在 150% 缩放下可用逻辑尺寸只有 **911×512**，于是：
+ *   * "最小窗口"比屏幕还大，窗口必然伸到屏幕外（右边缘的大纲与状态栏 ⋯ 够不着）；
+ *   * 即便挤进来，两侧面板把正文压到 200–340px，写作区不像写作区。
+ * 波次 2 的处置：① 最小尺寸降到 **760×520**（见 main/windowPlacement.ts）；② 这里加两档
+ * 断点，让**面板让位给正文**：
+ *   * ≤900px：右侧大纲收窄到 22vw（正文先拿到空间）；
+ *   * ≤760px：侧栏 30vw、大纲 20vw、正文内边距由 56px 降到 20px（见 TyporaEditor 的
+ *     `max-[900px]:px-8 max-[760px]:px-5`）。
+ *     ⚠️ 这两个百分比是**量出来的**（`_verify-a11y` 的窄窗断言）：第一版用 34vw / 26vw，
+ *     760 视口下两侧吃掉 456px，正文只剩 **234px** —— 仍然不像写作区；
+ *     收到 30vw / 20vw 之后同一视口下正文回到 340px 量级。
+ * 面板宽度从行内样式换成 `--sidebar-w` / `--outline-w` 自定义属性，正是为了能在这里用
+ * `min()` 夹住 —— 行内 `width` 没法被媒体查询覆盖（除非满天 `!important`）。
+ * 折叠态（34px 的轨道）不受影响：`min()` 只会取更小的那个。
+ * ⚠️ 断点值改动要同步 `tests/visualScale.test.mjs` 的"窄窗两档断点存在"与
+ * `_verify-a11y.js` 的窄窗断言（它们都按 900 / 760 量）。
+ */
+.sidebar-root {
+  width: var(--sidebar-w, 260px);
+}
+[data-outline-panel] {
+  width: var(--outline-w, 220px);
+}
+@media (max-width: 900px) {
+  [data-outline-panel] {
+    width: min(var(--outline-w, 220px), 22vw);
+  }
+}
+@media (max-width: 760px) {
+  .sidebar-root {
+    width: min(var(--sidebar-w, 260px), 30vw);
+  }
+  [data-outline-panel] {
+    width: min(var(--outline-w, 220px), 20vw);
+  }
+}
+
 /* 全局搜索高亮 */
 .gs-hl {
   color: var(--warning);

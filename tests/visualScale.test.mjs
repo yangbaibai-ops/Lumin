@@ -66,8 +66,15 @@ const RADIUS_TIERS = [
 /** 字号里不属于"档位"的写法（相对排版 / 继承 / 运行时注入） */
 const TEXT_NON_TIER = ['inherit', '0', 'var(--editor-size, 17px)']
 
-/** 任意值类的**上限**（本轮实测 152）。它只能变小：新代码请用令牌或现有档位。 */
-const ARBITRARY_CEILING = 152
+/**
+ * 任意值类的**上限**（本轮实测 155）。它只能变小：新代码请用令牌或现有档位。
+ *
+ * ⚠️ 152 → 155（波次 2，报告 §5.2 P0-1 的窄窗策略）：正文内边距需要两档 `max-[Npx]:` 变体
+ * （`max-[900px]:px-8` / `max-[760px]:px-5` / `max-[760px]:pt-7`）—— 断点值本身没有令牌可表达，
+ * 而 Tailwind 的具名断点（sm/md/lg）不由我们定义、也不能表达 900/760 这两个值。
+ * 这三条是**登记在案**的例外，其它任何新增都还会被这条拦住。
+ */
+const ARBITRARY_CEILING = 155
 
 function walkSrc(acc = [], dir = path.join(ROOT, 'src')) {
   for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
@@ -168,7 +175,7 @@ test('字号里的非档位写法被显式登记（inherit / 0 / 运行时注入
   assert.deepEqual(extra, [], `这些 font-size 写法既不是档位、也没登记过：${extra.join(', ')}`)
 })
 
-test('Tailwind 任意值总数只减不增（本轮 220 → 152）', () => {
+test('Tailwind 任意值总数只减不增（本轮上限 155）', () => {
   let total = 0
   for (const f of walkSrc()) {
     const m = fs.readFileSync(f, 'utf-8').match(/[a-z-]+-\[[^\]]+\]/g)
@@ -214,4 +221,63 @@ test('圆角：命名工具类（rounded / rounded-lg / …）也是闭集', () 
   )
   const unused = NAMED.filter((c) => !used.has(c))
   assert.deepEqual(unused, [], `这些命名圆角档已经没人用了：${unused.join(', ')}（请删掉）`)
+})
+
+/**
+ * ─── 窄窗两档断点（报告 §5.2 P0-1「全仓零宽度断点」）────────────────────────────
+ *
+ * 报告点名的现象：`@media` 全仓只有 7 处且**全是** `prefers-reduced-motion`，一条宽度断点都没有；
+ * 侧栏硬钳 200–420、右侧大纲 160–420 ⇒ 窄窗下正文被挤到 200–340px；而窗口最小尺寸还是 940×600
+ * —— 1366×768 @150% 缩放的可用逻辑尺寸只有 911×512，"最小窗口"比屏幕还大（右边缘永远够不着）。
+ *
+ * 这条守卫把"两档断点 + 最小尺寸"钉住：断点值一共出现在四处
+ * （`chrome.css` / `TyporaEditor.vue` 的内边距变体 / `main/windowPlacement.ts` 的常量 /
+ * `_verify-a11y.js` 的窄窗断言），改一处就得四处对齐。
+ */
+test('窄窗策略：900/760 两档断点存在，且最小窗口尺寸与之配套', () => {
+  const chrome = fs.readFileSync(path.join(ASSETS, 'chrome.css'), 'utf-8')
+  assert.match(
+    chrome,
+    /\.sidebar-root\s*\{[^}]*width:\s*var\(--sidebar-w/,
+    '侧栏宽度要走 --sidebar-w'
+  )
+  assert.match(
+    chrome,
+    /\[data-outline-panel\]\s*\{[^}]*width:\s*var\(--outline-w/,
+    '右侧大纲宽度要走 --outline-w'
+  )
+  assert.match(chrome, /@media \(max-width: 900px\)/, '缺 900px 那一档')
+  assert.match(chrome, /@media \(max-width: 760px\)/, '缺 760px 那一档')
+  assert.match(
+    chrome,
+    /@media \(max-width: 760px\)[\s\S]*?\.sidebar-root\s*\{[^}]*width:\s*min\(var\(--sidebar-w/,
+    '760px 档要让侧栏收窄（min(var(--sidebar-w), 34vw)）'
+  )
+  assert.match(
+    chrome,
+    /@media \(max-width: 900px\)[\s\S]*?\[data-outline-panel\]\s*\{[^}]*width:\s*min\(var\(--outline-w/,
+    '900px 档要让右侧大纲收窄（min(var(--outline-w), 22vw)）'
+  )
+
+  // 正文内边距：窄窗必须让位（Tailwind 的 max-[Npx]: 变体）
+  const editor = fs.readFileSync(
+    path.join(ROOT, 'src/renderer/src/components/editor/TyporaEditor.vue'),
+    'utf-8'
+  )
+  assert.match(editor, /max-\[900px\]:px-8/, '900px 档要把正文内边距降到 32px')
+  assert.match(editor, /max-\[760px\]:px-5/, '760px 档要把正文内边距降到 20px')
+
+  // 最小尺寸：与 windowPlacement.ts 同源，且不能再回到"比小屏还大"的 940
+  const placement = fs.readFileSync(path.join(ROOT, 'src/main/windowPlacement.ts'), 'utf-8')
+  const w = Number(/export const MIN_WINDOW_WIDTH = (\d+)/.exec(placement)?.[1])
+  const h = Number(/export const MIN_WINDOW_HEIGHT = (\d+)/.exec(placement)?.[1])
+  assert.equal(w, 760, '最小宽度应为 760（1366×768 @150% 的可用宽度是 911）')
+  assert.equal(h, 520, '最小高度应为 520（同上，可用高度 512）')
+  const index = fs.readFileSync(path.join(ROOT, 'src/main/index.ts'), 'utf-8')
+  assert.match(
+    index,
+    /minWidth:\s*MIN_WINDOW_WIDTH/,
+    'index.ts 必须用常量而不是字面量（两处不同源就会出现"窗口一起来就被夹"）'
+  )
+  assert.doesNotMatch(index, /minWidth:\s*940/, '不许再写回 940 字面量')
 })

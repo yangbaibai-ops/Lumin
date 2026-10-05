@@ -94,10 +94,14 @@ async function main() {
   fs.rmSync(ws, { recursive: true, force: true })
   fs.mkdirSync(ws, { recursive: true })
   fs.writeFileSync(path.join(ws, 'a.md'), MD, 'utf-8')
-  await ev(`(async () => { await window.__L.files().setRoot(${JSON.stringify(ws)}); return 'ok' })()`)
+  await ev(
+    `(async () => { await window.__L.files().setRoot(${JSON.stringify(ws)}); return 'ok' })()`
+  )
   await sleep(900)
   // 让工具栏/侧栏都在，覆盖面最大
-  await ev(`(() => { const ui = window.__L.ui(); ui.sidebarVisible = true; ui.sidebarTab = 'files'; window.__L.settings().set('toolbarVisible', true); return 'ok' })()`)
+  await ev(
+    `(() => { const ui = window.__L.ui(); ui.sidebarVisible = true; ui.sidebarTab = 'files'; window.__L.settings().set('toolbarVisible', true); return 'ok' })()`
+  )
   await sleep(600)
 
   const m = JSON.parse(await ev(SCAN))
@@ -110,7 +114,9 @@ async function main() {
   report.check('根元素有主题类', m.theme.length === 1, JSON.stringify(m.theme))
   report.check(
     '文件树里的树/列表分段控件：每个段都有名且 aria-selected 齐全',
-    m.segLabels.length === 2 && m.segLabels.every(Boolean) && m.segPressed.every((v) => v === 'true' || v === 'false'),
+    m.segLabels.length === 2 &&
+      m.segLabels.every(Boolean) &&
+      m.segPressed.every((v) => v === 'true' || v === 'false'),
     JSON.stringify({ labels: m.segLabels, selected: m.segPressed })
   )
   /**
@@ -136,7 +142,9 @@ async function main() {
   report.check(
     '侧栏页签指向的 tabpanel 存在且回指页签（aria-controls ↔ id ↔ aria-labelledby）',
     m.tabControls.every((id) => m.panelIds.includes(id)) &&
-      m.tabControls.every((id) => m.panelLabelledBy.some((lb) => lb === id.replace('panel', 'tab'))),
+      m.tabControls.every((id) =>
+        m.panelLabelledBy.some((lb) => lb === id.replace('panel', 'tab'))
+      ),
     JSON.stringify({ controls: m.tabControls, panels: m.panelIds, labelledBy: m.panelLabelledBy })
   )
 
@@ -144,8 +152,16 @@ async function main() {
   await ev(`(() => { const f = window.__L.store('find'); f.show(true); return 'ok' })()`)
   await sleep(500)
   const open = JSON.parse(await ev(SCAN))
-  report.check('查找栏展开后 aria-expanded=true 且每段仍有名', open.disclosure === 'true', String(open.disclosure))
-  report.check('打开查找栏后仍无缺名按钮', open.naked.length === 0, JSON.stringify(open.naked.slice(0, 6)))
+  report.check(
+    '查找栏展开后 aria-expanded=true 且每段仍有名',
+    open.disclosure === 'true',
+    String(open.disclosure)
+  )
+  report.check(
+    '打开查找栏后仍无缺名按钮',
+    open.naked.length === 0,
+    JSON.stringify(open.naked.slice(0, 6))
+  )
   await ev(`(() => { window.__L.store('find').hide(); return 'ok' })()`)
   await sleep(300)
 
@@ -175,7 +191,9 @@ async function main() {
     button: 'none',
     buttons: 0
   })
-  await ev(`(() => { document.body.dispatchEvent(new MouseEvent('mousedown', { bubbles: true })); return 'ok' })()`)
+  await ev(
+    `(() => { document.body.dispatchEvent(new MouseEvent('mousedown', { bubbles: true })); return 'ok' })()`
+  )
   await sleep(400)
   const hidden = JSON.parse(await ev(TOOLS))
   report.check(
@@ -292,7 +310,9 @@ async function main() {
         })
       })()`)
     )
-    await ev(`(() => { window.__L.ui().closeGlobalSearch?.(); window.__L.ui().confirmState && window.__L.ui().resolveConfirm(false); window.__L.ui().localHistory.open = false; return 'ok' })()`)
+    await ev(
+      `(() => { window.__L.ui().closeGlobalSearch?.(); window.__L.ui().confirmState && window.__L.ui().resolveConfirm(false); window.__L.ui().localHistory.open = false; return 'ok' })()`
+    )
     await sleep(300)
     return r
   }
@@ -300,9 +320,7 @@ async function main() {
     `(() => { window.__L.ui().openGlobalSearch(); return 'ok' })()`,
     '[role="dialog"][aria-modal="true"]'
   )
-  await ev(
-    `(() => { window.__L.ui().confirm({ title: 'x', body: 'y' }); return 'ok' })()`
-  )
+  await ev(`(() => { window.__L.ui().confirm({ title: 'x', body: 'y' }); return 'ok' })()`)
   await sleep(400)
   const confirmDialog = JSON.parse(
     await ev(`(() => {
@@ -310,11 +328,17 @@ async function main() {
       return JSON.stringify({ role: el?.getAttribute('role') ?? null, label: !!(el?.getAttribute('aria-label')) })
     })()`)
   )
-  await ev(`(() => { const ui = window.__L.ui(); if (ui.confirmState) ui.resolveConfirm(false); return 'ok' })()`)
+  await ev(
+    `(() => { const ui = window.__L.ui(); if (ui.confirmState) ui.resolveConfirm(false); return 'ok' })()`
+  )
   await sleep(300)
   report.check(
     'overlays-declare-dialog-semantics',
-    gs.role === 'dialog' && gs.modal === 'true' && gs.label === true && confirmDialog.role === 'dialog' && confirmDialog.label === true,
+    gs.role === 'dialog' &&
+      gs.modal === 'true' &&
+      gs.label === true &&
+      confirmDialog.role === 'dialog' &&
+      confirmDialog.label === true,
     JSON.stringify({ globalSearch: gs, confirm: confirmDialog })
   )
 
@@ -431,7 +455,10 @@ async function main() {
   const moved = JSON.parse(await ev(LIT))
   report.check(
     'tree-menu-arrowdown-highlights',
-    highlighted.lit.length === 1 && highlighted.lit[0] === 0 && moved.lit.length === 1 && moved.lit[0] === 1,
+    highlighted.lit.length === 1 &&
+      highlighted.lit[0] === 0 &&
+      moved.lit.length === 1 &&
+      moved.lit[0] === 1,
     JSON.stringify({ first: highlighted, second: moved })
   )
 
@@ -464,9 +491,15 @@ async function main() {
       return JSON.stringify({ dialog: !!el, text: el ? el.textContent.trim().slice(0, 40) : '' })
     })()`)
   )
-  await ev(`(() => { const ui = window.__L.ui(); if (ui.confirmState) ui.resolveConfirm(false); return 'ok' })()`)
+  await ev(
+    `(() => { const ui = window.__L.ui(); if (ui.confirmState) ui.resolveConfirm(false); return 'ok' })()`
+  )
   await sleep(300)
-  report.check('tree-Delete-asks-confirmation', delDialog.dialog === true, JSON.stringify(delDialog))
+  report.check(
+    'tree-Delete-asks-confirmation',
+    delDialog.dialog === true,
+    JSON.stringify(delDialog)
+  )
 
   // ── 分隔条：role="separator" + 方向键调宽（此前是纯鼠标）────────────────────
   const SEP = `(() => {
@@ -588,7 +621,10 @@ async function main() {
   )
   report.check(
     'status-more-is-a-menu-with-items',
-    statusMenu.missing === false && statusMenu.role === 'menu' && statusMenu.items >= 5 && !!statusMenu.label,
+    statusMenu.missing === false &&
+      statusMenu.role === 'menu' &&
+      statusMenu.items >= 5 &&
+      !!statusMenu.label,
     JSON.stringify(menu)
   )
   report.check(
@@ -611,6 +647,90 @@ async function main() {
       )) === 'true',
     'Esc 之后浮层应关闭，且焦点回到 `⋯` 按钮'
   )
+
+  // ── 窄窗两档断点（报告 §5.2 P0-1：全仓此前零宽度断点）────────────────────────
+  // 判据：视口压到 900 / 760 时，① 不许横向溢出；② 两侧面板把空间让给正文
+  // （大纲 ≤22vw / ≤20vw、侧栏 ≤30vw）；③ 正文列仍有可用宽度。视口用 CDP 覆盖，**不动用户窗口**。
+  await ev(`(() => {
+    const s = window.__L.settings()
+    s.set('sidebarWidth', 420)            // 拉到上限，夹取才有信号（默认 260 与 34vw=258 太接近）
+    s.set('outlineOnRight', true)
+    s.set('outlineRightExpanded', true)
+    s.set('outlineRightWidth', 420)
+    return 'ok'
+  })()`)
+  await sleep(600)
+  const atWidth = async (width, height) => {
+    await app.send('Emulation.setDeviceMetricsOverride', {
+      width,
+      height,
+      deviceScaleFactor: 1,
+      mobile: false
+    })
+    await sleep(700)
+    return JSON.parse(
+      await ev(`(() => {
+        const w = (el) => (el ? Math.round(el.getBoundingClientRect().width) : null)
+        const content = document.querySelector('.editor-content')
+        let prose = null
+        if (content) {
+          const cs = getComputedStyle(content)
+          prose =
+            Math.round(content.getBoundingClientRect().width) -
+            parseFloat(cs.paddingLeft) -
+            parseFloat(cs.paddingRight)
+        }
+        return JSON.stringify({
+          inner: window.innerWidth,
+          overflow: document.documentElement.scrollWidth - window.innerWidth,
+          sidebar: w(document.querySelector('[data-sidebar-root]')),
+          outline: w(document.querySelector('[data-outline-panel]')),
+          prose
+        })
+      })()`)
+    )
+  }
+  const w900 = await atWidth(900, 700)
+  report.note('窄窗 900 ' + JSON.stringify(w900))
+  report.check(
+    'narrow-900-no-horizontal-overflow',
+    w900.inner === 900 && w900.overflow <= 1,
+    JSON.stringify(w900)
+  )
+  report.check(
+    'narrow-900-outline-clamped-to-22vw',
+    w900.outline !== null && w900.outline <= Math.round(900 * 0.22) + 2,
+    `${w900.outline}px（应 ≤ ${Math.round(900 * 0.22) + 2}px：420 被 22vw 夹住）`
+  )
+  const w760 = await atWidth(760, 640)
+  report.note('窄窗 760 ' + JSON.stringify(w760))
+  report.check(
+    'narrow-760-no-horizontal-overflow',
+    w760.inner === 760 && w760.overflow <= 1,
+    JSON.stringify(w760)
+  )
+  report.check(
+    'narrow-760-sidebar-clamped-to-30vw',
+    w760.sidebar !== null && w760.sidebar <= Math.round(760 * 0.3) + 2,
+    `${w760.sidebar}px（应 ≤ ${Math.round(760 * 0.3) + 2}px：420 被 30vw 夹住）`
+  )
+  report.check(
+    'narrow-760-prose-still-usable',
+    w760.prose !== null && w760.prose >= 260,
+    `${w760.prose}px 正文列（窄窗下两侧面板要让位，正文不能被挤没）`
+  )
+
+  // 还原：清掉视口覆盖 + 把设置改回去（后面的用例不该受这段影响）
+  await app.send('Emulation.clearDeviceMetricsOverride')
+  await sleep(400)
+  await ev(`(() => {
+    const s = window.__L.settings()
+    s.set('sidebarWidth', 260)
+    s.set('outlineOnRight', false)
+    s.set('outlineRightWidth', 220)
+    return 'ok'
+  })()`)
+  await sleep(400)
 
   return report.finish()
 }
