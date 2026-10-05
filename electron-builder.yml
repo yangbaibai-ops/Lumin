@@ -52,6 +52,15 @@ win:
   # （实测抛 Requested range extends past the end of the array → 显示缺省图标）。
   # 换成新图后跑 `node tools/pack-ico.js` 重新打档（由 resources/icon.png 生成，七档 DIB）。
   icon: resources/icon.ico
+  # ─── 代码签名（报告 §7.4 A）：**只靠环境变量开关，不改这个文件** ───────────────
+  # electron-builder 的自动签名规则（app-builder-lib 的 codeSign 决策，实测口径）：
+  #   * 设了 `CSC_LINK`（.pfx 路径或 base64）+ `CSC_KEY_PASSWORD` → **自动签名**；
+  #   * 什么都没设 → 产出**未签名**包，控制台给一句 "skipped Windows code signing" 之类的提示。
+  # 所以"拿到证书即可签名"这件事已经是一键的：把两个环境变量设上再跑 npm run build:win。
+  # Windows 上也可以用 `WIN_CSC_LINK` / `WIN_CSC_KEY_PASSWORD`（同名语义，只作用于 Windows）。
+  # 签名后 electron-builder 会把证书的 subject 写进 app-update.yml 的 publisherName，
+  # 与下面 nsis.verifyUpdateCodeSignature 配合 ⇒ 更新包签名不符时**拒绝安装**。
+  # 详细步骤与自检：docs/distribution.md（`npm run dist:check` 会打印还缺哪些外部输入）。
   target:
     - target: nsis
       arch:
@@ -75,6 +84,11 @@ nsis:
   # ⚠️ **绝对不能改成 true**：它会在卸载时删掉 %APPDATA%\Lumin，而用户的笔记索引、草稿、
   # 设置、会话都在那里。卸载程序删用户数据是写作类应用最不可原谅的行为之一。
   deleteAppDataOnUninstall: false
+  # 更新包必须**带有效签名且发布者与已安装版本一致**才允许安装（报告 §7.4 A 的签名那一半）。
+  # ⚠️ electron-builder 26 的**默认值本来就是 true**（scheme.json 里 `"default": true`）——
+  # 这里显式写出来是**钉住**它：安全相关的默认值不该在升级 electron-builder 时被悄悄改掉。
+  # 未签名的构建同样能装（那时没有签名可比），但一旦开始签名，这条就挡住了"被换掉的更新包"。
+  verifyUpdateCodeSignature: true
 
 # 文件关联：把 .md / .markdown 登记为「可由 Lumin 打开」。**不抢 .txt**（那是通用文本，
 # 抢过来只会惹人烦）。role: Editor 让它在 Windows 的「打开方式」里排到编辑器那一档。
@@ -99,8 +113,8 @@ fileAssociations:
     role: Editor
     icon: resources/icon.ico
 
-# 自动更新：**这里还是占位地址**，所以运行时不会去检查（services/updater.ts 会识别占位域名
-# 并直接跳过，避免用户机器上冒出莫名其妙的网络失败通知）。
+# 自动更新：**这里还是占位地址**，所以运行时不会去检查（services/updater.ts 用
+# shared/distribution.ts 的同一份占位判据识别并直接跳过，避免用户机器上冒出莫名其妙的网络失败通知）。
 # 真正启用需要两步：
 #   1) 把 provider/url 换成真实渠道，例如 GitHub Releases：
 #        publish:
@@ -113,6 +127,8 @@ fileAssociations:
 #          url: https://你的域名/lumin/updates
 #   2) 重新打包（electron-builder 会生成 latest.yml 与 app-update.yml），发布安装包 + latest.yml。
 # 之后在设置里打开「自动检查更新」即生效（默认关，不打扰用户）。
+# ⚠️ 发布前跑一次 `npm run dist:check -- --release`：它会把"还缺哪些外部输入"列出来，
+# 占位地址没换掉时**故意让这一步失败**（免得带着 example.com 发出去）。见 docs/distribution.md。
 publish:
   provider: generic
   url: https://example.com/auto-updates

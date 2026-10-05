@@ -19,6 +19,8 @@
     "test:unit": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test \"tests/*.test.mjs\"",
     "notices": "node tools/gen-notices.js",
     "notices:check": "node tools/gen-notices.js --check",
+    "dist:check": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON tools/distribution-check.mjs",
+    "dist:check:release": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON tools/distribution-check.mjs --release",
     "docs:facts:write": "node tools/doc-facts.js --write",
     "docs:facts:check": "node tools/doc-facts.js",
     "test:suites": "node tools/run-suites.js",

@@ -1,5 +1,29 @@
 ## [Unreleased]
 
+### Added
+
+**分发链：外部输入清单 + 一键切换 + 发版门禁（报告 §7.4 A 可做的部分）**
+
+- 报告这一块点名"真实仓库地址 / 官网 / 更新渠道 / 代码签名证书"——这些值**代码变不出来**，
+  能做的是让"拿到就能接上"成为一句可执行的话：
+  - 新增 `src/shared/distribution.ts`：占位值判据（空 / `example.*` / `localhost` / 模板尖括号）
+    与"渠道 / 仓库 / 主页 / 签名是否就绪"四个判定，**只有这一份**。运行时 `updater` 改用它
+    （删掉了自己那份占位域名数组；`tests/distribution.test.mjs` 有一条守卫盯着不许回退）；
+  - 新增 `tools/distribution-check.mjs` + `npm run dist:check`：打印当前值 + 待办清单，
+    每项都写清"改哪里"与"缺了会怎样"；`npm run dist:check:release`（`--release`）
+    在**任何一项未就绪时 exit 1** —— 免得带着 `example.com` 的更新地址发出去（已实测 exit=1）；
+  - 新增 `docs/distribution.md`：四项输入的逐步操作（GitHub Releases / 自建静态源两种渠道、
+    签名环境变量、发版检查清单），并说明"为什么不做成写死配置"。
+- **代码签名一键化**（不改配置文件）：electron-builder 自认 `CSC_LINK` + `CSC_KEY_PASSWORD`
+  （Windows 也可用 `WIN_CSC_*`）—— 设了就自动签，没设就产未签名包。`electron-builder.yml`
+  里把安全相关的 `nsis.verifyUpdateCodeSignature: true` **显式钉住**
+  （该版本默认就是 true，写出来是为了升级 electron-builder 时不被悄悄改掉）。
+- 验收：新增 `tests/distribution.test.mjs` **7 条**（占位判定含清单自证、渠道就绪的 generic/github
+  两条路、清单五项 id 稳定且每项都有 how/missing、真实仓库现状如实报出、updater 不许自带一份判据、
+  打包配置的签名校验与"卸载不删用户数据"、工具可导入且渲染含待办）；
+  `npm run dist:check` 输出 4 项待办、`--release` exit 1；单测 792 → **799/799**；
+  `_verify-about` 7/7、`_verify-settings-layout` 7/7、`_verify-notifications` 36/36。
+
 ### Fixed
 
 **替换字符标记（状态栏 U+FFFD 警告）跟着解码与保存一起重算（报告 §4.2 P2）**

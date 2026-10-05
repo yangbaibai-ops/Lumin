@@ -4,6 +4,7 @@ import { join } from 'path'
 import { autoUpdater } from 'electron-updater'
 import { db } from './database'
 import { defaultSettings } from '../../shared/defaults'
+import { isPlaceholderValue } from '../../shared/distribution'
 import type { AppSettings } from '../../shared/types'
 
 /**
@@ -21,9 +22,6 @@ import type { AppSettings } from '../../shared/types'
 
 /** 打包后 electron-builder 会把 publish 配置写成 resources/app-update.yml */
 const UPDATE_CONFIG_FILE = 'app-update.yml'
-
-/** 占位域名：落在这上面的 publish 一律视为「没配渠道」 */
-const PLACEHOLDER_HOSTS = ['example.com', 'example.org', 'example.net', 'localhost']
 
 export type UpdateState = 'checking' | 'available' | 'not-available' | 'downloaded' | 'error'
 
@@ -46,10 +44,11 @@ export function updateChannelConfigured(): boolean {
     const file = join(process.resourcesPath, UPDATE_CONFIG_FILE)
     if (!existsSync(file)) return false
     const text = readFileSync(file, 'utf-8')
-    const urls = [...text.matchAll(/(?:url|owner|repo):\s*(\S+)/g)].map((m) => m[1].toLowerCase())
+    const urls = [...text.matchAll(/(?:url|owner|repo):\s*(\S+)/g)].map((m) => m[1])
     if (!urls.length) return false
     // provider: github 时 url 不存在、看 owner/repo；此时只要 owner 不是占位就认为配了
-    return !urls.some((u) => PLACEHOLDER_HOSTS.some((host) => u.includes(host)))
+    // 判据（占位域名清单）只有一份，在 shared/distribution.ts —— 构建脚本用的是同一份
+    return !urls.some((u) => isPlaceholderValue(u))
   } catch {
     return false
   }
