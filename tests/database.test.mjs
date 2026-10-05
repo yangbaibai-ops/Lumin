@@ -13,6 +13,9 @@ import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
+// 测试要**开第二个连接**去制造/检查不一致（删 FTS 行、插孤儿行）——
+// 这比在生产代码里开一个 test-only 的口子干净
+import { DatabaseSync } from 'node:sqlite'
 
 import {
   closeDatabase,
@@ -25,9 +28,12 @@ import {
 /** 每个用例一个全新的临时库（跑完关掉并删目录） */
 function freshDb(name) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), `lumin-db-${name}-`))
-  const instance = initDatabase(path.join(dir, 'lumin.db'))
+  const dbFile = path.join(dir, 'lumin.db')
+  const instance = initDatabase(dbFile)
   return {
     db: instance,
+    /** 库文件路径：需要"第二个连接"造不一致时用 */
+    dbFile,
     dir,
     done() {
       closeDatabase()
@@ -186,5 +192,79 @@ test('db 句柄是惰性单例：initDatabase 之后再访问才建库，closeDa
   } finally {
     closeDatabase()
     fs.rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+// ─── 波次 2：FTS 与 documents 的启动对账（报告 §4.2 P2「FTS 2s 节流，崩溃即不一致」）──
+// FTS 是按 2 秒防抖批量写的：崩在窗口里就留下"documents 有行、FTS 没有行"的空洞 ——
+// 表现是搜不到刚保存过的内容，而且永远不会自愈（那条写队列已经丢了）。
+
+test('reconcileFts：补上缺失的 FTS 行（崩溃窗口 = 搜索丢排序与片段）', () => {
+  const t = freshDb('fts-missing')
+  const file = 'C:\\ws\\lost.md'
+  try {
+    t.db.upsertDocument(doc(file, '# 丢索引\n\n关键内容 reconsileflag\n'))
+    t.db.flushFtsIndex()
+    const before = t.db.search('reconsileflag', 10).find((h) => h.path === file)
+    assert.ok(
+      before && before.bodySnippet.length > 0,
+      `前置：正常路径下带片段，实际 ${JSON.stringify(before)}`
+    )
+
+    // 手工制造"崩溃现场"：直接开第二个连接把这个文件的 FTS 行删掉（documents 还在）
+    const raw = new DatabaseSync(t.dbFile)
+    try {
+      const rowid = raw.prepare('SELECT id FROM documents WHERE path = ?').get(file).id
+      raw.exec(`DELETE FROM documents_fts WHERE rowid = ${rowid}`)
+    } finally {
+      raw.close()
+    }
+    /**
+     * ⚠️ 这里量到的是**真实影响面**：`search()` 在 FTS 无结果时会退回 `documents` 的 LIKE 扫描，
+     * 所以"搜不到"其实不会发生 —— 丢的是**片段与排序**（LIKE 那条路 title_snippet/body_snippet
+     * 都是空串）。报告说"FTS 崩溃即不一致"在**数据层**是对的，用户可见的影响则小一号；
+     * 对账的价值就是把片段/排序补回来，并清掉孤儿行。
+     */
+    const degraded = t.db.search('reconsileflag', 10).find((h) => h.path === file)
+    assert.ok(degraded, 'LIKE 兜底仍能找到（所以别把这条写成"搜不到"）')
+    assert.equal(degraded.bodySnippet, '', '退化表现：片段没了（走的是 LIKE 兜底）')
+
+    const rec = t.db.reconcileFts()
+    assert.equal(rec.missing, 1, `应补 1 行，实际 ${JSON.stringify(rec)}`)
+    t.db.flushFtsIndex()
+    const restored = t.db.search('reconsileflag', 10).find((h) => h.path === file)
+    assert.ok(
+      restored && restored.bodySnippet.length > 0,
+      `对账之后片段必须回来：${JSON.stringify(restored)}`
+    )
+  } finally {
+    t.done()
+  }
+})
+
+test('reconcileFts：删掉孤儿 FTS 行，且是幂等的（第二次返回 0/0）', () => {
+  const t = freshDb('fts-orphan')
+  try {
+    t.db.upsertDocument(doc('C:\\ws\\keep.md', 'keep'))
+    t.db.flushFtsIndex()
+    // 造一个孤儿行（documents 里没有 rowid=999999）
+    const raw = new DatabaseSync(t.dbFile)
+    try {
+      raw.exec(
+        "INSERT INTO documents_fts (rowid, title, content) VALUES (999999, 'ghost', 'ghost')"
+      )
+    } finally {
+      raw.close()
+    }
+    const rec = t.db.reconcileFts()
+    assert.equal(rec.orphans, 1, `应删 1 行孤儿，实际 ${JSON.stringify(rec)}`)
+    assert.deepEqual(t.db.reconcileFts(), { missing: 0, orphans: 0 }, '对账必须收敛')
+    // 正向的那份索引不能被误删
+    assert.equal(
+      t.db.search('keep', 10).some((h) => h.path === 'C:\\ws\\keep.md'),
+      true
+    )
+  } finally {
+    t.done()
   }
 })

@@ -2,6 +2,23 @@
 
 ### Fixed
 
+**搜索索引启动对账：`reconcileFts()`（报告 §4.2 P2「FTS 2s 节流，崩溃即不一致」）**
+
+- 报告这一条在**数据层**成立：FTS 写入是 2 秒防抖批量（`FTS_DEBOUNCE_MS`），崩在窗口里就留下
+  "`documents` 有行、`documents_fts` 没有行"的空洞，而且**永远不会自愈**（写队列已经丢了）。
+- 但**用户可见的影响比报告说的小一号**（这是量出来的）：`search()` 在 FTS 无结果或抛错时会退回
+  `documents` 的 LIKE 扫描，所以"搜不到"不会发生 —— 丢的是**片段与排序**（LIKE 那条路
+  `titleSnippet`/`bodySnippet` 都是空串）。反向的孤儿行（FTS 有、documents 没有）会被 JOIN 挡掉，
+  只浪费空间。
+- 新增 `reconcileFts()`：缺的按 `documents` 重建、多的删掉，一批一个事务（与 `flushFtsIndex`
+  同一套纪律）；开库后跑一次，补了/删了多少写进启动日志（`[db] fts reconcile: +N -M`），
+  失败只记一行日志、不拦启动。
+- 验收：`tests/database.test.mjs` 9 → **11 条** —— 用**第二个 SQLite 连接**制造不一致现场
+  （不往生产代码里开 test-only 口子）：删 FTS 行 → 断言"仍能搜到但片段为空"（把真实影响面写进
+  测试）→ `reconcileFts()` 补 1 行 → 片段回来；孤儿行删掉且对账**收敛**（第二次返回 0/0）。
+- 回归：`_verify-search-index` 10/10、`_verify-db-maintenance` 6/6、`_verify-tags` 7/7、
+  `_verify-session` 22/22、`_verify-md-fidelity` 106/107（1 SKIP）；单测 **792/792**。
+
 **草稿目录：停放草稿的数量上限 + 总量预算 + 写盘补 fsync（报告 §4.2 P2）**
 
 - 报告的原话是"停放草稿永不 GC 且无总量上限"。查证属实：`planDraftGc` 只清三类 ——

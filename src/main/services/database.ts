@@ -224,6 +224,20 @@ class LuminDatabase {
       // 主进程 console 输出一律 ASCII（见 tests/mainConsoleAscii.test.mjs）
       console.log(`[db] schema migration: v${migrated.from} -> v${migrated.to}`)
     }
+    /**
+     * FTS 对账（报告 §4.2 P2）：FTS 是**2 秒防抖批量**写的，崩在窗口里会留下"documents
+     * 有行、documents_fts 没有行"的空洞 —— 表现是搜不到刚保存过的内容，且永远不会自愈。
+     * 开库后跑一次：补缺失、删孤儿（判据与理由见 reconcileFts）。
+     */
+    try {
+      const rec = this.reconcileFts()
+      if (rec.missing || rec.orphans) {
+        console.log(`[db] fts reconcile: +${rec.missing} -${rec.orphans}`)
+      }
+    } catch (err) {
+      // 对账失败不该拦住启动：搜索可能会少几条，但库本身是好的
+      console.log(`[db] fts reconcile failed: ${err instanceof Error ? err.message : String(err)}`)
+    }
   }
 
   /** 文档的编码/行尾/BOM 元数据（权威来源；文档还没进索引时返回 null） */
@@ -365,6 +379,56 @@ class LuminDatabase {
       throw err
     }
     return batch.length
+  }
+
+  /**
+   * FTS 与 documents 的**启动对账**（报告 §4.2 P2「FTS 2s 节流，崩溃即不一致」）。
+   *
+   * 为什么需要：FTS 写入是按 `FTS_DEBOUNCE_MS`（2 秒）批量防抖的 —— 崩在防抖窗口里，
+   * `documents` 已经有行、`documents_fts` 还没有，表现就是**搜不到刚保存过的内容**
+   * （用户会以为"搜索坏了"，其实是索引缺了一行，而且永远补不回来：那条写队列已经丢了）。
+   * 反向的孤儿行（FTS 有、documents 没有）会污染搜索结果（点开打不开）。
+   *
+   * 这里把两个方向都补上：缺的按 `documents` 重建，多的删掉。两次 LEFT JOIN 都是索引扫描，
+   * 千级文档量级下是毫秒级，放在开库后跑一次足够。
+   *
+   * @returns 补了多少缺失行、删了多少孤儿行（写进启动日志，便于确认这件事真的发生过）
+   */
+  reconcileFts(): { missing: number; orphans: number } {
+    const missing = this.db
+      .prepare(
+        'SELECT d.id AS id, d.title AS title, d.content AS content FROM documents d ' +
+          'LEFT JOIN documents_fts f ON f.rowid = d.id WHERE f.rowid IS NULL'
+      )
+      .all() as unknown as { id: number; title: string | null; content: string | null }[]
+    const orphans = this.db
+      .prepare(
+        'SELECT f.rowid AS id FROM documents_fts f ' +
+          'LEFT JOIN documents d ON d.id = f.rowid WHERE d.id IS NULL'
+      )
+      .all() as unknown as { id: number }[]
+
+    if (!missing.length && !orphans.length) return { missing: 0, orphans: 0 }
+
+    const ins = this.db.prepare(
+      'INSERT INTO documents_fts (rowid, title, content) VALUES (?, ?, ?)'
+    )
+    const del = this.db.prepare('DELETE FROM documents_fts WHERE rowid = ?')
+    // 与 flushFtsIndex 同一套纪律：一批要么全成要么全不成，别留下新的半截状态
+    this.db.exec('BEGIN')
+    try {
+      for (const r of missing) ins.run(r.id, r.title ?? '', clipForIndex(r.content ?? ''))
+      for (const r of orphans) del.run(r.id)
+      this.db.exec('COMMIT')
+    } catch (err) {
+      try {
+        this.db.exec('ROLLBACK')
+      } catch {
+        /* 回滚也失败时保留原始错误抛出 */
+      }
+      throw err
+    }
+    return { missing: missing.length, orphans: orphans.length }
   }
 
   getDocument(filePath: string): DocMeta | null {
