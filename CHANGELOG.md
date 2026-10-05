@@ -1,5 +1,32 @@
 ## [Unreleased]
 
+### Tests
+
+**IO 层单测（报告 §6.2）：原子写抽出成可单测的模块，配 10 条 IO 断言**
+
+- 报告的原话是"`fileOps.writeFile` / `database` / `encoding` 目前只由本地手动套件背书"。
+  根因很清楚：那段**最不能出错**的代码（同目录临时文件 → fsync → rename）在 `fileOps.ts` 里
+  **手抄了三遍**（文本写 / 二进制写 / 备份复制），而 `fileOps.ts` import 了 `electron`
+  （回收站要用 `shell`）、`services/database`、`services/encoding` —— 于是它在 `node --test` 里
+  **根本 import 不进来**。
+- 新增 `src/main/services/atomicWrite.ts`（零 electron 依赖，只用 node 内置）作为唯一实现：
+  `atomicWrite` / `atomicWriteBytes` / `atomicWriteEncoded` / `copyFileAtomic` / `tempPathFor`，
+  三处调用点全部改走它，行为逐条保持（默认 `requireParent` **绝不** `mkdir -p`；
+  二进制 / 备份 / 导出通道允许建目录）。
+- 新增 `tests/atomicWrite.test.mjs`（**10 条**，每条对应一种"用户会丢内容"的真实故障）：
+  写入即替换 + 返回真实 mtimeMs；不留 `.lumin-tmp`；**父目录缺失抛 `PARENT_MISSING` 且绝不
+  重建目录**；`requireParent:false` 的 mkdir -p 语义；**失败时清理临时文件且不破坏目标**；
+  临时路径同目录 + 随机后缀 + 能被启动清扫的正则识别；1 MiB 逐字节往返；
+  **并发写同一路径最终必是完整的一方**；原子复制建目录；注入式写入走同一条 fsync+rename 路径。
+- 守卫同步：`tests/guards.test.mjs` 的直接写盘例外表加上 `services/atomicWrite.ts`
+  （写明理由：它写的是临时文件，绝不对用户文档直接落盘）。
+- 回归：`_verify-save-safety` 17/17、`_verify-file-lifecycle`、`_verify-encoding` 54/57（3 SKIP）、
+  `_verify-backup` 19/19、`_verify-image-insert` 9/9、`_verify-external-change` 8/8、
+  `_verify-history-restore` 7/7；单测 750 → **760/760**。
+- 剩余（下一轮）：`database` / `encoding` 的 IO 断言要先做可注入边界 —— 两者的
+  `app.getPath('userData')` / `app.getLocale()` 都在模块顶层 import electron，
+  计划是"composition root 注入 + 惰性单例"。
+
 ### Changed
 
 **窄窗策略：两档宽度断点 + 最小窗口尺寸（报告 §5.2 P0-1「全仓零宽度断点」）**

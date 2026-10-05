@@ -106,6 +106,11 @@ test('落盘：用户文档必须走 fileOps.writeFile（原子写），直接�
    */
   const ALLOW = [
     'fileOps.ts',
+    // 波次 2 从 fileOps.ts 抽出来的**原子写唯一实现**：它写的是
+    // `<目标>.<8位随机>.lumin-tmp` 临时文件，再 fsync + rename —— 绝不对用户文档直接落盘。
+    // 抽出来的理由正是报告 §6.2：那段代码最该被单测钉住，而它原来在 import electron 的
+    // 文件里进不了 node --test（现在 tests/atomicWrite.test.mjs 有 10 条 IO 断言）。
+    'services/atomicWrite.ts',
     'drafts.ts',
     'export.ts',
     'services/links.ts',

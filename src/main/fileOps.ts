@@ -1,13 +1,17 @@
 // ─── 主进程：安全的文件系统操作 ────────────────────────────────────────────
 import fs from 'fs/promises'
 import path from 'path'
-import { randomUUID } from 'crypto'
 import { shell } from 'electron'
 import type { Dirent } from 'fs'
 import { pathToFileURL } from 'url'
 import { db } from './services/database'
 import { isInside } from './pathGuard'
 import { decodeBuffer, encodeText } from './services/encoding'
+import {
+  atomicWriteBytes,
+  atomicWriteEncoded,
+  copyFileAtomic as atomicCopyFile
+} from './services/atomicWrite'
 import * as openDocs from './services/openDocs'
 import type { FileNode, WorkspaceDoc } from '../shared/types'
 import type { ConcreteEncoding, EncodingId } from '../shared/encodings'
@@ -229,7 +233,6 @@ export async function writeFile(
   // 行尾在**这一层**统一展开：所有落盘路径（保存、另存为、导出走的都是这里）都不会漏。
   // eol 缺省 = 不做行尾处理（老调用方行为不变）。
   const text = eol ? toEol(content, eol) : content
-  const bytes = encodeText(text, encoding, hadBom)
   /**
    * 父目录**必须已经存在**，绝不 `mkdir -p`（审计 §2 P1 第 124 条）。
    *
@@ -238,28 +241,15 @@ export async function writeFile(
    * 又回来了，而且他没有任何提示。文档写入的正确语义是"写进一个已存在的目录"；
    * 需要新建目录的场景（新建文件/文件夹、另存为到新目录）都由用户显式动作先建目录。
    * 抛一个可识别的错误码，渲染层据此给一句本地化提示（见 renderer/lib/errors.ts）。
+   *
+   * ⚠️ 「同目录临时文件 → fsync → rename」这条纪律的实现搬到了
+   * `services/atomicWrite.ts`（报告 §6.2：那段代码最该被单测钉住，而它原来在
+   * import electron 的文件里根本进不了 `node --test`）。这里只保留产品语义：
+   * 行尾展开 + 编码，然后交给那条统一路径。
    */
-  const dir = path.dirname(filePath)
-  const parent = await fs.stat(dir).catch(() => null)
-  if (!parent?.isDirectory()) throw new Error('PARENT_MISSING')
-  const tmp = `${filePath}.${randomUUID().slice(0, 8)}.lumin-tmp`
-  let handle: Awaited<ReturnType<typeof fs.open>> | null = null
-  try {
-    handle = await fs.open(tmp, 'w')
-    await handle.writeFile(bytes)
-    await handle.sync()
-    await handle.close()
-    handle = null
-    await fs.rename(tmp, filePath)
-  } catch (err) {
-    // 失败时收拾干净并原样抛出：调用方（渲染层）负责把**原因**告诉用户
-    if (handle) await handle.close().catch(() => {})
-    await fs.rm(tmp, { force: true }).catch(() => {})
-    throw err
-  }
-  // rename 之后再 stat：此刻磁盘上的就是刚写进去的那一份
-  const st = await fs.stat(filePath)
-  return st.mtimeMs
+  return atomicWriteEncoded(filePath, () => encodeText(text, encoding, hadBom), {
+    requireParent: true
+  })
 }
 
 /**
@@ -270,21 +260,9 @@ export async function writeFile(
  * 把 PNG 字节塞进去等于先按 UTF-8 解读再编码，图必然坏。
  */
 export async function writeBinary(filePath: string, bytes: Uint8Array): Promise<void> {
-  await fs.mkdir(path.dirname(filePath), { recursive: true })
-  const tmp = `${filePath}.${randomUUID().slice(0, 8)}.lumin-tmp`
-  let handle: Awaited<ReturnType<typeof fs.open>> | null = null
-  try {
-    handle = await fs.open(tmp, 'w')
-    await handle.writeFile(bytes)
-    await handle.sync()
-    await handle.close()
-    handle = null
-    await fs.rename(tmp, filePath)
-  } catch (err) {
-    if (handle) await handle.close().catch(() => {})
-    await fs.rm(tmp, { force: true }).catch(() => {})
-    throw err
-  }
+  // 二进制通道允许**新建目录**（粘一张图进一个还不存在的 assets/ 是正常动作），
+  // fsync + rename 的纪律由 atomicWrite 统一保证
+  await atomicWriteBytes(filePath, bytes, { requireParent: false })
 }
 
 /**
@@ -296,21 +274,7 @@ export async function writeBinary(filePath: string, bytes: Uint8Array): Promise<
  * 这样备份目录里永远不会出现一个"写到一半的库"（用户以为有备份、其实那份是坏的）。
  */
 export async function copyFileAtomic(source: string, dest: string): Promise<void> {
-  await fs.mkdir(path.dirname(dest), { recursive: true })
-  const tmp = `${dest}.${randomUUID().slice(0, 8)}.lumin-tmp`
-  try {
-    await fs.copyFile(source, tmp)
-    const handle = await fs.open(tmp, 'r+')
-    try {
-      await handle.sync()
-    } finally {
-      await handle.close()
-    }
-    await fs.rename(tmp, dest)
-  } catch (err) {
-    await fs.rm(tmp, { force: true }).catch(() => {})
-    throw err
-  }
+  await atomicCopyFile(source, dest)
 }
 
 /**
