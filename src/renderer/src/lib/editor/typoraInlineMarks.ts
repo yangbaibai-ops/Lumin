@@ -799,22 +799,30 @@ interface EscapeRun {
  *   2. `pressInkHidden`（**真的拖起来之后**才置位）——CSS 的
  *      `.press-hidden .md-marker:has(> .md-reveal-inline) { color: transparent }` 把已显形的
  *      标记去墨：**只去墨、占位照旧**（`position: absolute` / `font-size: 0` 那版会挪动版面，
- *      正是第 1 条要避免的）。判据是「指针按住期间移动超过 `PRESS_DRAG_SLOP`」（只有 DOM
- *      事件知道这件事），见 onCreate 里的 `onDown` / `onMove` / `onUp`。
+ *      正是第 1 条要避免的）。见 onCreate 里的 `onDown` / `onMove` / `onUp`。
  *
  * ⚠️⚠️ **去墨绝不能跟着 `mousedown` 置位**（第二十四轮那版就是，用户实测报障）：
  * 光标在构造内（页面上正显示着 `**`）时「在别处按一下」，一次**没有拖动的按下**也会让这些
  * `**` 瞬间消失、松手又回来 —— 用户看到的是闪动。当前选区是否变化**不能**当判据：PM 在
  * `mousedown`（捕获阶段之后）本来就会按落点写一次选区，那是「点一下」的固有动作，不是拖动。
- * 所以去墨只认**指针真的移动了**（`PRESS_DRAG_SLOP`），「拖选时标记跟着进/出很吵」的诉求
- * 仍然满足：拖动一开始就隐藏，直到松开。
+ *
+ * ⚠️⚠️ **去墨还要看「按下点在哪」**（第二十七轮：用户第二次报障）：
+ * 只认「指针移动了」还不够 —— 拖动时去墨会**误伤无关的构造**：光标在 A 构造内（A 的 `**`
+ * 正显示着）时，在**别处 B** 按下并拖动，A 的 `**` 照样去墨消失、松手才回来。用户口径：
+ * **去墨只在「按下点落在已显形的那个构造里」时才启用，按下点在别处一律不去墨。**
+ * 判据在**按下那一刻**定一次（`pressOnRevealedRun`，见其说明与取舍），`onMove` 只做「有没有
+ * 拖起来」这一半判断。为什么这样切分：显隐装饰在按下时被冻结 ⇒ 整个手势里「可见的标记」
+ * 只有按下时已显形的那几颗，拖动**不可能**让新标记冒出来（第二十四轮「拖选时别冒 `**`」正是
+ * 靠冻结实现的）；于是去墨只对「手指本来就按在那个构造上」的拖选（同构造内/跨构造）有意义，
+ * 按下点在别处时它只会误伤别的构造 —— 正是这次报的现象。
+ * 「拖选时标记跟着进/出很吵」的诉求仍然满足：按下点在构造上时，拖动一开始就去墨、直到松开。
  * 松开时先把类摘掉、再 dispatch 一个带 `SET_PRESS` 的空事务催一次重算，让标记按最终选区
  * 恢复显隐。
  *
  * 纯观感：模型、落盘字节、选区语义一个都不动。
  */
 let pressHeld = false
-/** 手势里「真的拖起来了」⇒ 给编辑区根节点挂 `.press-hidden` 去墨（见上面的说明） */
+/** 手势里「真的拖起来了」**且按下点在已显形构造上** ⇒ 给编辑区根节点挂 `.press-hidden` 去墨 */
 let pressInkHidden = false
 /**
  * 「这一次按下算不算拖动」的像素阈值（切比雪夫距离，横纵取大者）。
@@ -826,6 +834,47 @@ let pressInkHidden = false
  * 一次移动 12px，都远在阈值之上；而「按下不松、一个像素都不动」的按下则永远不会命中。
  */
 const PRESS_DRAG_SLOP = 4
+
+/**
+ * 按下点 `pos` 是否**落在某个「此刻已显形」的标记构造的字符上**（标记文本或样式正文）。
+ * 这是第二十七轮那条用户口径的判据本体：**去墨只在按下点落在已显形构造里时才启用**。
+ *
+ * 三条判据（缺一不可）：
+ *   1. `pos` 在构造范围内：`rs <= pos < re`（半开区间 —— 见下面的取舍）；
+ *   2. 该构造**此刻已显形**：用与 `buildRevealDecorations` **逐字相同**的判据
+ *      `from <= re && to >= rs`（左右边界均含）在当前选区上判；
+ *   3. 只对**按下点所在的那个文本块**算 `blockInventory`（清单是块内相对偏移，`base` 用
+ *      `$pos.start($pos.depth)` 换算成绝对位置，与 `buildRevealDecorations` 的 `pos + 1` 同源）。
+ *
+ * 为什么读 `state.selection`：「已显形」是**按下那一刻屏幕上**的事实 —— 本函数由 `onDown` 调用，
+ * 而那个 `mousedown` 监听挂在编辑区根节点、**捕获**阶段（早于 PM 自己按落点写选区），所以这里
+ * 拿到的选区正是「按下前那一刻」的；PM 随后写选区也不会改这个结论（判据只在按下时取一次）。
+ *
+ * 为什么用半开区间（而**不**照抄显隐判据把两端都算进来）：显隐判据宽松是为了让「紧贴构造两端」
+ * 的光标也能编辑标记；但这里要判的是**指针有没有按在这个构造的字符上**。按在收尾标记**右侧的
+ * 空白**里属于「在别处按下」（正是用户第二次报的 B 区场景），两端都含就会把它误判成「在构造上」
+ * 而照样去墨。代价：按在收尾标记**右半边**（`posAtCoords` 给到 `re`）也算「别处」⇒ 不去墨 ——
+ * 方向是**少去墨**，与本次口径一致（宁可少藏，不可误伤）。
+ */
+function pressOnRevealedRun(state: EditorState, pos: number): boolean {
+  try {
+    const size = state.doc.content.size
+    const $pos = state.doc.resolve(Math.max(0, Math.min(pos, size)))
+    const block = $pos.parent
+    if (!block.isTextblock) return false
+    const base = $pos.start($pos.depth)
+    const { from, to } = state.selection
+    for (const r of blockInventory(block).runs) {
+      const rs = base + r.start
+      const re = base + r.end
+      if (pos >= rs && pos < re && from <= re && to >= rs) return true
+    }
+    return false
+  } catch {
+    /* 位置失效（视图正在重建）时按「别处」处理：宁可不去墨，也不要误伤 */
+    return false
+  }
+}
 
 function buildRevealDecorations(
   state: EditorState,
@@ -840,7 +889,8 @@ function buildRevealDecorations(
   // 而按下的那一刻浏览器正在判光标落点、拖拽期间 PM 每次 `mousemove` 都在算坐标：
   // 布局一变落点就错（实测：按下即折叠 ⇒ 点加粗字内部落到后面的普通文字；拖拽中途折叠
   // ⇒ 整段拖选塌成一个光标）。那条走「冻结装饰 + CSS 只去墨」（见 `pressHeld` /
-  // `pressInkHidden` 的说明：冻结在按下即生效，去墨要等指针真的移动）。
+  // `pressInkHidden` / `pressOnRevealedRun` 的说明：冻结在按下即生效；去墨要等指针真的移动，
+  // 且**只在按下点落在已显形构造里时**才有资格）。
   if (findActive()) return DecorationSet.empty
   const { from, to } = state.selection
   const decos: Decoration[] = []
@@ -1284,12 +1334,14 @@ function expandOutsideMarkers(doc: PMNode, from: number, to: number): { from: nu
 export const TyporaInlineMarks = Extension.create({
   name: 'typoraInlineMarks',
   /**
-   * 指针手势期间的显隐：**按下一律先冻结装饰（版面不动、已显形的标记也照旧显形），
-   * 只有指针真的拖起来之后才把标记去墨**（详见 `pressHeld` / `pressInkHidden` 的说明）。
+   * 指针手势期间的显隐：**按下一律先冻结装饰（版面不动、已显形的标记也照旧显形）；
+   * 只有「按下点落在已显形构造里」且指针真的拖起来之后，才把标记去墨**
+   * （详见 `pressHeld` / `pressInkHidden` / `pressOnRevealedRun` 的说明）。
    *
    * 三个 DOM 事件各管一件事：
-   *   * `mousedown`（编辑区根节点、**捕获**，必须早于 PM 自己的 mousedown）→ `pressHeld` 置位；
-   *   * `mousemove`（document、捕获）→ 移动超过 `PRESS_DRAG_SLOP` 才算拖动 ⇒ 去墨；
+   *   * `mousedown`（编辑区根节点、**捕获**，必须早于 PM 自己的 mousedown）→ `pressHeld` 置位，
+   *     并按 `posAtCoords` 判出「本次手势有没有去墨资格」（`pressOnRevealed`）；
+   *   * `mousemove`（document、捕获）→ **有资格**且移动超过 `PRESS_DRAG_SLOP` 才算拖动 ⇒ 去墨；
    *   * `mouseup` / `pointerup` / `pointercancel` / 窗口 `blur` → 收尾（摘类 + 催一次重算）。
    *
    * 为什么「不给每个 `.md-marker` 挂类」：标记元素会被 PM 的重渲染换掉，挂类会丢；
@@ -1302,7 +1354,12 @@ export const TyporaInlineMarks = Extension.create({
     // `setFindHit` 由 find store 调用，那边手上是 Pinia 解包过的编辑器对象（取 `.view`
     // 会把 `@tiptap/core` 的同构要求带进 store 的类型里）—— 视图在这里自己记一份。
     ownView = this.editor.view as unknown as typeof ownView
-    const view = this.editor.view as unknown as { dom: HTMLElement; isDestroyed: boolean }
+    const view = this.editor.view as unknown as {
+      dom: HTMLElement
+      isDestroyed: boolean
+      state: EditorState
+      posAtCoords: (coords: { left: number; top: number }) => { pos: number } | null
+    }
     if (!view) return
     const applyPressClass = (): void => {
       if (view.isDestroyed) return
@@ -1311,21 +1368,32 @@ export const TyporaInlineMarks = Extension.create({
     /** 按下那一刻的指针坐标：「算不算拖动」是相对它量的（见 `onMove`） */
     let downX = 0
     let downY = 0
+    /**
+     * 本次手势有没有「去墨资格」：按下点是否落在**此刻已显形**的构造里
+     * （判据本体见 `pressOnRevealedRun`）。按下点在别处（B 区）时恒为 false ⇒ 整个手势都不去墨。
+     */
+    let pressOnRevealed = false
     const onDown = (e: MouseEvent): void => {
       if (e.button !== 0) return // 只认左键
       pressHeld = true // 冻结装饰（版面整个手势里不动）
       pressInkHidden = false // ⚠️ 按下**不**去墨：那是用户报的「按住就闪」的成因
       downX = e.clientX
       downY = e.clientY
+      // 资格只在按下那一刻判一次，而且必须用**捕获阶段**的 `view.state`：PM 还没按落点写选区，
+      // 这份选区就是「屏幕上正显形的那几颗」的依据（PM 随后改选区也不会改这个结论）。
+      const at = view.posAtCoords({ left: e.clientX, top: e.clientY })
+      pressOnRevealed = !!at && pressOnRevealedRun(view.state, at.pos)
       applyPressClass()
     }
     const onMove = (e: MouseEvent): void => {
       if (!pressHeld || pressInkHidden) return
+      if (!pressOnRevealed) return // 按下点在别处（B 区）⇒ 一律不去墨（第二十七轮用户口径）
       if ((e.buttons & 1) === 0) return // 左键已经不在按下（例如拖到别的窗口）⇒ 不该去墨
       if (Math.max(Math.abs(e.clientX - downX), Math.abs(e.clientY - downY)) < PRESS_DRAG_SLOP) {
         return
       }
-      // 真的拖起来了 ⇒ 拖选期间不显示标记（第二十四轮的诉求，靠去墨实现、不改占位）
+      // 按下点就在那个已显形构造上，且真的拖起来了 ⇒ 拖选期间不显示标记
+      // （第二十四轮的诉求，靠去墨实现、不改占位）
       pressInkHidden = true
       applyPressClass()
     }
@@ -1567,7 +1635,8 @@ export const TyporaInlineMarks = Extension.create({
            * 15px，「点『地』」于是落到了下一个字）。冻结之后**整个手势期间布局一个像素都不变**，
            * 并且「谁显形」也不变 —— 所以一次按下不会把光标所在构造的 `**` 收起来（这正是用户
            * 要的：按下去不该闪）。拖选期间让标记看不见交给 CSS 只去墨、不改占位
-           * （`pressInkHidden` / style.css 的 `.press-hidden`，且**只在指针真的移动之后**才挂）。
+           * （`pressInkHidden` / style.css 的 `.press-hidden`，且**只有按下点落在已显形构造里、
+           * 指针又真的移动了**才挂 —— 否则会误伤别处正在显示的构造，见 `pressOnRevealedRun`）。
            * `docChanged` 时**不**冻结：装饰集必须跟着新文档走，否则位置全部失效。
            */
           apply: (tr, oldSet, _oldState, newState) => {

@@ -1409,11 +1409,13 @@ async function main() {
   // 成因：`mousedown`（编辑区根节点、捕获）无条件把 `.press-hidden` 挂上，CSS
   //   `.press-hidden .md-marker:has(> .md-reveal-inline) { color: transparent }`
   //   把已显形标记的字色变透明（占位照旧 ⇒ 只是「看不见」，所以松手就回来）。
-  // 口径（修后）：**一次没有拖动的按下不改屏幕上的任何东西** ——
+  // 口径（第二十六轮修后）：**一次没有拖动的按下不改屏幕上的任何东西** ——
   //   * 按下即**冻结**显隐装饰（版面与「谁显形」全程不变，见 typoraInlineMarks 的 pressHeld）；
-  //   * 去墨（`.press-hidden`）只认「指针在按住期间**真的移动了**」（PRESS_DRAG_SLOP = 4px）。
+  //   * 去墨（`.press-hidden`）只认「指针在按住期间**真的移动了**」（PRESS_DRAG_SLOP = 4px）
+  //     **且按下点落在已显形的那个构造里**（第二十七轮补的第二条判据见本文件 M 段）。
   // 「按下会改变选区」不能当判据：PM 在 mousedown 本来就会按落点写一次选区，那是「点一下」
-  // 的固有动作、不是拖动。三条断言：按下不松 ⇒ 全可见；拖动 ⇒ 去墨但**不改占位**；松开 ⇒ 恢复。
+  // 的固有动作、不是拖动。本段四条断言：按下不松 ⇒ 全可见；在**该构造内**按下并拖动 ⇒ 去墨但
+  // **不改占位**；松开 ⇒ 恢复（「在别处按下并拖动」由 M 段钉）。
   {
     const L_DOC = 'alfa **bravo** charlie\n'
     /** 标记现状：文本 / 显形数 / 字色是否透明 / 字号 / 宽度 / 两个参考字屏幕左缘 / 根节点类 */
@@ -1558,6 +1560,134 @@ async function main() {
         inkHidden: lAfter.inkHidden,
         now: { xBravo: lAfter.xBravo, xCharlie: lAfter.xCharlie }
       })
+    )
+    // ── M. 在别处（B 区）按下并拖动：A 区正在显示的 `**` 不许消失（用户第二次报障）──────
+    // 现象（修掉「按下就闪」之后仍然存在）：A 区正显示着 `**`（光标在构造内），在别处 B 区按下
+    //   左键**并拖动**去选字符 —— A 区的 `**` 变成透明「消失」，松手才回来。
+    // 成因：去墨的判据只有「指针在按住期间移动 >4px」，没看**按下点在哪** —— 拖动本身会把无关
+    //   构造的标记一起藏掉。
+    // 口径（第二十七轮）：**去墨只在「按下点落在已显形的那个构造里」时才启用**；按下点在别处
+    //   一律不去墨。判据本体见 typoraInlineMarks 的 `pressOnRevealedRun`（半开区间
+    //   `rs <= pos < re` + 该构造此刻已显形，按下那一刻在捕获阶段取一次）。
+    // 为什么这样切分（简版）：装饰在按下时被**冻结** ⇒ 手势里可见的标记只有「按下时已显形」的
+    //   那几颗，拖动不可能让新标记冒出来（第二十四轮「拖选时别冒 `**`」正是靠冻结实现的）；
+    //   于是去墨只对「手指本来就按在那个构造上」的拖选（同构造内 / 跨构造）有意义，按下点在
+    //   别处时它只会误伤别的构造 —— 正是这次的现象。
+    // 三条断言：B 在**同段落**普通文字（charlie）⇒ A 仍可见；B 在**另一段落**（echo，同段还有
+    //   一颗折叠构造）⇒ A 仍可见；B 处松手不留隐藏态。
+    const M_DOC = 'alfa **bravo** charlie\n\nsecond **delta** echo\n'
+    /** 整个编辑区里找 `word` 首字符的坐标（跨段落也能用；上面的 L_POINT 只看第一段） */
+    const M_POINT = (word) => `JSON.stringify((() => {
+      const root = document.querySelector('.ProseMirror')
+      if (!root) return { found: false }
+      const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT)
+      let node = null
+      while (walker.nextNode()) {
+        if (walker.currentNode.textContent.includes(${JSON.stringify(word)})) { node = walker.currentNode; break }
+      }
+      if (!node) return { found: false }
+      const idx = node.textContent.indexOf(${JSON.stringify(word)})
+      const r = document.createRange()
+      r.setStart(node, idx)
+      r.setEnd(node, idx + 1)
+      const b = r.getBoundingClientRect()
+      return { found: true, x: Math.round(b.left + b.width / 2), y: Math.round(b.top + b.height / 2) }
+    })())`
+    /**
+     * 把光标放进 `**bravo**`（A 显形的前提）。用**绝对位置**找而不是块内偏移：后面的阶段会把
+     * 光标留在第二段落，块内偏移会落到另一段上（L 段的 caretAt 只用于「打开文档之后」那一刻）。
+     */
+    const mCaretInA = async () => {
+      await app.ev(
+        '(() => { const ed = window.__L.ed(); let pos = -1;' +
+          ' ed.state.doc.descendants((n, p) => {' +
+          ' if (pos < 0 && n.isText && n.text && n.text.indexOf(' +
+          JSON.stringify('bravo') +
+          ') >= 0) pos = p + 2 });' +
+          " if (pos > 0) ed.commands.setTextSelection(pos); return 'ok' })()"
+      )
+      await sleep(250)
+    }
+    /** A（文档里前两颗标记 = `**bravo**`）此刻是否**完整可见**：显形数 2 + 无透明墨 + 有字宽 */
+    const mAOk = (s) =>
+      s.revealed === 2 &&
+      s.inkHidden[0] === false &&
+      s.inkHidden[1] === false &&
+      s.fontSizes[0] !== '0px' &&
+      s.fontSizes[1] !== '0px' &&
+      s.widths[0] > 0 &&
+      s.widths[1] > 0
+
+    await openDoc(M_DOC)
+    await mCaretInA()
+    const mBase = await lRead()
+    report.check(
+      'M 前提：光标在 A（' + '`**bravo**`' + '）内 → 只有 A 的两颗显形，另一段的 delta 仍折叠',
+      mBase.texts.length === 4 && mBase.texts.every((t) => t === '**') && mAOk(mBase),
+      JSON.stringify(mBase)
+    )
+
+    // B①：同段落的普通文字
+    const mB1 = JSON.parse(await app.ev(M_POINT('charlie')))
+    report.check(
+      'M point-found：B 区命中点（同段 charlie）在编辑区里',
+      mB1.found === true && Number.isFinite(mB1.x) && Number.isFinite(mB1.y),
+      JSON.stringify(mB1)
+    )
+    await mouseAt('mouseMoved', mB1.x, mB1.y, 0)
+    await sleep(120)
+    await mouseAt('mousePressed', mB1.x, mB1.y, 1)
+    await sleep(200)
+    await mouseAt('mouseMoved', mB1.x + 12, mB1.y, 1)
+    await sleep(300)
+    const mDrag1 = await lRead()
+    report.check(
+      'M 在 B（同段落普通文字 charlie）按下并拖动 >4px → A 的 ' + '`**`' + ' 仍可见（用户第二次报障）',
+      mAOk(mDrag1) &&
+        mDrag1.pressHidden === false &&
+        mDrag1.xBravo === mBase.xBravo &&
+        mDrag1.xCharlie === mBase.xCharlie,
+      JSON.stringify(mDrag1)
+    )
+    await mouseAt('mouseReleased', mB1.x + 12, mB1.y, 0)
+    await sleep(400)
+
+    // B②：另一段落的普通文字（同段还有一颗**折叠**的构造 —— 边界：按下点的块里也有 run）
+    await mCaretInA()
+    const mB2 = JSON.parse(await app.ev(M_POINT('echo')))
+    report.check(
+      'M point-found：B 区命中点（另一段落 echo）在编辑区里',
+      mB2.found === true && Number.isFinite(mB2.x) && Number.isFinite(mB2.y),
+      JSON.stringify(mB2)
+    )
+    await mouseAt('mouseMoved', mB2.x, mB2.y, 0)
+    await sleep(120)
+    await mouseAt('mousePressed', mB2.x, mB2.y, 1)
+    await sleep(200)
+    await mouseAt('mouseMoved', mB2.x + 12, mB2.y, 1)
+    await sleep(300)
+    const mDrag2 = await lRead()
+    report.check(
+      'M 在 B（另一段落 echo，同段有折叠构造）按下并拖动 >4px → A 的 ' +
+        '`**`' +
+        ' 仍可见',
+      mAOk(mDrag2) && mDrag2.pressHidden === false && mDrag2.xBravo === mBase.xBravo,
+      JSON.stringify(mDrag2)
+    )
+    await mouseAt('mouseReleased', mB2.x + 12, mB2.y, 0)
+    await sleep(400)
+    const mAfter2 = await lRead()
+    report.check(
+      'M 在 B 拖动松手后不留隐藏态（去墨一旦被误挂就会残留 → 这里同时钉字色与根节点类）',
+      mAfter2.pressHidden === false && mAfter2.inkHidden.every((h) => h === false),
+      JSON.stringify(mAfter2)
+    )
+    await mCaretInA()
+    const mFinal = await lRead()
+    report.check(
+      'M 收尾：光标放回 A → 标记恢复显形、无隐藏态残留（手势收尾干净）',
+      mAOk(mFinal) && mFinal.pressHidden === false,
+      JSON.stringify(mFinal)
     )
   }
 

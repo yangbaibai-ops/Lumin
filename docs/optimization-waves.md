@@ -287,3 +287,9 @@ PM 内部（`nodesBetween`/`nodeSize`/`isLeaf`）约 490ms、GC 411ms、我们�
 | 光标在 `**加粗**` 构造内、正显示着 `**` 时，在别处**按下左键并按住** → `**` 消失；松开才回来 | `typoraInlineMarks` 的捕获 `mousedown` **无条件**挂 `.press-hidden`（CSS 把已显形标记的字色变透明，只去墨、不改占位），同时冻结显隐装饰 ⇒ "看不见"；`mouseup` 摘类 + 空事务按最终选区重算 ⇒ "又回来" | 把两件事**拆成两个时机**：`pressHeld`（按下即**只冻结装饰**，版面与"谁显形"整个手势不变）与 `pressInkHidden`（**指针按住期间移动 > `PRESS_DRAG_SLOP` = 4px 才去墨**，新增 document 捕获 `mousemove`）。冻结时机、拖选去墨、只改字色不改占位三条既有意图全部保留 | `_verify-inline-formats` **189/189**（新增 L 段 7 条：`mousePressed` 不松 → `**` 仍在 DOM、字色不透明、宽度 15px、`xBravo/xCharlie` 一像素不动 → `mouseMoved` 12px 才去墨 → `mouseReleased` 恢复）；`_verify-marker-hold` **14/14**；相邻面 `_verify-drag-selection` 10/10、`_verify-round-24` 15/16（1 SKIP）、`_verify-line-end-click` 7/7、`_verify-links` 12/12；单测 **820/820** |
 
 > **口径变更要说清**：`_verify-marker-hold` 的既有期望值被改了（它原来钉的正是"按下即去墨"这条旧口径）；改动方向是**收紧**——B 现在同时钉字色/字号/宽度/位置，F 拆成"按下仍显形 / 拖出去才去墨 / 松手不残留"三条，C/D/E 与"版面不动"的断言全保留。**未验证**：原生 HTML5 拖放（CDP 合成事件起不来 `dragstart`，无法断言真 DnD 后的收尾）；触摸/触控笔；4px 阈值是产品判断（4px 内微动仍显示标记）。
+
+**第二刀（同一功能的细化）**：用户实测后提出 —— A 区正显示 `**` 时，在**别处 B 区按下并拖动**选字，A 的 `**` **也不该消失**。第二十四轮"拖选时别冒标记"针对的其实是**在构造内部/跨构造拖选**，两条并不矛盾，所以把"去墨资格"改成**看按下点和那个构造有没有关系**：
+
+- 新增判据 `pressOnRevealedRun(state, pos)`（`typoraInlineMarks.ts`）：按下点落在某构造的 `rs <= pos < re`（**半开**）**且该构造在按下那一刻已显形**（`from <= re && to >= rs`，与 `buildRevealDecorations` 逐字同源）才有资格；`onMove` 里 `if (!pressOnRevealed) return`。判据只在按下时判一次，因为 `mousedown` 挂在**捕获**阶段、读到的正是"按下前屏幕上那几颗"。
+- **半开是刻意的**：按在收尾标记右侧空白属"别处按下"（正是本次报障场景），代价是"按在收尾标记右半边"也判"别处"⇒ 宁可少藏、不可误伤。多构造同时显形时去墨不区分是哪一颗（CSS 层面的既有粒度）。
+- 验收（**我自己重跑过**）：`_verify-inline-formats` **196/196**（新增 M 段 7 条：B 区按下拖动 ⇒ A 仍可见〔**改前红**〕、A 内拖动 ⇒ 仍去墨、按下不拖动 ⇒ 仍可见、松手无隐藏态残留）、`_verify-marker-hold` **14/14**（本轮未动）、单测 **820/820**、`tsc`/`vue-tsc`/`eslint --max-warnings 0`/`docs:facts` 全 0。
