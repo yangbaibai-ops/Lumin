@@ -1,26 +1,31 @@
 'use strict'
-// ─── 验收：按住指针期间标记**不显形**、松开即显示（`.md-marker` 的显隐时机）──────────
+// ─── 验收：指针手势期间标记的显隐时机（`.md-marker` 的「去墨」）──────────────────────
 //
-// 背景：鼠标按在加粗文字上（或拖选）时，两侧的 `**` 会跟着光标立刻冒出来。产品口径：
-// **按住期间不显示，松开鼠标才显示**。
+// 需求两条，**触发时机不同**（第二十六轮把「去墨」从按下挪到真的拖动之后）：
+//   * **拖选**一段加粗文字时，标记不要跟着选区一起进/出（视觉上很吵）⇒ 拖动期间去墨；
+//   * **按下不拖动**（点一下选光标、双击选词）**不该让已经显形的 `**` 消失** ——
+//     用户实测报障：光标在构造内（正显示着 `**`）时在别处按一下，`**` 立刻消失、
+//     松手又回来（闪动）。成因就是「`mousedown` 即挂 `.press-hidden`」。
 //
-// 实现口径（第二十四轮定稿）：**只去墨，绝不改占位**。
-//   * 按住期间由 `typoraInlineMarks` 的 `pressHeld` **冻结显隐装饰**（手势期间谁显形谁折叠不变）；
-//   * CSS `.press-hidden .md-marker:has(> .md-reveal-inline) { color: transparent }` 只把
-//     已显形标记的字色变透明 —— 看不见，但宽度/占位照旧。
+// 实现口径（第二十四轮定稿 + 第二十六轮时机修正，见 typoraInlineMarks 的
+// `pressHeld` / `pressInkHidden` / `PRESS_DRAG_SLOP`）：
+//   * 按下即 **冻结显隐装饰**（手势期间谁显形谁折叠不变、版面一个像素不动）；
+//   * **指针移动超过 4px 之后**才由 CSS
+//     `.press-hidden .md-marker:has(> .md-reveal-inline) { color: transparent }` 去墨 ——
+//     只去墨，宽度/占位照旧。
 // 为什么不能改占位（`font-size: 0` 真折叠、或 `position: absolute` 脱离流）：一行里标记的
 // 宽度会因此变化（一对 `**` 是 15.5px），而浏览器判光标落点、PM 在拖拽每次 `mousemove` 上
 // 重算坐标，都发生在「当时的布局」上 —— 布局一变落点就跑到别的字符（实测：光标在构造内时
 // 按下、标记一收起 ⇒ 整行左移 15px，「点在『地』」落到了下一个字；拖拽中途折叠 ⇒ 整段拖选
 // 塌成一个光标）。
 //
-// 判据分四拍（都在同一份文档上、用**真实鼠标事件**驱动，不假手 store 调用）：
+// 判据分六拍（都在同一份文档上、用**真实鼠标事件**驱动，不假手 store 调用）：
 //   A. 光标落进加粗构造内 → `**` **显形**（有宽度、有字色）
-//   B. 按住左键 → 标记**只剩透明墨**（字色透明），且**正文与标记之后的文字屏幕位置不变**
-//   C. 拖动中（仍按住）→ 依旧透明、位置仍不变
+//   B. 按下左键**不移动** → 标记**仍显形**（字色不透明、宽度照旧），且**版面一个像素都不动**
+//   C. 拖动中（仍按住）→ 去墨（字色透明）、宽度与位置仍不变
 //   D. 松开 → 立刻恢复显形（字色回来）
 //   E. 单击（不拖动）后也恢复正常
-//   F. 拖到编辑区外松手不会留下隐藏态
+//   F. 按住后拖到编辑区外：按下那一拍仍显形、拖出去才去墨；松手不会留下隐藏态
 //
 // 跑法：node tools/_verify-marker-hold.js（先起隔离实例）
 const {
@@ -176,12 +181,20 @@ async function main() {
   s = JSON.parse(await ev(PROBE))
   console.log('B ' + JSON.stringify(s))
   report.check(
-    'B 按住左键期间标记只剩透明墨（字色透明）',
-    s.pressHidden === true && s.inkHidden.every((h) => h === true) && s.widths.every((w) => w > 0),
-    JSON.stringify({ pressHidden: s.pressHidden, colors: s.colors, w: s.widths })
+    'B 按住左键**不拖动** → 标记仍显形（字色不透明、宽度照旧）—— 用户报的「按住就闪」',
+    s.revealed === 2 &&
+      s.inkHidden.every((h) => h === false) &&
+      s.fontSizes.every((f) => f !== '0px') &&
+      s.widths.every((w) => w > 0),
+    JSON.stringify({ revealed: s.revealed, colors: s.colors, fs: s.fontSizes, w: s.widths })
   )
   report.check(
-    'B 隐藏**不改占位**：正文与标记之后文字的屏幕位置一个像素都不变',
+    'B 按下（未拖动）不产生任何隐藏态（根节点没有 .press-hidden）',
+    s.pressHidden === false,
+    JSON.stringify({ pressHidden: s.pressHidden, colors: s.colors })
+  )
+  report.check(
+    'B 按住期间版面不动：正文与标记之后文字的屏幕位置一个像素都不变',
     s.xBravo === geom.xBravo && s.xCharlie === geom.xCharlie,
     JSON.stringify({ now: { xBravo: s.xBravo, xCharlie: s.xCharlie }, before: geom })
   )
@@ -231,24 +244,43 @@ async function main() {
     JSON.stringify({ pressHidden: s.pressHidden, revealed: s.revealed, colors: s.colors })
   )
 
-  // ── F. 在编辑区外松开（拖到左侧栏上放掉）──
+  // ── F. 按住后拖到编辑区外松手（拖到左侧栏上放掉）──
+  // 两拍分开断言：**按下那一拍仍显形**（第二十六轮：按下不拖动不许闪），
+  // **拖出去之后才去墨**；松手不留下隐藏态。
   await mouse('mouseMoved', pt.x, pt.y, 0)
   await mouse('mousePressed', pt.x, pt.y, 1)
   await sleep(200)
-  const duringOutside = JSON.parse(await ev(PROBE))
+  const duringPress = JSON.parse(await ev(PROBE))
+  report.check(
+    'F 按住（还没移动）→ 标记仍显形（按下本身不改屏幕）',
+    duringPress.pressHidden === false && duringPress.inkHidden.every((h) => h === false),
+    JSON.stringify({ pressHidden: duringPress.pressHidden, colors: duringPress.colors })
+  )
   await mouse('mouseMoved', 60, pt.y, 1)
   await sleep(200)
+  const duringOutside = JSON.parse(await ev(PROBE))
+  report.check(
+    'F 拖出编辑区（仍按住）→ 去墨（只有透明墨，宽度与位置照旧）',
+    duringOutside.pressHidden === true &&
+      duringOutside.inkHidden.every((h) => h === true) &&
+      duringOutside.widths.every((w) => w > 0) &&
+      duringOutside.xBravo === geom.xBravo &&
+      duringOutside.xCharlie === geom.xCharlie,
+    JSON.stringify({
+      pressHidden: duringOutside.pressHidden,
+      colors: duringOutside.colors,
+      w: duringOutside.widths
+    })
+  )
   await mouse('mouseReleased', 60, pt.y, 0)
   await sleep(450)
   s = JSON.parse(await ev(PROBE))
-  console.log('F ' + JSON.stringify({ during: duringOutside.pressHidden, after: s.pressHidden }))
+  console.log(
+    'F ' + JSON.stringify({ press: duringPress.pressHidden, out: duringOutside.pressHidden, after: s.pressHidden })
+  )
   report.check(
     'F 拖到编辑区外松手也不会留下隐藏态（且字色恢复）',
-    duringOutside.pressHidden === true &&
-      duringOutside.inkHidden.every((h) => h === true) &&
-      s.pressHidden === false &&
-      s.revealed === 2 &&
-      s.inkHidden.every((h) => h === false),
+    s.pressHidden === false && s.revealed === 2 && s.inkHidden.every((h) => h === false),
     JSON.stringify({ during: duringOutside.pressHidden, after: s.pressHidden, colors: s.colors })
   )
 

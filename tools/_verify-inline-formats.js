@@ -1403,6 +1403,164 @@ async function main() {
     `${perfDoc3000.parseCalls} 次 / ${PERF_KEYS} 键（修复前 50 段文档实测 5100+ 次）`
   )
 
+  // ═══ L. 按住左键（不拖动）时 `**` 不许消失（用户实测报障，永久断言）═══════════════
+  // 现象：光标在构造内（页面上正显示着 `**`）时，在别处**按下**左键并**按住** ——
+  // 这些 `**` 立刻消失；松开鼠标又出现（按住就闪、松开才回来）。
+  // 成因：`mousedown`（编辑区根节点、捕获）无条件把 `.press-hidden` 挂上，CSS
+  //   `.press-hidden .md-marker:has(> .md-reveal-inline) { color: transparent }`
+  //   把已显形标记的字色变透明（占位照旧 ⇒ 只是「看不见」，所以松手就回来）。
+  // 口径（修后）：**一次没有拖动的按下不改屏幕上的任何东西** ——
+  //   * 按下即**冻结**显隐装饰（版面与「谁显形」全程不变，见 typoraInlineMarks 的 pressHeld）；
+  //   * 去墨（`.press-hidden`）只认「指针在按住期间**真的移动了**」（PRESS_DRAG_SLOP = 4px）。
+  // 「按下会改变选区」不能当判据：PM 在 mousedown 本来就会按落点写一次选区，那是「点一下」
+  // 的固有动作、不是拖动。三条断言：按下不松 ⇒ 全可见；拖动 ⇒ 去墨但**不改占位**；松开 ⇒ 恢复。
+  {
+    const L_DOC = 'alfa **bravo** charlie\n'
+    /** 标记现状：文本 / 显形数 / 字色是否透明 / 字号 / 宽度 / 两个参考字屏幕左缘 / 根节点类 */
+    const L_PROBE = `JSON.stringify((() => {
+      const marks = [...document.querySelectorAll('.ProseMirror .md-marker')]
+      const root = document.querySelector('.ProseMirror')
+      const p = document.querySelector('.ProseMirror p')
+      const cs = marks.map((m) => getComputedStyle(m))
+      const xOf = (word) => {
+        if (!p) return -1
+        const walker = document.createTreeWalker(p, NodeFilter.SHOW_TEXT)
+        while (walker.nextNode()) {
+          const t = walker.currentNode
+          const i = t.data.indexOf(word)
+          if (i < 0) continue
+          const r = document.createRange()
+          r.setStart(t, i)
+          r.setEnd(t, i + 1)
+          return Math.round(r.getBoundingClientRect().left * 10) / 10
+        }
+        return -1
+      }
+      const transparent = (c) => c === 'rgba(0, 0, 0, 0)' || c === 'transparent'
+      return {
+        texts: marks.map((m) => m.textContent),
+        revealed: marks.filter((m) => m.querySelector('.md-reveal-inline')).length,
+        fontSizes: cs.map((c) => c.fontSize),
+        inkHidden: cs.map((c) => transparent(c.color)),
+        widths: marks.map((m) => Math.round(m.getBoundingClientRect().width)),
+        xBravo: xOf('bravo'),
+        xCharlie: xOf('charlie'),
+        pressHidden: !!root && root.classList.contains('press-hidden')
+      }
+    })())`
+    /** 某个词的首字符在视口里的坐标（真实命中点） */
+    const L_POINT = (word) => `JSON.stringify((() => {
+      const p = document.querySelector('.ProseMirror p')
+      if (!p) return { found: false }
+      const walker = document.createTreeWalker(p, NodeFilter.SHOW_TEXT)
+      let node = null
+      while (walker.nextNode()) {
+        if (walker.currentNode.textContent.includes(${JSON.stringify(word)})) { node = walker.currentNode; break }
+      }
+      if (!node) return { found: false }
+      const idx = node.textContent.indexOf(${JSON.stringify(word)})
+      const r = document.createRange()
+      r.setStart(node, idx)
+      r.setEnd(node, idx + 1)
+      const b = r.getBoundingClientRect()
+      return { found: true, x: Math.round(b.left + b.width / 2), y: Math.round(b.top + b.height / 2) }
+    })())`
+    /** 真实鼠标事件（`buttons` 是**按键位掩码**：左键按下 = 1；不传 = 没有键按下） */
+    const mouseAt = (type, x, y, buttons) =>
+      app.send('Input.dispatchMouseEvent', {
+        type,
+        x: Math.round(x),
+        y: Math.round(y),
+        button: type === 'mouseMoved' && !buttons ? 'none' : 'left',
+        buttons,
+        clickCount: 1
+      })
+    const lRead = async () => JSON.parse(await app.ev(L_PROBE))
+
+    await openDoc(L_DOC)
+    await caretAt(9) // 'alfa **bravo** charlie' 的块内偏移 9 = 'bravo' 的 'a'（构造内）
+    const lBase = await lRead()
+    report.check(
+      'L 光标在构造内 → 两侧 ' + '`**`' + ' 显形（后面三段的前提）',
+      lBase.revealed === 2 &&
+        lBase.inkHidden.every((h) => h === false) &&
+        lBase.widths.every((w) => w > 0),
+      JSON.stringify({ revealed: lBase.revealed, colors: lBase.inkHidden, w: lBase.widths })
+    )
+    const lPt = JSON.parse(await app.ev(L_POINT('bravo')))
+    report.check(
+      'L point-found（' + '`bravo`' + ' 首字符的屏幕命中点）',
+      lPt.found === true && Number.isFinite(lPt.x) && Number.isFinite(lPt.y),
+      JSON.stringify(lPt)
+    )
+    await mouseAt('mouseMoved', lPt.x, lPt.y, 0)
+    await sleep(120)
+    await mouseAt('mousePressed', lPt.x, lPt.y, 1)
+    await sleep(300)
+    const lHeld = await lRead()
+    report.check(
+      'L 按住左键不拖动 → ' + '`**`' + ' 一颗都不许消失（用户报的「按住就闪」）',
+      lHeld.revealed === 2 &&
+        lHeld.inkHidden.every((h) => h === false) &&
+        lHeld.fontSizes.every((f) => f !== '0px') &&
+        lHeld.widths.every((w) => w > 0),
+      JSON.stringify({
+        revealed: lHeld.revealed,
+        inkHidden: lHeld.inkHidden,
+        fontSizes: lHeld.fontSizes,
+        widths: lHeld.widths,
+        texts: lHeld.texts,
+        pressHidden: lHeld.pressHidden
+      })
+    )
+    report.check(
+      'L DOM 里仍是那两颗 ' + '`**`' + '（真实文本标记模型没被改动）',
+      lHeld.texts.length === 2 && lHeld.texts.every((t) => t === '**'),
+      JSON.stringify(lHeld.texts)
+    )
+    report.check(
+      'L 按住期间版面一个像素都不动（正文与标记之后文字屏幕位置不变）',
+      lHeld.xBravo === lBase.xBravo && lHeld.xCharlie === lBase.xCharlie,
+      JSON.stringify({ now: { xBravo: lHeld.xBravo, xCharlie: lHeld.xCharlie }, before: { xBravo: lBase.xBravo, xCharlie: lBase.xCharlie } })
+    )
+    // 真的拖动 ⇒ 去墨（第二十四轮的诉求保留：拖选期间标记不跟着进/出），但**不改占位**
+    await mouseAt('mouseMoved', lPt.x + 12, lPt.y, 1)
+    await sleep(300)
+    const lDrag = await lRead()
+    report.check(
+      'L 拖动（仍按住）→ 已显形标记去墨，但宽度与文字位置一字不动',
+      lDrag.pressHidden === true &&
+        lDrag.inkHidden.every((h) => h === true) &&
+        lDrag.widths.every((w) => w > 0) &&
+        lDrag.xBravo === lBase.xBravo &&
+        lDrag.xCharlie === lBase.xCharlie,
+      JSON.stringify({
+        pressHidden: lDrag.pressHidden,
+        inkHidden: lDrag.inkHidden,
+        w: lDrag.widths,
+        now: { xBravo: lDrag.xBravo, xCharlie: lDrag.xCharlie }
+      })
+    )
+    await mouseAt('mouseReleased', lPt.x + 12, lPt.y, 0)
+    await sleep(400)
+    const lAfter = await lRead()
+    report.check(
+      'L 松开 → 字色恢复、隐藏态不残留、版面仍与按下前一致',
+      lAfter.pressHidden === false &&
+        lAfter.revealed === 2 &&
+        lAfter.inkHidden.every((h) => h === false) &&
+        lAfter.widths.every((w) => w > 0) &&
+        lAfter.xBravo === lBase.xBravo &&
+        lAfter.xCharlie === lBase.xCharlie,
+      JSON.stringify({
+        pressHidden: lAfter.pressHidden,
+        revealed: lAfter.revealed,
+        inkHidden: lAfter.inkHidden,
+        now: { xBravo: lAfter.xBravo, xCharlie: lAfter.xCharlie }
+      })
+    )
+  }
+
   // ── 复原 ─────────────────────────────────────────────────────────────────
   await app.ev(
     `(() => { window.__L.settings().set('autoSave', ${JSON.stringify(backup.autoSave)}); return 'ok' })()`

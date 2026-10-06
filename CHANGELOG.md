@@ -163,6 +163,27 @@
 
 ### Fixed
 
+**按下鼠标不再让 `**` 闪一下（用户实测：在别处按下就消失、松开才回来）**
+
+- 现象：光标在一处行内标记内（页面上正显示着 `**`）时，在**别处**按下左键并**按住** ——
+  这些 `**` 立刻消失；松开鼠标又出现。
+- 根因是一条**时序**错误，不是标记重建逻辑错：`typoraInlineMarks` 的 `mousedown`
+  （编辑区根节点、捕获）无条件把 `.press-hidden` 挂上，而 CSS
+  `.press-hidden .md-marker:has(> .md-reveal-inline) { color: transparent }` 把**已显形**标记的
+  字色变透明（占位照旧 ⇒ 所以松手就回来）。「按下即冻结显隐装饰」本身没错（它保证整个手势里
+  版面/显隐一个像素都不变，第二十四轮那些落点结论都靠它），错在把「去墨」也放在按下那一刻。
+- 修法：把两件事拆成两个时机 —— `pressHeld`（按下即冻结装饰）与 `pressInkHidden`
+  （**指针在按住期间移动超过 4px 之后**才去墨）；`mousemove`（document、捕获）判位移，
+  `mouseup` / `pointerup` / `pointercancel` / 窗口 `blur` 的收尾不变。「拖选时先别冒 `**`」的
+  诉求保留：去墨只改字色、不改占位，拖选一开始就隐藏、松开即恢复。
+- 验收（先确认**会红**、重建后转绿）：`_verify-inline-formats.js` 新增 L 段 7 条 ——
+  修前 **188/189**（唯一 FAIL = 「按住左键不拖动 → `**` 一颗都不许消失」，实测
+  `inkHidden:[true,true] pressHidden:true`），修后 **189/189**；`_verify-marker-hold.js`
+  的「按下」那一拍按新口径改写（修前 11/14，修后 **14/14**）。相邻面
+  `_verify-drag-selection` 10/10、`_verify-round-24` 15/16（1 SKIP）、
+  `_verify-line-end-click` 7/7、`_verify-links` 12/12；单测 **820/820**、`tsc` / `vue-tsc` 0、
+  `eslint --max-warnings 0` 0。
+
 **替换字符标记（状态栏 U+FFFD 警告）跟着解码与保存一起重算（报告 §4.2 P2）**
 
 - 这个标记的含义写在状态栏 tooltip 里："这份文件里有字节没能按当前编码解出来（已显示为
