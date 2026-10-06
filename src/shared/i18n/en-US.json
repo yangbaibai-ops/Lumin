@@ -305,6 +305,8 @@
     "cardEditBehavior": "Editing behaviour",
     "syncScrollDesc": "Syncs both panes by scroll progress",
     "codeLineNumbersDesc": "Shows line numbers beside code blocks",
+    "hideInlineMarkers": "Hide inline markers",
+    "hideInlineMarkersDesc": "Never shows marker characters such as **bold**, *italic*, ~~strike~~ or `code`; saving and export are unaffected",
     "wordGoal": "Word goal",
     "wordGoalDesc": "Shows “current / goal” in the status bar; 0 = no goal",
     "wordGoalHint": "The goal applies to every document (a global setting). Once reached, the status bar cell turns accent-coloured with a check mark — no pop-ups.",
@@ -400,7 +402,8 @@
     "groupHeading": "Headings",
     "groupInline": "Inline styles",
     "groupBlock": "Blocks",
-    "groupInsert": "Insert"
+    "groupInsert": "Insert",
+    "openDevTools": "Open Developer Tools"
   },
   "links": {
     "kindUrl": "URL",
@@ -546,7 +549,7 @@
   "statusbar": {
     "more": "More (theme / language / tags / settings / about)",
     "encodingTooltip": "Document encoding (File → Reopen with encoding)",
-    "encodingReplaced": "Some bytes in this file could not be decoded with the current encoding (shown as \uFFFD). Saving will rewrite those bytes — check that the encoding is correct.",
+    "encodingReplaced": "Some bytes in this file could not be decoded with the current encoding (shown as \\uFFFD). Saving will rewrite those bytes — check that the encoding is correct.",
     "eolTooltip": "Line endings: {eol} — click to switch LF / CRLF (saves immediately)",
     "tagsTooltip": "Tags (comma separated; used for grouping and search)",
     "tagsPlaceholder": "e.g. novel, chapter-1, draft",

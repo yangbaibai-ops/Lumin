@@ -47,6 +47,9 @@ import type { Atom, MarkerSide, StyleKind } from './inlineMarkerCore.ts'
 // 原来 store 直接 import 本模块，把 ~412KB 的 PM 钉进了首屏 entry chunk）。
 import { registerFindHit } from './findBridge.ts'
 import type { FindHitRange } from './findBridge.ts'
+// 「是否显示行内标记字符」的**零依赖桥**（与上面同一条取舍）：设置 store 把开关推过来，
+// 内核在这里读值、并接收「设置变了 ⇒ 重算显隐装饰」的通知（口径与措辞判断见该文件）。
+import { inlineMarkersHidden, onInlineMarkersHiddenChange } from './markerVisibility.ts'
 import { deferAfterPmEvent } from './defer.ts'
 // 核心的符号在本文件再导出一次：既有的导入面（其它模块从这里取用）保持不变
 export {
@@ -858,6 +861,10 @@ const PRESS_DRAG_SLOP = 4
  */
 function pressOnRevealedRun(state: EditorState, pos: number): boolean {
   try {
+    // 「永不显形」（设置打开）或查找命中高亮中：屏幕上**没有任何**已显形的标记 ⇒ 没有可去墨的
+    // 对象。没有这一条就会出现"永不显形、却还在挂去墨类"的怪状态（虽然 CSS 匹配不到任何元素、
+    // 看不出差别，但状态本身不该是矛盾的）。
+    if (inlineMarkersHidden() || findActive()) return false
     const size = state.doc.content.size
     const $pos = state.doc.resolve(Math.max(0, Math.min(pos, size)))
     const block = $pos.parent
@@ -892,6 +899,16 @@ function buildRevealDecorations(
   // `pressInkHidden` / `pressOnRevealedRun` 的说明：冻结在按下即生效；去墨要等指针真的移动，
   // 且**只在按下点落在已显形构造里时**才有资格）。
   if (findActive()) return DecorationSet.empty
+  // 「隐藏行内标记字符」（设置项 `hideInlineMarkers`，用户口径）：打开后**成对标记永不显形**
+  // —— 不推 `.md-reveal-inline`，标记就停在 CSS 的默认折叠态（`font-size: 0`：零占位、文本
+  // 节点仍在、光标照旧可导航）。显隐本来就只由这一层装饰决定，所以"永不显形"只改这一处。
+  //
+  // ⚠️ **只跳过成对标记的显形，不返回空集**（与上面的 `findActive()` 有意不同）：本函数同时
+  // 产出**转义反斜杠的拆分 span**（`pushEscapeDecorations` 的 `.md-escape-backslash` /
+  // `.md-escape-char`）。那不是显隐而是**渲染结构** —— 少了它，`\*` 的反斜杠会直接露在正文里
+  // （`.md-escape-backslash { font-size: 0 }` 正是靠装饰给的），而 Windows 路径那种**非标点
+  // 转义**（`C:\Users\x`）必须常显（折叠它会少字符）。所以转义那条路径照旧，只关成对标记。
+  const markersHidden = inlineMarkersHidden()
   const { from, to } = state.selection
   const decos: Decoration[] = []
   state.doc.descendants((node, pos) => {
@@ -903,13 +920,15 @@ function buildRevealDecorations(
     }
     // 清单是块内相对偏移（块内容起点 = pos + 1），这里加回绝对位置
     const base = pos + 1
-    for (const r of inv.runs) {
-      const rs = base + r.start
-      const re = base + r.end
-      // 左右边界均含：光标落在正文/标记内或紧贴构造两端（`|**s**`、`**s**|`）
-      // 都展开标记（可继续选中/编辑 `*`），完全移入相邻普通文本才折叠
-      if (from <= re && to >= rs) {
-        decos.push(Decoration.inline(rs, re, { class: 'md-reveal-inline' }))
+    if (!markersHidden) {
+      for (const r of inv.runs) {
+        const rs = base + r.start
+        const re = base + r.end
+        // 左右边界均含：光标落在正文/标记内或紧贴构造两端（`|**s**`、`**s**|`）
+        // 都展开标记（可继续选中/编辑 `*`），完全移入相邻普通文本才折叠
+        if (from <= re && to >= rs) {
+          decos.push(Decoration.inline(rs, re, { class: 'md-reveal-inline' }))
+        }
       }
     }
     pushEscapeDecorations(decos, inv, base, from, to)
@@ -1189,6 +1208,14 @@ const SET_FIND_HIT = new PluginKey<{
 const SET_PRESS = new PluginKey<boolean>('typora-press-hold')
 
 /**
+ * 「隐藏行内标记字符」开关变了的事务标记：设置改动本身不改文档也不改选区，而显隐装饰只在
+ * `docChanged || selectionSet || findToggled || pressToggled` 时才重算 —— 不认这一条的话
+ * 打开/关闭设置后屏幕**不会变**（要等下一次选区变化才生效，那就不满足"改设置立刻生效"）。
+ * 与 SET_PRESS 同一套做法：空事务 + 元数据，纯观感，不进历史。
+ */
+const SET_MARKERS_HIDDEN = new PluginKey<boolean>('typora-inline-markers-hidden')
+
+/**
  * 由 SET_FIND_HIT 驱动的那份高亮装饰（与显隐装饰**分属两个 state 字段**，互不干扰）。
  * 位置直接由 `DecorationSet` 保管：文档被编辑后装饰跟随 `tr.mapping` 自动平移。
  */
@@ -1417,6 +1444,29 @@ export const TyporaInlineMarks = Extension.create({
         /* 视图正在销毁时忽略：下一次选区变化会重建 */
       }
     }
+    /**
+     * 「隐藏行内标记字符」设置变了 ⇒ 立刻重算显隐装饰（不用重开文档）。
+     *
+     * 为什么走**空事务 + 元数据**而不是直接改装饰：PM 只在 `apply` 认的条件成立或
+     * `props.decorations` 被重新求值时才把装饰落到 DOM 上 —— 直接改模块量什么都不发生
+     * （与 `setFindHit` 踩过的坑同源）。这里与 `SET_PRESS` 是同一套做法。
+     *
+     * 值本身不在内核里存第二份：`buildRevealDecorations` 每次都从零依赖桥现读
+     * （`inlineMarkersHidden()`），所以启动顺序（设置先加载 / 编辑器先建）两边都对。
+     */
+    const refreshMarkerVisibility = (): void => {
+      if (view.isDestroyed) return
+      try {
+        const v = this.editor.view as unknown as {
+          state: EditorState
+          dispatch: (tr: Transaction) => void
+        }
+        v.dispatch(v.state.tr.setMeta(SET_MARKERS_HIDDEN, inlineMarkersHidden()))
+      } catch {
+        /* 视图正在重建时忽略：下一次选区变化/文档变更会带上新值 */
+      }
+    }
+    onInlineMarkersHiddenChange(refreshMarkerVisibility)
     view.dom.addEventListener('mousedown', onDown, true)
     // 去墨的判据只能来自指针移动：挂在 document 上（按下后指针可能已经在编辑区之外），
     // 用捕获阶段（早于 PM 与各节点自己的 mousemove 处理）—— 它只切一个 CSS 类，不改版面，
@@ -1443,6 +1493,8 @@ export const TyporaInlineMarks = Extension.create({
       lastFindHitDecos = DecorationSet.empty
       // 注销查找高亮的桥：视图销毁后 store 再调 setFindHit 就是空操作（不该打到旧视图上）
       registerFindHit(null)
+      // 注销「隐藏行内标记字符」的通知（同上：不该再打到已销毁的视图上）
+      onInlineMarkersHiddenChange(null)
       if (ownView === this.editor.view) ownView = null
     })
   },
@@ -1617,7 +1669,7 @@ export const TyporaInlineMarks = Extension.create({
             return lastRevealDecos
           },
           /**
-           * 五个重建条件：
+           * 六个重建条件：
            *   * `tr.docChanged` / `tr.selectionSet` —— 原有行为（内容或光标变了要重算）；
            *   * 事务里带着抑制开关的元数据 —— 「按住/松开」本身不改文档也不改选区，
            *     不认这一条的话开关翻了装饰集也不会重建（实测：空事务 dispatch 出去，
@@ -1626,7 +1678,11 @@ export const TyporaInlineMarks = Extension.create({
            *     元数据；而「查找开↔关」会改变标记要不要折叠，同样不带 docChanged/selectionSet
            *     （实测：关掉查找栏后标记一直折叠着，`revealed` 停在 0）；
            *   * 事务里带着 `SET_PRESS` 元数据 —— 松开鼠标那一刻要按最终选区重算一次
-           *     （按住期间是冻结的，见下）。
+           *     （按住期间是冻结的，见下）；
+           *   * 事务里带着 `SET_MARKERS_HIDDEN` 元数据 —— 「隐藏行内标记字符」设置变了也要
+           *     立刻重算（同样是空事务 + 元数据；不认它的话改了设置要等下一次选区变化才生效）。
+           *     ⚠️ 这一条**不受下面的冻结拦截**：开关是显式的用户动作、与指针手势无关，
+           *     而且"该显形却不显形"比"手势期间版面动一下"严重得多。
            *
            * ⚠️ **按住指针期间冻结显隐装饰**（`pressHeld` 时原样返回旧集合）：
            * 一行里标记的宽度随显隐变化（一对 `**` 是 15.5px），而按下/拖动期间浏览器在判
@@ -1654,8 +1710,9 @@ export const TyporaInlineMarks = Extension.create({
               lastFindHitDecos = lastFindHitDecos.map(tr.mapping, tr.doc)
             }
             const pressToggled = tr.getMeta(SET_PRESS) !== undefined
-            if (tr.docChanged || tr.selectionSet || findToggled || pressToggled) {
-              if (pressHeld && !tr.docChanged) return oldSet
+            const markersToggled = tr.getMeta(SET_MARKERS_HIDDEN) !== undefined
+            if (tr.docChanged || tr.selectionSet || findToggled || pressToggled || markersToggled) {
+              if (pressHeld && !tr.docChanged && !markersToggled) return oldSet
               lastRevealDecos = buildRevealDecorations(newState, decoCache)
               return lastRevealDecos
             }

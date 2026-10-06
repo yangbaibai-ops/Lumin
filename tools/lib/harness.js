@@ -24,6 +24,7 @@
 const DEFAULT_PORT = Number(process.env.LUMIN_DEBUG_PORT || 9222)
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 const path = require('path')
+const os = require('os')
 const { spawnSync, spawn } = require('child_process')
 
 function cdpUrl(port, pathname = '/json') {
@@ -192,7 +193,31 @@ async function showToolbar(app, ms = 4000) {
   return false
 }
 
-/** connect：等页面 → attach → 返回句柄（不自动 settle，调用方按需） */
+/**
+ * 隔离实例的 **stdout 日志文件**（主进程 `console.log` 的落点）。
+ *
+ * 为什么要有这个约定：主进程在 GUI 子系统里**没有控制台**，`console.log` 平时谁也看不见；
+ * `tools/start-isolated.ps1` 用 `Start-Process -RedirectStandardOutput` 把它落到了
+ * `%TEMP%\lumin-instance-<userData 目录名>-out.log` —— 于是「主进程到底有没有收到这条 IPC /
+ * 打了什么」变成**可读的事实**。文件名口径只有一处：就是那个 ps1（这里按同一规则拼）。
+ *
+ * 典型用法（`_verify-devtools.js`）：点了工具栏那枚按钮后，读这里的
+ * `[devtools] opened window=N already=…` 行 —— `contextBridge` 暴露的 API 对象是**只读**的
+ * （页面里 monkey-patch 不了，第一版因此拿到恒空的计数、断言假红），主进程日志才是
+ * "渲染层 → IPC → 主进程"真的走通了的证据。
+ *
+ * 手工起的实例若没走 run-suites，套件仍能按同一规则读到文件；真读不到时返回的路径不存在，
+ * 调用方应**如实 SKIP**依赖它的断言（不要判红）。
+ */
+function instanceLog(userData = process.env.LUMIN_ISOLATED_USERDATA) {
+  if (process.env.LUMIN_INSTANCE_LOG) return process.env.LUMIN_INSTANCE_LOG
+  if (!userData) return null
+  return path.join(os.tmpdir(), `lumin-instance-${path.basename(userData)}-out.log`)
+}
+
+/**
+ * connect：等页面 → attach → 返回句柄（不自动 settle，调用方按需）
+ */
 async function connect({ port = DEFAULT_PORT, timeoutMs = 30000, bringToFront = true } = {}) {
   const page = await waitForAppPage({ port, timeoutMs })
   const app = await attach(page)
@@ -658,6 +683,7 @@ module.exports = {
   openDocWith,
   startIsolated,
   spawnApp,
+  instanceLog,
   Reporter,
   fatal
 }

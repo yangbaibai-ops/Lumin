@@ -727,5 +727,45 @@
   "只需要测试这个功能，之前已经有的逻辑和功能统统不需要再测试一遍"。
   （改动面只有一个 composable 里的三行 + 一个 store 字段，`vue-tsc` / `eslint` / build 全绿。）
 
+### 4.88 开发者工具：取消 F12，改由顶部工具栏进入
+
+**用户口径**：「取消点击 F12 出现开发者工具的功能，取而代之的是在顶部工具栏中添加一项：
+'打开开发者工具'，点击就出现开发者工具。」
+
+#### 一、F12 那条路是怎么来的、怎么拆
+
+来源是 `src/main/index.ts` 的 `optimizer.watchWindowShortcuts(window)`
+（`@electron-toolkit/utils`）：开发态 `input.code === 'F12'` 直接
+`webContents.openDevTools({ mode: 'undocked' })`；打包态则屏蔽 `Ctrl+R` 与
+`Ctrl+Shift+I`（**漏了 macOS 的 `Cmd+Alt+I`**）。它只能整包开关，所以"只去掉 F12"在那一层做不到。
+
+现在换成显式策略（新增 `src/shared/shortcuts.ts`，纯函数、有单测）：
+
+| 键                        | 开发态          | 打包态 | 理由                                                       |
+| ------------------------- | --------------- | ------ | ---------------------------------------------------------- |
+| `F12`                     | **屏蔽**        | 屏蔽   | 用户要求取消的那条；不再有任何隐式 DevTools 入口           |
+| `Ctrl+Shift+I`/`Cmd+Alt+I` | **屏蔽**       | 屏蔽   | Chromium 的另一条 DevTools 快捷键（打包态补上 macOS 那条） |
+| `Ctrl+R` / `Cmd+R` / `F5` | 接管=重新加载   | 不接管 | 开发刚需，且与 DevTools 无关                               |
+| `F11`                     | 接管=全屏       | 不接管 | 同上                                                       |
+
+原生菜单里 `role: 'toggleDevTools'` 那条**保留**（用户没要求去掉；菜单栏默认隐藏，
+不影响"工具栏是渲染层唯一入口"这件事）。
+
+#### 二、工具栏那一项
+
+快捷工具栏右侧固定入口多一枚 `[data-open-devtools]`（图标 `monitor`，文案走
+`toolbar.openDevTools` 三语键）。它**不进** `shared/toolbarItems.ts` 的可调整目录 ——
+目录里的项目可被逐项隐藏，而"开发者工具打不开"不该让用户先想起来自己藏了哪个按钮。
+
+接线：IPC `app:openDevTools` / `app:closeDevTools`（按 `event.sender` 定位窗口，不用
+`getFocusedWindow()`），`mode: 'detach'` 独立窗口，返回 `{ ok, alreadyOpen, windowId }`。
+
+#### 三、验收
+
+- 新增 `tools/_verify-devtools.js`（**已登记进默认矩阵**）：工具栏里真有那一项 →
+  点击真的走 IPC 且调试端口的 `/json/list` 多出一个 devtools 目标 → 再点一次不报错
+  （`alreadyOpen: true`）→ 关闭后目标消失 → **按 F12 不再出现 devtools 目标**；
+- 新增 `tests/shortcuts.test.mjs` 6 条把"哪些键被屏蔽/保留"钉死（单测 820 → 827，含同期并入的另两条守卫）。
+
 ---
 

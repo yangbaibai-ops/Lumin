@@ -76,7 +76,7 @@ _本手册随代码演进持续更新；任何涉及编辑器内核的改动（�
 | [08a-fix-log-1.md](./08a-fix-log-1.md) | 4.39–4.52 | 编码/打包/草稿语义/安装链路 |
 | [08b-fix-log-2.md](./08b-fix-log-2.md) | 4.53–4.64 | 元数据与历史 / 数据流账本 / 套件迁移 |
 | [08c-fix-log-3.md](./08c-fix-log-3.md) | 4.65–4.73 | 查找替换 / 数学公式 / 一致性与验收 |
-| [08d-fix-log-4.md](./08d-fix-log-4.md) | 4.74–4.85 | 草稿弹窗 / 版式与主题 / 状态栏重排 |
+| [08d-fix-log-4.md](./08d-fix-log-4.md) | 4.74–4.85、4.88 | 草稿弹窗 / 版式与主题 / 状态栏重排 / 开发者工具的入口 |
 | [08e-wave-records.md](./08e-wave-records.md) | 4.86–4.87 | 两波按报告优化的交付记录 |
 
 - 线上（live）的按波优化台账：[docs/optimization-waves.md](../../optimization-waves.md)

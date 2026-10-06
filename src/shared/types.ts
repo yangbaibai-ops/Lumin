@@ -69,6 +69,14 @@ export interface AppSettings {
   splitRatio: number // 分屏对比视图左右宽度比（左面板占比 0.25~0.75）
   syncScroll: boolean // 分屏对比视图左右滚动进度同步
   codeLineNumbers: boolean // 代码块是否显示行号，默认开
+  /**
+   * 隐藏行内标记字符（`**`/`*`/`~~`/`` ` `` 这些**成对标记**的源码字符）。
+   *
+   * 默认 `false` = 现在的行为：光标落进构造（或紧贴两端）时按需显形，移出即折叠。
+   * 打开后 = **永不显形**（所见即所得里任何情况下都不显示这些标记字符）。
+   * 只影响**显示**：标记仍是文档里的真实文本，保存/导出/往返一个字节都不变。
+   */
+  hideInlineMarkers: boolean
   /** 链接指向的文件/文件夹不存在时的处理策略（询问 / 总是创建 / 从不创建） */
   linkCreateMode: LinkCreateMode
   /** 启动时恢复上次会话（文档 + 光标 + 滚动位置）；关闭则每次启动都进欢迎页 */
@@ -621,6 +629,13 @@ export interface LuminAPI {
     getDiagnostics: () => Promise<string>
     /** 打开日志目录（`%TEMP%`）：不接受参数，固定打开我们自己的目录 */
     openLogDir: () => Promise<string>
+    /**
+     * 打开**本窗口**的开发者工具（顶部工具栏那项「打开开发者工具」）。
+     * `mode: 'detach'` 独立窗口，不挤坏文档布局；返回值可观测（工具栏套件据此断言）。
+     */
+    openDevTools: () => Promise<{ ok: boolean; alreadyOpen?: boolean; error?: string }>
+    /** 关闭本窗口的开发者工具（同一项的收起动作；返回它此前是否开着） */
+    closeDevTools: () => Promise<{ ok: boolean; wasOpen?: boolean; error?: string }>
   }
   file: {
     /**

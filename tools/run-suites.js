@@ -95,6 +95,8 @@ const DEFAULT_SUITES = [
   '_verify-toc.js', // 目录 [TOC]：插入 / 渲染 / 点击跳转 / 往返 / 重载还原（原两条 0 断言探针合并升级）
   '_verify-notifications.js', // 通知中心整体（CRUD / 顶部通知带 / 步进 / 多语言 / 重载存活 / 兼容层）
   '_verify-toolbar-settings.js', // 快捷工具栏：空白区右键菜单 + 显隐与排序设置
+  // 开发者工具的入口与「取消 F12」：工具栏那项真的开得起来 + 按 F12 不再出现 devtools 目标
+  '_verify-devtools.js',
   '_verify-settings-layout.js', // 设置页在 940×600 / 125% 缩放下的横向布局（导航跟窗口走 + 主题卡 3 列）
   '_verify-zorder.js', // 浮层叠放顺序：--z-* 令牌真的到 DOM + 实测顺序（70 < 120 < 140 < 150…）
   '_verify-visual-scale.js', // 视觉尺度：字号令牌生效 + 计算字号/圆角都落在文档化档位里
@@ -316,10 +318,18 @@ function killTempInstances() {
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 
-/** 起一个隔离实例（日志落文件：直接管道会把 launcher 的 Start-Process 输出挂住） */
+/**
+ * 隔离实例的 stdout 日志文件（`startInstance` 写、套件读）。
+ * 口径与读取入口只有一处：`lib/harness.js` 的 `instanceLog()`（ps1 用同一规则拼文件名），
+ * 并通过 `LUMIN_INSTANCE_LOG` 传给套件（见 `runSuite` 的环境变量）。
+ */
+const instanceLog = require('./lib/harness').instanceLog
+
+/** 起一个隔离实例（**launcher** 的日志落文件：直接管道会把 Start-Process 的输出挂住。
+ *  ⚠️ 这不是主进程 stdout —— 后者的落点见 `instanceLog()` 的说明） */
 function startInstance(port, userData, cleanupOnly = false) {
-  const log = path.join(os.tmpdir(), `lumin-suites-${path.basename(userData)}.log`)
-  const fd = fs.openSync(log, 'w')
+  const launchLog = path.join(os.tmpdir(), `lumin-suites-${path.basename(userData)}.log`)
+  const fd = fs.openSync(launchLog, 'w')
   const args = [
     '-NoProfile',
     '-ExecutionPolicy',
@@ -334,7 +344,7 @@ function startInstance(port, userData, cleanupOnly = false) {
   if (cleanupOnly) args.push('-CleanupOnly')
   const r = spawnSync('powershell', args, { cwd: ROOT, stdio: ['ignore', fd, fd] })
   fs.closeSync(fd)
-  const text = fs.existsSync(log) ? fs.readFileSync(log, 'utf-8') : ''
+  const text = fs.existsSync(launchLog) ? fs.readFileSync(launchLog, 'utf-8') : ''
   return { code: r.status, text }
 }
 
@@ -356,7 +366,11 @@ function runSuite(file, port, timeoutMs, userData) {
     // 不是同一个 profile，于是第二个进程拿不到单实例锁、自己成了首实例、开出的窗口不在
     // 本运行器的调试端口上，表现成「一个窗口都没多出来」的假失败（实测 25/31，其中 6 条
     // 全红）。把实例真实目录告诉套件，才能真的走到「转交 → 新窗口」那条路径上。
-    LUMIN_ISOLATED_USERDATA: userData
+    LUMIN_ISOLATED_USERDATA: userData,
+    // 实例 stdout 日志的**确切路径**（本函数上面那个文件）：套件读它就能看到主进程
+    // `console.log` 打了什么 —— GUI 子系统里主进程没有控制台，这是唯一可读的出口。
+    // 用例见 `_verify-devtools.js`（断言工具栏那枚按钮真的把 IPC 送到了主进程）。
+    LUMIN_INSTANCE_LOG: instanceLog(userData)
   }
   const r = spawnSync(process.execPath, [path.join(TOOLS, file)], {
     cwd: ROOT,

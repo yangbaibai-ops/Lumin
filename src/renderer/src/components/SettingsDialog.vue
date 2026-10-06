@@ -1298,6 +1298,23 @@ function formatTime(ms: number): string {
                           @update:model-value="(v) => settings.set('codeLineNumbers', v)"
                         />
                       </div>
+                      <!-- 行内标记字符（用户口径：默认**显示**，开关打开后「永不显形」）。
+                           只影响所见即所得的显隐装饰层（typoraInlineMarks）：标记仍是文档里的
+                           真实文本，保存/导出/往返字节不变；字面量标记与转义反斜杠不在这个口径里
+                           （见 shared/defaults.ts 的说明）。`data-setting-*` 是给 CDP 套件的
+                           稳定锚点（与 data-setting-word-goal 同一约定，不按本地化文字找控件）。 -->
+                      <div class="set-row" :title="t('settings.hideInlineMarkersDesc')">
+                        <div>
+                          <p class="set-row-label">{{ t('settings.hideInlineMarkers') }}</p>
+                          <p class="set-row-desc">{{ t('settings.hideInlineMarkersDesc') }}</p>
+                        </div>
+                        <SettingSwitch
+                          :model-value="settings.hideInlineMarkers"
+                          :label="t('settings.hideInlineMarkers')"
+                          data-setting-hide-inline-markers
+                          @update:model-value="(v) => settings.set('hideInlineMarkers', v)"
+                        />
+                      </div>
                       <div class="set-row" :title="t('settings.remoteImagesHint')">
                         <div>
                           <p class="set-row-label">{{ t('settings.remoteImages') }}</p>

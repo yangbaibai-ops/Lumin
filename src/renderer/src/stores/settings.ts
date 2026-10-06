@@ -2,6 +2,9 @@ import { defineStore } from 'pinia'
 import type { AppSettings, EffectiveTheme, Language, ThemeMode } from '../../../shared/types'
 import { defaultSettings } from '../../../shared/defaults'
 import { setLanguage } from '../i18n'
+// 行内标记字符的显隐开关 ⇄ 编辑器内核：走**零依赖桥**（store 一侧不认识 ProseMirror，
+// 否则整份 PM 会被钉进首屏 entry chunk —— 见 lib/editor/markerVisibility.ts 与 findBridge.ts）
+import { setInlineMarkersHidden } from '../lib/editor/markerVisibility'
 
 export const useSettingsStore = defineStore('settings', {
   state: (): AppSettings => ({ ...defaultSettings }),
@@ -48,6 +51,12 @@ export const useSettingsStore = defineStore('settings', {
       document.documentElement.style.setProperty('--editor-lh', String(this.lineHeight))
       document.documentElement.style.setProperty('--editor-font', this.fontFamily)
       setLanguage(this.language)
+      // 行内标记字符的显隐（用户口径：默认显示；打开后所见即所得里永不显形）。
+      // 放在 applyAll 里是因为它被**五条路径**共用：启动 init / 本地 set / 主进程改了设置
+      // (applyRemote) / 导入设置 (applyImport) / 恢复默认 (reset) —— 少一条就会出现
+      // "设置页显示已打开、正文里标记还在闪"的不一致。内核收到通知后自己重算显隐装饰，
+      // 所以改完立刻生效、不用重开文档（值没变时桥里早退，不惊动内核）。
+      setInlineMarkersHidden(this.hideInlineMarkers)
     },
     /** 更新设置：立即应用（主题/语言/字体）并节流持久化 */
     set<K extends keyof AppSettings>(key: K, value: AppSettings[K]): void {

@@ -1689,6 +1689,128 @@ async function main() {
       mAOk(mFinal) && mFinal.pressHidden === false,
       JSON.stringify(mFinal)
     )
+
+    // ── N. 「隐藏行内标记字符」设置（用户口径：默认显示，打开后永不显形）────────────────
+    // 设置项语义与措辞判断见 `shared/defaults.ts` 与 `lib/editor/markerVisibility.ts`：
+    // 开关名是「隐藏行内标记字符」（`hideInlineMarkers`，默认 false = 现状）—— 打开 ⇒
+    // 所见即所得里**任何情况下**都不再显形成对标记（`**`/`*`/`~~`/`` ` ``）。
+    // 只影响显示层：标记仍是文档里的真实文本，保存/导出/往返一个字节都不变（下面有字节断言）。
+    // 四条断言：① 设置关闭 ⇒ 照常显形；② 在**设置页真实点一下开关** ⇒ 立刻不显形（不用重开
+    // 文档）+ 两侧都落库；③ 光标在构造内外来回（含紧贴两端）⇒ 仍一枚都不显形；④ 再点回来 ⇒
+    // 又能显形（活开关，不是一次性）。开关按 `data-setting-*` 锚点找，不按本地化文字找。
+    const N_DOC = 'alfa **bravo** charlie\n'
+    const nRead = async () => JSON.parse(await app.ev(L_PROBE))
+    /** 设置页里那条开关（Vue 会把非 prop 的 data-* 透传到 SettingSwitch 的 <button> 上） */
+    const N_SWITCH = '[data-setting-hide-inline-markers]'
+    const nClickSwitch = async () => {
+      const raw = await app.ev(`JSON.stringify((() => {
+        const el = document.querySelector('${N_SWITCH}')
+        if (!el) return { found: false }
+        if (typeof el.scrollIntoView === 'function') el.scrollIntoView({ block: 'center' })
+        const r = el.getBoundingClientRect()
+        return {
+          found: true,
+          x: Math.round(r.left + r.width / 2),
+          y: Math.round(r.top + r.height / 2),
+          checked: el.getAttribute('aria-checked')
+        }
+      })())`)
+      const box = JSON.parse(raw)
+      if (box.found) {
+        await mouseAt('mouseMoved', box.x, box.y, 0)
+        await mouseAt('mousePressed', box.x, box.y, 1)
+        await mouseAt('mouseReleased', box.x, box.y, 0)
+        await sleep(350)
+      }
+      return box
+    }
+
+    await openDoc(N_DOC)
+    await mCaretInA()
+    await app.ev(`(() => { window.__L.settings().set('hideInlineMarkers', false); return 'ok' })()`)
+    await sleep(300)
+    const nOff = await nRead()
+    const nBytesOff = await app.ev(FLUSH)
+    report.check(
+      'N ① 设置关闭（出厂默认）→ 光标在构造内时 ' + '`**`' + ' 照常显形',
+      nOff.revealed === 2 && nOff.widths[0] > 0 && nOff.widths[1] > 0 && nOff.inkHidden[0] === false,
+      JSON.stringify(nOff)
+    )
+    // 打开设置页（编辑器页签 = 那条开关所在的「编辑行为」卡片）
+    await app.ev(
+      `(() => { const ui = window.__L.ui(); ui.settingsSection = 'editor'; ui.settingsOpen = true; return 'ok' })()`
+    )
+    await sleep(600)
+    const nBox = await nClickSwitch()
+    report.check(
+      'N ② 设置页里能找到这条开关，且默认显示为「关」（不隐藏）',
+      nBox.found === true && nBox.checked === 'false',
+      JSON.stringify(nBox)
+    )
+    const nOn = await nRead()
+    const nBytesOn = await app.ev(FLUSH)
+    await sleep(400) // 设置的落库是 250ms 节流
+    const nStore = await app.ev(`window.__L.settings().hideInlineMarkers`)
+    const nPersisted = await app.ev(
+      `(async () => (await window.luminAPI.settings.getAll()).hideInlineMarkers)()`
+    )
+    report.check(
+      'N ② 打开开关 → 立刻不显形：一枚都没有、字号 0px、宽度 0（不用重开文档）',
+      nOn.revealed === 0 && nOn.fontSizes.every((f) => f === '0px') && nOn.widths.every((w) => w === 0),
+      JSON.stringify(nOn)
+    )
+    report.check(
+      'N ② 隐藏的是**显示**：DOM 里仍是那两颗真实文本 ' +
+        '`**`' +
+        '，且正文真的左移了（真折叠，不是只把字涂透明）',
+      nOn.texts.length === 2 &&
+        nOn.texts.every((t) => t === '**') &&
+        nOn.xBravo < nOff.xBravo &&
+        nOn.xCharlie < nOff.xCharlie,
+      JSON.stringify({
+        texts: nOn.texts,
+        xBravo: [nOff.xBravo, nOn.xBravo],
+        xCharlie: [nOff.xCharlie, nOn.xCharlie]
+      })
+    )
+    report.check(
+      'N ② 保存/导出不受影响：序列化字节与关闭时逐字一致（= 原文）',
+      nBytesOn === nBytesOff && nBytesOn === N_DOC,
+      JSON.stringify({ on: nBytesOn, off: nBytesOff })
+    )
+    report.check(
+      'N ② 开关真的落库：store 与主进程两侧都是 true',
+      nStore === true && nPersisted === true,
+      JSON.stringify({ store: nStore, persisted: nPersisted })
+    )
+    // ③ 光标在构造内外来回（含紧贴两端的 6 / 15）⇒ 都不许显形
+    const nSeen = []
+    for (const pos of [1, 6, 9, 15]) {
+      await app.ev(`(() => { window.__L.ed().commands.setTextSelection(${pos}); return 'ok' })()`)
+      await sleep(200)
+      const s = await nRead()
+      nSeen.push({ pos, revealed: s.revealed, w: s.widths })
+    }
+    report.check(
+      'N ③ 打开后光标在构造内外来回（含紧贴两端）→ 仍一枚都不显形（"任何情况下"）',
+      nSeen.every((s) => s.revealed === 0 && s.w.every((w) => w === 0)),
+      JSON.stringify(nSeen)
+    )
+    // ④ 再点一次开关（关回来）⇒ 又能显形
+    const nBox2 = await nClickSwitch()
+    await mCaretInA()
+    await sleep(250)
+    const nBack = await nRead()
+    const nStore2 = await app.ev(`window.__L.settings().hideInlineMarkers`)
+    report.check(
+      'N ④ 再点一次开关（关回来）→ ' + '`**`' + ' 又能显形（活开关，不是一次性）',
+      nBack.revealed === 2 && nBack.widths[0] > 0 && nBox2.checked === 'true' && nStore2 === false,
+      JSON.stringify({ back: nBack, switchBeforeClick: nBox2.checked, store: nStore2 })
+    )
+    await app.ev(
+      `(() => { window.__L.ui().settingsOpen = false; window.__L.settings().set('hideInlineMarkers', false); return 'ok' })()`
+    )
+    await sleep(300)
   }
 
   // ── 复原 ─────────────────────────────────────────────────────────────────

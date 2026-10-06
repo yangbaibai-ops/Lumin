@@ -2,6 +2,68 @@
 
 ### Added
 
+**设置：隐藏行内标记字符（`hideInlineMarkers`，默认关 —— 用户口径）**
+
+- 用户原话：「设置内容是是否显示例如加粗 `**` 这样的字符，默认开启（按钮显示关闭），
+  用户开启后不展示这样类似的字符。」**措辞判断**：取「默认仍然显示、开关打开才隐藏」——
+  同一句里的「按钮显示关闭」与「默认开启」只有按这个读法才自洽（把"默认开启"读成默认隐藏会
+  与它自己后半句冲突，也会让所有老用户升级后突然看不到 `**`）。所以设置项名是
+  「**隐藏**行内标记字符」，`boolean`，默认 `false`。
+- 位置：**设置 → 编辑器 →「编辑行为」卡片**（`syncScroll` / 代码块行号那一栏），
+  三语都有键（`settings.hideInlineMarkers` / `…Desc`），开关按 `data-setting-hide-inline-markers`
+  取稳定锚点（CDP 套件不按本地化文字找控件）。
+- 语义：打开后所见即所得里**任何情况下**都不再显形成对标记（`**`/`*`/`~~`/`` ` ``），
+  包括光标落进构造、选区紧贴两端 —— 只影响**显示**，标记仍是文档里的真实文本，
+  保存 / 导出 / 往返**一个字节都不变**（套件里有字节断言）。
+- 实现：显隐本来就只由 `typoraInlineMarks` 的装饰层决定 ⇒ `buildRevealDecorations` 在开关
+  打开时不再推 `.md-reveal-inline`（标记停在 CSS 默认的 `font-size: 0` 折叠态：零占位、
+  文本节点仍在、光标照旧可导航）。**不返回空集**：同一个函数还产出转义反斜杠的拆分 span
+  （`.md-escape-backslash` / `.md-escape-char`），少了它 `\*` 的反斜杠会露在正文里、Windows
+  路径那种非标点转义还会少字符。手势逻辑（冻结/去墨）在隐藏态自然失效
+  （`pressOnRevealedRun` 直接返回 false），不留"永不显形却还在去墨"的怪状态。
+- **改设置立刻生效**，不用重开文档：设置 store 的 `applyAll()`（覆盖启动 / 本地改 / 主进程改 /
+  导入 / 恢复默认五条路径）把开关推给新的零依赖桥 `lib/editor/markerVisibility.ts`，
+  内核收到通知后 dispatch 一个带 `SET_MARKERS_HIDDEN` 元数据的空事务让装饰重算
+  （与「查找命中」「按住/松开」同一套机制）。走桥而不是让 store import 内核：后者会把
+  整份 ProseMirror 钉进首屏 entry chunk（`findBridge.ts` 当初就是这个理由）。
+- **口径边界**（写进 `shared/defaults.ts` 与内核注释）：**字面量标记**（未配对 / 切段残留的
+  `*`，`data-side='literal'`）与**转义反斜杠**（`\*`）**不在**这个开关里 —— 前者是用户正文
+  （藏起来等于丢字符），后者的折叠/拆分是同一条渲染结构、且非标点转义必须常显。
+  块级标记（`#` 标题前缀、`>` 引用符，`markers.ts`）也不在这一轮口径里。
+- 验收（先确认**会红**、重建后转绿）：`tools/_verify-inline-formats.js` 新增 N 段 8 条 ——
+  修前 **198/204**（6 条 FAIL 全是 N 段：开关不存在、打开后仍显形 `revealed:2/w:15`、
+  正文没左移、没落库、光标来回仍显形），修后 **204/204**；另有 `tests/settingsDefaults.test.mjs`
+  钉住「默认必须仍是照旧显示」（老 profile 缺键 ⇒ 升级后行为不变）。
+  相邻面：`_verify-marker-hold` / `_verify-settings-layout` / `_verify-a11y` 全绿（见本轮报告）。
+
+### Changed
+
+**开发者工具：F12 不再触发，改由顶部工具栏的「打开开发者工具」进入（用户口径）**
+
+- 用户原话：「取消点击 F12 出现开发者工具的功能，取而代之的是在顶部工具栏中添加一项：
+  '打开开发者工具'，点击就出现开发者工具。」
+- **取消 F12**：`src/main/index.ts` 不再调用 `@electron-toolkit/utils` 的
+  `optimizer.watchWindowShortcuts`（它在开发态用 F12 开/关 DevTools，只能整包开关，
+  且在打包态**漏屏蔽 macOS 的 `Cmd+Alt+I`**）。换成两份可单测的显式策略
+  （新增 `src/shared/shortcuts.ts`）：`devShortcut` 只保留开发态的 `Ctrl/Cmd+R`、`F5`（重新加载）
+  与 `F11`（全屏）；`blockedShortcut` 在**任何构建下**屏蔽 `F12` 与 `Ctrl+Shift+I` / `Cmd+Alt+I`。
+  于是 DevTools 不再有任何键盘入口 —— 口径是"只有工具栏那一项（外加原生菜单里早就有的
+  `role: 'toggleDevTools'`）"。菜单那条**保留**（用户没要求去掉，删了反而少一个入口）。
+- **新增工具栏入口**：快捷工具栏右侧固定入口多一枚「打开开发者工具」
+  （图标 `monitor`、`data-open-devtools` 语义锚点、文案走已有的 `toolbar.openDevTools` 三语键）。
+  它**不进** `shared/toolbarItems.ts` 的可调整目录：目录里的项目能被逐项隐藏，
+  而"开发者工具打不开"这种事不该让用户先想起来"我把哪个按钮藏了"。
+- **接线**：新增 IPC `app:openDevTools` / `app:closeDevTools`（`src/main/ipc.ts`，
+  按 `event.sender` 定位窗口而不是 `getFocusedWindow()`），preload 按既有 `window.luminAPI.app.*`
+  风格暴露，`mode: 'detach'` 独立窗口（不挤坏文档布局），返回值 `{ ok, alreadyOpen, windowId }`
+  可观测（失败会弹通知，不留"点了没反应"）。
+- **验收**：新增 `tools/_verify-devtools.js`（已登记进默认矩阵）——工具栏里真有那一项、
+  点击真的走 IPC 且 `/json/list` 里多出一个 devtools 目标、再点一次不报错且 `alreadyOpen=true`、
+  关闭后目标消失、**按 F12 不再出现 devtools 目标**；新增 `tests/shortcuts.test.mjs`（6 条）
+  把"哪些键被屏蔽 / 哪些被保留"钉死。单测 820 → **827**（含同期并入的另两条守卫）。
+
+### Added
+
 **文件类型图标：`.md` / `.markdown` 用自己的文档图标（与应用图标分开）**
 
 - 用户交付了一枚文档图标（纸页 + 折角 + serif "L" + `M↓` 徽标）。它原来是 450×600、

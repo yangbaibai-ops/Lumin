@@ -305,6 +305,8 @@
     "cardEditBehavior": "编辑行为",
     "syncScrollDesc": "左右两侧按滚动进度同步",
     "codeLineNumbersDesc": "在代码块左侧显示行号",
+    "hideInlineMarkers": "隐藏行内标记字符",
+    "hideInlineMarkersDesc": "不显示加粗 **、斜体 *、删除线 ~~、行内代码 ` 这类标记字符；保存与导出不受影响",
     "wordGoal": "目标字数",
     "wordGoalDesc": "状态栏显示「当前 / 目标」；0 = 不设目标",
     "wordGoalHint": "目标对所有文档生效（全局设置）。达成后状态栏那一格变成强调色并显示对勾，不会弹窗打扰。",
@@ -400,7 +402,8 @@
     "groupHeading": "标题",
     "groupInline": "行内样式",
     "groupBlock": "块级元素",
-    "groupInsert": "插入"
+    "groupInsert": "插入",
+    "openDevTools": "打开开发者工具"
   },
   "links": {
     "kindUrl": "网址",
@@ -546,7 +549,7 @@
   "statusbar": {
     "more": "更多（主题 / 语言 / 标签 / 设置 / 关于）",
     "encodingTooltip": "当前文档编码（文件 → 选择编码重新打开）",
-    "encodingReplaced": "这份文件里有字节没能按当前编码解出来（已显示为 \uFFFD）—— 直接保存会改写它们的字节，请先确认编码是否选对。",
+    "encodingReplaced": "这份文件里有字节没能按当前编码解出来（已显示为 \\uFFFD）—— 直接保存会改写它们的字节，请先确认编码是否选对。",
     "eolTooltip": "当前行尾：{eol} —— 点击切换 LF / CRLF（立即写回）",
     "tagsTooltip": "标签（逗号分隔，用于归类与搜索）",
     "tagsPlaceholder": "例如：小说, 第一章, 草稿",

@@ -8,7 +8,7 @@ import { app, shell, BrowserWindow, nativeTheme, protocol, net, ipcMain, screen 
 import { join, resolve } from 'path'
 import { randomUUID } from 'crypto'
 import { pathToFileURL } from 'url'
-import { optimizer, is } from '@electron-toolkit/utils'
+import { is } from '@electron-toolkit/utils'
 // 窗口图标与任务栏/开始菜单快捷方式/跳转列表**共用同一个文件**（resources/icon.ico，
 // 现行为七档 16/24/32/48/64/128/256 的 32 位 BGRA DIB，由 tools/pack-ico.js 从
 // resources/icon.png 打出；Windows 会按场景挑最合适的尺寸）；不要在这里另引 PNG，
@@ -43,6 +43,8 @@ import * as pathGrants from './services/pathGrants'
 import { defaultSettings } from '../shared/defaults'
 import { paperForTheme } from '../shared/theme'
 import { PROD_CSP } from '../shared/csp'
+// 浏览器级键的接管/屏蔽策略（纯函数，见该模块顶部说明：F12 不再开 DevTools）
+import { blockedShortcut, devShortcut } from '../shared/shortcuts'
 import { recordFatal } from './services/appLog'
 import { mkdirSync } from 'fs'
 import { portableDataDir } from '../shared/portable'
@@ -523,8 +525,44 @@ app.whenReady().then(() => {
   const theme = db.kvGet('settings', defaultSettings).theme
   nativeTheme.themeSource = theme === 'auto' ? 'system' : theme === 'sepia' ? 'light' : theme
 
+  /**
+   * ─── 浏览器级快捷键：**显式列举**，不再整包交给 `optimizer.watchWindowShortcuts` ──────
+   *
+   * 为什么换掉那一行（用户口径）：「取消点击 F12 出现开发者工具的功能，取而代之的是在顶部工具栏
+   * 中添加一项『打开开发者工具』」。`@electron-toolkit/utils` 的 `watchWindowShortcuts` 是一整包
+   * 便利，且**行为随构建而变**（见 node_modules 里的实现）：
+   *   * 开发态：`F12` 开/关 DevTools（`mode: 'undocked'`）—— 就是用户要去掉的那条；
+   *   * 打包态：屏蔽 `Ctrl+R` 与 `Ctrl+Shift+I`（但**漏了 macOS 的 `Cmd+Alt+I`**）。
+   * 它只能整包开或整包关，于是"只去掉 F12"在那一层做不到；留在那里也永远说不清
+   * "到底还有没有别的隐式路径能开 DevTools"（Ctrl+Shift+I 就是另一条）。
+   *
+   * 因此改成两份**看得见、可单测**的策略（`shared/shortcuts.ts`）+ 这里的一小段接线：
+   *   * `devShortcut`（**仅开发态**保留）：`Ctrl+R` / `Cmd+R` / `F5` 重新加载、
+   *     `F11` 全屏。理由：改渲染层后一键回到干净状态是开发刚需，且这两条都与 DevTools 无关；
+   *     打包态一条都不挂（用户不需要，行为与旧实现的打包态一致：只屏蔽、不提供）。
+   *   * `blockedShortcut`（**任何构建下**屏蔽）：`F12` 与 `Ctrl+Shift+I` / `Cmd+Alt+I`。
+   *     这就是本任务的核心：F12 不再打开/关闭开发者工具，也不再有第二条键盘后门。
+   *     DevTools 只从「顶部工具栏 → 打开开发者工具」（`app:openDevTools`）与原生菜单里
+   *     早就存在的 `role: 'toggleDevTools'` 进。
+   *
+   * 注意**不要**再顺手换回 `watchWindowShortcuts`：DevTools 的键盘入口会一起回来。
+   */
   app.on('browser-window-created', (_, window) => {
-    optimizer.watchWindowShortcuts(window)
+    window.webContents.on('before-input-event', (event, input) => {
+      // window 在被销毁的瞬间仍可能收到一次事件（`webContents` 已不可用）——先看 isDestroyed
+      if (window.isDestroyed()) return
+      // 屏蔽优先：任何构建下 F12 / Ctrl+Shift+I 都不许开 DevTools
+      if (blockedShortcut(input)) {
+        event.preventDefault()
+        return
+      }
+      if (!is.dev) return
+      const action = devShortcut(input)
+      if (!action) return
+      event.preventDefault()
+      if (action === 'reload') window.webContents.reload()
+      else window.setFullScreen(!window.isFullScreen())
+    })
   })
 
   // 开发态记录「这份构建是什么时候的」：主进程不热更新，排查错配时第一眼看它

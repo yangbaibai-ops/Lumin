@@ -247,6 +247,47 @@ export function registerIpc(slots: SlotRegistry): void {
    * 是同一个函数算出来的，见 services/appLog.ts）。
    */
   ipcMain.handle('app:openLogDir', () => shell.openPath(appLog.logDir()))
+  /**
+   * 打开 / 关闭**本窗口**的开发者工具（顶部工具栏那项「打开开发者工具」）。
+   *
+   * 为什么要有这条 IPC：F12 那条隐式入口已经拆掉（见 main/index.ts 的显式快捷键表），
+   * 用户口径是"工具栏里点一下就出现"。渲染层只能通过主进程拿到 `webContents`，所以必须有这条通道。
+   *
+   * 为什么是 **detach**（独立窗口）：内嵌模式会把当前文档的渲染面挤窄 —— 用户点它是为了排查，
+   * 不是为了把布局改坏；独立窗口还能拖到第二块屏幕上看。
+   *
+   * 返回值是**可观测的结果**而不是 void：工具栏那项要在套件里被断言"点了真的开起来了"
+   * （`tools/_verify-devtools.js` 除了看 CDP 目标，也直接读这里的返回值）。
+   * 注意用 `fromWebContents` 而不是 `getFocusedWindow()`：后者在被点击的窗口不是前台时
+   * （自动化点击就是这种情况）会把别的窗口的 DevTools 打开。
+   */
+  ipcMain.handle('app:openDevTools', (event) => {
+    const win = BrowserWindow.fromWebContents(event.sender)
+    if (!win || win.isDestroyed()) return { ok: false, error: 'NO_WINDOW' }
+    try {
+      const already = win.webContents.isDevToolsOpened()
+      win.webContents.openDevTools({ mode: 'detach' })
+      // ASCII 输出（Windows 控制台按代码页解读字节，写中文会乱码）
+      console.log(`[devtools] opened window=${win.id} already=${already}`)
+      return { ok: true, alreadyOpen: already, windowId: win.id }
+    } catch (e) {
+      const error = e instanceof Error ? e.message : String(e)
+      console.warn(`[devtools] open failed window=${win.id} error=${error}`)
+      return { ok: false, error }
+    }
+  })
+  /** 关闭本窗口的开发者工具（工具栏那项是开/关二态；收尾也靠它，别把独立窗口留在桌面上） */
+  ipcMain.handle('app:closeDevTools', (event) => {
+    const win = BrowserWindow.fromWebContents(event.sender)
+    if (!win || win.isDestroyed()) return { ok: false, error: 'NO_WINDOW' }
+    try {
+      const was = win.webContents.isDevToolsOpened()
+      if (was) win.webContents.closeDevTools()
+      return { ok: true, wasOpen: was, windowId: win.id }
+    } catch (e) {
+      return { ok: false, error: e instanceof Error ? e.message : String(e) }
+    }
+  })
   ipcMain.handle('app:confirmClose', (event) => {
     const win = BrowserWindow.fromWebContents(event.sender)
     if (win && !win.isDestroyed()) {

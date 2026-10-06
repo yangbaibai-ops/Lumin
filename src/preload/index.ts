@@ -61,6 +61,12 @@ const api: LuminAPI = {
     // 诊断信息（纯文本，不含文档内容）与"打开日志目录"（不接受参数：固定打开我们自己的日志目录）
     getDiagnostics: () => ipcRenderer.invoke('app:getDiagnostics'),
     openLogDir: () => ipcRenderer.invoke('app:openLogDir'),
+    /**
+     * 开发者工具（顶部工具栏那项）：F12 那条隐式入口已拆掉（见 main/index.ts 的显式快捷键表），
+     * 这里是唯一由渲染层发起的入口 —— 主进程用 `mode: 'detach'` 开，返回值可观测。
+     */
+    openDevTools: () => ipcRenderer.invoke('app:openDevTools'),
+    closeDevTools: () => ipcRenderer.invoke('app:closeDevTools'),
     confirmClose: () => ipcRenderer.invoke('app:confirmClose'),
     /** 关窗确认里点了「取消」：让主进程撤掉这一轮的兜底守卫（否则 2.5s/30s 到点仍会强关） */
     cancelClose: () => ipcRenderer.send('app:cancelClose'),
