@@ -324,7 +324,7 @@ async function main() {
   report.check('item-has-icon', itemProbe.hasIcon === true)
 
   // ── B. 点它 → devtools 目标 + 主进程日志 + **焦点不许被顶部栏抢走** ─────────
-  // 焦点读数（用户报障第五轮："点击后焦点紧接着被顶部栏的『文件』抢走"）：
+  // 焦点读数（用户报障第五/八轮："点击后焦点紧接着被顶部栏的『文件』抢走 / 会短暂闪一下"）：
   // 前后各读一次，把"焦点去哪了"钉成数据。判据用 `activeElement` 的**结构**（是否在
   // 顶部栏容器 `.topmenu-root` 里 / 是否在编辑面里），不依赖文案与语言。
   const FOCUS_PROBE = `(() => {
@@ -347,9 +347,58 @@ async function main() {
     return parsed
   }
 
+  /**
+   * 焦点"闪烁"的记录器（用户报障第八轮）：**从点击那一刻起**把每一次焦点变化记下来，
+   * 并且**逐帧**采样 `document.activeElement` —— 后者才是"用户看到什么"的判据：
+   * 若某一帧的 `activeElement` 落在顶部栏里，那一帧就会画出焦点环（=用户看到的那一闪）。
+   *
+   * 为什么要同时记 `focusin` 与帧：焦点会被浏览器在**窗口重新激活**时挪到"文档里第一个可聚焦
+   * 元素"（实测应用侧 `focus()` 调用 0 次），这件事拦不住；能保证的是"同一任务里挪回去"，
+   * 于是那一帧绘制时读到的已经是编辑面 —— 判据就落在"有没有哪一帧画在顶部栏"上。
+   */
+  const FOCUS_RECORDER_INSTALL = `(() => {
+    window.__focusRec = { events: [], frames: [], calls: [] }
+    window.__focusT0 = performance.now()
+    const at = () => Math.round(performance.now() - window.__focusT0)
+    const d = (el) => ({
+      tag: el ? el.tagName : null,
+      group: el && el.getAttribute ? el.getAttribute('data-topmenu-group') : null,
+      top: !!(el && el.closest && el.closest('.topmenu-root')),
+      ed: !!(el && el.closest && el.closest('.ProseMirror')),
+      text: el ? String(el.textContent || '').trim().slice(0, 12) : ''
+    })
+    const rec = (why, el) => window.__focusRec.events.push(Object.assign({ why, t: at() }, d(el)))
+    document.addEventListener('focusin', (e) => rec('focusin', e.target), true)
+    document.addEventListener('focusout', (e) => rec('focusout', e.target), true)
+    window.addEventListener('blur', () => rec('window-blur', document.activeElement))
+    window.addEventListener('focus', () => rec('window-focus', document.activeElement))
+    // 帧采样：rAF 回调在绘制**之前**跑，所以"这一帧采样到顶部栏"≈"这一帧会画出它的焦点环"
+    const tick = () => {
+      window.__focusRec.frames.push(Object.assign({ t: at() }, d(document.activeElement)))
+      window.__focusRaf = requestAnimationFrame(tick)
+    }
+    window.__focusRaf = requestAnimationFrame(tick)
+    // 应用侧主动 focus() 的调用日志（区分"应用挪的"与"浏览器挪的"）
+    const orig = HTMLElement.prototype.focus
+    HTMLElement.prototype.focus = function () {
+      window.__focusRec.calls.push(Object.assign({ t: at() }, d(this)))
+      return orig.apply(this, arguments)
+    }
+    window.__focusReset = () => {
+      window.__focusRec = { events: [], frames: [], calls: [] }
+      window.__focusT0 = performance.now()
+    }
+    return 'ok'
+  })()`
+  const FOCUS_RECORDER_RESET = `(() => { window.__focusReset(); return 'ok' })()`
+  const FOCUS_RECORDER_READ = `JSON.stringify(window.__focusRec)`
+
   if (itemProbe.found) {
     // 点击**前**的焦点（此时应该在刚点过的「帮助」分组按钮上 —— 那是菜单自己的正常状态）
     await readFocus('B-FOCUS-BEFORE-CLICK')
+    // 装记录器并清零：**从点击这一刻起**算（「帮助」按钮上那次焦点是用户自己点的，不算）
+    await ev(FOCUS_RECORDER_INSTALL)
+    await ev(FOCUS_RECORDER_RESET)
     await clickPoint(send, itemProbe.x, itemProbe.y)
     await sleep(600)
 
@@ -384,6 +433,80 @@ async function main() {
       'open-devtools-returns-focus-to-editor',
       focusAfter.inEditor === true || focusAfter.isSourceEditor === true,
       '打开开发者工具后焦点应回到编辑面，实测：' + JSON.stringify(focusAfter)
+    )
+
+    // ── B3. 焦点"闪烁"（用户报障第八轮）：**有没有哪一帧把焦点环画在顶部栏上** ──────
+    // 判据：从点击那一刻起逐帧采样 `document.activeElement`；只要有**任何一帧**落在顶部栏里，
+    // 那一帧就会画出焦点环 —— 用户看到的就是那一下闪。
+    const rec = JSON.parse(await ev(FOCUS_RECORDER_READ))
+    /**
+     * 只看**窗口第一次失活之后**的帧：在这之前顶部栏可能本来就拿着焦点 ——
+     * 用户点「帮助」打开菜单时，焦点按菜单的正常行为落在 `[data-topmenu-group="h"]` 上，
+     * 那不是"被抢"，是用户自己点的（记录器是从点菜单项那一刻清零的，但那次点击的焦点交接
+     * 可能还差一两帧才完成）。真正要防的是**浏览器在窗口重新激活时把焦点塞给顶部栏**，
+     * 而那只可能发生在失活之后。
+     */
+    const firstBlur = rec.events.find((e) => e.why === 'window-blur')
+    const tBlur = firstBlur ? firstBlur.t : null
+    const allTopFrames = rec.frames.filter((f) => f.top)
+    const topFrames = rec.frames.filter((f) => f.top && (tBlur === null || f.t >= tBlur))
+    const topFocusIns = rec.events.filter((e) => e.why === 'focusin' && e.top && (tBlur === null || e.t >= tBlur))
+    const topFocusOuts = rec.events.filter(
+      (e) => e.why === 'focusout' && e.top && (tBlur === null || e.t >= tBlur)
+    )
+    const activationCycle = rec.events.filter(
+      (e) => e.why === 'window-blur' || e.why === 'window-focus'
+    ).length
+    const focusCallsOnTopBar = rec.calls.filter((c) => c.top).length
+    console.log(
+      'B3-FOCUS-TIMELINE ' +
+        JSON.stringify({
+          activationCycleEvents: activationCycle,
+          firstBlurT: tBlur,
+          frames: rec.frames.length,
+          allTopbarFrames: allTopFrames,
+          topbarFramesAfterBlur: topFrames,
+          topbarFocusIns: topFocusIns,
+          topbarFocusOuts: topFocusOuts,
+          focusCalls: rec.calls.length,
+          focusCallsOnTopBar,
+          events: rec.events
+        })
+    )
+    if (activationCycle === 0) {
+      // 本轮 DevTools 没抢到前台（没发生失活/激活）：焦点压根没被挪，这条断言无对象 —— 如实 SKIP
+      report.skip(
+        'no-painted-frame-with-topbar-focus',
+        '本轮没观察到窗口失活/激活循环（DevTools 没抢到前台），焦点不会被挪'
+      )
+      report.skip('topbar-focus-is-corrected-same-task', '同上')
+    } else {
+      report.check(
+        'no-painted-frame-with-topbar-focus',
+        topFrames.length === 0,
+        '有 ' +
+          topFrames.length +
+          ' 帧的焦点落在顶部栏（用户会看到焦点环闪一下）：' +
+          JSON.stringify(topFrames.slice(0, 5))
+      )
+      // 每一次"被浏览器塞进顶部栏"的 focusin，都必须在同一任务内被纠正掉（focusout 紧随其后，
+      // 时间差 ≤5ms；实测 0ms）——这才是"那一帧不会画出焦点环"的机制保证
+      const corrected = topFocusIns.every((fi) => {
+        const fo = topFocusOuts.find((f) => f.t >= fi.t)
+        return !!fo && fo.t - fi.t <= 5
+      })
+      report.check(
+        'topbar-focus-is-corrected-same-task',
+        topFocusIns.length === 0 || corrected,
+        '顶部栏 focusin 后没有在同一任务内被纠正：' +
+          JSON.stringify({ topFocusIns, topFocusOuts })
+      )
+    }
+    // 反向栅栏：纠正必须由**应用**完成（记录器里的 `focus()` 调用），且应用从不把焦点放到顶部栏
+    report.check(
+      'app-refocuses-editor-and-never-focuses-topbar',
+      rec.calls.some((c) => c.ed) && focusCallsOnTopBar === 0,
+      '应用侧 focus() 调用：' + JSON.stringify(rec.calls)
     )
 
     const afterLog = readOpenedLines(logPath)
@@ -441,6 +564,9 @@ async function main() {
       'help-menu-click-opens-devtools-target',
       'open-devtools-does-not-steal-focus-to-topbar',
       'open-devtools-returns-focus-to-editor',
+      'no-painted-frame-with-topbar-focus',
+      'topbar-focus-is-corrected-same-task',
+      'app-refocuses-editor-and-never-focuses-topbar',
       'help-menu-click-reaches-main-ipc',
       'help-menu-can-be-opened-again',
       'second-click-reports-already-open',

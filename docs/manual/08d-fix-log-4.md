@@ -817,48 +817,68 @@
   见 `tests/i18nKeys.test.mjs`）。两者与新入口**功能上重复但不冲突**：键盘入口已全部拦掉，
   留在菜单里的两条是"看得见的显式动作"。
 
-#### 五之二、修：打开 DevTools 后焦点被顶部栏的「文件」抢走（第六轮用户报障）
+#### 五之二、修：打开 DevTools 时焦点会"闪"一下到顶部栏的「文件」（第六/八轮用户报障）
 
-**用户原话**：「点击『帮助』里的『打开开发者工具』后，DevTools 会打开，但紧接着焦点就被顶部栏的
-『文件』抢走了。请分析原因并修复。」
+**用户原话（第六轮）**：「点击『帮助』里的『打开开发者工具』后，DevTools 会打开，但紧接着焦点就被
+顶部栏的『文件』抢走了。请分析原因并修复。」
+**用户原话（第八轮，更细）**：「现在打开开发者工具的时候**还是会短暂聚焦闪烁到顶部栏『文件』上**」
+—— 即最终落点修好了，但**中途那一帧**顶部栏仍然拿到了焦点（焦点环闪一下）。
 
-**因果链**（CDP 实测的焦点时间线，`document.activeElement` 前后各读一次 + `focusin/focusout`
-+ `window` 的 focus/blur 全打点）：
+**因果链**（CDP 实测：`focusin/focusout` + `window` blur/focus 全打点 + **逐帧采样**
+`document.activeElement` + 包一层 `HTMLElement.prototype.focus` 记录调用栈）：
 
 | 时刻 | 事件 | 焦点 |
 | --- | --- | --- |
-| 点正文后 | `focusin` | `.ProseMirror`（编辑面） |
-| 点「帮助」 | `focusin` | `[data-topmenu-group="h"]`「帮助(H)」—— 菜单触发器，正常 |
-| 点菜单项 | `focusout` → 下拉被 `close()` 移除 | `BODY`（被聚焦的按钮从 DOM 消失） |
-| DevTools 起来后 | `focusout`（编辑面）→ `window-blur` | `BODY`（Blink 在失焦时清空 focused element） |
-| 紧接着 | `window-focus` | **已经是 `[data-topmenu-group="f"]`「文件(F)」**，紧跟 `focusin` 到它 |
+| 点正文后 | — | `.ProseMirror`（编辑面） |
+| 点「帮助」 | `focusin` | `[data-topmenu-group="h"]`「帮助(H)」—— 菜单触发器，用户自己点的 |
+| 点菜单项 | `focusout` → 下拉被 `close()` 移除 | 焦点落到 `body`（被聚焦的那个按钮从 DOM 消失） |
+| DevTools 起来（+~190ms） | `focusout`（编辑面）→ `window-blur` | 编辑面（失活前它拿着焦点） |
+| 重新激活的**同一毫秒** | `window-focus` → `focusin`（首个可聚焦元素） | **`[data-topmenu-group="f"]`「文件(F)」** |
 
-即：① `runLeaf` 先关下拉导致焦点落到 `body`；② `mode: 'detach'` 的 DevTools 让主窗口
-blur→focus（实测两次，至 617ms 完成）；③ **Chromium 在窗口重新激活时把焦点给文档里第一个
-可聚焦元素** —— 就是顶部栏第一个分组按钮。**应用里没有任何一行代码去 focus 它**，
-所以只能在"事后把焦点要回来"这一层修。
+要点三条：
+1. **不是应用挪的**：包 `HTMLElement.prototype.focus` 后统计，**应用侧 `focus()` 调用数 = 0** ——
+   是浏览器在窗口**重新激活**时跑 `SetInitialFocus`，把焦点给"文档里第一个可聚焦元素"。
+2. **拦不住**：实测三种"事前避免"全部无效 —— 给编辑面加 `autofocus`、失活前把焦点放回编辑面、
+   给 `body` 加 `tabindex=-1` 再 `focus()`；焦点照样落「文件」。
+   （`tabindex="-1"` 那个偷懒改法还会把"初始焦点"推到下一个可聚焦元素上 —— 闪的位置换个地方而已，
+   而且破坏键盘可达性，**明确不做**。）
+3. **第六轮为什么还闪**：那一版在 `window focus` 里调 `editorStore.instance.commands.focus()`，
+   而 **Tiptap 的 focus 命令内部走 `requestAnimationFrame`** —— 纠正晚**一整帧**（实测被抢 t=200、
+   回到编辑面 t=214）。逐帧采样显示失活后有 **3 帧**画在「文件」上，那就是用户看到的闪。
 
-**修法**（`TopMenuBar.vue` 的 `refocusEditorAfterDevTools`，仅由这一条动作调用）：
+**修法**（`TopMenuBar.vue` 的 `guardFocusWhileOpeningDevTools`，仅由这一条动作调用）：
 
-- 动作成功后立刻把焦点交回**编辑面**（`editorStore.instance.commands.focus()`；
-  源码模式下退到 `textarea.source-editor`），
-- 并**盯住那段激活抖动**：`window` 的 `focus` 事件里再要一次（实测抖动有两次），
-  2.5s 后自动摘掉监听 —— **不做全局钩子、不常驻**；
-- 只在"焦点确实丢了（`body`/`documentElement`）或确实在顶部栏里（`.topmenu-root`）"时才动手：
-  用户若在这段时间自己点了侧栏/对话框，**不抢**；
-- **没有**用 `tabindex="-1"` 之类把顶部栏踢出 tab 序的偷懒改法（那会破坏键盘可达性）。
+- **先同步聚焦编辑面，再去 `await` 开 DevTools 的 IPC**（顺序关键：一进入 await 窗口就可能开始失活）；
+- 在这段激活抖动里监听 `focusin`：一旦目标落在 `.topmenu-root` 里，**当场**用
+  `editor.view.dom.focus({ preventScroll: true })`（**同步** DOM 聚焦，**不用** Tiptap 那条会
+  走 rAF 的命令）挪回编辑面 —— 同一任务内完成，**下一帧绘制读到的已经是编辑面**，那一帧不会画焦点环；
+- 监听只在这次动作后 **2.5s** 内存在；而且只在"窗口刚从失活恢复"的那一小段（blur 之后、
+  下一次 focus 后 300ms 内）才纠正 —— 用户自己点顶部栏时窗口是聚焦状态、早过了这段，**不会被抢**；
+- 2.5s 到点做一次兜底收尾并摘掉所有监听（**不做常驻钩子**）；
 - 顶部栏的键盘契约**没有被改动**：它本来就只有 `Alt+F/E/D/V/H` 开分组 + `Esc` 关（外加原生
-  `<button>` 的 Tab 序），并没有 ←/→/Home/End 或 roving tabindex；本次改动一行代码都没碰
-  `onKeydown` / `openGroup`。回归证据：`tools/_verify-alt-menu.js` **3/3**（Alt+F 仍能开出「文件」
-  菜单与其中的「新建/打开」项）、`tools/_verify-toolbar-settings.js` **38/38**。
+  `<button>` 的 Tab 序），没有 ←/→/Home/End 或 roving tabindex；本次改动一行代码都没碰
+  `onKeydown` / `openGroup`。回归证据：`_verify-alt-menu.js` **3/3**、`_verify-toolbar-settings.js` **38/38**。
+
+**实测效果**（同一套件的逐帧判据）：失活后画在顶部栏的帧数 **3 → 0**；
+`focusin(文件)` 与 `focusout(文件)` 落在**同一毫秒**（同一任务），紧随 `focusin(编辑面)`。
+
+> **事实边界（不可消除的部分）**：`mode: 'detach'` 的 DevTools 抢 OS 前台是**系统行为，无法阻止**；
+> 而且那个 `focusin(文件)` **事件本身仍会发生一次**（浏览器发起的）。我们保证的是
+> **"它不会被画出来"**（没有任何一帧的绘制状态是"顶部栏聚焦"），以及最终焦点回到编辑面。
+> 用户会看到的：DevTools 窗口正常浮出、主窗口内的光标仍在文档里；
+> 不会看到的：顶部栏「文件」上的焦点环闪一下。
 
 #### 六、验收
 
-- `tools/_verify-devtools.js`（**已登记进默认矩阵**）**49 条**：
+- `tools/_verify-devtools.js`（**已登记进默认矩阵**）**52 条**：
   入口在顶部栏帮助里（`data-menu-item` 锚点 + 打开前不游离在 DOM 里）+ **反向**断言编辑区快捷
   工具栏里不再有那枚按钮 → **真实点击路径**（点「帮助」→ 点该项）后 `/json/list` 多出一个
   devtools 目标且主进程日志出现 `[devtools] opened …` → 再点一次报 `alreadyOpen: true` 且
-  目标仍只有 1 个 → 关闭后目标消失 → `F12` 与 `Ctrl+Shift+I` 不再产生 devtools 目标 →
+  目标仍只有 1 个 → 关闭后目标消失 →
+  **焦点闪烁口径**（第八轮新增）：逐帧采样 `activeElement`，断言**失活后没有任何一帧**落在顶部栏
+  （改前 3 帧 / 改后 0 帧），且每次顶部栏 `focusin` 都在**同一任务内**被纠正（`focusout` ≤5ms；
+  实测同毫秒），并有"应用侧 `focus()` 从不指向顶部栏"的反向栅栏 →
+  `F12` 与 `Ctrl+Shift+I` 不再产生 devtools 目标 →
   `F7`/`F11` 留下被拦日志 → `Ctrl+U` 不产生新目标 → 缩放键与 Ctrl+滚轮都不改变 `devicePixelRatio` →
   **`Ctrl+R` / `F5` 不重载**（页面标记 `window.__reloadProbe` 必须还在；拦失败时它会被抹掉）→
   **应用自己的 `Ctrl+Shift+B`（侧栏）/ `Ctrl+,`（设置）/ `Ctrl+Shift+F`（专注模式）仍然生效**
