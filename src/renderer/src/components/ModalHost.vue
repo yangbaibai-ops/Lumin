@@ -2,7 +2,6 @@
 import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useUiStore } from '../stores/ui'
-import Icon from './Icon.vue'
 
 const ui = useUiStore()
 const { t } = useI18n()
@@ -109,12 +108,17 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onKeydown))
 <template>
   <Teleport to="body">
     <Transition name="fade">
-      <!-- ── 提示条本体（顶部，不是居中弹窗）───────────────────────────────────────
-           改前：`fixed inset-0` + `bg-scrim backdrop-blur-[2px]` + `items-center` ——
-           压暗并模糊整个主界面、卡片在正中。现在去掉遮罩与模糊（`.lm-prompt` 里
-           background 透明、两个 filter 都按死），卡片贴窗口上沿居中（`.lm-prompt__card`）。
-           这一层仍是 `inset: 0` 的**透明命中目标**：提示开着时点正文打不到编辑器上
-           （背景 inert），而 `@click.self` 的「点提示之外 = 取消」语义一行没改。
+      <!-- ── 提示条本体（中上方，不是居中弹窗）───────────────────────────────────
+           第一轮改前：`fixed inset-0` + `bg-scrim backdrop-blur-[2px]` + `items-center` ——
+           压暗并模糊整个主界面、卡片在正中。
+           第二轮（用户看了效果后的细化）：卡片**无边框**（边框是用户看到的"黑边框"）、
+           **无图标**、位置在**中上方**（`.lm-prompt__card` 的 `margin-top: min(14vh, 140px)`）、
+           入场是**纯位移**从上方滑出；这一层给**很轻的压暗**（`color-mix(--scrim 45%, transparent)`，
+           仍然禁止任何模糊）。
+           ⚠️ **点提示之外不再取消**（第二轮用户原话：「不可点击其他地方取消这个提示，只能通过
+           按上面的按钮操作」）—— 所以这里**没有** `@click.self`：那一层只是"挡住点击 + 轻压暗"
+           的命中目标（背景 inert：点正文不改光标、不选中、不触发编辑，连滚动也不通）。
+           键盘出路只剩 Esc（见 `closeByEscape`，它与可见的「取消」按钮返回同一个值）。
            ⚠️ `data-top-prompt` 是给套件用的语义锚点（两个提示共用同一套形态）；
            `z-[var(--z-modal)]` 这个类名被 `_verify-zorder.js` 按字符串找，别改写法。 -->
       <div
@@ -130,30 +134,18 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onKeydown))
           t('common.confirm')
         "
         :data-triple="ui.tripleState ? 'true' : undefined"
-        @click.self="
-          ui.tripleState
-            ? ui.resolveTriple('cancel')
-            : ui.confirmState
-              ? ui.resolveConfirm(false)
-              : ui.resolvePrompt(null)
-        "
       >
         <Transition name="lm-prompt-drop" appear>
           <div ref="cardEl" class="lm-prompt__card" tabindex="-1">
             <!-- 三选一确认对话框（关窗「保存 / 不保存 / 取消」）：
                  三个按钮从左到右 = 取消 / 不保存 / 保存，主按钮在最右（Windows 对话框的通行顺序）。
-                 数据类型钩子：`data-triple-*`，套件按它定位（文案会随语言变）。 -->
+                 数据类型钩子：`data-triple-*`，套件按它定位（文案会随语言变）。
+                 ⚠️ 第二轮口径：**不再有图标徽标** —— 用户原话「取消这个提示上面的带有花哨图案的
+                 图标，显示标题、描述和操作按钮即可」，所以这里直接就是 h3 + p + 按钮。 -->
             <template v-if="ui.tripleState">
-              <div class="mb-2 flex items-center gap-3">
-                <div
-                  class="flex h-9 w-9 flex-none items-center justify-center rounded-full bg-accent-soft text-accent-ink"
-                >
-                  <Icon name="save" :size="17" />
-                </div>
-                <h3 class="min-w-0 text-[15px] font-semibold break-words text-ink">
-                  {{ ui.tripleState.title }}
-                </h3>
-              </div>
+              <h3 class="mb-2 min-w-0 text-[15px] font-semibold break-words text-ink">
+                {{ ui.tripleState.title }}
+              </h3>
               <p class="mb-4 text-[13px] leading-relaxed break-words text-ink-2">
                 {{ ui.tripleState.body }}
               </p>
@@ -182,23 +174,11 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onKeydown))
               </div>
             </template>
 
-            <!-- 确认对话框 -->
+            <!-- 确认对话框（同上：无图标，只有标题 / 描述 / 按钮。危险态仍由主按钮的红色表达） -->
             <template v-else-if="ui.confirmState">
-              <div class="mb-2 flex items-center gap-3">
-                <div
-                  class="flex h-9 w-9 flex-none items-center justify-center rounded-full"
-                  :class="
-                    ui.confirmState.danger
-                      ? 'bg-[color-mix(in_srgb,var(--danger)_12%,transparent)] text-danger-ink'
-                      : 'bg-accent-soft text-accent-ink'
-                  "
-                >
-                  <Icon :name="ui.confirmState.danger ? 'trash' : 'info'" :size="17" />
-                </div>
-                <h3 class="min-w-0 text-[15px] font-semibold break-words text-ink">
-                  {{ ui.confirmState.title }}
-                </h3>
-              </div>
+              <h3 class="mb-2 min-w-0 text-[15px] font-semibold break-words text-ink">
+                {{ ui.confirmState.title }}
+              </h3>
               <p class="mb-4 text-[13px] leading-relaxed break-words text-ink-2">
                 {{ ui.confirmState.body }}
               </p>

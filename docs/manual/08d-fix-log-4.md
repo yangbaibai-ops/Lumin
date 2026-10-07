@@ -917,3 +917,83 @@
 
 ---
 
+### 4.89 确认提示第二轮细化：中上方 / 无边框无图标 / 轻微压暗 / 只能靠按钮结束（**用户口径变更**）
+
+**用户原话（第二轮，看了第一轮效果之后）**：
+① 「现在这个新的提示上边框会有黑边框，请取消。」
+② 「优化这个新提示的位置，使其出现在**中上方**的位置，并且动效是该组件**从上方滑出**，
+且**取消这个提示上面的带有花哨图案的图标**，显示标题、描述和操作按钮即可。」
+③ 「出现这个新提示后，后面的内容会**稍稍变得暗一点**，而且**不可点击其他地方取消这个提示**，
+只能通过按上面的按钮操作。」
+
+#### 一、"黑边框"到底是什么（实测计算样式，不是猜）
+
+第一轮把三条路径（未保存 / 比磁盘新 / 关窗保存）的提示改成"出现在应用上方"的卡片时，卡片是
+`border: 1px solid var(--edge)` + `border-top: 3px solid var(--accent)`。CDP 实测（改前跑）：
+
+| 量 | 值 |
+| --- | --- |
+| `cardBorder` | `{top:"3px", right:"1px", bottom:"1px", left:"1px", color:"rgb(107, 114, 128)"}`（顶沿= `--accent`、其余三边 = `--edge`） |
+
+浅色下纸与面板同为纯白（`theme.css` 文件头），那圈 1px `--edge` 就是唯一分界线。**改法**：
+`.lm-prompt__card` 写死 `border: 0`，分层只靠 `--shadow-2`（宽而淡的投影，不是线）。
+
+#### 二、位置、动效与图标（取值与窄窗实测）
+
+| 项 | 改前 | 改后 |
+| --- | --- | --- |
+| `margin-top` | `10px`（几乎贴顶；视口 821 时 `card.top=10`） | `min(14vh, 140px)`（821 高 → **115px** = 0.14×高） |
+| 760×520 窄窗 | `card.top=10`（观感"顶在天花板上"） | `card.top=73`、`card.bottom=202 < 520`、按钮全在视口内 |
+| 入场动效 | `opacity 0.16s` + `transform 0.2s`（`translateY(-12px)` + 淡入混合，像"弹出来"） | **纯 `transform 0.24s`**，起始 `translateY(-28px)`（自上而下滑下来，无缩放无淡入） |
+
+用 `vh` 不用固定 px：视口高变了它仍待在同一**相对**位置；判据 `card.top ∈ [0.10, 0.25] × 视口高`。
+图标三处全删（`ModalHost.vue` 三选一的 `<Icon name="save">`、二选一的
+`<Icon :name="danger ? 'trash' : 'info'">`、草稿提示的 `<Icon name="info">`，连各自的圆底徽标）；
+卡片只剩标题 + 描述 + 按钮（判据 `svg` 数 = 0），危险态仍**只由主按钮的红色**表达。
+
+#### 三、口径变更：透明层 → 轻微压暗，点别处不再取消
+
+这是**用户口径变更**（不是缺陷修复），也是本轮唯一动到既有断言的地方：
+
+| | 第一轮 | 第二轮（现在） |
+| --- | --- | --- |
+| 那一层 | `transparent`（实测 `rgba(0,0,0,0)`） | `color-mix(in srgb, var(--scrim) 45%, transparent)`（实测 `alpha=0.1447`，全量 0.32 → 不到一半） |
+| 模糊 | 禁止（`backdrop-filter: none`） | **仍然禁止**（同一条断言继续守） |
+| 点提示之外 | `@click.self` → cancel / false / null（**= 取消**） | **什么也不发生**（`@click.self` 整个删掉） |
+| 结束方式 | 按钮 · Esc · 点别处 | **按钮**，或 **Esc**（`stores/ui.ts` 的注释已同步改掉"遮罩点击都算取消"） |
+
+- 「稍稍暗一点」落地成可断言判据：**不写死 0.32**，现场造 `background: var(--scrim)` 的探针量全量 alpha，再断言 `0 < 本层 alpha < 全量`（三主题 0.1447 / 0.2025 / 0.153）。
+- 为什么保留 **Esc**：焦点被 Tab 环困在提示里，键盘用户至少要有一条出路。Esc 与可见的「取消/关闭」
+  按钮**返回完全相同的值**（二选一 `false`、三选一 `'cancel'` = 不关窗、输入框 `null`），套件三个
+  状态逐条对答案。**要不要连 Esc 一起废，请用户定** —— 那会让纯键盘用户在"必须作答"的提示里
+  没有任何非按钮出口。
+- **草稿提示的 Esc 仍被吞掉**（`modal-esc-does-not-close` 继续守）：它那两个出口是「恢复 / 丢弃」，没有哪个等于"取消"，键盘出路是 Tab + 回车。
+- **数据安全语义其余一行未改**：默认按钮与按钮集合、每个按钮的返回值、`closeGuard` 判定链、
+  `confirmTriple` 语义、关窗三条出路、30 秒上限与 `deciding` 心跳照旧。
+
+#### 四、验收（改前红 / 改后绿 + 真实关窗路径上的证据）
+
+- `tools/_verify-prompt-top-and-notify-layout.js` **64 条**：改前（HEAD `006dd4c` 的构建）**52/64**，
+  红的 12 条正是本轮改的 12 条（压暗 ×2 现场 `bgAlpha=0`、边框 ×2 现场 `top:"3px"`、图标 ×2
+  `svgs:1`、位置 ×3 现场 `card.top=10` vs 判据 82~205、动效 ×1 `prop:"opacity, transform"`、
+  点别处不再取消 ×1 `{"stillOpen":false,"result":"false"}`、三选一/输入框形态 ×2）；
+  改后 **64/64**（`bgAlpha 0.1447 < 0.32`、`cardBorder` 四边 `0px`、`cardSvgs 0`、`card.top=115`、
+  `drop-motion {fromTransform:"translateY(-28px)", prop:"transform"}`、`narrow card{t:73,b:202}`）。
+- `tools/_verify-close-save-prompt.js` **22 → 29 条**，**单独连跑两次都是 29/29**；新增 6 条在
+  **真实关窗路径**上量：卡片无边框无图标（`["0px"×4]` / `svgs 0` / "是否保存更改？" / 3 按钮）、
+  压暗 `none` + `alpha 0.1447 < 0.32`、`card.top=115 / 视口高 821`、**点别处不取消**（右下角真实
+  点击 → `{"delivered":1,"storeOpen":true,"domOpen":true}`，`delivered=1` 是投递凭证）、
+  **真实 Esc = 取消**（`{"dialogShown":true,"storeOpen":false,"windowAlive":true}`），
+  以及"Esc 后文件未动 / 还能再关一次"。
+- 相邻面：`_verify-draft-banner.js` **29/29**、`_verify-a11y.js` **36/36**（`[aria-modal="true"]` +
+  `role="dialog"` + 可访问名仍在；批跑时 `tree-menu-arrowdown-highlights` 红过一次、单跑 3 次全绿 ——
+  真实按键类的已知环境敏感）、`_verify-zorder.js` **7/7**；门禁：单测 **833/833**、
+  `tsc` / `vue-tsc` / `eslint --max-warnings 0` 全 0、`docs:facts` / `docs:tokens` OK。
+
+#### 五、如实边界
+
+1. **背景仍连滚动都不通、`--scrim` 取 45% 是我按"稍稍"定的**（实测 0.1447）：那一层仍是全视口
+   命中目标，提示开着时不能滚动查看下面的文档（与 alert / Typora 一致）；要更淡/更重只改
+   `.lm-prompt` 这一个百分比（套件判据是"0 < alpha < 全量"，不会因此变红）。
+2. **Esc 要不要一起废**：保留是我的判断（键盘可达性底线），已单独点名等用户定；跨**进程**多窗口
+   仍未证（同第一轮：套件多窗口段开的是同进程第二个窗口）。

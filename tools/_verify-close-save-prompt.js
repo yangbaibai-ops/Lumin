@@ -424,6 +424,168 @@ async function waitDialog(conn, ms = 5000) {
         JSON.stringify({ confirm: dlg.confirm, alt: dlg.alt, cancel: dlg.cancel })
       )
 
+      /**
+       * ─── 第二轮口径（用户看了效果后的细化）在**真实关窗路径**上的证据 ────────────────
+       *
+       * 用户原话：「出现这个新提示后，后面的内容会**稍稍变得暗一点**，而且**不可点击其他地方
+       * 取消这个提示**，只能通过按上面的按钮操作。」
+       *
+       * 于是"点提示之外 = 取消"这条路**被用户口径取消了**（这是口径变更，不是修 bug）：
+       * 关窗这条数据安全路径上，"点别处"从"等于取消（不关窗）"变成"什么也不发生"。
+       * 这里逐条量：① 卡片无边框、卡片里没有图标；② 那一层有**很轻的**压暗（alpha > 0
+       * 且 < `--scrim` 全量）且**无模糊**；③ 卡片落在中上方（0.10~0.25 × 视口高）；
+       * ④ 真的在窗口右下角发一次鼠标点击 → 点击被送达那层（capture 计数 = 1）、
+       * **对话框仍在、`ui.tripleState` 仍非空**（没有静默取消）；⑤ 随后点「取消」照旧有效。
+       */
+      const shape = JSON.parse(
+        await round.conn.ev(`(() => {
+          const root = document.querySelector('[data-triple="true"]')
+          if (!root) return JSON.stringify({ open: false })
+          const card = root.querySelector('.lm-prompt__card')
+          const cs = getComputedStyle(root)
+          const ccs = card ? getComputedStyle(card) : null
+          const cr = card ? card.getBoundingClientRect() : null
+          const alphaOf = (v) => {
+            const s = String(v).trim()
+            if (s.indexOf('rgba(') === 0 || s.indexOf('rgb(') === 0) {
+              const parts = s.slice(s.indexOf('(') + 1, s.lastIndexOf(')')).split(/[,\\/]/).map((x) => x.trim()).filter(Boolean)
+              return parts.length < 4 ? 1 : (parts[3].indexOf('%') >= 0 ? parseFloat(parts[3]) / 100 : parseFloat(parts[3]))
+            }
+            if (s.indexOf('color(') === 0) {
+              const body = s.slice(s.indexOf('(') + 1, s.lastIndexOf(')'))
+              if (body.indexOf('/') < 0) return 1
+              const a = body.split('/')[1].trim()
+              return a.indexOf('%') >= 0 ? parseFloat(a) / 100 : parseFloat(a)
+            }
+            return 1
+          }
+          const probe = document.createElement('div')
+          probe.style.background = 'var(--scrim)'
+          document.body.appendChild(probe)
+          const scrimAlpha = alphaOf(getComputedStyle(probe).backgroundColor)
+          probe.remove()
+          window.__OUTSIDE_CLICKS = 0
+          root.addEventListener('click', () => { window.__OUTSIDE_CLICKS += 1 }, { capture: true })
+          return JSON.stringify({
+            open: true,
+            blur: cs.backdropFilter,
+            bgAlpha: alphaOf(cs.backgroundColor),
+            scrimAlpha,
+            cardBorder: ccs ? [ccs.borderTopWidth, ccs.borderRightWidth, ccs.borderBottomWidth, ccs.borderLeftWidth] : null,
+            cardSvgs: card ? card.querySelectorAll('svg').length : null,
+            cardTop: cr ? Math.round(cr.top) : null,
+            cardBottom: cr ? Math.round(cr.bottom) : null,
+            vh: window.innerHeight,
+            vw: window.innerWidth,
+            title: card && card.querySelector('h3') ? card.querySelector('h3').textContent.trim() : null,
+            hasBody: !!(card && card.querySelector('p')),
+            buttons: card ? card.querySelectorAll('button').length : 0
+          })
+        })()`)
+      )
+      console.log('  SHAPE ' + JSON.stringify(shape))
+      c(
+        'prompt-card-has-no-border-and-no-icon',
+        shape.open === true &&
+          Array.isArray(shape.cardBorder) &&
+          shape.cardBorder.every((w) => w === '0px') &&
+          shape.cardSvgs === 0 &&
+          !!shape.title &&
+          shape.hasBody === true &&
+          shape.buttons === 3,
+        JSON.stringify({ border: shape.cardBorder, svgs: shape.cardSvgs, title: shape.title, buttons: shape.buttons })
+      )
+      c(
+        'prompt-dim-is-light-and-blurless',
+        shape.blur === 'none' && shape.bgAlpha > 0 && shape.scrimAlpha > 0 && shape.bgAlpha < shape.scrimAlpha,
+        `backdropFilter=${shape.blur} 压暗 alpha=${shape.bgAlpha} < --scrim 全量 ${shape.scrimAlpha}`
+      )
+      c(
+        'prompt-card-in-the-upper-middle',
+        typeof shape.cardTop === 'number' &&
+          shape.cardTop >= 0.1 * shape.vh &&
+          shape.cardTop <= 0.25 * shape.vh &&
+          shape.cardBottom <= shape.vh,
+        `card.top=${shape.cardTop}px / 视口高 ${shape.vh}（判据 0.10~0.25×高 = ${Math.round(0.1 * shape.vh)}~${Math.round(0.25 * shape.vh)}px）`
+      )
+      // 点提示之外：真的发一次鼠标点击（窗口右下角，一定在卡片外）
+      await round.conn.send('Input.dispatchMouseEvent', {
+        type: 'mousePressed',
+        x: shape.vw - 30,
+        y: shape.vh - 30,
+        button: 'left',
+        clickCount: 1
+      })
+      await sleep(60)
+      await round.conn.send('Input.dispatchMouseEvent', {
+        type: 'mouseReleased',
+        x: shape.vw - 30,
+        y: shape.vh - 30,
+        button: 'left',
+        clickCount: 1
+      })
+      await sleep(500)
+      const afterOutside = JSON.parse(
+        await round.conn.ev(`(() => JSON.stringify({
+          delivered: window.__OUTSIDE_CLICKS,
+          storeOpen: !!window.__vt.ui().tripleState,
+          domOpen: !!document.querySelector('[data-triple="true"]')
+        }))()`)
+      )
+      console.log('  AFTER-OUTSIDE-CLICK ' + JSON.stringify(afterOutside))
+      c(
+        'outside-click-does-not-cancel-the-close-prompt',
+        afterOutside.delivered === 1 && afterOutside.storeOpen === true && afterOutside.domOpen === true,
+        JSON.stringify(afterOutside) +
+          '（第二轮口径：点别处不再取消；delivered=1 是"点击真的送到了那一层"的投递凭证）'
+      )
+
+      /**
+       * Esc 与可见的「取消」按钮**返回完全相同的值**（第二轮口径：键盘用户在被困住的提示里
+       * 至少要有一条出路）。在**真实关窗路径**上逐条量：按 Esc → 提示关闭、`tripleState` 落空、
+       * 窗口还活着（= 走的是 cancel，不是「保存」也不是「不保存」）。
+       * 之后重新触发一次关窗，把对话框留给下面那条既有的「点取消」路径去验（3.2 秒兜底那条）。
+       */
+      console.log('  → 再关一次窗，按 Esc（必须等于「取消」：提示关掉、窗口活下来）')
+      triggerClose(round.conn)
+      const dlgEsc = await waitDialog(round.conn)
+      await round.conn.send('Input.dispatchKeyEvent', {
+        type: 'keyDown',
+        key: 'Escape',
+        code: 'Escape',
+        windowsVirtualKeyCode: 27
+      })
+      await round.conn.send('Input.dispatchKeyEvent', {
+        type: 'keyUp',
+        key: 'Escape',
+        code: 'Escape',
+        windowsVirtualKeyCode: 27
+      })
+      await sleep(600)
+      const escState = JSON.parse(
+        await round.conn.ev(`(() => JSON.stringify({ storeOpen: !!window.__vt.ui().tripleState }))()`)
+      )
+      const escAlive = await windowAlive()
+      c(
+        'escape-acts-like-cancel-on-the-real-close',
+        dlgEsc.open === true && escState.storeOpen === false && escAlive === true,
+        JSON.stringify({ dialogShown: dlgEsc.open, ...escState, windowAlive: escAlive }) +
+          '（Esc = 「取消」：提示关闭、窗口留着 —— 不许等于保存/不保存）'
+      )
+      c(
+        'escape-leaves-the-file-untouched',
+        disk() === ORIGINAL,
+        JSON.stringify(disk().slice(0, 40))
+      )
+      // 重新触发关窗（把对话框交回下面那条既有的「点取消」+ 3.2 秒兜底路径）
+      triggerClose(round.conn)
+      const dlgAgain = await waitDialog(round.conn)
+      c(
+        'close-prompt-can-be-raised-again-after-escape',
+        dlgAgain.open === true,
+        JSON.stringify({ open: dlgAgain.open, title: dlgAgain.title })
+      )
+
       // 「取消」：窗口必须活下来 —— 而且是**跨过兜底时限**地活下来（旧实现这里 2.5s 就被强关）
       console.log('  → 点「取消」')
       const clickedCancel = await round.conn.ev(clickDialog('cancel'))

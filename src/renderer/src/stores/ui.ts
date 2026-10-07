@@ -46,7 +46,13 @@ export interface TripleConfirmOptions {
   altLabel: string
 }
 
-/** 用户选了哪一个：主按钮 / 中间出口 / 取消（Esc、遮罩点击都算取消） */
+/**
+ * 用户选了哪一个：主按钮 / 中间出口 / 取消。
+ *
+ * ⚠️ 「取消」只剩**两条**入口：提示上的「取消」按钮，以及 **Esc**（两者返回同一个值）。
+ * 第二轮口径起「点提示之外」**不再**算取消（用户原话：「不可点击其他地方取消这个提示，
+ * 只能通过按上面的按钮操作」）—— ModalHost 那一层因此不再挂 `@click.self`。
+ */
 export type TripleConfirmResult = 'confirm' | 'alt' | 'cancel'
 
 export interface ContextMenuItem {

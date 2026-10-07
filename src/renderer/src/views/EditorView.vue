@@ -965,16 +965,22 @@ onBeforeUnmount(() => {
 
     <!-- ── 草稿恢复提示（文件状态逻辑，与内核无关）─────────────────────────────
          触发条件不变：打开文档时发现「当前内容与磁盘不一致」的未保存草稿（`files.draftRestore`）。
-         用户口径（本轮）：**和上面那个确认提示同一套形态** —— 不弹居中窗口、不模糊主界面，
-         而是贴在应用顶部的提示条（`.lm-prompt` / `.lm-prompt__card`，见 overlays.css）；
-         不做出选择就不能继续编辑这个文档。所以这里：
+         用户口径（第一轮）：**和上面那个确认提示同一套形态** —— 不弹居中窗口、不模糊主界面，
+         而是贴在应用上方的提示条（`.lm-prompt` / `.lm-prompt__card`，见 overlays.css）；
+         不做出选择就不能继续编辑这个文档。
+         用户口径（**第二轮细化**）：卡片**无边框、无图标**（只有标题 / 描述 / 按钮）、
+         位置在**中上方**、入场从上方滑下来；背后那层给**很轻的压暗**（仍然不模糊）；
+         并且**点提示之外不再关闭**它 —— 只能按提示上的按钮（或按 Tab 走到按钮再回车）。
+         所以这里：
            * 不是通知、不进 NotificationCenter、也不与通知带混排；
-           * 提示之外**点击不关闭**（`@click.self` 里什么都不做）、Esc 不关闭 —— 必须明确选一个；
+           * 那张卡片里**没有** `@click.self`（点别处什么也不发生），Esc 仍然被 `blockDraftKeys`
+             吞掉 —— 必须明确选「恢复 / 丢弃」其中之一（这两个出口**没有**一个等于"取消"，
+             所以这里不给 Esc 映射任何值；键盘出路是 Tab + 回车/空格，见下面的 Tab 环）；
            * 打开时把焦点给「恢复」（回车即恢复），Tab 只在两个按钮之间循环；
            * `blockDraftKeys` 在捕获阶段吞掉除 Tab/回车/空格外的一切按键 —— 渲染面与源码面
              （textarea）两种编辑态都挡得住，不需要分别去 disable 两个编辑器。
-           * 提示之外的区域是**透明命中目标**（`.lm-prompt` 的 `inset: 0`）：点正文既不动光标、
-             也不选中（背景 inert），但主界面完全看得见、也不再被压暗/糊掉。 -->
+           * 提示之外那层是**命中目标**（`.lm-prompt` 的 `inset: 0`，轻微压暗）：点正文既不动
+             光标、也不选中（背景 inert），但主界面完全看得见、不会被糊掉。 -->
     <Teleport to="body">
       <Transition name="fade">
         <!-- ⚠️ `&& !ui.booting`：**启动期间一律不渲染草稿弹窗**（用户报障的收口那一刀）。
@@ -993,19 +999,12 @@ onBeforeUnmount(() => {
         >
           <Transition name="lm-prompt-drop" appear>
             <div class="lm-prompt__card" @keydown="onDraftModalKeydown">
-              <div class="mb-2 flex items-center gap-3">
-                <div
-                  class="flex h-9 w-9 flex-none items-center justify-center rounded-full bg-accent-soft text-accent"
-                >
-                  <Icon name="info" :size="17" />
-                </div>
-                <h3
-                  id="draft-modal-title"
-                  class="min-w-0 text-[15px] font-semibold break-words text-ink"
-                >
-                  {{ i18n.global.t('editor.draftTitle') }}
-                </h3>
-              </div>
+              <h3
+                id="draft-modal-title"
+                class="mb-2 min-w-0 text-[15px] font-semibold break-words text-ink"
+              >
+                {{ i18n.global.t('editor.draftTitle') }}
+              </h3>
               <p class="mb-2 text-[13px] leading-relaxed break-words text-ink">
                 {{
                   files.draftRestore.path

@@ -7,17 +7,31 @@
 //      （弹出窗口，并模糊后面的主应用内容），而是和浏览器以及 Typora 的 alert 提示一样，
 //      在应用的上方出现，此时聚焦在提示上，不能对其他内容进行修改，但是不影响其他实例。」
 //   ② 「优化下应用内通知（文件以什么编码打开等）的样式，使其通知内布局更合理（按钮、通知内容等）。」
+//   ③ **第二轮细化（用户看了效果之后）**：
+//      * 「现在这个新的提示上边框会有黑边框，请取消。」→ 卡片四个方向都不许有边框（靠阴影立起来）；
+//      * 「优化这个新提示的位置，使其出现在**中上方**的位置，并且动效是该组件**从上方滑出**，
+//        且**取消这个提示上面的带有花哨图案的图标**，显示标题、描述和操作按钮即可。」
+//        → 位置 = 0.10~0.25 × 视口高；入场 = `translateY(-N)` 自上而下（不是缩放/淡入为主）；
+//        卡片内 `svg` 数 = 0，且标题/描述/按钮仍在；
+//      * 「出现这个新提示后，后面的内容会**稍稍变得暗一点**，而且**不可点击其他地方取消这个提示**，
+//        只能通过按上面的按钮操作。」→ 那一层从"完全透明"改成"很轻的压暗"
+//        （`color-mix(--scrim X%, transparent)`：alpha > 0 且 < `--scrim` 全量），
+//        并且**取消**「点提示之外 = 取消」这条路径（这是**用户口径变更**，见 CHANGELOG / 附录 §4.89）。
 //
 // 本套件守的是**呈现层契约**（行为语义由 `_verify-close-save-prompt.js` / `_verify-draft-banner.js`
 // 继续守着，两条都必须在改样式之后照旧全绿）：
 //
-//   A. 顶部提示条：无模糊 / 无遮罩底色 / 卡片贴顶且水平居中 / 焦点在提示内 / Tab 被限制在提示内 /
-//      提示下面的正文**点到也不动光标**（真的用 CDP 发一次鼠标点击，并用「点击被提示吞掉 →
-//      遮罩点击 = 取消 仍然生效」当**投递凭证**：没投递到时那条断言会红，不会假绿）。
-//      ⚠️ 关于「背景 inert」这一条我们**明确选择了**：背景连滚动都不通（与浏览器 alert /
-//      Typora 提示一致）。做法是那层**透明**的 `fixed inset-0` 仍是命中目标（hit target）——
-//      所以"点正文"根本打不到编辑器上；同时 `@click.self` 的「点遮罩 = 取消」语义一个字节没改。
-//      `prompt-背景是命中目标` 那两条断言量的就是这个结构性事实（elementFromPoint）。
+//   A. 顶部提示条：无模糊 / 卡片无边框无图标 / 位于中上方且水平居中 / 焦点在提示内 /
+//      Tab 被限制在提示内 / 提示下面的正文**点到也不动光标**（真的用 CDP 发一次鼠标点击，
+//      并用「点击真的送到了那一层」的 capture 计数器当**投递凭证**：没投递到就红，不会假绿）。
+//      ⚠️ 关于「背景 inert」：那层**压暗过**的 `fixed inset-0` 仍是命中目标（hit target）——
+//      所以"点正文"根本打不到编辑器上，而且背景连滚动都不通（与浏览器 alert / Typora 一致）。
+//      `prompt-backdrop-covers-viewport` / `prompt-covers-the-editor-under-the-pointer` 两条
+//      量的就是这个结构性事实（elementFromPoint）。
+//      ⚠️ **点提示之外不再取消**（第二轮口径变更）：改前那条断言是 `prompt-outside-click-still-cancels`，
+//      现在是 `prompt-outside-click-no-longer-cancels`，而且**更强**：点击被送达 + 提示仍在 +
+//      两个 Promise 仍 pending。Esc 保留，且必须与可见的「取消」按钮**返回同一个值**
+//      （`*-escape-equals-the-cancel-button` 三条：二选一 / 三选一 / 输入框）。
 //
 //   B. 通知布局：按钮矩形必须整个落在通知矩形内、且与正文矩形不相交；200 字符的**不可折行**长
 //      文件名与长路径下正文不许横向溢出（scrollWidth <= clientWidth + 1）且必须真的换行；
@@ -49,6 +63,16 @@ const {
  *
  * 参数是**根选择器**（ModalHost 用 `[data-top-prompt]`，草稿提示用 `.draft-modal`）——
  * 两个提示共用同一套 CSS（`.lm-prompt` / `.lm-prompt__card`），所以量法也只有一份。
+ *
+ * 第二轮（用户细化）后这里多量四件事：
+ *   * **卡片的边框**（用户："这个新的提示上边框会有黑边框，请取消"）—— 四个方向都要是 0；
+ *   * **卡片里有没有图标**（用户："取消这个提示上面的带有花哨图案的图标"）—— `svg` 数必须是 0，
+ *     同时标题 / 描述 / 按钮仍在；
+ *   * **背景压暗有多重**：这一层是 `color-mix(--scrim X%, transparent)`，所以把它的 alpha 与
+ *     `--scrim` **全量**的 alpha 一起量出来比大小（"稍稍变暗" = 0 < alpha < 全量；Chromium 把
+ *     color-mix 序列化成 `color(srgb …)`，所以 alpha 解析两种语法都认）；
+ *   * **卡片位置**（中上方：0.10~0.25 × 视口高）与窄窗下按钮是否还在视口内。
+ *
  * ⚠️ 整段是模板字符串：里面不许出现反引号，正则里的 `\s` 要写成 `\\s`。
  */
 const PROMPT = (sel) => `(() => {
@@ -65,6 +89,29 @@ const PROMPT = (sel) => `(() => {
     if (s.backdropFilter && s.backdropFilter !== 'none') blurs.push(cls + ':' + s.backdropFilter)
     if (s.filter && s.filter !== 'none' && s.filter.indexOf('blur') >= 0) blurs.push(cls + ':filter=' + s.filter)
   }
+  /** 颜色 alpha：rgba()/rgb() 与 color(srgb …) 两种序列化都认（color-mix 会走后者） */
+  const alphaOf = (v) => {
+    const s = String(v).trim()
+    if (s.indexOf('rgba(') === 0 || s.indexOf('rgb(') === 0) {
+      const parts = s.slice(s.indexOf('(') + 1, s.lastIndexOf(')')).split(/[,\\/]/).map((x) => x.trim()).filter(Boolean)
+      if (parts.length < 4) return 1
+      return parts[3].indexOf('%') >= 0 ? parseFloat(parts[3]) / 100 : parseFloat(parts[3])
+    }
+    if (s.indexOf('color(') === 0) {
+      const body = s.slice(s.indexOf('(') + 1, s.lastIndexOf(')'))
+      if (body.indexOf('/') < 0) return 1
+      const a = body.split('/')[1].trim()
+      return a.indexOf('%') >= 0 ? parseFloat(a) / 100 : parseFloat(a)
+    }
+    return 1
+  }
+  // --scrim 全量的 alpha：造一个探针元素取它的计算值（不把 0.32 这类数字抄进断言）
+  const probe = document.createElement('div')
+  probe.style.background = 'var(--scrim)'
+  document.body.appendChild(probe)
+  const scrimAlpha = alphaOf(getComputedStyle(probe).backgroundColor)
+  probe.remove()
+  const ccs = card ? getComputedStyle(card) : null
   const active = document.activeElement
   return JSON.stringify({
     open: true,
@@ -73,11 +120,57 @@ const PROMPT = (sel) => `(() => {
       backdropFilter: cs.backdropFilter, background: cs.backgroundColor, position: cs.position,
       zIndex: cs.zIndex
     },
-    card: cr ? { t: Math.round(cr.top), l: Math.round(cr.left), w: Math.round(cr.width), center: Math.round(cr.left + cr.width / 2) } : null,
+    bgAlpha: alphaOf(cs.backgroundColor),
+    scrimAlpha,
+    card: cr ? { t: Math.round(cr.top), b: Math.round(cr.bottom), l: Math.round(cr.left), w: Math.round(cr.width), center: Math.round(cr.left + cr.width / 2) } : null,
+    cardBorder: ccs ? {
+      top: ccs.borderTopWidth, right: ccs.borderRightWidth, bottom: ccs.borderBottomWidth, left: ccs.borderLeftWidth,
+      color: ccs.borderTopColor, shadow: ccs.boxShadow
+    } : null,
+    cardSvgs: card ? card.querySelectorAll('svg').length : null,
+    cardText: card ? {
+      title: card.querySelector('h3') ? card.querySelector('h3').textContent.trim() : null,
+      body: card.querySelector('p') ? card.querySelector('p').textContent.trim() : null,
+      buttons: card.querySelectorAll('button').length
+    } : null,
+    cardFits: cr ? { insideVp: cr.bottom <= window.innerHeight + 0.5 && cr.left >= -0.5 && cr.right <= window.innerWidth + 0.5 } : null,
+    buttonsInside: card ? Array.from(card.querySelectorAll('button')).every((b) => {
+      const br = b.getBoundingClientRect()
+      return br.top >= -0.5 && br.bottom <= window.innerHeight + 0.5 && br.left >= -0.5 && br.right <= window.innerWidth + 0.5
+    }) : null,
     blurs,
     activeInside: !!active && root.contains(active),
     activeLabel: active ? (active.tagName + (active.getAttribute('data-triple-confirm') !== null ? '#confirm' : '') + (active.className && typeof active.className === 'string' ? '.' + active.className.split(/\\s+/)[0] : '')) : null,
     viewport: { w: window.innerWidth, h: window.innerHeight }
+  })
+})()`
+
+/**
+ * 页面侧：读入场动效那条 CSS 规则本身（`lm-prompt-drop-enter-from`）。
+ *
+ * 用户口径：「动效是该组件**从上方滑出**」—— 判据是 `transform: translateY(-Npx)`（自上而下）
+ * 且**不是** `scale(...)`；顺带要求过渡只动 `transform`（不以淡入/缩放为主）。
+ */
+const DROP_MOTION = `(() => {
+  const all = []
+  const collect = (sheet) => {
+    let rules = []
+    try { rules = Array.from(sheet.cssRules || []) } catch (e) { return }
+    for (const r of rules) {
+      if (r.styleSheet) collect(r.styleSheet)
+      else if (r.selectorText) all.push(r)
+    }
+  }
+  for (const s of Array.from(document.styleSheets)) collect(s)
+  const norm = (s) => String(s).replace(/\\s+/g, '')
+  const from = all.find((r) => norm(r.selectorText).indexOf('.lm-prompt-drop-enter-from') >= 0)
+  const active = all.find((r) => norm(r.selectorText).indexOf('.lm-prompt-drop-enter-active') >= 0)
+  return JSON.stringify({
+    fromFound: !!from,
+    fromTransform: from ? from.style.getPropertyValue('transform') : null,
+    fromOpacity: from ? from.style.getPropertyValue('opacity') : null,
+    prop: active ? active.style.getPropertyValue('transition-property') : null,
+    dur: active ? active.style.getPropertyValue('transition-duration') : null
   })
 })()`
 
@@ -272,15 +365,34 @@ async function main() {
   let p = JSON.parse(await ev(PROMPT('[data-top-prompt]')))
   note('prompt ' + JSON.stringify(p))
   check('prompt-renders', p.open === true && !!p.card, JSON.stringify(p).slice(0, 120))
+  // 第二轮口径：**不再透明**，但只"稍稍"压暗 —— alpha 必须 > 0 且 < --scrim 全量；模糊一律不许有
   check(
-    'prompt-no-blur-no-scrim',
-    p.open === true && p.blurs.length === 0 && p.root.backdropFilter === 'none' && p.root.background === 'rgba(0, 0, 0, 0)',
-    JSON.stringify({ blurs: p.blurs, backdropFilter: p.root && p.root.backdropFilter, background: p.root && p.root.background })
+    'prompt-dim-is-light-and-blurless',
+    p.open === true &&
+      p.blurs.length === 0 &&
+      p.root.backdropFilter === 'none' &&
+      p.bgAlpha > 0 &&
+      p.scrimAlpha > 0 &&
+      p.bgAlpha < p.scrimAlpha,
+    JSON.stringify({ blurs: p.blurs, backdropFilter: p.root && p.root.backdropFilter, bg: p.root && p.root.background, bgAlpha: p.bgAlpha, scrimAlpha: p.scrimAlpha })
   )
+  // 第二轮口径（用户原话）："这个新的提示上边框会有黑边框，请取消" —— 四个方向都必须是 0
   check(
-    'prompt-card-pinned-to-top',
-    !!p.card && p.card.t < 120,
-    'card.top=' + (p.card && p.card.t) + 'px（判据 < 120：贴顶而不是居中弹窗）'
+    'prompt-card-has-no-border',
+    !!p.cardBorder && p.cardBorder.top === '0px' && p.cardBorder.right === '0px' && p.cardBorder.bottom === '0px' && p.cardBorder.left === '0px',
+    JSON.stringify(p.cardBorder)
+  )
+  // 第二轮口径："取消这个提示上面的带有花哨图案的图标" —— 卡片里一个 svg 都不许有，标题/描述/按钮仍在
+  check(
+    'prompt-card-has-no-icon-but-keeps-text-and-actions',
+    p.cardSvgs === 0 && !!p.cardText && !!p.cardText.title && !!p.cardText.body && p.cardText.buttons >= 2,
+    JSON.stringify({ svgs: p.cardSvgs, text: p.cardText })
+  )
+  // 第二轮口径："出现在**中上方**的位置" —— 判据是 0.10~0.25 × 视口高（不是贴顶、也不是居中）
+  check(
+    'prompt-card-in-the-upper-middle',
+    !!p.card && p.card.t >= 0.1 * p.viewport.h && p.card.t <= 0.25 * p.viewport.h,
+    'card.top=' + (p.card && p.card.t) + 'px / 视口高 ' + p.viewport.h + '（判据 0.10~0.25×高 = ' + Math.round(0.1 * p.viewport.h) + '~' + Math.round(0.25 * p.viewport.h) + 'px）'
   )
   check(
     'prompt-card-centered',
@@ -291,7 +403,19 @@ async function main() {
   check(
     'prompt-backdrop-covers-viewport',
     !!p.root && p.root.position === 'fixed' && p.root.l === 0 && p.root.t === 0 && p.root.r === p.viewport.w && p.root.b === p.viewport.h,
-    JSON.stringify({ root: p.root, viewport: p.viewport }) + ' —— 透明但仍是命中目标：背景连滚动都不通（与浏览器 alert 一致）'
+    JSON.stringify({ root: p.root, viewport: p.viewport }) + ' —— 轻微压暗但仍是命中目标：背景连滚动都不通（与浏览器 alert 一致）'
+  )
+  // 第二轮口径："动效是该组件**从上方滑出**" —— 读入场规则本身：translateY(-N) 且不是 scale，
+  // 过渡只动 transform（不以淡入为主）
+  const motion = JSON.parse(await ev(DROP_MOTION))
+  note('drop-motion ' + JSON.stringify(motion))
+  check(
+    'prompt-entry-slides-down-from-above',
+    motion.fromFound === true &&
+      /translateY\(-\s*[\d.]+px\)/.test(String(motion.fromTransform)) &&
+      !/scale/.test(String(motion.fromTransform)) &&
+      String(motion.prop).replace(/\s+/g, '') === 'transform',
+    JSON.stringify(motion)
   )
 
   // Tab 序被限制在提示内：连发 8 次 Tab（含 Shift+Tab）都不许跑出去，且必须真的在动
@@ -325,19 +449,52 @@ async function main() {
   // Esc = 取消（返回值 false），与改前一致
   await ev(`(() => { document.activeElement.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })); return 'ok' })()`)
   await sleep(300)
+  const escConfirm = await ev(`window.__PROBE_CONFIRM`)
   check(
     'prompt-escape-cancels-with-false',
-    (await ev(`window.__PROBE_CONFIRM`)) === 'false',
-    'Esc 的返回值 = ' + JSON.stringify(await ev(`window.__PROBE_CONFIRM`)) + '（必须仍是 false）'
+    escConfirm === 'false',
+    'Esc 的返回值 = ' + JSON.stringify(escConfirm) + '（必须仍是 false）'
   )
-
-  // ── 点正文：背景 inert（真的发一次鼠标点击）──────────────────────────────
+  // ★ 第二轮口径：**Esc 必须与可见的「取消」按钮返回完全相同的值**（键盘可达性的最低要求：
+  //   焦点被困在提示里时，键盘用户至少要有一条出路）。这里真的点一次那个按钮去对答案。
   await ev(`(() => {
-    window.__PROBE_CONFIRM2 = 'pending'
-    window.__L.ui().confirm({ title: '顶部提示探针 2', body: '用来验"点正文不改光标"。' }).then((v) => { window.__PROBE_CONFIRM2 = String(v) })
+    window.__PROBE_CONFIRM_BTN = 'pending'
+    window.__L.ui().confirm({ title: '顶部提示-取消按钮对照', body: '用来比对 Esc 与「取消」的返回值。' }).then((v) => { window.__PROBE_CONFIRM_BTN = String(v) })
     return 'ok'
   })()`)
   await sleep(400)
+  await ev(`(() => {
+    const card = document.querySelector('[data-top-prompt] .lm-prompt__card')
+    const btns = Array.from(card.querySelectorAll('button'))
+    const cancel = btns.find((b) => b.getAttribute('data-triple-cancel') !== null) || btns[0]
+    cancel.click()
+    return 'ok'
+  })()`)
+  await sleep(300)
+  const btnConfirm = await ev(`window.__PROBE_CONFIRM_BTN`)
+  check(
+    'prompt-escape-equals-the-cancel-button',
+    escConfirm === 'false' && btnConfirm === escConfirm,
+    'Esc=' + JSON.stringify(escConfirm) + ' vs 「取消」按钮=' + JSON.stringify(btnConfirm)
+  )
+
+  // ── 点正文：背景 inert（真的发一次鼠标点击）──────────────────────────────
+  // ⚠️ 顺序：先**开**提示，再挂 capture 计数器 —— 反过来的话上一段刚关掉的提示已经不在 DOM 里，
+  //    `querySelector` 会 null（第一版就是这么红的：ERROR Cannot read properties of null）。
+  await ev(`(() => {
+    window.__PROBE_CONFIRM2 = 'pending'
+    window.__L.ui().confirm({ title: '顶部提示探针 2', body: '用来验"点正文不改光标 + 点别处不取消"。' }).then((v) => { window.__PROBE_CONFIRM2 = String(v) })
+    return 'ok'
+  })()`)
+  await sleep(400)
+  const counterAttached = await ev(`(() => {
+    window.__OUTSIDE_CLICKS = 0
+    const root = document.querySelector('[data-top-prompt]')
+    if (!root) return 'no-root'
+    root.addEventListener('click', () => { window.__OUTSIDE_CLICKS += 1 }, { capture: true })
+    return 'ok'
+  })()`)
+  check('prompt-outside-click-counter-attached', counterAttached === 'ok', String(counterAttached))
   const pt = JSON.parse(await ev(PROBE_POINT))
   note('probe-point ' + JSON.stringify(pt))
   check(
@@ -359,13 +516,26 @@ async function main() {
     before.content === after.content,
     JSON.stringify({ same: before.content === after.content })
   )
-  // 投递凭证：这一次点击若真送到了页面，它会命中提示层 → 触发「点遮罩 = 取消」这条**原有语义**
-  // （ModalHost 的 `@click.self` 一行没改）。没送到的话这里会红，上面两条就不会是假绿。
-  const cancelled = await ev(`window.__PROBE_CONFIRM2`)
+  // ★ 第二轮口径变更（用户原话：**不可点击其他地方取消这个提示，只能通过按上面的按钮操作**）：
+  //   以前这一条是 `prompt-outside-click-still-cancels`（点别处 = 取消）。现在反过来，而且断言
+  //   **更强**：① 那次点击真的送到了提示层（capture 计数器 = 1，投递凭证）；② 提示仍在、
+  //   两个 Promise 仍是 pending（没有任何"静默取消"）；③ DOM 里那层还在。
+  const outsideClicks = await ev(`window.__OUTSIDE_CLICKS`)
+  const stillOpen = await ev(`!!window.__L.ui().confirmState && !!document.querySelector('[data-top-prompt]')`)
+  const stillPending = await ev(`window.__PROBE_CONFIRM2 === 'pending'`)
   check(
-    'prompt-outside-click-still-cancels',
-    cancelled === 'false',
-    '点提示之外（= 透明层本身）仍按原语义 resolveConfirm(false)：返回值 = ' + JSON.stringify(cancelled)
+    'prompt-outside-click-no-longer-cancels',
+    outsideClicks === 1 && stillOpen === true && stillPending === true,
+    JSON.stringify({ deliveredClicks: outsideClicks, stillOpen, stillPending, result: await ev(`window.__PROBE_CONFIRM2`) })
+  )
+
+  // 收尾：这次探针的提示只能由**显式动作**关掉（点别处已经不帮我们关了）
+  await ev(`(() => { document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })); return 'ok' })()`)
+  await sleep(300)
+  check(
+    'prompt-closed-only-by-explicit-action',
+    (await ev(`window.__PROBE_CONFIRM2`)) === 'false' && (await ev(`!!window.__L.ui().confirmState`)) === false,
+    '点别处之后提示仍在，只有 Esc / 按钮能收掉它：result=' + JSON.stringify(await ev(`window.__PROBE_CONFIRM2`))
   )
 
   // ── 三选一（**关窗「保存 / 不保存 / 取消」**那条路径）也是同一套顶部形态 ──────
@@ -389,11 +559,17 @@ async function main() {
     t3.open === true &&
       t3.blurs.length === 0 &&
       t3.root.backdropFilter === 'none' &&
-      t3.root.background === 'rgba(0, 0, 0, 0)' &&
+      t3.bgAlpha > 0 &&
+      t3.bgAlpha < t3.scrimAlpha &&
+      !!t3.cardBorder &&
+      t3.cardBorder.top === '0px' &&
+      t3.cardBorder.left === '0px' &&
+      t3.cardSvgs === 0 &&
       !!t3.card &&
-      t3.card.t < 120 &&
+      t3.card.t >= 0.1 * t3.viewport.h &&
+      t3.card.t <= 0.25 * t3.viewport.h &&
       t3.activeInside === true,
-    JSON.stringify({ card: t3.card, blurs: t3.blurs, active: t3.activeLabel, bg: t3.root && t3.root.background })
+    JSON.stringify({ card: t3.card, blurs: t3.blurs, active: t3.activeLabel, bgAlpha: t3.bgAlpha, scrimAlpha: t3.scrimAlpha, border: t3.cardBorder && t3.cardBorder.top, svgs: t3.cardSvgs })
   )
   check(
     'triple-prompt-keeps-its-three-buttons',
@@ -402,10 +578,26 @@ async function main() {
   )
   await ev(`(() => { document.activeElement.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })); return 'ok' })()`)
   await sleep(300)
+  const escTriple = await ev(`window.__PROBE_TRIPLE`)
   check(
     'triple-escape-still-means-cancel',
-    (await ev(`window.__PROBE_TRIPLE`)) === 'cancel',
-    'Esc 的返回值 = ' + JSON.stringify(await ev(`window.__PROBE_TRIPLE`)) + '（关窗场景必须是 cancel = 不关窗）'
+    escTriple === 'cancel',
+    'Esc 的返回值 = ' + JSON.stringify(escTriple) + '（关窗场景必须是 cancel = 不关窗）'
+  )
+  // ★ 第二轮口径：Esc 与可见的「取消」按钮必须**返回值完全相同**（这条在关窗路径上逐字量）
+  await ev(`(() => {
+    window.__PROBE_TRIPLE_BTN = 'pending'
+    window.__L.ui().confirmTriple({ title: '是否保存更改？', body: '对照「取消」按钮。', confirmLabel: '保存', altLabel: '不保存' }).then((v) => { window.__PROBE_TRIPLE_BTN = String(v) })
+    return 'ok'
+  })()`)
+  await sleep(400)
+  await ev(`(() => { document.querySelector('[data-triple-cancel]').click(); return 'ok' })()`)
+  await sleep(300)
+  const btnTriple = await ev(`window.__PROBE_TRIPLE_BTN`)
+  check(
+    'triple-escape-equals-the-cancel-button',
+    escTriple === 'cancel' && btnTriple === escTriple,
+    'Esc=' + JSON.stringify(escTriple) + ' vs 「取消」按钮=' + JSON.stringify(btnTriple)
   )
 
   // ── 输入框那一路（同一个组件、同一条顶部提示条）：焦点在输入框、回车仍提交、Esc 仍返回 null ──
@@ -418,8 +610,18 @@ async function main() {
   const pi = JSON.parse(await ev(PROMPT('[data-top-prompt]')))
   check(
     'input-prompt-shares-the-top-shape',
-    pi.open === true && pi.blurs.length === 0 && pi.root.background === 'rgba(0, 0, 0, 0)' && !!pi.card && pi.card.t < 120 && pi.activeInside === true,
-    JSON.stringify({ card: pi.card, bg: pi.root && pi.root.background, active: pi.activeLabel })
+    pi.open === true &&
+      pi.blurs.length === 0 &&
+      pi.bgAlpha > 0 &&
+      pi.bgAlpha < pi.scrimAlpha &&
+      !!pi.cardBorder &&
+      pi.cardBorder.top === '0px' &&
+      pi.cardSvgs === 0 &&
+      !!pi.card &&
+      pi.card.t >= 0.1 * pi.viewport.h &&
+      pi.card.t <= 0.25 * pi.viewport.h &&
+      pi.activeInside === true,
+    JSON.stringify({ card: pi.card, bgAlpha: pi.bgAlpha, scrimAlpha: pi.scrimAlpha, border: pi.cardBorder && pi.cardBorder.top, svgs: pi.cardSvgs, active: pi.activeLabel })
   )
   check(
     'input-prompt-focuses-the-input',
@@ -448,10 +650,30 @@ async function main() {
   await sleep(400)
   await ev(`(() => { document.activeElement.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })); return 'ok' })()`)
   await sleep(300)
+  const escPrompt = await ev(`window.__PROBE_PROMPT2`)
   check(
     'input-prompt-escape-still-returns-null',
-    (await ev(`window.__PROBE_PROMPT2`)) === 'null',
-    'Esc 的返回值 = ' + JSON.stringify(await ev(`window.__PROBE_PROMPT2`)) + '（必须仍是 null）'
+    escPrompt === 'null',
+    'Esc 的返回值 = ' + JSON.stringify(escPrompt) + '（必须仍是 null）'
+  )
+  // ★ 第二轮口径：Esc 与可见的「取消」按钮返回值相同（输入框那一路也逐字量）
+  await ev(`(() => {
+    window.__PROBE_PROMPT3 = 'pending'
+    window.__L.ui().prompt('顶部提示-输入探针 3', '占位').then((v) => { window.__PROBE_PROMPT3 = String(v) })
+    return 'ok'
+  })()`)
+  await sleep(400)
+  await ev(`(() => {
+    const card = document.querySelector('[data-top-prompt] .lm-prompt__card')
+    card.querySelectorAll('button')[0].click()
+    return 'ok'
+  })()`)
+  await sleep(300)
+  const btnPrompt = await ev(`window.__PROBE_PROMPT3`)
+  check(
+    'input-prompt-escape-equals-the-cancel-button',
+    escPrompt === 'null' && btnPrompt === escPrompt,
+    'Esc=' + JSON.stringify(escPrompt) + ' vs 「取消」按钮=' + JSON.stringify(btnPrompt)
   )
 
   // ── 草稿提示（「比磁盘新」那条路径）改用同一套顶部形态 ─────────────────────
@@ -461,17 +683,38 @@ async function main() {
   note('draft ' + JSON.stringify(d))
   check('draft-prompt-renders', d.open === true && !!d.card, JSON.stringify(d).slice(0, 120))
   check(
-    'draft-prompt-no-blur-no-scrim',
-    d.open === true && d.blurs.length === 0 && d.root.backdropFilter === 'none' && d.root.background === 'rgba(0, 0, 0, 0)',
-    JSON.stringify({ blurs: d.blurs, backdropFilter: d.root && d.root.backdropFilter, background: d.root && d.root.background })
+    'draft-prompt-dim-is-light-and-blurless',
+    d.open === true && d.blurs.length === 0 && d.root.backdropFilter === 'none' && d.bgAlpha > 0 && d.bgAlpha < d.scrimAlpha,
+    JSON.stringify({ blurs: d.blurs, backdropFilter: d.root && d.root.backdropFilter, bg: d.root && d.root.background, bgAlpha: d.bgAlpha, scrimAlpha: d.scrimAlpha })
   )
-  check('draft-prompt-card-pinned-to-top', !!d.card && d.card.t < 120, 'card.top=' + (d.card && d.card.t))
+  check(
+    'draft-prompt-card-has-no-border-and-no-icon',
+    !!d.cardBorder && d.cardBorder.top === '0px' && d.cardBorder.right === '0px' && d.cardBorder.bottom === '0px' && d.cardBorder.left === '0px' && d.cardSvgs === 0 &&
+      !!d.cardText && !!d.cardText.title && !!d.cardText.body && d.cardText.buttons >= 2,
+    JSON.stringify({ border: d.cardBorder, svgs: d.cardSvgs, text: d.cardText })
+  )
+  check(
+    'draft-prompt-card-in-the-upper-middle',
+    !!d.card && d.card.t >= 0.1 * d.viewport.h && d.card.t <= 0.25 * d.viewport.h,
+    'card.top=' + (d.card && d.card.t) + 'px / 视口高 ' + d.viewport.h
+  )
   check('draft-prompt-focus-inside', d.activeInside === true, 'activeElement=' + d.activeLabel)
   const dTrap = JSON.parse(await ev(TAB_TRAP('.draft-modal', false, 6)))
   check(
     'draft-prompt-tab-trapped',
     dTrap.open === true && (dTrap.seen || []).length >= 6 && dTrap.seen.every((s) => s.inside === true) && new Set(dTrap.seen.map((s) => s.to)).size >= 2,
     JSON.stringify(dTrap.seen)
+  )
+  // ★ 第二轮口径的边界（**故意保留**）：草稿提示的 Esc 仍然被吞掉（既有断言 `modal-esc-does-not-close`
+  //   在 `_verify-draft-banner.js` 里守着）。理由：它那两个出口是「恢复 / 丢弃」，**没有**一个
+  //   语义等于"取消"（Esc 无法与任何按钮返回同一个值），而且这里必须明确选一个。
+  //   键盘用户的出路仍在：Tab 到按钮 + 回车/空格（见上面那条 Tab 环断言）。
+  await ev(`(() => { document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })); return 'ok' })()`)
+  await sleep(300)
+  check(
+    'draft-prompt-escape-still-does-not-choose',
+    (await ev(`!!document.querySelector('.draft-modal')`)) === true && (await ev(`!!window.__L.files().draftRestore`)) === true,
+    '草稿提示的 Esc 不许替用户选（它没有与 Esc 同值的按钮）'
   )
   // 两个提示都要能被**同一个**语义锚点找到（`data-top-prompt`），否则套件早晚各写一套选择器
   check(
@@ -480,6 +723,35 @@ async function main() {
     '草稿提示的根也要带 data-top-prompt'
   )
   await ev(`(async () => { await window.__L.files().applyDraftRestore(false); return 'ok' })()`)
+  await sleep(500)
+
+  // ── 窄窗（760×520，= 本仓库的最小窗口）：中上方的位置与卡片/按钮都还落得下 ────
+  await app.send('Emulation.setDeviceMetricsOverride', { width: 760, height: 520, deviceScaleFactor: 1, mobile: false })
+  await sleep(500)
+  await ev(`(() => {
+    window.__PROBE_NARROW = 'pending'
+    window.__L.ui().confirm({ title: '窄窗探针', body: '760×520 下量位置与按钮是否还在视口里。' }).then((v) => { window.__PROBE_NARROW = String(v) })
+    return 'ok'
+  })()`)
+  await sleep(500)
+  const narrow = JSON.parse(await ev(PROMPT('[data-top-prompt]')))
+  note('narrow ' + JSON.stringify({ vp: narrow.viewport, card: narrow.card, fits: narrow.cardFits, inside: narrow.buttonsInside }))
+  check(
+    'narrow-760x520-card-in-the-upper-middle-and-fits',
+    narrow.open === true &&
+      narrow.viewport.w === 760 &&
+      narrow.viewport.h === 520 &&
+      !!narrow.card &&
+      narrow.card.t >= 0.1 * narrow.viewport.h &&
+      narrow.card.t <= 0.25 * narrow.viewport.h &&
+      !!narrow.cardFits &&
+      narrow.cardFits.insideVp === true &&
+      narrow.buttonsInside === true,
+    JSON.stringify({ vp: narrow.viewport, card: narrow.card, fits: narrow.cardFits, buttonsInside: narrow.buttonsInside })
+  )
+  await ev(`(() => { document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })); return 'ok' })()`)
+  await sleep(300)
+  await app.send('Emulation.clearDeviceMetricsOverride')
   await sleep(500)
 
   // ═══ B. 通知内部布局 ═════════════════════════════════════════════════════

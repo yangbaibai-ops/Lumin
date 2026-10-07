@@ -455,35 +455,48 @@ aside:focus-within [data-sidebar-filetools],
 /* 图片：规则在文件上部（`.md-preview img` 那一段）已经有完整一份，
    这里原先重复了一遍、且因为位置更靠后会覆盖上面的行内排版 —— 删掉重复项 */
 
-/* ── 顶部提示条（确认框 ModalHost / 草稿恢复 EditorView 共用的一套呈现）─────────────
+/* ── 提示条（确认框 ModalHost / 草稿恢复 EditorView 共用的一套呈现）─────────────────
  *
- * 用户口径（原话）：「使其不是现在这样（弹出窗口，并模糊后面的主应用内容），而是和浏览器以及
- * Typora 的 alert 提示一样，在应用的上方出现，此时聚焦在提示上，不能对其他内容进行修改，
+ * 用户口径（第一轮原话）：「使其不是现在这样（弹出窗口，并模糊后面的主应用内容），而是和浏览器
+ * 以及 Typora 的 alert 提示一样，在应用的上方出现，此时聚焦在提示上，不能对其他内容进行修改，
  * 但是不影响其他实例。」
  *
- * 改前：`fixed inset-0` + `bg-scrim`（把整页压暗）+ `backdrop-blur-[2px]`（把它糊掉）+
- *       卡片在**正中**（`items-center justify-center`）—— 观感就是"又一个模态弹窗"。
- * 改后：**去掉遮罩与模糊**（`background: transparent` + 两个 filter 都按死成 none），卡片
- *       贴着窗口上沿、水平居中，应用内容原样可见；只有卡片自己靠 1px 边框 + `--shadow-2`
- *       立起来。位置语义与浏览器 alert / Typora 的提示一致：**从上面压下来的一条**，
- *       不是浮在正中挡住一切的一坨。
+ * 用户口径（**第二轮细化**，看了效果之后）：
+ *   ① 「现在这个新的提示上边框会有黑边框，请取消。」→ 卡片**四个方向的边框全部去掉**
+ *      （改前实测：`borderTop 3px rgb(107,114,128)` + 其余三边 `1px --edge`；浅色下那圈就是
+ *      用户说的"黑边"）。现在卡片只靠 `--shadow-2` 的柔和投影与背景分层。
+ *   ② 「优化这个新提示的位置，使其出现在**中上方**的位置，并且动效是该组件**从上方滑出**，
+ *      且**取消这个提示上面的带有花哨图案的图标**，显示标题、描述和操作按钮即可。」
+ *      → 位置 `margin-top: min(14vh, 140px)`（实测 821 高 → 115px = 0.14×高；520 高 → 73px
+ *        = 0.14×高，都落在套件断言的 0.10~0.25 区间里）；入场动效是**纯 `translateY(-28px)`
+ *        滑下来**（改前是 `translateY(-12px)` + 淡入的混合，看着像"弹出来"）；
+ *        图标（那枚圆底徽标 + `<Icon>`）在两个提示的模板里都删掉了。
+ *   ③ 「出现这个新提示后，后面的内容会**稍稍变得暗一点**，而且**不可点击其他地方取消这个提示**，
+ *      只能通过按上面的按钮操作。」→ 那一层从"完全透明"改成"很轻的压暗"：
+ *      `color-mix(in srgb, var(--scrim) 45%, transparent)`（实测 alpha 0.144 / 深色 0.2025 /
+ *      羊皮纸 0.153，都在 `--scrim` 全量 0.32/0.45/0.34 的一半以下 —— "稍稍"而不是压死）；
+ *      并**移除** `@click.self` 的「点提示之外 = 取消」（见 ModalHost.vue 的说明）。
+ *
+ * 改前（第一轮之前）：`bg-scrim`（整页压暗）+ `backdrop-blur-[2px]`（糊掉）+ 卡片在正中。
  *
  * ── 交互契约（每条都在 `tools/_verify-prompt-top-and-notify-layout.js` 里有断言）──────
  *   * **焦点在提示上**：打开时把焦点交给卡片容器（`tabindex="-1"`），Tab 被限制在提示内的
  *     可聚焦元素之间循环（见 ModalHost.vue 的 trapTab）。为什么是**容器**而不是某个按钮：
  *     焦点一旦落在按钮上，回车就会"顺手"激活它 —— 而回车的语义必须与改前**完全一致**
  *     （改前焦点不在提示里，回车什么也不做），所以默认落在容器上，方向键/回车语义一个不动。
- *   * **背景 inert**：这一层仍然是 `inset: 0` 的**命中目标**（hit target）——只是**透明的**。
- *     于是"点正文"根本打不到编辑器上（不改光标、不选中、不触发编辑），键盘更进不去
- *     （焦点在提示里）。**明确的选择**：背景连**滚动**都不通 —— 与浏览器 alert / Typora
- *     提示一致（要看下面的内容只能先作答）。同时 `@click.self` 的「点提示之外 = 取消」
- *     语义**一个字节没改**（三选一的 Esc/遮罩都算 cancel，见 stores/ui.ts）。
+ *   * **背景 inert**：这一层仍是 `inset: 0` 的**命中目标**（hit target）——现在它**轻微压暗**，
+ *     但仍然是"点正文打不到编辑器"的那个结构。**明确的选择**：背景连**滚动**都不通 —— 与浏览器
+ *     alert / Typora 提示一致（要看下面的内容只能先作答）。
+ *   * **只能由提示上的按钮结束**（第二轮口径）：点别处**什么也不发生**（改前是"点别处 = 取消"。
+ *     见 `stores/ui.ts` 里 `TripleConfirmResult` 的注释 —— 那句"遮罩点击都算取消"已随之更新）。
+ *     键盘出路只剩 **Esc**，而 Esc 与可见的「取消/关闭」按钮**返回完全相同的值**
+ *     （二选一 → `false`、三选一 → `'cancel'`、输入框 → `null`；套件里逐条对答案）。
  *   * **不影响其他实例**：整条链路都在**本窗口的渲染层**（store 旗标 + Teleport 到本窗口 body），
  *     没有任何应用级/系统级模态（不用 `dialog.showMessageBox`、不 `setAlwaysOnTop`）；
  *     另一扇窗口照旧能点、能编辑（套件 C 段实测）。
  *
- * ⚠️ 想改"卡片贴顶"这件事：套件断言 `card.top < 120`，且遮罩点击 = 取消 依赖
- *    `.lm-prompt` 这一层真的覆盖整个视口（`inset: 0`），别把它缩成"只有卡片那么大"。
+ * ⚠️ 想改"卡片位置"这件事：套件断言 `card.top` 落在 0.10~0.25 × 视口高，且 760×520 下
+ *    卡片与按钮必须仍在视口里；压暗层则被断言"alpha > 0 且 < `--scrim` 全量、且无模糊"。
  */
 .lm-prompt {
   position: fixed;
@@ -491,8 +504,10 @@ aside:focus-within [data-sidebar-filetools],
   display: flex;
   align-items: flex-start;
   justify-content: center;
-  /* 透明：不压暗（不取 --scrim）、不模糊（backdrop-filter / filter 全部按死） */
-  background: transparent;
+  /* 第二轮口径：**很轻的压暗**（"稍稍变得暗一点"），并且**依然不许模糊**。
+     取 --scrim 的 45%：alpha ≈ 0.144（浅色）/ 0.2025（深色）/ 0.153（羊皮纸），
+     明显轻于 --scrim 全量，足以看出"底下被挡住了"。 */
+  background: color-mix(in srgb, var(--scrim) 45%, transparent);
   background-image: none;
   backdrop-filter: none;
   -webkit-backdrop-filter: none;
@@ -502,32 +517,31 @@ aside:focus-within [data-sidebar-filetools],
   position: relative;
   width: 440px;
   max-width: calc(100vw - 32px);
-  /* 贴着上沿，只留 10px 呼吸缝：这一条就是"在应用的上方出现"的位置感 */
-  margin-top: 10px;
+  /* 第二轮口径："**中上方**的位置" —— 14vh（821 高 → 115px；520 高 → 73px）。
+     不用固定 px：视口高变了它仍待在同一相对位置；`min(…, 140px)` 只是给超矮视口兜底，
+     别让卡片顶到上沿。 */
+  margin-top: min(14vh, 140px);
   padding: 14px 18px 12px;
-  border: 1px solid var(--edge);
-  /* 顶沿一道 3px 副色边：整条读起来像"从窗口上沿压下来的一根提示条" */
-  border-top: 3px solid var(--accent);
+  /* 第二轮口径："上边框会有黑边框，请取消" —— **四个方向都不画边框**（改前是顶沿 3px
+     --accent + 其余三边 1px --edge）。卡片与背景的分层完全交给下面的柔和投影。 */
+  border: 0;
   border-radius: 12px;
   background: var(--elevate);
   box-shadow: var(--shadow-2);
 }
-/* 入场：自上而下**落下来**（`pop` 那个缩放像居中弹窗，与贴顶的位置语义不符）。
-   只动 opacity / transform（合成层），`prefers-reduced-motion` 由 base.css 全局兜底。 */
+/* 入场：**纯位移**、自上而下滑下来（第二轮口径："动效是该组件从上方滑出"）。
+   改前是 `opacity 0.16s + transform 0.2s`（淡入 + 位移混合，`pop` 那种观感）；
+   现在过渡只动 `transform`，起始位移也更大（-28px），读起来就是"从上面滑出来"。
+   `prefers-reduced-motion` 由 base.css 全局兜底（0.01ms，事件照常触发）。 */
 .lm-prompt-drop-enter-active {
-  transition:
-    opacity 0.16s ease,
-    transform 0.2s cubic-bezier(0.2, 0.9, 0.3, 1.1);
+  transition: transform 0.24s cubic-bezier(0.22, 1, 0.36, 1);
 }
 .lm-prompt-drop-leave-active {
-  transition:
-    opacity 0.12s ease,
-    transform 0.12s ease;
+  transition: transform 0.16s ease;
 }
 .lm-prompt-drop-enter-from,
 .lm-prompt-drop-leave-to {
-  opacity: 0;
-  transform: translateY(-12px);
+  transform: translateY(-28px);
 }
 
 /* ── 全局通知带（编辑区上方一整幅：标题 / 说明 / 操作 + 关闭）──────────────────
