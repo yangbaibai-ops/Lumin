@@ -7,6 +7,7 @@ import { getExportCss, renderMermaidInHtml } from '../lib/export'
 import { exportRequest, printRequest } from '../lib/exportPayload'
 import type { ExportFormat } from '../lib/exportPayload'
 import { beginExportRender, endExportRender } from '../lib/remoteImages'
+import { stripTextExtension } from '../../../shared/textFiles'
 import i18n from '../i18n'
 
 // ─── 导出（渲染层）：基于 Tiptap getHTML() 输出 ────────────────────────────
@@ -33,7 +34,8 @@ export function useExport(): {
       endExportRender()
     }
     const html = await renderMermaidInHtml(raw, settings.resolveTheme())
-    return { html, title: files.current.name.replace(/\.(md|markdown|txt)$/i, '') }
+    // 标题去掉可打开的文本后缀（清单见 shared/textFiles.ts），不在这里手写正则
+    return { html, title: stripTextExtension(files.current.name) }
   }
 
   /**

@@ -23,7 +23,7 @@ import { isInside } from '../pathGuard'
 import { db } from './database'
 import { decodeBuffer, encodeText, getRememberedEncoding } from './encoding'
 import { serializeWrite } from './writeQueue'
-import { isMarkdownFile } from '../../shared/docExt'
+import { isTextFileName } from '../../shared/textFiles'
 import { isUtf8Family } from '../../shared/encodings'
 import { roundTripLossy } from '../../shared/encodingMemory'
 import {
@@ -97,7 +97,7 @@ function candidatePaths(root: string): string[] {
   const out: string[] = []
   for (const p of db.listDocumentPaths()) {
     if (out.length >= MAX_CANDIDATES) break
-    if (!isMarkdownFile(p)) continue
+    if (!isTextFileName(p)) continue
     if (!isInside(root, p)) continue
     const key = p.toLowerCase()
     if (seen.has(key)) continue

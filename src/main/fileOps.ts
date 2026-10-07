@@ -18,10 +18,11 @@ import type { ConcreteEncoding, EncodingId } from '../shared/encodings'
 import { detectEol, toEol, toLf, type Eol } from '../shared/eol'
 import { isMediaExtension, isWithinAnyRoot } from '../shared/media'
 import { TEMP_SUFFIX_RE } from '../shared/tempName'
-// 「哪些文件算文档」的唯一实现在 shared（可单测）：fileOps 只是**重新导出**给历史调用点
-import { MD_EXT_RE } from '../shared/docExt'
+// 「哪些文件算文本文档」的唯一真相源在 shared/textFiles.ts（可单测）；
+// 这里重新导出一次，只是为了历史调用点不用满地改 import 路径。
+import { TEXT_FILE_EXT_RE } from '../shared/textFiles'
 
-export { MD_EXT_RE }
+export { TEXT_FILE_EXT_RE }
 
 /**
  * 该绝对路径能否经 `lumin-file://` 送出（两道闸，见 main/index.ts 的 protocol.handle 注释）：
@@ -89,7 +90,7 @@ export async function readDir(dir: string): Promise<FileNode[]> {
   const entries = await fs.readdir(dir, { withFileTypes: true })
   const nodes = await Promise.all(
     entries
-      .filter((e) => !e.name.startsWith('.') && (e.isDirectory() || MD_EXT_RE.test(e.name)))
+      .filter((e) => !e.name.startsWith('.') && (e.isDirectory() || TEXT_FILE_EXT_RE.test(e.name)))
       .map(async (e): Promise<FileNode> => {
         const p = path.join(dir, e.name)
         if (e.isDirectory()) return { name: e.name, path: p, type: 'directory' }
@@ -137,9 +138,10 @@ async function readPreviewHead(filePath: string, bytes = 1024): Promise<string> 
   }
 }
 
-/** 递归扫描工作区根目录下的全部 Markdown 文章，返回扁平条目。
+/** 递归扫描工作区根目录下的全部文本文档，返回扁平条目。
     用于侧边栏「列表」视图（Typora 式）：展示每篇的修改时间与正文预览。
-    - 只统计 md/markdown/mdown/mkd/txt；
+    - 只统计「可打开的文本类型」——清单的唯一真相源是 `shared/textFiles.ts`
+      （`md/markdown/mdown/mkd/txt/text/log/ini/cfg`），**加类型只改那一处**；
     - 跳过隐藏目录（.git/.obsidian 等）以提速并避免噪音；
     - 并发受限 + 行数上限，超大工作区也能安全返回。 */
 export async function scanWorkspace(root: string): Promise<WorkspaceDoc[]> {
@@ -165,7 +167,7 @@ export async function scanWorkspace(root: string): Promise<WorkspaceDoc[]> {
       const p = path.join(dir, e.name)
       if (e.isDirectory()) {
         dirs.push(e)
-      } else if (e.isFile() && MD_EXT_RE.test(e.name)) {
+      } else if (e.isFile() && TEXT_FILE_EXT_RE.test(e.name)) {
         if (docs.length >= MAX_DOCS) {
           cancelled = true
           return

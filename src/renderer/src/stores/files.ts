@@ -44,6 +44,8 @@ import {
 } from '../lib/filesCore'
 // 字数口径（中文按字 + 拉丁按词）的唯一实现：状态栏字数、阅读时长、主进程 word_count 共用
 import { measureText, type TextMeasure } from '../../../shared/readingTime'
+// 「哪些扩展名是可打开的文本 / 哪一族是纯文本」的唯一真相源（第七轮：加类型只改那一处）
+import { isPlainTextName, saveDefaultName } from '../../../shared/textFiles'
 
 /**
  * 统计量的按内容缓存（见下方 getters 的说明）：一起算出「字数 / 行数 / 字符数」，
@@ -724,6 +726,25 @@ export const useFilesStore = defineStore('files', {
             ),
             'warning'
           )
+        } else if (isPlainTextName(opened.name)) {
+          /**
+           * ─── 纯文本族默认走**源码模式**（第七轮）────────────────────────────────
+           *
+           * `.md` 家族原样不动（渲染面按 Markdown 解释它就是它该有的行为）；但 `.txt/.log/.ini/.cfg`
+           * 这类纯文本文件，渲染面会**按 Markdown 重新解释**它，落盘就不再逐字相同。第七轮实测
+           * （夹具见 tools/_verify-text-open.js 的注释与探针输出）：
+           *   `1. one\n1. two\n1. three` → 被重编号成 `1. 2. 3.`；
+           *   `see https://example.com` → 变成 `see <https://example.com>`；
+           *   `__init__` → 被当成强调、插进 `**`（`**init**`）；
+           *   两行散文 `第一行\n第二行` → 被并成一行（软换行 ≡ 空格）。
+           * 也就是说：**纯文本用渲染面打开 = 一旦保存就可能改掉用户文件的内容**。
+           * 源码面（textarea）是逐字进出的，所以这里默认切到源码模式 —— 与"大文档降级"
+           * 同一套机制（只改会话状态 `ui.editorMode`，不落库；用户随时可以手动切回渲染面，
+           * 那时按 Markdown 解释是他自己的选择）。
+           */
+          const ui = useUiStore()
+          ui.editorMode = 'source'
+          ui.toast(i18n.global.t('toast.plainTextSourceMode', { name: opened.name }), 'info')
         }
         // 草稿恢复检查：只有「内容确实不同 + 确实比磁盘新」才值得打扰用户
         const draft = await window.luminAPI.drafts.load(this.draftKey(path))
@@ -1164,14 +1185,21 @@ export const useFilesStore = defineStore('files', {
     },
     async saveAs(): Promise<boolean> {
       if (!this.current) return false
-      const name = this.current.name.replace(/\.md$/i, '') + '.md'
+      /**
+       * 默认名字与扩展名**保持原样**（第七轮用户口径）：`a.txt` 另存为仍然是 `a.txt`，
+       * 绝不变成 `a.txt.md`。清单与判据只有一份（`shared/textFiles.ts` 的 `saveDefaultName`），
+       * 这里不写死 `.md` —— 以前那行 `name.replace(/\.md$/i,'') + '.md'` 会把文本文件
+       * 悄悄改成 Markdown（同一个 `.md` 还被当成对话框过滤器名）。
+       * 传下去的 `ext` 决定系统对话框的默认扩展名（Windows 会用它补全用户漏写的后缀）。
+       */
+      const { name: defaultName, ext } = saveDefaultName(this.current.name)
       // 对话框默认落在哪个文件夹：
       //  * **已经有路径**（另存为）→ 它自己所在的文件夹（`currentDir` 就是打开/上次保存时记下的）；
       //  * **未命名文档**（含 Ctrl+N / 新建文档 开出来的那份）→ 侧栏当前工作区，
       //    这样 Ctrl+S 默认就存进侧栏打开的那个文件夹，不必每次自己找；
       //  * 既没路径也没工作区 → 不传，由系统记上次的位置。
       const dir = this.current.path ? this.currentDir : this.root
-      const path = await window.luminAPI.file.chooseSaveFile(name, 'md', dir)
+      const path = await window.luminAPI.file.chooseSaveFile(defaultName, ext, dir)
       if (!path) return false
       // 同样先算好 name/currentDir 再改 path（顺序理由见 openPath）：path 一变，
       // 编辑器就按 :key 重建并渲染正文图片，那时 currentDir 必须已经是新目录

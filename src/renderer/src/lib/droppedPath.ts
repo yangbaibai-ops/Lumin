@@ -3,7 +3,8 @@
 // 为什么值得单独一个文件：这条链上有两个入口（整个窗口的拖入、编辑器内核自己的图片拖入），
 // 而落点语义必须只有一份 —— 与「打开文件 / Ctrl+O」「打开文件夹」完全一致：
 //
-//   * **文件**（.md/.markdown/.mdown/.mkd/.txt）→ `openExternalFile`
+//   * **文件**（可打开的文本类型 = `shared/textFiles.ts` 那份清单：md 家族 + txt/text/log/ini/cfg）
+//     → `openExternalFile`
 //     （无工作区：本窗口打开并把侧栏切到它所在的文件夹；已有工作区：新窗口打开，
 //      同一个文件只开一个窗口 —— 规则本身在 lib/openFile.ts，这里只调用）；
 //   * **目录** → 三个分支（第六轮用户口径，见下面 openDroppedFolder 的注释）：
@@ -26,6 +27,7 @@
 import i18n from '../i18n'
 import { useFilesStore } from '../stores/files'
 import { useUiStore } from '../stores/ui'
+import { isTextFileName } from '../../../shared/textFiles'
 import { confirmDiscardIfDirty } from './dialog'
 import { openExternalFile } from './openFile'
 
@@ -46,8 +48,12 @@ export type DroppedPathOutcome =
   /** 有未保存改动、用户在确认框里选了取消 */
   | 'cancelled'
 
-/** 本应用认得的文档扩展名（与「打开文件」对话框的过滤器同一份口径） */
-export const OPENABLE_EXT_RE = /\.(md|markdown|mdown|mkd|txt)$/i
+/**
+ * 拖入的文件类型白名单 = **唯一真相源** `shared/textFiles.ts`（与「打开文件」对话框的过滤器、
+ * 文件树扫描、全文索引、链接判定同一份清单）。这里不再自己抄正则 —— 抄出来的副本一旦漂移，
+ * 就会出现"对话框能选、拖进来提示不支持"这种自相矛盾。
+ */
+export { isTextFileName as isOpenableTextFile } from '../../../shared/textFiles'
 
 /**
  * 从一次拖放事件里取出**第一个文件在磁盘上的真实路径**。
@@ -126,7 +132,7 @@ export async function openDroppedPath(dropped: string): Promise<DroppedPathOutco
     return 'unusable'
   }
   if (await window.luminAPI.file.isDirectory(dropped)) return openDroppedFolder(dropped)
-  if (!OPENABLE_EXT_RE.test(dropped)) {
+  if (!isTextFileName(dropped)) {
     ui.toast(i18n.global.t('toast.unsupportedFile'), 'error')
     return 'unsupported'
   }

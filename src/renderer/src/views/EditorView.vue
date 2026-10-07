@@ -905,6 +905,7 @@ onBeforeUnmount(() => {
               <textarea
                 ref="sourceRef"
                 class="source-editor"
+                data-source-editor
                 :class="{ 'source-editor--split': ui.editorMode === 'split' }"
                 :value="files.current?.content ?? ''"
                 spellcheck="false"

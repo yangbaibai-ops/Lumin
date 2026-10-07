@@ -7,7 +7,7 @@
 //
 // 三条口径与单文档查找/替换**完全一致**（同一份实现：shared/findReplace.ts）：
 //   默认按字面量、正则要显式开、大小写开关照旧、`$1`/`$&` 只在正则模式下展开。
-import { isMarkdownFile } from './docExt.ts'
+import { isTextFileName } from './textFiles.ts'
 import { normPath } from './paths.ts'
 import {
   findMatches,
@@ -146,7 +146,7 @@ export function planWorkspaceReplace(
     const hit = planFileReplace(file.content, req)
     // 只改命中它的文件：没命中连"跳过"都不算（列出来只会变成噪音）
     if (!hit.count) continue
-    if (!isMarkdownFile(file.path)) {
+    if (!isTextFileName(file.path)) {
       skipped.push({ path: file.path, count: hit.count, reason: 'unsupported' })
       continue
     }

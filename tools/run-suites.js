@@ -177,7 +177,13 @@ const DEFAULT_SUITES = [
   '_verify-drop-open.js',
   // ② 真实鼠标手势划出 `DE` 再拖到 `A|B` 之间：文档必须逐字不变、选区原样保留；
   //    末尾还守"从系统拖入文件仍然打开"（两条改动不许互相打架）。
-  '_verify-no-text-drag.js'
+  '_verify-no-text-drag.js',
+  // ── 文本文档（第七轮：除 .md 外还要能打开 .txt 等纯文本）──
+  // 拖入 .txt 真的打开 / 文件树看得见六种文本类型 / 四种新类型逐个能开 / .md 仍旧走渲染面 /
+  // 保存后扩展名不变（不许多出 .md）/ GBK 的 .txt 也能识别编码 /
+  // 对话框 filters、拖入白名单、另存为后缀都派生自唯一真相源 src/shared/textFiles.ts
+  // （原生对话框在 CDP 里点不动：那两条是静态 + 单测级证据，套件里如实标注）。
+  '_verify-text-open.js'
 ]
 
 /** 自己管理 Electron 实例的套件（运行器不替它们起实例） */

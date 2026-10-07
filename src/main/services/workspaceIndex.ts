@@ -14,7 +14,7 @@
 // 于是"从未打开过的文件"会挤进「最近文档」列表。这里用专门的 `indexDocumentForSearch`。
 import fs from 'fs/promises'
 import path from 'path'
-import { isMarkdownFile } from '../../shared/docExt'
+import { isTextFileName } from '../../shared/textFiles'
 import { db } from './database'
 
 /** 每篇最多读多少字节进索引（与 database 的 FTS 正文上限同量级） */
@@ -65,9 +65,9 @@ function emit(): void {
   }
 }
 
-/** 这是不是一篇"该进索引"的 Markdown（与扫描/文件树同一套扩展名口径，定义在 shared/docExt） */
+/** 这是不是一篇"该进索引"的文本文档（与扫描/文件树/拖入/对话框同一套清单：shared/textFiles.ts） */
 export function isIndexableFile(name: string): boolean {
-  return isMarkdownFile(name)
+  return isTextFileName(name)
 }
 
 /** 让出事件循环（同步 DB 写入之间必须给主进程喘气的机会） */

@@ -2,6 +2,7 @@
 import { computed, nextTick, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { FileNode } from '../../../shared/types'
+import { stripTextExtension } from '../../../shared/textFiles'
 import { useFilesStore } from '../stores/files'
 import { useUiStore, type ContextMenuItem } from '../stores/ui'
 import { activeTreePath } from '../lib/treeFocus'
@@ -49,8 +50,9 @@ async function startRename(): Promise<void> {
   const input = renameInputRef.value
   if (input) {
     input.focus()
-    // 只选中文件名主干（不含 .md 等扩展名）：输入即替换、保留扩展名
-    const stem = props.node.name.replace(/\.(md|markdown|mdown|mkd|txt)$/i, '')
+    // 只选中文件名主干（不含扩展名）：输入即替换、保留扩展名。
+    // 「哪些后缀算文本类型」不再在这里手写正则 —— 唯一真相源是 shared/textFiles.ts
+    const stem = stripTextExtension(props.node.name)
     input.setSelectionRange(0, stem.length)
   }
 }

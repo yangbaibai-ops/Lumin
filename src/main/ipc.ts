@@ -52,6 +52,8 @@ import {
 } from '../shared/settingsFile'
 import { testOutputDir } from './testPaths'
 import { buildDiagnosticsText, safeLaunchArgs } from '../shared/diagnostics'
+// 「打开文件」对话框的过滤器派生自唯一真相源（见 shared/textFiles.ts 的说明）
+import { openFileDialogFilters } from '../shared/textFiles'
 import {
   CLOSE_FALLBACK_MS,
   noteCloseProgress,
@@ -632,12 +634,17 @@ export function registerIpc(slots: SlotRegistry): void {
     const st = await stat(fp).catch(() => null)
     return st ? st.mtimeMs : null
   })
+  /**
+   * 「打开文件」对话框。**过滤器派生自唯一真相源** `shared/textFiles.ts`
+   * （`openFileDialogFilters` 直接由扩展名数组生成）—— 于是"对话框里能选"与
+   * "文件树/索引/链接/拖入认"永远同一套；新增可打开类型只改那个文件。
+   */
   ipcMain.handle('file:chooseOpenFile', async () => {
     const win = BrowserWindow.getFocusedWindow()
     const r = await dialog.showOpenDialog(win!, {
       properties: ['openFile'],
       filters: [
-        { name: 'Markdown', extensions: ['md', 'markdown', 'mdown', 'mkd', 'txt'] },
+        ...openFileDialogFilters(mainT('dialog.textFiles')),
         { name: mainT('dialog.allFiles'), extensions: ['*'] }
       ]
     })

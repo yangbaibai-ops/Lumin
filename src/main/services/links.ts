@@ -11,7 +11,7 @@
 import fs from 'fs/promises'
 import path from 'path'
 import { fileURLToPath } from 'url'
-import { MD_EXT_RE } from '../../shared/docExt'
+import { TEXT_FILE_EXT_RE } from '../../shared/textFiles'
 import type { LinkResolveResult, LinkTargetKind } from '../../shared/types'
 
 /**
@@ -91,9 +91,9 @@ function creationType(p: string): 'file' | 'directory' {
   return /[\\/]$/.test(p) ? 'directory' : 'file'
 }
 
-/** Lumin 自己能渲染编辑的文本类目标（md 家族 / txt / 无扩展名如 README） */
+/** Lumin 自己能渲染编辑的文本类目标（可打开的文本清单在 shared/textFiles.ts；无扩展名如 README） */
 function isLuminOpenable(p: string): boolean {
-  return path.extname(p) === '' || MD_EXT_RE.test(p)
+  return path.extname(p) === '' || TEXT_FILE_EXT_RE.test(p)
 }
 
 /** stat 探类型；不存在或不可访问 → null */

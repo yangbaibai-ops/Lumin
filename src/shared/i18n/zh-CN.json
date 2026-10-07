@@ -474,6 +474,7 @@
     "historyNeedsFile": "本地历史只对已保存到磁盘的文档可用",
     "heavyDocSourceMode": "这篇文档有 {fences} 个代码块，实时渲染会明显卡顿（最多要几分钟），已用源码模式打开（可随时切回实时渲染）",
     "heavyDocSourceModeChars": "这篇文档有 {chars} 个字符，实时渲染要 6 秒以上、并且占用 1GB 以上内存，已用源码模式打开（可随时切回实时渲染）",
+    "plainTextSourceMode": "「{name}」是纯文本文件，已用源码模式打开（实时渲染会按 Markdown 重新解释它，保存时可能改写内容；可随时切回）",
     "saveFailedDetail": "保存失败：{reason}",
     "encodingFailedDetail": "按编码重新打开失败：{reason}",
     "deleteFailedDetail": "删除失败：{reason}",
@@ -651,6 +652,7 @@
   },
   "dialog": {
     "allFiles": "所有文件",
+    "textFiles": "文本文档",
     "images": "图片"
   },
   "taskbar": {
