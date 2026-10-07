@@ -38,29 +38,46 @@
 
 ### Changed
 
-**开发者工具：F12 不再触发，改由顶部工具栏的「打开开发者工具」进入（用户口径）**
+**浏览器自带功能的收口：F12/DevTools 走工具栏、「取消 Ctrl+R 刷新」等一批键**
 
-- 用户原话：「取消点击 F12 出现开发者工具的功能，取而代之的是在顶部工具栏中添加一项：
+- 用户原话（第三轮）：「取消点击 F12 出现开发者工具的功能，取而代之的是在顶部工具栏中添加一项：
   '打开开发者工具'，点击就出现开发者工具。」
-- **取消 F12**：`src/main/index.ts` 不再调用 `@electron-toolkit/utils` 的
-  `optimizer.watchWindowShortcuts`（它在开发态用 F12 开/关 DevTools，只能整包开关，
-  且在打包态**漏屏蔽 macOS 的 `Cmd+Alt+I`**）。换成两份可单测的显式策略
-  （新增 `src/shared/shortcuts.ts`）：`devShortcut` 只保留开发态的 `Ctrl/Cmd+R`、`F5`（重新加载）
-  与 `F11`（全屏）；`blockedShortcut` 在**任何构建下**屏蔽 `F12` 与 `Ctrl+Shift+I` / `Cmd+Alt+I`。
-  于是 DevTools 不再有任何键盘入口 —— 口径是"只有工具栏那一项（外加原生菜单里早就有的
-  `role: 'toggleDevTools'`）"。菜单那条**保留**（用户没要求去掉，删了反而少一个入口）。
+- 用户原话（第四轮）：「取消 Electron/Chromium 自带但本项目不需要的功能」，点名「按 Ctrl+R 刷新页面」。
+  详细清单/逐条理由/故意没拦的清单见 `docs/manual/08d-fix-log-4.md` §4.88 与 `src/shared/shortcuts.ts`。
+- **取消 F12 / 全部浏览器自带键**：`src/main/index.ts` 不再调用 `@electron-toolkit/utils` 的
+  `optimizer.watchWindowShortcuts`（开发态用 F12 开/关 DevTools、打包态只屏蔽 `Ctrl+R` 与
+  `Ctrl+Shift+I` 且漏了 macOS 的 `Cmd+Alt+I`，只能整包开关）。改成一份**可单测**的显式策略
+  （`src/shared/shortcuts.ts`）：`blockedShortcut()` 在**任何构建下**拦下
+  刷新族（`Ctrl/Cmd+R`、`Ctrl+Shift+R`、`F5`、`Ctrl+F5`）、DevTools 族（`F12`、
+  `Ctrl+Shift+I/J/C`、`Cmd+Alt+I/J/C`）、查看源码（`Ctrl/Cmd+U`）、整页缩放
+  （`Ctrl/Cmd + = - 0`）、`F7`、`F11`。原来的 `devShortcut`（开发态保留
+  `Ctrl+R`/`F5`/`F11`）**已删除** —— 刷新族现在一律拦（dev 态也不需要：
+  `electron-vite dev --watch` 改文件会自动重建）。
+  应用自己绑过的组合由 `APP_OWNED_COMBOS` 兜底放行（`Mod+P` 打印、`Mod+F/H` 查找替换、
+  `Mod+Shift+F` 专注模式、`Mod+B/I`、`Mod+Z/Y`、`Mod+D`、代码块的 `Ctrl+Space`…）：
+  `before-input-event` 的 `preventDefault()` 会同时吃掉渲染层 keydown 与菜单加速键，
+  拦错一条就是"应用自己的快捷键整个失效"。
+- **整页缩放的鼠标那条路**也一并关掉：每窗口 `setVisualZoomLevelLimits(1, 1)`
+  （捏合/触控板）＋ 忽略 `zoom-changed`（Ctrl+滚轮）后 `setZoomFactor(1)` 复位
+  —— 应用自己有字号设置，Chromium 的整页缩放会把版式搞坏。
 - **新增工具栏入口**：快捷工具栏右侧固定入口多一枚「打开开发者工具」
   （图标 `monitor`、`data-open-devtools` 语义锚点、文案走已有的 `toolbar.openDevTools` 三语键）。
   它**不进** `shared/toolbarItems.ts` 的可调整目录：目录里的项目能被逐项隐藏，
   而"开发者工具打不开"这种事不该让用户先想起来"我把哪个按钮藏了"。
+  原生菜单里原有的 `role: 'toggleDevTools'` 保留（菜单栏默认隐藏，不影响"渲染层唯一入口"）。
 - **接线**：新增 IPC `app:openDevTools` / `app:closeDevTools`（`src/main/ipc.ts`，
   按 `event.sender` 定位窗口而不是 `getFocusedWindow()`），preload 按既有 `window.luminAPI.app.*`
   风格暴露，`mode: 'detach'` 独立窗口（不挤坏文档布局），返回值 `{ ok, alreadyOpen, windowId }`
-  可观测（失败会弹通知，不留"点了没反应"）。
-- **验收**：新增 `tools/_verify-devtools.js`（已登记进默认矩阵）——工具栏里真有那一项、
-  点击真的走 IPC 且 `/json/list` 里多出一个 devtools 目标、再点一次不报错且 `alreadyOpen=true`、
-  关闭后目标消失、**按 F12 不再出现 devtools 目标**；新增 `tests/shortcuts.test.mjs`（6 条）
-  把"哪些键被屏蔽 / 哪些被保留"钉死。单测 820 → **827**（含同期并入的另两条守卫）。
+  可观测（失败会弹通知，不留"点了没反应"）。被拦下的键在主进程留一行 ASCII 日志
+  `[shortcuts] blocked <组合键> (<理由>)`（每个窗口每个组合只记一次，供验收取证）。
+- **验收**：`tools/_verify-devtools.js`（默认矩阵）**38 条**——工具栏里真有那一项、点击真的走
+  IPC 且 `/json/list` 里多出一个 devtools 目标、`F12` 与 `Ctrl+Shift+I` 不再产生 devtools 目标、
+  `F7`/`F11` 留下被拦日志、`Ctrl+U` 不产生新目标、缩放键与 Ctrl+滚轮都不改变 `devicePixelRatio`、
+  **Ctrl+R / F5 不重载**（页面标记 `window.__reloadProbe` 必须还在）、
+  以及**应用自己的 `Ctrl+Shift+B` / `Ctrl+,` / `Ctrl+Shift+F` 仍然生效**
+  （"没误伤"的运行时证据；最后那条正是"F11 被拦 ≠ 应用没有全屏入口"的确认）。
+  `tests/shortcuts.test.mjs` **10 条**把"拦哪些 / 放行哪些"逐条钉死（含"应用自己的键一律不被拦"
+  与"日志串必须是 ASCII"）。
 
 ### Added
 

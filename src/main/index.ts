@@ -43,8 +43,8 @@ import * as pathGrants from './services/pathGrants'
 import { defaultSettings } from '../shared/defaults'
 import { paperForTheme } from '../shared/theme'
 import { PROD_CSP } from '../shared/csp'
-// 浏览器级键的接管/屏蔽策略（纯函数，见该模块顶部说明：F12 不再开 DevTools）
-import { blockedShortcut, devShortcut } from '../shared/shortcuts'
+// 浏览器级键的拦截策略（纯函数，见该模块顶部说明：刷新族/DevTools/缩放/F7/F11 全拦）
+import { blockedShortcut, comboLabel } from '../shared/shortcuts'
 import { recordFatal } from './services/appLog'
 import { mkdirSync } from 'fs'
 import { portableDataDir } from '../shared/portable'
@@ -528,40 +528,60 @@ app.whenReady().then(() => {
   /**
    * ─── 浏览器级快捷键：**显式列举**，不再整包交给 `optimizer.watchWindowShortcuts` ──────
    *
-   * 为什么换掉那一行（用户口径）：「取消点击 F12 出现开发者工具的功能，取而代之的是在顶部工具栏
-   * 中添加一项『打开开发者工具』」。`@electron-toolkit/utils` 的 `watchWindowShortcuts` 是一整包
-   * 便利，且**行为随构建而变**（见 node_modules 里的实现）：
-   *   * 开发态：`F12` 开/关 DevTools（`mode: 'undocked'`）—— 就是用户要去掉的那条；
-   *   * 打包态：屏蔽 `Ctrl+R` 与 `Ctrl+Shift+I`（但**漏了 macOS 的 `Cmd+Alt+I`**）。
-   * 它只能整包开或整包关，于是"只去掉 F12"在那一层做不到；留在那里也永远说不清
-   * "到底还有没有别的隐式路径能开 DevTools"（Ctrl+Shift+I 就是另一条）。
+   * 口径（用户原话，第四轮）：「取消 Electron/Chromium 自带但本项目不需要的功能」，
+   * 点名「按 Ctrl+R 刷新页面」。**任何构建下（含开发态）都拦**，清单与逐条理由都在
+   * `shared/shortcuts.ts`（纯函数 + 单测 `tests/shortcuts.test.mjs`）：
+   *   * 刷新族 `Ctrl/Cmd+R`、`Ctrl+Shift+R`、`F5`、`Ctrl+F5` —— 这不是浏览器，刷新只会丢
+   *     未保存内容；开发态也不再需要（`electron-vite dev --watch` 改文件会自动重建/重启）；
+   *   * DevTools 族 `F12`、`Ctrl+Shift+I/J/C`、`Cmd+Alt+I/J/C` —— 改用顶部工具栏那一项
+   *     （少一个键盘入口就少一条说不清的隐式路径）；
+   *   * 查看源码 `Ctrl/Cmd+U`；整页缩放 `Ctrl/Cmd + = - 0`（另有两道鼠标闸，见下）；
+   *   * `F7`（caret browsing）、`F11`（浏览器/系统全屏）。
    *
-   * 因此改成两份**看得见、可单测**的策略（`shared/shortcuts.ts`）+ 这里的一小段接线：
-   *   * `devShortcut`（**仅开发态**保留）：`Ctrl+R` / `Cmd+R` / `F5` 重新加载、
-   *     `F11` 全屏。理由：改渲染层后一键回到干净状态是开发刚需，且这两条都与 DevTools 无关；
-   *     打包态一条都不挂（用户不需要，行为与旧实现的打包态一致：只屏蔽、不提供）。
-   *   * `blockedShortcut`（**任何构建下**屏蔽）：`F12` 与 `Ctrl+Shift+I` / `Cmd+Alt+I`。
-   *     这就是本任务的核心：F12 不再打开/关闭开发者工具，也不再有第二条键盘后门。
-   *     DevTools 只从「顶部工具栏 → 打开开发者工具」（`app:openDevTools`）与原生菜单里
-   *     早就存在的 `role: 'toggleDevTools'` 进。
+   * ⚠️ **拦 = 这个键在应用里彻底失效**：`before-input-event` 的 `preventDefault()` 会同时吃掉
+   * 渲染层 keydown 与菜单加速键（Electron 文档原话：prevent the page keydown/keyup events
+   * and the menu shortcuts）。所以 `blockedShortcut()` 里第一件事就是放行 `APP_OWNED_COMBOS`
+   * （应用自己绑过的组合，含 `Mod+P` 打印、`Mod+Shift+F` 专注模式、`Mod+B/I`、`Mod+Z/Y`…）——
+   * 那份清单是**应用赢**的兜底。新增拦截规则前先在那份清单里核对。
    *
-   * 注意**不要**再顺手换回 `watchWindowShortcuts`：DevTools 的键盘入口会一起回来。
+   * 关于旧的 `optimizer.watchWindowShortcuts`：它在开发态用 F12 开/关 DevTools、打包态屏蔽
+   * `Ctrl+R` 与 `Ctrl+Shift+I`（还漏了 macOS 的 `Cmd+Alt+I`），只能整包开关 ——
+   * 「只去掉某几条」在那一层做不到，留在那里也永远说不清「还有没有别的隐式路径」。
    */
   app.on('browser-window-created', (_, window) => {
-    window.webContents.on('before-input-event', (event, input) => {
+    const wc = window.webContents
+    /**
+     * ─── 整页缩放：两道闸 ────────────────────────────────────────────────────
+     * 为什么：应用自己有**字号设置**（`settings.fontSize`），而 Chromium 的整页缩放是另一套
+     * 东西 —— 它会把版式、度量、缓存的行宽一起放大/缩小，用户会以为"排版坏了"。
+     *   * `setVisualZoomLevelLimits(1, 1)`：关掉**捏合/触控板**那类视觉缩放；
+     *   * `zoom-changed`（Ctrl+滚轮）：先 `preventDefault()`，再把缩放**复位为 1**
+     *     （只靠 preventDefault 在部分 Electron 版本上不够，复位是兜底）。
+     * 键盘那三档（Ctrl+= / Ctrl+- / Ctrl+0）由下面的 `blockedShortcut` 拦。
+     */
+    void wc.setVisualZoomLevelLimits(1, 1)
+    wc.on('zoom-changed', (event) => {
+      event.preventDefault()
+      if (!window.isDestroyed()) wc.setZoomFactor(1)
+    })
+
+    /**
+     * 被拦过的键：**每个窗口**每个组合只记一次（`before-input-event` 每次按键都触发，
+     * 不设闸的话按住 Ctrl+R 会把日志刷满）。这行日志是"键真的被拦下了"的取证点
+     * （`tools/_verify-devtools.js` 读实例日志断言），所以必须是 ASCII。
+     */
+    const loggedBlocks = new Set<string>()
+    wc.on('before-input-event', (event, input) => {
       // window 在被销毁的瞬间仍可能收到一次事件（`webContents` 已不可用）——先看 isDestroyed
       if (window.isDestroyed()) return
-      // 屏蔽优先：任何构建下 F12 / Ctrl+Shift+I 都不许开 DevTools
-      if (blockedShortcut(input)) {
-        event.preventDefault()
-        return
-      }
-      if (!is.dev) return
-      const action = devShortcut(input)
-      if (!action) return
+      const reason = blockedShortcut(input)
+      if (!reason) return
       event.preventDefault()
-      if (action === 'reload') window.webContents.reload()
-      else window.setFullScreen(!window.isFullScreen())
+      const combo = comboLabel(input)
+      if (!loggedBlocks.has(combo)) {
+        loggedBlocks.add(combo)
+        console.log(`[shortcuts] blocked ${combo} (${reason})`)
+      }
     })
   })
 

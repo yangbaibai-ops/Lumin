@@ -727,45 +727,100 @@
   "只需要测试这个功能，之前已经有的逻辑和功能统统不需要再测试一遍"。
   （改动面只有一个 composable 里的三行 + 一个 store 字段，`vue-tsc` / `eslint` / build 全绿。）
 
-### 4.88 开发者工具：取消 F12，改由顶部工具栏进入
+### 4.88 浏览器自带功能的收口：DevTools 走工具栏、取消 F12 与「Ctrl+R 刷新」等一批键
 
-**用户口径**：「取消点击 F12 出现开发者工具的功能，取而代之的是在顶部工具栏中添加一项：
+**用户口径（两轮）**：
+① 「取消点击 F12 出现开发者工具的功能，取而代之的是在顶部工具栏中添加一项：
 '打开开发者工具'，点击就出现开发者工具。」
+② 「取消 Electron/Chromium 自带但本项目不需要的功能」，点名「按 Ctrl+R 刷新页面」。
 
-#### 一、F12 那条路是怎么来的、怎么拆
+#### 一、F12 / Ctrl+R 那两条路是怎么来的、怎么拆
 
 来源是 `src/main/index.ts` 的 `optimizer.watchWindowShortcuts(window)`
 （`@electron-toolkit/utils`）：开发态 `input.code === 'F12'` 直接
 `webContents.openDevTools({ mode: 'undocked' })`；打包态则屏蔽 `Ctrl+R` 与
-`Ctrl+Shift+I`（**漏了 macOS 的 `Cmd+Alt+I`**）。它只能整包开关，所以"只去掉 F12"在那一层做不到。
+`Ctrl+Shift+I`（**漏了 macOS 的 `Cmd+Alt+I`**）。它只能整包开关，所以"只去掉某几条"在那一层做不到。
 
-现在换成显式策略（新增 `src/shared/shortcuts.ts`，纯函数、有单测）：
+现在换成一份显式策略（`src/shared/shortcuts.ts`，纯函数、有单测 `tests/shortcuts.test.mjs`）。
+**口径：任何构建下（含开发态）都拦**，原来的 `devShortcut`（开发态保留 `Ctrl+R`/`F5`/`F11`）已删除
+（dev 态也不再需要刷新：`electron-vite dev --watch` 改文件会自动重建/重启）。
 
-| 键                        | 开发态          | 打包态 | 理由                                                       |
-| ------------------------- | --------------- | ------ | ---------------------------------------------------------- |
-| `F12`                     | **屏蔽**        | 屏蔽   | 用户要求取消的那条；不再有任何隐式 DevTools 入口           |
-| `Ctrl+Shift+I`/`Cmd+Alt+I` | **屏蔽**       | 屏蔽   | Chromium 的另一条 DevTools 快捷键（打包态补上 macOS 那条） |
-| `Ctrl+R` / `Cmd+R` / `F5` | 接管=重新加载   | 不接管 | 开发刚需，且与 DevTools 无关                               |
-| `F11`                     | 接管=全屏       | 不接管 | 同上                                                       |
+#### 二、被拦下的键（逐条理由）
 
-原生菜单里 `role: 'toggleDevTools'` 那条**保留**（用户没要求去掉；菜单栏默认隐藏，
-不影响"工具栏是渲染层唯一入口"这件事）。
+| 键 | 理由 |
+| --- | --- |
+| `Ctrl/Cmd+R`、`Ctrl+Shift+R`、`F5`、`Ctrl+F5`、`Shift+F5` | **刷新族**。这不是浏览器：刷新只会丢未保存内容；开发态也不需要 |
+| `F12`、`Ctrl+Shift+I/J/C`、`Cmd+Alt+I/J/C` | **DevTools 族**（开/关面板、控制台、检查元素）。改用工具栏那项；少一个键盘入口就少一条说不清的隐式路径 |
+| `Ctrl/Cmd+U` | Chromium 的**查看源代码**（见下面"已知代价"） |
+| `Ctrl/Cmd + = + - _ 0` | **整页缩放**。应用自己有字号设置；Chromium 的整页缩放会把版式/度量一起改掉 |
+| `F7` | Caret Browsing（插入符号浏览） |
+| `F11` | 浏览器/系统全屏。应用自己的「专注模式」是 `Mod+Shift+F`（`view.focusMode`），**不在这条路上**，仍然有效 |
 
-#### 二、工具栏那一项
+鼠标那条路（Ctrl+滚轮 / 捏合）另有两道闸：每窗口 `setVisualZoomLevelLimits(1, 1)`
+＋ 忽略 `zoom-changed` 后 `setZoomFactor(1)` 复位。
+
+被拦下的键在主进程留一行 ASCII 日志 `[shortcuts] blocked <组合键> (<理由>)`
+（每个窗口每个组合只记一次 —— `before-input-event` 每次按键都触发，不设闸会刷屏）。
+
+#### 三、**故意没拦**的键（应用自己的；逐条核对过）
+
+⚠️ `before-input-event` 里 `preventDefault()` 会**同时**吃掉渲染层 keydown 与菜单加速键
+（Electron 文档原话）—— 拦错一条 = 应用自己的快捷键整个失效。所以
+`blockedShortcut()` 的第一件事就是放行 `APP_OWNED_COMBOS`（清单在 `shortcuts.ts`，**应用赢**的兜底）：
+
+| 键 | 它是什么 |
+| --- | --- |
+| `Mod+P` | **打印**（`file.print` → 「打印…」）。★ 见下面"为什么没拦 Ctrl+P" |
+| `Mod+F` / `Mod+H` | 查找 / 替换 |
+| `Mod+Shift+F` | 专注模式（**不是** F11 那条浏览器全屏） |
+| `Mod+B` / `Mod+I` | 行内加粗 / 斜体（与 DevTools 的 `Ctrl+Shift+I` 只差 shift，判据必须带 shift） |
+| `Mod+Z` / `Mod+Y` / `Mod+Shift+Z` | 撤销 / 重做 |
+| `Mod+C` / `Mod+X` / `Mod+V` / `Mod+A` | 复制 / 剪切 / 粘贴 / 全选（原生菜单 role） |
+| `Mod+N` / `Mod+Shift+N` / `Mod+O` / `Mod+Shift+O` / `Mod+S` / `Mod+Shift+S` / `Mod+W` | 新建 / 新窗口 / 打开 / 打开文件夹 / 保存 / 另存为 / 关闭窗口 |
+| `Mod+Shift+E` | 导出 PDF（`shared/exportFormats.ts`） |
+| `Mod+K` / `Mod+,` / `Mod+/` / `Mod+Shift+P` / `Mod+Tab` / `Mod+Shift+Tab` | 快捷键设置 / 设置 / 循环模式 / 命令面板 / 应用内切窗 |
+| `Mod+E` / `Mod+Shift+X` / `Mod+Shift+Q` / `Mod+D` / `Ctrl+Space` | 行内代码 / 删除线 / 引用 / 代码块多光标加选 / 代码块补全 |
+
+**为什么没拦 `Ctrl+P`**：它是**应用自己绑的**打印键（`useKeymap.ts` 的 `file.print`，
+「打印…」走 `webContents.print()`）。Chromium 那套浏览器 UI 在 Electron 里并不存在，
+没有"浏览器打印对话框"要拦 —— 拦了只会把应用自己的打印打死。验收套件刻意**不真按**
+`Ctrl+P`（会弹出原生打印对话框），只做「策略放行 + `useKeymap.ts` 里 `Mod+P` 仍在」的静态断言。
+
+#### 四、已知代价
+
+代码块里 CodeMirror 的 `historyKeymap` 默认把 `Mod-u` 绑给 `undoSelection`
+（`node_modules/@codemirror/commands/dist/index.js`），而本轮按用户口径拦掉了 `Ctrl+U`
+（查看源代码）—— 于是代码块里"撤销选区内的改动"这条第三方默认键失效（整篇撤销 `Mod+Z` 仍在）。
+取舍登记在 `shortcuts.ts` 的 `KNOWN_THIRD_PARTY_COLLISIONS`。
+
+#### 五、工具栏那一项
 
 快捷工具栏右侧固定入口多一枚 `[data-open-devtools]`（图标 `monitor`，文案走
 `toolbar.openDevTools` 三语键）。它**不进** `shared/toolbarItems.ts` 的可调整目录 ——
 目录里的项目可被逐项隐藏，而"开发者工具打不开"不该让用户先想起来自己藏了哪个按钮。
+原生菜单里 `role: 'toggleDevTools'` 那条**保留**（菜单栏默认隐藏，不影响"工具栏是渲染层唯一入口"）；
+`role: 'reload'` 那条也保留（点击是用户的显式动作，而键盘那条已被拦 —— 删掉它会让
+`menu.reload` 变成死键，见 `tests/i18nKeys.test.mjs`）。
 
 接线：IPC `app:openDevTools` / `app:closeDevTools`（按 `event.sender` 定位窗口，不用
 `getFocusedWindow()`），`mode: 'detach'` 独立窗口，返回 `{ ok, alreadyOpen, windowId }`。
 
-#### 三、验收
+#### 六、验收
 
-- 新增 `tools/_verify-devtools.js`（**已登记进默认矩阵**）：工具栏里真有那一项 →
-  点击真的走 IPC 且调试端口的 `/json/list` 多出一个 devtools 目标 → 再点一次不报错
-  （`alreadyOpen: true`）→ 关闭后目标消失 → **按 F12 不再出现 devtools 目标**；
-- 新增 `tests/shortcuts.test.mjs` 6 条把"哪些键被屏蔽/保留"钉死（单测 820 → 827，含同期并入的另两条守卫）。
+- `tools/_verify-devtools.js`（**已登记进默认矩阵**）**38 条**：工具栏那项存在且可点 →
+  点击真的走 IPC（主进程日志）且 `/json/list` 多出一个 devtools 目标 → 再点一次报
+  `alreadyOpen: true` → 关闭后目标消失 → `F12` 与 `Ctrl+Shift+I` 不再产生 devtools 目标 →
+  `F7`/`F11` 留下被拦日志 → `Ctrl+U` 不产生新目标 → 缩放键与 Ctrl+滚轮都不改变 `devicePixelRatio` →
+  **`Ctrl+R` / `F5` 不重载**（页面标记 `window.__reloadProbe` 必须还在；拦失败时它会被抹掉）→
+  **应用自己的 `Ctrl+Shift+B`（侧栏）/ `Ctrl+,`（设置）/ `Ctrl+Shift+F`（专注模式）仍然生效**
+  （"没误伤"的运行时证据；专注模式那条正是用户点名要确认的"F11 被拦 ≠ 应用没有全屏入口"）；
+- `tests/shortcuts.test.mjs` **10 条**：每条被拦组合落在正确的理由桶里、应用自己那份清单
+  （含点名核对的 29 个组合）一律放行、日志串必须是 ASCII；
+- 改前（HEAD `89382d6` 的构建）同一套件的原始输出：`H-ctrl-r probe={"value":"GONE"}`、
+  `H-f5 probe={"value":"GONE"}`（**真的重载了**）、`blocked=[]`，共 **22/35 PASS / 13 FAIL**
+  （当时的套件版本是 35 条）；改后 **38/38 PASS**。其中"缩放键不改变缩放"与
+  "`Ctrl+U` 不产生新目标"两条**改前也是绿的**（这套 Electron 构建里键盘缩放/查看源码本就不生效），
+  真正红转绿的是主进程那两条 `*-blocked-in-main-process` 断言与 `Ctrl+R`/`F5` 的重载探针。
 
 ---
 
