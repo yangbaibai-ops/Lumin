@@ -70,19 +70,33 @@
   i18n 键从 `toolbar.openDevTools` **改名**为 `menu.openDevTools`（三语**文本级**增删：
   在 `menu.devtools` 之后插入新键、删掉 `toolbar` 里那份并去掉前一行的尾逗号 ——
   绝不用 `JSON.parse → stringify` 重写整份 JSON，那会把转义的 `\uFFFD` 写成真实字符）。
+- **修：打开 DevTools 会把焦点抢到顶部栏的「文件」（用户报障，第六轮）**。因果链（CDP 实测的
+  焦点时间线）：① 点菜单项 → `runLeaf` 先关下拉 → 被聚焦的那个按钮从 DOM 里消失 → 焦点落到
+  `body`；② 主进程用 `mode: 'detach'` 开 DevTools → 主窗口 blur、紧接着 focus 回来（实测两次）；
+  ③ **Chromium 在窗口重新激活时把焦点给文档里第一个可聚焦元素** = 顶部栏第一个分组按钮「文件」
+  （实测：`window-blur` 之后的那个 `window-focus` 里 `activeElement` **已经**是
+  `[data-topmenu-group="f"]`，紧跟一条 `focusin` 到它）—— 应用里没有任何一行代码去 focus 它。
+  修法（`TopMenuBar.vue` 的 `refocusEditorAfterDevTools`）：这条动作成功后**把焦点交回编辑面**，
+  并盯住那一小段激活抖动（`window` 的 focus 事件；2.5s 后自动摘掉监听，不做全局钩子）；
+  只在"焦点确实丢了（body）或确实在顶部栏里"时才动手 —— 用户若自己点了别处就不抢。
+  **没有**用 `tabindex="-1"` 之类把顶部栏踢出 tab 序的偷懒改法（那会破坏键盘可达性）。
 - **接线**：IPC `app:openDevTools` / `app:closeDevTools`（`src/main/ipc.ts`，
   按 `event.sender` 定位窗口而不是 `getFocusedWindow()`），preload 按既有 `window.luminAPI.app.*`
   风格暴露，`mode: 'detach'` 独立窗口（不挤坏文档布局），返回值 `{ ok, alreadyOpen, windowId }`
   可观测（失败会弹通知，不留"点了没反应"）。被拦下的键在主进程留一行 ASCII 日志
   `[shortcuts] blocked <组合键> (<理由>)`（每个窗口每个组合只记一次，供验收取证）。
-- **验收**：`tools/_verify-devtools.js`（默认矩阵）**46 条**——顶部栏「帮助」里真有那一项、
+- **验收**：`tools/_verify-devtools.js`（默认矩阵）**49 条**——顶部栏「帮助」里真有那一项、
   **真实点击**（点帮助 → 点该项）后 `/json/list` 里多出一个 devtools 目标且主进程日志出现
   `[devtools] opened …`、再点一次报 `alreadyOpen: true`；**反向**断言编辑区快捷工具栏里
-  **不再有**那枚按钮；`F12` 与 `Ctrl+Shift+I` 不再产生 devtools 目标、`F7`/`F11` 留下被拦日志、
+  **不再有**那枚按钮；**焦点口径**（第六轮新增）：点击前后各读一次 `document.activeElement`，
+  断言打开后焦点**不在顶部栏**（`inTopBar === false` 且 `topmenuGroup === null`）且**回到编辑面**
+  （`.ProseMirror` 或 `.source-editor`）；`F12` 与 `Ctrl+Shift+I` 不再产生 devtools 目标、
+  `F7`/`F11` 留下被拦日志、
   `Ctrl+U` 不产生新目标、缩放键与 Ctrl+滚轮都不改变 `devicePixelRatio`、
   **Ctrl+R / F5 不重载**（页面标记 `window.__reloadProbe` 必须还在）、
   以及**应用自己的 `Ctrl+Shift+B` / `Ctrl+,` / `Ctrl+Shift+F` 仍然生效**
   （"没误伤"的运行时证据；最后那条正是"F11 被拦 ≠ 应用没有全屏入口"的确认）。
+  顶部栏的键盘入口回归：`_verify-alt-menu.js` **3/3**、`_verify-toolbar-settings.js` **38/38**。
   `tests/shortcuts.test.mjs` **10 条**把"拦哪些 / 放行哪些"逐条钉死（含"应用自己的键一律不被拦"
   与"日志串必须是 ASCII"）。
 

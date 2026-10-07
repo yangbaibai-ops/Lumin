@@ -379,6 +379,8 @@ const GROUPS = computed<Group[]>(() => [
       // 键盘入口（F12 / Ctrl+Shift+I/J/C）在第四轮已全部拦掉，这里与原生菜单的
       // `role: 'toggleDevTools'` 是仅有的两条入口。
       // 失败要说出来（`runLeaf` 会静默吞异常）：正常情况下不该走到 toast 这条分支。
+      // 成功之后**把焦点要回编辑器**（DevTools 的窗口激活会把焦点抢到顶部栏「文件」，见
+      // `refocusEditorAfterDevTools` 的说明）。
       {
         labelKey: 'menu.openDevTools',
         icon: 'monitor',
@@ -387,7 +389,9 @@ const GROUPS = computed<Group[]>(() => [
             const res = await window.luminAPI.app.openDevTools()
             if (!res?.ok) {
               ui.toast(`${t('menu.openDevTools')}: ${res?.error ?? 'unknown'}`, 'error')
+              return
             }
+            refocusEditorAfterDevTools()
           } catch (e) {
             ui.toast(
               `${t('menu.openDevTools')}: ${e instanceof Error ? e.message : String(e)}`,
@@ -443,6 +447,48 @@ async function runLeaf(leaf: Leaf): Promise<void> {
   } catch {
     /* 动作内部自行提示 */
   }
+}
+
+/**
+ * 「打开开发者工具」之后的**焦点收尾**（用户报障：焦点被顶部栏的「文件」抢走）。
+ *
+ * 因果链（CDP 实测的焦点时间线，见 `tools/_verify-devtools.js` 的 focus 段与 §4.88）：
+ *   ① 点菜单项 → `runLeaf` 先 `close()` 掉下拉 → **被聚焦的那个按钮从 DOM 里消失** →
+ *      焦点落到 `body`（实测点击后 80ms：`activeElement` = `BODY`）；
+ *   ② 主进程用 `mode: 'detach'` 开 DevTools → 主窗口 blur，紧接着 focus 回来（实测有两次）；
+ *   ③ **Chromium 在窗口重新激活时把焦点给文档里第一个可聚焦元素** —— 正是顶部栏的第一个
+ *      分组按钮「文件」（实测：`window-blur` 之后的那个 `window-focus` 里 `activeElement`
+ *      已经是 `[data-topmenu-group="f"]`，并且紧跟着一条 `focusin` 到它）。
+ *      这一步**应用里没有任何一行代码**去 focus 它 —— 是浏览器的激活行为，所以只能在
+ *      "事后把焦点要回来"这一层修。
+ *
+ * 为什么这么做（以及为什么不那么做）：
+ *   * **不能**把顶部栏按钮 `tabindex="-1"` 踢出 tab 序 —— 那会把键盘可达性搞坏（禁止的偷懒改法）；
+ *   * **不能**只 focus 一次编辑器：抖动发生在 IPC 之后 ~150ms（实测两次 blur/focus 到 617ms），
+ *     一次性的 focus 会被随后的激活再抢走；
+ *   * 所以：立刻交回一次 + 盯住这段激活抖动（`window` 的 focus 事件），**抖动过去就摘掉监听**
+ *     —— 不做全局钩子、不常驻。
+ *
+ * ⚠️ 只在"焦点确实丢了/被抢到顶部栏"时才动手：用户若在这段时间里自己点了侧栏、对话框之类，
+ * 焦点不在 `body` 也不在顶部栏里，我们**不抢**（`focusWasTakenByTopBarOrLost`）。
+ */
+function refocusEditorAfterDevTools(): void {
+  const focusWasTakenByTopBarOrLost = (): boolean => {
+    const el = document.activeElement as HTMLElement | null
+    if (!el || el === document.body || el === document.documentElement) return true
+    return !!(el.closest && el.closest('.topmenu-root'))
+  }
+  const restore = (): void => {
+    if (!focusWasTakenByTopBarOrLost()) return
+    const ed = editorStore.instance
+    if (ed) ed.commands.focus()
+    else document.querySelector<HTMLTextAreaElement>('textarea.source-editor')?.focus()
+  }
+  // 先立刻要一次（覆盖"焦点已经落到 body"这种"抖动还没开始/不会开始"的情况）
+  restore()
+  window.addEventListener('focus', restore)
+  // 抖动窗口（实测 617ms 内完成两次；给到 2.5s 兜住 DevTools 冷启动慢的机器）之后就摘掉
+  window.setTimeout(() => window.removeEventListener('focus', restore), 2500)
 }
 
 // ─── 二级菜单（悬停展开）：与编辑器右键菜单同一套「悬停意图」思路 ─────────────

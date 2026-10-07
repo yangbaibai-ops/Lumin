@@ -817,9 +817,44 @@
   见 `tests/i18nKeys.test.mjs`）。两者与新入口**功能上重复但不冲突**：键盘入口已全部拦掉，
   留在菜单里的两条是"看得见的显式动作"。
 
+#### 五之二、修：打开 DevTools 后焦点被顶部栏的「文件」抢走（第六轮用户报障）
+
+**用户原话**：「点击『帮助』里的『打开开发者工具』后，DevTools 会打开，但紧接着焦点就被顶部栏的
+『文件』抢走了。请分析原因并修复。」
+
+**因果链**（CDP 实测的焦点时间线，`document.activeElement` 前后各读一次 + `focusin/focusout`
++ `window` 的 focus/blur 全打点）：
+
+| 时刻 | 事件 | 焦点 |
+| --- | --- | --- |
+| 点正文后 | `focusin` | `.ProseMirror`（编辑面） |
+| 点「帮助」 | `focusin` | `[data-topmenu-group="h"]`「帮助(H)」—— 菜单触发器，正常 |
+| 点菜单项 | `focusout` → 下拉被 `close()` 移除 | `BODY`（被聚焦的按钮从 DOM 消失） |
+| DevTools 起来后 | `focusout`（编辑面）→ `window-blur` | `BODY`（Blink 在失焦时清空 focused element） |
+| 紧接着 | `window-focus` | **已经是 `[data-topmenu-group="f"]`「文件(F)」**，紧跟 `focusin` 到它 |
+
+即：① `runLeaf` 先关下拉导致焦点落到 `body`；② `mode: 'detach'` 的 DevTools 让主窗口
+blur→focus（实测两次，至 617ms 完成）；③ **Chromium 在窗口重新激活时把焦点给文档里第一个
+可聚焦元素** —— 就是顶部栏第一个分组按钮。**应用里没有任何一行代码去 focus 它**，
+所以只能在"事后把焦点要回来"这一层修。
+
+**修法**（`TopMenuBar.vue` 的 `refocusEditorAfterDevTools`，仅由这一条动作调用）：
+
+- 动作成功后立刻把焦点交回**编辑面**（`editorStore.instance.commands.focus()`；
+  源码模式下退到 `textarea.source-editor`），
+- 并**盯住那段激活抖动**：`window` 的 `focus` 事件里再要一次（实测抖动有两次），
+  2.5s 后自动摘掉监听 —— **不做全局钩子、不常驻**；
+- 只在"焦点确实丢了（`body`/`documentElement`）或确实在顶部栏里（`.topmenu-root`）"时才动手：
+  用户若在这段时间自己点了侧栏/对话框，**不抢**；
+- **没有**用 `tabindex="-1"` 之类把顶部栏踢出 tab 序的偷懒改法（那会破坏键盘可达性）。
+- 顶部栏的键盘契约**没有被改动**：它本来就只有 `Alt+F/E/D/V/H` 开分组 + `Esc` 关（外加原生
+  `<button>` 的 Tab 序），并没有 ←/→/Home/End 或 roving tabindex；本次改动一行代码都没碰
+  `onKeydown` / `openGroup`。回归证据：`tools/_verify-alt-menu.js` **3/3**（Alt+F 仍能开出「文件」
+  菜单与其中的「新建/打开」项）、`tools/_verify-toolbar-settings.js` **38/38**。
+
 #### 六、验收
 
-- `tools/_verify-devtools.js`（**已登记进默认矩阵**）**46 条**：
+- `tools/_verify-devtools.js`（**已登记进默认矩阵**）**49 条**：
   入口在顶部栏帮助里（`data-menu-item` 锚点 + 打开前不游离在 DOM 里）+ **反向**断言编辑区快捷
   工具栏里不再有那枚按钮 → **真实点击路径**（点「帮助」→ 点该项）后 `/json/list` 多出一个
   devtools 目标且主进程日志出现 `[devtools] opened …` → 再点一次报 `alreadyOpen: true` 且
@@ -840,12 +875,25 @@
     `i18n-key-renamed-to-menu-namespace`），6 条 SKIP 是"前提不成立"的点击路径段；
   * 改后：`A-ANCHORS {"toolbarHasOldButton":false,…}`、
     `A-HELP-MENU {"found":true,"inMenu":true,"panelItems":["menu.settings","menu.about","menu.openDevTools"]}`，
-    **46/46 PASS**；
+    **46/46 PASS**（第五轮入口搬家的那一版套件）；
+  * **第六轮（焦点）**同一套件扩到 **49 条**，新增的三条焦点断言：
+    * 改前 = HEAD `0156fd7` 的构建（帮助入口已在，但**没有**焦点收尾）：
+      `B-FOCUS-BEFORE-CLICK` = `{"topmenuGroup":"h","inTopBar":true,"text":"帮助(H)"}`（菜单触发器，
+      正常）→ `B-FOCUS-AFTER-OPEN` = `{"tag":"BUTTON","topmenuGroup":"f","inTopBar":true,
+      "inEditor":false,"text":"文件(F)"}`（**正是用户报障的现象**）→
+      `FAIL open-devtools-does-not-steal-focus-to-topbar`、
+      `FAIL open-devtools-returns-focus-to-editor`，共 **47/49 PASS / 2 FAIL**；
+    * 改后：`B-FOCUS-AFTER-OPEN` = `{"tag":"DIV","cls":"tiptap ProseMirror …","inTopBar":false,
+      "inEditor":true}`（焦点回到编辑面）、`C-FOCUS-AFTER-SECOND-CLICK` 同样是编辑面，**49/49 PASS**。
+    * 说明：第二次点击那条断言（`second-click-focus-still-not-in-topbar`）在改前也是绿的
+      —— 那时 DevTools 已经开着，第二次点击不会触发窗口激活抖动（改前读到的是 `BODY`）；
+      真正红转绿的是 `B-FOCUS-*` 那两条。
   * 第四轮那批键（刷新族/缩放/查看源码/F7/F11）的改前/改后数字见本轮之前的记录：
     改前 **22/35**（`H-ctrl-r probe={"value":"GONE"}`、`H-f5 probe={"value":"GONE"}` —— 真的重载了）、
     改后全绿；其中"缩放键不改变缩放"与"`Ctrl+U` 不产生新目标"在**这套 Electron 构建里改前也是绿的**
     （键盘缩放/查看源码本就不生效），真正红转绿的是主进程那两条 `*-blocked-in-main-process` 断言
     与 `Ctrl+R`/`F5` 的重载探针。
+- 顶部栏键盘入口回归（第六轮一并跑）：`_verify-alt-menu.js` **3/3**、`_verify-toolbar-settings.js` **38/38**。
 
 ---
 

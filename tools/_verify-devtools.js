@@ -323,8 +323,33 @@ async function main() {
   report.check('item-lives-inside-a-menu-panel', itemProbe.inMenu === true, JSON.stringify(itemProbe))
   report.check('item-has-icon', itemProbe.hasIcon === true)
 
-  // ── B. 点它 → devtools 目标 + 主进程日志 ──────────────────────────────────
+  // ── B. 点它 → devtools 目标 + 主进程日志 + **焦点不许被顶部栏抢走** ─────────
+  // 焦点读数（用户报障第五轮："点击后焦点紧接着被顶部栏的『文件』抢走"）：
+  // 前后各读一次，把"焦点去哪了"钉成数据。判据用 `activeElement` 的**结构**（是否在
+  // 顶部栏容器 `.topmenu-root` 里 / 是否在编辑面里），不依赖文案与语言。
+  const FOCUS_PROBE = `(() => {
+    const el = document.activeElement
+    if (!el) return JSON.stringify({ none: true })
+    return JSON.stringify({
+      tag: el.tagName,
+      cls: String(el.className || '').slice(0, 40),
+      topmenuGroup: el.getAttribute ? el.getAttribute('data-topmenu-group') : null,
+      inTopBar: !!(el.closest && el.closest('.topmenu-root')),
+      inEditor: !!(el.closest && el.closest('.ProseMirror')),
+      isSourceEditor: el.tagName === 'TEXTAREA' && String(el.className || '').includes('source-editor'),
+      text: (el.textContent || '').trim().slice(0, 16)
+    })
+  })()`
+  const readFocus = async (label) => {
+    const raw = await ev(FOCUS_PROBE)
+    const parsed = JSON.parse(raw)
+    console.log(label + ' ' + raw)
+    return parsed
+  }
+
   if (itemProbe.found) {
+    // 点击**前**的焦点（此时应该在刚点过的「帮助」分组按钮上 —— 那是菜单自己的正常状态）
+    await readFocus('B-FOCUS-BEFORE-CLICK')
     await clickPoint(send, itemProbe.x, itemProbe.y)
     await sleep(600)
 
@@ -342,6 +367,23 @@ async function main() {
       'help-menu-click-opens-devtools-target',
       opened.length >= 1 && afterTargets.length > beforeTargets.length,
       JSON.stringify({ before: beforeTargets.length, after: afterTargets.length })
+    )
+
+    // ★ 焦点回归（用户报障的那条）：等激活抖动过去再读一次。
+    // 因果链：① 菜单项被移除 → 焦点落 body；② DevTools（detach 窗口）让主窗口 blur→focus，
+    // Chromium 在重新激活时把焦点给**文档里第一个可聚焦元素** = 顶部栏「文件」。
+    // 抖动的实测时长：devtools 目标出现后 ~160ms 内完成（两次 blur/focus 到 617ms）。
+    await sleep(1500)
+    const focusAfter = await readFocus('B-FOCUS-AFTER-OPEN')
+    report.check(
+      'open-devtools-does-not-steal-focus-to-topbar',
+      focusAfter.inTopBar === false && focusAfter.topmenuGroup === null,
+      '打开开发者工具后焦点落在顶部栏里：' + JSON.stringify(focusAfter)
+    )
+    report.check(
+      'open-devtools-returns-focus-to-editor',
+      focusAfter.inEditor === true || focusAfter.isSourceEditor === true,
+      '打开开发者工具后焦点应回到编辑面，实测：' + JSON.stringify(focusAfter)
     )
 
     const afterLog = readOpenedLines(logPath)
@@ -382,6 +424,13 @@ async function main() {
       dtTargets2.length === 1,
       'devtools 目标数 = ' + dtTargets2.length
     )
+    // 第二次点击（DevTools 已开、主进程走 already=true 分支）也要守住焦点口径
+    const focusAfterSecond = await readFocus('C-FOCUS-AFTER-SECOND-CLICK')
+    report.check(
+      'second-click-focus-still-not-in-topbar',
+      focusAfterSecond.inTopBar === false && focusAfterSecond.topmenuGroup === null,
+      JSON.stringify(focusAfterSecond)
+    )
 
     // 收尾：关掉 DevTools（别把独立窗口留在桌面上，也别影响后面的断言）
     const closed = await ensureClosed(app)
@@ -390,10 +439,13 @@ async function main() {
     // 菜单项找不到时，后面几段的**前提**就不成立：如实 SKIP，不伪造 FAIL
     for (const name of [
       'help-menu-click-opens-devtools-target',
+      'open-devtools-does-not-steal-focus-to-topbar',
+      'open-devtools-returns-focus-to-editor',
       'help-menu-click-reaches-main-ipc',
       'help-menu-can-be-opened-again',
       'second-click-reports-already-open',
       'second-click-keeps-exactly-one-devtools',
+      'second-click-focus-still-not-in-topbar',
       'devtools-can-be-closed'
     ]) {
       report.skip(name, '帮助菜单里没有 `menu.openDevTools` 那一项')
