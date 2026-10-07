@@ -755,22 +755,27 @@ function blockDraftWrites(e: Event): void {
 
 const DRAFT_WRITE_EVENTS = ['beforeinput', 'paste', 'cut', 'drop'] as const
 
-/** Tab 只在两个按钮之间循环（弹窗里没有别的可聚焦元素，别让焦点跑到工具栏上） */
+/**
+ * Tab 只在两个按钮之间循环（提示里没有别的可聚焦元素，别让焦点跑到工具栏上）。
+ *
+ * ⚠️ 本轮补齐：原来只写了「恢复 —Tab→ 丢弃」与「丢弃 —Shift+Tab→ 恢复」两条**边**，
+ * 于是在「丢弃」上按 Tab 什么都不发生（焦点卡在原地，用键盘的人会以为控件坏了）。
+ * 现在首尾相接成真正的循环 —— 与 `ModalHost.vue` 的 `trapTab` 同一套语义（提示内可聚焦
+ * 元素环），两个提示的 Tab 行为第一次完全一致。
+ */
 function onDraftModalKeydown(e: KeyboardEvent): void {
   if (e.key !== 'Tab') return
-  const discard = draftDiscardRef.value
-  const restore = draftRestoreRef.value
-  if (!discard || !restore) return
-  const active = document.activeElement
-  if (e.shiftKey) {
-    if (active === discard) {
-      e.preventDefault()
-      restore.focus()
-    }
-  } else if (active === restore) {
-    e.preventDefault()
-    discard.focus()
+  const list = [draftDiscardRef.value, draftRestoreRef.value].filter(
+    (el): el is HTMLButtonElement => !!el && !el.disabled
+  )
+  if (list.length < 2) return
+  const idx = list.indexOf(document.activeElement as HTMLButtonElement)
+  e.preventDefault()
+  if (idx === -1) {
+    ;(e.shiftKey ? list[list.length - 1] : list[0]).focus()
+    return
   }
+  list[(idx + (e.shiftKey ? -1 : 1) + list.length) % list.length].focus()
 }
 
 watch(
@@ -958,15 +963,18 @@ onBeforeUnmount(() => {
 
     <StatusBar />
 
-    <!-- ── 草稿恢复弹窗（文件状态逻辑，与内核无关）─────────────────────────────
+    <!-- ── 草稿恢复提示（文件状态逻辑，与内核无关）─────────────────────────────
          触发条件不变：打开文档时发现「当前内容与磁盘不一致」的未保存草稿（`files.draftRestore`）。
-         用户口径：**取消**原来那条内联提示的样式与位置，改成**独立弹窗**；不做出选择就不能继续
-         编辑这个文档。所以这里：
+         用户口径（本轮）：**和上面那个确认提示同一套形态** —— 不弹居中窗口、不模糊主界面，
+         而是贴在应用顶部的提示条（`.lm-prompt` / `.lm-prompt__card`，见 overlays.css）；
+         不做出选择就不能继续编辑这个文档。所以这里：
            * 不是通知、不进 NotificationCenter、也不与通知带混排；
-           * 遮罩**点击不关闭**（`@click.self` 里什么都不做）、Esc 不关闭 —— 必须明确选一个；
+           * 提示之外**点击不关闭**（`@click.self` 里什么都不做）、Esc 不关闭 —— 必须明确选一个；
            * 打开时把焦点给「恢复」（回车即恢复），Tab 只在两个按钮之间循环；
            * `blockDraftKeys` 在捕获阶段吞掉除 Tab/回车/空格外的一切按键 —— 渲染面与源码面
-             （textarea）两种编辑态都挡得住，不需要分别去 disable 两个编辑器。 -->
+             （textarea）两种编辑态都挡得住，不需要分别去 disable 两个编辑器。
+           * 提示之外的区域是**透明命中目标**（`.lm-prompt` 的 `inset: 0`）：点正文既不动光标、
+             也不选中（背景 inert），但主界面完全看得见、也不再被压暗/糊掉。 -->
     <Teleport to="body">
       <Transition name="fade">
         <!-- ⚠️ `&& !ui.booting`：**启动期间一律不渲染草稿弹窗**（用户报障的收口那一刀）。
@@ -977,35 +985,35 @@ onBeforeUnmount(() => {
              另两处配套：EditorView 启动期间不开占位缓冲、main.ts 在会话恢复之后再补空白缓冲。 -->
         <div
           v-if="files.draftRestore && !ui.booting"
-          class="draft-modal fixed inset-0 z-[var(--z-critical)] flex items-center justify-center bg-scrim backdrop-blur-[2px]"
+          class="draft-modal lm-prompt z-[var(--z-critical)]"
+          data-top-prompt
           role="dialog"
           aria-modal="true"
           aria-labelledby="draft-modal-title"
         >
-          <Transition name="pop" appear>
-            <div
-              class="w-[400px] max-w-[90vw] rounded-2xl border border-edge bg-elevate p-6"
-              :style="{ boxShadow: 'var(--shadow-2)' }"
-              @keydown="onDraftModalKeydown"
-            >
-              <div class="mb-3 flex items-center gap-3">
+          <Transition name="lm-prompt-drop" appear>
+            <div class="lm-prompt__card" @keydown="onDraftModalKeydown">
+              <div class="mb-2 flex items-center gap-3">
                 <div
                   class="flex h-9 w-9 flex-none items-center justify-center rounded-full bg-accent-soft text-accent"
                 >
                   <Icon name="info" :size="17" />
                 </div>
-                <h3 id="draft-modal-title" class="text-[15px] font-semibold text-ink">
+                <h3
+                  id="draft-modal-title"
+                  class="min-w-0 text-[15px] font-semibold break-words text-ink"
+                >
                   {{ i18n.global.t('editor.draftTitle') }}
                 </h3>
               </div>
-              <p class="mb-2 text-[13px] leading-relaxed text-ink">
+              <p class="mb-2 text-[13px] leading-relaxed break-words text-ink">
                 {{
                   files.draftRestore.path
                     ? i18n.global.t('editor.restoreDraft')
                     : i18n.global.t('editor.restoreDraftUntitled')
                 }}
               </p>
-              <p class="mb-6 text-ui leading-relaxed text-ink-2b">
+              <p class="mb-4 text-ui leading-relaxed break-words text-ink-2b">
                 {{ i18n.global.t('editor.draftHint') }}
               </p>
               <div class="flex justify-end gap-2">

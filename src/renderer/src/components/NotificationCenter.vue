@@ -78,75 +78,85 @@ function closeCurrent(): void {
         <div class="ntf-item" data-ntf-item>
           <!-- 内容切换：上一条自左、下一条自右（配合 ‹ › 的语义） -->
           <Transition :name="dir === 'prev' ? 'ntf-prev' : 'ntf-next'" mode="out-in">
+            <!-- 两列：① 正文（标题 / 说明）② 右侧**控制列**（信息行 + 操作按钮行）。
+                 ⚠️ 结构与样式契约（见 overlays.css 的 `.ntf-row` 注释）：
+                   * 通知里的**第一个 `p` 必须是标题** —— 套件按 `item.querySelector('p')` 取标题；
+                   * 信息行里的**第一个元素必须是时间**（`metaText` 要以 HH:MM 开头）；
+                   * 关闭键必须是 `[data-ntf-meta]` 里**最后一个**按钮（套件的 `metaBtns[last]`）。
+                 本轮只是把原来夹在正文与信息条之间的「操作按钮列」**并进右侧控制列**
+                 （信息行在上、按钮行在下，整列右对齐）：按钮不再横插在正文与时间之间，
+                 窄窗口下也只在自己那一列里换行，永远不挤正文。 -->
             <div :key="active.id" class="ntf-row">
               <div class="ntf-content">
                 <p class="ntf-title">{{ active.title }}</p>
                 <p v-if="active.body" class="ntf-body">{{ active.body }}</p>
               </div>
 
-              <!-- 操作按钮（可交互通知，如「创建并打开 / 取消」）：点击即收起本条，
-                   再按 payload.kind 派发给注册的处理器。
-                   ⚠️ 位置在本轮改过：原来挂在**标题/正文下面（左侧）**，用户口径是「操作按钮放在右边」——
-                   现在它是行内独立一列，排在正文与右侧信息条之间，与标题首行同一条基线。 -->
-              <div v-if="active.actions.length" class="ntf-actions">
-                <button
-                  v-for="a in active.actions"
-                  :key="a.id"
-                  class="ntf-action"
-                  :class="actionToneClass(a.tone)"
-                  :disabled="busy"
-                  @click="runAction(a.id)"
-                >
-                  {{ a.label }}
-                </button>
-              </div>
+              <div class="ntf-side">
+                <!-- 右侧信息条：时间 · （多条时的步进与全部关闭）· 关闭本条；
+                     整条与标题首行同高（.ntf-meta 的 height 就是标题行高） -->
+                <div class="ntf-meta" data-ntf-meta>
+                  <span class="ntf-time tabular-nums">{{ timeText }}</span>
 
-              <!-- 右侧信息条：时间 · （多条时的步进与全部关闭）· 关闭本条；
-                   整条与标题首行同高（.ntf-meta 的 height 就是标题行高） -->
-              <div class="ntf-meta" data-ntf-meta>
-                <span class="ntf-time tabular-nums">{{ timeText }}</span>
-
-                <template v-if="total > 1">
-                  <span class="ntf-sep" />
-                  <span class="ntf-steps">
-                    <button
-                      class="ntf-icon-btn ntf-icon-btn--sm"
-                      :title="t('notifications.prev')"
-                      :aria-label="t('notifications.prev')"
-                      @click="step(-1)"
-                    >
-                      <Icon name="chevron-left" :size="14" />
-                    </button>
-                    <span class="ntf-count tabular-nums" data-ntf-count>
-                      {{ notifications.activeIndex + 1 }}/{{ total }}
+                  <template v-if="total > 1">
+                    <span class="ntf-sep" />
+                    <span class="ntf-steps">
+                      <button
+                        class="ntf-icon-btn ntf-icon-btn--sm"
+                        :title="t('notifications.prev')"
+                        :aria-label="t('notifications.prev')"
+                        @click="step(-1)"
+                      >
+                        <Icon name="chevron-left" :size="14" />
+                      </button>
+                      <span class="ntf-count tabular-nums" data-ntf-count>
+                        {{ notifications.activeIndex + 1 }}/{{ total }}
+                      </span>
+                      <button
+                        class="ntf-icon-btn ntf-icon-btn--sm"
+                        :title="t('notifications.next')"
+                        :aria-label="t('notifications.next')"
+                        @click="step(1)"
+                      >
+                        <Icon name="chevron-right" :size="14" />
+                      </button>
                     </span>
                     <button
-                      class="ntf-icon-btn ntf-icon-btn--sm"
-                      :title="t('notifications.next')"
-                      :aria-label="t('notifications.next')"
-                      @click="step(1)"
+                      class="ntf-text-btn"
+                      :title="t('notifications.closeAll')"
+                      @click="notifications.closeAll()"
                     >
-                      <Icon name="chevron-right" :size="14" />
+                      {{ t('notifications.closeAll') }}
                     </button>
-                  </span>
-                  <button
-                    class="ntf-text-btn"
-                    :title="t('notifications.closeAll')"
-                    @click="notifications.closeAll()"
-                  >
-                    {{ t('notifications.closeAll') }}
-                  </button>
-                </template>
+                  </template>
 
-                <span class="ntf-sep" />
-                <button
-                  class="ntf-icon-btn"
-                  :title="t('notifications.close')"
-                  :aria-label="t('notifications.close')"
-                  @click="closeCurrent"
-                >
-                  <Icon name="x" :size="15" />
-                </button>
+                  <span class="ntf-sep" />
+                  <button
+                    class="ntf-icon-btn"
+                    :title="t('notifications.close')"
+                    :aria-label="t('notifications.close')"
+                    @click="closeCurrent"
+                  >
+                    <Icon name="x" :size="15" />
+                  </button>
+                </div>
+
+                <!-- 操作按钮（可交互通知，如「创建并打开 / 取消」/「撤销」）：点击即收起本条，
+                     再按 payload.kind 派发给注册的处理器。
+                     位置：信息行**下面**、整列右对齐 —— 主操作在前（DOM 顺序），
+                     而"关闭/次要"永远在最右上角那一行（✕ 是信息行的最后一个），两者不会打架。 -->
+                <div v-if="active.actions.length" class="ntf-actions">
+                  <button
+                    v-for="a in active.actions"
+                    :key="a.id"
+                    class="ntf-action"
+                    :class="actionToneClass(a.tone)"
+                    :disabled="busy"
+                    @click="runAction(a.id)"
+                  >
+                    {{ a.label }}
+                  </button>
+                </div>
               </div>
             </div>
           </Transition>

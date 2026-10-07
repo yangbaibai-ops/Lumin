@@ -64,6 +64,10 @@ const DEFAULT_SUITES = [
   '_verify-draft-gc.js',
   '_verify-md-fidelity.js', // Markdown 往返保真（Wave 1）
   '_verify-draft-banner.js', // 草稿横幅（未命名缓冲区的归属）
+  // 顶部提示条（未保存 / 比磁盘新 / 关窗保存 三条路径共用的一套呈现）+ 通知内部布局：
+  // 无模糊/无遮罩、贴顶、焦点在提示内、Tab 被限制在提示内、提示外点击不动正文光标（真鼠标）、
+  // 通知在三语与 200 字符长文件名下不溢出、按钮不压在正文上、A 窗口的提示不影响 B 窗口
+  '_verify-prompt-top-and-notify-layout.js',
   '_verify-new-document.js', // 新建 / Ctrl+N / Ctrl+S 落点
   '_verify-session.js', // 会话恢复
   '_verify-single-instance.js', // 单实例锁：第二个实例立刻干净退出（自管实例 + 独立调试端口）

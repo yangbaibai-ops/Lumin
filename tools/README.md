@@ -94,8 +94,8 @@ main().then((c) => process.exit(c)).catch(fatal)
 
 <!-- facts:begin（由 tools/doc-facts.js 生成，勿手改）-->
 
-- `tools/` 共 **200 个文件 / 47871 行**（`.js`/`.mjs`/`.ps1`/`.md`）；
-- 套件文件 **115 个**（_regress-* 6 / _repro-* 9 / _verify-* 100），默认矩阵 **66 个**，分档：fast 66 / needs-build 44 / needs-dev 4 / manual 1；
+- `tools/` 共 **201 个文件 / 48560 行**（`.js`/`.mjs`/`.ps1`/`.md`）；
+- 套件文件 **116 个**（_regress-* 6 / _repro-* 9 / _verify-* 101），默认矩阵 **67 个**，分档：fast 67 / needs-build 44 / needs-dev 4 / manual 1；
 - 另有 **8 个**探针/遗留脚本默认只列不判（`--probe` 显式跑）；
 - 单元测试 **100 个** `tests/*.test.mjs`；Markdown 往返夹具 **33 份**（exact 17 / normalized 16）；
 - `docs/manual/` **14 份 / 5508 行**，`docs/` 下共 **31 份** md。
