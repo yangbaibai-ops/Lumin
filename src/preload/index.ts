@@ -112,6 +112,8 @@ const api: LuminAPI = {
     remove: (path) => ipcRenderer.invoke('file:remove', path),
     rename: (oldPath, newPath) => ipcRenderer.invoke('file:rename', oldPath, newPath),
     exists: (path) => ipcRenderer.invoke('file:exists', path),
+    /** 这个路径是不是目录（拖入的落点分流用：文件走打开文件、目录走打开文件夹） */
+    isDirectory: (path) => ipcRenderer.invoke('file:isDirectory', path),
     /** 只要 mtime（外部改动检测用；不必把整篇正文搬过来） */
     mtime: (path) => ipcRenderer.invoke('file:mtime', path),
     chooseOpenFile: () => ipcRenderer.invoke('file:chooseOpenFile'),

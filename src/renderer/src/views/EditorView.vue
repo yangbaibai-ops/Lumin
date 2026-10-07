@@ -13,8 +13,6 @@ import OutlinePanel from '../components/OutlinePanel.vue'
 import TyporaEditor from '../components/editor/TyporaEditor.vue'
 import Icon from '../components/Icon.vue'
 import { measureAllCodeBlocks } from '../lib/editor/codeBlockViews'
-import { confirmIfDirty } from '../composables/useAppActions'
-import { openExternalFile } from '../lib/openFile'
 import { registerEditorFlush, currentEditorFlush } from '../lib/editorFlush'
 import { useEditorMode } from '../composables/useEditorMode'
 import i18n from '../i18n'
@@ -684,40 +682,26 @@ watch(
   { immediate: true }
 )
 
-// 外部文件拖放打开（文件系统逻辑，与内核无关）
-// 落点规则与「打开文件 / Ctrl+O」完全一致，统一在 lib/openFile.ts：无工作区 → 本窗口
-// 打开并把侧栏切到该文件的文件夹；已有工作区 → 新窗口打开；已打开同一个文件 → 不重复。
-async function onDrop(e: DragEvent): Promise<void> {
-  /**
-   * 先看内层有没有**已经处理**这次拖放（审计 §7 复查发现的疑似缺陷）。
-   *
-   * 图片粘贴/拖入是内核的 `handleDrop`（`lib/editor/imagePaste.ts`）在做事，它会
-   * `preventDefault` 但**不 stopPropagation**，事件继续冒泡到这里；而这里只认 .md/.txt 后缀，
-   * 于是把一张 png 拖进编辑区会得到两个结果：图片真的插进去了，**同时**弹一条
-   * 「不支持的文件类型」。`defaultPrevented` 就是"内层已经认领"的信号。
-   */
-  if (e.defaultPrevented) return
-  const file = e.dataTransfer?.files?.[0]
-  if (!file) return
-  const path = window.luminAPI.file.getPathForFile(file)
-  if (!path) return
-  if (!/\.(md|markdown|mdown|mkd|txt)$/i.test(path)) {
-    ui.toast(i18n.global.t('toast.unsupportedFile'), 'error')
-    return
-  }
-  if (!(await confirmIfDirty())) return
-  // 拖放的路径只有渲染层拿得到 → 先向主进程登记一次**只读**授权（见 services/pathGrants 的说明：
-  // 授权闸默认只放行工作区 / 用户选过 / 会话说 / 打开过的路径，不登记就会打不开）
-  if (!(await window.luminAPI.file.authorizeUserPath(path))) {
-    ui.toast(i18n.global.t('toast.openFailed'), 'error')
-    return
-  }
-  await openExternalFile(path)
-}
-function onDragOver(e: DragEvent): void {
-  e.preventDefault()
-  e.dataTransfer!.dropEffect = 'copy'
-}
+// ─── 外部文件拖放打开（文件系统逻辑，与内核无关）────────────────────────────────
+//
+// ⚠️ 这条处理**已经搬到 App.vue 的窗口根节点**（`[data-drop-window]`），实现只有一份：
+// `lib/droppedPath.ts`。搬走的原因有两个，都跟"拖进来没反应"这个报障有关：
+//
+//  ① **原来的判据是恒真的死判据**。这里曾经写：
+//       `if (e.defaultPrevented) return`
+//     想表达"内核（图片拖入）已经认领了这次拖放"。但模板上那个处理是
+//     `@drop.prevent="onDrop"` —— Vue 的 `.prevent` 修饰器**先** `preventDefault()`、
+//     再调处理函数（@vue/runtime-dom 的 withModifiers），所以进函数时 `defaultPrevented`
+//     **永远是 true**：`onDrop` 每次都在第一行 return。
+//     症状 = 拖 .md 不打开、拖 .png 连"不支持的文件类型"提示都没有（连提示都没有正是它恒真的铁证）。
+//     引入它的提交是 d014773（本意是修"图片拖入 + 不支持提示"双弹，修法用错了信号）。
+//     正确的"内层已认领"信号是 `stopPropagation`（见 lib/editor/imagePaste.ts）。
+//  ② 挂在编辑区根节点上时，**侧栏不是它的子树**：拖到左半边（文件树）永远没人处理。
+//     用户口径是"拖入应用内"，所以落点应该是整个窗口。
+//
+// 原来那段实现（含落点注释）保留在 git 历史里；现在的入口：
+//   * `App.vue` 的 `onWindowDragOver` / `onWindowDrop`
+//   * `lib/droppedPath.ts`（取路径 → 授权 → 文件走 openExternalFile / 目录走 files.setRoot）
 
 // ─── 草稿恢复弹窗：焦点 / Tab 循环 / 「不选就不能编辑」的按键闸门 ───────────────
 //
@@ -821,12 +805,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div
-    class="relative flex h-full min-h-0 flex-col"
-    :class="{ 'split-dragging': splitDragging }"
-    @drop.prevent="onDrop"
-    @dragover="onDragOver"
-  >
+  <div class="relative flex h-full min-h-0 flex-col" :class="{ 'split-dragging': splitDragging }">
     <!-- 快捷工具栏：可在设置（编辑器 → 快捷工具栏）或工具栏空白区右键菜单里关掉；
          关掉后这里是「一片空的编辑区」，不占高度。
          **专注模式下一并隐藏**（用户口径：本产品定位是「纸面优先」的 Typora 式写作，

@@ -296,8 +296,14 @@ export async function uniqueName(dir: string, name: string): Promise<string> {
 /**
  * 把一张**外部图片**复制进目标目录（拖入 / 「选择文件…」都走这里），返回写入后的绝对路径。
  * 名字冲突时自动编号，绝不覆盖已有文件。
+ *
+ * ⚠️ 目标目录**可能还不存在**：新工作区里的第一张图就是 `assets/` 的第一次出现。
+ * 粘贴那条路（`writeBinary` → `atomicWriteBytes(..., {requireParent:false})`）一直是允许建目录的，
+ * 这里必须同一口径 —— 否则「第一次拖一张图进来」会以 `ENOENT: copyfile ... assets/xxx.png` 失败
+ * （实测：拖入图片本该插进正文，用户看到的是「插入图片失败」，详见 tools/_verify-drop-open.js）。
  */
 export async function importImage(source: string, dir: string, baseName: string): Promise<string> {
+  await fs.mkdir(dir, { recursive: true })
   const target = await uniqueName(dir, baseName)
   await fs.copyFile(source, target)
   return target
@@ -342,6 +348,21 @@ export async function exists(p: string): Promise<boolean> {
   try {
     await fs.access(p)
     return true
+  } catch {
+    return false
+  }
+}
+
+/**
+ * 这个路径是不是**目录**（路径不存在 / 读不到 stat → false）。
+ *
+ * 为什么要单开一条：渲染层拿不到 stat，而「把系统里的东西拖进窗口」这一个手势要分流成
+ * 两种既有语义 —— 文件走「打开文件」（lib/openFile.ts 的落点规则），目录走「打开文件夹」
+ * （files.setRoot，与菜单里的打开文件夹同一份）。靠扩展名猜目录会在 `某文件夹.md` 上翻车。
+ */
+export async function isDirectory(p: string): Promise<boolean> {
+  try {
+    return (await fs.stat(p)).isDirectory()
   } catch {
     return false
   }

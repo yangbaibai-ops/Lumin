@@ -53,6 +53,14 @@ export const ImagePaste = Extension.create({
       // 拖入/粘贴的文件如果带着真实路径，就走「复制进工作区」（不把字节搬进渲染层）
       const p = pathOfFile(file)
       if (p) {
+        /**
+         * 路径在主进程那一侧是**不可见**的（只有渲染层的 webUtils 拿得到），而 `file:importImage`
+         * 的 source 那一头要过授权闸（见 main/ipc.ts 里那条 handler 的说明：
+         * "拖入时渲染层已申请过"）。所以这里必须先登记一次只读授权 ——
+         * 少了这一句，**打包态**（没有 LUMIN_TRUSTED_PATHS 那层测试期信任）拖一张桌面上的图进来
+         * 会以 `PATH_NOT_AUTHORIZED` 失败，只有测试环境里"看起来是好的"。
+         */
+        await window.luminAPI.file.authorizeUserPath(p)
         await insertImageFromPath(insertSrc, p, file.name)
         return
       }
@@ -72,10 +80,24 @@ export const ImagePaste = Extension.create({
           handleDrop(_view, event) {
             const file = pickImageFile(event.dataTransfer)
             if (!file) return false
-            // 拖进来的如果是 .md（打开外部文件），交给 EditorView 的 onDrop，这里只管图片
+            // 拖进来的如果是 .md（打开外部文件），交给窗口级的落点处理，这里只管图片
             const p = pathOfFile(file)
             if (p && !IMAGE_EXT_RE.test(p)) return false
             event.preventDefault()
+            /**
+             * ⚠️ `stopPropagation` 是这一步的**关键**，不是顺手加的：
+             *
+             * 窗口级还有一层「从系统拖入文件/文件夹 → 打开」的处理（App.vue 的 onWindowDrop）。
+             * 这次拖放已经被内核认领（图片插进来了），必须让它**不再冒泡**上去，
+             * 否则同一张 png 会被外层的「不支持的文件类型」白名单再判一次 ——
+             * 用户看到的是"图片插进去了，同时弹一条不支持"。
+             *
+             * 这条链上曾经用 `event.defaultPrevented` 表达"内层已认领"，而外层是
+             * `@drop.prevent`（Vue 的 `.prevent` 在**调用处理函数之前**就 preventDefault 了）
+             * ⇒ 那个判据恒为 true，把「拖 .md 进窗口打开」整条功能一起关掉了（见 droppedPath.ts）。
+             * 所以认领信号只认 stopPropagation：**这里改了就要连着 App.vue 一起想**。
+             */
+            event.stopPropagation()
             void insert(file)
             return true
           }

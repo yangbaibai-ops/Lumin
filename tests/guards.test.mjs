@@ -232,35 +232,122 @@ test('卸载不许删用户数据（写作类应用的底线）', () => {
   assert.match(yml, /deleteAppDataOnUninstall:\s*false/, 'deleteAppDataOnUninstall 必须为 false')
 })
 
-test('窗口级拖放的落点判定：内层认领过的拖放不再往下判（审计 §7 复查）', () => {
+test('拖放链：内层认领的信号是 stopPropagation，不是恒真的 defaultPrevented（d014773 回归的守卫）', () => {
   /**
-   * 背景：图片拖入是内核 `handleDrop`（`lib/editor/imagePaste.ts`）在处理，它 `preventDefault`
-   * 但**不 stopPropagation**，事件继续冒泡到 `EditorView.vue` 的窗口级 `onDrop`；而后者只认
-   * .md/.txt 后缀 —— 于是拖一张 png 进来会「图片真的插进去了 + 同时弹一条不支持的文件类型」。
+   * ⚠️ 这条测试的**上一版**把回归当成正确行为钉住了，值得写下来当教训：
    *
-   * 为什么这条只能是**静态**守卫（诚实说明）：CDP 里造出来的 `File` 没有真实文件系统路径，
-   * `webUtils.getPathForFile()` 会返回空串，外层 handler 在"没路径"处就 return 了 ——
-   * 也就是说从合成事件走**到不了**那条 toast 分支，用它做运行时断言等于什么都没验。
-   * 真拖放要在用户机器上手动确认（拖一张 png 进编辑区：图片进正文、**没有** error 提示）。
-   * 静态守卫至少保证那一行短路不会被人顺手删掉。
+   *   它断言 `EditorView.vue` 的 `onDrop` 里必须有 `if (e.defaultPrevented) return`，
+   *   理由（d014773）是"图片拖入由内核 handleDrop 处理，它只 preventDefault 不 stopPropagation，
+   *   事件继续冒泡到外层，于是拖 png 会『图片插进去了 + 同时弹一条不支持的文件类型』"。
+   *   但那个模板写的是 `@drop.prevent="onDrop"` —— Vue 的 `.prevent` 修饰器
+   *   （`withModifiers` 的 `modifierGuards.prevent`）**先** `preventDefault()`，**再**调处理函数。
+   *   于是进了 `onDrop` 之后 `defaultPrevented` **恒为 true**：第一行就 return，
+   *   **拖 .md 不打开、拖 .png 连提示都没有**（"连提示都没有"正是它恒真的铁证）。
+   *   静态守卫看不出来（那一行确实"在"），只有真派发一次拖放才看得见 —— 这正是本条改成
+   *   "运行时套件 + 这里守契约"的原因。
+   *
+   * 现在的契约（三处，缺一处就会重演）：
+   *   ① 内层认领 = `lib/editor/imagePaste.ts` 的 `event.stopPropagation()`（事件不再冒泡出去）；
+   *   ② 窗口级落点只有一份：`App.vue` 的 `[data-drop-window]`（`@drop.prevent` + `@dragover`，
+   *      `@dragover` 必须 preventDefault，否则浏览器根本不派发 drop）；
+   *   ③ **任何**文件都别再拿 `defaultPrevented` 判"内层已认领这次拖放"（它是恒真的）。
+   *
+   * 运行时那一半在 `tools/_verify-drop-open.js`（已进默认矩阵）：用 CDP
+   * `Input.dispatchDragEvent`（`DragData.files` = 真实磁盘路径）真拖一次 .md / 文件夹 / 图片 ——
+   * 上一版注释里"CDP 造出来的 File 没有真实路径、到不了 toast 分支"的说法已被实测推翻
+   * （`webUtils.getPathForFile` 拿得到真实路径），所以那半条**不再是**未证事项。
    */
-  const src = read('src/renderer/src/views/EditorView.vue')
-  const at = src.indexOf('async function onDrop(')
-  assert.ok(at > 0, 'EditorView.vue 里找不到 onDrop')
-  const body = src.slice(at, at + 400)
+  const ip = read('src/renderer/src/lib/editor/imagePaste.ts')
   assert.match(
-    body,
-    /if \(e\.defaultPrevented\) return/,
-    'onDrop 必须先用 e.defaultPrevented 短路（内层已经处理过这次拖放）'
+    ip,
+    /event\.stopPropagation\(\)/,
+    '图片认领一次拖放之后必须 stopPropagation（否则窗口级会出现"不支持的文件类型"双弹）'
   )
-  const dragOver = src.slice(
-    src.indexOf('function onDragOver('),
-    src.indexOf('function onDragOver(') + 200
-  )
+
+  const app = read('src/renderer/src/App.vue')
+  assert.match(app, /@drop\.prevent="onWindowDrop"/, '窗口根节点必须挂着 drop 处理')
+  const dragOverAt = app.indexOf('async function onWindowDragOver(')
+  assert.ok(dragOverAt > 0, 'App.vue 里找不到窗口级 onWindowDragOver')
   assert.match(
-    dragOver,
+    app.slice(dragOverAt, dragOverAt + 300),
     /preventDefault\(\)/,
-    'onDragOver 仍要 preventDefault（否则浏览器会打开这个文件）'
+    'onWindowDragOver 必须 preventDefault（否则浏览器不会派发 drop，甚至会导航到那个文件）'
+  )
+  assert.match(app, /data-drop-window/, '窗口根节点要有 data-drop-window 语义锚点（套件按它定位）')
+
+  // 回归指纹：渲染层不许再用 `defaultPrevented` 当"这次拖放已经被人处理过"的判据。
+  // （文字里提到它是允许的 —— 上面这些注释就在讲这件事；真正要拦的是**代码**里的读取，
+  //   所以只比对"非注释行"。）
+  //
+  // 唯一的例外：`lib/keymap/service.ts` 读的是 **keydown** 的 `defaultPrevented`
+  // （"内层已经处理过这个键就让行"）—— 键盘事件上这个判据是**真的**
+  // （没人用 `@keydown.prevent` 把它提前置真），与拖放那条恒真陷阱不是一回事。
+  const stripComments = (t) =>
+    t.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:'"`\w])\/\/[^\n]*/g, '$1')
+  const offenders = []
+  const walk = (dir) => {
+    for (const e of readdirSync(join(ROOT, dir), { withFileTypes: true })) {
+      const rel = `${dir}/${e.name}`
+      if (e.isDirectory()) walk(rel)
+      else if (/\.(ts|vue)$/.test(e.name)) {
+        const body = stripComments(read(rel))
+        if (/\.defaultPrevented/.test(body) && !rel.endsWith('keymap/service.ts')) {
+          offenders.push(rel)
+        }
+      }
+    }
+  }
+  walk('src/renderer/src')
+  assert.deepEqual(
+    offenders,
+    [],
+    '这些文件又拿 event.defaultPrevented 做判据了（@drop.prevent 下它恒真，会整条关掉拖放打开）：\n' +
+      offenders.join('\n')
+  )
+
+  // 旧实现的两个"旧址"：处理函数搬走了就不该再各留一份（两份实现 = 落点会漂）。
+  // 只看 `<template>` 那一段 —— 上面那些解释里**提到**旧写法是正当的。
+  const ev = read('src/renderer/src/views/EditorView.vue')
+  const evTemplate = ev.slice(ev.indexOf('<template>'))
+  assert.doesNotMatch(
+    evTemplate,
+    /@drop/,
+    'EditorView 的模板不该再挂 drop 处理（窗口级 App.vue 已经有一份，两份会让落点漂）'
+  )
+  assert.doesNotMatch(
+    ev,
+    /^async function onDrop\(/m,
+    'EditorView 不该再自己定义 onDrop（实现只有 lib/droppedPath.ts 一份）'
+  )
+
+  /**
+   * ─── 根因取证：把"为什么 `defaultPrevented` 恒真"钉在单测里 ────────────────────
+   *
+   * 这一条读的是 Vue 自己的实现（`node_modules/@vue/runtime-dom`），不是我们的代码 ——
+   * 目的是让**判据的来源**可被机器复核：`withModifiers` 先跑守卫、再调处理函数，
+   * 而 `prevent` 守卫就是 `e.preventDefault()`。于是 `@drop.prevent="fn"` 里的 `fn`
+   * 看到 `defaultPrevented === true` 是**框架语义**上的必然，不是"某次手滑"。
+   *
+   * 现场：`EditorView.vue`（HEAD 84cec62）第 699 行 `if (e.defaultPrevented) return`、
+   * 模板第 827 行 `@drop.prevent="onDrop"`，由 d014773 引入（本测试的上一版还把它当正确行为守着）。
+   */
+  const vueRuntime = readFileSync(
+    join(ROOT, 'node_modules', '@vue', 'runtime-dom', 'dist', 'runtime-dom.esm-bundler.js'),
+    'utf8'
+  )
+  const wmAt = vueRuntime.indexOf('const withModifiers =')
+  assert.ok(wmAt > 0, 'Vue 运行时里找不到 withModifiers（升级 Vue 后请复核这条判据的来源）')
+  const wm = vueRuntime.slice(wmAt, wmAt + 600)
+  const guardAt = wm.indexOf('guard(event, modifiers)')
+  const callAt = wm.indexOf('return fn(event')
+  assert.ok(
+    guardAt > 0 && callAt > guardAt,
+    'Vue 的 withModifiers 语义变了：守卫（含 .prevent）必须仍在处理函数之前调用'
+  )
+  assert.match(
+    vueRuntime,
+    /prevent: \(e\) => e\.preventDefault\(\)/,
+    'Vue 的 .prevent 守卫必须还在'
   )
 })
 

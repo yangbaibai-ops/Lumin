@@ -17,6 +17,7 @@ import { installGlobalTooltip } from './lib/tooltip'
 import { installLinkNotificationActions } from './lib/linkOpen'
 import { installRecentUndoAction } from './lib/recentUndo'
 import { installRenameUndoAction } from './lib/renameUndo'
+import { handleDroppedEvent } from './lib/droppedPath'
 
 /**
  * 「按需出现」的浮层一律异步加载（第二十五轮轻量化）。
@@ -92,6 +93,32 @@ function expandSidebar(): void {
   settings.set('sidebarVisible', true)
 }
 
+/**
+ * ─── 从系统拖入文件 / 文件夹：**整个窗口**都是落点 ───────────────────────────────
+ *
+ * 落点语义只有一份，在 `lib/droppedPath.ts`（文件 → 打开文件；目录 → 打开文件夹）。
+ * 这里只负责两件 DOM 层的事：
+ *
+ *  ① `dragover` 必须 `preventDefault`：不 preventDefault 浏览器就**不会派发 drop**
+ *     （改前这条挂在 EditorView 的根 div 上，于是"拖到侧栏里"落在 FileTree 上，
+ *      虽然它也 preventDefault，但没有任何人去处理 → 拖半天没反应）；
+ *  ② 光标反馈：只有"从系统拖进来的东西"才把 `dropEffect` 改成 copy。**不能无条件改** ——
+ *     应用内拖动（编辑器里拖图片节点、文件树里拖文件行）有自己的 `move` 语义，
+ *     无条件覆盖会让它们的"禁止/移动"光标失真。
+ *
+ * ⚠️ `@drop.prevent` 的 `.prevent` 会在处理函数**之前** `preventDefault()`，
+ *   所以处理函数里 `event.defaultPrevented` 恒为 true —— 别拿它做判据（见 droppedPath.ts）。
+ * 内层（编辑器内核的图片拖入）认领一次拖放的方式是 `stopPropagation`，不会冒泡到这里。
+ */
+async function onWindowDragOver(e: DragEvent): Promise<void> {
+  e.preventDefault()
+  const types = e.dataTransfer ? Array.from(e.dataTransfer.types ?? []) : []
+  if (types.includes('Files')) e.dataTransfer!.dropEffect = 'copy'
+}
+async function onWindowDrop(e: DragEvent): Promise<void> {
+  await handleDroppedEvent(e)
+}
+
 onMounted(() => {
   // 文件树点击打开文件后跳转编辑器
   document.addEventListener('lumin:file-opened', () => {
@@ -103,8 +130,11 @@ onMounted(() => {
 <template>
   <div
     class="flex h-full min-h-0 flex-col"
+    data-drop-window
     @pointermove="onAppPointerMove"
     @pointerleave="onAppPointerLeave"
+    @dragover="onWindowDragOver"
+    @drop.prevent="onWindowDrop"
   >
     <!-- 应用内顶部菜单栏（Alt+F/E/V/H，位置精确、确定性） -->
     <TopMenuBar v-if="settings.nativeMenuBar" />

@@ -684,6 +684,12 @@ export interface LuminAPI {
     rename: (oldPath: string, newPath: string) => Promise<void>
     exists: (path: string) => Promise<boolean>
     /**
+     * 这个路径是不是目录（不存在 / 读不到 stat → false）。
+     * 「把系统里的东西拖进窗口」要靠它分流：文件 → 打开文件，目录 → 打开文件夹（设为工作区根）。
+     * 不能用扩展名猜（`素材.md` 这种目录名会翻车）。
+     */
+    isDirectory: (path: string) => Promise<boolean>
+    /**
      * 只要 mtime（文件不存在 → null）。渲染层用它判断"同一个文件自上次打开后有没有被外部改过"：
      * `file:read` 会把整篇正文搬过来（还要解码 + 建索引），而这个判断只需要一个时间戳
      * （见 stores/files.ts 的 openPath 短路判据）。文件不存在返回 null。

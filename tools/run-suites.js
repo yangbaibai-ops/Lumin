@@ -167,7 +167,17 @@ const DEFAULT_SUITES = [
   // 口径：选中文字→代码块 = 一步可撤销；**焦点在代码块内时**一次 Ctrl+Z 也能撤掉
   // （原先被块内 CodeMirror 的空历史吃掉）；块内打字先撤块内编辑、再撤「创建代码块」；
   // Ctrl+Y / Ctrl+Shift+Z 重做；块内容被撤空不再抛 Empty text nodes。
-  '_verify-undo-codeblock.js'
+  '_verify-undo-codeblock.js',
+  // ── 拖放两条（用户报障：① 拖文件/文件夹进窗口不打开了；② 拖动选中的文字会改位置）──
+  // ① 用 **CDP `Input.dispatchDragEvent`**（`DragData.files` = 真实磁盘路径，OS 级拖放模拟）
+  //    真派发：文件 → 打开（无工作区在本窗口、并切侧栏）、文件夹 → 设成工作区根、
+  //    非 Markdown → 明确拒绝、拖到**侧栏**也认、拖图片仍生成附件且不再双弹。
+  //    回归成因：`@drop.prevent`（Vue 的 .prevent 先 preventDefault）与 `e.defaultPrevented`
+  //    这个恒真判据把整条链静默关掉了（d014773 引入，本轮修）。
+  '_verify-drop-open.js',
+  // ② 真实鼠标手势划出 `DE` 再拖到 `A|B` 之间：文档必须逐字不变、选区原样保留；
+  //    末尾还守"从系统拖入文件仍然打开"（两条改动不许互相打架）。
+  '_verify-no-text-drag.js'
 ]
 
 /** 自己管理 Electron 实例的套件（运行器不替它们起实例） */

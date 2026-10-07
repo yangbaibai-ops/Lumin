@@ -595,6 +595,16 @@ export function registerIpc(slots: SlotRegistry): void {
     fileOps.exists(pathGrants.assertAuthorized(p, 'read'))
   )
   /**
+   * 这个路径是不是目录（拖入落点要靠它分流：文件 → 打开文件；目录 → 打开文件夹）。
+   *
+   * 与 `file:exists` 同一口径：**先过授权闸**。拖入路径在调用它之前已经由
+   * `file:authorizeUserPath` 登记过只读授权（见下面那条 IPC），所以正常流程必然放行；
+   * 顺序反了（先问 kind 再授权）就会拿到 PATH_NOT_AUTHORIZED。
+   */
+  ipcMain.handle('file:isDirectory', (_, p: string) =>
+    fileOps.isDirectory(pathGrants.assertAuthorized(p, 'read'))
+  )
+  /**
    * 只要 mtime（不要内容）：渲染层判断"同一个文件自上次打开后有没有被外部改过"。
    * 为什么单开一条：`file:read` 会把整篇正文搬过来（还要解码 + 建索引），
    * 而"同路径再次打开"的短路判断只需要一个时间戳（见 stores/files.ts 的 openPath）。
