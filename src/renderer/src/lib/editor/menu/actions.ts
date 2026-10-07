@@ -1,5 +1,6 @@
 import type { Editor } from '@tiptap/core'
 import type { EditorMenuAction } from './types'
+import { insertOrEditLink, type LinkAsker } from '../../linkInsert'
 
 /**
  * ─── 动作目录 ────────────────────────────────────────────────────────────────
@@ -10,12 +11,17 @@ import type { EditorMenuAction } from './types'
  */
 export interface EditorMenuActionDeps {
   editor: Editor
-  /** 输入型动作（链接/图片）用的对话框；返回 null 表示取消 */
+  /** 输入型动作（图片）用的对话框；返回 null 表示取消 */
   prompt: (opts: {
     titleKey: string
     placeholderKey: string
     value?: string
   }) => Promise<string | null>
+  /**
+   * 链接对话框（锚文字 + 链接两个字段；有选区时只有一个链接字段）。
+   * 与上面的通用 prompt 分开：链接要的字段数随选区变，塞不进"单输入框"那个形状。
+   */
+  promptLink: LinkAsker
   /** 失败提示（如剪贴板不可读）→ 交给全局通知中心 */
   notifyError: (titleKey: string, body?: string) => void
 }
@@ -57,7 +63,7 @@ function looksLikeMarkdown(text: string): boolean {
 export function buildEditorMenuActions(
   deps: EditorMenuActionDeps
 ): Record<string, EditorMenuAction> {
-  const { editor, prompt, notifyError } = deps
+  const { editor, prompt, promptLink, notifyError } = deps
   const chain = (): ReturnType<Editor['chain']> => editor.chain().focus()
 
   return {
@@ -248,20 +254,9 @@ export function buildEditorMenuActions(
       icon: 'link',
       // 这里原先标 `Ctrl+K`，但 Ctrl+K 实际绑的是「打开快捷键设置」（lib/keymap 的
       // help.keymap），链接压根没有快捷键 —— 提示键必须跟着真实绑定走，宁可不写。
-      run: async () => {
-        const href = await prompt({
-          titleKey: 'editorMenu.linkPrompt',
-          placeholderKey: 'editorMenu.linkPlaceholder',
-          value: 'https://'
-        })
-        if (href === null) return false
-        if (!href.trim()) {
-          editor.chain().focus().unsetLink().run()
-          return true
-        }
-        editor.chain().focus().extendMarkRange('link').setLink({ href: href.trim() }).run()
-        return true
-      }
+      // 交互语义与工具栏那枚按钮**完全一致**（同一份 lib/linkInsert.ts）：有选区只要链接、
+      // 无选区要锚文字 + 链接、光标在既有链接上则是"编辑 + 可移除"。
+      run: async () => insertOrEditLink(editor, promptLink)
     },
     'insert.image': {
       id: 'insert.image',

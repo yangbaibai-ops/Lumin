@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useUiStore } from '../stores/ui'
 
@@ -9,6 +9,19 @@ const inputEl = ref<HTMLInputElement | null>(null)
 /** 提示卡片（焦点落点 + Tab 循环的范围）。样式见 overlays.css 的 `.lm-prompt__card` */
 const cardEl = ref<HTMLElement | null>(null)
 const promptValue = ref('')
+/** 链接对话框的两个输入（有选区时只有一个：锚文字 = 选中的文字，见 lib/linkInsert.ts） */
+const anchorEl = ref<HTMLInputElement | null>(null)
+const urlEl = ref<HTMLInputElement | null>(null)
+const linkAnchor = ref('')
+const linkUrl = ref('')
+/** 链接地址的错误态：'' = 没错 / 'required' = 空 / 'invalid' = 协议白名单不接受 */
+const linkError = ref<'' | 'required' | 'invalid'>('')
+
+const linkErrorText = computed(() => {
+  if (linkError.value === 'required') return t('editorMenu.linkUrlRequired')
+  if (linkError.value === 'invalid') return t('editorMenu.linkUrlInvalid')
+  return ''
+})
 
 watch(
   () => ui.promptState,
@@ -22,6 +35,45 @@ watch(
     }
   }
 )
+
+/**
+ * 链接对话框的焦点落点（本轮口径的"焦点顺序"）：
+ *   * **无选区** → 先落在「锚文字」（这时的第一件事是想清楚显示什么字）；
+ *   * **有选区**   → 直接落在「链接」（锚文字已经由选中内容定下，弹窗里也没有那一栏）。
+ * 打开时全选已预填的内容：编辑既有链接时"直接打字即替换"，不用先手动清空。
+ */
+watch(
+  () => ui.linkState,
+  (v) => {
+    if (!v) return
+    linkAnchor.value = v.anchor
+    linkUrl.value = v.url
+    linkError.value = ''
+    void nextTick(() => {
+      const el = v.withAnchor ? anchorEl.value : urlEl.value
+      el?.focus()
+      el?.select()
+    })
+  }
+)
+
+/** 提交链接对话框（回车与「确定」走同一条）：地址必填、且必须过宿主那道校验 */
+function submitLink(): void {
+  const s = ui.linkState
+  if (!s) return
+  const url = linkUrl.value.trim()
+  if (!url) {
+    linkError.value = 'required'
+    urlEl.value?.focus()
+    return
+  }
+  if (!s.validate(url)) {
+    linkError.value = 'invalid'
+    urlEl.value?.focus()
+    return
+  }
+  ui.resolveLink({ action: 'apply', anchor: linkAnchor.value.trim(), url })
+}
 
 /**
  * ─── 焦点：打开提示时落进卡片**容器**（不是某个按钮）────────────────────────────
@@ -48,6 +100,8 @@ function closeByEscape(confirmResult = false, promptResult: string | null = null
   if (ui.tripleState) ui.resolveTriple('cancel')
   else if (ui.confirmState) ui.resolveConfirm(confirmResult)
   else if (ui.promptState) ui.resolvePrompt(promptResult)
+  // 链接对话框的 Esc = 取消（返回 null → 调用方一个字都不改）
+  else if (ui.linkState) ui.resolveLink(null)
 }
 
 /** 提示里当前可聚焦的元素（Tab 只在它们之间循环，见 trapTab） */
@@ -84,7 +138,7 @@ function trapTab(e: KeyboardEvent): void {
 
 function onKeydown(e: KeyboardEvent): void {
   // 只有提示开着才接管 Tab（其它浮层有自己的 Tab 语义）
-  if (e.key === 'Tab' && (ui.tripleState || ui.confirmState || ui.promptState)) {
+  if (e.key === 'Tab' && (ui.tripleState || ui.confirmState || ui.promptState || ui.linkState)) {
     trapTab(e)
     return
   }
@@ -122,7 +176,7 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onKeydown))
            ⚠️ `data-top-prompt` 是给套件用的语义锚点（两个提示共用同一套形态）；
            `z-[var(--z-modal)]` 这个类名被 `_verify-zorder.js` 按字符串找，别改写法。 -->
       <div
-        v-if="ui.tripleState || ui.confirmState || ui.promptState"
+        v-if="ui.tripleState || ui.confirmState || ui.promptState || ui.linkState"
         class="lm-prompt z-[var(--z-modal)]"
         data-top-prompt
         role="dialog"
@@ -131,12 +185,17 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onKeydown))
           ui.tripleState?.title ??
           ui.confirmState?.title ??
           ui.promptState?.title ??
-          t('common.confirm')
+          (ui.linkState ? t(ui.linkState.titleKey) : t('common.confirm'))
         "
         :data-triple="ui.tripleState ? 'true' : undefined"
       >
         <Transition name="lm-prompt-drop" appear>
-          <div ref="cardEl" class="lm-prompt__card" tabindex="-1">
+          <div
+            ref="cardEl"
+            class="lm-prompt__card"
+            tabindex="-1"
+            :data-link-dialog="ui.linkState ? 'true' : undefined"
+          >
             <!-- 三选一确认对话框（关窗「保存 / 不保存 / 取消」）：
                  三个按钮从左到右 = 取消 / 不保存 / 保存，主按钮在最右（Windows 对话框的通行顺序）。
                  数据类型钩子：`data-triple-*`，套件按它定位（文案会随语言变）。
@@ -221,6 +280,89 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onKeydown))
                   class="btn btn-primary px-4 py-2"
                   @click="ui.resolvePrompt(promptValue.trim() || null)"
                 >
+                  {{ t('common.confirm') }}
+                </button>
+              </div>
+            </template>
+
+            <!-- ── 链接对话框（插入 / 编辑链接共用）───────────────────────────────
+                 有选区：**只有链接一栏** —— 锚文字就是选中的文字，那行只读提示是"你将得到
+                 [选中文字](地址)"的确认，不是输入框（用户口径：别让人重复输入锚文字）。
+                 无选区：**锚文字 + 链接**两栏，锚文字留空 → 以链接地址作锚文字（见 lib/linkInsert.ts）。
+                 光标在既有链接上：标题变「编辑链接」、两栏都预填，并多一个「移除链接」。
+                 ⚠️ `data-link-*` 是套件用的语义锚点（`tools/_verify-link-dialog.js`），别改名。 -->
+            <template v-else-if="ui.linkState">
+              <h3 class="mb-3 text-[15px] font-semibold break-words text-ink">
+                {{ t(ui.linkState.titleKey) }}
+              </h3>
+
+              <p
+                v-if="!ui.linkState.withAnchor"
+                class="mb-3 max-h-16 overflow-hidden text-ui-sm leading-relaxed break-words text-ink-2"
+                data-link-from-selection
+              >
+                {{ t('editorMenu.linkFromSelection', { text: ui.linkState.selectionText }) }}
+              </p>
+
+              <template v-else>
+                <label class="mb-1 block text-ui-sm text-ink-2" for="lm-link-anchor">
+                  {{ t('editorMenu.linkAnchorLabel') }}
+                </label>
+                <input
+                  id="lm-link-anchor"
+                  ref="anchorEl"
+                  v-model="linkAnchor"
+                  class="input min-w-0"
+                  data-link-field="anchor"
+                  :placeholder="t('editorMenu.linkAnchorPlaceholder')"
+                  @keydown.enter="submitLink"
+                />
+                <p class="mt-1 mb-3 text-ui-sm leading-relaxed text-ink-2b">
+                  {{ t('editorMenu.linkAnchorHint') }}
+                </p>
+              </template>
+
+              <label class="mb-1 block text-ui-sm text-ink-2" for="lm-link-url">
+                {{ t('editorMenu.linkUrlLabel') }}
+              </label>
+              <input
+                id="lm-link-url"
+                ref="urlEl"
+                v-model="linkUrl"
+                class="input min-w-0"
+                data-link-field="url"
+                :placeholder="t('editorMenu.linkPlaceholder')"
+                :aria-invalid="linkError ? 'true' : 'false'"
+                :aria-describedby="linkError ? 'lm-link-error' : undefined"
+                @keydown.enter="submitLink"
+              />
+              <p
+                v-if="linkError"
+                id="lm-link-error"
+                class="mt-1 text-ui-sm leading-relaxed break-words text-danger-ink"
+                role="alert"
+                data-link-error
+              >
+                {{ linkErrorText }}
+              </p>
+
+              <div class="mt-3 flex items-center justify-end gap-2">
+                <button
+                  v-if="ui.linkState.canRemove"
+                  class="btn btn-ghost mr-auto px-4 py-2"
+                  data-link-remove
+                  @click="ui.resolveLink({ action: 'remove' })"
+                >
+                  {{ t('editorMenu.linkRemove') }}
+                </button>
+                <button
+                  class="btn btn-ghost px-4 py-2"
+                  data-link-cancel
+                  @click="ui.resolveLink(null)"
+                >
+                  {{ t('common.cancel') }}
+                </button>
+                <button class="btn btn-primary px-4 py-2" data-link-confirm @click="submitLink">
                   {{ t('common.confirm') }}
                 </button>
               </div>

@@ -93,7 +93,10 @@ export const useEditorMenuStore = defineStore('editorMenu', {
           ),
         notifyError: (titleKey, body) => {
           void notifications.notify({ level: 'error', title: i18n.global.t(titleKey), body })
-        }
+        },
+        // 链接对话框：形状随选区变（有选区只有链接一栏），所以走 ui 上那份独立状态，
+        // 而不是上面那个"单输入框"的 prompt
+        promptLink: (req) => ui.promptLink(req)
       })
       return buildEditorMenuSections(readEditorMenuContext(editor), actions, this.recentIds)
     },

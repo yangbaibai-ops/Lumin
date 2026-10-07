@@ -11,7 +11,15 @@ import {
   rectangularSelection,
   crosshairCursor
 } from '@codemirror/view'
-import { defaultKeymap, history, historyKeymap } from '@codemirror/commands'
+import {
+  defaultKeymap,
+  history,
+  historyKeymap,
+  // 代码块内的 Mod-z / Mod-y 由本组件在**捕获阶段**先试这两个命令，
+  // 本地历史耗尽后再交外层 PM 全局历史（见 onCmKeydownCapture 的口径注释）
+  undo as cmUndo,
+  redo as cmRedo
+} from '@codemirror/commands'
 import { searchKeymap, highlightSelectionMatches, selectNextOccurrence } from '@codemirror/search'
 import {
   syntaxHighlighting,
@@ -499,12 +507,86 @@ function activateFromStatic(): void {
   activated.value = true
 }
 
+/**
+ * ─── 两套撤销栈的分工（本轮修复的核心口径，改错必回归）────────────────────────
+ *
+ * 症状（用户实测）：选中一段文字 → 点工具栏「代码块」→ 块出来了，但按 `Ctrl+Z`
+ * **什么都不发生**；把焦点点回正文再按 `Ctrl+Z` 才撤得掉。
+ *
+ * 成因是两条叠在一起：
+ *   1. 新代码块挂上 CM 之后，`mountCmForVirtualization()` 会因为"选区就在这个块里"
+ *      而把焦点交给 CM（`focusCmAtEnd()`）—— 于是用户的下一次按键落在 CM 上；
+ *   2. `codeBlock.ts` 的 `stopEvent` 把 `.cm-editor` 内的 keydown **整类**交还给 CM，
+ *      PM 的全局历史 keymap 根本收不到这个事件；而 CM 自己的 `history()` 是新建的
+ *      （`EditorState.create({ doc: 节点文本 })`），**本地历史是空的** ⇒
+ *      `Mod-z` 被 CM 的 `historyKeymap` 接走却无事可撤 ⇒ 按键被静默吃掉。
+ *
+ * 口径（**这就是本应用对"撤销"的定义**，改这一节之前先读一遍）：
+ *   * **块内的文本**由 CM 自己的历史管：块里打字后 `Ctrl+Z` 撤的是**块内的编辑**
+ *     （粒度 = CM 的 `newGroupDelay`，默认 500ms 内且相邻的输入并成一步）；
+ *     这些写回 PM 的事务带 `addToHistory: false`（见 `syncToNode`）⇒
+ *     **不会**在外层撤销栈里留下影子，两套历史互不交错；
+ *   * **块的结构与块外的一切**由 PM 的全局历史管：创建/删除代码块、外面的正文与格式；
+ *   * 焦点在块内时，`Mod-z` 先撤 CM 本地历史；**本地历史耗尽后继续撤外层 PM 历史** ——
+ *     所以"刚选中文字创建出来的这个代码块"，在块内连按 `Ctrl+Z` 最终也能一次撤干净
+ *     （先撤掉块内敲的字，再撤掉"创建代码块"这一步）。`Mod-y` / `Mod-Shift-z` 对称。
+ *
+ * 为什么必须在**捕获阶段**做：`@keydown.capture` 挂在 `.cm-editor-container` 上，
+ * 比 CM 挂在 `.cm-content` 上的 keymap 更早拿到事件；`stopPropagation()` 之后
+ * CM 的 `historyKeymap` 不再执行 —— 否则它会把 `Mod-z` 在本地历史为空时"吃掉"
+ * 并返回 false，事件又不会冒泡给 PM，用户看到的就是"按了没反应"。
+ */
+function onCmHistoryKey(e: KeyboardEvent): boolean {
+  if (!cmView || !(e.ctrlKey || e.metaKey) || e.altKey) return false
+  const k = e.key.length === 1 ? e.key.toLowerCase() : e.key
+  if (k !== 'z' && k !== 'y') return false
+  // Ctrl+Y = 重做；Ctrl+Shift+Z = 重做（Windows 口径；macOS 的 Mod-Shift-z 同义）
+  const wantRedo = k === 'y' || e.shiftKey
+  // 先吃掉按键：无论最终谁执行，都不能让浏览器对 contenteditable 做原生 undo
+  // （那会绕过 PM 状态直接改 DOM，是损坏文档的那类操作）。
+  e.preventDefault()
+  e.stopPropagation()
+  // ① 块内自己的编辑（本地历史）优先
+  if (wantRedo ? cmRedo(cmView) : cmUndo(cmView)) return true
+  // ② 本地历史已耗尽 → 交外层 PM 全局历史
+  delegateToPmHistory(wantRedo)
+  return true
+}
+
+/**
+ * 把一步撤销/重做委托给 ProseMirror 的全局历史（代码块内 `Mod-z` 的兜底）。
+ *
+ * 关键的一步是**焦点归还**：若这一步撤掉/重做掉的正是本代码块，NodeView 会随节点
+ * 一起卸载、CM 被销毁，DOM 焦点随之落到 `body` —— 用户接着按 `Ctrl+Z`/`Ctrl+Y`
+ * 就没有落点了（这正是"撤了一次之后就再也撤不动"的第二种成因）。所以：
+ * 见下面的实现，只有在焦点真的已经无处可去时才交回 PM，块还在时**绝不抢焦点**。
+ */
+function delegateToPmHistory(wantRedo: boolean): void {
+  const editor = props.editor
+  if (editor.isDestroyed) return
+  const did = wantRedo ? editor.commands.redo() : editor.commands.undo()
+  if (!did) return
+  // **宏任务**后再判断（不能用微任务）：Vue 的卸载可能排在 `nextTick` 之后再下一拍，
+  // 那时才看得出来 CM 到底有没有随节点一起消失。判据直接看浏览器事实：
+  // 焦点元素被移出文档时 `activeElement` 会同步落回 `body` ——
+  //   * 块被撤掉 ⇒ CM 销毁、activeElement=body ⇒ 交回 PM，用户才能接着 Ctrl+Z / Ctrl+Y；
+  //   * 块还在（撤的是别处的步）⇒ activeElement 仍是 `.cm-content` ⇒ **绝不抢焦点**。
+  window.setTimeout(() => {
+    if (editor.isDestroyed) return
+    const ae = document.activeElement
+    if (ae && ae !== document.body) return
+    editor.commands.focus()
+  }, 0)
+}
+
 /** 捕获阶段拦截 Enter：走 CM 状态事务，并用 setState 强制整文档重建。
     嵌套于 ProseMirror 的 CM 增量重绘（docView.update）在本环境不可靠：
     state 会更新但 DOM 不重绘；setState 重建 docView，保证换行真实落到
     DOM（代价是整块重建，对代码块尺寸而言可接受）。 */
 function onCmKeydownCapture(e: KeyboardEvent): void {
   if (!cmView || e.isComposing) return
+  // 撤销/重做：见 onCmHistoryKey 的口径注释（块内优先，再交外层全局历史）
+  if (onCmHistoryKey(e)) return
   // 空代码块按退格 = 删除整个代码块。CM 自身的退格在文档开头无内容可删、
   // 且 stopEvent 让 PM 收不到按键，导致空代码块“卡住”删不掉。
   if (e.key === 'Backspace' && cmView.state.doc.length === 0) {
@@ -608,7 +690,29 @@ function syncToNode(): void {
   editor.commands.command(({ tr }) => {
     const node = tr.doc.nodeAt(pos)
     if (!node || node.type.name !== 'codeBlock') return false
-    tr.replaceWith(pos + 1, pos + node.nodeSize - 1, tr.doc.type.schema.text(code))
+    const from = pos + 1
+    const to = pos + node.nodeSize - 1
+    /**
+     * ─── 这一笔写回**不进外层撤销栈**（`addToHistory: false`）─────────────────
+     * CM 是代码块文本的真源，块内的编辑历史归它自己（见 `onCmHistoryKey` 的口径）。
+     * 若把镜像写回也记进 PM 历史，两套历史就会互相插队 —— 实测表现：
+     * 在块里打字 → `Ctrl+Z`（CM 撤掉字）→ 再 `Ctrl+Z`：外层撤到的是**这次写回**，
+     * 于是刚撤掉的文本又被"撤"回来，用户永远走不到"创建代码块"那一步。
+     * 标成不进历史之后，PM 历史里只剩结构步（创建/删除块、块外编辑），
+     * CM 历史耗尽后委托给外层的那一步才**确定**是"创建代码块"。
+     */
+    tr.setMeta('addToHistory', false)
+    /**
+     * 空文本必须走 `delete`：`schema.text('')` 会抛
+     * `RangeError: Empty text nodes are not allowed`（prosemirror-model 的 TextNode
+     * 构造器禁止空文本节点）。原先无条件 `replaceWith(schema.text(code))`，
+     * 于是"把代码块里的字全删掉 / 撤到空"这一刻会在 CM 的 updateListener 里抛异常，
+     * 被 CM 吞成 `[renderer:error] update listener: RangeError…`：
+     * CM 显示已空、**文档里却还留着旧文本**（实测 B3：`md` 仍是 `abc`），
+     * 随后所有基于文档的断言/保存看到的都是错的 —— 静默的数据不一致，必须堵住。
+     */
+    if (code.length === 0) tr.delete(from, to)
+    else tr.replaceWith(from, to, tr.doc.type.schema.text(code))
     return true
   })
   // 写回之后节点文本就是 CM 这一份 ⇒ 记录对齐基准（下次 syncToNode 靠它认"节点被外部改过"）

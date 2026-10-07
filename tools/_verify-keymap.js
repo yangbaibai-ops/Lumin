@@ -2,7 +2,7 @@
 //
 // 覆盖：
 //  A. 命令表与默认键：条目齐全、i18n 标题都有值、默认键规范化正确（Mod → Ctrl）
-//  B. 默认键真的生效（Ctrl+/ 切模式、Ctrl+Shift+B 侧栏、Ctrl+K 设置、Ctrl+Shift+P 全局搜索）
+//  B. 默认键真的生效（Ctrl+/ 切模式、Ctrl+Shift+B 侧栏、Ctrl+K 设置、Ctrl+Shift+P 命令面板）
 //  C. Ctrl+N 只触发一次（原生菜单已不再自带 accelerator，避免双份真相 + 重复触发）
 //  D. 自定义：改键后新键生效、旧键失效；解绑；恢复默认；用户绑定优先于默认绑定；冲突可见
 //  E. 持久化：reload 后自定义仍在（SQLite settings.keybindings）
@@ -253,13 +253,18 @@ const resolvedKeys = (w, id) =>
     const side1 = await w1.ev(`window.__K.ui().sidebarVisible`)
     c('default-toggle-sidebar-fires', side0 !== side1, `${side0} -> ${side1}`)
 
+    // ⚠️ `Mod+Shift+P` 的唯一主人是**命令面板**（`edit.globalSearch` 的默认键已改成 null，
+    // 见 useKeymap.ts 的说明）。这条断言同时钉住「没有第二份键位监听」：按 Ctrl+Shift+P
+    // 只开面板、**不开**全局搜索（审计 D10 那条硬编码监听已删除）。
     await pressVerified(w1, 'Ctrl+Shift+P')
+    const paletteOpen = await w1.ev(`window.__K.ui().commandPaletteOpen === true`)
     const searchOpen = await w1.ev(`window.__K.ui().globalSearch.open === true`)
-    if (searchOpen) {
-      await w1.ev(`window.__K.ui().closeGlobalSearch()`)
+    if (paletteOpen) {
+      await w1.ev(`window.__K.ui().closeCommandPalette()`)
       await sleep(400)
     }
-    c('default-global-search-fires', searchOpen === true, String(searchOpen))
+    c('default-command-palette-fires', paletteOpen === true, String(paletteOpen))
+    c('default-global-search-not-on-ctrl-shift-p', searchOpen === false, String(searchOpen))
     await sleep(300)
 
     // ── C. Ctrl+N 只触发一次（原生菜单不再自带 accelerator，避免原生 + 渲染层各触发一次） ──

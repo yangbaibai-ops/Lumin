@@ -5,6 +5,7 @@ import type {
   NotificationLevel,
   SearchResult
 } from '../../../shared/types'
+import type { LinkDialogRequest, LinkDialogResult } from '../lib/linkInsert'
 import { useNotificationsStore } from './notifications'
 
 export interface ToastItem {
@@ -133,6 +134,14 @@ export const useUiStore = defineStore('ui', {
       value: string
       resolve: (v: string | null) => void
     } | null,
+    /**
+     * 链接对话框（插入 / 编辑链接）：与上面的通用 prompt **并存但不同形** ——
+     * 有选区时只有一个「链接」输入框，无选区时是「锚文字 + 链接」两栏（见 lib/linkInsert.ts）。
+     * 单独一份状态而不是给 promptState 加字段：通用 prompt 那一条被若干套件与调用点依赖
+     * （`data-prompt-input` / 单个输入框 / 回车提交），改它的形状会波及那些入口。
+     */
+    linkState: null as
+      (LinkDialogRequest & { resolve: (v: LinkDialogResult | null) => void }) | null,
     contextMenu: null as ContextMenuState | null,
     cursor: { line: 1, col: 1 },
     booting: true,
@@ -220,6 +229,19 @@ export const useUiStore = defineStore('ui', {
     resolvePrompt(v: string | null): void {
       this.promptState?.resolve(v)
       this.promptState = null
+    },
+    /**
+     * 弹「链接」对话框（插入 / 编辑链接都走它）。
+     * 返回值：`null` = 取消（Esc / 「取消」按钮）；否则是用户提交的结果（应用 / 移除链接）。
+     */
+    promptLink(req: LinkDialogRequest): Promise<LinkDialogResult | null> {
+      return new Promise((resolve) => {
+        this.linkState = { ...req, resolve }
+      })
+    },
+    resolveLink(v: LinkDialogResult | null): void {
+      this.linkState?.resolve(v)
+      this.linkState = null
     },
     openContextMenu(state: ContextMenuState): void {
       this.contextMenu = state

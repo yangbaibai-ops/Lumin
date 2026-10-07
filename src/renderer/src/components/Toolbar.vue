@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
+import type { Editor } from '@tiptap/core'
 import { useSettingsStore } from '../stores/settings'
 import { useUiStore } from '../stores/ui'
 import { useEditorStore } from '../stores/editor'
@@ -13,6 +14,7 @@ import ToolbarTableButton from './ToolbarTableButton.vue'
 import ToolbarCodeBlockButton from './ToolbarCodeBlockButton.vue'
 import { shouldCloseOnScrollOrResize } from '../lib/popoverClose'
 import { insertImageFromPath, insertImageFromUrl } from '../lib/insertImage'
+import { insertOrEditLink } from '../lib/linkInsert'
 import { selectionHasMdStyle } from '../lib/editor/typoraInlineMarks'
 import {
   DEFAULT_TOOLBAR_ITEMS,
@@ -378,17 +380,17 @@ function insertToc(): void {
 }
 
 function addLink(): void {
-  const ed = editorStore.instance
+  // store 里的 instance 经 Vue 响应式包装后，类型上丢了 Editor 的私有成员
+  // （css/className/editorView…）；运行时它就是 markRaw 的原始实例，故此处断言
+  // （与 stores/editorMenu.ts 的 buildSections 同一处口径）
+  const ed = editorStore.instance as Editor | null
   if (!ed) return
-  // 文案走 i18n（editorMenu.linkPrompt/linkPlaceholder 早就有，之前这里硬编码中文）
-  void ui.prompt(t('editorMenu.linkPrompt'), t('editorMenu.linkPlaceholder')).then((href) => {
-    if (href === null) return
-    if (href.trim() === '') {
-      ed.chain().focus().unsetLink().run()
-      return
-    }
-    ed.chain().focus().extendMarkRange('link').setLink({ href: href.trim() }).run()
-  })
+  // 插入 / 编辑链接的规则只有一份（lib/linkInsert.ts，右键菜单那条入口共用它）：
+  //   有选区 → 弹窗只要链接（锚文字 = 选中的文字）；
+  //   无选区 → 弹窗要锚文字 + 链接（锚文字留空则以链接地址作锚文字）；
+  //   光标在既有链接上 → 同一个弹窗进入「编辑」语义（预填 + 可移除）。
+  // 文案（标题/占位/错误提示）都由 ModalHost 按 ui.linkState 的键取，不再在这里传字符串。
+  void insertOrEditLink(ed, (req) => ui.promptLink(req))
 }
 
 function addImage(): void {

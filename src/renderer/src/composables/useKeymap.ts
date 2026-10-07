@@ -114,10 +114,23 @@ export function useKeymap(actions: ReturnType<typeof useAppActions>): void {
       run: () => handleMenu('replace')
     },
     {
+      /**
+       * 全局搜索（全文索引）。
+       *
+       * ⚠️ `defaultKeys` 是 **null**（出厂不绑键），这是有条理的口径而不是"忘了写"：
+       * `Mod+Shift+P` 已经被下面的命令面板拿走（VS Code / Typora 的通行键），而**同一张表里
+       * 两条命令写同一个默认键**会同时坏两件事（用户实测的"改绑了但没用"）：
+       *   1. 设置页对这两条永久显示「冲突」徽标；
+       *   2. 改绑其中一条后，旧键会被**另一条**接管 —— 用户按旧键仍看到默认行为，
+       *      于是判定"我改的这个快捷键根本没生效"（`findMatch` 的「用户自定义优先」只在
+       *      同一个键上比高低，它不会把另一条命令的默认键一起让出来）。
+       * 现在这条键只属于命令面板：改绑面板 = 真的把 Ctrl+Shift+P 让出去。
+       * 全局搜索本身**没有消失**：它在「编辑」菜单、命令面板里，也仍可在设置里重新绑一个键。
+       */
       id: 'edit.globalSearch',
       titleKey: 'menu.globalSearch',
       groupKey: 'keymap.groupEdit',
-      defaultKeys: 'Mod+Shift+P',
+      defaultKeys: null,
       run: () => handleMenu('global-search')
     },
     {
@@ -223,13 +236,14 @@ export function useKeymap(actions: ReturnType<typeof useAppActions>): void {
 
     // ── 命令面板 ──
     /**
-     * ⚠️ 这一条**收回了 `Mod+Shift+P`**：此前它绑在 `edit.globalSearch`（全局搜索）上。
+     * ⚠️ `Mod+Shift+P` 的**唯一**主人（VS Code / Typora 的通行键）。
      *
-     * 按需求把 Ctrl+Shift+P 让给命令面板（VS Code / Typora 的通行键）。服务侧的冲突口径是
-     * 「同一档里后注册者胜」（`lib/keymap/service.ts` 的 findMatch），所以把面板追加在
-     * **命令表末尾**，两条默认键相同时由面板接管 —— 全局搜索本身**没有消失**：
-     * 它仍在命令表里（设置 → 快捷键可改绑）、在「编辑」菜单里、也在命令面板里搜得到。
-     * 这也让"用户自定义过的绑定优先"照常成立：谁改过 globalSearch 的键，那条仍然赢。
+     * 这条键原先在 `edit.globalSearch` 上，迁移时曾经"两条命令都保留这个默认键、靠
+     * `findMatch` 的后注册者胜来定胜负"——那是**隐性第二真相**：表面能用，但设置页会永久
+     * 报「冲突」，而且用户改绑面板之后旧键会被 globalSearch 的默认键接管（看着像"改绑没生效"）。
+     * 现在全局搜索的默认键是 null（见上面的说明），这条键只属于面板：
+     * 「改绑面板 = 真的让出 Ctrl+Shift+P」。
+     * 全局搜索没有消失 —— 「编辑」菜单、命令面板里都在，也仍可在设置里绑一个新键。
      */
     {
       id: 'app.commandPalette',
@@ -240,6 +254,16 @@ export function useKeymap(actions: ReturnType<typeof useAppActions>): void {
     }
   ]
 
+  /**
+   * 单一真相源（改这里之前先读）：
+   *   * **键位**只有两份数据 —— 上面这张命令表的 `defaultKeys`（代码）+ `settings.keybindings`
+   *     （用户覆盖，SQLite）；`lib/keymap/service.ts` 把它们解析成"当前生效键"，设置界面与
+   *     全局键盘分发读的都是这一份；
+   *   * **不许再出现第三份**：不在组件里写 `addEventListener('keydown')` 抢应用级组合键
+   *     （审计 D10 的 GlobalSearch 硬编码 Ctrl+Shift+P 就是反例），也不在别处抄一张默认键表。
+   *     否则「设置里显示什么 / 按下去走什么」必然分叉 —— 用户看到的就是"快捷键是假的"。
+   *     需要新键位 = 在这张表里加一条命令（设置界面 / 冲突检测 / 恢复默认 / 持久化全都自动有）。
+   */
   const handle = installKeymap(commands, () => settings.keybindings ?? {})
   onBeforeUnmount(() => handle.dispose())
 }

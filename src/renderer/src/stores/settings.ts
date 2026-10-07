@@ -83,9 +83,25 @@ export const useSettingsStore = defineStore('settings', {
     setLanguage(lang: Language): void {
       this.set('language', lang)
     },
-    /** 改一条快捷键（spec = null 表示解绑）；走 set 以便立即生效 + 节流落库 */
+    /**
+     * 改一条快捷键（spec = null 表示解绑）：立即生效 + 节流落库。
+     *
+     * ⚠️ **必须用 `$patch(函数)` 换成一个新对象，不能走 `set('keybindings', {...})`**：
+     * `$patch(对象)` 对嵌套的普通对象是**深合并**（就地改同一个引用），于是：
+     *   * 依赖 `settings.keybindings` 这个**顶层字段**的消费者（设置页的 computed 就是）
+     *     不会被通知 —— 引用没变、Vue 的 setter 不 trigger；
+     *   * 而运行时那条链（`installKeymap` 的 getter）读的是同一个对象，**键已经生效**。
+     * 结果就是用户实测的那句「显示的快捷键和实际使用中依然是默认的」：第一次改绑时
+     * 设置页显示旧键、按键却按新键走（同一根因也会让 `applyRemote` 整份 `$patch` 时
+     * 页面停在改前的键位）。函数形式会整体替换引用，任何消费者都能收到通知。
+     * 同理见下面的 `resetKeybinding` / `resetAllKeybindings`（它们一直是函数形式）。
+     */
     setKeybinding(commandId: string, spec: string | null): void {
-      this.set('keybindings', { ...this.keybindings, [commandId]: spec })
+      this.$patch((s) => {
+        s.keybindings = { ...s.keybindings, [commandId]: spec }
+      })
+      this.applyAll()
+      this.persist()
     },
     /**
      * 恢复某条命令的默认键（删除覆盖项）。

@@ -92,10 +92,29 @@ function isTextEntry(target: EventTarget | null): boolean {
   return el.isContentEditable === true
 }
 
-/** 解析一条命令的生效键：用户覆盖（含解绑）优先于默认键 */
-function resolveKeys(cmd: KeymapCommand, overrides: KeybindingOverrides): string | null {
-  const has = Object.prototype.hasOwnProperty.call(overrides, cmd.id)
-  if (has) {
+/**
+ * 解析一条命令的生效键：用户覆盖（含解绑）优先于默认键。
+ *
+ * ⚠️ 判「有没有这条覆盖」**必须走 `Object.keys`（ownKeys）**，不能用
+ * `Object.prototype.hasOwnProperty.call(overrides, id)`：在 Vue 的响应式 Proxy 上，
+ * `hasOwnProperty` 只触发 `getOwnPropertyDescriptor`，**完全不进依赖收集**；而
+ * `overrides[id]` 这行 GET 又只在这条覆盖**已经存在**时才执行 —— 于是：
+ *   * 「第一次改绑」（新增一个键）在计算属性里**没有任何依赖被触发**，
+ *     设置页会一直显示改前的键位，直到组件重建（切页签/重开设置）；
+ *   * 用户实测现象：改绑后显示的仍是默认键（改第二次反而会好，因为那时 GET 已经收集到了）。
+ * `Object.keys` 走 ownKeys 陷阱（track ITERATE），新增/删除键都会让上层重算，
+ * 配合逐键 GET（改值）就覆盖了三种写入方式。这是「设置页永远显示当前生效键」的**唯一**
+ * 依赖来源 —— 组件侧不许自己再读一遍 store 来"补依赖"（两套读法必然漂）。
+ *
+ * `owned` 由 `resolveCommands` 一次读出后传进来（同一条依赖只收集一次；
+ * `customized` 也用它，避免"两个判据各读一遍"再次分叉）。
+ */
+function resolveKeys(
+  cmd: KeymapCommand,
+  overrides: KeybindingOverrides,
+  owned: string[]
+): string | null {
+  if (owned.includes(cmd.id)) {
     const v = overrides[cmd.id]
     return v == null ? null : normalizeSpec(v)
   }
@@ -107,13 +126,15 @@ export function resolveCommands(
   commands: KeymapCommand[],
   overrides: KeybindingOverrides
 ): ResolvedCommand[] {
+  // 一次读出**全部**覆盖项的名字：这一行是「设置页跟着改绑实时重算」的依赖来源
+  const owned = Object.keys(overrides)
   const resolved = commands.map((cmd) => {
-    const keys = resolveKeys(cmd, overrides)
+    const keys = resolveKeys(cmd, overrides, owned)
     return {
       ...cmd,
       keys,
       conflictWith: [] as string[],
-      customized: Object.prototype.hasOwnProperty.call(overrides, cmd.id)
+      customized: owned.includes(cmd.id)
     }
   })
   // 冲突：同一个生效键被多条命令占用
@@ -183,7 +204,7 @@ export function installKeymap(
   const handle: KeymapHandle = {
     resolved: () => resolveCommands(commands, getOverrides()),
     get: (id) => resolveCommands(commands, getOverrides()).find((r) => r.id === id),
-    isCustomized: (id) => Object.prototype.hasOwnProperty.call(getOverrides(), id),
+    isCustomized: (id) => Object.keys(getOverrides()).includes(id),
     overrides: () => ({ ...getOverrides() }),
     dispose: () => {
       window.removeEventListener('keydown', handler, true)

@@ -143,8 +143,8 @@ docs/                     # 手册 / 整改方案 / 打包实测
 | `src/main` | 38 | 8528 |
 | `src/preload` | 2 | 285 |
 | `src/shared` | 35 | 4576 |
-| `src/renderer` | 134 | 28290 |
-| `src 合计` | 209 | 41679 |
+| `src/renderer` | 135 | 28855 |
+| `src 合计` | 210 | 42244 |
 
 口径：`src/main`/`preload`/`shared` 数 `.ts`，`src/renderer` 数 `.ts`+`.vue`（含子目录）。
 

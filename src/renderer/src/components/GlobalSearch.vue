@@ -289,22 +289,27 @@ function onKeydown(e: KeyboardEvent): void {
   }
 }
 
-function onDocKeydown(e: KeyboardEvent): void {
-  if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === 'p') {
-    e.preventDefault()
-    ui.openGlobalSearch()
-  }
-}
-
+/**
+ * ⚠️ 这里**故意没有** `document` / `window` 级的 keydown 监听（曾经有一条硬编码的
+ * `Ctrl/Cmd+Shift+P`，审计 D10 记为「第二套键位真相」）。
+ *
+ * 为什么删掉：应用级键位只有一份真相 —— `composables/useKeymap.ts` 的命令表
+ * （`edit.globalSearch` 的 `defaultKeys` + 用户在设置里的覆盖）。多一份硬编码监听就会：
+ *   * 用户在设置里把「全局搜索」改绑/解绑之后，**旧键仍然能打开全局搜索** ——
+ *     界面显示的键位与实际生效的键位各说各话（这就是用户实测的「改绑后还得按默认键」）；
+ *   * 「解绑」这个动作永远去不掉那个监听；
+ *   * 命令面板拿到 `Mod+Shift+P` 之后，这条监听成了唯一的漏网路径。
+ * 将来要加键位，往命令表里加一条命令（它自带设置界面 / 冲突检测 / 恢复默认 / 持久化）。
+ *
+ * 面板自己只处理**已经聚焦在它内部**的键（↓↑ 选择 / Enter 打开 / Esc 关闭，见 onKeydown）。
+ */
 onMounted(async () => {
-  document.addEventListener('keydown', onDocKeydown)
   offIndexProgress = window.luminAPI.workspace.onIndexProgress((s) => {
     indexStatus.value = s
   })
   indexStatus.value = await window.luminAPI.workspace.indexStatus().catch(() => indexStatus.value)
 })
 onBeforeUnmount(() => {
-  document.removeEventListener('keydown', onDocKeydown)
   offIndexProgress?.()
   offIndexProgress = null
 })

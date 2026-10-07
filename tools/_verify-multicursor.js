@@ -58,13 +58,13 @@ async function main() {
   /**
    * 前置守卫（仓库规矩：注入真实按键的套件必须先确认窗口拿得到焦点，
    * 否则合成按键会打到空气里 —— 那种红是环境问题，不该伪装成功能回归）。
-   * 拿不到焦点就整段 SKIP 并如实说明。
+   *
+   * ⚠️ 这里**不能**写 `if (!(await requireFocus(...)))`：`requireFocus` 成功时返回的是
+   * `undefined`，`!undefined === true` ⇒ 这段守卫**恒真**，套件永远走 SKIP 分支、
+   * 一条断言都不产出（运行器记 NOASSERT）。它拿不到焦点时是自己抛
+   * `preconditionSkip`（由 `fatal` 结算成 SKIP 并打印标准前缀），所以这里直接 await。
    */
-  if (!(await requireFocus(app, '多光标按键段'))) {
-    console.log('SKIP: 窗口拿不到焦点，跳过需要真实按键的多光标断言')
-    app.close()
-    return report.finish()
-  }
+  await requireFocus(app, '多光标按键段')
 
   // 打开一个带代码块的文档（不用用户窗口：openDocWith 会新建未命名缓冲区）
   await openDocWith(app, MD, 'lumin-multicursor.md')

@@ -17,7 +17,14 @@ const settings = useSettingsStore()
 const recordingId = ref<string | null>(null)
 const filter = ref('')
 
-/** 解析结果：依赖 settings.keybindings，改键后自动重算 */
+/**
+ * 解析结果（**唯一**的显示数据源）：默认键 + 用户覆盖，由命令注册表算出来。
+ *
+ * 依赖不是这里手写的：`resolved()` → `resolveCommands()` → `resolveKeys()` 会逐个命令读
+ * `settings.keybindings`（ownKeys + 逐键 GET），所以改绑 / 解绑 / 恢复默认都会让这里重算。
+ * 下面那次 `void settings.keybindings` 只是"服务换了实现也别把依赖丢了"的兜底 ——
+ * **不要再往本组件里搬第二份键位表**（改绑后显示不更新正是这么来的，见 service.ts 的长注释）。
+ */
 const commands = computed<ResolvedCommand[]>(() => {
   void settings.keybindings
   return currentKeymap()?.resolved() ?? []

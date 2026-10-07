@@ -153,7 +153,21 @@ const DEFAULT_SUITES = [
   // ── 多光标（报告 §P2 功能缺口：代码块支持，源码 textarea 与所见即所得不支持）──
   '_verify-multicursor.js',
   // ── 第十九轮：命令面板（Ctrl+Shift+P：打开 / 过滤 / ↑↓ / Enter / Esc / a11y / 三语 / 点击）──
-  '_verify-command-palette.js'
+  '_verify-command-palette.js',
+  // ── 第二十轮：插入链接的弹窗（有选区只要链接 / 无选区要锚文字+链接 / 编辑既有链接预填）──
+  // 语义锚点全是 data-link-*（不写死坐标）；纯合成事件（没有真实按键/指针）
+  '_verify-link-dialog.js',
+  // ── 快捷键「改绑」的显示 / 生效两条链（用户实测：改绑后显示与实际都还是默认键）──
+  // 三条独立根因各钉一条：设置界面 computed 的依赖、命令表之外的硬编码键位监听（审计 D10）、
+  // 同一默认键被两条命令占用（改绑一条后旧键被另一条接管）。它**不动态取源码模块**（不碰
+  // dev server），所以能进 fast 档（老的 `_verify-keymap.js` 因为要 dev server 一直是
+  // needs-dev、默认不跑）。
+  '_verify-keymap-custom.js',
+  // ── 代码块的撤销栈（本轮用户报障：选中文字 → 代码块 → Ctrl+Z 没反应）──
+  // 口径：选中文字→代码块 = 一步可撤销；**焦点在代码块内时**一次 Ctrl+Z 也能撤掉
+  // （原先被块内 CodeMirror 的空历史吃掉）；块内打字先撤块内编辑、再撤「创建代码块」；
+  // Ctrl+Y / Ctrl+Shift+Z 重做；块内容被撤空不再抛 Empty text nodes。
+  '_verify-undo-codeblock.js'
 ]
 
 /** 自己管理 Electron 实例的套件（运行器不替它们起实例） */
