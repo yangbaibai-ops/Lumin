@@ -967,3 +967,66 @@ UTF-16 在写回时**总是补 BOM**：没有 BOM 的 UTF-16 文件几乎无法�
 > 顺带说明：打包产物里主进程与渲染层来自同一次构建，不存在这种错配；它是**开发态专属**问题。渲染层遇到旧主进程时会提示「编码功能需要重启应用后生效」（见 §4.37），而不是含糊地报失败。
 
 ---
+
+### 4.39 CSP：`frame-ancestors` 写在 `<meta>` 里会被忽略（改由响应头下发）+ 已知无害的控制台输出
+
+**现象（用户实测，开发态打开应用）**：
+
+```
+[renderer:error]   The Content Security Policy directive 'frame-ancestors' is ignored when delivered via a <meta> element.
+[renderer:warning] Electron Security Warning (Insecure Content-Security-Policy) … This warning will not show up once the app is packaged.
+```
+
+**判读：两条里只有第一条要修。**
+
+- 第二条是**开发态预期**：渲染层跑在 `http://localhost:5173`，Vite 的 HMR 需要 inline/eval 与 ws，
+  所以 `devCsp()` 必须放行它们；Electron 这条警告在打包态自动消失。**不要动它。**
+- 第一条是**真问题**：CSP 规范明文规定 `frame-ancestors` / `report-uri` / `sandbox` 通过 `<meta>`
+  下发时**会被忽略** —— 也就是说这条防护此前**根本没生效**（"以为设了其实没设"）。
+
+**改法：meta 与响应头各管一半**
+
+| 位置 | 内容 | 谁下发 |
+| --- | --- | --- |
+| `<meta>`（构建期注入） | `PROD_CSP`：`default-src` / `script-src` / `img-src` / `media-src` … | `electron.vite.config.ts` 的 `lumin-csp` 插件 |
+| 响应头 | `CSP_HEADER_ONLY` = `frame-ancestors 'none'` | 主进程 `session.defaultSession.webRequest.onHeadersReceived` |
+
+- `src/shared/csp.ts`：`frame-ancestors` 从 `PROD_CSP` 里**删掉**（并写明原因；新增
+  `META_IGNORED_CSP_DIRECTIVES` 清单，注释里点名"这些指令在 meta 里会被忽略，所以由响应头下发"），
+  新增只含这一条的 `CSP_HEADER_ONLY`。
+- `src/main/index.ts`：注册**不分 dev/prod**（旧实现是 `if (!is.dev && …)`，而开发态**恰恰**是
+  能看到控制台的那一态）、**不设 URL filter**（`http://localhost:5173`、`file://` 文档、
+  `lumin-file://` 图片都覆盖）；头里**只放**那一句 —— 把整串 `PROD_CSP` 也塞进头里会让浏览器对
+  两份策略**取交集**，一旦漂移就是谁都没写过、也没人 review 过的第三份策略。
+- 顺带按**大小写无关**的方式摘掉同名旧头（HTTP 头名不分大小写，留两条 = 下发两条策略）。
+- 取证日志（每个窗口的文档一条 + 第一条 `lumin-file:` 一条，**不会刷屏**，全 ASCII）：
+  `[csp] frame-ancestors header set for mainFrame scheme=file:`。
+
+**怎么验的（以及两个反直觉的坑）**
+
+- 单测 `tests/guards.test.mjs`：遍历 `META_IGNORED_CSP_DIRECTIVES` 断言 `PROD_CSP` 一条都不含、
+  头用的是 `CSP_HEADER_ONLY`、注册不被 `is.dev` 挡住、`onHeadersReceived` 没带 filter。
+- CDP `tools/_verify-csp.js`（默认矩阵）：DOM 里的 meta 逐字等于 `PROD_CSP` 且无 meta 无效指令；
+  主进程日志证明**两个 scheme 都过到了注入点**；渲染层控制台不再有那条 `ignored` 警告
+  （另发一条自己的 `console.warn` 当**反向栅栏**，证明"渲染层 console → 主进程日志"这条转发
+  通道在当前运行里真的是通的，免得上面那条因为"根本没转发"而假绿）。
+- ⚠️ 坑一：**`Network.getResponseHeaders` 读不到 `webRequest` 注入的头**。实测 handler 确实为
+  `file://` 主文档调用过（主进程日志有 `mainFrame scheme=file:`）、注入也确实生效，但 CDP 那边
+  返回空数组 —— 所以"注入有没有发生"用主进程日志证，"有没有生效"另做一次性诊断：把注入值临时换成
+  `default-src 'none'`，渲染层立刻报
+  `Loading the script '…/index-*.js' violates the following Content Security Policy directive: "default-src 'none'"`
+  ⇒ **注入的头对 `file://` 文档同样被强制执行**（打包态走的就是这条路）。
+- ⚠️ 坑二：想用"嵌一次看会不会被拒"来验 `frame-ancestors` 也不成立 —— 应用**自己**的 meta 里有
+  `frame-src 'none'`（meta 里有效），framing 会先被它拦下（实测报的是 `frame-src` 违规）；
+  而 Electron 的 CDP **不支持 `Target.createTarget`**（实测 `{"code":-32000,"message":"Not supported"}`），
+  造不出"没有任何 CSP 的外部父文档"来当判据。所以 `frame-ancestors` 的**实际拦截效果**在自动化里
+  观察不到（能观察到的是"头下发了 + 注入生效"这两件）。
+
+**已知无害的控制台输出**（登记在这里，**不要**去修它们）
+
+| 输出 | 什么时候出现 | 为什么无害 / 为什么不该修 |
+| --- | --- | --- |
+| `Electron Security Warning (Insecure Content-Security-Policy) … will not show up once the app is packaged` | 开发态每次启动 | dev 的 HMR 必须放行 inline/eval 与 ws（`devCsp()`）；打包态不出这行 |
+| `Request Autofill.enable failed. {"code":-32601,…'Autofill.enable' wasn't found}` 与紧跟着的 `Request Autofill.setAddresses failed. …` | **每次打开 DevTools**（前端 attach 时） | 实测（attach 到 `devtools://` 那个 target 读它自己的 console）：这两行是 **DevTools 前端自己**报的 `console.error`，因为它在初始化时向被调试页面请求一批 CDP 域（`Autofill` 是其中之一），而 Electron 没暴露该域 → `-32601`（method not found）。它只影响 DevTools 自己的面板初始化，**碰不到应用的渲染层/主进程**；在上游（Chromium DevTools 前端）修，或者自己接管 DevTools 前端 —— 对本项目都不值得，**登记为噪音即可** |
+
+---

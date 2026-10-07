@@ -97,6 +97,9 @@ const DEFAULT_SUITES = [
   '_verify-toolbar-settings.js', // 快捷工具栏：空白区右键菜单 + 显隐与排序设置
   // 开发者工具的入口与「取消 F12」：工具栏那项真的开得起来 + 按 F12 不再出现 devtools 目标
   '_verify-devtools.js',
+  // CSP 的两半分发：meta 里无效的指令（frame-ancestors）必须由**响应头**下发 ——
+  // 真窗口里读响应头（CDP Network 域）+ 读 DOM 里那份 meta + 读渲染层 console 的转发
+  '_verify-csp.js',
   '_verify-settings-layout.js', // 设置页在 940×600 / 125% 缩放下的横向布局（导航跟窗口走 + 主题卡 3 列）
   '_verify-zorder.js', // 浮层叠放顺序：--z-* 令牌真的到 DOM + 实测顺序（70 < 120 < 140 < 150…）
   '_verify-visual-scale.js', // 视觉尺度：字号令牌生效 + 计算字号/圆角都落在文档化档位里

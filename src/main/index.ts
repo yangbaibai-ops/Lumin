@@ -4,7 +4,19 @@ import './suppressWarnings'
 // 单实例锁：抢不到锁的进程在这里就退出了。**必须**排在会读 userData 的模块（./menu、./ipc
 // → services/database：`db` 是模块级 new）之前，理由见 singleInstance.ts 的文件头。
 import './singleInstance'
-import { app, shell, BrowserWindow, nativeTheme, protocol, net, ipcMain, screen } from 'electron'
+import {
+  app,
+  shell,
+  BrowserWindow,
+  nativeTheme,
+  protocol,
+  net,
+  ipcMain,
+  screen,
+  // ⚠️ 名字冲突：本文件下面还有 `import * as session from './services/session'`（会话恢复），
+  // 所以 Electron 的这个 session 必须起别名
+  session as electronSession
+} from 'electron'
 import { join, resolve } from 'path'
 import { randomUUID } from 'crypto'
 import { pathToFileURL } from 'url'
@@ -42,7 +54,7 @@ import { bindWindowScope, scopeOfSlot } from './services/windowScope'
 import * as pathGrants from './services/pathGrants'
 import { defaultSettings } from '../shared/defaults'
 import { paperForTheme } from '../shared/theme'
-import { PROD_CSP } from '../shared/csp'
+import { CSP_HEADER_ONLY } from '../shared/csp'
 // 浏览器级键的拦截策略（纯函数，见该模块顶部说明：刷新族/DevTools/缩放/F7/F11 全拦）
 import { blockedShortcut, comboLabel } from '../shared/shortcuts'
 import { recordFatal } from './services/appLog'
@@ -205,8 +217,8 @@ function saveWindowState(win: BrowserWindow): void {
   )
 }
 
-// 生产环境 CSP 只注册一次（session 为所有窗口共享，避免重复监听）
-let cspInstalled = false
+// CSP 的响应头只注册一次（session 为所有窗口共享，避免重复监听）
+let cspHeaderInstalled = false
 
 /** 创建窗口时的启动意图：打开某个文件 / 打开某个文件夹 / 干净窗口 / 参与会话恢复的槽位 */
 interface WindowOpenOptions {
@@ -399,18 +411,70 @@ function createWindow(options: WindowOpenOptions = {}): BrowserWindow {
     if (safe) void shell.openExternal(safe)
   })
 
-  // 生产环境强化 CSP（仅首次注册）。
-  // ⚠️ 内容来自 `src/shared/csp.ts` 的**唯一常量**，与渲染层 `<meta>` 里那份逐字相同：
-  // 此前两处各写一份、内容还不一致（少了 lumin-file:/media-src），"哪份生效"无从判断。
-  if (!is.dev && !cspInstalled) {
-    cspInstalled = true
-    mainWindow.webContents.session.webRequest.onHeadersReceived((details, callback) => {
-      callback({
-        responseHeaders: {
-          ...details.responseHeaders,
-          'Content-Security-Policy': [PROD_CSP]
+  /**
+   * ─── CSP 的**响应头**那一半（`<meta>` 里无效的指令只能这么下发）──────────────────
+   *
+   * 背景：`frame-ancestors`（以及 `report-uri` / `sandbox`）通过 `<meta>` 下发时**会被浏览器
+   * 直接忽略**，控制台还会打一条
+   * `The Content Security Policy directive 'frame-ancestors' is ignored when delivered via a
+   * <meta> element.` —— 也就是说那条指令此前**根本没生效**（"以为设了其实没设"）。
+   *
+   * 所以：`<meta>` 版（`PROD_CSP`）里删掉它们，改由这里用响应头下发；头里**只放**
+   * `CSP_HEADER_ONLY`（目前就一条 `frame-ancestors 'none'`）—— 不把 `PROD_CSP` 整串塞进头里，
+   * 否则头 + meta 两份策略会**取交集**，一旦漂移就成了谁都没写过的第三份策略。
+   *
+   * ⚠️ 两条覆盖要求（都靠 `tools/_verify-csp.js` 在真窗口里读响应头来守）：
+   *   * **不分 dev/prod**：以前这里带着 `!is.dev` 的门 —— 开发态（`http://localhost:5173`）
+   *     与打包态（`file://` 文档 + `lumin-file://` 图片）都要走到；
+   *   * **不设 URL 过滤**：`onHeadersReceived` 不做 filter，主文档 / 子资源 / 自定义协议全过。
+   *     （`file://` 是否真的经过 webRequest 是这套机制里最可疑的一环 —— 所以验收是"读响应头"，
+   *     不是"看代码写了"。）
+   */
+  if (!cspHeaderInstalled) {
+    cspHeaderInstalled = true
+    /** 「自定义协议也走过头」只报一次（下面的日志用，见注释） */
+    let loggedLuminFile = false
+    electronSession.defaultSession.webRequest.onHeadersReceived((details, callback) => {
+      // 先按**大小写无关**的方式摘掉原有的 `Content-Security-Policy`（HTTP 头名不分大小写，
+      // 留一个原名再来一个规范名就等于给浏览器发**两条**策略 —— 那会取交集，正是要避免的事），
+      // 再放我们这一条（只含 meta 里无效的那几条指令）。
+      const responseHeaders: Record<string, string[]> = {}
+      for (const [name, value] of Object.entries(details.responseHeaders ?? {})) {
+        if (name.toLowerCase() === 'content-security-policy') continue
+        responseHeaders[name] = value
+      }
+      responseHeaders['Content-Security-Policy'] = [CSP_HEADER_ONLY]
+
+      /**
+       * 取证日志（**只在两种情况下各报一条**，不会刷屏）：
+       *   * `mainFrame`：每个窗口的文档加载一次 —— 证明"响应头真的过到了文档请求上"；
+       *   * 第一条 `lumin-file:`：打包态文档里的相对图片走的就是这个自定义协议，
+       *     证明 URL 模式**两种 scheme 都覆盖**（用户点名要确认的那件事）。
+       *
+       * 为什么非得由主进程自己报：CDP 的 Network 域**看不到** `webRequest` 注入的头
+       * （实测：handler 明明被调用、注入也确实生效，但 `Network.getResponseHeaders` 是空的），
+       * 所以"注入有没有发生"只能用这行日志当证据（`tools/_verify-csp.js` 读它）。
+       * ⚠️ 输出必须 ASCII：只打 `details.resourceType` 与 URL 的 **scheme**（路径可能含中文）。
+       */
+      const schemeOf = (url: string): string => {
+        try {
+          return new URL(url).protocol
+        } catch {
+          return 'unknown'
         }
-      })
+      }
+      if (details.resourceType === 'mainFrame') {
+        console.log(
+          `[csp] frame-ancestors header set for mainFrame scheme=${schemeOf(details.url)}`
+        )
+      } else if (!loggedLuminFile && details.url.startsWith('lumin-file:')) {
+        loggedLuminFile = true
+        console.log(
+          `[csp] frame-ancestors header set for ${details.resourceType} scheme=${schemeOf(details.url)}`
+        )
+      }
+
+      callback({ responseHeaders })
     })
   }
 

@@ -13,7 +13,12 @@ import { readFileSync, readdirSync, statSync, existsSync } from 'node:fs'
 import { join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 // 共享常量直接 import .ts（node --test 的类型剥离）：断言"两处用的是同一份"，而不是比字符串
-import { PROD_CSP, devCsp } from '../src/shared/csp.ts'
+import {
+  PROD_CSP,
+  devCsp,
+  CSP_HEADER_ONLY,
+  META_IGNORED_CSP_DIRECTIVES
+} from '../src/shared/csp.ts'
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..')
 const read = (p) => readFileSync(join(ROOT, p), 'utf8')
@@ -57,16 +62,90 @@ test('CSP：默认自限 + 脚本只允许 self（唯一真相源 = src/shared/c
   // 本地图片/音视频必须被放行（否则打包态文档里的相对路径图片全加载不出来）
   assert.match(content, /img-src[^;]*lumin-file:/, 'img-src 必须放行 lumin-file:')
   assert.match(content, /media-src[^;]*lumin-file:/, 'media-src 必须放行 lumin-file:')
-  // 主进程的响应头必须用同一个常量，而不是再写一遍字面量
+  // 主进程的响应头必须用共享常量，而不是再写一遍字面量
   const main = read('src/main/index.ts')
-  assert.match(main, /'Content-Security-Policy':\s*\[PROD_CSP\]/, '主进程必须用共享的 PROD_CSP')
+  assert.match(
+    main,
+    /'Content-Security-Policy'\]\s*=\s*\[CSP_HEADER_ONLY\]/,
+    '主进程的响应头必须用共享的 CSP_HEADER_ONLY（meta 无效的指令只走头）'
+  )
   assert.doesNotMatch(
     main,
-    /'Content-Security-Policy':\s*\[\s*['"]default-src/,
+    /'Content-Security-Policy'[^\n]*\[\s*['"]default-src/,
     '主进程不许内联写 CSP 字面量'
   )
   // dev 与 prod 的差别只有 ws（HMR）
   assert.match(devCsp(), /connect-src[^;]*ws:/, 'dev CSP 必须放行 ws（HMR）')
+})
+
+test('CSP：meta 版里不许出现「meta 里会被忽略」的指令（否则等于没设）', () => {
+  /**
+   * 用户实测的控制台输出（DevTools 里那条红）：
+   *   `The Content Security Policy directive 'frame-ancestors' is ignored when delivered via a
+   *    <meta> element.`
+   * 也就是 `frame-ancestors` 写在 `<meta>` 里**根本没生效**（"以为设了其实没设"）。
+   * CSP 规范明文：`frame-ancestors` / `report-uri` / `sandbox` 通过 `<meta>` 下发时被忽略
+   * （Chromium 会打上面那条警告）。所以要下发它们只能走**响应头**（`CSP_HEADER_ONLY`）。
+   *
+   * 这条测试遍历 `META_IGNORED_CSP_DIRECTIVES`，把"再写回去"变成红灯 —— 注释拦不住人，测试能。
+   */
+  assert.ok(META_IGNORED_CSP_DIRECTIVES.length >= 3, 'meta 无效指令清单太短，核对口径可能不对')
+  for (const directive of META_IGNORED_CSP_DIRECTIVES) {
+    assert.doesNotMatch(
+      PROD_CSP,
+      new RegExp(`(^|;\\s*)${directive}\\b`),
+      `PROD_CSP 进了 <meta>，不许含 ${directive}（meta 里会被忽略 → 等于没设）；要用就走 CSP_HEADER_ONLY`
+    )
+    // meta 版与头版**不许**重复同一条指令：头 + meta 两份策略取交集，重复只会带来漂移风险
+    assert.doesNotMatch(
+      CSP_HEADER_ONLY,
+      new RegExp(`(^|;\\s*)${directive}\\b.*${directive}\\b`),
+      `${directive} 在头里重复了`
+    )
+  }
+  // 头那份必须真的带着 frame-ancestors（否则我们就把这条防护彻底弄丢了）
+  assert.match(
+    CSP_HEADER_ONLY,
+    /frame-ancestors\s+'none'/,
+    'CSP_HEADER_ONLY 必须含 frame-ancestors'
+  )
+  assert.doesNotMatch(
+    PROD_CSP,
+    /frame-ancestors/,
+    'PROD_CSP 与 CSP_HEADER_ONLY 的职责：前者进 meta、后者走响应头，不许混'
+  )
+})
+
+test('CSP：响应头不分 dev/prod 都要注册（开发态 http 与打包态 file:// 都覆盖）', () => {
+  /**
+   * 为什么单测守这条：旧实现是 `if (!is.dev && !cspInstalled)` —— 开发态**完全不注册**，
+   * 而开发态恰恰是用户能看见控制台的那一态（他看到的正是开发态那条警告）。
+   * 现在这条策略与构建态无关：`onHeadersReceived` 不设 filter，dev（`http://localhost:5173`）
+   * 与 prod（`file://` 文档 + `lumin-file://` 图片）都走同一条注册。
+   * 真窗口里"头到底有没有下发"由 `tools/_verify-csp.js` 读响应头来验（静态测试做不到）。
+   */
+  const main = read('src/main/index.ts')
+  assert.match(
+    main,
+    /electronSession\.defaultSession\.webRequest\.onHeadersReceived/,
+    '必须用 defaultSession 注册'
+  )
+  assert.doesNotMatch(
+    main,
+    /!is\.dev\s*&&\s*!cspHeaderInstalled/,
+    'CSP 响应头不许再被 !is.dev 挡住（开发态也要下发）'
+  )
+  assert.match(
+    main,
+    /if\s*\(\s*!cspHeaderInstalled\s*\)/,
+    '注册必须只做一次（session 是所有窗口共享的）'
+  )
+  // 不许给 onHeadersReceived 设 URL 过滤（设了就容易漏掉 file:// 或 lumin-file://）
+  assert.doesNotMatch(
+    main,
+    /onHeadersReceived\(\s*\{/,
+    'onHeadersReceived 不许带 filter：开发态是 http://localhost:5173、打包态是 file:// + lumin-file://'
+  )
 })
 
 test('openExternal 一律先过 scheme 白名单', () => {

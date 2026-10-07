@@ -38,6 +38,37 @@
 
 ### Changed
 
+**CSP：`frame-ancestors` 写在 `<meta>` 里等于没设 → 改由响应头下发（用户实测的控制台告警）**
+
+- 用户实测（开发态打开应用）两条输出，只有第一条要修：
+  * `[renderer:error] The Content Security Policy directive 'frame-ancestors' is ignored when
+    delivered via a <meta> element.` —— **真问题**：CSP 规范明文规定 `frame-ancestors` /
+    `report-uri` / `sandbox` 通过 `<meta>` 下发时**会被忽略**，也就是这条防护此前**根本没生效**；
+  * `Electron Security Warning (Insecure Content-Security-Policy) …` —— **开发态预期噪音**
+    （渲染层跑 `http://localhost:5173`，HMR 必须放行 inline/eval 与 ws；打包态不出现），**不动**。
+- **meta 与响应头各管一半**（`src/shared/csp.ts`）：`frame-ancestors 'none'` 从 `PROD_CSP` 里删掉
+  （新增 `META_IGNORED_CSP_DIRECTIVES` 清单 + 写明"这些指令在 meta 里会被忽略，所以由响应头下发"，
+  防止有人再写回去）；新增只含这一条的 `CSP_HEADER_ONLY`。
+- **响应头注册**（`src/main/index.ts`）：改用 `session.defaultSession.webRequest.onHeadersReceived`，
+  **不再带 `!is.dev` 的门**（开发态恰恰是能看到控制台的那一态）、**不设 URL filter**
+  （`http://localhost:5173`、`file://` 文档、`lumin-file://` 图片都覆盖），并且**只下发
+  `CSP_HEADER_ONLY`** —— 不把整串策略塞进头里（头 + meta 会让浏览器对两份策略**取交集**，
+  一旦漂移就是谁都没写过的第三份）；顺带按大小写无关摘掉同名旧头。
+  每个窗口的文档加一条 ASCII 取证日志 `[csp] frame-ancestors header set for mainFrame scheme=file:`。
+- **验收**：`tests/guards.test.mjs` 扩到 **12 条**（遍历清单断言 `PROD_CSP` 一条都不含、
+  头用 `CSP_HEADER_ONLY`、注册不被 `is.dev` 挡住、没带 filter）；新增 `tools/_verify-csp.js`
+  （默认矩阵）**11 条**：DOM 里的 meta 逐字等于 `PROD_CSP` 且无 meta 无效指令、主进程日志证明
+  **两个 scheme 都过到了注入点**、渲染层控制台不再有那条警告（并发一条自己的 `console.warn` 当
+  反向栅栏证明转发通道是通的）。
+  ⚠️ 取证方式有一处与直觉相反、已写进套件注释：**CDP 的 `Network.getResponseHeaders` 看不到
+  `webRequest` 注入的头**（实测 handler 确实为 `file://` 主文档调用过、注入也确实生效，但那边是空数组）
+  —— 所以"注入有没有发生"用主进程日志证，"有没有生效"用一次性诊断证（把注入值临时换成
+  `default-src 'none'` → 渲染层立刻报 `Loading the script '…/index-*.js' violates …`）。
+- **手册**：`docs/manual/04-pitfalls.md` 新增 §4.39（含"已知无害的控制台输出"清单：
+  上面那条 dev CSP 警告 + 每次开 DevTools 的两行 `Request Autofill.enable failed … 'Autofill…' wasn't
+  found` —— 后者实测来自 **DevTools 前端自己**的 console，Electron 没暴露 CDP 的 `Autofill` 域，
+  **不要去修**）。
+
 **浏览器自带功能的收口：DevTools 走「顶部栏 → 帮助」、取消 F12 与「Ctrl+R 刷新」等一批键**
 
 - 用户原话（第三轮）：「取消点击 F12 出现开发者工具的功能，取而代之的是在顶部工具栏中添加一项：
