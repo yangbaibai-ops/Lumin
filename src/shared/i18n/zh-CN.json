@@ -106,6 +106,7 @@
     "themeSepia": "羊皮纸",
     "reload": "重新加载",
     "devtools": "开发者工具",
+    "openDevTools": "打开开发者工具",
     "settings": "设置",
     "about": "关于 Lumin",
     "quit": "退出",
@@ -402,8 +403,7 @@
     "groupHeading": "标题",
     "groupInline": "行内样式",
     "groupBlock": "块级元素",
-    "groupInsert": "插入",
-    "openDevTools": "打开开发者工具"
+    "groupInsert": "插入"
   },
   "links": {
     "kindUrl": "网址",

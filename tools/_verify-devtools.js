@@ -1,28 +1,31 @@
 'use strict'
 // 验收：**浏览器/Electron 自带功能的取消**（开发者工具的入口 + 刷新族/缩放/查看源码…）
 //
-// 用户口径（两轮）：
+// 用户口径（三轮）：
 //   * 「取消点击 F12 出现开发者工具的功能，取而代之的是在顶部工具栏中添加一项：
 //     '打开开发者工具'，点击就出现开发者工具。」（第三轮）
 //   * 「取消 Electron/Chromium 自带但本项目不需要的功能」，点名「按 Ctrl+R 刷新页面」。（第四轮）
+//   * 「并不是在编辑快捷工具栏中，而是在应用的顶部栏中的'帮助'里添加。」（第五轮 ——
+//     入口从编辑区快捷工具栏**搬到顶部栏「帮助」菜单**，那枚工具栏按钮已移除）
 //
 // 断言分组：
-//   A 工具栏里**真的有**那一项（语义锚点 `[data-open-devtools]` + aria-label 来自语言包）
-//   B 点击 → 主进程日志 + CDP 的 `/json/list` 里**多出一个 devtools 目标**（真的开起来了）
+//   A 入口在**顶部栏 → 帮助**里：`[data-menu-item="menu.openDevTools"]`（语言无关的语义锚点），
+//     并且**反向**断言编辑区快捷工具栏里**不再有**那枚按钮（防止两边都留）
+//   B 真实点击路径：点「帮助」→ 点该项 → 主进程日志 + CDP `/json/list` 多出一个 devtools 目标
 //   C 再点一次**不报错**（主进程 `isDevToolsOpened()` 分支报 already=true）
-//   D DevTools 族（F12 / Ctrl+Shift+I）不再产生 devtools 目标
+//   D DevTools 族（F12 / Ctrl+Shift+I）不再产生 devtools 目标 + F7/F11 留下被拦日志
 //   E 查看源码 Ctrl+U 不产生新窗口/新目标
-//   F 缩放键（Ctrl+= / Ctrl+- / Ctrl+0）不改变缩放
-//   G **应用自己的快捷键仍然有效**（Ctrl+Shift+B 侧栏、Ctrl+, 设置）—— 证明没被误拦
+//   F 缩放键（Ctrl+= / Ctrl+- / Ctrl+0）与 Ctrl+滚轮不改变缩放
+//   G **应用自己的快捷键仍然有效**（Ctrl+Shift+B 侧栏 / Ctrl+, 设置 / Ctrl+Shift+F 专注模式）
 //   H **Ctrl+R / F5 不重载**：页面标记 `window.__reloadProbe` 必须还在（最硬的判据）
-//   I 策略与接线的静态守卫（拦截桶、`watchWindowShortcuts` 没回来、缩放的鼠标闸在、清单一处）
+//   I 策略与接线的静态守卫（拦截桶、`watchWindowShortcuts` 没回来、缩放的鼠标闸在、入口只在一处）
 //
 // 为什么大量用"跨进程"判据：DevTools 是独立窗口、刷新会换掉整棵文档、缩放属于 webContents
 // 状态 —— 页面侧要么看不见要么会自证，所以主进程日志（`[shortcuts] blocked …` /
 // `[devtools] opened …`）与调试端口的目标列表才是证据。两者都用 `instanceLog()` 读。
 //
 // 跑法：`node tools/run-suites.js --suite=_verify-devtools.js`（运行器会起隔离实例 + 传日志路径）。
-// E/F/G/H 段要**真实按键**：拿不到 OS 焦点时如实 SKIP（不算失败，见 harness 的 ensureFocus 口径）。
+// D~H 段要**真实按键**：拿不到 OS 焦点时如实 SKIP（不算失败，见 harness 的 ensureFocus 口径）。
 const fs = require('fs')
 const path = require('path')
 const {
@@ -38,6 +41,10 @@ const {
   inject
 } = require('./lib/harness')
 const { APP_OWNED_COMBOS, blockedShortcut } = require('../src/shared/shortcuts.ts')
+
+/** 顶部栏「帮助」一级按钮 / 菜单项锚点（都是语义锚点，不按本地化文字找） */
+const HELP_GROUP = '[data-topmenu-group="h"]'
+const HELP_DEVTOOLS_ITEM = '[data-menu-item="menu.openDevTools"]'
 
 /** 读主进程日志（GUI 子系统里主进程没有控制台，这是唯一可读的出口） */
 function readLog(logPath) {
@@ -171,6 +178,66 @@ const ZOOM_PROBE = `(() => {
   })
 })()`
 
+/** 点页面坐标（真实鼠标：move → press → release） */
+async function clickPoint(send, x, y) {
+  await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x, y, button: 'none' })
+  await send('Input.dispatchMouseEvent', {
+    type: 'mousePressed',
+    x,
+    y,
+    button: 'left',
+    clickCount: 1
+  })
+  await send('Input.dispatchMouseEvent', {
+    type: 'mouseReleased',
+    x,
+    y,
+    button: 'left',
+    clickCount: 1
+  })
+}
+
+/**
+ * 取某个选择器的中心点（不存在返回 null）。
+ * 用 `JSON.stringify(selector)` 把选择器注入页面表达式 —— 页面侧那段代码里**不能有反引号**
+ * （它在 Node 的模板字符串里）。
+ */
+async function centerOfSelector(ev, selector) {
+  const raw = await ev(`(() => {
+    const el = document.querySelector(${JSON.stringify(selector)})
+    if (!el) return null
+    const r = el.getBoundingClientRect()
+    return JSON.stringify({
+      x: Math.round(r.left + r.width / 2),
+      y: Math.round(r.top + r.height / 2),
+      w: Math.round(r.width),
+      h: Math.round(r.height),
+      text: (el.textContent || '').trim()
+    })
+  })()`)
+  return raw ? JSON.parse(raw) : null
+}
+
+/**
+ * 走一遍**真实点击路径**：点顶部栏的「帮助」一级按钮 → 点下拉里的目标项。
+ *
+ * 为什么不用 `window.__L` 直接调 store/命令（那样更"稳"）：这一条验收的对象就是
+ * 「用户点得到吗」—— 菜单是 Teleport 到 body 的浮层，`onDocDown` 会用
+ * `.topmenu-root` / `.topmenu-drop` 判定"是不是菜单内部"，这些**只有真实点击才走得到**。
+ */
+async function clickHelpMenuItem(app, itemSelector, settleMs = 600) {
+  const { ev, send } = app
+  const group = await centerOfSelector(ev, HELP_GROUP)
+  if (!group) return { ok: false, why: 'NO_HELP_GROUP' }
+  await clickPoint(send, group.x, group.y)
+  await sleep(350)
+  const item = await centerOfSelector(ev, itemSelector)
+  if (!item) return { ok: false, why: 'NO_MENU_ITEM', group }
+  await clickPoint(send, item.x, item.y)
+  await sleep(settleMs)
+  return { ok: true, group, item }
+}
+
 async function main() {
   const app = await connect()
   if (!(await settle(app.ev))) {
@@ -178,89 +245,89 @@ async function main() {
     return 0
   }
   const { ev, send } = app
-  const report = new Reporter('浏览器自带功能：DevTools 入口 / 刷新族 / 缩放 / 查看源码 / 不误伤应用键')
+  const report = new Reporter(
+    '浏览器自带功能：DevTools 入口（顶部栏 → 帮助）/ 刷新族 / 缩放 / 查看源码 / 不误伤应用键'
+  )
 
-  // 工具栏出厂是收起的（见 harness.showToolbar 的说明），先显式打开
+  // 工具栏出厂是收起的（见 harness.showToolbar 的说明），先显式打开 —— 本段要用它做
+  // **反向断言**（"编辑区快捷工具栏里不再有那枚按钮"），工具栏必须真的在才说明问题。
   const shown = await showToolbar(app)
   report.check('toolbar-visible', shown === true)
 
-  // ── A. 工具栏里真的有那一项 ────────────────────────────────────────────────
-  // ⚠️ 工具栏根节点是 `overflow-x-auto`：窄窗口下**右边的固定入口会横向溢到可视区之外**，
-  // CDP 点击会落到窗口外（表现为"点了没反应"）——所以先 scrollIntoView，再取坐标；
-  // `inViewport` 也把左右两边一起判（漏判左右正是本套件第一次跑时的假红原因）。
-  const probe = await ev(`(() => {
+  // ── A. 入口在「顶部栏 → 帮助」里，且工具栏里**不再有** ──────────────────────
+  const anchors = await ev(`(() => {
     const bar = document.querySelector('[data-editor-toolbar]')
-    if (!bar) return JSON.stringify({ bar: false })
-    const btn = bar.querySelector('[data-open-devtools]')
-    if (!btn) return JSON.stringify({ bar: true, found: false })
-    btn.scrollIntoView({ block: 'nearest', inline: 'nearest' })
-    const r = btn.getBoundingClientRect()
-    const labels = [btn.getAttribute('aria-label'), btn.getAttribute('title')].filter(Boolean)
     return JSON.stringify({
-      bar: true,
-      found: true,
-      inViewport:
-        r.width > 0 &&
-        r.height > 0 &&
-        r.top >= 0 &&
-        r.bottom <= innerHeight &&
-        r.left >= 0 &&
-        r.right <= innerWidth,
-      center: { x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2) },
-      rect: {
-        left: Math.round(r.left),
-        right: Math.round(r.right),
-        innerWidth,
-        scrollLeft: Math.round(bar.scrollLeft)
-      },
-      // 语义锚点：不看具体的语言文案（矩阵前面的套件可能把语言留在 en-US / ru-RU）
-      labels,
-      hasIcon: !!btn.querySelector('svg')
+      toolbarPresent: !!bar,
+      toolbarHasOldButton: !!(bar && bar.querySelector('[data-open-devtools]')),
+      // 菜单没展开时该项不该游离在 DOM 里（证明它在菜单里，而不是别处的全局元素）
+      itemBeforeOpen: !!document.querySelector('[data-menu-item="menu.openDevTools"]'),
+      helpButton: !!document.querySelector('[data-topmenu-group="h"]')
     })
   })()`).then(JSON.parse)
-  console.log('A-BUTTON ' + JSON.stringify(probe))
-  report.check('toolbar-has-open-devtools-button', probe.found === true, JSON.stringify(probe))
+  console.log('A-ANCHORS ' + JSON.stringify(anchors))
+  report.check('toolbar-present-for-reverse-check', anchors.toolbarPresent === true)
   report.check(
-    'button-has-accessible-name-from-i18n',
-    Array.isArray(probe.labels) && probe.labels.length === 2 && probe.labels[0] === probe.labels[1],
-    JSON.stringify(probe.labels)
+    'toolbar-no-longer-has-open-devtools-button',
+    anchors.toolbarPresent === true && anchors.toolbarHasOldButton === false,
+    '编辑区快捷工具栏里还留着一枚「打开开发者工具」按钮（用户要求它只在顶部栏帮助里）'
   )
-  report.check('button-has-icon', probe.hasIcon === true)
+  report.check('topmenu-has-help-group', anchors.helpButton === true)
   report.check(
-    'button-reachable-in-viewport',
-    probe.inViewport === true,
-    JSON.stringify({ center: probe.center, rect: probe.rect })
+    'help-item-not-rendered-before-open',
+    anchors.itemBeforeOpen === false,
+    '菜单没展开时该项就已经在 DOM 里 —— 它可能不在帮助菜单内部'
   )
 
-  // ── B. 点击 → IPC 真的被调用 ──────────────────────────────────────────────
+  // 展开帮助，确认目标项**在这个下拉里**（锚点 = i18n 键，与语言无关）
   const logPath = instanceLog()
   const beforeTargets = await targets()
   const beforeLog = readOpenedLines(logPath)
+  const help = await centerOfSelector(ev, HELP_GROUP)
+  report.check('help-group-clickable', !!help, JSON.stringify(help))
+  if (help) {
+    await clickPoint(send, help.x, help.y)
+    await sleep(350)
+  }
+  const itemProbe = await ev(`(() => {
+    const el = document.querySelector('[data-menu-item="menu.openDevTools"]')
+    // 顶部栏的下拉容器是 .topmenu-drop（组件自己在 onDocDown 里就用它判定"点击是否在菜单内"；
+    // 这里刻意不写 [role="menu"] —— 顶部栏那层没加 role，只有右键菜单那套组件才有）
+    const panelOf = (node) => (node ? node.closest('.topmenu-drop') : null)
+    if (!el) {
+      const panel = document.querySelector('.topmenu-drop')
+      return JSON.stringify({
+        found: false,
+        panelItems: panel
+          ? [...panel.querySelectorAll('[data-menu-item]')].map((x) => x.getAttribute('data-menu-item'))
+          : []
+      })
+    }
+    const r = el.getBoundingClientRect()
+    const panel = panelOf(el)
+    return JSON.stringify({
+      found: true,
+      inMenu: !!panel,
+      // 面板里都有哪些项（帮助菜单的实测内容，留作证据）
+      panelItems: panel
+        ? [...panel.querySelectorAll('[data-menu-item]')].map((x) => x.getAttribute('data-menu-item'))
+        : [],
+      label: (el.textContent || '').trim(),
+      hasIcon: !!el.querySelector('svg'),
+      x: Math.round(r.left + r.width / 2),
+      y: Math.round(r.top + r.height / 2)
+    })
+  })()`).then(JSON.parse)
+  console.log('A-HELP-MENU ' + JSON.stringify(itemProbe))
+  report.check('help-menu-has-open-devtools-item', itemProbe.found === true, JSON.stringify(itemProbe))
+  report.check('item-lives-inside-a-menu-panel', itemProbe.inMenu === true, JSON.stringify(itemProbe))
+  report.check('item-has-icon', itemProbe.hasIcon === true)
 
-  if (probe.found && probe.inViewport) {
-    await send('Input.dispatchMouseEvent', {
-      type: 'mouseMoved',
-      x: probe.center.x,
-      y: probe.center.y,
-      button: 'none'
-    })
-    await send('Input.dispatchMouseEvent', {
-      type: 'mousePressed',
-      x: probe.center.x,
-      y: probe.center.y,
-      button: 'left',
-      clickCount: 1
-    })
-    await send('Input.dispatchMouseEvent', {
-      type: 'mouseReleased',
-      x: probe.center.x,
-      y: probe.center.y,
-      button: 'left',
-      clickCount: 1
-    })
+  // ── B. 点它 → devtools 目标 + 主进程日志 ──────────────────────────────────
+  if (itemProbe.found) {
+    await clickPoint(send, itemProbe.x, itemProbe.y)
     await sleep(600)
 
-    // B1. 真的开起来了：CDP 目标里多出 devtools
     const opened = await waitDevTools()
     const afterTargets = await targets()
     console.log(
@@ -272,21 +339,20 @@ async function main() {
         JSON.stringify(opened.map((t) => ({ type: t.type, url: String(t.url).slice(0, 60) })))
     )
     report.check(
-      'click-opens-devtools-target',
+      'help-menu-click-opens-devtools-target',
       opened.length >= 1 && afterTargets.length > beforeTargets.length,
       JSON.stringify({ before: beforeTargets.length, after: afterTargets.length })
     )
 
-    // B2. 主进程确实收到了这次 IPC（日志行）
     const afterLog = readOpenedLines(logPath)
     console.log('B-MAIN-LOG ' + JSON.stringify({ path: logPath, before: beforeLog, after: afterLog }))
     if (!logPath) {
       // 手工起实例（没走 run-suites）时拿不到实例日志：如实 SKIP，不伪造 FAIL
-      report.skip('click-reaches-main-ipc', '没有 LUMIN_INSTANCE_LOG，读不到实例日志')
+      report.skip('help-menu-click-reaches-main-ipc', '没有 LUMIN_INSTANCE_LOG，读不到实例日志')
       report.skip('second-click-reports-already-open', '同上')
     } else {
       report.check(
-        'click-reaches-main-ipc',
+        'help-menu-click-reaches-main-ipc',
         afterLog.length === beforeLog.length + 1 && afterLog[afterLog.length - 1].already === false,
         JSON.stringify({
           before: beforeLog.length,
@@ -296,22 +362,9 @@ async function main() {
       )
     }
 
-    // ── C. 再点一次：主进程走 isDevToolsOpened 分支，报 already=true ────────────
-    await send('Input.dispatchMouseEvent', {
-      type: 'mousePressed',
-      x: probe.center.x,
-      y: probe.center.y,
-      button: 'left',
-      clickCount: 1
-    })
-    await send('Input.dispatchMouseEvent', {
-      type: 'mouseReleased',
-      x: probe.center.x,
-      y: probe.center.y,
-      button: 'left',
-      clickCount: 1
-    })
-    await sleep(700)
+    // ── C. 再点一次：主进程走 isDevToolsOpened 分支，报 already=true ──────────
+    const again = await clickHelpMenuItem(app, HELP_DEVTOOLS_ITEM, 700)
+    report.check('help-menu-can-be-opened-again', again.ok === true, JSON.stringify(again))
     const log2 = readOpenedLines(logPath)
     const dtTargets2 = await devToolsTargets()
     console.log(
@@ -334,15 +387,16 @@ async function main() {
     const closed = await ensureClosed(app)
     report.check('devtools-can-be-closed', closed === true)
   } else {
-    // 按钮不存在/不可见时，后面几段的**前提**就不成立：如实 SKIP，不伪造 FAIL
+    // 菜单项找不到时，后面几段的**前提**就不成立：如实 SKIP，不伪造 FAIL
     for (const name of [
-      'click-opens-devtools-target',
-      'click-reaches-main-ipc',
+      'help-menu-click-opens-devtools-target',
+      'help-menu-click-reaches-main-ipc',
+      'help-menu-can-be-opened-again',
       'second-click-reports-already-open',
       'second-click-keeps-exactly-one-devtools',
       'devtools-can-be-closed'
     ]) {
-      report.skip(name, '工具栏里没有可点的「打开开发者工具」按钮')
+      report.skip(name, '帮助菜单里没有 `menu.openDevTools` 那一项')
     }
   }
 
@@ -643,16 +697,33 @@ async function main() {
     'Ctrl+滚轮/捏合缩放的两道闸（限制 + 复位）必须在'
   )
 
+  // 入口位置的静态守卫（第五轮把入口从编辑区工具栏**搬到顶部栏 → 帮助**）：
+  //   * `TopMenuBar.vue` 的帮助组里必须有 `menu.openDevTools` 这一项、且真的调 IPC；
+  //   * `Toolbar.vue` 里**不许**再出现那枚按钮/那个键（"两边都留"是这一轮要防的回归）。
+  const menuBarSrc = fs.readFileSync(
+    path.join(root, 'src', 'renderer', 'src', 'components', 'TopMenuBar.vue'),
+    'utf-8'
+  )
+  report.check(
+    'topmenu-help-item-calls-openDevTools-api',
+    menuBarSrc.includes(`labelKey: 'menu.openDevTools'`) &&
+      menuBarSrc.includes('window.luminAPI.app.openDevTools()'),
+    '帮助菜单里那一项必须真的调 window.luminAPI.app.openDevTools()'
+  )
+  report.check(
+    'topmenu-leaf-has-semantic-anchor',
+    menuBarSrc.includes(':data-menu-item='),
+    '叶子菜单项要带 data-menu-item 语义锚点（验收脚本不按本地化文字找）'
+  )
+
   const toolbarSrc = fs.readFileSync(
     path.join(root, 'src', 'renderer', 'src', 'components', 'Toolbar.vue'),
     'utf-8'
   )
   report.check(
-    'toolbar-button-calls-openDevTools-api',
-    toolbarSrc.includes('data-open-devtools') &&
-      toolbarSrc.includes(`t('toolbar.openDevTools')`) &&
-      toolbarSrc.includes('window.luminAPI.app.openDevTools()'),
-    '工具栏那枚按钮必须真的调 window.luminAPI.app.openDevTools()'
+    'toolbar-no-longer-mentions-openDevTools',
+    !toolbarSrc.includes('openDevTools') && !toolbarSrc.includes('data-open-devtools'),
+    '编辑区快捷工具栏里还留着「打开开发者工具」（按钮/键名/逻辑应已全部移除）'
   )
 
   const ipcSrc = fs.readFileSync(path.join(root, 'src', 'main', 'ipc.ts'), 'utf-8')
@@ -660,6 +731,23 @@ async function main() {
     'main-registers-openDevTools-ipc-detached',
     ipcSrc.includes(`ipcMain.handle('app:openDevTools'`) && ipcSrc.includes(`mode: 'detach'`),
     '主进程必须注册 app:openDevTools 并用 mode: detach（内嵌会挤坏布局）'
+  )
+
+  // i18n：键从 `toolbar.openDevTools` 改名为 `menu.openDevTools`（文本级增删）。
+  // 这里守"旧键已删、新键三语都在"（`tests/i18nKeys` 那两条会守"新键有引用、旧键无残留"）。
+  const packs = ['zh-CN', 'en-US', 'ru-RU'].map((lang) => ({
+    lang,
+    text: fs.readFileSync(path.join(root, 'src', 'shared', 'i18n', `${lang}.json`), 'utf-8')
+  }))
+  report.check(
+    'i18n-key-renamed-to-menu-namespace',
+    packs.every(
+      (p) =>
+        p.text.includes('"openDevTools"') &&
+        /"devtools":\s*"[^"]+",\s*\n\s*"openDevTools"/.test(p.text) &&
+        !/"groupInsert":\s*"[^"]+",\s*\n\s*"openDevTools"/.test(p.text)
+    ),
+    '三份语言包都该是「menu.openDevTools 在 devtools 之后、toolbar 里那份已删」'
   )
 
   // 打印键：**故意不拦**（应用自己绑了 Mod+P → 「打印…」）。这里只做静态确认，

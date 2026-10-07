@@ -94,11 +94,11 @@ main().then((c) => process.exit(c)).catch(fatal)
 
 <!-- facts:begin（由 tools/doc-facts.js 生成，勿手改）-->
 
-- `tools/` 共 **199 个文件 / 47407 行**（`.js`/`.mjs`/`.ps1`/`.md`）；
+- `tools/` 共 **199 个文件 / 47495 行**（`.js`/`.mjs`/`.ps1`/`.md`）；
 - 套件文件 **114 个**（_regress-* 6 / _repro-* 9 / _verify-* 99），默认矩阵 **65 个**，分档：fast 65 / needs-build 44 / needs-dev 4 / manual 1；
 - 另有 **8 个**探针/遗留脚本默认只列不判（`--probe` 显式跑）；
 - 单元测试 **100 个** `tests/*.test.mjs`；Markdown 往返夹具 **33 份**（exact 17 / normalized 16）；
-- `docs/manual/` **14 份 / 5352 行**，`docs/` 下共 **31 份** md。
+- `docs/manual/` **14 份 / 5377 行**，`docs/` 下共 **31 份** md。
 
 <!-- facts:end -->
 

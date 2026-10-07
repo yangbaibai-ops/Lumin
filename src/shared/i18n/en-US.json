@@ -106,6 +106,7 @@
     "themeSepia": "Sepia",
     "reload": "Reload",
     "devtools": "Developer Tools",
+    "openDevTools": "Open Developer Tools",
     "settings": "Settings",
     "about": "About Lumin",
     "quit": "Quit",
@@ -402,8 +403,7 @@
     "groupHeading": "Headings",
     "groupInline": "Inline styles",
     "groupBlock": "Blocks",
-    "groupInsert": "Insert",
-    "openDevTools": "Open Developer Tools"
+    "groupInsert": "Insert"
   },
   "links": {
     "kindUrl": "URL",

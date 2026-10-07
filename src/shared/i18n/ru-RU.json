@@ -106,6 +106,7 @@
     "themeSepia": "Сепия",
     "reload": "Перезагрузить",
     "devtools": "Инструменты разработчика",
+    "openDevTools": "Открыть инструменты разработчика",
     "settings": "Настройки",
     "about": "О Lumin",
     "quit": "Выход",
@@ -402,8 +403,7 @@
     "groupHeading": "Заголовки",
     "groupInline": "Внутристрочные стили",
     "groupBlock": "Блоки",
-    "groupInsert": "Вставка",
-    "openDevTools": "Открыть инструменты разработчика"
+    "groupInsert": "Вставка"
   },
   "links": {
     "kindUrl": "URL",

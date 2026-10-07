@@ -727,7 +727,7 @@
   "只需要测试这个功能，之前已经有的逻辑和功能统统不需要再测试一遍"。
   （改动面只有一个 composable 里的三行 + 一个 store 字段，`vue-tsc` / `eslint` / build 全绿。）
 
-### 4.88 浏览器自带功能的收口：DevTools 走工具栏、取消 F12 与「Ctrl+R 刷新」等一批键
+### 4.88 浏览器自带功能的收口：DevTools 走「顶部栏 → 帮助」、取消 F12 与「Ctrl+R 刷新」等一批键
 
 **用户口径（两轮）**：
 ① 「取消点击 F12 出现开发者工具的功能，取而代之的是在顶部工具栏中添加一项：
@@ -793,34 +793,59 @@
 （查看源代码）—— 于是代码块里"撤销选区内的改动"这条第三方默认键失效（整篇撤销 `Mod+Z` 仍在）。
 取舍登记在 `shortcuts.ts` 的 `KNOWN_THIRD_PARTY_COLLISIONS`。
 
-#### 五、工具栏那一项
+#### 五、入口：顶部栏「帮助」菜单（第五轮口径）
 
-快捷工具栏右侧固定入口多一枚 `[data-open-devtools]`（图标 `monitor`，文案走
-`toolbar.openDevTools` 三语键）。它**不进** `shared/toolbarItems.ts` 的可调整目录 ——
-目录里的项目可被逐项隐藏，而"开发者工具打不开"不该让用户先想起来自己藏了哪个按钮。
-原生菜单里 `role: 'toggleDevTools'` 那条**保留**（菜单栏默认隐藏，不影响"工具栏是渲染层唯一入口"）；
-`role: 'reload'` 那条也保留（点击是用户的显式动作，而键盘那条已被拦 —— 删掉它会让
-`menu.reload` 变成死键，见 `tests/i18nKeys.test.mjs`）。
+**用户原话（第五轮澄清）**：「并不是在编辑快捷工具栏中，而是在应用的顶部栏中的'帮助'里添加。」
+—— 第三/四轮那枚放在**编辑区快捷工具栏**的按钮是听错了位置，已**整体移除**（按钮、`openDevTools()`
+逻辑、`toolbar.openDevTools` 键一并清掉；套件里有一条反向断言守着"工具栏里不许再有它"）。
 
-接线：IPC `app:openDevTools` / `app:closeDevTools`（按 `event.sender` 定位窗口，不用
-`getFocusedWindow()`），`mode: 'detach'` 独立窗口，返回 `{ ok, alreadyOpen, windowId }`。
+现在它在 `TopMenuBar.vue` 的**帮助组**里，是第三项（`设置` / `关于 Lumin` ‖ `打开开发者工具`，
+中间一条分隔线）：
+
+| 项 | 锚点 | 说明 |
+| --- | --- | --- |
+| `menu.openDevTools` | `[data-menu-item="menu.openDevTools"]` | 叶子菜单项统一带 `data-menu-item`（值 = i18n 键，**语言无关**）；套件不按本地化文字找 |
+
+- i18n 键从 `toolbar.openDevTools` **改名**为 `menu.openDevTools`：三语都是**文本级**增删
+  （在 `menu.devtools` 之后插入新键、删掉 `toolbar` 里那份并去掉前一行的尾逗号）。
+  ⚠️ **不许**用 `JSON.parse → JSON.stringify` 重写整份语言包 —— 那会把文件里**转义的 `\uFFFD`**
+  写成真实替换字符，`tests/encodingGuard` 立刻红（第三轮踩过）。
+- 点击走**既有的** IPC `app:openDevTools`（`mode: 'detach'`，按 `event.sender` 定位窗口），
+  失败弹通知（`runLeaf` 会静默吞异常，所以那一项自己 try/catch）。
+- 原生菜单里 `role: 'toggleDevTools'` 那条**保留**（它在**视图**子菜单、不在帮助里；菜单栏默认隐藏，
+  点它是显式动作）；`role: 'reload'` 那条也保留（同上 —— 删掉会让 `menu.reload` 变成死键，
+  见 `tests/i18nKeys.test.mjs`）。两者与新入口**功能上重复但不冲突**：键盘入口已全部拦掉，
+  留在菜单里的两条是"看得见的显式动作"。
 
 #### 六、验收
 
-- `tools/_verify-devtools.js`（**已登记进默认矩阵**）**38 条**：工具栏那项存在且可点 →
-  点击真的走 IPC（主进程日志）且 `/json/list` 多出一个 devtools 目标 → 再点一次报
-  `alreadyOpen: true` → 关闭后目标消失 → `F12` 与 `Ctrl+Shift+I` 不再产生 devtools 目标 →
+- `tools/_verify-devtools.js`（**已登记进默认矩阵**）**46 条**：
+  入口在顶部栏帮助里（`data-menu-item` 锚点 + 打开前不游离在 DOM 里）+ **反向**断言编辑区快捷
+  工具栏里不再有那枚按钮 → **真实点击路径**（点「帮助」→ 点该项）后 `/json/list` 多出一个
+  devtools 目标且主进程日志出现 `[devtools] opened …` → 再点一次报 `alreadyOpen: true` 且
+  目标仍只有 1 个 → 关闭后目标消失 → `F12` 与 `Ctrl+Shift+I` 不再产生 devtools 目标 →
   `F7`/`F11` 留下被拦日志 → `Ctrl+U` 不产生新目标 → 缩放键与 Ctrl+滚轮都不改变 `devicePixelRatio` →
   **`Ctrl+R` / `F5` 不重载**（页面标记 `window.__reloadProbe` 必须还在；拦失败时它会被抹掉）→
   **应用自己的 `Ctrl+Shift+B`（侧栏）/ `Ctrl+,`（设置）/ `Ctrl+Shift+F`（专注模式）仍然生效**
   （"没误伤"的运行时证据；专注模式那条正是用户点名要确认的"F11 被拦 ≠ 应用没有全屏入口"）；
 - `tests/shortcuts.test.mjs` **10 条**：每条被拦组合落在正确的理由桶里、应用自己那份清单
   （含点名核对的 29 个组合）一律放行、日志串必须是 ASCII；
-- 改前（HEAD `89382d6` 的构建）同一套件的原始输出：`H-ctrl-r probe={"value":"GONE"}`、
-  `H-f5 probe={"value":"GONE"}`（**真的重载了**）、`blocked=[]`，共 **22/35 PASS / 13 FAIL**
-  （当时的套件版本是 35 条）；改后 **38/38 PASS**。其中"缩放键不改变缩放"与
-  "`Ctrl+U` 不产生新目标"两条**改前也是绿的**（这套 Electron 构建里键盘缩放/查看源码本就不生效），
-  真正红转绿的是主进程那两条 `*-blocked-in-main-process` 断言与 `Ctrl+R`/`F5` 的重载探针。
+- **改前红 / 改后绿**（同一套件、同一条命令，只换构建）：
+  * 改前 = HEAD `b97b3f8` 的构建（入口还在工具栏、帮助里没有它）：
+    `A-ANCHORS {"toolbarPresent":true,"toolbarHasOldButton":true,…}`、`A-HELP-MENU {"found":false}`，
+    **32/46 PASS / 8 FAIL / 6 SKIP**；红的正是这一轮要修的八条
+    （`toolbar-no-longer-has-open-devtools-button`、`help-menu-has-open-devtools-item`、
+    `item-lives-inside-a-menu-panel`、`item-has-icon`、`topmenu-help-item-calls-openDevTools-api`、
+    `topmenu-leaf-has-semantic-anchor`、`toolbar-no-longer-mentions-openDevTools`、
+    `i18n-key-renamed-to-menu-namespace`），6 条 SKIP 是"前提不成立"的点击路径段；
+  * 改后：`A-ANCHORS {"toolbarHasOldButton":false,…}`、
+    `A-HELP-MENU {"found":true,"inMenu":true,"panelItems":["menu.settings","menu.about","menu.openDevTools"]}`，
+    **46/46 PASS**；
+  * 第四轮那批键（刷新族/缩放/查看源码/F7/F11）的改前/改后数字见本轮之前的记录：
+    改前 **22/35**（`H-ctrl-r probe={"value":"GONE"}`、`H-f5 probe={"value":"GONE"}` —— 真的重载了）、
+    改后全绿；其中"缩放键不改变缩放"与"`Ctrl+U` 不产生新目标"在**这套 Electron 构建里改前也是绿的**
+    （键盘缩放/查看源码本就不生效），真正红转绿的是主进程那两条 `*-blocked-in-main-process` 断言
+    与 `Ctrl+R`/`F5` 的重载探针。
 
 ---
 

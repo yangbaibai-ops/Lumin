@@ -222,34 +222,6 @@ function toggleSidebar(): void {
   settings.set('sidebarVisible', ui.sidebarVisible)
 }
 
-/**
- * 「打开开发者工具」：**本窗口**的 DevTools，独立窗口（`mode: 'detach'`，见 main/ipc.ts）。
- *
- * 为什么放在工具栏的**右侧固定入口**（与专注模式 / 导出 / 设置同一排）而不进
- * `shared/toolbarItems.ts` 的可调整目录：目录里的项目能被用户在设置里逐项隐藏，
- * 而"开发者工具打不开"这种事一旦发生，用户连自己把它藏了都想不起来；
- * 固定入口不需要排序、也不该被藏（与"位置类开关不参与隐藏"是同一个考量）。
- *
- * F12 那条入口已经拆掉（main/index.ts 的显式快捷键表），所以这里是渲染层给的唯一入口。
- * 刻意**不做开/关二态切换**：用户口径是"点击就出现"，而关掉有 DevTools 自己的关闭按钮。
- */
-function openDevTools(): void {
-  void window.luminAPI.app.openDevTools().then(
-    (res) => {
-      // 失败要说出来（否则就是"点了没反应"）：正常情况下这里不该走到
-      if (!res?.ok) {
-        ui.toast(`${t('toolbar.openDevTools')}: ${res?.error ?? 'unknown'}`, 'error')
-      }
-    },
-    (e: unknown) => {
-      ui.toast(
-        `${t('toolbar.openDevTools')}: ${e instanceof Error ? e.message : String(e)}`,
-        'error'
-      )
-    }
-  )
-}
-
 function doExport(format: 'pdf' | 'html' | 'word' | 'epub'): void {
   exportOpen.value = false
   void runExport(format)
@@ -558,18 +530,6 @@ const exportItems: { icon: string; labelKey: string; format: 'pdf' | 'html' | 'w
       @click="ui.focusMode = !ui.focusMode"
     >
       <Icon name="maximize" :size="15" />
-    </button>
-
-    <!-- 打开开发者工具（固定入口，不参与排序/隐藏）：F12 已不再打开 DevTools（见 main/index.ts），
-         这里是渲染层唯一的入口。`data-open-devtools` 是给验收脚本的语义锚点。 -->
-    <button
-      class="icon-btn"
-      :title="t('toolbar.openDevTools')"
-      :aria-label="t('toolbar.openDevTools')"
-      data-open-devtools
-      @click="openDevTools()"
-    >
-      <Icon name="monitor" :size="15" />
     </button>
 
     <div class="mx-1 h-5 w-px shrink-0 bg-edge" />

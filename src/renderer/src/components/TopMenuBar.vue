@@ -370,7 +370,32 @@ const GROUPS = computed<Group[]>(() => [
     labelKey: 'menu.help',
     items: [
       { labelKey: 'menu.settings', icon: 'settings', run: () => ui.openSettings() },
-      { labelKey: 'menu.about', icon: 'info', run: () => router.push('/about') }
+      { labelKey: 'menu.about', icon: 'info', run: () => router.push('/about') },
+      // 与上面两条（设置 / 关于）之间画一条分隔线：下面是**开发者向**的入口
+      'sep',
+      // 「打开开发者工具」放在**帮助**里（用户口径第五轮原话：「并不是在编辑快捷工具栏中，
+      // 而是在应用的顶部栏中的'帮助'里添加」；那枚工具栏按钮已随之移除）。
+      // 走的是既有 IPC `app:openDevTools`（主进程 `mode: 'detach'` 独立窗口）——
+      // 键盘入口（F12 / Ctrl+Shift+I/J/C）在第四轮已全部拦掉，这里与原生菜单的
+      // `role: 'toggleDevTools'` 是仅有的两条入口。
+      // 失败要说出来（`runLeaf` 会静默吞异常）：正常情况下不该走到 toast 这条分支。
+      {
+        labelKey: 'menu.openDevTools',
+        icon: 'monitor',
+        run: async () => {
+          try {
+            const res = await window.luminAPI.app.openDevTools()
+            if (!res?.ok) {
+              ui.toast(`${t('menu.openDevTools')}: ${res?.error ?? 'unknown'}`, 'error')
+            }
+          } catch (e) {
+            ui.toast(
+              `${t('menu.openDevTools')}: ${e instanceof Error ? e.message : String(e)}`,
+              'error'
+            )
+          }
+        }
+      }
     ]
   }
 ])
@@ -563,10 +588,14 @@ onBeforeUnmount(() => {
             <span class="min-w-0 flex-1 truncate">{{ t(it.labelKey) }}</span>
             <Icon name="chevron-right" :size="12" class="flex-none text-ink-3" />
           </button>
+          <!-- 一级项（叶子）：`data-menu-item` = 该项目的 i18n 键（动态项退回文案），
+               给验收脚本一个**语言无关的语义锚点**（`tools/_verify-devtools.js` 靠它点
+               「帮助 → 打开开发者工具」，不按本地化文字找） -->
           <button
             v-else
             class="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-left text-ui transition-colors duration-100"
             :class="it.danger ? 'text-danger-ink hover:bg-danger/10' : 'text-ink hover:bg-panel-2'"
+            :data-menu-item="it.labelKey ?? it.label ?? ''"
             @mouseenter="closeSub"
             @click="runLeaf(it)"
           >

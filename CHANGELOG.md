@@ -38,11 +38,13 @@
 
 ### Changed
 
-**浏览器自带功能的收口：F12/DevTools 走工具栏、「取消 Ctrl+R 刷新」等一批键**
+**浏览器自带功能的收口：DevTools 走「顶部栏 → 帮助」、取消 F12 与「Ctrl+R 刷新」等一批键**
 
 - 用户原话（第三轮）：「取消点击 F12 出现开发者工具的功能，取而代之的是在顶部工具栏中添加一项：
   '打开开发者工具'，点击就出现开发者工具。」
 - 用户原话（第四轮）：「取消 Electron/Chromium 自带但本项目不需要的功能」，点名「按 Ctrl+R 刷新页面」。
+- 用户原话（第五轮，澄清入口位置）：「并不是在编辑快捷工具栏中，而是在应用的顶部栏中的'帮助'里添加。」
+  —— 入口因此**从编辑区快捷工具栏搬到顶部栏的「帮助」菜单**（那枚工具栏按钮已整体移除）。
   详细清单/逐条理由/故意没拦的清单见 `docs/manual/08d-fix-log-4.md` §4.88 与 `src/shared/shortcuts.ts`。
 - **取消 F12 / 全部浏览器自带键**：`src/main/index.ts` 不再调用 `@electron-toolkit/utils` 的
   `optimizer.watchWindowShortcuts`（开发态用 F12 开/关 DevTools、打包态只屏蔽 `Ctrl+R` 与
@@ -60,19 +62,24 @@
 - **整页缩放的鼠标那条路**也一并关掉：每窗口 `setVisualZoomLevelLimits(1, 1)`
   （捏合/触控板）＋ 忽略 `zoom-changed`（Ctrl+滚轮）后 `setZoomFactor(1)` 复位
   —— 应用自己有字号设置，Chromium 的整页缩放会把版式搞坏。
-- **新增工具栏入口**：快捷工具栏右侧固定入口多一枚「打开开发者工具」
-  （图标 `monitor`、`data-open-devtools` 语义锚点、文案走已有的 `toolbar.openDevTools` 三语键）。
-  它**不进** `shared/toolbarItems.ts` 的可调整目录：目录里的项目能被逐项隐藏，
-  而"开发者工具打不开"这种事不该让用户先想起来"我把哪个按钮藏了"。
-  原生菜单里原有的 `role: 'toggleDevTools'` 保留（菜单栏默认隐藏，不影响"渲染层唯一入口"）。
-- **接线**：新增 IPC `app:openDevTools` / `app:closeDevTools`（`src/main/ipc.ts`，
+- **入口：顶部栏「帮助」菜单**（第五轮口径）：「打开开发者工具」是 `TopMenuBar.vue` 帮助组里的
+  第三项（设置 / 关于 ‖ 打开开发者工具，中间一条分隔线），锚点 `[data-menu-item="menu.openDevTools"]`
+  （叶子菜单项统一带 `data-menu-item` = i18n 键，语言无关；套件不按本地化文字找），
+  点击走**既有的** IPC `app:openDevTools`（失败会弹通知，`runLeaf` 会静默吞异常所以自己 try/catch）。
+  编辑区快捷工具栏里那枚按钮与 `toolbar.openDevTools` 键**已一并删除**（当时放在那里是听错了位置）。
+  i18n 键从 `toolbar.openDevTools` **改名**为 `menu.openDevTools`（三语**文本级**增删：
+  在 `menu.devtools` 之后插入新键、删掉 `toolbar` 里那份并去掉前一行的尾逗号 ——
+  绝不用 `JSON.parse → stringify` 重写整份 JSON，那会把转义的 `\uFFFD` 写成真实字符）。
+- **接线**：IPC `app:openDevTools` / `app:closeDevTools`（`src/main/ipc.ts`，
   按 `event.sender` 定位窗口而不是 `getFocusedWindow()`），preload 按既有 `window.luminAPI.app.*`
   风格暴露，`mode: 'detach'` 独立窗口（不挤坏文档布局），返回值 `{ ok, alreadyOpen, windowId }`
   可观测（失败会弹通知，不留"点了没反应"）。被拦下的键在主进程留一行 ASCII 日志
   `[shortcuts] blocked <组合键> (<理由>)`（每个窗口每个组合只记一次，供验收取证）。
-- **验收**：`tools/_verify-devtools.js`（默认矩阵）**38 条**——工具栏里真有那一项、点击真的走
-  IPC 且 `/json/list` 里多出一个 devtools 目标、`F12` 与 `Ctrl+Shift+I` 不再产生 devtools 目标、
-  `F7`/`F11` 留下被拦日志、`Ctrl+U` 不产生新目标、缩放键与 Ctrl+滚轮都不改变 `devicePixelRatio`、
+- **验收**：`tools/_verify-devtools.js`（默认矩阵）**46 条**——顶部栏「帮助」里真有那一项、
+  **真实点击**（点帮助 → 点该项）后 `/json/list` 里多出一个 devtools 目标且主进程日志出现
+  `[devtools] opened …`、再点一次报 `alreadyOpen: true`；**反向**断言编辑区快捷工具栏里
+  **不再有**那枚按钮；`F12` 与 `Ctrl+Shift+I` 不再产生 devtools 目标、`F7`/`F11` 留下被拦日志、
+  `Ctrl+U` 不产生新目标、缩放键与 Ctrl+滚轮都不改变 `devicePixelRatio`、
   **Ctrl+R / F5 不重载**（页面标记 `window.__reloadProbe` 必须还在）、
   以及**应用自己的 `Ctrl+Shift+B` / `Ctrl+,` / `Ctrl+Shift+F` 仍然生效**
   （"没误伤"的运行时证据；最后那条正是"F11 被拦 ≠ 应用没有全屏入口"的确认）。
