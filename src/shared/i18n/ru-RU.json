@@ -448,6 +448,7 @@
   "toast": {
     "unsupportedFile": "Можно открывать только файлы Markdown",
     "openFailed": "Не удалось открыть файл",
+    "workspaceAlreadyOpen": "«{name}» уже является текущей рабочей областью",
     "exportFailed": "Экспорт не удался",
     "exportedTo": "Экспортировано в: {path}",
     "printDone": "Отправлено на принтер",

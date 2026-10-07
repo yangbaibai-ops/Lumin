@@ -114,6 +114,11 @@ const api: LuminAPI = {
     exists: (path) => ipcRenderer.invoke('file:exists', path),
     /** 这个路径是不是目录（拖入的落点分流用：文件走打开文件、目录走打开文件夹） */
     isDirectory: (path) => ipcRenderer.invoke('file:isDirectory', path),
+    /**
+     * 两个路径是不是同一个位置（大小写 / 分隔符 / `.` `..` / 符号链接 / 8.3 短名都归一到一处比较）。
+     * 判据在主进程（`pathGuard.sameResolvedPath` + `fileOps.isSamePath`），渲染层不手搓比较。
+     */
+    isSamePath: (a, b) => ipcRenderer.invoke('file:isSamePath', a, b),
     /** 只要 mtime（外部改动检测用；不必把整篇正文搬过来） */
     mtime: (path) => ipcRenderer.invoke('file:mtime', path),
     chooseOpenFile: () => ipcRenderer.invoke('file:chooseOpenFile'),

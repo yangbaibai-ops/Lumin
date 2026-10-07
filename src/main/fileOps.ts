@@ -5,7 +5,7 @@ import { shell } from 'electron'
 import type { Dirent } from 'fs'
 import { pathToFileURL } from 'url'
 import { db } from './services/database'
-import { isInside } from './pathGuard'
+import { isInside, sameResolvedPath } from './pathGuard'
 import { decodeBuffer, encodeText } from './services/encoding'
 import {
   atomicWriteBytes,
@@ -363,6 +363,26 @@ export async function exists(p: string): Promise<boolean> {
 export async function isDirectory(p: string): Promise<boolean> {
   try {
     return (await fs.stat(p)).isDirectory()
+  } catch {
+    return false
+  }
+}
+
+/**
+ * 两个路径是不是**同一个位置**（拖入文件夹时判"是不是已经开着这个工作区"用）。
+ *
+ * 两段：
+ *   ① 字符串层：`pathGuard.sameResolvedPath`（resolve 掉 `.`/`..`、统一分隔符、折叠大小写）；
+ *   ② 只有第 ① 段判"不同"时才做 **realpath**：符号链接 / junction / 8.3 短名
+ *      （`C:\Users\YANGBA~1\…`，也就是资源管理器拖进来时 Chromium 给的那一串）
+ *      都是"看起来不同、指的却是同一处"。两侧都成功才拿结果下结论；任何一侧失败
+ *      （路径不存在 / 权限不足）就维持第 ① 段的答案 —— 不因为"查不到"而改判成相同。
+ */
+export async function isSamePath(a: string, b: string): Promise<boolean> {
+  if (sameResolvedPath(a, b)) return true
+  try {
+    const [ra, rb] = await Promise.all([fs.realpath(a), fs.realpath(b)])
+    return sameResolvedPath(ra, rb)
   } catch {
     return false
   }

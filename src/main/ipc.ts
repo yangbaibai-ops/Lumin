@@ -605,6 +605,23 @@ export function registerIpc(slots: SlotRegistry): void {
     fileOps.isDirectory(pathGrants.assertAuthorized(p, 'read'))
   )
   /**
+   * 两个路径是不是**同一个位置**（拖入文件夹时判"是不是已经开着这个工作区"）。
+   *
+   * 为什么放在主进程：只有这边能既做 `path.resolve` 的规范化、又能做 `fs.realpath`
+   * （符号链接 / junction / 8.3 短名 —— 资源管理器拖进来的路径就是 `YANGBA~1` 那种短名，
+   * 而工作区根往往是长名）。判据本身是纯函数 `pathGuard.sameResolvedPath`（有单测），
+   * 这里只是"规范化 + 落地成一次查询"，渲染层不手搓字符串比较。
+   *
+   * 授权：与 `file:exists` / `file:isDirectory` 同一口径，**两侧都过闸**。
+   * 正常流程必然放行 —— 拖入的那侧由 `file:authorizeUserPath` 登记过，
+   * 工作区根那侧在 `isAuthorized` 里天然命中（它等于 kv 里的 root）。
+   */
+  ipcMain.handle('file:isSamePath', (_, a: string, b: string) => {
+    const pa = pathGrants.assertAuthorized(a, 'read')
+    const pb = pathGrants.assertAuthorized(b, 'read')
+    return fileOps.isSamePath(pa, pb)
+  })
+  /**
    * 只要 mtime（不要内容）：渲染层判断"同一个文件自上次打开后有没有被外部改过"。
    * 为什么单开一条：`file:read` 会把整篇正文搬过来（还要解码 + 建索引），
    * 而"同路径再次打开"的短路判断只需要一个时间戳（见 stores/files.ts 的 openPath）。

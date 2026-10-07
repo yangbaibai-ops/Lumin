@@ -321,6 +321,54 @@ test('拖放链：内层认领的信号是 stopPropagation，不是恒真的 def
   )
 
   /**
+   * ─── 第六轮：拖入文件夹的三个分支必须"用现成的" ──────────────────────────────
+   *
+   * 用户口径：当前开着的就是它 → 不新开窗口；不是它 → 新窗口打开那个文件夹。
+   * 这里守三件容易走偏的事：
+   *   ① "是同一个文件夹"的判据必须**问主进程**（`file:isSamePath` → 纯函数
+   *      `pathGuard.sameResolvedPath` + `realpath`），不许在渲染层手搓字符串比较 ——
+   *      大小写/分隔符/尾分隔符/`.`/`..`/符号链接/8.3 短名全都要算同一个；
+   *   ② 不同分支必须复用既有的 `app.openFolderInNewWindow`（**不新造开窗逻辑**）；
+   *   ③ 同一个文件夹要给一条提示（静默 = 用户以为又坏了），文案走 i18n。
+   */
+  const dropped = read('src/renderer/src/lib/droppedPath.ts')
+  assert.match(
+    dropped,
+    /window\.luminAPI\.file\.isSamePath\(/,
+    '同一个文件夹的判据必须问主进程（file:isSamePath），不许在渲染层手搓比较'
+  )
+  assert.match(
+    dropped,
+    /window\.luminAPI\.app\.openFolderInNewWindow\(/,
+    '目录不同时必须复用既有的 app.openFolderInNewWindow（"应用外请求打开目录"那条规则）'
+  )
+  assert.match(
+    dropped,
+    /toast\.workspaceAlreadyOpen/,
+    '同一个文件夹要有一条明确提示（不许静默 no-op）'
+  )
+  const pg = read('src/main/pathGuard.ts')
+  assert.match(
+    pg,
+    /export function sameResolvedPath\(/,
+    '路径同一性的判据必须落在主进程的纯函数里（可单测、只有一份）'
+  )
+  assert.match(
+    read('src/main/fileOps.ts'),
+    /export async function isSamePath\([\s\S]{0,400}realpath\(/,
+    '符号链接 / junction / 8.3 短名要靠 fs.realpath 兜住'
+  )
+  // 三语都要有这条提示（少一个语言 = 那个语言下弹裸 key）
+  for (const lang of ['zh-CN', 'en-US', 'ru-RU']) {
+    const pack = JSON.parse(read(`src/shared/i18n/${lang}.json`))
+    assert.ok(
+      typeof pack.toast.workspaceAlreadyOpen === 'string' &&
+        pack.toast.workspaceAlreadyOpen.includes('{name}'),
+      `${lang} 缺少 toast.workspaceAlreadyOpen（且要带 {name} 占位）`
+    )
+  }
+
+  /**
    * ─── 根因取证：把"为什么 `defaultPrevented` 恒真"钉在单测里 ────────────────────
    *
    * 这一条读的是 Vue 自己的实现（`node_modules/@vue/runtime-dom`），不是我们的代码 ——
