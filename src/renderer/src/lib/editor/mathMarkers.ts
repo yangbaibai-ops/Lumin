@@ -22,15 +22,50 @@ import { matchBlockMath, matchInlineMath } from '../mathScan.ts'
 
 /** KaTeX 渲染成 HTML 字符串。**失败不抛**：公式写错不该让整篇文档崩掉 */
 export function renderMath(source: string, display: boolean): string {
+  return mathRenderInfo(source, display).html
+}
+
+/**
+ * 与 `renderMath` 同一份渲染，额外**如实回报"这段公式画出来了没有"**，失败时给出**为什么**。
+ *
+ * 为什么不能让 KaTeX 自己兜底（`throwOnError: false`）——第二十九轮实测的坑：
+ * 那个选项下**未知宏不报错**，KaTeX 会把它当**普通文字**画出来（`\ce{H2O}` 会显示成
+ * "\ceH2O"、"`\notarealmacro`"原样显示），产物里既没有 `katex-error` 也没有任何异常。
+ * 于是"错误态"根本无从判断，用户看到的是**一段看着像公式、其实是错的**东西。
+ *
+ * 所以这里改用 `throwOnError: true` + 自己接住：它才是**完备**的判据 ——
+ *   * 语法不闭合（`\frac{1}{`）→ 抛；
+ *   * 未定义的宏（`\ce`、`\today`、打错的 `\badcommnad`）→ 抛；
+ *   * 正常公式 / `align` / `pmatrix` / `\text{中文}` → 正常画出来（实测都 OK）。
+ * 接住之后渲染成**一句人话**（KaTeX 的错误信息本身就说明了哪个宏、在哪个位置），
+ * 这比"把原文原样画一遍"有用得多；`title` 里带上完整信息，鼠标悬停能看全。
+ *
+ * 三件事实分开回报（`error` 的含义只有一种：**没画出公式**）：
+ *   * 正常 → `error: false`；
+ *   * 抛了（语法错 / 未知宏 / 非字符串输入）→ 转义的 `<code class="md-math-error">`，
+ *     `error: true`，且**不让未转义 HTML 进 DOM**（与 renderMath 的既有口径一致）。
+ */
+export function mathRenderInfo(
+  source: unknown,
+  display: boolean
+): { html: string; error: boolean } {
   try {
-    return katex.renderToString(source, {
+    const html = katex.renderToString(source as string, {
       displayMode: display,
-      throwOnError: false,
+      throwOnError: true,
       strict: false,
       output: 'html'
     })
-  } catch {
-    return `<code class="md-math-error">${escapeHtml(source)}</code>`
+    return { html, error: false }
+  } catch (e) {
+    const raw = String((e as { message?: string } | undefined)?.message ?? e ?? '')
+    const message = raw.replace(/^KaTeX parse error:\s*/, '').slice(0, 300)
+    return {
+      html:
+        `<code class="md-math-error" title="${escapeHtml(message)}">` +
+        `${escapeHtml(message || String(source ?? ''))}</code>`,
+      error: true
+    }
   }
 }
 
@@ -164,15 +199,30 @@ export const MathBlock = Node.create({
    * 屏幕上的呈现走 **NodeView**：PM 的 DOMOutputSpec 没法注入 HTML（这个版本的
    * `renderSpec` 不支持 `innerHTML`），而 KaTeX 的输出就是一段 HTML。
    * `renderHTML` 只在「复制为 HTML」等场景用到，那里给原文即可。
+   *
+   * ⚠️ `update` 是**必须**的（第二十九轮补）：源码框逐键写回时改的是 `source` 属性，
+   * 而 NodeView 默认在属性变化时不重建 —— 少了这个回调，敲进框里的字符会**只进模型、
+   * 不进画面**（实测：公式停在旧内容，而文档里已经是新内容）。`update` 返回 `false`
+   * 表示"这个新节点我处理不了"，交回给 PM 重建。
    */
   addNodeView() {
     return ({ node }) => {
       const dom = document.createElement('div')
       dom.className = 'md-math-block'
       dom.setAttribute('data-md-math-block', 'true')
-      dom.setAttribute('data-source', String(node.attrs.source ?? ''))
-      dom.innerHTML = renderMath(String(node.attrs.source ?? ''), true)
-      return { dom }
+      const paint = (source: string): void => {
+        dom.setAttribute('data-source', source)
+        dom.innerHTML = renderMath(source, true)
+      }
+      paint(String(node.attrs.source ?? ''))
+      return {
+        dom,
+        update: (updated) => {
+          if (updated.type.name !== 'mathBlock') return false
+          paint(String(updated.attrs.source ?? ''))
+          return true
+        }
+      }
     }
   },
   renderHTML({ node }) {

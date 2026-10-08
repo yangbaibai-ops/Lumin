@@ -7,6 +7,25 @@
  * 现在按语义拆成 8 段，本文件只保留顺序；**改样式请去对应的分片**。
  * CSS 要求 @import 出现在所有规则之前，所以入口里除了 Tailwind 指令不能有别的东西。
  */
+
+/* ─── 数学公式的排版与字体：**必须本地打包**（第二十九轮）──────────────────────
+ * 为什么放在最前面：KaTeX 自己的规则要**先**就位，后面各分片里 `.md-preview .katex`
+ * 这类覆盖才有东西可覆盖（样式表顺序 = 层叠顺序）。
+ *
+ * ⚠️ 这是一个**离线**要求，不是"顺手引个 CDN"：本应用是 Electron 桌面程序，不能假设
+ * 用户联网。`katex/dist/katex.min.css` 里有 59 条 `@font-face`，全部指向
+ * `katex/dist/fonts/*.woff2|woff|ttf`（60 个文件 / 约 1.03MB）—— 由 Vite 当**静态资源**
+ * 处理（`new URL(..., import.meta.url)` + 内容哈希）并打进 `out/renderer/assets/`，
+ * 运行时一个网络请求都不发。字体是必须的：KaTeX 的排版全靠这些字体里的度量与字形
+ *（`KaTeX_Size1..4` 是积分号/括号的伸缩字形，缺了会把 `\int` 画成普通字符）。
+ *
+ * 以前这份样式表**只在导出时**按需加载（`lib/export.ts` 的 `?inline`），
+ * 编辑器里一条 `@font-face` 都没有 —— 后果是公式在编辑器里被当成普通文字排版
+ *（实测：分数字形不堆叠、`\int_0^1` 的上下限不落位、`.katex` 的 font-family 落到 Inter）。
+ * 那份 `?inline` 现在对编辑器这条链是冗余的，但导出走的是**独立文档**（iframe/打印），
+ * 仍需要它，所以两边都留着（同一份来源，不会漂移）。 */
+@import 'katex/dist/katex.min.css';
+
 @import './theme.css';
 @import './base.css';
 @import './components.css';
@@ -15,3 +34,4 @@
 @import './sidebar.css';
 @import './chrome.css';
 @import './overlays.css';
+

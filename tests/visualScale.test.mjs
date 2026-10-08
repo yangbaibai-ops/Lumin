@@ -63,8 +63,16 @@ const RADIUS_TIERS = [
   '0 6px 6px 0'
 ]
 
-/** 字号里不属于"档位"的写法（相对排版 / 继承 / 运行时注入） */
-const TEXT_NON_TIER = ['inherit', '0', 'var(--editor-size, 17px)']
+/** 字号里不属于"档位"的写法（相对排版 / 继承 / 运行时注入 / 令牌引用） */
+const TEXT_NON_TIER = [
+  'inherit',
+  '0',
+  'var(--editor-size, 17px)',
+  // 公式源码框顶行那行小字：**引用令牌**而不是新写一个 px（令牌本身就是档位，见 theme.css
+  // 的 `@theme` 块：`--text-ui` 12.5px / `--text-ui-sm` 12px）。写 `12px` 会被上面的闭集
+  // 放行、写 `var(--text-ui-sm)` 更准确地表达"这是界面小字档"，所以登记这一条。
+  'var(--text-ui-sm)'
+]
 
 /**
  * 任意值类的**上限**（本轮实测 164）。它只能变小：新代码请用令牌或现有档位。

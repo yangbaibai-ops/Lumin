@@ -102,22 +102,30 @@
    行内公式：原文留在文档里（`$…$` 是一个带 mdMath mark 的文本节点），渲染成公式靠**装饰**：
    旁边的 .md-math-rendered 是 KaTeX 输出，原文那一段被加上 .md-math-source 折叠掉
    （`font-size: 0` 而不是 `display: none` —— 后者会破坏浏览器的光标导航，与行内标记同一套处理）。
-   光标落进公式时装饰消失，原文自动露出来可编辑。 */
+   第二十九轮起公式**恒为渲染态**（不再因为光标靠近而露出 `$…$`），点它才在上方浮出源码框。 */
 .md-preview .md-math-source {
   font-size: 0;
 }
 .md-preview .md-math-rendered {
   font-size: inherit;
   padding: 0 0.1em;
+  cursor: pointer;
+  border-radius: 3px;
+  /* 悬停/聚焦的可见反馈走**主题令牌**：`--accent` 在 light/dark/sepia 三套里都定义过 */
+  transition: background-color 0.12s ease;
 }
-/* 块级公式：独占一块、居中、可横向滚动（长公式不撑破版心） */
+/* 悬停才给底色：常驻底色会让正文里每个公式都像"选中了" */
+.md-preview .md-math-rendered:hover {
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+/* 块级公式：独占一块、居中、可横向滚动（长公式不撑破版心 —— 见下面 `.katex-display` 的说明） */
 .md-preview .md-math-block {
   margin: 0.9em 0;
   padding: 2px 0;
   overflow-x: auto;
   overflow-y: hidden;
   text-align: center;
-  cursor: default;
+  cursor: pointer;
 }
 .md-preview .md-math-block .katex-display {
   margin: 0;
@@ -127,6 +135,95 @@
   font-family: var(--font-mono);
   font-size: 0.9em;
 }
+
+/* ── 公式源码编辑框（点击公式 → 公式**上方**）──────────────────────────────
+   它是 `position: fixed` 的浮层，**不占正文流**：出现/收起都不挤动下面的内容
+   （这是"布局不跳动"的关键）。定位由 JS 按 `getBoundingClientRect` 算（见 mathPreview.ts），
+   这里只管外观。 */
+.md-math-editor {
+  position: fixed;
+  /* 高于编辑器内的常规浮层，但低于模态/右键菜单（见 theme.css 的 --z-* 令牌表） */
+  z-index: var(--z-page);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 5px 7px 6px;
+  box-sizing: border-box;
+  background: var(--elevate);
+  border: 1px solid color-mix(in srgb, var(--accent) 45%, var(--edge));
+  border-radius: 9px;
+  box-shadow: var(--shadow-2);
+  font-family: var(--font-sans);
+}
+.md-math-editor__label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  /* 界面尺度的小字档：与工具栏/气泡菜单同一档（token 见 theme.css 的 @theme） */
+  font-size: var(--text-ui-sm);
+  line-height: 1.4;
+  color: var(--ink-2b);
+  user-select: none;
+}
+.md-math-editor__hint {
+  padding: 0 0.35em;
+  border: 1px solid var(--edge);
+  border-radius: 4px;
+  color: var(--ink-3);
+  font-family: var(--font-mono);
+  font-size: 0.92em;
+}
+.md-math-editor__src {
+  width: 100%;
+  box-sizing: border-box;
+  /* 单行公式时框要**矮**（用户口径"大小适中"）：`rows=1` 的 1 行 + 内边距
+     （`1.55 × 1em` 行高 + 上下各 5px），再高就会把公式挤下去一截 */
+  min-height: calc(1.55em + 10px);
+  max-height: 12em;
+  padding: 5px 7px;
+  resize: none;
+  overflow-y: auto;
+  overflow-x: auto;
+  /* ⚠️ `pre` + `wrap="off"`：公式源码**按字符**看着更清楚（`\int_0^1 x^2\,dx = \frac{1}{3}`
+     在默认软换行下会在行尾留一个看不见的空格、还可能竖排成两行 —— 实测会多出一条滚动条）。
+     自动换行会让"一行长公式"看起来像断句，`pre` 只横向滚，语义上更接近 LaTeX 源。
+     配合自动高（见 mathPreview.ts 的 autosize）：行数变多时框会长高。 */
+  white-space: pre;
+  /* 等宽字体：公式源码按字符对齐才看得清（用户口径"等宽字体"） */
+  font-family: var(--font-mono);
+  /* 与正文同档大小（`1em` = 继承编辑区字号 = `--editor-size`），不再另立一档 */
+  font-size: 1em;
+  line-height: 1.55;
+  color: var(--ink);
+  background: var(--panel);
+  border: 1px solid var(--edge);
+  border-radius: 6px;
+  outline: none;
+  /* 滚动到框的边界后不要把页面继续滚走 */
+  overscroll-behavior: contain;
+}
+.md-math-editor__src:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+/* 错误态：**红框**而不是弹窗/红字墙 —— "明确但不打断"
+   （公式本身仍由 KaTeX 在框外画着，文档也没被弄脏）。
+   `data-md-math-invalid` 由 mathPreview.ts 按**真实的 KaTeX 产物**置位（认 `katex-error`），
+   不靠正则猜公式合不合法。 */
+.md-math-editor[data-md-math-invalid] .md-math-editor__src {
+  border-color: color-mix(in srgb, var(--danger) 65%, var(--edge));
+}
+.md-math-editor__preview {
+  padding: 4px 6px 2px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  font-size: 0.95em;
+  color: var(--ink);
+  background: var(--panel-2);
+  border-radius: 6px;
+}
+
 
 /* 无序列表：始终显示圆点（与 Typora 一致）。
    输入 '- ' 后 input rule 将其转为 bulletList，圆点由 ul 的 list-style:disc 渲染；

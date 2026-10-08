@@ -273,13 +273,22 @@ export const editorExtensions: Extensions = [
 /**
  * 组装编辑器扩展集：把「打开链接」「文档目录」这类应用级行为注入内核，同时保持顺序不变
  * （顺序即注册顺序，不能改动）。宿主不传 onOpenLink 时退化为「只开浏览器」。
+ *
+ * 公式源码框的三段文案也在这一层从语言包取（**内核不认识 i18n**，见 mathPreview.ts 的说明）：
+ * 每次组装都现取，所以切语言后重建编辑器（切文件/切模式）就会跟着换。
  */
 export function buildEditorExtensions(options: EditorExtensionOptions = {}): Extensions {
   documentDirProvider = options.getDocumentDir ?? ((): string | null => null)
   remoteImageProvider = options.getRemoteImagePolicy ?? ((): RemoteImagePolicy => 'click')
-  return editorExtensions.map((e) =>
-    e.name === 'typoraPointer'
-      ? e.configure({ onOpenLink: options.onOpenLink ?? defaultOpenLink })
-      : e
-  )
+  const mathLabels = {
+    inline: i18n.global.t('editor.mathSource'),
+    block: i18n.global.t('editor.mathSourceBlock'),
+    esc: i18n.global.t('editor.mathEscHint')
+  }
+  return editorExtensions.map((e) => {
+    if (e.name === 'typoraPointer')
+      return e.configure({ onOpenLink: options.onOpenLink ?? defaultOpenLink })
+    if (e.name === 'mathPreview') return e.configure({ labels: mathLabels })
+    return e
+  })
 }
