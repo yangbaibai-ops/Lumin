@@ -264,17 +264,27 @@ function buildMathDecorations(doc: PMNode): DecorationSet {
   const decos: Decoration[] = []
   for (const hit of collectMathHits(doc)) {
     if (hit.kind !== 'inline') continue
-    // ⚠️ `key` 是必须的：`WidgetType.eq` 里 `toDOM` 要**引用相等**才复用 DOM，而这里每次
-    // 重算装饰都会现造一个闭包 —— 少了 key，逐键写回会把文档里**每一个**行内公式的渲染
-    // 节点拆掉重造（实测：一次按键里 4 次 added/removed 同一段 `SPAN.md-math-rendered`）。
-    // key 里带 `tex` 是关键的一半：内容变了就必须换 key（否则会复用旧 DOM ⇒ 画面停在旧公式）。
+    decos.push(Decoration.inline(hit.from, hit.to, { class: 'md-math-source' }))
+    /**
+     * ⚠️ `key` 是必须的：`WidgetType.eq` 里 `toDOM` 要**引用相等**才复用 DOM，而这里每次
+     * 重算装饰都会现造一个闭包 —— 少了 key，逐键写回会把文档里**每一个**行内公式的渲染
+     * 节点拆掉重造（实测：一次按键里 4 次 added/removed 同一段 `SPAN.md-math-rendered`）。
+     * key 里带 `tex` 是关键的一半：内容变了就必须换 key（否则会复用旧 DOM ⇒ 画面停在旧公式）。
+     *
+     * 位置是 `hit.from`（`side: -1`）：渲染结果插在公式**起点**，后面紧跟被折叠成 0 宽的原文
+     * ⇒ 视觉上渲染结果正好顶替原文的位置。
+     *
+     * ⚠️ 试过把它挪到 `hit.to`（右边界）想让"公式右边界"变成 DOM 子节点边界、好让光标有正常
+     * 高度 —— **实测无效**：PM 会把位置解析进 `Decoration.inline` 包装出的那个 span 内部的文本
+     * 节点（`docView.domFromPos` 会下钻到装饰包装里），光标照样落在 `font-size: 0` 的文本片段上、
+     * 高度仍是 0。见第十一轮报告里"右边界光标可见性"一节。
+     */
     decos.push(
       Decoration.widget(hit.from, () => mathDom(hit.tex), {
         side: -1,
         key: `md-math-rendered:${hit.from}:${hit.tex}`
       })
     )
-    decos.push(Decoration.inline(hit.from, hit.to, { class: 'md-math-source' }))
   }
   return DecorationSet.create(doc, decos)
 }

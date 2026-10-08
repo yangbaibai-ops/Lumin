@@ -179,6 +179,21 @@ function patchMathRules(md: unknown): void {
  */
 export const MdMath = Mark.create({
   name: 'mdMath',
+  /**
+   * `inclusive: false`（第十一轮用户口径：「写完行内公式后无法在公式后再写入文字，
+   * 写入的文字会加到公式中，甚至无法点击」）。
+   *
+   * 默认 `inclusive: true` 的语义是"光标停在 mark 的**右边界**时这个 mark 仍然生效" ——
+   * 于是光标落在 `$…$` 之后（点公式右侧 / 按 → 到边界 / 段落以公式结尾时点到行尾）再打字，
+   * 新字符会带着 `mdMath` 落进公式里（实测：`$E=mc^2$` → `$E=mc^2$q`，序列化也跟着变）。
+   * 公式原文属于**不透明内容**，右边界之外就是普通正文，所以这里关掉它：
+   * 边界处打字落到正文、也不会从边界继承 `mdMath`（公式的 mark 范围一个字符都不动）。
+   *
+   * ⚠️ 这不影响"收尾 `$` 一落即渲染"：输入规则自己 `replaceWith` 出带 mark 的文本，
+   * 与 `inclusive` 无关（见下面的 `addInputRules`）；也不影响在公式**内部**打字
+   *（那仍然落在 mark 里）。
+   */
+  inclusive: false,
   renderHTML() {
     return ['span', { 'data-md-math': 'true', class: 'md-math' }, 0]
   },

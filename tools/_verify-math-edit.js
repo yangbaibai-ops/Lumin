@@ -502,6 +502,34 @@ const SRC_SNAPSHOT = `(() => {
     // PM 选区类型（改前 Ctrl+A 会变成 AllSelection，下一个键就被 PM 吃掉）
     pmSelName: (() => { try { return window.__L.ed().state.selection.constructor.name } catch { return null } })(),
     pmSelFrom: (() => { try { return window.__L.ed().state.selection.from } catch { return null } })(),
+    // ── 第三十三轮（U/V/W 段）要看的几件事实：光标所在位置的 mark / 光标矩形 ──
+    // 光标处生效的 mark（inclusive 的病灶就在这里：改前停在公式右边界会带上 mdMath）
+    marksAtCaret: (() => {
+      try {
+        const st = window.__L.ed().state
+        return st.doc.resolve(st.selection.from).marks().map((m) => m.type.name)
+      } catch (e) { return ['ERR'] }
+    })(),
+    storedMarks: (() => {
+      try { return (window.__L.ed().state.storedMarks || []).map((m) => m.type.name) } catch (e) { return ['ERR'] }
+    })(),
+    // 光标矩形高度（0 = 浏览器画不出插入符；第十一轮就是这条把"点了没光标"锤死的）
+    caretHeight: (() => {
+      try {
+        const sel = window.getSelection()
+        return sel && sel.rangeCount ? +sel.getRangeAt(0).getBoundingClientRect().height.toFixed(1) : null
+      } catch (e) { return null }
+    })(),
+    // 带 mdMath mark 的文本节点在文档里的**位置**（用来算"公式右边界"到底在哪）
+    mathMarkedSpans: (() => {
+      const a = []
+      window.__L.ed().state.doc.descendants((n, pos) => {
+        if (n.isText && n.marks.some((m) => m.type.name === 'mdMath')) a.push({ from: pos, to: pos + n.nodeSize, t: n.text })
+        return true
+      })
+      return a
+    })(),
+    activeTag: document.activeElement ? document.activeElement.tagName : null,
     // 空公式占位
     emptyCount: box ? box.querySelectorAll('[data-md-math-empty]').length : null,
     emptyText: (() => { const e = box ? box.querySelector('[data-md-math-empty]') : null; return e ? e.textContent : null })(),
@@ -2533,6 +2561,221 @@ async function main() {
       t1.shape +
       ' activeIsTa=' +
       t1.activeIsTa
+  )
+
+  // ═══ 第三十三轮（用户第十一轮反馈）：U~W 三段 ═══════════════════════════════
+  //
+  // 病灶：`MdMath` 这个 mark 默认 `inclusive: true` —— 光标停在公式**右边界**时 mark 仍生效，
+  // 于是「写完公式后在公式后打字」会把字**并进公式**（序列化跟着变），用户还报告"点右边界
+  // 不出现光标"。U/V 段把「右边界打字落进正文」这件事按四条路径钉死。
+
+  /**
+   * U ①④：**现场敲出**一条公式后立刻继续打字（段落中/段落末尾各一次）。
+   *
+   * 判据两条（用户口径）：① 公式 mark 的文本仍是 `$E=mc^2$`（一个字都没被并进去）；
+   * ② 现场序列化里多出来的字在公式**之外**。
+   */
+  const liveTypeFixture = ['上一段：占位。', '', '打字区：'].join('\n')
+  await openDocWith(app, liveTypeFixture, 'math-edit-11.md')
+  await waitEditor(app.ev)
+  await sleep(900)
+  const uPara = await centerOf(app.ev, '.md-preview p:last-of-type')
+  await clickAt(app.send, uPara.x, uPara.y)
+  await sleep(250)
+  await pressKey(app, 'End', 'End', 35)
+  for (const ch of ['$', 'E', '=', 'm', 'c', '^', '2', '$']) await typeChar(app.send, ch)
+  await sleep(250)
+  const uAfterMath = JSON.parse(await app.ev(SRC_SNAPSHOT))
+  await typeChar(app.send, 'x')
+  await typeChar(app.send, 'y')
+  await sleep(300)
+  const u = JSON.parse(await app.ev(SRC_SNAPSHOT))
+  report.check(
+    'U1 ① 现场敲出公式后**继续打字**：新字落在公式之外（公式 mark 文本仍是 `$E=mc^2$`，序列化里是公式在前、新字在后）',
+    uAfterMath.mathMarkedTexts.length === 1 &&
+      uAfterMath.mathMarkedTexts[0] === '$E=mc^2$' &&
+      u.mathMarkedTexts.length === 1 &&
+      u.mathMarkedTexts[0] === '$E=mc^2$' &&
+      String(u.freshMarkdown).includes('$E=mc^2$xy') &&
+      String(u.freshMarkdown).indexOf('$E=mc^2$') < String(u.freshMarkdown).indexOf('xy'),
+    'markedBefore=' +
+      JSON.stringify(uAfterMath.mathMarkedTexts) +
+      ' markedAfter=' +
+      JSON.stringify(u.mathMarkedTexts) +
+      ' fresh=' +
+      JSON.stringify(String(u.freshMarkdown).slice(0, 70))
+  )
+  report.check(
+    'U2 ① 打字之后光标处**不继承** mdMath（`marksAtCaret` / `storedMarks` 里都没有它）',
+    !u.marksAtCaret.includes('mdMath') && !u.storedMarks.includes('mdMath'),
+    'marksAtCaret=' + JSON.stringify(u.marksAtCaret) + ' stored=' + JSON.stringify(u.storedMarks)
+  )
+
+  /**
+   * V ②③：**点击公式右侧**与**方向键走到右边界**两条路径（段落中/段落末尾各一次）。
+   *
+   * 判据（用户口径）：`activeElement` 是编辑器、选区 offset 落在公式**之后**、位置**不带
+   * math mark**；再打字 → 落进正文。
+   */
+  const clickFixture = ['第一段：中间 $E=mc^2$ 后面还有字。', '', '第二段：末尾就是 $E=mc^2$'].join(
+    '\n'
+  )
+  await openDocWith(app, clickFixture, 'math-edit-11b.md')
+  await waitEditor(app.ev)
+  await sleep(900)
+  const vMid = JSON.parse(await app.ev(SRC_SNAPSHOT))
+  const vMidSpan = vMid.mathMarkedSpans[0]
+  const vMidWidget = await centerOf(app.ev, '.md-preview .md-math-rendered')
+  // 点渲染结果的**右边缘再往右 1px**：这正是"点公式右侧"最容易踩到的那一格
+  const vMidRect = JSON.parse(
+    await app.ev(`(() => {
+      const el = document.querySelectorAll('.md-preview .md-math-rendered')[0]
+      const r = el.getBoundingClientRect()
+      return JSON.stringify({ right: Math.round(r.right), y: Math.round(r.top + r.height / 2) })
+    })()`)
+  )
+  await clickAt(app.send, vMidRect.right + 1, vMidRect.y)
+  await sleep(350)
+  const v2 = JSON.parse(await app.ev(SRC_SNAPSHOT))
+  report.check(
+    'V1 ② 点公式右侧 → 选区落在**公式之后**（offset === 公式右边界），且 `activeElement` 是编辑器',
+    vMidSpan !== undefined &&
+      v2.pmSelFrom === vMidSpan.to &&
+      v2.marksAtCaret.length === 0 &&
+      v2.activeTag !== 'BODY',
+    'spanTo=' +
+      (vMidSpan && vMidSpan.to) +
+      ' selFrom=' +
+      v2.pmSelFrom +
+      ' marksAtCaret=' +
+      JSON.stringify(v2.marksAtCaret) +
+      ' active=' +
+      v2.activeTag
+  )
+  await typeChar(app.send, 'a')
+  await typeChar(app.send, 'b')
+  await sleep(300)
+  const v3 = JSON.parse(await app.ev(SRC_SNAPSHOT))
+  report.check(
+    'V2 ② 点完再打字 → 字落进**正文**（公式文本一个字没变，序列化里新字在公式之后）',
+    v3.mathMarkedTexts.length === 2 &&
+      v3.mathMarkedTexts[0] === '$E=mc^2$' &&
+      String(v3.freshMarkdown).includes('$E=mc^2$ab'),
+    'marked=' +
+      JSON.stringify(v3.mathMarkedTexts) +
+      ' fresh=' +
+      JSON.stringify(String(v3.freshMarkdown).slice(0, 60))
+  )
+  // 段落**末尾**就是公式：点它右侧（这一格改前永远点不出光标、而且打字会并进公式）
+  await openDocWith(app, clickFixture, 'math-edit-11c.md')
+  await waitEditor(app.ev)
+  await sleep(900)
+  const vEnd = JSON.parse(await app.ev(SRC_SNAPSHOT))
+  const vEndSpan = vEnd.mathMarkedSpans[1]
+  const vEndRect = JSON.parse(
+    await app.ev(`(() => {
+      const el = document.querySelectorAll('.md-preview .md-math-rendered')[1]
+      const r = el.getBoundingClientRect()
+      return JSON.stringify({ right: Math.round(r.right), y: Math.round(r.top + r.height / 2) })
+    })()`)
+  )
+  await clickAt(app.send, vEndRect.right + 1, vEndRect.y)
+  await sleep(350)
+  const v4 = JSON.parse(await app.ev(SRC_SNAPSHOT))
+  await typeChar(app.send, 'c')
+  await sleep(300)
+  const v5 = JSON.parse(await app.ev(SRC_SNAPSHOT))
+  report.check(
+    'V3 ④ 段落**末尾**就是公式：点它右侧 → 选区在公式之后且不带 mark；打字落进正文（不并进公式）',
+    vEndSpan !== undefined &&
+      v4.pmSelFrom === vEndSpan.to &&
+      v4.marksAtCaret.length === 0 &&
+      v5.mathMarkedTexts.length === 2 &&
+      v5.mathMarkedTexts[1] === '$E=mc^2$' &&
+      String(v5.freshMarkdown).includes('$E=mc^2$c'),
+    'spanTo=' +
+      (vEndSpan && vEndSpan.to) +
+      ' selFrom=' +
+      v4.pmSelFrom +
+      ' marksAtCaret=' +
+      JSON.stringify(v4.marksAtCaret) +
+      ' marked=' +
+      JSON.stringify(v5.mathMarkedTexts) +
+      ' fresh=' +
+      JSON.stringify(String(v5.freshMarkdown).slice(0, 70))
+  )
+  // ③ 方向键：从公式内部按 → 到右边界，再打字
+  await openDocWith(app, clickFixture, 'math-edit-11d.md')
+  await waitEditor(app.ev)
+  await sleep(900)
+  const wSpan = JSON.parse(await app.ev(SRC_SNAPSHOT)).mathMarkedSpans[0]
+  await app.ev(`(() => {
+    const ed = window.__L.ed()
+    ed.chain().focus().setTextSelection(${wSpan.to - 1}).run()
+    return 'ok'
+  })()`)
+  await sleep(250)
+  await pressKey(app, 'ArrowRight', 'ArrowRight', 39)
+  await sleep(250)
+  const w1 = JSON.parse(await app.ev(SRC_SNAPSHOT))
+  await typeChar(app.send, 'z')
+  await sleep(300)
+  const w2 = JSON.parse(await app.ev(SRC_SNAPSHOT))
+  report.check(
+    'V4 ③ 方向键走到公式右边界 → 位置不带 mark；再打字落进正文（键盘路径与点击路径一致）',
+    w1.pmSelFrom === wSpan.to &&
+      w1.marksAtCaret.length === 0 &&
+      w2.mathMarkedTexts[0] === '$E=mc^2$' &&
+      String(w2.freshMarkdown).includes('$E=mc^2$z'),
+    'spanTo=' +
+      wSpan.to +
+      ' selFrom=' +
+      w1.pmSelFrom +
+      ' marksAtCaret=' +
+      JSON.stringify(w1.marksAtCaret) +
+      ' marked=' +
+      JSON.stringify(w2.mathMarkedTexts) +
+      ' fresh=' +
+      JSON.stringify(String(w2.freshMarkdown).slice(0, 60))
+  )
+
+  /**
+   * W ⑤：**块级公式之后**也要能落光标、能打字（用户要求"同类检查块级公式，例如空公式块之后"）。
+   * 夹具末尾就是块级公式 —— 点它下方的空白，应当得到一个可写的段落。
+   */
+  await openDocWith(
+    app,
+    ['前段：正文。', '', '$$', '\\frac{a}{b}', '$$'].join('\n'),
+    'math-edit-11e.md'
+  )
+  await waitEditor(app.ev)
+  await sleep(900)
+  const wBlock = JSON.parse(
+    await app.ev(`(() => {
+      const el = document.querySelector('.md-preview .md-math-block')
+      const r = el.getBoundingClientRect()
+      return JSON.stringify({ bottom: Math.round(r.bottom), left: Math.round(r.left) })
+    })()`)
+  )
+  await clickAt(app.send, wBlock.left + 60, wBlock.bottom + 26)
+  await sleep(400)
+  const w3 = JSON.parse(await app.ev(SRC_SNAPSHOT))
+  await typeChar(app.send, 'k')
+  await sleep(300)
+  const w4 = JSON.parse(await app.ev(SRC_SNAPSHOT))
+  report.check(
+    'W1 ⑤ 块级公式之后：点它下方空白能落下光标并打字（文档末尾多出一个段落，块公式原文不变）',
+    w3.blockSources.length === 1 &&
+      w3.blockSources[0] === '\\frac{a}{b}' &&
+      w4.blockSources.length === 1 &&
+      w4.paraTexts.some((t) => t.includes('k')) &&
+      String(w4.freshMarkdown).includes('k'),
+    'blocks=' +
+      JSON.stringify(w4.blockSources) +
+      ' paras=' +
+      JSON.stringify(w4.paraTexts) +
+      ' fresh=' +
+      JSON.stringify(String(w4.freshMarkdown).slice(-40))
   )
 
   app.close()
