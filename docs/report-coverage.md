@@ -21,7 +21,7 @@
 | 性能：大文档                 | ✅                          | 先复测报告的两个数字（一个陈旧、一个为真）→ 按实测把降级闸 1M 字符重标到 300k                                                                                               | `_probe-bigprose`：977 KB 默认可用 **6340 → 454 ms**、常驻 **1272 → 604 MB**（提交 `43e84f9`）         |
 | 窄窗（全仓零宽度断点）       | ✅                          | 最小窗口 940×600 → **760×520** + 900/760 两档断点 + 面板让位给正文                                                                                                          | `_verify-a11y` **36/36**（新增 5 条窄窗断言；第一版 34vw/26vw 让正文只剩 234px，按数字收到 30vw/20vw） |
 | PR 门禁                      | ✅                          | `cdp-pr`（阻塞）+ `cdp`（夜间非阻塞），PR 触发带 docs 路径忽略                                                                                                              | `.github/workflows/cdp.yml`；`--ci-subset` 35 条                                                       |
-| 分发链（签名/更新/仓库地址） | 🟡 代码就绪，**待外部输入** | 占位判据收敛到 `shared/distribution.ts`；`npm run dist:check[:release]` 打印待办并在发版模式下失败；签名只需 `CSC_LINK` + `CSC_KEY_PASSWORD`；步骤见 `docs/distribution.md` | `tests/distribution.test.mjs` 7 条；`--release` 实测 exit 1                                            |
+| 分发链（签名/更新/仓库地址） | 🟡 代码就绪，**仓库/主页已落位** | 占位判据收敛到 `shared/distribution.ts`；`npm run dist:check[:release]` 打印待办并在发版模式下失败；`repository`/`homepage`/`bugs` 已填（第十一轮）；签名只需 `CSC_LINK` + `CSC_KEY_PASSWORD`；步骤见 `docs/distribution.md` | `tests/distribution.test.mjs` 7 条（哨兵已按注释转正）；`node tools/distribution-check.mjs` 实测 `repository`/`homepage` = 就绪 |
 
 ## P1
 
@@ -50,7 +50,7 @@
 | 输入                 | 改哪里                                                                             | 缺了会怎样                                                              |
 | -------------------- | ---------------------------------------------------------------------------------- | ----------------------------------------------------------------------- |
 | 更新渠道             | `electron-builder.yml` 的 `publish`（generic 填 url / github 填 owner+repo）       | 占位地址会被 updater 识别并跳过检查：用户永远收不到更新，且没有任何提示 |
-| 仓库地址 + 官网      | `package.json` 的 `repository` / `homepage`                                        | README 与「关于」指向不了源码、没有可点的落地页                         |
+| 仓库地址 + 官网      | ✅ 已填：`package.json` 的 `repository` / `homepage` / `bugs`（第十一轮，用作者给的 GitHub 地址；`homepage` 暂与仓库同址，有独立站点时再换） | ——（已落位；`node tools/distribution-check.mjs` 报"就绪"）              |
 | Windows 代码签名证书 | 环境变量 `CSC_LINK` + `CSC_KEY_PASSWORD`（Windows 亦可 `WIN_CSC_*`），**不改配置** | 安装包未签名 ⇒ 首次运行弹 SmartScreen「未知发布者」，企业环境可能直接拦 |
 
 拿到之后跑 `npm run dist:check:release` —— 三项齐了就转绿，任何一项没配它都会**故意失败**。

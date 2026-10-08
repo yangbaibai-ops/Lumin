@@ -4,6 +4,11 @@
   "description": "Lumin —— 所见即所得的 Markdown 编辑器（Electron + Vue 3 + Tiptap）",
   "license": "MIT",
   "private": true,
+  "homepage": "https://github.com/yangbaibai-ops/Lumin",
+  "repository": "https://github.com/yangbaibai-ops/Lumin",
+  "bugs": {
+    "url": "https://github.com/yangbaibai-ops/Lumin/issues"
+  },
   "main": "./out/main/index.js",
   "author": {
     "name": "yang_bai_bai",

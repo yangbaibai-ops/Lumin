@@ -210,9 +210,14 @@ async function showToolbar(app, ms = 4000) {
  * 调用方应**如实 SKIP**依赖它的断言（不要判红）。
  */
 function instanceLog(userData = process.env.LUMIN_ISOLATED_USERDATA) {
+  /**
+   * ⚠️ 显式传进来的 `userData` **优先于** `LUMIN_INSTANCE_LOG`：
+   * **自管实例**的套件（`_verify-feedback.js` 这种自己要带环境变量起实例的）跑在运行器给的
+   * 进程里，而那个变量指向的是**运行器那个实例**的日志 —— 拿它去读自己起的实例当然读不到。
+   */
+  if (userData) return path.join(os.tmpdir(), `lumin-instance-${path.basename(userData)}-out.log`)
   if (process.env.LUMIN_INSTANCE_LOG) return process.env.LUMIN_INSTANCE_LOG
-  if (!userData) return null
-  return path.join(os.tmpdir(), `lumin-instance-${path.basename(userData)}-out.log`)
+  return null
 }
 
 /**

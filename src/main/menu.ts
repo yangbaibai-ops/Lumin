@@ -148,11 +148,15 @@ export function installMenu(): void {
         { label: T('settings'), click: () => send('settings') },
         { label: T('about'), click: () => send('about') }
         // 这里原来有一项「主页」→ `shell.openExternal('https://github.com')`：
-        // 打开的是 **GitHub 首页**，不是本项目的仓库（`package.json` 的 homepage 也还是
-        // electron-vite 脚手架模板值）。指向一个无关站点比没有这一项更糟 —— 用户点了会以为
-        // 自己走错了地方。等仓库地址确定后再加回来：
-        //   { label: T('homepage'), click: () => shell.openExternal(<真实仓库地址>) }
-        // 同时记得把 `package.json` 的 homepage/repository 补上。
+        // 打开的是 **GitHub 首页**，不是本项目的仓库。指向一个无关站点比没有这一项更糟 ——
+        // 用户点了会以为自己走错了地方，所以当时摘掉了。
+        // **现状（第十一轮）**：真实地址已经有了 —— `package.json` 的
+        // `homepage`/`repository` = `https://github.com/yangbaibai-ops/Lumin`。
+        // 原生菜单这条**仍未启用**（不在该轮用户口径内：那轮加的是顶部栏「帮助」里的
+        // **反馈渠道**入口，地址只出现在 `src/shared/feedback.ts`）。要启用就是把下面这行放开：
+        //   { label: T('homepage'), click: () => shell.openExternal(<package.json 的 homepage>) }
+        // 注意别把地址抄成第二份：菜单这边应当从同一份配置/元数据取（`menu.homepage` 这个
+        // 语言包键一直留着，`tests/i18nKeys.test.mjs` 的 RESERVED 里登记了它为什么还"零引用"）。
       ]
     }
   ]

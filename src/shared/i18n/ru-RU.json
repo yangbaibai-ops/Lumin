@@ -107,6 +107,8 @@
     "reload": "Перезагрузить",
     "devtools": "Инструменты разработчика",
     "openDevTools": "Открыть инструменты разработчика",
+    "feedback": "Отзывы и сообщения об ошибках",
+    "feedbackGithub": "GitHub Issues",
     "settings": "Настройки",
     "about": "О Lumin",
     "quit": "Выход",

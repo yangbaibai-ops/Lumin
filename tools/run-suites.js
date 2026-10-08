@@ -109,6 +109,9 @@ const DEFAULT_SUITES = [
   // CSP 的两半分发：meta 里无效的指令（frame-ancestors）必须由**响应头**下发 ——
   // 真窗口里读响应头（CDP Network 域）+ 读 DOM 里那份 meta + 读渲染层 console 的转发
   '_verify-csp.js',
+  // 帮助 →「意见或 bug 反馈」：渠道清单来自 shared/feedback.ts（模板无 URL）+ 外链白名单
+  // （负例必须被拒）+ 焦点回编辑面。**自管实例**（端口 9236，带 LUMIN_OPEN_EXTERNAL_DRY_RUN=1）
+  '_verify-feedback.js',
   '_verify-settings-layout.js', // 设置页在 940×600 / 125% 缩放下的横向布局（导航跟窗口走 + 主题卡 3 列）
   '_verify-zorder.js', // 浮层叠放顺序：--z-* 令牌真的到 DOM + 实测顺序（70 < 120 < 140 < 150…）
   '_verify-visual-scale.js', // 视觉尺度：字号令牌生效 + 计算字号/圆角都落在文档化档位里
@@ -214,6 +217,9 @@ const SELF_MANAGED = new Set([
   '_verify-draft-gc.js',
   // 它起的是**打包后的 exe**（dist/win-unpacked），端口 9225，而且不能用运行器的隔离 profile
   '_verify-packaging-fast.js',
+  // 它要在实例起来**之前**给 `LUMIN_OPEN_EXTERNAL_DRY_RUN=1`（"点了外链只记日志、不真开浏览器"），
+  // 端口 9236 —— 环境变量只能在启动前给到，所以自管实例
+  '_verify-feedback.js',
 ])
 
 function parseArgs(argv) {

@@ -2,6 +2,61 @@
 
 ### Changed
 
+**「意见或 bug 反馈」入口（顶部栏 → 帮助）+ 仓库元数据落位（`repository`/`homepage`/`bugs`）**
+
+- 用户原话：「在顶部栏『帮助』中增加一个选项**『意见或 bug 反馈』**，点击后出现项目的 issue
+  提交处（**可能有多个：github、gitee 等**），其中 **github 的 issue 链接是：
+  `https://github.com/yangbaibai-ops/Lumin/issues`**。」
+- **呈现方式：子菜单**（帮助 →「意见或 bug 反馈」→ 渠道列表），不是弹对话框。理由：
+  ① 顶部栏**本来就有**二级浮层这套机制（悬停意图 / 贴边翻转 / 键盘可达都由既有代码负责），
+  加渠道 = 给配置数组加一条数据；② 弹对话框要新造一个模态 + 焦点陷阱 + 无障碍语义，
+  为"选一个链接"这个动作不划算；③ 渠道列表直接可见，点哪条去哪条。
+- **渠道配置只有一处**：`src/shared/feedback.ts` 导出 `FEEDBACK_CHANNELS`
+  （`{ id, labelKey, url }`）。`.vue` 模板里**一个 URL 都没有**（有守卫钉着：
+  `tests/guards.test.mjs` 的「反馈渠道」那一条 + 验收套件的 `channels-come-from-shared-config`）。
+  **加 Gitee 只需两步**：数组里加一条 `{ id: 'gitee', labelKey: 'menu.feedbackGitee', url: '…' }`、
+  三份语言包各加一个 `menu.feedbackGitee` 键 —— 本轮**只登记 GitHub**：用户只给了 GitHub，
+  仓库里没有任何 Gitee 线索，地址编不出来（宁缺毋滥）。
+- 语言包（三语，**文本级插入**，没有 `JSON.parse → stringify` 重写整份）：
+  `menu.feedback` =「意见或 bug 反馈」/ "Feedback or bug report" / "Отзывы и сообщения об ошибках"；
+  `menu.feedbackGithub` = "GitHub Issues"（品牌名，三语同形是刻意的）。
+  菜单项锚点沿用既有约定：子菜单行 `data-menu-item="menu.feedback"`、浮层里的渠道
+  `data-menu-item="menu.feedbackGithub"`（**值 = i18n 键**，语言无关；顺带给二级浮层的
+  `children` 也补上了这个锚点，原来只有 `data-encoding-item`）。
+- **打开方式不新造**：走既有 `window.luminAPI.shell.openExternal`（主进程 `shell:openExternal`
+  → `services/links.ts` 的 `safeExternalUrl` 白名单：只放 http/https/mailto）。
+  另外配置面还有一道 `isAllowedFeedbackUrl`（**必须 https**）：将来有人往清单里写
+  `javascript:`/`http:` 时，单测与套件立刻红。
+- **外链通路变得可观测**（这是本轮唯一动主进程的地方）：`shell:openExternal` 成功与被拒
+  各留一行 **ASCII** 日志 —— `[links] openExternal <encodeURI 后的 URL>` /
+  `[links] refused openExternal scheme=javascript:`。为什么需要：渲染层的 `openExternal`
+  是 `send`（无返回值），而 contextBridge 暴露的 API 对象**只读**（页面里 patch 不了，第七轮
+  踩过），所以"点了哪个链接"只有主进程日志能取证；被拒那行只打 scheme，不把任意 URL 写进日志
+  （新增 `links.schemeOf`）。
+- **验收专用 dry-run**（`LUMIN_OPEN_EXTERNAL_DRY_RUN=1`）：`!app.isPackaged` 才认，
+  认得时只记日志、**不真的把链接交给系统**。为什么：断言"参数就是那个 URL"若真开一次，
+  会把用户默认浏览器拉到前台，还会干扰同一条套件后面的焦点断言。口径与
+  `src/main/testPaths.ts` 的 `LUMIN_EXPORT_DIR` 完全一致（**打包产物忽略它**，
+  所以发布版永远不会"点了没反应"）。环境变量必须在实例启动前给到 ⇒ 新套件自管实例（端口 9236）。
+- **焦点**：点完渠道后菜单关闭、被点的按钮从 DOM 消失，焦点会落到 `body` —— 这里显式交回
+  编辑面（`view.dom.focus({ preventScroll: true })`，与「打开开发者工具」同一口径）。
+  验收沿用逐帧判据：点击期间**没有任何一帧**的焦点落在顶部栏、结束态在编辑面。
+- **package.json 元数据**：`homepage` = `repository` = `https://github.com/yangbaibai-ops/Lumin`、
+  `bugs.url` = 同仓库的 `/issues`（用户给的地址；**没有**编造 Gitee 或"官网"地址）。
+  这同时让 `tests/distribution.test.mjs` 里那条**有意留成会失败的哨兵**按它自己的注释转正：
+  "仓库现状"现在断言 `repository`/`homepage` **不再**进待办（剩下的外部输入只有
+  publish 渠道与代码签名证书两项；`node tools/distribution-check.mjs` 实测已把两项报成就绪）。
+- **验收**：新增 `tools/_verify-feedback.js`（**自管实例**、已登记进默认矩阵、**16 条**）——
+  三语文案非空 → 帮助里有该入口 → 点开是**渠道列表**且与 `FEEDBACK_CHANNELS` **逐条对账**
+  （少一条/多一条都红）→ 点「GitHub Issues」后主进程日志出现
+  `[links] openExternal dry-run https://github.com/yangbaibai-ops/Lumin/issues`（**参数逐字相同**，
+  且全是 dry-run ⇒ 真的没开浏览器）→ 负例：`javascript:alert(1)` 与
+  `file:///C:/Windows/System32/calc.exe` 走同一条通路**必须被拒**（`scheme=javascript:` /
+  `scheme=file:`）且**没有**成功行 → 焦点不在顶部栏、回到编辑面、逐帧无顶部栏帧。
+  `tests/guards.test.mjs` 新增 1 条把"配置面白名单 + 三语键 + 模板无 URL"钉死。
+  回归：`_verify-devtools.js` **52/52**、`_verify-alt-menu.js` **3/3**、
+  `_verify-menu-export-submenu.js` **15/15**（二级浮层没被改坏）。
+
 **确认提示（未保存 / 比磁盘新 / 关窗保存）第二轮细化：中上方 + 无边框无图标 + 轻微压暗 + 只能靠按钮结束（用户口径变更）**
 
 - 用户原话（第二轮，看了效果之后）三条：

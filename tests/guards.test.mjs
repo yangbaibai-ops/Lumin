@@ -19,6 +19,8 @@ import {
   CSP_HEADER_ONLY,
   META_IGNORED_CSP_DIRECTIVES
 } from '../src/shared/csp.ts'
+// 反馈渠道配置（URL 的唯一真相源；见下面那条「反馈渠道」守卫）
+import { FEEDBACK_CHANNELS, isAllowedFeedbackUrl } from '../src/shared/feedback.ts'
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..')
 const read = (p) => readFileSync(join(ROOT, p), 'utf8')
@@ -171,6 +173,54 @@ test('openExternal 一律先过 scheme 白名单', () => {
     }
     void pattern
   }
+})
+
+test('反馈渠道：URL 只在一处配置、必须 https、三语文案齐全', () => {
+  /**
+   * 用户口径：「在顶部栏『帮助』中增加一个选项**『意见或 bug 反馈』**，点击后出现项目的 issue
+   * 提交处（**可能有多个：github、gitee 等**）」⇒ 加渠道 = 在 `shared/feedback.ts` 加一条数据。
+   * 这条守三件事：
+   *   ① URL 只在那一份配置里（`.vue` 模板里不许出现硬编码 URL）；
+   *   ② 每条渠道的 URL 必须是 https（配置面白名单；运行时的第二道闸在主进程
+   *      `services/links.ts` 的 `safeExternalUrl`，两者是纵深防御，不是重复实现）；
+   *   ③ 渠道名的 i18n 键在三份语言包里都存在且非空（渠道名是品牌名，三语同形是刻意的）。
+   */
+  assert.ok(FEEDBACK_CHANNELS.length >= 1, '至少要有 GitHub 一条')
+  for (const ch of FEEDBACK_CHANNELS) {
+    assert.ok(isAllowedFeedbackUrl(ch.url), `${ch.id} 的 URL 必须是 https：${ch.url}`)
+    assert.match(ch.labelKey, /^menu\./, `${ch.id} 的渠道名要走 menu.* 语言包键`)
+    for (const lang of ['zh-CN', 'en-US', 'ru-RU']) {
+      const pack = JSON.parse(read(`src/shared/i18n/${lang}.json`))
+      const value = ch.labelKey.split('.').reduce((a, k) => (a == null ? a : a[k]), pack)
+      assert.equal(
+        typeof value === 'string' && value.trim().length > 0,
+        true,
+        `${lang} 缺 ${ch.labelKey}（加渠道时要三语都补）`
+      )
+    }
+  }
+  // 负例：非 https 一律被配置面判据拒掉（`javascript:` 交给系统处理器 = 代码执行面）
+  for (const bad of [
+    'javascript:alert(1)',
+    'file:///C:/Windows/System32/calc.exe',
+    'http://github.com/x',
+    'mailto:a@b.c',
+    ''
+  ]) {
+    assert.equal(isAllowedFeedbackUrl(bad), false, `应当拒绝：${bad}`)
+  }
+  // 模板里不许硬编码 URL：渠道数据只能来自共享配置
+  const menuBar = read('src/renderer/src/components/TopMenuBar.vue')
+  assert.doesNotMatch(
+    menuBar,
+    /https?:\/\//,
+    'TopMenuBar.vue 里不许出现 URL（渠道地址只放 src/shared/feedback.ts）'
+  )
+  assert.match(
+    menuBar,
+    /from '\.\.\/\.\.\/\.\.\/shared\/feedback'/,
+    'TopMenuBar 必须从共享的渠道清单取数据'
+  )
 })
 
 test('落盘：用户文档必须走 fileOps.writeFile（原子写），直接写盘的文件要逐个登记', () => {

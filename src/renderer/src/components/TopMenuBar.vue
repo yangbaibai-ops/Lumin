@@ -15,6 +15,8 @@ import { useEditorMode } from '../composables/useEditorMode'
 import { useOutlineSide } from '../composables/useOutlineSide'
 import { confirmIfDirty, newDocumentWindow } from '../composables/useAppActions'
 import { openExternalFile, openInWindowOrFocus } from '../lib/openFile'
+// 反馈渠道清单（**URL 只在这一份配置里**，模板不写死；加 Gitee = 加一条数据）
+import { FEEDBACK_CHANNELS } from '../../../shared/feedback'
 import { ENCODINGS } from '../../../shared/encodings'
 import { EOL_OPTIONS } from '../../../shared/eol'
 // 导出格式的唯一清单（应用内菜单的二级项从它派生）
@@ -399,6 +401,19 @@ const GROUPS = computed<Group[]>(() => [
             )
           }
         }
+      },
+      // 「意见或 bug 反馈」：**子菜单**列出全部反馈渠道（用户口径「可能有多个：github、gitee 等」）。
+      // 为什么用子菜单而不是弹对话框：顶部栏本来就有二级浮层这套机制（悬停意图/贴边翻转/
+      // 键盘可达都由既有代码负责），加渠道只是给 `FEEDBACK_CHANNELS` 加一条数据；弹对话框
+      // 要新造一个模态 + 焦点陷阱 + 无障碍语义，为一个"选一个链接"的动作不划算。
+      // 渠道的 URL 只存在于 `shared/feedback.ts`，模板里一个 URL 都没有。
+      {
+        labelKey: 'menu.feedback',
+        icon: 'globe',
+        children: FEEDBACK_CHANNELS.map((channel) => ({
+          labelKey: channel.labelKey,
+          run: () => openFeedbackChannel(channel.url)
+        }))
       }
     ]
   }
@@ -489,6 +504,22 @@ function focusEditorSurface(): void {
   }
   // 源码模式（没有 ProseMirror 实例）：textarea
   document.querySelector<HTMLTextAreaElement>('textarea.source-editor')?.focus()
+}
+
+/**
+ * 打开一个反馈渠道的外链（「帮助 → 意见或 bug 反馈 → …」的每一个子项都走这里）。
+ *
+ * 两条口径：
+ *   * **走既有通路**：`window.luminAPI.shell.openExternal`（主进程 `shell:openExternal` →
+ *     `services/links.ts` 的 `safeExternalUrl` 白名单：只放 http/https/mailto，
+ *     `javascript:`/`file:` 这类一律拒）。这里**不再造一套**校验，也不自己拼 URL。
+ *   * **焦点交回编辑面**：点了子项之后菜单会关掉、被点的那个按钮从 DOM 里消失 → 焦点落到
+ *     `body`；不处理的话用户接着打字会"没反应"。这与「打开开发者工具」那条的口径一致
+ *     （动作结束后焦点不在顶部栏里）。
+ */
+function openFeedbackChannel(url: string): void {
+  window.luminAPI.shell.openExternal(url)
+  focusEditorSurface()
 }
 
 function guardFocusWhileOpeningDevTools(): void {
@@ -663,11 +694,14 @@ onBeforeUnmount(() => {
       >
         <template v-for="(it, i) in active.items" :key="i">
           <div v-if="it === 'sep'" class="my-1 h-px bg-edge" />
-          <!-- 二级：悬停展开右侧浮层（最近文档 / 最近文件夹） -->
+          <!-- 二级：悬停展开右侧浮层（最近文档 / 最近文件夹 / 反馈渠道）。
+               `data-menu-item` 与叶子项同一套约定（值 = i18n 键）—— 子菜单行也要有个
+               语言无关的锚点，否则验收只能按本地化文案找它。 -->
           <button
             v-else-if="isSub(it)"
             class="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-left text-ui text-ink transition-colors duration-100"
             :class="subOpen?.labelKey === it.labelKey ? 'bg-panel-2' : 'hover:bg-panel-2'"
+            :data-menu-item="it.labelKey"
             @mouseenter="(e) => placeSub(e.currentTarget as HTMLElement, it)"
             @mouseleave="onSubRowLeave"
             @click="(e) => placeSub(e.currentTarget as HTMLElement, it)"
@@ -731,8 +765,10 @@ onBeforeUnmount(() => {
             dense
             @select="openRecentFolder"
           />
-          <!-- children 列表（如「导出」下的四种格式、「选择编码重新打开」下的编码表）：
-               与一级菜单项同样的行样式；active 的项右侧打勾 -->
+          <!-- children 列表（如「导出」下的四种格式、「选择编码重新打开」下的编码表、
+               「意见或 bug 反馈」下的各渠道）：与一级菜单项同样的行样式；active 的项右侧打勾。
+               `data-encoding-item` 是历史锚点（编码/导出那两个子菜单的套件在用，**不许改名**）；
+               `data-menu-item` 是通用的语言无关锚点（值 = i18n 键），新的子项一律靠它定位。 -->
           <template v-else-if="subOpen.children">
             <template v-for="(child, ci) in subOpen.children" :key="ci">
               <div v-if="child === 'sep'" class="my-1 h-px bg-edge" />
@@ -747,6 +783,7 @@ onBeforeUnmount(() => {
                       : 'text-ink hover:bg-panel-2'
                 "
                 :data-encoding-item="child.label ?? child.labelKey ?? ''"
+                :data-menu-item="child.labelKey ?? child.label ?? ''"
                 @click="runLeaf(child)"
               >
                 <span class="flex h-4 w-4 items-center justify-center text-ink-2b">

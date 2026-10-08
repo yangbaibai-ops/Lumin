@@ -26,7 +26,7 @@ const LANGS = ['zh-CN', 'en-US', 'ru-RU']
 /** 允许"存在但暂未引用"的键：`键 → 理由`（应为空；加进来就等于承认欠债） */
 const RESERVED = {
   'menu.homepage':
-    '原生菜单的「打开项目主页」入口**故意注释着**：仓库还没有真实可公开的地址（package.json 的 homepage/repository 也是空的），见 src/main/menu.ts 的说明与清单 §5/§7 的外部阻塞项。地址一落就能直接启用。'
+    '原生菜单的「打开项目主页」入口**仍未启用**（一直注释着）。地址**已经有了**：第十一轮把 package.json 的 homepage/repository/bugs 填成了作者给的 GitHub 仓库，所以现在启用它只差把 src/main/menu.ts 里那段放开（顶部栏「帮助」里那轮加的是**反馈渠道**入口，与这条无关）。'
 }
 
 function walk(dir, out = []) {

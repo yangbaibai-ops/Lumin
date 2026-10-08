@@ -38,6 +38,8 @@ import { isUtf8Family, type ConcreteEncoding, type EncodingId } from '../shared/
 import { roundTripLossy } from '../shared/encodingMemory'
 import type { Eol } from '../shared/eol'
 import { untitledDraftKey } from '../shared/drafts'
+// 外链被白名单拦下时那行日志只打 scheme（别把任意 URL 写进日志）—— ASCII 且便于 grep
+import { schemeOf as schemeOfUrl } from './services/links'
 import { db } from './services/database'
 import { defaultSettings } from '../shared/defaults'
 import { normalizeSettings } from '../shared/settingsSchema'
@@ -1104,9 +1106,31 @@ export function registerIpc(slots: SlotRegistry): void {
 
   // ── 外部链接与「用默认应用打开」（链接逻辑见 services/links.ts）──
   // 统一走白名单校验：文档里的链接不可信，绝不让任意 scheme 落到系统处理器
+  /**
+   * 开发/验收专用：外部链接**只记日志、不真的交给系统**（dry-run）。
+   *
+   * 为什么需要：验收要断言「点了帮助里的『GitHub Issues』→ IPC 的参数**就是那个 URL**」，
+   * 而真开一次会把用户默认浏览器拉到前台（还会干扰同一条套件后面的焦点断言）。
+   * 口径与 `src/main/testPaths.ts` 的 `LUMIN_EXPORT_DIR` 一致：**只在未打包实例上生效**，
+   * 打包产物忽略该环境变量（所以发布版永远不会"点了没反应"）。
+   */
+  const openExternalDryRun = !app.isPackaged && process.env.LUMIN_OPEN_EXTERNAL_DRY_RUN === '1'
   ipcMain.on('shell:openExternal', (_, url: string) => {
     const safe = links.safeExternalUrl(url)
-    if (safe) void shell.openExternal(safe)
+    if (!safe) {
+      // 被白名单拦下的留一行日志（只打 scheme，别把任意 URL 写进日志）：既便于排查
+      // "点了没反应"，也让「负例必须被拒」在验收里有可观测的证据。
+      console.log(`[links] refused openExternal scheme=${schemeOfUrl(url)}`)
+      return
+    }
+    /**
+     * 成功也记一行（ASCII：URL 过 `encodeURI`，非 ASCII 会变成 %XX 而不会在 Windows
+     * 控制台乱码 —— 主进程 console 的输出纪律见 singleInstance.ts 的说明）。
+     * 这行是"点了哪个链接"的唯一取证点：渲染层的 `openExternal` 是 send（无返回值），
+     * 而 contextBridge 暴露的 API 是只读的、页面里 monkey-patch 不了。
+     */
+    console.log(`[links] openExternal${openExternalDryRun ? ' dry-run' : ''} ${encodeURI(safe)}`)
+    if (!openExternalDryRun) void shell.openExternal(safe)
   })
   ipcMain.handle('shell:openPath', async (_, p: string) => {
     const abs = path.resolve(p)

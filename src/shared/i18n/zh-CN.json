@@ -107,6 +107,8 @@
     "reload": "重新加载",
     "devtools": "开发者工具",
     "openDevTools": "打开开发者工具",
+    "feedback": "意见或 bug 反馈",
+    "feedbackGithub": "GitHub Issues",
     "settings": "设置",
     "about": "关于 Lumin",
     "quit": "退出",

@@ -45,15 +45,24 @@ publish:
 
 ### 2.2 仓库地址 / 2.3 官网（下载页）
 
-**改哪**：`package.json`。
+**状态：✅ 已填**（第十一轮落位；用的就是作者给的 GitHub 地址）。
 
 ```json
-"repository": "https://github.com/<你的账号>/Lumin",
-"homepage": "https://<你的站点>/lumin",
+"homepage": "https://github.com/yangbaibai-ops/Lumin",
+"repository": "https://github.com/yangbaibai-ops/Lumin",
+"bugs": { "url": "https://github.com/yangbaibai-ops/Lumin/issues" }
 ```
 
-**缺了会怎样**：README 与「关于」页指向不了源码；用户拿到安装包后没有可点的落地页
-（错误报告、更新说明都少一个去处）。
+**注意**：本轮只填了**确证存在**的 GitHub 地址 —— 没有另编"官网/下载页"（那需要作者真有一个站点），
+所以 `homepage` 与 `repository` 指向同一个仓库页；将来有了独立站点，把 `homepage` 换成它即可。
+
+**缺了会怎样**（历史口径，留作判据说明）：README 与「关于」页指向不了源码；用户拿到安装包后
+没有可点的落地页。现在这两项在 `npm run dist:check` 里都报"就绪"，待办只剩
+**更新渠道**与**代码签名证书**两项。
+
+**顺带一提**：`src/main/menu.ts` 里原生菜单那条「在浏览器中打开项目主页」（`menu.homepage`）
+**仍未启用**（一直注释着）—— 地址现在已经有了，启用它只差把那段放开；本轮没动它（不在用户口径内），
+顶部栏「帮助」里新增的是**反馈渠道**入口（见 `src/shared/feedback.ts` 与 CHANGELOG 第十一轮）。
 
 **`private: true` 保持不动**：Lumin 不发 npm，`private` 能挡住误发；自检脚本只把它报出来让人确认。
 

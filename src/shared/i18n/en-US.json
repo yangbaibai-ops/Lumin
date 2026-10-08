@@ -107,6 +107,8 @@
     "reload": "Reload",
     "devtools": "Developer Tools",
     "openDevTools": "Open Developer Tools",
+    "feedback": "Feedback or bug report",
+    "feedbackGithub": "GitHub Issues",
     "settings": "Settings",
     "about": "About Lumin",
     "quit": "Quit",

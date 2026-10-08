@@ -215,6 +215,21 @@ export async function createLinkTarget(
   }
 }
 
+/**
+ * 取 URL 的 scheme（小写、带冒号；解析不出来时返回 `'invalid'`）。
+ *
+ * 用途：被白名单拦下时打**一行 ASCII 日志**（`[links] refused openExternal scheme=javascript:`）——
+ * 日志里只出现 scheme，不出现用户/文档给的完整 URL（那可能是任意文本，还可能非 ASCII，
+ * 主进程 console 在 Windows 上会乱码，见 singleInstance.ts 的输出纪律）。
+ */
+export function schemeOf(url: string): string {
+  try {
+    return new URL((url ?? '').trim()).protocol.toLowerCase() || 'invalid'
+  } catch {
+    return 'invalid'
+  }
+}
+
 /** 校验并整理交给 shell.openExternal 的网址；不支持则返回 null */
 export function safeExternalUrl(url: string): string | null {
   const t = (url ?? '').trim()

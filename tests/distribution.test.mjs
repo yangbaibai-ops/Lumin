@@ -95,14 +95,26 @@ test('外部输入清单：五项、id 稳定，private 是有意就绪的那一
   assert.equal(signingReady(facts()), true)
 })
 
-test('仓库现状：publish 还是占位地址 + 仓库/主页未填 + 没证书 —— 清单必须如实报出来', () => {
-  // 这条盯的是**真实仓库**（不是构造的事实）：等仓库地址/证书到手、这几行改完之后，
-  // 它应该变红 —— 那时把断言改成"已就绪"即可（有意留成会失败的哨兵）
+test('仓库现状：更新渠道仍是占位、仓库/主页已填、没证书 —— 清单必须如实报出来', () => {
+  /**
+   * 这条盯的是**真实仓库**（不是构造的事实）。它原本是"缺 repository/homepage"的哨兵，
+   * 注释里写着"等仓库地址到手、这几行改完之后它应该变红 —— 那时把断言改成'已就绪'即可"。
+   * 现在**地址到手了**（用户给了 GitHub：`https://github.com/yangbaibai-ops/Lumin`，
+   * package.json 的 repository/homepage/bugs 都已填），所以这里按设计**转正**：
+   * repository/homepage 不再进待办；更新渠道（publish 占位）与签名证书仍是外部输入。
+   */
   const f = collectFacts({})
   const inputs = distributionInputs(f)
   const todo = missingInputs(inputs).map((t) => t.id)
   assert.ok(todo.includes('update-channel'), `更新渠道应仍是占位：${JSON.stringify(f)}`)
-  assert.ok(todo.includes('repository'), 'repository 还没填')
+  assert.ok(
+    !todo.includes('repository'),
+    `repository 已填（哨兵已转正）：${JSON.stringify({ repository: f.repository })}`
+  )
+  assert.ok(
+    !todo.includes('homepage'),
+    `homepage 已填：${JSON.stringify({ homepage: f.homepage })}`
+  )
   assert.ok(!todo.includes('private'), 'private=true 是有意的，不该进待办')
 })
 
