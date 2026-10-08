@@ -23,7 +23,10 @@
 //     ⇒ 渲染区（块级是容器下半、行内是框外那条公式）**原地**重画；
 //   * **Esc** / 右上角 **✓ 按钮** = 收起编辑态，**不改内容**（内容早已实时写进文档）；
 //   * **失焦** = 也收起（同样保留内容）；
-//   * **源码清空**（`''`）= **删除这条公式**（行内连 `$` 定界符一起删，块级删整个节点）。
+//   * **源码清空**（`''`）：**块级保留框架**（`source: ''` + 渲染区 `< Empty Math Block >`，
+//     第九轮口径）；**行内删掉整条**（连两侧 `$` 定界符一起，见 `deleteMathNode`）。
+//   * **空源码框里按退格/Delete** = 删掉整条公式（第十轮口径，见 `deleteMathNode`）；
+//     源码**非空**时退格只删字符 —— 判据是"按下的那一刻源码框为空"。
 //
 // ⚠️ 编辑区**不是 contenteditable 的后代**：块级容器挂在 NodeView 的 `dom` 上但整棵
 // `contenteditable="false"`；行内浮层挂在编辑区容器上。两者的 textarea 都不参与
@@ -65,9 +68,23 @@
 //    的段落（行中间不误触发、代码块不认识这个按键），插一个 `mathBlock` 节点后立刻开会话。
 // ⑤ **空公式保留框架**：块级源码为空时**不再删节点**（`source: ''`），渲染区/预览区显示
 //    `< Empty Math Block >`（只存在于视图，**序列化里一个字都不加**）。
+//
+// ─── 第三十三轮（用户第十轮反馈）：空公式块的"出路" + 逐键打字的行内公式 ───────────────
+//
+// ① **空公式块里按退格没反应**：不是"被谁拦了"，而是**两端都没有处理者** —— 空 textarea
+//    对退格本来就不做事，而它的按键又被 widget 的 `stopEvent` 挡在 PM 之外（那是打字能
+//    进去的前提）。修法：源码框为空时按退格/Delete = `deleteMathNode()` 删整条（一个事务、
+//    一步撤销、光标交回编辑器）。源码非空时退格**只删字符**（判据是按下那一刻是否为空）。
+//    光标紧贴块两端（块前段落行尾按 Delete / 块后段落行首按退格）与"块被选中后按退格"
+//    本来就走 PM/Tiptap 的既有路径（实测一次即删、可撤销），本轮只补了回归断言。
+// ② **逐键敲 `$E=mc^2$` 没有行内公式出现**：`MdMath` 这个 mark **只由 markdown 解析产生**，
+//    而 markdown-it 只在"把 markdown 读进编辑器"时跑 —— **逐键打字不经过它**（实测：每个
+//    中间态的渲染 widget 数恒为 0，连 `[data-md-math]` 节点都没有；光标位置/段落位置无关）。
+//    修法：给 `MdMath` 加一条 **输入规则**（收尾 `$` 落下那一刻收成公式），判据复用
+//    `matchInlineMathAtCaret` ⇒ 与解析规则同一套口径（见 mathMarkers.ts / mathScan.ts）。
 import { Extension } from '@tiptap/core'
 import { redo, undo } from '@tiptap/pm/history'
-import { Plugin, PluginKey } from '@tiptap/pm/state'
+import { Plugin, PluginKey, TextSelection } from '@tiptap/pm/state'
 import { Decoration, DecorationSet } from '@tiptap/pm/view'
 import type { EditorState } from '@tiptap/pm/state'
 import type { EditorView } from '@tiptap/pm/view'
@@ -755,6 +772,24 @@ abstract class MathEditorBase {
       this.view.focus()
       return
     }
+    /**
+     * **空公式块的出路**（第十轮用户口径）：源码框为空时按退格/Delete = 删掉整条公式。
+     *
+     * 为什么非要在这一层接：源码框是一个空 `<textarea>`，浏览器对它按退格什么都不做；
+     * 而它的事件又被 widget 的 `stopEvent` 挡在 ProseMirror 之外（那正是让打字能进去的
+     * 原因）—— 于是"空块 + 退格"在两端都没有处理者，表现就是**静默无响应**（实测）。
+     *
+     * ⚠️ 判据是**按下的那一刻 `ta.value` 为空**，不是"按完之后为空"：
+     * `Ctrl+A` 再按退格时 value 里全是选中的源码（非空），那是普通的"删掉选中字符"，
+     * **块要留着**（第九轮刚验收的"保留框架"；套件里有对照项）。
+     * 输入法组字中的按键在函数开头已经放行（`e.isComposing`）—— 那不是删除意图。
+     */
+    if ((e.key === 'Backspace' || e.key === 'Delete') && this.ta.value === '') {
+      e.preventDefault()
+      e.stopPropagation()
+      deleteMathNode(this.view, this.id)
+      return
+    }
     if (e.key === 'Tab') {
       e.preventDefault()
       const { selectionStart: a, selectionEnd: b, value } = this.ta
@@ -1031,13 +1066,8 @@ export function applySource(view: EditorView, tex: string, id?: number): boolean
   const kind = session.kind
   const { state } = view
   if (tex === '' && kind === 'inline') {
-    // 行内：清空 = 删除这条公式（连同 `$` 定界符）
-    view.dispatch(
-      state.tr
-        .delete(live.innerFrom, live.innerTo)
-        .setMeta(mathPreviewKey, { session: { kind: 'close' } })
-    )
-    return true
+    // 行内：清空 = **删掉整条公式**（连两侧 `$` 定界符一起，见 deleteMathNode 的口径）
+    return deleteMathNode(view, id)
   }
   if (tex === currentTex(state, live, kind)) return false
   if (kind === 'inline') {
@@ -1053,6 +1083,62 @@ export function applySource(view: EditorView, tex: string, id?: number): boolean
   const node = state.doc.nodeAt(live.from)
   if (!node || node.type.name !== 'mathBlock') return false
   view.dispatch(state.tr.setNodeMarkup(live.from, undefined, { ...node.attrs, source: tex }))
+  return true
+}
+
+/**
+ * **删掉整条公式** —— 这是"空公式块"唯一的出路（第十轮用户口径）。
+ *
+ * 用户报障：空公式块（上一轮起"保留框架"，渲染区显示 `< Empty Math Block >`）里按退格
+ * 「现在没任何的行为」。真实原因不是"删除被谁拦了"，而是**根本没人接这个按键**：
+ * 源码框是一个空 `<textarea>`，浏览器对它按退格什么都不做；而它的事件又被 widget 的
+ * `stopEvent` 挡在 ProseMirror 之外（那正是让打字能进去的原因）——
+ * 于是"空块 + 退格"在两端都没有处理者，表现为静默无响应。
+ *
+ * 语义（写死在这里，套件按它断言）：
+ *   * **一个事务** ⇒ `Ctrl+Z` 一次就回来；
+ *   * 块级删掉整个 `mathBlock`；行内**连两侧 `$` 定界符一起删**（与文件头
+ *     "源码清空 = 删除这条公式"同一口径；改前只删内容区间、会把 `$$` 留在正文里）；
+ *   * 文档因此**一个块都不剩**时补一个空段落 —— PM 的 `doc` 必须至少有一个 block，
+ *     直接删空会让事务非法（`ReplaceStep` 抛 "Invalid content for node doc"）；
+ *   * 删完光标落在原来的位置上（夹在文档范围内）并**把焦点交回编辑器**，用户可以接着打字；
+ *   * 会话在同一个事务里收起（`MathPreviewView` 会把编辑容器摘掉）。
+ *
+ * @param id 发起删除的编辑区 id：会话已被别人接管时忽略（防止过期操作）
+ * @returns 是否真的删了
+ */
+export function deleteMathNode(view: EditorView, id?: number): boolean {
+  const session = mathPreviewKey.getState(view.state)?.active
+  if (!session) return false
+  if (id !== undefined && session.id !== id) return false
+  const live = locateLive(view, session)
+  if (!live) return false
+  const { state } = view
+  const tr = state.tr
+  const onlyBlock = session.kind === 'block' && state.doc.childCount === 1 && live.from === 0
+  if (onlyBlock) {
+    // 只剩这一块：换成空段落（否则 doc 会是空的，事务非法）
+    tr.replaceWith(0, state.doc.content.size, state.schema.nodes.paragraph.create())
+  } else {
+    tr.delete(live.from, live.to)
+  }
+  tr.setMeta(mathPreviewKey, { session: { kind: 'close' } } satisfies MathSessionMeta)
+  /**
+   * 光标放到"原位置最近的**可写**处"。
+   *
+   * ⚠️ 不能直接 `TextSelection.create(doc, live.from)`：删掉一整块之后，那个位置常常正好落在
+   * **块之间的边界**上（`depth === 0`，父节点是 `doc`），而 `TextSelection` 的端点必须落在
+   * 有行内内容的节点里 —— PM 会警告 "TextSelection endpoint not pointing into a node with
+   * inline content (doc)"，并且这种非法选区会让随后的 `selectionToDOM` 把渲染进程搞崩
+   *（实测：套件跑到这里整个实例都没了）。`TextSelection.near` 会就近找到真正可写的位置
+   *（优先往后，即被删公式**后面**那一段的行首），空文档时返回 null 就保持事务映射的选区。
+   */
+  const $caret = tr.doc.resolve(Math.max(0, Math.min(live.from, tr.doc.content.size)))
+  const near = TextSelection.near($caret, 1) ?? TextSelection.near($caret, -1)
+  if (near) tr.setSelection(near)
+  view.dispatch(tr)
+  // 焦点交回编辑器：编辑容器在同一事务里被摘掉，焦点此刻落在 body 上
+  view.focus()
   return true
 }
 
@@ -1344,6 +1430,18 @@ class MathPreviewView {
     this.view.dispatch(this.view.state.tr)
     // 上屏之后再算坐标（行内浮层要量高度；块级的 `place()` 是空实现）
     box.place()
+    /**
+     * 焦点：**先同步给一次**，再在下一帧补一次。
+     *
+     * 为什么不是只留 rAF（第九轮就是那样）：窗口被别的窗口挡住时 Chromium 会**暂停出帧**
+     *（仓库里 `harness.framesAlive()` 就是为这件事写的），rAF 里的 `focus()` 于是永远不跑 ——
+     * 表现是"点开公式后按键没进源码框"（实测：套件在后台窗口跑时 `activeElement` 仍是 body，
+     * `Ctrl+A` 被 PM 的 `selectAll` 接走、整篇文档被下一个退格清掉）。
+     *
+     * 放在这里同步聚焦是安全的：装饰 widget 的 DOM 在 `dispatch` 里就已经建好并插进文档，
+     * `focus()` 不依赖布局。rAF 那一次保留 —— 视图重建/被搬动之后（`place()` 改过位置）再兜一次。
+     */
+    box.focus()
     requestAnimationFrame(() => {
       if (mathPreviewKey.getState(this.view.state)?.box === box) box.focus()
     })

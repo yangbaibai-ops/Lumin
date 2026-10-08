@@ -40,6 +40,35 @@ export function matchInlineMath(src: string, pos: number): { end: number; conten
 }
 
 /**
+ * 「刚敲下收尾 `$`」这一刻能不能**立刻**收成一段行内公式 —— 纯函数，给输入规则用。
+ *
+ * 为什么要它：行内公式的 mark **只由 markdown 解析产生**（markdown-it 规则 → `<span data-md-math>`
+ * → `MdMath`），而 markdown-it 只在「把 markdown 文本读进编辑器」时跑（打开文件 / 粘贴 / 切面）
+ * —— **逐键打字不经过它**。于是用户依次敲 `$E=mc^2$` 打完还是一串纯文本（实测，见报告的时间线）。
+ * 输入规则要在收尾 `$` 落下那一刻把这段文本收成公式，而「什么算公式」必须与解析**同一套判据**，
+ * 否则输入规则与解析会各说各话（`\$` 转义、`$$`、闭合 `$` 后紧跟数字这些边界会漂）。
+ *
+ * 口径：把 `text` 当作 markdown-it 的 `state.src`，**左到右**扫描（与解析器的推进方式一致：
+ * 命中一段就跳过整段继续往后），只有当某段的**收尾下标恰好等于 text.length**（= 刚敲的那个 `$`）
+ * 时才算命中。取"最先能配上的那一段"而不是"离光标最近的开括号"：
+ * `$a$ b $c$` 这种文本里，收尾 `$` 配的是 `$c`，前面那段已经配过了。
+ *
+ * @param text **光标之前的整段文本**，末尾就是刚敲下的那个 `$`（它此刻还没进文档）
+ * @returns 命中时给出起始下标（相对 `text`）与含定界符的原文；否则 null
+ */
+export function matchInlineMathAtCaret(text: string): { from: number; raw: string } | null {
+  for (let i = 0; i < text.length; i += 1) {
+    if (text.charCodeAt(i) !== 0x24 /* $ */) continue
+    const hit = matchInlineMath(text, i)
+    if (!hit) continue
+    if (hit.end === text.length) return { from: i, raw: text.slice(i) }
+    // 这一段已经配好对了（收尾在光标之前）：跳到它后面继续找，与解析器的 `state.pos` 推进一致
+    i = hit.end - 1
+  }
+  return null
+}
+
+/**
  * 块级公式：从 `startLine` 开始的一行 `$$…`。
  *
  * 两种写法都认：

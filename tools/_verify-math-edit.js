@@ -23,6 +23,14 @@
 //   O ⑤ 空公式**保留框架** + 渲染区 `< Empty Math Block >`（占位**不进文档**）
 //   P ⑥ 回归：块级仍能输入 / 点源码不收起 / 代码块里的 `$` 与 `\$` 不受影响
 //
+// ─── 第三十三轮（用户第十轮反馈）追加：Q~T 四段 ─────────────────────────────────
+//   Q ① **空公式块的出路**：源码框为空时按退格/Delete ⇒ 删掉整条公式块（一个事务、一步撤销）；
+//       顺带钉住"只剩这一块时删完文档仍合法（补一个空段落）"
+//   R ② **对照项**：源码**非空**时退格只删字符、块要留着（防"一刀切删块"）
+//   S ③ **逐键敲 `$E=mc^2$`**：收尾 `$` 落下的那一刻就出现行内公式渲染（给出逐键 widget 时间线）
+//   T ④ 回归：空公式占位仍在且序列化无占位文案 / `$$`+回车仍出块并进编辑态
+//       （`_verify-math.js` 8/8 与 `_verify-no-text-drag.js` 14/14 是独立套件，报告里单列）
+//
 // ─── 第三十一轮追加：源码区「能编辑 / 点不没 / 有高亮 / 行内要紧凑」（F~J 五段）──────
 //   F **真实按键**在源码区敲字（含退格）：源码文本与渲染结果都逐键跟着变、
 //     焦点与源码元素都不换（打戳验证 —— 不是"看起来还能打字"，是"DOM 没被拆掉"）
@@ -47,6 +55,8 @@ const {
   clickAt,
   ensureFocus,
   openDocWith,
+  requireFocus,
+  requireFrames,
   fatal
 } = require('./lib/harness')
 const fs = require('fs')
@@ -140,9 +150,35 @@ function buildMd3(imgPath) {
  * 空段落**不写在夹具里**（Markdown 的连续空行只是段落分隔，解析出来根本没有空 `p`），
  * 由 `newEmptyParagraph()` 用真实的"回车"造出来 —— 那也正是用户造空段落的方式。
  */
-const MD4 = ['第一段：这里只是正文。', '', '第二段：光标放在这一段末尾，按回车会多出一个空段落。'].join(
-  '\n'
-)
+const MD4 = [
+  '第一段：这里只是正文。',
+  '',
+  '第二段：光标放在这一段末尾，按回车会多出一个空段落。'
+].join('\n')
+
+/**
+ * 第十轮（Q~T 段）夹具：一条普通段落 + 一条块级公式 + 一条后面的段落。
+ *
+ * 为什么自己一份：Q/R 段要"清空源码 → 按退格"，用 MD3 会牵动图片/代码块那些段落；
+ * 这里留足上下文（块前后都有段落），才能同时验证"删块之后光标落在哪、文档还合不合法"。
+ */
+const MD5 = [
+  '上一段：正文。',
+  '',
+  '$$',
+  '\\frac{a}{b}',
+  '$$',
+  '',
+  '下一段：紧跟在公式块后面。',
+  '',
+  '打字区。'
+].join('\n')
+
+/** Q5 专用：**整篇只有一条块级公式**（删掉它之后文档不能变成空的） */
+const MD6 = ['$$', '\\frac{a}{b}', '$$'].join('\n')
+
+/** S 段专用：只有一条段落，逐键打字用 */
+const MD7 = ['打字区：在这里输入。'].join('\n')
 
 // ─── 造一张真 PNG（zlib + CRC32，不依赖任何图形库）────────────────────────────
 const CRC_TABLE = (() => {
@@ -439,6 +475,16 @@ const SRC_SNAPSHOT = `(() => {
     previewRaw: (() => { const p = box ? box.querySelector('.md-math-editor__preview') : null; return p ? p.textContent : null })(),
     blockKatexCount: paints('.md-preview .md-math-block .katex-display').length,
     inlineKatex: (() => { const k = document.querySelector('.md-preview .md-math-rendered .katex'); return k ? k.textContent : null })(),
+    // 行内公式的**渲染 widget 数**与带 mdMath mark 的文本节点（S 段的逐键时间线看这两个）
+    inlineWidgetCount: paints('.md-preview .md-math-rendered').length,
+    mathMarkedTexts: (() => {
+      const a = []
+      window.__L.ed().state.doc.descendants((n) => {
+        if (n.isText && n.marks.some((m) => m.type.name === 'mdMath')) a.push(n.text)
+        return true
+      })
+      return a
+    })(),
     delims: box ? box.querySelectorAll('[data-md-math-editor-delim]').length : null,
     taTextColorOpaque: (() => { const c = css(ta, 'color') || ''; return !/rgba?\\([^)]*,\\s*0\\)/.test(c) && c !== 'transparent' })(),
     // ── 第三十二轮（K~P 段）要看的几件事实 ──
@@ -527,8 +573,20 @@ function centerExpr(selector) {
 
 /** 点一个**绝对坐标**（mousedown + mouseup，与真人点击同一条路径） */
 async function clickPoint(send, x, y) {
-  await send('Input.dispatchMouseEvent', { type: 'mousePressed', x, y, button: 'left', clickCount: 1 })
-  await send('Input.dispatchMouseEvent', { type: 'mouseReleased', x, y, button: 'left', clickCount: 1 })
+  await send('Input.dispatchMouseEvent', {
+    type: 'mousePressed',
+    x,
+    y,
+    button: 'left',
+    clickCount: 1
+  })
+  await send('Input.dispatchMouseEvent', {
+    type: 'mouseReleased',
+    x,
+    y,
+    button: 'left',
+    clickCount: 1
+  })
 }
 
 /**
@@ -699,7 +757,6 @@ async function dragFromTo(app, from, to, steps = 10) {
   await sleep(650)
 }
 
-
 /** 在源码框里"输入"（真的派发 input 事件，与逐键同一条路径） */
 function setSource(text) {
   return `(() => {
@@ -726,6 +783,19 @@ async function main() {
   }
   await app.ev(`(() => { window.__L.ui().editorMode = 'wysiwyg'; return 'ok' })()`)
   await sleep(350)
+  /**
+   * 前提：窗口得拿到 OS 焦点、并且**在出帧**。
+   *
+   * 为什么必须在开头就卡住（第十轮踩到的坑）：这个套件大量依赖①真实按键②rAF 驱动的收尾
+   * （失焦收起是"下一帧再判定"）③`setTimeout` 的防抖（store 的 `content` 同步）。
+   * 当被测窗口被别的窗口挡住时，Chromium 会**暂停出帧**、把后台定时器压到 ≥1s ——
+   * 于是 rAF 里的收尾不发生、`content` 迟迟不更新，一次能冒出十几条**假红**
+   *（实测：同一次提交在窗口前台时 93/93，被遮住时 79/93）。
+   *
+   * 按仓库口径（harness §10 / 清单 §1.C.1）：环境不满足 ⇒ **如实 SKIP**，不要判红。
+   */
+  await requireFocus(app, '公式编辑套件（真实按键段）')
+  await requireFrames(app, '公式编辑套件（rAF 收尾与防抖同步）')
   await openDocWith(app, MD, 'math-edit.md')
   await waitEditor(app.ev)
   await app.ev(INSTALL_ERROR_HOOK)
@@ -887,7 +957,8 @@ async function main() {
     const restored = JSON.parse(await app.ev(SNAPSHOT))
     report.check(
       'E4f 把源码改回合法公式 → 错误态消失、公式重新画出来',
-      restored.blockRendered === 2 && restored.content.includes('\\int_0^1 x^2\\,dx = \\frac{1}{3}'),
+      restored.blockRendered === 2 &&
+        restored.content.includes('\\int_0^1 x^2\\,dx = \\frac{1}{3}'),
       `blockRendered=${restored.blockRendered}`
     )
     await app.ev(`(() => {
@@ -977,9 +1048,7 @@ async function main() {
     const closed = JSON.parse(await app.ev(SNAPSHOT))
     report.check(
       'E7d 点 ✓ 收起 → 回到纯渲染态（编辑容器消失、原公式重新可见），且**文档逐字不变**',
-      closed.box === null &&
-        closed.blockRendered === 2 &&
-        closed.content === beforeClick,
+      closed.box === null && closed.blockRendered === 2 && closed.content === beforeClick,
       `box=${closed.box === null ? 'closed' : 'open'} blockRendered=${closed.blockRendered} contentSame=${closed.content === beforeClick}`
     )
     // 重新打开 → 改一处 → 容器下半的渲染区必须跟着变
@@ -1184,7 +1253,12 @@ async function main() {
       fTyped.invalid === false &&
       fTyped.previewText !== null &&
       fTyped.previewText.includes('a'),
-    'value=' + JSON.stringify(fTyped.value) + ' invalid=' + fTyped.invalid + ' preview=' + JSON.stringify(fTyped.previewText)
+    'value=' +
+      JSON.stringify(fTyped.value) +
+      ' invalid=' +
+      fTyped.invalid +
+      ' preview=' +
+      JSON.stringify(fTyped.previewText)
   )
 
   // 一次退格：源码文本与渲染结果都要跟着回退
@@ -1211,7 +1285,10 @@ async function main() {
       fDel.activeIsTa === true &&
       fDel.stamp === true &&
       fDel.content.includes('\\frac{a}{b'),
-    'value=' + JSON.stringify(fDel.value) + ' previewChanged=' + (fDel.previewText !== beforeDel.previewText)
+    'value=' +
+      JSON.stringify(fDel.value) +
+      ' previewChanged=' +
+      (fDel.previewText !== beforeDel.previewText)
   )
   // 补回 `}`，留给后面的段一个合法公式
   await typeChar(app.send, '}')
@@ -1224,8 +1301,12 @@ async function main() {
       fFixed.previewText !== null &&
       fFixed.previewText.includes('b') &&
       fFixed.content.includes('\\frac{a}{b}'),
-    'value=' + JSON.stringify(fFixed.value) + ' invalid=' + fFixed.invalid +
-      ' preview=' + JSON.stringify(fFixed.previewText)
+    'value=' +
+      JSON.stringify(fFixed.value) +
+      ' invalid=' +
+      fFixed.invalid +
+      ' preview=' +
+      JSON.stringify(fFixed.previewText)
   )
 
   // ─── G 点源码区任何位置都不收起 ─────────────────────────────────────────────
@@ -1267,13 +1348,23 @@ async function main() {
       g2.activeInBox &&
       g3.activeInBox &&
       g3.stamp === true,
-    'afterPadding=' + g1.hasBox + '(inBox=' + g1.activeInBox + ') afterDelim=' + g2.hasBox +
-      '(inBox=' + g2.activeInBox + ') afterTopLeft=' + g3.hasBox + '(inBox=' + g3.activeInBox + ')'
+    'afterPadding=' +
+      g1.hasBox +
+      '(inBox=' +
+      g1.activeInBox +
+      ') afterDelim=' +
+      g2.hasBox +
+      '(inBox=' +
+      g2.activeInBox +
+      ') afterTopLeft=' +
+      g3.hasBox +
+      '(inBox=' +
+      g3.activeInBox +
+      ')'
   )
   report.check(
     'G2 点源码区不收起的同时也**没改内容**（三次点击前后 value 与文档逐字不变）',
-    g1.value === gValue && g2.value === gValue && g3.value === gValue &&
-      g3.content === g1.content,
+    g1.value === gValue && g2.value === gValue && g3.value === gValue && g3.content === g1.content,
     'value=' + JSON.stringify(g3.value)
   )
 
@@ -1308,7 +1399,12 @@ async function main() {
   report.check(
     'G4 Esc（真实按键）收起编辑态，且**逐字不改内容**',
     beforeEsc.hasBox === true && g5.hasBox === false && g5.content === beforeEsc.content,
-    'before=' + beforeEsc.hasBox + ' after=' + g5.hasBox + ' contentSame=' + (g5.content === beforeEsc.content)
+    'before=' +
+      beforeEsc.hasBox +
+      ' after=' +
+      g5.hasBox +
+      ' contentSame=' +
+      (g5.content === beforeEsc.content)
   )
 
   // ⑥ 点 ✓ → 收起且不改内容
@@ -1342,8 +1438,16 @@ async function main() {
   const h = JSON.parse(await app.ev(SRC_SNAPSHOT))
   report.check(
     'H1 源码区里 ≥3 类不同颜色的着色 span（命令 / 花括号 / 普通文本各有色），实测色值如下',
-    h.tokColors.length >= 3 && h.tokClasses.length >= 3 && h.tokClasses.includes('cmd') && h.tokClasses.includes('brace'),
-    'classes=' + JSON.stringify(h.tokClasses) + ' colors=' + JSON.stringify(h.tokColors) + ' spans=' + h.tokCount
+    h.tokColors.length >= 3 &&
+      h.tokClasses.length >= 3 &&
+      h.tokClasses.includes('cmd') &&
+      h.tokClasses.includes('brace'),
+    'classes=' +
+      JSON.stringify(h.tokClasses) +
+      ' colors=' +
+      JSON.stringify(h.tokColors) +
+      ' spans=' +
+      h.tokCount
   )
   report.check(
     'H2 高亮**没有改动文本**：装饰层文本与输入层 value 逐字一致，且都等于用户敲进去的 `\\frac{a}{b}`',
@@ -1356,15 +1460,22 @@ async function main() {
     'taColor=' + h.taColor + ' caret=' + h.taCaret
   )
   const aligned =
-    !!h.taRect && !!h.hlRect &&
+    !!h.taRect &&
+    !!h.hlRect &&
     Math.abs(h.taRect.left - h.hlRect.left) <= 1 &&
     Math.abs(h.taRect.top - h.hlRect.top) <= 1 &&
     Math.abs(h.taRect.width - h.hlRect.width) <= 1
   report.check(
     'H4 两层（输入层 / 高亮层）逐像素对齐（左上角与宽度差 ≤ 1px，字体与内边距同源）',
     aligned && h.taPadding === h.hlPadding && h.taFont === h.taFont,
-    'taRect=' + JSON.stringify(h.taRect) + ' hlRect=' + JSON.stringify(h.hlRect) +
-      ' padding=' + h.taPadding + '/' + h.hlPadding
+    'taRect=' +
+      JSON.stringify(h.taRect) +
+      ' hlRect=' +
+      JSON.stringify(h.hlRect) +
+      ' padding=' +
+      h.taPadding +
+      '/' +
+      h.hlPadding
   )
 
   // ─── I 行内形态：紧凑、不占整行 ─────────────────────────────────────────────
@@ -1379,8 +1490,14 @@ async function main() {
       i.boxRect.width < i.colRect.width &&
       i.boxRect.height <= 64 &&
       parseFloat(i.boxBorder || '0') > 0,
-    'rect=' + JSON.stringify(i.boxRect) + ' col=' + JSON.stringify(i.colRect) +
-      ' border=' + i.boxBorder + ' padding=' + i.srcPadding
+    'rect=' +
+      JSON.stringify(i.boxRect) +
+      ' col=' +
+      JSON.stringify(i.colRect) +
+      ' border=' +
+      i.boxBorder +
+      ' padding=' +
+      i.srcPadding
   )
   report.check(
     'I2 行内只留重点：可见的「公式」二字收起、`Esc` 提示只给读屏器（视觉隐藏但 aria 还能取到）',
@@ -1389,13 +1506,26 @@ async function main() {
       !!i.hintRect &&
       i.hintRect.width <= 1 &&
       !!i.ariaDescribed,
-    'labelDisplay=' + i.labelDisplay + ' hint=' + JSON.stringify(i.hintText) +
-      ' hintRect=' + JSON.stringify(i.hintRect) + ' aria-describedby=' + i.ariaDescribed
+    'labelDisplay=' +
+      i.labelDisplay +
+      ' hint=' +
+      JSON.stringify(i.hintText) +
+      ' hintRect=' +
+      JSON.stringify(i.hintRect) +
+      ' aria-describedby=' +
+      i.ariaDescribed
   )
   report.note(
-    'I 行内实测：容器 ' + i.boxRect.width + '×' + i.boxRect.height +
-      '，源码区 padding=' + i.srcPadding + '，边框=' + i.boxBorder +
-      '，正文列宽=' + i.colRect.width
+    'I 行内实测：容器 ' +
+      i.boxRect.width +
+      '×' +
+      i.boxRect.height +
+      '，源码区 padding=' +
+      i.srcPadding +
+      '，边框=' +
+      i.boxBorder +
+      '，正文列宽=' +
+      i.colRect.width
   )
 
   // ─── J 回归：往返保真 / Ctrl+Z / 错误态 / 组字 ───────────────────────────────
@@ -1406,10 +1536,14 @@ async function main() {
     roundTrip.mathTexts.every((t) => t.startsWith('$') && t.endsWith('$') && t.length > 2) &&
       blockSerialized &&
       roundTrip.blockSources.every((s) => typeof s === 'string'),
-    'mathTexts=' + JSON.stringify(roundTrip.mathTexts) +
-      ' blockSources=' + JSON.stringify(roundTrip.blockSources) +
-      ' hasBlockForm=' + blockSerialized +
-      ' tail=' + JSON.stringify(roundTrip.content.slice(-70))
+    'mathTexts=' +
+      JSON.stringify(roundTrip.mathTexts) +
+      ' blockSources=' +
+      JSON.stringify(roundTrip.blockSources) +
+      ' hasBlockForm=' +
+      blockSerialized +
+      ' tail=' +
+      JSON.stringify(roundTrip.content.slice(-70))
   )
   // Ctrl+Z 撤掉源码区的一步输入（行内浮层在 PM 之外，撤销走源码区自己派给 PM 的 history）
   const beforeUndo = JSON.parse(await app.ev(SRC_SNAPSHOT))
@@ -1443,9 +1577,14 @@ async function main() {
       docReverted &&
       j2.hasBox === true &&
       j2.hlText === j2.value,
-    'typed=' + JSON.stringify(typedZ.value) + ' undone=' + JSON.stringify(j2.value) +
-      ' zGone=' + !j2.content.includes('$E = mc^2z$') +
-      ' restored=' + j2.content.includes('$E = mc^2$') +
+    'typed=' +
+      JSON.stringify(typedZ.value) +
+      ' undone=' +
+      JSON.stringify(j2.value) +
+      ' zGone=' +
+      !j2.content.includes('$E = mc^2z$') +
+      ' restored=' +
+      j2.content.includes('$E = mc^2$') +
       ' // 逐字节同源比较（供参考，编译器重排会让它 false）：' +
       (j2.content === beforeUndo.content)
   )
@@ -1497,9 +1636,16 @@ async function main() {
       j4b.value === 'E = mc^2好' &&
       j4b.hlText === j4b.value &&
       j4b.content.includes('E = mc^2好'),
-    'composing=' + j4a.composing + ' taColorVisible=' + j4a.taTextColorOpaque +
-      ' hlHidden=' + (j4a.hlVisibility === 'hidden') + ' after=' + JSON.stringify(j4b.value) +
-      ' hlSame=' + (j4b.hlText === j4b.value)
+    'composing=' +
+      j4a.composing +
+      ' taColorVisible=' +
+      j4a.taTextColorOpaque +
+      ' hlHidden=' +
+      (j4a.hlVisibility === 'hidden') +
+      ' after=' +
+      JSON.stringify(j4b.value) +
+      ' hlSame=' +
+      (j4b.hlText === j4b.value)
   )
   // 收拾干净：把这条行内公式改回原样并收起（后面的断言/别的套件不该看到中间态）
   await app.ev(`(() => {
@@ -1525,27 +1671,64 @@ async function main() {
   const allZero = (arr) => Array.isArray(arr) && arr.length === 4 && arr.every((v) => v === '0px')
   report.check(
     'K1 源码书写面**没有边框**：输入层/装饰层/源码区四边全 0，且没有 focus 外环（box-shadow none）',
-    allZero(k.srcBorders) && allZero(k.hlBorders) && allZero(k.srcBordersource) &&
-      k.srcShadow === 'none' && k.srcOutline === 'none',
-    'src=' + JSON.stringify(k.srcBorders) + ' hl=' + JSON.stringify(k.hlBorders) +
-      ' source=' + JSON.stringify(k.srcBordersource) + ' shadow=' + k.srcShadow + ' outline=' + k.srcOutline
+    allZero(k.srcBorders) &&
+      allZero(k.hlBorders) &&
+      allZero(k.srcBordersource) &&
+      k.srcShadow === 'none' &&
+      k.srcOutline === 'none',
+    'src=' +
+      JSON.stringify(k.srcBorders) +
+      ' hl=' +
+      JSON.stringify(k.hlBorders) +
+      ' source=' +
+      JSON.stringify(k.srcBordersource) +
+      ' shadow=' +
+      k.srcShadow +
+      ' outline=' +
+      k.srcOutline
   )
   report.check(
     'K2 「公式 ✓」**不占独立一行**：绝对定位，且与源码区在同一行带里（源码区顶到容器顶）',
     k.barPosition === 'absolute' &&
-      !!k.barRect && !!k.srcRect && !!k.boxRect &&
+      !!k.barRect &&
+      !!k.srcRect &&
+      !!k.boxRect &&
       k.srcRect.top - k.boxRect.top <= 3 &&
       k.barRect.bottom > k.srcRect.top,
-    'barPosition=' + k.barPosition + ' boxTop=' + (k.boxRect && k.boxRect.top) +
-      ' srcTop=' + (k.srcRect && k.srcRect.top) + ' bar=' + JSON.stringify(k.barRect)
+    'barPosition=' +
+      k.barPosition +
+      ' boxTop=' +
+      (k.boxRect && k.boxRect.top) +
+      ' srcTop=' +
+      (k.srcRect && k.srcRect.top) +
+      ' bar=' +
+      JSON.stringify(k.barRect)
   )
   report.check(
     'K3 靠**底色与留白**区分书写面（源码区仍有 --code-bg 底色与非零内边距），✓ 仍是真按钮且有可访问名',
-    !!k.srcBg && k.srcBg !== 'rgba(0, 0, 0, 0)' && k.srcPadding !== '0px' &&
-      k.checkTag === 'BUTTON' && !!k.checkAria && k.checkAria.trim().length > 0,
-    'srcBg=' + k.srcBg + ' srcPadding=' + k.srcPadding + ' check=' + k.checkTag + '/' + JSON.stringify(k.checkAria)
+    !!k.srcBg &&
+      k.srcBg !== 'rgba(0, 0, 0, 0)' &&
+      k.srcPadding !== '0px' &&
+      k.checkTag === 'BUTTON' &&
+      !!k.checkAria &&
+      k.checkAria.trim().length > 0,
+    'srcBg=' +
+      k.srcBg +
+      ' srcPadding=' +
+      k.srcPadding +
+      ' check=' +
+      k.checkTag +
+      '/' +
+      JSON.stringify(k.checkAria)
   )
-  report.note('K 实测：容器边框 ' + k.boxBorder + '，源码区 padding=' + k.srcPadding + '，✓ 位置 ' + JSON.stringify(k.barRect))
+  report.note(
+    'K 实测：容器边框 ' +
+      k.boxBorder +
+      '，源码区 padding=' +
+      k.srcPadding +
+      '，✓ 位置 ' +
+      JSON.stringify(k.barRect)
+  )
 
   // ─── L ② 行内源码区真实按键（改前：Ctrl+A 被 PM 抢成 AllSelection，下一个键整段被吃）──
   await closeEditor(app)
@@ -1565,7 +1748,8 @@ async function main() {
     lTyped += ch
     if (s.inlineKatex !== lPrevRender) lRenderFollows += 1
     lPrevRender = s.inlineKatex
-    const ok = s.value === lTyped && s.activeIsTa === true && s.stamp === true && s.taConnected === true
+    const ok =
+      s.value === lTyped && s.activeIsTa === true && s.stamp === true && s.taConnected === true
     if (!ok) lAlive = false
     lTrace.push(ch + '=>' + JSON.stringify(s.value) + (ok ? '' : '(STALE!)'))
   }
@@ -1573,18 +1757,25 @@ async function main() {
   const lDel = JSON.parse(await app.ev(SRC_SNAPSHOT))
   report.check(
     'L1 行内源码区**真实按键**：连敲 3 个字符 + 一次退格，源码文本逐字相符、焦点与元素都没换',
-    lAlive &&
-      lDel.value === lTyped.slice(0, -1) &&
-      lDel.activeIsTa === true &&
-      lDel.stamp === true,
-    'trace=' + lTrace.join(' ') + ' afterBackspace=' + JSON.stringify(lDel.value) +
-      ' activeIsTa=' + lDel.activeIsTa + ' stamp=' + lDel.stamp
+    lAlive && lDel.value === lTyped.slice(0, -1) && lDel.activeIsTa === true && lDel.stamp === true,
+    'trace=' +
+      lTrace.join(' ') +
+      ' afterBackspace=' +
+      JSON.stringify(lDel.value) +
+      ' activeIsTa=' +
+      lDel.activeIsTa +
+      ' stamp=' +
+      lDel.stamp
   )
   report.check(
     'L2 行内渲染**逐键**跟着变（框外那条 KaTeX 随输入更新）',
     lRenderFollows >= 2 && lDel.inlineKatex !== l0.inlineKatex,
-    'renderChanged=' + lRenderFollows + '/3 before=' + JSON.stringify(l0.inlineKatex) +
-      ' after=' + JSON.stringify(lDel.inlineKatex)
+    'renderChanged=' +
+      lRenderFollows +
+      '/3 before=' +
+      JSON.stringify(l0.inlineKatex) +
+      ' after=' +
+      JSON.stringify(lDel.inlineKatex)
   )
   // 光标移动（用户口径点名：光标移动要能用）
   await pressKey(app, 'Home', 'Home', 36)
@@ -1611,9 +1802,16 @@ async function main() {
       lReplace.activeIsTa === true &&
       lReplace.pmSelName !== 'AllSelection' &&
       lBlocksKept,
-    'pmSel@Ctrl+A=' + lSelectAll.pmSelName + ' value=' + JSON.stringify(lReplace.value) +
-      ' hasBox=' + lReplace.hasBox + ' pmSelAfter=' + lReplace.pmSelName +
-      ' blocks=' + JSON.stringify(lReplace.blockSources)
+    'pmSel@Ctrl+A=' +
+      lSelectAll.pmSelName +
+      ' value=' +
+      JSON.stringify(lReplace.value) +
+      ' hasBox=' +
+      lReplace.hasBox +
+      ' pmSelAfter=' +
+      lReplace.pmSelName +
+      ' blocks=' +
+      JSON.stringify(lReplace.blockSources)
   )
   // 还原这条行内公式（后面的段落不该看到中间态）
   // ⚠️ `if (!ta)` 不是客套：被测代码坏掉时（改前正是这条 L4 会把编辑框弄没）
@@ -1633,8 +1831,30 @@ async function main() {
   await reloadFix3(app)
   const p1Rect = await centerOf(app.ev, '.md-preview p')
   await openBlockEditor(app)
-  const mSelected = JSON.parse(await app.ev(SRC_SNAPSHOT))
   await closeEditor(app)
+  /**
+   * 显式把公式选成 `NodeSelection` —— **前提要可复现**。
+   *
+   * 为什么要这一步：真实用户"拖公式"的前提是**节点已被选中**——PM 会给选中的叶节点补
+   * `draggable="true"`（`prosemirror-view` 的 `selectNode()`），只有那样 `dragstart` 才会
+   * 走"节点拖动"分支。而"点一下公式"这条路径**不总是**留下 `NodeSelection`：编辑容器一开，
+   * 后续的点击会落进容器里（PM 选区停在附近），实测日志里这时 `dragging.node` 是 `false`
+   *（拖拽退化成"文字拖动"，M1 的前提条款就会假红）。
+   * 所以这里用 API 把前提钉死，再用手势去拖 —— 拖拽本身仍是**真实鼠标事件**。
+   */
+  await app.ev(`(() => {
+    const ed = window.__L.ed()
+    let pos = -1
+    ed.state.doc.descendants((n, p) => {
+      if (n.type.name === 'mathBlock') { pos = p; return false }
+      return true
+    })
+    if (pos < 0) return 'no-block'
+    ed.chain().setNodeSelection(pos).run()
+    return 'ok'
+  })()`)
+  await sleep(350)
+  const mSelected = JSON.parse(await app.ev(SRC_SNAPSHOT))
   const blockRect = JSON.parse(await app.ev(centerExpr('.md-preview .md-math-block')))
   const mBefore = JSON.parse(await app.ev(SRC_SNAPSHOT)) // 顺手清空 dragLog
   await dragFromTo(
@@ -1643,7 +1863,9 @@ async function main() {
     { x: p1Rect.x, y: p1Rect.y + 6 }
   )
   const mBlock = JSON.parse(await app.ev(SRC_SNAPSHOT))
-  const blockDragSeen = (mBlock.dragLog || []).some((l) => l.dragging && l.dragging.first === 'mathBlock')
+  const blockDragSeen = (mBlock.dragLog || []).some(
+    (l) => l.dragging && l.dragging.first === 'mathBlock'
+  )
   /**
    * 判据用**现场序列化**（`freshMarkdown`）而不是 store 的 `content`：
    * 后者有一个 debounce，两次快照之间哪怕文档没动也可能因为"补一次同步"而不同
@@ -1654,27 +1876,39 @@ async function main() {
   report.check(
     'M1 块级公式**拖不走**：真实拖拽手势之后文档逐字不变（且此时它正处于"选中后可被节点拖动"的状态）',
     mBlock.freshMarkdown === mBefore.freshMarkdown && mSelected.blockDraggable === 'true',
-    'markdownSame=' + (mBlock.freshMarkdown === mBefore.freshMarkdown) +
-      ' dragSeen=' + blockDragSeen +
-      ' blockDraggableAfterSelect=' + mSelected.blockDraggable +
-      ' log=' + JSON.stringify(mBlock.dragLog)
+    'markdownSame=' +
+      (mBlock.freshMarkdown === mBefore.freshMarkdown) +
+      ' dragSeen=' +
+      blockDragSeen +
+      ' blockDraggableAfterSelect=' +
+      mSelected.blockDraggable +
+      ' log=' +
+      JSON.stringify(mBlock.dragLog)
   )
   // 行内公式：拖着它走（基线取**上一次拖拽之后**的状态：每条断言只对自己那一次手势负责）
   const inlineRect = JSON.parse(await app.ev(centerExpr('.md-preview .md-math-rendered')))
   const mBeforeInline = mBlock.freshMarkdown
-  await dragFromTo(app, { x: inlineRect.x, y: inlineRect.y }, { x: p1Rect.x + 80, y: p1Rect.y + 10 })
+  await dragFromTo(
+    app,
+    { x: inlineRect.x, y: inlineRect.y },
+    { x: p1Rect.x + 80, y: p1Rect.y + 10 }
+  )
   const mInline = JSON.parse(await app.ev(SRC_SNAPSHOT))
   report.check(
     'M2 行内公式**拖不走**：真实拖拽手势之后文档逐字不变',
     mInline.freshMarkdown === mBeforeInline,
-    'markdownSame=' + (mInline.freshMarkdown === mBeforeInline) +
-      ' log=' + JSON.stringify(mInline.dragLog)
+    'markdownSame=' +
+      (mInline.freshMarkdown === mBeforeInline) +
+      ' log=' +
+      JSON.stringify(mInline.dragLog)
   )
   // 对照项：图片（同一套手势、同一个判据 —— 它**必须**还能搬）
   if (!mInline.imgRect || mInline.imgRect.width < 20) {
     report.skip(
       'M3 图片节点仍然可以拖动（对照项）',
-      '图片没加载出来（imgRect=' + JSON.stringify(mInline.imgRect) + '）——多半是实例的 LUMIN_TRUSTED_PATHS 没覆盖 %TEMP%'
+      '图片没加载出来（imgRect=' +
+        JSON.stringify(mInline.imgRect) +
+        '）——多半是实例的 LUMIN_TRUSTED_PATHS 没覆盖 %TEMP%'
     )
   } else {
     const imgRect = mInline.imgRect
@@ -1690,9 +1924,12 @@ async function main() {
     report.check(
       'M3 图片节点**仍然可以拖动**（同一套手势、同一个判据：文档必须变）—— 数学那条没误伤节点拖动',
       mImg.freshMarkdown !== mBeforeImg,
-      'markdownChanged=' + (mImg.freshMarkdown !== mBeforeImg) +
-        ' imgDraggableAfterSelect=' + mInline.imgDraggable +
-        ' imgRect=' + JSON.stringify(mImg.imgRect)
+      'markdownChanged=' +
+        (mImg.freshMarkdown !== mBeforeImg) +
+        ' imgDraggableAfterSelect=' +
+        mInline.imgDraggable +
+        ' imgRect=' +
+        JSON.stringify(mImg.imgRect)
     )
   }
 
@@ -1725,8 +1962,16 @@ async function main() {
       n1.shape === 'block' &&
       n1.activeIsTa === true &&
       n1.value === '',
-    'blocks=' + JSON.stringify(n1.blockSources) + ' hasBox=' + n1.hasBox + ' shape=' + n1.shape +
-      ' activeIsTa=' + n1.activeIsTa + ' value=' + JSON.stringify(n1.value)
+    'blocks=' +
+      JSON.stringify(n1.blockSources) +
+      ' hasBox=' +
+      n1.hasBox +
+      ' shape=' +
+      n1.shape +
+      ' activeIsTa=' +
+      n1.activeIsTa +
+      ' value=' +
+      JSON.stringify(n1.value)
   )
   /**
    * 一步撤销。
@@ -1741,8 +1986,12 @@ async function main() {
   report.check(
     'N3 插入是**一步撤销**：一次 Ctrl+Z 就撤掉整块（节点消失、`$$` 段落回来、编辑态收起）',
     n2.blockSources.length === 0 && n2.paraTexts.includes('$$') && n2.hasBox === false,
-    'blocks=' + JSON.stringify(n2.blockSources) + ' paras=' + JSON.stringify(n2.paraTexts) +
-      ' hasBox=' + n2.hasBox
+    'blocks=' +
+      JSON.stringify(n2.blockSources) +
+      ' paras=' +
+      JSON.stringify(n2.paraTexts) +
+      ' hasBox=' +
+      n2.hasBox
   )
   // 边界一：`$$` 出现在**行中间**（整段不是恰好 `$$`）不许触发
   //
@@ -1766,8 +2015,14 @@ async function main() {
       n3.blockSources.length === 0 &&
       n3.hasBox === false &&
       n3.paraTexts.length === n3ParaCount + 1,
-    'beforeEnter=' + JSON.stringify(n3a.paraTexts) + ' afterEnter=' + JSON.stringify(n3.paraTexts) +
-      ' blocks=' + JSON.stringify(n3.blockSources) + ' hasBox=' + n3.hasBox
+    'beforeEnter=' +
+      JSON.stringify(n3a.paraTexts) +
+      ' afterEnter=' +
+      JSON.stringify(n3.paraTexts) +
+      ' blocks=' +
+      JSON.stringify(n3.blockSources) +
+      ' hasBox=' +
+      n3.hasBox
   )
   // 边界二：输入法组字中的回车**绝不能**触发（合成事件：真实 IME 无法用 CDP 驱动）
   await openDocWith(app, MD4, 'math-edit-4b.md')
@@ -1787,7 +2042,12 @@ async function main() {
   report.check(
     'N5 边界：**输入法组字中**的回车（`isComposing: true`）不触发插入 —— 那是"确认候选词"',
     n4.blockSources.length === 0 && n4.hasBox === false && n4.paraTexts.includes('$$'),
-    'blocks=' + JSON.stringify(n4.blockSources) + ' hasBox=' + n4.hasBox + ' paras=' + JSON.stringify(n4.paraTexts)
+    'blocks=' +
+      JSON.stringify(n4.blockSources) +
+      ' hasBox=' +
+      n4.hasBox +
+      ' paras=' +
+      JSON.stringify(n4.paraTexts)
   )
   // 边界三：代码块里绝不触发
   await reloadFix3(app)
@@ -1807,8 +2067,12 @@ async function main() {
       n5.blockSources.length === 1 &&
         n5.blockSources[0] === '\\frac{a}{b}' &&
         n5.docTypes.filter((t) => t === 'codeBlock').length === 1,
-      'blocks=' + JSON.stringify(n5.blockSources) +
-        ' codeBlocks=' + n5.docTypes.filter((t) => t === 'codeBlock').length + ' hasBox=' + n5.hasBox
+      'blocks=' +
+        JSON.stringify(n5.blockSources) +
+        ' codeBlocks=' +
+        n5.docTypes.filter((t) => t === 'codeBlock').length +
+        ' hasBox=' +
+        n5.hasBox
     )
   }
 
@@ -1822,7 +2086,12 @@ async function main() {
   report.check(
     'O1 空公式**保留框架**：节点还在（source 为空）、容器还开着、源码框还能继续输入',
     o.hasBox === true && o.value === '' && o.blockSources.length === 1 && o.blockSources[0] === '',
-    'hasBox=' + o.hasBox + ' value=' + JSON.stringify(o.value) + ' blocks=' + JSON.stringify(o.blockSources)
+    'hasBox=' +
+      o.hasBox +
+      ' value=' +
+      JSON.stringify(o.value) +
+      ' blocks=' +
+      JSON.stringify(o.blockSources)
   )
   report.check(
     'O2 编辑态下半区显示 `< Empty Math Block >`，用次级正文色、且**不可选中/不可点击**',
@@ -1832,8 +2101,18 @@ async function main() {
       o.emptyPointer === 'none' &&
       o.emptyEditable === 'false' &&
       !!o.emptyColor,
-    'count=' + o.emptyCount + ' text=' + JSON.stringify(o.emptyText) + ' color=' + o.emptyColor +
-      ' userSelect=' + o.emptyUserSelect + ' pointerEvents=' + o.emptyPointer + ' editable=' + o.emptyEditable
+    'count=' +
+      o.emptyCount +
+      ' text=' +
+      JSON.stringify(o.emptyText) +
+      ' color=' +
+      o.emptyColor +
+      ' userSelect=' +
+      o.emptyUserSelect +
+      ' pointerEvents=' +
+      o.emptyPointer +
+      ' editable=' +
+      o.emptyEditable
   )
   // 序列化那条单独再看一眼：判据用**现场序列化**（`ed.storage.markdown.getMarkdown()`），
   // 不用 store 侧的快照（它有一个 debounce，比的是谁更新而不是"文档里到底有什么"）
@@ -1845,11 +2124,16 @@ async function main() {
     /^\$\$\n\n\$\$$/m.test(oSer.replace(/\n$/, '')) &&
       !oSer.includes('Empty Math Block') &&
       !String(oDoc.docText).includes('Empty Math Block'),
-    'hasEmptyBlock=' + /\$\$\n\n\$\$/m.test(oSer) +
-      ' serHasPlaceholder=' + oSer.includes('Empty Math Block') +
-      ' docTextHasPlaceholder=' + String(oDoc.docText).includes('Empty Math Block') +
-      ' blocks=' + JSON.stringify(oDoc.blockSources) +
-      ' around=' + JSON.stringify((oSer.match(/[$]{2}[\\s\\S]{0,14}?[$]{2}/) || ['<none>'])[0])
+    'hasEmptyBlock=' +
+      /\$\$\n\n\$\$/m.test(oSer) +
+      ' serHasPlaceholder=' +
+      oSer.includes('Empty Math Block') +
+      ' docTextHasPlaceholder=' +
+      String(oDoc.docText).includes('Empty Math Block') +
+      ' blocks=' +
+      JSON.stringify(oDoc.blockSources) +
+      ' around=' +
+      JSON.stringify((oSer.match(/[$]{2}[\\s\\S]{0,14}?[$]{2}/) || ['<none>'])[0])
   )
   // 还能接着输入（占位让位、公式画出来）
   await typeChar(app.send, 'x')
@@ -1858,8 +2142,16 @@ async function main() {
   const o4 = JSON.parse(await app.ev(SRC_SNAPSHOT))
   report.check(
     'O4 空框里还能继续输入：敲两个字符后占位消失、源码与文档同步',
-    o4.value === 'xy' && o4.emptyCount === 0 && o4.blockSources[0] === 'xy' && o4.content.includes('xy'),
-    'value=' + JSON.stringify(o4.value) + ' empty=' + o4.emptyCount + ' blocks=' + JSON.stringify(o4.blockSources)
+    o4.value === 'xy' &&
+      o4.emptyCount === 0 &&
+      o4.blockSources[0] === 'xy' &&
+      o4.content.includes('xy'),
+    'value=' +
+      JSON.stringify(o4.value) +
+      ' empty=' +
+      o4.emptyCount +
+      ' blocks=' +
+      JSON.stringify(o4.blockSources)
   )
   // 收起来之后，**非编辑**渲染也要显示占位
   await app.ev(`(() => {
@@ -1876,8 +2168,12 @@ async function main() {
   report.check(
     'O5 收起编辑态后，**非编辑**的块级公式也画占位（框架仍在，观感与 Typora 一致）',
     o5.hasBox === false && o5.emptyRenderedCount === 1 && o5.blockSources[0] === '',
-    'hasBox=' + o5.hasBox + ' renderedEmpty=' + o5.emptyRenderedCount +
-      ' blocks=' + JSON.stringify(o5.blockSources)
+    'hasBox=' +
+      o5.hasBox +
+      ' renderedEmpty=' +
+      o5.emptyRenderedCount +
+      ' blocks=' +
+      JSON.stringify(o5.blockSources)
   )
 
   // ─── P ⑥ 回归 ────────────────────────────────────────────────────────────
@@ -1893,8 +2189,16 @@ async function main() {
       p1.value === (p0.value || '') + 'x' &&
       p1.activeIsTa === true &&
       String(p1.content).includes((p0.value || '') + 'x'),
-    'opened=' + pOpened + ' before=' + JSON.stringify(p0.value) + ' after=' + JSON.stringify(p1.value) +
-      ' activeIsTa=' + p1.activeIsTa + ' types=' + JSON.stringify(p1.docTypes)
+    'opened=' +
+      pOpened +
+      ' before=' +
+      JSON.stringify(p0.value) +
+      ' after=' +
+      JSON.stringify(p1.value) +
+      ' activeIsTa=' +
+      p1.activeIsTa +
+      ' types=' +
+      JSON.stringify(p1.docTypes)
   )
   const pSrcBox = JSON.parse(await app.ev(centerExpr('.md-math-editor__source')))
   await clickPoint(app.send, pSrcBox.right - 3, pSrcBox.bottom - 3)
@@ -1914,8 +2218,321 @@ async function main() {
       p3src.codeBlocks[0].text === 'echo "$HOME"' &&
       p3src.content.includes('\\$5') &&
       p3src.blockSources.length === 1,
-    'codeBlocks=' + JSON.stringify(p3src.codeBlocks) + ' has\\$5=' + p3src.content.includes('\\$5') +
-      ' blocks=' + JSON.stringify(p3src.blockSources)
+    'codeBlocks=' +
+      JSON.stringify(p3src.codeBlocks) +
+      ' has\\$5=' +
+      p3src.content.includes('\\$5') +
+      ' blocks=' +
+      JSON.stringify(p3src.blockSources)
+  )
+
+  // ═══ 第三十三轮（用户第十轮反馈）：Q~T 四段 ═══════════════════════════════
+
+  // ─── Q ① 空公式块的出路：源码框为空时按退格/Delete = 删掉整条公式块 ──────────
+  await openDocWith(app, MD5, 'math-edit-5.md')
+  await waitEditor(app.ev)
+  await sleep(900)
+  const qOpened = await openBlockEditor(app)
+  await pressKey(app, 'a', 'KeyA', 65, 2) // Ctrl+A：选中整段源码
+  await pressKey(app, 'Backspace', 'Backspace', 8) // 删掉选中的源码 ⇒ 空公式（框架保留）
+  await sleep(300)
+  const q0 = JSON.parse(await app.ev(SRC_SNAPSHOT))
+  report.check(
+    'Q1 先把源码清空：**框架保留**（第九轮口径没被本轮改动碰坏）—— 节点还在、容器还开着、值为空',
+    qOpened === true &&
+      q0.hasBox === true &&
+      q0.value === '' &&
+      q0.blockSources.length === 1 &&
+      q0.blockSources[0] === '' &&
+      q0.emptyCount === 1,
+    'opened=' +
+      qOpened +
+      ' hasBox=' +
+      q0.hasBox +
+      ' value=' +
+      JSON.stringify(q0.value) +
+      ' blocks=' +
+      JSON.stringify(q0.blockSources) +
+      ' empty=' +
+      q0.emptyCount
+  )
+  // 留足 750ms 再删：清空源码与删块要落在**两个**历史组里，才好验证"删块只用一步"
+  //（prosemirror-history 的 `newGroupDelay` 是 500ms，挨太近会被并成一步）
+  await sleep(750)
+  await pressKey(app, 'Backspace', 'Backspace', 8) // 空源码里按退格 ⇒ 删整条
+  await sleep(400)
+  const q1 = JSON.parse(await app.ev(SRC_SNAPSHOT))
+  report.check(
+    'Q2 空源码里按**退格** → 删掉整条公式块（节点消失、编辑态收起、序列化里没有它）',
+    q1.hasBox === false && q1.blockSources.length === 0 && !String(q1.freshMarkdown).includes('$$'),
+    'hasBox=' +
+      q1.hasBox +
+      ' blocks=' +
+      JSON.stringify(q1.blockSources) +
+      ' freshHas$$=' +
+      String(q1.freshMarkdown).includes('$$') +
+      ' fresh=' +
+      JSON.stringify(String(q1.freshMarkdown).slice(0, 60))
+  )
+  await pressKey(app, 'z', 'KeyZ', 90, 2) // Ctrl+Z：撤销"删除"这一步
+  await sleep(400)
+  const q2 = JSON.parse(await app.ev(SRC_SNAPSHOT))
+  report.check(
+    'Q3 删除是**一个事务**：一次 Ctrl+Z 只回到"删除之前"那里（空公式框架回来，不是回到有源码的样子）',
+    q2.blockSources.length === 1 &&
+      q2.blockSources[0] === '' &&
+      String(q2.freshMarkdown).includes('$$\n\n$$'),
+    'blocks=' +
+      JSON.stringify(q2.blockSources) +
+      ' fresh=' +
+      JSON.stringify(String(q2.freshMarkdown).slice(0, 60))
+  )
+  await pressKey(app, 'z', 'KeyZ', 90, 2) // 再撤一次：清空源码那一步
+  await sleep(400)
+  const q2b = JSON.parse(await app.ev(SRC_SNAPSHOT))
+  report.check(
+    'Q3b 再撤一次 → 源码原文 `\\frac{a}{b}` 也回来（"删块"本身只占一步：两步撤销刚好回到最初）',
+    q2b.blockSources.length === 1 && q2b.blockSources[0] === '\\frac{a}{b}',
+    'blocks=' + JSON.stringify(q2b.blockSources)
+  )
+  // Delete 是同一语义（对称）
+  await openBlockEditor(app)
+  await pressKey(app, 'a', 'KeyA', 65, 2)
+  await pressKey(app, 'Backspace', 'Backspace', 8)
+  await pressKey(app, 'Delete', 'Delete', 46)
+  await sleep(400)
+  const q3 = JSON.parse(await app.ev(SRC_SNAPSHOT))
+  report.check(
+    'Q4 空源码里按 **Delete** 也是同一语义（删掉整条，不是"什么都不发生"）',
+    q3.hasBox === false && q3.blockSources.length === 0,
+    'hasBox=' + q3.hasBox + ' blocks=' + JSON.stringify(q3.blockSources)
+  )
+  // 整篇只有这一条公式：删掉之后文档仍要合法（补空段落，不能出现空 doc）
+  await openDocWith(app, MD6, 'math-edit-6.md')
+  await waitEditor(app.ev)
+  await sleep(900)
+  const qSoloOpened = await openBlockEditor(app)
+  await pressKey(app, 'a', 'KeyA', 65, 2)
+  await pressKey(app, 'Backspace', 'Backspace', 8)
+  await pressKey(app, 'Backspace', 'Backspace', 8)
+  await sleep(400)
+  const q4 = JSON.parse(await app.ev(SRC_SNAPSHOT))
+  report.check(
+    'Q5 「整篇只剩这一条公式」时删掉它仍**合法**：文档留下一个空段落（不是空 doc、也不抛异常）',
+    qSoloOpened === true &&
+      q4.blockSources.length === 0 &&
+      q4.docTypes.length === 1 &&
+      q4.docTypes[0] === 'paragraph',
+    'opened=' +
+      qSoloOpened +
+      ' blocks=' +
+      JSON.stringify(q4.blockSources) +
+      ' types=' +
+      JSON.stringify(q4.docTypes)
+  )
+
+  /**
+   * Q6/Q7：**光标紧贴块的两端**（在文档里，不在源码框）按退格/Delete。
+   *
+   * 这一路本来就走 PM/Tiptap 的既有路径（实测：一次就删掉整块、`Ctrl+Z` 一步回来，
+   * 与图片那种"先选中再删"不同）——本轮**没有改**它，但用户口径要求"至少覆盖第一种与
+   * 最后一种"，所以钉在这里：以后谁为了改公式（比如给 mathBlock 加 `draggable`、
+   * 改 keymap priority）把这条路弄坏，这里会立刻红。
+   */
+  const paraEdge = (prefix, side) => `(() => {
+    const ps = [...document.querySelectorAll('.md-preview p')]
+    const el = ps.find((x) => x.textContent.startsWith(${JSON.stringify(prefix)}))
+    if (!el) return null
+    const r = el.getBoundingClientRect()
+    return JSON.stringify({ x: Math.round(${side === 'left' ? 'r.left + 2' : 'r.right - 2'}), y: Math.round(r.top + r.height / 2) })
+  })()`
+  await openDocWith(app, MD5, 'math-edit-5d.md')
+  await waitEditor(app.ev)
+  await sleep(900)
+  const q6pos = JSON.parse(await app.ev(paraEdge('下一段', 'left')))
+  await clickAt(app.send, q6pos.x, q6pos.y)
+  await sleep(300)
+  await pressKey(app, 'Home', 'Home', 36)
+  await pressKey(app, 'Backspace', 'Backspace', 8)
+  await sleep(400)
+  const q6 = JSON.parse(await app.ev(SRC_SNAPSHOT))
+  await pressKey(app, 'z', 'KeyZ', 90, 2)
+  await sleep(400)
+  const q6b = JSON.parse(await app.ev(SRC_SNAPSHOT))
+  report.check(
+    'Q6 光标在**块后那一段的行首**按退格 → 同样一次删掉整条公式块，且 `Ctrl+Z` 一步回来',
+    q6.blockSources.length === 0 &&
+      q6b.blockSources.length === 1 &&
+      q6b.blockSources[0] === '\\frac{a}{b}',
+    'afterBackspace=' +
+      JSON.stringify(q6.blockSources) +
+      ' afterUndo=' +
+      JSON.stringify(q6b.blockSources)
+  )
+  await openDocWith(app, MD5, 'math-edit-5e.md')
+  await waitEditor(app.ev)
+  await sleep(900)
+  const q7pos = JSON.parse(await app.ev(paraEdge('上一段', 'right')))
+  await clickAt(app.send, q7pos.x, q7pos.y)
+  await sleep(300)
+  await pressKey(app, 'End', 'End', 35)
+  await pressKey(app, 'Delete', 'Delete', 46)
+  await sleep(400)
+  const q7 = JSON.parse(await app.ev(SRC_SNAPSHOT))
+  report.check(
+    'Q7 光标在**块前那一段的行尾**按 Delete → 也一次删掉整条公式块（两端对称）',
+    q7.blockSources.length === 0,
+    'afterDelete=' + JSON.stringify(q7.blockSources)
+  )
+
+  // ─── R ② 对照项：源码**非空**时退格只删字符 ────────────────────────────────
+  await openDocWith(app, MD5, 'math-edit-5b.md')
+  await waitEditor(app.ev)
+  await sleep(900)
+  const rOpened = await openBlockEditor(app)
+  const r0 = JSON.parse(await app.ev(SRC_SNAPSHOT))
+  await pressKey(app, 'Backspace', 'Backspace', 8)
+  await sleep(300)
+  const r1 = JSON.parse(await app.ev(SRC_SNAPSHOT))
+  report.check(
+    'R1 对照：源码**非空**时退格只删一个字符 —— 块还在、编辑态还开着（没有一刀切删块）',
+    rOpened === true &&
+      r0.value === '\\frac{a}{b}' &&
+      r1.value === '\\frac{a}{b' &&
+      r1.hasBox === true &&
+      r1.blockSources.length === 1 &&
+      r1.blockSources[0] === '\\frac{a}{b',
+    'before=' +
+      JSON.stringify(r0.value) +
+      ' after=' +
+      JSON.stringify(r1.value) +
+      ' hasBox=' +
+      r1.hasBox +
+      ' blocks=' +
+      JSON.stringify(r1.blockSources)
+  )
+
+  // ─── S ③ 逐键敲 `$E=mc^2$`：收尾 `$` 落下那一刻就渲染 ──────────────────────
+  await openDocWith(app, MD7, 'math-edit-7.md')
+  await waitEditor(app.ev)
+  await sleep(900)
+  const sPara = await centerOf(app.ev, '.md-preview p')
+  await clickAt(app.send, sPara.x, sPara.y)
+  await sleep(300)
+  await pressKey(app, 'End', 'End', 35)
+  const sChars = ['$', 'E', '=', 'm', 'c', '^', '2', '$']
+  const timeline = []
+  let sLast = null
+  for (const ch of sChars) {
+    await typeChar(app.send, ch)
+    await sleep(200)
+    sLast = JSON.parse(await app.ev(SRC_SNAPSHOT))
+    timeline.push(sLast.inlineWidgetCount)
+  }
+  report.check(
+    'S1 逐键敲 `$E=mc^2$`：**收尾 `$` 落下的那一刻**就出现行内公式渲染（给出的逐键 widget 时间线只有最后一位变成 1）',
+    timeline.length === 8 &&
+      timeline.slice(0, 7).every((n) => n === 0) &&
+      timeline[7] === 1 &&
+      sLast !== null &&
+      sLast.mathMarkedTexts.length === 1 &&
+      sLast.mathMarkedTexts[0] === '$E=mc^2$',
+    '时间线=' +
+      JSON.stringify(timeline) +
+      ' marked=' +
+      JSON.stringify(sLast && sLast.mathMarkedTexts)
+  )
+  report.check(
+    'S2 立刻渲染出来的那条公式：原文逐字留在文档里、光标停在公式**之后**（没被吞进公式）',
+    sLast !== null &&
+      String(sLast.freshMarkdown).includes('$E=mc^2$') &&
+      sLast.paraTexts.some((t) => t.endsWith('$E=mc^2$')) &&
+      sLast.pmSelName === 'TextSelection',
+    'fresh=' +
+      JSON.stringify(String(sLast && sLast.freshMarkdown).slice(0, 70)) +
+      ' sel=' +
+      (sLast && sLast.pmSelName) +
+      '@' +
+      (sLast && sLast.pmSelFrom)
+  )
+  report.check(
+    'S3 同一套判据：收尾 `$` 前若只有空白/转义或根本没有开括号，**不会**凭空造公式',
+    (() => {
+      const t = sLast
+      // 这条断言是"反面"的：`$E=mc^2$` 之外没有第二个 widget（比如 `$$`、`$ x$` 那种被误判）
+      return t !== null && t.inlineWidgetCount === 1 && t.mathMarkedTexts.length === 1
+    })(),
+    'widgets=' +
+      (sLast && sLast.inlineWidgetCount) +
+      ' marked=' +
+      JSON.stringify(sLast && sLast.mathMarkedTexts)
+  )
+  // 继续输入普通文字：不该被吞进公式（storedMarks 清干净了）
+  await typeChar(app.send, 'x')
+  await typeChar(app.send, 'y')
+  await sleep(300)
+  const sNext = JSON.parse(await app.ev(SRC_SNAPSHOT))
+  report.check(
+    'S4 公式后面继续输入的 `xy` **不进公式**（storedMarks 已清，公式文本仍是 `$E=mc^2$`）',
+    sNext.mathMarkedTexts.length === 1 &&
+      sNext.mathMarkedTexts[0] === '$E=mc^2$' &&
+      sNext.paraTexts.some((t) => t.endsWith('$E=mc^2$xy')),
+    'marked=' + JSON.stringify(sNext.mathMarkedTexts) + ' paras=' + JSON.stringify(sNext.paraTexts)
+  )
+
+  // ─── T ④ 回归：占位仍在（且不在文档里）+ `$$`+回车仍出块并进编辑态 ──────────
+  await openDocWith(app, MD5, 'math-edit-5c.md')
+  await waitEditor(app.ev)
+  await sleep(900)
+  await openBlockEditor(app)
+  await pressKey(app, 'a', 'KeyA', 65, 2)
+  await pressKey(app, 'Backspace', 'Backspace', 8)
+  await sleep(700)
+  const t0 = JSON.parse(await app.ev(SRC_SNAPSHOT))
+  report.check(
+    'T1 回归：空公式仍画 `< Empty Math Block >` 占位，且**序列化里没有这句文案**、空块形态是 `$$\\n\\n$$`',
+    t0.hasBox === true &&
+      t0.emptyCount === 1 &&
+      t0.emptyText === '< Empty Math Block >' &&
+      !String(t0.freshMarkdown).includes('Empty Math Block') &&
+      String(t0.freshMarkdown).includes('$$\n\n$$'),
+    'empty=' +
+      t0.emptyCount +
+      ' text=' +
+      JSON.stringify(t0.emptyText) +
+      ' serHasPlaceholder=' +
+      String(t0.freshMarkdown).includes('Empty Math Block') +
+      ' hasEmptyBlock=' +
+      String(t0.freshMarkdown).includes('$$\n\n$$') +
+      ' fresh=' +
+      JSON.stringify(String(t0.freshMarkdown).slice(0, 80))
+  )
+  await closeEditor(app)
+  await openDocWith(app, MD4, 'math-edit-4d.md')
+  await waitEditor(app.ev)
+  await sleep(900)
+  await newEmptyParagraph(app)
+  await typeChar(app.send, '$')
+  await typeChar(app.send, '$')
+  await sleep(750)
+  await pressKey(app, 'Enter', 'Enter', 13)
+  await sleep(500)
+  const t1 = JSON.parse(await app.ev(SRC_SNAPSHOT))
+  report.check(
+    'T2 回归：空段落里 `$$`+回车 仍能出公式块、**编辑态已打开且焦点在源码框**（第九轮口径没被碰坏）',
+    t1.blockSources.length === 1 &&
+      t1.blockSources[0] === '' &&
+      t1.hasBox === true &&
+      t1.shape === 'block' &&
+      t1.activeIsTa === true,
+    'blocks=' +
+      JSON.stringify(t1.blockSources) +
+      ' hasBox=' +
+      t1.hasBox +
+      ' shape=' +
+      t1.shape +
+      ' activeIsTa=' +
+      t1.activeIsTa
   )
 
   app.close()

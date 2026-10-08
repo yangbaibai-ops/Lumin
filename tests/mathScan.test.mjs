@@ -4,7 +4,11 @@
 // 渲染成乱码数学），或者**该是公式的地方不认**（KaTeX 白装）。所以两边都钉住。
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { matchBlockMath, matchInlineMath } from '../src/renderer/src/lib/mathScan.ts'
+import {
+  matchBlockMath,
+  matchInlineMath,
+  matchInlineMathAtCaret
+} from '../src/renderer/src/lib/mathScan.ts'
 
 const inline = (s) => matchInlineMath(s, s.indexOf('$'))
 
@@ -56,4 +60,33 @@ test('块级公式：没有收尾 `$$` 就不算（按普通文本处理）', ()
 test('块级公式：`$$` 开头的行但不是公式时返回 null', () => {
   assert.equal(matchBlockMath(['$$$ 三块钱'], 0), null, '`$$$` 不是 `$$ ` 开头')
   assert.equal(matchBlockMath(['正文'], 0), null)
+})
+
+// ─── 「刚敲下收尾 `$`」的判定（输入规则用；第十轮）────────────────────────────────
+//
+// 这一层判错的后果同样是具体的：要么"打完 `$E=mc^2$` 什么都不出现"（用户的报障），
+// 要么"输入规则自己发明一套边界"（与解析规则漂开）。所以正反两面都钉。
+test('光标判定：*恰好在收尾 `$` 上*才算命中，下标与原文都要对', () => {
+  assert.deepEqual(matchInlineMathAtCaret('$E=mc^2$'), { from: 0, raw: '$E=mc^2$' })
+  assert.deepEqual(matchInlineMathAtCaret('文字 $x_1$'), { from: 3, raw: '$x_1$' })
+  // 末尾这个 `$` 之前已经没有"还没配过对"的开括号了 ⇒ 不成公式（不会硬把它当收尾）
+  assert.equal(matchInlineMathAtCaret('文字 $x_1$ 尾巴$'), null)
+})
+
+test('光标判定：与解析同口径的左到右配对（前面已配好的那段不算）', () => {
+  // `$a$ b $c$`：收尾 `$` 配的是 `$c`，不是 `$a`
+  assert.deepEqual(matchInlineMathAtCaret('$a$ b $c$'), { from: 6, raw: '$c$' })
+  // 已被吃掉的那一段后面还有开括号、但没闭合 ⇒ 不成公式
+  assert.equal(matchInlineMathAtCaret('$a$ b $c'), null)
+})
+
+test('光标判定：边界与解析规则逐条一致（`\\$` / `$$` / 起始空白 / 收尾后紧跟数字）', () => {
+  assert.equal(matchInlineMathAtCaret('\\$x$'), null, '`\\$` 不是起点')
+  assert.equal(matchInlineMathAtCaret('$$'), null, '`$$` 是块级')
+  assert.equal(matchInlineMathAtCaret('$ x$'), null, '起始 `$` 后不能是空白')
+  assert.equal(matchInlineMathAtCaret('$a$1'), null, '收尾 `$` 后紧跟数字 → 不算')
+  assert.equal(matchInlineMathAtCaret('$E=mc^2'), null, '没有收尾 `$`')
+  assert.equal(matchInlineMathAtCaret('$\nx$'), null, '不跨行')
+  // 与解析同口径：`$5 和 $6$` 这一段在两侧都成立（收尾 `$` 后面没有数字）
+  assert.deepEqual(matchInlineMathAtCaret('$5 和 $6$'), { from: 0, raw: '$5 和 $6$' })
 })

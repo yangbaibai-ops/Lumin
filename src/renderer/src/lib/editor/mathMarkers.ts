@@ -13,12 +13,13 @@
 //
 // 识别规则在 `lib/mathScan.ts`（纯函数，9 条单测）：不跨行、内容非空、闭合 `$` 后不能紧跟数字
 // （否则「价格 $5 和 $6」会被吃成公式 —— 各家编辑器都踩过这个坑）。
-import { Mark, Node } from '@tiptap/core'
+import { InputRule, Mark, Node } from '@tiptap/core'
+import { TextSelection } from '@tiptap/pm/state'
 import katex from 'katex'
 // 显式 .ts：这两个模块要被 tests/mathMarkers.test.mjs 直接加载，而 Node 的 ESM 不做扩展名补全
 // （与本仓库 other 处同一口径，见 shared/defaults.ts 的注释）
 import { escapeHtml } from '../utils/html.ts'
-import { matchBlockMath, matchInlineMath } from '../mathScan.ts'
+import { matchBlockMath, matchInlineMath, matchInlineMathAtCaret } from '../mathScan.ts'
 
 /** KaTeX 渲染成 HTML 字符串。**失败不抛**：公式写错不该让整篇文档崩掉 */
 export function renderMath(source: string, display: boolean): string {
@@ -183,6 +184,54 @@ export const MdMath = Mark.create({
   },
   parseHTML() {
     return [{ tag: 'span[data-md-math]', priority: 60 }]
+  },
+  /**
+   * 「敲下收尾 `$`」的那一刻就把 `$…$` 收成行内公式（第十轮用户口径：
+   * 「依次输入 `$E=mc^2$`，没有行内公式出现」）。
+   *
+   * 为什么非要有这条：`MdMath` 这个 mark **只由 markdown 解析产生**
+   * （`parseHTML` ← `<span data-md-math>` ← `patchMathRules` 插的 markdown-it 规则），
+   * 而 markdown-it 只会在「把一段 markdown 文本读进编辑器」时跑（打开文件 / 粘贴 /
+   * 切面 / 导出回流）——**逐键打字根本不经过它**。对照：`**粗体**` 有
+   * `typoraInlineMarks` 的派生归一化（`appendTransaction`）兜着，所以敲完收尾 `**`
+   * 立刻成型；`$…$` 此前没有对应机制 ⇒ 打完一串仍是纯文本（实测时间线见报告）。
+   *
+   * 判据**复用 `matchInlineMathAtCaret`**（见 mathScan.ts）：与 markdown-it 用同一个
+   * `matchInlineMath`，`\$` 转义 / `$$` / 内容非空 / 不跨行 / 收尾 `$` 后不紧跟数字
+   * 这些边界**不会漂**。输入规则只在「刚敲下的字符是 `$`」时尝试（`view.composing`
+   * 期间 Tiptap 直接跳过输入规则 ⇒ 输入法组字不会被误判）。
+   */
+  addInputRules() {
+    const markType = this.type
+    return [
+      new InputRule({
+        find: /\$$/,
+        handler: ({ state, range }) => {
+          const $caret = state.doc.resolve(range.to)
+          const parent = $caret.parent
+          if (!parent.isTextblock) return null
+          const base = $caret.start()
+          // 光标之前的段落文本 + 刚敲下的那个 `$`（它此刻还**没**进文档）
+          const before = state.doc.textBetween(base, range.to, '\n', '\ufffc') + '$'
+          const hit = matchInlineMathAtCaret(before)
+          if (!hit) return null
+          const from = base + hit.from
+          // 与解析同口径的复核：文档里此刻应当正好是"去掉刚敲那个 `$`"的原文
+          const inDoc = hit.raw.slice(0, -1)
+          if (state.doc.textBetween(from, range.to, '\n', '\ufffc') !== inDoc) return null
+          const { tr } = state
+          tr.replaceWith(from, range.to, state.schema.text(hit.raw, [markType.create()]))
+          // 光标停到公式后面（不进 mark 范围里）
+          tr.setSelection(TextSelection.create(tr.doc, from + hit.raw.length))
+          // ⚠️ 必须清掉 storedMarks：光标贴在带 `mdMath` 的文本右边界时，PM 会沿用该位置的
+          // mark 作为 storedMarks，紧接着输入的字会被**吞进公式里**（与 inputRules.ts 的
+          // 链接规则同一个坑：那边是"Lumin尾巴"整段变成链接文字）。
+          tr.setStoredMarks([])
+          // 事务由 core 的 inputRulesPlugin 统一 dispatch，handler 本身无需返回值
+          return
+        }
+      })
+    ]
   },
   addStorage() {
     return {
