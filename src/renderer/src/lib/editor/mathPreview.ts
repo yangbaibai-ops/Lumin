@@ -28,15 +28,102 @@
 // ⚠️ 编辑区**不是 contenteditable 的后代**：块级容器挂在 NodeView 的 `dom` 上但整棵
 // `contenteditable="false"`；行内浮层挂在编辑区容器上。两者的 textarea 都不参与
 // ProseMirror 的 DOM 观察与光标导航。
+//
+// ─── 第三十一轮：源码区"打不进字 / 点一下就收"的三条真因（都是实测出来的）─────────────
+//
+// ① **块级源码区里的按键被 ProseMirror 抢走**（不是"DOM 重建丢焦点"，那条被实测证伪：
+//    打戳后连敲、连做 5 种事务，textarea 元素与焦点都没动过）。块级编辑容器是**块级
+//    widget**，它的 DOM 就在 `view.dom`（contenteditable 根）**里面** —— 于是 textarea 上的
+//    按键会冒泡到 PM，被 `editHandlers.keypress` 接走：点击原子节点让选区成了 `NodeSelection`
+//    （不是 TextSelection），PM 走的是"把字符插进文档"那一支 —— `tr.insertText(ch)` +
+//    `preventDefault()`。结果是**整条 `$$…$$` 被这个字符替换掉**（文档被改坏），
+//    而且 textarea 一个字符都没收到（`input` 事件根本不发生）。行内浮层挂在
+//    `view.dom.parentElement` 上（PM 之外），所以只有块级出这个问题。
+//    修法：widget 规格加 `stopEvent`（PM 的 `eventBelongsToView` 见到它就整类忽略）
+//    ＋ `ignoreSelection`，与 `codeBlock.ts` 对 CodeMirror 的处置同一套路；
+//    代价是 PM 的历史快捷键也收不到了，所以撤销/重做由源码区**自己派给 PM 的 history**
+//    （与 `CodeBlockView.onCmHistoryKey` 的口径一致）。
+// ② **点源码区就收起**：`blur → closeSession` 把"点 `$$` 行 / 点源码区空白 / 点顶行"
+//    也当成了失焦（那些元素不是 textarea）。修法：非文本框上的 mousedown 一律
+//    `preventDefault()`（焦点根本不离开 → 不触发 blur）并把焦点交回源码框；
+//    blur 本身也改成**下一帧再判定**，焦点仍在容器内就不收起。
+// ③ **公式要高亮**：`<textarea>` 没法只染一部分文本。做法是"镜像层"：透明的输入层
+//    ＋ 同文本的装饰层（见 `mathHighlight.ts` 的模块头，对齐口径见 CSS）。
 import { Extension } from '@tiptap/core'
+import { redo, undo } from '@tiptap/pm/history'
 import { Plugin, PluginKey } from '@tiptap/pm/state'
 import { Decoration, DecorationSet } from '@tiptap/pm/view'
 import type { EditorState } from '@tiptap/pm/state'
 import type { EditorView } from '@tiptap/pm/view'
 import type { Mark, Node as PMNode } from '@tiptap/pm/model'
+import { fillHighlight } from './mathHighlight'
 import { mathRenderInfo } from './mathMarkers'
 
 const mathPreviewKey = new PluginKey<MathPluginState>('lumin-math-preview')
+
+/**
+ * 源码区**自己处理**的事件类型（与 `codeBlock.ts` 给 CodeMirror 的那张表同一套路）。
+ *
+ * 为什么要交给它自己：块级源码区是 PM 的 widget，DOM 就在 contenteditable 根里面 ——
+ * 只要有一个按键冒泡上去，PM 的 keypress / keymap 就会按**文档选区**（点击原子节点得到的
+ * `NodeSelection`）去执行 `tr.insertText(ch)`，把整条 `$$…$$` 换成那个字符（实测：敲一个 `x`，
+ * 公式消失、doc 里多出一个 `x` 段落）。这张表里的类型一律让 PM 视而不见。
+ */
+const MATH_BOX_EVENTS = new Set([
+  'mousedown',
+  'mouseup',
+  'click',
+  'dblclick',
+  'pointerdown',
+  'pointerup',
+  'keydown',
+  'keyup',
+  'keypress',
+  'input',
+  'beforeinput',
+  'cut',
+  'copy',
+  'paste',
+  'compositionstart',
+  'compositionupdate',
+  'compositionend',
+  'touchstart',
+  'touchmove',
+  'touchend'
+])
+
+/**
+ * `Decoration.widget` 的 `stopEvent`：落在源码区（或它的任何子节点）里的事件，PM 不处理。
+ *
+ * 必须是**模块级同一份引用**：`WidgetType.eq` 会用 `compareObjs` 逐个属性比 `spec`，
+ * 每次重绘现造一个闭包会让 spec 永远不相等（见 `blockBoxShape` 的说明）。
+ */
+function stopMathBoxEvents(event: Event): boolean {
+  const target = event.target as HTMLElement | null
+  if (!target || typeof target.closest !== 'function') return false
+  if (!target.closest('[data-md-math-editor]')) return false
+  return MATH_BOX_EVENTS.has(event.type)
+}
+
+/**
+ * 块级编辑容器的 widget 规格**形状**：`side:-2`（排在这个节点之前）+ 对 PM 屏蔽事件
+ * （见 `stopMathBoxEvents`）+ 忽略装饰层内部的选区变化。
+ *
+ * 这里定的是"形状"（逐属性相等即可），真正交给 `Decoration.widget` 的是每个会话在
+ * `MathEditorBase.widgetSpec` 里合成的**同一份对象**：`spec.key` 相等时 `WidgetType.eq`
+ * 直接返回 true，`toDOM` 的引用相等是第二道保险 —— 两道都成立，PM 才不会拆掉 textarea。
+ */
+const blockBoxShape = { side: -2, stopEvent: stopMathBoxEvents, ignoreSelection: true }
+
+/** 行内浮层的 widget 规格形状：浮层挂在 PM 之外，`stopEvent` 用不上 */
+const inlineBoxShape = { side: -1, ignoreSelection: true }
+
+/** `Decoration.widget` 的 spec 里我们用得到的那几项（`key` 由会话实例自己补） */
+type MathWidgetShape = {
+  side?: number
+  stopEvent?: (event: Event) => boolean
+  ignoreSelection?: boolean
+}
 
 /** 一段公式在文档里的位置信息（行内：mark 区间 / 块级：原子节点区间） */
 interface MathHit {
@@ -137,7 +224,16 @@ function buildMathDecorations(doc: PMNode): DecorationSet {
   const decos: Decoration[] = []
   for (const hit of collectMathHits(doc)) {
     if (hit.kind !== 'inline') continue
-    decos.push(Decoration.widget(hit.from, () => mathDom(hit.tex), { side: -1 }))
+    // ⚠️ `key` 是必须的：`WidgetType.eq` 里 `toDOM` 要**引用相等**才复用 DOM，而这里每次
+    // 重算装饰都会现造一个闭包 —— 少了 key，逐键写回会把文档里**每一个**行内公式的渲染
+    // 节点拆掉重造（实测：一次按键里 4 次 added/removed 同一段 `SPAN.md-math-rendered`）。
+    // key 里带 `tex` 是关键的一半：内容变了就必须换 key（否则会复用旧 DOM ⇒ 画面停在旧公式）。
+    decos.push(
+      Decoration.widget(hit.from, () => mathDom(hit.tex), {
+        side: -1,
+        key: `md-math-rendered:${hit.from}:${hit.tex}`
+      })
+    )
     decos.push(Decoration.inline(hit.from, hit.to, { class: 'md-math-source' }))
   }
   return DecorationSet.create(doc, decos)
@@ -248,15 +344,28 @@ function placeBox(box: HTMLElement, anchor: HTMLElement, line: HTMLElement): 'ab
 // ─── 编辑区 DOM（块级 / 行内共用）──────────────────────────────────────────────
 
 /**
- * 造一套编辑区零件：`[bar: 公式 ✓] [source: $$/textarea/$$] [preview]`。
+ * 造一套编辑区零件：
+ * `[bar: 公式 ✓] [source: $$/field(hl+textarea)/$$] [preview]`。
  *
  * 与 Typora 截图对齐的三件事：
  *   1. `$$` 定界符**分列源码上下两行**（不是挤在一行）—— 所以源码区是一个列；
  *   2. 右上角「公式」+ **✓ 按钮**（真 `<button>`：可聚焦、有可访问名；点它 = 收起编辑态）；
  *   3. 源码区在上、渲染区在下（浅灰/白底与分隔线交给 CSS）。
  *
+ * **源码区 = 两层**（第三十一轮起）：`field` 里叠一个装饰层 `<div data-md-math-editor-hl>`
+ * 与一个输入层 `<textarea data-md-math-editor-src>`。输入层的文字是透明的（`caret-color` 单独
+ * 救回插入符），装饰层负责上色 —— 两层的盒模型必须逐像素一致，口径在 overlays.css。
+ * textarea 是**唯一**的输入面：光标、选区、输入法全都走浏览器原生实现，装饰层
+ * `pointer-events:none` + `aria-hidden`，一个事件都不接。
+ *
+ * ⚠️ 装饰层用 `div` 而不是 `pre`：源码区在 `.md-preview` 里面，正文样式里的
+ * `.md-preview pre { padding: 14px 16px }` 会盖掉共享盒模型（实测两层错位 13px）。
+ * 换行规则自己显式写 `white-space: pre`，语义一样。
+ *
  * @param delimiters 是否显示上下 `$$` 行 —— **只有块级给**。行内浮层很窄，
  *   多两行会把"紧凑"这件事毁掉（用户明确要求行内不要占一整行）。
+ * @param showHint 是否生成「Esc」提示 —— **只有行内给**，而且是**只给读屏器**的
+ *   （`aria-describedby` 指向它）：行内浮层要"大气简约"，可见的那点地方留给源码与 ✓。
  */
 function buildEditorParts(
   labels: MathLabels,
@@ -265,6 +374,8 @@ function buildEditorParts(
   box: HTMLElement
   check: HTMLButtonElement
   ta: HTMLTextAreaElement
+  hl: HTMLElement
+  field: HTMLElement
   preview: HTMLElement
 } {
   const box = document.createElement('div')
@@ -294,15 +405,20 @@ function buildEditorParts(
   mark.textContent = '✓'
   check.append(checkText, mark)
   bar.append(check)
-  if (opts.showHint) {
-    const hint = document.createElement('span')
-    hint.className = 'md-math-editor__hint'
-    hint.textContent = labels.esc
-    bar.append(hint)
-  }
 
   const source = document.createElement('div')
   source.className = 'md-math-editor__source'
+
+  // ── 源码区：装饰层（高亮）+ 输入层（透明文字）叠在一起 ──
+  const field = document.createElement('div')
+  field.className = 'md-math-editor__field'
+  field.setAttribute('data-md-math-editor-field', '')
+  const hl = document.createElement('div')
+  hl.className = 'md-math-editor__hl'
+  hl.setAttribute('data-md-math-editor-hl', '')
+  // 装饰层不参与交互、也不进无障碍树（它的文本与输入层逐字相同，读屏读两遍是噪音）
+  hl.setAttribute('aria-hidden', 'true')
+
   const ta = document.createElement('textarea')
   ta.className = 'md-math-editor__src'
   ta.setAttribute('data-md-math-editor-src', '')
@@ -315,6 +431,19 @@ function buildEditorParts(
   // —— 实测软换行会在行尾留一个看不见的空格，还多出一条竖滚动条
   ta.setAttribute('wrap', 'off')
   ta.setAttribute('aria-label', labels.aria)
+  if (opts.showHint) {
+    // 「Esc 收起」只给读屏器（见函数头）：可见的提示会占掉行内浮层本就紧张的地方
+    hintSeq += 1
+    const hint = document.createElement('span')
+    hint.className = 'md-math-editor__hint'
+    hint.setAttribute('data-md-math-editor-hint', '')
+    hint.id = `md-math-hint-${hintSeq}`
+    hint.textContent = labels.esc
+    ta.setAttribute('aria-describedby', hint.id)
+    field.append(hint)
+  }
+  field.append(hl, ta)
+
   if (opts.delimiters) {
     const open = document.createElement('div')
     open.className = 'md-math-editor__delim'
@@ -324,9 +453,9 @@ function buildEditorParts(
     close.className = 'md-math-editor__delim'
     close.setAttribute('data-md-math-editor-delim', 'close')
     close.textContent = '$$'
-    source.append(open, ta, close)
+    source.append(open, field, close)
   } else {
-    source.append(ta)
+    source.append(field)
   }
 
   const preview = document.createElement('div')
@@ -335,8 +464,11 @@ function buildEditorParts(
   preview.setAttribute('contenteditable', 'false')
 
   box.append(bar, source, preview)
-  return { box, check, ta, preview }
+  return { box, check, ta, hl, field, preview }
 }
+
+/** 行内浮层里那个"只给读屏器"的 Esc 提示的 id 序号（`aria-describedby` 要唯一 id） */
+let hintSeq = 0
 
 /** 把 KaTeX 产物画进渲染区，并同步错误态 */
 function renderEditorPreview(
@@ -368,22 +500,44 @@ function renderEditorPreview(
 abstract class MathEditorBase {
   readonly id: number
   readonly dom: HTMLElement
+  /**
+   * 稳定的 `Decoration.widget` 的 `toDOM`（**每个实例一份、永不重建**）。
+   *
+   * 为什么要固定引用：`WidgetType.eq` 在 spec.key 不同的时候会要求 `toDOM` **引用相等**
+   * 才肯复用那段 DOM；每次重绘现造闭包等于告诉 PM"这是新 widget"，于是 textarea 被
+   * 拆掉重插（焦点/选区随之丢失）。挂成实例字段后"同一个会话 ⇒ 同一个 toDOM"成为事实。
+   */
+  readonly toDOM: () => HTMLElement
+  /**
+   * 这个会话**唯一一份** widget 规格（`key` 里带会话 id）。
+   *
+   * `WidgetType.eq` 的第一条判据就是 `spec.key` 相等 ⇒ 同一个会话里无论装饰重算多少次，
+   * PM 都判定"还是那个 widget"，**不重建 DOM** —— textarea 因此不丢焦点、不丢插入符。
+   * `key` 带会话 id 是必要的：换会话（哪怕落在同一个位置）必须换 key，
+   * 否则 PM 会复用一个已经 `destroy()` 掉的旧容器 DOM（新编辑框永远不出现）。
+   */
+  readonly widgetSpec: MathWidgetShape & { key: string }
   protected readonly view: EditorView
   protected readonly labels: MathLabels
   protected readonly ta: HTMLTextAreaElement
+  /** 高亮装饰层（`<pre>`，与 textarea 逐像素对齐；见 mathHighlight.ts 的模块头） */
+  protected readonly hl: HTMLElement
   protected readonly check: HTMLButtonElement
   protected readonly preview: HTMLElement
   /** 正在由本对象回写文档：避免 `input → dispatch → pull` 的自激 */
   private writing = false
   /** 输入法组合中：组合期间不回写（会把中文输入打断成一个个字母） */
   private composing = false
+  /** 已销毁：挂起的 rAF 回调（失焦判定）不能再碰这个对象 */
+  private destroyed = false
 
   constructor(
     view: EditorView,
     id: number,
     labels: MathLabels,
     delimiters: boolean,
-    showHint: boolean
+    showHint: boolean,
+    shape: MathWidgetShape
   ) {
     this.view = view
     this.id = id
@@ -391,11 +545,15 @@ abstract class MathEditorBase {
     const parts = buildEditorParts(labels, { delimiters, showHint })
     this.dom = parts.box
     this.ta = parts.ta
+    this.hl = parts.hl
     this.check = parts.check
     this.preview = parts.preview
+    this.toDOM = () => this.dom
+    this.widgetSpec = { ...shape, key: `md-math-box:${id}` }
 
     this.ta.addEventListener('input', this.onInput)
     this.ta.addEventListener('keydown', this.onKeyDown)
+    this.ta.addEventListener('scroll', this.onScroll)
     this.ta.addEventListener('blur', this.onBlur)
     this.ta.addEventListener('compositionstart', this.onCompositionStart)
     this.ta.addEventListener('compositionend', this.onCompositionEnd)
@@ -403,6 +561,14 @@ abstract class MathEditorBase {
     // 用 `mousedown` 而不是 `click` 是因为 textarea 的 blur 已经会收起编辑态 ——
     // 让收起只发生一次，语义更清楚（内容无论如何都已经写回去了）
     this.check.addEventListener('mousedown', this.onCheckDown)
+    // ── 源码区**任何**位置都不许把编辑态点没（第三十一轮，用户口径）──
+    //
+    // 旧实现只靠"失焦即收起"，而源码区里除了 textarea 还有 `$$` 行、内边距空白、
+    // 顶行 —— 点它们会让 textarea 失焦 ⇒ 编辑态当场消失。这里改成：
+    // 点在**非文本框**的容器区域时 `preventDefault()`（浏览器的焦点转移被取消，
+    // textarea **根本没失焦**），顺手把焦点与插入符留在源码框里。
+    // 点在 textarea 自己身上则不拦（拖动选择文本、点哪儿把光标放哪儿都是原生行为）。
+    this.dom.addEventListener('mousedown', this.onBoxMouseDown)
     // 编辑区里的鼠标动作**不要**冒泡到编辑区根节点（PM 会据此改选区/触发点击语义）
     this.dom.addEventListener('mousedown', (e) => e.stopPropagation())
     this.dom.addEventListener('click', (e) => e.stopPropagation())
@@ -414,9 +580,22 @@ abstract class MathEditorBase {
   /** 子类：更新渲染区（块级一直画；行内只在出错时画） */
   protected abstract paintPreview(tex: string): void
 
-  /** 与文档对齐（源码值 + 渲染区 + 错误态）—— 子类提供"当前文档里的原文" */
+  /**
+   * 与文档对齐（源码值 + 高亮 + 渲染区 + 错误态）—— 子类提供"当前文档里的原文"。
+   *
+   * 三种人会走到"值确实变了"这一支：**撤销/重做**（PM 的历史改回文档）、输入法组合结束、
+   * 以及外部程序化改文档。此时要**尽量保住插入符**：直接赋值会把光标甩到末尾，
+   * 连按 Ctrl+Z 时观感就是"光标乱跳"。
+   */
   pull(tex: string): void {
-    if (!this.writing && this.ta.value !== tex) this.ta.value = tex
+    if (!this.writing && this.ta.value !== tex) {
+      const start = this.ta.selectionStart
+      const end = this.ta.selectionEnd
+      this.ta.value = tex
+      const n = tex.length
+      this.ta.setSelectionRange(Math.min(start, n), Math.min(end, n))
+    }
+    this.paintHighlight()
     this.paintPreview(this.ta.value)
     this.autosize()
   }
@@ -430,14 +609,17 @@ abstract class MathEditorBase {
   detach(): void {
     this.ta.removeEventListener('input', this.onInput)
     this.ta.removeEventListener('keydown', this.onKeyDown)
+    this.ta.removeEventListener('scroll', this.onScroll)
     this.ta.removeEventListener('blur', this.onBlur)
     this.ta.removeEventListener('compositionstart', this.onCompositionStart)
     this.ta.removeEventListener('compositionend', this.onCompositionEnd)
     this.check.removeEventListener('mousedown', this.onCheckDown)
+    this.dom.removeEventListener('mousedown', this.onBoxMouseDown)
   }
 
   /** 销毁：摘监听 + 清自己的 DOM */
   destroy(): void {
+    this.destroyed = true
     this.detach()
     this.dom.remove()
   }
@@ -446,6 +628,30 @@ abstract class MathEditorBase {
   protected autosize(): void {
     this.ta.style.height = 'auto'
     this.ta.style.height = Math.min(this.ta.scrollHeight, 12 * 24) + 'px'
+    this.syncMirrorScroll()
+  }
+
+  /**
+   * 把当前源码画进装饰层（**只改装饰层**：textarea 的 value 与文档一个字符都不动）。
+   * 输入法组字期间也照画 —— 组字期间装饰层是隐藏的（见 onCompositionStart），
+   * 但提前画好，`compositionend` 一撤掉属性就能立刻看到高亮，不会先闪一下无色文本。
+   */
+  protected paintHighlight(): void {
+    fillHighlight(this.hl, this.ta.value)
+    this.syncMirrorScroll()
+  }
+
+  /**
+   * 横向/纵向滚动同步：装饰层要跟着输入层滚，否则长公式一横向滚动两层就错位
+   * （装饰层自己 `overflow: hidden`，但**隐藏的滚动容器照样能被 JS 设 scrollLeft**）。
+   */
+  private syncMirrorScroll(): void {
+    this.hl.scrollTop = this.ta.scrollTop
+    this.hl.scrollLeft = this.ta.scrollLeft
+  }
+
+  private onScroll = (): void => {
+    this.syncMirrorScroll()
   }
 
   /** 编辑区 → 文档（逐键）。文档一变 ⇒ 视图跟着重算 ⇒ 公式原地重画 */
@@ -462,21 +668,50 @@ abstract class MathEditorBase {
   }
 
   private onInput = (): void => {
+    // 装饰层**永远**跟着 value 走（连组字期间也画）：少画一次就会看到"两层文本不一致"
+    this.paintHighlight()
     if (this.writing || this.composing) return
     this.commit()
   }
 
   private onCompositionStart = (): void => {
     this.composing = true
+    // 组字期间**让位给浏览器原生渲染**：输入法候选串由浏览器画在 textarea 上，
+    // 而它的 value 在部分输入法/平台上**不含**组字串 —— 那时镜像层会少一段，
+    // 文字就"看不见了"。所以组字期间把输入层改回正常颜色、把装饰层藏起来，
+    // 组字结束立刻切回高亮（`data-md-math-composing` 由 CSS 消费）。
+    this.dom.setAttribute('data-md-math-composing', '')
   }
 
   private onCompositionEnd = (): void => {
     this.composing = false
+    this.dom.removeAttribute('data-md-math-composing')
+    this.paintHighlight()
     this.commit()
   }
 
-  /** Esc / ✓ = 收起编辑态（**不改内容**）；Tab = 缩进（`\begin{align}` 要能排版） */
+  /**
+   * Esc = 收起（**不改内容**）；Tab = 缩进（`\begin{align}` 要能排版）；
+   * Ctrl/Cmd+Z、Ctrl/Cmd+Y（含 Ctrl+Shift+Z）= 编辑器的全局撤销/重做。
+   *
+   * 为什么撤销要在这里显式派给 PM 的 history：源码区的事件被 `stopEvent` 挡在 PM 之外
+   * （不挡的话按键会被 keypress 的 `insertText` 拿去改文档，见文件头 ①），PM 的历史 keymap
+   * 因此收不到 `Mod-z`。口径与 `CodeBlockView.onCmHistoryKey` 完全一致：
+   * **按键由源码区吃掉，动作交给 PM 的全局历史**，撤完由 `pull()` 把源码框同步回来。
+   */
   private onKeyDown = (e: KeyboardEvent): void => {
+    // 输入法组字中的按键（Esc 取消组字、方向键选候选…）一律交还给输入法
+    if (e.isComposing) return
+    if ((e.ctrlKey || e.metaKey) && !e.altKey) {
+      const k = e.key.length === 1 ? e.key.toLowerCase() : e.key
+      if (k === 'z' || k === 'y') {
+        e.preventDefault()
+        e.stopPropagation()
+        // Ctrl+Y / Ctrl+Shift+Z = 重做（Windows 与 macOS 两种口径都收）
+        this.runHistory(k === 'y' || e.shiftKey)
+        return
+      }
+    }
     if (e.key === 'Escape') {
       e.preventDefault()
       e.stopPropagation()
@@ -493,15 +728,56 @@ abstract class MathEditorBase {
     }
   }
 
+  /**
+   * 一步撤销/重做（PM 的全局历史）。**动作完成后源码框由 `pull()` 同步**；
+   * 历史空（`undo` 返回 false）时什么都不做 —— textarea 的焦点与内容都不动。
+   */
+  private runHistory(wantRedo: boolean): void {
+    if (this.destroyed) return
+    const command = wantRedo ? redo : undo
+    command(this.view.state, this.view.dispatch)
+  }
+
+  /**
+   * 点在容器（不是文本框）上的 mousedown：取消默认的焦点转移。
+   *
+   * 这是"点源码区任何位置都不收起"的**主**修法：焦点压根没离开 textarea，
+   * 也就不存在 blur，收起逻辑连判定机会都没有。
+   */
+  private onBoxMouseDown = (e: MouseEvent): void => {
+    const target = e.target as HTMLElement | null
+    if (!target || typeof target.closest !== 'function') return
+    // ✓ 有自己的 mousedown（收起），别抢
+    if (target.closest('[data-md-math-editor-check]')) return
+    // 文本框（含它内部的滚动条区域）：走原生行为（拖动选文本、点哪放哪）
+    if (target.closest('[data-md-math-editor-src]')) return
+    e.preventDefault()
+    this.ta.focus({ preventScroll: true })
+  }
+
   private onCheckDown = (e: MouseEvent): void => {
     e.preventDefault()
     e.stopPropagation()
     closeSession(this.view)
   }
 
-  /** 失焦也收起，但**保留内容**（内容早就逐个字符实时写进文档了） */
+  /**
+   * 失焦收起，但**下一帧再判定**，且内容保留（内容早就逐个字符实时写进文档了）。
+   *
+   * 为什么要延后：`blur` 只是"焦点离开了 textarea"，并不等于"用户点了外面"——
+   * 点 `$$` 行 / 点源码区空白 / 点顶行都会先触发一次 blur。虽然
+   * `onBoxMouseDown` 已经把主路径（mousedown）堵住了，这里仍留一道**兜底**：
+   * 下一帧如果焦点还落在编辑容器里，就不收起。
+   */
   private onBlur = (): void => {
-    closeSession(this.view)
+    requestAnimationFrame(() => {
+      if (this.destroyed) return
+      // 会话已经换人/已经收起：不要拿旧容器的失焦去关新会话
+      if (mathPreviewKey.getState(this.view.state)?.box !== this) return
+      const active = document.activeElement
+      if (active && this.dom.contains(active)) return
+      closeSession(this.view)
+    })
   }
 }
 
@@ -524,17 +800,13 @@ abstract class MathEditorBase {
  */
 class BlockMathEditor extends MathEditorBase {
   constructor(view: EditorView, id: number, labels: MathLabels, pos: number) {
-    // 块级：给 `$$` 分列上下；`Esc` 提示不给（bar 已经够挤，且 ✓ 是可见出口）
-    super(view, id, labels, true, false)
+    // 块级：给 `$$` 分列上下；`Esc` 提示不给（`aria-describedby` 那份留给行内，
+    // 块级的 bar 已经够挤，且 ✓ 是可见出口）；事件对 PM 屏蔽（见 blockBoxShape）
+    super(view, id, labels, true, false, blockBoxShape)
     this.dom.classList.add('md-math-editor--block')
     this.dom.setAttribute('data-md-math-editor-shape', 'block')
     // 位置锚：套件用它断言"编辑的确实是那一条公式"，不靠坐标猜
     this.dom.setAttribute('data-md-math-editor-pos', String(pos))
-  }
-
-  /** `eq` 恒真：同一个会话里 PM 不重建这个 widget 的 DOM（textarea 因此不丢焦点） */
-  eq(): boolean {
-    return true
   }
 
   /** 随正文流：位置由排版决定，不需要 JS 做事 */
@@ -567,7 +839,7 @@ class InlineMathEditor extends MathEditorBase {
   private hit: MathHit
 
   constructor(view: EditorView, session: MathSession, labels: MathLabels) {
-    super(view, session.id, labels, false, true)
+    super(view, session.id, labels, false, true, inlineBoxShape)
     this.hit = session.active
     this.dom.classList.add('md-math-editor--inline')
     this.dom.setAttribute('data-md-math-editor-shape', 'inline')
@@ -594,11 +866,6 @@ class InlineMathEditor extends MathEditorBase {
 
   setSession(session: MathSession): void {
     this.hit = session.active
-  }
-
-  /** `eq` 恒真：同一个会话里 PM 不重建这个 widget 的 DOM（textarea 因此不丢焦点） */
-  eq(): boolean {
-    return true
   }
 
   /**
@@ -759,6 +1026,9 @@ export function openMathEditor(view: EditorView, hit: MathHit): void {
 
 /** 收起编辑态（Esc / ✓ / 失焦；**保留**已写进文档的内容） */
 export function closeSession(view: EditorView): void {
+  // 视图已经销毁（切文件 / 切模式把编辑器拆了）：再 dispatch 会打到空的 docView 上。
+  // 失焦判定被**延后了一帧**（见 MathEditorBase.onBlur），这个窗口比以前宽，所以显式挡一道。
+  if (view.isDestroyed) return
   if (!mathPreviewKey.getState(view.state)?.active) return
   view.dispatch(
     view.state.tr.setMeta(mathPreviewKey, { session: { kind: 'close' } } satisfies MathSessionMeta)
@@ -852,14 +1122,16 @@ export const MathPreview = Extension.create<{ labels?: Partial<MathLabels> }>({
               // 块级：容器**随正文流**顶替公式原来的位置，同时把那个节点收起来
               //（`.md-math-editing` → `display:none`，见 overlays.css）。
               // `side:-2` = 排在这个节点**之前**（widget 默认会排在节点内容之后）。
+              // ⚠️ 这里交给 PM 的必须是 `box.toDOM` 与 `box.widgetSpec`（**同一份引用**）：
+              // 现造闭包会让 `WidgetType.eq` 判假 ⇒ PM 拆掉容器重插 ⇒ textarea 丢焦点。
               return st.decos.add(state.doc, [
-                Decoration.widget(pos, () => box.dom, { side: -2 }),
+                Decoration.widget(pos, box.toDOM, box.widgetSpec),
                 Decoration.node(pos, active.active.to, { class: 'md-math-editing' })
               ])
             }
             // 行内：**保留**这条公式的渲染 widget（公式照常显示在浮层下面），
             // 只是额外追加一个浮层。绝不把常驻装饰去掉 —— 去掉就成"公式消失"了。
-            return st.decos.add(state.doc, [Decoration.widget(pos, () => box.dom, { side: -1 })])
+            return st.decos.add(state.doc, [Decoration.widget(pos, box.toDOM, box.widgetSpec)])
           },
           handleClick(view, pos, event) {
             const el = event.target as HTMLElement | null

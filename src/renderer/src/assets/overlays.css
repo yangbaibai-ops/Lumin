@@ -170,18 +170,55 @@
   width: 100%;
   max-width: 100%;
 }
-/* ── 行内：固定定位的紧凑浮层（定位由 JS 按 getBoundingClientRect 算）── */
+/* ── 行内：固定定位的紧凑浮层（定位由 JS 按 getBoundingClientRect 算）──
+   第三十一轮按"大气简约"重做：**单行**。
+   块级那套是「上源码 / 下渲染」两段式的竖盒子（随正文流，撑得起那个体量）；
+   行内公式只有几个字符，竖着叠两行 + 一整条顶栏会显得头重脚轻，所以：
+     * 不另起顶栏（✓ 用 `order` 排到源码框右边，同一行）；
+     * 可见的「公式」二字收起来（✓ 自己带可访问名，读屏念的是动作）；
+     * 「Esc 收起」只留给读屏器（`.md-math-editor__hint` 视觉隐藏，见下）；
+     * 只有**出错时**才多出第二行（错误信息），平时就是一个贴着公式的薄盒子。 */
 .md-math-editor--inline {
   position: fixed;
   /* 高于编辑器内的常规浮层，但低于模态/右键菜单（见 theme.css 的 --z-* 令牌表） */
   z-index: var(--z-page);
-  gap: 3px;
-  padding: 4px 5px 5px;
+  /* 单行 + 出错时换行；`align-items: center` 让源码框与 ✓ 在同一条基线上 */
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 4px;
   background: var(--elevate);
   box-shadow: var(--shadow-2);
+  border-radius: 6px;
+}
+/* ✓ 排到源码框后面（DOM 顺序仍是 bar 在前：块级形态要靠它） */
+.md-math-editor--inline .md-math-editor__bar {
+  order: 2;
+  padding: 0;
+  gap: 0;
+}
+.md-math-editor--inline .md-math-editor__source {
+  order: 1;
+  /* `min-width: 0` 是 flex 里让内容能收缩（否则长公式会把浮层顶宽） */
+  flex: 1 1 auto;
+  min-width: 0;
+  gap: 0;
+  padding: 2px 5px;
+  border-radius: 3px;
+}
+/* 行内浮层里不显示「公式」二字：那个位置留给源码（可访问名还在 ✓ 上） */
+.md-math-editor--inline [data-md-math-editor-label] {
+  display: none;
+}
+/* 出错时的渲染区：整条换到第二行 */
+.md-math-editor--inline .md-math-editor__preview {
+  order: 3;
+  flex: 0 0 100%;
 }
 
-/* 顶行：右上角「公式 ✓」（截图里就是"标签 + 勾"，两者都属于同一个可点区域） */
+/* 顶行：右上角「公式 ✓」（截图里就是"标签 + 勾"，两者都属于同一个可点区域）。
+   ⚠️ 这条是**块级**的形态，行内那份被上面的 order/padding 覆盖成单行。 */
 .md-math-editor__bar {
   display: flex;
   align-items: center;
@@ -231,14 +268,19 @@
 .md-math-editor__check:focus-visible [data-md-math-editor-check-mark] {
   color: var(--ink);
 }
-/* 「Esc」提示：只在行内浮层上给（块级的 bar 已经很挤，且块级有 ✓ 这个可见出口） */
+/* 「Esc」提示：**只给读屏器**（`aria-describedby` 指向它）。
+   行内浮层要"大气简约"：可见的那点地方留给源码与 ✓，提示不占位也不用自己画边框
+   （`clip-path` 是"视觉隐藏但仍在无障碍树里"的标准写法）。 */
 .md-math-editor__hint {
-  padding: 0 0.35em;
-  border: 1px solid var(--edge);
-  border-radius: 4px;
-  color: var(--ink-3);
-  font-family: var(--font-mono);
-  font-size: 0.92em;
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  border: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
 }
 
 /* ── 上半：源码区（浅灰底、等宽、`$$` 分列上下）── */
@@ -259,42 +301,108 @@
   line-height: 1.2;
   user-select: none;
 }
-.md-math-editor__src {
-  width: 100%;
+
+/* ── 源码的"两层"（第三十一轮）：装饰层（高亮）+ 输入层（透明文字）──────────────
+   `<textarea>` 没法只染一部分文本，所以着色走**镜像**：
+     * `.md-math-editor__src` 是**真正**接收输入的那一层（光标、选区、输入法都归它），
+       文字设成透明、插入符用 `caret-color` 单独救回来；
+     * `.md-math-editor__hl` 是**同一份文本**的装饰层（`white-space: pre` + 按 token 上色），
+       `pointer-events: none` + `aria-hidden`，不接任何事件。
+   ⚠️ 两层的**字体 / 内边距 / 行高 / 换行 / 宽度**必须逐像素一致（下面这条共享规则），
+      否则高亮会和真实字形错位。JS 侧只负责同步 `scrollLeft/scrollTop`。
+   ⚠️ 选择器**两层前缀**（`.md-math-editor .md-math-editor__hl`）不是啰嗦：源码区在
+      `.md-preview` 里面，而正文样式里有 `.md-preview pre` 这类**元素选择器**
+      （实测把装饰层的 padding 顶成了 14px/16px，两层直接错位 13px）。装饰层因此
+      用 `div` + 显式 `white-space: pre`，并把特异性抬到高于任何 `.md-preview xxx` 规则。 */
+.md-math-editor__field {
+  position: relative;
+  display: block;
+}
+.md-math-editor .md-math-editor__hl,
+.md-math-editor .md-math-editor__src {
   box-sizing: border-box;
+  width: 100%;
+  margin: 0;
+  /* ⚠️ 两层的内边距只能在这里（共享规则）里给：分开写就会错位 */
+  padding: 1px 0;
+  border: none;
+  font-family: var(--font-mono);
+  font-size: 1em;
+  font-weight: inherit;
+  line-height: 1.5;
+  letter-spacing: normal;
+  tab-size: 4;
+  text-align: left;
+  /* `pre` + `wrap="off"`：公式源码**按字符**看着更清楚。
+     软换行会在行尾留一个看不见的空格、还可能竖排成两行（实测多出一条滚动条）。 */
+  white-space: pre;
+  word-break: normal;
+  overflow-wrap: normal;
+}
+/* 装饰层：绝对定位铺满 field，被 textarea 的滚动位置平移（JS 只做这一件事） */
+.md-math-editor .md-math-editor__hl {
+  position: absolute;
+  inset: 0;
+  display: block;
+  overflow: hidden;
+  color: var(--ink);
+  background: transparent;
+  pointer-events: none;
+  user-select: none;
+}
+/* 高亮的四个颜色类：**全部走既有令牌**（`--code-*` 那一族本来就是"代码类文本"的语义色，
+   且 tests/themeTokens.test.mjs 已逐主题钉住"对 --code-bg ≥ 4.5:1" —— 源码区底色正是它） */
+.md-math-editor__hl .md-math-tok--cmd {
+  color: var(--code-key);
+}
+.md-math-editor__hl .md-math-tok--brace {
+  color: var(--code-num);
+}
+.md-math-editor__hl .md-math-tok--num {
+  color: var(--code-str);
+}
+.md-math-editor__hl .md-math-tok--com {
+  color: var(--code-com);
+}
+.md-math-editor__hl .md-math-tok--plain {
+  color: var(--ink);
+}
+.md-math-editor__src {
+  position: relative;
+  display: block;
+  /* ⚠️ 容器上有 `user-select: none`（容器自己的文字不进选区），而 Chromium 里它会**连带
+     禁掉 textarea 内部的拖动选择** —— 源码区必须显式要回来（用户口径：拖动选择源码不许收起） */
+  user-select: text;
+  /* 输入层只负责输入：文字透明（真正可见的字在装饰层里），插入符单独给色 */
+  color: transparent;
+  caret-color: var(--ink);
   /* 块级：按内容自动高（`rows=1` 是下限）；
      行内：单行公式时框要**矮**（用户口径"大小适中"），由 JS 的 autosize 设 height */
   min-height: calc(1.5em + 2px);
   max-height: 12em;
-  padding: 1px 0;
   resize: none;
   overflow-y: auto;
   overflow-x: auto;
-  /* ⚠️ `pre` + `wrap="off"`：公式源码**按字符**看着更清楚。
-     软换行会在行尾留一个看不见的空格、还可能竖排成两行（实测多出一条滚动条）。 */
-  white-space: pre;
-  /* 等宽字体：公式源码按字符对齐才看得清（用户口径"等宽字体"） */
-  font-family: var(--font-mono);
-  /* 与正文同档大小（`1em` = 继承编辑区字号 = `--editor-size`），不另立档位 */
-  font-size: 1em;
-  line-height: 1.5;
-  color: var(--ink);
-  /* 源码区自己就是底色，textarea 不再叠一层边框/底色（与截图一致：整块浅灰） */
   background: transparent;
-  border: none;
   border-radius: 3px;
   outline: none;
   /* 滚动到框的边界后不要把页面继续滚走 */
   overscroll-behavior: contain;
 }
+/* 透明文字之上还要看得见**选区**：给选区一个半透明底，被选中的高亮字形仍然透得出来 */
+.md-math-editor__src::selection {
+  background: color-mix(in srgb, var(--accent) 32%, transparent);
+}
 .md-math-editor__src:focus-visible {
   box-shadow: 0 0 0 2px var(--accent-soft);
 }
-/* 行内浮层里的源码：留一点内边距，免得字符贴边 */
-.md-math-editor--inline .md-math-editor__src {
-  padding: 1px 4px;
-  background: var(--code-bg);
-  border-radius: 3px;
+/* 输入法组字期间：**让位给浏览器原生渲染**（组字串在部分平台不在 value 里，
+   只靠镜像层会显示不全）—— 输入层改回正常颜色，装饰层让位。见 mathPreview.ts */
+.md-math-editor[data-md-math-composing] .md-math-editor__src {
+  color: var(--ink);
+}
+.md-math-editor[data-md-math-composing] .md-math-editor__hl {
+  visibility: hidden;
 }
 
 /* ── 下半：渲染区（居中、留白比正文大）──

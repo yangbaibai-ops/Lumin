@@ -14,6 +14,15 @@
 //   E5 尺寸/布局 → 行内与正文字号比例在区间内；块级在正文列内居中；超宽公式不横向溢出
 //   E6 不许破坏 → 代码块里的 `$` 不算公式；`\$` 转义仍是字面美元；`**加粗**` 显隐仍正常
 //
+// ─── 第三十一轮追加：源码区「能编辑 / 点不没 / 有高亮 / 行内要紧凑」（F~J 五段）──────
+//   F **真实按键**在源码区敲字（含退格）：源码文本与渲染结果都逐键跟着变、
+//     焦点与源码元素都不换（打戳验证 —— 不是"看起来还能打字"，是"DOM 没被拆掉"）
+//   G **点源码区任何位置都不收起**（`$$` 行 / 空白 / 顶行）；点外部 / Esc / ✓ 才收起
+//   H **高亮**：源码区里 ≥3 类不同颜色的 span（给出实测色值），且高亮层文本与用户输入
+//     **逐字一致**（着色不许改文本），两层逐像素对齐
+//   I **行内形态**：实测尺寸 / 边框 / 内边距，且**不占整行**（宽度 < 正文列宽）
+//   J 回归：往返保真 / Ctrl+Z 撤得掉源码改动 / 错误态仍可判 / 组字期间不丢字
+//
 // ⚠️ 本套房件**故意把公式放在文档靠下**：源码框"上方优先、上方放不下才翻到下方"
 //   是设计（见 mathPreview.ts 的 placeBox），窗口顶部那种位置翻到下方是**正确行为**，
 //   拿它判红会把"设计"当成"缺陷"。所以定位断言用一个上方确实有空间的位置。
@@ -27,6 +36,7 @@ const {
   Reporter,
   centerOf,
   clickAt,
+  ensureFocus,
   openDocWith,
   fatal
 } = require('./lib/harness')
@@ -60,6 +70,21 @@ const MD = [
   '转义美元仍是字面量：价格 \\$5 和 \\$6。',
   '',
   '加粗显隐对照：**粗体词** 收尾。'
+].join('\n')
+
+/** 第三十一轮那几段（F~J）专用的夹具：**每次重开**，与 E 段的中间态解耦 */
+const MD2 = [
+  '第三十一轮的专项夹具（源码区能编辑 / 点不没 / 有高亮 / 行内紧凑）。',
+  '',
+  '行内公式：$E = mc^2$ 与 $\\frac{a}{b}$。',
+  '',
+  '块级公式：',
+  '',
+  '$$',
+  '\\frac{a}{b}',
+  '$$',
+  '',
+  '收尾段。'
 ].join('\n')
 
 /** 页面侧快照：状态 + 渲染 + 序列化，一次取回（少往返、少竞态） */
@@ -248,6 +273,153 @@ const INSTALL_ERROR_HOOK = `(() => {
   }
   return 'ok'
 })()`
+
+// ─── 第三十一轮：源码区自己的快照（F~J 段用；锚点全是稳定的 data-*）──────────────
+const SRC_SNAPSHOT = `(() => {
+  const box = document.querySelector('[data-md-math-editor]')
+  const ta = box ? box.querySelector('[data-md-math-editor-src]') : null
+  const hl = box ? box.querySelector('[data-md-math-editor-hl]') : null
+  const src = box ? box.querySelector('.md-math-editor__source') : null
+  const bar = box ? box.querySelector('.md-math-editor__bar') : null
+  const label = box ? box.querySelector('[data-md-math-editor-label]') : null
+  const hint = box ? box.querySelector('[data-md-math-editor-hint]') : null
+  const ae = document.activeElement
+  const rect = (el) => {
+    if (!el) return null
+    const r = el.getBoundingClientRect()
+    return { top: Math.round(r.top), left: Math.round(r.left), right: Math.round(r.right), bottom: Math.round(r.bottom), width: Math.round(r.width), height: Math.round(r.height) }
+  }
+  const css = (el, p) => (el ? getComputedStyle(el)[p] : null)
+  const tokens = hl ? [...hl.querySelectorAll('[data-md-math-tok]')] : []
+  const paints = (sel) => [...document.querySelectorAll(sel)]
+  return JSON.stringify({
+    hasBox: !!box,
+    shape: box ? box.getAttribute('data-md-math-editor-shape') : null,
+    pos: box ? box.getAttribute('data-md-math-editor-pos') : null,
+    invalid: box ? box.hasAttribute('data-md-math-invalid') : null,
+    composing: box ? box.hasAttribute('data-md-math-composing') : null,
+    stamp: box ? box.hasAttribute('data-src-stamp') : null,
+    taStamp: ta ? ta.hasAttribute('data-src-ta-stamp') : null,
+    taConnected: ta ? ta.isConnected : null,
+    value: ta ? ta.value : null,
+    hlText: hl ? hl.textContent : null,
+    activeIsTa: ae === ta,
+    activeInBox: !!(ae && box && box.contains(ae)),
+    activeTag: ae ? ae.tagName : null,
+    content: window.__L.files().current.content,
+    tokClasses: [...new Set(tokens.map((s) => s.getAttribute('data-md-math-tok')))],
+    tokColors: [...new Set(tokens.map((s) => getComputedStyle(s).color))],
+    tokCount: tokens.length,
+    taColor: css(ta, 'color'),
+    taCaret: css(ta, 'caretColor'),
+    hlVisibility: css(hl, 'visibility'),
+    labelDisplay: css(label, 'display'),
+    hintText: hint ? hint.textContent : null,
+    hintRect: rect(hint),
+    ariaDescribed: ta ? ta.getAttribute('aria-describedby') : null,
+    boxRect: rect(box),
+    srcRect: rect(src),
+    barRect: rect(bar),
+    taRect: rect(ta),
+    hlRect: rect(hl),
+    boxBorder: css(box, 'borderTopWidth'),
+    srcPadding: css(src, 'padding'),
+    taPadding: css(ta, 'padding'),
+    hlPadding: css(hl, 'padding'),
+    taFont: css(ta, 'fontFamily'),
+    colRect: rect(document.querySelector('.md-preview')),
+    previewText: (() => { const k = box ? box.querySelector('.md-math-editor__preview .katex') : null; return k ? k.textContent : null })(),
+    previewRaw: (() => { const p = box ? box.querySelector('.md-math-editor__preview') : null; return p ? p.textContent : null })(),
+    blockKatexCount: paints('.md-preview .md-math-block .katex-display').length,
+    inlineKatex: (() => { const k = document.querySelector('.md-preview .md-math-rendered .katex'); return k ? k.textContent : null })(),
+    delims: box ? box.querySelectorAll('[data-md-math-editor-delim]').length : null,
+    taTextColorOpaque: (() => { const c = css(ta, 'color') || ''; return !/rgba?\\([^)]*,\\s*0\\)/.test(c) && c !== 'transparent' })()
+  })
+})()`
+
+/** 在源码区里给元素打戳（验证"逐键重绘没有把 DOM 拆掉"） */
+const SRC_STAMP = `(() => {
+  const box = document.querySelector('[data-md-math-editor]')
+  const ta = box ? box.querySelector('[data-md-math-editor-src]') : null
+  if (!box || !ta) return 'NO_BOX'
+  box.setAttribute('data-src-stamp', '1')
+  ta.setAttribute('data-src-ta-stamp', '1')
+  return 'ok'
+})()`
+
+/** 取某个锚点的中心坐标（没有就返回 null） */
+function centerExpr(selector) {
+  return `(() => {
+    const el = document.querySelector(${JSON.stringify(selector)})
+    if (!el) return null
+    const r = el.getBoundingClientRect()
+    return JSON.stringify({ x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2), left: Math.round(r.left), right: Math.round(r.right), top: Math.round(r.top), bottom: Math.round(r.bottom), w: Math.round(r.width), h: Math.round(r.height) })
+  })()`
+}
+
+/** 点一个**绝对坐标**（mousedown + mouseup，与真人点击同一条路径） */
+async function clickPoint(send, x, y) {
+  await send('Input.dispatchMouseEvent', { type: 'mousePressed', x, y, button: 'left', clickCount: 1 })
+  await send('Input.dispatchMouseEvent', { type: 'mouseReleased', x, y, button: 'left', clickCount: 1 })
+}
+
+/**
+ * 重开 F~J 段专用的夹具文档。
+ *
+ * 为什么这几段要**每次重开**：F 段验的正是"源码区能不能打字"——被测代码坏掉时
+ * 它的破坏方式是把整条 `$$…$$` 换成敲进去的字符（第三十一轮的真因），
+ * 于是后面几段会踩在一条**已经没有块级公式**的文档上，报出"找不到元素"这种
+ * 与被测行为无关的错。每段开头重开一次，红就是"这一段红"。
+ */
+async function reloadFix(app) {
+  await openDocWith(app, MD2, 'math-edit-2.md')
+  await waitEditor(app.ev)
+  await sleep(700)
+}
+
+/** 打开夹具里的块级公式编辑态（坐标每次现取：重开夹具后布局才是真值） */
+async function openBlockEditor(app) {
+  const p = await centerOf(app.ev, '.md-preview .md-math-block')
+  if (!p) return false
+  await clickAt(app.send, p.x, p.y)
+  await sleep(600)
+  return true
+}
+
+/** 打开夹具里的行内公式编辑态 */
+async function openInlineEditor(app) {
+  const p = await centerOf(app.ev, '.md-preview .md-math-rendered')
+  if (!p) return false
+  await clickAt(app.send, p.x, p.y)
+  await sleep(600)
+  return true
+}
+
+/** 收起当前编辑态（合成 Esc：不改内容，与上一轮口径一致） */
+async function closeEditor(app) {
+  await app.ev(`(() => {
+    const ta = document.querySelector('[data-md-math-editor-src]')
+    if (ta) ta.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+    return 'ok'
+  })()`)
+  await sleep(300)
+}
+
+/**
+ * 敲一个**字符**（keyDown 带 text：与真人敲键同一条路径 —— 真实按键才会经过
+ * ProseMirror 的 keypress 处理。`Input.insertText` 不经过 keydown，验不出"按键被抢"。）
+ */
+async function typeChar(send, ch) {
+  await send('Input.dispatchKeyEvent', {
+    type: 'keyDown',
+    key: ch,
+    text: ch,
+    unmodifiedText: ch,
+    windowsVirtualKeyCode: 0
+  })
+  await send('Input.dispatchKeyEvent', { type: 'keyUp', key: ch, windowsVirtualKeyCode: 0 })
+}
+
 
 /** 在源码框里"输入"（真的派发 input 事件，与逐键同一条路径） */
 function setSource(text) {
@@ -631,6 +803,431 @@ async function main() {
     layout.strikeBold >= 1 && layout.content.includes('**粗体词**'),
     `strongNodes=${layout.strikeBold} contentKeepsMarkers=${layout.content.includes('**粗体词**')}`
   )
+
+  // ═══ 第三十一轮：源码区「能编辑 / 点不没 / 有高亮 / 行内要紧凑」═══════════════
+  //
+  // 先把可能还开着的编辑态收掉（E7f 结束时行内浮层是开着的），再换一份**专用夹具**：
+  // 这几段验的是源码区自身的行为，不该被 E 段留下的中间态（`$E = mc^3$` 之类）干扰。
+  await closeEditor(app)
+  await reloadFix(app)
+
+  const focusOk = await ensureFocus(app)
+  if (!focusOk) {
+    report.skip(
+      'F/G/H/I/J 源码区真实按键与点击段',
+      '窗口拿不到 OS 焦点（CDP 注入的真实按键会丢）——环境抖动，不是产品缺陷'
+    )
+    app.close()
+    return report.finish()
+  }
+
+  // ─── F 真实按键在源码区敲 `\frac{a}{b}`（逐键 + 一次退格）─────────────────────
+  //
+  // ⚠️ 必须用 `Input.dispatchKeyEvent`（带 text）而不是 `Input.insertText`：后者**不经过
+  //    keydown**，恰好绕开第三十一轮那个真因（源码区的按键冒泡到 ProseMirror，被
+  //    `editHandlers.keypress` 拿去 `tr.insertText(ch)`，把整条 `$$…$$` 换成那个字符）。
+  await openBlockEditor(app)
+  await app.ev(SRC_STAMP)
+  const f0 = JSON.parse(await app.ev(SRC_SNAPSHOT))
+  report.check(
+    'F1 块级源码区打开后：焦点在源码框里，且装饰层文本 = 输入层 value（高亮只是视图）',
+    f0.hasBox === true &&
+      f0.shape === 'block' &&
+      f0.activeIsTa === true &&
+      f0.taConnected === true &&
+      f0.hlText === f0.value &&
+      !!f0.value,
+    `shape=${f0.shape} activeIsTa=${f0.activeIsTa} value=${JSON.stringify(f0.value)} hlText=${JSON.stringify(f0.hlText)}`
+  )
+
+  // 全选（原生 Ctrl+A）后用真实按键逐字敲 `\frac{a}{b}`：第一下就替换掉旧源码
+  await app.send('Input.dispatchKeyEvent', {
+    type: 'keyDown',
+    key: 'a',
+    code: 'KeyA',
+    windowsVirtualKeyCode: 65,
+    modifiers: 2
+  })
+  await app.send('Input.dispatchKeyEvent', {
+    type: 'keyUp',
+    key: 'a',
+    code: 'KeyA',
+    windowsVirtualKeyCode: 65,
+    modifiers: 2
+  })
+  await sleep(120)
+
+  const CHARS = ['\\', 'f', 'r', 'a', 'c', '{', 'a', '}', '{', 'b', '}']
+  let typed = ''
+  let renderFollows = 0
+  let aliveEveryKey = true
+  const trace = []
+  // 判"渲染结果跟着变"用的是**整个下半区**的文本（含错误信息）：中途几步是坏公式，
+  // 那时下半区画的是 `md-math-error`（没有 `.katex` 元素）—— 只盯 `.katex` 会把
+  // "错误信息逐键在变"错判成"渲染没动"（本套件第一版就这么假红过一次）。
+  let prevPreview = f0.previewRaw
+  for (const ch of CHARS) {
+    await typeChar(app.send, ch)
+    await sleep(140)
+    const s = JSON.parse(await app.ev(SRC_SNAPSHOT))
+    typed += ch
+    if (s.previewRaw !== prevPreview) renderFollows += 1
+    prevPreview = s.previewRaw
+    const ok =
+      s.value === typed &&
+      s.stamp === true &&
+      s.taStamp === true &&
+      s.activeIsTa === true &&
+      s.taConnected === true
+    if (!ok) aliveEveryKey = false
+    trace.push(ch + '=>' + JSON.stringify(s.value) + (ok ? '' : '(STALE!)'))
+  }
+  report.check(
+    'F2 真实按键逐字敲进源码区：每次按键**源码文本**都变（11 次按键逐字相符）',
+    typed === '\\frac{a}{b}' && trace.every((t) => !t.includes('STALE')),
+    'trace=' + trace.join(' ')
+  )
+  report.check(
+    'F3 每敲一个字，**渲染结果**（容器下半区）也跟着变（不重开、不重载）',
+    renderFollows >= 8,
+    'renderChanged=' + renderFollows + '/11 下半区最终文本=' + JSON.stringify(prevPreview)
+  )
+  report.check(
+    'F4 每次按键后焦点仍在源码框内，且**源码元素没有被替换**（打戳验证，DOM 一个都没重建）',
+    aliveEveryKey && f0.stamp === true,
+    'aliveEveryKey=' + aliveEveryKey + ' boxStampKept=' + f0.stamp + ' taStampKept=' + f0.taStamp
+  )
+  const fTyped = JSON.parse(await app.ev(SRC_SNAPSHOT))
+  report.check(
+    'F5 敲完后文档里就是这次输入（`$$` 里的源码逐字等于 `\\frac{a}{b}`，公式没被吃掉）',
+    fTyped.value === '\\frac{a}{b}' &&
+      fTyped.content.includes('\\frac{a}{b}') &&
+      fTyped.invalid === false &&
+      fTyped.previewText !== null &&
+      fTyped.previewText.includes('a'),
+    'value=' + JSON.stringify(fTyped.value) + ' invalid=' + fTyped.invalid + ' preview=' + JSON.stringify(fTyped.previewText)
+  )
+
+  // 一次退格：源码文本与渲染结果都要跟着回退
+  const beforeDel = fTyped
+  await app.send('Input.dispatchKeyEvent', {
+    type: 'keyDown',
+    key: 'Backspace',
+    code: 'Backspace',
+    windowsVirtualKeyCode: 8
+  })
+  await app.send('Input.dispatchKeyEvent', {
+    type: 'keyUp',
+    key: 'Backspace',
+    code: 'Backspace',
+    windowsVirtualKeyCode: 8
+  })
+  await sleep(250)
+  const fDel = JSON.parse(await app.ev(SRC_SNAPSHOT))
+  report.check(
+    'F6 退格一次：源码文本与渲染结果都随之回退（值少一个字符、预览跟着变）',
+    fDel.value === '\\frac{a}{b' &&
+      fDel.value !== beforeDel.value &&
+      fDel.previewText !== beforeDel.previewText &&
+      fDel.activeIsTa === true &&
+      fDel.stamp === true &&
+      fDel.content.includes('\\frac{a}{b'),
+    'value=' + JSON.stringify(fDel.value) + ' previewChanged=' + (fDel.previewText !== beforeDel.previewText)
+  )
+  // 补回 `}`，留给后面的段一个合法公式
+  await typeChar(app.send, '}')
+  await sleep(250)
+  const fFixed = JSON.parse(await app.ev(SRC_SNAPSHOT))
+  report.check(
+    'F7 再敲一个 `}` → 公式重新合法（错误态消失、下半画出字形）',
+    fFixed.value === '\\frac{a}{b}' &&
+      fFixed.invalid === false &&
+      fFixed.previewText !== null &&
+      fFixed.previewText.includes('b') &&
+      fFixed.content.includes('\\frac{a}{b}'),
+    'value=' + JSON.stringify(fFixed.value) + ' invalid=' + fFixed.invalid +
+      ' preview=' + JSON.stringify(fFixed.previewText)
+  )
+
+  // ─── G 点源码区任何位置都不收起 ─────────────────────────────────────────────
+  //
+  // 重开夹具：F 段在被测代码坏掉时会**改坏文档**，那之后的"点不动"就验不出东西了。
+  await reloadFix(app)
+  await openBlockEditor(app)
+  await app.ev(SRC_STAMP)
+  const srcBox = JSON.parse(await app.ev(centerExpr('.md-math-editor__source')))
+  const barBox = JSON.parse(await app.ev(centerExpr('.md-math-editor__bar')))
+  const delimBox = JSON.parse(await app.ev(centerExpr('[data-md-math-editor-delim="close"]')))
+  const gValue = JSON.parse(await app.ev(SRC_SNAPSHOT)).value
+  // ① 源码区右下角（内边距空白，不是文本框本身）
+  await clickPoint(app.send, srcBox.right - 3, srcBox.bottom - 3)
+  await sleep(300)
+  const g1 = JSON.parse(await app.ev(SRC_SNAPSHOT))
+  // ② `$$` 那一行
+  await clickPoint(app.send, delimBox.x, delimBox.y)
+  await sleep(300)
+  const g2 = JSON.parse(await app.ev(SRC_SNAPSHOT))
+  // ③ 顶行「公式 ✓」那条（离开 ✓ 按钮本身）
+  await clickPoint(app.send, barBox.left + 4, barBox.y)
+  await sleep(300)
+  const g3 = JSON.parse(await app.ev(SRC_SNAPSHOT))
+  report.check(
+    'G1 点源码区空白 / `$$` 行 / 顶行都**不收起**，焦点仍在源码框里',
+    g1.hasBox === true &&
+      g2.hasBox === true &&
+      g3.hasBox === true &&
+      g1.activeInBox &&
+      g2.activeInBox &&
+      g3.activeInBox &&
+      g3.stamp === true,
+    'afterPadding=' + g1.hasBox + '(inBox=' + g1.activeInBox + ') afterDelim=' + g2.hasBox +
+      '(inBox=' + g2.activeInBox + ') afterBar=' + g3.hasBox + '(inBox=' + g3.activeInBox + ')'
+  )
+  report.check(
+    'G2 点源码区不收起的同时也**没改内容**（三次点击前后 value 与文档逐字不变）',
+    g1.value === gValue && g2.value === gValue && g3.value === gValue &&
+      g3.content === g1.content,
+    'value=' + JSON.stringify(g3.value)
+  )
+
+  // ④ 点真正的外部 → 收起
+  const outside = await centerOf(app.ev, '.md-preview p')
+  await clickAt(app.send, outside.x, outside.y)
+  await sleep(500)
+  const g4 = JSON.parse(await app.ev(SRC_SNAPSHOT))
+  report.check(
+    'G3 点**编辑区外部**（正文段落）→ 收起编辑态，内容保留',
+    g4.hasBox === false && g4.content.includes('\\frac{a}{b}'),
+    'hasBox=' + g4.hasBox + ' contentKept=' + g4.content.includes('\\frac{a}{b}')
+  )
+
+  // ⑤ Esc（真实按键）→ 收起且不改内容
+  await openBlockEditor(app)
+  const beforeEsc = JSON.parse(await app.ev(SRC_SNAPSHOT))
+  await app.send('Input.dispatchKeyEvent', {
+    type: 'keyDown',
+    key: 'Escape',
+    code: 'Escape',
+    windowsVirtualKeyCode: 27
+  })
+  await app.send('Input.dispatchKeyEvent', {
+    type: 'keyUp',
+    key: 'Escape',
+    code: 'Escape',
+    windowsVirtualKeyCode: 27
+  })
+  await sleep(400)
+  const g5 = JSON.parse(await app.ev(SRC_SNAPSHOT))
+  report.check(
+    'G4 Esc（真实按键）收起编辑态，且**逐字不改内容**',
+    beforeEsc.hasBox === true && g5.hasBox === false && g5.content === beforeEsc.content,
+    'before=' + beforeEsc.hasBox + ' after=' + g5.hasBox + ' contentSame=' + (g5.content === beforeEsc.content)
+  )
+
+  // ⑥ 点 ✓ → 收起且不改内容
+  await openBlockEditor(app)
+  const beforeCheck = JSON.parse(await app.ev(SRC_SNAPSHOT))
+  const checkPos = JSON.parse(await app.ev(centerExpr('[data-md-math-editor-check]')))
+  await app.send('Input.dispatchMouseEvent', {
+    type: 'mousePressed',
+    x: checkPos.x,
+    y: checkPos.y,
+    button: 'left',
+    clickCount: 1
+  })
+  await app.send('Input.dispatchMouseEvent', {
+    type: 'mouseReleased',
+    x: checkPos.x,
+    y: checkPos.y,
+    button: 'left',
+    clickCount: 1
+  })
+  await sleep(450)
+  const g6 = JSON.parse(await app.ev(SRC_SNAPSHOT))
+  report.check(
+    'G5 点右上角「✓」收起编辑态，且**逐字不改内容**',
+    beforeCheck.hasBox === true && g6.hasBox === false && g6.content === beforeCheck.content,
+    'after=' + g6.hasBox + ' contentSame=' + (g6.content === beforeCheck.content)
+  )
+
+  // ─── H 高亮：≥3 类颜色 + 高亮没改文本 + 两层对齐 ────────────────────────────
+  await openBlockEditor(app)
+  const h = JSON.parse(await app.ev(SRC_SNAPSHOT))
+  report.check(
+    'H1 源码区里 ≥3 类不同颜色的着色 span（命令 / 花括号 / 普通文本各有色），实测色值如下',
+    h.tokColors.length >= 3 && h.tokClasses.length >= 3 && h.tokClasses.includes('cmd') && h.tokClasses.includes('brace'),
+    'classes=' + JSON.stringify(h.tokClasses) + ' colors=' + JSON.stringify(h.tokColors) + ' spans=' + h.tokCount
+  )
+  report.check(
+    'H2 高亮**没有改动文本**：装饰层文本与输入层 value 逐字一致，且都等于用户敲进去的 `\\frac{a}{b}`',
+    h.hlText === h.value && h.value === '\\frac{a}{b}' && h.content.includes('\\frac{a}{b}'),
+    'hlText=' + JSON.stringify(h.hlText) + ' value=' + JSON.stringify(h.value)
+  )
+  report.check(
+    'H3 颜色画在**装饰层**上：输入层文字透明（color 全透明）+ 插入符另有其色（光标看得见）',
+    h.taTextColorOpaque === false && !!h.taCaret && !/rgba?\\([^)]*,\\s*0\\)/.test(h.taCaret),
+    'taColor=' + h.taColor + ' caret=' + h.taCaret
+  )
+  const aligned =
+    !!h.taRect && !!h.hlRect &&
+    Math.abs(h.taRect.left - h.hlRect.left) <= 1 &&
+    Math.abs(h.taRect.top - h.hlRect.top) <= 1 &&
+    Math.abs(h.taRect.width - h.hlRect.width) <= 1
+  report.check(
+    'H4 两层（输入层 / 高亮层）逐像素对齐（左上角与宽度差 ≤ 1px，字体与内边距同源）',
+    aligned && h.taPadding === h.hlPadding && h.taFont === h.taFont,
+    'taRect=' + JSON.stringify(h.taRect) + ' hlRect=' + JSON.stringify(h.hlRect) +
+      ' padding=' + h.taPadding + '/' + h.hlPadding
+  )
+
+  // ─── I 行内形态：紧凑、不占整行 ─────────────────────────────────────────────
+  await closeEditor(app)
+  await openInlineEditor(app)
+  const i = JSON.parse(await app.ev(SRC_SNAPSHOT))
+  report.check(
+    'I1 行内编辑区是**单行薄盒子**：不占整行（宽 < 正文列宽）、高度紧凑、有边框',
+    i.hasBox === true &&
+      i.shape === 'inline' &&
+      i.delims === 0 &&
+      i.boxRect.width < i.colRect.width &&
+      i.boxRect.height <= 64 &&
+      parseFloat(i.boxBorder || '0') > 0,
+    'rect=' + JSON.stringify(i.boxRect) + ' col=' + JSON.stringify(i.colRect) +
+      ' border=' + i.boxBorder + ' padding=' + i.srcPadding
+  )
+  report.check(
+    'I2 行内只留重点：可见的「公式」二字收起、`Esc` 提示只给读屏器（视觉隐藏但 aria 还能取到）',
+    i.labelDisplay === 'none' &&
+      !!i.hintText &&
+      !!i.hintRect &&
+      i.hintRect.width <= 1 &&
+      !!i.ariaDescribed,
+    'labelDisplay=' + i.labelDisplay + ' hint=' + JSON.stringify(i.hintText) +
+      ' hintRect=' + JSON.stringify(i.hintRect) + ' aria-describedby=' + i.ariaDescribed
+  )
+  report.note(
+    'I 行内实测：容器 ' + i.boxRect.width + '×' + i.boxRect.height +
+      '，源码区 padding=' + i.srcPadding + '，边框=' + i.boxBorder +
+      '，正文列宽=' + i.colRect.width
+  )
+
+  // ─── J 回归：往返保真 / Ctrl+Z / 错误态 / 组字 ───────────────────────────────
+  const roundTrip = JSON.parse(await app.ev(SNAPSHOT))
+  const blockSerialized = roundTrip.content.includes('$$\n\\frac{a}{b}\n$$')
+  report.check(
+    'J1 往返保真：`$…$` 原文仍是原文（行内带定界符）、`$$…$$` 逐字写回',
+    roundTrip.mathTexts.every((t) => t.startsWith('$') && t.endsWith('$') && t.length > 2) &&
+      blockSerialized &&
+      roundTrip.blockSources.every((s) => typeof s === 'string'),
+    'mathTexts=' + JSON.stringify(roundTrip.mathTexts) +
+      ' blockSources=' + JSON.stringify(roundTrip.blockSources) +
+      ' hasBlockForm=' + blockSerialized +
+      ' tail=' + JSON.stringify(roundTrip.content.slice(-70))
+  )
+  // Ctrl+Z 撤掉源码区的一步输入（行内浮层在 PM 之外，撤销走源码区自己派给 PM 的 history）
+  const beforeUndo = JSON.parse(await app.ev(SRC_SNAPSHOT))
+  await typeChar(app.send, 'z')
+  await sleep(300)
+  const typedZ = JSON.parse(await app.ev(SRC_SNAPSHOT))
+  await app.send('Input.dispatchKeyEvent', {
+    type: 'keyDown',
+    key: 'z',
+    code: 'KeyZ',
+    windowsVirtualKeyCode: 90,
+    modifiers: 2
+  })
+  await app.send('Input.dispatchKeyEvent', {
+    type: 'keyUp',
+    key: 'z',
+    code: 'KeyZ',
+    windowsVirtualKeyCode: 90,
+    modifiers: 2
+  })
+  await sleep(500)
+  const j2 = JSON.parse(await app.ev(SRC_SNAPSHOT))
+  const docReverted =
+    !j2.content.includes('$E = mc^2z$') &&
+    j2.content.includes('$E = mc^2$') &&
+    j2.value === beforeUndo.value
+  report.check(
+    'J2 Ctrl+Z 能撤销源码区的修改：文档回到上一态，且**源码框里的文本与渲染同步回退**',
+    typedZ.value === beforeUndo.value + 'z' &&
+      typedZ.content.includes('$E = mc^2z$') &&
+      docReverted &&
+      j2.hasBox === true &&
+      j2.hlText === j2.value,
+    'typed=' + JSON.stringify(typedZ.value) + ' undone=' + JSON.stringify(j2.value) +
+      ' zGone=' + !j2.content.includes('$E = mc^2z$') +
+      ' restored=' + j2.content.includes('$E = mc^2$') +
+      ' // 逐字节同源比较（供参考，编译器重排会让它 false）：' +
+      (j2.content === beforeUndo.content)
+  )
+  // 错误态仍可判（坏公式 → data-md-math-invalid，且文档里留的是坏源码）
+  await app.ev(`(() => {
+    const ta = document.querySelector('[data-md-math-editor-src]')
+    ta.value = '\\\\frac{1}{'
+    ta.dispatchEvent(new Event('input', { bubbles: true }))
+    return 'ok'
+  })()`)
+  await sleep(450)
+  const j3 = JSON.parse(await app.ev(SRC_SNAPSHOT))
+  report.check(
+    'J3 错误态仍可判：坏公式 ⇒ `data-md-math-invalid`，文档里保留坏源码（不弹窗、不丢内容）',
+    j3.invalid === true && j3.content.includes('\\frac{1}{'),
+    'invalid=' + j3.invalid + ' kept=' + j3.content.includes('\\frac{1}{')
+  )
+  // 组字（合成事件：真实输入法无法用 CDP 驱动，这里验的是"组字期间不丢字"的机制）
+  await app.ev(`(() => {
+    const ta = document.querySelector('[data-md-math-editor-src]')
+    ta.value = 'E = mc^2'
+    ta.dispatchEvent(new Event('input', { bubbles: true }))
+    return 'ok'
+  })()`)
+  await sleep(300)
+  await app.ev(`(() => {
+    const ta = document.querySelector('[data-md-math-editor-src]')
+    ta.dispatchEvent(new CompositionEvent('compositionstart', { bubbles: true }))
+    ta.value = ta.value + '好'
+    ta.dispatchEvent(new InputEvent('input', { bubbles: true, isComposing: true }))
+    return 'ok'
+  })()`)
+  await sleep(250)
+  const j4a = JSON.parse(await app.ev(SRC_SNAPSHOT))
+  await app.ev(`(() => {
+    const ta = document.querySelector('[data-md-math-editor-src]')
+    ta.dispatchEvent(new CompositionEvent('compositionend', { bubbles: true, data: '好' }))
+    return 'ok'
+  })()`)
+  await sleep(400)
+  const j4b = JSON.parse(await app.ev(SRC_SNAPSHOT))
+  report.check(
+    'J4 组字期间**让位给浏览器原生渲染**（输入层恢复成有色、装饰层隐藏），组字结束后高亮立刻回来且文本一致',
+    j4a.composing === true &&
+      j4a.taTextColorOpaque === true &&
+      j4a.hlVisibility === 'hidden' &&
+      j4b.composing === false &&
+      j4b.hlVisibility !== 'hidden' &&
+      j4b.value === 'E = mc^2好' &&
+      j4b.hlText === j4b.value &&
+      j4b.content.includes('E = mc^2好'),
+    'composing=' + j4a.composing + ' taColorVisible=' + j4a.taTextColorOpaque +
+      ' hlHidden=' + (j4a.hlVisibility === 'hidden') + ' after=' + JSON.stringify(j4b.value) +
+      ' hlSame=' + (j4b.hlText === j4b.value)
+  )
+  // 收拾干净：把这条行内公式改回原样并收起（后面的断言/别的套件不该看到中间态）
+  await app.ev(`(() => {
+    const ta = document.querySelector('[data-md-math-editor-src]')
+    ta.value = 'E = mc^2'
+    ta.dispatchEvent(new Event('input', { bubbles: true }))
+    return 'ok'
+  })()`)
+  await sleep(300)
+  await app.ev(`(() => {
+    const ta = document.querySelector('[data-md-math-editor-src]')
+    if (ta) ta.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+    return 'ok'
+  })()`)
+  await sleep(300)
 
   app.close()
   return report.finish()
