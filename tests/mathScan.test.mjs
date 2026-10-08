@@ -7,7 +7,8 @@ import assert from 'node:assert/strict'
 import {
   matchBlockMath,
   matchInlineMath,
-  matchInlineMathAtCaret
+  matchInlineMathAtCaret,
+  scanInlineMathSpans
 } from '../src/renderer/src/lib/mathScan.ts'
 
 const inline = (s) => matchInlineMath(s, s.indexOf('$'))
@@ -89,4 +90,29 @@ test('光标判定：边界与解析规则逐条一致（`\\$` / `$$` / 起始�
   assert.equal(matchInlineMathAtCaret('$\nx$'), null, '不跨行')
   // 与解析同口径：`$5 和 $6$` 这一段在两侧都成立（收尾 `$` 后面没有数字）
   assert.deepEqual(matchInlineMathAtCaret('$5 和 $6$'), { from: 0, raw: '$5 和 $6$' })
+})
+
+// ─── 「这段文本里哪些片段是配平的公式」（第十二轮：归一化 + 渲染切分用）──────────────
+test('配平扫描：只交出**成对**的区间，不配平的部分一律不认', () => {
+  assert.deepEqual(scanInlineMathSpans('$E=mc^2$'), [{ from: 0, to: 8 }])
+  assert.deepEqual(scanInlineMathSpans('前面 $a$ 后面 $b$'), [
+    { from: 3, to: 6 },
+    { from: 10, to: 13 }
+  ])
+  // 用户在公式末尾按删除键删掉收尾 `$` 之后的两种残形：都不是公式
+  assert.deepEqual(scanInlineMathSpans('$E=mc^2'), [], '删掉收尾 $ ⇒ 不配平')
+  assert.deepEqual(scanInlineMathSpans('E=mc^2$'), [], '删掉开头 $ ⇒ 不配平')
+  assert.deepEqual(scanInlineMathSpans('$'), [], '只剩一个 $')
+  assert.deepEqual(scanInlineMathSpans('$$'), [], '$$ 是块级')
+  assert.deepEqual(scanInlineMathSpans('$ x$'), [], '起始 $ 后不能是空白')
+  assert.deepEqual(scanInlineMathSpans('$a$1'), [], '收尾 $ 后紧跟数字 → 不算')
+})
+
+test('配平扫描：相邻的两条公式切得开（`$a$$b$` 是两条，不是一条带 $ 的数学）', () => {
+  assert.deepEqual(scanInlineMathSpans('$a$$b$'), [
+    { from: 0, to: 3 },
+    { from: 3, to: 6 }
+  ])
+  // 中间那条 `$` 被删之后：前半仍是公式，后半退回普通文本（与 markdown-it 一致）
+  assert.deepEqual(scanInlineMathSpans('$a$b$'), [{ from: 0, to: 3 }])
 })

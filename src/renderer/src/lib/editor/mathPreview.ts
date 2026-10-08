@@ -91,6 +91,7 @@ import type { EditorView } from '@tiptap/pm/view'
 import type { Mark, Node as PMNode } from '@tiptap/pm/model'
 import { fillHighlight } from './mathHighlight'
 import { emptyMathDom, mathRenderInfo } from './mathMarkers'
+import { scanInlineMathSpans } from '../mathScan'
 
 const mathPreviewKey = new PluginKey<MathPluginState>('lumin-math-preview')
 
@@ -225,17 +226,26 @@ function collectMathHits(doc: PMNode): MathHit[] {
   const out: MathHit[] = []
   for (const span of merged) {
     const raw = doc.textBetween(span.from, span.to, '')
-    // 原文含定界符（`$…$`），交给 KaTeX 前去掉；内容区间也相应内缩
-    const hasOpen = raw.startsWith('$')
-    const hasClose = raw.endsWith('$') && raw.length > 1
-    out.push({
-      kind: 'inline',
-      from: span.from,
-      to: span.to,
-      innerFrom: hasOpen ? span.from + 1 : span.from,
-      innerTo: hasClose ? span.to - 1 : span.to,
-      tex: hasOpen && hasClose ? raw.slice(1, -1) : raw
-    })
+    /**
+     * 一段 marked 文本里可能有**多条**公式：相邻的 marked 文本节点会被上面的合并逻辑并成一段，
+     * 并起来之后 `$a$` + `$b$` 就成了 `$a$$b$`。按 `scanInlineMathSpans`（与 markdown-it
+     * 同一个配对函数）切出来的区间分别渲染；**切不出区间的部分不是公式**，不交给 KaTeX
+     * —— 改前这里会把带 `$` 的原文直接喂给 KaTeX，屏上就弹
+     * `Can't use function '$' in math mode`（第十二轮用户报的那条）。
+     * 正常情况下"不配平"的 mark 会被 `MdMath` 的归一化摘掉，这里是**第二道保险**。
+     */
+    for (const piece of scanInlineMathSpans(raw)) {
+      const from = span.from + piece.from
+      const to = span.from + piece.to
+      out.push({
+        kind: 'inline',
+        from,
+        to,
+        innerFrom: from + 1,
+        innerTo: to - 1,
+        tex: raw.slice(piece.from + 1, piece.to - 1)
+      })
+    }
   }
 
   doc.descendants((node, pos) => {
@@ -303,6 +313,102 @@ function mathDom(tex: string): HTMLElement {
 /** 位置必须落在文档范围内（`Decoration.widget` 越界会抛） */
 function clamp(pos: number, doc: PMNode): number {
   return Math.max(0, Math.min(pos, doc.content.size))
+}
+
+// ─── 自绘插入符（第十二轮）─────────────────────────────────────────────────────
+
+/**
+ * 光标所在位置若落在**某个行内公式的文本区间**里，返回这段 marked 文本的区间（文档坐标）。
+ *
+ * 为什么需要它：折叠后的原文是 `font-size: 0`（`.md-math-source`，见 overlays.css），
+ * 落在它内部的插入符由这段文本片段的字体度量决定 —— 字号 0 的片段没有行高，实测
+ * `getSelection().getRangeAt(0).getBoundingClientRect().height === 0`：
+ * **原生插入符画不出来**（用户在段落末尾的公式右侧点一下，界面上就是"没有光标"，
+ * 虽然模型里的选区是对的、键盘打进去的字也确实落在正文 —— 见第十二轮报告的实测）。
+ *
+ * 这里的范围**刻意收窄**：只在"位置确实处于行内公式的 marked 文本区间内（含左右两个边界）"
+ * 时才算命中，别的地方一律返回 null ⇒ 其它位置仍然用原生插入符，行为一点不变。
+ *
+ * 实现上只走"光标所在文本块内的相邻文本节点"（不去遍历整篇文档），逐键重绘也不会有额外开销。
+ */
+function inlineMathRunAt(doc: PMNode, pos: number): { from: number; to: number } | null {
+  const $pos = doc.resolve(clamp(pos, doc))
+  if (!$pos.parent.isTextblock) return null
+  const isMarkedText = (node: PMNode | null | undefined): boolean =>
+    !!node && node.isText && !!node.marks.some((m) => m.type.name === 'mdMath')
+  // 位置两侧只要有一侧是带 mark 的文本，就说明光标贴在这段公式上（边界也算）
+  if (!isMarkedText($pos.nodeBefore) && !isMarkedText($pos.nodeAfter)) return null
+  const parent = $pos.parent
+  const index = $pos.index()
+  let from = $pos.pos
+  let to = $pos.pos
+  for (let i = index - 1; i >= 0; i -= 1) {
+    const node = parent.child(i)
+    if (!isMarkedText(node)) break
+    from -= node.nodeSize
+  }
+  for (let i = index; i < parent.childCount; i += 1) {
+    const node = parent.child(i)
+    if (!isMarkedText(node)) break
+    to += node.nodeSize
+  }
+  return to > from ? { from, to } : null
+}
+
+/**
+ * 自绘插入符的 DOM。
+ *
+ * ⚠️ 必须是**模块级同一份引用**（与 `stopMathBoxEvents` 同一个理由）：`WidgetType.eq` 在
+ * `spec.key` 不同的时候要求 `toDOM` **引用相等**才复用 DOM；现造闭包会让 PM 每次重绘都拆掉
+ * 重插，而它正好在光标位置上 —— 拆插会让插入符闪一下（甚至闪烁成两个）。
+ */
+function caretDom(): HTMLElement {
+  const el = document.createElement('span')
+  el.className = 'md-math-caret'
+  el.setAttribute('data-md-math-caret', 'true')
+  el.setAttribute('contenteditable', 'false')
+  return el
+}
+
+/**
+ * 自绘插入符要不要画（**视图级开关**，不进插件 state）。
+ *
+ * 三个条件（用户口径：失焦/窗口不活跃时隐藏、组字期间让原生接管）：
+ *   * 编辑器有焦点（`view.hasFocus()`）；
+ *   * 不在输入法组字中（`view.composing`）；
+ *   * 没有开着的编辑会话（编辑态时焦点在源码框里，正文里不该冒插入符）。
+ * 由 `MathPreviewView` 在 focus / blur / compositionstart / compositionend 时更新并触发一次重绘。
+ */
+interface CaretVisibility {
+  focused: boolean
+  composing: boolean
+}
+
+/**
+ * 需要自绘插入符时给出那一条装饰，否则 `null`。
+ *
+ * 拆成独立函数是为了让"要不要画"这件事一眼可读，也方便和 `CaretVisibility` 的注释对照。
+ */
+function caretDecorations(
+  state: EditorState,
+  active: MathSession | null,
+  box: MathEditorBase | null,
+  caret: CaretVisibility
+): Decoration[] | null {
+  if (!caret.focused || caret.composing) return null
+  // 编辑态开着时焦点在源码框里（`stopEvent` 把正文事件挡住），正文里不该冒插入符
+  if (active && box) return null
+  const sel = state.selection
+  if (!sel.empty) return null
+  const run = inlineMathRunAt(state.doc, sel.from)
+  if (!run) return null
+  return [
+    Decoration.widget(sel.from, caretDom, {
+      // 右边界排到折叠原文**之后**（插入符落在公式右边缘）；其余位置排在之前（左边缘）
+      side: sel.from >= run.to ? 1 : -1,
+      key: `md-math-caret:${sel.from}`
+    })
+  ]
 }
 
 // ─── 文案（由扩展选项从语言包注入）──────────────────────────────────────────────
@@ -1244,6 +1350,12 @@ export const MathPreview = Extension.create<{ labels?: Partial<MathLabels> }>({
   },
   addProseMirrorPlugins() {
     const labels: MathLabels = { ...DEFAULT_LABELS, ...(this.options.labels ?? {}) }
+    /**
+     * 自绘插入符的可见性开关（focus / 组字），由 `MathPreviewView` 维护。
+     * 放闭包里而不是插件 state：它只影响**这一次重绘要不要挂插入符装饰**，
+     * 不需要参与事务、也不该进历史（focus/blur 不是文档变化）。
+     */
+    const caret: CaretVisibility = { focused: false, composing: false }
     return [
       new Plugin<MathPluginState>({
         key: mathPreviewKey,
@@ -1302,7 +1414,21 @@ export const MathPreview = Extension.create<{ labels?: Partial<MathLabels> }>({
             if (!st) return undefined
             const active = st.active
             const box = st.box
-            if (!active || !box) return st.decos
+            /**
+             * 自绘插入符（第十二轮）：**只在原生插入符画不出来的那些位置**补一个 1px 的元素。
+             *
+             * 判据（缺一不可）：
+             *   * 编辑器有焦点、不在组字、也没有开着的编辑会话（见 `CaretVisibility`）；
+             *   * 选区为空（有选区时走原生高亮，别画插入符）；
+             *   * 光标位置落在某段行内公式的 marked 文本区间里（`inlineMathRunAt`）——
+             *     那里的原生插入符高度实测为 0。
+             *
+             * 位置/方向：落在公式**右边界**（`pos === run.to`）时把 widget 排在折叠原文之后
+             *（`side: 1`）⇒ 插入符正好画在公式右边缘；其余位置排在之前（`side: -1`），
+             * 也就是公式左边缘 —— 折叠原文宽 0，这两种就是"公式外面那一格"。
+             */
+            const merged = caretDecorations(state, active, box, caret)
+            if (!active || !box) return merged ? st.decos.add(state.doc, merged) : st.decos
             const pos = clamp(active.active.from, state.doc)
             if (active.kind === 'block') {
               // 块级：容器**随正文流**顶替公式原来的位置，同时把那个节点收起来
@@ -1317,7 +1443,10 @@ export const MathPreview = Extension.create<{ labels?: Partial<MathLabels> }>({
             }
             // 行内：**保留**这条公式的渲染 widget（公式照常显示在浮层下面），
             // 只是额外追加一个浮层。绝不把常驻装饰去掉 —— 去掉就成"公式消失"了。
-            return st.decos.add(state.doc, [Decoration.widget(pos, box.toDOM, box.widgetSpec)])
+            const withBox = st.decos.add(state.doc, [
+              Decoration.widget(pos, box.toDOM, box.widgetSpec)
+            ])
+            return merged ? withBox.add(state.doc, merged) : withBox
           },
           handleClick(view, pos, event) {
             const el = event.target as HTMLElement | null
@@ -1344,7 +1473,7 @@ export const MathPreview = Extension.create<{ labels?: Partial<MathLabels> }>({
             return true
           }
         },
-        view: (view) => new MathPreviewView(view, labels)
+        view: (view) => new MathPreviewView(view, labels, caret)
       })
     ]
   }
@@ -1369,6 +1498,8 @@ class MathPreviewView {
   /** 当前会话是哪种形态（换形态时必须换实例，DOM 结构不同） */
   private sessionKind: 'inline' | 'block' | null = null
   private rafId = 0
+  /** 自绘插入符的可见性开关（与插件的 `props.decorations` 共享同一个对象） */
+  private caret: CaretVisibility
 
   /**
    * 视口动了就把**行内浮层**重新贴回公式上。
@@ -1386,12 +1517,54 @@ class MathPreviewView {
     })
   }
 
-  constructor(view: EditorView, labels: MathLabels) {
+  constructor(view: EditorView, labels: MathLabels, caret: CaretVisibility) {
     this.view = view
     this.labels = labels
+    this.caret = caret
+    // 初始值：视图刚建起来时的焦点/组字态（插件 state 的 init 拿不到 view，所以在这里补）
+    this.caret.focused = view.hasFocus()
+    this.caret.composing = view.composing
     this.sync()
     window.addEventListener('scroll', this.onViewport, true)
     window.addEventListener('resize', this.onViewport)
+    /**
+     * 自绘插入符的可见性：焦点 / 组字变化时更新开关并**逼一次重绘**。
+     *
+     * 为什么是这四个 DOM 事件而不是 PM 的事务钩子：focus/blur/组字都不是文档或选区变化，
+     * 不会有事务经过插件 ⇒ 不主动重绘的话，插入符会留在屏幕上（失焦了还闪）或在组字时
+     * 与原生插入符叠成两条。
+     */
+    for (const type of ['focus', 'blur', 'compositionstart', 'compositionend']) {
+      view.dom.addEventListener(type, this.onCaretFlags)
+    }
+  }
+
+  /**
+   * 焦点/组字变化 → 更新开关 + 重绘一次。
+   *
+   * 用**空事务**逼 PM 重算装饰：`docChanged` / `selectionSet` 都是假 ⇒ prosemirror-history
+   * 不会记步（撤销栈不受影响），也不会触发任何内容回调。
+   */
+  private onCaretFlags = (): void => {
+    if (this.view.isDestroyed) return
+    const focused = this.view.hasFocus()
+    const composing = this.view.composing
+    if (focused === this.caret.focused && composing === this.caret.composing) return
+    this.caret.focused = focused
+    this.caret.composing = composing
+    /**
+     * ⚠️ **编辑态开着时绝不重绘**。
+     *
+     * 源码框是 `view.dom` 的后代，点公式开会话时 `view.dom` 会收到一次 `blur`
+     *（焦点交给了 textarea）—— 此时如果 dispatch 一个空事务逼 PM 重算装饰，PM 会在
+     * "编辑容器刚挂上"的这一刻重排 widget，实测把刚建好的容器 DOM 拆掉重插：
+     * 表现就是**源码框一出现就没了 / 元素变 STALE**（L1 段就是这么红的）。
+     * 而编辑态下正文里本来就不画插入符（`caretDecorations` 会返回 null），
+     * 所以这里直接跳过，装饰集压根不需要变。
+     */
+    const st = mathPreviewKey.getState(this.view.state)
+    if (st?.active || st?.box) return
+    this.view.dispatch(this.view.state.tr)
   }
 
   update(): void {
@@ -1402,6 +1575,9 @@ class MathPreviewView {
     if (this.rafId) cancelAnimationFrame(this.rafId)
     window.removeEventListener('scroll', this.onViewport, true)
     window.removeEventListener('resize', this.onViewport)
+    for (const type of ['focus', 'blur', 'compositionstart', 'compositionend']) {
+      this.view.dom.removeEventListener(type, this.onCaretFlags)
+    }
     this.drop()
   }
 

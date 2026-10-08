@@ -14,12 +14,17 @@
 // 识别规则在 `lib/mathScan.ts`（纯函数，9 条单测）：不跨行、内容非空、闭合 `$` 后不能紧跟数字
 // （否则「价格 $5 和 $6」会被吃成公式 —— 各家编辑器都踩过这个坑）。
 import { InputRule, Mark, Node } from '@tiptap/core'
-import { TextSelection } from '@tiptap/pm/state'
+import { TextSelection, Plugin } from '@tiptap/pm/state'
 import katex from 'katex'
 // 显式 .ts：这两个模块要被 tests/mathMarkers.test.mjs 直接加载，而 Node 的 ESM 不做扩展名补全
 // （与本仓库 other 处同一口径，见 shared/defaults.ts 的注释）
 import { escapeHtml } from '../utils/html.ts'
-import { matchBlockMath, matchInlineMath, matchInlineMathAtCaret } from '../mathScan.ts'
+import {
+  matchBlockMath,
+  matchInlineMath,
+  matchInlineMathAtCaret,
+  scanInlineMathSpans
+} from '../mathScan.ts'
 
 /** KaTeX 渲染成 HTML 字符串。**失败不抛**：公式写错不该让整篇文档崩掉 */
 export function renderMath(source: string, display: boolean): string {
@@ -255,6 +260,63 @@ export const MdMath = Mark.create({
         parse: { setup: (md: unknown) => patchMathRules(md) }
       }
     }
+  },
+  /**
+   * **归一化：带 `mdMath` 但不再配平的文本，把 mark 摘掉**（第十二轮用户口径）。
+   *
+   * 用户场景：`$\frac{1}{2}$` 在**行内公式末尾**按删除键删掉收尾 `$` ⇒ 文档里剩 `$\frac{1}{2}`。
+   * 改前它**仍然带着 `mdMath`**（mark 是文本属性，删字符不会连 mark 一起删），于是渲染层
+   * 把它当公式交给 KaTeX，`tex` 里带着那个前导 `$` ⇒ 屏上弹
+   * `Can't use function '$' in math mode at position 1: $\frac{1}{2}` ✗
+   * —— 这不符合所见即所得：**行内公式必须是一对配平的 `$…$`**，不配平就该**退回普通文本**。
+   *
+   * 判据直接复用 `scanInlineMathSpans`（= `matchInlineMath` 的左到右配对，与 markdown-it
+   * 解析行内公式用的是**同一个函数**）：一段 marked 文本里，**被配平区间覆盖的字符保留 mark**、
+   * **其余字符摘掉 mark**。这样三种情形都对：
+   *   * 删收尾 `$` → `$\frac{1}{2}`：没有任何配平区间 ⇒ 整段摘掉 ✓
+   *   * 删开头 `$` → `\frac{1}{2}$`：同理整段摘掉 ✓
+   *   * 中间被改坏 → `$a$b$`：只保留 `$a$` 上的 mark，`b$` 退回普通文本 ✓
+   *     （markdown-it 对 `$a$b$` 的判定就是"`$a$` 是公式、`b$` 是文本"，口径一致 ✓）
+   *
+   * ⚠️ 与"**语法错**的公式要报错"不冲突：这里只管**配平**（`$` 成对、内容非空、不跨行、
+   * 收尾 `$` 后不紧跟数字）。配平但内容有错（`$\notarealmacro$`）**保留 mark**，
+   * 继续由渲染层用 KaTeX 的 `throwOnError` 显示明确错误态（上一轮的既有口径）。
+   *
+   * 为什么放在 `appendTransaction`（本仓库 `typoraInlineMarks` 也是这个做法）：删字符这类编辑
+   * 不经过任何输入规则，只有在"事务应用之后"统一体检才能保证任何改法都被修好；返回 `null`
+   * 表示没改动 ⇒ PM 不会多记历史（`Ctrl+Z` 的步数与改前一致）。
+   */
+  addProseMirrorPlugins() {
+    const type = this.type
+    return [
+      new Plugin({
+        appendTransaction(trs, _oldState, newState) {
+          // 只有文档真的变过才体检（纯选区/纯装饰事务不进来）
+          if (!trs.some((tr) => tr.docChanged)) return null
+          const tr = newState.tr
+          let touched = false
+          newState.doc.descendants((node, pos) => {
+            if (!node.isText || !node.text) return true
+            if (!node.marks.some((m) => m.type === type)) return true
+            const spans = scanInlineMathSpans(node.text)
+            let cursor = 0
+            for (const span of spans) {
+              if (span.from > cursor) {
+                tr.removeMark(pos + cursor, pos + span.from, type)
+                touched = true
+              }
+              cursor = span.to
+            }
+            if (cursor < node.text.length) {
+              tr.removeMark(pos + cursor, pos + node.text.length, type)
+              touched = true
+            }
+            return true
+          })
+          return touched ? tr : null
+        }
+      })
+    ]
   }
 })
 

@@ -69,6 +69,35 @@ export function matchInlineMathAtCaret(text: string): { from: number; raw: strin
 }
 
 /**
+ * 一段文本里**所有配平的行内公式区间**（左到右、互不重叠，下标相对 `text`）。
+ *
+ * 与 `matchInlineMathAtCaret` 同一套推进方式，只是不做"收尾必须在末尾"的限制 —— 它回答的是
+ * "这段文本里哪些片段是公式"。第十二轮两个地方用它，都是为了让**编辑器行为与 markdown-it
+ * 解析口径一致**：
+ *
+ *   * **归一化**（`MdMath` 的 `appendTransaction`）：带 `mdMath` mark 但不再配平的文本要摘掉
+ *     mark、退回普通文本 —— 用户在公式末尾按删除键把收尾 `$` 删掉后剩下 `$\frac{1}{2}`，
+ *     它**不再是公式**：既不该继续画 KaTeX（更不该弹 "Can't use function '$' in math mode"），
+ *     而打开文件时 markdown-it 本来也只会把它当普通文本；
+ *   * **渲染切分**：相邻的多个 marked 文本节点会被合并成一段（见 mathPreview 的 collectMathHits），
+ *     合并后可能出现 `$a$$b$` 这种"一段里两条公式" —— 按这里切出来的区间分别渲染，
+ *     与解析器（`$a$` + `$b$` 两条）一致，而不是把中间的 `$` 当数学内容喂给 KaTeX。
+ *
+ * @returns 命中区间（含定界符），按起点升序；没有公式时是空数组
+ */
+export function scanInlineMathSpans(text: string): { from: number; to: number }[] {
+  const out: { from: number; to: number }[] = []
+  for (let i = 0; i < text.length; i += 1) {
+    if (text.charCodeAt(i) !== 0x24 /* $ */) continue
+    const hit = matchInlineMath(text, i)
+    if (!hit) continue
+    out.push({ from: i, to: hit.end })
+    i = hit.end - 1
+  }
+  return out
+}
+
+/**
  * 块级公式：从 `startLine` 开始的一行 `$$…`。
  *
  * 两种写法都认：

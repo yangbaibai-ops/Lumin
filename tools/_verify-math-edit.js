@@ -180,6 +180,25 @@ const MD6 = ['$$', '\\frac{a}{b}', '$$'].join('\n')
 /** S 段专用：只有一条段落，逐键打字用 */
 const MD7 = ['打字区：在这里输入。'].join('\n')
 
+/**
+ * 第十二轮（X/Y/Z 段）夹具：段末公式 / 段中公式 / 两条挨着的公式 / 配平但未定义宏的公式。
+ *
+ * 为什么自己一份：①④ 要"段落末尾就是公式"这一格（用户报的那格），② 要一条**普通位置**
+ * 做对照（不该出现自绘插入符），③④ 要能精确删掉开头/中间/收尾的 `$`，⑤ 要一条
+ * "配平但语法错"的公式证明两种情形没被混为一谈。
+ */
+const MD8 = [
+  '第一段：普通文字中间。',
+  '',
+  '第二段：段末公式 $E=mc^2$',
+  '',
+  '第三段：开头公式 $\\frac{1}{2}$ 后面还有字。',
+  '',
+  '第四段：两条 $a$ $b$',
+  '',
+  '第五段：坏公式 $\\notarealmacro$'
+].join('\n')
+
 // ─── 造一张真 PNG（zlib + CRC32，不依赖任何图形库）────────────────────────────
 const CRC_TABLE = (() => {
   const t = new Int32Array(256)
@@ -530,6 +549,21 @@ const SRC_SNAPSHOT = `(() => {
       return a
     })(),
     activeTag: document.activeElement ? document.activeElement.tagName : null,
+    // ── 第三十四轮（X/Y/Z 段）：自绘插入符 / 配平退回普通文本 ──
+    // 自绘插入符元素（每个给宽高；宽 ≥1、高 >0 才算"看得见"）
+    caretWidgets: (() => {
+      const a = []
+      document.querySelectorAll('[data-md-math-caret]').forEach((el) => {
+        const r = el.getBoundingClientRect()
+        a.push({ w: +r.width.toFixed(1), h: +r.height.toFixed(1) })
+      })
+      return a
+    })(),
+    // 行内公式的 KaTeX 渲染数 / 错误态数（配平但语法错才该有错误态）
+    inlineKatexCount: paints('.md-preview .katex').length,
+    mathErrorCount: paints('.md-preview .md-math-error').length,
+    mathErrorTitle: (() => { const e = document.querySelector('.md-preview .md-math-error'); return e ? e.getAttribute('title') : null })(),
+    invalidCount: paints('[data-md-math-invalid]').length,
     // 空公式占位
     emptyCount: box ? box.querySelectorAll('[data-md-math-empty]').length : null,
     emptyText: (() => { const e = box ? box.querySelector('[data-md-math-empty]') : null; return e ? e.textContent : null })(),
@@ -2776,6 +2810,234 @@ async function main() {
       JSON.stringify(w4.paraTexts) +
       ' fresh=' +
       JSON.stringify(String(w4.freshMarkdown).slice(-40))
+  )
+
+  // ═══ 第三十四轮（用户第十二轮反馈）：X~Z 三段 ═══════════════════════════════
+  //
+  // 两条：① "段末公式右边点一下，看不见光标、以为写不进去"（真因是折叠原文 font-size:0
+  // ⇒ 原生插入符高度 0；这一轮补**自绘插入符**）；② 把收尾 `$` 删掉后 `$\frac{1}{2}`
+  // 不再配平，应当**退回普通文本**而不是弹 `Can't use function '$' in math mode`。
+
+  /**
+   * X ①：**段落末尾是公式**这一格 —— 点右侧 + 真实按键敲 3 个字。
+   *
+   * 判据按用户口径：字**真的进文档**（现场序列化 + 段落文本两条），且公式原文一个字不变。
+   */
+  await openDocWith(app, MD8, 'math-edit-12.md')
+  await waitEditor(app.ev)
+  await sleep(900)
+  const xSpans = JSON.parse(await app.ev(SRC_SNAPSHOT)).mathMarkedSpans
+  const xEndSpan = xSpans[0] // 第二段那条（段末公式）
+  const xRect = JSON.parse(
+    await app.ev(`(() => {
+      const el = document.querySelectorAll('.md-preview .md-math-rendered')[0]
+      const r = el.getBoundingClientRect()
+      return JSON.stringify({ right: Math.round(r.right), y: Math.round(r.top + r.height / 2) })
+    })()`)
+  )
+  await clickAt(app.send, xRect.right + 1, xRect.y)
+  await sleep(350)
+  const x0 = JSON.parse(await app.ev(SRC_SNAPSHOT))
+  for (const ch of ['A', 'B', 'C']) await typeChar(app.send, ch)
+  await sleep(350)
+  const x1 = JSON.parse(await app.ev(SRC_SNAPSHOT))
+  report.check(
+    'X1 ① 段末公式：点右侧（原生插入符高度为 0 的那一格）后敲 3 个字 → 字**真的进了文档**，公式原文不变',
+    xEndSpan !== undefined &&
+      x0.pmSelFrom === xEndSpan.to &&
+      x0.marksAtCaret.length === 0 &&
+      x1.mathMarkedTexts[0] === '$E=mc^2$' &&
+      x1.paraTexts[1] === '第二段：段末公式 $E=mc^2$ABC' &&
+      String(x1.freshMarkdown).includes('$E=mc^2$ABC'),
+    'spanTo=' +
+      (xEndSpan && xEndSpan.to) +
+      ' selFrom=' +
+      x0.pmSelFrom +
+      ' marksAtCaret=' +
+      JSON.stringify(x0.marksAtCaret) +
+      ' marked=' +
+      JSON.stringify(x1.mathMarkedTexts) +
+      ' para=' +
+      JSON.stringify(x1.paraTexts[1])
+  )
+
+  /**
+   * Y ②：自绘插入符 —— 该出现的位置可见，普通位置不出现，失焦隐藏。
+   */
+  await openDocWith(app, MD8, 'math-edit-12b.md')
+  await waitEditor(app.ev)
+  await sleep(900)
+  const ySpans = JSON.parse(await app.ev(SRC_SNAPSHOT)).mathMarkedSpans
+  const yRect = JSON.parse(
+    await app.ev(`(() => {
+      const el = document.querySelectorAll('.md-preview .md-math-rendered')[0]
+      const r = el.getBoundingClientRect()
+      return JSON.stringify({ right: Math.round(r.right), y: Math.round(r.top + r.height / 2) })
+    })()`)
+  )
+  await clickAt(app.send, yRect.right + 1, yRect.y)
+  await sleep(400)
+  const y1 = JSON.parse(await app.ev(SRC_SNAPSHOT))
+  report.check(
+    'Y1 ② 段末公式右边界：出现**自绘插入符**（宽 ≥1px、高 >0），且原生插入符高度确实是 0（自绘就是为它补的）',
+    y1.caretWidgets.length === 1 &&
+      y1.caretWidgets[0].w >= 1 &&
+      y1.caretWidgets[0].h > 0 &&
+      y1.caretHeight === 0 &&
+      y1.pmSelFrom === ySpans[0].to,
+    'carets=' +
+      JSON.stringify(y1.caretWidgets) +
+      ' nativeCaretH=' +
+      y1.caretHeight +
+      ' selFrom=' +
+      y1.pmSelFrom +
+      ' spanTo=' +
+      ySpans[0].to
+  )
+  // 对照：普通文字位置不画自绘（那里原生插入符本来是好的）
+  await app.ev(
+    `(() => { const ed = window.__L.ed(); ed.chain().focus().setTextSelection(3).run(); return 'ok' })()`
+  )
+  await sleep(350)
+  const y2 = JSON.parse(await app.ev(SRC_SNAPSHOT))
+  report.check(
+    'Y2 ② 对照：普通文字中间**不出现**自绘插入符（原生插入符高度 >0，行为一点没变）',
+    y2.caretWidgets.length === 0 && y2.caretHeight > 0,
+    'carets=' + JSON.stringify(y2.caretWidgets) + ' nativeCaretH=' + y2.caretHeight
+  )
+  // 失焦 → 自绘隐藏
+  await app.ev(
+    `(() => { const ed = window.__L.ed(); ed.chain().focus().setTextSelection(${ySpans[0].to}).run(); return 'ok' })()`
+  )
+  await sleep(350)
+  const y3 = JSON.parse(await app.ev(SRC_SNAPSHOT))
+  await app.ev(`(() => { window.__L.ed().commands.blur(); return 'ok' })()`)
+  await sleep(400)
+  const y4 = JSON.parse(await app.ev(SRC_SNAPSHOT))
+  report.check(
+    'Y3 ② 失焦后自绘插入符隐藏（重新聚焦再出现）',
+    y3.caretWidgets.length === 1 && y4.caretWidgets.length === 0 && y4.activeTag !== 'DIV',
+    'beforeBlur=' +
+      JSON.stringify(y3.caretWidgets) +
+      ' afterBlur=' +
+      JSON.stringify(y4.caretWidgets) +
+      ' active=' +
+      y4.activeTag
+  )
+
+  /**
+   * Z ③④⑤：不配平 → 退回普通文本（不渲染、不报错）；配平但语法错 → 仍然报错态。
+   */
+  const zBase = async (name) => {
+    await openDocWith(app, MD8, name)
+    await waitEditor(app.ev)
+    await sleep(900)
+    return JSON.parse(await app.ev(SRC_SNAPSHOT))
+  }
+  const putCaretAt = async (posExpr) => {
+    await app.ev(
+      `(() => { const ed = window.__L.ed(); ed.chain().focus().setTextSelection(${posExpr}).run(); return 'ok' })()`
+    )
+    await sleep(280)
+  }
+  let z = await zBase('math-edit-12c.md')
+  // ③a 段末公式：光标在右边界按退格 = 删掉收尾 `$`
+  await putCaretAt(String(z.mathMarkedSpans[0].to))
+  await pressKey(app, 'Backspace', 'Backspace', 8)
+  await sleep(400)
+  const z1 = JSON.parse(await app.ev(SRC_SNAPSHOT))
+  report.check(
+    'Z1 ③ 删掉收尾 `$`（`$E=mc^2$` → `$E=mc^2`）：**退回普通文本** —— 不再带 mdMath、没有 KaTeX 错误、没有 invalid，段落文本与序列化都是字面文本',
+    z1.mathMarkedSpans.length === 4 &&
+      !z1.mathMarkedTexts.includes('$E=mc^2') &&
+      z1.mathErrorCount === 1 && // 只剩第五段那条"配平但未定义宏"的错误态
+      z1.invalidCount === 0 &&
+      z1.paraTexts[1] === '第二段：段末公式 $E=mc^2' &&
+      String(z1.freshMarkdown).includes('第二段：段末公式 $E=mc^2'),
+    'marked=' +
+      JSON.stringify(z1.mathMarkedTexts) +
+      ' errors=' +
+      z1.mathErrorCount +
+      ' invalid=' +
+      z1.invalidCount +
+      ' para=' +
+      JSON.stringify(z1.paraTexts[1])
+  )
+  // ③b 删掉开头 `$`（光标在开头 `$` 之后按退格）
+  z = await zBase('math-edit-12d.md')
+  await putCaretAt(String(z.mathMarkedSpans[1].from + 1))
+  await pressKey(app, 'Backspace', 'Backspace', 8)
+  await sleep(400)
+  const z2 = JSON.parse(await app.ev(SRC_SNAPSHOT))
+  report.check(
+    'Z2 ③ 删掉开头 `$`（`$\\frac{1}{2}$` → `\\frac{1}{2}$`）：同样退回普通文本（不渲染、不报错、无 mark）',
+    z2.mathMarkedSpans.length === 4 &&
+      z2.paraTexts[2].includes('开头公式 \\frac{1}{2}$ 后面还有字。') &&
+      String(z2.freshMarkdown).includes('\\frac{1}{2}$ 后面还有字。'),
+    'marked=' + JSON.stringify(z2.mathMarkedTexts) + ' para=' + JSON.stringify(z2.paraTexts[2])
+  )
+  // ④ 中间那条 `$` 被删：`$a$$b$` → `$a$b$`（前半仍是公式，后半退回普通文本）
+  z = await zBase('math-edit-12e.md')
+  const bSpan = z.mathMarkedSpans[3]
+  await putCaretAt(String(bSpan.from))
+  await pressKey(app, 'Backspace', 'Backspace', 8)
+  await sleep(400)
+  const z3a = JSON.parse(await app.ev(SRC_SNAPSHOT))
+  await putCaretAt(String(z3a.mathMarkedSpans[2].from + 3))
+  await pressKey(app, 'Delete', 'Delete', 46)
+  await sleep(400)
+  const z3 = JSON.parse(await app.ev(SRC_SNAPSHOT))
+  report.check(
+    'Z3 ④ 中间那个 `$` 被删（`$a$$b$` → `$a$b$`）：前半 `$a$` 仍是公式，后半 `b$` 退回普通文本，且无错误节点',
+    z3a.paraTexts[3] === '第四段：两条 $a$$b$' &&
+      z3.paraTexts[3] === '第四段：两条 $a$b$' &&
+      z3.mathMarkedTexts.includes('$a$') &&
+      !z3.mathMarkedTexts.includes('b$') &&
+      z3.mathErrorCount === 1,
+    'afterSpace=' +
+      JSON.stringify(z3a.paraTexts[3]) +
+      ' afterDollar=' +
+      JSON.stringify(z3.paraTexts[3]) +
+      ' marked=' +
+      JSON.stringify(z3.mathMarkedTexts) +
+      ' errors=' +
+      z3.mathErrorCount
+  )
+  // ④b 删到只剩一个 `$`
+  z = await zBase('math-edit-12f.md')
+  await putCaretAt(String(z.mathMarkedSpans[4].to))
+  for (let i = 0; i < 3; i += 1) await pressKey(app, 'Backspace', 'Backspace', 8)
+  await sleep(400)
+  const z4 = JSON.parse(await app.ev(SRC_SNAPSHOT))
+  report.check(
+    'Z4 ④ 配平公式被删到只剩一个 `$`：整段退回普通文本（没有 KaTeX 错误、没有 invalid）',
+    z4.mathMarkedSpans.length === 4 &&
+      z4.mathErrorCount === 0 &&
+      z4.invalidCount === 0 &&
+      z4.paraTexts[4].startsWith('第五段：坏公式 $'),
+    'marked=' +
+      JSON.stringify(z4.mathMarkedTexts) +
+      ' errors=' +
+      z4.mathErrorCount +
+      ' invalid=' +
+      z4.invalidCount +
+      ' para=' +
+      JSON.stringify(z4.paraTexts[4])
+  )
+  // ⑤ 对照：配平但未定义宏 → 仍然显示明确错误态（不静默降级）
+  z = await zBase('math-edit-12g.md')
+  report.check(
+    'Z5 ⑤ 对照：`$\\notarealmacro$`（配平、但未定义宏）**仍然**进错误态（标题里带 Undefined control sequence），mark 也保留',
+    z.mathErrorCount === 1 &&
+      !!z.mathErrorTitle &&
+      z.mathErrorTitle.includes('Undefined control sequence') &&
+      z.mathMarkedTexts.includes('$\\notarealmacro$'),
+    'errors=' +
+      z.mathErrorCount +
+      ' title=' +
+      JSON.stringify(z.mathErrorTitle) +
+      ' marked=' +
+      JSON.stringify(z.mathMarkedTexts)
   )
 
   app.close()
