@@ -136,36 +136,102 @@
   font-size: 0.9em;
 }
 
-/* ── 公式源码编辑框（点击公式 → 公式**上方**）──────────────────────────────
-   它是 `position: fixed` 的浮层，**不占正文流**：出现/收起都不挤动下面的内容
-   （这是"布局不跳动"的关键）。定位由 JS 按 `getBoundingClientRect` 算（见 mathPreview.ts），
-   这里只管外观。 */
+/* ── 公式的编辑态（第三十轮按 Typora 截图重做）──────────────────────────────
+   截图形态（用户附的 Typora 块级公式编辑态）：**一个带细边框的容器**，
+   上半 = 浅灰底的**源码区**（等宽字体，`$$` 分列源码上下两行，右上角「公式 ✓」标签），
+   下半 = 白底的**渲染区**（居中，留白比正文大），两部分之间有一条分隔线。
+
+   两种形态共用一套配色/圆角/边框语言，差别只在**摆放**：
+     * `.md-math-editor--block`：**随正文流**（是 `mathBlock` 的 NodeView 内容），
+       上下有外边距、宽度占满正文列 —— 与截图一致；
+     * `.md-math-editor--inline`：**固定定位的紧凑浮层**（挂在编辑区容器上）。
+       行内公式本来就只有几个字符，套用整块容器会撑破那一行、把句子拆开，
+       所以它保留"浮在公式上方"的形态，只把**配色/边框/圆角/label**统一过来。
+
+   ⚠️ 颜色、圆角、阴影、间距**一律走既有令牌**：`themeTokens` / `visualScale` / `zIndexStack`
+   三个守卫盯着，新造硬编码色或新字号都会被判红。 */
 .md-math-editor {
+  /* 容器：白底 + 细边框 + 小圆角（与截图一致；浅色下 --paper 是纯白） */
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+  background: var(--paper);
+  border: 1px solid var(--edge);
+  border-radius: 4px;
+  font-family: var(--font-sans);
+  /* 容器自己的文字不进选区（源码区里的 textarea 照常可选） */
+  user-select: none;
+}
+
+/* ── 块级：随正文流 ── */
+.md-math-editor--block {
+  margin: 1.1em 0;
+  /* 与截图一致：容器占满正文列，源码与渲染都在里面 */
+  width: 100%;
+  max-width: 100%;
+}
+/* ── 行内：固定定位的紧凑浮层（定位由 JS 按 getBoundingClientRect 算）── */
+.md-math-editor--inline {
   position: fixed;
   /* 高于编辑器内的常规浮层，但低于模态/右键菜单（见 theme.css 的 --z-* 令牌表） */
   z-index: var(--z-page);
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  padding: 5px 7px 6px;
-  box-sizing: border-box;
+  gap: 3px;
+  padding: 4px 5px 5px;
   background: var(--elevate);
-  border: 1px solid color-mix(in srgb, var(--accent) 45%, var(--edge));
-  border-radius: 9px;
   box-shadow: var(--shadow-2);
-  font-family: var(--font-sans);
 }
-.md-math-editor__label {
+
+/* 顶行：右上角「公式 ✓」（截图里就是"标签 + 勾"，两者都属于同一个可点区域） */
+.md-math-editor__bar {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  /* 界面尺度的小字档：与工具栏/气泡菜单同一档（token 见 theme.css 的 @theme） */
+  justify-content: flex-end;
+  gap: 6px;
+  padding: 3px 5px;
   font-size: var(--text-ui-sm);
   line-height: 1.4;
-  color: var(--ink-2b);
-  user-select: none;
+  color: var(--ink-3);
 }
+/* ✓ 是**真的按钮**（可聚焦、有可访问名）：点它收起编辑态，等价于 Esc */
+.md-math-editor__check {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 5px;
+  min-height: 18px;
+  border: none;
+  border-radius: 3px;
+  background: transparent;
+  color: var(--ink-3);
+  font: inherit;
+  font-size: var(--text-ui-sm);
+  cursor: pointer;
+}
+.md-math-editor__check [data-md-math-editor-label] {
+  color: var(--ink-2b);
+}
+.md-math-editor__check [data-md-math-editor-check-mark] {
+  /* 勾比标签重一点，像截图那样能一眼看到"这里能收" */
+  color: var(--ink-2b);
+  font-size: 1.05em;
+}
+.md-math-editor__check:hover {
+  background: var(--accent-soft);
+  color: var(--ink);
+}
+.md-math-editor__check:hover [data-md-math-editor-label],
+.md-math-editor__check:hover [data-md-math-editor-check-mark] {
+  color: var(--ink);
+}
+.md-math-editor__check:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--accent-soft);
+}
+.md-math-editor__check:focus-visible [data-md-math-editor-label],
+.md-math-editor__check:focus-visible [data-md-math-editor-check-mark] {
+  color: var(--ink);
+}
+/* 「Esc」提示：只在行内浮层上给（块级的 bar 已经很挤，且块级有 ✓ 这个可见出口） */
 .md-math-editor__hint {
   padding: 0 0.35em;
   border: 1px solid var(--edge);
@@ -174,54 +240,118 @@
   font-family: var(--font-mono);
   font-size: 0.92em;
 }
+
+/* ── 上半：源码区（浅灰底、等宽、`$$` 分列上下）── */
+.md-math-editor__source {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 5px 8px;
+  background: var(--code-bg);
+  border-radius: 4px 4px 0 0;
+  cursor: text;
+}
+/* `$$` 定界符行：与截图一致地**分列源码上下**（不是挤在一行） */
+.md-math-editor__delim {
+  color: var(--ink-3);
+  font-family: var(--font-mono);
+  font-size: 0.92em;
+  line-height: 1.2;
+  user-select: none;
+}
 .md-math-editor__src {
   width: 100%;
   box-sizing: border-box;
-  /* 单行公式时框要**矮**（用户口径"大小适中"）：`rows=1` 的 1 行 + 内边距
-     （`1.55 × 1em` 行高 + 上下各 5px），再高就会把公式挤下去一截 */
-  min-height: calc(1.55em + 10px);
+  /* 块级：按内容自动高（`rows=1` 是下限）；
+     行内：单行公式时框要**矮**（用户口径"大小适中"），由 JS 的 autosize 设 height */
+  min-height: calc(1.5em + 2px);
   max-height: 12em;
-  padding: 5px 7px;
+  padding: 1px 0;
   resize: none;
   overflow-y: auto;
   overflow-x: auto;
-  /* ⚠️ `pre` + `wrap="off"`：公式源码**按字符**看着更清楚（`\int_0^1 x^2\,dx = \frac{1}{3}`
-     在默认软换行下会在行尾留一个看不见的空格、还可能竖排成两行 —— 实测会多出一条滚动条）。
-     自动换行会让"一行长公式"看起来像断句，`pre` 只横向滚，语义上更接近 LaTeX 源。
-     配合自动高（见 mathPreview.ts 的 autosize）：行数变多时框会长高。 */
+  /* ⚠️ `pre` + `wrap="off"`：公式源码**按字符**看着更清楚。
+     软换行会在行尾留一个看不见的空格、还可能竖排成两行（实测多出一条滚动条）。 */
   white-space: pre;
   /* 等宽字体：公式源码按字符对齐才看得清（用户口径"等宽字体"） */
   font-family: var(--font-mono);
-  /* 与正文同档大小（`1em` = 继承编辑区字号 = `--editor-size`），不再另立一档 */
+  /* 与正文同档大小（`1em` = 继承编辑区字号 = `--editor-size`），不另立档位 */
   font-size: 1em;
-  line-height: 1.55;
+  line-height: 1.5;
   color: var(--ink);
-  background: var(--panel);
-  border: 1px solid var(--edge);
-  border-radius: 6px;
+  /* 源码区自己就是底色，textarea 不再叠一层边框/底色（与截图一致：整块浅灰） */
+  background: transparent;
+  border: none;
+  border-radius: 3px;
   outline: none;
   /* 滚动到框的边界后不要把页面继续滚走 */
   overscroll-behavior: contain;
 }
-.md-math-editor__src:focus {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 3px var(--accent-soft);
+.md-math-editor__src:focus-visible {
+  box-shadow: 0 0 0 2px var(--accent-soft);
 }
-/* 错误态：**红框**而不是弹窗/红字墙 —— "明确但不打断"
-   （公式本身仍由 KaTeX 在框外画着，文档也没被弄脏）。
-   `data-md-math-invalid` 由 mathPreview.ts 按**真实的 KaTeX 产物**置位（认 `katex-error`），
-   不靠正则猜公式合不合法。 */
-.md-math-editor[data-md-math-invalid] .md-math-editor__src {
-  border-color: color-mix(in srgb, var(--danger) 65%, var(--edge));
+/* 行内浮层里的源码：留一点内边距，免得字符贴边 */
+.md-math-editor--inline .md-math-editor__src {
+  padding: 1px 4px;
+  background: var(--code-bg);
+  border-radius: 3px;
 }
+
+/* ── 下半：渲染区（居中、留白比正文大）──
+   底色用 `--panel-2` 压一点点：截图里公式自己还有一层浅底，与上半的 `--code-bg`
+   区分开、又都能看出是"这个容器里的两块"。刻意**不**用第二层边框 —— 那会变成
+   "卡片里套卡片"，与截图的"一个整体容器"不符。 */
 .md-math-editor__preview {
-  padding: 4px 6px 2px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  /* 与截图一致：上下留白比正文段落大一些 */
+  padding: 1.05em 10px;
   overflow-x: auto;
   overflow-y: hidden;
-  font-size: 0.95em;
+  font-size: 0.98em;
   color: var(--ink);
   background: var(--panel-2);
-  border-radius: 6px;
+  border-top: 1px solid var(--edge);
+  border-radius: 0 0 3px 3px;
+}
+/* KaTeX 的 display 包裹自带 margin，这里由容器统一给留白 */
+.md-math-editor__preview .katex-display {
+  margin: 0;
+}
+/* 行内浮层里的渲染区：紧凑（块级的下半是"公式本身"，行内只在出错时才有这一块，
+   所以底色改用 --elevate 与浮层一致，只是轻轻压一层） */
+.md-math-editor--inline .md-math-editor__preview {
+  justify-content: flex-start;
+  padding: 3px 5px;
+  font-size: 0.95em;
+  background: var(--elevate);
+  border-top: none;
+  border-radius: 4px;
+}
+
+/* 错误态：**红框**而不是弹窗/红字墙 —— "明确但不打断"
+   （文档没被弄脏）。`data-md-math-invalid` 由 mathPreview.ts 按**真实的 KaTeX 结果**置位
+   （`throwOnError:true` 接住后置位），不靠正则猜公式合不合法。 */
+.md-math-editor[data-md-math-invalid] .md-math-editor__source {
+  background: color-mix(in srgb, var(--danger) 7%, var(--code-bg));
+}
+.md-math-editor[data-md-math-invalid] .md-math-editor__preview {
+  color: var(--danger);
+}
+.md-math-editor__preview .md-math-error {
+  color: var(--danger);
+  font-family: var(--font-mono);
+  font-size: 0.9em;
+}
+.md-math-error {
+  color: var(--danger);
+  font-family: var(--font-mono);
+  font-size: 0.9em;
+}
+/* 编辑中的块级公式：原渲染节点被容器取代，这里把它收起来（不是删，收起即恢复） */
+.md-preview .md-math-block.md-math-editing {
+  display: none;
 }
 
 

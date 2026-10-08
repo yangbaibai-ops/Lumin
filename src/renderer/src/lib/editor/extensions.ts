@@ -274,15 +274,20 @@ export const editorExtensions: Extensions = [
  * 组装编辑器扩展集：把「打开链接」「文档目录」这类应用级行为注入内核，同时保持顺序不变
  * （顺序即注册顺序，不能改动）。宿主不传 onOpenLink 时退化为「只开浏览器」。
  *
- * 公式源码框的三段文案也在这一层从语言包取（**内核不认识 i18n**，见 mathPreview.ts 的说明）：
+ * 公式编辑态的文案也在这一层从语言包取（**内核不认识 i18n**，见 mathPreview.ts 的说明）：
  * 每次组装都现取，所以切语言后重建编辑器（切文件/切模式）就会跟着换。
  */
 export function buildEditorExtensions(options: EditorExtensionOptions = {}): Extensions {
   documentDirProvider = options.getDocumentDir ?? ((): string | null => null)
   remoteImageProvider = options.getRemoteImagePolicy ?? ((): RemoteImagePolicy => 'click')
   const mathLabels = {
-    inline: i18n.global.t('editor.mathSource'),
-    block: i18n.global.t('editor.mathSourceBlock'),
+    // 可见标签（Typora 截图里右上角那个「公式」）
+    label: i18n.global.t('editor.mathSource'),
+    // 容器/编辑区的**可访问名**（比可见标签更具体：说清这是"公式源码"）
+    aria: i18n.global.t('editor.mathSourceBlock'),
+    // ✓ 按钮的可访问名
+    check: i18n.global.t('editor.mathCheck'),
+    // 行内浮层上的「Esc」提示
     esc: i18n.global.t('editor.mathEscHint')
   }
   return editorExtensions.map((e) => {

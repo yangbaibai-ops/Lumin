@@ -1,42 +1,33 @@
-// ─── 行内公式的渲染 + 「点击公式 → 上方可编辑源码框」────────────────────────────
+// ─── 公式的渲染 + 编辑态（点击公式 → 就能改源码，逐键实时渲染）────────────────────
 //
-// 为什么用**装饰**而不是自定义节点：模型里公式的原文必须留在文档里（`$E = mc^2$` 就是一个
-// 带 `MdMath` mark 的文本节点），序列化才能逐字写回。渲染成公式是**视图**的事 ——
-// 正好是 ProseMirror 装饰的适用场景。
+// 为什么用**装饰 / NodeView** 而不是自定义文本节点：模型里公式的原文必须留在文档里
+// （行内是带 `MdMath` mark 的文本节点，块级是 `attrs.source`），序列化才能逐字写回。
+// 渲染与编辑都只是**视图**的事 —— 正好是 ProseMirror 装饰 / NodeView 的适用场景。
 //
-// 这套 prosemirror-view（1.42）的 `Decoration` 只提供 `widget` / `inline` / `node`
-// （**没有** `replace`），所以「行内公式显示成公式而不是 `$…$`」用两步拼出来：
-//   1. `Decoration.widget(from, …)` 在公式起点插入 KaTeX 渲染结果（`contenteditable=false`）；
-//   2. `Decoration.inline(from, to, { class: 'md-math-source' })` 给原文加个类，
-//      CSS 把它折叠掉（`font-size: 0`）—— 与行内标记（`.md-marker`）同一套手法：
-//      **不用 `display: none`**，因为那会破坏浏览器的光标导航。
+// ─── 两种形态（第三十轮按 Typora 截图重做）──────────────────────────────────────
+// 截图里的块级编辑态是**一个带细边框的容器**：上半浅灰底源码区（等宽、`$$` 分列上下、
+// 右上角「公式 ✓」），下半白底渲染区（居中、留白比正文大）。所以：
 //
-// ⚠️ 铁律（改这个文件前先读）：**只要公式没有被编辑，1 与 2 必须成对出现**。
-// 少了 1 就只剩一段被折叠掉的文本 —— 屏幕上**什么都没有**（公式"消失"）。
+//   * **块级** = `mathBlock` 的 NodeView 内容，**随正文流**排布（见 mathMarkers.ts 的
+//     `addNodeView`）。编辑时原渲染结果被容器取代，收起即恢复。
+//     为什么不做成浮层：块级编辑区要占一整块还带上下留白，浮层会盖住正文；
+//     而且"随流"意味着它天然就在公式原来那个位置，不需要算坐标。
+//   * **行内** = **固定定位的紧凑浮层**（挂在编辑区容器上）。行内公式只有几个字符，
+//     套整块容器会撑破那一行、把句子拆开（用户明确要求"不要让行内公式占一整行"），
+//     所以它保留"浮在公式上方"的形态，只把**配色/边框/圆角/标签**与块级统一。
 //
-// ─── 交互（第二十九轮按用户口径重做）───────────────────────────────────────────
-// 用户原话：「点击公式时，会在公式**上方**展示公式的源码（可编辑），像 Typora 一样，
-// 可以编辑公式实时渲染，大小适中、布局合理。」
+// ─── 交互语义 ──────────────────────────────────────────────────────────────────
+//   * **永远不会**因为光标靠近而变样 —— 公式恒为渲染态（除了正在编辑的那一条）；
+//   * **点击公式** → 进入编辑态；
+//   * **逐键实时渲染**：每敲一个字符 dispatch 一次 ⇒ 文档里的 `$…$`/`source` 立即更新
+//     ⇒ 渲染区（块级是容器下半、行内是框外那条公式）**原地**重画；
+//   * **Esc** / 右上角 **✓ 按钮** = 收起编辑态，**不改内容**（内容早已实时写进文档）；
+//   * **失焦** = 也收起（同样保留内容）；
+//   * **源码清空**（`''`）= **删除这条公式**（行内连 `$` 定界符一起删，块级删整个节点）。
 //
-// 所以本轮的语义是**显式**的，不再靠"光标靠近"推断。旧实现（「光标落进公式就露出 `$…$`」）
-// 有两个毛病，正好都是用户要修的：
-//   ① 在公式旁边打字会把它变成源码 → 看着像闪烁、还引起整段布局跳动；
-//   ② 源码只是**原地**把 `$…$` 露出来，不是"上方一个可编辑的框"，跟 Typora 不一样。
-//
-// 现在的口径：
-//   * **永远不会**因为光标靠近而变样 —— 公式恒为渲染态（少了整类布局跳动）；
-//   * **点击公式** → 公式**上方**浮出源码编辑框（等宽字体、贴合公式宽度、与公式共用一条
-//     `--accent` 边线视觉成组；`position: fixed` ⇒ 不占正文流，不挤动别的内容）；
-//   * **逐键实时渲染**：框里每敲一个字符就 dispatch 一次文档事务 ⇒ 文档里的 `$…$` 立即更新
-//     ⇒ 公式**原地**重画（不重新打开、不重载文档）；
-//   * **Esc** = 收起编辑框（**不改内容**）；**失焦** = 也收起，同样**保留**内容 ——
-//     内容一旦敲进去就已经实时写进文档了，两者不需要在"保留/丢弃"上再分叉；
-//   * **源码清空**（`''`）= **删除这条公式**（Typora 一致，也是用键盘删掉公式最直观的操作）：
-//     行内公式连 `$` 定界符一起删，块级公式删掉整个块节点。
-//
-// ⚠️ 编辑框**不是 contenteditable 的后代**：它挂在编辑区容器上（`position: fixed`），
-// 不参与 ProseMirror 的 DOM 观察与光标导航 —— 放进 contenteditable 里会让 PM 把它当成
-// 文档内容的一部分（焦点/选区/输入法都会打架）。
+// ⚠️ 编辑区**不是 contenteditable 的后代**：块级容器挂在 NodeView 的 `dom` 上但整棵
+// `contenteditable="false"`；行内浮层挂在编辑区容器上。两者的 textarea 都不参与
+// ProseMirror 的 DOM 观察与光标导航。
 import { Extension } from '@tiptap/core'
 import { Plugin, PluginKey } from '@tiptap/pm/state'
 import { Decoration, DecorationSet } from '@tiptap/pm/view'
@@ -50,7 +41,7 @@ const mathPreviewKey = new PluginKey<MathPluginState>('lumin-math-preview')
 /** 一段公式在文档里的位置信息（行内：mark 区间 / 块级：原子节点区间） */
 interface MathHit {
   kind: 'inline' | 'block'
-  /** 公式**整体**（含 `$` 定界符）的位置：编辑框挂在这个位置之前 */
+  /** 公式**整体**（含 `$` 定界符）的位置 */
   from: number
   to: number
   /** 公式**内容**的位置（行内已去掉两侧 `$`；块级与整体相同，用它整块删除） */
@@ -64,16 +55,22 @@ interface MathHit {
 interface MathSession {
   kind: 'inline' | 'block'
   active: MathHit
-  /** 每次打开换一个 id：新会话的编辑框 DOM 一定是新建的（旧 DOM 的焦点状态不串） */
+  /** 每次打开换一个 id：新会话的编辑 DOM 一定是新建的（旧 DOM 的焦点状态不串） */
   id: number
 }
 
 interface MathPluginState {
   active: MathSession | null
-  /** 常驻装饰（折叠原文 + 渲染 widget）。正在编辑的那条公式**额外**追加一个编辑框 widget */
+  /** 常驻装饰（行内：折叠原文 + 渲染 widget） */
   decos: DecorationSet
-  /** 编辑框实例：跨事务复用 ⇒ `eq()` 为真 ⇒ PM 不重建 DOM ⇒ textarea 不丢焦点 */
-  box: SourceBox | null
+  /**
+   * 编辑态的容器实例（行内浮层 / 块级随流容器都在这里）。
+   *
+   * 为什么存在**插件 state** 而不是视图字段：逐键写回会让装饰集整体重算，
+   * 而 `Decoration.widget` 的 `eq()` 决定 PM 要不要重建那段 DOM —— 只要还是同一个
+   * 实例对象，PM 就**不重建**，textarea 因此不丢焦点（这是"逐键实时渲染"能用的前提）。
+   */
+  box: MathEditorBase | null
 }
 
 // ─── 收集文档里的公式 ─────────────────────────────────────────────────────────
@@ -129,7 +126,13 @@ function collectMathHits(doc: PMNode): MathHit[] {
   return out
 }
 
-/** 折叠原文 + 渲染公式的常驻装饰（**不含**编辑框：那条按需追加） */
+/**
+ * 行内公式的常驻装饰：渲染 widget + 原文折叠。
+ *
+ * ⚠️ 铁律：**只要公式没有被编辑，这两条必须成对出现**。少了渲染 widget 就只剩一段
+ * 被折叠掉的文本 —— 屏幕上**什么都没有**（公式"消失"）。
+ * 块级不在这里：它的渲染是 NodeView 的事（见 mathMarkers.ts）。
+ */
 function buildMathDecorations(doc: PMNode): DecorationSet {
   const decos: Decoration[] = []
   for (const hit of collectMathHits(doc)) {
@@ -156,87 +159,42 @@ function clamp(pos: number, doc: PMNode): number {
   return Math.max(0, Math.min(pos, doc.content.size))
 }
 
-// ─── 源码编辑框 ──────────────────────────────────────────────────────────────
+// ─── 文案（由扩展选项从语言包注入）──────────────────────────────────────────────
 
 /**
- * 编辑框里的三段文案。**由扩展选项注入**（`buildEditorExtensions` 从语言包取），
+ * 编辑区的文案。**由扩展选项注入**（`buildEditorExtensions` 从语言包取），
  * 这样这个模块自己不 `import '../../i18n'`：它是 Tiptap 内核的一部分，而那条 import
  * 会把 Vue 与整份语言包的动态装载拖进 `node --test` 的依赖链（同一个坑见
  * `outlineText.ts` 的注释）。默认值只是"没注入时的兜底"，界面上永远走注入值。
  */
 export interface MathLabels {
-  inline: string
-  block: string
+  /** 可见标签（Typora 截图里右上角那个「公式」） */
+  label: string
+  /** 容器 / 编辑区的可访问名（比可见标签更具体） */
+  aria: string
+  /** ✓ 按钮的可访问名（"确认并收起编辑"之类） */
+  check: string
+  /** 「Esc」提示（只在行内浮层上给） */
   esc: string
 }
 
 /**
  * 兜底文案：**故意留空**。
  *
- * 界面上的值一律由 `buildEditorExtensions` 从语言包注入（三段都是 `t('editor.math*')`），
+ * 界面上的值一律由 `buildEditorExtensions` 从语言包注入（每一段都是 `t('editor.math*')`），
  * 所以这里的默认值永远不会出现在用户面前。留成空串而不是写一份中文兜底，是为了让
  * `tests/i18nHardcoded.test.mjs`（界面文案不许绕过语言包）对**所有**可能显示出来的
  * 字符串都有约束 —— 一份"反正不会用到"的中文兜底，恰恰是那种以后会真的显示出来的东西。
  */
-const DEFAULT_LABELS: MathLabels = { inline: '', block: '', esc: '' }
-
-/**
- * 编辑框 DOM（**固定定位**，挂在编辑区容器上，不在 contenteditable 里）。
- *
- * 布局：顶行是「公式源码」提示（右侧 `Esc` 提示），下面是等宽 textarea；
- * 只有**渲染失败**时才多出一行 KaTeX 预览 —— 此时它是唯一能说清"错在哪"的东西
- * （语法正确时预览与框外那个公式一模一样，多显示一份只是噪音）。
- */
-function buildBox(labels: MathLabels): {
-  box: HTMLElement
-  ta: HTMLTextAreaElement
-  preview: HTMLElement
-  label: HTMLElement
-} {
-  const box = document.createElement('div')
-  box.className = 'md-math-editor'
-  box.setAttribute('data-md-math-editor', '')
-  box.setAttribute('contenteditable', 'false')
-
-  const labelRow = document.createElement('div')
-  labelRow.className = 'md-math-editor__label'
-  const label = document.createElement('span')
-  label.setAttribute('data-md-math-editor-label', '')
-  label.textContent = labels.inline
-  const hint = document.createElement('span')
-  hint.className = 'md-math-editor__hint'
-  hint.textContent = labels.esc
-  labelRow.append(label, hint)
-
-  const ta = document.createElement('textarea')
-  ta.className = 'md-math-editor__src'
-  ta.setAttribute('data-md-math-editor-src', '')
-  ta.setAttribute('spellcheck', 'false')
-  ta.setAttribute('autocapitalize', 'off')
-  ta.setAttribute('autocomplete', 'off')
-  ta.setAttribute('autocorrect', 'off')
-  ta.setAttribute('rows', '1')
-  // 横向不软换行（CSS 也是 `white-space: pre`）：长公式在框内横向滚动，而不是断成好几行
-  // —— 实测软换行会在行尾留一个看不见的空格，还多出一条竖滚动条
-  ta.setAttribute('wrap', 'off')
-  ta.setAttribute('aria-label', labels.inline)
-
-  const preview = document.createElement('div')
-  preview.className = 'md-math-editor__preview'
-  preview.setAttribute('data-md-math-editor-preview', '')
-
-  box.append(labelRow, ta, preview)
-  return { box, ta, preview, label }
-}
+const DEFAULT_LABELS: MathLabels = { label: '', aria: '', check: '', esc: '' }
 
 /**
  * 公式**真正的横向范围**（用它量宽度，而不是量元素盒）。
  *
  * 为什么不能用 `getBoundingClientRect().width`：块级公式的 `.katex-html` 是
  * `display:block`，`.katex-display > .katex` 也是 `block` —— 它们的盒宽是**整列宽**
- * （实测 928px），拿它当"公式宽度"会把源码框拉成一条通栏，与"贴合公式"相反。
- * 用 `Range` 选中 `.katex-html` 的内容量到的才是**字形本身**的范围
- * （实测同一条公式 106px、整列 928px）。
+ * （实测 928px），拿它当"公式宽度"会把行内浮层拉成一条通栏。用 `Range` 选中
+ * `.katex-html` 的内容量到的才是**字形本身**的范围（实测同一条公式 106px、整列 928px）。
  */
 function inkRect(el: HTMLElement): { left: number; width: number } | null {
   const r = el.getBoundingClientRect()
@@ -255,15 +213,13 @@ function inkRect(el: HTMLElement): { left: number; width: number } | null {
 }
 
 /**
- * 把编辑框摆到**公式上方**（用 `getBoundingClientRect` 算，不写死坐标）。
+ * 把**行内**浮层摆到公式上方（用 `getBoundingClientRect` 算，不写死坐标）。
  *
  * 三条口径：
- *   * **上方优先**（用户明确要"上方"）；上方真的放不下（公式在文档第一行/滚动到视口顶部）
- *     才翻到下方 —— 硬贴上方会顶出视口，那比"在下方"更糟。翻没翻由
- *     `data-md-math-editor-side` 如实给出，套件据此断言而不猜坐标。
- *   * **宽度贴公式**（下限 280，上限贴视口）：量的是**字形范围**（见 `inkRect`），
- *     不是 KaTeX 那个整列宽的 `block` 盒。
- *   * 横向**在公式上方居中**（与公式"视觉成一组"），并整体夹在视口内；纵向与公式留 8px。
+ *   * **上方优先**；上方真的放不下（公式在文档第一行/滚动到视口顶部）才翻到下方 ——
+ *     硬贴上方会顶出视口。翻没翻由 `data-md-math-editor-side` 如实给出，套件据此断言。
+ *   * **宽度贴公式**（下限 280，上限贴视口）：量的是字形范围（见 `inkRect`）。
+ *   * 横向在公式上方居中，整体夹在视口内；纵向与公式留 8px。
  * @returns 实际放在哪一侧
  */
 function placeBox(box: HTMLElement, anchor: HTMLElement, line: HTMLElement): 'above' | 'below' {
@@ -281,7 +237,7 @@ function placeBox(box: HTMLElement, anchor: HTMLElement, line: HTMLElement): 'ab
   const top = side === 'above' ? above : below
   box.setAttribute('data-md-math-editor-side', side)
   box.style.top = Math.round(Math.max(12, top)) + 'px'
-  // 横向：把框的中心对到公式字形的中心（块级公式因此正好压在它上面，不会贴到列首）
+  // 横向：把框的中心对到公式字形的中心
   const center = (ink ? ink.left : r.left) + (ink ? ink.width : r.width) / 2
   const left = center - box.offsetWidth / 2
   box.style.left =
@@ -289,155 +245,180 @@ function placeBox(box: HTMLElement, anchor: HTMLElement, line: HTMLElement): 'ab
   return side
 }
 
-/** 编辑框里那段小预览（只在渲染失败时显示：它是唯一能说清"错在哪"的东西） */
-function renderBoxPreview(
+// ─── 编辑区 DOM（块级 / 行内共用）──────────────────────────────────────────────
+
+/**
+ * 造一套编辑区零件：`[bar: 公式 ✓] [source: $$/textarea/$$] [preview]`。
+ *
+ * 与 Typora 截图对齐的三件事：
+ *   1. `$$` 定界符**分列源码上下两行**（不是挤在一行）—— 所以源码区是一个列；
+ *   2. 右上角「公式」+ **✓ 按钮**（真 `<button>`：可聚焦、有可访问名；点它 = 收起编辑态）；
+ *   3. 源码区在上、渲染区在下（浅灰/白底与分隔线交给 CSS）。
+ *
+ * @param delimiters 是否显示上下 `$$` 行 —— **只有块级给**。行内浮层很窄，
+ *   多两行会把"紧凑"这件事毁掉（用户明确要求行内不要占一整行）。
+ */
+function buildEditorParts(
+  labels: MathLabels,
+  opts: { delimiters: boolean; showHint: boolean }
+): {
+  box: HTMLElement
+  check: HTMLButtonElement
+  ta: HTMLTextAreaElement
+  preview: HTMLElement
+} {
+  const box = document.createElement('div')
+  box.className = 'md-math-editor'
+  box.setAttribute('data-md-math-editor', '')
+  box.setAttribute('contenteditable', 'false')
+
+  const bar = document.createElement('div')
+  bar.className = 'md-math-editor__bar'
+  // ✓ = 收起编辑态（等价 Esc）。用真 `<button>`：天然可聚焦、有可访问名，
+  // 也让套件能用"可聚焦 + 可访问名"这两条标准判据断言，不必写死坐标。
+  //
+  // 可访问名用 `labels.check`（"确认并收起公式编辑"）而不是可见的「公式」——
+  // 可见文本是截图那个样子的「公式 ✓」（标签 + 勾），但读屏听到的应该是**动作**。
+  const check = document.createElement('button')
+  check.type = 'button'
+  check.className = 'md-math-editor__check'
+  check.setAttribute('data-md-math-editor-check', '')
+  check.setAttribute('aria-label', labels.check)
+  check.setAttribute('title', labels.check)
+  const checkText = document.createElement('span')
+  checkText.setAttribute('data-md-math-editor-label', '')
+  checkText.textContent = labels.label
+  const mark = document.createElement('span')
+  mark.setAttribute('data-md-math-editor-check-mark', '')
+  mark.setAttribute('aria-hidden', 'true')
+  mark.textContent = '✓'
+  check.append(checkText, mark)
+  bar.append(check)
+  if (opts.showHint) {
+    const hint = document.createElement('span')
+    hint.className = 'md-math-editor__hint'
+    hint.textContent = labels.esc
+    bar.append(hint)
+  }
+
+  const source = document.createElement('div')
+  source.className = 'md-math-editor__source'
+  const ta = document.createElement('textarea')
+  ta.className = 'md-math-editor__src'
+  ta.setAttribute('data-md-math-editor-src', '')
+  ta.setAttribute('spellcheck', 'false')
+  ta.setAttribute('autocapitalize', 'off')
+  ta.setAttribute('autocomplete', 'off')
+  ta.setAttribute('autocorrect', 'off')
+  ta.setAttribute('rows', '1')
+  // 横向不软换行（CSS 也是 `white-space: pre`）：长公式在框内横向滚动，而不是断成好几行
+  // —— 实测软换行会在行尾留一个看不见的空格，还多出一条竖滚动条
+  ta.setAttribute('wrap', 'off')
+  ta.setAttribute('aria-label', labels.aria)
+  if (opts.delimiters) {
+    const open = document.createElement('div')
+    open.className = 'md-math-editor__delim'
+    open.setAttribute('data-md-math-editor-delim', 'open')
+    open.textContent = '$$'
+    const close = document.createElement('div')
+    close.className = 'md-math-editor__delim'
+    close.setAttribute('data-md-math-editor-delim', 'close')
+    close.textContent = '$$'
+    source.append(open, ta, close)
+  } else {
+    source.append(ta)
+  }
+
+  const preview = document.createElement('div')
+  preview.className = 'md-math-editor__preview'
+  preview.setAttribute('data-md-math-editor-preview', '')
+  preview.setAttribute('contenteditable', 'false')
+
+  box.append(bar, source, preview)
+  return { box, check, ta, preview }
+}
+
+/** 把 KaTeX 产物画进渲染区，并同步错误态 */
+function renderEditorPreview(
   box: HTMLElement,
   preview: HTMLElement,
   tex: string,
   display: boolean
 ): void {
   if (!tex.trim()) {
-    preview.textContent = ''
-    preview.style.display = 'none'
+    preview.innerHTML = ''
     box.removeAttribute('data-md-math-invalid')
     return
   }
   const { html, error } = mathRenderInfo(tex, display)
   preview.innerHTML = html
-  preview.style.display = error ? '' : 'none'
-  // 错误态跟着**真实的 KaTeX 产物**走（认 `katex-error`），不靠正则猜公式合不合法
+  // 错误态跟着**真实的 KaTeX 结果**走（`mathRenderInfo` 用 `throwOnError:true` 接住，
+  // 未定义宏也算错），不靠正则猜公式合不合法
   if (error) box.setAttribute('data-md-math-invalid', '')
   else box.removeAttribute('data-md-math-invalid')
 }
 
+// ─── 编辑区的公共行为 ─────────────────────────────────────────────────────────
+
 /**
- * 源码编辑框：**自己监听输入**并把源码写回文档（逐键），不依赖 Vue 的响应式。
+ * 块级 / 行内编辑区共用的输入、写回、错误态、Esc/✓/失焦语义。
  *
- * 为什么把"输入"做在 DOM 事件里而不是走受控组件：编辑框不是文档的一部分（它固定在编辑区
- * 容器上），走 Vue 只会把数据流绕远；这里唯一的真相仍然是**文档**（`pull()` 每次从
- * `view.state.doc` 读回内容），所以撤销/存盘重载/外部替换都能自然对齐。
+ * 子类只决定两件事：DOM 摆在哪儿（随流 / 浮层）、以及预览是"一直画"还是"只在出错时画"。
  */
-class SourceBox {
+abstract class MathEditorBase {
+  readonly id: number
   readonly dom: HTMLElement
-  private ta: HTMLTextAreaElement
-  private preview: HTMLElement
-  private label: HTMLElement
-  private view: EditorView
-  private session: MathSession
-  private labels: MathLabels
+  protected readonly view: EditorView
+  protected readonly labels: MathLabels
+  protected readonly ta: HTMLTextAreaElement
+  protected readonly check: HTMLButtonElement
+  protected readonly preview: HTMLElement
   /** 正在由本对象回写文档：避免 `input → dispatch → pull` 的自激 */
   private writing = false
   /** 输入法组合中：组合期间不回写（会把中文输入打断成一个个字母） */
   private composing = false
 
-  constructor(view: EditorView, session: MathSession, labels: MathLabels) {
+  constructor(
+    view: EditorView,
+    id: number,
+    labels: MathLabels,
+    delimiters: boolean,
+    showHint: boolean
+  ) {
     this.view = view
-    this.session = session
+    this.id = id
     this.labels = labels
-    const built = buildBox(labels)
-    this.dom = built.box
-    this.ta = built.ta
-    this.preview = built.preview
-    this.label = built.label
+    const parts = buildEditorParts(labels, { delimiters, showHint })
+    this.dom = parts.box
+    this.ta = parts.ta
+    this.check = parts.check
+    this.preview = parts.preview
 
-    this.ta.value = session.active.tex
     this.ta.addEventListener('input', this.onInput)
     this.ta.addEventListener('keydown', this.onKeyDown)
     this.ta.addEventListener('blur', this.onBlur)
     this.ta.addEventListener('compositionstart', this.onCompositionStart)
     this.ta.addEventListener('compositionend', this.onCompositionEnd)
-    // 编辑框里的鼠标动作**不要**冒泡到编辑区（PM 会据此改选区/触发点击语义）
+    // ✓ 按钮：`mousedown` 阻止默认，逐字写回**不受影响**（内容早已进文档）；
+    // 用 `mousedown` 而不是 `click` 是因为 textarea 的 blur 已经会收起编辑态 ——
+    // 让收起只发生一次，语义更清楚（内容无论如何都已经写回去了）
+    this.check.addEventListener('mousedown', this.onCheckDown)
+    // 编辑区里的鼠标动作**不要**冒泡到编辑区根节点（PM 会据此改选区/触发点击语义）
     this.dom.addEventListener('mousedown', (e) => e.stopPropagation())
     this.dom.addEventListener('click', (e) => e.stopPropagation())
-    this.pull()
   }
 
-  /** `eq` 恒真：同一个会话里 PM 不重建这个 widget 的 DOM（textarea 因此不丢焦点） */
-  eq(): boolean {
-    return true
-  }
+  /** 子类：DOM 摆放 / 尺寸（块级什么都不用做，行内要算坐标） */
+  abstract place(): void
 
-  /** 会话换成别的一条公式（或公式内容被外部改过）时对齐 */
-  setSession(session: MathSession): void {
-    this.session = session
-    this.pull()
-  }
+  /** 子类：更新渲染区（块级一直画；行内只在出错时画） */
+  protected abstract paintPreview(tex: string): void
 
-  /** 文档里的真值 ⇒ 编辑框（源码 + 错误态预览） */
-  pull(): void {
-    const live = locateLive(this.view, this.session)
-    if (!live) return
-    if (!this.writing && this.ta.value !== live.tex) this.ta.value = live.tex
-    this.label.textContent = this.session.kind === 'block' ? this.labels.block : this.labels.inline
-    renderBoxPreview(this.dom, this.preview, this.ta.value, this.session.kind === 'block')
+  /** 与文档对齐（源码值 + 渲染区 + 错误态）—— 子类提供"当前文档里的原文" */
+  pull(tex: string): void {
+    if (!this.writing && this.ta.value !== tex) this.ta.value = tex
+    this.paintPreview(this.ta.value)
     this.autosize()
-  }
-
-  /**
-   * 公式的**可视盒**：`anchor` 用来算"上方有没有位置"，`line` 用来量宽度。
-   *
-   * 两者为什么分开：块级公式的外层 `.md-math-block` 是**整列宽**（`text-align:center` +
-   * `overflow-x:auto`），拿它量宽度会得到整个正文列的宽度 —— 源码框就会拉成一条通栏大条，
-   * 与用户口径的"贴合公式、与公式成一组"相反。真正的公式宽度在 KaTeX 的
-   * `.katex-html` 上（`white-space:nowrap` 的那个行盒）。
-   */
-  anchor(): { anchor: HTMLElement; line: HTMLElement } | null {
-    const doc = this.view.state.doc
-    let el: HTMLElement | null = null
-    try {
-      const dom = this.view.nodeDOM(clamp(this.session.active.from, doc))
-      el = dom instanceof HTMLElement ? dom : null
-    } catch {
-      el = null
-    }
-    if (!el) {
-      // 位置暂时无效（视图正在重建 / 节点还没挂上）→ 按文档位置在编辑区里找最近的公式
-      const all = Array.from(
-        this.view.dom.querySelectorAll<HTMLElement>('[data-md-math-rendered],[data-md-math-block]')
-      )
-      for (const candidate of all) {
-        if (this.session.kind === 'block') {
-          if (candidate.hasAttribute('data-md-math-block')) {
-            el = candidate
-            break
-          }
-        } else {
-          const pos = this.view.posAtDOM(candidate, 0)
-          if (Math.abs(pos - this.session.active.from) <= 1) {
-            el = candidate
-            break
-          }
-        }
-      }
-    }
-    if (!el) return null
-
-    const rendered = el.matches('[data-md-math-rendered]')
-      ? el
-      : el.querySelector<HTMLElement>('[data-md-math-rendered]')
-    if (rendered && this.session.kind === 'inline') {
-      return { anchor: rendered, line: rendered }
-    }
-    const block = el.matches('[data-md-math-block]')
-      ? el
-      : (el.closest<HTMLElement>('[data-md-math-block]') ?? null)
-    if (block) {
-      // 纵向锚点用 `.katex-display`（KaTeX 自己的那块，margin 已由 CSS 归零），
-      // 不用外面那个 `.md-math-block`（它带自己的 padding，会把框推远一点点）；
-      // 横向字形范围用 `.katex-html`：那是居中块，只有 Range 才量得到真宽度。
-      const line = block.querySelector<HTMLElement>('.katex-html') ?? block
-      const display = block.querySelector<HTMLElement>('.katex-display')
-      return { anchor: display ?? block, line }
-    }
-    return rendered ? { anchor: rendered, line: rendered } : null
-  }
-
-  /** 摆到公式上方（上方放不下就翻到下方），宽度贴公式 */
-  place(): void {
-    const target = this.anchor()
-    if (!target) return
-    const side = placeBox(this.dom, target.anchor, target.line)
-    this.dom.setAttribute('data-md-math-editor-side', side)
   }
 
   focus(): void {
@@ -445,19 +426,39 @@ class SourceBox {
     this.ta.setSelectionRange(this.ta.value.length, this.ta.value.length)
   }
 
-  destroy(): void {
+  /** 摘掉监听（DOM 归调用方处理） */
+  detach(): void {
     this.ta.removeEventListener('input', this.onInput)
     this.ta.removeEventListener('keydown', this.onKeyDown)
     this.ta.removeEventListener('blur', this.onBlur)
     this.ta.removeEventListener('compositionstart', this.onCompositionStart)
     this.ta.removeEventListener('compositionend', this.onCompositionEnd)
+    this.check.removeEventListener('mousedown', this.onCheckDown)
+  }
+
+  /** 销毁：摘监听 + 清自己的 DOM */
+  destroy(): void {
+    this.detach()
     this.dom.remove()
   }
 
-  /** 一次按键/一行内容 ⇒ 高度跟着走（`rows=1` 只是下限，长公式要能看全） */
-  private autosize(): void {
+  /** textarea 自动高（长公式要能看全；`rows=1` 只是下限） */
+  protected autosize(): void {
     this.ta.style.height = 'auto'
-    this.ta.style.height = Math.min(this.ta.scrollHeight, 8 * 24) + 'px'
+    this.ta.style.height = Math.min(this.ta.scrollHeight, 12 * 24) + 'px'
+  }
+
+  /** 编辑区 → 文档（逐键）。文档一变 ⇒ 视图跟着重算 ⇒ 公式原地重画 */
+  protected commit(): void {
+    this.writing = true
+    try {
+      applySource(this.view, this.ta.value, this.id)
+    } finally {
+      this.writing = false
+    }
+    const live = locateSessionHit(this.view, this.id)
+    if (live) this.pull(live.tex)
+    this.place()
   }
 
   private onInput = (): void => {
@@ -474,18 +475,7 @@ class SourceBox {
     this.commit()
   }
 
-  /** 编辑框 → 文档（逐键）。文档一变，本插件的装饰就跟着重算 ⇒ 公式原地重画 */
-  private commit(): void {
-    this.writing = true
-    try {
-      applySource(this.view, this.ta.value)
-    } finally {
-      this.writing = false
-    }
-    this.pull()
-    this.place()
-  }
-
+  /** Esc / ✓ = 收起编辑态（**不改内容**）；Tab = 缩进（`\begin{align}` 要能排版） */
   private onKeyDown = (e: KeyboardEvent): void => {
     if (e.key === 'Escape') {
       e.preventDefault()
@@ -494,8 +484,6 @@ class SourceBox {
       this.view.focus()
       return
     }
-    // Tab 在源码框里应当是"缩进"（`\begin{align}` 这类多行公式要能排版），
-    // 不是"跳到下一个控件" —— 否则这条框一按 Tab 就没了
     if (e.key === 'Tab') {
       e.preventDefault()
       const { selectionStart: a, selectionEnd: b, value } = this.ta
@@ -505,13 +493,168 @@ class SourceBox {
     }
   }
 
+  private onCheckDown = (e: MouseEvent): void => {
+    e.preventDefault()
+    e.stopPropagation()
+    closeSession(this.view)
+  }
+
   /** 失焦也收起，但**保留内容**（内容早就逐个字符实时写进文档了） */
   private onBlur = (): void => {
     closeSession(this.view)
   }
 }
 
-/** 按会话找到**当前文档里**对应的那一段公式（位置可能已被编辑映射过） */
+// ─── 块级编辑态（随正文流，Typora 形态）──────────────────────────────────────
+
+/**
+ * 块级公式的编辑态：上半源码区 / 下半渲染区，**在正文流里**占一块（Typora 形态）。
+ *
+ * 它靠**块级 widget 装饰**挂进文档流（`Decoration.widget(pos, …, {side:-2})`，
+ * 位置就是公式节点的起点），同时给那个节点加 `.md-math-editing` 把原来的渲染结果收起 ——
+ * 于是容器正好"顶替"公式原来的位置：
+ *   * 不需要算坐标、不需要 fixed/z-index；
+ *   * 宽度就是正文列宽；
+ *   * 上下留白由容器自己的 margin 给（`.md-preview .md-math-block` 被收起了，不再占位）。
+ *
+ * ⚠️ 为什么不用 NodeView 承载它（第三十轮踩过的坑）：会话是**只改视图**的事务
+ * （文档一个字符都没变），而 ProseMirror 在"doc 没变"时**不会调用 `view.update()`** ——
+ * NodeView 因此永远收不到通知（实测：点击后会话确实开了，但界面上什么都没有）。
+ * 装饰则由 `props.decorations` 在每次重绘时重算，PM 一定接得住。
+ */
+class BlockMathEditor extends MathEditorBase {
+  constructor(view: EditorView, id: number, labels: MathLabels, pos: number) {
+    // 块级：给 `$$` 分列上下；`Esc` 提示不给（bar 已经够挤，且 ✓ 是可见出口）
+    super(view, id, labels, true, false)
+    this.dom.classList.add('md-math-editor--block')
+    this.dom.setAttribute('data-md-math-editor-shape', 'block')
+    // 位置锚：套件用它断言"编辑的确实是那一条公式"，不靠坐标猜
+    this.dom.setAttribute('data-md-math-editor-pos', String(pos))
+  }
+
+  /** `eq` 恒真：同一个会话里 PM 不重建这个 widget 的 DOM（textarea 因此不丢焦点） */
+  eq(): boolean {
+    return true
+  }
+
+  /** 随正文流：位置由排版决定，不需要 JS 做事 */
+  place(): void {
+    /* 块级不该算坐标：它是正文流里的一块（见文件头的形态说明） */
+  }
+
+  /**
+   * 渲染区**一直画**（这是 Typora 形态的"下半"）。
+   * 与行内不同：行内的预览只在出错时才有意义（不然就是框外那条公式的重复），
+   * 而块级的渲染区就是用户要看的那个公式本身（编辑时原节点已被容器取代）。
+   */
+  protected paintPreview(tex: string): void {
+    this.preview.style.display = ''
+    renderEditorPreview(this.dom, this.preview, tex, true)
+  }
+}
+
+// ─── 行内编辑态（紧凑浮层）────────────────────────────────────────────────────
+
+/**
+ * 行内公式的编辑态：**固定定位的紧凑浮层**，浮在公式上方。
+ *
+ * 为什么不套块级那套形态：行内公式只有几个字符，整块容器（带上下 `$$`、带下半渲染区、
+ * 带上下留白）会把那一行撑开、把句子拆成三截 —— 用户明确要求"不要让行内公式占一整行"。
+ * 所以这里只统一**配色/边框/圆角/标签**，尺寸与摆放保持"浮层"。
+ */
+class InlineMathEditor extends MathEditorBase {
+  /** 本次会话对应的公式区间（用来量宽度、找锚点） */
+  private hit: MathHit
+
+  constructor(view: EditorView, session: MathSession, labels: MathLabels) {
+    super(view, session.id, labels, false, true)
+    this.hit = session.active
+    this.dom.classList.add('md-math-editor--inline')
+    this.dom.setAttribute('data-md-math-editor-shape', 'inline')
+  }
+
+  /**
+   * 行内的渲染区**只在出错时**显示：语法正确时框外那条公式就是它的渲染结果，
+   * 再画一份只是噪音（错误信息则是唯一能说清"错在哪"的东西）。
+   */
+  protected paintPreview(tex: string): void {
+    const { html, error } = mathRenderInfo(tex, false)
+    const preview = this.preview
+    if (!tex.trim()) {
+      preview.innerHTML = ''
+      preview.style.display = 'none'
+      this.dom.removeAttribute('data-md-math-invalid')
+      return
+    }
+    preview.innerHTML = html
+    preview.style.display = error ? '' : 'none'
+    if (error) this.dom.setAttribute('data-md-math-invalid', '')
+    else this.dom.removeAttribute('data-md-math-invalid')
+  }
+
+  setSession(session: MathSession): void {
+    this.hit = session.active
+  }
+
+  /** `eq` 恒真：同一个会话里 PM 不重建这个 widget 的 DOM（textarea 因此不丢焦点） */
+  eq(): boolean {
+    return true
+  }
+
+  /**
+   * 公式的**可视盒**：`anchor` 用来算"上方有没有位置"，`line` 用来量宽度。
+   * 行内两者都是那个渲染结果本身。
+   */
+  anchor(): { anchor: HTMLElement; line: HTMLElement } | null {
+    const doc = this.view.state.doc
+    let el: HTMLElement | null = null
+    try {
+      const dom = this.view.nodeDOM(clamp(this.hit.from, doc))
+      el = dom instanceof HTMLElement ? dom : null
+    } catch {
+      el = null
+    }
+    if (!el) {
+      // 位置暂时无效（视图正在重建 / 节点还没挂上）→ 按文档位置在编辑区里找最近的行内公式
+      const all = Array.from(this.view.dom.querySelectorAll<HTMLElement>('[data-md-math-rendered]'))
+      for (const candidate of all) {
+        if (Math.abs(this.view.posAtDOM(candidate, 0) - this.hit.from) <= 1) {
+          el = candidate
+          break
+        }
+      }
+    }
+    if (!el) return null
+    const rendered = el.matches('[data-md-math-rendered]')
+      ? el
+      : el.querySelector<HTMLElement>('[data-md-math-rendered]')
+    return rendered ? { anchor: rendered, line: rendered } : null
+  }
+
+  /** 摆到公式上方（上方放不下就翻到下方），宽度贴公式 */
+  place(): void {
+    const target = this.anchor()
+    if (!target) return
+    const side = placeBox(this.dom, target.anchor, target.line)
+    this.dom.setAttribute('data-md-math-editor-side', side)
+  }
+}
+
+// ─── 会话 ⇄ 文档 ─────────────────────────────────────────────────────────────
+
+/** 按 id 找到**当前文档里**对应的那一段公式（位置可能已被编辑映射过） */
+function locateSessionHit(view: EditorView, id: number): MathHit | null {
+  const session = mathPreviewKey.getState(view.state)?.active
+  if (!session || session.id !== id) return null
+  return locateLive(view, session)
+}
+
+/**
+ * 按会话找到**当前文档里**对应的那一段公式（位置可能已被编辑映射过）。
+ *
+ * 为什么要"重新找"而不是直接用会话里记的位置：逐键写回会改变文档，
+ * 前面内容变长变短都会把位置推走。
+ */
 function locateLive(view: EditorView, session: MathSession): MathHit | null {
   const hits = collectMathHits(view.state.doc)
   const exact = hits.find((h) => h.kind === session.kind && h.from === session.active.from)
@@ -544,16 +687,30 @@ function liveMarks(state: EditorState, live: MathHit): readonly Mark[] {
   return marks
 }
 
+/** 这一段公式**当前**的原文（行内从文本节点读、块级从节点属性读） */
+function currentTex(state: EditorState, live: MathHit, kind: 'inline' | 'block'): string {
+  if (kind === 'inline') return live.tex
+  return String(state.doc.nodeAt(live.from)?.attrs.source ?? '')
+}
+
+/** 同上，但从一个文档直接读（`apply` 里只拿得到 `newState.doc`，没有 EditorState） */
+function currentTexOf(doc: PMNode, live: MathHit, kind: 'inline' | 'block'): string {
+  if (kind === 'inline') return live.tex
+  return String(doc.nodeAt(live.from)?.attrs.source ?? '')
+}
+
 /**
  * 把源码写回文档（**唯一的写入口**：逐键输入、输入法组合结束、Tab 缩进都走这里）。
  *
  * 写的是「公式内容」那一段区间 —— 定界符 `$` 与（块级的）节点身份都不动。
  * 源码为空 ⇒ 删除整条公式（语义见文件头的交互说明）。
+ * @param id 发起写入的编辑区 id：会话已经被别人接管时**直接忽略**（防止过期写入）
  * @returns 是否真的改动了文档
  */
-export function applySource(view: EditorView, tex: string): boolean {
+export function applySource(view: EditorView, tex: string, id?: number): boolean {
   const session = mathPreviewKey.getState(view.state)?.active
   if (!session) return false
+  if (id !== undefined && session.id !== id) return false
   const live = locateLive(view, session)
   if (!live) return false
   const kind = session.kind
@@ -583,12 +740,6 @@ export function applySource(view: EditorView, tex: string): boolean {
   return true
 }
 
-/** 这一段公式**当前**的原文（行内从文本节点读、块级从节点属性读） */
-function currentTex(state: EditorState, live: MathHit, kind: 'inline' | 'block'): string {
-  if (kind === 'inline') return live.tex
-  return String(state.doc.nodeAt(live.from)?.attrs.source ?? '')
-}
-
 // ─── 插件 ────────────────────────────────────────────────────────────────────
 
 /**
@@ -597,7 +748,7 @@ function currentTex(state: EditorState, live: MathHit, kind: 'inline' | 'block')
  */
 type MathSessionMeta = { session: { kind: 'close' } | { kind: 'open'; hit: MathHit; id: number } }
 
-/** 打开源码编辑框（**只改视图**：文档内容一个字符都不动） */
+/** 打开编辑态（**只改视图**：文档内容一个字符都不动） */
 export function openMathEditor(view: EditorView, hit: MathHit): void {
   view.dispatch(
     view.state.tr.setMeta(mathPreviewKey, {
@@ -606,7 +757,7 @@ export function openMathEditor(view: EditorView, hit: MathHit): void {
   )
 }
 
-/** 收起源码编辑框（Esc / 失焦；**保留**已写进文档的内容） */
+/** 收起编辑态（Esc / ✓ / 失焦；**保留**已写进文档的内容） */
 export function closeSession(view: EditorView): void {
   if (!mathPreviewKey.getState(view.state)?.active) return
   view.dispatch(
@@ -654,17 +805,34 @@ export const MathPreview = Extension.create<{ labels?: Partial<MathLabels> }>({
               if (session.kind === 'close') active = null
               else active = { kind: session.hit.kind, active: session.hit, id: session.id }
             } else if (active) {
-              // 文档变了（逐键写回 / 撤销 / 外部替换）：把"正在编辑哪一段"跟着映射过去
-              const hits = collectMathHits(newState.doc)
-              const moved =
-                hits.find((h) => h.kind === active!.kind && h.from === active!.active.from) ??
-                hits.find(
-                  (h) =>
-                    h.kind === active!.kind &&
-                    Math.abs(h.from - active!.active.from) <= Math.max(2, tr.steps.length * 4)
-                ) ??
-                hits.find((h) => h.kind === active!.kind && h.tex === active!.active.tex)
-              active = moved ? { ...active, active: moved } : null
+              // ⚠️ 只有**改动确实碰到过这段公式**时才重新认领它。
+              //
+              // 为什么不能有 doc 变化就重找：会话本身靠"只改视图"的事务打开/收起，
+              // 而视图层还要再 dispatch 一次**空事务**去逼 PM 重算装饰（见 MathPreviewView）——
+              // 那些事务的 `docChanged` 可能是假、也可能让位置漂一点。一律重找的话，
+              // 一次无关重绘就能把会话"认丢"（实测：编辑框刚出现就自己收起）。
+              // 判据用 `tr.mapping` 把原区间映射一遍：映射后还是同一段 ⇒ 这段公式没被碰过。
+              const from0 = active.active.from
+              const to0 = active.active.to
+              const movedFrom = tr.mapping.map(from0)
+              const movedTo = tr.mapping.map(to0)
+              if (movedFrom === from0 && movedTo === to0) {
+                // 位置没动，直接用（内容可能被改过，比如逐键写回 —— 由 pull 去对齐）
+                active = {
+                  ...active,
+                  active: {
+                    ...active.active,
+                    tex: currentTexOf(newState.doc, active.active, active.kind)
+                  }
+                }
+              } else {
+                const hits = collectMathHits(newState.doc)
+                const moved =
+                  hits.find((h) => h.kind === active!.kind && h.from === movedFrom) ??
+                  hits.find((h) => h.kind === active!.kind && Math.abs(h.from - movedFrom) <= 4) ??
+                  hits.find((h) => h.kind === active!.kind && h.tex === active!.active.tex)
+                active = moved ? { ...active, active: moved } : null
+              }
             }
             const decos = tr.docChanged
               ? buildMathDecorations(newState.doc)
@@ -676,19 +844,27 @@ export const MathPreview = Extension.create<{ labels?: Partial<MathLabels> }>({
           decorations(state) {
             const st = mathPreviewKey.getState(state)
             if (!st) return undefined
-            if (!st.active) return st.decos
-            // 正在编辑：**保留**这条公式的渲染 widget（公式照常显示在框下面），
-            // 只是额外追加一个编辑框。绝不把常驻装饰去掉 —— 去掉就成"公式消失"了。
-            const pos = clamp(st.active.active.from, state.doc)
+            const active = st.active
             const box = st.box
-            return st.decos.add(state.doc, [
-              Decoration.widget(pos, () => (box ? box.dom : document.createElement('span')), {
-                side: -1
-              })
-            ])
+            if (!active || !box) return st.decos
+            const pos = clamp(active.active.from, state.doc)
+            if (active.kind === 'block') {
+              // 块级：容器**随正文流**顶替公式原来的位置，同时把那个节点收起来
+              //（`.md-math-editing` → `display:none`，见 overlays.css）。
+              // `side:-2` = 排在这个节点**之前**（widget 默认会排在节点内容之后）。
+              return st.decos.add(state.doc, [
+                Decoration.widget(pos, () => box.dom, { side: -2 }),
+                Decoration.node(pos, active.active.to, { class: 'md-math-editing' })
+              ])
+            }
+            // 行内：**保留**这条公式的渲染 widget（公式照常显示在浮层下面），
+            // 只是额外追加一个浮层。绝不把常驻装饰去掉 —— 去掉就成"公式消失"了。
+            return st.decos.add(state.doc, [Decoration.widget(pos, () => box.dom, { side: -1 })])
           },
           handleClick(view, pos, event) {
             const el = event.target as HTMLElement | null
+            // 点编辑区自己（✓/textarea）不算"点公式"
+            if (el?.closest?.('[data-md-math-editor]')) return false
             const found = el?.closest?.('[data-md-math-rendered],[data-md-math-block]')
             if (!(found instanceof HTMLElement)) return false
             const hit = locate(view.state.doc, pos, found)
@@ -704,20 +880,27 @@ export const MathPreview = Extension.create<{ labels?: Partial<MathLabels> }>({
 })
 
 /**
- * 插件视图：编辑框的**生命周期**（建/摆/对齐/收）。
+ * 插件视图：编辑态的**生命周期**（建 / 对齐 / 收）。
  *
- * 为什么还要一个 view 而不是全放在装饰里：摆位置要 `getBoundingClientRect`（要等 DOM 挂上、
- * 要跟着滚动/窗口尺寸重算），这些只能在视图层做。编辑框实例存在**插件 state** 上，
- * 所以事务重算不会把它换掉（textarea 因此不丢焦点）。
+ * 两种形态共用一条流水线：
+ *   * **行内**：容器挂在编辑区**容器**上（`position: fixed`），要算坐标、要跟着滚动重摆；
+ *   * **块级**：容器交给 `props.decorations` 当**块级 widget** 挂进正文流，不用算坐标。
+ *
+ * 实例都存在**插件 state** 的 `box` 上（不是视图字段）：装饰每次重算都会重新问
+ * `st.box` 要 DOM，只有"还是同一个实例对象"时 PM 才不重建那段 DOM —— 这是
+ * textarea 在逐键重绘中**不丢焦点**的前提。
  */
 class MathPreviewView {
   private view: EditorView
   private labels: MathLabels
-  private box: SourceBox | null = null
+  /** 当前会话 id（0 = 没有会话）：用来判断"要不要换实例" */
   private sessionId = 0
+  /** 当前会话是哪种形态（换形态时必须换实例，DOM 结构不同） */
+  private sessionKind: 'inline' | 'block' | null = null
   private rafId = 0
+
   /**
-   * 视口动了就把框重新贴回公式上。
+   * 视口动了就把**行内浮层**重新贴回公式上。
    *
    * 为什么必须是**捕获**阶段：编辑区正文是可滚动的内层容器，`window` 上收不到它的
    * scroll 事件；捕获阶段能拿到任意后代元素的滚动。用 rAF 合并（滚动一次会连发多次，
@@ -727,7 +910,8 @@ class MathPreviewView {
     if (this.rafId) return
     this.rafId = requestAnimationFrame(() => {
       this.rafId = 0
-      this.box?.place()
+      const st = mathPreviewKey.getState(this.view.state)
+      st?.box?.place()
     })
   }
 
@@ -753,40 +937,53 @@ class MathPreviewView {
   private sync(): void {
     const st = mathPreviewKey.getState(this.view.state)
     const active = st?.active ?? null
-    if (!active) {
+    if (!st || !active) {
       this.drop()
       return
     }
-    if (!this.box || this.sessionId !== active.id) {
-      this.drop()
-      const box = new SourceBox(this.view, active, this.labels)
-      this.box = box
-      this.sessionId = active.id
-      // 编辑框挂到编辑区**容器**上（不在 contenteditable 里）
+    // 同一条会话 + 同一种形态 ⇒ 只对齐内容（逐键写回就走这一条，DOM 不重建）
+    if (st.box && this.sessionId === active.id && this.sessionKind === active.kind) {
+      st.box.pull(active.active.tex)
+      st.box.place()
+      return
+    }
+    this.drop()
+    const box =
+      active.kind === 'block'
+        ? new BlockMathEditor(this.view, active.id, this.labels, active.active.from)
+        : new InlineMathEditor(this.view, active, this.labels)
+    st.box = box
+    this.sessionId = active.id
+    this.sessionKind = active.kind
+    box.pull(active.active.tex)
+    if (active.kind === 'inline') {
+      // 行内浮层不在 contenteditable 里：挂到编辑区**容器**上
       const host = this.view.dom.parentElement ?? document.body
       host.appendChild(box.dom)
       // 先挂上再摆（还没挂时量不到高度）：下一帧摆一次，避免"先闪一下默认位置"
       box.place()
-      requestAnimationFrame(() => {
-        if (this.box === box) {
-          box.place()
-          box.focus()
-        }
-      })
-      st!.box = box
-      return
+    } else {
+      // 块级：容器由装饰挂进正文流 —— 这里必须**主动重绘一次**，
+      // 否则新实例的 DOM 要等下一次事务才会上屏（点击后"什么都没发生"就是这么来的：
+      // 开会话的事务 `docChanged` 为假，PM 不会自己重算装饰）。
+      this.view.dispatch(this.view.state.tr)
     }
-    this.box.setSession(active)
-    this.box.place()
+    requestAnimationFrame(() => {
+      if (mathPreviewKey.getState(this.view.state)?.box === box) box.focus()
+    })
   }
 
   private drop(): void {
-    if (!this.box) return
     const st = mathPreviewKey.getState(this.view.state)
-    if (st) st.box = null
-    this.box.destroy()
-    this.box = null
+    const box = st?.box ?? null
+    if (box) {
+      box.destroy()
+      if (st) st.box = null
+      // 容器是装饰挂上去的：摘掉之后要重绘一次才会真的消失（与挂上时同理）
+      if (this.sessionKind === 'block') this.view.dispatch(this.view.state.tr)
+    }
     this.sessionId = 0
+    this.sessionKind = null
   }
 }
 

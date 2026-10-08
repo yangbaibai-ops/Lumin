@@ -111,12 +111,56 @@ const SNAPSHOT = `(() => {
       ? {
           value: ta ? ta.value : null,
           side: box.getAttribute('data-md-math-editor-side'),
+          shape: box.getAttribute('data-md-math-editor-shape'),
           invalid: box.hasAttribute('data-md-math-invalid'),
           rect: rect(box),
           taFontFamily: tacs ? tacs.fontFamily : null,
           connected: box.isConnected,
           taConnected: ta ? ta.isConnected : null,
-          label: (box.querySelector('[data-md-math-editor-label]') || {}).textContent ?? null
+          label: (box.querySelector('[data-md-math-editor-label]') || {}).textContent ?? null,
+          // ── 第三十轮的形态（Typora 截图口径）──
+          borderWidth: box ? getComputedStyle(box).borderTopWidth : null,
+          borderColor: box ? getComputedStyle(box).borderTopColor : null,
+          containerBg: box ? getComputedStyle(box).backgroundColor : null,
+          sourceBg: (() => {
+            const s = box.querySelector('.md-math-editor__source')
+            return s ? getComputedStyle(s).backgroundColor : null
+          })(),
+          previewBg: (() => {
+            const p = box.querySelector('.md-math-editor__preview')
+            return p ? getComputedStyle(p).backgroundColor : null
+          })(),
+          srcRect: rect(box.querySelector('.md-math-editor__source')),
+          previewRect: rect(box.querySelector('.md-math-editor__preview')),
+          // 数学定界符分列源码上下：数它们的行、并给出 DOM 顺序
+          delims: [...box.querySelectorAll('[data-md-math-editor-delim]')].map((d) => ({
+            which: d.getAttribute('data-md-math-editor-delim'),
+            text: d.textContent,
+            top: Math.round(d.getBoundingClientRect().top),
+            h: Math.round(d.getBoundingClientRect().height)
+          })),
+          check: (() => {
+            const c = box.querySelector('[data-md-math-editor-check]')
+            if (!c) return null
+            return {
+              tag: c.tagName,
+              disabled: c.disabled === true,
+              // 可聚焦：tabIndex 不小于 0 **且**未禁用（不是"看着像按钮"）。
+              // 注意：这里**不能**顺手调 c.focus() 去试 —— 那会把 textarea 的焦点抢走并触发
+              // 失焦收起（本套件踩过：诊断本身把被测状态改坏了）。真正的"能聚焦"由
+              // E7c2 那条**不改状态**的断言守（按 Tab 语义：tabIndex 不小于 0 且未禁用）。
+              tabIndex: c.tabIndex,
+              focusable: c.tabIndex >= 0 && c.disabled !== true,
+              ariaLabel: c.getAttribute('aria-label'),
+              text: c.textContent
+            }
+          })(),
+          // 编辑态里源码 textarea 下方的 KaTeX 字形（E7e 用它证明"下半真的更新了"）
+          previewText: (() => {
+            const p = box.querySelector('.md-math-editor__preview')
+            const k = p ? p.querySelector('.katex') : null
+            return k ? k.textContent : null
+          })()
         }
       : null,
     inlineRect: rect(inlineRendered),
@@ -291,6 +335,11 @@ async function main() {
 
     // ─── E3 逐键实时渲染 ───────────────────────────────────────────────────
     const before = open.inlineKatexText
+    report.check(
+      'E2e 打开编辑态后焦点在源码框里（textarea 拿到焦点，不是 body）',
+      (await app.ev(`document.activeElement?.tagName ?? null`)) === 'TEXTAREA',
+      `activeElement=${await app.ev('document.activeElement?.tagName ?? null')}`
+    )
     await app.ev(setSource('E = mc^3'))
     await sleep(400)
     const changed = JSON.parse(await app.ev(SNAPSHOT))
@@ -396,6 +445,138 @@ async function main() {
       return 'ok'
     })()`)
     await sleep(300)
+  }
+
+  // ─── E7 编辑态形态（第三十轮：Typora 截图口径）──────────────────────────────
+  //
+  // 与用户给的 Typora 截图逐条对齐：
+  //   ① 一个**带细边框的容器**，源码区在上、渲染区在下，都在同一个容器里（随正文流）；
+  //   ② 源码是**两行 `$$`** 分列上下（不是挤在一行）+ 等宽字体；
+  //   ③ 右上角「公式 ✓」：标签文本走语言包，✓ 是**可聚焦、有可访问名**的真按钮；
+  //   ④ 点 ✓ 收起 → 回到纯渲染态，**文档逐字不变**；
+  //   ⑤ 逐键实时渲染：改源码 ⇒ 容器**下半的渲染区**立即更新；
+  //   ⑥ 行内公式的编辑态是**紧凑浮层**（形态与块级不同，且是有意的）。
+  const blockPos2 = await centerOf(app.ev, '.md-preview .md-math-block')
+  if (!blockPos2) {
+    report.skip('E7 编辑态形态', '页面上没有块级公式')
+  } else {
+    await clickAt(app.send, blockPos2.x, blockPos2.y)
+    await sleep(600)
+    const style = JSON.parse(await app.ev(SNAPSHOT))
+    const b = style.box
+    report.check(
+      'E7a 编辑态是一个**带边框的容器**，源码区在上、渲染区在下（都在同一容器内）',
+      !!b &&
+        b.shape === 'block' &&
+        parseFloat(b.borderWidth ?? '0') > 0 &&
+        !!b.srcRect &&
+        !!b.previewRect &&
+        // 源码区**底 ≤ 渲染区顶** ⇒ 确实是"上源码 / 下渲染"
+        b.srcRect.bottom <= b.previewRect.top + 1 &&
+        // 上下深色不同：上半源码底 / 下半渲染底（截图里就是两块不同底色）
+        b.sourceBg !== b.previewBg,
+      `shape=${b?.shape} border=${b?.borderWidth} ${b?.borderColor} srcBottom=${b?.srcRect?.bottom} previewTop=${b?.previewRect?.top} srcBg=${b?.sourceBg} previewBg=${b?.previewBg}`
+    )
+    report.check(
+      'E7b 源码区是**两行 `$$`** 分列上下（open 在上、close 在下）且源码用等宽字体',
+      !!b &&
+        b.delims.length === 2 &&
+        b.delims[0].which === 'open' &&
+        b.delims[0].text === '$$' &&
+        b.delims[1].which === 'close' &&
+        b.delims[1].text === '$$' &&
+        b.delims[0].top < b.delims[1].top &&
+        /mono|Cascadia|Consolas|JetBrains/i.test(b.taFontFamily ?? ''),
+      `delims=${JSON.stringify(b?.delims)} font=${b?.taFontFamily}`
+    )
+    report.check(
+      'E7c 右上角标签是本地化「公式」，✓ 是**真按钮**（tabIndex 不小于 0、未禁用、有非空可访问名）',
+      !!b &&
+        !!b.label &&
+        b.label.trim().length > 0 &&
+        b.check !== null &&
+        b.check.tag === 'BUTTON' &&
+        b.check.focusable === true &&
+        b.check.tabIndex >= 0 &&
+        b.check.disabled === false &&
+        !!b.check.ariaLabel &&
+        b.check.ariaLabel.trim().length > 0 &&
+        b.check.ariaLabel !== b.label,
+      `label=${JSON.stringify(b?.label)} check=${JSON.stringify(b?.check)}`
+    )
+    // ✓ 的"能聚焦"用**不改状态**的方式再钉一次：显式 focus 之后 activeElement 必须就是它，
+    // 然后再把焦点还给源码框（不然这次 focus 会把编辑态收起 —— 见 SNAPSHOT 里的说明）。
+    // ✓ 的"能聚焦"：用**标准判据**钉，而不是在断言里真的去 focus ——
+    // 在断言里 focus 会把 textarea 的焦点抢走并触发失焦收起（本套件踩过两次：
+    // 诊断动作把被测状态改坏了）。`<button>` 未禁用且 tabIndex 不小于 0 就是**可聚焦**的
+    // 元素（HTML 规范 + 浏览器行为），这里把这两条前提钉死，并排除"用一个 div 冒充按钮"。
+    report.check(
+      'E7c2 ✓ 是可聚焦元素（`<button>` 元素 + tabIndex 不小于 0 + 未禁用），不是 div 冒充',
+      b?.check?.tag === 'BUTTON' && b.check.tabIndex >= 0 && b.check.disabled === false,
+      `tag=${b?.check?.tag} tabIndex=${b?.check?.tabIndex} disabled=${b?.check?.disabled}`
+    )
+    // 点 ✓ 收起：文档必须**逐字不变**
+    const beforeClick = style.content
+    await app.ev(`(() => {
+      const c = document.querySelector('[data-md-math-editor-check]')
+      c.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }))
+      return 'ok'
+    })()`)
+    await sleep(500)
+    const closed = JSON.parse(await app.ev(SNAPSHOT))
+    report.check(
+      'E7d 点 ✓ 收起 → 回到纯渲染态（编辑容器消失、原公式重新可见），且**文档逐字不变**',
+      closed.box === null &&
+        closed.blockRendered === 2 &&
+        closed.content === beforeClick,
+      `box=${closed.box === null ? 'closed' : 'open'} blockRendered=${closed.blockRendered} contentSame=${closed.content === beforeClick}`
+    )
+    // 重新打开 → 改一处 → 容器下半的渲染区必须跟着变
+    await clickAt(app.send, blockPos2.x, blockPos2.y)
+    await sleep(500)
+    const before7e = JSON.parse(await app.ev(SNAPSHOT))
+    await app.ev(setSource('\\int_0^1 x^3\\,dx = \\frac{1}{4}'))
+    await sleep(500)
+    const after7e = JSON.parse(await app.ev(SNAPSHOT))
+    report.check(
+      'E7e 逐键实时渲染：改源码 ⇒ 容器**下半的渲染区**立即更新（上轮的 E3 系列同时仍绿）',
+      !!after7e.box &&
+        after7e.box.previewText !== before7e.box?.previewText &&
+        /x3/.test(after7e.box.previewText ?? '') &&
+        after7e.content.includes('x^3'),
+      `before=${JSON.stringify(before7e.box?.previewText)} after=${JSON.stringify(after7e.box?.previewText)}`
+    )
+    // 行内：紧凑浮层（不是块级那种整块容器）——差异是**有意**的
+    await app.ev(`(() => {
+      const ta = document.querySelector('[data-md-math-editor-src]')
+      if (ta) ta.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+      return 'ok'
+    })()`)
+    await sleep(300)
+    const inlinePos2 = await centerOf(app.ev, '.md-preview .md-math-rendered')
+    if (!inlinePos2) {
+      report.skip('E7f 行内编辑态是紧凑浮层', '页面上没有行内公式')
+    } else {
+      await clickAt(app.send, inlinePos2.x, inlinePos2.y)
+      await sleep(500)
+      const inlineStyle = JSON.parse(await app.ev(SNAPSHOT))
+      const ib = inlineStyle.box
+      report.check(
+        'E7f 行内编辑态是**紧凑浮层**（shape=inline、无 `$$` 定界符、宽高都远小于块级）',
+        !!ib &&
+          ib.shape === 'inline' &&
+          ib.delims.length === 0 &&
+          ib.rect.width < 600 &&
+          ib.rect.height < 120 &&
+          // 与块级共用同一套配色语言：同为一个 `.md-math-editor` 容器
+          parseFloat(ib.borderWidth ?? '0') > 0,
+        `shape=${ib?.shape} rect=${JSON.stringify(ib?.rect)} delims=${ib?.delims.length} border=${ib?.borderWidth}`
+      )
+      report.note(
+        `E7 形态差异（有意）：块级 shape=block 容器 ${style.box?.rect.width}×${style.box?.rect.height}（随正文流、含 $$ 上下两行）；` +
+          `行内 shape=inline 浮层 ${ib?.rect.width}×${ib?.rect.height}（固定定位、紧贴公式上方）`
+      )
+    }
   }
 
   // ─── E5 尺寸 / 布局 ─────────────────────────────────────────────────────

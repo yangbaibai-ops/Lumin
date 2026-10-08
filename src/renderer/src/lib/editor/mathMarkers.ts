@@ -204,6 +204,13 @@ export const MathBlock = Node.create({
    * 而 NodeView 默认在属性变化时不重建 —— 少了这个回调，敲进框里的字符会**只进模型、
    * 不进画面**（实测：公式停在旧内容，而文档里已经是新内容）。`update` 返回 `false`
    * 表示"这个新节点我处理不了"，交回给 PM 重建。
+   *
+   * 编辑态**不在这里**（第三十轮）：编辑容器是**随正文流的块级 widget 装饰**
+   * （见 mathPreview.ts），编辑时这个 NodeView 被 CSS `.md-math-editing` 收起、
+   * 由那个容器取代。为什么不把编辑容器塞进这个 NodeView：会话是**只改视图**的事务
+   * （没有任何文档变化），而 ProseMirror 在"文档没变"时**不会调用 `view.update()`**，
+   * NodeView 因此拿不到通知、挂不上编辑器（实测过：点击后会话开了但界面上什么都没有）。
+   * 走装饰就绕开了这个限制 —— 装饰由 `props.decorations` 重算，PM 一定接得住。
    */
   addNodeView() {
     return ({ node }) => {
