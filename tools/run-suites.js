@@ -112,6 +112,9 @@ const DEFAULT_SUITES = [
   // 帮助 →「意见或 bug 反馈」：渠道清单来自 shared/feedback.ts（模板无 URL）+ 外链白名单
   // （负例必须被拒）+ 焦点回编辑面。**自管实例**（端口 9236，带 LUMIN_OPEN_EXTERNAL_DRY_RUN=1）
   '_verify-feedback.js',
+  // Ctrl+P → **应用内打印预览**（PDF 与导出同一段流水）+ 预览里点打印走打印通路 + 关掉清临时文件。
+  // **自管实例**（端口 9237，带 LUMIN_PRINT_DRY_RUN=1 与 LUMIN_EXPORT_DIR）
+  '_verify-print-preview.js',
   '_verify-settings-layout.js', // 设置页在 940×600 / 125% 缩放下的横向布局（导航跟窗口走 + 主题卡 3 列）
   '_verify-zorder.js', // 浮层叠放顺序：--z-* 令牌真的到 DOM + 实测顺序（70 < 120 < 140 < 150…）
   '_verify-visual-scale.js', // 视觉尺度：字号令牌生效 + 计算字号/圆角都落在文档化档位里
@@ -220,6 +223,9 @@ const SELF_MANAGED = new Set([
   // 它要在实例起来**之前**给 `LUMIN_OPEN_EXTERNAL_DRY_RUN=1`（"点了外链只记日志、不真开浏览器"），
   // 端口 9236 —— 环境变量只能在启动前给到，所以自管实例
   '_verify-feedback.js',
+  // 它要在实例起来**之前**给 `LUMIN_PRINT_DRY_RUN=1`（"点预览里的打印只记账、不弹原生对话框"）
+  // 与 `LUMIN_EXPORT_DIR`（导出落点旁路，用来交叉验证页数），端口 9237
+  '_verify-print-preview.js',
 ])
 
 function parseArgs(argv) {

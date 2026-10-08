@@ -13,6 +13,8 @@ import { watch, existsSync, readFileSync, type FSWatcher } from 'fs'
 import { mkdir, readFile, readdir, stat } from 'fs/promises'
 import * as fileOps from './fileOps'
 import * as exportSvc from './export'
+// 打印预览作业（临时目录 + 预览窗口 + 打印/关闭）：见 main/printPreview.ts
+import * as printPreviewSvc from './printPreview'
 import * as drafts from './drafts'
 import * as links from './services/links'
 import * as session from './services/session'
@@ -1096,6 +1098,26 @@ export function registerIpc(slots: SlotRegistry): void {
   // 无打印机时 Chromium 的 failureReason 也原样回到渲染层，不会被吞掉。
   ipcMain.handle('print:document', (_, payload: ExportPayload, s: AppSettings['export']['pdf']) =>
     exportSvc.printDocument(payload, s)
+  )
+  /**
+   * ── 打印预览（第十一轮）────────────────────────────────────────────────────────
+   * 用户报障原话：「点击 Ctrl+P 打印的时候，出现的 Windows 打印窗口提示：**此应用不支持
+   * 打印预览**」—— `webContents.print()` 只有系统对话框，Chromium 那套预览 UI 不在
+   * Electron 里（平台限制）。所以先自己生成 PDF 再在应用内预览（见 main/printPreview.ts）。
+   *
+   * 三条通道分成"开预览 / 预览里点打印 / 预览里点关闭"：
+   *   * `print:preview` 由**主窗口**的渲染层调用（载荷来自当前文档）；
+   *   * 后两条由**预览窗口自己的 preload** 调用（`src/preload/printPreview.ts`），
+   *     参数只有作业 id —— 载荷一直留在主进程里，预览页拿不到它。
+   */
+  ipcMain.handle('print:preview', (_, payload: ExportPayload, s: AppSettings['export']['pdf']) =>
+    printPreviewSvc.openPrintPreview(payload, s)
+  )
+  ipcMain.handle('print:preview-print', (_, jobId: string) =>
+    printPreviewSvc.printPreviewJob(jobId)
+  )
+  ipcMain.handle('print:preview-close', (_, jobId: string) =>
+    printPreviewSvc.closePrintPreview(jobId)
   )
 
   // ── 会话恢复：按窗口槽位读写（窗口生命周期在 index.ts）──

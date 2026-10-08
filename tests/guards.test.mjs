@@ -230,7 +230,10 @@ test('落盘：用户文档必须走 fileOps.writeFile（原子写），直接�
    *   * `drafts.ts` —— 写的是我们自己的草稿文件（`<userData>/drafts/*`），不是用户的文档；
    *   * `export.ts` —— 写导出产物（用户在保存对话框里选定的输出路径）；
    *   * `services/links.ts` —— 用 `flag: 'wx'` **新建**链接目标，文件已存在时会失败，绝不覆盖；
-   *   * `services/*` —— 写各自的元数据/缓存，同样不经手用户的 `.md`。
+   *   * `services/*` —— 写各自的元数据/缓存，同样不经手用户的 `.md`；
+   *   * `printPreview.ts` —— 写的是**打印预览的临时产物**（`<temp>/lumin-print-preview-<id>/`：
+   *     一份 PDF + 一页 wrapper HTML），既不是用户文档、也不该走"原子写 + fsync"那套
+   *     （它就是给人看一眼就删的一次性文件，关窗/退出都会删掉）。
    * 用户文档的保存路径只有 `ipc.ts` 的保存分支，它必须调 `fileOps.writeFile`。
    */
   const ALLOW = [
@@ -242,6 +245,7 @@ test('落盘：用户文档必须走 fileOps.writeFile（原子写），直接�
     'services/atomicWrite.ts',
     'drafts.ts',
     'export.ts',
+    'printPreview.ts',
     'services/links.ts',
     'services/database.ts',
     'services/history.ts',

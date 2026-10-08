@@ -317,7 +317,8 @@ PM 内部（`nodesBetween`/`nodeSize`/`isLeaf`）约 490ms、GC 411ms、我们�
 | 其它        | `F7`（caret browsing）、`F11`（浏览器全屏）               | 应用的全屏入口是 `Mod+Shift+F`（专注模式），没被连坐（套件里真按键验过它仍生效）                                                                | `F7/F11 (caret-browsing/fullscreen)` 日志 + `Ctrl+Shift+F` 仍生效                                                                                                                        |
 
 - **`devShortcut` 已删除**，`blockedShortcut()` 成为唯一策略入口（返回桶名，同时用于日志与断言）；`src/main/index.ts` 只留一段接线，套件有静态断言防止 `devShortcut(` 回来。
-- **`Ctrl+P` 故意没拦**：应用**自己**把 `Mod+P` 绑给了「打印…」（`useKeymap.ts` 的 `file.print`），而主进程 `preventDefault()` 会连渲染层 keydown 一起吃掉 —— 拦了就把应用自己的打印打死；Electron 也不存在"浏览器打印对话框"这套 UI。验收用静态断言（策略放行 + `useKeymap.ts` 仍有该绑定），**不真按**（真按会弹原生打印对话框、拖住自动化）。
+- **`Ctrl+P` 故意没拦**：应用**自己**把 `Mod+P` 绑给了「打印…」（`useKeymap.ts` 的 `file.print`），而主进程 `preventDefault()` 会连渲染层 keydown 一起吃掉 —— 拦了就把应用自己的打印打死；Electron 也不存在"浏览器打印对话框"这套 UI。
+  （**第十一轮补充**：`Ctrl+P` 现在**先开应用内打印预览**，见 §4.90；打印那一步有 `LUMIN_PRINT_DRY_RUN=1` 旁路（仅非打包实例生效），所以 `tools/_verify-print-preview.js` **真的会按 `Ctrl+P`** 并断言"预览出现 + 打印通路被调用"，不再只是静态断言。）
 - **已知代价（登记在 `shortcuts.ts` 的 `KNOWN_THIRD_PARTY_COLLISIONS`，单测守着）**：`Ctrl+U` 会让代码块里 CodeMirror 的 `undoSelection`（mac 的 `redoSelection`）失效；整篇撤销/重做 `Mod+Z`/`Mod+Y`/`Mod+Shift+Z` 不受影响。
 - **未做/未证**：用户自定义键位若撞上被拦键不会生效（渲染层不知道主进程的拦截表）；原生菜单里 `role: 'reload'` 保留（删掉会让 `menu.reload` 变死键）；Ctrl+滚轮只有"读数不变"的端到端断言（这套构建里合成 Ctrl+滚轮改前也不改缩放，所以它证明的是"最终不缩放"而非"闸被触发过"）；打包态未实测。
 - **验收（parent 自己重建后重跑）**：`_verify-devtools` **38/38**（新增刷新族/缩放/查看源码/F7/F11 断言，改前 22/35）、`_verify-toolbar-settings` **38/38**；单测 **827 → 831/831**；`tsc`/`vue-tsc`/`eslint --max-warnings 0`/`docs:facts`/`docs:tokens` 全 0。

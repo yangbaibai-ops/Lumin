@@ -93,6 +93,11 @@ export interface PrintResult {
    * `Print job failed`。这里不做翻译：它是诊断信息，渲染层按需展示。
    */
   failureReason: string
+  /**
+   * 验收旁路标记：`true` = 这一轮**没有真的把任务交给系统打印**（`LUMIN_PRINT_DRY_RUN=1`，
+   * 仅开发态实例生效，见 `main/testPaths.ts` 的 `printDryRun`）。发布版永远不会有它。
+   */
+  dryRun?: boolean
 }
 
 /**

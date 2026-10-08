@@ -781,10 +781,10 @@
 | `Mod+K` / `Mod+,` / `Mod+/` / `Mod+Shift+P` / `Mod+Tab` / `Mod+Shift+Tab` | 快捷键设置 / 设置 / 循环模式 / 命令面板 / 应用内切窗 |
 | `Mod+E` / `Mod+Shift+X` / `Mod+Shift+Q` / `Mod+D` / `Ctrl+Space` | 行内代码 / 删除线 / 引用 / 代码块多光标加选 / 代码块补全 |
 
-**为什么没拦 `Ctrl+P`**：它是**应用自己绑的**打印键（`useKeymap.ts` 的 `file.print`，
-「打印…」走 `webContents.print()`）。Chromium 那套浏览器 UI 在 Electron 里并不存在，
-没有"浏览器打印对话框"要拦 —— 拦了只会把应用自己的打印打死。验收套件刻意**不真按**
-`Ctrl+P`（会弹出原生打印对话框），只做「策略放行 + `useKeymap.ts` 里 `Mod+P` 仍在」的静态断言。
+**为什么没拦 `Ctrl+P`**：它是**应用自己绑的**打印键（`useKeymap.ts` 的 `file.print`）。
+Chromium 那套浏览器 UI 在 Electron 里并不存在，没有"浏览器打印对话框"要拦 ——
+拦了只会把应用自己的打印打死。
+> **第十一轮起**：`Ctrl+P` 先开**应用内打印预览**（见 [08f-fix-log-5.md](./08f-fix-log-5.md) §4.90）。
 
 #### 四、已知代价
 

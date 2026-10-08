@@ -458,8 +458,6 @@
     "workspaceAlreadyOpen": "\"{name}\" is already the current workspace",
     "exportFailed": "Export failed",
     "exportedTo": "Exported to: {path}",
-    "printDone": "Sent to the printer",
-    "printCancelled": "Printing canceled",
     "printFailed": "Printing failed",
     "printNoReason": "The print system did not report a reason",
     "renameFailed": "Rename failed",
@@ -680,6 +678,17 @@
   "export": {
     "tocTitle": "Contents",
     "pdfEmpty": "PDF rendering returned an empty result"
+  },
+  "printPreview": {
+    "title": "Print preview",
+    "print": "Print",
+    "close": "Close",
+    "pages": "{n} page(s)",
+    "printing": "Printing…",
+    "sent": "Sent to printer",
+    "cancelled": "Print cancelled",
+    "failed": "Print failed",
+    "unavailable": "Could not build the preview"
   },
   "diagnostics": {
     "title": "Lumin diagnostics",

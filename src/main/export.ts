@@ -7,7 +7,9 @@ import * as fileOps from './fileOps'
 // ZIP 写入器抽到 main/zip.ts（导出与工作区备份共用；STORE / DEFLATE 两种）
 import { zipStore } from './zip'
 // 验收旁路（仅开发态）也抽出去了：导出与备份都要用它跳过原生对话框
-import { testOutputDir } from './testPaths'
+import { printDryRun, testOutputDir } from './testPaths'
+// 预览要显示"共 N 页"、验收要对齐页数：页数解析是纯函数（见 shared/printPreview.ts）
+import { countPdfPages } from '../shared/printPreview'
 // HTML 转义唯一实现在 shared/html.ts：导出模板里的标题会进 <title>/<dc:title> 与属性位置，
 // 少转引号等于让标题里的 `"` 直接闭合标签（审计 §10「重复实现」）
 import { escapeHtml } from '../shared/html'
@@ -125,6 +127,47 @@ async function withRenderedDocument<T>(
   }
 }
 
+/**
+ * 用**与 PDF 导出完全相同**的那一段流水生成 PDF 字节：同一个隐藏窗口
+ * （`withRenderedDocument`）+ 同一份 `buildHtml` + 同一套 `printToPDF` 参数
+ * （页面尺寸 / 边距 / 页眉页脚模板）。
+ *
+ * 抽出来是因为现在有**两个**消费者：导出 PDF 落盘（`exportPdf`）与打印预览
+ * （`printPreview.openPrintPreview`，见 main/printPreview.ts）。分页口径只有这一份 ——
+ * 预览显示的页数与导出的 PDF 因此必然一致（验收套件就是这么判的）。
+ */
+export async function buildPdfBytes(
+  payload: ExportPayload,
+  pdfSettings: { margin: number; pageSize: 'A4' | 'A5' | 'Letter' }
+): Promise<Buffer> {
+  return withRenderedDocument(payload, async (printWin) => {
+    const marginInch = pdfSettings.margin / 25.4
+    // ── 页眉页脚（审计 §7 第 18 条）：此前 `headerTemplate|footerTemplate` 全仓 0 命中 ──
+    // Chromium 的模板是**独立 HTML 片段**（不继承页面样式）：必须自带 font-size/颜色，
+    // 且只有 `.pageNumber` / `.totalPages` / `.title` / `.date` 这几个类会被替换。
+    // 上下边距要给页眉页脚留位置，否则它们会被正文压住（Chromium 把它们画在边距区里）。
+    const headerFooterGap = 0.45 // inch
+    const data = await printWin.webContents.printToPDF({
+      pageSize: pdfSettings.pageSize,
+      printBackground: true,
+      landscape: false,
+      displayHeaderFooter: true,
+      headerTemplate: pdfHeaderTemplate(payload.title, marginInch),
+      footerTemplate: pdfFooterTemplate(marginInch),
+      margins: {
+        top: Math.max(marginInch, headerFooterGap),
+        bottom: Math.max(marginInch, headerFooterGap),
+        left: marginInch,
+        right: marginInch
+      }
+    })
+    if (!data || data.length === 0) {
+      throw new Error(mainT('export.pdfEmpty'))
+    }
+    return data
+  })
+}
+
 export async function exportPdf(
   payload: ExportPayload,
   pdfSettings: { margin: number; pageSize: 'A4' | 'A5' | 'Letter' }
@@ -142,32 +185,7 @@ export async function exportPdf(
   const resultFilePath = result.filePath
 
   try {
-    const data = await withRenderedDocument(payload, async (printWin) => {
-      const marginInch = pdfSettings.margin / 25.4
-      // ── 页眉页脚（审计 §7 第 18 条）：此前 `headerTemplate|footerTemplate` 全仓 0 命中 ──
-      // Chromium 的模板是**独立 HTML 片段**（不继承页面样式）：必须自带 font-size/颜色，
-      // 且只有 `.pageNumber` / `.totalPages` / `.title` / `.date` 这几个类会被替换。
-      // 上下边距要给页眉页脚留位置，否则它们会被正文压住（Chromium 把它们画在边距区里）。
-      const headerFooterGap = 0.45 // inch
-      const data = await printWin.webContents.printToPDF({
-        pageSize: pdfSettings.pageSize,
-        printBackground: true,
-        landscape: false,
-        displayHeaderFooter: true,
-        headerTemplate: pdfHeaderTemplate(payload.title, marginInch),
-        footerTemplate: pdfFooterTemplate(marginInch),
-        margins: {
-          top: Math.max(marginInch, headerFooterGap),
-          bottom: Math.max(marginInch, headerFooterGap),
-          left: marginInch,
-          right: marginInch
-        }
-      })
-      if (!data || data.length === 0) {
-        throw new Error(mainT('export.pdfEmpty'))
-      }
-      return data
-    })
+    const data = await buildPdfBytes(payload, pdfSettings)
     await fileOps.writeBinary(resultFilePath, data)
     return resultFilePath
   } catch (err) {
@@ -220,6 +238,22 @@ export async function printDocument(
     pageSize: printSettings.pageSize,
     margins: printSettings.margin
   })
+  /**
+   * 验收旁路（仅开发态）：`LUMIN_PRINT_DRY_RUN=1` 时**只记账、不弹系统打印对话框**。
+   *
+   * 为什么必须要有：`silent: false` 会弹原生对话框，自动化既关不掉也点不了，验收就只剩下
+   * "靠人眼看"。与 `testPaths.testOutputDir`（导出落点）/ `LUMIN_OPEN_EXTERNAL_DRY_RUN`
+   * 是同一套口径：**打包产物忽略该变量**，发布版永远真的打印。
+   */
+  if (printDryRun()) {
+    const pages = countPdfPages(
+      await buildPdfBytes(payload, printSettings).catch(() => Buffer.alloc(0))
+    )
+    console.log(
+      `[print] dry-run pages=${pages} pageSize=${options.pageSize} silent=${options.silent}`
+    )
+    return { status: 'ok', failureReason: '', dryRun: true }
+  }
   return withRenderedDocument(
     payload,
     (printWin) =>

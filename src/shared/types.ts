@@ -842,6 +842,20 @@ export interface LuminAPI {
       payload: ExportPayload,
       settings: AppSettings['export']['pdf']
     ) => Promise<PrintResult>
+    /**
+     * 打印预览（第十一轮）：先按**与 PDF 导出同一段流水**生成 PDF，写进临时目录，
+     * 再在应用内的预览窗口里用 Chromium 内置 PDF 查看器显示（不引 CDN、不发网络请求）。
+     *
+     * 返回 `pages`（预览要显示"共 N 页"，验收也用它对齐）与 `pdfPath`（验收核对"预览的
+     * 确实是这份 PDF"）。失败时 `ok: false` + 可读原因（主进程绝不抛给渲染层）。
+     */
+    preview: (
+      payload: ExportPayload,
+      settings: AppSettings['export']['pdf']
+    ) => Promise<
+      | { ok: true; id: string; pages: number; bytes: number; pdfPath: string }
+      | { ok: false; error: string }
+    >
   }
   /**
    * 备份（审计 §2 P1）：定时把 SQLite 库复制到用户指定目录 + 按需导出工作区快照 zip。

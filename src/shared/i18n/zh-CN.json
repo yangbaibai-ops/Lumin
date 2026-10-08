@@ -458,8 +458,6 @@
     "workspaceAlreadyOpen": "「{name}」已经是当前工作区了",
     "exportFailed": "导出失败",
     "exportedTo": "已导出到：{path}",
-    "printDone": "已发送到打印机",
-    "printCancelled": "已取消打印",
     "printFailed": "打印失败",
     "printNoReason": "打印系统没有给出失败原因",
     "renameFailed": "重命名失败",
@@ -680,6 +678,17 @@
   "export": {
     "tocTitle": "目录",
     "pdfEmpty": "PDF 渲染返回空内容"
+  },
+  "printPreview": {
+    "title": "打印预览",
+    "print": "打印",
+    "close": "关闭",
+    "pages": "共 {n} 页",
+    "printing": "正在打印…",
+    "sent": "已发送到打印机",
+    "cancelled": "已取消打印",
+    "failed": "打印失败",
+    "unavailable": "预览生成失败"
   },
   "diagnostics": {
     "title": "Lumin 诊断信息",

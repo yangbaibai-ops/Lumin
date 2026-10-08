@@ -31,7 +31,23 @@ function cspPlugin(isDev: boolean): Plugin {
  */
 export default defineConfig(({ command }) => ({
   main: {},
-  preload: {},
+  preload: {
+    build: {
+      rollupOptions: {
+        /**
+         * 两个 preload 入口：
+         *   * `index`        —— 应用窗口的全套 API（`window.luminAPI`）；
+         *   * `printPreview` —— 打印预览窗口**专用**，只暴露「打印 / 关闭」两个动作
+         *     （那个窗口只显示一份 PDF，没有理由拿到草稿/备份/剪贴板那套，见
+         *     src/preload/printPreview.ts 与 main/printPreview.ts）。
+         */
+        input: {
+          index: resolve('src/preload/index.ts'),
+          printPreview: resolve('src/preload/printPreview.ts')
+        }
+      }
+    }
+  },
   renderer: {
     resolve: {
       alias: {

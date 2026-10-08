@@ -17,13 +17,15 @@ const here = path.dirname(fileURLToPath(import.meta.url))
 const ROOT = path.join(here, '..')
 const MANUAL = path.join(ROOT, 'docs/manual')
 
-/** 拆片的五个分片（顺序即历史顺序）；改名字要同时改索引与这里 */
+/** 拆片的分片（顺序即历史顺序）；改名字要同时改索引与这里 */
 const PARTS = [
   '08a-fix-log-1.md',
   '08b-fix-log-2.md',
   '08c-fix-log-3.md',
   '08d-fix-log-4.md',
-  '08e-wave-records.md'
+  '08e-wave-records.md',
+  // 第十一轮新增：08d 已经顶到 1000 行预算（999 + 一条指向新片的说明），§4.90 另开一片
+  '08f-fix-log-5.md'
 ]
 
 const lineCount = (f) => fs.readFileSync(f, 'utf-8').replace(/\r\n/g, '\n').split('\n').length

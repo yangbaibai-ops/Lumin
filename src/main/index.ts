@@ -42,6 +42,8 @@ import { migrateLegacyStores } from './store'
 import { db } from './services/database'
 import * as session from './services/session'
 import * as openDocs from './services/openDocs'
+// 打印预览作业：退出时清掉它的临时目录（开预览本身走 ipc.ts 的 print:preview）
+import * as printPreview from './printPreview'
 import * as taskbar from './services/taskbar'
 import { recordBuildStamp, recordLaunchIntent } from './services/buildStamp'
 import { devProfileDir } from './devProfile'
@@ -160,6 +162,13 @@ app.on('before-quit', () => {
     db.flushFtsIndex()
   } catch {
     /* 退出路径上的失败不该拦住退出 */
+  }
+  // 打印预览的临时目录（`<temp>/lumin-print-preview-*`）：退出时一并收掉，
+  // 别把用户临时目录里塞满预览 PDF（正常关闭路径在窗口 `closed` 里已经删过一次，这里幂等）
+  try {
+    printPreview.cleanupPrintPreviews()
+  } catch {
+    /* 同上：清理失败不拦住退出 */
   }
 })
 

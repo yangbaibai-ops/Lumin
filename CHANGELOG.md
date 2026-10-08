@@ -2,6 +2,41 @@
 
 ### Changed
 
+**`Ctrl+P` 改为应用内**打印预览**（Windows 那句「此应用不支持打印预览」的平台限制绕法）**
+
+- 用户原话：「点击 `Ctrl+P` 打印的时候，出现的 Windows 打印窗口提示：**此应用不支持打印预览**，
+  可以优化使其**支持打印预览**吗。」
+- **真因**：`webContents.print()` 只弹**系统**打印对话框 —— Chromium 那套带缩略图/缩放/页范围的
+  打印预览 UI 是 **Chrome 浏览器**的功能，Electron 里没有这个实现，所以系统对话框只能那么说。
+- **做法（不重造排版，复用导出 PDF 的那段流水）**：`Ctrl+P`（与菜单「打印…」同一命令）→ 渲染层照旧
+  构建 `ExportPayload` → 主进程新增的 `main/printPreview.ts` 调**从 `exportPdf` 里抽出来的**
+  `export.buildPdfBytes()`（同一个隐藏窗口 `withRenderedDocument` + 同一套 `printToPDF` 页面尺寸/
+  边距/**页眉页脚模板**）→ PDF 写进 `<temp>/lumin-print-preview-<id>/` → 一个**专用小窗口**
+  （`parent` = 主窗口、`sandbox`、`contextIsolation`、**只带专用 preload**）用 **Chromium 内置 PDF
+  查看器**显示它，顶栏是我们自己的工具栏（标题 + 「共 N 页」 + 打印 / 关闭）。
+  **不引 CDN、零网络请求**；关闭预览 / 关窗 / 退出都会删掉临时目录（`app.getPath('temp')` 下）。
+- 预览里点「打印」→ 走**既有**打印通路 `export.printDocument(payload, settings)`（同一个隐藏窗口 +
+  `webContents.print()` → 系统对话框），结果回写到预览页并显示在工具栏右侧。
+  **不打印那个 PDF 本身**：Electron 里对 PDF 查看器的 webContents 调 `print()` 打的是插件宿主页，
+  社区长期反馈会打出空白页；"原 HTML"那条才是本仓库已在用、有真实打印验收口径的路。
+- **实测踩到的坑（都留成守卫）**：① `<embed type="application/pdf">` 受 **`frame-src`** 管而不是
+  `object-src` —— 预览页第一版 CSP 只写 `object-src file:`，`default-src 'none'` 兜上去，PDF 根本
+  不会被取（套件当场红：`Framing 'file:///…/preview.pdf' violates … "default-src 'none'"`）；
+  现在以 `frame-src file:` 放行本地 PDF，单测钉住。② 预览页**没有内联脚本**：交互在专用 preload
+  （`src/preload/printPreview.ts`）里，`electron.vite.config.ts` 的 preload 因此有第二个入口。
+- **旁路**：`LUMIN_PRINT_DRY_RUN=1`（**仅非打包实例**生效，与 `LUMIN_EXPORT_DIR` /
+  `LUMIN_OPEN_EXTERNAL_DRY_RUN` 同一口径）→ 打印只记账、不弹原生对话框，返回
+  `{ status:'ok', dryRun:true }` 并写一行 `[print] dry-run pages=N …`；发布版忽略它、永远真打印。
+  `Ctrl+P` 仍在应用 keymap 里（`file.print` → `Mod+P`，`blockedShortcut('Mod+P') === null`）。
+- **验收**：新增 `tools/_verify-print-preview.js`（**自管实例**端口 9237、已登记进默认矩阵、**14 条**）：
+  改前 `0/8 PASS（2 FAIL 6 SKIP）`（预览压根不出现）→ 改后 `14/14 PASS`（新窗口 + 临时目录里真有
+  `%PDF-` + 预览页 embed/按钮/页数 + console 零违约 + Network 域只有两条 `file://` + 页数
+  **4 == 4 == 4**（页面属性 / 解析 PDF / **正常导出路径**的 PDF）+ 点打印得 `dryRun:true` 且主进程
+  有 `[print] dry-run pages=4 …` + 关闭后临时文件与窗口都没了）。回归 `_verify-export-quality.js`
+  **7/7**。单测新增 `tests/printPreview.test.mjs` **8 条**（页数解析 / 目录名 / CSP 与零网络 /
+  转义 / 三语文案 / `Mod+P` 未被拦 / "只有一处 printToPDF" / 专用 preload 与旁路口径）。
+  截图：`tmp/print-preview-1.png` 等。
+
 **「意见或 bug 反馈」入口（顶部栏 → 帮助）+ 仓库元数据落位（`repository`/`homepage`/`bugs`）**
 
 - 用户原话：「在顶部栏『帮助』中增加一个选项**『意见或 bug 反馈』**，点击后出现项目的 issue

@@ -12,3 +12,14 @@ export function testOutputDir(): string | null {
   const dir = process.env['LUMIN_EXPORT_DIR']
   return dir && !app.isPackaged ? dir : null
 }
+
+/**
+ * 打印旁路：`LUMIN_PRINT_DRY_RUN=1` 时**只记账、不弹系统打印对话框**。
+ *
+ * 为什么需要：`webContents.print({ silent: false })` 弹的是原生对话框，自动化关不掉 ——
+ * 「点打印真的走到了打印通路」这条断言否则只能靠人眼看。口径与前一个函数一致：
+ * **仅在非打包（开发态）实例上生效**，打包产物忽略（发布版永远真的打印）。
+ */
+export function printDryRun(): boolean {
+  return process.env['LUMIN_PRINT_DRY_RUN'] === '1' && !app.isPackaged
+}

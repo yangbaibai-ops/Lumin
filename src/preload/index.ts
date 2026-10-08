@@ -226,7 +226,15 @@ const api: LuminAPI = {
    */
   print: {
     document: (payload: ExportPayload, settings) =>
-      ipcRenderer.invoke('print:document', payload, settings)
+      ipcRenderer.invoke('print:document', payload, settings),
+    /**
+     * 打印预览（第十一轮）：`Ctrl+P` 现在先开预览，不再直接弹系统对话框 ——
+     * 后者只有系统对话框、没有 Chromium 那套预览 UI（平台限制，用户看到的
+     * 「此应用不支持打印预览」就是它）。预览窗口里的「打印」由**它自己的 preload**
+     * （`src/preload/printPreview.ts`）驱动，这边只负责生成预览。
+     */
+    preview: (payload: ExportPayload, settings) =>
+      ipcRenderer.invoke('print:preview', payload, settings)
   },
   // 备份（审计 §2 P1）：库定时备份到指定目录 + 工作区快照 zip
   backup: {

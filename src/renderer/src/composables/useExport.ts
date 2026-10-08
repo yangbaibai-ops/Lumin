@@ -104,39 +104,34 @@ export function useExport(): {
   }
 
   /**
-   * 真打印机打印（审计 §7 第 18 条）。
+   * 打印（第十一轮改成**先预览**）。
    *
-   * 与 PDF 导出的唯一区别是落点：这边走系统打印对话框（主进程 `silent: false`），
-   * 所以**没有输出路径**、也不需要保存对话框。三种结果都必须让用户看得见：
-   *   * `ok`        → 轻提示「已发送到打印机」；
-   *   * `cancelled` → 轻提示「已取消打印」（用户取消是正常路径，**不是错误**）；
-   *   * `failed`    → 错误通知，正文是 Chromium 原样回报的 `failureReason`。
-   * 没有打印机 / 对话框弹不出来时同理：主进程会把结论回传，绝不静默吞掉。
+   * 用户报障原话：「点击 Ctrl+P 打印的时候，出现的 Windows 打印窗口提示：**此应用不支持
+   * 打印预览**」—— `webContents.print()` 只弹系统对话框；Chromium 那套带缩略图的打印预览
+   * UI 是 Chrome 浏览器的功能，Electron 里没有。所以这里改成：先用**与 PDF 导出同一段流水**
+   * 生成 PDF（主进程 `print:preview`），在应用内的预览窗口里显示；用户在预览里点「打印」，
+   * 才走系统打印对话框（那一步由预览窗口自己的 preload 驱动，见 main/printPreview.ts）。
+   *
+   * 载荷与 PDF 导出逐字相同（`printRequest` 与 `exportRequest` 共用 `buildDoc()`）。
+   * 只有"开预览失败"才会在这里报错 —— 打印结果（成功/取消/失败）由预览窗口显示，
+   * 不再从这里弹通知（那时用户看的是预览窗口，不是主窗口）。
    */
   async function runPrint(): Promise<void> {
     try {
       const doc = await buildDoc()
       if (!doc) return
-      // 打印的载荷与 PDF 导出逐字相同（同一份页面尺寸/边距设置），见 printRequest 的说明
       const req = printRequest(doc, optionsSlice())
-      const result = await window.luminAPI.print.document(
-        req.args as Parameters<typeof window.luminAPI.print.document>[0],
-        req.options as Parameters<typeof window.luminAPI.print.document>[1]
+      const res = await window.luminAPI.print.preview(
+        req.args as Parameters<typeof window.luminAPI.print.preview>[0],
+        req.options as Parameters<typeof window.luminAPI.print.preview>[1]
       )
-      if (result.status === 'ok') {
-        ui.toast(i18n.global.t('toast.printDone'), 'success')
-        return
+      if (!res.ok) {
+        void notifications.notify({
+          level: 'error',
+          title: i18n.global.t('toast.printFailed'),
+          body: res.error || i18n.global.t('toast.printNoReason')
+        })
       }
-      if (result.status === 'cancelled') {
-        ui.toast(i18n.global.t('toast.printCancelled'), 'info')
-        return
-      }
-      // 失败：原因原样透传；系统没给原因时也要有一句可读的话，而不是一条空通知
-      void notifications.notify({
-        level: 'error',
-        title: i18n.global.t('toast.printFailed'),
-        body: result.failureReason || i18n.global.t('toast.printNoReason')
-      })
     } catch (e) {
       void notifications.notify({
         level: 'error',
