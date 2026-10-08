@@ -12,6 +12,9 @@
 //       - 编辑器里拖入图片/文件（`lib/editor/imagePaste.ts` 的 handleDrop，先于本扩展认领）；
 //       - 拖动**节点**（图片、表格等 NodeView 的 `draggable`）：`view.dragging.node` 非空
 //         ⇒ 那是"搬一个节点"，不是"搬一段文字"，一律放行（本次不动它们的语义）；
+//         **例外（第九轮）**：节点是 `mathBlock` 时**要拦** —— PM 会给"选中后的叶子节点"
+//         补 `draggable=true`，于是公式也被当成节点拖动搬走了（实测会真的换位置）；
+//         判据见 `dragRules.blocksMathDrag`，只认 `mathBlock`，图片/表格一动不动；
 //       - Ctrl/Cmd + 拖动 = **复制**（PM 的 `dragMoves` 在这一刻给出 `moved === false`）：
 //         用户报的是"移动位置"，复制是另一件事，按 PM 原语义放行（要一起禁是另一轮口径）。
 //   * 代码块**内部**（CodeMirror 自己处理 drop，不经过 PM 的 handleDrop）不在本次范围内，
@@ -31,7 +34,7 @@ import { Extension } from '@tiptap/core'
 import { Plugin, TextSelection } from '@tiptap/pm/state'
 import type { Slice } from '@tiptap/pm/model'
 import type { EditorView } from '@tiptap/pm/view'
-import { blocksInternalTextDrag } from './dragRules'
+import { blocksInternalTextDrag, blocksMathDrag } from './dragRules'
 
 /**
  * `view.dragging.node`：prosemirror-view 的运行时对象里有这个字段（它的内部 `Dragging` 类
@@ -43,6 +46,29 @@ function draggedNode(view: EditorView): unknown {
   return dragging ? dragging.node : null
 }
 
+/**
+ * 这次拖动搬的是不是**数学节点**（第九轮新增的判据，见 `dragRules.blocksMathDrag`）。
+ *
+ * 两条来源，缺一不可：
+ *   1. `view.dragging.node`（NodeSelection）的节点类型 —— "选中后再拖"走的就是它，
+ *      实测 `node.node.type.name === 'mathBlock'`。
+ *   2. **兜底看 `slice`**：PM 的 `dragstart` 里有一个空分支（选区正好覆盖落点时
+ *      `node` 保持 undefined），那种情况下拖动仍然会搬走 slice 里的内容 ——
+ *      只要被拖的整块内容**就是一条 mathBlock**，同样按数学节点处理。
+ * 只认 `mathBlock`：图片/表格的 `node.type.name` 是别的名字 ⇒ 这条判据为假，
+ * 它们的节点拖动语义一个字都没动（由 `blocksInternalTextDrag` 那半条继续放行）。
+ */
+function draggedMath(view: EditorView): boolean {
+  const dragging = view.dragging as null | {
+    node?: { node?: { type?: { name?: string } } } | null
+    slice?: Slice
+  }
+  const name = dragging?.node?.node?.type?.name
+  if (name) return name === 'mathBlock'
+  const first = dragging?.slice?.content.firstChild
+  return !!first && first.type.name === 'mathBlock'
+}
+
 export const NoTextDrag = Extension.create({
   name: 'luminNoTextDrag',
 
@@ -51,11 +77,20 @@ export const NoTextDrag = Extension.create({
       new Plugin({
         props: {
           /**
-           * 拦下"把选中的文字搬走"。返回 true = 这次 drop 我处理了，PM 不会再动文档
+           * 拦下"把选中的文字搬走"，以及"把数学节点搬走"（第九轮）。
+           * 返回 true = 这次 drop 我处理了，PM 不会再动文档
            * （PM 会自己 `preventDefault()`，见 prosemirror-view 的 `handleDrop`）。
            */
           handleDrop(view: EditorView, event: DragEvent, _slice: Slice, moved: boolean) {
-            if (!blocksInternalTextDrag(moved, !!draggedNode(view))) return false
+            const nodeDrag = !!draggedNode(view)
+            // 两条判据正交：文字拖动（含选中后拖 mathBlock 那种"空分支"）与**数学节点**拖动
+            // 要拦；图片/表格的节点拖动（nodeDrag=true、mathDrag=false）继续放行。
+            if (
+              !blocksInternalTextDrag(moved, nodeDrag) &&
+              !blocksMathDrag(moved, draggedMath(view))
+            ) {
+              return false
+            }
             const keep = view.state.selection
             event.preventDefault()
             /**

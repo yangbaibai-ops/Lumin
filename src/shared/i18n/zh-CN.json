@@ -166,6 +166,7 @@
     "mathSourceBlock": "公式源码",
     "mathEscHint": "Esc 收起",
     "mathCheck": "确认并收起公式编辑",
+    "mathEmpty": "< Empty Math Block >",
     "restoreDraft": "检测到未保存的草稿（比磁盘文件更新）",
     "restoreDraftUntitled": "检测到上次未保存的内容",
     "draftTitle": "未保存的草稿",

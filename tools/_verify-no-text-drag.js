@@ -250,15 +250,26 @@ async function main() {
     'utf-8'
   )
   report.check(
-    '接线-handleDrop 用 moved + view.dragging.node 走纯谓词，并自己 preventDefault',
+    '接线-handleDrop 用 moved + view.dragging.node 走纯谓词（文字那条 + **数学节点**那条），并自己 preventDefault',
     /handleDrop\(view: EditorView, event: DragEvent, _slice: Slice, moved: boolean\)/.test(noTextDrag) &&
-      /blocksInternalTextDrag\(moved, !!draggedNode\(view\)\)/.test(noTextDrag) &&
+      /blocksInternalTextDrag\(moved, nodeDrag\)/.test(noTextDrag) &&
+      /blocksMathDrag\(moved, draggedMath\(view\)\)/.test(noTextDrag) &&
       /event\.preventDefault\(\)/.test(noTextDrag),
     'noTextDrag.ts'
   )
   report.check(
     '接线-纯谓词是 moved && !nodeDrag（节点拖动/外部拖入都放行）',
     /return moved && !nodeDrag/.test(dragRules),
+    'dragRules.ts'
+  )
+  /**
+   * 第九轮新增的那半条：**数学节点**的拖动要拦（PM 会给"选中后的叶子节点"补
+   * `draggable=true`，公式因此被当成节点拖动搬走）。它必须是一条**独立**的纯谓词 ——
+   * 与上面那条正交，图片/表格的 `nodeDrag` 才不会被误伤。
+   */
+  report.check(
+    '接线-数学节点那条是独立的纯谓词 moved && mathDrag（图片/表格的节点拖动不受影响）',
+    /return moved && mathDrag/.test(dragRules),
     'dragRules.ts'
   )
   report.check(

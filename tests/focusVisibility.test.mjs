@@ -28,6 +28,11 @@ const ALLOW = new Map([
   ['components.css|.source-editor', '分屏源码栏（CodeMirror）：`.cm-focused` 有自己的样式'],
   ['overlays.css|.mermaid-source-input', 'mermaid 源码输入框：插入符即焦点指示'],
   [
+    'overlays.css|.md-math-editor__src',
+    '公式源码书写面（第九轮用户口径「尽量不要出现书写区域的边框」）：焦点提示落在**容器**的 ' +
+      '`.md-math-editor:focus-within`（细边框加深一档）＋插入符本身'
+  ],
+  [
     'sidebar.css|.tree-rename-input',
     '就地重命名输入框：行上有 `.is-renaming` 底色（用户明确要求不要边框）'
   ],

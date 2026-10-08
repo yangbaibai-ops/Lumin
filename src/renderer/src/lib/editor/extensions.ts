@@ -287,13 +287,17 @@ export function buildEditorExtensions(options: EditorExtensionOptions = {}): Ext
     aria: i18n.global.t('editor.mathSourceBlock'),
     // ✓ 按钮的可访问名
     check: i18n.global.t('editor.mathCheck'),
-    // 行内浮层上的「Esc」提示
-    esc: i18n.global.t('editor.mathEscHint')
+    // 行内浮层上的「Esc」提示（只给读屏器）
+    esc: i18n.global.t('editor.mathEscHint'),
+    // 空公式的占位（`< Empty Math Block >`）：**只画在视图上，一个字都不进文档**
+    empty: i18n.global.t('editor.mathEmpty')
   }
   return editorExtensions.map((e) => {
     if (e.name === 'typoraPointer')
       return e.configure({ onOpenLink: options.onOpenLink ?? defaultOpenLink })
     if (e.name === 'mathPreview') return e.configure({ labels: mathLabels })
+    // 块级公式节点自己也要那份占位文案（空公式的**非编辑**渲染走它的 NodeView）
+    if (e.name === 'mathBlock') return e.configure({ emptyLabel: mathLabels.empty })
     return e
   })
 }

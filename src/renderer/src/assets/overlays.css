@@ -136,22 +136,30 @@
   font-size: 0.9em;
 }
 
-/* ── 公式的编辑态（第三十轮按 Typora 截图重做）──────────────────────────────
-   截图形态（用户附的 Typora 块级公式编辑态）：**一个带细边框的容器**，
-   上半 = 浅灰底的**源码区**（等宽字体，`$$` 分列源码上下两行，右上角「公式 ✓」标签），
-   下半 = 白底的**渲染区**（居中，留白比正文大），两部分之间有一条分隔线。
+/* ── 公式的编辑态（第三十轮按 Typora 截图重做；第三十二轮去掉了"输入框"观感）──────
+   形态：**一个带细边框的容器**，上半 = 浅灰底的**源码区**（等宽字体，`$$` 分列源码上下
+   两行），下半 = 白底的**渲染区**（居中，留白比正文大），两部分之间有一条分隔线。
+
+   第九轮用户口径「尽量不要出现书写区域的边框」的落法：
+     * **书写面**（`.md-math-editor__src`, `.md-math-editor__hl`, 以及原先的 focus 外环）
+       一个边框、一个描边都不留 —— 靠 `--code-bg` 底色与留白区分即可；
+     * `$$` 定界符**保留**（Typora 也显示），它们只是装饰性提示，不在任何输入框里；
+     * 「公式 ✓」不再占一整行：**绝对定位贴在容器右上角**（`.md-math-editor--block
+       .md-math-editor__bar`，不参与流、不撑高容器）；
+     * 焦点可见性由**容器**的 focus-within 规则给出（细边框加深一档），
+       而不是在书写面上画环（见 tests/focusVisibility.test.mjs 的登记）。
 
    两种形态共用一套配色/圆角/边框语言，差别只在**摆放**：
      * `.md-math-editor--block`：**随正文流**（是 `mathBlock` 的 NodeView 内容），
-       上下有外边距、宽度占满正文列 —— 与截图一致；
-     * `.md-math-editor--inline`：**固定定位的紧凑浮层**（挂在编辑区容器上）。
-       行内公式本来就只有几个字符，套用整块容器会撑破那一行、把句子拆开，
-       所以它保留"浮在公式上方"的形态，只把**配色/边框/圆角/label**统一过来。
+       上下有外边距、宽度占满正文列；
+     * `.md-math-editor--inline`：**固定定位的紧凑浮层**（同一个 widget，只是 `position:
+       fixed`）。行内公式只有几个字符，套整块容器会撑破那一行，所以它是**单行薄盒**。
 
    ⚠️ 颜色、圆角、阴影、间距**一律走既有令牌**：`themeTokens` / `visualScale` / `zIndexStack`
    三个守卫盯着，新造硬编码色或新字号都会被判红。 */
 .md-math-editor {
-  /* 容器：白底 + 细边框 + 小圆角（与截图一致；浅色下 --paper 是纯白） */
+  /* 容器：白底 + 细边框 + 小圆角（浅色下 --paper 是纯白） */
+  position: relative;
   display: flex;
   flex-direction: column;
   box-sizing: border-box;
@@ -161,6 +169,11 @@
   font-family: var(--font-sans);
   /* 容器自己的文字不进选区（源码区里的 textarea 照常可选） */
   user-select: none;
+  transition: border-color 0.12s ease;
+}
+/* 焦点提示落在**容器**上（书写面本身不许画环）：细边框加深一档，够看又不喧宾夺主 */
+.md-math-editor:focus-within {
+  border-color: var(--edge-strong);
 }
 
 /* ── 块级：随正文流 ── */
@@ -169,6 +182,22 @@
   /* 与截图一致：容器占满正文列，源码与渲染都在里面 */
   width: 100%;
   max-width: 100%;
+}
+/* 「公式 ✓」贴在容器右上角：**绝对定位、不参与流**（用户口径：不要占一行）。
+   `pointer-events: none` 让这条小标记不挡住源码区空白处的点击，
+   只有 ✓ 按钮自己（`pointer-events: auto`）可点。
+   ⚠️ 这里**不写 z-index**：`bar` 在 DOM 里排在源码区**之后**（见 buildEditorParts），
+   同为定位元素、z-index 都是 auto ⇒ 后出现的画在上面，够用了
+   （分片 CSS 里不许出现数字 z-index，见 tests/zIndexStack.test.mjs）。 */
+.md-math-editor--block .md-math-editor__bar {
+  position: absolute;
+  top: 2px;
+  right: 6px;
+  padding: 0;
+  pointer-events: none;
+}
+.md-math-editor--block .md-math-editor__check {
+  pointer-events: auto;
 }
 /* ── 行内：固定定位的紧凑浮层（定位由 JS 按 getBoundingClientRect 算）──
    第三十一轮按"大气简约"重做：**单行**。
@@ -384,8 +413,10 @@
   overflow-y: auto;
   overflow-x: auto;
   background: transparent;
-  border-radius: 3px;
+  /* 书写面**没有任何边界**：见本节顶部说明（`border` 由共享规则置 none） */
+  border-radius: 0;
   outline: none;
+  box-shadow: none;
   /* 滚动到框的边界后不要把页面继续滚走 */
   overscroll-behavior: contain;
 }
@@ -393,9 +424,11 @@
 .md-math-editor__src::selection {
   background: color-mix(in srgb, var(--accent) 32%, transparent);
 }
-.md-math-editor__src:focus-visible {
-  box-shadow: 0 0 0 2px var(--accent-soft);
-}
+/* ⚠️ 这里**故意没有** `:focus-visible` 外环：用户口径「尽量不要出现书写区域的边框」。
+   焦点可见性由**容器**的 `:focus-within`（`--edge` → `--edge-strong`）给出，
+   外加插入符本身 —— 与 `.mermaid-source-input` 同一口径，
+   已在 tests/focusVisibility.test.mjs 的 ALLOW 里登记（那条守卫要求"每处 outline:none
+   都要能说出焦点环在哪"）。 */
 /* 输入法组字期间：**让位给浏览器原生渲染**（组字串在部分平台不在 value 里，
    只靠镜像层会显示不全）—— 输入层改回正常颜色，装饰层让位。见 mathPreview.ts */
 .md-math-editor[data-md-math-composing] .md-math-editor__src {
@@ -457,11 +490,22 @@
   font-family: var(--font-mono);
   font-size: 0.9em;
 }
+/* 空公式的占位（`< Empty Math Block >`，第九轮）：**框架还在**的观感。
+   ⚠️ 它只是视图 —— 块级空公式在模型里仍是 `mathBlock { source: '' }`，序列化照旧
+   `$$\n\n$$`（见 mathMarkers.ts 的 emptyMathDom）。所以这里额外把**选中与点击**都关掉：
+   占位永远不会被"选进选区 / 复制进文档"。颜色走**次级正文**档 `--ink-2b`
+   （正文级文字，三主题对纸/面板都 ≥ 4.5:1，见 tests/themeTokens.test.mjs 的矩阵）。 */
+.md-math-empty {
+  color: var(--ink-2b);
+  font-family: var(--font-mono);
+  font-size: 0.95em;
+  user-select: none;
+  pointer-events: none;
+}
 /* 编辑中的块级公式：原渲染节点被容器取代，这里把它收起来（不是删，收起即恢复） */
 .md-preview .md-math-block.md-math-editing {
   display: none;
 }
-
 
 /* 无序列表：始终显示圆点（与 Typora 一致）。
    输入 '- ' 后 input rule 将其转为 bulletList，圆点由 ul 的 list-style:disc 渲染；

@@ -26,6 +26,24 @@ export function renderMath(source: string, display: boolean): string {
 }
 
 /**
+ * 空公式的占位元素（`< Empty Math Block >`，Typora 那种"框架还在"的观感）。
+ *
+ * ⚠️ **铁律：它只是视图**。文本一个字都不进文档 —— 块级空公式在模型里仍然是
+ * `mathBlock { source: '' }`，序列化照旧是 `$$\n\n$$`。所以这个元素：
+ *   * 带 `data-md-math-empty`（套件按它断言，且不靠中文/英文文案）；
+ *   * `user-select: none` + `contenteditable=false`（选不中、也复制不进文档）；
+ *   * 文案由调用方注入（`MathLabels.empty` / `MathBlock` 的 `emptyLabel` 选项，来自语言包）。
+ */
+export function emptyMathDom(label: string): HTMLElement {
+  const span = document.createElement('span')
+  span.className = 'md-math-empty'
+  span.setAttribute('data-md-math-empty', '')
+  span.setAttribute('contenteditable', 'false')
+  span.textContent = label
+  return span
+}
+
+/**
  * 与 `renderMath` 同一份渲染，额外**如实回报"这段公式画出来了没有"**，失败时给出**为什么**。
  *
  * 为什么不能让 KaTeX 自己兜底（`throwOnError: false`）——第二十九轮实测的坑：
@@ -177,12 +195,20 @@ export const MdMath = Mark.create({
 })
 
 /** 块级公式：独占块的原子节点，原文在属性里，屏幕上用 KaTeX 画成居中块 */
-export const MathBlock = Node.create({
+export const MathBlock = Node.create<{ emptyLabel: string }>({
   name: 'mathBlock',
   group: 'block',
   atom: true,
   selectable: true,
   draggable: false,
+  /**
+   * 空公式占位文案（`< Empty Math Block >`）。**由 `buildEditorExtensions` 从语言包注入**
+   * （内核不认识 i18n，与 `MathPreview` 的 `labels` 同一口径）；默认空串只是兜底，
+   * 界面上永远走注入值。
+   */
+  addOptions() {
+    return { emptyLabel: '' }
+  },
   addAttributes() {
     return { source: { default: '' } }
   },
@@ -213,12 +239,19 @@ export const MathBlock = Node.create({
    * 走装饰就绕开了这个限制 —— 装饰由 `props.decorations` 重算，PM 一定接得住。
    */
   addNodeView() {
+    const emptyLabel = this.options.emptyLabel
     return ({ node }) => {
       const dom = document.createElement('div')
       dom.className = 'md-math-block'
       dom.setAttribute('data-md-math-block', 'true')
       const paint = (source: string): void => {
         dom.setAttribute('data-source', source)
+        // 空公式：**框架保留**，画 `< Empty Math Block >`（只是视图；`source` 仍然是空的，
+        // 序列化照旧 `$$\n\n$$` —— 见 emptyMathDom 的铁律说明）
+        if (!source.trim()) {
+          dom.replaceChildren(emptyMathDom(emptyLabel))
+          return
+        }
         dom.innerHTML = renderMath(source, true)
       }
       paint(String(node.attrs.source ?? ''))

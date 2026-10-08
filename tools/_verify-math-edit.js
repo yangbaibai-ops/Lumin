@@ -14,6 +14,15 @@
 //   E5 尺寸/布局 → 行内与正文字号比例在区间内；块级在正文列内居中；超宽公式不横向溢出
 //   E6 不许破坏 → 代码块里的 `$` 不算公式；`\$` 转义仍是字面美元；`**加粗**` 显隐仍正常
 //
+// ─── 第三十二轮（用户第九轮反馈）追加：K~P 六段 ──────────────────────────────────
+//   K ① 源码**书写面没有边框**（src/hl/source 四边全 0 + 无 focus 外环），
+//        且「公式 ✓」**不占独立一行**（绝对定位、与源码区重叠、源码区顶到容器顶）
+//   L ② **行内**源码区真实按键（含 `Ctrl+A` 全选替换 —— 这正是改前被 PM 抢走的那条）
+//   M ③ 块级/行内公式**拖不走**（文档逐字不变）；**图片仍可拖动**（对照项）
+//   N ④ 空段落里敲 `$$`+回车 → 直接得到空公式块且**已在编辑态**（一步撤销）
+//   O ⑤ 空公式**保留框架** + 渲染区 `< Empty Math Block >`（占位**不进文档**）
+//   P ⑥ 回归：块级仍能输入 / 点源码不收起 / 代码块里的 `$` 与 `\$` 不受影响
+//
 // ─── 第三十一轮追加：源码区「能编辑 / 点不没 / 有高亮 / 行内要紧凑」（F~J 五段）──────
 //   F **真实按键**在源码区敲字（含退格）：源码文本与渲染结果都逐键跟着变、
 //     焦点与源码元素都不换（打戳验证 —— 不是"看起来还能打字"，是"DOM 没被拆掉"）
@@ -40,6 +49,10 @@ const {
   openDocWith,
   fatal
 } = require('./lib/harness')
+const fs = require('fs')
+const os = require('os')
+const path = require('path')
+const zlib = require('zlib')
 
 /** 正文（公式在第 6 段，离窗口顶部足够远 ⇒ 源码框有地方放在"上方"） */
 const MD = [
@@ -86,6 +99,98 @@ const MD2 = [
   '',
   '收尾段。'
 ].join('\n')
+
+/**
+ * 第三十二轮（K~P 段）的夹具。
+ *
+ * 三个要点：
+ *   * 图片用**绝对路径 + `%TEMP%`**：隔离实例的 `LUMIN_TRUSTED_PATHS` 就是 `%TEMP%`
+ *     （见 tools/start-isolated.ps1），所以 `lumin-file://` 能读到它 —— 这是 M 段
+ *     "图片仍然可以拖动"那条**对照项**的唯一可靠造法（数据 URI 会被 Tiptap 的
+ *     `allowBase64: false` 挡掉，粘贴又要真工作区目录）。
+ *   * 表格/代码块都在：P 段要证明代码块里的 `$` 与 `\$` 一个都没被当成公式。
+ */
+function buildMd3(imgPath) {
+  return [
+    '第一段：行内公式 $E = mc^2$ 在句子里，价格 \\$5 是字面量。',
+    '',
+    '第二段：块级公式在下面。',
+    '',
+    '$$',
+    '\\frac{a}{b}',
+    '$$',
+    '',
+    '第三段：图片在下面。',
+    '',
+    '![t](' + imgPath + ')',
+    '',
+    '第四段：代码块里的美元不算公式。',
+    '',
+    '```sh',
+    'echo "$HOME"',
+    '```',
+    '',
+    '第五段收尾。'
+  ].join('\n')
+}
+
+/**
+ * N 段专用：没有任何公式，只有段落。
+ *
+ * 空段落**不写在夹具里**（Markdown 的连续空行只是段落分隔，解析出来根本没有空 `p`），
+ * 由 `newEmptyParagraph()` 用真实的"回车"造出来 —— 那也正是用户造空段落的方式。
+ */
+const MD4 = ['第一段：这里只是正文。', '', '第二段：光标放在这一段末尾，按回车会多出一个空段落。'].join(
+  '\n'
+)
+
+// ─── 造一张真 PNG（zlib + CRC32，不依赖任何图形库）────────────────────────────
+const CRC_TABLE = (() => {
+  const t = new Int32Array(256)
+  for (let n = 0; n < 256; n++) {
+    let c = n
+    for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1
+    t[n] = c
+  }
+  return t
+})()
+function crc32(buf) {
+  let c = 0xffffffff
+  for (let i = 0; i < buf.length; i++) c = CRC_TABLE[(c ^ buf[i]) & 0xff] ^ (c >>> 8)
+  return (c ^ 0xffffffff) >>> 0
+}
+function pngChunk(type, data) {
+  const len = Buffer.alloc(4)
+  len.writeUInt32BE(data.length, 0)
+  const t = Buffer.from(type, 'ascii')
+  const crc = Buffer.alloc(4)
+  crc.writeUInt32BE(crc32(Buffer.concat([t, data])), 0)
+  return Buffer.concat([len, t, data, crc])
+}
+/** 一张 w×h 的纯灰 PNG（够大、够好抓） */
+function makePng(w, h) {
+  const raw = Buffer.alloc((w * 3 + 1) * h)
+  for (let y = 0; y < h; y++) {
+    raw[y * (w * 3 + 1)] = 0
+    for (let x = 0; x < w; x++) {
+      const o = y * (w * 3 + 1) + 1 + x * 3
+      raw[o] = 0xbb
+      raw[o + 1] = 0xbb
+      raw[o + 2] = 0xbb
+    }
+  }
+  const ihdr = Buffer.alloc(13)
+  ihdr.writeUInt32BE(w, 0)
+  ihdr.writeUInt32BE(h, 4)
+  ihdr[8] = 8
+  ihdr[9] = 2
+  return Buffer.concat([
+    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+    pngChunk('IHDR', ihdr),
+    pngChunk('IDAT', zlib.deflateSync(raw)),
+    pngChunk('IEND', Buffer.alloc(0))
+  ])
+}
 
 /** 页面侧快照：状态 + 渲染 + 序列化，一次取回（少往返、少竞态） */
 const SNAPSHOT = `(() => {
@@ -302,6 +407,8 @@ const SRC_SNAPSHOT = `(() => {
     taStamp: ta ? ta.hasAttribute('data-src-ta-stamp') : null,
     taConnected: ta ? ta.isConnected : null,
     value: ta ? ta.value : null,
+    selStart: ta ? ta.selectionStart : null,
+    selEnd: ta ? ta.selectionEnd : null,
     hlText: hl ? hl.textContent : null,
     activeIsTa: ae === ta,
     activeInBox: !!(ae && box && box.contains(ae)),
@@ -333,8 +440,69 @@ const SRC_SNAPSHOT = `(() => {
     blockKatexCount: paints('.md-preview .md-math-block .katex-display').length,
     inlineKatex: (() => { const k = document.querySelector('.md-preview .md-math-rendered .katex'); return k ? k.textContent : null })(),
     delims: box ? box.querySelectorAll('[data-md-math-editor-delim]').length : null,
-    taTextColorOpaque: (() => { const c = css(ta, 'color') || ''; return !/rgba?\\([^)]*,\\s*0\\)/.test(c) && c !== 'transparent' })()
+    taTextColorOpaque: (() => { const c = css(ta, 'color') || ''; return !/rgba?\\([^)]*,\\s*0\\)/.test(c) && c !== 'transparent' })(),
+    // ── 第三十二轮（K~P 段）要看的几件事实 ──
+    // 书写面四边边框 + 有没有 focus 外环（用户口径：书写区域不要边框）
+    srcBorders: [css(ta, 'borderTopWidth'), css(ta, 'borderRightWidth'), css(ta, 'borderBottomWidth'), css(ta, 'borderLeftWidth')],
+    hlBorders: [css(hl, 'borderTopWidth'), css(hl, 'borderRightWidth'), css(hl, 'borderBottomWidth'), css(hl, 'borderLeftWidth')],
+    srcBordersource: [css(src, 'borderTopWidth'), css(src, 'borderRightWidth'), css(src, 'borderBottomWidth'), css(src, 'borderLeftWidth')],
+    srcShadow: css(ta, 'boxShadow'),
+    srcOutline: css(ta, 'outlineStyle'),
+    srcBg: css(src, 'backgroundColor'),
+    // 「公式 ✓」是不是绝对定位（不占一行）
+    barPosition: css(bar, 'position'),
+    checkAria: (() => { const c = box ? box.querySelector('[data-md-math-editor-check]') : null; return c ? c.getAttribute('aria-label') : null })(),
+    checkTag: (() => { const c = box ? box.querySelector('[data-md-math-editor-check]') : null; return c ? c.tagName : null })(),
+    // PM 选区类型（改前 Ctrl+A 会变成 AllSelection，下一个键就被 PM 吃掉）
+    pmSelName: (() => { try { return window.__L.ed().state.selection.constructor.name } catch { return null } })(),
+    pmSelFrom: (() => { try { return window.__L.ed().state.selection.from } catch { return null } })(),
+    // 空公式占位
+    emptyCount: box ? box.querySelectorAll('[data-md-math-empty]').length : null,
+    emptyText: (() => { const e = box ? box.querySelector('[data-md-math-empty]') : null; return e ? e.textContent : null })(),
+    emptyRenderedCount: paints('.md-preview .md-math-block [data-md-math-empty]').length,
+    emptyUserSelect: (() => { const e = box ? box.querySelector('[data-md-math-empty]') : null; return e ? getComputedStyle(e).userSelect : null })(),
+    emptyPointer: (() => { const e = box ? box.querySelector('[data-md-math-empty]') : null; return e ? getComputedStyle(e).pointerEvents : null })(),
+    emptyEditable: (() => { const e = box ? box.querySelector('[data-md-math-empty]') : null; return e ? e.getAttribute('contenteditable') : null })(),
+    emptyColor: (() => { const e = box ? box.querySelector('[data-md-math-empty]') : null; return e ? getComputedStyle(e).color : null })(),
+    // 文档结构：块级公式条数 / 各节点类型 / 文档纯文本（占位文案绝不能出现在这里）
+    freshMarkdown: (() => { try { return String(window.__L.ed().storage.markdown.getMarkdown()) } catch (e) { return 'ERR:' + String(e) } })(),
+    blockSources: (() => { const a = []; window.__L.ed().state.doc.descendants((n) => { if (n.type.name === 'mathBlock') a.push(String(n.attrs.source)); return true }); return a })(),
+    docTypes: (() => { const a = []; window.__L.ed().state.doc.descendants((n) => { a.push(n.type.name); return true }); return a })(),
+    docText: (() => { try { return window.__L.ed().state.doc.textBetween(0, window.__L.ed().state.doc.content.size, '\\n', '\\n') } catch { return null } })(),
+    paraTexts: (() => { const a = []; window.__L.ed().state.doc.descendants((n) => { if (n.type.name === 'paragraph') a.push(n.textContent); return true }); return a })(),
+    // 图片（M 段的对照项）
+    imgRect: (() => { const i = document.querySelector('.md-preview img'); if (!i) return null; const r = i.getBoundingClientRect(); return { top: Math.round(r.top), bottom: Math.round(r.bottom), left: Math.round(r.left), right: Math.round(r.right), width: Math.round(r.width), height: Math.round(r.height) } })(),
+    imgDraggable: (() => { const i = document.querySelector('.md-preview img'); return i ? i.getAttribute('draggable') : null })(),
+    blockDraggable: (() => { const b = document.querySelector('.md-preview .md-math-block'); return b ? b.getAttribute('draggable') : null })(),
+    // 真实拖拽期间的 PM 侧事实（dragstart/drop 时 view.dragging 长什么样）
+    dragLog: (window.__DRAG_V2 || []).splice(0, (window.__DRAG_V2 || []).length)
   })
+})()`
+
+/**
+ * 真实拖拽期间把 PM 的 `view.dragging` 记下来（M 段用它区分"搬文字"与"搬节点"）。
+ *
+ * 只在 `dragstart`/`drop` 两个时刻取样：`dragover` 会连发几十次。
+ * 每个时刻**只留前两条**：一次手势里 Chromium 会把 `dragstart` 重发很多遍
+ * （实测一次手势 25 条），全记下来会把报告撑成一面墙。
+ */
+const DRAG_WATCH = `(() => {
+  if (window.__DRAG_V2) return 'ok'
+  window.__DRAG_V2 = []
+  const seen = {}
+  const sample = (phase, e) => {
+    seen[phase] = (seen[phase] || 0) + 1
+    if (seen[phase] > 2) return
+    let d = null
+    try {
+      const g = window.__L.ed().view.dragging
+      d = g ? { node: !!g.node, move: g.move, first: g.slice && g.slice.content.firstChild ? g.slice.content.firstChild.type.name : null } : null
+    } catch {}
+    window.__DRAG_V2.push({ phase, target: String((e.target && (e.target.className || e.target.nodeName)) || '').slice(0, 24), dragging: d, dp: e.defaultPrevented })
+  }
+  document.addEventListener('dragstart', (e) => { sample('dragstart-immediate', e); setTimeout(() => sample('dragstart-after', e), 0) }, true)
+  document.addEventListener('drop', (e) => sample('drop', e), true)
+  return 'ok'
 })()`
 
 /** 在源码区里给元素打戳（验证"逐键重绘没有把 DOM 拆掉"） */
@@ -377,22 +545,39 @@ async function reloadFix(app) {
   await sleep(700)
 }
 
-/** 打开夹具里的块级公式编辑态（坐标每次现取：重开夹具后布局才是真值） */
-async function openBlockEditor(app) {
-  const p = await centerOf(app.ev, '.md-preview .md-math-block')
-  if (!p) return false
-  await clickAt(app.send, p.x, p.y)
-  await sleep(600)
-  return true
+/**
+ * 打开夹具里的块级公式编辑态（坐标每次现取：重开夹具后布局才是真值）。
+ *
+ * 带重试：`openDocWith` 之后布局/焦点要一小会儿才稳，一次点空就判红会把环境抖动
+ * 当成产品缺陷（本套件踩过）。判据用"编辑容器真的出现了"，不靠"点过了"。
+ */
+async function openBlockEditor(app, tries = 3) {
+  for (let i = 0; i < tries; i += 1) {
+    const p = await centerOf(app.ev, '.md-preview .md-math-block')
+    if (p) {
+      await clickAt(app.send, p.x, p.y)
+      await sleep(600)
+      const open = await app.ev(`!!document.querySelector('[data-md-math-editor]')`)
+      if (open === true) return true
+    }
+    await sleep(350)
+  }
+  return false
 }
 
-/** 打开夹具里的行内公式编辑态 */
-async function openInlineEditor(app) {
-  const p = await centerOf(app.ev, '.md-preview .md-math-rendered')
-  if (!p) return false
-  await clickAt(app.send, p.x, p.y)
-  await sleep(600)
-  return true
+/** 打开夹具里的行内公式编辑态（同样带重试） */
+async function openInlineEditor(app, tries = 3) {
+  for (let i = 0; i < tries; i += 1) {
+    const p = await centerOf(app.ev, '.md-preview .md-math-rendered')
+    if (p) {
+      await clickAt(app.send, p.x, p.y)
+      await sleep(600)
+      const open = await app.ev(`!!document.querySelector('[data-md-math-editor]')`)
+      if (open === true) return true
+    }
+    await sleep(350)
+  }
+  return false
 }
 
 /** 收起当前编辑态（合成 Esc：不改内容，与上一轮口径一致） */
@@ -403,6 +588,42 @@ async function closeEditor(app) {
     return 'ok'
   })()`)
   await sleep(300)
+}
+
+/**
+ * 重开 K~P 段的夹具（`MD3`：行内公式 / 块级公式 / 图片 / 代码块 / `\$` 字面量）。
+ *
+ * 图片先写一张真 PNG 到 `%TEMP%`（隔离实例的 `LUMIN_TRUSTED_PATHS` 就是它），
+ * 再用**绝对路径**写进 markdown —— 这样 M 段的"图片仍可拖动"对照项才拿得到一张
+ * 有尺寸、真能加载的图。
+ * @returns 图片路径（套件用它做额外交代）
+ */
+async function reloadFix3(app) {
+  const pngPath = path.join(os.tmpdir(), 'lumin-math-v2-drag.png')
+  fs.writeFileSync(pngPath, makePng(200, 100))
+  await openDocWith(app, buildMd3(pngPath.replace(/\\/g, '/')), 'math-edit-3.md')
+  await waitEditor(app.ev)
+  await app.ev(DRAG_WATCH)
+  await sleep(800)
+  return pngPath
+}
+
+/**
+ * 在当前光标处**造一个空段落**并把光标放进去（N 段要用它当"敲 `$$` 的地方"）。
+ *
+ * 为什么不让夹具里直接放一个空段落：Markdown 里连续空行会被解析成"段落分隔"，
+ * **根本不会产生空段落**（实测夹具里留空行 → 文档里没有空 `p`）。真人也是敲回车造出来的，
+ * 所以这里就用回车：点最后一段 → End → Enter ⇒ 下面多出一个空段落，光标正好在里面。
+ */
+async function newEmptyParagraph(app) {
+  const last = await centerOf(app.ev, '.md-preview p:last-of-type')
+  if (!last) return false
+  await clickAt(app.send, last.x, last.y)
+  await sleep(300)
+  await pressKey(app, 'End', 'End', 35)
+  await pressKey(app, 'Enter', 'Enter', 13)
+  await sleep(300)
+  return true
 }
 
 /**
@@ -418,6 +639,64 @@ async function typeChar(send, ch) {
     windowsVirtualKeyCode: 0
   })
   await send('Input.dispatchKeyEvent', { type: 'keyUp', key: ch, windowsVirtualKeyCode: 0 })
+}
+
+/** 敲一个**功能键**（Backspace / Enter / Escape / 方向键…），可带修饰键（2 = Ctrl） */
+async function pressKey(app, key, code, vk, modifiers = 0, extra = {}) {
+  await app.send('Input.dispatchKeyEvent', {
+    type: 'keyDown',
+    key,
+    code,
+    windowsVirtualKeyCode: vk,
+    modifiers,
+    ...extra
+  })
+  await app.send('Input.dispatchKeyEvent', {
+    type: 'keyUp',
+    key,
+    code,
+    windowsVirtualKeyCode: vk,
+    modifiers
+  })
+  await sleep(220)
+}
+
+/** 一次真实鼠标事件（`buttons` 决定是拖拽途中还是普通移动） */
+function mouseEvent(send, type, x, y, buttons) {
+  return send('Input.dispatchMouseEvent', {
+    type,
+    x: Math.round(x),
+    y: Math.round(y),
+    button: type === 'mouseMoved' && !buttons ? 'none' : 'left',
+    buttons,
+    clickCount: 1
+  })
+}
+
+/**
+ * 一次**真实拖拽手势**：移动 → 按下 → 8~10 步移动 → 抬起。
+ *
+ * 为什么要这么多步：原生 drag & drop 需要浏览器先过掉"拖动阈值"才会派发 `dragstart`；
+ * 只有"按下→抬起"两步是选不中拖动的（见 tools/_verify-drag-selection.js 的同一套路）。
+ */
+async function dragFromTo(app, from, to, steps = 10) {
+  await mouseEvent(app.send, 'mouseMoved', from.x, from.y, 0)
+  await sleep(140)
+  await mouseEvent(app.send, 'mousePressed', from.x, from.y, 1)
+  await sleep(140)
+  for (let i = 1; i <= steps; i++) {
+    await mouseEvent(
+      app.send,
+      'mouseMoved',
+      from.x + ((to.x - from.x) * i) / steps,
+      from.y + ((to.y - from.y) * i) / steps,
+      1
+    )
+    await sleep(40)
+  }
+  await sleep(140)
+  await mouseEvent(app.send, 'mouseReleased', to.x, to.y, 0)
+  await sleep(650)
 }
 
 
@@ -956,8 +1235,9 @@ async function main() {
   await openBlockEditor(app)
   await app.ev(SRC_STAMP)
   const srcBox = JSON.parse(await app.ev(centerExpr('.md-math-editor__source')))
-  const barBox = JSON.parse(await app.ev(centerExpr('.md-math-editor__bar')))
+  const boxBox = JSON.parse(await app.ev(centerExpr('[data-md-math-editor]')))
   const delimBox = JSON.parse(await app.ev(centerExpr('[data-md-math-editor-delim="close"]')))
+  const delimOpenBox = JSON.parse(await app.ev(centerExpr('[data-md-math-editor-delim="open"]')))
   const gValue = JSON.parse(await app.ev(SRC_SNAPSHOT)).value
   // ① 源码区右下角（内边距空白，不是文本框本身）
   await clickPoint(app.send, srcBox.right - 3, srcBox.bottom - 3)
@@ -967,12 +1247,19 @@ async function main() {
   await clickPoint(app.send, delimBox.x, delimBox.y)
   await sleep(300)
   const g2 = JSON.parse(await app.ev(SRC_SNAPSHOT))
-  // ③ 顶行「公式 ✓」那条（离开 ✓ 按钮本身）
-  await clickPoint(app.send, barBox.left + 4, barBox.y)
+  /**
+   * ③ 容器**左上角**（`$$` 开定界符那一带的空白）。
+   *
+   * ⚠️ 第三十二轮改了这条的落点：以前点的是"顶行那一整条 bar"，而本轮起
+   * 「公式 ✓」是**绝对定位的小标记**（不再占一行），那条 bar 就缩成 ✓ 按钮自己
+   * —— 点它当然会收起（那是它的语义）。所以这里改成点在**容器左上角**：
+   * 它落在开定界符那一行上、又不在任何按钮里，正是"点源码区任何位置都不收起"要守的地方。
+   */
+  await clickPoint(app.send, boxBox.left + 8, delimOpenBox.y)
   await sleep(300)
   const g3 = JSON.parse(await app.ev(SRC_SNAPSHOT))
   report.check(
-    'G1 点源码区空白 / `$$` 行 / 顶行都**不收起**，焦点仍在源码框里',
+    'G1 点源码区空白 / `$$` 行 / 容器左上角都**不收起**，焦点仍在源码框里',
     g1.hasBox === true &&
       g2.hasBox === true &&
       g3.hasBox === true &&
@@ -981,7 +1268,7 @@ async function main() {
       g3.activeInBox &&
       g3.stamp === true,
     'afterPadding=' + g1.hasBox + '(inBox=' + g1.activeInBox + ') afterDelim=' + g2.hasBox +
-      '(inBox=' + g2.activeInBox + ') afterBar=' + g3.hasBox + '(inBox=' + g3.activeInBox + ')'
+      '(inBox=' + g2.activeInBox + ') afterTopLeft=' + g3.hasBox + '(inBox=' + g3.activeInBox + ')'
   )
   report.check(
     'G2 点源码区不收起的同时也**没改内容**（三次点击前后 value 与文档逐字不变）',
@@ -1228,6 +1515,408 @@ async function main() {
     return 'ok'
   })()`)
   await sleep(300)
+
+  // ═══ 第三十二轮（用户第九轮反馈）：K~P 六段 ═══════════════════════════════
+
+  // ─── K ① 书写面去边框 + 「公式 ✓」不占一行 ───────────────────────────────
+  await reloadFix3(app)
+  await openBlockEditor(app)
+  const k = JSON.parse(await app.ev(SRC_SNAPSHOT))
+  const allZero = (arr) => Array.isArray(arr) && arr.length === 4 && arr.every((v) => v === '0px')
+  report.check(
+    'K1 源码书写面**没有边框**：输入层/装饰层/源码区四边全 0，且没有 focus 外环（box-shadow none）',
+    allZero(k.srcBorders) && allZero(k.hlBorders) && allZero(k.srcBordersource) &&
+      k.srcShadow === 'none' && k.srcOutline === 'none',
+    'src=' + JSON.stringify(k.srcBorders) + ' hl=' + JSON.stringify(k.hlBorders) +
+      ' source=' + JSON.stringify(k.srcBordersource) + ' shadow=' + k.srcShadow + ' outline=' + k.srcOutline
+  )
+  report.check(
+    'K2 「公式 ✓」**不占独立一行**：绝对定位，且与源码区在同一行带里（源码区顶到容器顶）',
+    k.barPosition === 'absolute' &&
+      !!k.barRect && !!k.srcRect && !!k.boxRect &&
+      k.srcRect.top - k.boxRect.top <= 3 &&
+      k.barRect.bottom > k.srcRect.top,
+    'barPosition=' + k.barPosition + ' boxTop=' + (k.boxRect && k.boxRect.top) +
+      ' srcTop=' + (k.srcRect && k.srcRect.top) + ' bar=' + JSON.stringify(k.barRect)
+  )
+  report.check(
+    'K3 靠**底色与留白**区分书写面（源码区仍有 --code-bg 底色与非零内边距），✓ 仍是真按钮且有可访问名',
+    !!k.srcBg && k.srcBg !== 'rgba(0, 0, 0, 0)' && k.srcPadding !== '0px' &&
+      k.checkTag === 'BUTTON' && !!k.checkAria && k.checkAria.trim().length > 0,
+    'srcBg=' + k.srcBg + ' srcPadding=' + k.srcPadding + ' check=' + k.checkTag + '/' + JSON.stringify(k.checkAria)
+  )
+  report.note('K 实测：容器边框 ' + k.boxBorder + '，源码区 padding=' + k.srcPadding + '，✓ 位置 ' + JSON.stringify(k.barRect))
+
+  // ─── L ② 行内源码区真实按键（改前：Ctrl+A 被 PM 抢成 AllSelection，下一个键整段被吃）──
+  await closeEditor(app)
+  await reloadFix3(app)
+  await openInlineEditor(app)
+  await app.ev(SRC_STAMP)
+  const l0 = JSON.parse(await app.ev(SRC_SNAPSHOT))
+  let lTyped = l0.value || ''
+  let lAlive = l0.hasBox === true && l0.shape === 'inline' && l0.activeIsTa === true
+  let lRenderFollows = 0
+  let lPrevRender = l0.inlineKatex
+  const lTrace = []
+  for (const ch of ['x', 'y', 'z']) {
+    await typeChar(app.send, ch)
+    await sleep(240)
+    const s = JSON.parse(await app.ev(SRC_SNAPSHOT))
+    lTyped += ch
+    if (s.inlineKatex !== lPrevRender) lRenderFollows += 1
+    lPrevRender = s.inlineKatex
+    const ok = s.value === lTyped && s.activeIsTa === true && s.stamp === true && s.taConnected === true
+    if (!ok) lAlive = false
+    lTrace.push(ch + '=>' + JSON.stringify(s.value) + (ok ? '' : '(STALE!)'))
+  }
+  await pressKey(app, 'Backspace', 'Backspace', 8)
+  const lDel = JSON.parse(await app.ev(SRC_SNAPSHOT))
+  report.check(
+    'L1 行内源码区**真实按键**：连敲 3 个字符 + 一次退格，源码文本逐字相符、焦点与元素都没换',
+    lAlive &&
+      lDel.value === lTyped.slice(0, -1) &&
+      lDel.activeIsTa === true &&
+      lDel.stamp === true,
+    'trace=' + lTrace.join(' ') + ' afterBackspace=' + JSON.stringify(lDel.value) +
+      ' activeIsTa=' + lDel.activeIsTa + ' stamp=' + lDel.stamp
+  )
+  report.check(
+    'L2 行内渲染**逐键**跟着变（框外那条 KaTeX 随输入更新）',
+    lRenderFollows >= 2 && lDel.inlineKatex !== l0.inlineKatex,
+    'renderChanged=' + lRenderFollows + '/3 before=' + JSON.stringify(l0.inlineKatex) +
+      ' after=' + JSON.stringify(lDel.inlineKatex)
+  )
+  // 光标移动（用户口径点名：光标移动要能用）
+  await pressKey(app, 'Home', 'Home', 36)
+  const lHome = JSON.parse(await app.ev(SRC_SNAPSHOT))
+  await pressKey(app, 'End', 'End', 35)
+  const lEnd = JSON.parse(await app.ev(SRC_SNAPSHOT))
+  report.check(
+    'L3 行内源码里 Home / End 能移动光标（没有被 PM 的 keymap 抢走）',
+    lHome.selStart === 0 && lEnd.selStart === (lEnd.value || '').length,
+    'home=' + lHome.selStart + ' end=' + lEnd.selStart + ' len=' + (lEnd.value || '').length
+  )
+  // ⚠️ 这一条是改前的"死穴"：Ctrl+A 会冒泡到 PM 的 selectAll，把**文档选区**变成 AllSelection
+  await pressKey(app, 'a', 'KeyA', 65, 2)
+  const lSelectAll = JSON.parse(await app.ev(SRC_SNAPSHOT))
+  await typeChar(app.send, 'q')
+  await sleep(260)
+  const lReplace = JSON.parse(await app.ev(SRC_SNAPSHOT))
+  const lBlocksKept = JSON.stringify(lReplace.blockSources) === JSON.stringify(l0.blockSources)
+  report.check(
+    'L4 Ctrl+A 后敲字：替换发生在**源码框**里（PM 选区没被抢成 AllSelection，文档内容也没被换掉）',
+    lSelectAll.pmSelName !== 'AllSelection' &&
+      lReplace.value === 'q' &&
+      lReplace.hasBox === true &&
+      lReplace.activeIsTa === true &&
+      lReplace.pmSelName !== 'AllSelection' &&
+      lBlocksKept,
+    'pmSel@Ctrl+A=' + lSelectAll.pmSelName + ' value=' + JSON.stringify(lReplace.value) +
+      ' hasBox=' + lReplace.hasBox + ' pmSelAfter=' + lReplace.pmSelName +
+      ' blocks=' + JSON.stringify(lReplace.blockSources)
+  )
+  // 还原这条行内公式（后面的段落不该看到中间态）
+  // ⚠️ `if (!ta)` 不是客套：被测代码坏掉时（改前正是这条 L4 会把编辑框弄没）
+  //    这里取到的是 null —— 套件要**继续跑完**、把后面的红都如实报出来，
+  //    而不是在第一条就抛异常把报告截断。
+  await app.ev(`(() => {
+    const ta = document.querySelector('[data-md-math-editor-src]')
+    if (!ta) return 'NO_BOX'
+    ta.value = 'E = mc^2'
+    ta.dispatchEvent(new Event('input', { bubbles: true }))
+    return 'ok'
+  })()`)
+  await sleep(300)
+  await closeEditor(app)
+
+  // ─── M ③ 公式拖不走；图片仍可拖（对照项）────────────────────────────────
+  await reloadFix3(app)
+  const p1Rect = await centerOf(app.ev, '.md-preview p')
+  await openBlockEditor(app)
+  const mSelected = JSON.parse(await app.ev(SRC_SNAPSHOT))
+  await closeEditor(app)
+  const blockRect = JSON.parse(await app.ev(centerExpr('.md-preview .md-math-block')))
+  const mBefore = JSON.parse(await app.ev(SRC_SNAPSHOT)) // 顺手清空 dragLog
+  await dragFromTo(
+    app,
+    { x: (blockRect.left + blockRect.right) / 2, y: (blockRect.top + blockRect.bottom) / 2 },
+    { x: p1Rect.x, y: p1Rect.y + 6 }
+  )
+  const mBlock = JSON.parse(await app.ev(SRC_SNAPSHOT))
+  const blockDragSeen = (mBlock.dragLog || []).some((l) => l.dragging && l.dragging.first === 'mathBlock')
+  /**
+   * 判据用**现场序列化**（`freshMarkdown`）而不是 store 的 `content`：
+   * 后者有一个 debounce，两次快照之间哪怕文档没动也可能因为"补一次同步"而不同
+   *（实测会给出假红）。`freshMarkdown` 直接来自 `state.doc`，是"逐字不变"的可靠口径。
+   * 另外钉住**这次拖动的性质**：公式必须已经被选中（PM 会给选中的叶节点补
+   * `draggable=true` —— 那正是它会走"节点拖动"分支的入口）。
+   */
+  report.check(
+    'M1 块级公式**拖不走**：真实拖拽手势之后文档逐字不变（且此时它正处于"选中后可被节点拖动"的状态）',
+    mBlock.freshMarkdown === mBefore.freshMarkdown && mSelected.blockDraggable === 'true',
+    'markdownSame=' + (mBlock.freshMarkdown === mBefore.freshMarkdown) +
+      ' dragSeen=' + blockDragSeen +
+      ' blockDraggableAfterSelect=' + mSelected.blockDraggable +
+      ' log=' + JSON.stringify(mBlock.dragLog)
+  )
+  // 行内公式：拖着它走（基线取**上一次拖拽之后**的状态：每条断言只对自己那一次手势负责）
+  const inlineRect = JSON.parse(await app.ev(centerExpr('.md-preview .md-math-rendered')))
+  const mBeforeInline = mBlock.freshMarkdown
+  await dragFromTo(app, { x: inlineRect.x, y: inlineRect.y }, { x: p1Rect.x + 80, y: p1Rect.y + 10 })
+  const mInline = JSON.parse(await app.ev(SRC_SNAPSHOT))
+  report.check(
+    'M2 行内公式**拖不走**：真实拖拽手势之后文档逐字不变',
+    mInline.freshMarkdown === mBeforeInline,
+    'markdownSame=' + (mInline.freshMarkdown === mBeforeInline) +
+      ' log=' + JSON.stringify(mInline.dragLog)
+  )
+  // 对照项：图片（同一套手势、同一个判据 —— 它**必须**还能搬）
+  if (!mInline.imgRect || mInline.imgRect.width < 20) {
+    report.skip(
+      'M3 图片节点仍然可以拖动（对照项）',
+      '图片没加载出来（imgRect=' + JSON.stringify(mInline.imgRect) + '）——多半是实例的 LUMIN_TRUSTED_PATHS 没覆盖 %TEMP%'
+    )
+  } else {
+    const imgRect = mInline.imgRect
+    const mBeforeImg = mInline.freshMarkdown
+    await clickAt(app.send, (imgRect.left + imgRect.right) / 2, (imgRect.top + imgRect.bottom) / 2)
+    await sleep(400)
+    await dragFromTo(
+      app,
+      { x: (imgRect.left + imgRect.right) / 2, y: (imgRect.top + imgRect.bottom) / 2 },
+      { x: p1Rect.x, y: p1Rect.y + 6 }
+    )
+    const mImg = JSON.parse(await app.ev(SRC_SNAPSHOT))
+    report.check(
+      'M3 图片节点**仍然可以拖动**（同一套手势、同一个判据：文档必须变）—— 数学那条没误伤节点拖动',
+      mImg.freshMarkdown !== mBeforeImg,
+      'markdownChanged=' + (mImg.freshMarkdown !== mBeforeImg) +
+        ' imgDraggableAfterSelect=' + mInline.imgDraggable +
+        ' imgRect=' + JSON.stringify(mImg.imgRect)
+    )
+  }
+
+  // ─── N ④ 空段落里敲 `$$` + 回车 → 空公式块 + 直接进编辑态 ─────────────────
+  await openDocWith(app, MD4, 'math-edit-4.md')
+  await waitEditor(app.ev)
+  await sleep(900)
+  await newEmptyParagraph(app)
+  await typeChar(app.send, '$')
+  await typeChar(app.send, '$')
+  await sleep(250)
+  const n0 = JSON.parse(await app.ev(SRC_SNAPSHOT))
+  report.check(
+    'N1 在空段落里敲出 `$$`（此时还没有任何公式节点）—— 起点干净',
+    n0.blockSources.length === 0 && n0.paraTexts.includes('$$'),
+    'blocks=' + JSON.stringify(n0.blockSources) + ' paras=' + JSON.stringify(n0.paraTexts)
+  )
+  // 停一下再回车：把"敲 `$$`"与"回车插入"分成**两个历史分组**，
+  // 这样下面那条 Ctrl+Z 验的就是"插入本身是一步"，而不是"两次编辑被并成一步"
+  //（prosemirror-history 的 `newGroupDelay` 默认 500ms）。
+  await sleep(750)
+  await pressKey(app, 'Enter', 'Enter', 13)
+  await sleep(500)
+  const n1 = JSON.parse(await app.ev(SRC_SNAPSHOT))
+  report.check(
+    'N2 回车 → 插入块级公式节点，且**编辑态已经打开、焦点就在源码框里**（不用再点一次）',
+    n1.blockSources.length === 1 &&
+      n1.blockSources[0] === '' &&
+      n1.hasBox === true &&
+      n1.shape === 'block' &&
+      n1.activeIsTa === true &&
+      n1.value === '',
+    'blocks=' + JSON.stringify(n1.blockSources) + ' hasBox=' + n1.hasBox + ' shape=' + n1.shape +
+      ' activeIsTa=' + n1.activeIsTa + ' value=' + JSON.stringify(n1.value)
+  )
+  /**
+   * 一步撤销。
+   *
+   * ⚠️ 判据用**模型**（`blockSources` / `paraTexts`）而不是 `files().current.content`：
+   * 后者是 store 侧的快照，敲完到落库有一个 debounce —— 拿它跟"打字之前"逐字节比，
+   * 比的是两次快照谁更新，不是"撤销到底撤了几步"（本套件第一版就这么假红过）。
+   */
+  await pressKey(app, 'z', 'KeyZ', 90, 2) // Ctrl+Z
+  await sleep(500)
+  const n2 = JSON.parse(await app.ev(SRC_SNAPSHOT))
+  report.check(
+    'N3 插入是**一步撤销**：一次 Ctrl+Z 就撤掉整块（节点消失、`$$` 段落回来、编辑态收起）',
+    n2.blockSources.length === 0 && n2.paraTexts.includes('$$') && n2.hasBox === false,
+    'blocks=' + JSON.stringify(n2.blockSources) + ' paras=' + JSON.stringify(n2.paraTexts) +
+      ' hasBox=' + n2.hasBox
+  )
+  // 边界一：`$$` 出现在**行中间**（整段不是恰好 `$$`）不许触发
+  //
+  // 这里**重开一次夹具**：上一条撤销之后文档里正好留着一段文本 `$$`，
+  // 而"在 `$$` 段落上按回车"本来就该触发插入 —— 拿它当边界用例会验错东西。
+  await openDocWith(app, MD4, 'math-edit-4c.md')
+  await waitEditor(app.ev)
+  await sleep(900)
+  await newEmptyParagraph(app)
+  for (const ch of ['a', 'b', 'c', ' ', '$', '$']) await typeChar(app.send, ch)
+  await sleep(250)
+  const n3a = JSON.parse(await app.ev(SRC_SNAPSHOT))
+  const n3ParaCount = n3a.paraTexts.length
+  await sleep(750)
+  await pressKey(app, 'Enter', 'Enter', 13)
+  await sleep(400)
+  const n3 = JSON.parse(await app.ev(SRC_SNAPSHOT))
+  report.check(
+    'N4 边界：「abc $$」这种**行中间**的 `$$` 不触发（回车还是普通换行），没有多出公式节点',
+    n3a.paraTexts.includes('abc $$') &&
+      n3.blockSources.length === 0 &&
+      n3.hasBox === false &&
+      n3.paraTexts.length === n3ParaCount + 1,
+    'beforeEnter=' + JSON.stringify(n3a.paraTexts) + ' afterEnter=' + JSON.stringify(n3.paraTexts) +
+      ' blocks=' + JSON.stringify(n3.blockSources) + ' hasBox=' + n3.hasBox
+  )
+  // 边界二：输入法组字中的回车**绝不能**触发（合成事件：真实 IME 无法用 CDP 驱动）
+  await openDocWith(app, MD4, 'math-edit-4b.md')
+  await waitEditor(app.ev)
+  await sleep(900)
+  await newEmptyParagraph(app)
+  await typeChar(app.send, '$')
+  await typeChar(app.send, '$')
+  await sleep(250)
+  await app.ev(`(() => {
+    const el = document.querySelector('.ProseMirror')
+    el.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true, isComposing: true }))
+    return 'ok'
+  })()`)
+  await sleep(400)
+  const n4 = JSON.parse(await app.ev(SRC_SNAPSHOT))
+  report.check(
+    'N5 边界：**输入法组字中**的回车（`isComposing: true`）不触发插入 —— 那是"确认候选词"',
+    n4.blockSources.length === 0 && n4.hasBox === false && n4.paraTexts.includes('$$'),
+    'blocks=' + JSON.stringify(n4.blockSources) + ' hasBox=' + n4.hasBox + ' paras=' + JSON.stringify(n4.paraTexts)
+  )
+  // 边界三：代码块里绝不触发
+  await reloadFix3(app)
+  const cmBox = await centerOf(app.ev, '.md-preview .cm-content')
+  if (!cmBox) {
+    report.skip('N6 边界：代码块里敲 `$$`+回车 不触发', '代码块没渲染出来（找不到 .cm-content）')
+  } else {
+    await clickAt(app.send, cmBox.x, cmBox.y)
+    await sleep(400)
+    await typeChar(app.send, '$')
+    await typeChar(app.send, '$')
+    await pressKey(app, 'Enter', 'Enter', 13)
+    await sleep(400)
+    const n5 = JSON.parse(await app.ev(SRC_SNAPSHOT))
+    report.check(
+      'N6 边界：**代码块内**敲 `$$`+回车 绝不触发（公式节点数不变、代码块里就是那两个字面 `$`）',
+      n5.blockSources.length === 1 &&
+        n5.blockSources[0] === '\\frac{a}{b}' &&
+        n5.docTypes.filter((t) => t === 'codeBlock').length === 1,
+      'blocks=' + JSON.stringify(n5.blockSources) +
+        ' codeBlocks=' + n5.docTypes.filter((t) => t === 'codeBlock').length + ' hasBox=' + n5.hasBox
+    )
+  }
+
+  // ─── O ⑤ 空公式：保留框架 + `< Empty Math Block >`（占位不进文档）──────────
+  await reloadFix3(app)
+  await openBlockEditor(app)
+  await pressKey(app, 'a', 'KeyA', 65, 2) // Ctrl+A（全选源码）
+  await pressKey(app, 'Backspace', 'Backspace', 8) // 清空
+  await sleep(300)
+  const o = JSON.parse(await app.ev(SRC_SNAPSHOT))
+  report.check(
+    'O1 空公式**保留框架**：节点还在（source 为空）、容器还开着、源码框还能继续输入',
+    o.hasBox === true && o.value === '' && o.blockSources.length === 1 && o.blockSources[0] === '',
+    'hasBox=' + o.hasBox + ' value=' + JSON.stringify(o.value) + ' blocks=' + JSON.stringify(o.blockSources)
+  )
+  report.check(
+    'O2 编辑态下半区显示 `< Empty Math Block >`，用次级正文色、且**不可选中/不可点击**',
+    o.emptyCount === 1 &&
+      o.emptyText === '< Empty Math Block >' &&
+      o.emptyUserSelect === 'none' &&
+      o.emptyPointer === 'none' &&
+      o.emptyEditable === 'false' &&
+      !!o.emptyColor,
+    'count=' + o.emptyCount + ' text=' + JSON.stringify(o.emptyText) + ' color=' + o.emptyColor +
+      ' userSelect=' + o.emptyUserSelect + ' pointerEvents=' + o.emptyPointer + ' editable=' + o.emptyEditable
+  )
+  // 序列化那条单独再看一眼：判据用**现场序列化**（`ed.storage.markdown.getMarkdown()`），
+  // 不用 store 侧的快照（它有一个 debounce，比的是谁更新而不是"文档里到底有什么"）
+  await sleep(400)
+  const oDoc = JSON.parse(await app.ev(SRC_SNAPSHOT))
+  const oSer = String(oDoc.freshMarkdown)
+  report.check(
+    'O3 占位**一个字都没进文档**：序列化是空的 `$$` 块，文档纯文本里搜不到那句话',
+    /^\$\$\n\n\$\$$/m.test(oSer.replace(/\n$/, '')) &&
+      !oSer.includes('Empty Math Block') &&
+      !String(oDoc.docText).includes('Empty Math Block'),
+    'hasEmptyBlock=' + /\$\$\n\n\$\$/m.test(oSer) +
+      ' serHasPlaceholder=' + oSer.includes('Empty Math Block') +
+      ' docTextHasPlaceholder=' + String(oDoc.docText).includes('Empty Math Block') +
+      ' blocks=' + JSON.stringify(oDoc.blockSources) +
+      ' around=' + JSON.stringify((oSer.match(/[$]{2}[\\s\\S]{0,14}?[$]{2}/) || ['<none>'])[0])
+  )
+  // 还能接着输入（占位让位、公式画出来）
+  await typeChar(app.send, 'x')
+  await typeChar(app.send, 'y')
+  await sleep(300)
+  const o4 = JSON.parse(await app.ev(SRC_SNAPSHOT))
+  report.check(
+    'O4 空框里还能继续输入：敲两个字符后占位消失、源码与文档同步',
+    o4.value === 'xy' && o4.emptyCount === 0 && o4.blockSources[0] === 'xy' && o4.content.includes('xy'),
+    'value=' + JSON.stringify(o4.value) + ' empty=' + o4.emptyCount + ' blocks=' + JSON.stringify(o4.blockSources)
+  )
+  // 收起来之后，**非编辑**渲染也要显示占位
+  await app.ev(`(() => {
+    const ta = document.querySelector('[data-md-math-editor-src]')
+    if (!ta) return 'NO_BOX'
+    ta.value = ''
+    ta.dispatchEvent(new Event('input', { bubbles: true }))
+    return 'ok'
+  })()`)
+  await sleep(300)
+  await closeEditor(app)
+  await sleep(300)
+  const o5 = JSON.parse(await app.ev(SRC_SNAPSHOT))
+  report.check(
+    'O5 收起编辑态后，**非编辑**的块级公式也画占位（框架仍在，观感与 Typora 一致）',
+    o5.hasBox === false && o5.emptyRenderedCount === 1 && o5.blockSources[0] === '',
+    'hasBox=' + o5.hasBox + ' renderedEmpty=' + o5.emptyRenderedCount +
+      ' blocks=' + JSON.stringify(o5.blockSources)
+  )
+
+  // ─── P ⑥ 回归 ────────────────────────────────────────────────────────────
+  await reloadFix3(app)
+  const pOpened = await openBlockEditor(app)
+  const p0 = JSON.parse(await app.ev(SRC_SNAPSHOT))
+  await typeChar(app.send, 'x')
+  await sleep(300)
+  const p1 = JSON.parse(await app.ev(SRC_SNAPSHOT))
+  report.check(
+    'P1 回归：块级源码区仍能**真实按键输入**（本轮改动没有回退上一轮的成果）',
+    pOpened === true &&
+      p1.value === (p0.value || '') + 'x' &&
+      p1.activeIsTa === true &&
+      String(p1.content).includes((p0.value || '') + 'x'),
+    'opened=' + pOpened + ' before=' + JSON.stringify(p0.value) + ' after=' + JSON.stringify(p1.value) +
+      ' activeIsTa=' + p1.activeIsTa + ' types=' + JSON.stringify(p1.docTypes)
+  )
+  const pSrcBox = JSON.parse(await app.ev(centerExpr('.md-math-editor__source')))
+  await clickPoint(app.send, pSrcBox.right - 3, pSrcBox.bottom - 3)
+  await sleep(300)
+  const p2 = JSON.parse(await app.ev(SRC_SNAPSHOT))
+  report.check(
+    'P2 回归：点源码区空白仍**不收起**（focus 还在框内、内容不变）',
+    p2.hasBox === true && p2.activeInBox === true && p2.value === p1.value,
+    'hasBox=' + p2.hasBox + ' activeInBox=' + p2.activeInBox + ' value=' + JSON.stringify(p2.value)
+  )
+  await closeEditor(app)
+  const p3src = JSON.parse(await app.ev(SNAPSHOT))
+  report.check(
+    'P3 回归：代码块里的 `$` 与 `\\$` 字面量都不受影响（本轮新增的 `$$`+回车 规则没有误伤）',
+    p3src.codeBlocks.length === 1 &&
+      p3src.codeBlocks[0].lang === 'sh' &&
+      p3src.codeBlocks[0].text === 'echo "$HOME"' &&
+      p3src.content.includes('\\$5') &&
+      p3src.blockSources.length === 1,
+    'codeBlocks=' + JSON.stringify(p3src.codeBlocks) + ' has\\$5=' + p3src.content.includes('\\$5') +
+      ' blocks=' + JSON.stringify(p3src.blockSources)
+  )
 
   app.close()
   return report.finish()

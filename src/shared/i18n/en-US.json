@@ -166,6 +166,7 @@
     "mathSourceBlock": "Formula source",
     "mathEscHint": "Esc to close",
     "mathCheck": "Confirm and close formula editing",
+    "mathEmpty": "< Empty Math Block >",
     "restoreDraft": "Unsaved draft detected (newer than the file on disk)",
     "restoreDraftUntitled": "Unsaved content from your last session detected",
     "draftTitle": "Unsaved draft",

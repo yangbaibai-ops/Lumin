@@ -49,6 +49,22 @@
 //    blur 本身也改成**下一帧再判定**，焦点仍在容器内就不收起。
 // ③ **公式要高亮**：`<textarea>` 没法只染一部分文本。做法是"镜像层"：透明的输入层
 //    ＋ 同文本的装饰层（见 `mathHighlight.ts` 的模块头，对齐口径见 CSS）。
+//
+// ─── 第三十二轮（用户第九轮反馈）：形态收敛 + 行内可编辑 + 不可拖 + `$$`⏎ + 空公式 ────
+//
+// ① **源码区不再是一个"输入框"**：`.md-math-editor__src` 的边框/描边/
+//    `:focus-visible` 外环全部去掉（底色与留白区分即可，`$$` 行保留成装饰性提示）；
+//    「公式 ✓」从"占一整行的顶栏"改成**贴在容器右上角的绝对定位小标记**（不参与流、
+//    不撑高容器）。焦点可见性改由**容器**的 `:focus-within` 边框给出（见 overlays.css
+//    与 tests/focusVisibility.test.mjs 的登记）。
+// ② **行内源码区也能编辑**：真因是"行内 widget 没挂 `stopEvent`"（详见上面 blockBoxShape
+//    的说明）+ 手动 `appendChild` 与装饰重复挂载导致 DOM 被搬来搬去；修法是两种形态
+//    共用一个屏蔽口径，并统一由装饰挂载（`MathPreviewView.sync()` 里不再手动 append）。
+// ③ **公式不可拖拽**：见 `dragRules.blocksMathDrag`（只拦数学节点，图片/表格照旧）。
+// ④ **`$$` + 回车 = 空公式块 + 直接进编辑态**：`props.handleKeyDown` 里认"整段恰好是 `$$`"
+//    的段落（行中间不误触发、代码块不认识这个按键），插一个 `mathBlock` 节点后立刻开会话。
+// ⑤ **空公式保留框架**：块级源码为空时**不再删节点**（`source: ''`），渲染区/预览区显示
+//    `< Empty Math Block >`（只存在于视图，**序列化里一个字都不加**）。
 import { Extension } from '@tiptap/core'
 import { redo, undo } from '@tiptap/pm/history'
 import { Plugin, PluginKey } from '@tiptap/pm/state'
@@ -57,7 +73,7 @@ import type { EditorState } from '@tiptap/pm/state'
 import type { EditorView } from '@tiptap/pm/view'
 import type { Mark, Node as PMNode } from '@tiptap/pm/model'
 import { fillHighlight } from './mathHighlight'
-import { mathRenderInfo } from './mathMarkers'
+import { emptyMathDom, mathRenderInfo } from './mathMarkers'
 
 const mathPreviewKey = new PluginKey<MathPluginState>('lumin-math-preview')
 
@@ -106,17 +122,24 @@ function stopMathBoxEvents(event: Event): boolean {
 }
 
 /**
- * 块级编辑容器的 widget 规格**形状**：`side:-2`（排在这个节点之前）+ 对 PM 屏蔽事件
- * （见 `stopMathBoxEvents`）+ 忽略装饰层内部的选区变化。
+ * 编辑容器的 widget 规格**形状**：`side`（块级排在这个节点之前 / 行内贴在公式前）+
+ * 对 PM 屏蔽事件（见 `stopMathBoxEvents`）+ 忽略装饰层内部的选区变化。
  *
  * 这里定的是"形状"（逐属性相等即可），真正交给 `Decoration.widget` 的是每个会话在
  * `MathEditorBase.widgetSpec` 里合成的**同一份对象**：`spec.key` 相等时 `WidgetType.eq`
  * 直接返回 true，`toDOM` 的引用相等是第二道保险 —— 两道都成立，PM 才不会拆掉 textarea。
+ *
+ * ⚠️ **两种形态都要 `stopEvent`**（第九轮修正）：行内浮层虽然是用 `appendChild` 挂到
+ * `view.dom.parentElement` 上"想"避开 PM，但 `props.decorations` 里的那条 widget 会把
+ * 同一个 DOM 收进**段落内部**（实测 `box.parentElement` 是 `P`）—— 于是行内源码区同样在
+ * `view.dom` 里，PM 照样接管它的按键：`Ctrl+A` 会被 `selectAll` 抢成 `AllSelection`，
+ * 紧接着敲一个字就被 `editHandlers.keypress` 拿去 `tr.insertText`（源码框一个字没进、
+ * 编辑态直接消失）。上一轮只给块级挂了 `stopEvent`，这就是"块级修好了行内还没有"的原因。
  */
 const blockBoxShape = { side: -2, stopEvent: stopMathBoxEvents, ignoreSelection: true }
 
-/** 行内浮层的 widget 规格形状：浮层挂在 PM 之外，`stopEvent` 用不上 */
-const inlineBoxShape = { side: -1, ignoreSelection: true }
+/** 行内：同一个屏蔽口径，只是排布方向不同（`side: -1`） */
+const inlineBoxShape = { side: -1, stopEvent: stopMathBoxEvents, ignoreSelection: true }
 
 /** `Decoration.widget` 的 spec 里我们用得到的那几项（`key` 由会话实例自己补） */
 type MathWidgetShape = {
@@ -272,6 +295,8 @@ export interface MathLabels {
   check: string
   /** 「Esc」提示（只在行内浮层上给） */
   esc: string
+  /** 空公式的占位文案（`< Empty Math Block >`；**只画在视图上，不进文档**） */
+  empty: string
 }
 
 /**
@@ -282,7 +307,7 @@ export interface MathLabels {
  * `tests/i18nHardcoded.test.mjs`（界面文案不许绕过语言包）对**所有**可能显示出来的
  * 字符串都有约束 —— 一份"反正不会用到"的中文兜底，恰恰是那种以后会真的显示出来的东西。
  */
-const DEFAULT_LABELS: MathLabels = { label: '', aria: '', check: '', esc: '' }
+const DEFAULT_LABELS: MathLabels = { label: '', aria: '', check: '', esc: '', empty: '' }
 
 /**
  * 公式**真正的横向范围**（用它量宽度，而不是量元素盒）。
@@ -463,22 +488,33 @@ function buildEditorParts(
   preview.setAttribute('data-md-math-editor-preview', '')
   preview.setAttribute('contenteditable', 'false')
 
-  box.append(bar, source, preview)
+  // ⚠️ 顺序：`bar` **放在最后**。块级形态里它要绝对定位贴在容器右上角，而它前面那条
+  // `.md-math-editor__source`（里面还有 `position: relative` 的 textarea）会**盖住**它 ——
+  // 两者都是定位元素且 z-index 都是 auto，谁在后谁在上。放到最后就不必写 `z-index`
+  //（分片 CSS 里不许出现数字 z-index，见 tests/zIndexStack.test.mjs）。
+  // 行内形态靠 flex 的 `order` 排布（见 overlays.css），与 DOM 顺序无关。
+  box.append(source, preview, bar)
   return { box, check, ta, hl, field, preview }
 }
 
 /** 行内浮层里那个"只给读屏器"的 Esc 提示的 id 序号（`aria-describedby` 要唯一 id） */
 let hintSeq = 0
 
-/** 把 KaTeX 产物画进渲染区，并同步错误态 */
+/**
+ * 把 KaTeX 产物画进渲染区，并同步错误态。
+ *
+ * 空源码（`tex` 只有空白）走**占位**：框架保留、画 `< Empty Math Block >`
+ * （`emptyMathDom`，只存在于视图，序列化里一个字都不加）。
+ */
 function renderEditorPreview(
   box: HTMLElement,
   preview: HTMLElement,
   tex: string,
-  display: boolean
+  display: boolean,
+  emptyLabel: string
 ): void {
   if (!tex.trim()) {
-    preview.innerHTML = ''
+    preview.replaceChildren(emptyMathDom(emptyLabel))
     box.removeAttribute('data-md-math-invalid')
     return
   }
@@ -821,7 +857,7 @@ class BlockMathEditor extends MathEditorBase {
    */
   protected paintPreview(tex: string): void {
     this.preview.style.display = ''
-    renderEditorPreview(this.dom, this.preview, tex, true)
+    renderEditorPreview(this.dom, this.preview, tex, true, this.labels.empty)
   }
 }
 
@@ -848,12 +884,17 @@ class InlineMathEditor extends MathEditorBase {
   /**
    * 行内的渲染区**只在出错时**显示：语法正确时框外那条公式就是它的渲染结果，
    * 再画一份只是噪音（错误信息则是唯一能说清"错在哪"的东西）。
+   *
+   * ⚠️ 行内**空**公式这里**不画占位**（用户口径：行内空公式的处置单独说明）：
+   * 行内公式的"清理"语义是**删掉整条**（见 `applySource`）—— 一个零宽的行内公式在句子中间
+   * 没有"框架"可留，画 `< Empty Math Block >` 反而会把句子撑开、还与"删掉"语义打架。
+   * 块级的空公式才保留框架并画占位（Typora 的形态）。
    */
   protected paintPreview(tex: string): void {
     const { html, error } = mathRenderInfo(tex, false)
     const preview = this.preview
     if (!tex.trim()) {
-      preview.innerHTML = ''
+      preview.replaceChildren()
       preview.style.display = 'none'
       this.dom.removeAttribute('data-md-math-invalid')
       return
@@ -970,7 +1011,14 @@ function currentTexOf(doc: PMNode, live: MathHit, kind: 'inline' | 'block'): str
  * 把源码写回文档（**唯一的写入口**：逐键输入、输入法组合结束、Tab 缩进都走这里）。
  *
  * 写的是「公式内容」那一段区间 —— 定界符 `$` 与（块级的）节点身份都不动。
- * 源码为空 ⇒ 删除整条公式（语义见文件头的交互说明）。
+ *
+ * 源码为空（`''`）的语义**按形态分**（第九轮用户口径「空的式子保留框架」）：
+ *   * **块级**：**不删节点**，只把 `source` 置空 ⇒ 容器/框架还在、可以继续输入，
+ *     渲染区显示 `< Empty Math Block >`；序列化照旧是 `$$\n\n$$`（占位**不进文档**）。
+ *     与 Typora 一致：空公式块是一个"待填"的块，不是"删掉"。
+ *   * **行内**：仍然**删掉整条**（连两侧 `$` 定界符一起）—— 行内公式没有可留的"框架"，
+ *     一个零宽公式留在句子中间既看不见也点不着；用户口径里也写明这条单独判断。
+ *
  * @param id 发起写入的编辑区 id：会话已经被别人接管时**直接忽略**（防止过期写入）
  * @returns 是否真的改动了文档
  */
@@ -982,7 +1030,8 @@ export function applySource(view: EditorView, tex: string, id?: number): boolean
   if (!live) return false
   const kind = session.kind
   const { state } = view
-  if (tex === '') {
+  if (tex === '' && kind === 'inline') {
+    // 行内：清空 = 删除这条公式（连同 `$` 定界符）
     view.dispatch(
       state.tr
         .delete(live.innerFrom, live.innerTo)
@@ -1008,6 +1057,47 @@ export function applySource(view: EditorView, tex: string, id?: number): boolean
 }
 
 // ─── 插件 ────────────────────────────────────────────────────────────────────
+
+/**
+ * 空段落里敲下 `$$` 再按回车 → **插入一个空公式块并直接进入编辑态**（第九轮用户口径）。
+ *
+ * 判据（为什么这样定）：
+ *   * 只认**段落**（`paragraph`）：标题/列表项/引用里 `$$`+⏎ 是它们自己的语义（换行、新项），
+ *     不该被公式抢走；代码块更不会走到这里 —— 它根本不是段落，而且代码块内部的按键被
+ *     `codeBlock.ts` 的 `stopEvent` 挡在 PM 之外（双保险）；
+ *   * 认的是**整段文本恰好等于 `$$`**（`parent.textContent === '$$'`）：`abc $$` 这种
+ *     "行中间/行尾还有别的内容"的情况因此**不会**误触发；
+ *   * 选区必须是**折叠**的（`empty`），有选区时回车交给 PM 的默认语义（删选区/换行）。
+ *
+ * 插入走的就是 `mathBlock` 这个节点本身（它的 markdown 序列化固定写 `$$\n…\n$$`），
+ * 一个事务完成 ⇒ **一步撤销**；随后用既有的 `openMathEditor` 开会话
+ * （`MathPreviewView` 会在下一帧把焦点放进源码框，用户不用再点一次）。
+ *
+ * @returns 是否已经处理（true = 吃掉这个回车）
+ */
+function insertEmptyMathBlock(view: EditorView): boolean {
+  const { state } = view
+  const { $from, empty } = state.selection
+  if (!empty) return false
+  const parent = $from.parent
+  if (parent.type.name !== 'paragraph' || parent.textContent !== '$$') return false
+  const nodeType = state.schema.nodes.mathBlock
+  if (!nodeType) return false
+  const start = $from.before()
+  const end = $from.after()
+  const node = nodeType.create({ source: '' })
+  view.dispatch(state.tr.replaceWith(start, end, node))
+  // 插入是**上一个事务**；这里只是"把编辑态开在那条新公式上"（只改视图，不改文档）
+  openMathEditor(view, {
+    kind: 'block',
+    from: start,
+    to: start + node.nodeSize,
+    innerFrom: start,
+    innerTo: start + node.nodeSize,
+    tex: ''
+  })
+  return true
+}
 
 /**
  * 打开源码框的事务元数据（**只挂在事务上**，不进文档、不参与序列化）。
@@ -1143,6 +1233,19 @@ export const MathPreview = Extension.create<{ labels?: Partial<MathLabels> }>({
             if (!hit) return false
             openMathEditor(view, hit)
             return true // 已处理：别再让 PM 按落点写一次选区
+          },
+          /**
+           * 回车：只认"空段落里恰好是 `$$`"那一种（见 `insertEmptyMathBlock`）。
+           *
+           * 输入法组字中的回车**必须放行** —— 那是"确认候选词"，不是"回车"（用户口径
+           * 里点名的边界）。组字态在 PM 上是 `view.composing`，在事件上是 `isComposing`。
+           */
+          handleKeyDown(view, event) {
+            if (event.key !== 'Enter' || event.shiftKey) return false
+            if (event.isComposing || view.composing) return false
+            if (!insertEmptyMathBlock(view)) return false
+            event.preventDefault()
+            return true
           }
         },
         view: (view) => new MathPreviewView(view, labels)
@@ -1228,18 +1331,19 @@ class MathPreviewView {
     this.sessionId = active.id
     this.sessionKind = active.kind
     box.pull(active.active.tex)
-    if (active.kind === 'inline') {
-      // 行内浮层不在 contenteditable 里：挂到编辑区**容器**上
-      const host = this.view.dom.parentElement ?? document.body
-      host.appendChild(box.dom)
-      // 先挂上再摆（还没挂时量不到高度）：下一帧摆一次，避免"先闪一下默认位置"
-      box.place()
-    } else {
-      // 块级：容器由装饰挂进正文流 —— 这里必须**主动重绘一次**，
-      // 否则新实例的 DOM 要等下一次事务才会上屏（点击后"什么都没发生"就是这么来的：
-      // 开会话的事务 `docChanged` 为假，PM 不会自己重算装饰）。
-      this.view.dispatch(this.view.state.tr)
-    }
+    /**
+     * 两种形态都是**装饰 widget**（`props.decorations` 里那一条），所以这里都要**主动重绘一次**：
+     * 开会话的事务 `docChanged` 为假，PM 不会自己重算装饰 ⇒ 少了这一下新实例的 DOM
+     * 要等下一次事务才上屏（点击后"什么都没发生"就是这么来的）。
+     *
+     * ⚠️ 第九轮删掉了行内那条"手动 `appendChild` 到 `view.dom.parentElement`"：
+     * 那等于**同一份 DOM 挂两处** —— 装饰随后会把它搬进段落里（实测 `parentElement` 是 `P`），
+     * 搬动过程中被聚焦的 textarea 会被移出/移回文档（丢焦点），而且行内框因此进了 `view.dom`、
+     * 按键被 PM 接管（`Ctrl+A` → `AllSelection` → 下一个键被 `insertText` 吃掉，见 blockBoxShape）。
+     */
+    this.view.dispatch(this.view.state.tr)
+    // 上屏之后再算坐标（行内浮层要量高度；块级的 `place()` 是空实现）
+    box.place()
     requestAnimationFrame(() => {
       if (mathPreviewKey.getState(this.view.state)?.box === box) box.focus()
     })
@@ -1252,7 +1356,7 @@ class MathPreviewView {
       box.destroy()
       if (st) st.box = null
       // 容器是装饰挂上去的：摘掉之后要重绘一次才会真的消失（与挂上时同理）
-      if (this.sessionKind === 'block') this.view.dispatch(this.view.state.tr)
+      this.view.dispatch(this.view.state.tr)
     }
     this.sessionId = 0
     this.sessionKind = null
