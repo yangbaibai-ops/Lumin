@@ -116,9 +116,9 @@ function startWorkspaceWatch(root: string): void {
   }
 }
 
-/** 浅层对象深度合并（嵌套对象递归；数组整体替换）—— 实现已搬到 shared/settingsSchema.ts，
+/** 设置写入的合并口径（自由映射键整块替换）—— 实现在 shared/settingsSchema.ts，
  *  因为主进程现在有两个调用方（IPC 的 settings:update 与原生菜单的主题项），留两份迟早会漂 */
-import { deepMerge } from '../shared/settingsSchema'
+import { mergeSettings } from '../shared/settingsSchema'
 import * as appSettings from './services/appSettings'
 
 /**
@@ -751,8 +751,11 @@ export function registerIpc(slots: SlotRegistry): void {
   }
   ipcMain.handle('settings:update', (_, partial: Partial<AppSettings>) =>
     commitSettings(
-      // 先读（顺手归一）再合并，最后**再过一次归一**：渲染层多送的键不该进库
-      normalizeSettings(deepMerge(readSettings(), partial), defaultSettings).settings,
+      // 先读（顺手归一）再合并，最后**再过一次归一**：渲染层多送的键不该进库。
+      // ⚠️ 合并必须走 `mergeSettings`（不是 `deepMerge`）：`keybindings` 这类自由映射要**整块替换**，
+      // 否则"恢复默认/解绑"在新表里删掉的键会被深合并原样保回来 —— 会话内看着是默认，
+      // 重启后又变回自定义（用户实测）。
+      normalizeSettings(mergeSettings(readSettings(), partial), defaultSettings).settings,
       partial
     )
   )

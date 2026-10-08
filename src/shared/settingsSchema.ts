@@ -33,7 +33,9 @@ export const MIGRATIONS: Record<number, (raw: Record<string, unknown>) => Record
   {}
 
 /**
- * 值本身是**用户自定义映射**的键：不能用 defaults 的键集合去裁剪（会被裁成空对象）。
+ * 值本身是**用户自定义映射**的键，两条特殊口径（都由本文件负责，调用方不用记）：
+ *   1. **归一化时不裁剪**：不能用 defaults 的键集合去过滤（会被裁成空对象）；
+ *   2. **写入时整块替换**：不能深合并（删掉的键永远删不掉，见 `mergeSettings`）。
  * `keybindings` 是 `{ 命令 id: 键位 }`，命令 id 由代码侧的注册表决定，defaults 里只有 `{}`。
  */
 const FREE_FORM = new Set<string>(['keybindings'])
@@ -154,11 +156,24 @@ export function versionOf(raw: Record<string, unknown>): number {
  * 从 `main/ipc.ts` 搬到这里（报告 §3.2 P0-1 的顺手收口）：主进程现在有两个调用方
  * （IPC 的 `settings:update` 与原生菜单的主题项），留着两份实现迟早会漂。
  * 纯函数、无 IO，`tests/settingsPatch.test.mjs` 直接钉住语义（数组替换 / undefined 跳过 / 深合并）。
+ *
+ * ⚠️ **设置写入不要直接用它，用 `mergeSettings()`** —— 见下：自由映射键（`keybindings`）
+ * 必须整块替换，深合并会让"删掉的键"永远删不掉。
+ *
+ * `opts.replaceKeys` 里的键**整块替换**（不做递归），递归调用会原样带上它。
  */
-export function deepMerge<T extends object>(base: T, patch: Partial<T>): T {
+export function deepMerge<T extends object>(
+  base: T,
+  patch: Partial<T>,
+  opts: { replaceKeys?: ReadonlySet<string> } = {}
+): T {
   const out: Record<string, unknown> = { ...(base as Record<string, unknown>) }
   for (const [k, v] of Object.entries(patch as Record<string, unknown>)) {
     if (v === undefined) continue
+    if (opts.replaceKeys?.has(k)) {
+      out[k] = v
+      continue
+    }
     const cur = out[k]
     if (
       cur &&
@@ -168,10 +183,30 @@ export function deepMerge<T extends object>(base: T, patch: Partial<T>): T {
       typeof v === 'object' &&
       !Array.isArray(v)
     ) {
-      out[k] = deepMerge(cur as Record<string, unknown>, v as Record<string, unknown>)
+      out[k] = deepMerge(cur as Record<string, unknown>, v as Record<string, unknown>, opts)
     } else {
       out[k] = v
     }
   }
   return out as T
+}
+
+/**
+ * ─── 设置写入的**唯一合并口径**（`settings:update` / `patchSettings` 都走它）──────────
+ *
+ * 与 `deepMerge` 的唯一区别：自由映射键（`keybindings`）**整块替换**。
+ *
+ * 为什么这条口径是必须的（用户实测：恢复默认快捷键 → 关闭应用 → 重新打开又变回自定义）：
+ *   `keybindings` 是 `{ 命令 id: 键位 }`，"恢复默认 / 解绑"在数据结构上的含义是
+ *   **新表里没有那个键**。而深合并只会把 patch 里的键并进去、**永远不会删**：
+ *   渲染层把整份 state（`keybindings: {}`）推下来时，盘上那份旧表原样留着 ——
+ *   会话内看着是默认（store 才是界面读的那份），重启后从盘上读回来又成了自定义。
+ *   于是"只清掉一条"与"全部恢复默认"两条路都失效，且**只在重启后显形**。
+ *   `settings:applyImport` 早就按"整块替换"处理同一张表（见 shared/settingsFile.ts
+ *   的 `mergeImportedSettings`），两条写入口现在口径一致。
+ *
+ * 边界：patch 里**没有**这个键时原样保留（局部更新不会误清空用户的覆盖表）。
+ */
+export function mergeSettings<T extends object>(base: T, patch: Partial<T>): T {
+  return deepMerge(base, patch, { replaceKeys: FREE_FORM })
 }

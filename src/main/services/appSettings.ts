@@ -13,7 +13,7 @@
 import { BrowserWindow, nativeTheme } from 'electron'
 import { db } from './database'
 import { defaultSettings } from '../../shared/defaults'
-import { deepMerge, normalizeSettings } from '../../shared/settingsSchema'
+import { mergeSettings, normalizeSettings } from '../../shared/settingsSchema'
 import type { AppSettings } from '../../shared/types'
 
 /**
@@ -64,10 +64,14 @@ export function writeSettings(next: AppSettings, opts: { broadcast?: boolean } =
 }
 
 /**
- * 合并式写入：读 → 深合并 → 归一（渲染层多送的键不该进库）→ 落地并广播。
+ * 合并式写入：读 → 合并（`mergeSettings`：自由映射键整块替换）→ 归一 → 落地并广播。
  * 返回写入的那一份，调用方要回执时可以拿去用。
+ *
+ * ⚠️ 与 `settings:update` **同一条合并口径**（`mergeSettings`，不是裸 `deepMerge`）：
+ * 主进程这条路目前只写主题/备份目录，但两条写入口的语义必须一致 —— 否则
+ * "哪条路能删掉 keybindings 里的一条"又会变成两处真相（见 shared/settingsSchema.ts）。
  */
 export function patchSettings(partial: Partial<AppSettings>): AppSettings {
-  const next = normalizeSettings(deepMerge(readSettings(), partial), defaultSettings).settings
+  const next = normalizeSettings(mergeSettings(readSettings(), partial), defaultSettings).settings
   return writeSettings(next)
 }

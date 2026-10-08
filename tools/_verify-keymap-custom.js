@@ -14,13 +14,24 @@
 // 另有一条**默认键唯一性**断言：同一档里两条命令拿同一个默认键时，改绑其中一条，
 // 旧键会被另一条「接管」——用户看到的就是「改绑了但按旧键还是默认行为」。
 //
+// ── 第二轮（用户实测：恢复默认 → 关闭应用 → 重开，自定义键位又回来了）────────────────
+// ⑦⑧⑨ 段走**真·重启**（关窗 → `window-all-closed` → `app.quit()`，再用同一个 userData
+// 起一个新实例），并直读主进程落盘的 `kv.settings.keybindings`（node:sqlite，只读）：
+//   * ⑦ 改绑要活过重启（显示 + 真实按键）；
+//   * ⑧ **「恢复默认」必须真的把盘上那张表清空**（会话里看着是默认、盘上还是自定义，
+//     就是"重启后复活"的成因）→ 重启后显示与实际都必须是默认；
+//   * ⑨ 「改完顺手关应用」：键位（立刻落库）与节流设置（关窗 flush）都不能丢。
+// 这几段的"红"是**只在重启后显形**的：见 `shared/settingsSchema.ts` 的 `mergeSettings`。
+//
 // 为什么不去页面上动态取源码模块（那要 5173 上的 dev server）：套件就只能进 needs-dev 档、
-// 默认矩阵永远不跑它（本轮的 bug 正是这样漏到今天）。这里全部走 **DOM + store + 真实按键**，
-// 构建产物（out/renderer）下即可跑，所以登记进 run-suites.js 的 DEFAULT_SUITES。
+// 默认矩阵永远不跑它（本轮的 bug 正是这样漏到今天）。这里全部走 **DOM + store + 真实按键 +
+// 真实重启 + 直读数据库**，构建产物（out/renderer）下即可跑，所以登记进 run-suites.js 的 DEFAULT_SUITES。
 //
 // 跑法：`node tools/run-suites.js --suite=_verify-keymap-custom.js`（运行器会起隔离实例）
 const fs = require('fs')
+const os = require('os')
 const path = require('path')
+const { DatabaseSync } = require('node:sqlite')
 const {
   connect,
   attach,
@@ -31,11 +42,17 @@ const {
   pressKey,
   bringToFront,
   openDocWith,
+  startIsolated,
+  spawnApp,
   Reporter,
   fatal
 } = require('./lib/harness')
 
 const ROOT = path.join(__dirname, '..')
+/** 本实例的调试端口 / userData / 数据库（运行器通过环境变量给，单独跑也有一份默认值） */
+const PORT = Number(process.env.LUMIN_DEBUG_PORT || 9222)
+const USER_DATA = process.env.LUMIN_ISOLATED_USERDATA || path.join(os.tmpdir(), 'lumin-suites-ud')
+const DB_PATH = process.env.LUMIN_DB || path.join(USER_DATA, 'lumin.db')
 
 const report = new Reporter('快捷键改绑：显示 / 生效 / 单一真相源')
 
@@ -154,6 +171,92 @@ const focusClass = (app) => app.ev('!!document.querySelector(".typora-container.
 
 const FOCUS = 'view.focusMode'
 const PALETTE = 'app.commandPalette'
+
+// ─── 真·重启用的工具（关窗走真实退出路径 → 同 profile 再起一个实例）─────────────
+
+/**
+ * 直读**主进程落盘**的 `kv.settings.keybindings`（`node:sqlite` 只读打开实例自己的库）。
+ *
+ * 为什么要绕过 IPC 直读文件：本轮报障的核心就是"**会话里看着是默认、盘上还是自定义**"。
+ * 只问渲染层（或只问 `settings:getAll`）都可能被同一份内存状态骗过去，盘上那份才是重启后
+ * 真正读的东西。`LUMIN_DB` 由运行器指到隔离 profile，绝不碰用户自己的库。
+ */
+function diskKeybindings() {
+  const db = new DatabaseSync(DB_PATH, { readOnly: true })
+  try {
+    const row = db.prepare("SELECT value FROM kv WHERE key = 'settings'").get()
+    return row ? (JSON.parse(row.value).keybindings ?? {}) : 'NO-ROW'
+  } finally {
+    db.close()
+  }
+}
+
+/** 等实例真的退出（调试端口上没有本应用的页面了） */
+async function waitGone(ms = 25000) {
+  const end = Date.now() + ms
+  while (Date.now() < end) {
+    if ((await appPages()).length === 0) return true
+    await sleep(400)
+  }
+  return false
+}
+
+/**
+ * 请求退出（**真实路径**）：`app:close` → 主进程关窗守卫 → 渲染层 `requestClose` 落盘放行。
+ *
+ * `skipPrepare` 用于"节流窗口内立刻退出"那条：不预先动任何设置/文档，
+ * 让"最后一条设置写入"与"请求退出"之间保持 0ms。
+ * （非 skipPrepare 时先把文档关掉并打开自动保存：关窗判定见 shared/closePrompt.ts ——
+ * 自动保存开着或文档不脏都不弹「是否保存更改？」，套件才不会卡在一个没人点的对话框上。
+ * 自动保存这一条本身也会落盘，于是后续几轮退出天然无弹窗。）
+ */
+async function requestQuit(app, opts = {}) {
+  if (!opts.skipPrepare) {
+    await ensureFocus(app)
+    await app.ev('(window.__L.settings().set("autoSave", true), "ok")').catch(() => {})
+    await sleep(250)
+    await app.ev('(function(){ window.__L.files().close(); return "ok" })()').catch(() => {})
+    await sleep(300)
+  }
+  mark('退出中（关窗 → window-all-closed → app.quit）')
+  await app.ev('(window.luminAPI.app.close(), "sent")').catch(() => {})
+  app.close()
+  if (await waitGone(8000)) return
+  /**
+   * 兜底重发一次：`app:close` 走的是 `BrowserWindow.getFocusedWindow()`，
+   * 焦点被别的窗口抢走时它会拿到 null（什么都不发生）。这时 socket 已经关了，
+   * 重新 attach 一个页面再发一次 —— 比"等 25 秒然后报一个看不懂的失败"强。
+   */
+  const pages = await appPages()
+  if (pages.length) {
+    const again = await attach(pages[0])
+    await again.send('Page.bringToFront').catch(() => {})
+    await sleep(300)
+    await again.ev('(window.luminAPI.app.close(), "sent")').catch(() => {})
+    again.close()
+  }
+  if (!(await waitGone(17000))) throw new Error('实例没有在 25s 内退出（关窗路径可能被弹窗或强杀兜底卡住）')
+}
+
+/** 用**同一个 userData** 再起一个实例（= 用户说的"关掉应用再打开"），返回可用的句柄 */
+async function relaunch() {
+  spawnApp({ userData: USER_DATA, port: PORT })
+  const end = Date.now() + 45000
+  while (Date.now() < end) {
+    const pages = await appPages()
+    if (pages.length) {
+      try {
+        const fresh = guarded(await attach(pages[0]))
+        if (await settle(fresh.ev)) return fresh
+        fresh.close()
+      } catch {
+        /* 窗口还没挂上：继续等 */
+      }
+    }
+    await sleep(500)
+  }
+  throw new Error('重启之后 45s 内没有等到可用页面')
+}
 
 ;(async () => {
   // ── 静态：命令表之外**不许**再有第二份键位监听 ───────────────────────────────
@@ -341,7 +444,146 @@ const PALETTE = 'app.commandPalette'
   await openKeymapTab(app2)
   const finalBadges = await app2.ev(CONFLICT_BADGES)
   report.check('cleanup-back-to-defaults', finalBadges === 0, '恢复默认后冲突徽标=' + finalBadges)
-  app2.close()
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // 本轮新增：**真·重启**下的持久化（用户实测：恢复默认 →关掉应用→重开，自定义又回来了）
+  //
+  // 为什么不用 `Page.reload` 代替：reload 只重建渲染层，而本轮的 bug 恰恰在**盘上那份数据**
+  // 与"退出前有没有把挂起的写入落下去"。所以这里走真实路径：关窗 → 主进程 `window-all-closed`
+  // → `app.quit()`，再用**同一个 userData** 起一个新实例（= 用户说的"关掉再打开"），
+  // 同时直读 `kv.settings`（node:sqlite，只读打开）证明主进程侧的落盘值。
+  // ═══════════════════════════════════════════════════════════════════════════
+  let cur = app2
+
+  // ── ⑦ 改绑要活过真·重启 ────────────────────────────────────────────────────
+  mark('⑦ 真重启：改绑活过重启')
+  await cur.ev('(window.__L.settings().setKeybinding("view.focusMode", "Ctrl+Alt+J"), "ok")')
+  await sleep(800)
+  const disk1 = diskKeybindings()
+  report.check(
+    'rebind-persisted-to-disk',
+    disk1['view.focusMode'] === 'Ctrl+Alt+J',
+    '主进程盘上 kv.settings.keybindings = ' + JSON.stringify(disk1) + '（node:sqlite 只读打开 lumin.db）'
+  )
+  await requestQuit(cur)
+  cur = await relaunch()
+  mark('⑦ 重启后读显示与生效')
+  await openKeymapTab(cur)
+  const restartChips = await cur.ev(chipsExpr(FOCUS))
+  report.check(
+    'rebind-survives-real-restart-display',
+    restartChips === 'Ctrl+Alt+J',
+    '重启后设置界面显示 = ' + restartChips
+  )
+  await closeSettings(cur)
+  await openDocWith(cur, '# restart\n\nbody\n', 'restart.md')
+  await sleep(400)
+  const k0 = await focusMode(cur)
+  await tap(cur, 'Ctrl+Alt+J')
+  const k1 = await focusMode(cur)
+  report.check(
+    'rebind-survives-real-restart-effective',
+    k0 !== k1,
+    '重启后 Ctrl+Alt+J: focusMode ' + k0 + ' -> ' + k1
+  )
+
+  // ── ⑧ 「恢复默认」必须**落盘**（本轮报障核心）───────────────────────────────
+  mark('⑧ 恢复默认 → 盘上必须清空')
+  await cur.ev('(window.__L.settings().resetAllKeybindings(), "ok")')
+  await sleep(900)
+  const disk2 = diskKeybindings()
+  report.check(
+    'reset-clears-disk-keybindings',
+    JSON.stringify(disk2) === '{}',
+    '恢复默认后盘上 kv.settings.keybindings = ' +
+      JSON.stringify(disk2) +
+      '（必须是 {} —— 会话内显示默认但盘上还留着旧表，就是"重启后自定义复活"）'
+  )
+  await openKeymapTab(cur)
+  const resetChips = await cur.ev(chipsExpr(FOCUS))
+  report.check(
+    'reset-display-default-immediately',
+    resetChips === 'Ctrl+Shift+F',
+    '恢复默认后立刻读设置界面 = ' + resetChips
+  )
+  await closeSettings(cur)
+  await requestQuit(cur)
+  cur = await relaunch()
+  mark('⑧ 重启后：显示与实际都必须是默认')
+  await openKeymapTab(cur)
+  const resetRestartChips = await cur.ev(chipsExpr(FOCUS))
+  report.check(
+    'reset-survives-real-restart-display',
+    resetRestartChips === 'Ctrl+Shift+F',
+    '重启后设置界面显示 = ' + resetRestartChips + '（期望默认 Ctrl+Shift+F）'
+  )
+  await closeSettings(cur)
+  await openDocWith(cur, '# restart2\n\nbody\n', 'restart2.md')
+  await sleep(400)
+  const z0 = await focusMode(cur)
+  await tap(cur, 'Ctrl+Alt+J') // 旧自定义键：重启后必须**什么都不做**
+  const z1 = await focusMode(cur)
+  await tap(cur, 'Ctrl+Shift+F') // 默认键：必须回来
+  const z2 = await focusMode(cur)
+  report.check(
+    'reset-survives-real-restart-effective',
+    z0 === z1 && z1 !== z2,
+    '重启后 Ctrl+Alt+J: ' + z0 + ' -> ' + z1 + '（期望不变）；Ctrl+Shift+F: ' + z1 + ' -> ' + z2 + '（期望变）'
+  )
+
+  // ── ⑨ 节流窗口内立刻退出：键位与节流设置**都不能丢**（④）─────────────────────
+  // 「改完顺手关应用」是最常见的路径：改绑是立刻落库（离散动作不进节流），
+  // 别的设置（滑杆那类）走 250ms 节流 —— 关窗流程必须在放行前把它冲掉。
+  // 这里在最后两条设置写入与"请求退出"之间**不 sleep**，模拟 0ms 退出。
+  mark('⑨ 0ms 退出：最后一条改动不能丢')
+  await ensureFocus(cur)
+  // 先关掉文档并把自动保存打开（都在"0ms 那对写入"之前）：关窗就不会弹「是否保存更改？」
+  await cur.ev('(window.__L.settings().set("autoSave", true), "ok")')
+  await sleep(200)
+  await cur.ev('(function(){ window.__L.files().close(); return "ok" })()')
+  await sleep(300)
+  // ↓ 这两条与"请求退出"之间**不 sleep**：模拟"改完顺手就关应用"
+  await cur.ev('(window.__L.settings().setKeybinding("view.focusMode", "Ctrl+Alt+9"), "ok")')
+  await cur.ev('(window.__L.settings().set("fontSize", 18.5), "ok")')
+  await requestQuit(cur, { skipPrepare: true })
+  cur = await relaunch()
+  mark('⑨ 重启后核对最后一条改动')
+  const quickKeys = await cur.ev('JSON.stringify(window.__L.settings().keybindings)')
+  const quickFont = await cur.ev('window.__L.settings().fontSize')
+  report.check(
+    'keybinding-written-without-throttle-window',
+    quickKeys.indexOf('Ctrl+Alt+9') >= 0,
+    '改绑后 0ms 请求退出 → 重启后 keybindings = ' + quickKeys
+  )
+  report.check(
+    'throttled-setting-flushed-on-quit',
+    quickFont === 18.5,
+    '节流设置（fontSize 18.5）后 0ms 请求退出 → 重启后 fontSize = ' + quickFont
+  )
+
+  // 收尾：盘上覆盖清空 + 字体复位，别把状态留给下一个套件
+  mark('收尾（真重启之后）')
+  await cur.ev(
+    '(function(){ var s = window.__L.settings(); s.resetAllKeybindings(); s.set("fontSize", 17); return "ok" })()'
+  )
+  await sleep(900)
+  const disk3 = diskKeybindings()
+  report.check(
+    'cleanup-disk-back-to-defaults',
+    JSON.stringify(disk3) === '{}',
+    '收尾后盘上 kv.settings.keybindings = ' + JSON.stringify(disk3)
+  )
+  cur.close()
+  // 收尾：把本次重启起的实例收掉（运行器也会按 user-data-dir 收一遍，这里只是不留孤儿）
+  startIsolated({ userData: USER_DATA, port: PORT, cleanupOnly: true })
   finished = true
   process.exit(report.finish())
-})().catch(fatal)
+})().catch((e) => {
+  // 出错路径同样别把实例留在 9222 上（下一步的套件会连不上）
+  try {
+    startIsolated({ userData: USER_DATA, port: PORT, cleanupOnly: true })
+  } catch {
+    /* 收尾失败不影响结论 */
+  }
+  fatal(e)
+})
