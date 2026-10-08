@@ -1,28 +1,27 @@
 'use strict'
-// ─── 验收：表格三条 UI/交互优化（本轮）────────────────────────────────────────
+// ─── 验收：表格（本轮 = 第十四轮：拖选给文本选择 + 剪贴板给 Markdown）────────────
 //
-// 任务 1（跨单元格连续拖选，像 Typora）
-//   真因**不在选区逻辑**：`@tiptap/extension-table` 默认带着 `tableEditing()`
-//   （`node_modules/@tiptap/extension-table/dist/table/index.js` 的 `addProseMirrorPlugins`），
-//   跨格拖动实测**已经**产生 `CellSelection`（ranges ≥ 2），对这一片执行删除/改对齐也都正常。
-//   缺的是**画出来的那一层**：全仓 CSS 里没有 `.selectedCell` 规则（实测选中格与未选中格的
-//   计算背景色逐字节相同，截图上看不出任何区别）。于是用户得到的唯一反馈是浏览器原生的
-//   文字选区 —— 观感就是"只在一个格子里选"。
-//   修法：`assets/editor.css` 补 `.md-preview th/td.selectedCell::after`（用 `--sel` 令牌）。
-//   本套件的判据分三层：① 选区语义（`CellSelection` / ranges ≥ 2）；② DOM（`.selectedCell` 数 ≥ 2）；
-//   ③ **真的画出来了**（伪元素的计算底色不再是透明）。
+// 本套件覆盖两轮的工作，1x 段的口径在第十四轮**被用户改过**（见下），其余各段不动。
 //
-// 任务 2（聚焦表格时头部出现快捷操作条）
-//   只显示光标那一张表（多表格时不一起冒出来）、不遮首行、Tab 可达、Esc 退出、有可访问名。
-//   列对齐/插入行/插入列/删除表格的判据一律以**序列化后的 Markdown** 为准（不是"看着变了"）。
-//   「列宽」这一项如实只做**视图层**三档（Markdown 表格存不了列宽），套件钉住"文档逐字节不变"。
+// 【第十四轮 任务 1】跨格拖选 ⇒ **按阅读顺序的文本选择**，不是 `CellSelection`
+//   用户改口径：「在表格中连续选中的时候，不要选中一整个单元格，而是按照从上到下、
+//   从左到右的顺序可以连续选中。」
+//   ⚠️ **口径变更（不是收紧）**：第十三轮 1A/1C/1E 断言的是"拖选得到 `CellSelection`"
+//   （那是当时用户要的"整格高亮"）。第十四轮用户明确改要**文本选择**，所以：
+//     * 1A/1B/1C/1E **改写**为"拖选 ⇒ `TextSelection`、能对选中**文字**做操作"；
+//     * 「跨格时选中的是文字而不是整格」的判据用 **`ranges.length`**：`CellSelection`
+//       每个格子一个 range（≥2），`TextSelection` 恒为 1 —— 这是两者的稳定结构差，
+//       比认类名可靠（Tiptap 打包后类名是 `CellSelection2`，实测）。
+//     * 名字保持可比：`1A 表头跨两格拖选` 等前缀不变，只改断言语义 + 后缀。
+//   `.selectedCell` 的可见高亮**保留**（`Shift+左键` 的"整格选"仍走 `CellSelection`），
+//   所以 1B 改成直接验那条 CSS 规则本身（见 §1B）。
 //
-// 任务 3（大纲标题前不再有小圆点）
-//   判据：每个条目的行内**只有文本那一个子元素**（圆点元素已不存在），且 `::before`/`::after`
-//   的 `content` 都是 `none`；同时 `paddingLeft` 仍随层级递增（缩进没被一起去掉）。
+// 【第十四轮 任务 2】剪贴板：复制给 **Markdown**；外部 HTML（无表头）表格粘成 **Markdown 表格**
+//   5x 段：5A 复制写入的 `text/plain`、5B 粘回还原、5C 外部 HTML 表（Word/Excel 形态）。
 //
-// 4x 是"不许破坏"的对照：`**` 行内标记、表格往返幂等、以及**拖动选中文字改位置仍然被禁**
-//   （上一轮的 `_verify-no-text-drag.js` 在这个套件里有一条最小复刻，两条套件都在默认矩阵里）。
+// 【第十三轮 任务 2/3】表格快捷操作条 + 大纲去圆点：2x / 3x 段，断言不动。
+//
+// 6x 是"不许破坏"的对照：`**` 行内标记、表格往返幂等、拖动选中文字改位置仍被禁。
 //
 // 用 harness。模板串里不出现反引号；锚点全部走 data-*，不写死坐标。
 const {
@@ -85,6 +84,8 @@ const SEL = `(() => {
     ranges: s.ranges ? s.ranges.length : 0,
     from: s.from,
     to: s.to,
+    anchor: s.anchor,
+    head: s.head,
     text: s.empty ? '' : ed.state.doc.textBetween(s.from, s.to, '|'),
     cells: dom.length,
     selectedDom: chosen.length,
@@ -123,21 +124,30 @@ const BAR = `(() => {
   })
 })()`
 
-/** 表格规格（行数/列数/表头对齐）+ 序列化 md，作为所有表格动作的判据 */
+/** 表格规格（行数/列数/表头对齐/表头格类型/是否退回 HTML）+ 序列化 md，作为表格动作的判据 */
 const SPEC = `(() => {
   const ed = window.__L.ed()
   let rows = -1, cols = -1
   const aligns = []
+  const headerTypes = []
+  const names = []
+  let tables = 0, htmlBlocks = 0
   ed.state.doc.descendants((n) => {
-    if (n.type.name !== 'table') return true
-    if (rows >= 0) return false
-    rows = n.childCount
-    const head = n.firstChild
-    cols = head ? head.childCount : -1
-    if (head) head.forEach((c) => aligns.push(c.attrs.align === undefined ? null : c.attrs.align))
-    return false
+    if (n.type.name === 'table') {
+      tables += 1
+      if (rows >= 0) return false
+      rows = n.childCount
+      const head = n.firstChild
+      cols = head ? head.childCount : -1
+      if (head) {
+        head.forEach((c) => { aligns.push(c.attrs.align === undefined ? null : c.attrs.align); headerTypes.push(c.type.name) })
+      }
+      return false
+    }
+    return true
   })
-  return JSON.stringify({ rows, cols, aligns, md: ed.storage.markdown.getMarkdown() })
+  ed.state.doc.descendants((n) => { if (n.isBlock) names.push(n.type.name); if (n.type.name === 'htmlBlock') htmlBlocks += 1; return true })
+  return JSON.stringify({ rows, cols, aligns, headerTypes, names, tables, htmlBlocks, md: ed.storage.markdown.getMarkdown() })
 })()`
 
 /** 管道行 → 去空白的单元格数组（判据不依赖空格的数量，只看内容） */
@@ -269,6 +279,8 @@ async function main() {
   }
 
   let cs
+  /** 夹具 MD 里表格**表头行**在序列化文本里的行号（现算一次，后面几段都用它取那一行） */
+  let tableStartLine = 0
 
   try {
     await ev('(() => { window.__L.ui().editorMode = "wysiwyg"; return "ok" })()')
@@ -276,51 +288,104 @@ async function main() {
     await openDocWith(app, MD, 'table-quickbar.md')
     await waitEditor(ev)
     await sleep(1400)
+    tableStartLine = (await content()).split('\n').findIndex((l) => /^\s*\|/.test(l))
+    if (tableStartLine < 0) tableStartLine = 0
 
-    // ══ 任务 1：跨单元格连续拖选 ══════════════════════════════════════════════
+    // ══ 第十四轮 任务 1：跨格拖选 = 按阅读顺序的**文本选择** ════════════════════
     cs = await cells()
     report.check('fixture：3 列表头 + 1 行数据共 6 个单元格', cs.length === 6, JSON.stringify(cs.map((c) => c.text)))
 
-    // 1A 同一行跨两格（表头 甲 → 乙）：必须是 CellSelection，且 DOM 上两个格被标记
-    await caretAway()
-    await dragInto(cs[0], cs[1])
-    const s1 = await sel()
-    console.log('1A ' + JSON.stringify(s1))
-    report.check(
-      '1A 表头跨两格拖选 ⇒ CellSelection 且 ranges ≥ 2',
-      s1.isCell === true && s1.ranges >= 2,
-      JSON.stringify({ type: s1.type, ranges: s1.ranges, from: s1.from, to: s1.to })
-    )
-    report.check(
-      '1A DOM 上命中 ≥ 2 个 .selectedCell',
-      s1.selectedDom >= 2,
-      JSON.stringify({ selectedDom: s1.selectedDom, cells: s1.cells })
-    )
+    /**
+     * 表格行的内容坐标现算（不写死任何数字）：从 DOM 反查每个单元格里文字的起始文档位置。
+     * 用 `view.posAtDOM(td, 0)` 而不是"行号 + 1" —— 后者是错的（文档位置不等于 Markdown 行号，
+     * 表格节点/行/单元格/段落各占一个开标记，实测差一大截：want 3 vs got 11）。
+     */
+    const cellTextPos = () =>
+      ev(`(() => {
+        const v = window.__L.ed().view
+        return JSON.stringify([...document.querySelectorAll('.ProseMirror th, .ProseMirror td')].map((el) => {
+          const p = el.querySelector('p') || el
+          let pos = -1
+          try { pos = v.posAtDOM(p, 0) } catch (e) { pos = -1 }
+          return { pos, text: el.textContent, textLen: (el.textContent || '').length }
+        }))
+      })()`).then(JSON.parse)
 
-    // 1B 同一件事**真的画出来了**（改前：选中格与普通格的计算底色相同 ⇒ 用户看不见）
-    const isTransparent = (v) => {
-      const s = String(v)
-      return s === 'rgba(0, 0, 0, 0)' || s === 'transparent' || /^rgba?\(\s*0\s*,\s*0\s*,\s*0\s*,\s*0\s*\)$/.test(s)
-    }
-    report.check(
-      '1B 选中格有不透明底色（伪元素 ::after 带 --sel；改前没有任何 .selectedCell 规则）',
-      !!s1.selectedBg && !isTransparent(s1.selectedBg) && s1.selectedPosition === 'relative',
-      JSON.stringify({ selectedBg: s1.selectedBg, position: s1.selectedPosition, plainBg: s1.plainBg })
-    )
-
-    // 1C 跨行跨列（表头第 1 格 → 数据行第 2 格）：**两块 × 两列** 的 2×2 一片
+    // 1A 同一行跨两格（表头 甲 → 乙）：必须是**文本选择**，且跨格（不是一格一个 range）
     await caretAway()
     cs = await cells()
-    await drag(
-      { x: cs[0].l + (cs[0].r - cs[0].l) * 0.25, y: cs[0].cy },
-      { x: cs[4].cx, y: cs[4].cy }
-    )
-    const s2 = await sel()
-    console.log('1C ' + JSON.stringify(s2))
+    await dragInto(cs[0], cs[1])
+    const s1 = await sel()
+    const cp1 = await cellTextPos()
+    console.log('1A ' + JSON.stringify({ sel: s1, cells: cp1.map((c) => ({ pos: c.pos, text: c.text })) }))
     report.check(
-      '1C 跨行跨列拖选（表头第 1 格 → 数据行第 2 格）⇒ 2×2 共 4 个单元格的一片',
-      s2.isCell === true && s2.ranges === 4 && s2.selectedDom === 4,
-      JSON.stringify({ type: s2.type, ranges: s2.ranges, selectedDom: s2.selectedDom })
+      '1A 表头跨两格拖选 ⇒ TextSelection（不是 CellSelection：ranges 恒为 1）',
+      s1.isCell === false && s1.type === 'TextSelection' && s1.ranges === 1,
+      JSON.stringify({ type: s1.type, isCell: s1.isCell, ranges: s1.ranges })
+    )
+    report.check(
+      '1A 选中的是**两格的文字**（不是整格块选）：range 跨过第 1、2 格，且第二格文字整个被选中',
+      s1.selectedDom === 0 &&
+        cp1.length >= 2 &&
+        s1.from < cp1[1].pos &&
+        s1.to === cp1[1].pos + cp1[1].textLen &&
+        s1.text.replace(/\|/g, '').endsWith('乙乙乙乙'),
+      JSON.stringify({ from: s1.from, to: s1.to, c0: cp1[0], c1: cp1[1], text: s1.text })
+    )
+    report.check(
+      '1A 方向：左→右拖 ⇒ anchor < head（从左到右的阅读顺序）',
+      s1.anchor < s1.head,
+      JSON.stringify({ anchor: s1.anchor, head: s1.head })
+    )
+
+    // 1B `.selectedCell` 高亮那条 CSS **保留**（Shift+左键的"整格选"仍用它）——
+    //    第十四轮删掉了"普通拖选会点亮它"这个前提，所以这里改成直接验规则本身在。
+    const cellselCss = await ev(`(() => {
+      const rules = []
+      for (const ss of document.styleSheets) {
+        let list
+        try { list = ss.cssRules } catch (e) { continue }
+        for (const r of list) {
+          if (r.selectorText && r.selectorText.includes('selectedCell')) rules.push(r.cssText)
+        }
+      }
+      return JSON.stringify(rules)
+    })()`).then(JSON.parse)
+    // 1B 普通拖选**不该**再产生任何 `.selectedCell`（口径变更的核心）
+    report.check(
+      '1B 普通拖选不再点亮 `.selectedCell`（改前是 ≥ 2 个整格高亮）',
+      s1.selectedDom === 0,
+      JSON.stringify({ selectedDom: s1.selectedDom })
+    )
+    report.check(
+      '1B `.selectedCell` 高亮规则本身仍在（Shift+左键的整格选还要用）',
+      cellselCss.length >= 2 && cellselCss.some((c) => c.includes('::after')),
+      JSON.stringify(cellselCss)
+    )
+
+    // 1C 跨行跨列（表头第 1 格 → 数据行第 1 格）：**阅读顺序**从甲甲一路到一一一一
+    await caretAway()
+    cs = await cells()
+    await dragInto(cs[0], cs[3])
+    const s2 = await sel()
+    const cp2 = await cellTextPos()
+    console.log('1C ' + JSON.stringify({ sel: s2, cells: cp2.map((c) => ({ pos: c.pos, text: c.text })) }))
+    report.check(
+      '1C 跨行拖选（表头第 1 格 → 数据行第 1 格）⇒ TextSelection 覆盖"从上到下、从左到右"的连续文字',
+      s2.isCell === false &&
+        s2.ranges === 1 &&
+        // 第 2、3 格与数据行第 1 格的文字**整个**落进选区 ⇒ 顺序确实是按文档顺序连着的
+        s2.text.replace(/\|/g, '').includes('乙乙乙乙丙丙丙丙一一一一'),
+      JSON.stringify({ type: s2.type, ranges: s2.ranges, text: s2.text })
+    )
+    report.check(
+      '1C 范围两端落在"第一格之后 → 最后一格附近"（从 DOM 反查，方向从左到右）',
+      cp2.length >= 4 &&
+        s2.from > cp2[0].pos &&
+        s2.from < cp2[1].pos &&
+        Math.abs(s2.to - (cp2[3].pos + cp2[3].textLen)) <= 4 &&
+        s2.anchor < s2.head,
+      JSON.stringify({ got: [s2.from, s2.to], c0: cp2[0], c3: cp2[3], anchor: s2.anchor, head: s2.head })
     )
 
     // 1D 单格内拖选仍是**文字选择**（不许把普通文本选择弄坏）
@@ -339,13 +404,55 @@ async function main() {
       JSON.stringify({ type: s3.type, isCell: s3.isCell, text: s3.text, selectedDom: s3.selectedDom })
     )
 
-    // 1E 松开后对多格选区执行一次操作：删除内容作用在**多个**格上
+    // 1E 反向拖（从第 2 格拖回第 1 格）：**同一个跨格范围**必须复现（方向由浏览器决定，
+    //     这里不对 anchor/head 的大小下断言 —— 见报告里"方向"的如实说明）
+    await caretAway()
+    cs = await cells()
+    const cpE = await cellTextPos()
+    await dragInto(cs[1], cs[0])
+    const s3b = await sel()
+    const sameAs1A = s3b.from === s1.from && s3b.to === s1.to
+    const sameAs1C = s3b.from === s2.from && s3b.to === s2.to
+    console.log('1E ' + JSON.stringify({ sel: s3b, cp: cpE.map((c) => c.pos), sameAs1A, sameAs1C }))
+    report.check(
+      '1E 右→左拖（第 2 格 → 第 1 格）⇒ 仍是跨格文本选择（ranges=1、无整格高亮）',
+      s3b.isCell === false && s3b.ranges === 1 && s3b.selectedDom === 0 && s3b.to > s3b.from,
+      JSON.stringify({ from: s3b.from, to: s3b.to, ranges: s3b.ranges, selectedDom: s3b.selectedDom })
+    )
+    report.check(
+      '1E 反向拖的范围等于同一对手势的正向范围（跨的格子数与落点一致），既不是 1A 也不是 1C 以外的东西',
+      sameAs1A || sameAs1C,
+      JSON.stringify({ got: [s3b.from, s3b.to], a: [s1.from, s1.to], c: [s2.from, s2.to] })
+    )
+
+    // 1F 对跨格文本选区做一次**文本级操作**：退格只删掉选中的那些字
     await setContent(MD)
     await caretAway()
     cs = await cells()
-    await dragInto(cs[0], cs[1])
+    const cpF = await cellTextPos()
+    // 只选中「乙乙」（第 2 格文字的前两个字）：用**文档坐标**算落点，别靠像素比例
+    const c1F = cs[1]
+    const dragText = async (fromPos, toPos) => {
+      const pts = JSON.parse(await ev(`(() => {
+        const v = window.__L.ed().view
+        const r = (p) => { const c = v.coordsAtPos(p); return { x: Math.round(c.left), y: Math.round((c.top + c.bottom) / 2) } }
+        return JSON.stringify({ a: r(${fromPos}), b: r(${toPos}) })
+      })()`))
+      await mouse('mouseMoved', pts.a.x, pts.a.y, 0)
+      await sleep(90)
+      await mouse('mousePressed', pts.a.x, pts.a.y, 1)
+      await sleep(140)
+      for (let i = 1; i <= 9; i += 1) {
+        await mouse('mouseMoved', pts.a.x + ((pts.b.x - pts.a.x) * i) / 9, pts.a.y, 1)
+        await sleep(40)
+      }
+      await sleep(130)
+      await mouse('mouseReleased', pts.b.x, pts.b.y, 0)
+      await sleep(450)
+    }
+    await dragText(cpF[1].pos, cpF[1].pos + 2)
     const beforeDel = await sel()
-    const preCells = rowCells((await content()).split('\n')[2])
+    const preLine = (await content()).split('\n')[tableStartLine]
     await send('Input.dispatchKeyEvent', {
       type: 'rawKeyDown',
       key: 'Backspace',
@@ -359,43 +466,51 @@ async function main() {
       windowsVirtualKeyCode: 8
     })
     await sleep(750)
-    const delCells = rowCells((await content()).split('\n')[2])
+    const delCells = rowCells((await content()).split('\n')[tableStartLine])
     const delSpec = await spec()
-    console.log('1E ' + JSON.stringify({ ranges: beforeDel.ranges, preCells, delCells }))
+    console.log('1F ' + JSON.stringify({ sel: beforeDel, preLine, delCells }))
     report.check(
-      '1E 多格选区上按退格 ⇒ 表头行**前两格同时被清空**、第三格不动，表格还在',
-      beforeDel.isCell === true &&
-        beforeDel.ranges === 2 &&
-        delCells[0] === '' &&
-        delCells[1] === '' &&
+      '1F 对文字选区按退格 ⇒ **只删掉选中的那些字**（同一格内的其余字保留、表格还在）',
+      beforeDel.isCell === false &&
+        beforeDel.text === '乙乙' &&
+        delCells[0] === '甲甲甲甲' &&
+        delCells[1] === '乙乙' &&
         delCells[2] === '丙丙丙丙' &&
         delSpec.rows === 2,
-      JSON.stringify({ ranges: beforeDel.ranges, preCells, delCells, rows: delSpec.rows })
+      JSON.stringify({ selText: beforeDel.text, delCells, rows: delSpec.rows })
     )
 
-    // 1F 多格选区上仍能执行操作：改列对齐落到**选区头所在列**（`tableColumnIndex` 的口径是
-    //     selection 的 `$from`），并把结果写到序列化分隔行上。
-    //     （重新灌一份干净夹具：1E 把前两格删空了，管道行会变成 `|  |  | 丙 |`，
-    //      这里要的是"对齐落在哪一列"，与上一步的删除无关。）
+    // 1G 跨格文本选区上仍能执行表格动作：改列对齐落到**选区头所在列**
+    //     （`tableColumnIndex` 的口径是 selection 的 `$from`；这里把光标明确放进第 2 格，
+    //      不让"拖到哪一格"的落点抖动决定这一条）
     await setContent(MD)
     await caretAway()
     cs = await cells()
     await dragInto(cs[0], cs[1])
     const selForAlign = await sel()
+    const cpG = await cellTextPos()
+    await ev(
+      '(() => { window.__L.ed().chain().setTextSelection(' +
+        cpG[1].pos +
+        ').run(); return "ok" })()'
+    )
+    await sleep(400)
+    const selForAlign2 = await sel()
     await ev('(() => { window.__L.ed().commands.setTableColumnAlign("center"); return "ok" })()')
     await sleep(700)
-    const after1F = await spec()
-    const delim1F = after1F.md.split('\n').find((l) => /^\s*\|[\s:-]+\|/.test(l)) || ''
-    const alignCols = rowCells(delim1F).map((c) => (c.includes(':') ? c : ''))
-    console.log('1F ' + JSON.stringify({ ranges: selForAlign.ranges, delim1F, aligns: after1F.aligns }))
+    const after1G = await spec()
+    const delim1G = after1G.md.split('\n').find((l) => /^\s*\|[\s:-]+\|/.test(l)) || ''
+    const alignCols = rowCells(delim1G).map((c) => (c.includes(':') ? c : ''))
+    console.log('1G ' + JSON.stringify({ dragged: selForAlign, then: selForAlign2, delim1G, aligns: after1G.aligns }))
     report.check(
-      '1F 多格选区上改列对齐 ⇒ 落到序列化分隔行（选区头那一列变 :---:），表格仍是合法管道表',
-      selForAlign.ranges >= 2 &&
+      '1G 跨格文本选区上改列对齐 ⇒ 落到序列化分隔行（光标那一列变 :---:），仍是合法管道表',
+      selForAlign.isCell === false &&
+        selForAlign.text.length > 0 &&
         alignCols.filter((c) => c === ':---:').length === 1 &&
         alignCols[1] === ':---:' &&
-        !after1F.md.includes('<table') &&
-        after1F.rows === 2,
-      JSON.stringify({ ranges: selForAlign.ranges, delim1F, aligns: after1F.aligns })
+        !after1G.md.includes('<table') &&
+        after1G.rows === 2,
+      JSON.stringify({ delim1G, aligns: after1G.aligns })
     )
 
     // ══ 任务 2：表格快捷操作条 ════════════════════════════════════════════════
@@ -653,6 +768,179 @@ async function main() {
       '3B 缩进仍在，且随层级递增（h1 < h2 < h3）',
       paddings.length === 3 && paddings[0] >= 8 && paddings[1] > paddings[0] && paddings[2] > paddings[1],
       JSON.stringify(paddings)
+    )
+
+    // ══ 第十四轮 任务 2：剪贴板形态（复制 = Markdown；外部 HTML 表 → Markdown 表格）══
+    /**
+     * 复制：在真实 `copy` 事件里读我们自己写进去的 `clipboardData`。
+     * ⚠️ 系统剪贴板**读不到**：本项目 origin 是 `file://`，`navigator.clipboard.readText()`
+     * 实测 `NotAllowedError`（CDP 的 `Browser.grantPermissions` 对 file:// 无效）；
+     * `document.execCommand('copy')` 在 Electron 里实测返回 **false**。所以判据只能建在
+     * "拦事件读我们自己写的 DataTransfer"上 —— 这是项目既有的做法（见 _verify-math-edit.js）。
+     */
+    const COPY_MD = [
+      '前置段。',
+      '',
+      '| **粗** | `码` | 丙 |',
+      '| :--- | :---: | ---: |',
+      '| 一一 | [链](https://a.b) | 三三 |',
+      ''
+    ].join('\n')
+
+    /** 选中整张表（文本选区），派发一次真实 copy 事件，返回我们写进去的剪贴板内容 */
+    const copyWholeTable = async () => {
+      await ev(`(() => {
+        const ed = window.__L.ed()
+        let from = -1, to = -1
+        ed.state.doc.descendants((n, p) => {
+          if (n.type.name !== 'table') return true
+          if (from < 0) { from = p; to = p + n.nodeSize }
+          return false
+        })
+        ed.chain().setTextSelection({ from: from + 1, to: to - 1 }).run()
+        return 'ok'
+      })()`)
+      await sleep(400)
+      return JSON.parse(
+        await ev(`(() => {
+          const view = window.__L.ed().view
+          const dt = new DataTransfer()
+          const e = new ClipboardEvent('copy', { bubbles: true, cancelable: true })
+          Object.defineProperty(e, 'clipboardData', { value: dt })
+          view.dom.dispatchEvent(e)
+          const out = {
+            prevented: e.defaultPrevented,
+            plain: dt.getData('text/plain'),
+            htmlLen: dt.getData('text/html').length,
+            types: [...dt.types]
+          }
+          window.__LUMIN_CB = out
+          return JSON.stringify(out)
+        })()`)
+      )
+    }
+
+    // 5A 复制表格 ⇒ text/plain 是 **Markdown 管道表**（含分隔行），不是 HTML
+    await openDocWith(app, COPY_MD, 'table-clip-copy.md')
+    await sleep(1300)
+    const cb1 = await copyWholeTable()
+    console.log('5A ' + JSON.stringify(cb1))
+    report.check(
+      '5A 复制表格 ⇒ text/plain 是 Markdown 管道表（含分隔行），**不含** `<table`',
+      !cb1.plain.includes('<table') &&
+        cb1.plain.split('\n').some((l) => /^\|\s*:?-{2,}/.test(l.trim()) || /^\|\s*:?-+/.test(l.trim())) &&
+        cb1.plain.includes('| **粗** |') &&
+        cb1.plain.includes('[链](https://a.b)'),
+      JSON.stringify({ plain: cb1.plain })
+    )
+    report.check(
+      '5A 复制时我们的 copy 处理器真的生效（事件被 preventDefault）',
+      cb1.prevented === true,
+      JSON.stringify({ prevented: cb1.prevented, types: cb1.types })
+    )
+    report.check(
+      '5A 对齐信息也在 Markdown 里（分隔行保留 :--- / :---: / ---:）',
+      /:---/.test(cb1.plain) && /---:/.test(cb1.plain),
+      JSON.stringify({ plain: cb1.plain })
+    )
+
+    // 5B 用上一步的剪贴板**粘回本项目** ⇒ 还原成表格，且往返一致
+    const mdBefore = (await content()).trim()
+    await ev(`(() => {
+      const ed = window.__L.ed()
+      const view = ed.view
+      ed.chain().setTextSelection(ed.state.doc.content.size - 1).run()
+      const dt = new DataTransfer()
+      dt.setData('text/plain', window.__LUMIN_CB.plain)
+      const e = new ClipboardEvent('paste', { bubbles: true, cancelable: true })
+      Object.defineProperty(e, 'clipboardData', { value: dt })
+      view.dom.dispatchEvent(e)
+      return 'ok'
+    })()`)
+    await sleep(1000)
+    const pasteSpec = await spec()
+    const mdAfter = (await content()).trim()
+    console.log('5B ' + JSON.stringify({ tables: pasteSpec.tables, rows: pasteSpec.rows, mdBefore, mdAfter }))
+    report.check(
+      '5B 把上一步的 Markdown 剪贴板粘回来 ⇒ 还原成**表格节点**（不是字面文本/HTML 块）',
+      pasteSpec.tables === 2 && pasteSpec.htmlBlocks === 0,
+      JSON.stringify({ tables: pasteSpec.tables, htmlBlocks: pasteSpec.htmlBlocks, names: pasteSpec.names })
+    )
+    report.check(
+      '5B 往返一致：粘出来的那张表与自己序列化的一字不差',
+      mdAfter.includes(mdBefore) && mdAfter.split(mdBefore).length === 2,
+      JSON.stringify({ mdBefore, mdAfter })
+    )
+
+    // 5C 外部 HTML 表格（Word / Excel 那种**无表头行**的）⇒ 变成 Markdown 表格
+    const WORD_TABLE =
+      '<html><head><meta charset="utf-8"></head><body><div class=WordSection1>' +
+      '<table class=MsoTableGrid border=1 cellspacing=0 cellpadding=0>' +
+      '<tr><td width=120 valign=top><p class=MsoNormal><b><span>姓名</span></b></p></td>' +
+      '<td width=120 valign=top><p class=MsoNormal><b><span>年龄</span></b></p></td></tr>' +
+      '<tr><td width=120 valign=top><p class=MsoNormal><span>张三</span></p></td>' +
+      '<td width=120 valign=top><p class=MsoNormal><span>30</span></p></td></tr>' +
+      '</table></div></body></html>'
+    const EXCEL_TABLE =
+      '<table border=0 cellpadding=0 cellspacing=0 width=200>' +
+      '<tr height=20><td height=20 class=xl65>地区</td><td class=xl65>销量</td></tr>' +
+      '<tr height=20><td height=20 class=xl63>华东</td><td class=xl63 align=right>1200</td></tr>' +
+      '</table>'
+
+    const pasteHtml = async (name, html, text) => {
+      await openDocWith(app, '占位。\n', name)
+      await sleep(1100)
+      await ev(`(() => {
+        const view = window.__L.ed().view
+        const dt = new DataTransfer()
+        dt.setData('text/html', ${JSON.stringify(html)})
+        ${text === null ? '' : `dt.setData('text/plain', ${JSON.stringify(text)})`}
+        const e = new ClipboardEvent('paste', { bubbles: true, cancelable: true })
+        Object.defineProperty(e, 'clipboardData', { value: dt })
+        view.dom.dispatchEvent(e)
+        return 'ok'
+      })()`)
+      await sleep(1000)
+      return await spec()
+    }
+
+    const word = await pasteHtml('table-clip-word.md', WORD_TABLE, '姓名\t年龄\n张三\t30')
+    console.log('5C-WORD ' + JSON.stringify(word))
+    report.check(
+      '5C 粘 Word 无表头 HTML 表 ⇒ 变成 Markdown 管道表（有分隔行、无 `<table`、无 htmlBlock）',
+      word.tables === 1 &&
+        word.htmlBlocks === 0 &&
+        !word.md.includes('<table') &&
+        // Word 的 `<b>` 会变成 `**姓名**`，所以判据不写死"| 姓名 |"
+        /\|\s*(?:\*\*)?姓名/.test(word.md) &&
+        word.md.split('\n').some((l) => /^\|\s*:?-{2,}/.test(l.trim())),
+      JSON.stringify({ tables: word.tables, htmlBlocks: word.htmlBlocks, md: word.md })
+    )
+    report.check(
+      '5C Word 表的第一行被提升为**表头**（无表头表在 GFM 里没有写法，这是唯一可表达的形态）',
+      word.aligns.length >= 2 && word.headerTypes.every((t) => t === 'tableHeader'),
+      JSON.stringify({ headerTypes: word.headerTypes, aligns: word.aligns })
+    )
+
+    const excel = await pasteHtml('table-clip-excel.md', EXCEL_TABLE, '地区\t销量\n华东\t1200')
+    console.log('5C-EXCEL ' + JSON.stringify(excel))
+    report.check(
+      '5C 粘 Excel 无表头 HTML 表 ⇒ 同样是 Markdown 管道表',
+      excel.tables === 1 && excel.htmlBlocks === 0 && !excel.md.includes('<table') && /^\|\s*地区\s*\|/m.test(excel.md),
+      JSON.stringify({ tables: excel.tables, md: excel.md })
+    )
+
+    // 5D 外部 HTML 表**本来就有 `<th>`** ⇒ 一个字节都不改（不许误伤）
+    const withHead = await pasteHtml(
+      'table-clip-head.md',
+      '<table><thead><tr><th>甲</th><th>乙</th></tr></thead><tbody><tr><td>1</td><td>2</td></tr></tbody></table>',
+      '甲\t乙\n1\t2'
+    )
+    console.log('5D ' + JSON.stringify(withHead))
+    report.check(
+      '5D 外部 HTML 表本来就有 th ⇒ 结构不变（仍是表格 + 首行是表头），没有被误改',
+      withHead.tables === 1 && withHead.headerTypes.every((t) => t === 'tableHeader') && !withHead.md.includes('<table'),
+      JSON.stringify({ tables: withHead.tables, headerTypes: withHead.headerTypes, md: withHead.md })
     )
 
     // ══ 不许破坏的对照 ══════════════════════════════════════════════════════

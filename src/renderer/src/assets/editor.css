@@ -111,20 +111,24 @@ h6.md-reveal > .md-heading-marker {
 
 /* ─── 多单元格选区（`CellSelection`）的可视化 ─────────────────────────────────
  *
- * 用户报障「表格不能连续选中，鼠标拖动仅能在一个单元格内选中」。真因**不在选区逻辑**：
- * `@tiptap/extension-table` 默认带着 `tableEditing()`（见 node_modules 的
- * `dist/table/index.js` 的 `addProseMirrorPlugins`），跨格拖动实测已经产生
- * `CellSelection`（ranges ≥ 2）并且能在这一片上正常删除内容 / 改对齐。
- * 缺的是**画出来的那一层**：全仓 CSS 里没有 `.selectedCell` 规则（实测计算底色
- * 与未选中的格子逐字节相同，截图上看不出任何区别），于是用户"看不到自己选中了"，
- * 屏幕上唯一在动的是浏览器原生的文字选区 —— 观感就是"只在一个格子里选"。
+ * 历史（第十三轮）：用户报「表格不能连续选中」。当时的诊断是**选区逻辑本来就对**
+ * （`@tiptap/extension-table` 默认带 `tableEditing()`），缺的是**画出来的那一层** ——
+ * 全仓 CSS 没有 `.selectedCell` 规则（实测选中格与未选中格的计算底色逐字节相同，
+ * 截图上看不出任何区别）。这条规则就是那时补的。
  *
- * 修法就是补这一条：prosemirror-tables 给选中格加上 `selectedCell` 类，
- * 这里用 `--sel`（选中底色令牌，三主题各自校准过）铺一层 `::after`。
- * 用伪元素而不是 `background-color`：`.md-preview th` 已经占用了 background
- * （表头底色 `--panel-2`），直接覆盖会把表头与数据格画成两种样子。
- * `inset: 0` + 绝对定位 + 格子的 `position: relative` ⇒ 只铺在格子里、不参与布局。
- * 格子里放 `pointer-events: none`：它只负责画，不能被点到（否则拖选会被它截住）。
+ * ⚠️ **第十四轮口径变更**：用户改要「不要选中一整个单元格，而是按照从上到下、从左到右
+ * 的顺序可以连续选中」⇒ **普通拖选不再产生 `CellSelection`**，改由浏览器原生的文本选区
+ * 接管（见 `lib/editor/tableClipboard.ts` 的 `TableDragSelect`）。所以这条高亮
+ * **不再是普通拖选的反馈**，它服务的是仍然会给 `CellSelection` 的入口：
+ *   * `Shift+左键` 的"整格选"；
+ *   * 程序化 `setCellSelection` 命令（当前无人调用）与 `goToNextCell` 等表格命令。
+ * 刻意**保留**：去掉的话那两类入口又会变成"选了但看不见"。
+ *
+ * 实现：prosemirror-tables 给选中格加 `selectedCell` 类，这里用 `--sel`（选中底色令牌，
+ * 三主题各自校准过）铺一层 `::after`。用伪元素而不是 `background-color`：
+ * `.md-preview th` 已占用 background（表头底色 `--panel-2`），直接覆盖会把表头与数据格
+ * 画成两种样子。`inset: 0` + 绝对定位 + 格子的 `position: relative` ⇒ 只铺在格子里、
+ * 不参与布局；`pointer-events: none` 让它只负责画、不被点到。
  */
 .md-preview th.selectedCell,
 .md-preview td.selectedCell {

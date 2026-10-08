@@ -28,6 +28,7 @@ import { MathPaste } from './mathPaste'
 import { NoTextDrag } from './noTextDrag'
 import { CodeBlockCM } from './codeBlock'
 import { MarkdownPaste } from './markdownPaste'
+import { TableClipboard, TableDragSelect } from './tableClipboard'
 import { TyporaInlineMarks, MdStyle, MdMarker, MdCodeLiteral, MdEscape } from './typoraInlineMarks'
 import { Frontmatter } from './frontmatter'
 import { HtmlBlock, MdHtml } from './htmlPassthrough'
@@ -223,9 +224,18 @@ export const editorExtensions: Extensions = [
   //    否则一张 png 的落点会先撞上"内部拖动"的判据（它 moved 为 false，其实也不会命中，
   //    但顺序按语义写清楚，免得以后有人挪动这一行）。
   NoTextDrag,
+  // 表格拖选口径（第十四轮）：普通拖选**不进 `CellSelection`**，而是按阅读顺序的
+  // **文本选择**（用户口径）；`Ctrl/Cmd+左键`、`Shift+左键` 仍保留"整格选"。
+  // ⚠️ 必须排在 `TableFidelity` **之后**、且排在 `NoTextDrag` **之后**：
+  //    它在 `filterTransaction` 里只改"鼠标拖出来的 cell 选区"，详见 tableClipboard.ts。
+  TableDragSelect,
   // 粘贴修复：先注册 MarkdownPaste 接管 clipboardTextParser（someProp 取
   // 首个非 null），Markdown 自带的 inline-only 解析器被禁用
   MarkdownPaste,
+  // 表格剪贴板（第十四轮）：复制到剪贴板的 `text/plain` 是 **Markdown 表格**；
+  // 外部无表头 HTML 表在进 schema 前把第一行提升为表头（否则 `isSimpleTable` 恒假
+  // ⇒ 整张表退回 HTML 字面量）。⚠️ 排在 `MathPaste`/`Markdown` **之前**（someProp 链）。
+  TableClipboard,
   Markdown.configure({
     html: true,
     // breaks: **必须 false**。开启时 markdown-it 把段内单个换行渲染成 <br>，
