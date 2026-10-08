@@ -71,6 +71,49 @@ const MD2 = [
 
 const CONTENT = 'window.__L.files().current.content'
 
+/**
+ * 长表格夹具（10 行 × 5 列，每格 8 字）—— "选择字数较多"的触发条件。
+ *
+ * 为什么需要它：`tableEditing` 那条夹取的判据里带 `$to.parentOffset === 0`
+ * （见 `lib/editor/tableClipboard.ts` 的长注释），只有**选区终点正好落在某个格子段落的
+ * 第 0 个字符处**才命中。长表格 + 把落点定在**单元格左缘**（`l + 2`）就能稳定命中。
+ */
+const LONG_TABLE_MD = (() => {
+  const head = '| ' + ['列一', '列二', '列三', '列四', '列五'].join(' | ') + ' |'
+  const sep = '| ' + Array.from({ length: 5 }, () => '---').join(' | ') + ' |'
+  const rows = []
+  for (let r = 1; r <= 10; r += 1) {
+    const cells = []
+    for (let c = 1; c <= 5; c += 1) cells.push('R' + r + 'C' + c + '甲乙丙丁')
+    rows.push('| ' + cells.join(' | ') + ' |')
+  }
+  return ['正文开头。', '', head, sep, ...rows, '', '尾段。', ''].join('\n')
+})()
+
+/**
+ * **用户提供的真实表格**（逐字，第十五轮任务书给的）——"松手回缩"的原始现场。
+ *
+ * 刁钻点在**第 3 行右侧格**：`① 空光标点加粗得到 \`*` —— 以**未配对的 `*`** 结尾、
+ * 且含一个**未闭合的行内代码反引号**；第 4/5/6 行则是超长单元格（含 `/`、`**`、
+ * 反引号、`（）`）。表头是**两个空格**（`|  |  |`）。
+ * 逐字保留：`|` 与反引号都按原文写进来，改一个字就不算这张表了。
+ * ⚠️ 这份夹具**同时**被"表格往返保真"那条断言用（见 1L/1M），
+ * 所以它若被解析坏（例如未闭合反引号让整表退化成 HTML）会立刻红。
+ */
+const USER_TABLE_MD = [
+  '# Lumin 行内格式标记 · 全面测试与修复报告',
+  '',
+  '|  |  |',
+  '| --- | --- |',
+  '| **触发** | 用户实测两处必现缺陷：① 空光标点加粗得到 `* |',
+  '| **范围** | 加粗 / 斜体 / 删除线 / 行内代码 / 下划线 / 超链接 / 行内公式 / 反斜杠转义，及其组合（粗+斜、粗+码、链接+粗、删+斜、`***粗斜***`） |',
+  '| **日期** | 2026-09-17 |',
+  '| **结论** | 两个报障**已修复**，并顺带修掉同源第三个缺陷（`~~~~` 整行被当代码围栏清空）；新增 **107 条回归**（25 + 7 纯逻辑单测 + 格式×操作 CDP 矩阵 103 条）；门禁：`ci` exit 0（单测 **212/212**、eslint **0/0**、build ✓）、5 套件门禁 5/5、完整矩阵 21/22（唯一红项为压力套件的计时抖动，单独跑 72/72） |',
+  '| **提交** | `356ba5c`（三处根因修复）、`97fd858`（整行纯标记转义 + 已知限制登记） |',
+  '| **已知限制** | ① 下划线与标记样式共存时会丢下划线（开后门会导致星号指数膨胀）② 带容器前缀的整行标记（`> ****`、`- ****`）暂不覆盖。两条都已进台账并写明正确修法 |',
+  ''
+].join('\n')
+
 /** 选区 + 多格选区语义 + DOM 表现（一个探针说全，避免多次往返造成状态漂移） */
 const SEL = `(() => {
   const ed = window.__L.ed()
@@ -203,23 +246,33 @@ async function main() {
       }))
     })()`).then(JSON.parse)
 
-  /** 把光标放到文档末尾（每次手势前重置：按在已有选区内部会被 Chromium 当成"拖动选区文字"） */
+  /**
+   * 把光标放到文档末尾（每次手势前重置：按在已有选区内部会被 Chromium 当成"拖动选区文字"）。
+   *
+   * ⚠️ 顺带**把滚动复位并等它停稳**：`setTextSelection` 到文档末尾会触发滚动，
+   * 而滚动动画期间量到的 `getBoundingClientRect()` 是**移动中**的行位置 ——
+   * 落点于是压到错误的行/格上（实测：该拖到第 5 行却停在第 3 行、或整段手势只选到第一格）。
+   * 这一步是**同一套几何**的前提：先复位滚动，再量，再拖。
+   */
   const caretAway = async () => {
     await ev(
       '(() => { window.__L.ed().chain().setTextSelection(window.__L.ed().state.doc.content.size - 1).run(); return "ok" })()'
     )
-    await sleep(280)
+    await ev(
+      '(() => { const c = document.querySelector(".editor-scroll"); if (c) c.scrollTop = 0; return "ok" })()'
+    )
+    await sleep(420)
   }
 
   /** 真实鼠标拖拽：按下 → 多步移动 → 抬起 */
   const drag = async (a, b, steps = 9) => {
     await mouse('mouseMoved', a.x, a.y, 0)
-    await sleep(90)
+    await sleep(110)
     await mouse('mousePressed', a.x, a.y, 1)
-    await sleep(140)
+    await sleep(200)
     for (let i = 1; i <= steps; i += 1) {
       await mouse('mouseMoved', a.x + ((b.x - a.x) * i) / steps, a.y + ((b.y - a.y) * i) / steps, 1)
-      await sleep(40)
+      await sleep(45)
     }
     await sleep(130)
     await mouse('mouseReleased', b.x, b.y, 0)
@@ -243,6 +296,65 @@ async function main() {
   const setContent = async (md) => {
     await ev('(() => { window.__L.ed().commands.setContent(' + JSON.stringify(md) + '); return "ok" })()')
     await sleep(850)
+  }
+
+  /**
+   * 长距离跨格拖拽 + **逐拍采样**（本轮"松手回缩"的判据都建在它上面）。
+   *
+   * `toEdge: 'left'`（落点取目标格**左缘**）是**关键**：`tableEditing` 那条夹取的判据里带
+   * `$to.parentOffset === 0`，只有落点压在格子段落第 0 个字符处才命中 —— 实测
+   * `toEdge: 'center'` 常常复现不出，`'left'` 稳定复现（改前 `SHRINK=240 / 110 / 116`）。
+   *
+   * 返回：`trace`（每拍 `to - from`）/ `maxLen`+`maxRange`（途中见过的最长范围）/
+   * `beforeUp`（**松手前**那一刻，「屏幕上看到的就是它」）/ `after80`+`after700`（松手后两拍）/
+   * `toInfo`（终点的 `$to.parentOffset` —— 证明夹具真的压到了触发条件）。
+   */
+  const dragMeasure = async ({ fromIdx, toIdx, toEdge = 'left', steps = 20 }) => {
+    // `caretAway()` 已经顺带把滚动复位并等停稳（见它的注释），这里直接量几何
+    await caretAway()
+    const cs = await cells()
+    const from = { x: cs[fromIdx].cx, y: cs[fromIdx].cy }
+    const target = cs[toIdx]
+    const to =
+      toEdge === 'left'
+        ? { x: Math.round(target.l + 2), y: target.cy }
+        : { x: target.cx, y: target.cy }
+    await mouse('mouseMoved', from.x, from.y, 0)
+    await sleep(110)
+    await mouse('mousePressed', from.x, from.y, 1)
+    await sleep(200)
+    const trace = []
+    let maxLen = 0
+    let maxRange = null
+    for (let i = 1; i <= steps; i += 1) {
+      await mouse(
+        'mouseMoved',
+        from.x + ((to.x - from.x) * i) / steps,
+        from.y + ((to.y - from.y) * i) / steps,
+        1
+      )
+      await sleep(45)
+      const s = await sel()
+      trace.push(s.to - s.from)
+      if (s.to - s.from > maxLen) {
+        maxLen = s.to - s.from
+        maxRange = [s.from, s.to]
+      }
+    }
+    const beforeUp = await sel()
+    const toInfo = await ev(`(() => {
+      const s = window.__L.ed().state.selection
+      if (s.empty) return JSON.stringify({ empty: true })
+      const cellOf = ($p) => { for (let d = $p.depth; d > 0; d--) { const n = $p.node(d)
+        if (n.type.name === 'tableCell' || n.type.name === 'tableHeader') return n.textContent } return null }
+      return JSON.stringify({ toParentOffset: s.$to.parentOffset, fromCell: cellOf(s.$from), toCell: cellOf(s.$to) })
+    })()`).then(JSON.parse)
+    await mouse('mouseReleased', to.x, to.y, 0)
+    await sleep(80)
+    const after80 = await sel()
+    await sleep(700)
+    const after700 = await sel()
+    return { cs, trace, maxLen, maxRange, beforeUp, after80, after700, toInfo }
   }
 
   /**
@@ -511,6 +623,161 @@ async function main() {
         !after1G.md.includes('<table') &&
         after1G.rows === 2,
       JSON.stringify({ delim1G, aligns: after1G.aligns })
+    )
+
+    // ══ 第十五轮：**松手不回缩**（用户报「拖拽时显示正确、松开后选中的文字变少」）══════
+    //
+    // 真因：`prosemirror-tables` 的 `normalizeSelection`（node_modules 里第 725 行）有一条
+    // 「文本选区跨了单元格就夹回起点那一个段落」的归一化，判据里带 `$to.parentOffset === 0`
+    // —— 落点压在格子边界才命中，所以**时好时坏**、且**只有跨了格子（= 选得多）才可能发生**。
+    // 它在 `tableEditing` 的 `appendTransaction` 里每次事务都跑，拖拽途中被后续 mousemove
+    // 不断纠回、松手后再没人纠；夹短的结果还被写回 DOM，于是**自我强化**。
+    // 修法见 `lib/editor/tableClipboard.ts` 的 `TableNoCellClamp`（从源头掐掉那一条夹取）。
+    //
+    // 判据两条，缺一不可：
+    //   * **差值 0**：松手后的范围 == 拖拽途中见过的最长范围（任务书要的那条）；
+    //   * **松手不缩**：`after700 >= beforeUp`（把"用户看到的是最长"与"松手不缩"分开钉，
+    //     因为斜向拖拽时途中范围本身可能回摆，`max` 未必等于最终落点）。
+
+    // 1H 长表格（10×5，每格 8 字）长距离跨多行拖选，落点压目标格**左缘**（= 触发条件）
+    await openDocWith(app, LONG_TABLE_MD, 'table-drag-long.md')
+    await sleep(1400)
+    const h = await dragMeasure({ fromIdx: 3, toIdx: 24, toEdge: 'left' })
+    console.log('1H ' + JSON.stringify({ trace: h.trace, maxLen: h.maxLen, maxRange: h.maxRange,
+      beforeUp: [h.beforeUp.from, h.beforeUp.to], after80: [h.after80.from, h.after80.to],
+      after700: [h.after700.from, h.after700.to], toInfo: h.toInfo }))
+    report.check(
+      '1H 长表格长距离跨格拖选（落点压格子左缘）⇒ 松手后范围 == 拖拽中的最长范围（差值 0）',
+      h.maxLen > 100 &&
+        h.after700.from === h.maxRange[0] &&
+        h.after700.to === h.maxRange[1] &&
+        h.after700.to - h.after700.from - h.maxLen === 0,
+      JSON.stringify({ maxLen: h.maxLen, maxRange: h.maxRange, after700: [h.after700.from, h.after700.to], diff: h.after700.to - h.after700.from - h.maxLen })
+    )
+    report.check(
+      '1H 夹具确实压到了触发条件（终点落在格子段落第 0 个字符处 ⇒ $to.parentOffset === 0）',
+      h.toInfo.toParentOffset === 0 && h.toInfo.fromCell !== h.toInfo.toCell,
+      JSON.stringify(h.toInfo)
+    )
+    report.check(
+      '1H 松手前后都不缩（beforeUp == after80 == after700，且都 == 最长范围）',
+      h.beforeUp.from === h.after700.from && h.beforeUp.to === h.after700.to &&
+        h.after80.from === h.after700.from && h.after80.to === h.after700.to &&
+        h.beforeUp.to - h.beforeUp.from === h.maxLen,
+      JSON.stringify({ beforeUp: [h.beforeUp.from, h.beforeUp.to], after80: [h.after80.from, h.after80.to], after700: [h.after700.from, h.after700.to], maxLen: h.maxLen })
+    )
+
+    // 1I 一格内选很多字 → 继续拖到相邻格：先在同一格内选一大段，再跨到下一格
+    const i2 = await dragMeasure({ fromIdx: 0, toIdx: 12, toEdge: 'left' })
+    console.log('1I ' + JSON.stringify({ maxLen: i2.maxLen, maxRange: i2.maxRange,
+      beforeUp: [i2.beforeUp.from, i2.beforeUp.to], after700: [i2.after700.from, i2.after700.to], toInfo: i2.toInfo }))
+    report.check(
+      '1I 长表格再取一组起点/落点（第 1 格 → 第 13 格左缘）⇒ 松手后同样不回缩（差值 0）',
+      i2.maxLen > 60 &&
+        i2.after700.from === i2.maxRange[0] &&
+        i2.after700.to === i2.maxRange[1],
+      JSON.stringify({ maxLen: i2.maxLen, maxRange: i2.maxRange, after700: [i2.after700.from, i2.after700.to], toInfo: i2.toInfo })
+    )
+
+    // 1J 反向（右下 → 左上）：判据是"松手不缩"，不断言 max（斜向拖拽途中范围本身会回摆）
+    const j2 = await dragMeasure({ fromIdx: 44, toIdx: 5, toEdge: 'left' })
+    console.log('1J ' + JSON.stringify({ trace: j2.trace, maxLen: j2.maxLen,
+      beforeUp: [j2.beforeUp.from, j2.beforeUp.to], after700: [j2.after700.from, j2.after700.to], toInfo: j2.toInfo }))
+    report.check(
+      '1J 反向拖（第 45 格 → 第 6 格左缘）⇒ 松手后**不小于**松手前（不回缩），且跨格',
+      j2.after700.to - j2.after700.from >= j2.beforeUp.to - j2.beforeUp.from &&
+        j2.after700.to - j2.after700.from > 100 &&
+        j2.toInfo.fromCell !== j2.toInfo.toCell,
+      JSON.stringify({ beforeUp: j2.beforeUp.to - j2.beforeUp.from, after700: j2.after700.to - j2.after700.from, toInfo: j2.toInfo })
+    )
+
+    // 1K 松手后对选区执行一次**删除** ⇒ 作用在**完整**选中的文字上（"回缩"的用户可见后果）
+    await openDocWith(app, LONG_TABLE_MD, 'table-drag-delete.md')
+    await sleep(1400)
+    const k = await dragMeasure({ fromIdx: 3, toIdx: 24, toEdge: 'left', steps: 20 })
+    const mdBeforeDel = await content()
+    /**
+     * 与选区**相交**的那些格子的文字（在页面里现算，不猜"最远那一格"）：
+     * 落点取目标格**左缘**时，目标格自己其实是**不被选中**的（头停在它的第 0 个字符处），
+     * 所以"最远被删掉的那一格"是它的前一格。这里按几何相交算，避免把断言写偏。
+     */
+    const hitCells = await ev(`(() => {
+      const v = window.__L.ed().view
+      const s = v.state.selection
+      const out = []
+      for (const el of document.querySelectorAll('.ProseMirror th, .ProseMirror td')) {
+        const p = el.querySelector('p') || el
+        let start = -1
+        try { start = v.posAtDOM(p, 0) } catch (e) { continue }
+        const text = el.textContent || ''
+        const end = start + text.length
+        if (end > s.from && start < s.to) out.push({ text, start, end })
+      }
+      return JSON.stringify(out)
+    })()`).then(JSON.parse)
+    const selText = k.after700.text
+    await send('Input.dispatchKeyEvent', { type: 'rawKeyDown', key: 'Backspace', code: 'Backspace', windowsVirtualKeyCode: 8 })
+    await send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Backspace', code: 'Backspace', windowsVirtualKeyCode: 8 })
+    await sleep(800)
+    const mdAfterDel = await content()
+    const survivors = hitCells.filter((c) => c.text.length > 0 && mdAfterDel.includes(c.text))
+    console.log('1K ' + JSON.stringify({ selLen: k.after700.to - k.after700.from, selText: selText.slice(0, 50),
+      hitCells: hitCells.map((c) => c.text), survivors: survivors.map((c) => c.text),
+      stillPipe: !mdAfterDel.includes('<table'), mdBeforeLen: mdBeforeDel.length, mdAfterLen: mdAfterDel.length }))
+    report.check(
+      '1K 松手后按退格 ⇒ 删除作用在**完整**选区上（与选区相交的每一格文字都被删掉，不是只删到回缩点）',
+      k.after700.to - k.after700.from > 100 &&
+        hitCells.length >= 3 &&
+        survivors.length === 0 &&
+        !mdAfterDel.includes('<table') &&
+        mdAfterDel.length < mdBeforeDel.length,
+      JSON.stringify({ selLen: k.after700.to - k.after700.from, hitCells: hitCells.map((c) => c.text), survivors: survivors.map((c) => c.text), stillPipe: !mdAfterDel.includes('<table') })
+    )
+
+    // ══ 1L/1M：**用户给的真实表格**（逐字）════════════════════════════════════
+    await openDocWith(app, USER_TABLE_MD, 'table-drag-usertable.md')
+    await sleep(1500)
+    // 夹具自检：这张表必须解析成**真表格**（表头 2 空格 + 6 行数据 = 14 格），
+    // 且 Markdown **逐字往返**（未闭合反引号那格不能被解析坏成 HTML）
+    const userSpec = await spec()
+    const userCells = await cells()
+    console.log('1L-fixture ' + JSON.stringify({ tables: userSpec.tables, rows: userSpec.rows, cols: userSpec.cols,
+      cells: userCells.length, hasHtml: userSpec.md.includes('<table'), htmlBlocks: userSpec.htmlBlocks }))
+    report.check(
+      '1L 用户给的表格夹具：解析成真表格（表头 2 空格 + 6 行）且 Markdown 逐字往返（未被未闭合反引号弄成 HTML）',
+      userSpec.tables === 1 && userSpec.rows === 7 && userSpec.cols === 2 && userCells.length === 14 &&
+        userSpec.htmlBlocks === 0 && !userSpec.md.includes('<table') &&
+        userSpec.md.includes('得到 `* |') &&
+        userSpec.md.includes('`***粗斜***`'),
+      JSON.stringify({ tables: userSpec.tables, rows: userSpec.rows, cols: userSpec.cols, cells: userCells.length, htmlBlocks: userSpec.htmlBlocks })
+    )
+    // 1M 用户表格上的长距离跨行拖选（第 2 行 → 第 5 行，落点左缘 = 触发条件）
+    const m2 = await dragMeasure({ fromIdx: 4, toIdx: 10, toEdge: 'left' })
+    console.log('1M ' + JSON.stringify({ trace: m2.trace, maxLen: m2.maxLen, maxRange: m2.maxRange,
+      beforeUp: [m2.beforeUp.from, m2.beforeUp.to], after80: [m2.after80.from, m2.after80.to],
+      after700: [m2.after700.from, m2.after700.to], toInfo: m2.toInfo }))
+    report.check(
+      '1M 用户给的真实表格：跨 4 行拖选（落点压格子左缘）⇒ 松手后范围 == 最长范围（差值 0）',
+      m2.maxLen > 100 &&
+        m2.after700.from === m2.maxRange[0] &&
+        m2.after700.to === m2.maxRange[1] &&
+        m2.after700.to - m2.after700.from - m2.maxLen === 0,
+      JSON.stringify({ maxLen: m2.maxLen, maxRange: m2.maxRange, after700: [m2.after700.from, m2.after700.to], diff: m2.after700.to - m2.after700.from - m2.maxLen })
+    )
+    report.check(
+      '1M 用户表格那一次同样压到了触发条件（$to.parentOffset === 0 且跨格）',
+      m2.toInfo.toParentOffset === 0 && m2.toInfo.fromCell !== m2.toInfo.toCell,
+      JSON.stringify(m2.toInfo)
+    )
+    // 1N 用户表格：换一个落点（中心）确认"松手不缩"是普遍成立的，不是只对左缘有效
+    const n2 = await dragMeasure({ fromIdx: 2, toIdx: 13, toEdge: 'center' })
+    console.log('1N ' + JSON.stringify({ maxLen: n2.maxLen, beforeUp: [n2.beforeUp.from, n2.beforeUp.to],
+      after700: [n2.after700.from, n2.after700.to], toInfo: n2.toInfo }))
+    report.check(
+      '1N 用户给的真实表格：换落点（第 3 行 → 第 7 行右侧格中心）⇒ 松手后不小于松手前',
+      n2.after700.to - n2.after700.from >= n2.beforeUp.to - n2.beforeUp.from &&
+        n2.after700.to - n2.after700.from > 100,
+      JSON.stringify({ beforeUp: n2.beforeUp.to - n2.beforeUp.from, after700: n2.after700.to - n2.after700.from, toInfo: n2.toInfo })
     )
 
     // ══ 任务 2：表格快捷操作条 ════════════════════════════════════════════════

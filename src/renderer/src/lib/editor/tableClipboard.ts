@@ -46,10 +46,11 @@
 import { Extension } from '@tiptap/core'
 import { Plugin, PluginKey, TextSelection } from '@tiptap/pm/state'
 import { Fragment } from '@tiptap/pm/model'
-import type { Transaction } from '@tiptap/pm/state'
+import type { Selection, Transaction } from '@tiptap/pm/state'
 import type { EditorView, EditorProps } from '@tiptap/pm/view'
-import type { Node as PMNode } from '@tiptap/pm/model'
+import type { Node as PMNode, ResolvedPos } from '@tiptap/pm/model'
 import { tableEditingKey } from '@tiptap/pm/tables'
+import { TableFidelity } from './tableMarkdown'
 
 /** 这段选区里有没有表格（原地判定，不复制文档） */
 export function sliceHasTable(doc: PMNode, from: number, to: number): boolean {
@@ -277,7 +278,99 @@ function selectionTableMarkdown(
   return out
 }
 
-/** 当前编辑器 view（由本扩展的插件 `view()` 注入；插件外拿不到 view 时保持 null） */
+/**
+ * 这个文本选区是不是**跨了单元格**（`$from` 与 `$to` 不在同一个格子里）。
+ *
+ * 判据与 `prosemirror-tables` 的 `isTextSelectionAcrossCells` 前半段同源：沿祖先链找到
+ * 最近的单元格，比较是不是同一个节点。按**节点身份**比而不是按位置区间比 ——
+ * PM 的节点是不可变 + 结构共享的，两个不同的格子必然是两个不同的对象（上游也是这么判的）。
+ * 单元格类型按**名字**认（`tableCell` / `tableHeader`）：这是本仓库既有的口径
+ * （`tableColumnAlign.ts` 的 `collectColumnCells` 也这么判），不依赖 tiptap 写进
+ * `spec.tableRole` 的具体取值。
+ */
+function spansTableCells($from: ResolvedPos, $to: ResolvedPos): boolean {
+  const cellOf = ($p: ResolvedPos): PMNode | null => {
+    for (let d = $p.depth; d > 0; d -= 1) {
+      const node = $p.node(d)
+      if (node.type.name === 'tableCell' || node.type.name === 'tableHeader') return node
+    }
+    return null
+  }
+  const a = cellOf($from)
+  const b = cellOf($to)
+  return !!a && !!b && a !== b
+}
+
+/**
+ * ─── 掐掉 `tableEditing` 的「跨格文本选区夹回一格」──────────────────────────────
+ *
+ * **本轮"松手回缩"的真因就在这一个分支里**（逐拍原始数据见报告）。`prosemirror-tables` 的
+ * `normalizeSelection`（`node_modules/prosemirror-tables/dist/index.js:725`）有这么一条：
+ * ```js
+ * else if (sel instanceof TextSelection && isTextSelectionAcrossCells(sel))
+ *     normalize = TextSelection.create(doc, sel.$from.start(), sel.$from.end())
+ * ```
+ * 即「**只要文本选区跨了单元格，就把它夹回起点所在的那一个段落**」，而它在 `tableEditing`
+ * 的 `appendTransaction`（同文件 2580 行附近的 `appendTransaction(_, oldState, state) {
+ * return normalizeSelection(state, fixTables(state, oldState), allowTableNodeSelection) }`）
+ * 里**每次事务都会跑**。判据 `isTextSelectionAcrossCells`（同文件 707 行）末了还有一条苛刻的
+ * `$to.parentOffset === 0` —— 只有**选区终点正好落在某个单元格段落的第 0 个字符处**才命中。
+ * 这三件事因此全都对上了：
+ *   * **时好时坏**：落点压在格子边界（`parentOffset === 0`）才触发；
+ *   * **"仅在选择字数较多时"**：跨了格子才可能「起点格 ≠ 终点格」；
+ *   * **拖拽中看着对、松手才少一截**：拖拽途中每一拍 mousemove 都会把正确的长选区重新写回去，
+ *     松手之后再没有新的一拍来纠正它；而且夹取会**自我强化** —— 夹短后的选区被
+ *     `selectionToDOM` 写回 DOM，我们下一拍读 DOM 拿到的就是被夹短的那份
+ *     （实测逐拍：`max=242 [31,273]` → 松手前 `2 [29,31]` → 松手后仍 `2`）。
+ *
+ * 修法：把**这一条夹取**去掉，其余 normalize 行为一概保留。做法是在 `TableFidelity` 之上
+ * 再 extend 一层，把 `tableEditing` 那个 plugin 的 `appendTransaction` **包一层**：
+ * 「进来时是跨格文本选区、返回时被夹短」⇒ 返回 `null`（不改选区）。
+ *
+ * 为什么"包一层"而不是"整条禁用"：那个 `appendTransaction` 同时承担**修表结构**
+ * （`fixTables`）与另外两类归一化（`NodeSelection` / 单元格边界）；只有"跨格文本选区"
+ * 这一条是本产品明确不要的 —— 用户口径就是「按从上到下、从左到右连续选中文字」。
+ */
+export const TableNoCellClamp = TableFidelity.extend({
+  addProseMirrorPlugins() {
+    type RawAppend = (trs: unknown, oldState: unknown, newState: unknown) => Transaction | null
+    type PluginLike = { key?: string; spec?: { appendTransaction?: RawAppend } }
+    const plugins = (this.parent?.() ?? []) as unknown as PluginLike[]
+    for (const p of plugins) {
+      if (p.key !== 'selectingCells$' || !p.spec || typeof p.spec.appendTransaction !== 'function')
+        continue
+      const orig = p.spec.appendTransaction
+      p.spec.appendTransaction = ((trs: unknown, oldState: unknown, newState: unknown) => {
+        /**
+         * 判据只用**公开数据**：
+         *   * 进来时的选区取 `newState.selection` —— `normalizeSelection` 读的就是它
+         *     （`(tr || state).selection`，`tr` 为空时就是 state）；
+         *   * 返回值若 `docChanged` ⇒ 那是 `fixTables` 在修表结构，**必须放行**；
+         *   * 若它把上面的选区**改短**了（只有跨格夹取会这么干）⇒ 丢掉这条修正。
+         */
+        const st = newState as { selection?: Selection } | undefined
+        const intended = st?.selection as
+          (Selection & { $from?: ResolvedPos; $to?: ResolvedPos }) | undefined
+        const res = orig(trs, oldState, newState) as
+          (Transaction & { selectionSet?: boolean }) | null
+        if (!res) return res
+        if (res.docChanged) return res
+        if (!intended || typeof (intended as { forEachCell?: unknown }).forEachCell === 'function')
+          return res
+        if (!intended.$from || !intended.$to) return res
+        if (!spansTableCells(intended.$from, intended.$to)) return res
+        const after = res.selection
+        if (after.to - after.from < intended.to - intended.from) return null
+        return res
+      }) as unknown as RawAppend
+      break
+    }
+    return plugins as never
+  }
+})
+
+/**
+ * 当前编辑器 view（由本扩展的插件 `view()` 注入；插件外拿不到 view 时保持 null） */
 let currentView: { posAtDOM(node: Node, offset: number): number } | null = null
 
 /**
@@ -412,6 +505,10 @@ export const TableDragSelect = Extension.create({
          *
          * 见下面 `nativeSelectionRange()` 的注释：DOM 选区是"用户真正划到哪"的权威来源，
          * 从 `CellSelection` 反推会把跨格选区打回第一个格子（实测）。
+         *
+         * ⚠️ 这里**不需要**再兜"被夹短"那件事：真因（`tableEditing` 的跨格夹取）已经在
+         * `TableNoCellClamp` 里从源头掐掉了（见上文）。刻意只留**一条**机制 ——
+         * 两条机制抢同一个方向盘，日后出问题会很难判是谁改的。
          */
         filterTransaction(tr: Transaction, state): boolean {
           if (shiftGesture) return true

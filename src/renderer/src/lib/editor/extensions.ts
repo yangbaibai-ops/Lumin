@@ -9,7 +9,6 @@ import Strike from '@tiptap/extension-strike'
 import Code from '@tiptap/extension-code'
 import { HorizontalRule } from '@tiptap/extension-horizontal-rule'
 import { TableRow, TableCell, TableHeader } from '@tiptap/extension-table'
-import { TableFidelity } from './tableMarkdown'
 // 「设置当前列对齐」的命令（工具栏表格弹层用；见 tableColumnAlign.ts）
 import { TableColumnAlign } from './tableColumnAlign'
 import TaskItem from '@tiptap/extension-task-item'
@@ -28,7 +27,7 @@ import { MathPaste } from './mathPaste'
 import { NoTextDrag } from './noTextDrag'
 import { CodeBlockCM } from './codeBlock'
 import { MarkdownPaste } from './markdownPaste'
-import { TableClipboard, TableDragSelect } from './tableClipboard'
+import { TableClipboard, TableDragSelect, TableNoCellClamp } from './tableClipboard'
 import { TyporaInlineMarks, MdStyle, MdMarker, MdCodeLiteral, MdEscape } from './typoraInlineMarks'
 import { Frontmatter } from './frontmatter'
 import { HtmlBlock, MdHtml } from './htmlPassthrough'
@@ -194,8 +193,11 @@ export const editorExtensions: Extensions = [
     // markdown 序列化用 tiptap-markdown 的默认实现（prosemirror-markdown 的 image 规则：
     // alt 转义、src 里的括号转义、title 带引号）—— 行内写法不再需要 closeBlock
   }),
-  // 表格：接管 markdown 序列化（列对齐 + 单元格转义竖线，见 tableMarkdown.ts）
-  TableFidelity.configure({ resizable: false }),
+  // 表格：接管 markdown 序列化（列对齐 + 单元格转义竖线，见 tableMarkdown.ts）；
+  // `TableNoCellClamp` 是同一层的再 extend —— 它只把 `tableEditing` 里那条
+  // 「跨格文本选区夹回一格」的归一化掐掉（用户口径要的正是跨格连续选中文字，
+  // 那条归一化是"松手回缩"的真因，见 tableClipboard.ts 的长注释）。
+  TableNoCellClamp.configure({ resizable: false }),
   TableRow,
   TableHeader,
   TableCell,
