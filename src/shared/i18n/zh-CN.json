@@ -545,6 +545,17 @@
       "none": "本列默认对齐（不写 :---）"
     }
   },
+  "tableBar": {
+    "label": "表格快捷操作",
+    "more": "更多表格操作",
+    "groupRows": "行",
+    "groupCols": "列",
+    "width": "列宽布局",
+    "widthAuto": "按内容自动",
+    "widthEven": "各列等宽",
+    "widthContent": "按内容收窄",
+    "widthNote": "仅改显示：Markdown 表格无法保存列宽"
+  },
   "notifications": {
     "prev": "上一条通知",
     "next": "下一条通知",

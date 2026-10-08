@@ -545,6 +545,17 @@
       "none": "Default alignment for this column (plain ---)"
     }
   },
+  "tableBar": {
+    "label": "Table quick actions",
+    "more": "More table actions",
+    "groupRows": "Rows",
+    "groupCols": "Columns",
+    "width": "Column width layout",
+    "widthAuto": "Auto by content",
+    "widthEven": "Equal columns",
+    "widthContent": "Shrink to content",
+    "widthNote": "Display only: Markdown tables cannot store column widths"
+  },
   "notifications": {
     "prev": "Previous notification",
     "next": "Next notification",

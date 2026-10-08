@@ -16,13 +16,21 @@ const editorStore = useEditorStore()
        动画很乱）。原因很具体：切文档时所有行一起换 key ⇒ 旧行全部"离场"、新行全部"入场"，
        而 `.list-leave-active` 没写 `position:absolute`，离场的行在 0.25s 里**仍占着文档流**，
        于是新旧两批同时在列表里（高度翻倍、位置互撞）—— 看起来就是闪一下 + 乱。
-       大纲是**导航**，不是需要"出现感"的内容：直接换掉最干净。 -->
+       大纲是**导航**，不是需要"出现感"的内容：直接换掉最干净。
+
+       ⚠️ 每条前面那枚小圆点（`<span class="h-1.5 w-1.5 rounded-full">`）**已按用户要求删掉**。
+       层级感不靠它：`paddingLeft` 的 `${10 + (level - 1) * 14}px` 是一条**独立**的缩进来源
+       （圆点当年只是行内第一个 flex 子项，一点 `padding` 都不占），所以去掉之后缩进一字未改 ——
+       h1 起于 10px、每深一级多 14px，扫读靠左边距 + 行高 + 悬停/选中的整行底色分层。
+       连 `gap-1.5` 也一并去掉：行内只剩一个子项，gap 已经产生不了任何间距（留着会误导下一个读代码的人）。
+       （`lib/editor/tableOfContents.ts` 里**文档内 [TOC] 块**的那套 `•`/`◦`/`▪` 是另一回事：
+       那是正文里用户看得见的列表，不在本次"大纲视图"的口径内，见 assets/editor.css 的 `.md-toc`。） -->
   <div class="h-full overflow-y-auto pb-4">
     <button
       v-for="(h, i) in editorStore.outline"
       :key="`${i}-${h.level}-${h.text}`"
       data-outline-item
-      class="group flex w-full items-center gap-1.5 py-[5px] pr-2 text-left text-ui transition-colors duration-100"
+      class="group flex w-full items-center py-[5px] pr-2 text-left text-ui transition-colors duration-100"
       :class="
         editorStore.activeHeading === h.pos
           ? 'bg-accent-soft text-accent-ink'
@@ -31,12 +39,6 @@ const editorStore = useEditorStore()
       :style="{ paddingLeft: `${10 + (h.level - 1) * 14}px` }"
       @click="editorStore.jumpToHeading(h.pos)"
     >
-      <span
-        class="h-1.5 w-1.5 flex-none rounded-full transition-colors"
-        :class="
-          editorStore.activeHeading === h.pos ? 'bg-accent' : 'bg-ink-3/50 group-hover:bg-ink-3'
-        "
-      />
       <span class="min-w-0 flex-1 truncate">{{ h.text }}</span>
     </button>
     <div

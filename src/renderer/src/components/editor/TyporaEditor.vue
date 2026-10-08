@@ -2,6 +2,7 @@
 import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useEditor, EditorContent } from '@tiptap/vue-3'
 import type { Editor } from '@tiptap/core'
+import TableQuickBar from './TableQuickBar.vue'
 import { buildEditorExtensions } from '../../lib/editor/extensions'
 import { openLinkTarget } from '../../lib/linkOpen'
 import { getMarkdown } from '../../lib/editor/markdownStorage'
@@ -27,6 +28,12 @@ const settings = useSettingsStore()
 const ui = useUiStore()
 /** 编辑器容器：远程图片占位的点击/回车委托挂在这里（见 loadGuardedImage） */
 const containerRef = ref<HTMLElement | null>(null)
+/**
+ * 正文列包裹层（`relative`）：**表格快捷操作条的坐标系原点**。
+ * 工具条是它的绝对定位子节点，所以落点用内容坐标（表格的 offsetTop/Left），
+ * 滚动时与表格一起走 —— 不需要任何 scroll 监听（见 TableQuickBar.vue）。
+ */
+const colRef = ref<HTMLElement | null>(null)
 
 let syncTimer: ReturnType<typeof setTimeout> | null = null
 // 卸载中标记：切换文件时旧实例销毁会触发 blur/destroy，
@@ -287,7 +294,8 @@ defineExpose({ editor, syncNow })
       @keydown="editorStore.releaseActiveHeadingPin()"
     >
       <div
-        class="mx-auto transition-all duration-300"
+        ref="colRef"
+        class="relative mx-auto transition-all duration-300"
         :class="ui.focusMode ? 'max-w-[1140px]' : 'max-w-[1320px]'"
       >
         <!-- 正文列的左右内缩：40px → **56px**（用户口径「稍微增加编辑区内容与左右两侧的间隔」）。
@@ -296,6 +304,9 @@ defineExpose({ editor, syncNow })
           :editor="editor"
           class="editor-content px-14 max-[900px]:px-8 max-[760px]:px-5 pt-10 max-[760px]:pt-7 pb-40"
         />
+        <!-- 表格快捷操作条：贴光标所在那张表的头部（内容坐标，随滚动一起走）。
+             这一层 `relative` 就是它的坐标系原点，见 TableQuickBar.vue。 -->
+        <TableQuickBar :host="colRef" />
       </div>
     </div>
   </div>

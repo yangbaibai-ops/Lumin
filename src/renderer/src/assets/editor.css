@@ -109,6 +109,103 @@ h6.md-reveal > .md-heading-marker {
   animation: lm-fade-in 0.12s ease;
 }
 
+/* ─── 多单元格选区（`CellSelection`）的可视化 ─────────────────────────────────
+ *
+ * 用户报障「表格不能连续选中，鼠标拖动仅能在一个单元格内选中」。真因**不在选区逻辑**：
+ * `@tiptap/extension-table` 默认带着 `tableEditing()`（见 node_modules 的
+ * `dist/table/index.js` 的 `addProseMirrorPlugins`），跨格拖动实测已经产生
+ * `CellSelection`（ranges ≥ 2）并且能在这一片上正常删除内容 / 改对齐。
+ * 缺的是**画出来的那一层**：全仓 CSS 里没有 `.selectedCell` 规则（实测计算底色
+ * 与未选中的格子逐字节相同，截图上看不出任何区别），于是用户"看不到自己选中了"，
+ * 屏幕上唯一在动的是浏览器原生的文字选区 —— 观感就是"只在一个格子里选"。
+ *
+ * 修法就是补这一条：prosemirror-tables 给选中格加上 `selectedCell` 类，
+ * 这里用 `--sel`（选中底色令牌，三主题各自校准过）铺一层 `::after`。
+ * 用伪元素而不是 `background-color`：`.md-preview th` 已经占用了 background
+ * （表头底色 `--panel-2`），直接覆盖会把表头与数据格画成两种样子。
+ * `inset: 0` + 绝对定位 + 格子的 `position: relative` ⇒ 只铺在格子里、不参与布局。
+ * 格子里放 `pointer-events: none`：它只负责画，不能被点到（否则拖选会被它截住）。
+ */
+.md-preview th.selectedCell,
+.md-preview td.selectedCell {
+  position: relative;
+}
+.md-preview th.selectedCell::after,
+.md-preview td.selectedCell::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: var(--sel);
+  pointer-events: none;
+}
+
+/* ─── 表格快捷操作条（光标进入表格时贴在表格上方，见 components/editor/TableQuickBar.vue）
+ *
+ * 定位是**内容坐标**：绝对定位在正文列那个 `relative` 包裹层里，落点由
+ * `TableQuickBar.vue` 的 `offsetIn()` 沿 `offsetParent` 链现算（表格的 `offsetParent`
+ * 是 `.tableWrapper`，`table.offsetTop` 恒为 0，不能直接用）。于是滚动时工具条与表格
+ * 一起走，不需要任何 scroll 监听，也不涉及视口像素坐标。
+ * 层级走令牌 `--z-popover`（编辑器内浮层那一档，见 theme.css 的叠放顺序表）。
+ */
+.table-bar {
+  z-index: var(--z-popover);
+  /* 5 枚按钮始终排成一行：窄窗口下宁可横向顶到内容列边缘，也不要折成两行（会盖住表格） */
+  white-space: nowrap;
+}
+.table-bar__sep {
+  width: 1px;
+  align-self: stretch;
+  margin: 2px 4px;
+  background: var(--edge);
+}
+.table-bar__menu {
+  top: calc(100% + 4px);
+  min-width: 178px;
+}
+.table-bar__group {
+  padding: 4px 10px 2px;
+  color: var(--ink-2b);
+  font-size: 11px;
+}
+.table-bar__item {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 10px;
+  color: var(--ink-2);
+  text-align: left;
+  cursor: pointer;
+}
+.table-bar__item:hover,
+.table-bar__item:focus-visible {
+  background: var(--accent-soft);
+  color: var(--ink);
+}
+.table-bar__item.is-on {
+  color: var(--accent-ink);
+}
+.table-bar__note {
+  max-width: 220px;
+  padding: 4px 10px 2px;
+  color: var(--ink-2b);
+  font-size: 11px;
+  line-height: 1.45;
+  white-space: normal;
+}
+
+/* ─── 列宽布局（「更多」菜单里的三项；**纯视图，不落盘**）─────────────────────
+ *
+ * 标准 Markdown 表格无法表达列宽/行高，所以这三档只改 DOM 的排布方式：
+ * 文档、节点属性与序列化输出逐字节不变（套件里钉住了往返）。
+ */
+.md-preview .tableWrapper.lumin-table-even > table {
+  table-layout: fixed;
+}
+.md-preview .tableWrapper.lumin-table-content > table {
+  width: auto;
+}
+
 /* 公式行内编辑 */
 .md-math {
   cursor: pointer;
