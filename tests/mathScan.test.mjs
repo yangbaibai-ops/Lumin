@@ -10,6 +10,7 @@ import {
   matchInlineMathAtCaret,
   scanInlineMathSpans
 } from '../src/renderer/src/lib/mathScan.ts'
+import { hasBlockMathText } from '../src/renderer/src/lib/editor/mathPaste.ts'
 
 const inline = (s) => matchInlineMath(s, s.indexOf('$'))
 
@@ -115,4 +116,14 @@ test('配平扫描：相邻的两条公式切得开（`$a$$b$` 是两条，不�
   ])
   // 中间那条 `$` 被删之后：前半仍是公式，后半退回普通文本（与 markdown-it 一致）
   assert.deepEqual(scanInlineMathSpans('$a$b$'), [{ from: 0, to: 3 }])
+})
+
+// ─── 粘贴时"纯文本里有没有块级公式"（第十三轮：mathPaste 用）────────────────────────
+test('粘贴判定：纯文本里出现 `$$…$$` 才算有块级公式（普通文本里的单个 `$` 不算）', () => {
+  assert.equal(hasBlockMathText('前面\n\n$$\nx = 1\n$$\n\n后面'), true)
+  assert.equal(hasBlockMathText('$$\na = 1\nb = 2\n$$'), true)
+  assert.equal(hasBlockMathText('价格 $5 和 $6'), false, '行内 $ 不算块级公式')
+  assert.equal(hasBlockMathText('$E = mc^2$'), false, '单行行内公式不算块级')
+  assert.equal(hasBlockMathText('$$\n没有收尾'), false, '没有收尾 `$$` 不算')
+  assert.equal(hasBlockMathText('普通段落。'), false)
 })

@@ -24,6 +24,7 @@ import { TyporaMarkers } from './markers'
 import { TyporaInputRules } from './inputRules'
 import { TyporaKeymap } from './keymap'
 import { ImagePaste } from './imagePaste'
+import { MathPaste } from './mathPaste'
 import { NoTextDrag } from './noTextDrag'
 import { CodeBlockCM } from './codeBlock'
 import { MarkdownPaste } from './markdownPaste'
@@ -212,6 +213,11 @@ export const editorExtensions: Extensions = [
   TyporaInputRules,
   // 图片：粘贴剪贴板 / 拖入文件 → 落进工作区 assets/ 并插入相对路径（见 lib/insertImage.ts）
   ImagePaste,
+  // 公式粘贴（第十三轮）：剪贴板 HTML 里如果有数学（KaTeX/MathJax 的 DOM、我们自己的
+  // 复制形态），先把原文取回来换成 `mathBlock` / `$…$`，再交给常规 HTML 解析；
+  // 没有数学就完全不接管（普通富文本粘贴不受影响）。**必须排在 ImagePaste 之后**：
+  // 图片粘贴要由它先认领（someProp 取首个返回 true 的），本扩展内部也再挡一道 files。
+  MathPaste,
   // 取消「拖动选中的文字去改位置」（用户报障）：只在 `moved === true` 且拖的不是节点时拦下。
   // ⚠️ 必须排在 ImagePaste **之后**：图片拖入由 ImagePaste 先认领（someProp 取首个返回 true 的），
   //    否则一张 png 的落点会先撞上"内部拖动"的判据（它 moved 为 false，其实也不会命中，

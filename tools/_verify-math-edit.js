@@ -3040,6 +3040,177 @@ async function main() {
       JSON.stringify(z.mathMarkedTexts)
   )
 
+  // ═══ 第三十五轮（用户第十三轮反馈）：PA 段 —— 从 Typora 连正文一起复制公式过来 ═══
+  //
+  // 实测真因（第十三轮探针原始数据见报告 §1）：剪贴板同时有 text/html 与 text/plain 时
+  // ProseMirror 走 HTML 那条，而 Typora 的 HTML 里公式是 KaTeX 的 DOM（`.katex-display` +
+  // MathML + `annotation`），我们的 schema 不认 ⇒ 被通用 HTML 解析拆成纯文本；随后写出器
+  // 对普通文本的 `\` 做 CommonMark 转义、行内硬换行写成行尾 `\` ⇒ 用户看到的
+  // `$$\\` + 加倍反斜杠全是下游症状。修法见 lib/editor/mathPaste.ts。
+
+  /** 造一次"Typora 那种剪贴板"并派发 paste（html 为 null = 只发纯文本） */
+  const pasteWith = (html, text) => `(() => {
+    const view = window.__L.ed().view
+    const dt = new DataTransfer()
+    ${html === null ? '' : `dt.setData('text/html', ${JSON.stringify(html)})`}
+    ${text === null ? '' : `dt.setData('text/plain', ${JSON.stringify(text)})`}
+    const ev = new ClipboardEvent('paste', { bubbles: true, cancelable: true })
+    Object.defineProperty(ev, 'clipboardData', { value: dt })
+    view.dom.dispatchEvent(ev)
+    return 'ok'
+  })()`
+  const PASTE_TEX = 'x = \\frac{-b \\pm \\sqrt{b^2 - 4ac}}{2a}'
+  /** Typora 复制块级公式时 HTML 里那一坨（KaTeX 真实结构：mathml 带 annotation + 视觉层） */
+  const PASTE_HTML_BLOCK = [
+    '<p>前面一段普通文字。</p>',
+    '<span class="katex-display"><span class="katex">',
+    '<span class="katex-mathml"><math><semantics><mrow><mi>x</mi></mrow>',
+    '<annotation encoding="application/x-tex">' + PASTE_TEX + '</annotation>',
+    '</semantics></math></span>',
+    '<span class="katex-html" aria-hidden="true">x=2a\\u2212b\\u00b1b2\\u22124ac</span>',
+    '</span></span>',
+    '<p>后面一段普通文字。</p>'
+  ].join('')
+  const PASTE_HTML_INLINE = [
+    '<p>前面 <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mi>E</mi></mrow>',
+    '<annotation encoding="application/x-tex">E = mc^2</annotation>',
+    '</semantics></math></span><span class="katex-html" aria-hidden="true">E=mc2</span></span> 后面。</p>'
+  ].join('')
+  const PASTE_TEXT_BLOCK = [
+    '前面一段普通文字。',
+    '',
+    '$$',
+    PASTE_TEX,
+    '$$',
+    '',
+    '后面一段普通文字。'
+  ].join('\n')
+  const PASTE_BASE = ['第一段：占位。', '', '第二段：占位。'].join('\n')
+  const pasteRun = async (name, html, text) => {
+    await openDocWith(app, PASTE_BASE, name)
+    await waitEditor(app.ev)
+    await sleep(900)
+    await ensureFocus(app)
+    await app.ev(`(() => {
+      const ed = window.__L.ed()
+      ed.chain().focus().setTextSelection(ed.state.doc.content.size).run()
+      return 'ok'
+    })()`)
+    await sleep(250)
+    await app.ev(pasteWith(html, text))
+    await sleep(700)
+    return JSON.parse(await app.ev(SRC_SNAPSHOT))
+  }
+
+  // ① HTML 剪贴板（KaTeX 结构 + annotation，**前后各有一段普通文字**）
+  const pa1 = await pasteRun('math-edit-13a.md', PASTE_HTML_BLOCK, null)
+  report.check(
+    'PA1 ① HTML 剪贴板（KaTeX + annotation，前后都有文字）→ 出**块级公式节点**、渲染出 KaTeX、前后文字都在、序列化是规范 `$$…$$`（单反斜杠、无行尾 `\\`）',
+    pa1.blockSources.length === 1 &&
+      pa1.blockSources[0] === PASTE_TEX &&
+      pa1.paraTexts.includes('前面一段普通文字。') &&
+      pa1.paraTexts.includes('后面一段普通文字。') &&
+      pa1.inlineKatexCount >= 1 &&
+      String(pa1.freshMarkdown).includes('$$\n' + PASTE_TEX + '\n$$') &&
+      !String(pa1.freshMarkdown).includes('\\\\frac') &&
+      !String(pa1.freshMarkdown).includes('\\\n'),
+    'blocks=' +
+      JSON.stringify(pa1.blockSources) +
+      ' paras=' +
+      JSON.stringify(pa1.paraTexts) +
+      ' katex=' +
+      pa1.inlineKatexCount +
+      ' fresh=' +
+      JSON.stringify(String(pa1.freshMarkdown).slice(-90))
+  )
+  // ①b 两者都发（Typora 真实情形：HTML + 纯文本）
+  const pa1b = await pasteRun('math-edit-13b.md', PASTE_HTML_BLOCK, PASTE_TEXT_BLOCK)
+  report.check(
+    'PA1b ① 剪贴板**同时有 HTML 与纯文本**（Typora 真实情形）→ 结果与只发 HTML 一致：块级公式节点 + 规范序列化',
+    pa1b.blockSources.length === 1 &&
+      pa1b.blockSources[0] === PASTE_TEX &&
+      pa1b.paraTexts.includes('前面一段普通文字。') &&
+      pa1b.paraTexts.includes('后面一段普通文字。') &&
+      String(pa1b.freshMarkdown).includes('$$\n' + PASTE_TEX + '\n$$'),
+    'blocks=' + JSON.stringify(pa1b.blockSources) + ' paras=' + JSON.stringify(pa1b.paraTexts)
+  )
+
+  // ② 纯文本剪贴板（`$$…$$` 与其它内容混在一起）—— 这一条改前就是对的，本轮作为回归钉住
+  const pa2 = await pasteRun('math-edit-13c.md', null, PASTE_TEXT_BLOCK)
+  report.check(
+    'PA2 ② 纯文本剪贴板（`$$…$$` 夹在普通段落之间）→ **整块**成公式节点（不是被拆成段落文本 + `\\` 换行）',
+    pa2.blockSources.length === 1 &&
+      pa2.blockSources[0] === PASTE_TEX &&
+      pa2.paraTexts.includes('前面一段普通文字。') &&
+      String(pa2.freshMarkdown).includes('$$\n' + PASTE_TEX + '\n$$') &&
+      !String(pa2.freshMarkdown).includes('\\\n'),
+    'blocks=' +
+      JSON.stringify(pa2.blockSources) +
+      ' paras=' +
+      JSON.stringify(pa2.paraTexts) +
+      ' fresh=' +
+      JSON.stringify(String(pa2.freshMarkdown).slice(-80))
+  )
+
+  // ③ 行内公式从 HTML 粘贴 → 收成 `$…$` 且渲染
+  const pa3 = await pasteRun('math-edit-13d.md', PASTE_HTML_INLINE, null)
+  report.check(
+    'PA3 ③ HTML 剪贴板里的**行内**公式 → 收成 `$…$`（带 mdMath mark）且渲染出 KaTeX，前后文字都在',
+    pa3.mathMarkedTexts.includes('$E = mc^2$') &&
+      pa3.inlineKatexCount >= 1 &&
+      pa3.paraTexts.some((t) => t.includes('前面') && t.includes('后面。')) &&
+      String(pa3.freshMarkdown).includes('$E = mc^2$'),
+    'marked=' +
+      JSON.stringify(pa3.mathMarkedTexts) +
+      ' paras=' +
+      JSON.stringify(pa3.paraTexts) +
+      ' fresh=' +
+      JSON.stringify(String(pa3.freshMarkdown).slice(-70))
+  )
+
+  // ④ 普通富文本粘贴回归：没有数学时**完全不接管**（结构照旧、没有多余转义反斜杠）
+  const RICH_HTML = [
+    '<p>带<strong>粗体</strong>的段落。</p>',
+    '<ul><li>列表项一</li><li>列表项二</li></ul>',
+    '<table><tbody><tr><th>表头</th><td>值</td></tr></tbody></table>'
+  ].join('')
+  const pa4 = await pasteRun(
+    'math-edit-13e.md',
+    RICH_HTML,
+    '带粗体的段落。\n\n- 列表项一\n- 列表项二'
+  )
+  report.check(
+    'PA4 ④ 普通富文本（粗体 + 列表 + 表格，**没有数学**）粘贴结构照旧：列表与表格都在，且序列化里没有多余的反斜杠转义',
+    pa4.docTypes.includes('bulletList') &&
+      pa4.docTypes.includes('table') &&
+      String(pa4.freshMarkdown).includes('**粗体**') &&
+      !String(pa4.freshMarkdown).includes('\\\\'),
+    'types=' +
+      JSON.stringify(pa4.docTypes) +
+      ' fresh=' +
+      JSON.stringify(String(pa4.freshMarkdown).slice(-110))
+  )
+
+  // ⑤ 撤销：粘贴是**一个**可撤销的步
+  const pa5 = await pasteRun('math-edit-13f.md', PASTE_HTML_BLOCK, PASTE_TEXT_BLOCK)
+  const pa5Before = String(pa5.freshMarkdown)
+  await pressKey(app, 'z', 'KeyZ', 90, 2) // Ctrl+Z
+  await sleep(450)
+  const pa5Undo = JSON.parse(await app.ev(SRC_SNAPSHOT))
+  report.check(
+    'PA5 ⑤ 粘贴后一次 `Ctrl+Z` 撤销**整段**（公式节点与前后文字一起消失，回到粘贴前的文档）',
+    pa5Before.includes('mathBlock') === false &&
+      pa5.blockSources.length === 1 &&
+      pa5Undo.blockSources.length === 0 &&
+      !String(pa5Undo.freshMarkdown).includes('普通文字'),
+    'afterPasteBlocks=' +
+      JSON.stringify(pa5.blockSources) +
+      ' afterUndoBlocks=' +
+      JSON.stringify(pa5Undo.blockSources) +
+      ' afterUndo=' +
+      JSON.stringify(String(pa5Undo.freshMarkdown).slice(-60))
+  )
+
   app.close()
   return report.finish()
 }
