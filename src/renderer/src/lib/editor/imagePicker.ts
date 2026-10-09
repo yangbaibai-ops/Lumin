@@ -21,6 +21,8 @@ import { Decoration, DecorationSet } from '@tiptap/pm/view'
 import type { EditorView } from '@tiptap/pm/view'
 import type { Node as PMNode } from '@tiptap/pm/model'
 import { insertImageFromBytes } from '../insertImage'
+// 语言包（按钮的 title / aria-label 走它，见 pickerDom）
+import i18n from '../../i18n'
 
 const EMPTY_IMAGE = '![]()'
 const KEY = new PluginKey<number>('luminImagePicker')
@@ -75,6 +77,15 @@ function refresh(view: EditorView, side: 'before' | 'after'): void {
  *   `--accent-soft`（hover 底）/ `--accent-ink`（hover 图标）/ `--accent`（hover 边 + 焦点环）/
  *   `--sel`（按下态）。圆角没有令牌，取仓内小控件最常用的一档 `4px`。
  * 幂等：`<style>` 只插一次（id 判据），dev 热重载重复执行也不会叠。
+ *
+ * ⚠️ 注入的 CSS **正文里不许出现中文**（`tests/i18nHardcoded.test.mjs` 会把字符串字面量里的
+ * 中文当成"绕过语言包的界面文案"）。所以 CSS 里只留 ASCII，说明一律写在这段 TS 注释里：
+ *   * `.md-image-picker`：17×17 的图标按钮，圆角 4px、1px `--edge-strong` 边框、`--panel-2` 底；
+ *   * `:hover`：`--accent-soft` 底 + `--accent-ink` 图标 + `--accent` 边框；
+ *   * `:focus-visible`：2px `--accent` 焦点环（与 base.css 的全局环同口径，键盘用户看得见）；
+ *   * `:active`：`--sel` 底；
+ *   * `.md-image-caret`：自绘插入符（只在"点按钮右侧"这一档出现；左侧的原生插入符实测正常，
+ *     画了就重影），常驻 DOM、由 `is-on` 类切显隐；`.md-image-picker-wrap` 是它的定位外壳。
  */
 const STYLE_ID = 'md-image-picker-style'
 function ensureStyles(): void {
@@ -111,7 +122,6 @@ function ensureStyles(): void {
 .md-image-picker:active {
   background: var(--sel);
 }
-/* 自绘插入符（只在"点按钮右侧"这一档出现；左侧的原生插入符实测正常，画了就重影） */
 .md-image-caret {
   display: none;
   width: 1px;
@@ -156,8 +166,10 @@ function pickerDom(view: EditorView, pos: number): HTMLElement {
   button.className = 'md-image-picker'
   button.setAttribute('contenteditable', 'false')
   button.setAttribute('data-md-image-picker', '')
-  button.title = '选择图片'
-  button.setAttribute('aria-label', '选择图片')
+  // 文案走语言包（界面文案不许硬编码中文：tests/i18nHardcoded.test.mjs）
+  const pickLabel = i18n.global.t('editor.imagePick')
+  button.title = pickLabel
+  button.setAttribute('aria-label', pickLabel)
   const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg')
   svg.setAttribute('viewBox', '0 0 16 16')
   svg.setAttribute('width', '14')

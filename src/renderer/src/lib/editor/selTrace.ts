@@ -114,10 +114,12 @@ export function traceFlush(): void {
     try {
       const last = rows.length ? (JSON.parse(rows[rows.length - 1]) as { sel: string }) : null
       const tailTo = last ? Number(last.sel.split('-')[1]) : -1
+      // 控制台诊断串一律 ASCII：这层只在排查时打开，且 `tests/i18nHardcoded.test.mjs`
+      // 会把字符串字面量里的中文当成"绕过语言包的界面文案"（这里不是界面，但也别破规矩）
       const verdict =
-        '[verdict] maxTo=' + maxTo + ' tailTo=' + tailTo + ' 丢尾巴=' + String(tailTo < maxTo)
+        '[verdict] maxTo=' + maxTo + ' tailTo=' + tailTo + ' tailLost=' + String(tailTo < maxTo)
       const header =
-        '[lumin-sel-trace] seq=' + my + ' rows=' + rows.length + ' ' + verdict + ' 请整段复制：'
+        '[lumin-sel-trace] seq=' + my + ' rows=' + rows.length + ' ' + verdict + ' copy-all:'
       console.log(header + '\n' + rows.join('\n'))
       rows = []
       maxTo = -1

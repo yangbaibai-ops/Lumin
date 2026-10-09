@@ -320,6 +320,12 @@
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
+/* 去掉默认描边 ⇒ 必须自己给可见焦点环（键盘用户要看得见；口径与 base.css 的全局环一致） */
+.md-preview .img-src-line__input:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
 /* 非法输入：红边反馈 + 已还原原值（绝不写坏文档） */
 .md-preview .img-src-line__input.is-invalid {
   box-shadow: 0 0 0 1px var(--danger), 0 0 0 3px color-mix(in srgb, var(--danger) 18%, transparent);
@@ -330,7 +336,9 @@
 .md-preview .img-zoom-bar,
 .img-zoom-bar {
   position: absolute;
-  z-index: 6;
+  /* 小浮层工具条：用**分层令牌**，不再自己排数字（tests/zIndexStack.test.mjs 拦数字）
+     —— 与其它贴内容的 chip 同档，仍在弹窗/菜单/提示之下 */
+  z-index: var(--z-chip);
   display: inline-flex;
   align-items: center;
   gap: 2px;
