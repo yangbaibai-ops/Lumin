@@ -174,19 +174,23 @@ export const editorExtensions: Extensions = [
       // 没有 `src` 属性浏览器就不会发请求。点击占位 → 放行并在 DOM 里就地换成真图。
       // 导出 / getHTML() 期间由 beginExportRender() 放行，导出的文档里图片照旧齐全。
       if (needsRemotePermission(src, remoteImageProvider())) {
-        // 占位元素上不能带 `src`（带了浏览器就会去请求），原 src 放到 `data-src`。
-        // ⚠️ 第五十三轮用户口径：**不再渲染占位图标/文案**（原来是一枚 🔒 + 一行 alt/URL）——
-        // 那块区域只是"可点击但视觉为空"（点了才加载，隐私口径一个字没改：仍然没有 src、
-        // 仍然不自动请求）。类名保留 `img-guard` 作为点击钩子（处理器在 TyporaEditor.vue，
-        // 不在本轮可改文件范围里）；title 留着是为了键盘/读屏用户仍知道这里有什么。
+        /**
+         * 远程图未加载时的占位：**没有 `src`** 就永远不发请求（浏览器行为，不是我们的约定）。
+         *
+         * 口径沿革：第五十三轮把"虚线相框 + 🔒 + alt/URL 文案"删成了空元素；
+         * **第五十五轮连 `.img-guard` 类名一起删掉** —— 点击钩子改成走 `data-remote-src`
+         * （见 components/editor/TyporaEditor.vue），样式锚点改成属性选择器（assets/markdown.css）。
+         * 于是这块区域"可点击但视觉为空"，且类名/样式锚点都不再残留。
+         * title 留着是为了键盘/读屏用户仍知道这里有什么（不产生任何像素）。
+         */
         const rest = { ...(HTMLAttributes as Record<string, unknown>) }
         delete rest.src
         return [
           'span',
           {
             ...rest,
-            class: 'img-guard',
-            'data-src': src,
+            'data-remote-src': src,
+            'data-remote-alt': String(HTMLAttributes.alt ?? ''),
             title: i18n.global.t('editor.imageRemoteHidden'),
             role: 'button',
             tabindex: '0'

@@ -217,25 +217,27 @@ window.addEventListener('beforeunload', onWindowBeforeUnload)
 
 /**
  * ─── 远程图片占位：点击 / 回车即加载（自查报告 H2）──────────────────────────────
- * 渲染层把远程图渲染成 `<span class="img-guard" data-src=…>`（没有 `src` 就不会发请求）。
+ * 渲染层把远程图渲染成 `<span data-remote-src=…>`（**没有 `src` 就不会发请求**）。
  * 这里做**就地替换**：把该 src 记进会话白名单（后续重渲染直接出真图），并把占位换成 `<img>`。
- * 不碰文档：`data-src` 只是视图层的事，保存/导出用的仍是文档里的真实 src。
+ * 不碰文档：这些 data-* 只是视图层的事，保存/导出用的仍是文档里的真实 src。
+ *
+ * ⚠️ 第五十五轮：钩子从**类名** `.img-guard` 改成**属性** `[data-remote-src]` ——
+ * 占位元素不再有任何类名（用户口径："`.img-guard` 类名彻底消失"）。
  */
 function loadGuardedImage(el: HTMLElement): void {
-  const src = el.getAttribute('data-src')
+  const src = el.getAttribute('data-remote-src')
   if (!src) return
   allowRemoteImage(src)
   const img = document.createElement('img')
   img.src = src
-  // alt 直接取占位元素自己的属性：第五十三轮把占位里的文案节点（原 `.img-guard__label`）删掉了，
-  // 再按类名去查会恒为空 —— 而 `alt` 本来就在占位元素的属性上（见 extensions.ts 的 rest）。
-  img.alt = el.getAttribute('alt') ?? ''
+  // alt 取占位元素自己的 data-remote-alt（第五十三轮已删掉文案节点，按内容查会恒为空）
+  img.alt = el.getAttribute('data-remote-alt') ?? ''
   img.loading = 'lazy'
   el.replaceWith(img)
 }
 
 function onContainerClick(e: MouseEvent): void {
-  const el = (e.target as HTMLElement | null)?.closest?.('.img-guard') as HTMLElement | null
+  const el = (e.target as HTMLElement | null)?.closest?.('[data-remote-src]') as HTMLElement | null
   if (!el) return
   e.preventDefault()
   loadGuardedImage(el)
@@ -243,7 +245,7 @@ function onContainerClick(e: MouseEvent): void {
 
 function onContainerKeydown(e: KeyboardEvent): void {
   if (e.key !== 'Enter' && e.key !== ' ') return
-  const el = (e.target as HTMLElement | null)?.closest?.('.img-guard') as HTMLElement | null
+  const el = (e.target as HTMLElement | null)?.closest?.('[data-remote-src]') as HTMLElement | null
   if (!el) return
   e.preventDefault()
   loadGuardedImage(el)

@@ -226,6 +226,76 @@ export function applyZoom(view: EditorView, img: ImgSource, zoom: number, open: 
   })
 }
 
+/**
+ * 把源码行的文本解析成"要写进文档的形态"（第五十五轮：源码行可编辑）。
+ *   * `![alt](url)`            → `{ kind: 'md', alt, src }`
+ *   * `<img src=… style=… />`  → `{ kind: 'html', src, alt, zoom, raw }`
+ *   * 其它一律 `null` —— **解析不出来就绝不动文档**（宁可给用户一次红边反馈）。
+ */
+export function parseImgSourceInput(
+  text: string
+):
+  | { kind: 'md'; alt: string; src: string }
+  | { kind: 'html'; src: string; alt: string; zoom: number | null; raw: string }
+  | null {
+  const t = text.trim()
+  if (!t) return null
+  const md = /^!\[([^\]]*)\]\(\s*([^)\s]+)\s*\)$/.exec(t)
+  if (md) return { kind: 'md', alt: md[1], src: md[2] }
+  if (isRawImgHtml(t)) {
+    const src = rawHtmlAttr(t, 'src')
+    if (!src) return null
+    return {
+      kind: 'html',
+      src,
+      alt: rawHtmlAttr(t, 'alt') ?? '',
+      zoom: zoomOfStyle(rawHtmlAttr(t, 'style')),
+      raw: t
+    }
+  }
+  return null
+}
+
+/** 一次"源码行提交"的落点：`null` = 内容非法（调用方不许动文档） */
+export function commitImgSource(view: EditorView, img: ImgSource, text: string): boolean {
+  const parsed = parseImgSourceInput(text)
+  if (!parsed) return false
+  const { state } = view
+  const isBlock = state.doc.nodeAt(img.from)?.type.name === 'htmlBlock'
+  if (parsed.kind === 'md') {
+    if (img.kind === 'node') {
+      const node = state.doc.nodeAt(img.from)
+      view.dispatch(
+        state.tr.setNodeMarkup(img.from, undefined, {
+          ...node?.attrs,
+          alt: parsed.alt,
+          src: parsed.src
+        })
+      )
+    } else {
+      // 原文形态 → 换回真图片节点（**一个**节点，不会留下第二个标签）
+      const image = state.schema.nodes.image.create({ alt: parsed.alt, src: parsed.src })
+      view.dispatch(state.tr.replaceWith(img.from, img.to, image))
+    }
+    return true
+  }
+  // HTML 形态
+  if (img.kind === 'node') {
+    // 节点 → 原文形态（与点档位同一条路：`zoomedImgHtml` 是唯一的产出形状）
+    nodeToRaw(view, img, parsed.zoom ?? 100)
+    return true
+  }
+  if (isBlock) {
+    const node = state.doc.nodeAt(img.from)
+    view.dispatch(
+      state.tr.setNodeMarkup(img.from, undefined, { ...node?.attrs, source: parsed.raw })
+    )
+  } else {
+    replaceRaw(view, img, parsed.raw)
+  }
+  return true
+}
+
 /** 悬浮工具栏：定位在源码行**上方**（两者矩形不相交），右对齐 */
 function placeToolbar(view: EditorView, bar: HTMLElement, srcLine: HTMLElement | null): void {
   const anchor = srcLine ?? view.dom
@@ -246,6 +316,15 @@ export const ImageSourceUi = Extension.create({
 
   addProseMirrorPlugins() {
     let bar: HTMLElement | null = null
+    /** 源码行浮层（第五十六轮：挂在 `view.dom.parentElement` 上，**不在**编辑器 DOM 里） */
+    let srcLine: HTMLElement | null = null
+    /** 提交时需要的视图：由下面插件 `view()` 里赋值 */
+    let pluginView: EditorView | null = null
+    /** 正在编辑的位置与内容：只在"同一张图"上恢复，换图（或文档被换掉）一律重置 */
+    let editingAt: number | null = null
+    let editingText = ''
+    /** 上一次同步时源码行对着哪张图（换了就重置编辑态，免得把上一张的输入当成这一张的） */
+    let syncedFrom: number | null = null
 
     const ensureBar = (view: EditorView): HTMLElement => {
       if (bar && bar.isConnected) return bar
@@ -285,6 +364,110 @@ export const ImageSourceUi = Extension.create({
       bar = null
     }
 
+    /**
+     * 源码行浮层：一个挂在 `view.dom.parentElement` 上的绝对定位元素（内含可编辑 textarea）。
+     * 它**不在 `view.dom` 里** ⇒ ProseMirror 的 DOM 观察者完全看不到它（编辑不丢字、不重绘），
+     * 也不会进入 Markdown（导出/复制/往返都不带它）。
+     */
+    const ensureSrcLine = (view: EditorView): HTMLElement => {
+      if (srcLine && srcLine.isConnected) return srcLine
+      const line = document.createElement('div')
+      line.className = 'img-src-line img-src-line--overlay'
+      line.setAttribute('data-img-source', '')
+      line.setAttribute('contenteditable', 'false')
+      const input = document.createElement('textarea')
+      input.className = 'img-src-line__input'
+      input.setAttribute('data-img-source-input', '')
+      input.setAttribute('spellcheck', 'false')
+      input.setAttribute('rows', '1')
+      const cur = (): ImgSource | null => {
+        const v = pluginView
+        if (!v) return null
+        const all = collectImgSources(v.state)
+        const at = KEY.getState(v.state)?.from ?? null
+        return (
+          (at == null ? null : (all.find((i) => i.from === at) ?? null)) ??
+          (editingAt == null ? null : (all.find((i) => i.from === editingAt) ?? null))
+        )
+      }
+      const orig = (): string => cur()?.markdown ?? ''
+      const commit = (): void => {
+        const v = pluginView
+        if (!v) return
+        const target = cur()
+        if (!target) return
+        const ok = safeCommit(v, line, target, input.value, orig())
+        if (ok) {
+          editingAt = null
+          editingText = ''
+          input.classList.remove('is-invalid')
+        }
+      }
+      input.addEventListener('input', () => {
+        editingAt = KEY.getState(view.state)?.from ?? null
+        editingText = input.value
+        input.classList.remove('is-invalid')
+      })
+      input.addEventListener('keydown', (e) => {
+        // 浮层不在编辑器 DOM 里，但仍然别把按键漏给编辑器的快捷键
+        e.stopPropagation()
+        if (e.key === 'Enter') {
+          e.preventDefault()
+          commit()
+        } else if (e.key === 'Escape') {
+          e.preventDefault()
+          editingAt = null
+          editingText = ''
+          input.value = orig()
+          input.classList.remove('is-invalid')
+          input.blur()
+          view.dispatch(view.state.tr.setMeta(KEY, { from: null }))
+        }
+      })
+      input.addEventListener('blur', () => {
+        if (input.classList.contains('is-invalid')) return
+        if (input.value.trim() === orig().trim()) return
+        commit()
+      })
+      line.appendChild(input)
+      ;(view.dom.parentElement ?? document.body).appendChild(line)
+      srcLine = line
+      return line
+    }
+
+    const hideSrcLine = (): void => {
+      if (srcLine) srcLine.remove()
+      srcLine = null
+    }
+
+    /** 提交一次：非法/异常 ⇒ 不动文档 + 红边 + 还原原值（文档永远不许被写坏） */
+    const safeCommit = (
+      view: EditorView,
+      line: HTMLElement,
+      img: ImgSource,
+      text: string,
+      original: string
+    ): boolean => {
+      const input = line.querySelector<HTMLTextAreaElement>('[data-img-source-input]')
+      try {
+        const ok = commitImgSource(view, img, text)
+        line.setAttribute('data-img-commit', ok ? 'ok' : 'bad-parse')
+        if (!ok && input) {
+          input.classList.add('is-invalid')
+          input.value = original
+        }
+        return ok
+      } catch (err) {
+        line.setAttribute('data-img-commit', 'error')
+        line.setAttribute('data-img-commit-msg', String((err as Error)?.message).slice(0, 120))
+        if (input) {
+          input.classList.add('is-invalid')
+          input.value = original
+        }
+        return false
+      }
+    }
+
     return [
       new Plugin<{ from: number | null }>({
         key: KEY,
@@ -313,7 +496,6 @@ export const ImageSourceUi = Extension.create({
         },
         props: {
           decorations(state) {
-            const open = KEY.getState(state)?.from ?? null
             const imgs = collectImgSources(state)
             const decos: Decoration[] = []
             // ① 图片**居中**：给"只有一张图"的块挂一个类（比 CSS `:only-child` 稳 ——
@@ -349,15 +531,35 @@ export const ImageSourceUi = Extension.create({
                     ? Decoration.node(img.from, img.to, { class: 'img-src-marker-hidden' })
                     : Decoration.inline(img.from, img.to, { class: 'img-src-marker-hidden' })
                 )
-                // 在同一位置画真图（缩放按源码里的 style）
+                // 在同一位置画真图（缩放按源码里的 style）。
+                // ⚠️ 第五十五轮：**行内上下文里保持行内** —— `文字 <img> 文字` 不许拆行。
+                //    判据：这段原文是行内文本、且它所在的段落里还有别的**非空**内容
+                //    ⇒ 用 inline-block 随文字流动；否则（独占一行）才按块级居中。
+                const parent = state.doc.resolve(img.from).parent
+                let inline = false
+                if (!isBlock) {
+                  let others = 0
+                  parent.forEach((child) => {
+                    if (child.isText) {
+                      const t = (child.text ?? '').trim()
+                      if (!t) return
+                      if (isRawImgHtml(t)) return
+                      others += 1
+                      return
+                    }
+                    others += 1
+                  })
+                  inline = others > 0
+                }
                 decos.push(
                   Decoration.widget(
                     img.from,
                     () => {
                       const span = document.createElement('span')
-                      span.className = 'img-widget'
+                      span.className = inline ? 'img-widget img-widget--inline' : 'img-widget'
                       span.setAttribute('data-img-widget', '')
                       span.setAttribute('data-img-from', String(img.from))
+                      span.setAttribute('data-img-inline', inline ? 'true' : 'false')
                       const im = document.createElement('img')
                       im.src = img.src
                       if (img.alt) im.alt = img.alt
@@ -370,24 +572,6 @@ export const ImageSourceUi = Extension.create({
                   )
                 )
               }
-              if (img.from !== open) continue
-              // 源码行：只读 + 可复制（上方一块；用 data-* 语义锚点给套件定位）
-              decos.push(
-                Decoration.widget(
-                  img.from,
-                  () => {
-                    const line = document.createElement('div')
-                    line.className = 'img-src-line'
-                    line.setAttribute('data-img-source', '')
-                    line.setAttribute('data-img-kind', img.kind)
-                    line.setAttribute('data-img-zoom', String(img.zoom ?? 100))
-                    line.setAttribute('contenteditable', 'false')
-                    line.textContent = img.markdown
-                    return line
-                  },
-                  { side: -2 }
-                )
-              )
             }
             return DecorationSet.create(state.doc, decos)
           },
@@ -423,23 +607,74 @@ export const ImageSourceUi = Extension.create({
           }
         },
         view(editorView) {
+          pluginView = editorView
+          /**
+           * ─── 源码行 = **编辑器 DOM 之外的浮层**（第五十六轮）────────────────────────
+           *
+           * 为什么不能继续做 widget：源码行里是 `<textarea>`，Chromium 会把它的 value 镜像成
+           * 一个子文本节点 ⇒ 在 PM 眼里那是编辑器 DOM 里的一次变更 ⇒ **重绘 widget**，
+           * 用户正在编辑的那份 DOM 被换掉（实测：新 URL 在提交前被还原，改 URL 静默失效）。
+           * 搬出来之后这块 DOM 完全不在 `view.dom` 里，PM 的 DOM 观察者看不到任何东西
+           * —— 编辑不再丢字、也不再需要"重绘后恢复"那套补丁。
+           *
+           * 定位与工具栏**同一套逻辑**：都挂在 `view.dom.parentElement`（编辑器滚动容器）上，
+           * 用绝对定位按"图片矩形"现量摆放：源码行贴图片上沿，工具栏再贴源码行上沿。
+           * 因为它只是视图层的 DOM，**永远不会进入 Markdown**（导出/复制/往返都不带它）。
+           */
+          const imgRectOf = (img: ImgSource): DOMRect | null => {
+            if (img.kind === 'node') {
+              const dom = editorView.nodeDOM(img.from) as HTMLElement | null
+              return dom && typeof dom.getBoundingClientRect === 'function'
+                ? dom.getBoundingClientRect()
+                : null
+            }
+            const w = editorView.dom.querySelector(
+              `[data-img-widget][data-img-from="${img.from}"]`
+            ) as HTMLElement | null
+            return w ? w.getBoundingClientRect() : null
+          }
+          const placeSrcLine = (line: HTMLElement, rect: DOMRect, base: DOMRect): void => {
+            line.style.top = `${Math.round(rect.top - base.top - line.offsetHeight - 4)}px`
+            line.style.left = `${Math.round(rect.left - base.left)}px`
+            line.style.width = `${Math.round(rect.width)}px`
+          }
           const sync = (): void => {
-            /**
-             * 工具栏的可见性**由源码行的存在决定**（而不是由插件里那个位置值决定）：
-             * 位置在编辑过程中会漂（缩放把 `![alt](src)` 换成 `<img …>` 时长度就变了），
-             * 只要"位置对不上任何图片"，源码行就不渲染了 —— 那时工具栏必须一起消失，
-             * 否则会留下一个没有源码行可依附的孤儿浮层。
-             */
-            const line = editorView.dom.querySelector('[data-img-source]') as HTMLElement | null
-            if (!line) {
+            const open = KEY.getState(editorView.state)?.from ?? null
+            const imgs = collectImgSources(editorView.state)
+            const img = open == null ? null : (imgs.find((i) => i.from === open) ?? null)
+            if (!img) {
+              hideSrcLine()
               hideBar()
               return
             }
-            const open = KEY.getState(editorView.state)?.from ?? null
+            const rect = imgRectOf(img)
+            if (!rect) {
+              hideSrcLine()
+              hideBar()
+              return
+            }
+            const line = ensureSrcLine(editorView)
+            // 换了一张图（或文档整个换了）⇒ 编辑态重置，别把上一张的输入带过来
+            if (syncedFrom !== img.from) {
+              syncedFrom = img.from
+              editingAt = null
+              editingText = ''
+            }
+            const base = (line.offsetParent as HTMLElement | null)?.getBoundingClientRect() ?? null
+            placeSrcLine(line, rect, base ?? ({ left: 0, top: 0 } as DOMRect))
+            // 内容与状态每次同步都刷新（位置/缩放/形态变化后都要对）
+            const ta = line.querySelector<HTMLTextAreaElement>('[data-img-source-input]')
+            if (ta) {
+              const resumed = editingAt === img.from
+              const want = resumed ? editingText : img.markdown
+              if (ta.value !== want) ta.value = want
+              line.setAttribute('data-img-kind', img.kind)
+              line.setAttribute('data-img-zoom', String(img.zoom ?? 100))
+              line.setAttribute('data-img-text', img.markdown)
+            }
             const el = ensureBar(editorView)
             placeToolbar(editorView, el, line)
-            const img = collectImgSources(editorView.state).find((i) => i.from === open)
-            const active = img?.zoom ?? 100
+            const active = img.zoom ?? 100
             for (const b of Array.from(el.querySelectorAll<HTMLElement>('[data-img-zoom]'))) {
               const pct = Number(b.getAttribute('data-img-zoom'))
               b.classList.toggle('is-active', pct === active)
@@ -447,8 +682,7 @@ export const ImageSourceUi = Extension.create({
               b.title = i18n.global.t('editor.imageZoom', { pct })
             }
           }
-          // 装饰变化 / 滚动 / 尺寸变化都可能要挪工具栏；update 里**同步**做一次
-          // （放进 rAF 会留下一帧的孤儿窗口期：源码行已经没了、工具栏还在）
+          // 装饰变化 / 滚动 / 尺寸变化都可能要挪浮层；update 里**同步**做一次
           const ro = new ResizeObserver(() => sync())
           ro.observe(editorView.dom)
           const onScroll = (): void => sync()
@@ -465,6 +699,7 @@ export const ImageSourceUi = Extension.create({
               ro.disconnect()
               editorView.dom.removeEventListener('scroll', onScroll, true)
               hideBar()
+              hideSrcLine()
             }
           }
         }

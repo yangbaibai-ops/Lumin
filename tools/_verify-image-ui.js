@@ -31,7 +31,8 @@ const PNG_B =
 const MD =
   `![](PLACE_A)\n\n` +
   `qian <img src="PLACE_B" style="zoom:50%;" /> hou\n\n` +
-  `![remote](https://example.com/x.png)\n\n最后一段文字。\n`
+  `![remote](https://example.com/x.png)\n\n` +
+  `<img src="PLACE_B" style="zoom:25%;" />\n\n最后一段文字。\n`
 
 const results = []
 function check(name, ok, extra) {
@@ -114,7 +115,9 @@ async function main() {
       const bar = document.querySelector('[data-img-zoom-bar]')
       return {
         hasLine: !!line,
-        lineText: line ? line.textContent : null,
+        lineText: line ? line.getAttribute('data-img-text') : null,
+        lineValue: (() => { const i = document.querySelector('[data-img-source-input]'); return i ? i.value : null })(),
+        lineInvalid: !!document.querySelector('[data-img-source-input].is-invalid'),
         lineKind: line ? line.getAttribute('data-img-kind') : null,
         hasBar: !!bar,
         active: bar ? (bar.querySelector('[data-img-zoom].is-active') || {}).textContent || null : null,
@@ -157,11 +160,11 @@ async function main() {
   const A = await state()
   check(
     '②A 点图片 ⇒ 上方出现源码行且内容 == 该图 markdown',
-    A.hasLine && A.lineText === `![](${PNG_A})` && A.lineKind === 'node',
-    JSON.stringify({ hasLine: A.hasLine, kind: A.lineKind, lineText: (A.lineText || '').slice(0, 30) })
+    A.hasLine && A.lineValue === `![](${PNG_A})` && A.lineKind === 'node',
+    JSON.stringify({ hasLine: A.hasLine, kind: A.lineKind, lineValue: (A.lineValue || '').slice(0, 30) })
   )
   const shot1 = await send('Page.captureScreenshot', { format: 'png' })
-  safe(() => fs.writeFileSync(path.join(process.cwd(), 'img-source-toolbar.png'), Buffer.from(shot1.result.data, 'base64')), null)
+  safe(() => fs.writeFileSync(path.join(process.cwd(), 'tmp', 'img-source-toolbar.png'), Buffer.from(shot1.result.data, 'base64')), null)
 
   // ── ③ 悬浮工具栏（此刻源码行开着）──
   const bar = await json(`(() => {
@@ -256,7 +259,7 @@ async function main() {
       tagsForA: countTag(after75.md, `<img src="${PNG_A}"`),
       zoom50: countTag(after75.md, 'style="zoom:50%;"'),
       zoom75: countTag(after75.md, 'style="zoom:75%;"'),
-      before: before75.lineText ? before75.lineText.slice(0, 24) : null
+      before: before75.lineValue ? before75.lineValue.slice(0, 24) : null
     })
   )
 
@@ -285,8 +288,8 @@ async function main() {
   const D = await state()
   check(
     '②D 选区边界**切进**构造内部 ⇒ 显示，且源码 == 文档里那段原文',
-    D.hasLine && D.lineKind === 'raw' && D.lineText === `<img src="${PNG_B}" style="zoom:75%;" />`,
-    JSON.stringify({ rawRange, hasLine: D.hasLine, kind: D.lineKind, text: (D.lineText || '').slice(0, 40) })
+    D.hasLine && D.lineKind === 'raw' && D.lineValue === `<img src="${PNG_B}" style="zoom:75%;" />`,
+    JSON.stringify({ rawRange, hasLine: D.hasLine, kind: D.lineKind, text: (D.lineValue || '').slice(0, 40) })
   )
   await ev(`(() => { window.__vt.ed().commands.setTextSelection({ from: ${rawRange.from - 1}, to: ${rawRange.to + 1} }); return 'ok' })()`)
   await sleep(400)
@@ -295,7 +298,7 @@ async function main() {
 
   // ── ⑤ 远程图片：无占位图标/文案；未点击不发请求 ──
   const guard = await json(`(() => {
-    const els = [...document.querySelectorAll('.img-guard')]
+    const els = [...document.querySelectorAll('[data-remote-src]')]
     const first = els[0] || null
     const cs = first ? getComputedStyle(first, '::before') : null
     return {
@@ -303,9 +306,9 @@ async function main() {
       childNodes: first ? first.childNodes.length : -1,
       text: first ? first.textContent : null,
       labels: document.querySelectorAll('.img-guard__label').length,
-      svgs: document.querySelectorAll('.img-guard svg, .img-guard img').length,
+      svgs: document.querySelectorAll('[data-remote-src] svg, [data-remote-src] img').length,
       hasSrc: first ? first.hasAttribute('src') : null,
-      dataSrc: first ? first.getAttribute('data-src') : null,
+      dataSrc: first ? first.getAttribute('data-remote-src') : null,
       beforeContent: cs ? cs.content : null,
       border: first ? getComputedStyle(first).borderStyle : null,
       background: first ? getComputedStyle(first).backgroundColor : null
@@ -330,7 +333,170 @@ async function main() {
     JSON.stringify({ remoteReqs, hasSrc: guard.hasSrc, dataSrc: guard.dataSrc })
   )
   const shot2 = await send('Page.captureScreenshot', { format: 'png' })
-  safe(() => fs.writeFileSync(path.join(process.cwd(), 'img-centered.png'), Buffer.from(shot2.result.data, 'base64')), null)
+  safe(() => fs.writeFileSync(path.join(process.cwd(), 'tmp', 'img-centered.png'), Buffer.from(shot2.result.data, 'base64')), null)
+
+  // ═══ 第五十五轮新增：① 源码行可编辑 ═══════════════════════════════════════════
+  // 先把文档**复位成夹具**（前面的缩放/转换已经改过它；这一组要的是确定的那段）
+  await ev(`(() => { window.__vt.ed().commands.setContent(${JSON.stringify(doc)}); return 'ok' })()`)
+  await sleep(900)
+  // 先点开 P1 的图片，让源码行出现
+  await click(await firstImgPt())
+  const edit0 = await state()
+  check(
+    'E1 源码行是**可编辑控件**（出现 `[data-img-source-input]` 且初值 == 当前源码）',
+    edit0.hasLine && edit0.lineValue === `![](${PNG_A})`,
+    JSON.stringify({ hasLine: edit0.hasLine, value: (edit0.lineValue || '').slice(0, 24) })
+  )
+  // 编辑中（只输入、不提交）⇒ 源码行不许被显隐判据收走
+  const editedUrl = 'https://example.org/pic-renamed.png'
+  await ev(`(() => {
+    const i = document.querySelector('[data-img-source-input]')
+    i.focus()
+    i.value = ${JSON.stringify(`![pic2](${editedUrl})`)}
+    i.dispatchEvent(new Event('input', { bubbles: true }))
+    return 'ok'
+  })()`)
+  await sleep(450)
+  const editing = await state()
+  check(
+    'E2 编辑期间源码行**不消失**（打字不提交时仍在，且文档还没变）',
+    editing.hasLine && editing.md.indexOf(editedUrl) < 0,
+    JSON.stringify({ hasLine: editing.hasLine, docChanged: editing.md.indexOf(editedUrl) >= 0 })
+  )
+  // 回车提交：Markdown 逐字节等于新的 `![pic2](新URL)`，图片重渲染成新 src
+  await ev(`(() => {
+    const i = document.querySelector('[data-img-source-input]')
+    i.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))
+    return 'ok'
+  })()`)
+  await sleep(900)
+  const committed = await state()
+  const commitMark = await ev(
+    `(() => { const l = document.querySelector('[data-img-source]'); return l ? (l.getAttribute('data-img-commit') || '(none)') + ' ' + (l.getAttribute('data-img-commit-msg') || '') : 'no-line' })()`
+  )
+  const wantMd = `![pic2](${editedUrl})`
+  const p1ImgSrc = await ev(`(() => {
+    // 新 src 是**远程**地址 ⇒ 按隐私闸门它渲染成占位（没有 src 属性）；
+    // 所以"图片跟着重渲染"的证据是二者之一：真 <img src> 或 [data-remote-src] 占位。
+    const want = ${JSON.stringify(editedUrl)}
+    const im = [...document.querySelectorAll('.ProseMirror img')].find((x) => x.getAttribute('src') === want)
+    if (im) return im.getAttribute('src')
+    const ph = [...document.querySelectorAll('[data-remote-src]')].find((x) => x.getAttribute('data-remote-src') === want)
+    return ph ? ph.getAttribute('data-remote-src') : null
+  })()`)
+  check(
+    'E3 改 URL + 回车 ⇒ Markdown 逐字节等于新 `![alt](url)`，且图片重渲染（img.src 跟着变）',
+    committed.md.indexOf(wantMd) >= 0 && p1ImgSrc === editedUrl,
+    JSON.stringify({
+      wantMd,
+      inMd: committed.md.indexOf(wantMd) >= 0,
+      imgSrc: String(p1ImgSrc).slice(0, 40),
+      commit: commitMark,
+      value: (committed.lineValue || '').slice(0, 30)
+    })
+  )
+  // 非法输入：不改文档 + 红边反馈 + 还原原值
+  const beforeBad = committed.md
+  const valueBeforeBad = committed.lineValue
+  await ev(`(() => {
+    const i = document.querySelector('[data-img-source-input]')
+    i.focus()
+    i.value = '这不是图片源码'
+    i.dispatchEvent(new Event('input', { bubbles: true }))
+    i.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))
+    return 'ok'
+  })()`)
+  await sleep(600)
+  const bad = await state()
+  check(
+    'E4 非法输入 ⇒ **文档不变**（前后 Markdown 相同）+ 红边 + 还原原值',
+    bad.md === beforeBad && bad.lineInvalid === true && bad.lineValue === valueBeforeBad,
+    JSON.stringify({
+      sameDoc: bad.md === beforeBad,
+      invalid: bad.lineInvalid,
+      restored: bad.lineValue === valueBeforeBad,
+      value: (bad.lineValue || '').slice(0, 40)
+    })
+  )
+
+  // ═══ ② 行内混排的原始 HTML 图片不许拆行 ═══════════════════════════════════════
+  const lineInfo = await json(`(() => {
+    const ps = [...document.querySelectorAll('.ProseMirror p')]
+    const p2 = ps[1]
+    const w = p2 ? p2.querySelector('[data-img-widget]') : null
+    const txt = p2 ? [...p2.querySelectorAll('*')].filter((e) => e !== w && !e.contains(w) && (e.textContent || '').trim()) : []
+    return {
+      inline: w ? w.getAttribute('data-img-inline') : null,
+      p2Rects: p2 ? p2.getClientRects().length : -1,
+      p2Height: p2 ? Math.round(p2.getBoundingClientRect().height) : -1,
+      textRects: txt.map((e) => { const r = e.getBoundingClientRect(); return { t: Math.round(r.top), b: Math.round(r.bottom), txt: (e.textContent || '').trim().slice(0, 8) } }),
+      widgetRect: w ? (() => { const r = w.getBoundingClientRect(); return { t: Math.round(r.top), b: Math.round(r.bottom), l: Math.round(r.left), w: Math.round(r.width) } })() : null
+    }
+  })()`)
+  const sameLine =
+    lineInfo.widgetRect &&
+    lineInfo.textRects.filter((r) => r.b > r.t).length > 0 &&
+    lineInfo.textRects
+      .filter((r) => r.b > r.t) // 只看**可见**文本（被隐藏的标记文本 rect 是 0 高）
+      .every((r) => r.b > lineInfo.widgetRect.t && r.t < lineInfo.widgetRect.b)
+  check(
+    'E5 行内混排的 `<img>` **保持行内**（widget 是 inline、与前后文字在同一行的纵向区间里）',
+    lineInfo.inline === 'true' && sameLine,
+    JSON.stringify(lineInfo)
+  )
+  const standalone = await json(`(() => {
+    const all = [...document.querySelectorAll('[data-img-widget]')]
+    const w = all.find((x) => x.getAttribute('data-img-inline') === 'false') || null
+    if (!w) return { ok: false, widgets: all.map((x) => x.getAttribute('data-img-inline')) }
+    const host = document.querySelector('[data-editor-kernel]') || document.querySelector('.ProseMirror')
+    const r = w.getBoundingClientRect()
+    const h = host.getBoundingClientRect()
+    return {
+      ok: true,
+      inline: w.getAttribute('data-img-inline'),
+      offset: Math.round(Math.abs(r.left + r.width / 2 - (h.left + h.width / 2))),
+      display: getComputedStyle(w).display
+    }
+  })()`)
+  check(
+    'E6 独占一行的 `<img>` 仍是**块级居中**（offset ≈ 0）',
+    standalone.ok && standalone.inline === 'false' && standalone.offset <= 4,
+    JSON.stringify(standalone)
+  )
+
+  // ═══ ③ `.img-guard` 彻底消失（改判据 + 点击加载仍可用）═══════════════════════════
+  const guardGone = await json(`(() => ({
+    byClass: document.querySelectorAll('.img-guard').length,
+    byLabel: document.querySelectorAll('.img-guard__label').length,
+    byDataAttr: document.querySelectorAll('[data-remote-src]').length,
+    childNodes: (document.querySelector('[data-remote-src]') || {}).childNodes ? document.querySelector('[data-remote-src]').childNodes.length : -1,
+    hasSrc: (document.querySelector('[data-remote-src]') || { hasAttribute: () => null }).hasAttribute('src')
+  }))()`)
+  check(
+    'E7 `.img-guard` 类名与文案节点计数均为 **0**（占位改用 `[data-remote-src]`）',
+    guardGone.byClass === 0 && guardGone.byLabel === 0 && guardGone.byDataAttr >= 1 && guardGone.childNodes === 0,
+    JSON.stringify(guardGone)
+  )
+  const reqsBeforeClick = events.filter(
+    (m) => m.method === 'Network.requestWillBeSent' && /example\.com/.test(m.params?.request?.url || '')
+  ).length
+  const clickPt = await json(`(() => {
+    // 明确点**那张远程图（example.com）**的占位：E3 之后 P1 也变成远程图了，不能取第一个
+    const el = document.querySelector('[data-remote-src*="example.com"]') || document.querySelector('[data-remote-src]')
+    if (!el) return null
+    const r = el.getBoundingClientRect()
+    return { x: Math.round(r.left + Math.max(2, r.width / 2)), y: Math.round(r.top + Math.max(2, r.height / 2)) }
+  })()`)
+  await click(clickPt)
+  await sleep(900)
+  const reqsAfterClick = events.filter(
+    (m) => m.method === 'Network.requestWillBeSent' && /example\.com/.test(m.params?.request?.url || '')
+  ).length
+  check(
+    'E8 点击占位**仍然能加载**：点击前请求数 == 0、点击后 > 0（且占位已被换成真 `<img>`）',
+    reqsBeforeClick === 0 && reqsAfterClick > 0,
+    JSON.stringify({ reqsBeforeClick, reqsAfterClick })
+  )
 
   const pass = results.filter((r) => r.ok).length
   console.log(`TOTAL ${results.length} PASS ${pass} FAIL ${results.length - pass}`)

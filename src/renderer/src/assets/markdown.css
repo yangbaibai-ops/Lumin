@@ -250,15 +250,27 @@
   margin-inline: auto;
 }
 /* 原始 HTML 图片（`<img …>` 走 MdHtml 原文透传）由 imageToolbar 的 widget 画出来：
-   它是块级容器 → 独占一行并居中，与 `![alt](src)` 单独成段时的观感一致 */
+   独占一行时是块级容器（居中）；**行内上下文里保持行内**（见下面 `--inline`） */
 .md-preview .img-widget {
   display: block;
   text-align: center;
   margin: 0.35em 0;
 }
+/* 行内上下文（段里还有别的文字/节点）⇒ 随文字流动、**不许拆行**（第五十五轮用户口径） */
+.md-preview .img-widget--inline {
+  display: inline-block;
+  text-align: initial;
+  margin: 0 0.15em;
+  vertical-align: middle;
+}
 .md-preview .img-widget img {
   display: block;
   margin-inline: auto;
+}
+.md-preview .img-widget--inline img {
+  display: inline-block;
+  margin-inline: 0;
+  vertical-align: middle;
 }
 /* 「这一段只有一张图」→ 块级居中（由 imageToolbar 挂类，比 `:only-child` 稳：
    行内图片旁边可能还有被隐藏的标记文本、或 widget 装饰） */
@@ -277,7 +289,8 @@
 .md-preview .img-src-marker-hidden {
   display: none;
 }
-/* 源码行（图片的"标记字符"展开态）：图片**上方**一块，只读 + 可复制 */
+/* 源码行（图片的"标记字符"展开态）：图片**上方**一块，**可编辑**（第五十五轮）
+   ——只读 + 可复制是上一轮的形态，本轮加了内部的 textarea */
 .md-preview .img-src-line {
   display: block;
   width: 100%;
@@ -289,10 +302,28 @@
   font-family: var(--font-mono, ui-monospace, monospace);
   font-size: 0.82em;
   line-height: 1.45;
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
   cursor: text;
   user-select: text;
+}
+.md-preview .img-src-line__input {
+  display: block;
+  width: 100%;
+  border: 0;
+  outline: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  line-height: inherit;
+  resize: none;
+  padding: 0;
+  overflow: hidden;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+/* 非法输入：红边反馈 + 已还原原值（绝不写坏文档） */
+.md-preview .img-src-line__input.is-invalid {
+  box-shadow: 0 0 0 1px var(--danger), 0 0 0 3px color-mix(in srgb, var(--danger) 18%, transparent);
+  border-radius: 4px;
 }
 /* ── 悬浮工具栏（100/75/50/25）────────────────────────────────────────────────
    绝对定位在**源码行上方**（imageToolbar 里按两者的矩形算），因此与源码行矩形不相交 */
@@ -331,10 +362,11 @@
   font-weight: 600;
 }
 /* ── 远程图片占位（隐私闸门，见 lib/remoteImages.ts）──────────────────────────
-   第五十三轮用户口径：**不再渲染占位图标/文案**。这块区域"可点击但视觉为空"：
-   没有任何图标、没有文案、没有边框与底色，只留一个可点中的热区（点了才加载）。
+   第五十三轮把图标/文案删成空元素；**第五十五轮连 `.img-guard` 类名一起删掉** ——
+   这里改成按属性 `[data-remote-src]` 定位（与 TyporaEditor.vue 的点击钩子同一判据）。
+   区域"可点击但视觉为空"：没有图标、没有文案、没有边框与底色，只留一个可点中的热区。
    ⚠️ 仍然**没有** `src` 属性 ⇒ 未点击时不会发起任何远程请求（隐私口径未变）。 */
-.md-preview .img-guard {
+.md-preview [data-remote-src] {
   display: inline-block;
   min-width: 1.5em;
   min-height: 1.2em;
@@ -343,12 +375,10 @@
   background: none;
   border: 0;
 }
-.md-preview .img-guard:focus-visible {
+.md-preview [data-remote-src]:focus-visible {
   outline: none;
   box-shadow: 0 0 0 3px var(--accent-soft);
 }
-/* ── 远程图片占位：第五十三轮已改成"视觉为空"（规则在上面的 `.img-guard` 那一段）。
-   这一块旧样式（虚线相框 + 🔒 + 域名标签）整段删除 —— 用户口径是**不再渲染占位图标/文案**。 */
 .md-preview .katex {
   font-size: 1.06em;
 }
