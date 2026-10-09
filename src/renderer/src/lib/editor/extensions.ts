@@ -23,6 +23,8 @@ import { TyporaMarkers } from './markers'
 import { TyporaInputRules } from './inputRules'
 import { TyporaKeymap } from './keymap'
 import { ImagePaste } from './imagePaste'
+// 图片的源码标记（点击显示 / 缩放写进源码 / 悬浮工具栏）见该文件的长注释
+import { ImageSourceUi } from './imageToolbar'
 import { MathPaste } from './mathPaste'
 import { NoTextDrag } from './noTextDrag'
 import { CodeBlockCM } from './codeBlock'
@@ -172,7 +174,11 @@ export const editorExtensions: Extensions = [
       // 没有 `src` 属性浏览器就不会发请求。点击占位 → 放行并在 DOM 里就地换成真图。
       // 导出 / getHTML() 期间由 beginExportRender() 放行，导出的文档里图片照旧齐全。
       if (needsRemotePermission(src, remoteImageProvider())) {
-        // 占位元素上不能带 `src`（带了浏览器就会去请求），原 src 放到 `data-src`
+        // 占位元素上不能带 `src`（带了浏览器就会去请求），原 src 放到 `data-src`。
+        // ⚠️ 第五十三轮用户口径：**不再渲染占位图标/文案**（原来是一枚 🔒 + 一行 alt/URL）——
+        // 那块区域只是"可点击但视觉为空"（点了才加载，隐私口径一个字没改：仍然没有 src、
+        // 仍然不自动请求）。类名保留 `img-guard` 作为点击钩子（处理器在 TyporaEditor.vue，
+        // 不在本轮可改文件范围里）；title 留着是为了键盘/读屏用户仍知道这里有什么。
         const rest = { ...(HTMLAttributes as Record<string, unknown>) }
         delete rest.src
         return [
@@ -184,8 +190,7 @@ export const editorExtensions: Extensions = [
             title: i18n.global.t('editor.imageRemoteHidden'),
             role: 'button',
             tabindex: '0'
-          },
-          ['span', { class: 'img-guard__label' }, String(HTMLAttributes.alt ?? src)]
+          }
         ]
       }
       return ['img', { ...HTMLAttributes, src, loading: 'lazy' }]
@@ -216,6 +221,8 @@ export const editorExtensions: Extensions = [
   TyporaInputRules,
   // 图片：粘贴剪贴板 / 拖入文件 → 落进工作区 assets/ 并插入相对路径（见 lib/insertImage.ts）
   ImagePaste,
+  // 图片的**源码标记 + 缩放工具栏**（第五十三轮）：点击显示源码行、档位把 zoom 写进源码
+  ImageSourceUi,
   // 公式粘贴（第十三轮）：剪贴板 HTML 里如果有数学（KaTeX/MathJax 的 DOM、我们自己的
   // 复制形态），先把原文取回来换成 `mathBlock` / `$…$`，再交给常规 HTML 解析；
   // 没有数学就完全不接管（普通富文本粘贴不受影响）。**必须排在 ImagePaste 之后**：

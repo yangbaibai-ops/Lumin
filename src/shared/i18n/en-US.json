@@ -219,6 +219,7 @@
     "deleteConfirmBody": "Delete \"{name}\"? It will be moved to the system recycle bin (you can restore it from there).",
     "deleteUnsavedWarn": "This document has unsaved changes: a local draft is kept before deletion, so you can still recover it on the next launch.",
     "imageRemoteHidden": "Remote image hidden (click to load)",
+    "imageZoom": "Zoom to {pct}%",
     "editSource": "Click to edit source",
     "splitDividerTitle": "Drag to resize the panes; double-click to reset",
     "syncScrollOn": "Sync scrolling is on (click to turn off)",

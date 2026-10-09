@@ -219,6 +219,7 @@
     "deleteConfirmBody": "确定要删除「{name}」吗？会移入系统回收站（可在回收站里还原）。",
     "deleteUnsavedWarn": "这一篇还有未保存的改动：删除前会替你留一份本地草稿，下次启动仍可恢复。",
     "imageRemoteHidden": "远程图片已隐藏（点击加载）",
+    "imageZoom": "缩放到 {pct}%",
     "editSource": "点击编辑源码",
     "splitDividerTitle": "拖动调整左右比例（双击复位）",
     "syncScrollOn": "同步滚动已开启（点击关闭）",
