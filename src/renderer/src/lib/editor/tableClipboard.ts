@@ -478,6 +478,14 @@ export const TableDragSelect = Extension.create({
   addProseMirrorPlugins() {
     /** 本次鼠标手势是否按着 Shift（决定"整格选"还是"文本选择"） */
     let shiftGesture = false
+    /**
+     * 当前指针位置（文档位置，由 `mousemove` 用 `posAtCoords` 换算）。
+     *
+     * 第四十二轮补：**head 也要取自指针**，不能取 DOM 原生选区的远端 —— 浏览器会把表格里的选区
+     * snap 到**单元格边界**，于是头端会越过用户实际划到的位置（用户报"加了头"）。锚点取按下点、
+     * head 取当前指针 ⇒ 选区就是"用户从按下点划到当前指针"这一段，与手感一致。
+     */
+    let lastPointerPos: number | null = null
 
     return [
       new Plugin({
@@ -485,9 +493,18 @@ export const TableDragSelect = Extension.create({
         view(editorView: EditorView) {
           // `nativeSelectionRange()` 要用 view 的 `posAtDOM` 换算 DOM 选区
           currentView = editorView as unknown as { posAtDOM(node: Node, offset: number): number }
+          // 指针轨迹用 document 捕获监听：拖到编辑区外也能继续跟（PM 自己的 mousemove 只在编辑区内）
+          const onMove = (e: Event): void => {
+            const me = e as MouseEvent
+            const at = editorView.posAtCoords?.({ left: me.clientX, top: me.clientY })
+            lastPointerPos = at && Number.isFinite(at.pos) ? at.pos : lastPointerPos
+          }
+          document.addEventListener('mousemove', onMove, true)
           return {
             destroy() {
+              document.removeEventListener('mousemove', onMove, true)
               currentView = null
+              lastPointerPos = null
             }
           }
         },
@@ -511,6 +528,8 @@ export const TableDragSelect = Extension.create({
                   dom.dataset.mdTableDragAnchor = String(at.pos)
                 else delete dom.dataset.mdTableDragAnchor
               }
+              // 新手势：head 也从"按下点"起步（免得沿用上一手势的指针位置）
+              lastPointerPos = at && Number.isFinite(at.pos) ? at.pos : null
               // 只记录，不接管：让 `tableEditing` 与 PM 自己的 mousedown 照常跑
               return false
             }
@@ -556,10 +575,18 @@ export const TableDragSelect = Extension.create({
                   ? native.from
                   : stored
               if (dom) dom.dataset.mdTableDragAnchor = String(anchorPos)
-              const headPos =
+              /**
+               * **head 取自当前指针**（第四十二轮补，用户报"加了头"）。
+               *
+               * 取 DOM 原生选区的远端时，浏览器会把表格选区 snap 到**单元格边界** ⇒ 头端越过用户实际
+               * 划到的位置（多选一截）。锚点来自按下坐标、head 来自当前指针 ⇒ 选区恰好是"用户从按下点
+               * 划到当前指针"这一段；指针位置暂时拿不到时才退回"离锚点更远的那个原生端点"。
+               */
+              const farEnd =
                 Math.abs(native.to - anchorPos) >= Math.abs(native.from - anchorPos)
                   ? native.to
                   : native.from
+              const headPos = lastPointerPos === null ? farEnd : lastPointerPos
               tr.setSelection(TextSelection.create(tr.doc, anchorPos, headPos))
               // 抹掉 anchor，否则 `tableEditing` 的下一帧 mousemove 会再造一个 CellSelection
               tr.setMeta(tableEditingKey, -1)
