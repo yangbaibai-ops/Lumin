@@ -139,7 +139,15 @@ async function chooseAndInsert(view: EditorView, slot: number): Promise<void> {
             const slots = emptyImageSlots(view.state.doc)
             const at = slots.includes(slot) ? slot : slots[0]
             if (at === undefined) return
-            view.dispatch(view.state.tr.replaceWith(at - 1, at + 2, image.create({ src })))
+            /**
+             * ⚠️ P0-b 修正（第五十二轮，用户实测"插入后残留 `![]`"）：
+             * `slot` 是 `(` 与 `)` **之间**的位置（`!` 之后第 4 个位置），所以整段 `![]()` 覆盖的区间是
+             * `slot-4 … slot+1`（`!` `[` `]` `(` `)` 五个字符）。此前写成 `slot-1 … slot+2` ⇒ 只换掉了
+             * `]()`，留下 `![` —— 正是用户看到的现象。
+             */
+            const from = Math.max(0, at - 4)
+            const to = Math.min(view.state.doc.content.size, at + 1)
+            view.dispatch(view.state.tr.replaceWith(from, to, image.create({ src })))
           },
           new Uint8Array(buf),
           file.name || 'image.png'
