@@ -13,6 +13,7 @@
 import { Extension } from '@tiptap/core'
 import { Plugin } from '@tiptap/pm/state'
 import { insertImageFromBytes, insertImageFromPath, IMAGE_EXT_RE } from '../insertImage'
+import { ImagePicker } from './imagePicker'
 
 /** 从 DataTransfer 里取出第一个图片文件（没有则 null） */
 export function pickImageFile(dt: DataTransfer | null): File | null {
@@ -102,7 +103,11 @@ export const ImagePaste = Extension.create({
             return true
           }
         }
-      })
+      }),
+      // 切片 A（第四十八/四十九轮）：`![]()` 的**纯渲染选图按钮**。
+      // 挂在本扩展已有的数组里 ⇒ 不动 `extensions.ts` 的注册表，也不新造平行机制；
+      // 原有插件项一个不改。按钮/stopEvent/ignoreSelection 的口径见 `./imagePicker.ts`。
+      ...ImagePicker.addProseMirrorPlugins.call(this)
     ]
   }
 })
