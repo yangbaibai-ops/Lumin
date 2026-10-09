@@ -272,12 +272,35 @@ test('链接正则：label 里不许有方括号/换行，href 里不许有空�
   assert.equal(rule.find.test('[a\nb](x)'), false, 'label 里有换行')
 })
 
+/** 光标停在段落末尾的状态（input rule 触发时，刚敲的那个字符还没落进文档） */
+function stateAtEnd(doc, s = schema) {
+  return EditorState.create({
+    schema: s,
+    doc,
+    selection: TextSelection.create(doc, doc.content.size - 1)
+  })
+}
+
+/**
+ * 复刻 tiptap `run$1` 交给 handler 的 range（第五十四轮修正）：
+ *   range.from = caret - (match[0].length - text.length)，range.to = caret
+ * ⇒ `to - from` 恒等于"这次插入的字符数"。逐字符打字 = 1；一次 insertText 多字符 = 多。
+ * 旧断言统一写 `{from:1,to:1}`（跨度 0），在新契约下等于"插入了 match 全长个字符"，
+ * 会被当成批量输入而正确地放弃转换 —— 所以这里必须按真实契约给。
+ */
+const rangeForTyping = (match, caret) => ({
+  from: caret - (match[0].length - 1),
+  to: caret
+})
+
 test('链接 handler：敲下 `)` 把 `[label](href)` 折成带 link mark 的文本，光标落到链接之后', () => {
   const raw = '[文字](https://a.com' // 文档里此刻还没有最后那个 `)`
   const doc = schema.nodes.doc.create(null, [paragraph.create(null, schema.text(raw))])
-  const state = stateOf(doc)
+  const state = stateAtEnd(doc)
+  const caret = state.selection.from
   const rule = linkRuleOf(rulesFor(schema))
-  const { ret, tr, next } = runHandler(rule, state, rule.find.exec(`${raw})`), { from: 1, to: 1 })
+  const match = rule.find.exec(`${raw})`)
+  const { ret, tr, next } = runHandler(rule, state, match, rangeForTyping(match, caret))
   assert.notEqual(ret, null)
   assert.ok(tr.steps.length > 0)
   assert.equal(next.doc.textContent, '文字', '整段 `[label](href)` 被替换成 label')
@@ -289,22 +312,143 @@ test('链接 handler：敲下 `)` 把 `[label](href)` 折成带 link mark 的文
 test('链接 handler：空 label（`[](url)`）不生成链接也不抛（PM 不允许空文本节点）', () => {
   const raw = '[](https://a.com'
   const doc = schema.nodes.doc.create(null, [paragraph.create(null, schema.text(raw))])
-  const state = stateOf(doc)
+  const state = stateAtEnd(doc)
+  const caret = state.selection.from
   const rule = linkRuleOf(rulesFor(schema))
-  const { ret, tr, next } = runHandler(rule, state, rule.find.exec(`${raw})`), { from: 1, to: 1 })
+  const match = rule.find.exec(`${raw})`)
+  const { ret, tr, next } = runHandler(rule, state, match, rangeForTyping(match, caret))
   assert.equal(ret, null, '返回 null 表示"这次不处理"，保持字面不发散')
   assert.equal(tr.steps.length, 0, '不许对文档做任何改动（改了就抛 RangeError）')
   assert.equal(next.doc.textContent, raw)
 })
 
-test('链接 handler：range.from 与文档内容对不上时宁可不动（Chromium 的 from 可能落后一位）', () => {
+test('链接 handler：光标不在匹配末尾（错位）时不转换、也不抛', () => {
   const raw = 'z[a](x'
   const doc = schema.nodes.doc.create(null, [paragraph.create(null, schema.text(raw))])
-  const state = stateOf(doc)
+  // 故意把光标放在段落中间（不是末尾）：此刻 `before` 与光标前文本对不上 ⇒ 宁可不动
+  const state = EditorState.create({
+    schema,
+    doc,
+    selection: TextSelection.create(doc, 3)
+  })
+  const caret = state.selection.from
   const rule = linkRuleOf(rulesFor(schema))
-  // 正确的 range.from 是 2（`[` 的位置）；这里故意传 1
-  assert.equal(state.doc.textBetween(2, 2 + 5), '[a](x', '对照：正确起点上是完整的待替换原文')
-  const { ret, tr } = runHandler(rule, state, rule.find.exec(`${raw})`), { from: 1, to: 1 })
+  const match = rule.find.exec(`${raw})`)
+  const { ret, tr } = runHandler(rule, state, match, rangeForTyping(match, caret))
   assert.equal(ret, null)
   assert.equal(tr.steps.length, 0)
+})
+
+// ── 第五十四轮 P0：打字/批量输入吞字（数据丢失级）──────────────────────────────
+// 实测现场（CDP，真编辑器）：
+//   · 一次 `Input.insertText('[文本](url)')` ⇒ 段落仍是"原有文字"，**整段没进来**；
+//     栈：InputRule.handler → Node.textBetween → Fragment.nodesBetween →
+//     TypeError: Cannot read properties of undefined (reading 'nodeSize')。
+//     旧实现拿 core 的 `range.from`（pattern 在**待输入文本**里的起点）当绝对位置，
+//     批量输入时它落在段落末尾之外，textBetween 越界抛错；异常穿出 handleTextInput
+//     ⇒ PM 判定输入已被处理，整段丢弃。
+//   · 逐字符打字时同一处会**错位替换**（图片的 `!` 前缀让 range.from 偏 1）：
+//     实测最后一步 `replace from:6 to:17 slice:"!alt"`，段落由 17 字缩到 10 字。
+test('回归（P0）：一次插入多个字符（批量输入/合成）**绝不消费输入** —— 不抛、不动文档', () => {
+  const raw = '原有文字'
+  const doc = schema.nodes.doc.create(null, [paragraph.create(null, schema.text(raw))])
+  const state = stateAtEnd(doc)
+  const caret = state.selection.from
+  const rule = linkRuleOf(rulesFor(schema))
+  const match = rule.find.exec('原有文字[文本](url)')
+  // 批量输入 12 个字符时 core 的真实 range：跨度 = match[0].length - 12（可以是负数）
+  const range = { from: caret - (match[0].length - 12), to: caret }
+  assert.ok(range.from > doc.content.size, '对照：旧实现正是拿这个越界位置去 textBetween 而抛错')
+  let thrown = null
+  let out = null
+  try {
+    out = runHandler(rule, state, match, range)
+  } catch (e) {
+    thrown = e
+  }
+  assert.equal(thrown, null, '不许抛（异常穿出 handleTextInput 就是整段输入被丢弃）')
+  assert.equal(out.ret, null, '不是逐字符打字 ⇒ 返回 null，core 不消费输入，文字照常插入')
+  assert.equal(out.tr.steps.length, 0, '一个字节都不许动')
+  assert.equal(out.next.doc.textContent, raw, '段落内容不变（批量输入由 PM 正常插入）')
+})
+
+test('回归（P0）：逐字符打字 `[文本](url)` 成链 —— 原有文字一个不少、href 落在 mark 上', () => {
+  const raw = '原有文字[文本](url'
+  const doc = schema.nodes.doc.create(null, [paragraph.create(null, schema.text(raw))])
+  const state = stateAtEnd(doc)
+  const caret = state.selection.from
+  const rule = linkRuleOf(rulesFor(schema))
+  const match = rule.find.exec(`${raw})`)
+  const { ret, tr, next } = runHandler(rule, state, match, rangeForTyping(match, caret))
+  assert.notEqual(ret, null)
+  assert.ok(tr.steps.length > 0)
+  assert.equal(next.doc.textContent, '原有文字文本', '前缀"原有文字"必须在，语法只折成 label')
+  // 段落里现在有两个文本节点：`原有文字`（无 mark）+ `文本`（link）—— 信息在 mark 上
+  const texts = []
+  next.doc.descendants((n) => {
+    if (n.isText) texts.push([n.text, n.marks.map((m) => [m.type.name, { ...m.attrs }])])
+    return true
+  })
+  assert.deepEqual(
+    texts,
+    [
+      ['原有文字', []],
+      ['文本', [['link', { href: 'url' }]]]
+    ],
+    'url 落在 link mark 上（信息没丢）'
+  )
+})
+
+test('回归（P0）：逐字符打字 `![alt](url)` 落成图片节点（`!` 一起吃掉、前缀文字保留）', () => {
+  const imgSchema = new Schema({
+    nodes: {
+      doc: { content: 'block+' },
+      paragraph: { group: 'block', content: 'inline*' },
+      text: { group: 'inline' },
+      image: {
+        group: 'inline',
+        inline: true,
+        attrs: { src: {}, alt: { default: null } }
+      }
+    },
+    marks: { link: { attrs: { href: {} } } }
+  })
+  const raw = '原有文字![alt](url'
+  const doc = imgSchema.nodes.doc.create(null, [
+    imgSchema.nodes.paragraph.create(null, imgSchema.text(raw))
+  ])
+  const state = stateAtEnd(doc, imgSchema)
+  const caret = state.selection.from
+  const rule = linkRuleOf(rulesFor(imgSchema))
+  const match = rule.find.exec(`${raw})`)
+  const { ret, next } = runHandler(rule, state, match, rangeForTyping(match, caret))
+  assert.notEqual(ret, null)
+  let img = null
+  next.doc.descendants((n) => {
+    if (n.type.name === 'image') img = n
+    return true
+  })
+  assert.ok(img, '`!` 与 `[alt](url)` 一起换成图片节点')
+  assert.equal(img.attrs.src, 'url')
+  assert.equal(img.attrs.alt, 'alt')
+  assert.equal(next.doc.textContent, '原有文字', '前缀文字保留；图片是节点不是文本')
+})
+
+test('回归（P0）：`![]()`（href 为空）不转换 —— 选图按钮的夹具必须保持字面', () => {
+  const raw = '![]('
+  const doc = schema.nodes.doc.create(null, [paragraph.create(null, schema.text(raw))])
+  const state = stateAtEnd(doc)
+  const caret = state.selection.from
+  const rule = linkRuleOf(rulesFor(schema))
+  const match = rule.find.exec('![]()')
+  assert.equal(match, null, '对照：href 为空时正则本来就不匹配（这里直接钉住这条口径）')
+  const out = runHandler(
+    rule,
+    state,
+    rule.find.exec('[a](b)'),
+    rangeForTyping(rule.find.exec('[a](b)'), caret)
+  )
+  assert.equal(out.ret, null, '不匹配/不合法时返回 null，文档保持字面')
+  assert.equal(out.tr.steps.length, 0)
+  assert.equal(state.doc.textContent, raw)
 })

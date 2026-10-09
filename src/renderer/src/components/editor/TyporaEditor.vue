@@ -227,7 +227,9 @@ function loadGuardedImage(el: HTMLElement): void {
   allowRemoteImage(src)
   const img = document.createElement('img')
   img.src = src
-  img.alt = el.querySelector('.img-guard__label')?.textContent ?? ''
+  // alt 直接取占位元素自己的属性：第五十三轮把占位里的文案节点（原 `.img-guard__label`）删掉了，
+  // 再按类名去查会恒为空 —— 而 `alt` 本来就在占位元素的属性上（见 extensions.ts 的 rest）。
+  img.alt = el.getAttribute('alt') ?? ''
   img.loading = 'lazy'
   el.replaceWith(img)
 }

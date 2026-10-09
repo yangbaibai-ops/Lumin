@@ -27,46 +27,88 @@ export const TyporaInputRules = Extension.create({
 
     const rules: InputRule[] = []
 
-    // ── Markdown 链接：输入 ')' 即把 [label](url) 折叠成链接 ──
+    // ── Markdown 链接 / 图片：输入 ')' 即把 [label](url) / ![alt](url) 折叠成节点 ──
     // 不使用 core 的 markInputRule：它的约定是「最后一个捕获组即被标记的内容」，
     // 而链接语法的内容（label）夹在中间、href 在其后，套不上；这里直接改事务更直接。
+    //
+    // ⚠️ 第五十四轮 P0（**数据丢失级**，实测复现）：
+    //   旧实现拿 core 给的 `range.from` 当绝对位置，再用 `state.doc.textBetween(start,
+    //   start + inDoc.length, …)` 去校验。两个坑：
+    //     ① `range.from` 是「pattern 在**待输入文本**里的起点」，一次插入多个字符时
+    //        （`Input.insertText('…')`、输入法/合成、以及任何批量输入）它会落在**段落末尾之外**，
+    //        `textBetween` 越界 ⇒ `Fragment.nodesBetween` 抛
+    //        `TypeError: Cannot read properties of undefined (reading 'nodeSize')`
+    //        —— 异常从 `handleTextInput` 里抛出去，PM 就**整段不插入**：实测输入
+    //        `[文本](url)` / `![alt](url)` 后段落仍是"原有文字"，一个字都没进来；
+    //     ② 匹配可以落在待输入文本的第 2 个字符上（图片是 `!` + `[alt](url)`），
+    //        `range.from` 于是比真实起点大 1，字符级输入时替换区间**错位**：
+    //        实测最后一步是 `replace from:6 to:17 slice:"!alt"`，段落从 17 字缩到 10 字。
+    //   现在的口径（三条例行护栏，缺一条就可能再吞字）：
+    //     ① **只做逐字符打字这一档**（`typedLen === 1`）：批量输入/粘贴一律 `return null`
+    //        （Tiptap 见 handler 返回 null 就不消费输入 ⇒ PM 照常把文字插进去，绝不丢字）；
+    //     ② 位置一律用**段落相对偏移**算、再用 `$from.start()` 换算成绝对位置 ——
+    //        天然在界内，不再可能越界抛错；
+    //     ③ 整段包一层 try/catch：万一还有没想到的边界，也只当"这条规则不生效"，
+    //        绝不让异常穿到 `handleTextInput` 外面（那里一抛就是丢字）。
     if (linkType) {
       rules.push(
         new InputRule({
           find: MD_LINK_AT_CARET,
           handler: ({ state, range, match }) => {
-            const full = match[0]
-            const label = match[1] ?? ''
-            const href = (match[2] ?? '').trim()
-            if (!href) return null
-            // 空 label（形如 `[](url)`）：PM 的行内模型不允许空文本节点，
-            // schema.text('') 会抛 RangeError: Empty text nodes are not allowed
-            // （此前这里直接把输入规则打断，界面上既不生成链接、控制台还报错）。
-            // 这类写法没有链接文字，保持字面不发散，等用户补上文字再成型。
-            if (!label) return null
-            const { tr } = state
-            // 关键：input rule 在「刚输入的字符尚未落进文档」时触发（core 的 run 把
-            // 末尾字符拼在 textBefore 里做匹配），所以文档里此刻只有 full 去掉末位
-            // 的那一段。range.from 是 core 算好的模式起点，用它做定位并按长度校验。
-            const typed = full.slice(-1)
-            const inDoc = full.slice(0, full.length - typed.length)
-            const start = range.from
-            if (start < 0) return null
-            if (state.doc.textBetween(start, start + inDoc.length, BLOCK_GUARD) !== inDoc)
+            try {
+              const full = match[0]
+              const label = match[1] ?? ''
+              const href = (match[2] ?? '').trim()
+              if (!href || !label) return null
+              // typedLen = 这次 `handleTextInput` 一次插入了几个字符（core 的 range 定义见上）
+              const typedLen = full.length - (range.to - range.from)
+              if (typedLen !== 1) return null
+              const $from = state.selection.$from
+              if (!$from.parent.isTextblock) return null
+              // 文档里此刻应当已有 full 去掉末位（刚敲下的那个字符还没落进文档）的那一段
+              const before = full.slice(0, -1)
+              const offset = $from.parentOffset
+              const rel = offset - before.length
+              if (rel < 0) return null
+              // 段落内相对偏移取文本：位置保证在界内（越界正是旧实现的崩溃点）
+              if ($from.parent.textBetween(rel, offset) !== before) return null
+              const abs = $from.start() + rel
+              const { tr } = state
+              // 图片语法（前一个字符是 `!`）：标题与 `!` 一起吃掉，落成**图片节点**（与粘贴同形）
+              const prevChar =
+                rel > 0
+                  ? $from.parent.textBetween(rel - 1, rel)
+                  : abs > 0
+                    ? state.doc.textBetween(abs - 1, abs, BLOCK_GUARD)
+                    : ''
+              if (prevChar === '!') {
+                const imageType = schema.nodes.image
+                if (!imageType) return null
+                tr.replaceWith(
+                  abs - 1,
+                  abs + before.length,
+                  imageType.create({ src: href, alt: label })
+                )
+                tr.setSelection(TextSelection.create(tr.doc, abs - 1 + 1))
+                tr.setStoredMarks([])
+                return
+              }
+              // 整段替换为「带 link mark 的文字」，光标落到链接之后（继续输入不再是链接）
+              tr.replaceWith(
+                abs,
+                abs + before.length,
+                schema.text(label, [linkType.create({ href })])
+              )
+              // 必须清掉 storedMarks：光标停在带 mark 文本的右边界时，PM 会沿用该位置的
+              // mark 作为 storedMarks，紧接着输入的字会被吞进链接里。清空后继续输入即普通文本。
+              tr.setSelection(TextSelection.create(tr.doc, abs + label.length))
+              tr.setStoredMarks([])
+              // 事务由 core 的 inputRulesPlugin 统一 dispatch，handler 无需返回值
+              return
+            } catch {
+              // 任何意外都退化成"这条规则不生效"：Tiptap 不消费输入 ⇒ PM 正常插入文字
               return null
-            // 整段替换为「带 link mark 的文字」，光标落到链接之后（继续输入不再是链接）
-            tr.replaceWith(
-              start,
-              start + inDoc.length,
-              schema.text(label, [linkType.create({ href })])
-            )
-            // 必须清掉 storedMarks：光标停在带 mark 文本的右边界时，PM 会沿用该位置的
-            // mark 作为 storedMarks，紧接着输入的字会被吞进链接里（实测「Lumin尾巴」
-            // 整段变成链接文字）。清空后继续输入即普通文本。
-            tr.setSelection(TextSelection.create(tr.doc, start + label.length))
-            tr.setStoredMarks([])
-            // 事务由 core 的 inputRulesPlugin 统一 dispatch，handler 无需返回值
-            return
+            }
           }
         })
       )
