@@ -1479,7 +1479,19 @@ export const TyporaInlineMarks = Extension.create({
      * （判据本体见 `pressOnRevealedRun`）。按下点在别处（B 区）时恒为 false ⇒ 整个手势都不去墨。
      */
     let pressOnRevealed = false
+    /**
+     * **单击 vs 拖动**（第四十六轮）：只有拖动过的手势才允许在延迟重算里"恢复选区"。
+     *
+     * 用户报障：表格里选中一段文字后，**单击其中任意位置不会取消选中**（闪一下但保持选中）。
+     * 真因就在下面两条延迟路径里的 `setSelection(saved)` —— 单击时 PM 已经把光标落好（那一下就是
+     * 用户看到的"闪"），而 250ms 后这段又把**按下前的旧范围**设了回去。单击必须落光标，
+     * 所以这类手势**一律不许恢复选区**（只重算装饰）。
+     */
+    let pressDownX = 0
+    let pressDownY = 0
     const onDown = (e: MouseEvent): void => {
+      pressDownX = e.clientX
+      pressDownY = e.clientY
       if (e.button !== 0) return // 只认左键
       pressHeld = true // 冻结装饰（版面整个手势里不动）
       pressInkHidden = false // ⚠️ 按下**不**去墨：那是用户报的「按住就闪」的成因
@@ -1523,11 +1535,20 @@ export const TyporaInlineMarks = Extension.create({
       pressInkHidden = true
       applyPressClass()
     }
-    const onUp = (): void => {
+    const onUp = (e?: Event): void => {
       // 取证：先记一行（含 onUp 的调用次数），再看是否要收尾 flush
       traceRow('up')
       traceFlush()
       if (!pressHeld && !pressInkHidden && !pressFold) return
+      /**
+       * 这次手势是"单击"还是"拖动"（第四十六轮）：位移 ≤10px 视为单击。
+       * 单击**绝不允许**在延迟重算里恢复旧选区 —— 那正是"单击不取消选中"的真因。
+       */
+      const me = e instanceof MouseEvent ? e : null
+      const clickGesture =
+        me !== null &&
+        Math.abs(me.clientX - pressDownX) <= 10 &&
+        Math.abs(me.clientY - pressDownY) <= 10
       pressHeld = false
       pressInkHidden = false
       pressFold = false // 先清掉，下面那次重算才按**最终选区**的判据走
@@ -1593,7 +1614,8 @@ export const TyporaInlineMarks = Extension.create({
                 setTimeout(() => {
                   try {
                     const late = v.state.tr.setMeta(SET_PRESS, false)
-                    if (v.state.selection.empty && saved.to > saved.from) {
+                    // 单击 ⇒ 不恢复旧范围（第十轮用户报障的真因）；拖动才补
+                    if (!clickGesture && v.state.selection.empty && saved.to > saved.from) {
                       late.setSelection(TextSelection.create(late.doc, saved.from, saved.to))
                     }
                     v.dispatch(late)
@@ -1604,7 +1626,8 @@ export const TyporaInlineMarks = Extension.create({
                 return
               }
               const tr = v.state.tr.setMeta(SET_PRESS, false)
-              if (!before.empty)
+              // 单击 ⇒ 不恢复（同上）；空选区本来也没有尾巴可丢
+              if (!clickGesture && !before.empty)
                 tr.setSelection(TextSelection.create(tr.doc, before.from, before.to))
               v.dispatch(tr)
             } catch {
