@@ -49,10 +49,85 @@ function refresh(view: EditorView, side: 'before' | 'after'): void {
   if (caretSide === side) return
   caretSide = side
   try {
-    if (!view.isDestroyed) view.dispatch(view.state.tr.setMeta(KEY, Date.now()))
+    if (view.isDestroyed) return
+    const tr = view.state.tr.setMeta(KEY, Date.now())
+    /**
+     * 第五十三轮 ③：widget 换了 `side` 只挪了**装饰**，而 PM 只在「选区变化」时重写
+     * DOM 选区（`selectionToDOM`）。实测：点在按钮右侧时浏览器里的插入符还停在旧位置，
+     * 量出来的插入符矩形是**空的**（点在左侧则正常）。
+     * 同位置再 `setSelection` 一次，把这次事务标成 "selectionSet"，逼 PM 重画插入符 ——
+     * 位置一个字符都不动（同一个 `Selection` 实例），所以不影响文档与选区语义。
+     */
+    tr.setSelection(view.state.selection)
+    view.dispatch(tr)
   } catch {
     /* 视图销毁中：忽略 */
   }
+}
+
+/**
+ * 按钮样式：**注入在本模块内部**（第五十三轮 ②）。
+ *
+ * 为什么不写进 `assets/*.css`：那一层已划给并行的同事（图片工具栏/缩放那条线），
+ * 而这枚按钮的样式只服务本文件，注入在这里既不抢文件、也不会漏掉懒加载路径。
+ * 颜色/边框一律用 `assets/theme.css` 里**真实存在**的令牌（三套主题各自定义）：
+ *   `--panel-2`（底色）/ `--edge-strong`（边框）/ `--ink-3`（图标色）/
+ *   `--accent-soft`（hover 底）/ `--accent-ink`（hover 图标）/ `--accent`（hover 边 + 焦点环）/
+ *   `--sel`（按下态）。圆角没有令牌，取仓内小控件最常用的一档 `4px`。
+ * 幂等：`<style>` 只插一次（id 判据），dev 热重载重复执行也不会叠。
+ */
+const STYLE_ID = 'md-image-picker-style'
+function ensureStyles(): void {
+  if (typeof document === 'undefined' || document.getElementById(STYLE_ID)) return
+  const style = document.createElement('style')
+  style.id = STYLE_ID
+  style.textContent = `
+.md-image-picker {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 17px;
+  height: 17px;
+  padding: 1px;
+  margin: 0 1px;
+  border: 1px solid var(--edge-strong);
+  border-radius: 4px;
+  background: var(--panel-2);
+  color: var(--ink-3);
+  line-height: 0;
+  vertical-align: text-bottom;
+  cursor: pointer;
+  user-select: none;
+}
+.md-image-picker:hover {
+  background: var(--accent-soft);
+  color: var(--accent-ink);
+  border-color: var(--accent);
+}
+.md-image-picker:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.md-image-picker:active {
+  background: var(--sel);
+}
+/* 自绘插入符（只在"点按钮右侧"这一档出现；左侧的原生插入符实测正常，画了就重影） */
+.md-image-caret {
+  display: none;
+  width: 1px;
+  height: 1.15em;
+  margin: 0 0 0 1px;
+  background: var(--ink);
+  vertical-align: text-bottom;
+}
+.md-image-caret.is-on {
+  display: inline-block;
+}
+.md-image-picker-wrap {
+  display: inline;
+  white-space: nowrap;
+}`
+  document.head.appendChild(style)
 }
 
 /** 捕获阶段：点在按钮附近就按左右半边决定光标画在哪一侧（不改文档、不改选区） */
@@ -75,6 +150,7 @@ function onCaptureDown(view: EditorView, event: MouseEvent): void {
 }
 
 function pickerDom(view: EditorView, pos: number): HTMLElement {
+  ensureStyles()
   const button = document.createElement('button')
   button.type = 'button'
   button.className = 'md-image-picker'
@@ -112,7 +188,43 @@ function pickerDom(view: EditorView, pos: number): HTMLElement {
     e.stopPropagation()
     void chooseAndInsert(view, pos)
   })
-  return button
+  /**
+   * 第五十三轮 ③（实测后改走自绘）：点在按钮**右侧**时，PM 把 DOM 选区落在 widget 那个
+   * `contenteditable=false` 的 span 里（探针读到 `domNode: SPAN@2`），浏览器量到的插入符矩形
+   * 是**全 0**（连高度都是 0）——「同位置再 setSelection 一次」的 nudge 实测无效。
+   * 所以右侧这一档自己画一枚 1px 的插入符（数学那边的 `caretDom()` 是同一个先例）。
+   *
+   * 可见性**不靠 PM 重算装饰**：PM 对「只改选区」的事务不会重算 `decorations`（实测 widget
+   * 的 key 没变、span 也就没重建成带插入符的版本），所以这里让 span 常驻、由 `update` 钩子
+   * 按"选区是不是正好落在这个槽位"切换 `is-on` 类（见 `syncCaretDom`）。
+   */
+  const caret = document.createElement('span')
+  caret.className = 'md-image-caret'
+  caret.setAttribute('aria-hidden', 'true')
+  caret.setAttribute('contenteditable', 'false')
+  caret.setAttribute('data-md-image-caret', '')
+  caret.setAttribute('data-md-image-caret-slot', String(pos))
+  button.after(caret)
+  const wrap = document.createElement('span')
+  wrap.className = 'md-image-picker-wrap'
+  wrap.setAttribute('contenteditable', 'false')
+  wrap.append(button, caret)
+  return wrap
+}
+
+/**
+ * 自绘插入符的显隐同步：**每次视图更新都跑**（PM 的 `view.update` 对选区变化也调用，
+ * 这正是 `decorations` 靠不住的地方）。判据只有一条：空光标正好落在某个图片槽位上。
+ */
+function syncCaretDom(view: EditorView): void {
+  if (view.isDestroyed) return
+  const sel = view.state.selection
+  const at = caretSide === 'after' && sel.empty ? sel.from : -1
+  const spans = view.dom.querySelectorAll<HTMLElement>('[data-md-image-caret]')
+  for (const el of spans) {
+    const slot = Number(el.getAttribute('data-md-image-caret-slot') ?? '-1')
+    el.classList.toggle('is-on', slot >= 0 && slot === at)
+  }
 }
 
 async function chooseAndInsert(view: EditorView, slot: number): Promise<void> {
@@ -180,7 +292,8 @@ export const ImagePicker = {
             const handler = (e: MouseEvent): void => onCaptureDown(view, e)
             view.dom.addEventListener('mousedown', handler, true)
           }
-          return {}
+          syncCaretDom(view)
+          return { update: (v: EditorView) => syncCaretDom(v) }
         },
         props: {
           decorations(state) {

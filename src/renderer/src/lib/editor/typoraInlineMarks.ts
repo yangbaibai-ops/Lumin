@@ -34,6 +34,7 @@ import {
   PATTERN_TEST,
   STYLE_ORDER,
   blockCaretTarget,
+  hasImageSyntax,
   hasStrayMarker,
   markerPairOffsets,
   needsSourceReparse,
@@ -629,6 +630,9 @@ function blockNeedsNormalize(block: PMNode): boolean {
       // 这正是字面量化（literalizeStrayAtoms）存在的理由：不成对的标记字符也得有
       // `escape:false` 的载体，否则写出器会给它补反斜杠。
       hasStrayMarker(n.text ?? '') ||
+      // 图片语法（`![]()` / `![alt](url)`，第五十三轮）：文档里是裸文本时必须过一遍归一化，
+      // 否则 prosemirror-markdown 的 `esc()` 会把 `[`/`]` 转义成 `!\[\]()`（非幂等源码漂移）。
+      hasImageSyntax(n.text ?? '') ||
       // 反斜杠 + ASCII 标点（`\*`、`\#`…）：要交给带 escape 规则的解析器转成"原样输出"的转义文本。
       // 用「反斜杠 + 标点」而不是「任意反斜杠」做守卫：Windows 路径这类普通反斜杠不会命中，
       // 免得每次按键都对整段做一次 markdown-it 解析。

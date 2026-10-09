@@ -330,6 +330,100 @@ export function splitStrayMarkerRuns(text: string): StrayRun[] {
   return runs
 }
 
+// ─── 图片语法（`![]()` / `![alt](url)`）的逐字写回 ─────────────────────────────
+//
+// 缺陷（第五十三轮）：用户手打的 `![]()` 在**文档里是裸文本**，而 prosemirror-markdown 的
+// `esc()` 会转义 `[` / `]` —— 落盘变成 `!\[\]()`。每保存一次就多一层反斜杠
+// （下次解析又读回字面括号），与"源码即所见"的口径直接冲突。
+//
+// 修法沿用**仓库既有的逐字写回通道**（没有新造机制、也不动 schema 注册表）：
+//   * 无样式正文 → `mdMarker(side:'literal')` 原子（`escape:false` + 空包裹 ⇒ 逐字写回，
+//     CSS `.md-marker[data-side='literal']` 本来就是"当普通字符原样显示"）；
+//   * 带样式正文 → `verbatim` 原子（与 `****` 落在加粗正文里同一条路：fromAtoms 贴 MdEscape）。
+// 与 `literalizeStrayAtoms` 的分工：那边只管 `*`/`~`/`` ` `` 的**孤立标记字符**，这边只管
+// **图片语法区间**；两者互不重叠，所以 `~~~~` / `****` 的老行为一个字节都不变。
+//
+// 只认图片：`[文本](url)` 普通链接**不受影响**（要匹配就必须以 `!` 开头、且 `]` 紧跟 `(`，
+// 与 markdown-it 的 image 规则一致 —— `![] ()` 中间有空格，markdown-it 也不当图片）。
+
+/** 图片语法的一个区间（`from` 含、`to` 不含） */
+export interface ImageLitSpan {
+  from: number
+  to: number
+}
+
+/**
+ * markdown-it 的 image 规则口径：`!` + `[…]` + **紧跟** `(…)`，目标里可有成对括号、不许空白。
+ * 每段文本现建一个带 `g` 的正则（带 `g` 的正则有 `lastIndex` 状态，不能共享）。
+ */
+function imageSyntaxRe(): RegExp {
+  return /!\[[^\]\n]*\]\((?:[^()\s]|\([^()\s]*\))*\)/g
+}
+
+/** 便宜的触发器：块里有没有**图片语法**文本（`blockNeedsNormalize` 用） */
+export function hasImageSyntax(text: string): boolean {
+  return text.includes('![') && /!\[[^\]\n]*\]\((?:[^()\s]|\([^()\s]*\))*\)/.test(text)
+}
+
+/** 文本里所有图片语法区间（纯函数，单测钉住：`![] ()` / `[文本](url)` 不算） */
+export function imageSyntaxSpans(text: string): ImageLitSpan[] {
+  const spans: ImageLitSpan[] = []
+  for (const m of text.matchAll(imageSyntaxRe())) {
+    if (m.index === undefined || !m[0]) continue
+    spans.push({ from: m.index, to: m.index + m[0].length })
+  }
+  return spans
+}
+
+/**
+ * 把**图片语法**区间切出来交给逐字写回通道（原地改写，幂等）。
+ *
+ * 与 `literalizeStrayAtoms` 完全同形：无样式 → literal 标记原子；有样式 → verbatim 原子；
+ * 行内代码正文本来就逐字写回，不动；无样式但挂着别的 mark（链接等）的文本切了会丢 mark，不动。
+ *
+ * @returns 有没有改动（`false` 时调用方不该 dispatch，否则归一化无法收敛）
+ */
+export function literalizeImageAtoms(atoms: Atom[]): boolean {
+  let changed = false
+  const out: Atom[] = []
+  for (const a of atoms) {
+    if (a.kind !== 'text' || !a.text || a.verbatim || !hasImageSyntax(a.text)) {
+      out.push(a)
+      continue
+    }
+    const styles = stylesOf(a)
+    if (styles.includes('code')) {
+      out.push(a)
+      continue
+    }
+    // 与 literalizeStrayAtoms 同一条守卫：字面量标记原子挂不住别的 mark，硬切会丢掉它
+    if (!styles.length && a.otherMarks?.length) {
+      out.push(a)
+      continue
+    }
+    const spans = imageSyntaxSpans(a.text)
+    if (!spans.length) {
+      out.push(a)
+      continue
+    }
+    let cursor = 0
+    for (const s of spans) {
+      if (s.from > cursor) out.push({ ...a, text: a.text.slice(cursor, s.from) })
+      const lit = a.text.slice(s.from, s.to)
+      out.push(
+        styles.length
+          ? { ...a, text: lit, verbatim: true }
+          : { kind: 'marker', text: lit, marker: { style: 'bold', side: 'literal' } }
+      )
+      cursor = s.to
+    }
+    if (cursor < a.text.length) out.push({ ...a, text: a.text.slice(cursor) })
+    changed = true
+  }
+  if (changed) atoms.splice(0, atoms.length, ...out)
+  return changed
+}
+
 /**
  * 把原子列表里「按 CommonMark 只能是字面量」的标记字符切出来（原地改写）。
  *
@@ -694,6 +788,8 @@ export function normalizeAtoms(atoms: Atom[]): Atom[] | null {
   }
   // 字面量化放在最后：前面的配对/物化只看样式，字面量化的产物（verbatim 文本 /
   // literal 标记）不该再被当成构造去配对。
+  // 图片语法先切（它与孤立标记字符不重叠），再走原有的孤立标记字符那一遍。
+  changed = literalizeImageAtoms(out) || changed
   changed = literalizeStrayAtoms(out) || changed
   return changed ? out : null
 }
