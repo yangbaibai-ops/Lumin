@@ -498,6 +498,8 @@ export const TableDragSelect = Extension.create({
     let pressY = 0
     /** 按下点算出的文档位置（单击时就把光标落在这里） */
     let pressPos: number | null = null
+    /** 最近一次**有效**的指针文档位置（head 用；指针一时取不到就沿用上一次，绝不用被 snap 的 DOM 端点） */
+    let lastHeadPos: number | null = null
 
     return [
       new Plugin({
@@ -515,6 +517,17 @@ export const TableDragSelect = Extension.create({
               dragMoved = true
             const at = editorView.posAtCoords?.({ left: me.clientX, top: me.clientY })
             lastPointerPos = at && Number.isFinite(at.pos) ? at.pos : lastPointerPos
+            if (at && Number.isFinite(at.pos)) lastHeadPos = at.pos
+            try {
+              ;(window as unknown as Record<string, unknown>).__mdTableDrag = {
+                dragMoved,
+                press: pressPos,
+                pointer: lastPointerPos,
+                head: lastHeadPos
+              }
+            } catch {
+              /* 诊断不影响功能 */
+            }
           }
           document.addEventListener('mousemove', onMove, true)
           return {
@@ -547,6 +560,7 @@ export const TableDragSelect = Extension.create({
               }
               // 新手势：head 也从"按下点"起步（免得沿用上一手势的指针位置）
               lastPointerPos = at && Number.isFinite(at.pos) ? at.pos : null
+              lastHeadPos = at && Number.isFinite(at.pos) ? at.pos : null
               dragMoved = false
               pressX = me.clientX
               pressY = me.clientY
@@ -632,15 +646,33 @@ export const TableDragSelect = Extension.create({
                * （用户报的"加了头"）。所以：差值 ≤1 采信 DOM（它对行内精确位置更准），>1 一律以指针为准。
                */
               const dPointer =
-                lastPointerPos === null
-                  ? Number.POSITIVE_INFINITY
-                  : Math.abs(lastPointerPos - anchorPos)
+                lastHeadPos === null ? Number.POSITIVE_INFINITY : Math.abs(lastHeadPos - anchorPos)
               const dNative = Math.abs(farEnd - anchorPos)
+              /**
+               * `lastHeadPos` 是"最近一次**有效**的指针位置"（第四十四轮）：指针一时取不到（`posAtCoords`
+               * 返回 null，例如指针移出编辑区/表格下方）时**沿用上一次**，绝不再退回被 snap 到单元格边界的
+               * DOM 端点 —— 那正是"偶发加了头"的来源（一退就是一整格）。
+               */
               const headPos =
-                lastPointerPos === null || (dNative > dPointer && dNative - dPointer <= 1)
+                lastHeadPos === null || (dNative > dPointer && dNative - dPointer <= 1)
                   ? farEnd
-                  : lastPointerPos
+                  : lastHeadPos
               tr.setSelection(TextSelection.create(tr.doc, anchorPos, headPos))
+              // 诊断：把这一帧的决策记下来（供 selTrace 复现时点名"谁改的"）
+              try {
+                const w = window as unknown as Record<string, unknown>
+                w.__mdTableDrag = {
+                  ...((w.__mdTableDrag as Record<string, unknown>) || {}),
+                  dragMoved,
+                  anchor: anchorPos,
+                  headChosen: headPos,
+                  farEnd,
+                  dPointer,
+                  dNative
+                }
+              } catch {
+                /* 诊断不影响功能 */
+              }
               // 抹掉 anchor，否则 `tableEditing` 的下一帧 mousemove 会再造一个 CellSelection
               tr.setMeta(tableEditingKey, -1)
             } catch {

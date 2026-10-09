@@ -33,6 +33,15 @@ export function traceAttach(v: unknown): void {
   view = v as TraceView
 }
 
+/** 表格拖选的内部决策（第四十四轮）：由 `tableClipboard` 写在 `window.__mdTableDrag` 上 */
+function tableDragState(): unknown {
+  try {
+    return (window as unknown as Record<string, unknown>).__mdTableDrag ?? null
+  } catch {
+    return null
+  }
+}
+
 function markerFontSizes(): string {
   try {
     const list = [...document.querySelectorAll('.md-marker')]
@@ -63,6 +72,7 @@ function snap(tag: string, extra?: Record<string, unknown>): void {
       fs: markerFontSizes(),
       st: ed ? Math.round((ed as HTMLElement).scrollTop) : -1,
       act: document.activeElement ? document.activeElement.tagName : '?',
+      td: tableDragState(),
       ...(extra || {})
     }
     const line = JSON.stringify(rec)
