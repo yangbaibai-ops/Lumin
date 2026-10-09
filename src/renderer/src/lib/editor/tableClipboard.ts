@@ -493,8 +493,24 @@ export const TableDragSelect = Extension.create({
         },
         props: {
           handleDOMEvents: {
-            mousedown(_view: EditorView, event: Event): boolean {
+            mousedown(view: EditorView, event: Event): boolean {
               shiftGesture = (event as MouseEvent).shiftKey === true
+              /**
+               * **锚点取自"按下的那个点"**（第四十二轮加固）。
+               *
+               * 不能靠"按下时选区为空"来重置，也不能拿第一帧的 DOM 选区当锚点：用户经常在**已有选区**上
+               * 再拖（实测日志里按下时选区就是 `647-869` 非空），那一刻 DOM 选区还停留在上一次的范围，
+               * 用它当锚点会把尾端算到错误位置（尾端在 `1091 ↔ 1068` 之间横跳就是这么来的）。
+               * 这里直接用按下坐标 → 文档位置，作为本次手势唯一的锚点；算不出来才退回 DOM 选区。
+               */
+              const dom = (currentView as unknown as { dom?: HTMLElement } | null)?.dom
+              const me = event as MouseEvent
+              const at = view.posAtCoords?.({ left: me.clientX, top: me.clientY })
+              if (dom) {
+                if (at && Number.isFinite(at.pos) && at.pos > 0)
+                  dom.dataset.mdTableDragAnchor = String(at.pos)
+                else delete dom.dataset.mdTableDragAnchor
+              }
               // 只记录，不接管：让 `tableEditing` 与 PM 自己的 mousedown 照常跑
               return false
             }
@@ -522,9 +538,29 @@ export const TableDragSelect = Extension.create({
           const native = nativeSelectionRange()
           if (native) {
             try {
-              tr.setSelection(
-                TextSelection.between(tr.doc.resolve(native.from), tr.doc.resolve(native.to))
-              )
+              /**
+               * **锚点守恒**（第四十二轮，真因由用户逐帧日志锁定）。
+               *
+               * 用户日志（`seq=13`，表格内跨格反向拖）：尾端在 `1091 ↔ 1068` 之间**横跳**（差 23 ≈ 一个
+               * 单元格边界）⇒ 松手以最后一帧为准 ⇒ 少掉尾部，而横跳就是用户说的"闪烁"；且"只在表格内、
+               * 跨单元格时出现"，四个时点反而一致（所以第四十一轮那条修复仍保留）。
+               * 机理：这一行的锚点原本**每帧**从**浏览器 DOM 选区**（`nativeSelectionRange()`）取，
+               * 而浏览器/表格逻辑会把 DOM 端点夹到单元格边界 ⇒ 锚点不守恒。
+               * 修法：手势期间**只认第一次写下的锚点**（存在编辑区 DOM 的 `dataset` 上，不必新加模块变量；
+               * 下一次手势以"按下时选区为空"自动重置），head 每帧用 DOM 现算 —— **只夹 head、绝不动锚点**。
+               */
+              const dom = (currentView as unknown as { dom?: HTMLElement } | null)?.dom
+              const stored = Number(dom?.dataset.mdTableDragAnchor ?? '')
+              const anchorPos =
+                state.selection.empty || !Number.isFinite(stored) || stored === 0
+                  ? native.from
+                  : stored
+              if (dom) dom.dataset.mdTableDragAnchor = String(anchorPos)
+              const headPos =
+                Math.abs(native.to - anchorPos) >= Math.abs(native.from - anchorPos)
+                  ? native.to
+                  : native.from
+              tr.setSelection(TextSelection.create(tr.doc, anchorPos, headPos))
               // 抹掉 anchor，否则 `tableEditing` 的下一帧 mousemove 会再造一个 CellSelection
               tr.setMeta(tableEditingKey, -1)
             } catch {
