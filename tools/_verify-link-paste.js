@@ -2,7 +2,16 @@
 // A. 剪贴板只有纯文本且是 markdown 链接 → 应成链（此前会留下 `[a](` + 单独链化的网址）
 // B. 剪贴板只有纯文本且是块级 markdown → 应成块（标题等），而不是一坨纯文本
 // C. 剪贴板带 HTML → 直接用 HTML 通道成链
-const CDP = 'http://127.0.0.1:9222/json'
+//
+// ⚠️ 端口必须**发现**而不是写死（第五十五轮修）：此前硬编码 9222 —— 而 9222 可能被别的进程
+// 占着，或者套件是用 `--port=xxxx` 起的隔离实例，于是这里要么连到无关的调试端点、要么
+// `fetch failed` ⇒ 默认矩阵里稳定 `0/0 ERROR`。口径与其它套件一致：
+//   `LUMIN_DEBUG_PORT`（run-suites.js 与隔离实例都会设）→ 命令行 `--port=` → 兜底 9333。
+const PORT =
+  process.env.LUMIN_DEBUG_PORT ||
+  (process.argv.find((a) => a.startsWith('--port=')) || '').slice('--port='.length) ||
+  '9333'
+const CDP = `http://127.0.0.1:${PORT}/json`
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 function connect(url) {
   let id = 0

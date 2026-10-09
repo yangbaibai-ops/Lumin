@@ -168,13 +168,14 @@ test('回归：`****` 与图片语法同段时各走各的通道，互不吞并'
   assert.deepEqual(shape(atoms), ['m:****:literal', 'm:![]():literal', 'm:****:literal'])
 })
 
-test('回归：normalizeAtoms 对 `****`/`~~~~`/普通链接的产出与老行为一致', () => {
+test('回归：normalizeAtoms 对 `****`/`~~~~` 的产出与老行为一致', () => {
   // ⚠️ normalizeAtoms 返回**新数组**（内部 `out = atoms.slice()`，不回写传入的数组），
   // 所以断言要拿返回值，别拿入参。
+  // 注：`[文本](url)` 在第五十五轮**有意**改成走逐字写回（源码漂移修复），所以不再列在这里 ——
+  // 它的新口径由 `tests/linkSyntaxLiteral.test.mjs` 钉住。
   const expected = {
     '****': ['m:****:literal'],
     '~~~~': ['m:~~~~:literal'],
-    '[文本](url)': ['t:[文本](url)'],
     普通文字: ['t:普通文字']
   }
   for (const [src, want] of Object.entries(expected)) {

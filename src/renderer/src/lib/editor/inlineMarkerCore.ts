@@ -330,64 +330,103 @@ export function splitStrayMarkerRuns(text: string): StrayRun[] {
   return runs
 }
 
-// ─── 图片语法（`![]()` / `![alt](url)`）的逐字写回 ─────────────────────────────
+// ─── 图片 / 链接语法（`![]()`、`[文本](url)`）的逐字写回 ────────────────────────
 //
 // 缺陷（第五十三轮）：用户手打的 `![]()` 在**文档里是裸文本**，而 prosemirror-markdown 的
 // `esc()` 会转义 `[` / `]` —— 落盘变成 `!\[\]()`。每保存一次就多一层反斜杠
 // （下次解析又读回字面括号），与"源码即所见"的口径直接冲突。
+//
+// 第五十五轮把同一套从**图片语法**扩到**完整链接语法**：第五十四轮实测"一次性输入
+// `[文本](url)`"（输入规则正确地放弃转换）后落盘是 `\[文本\](url)` —— 字符没丢但源码漂移，
+// 与图片那条是同一个病。
 //
 // 修法沿用**仓库既有的逐字写回通道**（没有新造机制、也不动 schema 注册表）：
 //   * 无样式正文 → `mdMarker(side:'literal')` 原子（`escape:false` + 空包裹 ⇒ 逐字写回，
 //     CSS `.md-marker[data-side='literal']` 本来就是"当普通字符原样显示"）；
 //   * 带样式正文 → `verbatim` 原子（与 `****` 落在加粗正文里同一条路：fromAtoms 贴 MdEscape）。
 // 与 `literalizeStrayAtoms` 的分工：那边只管 `*`/`~`/`` ` `` 的**孤立标记字符**，这边只管
-// **图片语法区间**；两者互不重叠，所以 `~~~~` / `****` 的老行为一个字节都不变。
+// **语法区间**；两者互不重叠，所以 `~~~~` / `****` 的老行为一个字节都不变。
 //
-// 只认图片：`[文本](url)` 普通链接**不受影响**（要匹配就必须以 `!` 开头、且 `]` 紧跟 `(`，
-// 与 markdown-it 的 image 规则一致 —— `![] ()` 中间有空格，markdown-it 也不当图片）。
+// ⚠️ **判据必须足够窄**（否则会把用户的普通方括号文本卷进来）：
+//   * 必须以 `[` 开头（可带 `!` 前缀），`]` 后**紧跟** `(`（`[文本] (url)`、`[TODO]` 不算）；
+//   * 目标**非空**（`[文本]()`、`![]()` 不算 —— 后者是选图按钮的夹具，必须保持字面）；
+//   * 目标里不许空白，允许成对括号（与 markdown-it 的 link/image 规则同口径）。
+// 于是 `[TODO]`、`[1]`、`[文本]`、`[文本] (url)` 一律不动。
 
-/** 图片语法的一个区间（`from` 含、`to` 不含） */
-export interface ImageLitSpan {
+/** 一段"逐字写回"区间（`from` 含、`to` 不含） */
+export interface LiteralSpan {
   from: number
   to: number
 }
 
 /**
- * markdown-it 的 image 规则口径：`!` + `[…]` + **紧跟** `(…)`，目标里可有成对括号、不许空白。
+ * 链接语法口径：`[label](dest)`，目标**非空**（`+` = 至少一个字符）、可有成对括号、不许空白。
+ * （图片那边单独一条，**允许空目标** —— `![]()` 是选图按钮的夹具，第五十三轮就钉住了。）
  * 每段文本现建一个带 `g` 的正则（带 `g` 的正则有 `lastIndex` 状态，不能共享）。
  */
+function linkSyntaxRe(): RegExp {
+  return /!?\[[^\]\n]*\]\((?:[^()\s]|\([^()\s]*\))+\)/g
+}
+
+/** 图片语法口径（与第五十三轮逐字一致：`!` 前缀 + **允许空**目标） */
 function imageSyntaxRe(): RegExp {
   return /!\[[^\]\n]*\]\((?:[^()\s]|\([^()\s]*\))*\)/g
 }
 
-/** 便宜的触发器：块里有没有**图片语法**文本（`blockNeedsNormalize` 用） */
+/** 便宜的触发器：块里有没有**图片语法**文本（历史入口，仍只认图片） */
 export function hasImageSyntax(text: string): boolean {
-  return text.includes('![') && /!\[[^\]\n]*\]\((?:[^()\s]|\([^()\s]*\))*\)/.test(text)
+  return text.includes('![') && imageSyntaxRe().test(text)
 }
 
-/** 文本里所有图片语法区间（纯函数，单测钉住：`![] ()` / `[文本](url)` 不算） */
-export function imageSyntaxSpans(text: string): ImageLitSpan[] {
-  const spans: ImageLitSpan[] = []
-  for (const m of text.matchAll(imageSyntaxRe())) {
+/** 便宜的触发器：块里有没有**链接或图片语法**文本（`blockNeedsNormalize` 用） */
+export function hasLinkSyntax(text: string): boolean {
+  return hasImageSyntax(text) || (text.includes('](') && linkSyntaxRe().test(text))
+}
+
+function spansOf(text: string, re: RegExp): LiteralSpan[] {
+  const spans: LiteralSpan[] = []
+  for (const m of text.matchAll(re)) {
     if (m.index === undefined || !m[0]) continue
     spans.push({ from: m.index, to: m.index + m[0].length })
   }
   return spans
 }
 
+/** 文本里所有图片语法区间（纯函数，单测钉住：`![] ()` / `[文本](url)` 不算图片） */
+export function imageSyntaxSpans(text: string): LiteralSpan[] {
+  return spansOf(text, imageSyntaxRe())
+}
+
 /**
- * 把**图片语法**区间切出来交给逐字写回通道（原地改写，幂等）。
+ * 文本里所有"该逐字写回"的语法区间 = **图片**（含空目标）+ **链接**（目标非空）。
+ * 空目标的 `[文本]()` 不算（用户边界：`[TODO]` / `[1]` / `[文本]` 这些普通方括号文本不许被卷进来）。
+ */
+export function linkSyntaxSpans(text: string): LiteralSpan[] {
+  const all = [...spansOf(text, imageSyntaxRe()), ...spansOf(text, linkSyntaxRe())]
+  const seen = new Set<string>()
+  return all
+    .filter((s) => {
+      const k = s.from + ':' + s.to
+      if (seen.has(k)) return false
+      seen.add(k)
+      return true
+    })
+    .sort((a, b) => a.from - b.from)
+}
+
+/**
+ * 把**链接/图片语法**区间切出来交给逐字写回通道（原地改写，幂等）。
  *
  * 与 `literalizeStrayAtoms` 完全同形：无样式 → literal 标记原子；有样式 → verbatim 原子；
  * 行内代码正文本来就逐字写回，不动；无样式但挂着别的 mark（链接等）的文本切了会丢 mark，不动。
  *
  * @returns 有没有改动（`false` 时调用方不该 dispatch，否则归一化无法收敛）
  */
-export function literalizeImageAtoms(atoms: Atom[]): boolean {
+export function literalizeLinkSyntaxAtoms(atoms: Atom[]): boolean {
   let changed = false
   const out: Atom[] = []
   for (const a of atoms) {
-    if (a.kind !== 'text' || !a.text || a.verbatim || !hasImageSyntax(a.text)) {
+    if (a.kind !== 'text' || !a.text || a.verbatim || !hasLinkSyntax(a.text)) {
       out.push(a)
       continue
     }
@@ -401,7 +440,7 @@ export function literalizeImageAtoms(atoms: Atom[]): boolean {
       out.push(a)
       continue
     }
-    const spans = imageSyntaxSpans(a.text)
+    const spans = linkSyntaxSpans(a.text)
     if (!spans.length) {
       out.push(a)
       continue
@@ -422,6 +461,30 @@ export function literalizeImageAtoms(atoms: Atom[]): boolean {
   }
   if (changed) atoms.splice(0, atoms.length, ...out)
   return changed
+}
+
+/** 第五十三轮的名字（当时只认图片语法）；语义已扩到链接，保留别名不破坏既有引用 */
+export const literalizeImageAtoms = literalizeLinkSyntaxAtoms
+
+/**
+ * 幂等安装的**通用小工具**（第五十五轮）：同一个 `key` 上任何时刻只保留**最新一份**监听。
+ *
+ * 为什么需要它：这批监听挂在 `window` / `view.dom` 这类**跨实例存活**的目标上，而闭包是
+ * 每次实例化（dev 下 HMR 会反复替换模块）新造的 ⇒ 直接 `addEventListener` 会累积多份，
+ * 松手/滚动那一拍多份回调依次跑（实测：选区被改小、尾巴被丢 —— 只在 `npm run dev` 复现）。
+ *
+ * `install` 必须返回"卸掉自己"的函数；再装一次时先调用上一次的卸载。
+ * 放在纯逻辑核里是为了能被 `node --test` 直接钉住（不碰 DOM、不 import 编辑器栈）。
+ */
+export function installOnce<K extends object>(
+  registry: WeakMap<K, () => void>,
+  key: K,
+  install: () => () => void
+): () => void {
+  registry.get(key)?.()
+  const uninstall = install()
+  registry.set(key, uninstall)
+  return uninstall
 }
 
 /**
@@ -789,7 +852,7 @@ export function normalizeAtoms(atoms: Atom[]): Atom[] | null {
   // 字面量化放在最后：前面的配对/物化只看样式，字面量化的产物（verbatim 文本 /
   // literal 标记）不该再被当成构造去配对。
   // 图片语法先切（它与孤立标记字符不重叠），再走原有的孤立标记字符那一遍。
-  changed = literalizeImageAtoms(out) || changed
+  changed = literalizeLinkSyntaxAtoms(out) || changed
   changed = literalizeStrayAtoms(out) || changed
   return changed ? out : null
 }

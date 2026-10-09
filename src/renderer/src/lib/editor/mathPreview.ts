@@ -92,6 +92,18 @@ import { Fragment, type Mark, type Node as PMNode } from '@tiptap/pm/model'
 import { fillHighlight } from './mathHighlight'
 import { emptyMathDom, mathRenderInfo } from './mathMarkers'
 import { scanInlineMathSpans } from '../mathScan'
+// 幂等安装的小工具（第五十五轮）：同 key 只留最新一份监听（见 `installOnce` 的说明）
+import { installOnce } from './inlineMarkerCore.ts'
+
+/** 「焦点 / 组字变化要重算插入符」的四个 DOM 事件（装与卸必须用同一份清单） */
+const CARET_FLAG_EVENTS = ['focus', 'blur', 'compositionstart', 'compositionend'] as const
+
+/**
+ * 视口/焦点监听的**清理函数**，按 `view` 存。
+ * `window` 与 `view.dom` 都比本视图实例活得久（HMR 下尤其），所以安装必须幂等 —— 见
+ * `MathPreviewView.installViewport`。
+ */
+const mathViewportUninstall = new WeakMap<EditorView, () => void>()
 
 const mathPreviewKey = new PluginKey<MathPluginState>('lumin-math-preview')
 
@@ -1553,6 +1565,8 @@ class MathPreviewView {
   private rafId = 0
   /** 自绘插入符的可见性开关（与插件的 `props.decorations` 共享同一个对象） */
   private caret: CaretVisibility
+  /** 本实例装上的那份清理函数（destroy 时只在"注册表里还是我"的情况下卸；见 destroy 的说明） */
+  private uninstallViewport: (() => void) | null = null
 
   /**
    * 视口动了就把**行内浮层**重新贴回公式上。
@@ -1578,18 +1592,42 @@ class MathPreviewView {
     this.caret.focused = view.hasFocus()
     this.caret.composing = view.composing
     this.sync()
-    window.addEventListener('scroll', this.onViewport, true)
-    window.addEventListener('resize', this.onViewport)
-    /**
-     * 自绘插入符的可见性：焦点 / 组字变化时更新开关并**逼一次重绘**。
-     *
-     * 为什么是这四个 DOM 事件而不是 PM 的事务钩子：focus/blur/组字都不是文档或选区变化，
-     * 不会有事务经过插件 ⇒ 不主动重绘的话，插入符会留在屏幕上（失焦了还闪）或在组字时
-     * 与原生插入符叠成两条。
-     */
-    for (const type of ['focus', 'blur', 'compositionstart', 'compositionend']) {
-      view.dom.addEventListener(type, this.onCaretFlags)
-    }
+    this.installViewport()
+  }
+
+  /**
+   * **幂等安装**视口/焦点监听（第五十五轮）。
+   *
+   * 这批监听装在 `window` 与 `view.dom` 上 —— 两者都比本实例活得久，而闭包是每次构造新造的。
+   * dev(HMR) 下模块被热替换、视图被复用时会**再挂一份**，`destroy()` 却只卸得掉最后那一份
+   * （旧实例的 `destroy` 再也不会被调用）⇒ 滚动一次多份 rAF 回调、`onCaretFlags` 叠着跑。
+   * 所以：按 `view` 记清理函数，装之前先把上一次的卸掉（`installOnce`），任何时刻只有一份。
+   * `dataset.mdMathViewportHandlers` 是给套件看的可断言载体（1 = 已装、0 = 已卸）。
+   */
+  private installViewport(): void {
+    const view = this.view
+    this.uninstallViewport = installOnce(mathViewportUninstall, view, () => {
+      window.addEventListener('scroll', this.onViewport, true)
+      window.addEventListener('resize', this.onViewport)
+      /**
+       * 自绘插入符的可见性：焦点 / 组字变化时更新开关并**逼一次重绘**。
+       *
+       * 为什么是这四个 DOM 事件而不是 PM 的事务钩子：focus/blur/组字都不是文档或选区变化，
+       * 不会有事务经过插件 ⇒ 不主动重绘的话，插入符会留在屏幕上（失焦了还闪）或在组字时
+       * 与原生插入符叠成两条。
+       */
+      for (const type of CARET_FLAG_EVENTS) view.dom.addEventListener(type, this.onCaretFlags)
+      view.dom.dataset.mdMathViewportHandlers = '1'
+      return () => {
+        window.removeEventListener('scroll', this.onViewport, true)
+        window.removeEventListener('resize', this.onViewport)
+        for (const type of CARET_FLAG_EVENTS) view.dom.removeEventListener(type, this.onCaretFlags)
+        view.dom.dataset.mdMathViewportHandlers = '0'
+      }
+    })
+    // 测试钩子（只为"幂等性"这条断言服务）：让套件能再装一次并观察监听仍是 1 份。
+    ;(view.dom as unknown as Record<string, unknown>).__mdMathViewportInstall = (): void =>
+      this.installViewport()
   }
 
   /**
@@ -1626,11 +1664,17 @@ class MathPreviewView {
 
   destroy(): void {
     if (this.rafId) cancelAnimationFrame(this.rafId)
-    window.removeEventListener('scroll', this.onViewport, true)
-    window.removeEventListener('resize', this.onViewport)
-    for (const type of ['focus', 'blur', 'compositionstart', 'compositionend']) {
-      this.view.dom.removeEventListener(type, this.onCaretFlags)
+    /**
+     * 只有当注册表里**还是我这一份**时才卸。
+     * HMR / 插件视图重建的顺序是「新实例先装（顺带卸掉旧的）、旧实例的 destroy 后跑」——
+     * 若旧实例无条件调用注册表里的清理函数，卸掉的会是**新实例**刚装上的那份监听，
+     * 于是数学浮层不再跟随滚动/焦点（实测：`_verify-math-edit.js` 一连串 math/粘贴用例变红）。
+     */
+    if (mathViewportUninstall.get(this.view) === this.uninstallViewport) {
+      this.uninstallViewport?.()
+      mathViewportUninstall.delete(this.view)
     }
+    this.uninstallViewport = null
     this.drop()
   }
 
