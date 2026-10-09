@@ -801,6 +801,99 @@ async function main() {
     JSON.stringify(i4)
   )
 
+  // ═══ 第二十六轮 J：**松手不再改布局**（用户第二十二轮报障的回归护栏）═══════════════
+  //
+  // 真因（第二十三轮顺序表实测）：`onUp` 里那次"按最终选区重算显隐"会**改布局**
+  //（显隐两态差 31px），而它同时挂在 `pointerup` 上，`pointerup` **早于** `mouseup`
+  //（PM 的定稿由 `mouseup` 驱动）⇒ PM 按改动后的布局定稿 ⇒ 用户看到"松手后选中的和拖的不一致"。
+  // 第二十六轮修复：把这次重算挪到 `setTimeout(…, 0)`（`onUp` 同步部分只留不改布局的）。
+  // 判据：四个时点 `from/to` 完全一致、锚点不变、松手后 == 拖拽最长范围。
+  const TBL = '飘逸 **加粗** H 结尾\n\n| 已删功能 | 活文档 |\n| --- | --- |\n| a | b |'
+  const PT2 = (w) =>
+    `(() => { for (const p of [...document.querySelectorAll('.ProseMirror p, .ProseMirror td')]) { const it = document.createTreeWalker(p, NodeFilter.SHOW_TEXT); while (it.nextNode()) { if (it.currentNode.textContent.includes(${JSON.stringify(w)})) { const n = it.currentNode; const i = n.textContent.indexOf(${JSON.stringify(w)}); const r = document.createRange(); r.setStart(n, i); r.setEnd(n, i + 1); const b = r.getBoundingClientRect(); return { found: true, x: b.left + b.width / 2, y: b.top + b.height / 2 } } } } return { found: false } })()`
+  const dragged = async (fromWord, toWord, name) => {
+    await openDocWith(app, TBL, name)
+    await waitEditor(ev)
+    await sleep(900)
+    const a = await objectOf(ev, PT2(fromWord))
+    const b = await objectOf(ev, PT2(toWord))
+    await mouse('mouseMoved', a.x, a.y, 0)
+    await mouse('mousePressed', a.x, a.y, 1)
+    await sleep(110)
+    const anchor = await ev(`window.__L.ed().state.selection.anchor`)
+    const seq = []
+    for (let i = 1; i <= 5; i += 1) {
+      await mouse('mouseMoved', a.x + ((b.x + 20 - a.x) * i) / 5, a.y + ((b.y - a.y) * i) / 5, 1)
+      await sleep(70)
+      seq.push(await objectOf(ev, ANS))
+    }
+    await mouse('mouseReleased', b.x + 20, b.y, 0)
+    const four = []
+    four.push(await objectOf(ev, ANS))
+    await sleep(16)
+    four.push(await objectOf(ev, ANS))
+    await sleep(34)
+    four.push(await objectOf(ev, ANS))
+    await sleep(120)
+    four.push(await objectOf(ev, ANS))
+    return {
+      anchor,
+      anchorAfter: await ev(`window.__L.ed().state.selection.anchor`),
+      seq,
+      four,
+      maxTo: Math.max(...seq.map((s) => s.to)),
+      minFrom: Math.min(...seq.map((s) => s.from)),
+      last: four[3]
+    }
+  }
+  const ANS = `(() => { const s = window.__L.ed().state.selection; return { from: s.from, to: s.to } })()`
+  const jA = await dragged('加粗', 'H', 'marker-hold-j1.md')
+  const fourA = [...new Set(jA.four.map((s) => s.from + '-' + s.to))]
+  console.log(
+    'J1 夹具A 逐拍=' +
+      JSON.stringify(jA.seq.map((s) => s.from + '-' + s.to)) +
+      ' 四时点=' +
+      JSON.stringify(fourA)
+  )
+  report.check(
+    'J1 第二十六轮修复：夹具 A（按下点在构造内）`mouseup` 同拍/+1帧/+50ms/+170ms 四个时点 `from/to` **完全一致**',
+    fourA.length === 1,
+    JSON.stringify({ four: jA.four, distinct: fourA })
+  )
+  report.check(
+    'J2 第二十六轮修复：夹具 A **锚点不变**且**松手 == 拖拽中的最长范围**',
+    jA.anchor === jA.anchorAfter && jA.last.from === jA.minFrom && jA.last.to === jA.maxTo,
+    JSON.stringify({
+      anchor: jA.anchor,
+      anchorAfter: jA.anchorAfter,
+      range: [jA.minFrom, jA.maxTo],
+      last: jA.last
+    })
+  )
+  const jB = await dragged('飘逸', '已删功能', 'marker-hold-j2.md')
+  const fourB = [...new Set(jB.four.map((s) => s.from + '-' + s.to))]
+  console.log(
+    'J3 夹具B 逐拍=' +
+      JSON.stringify(jB.seq.map((s) => s.from + '-' + s.to)) +
+      ' 四时点=' +
+      JSON.stringify(fourB)
+  )
+  report.check(
+    'J3 第二十六轮修复：夹具 B（按下点在构造外、终点落进表格单元格）四个时点 `from/to` **完全一致**',
+    fourB.length === 1,
+    JSON.stringify({ four: jB.four, distinct: fourB })
+  )
+  report.check(
+    'J4 第二十六轮修复：夹具 B **锚点不变**且**松手 == 拖拽中的最长范围**',
+    jB.anchor === jB.anchorAfter && jB.last.from === jB.minFrom && jB.last.to === jB.maxTo,
+    JSON.stringify({
+      anchor: jB.anchor,
+      anchorAfter: jB.anchorAfter,
+      range: [jB.minFrom, jB.maxTo],
+      last: jB.last
+    })
+  )
+
   app.close()
   return report.finish()
 }

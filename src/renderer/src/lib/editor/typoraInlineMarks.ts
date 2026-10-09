@@ -1528,15 +1528,29 @@ export const TyporaInlineMarks = Extension.create({
       pressFold = false // 先清掉，下面那次重算才按**最终选区**的判据走
       applyPressClass()
       // 冻结了这么久，得按**最终选区**重算一次显隐（空事务 + 元数据；见 apply 的说明）。
-      // 这一步在 PM 自己的 MouseUp 处理之后（本监听挂在 document 上，冒泡晚于 view.dom），
-      // 所以不会干扰它判落点。
+      //
+      // ⚠️ **必须晚于 PM 的 mouseup 定稿**（第二十五轮修）：这段重算会**改布局**
+      //（显隐两态差 31px = 一对 `**`），而 `onUp` 同时挂在 `pointerup` 与 `mouseup` 上 ——
+      // `pointerup` **早于** `mouseup`，PM 的 `handleMouseUp` 由 `mouseup` 驱动。
+      // 第二十三轮实测（顺序表，夹具 A）：`CAPTURE:pointerup` 时标记还是 `0px`，
+      // 到 `BUBBLE:pointerup` 已经变成 `17px`、`hx 398→429` ⇒ 这一步**在 PM 定稿之前**就把
+      // 布局改了 ⇒ PM 按改动后的布局定稿，用户看到"松开鼠标后选中的和拖的时候不一样"
+      //（用户第二十二轮报障："松开鼠标前选中的和我松开鼠标后实际选中的文字不一致"）。
+      // 所以：清标志（不改布局）留在同步路径，**重算挪到一个宏任务之后**（PM 的 mouseup
+      // 链路已经跑完），PM 定稿时看到的几何与拖拽期间完全一致。
       try {
         if (!view.isDestroyed) {
           const v = this.editor.view as unknown as {
             state: EditorState
             dispatch: (tr: Transaction) => void
           }
-          v.dispatch(v.state.tr.setMeta(SET_PRESS, false))
+          setTimeout(() => {
+            try {
+              v.dispatch(v.state.tr.setMeta(SET_PRESS, false))
+            } catch {
+              /* 视图在延迟窗口里被销毁：忽略，下一次选区变化会重建 */
+            }
+          }, 0)
         }
       } catch {
         /* 视图正在销毁时忽略：下一次选区变化会重建 */
