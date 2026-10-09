@@ -486,6 +486,18 @@ export const TableDragSelect = Extension.create({
      * head 取当前指针 ⇒ 选区就是"用户从按下点划到当前指针"这一段，与手感一致。
      */
     let lastPointerPos: number | null = null
+    /**
+     * 本次手势是否**真的拖动过**（第四十三轮）。
+     *
+     * 表格里**单击**（不拖）也会产生一次 cell 选区事务；此前那段转换会把它当成"拖选"，
+     * 于是用户在已有选中范围内单击时，范围会被**再造回来**（现象：闪一下但仍保持选中）。
+     * 判据：指针相对按下点移动超过 3px 才算拖动；单击一律落成光标。
+     */
+    let dragMoved = false
+    let pressX = 0
+    let pressY = 0
+    /** 按下点算出的文档位置（单击时就把光标落在这里） */
+    let pressPos: number | null = null
 
     return [
       new Plugin({
@@ -496,6 +508,11 @@ export const TableDragSelect = Extension.create({
           // 指针轨迹用 document 捕获监听：拖到编辑区外也能继续跟（PM 自己的 mousemove 只在编辑区内）
           const onMove = (e: Event): void => {
             const me = e as MouseEvent
+            if (
+              !dragMoved &&
+              (Math.abs(me.clientX - pressX) > 3 || Math.abs(me.clientY - pressY) > 3)
+            )
+              dragMoved = true
             const at = editorView.posAtCoords?.({ left: me.clientX, top: me.clientY })
             lastPointerPos = at && Number.isFinite(at.pos) ? at.pos : lastPointerPos
           }
@@ -530,6 +547,10 @@ export const TableDragSelect = Extension.create({
               }
               // 新手势：head 也从"按下点"起步（免得沿用上一手势的指针位置）
               lastPointerPos = at && Number.isFinite(at.pos) ? at.pos : null
+              dragMoved = false
+              pressX = me.clientX
+              pressY = me.clientY
+              pressPos = at && Number.isFinite(at.pos) ? at.pos : null
               // 只记录，不接管：让 `tableEditing` 与 PM 自己的 mousedown 照常跑
               return false
             }
@@ -554,6 +575,23 @@ export const TableDragSelect = Extension.create({
             mouseAnchorCellPos(sel as unknown as { $anchorCell?: { pos?: number } }, state) === null
           )
             return true
+          /**
+           * **单击 ≠ 拖选**（第四十三轮）：没移动过指针的手势一律落成光标。
+           *
+           * 表格里单击也会产生 cell 选区事务，若照下面的转换逻辑处理，用户"在已有选中范围内单击"
+           * 时范围会被重新造出来（闪一下但依旧选中）。这里直接给出按下点的光标并吃掉这次事务。
+           */
+          if (!dragMoved) {
+            if (pressPos !== null) {
+              try {
+                tr.setSelection(TextSelection.create(tr.doc, pressPos))
+                tr.setMeta(tableEditingKey, -1)
+              } catch {
+                /* 位置失效：放行原事务，交给 PM 兜底 */
+              }
+            }
+            return true
+          }
           const native = nativeSelectionRange()
           if (native) {
             try {
@@ -586,7 +624,22 @@ export const TableDragSelect = Extension.create({
                 Math.abs(native.to - anchorPos) >= Math.abs(native.from - anchorPos)
                   ? native.to
                   : native.from
-              const headPos = lastPointerPos === null ? farEnd : lastPointerPos
+              /**
+               * 指针优先，但**允许原生端点比指针多 1 个字符**（收尾）。
+               *
+               * `posAtCoords` 落在字符边界时会比 DOM 选区差一格（实测：松手范围比拖拽最长少 1，
+               * 表现就是"松手丢一个字"）；而原生端点若**远出很多**，那是被 snap 到单元格边界
+               * （用户报的"加了头"）。所以：差值 ≤1 采信 DOM（它对行内精确位置更准），>1 一律以指针为准。
+               */
+              const dPointer =
+                lastPointerPos === null
+                  ? Number.POSITIVE_INFINITY
+                  : Math.abs(lastPointerPos - anchorPos)
+              const dNative = Math.abs(farEnd - anchorPos)
+              const headPos =
+                lastPointerPos === null || (dNative > dPointer && dNative - dPointer <= 1)
+                  ? farEnd
+                  : lastPointerPos
               tr.setSelection(TextSelection.create(tr.doc, anchorPos, headPos))
               // 抹掉 anchor，否则 `tableEditing` 的下一帧 mousemove 会再造一个 CellSelection
               tr.setMeta(tableEditingKey, -1)
