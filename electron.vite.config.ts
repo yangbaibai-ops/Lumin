@@ -30,9 +30,25 @@ function cspPlugin(isDev: boolean): Plugin {
  *  - build：不手工拆 chunk（原因见下方注释），保持 Vite 默认的「按动态 import 边界拆包」。
  */
 export default defineConfig(({ command }) => ({
-  main: {},
+  /**
+   * ⚠️ **必须显式开压缩**（第十二轮启动量化实测）：`electron-vite` 给 main / preload / renderer
+   * 的默认 `build.minify` 都是 **false**（它的理由大概是"Electron 从本地加载、可读性更重要"），
+   * 于是我们一直在用**未压缩产物**：入口 chunk 991KB、编辑器 chunk 2.5MB、主进程 334KB ——
+   * 这些字节每次启动都要读、解析、求值。实测（同一台机器、同一方法、交替 A/B）：
+   * 入口 991 → **423KB**、编辑器 chunk 2547 → **1259KB**、主进程 334 → **220KB**、
+   * 入口 CSS 111 → **87KB**；`lumin:entry-exec` 149→145、`doc-visible`(编辑器可交互)
+   * 272→**256ms**、窗口首次可见（主进程 `first-window-painted`）485→**457ms**（−28ms）。
+   *
+   * 用 `'esbuild'`（Vite 的默认压缩器）：只重命名标识符、不做语义变换，字符串/类名字面量
+   * 都保留 —— 对"靠 name 找扩展/插件"的代码（Tiptap extension name、插件 key、`data-*`
+   * 锚点）无影响；仓库里所有 `.name` 用法都是数据名（ProseMirror 节点/标记名、路由名、
+   * 文件/列名），不依赖 JS 标识符。压缩产物上跑过 10 条套件（math/markers/export/
+   * print-preview/devtools/i18n/a11y/toc/cb-languages/settings-layout）全绿。
+   */
+  main: { build: { minify: 'esbuild' } },
   preload: {
     build: {
+      minify: 'esbuild',
       rollupOptions: {
         /**
          * 两个 preload 入口：
@@ -117,6 +133,7 @@ export default defineConfig(({ command }) => ({
       }
     },
     build: {
+      minify: 'esbuild',
       // 不做 manualChunks 手工拆包：实测把 @tiptap/@codemirror/mermaid 强制分组会形成
       // 「循环 chunk」，Rollup 会把只被动态 import 的 mermaid（4.9MB）提到 modulepreload
       // 里**首屏就加载**，反而拖慢启动。Vite/Rollup 默认按动态 import 边界拆包已经足够：

@@ -2,6 +2,56 @@
 
 ### Changed
 
+**启动变慢：先量化再优化 —— 三个数字（产物压缩 / KaTeX CSS 挪出首屏 / 先挂壳再等路由）**
+
+- 用户原话：「现在**打开应用的速度明显变慢了**，还可以优化下吗。」
+- **先量化**（新增 `tools/_probe-boot.js`：冷/热各多轮取中位数；主进程 `LUMIN_STARTUP_LOG` 的
+  `[startup]` 行 + 渲染层 `performance.mark('lumin:*')`；每次测量前清 `lumin-boot-ud`）：
+  冷启动中位 **~910–940ms**（进程 spawn → 编辑器可交互），拆开是
+  ① 进程起来到 `app-ready` **~200ms**（uptime，应用代码管不着）；
+  ② 渲染层入口 chunk 解析/求值到 `lumin:entry-exec` **~150ms**（948KB JS + 143KB CSS）；
+  ③ `/editor` 路由 chunk（`EditorView` **2.5MB**）加载+求值 **~75ms**；
+  ④ 编辑器创建 + 首次装饰 **~20ms**；⑤ 会话/文档 **~15ms**。
+  与历史提交 `6cff645` 对照（独立 worktree、同一台机器、同一方法）：**总时长无差异**
+  （924 vs 909ms；产物逐字相同：89 个 JS / 11182KB，入口 CSS 都是 142.9KB）—— 也就是说
+  "变慢"不是最近某一轮买来的，而是**结构性**的（见下条）。
+- **优化 1（最大的一项）：打开产物压缩**。`electron-vite` 给 main/preload/renderer 的默认
+  `build.minify` **就是 `false`**（它的取舍是"从本地加载、可读性更重要"），所以我们一直在用
+  **未压缩产物**：入口 991KB、编辑器 chunk 2547KB、主进程 334KB —— 每次启动都要读+解析+求值。
+  显式开 `'esbuild'` 后（交替 A/B、各 2–3 轮冷启动中位）：
+  入口 **991 → 423KB**（−57%）、编辑器 chunk **2547 → 1259KB**（−51%）、主进程 **334 → 220KB**、
+  入口 CSS **111 → 87KB**；`lumin:entry-exec` 149 → **145ms**、`first-frame` 165 → **146ms**、
+  `router-ready` 246 → **234ms**、`doc-visible`（编辑器可交互）**272 → 256ms**、
+  主进程 `first-window-painted`（窗口首次可见）**485 → 457ms（−28ms）**。
+- **优化 2：KaTeX 的 CSS 不进渲染阻塞的入口**。`katex/dist/katex.min.css`（59 条 `@font-face`
+  + 全套排版规则）原本静态 `@import` 进 `style.css`，把**渲染阻塞**的入口 CSS 从 ~60KB 抬到
+  **143KB**，而首屏（空文档/纯文本）里一个公式都没有。改成 `lib/editor/mathStyles.ts` 的按需
+  `import()`（编辑器 setup 里预热、真渲染公式前可 `await`）：入口 CSS **143 → 111KB**（未压缩
+  口径）/ **111 → 87KB**（压缩口径），KaTeX 自己那 29.1KB 变成按需 CSS chunk；**首屏字体数 0**
+  （59 个字体文件只在真出现公式时才取）。探针会断言"`.katex` 的计算字体确实是 KaTeX 的"
+  —— 这条改动一旦把公式样式弄坏，它是红的而不是"看起来还行"。
+- **优化 3：先挂壳、再等路由**。改前 `await router.isReady()`（等 2.5MB 的 `EditorView` chunk）
+  **之后**才 `app.mount('#app')`，那 ~75ms 里渲染层**一帧都不画**（窗口已经 `ready-to-show`
+  显示出来了、页面却还是空的 `#app`）。现在先 `app.mount` → 等一帧（rAF）→ 再 `await
+  router.isReady()`：`lumin:shell` **257 → 172ms**、`first-contentful-paint` **304 → 224ms**
+  （−80ms，用户"看到界面"的时刻），`doc-visible` 与压缩那项叠加到 256ms。
+- **新增打点**（没有它们就量不出回归）：渲染层 `entry-exec` / `css-ready`（用主题令牌 `--paper`
+  探"样式真的生效"）/ `first-frame` / `fonts-ready` / `editor-bind` / `decorations-first` /
+  `router-ready`；主进程 `db-ready` / `grants-ready`。全部**零阻塞**（回调式，绝不 `await`
+  —— 否则量到的是"加了打点的启动"）。
+- **如实边界**：① 本机的磁盘缓存已经热，"冷启动"是**新 userData** 而不是"刚开机"（真冷盘下
+  压缩省下的 ~568KB + 1.29MB 会更值钱，但那要清系统文件缓存，没做）；② `doc-visible` 里
+  `EditorView` chunk 的解析仍是最大单项，进一步拆它**改动面大风险高**，本轮只报告不动；
+  ③ 打印/导出那条链没动。
+- **验收**：新增 `tools/_probe-boot.js`（探针档：多轮取中位数 + 冷/热分开 + 从**构建产物**量体积，
+  因为页面 `performance.getEntriesByType('resource')` 在本应用**恒为空数组**，拿它做判据是假绿）；
+  `tests/bootBudget.test.mjs` **6 条**是它的**确定性同伴**（入口不许静态 `@import` KaTeX、
+  按需入口与预热必须在位、mount-before-router 不许退回、打点覆盖关键节点、探针只杀自己的实例、
+  构建必须开压缩）。压缩产物上冒烟 10 条套件全绿：`_verify-math.js` 8/8、
+  `_verify-marker-hold.js` 31/31、`_verify-export-quality.js` 7/7、`_verify-print-preview.js` 14/14、
+  `_verify-devtools.js` 52/52、`_verify-i18n.js` 9/9、`_verify-a11y.js` 36/36、`_verify-toc.js` 7/7、
+  `_verify-cb-languages.js` 5/5、`_verify-settings-layout.js` 7/7。
+
 **`Ctrl+P` 改为应用内**打印预览**（Windows 那句「此应用不支持打印预览」的平台限制绕法）**
 
 - 用户原话：「点击 `Ctrl+P` 打印的时候，出现的 Windows 打印窗口提示：**此应用不支持打印预览**，

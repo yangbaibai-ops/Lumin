@@ -25,7 +25,9 @@ const PARTS = [
   '08d-fix-log-4.md',
   '08e-wave-records.md',
   // 第十一轮新增：08d 已经顶到 1000 行预算（999 + 一条指向新片的说明），§4.90 另开一片
-  '08f-fix-log-5.md'
+  '08f-fix-log-5.md',
+  // 第十二轮新增：启动量化的 §4.91（同理，别往已经贴顶的分片里塞）
+  '08g-fix-log-6.md'
 ]
 
 const lineCount = (f) => fs.readFileSync(f, 'utf-8').replace(/\r\n/g, '\n').split('\n').length

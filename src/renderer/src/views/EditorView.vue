@@ -15,6 +15,7 @@ import Icon from '../components/Icon.vue'
 import { measureAllCodeBlocks } from '../lib/editor/codeBlockViews'
 import { registerEditorFlush, currentEditorFlush } from '../lib/editorFlush'
 import { useEditorMode } from '../composables/useEditorMode'
+import { preloadKatexCss } from '../lib/editor/mathStyles'
 import i18n from '../i18n'
 
 // ─── 编辑器页面：工具栏 + 实时渲染/分屏对比/源码三模式 + 状态栏 ────────────
@@ -32,6 +33,15 @@ const editorMenu = useEditorMenuStore()
  * 登记的是`useEditorMode` 里那份唯一的 flush 实现（防抖窗口内的序列化 + 账本记账）。
  */
 const { flushWysiwyg } = useEditorMode()
+
+/**
+ * 预热 KaTeX 样式（第十二轮启动量化，见 lib/editor/mathStyles.ts）：
+ * 入口 CSS 里原本静态 `@import` 了 `katex/dist/katex.min.css`（59 条 @font-face + 全套排版
+ * 规则，把**渲染阻塞**的入口 CSS 从 ~60KB 抬到 143KB），而"打开应用"这一屏里往往一个公式
+ * 都没有。这里放在 setup **最前面**（早于下面创建编辑器/建装饰）：公式装饰是**同步**建的，
+ * 放在 `onMounted` 就晚了 —— 首次带公式的文档可能闪一下未样式化。
+ */
+preloadKatexCss()
 
 /**
  * 渲染面板右键：先按点击位置校正选区（右键点在哪就作用于哪，表格识别才准确；

@@ -51,10 +51,28 @@ function buildBlockDecorations(state: import('@tiptap/pm/state').EditorState): D
   return DecorationSet.create(doc, decos)
 }
 
+/**
+ * 启动打点：**首次**装饰构建完成的时刻（下面 `state.init` 就是它）。
+ *
+ * 为什么单独记一条：这几套装饰（标记显隐 / 公式预览 / 行内标记）在编辑器建好时会对着
+ * 整篇文档跑一遍，是"编辑器就绪"里最重的一段同步工作；模块级 flag 保证只记第一次
+ * （之后每次 docChanged 都会重建，那是编辑期开销，不属于启动）。
+ */
+let markedFirstDecorations = false
+function markFirstDecorations(): void {
+  if (markedFirstDecorations) return
+  markedFirstDecorations = true
+  performance.mark('lumin:decorations-first')
+}
+
 export const typoraMarkersPlugin = new Plugin({
   key: pluginKey,
   state: {
-    init: (_config, state) => buildBlockDecorations(state),
+    init: (_config, state) => {
+      const set = buildBlockDecorations(state)
+      markFirstDecorations()
+      return set
+    },
     apply: (tr, oldSet, _oldState, newState) => {
       if (tr.docChanged || tr.selectionSet) return buildBlockDecorations(newState)
       return oldSet

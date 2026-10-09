@@ -17,10 +17,36 @@ import { isInside, installOpenDocTracking } from './lib/openFile'
  * 启动阶段打点（`performance.mark('lumin:*')`）：零开销、可在 DevTools Performance
  * 面板里直接看到，验收脚本也能通过 CDP 读到，用来对比启动优化前后。
  * 关心的关键点是 `lumin:doc-visible` —— 用户真正看到文档内容的时刻。
+ *
+ * ⚠️ **打点不许改变被测路径**：下面几处"字体就绪 / 首帧 / 入口 CSS 就位 / 编辑器绑定"
+ * 一律用**回调**记（`document.fonts.ready.then` / `requestAnimationFrame`），绝不 `await`
+ * —— 一旦在这里等，量到的就是"加了打点的启动"，而不是产品本身。
  */
 const mark = (stage: string): void => {
   performance.mark(`lumin:${stage}`)
 }
+
+/** 入口脚本开始执行（模块图的模块级代码都跑完了、这里开始接手） */
+mark('entry-exec')
+
+/**
+ * 首屏之外的三条零阻塞打点（都只记时刻，不做任何等待）：
+ *   * `fonts-ready` —— 网页字体就绪（KaTeX 那 60 个字体文件若被首屏用到，会体现在这里）；
+ *   * `css-ready`   —— 入口样式**真的生效**了（用主题令牌 `--paper` 探：`<link>` 元素进
+ *     `document.styleSheets` 是立刻的，只有样式表解析完令牌才取得到值）；
+ *   * `first-frame` —— 第一帧（能看到界面）。
+ */
+void document.fonts.ready.then(() => mark('fonts-ready'))
+requestAnimationFrame(() => mark('first-frame'))
+const cssProbe = (tries = 0): void => {
+  const paper = getComputedStyle(document.documentElement).getPropertyValue('--paper').trim()
+  if (paper) {
+    mark('css-ready')
+    return
+  }
+  if (tries < 240) requestAnimationFrame(() => cssProbe(tries + 1))
+}
+requestAnimationFrame(() => cssProbe())
 
 /** 首屏不需要的初始化（通知中心、右键菜单"最近使用"）丢到空闲时段 */
 const whenIdle = (fn: () => void): void => {
@@ -50,9 +76,29 @@ async function bootstrap(): Promise<void> {
   app.use(router)
   app.use(i18n)
 
-  await router.isReady()
+  /**
+   * ─── 先挂载、再等路由（第十二轮启动量化）────────────────────────────────────
+   *
+   * 量出来的事实（`tools/_probe-boot.js`，冷启动三轮中位）：
+   *   settings(162ms) → decorations-first(239ms) 之间 **~75ms** 全是
+   *   `router.isReady()` 在等 `/editor` 那条路由的懒加载 chunk（`EditorView-*.js` **2.5MB**）。
+   *   而改前是 `await router.isReady()` **之后**才 `app.mount('#app')` —— 也就是说这 75ms 里
+   *   渲染层**一帧都没画**（窗口已经 `ready-to-show` 显示了，但页面还是空的 #app），
+   *   用户看到的是"窗口先出来、内容过一会儿才出现"。
+   *
+   * 现在顺序反过来：先把应用挂上（顶栏/侧栏/工具栏先画出来），让它真出一帧，再去等路由。
+   * 路由没就绪时 `<RouterView>` 是空的 —— 这一帧显示的正是"壳"，用户感知上就是"应用开了"。
+   *
+   * ⚠️ 不许去掉下面这个 rAF：`app.mount()` 只是把 DOM 建出来，真正出帧要等下一次绘制；
+   * 不等的话这里仍然是"同步跑完再去等路由"，省下的就只是调用顺序而不是可见时间。
+   */
   app.mount('#app')
+  await nextTick()
+  await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
   mark('shell')
+
+  await router.isReady()
+  mark('router-ready')
 
   // 工作区目录树先就绪：它会设置「当前工作区根目录」，必须早于下面的打开文档 /
   // 会话恢复（否则并发 setRoot 会互相覆盖），所以这里保持顺序等待。

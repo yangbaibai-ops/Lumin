@@ -62,6 +62,12 @@ export const useEditorStore = defineStore('editor', {
     bind(editor: Editor): void {
       // markRaw：编辑器实例不参与 Vue 深度响应式（性能与兼容性）
       this.editor = markRaw(editor)
+      /**
+       * 启动打点：Tiptap 实例绑上来的时刻（≈ ProseMirror 插件全部 init 完，其中就包含
+       * `markers` / `mathPreview` / `typoraInlineMarks` 那几套装饰的**首次构建**）。
+       * 只记时刻、不做任何等待 —— 打点不许改变被测路径（见 renderer/main.ts 的说明）。
+       */
+      performance.mark('lumin:editor-bind')
       editor.on('transaction', ({ transaction }) => {
         this.tick++
         // 大纲只在**文档真的变了**时重算（第二十五轮轻量化）：`refreshOutline` 要遍历整篇

@@ -508,11 +508,14 @@ function startup(label: string): void {
 
 app.whenReady().then(() => {
   startup('app-ready')
+  // 历史版本 electron-store 数据一次性迁入 SQLite kv（kv 已有数据时跳过）
+  migrateLegacyStores()
+  // 数据库打开/迁移/schema 就绪：`[db] schema migration` 那行日志背后的实际耗时
+  startup('db-ready')
   // 开发/测试专用：把 LUMIN_TRUSTED_PATHS 里的目录加进路径授权表（打包态忽略，见 pathGrants 的说明）
   const trusted = pathGrants.grantTrustedPathsFromEnv(is.dev, process.env.LUMIN_TRUSTED_PATHS)
   if (trusted) console.log(`[grants] trusted paths from env: ${trusted}`)
-  // 历史版本 electron-store 数据一次性迁入 SQLite kv（kv 已有数据时跳过）
-  migrateLegacyStores()
+  startup('grants-ready')
   // 草稿目录的垃圾回收（审计 §2 P1：`userData/drafts` 只增不减）：
   // 清掉写盘临时文件残留与"有磁盘正本、且 30 天没动过"的 file-* 草稿。
   // 不 await：它只碰我们自己的草稿目录，不该拖慢首屏；失败也不影响启动。
