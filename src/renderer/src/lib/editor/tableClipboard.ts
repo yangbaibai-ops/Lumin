@@ -567,6 +567,42 @@ export const TableDragSelect = Extension.create({
               pressPos = at && Number.isFinite(at.pos) ? at.pos : null
               // 只记录，不接管：让 `tableEditing` 与 PM 自己的 mousedown 照常跑
               return false
+            },
+            /**
+             * **单击必落光标**（第四十五轮，收尾断言）。
+             *
+             * 用户报：在已有选中范围内单击，选区会**闪一下但依旧保持选中**。中途是谁把范围又造回来的
+             * （表格的 cell 选区事务、PM 自己的 mouseup 处理、或某一帧的归一化）不必再猜 —— 这里在
+             * `mouseup` 之后**再断言一次**：没拖动过的手势，最终状态必须是按下点处的空光标。
+             * 双击/三击（`detail > 1`，词/行选择）与 Shift 手势不干预。
+             */
+            mouseup(view: EditorView, event: Event): boolean {
+              const me = event as MouseEvent
+              if (shiftGesture || me.detail > 1) return false
+              const at = pressPos
+              if (dragMoved || at === null) return false
+              setTimeout(() => {
+                try {
+                  const cur = view.state.selection
+                  if (cur.empty && cur.from === at) return
+                  const tr = view.state.tr.setSelection(TextSelection.create(view.state.doc, at))
+                  tr.setMeta('addToHistory', false)
+                  // 顺手清掉表格的"选中单元格"标记，避免残留整格高亮
+                  tr.setMeta(tableEditingKey, -1)
+                  view.dispatch(tr)
+                  const w = window as unknown as Record<string, unknown>
+                  w.__mdTableDrag = {
+                    ...((w.__mdTableDrag as Record<string, unknown>) || {}),
+                    clickFix:
+                      Number(
+                        ((w.__mdTableDrag as Record<string, unknown>)?.clickFix as number) || 0
+                      ) + 1
+                  }
+                } catch {
+                  /* 文档已变/视图销毁：忽略 */
+                }
+              }, 0)
+              return false
             }
           }
         },
