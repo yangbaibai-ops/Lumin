@@ -42,10 +42,18 @@ export default defineConfig(({ command }) => ({
    * 用 `'esbuild'`（Vite 的默认压缩器）：只重命名标识符、不做语义变换，字符串/类名字面量
    * 都保留 —— 对"靠 name 找扩展/插件"的代码（Tiptap extension name、插件 key、`data-*`
    * 锚点）无影响；仓库里所有 `.name` 用法都是数据名（ProseMirror 节点/标记名、路由名、
-   * 文件/列名），不依赖 JS 标识符。压缩产物上跑过 10 条套件（math/markers/export/
-   * print-preview/devtools/i18n/a11y/toc/cb-languages/settings-layout）全绿。
+   * 文件/列名），**产品代码里没有一处依赖被压缩的标识符**（清查过 `constructor.name` /
+   * `getPrototypeOf` / `prototype.constructor` / `Function.toString` / `KeepAlive include`
+   * 这些写法，`src/` 里一处都没有）。
+   *
+   * ⚠️ **但压缩必须配 `keepNames: true`**（第十二轮收尾被真实回归打出来的）：esbuild 默认连
+   * **类名**一起改，于是 `editor.state.selection.constructor.name` 从 `TextSelection` 变成
+   * `Tt` —— `tools/_verify-math-edit.js` 的 S2/TB2（以及 `_verify-table-quickbar.js` 读选区
+   * 类型的那批）当场红，而**行为数据完全正确**，红的只是名字。`keepNames` 让测试、日志、
+   * 崩溃栈在任何环境下都读得懂；代价是入口 +7.6%（423→455KB）、编辑器 chunk +4.6%
+   * （1259→1317KB）—— 相对未压缩基线仍是 **−54% / −48%**（`tests/bootBudget.test.mjs` 守着）。
    */
-  main: { build: { minify: 'esbuild' } },
+  main: { build: { minify: 'esbuild' }, esbuild: { keepNames: true } },
   preload: {
     build: {
       minify: 'esbuild',
@@ -132,6 +140,7 @@ export default defineConfig(({ command }) => ({
         ignored: ['**/.*.tmpdir/**']
       }
     },
+    esbuild: { keepNames: true },
     build: {
       minify: 'esbuild',
       // 不做 manualChunks 手工拆包：实测把 @tiptap/@codemirror/mermaid 强制分组会形成

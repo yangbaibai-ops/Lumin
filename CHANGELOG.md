@@ -2,6 +2,32 @@
 
 ### Changed
 
+**产物压缩的副作用：`keepNames`（`TextSelection` 被压成 `Tt`，测试里的名字判据当场红）**
+
+- 上一轮打开 `build.minify` 后，`tools/_verify-math-edit.js` 掉到 **117/119**：两条红（S2 / TB2）
+  打出的**行为数据完全正确**，只有**选区类型名**不对 —— `editor.state.selection.constructor.name`
+  从 `TextSelection` 变成了 **`Tt`**（esbuild 默认连**类名**一起改）。`_verify-table-quickbar.js`
+  里读选区类型的那批断言（`:125` `s.constructor.name`）也是同一颗雷。
+- **影响面清查**（`src/` + `tests/` + `tools/`）：产品代码里**没有一处**依赖被压缩的标识符 ——
+  `constructor.name` / `getPrototypeOf` / `prototype.constructor` / `Function.toString` /
+  `KeepAlive include` 在 `src/` 里一处都没有；所有 `.name` 用法都是**数据名**（ProseMirror
+  节点/标记名、路由名、文件/列名、`err.name`）。依赖名字的全在**工具/套件**里，共 7 处：
+  `_verify-math-edit.js:522`、`_verify-table-quickbar.js:125`、`_verify-round-perf.js:74/109`、
+  `_repro-cb-delete.js:58`，以及两处 `CSSFontFaceRule`（浏览器原生类，不受影响）。
+- **修法：压缩 + `keepNames: true`**（Vite 会把 `esbuild.keepNames` 转给压缩器，实测生效：
+  chunk 里出现 `__name` 助手 + `TextSelection` 字面量）。理由：一次修好**全部** 7 处而不是逐条改
+  断言，而且**日志与崩溃栈**在任何环境下都可读；将来再有人写"按类名判断"的代码也不会踩雷。
+  体积代价（同窗口交替 A/B）：入口 **423 → 455KB（+7.6%）**、编辑器 chunk **1259 → 1317KB
+  （+4.6%）**、主进程 **220 → 227.8KB（+3.6%）**、入口 CSS 不变 —— 相对**未压缩基线**仍是
+  **−54% / −48%**。（备选是"保留改名、把 7 处换成语义判据"，例如 ProseMirror 每个 Selection
+  子类的 `prototype.jsonID`（`'text'`/`'node'`/`'all'`，PM 自己的序列化 id、不受压缩影响）——
+  字节更省，但只修当下、不改将来，且日志/栈依旧难读。）
+- 验收：`_verify-math-edit.js` **119/119**；回归 `_verify-marker-hold.js` **35/35**、
+  `_verify-inline-formats.js` **204/204**、`_verify-print-preview.js` **14/14**、
+  `_verify-devtools.js` **52/52**、`_verify-math.js` **8/8**、`_verify-table-quickbar.js`
+  **57/57**（上一轮把它记成"flaky"是误判：其中一批红就是这颗雷）；`tests/bootBudget.test.mjs`
+  新增一条"压缩必须带 keepNames"的守卫（7/7），启动探针的体积阈值仍全绿。
+
 **启动变慢：先量化再优化 —— 三个数字（产物压缩 / KaTeX CSS 挪出首屏 / 先挂壳再等路由）**
 
 - 用户原话：「现在**打开应用的速度明显变慢了**，还可以优化下吗。」

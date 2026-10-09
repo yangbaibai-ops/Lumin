@@ -251,8 +251,8 @@ async function main() {
     'D 松开后解除冻结：显隐状态**恰好等于第十四轮判据对该选区的结论**，且字色不残留透明墨',
     s.pressHidden === false &&
       s.revealed === expectReveal &&
-      s.widths.every((w) => w > 0) &&
-      s.inkHidden.length === s.widths.length,
+      s.widths.every((w) => (s.revealed === 2 ? w > 0 : w === 0)) &&
+      s.inkHidden.every((h) => h === false),
     JSON.stringify({
       pressHidden: s.pressHidden,
       revealed: s.revealed,
@@ -420,8 +420,8 @@ async function main() {
   // ① 从 G 反向拖到 A（整个 `**bravo**` 被包在选区中间）⇒ **不显形**
   const g1 = await dragTo('charlie', POINT_OF('alfa'))
   report.check(
-    'G1 ① 从 G 反向拖到 A（构造被选区完全包住）⇒ `**` 不显形：第十七轮起是**只去墨**（字号照旧、宽度照旧、字色透明）',
-    g1.revealed === 0 && g1.fs.every((f) => f === '17px') && g1.w.every((w) => w > 0),
+    'G1 ① 从 G 反向拖到 A（构造被选区完全包住）⇒ `**` 不显形：松手后按阅读态**折叠**（字号 0、宽度 0 —— 第十八轮口径：不留空隙）',
+    g1.revealed === 0 && g1.fs.every((f) => f === '0px') && g1.w.every((w) => w === 0),
     JSON.stringify({ revealed: g1.revealed, fs: g1.fs, w: g1.w, sel: g1.sel })
   )
 
@@ -677,8 +677,8 @@ async function main() {
     JSON.stringify({ during: hd1.during, after: hd1.after })
   )
   report.check(
-    'H3b ② 同一手势的**可视层**：松手前后矩形宽度**相等**（改去墨口径后不再有布局跳变）',
-    hd1.after.revealed === 0 && hd1.during.revealed === 2 && hd1.after.rectW === hd1.during.rectW,
+    'H3b ② 同一手势的**可视层**：拖拽中标记显形（119px），松手后按阅读态折叠 ⇒ 矩形变窄 31px（第十八轮口径：允许这一次跳，换取"不留空隙"）',
+    hd1.after.revealed === 0 && hd1.during.revealed === 2 && hd1.after.rectW < hd1.during.rectW,
     JSON.stringify({
       during: { revealed: hd1.during.revealed, rectW: hd1.during.rectW },
       after: { revealed: hd1.after.revealed, rectW: hd1.after.rectW }
@@ -714,6 +714,7 @@ async function main() {
       rev: marks.filter((m) => !!m.querySelector('.md-reveal-inline')).length,
       ink: marks.filter((m) => !!m.querySelector('.md-reveal-ink')).length,
       fs: marks.map((m) => getComputedStyle(m).fontSize),
+      widths: marks.map((m) => Math.round(m.getBoundingClientRect().width)),
       transparent: marks.map((m) => getComputedStyle(m).color === 'rgba(0, 0, 0, 0)')
     }
   })())`
@@ -755,12 +756,13 @@ async function main() {
   }
   const i1 = await inkDrag('完全包住（charlie→alfa，反向）', 'charlie', 'alfa', 8)
   report.check(
-    'I1 ① 完全包住的真实拖选：**拖拽中与松手后矩形宽度差 = 0**（标记改成只去墨、占位不变），模型层逐字节一致，松手 = 拖拽最长范围（未塌）',
-    i1.diff === 0 &&
-      i1.after.rev === 0 &&
-      i1.after.ink === 2 &&
-      i1.after.fs.every((f) => f === '17px') &&
-      i1.after.transparent.every((t) => t === true) &&
+    'I1 ① 完全包住的真实拖选（G→A）：**松手后标记既不可见也不占位**（font-size 0px、宽 0 ⇒ 不留 30px 空隙），拖拽期间布局恒定（末拍仍 17px/15px），模型层逐字节一致，松手 = 拖拽最长范围（未塌）',
+    i1.after.rev === 0 &&
+      i1.after.ink === 0 &&
+      i1.after.fs.every((f) => f === '0px') &&
+      i1.after.widths.every((w) => w === 0) &&
+      i1.last.fs.every((f) => f === '17px') &&
+      i1.last.widths.every((w) => w > 0) &&
       i1.after.from === i1.minFrom &&
       i1.after.to === i1.maxTo &&
       i1.collapsed === false,
@@ -768,9 +770,10 @@ async function main() {
   )
   const i2 = await inkDrag('边界切进（ravo→arlie）', 'ravo', 'arlie', 5)
   report.check(
-    'I2 ② 边界切进的真实拖选：如实记录这**一跳**（判据要求显形 ⇒ 多一枚标记的宽），未塌、模型一致',
-    i2.diff === 15 &&
-      i2.after.rev === 2 &&
+    'I2 ② 边界切进（G→D）的真实拖选：两侧标记**必须显形**（可见且占位 17px/15px），未塌、模型一致',
+    i2.after.rev === 2 &&
+      i2.after.fs.every((x) => x === '17px') &&
+      i2.after.widths.every((w) => w > 0) &&
       i2.after.from === i2.minFrom &&
       i2.after.to === i2.maxTo &&
       i2.collapsed === false,
@@ -778,9 +781,10 @@ async function main() {
   )
   const i3 = await inkDrag('反向（charlie→ravo）', 'charlie', 'ravo', 8)
   report.check(
-    'I3 ③ 反向（从行尾往左拖）**绝不塌成光标**，且宽度差 0 —— 这正是第十六轮放弃折叠的原因，本轮从根上消失',
+    'I3 ③ 反向（从行尾往左拖，边界切进内容）**绝不塌成光标**；松手按判据显形（这条手势不是"完全包住"，所以本来就该显形）',
     i3.collapsed === false &&
-      i3.diff === 0 &&
+      i3.after.rev === 2 &&
+      i3.after.widths.every((w) => w > 0) &&
       i3.after.from === i3.minFrom &&
       i3.after.to === i3.maxTo,
     JSON.stringify({ diff: i3.diff, collapsed: i3.collapsed, last: i3.last, after: i3.after })

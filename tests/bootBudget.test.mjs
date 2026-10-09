@@ -143,3 +143,26 @@ test('构建必须开压缩（electron-vite 的默认是 minify: false —— �
     '缺"electron-vite 默认不压缩、所以必须显式开"的注释'
   )
 })
+
+/**
+ * 压缩**必须同时开 `keepNames`** —— 这条是被真实回归打出来的（第十二轮收尾）：
+ * esbuild 默认会把类名改掉，于是 `editor.state.selection.constructor.name` 从
+ * `TextSelection` 变成 `Tt`，`tools/_verify-math-edit.js` 的 S2/TB2 两条断言（还有
+ * `_verify-table-quickbar.js` 读选区类型的那批）当场红 —— 而**行为数据完全正确**，
+ * 红的只是名字。产品代码里没有一处依赖被压缩的标识符（清查过：`.name` 全是数据名），
+ * 但**测试、日志、崩溃栈**都需要可读且稳定的名字，所以口径是"压缩 + keepNames"：
+ * 体积代价是入口 +7.6%（423→455KB）、编辑器 chunk +4.6%（1259→1317KB），
+ * 相对未压缩基线仍是 −54% / −48%。
+ */
+test('压缩必须带 keepNames（否则类名被改，测试/日志里的名字判据会红）', () => {
+  const cfg = read('electron.vite.config.ts')
+  const keepNames = [...cfg.matchAll(/keepNames:\s*true/g)].length
+  assert.ok(keepNames >= 2, `main 与 renderer 都要开 keepNames，实测只有 ${keepNames} 处`)
+  assert.doesNotMatch(
+    cfg,
+    /keepNames:\s*false/,
+    '不许把它关回去（关掉就会重现 TextSelection → Tt 那条红）'
+  )
+  // 反面教材也要留在注释里：下一个人得知道"为什么压缩了还要额外保留名字"
+  assert.match(cfg, /TextSelection|类名/, '缺"keepNames 为什么必须"的注释')
+})

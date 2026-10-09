@@ -88,3 +88,35 @@
   风险落在首屏正确性上。
 - **清系统文件缓存测"真冷盘"**：需要管理员权限，没做。压缩省下的 ~568KB + 1.29MB 在真冷盘
   上收益会明显更大（这是本轮最大的**未量化**收益）。
+
+---
+
+#### 4.91.1 收尾：压缩的副作用 —— `keepNames`（`TextSelection` 被压成 `Tt`）
+
+打开压缩后 `tools/_verify-math-edit.js` 掉到 **117/119**：S2 / TB2 两条红的**行为数据完全正确**，
+只有**选区类型名**不对 —— `editor.state.selection.constructor.name` 从 `TextSelection` 变成了
+**`Tt`**（esbuild 默认连类名一起改）。同一颗雷在 `_verify-table-quickbar.js:125`
+（`s.constructor.name`）与 `_verify-round-perf.js` / `_repro-cb-delete.js` 里也埋着。
+
+**影响面清查结论**（这是重点）：
+
+- **产品代码（`src/`）里没有一处依赖被压缩的标识符**。`constructor.name` / `getPrototypeOf` /
+  `prototype.constructor` / `Function.toString` / `KeepAlive include` 这些写法在 `src/` 里
+  一处都没有；所有 `.name` 用法都是**数据名**：ProseMirror 的 `node.type.name` / `mark.type.name`
+  （字符串字面量，压缩不动）、`router` 的路由名、`e.name`（目录项）、`c.name`（SQLite 列名）、
+  `err.name`（引擎给的属性值）。
+- 依赖名字的**全在工具/套件**里，共 7 处（上面那 4 个文件 5 处 + 两处 `CSSFontFaceRule`：
+  浏览器原生类，不受压缩影响）。
+
+**修法：压缩 + `esbuild.keepNames: true`**（Vite 会把它转给压缩器 —— 实测生效：chunk 里出现
+`__name` 助手与 `TextSelection` 字面量）。选它的理由：一次修好全部 7 处（而不是逐条改断言），
+并且**日志与崩溃栈**在任何环境下可读、将来再写"按类名判断"的代码也不会踩雷。
+
+**代价**（同窗口交替 A/B）：入口 **423 → 455KB（+7.6%）**、编辑器 chunk **1259 → 1317KB
+（+4.6%）**、主进程 **220 → 227.8KB（+3.6%）**、入口 CSS 不变；相对**未压缩基线**仍是
+**−54% / −48%**。备选方案（保留改名 + 把 7 处换成语义判据，例如 ProseMirror 每个 Selection
+子类的 `prototype.jsonID`：`'text'`/`'node'`/`'all'`，是 PM 自己的序列化 id、压缩不动）字节更省，
+但只修当下、不改将来。两条路都写在这里，便于以后按需切换。
+
+**守卫**：`tests/bootBudget.test.mjs` 新增"压缩必须带 `keepNames`"一条（关回去就会红），
+并在 `electron.vite.config.ts` 的注释里留下反面教材（`TextSelection` → `Tt`）。
