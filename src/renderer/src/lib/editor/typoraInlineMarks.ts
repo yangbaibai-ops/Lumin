@@ -674,21 +674,43 @@ function blockInventory(block: PMNode): BlockDecos {
     // ① 标记构造（一对 `**` + 正文）
     const m = child.marks.find((mk) => mk.type.name === 'mdMarker')
     if (m) {
-      const cur = runs[runs.length - 1]
+      const style = m.attrs.style as StyleKind
       if (m.attrs.side === 'start') {
-        // start 已开时忽略新的 start（与旧的 collectRuns 逐字一致）
-        if (!cur || cur.end >= 0) {
+        /**
+         * 配对必须**按 style 各开各的**（第十五轮修）。
+         *
+         * 旧实现是"只有一个 `cur`"：`**` + 反引号 code span + ` 正文**` 这种嵌套里，
+         * `code:start` 看到 `bold` 的 run 还开着就被**整颗丢掉**，紧接着的 `` ` ``（code:end）
+         * 又把 `bold` 的 run **提前闭合在反引号上** —— 于是：
+         *   * 收尾那颗 `**`（bold:end）没有可闭合的 run，`runs` 里**根本没有覆盖它的构造**
+         *     ⇒ 光标放哪它都不显形（用户报的"后面的 `**` 怎么都不出现"）；
+         *   * code 构造整条不存在 ⇒ 反引号靠误打误撞跟着 bold 一起显隐。
+         * 现在按 style 记"这个名字当前有没有开着的 run"：同 style 的重复 start 仍然忽略
+         * （保持旧的宽容口径），不同 style 各自并行开着，允许嵌套。
+         */
+        const openSame = runs.some((r) => r.end < 0 && r.style === style)
+        if (!openSame) {
           runs.push({
             start: offset,
             end: -1, // 占位，配对成功时改写
-            style: m.attrs.style as StyleKind,
+            style,
             startMarker: [offset, offset + child.nodeSize],
             endMarker: [-1, -1]
           })
         }
-      } else if (m.attrs.side === 'end' && cur && cur.end === -1) {
-        cur.end = offset + child.nodeSize
-        cur.endMarker = [offset, offset + child.nodeSize]
+      } else if (m.attrs.side === 'end') {
+        /**
+         * 收尾标记只闭合**同 style 且最靠里**那个还开着的 run（LIFO）。
+         * 旧实现取 `runs[runs.length-1]` 且不看 style ⇒ 反引号能闭合 `bold`（实测：
+         * `runs=[{bold,1,14}]`，`end` 落在反引号上），嵌套一出现配对就整体错位。
+         */
+        for (let i = runs.length - 1; i >= 0; i--) {
+          if (runs[i].end < 0 && runs[i].style === style) {
+            runs[i].end = offset + child.nodeSize
+            runs[i].endMarker = [offset, offset + child.nodeSize]
+            break
+          }
+        }
       }
     }
     // ② 转义文本单元（`\X`）：同一层 MdEscape 还承担「冗余嵌套强调多出来的那对定界符」

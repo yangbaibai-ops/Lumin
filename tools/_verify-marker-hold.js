@@ -541,6 +541,160 @@ async function main() {
   }
   console.log('G7 明细 ' + JSON.stringify(seen))
 
+  // ═══ 第十五轮 H：嵌套标记的配对 + 拖选"模型层 vs 可视层" ═══════════════════════
+  //
+  // ① 用户报障源码：`**` + 反引号包住的 `****x****` + ` 逐字节留住**`。
+  //    真因（文件:行号 = typoraInlineMarks.ts 的 blockInventory，原「只维护一个 cur run 且不看
+  //    style」）：`code:start` 因 `bold` 还开着被整颗丢掉，紧接着的 `` ` ``（code:end）又把 `bold`
+  //    的 run 提前闭合在**反引号**上 ⇒ 收尾那颗 `**` 没有可闭合的 run、`runs` 里没有任何区间
+  //    覆盖它 ⇒ 光标放哪它都不显形（用户说的"后面的 `**` 怎么都不出现"）。
+  //    修法：按 style 各开各的 run（同 style 重复 start 仍忽略），收尾按 style 取**最靠里**那个闭合。
+  // ② "选中的字符数在松手后不一致"：这里把**模型层**（from/to/textBetween 长度）与**可视层**
+  //    （选区矩形宽度、显形标记数）在拖拽中与松手后各读一遍 —— 模型层必须完全一致。
+  const SPANS = `JSON.stringify((() => {
+    const marks = [...document.querySelectorAll('.md-marker')]
+    return {
+      total: marks.length,
+      revealed: marks.filter((m) => !!m.querySelector('.md-reveal-inline')).length,
+      spans: marks.map((m) => ({ t: m.textContent, rev: !!m.querySelector('.md-reveal-inline'), fs: getComputedStyle(m).fontSize }))
+    }
+  })())`
+  const BTQ = String.fromCharCode(96)
+  await openDocWith(app, '**' + BTQ + '****x****' + BTQ + ' 逐字节留住**', 'marker-hold-h.md')
+  await waitEditor(ev)
+  await sleep(900)
+  const hDocText = await ev(`window.__L.ed().state.doc.textContent`)
+  const hPos = (s) => hDocText.indexOf(s) + 1
+  const hSeen = []
+  for (const item of [
+    ['x 之前', hPos('x')],
+    ['x 之后', hPos('x') + 1],
+    ['「逐」之前', hPos('逐')],
+    ['「住」之后', hPos('逐') + 4],
+    ['段落开头', 1],
+    ['段落末尾', hDocText.length + 1]
+  ]) {
+    await ev(
+      `(() => { const ed = window.__L.ed(); ed.chain().focus().setTextSelection({ from: ${item[1]}, to: ${item[1]} }).run(); return 'ok' })()`
+    )
+    await sleep(260)
+    const s = JSON.parse(await ev(SPANS))
+    hSeen.push({
+      label: item[0],
+      p: item[1],
+      revealed: s.revealed,
+      total: s.total,
+      last: s.spans[s.spans.length - 1]
+    })
+  }
+  console.log('H1 明细 ' + JSON.stringify(hSeen))
+  report.check(
+    'H1 ① 嵌套源码：光标落 `x` 前/后、落「逐字节留住」前/后、落整段两端 ⇒ 四枚标记**全部显形**，含收尾那颗 `**`（改前它永不显形）',
+    hSeen.length === 6 &&
+      hSeen.every((s) => s.revealed === 4 && s.total === 4) &&
+      hSeen.every((s) => s.last && s.last.t === '**' && s.last.rev === true),
+    JSON.stringify(hSeen)
+  )
+
+  // ② 三种嵌套/相邻组合：光标在构造内 ⇒ 外层两侧标记都显形
+  const comboSigs = []
+  for (const c of [
+    { name: '加粗里放行内代码', src: '**' + BTQ + 'code' + BTQ + '**' },
+    { name: '加粗里放删除线', src: '**~~x~~**' },
+    { name: '行内代码里放加粗', src: BTQ + '**x**' + BTQ }
+  ]) {
+    await openDocWith(app, c.src, 'marker-hold-h2.md')
+    await waitEditor(ev)
+    await sleep(850)
+    await ev(
+      `(() => { const ed = window.__L.ed(); ed.chain().focus().setTextSelection(${Math.floor(c.src.length / 2) + 1}).run(); return 'ok' })()`
+    )
+    await sleep(300)
+    const s = JSON.parse(await ev(SPANS))
+    comboSigs.push({
+      name: c.name,
+      src: c.src,
+      total: s.total,
+      revealed: s.revealed,
+      texts: s.spans.map((x) => x.t)
+    })
+    report.check(
+      'H2 ① 嵌套组合（' + c.name + '）：光标在构造内 ⇒ 标记**一枚不少**地显形（收尾那枚也在）',
+      s.total >= 2 && s.revealed === s.total && s.spans[s.spans.length - 1].rev === true,
+      JSON.stringify(comboSigs[comboSigs.length - 1])
+    )
+  }
+  console.log('H2 明细 ' + JSON.stringify(comboSigs))
+
+  // ③ 拖选：模型层（from/to/textBetween 长度）在拖拽中与松手后**完全相同**；可视层宽度另记
+  const MODEL = `JSON.stringify((() => {
+    const ed = window.__L.ed()
+    const s = ed.state.selection
+    const sel = window.getSelection()
+    const r = sel && sel.rangeCount ? sel.getRangeAt(0).getBoundingClientRect() : null
+    const marks = [...document.querySelectorAll('.md-marker')]
+    return {
+      from: s.from, to: s.to,
+      betweenLen: ed.state.doc.textBetween(s.from, s.to, '/').length,
+      domLen: (sel && sel.rangeCount ? sel.getRangeAt(0).toString() : '').length,
+      rectW: r ? Math.round(r.width) : null,
+      revealed: marks.filter((m) => !!m.querySelector('.md-reveal-inline')).length
+    }
+  })())`
+  const dragModel = async (fromWord, toWord, name) => {
+    await openDocWith(app, 'alfa **bravo** charlie', name)
+    await waitEditor(ev)
+    await sleep(850)
+    await ev(
+      `(() => { const ed = window.__L.ed(); ed.chain().focus().setTextSelection(8).run(); return 'ok' })()`
+    )
+    await sleep(280)
+    const a = await objectOf(ev, POINT_OF(fromWord))
+    const b = await objectOf(ev, POINT_OF(toWord))
+    await mouse('mouseMoved', a.x, a.y, 0)
+    await mouse('mousePressed', a.x, a.y, 1)
+    await sleep(110)
+    for (let i = 1; i <= 4; i += 1) {
+      await mouse('mouseMoved', a.x + ((b.x - a.x) * i) / 4, a.y, 1)
+      await sleep(55)
+    }
+    const during = JSON.parse(await ev(MODEL))
+    await mouse('mouseReleased', b.x, a.y, 0)
+    await sleep(550)
+    const after = JSON.parse(await ev(MODEL))
+    console.log(
+      'H3 ' + name + ' 拖拽中=' + JSON.stringify(during) + ' 松手后=' + JSON.stringify(after)
+    )
+    return { during, after }
+  }
+  const hd1 = await dragModel('charlie', 'alfa', 'marker-hold-h3.md')
+  report.check(
+    'H3 ② 真实拖选（构造被完全包住）：**模型层** from/to/textBetween 长度在拖拽中与松手后完全相同（"选中的字符数"变的只是可视层宽度，不是选区）',
+    hd1.during.from === hd1.after.from &&
+      hd1.during.to === hd1.after.to &&
+      hd1.during.betweenLen === hd1.after.betweenLen &&
+      hd1.during.domLen === hd1.after.domLen,
+    JSON.stringify({ during: hd1.during, after: hd1.after })
+  )
+  report.check(
+    'H3b ② 同一手势的**可视层**如实钉住：松手时按第十四轮判据折叠 ⇒ 选区矩形变窄（标记是真实文本的必然结果，注释与报告写明）',
+    hd1.after.revealed === 0 && hd1.during.revealed === 2 && hd1.after.rectW < hd1.during.rectW,
+    JSON.stringify({
+      during: { revealed: hd1.during.revealed, rectW: hd1.during.rectW },
+      after: { revealed: hd1.after.revealed, rectW: hd1.after.rectW }
+    })
+  )
+  const hd2 = await dragModel('ravo', 'arlie', 'marker-hold-h4.md')
+  report.check(
+    'H4 ② 反向真实拖选（边界切进构造）：模型层同样前后一致（可视层这侧是变宽 —— 松手时标记显形）',
+    hd2.during.from === hd2.after.from &&
+      hd2.during.to === hd2.after.to &&
+      hd2.during.betweenLen === hd2.after.betweenLen &&
+      hd2.after.revealed === 2 &&
+      hd2.after.rectW >= hd2.during.rectW,
+    JSON.stringify({ during: hd2.during, after: hd2.after })
+  )
+
   app.close()
   return report.finish()
 }
