@@ -865,6 +865,7 @@ let pressInkHidden = false
  * 松手时先清掉它、再按最终选区重算一次（`onUp`）—— 于是「完全包住」这一类选区在拖拽中与
  * 松手后**都是折叠**，两端一致、无跳变。
  */
+const pressUninstall = new WeakMap<object, () => void>()
 let pressFold = false
 /**
  * 「这一次按下算不算拖动」的像素阈值（切比雪夫距离，横纵取大者）。
@@ -1579,17 +1580,19 @@ export const TyporaInlineMarks = Extension.create({
       }
     }
     onInlineMarkersHiddenChange(refreshMarkerVisibility)
-    view.dom.addEventListener('mousedown', onDown, true)
-    // 去墨的判据只能来自指针移动：挂在 document 上（按下后指针可能已经在编辑区之外），
-    // 用捕获阶段（早于 PM 与各节点自己的 mousemove 处理）—— 它只切一个 CSS 类，不改版面，
-    // 所以不会影响 PM 在同一个事件里按当时布局算坐标。
-    document.addEventListener('mousemove', onMove, true)
-    document.addEventListener('mouseup', onUp)
-    document.addEventListener('pointerup', onUp)
-    document.addEventListener('pointercancel', onUp)
-    // 窗口失焦也要收尾（拖到别的窗口松手时收不到 mouseup，否则标记会一直隐着）
-    window.addEventListener('blur', onUp)
-    this.editor.on('destroy', () => {
+    /**
+     * **幂等安装**（第三十六轮）：这批监听装在 `document`/`window` 上，而闭包是
+     * `addProseMirrorPlugins` 里新造的 ⇒ 每次扩展实例化都会**再挂一份**，摘除却只挂在
+     * `editor.on('destroy')` 上。dev(HMR) 下模块被热替换而编辑器实例被复用时，旧闭包**留在
+     * `document` 上** ⇒ 松手那一拍**多份 `onUp` 依次跑**（每份都清标志 + 派发 `SET_PRESS` 重算），
+     * 多个延迟事务在 PM 定稿前后交错 ⇒ **选区被改小、尾巴被丢**（用户第二十二轮报障，且只在
+     * `npm run dev` 下每次复现、`out/` 产物永不复现 —— 与"产物只装一次"完全吻合）。
+     * 所以：安装前先调用**上一次的清理函数**（存在 `view` 级 WeakMap 上），保证任何时刻只有一份。
+     * ⚠️ 只改"安装/清理"的幂等性，不动任何显隐/冻结/时序逻辑（第 14 轮判据、去墨、
+     * `setTimeout` 补丁、`pressHeld` 语义全部原样）。
+     */
+    pressUninstall.get(view)?.()
+    const uninstallPress = (): void => {
       pressHeld = false
       pressInkHidden = false
       pressFold = false
@@ -1599,6 +1602,28 @@ export const TyporaInlineMarks = Extension.create({
       document.removeEventListener('pointerup', onUp)
       document.removeEventListener('pointercancel', onUp)
       window.removeEventListener('blur', onUp)
+      view.dom.dataset.mdPressHandlers = '0'
+    }
+    pressUninstall.set(view, uninstallPress)
+    view.dom.dataset.mdPressHandlers = '1'
+    // 测试钩子（只为"幂等性"这条断言服务）：让套件能再装一次并观察监听数仍是 1。
+    ;(view.dom as unknown as Record<string, unknown>).__mdPressInstall = (): void => {
+      installPressListeners()
+    }
+    function installPressListeners(): void {
+      pressUninstall.get(view)?.()
+      view.dom.addEventListener('mousedown', onDown, true)
+      document.addEventListener('mousemove', onMove, true)
+      document.addEventListener('mouseup', onUp)
+      document.addEventListener('pointerup', onUp)
+      document.addEventListener('pointercancel', onUp)
+      window.addEventListener('blur', onUp)
+      view.dom.dataset.mdPressHandlers = '1'
+    }
+    installPressListeners()
+    this.editor.on('destroy', () => {
+      pressUninstall.get(view)?.()
+      pressUninstall.delete(view)
       lastRevealDecos = null
       // 命中高亮跟着文档走：换文件/重建视图后旧的文档位置没有意义
       findHitRanges = null
