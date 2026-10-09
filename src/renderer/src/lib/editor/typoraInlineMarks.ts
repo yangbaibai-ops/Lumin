@@ -51,6 +51,7 @@ import type { FindHitRange } from './findBridge.ts'
 // 内核在这里读值、并接收「设置变了 ⇒ 重算显隐装饰」的通知（口径与措辞判断见该文件）。
 import { inlineMarkersHidden, onInlineMarkersHiddenChange } from './markerVisibility.ts'
 import { deferAfterPmEvent } from './defer.ts'
+import { traceAttach, traceFlush, traceInstall, traceRow } from './selTrace.ts'
 // 核心的符号在本文件再导出一次：既有的导入面（其它模块从这里取用）保持不变
 export {
   KIND_OF_MARKER,
@@ -1523,6 +1524,9 @@ export const TyporaInlineMarks = Extension.create({
       applyPressClass()
     }
     const onUp = (): void => {
+      // 取证：先记一行（含 onUp 的调用次数），再看是否要收尾 flush
+      traceRow('up')
+      traceFlush()
       if (!pressHeld && !pressInkHidden && !pressFold) return
       pressHeld = false
       pressInkHidden = false
@@ -1621,6 +1625,8 @@ export const TyporaInlineMarks = Extension.create({
       view.dom.dataset.mdPressHandlers = '1'
     }
     installPressListeners()
+    traceInstall()
+    traceAttach(view)
     this.editor.on('destroy', () => {
       pressUninstall.get(view)?.()
       pressUninstall.delete(view)
