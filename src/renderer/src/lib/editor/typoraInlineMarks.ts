@@ -850,6 +850,23 @@ let pressHeld = false
 /** 手势里「真的拖起来了」**且按下点在已显形构造上** ⇒ 给编辑区根节点挂 `.press-hidden` 去墨 */
 let pressInkHidden = false
 /**
+ * 手势里「真的拖起来了」⇒ **这一次拖拽期间一律折叠成对标记**（第十六轮）。
+ *
+ * 为什么需要它：第十四轮的显隐判据在**松手那一刻**才按最终选区算，而拖拽期间是冻结的
+ * ⇒ 「构造被选区完全包住」这种选区在拖拽中显示标记、松手才折叠，宽度突变（实测 119px → 88px），
+ * 用户看到的就是「选中的字符数松手后变了 / 选的时候闪了一下」。
+ *
+ * 所以把第二十四轮那条口径（拖选时先别冒 `**`）从「去墨」升级成**真折叠**，并且：
+ *   * **一次性**：只在越过 `PRESS_DRAG_SLOP` 的那一拍翻转（`onMove` 里带 `!pressFold` 守卫），
+ *     之后整段手势里 `buildRevealDecorations` 的结论恒为「全折叠」⇒ 不再有第二跳、不闪烁；
+ *   * **不是每帧重算**：翻转靠一次 `SET_PRESS` 空事务把新状态落到 DOM 上，之后每帧算出来的
+ *     结果**完全相同**（等价于冻结），所以不会像第二十六轮那样"拖动中反复折叠 ⇒ 坐标漂移、
+ *     整段拖选塌成一个光标"。
+ * 松手时先清掉它、再按最终选区重算一次（`onUp`）—— 于是「完全包住」这一类选区在拖拽中与
+ * 松手后**都是折叠**，两端一致、无跳变。
+ */
+let pressFold = false
+/**
  * 「这一次按下算不算拖动」的像素阈值（切比雪夫距离，横纵取大者）。
  *
  * 为什么需要它、为什么取 4px：阈值只影响「多久算拖动」，与版面无关（去墨不改占位）。太小会把
@@ -942,7 +959,7 @@ function buildRevealDecorations(
     }
     // 清单是块内相对偏移（块内容起点 = pos + 1），这里加回绝对位置
     const base = pos + 1
-    if (!markersHidden) {
+    if (!markersHidden && !pressFold) {
       for (const r of inv.runs) {
         const rs = base + r.start
         const re = base + r.end
@@ -974,6 +991,18 @@ function buildRevealDecorations(
           from === to ? from <= re && to >= rs : (from > rs && from < re) || (to > rs && to < re)
         if (reveal) {
           decos.push(Decoration.inline(rs, re, { class: 'md-reveal-inline' }))
+        } else if (from !== to && from <= rs && to >= re) {
+          /**
+           * **被非空选区完全包住** ⇒ 第三种形态：**只去墨、不折叠**（第十七轮）。
+           *
+           * 为什么不直接让它按阅读态折叠（`font-size: 0`）：标记是**真实文本**，折叠会收掉一对
+           * `**` 的 15.5px 宽度 ⇒ 布局位移。第十六轮逐拍实测过：拖拽途中一折叠，指针下的文字整体
+           * 左移，PM 下一次 `posAtCoords` 就把锚点夹到段尾，**整段拖选塌成一个光标**（机理与数据
+           * 记在 chrome.css 的 `.md-reveal-ink` 注释里）。改成"字号照显形态、只把字色变透明"后，
+           * 拖拽中与松手后的占位**完全一致**（宽度差 0），整条手势里只翻转一次"墨"。
+           * 代价：这段位置会留一段看不见的空白，直到选区收起退回光标态才闭合（见报告 §4）。
+           */
+          decos.push(Decoration.inline(rs, re, { class: 'md-reveal-ink' }))
         }
       }
     }
@@ -1459,21 +1488,42 @@ export const TyporaInlineMarks = Extension.create({
       applyPressClass()
     }
     const onMove = (e: MouseEvent): void => {
-      if (!pressHeld || pressInkHidden) return
-      if (!pressOnRevealed) return // 按下点在别处（B 区）⇒ 一律不去墨（第二十七轮用户口径）
-      if ((e.buttons & 1) === 0) return // 左键已经不在按下（例如拖到别的窗口）⇒ 不该去墨
+      if (!pressHeld) return
+      if ((e.buttons & 1) === 0) return // 左键已经不在按下（例如拖到别的窗口）⇒ 不该动状态
       if (Math.max(Math.abs(e.clientX - downX), Math.abs(e.clientY - downY)) < PRESS_DRAG_SLOP) {
         return
       }
-      // 按下点就在那个已显形构造上，且真的拖起来了 ⇒ 拖选期间不显示标记
-      // （第二十四轮的诉求，靠去墨实现、不改占位）
+      /**
+       * ⚠️ **第十六轮实测结论：这里不能折叠**（保留注释，代码按"不折叠"发布）。
+       *
+       * 目标本来是"拖拽中与松手后一致"：越过分界时一次性折叠，松手时判据结论也是折叠 ⇒ 两端一致。
+       * 但真实手势里实测到**折叠会破坏落点**：
+       *   * 从**行尾往左**拖（按下点在某构造右侧）时，折叠收掉构造的宽度，指针立刻落在"已经没有
+       *     文字"的位置 ⇒ PM 下一次 `posAtCoords` 把它夹到段尾、锚点与头挤成同一处：
+       *     **整段拖选塌成一个光标**（第二十六轮那个 bug 原样复现）；
+       *   * 逐拍原始数据（探针 v16a，折叠版）：press:17-17 → move1:18-18 → move2:15-15 →
+       *     move3:11-11 → move4:9-9 → move5:5-5 → move6:2-2，收手也是 2-2 ⇒ 塌成光标=true；
+       *   * 同一次手势里再加"同事务按文档位置重放选区""发现塌陷就撤回折叠"两道护栏都救不回来
+       *     （四次实测：折叠一落地，PM 自己的 mousemove 就把范围夹塌）。
+       * 反方向（按下点在构造内、往右拖）折叠是安全的、实测差值 0，但拖拽方向在按下时不可知
+       * ⇒ 同一段代码没法"只在安全方向生效"，所以**整条不启用**。
+       *
+       * 取而代之的口径（断言 H3/H3b/H4 与报告 §1）：**拖拽期间保持按下那一刻的结论不动**
+       * （第二十四/二十六/二十七轮的冻结口径），松手按第十四轮判据重算一次；这一次重算在整条
+       * 手势里**只发生一次**（实测 revealed 变化次数 = 1、DOM class 变更 = 0），不再反复闪烁，
+       * 但"完全包住"这类选区仍有一次宽度差（实测 31px = 两枚 `**`）。
+       */
+      if (!pressOnRevealed) return // 去墨仍按第二十七轮口径（按下点在已显形构造上才有资格）
+      if (pressInkHidden) return
+      // 按下点就在那个已显形构造上 ⇒ 拖选期间那几颗标记不显示
       pressInkHidden = true
       applyPressClass()
     }
     const onUp = (): void => {
-      if (!pressHeld && !pressInkHidden) return
+      if (!pressHeld && !pressInkHidden && !pressFold) return
       pressHeld = false
       pressInkHidden = false
+      pressFold = false // 先清掉，下面那次重算才按**最终选区**的判据走
       applyPressClass()
       // 冻结了这么久，得按**最终选区**重算一次显隐（空事务 + 元数据；见 apply 的说明）。
       // 这一步在 PM 自己的 MouseUp 处理之后（本监听挂在 document 上，冒泡晚于 view.dom），
@@ -1526,6 +1576,7 @@ export const TyporaInlineMarks = Extension.create({
     this.editor.on('destroy', () => {
       pressHeld = false
       pressInkHidden = false
+      pressFold = false
       view.dom.removeEventListener('mousedown', onDown, true)
       document.removeEventListener('mousemove', onMove, true)
       document.removeEventListener('mouseup', onUp)
@@ -1758,7 +1809,9 @@ export const TyporaInlineMarks = Extension.create({
             const pressToggled = tr.getMeta(SET_PRESS) !== undefined
             const markersToggled = tr.getMeta(SET_MARKERS_HIDDEN) !== undefined
             if (tr.docChanged || tr.selectionSet || findToggled || pressToggled || markersToggled) {
-              if (pressHeld && !tr.docChanged && !markersToggled) return oldSet
+              // ⚠️ `pressToggled` 也必须能穿透冻结（第十六轮）：拖拽越过分界那一刻我们**主动**
+              // 用一次 SET_PRESS 空事务把"全折叠"落到 DOM 上；若这里仍按旧集合返回，那一拍就白发了。
+              if (pressHeld && !tr.docChanged && !markersToggled && !pressToggled) return oldSet
               lastRevealDecos = buildRevealDecorations(newState, decoCache)
               return lastRevealDecos
             }

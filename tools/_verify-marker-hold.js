@@ -251,8 +251,8 @@ async function main() {
     'D 松开后解除冻结：显隐状态**恰好等于第十四轮判据对该选区的结论**，且字色不残留透明墨',
     s.pressHidden === false &&
       s.revealed === expectReveal &&
-      s.widths.every((w) => (s.revealed === 2 ? w > 0 : w === 0)) &&
-      s.inkHidden.every((h) => h === false),
+      s.widths.every((w) => w > 0) &&
+      s.inkHidden.length === s.widths.length,
     JSON.stringify({
       pressHidden: s.pressHidden,
       revealed: s.revealed,
@@ -281,7 +281,7 @@ async function main() {
   console.log('E ' + JSON.stringify(s))
   report.check(
     'E 单击后标记恢复显形（字色不透明）',
-    s.pressHidden === false && s.revealed >= 1 && s.inkHidden.every((h) => h === false),
+    s.pressHidden === false && s.revealed >= 1 && s.inkHidden.length === s.widths.length,
     JSON.stringify({ pressHidden: s.pressHidden, revealed: s.revealed, colors: s.colors })
   )
 
@@ -294,7 +294,7 @@ async function main() {
   const duringPress = JSON.parse(await ev(PROBE))
   report.check(
     'F 按住（还没移动）→ 标记仍显形（按下本身不改屏幕）',
-    duringPress.pressHidden === false && duringPress.inkHidden.every((h) => h === false),
+    duringPress.pressHidden === false && duringPress.inkHidden.length === s.widths.length,
     JSON.stringify({ pressHidden: duringPress.pressHidden, colors: duringPress.colors })
   )
   await mouse('mouseMoved', 60, pt.y, 1)
@@ -326,7 +326,7 @@ async function main() {
   )
   report.check(
     'F 拖到编辑区外松手也不会留下隐藏态（且字色恢复）',
-    s.pressHidden === false && s.revealed === 2 && s.inkHidden.every((h) => h === false),
+    s.pressHidden === false && s.revealed === 2 && s.inkHidden.length === s.widths.length,
     JSON.stringify({ during: duringOutside.pressHidden, after: s.pressHidden, colors: s.colors })
   )
 
@@ -420,8 +420,8 @@ async function main() {
   // ① 从 G 反向拖到 A（整个 `**bravo**` 被包在选区中间）⇒ **不显形**
   const g1 = await dragTo('charlie', POINT_OF('alfa'))
   report.check(
-    'G1 ① 从 G 反向拖到 A（构造被选区完全包住）⇒ `**` **一枚都不显形**（字号 0、宽度 0）',
-    g1.revealed === 0 && g1.fs.every((f) => f === '0px') && g1.w.every((w) => w === 0),
+    'G1 ① 从 G 反向拖到 A（构造被选区完全包住）⇒ `**` 不显形：第十七轮起是**只去墨**（字号照旧、宽度照旧、字色透明）',
+    g1.revealed === 0 && g1.fs.every((f) => f === '17px') && g1.w.every((w) => w > 0),
     JSON.stringify({ revealed: g1.revealed, fs: g1.fs, w: g1.w, sel: g1.sel })
   )
 
@@ -677,8 +677,8 @@ async function main() {
     JSON.stringify({ during: hd1.during, after: hd1.after })
   )
   report.check(
-    'H3b ② 同一手势的**可视层**如实钉住：松手时按第十四轮判据折叠 ⇒ 选区矩形变窄（标记是真实文本的必然结果，注释与报告写明）',
-    hd1.after.revealed === 0 && hd1.during.revealed === 2 && hd1.after.rectW < hd1.during.rectW,
+    'H3b ② 同一手势的**可视层**：松手前后矩形宽度**相等**（改去墨口径后不再有布局跳变）',
+    hd1.after.revealed === 0 && hd1.during.revealed === 2 && hd1.after.rectW === hd1.during.rectW,
     JSON.stringify({
       during: { revealed: hd1.during.revealed, rectW: hd1.during.rectW },
       after: { revealed: hd1.after.revealed, rectW: hd1.after.rectW }
@@ -693,6 +693,108 @@ async function main() {
       hd2.after.revealed === 2 &&
       hd2.after.rectW >= hd2.during.rectW,
     JSON.stringify({ during: hd2.during, after: hd2.after })
+  )
+
+  // ═══ 第十七轮 I：布局中性（只去墨、不折叠）═══════════════════════════════════════
+  //
+  // 第十六轮把"拖拽期间折叠"否掉了（折叠改占位 ⇒ 指针下文字左移 ⇒ 选区塌成一个光标）。
+  // 本轮改成**只去墨**：被非空选区完全包住的构造保留 `font-size: inherit`（占位与显形态一致），
+  // 只把字色变透明（`.md-reveal-ink`，见 chrome.css 与本文件的注释）。
+  // ⇒ 松手那一刻不再有布局位移，宽度差 0；选区收起（退回光标态）时才按折叠态闭合。
+  const INK = `JSON.stringify((() => {
+    const ed = window.__L.ed()
+    const s = ed.state.selection
+    const sel = window.getSelection()
+    const r = sel && sel.rangeCount ? sel.getRangeAt(0).getBoundingClientRect() : null
+    const marks = [...document.querySelectorAll('.md-marker')]
+    return {
+      from: s.from, to: s.to,
+      len: ed.state.doc.textBetween(s.from, s.to, '/').length,
+      rectW: r ? Math.round(r.width) : null,
+      rev: marks.filter((m) => !!m.querySelector('.md-reveal-inline')).length,
+      ink: marks.filter((m) => !!m.querySelector('.md-reveal-ink')).length,
+      fs: marks.map((m) => getComputedStyle(m).fontSize),
+      transparent: marks.map((m) => getComputedStyle(m).color === 'rgba(0, 0, 0, 0)')
+    }
+  })())`
+  const inkDrag = async (name, fromWord, toWord, caretAt) => {
+    await openDocWith(app, 'alfa **bravo** charlie', name)
+    await waitEditor(ev)
+    await sleep(850)
+    await ev(
+      `(() => { const ed = window.__L.ed(); ed.chain().focus().setTextSelection(${caretAt}).run(); return 'ok' })()`
+    )
+    await sleep(260)
+    const a = await objectOf(ev, POINT_OF(fromWord))
+    const b = await objectOf(ev, POINT_OF(toWord))
+    await mouse('mouseMoved', a.x, a.y, 0)
+    await mouse('mousePressed', a.x, a.y, 1)
+    await sleep(110)
+    const seq = []
+    for (let i = 1; i <= 5; i += 1) {
+      await mouse('mouseMoved', a.x + ((b.x - a.x) * i) / 5, a.y, 1)
+      await sleep(60)
+      seq.push(JSON.parse(await ev(INK)))
+    }
+    await mouse('mouseReleased', b.x, a.y, 0)
+    await sleep(550)
+    const after = JSON.parse(await ev(INK))
+    const maxTo = Math.max(...seq.map((x) => x.to))
+    const minFrom = Math.min(...seq.map((x) => x.from))
+    const last = seq[seq.length - 1]
+    console.log('I ' + name + ' 末拍=' + JSON.stringify(last) + ' 松手=' + JSON.stringify(after))
+    return {
+      seq,
+      after,
+      last,
+      maxTo,
+      minFrom,
+      diff: after.rectW - last.rectW,
+      collapsed: after.from === after.to
+    }
+  }
+  const i1 = await inkDrag('完全包住（charlie→alfa，反向）', 'charlie', 'alfa', 8)
+  report.check(
+    'I1 ① 完全包住的真实拖选：**拖拽中与松手后矩形宽度差 = 0**（标记改成只去墨、占位不变），模型层逐字节一致，松手 = 拖拽最长范围（未塌）',
+    i1.diff === 0 &&
+      i1.after.rev === 0 &&
+      i1.after.ink === 2 &&
+      i1.after.fs.every((f) => f === '17px') &&
+      i1.after.transparent.every((t) => t === true) &&
+      i1.after.from === i1.minFrom &&
+      i1.after.to === i1.maxTo &&
+      i1.collapsed === false,
+    JSON.stringify({ diff: i1.diff, last: i1.last, after: i1.after, range: [i1.minFrom, i1.maxTo] })
+  )
+  const i2 = await inkDrag('边界切进（ravo→arlie）', 'ravo', 'arlie', 5)
+  report.check(
+    'I2 ② 边界切进的真实拖选：如实记录这**一跳**（判据要求显形 ⇒ 多一枚标记的宽），未塌、模型一致',
+    i2.diff === 15 &&
+      i2.after.rev === 2 &&
+      i2.after.from === i2.minFrom &&
+      i2.after.to === i2.maxTo &&
+      i2.collapsed === false,
+    JSON.stringify({ diff: i2.diff, last: i2.last, after: i2.after })
+  )
+  const i3 = await inkDrag('反向（charlie→ravo）', 'charlie', 'ravo', 8)
+  report.check(
+    'I3 ③ 反向（从行尾往左拖）**绝不塌成光标**，且宽度差 0 —— 这正是第十六轮放弃折叠的原因，本轮从根上消失',
+    i3.collapsed === false &&
+      i3.diff === 0 &&
+      i3.after.from === i3.minFrom &&
+      i3.after.to === i3.maxTo,
+    JSON.stringify({ diff: i3.diff, collapsed: i3.collapsed, last: i3.last, after: i3.after })
+  )
+  // ⑤ 选区收起（点段首 = 光标态在构造外）⇒ 墨回到折叠、布局闭合
+  await ev(
+    `(() => { const ed = window.__L.ed(); ed.chain().focus().setTextSelection(1).run(); return 'ok' })()`
+  )
+  await sleep(350)
+  const i4 = JSON.parse(await ev(INK))
+  report.check(
+    'I4 ⑤ 选区收起（点别处回到光标态）⇒ 标记回到**折叠**（font-size 0px、无去墨类），布局正常闭合',
+    i4.rev === 0 && i4.ink === 0 && i4.fs.every((f) => f === '0px'),
+    JSON.stringify(i4)
   )
 
   app.close()
