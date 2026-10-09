@@ -512,7 +512,7 @@ export const TableDragSelect = Extension.create({
             const me = e as MouseEvent
             if (
               !dragMoved &&
-              (Math.abs(me.clientX - pressX) > 3 || Math.abs(me.clientY - pressY) > 3)
+              (Math.abs(me.clientX - pressX) > 10 || Math.abs(me.clientY - pressY) > 10)
             )
               dragMoved = true
             const at = editorView.posAtCoords?.({ left: me.clientX, top: me.clientY })
@@ -580,7 +580,20 @@ export const TableDragSelect = Extension.create({
               const me = event as MouseEvent
               if (shiftGesture || me.detail > 1) return false
               const at = pressPos
-              if (dragMoved || at === null) return false
+              if (at === null) return false
+              /**
+               * **判"单击"用松手坐标 + 文档位置，不再只用途中的 3px 增量标志**（第四十五轮补）。
+               *
+               * 用户实测日志（`seq=72`）：那一"单击"里 `dragMoved` 从第 0 行就是 `true`（鼠标/触控板
+               * 轻微位移就 >3px），于是"单击落光标"这条规则被整条跳过 ⇒ 闪一下后旧范围仍在。
+               * 现在：位移 ≤10px，**或**指针下的文档位置与按下点相同 ⇒ 一律按单击处理，落成光标。
+               */
+              const movedFar =
+                Math.abs(me.clientX - pressX) > 10 || Math.abs(me.clientY - pressY) > 10
+              const atNow = view.posAtCoords?.({ left: me.clientX, top: me.clientY })
+              const posChanged =
+                atNow && Number.isFinite(atNow.pos) ? atNow.pos !== at : lastHeadPos !== at
+              if (movedFar && posChanged) return false
               setTimeout(() => {
                 try {
                   const cur = view.state.selection
