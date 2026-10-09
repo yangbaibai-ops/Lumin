@@ -3211,6 +3211,109 @@ async function main() {
       JSON.stringify(String(pa5Undo.freshMarkdown).slice(-60))
   )
 
+  // ═══ 第十四轮：**文档末尾的公式块下面必须能接着写字** ═════════════════════════════
+  //
+  // 用户报障："文档最末尾敲 `$$`+回车后，公式下方无法再输入文字（点不出光标）"。
+  // 实测真因（报告 §2）**不是**"末尾没有可落位置"：尾随空段落实测一直都有（插入与装载两条
+  // 路径都有，末尾代码块也有）。真正坏的是**收起编辑态后 PM 选区还停在公式块的
+  // `NodeSelection` 上**：
+  //   * Esc 路径会 `view.focus()` ⇒ 接着敲一个字，PM 拿这个选区**把整块替换掉**（公式消失）；
+  //   * ✓ 按钮路径连焦点都没收回来（`activeElement = BODY`）⇒ 敲什么都不进文档。
+  // 修法见 lib/editor/mathPreview.ts：`insertEmptyMathBlock` 末尾显式补尾随段落 +
+  // `closeSessionAndContinue` 把 NodeSelection 挪到块之后的正文位置并聚焦。
+  const tbBase = ['第一段：正文。'].join('\n')
+  const tbRun = async (name) => {
+    await openDocWith(app, tbBase, name)
+    await waitEditor(app.ev)
+    await sleep(900)
+    await ensureFocus(app)
+    await app.ev(
+      `(() => { const ed = window.__L.ed(); ed.chain().focus().setTextSelection(ed.state.doc.content.size).run(); return 'ok' })()`
+    )
+    await sleep(250)
+    await pressKey(app, 'Enter', 'Enter', 13)
+    await typeChar(app.send, '$')
+    await typeChar(app.send, '$')
+    await pressKey(app, 'Enter', 'Enter', 13)
+    await sleep(500)
+  }
+  // ⑥a `$$`+回车 之后：末尾有可落位置（文档最后一个孩子是空段落），序列化没有多余空行
+  await tbRun('math-edit-14a.md')
+  const tb0 = JSON.parse(await app.ev(SRC_SNAPSHOT))
+  report.check(
+    'TB1 ⑥ 末尾 `$$`+回车 ⇒ 公式块**后面还有一个空段落**（可落位置存在），序列化是规范 `$$…$$` 且没有多余空行',
+    tb0.docTypes[tb0.docTypes.length - 1] === 'paragraph' &&
+      tb0.docTypes.includes('mathBlock') &&
+      String(tb0.freshMarkdown).includes('$$\n\n$$') &&
+      !/\n\n\n/.test(String(tb0.freshMarkdown)),
+    'types=' + JSON.stringify(tb0.docTypes) + ' fresh=' + JSON.stringify(String(tb0.freshMarkdown))
+  )
+  // ⑥b Esc 收起 → 光标是**文本选区**（不是节点选区）→ 敲字落在公式下方
+  await pressKey(app, 'Escape', 'Escape', 27)
+  await sleep(350)
+  const tb1 = JSON.parse(await app.ev(SRC_SNAPSHOT))
+  await typeChar(app.send, 'k')
+  await sleep(400)
+  const tb2 = JSON.parse(await app.ev(SRC_SNAPSHOT))
+  report.check(
+    'TB2 ⑥ Esc 收起后光标是**正文文本选区**（不是公式块的 NodeSelection），敲 `k` 落在公式**下方**、公式原文不变',
+    tb1.pmSelName === 'TextSelection' &&
+      tb1.hasBox === false &&
+      tb2.docTypes.includes('mathBlock') &&
+      tb2.paraTexts[tb2.paraTexts.length - 1] === 'k' &&
+      String(tb2.freshMarkdown).includes('$$\n\n$$\n\nk'),
+    'sel=' +
+      tb1.pmSelName +
+      '@' +
+      tb1.pmSelFrom +
+      ' types=' +
+      JSON.stringify(tb2.docTypes) +
+      ' paras=' +
+      JSON.stringify(tb2.paraTexts) +
+      ' fresh=' +
+      JSON.stringify(String(tb2.freshMarkdown))
+  )
+  // ⑥c ✓ 按钮收起 → 同样能接着打字（改前 activeElement 停在 body，一个字都进不去）
+  await tbRun('math-edit-14b.md')
+  const tbCheck = JSON.parse(
+    await app.ev(`(() => {
+      const b = document.querySelector('[data-md-math-editor-check]')
+      if (!b) return 'null'
+      const r = b.getBoundingClientRect()
+      return JSON.stringify({ x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2) })
+    })()`)
+  )
+  await clickAt(app.send, tbCheck.x, tbCheck.y)
+  await sleep(500)
+  const tb3 = JSON.parse(await app.ev(SRC_SNAPSHOT))
+  await typeChar(app.send, 'm')
+  await sleep(400)
+  const tb4 = JSON.parse(await app.ev(SRC_SNAPSHOT))
+  report.check(
+    'TB3 ⑥ 点 ✓ 收起后敲 `m` 同样落在公式下方（改前焦点留在被移除的按钮上，敲什么都不进文档）',
+    tb3.hasBox === false &&
+      tb4.docTypes.includes('mathBlock') &&
+      tb4.paraTexts[tb4.paraTexts.length - 1] === 'm' &&
+      String(tb4.freshMarkdown).includes('$$\n\n$$\n\nm'),
+    'afterCheck=' +
+      JSON.stringify({ box: tb3.hasBox, active: tb3.activeTag, sel: tb3.pmSelName }) +
+      ' paras=' +
+      JSON.stringify(tb4.paraTexts) +
+      ' fresh=' +
+      JSON.stringify(String(tb4.freshMarkdown))
+  )
+  // ⑥d 对照：末尾代码块本来就有尾随段落（同一口径，不是数学块特例）
+  await openDocWith(app, '第一段：正文。\n\n```sh\necho hi\n```', 'math-edit-14c.md')
+  await waitEditor(app.ev)
+  await sleep(900)
+  await ensureFocus(app)
+  const tb5 = JSON.parse(await app.ev(SRC_SNAPSHOT))
+  report.check(
+    'TB4 ⑥ 对照：**末尾代码块**同样有尾随空段落（"末尾可落位置"是既有口径，数学块缺的只是把光标交回正文）',
+    tb5.docTypes[tb5.docTypes.length - 1] === 'paragraph' && tb5.docTypes.includes('codeBlock'),
+    'types=' + JSON.stringify(tb5.docTypes)
+  )
+
   app.close()
   return report.finish()
 }

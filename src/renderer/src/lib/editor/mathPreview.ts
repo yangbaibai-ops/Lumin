@@ -84,11 +84,11 @@
 //    `matchInlineMathAtCaret` ⇒ 与解析规则同一套口径（见 mathMarkers.ts / mathScan.ts）。
 import { Extension } from '@tiptap/core'
 import { redo, undo } from '@tiptap/pm/history'
-import { Plugin, PluginKey, TextSelection } from '@tiptap/pm/state'
+import { NodeSelection, Plugin, PluginKey, TextSelection } from '@tiptap/pm/state'
 import { Decoration, DecorationSet } from '@tiptap/pm/view'
 import type { EditorState } from '@tiptap/pm/state'
 import type { EditorView } from '@tiptap/pm/view'
-import type { Mark, Node as PMNode } from '@tiptap/pm/model'
+import { Fragment, type Mark, type Node as PMNode } from '@tiptap/pm/model'
 import { fillHighlight } from './mathHighlight'
 import { emptyMathDom, mathRenderInfo } from './mathMarkers'
 import { scanInlineMathSpans } from '../mathScan'
@@ -884,8 +884,9 @@ abstract class MathEditorBase {
     if (e.key === 'Escape') {
       e.preventDefault()
       e.stopPropagation()
-      closeSession(this.view)
-      this.view.focus()
+      // 第十四轮：Esc 之后要能在**公式下方**接着敲字（改前选区是公式块的 NodeSelection，
+      // 接着敲一个字会把整块替换掉 —— 实测的数据丢失）
+      closeSessionAndContinue(this.view)
       return
     }
     /**
@@ -945,7 +946,9 @@ abstract class MathEditorBase {
   private onCheckDown = (e: MouseEvent): void => {
     e.preventDefault()
     e.stopPropagation()
-    closeSession(this.view)
+    // 第十四轮：收紧之后必须**把光标交回正文并聚焦**（否则 activeElement 停在 body 上，
+    // 用户接着敲字一个字都进不去 —— 用户报的"公式下方无法再输入文字"）。
+    closeSessionAndContinue(this.view)
   }
 
   /**
@@ -1288,7 +1291,20 @@ function insertEmptyMathBlock(view: EditorView): boolean {
   const start = $from.before()
   const end = $from.after()
   const node = nodeType.create({ source: '' })
-  view.dispatch(state.tr.replaceWith(start, end, node))
+  /**
+   * 末尾这一格要**显式补一个空段落**（第十四轮）：公式块是原子块级节点，光标需要一个
+   * 能落下的文本块。实测（报告 §2）：装载路径与代码块那条路径上，末尾确实会有尾随段落，
+   * 但"`$$`+回车 插在文档最后"这条路径**不该依赖**那个来源不明的补段 —— 这里自己保证：
+   * 被替换掉的 `$$` 段落本来就是文档最后一个孩子时，连同空段落一起插。
+   *
+   * 为什么补空段落不会污染 Markdown：实测（探针 v14b）末尾的空段落**不写出**任何多余空行
+   *（`第一段：正文。\n\n$$\n\n$$\n`，Markdown 文件末尾本来就有一个换行）。
+   * 一个事务 ⇒ 撤销一步到位，与"只插公式块"在用户看来没有多一步。
+   */
+  const isLast = $from.depth === 1 && $from.index(0) === state.doc.childCount - 1
+  const pType = state.schema.nodes.paragraph
+  const insert = isLast && pType ? Fragment.fromArray([node, pType.create()]) : node
+  view.dispatch(state.tr.replaceWith(start, end, insert))
   // 插入是**上一个事务**；这里只是"把编辑态开在那条新公式上"（只改视图，不改文档）
   openMathEditor(view, {
     kind: 'block',
@@ -1325,6 +1341,43 @@ export function closeSession(view: EditorView): void {
   view.dispatch(
     view.state.tr.setMeta(mathPreviewKey, { session: { kind: 'close' } } satisfies MathSessionMeta)
   )
+}
+
+/**
+ * "收起并继续在正文里写字"（Esc / ✓ 按钮两条**显式**路径用；失焦那条不用，见下）。
+ *
+ * 第十四轮实测（报告 §2）——`$$`+回车 在文档末尾开编辑态时，PM 选区是落在刚插入的
+ * 公式块上的 **块级 `NodeSelection`**（`insertEmptyMathBlock` 的 replacement 语义）。
+ * 收起时如果原样留着这个选区：
+ *   * **Esc** 那条会 `view.focus()`，于是**接着敲的任何一个字都被 PM 拿去替换整块** ——
+ *     实测公式块直接消失、变成那个字符（数据丢失）；
+ *   * **✓ 按钮**那条连焦点都没收回来（`document.activeElement === BODY`）⇒ 敲什么都不进文档，
+ *     正是用户报的"公式下方无法再输入文字 / 点不出光标"。
+ * 所以显式收起时，如果选区正好是这条公式块的 NodeSelection，就把它挪到**块之后**的正文位置
+ * （末尾有尾随空段落时就是它；没有就退到块前，反正必须是文本块），再聚焦编辑器。
+ *
+ * ⚠️ **失焦那条路不走这里**：那是"用户点了别处"，PM 自己会把光标放到点击处；
+ * 这里再 setSelection 会跟那次点击抢（`onBlur` 是下一帧才判的）。
+ */
+export function closeSessionAndContinue(view: EditorView): void {
+  if (view.isDestroyed) return
+  const st = mathPreviewKey.getState(view.state)
+  const hit = st?.active?.active
+  if (!st?.active || !hit) return
+  const sel = view.state.selection
+  const move =
+    hit.kind === 'block' &&
+    sel instanceof NodeSelection &&
+    sel.from === hit.from &&
+    sel.to === hit.to
+  closeSession(view)
+  if (move) {
+    const pos = Math.min(hit.to, view.state.doc.content.size)
+    const $pos = view.state.doc.resolve(pos)
+    const near = TextSelection.near($pos, 1) ?? TextSelection.near($pos, -1)
+    if (near) view.dispatch(view.state.tr.setSelection(near).scrollIntoView())
+  }
+  view.focus()
 }
 
 /** 点击落在哪一条公式上（`pos` 由 PM 给出；再按 DOM 上的原文属性兜底） */
