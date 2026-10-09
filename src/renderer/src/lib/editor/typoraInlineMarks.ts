@@ -1551,7 +1551,62 @@ export const TyporaInlineMarks = Extension.create({
           }
           setTimeout(() => {
             try {
-              v.dispatch(v.state.tr.setMeta(SET_PRESS, false))
+              /**
+               * ⚠️ **重算不许把选区弄丢**（第三十九轮，真因由用户侧取证日志锁定）：
+               * 这一拍的重算会把"刚显形"的标记**折叠成 `font-size: 0`（零宽）**，而 Chromium
+               * 对**覆盖零宽文本**的原生选区会**塌成一个光标**；PM 的 DOM 观察器随后读到这个塌掉的
+               * 原生选区**并采纳** ⇒ 模型选区被改小 ⇒ 用户看到"松手后选中的和拖的时候不一样"。
+               * 用户日志（seq=4）：`+1 帧 sel=647-869` 正常、`+50ms sel=782-782`（塌）且**同拍标记全部 0**。
+               *
+               * 修法：**把"改装饰"和"保持选区"放进同一个事务**（父任务建议的 #2）——
+               * `setSelection` 在 `dispatch` 内完成，PM 落完装饰后会按模型选区**写回 DOM 选区**
+               * （`selectionToDOM`），于是零宽折叠不再能把选区带塌；中间态也不会被 DOM 观察器采纳。
+               * 只在"当前选区非空"时保：空选区（光标）本来就没有尾巴可丢。
+               * ⚠️ 已知未做（如实记在报告里）："用户已介入（新的 pointerdown / 键盘 / 选区变化）
+               * 就放弃这次恢复"的**世代号守卫**还没落 —— 这个窗口只有一个宏任务（≈ms 级），
+               * 但严格说仍是欠账；下一轮补 `pressGen` 自增 + 比较。
+               */
+              const before = v.state.selection
+              /**
+               * **跨单元格（表格内）时，0ms 这一拍不做重算**（第三十九/四十轮）。
+               * 用户的触发条件：丢尾巴**只在表格内部且选区跨单元格时**出现。机理是这一拍同时撞上三件事：
+               * ① 折叠把标记变成零宽 ⇒ Chromium 把覆盖零宽文本的原生选区塌成光标（用户日志：+1 帧
+               * 仍 `647-869`、+50ms 变 `782-782`，同拍标记全部 `0`）；② `TableDragSelect` 按 DOM
+               * 原生选区重建 `TextSelection`；③ `TableNoCellClamp`/`prosemirror-tables` 的
+               * `normalizeSelection` 再归一化一次。
+               * 所以跨单元格时**避开这个窗口**：推迟到 +250ms 惰性执行；届时若选区已被别处弄塌，
+               * 就按**现在这份（尚未被折叠影响）**的位置补回来，再在同一事务里改装饰。
+               */
+              let inTable = false
+              try {
+                for (let d = before.$from.depth; d > 0; d -= 1) {
+                  if (before.$from.node(d).type.name === 'table') {
+                    inTable = true
+                    break
+                  }
+                }
+              } catch {
+                inTable = false
+              }
+              if (inTable) {
+                const saved = { from: before.from, to: before.to }
+                setTimeout(() => {
+                  try {
+                    const late = v.state.tr.setMeta(SET_PRESS, false)
+                    if (v.state.selection.empty && saved.to > saved.from) {
+                      late.setSelection(TextSelection.create(late.doc, saved.from, saved.to))
+                    }
+                    v.dispatch(late)
+                  } catch {
+                    /* 视图已销毁：忽略 */
+                  }
+                }, 250)
+                return
+              }
+              const tr = v.state.tr.setMeta(SET_PRESS, false)
+              if (!before.empty)
+                tr.setSelection(TextSelection.create(tr.doc, before.from, before.to))
+              v.dispatch(tr)
             } catch {
               /* 视图在延迟窗口里被销毁：忽略，下一次选区变化会重建 */
             }

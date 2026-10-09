@@ -894,6 +894,59 @@ async function main() {
     })
   )
 
+  // ═══ 第四十一轮 K：**表格内跨单元格**时，折叠重算不得丢选区 ═══════════════════════
+  //
+  // 真因（用户侧 selTrace 日志）：松手后 +1 帧仍 `647-869`，+50ms 变 `782-782`（塌成光标），
+  // **同拍标记由显形折叠成 0 宽** ⇒ 零宽折叠塌掉原生选区、PM 的 DOM 观察器采纳之；
+  // 且用户实测"丢尾巴只在表格内部、跨单元格选择时出现"（叠加了 TableDragSelect 的 DOM 重建与
+  // TableNoCellClamp/normalizeSelection 的归一化）。修法：跨单元格时把这次重算推迟到 +250ms 并
+  // 在同事务里补回捕获的选区。本断言钉住"四个时点 from/to 逐字一致 + 确实跨格"。
+  const TBL2 = '| 甲 **乙** 丙 | 丁 | 戊 |\n| --- | --- | --- |\n| x | y | z |'
+  await openDocWith(app, TBL2, 'marker-hold-k1.md')
+  await waitEditor(ev)
+  await sleep(900)
+  const kA = await objectOf(ev, PT2('乙'))
+  const kB = await objectOf(ev, PT2('戊'))
+  // 先让光标落到构造内 ⇒ 标记**显形**（否则手势不触发"折叠"，这条断言就是空跑）
+  await ev(
+    `(() => { const ed = window.__L.ed(); let p = -1; ed.state.doc.descendants((n, pos) => { if (n.isText && n.text.includes('乙')) p = pos + 1; return true }); ed.chain().focus().setTextSelection(p + 1).run(); return 'ok' })()`
+  )
+  await sleep(320)
+  const kRevealed = JSON.parse(await ev(SPANS))
+  await mouse('mouseMoved', kA.x, kA.y, 0)
+  await mouse('mousePressed', kA.x, kA.y, 1)
+  await sleep(110)
+  const kSeq = []
+  for (let i = 1; i <= 5; i += 1) {
+    await mouse('mouseMoved', kA.x + ((kB.x - kA.x) * i) / 5, kA.y + ((kB.y - kA.y) * i) / 5, 1)
+    await sleep(70)
+    kSeq.push(JSON.parse(await ev(INK)))
+  }
+  await mouse('mouseReleased', kB.x, kB.y, 0)
+  const kFour = [JSON.parse(await ev(INK))]
+  await sleep(16)
+  kFour.push(JSON.parse(await ev(INK)))
+  await sleep(34)
+  kFour.push(JSON.parse(await ev(INK)))
+  await sleep(120)
+  kFour.push(JSON.parse(await ev(INK)))
+  const kSig = [...new Set(kFour.map((s) => s.from + '-' + s.to))]
+  const kCross = await ev(
+    `JSON.stringify((() => { const s = window.__L.ed().state.selection; return { text: window.__L.ed().state.doc.textBetween(s.from, s.to, '|') } })())`
+  )
+  const kCrossObj = JSON.parse(kCross)
+  console.log(
+    'K1 逐拍=' + JSON.stringify(kSeq.map((s) => s.from + '-' + s.to)) +
+      ' 四时点=' + JSON.stringify(kSig) +
+      ' 跨格文本=' + JSON.stringify(kCrossObj.text.slice(0, 40)) +
+      ' 按下显形数=' + kRevealed.revealed
+  )
+  report.check(
+    'K1 第四十一轮：表格跨单元格时，折叠重算不得丢选区（mouseup/+1帧/+50ms/+170ms 四时点 from/to 逐字一致，且选区确实跨格）',
+    kSig.length === 1 && kCrossObj.text.includes('|') && kRevealed.revealed >= 2,
+    JSON.stringify({ four: kSig, cross: kCrossObj.text.slice(0, 40), revealedAtPress: kRevealed.revealed, seq: kSeq.map((s) => s.from + '-' + s.to) })
+  )
+
   app.close()
   return report.finish()
 }
