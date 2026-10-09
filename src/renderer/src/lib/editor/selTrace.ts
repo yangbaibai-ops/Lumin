@@ -130,5 +130,13 @@ export function traceInstall(): void {
       true
     )
   }
-  for (const t of ['pointerdown', 'mousedown', 'pointerup', 'mouseup', 'pointercancel']) on(t)
+  for (const t of [
+    'pointerdown',
+    'mousedown',
+    'mousemove',
+    'pointerup',
+    'mouseup',
+    'pointercancel'
+  ])
+    on(t)
 }
