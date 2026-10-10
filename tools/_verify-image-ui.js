@@ -377,13 +377,13 @@ async function main() {
   })()`)
   const sameLine =
     lineInfo.widgetRect &&
-    lineInfo.textRects.filter((r) => r.b > r.t).length > 0 &&
-    lineInfo.textRects
-      .filter((r) => r.b > r.t) // 只看**可见**文本（被隐藏的标记文本 rect 是 0 高）
-      .every((r) => r.b > lineInfo.widgetRect.t && r.t < lineInfo.widgetRect.b)
+    lineInfo.inline === 'true' &&
+    // 「不拆行」的判据：整段只有**一个行盒**，且图片落在这一行里
+    lineInfo.p2Rects === 1 &&
+    lineInfo.widgetRect.t >= 0
   check(
-    'E5 行内混排的 `<img>` **保持行内**（widget 是 inline、与前后文字在同一行的纵向区间里）',
-    lineInfo.inline === 'true' && sameLine,
+    'E5 行内混排的 `<img>` **保持行内**（widget 是 inline、整段只有一行）',
+    sameLine,
     JSON.stringify(lineInfo)
   )
   const standalone = await json(`(() => {
@@ -474,31 +474,138 @@ async function main() {
       pr = rects.length ? rects[rects.length - 1] : null
     }
     const cs = getComputedStyle(el)
+    const pcs = getComputedStyle(p)
+    const w2 = [...document.querySelectorAll('[data-img-widget]')].find((x) => x.getAttribute('data-img-inline') === 'true')
+    const ir = w2 ? w2.getBoundingClientRect() : null
+    // 标识符可能折成多行：取**与图片同一行**的那一段（其纵向区间与图片相交；没有则取最后一段）
+    const frags = all.length ? all : [r]
+    const band = ir
+      ? (frags.filter((x) => x.bottom > ir.top && x.top < ir.bottom).slice(-1)[0] ?? frags[frags.length - 1])
+      : frags[frags.length - 1]
     return {
       ok: true,
       inEditor: !!el.closest('.ProseMirror'),
       overlayCount: document.querySelectorAll('[data-img-source], .img-src-line, .img-src-line--overlay, [data-img-source-input]').length,
       text: el.textContent,
       markerLeft: Math.round(r.left),
+      markerRight: Math.round(r.right),
       markerTop: Math.round(r.top),
+      fragLeft: Math.round(band.left),
+      fragRight: Math.round(band.right),
+      fragTop: Math.round(band.top),
+      fragCount: frags.length,
       prevRight: pr ? Math.round(pr.right) : null,
       prevTop: pr ? Math.round(pr.top) : null,
       prevText: prev ? (prev.textContent || '').slice(0, 8) : null,
-      fontSize: cs.fontSize,
-      color: cs.color,
+      imgLeft: ir ? Math.round(ir.left) : null,
+      imgTop: ir ? Math.round(ir.top) : null,
+      // ① 排版逐项：标识符 vs **同段落普通正文**（段落自身的 computed 就是普通文本的样式）
+      marker: { fontSize: cs.fontSize, fontFamily: cs.fontFamily, fontWeight: cs.fontWeight, lineHeight: cs.lineHeight, color: cs.color },
+      body: { fontSize: pcs.fontSize, fontFamily: pcs.fontFamily, fontWeight: pcs.fontWeight, lineHeight: pcs.lineHeight, color: pcs.color },
       verticalAlign: cs.verticalAlign,
+      background: cs.backgroundColor,
       rectCount: el.getClientRects().length
     }
   })()`)
-  const followsBody =
-    pos.ok && pos.prevRight != null && pos.markerLeft >= pos.prevRight - 6 && Math.abs(pos.markerTop - pos.prevTop) <= 6
+  const sameTypography =
+    pos.ok &&
+    ['fontSize', 'fontFamily', 'fontWeight', 'lineHeight', 'color'].every((k) => pos.marker[k] === pos.body[k])
   check(
-    '① 激活时源码是**正文里的原位文本**（在 .ProseMirror 内、紧跟前面正文之后，浮层容器计数 == 0）',
-    pos.ok && pos.inEditor === true && pos.overlayCount === 0 && followsBody,
-    JSON.stringify(pos)
+    '① 标识符排版与**同段正文逐项一致**（font-size/family/weight/line-height/color 五项相等）',
+    sameTypography,
+    JSON.stringify({ marker: pos.marker, body: pos.body })
+  )
+  check(
+    '② 位置：标识符紧贴**图片之前**（同一行那一段的 right ≤ img.left）且与图片同一行（top 接近）',
+    pos.ok &&
+      pos.fragRight != null &&
+      pos.imgLeft != null &&
+      pos.fragRight <= pos.imgLeft + 1 &&
+      Math.abs(pos.fragTop - pos.imgTop) <= 10,
+    JSON.stringify({
+      markerLeft: pos.markerLeft,
+      fragRight: pos.fragRight,
+      imgLeft: pos.imgLeft,
+      fragTop: pos.fragTop,
+      imgTop: pos.imgTop,
+      fragCount: pos.fragCount,
+      verticalAlign: pos.verticalAlign,
+      background: pos.background
+    })
+  )
+  check(
+    '③a 激活时标识符是**原位正文**（在 .ProseMirror 内、浮层容器计数 0）',
+    pos.ok && pos.inEditor === true && pos.overlayCount === 0,
+    JSON.stringify({ inEditor: pos.inEditor, overlayCount: pos.overlayCount })
+  )
+  // ③b/③c 底色两态：点图片 ⇒ 浅灰底；焦点进文本开始编辑 ⇒ 透明
+  const bgIdle = await json(`(() => {
+    const el = document.querySelector('.ProseMirror [data-img-revealed]')
+    if (!el) return { ok: false }
+    const cs = getComputedStyle(el)
+    const m = /rgba?\\(([\\d.]+),\\s*([\\d.]+),\\s*([\\d.]+)/.exec(cs.backgroundColor) || []
+    const [r, g, b] = [Number(m[1]), Number(m[2]), Number(m[3])]
+    return {
+      ok: true,
+      bg: cs.backgroundColor,
+      tokenCodeBg: getComputedStyle(document.documentElement).getPropertyValue('--code-bg').trim(),
+      grayish: m.length ? Math.abs(r - g) <= 8 && Math.abs(g - b) <= 8 : false
+    }
+  })()`)
+  check(
+    '③b 点击图片 ⇒ 标识符有**浅灰底**（非 transparent；给 computed 值与该 token 的取值）',
+    bgIdle.ok && bgIdle.bg !== 'rgba(0, 0, 0, 0)' && bgIdle.grayish === true,
+    JSON.stringify(bgIdle)
+  )
+  const shotClick = await send('Page.captureScreenshot', { format: 'png' })
+  safe(() => fs.writeFileSync(path.join(process.cwd(), 'tmp', 'img-marker-typora-click.png'), Buffer.from(shotClick.result.data, 'base64')), null)
+  const shotPos = await send('Page.captureScreenshot', { format: 'png' })
+  safe(() => fs.writeFileSync(path.join(process.cwd(), 'tmp', 'img-marker-typora-position.png'), Buffer.from(shotPos.result.data, 'base64')), null)
+  // 把光标放进标识符文本（= 开始编辑）——用**真实点击**落进它的矩形里
+  const markerPt = await json(`(() => {
+    const el = document.querySelector('.ProseMirror [data-img-revealed]')
+    if (!el) return null
+    const rs = [...el.getClientRects()].filter((r) => r.width > 2)
+    const r = rs.length ? rs[0] : el.getBoundingClientRect()
+    return { x: Math.round(r.left + Math.min(12, r.width / 2)), y: Math.round(r.top + r.height / 2) }
+  })()`)
+  await click(markerPt)
+  await sleep(450)
+  const shotEdit = await send('Page.captureScreenshot', { format: 'png' })
+  safe(() => fs.writeFileSync(path.join(process.cwd(), 'tmp', 'img-marker-typora-editing.png'), Buffer.from(shotEdit.result.data, 'base64')), null)
+  const bgEditing = await json(`(() => {
+    const el = document.querySelector('.ProseMirror [data-img-revealed]')
+    if (!el) return { ok: false, hasMarker: false }
+    return { ok: true, hasMarker: true, bg: getComputedStyle(el).backgroundColor, cls: el.className }
+  })()`)
+  check(
+    '③c 进入编辑（光标落进标识符）⇒ 底色变**透明**（rgba(0, 0, 0, 0)）',
+    bgEditing.ok && bgEditing.bg === 'rgba(0, 0, 0, 0)',
+    JSON.stringify({ 点击态: bgIdle.bg, 编辑态: bgEditing.bg, cls: bgEditing.cls })
+  )
+  // 失焦/点别处 ⇒ 回到未激活（隐藏）
+  const outPt = await json(`(() => {
+    const ps = [...document.querySelectorAll('.ProseMirror p')]
+    const r = ps[ps.length - 1].getBoundingClientRect()
+    return { x: Math.round(r.left + 8), y: Math.round(r.top + r.height / 2) }
+  })()`)
+  await click(outPt)
+  await sleep(400)
+  const bgGone = await json(`(() => ({
+    hasMarker: !!document.querySelector('.ProseMirror [data-img-revealed]'),
+    hasBar: !!document.querySelector('[data-img-zoom-bar]'),
+    md: window.__vt.ed().storage.markdown.getMarkdown()
+  }))()`)
+  check(
+    '③d 点别处 ⇒ 回到未激活（标识符隐藏、工具栏消失）',
+    bgGone.hasMarker === false && bgGone.hasBar === false,
+    JSON.stringify({ hasMarker: bgGone.hasMarker, hasBar: bgGone.hasBar })
   )
 
   // ② 真实退格删掉结尾 `>` ⇒ 图片消失、正文里剩截断的源码（逐字节）
+  // （③d 已经把它收起来了 ⇒ 先重新点开那张行内图片）
+  await click(inlinePt2)
+  await sleep(500)
   const beforeDel = await json(`(() => ({
     text: (document.querySelector('.ProseMirror [data-img-revealed]') || {}).textContent || null,
     widgetCount: document.querySelectorAll('[data-img-widget]').length,

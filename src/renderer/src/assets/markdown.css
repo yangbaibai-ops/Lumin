@@ -291,11 +291,17 @@
   display: none;
 }
 /* 激活时的"标识符"：它**就是文档里的正文文本**（不是浮层）——
-   排版完全跟正文一致，这里只做两件事：与图片同行时**贴该行顶部**、关掉拼写检查的视觉来源 */
+   排版完全跟正文一致（不动 font/color），只多两件事：
+     * 点开图片 ⇒ **浅灰底**（选中态，用既有令牌 `--code-bg`）；
+     * 光标落进这段文本开始编辑 ⇒ 底色撤掉（Typora 同观感）；
+     * 与图片同行时贴该行顶部（`vertical-align: top`，只影响含图片那一行的行盒）。 */
 .md-preview .img-src-revealed {
-  /* 同一行里有更高的图片时，这段文本贴行顶（不与图片垂直居中）；
-     折行时只影响含图片那一行的行盒，其余行行高不变 */
   vertical-align: top;
+  background-color: var(--code-bg);
+  border-radius: 3px;
+}
+.md-preview .img-src-revealed--editing {
+  background-color: transparent;
 }
 /* 语法被改坏（例如退格删掉结尾 `>`）：它不再是图片，但仍是正文 —— 只关拼写检查 */
 .md-preview .img-src-incomplete {

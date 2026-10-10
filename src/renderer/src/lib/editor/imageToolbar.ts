@@ -207,7 +207,7 @@ export function collectImgSources(state: EditorState): ImgSource[] {
   return out.sort((a, b) => a.from - b.from)
 }
 
-const KEY = new PluginKey<{ from: number | null }>('luminImageSource')
+const KEY = new PluginKey<{ from: number | null; editing?: boolean }>('luminImageSource')
 
 /** 悬浮工具栏的 DOM id（每篇文档一个；重建时旧节点会被删掉） */
 const TOOLBAR_CLASS = 'img-zoom-bar'
@@ -254,7 +254,8 @@ export function applyZoom(view: EditorView, img: ImgSource, zoom: number, open: 
   // 换完之后把"打开"状态挪到新的范围上（长度可能变了），否则工具栏会立刻消失
   requestAnimationFrame(() => {
     const next = collectImgSources(view.state).find((i) => i.src === img.src)
-    if (next) view.dispatch(view.state.tr.setMeta(KEY, { from: open ? next.from : null }))
+    if (next)
+      view.dispatch(view.state.tr.setMeta(KEY, { from: open ? next.from : null, editing: false }))
   })
 }
 
@@ -419,10 +420,11 @@ export const ImageSourceUi = Extension.create({
       new Plugin<{ from: number | null }>({
         key: KEY,
         state: {
-          init: () => ({ from: null }),
+          /** `editing`：点开图片时是"选中态"（浅灰底）；光标落进标识符开始编辑 ⇒ true（无底） */
+          init: () => ({ from: null, editing: false }),
           apply(tr, value, _old, next) {
-            const meta = tr.getMeta(KEY) as { from: number | null } | undefined
-            if (meta) return { from: meta.from }
+            const meta = tr.getMeta(KEY) as { from: number | null; editing?: boolean } | undefined
+            if (meta) return { from: meta.from, editing: !!meta.editing }
             // 文档变了（例如点了档位）：位置可能失效 → 重新按选区判一次
             const imgs = collectImgSources(next)
             const sel = next.selection
@@ -434,16 +436,20 @@ export const ImageSourceUi = Extension.create({
             }
             const keep =
               value.from == null ? null : (imgs.find((i) => i.from === value.from) ?? null)
-            if (keep && revealDecision(selLike, keep) === 'show') return { from: keep.from }
-            for (const i of imgs) {
-              if (revealDecision(selLike, i) === 'show') return { from: i.from }
-            }
-            return { from: null }
+            const pick =
+              keep && revealDecision(selLike, keep) === 'show'
+                ? keep
+                : (imgs.find((i) => revealDecision(selLike, i) === 'show') ?? null)
+            if (!pick) return { from: null, editing: false }
+            // 光标**严格落进**标识符文本 ⇒ 正在编辑（底色撤掉；Typora 同观感）
+            const caretInside = sel.empty && sel.from > pick.from && sel.from < pick.to
+            return { from: pick.from, editing: caretInside }
           }
         },
         props: {
           decorations(state) {
             const open = KEY.getState(state)?.from ?? null
+            const openEditing = KEY.getState(state)?.editing === true
             const imgs = collectImgSources(state)
             const decos: Decoration[] = []
             // ① 图片**居中**：给"只有一张图"的块挂一个类（比 CSS `:only-child` 稳 ——
@@ -487,11 +493,20 @@ export const ImageSourceUi = Extension.create({
                       : Decoration.inline(img.from, img.to, { class: 'img-src-marker-hidden' })
                   )
                 } else {
-                  // 原位显形：`vertical-align: top`（与图片同行的那一行贴顶）+ 关掉拼写检查
+                  /**
+                   * 原位显形（Typora 观感）：
+                   *   * 排版完全跟正文一致（不改 font/color）；
+                   *   * 点开图片时给**浅灰底**（`--code-bg`，既有令牌）；光标落进文本开始编辑 ⇒ 去掉底；
+                   *   * `vertical-align: top`：与图片同行时贴该行顶部；
+                   *   * 关掉拼写检查的波浪线。
+                   */
                   const attrs = {
-                    class: 'img-src-revealed',
+                    class: openEditing
+                      ? 'img-src-revealed img-src-revealed--editing'
+                      : 'img-src-revealed',
                     'data-img-revealed': '',
                     'data-img-kind': 'raw',
+                    'data-img-editing': openEditing ? 'true' : 'false',
                     spellcheck: 'false',
                     autocorrect: 'off',
                     autocapitalize: 'off'
@@ -505,7 +520,9 @@ export const ImageSourceUi = Extension.create({
                 const inline = imgIsInline(state, img)
                 decos.push(
                   Decoration.widget(
-                    img.from,
+                    // ⚠️ 挂在**构造的末尾**（`img.to`）：标识符文本在图片**左边**（Typora 观感）。
+                    //    挂 `img.from` 时无论 side 正负，DOM 里图片都会排在文本前面。
+                    img.to,
                     () => {
                       const span = document.createElement('span')
                       span.className = inline ? 'img-widget img-widget--inline' : 'img-widget'
@@ -520,7 +537,7 @@ export const ImageSourceUi = Extension.create({
                       span.appendChild(im)
                       return span
                     },
-                    { side: -1 }
+                    { side: 1 }
                   )
                 )
               }
@@ -556,11 +573,14 @@ export const ImageSourceUi = Extension.create({
               if (!widget) return false
               const from = Number(widget.getAttribute('data-img-from'))
               if (!Number.isFinite(from)) return false
-              // 点图片 = 选中它（= "点开"这一步）；选区落在构造上，判据自然给出"显示"
+              /**
+               * 点图片 = "选中这张图"（Typora 的选中态）：只把 `from` 记进插件状态，
+               * 给标识符上浅灰底；**不**把光标塞进标识符文本 —— 那样会立刻算成"正在编辑"、
+               * 底色一闪就没。用户真正点进文本（光标落进那段）时才转编辑态。
+               */
               const img = collectImgSources(view.state).find((i) => i.from === from)
               if (!img) return false
-              const sel = TextSelection.create(view.state.doc, Math.min(img.from + 1, img.to))
-              view.dispatch(view.state.tr.setSelection(sel).setMeta(KEY, { from: img.from }))
+              view.dispatch(view.state.tr.setMeta(KEY, { from: img.from, editing: false }))
               event.preventDefault()
               return true
             },
@@ -598,9 +618,18 @@ export const ImageSourceUi = Extension.create({
               `[data-img-widget][data-img-from="${img.from}"]`
             ) as HTMLElement | null
             if (w) return w.getBoundingClientRect()
-            // 已激活的原文：widget 还在（图片继续显示）；万一没有，就用那段**文本自己的矩形**
             const el = editorView.dom.querySelector('[data-img-revealed]') as HTMLElement | null
             return el ? el.getBoundingClientRect() : null
+          }
+          /**
+           * 工具栏锚点：**标识符文本显形时以它为准**（取整段的 union 矩形 ⇒ 工具栏落在
+           * 那段文本的上方，"不遮挡源码"这条老口径在"源码折行 + 图片跟在末尾"时也成立），
+           * 否则退回图片自身的矩形。
+           */
+          const anchorRectOf = (img: ImgSource): DOMRect | null => {
+            const el = editorView.dom.querySelector('[data-img-revealed]') as HTMLElement | null
+            if (el) return el.getBoundingClientRect()
+            return imgRectOf(img)
           }
           /** 图片节点 ⇒ 原文文本（markdown 逐字节不变：`![alt](src)`，只是从节点变成文本） */
           const nodeToText = (from: number): boolean => {
@@ -618,7 +647,7 @@ export const ImageSourceUi = Extension.create({
             tr.setSelection(
               TextSelection.create(tr.doc, Math.min(from + text.nodeSize, tr.doc.content.size))
             )
-            tr.setMeta(KEY, { from })
+            tr.setMeta(KEY, { from, editing: false })
             editorView.dispatch(tr)
             return true
           }
@@ -647,7 +676,7 @@ export const ImageSourceUi = Extension.create({
               })
               return
             }
-            const rect = imgRectOf(img)
+            const rect = anchorRectOf(img)
             if (!rect) {
               hideBar()
               return
