@@ -296,6 +296,28 @@ export function commitImgSource(view: EditorView, img: ImgSource, text: string):
   return true
 }
 
+/**
+ * 这张图是不是"行内"的（第五十八轮：标记要不要**贴行顶**就靠它）。
+ *
+ * 判据与 widget 的分支**同一个**：块级 `HtmlBlock`（独占一行）恒为块级；
+ * 其余看它所在的块里还有没有别的**非空**内容（文本 / 其它节点）——有就是行内混排，
+ * 没有就是"这一段只有这张图"（按块级居中）。
+ */
+export function imgIsInline(state: EditorState, img: ImgSource): boolean {
+  if (state.doc.nodeAt(img.from)?.type.name === 'htmlBlock') return false
+  const parent = state.doc.resolve(img.from).parent
+  let others = 0
+  parent.forEach((child) => {
+    if (child.type.name === 'image' || child.type.name === 'htmlBlock') return
+    if (child.isText) {
+      const t = (child.text ?? '').trim()
+      if (!t || isRawImgHtml(t)) return
+    }
+    others += 1
+  })
+  return others > 0
+}
+
 /** 悬浮工具栏：定位在源码行**上方**（两者矩形不相交），右对齐 */
 function placeToolbar(view: EditorView, bar: HTMLElement, srcLine: HTMLElement | null): void {
   const anchor = srcLine ?? view.dom
@@ -306,7 +328,8 @@ function placeToolbar(view: EditorView, bar: HTMLElement, srcLine: HTMLElement |
   const w = bar.offsetWidth || 170
   const h = bar.offsetHeight || 26
   const top = Math.max(2, r.top - base.top - h - 6)
-  const left = Math.max(2, r.right - base.left - w)
+  // 右侧留 6px 内缩：标记浮层可能很窄（1px 宽的图片），圆整误差会让两者"贴边相交"
+  const left = Math.max(2, r.right - base.left - w - 6)
   bar.style.top = `${Math.round(top)}px`
   bar.style.left = `${Math.round(left)}px`
 }
@@ -375,10 +398,19 @@ export const ImageSourceUi = Extension.create({
       line.className = 'img-src-line img-src-line--overlay'
       line.setAttribute('data-img-source', '')
       line.setAttribute('contenteditable', 'false')
+      // 第五十八轮用户口径：**不许有拼写检查的红波浪线**（截图里那排波浪线就是它）
+      line.setAttribute('spellcheck', 'false')
+      line.setAttribute('autocorrect', 'off')
+      line.setAttribute('autocapitalize', 'off')
       const input = document.createElement('textarea')
       input.className = 'img-src-line__input'
       input.setAttribute('data-img-source-input', '')
       input.setAttribute('spellcheck', 'false')
+      input.setAttribute('autocorrect', 'off')
+      input.setAttribute('autocapitalize', 'off')
+      input.setAttribute('autocomplete', 'off')
+      input.setAttribute('data-gramm', 'false')
+      input.setAttribute('wrap', 'off')
       input.setAttribute('rows', '1')
       const cur = (): ImgSource | null => {
         const v = pluginView
@@ -535,22 +567,7 @@ export const ImageSourceUi = Extension.create({
                 // ⚠️ 第五十五轮：**行内上下文里保持行内** —— `文字 <img> 文字` 不许拆行。
                 //    判据：这段原文是行内文本、且它所在的段落里还有别的**非空**内容
                 //    ⇒ 用 inline-block 随文字流动；否则（独占一行）才按块级居中。
-                const parent = state.doc.resolve(img.from).parent
-                let inline = false
-                if (!isBlock) {
-                  let others = 0
-                  parent.forEach((child) => {
-                    if (child.isText) {
-                      const t = (child.text ?? '').trim()
-                      if (!t) return
-                      if (isRawImgHtml(t)) return
-                      others += 1
-                      return
-                    }
-                    others += 1
-                  })
-                  inline = others > 0
-                }
+                const inline = imgIsInline(state, img)
                 decos.push(
                   Decoration.widget(
                     img.from,
@@ -633,10 +650,24 @@ export const ImageSourceUi = Extension.create({
             ) as HTMLElement | null
             return w ? w.getBoundingClientRect() : null
           }
-          const placeSrcLine = (line: HTMLElement, rect: DOMRect, base: DOMRect): void => {
-            line.style.top = `${Math.round(rect.top - base.top - line.offsetHeight - 4)}px`
+          /**
+           * 摆放标记浮层（第五十八轮口径）：
+           *   * **与图片同一行**（行内混排）⇒ 标记**贴该行顶部**（`top` 对齐图片 `top`），
+           *     不做"贴图片上沿"那种上移 —— 用户口径是"在顶部而非和图片居中"；
+           *   * 独占一行（块级图片）⇒ 仍旧贴在图片**上方**（不遮住图片本身）。
+           */
+          const placeSrcLine = (
+            line: HTMLElement,
+            rect: DOMRect,
+            base: DOMRect,
+            inline: boolean
+          ): void => {
+            const top = inline ? rect.top - base.top : rect.top - base.top - line.offsetHeight - 4
+            line.style.top = `${Math.round(top)}px`
             line.style.left = `${Math.round(rect.left - base.left)}px`
             line.style.width = `${Math.round(rect.width)}px`
+            line.classList.toggle('img-src-line--top', inline)
+            line.setAttribute('data-img-align', inline ? 'top' : 'above')
           }
           const sync = (): void => {
             const open = KEY.getState(editorView.state)?.from ?? null
@@ -661,8 +692,18 @@ export const ImageSourceUi = Extension.create({
               editingText = ''
             }
             const base = (line.offsetParent as HTMLElement | null)?.getBoundingClientRect() ?? null
-            placeSrcLine(line, rect, base ?? ({ left: 0, top: 0 } as DOMRect))
+            placeSrcLine(
+              line,
+              rect,
+              base ?? ({ left: 0, top: 0 } as DOMRect),
+              imgIsInline(editorView.state, img)
+            )
             // 内容与状态每次同步都刷新（位置/缩放/形态变化后都要对）
+            // 排版口径**跟正文一模一样**（`.md-marker` 一族）：浮层在编辑器 DOM 之外，
+            // 天生继承不到 `.ProseMirror` 的字号/字族，所以直接把正文的 computed 抄过来。
+            const bodyCs = getComputedStyle(editorView.dom)
+            line.style.fontSize = bodyCs.fontSize
+            line.style.fontFamily = bodyCs.fontFamily
             const ta = line.querySelector<HTMLTextAreaElement>('[data-img-source-input]')
             if (ta) {
               const resumed = editingAt === img.from

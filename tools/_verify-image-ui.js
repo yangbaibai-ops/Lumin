@@ -24,15 +24,15 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 
 const PNG_A =
   'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=='
-/** 与 A 不同的一张（同样的 1×1，但字节不同 —— 用来区分"是哪一段的图片"） */
+/** 与 A 不同的一张（48×32 的浅蓝块：**有真实尺寸**，才能量"标记与图片同行时谁在顶部"） */
 const PNG_B =
-  'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=='
+  'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADAAAAAgCAIAAADbtmxLAAAAOUlEQVR4nO3OMREAMAgEMPwrY8ZBndQFz5C7CEj1vFMqPhASEhJKD4SEhITSAyEhIaH0QEhIqHdDH4Op4tOjeOJYAAAAAElFTkSuQmCC'
 
 const MD =
   `![](PLACE_A)\n\n` +
   `qian <img src="PLACE_B" style="zoom:50%;" /> hou\n\n` +
   `![remote](https://example.com/x.png)\n\n` +
-  `<img src="PLACE_B" style="zoom:25%;" />\n\n最后一段文字。\n`
+  `<img src="PLACE_B" style="zoom:25%;" />\n\n最后一段文字。\n\n前 **粗体** 后\n`
 
 const results = []
 function check(name, ok, extra) {
@@ -496,6 +496,142 @@ async function main() {
     'E8 点击占位**仍然能加载**：点击前请求数 == 0、点击后 > 0（且占位已被换成真 `<img>`）',
     reqsBeforeClick === 0 && reqsAfterClick > 0,
     JSON.stringify({ reqsBeforeClick, reqsAfterClick })
+  )
+
+  // ═══ 第五十八轮：图片"标识符"要像 `**` 那样当正文展示、去掉波浪线、与图片同行时置顶 ═══
+  // 夹具复位（前面的缩放/提交已经改过文档），再单独点开 **行内混排** 的那张图（标记与图片同一行）
+  await ev(`(() => { window.__vt.ed().commands.setContent(${JSON.stringify(doc)}); return 'ok' })()`)
+  await sleep(900)
+  const inlinePt = await json(`(() => {
+    const w = [...document.querySelectorAll('[data-img-widget]')].find((x) => x.getAttribute('data-img-inline') === 'true')
+    if (!w) return null
+    const r = w.getBoundingClientRect()
+    return { x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2) }
+  })()`)
+  await click(inlinePt)
+  await sleep(500)
+  const marker = await json(`(() => {
+    const line = document.querySelector('[data-img-source]')
+    const ta = document.querySelector('[data-img-source-input]')
+    const w = [...document.querySelectorAll('[data-img-widget]')].find((x) => x.getAttribute('data-img-inline') === 'true')
+    const img = w ? w.querySelector('img') : null
+    // 行盒：用 Range 量"这一段第一行"的顶（text 首行）
+    const p = w ? w.closest('p') : null
+    let lineTop = null
+    if (p) {
+      const rg = document.createRange()
+      rg.selectNodeContents(p)
+      const rs = [...rg.getClientRects()].filter((r) => r.height > 0)
+      lineTop = rs.length ? Math.round(rs[0].top) : null
+    }
+    const cs = line ? getComputedStyle(line) : null
+    const cst = ta ? getComputedStyle(ta) : null
+    const lr = line ? line.getBoundingClientRect() : null
+    const ir = img ? img.getBoundingClientRect() : null
+    return {
+      hasMarker: !!line,
+      markerClass: line ? line.className : null,
+      markerTag: line ? line.tagName.toLowerCase() : null,
+      markerSpellcheck: line ? line.getAttribute('spellcheck') : null,
+      markerAutocorrect: line ? line.getAttribute('autocorrect') : null,
+      markerAutocapitalize: line ? line.getAttribute('autocapitalize') : null,
+      inputSpellcheckAttr: ta ? ta.getAttribute('spellcheck') : null,
+      inputSpellcheckProp: ta ? ta.spellcheck : null,
+      inputAutocorrect: ta ? ta.getAttribute('autocorrect') : null,
+      inputAutocapitalize: ta ? ta.getAttribute('autocapitalize') : null,
+      markerFontSize: cs ? cs.fontSize : null,
+      markerColor: cs ? cs.color : null,
+      markerFontFamily: cs ? cs.fontFamily.slice(0, 40) : null,
+      markerBackground: cs ? cs.backgroundColor : null,
+      markerPadding: cs ? cs.padding : null,
+      markerVerticalAlign: cs ? cs.verticalAlign : null,
+      markerTop: lr ? Math.round(lr.top) : null,
+      markerBottom: lr ? Math.round(lr.bottom) : null,
+      imgTop: ir ? Math.round(ir.top) : null,
+      imgBottom: ir ? Math.round(ir.bottom) : null,
+      imgCenterY: ir ? Math.round((ir.top + ir.bottom) / 2) : null,
+      lineTop,
+      bodyFontSize: getComputedStyle(document.querySelector('.ProseMirror p') || document.body).fontSize,
+      taFontSize: cst ? cst.fontSize : null,
+      taColor: cst ? cst.color : null
+    }
+  })()`)
+  const shot3 = await send('Page.captureScreenshot', { format: 'png' })
+  safe(() => fs.writeFileSync(path.join(process.cwd(), 'tmp', 'img-marker-active.png'), Buffer.from(shot3.result.data, 'base64')), null)
+
+  // ① 正文形态：与 `.md-marker` 同族（先激活一个粗体标记，量它的字号/颜色）
+  await ev(`(() => {
+    const v = window.__vt.ed().view
+    let hit = null
+    v.state.doc.descendants((n, pos) => {
+      if (n.isText && n.text === '粗体') hit = { from: pos, to: pos + n.nodeSize }
+      return true
+    })
+    if (hit) v.dispatch(v.state.tr.setSelection(window.__vt.ed().state.selection.constructor.create(v.state.doc, hit.from + 1)))
+    return 'ok'
+  })()`)
+  await sleep(450)
+  const mdMarker = await json(`(() => {
+    const ms = [...document.querySelectorAll('.md-marker')]
+    const m = ms.find((x) => x.querySelector('.md-reveal-inline')) || ms[0]
+    if (!m) return { ok: false, count: ms.length }
+    const cs = getComputedStyle(m)
+    return {
+      ok: true,
+      count: ms.length,
+      revealed: !!m.querySelector('.md-reveal-inline'),
+      fontSize: cs.fontSize,
+      color: cs.color,
+      fontFamily: cs.fontFamily.slice(0, 40),
+      background: cs.backgroundColor,
+      padding: cs.padding
+    }
+  })()`)
+  check(
+    '⑤ 激活时标记是**正文形态**（字号/颜色与 `.md-marker` 同族：同 body 字号、同 --marker 墨色）',
+    marker.hasMarker &&
+      mdMarker.ok &&
+      marker.markerFontSize === mdMarker.fontSize &&
+      marker.markerColor === mdMarker.color &&
+      marker.taFontSize === mdMarker.fontSize &&
+      marker.markerFontFamily === mdMarker.fontFamily,
+    JSON.stringify({
+      标记: { fontSize: marker.markerFontSize, color: marker.markerColor, family: marker.markerFontFamily, bg: marker.markerBackground, padding: marker.markerPadding },
+      文本域: { fontSize: marker.taFontSize, color: marker.taColor },
+      mdMarker
+    })
+  )
+  check(
+    '⑥ 去掉拼写检查波浪线：标记元素 `spellcheck="false"`（+ autocorrect/autocapitalize 关闭）',
+    marker.markerSpellcheck === 'false' &&
+      marker.inputSpellcheckAttr === 'false' &&
+      marker.inputSpellcheckProp === false &&
+      marker.markerAutocorrect === 'off' &&
+      marker.markerAutocapitalize === 'off' &&
+      marker.inputAutocorrect === 'off' &&
+      marker.inputAutocapitalize === 'off',
+    JSON.stringify({
+      line: { spellcheck: marker.markerSpellcheck, autocorrect: marker.markerAutocorrect, autocapitalize: marker.markerAutocapitalize, tag: marker.markerTag, class: marker.markerClass },
+      input: { spellcheckAttr: marker.inputSpellcheckAttr, spellcheckProp: marker.inputSpellcheckProp, autocorrect: marker.inputAutocorrect, autocapitalize: marker.inputAutocapitalize }
+    })
+  )
+  const nearTop =
+    marker.markerTop != null && marker.imgTop != null && marker.imgCenterY != null &&
+    Math.abs(marker.markerTop - marker.imgTop) < Math.abs(marker.markerTop - marker.imgCenterY)
+  check(
+    '⑦ 与图片**同行时标记置顶**（marker.top 更接近 img.top / 行顶，而不是 img.centerY）',
+    nearTop,
+    JSON.stringify({
+      markerTop: marker.markerTop,
+      markerBottom: marker.markerBottom,
+      imgTop: marker.imgTop,
+      imgBottom: marker.imgBottom,
+      imgCenterY: marker.imgCenterY,
+      lineTop: marker.lineTop,
+      verticalAlign: marker.markerVerticalAlign,
+      diffTop: marker.markerTop != null ? Math.abs(marker.markerTop - marker.imgTop) : null,
+      diffCenter: marker.markerTop != null && marker.imgCenterY != null ? Math.abs(marker.markerTop - marker.imgCenterY) : null
+    })
   )
 
   const pass = results.filter((r) => r.ok).length

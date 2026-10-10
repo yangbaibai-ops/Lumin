@@ -289,25 +289,38 @@
 .md-preview .img-src-marker-hidden {
   display: none;
 }
-/* 源码行（图片的"标记字符"展开态）：图片**上方**一块，**可编辑**（第五十五轮）
-   ——只读 + 可复制是上一轮的形态，本轮加了内部的 textarea */
-.md-preview .img-src-line {
+/* 图片的"标识符"（源码行浮层）——第五十八轮用户口径：
+   它要**像 `**` 一样当正文展示**（`.md-marker` 一族：同字号、同墨色、无底色、非等宽），
+   而不是"夹在段落里的裸代码"。浮层挂在**编辑器 DOM 之外**（`view.dom.parentElement`），
+   所以规则必须**双写**：`.md-preview` 内外都要命中。 */
+.md-preview .img-src-line,
+.img-src-line {
+  position: absolute;
   display: block;
-  width: 100%;
-  margin: 0.1em 0 0.25em;
-  padding: 0.28em 0.5em;
-  border-radius: 8px;
-  background: var(--code-bg);
-  color: var(--ink-2b);
-  font-family: var(--font-mono, ui-monospace, monospace);
-  font-size: 0.82em;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  /* 墨色与 `.md-marker` 同一个令牌（不另调） */
+  color: var(--marker);
+  font-family: inherit;
+  font-size: inherit;
   line-height: 1.45;
   cursor: text;
   user-select: text;
+  z-index: var(--z-chip);
 }
-.md-preview .img-src-line__input {
+/* 与图片**同一行**时：标记贴该行顶部，不与图片垂直居中 */
+.img-src-line--top {
+  vertical-align: top;
+}
+.md-preview .img-src-line__input,
+.img-src-line__input {
   display: block;
   width: 100%;
+  margin: 0;
+  padding: 0;
   border: 0;
   outline: none;
   background: transparent;
@@ -315,19 +328,20 @@
   font: inherit;
   line-height: inherit;
   resize: none;
-  padding: 0;
   overflow: hidden;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
 /* 去掉默认描边 ⇒ 必须自己给可见焦点环（键盘用户要看得见；口径与 base.css 的全局环一致） */
-.md-preview .img-src-line__input:focus-visible {
+.md-preview .img-src-line__input:focus-visible,
+.img-src-line__input:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
   border-radius: 4px;
 }
 /* 非法输入：红边反馈 + 已还原原值（绝不写坏文档） */
-.md-preview .img-src-line__input.is-invalid {
+.md-preview .img-src-line__input.is-invalid,
+.img-src-line__input.is-invalid {
   box-shadow: 0 0 0 1px var(--danger), 0 0 0 3px color-mix(in srgb, var(--danger) 18%, transparent);
   border-radius: 4px;
 }
