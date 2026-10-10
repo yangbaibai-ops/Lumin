@@ -6,8 +6,8 @@
 //
 // 做法（改到最小、且不碰文档）：
 //   * `remoteImages` 设置：`click`（默认）＝ 点一下才加载；`always` ＝ 与旧行为一致；
-//   * 渲染时把 `<img src>` 换成**占位元素** `<span class="img-guard" data-src=…>`：
-//     没有 `src` 属性就不会发请求（这是浏览器行为，不是我们的约定）；
+//   * 渲染时把 `<img src>` 换成**占位元素**（第 55 轮起改用 `data-remote-src` 属性标识，
+//     原先的 `.img-guard` 类已删除）：没有 `src` 属性就不会发请求（这是浏览器行为，不是我们的约定）；
 //   * 点击占位 → 把该 src 记进**本次会话**的白名单，并在 DOM 上就地换成真 `<img>`；
 //   * **导出 / getHTML() 必须放行**：那条路径要的是真实 HTML（否则导出的文档里图片全丢），
 //     由 `beginExportRender()/endExportRender()` 开的一个同步窗口保证 —— `getHTML()` 是同步的。

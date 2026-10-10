@@ -459,13 +459,15 @@ export const ImageSourceUi = Extension.create({
               const from = offset
               const to = offset + block.nodeSize
               if (block.type.name === 'htmlBlock') {
-                if (imgs.some((i) => i.kind === 'raw' && i.from === from)) {
+                // 激活中的裸 `<img>`：标识符要**行内**显示（与图片同行），不做块级居中
+                if (imgs.some((i) => i.kind === 'raw' && i.from === from && i.from !== open)) {
                   decos.push(Decoration.node(from, to, { class: 'img-block-center' }))
                 }
                 return
               }
               const inside = imgs.filter((i) => i.from > from && i.to < to)
               if (inside.length !== 1) return
+              if (inside[0].from === open) return
               let others = 0
               block.forEach((child) => {
                 if (child.type.name === 'image' || child.type.name === 'htmlBlock') return
@@ -506,6 +508,7 @@ export const ImageSourceUi = Extension.create({
                       : 'img-src-revealed',
                     'data-img-revealed': '',
                     'data-img-kind': 'raw',
+                    'data-img-from': String(img.from),
                     'data-img-editing': openEditing ? 'true' : 'false',
                     spellcheck: 'false',
                     autocorrect: 'off',
@@ -517,7 +520,8 @@ export const ImageSourceUi = Extension.create({
                       : Decoration.inline(img.from, img.to, attrs)
                   )
                 }
-                const inline = imgIsInline(state, img)
+                // 激活时图片一律用**行内** widget：标识符与图片同一行（两条路径一致）
+                const inline = active ? true : imgIsInline(state, img)
                 decos.push(
                   Decoration.widget(
                     // ⚠️ 挂在**构造的末尾**（`img.to`）：标识符文本在图片**左边**（Typora 观感）。
@@ -631,25 +635,49 @@ export const ImageSourceUi = Extension.create({
             if (el) return el.getBoundingClientRect()
             return imgRectOf(img)
           }
-          /** 图片节点 ⇒ 原文文本（markdown 逐字节不变：`![alt](src)`，只是从节点变成文本） */
-          const nodeToText = (from: number): boolean => {
+          /**
+           * 把"还不是正文文本"的标识符**归一到行内原文文本**（两条路径产出一致的 DOM）：
+           *   * `image` 节点 ⇒ `![alt](src)` 文本（markdown 逐字节不变）；
+           *   * `htmlBlock` 原子（独立成行的 `<img …>` 会被 markdown-it 判成 html_block，
+           *     DOM 是 `<pre data-md-htmlblock class="md-htmlblock">`，会被 `.md-preview pre`
+           *     的**代码块样式**命中 ⇒ 就是用户说的"直接粘贴 `<img>` 的标识符还有旧样式"）
+           *     ⇒ 换成一个**段落里的行内文本**（内容仍是那段原文，序列化逐字不变），
+           *     这样它才可能与图片同一行、并共用同一组 class/CSS。
+           */
+          const normalizeToInlineText = (from: number): boolean => {
             const st = editorView.state
             const node = st.doc.nodeAt(from)
-            if (!node || node.type.name !== 'image') return false
-            const alt = String(node.attrs.alt ?? '')
-            const src = String(node.attrs.src ?? '')
+            if (!node) return false
             const mdMark = st.schema.marks.mdHtml
-            const text = st.schema.text(
-              alt ? `![${alt}](${src})` : `![](${src})`,
-              mdMark ? [mdMark.create()] : undefined
-            )
-            const tr = st.tr.replaceWith(from, from + node.nodeSize, text)
-            tr.setSelection(
-              TextSelection.create(tr.doc, Math.min(from + text.nodeSize, tr.doc.content.size))
-            )
-            tr.setMeta(KEY, { from, editing: false })
-            editorView.dispatch(tr)
-            return true
+            const marks = mdMark ? [mdMark.create()] : undefined
+            if (node.type.name === 'image') {
+              const alt = String(node.attrs.alt ?? '')
+              const src = String(node.attrs.src ?? '')
+              const text = st.schema.text(alt ? `![${alt}](${src})` : `![](${src})`, marks)
+              const tr = st.tr.replaceWith(from, from + node.nodeSize, text)
+              tr.setSelection(
+                TextSelection.create(tr.doc, Math.min(from + text.nodeSize, tr.doc.content.size))
+              )
+              tr.setMeta(KEY, { from, editing: false })
+              editorView.dispatch(tr)
+              return true
+            }
+            if (node.type.name === 'htmlBlock') {
+              const source = String(node.attrs.source ?? '')
+              const para = st.schema.nodes.paragraph.create(null, st.schema.text(source, marks))
+              const tr = st.tr.replaceWith(from, from + node.nodeSize, para)
+              // 标识符在新段落里的起点 = from + 1（段落边界各占 1）
+              tr.setSelection(
+                TextSelection.create(
+                  tr.doc,
+                  Math.min(from + 1 + source.length, tr.doc.content.size)
+                )
+              )
+              tr.setMeta(KEY, { from: from + 1, editing: false })
+              editorView.dispatch(tr)
+              return true
+            }
+            return false
           }
           let converting = false
           const sync = (): void => {
@@ -660,16 +688,17 @@ export const ImageSourceUi = Extension.create({
               hideBar()
               return
             }
-            // 节点形态的"标识符"在文档里还不存在（它就是图片节点本身）⇒ 这一刻把它转成原文文本，
-            // 之后它就能像文字一样被点开、被编辑（markdown 不变：还是 `![alt](src)`）。
-            if (img.kind === 'node') {
+            // 节点形态（图片节点 / htmlBlock 原子）的标识符在正文里还不存在 ⇒ 这一刻归一成行内文本，
+            // 之后它就能像文字一样被点开、被编辑（markdown 不变）。
+            const at = editorView.state.doc.nodeAt(img.from)
+            if (img.kind === 'node' || at?.type.name === 'htmlBlock') {
               hideBar()
               if (converting) return
               converting = true
               queueMicrotask(() => {
                 converting = false
                 try {
-                  nodeToText(KEY.getState(editorView.state)?.from ?? img.from)
+                  normalizeToInlineText(KEY.getState(editorView.state)?.from ?? img.from)
                 } catch {
                   /* 转不过去也不影响编辑 */
                 }

@@ -294,11 +294,33 @@
    排版完全跟正文一致（不动 font/color），只多两件事：
      * 点开图片 ⇒ **浅灰底**（选中态，用既有令牌 `--code-bg`）；
      * 光标落进这段文本开始编辑 ⇒ 底色撤掉（Typora 同观感）；
-     * 与图片同行时贴该行顶部（`vertical-align: top`，只影响含图片那一行的行盒）。 */
-.md-preview .img-src-revealed {
-  vertical-align: top;
-  background-color: var(--code-bg);
+     * 与图片同行时贴该行顶部（`vertical-align: top`，只影响含图片那一行的行盒）。
+   ⚠️ 第六十一轮：**独立成行的 `<img>`** 走的是 `htmlBlock` 原子节点，DOM 是
+   `<pre data-md-htmlblock class="md-htmlblock">`（见 lib/editor/htmlPassthrough.ts:77），
+   于是会被 `.md-preview pre`（本文件 :174，代码块样式：等宽字族/内边距/边框/底色）命中 ——
+   这就是"直接粘贴 `<img>` 的标识符还留着旧样式"的来源。这里把 pre 那套**逐项覆盖**，
+   让两条路径产出同一组 computed 值（`font: inherit` 清掉等宽，`display: inline` 让它与图片同行）。 */
+.md-preview .img-src-revealed,
+.md-preview pre.img-src-revealed {
+  display: inline;
+  margin: 0;
+  padding: 0;
+  border: 0;
   border-radius: 3px;
+  background-color: var(--code-bg);
+  color: inherit;
+  font: inherit;
+  font-family: inherit;
+  font-size: inherit;
+  font-weight: inherit;
+  line-height: inherit;
+  /* ⚠️ 不用 `pre-wrap`：html_block 的 source 常带**结尾换行**，`pre-wrap` 下它会在图片前
+     强制断行（实测 `fragRight 673 / imgLeft 323 / imgTop 233` ⇒ 图片被挤到下一行）。
+     `normal` 只把空白折叠成普通空格，长 URL 仍按 `overflow-wrap` 正常折行。 */
+  white-space: normal;
+  overflow-wrap: anywhere;
+  overflow: visible;
+  vertical-align: top;
 }
 .md-preview .img-src-revealed--editing {
   background-color: transparent;

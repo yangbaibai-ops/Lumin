@@ -120,7 +120,12 @@ async function main() {
   }
   await ev(`(() => { window.__vt.ui().editorMode = 'wysiwyg'; return 'ok' })()`)
   await sleep(400)
-  const doc = MD.replace('PLACE_A', PNG_A).replace('PLACE_B', PNG_B)
+  // ⚠️ `PLACE_B` 在夹具里出现**两次**（行内 + 独占一行）：必须全局替换，否则独占那段的 src
+//    还是字面量（第六十一轮发现，图片会渲染成坏图）
+const doc = MD.split('PLACE_A')
+  .join(PNG_A)
+  .split('PLACE_B')
+  .join(PNG_B)
   // 用源码面灌内容（走真实解析路径：`<img>` 行内原文 ↔ 独立成行时的 html_block 都是解析器定的）
   await ev(`(() => { window.__vt.ed().commands.setContent(${JSON.stringify(doc)}); return 'ok' })()`)
   await sleep(1000)
@@ -272,13 +277,16 @@ async function main() {
   const countTag = (t, s) => (t.split(s).length - 1)
   check(
     '④c 已是 HTML 形式 ⇒ 点 75% **原地**更新 style 里的 zoom（同一段里只有一个 `<img>`）',
-    after75.md.indexOf(`src="${PNG_B}" style="zoom:75%;"`) >= 0 &&
-      countTag(after75.md, `<img src="${PNG_B}"`) === 1 &&
+    after75.md.indexOf(`<img src="${PNG_B}" style="zoom:75%;" />`) >= 0 &&
+      // 同一张图（同 src）在夹具里出现两次（行内 + 独占一行）⇒ 要按**整段**计数，不能按 src 前缀
+      countTag(after75.md, `<img src="${PNG_B}" style="zoom:75%;" />`) === 1 &&
+      countTag(after75.md, `<img src="${PNG_B}" style="zoom:25%;" />`) === 1 &&
       after75.md.indexOf('zoom:50%') >= 0 /* P2 原来的那句已被替换，但 P1 那段仍是 50% */ &&
       countTag(after75.md, 'style="zoom:75%;"') === 1,
     JSON.stringify({
-      want: `src="${PNG_B}" style="zoom:75%;"`,
-      tagsForB: countTag(after75.md, `<img src="${PNG_B}"`),
+      want: `<img src="${PNG_B}" style="zoom:75%;" />`,
+      tagsForB75: countTag(after75.md, `<img src="${PNG_B}" style="zoom:75%;" />`),
+      tagsForB25: countTag(after75.md, `<img src="${PNG_B}" style="zoom:25%;" />`),
       tagsForA: countTag(after75.md, `<img src="${PNG_A}"`),
       zoom50: countTag(after75.md, 'style="zoom:50%;"'),
       zoom75: countTag(after75.md, 'style="zoom:75%;"'),
@@ -738,6 +746,148 @@ async function main() {
   )
   const shotM = await send('Page.captureScreenshot', { format: 'png' })
   safe(() => fs.writeFileSync(path.join(process.cwd(), 'tmp', 'img-marker-inline.png'), Buffer.from(shotM.result.data, 'base64')), null)
+
+  // ═══ 第六十一轮：两条路径（![]() 系 vs 裸 <img> 系）的标识符必须**逐项一致** ═════════
+  /** 量"当前显形的标识符"：classList + 7 项 computed + 位置，并附上元素/父元素标签 */
+  const measureMarker = () =>
+    json(`(() => {
+      const el = document.querySelector('.ProseMirror [data-img-revealed]')
+      if (!el) return { ok: false }
+      const cs = getComputedStyle(el)
+      const rects = [...el.getClientRects()].filter((r) => r.width > 0 || r.height > 0)
+      const wl = [...document.querySelectorAll('[data-img-widget]')]
+      // 只认**这张标识符自己的**图片：widget 的 data-img-from 与标识符的相同
+      const own = el.getAttribute('data-img-from')
+      const anyW = wl.find((x) => x.getAttribute('data-img-from') === own) || wl[0] || null
+      const ir = anyW ? anyW.getBoundingClientRect() : null
+      const frags = rects.length ? rects : [el.getBoundingClientRect()]
+      const band = ir
+        ? (frags.filter((x) => x.bottom > ir.top && x.top < ir.bottom).slice(-1)[0] ?? frags[frags.length - 1])
+        : frags[frags.length - 1]
+      return {
+        ok: true,
+        tag: el.tagName.toLowerCase(),
+        parentTag: el.parentElement ? el.parentElement.tagName.toLowerCase() : null,
+        cls: [...el.classList].sort(),
+        inline: anyW ? anyW.getAttribute('data-img-inline') === 'true' : null,
+        props: {
+          fontSize: cs.fontSize,
+          fontFamily: cs.fontFamily,
+          fontWeight: cs.fontWeight,
+          lineHeight: cs.lineHeight,
+          color: cs.color,
+          background: cs.backgroundColor,
+          verticalAlign: cs.verticalAlign,
+          display: cs.display,
+          padding: cs.padding,
+          border: cs.borderTopWidth + ' ' + cs.borderTopStyle
+        },
+        fragRight: Math.round(band.right),
+        fragTop: Math.round(band.top),
+        imgLeft: ir ? Math.round(ir.left) : null,
+        imgTop: ir ? Math.round(ir.top) : null
+      }
+    })()`)
+  const paths = {}
+  {
+    // 路径 A：`![]()` 系（点 x.50% 转成 `<img … style="zoom:50%;" />` 后再激活）
+    await ev(`(() => { window.__vt.ed().commands.setContent(${JSON.stringify(doc)}); return 'ok' })()`)
+    await sleep(900)
+    await click(await firstImgPt())
+    await sleep(400)
+    await click(await zoomBtnPt(50))
+    await sleep(900)
+    await click(await firstImgPt())
+    await sleep(500)
+    paths.A = await measureMarker()
+    const shotA = await send('Page.captureScreenshot', { format: 'png' })
+    safe(() => fs.writeFileSync(path.join(process.cwd(), 'tmp', 'img-marker-pathA.png'), Buffer.from(shotA.result.data, 'base64')), null)
+    // 路径 B：**独立成行**的裸 `<img>`（markdown-it 判成 html_block ⇒ `<pre data-md-htmlblock>`）
+    await ev(`(() => { window.__vt.ed().commands.setContent(${JSON.stringify(doc)}); return 'ok' })()`)
+    await sleep(900)
+    const ptB = await json(`(() => {
+      const w = [...document.querySelectorAll('[data-img-widget]')].find((x) => x.getAttribute('data-img-inline') === 'false')
+      if (!w) return null
+      const r = w.getBoundingClientRect()
+      return { x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2) }
+    })()`)
+    await click(ptB)
+    await sleep(500)
+    paths.B = await measureMarker()
+    const shotB = await send('Page.captureScreenshot', { format: 'png' })
+    safe(() => fs.writeFileSync(path.join(process.cwd(), 'tmp', 'img-marker-pathB.png'), Buffer.from(shotB.result.data, 'base64')), null)
+  }
+  const propKeys = Object.keys(paths.A?.props || {})
+  const propsEqual = paths.A?.ok && paths.B?.ok && propKeys.every((k) => paths.A.props[k] === paths.B.props[k])
+  const clsEqual = paths.A?.ok && paths.B?.ok && JSON.stringify(paths.A.cls) === JSON.stringify(paths.B.cls)
+  check(
+    '⑦ 两条路径的标识符**逐项一致**（classList 与 9 项 computed 全等：字号/字族/字重/行高/颜色/底色/vertical-align/display/padding）',
+    propsEqual && clsEqual,
+    JSON.stringify({
+      路径A: { tag: paths.A?.tag, parentTag: paths.A?.parentTag, cls: paths.A?.cls, props: paths.A?.props },
+      路径B: { tag: paths.B?.tag, parentTag: paths.B?.parentTag, cls: paths.B?.cls, props: paths.B?.props },
+      不同的项: paths.A?.ok && paths.B?.ok ? propKeys.filter((k) => paths.A.props[k] !== paths.B.props[k]) : null
+    })
+  )
+  check(
+    '⑦b 两条路径都满足"标识符在图片**之前**（左侧）、同一行、贴顶"（给 fragRight/imgLeft/top）',
+    paths.A?.ok &&
+      paths.B?.ok &&
+      paths.A.imgLeft != null &&
+      paths.B.imgLeft != null &&
+      paths.A.fragRight <= paths.A.imgLeft + 1 &&
+      paths.B.fragRight <= paths.B.imgLeft + 1 &&
+      Math.abs(paths.A.fragTop - paths.A.imgTop) <= 10 &&
+      Math.abs(paths.B.fragTop - paths.B.imgTop) <= 10,
+    JSON.stringify({
+      A: { fragRight: paths.A?.fragRight, imgLeft: paths.A?.imgLeft, fragTop: paths.A?.fragTop, imgTop: paths.A?.imgTop, inline: paths.A?.inline },
+      B: { fragRight: paths.B?.fragRight, imgLeft: paths.B?.imgLeft, fragTop: paths.B?.fragTop, imgTop: paths.B?.imgTop, inline: paths.B?.inline }
+    })
+  )
+  // ② 两条路径的"点击态灰 / 编辑态透明"各一次（每次都先复位夹具、再按该路径激活）
+  for (const which of ['A', 'B']) {
+    await ev(`(() => { window.__vt.ed().commands.setContent(${JSON.stringify(doc)}); return 'ok' })()`)
+    await sleep(900)
+    if (which === 'A') {
+      await click(await firstImgPt())
+      await sleep(400)
+      await click(await zoomBtnPt(50))
+      await sleep(900)
+      await click(await firstImgPt())
+    } else {
+      const pt = await json(`(() => {
+        const w = [...document.querySelectorAll('[data-img-widget]')].find((x) => x.getAttribute('data-img-inline') === 'false')
+        if (!w) return null
+        const r = w.getBoundingClientRect()
+        return { x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2) }
+      })()`)
+      await click(pt)
+    }
+    await sleep(500)
+    const before = await json(`(() => {
+      const el = document.querySelector('.ProseMirror [data-img-revealed]')
+      return el ? { bg: getComputedStyle(el).backgroundColor } : { bg: null }
+    })()`)
+    const bg = before?.bg
+    const pt = await json(`(() => {
+      const el = document.querySelector('.ProseMirror [data-img-revealed]')
+      if (!el) return null
+      const rs = [...el.getClientRects()].filter((r) => r.width > 2)
+      const r = rs.length ? rs[0] : el.getBoundingClientRect()
+      return { x: Math.round(r.left + Math.min(12, Math.max(2, r.width / 2))), y: Math.round(r.top + r.height / 2) }
+    })()`)
+    await click(pt)
+    await sleep(450)
+    const after = await json(`(() => {
+      const el = document.querySelector('.ProseMirror [data-img-revealed]')
+      return el ? { bg: getComputedStyle(el).backgroundColor, cls: [...el.classList].sort() } : { bg: null, cls: null }
+    })()`)
+    check(
+      `⑦c 路径 ${which}：点击激活 ⇒ 浅灰底，进入编辑 ⇒ 透明（给前后 computed）`,
+      bg === 'rgb(241, 242, 245)' && after.bg === 'rgba(0, 0, 0, 0)',
+      JSON.stringify({ 点击态: bg, 编辑态: after.bg, cls: after.cls })
+    )
+  }
 
   const pass = results.filter((r) => r.ok).length
   console.log(`TOTAL ${results.length} PASS ${pass} FAIL ${results.length - pass}`)
