@@ -141,23 +141,18 @@ export function revealDecision(
   // 点图片（NodeSelection 正好盖住它）⇒ 显示
   if (sel.nodeSel && sel.from === img.from) return 'show'
   /**
-   * 第七十四轮（用户新口径）：**连续选中文字、图片被夹在中间**（选区两端都在标识符之外或与它齐平，
-   * 且至少有一端严格超出）⇒ **不显示**标识符。这条优先于"交集即可见"。
-   *   口径 1：`sel.from <= img.from && sel.to >= img.to` 且 `(sel.from < img.from || sel.to > img.to)` ⇒ hide
-   *   口径 2：严格子区间 `img.from <= sel.from && sel.to <= img.to`（两端不都齐平）⇒ 走下面的"交集 ⇒ show"
-   *   口径 3：**恰好等于** `[img.from, img.to]` ⇒ 也走"交集 ⇒ show"（保持可见）——
-   *          上一轮用户明确要"能手动拖动选中所有标识符文字"，这一档若隐藏，拖到最后一个字符就消失。
-   *   空光标（`empty`）不受本条影响，仍按"有交集即显示"（点图片后光标落在 `from` 边界要能显示）。
+   * 第七十五轮（用户新口径）——判据简化为"**包含关系**"：
+   *   1) 空选区（光标）⇒ 走既有规则（有交集/边界即显示），**不变**；
+   *   2) 非空选区且**被标识符范围完全包含**（`sel.from >= img.from && sel.to <= img.to`，
+   *      含**恰好等于**）⇒ **显示**（"在标识符内部拖动 / 选中全部文字"那一档）；
+   *   3) 非空选区的**其它任何交集情形**（两端都超出、**一端在外一端在内**、两端齐平但由外侧拖入…）
+   *      ⇒ **隐藏**（用户口径：从别处拖动连续选文字时不许出现标识符 ⇒ 防闪烁）。
+   * 第七十四轮的 `covers && strictlyBeyond` 判据**已删除并并入第 3 条**（不再保留两套互相覆盖的条件）。
    */
   if (!sel.empty) {
-    const covers = sel.from <= img.from && sel.to >= img.to
-    const strictlyBeyond = sel.from < img.from || sel.to > img.to
-    if (covers && strictlyBeyond) return 'hide'
+    const contained = sel.from >= img.from && sel.to <= img.to
+    return contained ? 'show' : 'hide'
   }
-  /**
-   * 第七十二轮（用户报障）：标识符**已经是正文**（可点入/可拖选/可复制）⇒ 它与选区的判据
-   * 也按正文来：**只要有交集就保持可见**；只有选区**完全离开**它时才隐藏。
-   */
   const intersects = sel.from <= img.to && sel.to >= img.from
   return intersects ? 'show' : 'hide'
 }

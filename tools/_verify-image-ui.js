@@ -334,6 +334,91 @@ const doc = MD.split('PLACE_A')
       innerSel.empty === false && innerSel.to > innerSel.from && (innerSel.text || '').length > 0,
       JSON.stringify(innerSel)
     )
+    /**
+     * ㉑①② 第七十五轮（用户：从**别处**拖动连续选文字时不许出现标识符 ⇒ 防闪烁）。
+     * 夹具用**行内** `前文 <img … /> 后文`（同一行，拖拽可靠）：先点图片让标识符显示出来，
+     * 再从**左侧文字**里一路拖到**右侧文字**（②反向），**每一步都采样** ⇒ 全程必须 count:0。
+     * 旧判据下"一端在外、一端在内"的中间帧会显示标识符（红：会出现 count:1 的帧）。
+     */
+    const dragAcrossSampled = async (dir) => {
+      const sampleSel = () =>
+        json(`(() => {
+          const v = window.__vt.ed().view
+          const { from, to, empty } = v.state.selection
+          return {
+            count: document.querySelectorAll('.ProseMirror [data-img-revealed]').length,
+            open: document.querySelector('.ProseMirror')?.getAttribute('data-img-open') || null,
+            from, to, empty
+          }
+        })()`)
+      await ev(`(() => { window.__vt.ed().commands.setContent(${JSON.stringify(INLINE)}); return 'ok' })()`)
+      await sleep(900)
+      await revealText()
+      const geo = await json(`(() => {
+        const p = document.querySelector('.ProseMirror p')
+        if (!p) return null
+        // 用 Range 精确取"标识符**之外**的左侧文字首字"与"右侧文字末字"的中心：
+        // 标识符是行内显示且会折行，用图片矩形/段落边缘估坐标会落到源码中间（实测踩过）
+        const span = p.querySelector('[data-img-revealed]')
+        const walker = document.createTreeWalker(p, NodeFilter.SHOW_TEXT)
+        const texts = []
+        let n
+        while ((n = walker.nextNode())) texts.push(n)
+        const isInMarker = (t) => !!(span && span.contains(t))
+        const outside = texts.filter((t) => !isInMarker(t) && (t.textContent || '').trim())
+        const leftText = outside.length ? outside[0] : null
+        const rightText = outside.length ? outside[outside.length - 1] : null
+        const rectOf = (t, a, b) => {
+          if (!t) return null
+          const rg = document.createRange()
+          rg.setStart(t, a)
+          rg.setEnd(t, b)
+          const r = rg.getBoundingClientRect()
+          return { x: Math.round(r.left + Math.max(1, r.width / 2)), y: Math.round(r.top + r.height / 2) }
+        }
+        const rl = rightText ? (rightText.textContent || '').length : 0
+        return {
+          left: rectOf(leftText, 0, 1),
+          right: rectOf(rightText, Math.max(0, rl - 1), rl),
+          text: { left: leftText ? leftText.textContent : null, right: rightText ? rightText.textContent : null },
+          revealedAtStart: document.querySelectorAll('.ProseMirror [data-img-revealed]').length
+        }
+      })()`)
+      const a = dir === 'forward' ? geo.left : geo.right
+      const z = dir === 'forward' ? geo.right : geo.left
+      await send('Input.dispatchMouseEvent', { type: 'mousePressed', x: a.x, y: a.y, button: 'left', clickCount: 1 })
+      const seq = [await sampleSel()]
+      for (let i = 1; i <= 10; i++) {
+        await send('Input.dispatchMouseEvent', {
+          type: 'mouseMoved',
+          x: Math.round(a.x + ((z.x - a.x) * i) / 10),
+          y: a.y,
+          button: 'left',
+          buttons: 1
+        })
+        await sleep(45)
+        seq.push(await sampleSel())
+      }
+      await send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: z.x, y: z.y, button: 'left', clickCount: 1 })
+      await sleep(300)
+      seq.push(await sampleSel())
+      return { geo, seq }
+    }
+    const fwd = await dragAcrossSampled('forward')
+    check(
+      '㉑① 从标识符**左侧文字**拖到右侧文字（连续选择）⇒ **全程 count:0**（拖动过程中不出现标识符，无闪烁）',
+      fwd.geo.revealedAtStart === 1 && fwd.seq.every((s) => s.count === 0),
+      JSON.stringify({
+        起点已显示: fwd.geo.revealedAtStart,
+        逐帧: fwd.seq.map((s) => ({ c: s.count, f: s.from, t: s.to, e: s.empty }))
+      })
+    )
+    const bwd = await dragAcrossSampled('backward')
+    check(
+      '㉑② 反向（从右侧文字往左拖过标识符）⇒ **全程 count:0**',
+      bwd.geo.revealedAtStart === 1 && bwd.seq.every((s) => s.count === 0),
+      JSON.stringify({ 起点已显示: bwd.geo.revealedAtStart, 逐帧: bwd.seq.map((s) => ({ c: s.count, f: s.from, t: s.to, e: s.empty })) })
+    )
     // ③ 初始状态（未先点图片）：从图片**前**文字拖到图片**后**文字 ⇒ 连续覆盖标识符原文
     await ev(`(() => { window.__vt.ed().commands.setContent(${JSON.stringify(INLINE)}); return 'ok' })()`)
     await sleep(900)
@@ -580,6 +665,7 @@ const doc = MD.split('PLACE_A')
       }
       const out = {}
       out.覆盖两端超出 = put(Math.max(0, from - 1), Math.min(v.state.doc.content.size, to + 1))
+      out.一端在外一端在内 = put(Math.max(0, from - 1), to - 1)
       out.恰好等于 = put(from, to)
       out.严格子区间 = put(from + 1, to - 1)
       out.空光标from = put(from, from)
@@ -596,6 +682,11 @@ const doc = MD.split('PLACE_A')
       '⑳④ 选区**恰好等于**标识符范围 ⇒ **可见**（口径 3：拖满不消失；这也是"从外侧拖过它"的常见落点）',
       sweep.恰好等于.count === 1,
       JSON.stringify({ 范围: sweep.范围, 该档: sweep.恰好等于 })
+    )
+    check(
+      '㉑③ 选区**一端在外、一端在内**（`[from-1, to-1]`）⇒ **隐藏**（第七十五轮新口径，替代上一轮的"显示"）',
+      sweep.一端在外一端在内.count === 0,
+      JSON.stringify({ 范围: sweep.范围, 该档: sweep.一端在外一端在内 })
     )
     check(
       '⑳③ 选区是标识符的**严格子区间** ⇒ **可见**（口径 2）',
