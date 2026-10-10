@@ -1206,6 +1206,126 @@ const doc = MD.split('PLACE_A')
     safe(() => fs.writeFileSync(path.join(process.cwd(), 'tmp', 'img-pathXY.png'), Buffer.from(shotXY.result.data, 'base64')), null)
   }
 
+  // ═══ 第六十四轮：**单击一张**图片的抖动序列（上一轮只钉了"连点两张"）══════════════
+  const clickFlicker = async (src, which) => {
+    await resetDoc()
+    await ev(`(() => {
+      const v = window.__vt.ed().view
+      window.__tx = 0
+      window.__upd = 0
+      if (!window.__patched) {
+        window.__patched = true
+        const d = v.dispatch.bind(v)
+        v.dispatch = (tr) => { window.__tx++; return d(tr) }
+        const u = v.update.bind(v)
+        v.update = (state) => { window.__upd++; return u(state) }
+      }
+      return 'ok'
+    })()`)
+    await ev(`(() => {
+      const seen = []
+      const bgs = []
+      const states = []
+      const t0 = performance.now()
+      const push = (kind, text) => seen.push({ ms: Math.round(performance.now() - t0), kind, text: String(text || '').slice(0, 10) })
+      const sample = () => {
+        const el = document.querySelector('.ProseMirror [data-img-revealed]')
+        const bg = el ? getComputedStyle(el).backgroundColor : null
+        if (bgs[bgs.length - 1] !== bg) bgs.push(bg)
+        const st = document.querySelector('.ProseMirror')?.getAttribute('data-img-open') || null
+        if (states[states.length - 1] !== st) states.push(st)
+      }
+      const mo = new MutationObserver((muts) => {
+        for (const m of muts) {
+          for (const n of m.addedNodes) {
+            if (n.nodeType === 1 && (n.matches?.('[data-img-revealed]') || n.querySelector?.('[data-img-revealed]'))) push('+R', n.textContent)
+          }
+          for (const n of m.removedNodes) {
+            if (n.nodeType === 1 && (n.matches?.('[data-img-revealed]') || n.querySelector?.('[data-img-revealed]'))) push('-R', n.textContent)
+          }
+          if (m.type === 'attributes' && m.attributeName === 'class' && m.target.nodeType === 1) {
+            const el = m.target.matches?.('[data-img-revealed]') ? m.target : m.target.querySelector?.('[data-img-revealed]')
+            if (el) {
+              const on = el.classList.contains('img-src-revealed')
+              const edit = el.classList.contains('img-src-revealed--editing')
+              push('~' + (on ? 'R' : 'r') + (edit ? 'E' : 'e'), el.textContent)
+            }
+          }
+        }
+        sample()
+      })
+      mo.observe(document.querySelector('.ProseMirror'), { childList: true, subtree: true, attributes: true, attributeFilter: ['class'] })
+      const raf = () => { sample(); if (performance.now() - t0 < 600) requestAnimationFrame(raf) }
+      requestAnimationFrame(raf)
+      window.__flickStop = () => {
+        mo.disconnect()
+        return { seq: seen, bgs, states, tx: window.__tx, upd: window.__upd, norm: Number(document.querySelector('.ProseMirror')?.getAttribute('data-img-normalize-hits') || 0) }
+      }
+      return 'ok'
+    })()`)
+    await clickWidget(src, which)
+    await sleep(700)
+    const res = await ev(`window.__flickStop()`)
+    const finalState = await json(`(() => {
+      const els = [...document.querySelectorAll('.ProseMirror [data-img-revealed]')]
+      return { count: els.length, bg: els[0] ? getComputedStyle(els[0]).backgroundColor : null, editing: els[0] ? els[0].classList.contains('img-src-revealed--editing') : null }
+    })()`)
+    const adds = res.seq.filter((x) => x.kind === '+R').length
+    const removes = res.seq.filter((x) => x.kind === '-R').length
+    let repeats = 0
+    for (let i = 1; i < res.seq.length; i++) if (res.seq[i].kind === res.seq[i - 1].kind) repeats += 1
+    const bgSeqs = res.bgs.filter((b) => b != null)
+    const gray = 'rgb(241, 242, 245)'
+    const oscillates = bgSeqs.some((b, i) => i >= 2 && b === bgSeqs[i - 2] && b !== bgSeqs[i - 1])
+    return {
+      seq: res.seq,
+      bgs: res.bgs,
+      states: res.states,
+      tx: res.tx,
+      upd: res.upd,
+      norm: res.norm,
+      adds,
+      removes,
+      repeats,
+      oscillates,
+      after: finalState,
+      stateTransitions: (res.states || []).filter((x) => x && x !== 'null:e').length,
+      stateSeq: res.states,
+      okSingle:
+        adds <= 2 &&
+        removes === 0 &&
+        !oscillates &&
+        finalState.count === 1 &&
+        finalState.bg === gray &&
+        finalState.editing === false &&
+        (res.states || []).filter((x) => x && x !== 'null:e').length === 1
+    }
+  }
+  {
+    const a = await clickFlicker(PNG_B, 'last')
+    const shotA1 = await send('Page.captureScreenshot', { format: 'png' })
+    safe(() => fs.writeFileSync(path.join(process.cwd(), 'tmp', 'img-click-flicker-block.png'), Buffer.from(shotA1.result.data, 'base64')), null)
+    check(
+      '⑫a 单击"独占一行的裸 `<img>`"：标识符只增 1 次、无同态重复写、底色不来回（单事务收敛）',
+      a.okSingle,
+      JSON.stringify({ 序列: a.seq, 底色: a.bgs, 事务: a.tx, update: a.upd, 归一化命中: a.norm, 状态序列: a.states, 状态跃迁: a.stateTransitions, 增: a.adds, 删: a.removes, 同态重复: a.repeats, 来回跳: a.oscillates, 最终态: a.after })
+    )
+    const b = await clickFlicker(PNG_B, 'first')
+    check(
+      '⑫b 单击"行内 `<img>`"：标识符只增 1 次、无同态重复写、底色不来回（单事务收敛）',
+      b.okSingle,
+      JSON.stringify({ 序列: b.seq, 底色: b.bgs, 事务: b.tx, update: b.upd, 归一化命中: b.norm, 状态序列: b.states, 状态跃迁: b.stateTransitions, 增: b.adds, 删: b.removes, 同态重复: b.repeats, 来回跳: b.oscillates, 最终态: b.after })
+    )
+    const c = await clickFlicker(PNG_A, 'first')
+    const shotC = await send('Page.captureScreenshot', { format: 'png' })
+    safe(() => fs.writeFileSync(path.join(process.cwd(), 'tmp', 'img-click-flicker-node.png'), Buffer.from(shotC.result.data, 'base64')), null)
+    check(
+      '⑫c 单击"`![]()` 图片节点"（激活要把它转成文本）：一次事务完成、无第二次可见状态变化',
+      c.okSingle,
+      JSON.stringify({ 序列: c.seq, 底色: c.bgs, 事务: c.tx, update: c.upd, 归一化命中: c.norm, 状态序列: c.states, 状态跃迁: c.stateTransitions, 增: c.adds, 删: c.removes, 同态重复: c.repeats, 来回跳: c.oscillates, 最终态: c.after })
+    )
+  }
+
   const pass = results.filter((r) => r.ok).length
   console.log(`TOTAL ${results.length} PASS ${pass} FAIL ${results.length - pass}`)
   console.log(`--- ${pass}/${results.length} PASS`)

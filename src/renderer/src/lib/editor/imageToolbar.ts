@@ -207,7 +207,9 @@ export function collectImgSources(state: EditorState): ImgSource[] {
   return out.sort((a, b) => a.from - b.from)
 }
 
-const KEY = new PluginKey<{ from: number | null; editing?: boolean }>('luminImageSource')
+const KEY = new PluginKey<{ from: number | null; editing?: boolean; openedAt?: number }>(
+  'luminImageSource'
+)
 
 /** 悬浮工具栏的 DOM id（每篇文档一个；重建时旧节点会被删掉） */
 const TOOLBAR_CLASS = 'img-zoom-bar'
@@ -373,6 +375,8 @@ export const ImageSourceUi = Extension.create({
 
   addProseMirrorPlugins() {
     let bar: HTMLElement | null = null
+    /** 这次按下是否落在图片上：mouseup 时据此把光标按回标识符**之前**（否则会被判成"正在编辑"） */
+    let clickOnImage = false
 
     const ensureBar = (view: EditorView): HTMLElement => {
       if (bar && bar.isConnected) return bar
@@ -419,7 +423,7 @@ export const ImageSourceUi = Extension.create({
      */
 
     return [
-      new Plugin<{ from: number | null }>({
+      new Plugin<{ from: number | null; editing?: boolean; openedAt?: number }>({
         key: KEY,
         /**
          * ─── 规范形态：**同一份 Markdown ⇒ 同一份文档模型**（第六十三轮，核心）──────────
@@ -464,10 +468,17 @@ export const ImageSourceUi = Extension.create({
         },
         state: {
           /** `editing`：点开图片时是"选中态"（浅灰底）；光标落进标识符开始编辑 ⇒ true（无底） */
-          init: () => ({ from: null, editing: false }),
+          init: () => ({ from: null, editing: false, openedAt: 0 }),
           apply(tr, value, _old, next) {
             const meta = tr.getMeta(KEY) as { from: number | null; editing?: boolean } | undefined
-            if (meta) return { from: meta.from, editing: !!meta.editing }
+            if (meta) {
+              const sameOpen = meta.from != null && meta.from === value.from
+              return {
+                from: meta.from,
+                editing: !!meta.editing,
+                openedAt: sameOpen ? value.openedAt : Date.now()
+              }
+            }
             // 文档变了（例如点了档位）：位置可能失效 → 重新按选区判一次
             const imgs = collectImgSources(next)
             const sel = next.selection
@@ -483,10 +494,21 @@ export const ImageSourceUi = Extension.create({
               keep && revealDecision(selLike, keep) === 'show'
                 ? keep
                 : (imgs.find((i) => revealDecision(selLike, i) === 'show') ?? null)
-            if (!pick) return { from: null, editing: false }
-            // 光标**严格落进**标识符文本 ⇒ 正在编辑（底色撤掉；Typora 同观感）
-            const caretInside = sel.empty && sel.from > pick.from && sel.from < pick.to
-            return { from: pick.from, editing: caretInside }
+            if (!pick) return { from: null, editing: false, openedAt: value.openedAt }
+            /**
+             * 光标**严格落进**标识符文本 ⇒ 正在编辑（底色撤掉；Typora 同观感）。
+             * ⚠️ 第六十四轮：刚点开的那一下，浏览器/PM 会顺手把光标落到标识符里（那是这一击的
+             * 收尾，不是"用户要点进文本来编辑"）⇒ 开点后 400ms 内忽略这种选区同步，
+             * 底色才不会被"先加后撤"地闪一下。
+             */
+            const justOpened = Date.now() - (value.openedAt || 0) < 400
+            const caretInside =
+              sel.empty && sel.from > pick.from && sel.from < pick.to && !justOpened
+            return {
+              from: pick.from,
+              editing: caretInside,
+              openedAt: value.from === pick.from ? value.openedAt : Date.now()
+            }
           }
         },
         props: {
@@ -620,9 +642,41 @@ export const ImageSourceUi = Extension.create({
           },
           handleDOMEvents: {
             mousedown(view, event) {
+              clickOnImage = true
               const target = event.target as HTMLElement | null
               const widget = target?.closest?.('[data-img-widget]') as HTMLElement | null
-              if (!widget) return false
+              /**
+               * 第六十四轮：点**图片节点**（`![]()`）也要**一次事务**完成 —— 旧路径是
+               * "点一下先只改 meta（此时源码文本还不存在、屏幕上什么都不会变）、再由 `sync()`
+               * 的 microtask 补一次转换事务"，于是单击出现**两次可见状态变化**（单击就闪）。
+               * 这里把"节点转文本 + 落选区 + 打开"合并进同一事务，且选区落在文本**之前**
+               * （不在文本内部 ⇒ 不会误判成"正在编辑"而把底色撤掉）。
+               */
+              if (!widget) {
+                const imgEl = target?.closest?.('.ProseMirror img') as HTMLElement | null
+                if (!imgEl || imgEl.closest('[data-img-widget]')) return false
+                let pos = -1
+                try {
+                  pos = view.posAtDOM(imgEl, 0)
+                } catch {
+                  return false
+                }
+                const node = pos >= 0 ? view.state.doc.nodeAt(pos) : null
+                if (!node || node.type.name !== 'image') return false
+                const alt = String(node.attrs.alt ?? '')
+                const src = String(node.attrs.src ?? '')
+                const mdMark = view.state.schema.marks.mdHtml
+                const text = view.state.schema.text(
+                  alt ? `![${alt}](${src})` : `![](${src})`,
+                  mdMark ? [mdMark.create()] : undefined
+                )
+                const tr = view.state.tr.replaceWith(pos, pos + node.nodeSize, text)
+                tr.setSelection(TextSelection.create(tr.doc, pos))
+                tr.setMeta(KEY, { from: pos, editing: false })
+                view.dispatch(tr)
+                event.preventDefault()
+                return true
+              }
               const from = Number(widget.getAttribute('data-img-from'))
               if (!Number.isFinite(from)) return false
               /**
@@ -633,6 +687,19 @@ export const ImageSourceUi = Extension.create({
               const img = collectImgSources(view.state).find((i) => i.from === from)
               if (!img) return false
               view.dispatch(view.state.tr.setMeta(KEY, { from: img.from, editing: false }))
+              event.preventDefault()
+              return true
+            },
+            mouseup(view, event) {
+              if (!clickOnImage) return false
+              clickOnImage = false
+              const from = KEY.getState(view.state)?.from ?? null
+              if (from == null) return false
+              // 点图片=选中态：把光标按回标识符**之前**（不落进文本），底色稳定保持浅灰
+              const tr = view.state.tr
+                .setSelection(TextSelection.create(view.state.doc, from))
+                .setMeta(KEY, { from, editing: false })
+              view.dispatch(tr)
               event.preventDefault()
               return true
             },
@@ -730,10 +797,12 @@ export const ImageSourceUi = Extension.create({
           let converting = false
           const sync = (): void => {
             const open = KEY.getState(editorView.state)?.from ?? null
+            const openEditingNow = KEY.getState(editorView.state)?.editing === true
             const imgs = collectImgSources(editorView.state)
             const img = open == null ? null : (imgs.find((i) => i.from === open) ?? null)
             if (!img) {
               hideBar()
+              editorView.dom.setAttribute('data-img-open', 'null:e')
               return
             }
             // 节点形态（图片节点 / htmlBlock 原子）的标识符在正文里还不存在 ⇒ 这一刻归一成行内文本，
@@ -760,6 +829,12 @@ export const ImageSourceUi = Extension.create({
             }
             const el = ensureBar(editorView)
             placeToolbar(el, rect)
+            // 诊断锚（套件用）：把"当前打开谁 + 是否编辑态"写在编辑器根上，
+            // 这样即使 PM 重建了 DOM，也能量到**装饰状态本身的序列**（是不是真的来回跳）
+            editorView.dom.setAttribute(
+              'data-img-open',
+              (KEY.getState(editorView.state)?.from ?? 'null') + (openEditingNow ? ':E' : ':e')
+            )
             const active = img.zoom ?? 100
             for (const b of Array.from(el.querySelectorAll<HTMLElement>('[data-img-zoom]'))) {
               const pct = Number(b.getAttribute('data-img-zoom'))
