@@ -380,8 +380,47 @@ export const ImageSourceUi = Extension.create({
 
   addProseMirrorPlugins() {
     let bar: HTMLElement | null = null
-    /** 这一次按下的落点（第六十五轮：激活挪到 mouseup，按下时什么都不做） */
-    let pendingClick: { kind: 'raw' | 'node'; from: number } | null = null
+    /**
+     * 这一次按下的落点（第六十五轮：激活挪到 mouseup，按下时什么都不做）。
+     * 第七十三轮：`pendingClick` 会**滞留** —— 若某次按下被拦截却没等到 `mouseup`
+     * （失焦、指针离开、`mouseup` 落在编辑器外、被别的逻辑吞掉…），`apply` 的抑制条件
+     * 就会一直生效 ⇒ 之后"选区驱动"的显示被忽略（表现为"有时不灵、得再点一次图片"）。
+     * 这里补上**到期 + 失焦/隐藏/按键/指针取消 + 下一次按下重置**四条清理，并挂一个
+     * 诊断锚 `data-img-pending`（清理后为空串）。
+     */
+    let pendingClick: { kind: 'raw' | 'node'; from: number; at: number } | null = null
+    let pendingTimer: number | null = null
+    let pendingDom: HTMLElement | null = null
+    const PENDING_TTL = 900
+    const syncPendingAttr = (): void => {
+      if (pendingDom)
+        pendingDom.setAttribute('data-img-pending', pendingClick ? pendingClick.kind : '')
+    }
+    const clearPending = (): void => {
+      if (pendingTimer != null) {
+        window.clearTimeout(pendingTimer)
+        pendingTimer = null
+      }
+      if (pendingClick) {
+        pendingClick = null
+        syncPendingAttr()
+      }
+    }
+    const setPending = (kind: 'raw' | 'node', from: number): void => {
+      pendingClick = { kind, from, at: Date.now() }
+      syncPendingAttr()
+      if (pendingTimer != null) window.clearTimeout(pendingTimer)
+      pendingTimer = window.setTimeout(() => clearPending(), PENDING_TTL)
+    }
+    /** 读 `pendingClick` 并顺带处理"已过期"（无需等到下一次事务） */
+    const livePending = (): { kind: 'raw' | 'node'; from: number } | null => {
+      if (!pendingClick) return null
+      if (Date.now() - pendingClick.at > PENDING_TTL) {
+        clearPending()
+        return null
+      }
+      return pendingClick
+    }
 
     const ensureBar = (view: EditorView): HTMLElement => {
       if (bar && bar.isConnected) return bar
@@ -506,7 +545,7 @@ export const ImageSourceUi = Extension.create({
           init: () => ({ from: null, editing: false, openedAt: 0 }),
           apply(tr, value, _old, next) {
             // 第六十五轮：按住鼠标期间**不许**因选区变化而打开（用户口径："松开鼠标后才出现"）
-            if (pendingClick && !tr.getMeta(KEY)) return value
+            if (livePending() && !tr.getMeta(KEY)) return value
             const meta = tr.getMeta(KEY) as { from: number | null; editing?: boolean } | undefined
             if (meta) {
               const sameOpen = meta.from != null && meta.from === value.from
@@ -698,7 +737,7 @@ export const ImageSourceUi = Extension.create({
              * 于是既满足"松开才出现"，又保持上一轮的"一次单击 = 一次可见状态跃迁"。
              */
             mousedown(view, event) {
-              pendingClick = null
+              clearPending()
               /**
                * 第七十一轮（用户报障：标识符"根本无法编辑和选中"）：**已经显示出来的标识符文本**
                * 必须走原生文本行为（放光标、拖选、输入）。此前这里对"按在图片源码范围内"的按下
@@ -720,13 +759,13 @@ export const ImageSourceUi = Extension.create({
               const sources = collectImgSources(view.state)
               const hit = sources.find((s) => at.pos >= s.from - 1 && at.pos <= s.to + 1)
               if (!hit) return false
-              pendingClick = { kind: hit.kind, from: hit.from }
+              setPending(hit.kind, hit.from)
               event.preventDefault()
               return true
             },
             mouseup(view, event) {
               const pending = pendingClick
-              pendingClick = null
+              clearPending()
               if (!pending) return false
               const st = view.state
               if (pending.kind === 'raw') {
@@ -861,7 +900,7 @@ export const ImageSourceUi = Extension.create({
             // 节点形态（图片节点 / htmlBlock 原子）的标识符在正文里还不存在 ⇒ 这一刻归一成行内文本，
             // 之后它就能像文字一样被点开、被编辑（markdown 不变）。
             const at = editorView.state.doc.nodeAt(img.from)
-            if ((img.kind === 'node' || at?.type.name === 'htmlBlock') && !pendingClick) {
+            if ((img.kind === 'node' || at?.type.name === 'htmlBlock') && !livePending()) {
               hideBar()
               if (converting) return
               converting = true
@@ -900,6 +939,23 @@ export const ImageSourceUi = Extension.create({
           ro.observe(editorView.dom)
           const onScroll = (): void => sync()
           editorView.dom.addEventListener('scroll', onScroll, true)
+          /**
+           * 第七十三轮：`pendingClick` 的清理钩子（诊断锚挂在 `view.dom` 的 `data-img-pending`）。
+           * 覆盖"按下之后再也等不到 mouseup"的所有常见路径：失焦、页面隐藏、开始打字
+           * （keydown ⇒ 已经不是点击了）、指针取消/离开、以及**下一次按下**开始时重置。
+           */
+          pendingDom = editorView.dom
+          const onBlur = (): void => clearPending()
+          const onVis = (): void => {
+            if (document.visibilityState !== 'visible') clearPending()
+          }
+          const onKey = (): void => clearPending()
+          const onCancel = (): void => clearPending()
+          window.addEventListener('blur', onBlur)
+          document.addEventListener('visibilitychange', onVis)
+          window.addEventListener('keydown', onKey, true)
+          editorView.dom.addEventListener('pointercancel', onCancel, true)
+          editorView.dom.addEventListener('mouseleave', onCancel, true)
           return {
             update: () => {
               try {
@@ -911,6 +967,13 @@ export const ImageSourceUi = Extension.create({
             destroy: () => {
               ro.disconnect()
               editorView.dom.removeEventListener('scroll', onScroll, true)
+              window.removeEventListener('blur', onBlur)
+              document.removeEventListener('visibilitychange', onVis)
+              window.removeEventListener('keydown', onKey, true)
+              editorView.dom.removeEventListener('pointercancel', onCancel, true)
+              editorView.dom.removeEventListener('mouseleave', onCancel, true)
+              if (pendingDom === editorView.dom) pendingDom = null
+              clearPending()
               hideBar()
             }
           }

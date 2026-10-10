@@ -576,7 +576,78 @@ const doc = MD.split('PLACE_A')
     await sleep(900)
   }
 
-  // ── ① 居中 ──
+  // ═══ 第七十三轮：`pendingClick` 滞留（按下没有 mouseup）必须被清理 ═══════════════
+  {
+    const INLINE73 = `前文 <img src="${PNG_B}" style="zoom:100%;" /> 后文`
+    const imgPt73 = () =>
+      json(`(() => {
+        const im = document.querySelector('.ProseMirror p img')
+        if (!im) return null
+        const b = im.getBoundingClientRect()
+        return { x: Math.round(b.left + b.width / 2), y: Math.round(b.top + b.height / 2) }
+      })()`)
+    const anchor = () =>
+      json(`(() => ({
+        pending: document.querySelector('.ProseMirror')?.getAttribute('data-img-pending') ?? null,
+        revealed: document.querySelectorAll('.ProseMirror [data-img-revealed]').length,
+        open: document.querySelector('.ProseMirror')?.getAttribute('data-img-open') || null
+      }))()`)
+    /** 纯选区驱动（不碰鼠标）：把选区放到源码范围边界内 */
+    const selectionDriven = async () => {
+      await ev(`(() => {
+        const v = window.__vt.ed().view
+        const el = document.querySelector('.ProseMirror [data-img-marker-hidden], .ProseMirror [data-img-revealed]')
+        void el
+        // 该段里图片源码的起止：用插件自己的收集口径取（此处直接取第 5..6 位即可，
+        // 夹具固定为"前文 " + 源码 + " 后文"）
+        const from = 5
+        const to = 5 + 200
+        const max = v.state.doc.content.size
+        v.dispatch(v.state.tr.setSelection(v.state.selection.constructor.create(v.state.doc, from, Math.min(to, max))))
+        return 'ok'
+      })()`)
+      await sleep(350)
+      return anchor()
+    }
+    // ① 滞留场景：按下图片后**不派发 mouseup**
+    await ev(`(() => { window.__vt.ed().commands.setContent(${JSON.stringify(INLINE73)}); return 'ok' })()`)
+    await sleep(900)
+    const pt73 = await imgPt73()
+    await send('Input.dispatchMouseEvent', { type: 'mousePressed', x: pt73.x, y: pt73.y, button: 'left', clickCount: 1 })
+    await sleep(150)
+    const leaked = await anchor()
+    // 用"失焦"清理（等价于用户按下后窗口失焦）
+    await ev(`(() => { window.dispatchEvent(new Event('blur')); return 'ok' })()`)
+    await sleep(150)
+    const afterBlur = await anchor()
+    // 再来一次滞留，这次什么都不做，等 TTL（900ms）自然到期
+    await send('Input.dispatchMouseEvent', { type: 'mousePressed', x: pt73.x, y: pt73.y, button: 'left', clickCount: 1 })
+    await sleep(150)
+    const leaked2 = await anchor()
+    await sleep(1200)
+    const afterTtl = await anchor()
+    check(
+      '⑲① 按下图片但**没有 mouseup** ⇒ `pendingClick` 必须被清理（诊断锚 `data-img-pending` 回到空串；失焦与到期两条路径）',
+      leaked.pending === 'raw' && afterBlur.pending === '' && leaked2.pending === 'raw' && afterTtl.pending === '',
+      JSON.stringify({ 按下后: leaked, 失焦后: afterBlur, 再次按下后: leaked2, TTL到期后: afterTtl })
+    )
+    // ② 清理后：**纯选区驱动**（不开鼠标）应当能显示标识符
+    await ev(`(() => { window.__vt.ed().commands.setContent(${JSON.stringify(INLINE73)}); return 'ok' })()`)
+    await sleep(900)
+    await send('Input.dispatchMouseEvent', { type: 'mousePressed', x: pt73.x, y: pt73.y, button: 'left', clickCount: 1 })
+    await sleep(150)
+    const beforeClean = await selectionDriven() // 滞留期间：抑制条件生效 ⇒ 不显示
+    await ev(`(() => { window.dispatchEvent(new Event('blur')); return 'ok' })()`)
+    await sleep(150)
+    const afterClean = await selectionDriven() // 清理之后：应当显示
+    check(
+      '⑲② 清理之后**纯选区驱动**（不碰鼠标）就能显示标识符（清理前被抑制 ⇒ count:0）',
+      beforeClean.revealed === 0 && afterClean.revealed === 1,
+      JSON.stringify({ 清理前: beforeClean, 清理后: afterClean, 诊断锚: await anchor() })
+    )
+    await ev(`(() => { window.__vt.ed().commands.setContent(${JSON.stringify(doc)}); return 'ok' })()`)
+    await sleep(900)
+  }
   const center = await json(`(() => {
     const el = document.querySelector('.ProseMirror p img')
     const host = document.querySelector('[data-editor-kernel]') || document.querySelector('.ProseMirror')
