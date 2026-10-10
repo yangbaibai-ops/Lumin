@@ -388,6 +388,194 @@ const doc = MD.split('PLACE_A')
     await sleep(900)
   }
 
+  // ═══ 第七十二轮：拖选把标识符"选满"时**不许消失**（它已经是正文）═══════════════
+  {
+    const NODE = `![](${PNG_B})`
+    const openImage = async () => {
+      const r = await json(`(() => {
+        const im = document.querySelector('.ProseMirror p img')
+        if (!im) return null
+        const b = im.getBoundingClientRect()
+        return { x: Math.round(b.left + b.width / 2), y: Math.round(b.top + b.height / 2) }
+      })()`)
+      await send('Input.dispatchMouseEvent', { type: 'mousePressed', x: r.x, y: r.y, button: 'left', clickCount: 1 })
+      await send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: r.x, y: r.y, button: 'left', clickCount: 1 })
+      await sleep(500)
+    }
+    const sample = () =>
+      json(`(() => {
+        const v = window.__vt.ed().view
+        const { from, to, empty } = v.state.selection
+        const els = [...document.querySelectorAll('.ProseMirror [data-img-revealed]')]
+        return {
+          count: els.length,
+          open: document.querySelector('.ProseMirror')?.getAttribute('data-img-open') || null,
+          from, to, empty,
+          text: (els[0] ? els[0].textContent : '').length
+        }
+      })()`)
+    /** 从 (x1,y1) 分 steps 步拖到 (x2,y2)，每步采样一次 */
+    const dragSampled = async (x1, y1, x2, y2, steps) => {
+      await send('Input.dispatchMouseEvent', { type: 'mousePressed', x: x1, y: y1, button: 'left', clickCount: 1 })
+      const seq = [await sample()]
+      for (let i = 1; i <= steps; i++) {
+        await send('Input.dispatchMouseEvent', {
+          type: 'mouseMoved',
+          x: Math.round(x1 + ((x2 - x1) * i) / steps),
+          y: Math.round(y1 + ((y2 - y1) * i) / steps),
+          button: 'left',
+          buttons: 1
+        })
+        await sleep(45)
+        seq.push(await sample())
+      }
+      await send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: x2, y: y2, button: 'left', clickCount: 1 })
+      await sleep(350)
+      seq.push(await sample())
+      return seq
+    }
+    const markerSpan = () =>
+      json(`(() => {
+        const el = document.querySelector('.ProseMirror [data-img-revealed]')
+        if (!el) return null
+        const rs = [...el.getClientRects()].filter((r) => r.width > 2)
+        if (!rs.length) return null
+        const first = rs[0]
+        const last = rs[rs.length - 1]
+        // 用 Range 取**第一个字符**与**最后一个字符**的中心：这样按下的落点必定分别映射到
+        // 原文的第 1 位与最后 1 位（"从前往后/从后往前依次选满"的手势等价物）
+        const t = (() => {
+          const w = document.createTreeWalker(el, NodeFilter.SHOW_TEXT)
+          return w.nextNode()
+        })()
+        const charRect = (a, b) => {
+          if (!t) return null
+          const rg = document.createRange()
+          rg.setStart(t, a)
+          rg.setEnd(t, b)
+          const r = rg.getBoundingClientRect()
+          return { x: Math.round(r.left + Math.max(1, r.width / 2)), y: Math.round(r.top + r.height / 2) }
+        }
+        const len = t ? t.length : 0
+        const c1 = len ? charRect(0, 1) : null
+        const cN = len ? charRect(len - 1, len) : null
+        return {
+          beforeX: c1 ? c1.x : Math.round(first.left + 1),
+          afterX: cN ? cN.x + 6 : Math.round(last.right + 8),
+          y1: c1 ? c1.y : Math.round(first.top + first.height / 2),
+          y2: cN ? cN.y : Math.round(last.top + last.height / 2),
+          chars: len,
+          full: el.textContent
+        }
+      })()`)
+    // ① 正向选满（等价于"从前往后依次拖动选中所有文字"）：选区从第 1 位逐步扩到"最后一位之后"，
+    //    每一步都采样 ⇒ 全程必须 count:1（旧实现里选到"恰好等长/完全包住"那一步会 count:0）。
+    //    ⚠️ 用**选区事务**逐步扩选而不是 CDP 拖拽：标识符很长会折行，CDP 的直线拖拽在折行文本上
+    //    不能稳定扩展（实测 from/to 卡在第一个词），那是量具问题不是产品问题；鼠标拖拽路径由
+    //    ⑰②（同一行内拖动）覆盖。
+    await ev(`(() => { window.__vt.ed().commands.setContent(${JSON.stringify(NODE)}); return 'ok' })()`)
+    await sleep(900)
+    await openImage()
+    const sp1 = await markerSpan()
+    const steps1 = 12
+    const seq1 = []
+    for (let i = 0; i <= steps1; i++) {
+      const to = 1 + Math.round((sp1.full.length * i) / steps1)
+      await ev(`(() => { window.__vt.ed().commands.setTextSelection({ from: 1, to: ${to} }); return 'ok' })()`)
+      await sleep(60)
+      seq1.push(await sample())
+    }
+    const all1 = seq1.every((s) => s.count === 1)
+    const last1 = seq1[seq1.length - 1]
+    const covers1 = last1.from === 1 && last1.to >= 1 + sp1.full.length
+    check(
+      '⑱① 正向选满（第 1 位 → 最后一位之后）⇒ **全程可见**（每步 count:1），最终选区覆盖整段原文',
+      all1 && covers1,
+      JSON.stringify({ 采样: seq1.map((s) => ({ c: s.count, o: s.open, f: s.from, t: s.to })), 原文长: sp1.full.length, 覆盖: covers1 })
+    )
+    // ② 反向选满：从"最后一位之后"逐步收到第 1 位（等价于从后往前拖动）
+    const seq2 = []
+    for (let i = steps1; i >= 0; i--) {
+      const from = 1 + Math.round((sp1.full.length * i) / steps1)
+      await ev(`(() => { window.__vt.ed().commands.setTextSelection({ from: ${from}, to: ${1 + sp1.full.length} }); return 'ok' })()`)
+      await sleep(60)
+      seq2.push(await sample())
+    }
+    const all2 = seq2.every((s) => s.count === 1)
+    const covers2 = seq2[seq2.length - 1].count === 1
+    check(
+      '⑱② 反向选满（最后一位之后 → 第 1 位）⇒ **全程可见**，最终仍覆盖整段原文',
+      all2 && covers2,
+      JSON.stringify({ 采样: seq2.map((s) => ({ c: s.count, o: s.open, f: s.from, t: s.to })), 覆盖: covers2 })
+    )
+    // 收尾：把选区恢复成"整段原文"以便 ③ 复制完整原文
+    await ev(`(() => { window.__vt.ed().commands.setTextSelection({ from: 1, to: ${1 + sp1.full.length} }); return 'ok' })()`)
+    await sleep(200)
+    // ③ Ctrl+C == 完整原文（逐字节）
+    await ev(`(() => {
+      window.__copied72 = null
+      document.addEventListener('copy', (e) => { try { window.__copied72 = e.clipboardData.getData('text/plain') } catch { window.__copied72 = 'ERR' } }, { once: true })
+      return 'ok'
+    })()`)
+    if (await requireFocus('⑱③ Ctrl+C')) {
+      await send('Input.dispatchKeyEvent', { type: 'rawKeyDown', windowsVirtualKeyCode: 67, key: 'c', code: 'KeyC', modifiers: 2 })
+      await send('Input.dispatchKeyEvent', { type: 'keyUp', windowsVirtualKeyCode: 67, key: 'c', code: 'KeyC', modifiers: 2 })
+      await sleep(300)
+    }
+    const copied72 = await ev(`window.__copied72`)
+    check(
+      '⑱③ 选满后 `Ctrl+C` ⇒ 复制到**完整**原文（逐字节等于 `![](${PNG_B})`）',
+      typeof copied72 === 'string' && copied72.includes(`![](${PNG_B})`),
+      JSON.stringify({ 长度: typeof copied72 === 'string' ? copied72.length : null, 期望长度: NODE.length, 前60: typeof copied72 === 'string' ? copied72.slice(0, 60) : copied72 })
+    )
+    // ④ 收起仍正常：点别处 ⇒ 隐藏；Esc ⇒ 隐藏；再点图片 ⇒ 再出现
+    const away = await json(`(() => {
+      const p = document.querySelector('.ProseMirror p')
+      const r = p.getBoundingClientRect()
+      return { x: Math.round(r.left + 4), y: Math.round(r.bottom + 24) }
+    })()`)
+    await send('Input.dispatchMouseEvent', { type: 'mousePressed', x: away.x, y: away.y, button: 'left', clickCount: 1 })
+    await send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: away.x, y: away.y, button: 'left', clickCount: 1 })
+    await sleep(400)
+    const afterAway = await sample()
+    // 第二次隐藏用 Esc（用户口径）；注意不能用"把光标放到段首" —— 段首正好是标识符的边界，
+    // 按新语义（有交集即可见）它**应当保持显示**，拿它当"收起"的判据是错的。
+    if (await requireFocus('⑱④ Esc')) {
+      await send('Input.dispatchKeyEvent', { type: 'rawKeyDown', windowsVirtualKeyCode: 27, key: 'Escape', code: 'Escape' })
+      await send('Input.dispatchKeyEvent', { type: 'keyUp', windowsVirtualKeyCode: 27, key: 'Escape', code: 'Escape' })
+    }
+    await sleep(350)
+    const afterCaret = await sample()
+    await openImage()
+    const afterReopen = await sample()
+    check(
+      '⑱④ 收起仍正常：选区离开它（光标移到段首）⇒ 隐藏；再点图片 ⇒ 再出现',
+      afterCaret.count === 0 && afterReopen.count === 1,
+      JSON.stringify({ 点别处: afterAway, 光标段首: afterCaret, 再点图片: afterReopen })
+    )
+    const shot72 = await send('Page.captureScreenshot', { format: 'png' })
+    safe(() => fs.writeFileSync(path.join(process.cwd(), 'tmp', 'img-select-all-marker.png'), Buffer.from(shot72.result.data, 'base64')), null)
+    /**
+     * ⑱⑤ 决定性判据（不依赖拖拽时序）：把选区设成"**完全包住**"标识符 —— 这正是旧实现里
+     * `revealDecision` 的 `contains` 分支（`exactlyFull` 是它的特例）。新语义下必须保持可见。
+     */
+    const covering = await json(`(() => {
+      const v = window.__vt.ed().view
+      const el = document.querySelector('.ProseMirror [data-img-revealed]')
+      const len = el ? el.textContent.length : 0
+      v.dispatch(v.state.tr.setSelection(v.state.selection.constructor.create(v.state.doc, 0, 2 + len)))
+      const els = [...document.querySelectorAll('.ProseMirror [data-img-revealed]')]
+      return { count: els.length, from: v.state.selection.from, to: v.state.selection.to, 包住长度: len }
+    })()`)
+    check(
+      '⑱⑤ **完全包住**标识符的选区（旧实现的 `contains` 分支）⇒ 标识符**保持可见**',
+      covering.包住长度 > 100 && covering.count === 1,
+      JSON.stringify(covering)
+    )
+    await ev(`(() => { window.__vt.ed().commands.setContent(${JSON.stringify(doc)}); return 'ok' })()`)
+    await sleep(900)
+  }
+
   // ── ① 居中 ──
   const center = await json(`(() => {
     const el = document.querySelector('.ProseMirror p img')
@@ -572,7 +760,18 @@ const doc = MD.split('PLACE_A')
   await ev(`(() => { window.__vt.ed().commands.setTextSelection({ from: ${rr.from - 1}, to: ${rr.to + 1} }); return 'ok' })()`)
   await sleep(400)
   const C = await state()
-  check('②C 选区**完全包住**构造 ⇒ 不显示', C.hasLine === false, JSON.stringify({ rawRange: rr, hasLine: C.hasLine }))
+  /**
+   * ⚠️ 口径变更（第七十二轮，用户报障）：标识符**已经是正文**（可点入/可拖选/可复制），
+   *    正文被"完全选中/完全包住"时**不该消失** —— 这条断言原来写死的是行内标记（`**`）
+   *    那套"包住 ⇒ 收起"的行为，对图片标识符不再适用。新语义：**选区与它有交集就保持可见**，
+   *    只有选区完全离开它（或点别处/Esc/失焦）才隐藏。行内标记那条线未改（在
+   *    typoraInlineMarks.ts 里，用的是另一套判据）。
+   */
+  check(
+    '②C 选区**完全包住**标识符 ⇒ **仍然显示**（第七十二轮口径变更：标识符是正文，不再"包住即收起"）',
+    C.hasLine === true,
+    JSON.stringify({ rawRange: rr, hasLine: C.hasLine, 口径: '交集即可见；行内标记 ** 的收起行为不受影响' })
+  )
 
   // ── ⑤ 远程图片：无占位图标/文案；未点击不发请求 ──
   const guard = await json(`(() => {

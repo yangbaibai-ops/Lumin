@@ -140,15 +140,15 @@ export function revealDecision(
 ): 'show' | 'hide' {
   // 点图片（NodeSelection 正好盖住它）⇒ 显示
   if (sel.nodeSel && sel.from === img.from) return 'show'
-  if (sel.from >= img.from && sel.to <= img.to) {
-    const exactlyFull = !sel.empty && sel.from === img.from && sel.to === img.to
-    return exactlyFull ? 'hide' : 'show'
-  }
-  const contains = !sel.empty && sel.from <= img.from && sel.to >= img.to
-  if (contains) return 'hide'
-  const cutsIn =
-    (sel.from > img.from && sel.from < img.to) || (sel.to > img.from && sel.to < img.to)
-  return cutsIn ? 'show' : 'hide'
+  /**
+   * 第七十二轮（用户报障）：标识符**已经是正文**（可点入/可拖选/可复制）⇒ 它与选区的判据
+   * 也按正文来：**只要有交集就保持可见**（选中全部字符、甚至完全包住它，也不许消失）；
+   * 只有选区**完全离开**它时才隐藏。
+   * 旧实现里"完全包住 ⇒ hide / 恰好等长 ⇒ hide"是行内标记（`**`）那套"标记字符"语义
+   * （见 typoraInlineMarks.ts，本函数不参与那条线），对图片标识符不再适用。
+   */
+  const intersects = sel.from <= img.to && sel.to >= img.from
+  return intersects ? 'show' : 'hide'
 }
 
 /** 文档里所有"图片源码"（节点形式 + 原文形式），按位置排序 */
