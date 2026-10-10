@@ -344,7 +344,9 @@ export function imgIsInline(state: EditorState, img: ImgSource): boolean {
     if (child.type.name === 'image' || child.type.name === 'htmlBlock') return
     if (child.isText) {
       const t = (child.text ?? '').trim()
-      if (!t || isRawImgHtml(t)) return
+      // ⚠️ 图片**自己的**那段源码文本不算"别的内容"（第六十二轮：`![alt](url)` 形态也要认，
+      //    否则节点转文本之后会被判成"行内混排"，图片就从居中变居左 —— 用户报的跳跃）
+      if (!t || isImgSourceText(t)) return
     }
     others += 1
   })
@@ -459,22 +461,18 @@ export const ImageSourceUi = Extension.create({
               const from = offset
               const to = offset + block.nodeSize
               if (block.type.name === 'htmlBlock') {
-                // 激活中的裸 `<img>`：标识符要**行内**显示（与图片同行），不做块级居中
-                if (imgs.some((i) => i.kind === 'raw' && i.from === from && i.from !== open)) {
+                // 激活中**也要**保持居中（第六十二轮：否则"居中→居左"就是用户看到的跳跃）
+                if (imgs.some((i) => i.kind === 'raw' && i.from === from)) {
                   decos.push(Decoration.node(from, to, { class: 'img-block-center' }))
                 }
                 return
               }
               const inside = imgs.filter((i) => i.from > from && i.to < to)
               if (inside.length !== 1) return
-              if (inside[0].from === open) return
-              let others = 0
-              block.forEach((child) => {
-                if (child.type.name === 'image' || child.type.name === 'htmlBlock') return
-                if (child.isText && !(child.text ?? '').trim()) return
-                others += 1
-              })
-              if (others === 0) decos.push(Decoration.node(from, to, { class: 'img-block-center' }))
+              // "这一段只有这一张图" ⇔ 它不是行内混排（同一判据，避免两处逻辑漂移）
+              if (!imgIsInline(state, inside[0])) {
+                decos.push(Decoration.node(from, to, { class: 'img-block-center' }))
+              }
             })
             for (const img of imgs) {
               if (img.kind === 'raw') {
@@ -503,9 +501,16 @@ export const ImageSourceUi = Extension.create({
                    *   * 关掉拼写检查的波浪线。
                    */
                   const attrs = {
-                    class: openEditing
-                      ? 'img-src-revealed img-src-revealed--editing'
-                      : 'img-src-revealed',
+                    // 块级图片（独占一行、靠 `img-block-center`/`margin-inline:auto` 居中）时的标识符
+                    // **也走块级**：它自己占一行、不去挤图片那一行的行内流 —— 否则"块级 widget 前面
+                    // 多了一段行内文本"会把图片从居中的位置挤走（第六十二轮实测 left 784→673）。
+                    class: [
+                      'img-src-revealed',
+                      isBlock || !imgIsInline(state, img) ? 'img-src-revealed--block' : '',
+                      openEditing ? 'img-src-revealed--editing' : ''
+                    ]
+                      .filter(Boolean)
+                      .join(' '),
                     'data-img-revealed': '',
                     'data-img-kind': 'raw',
                     'data-img-from': String(img.from),
@@ -520,8 +525,10 @@ export const ImageSourceUi = Extension.create({
                       : Decoration.inline(img.from, img.to, attrs)
                   )
                 }
-                // 激活时图片一律用**行内** widget：标识符与图片同一行（两条路径一致）
-                const inline = active ? true : imgIsInline(state, img)
+                // ⚠️ 第六十二轮：**不许因为激活而改变图片的布局**（用户报障："居中变成居左"）。
+                //    行内/块级判据与未激活时**完全一致**；块级的继续吃 `img-block-center` 的
+                //    居中对齐 ⇒ 图片水平不动，标识符只占掉它上面一行（图片只向下让位）。
+                const inline = imgIsInline(state, img)
                 decos.push(
                   Decoration.widget(
                     // ⚠️ 挂在**构造的末尾**（`img.to`）：标识符文本在图片**左边**（Typora 观感）。

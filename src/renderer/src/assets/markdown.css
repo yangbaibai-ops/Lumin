@@ -325,6 +325,11 @@
 .md-preview .img-src-revealed--editing {
   background-color: transparent;
 }
+/* 块级图片（独占一行、居中那种）激活时：标识符**自己占一行**（块级），
+   不去挤图片那一行的行内流 ⇒ 图片水平位置一动不动，只整体下移让位（第六十二轮） */
+.md-preview .img-src-revealed--block {
+  display: block;
+}
 /* 语法被改坏（例如退格删掉结尾 `>`）：它不再是图片，但仍是正文 —— 只关拼写检查 */
 .md-preview .img-src-incomplete {
   vertical-align: top;

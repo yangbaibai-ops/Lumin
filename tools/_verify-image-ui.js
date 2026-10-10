@@ -830,15 +830,13 @@ const doc = MD.split('PLACE_A')
     })
   )
   check(
-    '⑦b 两条路径都满足"标识符在图片**之前**（左侧）、同一行、贴顶"（给 fragRight/imgLeft/top）',
+    '⑦b 标识符在图片**之前**（文档序在前，且不与图片水平重叠：或在其左侧、或在其上一行）',
     paths.A?.ok &&
       paths.B?.ok &&
       paths.A.imgLeft != null &&
       paths.B.imgLeft != null &&
-      paths.A.fragRight <= paths.A.imgLeft + 1 &&
-      paths.B.fragRight <= paths.B.imgLeft + 1 &&
-      Math.abs(paths.A.fragTop - paths.A.imgTop) <= 10 &&
-      Math.abs(paths.B.fragTop - paths.B.imgTop) <= 10,
+      (paths.A.fragRight <= paths.A.imgLeft + 1 || paths.A.fragTop < paths.A.imgTop) &&
+      (paths.B.fragRight <= paths.B.imgLeft + 1 || paths.B.fragTop < paths.B.imgTop),
     JSON.stringify({
       A: { fragRight: paths.A?.fragRight, imgLeft: paths.A?.imgLeft, fragTop: paths.A?.fragTop, imgTop: paths.A?.imgTop, inline: paths.A?.inline },
       B: { fragRight: paths.B?.fragRight, imgLeft: paths.B?.imgLeft, fragTop: paths.B?.fragTop, imgTop: paths.B?.imgTop, inline: paths.B?.inline }
@@ -888,6 +886,124 @@ const doc = MD.split('PLACE_A')
       JSON.stringify({ 点击态: bg, 编辑态: after.bg, cls: after.cls })
     )
   }
+
+  // ═══ 第六十二轮：点图片**不许跳位**（水平不动；垂直只许向下让位）═══════════════════
+  /**
+   * 量"某张图片"的**画面矩形**：用 src + 序号定位；量的是**真正的 `<img>` 元素**
+   * （`![ ]()` 节点形态时它没有 widget 包裹；块级 widget 的**外层**宽度是整行宽，
+   *  量外层会把"居中块"误读成"跳位"——用户看到的是画面本身的位移）。
+   */
+  const imgRectOf = (src, which) =>
+    json(`(() => {
+      const all = [...document.querySelectorAll('.ProseMirror img')].filter(
+        (im) => (im.getAttribute('src') || '') === ${JSON.stringify(src)}
+      )
+      const im = ${which === 'last' ? 'all[all.length - 1]' : 'all[0]'}
+      if (!im) return { ok: false, count: all.length }
+      const r = im.getBoundingClientRect()
+      const w = im.closest('[data-img-widget]')
+      return {
+        ok: true,
+        count: all.length,
+        left: Math.round(r.left),
+        right: Math.round(r.right),
+        width: Math.round(r.width),
+        top: Math.round(r.top),
+        inline: w ? w.getAttribute('data-img-inline') : 'node'
+      }
+    })()`)
+  const clickWidget = async (src, which) => {
+    const pt = await json(`(() => {
+      const all = [...document.querySelectorAll('.ProseMirror img')].filter(
+        (im) => (im.getAttribute('src') || '') === ${JSON.stringify(src)}
+      )
+      const im = ${which === 'last' ? 'all[all.length - 1]' : 'all[0]'}
+      if (!im) return null
+      const r = im.getBoundingClientRect()
+      return { x: Math.round(r.left + Math.max(2, r.width / 2)), y: Math.round(r.top + Math.max(2, r.height / 2)) }
+    })()`)
+    await click(pt)
+    await sleep(550)
+  }
+  const resetDoc = async () => {
+    await ev(`(() => { window.__vt.ed().commands.setContent(${JSON.stringify(doc)}); return 'ok' })()`)
+    await sleep(900)
+  }
+  /** 点一次、量前后：水平必须不变（±1px），top 只许不变或变大 */
+  const noJump = async (label, src, which) => {
+    await resetDoc()
+    const before = await imgRectOf(src, which)
+    const shot0 = await send('Page.captureScreenshot', { format: 'png' })
+    safe(() => fs.writeFileSync(path.join(process.cwd(), 'tmp', 'img-nojump-before.png'), Buffer.from(shot0.result.data, 'base64')), null)
+    await clickWidget(src, which)
+    const after = await imgRectOf(src, which)
+    const shot1 = await send('Page.captureScreenshot', { format: 'png' })
+    safe(() => fs.writeFileSync(path.join(process.cwd(), 'tmp', 'img-nojump-after.png'), Buffer.from(shot1.result.data, 'base64')), null)
+    const okH =
+      before.ok && after.ok &&
+      Math.abs(after.left - before.left) <= 1 &&
+      Math.abs(after.right - before.right) <= 1 &&
+      Math.abs(after.width - before.width) <= 1
+    const okV = before.ok && after.ok && after.top >= before.top - 1
+    check(
+      `${label}：点击前后水平**不动**（left/right/width ±1px）且 top 只许不变或向下`,
+      okH && okV,
+      JSON.stringify({ before, after, 水平差: after.ok && before.ok ? { left: after.left - before.left, right: after.right - before.right, width: after.width - before.width } : null, 垂直差: after.ok && before.ok ? after.top - before.top : null })
+    )
+    return { before, after }
+  }
+  // ① 居中图片（`![]()` 节点形态：块级 + margin-inline:auto 居中）
+  const jumpCenter = await noJump('⑧① 居中图片', PNG_A, 'first')
+  // ② 独立成行的裸 `<img>`（html_block：同属"只有一张图"的居中块）
+  const jumpBlock = await noJump('⑧② 独立成行的裸 `<img>`（居中块）', PNG_B, 'last')
+  // ③ 行内混排（`qian <img> hou`）：标识符是被插进**同一段流**里的正文文本 ⇒ 它占的行内宽度
+  //    必然把图片往右推。断言：图片自身宽/高不变、top 不变或向下、水平位移 ≤ 标识符首段宽 +2px
+  {
+    await resetDoc()
+    const before = await imgRectOf(PNG_B, 'first')
+    await clickWidget(PNG_B, 'first')
+    const after = await imgRectOf(PNG_B, 'first')
+    const marker = await json(`(() => {
+      const el = document.querySelector('.ProseMirror [data-img-revealed]')
+      if (!el) return null
+      const rs = [...el.getClientRects()].map((r) => ({ l: Math.round(r.left), w: Math.round(r.width), t: Math.round(r.top) }))
+      return { firstWidth: rs.length ? rs[0].w : null, lastRight: rs.length ? rs[rs.length - 1].l + rs[rs.length - 1].w : null, rects: rs }
+    })()`)
+    check(
+      '⑧③ 行内混排：图片宽高不变、top 只向下，水平位移只来自标识符在那一行占的行内宽度',
+      before.ok &&
+        after.ok &&
+        Math.abs(after.width - before.width) <= 1 &&
+        after.top >= before.top - 1 &&
+        // 图片紧接在标识符**与本图同处一行**的那一段之后（间距 = widget 的 0.15em 外边距）
+        marker?.lastRight != null &&
+        after.left >= marker.lastRight &&
+        after.left - marker.lastRight <= 8,
+      JSON.stringify({ before, after, marker, 位移: after.ok && before.ok ? after.left - before.left : null })
+    )
+  }
+  // ④ 标识符占自己一行时：图片**只向下**移动，位移 ≈ 标识符行高
+  const downShift = jumpCenter.after.ok && jumpCenter.before.ok ? jumpCenter.after.top - jumpCenter.before.top : null
+  const markerBox = await json(`(() => {
+    const el = document.querySelector('.ProseMirror [data-img-revealed]')
+    if (!el) return null
+    const r = el.getBoundingClientRect()
+    const rs = [...el.getClientRects()].filter((x) => x.height > 0)
+    return { height: Math.round(r.height), lineHeight: rs.length ? Math.round(rs[0].height) : null, lines: rs.length }
+  })()`)
+  check(
+    '⑧④ 标识符占行 ⇒ 图片只**向下**让位（位移 ≥ 0 且不超过标识符自身总高 + 8px）',
+    downShift != null &&
+      downShift >= 0 &&
+      markerBox?.height != null &&
+      downShift <= markerBox.height + 8,
+    JSON.stringify({
+      beforeTop: jumpCenter.before?.top,
+      afterTop: jumpCenter.after?.top,
+      下移量: downShift,
+      标识符: markerBox
+    })
+  )
 
   const pass = results.filter((r) => r.ok).length
   console.log(`TOTAL ${results.length} PASS ${pass} FAIL ${results.length - pass}`)
