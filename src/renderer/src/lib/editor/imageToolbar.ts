@@ -574,6 +574,17 @@ export const ImageSourceUi = Extension.create({
               // "这一段只有这一张图" ⇔ 它不是行内混排（同一判据，避免两处逻辑漂移）
               if (!imgIsInline(state, inside[0])) {
                 decos.push(Decoration.node(from, to, { class: 'img-block-center' }))
+              } else {
+                /**
+                 * 第七十轮（首帧对齐 bug）：**行内**图片所在的段落要显式打一个类。
+                 * 原因：`p > img:only-child` 只看**元素**子节点 —— 段里若是
+                 * `前文 ![]() 后文`（文字是文本节点、图片是唯一元素子节点）它**会命中**，
+                 * 于是图片被设成 `display:block; margin:auto`（独占一行、文字跑到图片上方）
+                 * ⇒ 用户看到"首次打开时文字与图片最上方齐平"。点一下图片后它变成 widget
+                 * （段落里多了 `<span>` 元素）⇒ `:only-child` 不再命中 ⇒ 才恢复正常。
+                 * 这里在**首帧的装饰阶段**就把类带上（不依赖任何后续 update/dispatch）。
+                 */
+                decos.push(Decoration.node(from, to, { class: 'img-inline-mode' }))
               }
             })
             for (const img of imgs) {

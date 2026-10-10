@@ -274,6 +274,17 @@ ormal，只影响这种段落 */
 .md-preview p:has(> img:not(:only-child)) {
   white-space: normal;
 }
+/* ── 首帧对齐（第七十轮）──────────────────────────────────────────────────────
+   `p > img:only-child` 只数**元素**子节点：`前文 ![]() 后文` 这种"文字 + 一张图片"的
+   段落里，图片恰好是唯一元素子节点 ⇒ 被误判成"这一段只有一张图"，设成 block + auto
+   外边距（独占一行、文字跑到图片上方）—— 这就是"首次打开时文字与图片最上方齐平"。
+   装饰阶段会给**行内**图片所在段落挂 `.img-inline-mode`（首帧即有，不依赖任何后续 update），
+   这里用更专一的选择器把它按行内图片渲染：行内块 + 垂直居中 + 清掉 auto 外边距。 */
+.md-preview p.img-inline-mode > img:first-child {
+  display: inline-block;
+  vertical-align: middle;
+  margin: 0;
+}
 /* 原始 HTML 图片（`<img …>` 走 MdHtml 原文透传）由 imageToolbar 的 widget 画出来：
    独占一行时是块级容器（居中）；**行内上下文里保持行内**（见下面 `--inline`） */
 .md-preview .img-widget {

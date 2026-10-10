@@ -158,6 +158,108 @@ const doc = MD.split('PLACE_A')
       return { x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2) }
     })()`)
 
+  // ═══ 第七十轮：**首帧对齐**（全新实例、首次打开文档、不做任何点击）═══════════════
+  /**
+   * 用户报障：行内图片首次打开时，**前后文字与图片最上方水平一致**（应为垂直居中），
+   * 刷新/点一下才恢复。这里在**任何点击之前**量一组，再触发一次 update 量第二组。
+   */
+  const alignSample = async (fixture) => {
+    await ev(`(() => { window.__vt.ed().commands.setContent(${JSON.stringify(fixture)}); return 'ok' })()`)
+    // ⚠️ 只等渲染帧，不做任何点击/选区操作
+    await sleep(120)
+    const read = () =>
+      json(`(() => {
+        const p = document.querySelector('.ProseMirror p')
+        if (!p) return { ok: false }
+        const im = p.querySelector('img')
+        const w = im ? im.closest('[data-img-widget]') : null
+        const holder = w || im
+        if (!holder) return { ok: false }
+        const ir = im.getBoundingClientRect()
+        // 同一行的**文字行盒**：取该段里非空文本节点的 Range
+        let tr = null
+        const walker = document.createTreeWalker(p, NodeFilter.SHOW_TEXT)
+        let n
+        while ((n = walker.nextNode())) {
+          if (!(n.textContent || '').trim()) continue
+          const rg = document.createRange()
+          rg.selectNodeContents(n)
+          const rs = [...rg.getClientRects()].filter((x) => x.width > 0)
+          if (rs.length) { tr = rs[rs.length - 1]; break }
+        }
+        const cs = getComputedStyle(holder)
+        return {
+          ok: true,
+          img: {
+            top: Math.round(ir.top), bottom: Math.round(ir.bottom),
+            centerY: Math.round((ir.top + ir.bottom) / 2), height: Math.round(ir.height)
+          },
+          text: tr ? {
+            top: Math.round(tr.top), bottom: Math.round(tr.bottom),
+            centerY: Math.round((tr.top + tr.bottom) / 2), height: Math.round(tr.height)
+          } : null,
+          holderCls: holder.className,
+          holderTag: holder.tagName.toLowerCase(),
+          verticalAlign: cs.verticalAlign,
+          display: cs.display,
+          margin: cs.margin,
+          imgVerticalAlign: getComputedStyle(im).verticalAlign,
+          imgDisplay: getComputedStyle(im).display,
+          pCls: p.className,
+          pWhiteSpace: getComputedStyle(p).whiteSpace,
+          deltaCenter: tr ? Math.round(Math.abs((tr.top + tr.bottom) / 2 - (ir.top + ir.bottom) / 2)) : null,
+          deltaTop: tr ? Math.round(Math.abs(tr.top - ir.top)) : null
+        }
+      })()`)
+    const first = await read()
+    // 触发一次 update（不改文档、不点图片：只点段落里的文字处，等价于用户"点一下其他地方"）
+    await ev(`(() => {
+      const v = window.__vt.ed().view
+      const Sel = window.__vt.ed().state.selection.constructor
+      v.dispatch(v.state.tr.setSelection(Sel.create(v.state.doc, 1)))
+      return 'ok'
+    })()`)
+    await sleep(400)
+    const after = await read()
+    return { first, after }
+  }
+  {
+    const rawInline = await alignSample(`前文 <img src="${PNG_B}" style="zoom:100%;" /> 后文`)
+    check(
+      '⑯① 行内裸 `<img>` **首帧**就垂直居中（textCenterY ≈ imgCenterY，±3px；不做任何点击）',
+      rawInline.first.ok && rawInline.first.deltaCenter != null && rawInline.first.deltaCenter <= 3,
+      JSON.stringify(rawInline)
+    )
+    check(
+      '⑯② 行内裸 `<img>` 触发一次 update 后与首帧**一致**（对齐不随点击变化）',
+      rawInline.first.ok &&
+        rawInline.after.ok &&
+        rawInline.after.deltaCenter != null &&
+        rawInline.after.deltaCenter <= 3 &&
+        JSON.stringify(rawInline.first.img) === JSON.stringify(rawInline.after.img) &&
+        JSON.stringify(rawInline.first.text) === JSON.stringify(rawInline.after.text),
+      JSON.stringify({
+        首帧: rawInline.first,
+        之后: rawInline.after,
+        图片位移: rawInline.after.ok && rawInline.first.ok
+          ? { top: rawInline.after.img.top - rawInline.first.img.top }
+          : null
+      })
+    )
+    const nodeInline = await alignSample(`前文 ![](${PNG_B}) 后文`)
+    check(
+      '⑯③ 行内 `![]()` 节点图片**首帧**就垂直居中（±3px）',
+      nodeInline.first.ok && nodeInline.first.deltaCenter != null && nodeInline.first.deltaCenter <= 3,
+      JSON.stringify(nodeInline)
+    )
+    const shotB = await send('Page.captureScreenshot', { format: 'png' })
+    safe(() => fs.writeFileSync(path.join(process.cwd(), 'tmp', 'img-firstpaint-align-before.png'), Buffer.from(shotB.result.data, 'base64')), null)
+    safe(() => fs.writeFileSync(path.join(process.cwd(), 'tmp', 'img-firstpaint-align-after.png'), Buffer.from(shotB.result.data, 'base64')), null)
+    // ⚠️ 复位成后续各节依赖的标准夹具（否则 ②/④/⑤ 会拿到 ⑯ 用的那份文档）
+    await ev(`(() => { window.__vt.ed().commands.setContent(${JSON.stringify(doc)}); return 'ok' })()`)
+    await sleep(900)
+  }
+
   // ── ① 居中 ──
   const center = await json(`(() => {
     const el = document.querySelector('.ProseMirror p img')
