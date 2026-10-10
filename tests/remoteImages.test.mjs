@@ -76,7 +76,10 @@ test('放行是会话级、不落库（换一篇文档重新来过更安全）',
   assert.equal(needsRemotePermission('https://a.com/x.png', 'click'), true)
 })
 
-test('默认设置值是 click（改默认值必须是有意为之）', async () => {
+test('默认设置值是 always（第七十七轮 parent 决策：与 Typora 一致，打开即加载）', async () => {
   const { defaultSettings } = await import('../src/shared/defaults.ts')
-  assert.equal(defaultSettings.remoteImages, 'click')
+  // ⚠️ 这条断言是"改默认值必须是有意为之"的守门员：第七十七轮用户报障
+  //「相邻两张远程图打开后什么都没有（只有 26×20 的空占位）」⇒ parent 决定默认改成
+  // `always`（打开即加载），同时**保留** `click` 档给"隐私优先、不点不外联"的用户。
+  assert.equal(defaultSettings.remoteImages, 'always')
 })

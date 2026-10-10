@@ -755,6 +755,12 @@ export const ImageSourceUi = Extension.create({
               const target = event.target as HTMLElement | null
               if (target?.closest?.('[data-img-revealed]')) return false
               /**
+               * 第七十八轮：远程图片的**占位**（`click` 档下的 `[data-remote-src]`）也必须放行 ——
+               * 否则这里的 `preventDefault()`（加上元素自身 `draggable`）会把后续的 `click`
+               * 吞掉，app 容器上那个"点一下加载远程图"的钩子就永远收不到 ⇒ 用户点了没反应。
+               */
+              if (target?.closest?.('[data-remote-src]')) return false
+              /**
                * 第六十八轮：不再靠 DOM 身份（`nodeDOM(pos) === imgEl` / `posAtDOM`）判断
                * "点到的是不是某张图" —— PM 会重建 DOM，身份比较不稳（上一轮 ⑬b 就是栽在这）。
                * 改成**坐标 → 文档位置 → 落在哪个图片源的范围里**：两种形态（图片节点 / 原文文本）

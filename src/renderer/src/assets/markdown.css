@@ -434,6 +434,16 @@ ormal，只影响这种段落 */
   background: none;
   border: 0;
 }
+/* ── 第七十七轮：`click` 档的占位框要"看得出这里有张图" ──────────────────────────
+   默认档已改为 `always`（打开即加载），只有用户**显式选 `click`** 才会看到这个占位。
+   仍然**无图标、无文案、无子节点**（保住既有 ⑤ 口径），只把框放大 + 极淡虚线。 */
+.md-preview [data-remote-src] {
+  min-width: 6.5em;
+  min-height: 4.2em;
+  border: 1px dashed var(--edge-strong);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--edge) 22%, transparent);
+}
 .md-preview [data-remote-src]:focus-visible {
   outline: none;
   box-shadow: 0 0 0 3px var(--accent-soft);

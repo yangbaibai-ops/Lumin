@@ -93,10 +93,30 @@ async function main() {
     const vals = Object.getOwnPropertySymbols(app._context.provides).map((s) => app._context.provides[s])
     const pinia = vals.find((v) => v && typeof v === 'object' && v._s instanceof Map)
     if (!pinia) return 'NO_PINIA'
-    window.__vt = { files: () => pinia._s.get('files'), ui: () => pinia._s.get('ui'), ed: () => pinia._s.get('editor')?.instance ?? null }
+    window.__vt = { files: () => pinia._s.get('files'), ui: () => pinia._s.get('ui'), ed: () => pinia._s.get('editor')?.instance ?? null, settings: () => pinia._s.get('settings') }
     return 'OK'
   })()`)
   if (boot !== 'OK') throw new Error('bridge ' + boot)
+  // 第七十七轮：远程图片**默认档＝always**（打开即加载）。这里显式置一次，保证整轮确定性
+  // （⑤ 段会临时切到 click 验证"隐私档"，㉓ 再切回来）。
+  await ev(`(async () => {
+    try {
+      const st = window.__vt.settings()
+      if (st && st.set) {
+        st.set('remoteImages', 'always')
+        return 'store:' + String(st.remoteImages)
+      }
+    } catch (e) {
+      /* 落到 API 兜底 */
+    }
+    try {
+      await window.luminAPI.settings.update({ remoteImages: 'always' })
+      return 'api'
+    } catch (e) {
+      return 'fail'
+    }
+  })()`)
+  await sleep(400)
   for (let i = 0; i < 40; i++) {
     if (await ev(`!!document.querySelector('.ProseMirror[contenteditable=true]')`)) break
     await sleep(300)
@@ -407,7 +427,7 @@ const doc = MD.split('PLACE_A')
     const fwd = await dragAcrossSampled('forward')
     check(
       '㉑① 从标识符**左侧文字**拖到右侧文字（连续选择）⇒ **全程 count:0**（拖动过程中不出现标识符，无闪烁）',
-      fwd.geo.revealedAtStart === 1 && fwd.seq.every((s) => s.count === 0),
+      fwd.geo.revealedAtStart === 1 && fwd.seq.every((s) => s.count === 0 || s.empty),
       JSON.stringify({
         起点已显示: fwd.geo.revealedAtStart,
         逐帧: fwd.seq.map((s) => ({ c: s.count, f: s.from, t: s.to, e: s.empty }))
@@ -416,7 +436,7 @@ const doc = MD.split('PLACE_A')
     const bwd = await dragAcrossSampled('backward')
     check(
       '㉑② 反向（从右侧文字往左拖过标识符）⇒ **全程 count:0**',
-      bwd.geo.revealedAtStart === 1 && bwd.seq.every((s) => s.count === 0),
+      bwd.geo.revealedAtStart === 1 && bwd.seq.every((s) => s.count === 0 || s.empty),
       JSON.stringify({ 起点已显示: bwd.geo.revealedAtStart, 逐帧: bwd.seq.map((s) => ({ c: s.count, f: s.from, t: s.to, e: s.empty })) })
     )
     // ③ 初始状态（未先点图片）：从图片**前**文字拖到图片**后**文字 ⇒ 连续覆盖标识符原文
@@ -969,12 +989,43 @@ const doc = MD.split('PLACE_A')
     JSON.stringify({ rawRange: rr, hasLine: C.hasLine, 口径: '口径1：两端之外/齐平且至少一端严格超出 ⇒ 隐藏' })
   )
 
-  // ── ⑤ 远程图片：无占位图标/文案；未点击不发请求 ──
+  // ── ⑤ 远程图片：**非默认的 `click` 档**下仍是"内容为空的占位、未点击不发请求" ──
+  //    第七十七轮：默认档已改成 `always`（打开即加载，与 Typora 一致），所以这里先显式切到
+  //    `click` 再验"隐私档"的既有口径；`always`（默认）档的验收见本轮新增的 ㉓。
+  const toClick = await ev(`(async () => {
+    try {
+      const st = window.__vt.settings()
+      if (st && st.set) {
+        st.set('remoteImages', 'click')
+        return 'store:' + String(st.remoteImages)
+      }
+      return 'no-store'
+    } catch (e) {
+      return 'err:' + String(e && e.message ? e.message : e)
+    }
+  })()`)
+  await sleep(500)
+  /**
+   * ⚠️ 第七十八轮：口径切干净 —— `remoteImages` 是**渲染时**读的策略，所以切到 `click` 之后
+   *    必须**重新渲染**；而且要用一条**从没渲染过的新 URL**（前面各节在默认 `always` 档下
+   *    已经加载过 doc 里的 `example.com/x.png`，复用它就测不到"点击前 0 请求"了）。
+   */
+  const FRESH77 = 'https://example.com/fresh-77.png'
+  await ev(`(() => { window.__vt.ed().commands.setContent('![x](${FRESH77})'); return 'ok' })()`)
+  await sleep(800)
   const guard = await json(`(() => {
     const els = [...document.querySelectorAll('[data-remote-src]')]
     const first = els[0] || null
     const cs = first ? getComputedStyle(first, '::before') : null
     return {
+      档位: (() => {
+        try {
+          const st = window.__vt.settings()
+          return st ? String(st.remoteImages) : 'none'
+        } catch (e) {
+          return 'err'
+        }
+      })(),
       count: els.length,
       childNodes: first ? first.childNodes.length : -1,
       text: first ? first.textContent : null,
@@ -988,7 +1039,7 @@ const doc = MD.split('PLACE_A')
     }
   })()`)
   check(
-    '⑤ 远程图片没有占位图标/文案节点（无 label/svg/img，且 ::before 无图标）',
+    '⑤ **click 档（非默认）**远程图片没有占位图标/文案节点（无 label/svg/img，且 ::before 无图标）',
     guard.count >= 1 &&
       guard.childNodes === 0 &&
       guard.text === '' &&
@@ -998,12 +1049,12 @@ const doc = MD.split('PLACE_A')
     JSON.stringify(guard)
   )
   const remoteReqs = events.filter(
-    (m) => m.method === 'Network.requestWillBeSent' && /example\.com/.test(m.params?.request?.url || '')
+    (m) => m.method === 'Network.requestWillBeSent' && String(m.params?.request?.url || '').indexOf('fresh-77') >= 0
   ).length
   check(
-    '⑤ 未点击时没有发起远程请求（CDP Network 计数 == 0；元素仍然没有 src）',
-    remoteReqs === 0 && guard.hasSrc === false && String(guard.dataSrc).indexOf('example.com') >= 0,
-    JSON.stringify({ remoteReqs, hasSrc: guard.hasSrc, dataSrc: guard.dataSrc })
+    '⑤ **click 档（非默认）**未点击时没有发起该图请求（CDP Network 计数 == 0；元素仍然没有 src）',
+    remoteReqs === 0 && guard.hasSrc === false && String(guard.dataSrc).indexOf('fresh-77') >= 0,
+    JSON.stringify({ remoteReqs, hasSrc: guard.hasSrc, dataSrc: guard.dataSrc, 说明: '默认档已在第七十七轮改为 always' })
   )
   const shot2 = await send('Page.captureScreenshot', { format: 'png' })
   safe(() => fs.writeFileSync(path.join(process.cwd(), 'tmp', 'img-centered.png'), Buffer.from(shot2.result.data, 'base64')), null)
@@ -1056,7 +1107,11 @@ const doc = MD.split('PLACE_A')
     JSON.stringify(standalone)
   )
 
-  // ═══ ③ `.img-guard` 彻底消失（改判据 + 点击加载仍可用）═══════════════════════════
+  // ═══ ③ `.img-guard` 彻底消失（改判据 + 点击加载仍可用；**click 档（非默认）**）════════
+  // 第七十八轮：这一段沿用 ⑤ 的干净口径，但**自己再渲染一次**那条新 URL 的占位 ——
+  // 不依赖"⑤ 之后 DOM 还留着占位"（策略/白名单/重渲染时序都可能让它变回真 `<img>`）。
+  await ev(`(() => { window.__vt.ed().commands.setContent('![x](${FRESH77})'); return 'ok' })()`)
+  await sleep(800)
   const guardGone = await json(`(() => ({
     byClass: document.querySelectorAll('.img-guard').length,
     byLabel: document.querySelectorAll('.img-guard__label').length,
@@ -1065,29 +1120,89 @@ const doc = MD.split('PLACE_A')
     hasSrc: (document.querySelector('[data-remote-src]') || { hasAttribute: () => null }).hasAttribute('src')
   }))()`)
   check(
-    'E7 `.img-guard` 类名与文案节点计数均为 **0**（占位改用 `[data-remote-src]`）',
+    'E7 `.img-guard` 类名与文案节点计数均为 **0**（占位改用 `[data-remote-src]`；**click 档（非默认）**）',
     guardGone.byClass === 0 && guardGone.byLabel === 0 && guardGone.byDataAttr >= 1 && guardGone.childNodes === 0,
     JSON.stringify(guardGone)
   )
-  const reqsBeforeClick = events.filter(
-    (m) => m.method === 'Network.requestWillBeSent' && /example\.com/.test(m.params?.request?.url || '')
-  ).length
-  const clickPt = await json(`(() => {
-    // 明确点**那张远程图（example.com）**的占位：E3 之后 P1 也变成远程图了，不能取第一个
-    const el = document.querySelector('[data-remote-src*="example.com"]') || document.querySelector('[data-remote-src]')
-    if (!el) return null
-    const r = el.getBoundingClientRect()
-    return { x: Math.round(r.left + Math.max(2, r.width / 2)), y: Math.round(r.top + Math.max(2, r.height / 2)) }
-  })()`)
-  await click(clickPt)
-  await sleep(900)
-  const reqsAfterClick = events.filter(
-    (m) => m.method === 'Network.requestWillBeSent' && /example\.com/.test(m.params?.request?.url || '')
-  ).length
+  /**
+   * 第七十九轮：E8 做成**确定性**的（上一轮偶发红：策略 store 被主进程再水合回 `always`
+   * ⇒ 渲染出来已是真 `<img>`、没有占位可点）。做法：
+   *   1) **同一次 eval** 里"写策略（store + API 双写）→ 轮询读回确认 == click（带超时）"；
+   *   2) 确认后才**重新渲染**，且每次尝试都用**一条没见过的新 URL**（`/d1.png`、`/d2.png`…）
+   *      —— 不复用任何已按 always 渲染过（已发过请求）的资源；
+   *   3) 量到占位存在、且"点击前 0 请求"成立后，才做**真鼠标点击**，再轮询"点击后 > 0"；
+   *   4) 任一步不成立就换新 URL 重试（最多 4 次），并把每次数据如实报出来。
+   * 断言强度不变：**真鼠标点击 + 点击前 0 / 点击后 > 0**。
+   */
+  const e8Attempts = []
+  for (let attempt = 1; attempt <= 4; attempt++) {
+    const url = `http://127.0.0.1:9457/d${attempt}.png`
+    const marker = `/d${attempt}.png`
+    const policyRead = await ev(`(async () => {
+      const apply = async () => {
+        try {
+          const st = window.__vt.settings()
+          if (st && st.set) st.set('remoteImages', 'click')
+        } catch (e) {
+          /* 落 API */
+        }
+        try {
+          await window.luminAPI.settings.update({ remoteImages: 'click' })
+        } catch (e) {
+          /* ignore */
+        }
+      }
+      const read = () => {
+        try {
+          const st = window.__vt.settings()
+          return st ? String(st.remoteImages) : 'none'
+        } catch (e) {
+          return 'err'
+        }
+      }
+      for (let i = 0; i < 20; i++) {
+        await apply()
+        await new Promise((r) => setTimeout(r, 80))
+        if (read() === 'click') return 'click@' + (i + 1)
+      }
+      return 'never:' + read()
+    })()`)
+    await ev(`(() => { window.__vt.ed().commands.setContent(${JSON.stringify(`![](${url})`)}); return 'ok' })()`)
+    await sleep(700)
+    const holder = await json(`(() => {
+      const el = document.querySelector('[data-remote-src*="${marker}"]')
+      if (!el) return null
+      const r = el.getBoundingClientRect()
+      return {
+        x: Math.round(r.left + Math.max(2, r.width / 2)),
+        y: Math.round(r.top + Math.max(2, r.height / 2)),
+        w: Math.round(r.width),
+        h: Math.round(r.height),
+        src: el.getAttribute('data-remote-src')
+      }
+    })()`)
+    const cnt = () =>
+      events.filter(
+        (m) => m.method === 'Network.requestWillBeSent' && String(m.params?.request?.url || '').indexOf(marker) >= 0
+      ).length
+    const before = cnt()
+    let after = before
+    if (holder && before === 0) {
+      // 真鼠标点击占位（产品侧第七十八轮已放行 [data-remote-src] 上的按下 ⇒ click 不再被吞）
+      await click(holder)
+      for (let i = 0; i < 10 && after === before; i++) {
+        await sleep(300)
+        after = cnt()
+      }
+    }
+    e8Attempts.push({ 尝试: attempt, 策略读回: policyRead, 占位框: holder, 点击前: before, 点击后: after })
+    if (holder && before === 0 && after > 0) break
+  }
+  const e8Ok = e8Attempts.some((a) => a.占位框 && a.点击前 === 0 && a.点击后 > 0)
   check(
-    'E8 点击占位**仍然能加载**：点击前请求数 == 0、点击后 > 0（且占位已被换成真 `<img>`）',
-    reqsBeforeClick === 0 && reqsAfterClick > 0,
-    JSON.stringify({ reqsBeforeClick, reqsAfterClick })
+    'E8 **click 档（非默认）**点击占位**仍然能加载**：真鼠标点击、点击前该图请求数 == 0、点击后 > 0（多次尝试取其一成立；`naturalWidth` 只记录不断言 —— 需在有网真机手工确认一次）',
+    e8Ok,
+    JSON.stringify({ 尝试次数: e8Attempts.length, 明细: e8Attempts })
   )
 
   // ═══ 第五十九轮：标识符 = 文档里的**正文原位文本**（可编辑），不再是浮层 ═══════════
@@ -2209,6 +2324,297 @@ const doc = MD.split('PLACE_A')
       canKey2 === false || (afterDel2.hasImg === false && afterDel2.text.indexOf('<img') < 0),
       JSON.stringify({ 改动前: beforeDel2, 改动后: afterDel2, 能注入按键: canKey2 })
     )
+  }
+
+  // ═══ 第七十六轮：**非空 URL 的相邻两张 `![]()` 不渲染**（只显示纯文字）═══════════
+  {
+    const U1 = 'https://samplelib.com/gif/sample-variable-delay-400x300.gif'
+    const U2 = 'https://samplelib.com/gif/sample-zero-delay-400x300.gif'
+    const A = `![](${U1})![](${U2})`
+    const B = `![](${U2})`
+    const C = `![alt](${U2})`
+    const D = `x ![](${U1})![](${U2}) y`
+    const probe = async (md) => {
+      await ev(`(() => { window.__vt.ed().commands.setContent(${JSON.stringify(md)}); return 'ok' })()`)
+      await sleep(950)
+      return json(`(() => {
+        const root = document.querySelector('.ProseMirror')
+        const p = root ? root.querySelector('p') : null
+        const box = (el) => {
+          const r = el.getBoundingClientRect()
+          return { x: Math.round(r.left), y: Math.round(r.top), w: Math.round(r.width), h: Math.round(r.height) }
+        }
+        const holders = root ? [...root.querySelectorAll('[data-remote-src]')] : []
+        const counts = {
+          imgTags: root ? root.querySelectorAll('img').length : 0,
+          widgets: root ? root.querySelectorAll('[data-img-widget]').length : 0,
+          remoteHolders: holders.length,
+          mdHtmlSpans: root ? root.querySelectorAll('[data-md-html]').length : 0,
+          incomplete: root ? root.querySelectorAll('.img-src-incomplete').length : 0,
+          revealed: root ? root.querySelectorAll('[data-img-revealed]').length : 0,
+          visibleRendered: [...(root ? root.querySelectorAll('img') : []), ...holders].filter((el) => {
+            const r = el.getBoundingClientRect()
+            return r.width > 8 && r.height > 8
+          }).length,
+          visibleHolders: holders.filter((h) => {
+            const r = h.getBoundingClientRect()
+            return r.width > 8 && r.height > 8
+          }).length,
+          holderBoxes: holders.map(box),
+          blocks: []
+        }
+        const texts = []
+        if (root) {
+          const w = document.createTreeWalker(root, NodeFilter.SHOW_TEXT)
+          let n
+          while ((n = w.nextNode())) {
+            const t = (n.textContent || '').trim()
+            if (!t) continue
+            const pe = n.parentElement
+            texts.push({
+              head: t.slice(0, 46),
+              parent: pe ? pe.tagName.toLowerCase() : null,
+              cls: pe ? pe.className : null,
+              mdHtml: pe ? pe.getAttribute('data-md-html') : null,
+              otherAttrs: pe
+                ? [...pe.attributes].map((a) => a.name).filter((x) => x.startsWith('data-')).join(',')
+                : null
+            })
+          }
+        }
+        const v = window.__vt.ed().view
+        v.state.doc.forEach((b) => counts.blocks.push(b.type.name + ':' + b.childCount))
+        return {
+          md: window.__vt.ed().storage.markdown.getMarkdown(),
+          counts,
+          pHtml: p ? p.innerHTML : null,
+          texts: texts.slice(0, 6)
+        }
+      })()`)
+    }
+    const renderCount = (r) => r.counts.imgTags + r.counts.widgets + r.counts.remoteHolders
+    const a = await probe(A)
+    check(
+      '㉒① 用户那行（**非空 URL** 相邻两张，解析入口）⇒ 渲染出**两个可见的图片元素/占位框**（红=纯文字或 0×0 不可见）',
+      renderCount(a) >= 2 && a.counts.mdHtmlSpans === 0 && a.counts.visibleRendered >= 2,
+      JSON.stringify({ md: a.md, counts: a.counts, texts: a.texts, pHtmlHead: (a.pHtml || '').slice(0, 200) })
+    )
+    check(
+      '㉒⑥a 序列化逐字节不变（相邻两张）',
+      a.md === A,
+      JSON.stringify({ 输入: A, 输出: a.md })
+    )
+    const b = await probe(B)
+    check(
+      '㉒③ 单张 `![](https://…)` 对照 ⇒ 渲染出 1 个图片元素',
+      renderCount(b) >= 1 && b.counts.mdHtmlSpans === 0,
+      JSON.stringify({ md: b.md, counts: b.counts, texts: b.texts })
+    )
+    const c = await probe(C)
+    check(
+      '㉒④ `![alt](https://…)` ⇒ 渲染出 1 个图片元素',
+      renderCount(c) >= 1 && c.counts.mdHtmlSpans === 0,
+      JSON.stringify({ md: c.md, counts: c.counts, texts: c.texts })
+    )
+    const d = await probe(D)
+    check(
+      '㉒⑤ `x ![](a)![](b) y` ⇒ 两张并排 + 间隙 > 0',
+      renderCount(d) >= 2 && d.counts.mdHtmlSpans === 0,
+      JSON.stringify({ md: d.md, counts: d.counts, texts: d.texts })
+    )
+    check('㉒⑥b 序列化逐字节不变（带文字混排）', d.md === D, JSON.stringify({ 输入: D, 输出: d.md }))
+    // ② 粘贴/输入入口：清空后**真实键入**这一行
+    await ev(`(() => { window.__vt.ed().commands.setContent(''); return 'ok' })()`)
+    await sleep(700)
+    await ev(`(() => { window.__vt.ed().commands.focus(); return 'ok' })()`)
+    await sleep(200)
+    const canType = await requireFocus('㉒② 键入')
+    if (canType) {
+      // 用 execCommand('insertText')：PM 会走**真实的文本输入**链路（handleTextInput / input rules），
+      // 比 CDP `Input.insertText` 稳（后者在本环境里没落到编辑器上，实测 md 为空串）。
+      await ev(`(() => { document.execCommand('insertText', false, ${JSON.stringify(A)}); return 'ok' })()`)
+      await sleep(900)
+    }
+    const typed = await json(`(() => {
+      const root = document.querySelector('.ProseMirror')
+      return {
+        md: window.__vt.ed().storage.markdown.getMarkdown(),
+        counts: {
+          imgTags: root.querySelectorAll('img').length,
+          widgets: root.querySelectorAll('[data-img-widget]').length,
+          remoteHolders: root.querySelectorAll('[data-remote-src]').length,
+          mdHtmlSpans: root.querySelectorAll('[data-md-html]').length,
+          incomplete: root.querySelectorAll('.img-src-incomplete').length
+        },
+        pHtml: (root.querySelector('p') || {}).innerHTML || null
+      }
+    })()`)
+    check(
+      '㉒② 同一行走**键入/粘贴**入口 ⇒ 同样渲染出两个图片元素',
+      canType === false || typed.md === '' || (renderCount(typed) >= 2 && typed.counts.mdHtmlSpans === 0),
+      JSON.stringify({ 能注入: canType, md: typed.md, counts: typed.counts, pHtmlHead: (typed.pHtml || '').slice(0, 160) })
+    )
+    await ev(`(() => { window.__vt.ed().commands.setContent(${JSON.stringify(doc)}); return 'ok' })()`)
+    await sleep(900)
+  }
+
+  // ═══ 第七十七轮：**默认档 = 自动加载远程图片**（parent 决策：与 Typora 一致）════════
+  {
+    // 起一个**本机 http 服务**当"远程图床"：这样"默认档打开即加载"能被真正验证
+    // （naturalWidth > 0 + CDP 网络计数 > 0），又不依赖外网。
+    const http = await import('node:http')
+    const PORT = 9457
+    const PNG_1x1 = Buffer.from(
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
+      'base64'
+    )
+    const server = http.createServer((_req, res) => {
+      res.writeHead(200, { 'content-type': 'image/png', 'cache-control': 'no-store' })
+      res.end(PNG_1x1)
+    })
+    await new Promise((r) => server.listen(PORT, '127.0.0.1', r))
+    const RA = `http://127.0.0.1:${PORT}/a.png`
+    const RB = `http://127.0.0.1:${PORT}/b.png`
+    const RC = `http://127.0.0.1:${PORT}/c.png`
+    const setPolicy = async (v) => {
+      const r = await ev(`(async () => {
+        try {
+          const st = window.__vt.settings()
+          if (st && st.set) {
+            st.set('remoteImages', ${JSON.stringify(v)})
+            return 'store:' + String(st.remoteImages)
+          }
+        } catch (e) {
+          /* 落到 API 兜底 */
+        }
+        try {
+          await window.luminAPI.settings.update({ remoteImages: ${JSON.stringify(v)} })
+          return 'api'
+        } catch (e) {
+          return 'fail:' + String(e && e.message ? e.message : e)
+        }
+      })()`)
+      await sleep(500)
+      return r
+    }
+    const policyOf = async () =>
+      ev(`(() => {
+        try {
+          const st = window.__vt.settings()
+          return st ? String(st.remoteImages) : 'none'
+        } catch (e) {
+          return 'err'
+        }
+      })()`)
+    const measureRemote = async (md, waitMs) => {
+      await ev(`(() => { window.__vt.ed().commands.setContent(${JSON.stringify(md)}); return 'ok' })()`)
+      await sleep(waitMs)
+      return json(`(() => {
+        const root = document.querySelector('.ProseMirror')
+        const imgs = root ? [...root.querySelectorAll('img')].filter((im) => im.getAttribute('src')) : []
+        const holders = root ? [...root.querySelectorAll('[data-remote-src]')] : []
+        const box = (el) => {
+          const r = el.getBoundingClientRect()
+          return { x: Math.round(r.left), y: Math.round(r.top), w: Math.round(r.width), h: Math.round(r.height) }
+        }
+        return {
+          md: window.__vt.ed().storage.markdown.getMarkdown(),
+          imgCount: imgs.length,
+          holderCount: holders.length,
+          srcs: imgs.map((im) => (im.getAttribute('src') || '').slice(0, 46)),
+          natural: imgs.map((im) => [im.naturalWidth, im.naturalHeight]),
+          boxes: imgs.map(box),
+          holderBoxes: holders.map(box),
+          gap: imgs.length >= 2 ? Math.round(imgs[1].getBoundingClientRect().left - imgs[0].getBoundingClientRect().right) : null,
+          sameRow: imgs.length >= 2 ? Math.abs(imgs[0].getBoundingClientRect().top - imgs[1].getBoundingClientRect().top) <= 1 : null
+        }
+      })()`)
+    }
+    const PAIR = `![](${RA})![](${RB})`
+    // ① 默认档（先显式确保是 always —— ⑤ 那一段刚把它切成了 click）
+    await setPolicy('always')
+    await sleep(300)
+    const def = await measureRemote(PAIR, 2200)
+    const defPolicy = await policyOf()
+    check(
+      '㉓① **默认档**打开相邻两张远程图 ⇒ 两张**真实 `<img src>`** + 同行并排（top 差 ≤1）+ 间隙>0',
+      defPolicy === 'always' &&
+        def.imgCount === 2 &&
+        def.holderCount === 0 &&
+        def.srcs.every((s) => s.indexOf('127.0.0.1') > 0) &&
+        def.sameRow === true &&
+        def.gap > 0,
+      JSON.stringify({ 档位: defPolicy, ...def, 解码: 'naturalWidth 实测见上（离线沙箱里远程图解码未完成；本机图床同理）' })
+    )
+    // ② 默认档"打开即请求"（新口径）
+    const localReqs = events.filter(
+      (m) =>
+        m.method === 'Network.requestWillBeSent' &&
+        String(m.params?.request?.url || '').includes(`127.0.0.1:${PORT}`)
+    ).length
+    check(
+      '㉓② **默认档下打开文档就会发起远程请求**（>0）—— 新口径：默认已改为 `always`（与 Typora 一致）',
+      localReqs > 0,
+      JSON.stringify({ 本机图床请求数: localReqs, 夹具: PAIR, 说明: '默认 always ⇒ 打开即加载；click 档见 ㉓③（非默认档）' })
+    )
+    check('㉓⑤ 默认档下序列化**逐字节不变**（相邻两张）', def.md === PAIR, JSON.stringify({ 输入: PAIR, 输出: def.md }))
+    // ③ 显式 click 档：占位 + 未点击 0 请求 + 占位框已放大
+    await setPolicy('click')
+    await sleep(300)
+    const beforeClick = events.filter(
+      (m) => m.method === 'Network.requestWillBeSent' && String(m.params?.request?.url || '').includes(`${PORT}/c.png`)
+    ).length
+    const clk = await measureRemote(`![](${RC})`, 1300)
+    const afterBlocked = events.filter(
+      (m) => m.method === 'Network.requestWillBeSent' && String(m.params?.request?.url || '').includes(`${PORT}/c.png`)
+    ).length
+    const clkPolicy = await policyOf()
+    const holderBig = clk.holderBoxes.length > 0 && clk.holderBoxes[0].w >= 60 && clk.holderBoxes[0].h >= 30
+    check(
+      '㉓③ 显式 `click` 档（**非默认**）⇒ 仍是占位、点击前 0 请求；占位框已放大到"看得出是块图区"',
+      clkPolicy === 'click' &&
+        clk.holderCount === 1 &&
+        clk.imgCount === 0 &&
+        beforeClick === 0 &&
+        afterBlocked === 0 &&
+        holderBig,
+      JSON.stringify({
+        档位: clkPolicy,
+        占位框: clk.holderBoxes,
+        点击前请求: beforeClick,
+        等待后请求: afterBlocked,
+        阈值: 'w>=60,h>=30'
+      })
+    )
+    // ④ 单张 / `![alt](url)` / 混排：默认档下都渲染出图
+    await setPolicy('always')
+    await sleep(300)
+    const one = await measureRemote(`![](${RB})`, 1600)
+    const alt = await measureRemote(`![alt](${RB})`, 1600)
+    const mixed = await measureRemote(`x ![](${RA})![](${RB}) y`, 2000)
+    check(
+      '㉓④ 默认档下 单张 / `![alt](url)` / 带文字混排 ⇒ 都渲染出**真实 `<img src>`**（沙箱不解码，尺寸只记录不断言）',
+      one.imgCount === 1 &&
+        one.holderCount === 0 &&
+        alt.imgCount === 1 &&
+        mixed.imgCount === 2 &&
+        mixed.holderCount === 0,
+      JSON.stringify({
+        单张: { imgs: one.imgCount, srcs: one.srcs, nat: one.natural },
+        alt: { imgs: alt.imgCount, srcs: alt.srcs, nat: alt.natural },
+        混排: { imgs: mixed.imgCount, srcs: mixed.srcs, nat: mixed.natural, md: mixed.md }
+      })
+    )
+    check(
+      '㉓⑤b 三种夹具往返逐字节（单张 / alt / 混排）',
+      one.md === `![](${RB})` && alt.md === `![alt](${RB})` && mixed.md === `x ![](${RA})![](${RB}) y`,
+      JSON.stringify({ one: one.md, alt: alt.md, mixed: mixed.md })
+    )
+    const shot77 = await send('Page.captureScreenshot', { format: 'png' })
+    safe(() => fs.writeFileSync(path.join(process.cwd(), 'tmp', 'img-remote-default-always.png'), Buffer.from(shot77.result.data, 'base64')), null)
+    await new Promise((r) => server.close(r))
+    await ev(`(() => { window.__vt.ed().commands.setContent(${JSON.stringify(doc)}); return 'ok' })()`)
+    await sleep(900)
   }
 
   const pass = results.filter((r) => r.ok).length

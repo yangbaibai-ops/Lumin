@@ -288,7 +288,7 @@
     "historyMaxAge": "快照保留时长",
     "historyDays": "{days} 天",
     "remoteImages": "远程图片",
-    "remoteImagesHint": "默认不自动加载（点一下才加载，保护隐私）",
+    "remoteImagesHint": "打开文档时自动加载（与 Typora 一致）；想「不点不外联」请选「点击后加载」",
     "nativeMenuBar": "顶部菜单栏",
     "syncScroll": "分屏同步滚动",
     "codeLineNumbers": "代码块行号",

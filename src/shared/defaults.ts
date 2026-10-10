@@ -65,11 +65,13 @@ export const defaultSettings: AppSettings = {
   toolbarItems: [...DEFAULT_TOOLBAR_ITEMS],
   /**
    * 远程图片（`![](https://…)`）的加载策略（自查报告 H2）：
-   *   `'click'`（默认）＝ 先挡成占位、点一下才加载 —— 打开别人的笔记不会自动外联（隐私）；
-   *   `'always'` ＝ 旧行为，直接加载。
-   * 见 `src/renderer/src/lib/remoteImages.ts`；导出 HTML 用的是真实 src，不受此设置影响。
+   *   `'always'`（**第七十七轮起默认**）＝ 打开文档就直接加载，与 Typora 一致
+   *                （用户实测口径：Typora 打开就能看到图，占位框让人以为"什么都没有"）；
+   *   `'click'`  ＝ 先挡成占位、点一下才加载 —— 想要"隐私优先、不点不外联"的用户在设置里选它。
+   * 两条分支都保留（实现见 `src/renderer/src/lib/remoteImages.ts`）；
+   * 导出 HTML 用的是真实 src，不受此设置影响。
    */
-  remoteImages: 'click' as 'click' | 'always',
+  remoteImages: 'always' as 'click' | 'always',
   sidebarVisible: true,
   sidebarWidth: 264,
   /**

@@ -288,7 +288,7 @@
     "historyMaxAge": "Keep snapshots for",
     "historyDays": "{days} days",
     "remoteImages": "Remote images",
-    "remoteImagesHint": "Do not load automatically (click to load; protects privacy)",
+    "remoteImagesHint": "Load automatically when a document opens (same as Typora); choose 'Load on click' to stay offline until you click",
     "nativeMenuBar": "Top menu bar",
     "syncScroll": "Synchronized scrolling in split view",
     "codeLineNumbers": "Code block line numbers",
