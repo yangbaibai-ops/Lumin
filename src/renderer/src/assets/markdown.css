@@ -285,6 +285,34 @@ ormal，只影响这种段落 */
   vertical-align: middle;
   margin: 0;
 }
+/* ── 第八十二轮：一段里**不止一个**裸 `<img …>` widget ⇒ 行内并排 ─────────────────
+   紧邻的 `<img A /><img B />` 现在各自渲染出 widget（`isImgOnlyRawHtml` + 按标签逐个产出图片源），
+   但装饰的 inline 判定可能把其中一个按块级渲染（各占一行）。这里按"这一段确实有两个 widget"
+   兜底：都行内块 + 垂直居中；间隙沿用下面那条 `.img-widget ~ .img-widget` 规则（只在两者之间）。
+   ⚠️ 必须用**后代**选择器（不能用 `p > .img-widget`）：纯两标签时，每个源码会被行内标记那套
+   包进各自的 `span[data-md-html]` 里 ⇒ widget 的父元素可能是那个 span 而不是 p（实测过）。
+   单图段落不受影响（`:has` 守卫要求"两个 widget 互为兄弟"这种结构在段里出现）。 */
+.md-preview p:has(.img-widget ~ .img-widget) .img-widget {
+  display: inline-block;
+  vertical-align: middle;
+}
+/* 第八十二轮：装饰阶段给"这一段不止一张图"打的类（首帧就有）——
+   把段内空白策略改回 normal（否则 `break-spaces` 会把两图之间的换行当换行符、拆成两行），
+   并强制所有 widget 行内并排（纯两标签时每个源码会被包进各自的 `span[data-md-html]`，
+   widget 的父元素不一定是 p ⇒ 只用兄弟选择器会漏）。 */
+.md-preview p.img-side-by-side {
+  white-space: normal;
+}
+.md-preview p.img-side-by-side .img-widget {
+  display: inline-block;
+  vertical-align: middle;
+}
+/* 同段多图时的**间隙**：两个 widget 可能不在同一层（一个在 `span[data-md-html]` 里、
+   另一个是 p 的直属子节点），`~` 兄弟选择器跨不过去 ⇒ 用"不是它所在父元素第一个孩子"
+   给后面那张留空隙（只加在两者之间，不外扩到最后一张后面……若需严格"零外扩"可再细化）。 */
+.md-preview p.img-side-by-side .img-widget:not(:first-child) {
+  margin-inline-start: 0.6em;
+}
 /* 原始 HTML 图片（`<img …>` 走 MdHtml 原文透传）由 imageToolbar 的 widget 画出来：
    独占一行时是块级容器（居中）；**行内上下文里保持行内**（见下面 `--inline`） */
 .md-preview .img-widget {

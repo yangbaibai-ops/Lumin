@@ -55,6 +55,20 @@ export function isRawImgHtml(text: string): boolean {
   return RAW_IMG_RE.test(text.trim())
 }
 
+/**
+ * 第八十二轮：这段原文 HTML 是不是**只由 `<img …>` 标签组成**（标签之间允许空白，≥1 个）。
+ * 为什么需要它：`<img A /><img B />` 紧邻时，markdown-it 会给出**一个** `htmlBlock`（独立成行）
+ * 或**一个**文本节点（行内），PM 还会把相邻同 mark 的文本合并 ⇒ "整段就是一个 `<img …>`"
+ * （单标签）的判据**失配**，于是整段只命中 `img-src-incomplete`（只显示源码、不渲染图）。
+ * 归一化阶段用它把这种段落认下来（→ 段落 + 原文文本），再由 `collectImgSources`
+ * **按标签逐个**产出图片源。
+ */
+export function isImgOnlyRawHtml(text: string): boolean {
+  const t = text.trim()
+  if (!t || !/<img\b/i.test(t)) return false
+  return t.replace(/<img\b[^>]*\/?>/gi, '').trim() === ''
+}
+
 /** 这段文本是不是"整段就是一个 markdown 图片语法"（`![alt](url)`） */
 export function isMdImgSource(text: string): boolean {
   return MD_IMG_RE.test(text.trim())
@@ -180,20 +194,46 @@ export function collectImgSources(state: EditorState): ImgSource[] {
       })
       return false
     }
-    if (node.isText && isImgSourceText(node.text ?? '')) {
+    if (node.isText) {
       const raw = (node.text ?? '').trim()
-      const parsed = parseImgSourceText(raw)
-      if (!parsed) return false
-      out.push({
-        kind: 'raw',
-        from: pos,
-        to: pos + node.nodeSize,
-        src: parsed.src,
-        alt: parsed.alt,
-        zoom: parsed.zoom,
-        markdown: raw
-      })
-      return false
+      /**
+       * 第八十二轮：**多个** `<img …>` 标签挤在同一个文本节点里（PM 把相邻同 mark 的文本合并了）
+       * ⇒ 按**标签边界**逐个产出图片源（子范围 = 该标签在文本里的偏移），
+       * 于是每个标签各自命中"整段是一个 `<img …>`"的 widget 渲染 ⇒ 两张并排。
+       * 文档**一个字节都不动**（不做拆分、不做替换）⇒ 往返逐字节、天然幂等、不进 undo。
+       */
+      if (isImgOnlyRawHtml(raw)) {
+        const re = /<img\b[^>]*\/?>/gi
+        let m: RegExpExecArray | null
+        while ((m = re.exec(node.text ?? '')) !== null) {
+          const parsed = parseImgSourceText(m[0])
+          if (!parsed) continue
+          out.push({
+            kind: 'raw',
+            from: pos + m.index,
+            to: pos + m.index + m[0].length,
+            src: parsed.src,
+            alt: parsed.alt,
+            zoom: parsed.zoom,
+            markdown: m[0]
+          })
+        }
+        return false
+      }
+      if (isImgSourceText(raw)) {
+        const parsed = parseImgSourceText(raw)
+        if (!parsed) return false
+        out.push({
+          kind: 'raw',
+          from: pos,
+          to: pos + node.nodeSize,
+          src: parsed.src,
+          alt: parsed.alt,
+          zoom: parsed.zoom,
+          markdown: raw
+        })
+        return false
+      }
     }
     return true
   })
@@ -340,14 +380,25 @@ export function imgIsInline(state: EditorState, img: ImgSource): boolean {
   parent.forEach((child, offset) => {
     const childFrom = base + offset
     const childTo = childFrom + child.nodeSize
-    // 跳过"这张图自己"；同一段里**别的**图片算"别的内容"（第六十五轮：两张相邻 ⇒ 按行内并排处理）
-    if (childFrom <= img.from && img.to <= childTo) return
-    if (child.isText) {
-      const t = (child.text ?? '').trim()
-      // ⚠️ 图片**自己的**那段源码文本不算"别的内容"（第六十二轮：`![alt](url)` 形态也要认，
-      //    否则节点转文本之后会被判成"行内混排"，图片就从居中变居左 —— 用户报的跳跃）
-      if (!t || isImgSourceText(t)) return
+    const mine = childFrom <= img.from && img.to <= childTo
+    if (!child.isText) {
+      if (!mine) others += 1
+      return
     }
+    const t = (child.text ?? '').trim()
+    if (!t) return
+    if (mine) {
+      /**
+       * 第八十二轮：**同一个文本节点里挤了多个 `<img …>` 标签**（PM 合并了相邻同 mark 文本）
+       * ⇒ 对这个节点来说"还有别的图片"就是**别的内容** ⇒ 两张按**行内并排**处理（不再各自居中）。
+       * 图片**自己独占**一个节点时不算（第六十二轮的坑：否则节点转文本后会被判成行内混排、
+       * 图片从居中变居左，用户看到跳跃）。
+       */
+      const tags = t.match(/<img\b[^>]*\/?>/gi)
+      if (tags && tags.length >= 2) others += 1
+      return
+    }
+    // 别的文本节点：空的/纯空白不算；**别的图片**（单标签或 `![alt](url)`）算"别的内容"
     others += 1
   })
   return others > 0
@@ -505,7 +556,8 @@ export const ImageSourceUi = Extension.create({
           next.doc.descendants((node, pos) => {
             if (node.type.name !== 'htmlBlock') return true
             const src = String(node.attrs.source ?? '').trim()
-            if (!isRawImgHtml(src)) return true
+            // 第八十二轮：**多个** <img …> 标签合成一段的 htmlBlock 也要认（否则整段只显示源码）
+            if (!isImgOnlyRawHtml(src)) return true
             hits.push(pos)
             return false
           })
@@ -624,6 +676,16 @@ export const ImageSourceUi = Extension.create({
                 return
               }
               const inside = imgs.filter((i) => i.from > from && i.to < to)
+              /**
+               * 第八十二轮：这一段里**不止一张图**（紧邻的多个 <img …>）⇒ 打一个类，
+               * 让 CSS 把白空策略改回 normal 并强制所有 widget 行内并排（+ 间隙）。
+               * 为什么需要：段内空白是 reak-spaces（保留换行），夹在两张图之间的换行会被
+               * 当成换行符 ⇒ 两图被拆到两行（实测：纯两标签夹具 215px 宽的两图上下排）。
+               */
+              if (inside.length >= 2) {
+                decos.push(Decoration.node(from, to, { class: 'img-side-by-side' }))
+                return
+              }
               if (inside.length !== 1) return
               // "这一段只有这一张图" ⇔ 它不是行内混排（同一判据，避免两处逻辑漂移）
               if (!imgIsInline(state, inside[0])) {
@@ -728,6 +790,13 @@ export const ImageSourceUi = Extension.create({
               if (!node.isText) return true
               const t = node.text ?? ''
               if (!t || isImgSourceText(t)) return true
+              /**
+               * 第八十三轮：**只由 `<img …>` 标签组成的多标签原文**是**合法**的（每一张都会渲染），
+               * 不能算"改坏" —— 否则整段会被挂上 `.img-src-incomplete`，那层包装把源码文本
+               * 一起留在行内流里（实测：`span.md-html` 宽 924、跨两行），把第二个 widget
+               * 挤到下一行去（㉕③ 的真因之一）。
+               */
+              if (isImgOnlyRawHtml(t)) return true
               if (!/^\s*!?\[?\s*(<img|!\[)/i.test(t)) return true
               decos.push(
                 Decoration.inline(pos, pos + node.nodeSize, {

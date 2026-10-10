@@ -770,7 +770,8 @@ const doc = MD.split('PLACE_A')
     await send('Input.dispatchMouseEvent', { type: 'mousePressed', x: pt73.x, y: pt73.y, button: 'left', clickCount: 1 })
     await sleep(150)
     const leaked2 = await anchor()
-    await sleep(1200)
+    // 后台节流：Electron 窗口被遮挡时定时器/帧循环都会被推迟（浏览器语义）⇒ 观测窗口放宽到 2.6s
+    await sleep(2600)
     const afterTtl = await anchor()
     check(
       '⑲① 按下图片但**没有 mouseup** ⇒ `pendingClick` 必须被清理（诊断锚 `data-img-pending` 回到空串；失焦与到期两条路径）',
@@ -2712,6 +2713,172 @@ const doc = MD.split('PLACE_A')
       '㉔④ 非激活时标识符仍然**隐藏**（点别处 ⇒ count:0，且文档逐字节不变）',
       hidden80.count === 0 && hidden80.md === BLOCK_FIX,
       JSON.stringify(hidden80)
+    )
+    await ev(`(() => { window.__vt.ed().commands.setContent(${JSON.stringify(doc)}); return 'ok' })()`)
+    await sleep(900)
+  }
+
+  // ═══ 第八十二轮：**紧邻的两个裸 `<img …>` 标签**必须渲染成两张并排的图 ═══════════════
+  {
+    const IMG_A = 'https://assets.699pic.com/public/img95/photo/50465/4467.jpg_wh860.jpg'
+    const IMG_B = 'https://assets.699pic.com/public/img95/photo/50465/4467.jpg_wh860.jpg'
+    const PAIR_RAW = `<img src="${IMG_A}" style="zoom:25%;" /><img src="${IMG_B}" style="zoom:25%;" />`
+    const MIX_RAW = `x ${PAIR_RAW} y`
+    const probeRaw = async (md) => {
+      await ev(`(() => { window.__vt.ed().commands.setContent(${JSON.stringify(md)}); return 'ok' })()`)
+      await sleep(500)
+      /**
+       * ⚠️ 第八十三轮：**夹具归一化** —— 把光标挪到文档末尾再量。
+       * 否则 `setContent` 后的默认光标常落在 pos 1，正好压在第一个源码源上 ⇒
+       * 按既有契约（空光标在边界即显示，⑳⑥）它会被显示出来，那条长 URL 文本占满一整行、
+       * 把第二张图挤到下一行 —— 那是"边界光标即显示"的既定行为，与"并排"无关。
+       */
+      await ev(`(() => {
+        const v = window.__vt.ed().view
+        const end = v.state.doc.content.size
+        const Sel = v.state.selection.constructor
+        void end
+        // 用**文档最开头**（pos 0）：它在所有内容之前 ⇒ 两个源都不与它相交 ⇒ 都保持隐藏。
+        // （用 end - 1 会落在最后一个源**内部**，反而把那一个显示出来 —— 实测踩过。）
+        v.dispatch(v.state.tr.setSelection(Sel.create(v.state.doc, 0)))
+        return 'ok'
+      })()`)
+      await sleep(500)
+      return json(`(() => {
+        const root = document.querySelector('.ProseMirror')
+        const p = root ? root.querySelector('p') : null
+        const imgs = root ? [...root.querySelectorAll('img')] : []
+        const widgets = root ? [...root.querySelectorAll('[data-img-widget]')] : []
+        const hold = root ? [...root.querySelectorAll('[data-remote-src]')] : []
+        const texts = []
+        const w = document.createTreeWalker(root, NodeFilter.SHOW_TEXT)
+        let n
+        while ((n = w.nextNode())) {
+          const t = (n.textContent || '').trim()
+          if (t) texts.push({ head: t.slice(0, 60), len: t.length })
+        }
+        const boxes = imgs.filter((im) => im.getBoundingClientRect().width > 0).map((im) => {
+          const r = im.getBoundingClientRect()
+          return { left: Math.round(r.left), right: Math.round(r.right), top: Math.round(r.top), w: Math.round(r.width) }
+        })
+        return {
+          md: window.__vt.ed().storage.markdown.getMarkdown(),
+          imgCount: imgs.length,
+          widgetCount: widgets.length,
+          holderCount: hold.length,
+          incomplete: root ? root.querySelectorAll('.img-src-incomplete').length : 0,
+          texts,
+          boxes,
+          gap: boxes.length >= 2 ? boxes[1].left - boxes[0].right : null,
+          sameRow: boxes.length >= 2 ? Math.abs(boxes[0].top - boxes[1].top) <= 1 : null,
+          pHtml: p ? p.innerHTML.slice(0, 220) : null,
+          widgets: widgets.map((w) => ({
+            cls: w.className,
+            inline: w.getAttribute('data-img-inline'),
+            parent: w.parentElement ? w.parentElement.tagName.toLowerCase() : null,
+            sameParentAsFirst: widgets.length > 1 && w.parentElement === widgets[0].parentElement
+          })),
+          paraCount: root ? root.querySelectorAll('p').length : 0,
+          hiddenCount: root ? root.querySelectorAll('.img-src-marker-hidden').length : 0,
+          hiddenRects: [...(root ? root.querySelectorAll('.img-src-marker-hidden') : [])].map((el) => ({
+            display: getComputedStyle(el).display,
+            w: Math.round(el.getBoundingClientRect().width),
+            rects: el.getClientRects().length
+          })),
+          revealedCount: root ? root.querySelectorAll('[data-img-revealed]').length : 0,
+          /** 第八十三轮：**逐层**几何（谁把第二个 widget 推到下一行？） */
+          layers: (() => {
+            const info = (el, tag) => {
+              const cs = getComputedStyle(el)
+              const rs = [...el.getClientRects()].filter((r) => r.width > 0 || r.height > 0)
+              return {
+                tag: tag || el.tagName.toLowerCase(),
+                cls: (el.className || '').toString().slice(0, 40),
+                display: cs.display,
+                ws: cs.whiteSpace,
+                w: Math.round(el.getBoundingClientRect().width),
+                top: Math.round(rs.length ? rs[0].top : el.getBoundingClientRect().top),
+                rects: rs.length
+              }
+            }
+            const out = []
+            if (!p) return out
+            out.push(info(p, 'p'))
+            ;[...p.childNodes].forEach((n) => {
+              if (n.nodeType === 3) {
+                out.push({ tag: 'text', text: JSON.stringify((n.textContent || '').slice(0, 16)), rects: -1 })
+                return
+              }
+              const el = n
+              out.push(info(el))
+              const w = el.matches && el.matches('.img-widget') ? el : el.querySelector && el.querySelector('.img-widget')
+              if (w) {
+                out.push(info(w, '  widget'))
+                const im = w.querySelector('img')
+                if (im) out.push(info(im, '    img'))
+              }
+            })
+            return out
+          })(),
+          blocks: (() => {
+            const out = []
+            window.__vt.ed().view.state.doc.forEach((b) => out.push(b.type.name + ':' + b.childCount))
+            return out
+          })()
+        }
+      })()`)
+    }
+    const pairPure = await probeRaw(PAIR_RAW)
+    const rendered = (r) => r.imgCount + r.widgetCount + r.holderCount
+    check(
+      '㉕① 用户那行（紧邻两个**完整**裸 `<img …>`，解析入口）⇒ 渲染出**两个图片**（红=整段源码文本）',
+      rendered(pairPure) >= 2 && pairPure.md === PAIR_RAW,
+      JSON.stringify(pairPure)
+    )
+    const pairMix = await probeRaw(MIX_RAW)
+    check(
+      '㉕② 同一行前后带文字（`x <img A><img B> y`）⇒ 同样渲染出两个图片',
+      rendered(pairMix) >= 2 && pairMix.md === MIX_RAW,
+      JSON.stringify(pairMix)
+    )
+    check(
+      '㉕③ 两张紧邻的裸图**同一行并排**（top 差 ≤1、img1.right < img2.left）且**中间有空隙**（>0）',
+      pairPure.boxes.length >= 2 &&
+        pairPure.sameRow === true &&
+        pairPure.boxes[0].right < pairPure.boxes[1].left &&
+        pairPure.gap > 0,
+      JSON.stringify({ boxes: pairPure.boxes, sameRow: pairPure.sameRow, gap: pairPure.gap })
+    )
+    check(
+      '㉕④ 往返**逐字节**（纯两标签 / 带文字两标签，`style="zoom:25%;" />` 原样写回）',
+      pairPure.md === PAIR_RAW && pairMix.md === MIX_RAW,
+      JSON.stringify({ 纯: pairPure.md, 带文字: pairMix.md, 期望纯: PAIR_RAW, 期望带文字: MIX_RAW })
+    )
+    // ⑤ 幂等：连续两次触发归一化（各一次 docChanged 事务）⇒ 结构与节点数不再变化
+    const idem = await json(`(() => {
+      const v = window.__vt.ed().view
+      const shape = () => {
+        const out = []
+        v.state.doc.forEach((b) => {
+          const kids = []
+          b.forEach((c) => kids.push(c.type.name))
+          out.push(b.type.name + '[' + kids.join(',') + ']')
+        })
+        return out.join(' | ')
+      }
+      const before = shape()
+      const p = v.state.doc.resolve(1)
+      void p
+      v.dispatch(v.state.tr.insertText('', 1, 1))
+      const mid = shape()
+      v.dispatch(v.state.tr.insertText('', 1, 1))
+      const after = shape()
+      return { before, mid, after, 稳定: mid === after }
+    })()`)
+    check(
+      '㉕⑤ **幂等**：连续触发归一化 ⇒ 结构不再变化（给前后结构）',
+      idem.稳定 === true,
+      JSON.stringify(idem)
     )
     await ev(`(() => { window.__vt.ed().commands.setContent(${JSON.stringify(doc)}); return 'ok' })()`)
     await sleep(900)
