@@ -700,6 +700,16 @@ export const ImageSourceUi = Extension.create({
             mousedown(view, event) {
               pendingClick = null
               /**
+               * 第七十一轮（用户报障：标识符"根本无法编辑和选中"）：**已经显示出来的标识符文本**
+               * 必须走原生文本行为（放光标、拖选、输入）。此前这里对"按在图片源码范围内"的按下
+               * **一律** `preventDefault` + `return true` ⇒ 标识符文本上的拖选也被吞掉
+               * （实测：在标识符内部拖动 ⇒ `from==to`、`empty:true`，选区根本没起来）。
+               * 现收窄为：**按在标识符文本上一律放行**（返回 false，交给 PM/浏览器），
+               * 其余仍走"坐标 → 落在图片源码范围内 ⇒ 记 pendingClick"的老判据。
+               */
+              const target = event.target as HTMLElement | null
+              if (target?.closest?.('[data-img-revealed]')) return false
+              /**
                * 第六十八轮：不再靠 DOM 身份（`nodeDOM(pos) === imgEl` / `posAtDOM`）判断
                * "点到的是不是某张图" —— PM 会重建 DOM，身份比较不稳（上一轮 ⑬b 就是栽在这）。
                * 改成**坐标 → 文档位置 → 落在哪个图片源的范围里**：两种形态（图片节点 / 原文文本）

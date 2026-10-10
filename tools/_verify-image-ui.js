@@ -260,6 +260,134 @@ const doc = MD.split('PLACE_A')
     await sleep(900)
   }
 
+  // ═══ 第七十一轮：标识符必须是**真正文**（点进去能编辑、能拖选、能复制）═══════════
+  {
+    const INLINE = `前文 <img src="${PNG_B}" style="zoom:100%;" /> 后文`
+    const revealText = async () => {
+      const r = await json(`(() => {
+        const p = document.querySelector('.ProseMirror p')
+        const im = p ? p.querySelector('img') : null
+        if (!im) return null
+        const b = im.getBoundingClientRect()
+        return { x: Math.round(b.left + b.width / 2), y: Math.round(b.top + b.height / 2) }
+      })()`)
+      await send('Input.dispatchMouseEvent', { type: 'mousePressed', x: r.x, y: r.y, button: 'left', clickCount: 1 })
+      await send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: r.x, y: r.y, button: 'left', clickCount: 1 })
+      await sleep(500)
+    }
+    const markerPoint = (ratio) =>
+      json(`(() => {
+        const el = document.querySelector('.ProseMirror [data-img-revealed]')
+        if (!el) return null
+        const rs = [...el.getClientRects()].filter((r) => r.width > 2)
+        const r = rs.length ? rs[0] : el.getBoundingClientRect()
+        return { x: Math.round(r.left + r.width * ${ratio}), y: Math.round(r.top + r.height / 2), w: Math.round(r.width) }
+      })()`)
+    // —— 初始状态（未先点图片）：先只做一次"点图片显示"，进入"已显示"态供 ①/② 用
+    await ev(`(() => { window.__vt.ed().commands.setContent(${JSON.stringify(INLINE)}); return 'ok' })()`)
+    await sleep(900)
+    await revealText()
+    const revealed = await json(`(() => {
+      const el = document.querySelector('.ProseMirror [data-img-revealed]')
+      return { has: !!el, text: el ? el.textContent : null }
+    })()`)
+    // ① 在标识符文本中部单击 ⇒ 光标落进其中（empty）⇒ 输入 X ⇒ 文档文本变化
+    const mid = await markerPoint(0.5)
+    await send('Input.dispatchMouseEvent', { type: 'mousePressed', x: mid.x, y: mid.y, button: 'left', clickCount: 1 })
+    await send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: mid.x, y: mid.y, button: 'left', clickCount: 1 })
+    await sleep(400)
+    const caret = await json(`(() => {
+      const v = window.__vt.ed().view
+      const el = document.querySelector('.ProseMirror [data-img-revealed]')
+      const before = v.state.doc.textBetween(0, v.state.doc.content.size, '\\n')
+      return { from: v.state.selection.from, to: v.state.selection.to, empty: v.state.selection.empty, docLen: before.length, doc: before.slice(0, 60) }
+    })()`)
+    const beforeType = await ev(`(() => { const v = window.__vt.ed().view; return v.state.doc.textBetween(0, v.state.doc.content.size, '\\n') })()`)
+    await send('Input.insertText', { text: 'X' })
+    await sleep(350)
+    const afterType = await ev(`(() => { const v = window.__vt.ed().view; return v.state.doc.textBetween(0, v.state.doc.content.size, '\\n') })()`)
+    check(
+      '⑰① 标识符是**真正文**：单击其中部 ⇒ 光标落进文本内（empty），输入 `X` ⇒ 文档文本随之变化',
+      revealed.has === true && caret.empty === true && afterType.length === beforeType.length + 1 && afterType.includes('X'),
+      JSON.stringify({ revealed, caret, 输入前: beforeType.slice(0, 40), 输入后: afterType.slice(0, 40) })
+    )
+    // ② 标识符内部拖选 ⇒ 选区覆盖被拖过的那段（①中输入 X 已把源码改坏 ⇒ 先复位 + 重新显示）
+    await ev(`(() => { window.__vt.ed().commands.setContent(${JSON.stringify(INLINE)}); return 'ok' })()`)
+    await sleep(900)
+    await revealText()
+    const p1 = await markerPoint(0.15)
+    const p2 = await markerPoint(0.55)
+    await send('Input.dispatchMouseEvent', { type: 'mousePressed', x: p1.x, y: p1.y, button: 'left', clickCount: 1 })
+    for (let i = 1; i <= 5; i++) {
+      await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: Math.round(p1.x + ((p2.x - p1.x) * i) / 5), y: p1.y, button: 'left', buttons: 1 })
+      await sleep(35)
+    }
+    await send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: p2.x, y: p2.y, button: 'left', clickCount: 1 })
+    await sleep(400)
+    const innerSel = await json(`(() => {
+      const v = window.__vt.ed().view
+      const { from, to } = v.state.selection
+      return { from, to, empty: v.state.selection.empty, text: v.state.doc.textBetween(from, to, '\\n').slice(0, 40) }
+    })()`)
+    check(
+      '⑰② 在标识符**内部**拖选 ⇒ 选区覆盖被拖过的那段（from<to 且有文本片段）',
+      innerSel.empty === false && innerSel.to > innerSel.from && (innerSel.text || '').length > 0,
+      JSON.stringify(innerSel)
+    )
+    // ③ 初始状态（未先点图片）：从图片**前**文字拖到图片**后**文字 ⇒ 连续覆盖标识符原文
+    await ev(`(() => { window.__vt.ed().commands.setContent(${JSON.stringify(INLINE)}); return 'ok' })()`)
+    await sleep(900)
+    const span3 = await json(`(() => {
+      const p = document.querySelector('.ProseMirror p')
+      const im = p ? p.querySelector('img') : null
+      const pr = p ? p.getBoundingClientRect() : null
+      if (!im || !pr) return null
+      const b = im.getBoundingClientRect()
+      return {
+        from: { x: Math.round(pr.left + 3), y: Math.round(b.top + b.height / 2) },
+        to: { x: Math.round(b.right + 26), y: Math.round(b.top + b.height / 2) }
+      }
+    })()`)
+    await send('Input.dispatchMouseEvent', { type: 'mousePressed', x: span3.from.x, y: span3.from.y, button: 'left', clickCount: 1 })
+    for (let i = 1; i <= 8; i++) {
+      await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: Math.round(span3.from.x + ((span3.to.x - span3.from.x) * i) / 8), y: span3.from.y, button: 'left', buttons: 1 })
+      await sleep(35)
+    }
+    await send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: span3.to.x, y: span3.to.y, button: 'left', clickCount: 1 })
+    await sleep(450)
+    const acrossSel = await json(`(() => {
+      const v = window.__vt.ed().view
+      const { from, to } = v.state.selection
+      return { from, to, empty: v.state.selection.empty, text: v.state.doc.textBetween(from, to, '\\n').slice(0, 60) }
+    })()`)
+    check(
+      '⑰③ 初始态（未先点图片）从图片前文字拖到图片后文字 ⇒ 选区**连续覆盖**标识符原文',
+      acrossSel.empty === false && (acrossSel.text || '').includes('<img'),
+      JSON.stringify({ 拖拽: span3, 选区: acrossSel })
+    )
+    // ④ Ctrl+C 内容含标识符原文
+    await ev(`(() => {
+      window.__copied71 = null
+      document.addEventListener('copy', (e) => { try { window.__copied71 = e.clipboardData.getData('text/plain') } catch { window.__copied71 = 'ERR' } }, { once: true })
+      return 'ok'
+    })()`)
+    if (await requireFocus('⑰④ Ctrl+C')) {
+      await send('Input.dispatchKeyEvent', { type: 'rawKeyDown', windowsVirtualKeyCode: 67, key: 'c', code: 'KeyC', modifiers: 2 })
+      await send('Input.dispatchKeyEvent', { type: 'keyUp', windowsVirtualKeyCode: 67, key: 'c', code: 'KeyC', modifiers: 2 })
+      await sleep(300)
+    }
+    const copied71 = await ev(`window.__copied71`)
+    check(
+      '⑰④ `Ctrl+C` 复制到的内容包含标识符原文（`<img …>` / `![](…)`）',
+      typeof copied71 === 'string' && (copied71.includes('<img') || copied71.includes('![')),
+      JSON.stringify({ copied: typeof copied71 === 'string' ? copied71.slice(0, 90) : copied71 })
+    )
+    const shot71 = await send('Page.captureScreenshot', { format: 'png' })
+    safe(() => fs.writeFileSync(path.join(process.cwd(), 'tmp', 'img-marker-editable.png'), Buffer.from(shot71.result.data, 'base64')), null)
+    await ev(`(() => { window.__vt.ed().commands.setContent(${JSON.stringify(doc)}); return 'ok' })()`)
+    await sleep(900)
+  }
+
   // ── ① 居中 ──
   const center = await json(`(() => {
     const el = document.querySelector('.ProseMirror p img')
