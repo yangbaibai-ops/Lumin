@@ -421,6 +421,47 @@ export const ImageSourceUi = Extension.create({
     return [
       new Plugin<{ from: number | null }>({
         key: KEY,
+        /**
+         * ─── 规范形态：**同一份 Markdown ⇒ 同一份文档模型**（第六十三轮，核心）──────────
+         *
+         * markdown-it 把**独立成行**的 `<img …>` 判成 `html_block`（`HtmlBlock` 原子），
+         * 行内的判成 `html_inline`（`MdHtml` mark 文本）—— 于是"解析既有文件"与
+         * "打字/回车"两条入口会落成**两种模型**，同一份源码渲染不同（用户实测）。
+         *
+         * 这里在**归一化阶段**钉死规范形态：`HtmlBlock` 里"整段就是一个 `<img …>`"的，
+         * 一律换成**普通段落 + 行内原文文本**（与打字路径一致），渲染交给既有装饰
+         * （独占一行 ⇒ 居中；段里还有字 ⇒ 行内随文）。
+         *   * 幂等：换完就没有 `htmlBlock` 形态的图片了，再跑一次是 no-op；
+         *   * 逐字节不变：内容只 `trimEnd()`（markdown-it 的 html_block 会带结尾换行，
+         *     而两个相邻段落的序列化本来就补一个空行 ⇒ 输出字节相同）；
+         *   * 不进 undo 栈（`addToHistory: false`）：它只是"同一份源码的另一种表示"。
+         */
+        appendTransaction(trs, _old, next) {
+          if (!trs.some((t) => t.docChanged)) return null
+          const hits: number[] = []
+          next.doc.descendants((node, pos) => {
+            if (node.type.name !== 'htmlBlock') return true
+            const src = String(node.attrs.source ?? '').trim()
+            if (!isRawImgHtml(src)) return true
+            hits.push(pos)
+            return false
+          })
+          if (!hits.length) return null
+          const mdMark = next.schema.marks.mdHtml
+          const para = next.schema.nodes.paragraph
+          const tr = next.tr
+          // 从后往前替换：前面的位置不受影响
+          for (const pos of hits.reverse()) {
+            const node = next.doc.nodeAt(pos)
+            if (!node || node.type.name !== 'htmlBlock') continue
+            const src = String(node.attrs.source ?? '').trim()
+            const text = next.schema.text(src, mdMark ? [mdMark.create()] : undefined)
+            tr.replaceWith(pos, pos + node.nodeSize, para.create(null, text))
+          }
+          if (!tr.docChanged) return null
+          tr.setMeta('addToHistory', false)
+          return tr
+        },
         state: {
           /** `editing`：点开图片时是"选中态"（浅灰底）；光标落进标识符开始编辑 ⇒ true（无底） */
           init: () => ({ from: null, editing: false }),

@@ -308,24 +308,41 @@ const doc = MD.split('PLACE_A')
   const rawRange = await json(`(() => {
     const view = window.__vt.ed().view
     let range = null
+    const shape = []
+    view.state.doc.forEach((n, off) => {
+      shape.push({ i: shape.length, pos: off, type: n.type.name, head: String(n.textContent || '').slice(0, 18) })
+    })
     view.state.doc.descendants((node, pos) => {
-      if (node.isText && /^|^<img\\b/i.test(node.text || '') && /<img\\b/i.test(node.text || '')) range = { from: pos, to: pos + node.nodeSize }
+      // 认**这一张**（PNG_B 那张）的原文：P1 已经被第 ④ 步改成 PNG_A 的 <img …> 了，
+      // 按"第一个 <img"会取错对象（第六十三轮实测踩过）
+      if (node.isText && /<img\\b/i.test(node.text || '') && (node.text || '').indexOf(${JSON.stringify(PNG_B)}) >= 0) {
+        if (!range) range = { from: pos, to: pos + node.nodeSize }
+        shape.push({ pos, text: String(node.text || '').slice(0, 24) })
+      }
       return true
     })
-    return range || { from: -1, to: -1 }
+    return { range: range || { from: -1, to: -1 }, shape }
   })()`)
-  await ev(`(() => { window.__vt.ed().commands.setTextSelection({ from: ${rawRange.from + 2}, to: ${rawRange.to - 2} }); return 'ok' })()`)
+  const rr = rawRange.range
+  await ev(`(() => { window.__vt.ed().commands.setTextSelection({ from: ${rr.from + 2}, to: ${rr.to - 2} }); return 'ok' })()`)
   await sleep(400)
   const D = await state()
   check(
     '②D 选区边界**切进**构造内部 ⇒ 显示，且源码 == 文档里那段原文',
     D.hasLine && D.lineKind === 'raw' && D.lineValue === `<img src="${PNG_B}" style="zoom:75%;" />`,
-    JSON.stringify({ rawRange, hasLine: D.hasLine, kind: D.lineKind, text: (D.lineValue || '').slice(0, 40) })
+    JSON.stringify({
+      rawRange: rr,
+      docShape: rawRange.shape,
+      hasLine: D.hasLine,
+      kind: D.lineKind,
+      text: (D.lineValue || '').slice(0, 60),
+      want: `<img src="${PNG_B}" style="zoom:75%;" />`.slice(0, 60)
+    })
   )
-  await ev(`(() => { window.__vt.ed().commands.setTextSelection({ from: ${rawRange.from - 1}, to: ${rawRange.to + 1} }); return 'ok' })()`)
+  await ev(`(() => { window.__vt.ed().commands.setTextSelection({ from: ${rr.from - 1}, to: ${rr.to + 1} }); return 'ok' })()`)
   await sleep(400)
   const C = await state()
-  check('②C 选区**完全包住**构造 ⇒ 不显示', C.hasLine === false, JSON.stringify({ rawRange, hasLine: C.hasLine }))
+  check('②C 选区**完全包住**构造 ⇒ 不显示', C.hasLine === false, JSON.stringify({ rawRange: rr, hasLine: C.hasLine }))
 
   // ── ⑤ 远程图片：无占位图标/文案；未点击不发请求 ──
   const guard = await json(`(() => {
@@ -1004,6 +1021,190 @@ const doc = MD.split('PLACE_A')
       标识符: markerBox
     })
   )
+
+  // ═══ 第六十三轮 ══════════════════════════════════════════════════════════════
+  // ⑨ 布局口径：独占一行的图片**居中**；段里还有别的文字 ⇒ 行内随文（不居中）
+  {
+    await resetDoc()
+    const layout = await json(`(() => {
+      const host = document.querySelector('[data-editor-kernel]') || document.querySelector('.ProseMirror')
+      const h = host.getBoundingClientRect()
+      const out = []
+      for (const p of document.querySelectorAll('.ProseMirror p, .ProseMirror pre[data-md-htmlblock]')) {
+        const im = p.querySelector('img')
+        if (!im) continue
+        const r = im.getBoundingClientRect()
+        out.push({
+          tag: p.tagName.toLowerCase(),
+          onlyImage: (p.textContent || '').trim().length === 0,
+          display: getComputedStyle(im).display,
+          left: Math.round(r.left),
+          right: Math.round(r.right),
+          width: Math.round(r.width),
+          offset: Math.round(Math.abs(r.left + r.width / 2 - (h.left + h.width / 2)))
+        })
+      }
+      return out
+    })()`)
+    const block = layout.find((x) => x.onlyImage)
+    const inline = layout.find((x) => !x.onlyImage)
+    check(
+      '⑨ 独占一行 ⇒ **居中**（offset ≈ 0）；段里还有文字 ⇒ **行内**（不居中）',
+      !!block && !!inline && block.offset <= 4 && inline.offset > 8,
+      JSON.stringify({ 独占一行: block, 行内: inline, 全部: layout })
+    )
+    const shotL = await send('Page.captureScreenshot', { format: 'png' })
+    safe(() => fs.writeFileSync(path.join(process.cwd(), 'tmp', 'img-inline-vs-block.png'), Buffer.from(shotL.result.data, 'base64')), null)
+  }
+
+  // ⑩ 连续点两张图片：标识符不许闪烁（切换只增删一次、无中间回摆）
+  {
+    await resetDoc()
+    await clickWidget(PNG_A, 'first')
+    await sleep(450)
+    const beforeFlick = await json(`(() => ({
+      revealed: document.querySelectorAll('.ProseMirror [data-img-revealed]').length,
+      text: (document.querySelector('.ProseMirror [data-img-revealed]') || {}).textContent?.slice(0, 12) || null
+    }))()`)
+    await ev(`(() => {
+      const seen = []
+      const mo = new MutationObserver((muts) => {
+        for (const m of muts) {
+          for (const n of m.addedNodes) {
+            if (n.nodeType === 1 && (n.matches?.('[data-img-revealed]') || n.querySelector?.('[data-img-revealed]'))) seen.push('+' + String(n.textContent || '').slice(0, 10))
+          }
+          for (const n of m.removedNodes) {
+            if (n.nodeType === 1 && (n.matches?.('[data-img-revealed]') || n.querySelector?.('[data-img-revealed]'))) seen.push('-R ' + String(n.textContent || '').slice(0, 10))
+          }
+          // PM 常常**复用**同一个 span、只改 class ⇒ 必须计入；区分"显隐"(R) 与"编辑态"(E)
+          if (m.type === 'attributes' && m.attributeName === 'class' && m.target.nodeType === 1) {
+            const el = m.target.matches?.('[data-img-revealed]')
+              ? m.target
+              : m.target.querySelector?.('[data-img-revealed]')
+            if (el) {
+              const on = el.classList.contains('img-src-revealed')
+              const editing = el.classList.contains('img-src-revealed--editing')
+              const key = (on ? 'R' : 'r') + (editing ? 'E' : 'e')
+              const label = key + ' ' + String(el.textContent || '').slice(0, 8)
+              if (seen[seen.length - 1] !== label) seen.push(label)
+            }
+          }
+        }
+      })
+      mo.observe(document.querySelector('.ProseMirror'), { childList: true, subtree: true, attributes: true, attributeFilter: ['class', 'data-img-revealed'] })
+      window.__flickStop = () => { mo.disconnect(); return seen }
+      return 'ok'
+    })()`)
+    await clickWidget(PNG_B, 'first') // A 显形中，紧接着点 B
+    await sleep(700)
+    const seq = (await ev(`window.__flickStop()`)) || []
+    const finalState = await json(`(() => {
+      const els = [...document.querySelectorAll('.ProseMirror [data-img-revealed]')]
+      return {
+        count: els.length,
+        texts: els.map((e) => String(e.textContent || '').slice(0, 14)),
+        from: els.map((e) => e.getAttribute('data-img-from'))
+      }
+    })()`)
+    const revealChanges = seq.filter((x) => x.startsWith('R') || x.startsWith('r')).length
+    check(
+      '⑩ 连点两张图片：标识符切换**只增删一次**（无中间回摆），最终只剩 B 的标识符',
+      revealChanges <= 3 && finalState.count === 1 && finalState.texts[0]?.indexOf('<img') === 0,
+      JSON.stringify({ 点击A后: beforeFlick, 抖动序列: seq, 显隐变更次数: revealChanges, 最终态: finalState })
+    )
+  }
+
+  // ⑪ 同一份源码必须同样渲染：路径 X（整段解析）vs 路径 Y（打字 + 回车）
+  const pathSnapshot = async () => {
+    await clickWidget(PNG_B, 'first')
+    await sleep(500)
+    const marker = await measureMarker()
+    const img = await imgRectOf(PNG_B, 'first')
+    const dom = await json(`(() => {
+      const el = document.querySelector('.ProseMirror [data-img-revealed]')
+      const w = el ? el.closest('[data-img-widget]') : null
+      const host = document.querySelector('[data-editor-kernel]') || document.querySelector('.ProseMirror')
+      const h = host.getBoundingClientRect()
+      const im = w ? w.querySelector('img') : null
+      const ir = im ? im.getBoundingClientRect() : null
+      return {
+        markerTag: el ? el.tagName.toLowerCase() : null,
+        markerParent: el && el.parentElement ? el.parentElement.tagName.toLowerCase() : null,
+        markerCls: el ? [...el.classList].sort() : null,
+        widgetCls: w ? [...w.classList].sort() : null,
+        widgetInline: w ? w.getAttribute('data-img-inline') : null,
+        imgDisplay: im ? getComputedStyle(im).display : null,
+        offset: ir ? Math.round(Math.abs(ir.left + ir.width / 2 - (h.left + h.width / 2))) : null,
+        paraText: el && el.closest('p') ? el.closest('p').textContent.trim().slice(0, 24) : null,
+        hasPre: !!document.querySelector('.ProseMirror pre[data-md-htmlblock]')
+      }
+    })()`)
+    return { md: await ev(`window.__vt.ed().storage.markdown.getMarkdown()`), marker, img, dom }
+  }
+  {
+    const X = `这是行内图片\n\n<img src="${PNG_B}" style="zoom:100%;" />`
+    const Yinline = `这是行内图片<img src="${PNG_B}" style="zoom:100%;" />`
+    await ev(`(() => { window.__vt.ed().commands.setContent(${JSON.stringify(X)}); return 'ok' })()`)
+    await sleep(900)
+    const snapX = await pathSnapshot()
+    await ev(`(() => { window.__vt.ed().commands.setContent(${JSON.stringify(Yinline)}); return 'ok' })()`)
+    await sleep(900)
+    const caret = await json(`(() => {
+      const v = window.__vt.ed().view
+      const p = document.querySelector('.ProseMirror p')
+      const t = p && p.firstChild
+      const at = t && t.textContent ? v.posAtDOM(t, t.textContent.length) : 7
+      const Sel = window.__vt.ed().state.selection.constructor
+      v.dispatch(v.state.tr.setSelection(Sel.create(v.state.doc, at)))
+      return at
+    })()`)
+    if (await requireFocus('⑪ 回车路径')) {
+      for (let i = 0; i < 2; i++) {
+        await send('Input.dispatchKeyEvent', { type: 'rawKeyDown', windowsVirtualKeyCode: 13, key: 'Enter', code: 'Enter' })
+        await send('Input.dispatchKeyEvent', { type: 'keyUp', windowsVirtualKeyCode: 13, key: 'Enter', code: 'Enter' })
+        await sleep(300)
+      }
+    }
+    await sleep(500)
+    const snapY = await pathSnapshot()
+    const sameMd = snapX.md === snapY.md
+    const sameDom =
+      JSON.stringify(snapX.dom) === JSON.stringify(snapY.dom) &&
+      JSON.stringify(snapX.marker?.props) === JSON.stringify(snapY.marker?.props) &&
+      JSON.stringify(snapX.marker?.cls) === JSON.stringify(snapY.marker?.cls)
+    // ⚠️ 路径 Y 用**两次回车**（父口径）会多出一个**空段落**（Markdown 里不可见：连续空行会被
+    //    折叠掉），于是绝对 top 会差一行。这里断言"渲染等价"用**相对几何**（标识符↔图片的
+    //    相对位置），绝对 top 的差值如实报出来。
+    const relX = { dt: snapX.marker?.markerTop - snapX.img?.top, dr: snapX.marker?.fragRight - snapX.img?.left }
+    const relY = { dt: snapY.marker?.markerTop - snapY.img?.top, dr: snapY.marker?.fragRight - snapY.img?.left }
+    const sameRel = JSON.stringify(relX) === JSON.stringify(relY)
+    const sameImgShape =
+      snapX.img?.ok === snapY.img?.ok &&
+      snapX.img?.width === snapY.img?.width &&
+      snapX.img?.left === snapY.img?.left &&
+      snapX.img?.right === snapY.img?.right &&
+      snapX.img?.inline === snapY.img?.inline
+    check(
+      '⑪ 同一份源码 ⇒ 同一模型/同一渲染（X 解析 vs Y 打字+回车：Markdown 逐字节、DOM/class、9 项样式、图片渲染、标识符↔图片相对几何全等）',
+      sameMd && sameDom && sameImgShape && sameRel,
+      JSON.stringify({
+        mdX: snapX.md,
+        mdY: snapY.md,
+        domX: snapX.dom,
+        domY: snapY.dom,
+        imgX: snapX.img,
+        imgY: snapY.img,
+        styleX: snapX.marker?.props,
+        styleY: snapY.marker?.props,
+        relX,
+        relY,
+        相同: { md: sameMd, dom: sameDom, imgShape: sameImgShape, rel: sameRel },
+        光标位: caret
+      })
+    )
+    const shotXY = await send('Page.captureScreenshot', { format: 'png' })
+    safe(() => fs.writeFileSync(path.join(process.cwd(), 'tmp', 'img-pathXY.png'), Buffer.from(shotXY.result.data, 'base64')), null)
+  }
 
   const pass = results.filter((r) => r.ok).length
   console.log(`TOTAL ${results.length} PASS ${pass} FAIL ${results.length - pass}`)
