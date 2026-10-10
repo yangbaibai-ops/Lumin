@@ -378,6 +378,15 @@ ormal，只影响这种段落 */
 .md-preview .img-src-revealed--block {
   display: block;
 }
+/* 第八十轮（用户口径）：「图片**单独占据一行**时，点击后出现的标识符要**顶格**，不在正中间」。
+   标识符是 display:block、宽度=段落宽 ⇒ 父段落那条 `text-align: center`（img-block-center）
+   会把**盒子里的每一行文字**居中（实测首行 left=776，而正文内容列左边缘=320）。
+   这里只把它**自己盒子里文字**的对齐改回左侧 ⇒ 顶格；
+   图片的居中来自 `img { display:block; margin-inline:auto }`，与本条无关 ⇒ 图片仍居中。
+   行内那一档没有 `--block` 类 ⇒ 不受影响。 */
+.md-preview .img-src-revealed--block {
+  text-align: left;
+}
 /* 语法被改坏（例如退格删掉结尾 `>`）：它不再是图片，但仍是正文 —— 只关拼写检查 */
 .md-preview .img-src-incomplete {
   vertical-align: top;

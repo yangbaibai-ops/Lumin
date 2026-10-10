@@ -2617,6 +2617,106 @@ const doc = MD.split('PLACE_A')
     await sleep(900)
   }
 
+  // ═══ 第八十轮：**独占一行图片**的标识符要"**顶格**"（左对齐正文内容列），图片仍居中 ═══════
+  {
+    const BLOCK_FIX = `第一行正文\n\n![](${PNG_B})`
+    await ev(`(() => { window.__vt.ed().commands.setContent(${JSON.stringify(BLOCK_FIX)}); return 'ok' })()`)
+    await sleep(950)
+    const blockPt = await json(`(() => {
+      const ps = [...document.querySelectorAll('.ProseMirror p')]
+      const p2 = ps[1]
+      const im = p2 ? p2.querySelector('img') : null
+      if (!im) return null
+      const r = im.getBoundingClientRect()
+      return { x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2) }
+    })()`)
+    await click(blockPt)
+    await sleep(500)
+    const flush = await json(`(() => {
+      const ps = [...document.querySelectorAll('.ProseMirror p')]
+      const p1 = ps[0]
+      const p2 = ps[1]
+      const marker = document.querySelector('.ProseMirror [data-img-revealed]')
+      if (!p1 || !p2 || !marker) return { ok: false, hasMarker: !!marker }
+      let base = null
+      const w = document.createTreeWalker(p1, NodeFilter.SHOW_TEXT)
+      const t = w.nextNode()
+      if (t) {
+        const rg = document.createRange()
+        rg.selectNodeContents(t)
+        const rs = [...rg.getClientRects()].filter((r) => r.width > 0)
+        if (rs.length) base = rs[0]
+      }
+      const mrs = [...marker.getClientRects()].filter((r) => r.width > 0)
+      const first = mrs.length ? mrs[0] : marker.getBoundingClientRect()
+      /**
+       * ⚠️ 标识符是 display:block ⇒ 它的 **box** 恒等于段落宽度（左边缘总是 320），
+       *    真正会被"居中"影响的是**盒子里的文字**。所以必须用 Range 取**首个字符**的行盒
+       *    （这也正是用户看到的"标识符跑到正中间"）。
+       */
+      const mw = document.createTreeWalker(marker, NodeFilter.SHOW_TEXT)
+      const mt = mw.nextNode()
+      let mFirst = null
+      if (mt && (mt.textContent || '').length) {
+        const rg = document.createRange()
+        rg.setStart(mt, 0)
+        rg.setEnd(mt, 1)
+        mFirst = rg.getBoundingClientRect()
+      }
+      const im = p2.querySelector('img')
+      const ir = im ? im.getBoundingClientRect() : null
+      const pr = p2.getBoundingClientRect()
+      return {
+        ok: true,
+        markerCls: marker.className,
+        markerLeft: Math.round(first.left),
+        markerRight: Math.round(first.right),
+        markerWidth: Math.round(first.width),
+        markerLines: mrs.length,
+        markerTextLeft: mFirst ? Math.round(mFirst.left) : null,
+        deltaTextLeft: base && mFirst ? Math.round(mFirst.left - base.left) : null,
+        baselineLeft: base ? Math.round(base.left) : null,
+        deltaLeft: base ? Math.round(first.left - base.left) : null,
+        paraLeft: Math.round(pr.left),
+        paraRight: Math.round(pr.right),
+        paraCenter: Math.round((pr.left + pr.right) / 2),
+        imgCenter: ir ? Math.round((ir.left + ir.right) / 2) : null,
+        imgOffset: ir ? Math.round(Math.abs((ir.left + ir.right) / 2 - (pr.left + pr.right) / 2)) : null
+      }
+    })()`)
+    check(
+      '㉔① 独占一行图片点开后：标识符**顶格**（首行 left ≈ 正文内容列左边缘，±2px）',
+      flush.ok === true && flush.deltaTextLeft !== null && Math.abs(flush.deltaTextLeft) <= 2,
+      JSON.stringify(flush)
+    )
+    check(
+      '㉔② 同一次测量里**图片仍居中**（图片中心 ≈ 段落中心，offset ≤2px）',
+      flush.ok === true && flush.imgOffset !== null && flush.imgOffset <= 2,
+      JSON.stringify({ imgCenter: flush.imgCenter, paraCenter: flush.paraCenter, imgOffset: flush.imgOffset })
+    )
+    const shot80 = await send('Page.captureScreenshot', { format: 'png' })
+    safe(() => fs.writeFileSync(path.join(process.cwd(), 'tmp', 'img-block-marker-flush.png'), Buffer.from(shot80.result.data, 'base64')), null)
+    // ④ 非激活隐藏：点别处 ⇒ count 0（文档逐字节不变）
+    const away80 = await json(`(() => {
+      const p = document.querySelector('.ProseMirror p')
+      const r = p.getBoundingClientRect()
+      return { x: Math.round(r.left + 4), y: Math.round(r.top + 4) }
+    })()`)
+    await click(away80)
+    await sleep(450)
+    const hidden80 = await json(`(() => ({
+      count: document.querySelectorAll('.ProseMirror [data-img-revealed]').length,
+      md: window.__vt.ed().storage.markdown.getMarkdown()
+    }))()`)
+    check(
+      '㉔④ 非激活时标识符仍然**隐藏**（点别处 ⇒ count:0，且文档逐字节不变）',
+      hidden80.count === 0 && hidden80.md === BLOCK_FIX,
+      JSON.stringify(hidden80)
+    )
+    await ev(`(() => { window.__vt.ed().commands.setContent(${JSON.stringify(doc)}); return 'ok' })()`)
+    await sleep(900)
+  }
+
   const pass = results.filter((r) => r.ok).length
   console.log(`TOTAL ${results.length} PASS ${pass} FAIL ${results.length - pass}`)
   console.log(`--- ${pass}/${results.length} PASS`)
