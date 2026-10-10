@@ -249,6 +249,27 @@
   margin: 0.4em auto;
   margin-inline: auto;
 }
+/* ── 相邻图片**并排**（第六十五轮用户口径）──────────────────────────────────────
+   `![](a)![](b)` 紧邻（无分隔）应**同行并排**，不是各自一行各自居中：
+     * `:not(:only-child)` 只影响"这一段不止一张图"的情况 ⇒ 独占一行仍走上面的 `:only-child`（居中不变）；
+     * 间隙只在**两张图之间**（`+`）用外边距，不在外侧撑开 ⇒ 不影响居中的判定；
+       仓库里没有通用间距令牌（`theme.css` 只有颜色/圆角一类），这里用可覆盖的
+       `--img-side-gap` + 相对单位（不硬编码像素）。 */
+.md-preview p > img:not(:only-child) {
+  display: inline-block;
+  vertical-align: top;
+  margin-inline: 0;
+}
+.md-preview p > img + img {
+  /* 仓库里**没有**通用间距令牌（theme.css 只有颜色/圆角一类）⇒ 用相对字号，不硬编码像素 */
+  margin-inline-start: 0.6em;
+}
+/* 段内的空白策略是 reak-spaces（会保留换行 ⇒ 把两张相邻图片拆成两行）
+   ⇒ 段里不止一张图时改回 
+ormal，只影响这种段落 */
+.md-preview p:has(> img:not(:only-child)) {
+  white-space: normal;
+}
 /* 原始 HTML 图片（`<img …>` 走 MdHtml 原文透传）由 imageToolbar 的 widget 画出来：
    独占一行时是块级容器（居中）；**行内上下文里保持行内**（见下面 `--inline`） */
 .md-preview .img-widget {
@@ -293,8 +314,10 @@
 /* 激活时的"标识符"：它**就是文档里的正文文本**（不是浮层）——
    排版完全跟正文一致（不动 font/color），只多两件事：
      * 点开图片 ⇒ **浅灰底**（选中态，用既有令牌 `--code-bg`）；
-     * 光标落进这段文本开始编辑 ⇒ 底色撤掉（Typora 同观感）；
-     * 与图片同行时贴该行顶部（`vertical-align: top`，只影响含图片那一行的行盒）。
+     * 光标落进这段文本开始编辑 ⇒ 底色撤掉（Typora 同观感）。
+   ⚠️ 第六十五轮（用户两次报障后的定稿）：标识符**完全按正文排版** ——
+   与段落同宽、左对齐、长 URL 自然折行、**不做宽度截断也不做窄盒居中**。
+   唯一与普通文字不同的是基线对齐方式，见下面 `vertical-align` 的说明。
    ⚠️ 第六十一轮：**独立成行的 `<img>`** 走的是 `htmlBlock` 原子节点，DOM 是
    `<pre data-md-htmlblock class="md-htmlblock">`（见 lib/editor/htmlPassthrough.ts:77），
    于是会被 `.md-preview pre`（本文件 :174，代码块样式：等宽字族/内边距/边框/底色）命中 ——
@@ -320,7 +343,17 @@
   white-space: normal;
   overflow-wrap: anywhere;
   overflow: visible;
-  vertical-align: top;
+  /* ⚠️ 第六十五轮：`top` → `baseline`（本轮**唯一**的样式改动）。
+     为什么必须改：`top` 把标识符**整块**顶到行盒顶端，而含图片那一行的行盒会被图片撑高，
+     于是标识符的第一行跑到正文上方、和正文脱节（用户原话：「标识符为了在顶部显示，
+     和正文脱节严重」）。`baseline` 让标识符**第一行的基线**落在正文那一行的基线上 ——
+     与任何普通正文文本完全一致；折行出来的后续行按正常行高往下排。
+     ⚠️ 不要再改回 `top`，也不要换成 `middle`：`middle` 只对单行盒子成立，
+     标识符一旦折行就会以文字行为中心上下对称铺开、压到上一行去。
+     ⚠️ 也**不要**给标识符加 `max-width`/`text-overflow`/`white-space: nowrap` 做"压成一行"：
+     那会把源码截断（用户报障「显示不全」）并让它在窄盒里居中、与正文排版不一致。
+     长 src（data: URI）会排成多行 —— 那是"按正文显示完整源码"的必然结果，不是缺陷。 */
+  vertical-align: baseline;
 }
 .md-preview .img-src-revealed--editing {
   background-color: transparent;

@@ -340,10 +340,15 @@ export function commitImgSource(view: EditorView, img: ImgSource, text: string):
  */
 export function imgIsInline(state: EditorState, img: ImgSource): boolean {
   if (state.doc.nodeAt(img.from)?.type.name === 'htmlBlock') return false
-  const parent = state.doc.resolve(img.from).parent
+  const $pos = state.doc.resolve(img.from)
+  const parent = $pos.parent
+  const base = $pos.start()
   let others = 0
-  parent.forEach((child) => {
-    if (child.type.name === 'image' || child.type.name === 'htmlBlock') return
+  parent.forEach((child, offset) => {
+    const childFrom = base + offset
+    const childTo = childFrom + child.nodeSize
+    // 跳过"这张图自己"；同一段里**别的**图片算"别的内容"（第六十五轮：两张相邻 ⇒ 按行内并排处理）
+    if (childFrom <= img.from && img.to <= childTo) return
     if (child.isText) {
       const t = (child.text ?? '').trim()
       // ⚠️ 图片**自己的**那段源码文本不算"别的内容"（第六十二轮：`![alt](url)` 形态也要认，
@@ -375,8 +380,8 @@ export const ImageSourceUi = Extension.create({
 
   addProseMirrorPlugins() {
     let bar: HTMLElement | null = null
-    /** 这次按下是否落在图片上：mouseup 时据此把光标按回标识符**之前**（否则会被判成"正在编辑"） */
-    let clickOnImage = false
+    /** 这一次按下的落点（第六十五轮：激活挪到 mouseup，按下时什么都不做） */
+    let pendingClick: { kind: 'raw' | 'node'; from: number } | null = null
 
     const ensureBar = (view: EditorView): HTMLElement => {
       if (bar && bar.isConnected) return bar
@@ -470,6 +475,8 @@ export const ImageSourceUi = Extension.create({
           /** `editing`：点开图片时是"选中态"（浅灰底）；光标落进标识符开始编辑 ⇒ true（无底） */
           init: () => ({ from: null, editing: false, openedAt: 0 }),
           apply(tr, value, _old, next) {
+            // 第六十五轮：按住鼠标期间**不许**因选区变化而打开（用户口径："松开鼠标后才出现"）
+            if (pendingClick && !tr.getMeta(KEY)) return value
             const meta = tr.getMeta(KEY) as { from: number | null; editing?: boolean } | undefined
             if (meta) {
               const sameOpen = meta.from != null && meta.from === value.from
@@ -641,65 +648,66 @@ export const ImageSourceUi = Extension.create({
             return false
           },
           handleDOMEvents: {
+            /**
+             * 第六十五轮用户口径：「点击图片**松开鼠标后**才会出现标识符」。
+             * 所以按下时**什么都不做**（只记下"这一击落在哪张图上"并阻止浏览器抢光标），
+             * 真正的激活（打开 + 需要时"节点 → 原文文本"）挪到 `mouseup` 的**同一事务**里，
+             * 于是既满足"松开才出现"，又保持上一轮的"一次单击 = 一次可见状态跃迁"。
+             */
             mousedown(view, event) {
-              clickOnImage = true
+              pendingClick = null
               const target = event.target as HTMLElement | null
               const widget = target?.closest?.('[data-img-widget]') as HTMLElement | null
-              /**
-               * 第六十四轮：点**图片节点**（`![]()`）也要**一次事务**完成 —— 旧路径是
-               * "点一下先只改 meta（此时源码文本还不存在、屏幕上什么都不会变）、再由 `sync()`
-               * 的 microtask 补一次转换事务"，于是单击出现**两次可见状态变化**（单击就闪）。
-               * 这里把"节点转文本 + 落选区 + 打开"合并进同一事务，且选区落在文本**之前**
-               * （不在文本内部 ⇒ 不会误判成"正在编辑"而把底色撤掉）。
-               */
-              if (!widget) {
-                const imgEl = target?.closest?.('.ProseMirror img') as HTMLElement | null
-                if (!imgEl || imgEl.closest('[data-img-widget]')) return false
-                let pos = -1
-                try {
-                  pos = view.posAtDOM(imgEl, 0)
-                } catch {
-                  return false
-                }
-                const node = pos >= 0 ? view.state.doc.nodeAt(pos) : null
-                if (!node || node.type.name !== 'image') return false
-                const alt = String(node.attrs.alt ?? '')
-                const src = String(node.attrs.src ?? '')
-                const mdMark = view.state.schema.marks.mdHtml
-                const text = view.state.schema.text(
-                  alt ? `![${alt}](${src})` : `![](${src})`,
-                  mdMark ? [mdMark.create()] : undefined
-                )
-                const tr = view.state.tr.replaceWith(pos, pos + node.nodeSize, text)
-                tr.setSelection(TextSelection.create(tr.doc, pos))
-                tr.setMeta(KEY, { from: pos, editing: false })
-                view.dispatch(tr)
+              if (widget) {
+                const from = Number(widget.getAttribute('data-img-from'))
+                if (!Number.isFinite(from)) return false
+                if (!collectImgSources(view.state).some((i) => i.from === from)) return false
+                pendingClick = { kind: 'raw', from }
                 event.preventDefault()
                 return true
               }
-              const from = Number(widget.getAttribute('data-img-from'))
-              if (!Number.isFinite(from)) return false
-              /**
-               * 点图片 = "选中这张图"（Typora 的选中态）：只把 `from` 记进插件状态，
-               * 给标识符上浅灰底；**不**把光标塞进标识符文本 —— 那样会立刻算成"正在编辑"、
-               * 底色一闪就没。用户真正点进文本（光标落进那段）时才转编辑态。
-               */
-              const img = collectImgSources(view.state).find((i) => i.from === from)
-              if (!img) return false
-              view.dispatch(view.state.tr.setMeta(KEY, { from: img.from, editing: false }))
+              const imgEl = target?.closest?.('.ProseMirror img') as HTMLElement | null
+              if (!imgEl || imgEl.closest('[data-img-widget]')) return false
+              let pos = -1
+              try {
+                pos = view.posAtDOM(imgEl, 0)
+              } catch {
+                return false
+              }
+              if (pos < 0 || view.state.doc.nodeAt(pos)?.type.name !== 'image') return false
+              pendingClick = { kind: 'node', from: pos }
               event.preventDefault()
               return true
             },
             mouseup(view, event) {
-              if (!clickOnImage) return false
-              clickOnImage = false
-              const from = KEY.getState(view.state)?.from ?? null
-              if (from == null) return false
-              // 点图片=选中态：把光标按回标识符**之前**（不落进文本），底色稳定保持浅灰
-              const tr = view.state.tr
-                .setSelection(TextSelection.create(view.state.doc, from))
-                .setMeta(KEY, { from, editing: false })
-              view.dispatch(tr)
+              const pending = pendingClick
+              pendingClick = null
+              if (!pending) return false
+              const st = view.state
+              if (pending.kind === 'raw') {
+                const img = collectImgSources(st).find((i) => i.from === pending.from)
+                if (!img) return false
+                // 松开才"选中"（浅灰底）；光标按在标识符**之前** ⇒ 不会被判成"正在编辑"
+                const tr = st.tr
+                  .setSelection(TextSelection.create(st.doc, img.from))
+                  .setMeta(KEY, { from: img.from, editing: false })
+                view.dispatch(tr)
+              } else {
+                // 节点：同一事务里"转文本 + 落选区 + 打开"
+                const node = st.doc.nodeAt(pending.from)
+                if (!node || node.type.name !== 'image') return false
+                const alt = String(node.attrs.alt ?? '')
+                const src = String(node.attrs.src ?? '')
+                const mdMark = st.schema.marks.mdHtml
+                const text = st.schema.text(
+                  alt ? `![${alt}](${src})` : `![](${src})`,
+                  mdMark ? [mdMark.create()] : undefined
+                )
+                const tr = st.tr.replaceWith(pending.from, pending.from + node.nodeSize, text)
+                tr.setSelection(TextSelection.create(tr.doc, pending.from))
+                tr.setMeta(KEY, { from: pending.from, editing: false })
+                view.dispatch(tr)
+              }
               event.preventDefault()
               return true
             },
@@ -808,7 +816,7 @@ export const ImageSourceUi = Extension.create({
             // 节点形态（图片节点 / htmlBlock 原子）的标识符在正文里还不存在 ⇒ 这一刻归一成行内文本，
             // 之后它就能像文字一样被点开、被编辑（markdown 不变）。
             const at = editorView.state.doc.nodeAt(img.from)
-            if (img.kind === 'node' || at?.type.name === 'htmlBlock') {
+            if ((img.kind === 'node' || at?.type.name === 'htmlBlock') && !pendingClick) {
               hideBar()
               if (converting) return
               converting = true

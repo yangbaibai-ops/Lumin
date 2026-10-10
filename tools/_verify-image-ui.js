@@ -684,7 +684,7 @@ const doc = MD.split('PLACE_A')
     })
   )
 
-  // ③ 贴顶：与图片同一行的那一行贴顶；折行时其余行按正常行高
+  // ③ 同一水平线：标识符文字与正文同处一行（第六十五轮：不再贴行盒顶部）
   await ev(`(() => { window.__vt.ed().commands.setContent(${JSON.stringify(doc)}); return 'ok' })()`)
   await sleep(900)
   await click(inlinePt2)
@@ -709,9 +709,18 @@ const doc = MD.split('PLACE_A')
       diffCenter: Math.round(Math.abs(r0.top - (ir.top + ir.bottom) / 2))
     }
   })()`)
+  /**
+   * 第六十五轮口径：`vertical-align: top` → `baseline`（本轮唯一的样式改动）。
+   * `top` 把标识符**整块**顶到行盒顶端 —— 标识符比图片矮时就跑到图片顶部，
+   * 与同一行里的正文不在一条水平线上（用户原话：「标识符为了在顶部显示，和正文脱节严重」）。
+   * `baseline` 让标识符第一行的基线落在正文那一行的基线上，与普通正文完全一致。
+   * 不用 `middle`：它只对单行盒子成立，标识符一折行就会以文字行为中心上下铺开、压到上一行。
+   */
   check(
-    '③ 与图片**同一行**时源码文本贴顶（|top-imgTop| < |top-imgCenterY|，vertical-align: top）',
-    sameLineTop.ok && sameLineTop.verticalAlign === 'top' && sameLineTop.diffTop < sameLineTop.diffCenter,
+    '③ 与图片同一行时标识符**第一行**贴在该行上（vertical-align: baseline）',
+    sameLineTop.ok &&
+      sameLineTop.verticalAlign === 'baseline' &&
+      sameLineTop.diffTop < sameLineTop.diffCenter,
     JSON.stringify(sameLineTop)
   )
   const wrapDoc = doc.replace(
@@ -749,18 +758,97 @@ const doc = MD.split('PLACE_A')
       lineHeights: rects.slice(1).map((r, i) => Math.round(r.top - rects[i].top))
     }
   })()`)
-  const onlyBandTop =
+  /**
+   * ⚠️ 第六十五轮定稿（试错记录）：曾把标识符「压成一行 + 省略号」的窄盒，被用户否掉 ——
+   * 「源码有一个最大宽度，显示不全，只有在点击源码后才会全部出现，而且和正文布局排版不一致」。
+   * 所以标识符**按正文排版**：与段落同宽、左对齐、长 URL 自然折行、**完整显示**。
+   * 这里守住"折行但排版正常"：与图片同处一行的那一段贴住该行，其余行按正常行高。
+   */
+  const wrapOk =
     wrapInfo.ok &&
     wrapInfo.rectCount >= 2 &&
-    wrapInfo.verticalAlign === 'top' &&
+    wrapInfo.verticalAlign === 'baseline' &&
     wrapInfo.bandDiffImgTop != null &&
     wrapInfo.bandDiffImgTop <= 8 &&
     wrapInfo.lineHeights.every((h) => h >= 14)
   check(
-    '③b 折行时**只有与图片同处一行的那一行**贴顶（其余行按正常行高，未整块上移）',
-    onlyBandTop,
+    '③b 长 src 按正文折行：与图片同处一行的那一段贴住该行，其余行按正常行高（不整块上移）',
+    wrapOk,
     JSON.stringify(wrapInfo)
   )
+
+  // ③c **短标识符 + 高图**：标识符必须落在正文那一行上，而不是被顶到图片顶部（用户原报障）
+  {
+    const tallDoc = '文字 <img src="x.png" style="width:120px;height:120px;" /> 文字\n'
+    await ev(`(() => { window.__vt.ed().commands.setContent(${JSON.stringify(tallDoc)}); return 'ok' })()`)
+    await sleep(900)
+    const tallPt = await json(`(() => {
+      const im = document.querySelector('.ProseMirror img')
+      if (!im) return null
+      const r = im.getBoundingClientRect()
+      return { x: Math.round(r.left + 2), y: Math.round(r.top + 2) }
+    })()`)
+    await click(tallPt)
+    await sleep(500)
+    /** 量一次：标识符垂直中心 ↔ 同一段**正文文本**的垂直中心（差越小越"和正文一条线"） */
+    const measureTall = (force) =>
+      json(`(() => {
+        const el = document.querySelector('.ProseMirror [data-img-revealed]')
+        const p = el && el.closest('p')
+        if (!el || !p) return { ok: false }
+        // widget 里的 <img> 只继承 zoom，不继承源码的 width/height ⇒
+        // 这里直接改 DOM 把这张图撑高，才能造出"高图 + 短标识符"这一格
+        const im = p.querySelector('.ProseMirror img') || document.querySelector('.ProseMirror img')
+        if (im) { im.style.width = '120px'; im.style.height = '120px' }
+        if (${JSON.stringify(force)}) el.style.verticalAlign = 'top'
+        else el.style.verticalAlign = ''
+        const wk = document.createTreeWalker(p, NodeFilter.SHOW_TEXT)
+        let n = null
+        let textRect = null
+        while ((n = wk.nextNode())) {
+          if (!(n.textContent || '').trim()) continue
+          const rg = document.createRange()
+          rg.selectNodeContents(n)
+          const b = rg.getBoundingClientRect()
+          if (b.height > 0) { textRect = b; break }
+        }
+        const mr = el.getBoundingClientRect()
+        const ir = im ? im.getBoundingClientRect() : null
+        const lineH = Math.round(parseFloat(getComputedStyle(el).lineHeight))
+        const cs = getComputedStyle(el)
+        const markerCenter = Math.round((mr.top + mr.bottom) / 2)
+        const textCenter = textRect ? Math.round((textRect.top + textRect.bottom) / 2) : null
+        return {
+          ok: true,
+          markerCenter,
+          textCenter,
+          delta: textCenter == null ? null : Math.abs(markerCenter - textCenter),
+          markerTop: Math.round(mr.top),
+          imgTop: ir ? Math.round(ir.top) : null,
+          imgBottom: ir ? Math.round(ir.bottom) : null,
+          lineHeight: lineH,
+          verticalAlign: cs.verticalAlign
+        }
+      })()`)
+    const tallBase = await measureTall(false)
+    const tallTop = await measureTall(true)
+    check(
+      '③c 短标识符 + 高图：标识符落在**正文那一行**上（与正文垂直中心差 ≤ 一个行高），不在图片顶部',
+      tallBase.ok &&
+        tallBase.textCenter != null &&
+        tallBase.verticalAlign === 'baseline' &&
+        tallBase.imgBottom - tallBase.imgTop >= 100 &&
+        tallBase.delta <= tallBase.lineHeight,
+      JSON.stringify(tallBase)
+    )
+    // 反向对照：把 vertical-align 强行改回 top ⇒ 标识符必须**变差**（否则这一格没有区分度）
+    check(
+      '③d 反向对照：同一夹具下把 vertical-align 改回 `top` ⇒ 标识符被顶离正文那一行（差值变大）',
+      tallTop.ok && tallBase.ok && tallTop.delta != null && tallBase.delta != null &&
+        tallTop.delta > tallBase.delta,
+      JSON.stringify({ baseline: tallBase, forcedTop: tallTop })
+    )
+  }
   const shotM = await send('Page.captureScreenshot', { format: 'png' })
   safe(() => fs.writeFileSync(path.join(process.cwd(), 'tmp', 'img-marker-inline.png'), Buffer.from(shotM.result.data, 'base64')), null)
 
@@ -1323,6 +1411,166 @@ const doc = MD.split('PLACE_A')
       '⑫c 单击"`![]()` 图片节点"（激活要把它转成文本）：一次事务完成、无第二次可见状态变化',
       c.okSingle,
       JSON.stringify({ 序列: c.seq, 底色: c.bgs, 事务: c.tx, update: c.upd, 归一化命中: c.norm, 状态序列: c.states, 状态跃迁: c.stateTransitions, 增: c.adds, 删: c.removes, 同态重复: c.repeats, 来回跳: c.oscillates, 最终态: c.after })
+    )
+  }
+
+  // ═══ 第六十五轮 ══════════════════════════════════════════════════════════════
+  // ⑬ 标识符必须**松开鼠标后**才出现（按下期间计数为 0）
+  const pressSample = async (fixture, src, which) => {
+    await ev(`(() => { window.__vt.ed().commands.setContent(${JSON.stringify(fixture)}); return 'ok' })()`)
+    await sleep(900)
+    const pt = await json(`(() => {
+      const all = [...document.querySelectorAll('.ProseMirror img')].filter((im) => (im.getAttribute('src') || '') === ${JSON.stringify(src)})
+      const im = ${which === 'last' ? 'all[all.length - 1]' : 'all[0]'}
+      if (!im) return null
+      const r = im.getBoundingClientRect()
+      return { x: Math.round(r.left + Math.max(2, r.width / 2)), y: Math.round(r.top + Math.max(2, r.height / 2)) }
+    })()`)
+    const read = () =>
+      json(`(() => {
+        const els = [...document.querySelectorAll('.ProseMirror [data-img-revealed]')]
+        return { count: els.length, bg: els[0] ? getComputedStyle(els[0]).backgroundColor : null, open: document.querySelector('.ProseMirror')?.getAttribute('data-img-open') || null, pending: document.querySelector('.ProseMirror')?.getAttribute('data-img-pending') || null }
+      })()`)
+    const before = await read()
+    await send('Input.dispatchMouseEvent', { type: 'mousePressed', x: pt.x, y: pt.y, button: 'left', clickCount: 1 })
+    await sleep(150)
+    const during = await read()
+    await send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: pt.x, y: pt.y, button: 'left', clickCount: 1 })
+    await sleep(320)
+    const after = await read()
+    return { before, during, after }
+  }
+  {
+    const raw = await pressSample(doc, PNG_B, 'first')
+    check(
+      '⑬a 松开鼠标后标识符才出现（裸 `<img>`：按下 0、松开 1）',
+      raw.during.count === 0 && raw.after.count === 1 && raw.after.bg === 'rgb(241, 242, 245)',
+      JSON.stringify(raw)
+    )
+    const node = await pressSample(doc, PNG_A, 'first')
+    check(
+      '⑬b 松开鼠标后标识符才出现（`![]()` 节点：按下 0、松开 1）',
+      node.during.count === 0 && node.after.count === 1,
+      JSON.stringify(node)
+    )
+    const shotUp = await send('Page.captureScreenshot', { format: 'png' })
+    safe(() => fs.writeFileSync(path.join(process.cwd(), 'tmp', 'img-marker-after-mouseup.png'), Buffer.from(shotUp.result.data, 'base64')), null)
+  }
+
+  // ⑭ 并排：同段内相邻图片同行（top 相同、img1.right < img2.left）+ 中间有空隙
+  const sideBySide = async (fixture, label) => {
+    await ev(`(() => { window.__vt.ed().commands.setContent(${JSON.stringify(fixture)}); return 'ok' })()`)
+    await sleep(950)
+    const info = await json(`(() => {
+      const p = document.querySelector('.ProseMirror p')
+      if (!p) return { ok: false }
+      const ims = [...p.querySelectorAll('img')].filter((im) => im.getBoundingClientRect().width > 0)
+      if (ims.length < 2) return {
+        ok: false,
+        count: ims.length,
+        allImgs: [...p.querySelectorAll('img')].map((im) => ({ src: (im.getAttribute('src') || '').slice(0, 12), w: Math.round(im.getBoundingClientRect().width), display: getComputedStyle(im).display })),
+        widgets: document.querySelectorAll('[data-img-widget]').length,
+        html: p.innerHTML.slice(0, 300),
+        children: [...p.childNodes].map((n) => (n.nodeType === 1 ? n.tagName.toLowerCase() : 'text:' + JSON.stringify(String(n.textContent || '').slice(0, 12))))
+      }
+      const r = ims.map((im) => {
+        const b = im.getBoundingClientRect()
+        return { left: Math.round(b.left), right: Math.round(b.right), top: Math.round(b.top), width: Math.round(b.width) }
+      })
+      return {
+        ok: true,
+        count: ims.length,
+        a: r[0],
+        b: r[1],
+        gap: Math.round(r[1].left - r[0].right),
+        lineBoxes: p.getClientRects().length,
+        displays: ims.map((im) => getComputedStyle(im).display),
+        pHtml: p.innerHTML,
+        children: [...p.childNodes].map((n) => (n.nodeType === 1 ? n.tagName.toLowerCase() + (n.getAttribute('class') ? '.' + n.getAttribute('class') : '') : 'text:' + JSON.stringify(String(n.textContent || '').slice(0, 12)))),
+        pWidth: Math.round(p.getBoundingClientRect().width),
+        whiteSpace: getComputedStyle(p).whiteSpace,
+        blockShape: (() => { const v = window.__vt.ed().view; const out = []; v.state.doc.forEach((n) => out.push(n.type.name + ':' + n.childCount)); return out })()
+      }
+    })()`)
+    check(
+      `⑭ ${label}：两张相邻图片**同行并排**（top 差 ≤1、img1.right < img2.left、整段一个行盒）且**中间有空隙**（>0）`,
+      info.ok && Math.abs(info.a.top - info.b.top) <= 1 && info.a.right < info.b.left && info.gap > 0 && info.lineBoxes === 1,
+      JSON.stringify(info)
+    )
+    return info
+  }
+  {
+    await sideBySide(`![](${PNG_B})![](${PNG_B})`, '⑭a `![]()` 相邻')
+    await sideBySide(`<img src="${PNG_B}" style="zoom:100%;" /><img src="${PNG_B}" style="zoom:100%;" />`, '⑭b 裸 `<img>` 相邻')
+    const shot2 = await send('Page.captureScreenshot', { format: 'png' })
+    safe(() => fs.writeFileSync(path.join(process.cwd(), 'tmp', 'img-two-side-by-side.png'), Buffer.from(shot2.result.data, 'base64')), null)
+  }
+
+  // ⑮ 标识符是**真文本**：能拖选跨越、能 Ctrl+C、能 Delete
+  {
+    const fixture = `前文 <img src="${PNG_B}" style="zoom:100%;" /> 后文`
+    await ev(`(() => { window.__vt.ed().commands.setContent(${JSON.stringify(fixture)}); return 'ok' })()`)
+    await sleep(950)
+    const drag = await json(`(() => {
+      const p = document.querySelector('.ProseMirror p')
+      const im = p ? p.querySelector('img') : null
+      if (!im) return null
+      const r = im.getBoundingClientRect()
+      const pr = p.getBoundingClientRect()
+      return {
+        from: { x: Math.round(pr.left + 4), y: Math.round(r.top + r.height / 2) },
+        to: { x: Math.round(r.right + 30), y: Math.round(r.top + r.height / 2) }
+      }
+    })()`)
+    await send('Input.dispatchMouseEvent', { type: 'mousePressed', x: drag.from.x, y: drag.from.y, button: 'left', clickCount: 1 })
+    for (let i = 1; i <= 6; i++) {
+      const x = Math.round(drag.from.x + ((drag.to.x - drag.from.x) * i) / 6)
+      await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x, y: drag.from.y, button: 'left', buttons: 1 })
+      await sleep(40)
+    }
+    await send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: drag.to.x, y: drag.to.y, button: 'left', clickCount: 1 })
+    await sleep(450)
+    const sel = await json(`(() => {
+      const v = window.__vt.ed().view
+      const { from, to } = v.state.selection
+      return { from, to, empty: v.state.selection.empty, text: v.state.doc.textBetween(from, to, '\\n').slice(0, 120) }
+    })()`)
+    check(
+      '⑮① 拖选跨越图片 ⇒ 选区**连续覆盖**标识符原文（from/to 与片段）',
+      sel.empty === false && sel.text.indexOf('<img') >= 0,
+      JSON.stringify({ drag, selection: sel })
+    )
+    await ev(`(() => {
+      window.__copied = null
+      document.addEventListener('copy', (e) => { try { window.__copied = e.clipboardData.getData('text/plain') } catch { window.__copied = 'ERR' } }, { once: true })
+      return 'ok'
+    })()`)
+    const canKey2 = await requireFocus('⑮ Ctrl+C / Delete')
+    if (canKey2) {
+      await send('Input.dispatchKeyEvent', { type: 'rawKeyDown', windowsVirtualKeyCode: 67, key: 'c', code: 'KeyC', modifiers: 2 })
+      await send('Input.dispatchKeyEvent', { type: 'keyUp', windowsVirtualKeyCode: 67, key: 'c', code: 'KeyC', modifiers: 2 })
+      await sleep(350)
+    }
+    const copied = await ev(`window.__copied`)
+    check(
+      '⑮③ Ctrl+C 复制到的内容包含标识符原文',
+      canKey2 === false || (typeof copied === 'string' && copied.indexOf('<img') >= 0),
+      JSON.stringify({ copied: typeof copied === 'string' ? copied.slice(0, 120) : copied, 能注入按键: canKey2 })
+    )
+    const beforeDel2 = await json(`(() => ({ md: window.__vt.ed().storage.markdown.getMarkdown(), widgets: document.querySelectorAll('[data-img-widget]').length }))()`)
+    if (canKey2) {
+      await send('Input.dispatchKeyEvent', { type: 'rawKeyDown', windowsVirtualKeyCode: 46, key: 'Delete', code: 'Delete' })
+      await send('Input.dispatchKeyEvent', { type: 'keyUp', windowsVirtualKeyCode: 46, key: 'Delete', code: 'Delete' })
+      await sleep(500)
+    }
+    const afterDel2 = await json(`(() => {
+      const md = window.__vt.ed().storage.markdown.getMarkdown()
+      return { md, hasImg: md.indexOf('<img') >= 0, widgets: document.querySelectorAll('[data-img-widget]').length, text: (document.querySelector('.ProseMirror') || {}).textContent || '' }
+    })()`)
+    check(
+      '⑮② 选区含标识符时按 `Delete` ⇒ 标识符文本被删、图片随之消失（改坏即失效）',
+      canKey2 === false || (afterDel2.hasImg === false && afterDel2.text.indexOf('<img') < 0),
+      JSON.stringify({ 改动前: beforeDel2, 改动后: afterDel2, 能注入按键: canKey2 })
     )
   }
 
