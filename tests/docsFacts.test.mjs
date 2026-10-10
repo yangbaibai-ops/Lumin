@@ -21,18 +21,28 @@ const ROOT = path.join(here, '..')
 const README = fs.readFileSync(path.join(ROOT, 'README.md'), 'utf-8')
 const TOOLS_README = fs.readFileSync(path.join(ROOT, 'tools', 'README.md'), 'utf-8')
 
-test('docs：README 与 tools/README 的 facts 块与实测一致', () => {
+test('docs：对外 README 不含 HTML（发布页要求纯 Markdown 可解析）', () => {
+  /**
+   * 产品决定：本仓库只发布安装包、源码不开源 ⇒ `README.md` 是**给使用者看的发布页**，
+   * 要求**纯 Markdown**（不放 `<div align="center">` 这类 HTML，也不放 HTML 注释）。
+   * 工程账目（源码规模 / 套件数）一律留在 `tools/README.md` 的 facts 块里（下一条守着）。
+   */
+  assert.ok(!/<!--/.test(README), 'README 里不应出现 HTML 注释')
+  const tag = README.match(/<\/?[a-zA-Z][a-zA-Z0-9-]*(\s[^>]*)?\/?>/)
+  assert.equal(tag, null, `README 里不应出现 HTML 标签：${tag && tag[0]}`)
+})
+
+test('docs：tools/README 的 facts 块与实测一致', () => {
   const facts = require(path.join(ROOT, 'tools', 'doc-facts.js'))
-  const check = (file, text, rendered) => {
-    const a = text.indexOf(facts.BEGIN)
-    const b = text.indexOf(facts.END)
-    assert.ok(a >= 0 && b > a, `${file} 里没有 facts 标记块`)
-    const current = text.slice(a, b + facts.END.length)
-    assert.equal(current, rendered, `${file} 的 facts 块过期了 —— 跑 npm run docs:facts:write 重算`)
-  }
-  const f = facts.collectFacts()
-  check('README.md', README, facts.renderReadmeBlock(f))
-  check('tools/README.md', TOOLS_README, facts.renderToolsBlock(f))
+  const a = TOOLS_README.indexOf(facts.BEGIN)
+  const b = TOOLS_README.indexOf(facts.END)
+  assert.ok(a >= 0 && b > a, 'tools/README.md 里没有 facts 标记块')
+  const current = TOOLS_README.slice(a, b + facts.END.length)
+  assert.equal(
+    current,
+    facts.renderToolsBlock(facts.collectFacts()),
+    'tools/README.md 的 facts 块过期了 —— 跑 npm run docs:facts:write 重算'
+  )
 })
 
 test('docs：README 的 EXPECT 分类计数与 EXPECT.json 实测一致', () => {
@@ -45,12 +55,20 @@ test('docs：README 的 EXPECT 分类计数与 EXPECT.json 实测一致', () => 
     counts[v.class] += 1
   }
   for (const [cls, n] of Object.entries(counts)) {
-    assert.match(
-      README,
-      new RegExp(`${cls} ${n}\\b`),
-      `README 里应写着 \`${cls} ${n}\`（EXPECT.json 实测），否则会让人去找不存在的缺口`
-    )
+    /**
+     * 对外 README **不写工程账目**（发布页）；但**既然写了就必须对得上** ——
+     * 写错数字的后果是让人去找一个不存在的缺口（README 曾写 `lossy 8`，实测是 0）。
+     */
+    const m = README.match(new RegExp(`${cls} (\\d+)\\b`))
+    if (m) assert.equal(Number(m[1]), n, `README 写了 ${cls} ${m[1]}，实测是 ${cls} ${n}`)
   }
+  // 账目本身要有落脚处：工程文档（tools/README.md 的 facts 块由 doc-facts 生成）
+  assert.match(TOOLS_README, new RegExp(`exact ${counts.exact}\\b`), 'tools/README.md 应记录 exact 计数')
+  assert.match(
+    TOOLS_README,
+    new RegExp(`normalized ${counts.normalized}\\b`),
+    'tools/README.md 应记录 normalized 计数'
+  )
 })
 
 test('docs：package.json 的版本在 CHANGELOG 里有对应标题', () => {

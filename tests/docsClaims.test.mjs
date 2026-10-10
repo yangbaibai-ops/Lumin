@@ -171,9 +171,13 @@ test('README「已知限制与路线」表：每条声明都要能落到代码�
     const [item, status, plan] = cells
     const done = /✅|⚠️/.test(status)
     const notDone = /❌|⛔/.test(status)
+    /**
+     * ⚠️ 对外 README **刻意不提源码**（本仓库只发布安装包：源码不开源、另行授权）⇒
+     * 这里**不再强制** ✅/⚠️ 行引用仓库路径；但只要它引用了，就必须真的存在
+     * （避免文档里出现一个不存在的文件，把人指到空处）。
+     */
     if (done) {
       const refs = [...status.matchAll(pathRe)].map((m) => m[0])
-      if (!refs.length) problems.push(`「${item}」标了已完成/部分，但没引用任何代码路径`)
       for (const r of refs) {
         if (!resolve(r)) problems.push(`「${item}」引用的路径不存在：${r}`)
       }

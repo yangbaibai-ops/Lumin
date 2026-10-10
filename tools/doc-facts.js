@@ -88,21 +88,10 @@ function collectFacts() {
 }
 
 /**
- * README 里的那块。
- *
- * ⚠️ 对外 README **不展示源码规模**：本项目只发布安装包、源码另行出售，
- * 所以这块渲染成一段**对 GitHub 不可见**的注释锚点，只保留"数字由 doc-facts 统一生成"的秩序；
- * 需要内部账目（各目录文件数/行数）时看 `tools/README.md` 的块（工程文档，本就不对外）。
+ * 对外 README **不写工程账目、也不放 HTML 标记块**（专有软件发布页：只给使用者看，
+ * 且要求纯 Markdown 可解析）。源码规模与套件账目统一落在 `tools/README.md` 的块里
+ * （工程文档，本就不对外）——`tests/docsFacts.test.mjs` 里有一条"README 不含 HTML"的政策断言守着这件事。
  */
-function renderReadmeBlock() {
-  return [
-    BEGIN,
-    '',
-    '<!-- 本项目只发布安装包；源码规模等工程账目不在此展示（见 tools/README.md）。 -->',
-    '',
-    END
-  ].join('\n')
-}
 
 /** tools/README.md 里的那块：脚手架与套件的账目 */
 function renderToolsBlock(f) {
@@ -128,10 +117,7 @@ function renderToolsBlock(f) {
   ].join('\n')
 }
 
-const TARGETS = [
-  { file: path.join(ROOT, 'README.md'), render: renderReadmeBlock },
-  { file: path.join(ROOT, 'tools/README.md'), render: renderToolsBlock }
-]
+const TARGETS = [{ file: path.join(ROOT, 'tools/README.md'), render: renderToolsBlock }]
 
 function replaceBlock(text, rendered) {
   const a = text.indexOf(BEGIN)
@@ -167,4 +153,4 @@ function main() {
 // 直接跑才执行（tests/docsFacts.test.mjs 要 import 这里的 collectFacts/render* 做对账）
 if (require.main === module) main()
 
-module.exports = { collectFacts, renderReadmeBlock, renderToolsBlock, TARGETS, BEGIN, END }
+module.exports = { collectFacts, renderToolsBlock, TARGETS, BEGIN, END }
