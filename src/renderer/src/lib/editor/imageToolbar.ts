@@ -27,6 +27,10 @@ import { Decoration, DecorationSet } from '@tiptap/pm/view'
 import type { EditorState } from '@tiptap/pm/state'
 import type { EditorView } from '@tiptap/pm/view'
 import i18n from '../../i18n'
+// 纯判据（显隐契约 + 登记到期）单独成文件，可被 `tests/imageReveal.test.mjs` 直接钉住
+import { PENDING_TTL, isPendingExpired, revealDecision } from './imageReveal'
+export { revealDecision } from './imageReveal'
+export type { RevealSel, RevealRange } from './imageReveal'
 
 /** 图片的一段"源码标记"：节点形式（`![alt](src)`）或原文形式（`<img …>`） */
 export interface ImgSource {
@@ -134,28 +138,11 @@ export function withZoomInRaw(raw: string, zoom: number): string {
  *   * 其余（光标在别处、点别处）⇒ **不显示**。
  * 纯函数：套件直接按它断言四态。
  */
-export function revealDecision(
-  sel: { from: number; to: number; empty: boolean; nodeSel: boolean },
-  img: { from: number; to: number }
-): 'show' | 'hide' {
-  // 点图片（NodeSelection 正好盖住它）⇒ 显示
-  if (sel.nodeSel && sel.from === img.from) return 'show'
-  /**
-   * 第七十五轮（用户新口径）——判据简化为"**包含关系**"：
-   *   1) 空选区（光标）⇒ 走既有规则（有交集/边界即显示），**不变**；
-   *   2) 非空选区且**被标识符范围完全包含**（`sel.from >= img.from && sel.to <= img.to`，
-   *      含**恰好等于**）⇒ **显示**（"在标识符内部拖动 / 选中全部文字"那一档）；
-   *   3) 非空选区的**其它任何交集情形**（两端都超出、**一端在外一端在内**、两端齐平但由外侧拖入…）
-   *      ⇒ **隐藏**（用户口径：从别处拖动连续选文字时不许出现标识符 ⇒ 防闪烁）。
-   * 第七十四轮的 `covers && strictlyBeyond` 判据**已删除并并入第 3 条**（不再保留两套互相覆盖的条件）。
-   */
-  if (!sel.empty) {
-    const contained = sel.from >= img.from && sel.to <= img.to
-    return contained ? 'show' : 'hide'
-  }
-  const intersects = sel.from <= img.to && sel.to >= img.from
-  return intersects ? 'show' : 'hide'
-}
+/**
+ * ⚠️ 第七十五轮（用户口径）起，判据本体搬到 `imageReveal.ts` 的 `revealDecision`（已 import）；
+ * 这里**不再保留第二份** —— 契约见 `docs/image-behavior.md` 第 3 节，单测见
+ * `tests/imageReveal.test.mjs`。
+ */
 
 /** 文档里所有"图片源码"（节点形式 + 原文形式），按位置排序 */
 export function collectImgSources(state: EditorState): ImgSource[] {
@@ -396,8 +383,8 @@ export const ImageSourceUi = Extension.create({
      */
     let pendingClick: { kind: 'raw' | 'node'; from: number; at: number } | null = null
     let pendingTimer: number | null = null
+    let pendingRaf = 0
     let pendingDom: HTMLElement | null = null
-    const PENDING_TTL = 900
     const syncPendingAttr = (): void => {
       if (pendingDom)
         pendingDom.setAttribute('data-img-pending', pendingClick ? pendingClick.kind : '')
@@ -407,21 +394,43 @@ export const ImageSourceUi = Extension.create({
         window.clearTimeout(pendingTimer)
         pendingTimer = null
       }
+      if (pendingRaf) {
+        window.cancelAnimationFrame(pendingRaf)
+        pendingRaf = 0
+      }
       if (pendingClick) {
         pendingClick = null
         syncPendingAttr()
       }
+    }
+    /**
+     * 第七十九/八十一轮：到期清理**双保险** —— 定时器之外再挂一个 rAF 看门狗。
+     * 定时器在重负载/被页面挂起时可能迟到，而"登记滞留"会直接导致
+     * 「有时不灵、得再点一次图片」⇒ 这里用**帧循环**兜底（每帧只做一次数值比较，极轻）。
+     */
+    const watchPendingExpiry = (): void => {
+      if (!pendingClick) {
+        pendingRaf = 0
+        return
+      }
+      if (isPendingExpired(pendingClick.at)) {
+        clearPending()
+        pendingRaf = 0
+        return
+      }
+      pendingRaf = window.requestAnimationFrame(watchPendingExpiry)
     }
     const setPending = (kind: 'raw' | 'node', from: number): void => {
       pendingClick = { kind, from, at: Date.now() }
       syncPendingAttr()
       if (pendingTimer != null) window.clearTimeout(pendingTimer)
       pendingTimer = window.setTimeout(() => clearPending(), PENDING_TTL)
+      if (!pendingRaf) pendingRaf = window.requestAnimationFrame(watchPendingExpiry)
     }
     /** 读 `pendingClick` 并顺带处理"已过期"（无需等到下一次事务） */
     const livePending = (): { kind: 'raw' | 'node'; from: number } | null => {
       if (!pendingClick) return null
-      if (Date.now() - pendingClick.at > PENDING_TTL) {
+      if (isPendingExpired(pendingClick.at)) {
         clearPending()
         return null
       }
