@@ -284,69 +284,25 @@
   display: block;
   margin-inline: auto;
 }
-/* 原文形式的图片：文档里那段 `<img …>` 是**标记字符**（= `**` 对加粗字）。
-   平时整段隐藏（内容仍在文档里，保存逐字节不变），点开时由下面的源码行显示它 */
+/* 原文形式的图片：文档里那段 `<img …>` / `![alt](url)` 是**标记字符**（= `**` 对加粗字）。
+   未激活 ⇒ 整段隐藏（内容仍在文档里，保存逐字节不变）、原位画真图；
+   激活 ⇒ 不隐藏（第五十九轮：**原位当成正文显示**，可直接编辑） */
 .md-preview .img-src-marker-hidden {
   display: none;
 }
-/* 图片的"标识符"（源码行浮层）——第五十八轮用户口径：
-   它要**像 `**` 一样当正文展示**（`.md-marker` 一族：同字号、同墨色、无底色、非等宽），
-   而不是"夹在段落里的裸代码"。浮层挂在**编辑器 DOM 之外**（`view.dom.parentElement`），
-   所以规则必须**双写**：`.md-preview` 内外都要命中。 */
-.md-preview .img-src-line,
-.img-src-line {
-  position: absolute;
-  display: block;
-  margin: 0;
-  padding: 0;
-  border: 0;
-  border-radius: 0;
-  background: none;
-  /* 墨色与 `.md-marker` 同一个令牌（不另调） */
-  color: var(--marker);
-  font-family: inherit;
-  font-size: inherit;
-  line-height: 1.45;
-  cursor: text;
-  user-select: text;
-  z-index: var(--z-chip);
-}
-/* 与图片**同一行**时：标记贴该行顶部，不与图片垂直居中 */
-.img-src-line--top {
+/* 激活时的"标识符"：它**就是文档里的正文文本**（不是浮层）——
+   排版完全跟正文一致，这里只做两件事：与图片同行时**贴该行顶部**、关掉拼写检查的视觉来源 */
+.md-preview .img-src-revealed {
+  /* 同一行里有更高的图片时，这段文本贴行顶（不与图片垂直居中）；
+     折行时只影响含图片那一行的行盒，其余行行高不变 */
   vertical-align: top;
 }
-.md-preview .img-src-line__input,
-.img-src-line__input {
-  display: block;
-  width: 100%;
-  margin: 0;
-  padding: 0;
-  border: 0;
-  outline: none;
-  background: transparent;
-  color: inherit;
-  font: inherit;
-  line-height: inherit;
-  resize: none;
-  overflow: hidden;
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-}
-/* 去掉默认描边 ⇒ 必须自己给可见焦点环（键盘用户要看得见；口径与 base.css 的全局环一致） */
-.md-preview .img-src-line__input:focus-visible,
-.img-src-line__input:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
-  border-radius: 4px;
-}
-/* 非法输入：红边反馈 + 已还原原值（绝不写坏文档） */
-.md-preview .img-src-line__input.is-invalid,
-.img-src-line__input.is-invalid {
-  box-shadow: 0 0 0 1px var(--danger), 0 0 0 3px color-mix(in srgb, var(--danger) 18%, transparent);
-  border-radius: 4px;
+/* 语法被改坏（例如退格删掉结尾 `>`）：它不再是图片，但仍是正文 —— 只关拼写检查 */
+.md-preview .img-src-incomplete {
+  vertical-align: top;
 }
 /* ── 悬浮工具栏（100/75/50/25）────────────────────────────────────────────────
-   绝对定位在**源码行上方**（imageToolbar 里按两者的矩形算），因此与源码行矩形不相交 */
+   绝对定位在**图片矩形上方**（imageToolbar 里按矩形算），与标识符文本不相交 */
 .md-preview .img-zoom-bar,
 .img-zoom-bar {
   position: absolute;

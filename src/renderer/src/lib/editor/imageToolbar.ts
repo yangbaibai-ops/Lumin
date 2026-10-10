@@ -43,10 +43,41 @@ export interface ImgSource {
 }
 
 const RAW_IMG_RE = /^<img\b[^>]*\/?>$/i
+/** `![alt](url)` 形态的**原文**（第五十九轮：节点转成原文文本后用的就是这一形） */
+const MD_IMG_RE = /^!\[([^\]]*)\]\(\s*([^)\s]+)\s*\)$/
 
 /** 这段文本是不是"整段就是一个 `<img …>`" */
 export function isRawImgHtml(text: string): boolean {
   return RAW_IMG_RE.test(text.trim())
+}
+
+/** 这段文本是不是"整段就是一个 markdown 图片语法"（`![alt](url)`） */
+export function isMdImgSource(text: string): boolean {
+  return MD_IMG_RE.test(text.trim())
+}
+
+/** 两种原文形态都认：`<img …>` 与 `![alt](url)` */
+export function isImgSourceText(text: string): boolean {
+  return isRawImgHtml(text) || isMdImgSource(text)
+}
+
+/**
+ * 解析一段"图片源码文本"（两种形态）。
+ * 解析不出来 ⇒ `null`：调用方**不许**把它当图片渲染（第五十九轮用户口径：
+ * 语法一旦不完整，就不再显示图片，那段文本按普通正文显示）。
+ */
+export function parseImgSourceText(
+  raw: string
+): { src: string; alt: string; zoom: number | null } | null {
+  const t = raw.trim()
+  if (isRawImgHtml(t)) {
+    const src = rawHtmlAttr(t, 'src')
+    if (!src) return null
+    return { src, alt: rawHtmlAttr(t, 'alt') ?? '', zoom: zoomOfStyle(rawHtmlAttr(t, 'style')) }
+  }
+  const m = MD_IMG_RE.exec(t)
+  if (m) return { src: m[2], alt: m[1], zoom: null }
+  return null
 }
 
 /** 取 HTML 属性（单双引号与裸值都认） */
@@ -143,27 +174,30 @@ export function collectImgSources(state: EditorState): ImgSource[] {
     //    这是"一段就是一张 HTML 图片"的最常见形态，必须一起认。
     if (node.type.name === 'htmlBlock') {
       const source = String(node.attrs.source ?? '').trim()
-      if (!isRawImgHtml(source)) return false
+      const parsed = parseImgSourceText(source)
+      if (!parsed) return false
       out.push({
         kind: 'raw',
         from: pos,
         to: pos + node.nodeSize,
-        src: rawHtmlAttr(source, 'src') ?? '',
-        alt: rawHtmlAttr(source, 'alt') ?? '',
-        zoom: zoomOfStyle(rawHtmlAttr(source, 'style')),
+        src: parsed.src,
+        alt: parsed.alt,
+        zoom: parsed.zoom,
         markdown: source
       })
       return false
     }
-    if (node.isText && isRawImgHtml(node.text ?? '')) {
+    if (node.isText && isImgSourceText(node.text ?? '')) {
       const raw = (node.text ?? '').trim()
+      const parsed = parseImgSourceText(raw)
+      if (!parsed) return false
       out.push({
         kind: 'raw',
         from: pos,
         to: pos + node.nodeSize,
-        src: rawHtmlAttr(raw, 'src') ?? '',
-        alt: rawHtmlAttr(raw, 'alt') ?? '',
-        zoom: zoomOfStyle(rawHtmlAttr(raw, 'style')),
+        src: parsed.src,
+        alt: parsed.alt,
+        zoom: parsed.zoom,
         markdown: raw
       })
       return false
@@ -199,22 +233,20 @@ function nodeToRaw(view: EditorView, img: ImgSource, zoom: number): void {
   view.dispatch(state.tr.replaceWith(img.from, img.to, text))
 }
 
-/** 点档位：节点形式 → 改成原文；原文形式 → **原地**改 style 里的 zoom（绝不新增第二个 `<img>`） */
+/** 点档位：节点/`![alt](url)` 原文 → 换成用户要的 `<img … style="zoom:X%;" />`；已是 `<img …>` → **原地**改 style 里的 zoom */
 export function applyZoom(view: EditorView, img: ImgSource, zoom: number, open: boolean): void {
   if (img.kind === 'raw') {
-    if (view.state.doc.nodeAt(img.from)?.type.name === 'htmlBlock') {
-      // 块级 HTML 形态：原地改 `source` 属性（文档里仍然只有一个 `<img>`）
-      const node = view.state.doc.nodeAt(img.from)
-      const source = String(node?.attrs.source ?? '')
-      view.dispatch(
-        view.state.tr.setNodeMarkup(img.from, undefined, {
-          ...node?.attrs,
-          source: withZoomInRaw(source, zoom)
-        })
-      )
+    const at = view.state.doc.nodeAt(img.from)
+    const raw = at?.isText ? (at.text ?? '') : String(at?.attrs.source ?? '')
+    // `![alt](url)` 形态（节点刚转成的原文）⇒ 直接换成用户给的确切形状（一个 `<img>`）；
+    // `<img …>` 形态 ⇒ 原地只改 style 里的 zoom（绝不新增第二个标签）。
+    const next = isRawImgHtml(raw)
+      ? withZoomInRaw(raw.trim(), zoom)
+      : zoomedImgHtml(img.src, img.alt, zoom)
+    if (at?.type.name === 'htmlBlock') {
+      view.dispatch(view.state.tr.setNodeMarkup(img.from, undefined, { ...at.attrs, source: next }))
     } else {
-      const raw = view.state.doc.textBetween(img.from, img.to, '')
-      replaceRaw(view, img, withZoomInRaw(raw, zoom))
+      replaceRaw(view, img, next)
     }
   } else {
     nodeToRaw(view, img, zoom)
@@ -318,10 +350,9 @@ export function imgIsInline(state: EditorState, img: ImgSource): boolean {
   return others > 0
 }
 
-/** 悬浮工具栏：定位在源码行**上方**（两者矩形不相交），右对齐 */
-function placeToolbar(view: EditorView, bar: HTMLElement, srcLine: HTMLElement | null): void {
-  const anchor = srcLine ?? view.dom
-  const r = anchor.getBoundingClientRect()
+/** 悬浮工具栏：定位在**图片矩形上方**（与"标识符"文本不相交），右对齐 */
+function placeToolbar(bar: HTMLElement, anchor: HTMLElement | DOMRect): void {
+  const r = anchor instanceof DOMRect ? anchor : anchor.getBoundingClientRect()
   if (!r.width && !r.height) return
   const parent = bar.offsetParent as HTMLElement | null
   const base = parent ? parent.getBoundingClientRect() : { left: 0, top: 0 }
@@ -339,15 +370,6 @@ export const ImageSourceUi = Extension.create({
 
   addProseMirrorPlugins() {
     let bar: HTMLElement | null = null
-    /** 源码行浮层（第五十六轮：挂在 `view.dom.parentElement` 上，**不在**编辑器 DOM 里） */
-    let srcLine: HTMLElement | null = null
-    /** 提交时需要的视图：由下面插件 `view()` 里赋值 */
-    let pluginView: EditorView | null = null
-    /** 正在编辑的位置与内容：只在"同一张图"上恢复，换图（或文档被换掉）一律重置 */
-    let editingAt: number | null = null
-    let editingText = ''
-    /** 上一次同步时源码行对着哪张图（换了就重置编辑态，免得把上一张的输入当成这一张的） */
-    let syncedFrom: number | null = null
 
     const ensureBar = (view: EditorView): HTMLElement => {
       if (bar && bar.isConnected) return bar
@@ -392,113 +414,6 @@ export const ImageSourceUi = Extension.create({
      * 它**不在 `view.dom` 里** ⇒ ProseMirror 的 DOM 观察者完全看不到它（编辑不丢字、不重绘），
      * 也不会进入 Markdown（导出/复制/往返都不带它）。
      */
-    const ensureSrcLine = (view: EditorView): HTMLElement => {
-      if (srcLine && srcLine.isConnected) return srcLine
-      const line = document.createElement('div')
-      line.className = 'img-src-line img-src-line--overlay'
-      line.setAttribute('data-img-source', '')
-      line.setAttribute('contenteditable', 'false')
-      // 第五十八轮用户口径：**不许有拼写检查的红波浪线**（截图里那排波浪线就是它）
-      line.setAttribute('spellcheck', 'false')
-      line.setAttribute('autocorrect', 'off')
-      line.setAttribute('autocapitalize', 'off')
-      const input = document.createElement('textarea')
-      input.className = 'img-src-line__input'
-      input.setAttribute('data-img-source-input', '')
-      input.setAttribute('spellcheck', 'false')
-      input.setAttribute('autocorrect', 'off')
-      input.setAttribute('autocapitalize', 'off')
-      input.setAttribute('autocomplete', 'off')
-      input.setAttribute('data-gramm', 'false')
-      input.setAttribute('wrap', 'off')
-      input.setAttribute('rows', '1')
-      const cur = (): ImgSource | null => {
-        const v = pluginView
-        if (!v) return null
-        const all = collectImgSources(v.state)
-        const at = KEY.getState(v.state)?.from ?? null
-        return (
-          (at == null ? null : (all.find((i) => i.from === at) ?? null)) ??
-          (editingAt == null ? null : (all.find((i) => i.from === editingAt) ?? null))
-        )
-      }
-      const orig = (): string => cur()?.markdown ?? ''
-      const commit = (): void => {
-        const v = pluginView
-        if (!v) return
-        const target = cur()
-        if (!target) return
-        const ok = safeCommit(v, line, target, input.value, orig())
-        if (ok) {
-          editingAt = null
-          editingText = ''
-          input.classList.remove('is-invalid')
-        }
-      }
-      input.addEventListener('input', () => {
-        editingAt = KEY.getState(view.state)?.from ?? null
-        editingText = input.value
-        input.classList.remove('is-invalid')
-      })
-      input.addEventListener('keydown', (e) => {
-        // 浮层不在编辑器 DOM 里，但仍然别把按键漏给编辑器的快捷键
-        e.stopPropagation()
-        if (e.key === 'Enter') {
-          e.preventDefault()
-          commit()
-        } else if (e.key === 'Escape') {
-          e.preventDefault()
-          editingAt = null
-          editingText = ''
-          input.value = orig()
-          input.classList.remove('is-invalid')
-          input.blur()
-          view.dispatch(view.state.tr.setMeta(KEY, { from: null }))
-        }
-      })
-      input.addEventListener('blur', () => {
-        if (input.classList.contains('is-invalid')) return
-        if (input.value.trim() === orig().trim()) return
-        commit()
-      })
-      line.appendChild(input)
-      ;(view.dom.parentElement ?? document.body).appendChild(line)
-      srcLine = line
-      return line
-    }
-
-    const hideSrcLine = (): void => {
-      if (srcLine) srcLine.remove()
-      srcLine = null
-    }
-
-    /** 提交一次：非法/异常 ⇒ 不动文档 + 红边 + 还原原值（文档永远不许被写坏） */
-    const safeCommit = (
-      view: EditorView,
-      line: HTMLElement,
-      img: ImgSource,
-      text: string,
-      original: string
-    ): boolean => {
-      const input = line.querySelector<HTMLTextAreaElement>('[data-img-source-input]')
-      try {
-        const ok = commitImgSource(view, img, text)
-        line.setAttribute('data-img-commit', ok ? 'ok' : 'bad-parse')
-        if (!ok && input) {
-          input.classList.add('is-invalid')
-          input.value = original
-        }
-        return ok
-      } catch (err) {
-        line.setAttribute('data-img-commit', 'error')
-        line.setAttribute('data-img-commit-msg', String((err as Error)?.message).slice(0, 120))
-        if (input) {
-          input.classList.add('is-invalid')
-          input.value = original
-        }
-        return false
-      }
-    }
 
     return [
       new Plugin<{ from: number | null }>({
@@ -528,6 +443,7 @@ export const ImageSourceUi = Extension.create({
         },
         props: {
           decorations(state) {
+            const open = KEY.getState(state)?.from ?? null
             const imgs = collectImgSources(state)
             const decos: Decoration[] = []
             // ① 图片**居中**：给"只有一张图"的块挂一个类（比 CSS `:only-child` 稳 ——
@@ -554,19 +470,38 @@ export const ImageSourceUi = Extension.create({
             })
             for (const img of imgs) {
               if (img.kind === 'raw') {
-                // 原文本身就是标记字符：平时隐藏（内容仍在文档里，保存逐字节不变）
-                //  * 行内文本形态用 inline 装饰；
-                //  * 块级 HtmlBlock 形态（独立一行的 `<img …>`）用 node 装饰
+                /**
+                 * 第五十九轮口径：**标识符就是文档里那段文本本身**。
+                 *   * 未激活 ⇒ 隐藏这段文本（内容仍在文档里，保存逐字节不变）+ 在原位画真图；
+                 *   * 激活（点图片/边界切进）⇒ **原位显示这段文本**（它就是正文的一部分，
+                 *     可以直接退格/输入改），图片**继续显示**；语法一旦被改坏，
+                 *     `collectImgSources` 就不再认它 ⇒ 图片随之消失、只剩正文（用户第 2 条）。
+                 * 行内上下文里保持行内（`文字 <img> 文字` 不拆行）。
+                 */
                 const isBlock = state.doc.nodeAt(img.from)?.type.name === 'htmlBlock'
-                decos.push(
-                  isBlock
-                    ? Decoration.node(img.from, img.to, { class: 'img-src-marker-hidden' })
-                    : Decoration.inline(img.from, img.to, { class: 'img-src-marker-hidden' })
-                )
-                // 在同一位置画真图（缩放按源码里的 style）。
-                // ⚠️ 第五十五轮：**行内上下文里保持行内** —— `文字 <img> 文字` 不许拆行。
-                //    判据：这段原文是行内文本、且它所在的段落里还有别的**非空**内容
-                //    ⇒ 用 inline-block 随文字流动；否则（独占一行）才按块级居中。
+                const active = img.from === open
+                if (!active) {
+                  decos.push(
+                    isBlock
+                      ? Decoration.node(img.from, img.to, { class: 'img-src-marker-hidden' })
+                      : Decoration.inline(img.from, img.to, { class: 'img-src-marker-hidden' })
+                  )
+                } else {
+                  // 原位显形：`vertical-align: top`（与图片同行的那一行贴顶）+ 关掉拼写检查
+                  const attrs = {
+                    class: 'img-src-revealed',
+                    'data-img-revealed': '',
+                    'data-img-kind': 'raw',
+                    spellcheck: 'false',
+                    autocorrect: 'off',
+                    autocapitalize: 'off'
+                  }
+                  decos.push(
+                    isBlock
+                      ? Decoration.node(img.from, img.to, attrs)
+                      : Decoration.inline(img.from, img.to, attrs)
+                  )
+                }
                 const inline = imgIsInline(state, img)
                 decos.push(
                   Decoration.widget(
@@ -590,6 +525,24 @@ export const ImageSourceUi = Extension.create({
                 )
               }
             }
+            /**
+             * 语法被改坏的"图片源码"（例如退格删掉了结尾 `>`）：它已经不是图片了，
+             * 但仍然是正文 —— 只额外关掉拼写检查的波浪线（用户截图里那排红线）。
+             */
+            state.doc.descendants((node, pos) => {
+              if (!node.isText) return true
+              const t = node.text ?? ''
+              if (!t || isImgSourceText(t)) return true
+              if (!/^\s*!?\[?\s*(<img|!\[)/i.test(t)) return true
+              decos.push(
+                Decoration.inline(pos, pos + node.nodeSize, {
+                  class: 'img-src-incomplete',
+                  spellcheck: 'false',
+                  autocorrect: 'off'
+                })
+              )
+              return true
+            })
             return DecorationSet.create(state.doc, decos)
           },
           handleClickOn(_view, _pos, node) {
@@ -624,19 +577,15 @@ export const ImageSourceUi = Extension.create({
           }
         },
         view(editorView) {
-          pluginView = editorView
           /**
-           * ─── 源码行 = **编辑器 DOM 之外的浮层**（第五十六轮）────────────────────────
+           * ─── 第五十九轮：**没有浮层了** ─────────────────────────────────────────
            *
-           * 为什么不能继续做 widget：源码行里是 `<textarea>`，Chromium 会把它的 value 镜像成
-           * 一个子文本节点 ⇒ 在 PM 眼里那是编辑器 DOM 里的一次变更 ⇒ **重绘 widget**，
-           * 用户正在编辑的那份 DOM 被换掉（实测：新 URL 在提交前被还原，改 URL 静默失效）。
-           * 搬出来之后这块 DOM 完全不在 `view.dom` 里，PM 的 DOM 观察者看不到任何东西
-           * —— 编辑不再丢字、也不再需要"重绘后恢复"那套补丁。
-           *
-           * 定位与工具栏**同一套逻辑**：都挂在 `view.dom.parentElement`（编辑器滚动容器）上，
-           * 用绝对定位按"图片矩形"现量摆放：源码行贴图片上沿，工具栏再贴源码行上沿。
-           * 因为它只是视图层的 DOM，**永远不会进入 Markdown**（导出/复制/往返都不带它）。
+           * 用户原话：「现在这样完全是在图片顶部出了个悬浮窗而已，一点也不实用」。
+           * 标识符就是**文档里那段文本本身**（`<img … />` 原文，或由图片节点转成的 `![alt](url)`）：
+           *   * 未激活 ⇒ 装饰把它隐藏、在原位画真图（保存逐字节不变）；
+           *   * 激活 ⇒ 装饰**不再隐藏**它 ⇒ 它作为正文原位出现、可直接编辑；
+           *     语法被改坏 ⇒ 它不再是图片（图片随之消失），但文本仍在正文里。
+           * 因此这套插件视图现在只做一件事：**摆缩放工具栏**（锚点 = 图片矩形）。
            */
           const imgRectOf = (img: ImgSource): DOMRect | null => {
             if (img.kind === 'node') {
@@ -648,73 +597,63 @@ export const ImageSourceUi = Extension.create({
             const w = editorView.dom.querySelector(
               `[data-img-widget][data-img-from="${img.from}"]`
             ) as HTMLElement | null
-            return w ? w.getBoundingClientRect() : null
+            if (w) return w.getBoundingClientRect()
+            // 已激活的原文：widget 还在（图片继续显示）；万一没有，就用那段**文本自己的矩形**
+            const el = editorView.dom.querySelector('[data-img-revealed]') as HTMLElement | null
+            return el ? el.getBoundingClientRect() : null
           }
-          /**
-           * 摆放标记浮层（第五十八轮口径）：
-           *   * **与图片同一行**（行内混排）⇒ 标记**贴该行顶部**（`top` 对齐图片 `top`），
-           *     不做"贴图片上沿"那种上移 —— 用户口径是"在顶部而非和图片居中"；
-           *   * 独占一行（块级图片）⇒ 仍旧贴在图片**上方**（不遮住图片本身）。
-           */
-          const placeSrcLine = (
-            line: HTMLElement,
-            rect: DOMRect,
-            base: DOMRect,
-            inline: boolean
-          ): void => {
-            const top = inline ? rect.top - base.top : rect.top - base.top - line.offsetHeight - 4
-            line.style.top = `${Math.round(top)}px`
-            line.style.left = `${Math.round(rect.left - base.left)}px`
-            line.style.width = `${Math.round(rect.width)}px`
-            line.classList.toggle('img-src-line--top', inline)
-            line.setAttribute('data-img-align', inline ? 'top' : 'above')
+          /** 图片节点 ⇒ 原文文本（markdown 逐字节不变：`![alt](src)`，只是从节点变成文本） */
+          const nodeToText = (from: number): boolean => {
+            const st = editorView.state
+            const node = st.doc.nodeAt(from)
+            if (!node || node.type.name !== 'image') return false
+            const alt = String(node.attrs.alt ?? '')
+            const src = String(node.attrs.src ?? '')
+            const mdMark = st.schema.marks.mdHtml
+            const text = st.schema.text(
+              alt ? `![${alt}](${src})` : `![](${src})`,
+              mdMark ? [mdMark.create()] : undefined
+            )
+            const tr = st.tr.replaceWith(from, from + node.nodeSize, text)
+            tr.setSelection(
+              TextSelection.create(tr.doc, Math.min(from + text.nodeSize, tr.doc.content.size))
+            )
+            tr.setMeta(KEY, { from })
+            editorView.dispatch(tr)
+            return true
           }
+          let converting = false
           const sync = (): void => {
             const open = KEY.getState(editorView.state)?.from ?? null
             const imgs = collectImgSources(editorView.state)
             const img = open == null ? null : (imgs.find((i) => i.from === open) ?? null)
             if (!img) {
-              hideSrcLine()
               hideBar()
+              return
+            }
+            // 节点形态的"标识符"在文档里还不存在（它就是图片节点本身）⇒ 这一刻把它转成原文文本，
+            // 之后它就能像文字一样被点开、被编辑（markdown 不变：还是 `![alt](src)`）。
+            if (img.kind === 'node') {
+              hideBar()
+              if (converting) return
+              converting = true
+              queueMicrotask(() => {
+                converting = false
+                try {
+                  nodeToText(KEY.getState(editorView.state)?.from ?? img.from)
+                } catch {
+                  /* 转不过去也不影响编辑 */
+                }
+              })
               return
             }
             const rect = imgRectOf(img)
             if (!rect) {
-              hideSrcLine()
               hideBar()
               return
             }
-            const line = ensureSrcLine(editorView)
-            // 换了一张图（或文档整个换了）⇒ 编辑态重置，别把上一张的输入带过来
-            if (syncedFrom !== img.from) {
-              syncedFrom = img.from
-              editingAt = null
-              editingText = ''
-            }
-            const base = (line.offsetParent as HTMLElement | null)?.getBoundingClientRect() ?? null
-            placeSrcLine(
-              line,
-              rect,
-              base ?? ({ left: 0, top: 0 } as DOMRect),
-              imgIsInline(editorView.state, img)
-            )
-            // 内容与状态每次同步都刷新（位置/缩放/形态变化后都要对）
-            // 排版口径**跟正文一模一样**（`.md-marker` 一族）：浮层在编辑器 DOM 之外，
-            // 天生继承不到 `.ProseMirror` 的字号/字族，所以直接把正文的 computed 抄过来。
-            const bodyCs = getComputedStyle(editorView.dom)
-            line.style.fontSize = bodyCs.fontSize
-            line.style.fontFamily = bodyCs.fontFamily
-            const ta = line.querySelector<HTMLTextAreaElement>('[data-img-source-input]')
-            if (ta) {
-              const resumed = editingAt === img.from
-              const want = resumed ? editingText : img.markdown
-              if (ta.value !== want) ta.value = want
-              line.setAttribute('data-img-kind', img.kind)
-              line.setAttribute('data-img-zoom', String(img.zoom ?? 100))
-              line.setAttribute('data-img-text', img.markdown)
-            }
             const el = ensureBar(editorView)
-            placeToolbar(editorView, el, line)
+            placeToolbar(el, rect)
             const active = img.zoom ?? 100
             for (const b of Array.from(el.querySelectorAll<HTMLElement>('[data-img-zoom]'))) {
               const pct = Number(b.getAttribute('data-img-zoom'))
@@ -723,7 +662,6 @@ export const ImageSourceUi = Extension.create({
               b.title = i18n.global.t('editor.imageZoom', { pct })
             }
           }
-          // 装饰变化 / 滚动 / 尺寸变化都可能要挪浮层；update 里**同步**做一次
           const ro = new ResizeObserver(() => sync())
           ro.observe(editorView.dom)
           const onScroll = (): void => sync()
@@ -740,7 +678,6 @@ export const ImageSourceUi = Extension.create({
               ro.disconnect()
               editorView.dom.removeEventListener('scroll', onScroll, true)
               hideBar()
-              hideSrcLine()
             }
           }
         }

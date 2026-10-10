@@ -26,13 +26,13 @@ const PNG_A =
   'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=='
 /** 与 A 不同的一张（48×32 的浅蓝块：**有真实尺寸**，才能量"标记与图片同行时谁在顶部"） */
 const PNG_B =
-  'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADAAAAAgCAIAAADbtmxLAAAAOUlEQVR4nO3OMREAMAgEMPwrY8ZBndQFz5C7CEj1vFMqPhASEhJKD4SEhITSAyEhIaH0QEhIqHdDH4Op4tOjeOJYAAAAAElFTkSuQmCC'
+'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADAAAAAgCAIAAADbtmxLAAAAOUlEQVR4nO3OMREAMAgEMPwrY8ZBndQFz5C7CEj1vFMqPhASEhJKD4SEhITSAyEhIaH0QEhIqHdDH4Op4tOjeOJYAAAAAElFTkSuQmCC'
 
 const MD =
   `![](PLACE_A)\n\n` +
   `qian <img src="PLACE_B" style="zoom:50%;" /> hou\n\n` +
   `![remote](https://example.com/x.png)\n\n` +
-  `<img src="PLACE_B" style="zoom:25%;" />\n\n最后一段文字。\n\n前 **粗体** 后\n`
+  `<img src="PLACE_B" style="zoom:25%;" />\n\n最后一段文字。\n\n前 **粗体** 后\n\n前 **粗体** 后\n`
 
 const results = []
 function check(name, ok, extra) {
@@ -102,6 +102,22 @@ async function main() {
     await sleep(300)
   }
   await send('Network.enable')
+  /**
+   * 真实按键注入（只有 ②的退格用到）需要窗口在前台、编辑器有焦点 —— 否则事件不会落进编辑器。
+   * 按清单 §10 P1 的口径：拿不到前置条件就 **SKIP**（`SKIP` 不算失败），不要 `throw`。
+   */
+  const requireFocus = async (label) => {
+    await send('Page.bringToFront').catch(() => null)
+    await sleep(150)
+    const focused = await ev(
+      `!!document.hasFocus() && !!document.activeElement && !!document.activeElement.closest?.('.ProseMirror')`
+    )
+    if (!focused) {
+      console.log(`SKIP ${label}：真实按键需要窗口焦点（当前 window 未聚焦 / 编辑器未聚焦）`)
+      return false
+    }
+    return true
+  }
   await ev(`(() => { window.__vt.ui().editorMode = 'wysiwyg'; return 'ok' })()`)
   await sleep(400)
   const doc = MD.replace('PLACE_A', PNG_A).replace('PLACE_B', PNG_B)
@@ -111,14 +127,15 @@ async function main() {
 
   const state = () =>
     json(`(() => {
-      const line = document.querySelector('[data-img-source]')
+      const el = document.querySelector('.ProseMirror [data-img-revealed]')
       const bar = document.querySelector('[data-img-zoom-bar]')
       return {
-        hasLine: !!line,
-        lineText: line ? line.getAttribute('data-img-text') : null,
-        lineValue: (() => { const i = document.querySelector('[data-img-source-input]'); return i ? i.value : null })(),
-        lineInvalid: !!document.querySelector('[data-img-source-input].is-invalid'),
-        lineKind: line ? line.getAttribute('data-img-kind') : null,
+        hasLine: !!el,
+        lineText: el ? el.textContent : null,
+        lineValue: el ? el.textContent : null,
+        lineKind: el ? el.getAttribute('data-img-kind') : null,
+        overlayCount: document.querySelectorAll('[data-img-source], .img-src-line, .img-src-line--overlay, [data-img-source-input]').length,
+        inEditor: el ? !!el.closest('.ProseMirror') : null,
         hasBar: !!bar,
         active: bar ? (bar.querySelector('[data-img-zoom].is-active') || {}).textContent || null : null,
         md: window.__vt.ed().storage.markdown.getMarkdown(),
@@ -159,9 +176,15 @@ async function main() {
   await click(p1)
   const A = await state()
   check(
-    '②A 点图片 ⇒ 上方出现源码行且内容 == 该图 markdown',
-    A.hasLine && A.lineValue === `![](${PNG_A})` && A.lineKind === 'node',
-    JSON.stringify({ hasLine: A.hasLine, kind: A.lineKind, lineValue: (A.lineValue || '').slice(0, 30) })
+    '②A 点图片 ⇒ 标识符以**正文原位文本**出现、内容 == 该图 markdown（且 Markdown 逐字节不变）',
+    A.hasLine && A.lineValue === `![](${PNG_A})` && A.lineKind === 'raw' && A.md.indexOf(`![](${PNG_A})`) >= 0,
+    JSON.stringify({
+      hasLine: A.hasLine,
+      kind: A.lineKind,
+      inEditor: A.inEditor,
+      overlayCount: A.overlayCount,
+      mdUnchanged: A.md.indexOf(`![](${PNG_A})`) >= 0
+    })
   )
   const shot1 = await send('Page.captureScreenshot', { format: 'png' })
   safe(() => fs.writeFileSync(path.join(process.cwd(), 'tmp', 'img-source-toolbar.png'), Buffer.from(shot1.result.data, 'base64')), null)
@@ -169,7 +192,7 @@ async function main() {
   // ── ③ 悬浮工具栏（此刻源码行开着）──
   const bar = await json(`(() => {
     const b = document.querySelector('[data-img-zoom-bar]')
-    const line = document.querySelector('[data-img-source]')
+    const line = document.querySelector('.ProseMirror [data-img-revealed]')
     if (!b) return { has: false }
     const rb = b.getBoundingClientRect()
     const rl = line ? line.getBoundingClientRect() : null
@@ -335,91 +358,10 @@ async function main() {
   const shot2 = await send('Page.captureScreenshot', { format: 'png' })
   safe(() => fs.writeFileSync(path.join(process.cwd(), 'tmp', 'img-centered.png'), Buffer.from(shot2.result.data, 'base64')), null)
 
-  // ═══ 第五十五轮新增：① 源码行可编辑 ═══════════════════════════════════════════
-  // 先把文档**复位成夹具**（前面的缩放/转换已经改过它；这一组要的是确定的那段）
+  // ═══ ② 行内混排的原始 HTML 图片不许拆行 ═══════════════════════════════════════
+  // （前面几组已经把文档改过了 ⇒ 先复位成夹具，这一组要的是确定的那一段）
   await ev(`(() => { window.__vt.ed().commands.setContent(${JSON.stringify(doc)}); return 'ok' })()`)
   await sleep(900)
-  // 先点开 P1 的图片，让源码行出现
-  await click(await firstImgPt())
-  const edit0 = await state()
-  check(
-    'E1 源码行是**可编辑控件**（出现 `[data-img-source-input]` 且初值 == 当前源码）',
-    edit0.hasLine && edit0.lineValue === `![](${PNG_A})`,
-    JSON.stringify({ hasLine: edit0.hasLine, value: (edit0.lineValue || '').slice(0, 24) })
-  )
-  // 编辑中（只输入、不提交）⇒ 源码行不许被显隐判据收走
-  const editedUrl = 'https://example.org/pic-renamed.png'
-  await ev(`(() => {
-    const i = document.querySelector('[data-img-source-input]')
-    i.focus()
-    i.value = ${JSON.stringify(`![pic2](${editedUrl})`)}
-    i.dispatchEvent(new Event('input', { bubbles: true }))
-    return 'ok'
-  })()`)
-  await sleep(450)
-  const editing = await state()
-  check(
-    'E2 编辑期间源码行**不消失**（打字不提交时仍在，且文档还没变）',
-    editing.hasLine && editing.md.indexOf(editedUrl) < 0,
-    JSON.stringify({ hasLine: editing.hasLine, docChanged: editing.md.indexOf(editedUrl) >= 0 })
-  )
-  // 回车提交：Markdown 逐字节等于新的 `![pic2](新URL)`，图片重渲染成新 src
-  await ev(`(() => {
-    const i = document.querySelector('[data-img-source-input]')
-    i.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))
-    return 'ok'
-  })()`)
-  await sleep(900)
-  const committed = await state()
-  const commitMark = await ev(
-    `(() => { const l = document.querySelector('[data-img-source]'); return l ? (l.getAttribute('data-img-commit') || '(none)') + ' ' + (l.getAttribute('data-img-commit-msg') || '') : 'no-line' })()`
-  )
-  const wantMd = `![pic2](${editedUrl})`
-  const p1ImgSrc = await ev(`(() => {
-    // 新 src 是**远程**地址 ⇒ 按隐私闸门它渲染成占位（没有 src 属性）；
-    // 所以"图片跟着重渲染"的证据是二者之一：真 <img src> 或 [data-remote-src] 占位。
-    const want = ${JSON.stringify(editedUrl)}
-    const im = [...document.querySelectorAll('.ProseMirror img')].find((x) => x.getAttribute('src') === want)
-    if (im) return im.getAttribute('src')
-    const ph = [...document.querySelectorAll('[data-remote-src]')].find((x) => x.getAttribute('data-remote-src') === want)
-    return ph ? ph.getAttribute('data-remote-src') : null
-  })()`)
-  check(
-    'E3 改 URL + 回车 ⇒ Markdown 逐字节等于新 `![alt](url)`，且图片重渲染（img.src 跟着变）',
-    committed.md.indexOf(wantMd) >= 0 && p1ImgSrc === editedUrl,
-    JSON.stringify({
-      wantMd,
-      inMd: committed.md.indexOf(wantMd) >= 0,
-      imgSrc: String(p1ImgSrc).slice(0, 40),
-      commit: commitMark,
-      value: (committed.lineValue || '').slice(0, 30)
-    })
-  )
-  // 非法输入：不改文档 + 红边反馈 + 还原原值
-  const beforeBad = committed.md
-  const valueBeforeBad = committed.lineValue
-  await ev(`(() => {
-    const i = document.querySelector('[data-img-source-input]')
-    i.focus()
-    i.value = '这不是图片源码'
-    i.dispatchEvent(new Event('input', { bubbles: true }))
-    i.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))
-    return 'ok'
-  })()`)
-  await sleep(600)
-  const bad = await state()
-  check(
-    'E4 非法输入 ⇒ **文档不变**（前后 Markdown 相同）+ 红边 + 还原原值',
-    bad.md === beforeBad && bad.lineInvalid === true && bad.lineValue === valueBeforeBad,
-    JSON.stringify({
-      sameDoc: bad.md === beforeBad,
-      invalid: bad.lineInvalid,
-      restored: bad.lineValue === valueBeforeBad,
-      value: (bad.lineValue || '').slice(0, 40)
-    })
-  )
-
-  // ═══ ② 行内混排的原始 HTML 图片不许拆行 ═══════════════════════════════════════
   const lineInfo = await json(`(() => {
     const ps = [...document.querySelectorAll('.ProseMirror p')]
     const p2 = ps[1]
@@ -498,141 +440,197 @@ async function main() {
     JSON.stringify({ reqsBeforeClick, reqsAfterClick })
   )
 
-  // ═══ 第五十八轮：图片"标识符"要像 `**` 那样当正文展示、去掉波浪线、与图片同行时置顶 ═══
-  // 夹具复位（前面的缩放/提交已经改过文档），再单独点开 **行内混排** 的那张图（标记与图片同一行）
+  // ═══ 第五十九轮：标识符 = 文档里的**正文原位文本**（可编辑），不再是浮层 ═══════════
   await ev(`(() => { window.__vt.ed().commands.setContent(${JSON.stringify(doc)}); return 'ok' })()`)
   await sleep(900)
-  const inlinePt = await json(`(() => {
+  const inlinePt2 = await json(`(() => {
     const w = [...document.querySelectorAll('[data-img-widget]')].find((x) => x.getAttribute('data-img-inline') === 'true')
     if (!w) return null
     const r = w.getBoundingClientRect()
     return { x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2) }
   })()`)
-  await click(inlinePt)
+  await click(inlinePt2)
   await sleep(500)
-  const marker = await json(`(() => {
-    const line = document.querySelector('[data-img-source]')
-    const ta = document.querySelector('[data-img-source-input]')
-    const w = [...document.querySelectorAll('[data-img-widget]')].find((x) => x.getAttribute('data-img-inline') === 'true')
-    const img = w ? w.querySelector('img') : null
-    // 行盒：用 Range 量"这一段第一行"的顶（text 首行）
-    const p = w ? w.closest('p') : null
-    let lineTop = null
-    if (p) {
+  // ① 位置：源码文本在 .ProseMirror **内部**、紧跟前面正文之后；且浮层容器计数 == 0
+  const pos = await json(`(() => {
+    const el = document.querySelector('.ProseMirror [data-img-revealed]')
+    if (!el) return { ok: false, overlayCount: document.querySelectorAll('[data-img-source], .img-src-line, [data-img-source-input]').length }
+    // ⚠️ 标识符会**折行**：要量的是**第一段**的矩形（union rect 会跨到下一行的行首）
+    const all = [...el.getClientRects()]
+    const r = all.length ? all[0] : el.getBoundingClientRect()
+    const p = el.closest('p')
+    const walker = document.createTreeWalker(p, NodeFilter.SHOW_TEXT)
+    let prev = null
+    let n
+    while ((n = walker.nextNode())) {
+      if (el.contains(n) || el === n.parentElement) break
+      if ((n.textContent || '').trim()) prev = n
+    }
+    let pr = null
+    if (prev) {
       const rg = document.createRange()
-      rg.selectNodeContents(p)
-      const rs = [...rg.getClientRects()].filter((r) => r.height > 0)
-      lineTop = rs.length ? Math.round(rs[0].top) : null
+      rg.selectNodeContents(prev)
+      const rects = [...rg.getClientRects()].filter((x) => x.width > 0)
+      pr = rects.length ? rects[rects.length - 1] : null
     }
-    const cs = line ? getComputedStyle(line) : null
-    const cst = ta ? getComputedStyle(ta) : null
-    const lr = line ? line.getBoundingClientRect() : null
-    const ir = img ? img.getBoundingClientRect() : null
-    return {
-      hasMarker: !!line,
-      markerClass: line ? line.className : null,
-      markerTag: line ? line.tagName.toLowerCase() : null,
-      markerSpellcheck: line ? line.getAttribute('spellcheck') : null,
-      markerAutocorrect: line ? line.getAttribute('autocorrect') : null,
-      markerAutocapitalize: line ? line.getAttribute('autocapitalize') : null,
-      inputSpellcheckAttr: ta ? ta.getAttribute('spellcheck') : null,
-      inputSpellcheckProp: ta ? ta.spellcheck : null,
-      inputAutocorrect: ta ? ta.getAttribute('autocorrect') : null,
-      inputAutocapitalize: ta ? ta.getAttribute('autocapitalize') : null,
-      markerFontSize: cs ? cs.fontSize : null,
-      markerColor: cs ? cs.color : null,
-      markerFontFamily: cs ? cs.fontFamily.slice(0, 40) : null,
-      markerBackground: cs ? cs.backgroundColor : null,
-      markerPadding: cs ? cs.padding : null,
-      markerVerticalAlign: cs ? cs.verticalAlign : null,
-      markerTop: lr ? Math.round(lr.top) : null,
-      markerBottom: lr ? Math.round(lr.bottom) : null,
-      imgTop: ir ? Math.round(ir.top) : null,
-      imgBottom: ir ? Math.round(ir.bottom) : null,
-      imgCenterY: ir ? Math.round((ir.top + ir.bottom) / 2) : null,
-      lineTop,
-      bodyFontSize: getComputedStyle(document.querySelector('.ProseMirror p') || document.body).fontSize,
-      taFontSize: cst ? cst.fontSize : null,
-      taColor: cst ? cst.color : null
-    }
-  })()`)
-  const shot3 = await send('Page.captureScreenshot', { format: 'png' })
-  safe(() => fs.writeFileSync(path.join(process.cwd(), 'tmp', 'img-marker-active.png'), Buffer.from(shot3.result.data, 'base64')), null)
-
-  // ① 正文形态：与 `.md-marker` 同族（先激活一个粗体标记，量它的字号/颜色）
-  await ev(`(() => {
-    const v = window.__vt.ed().view
-    let hit = null
-    v.state.doc.descendants((n, pos) => {
-      if (n.isText && n.text === '粗体') hit = { from: pos, to: pos + n.nodeSize }
-      return true
-    })
-    if (hit) v.dispatch(v.state.tr.setSelection(window.__vt.ed().state.selection.constructor.create(v.state.doc, hit.from + 1)))
-    return 'ok'
-  })()`)
-  await sleep(450)
-  const mdMarker = await json(`(() => {
-    const ms = [...document.querySelectorAll('.md-marker')]
-    const m = ms.find((x) => x.querySelector('.md-reveal-inline')) || ms[0]
-    if (!m) return { ok: false, count: ms.length }
-    const cs = getComputedStyle(m)
+    const cs = getComputedStyle(el)
     return {
       ok: true,
-      count: ms.length,
-      revealed: !!m.querySelector('.md-reveal-inline'),
+      inEditor: !!el.closest('.ProseMirror'),
+      overlayCount: document.querySelectorAll('[data-img-source], .img-src-line, .img-src-line--overlay, [data-img-source-input]').length,
+      text: el.textContent,
+      markerLeft: Math.round(r.left),
+      markerTop: Math.round(r.top),
+      prevRight: pr ? Math.round(pr.right) : null,
+      prevTop: pr ? Math.round(pr.top) : null,
+      prevText: prev ? (prev.textContent || '').slice(0, 8) : null,
       fontSize: cs.fontSize,
       color: cs.color,
-      fontFamily: cs.fontFamily.slice(0, 40),
-      background: cs.backgroundColor,
-      padding: cs.padding
+      verticalAlign: cs.verticalAlign,
+      rectCount: el.getClientRects().length
+    }
+  })()`)
+  const followsBody =
+    pos.ok && pos.prevRight != null && pos.markerLeft >= pos.prevRight - 6 && Math.abs(pos.markerTop - pos.prevTop) <= 6
+  check(
+    '① 激活时源码是**正文里的原位文本**（在 .ProseMirror 内、紧跟前面正文之后，浮层容器计数 == 0）',
+    pos.ok && pos.inEditor === true && pos.overlayCount === 0 && followsBody,
+    JSON.stringify(pos)
+  )
+
+  // ② 真实退格删掉结尾 `>` ⇒ 图片消失、正文里剩截断的源码（逐字节）
+  const beforeDel = await json(`(() => ({
+    text: (document.querySelector('.ProseMirror [data-img-revealed]') || {}).textContent || null,
+    widgetCount: document.querySelectorAll('[data-img-widget]').length,
+    imgCount: document.querySelectorAll('.ProseMirror img').length
+  }))()`)
+  await ev(`(() => {
+    const el = document.querySelector('.ProseMirror [data-img-revealed]')
+    const v = window.__vt.ed().view
+    const at = v.posAtDOM(el, el.childNodes.length)
+    const Sel = window.__vt.ed().state.selection.constructor
+    v.dispatch(v.state.tr.setSelection(Sel.create(v.state.doc, at)))
+    return 'ok'
+  })()`)
+  await sleep(250)
+  const canKey = await requireFocus('② 真实退格')
+  if (canKey) {
+    await send('Input.dispatchKeyEvent', { type: 'rawKeyDown', windowsVirtualKeyCode: 8, key: 'Backspace', code: 'Backspace' })
+    await send('Input.dispatchKeyEvent', { type: 'keyUp', windowsVirtualKeyCode: 8, key: 'Backspace', code: 'Backspace' })
+  } else {
+    // 拿不到焦点：退格走编辑器自己的键盘链路（`handleKeyDown` 的 Backspace 命令），
+    // 语义相同、只是不经操作系统输入层；结果如实标注
+    await ev(`(() => {
+      const ed = window.__vt.ed()
+      const evt = new KeyboardEvent('keydown', { key: 'Backspace', code: 'Backspace', keyCode: 8, bubbles: true, cancelable: true })
+      ed.view.someProp('handleKeyDown', (f) => f(ed.view, evt))
+      return 'ok'
+    })()`)
+  }
+  await sleep(800)
+  const afterDel = await json(`(() => {
+    const raw = ${JSON.stringify(`<img src="${PNG_B}" style="zoom:50%;" />`)}
+    const want = raw.slice(0, raw.length - 1)
+    const md = window.__vt.ed().storage.markdown.getMarkdown()
+    const txt = (document.querySelector('.ProseMirror') || {}).textContent || ''
+    return {
+      want,
+      inMd: md.indexOf(want) >= 0,
+      truncatedShown: txt.indexOf(want) >= 0,
+      stillFull: md.indexOf(raw) >= 0,
+      widgetCount: document.querySelectorAll('[data-img-widget]').length,
+      imgCount: document.querySelectorAll('.ProseMirror img').length,
+      mdHead: md.slice(0, 100)
     }
   })()`)
   check(
-    '⑤ 激活时标记是**正文形态**（字号/颜色与 `.md-marker` 同族：同 body 字号、同 --marker 墨色）',
-    marker.hasMarker &&
-      mdMarker.ok &&
-      marker.markerFontSize === mdMarker.fontSize &&
-      marker.markerColor === mdMarker.color &&
-      marker.taFontSize === mdMarker.fontSize &&
-      marker.markerFontFamily === mdMarker.fontFamily,
+    '② 退格删掉结尾 `>` ⇒ 图片消失、正文里剩截断源码（逐字节 == 少了 `>` 的那串）',
+    afterDel.inMd === true && afterDel.truncatedShown === true && afterDel.stillFull === false && afterDel.widgetCount === beforeDel.widgetCount - 1,
     JSON.stringify({
-      标记: { fontSize: marker.markerFontSize, color: marker.markerColor, family: marker.markerFontFamily, bg: marker.markerBackground, padding: marker.markerPadding },
-      文本域: { fontSize: marker.taFontSize, color: marker.taColor },
-      mdMarker
+      改前: { text: (beforeDel.text || '').slice(-12), widgets: beforeDel.widgetCount, imgs: beforeDel.imgCount },
+      改后: afterDel
     })
   )
+
+  // ③ 贴顶：与图片同一行的那一行贴顶；折行时其余行按正常行高
+  await ev(`(() => { window.__vt.ed().commands.setContent(${JSON.stringify(doc)}); return 'ok' })()`)
+  await sleep(900)
+  await click(inlinePt2)
+  await sleep(500)
+  const sameLineTop = await json(`(() => {
+    const el = document.querySelector('.ProseMirror [data-img-revealed]')
+    const w = [...document.querySelectorAll('[data-img-widget]')].find((x) => x.getAttribute('data-img-inline') === 'true')
+    if (!el || !w) return { ok: false }
+    const ir = w.getBoundingClientRect()
+    const rects = [...el.getClientRects()]
+    const r0 = rects[0]
+    return {
+      ok: true,
+      markerTop: Math.round(r0.top),
+      markerBottom: Math.round(r0.bottom),
+      imgTop: Math.round(ir.top),
+      imgBottom: Math.round(ir.bottom),
+      imgCenterY: Math.round((ir.top + ir.bottom) / 2),
+      verticalAlign: getComputedStyle(el).verticalAlign,
+      rectCount: rects.length,
+      diffTop: Math.round(Math.abs(r0.top - ir.top)),
+      diffCenter: Math.round(Math.abs(r0.top - (ir.top + ir.bottom) / 2))
+    }
+  })()`)
   check(
-    '⑥ 去掉拼写检查波浪线：标记元素 `spellcheck="false"`（+ autocorrect/autocapitalize 关闭）',
-    marker.markerSpellcheck === 'false' &&
-      marker.inputSpellcheckAttr === 'false' &&
-      marker.inputSpellcheckProp === false &&
-      marker.markerAutocorrect === 'off' &&
-      marker.markerAutocapitalize === 'off' &&
-      marker.inputAutocorrect === 'off' &&
-      marker.inputAutocapitalize === 'off',
-    JSON.stringify({
-      line: { spellcheck: marker.markerSpellcheck, autocorrect: marker.markerAutocorrect, autocapitalize: marker.markerAutocapitalize, tag: marker.markerTag, class: marker.markerClass },
-      input: { spellcheckAttr: marker.inputSpellcheckAttr, spellcheckProp: marker.inputSpellcheckProp, autocorrect: marker.inputAutocorrect, autocapitalize: marker.inputAutocapitalize }
-    })
+    '③ 与图片**同一行**时源码文本贴顶（|top-imgTop| < |top-imgCenterY|，vertical-align: top）',
+    sameLineTop.ok && sameLineTop.verticalAlign === 'top' && sameLineTop.diffTop < sameLineTop.diffCenter,
+    JSON.stringify(sameLineTop)
   )
-  const nearTop =
-    marker.markerTop != null && marker.imgTop != null && marker.imgCenterY != null &&
-    Math.abs(marker.markerTop - marker.imgTop) < Math.abs(marker.markerTop - marker.imgCenterY)
+  const wrapDoc = doc.replace(
+    `qian <img src="${PNG_B}" style="zoom:50%;" /> hou`,
+    `wrap <img src="${PNG_B}" style="zoom:50%;width:120px;height:64px;" /> tail`
+  )
+  await ev(`(() => { window.__vt.ed().commands.setContent(${JSON.stringify(wrapDoc)}); return 'ok' })()`)
+  await sleep(900)
+  const wrapPt = await json(`(() => {
+    const w = [...document.querySelectorAll('[data-img-widget]')].find((x) => x.getAttribute('data-img-inline') === 'true')
+    if (!w) return null
+    const r = w.getBoundingClientRect()
+    return { x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2) }
+  })()`)
+  await click(wrapPt)
+  await sleep(500)
+  const wrapInfo = await json(`(() => {
+    const el = document.querySelector('.ProseMirror [data-img-revealed]')
+    const w = [...document.querySelectorAll('[data-img-widget]')].find((x) => x.getAttribute('data-img-inline') === 'true')
+    if (!el || !w) return { ok: false }
+    const ir = w.getBoundingClientRect()
+    const rects = [...el.getClientRects()].filter((r) => r.width > 0 || r.height > 0)
+    const band = rects.filter((r) => r.bottom > ir.top && r.top < ir.bottom)
+    const others = rects.filter((r) => !(r.bottom > ir.top && r.top < ir.bottom))
+    return {
+      ok: true,
+      rectCount: rects.length,
+      verticalAlign: getComputedStyle(el).verticalAlign,
+      rects: rects.map((r) => ({ t: Math.round(r.top), b: Math.round(r.bottom) })),
+      imgTop: Math.round(ir.top),
+      imgBottom: Math.round(ir.bottom),
+      bandTop: band.length ? Math.round(band[0].top) : null,
+      bandDiffImgTop: band.length ? Math.round(Math.abs(band[0].top - ir.top)) : null,
+      othersTop: others.map((r) => Math.round(r.top)),
+      lineHeights: rects.slice(1).map((r, i) => Math.round(r.top - rects[i].top))
+    }
+  })()`)
+  const onlyBandTop =
+    wrapInfo.ok &&
+    wrapInfo.rectCount >= 2 &&
+    wrapInfo.verticalAlign === 'top' &&
+    wrapInfo.bandDiffImgTop != null &&
+    wrapInfo.bandDiffImgTop <= 8 &&
+    wrapInfo.lineHeights.every((h) => h >= 14)
   check(
-    '⑦ 与图片**同行时标记置顶**（marker.top 更接近 img.top / 行顶，而不是 img.centerY）',
-    nearTop,
-    JSON.stringify({
-      markerTop: marker.markerTop,
-      markerBottom: marker.markerBottom,
-      imgTop: marker.imgTop,
-      imgBottom: marker.imgBottom,
-      imgCenterY: marker.imgCenterY,
-      lineTop: marker.lineTop,
-      verticalAlign: marker.markerVerticalAlign,
-      diffTop: marker.markerTop != null ? Math.abs(marker.markerTop - marker.imgTop) : null,
-      diffCenter: marker.markerTop != null && marker.imgCenterY != null ? Math.abs(marker.markerTop - marker.imgCenterY) : null
-    })
+    '③b 折行时**只有与图片同处一行的那一行**贴顶（其余行按正常行高，未整块上移）',
+    onlyBandTop,
+    JSON.stringify(wrapInfo)
   )
+  const shotM = await send('Page.captureScreenshot', { format: 'png' })
+  safe(() => fs.writeFileSync(path.join(process.cwd(), 'tmp', 'img-marker-inline.png'), Buffer.from(shotM.result.data, 'base64')), null)
 
   const pass = results.filter((r) => r.ok).length
   console.log(`TOTAL ${results.length} PASS ${pass} FAIL ${results.length - pass}`)
