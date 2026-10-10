@@ -556,21 +556,56 @@ const doc = MD.split('PLACE_A')
     const shot72 = await send('Page.captureScreenshot', { format: 'png' })
     safe(() => fs.writeFileSync(path.join(process.cwd(), 'tmp', 'img-select-all-marker.png'), Buffer.from(shot72.result.data, 'base64')), null)
     /**
-     * ⑱⑤ 决定性判据（不依赖拖拽时序）：把选区设成"**完全包住**"标识符 —— 这正是旧实现里
-     * `revealDecision` 的 `contains` 分支（`exactlyFull` 是它的特例）。新语义下必须保持可见。
+     * ⑳ 第七十四轮新口径（决定性判据、不依赖拖拽时序）。标识符源码范围在夹具里是 `[1, 1+len]`
+     *   （段落起始就是这段原文），`len` = 原文长度。四档：
+     *     ① `[from-1, to+1]`（两端都超出）⇒ **隐藏**；
+     *     ② `[from, to]`（恰好等于）⇒ **可见**（口径 3；"从外侧拖过它"如果落成这一档，也按此判）；
+     *     ③ `[from+1, to-1]`（严格子区间）⇒ **可见**（口径 2）；
+     *     ④ 空光标 `[from]` / `[to]` ⇒ **可见**（既有口径，不受本条影响）。
      */
-    const covering = await json(`(() => {
+    const sweep = await json(`(() => {
       const v = window.__vt.ed().view
       const el = document.querySelector('.ProseMirror [data-img-revealed]')
       const len = el ? el.textContent.length : 0
-      v.dispatch(v.state.tr.setSelection(v.state.selection.constructor.create(v.state.doc, 0, 2 + len)))
-      const els = [...document.querySelectorAll('.ProseMirror [data-img-revealed]')]
-      return { count: els.length, from: v.state.selection.from, to: v.state.selection.to, 包住长度: len }
+      const from = 1
+      const to = 1 + len
+      const Sel = v.state.selection.constructor
+      const put = (a, b) => {
+        v.dispatch(v.state.tr.setSelection(Sel.create(v.state.doc, a, b)))
+        return {
+          sel: [a, b],
+          count: document.querySelectorAll('.ProseMirror [data-img-revealed]').length,
+          open: document.querySelector('.ProseMirror')?.getAttribute('data-img-open') || null
+        }
+      }
+      const out = {}
+      out.覆盖两端超出 = put(Math.max(0, from - 1), Math.min(v.state.doc.content.size, to + 1))
+      out.恰好等于 = put(from, to)
+      out.严格子区间 = put(from + 1, to - 1)
+      out.空光标from = put(from, from)
+      out.空光标to = put(to, to)
+      out.范围 = { from, to, len }
+      return out
     })()`)
     check(
-      '⑱⑤ **完全包住**标识符的选区（旧实现的 `contains` 分支）⇒ 标识符**保持可见**',
-      covering.包住长度 > 100 && covering.count === 1,
-      JSON.stringify(covering)
+      '⑳① 选区两端都超出标识符（图片被夹在中间）⇒ **隐藏**（第七十四轮口径 1）',
+      sweep.覆盖两端超出.count === 0,
+      JSON.stringify({ 范围: sweep.范围, 该档: sweep.覆盖两端超出 })
+    )
+    check(
+      '⑳④ 选区**恰好等于**标识符范围 ⇒ **可见**（口径 3：拖满不消失；这也是"从外侧拖过它"的常见落点）',
+      sweep.恰好等于.count === 1,
+      JSON.stringify({ 范围: sweep.范围, 该档: sweep.恰好等于 })
+    )
+    check(
+      '⑳③ 选区是标识符的**严格子区间** ⇒ **可见**（口径 2）',
+      sweep.严格子区间.count === 1,
+      JSON.stringify({ 范围: sweep.范围, 该档: sweep.严格子区间 })
+    )
+    check(
+      '⑳⑥ 空光标落在 `from` / `to` 边界 ⇒ **可见**（既有口径不变）',
+      sweep.空光标from.count === 1 && sweep.空光标to.count === 1,
+      JSON.stringify({ 范围: sweep.范围, from边界: sweep.空光标from, to边界: sweep.空光标to })
     )
     await ev(`(() => { window.__vt.ed().commands.setContent(${JSON.stringify(doc)}); return 'ok' })()`)
     await sleep(900)
@@ -832,16 +867,15 @@ const doc = MD.split('PLACE_A')
   await sleep(400)
   const C = await state()
   /**
-   * ⚠️ 口径变更（第七十二轮，用户报障）：标识符**已经是正文**（可点入/可拖选/可复制），
-   *    正文被"完全选中/完全包住"时**不该消失** —— 这条断言原来写死的是行内标记（`**`）
-   *    那套"包住 ⇒ 收起"的行为，对图片标识符不再适用。新语义：**选区与它有交集就保持可见**，
-   *    只有选区完全离开它（或点别处/Esc/失焦）才隐藏。行内标记那条线未改（在
-   *    typoraInlineMarks.ts 里，用的是另一套判据）。
+   * ⚠️ 口径再次变更（第七十四轮，用户新要求）：**连续选中文字、图片被夹在中间**（选区两端
+   *    都在标识符之外或与之齐平、且至少一端严格超出）⇒ **不显示**标识符。上一轮的"包住也显示"
+   *    因此在本档被推翻；但"严格子区间"与"恰好等于"两档仍**保持可见**（后者是上一轮用户要的
+   *    "能拖到底、拖满不消失"）。行内标记 `**` 那条线不受影响。
    */
   check(
-    '②C 选区**完全包住**标识符 ⇒ **仍然显示**（第七十二轮口径变更：标识符是正文，不再"包住即收起"）',
-    C.hasLine === true,
-    JSON.stringify({ rawRange: rr, hasLine: C.hasLine, 口径: '交集即可见；行内标记 ** 的收起行为不受影响' })
+    '②C 选区从**外侧**连续选中、把标识符夹在中间（两端都超出）⇒ **不显示**（第七十四轮口径 1）',
+    C.hasLine === false,
+    JSON.stringify({ rawRange: rr, hasLine: C.hasLine, 口径: '口径1：两端之外/齐平且至少一端严格超出 ⇒ 隐藏' })
   )
 
   // ── ⑤ 远程图片：无占位图标/文案；未点击不发请求 ──

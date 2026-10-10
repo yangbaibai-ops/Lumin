@@ -141,11 +141,22 @@ export function revealDecision(
   // 点图片（NodeSelection 正好盖住它）⇒ 显示
   if (sel.nodeSel && sel.from === img.from) return 'show'
   /**
+   * 第七十四轮（用户新口径）：**连续选中文字、图片被夹在中间**（选区两端都在标识符之外或与它齐平，
+   * 且至少有一端严格超出）⇒ **不显示**标识符。这条优先于"交集即可见"。
+   *   口径 1：`sel.from <= img.from && sel.to >= img.to` 且 `(sel.from < img.from || sel.to > img.to)` ⇒ hide
+   *   口径 2：严格子区间 `img.from <= sel.from && sel.to <= img.to`（两端不都齐平）⇒ 走下面的"交集 ⇒ show"
+   *   口径 3：**恰好等于** `[img.from, img.to]` ⇒ 也走"交集 ⇒ show"（保持可见）——
+   *          上一轮用户明确要"能手动拖动选中所有标识符文字"，这一档若隐藏，拖到最后一个字符就消失。
+   *   空光标（`empty`）不受本条影响，仍按"有交集即显示"（点图片后光标落在 `from` 边界要能显示）。
+   */
+  if (!sel.empty) {
+    const covers = sel.from <= img.from && sel.to >= img.to
+    const strictlyBeyond = sel.from < img.from || sel.to > img.to
+    if (covers && strictlyBeyond) return 'hide'
+  }
+  /**
    * 第七十二轮（用户报障）：标识符**已经是正文**（可点入/可拖选/可复制）⇒ 它与选区的判据
-   * 也按正文来：**只要有交集就保持可见**（选中全部字符、甚至完全包住它，也不许消失）；
-   * 只有选区**完全离开**它时才隐藏。
-   * 旧实现里"完全包住 ⇒ hide / 恰好等长 ⇒ hide"是行内标记（`**`）那套"标记字符"语义
-   * （见 typoraInlineMarks.ts，本函数不参与那条线），对图片标识符不再适用。
+   * 也按正文来：**只要有交集就保持可见**；只有选区**完全离开**它时才隐藏。
    */
   const intersects = sel.from <= img.to && sel.to >= img.from
   return intersects ? 'show' : 'hide'
