@@ -1235,25 +1235,33 @@ const doc = MD.split('PLACE_A')
     await ev(`(() => { window.__vt.ed().commands.setContent(${JSON.stringify(X)}); return 'ok' })()`)
     await sleep(900)
     const snapX = await pathSnapshot()
-    await ev(`(() => { window.__vt.ed().commands.setContent(${JSON.stringify(Yinline)}); return 'ok' })()`)
-    await sleep(900)
-    const caret = await json(`(() => {
+    /**
+     * 第六十九轮：Y 路径不再用 CDP 真实按键（无窗口焦点时会被跳过 ⇒ 夹具本身不同、断言假红）。
+     * 改用**编辑器自身的事务**制造与"两次回车"等价的拆分：PM 的 Enter 走的就是
+     * `commands.splitBlock`（baseKeymap 的 `splitBlock`），这里直接派发 `tr.split(pos)` 两次 ——
+     * 与真实按键在 PM 里**同一条链路**（同一个 `splitBlock` 命令），只是不经过操作系统输入层。
+     */
+    const splits = await json(`(() => {
       const v = window.__vt.ed().view
-      const p = document.querySelector('.ProseMirror p')
-      const t = p && p.firstChild
-      const at = t && t.textContent ? v.posAtDOM(t, t.textContent.length) : 7
       const Sel = window.__vt.ed().state.selection.constructor
-      v.dispatch(v.state.tr.setSelection(Sel.create(v.state.doc, at)))
-      return at
-    })()`)
-    if (await requireFocus('⑪ 回车路径')) {
+      const texts = []
+      // 光标落在"正文与图片之间"（正文那段文本的末尾）
+      let at = 7
+      v.state.doc.descendants((n, pos) => {
+        if (n.isText && (n.text || '').indexOf('这是行内图片') >= 0) at = pos + (n.text || '').length
+        return true
+      })
       for (let i = 0; i < 2; i++) {
-        await send('Input.dispatchKeyEvent', { type: 'rawKeyDown', windowsVirtualKeyCode: 13, key: 'Enter', code: 'Enter' })
-        await send('Input.dispatchKeyEvent', { type: 'keyUp', windowsVirtualKeyCode: 13, key: 'Enter', code: 'Enter' })
-        await sleep(300)
+        const st = v.state
+        const cur = Math.min(at, st.doc.content.size - 1)
+        v.dispatch(st.tr.setSelection(Sel.create(st.doc, cur)).split(cur))
+        at = v.state.selection.from
+        texts.push(v.state.doc.textBetween(0, v.state.doc.content.size, '\\n').slice(0, 40))
       }
-    }
-    await sleep(500)
+      return { at, texts, blocks: v.state.doc.childCount }
+    })()`)
+    void splits
+    await sleep(400)
     const snapY = await pathSnapshot()
     const sameMd = snapX.md === snapY.md
     const sameDom =
@@ -1287,7 +1295,7 @@ const doc = MD.split('PLACE_A')
         relX,
         relY,
         相同: { md: sameMd, dom: sameDom, imgShape: sameImgShape, rel: sameRel },
-        光标位: caret
+        拆段: splits
       })
     )
     const shotXY = await send('Page.captureScreenshot', { format: 'png' })
@@ -1485,6 +1493,9 @@ const doc = MD.split('PLACE_A')
         gap: Math.round(r[1].left - r[0].right),
         lineBoxes: p.getClientRects().length,
         displays: ims.map((im) => getComputedStyle(im).display),
+        margins: ims.map((im) => getComputedStyle(im.closest('[data-img-widget]') || im).marginInlineStart),
+        pCls: p.className,
+        md: window.__vt.ed().storage.markdown.getMarkdown(),
         pHtml: p.innerHTML,
         children: [...p.childNodes].map((n) => (n.nodeType === 1 ? n.tagName.toLowerCase() + (n.getAttribute('class') ? '.' + n.getAttribute('class') : '') : 'text:' + JSON.stringify(String(n.textContent || '').slice(0, 12)))),
         pWidth: Math.round(p.getBoundingClientRect().width),
@@ -1500,10 +1511,11 @@ const doc = MD.split('PLACE_A')
     return info
   }
   {
-    await sideBySide(`![](${PNG_B})![](${PNG_B})`, '⑭a `![]()` 相邻')
-    await sideBySide(`<img src="${PNG_B}" style="zoom:100%;" /><img src="${PNG_B}" style="zoom:100%;" />`, '⑭b 裸 `<img>` 相邻')
+    await sideBySide(`![](${PNG_B})![](${PNG_B})`, '⑭a 纯 `![]()` 相邻')
+    await sideBySide(`x ![](${PNG_B})![](${PNG_B}) y`, '⑭b 带文字的 `![]()` 相邻')
     const shot2 = await send('Page.captureScreenshot', { format: 'png' })
     safe(() => fs.writeFileSync(path.join(process.cwd(), 'tmp', 'img-two-side-by-side.png'), Buffer.from(shot2.result.data, 'base64')), null)
+    safe(() => fs.writeFileSync(path.join(process.cwd(), 'tmp', 'img-two-side-by-side-gap.png'), Buffer.from(shot2.result.data, 'base64')), null)
   }
 
   // ⑮ 标识符是**真文本**：能拖选跨越、能 Ctrl+C、能 Delete

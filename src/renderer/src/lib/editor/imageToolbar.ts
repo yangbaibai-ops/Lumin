@@ -455,7 +455,29 @@ export const ImageSourceUi = Extension.create({
             hits.push(pos)
             return false
           })
-          if (!hits.length) return null
+          // 相邻的两个 `<img …>` 会被 PM 合并进**同一个文本节点**（同 mark 的相邻文本自动合并）
+          // ⇒ "整段就是一个 `<img …>`"的识别会失配（⑭c/⑭d 实测：只命中 `img-src-incomplete`）。
+          // 这里把"含 ≥2 个 `<img …>` 标签"的文本节点按**标签边界**拆成多个文本节点；
+          // 拼起来与原串逐字节相同（序列化顺序不变）⇒ 逐字节不变；拆完每个节点 ≤1 个标签 ⇒ 幂等。
+          const splits: { pos: number; to: number; segs: string[] }[] = []
+          next.doc.descendants((node, pos) => {
+            if (!node.isText) return true
+            const raw = node.text ?? ''
+            const tags = raw.match(/<img\b[^>]*\/?>/gi)
+            if (!tags || tags.length < 2) return true
+            const segs: string[] = []
+            let last = 0
+            for (const m of raw.matchAll(/<img\b[^>]*\/?>/gi)) {
+              const at = m.index ?? 0
+              if (at > last) segs.push(raw.slice(last, at))
+              segs.push(m[0])
+              last = at + m[0].length
+            }
+            if (last < raw.length) segs.push(raw.slice(last))
+            splits.push({ pos, to: pos + node.nodeSize, segs })
+            return true
+          })
+          if (!hits.length && !splits.length) return null
           const mdMark = next.schema.marks.mdHtml
           const para = next.schema.nodes.paragraph
           const tr = next.tr
@@ -466,6 +488,14 @@ export const ImageSourceUi = Extension.create({
             const src = String(node.attrs.source ?? '').trim()
             const text = next.schema.text(src, mdMark ? [mdMark.create()] : undefined)
             tr.replaceWith(pos, pos + node.nodeSize, para.create(null, text))
+          }
+          // 拆分（同样从后往前；每段沿用同一个 MdHtml mark ⇒ 序列化逐字节不变）
+          for (const sp of splits.reverse()) {
+            tr.replaceWith(
+              sp.pos,
+              sp.to,
+              sp.segs.map((s) => next.schema.text(s, mdMark ? [mdMark.create()] : undefined))
+            )
           }
           if (!tr.docChanged) return null
           tr.setMeta('addToHistory', false)
@@ -497,10 +527,12 @@ export const ImageSourceUi = Extension.create({
             }
             const keep =
               value.from == null ? null : (imgs.find((i) => i.from === value.from) ?? null)
-            const pick =
-              keep && revealDecision(selLike, keep) === 'show'
-                ? keep
-                : (imgs.find((i) => revealDecision(selLike, i) === 'show') ?? null)
+            // ⚠️ 图片**节点**（原子）只认 NodeSelection：光标恰好停在它的边界上**不算"点开"** ——
+            //    否则 `setContent` 之后的一次选区落点就会把它自动转成文本（⑭a 实测：并排的
+            //    第二张图被自动转成原文、于是掉到下一行；⑬b 的"按下即现"也是同一根因）。
+            const showable = (i: ImgSource): boolean =>
+              revealDecision(selLike, i) === 'show' && (i.kind !== 'node' || selLike.nodeSel)
+            const pick = keep && showable(keep) ? keep : (imgs.find((i) => showable(i)) ?? null)
             if (!pick) return { from: null, editing: false, openedAt: value.openedAt }
             /**
              * 光标**严格落进**标识符文本 ⇒ 正在编辑（底色撤掉；Typora 同观感）。
@@ -656,26 +688,18 @@ export const ImageSourceUi = Extension.create({
              */
             mousedown(view, event) {
               pendingClick = null
-              const target = event.target as HTMLElement | null
-              const widget = target?.closest?.('[data-img-widget]') as HTMLElement | null
-              if (widget) {
-                const from = Number(widget.getAttribute('data-img-from'))
-                if (!Number.isFinite(from)) return false
-                if (!collectImgSources(view.state).some((i) => i.from === from)) return false
-                pendingClick = { kind: 'raw', from }
-                event.preventDefault()
-                return true
-              }
-              const imgEl = target?.closest?.('.ProseMirror img') as HTMLElement | null
-              if (!imgEl || imgEl.closest('[data-img-widget]')) return false
-              let pos = -1
-              try {
-                pos = view.posAtDOM(imgEl, 0)
-              } catch {
-                return false
-              }
-              if (pos < 0 || view.state.doc.nodeAt(pos)?.type.name !== 'image') return false
-              pendingClick = { kind: 'node', from: pos }
+              /**
+               * 第六十八轮：不再靠 DOM 身份（`nodeDOM(pos) === imgEl` / `posAtDOM`）判断
+               * "点到的是不是某张图" —— PM 会重建 DOM，身份比较不稳（上一轮 ⑬b 就是栽在这）。
+               * 改成**坐标 → 文档位置 → 落在哪个图片源的范围里**：两种形态（图片节点 / 原文文本）
+               * 共用同一条判据，命中才记 `pendingClick`（激活留给 mouseup，一次事务）。
+               */
+              const at = view.posAtCoords({ left: event.clientX, top: event.clientY })
+              if (!at) return false
+              const sources = collectImgSources(view.state)
+              const hit = sources.find((s) => at.pos >= s.from - 1 && at.pos <= s.to + 1)
+              if (!hit) return false
+              pendingClick = { kind: hit.kind, from: hit.from }
               event.preventDefault()
               return true
             },

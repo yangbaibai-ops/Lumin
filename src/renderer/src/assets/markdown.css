@@ -260,7 +260,11 @@
   vertical-align: top;
   margin-inline: 0;
 }
-.md-preview p > img + img {
+/* ⚠️ 间隙规则**必须比上面那条 `margin-inline: 0` 更专一**（否则被它压掉 ⇒ 实测 gap 0）：
+   `.md-preview p > img:not(:only-child) + img:not(:only-child)` = (0,4,3) > (0,2,2)，
+   并且放在它**之后**。只作用于"两张图之间"，外侧不撑开 ⇒ 独占一行的居中判定不受影响。 */
+.md-preview p > img:not(:only-child) + img:not(:only-child),
+.md-preview p > .img-widget ~ .img-widget {
   /* 仓库里**没有**通用间距令牌（theme.css 只有颜色/圆角一类）⇒ 用相对字号，不硬编码像素 */
   margin-inline-start: 0.6em;
 }
