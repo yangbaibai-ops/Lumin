@@ -87,19 +87,18 @@ function collectFacts() {
   }
 }
 
-/** README 里的那块：代码规模表 */
-function renderReadmeBlock(f) {
-  const rows = f.groups
-    .map((g) => `| \`${g.name}\` | ${g.files} | ${g.lines} |`)
-    .join('\n')
+/**
+ * README 里的那块。
+ *
+ * ⚠️ 对外 README **不展示源码规模**：本项目只发布安装包、源码另行出售，
+ * 所以这块渲染成一段**对 GitHub 不可见**的注释锚点，只保留"数字由 doc-facts 统一生成"的秩序；
+ * 需要内部账目（各目录文件数/行数）时看 `tools/README.md` 的块（工程文档，本就不对外）。
+ */
+function renderReadmeBlock() {
   return [
     BEGIN,
     '',
-    '| 范围 | 文件 | 行数 |',
-    '|---|---|---|',
-    rows,
-    '',
-    `口径：\`src/main\`/\`preload\`/\`shared\` 数 \`.ts\`，\`src/renderer\` 数 \`.ts\`+\`.vue\`（含子目录）。`,
+    '<!-- 本项目只发布安装包；源码规模等工程账目不在此展示（见 tools/README.md）。 -->',
     '',
     END
   ].join('\n')
