@@ -2884,6 +2884,114 @@ const doc = MD.split('PLACE_A')
     await sleep(900)
   }
 
+  // ═══ 第八十四轮：末尾是图片 ⇒ 点它**下方**能在下一行落光标（照 Typora）═══════════════
+  {
+    const shapeOf = () =>
+      json(`(() => {
+        const v = window.__vt.ed().view
+        const blocks = []
+        v.state.doc.forEach((b) => blocks.push(b.type.name + ':' + b.childCount))
+        const { from, to, empty } = v.state.selection
+        const last = v.state.doc.child(v.state.doc.childCount - 1)
+        return {
+          blocks,
+          from,
+          to,
+          empty,
+          end: v.state.doc.content.size,
+          lastNodeSize: last ? last.nodeSize : 0,
+          md: window.__vt.ed().storage.markdown.getMarkdown(),
+          lastType: last ? last.type.name : null
+        }
+      })()`)
+    const loadFixture = async (fixture) => {
+      await ev(`(() => { window.__vt.ed().commands.setContent(${JSON.stringify(fixture)}); return 'ok' })()`)
+      await sleep(900)
+    }
+    const clickBelow = async (fixture) => {
+      await loadFixture(fixture)
+      const pt = await json(`(() => {
+        const root = document.querySelector('.ProseMirror')
+        const last = root ? root.lastElementChild : null
+        const ed = root ? root.getBoundingClientRect() : null
+        const r = last ? last.getBoundingClientRect() : ed
+        if (!ed || !r) return null
+        return {
+          x: Math.round(Math.min(ed.right - 6, Math.max(ed.left + 40, r.left + 40))),
+          y: Math.round(Math.min(ed.bottom - 4, r.bottom + 24)),
+          lastBottom: Math.round(r.bottom),
+          editorBottom: Math.round(ed.bottom)
+        }
+      })()`)
+      await click(pt)
+      await sleep(450)
+      return { pt, st: await shapeOf() }
+    }
+    // 光标在**最后一个块**的范围里（空段落的可落点就是它自己的开区间，别用 end-1 硬比）
+    const atDocEnd = (st) => st.from >= st.end - st.lastNodeSize - 1 && st.from <= st.end - 1
+    // ① 末尾是 `![]()` 图片节点
+    const t1 = await clickBelow(`正文一段\n\n![](${PNG_B})`)
+    let typed1 = t1.st
+    if (t1.st.blocks.length >= 3) {
+      await ev(`(() => { window.__vt.ed().commands.focus(); return 'ok' })()`)
+      await send('Input.insertText', { text: 'X' })
+      await sleep(450)
+      typed1 = await shapeOf()
+    }
+    check(
+      '㉖① 文档末尾是 `![]()` 图片 ⇒ 点它**下方** ⇒ 新增一个空段落、光标落在其中（empty），随后可输入',
+      t1.st.blocks.length === 3 && t1.st.empty === true && atDocEnd(t1.st) && typed1.md !== t1.st.md && typed1.md.includes('X'),
+      JSON.stringify({ 点击点: t1.pt, 点击后: t1.st, 输入后: { md: typed1.md, blocks: typed1.blocks } })
+    )
+    // ② 末尾是裸 `<img …>`
+    const t2 = await clickBelow(`正文一段\n\n<img src="${PNG_B}" style="zoom:100%;" />`)
+    check(
+      '㉖② 文档末尾是**裸 `<img …>`** ⇒ 同样新增空段落 + 光标落在其中',
+      t2.st.blocks.length === 3 && t2.st.empty === true && atDocEnd(t2.st),
+      JSON.stringify({ 点击点: t2.pt, 结果: t2.st })
+    )
+    // ③ 末尾是普通段落 ⇒ 行为不变（不新增段落）
+    const t3 = await clickBelow(`正文一段\n\n最后一段文字`)
+    check(
+      '㉖③ 末尾是**普通段落** ⇒ 点下方**不新增段落**（既有行为不变）',
+      t3.st.blocks.length === 2,
+      JSON.stringify({ 点击点: t3.pt, 结果: t3.st })
+    )
+    // ④ 不点则不动：只打开文档 + 点正文
+    await loadFixture(`正文一段\n\n![](${PNG_B})`)
+    const beforeNoClick = await shapeOf()
+    const awayPt = await json(`(() => {
+      const root = document.querySelector('.ProseMirror')
+      const p = root.querySelector('p')
+      const r = p.getBoundingClientRect()
+      return { x: Math.round(r.left + 10), y: Math.round(r.top + 8) }
+    })()`)
+    await click(awayPt)
+    await sleep(400)
+    const afterNoClick = await shapeOf()
+    check(
+      '㉖④ **不点下方就不动文档**：只打开 + 点正文 ⇒ 文档逐字节不变、段落数不变',
+      afterNoClick.md === beforeNoClick.md && afterNoClick.blocks.length === beforeNoClick.blocks.length,
+      JSON.stringify({ 点前: beforeNoClick.blocks, 点后: afterNoClick.blocks, md: afterNoClick.md })
+    )
+    // ⑤ undo
+    const t5 = await clickBelow(`正文一段\n\n![](${PNG_B})`)
+    const beforeUndo = await shapeOf()
+    const canUndo = await requireFocus('㉖⑤ Ctrl+Z')
+    if (canUndo) {
+      await send('Input.dispatchKeyEvent', { type: 'rawKeyDown', windowsVirtualKeyCode: 90, key: 'z', code: 'KeyZ', modifiers: 2 })
+      await send('Input.dispatchKeyEvent', { type: 'keyUp', windowsVirtualKeyCode: 90, key: 'z', code: 'KeyZ', modifiers: 2 })
+      await sleep(500)
+    }
+    const afterUndo = await shapeOf()
+    check(
+      '㉖⑤ 新段落**进 undo 栈**：`Ctrl+Z` ⇒ 回到"末尾是图片"的形态',
+      t5.st.blocks.length === 3 && (canUndo === false || afterUndo.blocks.length === 2),
+      JSON.stringify({ 点后: beforeUndo.blocks, 撤销后: afterUndo.blocks, md: afterUndo.md })
+    )
+    await loadFixture(doc)
+  }
+
   const pass = results.filter((r) => r.ok).length
   console.log(`TOTAL ${results.length} PASS ${pass} FAIL ${results.length - pass}`)
   console.log(`--- ${pass}/${results.length} PASS`)
