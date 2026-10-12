@@ -206,9 +206,8 @@
   width: 100%;
   max-width: 100%;
 }
-/* 「公式 ✓」贴在容器右上角：**绝对定位、不参与流**（用户口径：不要占一行）。
-   `pointer-events: none` 让这条小标记不挡住源码区空白处的点击，
-   只有 ✓ 按钮自己（`pointer-events: auto`）可点。
+/* 顶行「公式」贴在容器右上角：**绝对定位、不参与流**（用户口径：不要占一行）。
+   `pointer-events: none` 让这条小标记不挡住源码区空白处的点击。
    ⚠️ 这里**不写 z-index**：`bar` 在 DOM 里排在源码区**之后**（见 buildEditorParts），
    同为定位元素、z-index 都是 auto ⇒ 后出现的画在上面，够用了
    （分片 CSS 里不许出现数字 z-index，见 tests/zIndexStack.test.mjs）。 */
@@ -219,35 +218,33 @@
   padding: 0;
   pointer-events: none;
 }
-.md-math-editor--block .md-math-editor__check {
-  pointer-events: auto;
-}
+/* ⚠️ 原来这里还有一条 `.md-math-editor--block .md-math-editor__check { pointer-events: auto }`
+   —— 第三十三轮删掉 ✓ 按钮（用户口径③）时一并清掉，不留死样式。 */
 /* ── 行内：固定定位的紧凑浮层（定位由 JS 按 getBoundingClientRect 算）──
-   第三十一轮按"大气简约"重做：**单行**。
-   块级那套是「上源码 / 下渲染」两段式的竖盒子（随正文流，撑得起那个体量）；
-   行内公式只有几个字符，竖着叠两行 + 一整条顶栏会显得头重脚轻，所以：
-     * 不另起顶栏（✓ 用 `order` 排到源码框右边，同一行）；
-     * 可见的「公式」二字收起来（✓ 自己带可访问名，读屏念的是动作）；
-     * 「Esc 收起」只留给读屏器（`.md-math-editor__hint` 视觉隐藏，见下）；
-     * 只有**出错时**才多出第二行（错误信息），平时就是一个贴着公式的薄盒子。 */
+   第三十三轮按用户口径「更大气简约」重做（原话：「优化下样式，使其更大气简约」）：
+     * **大内边距**：`padding: 7px 9px`（改前 3px 4px）—— 源码不再贴着容器边；
+     * **无重边框**：边框只留 `--edge` 一档细线（没有粗框、没有描边环）；
+     * **极淡阴影**：`--shadow-1`（改前用 `--shadow-2`，那颗是给模态/大浮层用的重阴影）；
+     * **稍大字号**：源码文本 1.05em（改前 1em），等宽字体不变（`--font-mono`）；
+     * 去掉 ✓ 之后不再需要"单行 + 右挂按钮"的排布 ⇒ **源码区独占一行**、更干净。 */
 .md-math-editor--inline {
   position: fixed;
   /* 高于编辑器内的常规浮层，但低于模态/右键菜单（见 theme.css 的 --z-* 令牌表） */
   z-index: var(--z-page);
-  /* 单行 + 出错时换行；`align-items: center` 让源码框与 ✓ 在同一条基线上 */
-  flex-direction: row;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 4px;
-  padding: 3px 4px;
+  flex-direction: column;
+  gap: 0;
+  padding: 7px 9px;
   background: var(--elevate);
-  box-shadow: var(--shadow-2);
-  border-radius: 6px;
+  border: 1px solid var(--edge);
+  border-radius: 8px;
+  /* 「极淡阴影」：--shadow-1 是"轻量浮起"那一档（--shadow-2 留给模态/大浮层） */
+  box-shadow: var(--shadow-1);
 }
-/* ✓ 排到源码框后面（DOM 顺序仍是 bar 在前：块级形态要靠它） */
+/* 行内浮层的顶栏：只剩「公式」二字，不再右挂按钮 —— 左对齐、不占额外高度 */
 .md-math-editor--inline .md-math-editor__bar {
-  order: 2;
-  padding: 0;
+  order: 0;
+  justify-content: flex-start;
+  padding: 0 0 2px;
   gap: 0;
 }
 .md-math-editor--inline .md-math-editor__source {
@@ -256,17 +253,15 @@
   flex: 1 1 auto;
   min-width: 0;
   gap: 0;
-  padding: 2px 5px;
-  border-radius: 3px;
+  /* 源码区自己不再画一块浅灰底：外层容器已经是 --elevate，再叠一层会显脏 */
+  padding: 0;
+  background: transparent;
 }
-/* 行内浮层里不显示「公式」二字：那个位置留给源码（可访问名还在 ✓ 上） */
-.md-math-editor--inline [data-md-math-editor-label] {
-  display: none;
-}
-/* 出错时的渲染区：整条换到第二行 */
+/* 出错时的渲染区：放到源码下面一行 */
 .md-math-editor--inline .md-math-editor__preview {
-  order: 3;
-  flex: 0 0 100%;
+  order: 2;
+  flex: 1 0 100%;
+  margin-top: 5px;
 }
 
 /* 顶行：右上角「公式 ✓」（截图里就是"标签 + 勾"，两者都属于同一个可点区域）。
@@ -281,47 +276,13 @@
   line-height: 1.4;
   color: var(--ink-3);
 }
-/* ✓ 是**真的按钮**（可聚焦、有可访问名）：点它收起编辑态，等价于 Esc */
-.md-math-editor__check {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 0 5px;
-  min-height: 18px;
-  border: none;
-  border-radius: 3px;
-  background: transparent;
-  color: var(--ink-3);
-  font: inherit;
-  font-size: var(--text-ui-sm);
-  cursor: pointer;
-}
-.md-math-editor__check [data-md-math-editor-label] {
-  color: var(--ink-2b);
-}
-.md-math-editor__check [data-md-math-editor-check-mark] {
-  /* 勾比标签重一点，像截图那样能一眼看到"这里能收" */
-  color: var(--ink-2b);
-  font-size: 1.05em;
-}
-.md-math-editor__check:hover {
-  background: var(--accent-soft);
-  color: var(--ink);
-}
-.md-math-editor__check:hover [data-md-math-editor-label],
-.md-math-editor__check:hover [data-md-math-editor-check-mark] {
-  color: var(--ink);
-}
-.md-math-editor__check:focus-visible {
-  outline: none;
-  box-shadow: 0 0 0 2px var(--accent-soft);
-}
-.md-math-editor__check:focus-visible [data-md-math-editor-label],
-.md-math-editor__check:focus-visible [data-md-math-editor-check-mark] {
-  color: var(--ink);
-}
+/* ✓ 按钮的样式规则已随按钮一起**删除**（第三十三轮，用户口径③「取消后面要按的对号 `√`」）：
+   收起编辑态现在只有两条出口 —— **失焦立刻收起**与 **Esc**，不再需要点按目标。
+   原来的 `.md-math-editor__check*` 六条规则与 `[data-md-math-editor-check-mark]` 一并清掉，
+   不留死样式（选择器在 DOM 里已经没有对应节点）。
+   `data-md-math-editor-check` 这个锚点也从 buildEditorParts 里删了。 */
 /* 「Esc」提示：**只给读屏器**（`aria-describedby` 指向它）。
-   行内浮层要"大气简约"：可见的那点地方留给源码与 ✓，提示不占位也不用自己画边框
+   行内浮层要"大气简约"：可见的那点地方留给源码，提示不占位也不用自己画边框
    （`clip-path` 是"视觉隐藏但仍在无障碍树里"的标准写法）。 */
 .md-math-editor__hint {
   position: absolute;
@@ -391,6 +352,16 @@
   word-break: normal;
   overflow-wrap: normal;
 }
+/* 行内浮层：源码**稍大一号**（用户口径②「更大气简约」）。
+   ⚠️ 必须同时命中**两层**（hl 与 src）——它们靠共享规则逐像素对齐，只改一层会立刻错位
+   （见上面那条共享规则的说明）。字号写 `1.05em`（相对正文，不是新档位 px，
+   `tests/visualScale.test.mjs` 的闭集只管 px，em 属"相对排版"）。 */
+.md-math-editor--inline .md-math-editor__hl,
+.md-math-editor--inline .md-math-editor__src {
+  padding: 1px 0;
+  font-size: 1.05em;
+}
+
 /* 装饰层：绝对定位铺满 field，被 textarea 的滚动位置平移（JS 只做这一件事） */
 .md-math-editor .md-math-editor__hl {
   position: absolute;
