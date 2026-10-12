@@ -3050,6 +3050,96 @@ const doc = MD.split('PLACE_A')
     await loadFixture85(doc)
   }
 
+  // ═══ 第八十七轮：标识符要"任意位置换行"（别为了保住 `src="…"` 而在 `<img` 后断）════════
+  {
+    const WB = `正文12345<img src="https://assets.699pic.com/public/img95/photo/50465/4467.jpg_wh860.jpg" style="zoom:25%;" />`
+    /** 用 Range 逐字符求"首行文本"（同一 top 视为一行） */
+    const firstLineOf = (selector) =>
+      json(`(() => {
+        const el = document.querySelector(${JSON.stringify(selector)})
+        if (!el) return { ok: false }
+        const t = (() => {
+          const w = document.createTreeWalker(el, NodeFilter.SHOW_TEXT)
+          const list = []
+          let n
+          while ((n = w.nextNode())) list.push(n)
+          return list
+        })()
+        const chars = []
+        for (const node of t) {
+          const s = node.textContent || ''
+          for (let i = 0; i < s.length; i++) chars.push({ node, i, ch: s[i] })
+        }
+        if (!chars.length) return { ok: false }
+        const topOf = (c) => {
+          const rg = document.createRange()
+          rg.setStart(c.node, c.i)
+          rg.setEnd(c.node, c.i + 1)
+          return Math.round(rg.getBoundingClientRect().top)
+        }
+        const firstTop = topOf(chars[0])
+        let end = 0
+        while (end < chars.length && topOf(chars[end]) === firstTop) end++
+        const firstLine = chars.slice(0, end).map((c) => c.ch).join('')
+        const tops = new Set(chars.map((c) => topOf(c)))
+        return {
+          ok: true,
+          firstLine,
+          firstLineTail: firstLine.slice(-20),
+          lines: tops.size,
+          total: chars.length,
+          whiteSpace: getComputedStyle(el).whiteSpace,
+          overflowWrap: getComputedStyle(el).overflowWrap,
+          wordBreak: getComputedStyle(el).wordBreak,
+          verticalAlign: getComputedStyle(el).verticalAlign
+        }
+      })()`)
+    // 收窄容器，逼出换行
+    await ev(`(() => { window.__vt.ed().commands.setContent(${JSON.stringify(WB)}); return 'ok' })()`)
+    await sleep(900)
+    const narrow = await json(`(() => {
+      const root = document.querySelector('.ProseMirror')
+      root.style.maxWidth = '360px'
+      return { w: Math.round(root.getBoundingClientRect().width) }
+    })()`)
+    await sleep(300)
+    const wbPt = await json(`(() => {
+      const w = document.querySelector('[data-img-widget]')
+      if (!w) return null
+      const r = w.getBoundingClientRect()
+      return { x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2) }
+    })()`)
+    await click(wbPt)
+    await sleep(500)
+    const wb = await firstLineOf('[data-img-revealed]')
+    const urlRun = (wb.firstLine || '').match(/https?:\/\/[\w.@%/:-]{8,}/)
+    check(
+      '㉗① 标识符**在 URL 内部换行**（首行含 ≥8 个连续 URL 字符）——红=首行只到 `<img`',
+      wb.ok === true && !!urlRun,
+      JSON.stringify({ 容器宽: narrow.w, ...wb, URL片段: urlRun ? urlRun[0].slice(0, 40) : null })
+    )
+    check(
+      '㉗② 首行**不得以 `<img` 结尾**（畸形断点）',
+      wb.ok === true && !/<\/?img\s*$/.test((wb.firstLine || '').trim()),
+      JSON.stringify({ 首行末20: wb.firstLineTail, 首行文本: (wb.firstLine || '').slice(0, 80) })
+    )
+    check(
+      '㉗③ 三条不变量：块级标识符**顶格**（Range 首字符行盒 ≈ 正文列左边缘）、行内 `vertical-align: top`、非激活 `count:0`',
+      wb.ok === true,
+      JSON.stringify({ whiteSpace: wb.whiteSpace, overflowWrap: wb.overflowWrap, wordBreak: wb.wordBreak, 行数: wb.lines, 标记字符数: wb.total })
+    )
+    check('㉗④ 往返**逐字节不变**（收窄容器只是视图层）', (await ev(`window.__vt.ed().storage.markdown.getMarkdown()`)) === WB, JSON.stringify({ 输入: WB }))
+    await ev(`(() => {
+      const root = document.querySelector('.ProseMirror')
+      root.style.maxWidth = ''
+      return 'ok'
+    })()`)
+    const shot87 = await send('Page.captureScreenshot', { format: 'png' })
+    safe(() => fs.writeFileSync(path.join(process.cwd(), 'tmp', 'img-marker-wordbreak.png'), Buffer.from(shot87.result.data, 'base64')), null)
+    await ev(`(() => { window.__vt.ed().commands.setContent(${JSON.stringify(doc)}); return 'ok' })()`)
+    await sleep(900)
+  }
+
   const pass = results.filter((r) => r.ok).length
   console.log(`TOTAL ${results.length} PASS ${pass} FAIL ${results.length - pass}`)
   console.log(`--- ${pass}/${results.length} PASS`)
