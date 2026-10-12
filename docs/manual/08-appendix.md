@@ -80,6 +80,7 @@ _本手册随代码演进持续更新；任何涉及编辑器内核的改动（�
 | [08e-wave-records.md](./08e-wave-records.md) | 4.86–4.87 | 两波按报告优化的交付记录 |
 | [08f-fix-log-5.md](./08f-fix-log-5.md) | 4.90 | `Ctrl+P` 改为应用内打印预览（系统对话框「不支持打印预览」的绕法） |
 | [08g-fix-log-6.md](./08g-fix-log-6.md) | 4.91 | 启动变慢：先量化再优化（产物压缩 / KaTeX CSS 挪出首屏 / 先挂壳再等路由） |
+| [08h-fix-log-7.md](./08h-fix-log-7.md) | 4.92 | 图片标识符的排版：`vertical-align: top` → `baseline`（含一次被用户否掉的「窄盒」方案与两条 CSS 坑） |
 
 - 线上（live）的按波优化台账：[docs/optimization-waves.md](../../optimization-waves.md)
 - 打包 / 安装 / 便携的手动清单：[docs/packaging-install-test.md](../../packaging-install-test.md)

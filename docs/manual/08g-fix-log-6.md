@@ -1,6 +1,6 @@
 # 附录 4.91：启动变慢 —— 先量化，再优化（产物压缩 / KaTeX CSS / 先挂壳再等路由）
 
-> 本文件是 [附录索引](./08-appendix.md) 的第 7/7 片（只收录 §4.91）。
+> 本文件是 [附录索引](./08-appendix.md) 的第 7/8 片（只收录 §4.91）。
 > 线上（live）的优化台账在 [docs/optimization-waves.md](../../optimization-waves.md)。
 > 测量工具：`tools/_probe-boot.js`（探针档，多轮中位数）；确定性门禁：`tests/bootBudget.test.mjs`。
 
