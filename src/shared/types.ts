@@ -703,6 +703,12 @@ export interface LuminAPI {
      * （见 stores/files.ts 的 openPath 短路判据）。文件不存在返回 null。
      */
     mtime: (path: string) => Promise<number | null>
+    /**
+     * 申报本窗口**当前打开的文档**，交给主进程做外部改动监测（第一百零八轮）。
+     * `path = null` = 未命名文档/已关闭 ⇒ 停掉监测；`mtimeMs` = 起始基线
+     * （不传会让"刚打开"看起来就是一次变化 ⇒ 立刻误报）。
+     */
+    watchDocument: (path: string | null, mtimeMs?: number) => Promise<boolean>
     chooseOpenFile: () => Promise<string | null>
     /**
      * 「保存到哪」对话框。`dir` 是对话框**默认落在的文件夹**：

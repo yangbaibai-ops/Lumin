@@ -9,7 +9,7 @@ import {
   type IpcMainInvokeEvent
 } from 'electron'
 import path from 'path'
-import { watch, existsSync, readFileSync, type FSWatcher } from 'fs'
+import { watch, existsSync, readFileSync, statSync, type FSWatcher } from 'fs'
 import { mkdir, readFile, readdir, stat } from 'fs/promises'
 import * as fileOps from './fileOps'
 import * as exportSvc from './export'
@@ -25,6 +25,7 @@ import * as taskbar from './services/taskbar'
 import * as workspaceIndex from './services/workspaceIndex'
 import * as workspaceReplace from './services/workspaceReplace'
 import * as dbBackup from './services/dbBackup'
+import * as externalWatch from './services/externalWatch'
 import * as workspaceBackup from './services/workspaceBackup'
 import { onSettingsChanged } from './services/updater'
 import { installMenu } from './menu'
@@ -472,6 +473,16 @@ export function registerIpc(slots: SlotRegistry): void {
         }
         const mtimeMs = await fileOps.writeFile(fp, content, encoding, hadBom, eol)
         /**
+         * 记下"这一版是我们自己写的"（第一百零八轮）：接下来目录监听/stat 轮询看到这一版时
+         * **不许**当外部改动弹提示 —— Ctrl+S 之后弹一个"检测到内容已被修改"是最典型的误报。
+         */
+        try {
+          const st = statSync(fp)
+          externalWatch.noteSelfWrite(fp, { mtimeMs, size: st.size })
+        } catch {
+          externalWatch.noteSelfWrite(fp, { mtimeMs, size: 0 })
+        }
+        /**
          * 保存时同步元数据 + 全文索引。
          *
          * ⚠️ 索引更新失败**不能**把这次保存判成失败（报告 §4.2 P1-3）：磁盘已经写成功了，
@@ -600,6 +611,20 @@ export function registerIpc(slots: SlotRegistry): void {
   ipcMain.handle('file:exists', (_, p: string) =>
     fileOps.exists(pathGrants.assertAuthorized(p, 'read'))
   )
+  /**
+   * 申报"这个窗口当前打开的文档"（第一百零八轮的外部改动监测）。
+   *
+   * `p = null` ⇒ 没有磁盘文件（未命名文档）或已关闭：停掉监测。
+   * `mtimeMs` 是渲染层手头那一版的 mtime —— 起始基线用它，否则"刚打开就报外部改动"。
+   * 授权闸：只读授权即可（我们要的是 stat，不是内容）。
+   */
+  ipcMain.handle('file:watchDocument', (e, p: string | null, mtimeMs?: number) => {
+    const win = BrowserWindow.fromWebContents(e.sender)
+    if (!win || win.isDestroyed()) return false
+    const fp = p ? pathGrants.assertAuthorized(p, 'read') : null
+    externalWatch.watchDocument(win, fp, mtimeMs)
+    return true
+  })
   /**
    * 这个路径是不是目录（拖入落点要靠它分流：文件 → 打开文件；目录 → 打开文件夹）。
    *
@@ -1283,6 +1308,8 @@ export function attachCloseGuard(win: BrowserWindow): void {
       if (timer) clearTimeout(timer)
       closeTimers.delete(win)
       closeGuardState.delete(win)
+      // 外部改动监测跟着窗口一起收（第九百零八轮那条线的清理）
+      externalWatch.stopExternalWatch(win)
     })
   })
 }

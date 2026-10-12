@@ -12,6 +12,7 @@ import { useNotificationsStore } from './stores/notifications'
 import { useEditorMenuStore } from './stores/editorMenu'
 import { applySessionPosition, installSessionTracking, restoreSession } from './lib/session'
 import { isInside, installOpenDocTracking } from './lib/openFile'
+import { initExternalWatch } from './lib/externalWatch'
 
 /**
  * 启动阶段打点（`performance.mark('lumin:*')`）：零开销、可在 DevTools Performance
@@ -106,6 +107,13 @@ async function bootstrap(): Promise<void> {
   const files = useFilesStore(pinia)
   await files.init({ inheritWorkspace: !window.luminAPI.app.startupNoWorkspace })
   mark('files')
+
+  /**
+   * 外部改动监测（第一百零八轮）：监听主进程推来的 `doc:externalChange`（目录监听 +
+   * stat 轮询在那边），命中当前文档就弹「检测到内容已被修改，是否重新加载」。
+   * 装在 `files.init()` 之后：提示要读 `files.current`（会话恢复可能在 init 里开文档）。
+   */
+  initExternalWatch()
 
   // 通知中心 / 右键菜单「最近使用」：只影响卡片与菜单的次要分区，不阻塞文档显示
   // —— 空闲时再从 SQLite 恢复（各自独立，互不等待）。启动瞬间产生通知也没问题：

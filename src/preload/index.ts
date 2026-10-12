@@ -40,6 +40,11 @@ const EVENT_CHANNELS = [
   'app:before-close',
   'workspace:changed',
   'workspace:indexProgress',
+  /**
+   * 「当前打开的文档被其他应用改了」（第一百零八轮）：主进程的目录监听 + stat 轮询发现
+   * 外部改动后推这一条，渲染层据此弹「检测到内容已被修改，是否重新加载」。
+   */
+  'doc:externalChange',
   'notifications:changed',
   'update:status',
   /**
@@ -121,6 +126,11 @@ const api: LuminAPI = {
     isSamePath: (a, b) => ipcRenderer.invoke('file:isSamePath', a, b),
     /** 只要 mtime（外部改动检测用；不必把整篇正文搬过来） */
     mtime: (path) => ipcRenderer.invoke('file:mtime', path),
+    /**
+     * 申报本窗口当前打开的文档，交给主进程做**外部改动监测**（第一百零八轮）。
+     * `path = null` = 未命名文档/已关闭 ⇒ 停掉监测；`mtimeMs` = 起始基线（防止刚打开就误报）。
+     */
+    watchDocument: (path, mtimeMs) => ipcRenderer.invoke('file:watchDocument', path, mtimeMs),
     chooseOpenFile: () => ipcRenderer.invoke('file:chooseOpenFile'),
     chooseSaveFile: (name, ext, dir) => ipcRenderer.invoke('file:chooseSaveFile', name, ext, dir),
     chooseFolder: () => ipcRenderer.invoke('file:chooseFolder'),

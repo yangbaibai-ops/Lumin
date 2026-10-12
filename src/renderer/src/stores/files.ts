@@ -752,6 +752,8 @@ export const useFilesStore = defineStore('files', {
           this.draftRestore = draft
         }
         useRecentStore().touchFile(path)
+        // 申报外部改动监测（第一百零八轮）：基线用刚读到的 mtime
+        void this.syncExternalWatch()
         return true
       } catch {
         const ui = useUiStore()
@@ -818,7 +820,64 @@ export const useFilesStore = defineStore('files', {
       this.current = null
       this.draftRestore = null
       this.heavyMode = false
+      void this.syncExternalWatch()
       useWorkspaceDocsStore().invalidate()
+    },
+
+    /**
+     * ─── 外部改动监测的申报（第一百零八轮）─────────────────────────────────────
+     *
+     * 把「本窗口当前那一篇」告诉主进程（目录监听 + stat 轮询在那边，见
+     * `src/main/services/externalWatch.ts`）。换文档/关文档/另存为之后都要重新申报，
+     * 否则会继续盯着旧路径（用户看到的是"新文档弹旧文档的提示"）。
+     *
+     * 未命名文档（`path === null`）⇒ 传 null 停掉监测。
+     * 起始基线用当前 `mtimeMs`：不传的话"刚打开就报外部改动"（第一次 stat 与没有基线
+     * 看起来就是一次变化）。
+     */
+    async syncExternalWatch(): Promise<void> {
+      try {
+        await window.luminAPI.file.watchDocument(
+          this.current?.path ?? null,
+          this.current?.mtimeMs ?? undefined
+        )
+      } catch {
+        /* 老主进程没有这个 IPC（构建产物不像渲染层那样热更新）：静默降级，功能不可用而已 */
+      }
+    },
+
+    /**
+     * ─── 「重新加载」（第一百零八轮）────────────────────────────────────────────
+     *
+     * 外部改动的提示里点「重新加载」走这里：读盘 → 用**既有单一数据源账本**把内容换掉
+     * （`noteExternalReplace()` → 各编辑面按世代号重渲染，不另开第二条同步通道）。
+     *
+     * 与 `reopenWithEncoding` 同一套字段更新口径（编码/BOM/行尾/替换字符都跟着这次读盘走），
+     * 区别只是**不改编码**、也不置 `reopenedWithEncoding`（那不是"重新解释"，就是重读）。
+     */
+    async reloadFromDisk(): Promise<boolean> {
+      const cur = this.current
+      if (!cur?.path) return false
+      try {
+        const opened: OpenedFile = await window.luminAPI.file.read(cur.path, cur.encoding)
+        // 读盘期间用户可能已经换文档了：账要对得上
+        if (this.current !== cur) return false
+        cur.content = opened.content
+        cur.savedContent = opened.content
+        cur.mtimeMs = opened.mtimeMs
+        cur.hadBom = opened.hadBom
+        cur.eol = opened.eol
+        cur.hadReplacement = !!opened.hadReplacement
+        // 显式替换：绕开回声过滤，让编辑器按新世代号重渲染
+        this.noteExternalReplace()
+        useWorkspaceDocsStore().bumpMtime(cur.path)
+        // 重读之后基线跟着新 mtime 走（否则下一轮轮询又把它当"外部改动"）
+        void this.syncExternalWatch()
+        return true
+      } catch {
+        useUiStore().toast(i18n.global.t('toast.openFailed') + ': ' + cur.path, 'error')
+        return false
+      }
     },
     draftKey(path: string | null): string {
       return draftKeyFor(path, window.luminAPI.app.sessionSlot)
@@ -1146,6 +1205,9 @@ export const useFilesStore = defineStore('files', {
         // await 期间又有输入：保持脏，重排一次保存与草稿（不静默把新内容吞掉）
         this.scheduleSave()
       }
+      // 保存后重新申报监测：主进程记下了"这一版是我们写的"（`noteSelfWrite`），
+      // 这里再把基线对齐到新 mtime/新路径（另存为之后路径会变）。
+      void this.syncExternalWatch()
       return true
     },
     /**
