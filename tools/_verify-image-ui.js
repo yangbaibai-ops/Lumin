@@ -3569,6 +3569,255 @@ const doc = MD.split('PLACE_A')
     await sleep(900)
   }
 
+  // ═══ 第九十四轮：**从后往前拖**松开后选区丢了（tableClipboard 的 mouseup 收尾误判单击）════
+  {
+    const U94 = 'https://assets.699pic.com/public/img95/photo/50465/4467.jpg_wh860.jpg'
+    const DOC94 = `行内公式$E = mc^2$ 与 $a^2 + b^2 = c^2$。<img src="${U94}" style="zoom:25%;" />`
+    const load94 = async () => {
+      await ev(`(() => { window.__vt.ed().commands.setContent(${JSON.stringify(DOC94)}); return 'ok' })()`)
+      await sleep(900)
+    }
+    /** 拖一次（steps 步），返回松开前后的选区与"单击判定"两个分量 */
+    const drag94 = async (dir, steps = 10) => {
+      await load94()
+      /**
+       * 第九十五轮：**起点改到"源码文本自身内部"**。
+       * 上一轮反向夹具从 `widget.right + 3` 起手（在段落最后一个行内元素**右侧**、正文之外），
+       * PM 很可能只当"末位落光标"⇒ 拖动中压根没建立选区。这里先点图片让**源码显形**，
+       * 再从源码行盒的右端往左拖 ⇒ 才是用户那种"从后往前选文字"。
+       */
+      const imgPt94 = await json(`(() => {
+        const w = document.querySelector('[data-img-widget]')
+        if (!w) return null
+        const r = w.getBoundingClientRect()
+        return { x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2) }
+      })()`)
+      await click(imgPt94)
+      await sleep(450)
+      const geo = await json(`(() => {
+        const root = document.querySelector('.ProseMirror')
+        const el = root.querySelector('[data-img-revealed]')
+        const p = root.querySelector('p')
+        const pr = p.getBoundingClientRect()
+        const rs = el ? [...el.getClientRects()].filter((r) => r.width > 2) : []
+        const lastRect = rs.length ? rs[rs.length - 1] : null
+        return {
+          leftX: Math.round(pr.left + 3),
+          rightX: lastRect ? Math.round(lastRect.right - 4) : Math.round(pr.right - 6),
+          y: Math.round((lastRect ? lastRect.top + lastRect.height / 2 : pr.top + 10))
+        }
+      })()`)
+      const a = dir === 'back' ? { x: geo.rightX, y: geo.y } : { x: geo.leftX, y: geo.y }
+      const z = dir === 'back' ? { x: geo.leftX, y: geo.y } : { x: geo.rightX, y: geo.y }
+      const before = await json(`(() => {
+        const v = window.__vt.ed().view
+        return { from: v.state.selection.from, to: v.state.selection.to, empty: v.state.selection.empty }
+      })()`)
+      /**
+       * 第九十五轮探针：包一层 `dispatch`，把**每一次事务**的选区变化与 meta 记下来
+       * ⇒ 用来点名"是谁把非空选区收成空选区"。
+       */
+      await ev(`(() => {
+        const v = window.__vt.ed().view
+        window.__tx95 = []
+        if (!window.__p95) {
+          window.__p95 = true
+          const d = v.dispatch.bind(v)
+          v.dispatch = (tr) => {
+            try {
+              const sel = tr.selection
+              const metaKeys = []
+              const meta = tr.meta || {}
+              for (const k of Object.keys(meta)) metaKeys.push(String(k).slice(0, 24) + '=' + String(meta[k]).slice(0, 12))
+              window.__tx95.push({
+                from: sel ? sel.from : null,
+                to: sel ? sel.to : null,
+                empty: sel ? sel.empty : null,
+                docChanged: tr.docChanged === true,
+                hist: tr.getMeta('addToHistory') === false ? 'noHist' : 'hist',
+                meta: metaKeys,
+                steps: tr.steps ? tr.steps.length : 0
+              })
+            } catch (e) {
+              window.__tx95.push({ err: String(e && e.message ? e.message : e) })
+            }
+            return d(tr)
+          }
+        }
+        return 'ok'
+      })()`)
+      await send('Input.dispatchMouseEvent', { type: 'mousePressed', x: a.x, y: a.y, button: 'left', clickCount: 1 })
+      for (let i = 1; i <= steps; i++) {
+        await send('Input.dispatchMouseEvent', {
+          type: 'mouseMoved',
+          x: Math.round(a.x + ((z.x - a.x) * i) / steps),
+          y: a.y,
+          button: 'left',
+          buttons: 1
+        })
+        await sleep(35)
+      }
+      // 松开前先记"按下点 / 当前指针下的文档位置"（复现 tableClipboard 的两个判定分量）
+      const probe = await json(`(() => {
+        const v = window.__vt.ed().view
+        const press = v.posAtCoords({ left: ${a.x}, top: ${a.y} })
+        const now = v.posAtCoords({ left: ${z.x}, top: ${z.y} })
+        return {
+          pressPos: press ? press.pos : null,
+          releasePos: now ? now.pos : null,
+          movedFar: Math.abs(${z.x} - ${a.x}) > 10 || Math.abs(${z.y} - ${a.y}) > 10
+        }
+      })()`)
+      await send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: z.x, y: z.y, button: 'left', clickCount: 1 })
+      await sleep(600) // 等 tableClipboard 的 setTimeout 收尾
+      const after = await json(`(() => {
+        const v = window.__vt.ed().view
+        const root = document.querySelector('.ProseMirror')
+        const { from, to, empty } = v.state.selection
+        return {
+          from,
+          to,
+          empty,
+          text: v.state.doc.textBetween(from, to, '\\n').slice(0, 60),
+          markers: root.querySelectorAll('[data-img-revealed]').length,
+          selected: root.querySelectorAll('.img-selected').length,
+          imgs: root.querySelectorAll('img').length,
+          md: window.__vt.ed().storage.markdown.getMarkdown()
+        }
+      })()`)
+      const tx95 = await json(`window.__tx95 || []`).catch(() => null)
+      return { geo, a, z, probe, before, after, tx95 }
+    }
+    const back = await drag94('back')
+    const posChangedOld =
+      back.probe.releasePos !== back.probe.pressPos // 旧规则的第二个分量（lastHeadPos ≈ releasePos）
+    check(
+      '㉛① **从后往前拖**（起点在源码内部）⇒ 松开后选区**仍在**（`empty:false`）且覆盖所拖范围',
+      back.after.empty === false &&
+        back.after.to - back.after.from >= 20 &&
+        back.after.from <= back.probe.releasePos &&
+        back.after.imgs >= 1,
+      JSON.stringify({
+        拖拽: { 起点: back.a, 终点: back.z },
+        旧判定分量: { movedFar: back.probe.movedFar, posChangedOld, pressPos: back.probe.pressPos, releasePos: back.probe.releasePos },
+        事务探针: back.tx95,
+        松开前: back.before,
+        松开后: back.after
+      })
+    )
+    const fwd = await drag94('fwd')
+    check(
+      '㉛② **从前往后拖** ⇒ 与反向对称：选区仍在（`empty:false`）且覆盖所拖范围',
+      fwd.after.empty === false &&
+        fwd.after.to - fwd.after.from >= 20 &&
+        fwd.after.to >= fwd.probe.releasePos - 2,
+      JSON.stringify({ 拖拽: { 起点: fwd.a, 终点: fwd.z }, 旧判定分量: { movedFar: fwd.probe.movedFar }, 松开后: fwd.after })
+    )
+    // ③ 真正单击（位移 ≤10px）落在已有选区内 ⇒ 仍收成光标（第四十五轮口径不回归）
+    await load94()
+    // ── 第九十六轮：**按下点在图片右侧空白**（正文之外）⇒ 往左拖能不能建立选区？────────────
+    await load94()
+    const marginGeo = await json(`(() => {
+      const root = document.querySelector('.ProseMirror')
+      const w = root.querySelector('[data-img-widget]')
+      const p = root.querySelector('p')
+      const pr = p.getBoundingClientRect()
+      const wr = w.getBoundingClientRect()
+      return {
+        marginX: Math.round(Math.min(pr.right - 4, wr.right + 6)),
+        widgetRight: Math.round(wr.right),
+        paraRight: Math.round(pr.right),
+        leftX: Math.round(pr.left + 3),
+        y: Math.round(wr.top + wr.height / 2)
+      }
+    })()`)
+    await ev(`(() => {
+      const v = window.__vt.ed().view
+      window.__tx96 = []
+      window.__seq96 = []
+      if (!window.__p96) {
+        window.__p96 = true
+        const d = v.dispatch.bind(v)
+        v.dispatch = (tr) => {
+          const sel = tr.selection
+          window.__tx96.push({ from: sel ? sel.from : null, to: sel ? sel.to : null, empty: sel ? sel.empty : null })
+          return d(tr)
+        }
+      }
+      const tick = () => {
+        const s = window.__vt.ed().view.state.selection
+        const cur = { from: s.from, to: s.to, empty: s.empty }
+        const last = window.__seq96[window.__seq96.length - 1]
+        if (!last || last.from !== cur.from || last.to !== cur.to) window.__seq96.push(cur)
+        if (performance.now() - window.__t96 < 900) requestAnimationFrame(tick)
+      }
+      window.__t96 = performance.now()
+      requestAnimationFrame(tick)
+      return 'ok'
+    })()`)
+    await send('Input.dispatchMouseEvent', { type: 'mousePressed', x: marginGeo.marginX, y: marginGeo.y, button: 'left', clickCount: 1 })
+    for (let i = 1; i <= 10; i++) {
+      await send('Input.dispatchMouseEvent', {
+        type: 'mouseMoved',
+        x: Math.round(marginGeo.marginX + ((marginGeo.leftX - marginGeo.marginX) * i) / 10),
+        y: marginGeo.y,
+        button: 'left',
+        buttons: 1
+      })
+      await sleep(35)
+    }
+    await send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: marginGeo.leftX, y: marginGeo.y, button: 'left', clickCount: 1 })
+    await sleep(700)
+    const margin96 = await json(`(() => {
+      const v = window.__vt.ed().view
+      const root = document.querySelector('.ProseMirror')
+      const { from, to, empty } = v.state.selection
+      return {
+        from,
+        to,
+        empty,
+        text: v.state.doc.textBetween(from, to, '\\n').slice(0, 60),
+        tx: window.__tx96,
+        seq: window.__seq96,
+        markers: root.querySelectorAll('[data-img-revealed]').length,
+        selected: root.querySelectorAll('.img-selected').length,
+        imgs: root.querySelectorAll('img').length
+      }
+    })()`)
+    check(
+      '㉛④ **图片右侧空白处按下 → 往左拖**过整段 ⇒ 松开后选区**非空**且覆盖所拖范围（Typora 式；红=压根没建立选区）',
+      margin96.empty === false && margin96.to - margin96.from >= 20,
+      JSON.stringify({ 几何: marginGeo, 空白起手: margin96 })
+    )
+    await ev(`(() => {
+      const v = window.__vt.ed().view
+      v.dispatch(v.state.tr.setSelection(v.state.selection.constructor.create(v.state.doc, 0, v.state.doc.content.size)))
+      return 'ok'
+    })()`)
+    await sleep(350)
+    const clickPt94 = await json(`(() => {
+      const p = document.querySelector('.ProseMirror p')
+      const r = p.getBoundingClientRect()
+      return { x: Math.round(r.left + 30), y: Math.round(r.top + 10) }
+    })()`)
+    await send('Input.dispatchMouseEvent', { type: 'mousePressed', x: clickPt94.x, y: clickPt94.y, button: 'left', clickCount: 1 })
+    await send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: clickPt94.x, y: clickPt94.y, button: 'left', clickCount: 1 })
+    await sleep(600)
+    const afterClick94 = await json(`(() => {
+      const v = window.__vt.ed().view
+      return { from: v.state.selection.from, to: v.state.selection.to, empty: v.state.selection.empty }
+    })()`)
+    check(
+      '㉛③ **真正单击**（位移 0 ≤10px）落在已有选区内 ⇒ **仍收成光标**（第四十五轮口径不回归）',
+      afterClick94.empty === true,
+      JSON.stringify({ 点击点: clickPt94, 单击后: afterClick94 })
+    )
+    const shot94 = await send('Page.captureScreenshot', { format: 'png' })
+    safe(() => fs.writeFileSync(path.join(process.cwd(), 'tmp', 'img-backward-drag.png'), Buffer.from(shot94.result.data, 'base64')), null)
+    await ev(`(() => { window.__vt.ed().commands.setContent(${JSON.stringify(doc)}); return 'ok' })()`)
+    await sleep(900)
+  }
+
   const pass = results.filter((r) => r.ok).length
   console.log(`TOTAL ${results.length} PASS ${pass} FAIL ${results.length - pass}`)
   console.log(`--- ${pass}/${results.length} PASS`)

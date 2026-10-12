@@ -590,10 +590,14 @@ export const TableDragSelect = Extension.create({
                */
               const movedFar =
                 Math.abs(me.clientX - pressX) > 10 || Math.abs(me.clientY - pressY) > 10
-              const atNow = view.posAtCoords?.({ left: me.clientX, top: me.clientY })
-              const posChanged =
-                atNow && Number.isFinite(atNow.pos) ? atNow.pos !== at : lastHeadPos !== at
-              if (movedFar && posChanged) return false
+              /**
+               * 第九十四轮（用户报障：从后往前拖，松开后选区丢了）：
+               * "是不是单击"**只由指针位移决定**（`movedFar`），不再叠加"文档位置是否变化"——
+               * `posChanged` 是**间接信号**，在折行/源码处会误判（实测那次 `movedFar=true` 而
+               * `posChanged` 也可能为 false）⇒ 一旦误判成单击，就把用户拖出来的选区收成光标。
+               * 位移 >10px ⇒ 一律按"拖动"处理，直接放行（让 PM/浏览器保留选区）。
+               */
+              if (movedFar) return false
               setTimeout(() => {
                 try {
                   const cur = view.state.selection

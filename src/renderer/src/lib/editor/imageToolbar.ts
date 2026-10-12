@@ -432,7 +432,13 @@ export const ImageSourceUi = Extension.create({
      * 这里补上**到期 + 失焦/隐藏/按键/指针取消 + 下一次按下重置**四条清理，并挂一个
      * 诊断锚 `data-img-pending`（清理后为空串）。
      */
-    let pendingClick: { kind: 'raw' | 'node'; from: number; at: number } | null = null
+    let pendingClick: {
+      kind: 'raw' | 'node'
+      from: number
+      at: number
+      x: number
+      y: number
+    } | null = null
     let pendingTimer: number | null = null
     let pendingRaf = 0
     let pendingDom: HTMLElement | null = null
@@ -471,15 +477,16 @@ export const ImageSourceUi = Extension.create({
       }
       pendingRaf = window.requestAnimationFrame(watchPendingExpiry)
     }
-    const setPending = (kind: 'raw' | 'node', from: number): void => {
-      pendingClick = { kind, from, at: Date.now() }
+    const setPending = (kind: 'raw' | 'node', from: number, x: number, y: number): void => {
+      // 第九十四轮：连**按下坐标**一起记 —— `mouseup` 用它判断"这一击到底是不是拖动"
+      pendingClick = { kind, from, at: Date.now(), x, y }
       syncPendingAttr()
       if (pendingTimer != null) window.clearTimeout(pendingTimer)
       pendingTimer = window.setTimeout(() => clearPending(), PENDING_TTL)
       if (!pendingRaf) pendingRaf = window.requestAnimationFrame(watchPendingExpiry)
     }
     /** 读 `pendingClick` 并顺带处理"已过期"（无需等到下一次事务） */
-    const livePending = (): { kind: 'raw' | 'node'; from: number } | null => {
+    const livePending = (): { kind: 'raw' | 'node'; from: number; x: number; y: number } | null => {
       if (!pendingClick) return null
       if (isPendingExpired(pendingClick.at)) {
         clearPending()
@@ -903,7 +910,7 @@ export const ImageSourceUi = Extension.create({
                 }
               }
               if (!inside(imgEl)) return false
-              setPending(hit.kind, hit.from)
+              setPending(hit.kind, hit.from, event.clientX, event.clientY)
               event.preventDefault()
               return true
             },
@@ -911,6 +918,17 @@ export const ImageSourceUi = Extension.create({
               const pending = pendingClick
               clearPending()
               if (!pending) return false
+              /**
+               * 第九十四轮（用户报障："**从后往前拖**，松开鼠标后选区丢了"）：真因是**这里**——
+               * 之前对"按下落在图片源码范围内"的这一击**无条件**做激活收尾（把光标按回 `from`），
+               * 于是一路拖出来的选区被这一下收成光标（实测：`{from:109,to:109,empty:true}`，
+               * 而 `movedFar=true` ⇒ 明明拖动过）。现在按"**指针是否真的拖动过**"分流：
+               * 位移 >10px 一律**不接管**（不激活、也不动选区），PM 拖出来的选区原样保留；
+               * 只有真正的单击（≤10px）才走激活/收尾 ⇒ 第四十五轮"单击落光标"口径不受影响。
+               */
+              const movedFar =
+                Math.abs(event.clientX - pending.x) > 10 || Math.abs(event.clientY - pending.y) > 10
+              if (movedFar) return false
               const st = view.state
               if (pending.kind === 'raw') {
                 const img = collectImgSources(st).find((i) => i.from === pending.from)
@@ -1100,6 +1118,139 @@ export const ImageSourceUi = Extension.create({
           window.addEventListener('keydown', onKey, true)
           editorView.dom.addEventListener('pointercancel', onCancel, true)
           editorView.dom.addEventListener('mouseleave', onCancel, true)
+          /**
+           * 第九十六轮（用户真实手势）：**在"最后一块右侧的空白"按下并往左拖**时，
+           * PM 只会一路落光标、**不会建立选区**（实测：7 次事务全是 `empty:true`，
+           * 位置 136→109 逐个落点）。这里自己起一个"空白拖选"：
+           *   * `mousedown` 命中"最后一块的**行内**范围内、且位置贴住该块末尾、且不在图片本体上"
+           *     ⇒ 记下锚点 = 该块末尾的文本位置；
+           *   * `mousemove`（按住左键）⇒ 用 `posAtCoords` 取当前位置，把选区设成
+           *     `[min(锚点, 当前), max(...)]` ⇒ 与 Typora 一样能拖出选区；
+           *   * `mouseup` ⇒ 结束（单击情形照旧交给第四十五轮的"单击落光标"）。
+           * 监听器挂在 `view.dom` 的**冒泡阶段、PM 之后注册** ⇒ 每次移动都**覆盖**PM 落下的光标。
+           */
+          let blankAnchor: number | null = null
+          /**
+           * 第九十七轮（parent 授权）：把"**落在无文字的那条 y 上**"的坐标映射到**最近的有文字位置**。
+           * 策略：先原位试；不落在"非空文本块"上时，**沿 y 向上优先、再向下**按 4px 步长探测
+           * （上限 200px），取首个落在非空文本块上的位置。⇒ **起点本身有文字时行为完全不变**。
+           * 返回 `{ pos, dy, mapped }`（`dy` = 相对原 y 的偏移，`mapped` = 是否做过探测映射）。
+           */
+          const posNearText = (
+            x: number,
+            y: number
+          ): { pos: number; dy: number; mapped: boolean } | null => {
+            /**
+             * 第九十八轮：**"有文字"改由浏览器原生点位取节点判定**。
+             * 旧判据 `resolve(pos).parent.isTextblock && content.size>0` 太粗 —— 段落本身就是非空
+             * 文本块 ⇒ 在任何 y（含图片那条空行）都判"有文字" ⇒ `mapped` 永远是 false（上一轮的红）。
+             * 现在：`document.caretRangeFromPoint(x,y)`（Safari 用 `caretPositionFromPoint`）取该点下的
+             * 节点，**只有它是非空文本节点**才算"有文字"；否则进入下面的 y 探测。
+             */
+            const hasTextAt = (xx: number, yy: number): boolean => {
+              try {
+                const d = document as Document & {
+                  caretRangeFromPoint?: (px: number, py: number) => Range | null
+                  caretPositionFromPoint?: (px: number, py: number) => { offsetNode: Node } | null
+                }
+                const cr = d.caretRangeFromPoint?.(xx, yy)
+                if (cr) {
+                  return (
+                    cr.startContainer.nodeType === 3 &&
+                    (cr.startContainer.textContent ?? '').length > 0
+                  )
+                }
+                const cp = d.caretPositionFromPoint?.(xx, yy)
+                if (cp) {
+                  return (
+                    cp.offsetNode.nodeType === 3 && (cp.offsetNode.textContent ?? '').length > 0
+                  )
+                }
+              } catch {
+                /* 取不到就按"没有文字"处理 ⇒ 走探测 */
+              }
+              return false
+            }
+            const probe = (yy: number): { pos: number; ok: boolean } | null => {
+              const at = editorView.posAtCoords({ left: x, top: yy })
+              if (!at) return null
+              return { pos: at.pos, ok: hasTextAt(x, yy) }
+            }
+            const here = probe(y)
+            if (here && here.ok) return { pos: here.pos, dy: 0, mapped: false }
+            for (let d = 4; d <= 200; d += 4) {
+              const up = probe(y - d)
+              if (up && up.ok) return { pos: up.pos, dy: -d, mapped: true }
+              const down = probe(y + d)
+              if (down && down.ok) return { pos: down.pos, dy: d, mapped: true }
+            }
+            return here ? { pos: here.pos, dy: 0, mapped: false } : null
+          }
+          const onDownBlank = (event: MouseEvent): void => {
+            if (event.button !== 0) return
+            const target = event.target as HTMLElement | null
+            if (
+              target?.closest?.('[data-img-widget]') ||
+              target?.closest?.('[data-img-revealed]') ||
+              target?.closest?.('img')
+            ) {
+              return
+            }
+            const hit = posNearText(event.clientX, event.clientY)
+            if (!hit) return
+            const doc = editorView.state.doc
+            if (doc.childCount === 0) return
+            const last = doc.child(doc.childCount - 1)
+            const lastFrom = doc.content.size - last.nodeSize
+            let rect: DOMRect | null = null
+            try {
+              const dom = editorView.nodeDOM(lastFrom)
+              const el =
+                dom && dom.nodeType === 1 ? (dom as HTMLElement) : (dom?.parentElement ?? null)
+              rect = el ? el.getBoundingClientRect() : null
+            } catch {
+              rect = null
+            }
+            if (!rect) return
+            if (event.clientY < rect.top - 2 || event.clientY > rect.bottom + 2) return
+            // ⚠️ 第九十七轮：**只在"按下点确实没有文字"（`mapped===true`）时才接管** ——
+            //    起点本身有文字时（普通拖选）一律不碰，避免把 ⑰③/⑰④ 那类正文拖选抢过来。
+            if (!hit.mapped) return
+            blankAnchor = hit.pos
+          }
+          const onMoveBlank = (event: MouseEvent): void => {
+            if (blankAnchor == null) return
+            if (event.buttons !== 1) {
+              blankAnchor = null
+              return
+            }
+            const hit = posNearText(event.clientX, event.clientY)
+            if (!hit) return
+            const a = blankAnchor
+            const b = hit.pos
+            const from = Math.min(a, b)
+            const to = Math.max(a, b)
+            try {
+              editorView.dispatch(
+                editorView.state.tr.setSelection(
+                  TextSelection.create(editorView.state.doc, from, to)
+                )
+              )
+            } catch {
+              /* 位置非法（文档刚被改）⇒ 下一次移动再试 */
+            }
+          }
+          const onUpBlank = (): void => {
+            blankAnchor = null
+          }
+          editorView.dom.addEventListener('mousedown', onDownBlank)
+          /**
+           * ⚠️ 第九十七轮：`mousemove/mouseup` 挂在 **window**（冒泡链最后）—— PM 在拖动期间会在
+           * **document** 级监听并落光标，挂在 `view.dom` 上会被它**之后**覆盖（实测：我的
+           * `{136,137,empty:false}` 刚建立，紧接着就被 PM 的 `{136,136}` 收掉）。挂 window 才能最后落子。
+           */
+          window.addEventListener('mousemove', onMoveBlank)
+          window.addEventListener('mouseup', onUpBlank, true)
           return {
             update: () => {
               try {
@@ -1116,6 +1267,9 @@ export const ImageSourceUi = Extension.create({
               window.removeEventListener('keydown', onKey, true)
               editorView.dom.removeEventListener('pointercancel', onCancel, true)
               editorView.dom.removeEventListener('mouseleave', onCancel, true)
+              editorView.dom.removeEventListener('mousedown', onDownBlank)
+              window.removeEventListener('mousemove', onMoveBlank)
+              window.removeEventListener('mouseup', onUpBlank, true)
               if (pendingDom === editorView.dom) pendingDom = null
               clearPending()
               hideBar()
