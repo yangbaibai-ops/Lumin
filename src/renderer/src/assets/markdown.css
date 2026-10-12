@@ -423,6 +423,14 @@ ormal，只影响这种段落 */
 .md-preview .img-src-revealed--block {
   text-align: left;
 }
+/* ── 第九十一轮（用户口径 + parent 授权）：**行内**标识符首行顶边贴图片顶边 ──────────
+   用户实测：图片顶边在最上面，正文与标识符都在图片竖直中部（基线对齐）⇒ 要 Typora 那种
+   "标识符首行顶边 == 图片顶边"。做法：行内档（没有 `--block`）`vertical-align: top`
+   ⇒ 标识符**首行**与**所在行盒顶边**齐平；该行盒被图片撑高时，视觉上即与图片顶边对齐。
+   块级档是 `display:block`（`vertical-align` 对它无意义）故显式排除 ⇒ 块级"顶格"不变。 */
+.md-preview .img-src-revealed:not(.img-src-revealed--block) {
+  vertical-align: top;
+}
 /* 语法被改坏（例如退格删掉结尾 `>`）：它不再是图片，但仍是正文 —— 只关拼写检查 */
 .md-preview .img-src-incomplete {
   vertical-align: top;

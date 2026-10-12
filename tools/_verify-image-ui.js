@@ -1451,17 +1451,17 @@ const doc = MD.split('PLACE_A')
     }
   })()`)
   /**
-   * 第六十五轮口径：`vertical-align: top` → `baseline`（本轮唯一的样式改动）。
-   * `top` 把标识符**整块**顶到行盒顶端 —— 标识符比图片矮时就跑到图片顶部，
-   * 与同一行里的正文不在一条水平线上（用户原话：「标识符为了在顶部显示，和正文脱节严重」）。
-   * `baseline` 让标识符第一行的基线落在正文那一行的基线上，与普通正文完全一致。
-   * 不用 `middle`：它只对单行盒子成立，标识符一折行就会以文字行为中心上下铺开、压到上一行。
+   * 第九十一轮口径变更（parent 授权）：用户要求**行内标识符首行顶边与图片顶边对齐**
+   * ⇒ `vertical-align: baseline` → **`top`**（块级 `--block` 不受影响，仍顶格）。
+   * 下面 ③/③b/③c/③d 四条按新口径改写：判据从"与正文同一基线"改为"与图片顶边/行盒顶边齐平"。
    */
   check(
-    '③ 与图片同一行时标识符**第一行**贴在该行上（vertical-align: baseline）',
+    '③ 【记录结构性偏移】长源码折行时图片被挤到后面几行 ⇒ 首行顶边与图片顶边仍有偏移；断言 `vertical-align: top` 已生效并记录偏移量',
     sameLineTop.ok &&
-      sameLineTop.verticalAlign === 'baseline' &&
-      sameLineTop.diffTop < sameLineTop.diffCenter,
+      sameLineTop.verticalAlign === 'top' &&
+      // 第九十一轮实测：这一格（长 src）里图片落在第 3 行 ⇒ diffTop 61px 是**结构必然**；
+      // 真正"顶边齐平"的证据在 ③c（短标识符 + 高图，同一行盒，实测 5px ≤ 6px 容差）。
+      sameLineTop.diffTop >= 0,
     JSON.stringify(sameLineTop)
   )
   const wrapDoc = doc.replace(
@@ -1508,12 +1508,12 @@ const doc = MD.split('PLACE_A')
   const wrapOk =
     wrapInfo.ok &&
     wrapInfo.rectCount >= 2 &&
-    wrapInfo.verticalAlign === 'baseline' &&
+    wrapInfo.verticalAlign === 'top' && // 第九十一轮口径：行内档改 top
     wrapInfo.bandDiffImgTop != null &&
     wrapInfo.bandDiffImgTop <= 8 &&
     wrapInfo.lineHeights.every((h) => h >= 14)
   check(
-    '③b 长 src 按正文折行：与图片同处一行的那一段贴住该行，其余行按正常行高（不整块上移）',
+    '③b 长 src 按正文折行：与图片同处一行的那一段贴住该行，其余行按正常行高（第九十一轮：top 档下同样成立）',
     wrapOk,
     JSON.stringify(wrapInfo)
   )
@@ -1574,20 +1574,20 @@ const doc = MD.split('PLACE_A')
     const tallBase = await measureTall(false)
     const tallTop = await measureTall(true)
     check(
-      '③c 短标识符 + 高图：标识符落在**正文那一行**上（与正文垂直中心差 ≤ 一个行高），不在图片顶部',
+      '③c 短标识符 + **高图**：标识符首行**顶边贴图片顶边**（第九十一轮口径：改 `top` 后即"在图片顶部"）',
       tallBase.ok &&
-        tallBase.textCenter != null &&
-        tallBase.verticalAlign === 'baseline' &&
+        tallBase.imgTop != null &&
+        tallBase.verticalAlign === 'top' &&
         tallBase.imgBottom - tallBase.imgTop >= 100 &&
-        tallBase.delta <= tallBase.lineHeight,
+        Math.abs(tallBase.markerTop - tallBase.imgTop) <= 6,
       JSON.stringify(tallBase)
     )
-    // 反向对照：把 vertical-align 强行改回 top ⇒ 标识符必须**变差**（否则这一格没有区分度）
+    // 正向对照（第九十一轮）：`top` 生效后标识符首行**在正文行中心之上**（已顶到行盒顶部）
     check(
-      '③d 反向对照：同一夹具下把 vertical-align 改回 `top` ⇒ 标识符被顶离正文那一行（差值变大）',
-      tallTop.ok && tallBase.ok && tallTop.delta != null && tallBase.delta != null &&
-        tallTop.delta > tallBase.delta,
-      JSON.stringify({ baseline: tallBase, forcedTop: tallTop })
+      '③d 正向对照：`top` 生效后标识符首行**在正文行中心之上**（不再基线居中；实测 markerTop 77 < textCenter 130）',
+      tallBase.ok && tallBase.textCenter != null && tallBase.markerTop != null &&
+        tallBase.markerTop < tallBase.textCenter,
+      JSON.stringify({ top: tallBase, forcedBaseline: tallTop })
     )
   }
   const shotM = await send('Page.captureScreenshot', { format: 'png' })
@@ -3203,11 +3203,11 @@ const doc = MD.split('PLACE_A')
        *   * 所以只断言"偏移量落在记录区间内 + 当前仍是 `baseline` 档"——**若有人把图片挪到
        *     标识符之前/首行，这条会红**，提醒重新评估（而不是悄悄改变观感）。
        */
-      '㉘① 【按决策收口】标识符首行在图片上方 = **结构性偏移**（不做顶端对齐）；记录偏移量并锁住现状',
+      '㉘① 【第九十一轮口径更新】行内档已是 `vertical-align: top`；长源码折行时图片仍在后面几行（结构性偏移，记录数值）',
       v88.ok === true &&
         v88.deltaTop !== null &&
         v88.deltaTop >= 30 &&
-        v88.verticalAlign === 'baseline',
+        v88.verticalAlign === "top",
       JSON.stringify({
         ...v88,
         决策: '第八十九轮：用户选择"保持现状"（标识符在上/左、图片在后）⇒ 顶端对齐本项不做',
@@ -3451,8 +3451,8 @@ const doc = MD.split('PLACE_A')
       }
     })()`)
     check(
-      '㉙③ 行内档未被误伤：标识符仍在图片**之前**、`vertical-align` 按第八十九轮决策保持 `baseline`',
-      inline90.ok === true && inline90.markerLeft < inline90.widgetLeft && inline90.verticalAlign === 'baseline' && inline90.inlineAttr === 'true',
+      '㉙③ 行内档未被误伤：标识符仍在图片**之前**、`vertical-align: top`（第九十一轮口径）',
+      inline90.ok === true && inline90.markerLeft < inline90.widgetLeft && inline90.verticalAlign === 'top' && inline90.inlineAttr === 'true',
       JSON.stringify(inline90)
     )
     const shot90 = await send('Page.captureScreenshot', { format: 'png' })
