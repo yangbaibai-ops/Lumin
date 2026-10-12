@@ -442,6 +442,16 @@ export const ImageSourceUi = Extension.create({
     let pendingTimer: number | null = null
     let pendingRaf = 0
     let pendingDom: HTMLElement | null = null
+    /**
+     * 第一百零四轮（**DOM 身份快照**，不碰坐标）：
+     *   * `dragActive`：指针是否正按住拖动；
+     *   * `dragInsideFrom`：**这次拖动的起点落在哪个源码文本里**（`mousedown` 时用
+     *     `event.target.closest('[data-img-revealed]')` 的 `data-img-from`；正文里按下 ⇒ `null`）。
+     * 拖动期间判据按它分流：命中该源 ⇒ 一律 show（能把选区拖满整个源码，松手才隐藏）；
+     * 其它 ⇒ 一律 hide（第七十五轮防闪口径）。松手后清空 ⇒ 回到既有口径。
+     */
+    let dragActive = false
+    let dragInsideFrom: number | null = null
     const syncPendingAttr = (): void => {
       if (pendingDom)
         pendingDom.setAttribute('data-img-pending', pendingClick ? pendingClick.kind : '')
@@ -644,7 +654,10 @@ export const ImageSourceUi = Extension.create({
             //    否则 `setContent` 之后的一次选区落点就会把它自动转成文本（⑭a 实测：并排的
             //    第二张图被自动转成原文、于是掉到下一行；⑬b 的"按下即现"也是同一根因）。
             const showable = (i: ImgSource): boolean =>
-              revealDecision(selLike, i) === 'show' && (i.kind !== 'node' || selLike.nodeSel)
+              // 第一百零四轮（DOM 身份快照）：拖动期间只让"**按下点所在的那个源码**"保持显示，
+              // 其它源一律隐藏（第七十五轮防闪口径）；松手后恢复既有口径。
+              revealDecision(selLike, i, { dragging: dragActive, dragInsideFrom }) === 'show' &&
+              (i.kind !== 'node' || selLike.nodeSel)
             const pick = keep && showable(keep) ? keep : (imgs.find((i) => showable(i)) ?? null)
             if (!pick) return { from: null, editing: false, openedAt: value.openedAt }
             /**
@@ -1276,6 +1289,32 @@ export const ImageSourceUi = Extension.create({
             }
           }
           editorView.dom.addEventListener('mousedown', onDownBlank)
+          // 第一百零四轮：**只看事件目标的 DOM 身份**（不碰坐标）——命中标识符文本就记下它的 from
+          const onDragDown = (event: Event): void => {
+            dragActive = true
+            const target = event.target as HTMLElement | null
+            const el = target?.closest?.('[data-img-revealed]') as HTMLElement | null
+            const raw = el ? el.getAttribute('data-img-from') : null
+            dragInsideFrom = raw != null && raw !== '' ? Number(raw) : null
+          }
+          const onDragUp = (): void => {
+            dragActive = false
+            dragInsideFrom = null
+            // 松手后**触发一次重算**（带 KEY meta 的空事务）⇒ 立刻回到既有口径
+            try {
+              editorView.dispatch(
+                editorView.state.tr.setMeta(KEY, {
+                  from: KEY.getState(editorView.state)?.from ?? null
+                })
+              )
+            } catch {
+              /* 忽略：下一次选区事务会再算一遍 */
+            }
+          }
+          window.addEventListener('mousedown', onDragDown, true)
+          window.addEventListener('mouseup', onDragUp, true)
+          window.addEventListener('pointercancel', onDragUp, true)
+          window.addEventListener('blur', onDragUp)
           /**
            * ⚠️ 第九十七轮：`mousemove/mouseup` 挂在 **window**（冒泡链最后）—— PM 在拖动期间会在
            * **document** 级监听并落光标，挂在 `view.dom` 上会被它**之后**覆盖（实测：我的
@@ -1300,6 +1339,10 @@ export const ImageSourceUi = Extension.create({
               editorView.dom.removeEventListener('pointercancel', onCancel, true)
               editorView.dom.removeEventListener('mouseleave', onCancel, true)
               editorView.dom.removeEventListener('mousedown', onDownBlank)
+              window.removeEventListener('mousedown', onDragDown, true)
+              window.removeEventListener('mouseup', onDragUp, true)
+              window.removeEventListener('pointercancel', onDragUp, true)
+              window.removeEventListener('blur', onDragUp)
               window.removeEventListener('mousemove', onMoveBlank)
               window.removeEventListener('mouseup', onUpBlank, true)
               if (pendingDom === editorView.dom) pendingDom = null

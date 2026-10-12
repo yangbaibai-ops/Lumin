@@ -3932,6 +3932,114 @@ const doc = MD.split('PLACE_A')
     await sleep(900)
   }
 
+  // ═══ 第一百零四轮：**DOM 身份快照** —— 起点在标识符里 ⇒ 拖动期间恒显示，松手后才隐藏 ═══════
+  {
+    const U104 =
+      'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADAAAAAgCAIAAADbtmxLAAAAOUlEQVR4nO3OMREAMAgEMPwrY8ZBndQFz5C7CEj1vFMqPhASEhJKD4SEhITSAyEhIaH0QEhIqHdDH4Op4tOjeOJYAAAAAElFTkSuQmCC'
+    const DOC104 = `前文 <img src="${U104}" style="zoom:100%;" />`
+    const load104 = async () => {
+      await ev(`(() => { window.__vt.ed().commands.setContent(${JSON.stringify(DOC104)}); return 'ok' })()`)
+      await sleep(900)
+    }
+    const stateOf104 = () =>
+      json(`(() => {
+        const root = document.querySelector('.ProseMirror')
+        const w = root.querySelector('[data-img-widget]')
+        const cs = w ? getComputedStyle(w) : null
+        const v = window.__vt.ed().view
+        return {
+          markers: root.querySelectorAll('[data-img-revealed]').length,
+          selected: root.querySelectorAll('.img-selected').length,
+          sel: { from: v.state.selection.from, to: v.state.selection.to, empty: v.state.selection.empty },
+          bg: cs ? cs.backgroundColor : null,
+          outline: cs ? cs.outlineColor + ' / ' + cs.outlineWidth : null
+        }
+      })()`)
+    /** 在**标识符文本上按下**，向右拖到整段末尾 ⇒ 拖动期间逐帧采样 markers */
+    const dragOnMarker = async () => {
+      await load104()
+      const imgPt = await json(`(() => {
+        const w = document.querySelector('[data-img-widget]')
+        const r = w.getBoundingClientRect()
+        return { x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2) }
+      })()`)
+      await click(imgPt)
+      await sleep(450)
+      const geo = await json(`(() => {
+        const root = document.querySelector('.ProseMirror')
+        const el = root.querySelector('[data-img-revealed]')
+        const p = root.querySelector('p')
+        const rs = el ? [...el.getClientRects()].filter((r) => r.width > 2) : []
+        const r0 = rs[0]
+        const pr = p.getBoundingClientRect()
+        return {
+          startX: Math.round(r0.left + 10),
+          endX: Math.round(pr.right - 6),
+          y: Math.round(r0.top + r0.height / 2)
+        }
+      })()`)
+      await ev(`(() => {
+        window.__seq104 = []
+        const tick = () => {
+          const n = document.querySelectorAll('.ProseMirror [data-img-revealed]').length
+          const last = window.__seq104[window.__seq104.length - 1]
+          if (last !== n) window.__seq104.push(n)
+          if (performance.now() - window.__t104 < 1500) requestAnimationFrame(tick)
+        }
+        window.__t104 = performance.now()
+        requestAnimationFrame(tick)
+        return 'ok'
+      })()`)
+      await send('Input.dispatchMouseEvent', { type: 'mousePressed', x: geo.startX, y: geo.y, button: 'left', clickCount: 1 })
+      for (let i = 1; i <= 12; i++) {
+        await send('Input.dispatchMouseEvent', {
+          type: 'mouseMoved',
+          x: Math.round(geo.startX + ((geo.endX - geo.startX) * i) / 12),
+          y: geo.y,
+          button: 'left',
+          buttons: 1
+        })
+        await sleep(35)
+      }
+      const during = await stateOf104()
+      const seq = await json(`window.__seq104`)
+      await send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: geo.endX, y: geo.y, button: 'left', clickCount: 1 })
+      await sleep(650)
+      const after = await stateOf104()
+      return { geo, during, seq, after }
+    }
+    const onMarker = await dragOnMarker()
+    check(
+      '㉞① **在标识符文本上按下**并向右拖 ⇒ 拖动期间逐帧 `markers` **恒 1**（无 1→0→1），**松开后 0**',
+      onMarker.during.markers === 1 &&
+        Array.isArray(onMarker.seq) &&
+        onMarker.seq.length >= 1 &&
+        onMarker.seq.every((n) => n === 1) &&
+        onMarker.after.markers === 0,
+      JSON.stringify(onMarker)
+    )
+    await load104()
+    await ev(`(() => {
+      const v = window.__vt.ed().view
+      v.dispatch(v.state.tr.setSelection(v.state.selection.constructor.create(v.state.doc, 0, v.state.doc.content.size)))
+      return 'ok'
+    })()`)
+    await sleep(450)
+    const cover104 = await stateOf104()
+    check(
+      '㉞② **程序化覆盖整个源码范围** ⇒ 标识符 0 + 图片 `.img-selected`（注明：程序化路径；直线拖无法覆盖多行源码）',
+      cover104.markers === 0 &&
+        cover104.selected >= 1 &&
+        cover104.bg === 'rgba(17, 24, 39, 0.11)' &&
+        cover104.outline === 'rgb(107, 114, 128) / 2px',
+      JSON.stringify({ 程序化覆盖: cover104, 在标识符上拖: onMarker })
+    )
+    const shot104 = await send('Page.captureScreenshot', { format: 'png' })
+    safe(() => fs.writeFileSync(path.join(process.cwd(), 'tmp', 'img-drag-dom-identity.png'), Buffer.from(shot104.result.data, 'base64')), null)
+    await ev(`(() => { window.__vt.ed().commands.setContent(${JSON.stringify(doc)}); return 'ok' })()`)
+    await sleep(900)
+  }
+
   const pass = results.filter((r) => r.ok).length
   console.log(`TOTAL ${results.length} PASS ${pass} FAIL ${results.length - pass}`)
   console.log(`--- ${pass}/${results.length} PASS`)
