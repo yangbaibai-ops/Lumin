@@ -25,8 +25,6 @@ import { TyporaKeymap } from './keymap'
 import { ImagePaste } from './imagePaste'
 // 图片的源码标记（点击显示 / 缩放写进源码 / 悬浮工具栏）见该文件的长注释
 import { ImageSourceUi } from './imageToolbar'
-// 第八十四轮：末尾是图片时点下方在下一行落光标（纯判据 + 一段收窄的事件处理）
-import { TrailingParagraph } from './trailingParagraph'
 import { MathPaste } from './mathPaste'
 import { NoTextDrag } from './noTextDrag'
 import { CodeBlockCM } from './codeBlock'
@@ -229,8 +227,6 @@ export const editorExtensions: Extensions = [
   ImagePaste,
   // 图片的**源码标记 + 缩放工具栏**（第五十三轮）：点击显示源码行、档位把 zoom 写进源码
   ImageSourceUi,
-  // 第八十四轮：**末尾是图片**时点它下方的空白 ⇒ 末尾补一个空段落并把光标放进去（能继续输入）
-  TrailingParagraph,
   // 公式粘贴（第十三轮）：剪贴板 HTML 里如果有数学（KaTeX/MathJax 的 DOM、我们自己的
   // 复制形态），先把原文取回来换成 `mathBlock` / `$…$`，再交给常规 HTML 解析；
   // 没有数学就完全不接管（普通富文本粘贴不受影响）。**必须排在 ImagePaste 之后**：
