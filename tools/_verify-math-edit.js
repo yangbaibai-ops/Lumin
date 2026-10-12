@@ -325,21 +325,16 @@ const SNAPSHOT = `(() => {
             h: Math.round(d.getBoundingClientRect().height)
           })),
           check: (() => {
+            // 第三十三轮起这个锚点**不该存在**（✓ 按钮已按用户口径删除）——
+            // 保留这段查询就是为了让它是 null，从而能断言"真的没有"，而不是"看不见"。
             const c = box.querySelector('[data-md-math-editor-check]')
             if (!c) return null
-            return {
-              tag: c.tagName,
-              disabled: c.disabled === true,
-              // 可聚焦：tabIndex 不小于 0 **且**未禁用（不是"看着像按钮"）。
-              // 注意：这里**不能**顺手调 c.focus() 去试 —— 那会把 textarea 的焦点抢走并触发
-              // 失焦收起（本套件踩过：诊断本身把被测状态改坏了）。真正的"能聚焦"由
-              // E7c2 那条**不改状态**的断言守（按 Tab 语义：tabIndex 不小于 0 且未禁用）。
-              tabIndex: c.tabIndex,
-              focusable: c.tabIndex >= 0 && c.disabled !== true,
-              ariaLabel: c.getAttribute('aria-label'),
-              text: c.textContent
-            }
+            return { tag: c.tagName, text: c.textContent }
           })(),
+          /** ✓ 相关的**所有**旧锚点/选择器命中数（都应为 0：删干净了，不是藏起来） */
+          checkMarkCount: box.querySelectorAll('[data-md-math-editor-check-mark]').length,
+          buttonCount: box.querySelectorAll('button').length,
+          oldCheckSelectorCount: box.querySelectorAll('[data-md-math-editor-check]').length,
           // 编辑态里源码 textarea 下方的 KaTeX 字形（E7e 用它证明"下半真的更新了"）
           previewText: (() => {
             const p = box.querySelector('.md-math-editor__preview')
@@ -819,7 +814,14 @@ async function dragFromTo(app, from, to, steps = 10) {
   await sleep(650)
 }
 
-/** 在源码框里"输入"（真的派发 input 事件，与逐键同一条路径） */
+/**
+ * 在源码框里"输入"（真的派发 input 事件，与逐键同一条路径）。
+ *
+ * ⚠️ 第三十三轮起：**行内**公式的编辑框里显示的是**完整源码**（含两侧 `$`，用户口径①）。
+ * 所以凡是给**行内**会话喂内容的调用点都要按 `$…$` 形态给；块级不需要（它的 `$$` 是装饰行，
+ * textarea 里仍是纯内容）。下面 `setSource` 保持原样（按调用点给的字符串写），
+ * 行内那几处调用点已改成带 `$` 的形式 —— 这样"喂进去的就是用户在框里看到的"。
+ */
 function setSource(text) {
   return `(() => {
     const ta = document.querySelector('[data-md-math-editor-src]')
@@ -894,8 +896,8 @@ async function main() {
     await sleep(450)
     const open = JSON.parse(await app.ev(SNAPSHOT))
     report.check(
-      'E2a 点击公式出现源码框，且框里就是公式源码',
-      !!open.box && open.box.value === 'E = mc^2',
+      'E2a 点击公式出现源码框，且框里是**完整源码（含两侧 `$`）**',
+      !!open.box && open.box.value === '$E = mc^2$',
       `box=${open.box ? JSON.stringify(open.box.value) : 'null'}`
     )
     // 「上方」= 源码框底 ≤ 公式顶 + 容差（容差 2px：整数化的取整误差）
@@ -923,7 +925,8 @@ async function main() {
       (await app.ev(`document.activeElement?.tagName ?? null`)) === 'TEXTAREA',
       `activeElement=${await app.ev('document.activeElement?.tagName ?? null')}`
     )
-    await app.ev(setSource('E = mc^3'))
+    // 第三十三轮：行内框里显示的是**完整源码**（含两侧 `$`），所以这里按 `$…$` 喂
+    await app.ev(setSource('$E = mc^3$'))
     await sleep(400)
     const changed = JSON.parse(await app.ev(SNAPSHOT))
     report.check(
@@ -938,7 +941,7 @@ async function main() {
     )
     report.check(
       'E3c 实时渲染后源码框仍开着、且仍指向这一条公式',
-      !!changed.box && changed.box.value === 'E = mc^3',
+      !!changed.box && changed.box.value === '$E = mc^3$',
       `box=${JSON.stringify(changed.box?.value)}`
     )
 
@@ -1073,45 +1076,54 @@ async function main() {
         /mono|Cascadia|Consolas|JetBrains/i.test(b.taFontFamily ?? ''),
       `delims=${JSON.stringify(b?.delims)} font=${b?.taFontFamily}`
     )
+    /**
+     * 第三十三轮（用户口径③「取消后面要按的对号 `√`」）：
+     * 原来的 E7c / E7c2 两条是"**✓ 必须存在**且可聚焦"，本轮**语义反转** ——
+     * 现在要断言它**不存在**，且旧的锚点/样式/DOM 都不留残余（不是藏起来，是根本没建）。
+     */
     report.check(
-      'E7c 右上角标签是本地化「公式」，✓ 是**真按钮**（tabIndex 不小于 0、未禁用、有非空可访问名）',
-      !!b &&
-        !!b.label &&
-        b.label.trim().length > 0 &&
-        b.check !== null &&
-        b.check.tag === 'BUTTON' &&
-        b.check.focusable === true &&
-        b.check.tabIndex >= 0 &&
-        b.check.disabled === false &&
-        !!b.check.ariaLabel &&
-        b.check.ariaLabel.trim().length > 0 &&
-        b.check.ariaLabel !== b.label,
-      `label=${JSON.stringify(b?.label)} check=${JSON.stringify(b?.check)}`
+      'E7c 右上角标签仍是本地化「公式」，且 ✓ 确认按钮**已不存在**（锚点计数 0、不是藏起来）',
+      !!b && !!b.label && b.label.trim().length > 0 && b.check === null && b.checkMarkCount === 0,
+      `label=${JSON.stringify(b?.label)} check=${JSON.stringify(b?.check)} checkMarkCount=${b?.checkMarkCount}`
     )
-    // ✓ 的"能聚焦"用**不改状态**的方式再钉一次：显式 focus 之后 activeElement 必须就是它，
-    // 然后再把焦点还给源码框（不然这次 focus 会把编辑态收起 —— 见 SNAPSHOT 里的说明）。
-    // ✓ 的"能聚焦"：用**标准判据**钉，而不是在断言里真的去 focus ——
-    // 在断言里 focus 会把 textarea 的焦点抢走并触发失焦收起（本套件踩过两次：
-    // 诊断动作把被测状态改坏了）。`<button>` 未禁用且 tabIndex 不小于 0 就是**可聚焦**的
-    // 元素（HTML 规范 + 浏览器行为），这里把这两条前提钉死，并排除"用一个 div 冒充按钮"。
     report.check(
-      'E7c2 ✓ 是可聚焦元素（`<button>` 元素 + tabIndex 不小于 0 + 未禁用），不是 div 冒充',
-      b?.check?.tag === 'BUTTON' && b.check.tabIndex >= 0 && b.check.disabled === false,
-      `tag=${b?.check?.tag} tabIndex=${b?.check?.tabIndex} disabled=${b?.check?.disabled}`
+      'E7c2 ✓ 的残留一并清干净：容器内没有 `button`、也没有旧的选择器命中',
+      !!b && b.buttonCount === 0 && b.oldCheckSelectorCount === 0,
+      `buttonCount=${b?.buttonCount} oldCheckSelectorCount=${b?.oldCheckSelectorCount}`
     )
-    // 点 ✓ 收起：文档必须**逐字不变**
-    const beforeClick = style.content
-    await app.ev(`(() => {
-      const c = document.querySelector('[data-md-math-editor-check]')
-      c.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }))
-      return 'ok'
+    // 失焦收起（**替代**原来的"点 ✓ 收起"）：文档必须**逐字不变**
+    const beforeBlur = style.content
+    const blurMs = await app.ev(`(async () => {
+      const ta = document.querySelector('[data-md-math-editor-src]')
+      if (!ta) return -1
+      const t0 = performance.now()
+      ta.blur()
+      // 判定在**一个微任务**之后（不是下一帧）：等一个微任务再看，容器应当已经消失
+      await Promise.resolve()
+      const goneAfterMicrotask = !document.querySelector('[data-md-math-editor]')
+      const msAfterMicrotask = +(performance.now() - t0).toFixed(2)
+      // 再等两帧，确认没有"延迟定时器残留"（若还有 rAF/定时器在收，这里的状态会变）
+      await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)))
+      const goneAfterFrames = !document.querySelector('[data-md-math-editor]')
+      return JSON.stringify({
+        ms: +(performance.now() - t0).toFixed(2),
+        msAfterMicrotask,
+        goneAfterMicrotask,
+        goneAfterFrames
+      })
     })()`)
-    await sleep(500)
+    const blur = JSON.parse(blurMs)
     const closed = JSON.parse(await app.ev(SNAPSHOT))
     report.check(
-      'E7d 点 ✓ 收起 → 回到纯渲染态（编辑容器消失、原公式重新可见），且**文档逐字不变**',
-      closed.box === null && closed.blockRendered === 2 && closed.content === beforeClick,
-      `box=${closed.box === null ? 'closed' : 'open'} blockRendered=${closed.blockRendered} contentSame=${closed.content === beforeClick}`
+      'E7d 失焦**立刻**收起（一个微任务内即消失，实测时延 ≤1 帧 16ms），且**文档逐字不变**',
+      blur.goneAfterMicrotask === true &&
+        blur.goneAfterFrames === true &&
+        blur.msAfterMicrotask <= 16 &&
+        blur.ms <= 50 &&
+        closed.box === null &&
+        closed.blockRendered === 2 &&
+        closed.content === beforeBlur,
+      `blurMs=${blur.ms} msAtMicrotask=${blur.msAfterMicrotask} goneAtMicrotask=${blur.goneAfterMicrotask} goneAfterFrames=${blur.goneAfterFrames} box=${closed.box === null ? 'closed' : 'open'} contentSame=${closed.content === beforeBlur}`
     )
     // 重新打开 → 改一处 → 容器下半的渲染区必须跟着变
     await clickAt(app.send, blockPos2.x, blockPos2.y)
@@ -1469,30 +1481,21 @@ async function main() {
       (g5.content === beforeEsc.content)
   )
 
-  // ⑥ 点 ✓ → 收起且不改内容
+  // ⑥ 失焦 → 收起且不改内容（第三十三轮：原来这里是"点右上角 ✓"，✓ 已按用户口径删除，
+  //    收起出口换成"失焦立刻收起"，断言的**语义不变**：收起动作本身不许改内容）
   await openBlockEditor(app)
-  const beforeCheck = JSON.parse(await app.ev(SRC_SNAPSHOT))
-  const checkPos = JSON.parse(await app.ev(centerExpr('[data-md-math-editor-check]')))
-  await app.send('Input.dispatchMouseEvent', {
-    type: 'mousePressed',
-    x: checkPos.x,
-    y: checkPos.y,
-    button: 'left',
-    clickCount: 1
-  })
-  await app.send('Input.dispatchMouseEvent', {
-    type: 'mouseReleased',
-    x: checkPos.x,
-    y: checkPos.y,
-    button: 'left',
-    clickCount: 1
-  })
-  await sleep(450)
+  const beforeBlurClose = JSON.parse(await app.ev(SRC_SNAPSHOT))
+  await app.ev(`(() => {
+    const ta = document.querySelector('[data-md-math-editor-src]')
+    if (ta) ta.blur()
+    return 'ok'
+  })()`)
+  await sleep(120)
   const g6 = JSON.parse(await app.ev(SRC_SNAPSHOT))
   report.check(
-    'G5 点右上角「✓」收起编辑态，且**逐字不改内容**',
-    beforeCheck.hasBox === true && g6.hasBox === false && g6.content === beforeCheck.content,
-    'after=' + g6.hasBox + ' contentSame=' + (g6.content === beforeCheck.content)
+    'G5 失焦收起编辑态，且**逐字不改内容**（原"点 ✓"那条已随按钮一起改判据）',
+    beforeBlurClose.hasBox === true && g6.hasBox === false && g6.content === beforeBlurClose.content,
+    'after=' + g6.hasBox + ' contentSame=' + (g6.content === beforeBlurClose.content)
   )
 
   // ─── H 高亮：≥3 类颜色 + 高亮没改文本 + 两层对齐 ────────────────────────────
@@ -1562,8 +1565,11 @@ async function main() {
       i.srcPadding
   )
   report.check(
-    'I2 行内只留重点：可见的「公式」二字收起、`Esc` 提示只给读屏器（视觉隐藏但 aria 还能取到）',
-    i.labelDisplay === 'none' &&
+    // 第三十三轮：行内浮层的「公式」标签从"收起"改为**可见**（用户口径②「更大气简约」：
+    // 去掉 ✓ 之后源码区独占一行，左上角留一个「公式」标签反而更清楚它是什么）。
+    // 仍要守的两条不变：`Esc` 提示**只给读屏器**（视觉隐藏但 aria 能取到）、容器有可访问名。
+    'I2 行内只留重点：`Esc` 提示只给读屏器（视觉隐藏但 aria 还能取到），「公式」标签可见（本轮起）',
+    i.labelDisplay !== 'none' &&
       !!i.hintText &&
       !!i.hintRect &&
       i.hintRect.width <= 1 &&
@@ -1609,6 +1615,19 @@ async function main() {
   )
   // Ctrl+Z 撤掉源码区的一步输入（行内浮层在 PM 之外，撤销走源码区自己派给 PM 的 history）
   const beforeUndo = JSON.parse(await app.ev(SRC_SNAPSHOT))
+  // 第三十三轮：失焦改为**立刻**收起，这里显式确认"进 J 段时编辑框还开着、且焦点在源码区"——
+  // 不然下面的键入会落空（实测踩过：框已收起，`ta.value` 读到 null）
+  report.note(
+    'J2 前置：hasBox=' +
+      beforeUndo.hasBox +
+      ' shape=' +
+      beforeUndo.shape +
+      ' activeIsTa=' +
+      beforeUndo.activeIsTa +
+      ' value=' +
+      JSON.stringify(beforeUndo.value)
+  )
+  if (!beforeUndo.hasBox) await openInlineEditor(app)
   await typeChar(app.send, 'z')
   await sleep(300)
   const typedZ = JSON.parse(await app.ev(SRC_SNAPSHOT))
@@ -1634,7 +1653,12 @@ async function main() {
     j2.value === beforeUndo.value
   report.check(
     'J2 Ctrl+Z 能撤销源码区的修改：文档回到上一态，且**源码框里的文本与渲染同步回退**',
-    typedZ.value === beforeUndo.value + 'z' &&
+    // 第三十三轮：插入符聚焦时落在**收尾 `$` 之前**（否则空白处一打字就把定界符弄不配平、
+    // 公式当场退化）。所以 `z` 进的是**定界符之内**：`$E = mc^2$` → `$E = mc^2z$`。
+    !!typedZ.value &&
+      typedZ.value.startsWith('$') &&
+      typedZ.value.endsWith('$') &&
+      typedZ.value.includes('mc^2z') &&
       typedZ.content.includes('$E = mc^2z$') &&
       docReverted &&
       j2.hasBox === true &&
@@ -1651,9 +1675,13 @@ async function main() {
       (j2.content === beforeUndo.content)
   )
   // 错误态仍可判（坏公式 → data-md-math-invalid，且文档里留的是坏源码）
+  // ⚠️ 第三十三轮：行内框里显示的是**完整源码（含 `$`）**，所以"坏公式"要写成
+  //    `$\frac{1}{$`（**定界符配平、里面的 LaTeX 坏**）—— 这才是"错误态"。
+  //    若写成不含 `$` 的 `\frac{1}{`，按本轮口径那就是"用户把定界符删了" ⇒ 走**退化**
+  //    （公式变普通文本、编辑框收起），那是 Z 系列在验的另一条语义。
   await app.ev(`(() => {
     const ta = document.querySelector('[data-md-math-editor-src]')
-    ta.value = '\\\\frac{1}{'
+    ta.value = '$\\\\frac{1}{$'
     ta.dispatchEvent(new Event('input', { bubbles: true }))
     return 'ok'
   })()`)
@@ -1667,7 +1695,7 @@ async function main() {
   // 组字（合成事件：真实输入法无法用 CDP 驱动，这里验的是"组字期间不丢字"的机制）
   await app.ev(`(() => {
     const ta = document.querySelector('[data-md-math-editor-src]')
-    ta.value = 'E = mc^2'
+    ta.value = '$E = mc^2$'
     ta.dispatchEvent(new Event('input', { bubbles: true }))
     return 'ok'
   })()`)
@@ -1675,7 +1703,11 @@ async function main() {
   await app.ev(`(() => {
     const ta = document.querySelector('[data-md-math-editor-src]')
     ta.dispatchEvent(new CompositionEvent('compositionstart', { bubbles: true }))
-    ta.value = ta.value + '好'
+    // 第三十三轮：聚焦时插入符落在收尾 $ 之前，所以组字串也落在定界符**之内**
+    // （写成 ta.value + '好' 就是落在收尾 $ 之后，那一提交按本轮口径就是"把定界符弄坏了" ⇒ 退化）
+    const at = ta.value.length - 1
+    ta.value = ta.value.slice(0, at) + '好' + ta.value.slice(at)
+    ta.setSelectionRange(at + 1, at + 1)
     ta.dispatchEvent(new InputEvent('input', { bubbles: true, isComposing: true }))
     return 'ok'
   })()`)
@@ -1695,7 +1727,7 @@ async function main() {
       j4a.hlVisibility === 'hidden' &&
       j4b.composing === false &&
       j4b.hlVisibility !== 'hidden' &&
-      j4b.value === 'E = mc^2好' &&
+      j4b.value === '$E = mc^2好$' &&
       j4b.hlText === j4b.value &&
       j4b.content.includes('E = mc^2好'),
     'composing=' +
@@ -1712,7 +1744,7 @@ async function main() {
   // 收拾干净：把这条行内公式改回原样并收起（后面的断言/别的套件不该看到中间态）
   await app.ev(`(() => {
     const ta = document.querySelector('[data-md-math-editor-src]')
-    ta.value = 'E = mc^2'
+    ta.value = '$E = mc^2$'
     ta.dispatchEvent(new Event('input', { bubbles: true }))
     return 'ok'
   })()`)
@@ -1767,21 +1799,20 @@ async function main() {
       JSON.stringify(k.barRect)
   )
   report.check(
-    'K3 靠**底色与留白**区分书写面（源码区仍有 --code-bg 底色与非零内边距），✓ 仍是真按钮且有可访问名',
+    'K3 靠**底色与留白**区分书写面（源码区仍有 --code-bg 底色与非零内边距），且 ✓ 已删除、bar 不再有按钮残留',
     !!k.srcBg &&
       k.srcBg !== 'rgba(0, 0, 0, 0)' &&
       k.srcPadding !== '0px' &&
-      k.checkTag === 'BUTTON' &&
-      !!k.checkAria &&
-      k.checkAria.trim().length > 0,
+      k.checkTag === null &&
+      k.checkAria === null,
     'srcBg=' +
       k.srcBg +
       ' srcPadding=' +
       k.srcPadding +
       ' check=' +
-      k.checkTag +
+      String(k.checkTag) +
       '/' +
-      JSON.stringify(k.checkAria)
+      String(k.checkAria)
   )
   report.note(
     'K 实测：容器边框 ' +
@@ -1798,7 +1829,14 @@ async function main() {
   await openInlineEditor(app)
   await app.ev(SRC_STAMP)
   const l0 = JSON.parse(await app.ev(SRC_SNAPSHOT))
+  /**
+   * 第三十三轮：行内框里显示的是**完整源码 `$…$`**，且聚焦时插入符落在**收尾 `$` 之前**
+   * （见 `InlineMathEditor.caretOnFocus`：落在末尾的话，一打字就把定界符弄不配平 ⇒ 公式退化）。
+   * 所以"敲一个字符"= **插在收尾 `$` 之前**，而不是追加到末尾。
+   */
+  const lTypeInto = (v, ch) => (v.endsWith('$') ? v.slice(0, -1) + ch + '$' : v + ch)
   let lTyped = l0.value || ''
+  let lBeforeLast = lTyped
   let lAlive = l0.hasBox === true && l0.shape === 'inline' && l0.activeIsTa === true
   let lRenderFollows = 0
   let lPrevRender = l0.inlineKatex
@@ -1807,7 +1845,8 @@ async function main() {
     await typeChar(app.send, ch)
     await sleep(240)
     const s = JSON.parse(await app.ev(SRC_SNAPSHOT))
-    lTyped += ch
+    lBeforeLast = lTyped
+    lTyped = lTypeInto(lTyped, ch)
     if (s.inlineKatex !== lPrevRender) lRenderFollows += 1
     lPrevRender = s.inlineKatex
     const ok =
@@ -1819,7 +1858,8 @@ async function main() {
   const lDel = JSON.parse(await app.ev(SRC_SNAPSHOT))
   report.check(
     'L1 行内源码区**真实按键**：连敲 3 个字符 + 一次退格，源码文本逐字相符、焦点与元素都没换',
-    lAlive && lDel.value === lTyped.slice(0, -1) && lDel.activeIsTa === true && lDel.stamp === true,
+    // 退格删掉的是插入符**左侧**那个字符（即刚敲的 `z`）⇒ 回到"敲了 2 个字符"那一态
+    lAlive && lDel.value === lBeforeLast && lDel.activeIsTa === true && lDel.stamp === true,
     'trace=' +
       lTrace.join(' ') +
       ' afterBackspace=' +
@@ -1856,22 +1896,42 @@ async function main() {
   await sleep(260)
   const lReplace = JSON.parse(await app.ev(SRC_SNAPSHOT))
   const lBlocksKept = JSON.stringify(lReplace.blockSources) === JSON.stringify(l0.blockSources)
+  /**
+   * 第三十三轮：Ctrl+A 选中的是**整个 `$…$` 源码**，敲 `q` 就把它整段替换掉 ——
+   * 两个 `$` 都没了 ⇒ 按本轮口径（用户口径①的"改坏即退化"）这条公式**退化成普通文本 `q`**、
+   * 编辑框随之收起。所以断言改判成**退化的正确结果**：
+   *   * Ctrl+A **没有**被 PM 抢成 `AllSelection`（改前的病症）；
+   *   * 替换只发生在**这条公式**那一小段：块公式等其余内容原封不动（改前是整个文档被 `q` 换掉）；
+   *   * 公式位置留给用户的就是他敲的那个 `q`（**一个字都没丢**）。
+   */
+  const lInlineGone = !lReplace.content.includes('$E = mc^2xy$')
+  const lQKept = lReplace.content.includes('q')
   report.check(
-    'L4 Ctrl+A 后敲字：替换发生在**源码框**里（PM 选区没被抢成 AllSelection，文档内容也没被换掉）',
+    'L4 Ctrl+A 后敲字：替换发生在**源码框**（PM 选区没被抢成 AllSelection），且整段替换 ⇒ 公式按"改坏即退化"变成普通文本（一个字不丢、其余内容不动）',
     lSelectAll.pmSelName !== 'AllSelection' &&
-      lReplace.value === 'q' &&
-      lReplace.hasBox === true &&
-      lReplace.activeIsTa === true &&
+      // Ctrl+A **只改选区、不改文本**：此刻框里仍是"敲了 3 个 + 退格 1 个"那一态
+      lSelectAll.value === lBeforeLast &&
       lReplace.pmSelName !== 'AllSelection' &&
+      lReplace.hasBox === false &&
+      lInlineGone &&
+      lQKept &&
       lBlocksKept,
     'pmSel@Ctrl+A=' +
       lSelectAll.pmSelName +
-      ' value=' +
+      ' valueAtSelectAll=' +
+      JSON.stringify(lSelectAll.value) +
+      ' expected=' +
+      JSON.stringify(lBeforeLast) +
+      ' afterValue=' +
       JSON.stringify(lReplace.value) +
       ' hasBox=' +
       lReplace.hasBox +
       ' pmSelAfter=' +
       lReplace.pmSelName +
+      ' inlineGone=' +
+      lInlineGone +
+      ' qKept=' +
+      lQKept +
       ' blocks=' +
       JSON.stringify(lReplace.blockSources)
   )
@@ -1882,7 +1942,7 @@ async function main() {
   await app.ev(`(() => {
     const ta = document.querySelector('[data-md-math-editor-src]')
     if (!ta) return 'NO_BOX'
-    ta.value = 'E = mc^2'
+    ta.value = '$E = mc^2$'
     ta.dispatchEvent(new Event('input', { bubbles: true }))
     return 'ok'
   })()`)
@@ -3273,24 +3333,22 @@ async function main() {
       ' fresh=' +
       JSON.stringify(String(tb2.freshMarkdown))
   )
-  // ⑥c ✓ 按钮收起 → 同样能接着打字（改前 activeElement 停在 body，一个字都进不去）
+  // ⑥c 失焦收起 → 同样能接着打字（改前 activeElement 停在 body，一个字都进不去）。
+  //     第三十三轮：原来这里是"点 ✓ 按钮收起"，✓ 已按用户口径删除，改判据为**失焦**，
+  //     要守的东西不变：收起之后焦点必须回到正文、敲字能进文档。
   await tbRun('math-edit-14b.md')
-  const tbCheck = JSON.parse(
-    await app.ev(`(() => {
-      const b = document.querySelector('[data-md-math-editor-check]')
-      if (!b) return 'null'
-      const r = b.getBoundingClientRect()
-      return JSON.stringify({ x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2) })
-    })()`)
-  )
-  await clickAt(app.send, tbCheck.x, tbCheck.y)
-  await sleep(500)
+  await app.ev(`(() => {
+    const ta = document.querySelector('[data-md-math-editor-src]')
+    if (ta) ta.blur()
+    return 'ok'
+  })()`)
+  await sleep(400)
   const tb3 = JSON.parse(await app.ev(SRC_SNAPSHOT))
   await typeChar(app.send, 'm')
   await sleep(400)
   const tb4 = JSON.parse(await app.ev(SRC_SNAPSHOT))
   report.check(
-    'TB3 ⑥ 点 ✓ 收起后敲 `m` 同样落在公式下方（改前焦点留在被移除的按钮上，敲什么都不进文档）',
+    'TB3 ⑥ 失焦收起后敲 `m` 同样落在公式下方（改前焦点停在被移除的按钮上，敲什么都不进文档）',
     tb3.hasBox === false &&
       tb4.docTypes.includes('mathBlock') &&
       tb4.paraTexts[tb4.paraTexts.length - 1] === 'm' &&
