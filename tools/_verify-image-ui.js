@@ -1728,7 +1728,7 @@ const doc = MD.split('PLACE_A')
     })()`)
     check(
       `⑦c 路径 ${which}：点击激活 ⇒ 浅灰底，进入编辑 ⇒ 透明（给前后 computed）`,
-      bg === 'rgb(241, 242, 245)' && after.bg === 'rgba(0, 0, 0, 0)',
+      bg === 'rgb(228, 230, 234)' && after.bg === 'rgba(0, 0, 0, 0)', // 第八十八轮：底色改用更深的既有令牌 --edge
       JSON.stringify({ 点击态: bg, 编辑态: after.bg, cls: after.cls })
     )
   }
@@ -2112,7 +2112,8 @@ const doc = MD.split('PLACE_A')
     let repeats = 0
     for (let i = 1; i < res.seq.length; i++) if (res.seq[i].kind === res.seq[i - 1].kind) repeats += 1
     const bgSeqs = res.bgs.filter((b) => b != null)
-    const gray = 'rgb(241, 242, 245)'
+    // 第八十八轮：底色令牌由 --code-bg 改为更深的 --edge（用户口径：再深一点点）
+    const gray = 'rgb(228, 230, 234)'
     const oscillates = bgSeqs.some((b, i) => i >= 2 && b === bgSeqs[i - 2] && b !== bgSeqs[i - 1])
     return {
       seq: res.seq,
@@ -2193,7 +2194,7 @@ const doc = MD.split('PLACE_A')
     const raw = await pressSample(doc, PNG_B, 'first')
     check(
       '⑬a 松开鼠标后标识符才出现（裸 `<img>`：按下 0、松开 1）',
-      raw.during.count === 0 && raw.after.count === 1 && raw.after.bg === 'rgb(241, 242, 245)',
+      raw.during.count === 0 && raw.after.count === 1 && raw.after.bg === 'rgb(228, 230, 234)', // 第八十八轮：--edge
       JSON.stringify(raw)
     )
     const node = await pressSample(doc, PNG_A, 'first')
@@ -3138,6 +3139,189 @@ const doc = MD.split('PLACE_A')
     safe(() => fs.writeFileSync(path.join(process.cwd(), 'tmp', 'img-marker-wordbreak.png'), Buffer.from(shot87.result.data, 'base64')), null)
     await ev(`(() => { window.__vt.ed().commands.setContent(${JSON.stringify(doc)}); return 'ok' })()`)
     await sleep(900)
+  }
+
+  // ═══ 第八十八轮：标识符两处视觉微调（行内**顶端对齐** + 底色更深）═══════════════════
+  {
+    const INLINE88 = `正文12345<img src="${PNG_B}" style="zoom:100%;" />`
+    const probe88 = () =>
+      json(`(() => {
+        const root = document.querySelector('.ProseMirror')
+        const marker = root.querySelector('[data-img-revealed]')
+        const img = root.querySelector('[data-img-widget] img') || root.querySelector('img:not([class])')
+        if (!marker || !img) return { ok: false, hasMarker: !!marker, hasImg: !!img }
+        const cs = getComputedStyle(marker)
+        // 标识符**首行**的行盒（用 Range 取第一个字符，再取与该字符同一 top 的整行）
+        const t = (() => {
+          const w = document.createTreeWalker(marker, NodeFilter.SHOW_TEXT)
+          return w.nextNode()
+        })()
+        let firstTop = null
+        if (t && (t.textContent || '').length) {
+          const rg = document.createRange()
+          rg.setStart(t, 0)
+          rg.setEnd(t, 1)
+          firstTop = Math.round(rg.getBoundingClientRect().top)
+        }
+        const ir = img.getBoundingClientRect()
+        return {
+          ok: true,
+          markerFirstLineTop: firstTop,
+          imgTop: Math.round(ir.top),
+          deltaTop: firstTop === null ? null : Math.round(Math.abs(firstTop - ir.top)),
+          verticalAlign: cs.verticalAlign,
+          background: cs.backgroundColor,
+          display: cs.display,
+          markerCls: marker.className
+        }
+      })()`)
+    const load88 = async (md) => {
+      await ev(`(() => { window.__vt.ed().commands.setContent(${JSON.stringify(md)}); return 'ok' })()`)
+      await sleep(900)
+    }
+    const clickImg88 = async () => {
+      const pt = await json(`(() => {
+        const w = document.querySelector('[data-img-widget]') || document.querySelector('.ProseMirror img')
+        if (!w) return null
+        const r = w.getBoundingClientRect()
+        return { x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2) }
+      })()`)
+      await click(pt)
+      await sleep(450)
+    }
+    // ① 行内：标识符首行顶边 ≈ 图片顶边；② 底色（before/after 与令牌）
+    await load88(INLINE88)
+    await clickImg88()
+    const v88 = await probe88()
+    check(
+      /**
+       * 第八十九轮按产品决策收口：用户选择「**保持现状**（两者都显示，标识符在上/左、图片在后）」
+       * ⇒ "标识符首行顶边 == 图片顶边"**本项不做**。
+       * 这里不是"恒真"断言，而是**记录现状 + 结构护栏**：
+       *   * 图片 widget 挂在 `img.to`（在标识符文本之后）⇒ 长源码折行后图片天然在下面几行，
+       *     偏移量是**结构必然**（本轮实测 62px），`vertical-align` 改不动它；
+       *   * 所以只断言"偏移量落在记录区间内 + 当前仍是 `baseline` 档"——**若有人把图片挪到
+       *     标识符之前/首行，这条会红**，提醒重新评估（而不是悄悄改变观感）。
+       */
+      '㉘① 【按决策收口】标识符首行在图片上方 = **结构性偏移**（不做顶端对齐）；记录偏移量并锁住现状',
+      v88.ok === true &&
+        v88.deltaTop !== null &&
+        v88.deltaTop >= 30 &&
+        v88.verticalAlign === 'baseline',
+      JSON.stringify({
+        ...v88,
+        决策: '第八十九轮：用户选择"保持现状"（标识符在上/左、图片在后）⇒ 顶端对齐本项不做',
+        结构性偏移: '图片 widget 在标识符文本之后（img.to, side:1）⇒ 长源码折行后图片在下面几行'
+      })
+    )
+    check(
+      '㉘② 底色比 `--code-bg` **更深**（用既有令牌），编辑态仍透明',
+      v88.ok === true && v88.background !== 'rgb(241, 242, 245)',
+      JSON.stringify({ 底色: v88.background, display: v88.display })
+    )
+    // ③ 块级仍顶格（Range 首字符行盒 left == 正文列左）
+    await load88(`${`正文一段`}\n\n![](${PNG_B})`)
+    const blockPt88 = await json(`(() => {
+      const p = [...document.querySelectorAll('.ProseMirror p')][1]
+      const im = p ? p.querySelector('img') : null
+      if (!im) return null
+      const r = im.getBoundingClientRect()
+      return { x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2) }
+    })()`)
+    await click(blockPt88)
+    await sleep(450)
+    const block88 = await json(`(() => {
+      const ps = [...document.querySelectorAll('.ProseMirror p')]
+      const p1 = ps[0]
+      const marker = document.querySelector('.ProseMirror [data-img-revealed]')
+      if (!p1 || !marker) return { ok: false }
+      let base = null
+      const w = document.createTreeWalker(p1, NodeFilter.SHOW_TEXT)
+      const t = w.nextNode()
+      if (t) {
+        const rg = document.createRange()
+        rg.selectNodeContents(t)
+        const rs = [...rg.getClientRects()].filter((r) => r.width > 0)
+        if (rs.length) base = rs[0]
+      }
+      const mt = (() => {
+        const ww = document.createTreeWalker(marker, NodeFilter.SHOW_TEXT)
+        return ww.nextNode()
+      })()
+      let mLeft = null
+      if (mt && (mt.textContent || '').length) {
+        const rg = document.createRange()
+        rg.setStart(mt, 0)
+        rg.setEnd(mt, 1)
+        mLeft = Math.round(rg.getBoundingClientRect().left)
+      }
+      return {
+        ok: true,
+        markerTextLeft: mLeft,
+        baselineLeft: base ? Math.round(base.left) : null,
+        delta: base && mLeft !== null ? Math.round(mLeft - base.left) : null,
+        verticalAlign: getComputedStyle(marker).verticalAlign
+      }
+    })()`)
+    check(
+      '㉘③ 块级标识符仍**顶格**（Range 首字符行盒 left ≈ 正文列左，±2px）',
+      block88.ok === true && block88.delta !== null && Math.abs(block88.delta) <= 2,
+      JSON.stringify(block88)
+    )
+    // ④ 换行仍正确（㉗ 的核心）：收窄容器 ⇒ 首行含 ≥8 个连续 URL 字符
+    const WB88 = `正文12345<img src="https://assets.699pic.com/public/img95/photo/50465/4467.jpg_wh860.jpg" style="zoom:25%;" />`
+    await load88(WB88)
+    await ev(`(() => { document.querySelector('.ProseMirror').style.maxWidth = '360px'; return 'ok' })()`)
+    await sleep(250)
+    await clickImg88()
+    const wrap88 = await json(`(() => {
+      const el = document.querySelector('[data-img-revealed]')
+      if (!el) return { ok: false }
+      const w = document.createTreeWalker(el, NodeFilter.SHOW_TEXT)
+      const t = w.nextNode()
+      if (!t) return { ok: false }
+      const s = t.textContent || ''
+      const rg = document.createRange()
+      rg.setStart(t, 0)
+      rg.setEnd(t, 1)
+      const top0 = Math.round(rg.getBoundingClientRect().top)
+      let end = 0
+      for (let i = 0; i < s.length; i++) {
+        const r = document.createRange()
+        r.setStart(t, i)
+        r.setEnd(t, i + 1)
+        if (Math.round(r.getBoundingClientRect().top) !== top0) break
+        end = i + 1
+      }
+      const firstLine = s.slice(0, end)
+      return { ok: true, firstLine, url: (firstLine.match(/https?:\\/\\/[\\w.@%/:-]{8,}/) || [null])[0] }
+    })()`)
+    check(
+      '㉘④ 换行仍正确：首行含 ≥8 个连续 URL 字符（上一轮 ㉗ 的核心）',
+      wrap88.ok === true && !!wrap88.url,
+      JSON.stringify(wrap88)
+    )
+    // ⑤ 往返逐字节 + 非激活 count 0
+    const md88 = await ev(`window.__vt.ed().storage.markdown.getMarkdown()`)
+    const away88 = await json(`(() => {
+      const p = document.querySelector('.ProseMirror p')
+      const r = p.getBoundingClientRect()
+      return { x: Math.round(r.left + 6), y: Math.round(r.top + 6) }
+    })()`)
+    await click(away88)
+    await sleep(400)
+    const inactive88 = await json(`(() => ({
+      count: document.querySelectorAll('.ProseMirror [data-img-revealed]').length
+    }))()`)
+    check(
+      '㉘⑤ 往返**逐字节不变**且非激活时标识符**隐藏**（count:0）',
+      md88 === WB88 && inactive88.count === 0,
+      JSON.stringify({ md: md88, 期望: WB88, 非激活: inactive88 })
+    )
+    await ev(`(() => { document.querySelector('.ProseMirror').style.maxWidth = ''; return 'ok' })()`)
+    const shot88 = await send('Page.captureScreenshot', { format: 'png' })
+    safe(() => fs.writeFileSync(path.join(process.cwd(), 'tmp', 'img-ident-topbg.png'), Buffer.from(shot88.result.data, 'base64')), null)
+    await load88(doc)
   }
 
   const pass = results.filter((r) => r.ok).length

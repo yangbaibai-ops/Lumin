@@ -373,7 +373,9 @@ ormal，只影响这种段落 */
   padding: 0;
   border: 0;
   border-radius: 3px;
-  background-color: var(--code-bg);
+  /* 第八十八轮（用户口径："背景颜色再深一点点"）：`--code-bg`(#f1f2f5) → `--edge`(#e4e6ea)。
+     两者都是仓库里**已定义**的令牌（light/dark/sepia 三套都有），相对亮度更低 ⇒ 更深一点点。 */
+  background-color: var(--edge);
   color: inherit;
   font: inherit;
   font-family: inherit;
@@ -409,8 +411,6 @@ ormal，只影响这种段落 */
 .md-preview .img-src-revealed--editing {
   background-color: transparent;
 }
-/* 块级图片（独占一行、居中那种）激活时：标识符**自己占一行**（块级），
-   不去挤图片那一行的行内流 ⇒ 图片水平位置一动不动，只整体下移让位（第六十二轮） */
 .md-preview .img-src-revealed--block {
   display: block;
 }
