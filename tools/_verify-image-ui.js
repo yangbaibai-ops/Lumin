@@ -3324,6 +3324,142 @@ const doc = MD.split('PLACE_A')
     await load88(doc)
   }
 
+  // ═══ 第九十轮：**三种形态**的块级标识符都必须"顶格"（补上只验节点形态的洞）════════
+  {
+    const U90 = 'https://assets.699pic.com/public/img95/photo/50465/4467.jpg_wh860.jpg'
+    /** 量"标识符**首行文字**的 left"与"正文内容列左边缘"（两者都用 Range 取行盒，不许用盒子 left） */
+    const flushOf = () =>
+      json(`(() => {
+        const root = document.querySelector('.ProseMirror')
+        const ps = [...root.querySelectorAll('p')]
+        const marker = root.querySelector('[data-img-revealed]')
+        if (!marker) return { ok: false, hasMarker: false }
+        // 基准：第一段里那行**正文文字**的行盒左边缘
+        let base = null
+        for (const p of ps) {
+          const w = document.createTreeWalker(p, NodeFilter.SHOW_TEXT)
+          let t = w.nextNode()
+          while (t && (!(t.textContent || '').trim() || marker.contains(t))) t = w.nextNode()
+          if (!t) continue
+          const rg = document.createRange()
+          rg.selectNodeContents(t)
+          const rs = [...rg.getClientRects()].filter((r) => r.width > 0)
+          if (rs.length) { base = rs[0]; break }
+        }
+        const mt = (() => {
+          const w = document.createTreeWalker(marker, NodeFilter.SHOW_TEXT)
+          return w.nextNode()
+        })()
+        let mLeft = null
+        if (mt && (mt.textContent || '').length) {
+          const rg = document.createRange()
+          rg.setStart(mt, 0)
+          rg.setEnd(mt, 1)
+          mLeft = Math.round(rg.getBoundingClientRect().left)
+        }
+        const img = root.querySelector('[data-img-widget] img') || root.querySelector('p img')
+        const holder = root.querySelector('[data-img-widget]') || img
+        const hr = holder ? holder.getBoundingClientRect() : null
+        const pr = ps.length ? ps[ps.length - 1].getBoundingClientRect() : root.getBoundingClientRect()
+        return {
+          ok: true,
+          markerTag: marker.tagName.toLowerCase(),
+          markerCls: marker.className,
+          markerParent: marker.parentElement ? marker.parentElement.tagName.toLowerCase() : null,
+          markerTextLeft: mLeft,
+          baselineLeft: base ? Math.round(base.left) : null,
+          delta: base && mLeft !== null ? Math.round(mLeft - base.left) : null,
+          textAlign: getComputedStyle(marker).textAlign,
+          imgCenterOffset: hr ? Math.round(Math.abs((hr.left + hr.right) / 2 - (pr.left + pr.right) / 2)) : null,
+          imgLeft: hr ? Math.round(hr.left) : null
+        }
+      })()`)
+    const load90 = async (md) => {
+      await ev(`(() => { window.__vt.ed().commands.setContent(${JSON.stringify(md)}); return 'ok' })()`)
+      await sleep(900)
+    }
+    const clickImg90 = async () => {
+      const pt = await json(`(() => {
+        const w = document.querySelector('[data-img-widget]') || document.querySelector('.ProseMirror img')
+        if (!w) return null
+        const r = w.getBoundingClientRect()
+        return { x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2) }
+      })()`)
+      await click(pt)
+      await sleep(500)
+    }
+    // (a) `![]()` 节点形态（对照组）
+    await load90(`正文12345\n\n![](${U90})`)
+    await clickImg90()
+    const a90 = await flushOf()
+    // (b) 用户实际场景：`![]()` 点缩放 → 变成 `<img … style="zoom:25%;" />`
+    await load90(`正文12345\n\n![](${U90})`)
+    await clickImg90()
+    const zoomPt = await json(`(() => {
+      const bar = document.querySelector('.img-zoom-bar')
+      if (!bar) return null
+      const btn = [...bar.querySelectorAll('button')].find((b) => (b.textContent || '').indexOf('25') >= 0)
+      if (!btn) return null
+      const r = btn.getBoundingClientRect()
+      return { x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2) }
+    })()`)
+    await click(zoomPt)
+    await sleep(600)
+    const b90 = await flushOf()
+    const bMd = await ev(`window.__vt.ed().storage.markdown.getMarkdown()`)
+    // (c) 手写/粘贴的独立成行裸 `<img … />`（htmlBlock 路径）
+    await load90(`正文12345\n\n<img src="${U90}" style="zoom:25%;" />`)
+    await clickImg90()
+    const c90 = await flushOf()
+    check(
+      '㉙① (a) `![]()` 节点形态 ⇒ 块级标识符**顶格**（delta ≤ 2px，Range 首字符行盒）',
+      a90.ok === true && a90.delta !== null && Math.abs(a90.delta) <= 2,
+      JSON.stringify(a90)
+    )
+    check(
+      '㉙① (b) **缩放转成的裸 `<img … style="zoom:25%;" />`**（用户实际场景）⇒ 同样**顶格**（delta ≤ 2px）',
+      b90.ok === true && b90.delta !== null && Math.abs(b90.delta) <= 2,
+      JSON.stringify({ ...b90, zoomedMd: bMd })
+    )
+    check(
+      '㉙① (c) **手写/粘贴的独立成行裸 `<img … />`**（htmlBlock 路径）⇒ 同样**顶格**（delta ≤ 2px）',
+      c90.ok === true && c90.delta !== null && Math.abs(c90.delta) <= 2,
+      JSON.stringify(c90)
+    )
+    check(
+      '㉙② 同一次 payload：**图片本身仍居中**（holder 中心 ≈ 段落中心，offset ≤ 2px）',
+      [a90, b90, c90].every((x) => x.ok === true && x.imgCenterOffset !== null && x.imgCenterOffset <= 2),
+      JSON.stringify({ a: a90.imgCenterOffset, b: b90.imgCenterOffset, c: c90.imgCenterOffset })
+    )
+    // ③ 行内档未被误伤
+    await load90(`正文12345<img src="${U90}" style="zoom:25%;" />`)
+    await clickImg90()
+    const inline90 = await json(`(() => {
+      const root = document.querySelector('.ProseMirror')
+      const marker = root.querySelector('[data-img-revealed]')
+      const w = root.querySelector('[data-img-widget]')
+      if (!marker || !w) return { ok: false }
+      const mr = marker.getBoundingClientRect()
+      const wr = w.getBoundingClientRect()
+      return {
+        ok: true,
+        verticalAlign: getComputedStyle(marker).verticalAlign,
+        markerLeft: Math.round(mr.left),
+        widgetLeft: Math.round(wr.left),
+        sameLine: Math.abs(mr.top - wr.top) < 40,
+        inlineAttr: w.getAttribute('data-img-inline')
+      }
+    })()`)
+    check(
+      '㉙③ 行内档未被误伤：标识符仍在图片**之前**、`vertical-align` 按第八十九轮决策保持 `baseline`',
+      inline90.ok === true && inline90.markerLeft < inline90.widgetLeft && inline90.verticalAlign === 'baseline' && inline90.inlineAttr === 'true',
+      JSON.stringify(inline90)
+    )
+    const shot90 = await send('Page.captureScreenshot', { format: 'png' })
+    safe(() => fs.writeFileSync(path.join(process.cwd(), 'tmp', 'img-ident-flush-3forms.png'), Buffer.from(shot90.result.data, 'base64')), null)
+    await load90(doc)
+  }
+
   const pass = results.filter((r) => r.ok).length
   console.log(`TOTAL ${results.length} PASS ${pass} FAIL ${results.length - pass}`)
   console.log(`--- ${pass}/${results.length} PASS`)
