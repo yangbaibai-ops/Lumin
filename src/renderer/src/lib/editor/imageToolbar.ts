@@ -849,6 +849,43 @@ export const ImageSourceUi = Extension.create({
               const sources = collectImgSources(view.state)
               const hit = sources.find((s) => at.pos >= s.from - 1 && at.pos <= s.to + 1)
               if (!hit) return false
+              /**
+               * 第八十六轮（闪烁根因 + "点不出光标"根因）：
+               * `posAtCoords` 会把**图片正下方**的点击也映射到"源码范围 ±1"（PM 把那里算作末尾/边界），
+               * 于是"点下方空白"被误当成"点图片" ⇒ 记 `pendingClick` + `preventDefault()`：
+               *   * `mouseup` 又执行一次**激活**（可见状态改变）⇒ 一次手势 **两次可见跃迁** = 闪烁；
+               *   * 被 `preventDefault` 吃掉的那一击，PM 内建的"点最后一块下方 ⇒ 末尾补段落"再也没机会跑
+               *     ⇒ 用户"点不出光标、无法输入"。
+               * 收窄为：**点击必须落在图片自身矩形内**（±2px）才算点图片；否则一律放行（返回 false），
+               * 让 PM/浏览器按自己的规则处理（正文点击、末尾补段落、拖选…）。
+               */
+              const inside = (el: HTMLElement | null): boolean => {
+                if (!el) return false
+                const r = el.getBoundingClientRect()
+                return (
+                  event.clientX >= r.left - 2 &&
+                  event.clientX <= r.right + 2 &&
+                  event.clientY >= r.top - 2 &&
+                  event.clientY <= r.bottom + 2
+                )
+              }
+              let imgEl: HTMLElement | null = null
+              if (hit.kind === 'raw') {
+                imgEl = view.dom.querySelector(
+                  `[data-img-widget][data-img-from="${hit.from}"]`
+                ) as HTMLElement | null
+              } else {
+                try {
+                  const dom = view.nodeDOM(hit.from)
+                  imgEl =
+                    dom && dom.nodeType === 1
+                      ? (dom as HTMLElement)
+                      : ((dom?.parentElement as HTMLElement | null) ?? null)
+                } catch {
+                  imgEl = null
+                }
+              }
+              if (!inside(imgEl)) return false
               setPending(hit.kind, hit.from)
               event.preventDefault()
               return true

@@ -2884,6 +2884,172 @@ const doc = MD.split('PLACE_A')
     await sleep(900)
   }
 
+  // ═══ 第八十五轮：末尾是图片 ⇒ 点它**下方**在下一行落光标（照 Typora；**不许闪**）════════
+  {
+    const shapeOf = () =>
+      json(`(() => {
+        const v = window.__vt.ed().view
+        const blocks = []
+        v.state.doc.forEach((b) => blocks.push(b.type.name + ':' + b.childCount))
+        const { from, to, empty } = v.state.selection
+        const last = v.state.doc.child(v.state.doc.childCount - 1)
+        return {
+          blocks,
+          from,
+          to,
+          empty,
+          end: v.state.doc.content.size,
+          lastNodeSize: last ? last.nodeSize : 0,
+          md: window.__vt.ed().storage.markdown.getMarkdown(),
+          lastType: last ? last.type.name : null
+        }
+      })()`)
+    const loadFixture85 = async (fixture) => {
+      await ev(`(() => { window.__vt.ed().commands.setContent(${JSON.stringify(fixture)}); return 'ok' })()`)
+      await sleep(900)
+    }
+    const belowPoint = () =>
+      json(`(() => {
+        const root = document.querySelector('.ProseMirror')
+        const last = root ? root.lastElementChild : null
+        const ed = root ? root.getBoundingClientRect() : null
+        const r = last ? last.getBoundingClientRect() : ed
+        if (!ed || !r) return null
+        return {
+          x: Math.round(Math.min(ed.right - 6, Math.max(ed.left + 40, r.left + 40))),
+          y: Math.round(Math.min(ed.bottom - 4, r.bottom + 24)),
+          lastBottom: Math.round(r.bottom),
+          editorBottom: Math.round(ed.bottom)
+        }
+      })()`)
+    const clickBelowSampled = async (fixture) => {
+      await loadFixture85(fixture)
+      const pt = await belowPoint()
+      await ev(`(() => {
+        const v = window.__vt.ed().view
+        window.__tx85 = 0
+        if (!window.__p85) {
+          window.__p85 = true
+          const d = v.dispatch.bind(v)
+          v.dispatch = (tr) => { window.__tx85++; return d(tr) }
+        }
+        window.__s85 = { adds: 0, removes: 0, imgAdds: 0, imgRemoves: 0 }
+        const mo = new MutationObserver((muts) => {
+          for (const m of muts) {
+            for (const n of m.addedNodes) {
+              if (n.nodeType !== 1) continue
+              if (n.matches && n.matches('img')) window.__s85.imgAdds++
+              if (n.matches && n.matches('[data-img-revealed]')) window.__s85.adds++
+              if (n.querySelector) {
+                window.__s85.imgAdds += n.querySelectorAll('img').length
+                window.__s85.adds += n.querySelectorAll('[data-img-revealed]').length
+              }
+            }
+            for (const n of m.removedNodes) {
+              if (n.nodeType !== 1) continue
+              if (n.matches && n.matches('img')) window.__s85.imgRemoves++
+              if (n.matches && n.matches('[data-img-revealed]')) window.__s85.removes++
+              if (n.querySelector) {
+                window.__s85.imgRemoves += n.querySelectorAll('img').length
+                window.__s85.removes += n.querySelectorAll('[data-img-revealed]').length
+              }
+            }
+          }
+        })
+        window.__s85.obs = mo
+        mo.observe(document.querySelector('.ProseMirror'), { childList: true, subtree: true })
+        window.__s85.seq = []
+        const tick = () => {
+          const root = document.querySelector('.ProseMirror')
+          const cur = {
+            markers: root.querySelectorAll('[data-img-revealed]').length,
+            imgs: root.querySelectorAll('img').length,
+            open: root.getAttribute('data-img-open') || null
+          }
+          const last = window.__s85.seq[window.__s85.seq.length - 1]
+          if (!last || last.markers !== cur.markers || last.imgs !== cur.imgs || last.open !== cur.open) {
+            window.__s85.seq.push(cur)
+          }
+          if (performance.now() - window.__s85.t0 < 600) window.__s85.raf = requestAnimationFrame(tick)
+        }
+        window.__s85.t0 = performance.now()
+        window.__s85.raf = requestAnimationFrame(tick)
+        return 'ok'
+      })()`)
+      await click(pt)
+      await sleep(750)
+      const sample = await json(`(() => {
+        const s = window.__s85
+        if (s.obs) s.obs.disconnect()
+        if (s.raf) cancelAnimationFrame(s.raf)
+        return { tx: window.__tx85, seq: s.seq, adds: s.adds, removes: s.removes, imgAdds: s.imgAdds, imgRemoves: s.imgRemoves }
+      })()`)
+      return { pt, sample, st: await shapeOf() }
+    }
+    const atLastBlock = (st) => st.from >= st.end - st.lastNodeSize - 1 && st.from <= st.end - 1
+    const t1 = await clickBelowSampled(`正文一段\n\n![](${PNG_B})`)
+    let typed1 = t1.st
+    if (t1.st.blocks.length >= 3) {
+      await ev(`(() => { window.__vt.ed().commands.focus(); return 'ok' })()`)
+      await send('Input.insertText', { text: 'X' })
+      await sleep(450)
+      typed1 = await shapeOf()
+    }
+    check(
+      '㉖① 末尾是 `![]()` 图片 ⇒ 点它**下方** ⇒ 新增空段落 + 光标在其中（empty），随后可输入',
+      t1.st.blocks.length === 3 && t1.st.empty === true && atLastBlock(t1.st) && typed1.md !== t1.st.md && typed1.md.includes('X'),
+      JSON.stringify({ 点击点: t1.pt, 点击后: t1.st, 输入后: { md: typed1.md, blocks: typed1.blocks } })
+    )
+    const t2 = await clickBelowSampled(`正文一段\n\n<img src="${PNG_B}" style="zoom:100%;" />`)
+    check(
+      '㉖② 末尾是**裸 `<img …>`** ⇒ 同样新增空段落 + 光标在其中',
+      t2.st.blocks.length === 3 && t2.st.empty === true && atLastBlock(t2.st),
+      JSON.stringify({ 点击点: t2.pt, 结果: t2.st })
+    )
+    check(
+      '㉖③ 同一次"点下方"手势 **不许闪**：可见状态跃迁 ≤1、图片节点增删 == 0、标识符增删 == 0',
+      t1.sample.seq.length <= 2 && t1.sample.imgAdds === 0 && t1.sample.imgRemoves === 0 && t1.sample.adds === 0 && t1.sample.removes === 0,
+      JSON.stringify({ 逐帧可见序列: t1.sample.seq, 事务: t1.sample.tx, 图片增删: [t1.sample.imgAdds, t1.sample.imgRemoves], 标识符增删: [t1.sample.adds, t1.sample.removes] })
+    )
+    await loadFixture85(`正文一段\n\n最后一段文字`)
+    const pt4 = await belowPoint()
+    await click(pt4)
+    await sleep(450)
+    const st4 = await shapeOf()
+    check(
+      '㉖④ 末尾是**普通段落** ⇒ 点下方**不新增段落**（既有行为不变）',
+      st4.blocks.length === 2,
+      JSON.stringify({ 点击点: pt4, 结果: { blocks: st4.blocks, from: st4.from, md: st4.md } })
+    )
+    await loadFixture85(`正文一段\n\n![](${PNG_B})`)
+    const beforeNoClick = await shapeOf()
+    const awayPt = await json(`(() => {
+      const root = document.querySelector('.ProseMirror')
+      const p = root.querySelector('p')
+      const r = p.getBoundingClientRect()
+      return { x: Math.round(r.left + 10), y: Math.round(r.top + 8) }
+    })()`)
+    await click(awayPt)
+    await sleep(400)
+    const afterNoClick = await shapeOf()
+    const t5 = await clickBelowSampled(`正文一段\n\n![](${PNG_B})`)
+    const canUndo = await requireFocus('㉖⑤ Ctrl+Z')
+    if (canUndo) {
+      await send('Input.dispatchKeyEvent', { type: 'rawKeyDown', windowsVirtualKeyCode: 90, key: 'z', code: 'KeyZ', modifiers: 2 })
+      await send('Input.dispatchKeyEvent', { type: 'keyUp', windowsVirtualKeyCode: 90, key: 'z', code: 'KeyZ', modifiers: 2 })
+      await sleep(500)
+    }
+    const afterUndo = await shapeOf()
+    check(
+      '㉖⑤ 不点下方 ⇒ 文档**逐字节不变**；点出段落 ⇒ 进 undo 栈（`Ctrl+Z` 可撤销）',
+      afterNoClick.md === beforeNoClick.md &&
+        afterNoClick.blocks.length === beforeNoClick.blocks.length &&
+        (canUndo === false || (t5.st.blocks.length === 3 && afterUndo.blocks.length === 2)),
+      JSON.stringify({ 不点: { 前: beforeNoClick.blocks, 后: afterNoClick.blocks }, 撤销: { 点后: t5.st.blocks, 撤销后: afterUndo.blocks } })
+    )
+    await loadFixture85(doc)
+  }
+
   const pass = results.filter((r) => r.ok).length
   console.log(`TOTAL ${results.length} PASS ${pass} FAIL ${results.length - pass}`)
   console.log(`--- ${pass}/${results.length} PASS`)
