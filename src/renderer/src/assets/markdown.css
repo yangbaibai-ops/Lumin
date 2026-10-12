@@ -431,6 +431,17 @@ ormal，只影响这种段落 */
 .md-preview .img-src-revealed:not(.img-src-revealed--block) {
   vertical-align: top;
 }
+/* ── 第九十三轮（用户口径）：源码被"整段选中"而隐藏时，**这张图片显示为被选中** ──────────
+   判据与"隐藏标识符"同一处（`selectionCoversSource`）⇒ `img-selected` 类挂在
+   widget（裸 `<img>` 形态）或图片节点（`![]()` 形态）上。观感只用**既有令牌**：
+   `--sel`（选择底色）铺底 + `--accent` 描边；不加图标、不改尺寸 ⇒ 不影响居中/并排几何。 */
+.md-preview .img-selected,
+.md-preview .img-selected img {
+  background-color: var(--sel);
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+  border-radius: 3px;
+}
 /* 语法被改坏（例如退格删掉结尾 `>`）：它不再是图片，但仍是正文 —— 只关拼写检查 */
 .md-preview .img-src-incomplete {
   vertical-align: top;

@@ -3460,6 +3460,115 @@ const doc = MD.split('PLACE_A')
     await load90(doc)
   }
 
+  // ═══ 第九十三轮：源码被"整段选中"而隐藏时 ⇒ **图片显示为被选中**（`img-selected`）═══════
+  {
+    const U93 = 'https://assets.699pic.com/public/img95/photo/50465/4467.jpg_wh860.jpg'
+    const DOC93 = `行内公式$E = mc^2$ 与 $a^2 + b^2 = c^2$。<img src="${U93}" style="zoom:25%;" />`
+    const stateOf = () =>
+      json(`(() => {
+        const root = document.querySelector('.ProseMirror')
+        const v = window.__vt.ed().view
+        const w = root.querySelector('[data-img-widget]')
+        const img = w ? w.querySelector('img') : root.querySelector('p img')
+        const cs = w ? getComputedStyle(w) : img ? getComputedStyle(img) : null
+        return {
+          markers: root.querySelectorAll('[data-img-revealed]').length,
+          imgs: root.querySelectorAll('img').length,
+          widgetCls: w ? w.className : null,
+          imgCls: img ? img.className : null,
+          selected: root.querySelectorAll('.img-selected').length,
+          background: cs ? cs.backgroundColor : null,
+          outline: cs ? cs.outlineColor + ' / ' + cs.outlineWidth : null,
+          sel: { from: v.state.selection.from, to: v.state.selection.to, empty: v.state.selection.empty },
+          md: window.__vt.ed().storage.markdown.getMarkdown()
+        }
+      })()`)
+    await ev(`(() => { window.__vt.ed().commands.setContent(${JSON.stringify(DOC93)}); return 'ok' })()`)
+    await sleep(900)
+    // ① 整段选中（覆盖整个源码范围，且两端严格超出）⇒ 标识符隐藏 + 图片带 img-selected
+    const full93 = await json(`(() => {
+      const v = window.__vt.ed().view
+      const all = v.state.doc.textBetween(0, v.state.doc.content.size, '\\n')
+      const a = 0
+      const b = v.state.doc.content.size
+      v.dispatch(v.state.tr.setSelection(v.state.selection.constructor.create(v.state.doc, a, b)))
+      return all.length
+    })()`)
+    await sleep(400)
+    const s93 = await stateOf()
+    check(
+      '㉚① 整段选中（覆盖整个源码范围）⇒ 松开后**标识符 count:0** 且**图片带 `.img-selected`**（给类名与 computed 令牌值）',
+      s93.markers === 0 && s93.selected >= 1 && s93.background === 'rgba(17, 24, 39, 0.11)',
+      JSON.stringify({ 文档长度: full93, ...s93, 令牌: { 底色: '--sel', 描边: '--accent' } })
+    )
+    // ② 点别处 ⇒ img-selected 被移除
+    const away93 = await json(`(() => {
+      const p = document.querySelector('.ProseMirror p')
+      const r = p.getBoundingClientRect()
+      return { x: Math.round(r.left + 6), y: Math.round(r.top + 6) }
+    })()`)
+    await click(away93)
+    await sleep(450)
+    const after93 = await stateOf()
+    check(
+      '㉚② 点别处 ⇒ `.img-selected` **立即移除**（不许残留）',
+      after93.selected === 0 && after93.markers === 0,
+      JSON.stringify({ 前后: { selected: s93.selected, widgetCls: s93.widgetCls }, 之后: { selected: after93.selected, widgetCls: after93.widgetCls, imgCls: after93.imgCls } })
+    )
+    // ③ 只覆盖一部分 ⇒ 标识符显示、图片**不带** img-selected
+    const partial93 = await json(`(() => {
+      const v = window.__vt.ed().view
+      const w = document.querySelector('[data-img-widget]')
+      const from = w ? Number(w.getAttribute('data-img-from')) : 1
+      // 选区落在源码**内部**（严格子区间）⇒ 按既有口径标识符应显示、且不算"图片被选中"
+      v.dispatch(
+        v.state.tr.setSelection(v.state.selection.constructor.create(v.state.doc, from + 2, from + 12))
+      )
+      return from
+    })()`)
+    await sleep(400)
+    const p93 = await stateOf()
+    check(
+      '㉚③ **部分覆盖**（严格子区间）⇒ 标识符**显示**（count ≥1）且图片**不带** `.img-selected`',
+      p93.markers >= 1 && p93.selected === 0,
+      JSON.stringify({ 源码起点: partial93, ...p93 })
+    )
+    // ④ 不闪：整段选中这一手势的逐帧序列
+    await ev(`(() => {
+      const root = document.querySelector('.ProseMirror')
+      window.__s93 = []
+      const tick = () => {
+        const cur = {
+          markers: root.querySelectorAll('[data-img-revealed]').length,
+          sel: root.querySelectorAll('.img-selected').length,
+          imgs: root.querySelectorAll('img').length
+        }
+        const last = window.__s93[window.__s93.length - 1]
+        if (!last || last.markers !== cur.markers || last.sel !== cur.sel || last.imgs !== cur.imgs) window.__s93.push(cur)
+        if (performance.now() - window.__t93 < 600) requestAnimationFrame(tick)
+      }
+      window.__t93 = performance.now()
+      requestAnimationFrame(tick)
+      return 'ok'
+    })()`)
+    await ev(`(() => {
+      const v = window.__vt.ed().view
+      v.dispatch(v.state.tr.setSelection(v.state.selection.constructor.create(v.state.doc, 0, v.state.doc.content.size)))
+      return 'ok'
+    })()`)
+    await sleep(800)
+    const seq93 = await json(`window.__s93`)
+    check(
+      '㉚④ 整段选中这一手势**不闪**：逐帧可见状态（标识符/选中态/图片数）跃迁 ≤ 2',
+      Array.isArray(seq93) && seq93.length <= 3,
+      JSON.stringify({ 逐帧: seq93 })
+    )
+    const shot93 = await send('Page.captureScreenshot', { format: 'png' })
+    safe(() => fs.writeFileSync(path.join(process.cwd(), 'tmp', 'img-selected-marker-hidden.png'), Buffer.from(shot93.result.data, 'base64')), null)
+    await ev(`(() => { window.__vt.ed().commands.setContent(${JSON.stringify(doc)}); return 'ok' })()`)
+    await sleep(900)
+  }
+
   const pass = results.filter((r) => r.ok).length
   console.log(`TOTAL ${results.length} PASS ${pass} FAIL ${results.length - pass}`)
   console.log(`--- ${pass}/${results.length} PASS`)

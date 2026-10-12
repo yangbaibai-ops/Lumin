@@ -28,7 +28,7 @@ import type { EditorState } from '@tiptap/pm/state'
 import type { EditorView } from '@tiptap/pm/view'
 import i18n from '../../i18n'
 // 纯判据（显隐契约 + 登记到期）单独成文件，可被 `tests/imageReveal.test.mjs` 直接钉住
-import { PENDING_TTL, isPendingExpired, revealDecision } from './imageReveal'
+import { PENDING_TTL, isPendingExpired, revealDecision, selectionCoversSource } from './imageReveal'
 export { revealDecision } from './imageReveal'
 export type { RevealSel, RevealRange } from './imageReveal'
 
@@ -703,7 +703,23 @@ export const ImageSourceUi = Extension.create({
                 decos.push(Decoration.node(from, to, { class: 'img-inline-mode' }))
               }
             })
+            /**
+             * 第九十三轮（用户口径）：选区**完全盖住**某张图的源码范围（且至少一端严格超出）
+             * ⇒ 标识符按既有口径隐藏，同时给**这张图片**一个"被选中"的观感（`img-selected`）。
+             * 判据复用 `selectionCoversSource`（与"隐藏标识符"是同一处），不另造第二套。
+             */
+            const sel93 = state.selection
+            const selLike93 = {
+              from: sel93.from,
+              to: sel93.to,
+              empty: sel93.empty,
+              nodeSel: sel93.constructor.name === 'NodeSelection'
+            }
             for (const img of imgs) {
+              const selected = selectionCoversSource(selLike93, img)
+              if (selected && img.kind === 'node') {
+                decos.push(Decoration.node(img.from, img.to, { class: 'img-selected' }))
+              }
               if (img.kind === 'raw') {
                 /**
                  * 第五十九轮口径：**标识符就是文档里那段文本本身**。
@@ -766,6 +782,7 @@ export const ImageSourceUi = Extension.create({
                     () => {
                       const span = document.createElement('span')
                       span.className = inline ? 'img-widget img-widget--inline' : 'img-widget'
+                      if (selected) span.classList.add('img-selected')
                       span.setAttribute('data-img-widget', '')
                       span.setAttribute('data-img-from', String(img.from))
                       span.setAttribute('data-img-inline', inline ? 'true' : 'false')
