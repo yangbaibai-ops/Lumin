@@ -68,3 +68,25 @@ test('登记到期：TTL 内有效、超过 TTL 视为已清理（第 9 节自�
   assert.equal(isPendingExpired(at, at + PENDING_TTL), false, '恰好等于 TTL 仍未过期（> 才过期）')
   assert.equal(isPendingExpired(at, at + PENDING_TTL + 1), true)
 })
+
+// 第一百零四轮（**DOM 身份快照**）：按"这次拖动的起点是否落在这段源码文本里"分流
+test('dragging + 起点命中该源（dragInsideFrom === img.from）⇒ 覆盖也 show', () => {
+  assert.equal(
+    revealDecision(sel(1, 30), IMG, { dragging: true, dragInsideFrom: IMG.from }),
+    'show'
+  )
+})
+
+test('dragging + 起点未命中（null 或别的源）⇒ 一律 hide（第七十五轮防闪口径，㉑①/㉑②）', () => {
+  assert.equal(revealDecision(sel(1, 30), IMG, { dragging: true, dragInsideFrom: null }), 'hide')
+  assert.equal(revealDecision(sel(10, 19), IMG, { dragging: true, dragInsideFrom: null }), 'hide')
+  assert.equal(
+    revealDecision(sel(1, 30), IMG, { dragging: true, dragInsideFrom: IMG.from + 100 }),
+    'hide'
+  )
+})
+
+test('未拖动：覆盖 ⇒ hide、被包含 ⇒ show（既有口径不变）', () => {
+  assert.equal(revealDecision(sel(1, 30), IMG), 'hide')
+  assert.equal(revealDecision(sel(10, 19), IMG), 'show')
+})

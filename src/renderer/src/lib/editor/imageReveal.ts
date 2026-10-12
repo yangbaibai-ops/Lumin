@@ -44,7 +44,27 @@ export function selectionCoversSource(sel: RevealSel, img: RevealRange): boolean
  *      —— 用户第七十五轮口径：从别处拖动连续选文字时不许出现标识符（防闪烁）；
  *   5) 无交集 ⇒ 隐藏。
  */
-export function revealDecision(sel: RevealSel, img: RevealRange): 'show' | 'hide' {
+export function revealDecision(
+  sel: RevealSel,
+  img: RevealRange,
+  opts?: { dragging?: boolean; dragInsideFrom?: number | null }
+): 'show' | 'hide' {
+  /**
+   * 第一百零四轮（**DOM 身份快照**，不碰坐标）：两条既有契约并存，靠"**这次拖动的起点是不是落在这段
+   * 源码文本里**"分流 —— `mousedown` 时用 `event.target.closest('[data-img-revealed]')` 取它的
+   * `data-img-from`（正文里按下 ⇒ `null`）：
+   *   * `dragging && dragInsideFrom === img.from`（在标识符文本上按下）⇒ 一律 `show`
+   *     ⇒ 用户能把选区**拖满整个源码**，松手时才按口径隐藏（同时让图片显示为选中 `img-selected`）；
+   *   * 其它情况（在正文/别处按下，或记录为空）⇒ 一律 `hide`
+   *     —— 第七十五轮防闪口径（㉑①/㉑②）：**即使此时标识符因别的交互已处于显示态**，拖动中也不显示；
+   *   * 未拖动 ⇒ 既有口径不变（"覆盖（至少一端超出）"⇒ hide；被包含/恰好等于 ⇒ show）。
+   * 纯函数：两档入参由调用方传入 ⇒ 单测覆盖三档。
+   */
+  if (opts?.dragging) {
+    if (opts.dragInsideFrom == null || opts.dragInsideFrom !== img.from) return 'hide'
+    const touches = sel.from <= img.to && sel.to >= img.from
+    return touches ? 'show' : 'hide'
+  }
   if (sel.nodeSel && sel.from === img.from) return 'show'
   if (!sel.empty) {
     // 口径 4（盖住且至少一端超出）⇒ 隐藏；口径 2/3（被包含或恰好等于）⇒ 显示
