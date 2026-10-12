@@ -1130,6 +1130,8 @@ export const ImageSourceUi = Extension.create({
            * 监听器挂在 `view.dom` 的**冒泡阶段、PM 之后注册** ⇒ 每次移动都**覆盖**PM 落下的光标。
            */
           let blankAnchor: number | null = null
+          let blankTarget = 0
+          let blankRaf: number | null = null
           /**
            * 第九十七轮（parent 授权）：把"**落在无文字的那条 y 上**"的坐标映射到**最近的有文字位置**。
            * 策略：先原位试；不落在"非空文本块"上时，**沿 y 向上优先、再向下**按 4px 步长探测
@@ -1216,7 +1218,40 @@ export const ImageSourceUi = Extension.create({
             // ⚠️ 第九十七轮：**只在"按下点确实没有文字"（`mapped===true`）时才接管** ——
             //    起点本身有文字时（普通拖选）一律不碰，避免把 ⑰③/⑰④ 那类正文拖选抢过来。
             if (!hit.mapped) return
-            blankAnchor = hit.pos
+            /**
+             * 第一百轮：锚点取**原生位置**（按下点在图片右侧空白时它 = 该块末尾，通常正好是
+             * `img.to`）——只有它才可能让"选区覆盖整个源码范围"成立；`hit.pos` 是**向上探测到
+             * 的最近文字位置**（在源码内部），拿它当锚点会导致 `sel.to < img.to` ⇒ `covers:false`。
+             * 探测只用于**拖动过程中的目标位置**。
+             */
+            const raw = editorView.posAtCoords({ left: event.clientX, top: event.clientY })
+            blankAnchor = Math.max(hit.pos, raw ? raw.pos : hit.pos)
+            blankTarget = blankAnchor
+          }
+          /**
+           * 第一百轮：**rAF 看门狗**。第九十七～九十九轮实测：我在 `mousemove` 里建立的区间会被
+           * PM 的 document 级处理紧跟其后收成光标（两次连跑结果不一致 ⇒ 偶发）。
+           * 看门狗在 `blankAnchor != null` 期间**每帧**把选区重新断言成 `[锚点, 目标位置]`；
+           * 只在"目标区间 ≠ 当前区间"时才 dispatch（不做无条件写，避免事务噪声）。
+           */
+          const watchBlank = (): void => {
+            blankRaf = null
+            if (blankAnchor == null) return
+            const from = Math.min(blankAnchor, blankTarget)
+            const to = Math.max(blankAnchor, blankTarget)
+            const cur = editorView.state.selection
+            if (cur.from !== from || cur.to !== to || cur.empty) {
+              try {
+                editorView.dispatch(
+                  editorView.state.tr.setSelection(
+                    TextSelection.create(editorView.state.doc, from, to)
+                  )
+                )
+              } catch {
+                /* 位置非法（文档刚被改）⇒ 下一帧再试 */
+              }
+            }
+            if (blankAnchor != null) blankRaf = window.requestAnimationFrame(watchBlank)
           }
           const onMoveBlank = (event: MouseEvent): void => {
             if (blankAnchor == null) return
@@ -1224,24 +1259,21 @@ export const ImageSourceUi = Extension.create({
               blankAnchor = null
               return
             }
+            /**
+             * 第一百轮：拖动目标用 `posNearText`（**必须是文本节点**才取，否则沿 y 探测）。
+             * ⚠️ 试过"原生 `posAtCoords` 当目标"⇒ **更差**：在图片那条空行上它对任何 x 都返回
+             * **同一个块末尾位置** ⇒ `from==to` ⇒ 选区恒为空（实测 ㉛④ 由绿转红）。故保留探测版。
+             */
             const hit = posNearText(event.clientX, event.clientY)
-            if (!hit) return
-            const a = blankAnchor
-            const b = hit.pos
-            const from = Math.min(a, b)
-            const to = Math.max(a, b)
-            try {
-              editorView.dispatch(
-                editorView.state.tr.setSelection(
-                  TextSelection.create(editorView.state.doc, from, to)
-                )
-              )
-            } catch {
-              /* 位置非法（文档刚被改）⇒ 下一次移动再试 */
-            }
+            if (hit) blankTarget = hit.pos
+            if (blankRaf == null) blankRaf = window.requestAnimationFrame(watchBlank)
           }
           const onUpBlank = (): void => {
             blankAnchor = null
+            if (blankRaf != null) {
+              window.cancelAnimationFrame(blankRaf)
+              blankRaf = null
+            }
           }
           editorView.dom.addEventListener('mousedown', onDownBlank)
           /**

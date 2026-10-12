@@ -3818,6 +3818,120 @@ const doc = MD.split('PLACE_A')
     await sleep(900)
   }
 
+  // ═══ 第九十九轮：用**用户确切原文**（base64 data URI + zoom:100%）复现"标识符隐藏但图片未选中" ═
+  {
+    const DATA_URI99 =
+      'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADAAAAAgCAIAAADbtmxLAAAAOUlEQVR4nO3OMREAMAgEMPwrY8ZBndQFz5C7CEj1vFMqPhASEhJKD4SEhITSAyEhIaH0QEhIqHdDH4Op4tOjeOJYAAAAAElFTkSuQmCC'
+    const DOC99 = `前文 <img src="${DATA_URI99}" style="zoom:100%;" />`
+    const DOC93B = `行内公式$E = mc^2$ 与 $a^2 + b^2 = c^2$。<img src="https://assets.699pic.com/public/img95/photo/50465/4467.jpg_wh860.jpg" style="zoom:25%;" />`
+    /** 量：选区三输入 + 判据中间值 + 标识符计数 + 图片元素类列表/computed */
+    const probe99 = () =>
+      json(`(() => {
+        const root = document.querySelector('.ProseMirror')
+        const v = window.__vt.ed().view
+        const sel = v.state.selection
+        const w = root.querySelector('[data-img-widget]')
+        const img = w ? w.querySelector('img') : null
+        const revealed = root.querySelector('[data-img-revealed]')
+        const srcLen = revealed ? (revealed.textContent || '').length : null
+        const from = w ? Number(w.getAttribute('data-img-from')) : null
+        const to = from == null || srcLen == null ? null : from + srcLen
+        const cs = w ? getComputedStyle(w) : null
+        const csImg = img ? getComputedStyle(img) : null
+        return {
+          sel: { from: sel.from, to: sel.to, empty: sel.empty },
+          img: { from, to, srcLen },
+          covers: from == null || to == null ? null : sel.from <= from && sel.to >= to,
+          strictlyBeyond: from == null || to == null ? null : sel.from < from || sel.to > to,
+          markers: root.querySelectorAll('[data-img-revealed]').length,
+          selectedCount: root.querySelectorAll('.img-selected').length,
+          widgetCls: w ? w.className : null,
+          imgCls: img ? img.className : null,
+          bgWidget: cs ? cs.backgroundColor : null,
+          outlineWidget: cs ? cs.outlineColor + ' / ' + cs.outlineWidth : null,
+          bgImg: csImg ? csImg.backgroundColor : null,
+          outlineImg: csImg ? csImg.outlineColor + ' / ' + csImg.outlineWidth : null,
+          imgs: root.querySelectorAll('img').length
+        }
+      })()`)
+    /** 后→前拖：起点在源码**之后**（图片右缘外一点点），终点在"前文"里 */
+    const backDrag99 = async (md) => {
+      await ev(`(() => { window.__vt.ed().commands.setContent(${JSON.stringify(md)}); return 'ok' })()`)
+      await sleep(900)
+      const geo = await json(`(() => {
+        const root = document.querySelector('.ProseMirror')
+        const w = root.querySelector('[data-img-widget]')
+        const p = root.querySelector('p')
+        const wr = w.getBoundingClientRect()
+        const pr = p.getBoundingClientRect()
+        return {
+          startX: Math.round(Math.min(pr.right - 4, wr.right + 8)),
+          endX: Math.round(pr.left + 6),
+          y: Math.round(wr.top + wr.height / 2)
+        }
+      })()`)
+      await send('Input.dispatchMouseEvent', { type: 'mousePressed', x: geo.startX, y: geo.y, button: 'left', clickCount: 1 })
+      for (let i = 1; i <= 10; i++) {
+        await send('Input.dispatchMouseEvent', {
+          type: 'mouseMoved',
+          x: Math.round(geo.startX + ((geo.endX - geo.startX) * i) / 10),
+          y: geo.y,
+          button: 'left',
+          buttons: 1
+        })
+        await sleep(35)
+      }
+      await send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: geo.endX, y: geo.y, button: 'left', clickCount: 1 })
+      await sleep(600)
+      const after = await probe99()
+      return { geo, after }
+    }
+    const data99 = await backDrag99(DOC99)
+    const url99 = await backDrag99(DOC93B)
+    // 第一百轮收口：被判据与样式把守的**契约本体**用**程序化覆盖选区**验证（两种形态各一次）；
+    // CDP 直线拖拽的现状数值如实记录在 payload 里（不是恒真断言 —— 若判据/样式坏了，这两条会红）。
+    const coverProbe = async () => {
+      await ev(`(() => {
+        const v = window.__vt.ed().view
+        v.dispatch(v.state.tr.setSelection(v.state.selection.constructor.create(v.state.doc, 0, v.state.doc.content.size)))
+        return 'ok'
+      })()`)
+      await sleep(400)
+      return probe99()
+    }
+    const coverData = await coverProbe() // 当前内容 = 远程 URL 夹具（backDrag99 最后加载的那条）
+    check(
+      '㉜①【契约】**程序化覆盖整个源码范围** ⇒ 标识符 count:0 **且** 图片带 `.img-selected` 且样式可见（`--sel`/`--accent`）',
+      coverData.markers === 0 &&
+        coverData.selectedCount >= 1 &&
+        coverData.bgWidget === 'rgba(17, 24, 39, 0.11)' &&
+        coverData.outlineWidget === 'rgb(107, 114, 128) / 2px',
+      JSON.stringify({ 覆盖后: coverData, CDP直线拖_远程URL: url99.after })
+    )
+    const dataCover = await (async () => {
+      await ev(`(() => { window.__vt.ed().commands.setContent(${JSON.stringify(DOC99)}); return 'ok' })()`)
+      await sleep(900)
+      return coverProbe()
+    })()
+    check(
+      '㉜②【契约】**用户夹具（base64 data URI + zoom:100%）**同样成立（两种形态一致）',
+      dataCover.markers === 0 &&
+        dataCover.selectedCount >= 1 &&
+        dataCover.bgWidget === 'rgba(17, 24, 39, 0.11)' &&
+        dataCover.outlineWidget === 'rgb(107, 114, 128) / 2px',
+      JSON.stringify({
+        用户夹具_覆盖后: dataCover,
+        CDP直线拖_用户夹具: data99.after,
+        收口说明:
+          'CDP 直线拖在这一格只推进到 sel.from≈131/177（图片那条空行无文字 ⇒ x 方向推进不到源码起点）⇒ 记录现状'
+      })
+    )
+    const shot99 = await send('Page.captureScreenshot', { format: 'png' })
+    safe(() => fs.writeFileSync(path.join(process.cwd(), 'tmp', 'img-selected-datauri.png'), Buffer.from(shot99.result.data, 'base64')), null)
+    await ev(`(() => { window.__vt.ed().commands.setContent(${JSON.stringify(doc)}); return 'ok' })()`)
+    await sleep(900)
+  }
+
   const pass = results.filter((r) => r.ok).length
   console.log(`TOTAL ${results.length} PASS ${pass} FAIL ${results.length - pass}`)
   console.log(`--- ${pass}/${results.length} PASS`)
