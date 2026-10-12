@@ -167,7 +167,6 @@
     "mathSource": "Формула",
     "mathSourceBlock": "Исходник формулы",
     "mathEscHint": "Esc — закрыть",
-    "mathCheck": "Подтвердить и закрыть редактирование формулы",
     "mathEmpty": "< Empty Math Block >",
     "restoreDraft": "Обнаружен несохранённый черновик (новее файла на диске)",
     "restoreDraftUntitled": "Обнаружено несохранённое содержимое прошлого сеанса",
