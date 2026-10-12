@@ -436,8 +436,6 @@ export interface MathLabels {
   label: string
   /** 容器 / 编辑区的可访问名（比可见标签更具体） */
   aria: string
-  /** ✓ 按钮的可访问名（"确认并收起编辑"之类） */
-  check: string
   /** 「Esc」提示（只在行内浮层上给） */
   esc: string
   /** 空公式的占位文案（`< Empty Math Block >`；**只画在视图上，不进文档**） */
@@ -452,7 +450,7 @@ export interface MathLabels {
  * `tests/i18nHardcoded.test.mjs`（界面文案不许绕过语言包）对**所有**可能显示出来的
  * 字符串都有约束 —— 一份"反正不会用到"的中文兜底，恰恰是那种以后会真的显示出来的东西。
  */
-const DEFAULT_LABELS: MathLabels = { label: '', aria: '', check: '', esc: '', empty: '' }
+const DEFAULT_LABELS: MathLabels = { label: '', aria: '', esc: '', empty: '' }
 
 /**
  * 公式**真正的横向范围**（用它量宽度，而不是量元素盒）。
@@ -542,7 +540,6 @@ function buildEditorParts(
   opts: { delimiters: boolean; showHint: boolean }
 ): {
   box: HTMLElement
-  check: HTMLButtonElement
   ta: HTMLTextAreaElement
   hl: HTMLElement
   field: HTMLElement
@@ -555,26 +552,20 @@ function buildEditorParts(
 
   const bar = document.createElement('div')
   bar.className = 'md-math-editor__bar'
-  // ✓ = 收起编辑态（等价 Esc）。用真 `<button>`：天然可聚焦、有可访问名，
-  // 也让套件能用"可聚焦 + 可访问名"这两条标准判据断言，不必写死坐标。
-  //
-  // 可访问名用 `labels.check`（"确认并收起公式编辑"）而不是可见的「公式」——
-  // 可见文本是截图那个样子的「公式 ✓」（标签 + 勾），但读屏听到的应该是**动作**。
-  const check = document.createElement('button')
-  check.type = 'button'
-  check.className = 'md-math-editor__check'
-  check.setAttribute('data-md-math-editor-check', '')
-  check.setAttribute('aria-label', labels.check)
-  check.setAttribute('title', labels.check)
-  const checkText = document.createElement('span')
-  checkText.setAttribute('data-md-math-editor-label', '')
-  checkText.textContent = labels.label
-  const mark = document.createElement('span')
-  mark.setAttribute('data-md-math-editor-check-mark', '')
-  mark.setAttribute('aria-hidden', 'true')
-  mark.textContent = '✓'
-  check.append(checkText, mark)
-  bar.append(check)
+  /**
+   * 顶行只留**可见标签**（「公式」）。
+   *
+   * ⚠️ 第三十三轮**删掉了原来的 ✓ 确认按钮**（用户口径③「取消后面要按的对号 `√`」）：
+   * 收起编辑态现在只有两条出口 —— **失焦立刻收起**（`onBlur`）与 **Esc**，
+   * 不再需要一个点按目标。连它的 `mousedown` handler、`MathLabels.check` 字段与三语
+   * `editor.mathCheck` 键一并删掉，**不留死代码**。
+   * `data-md-math-editor-label` 这个锚点保留（套件与样式都在用）。
+   */
+  const label = document.createElement('span')
+  label.className = 'md-math-editor__label'
+  label.setAttribute('data-md-math-editor-label', '')
+  label.textContent = labels.label
+  bar.append(label)
 
   const source = document.createElement('div')
   source.className = 'md-math-editor__source'
@@ -639,7 +630,7 @@ function buildEditorParts(
   //（分片 CSS 里不许出现数字 z-index，见 tests/zIndexStack.test.mjs）。
   // 行内形态靠 flex 的 `order` 排布（见 overlays.css），与 DOM 顺序无关。
   box.append(source, preview, bar)
-  return { box, check, ta, hl, field, preview }
+  return { box, ta, hl, field, preview }
 }
 
 /** 行内浮层里那个"只给读屏器"的 Esc 提示的 id 序号（`aria-describedby` 要唯一 id） */
@@ -703,7 +694,6 @@ abstract class MathEditorBase {
   protected readonly ta: HTMLTextAreaElement
   /** 高亮装饰层（`<pre>`，与 textarea 逐像素对齐；见 mathHighlight.ts 的模块头） */
   protected readonly hl: HTMLElement
-  protected readonly check: HTMLButtonElement
   protected readonly preview: HTMLElement
   /** 正在由本对象回写文档：避免 `input → dispatch → pull` 的自激 */
   private writing = false
@@ -727,7 +717,6 @@ abstract class MathEditorBase {
     this.dom = parts.box
     this.ta = parts.ta
     this.hl = parts.hl
-    this.check = parts.check
     this.preview = parts.preview
     this.toDOM = () => this.dom
     this.widgetSpec = { ...shape, key: `md-math-box:${id}` }
@@ -741,7 +730,6 @@ abstract class MathEditorBase {
     // ✓ 按钮：`mousedown` 阻止默认，逐字写回**不受影响**（内容早已进文档）；
     // 用 `mousedown` 而不是 `click` 是因为 textarea 的 blur 已经会收起编辑态 ——
     // 让收起只发生一次，语义更清楚（内容无论如何都已经写回去了）
-    this.check.addEventListener('mousedown', this.onCheckDown)
     // ── 源码区**任何**位置都不许把编辑态点没（第三十一轮，用户口径）──
     //
     // 旧实现只靠"失焦即收起"，而源码区里除了 textarea 还有 `$$` 行、内边距空白、
@@ -762,6 +750,29 @@ abstract class MathEditorBase {
   protected abstract paintPreview(tex: string): void
 
   /**
+   * **文档里的原文 ⇒ 编辑框里显示的文字**（第三十三轮，用户口径①「显示公式的标识符 `$`」）。
+   *
+   * 两者不一定相等：行内公式在文档里是 `$E=mc^2$`，而编辑框里要**把两个 `$` 也显示出来
+   * 并且允许编辑** ⇒ 行内把整段原文（含定界符）显示出来；块级的定界符由装饰层那两行
+   * `$$` 画，textarea 里仍是纯内容。
+   * `pull()` / `commit()` 走这一对转换，不会出现"显示的与提交的不是一份"。
+   */
+  protected toEditorText(baseTex: string): string {
+    return baseTex
+  }
+
+  /**
+   * **编辑框里的文字 ⇒ 文档里要写的公式内容**。
+   *
+   * @returns `degradable: true` 表示"用户把定界符改坏了"（行内 `$…$` 不再配平）⇒
+   *   由 `applySource` 走**退化**：把用户**原样输入**的文本留在正文里、只摘掉公式 mark
+   *   （**绝不静默丢弃输入**）。
+   */
+  protected toDocumentTex(editorText: string): { tex: string; degradable: boolean } {
+    return { tex: editorText, degradable: false }
+  }
+
+  /**
    * 与文档对齐（源码值 + 高亮 + 渲染区 + 错误态）—— 子类提供"当前文档里的原文"。
    *
    * 三种人会走到"值确实变了"这一支：**撤销/重做**（PM 的历史改回文档）、输入法组合结束、
@@ -769,21 +780,36 @@ abstract class MathEditorBase {
    * 连按 Ctrl+Z 时观感就是"光标乱跳"。
    */
   pull(tex: string): void {
-    if (!this.writing && this.ta.value !== tex) {
+    const shown = this.toEditorText(tex)
+    if (!this.writing && this.ta.value !== shown) {
       const start = this.ta.selectionStart
       const end = this.ta.selectionEnd
-      this.ta.value = tex
-      const n = tex.length
+      this.ta.value = shown
+      const n = shown.length
       this.ta.setSelectionRange(Math.min(start, n), Math.min(end, n))
     }
     this.paintHighlight()
-    this.paintPreview(this.ta.value)
+    this.paintPreview(tex)
     this.autosize()
   }
 
   focus(): void {
     this.ta.focus({ preventScroll: true })
-    this.ta.setSelectionRange(this.ta.value.length, this.ta.value.length)
+    const at = this.caretOnFocus(this.ta.value)
+    this.ta.setSelectionRange(at, at)
+  }
+
+  /**
+   * 聚焦时插入符落在哪（默认：末尾）。
+   *
+   * ⚠️ 行内必须覆盖它（第三十三轮修的那条坑）：行内框里显示的是 `$…$`，
+   * 插入符落在**末尾**就等于"落在收尾 `$` 之后" —— 用户点开公式接着打字，第一下就把
+   * 定界符弄成不配平（`$E=mc^2$` + `z` = `$E=mc^2$z`），于是走**退化**、公式当场变成普通文本、
+   * 编辑框跟着收起（实测：打开行内公式敲任何一个字符，框就消失、字符留在公式外面）。
+   * 行内把插入符放到**收尾 `$` 之前**，正合"点开就是为了接着写内容"的意图。
+   */
+  protected caretOnFocus(value: string): number {
+    return value.length
   }
 
   /** 摘掉监听（DOM 归调用方处理） */
@@ -794,7 +820,6 @@ abstract class MathEditorBase {
     this.ta.removeEventListener('blur', this.onBlur)
     this.ta.removeEventListener('compositionstart', this.onCompositionStart)
     this.ta.removeEventListener('compositionend', this.onCompositionEnd)
-    this.check.removeEventListener('mousedown', this.onCheckDown)
     this.dom.removeEventListener('mousedown', this.onBoxMouseDown)
   }
 
@@ -837,9 +862,10 @@ abstract class MathEditorBase {
 
   /** 编辑区 → 文档（逐键）。文档一变 ⇒ 视图跟着重算 ⇒ 公式原地重画 */
   protected commit(): void {
+    const { tex, degradable } = this.toDocumentTex(this.ta.value)
     this.writing = true
     try {
-      applySource(this.view, this.ta.value, this.id)
+      applySource(this.view, tex, this.id, degradable)
     } finally {
       this.writing = false
     }
@@ -947,38 +973,47 @@ abstract class MathEditorBase {
   private onBoxMouseDown = (e: MouseEvent): void => {
     const target = e.target as HTMLElement | null
     if (!target || typeof target.closest !== 'function') return
-    // ✓ 有自己的 mousedown（收起），别抢
-    if (target.closest('[data-md-math-editor-check]')) return
     // 文本框（含它内部的滚动条区域）：走原生行为（拖动选文本、点哪放哪）
     if (target.closest('[data-md-math-editor-src]')) return
     e.preventDefault()
     this.ta.focus({ preventScroll: true })
   }
 
-  private onCheckDown = (e: MouseEvent): void => {
-    e.preventDefault()
-    e.stopPropagation()
-    // 第十四轮：收紧之后必须**把光标交回正文并聚焦**（否则 activeElement 停在 body 上，
-    // 用户接着敲字一个字都进不去 —— 用户报的"公式下方无法再输入文字"）。
-    closeSessionAndContinue(this.view)
-  }
-
   /**
-   * 失焦收起，但**下一帧再判定**，且内容保留（内容早就逐个字符实时写进文档了）。
+   * **失焦立刻收起**（第三十三轮，用户口径④：「当焦点不聚焦在此编辑框中，此编辑框应该立马消失」）。
    *
-   * 为什么要延后：`blur` 只是"焦点离开了 textarea"，并不等于"用户点了外面"——
-   * 点 `$$` 行 / 点源码区空白 / 点顶行都会先触发一次 blur。虽然
-   * `onBoxMouseDown` 已经把主路径（mousedown）堵住了，这里仍留一道**兜底**：
-   * 下一帧如果焦点还落在编辑容器里，就不收起。
+   * 改前这里 `requestAnimationFrame` **延后一帧**再判定（当时是为了兜住"点 `$$` 行 /
+   * 点源码区空白也会先触发一次 blur"）—— 用户实测的观感就是"点了别处编辑框还赖着不走"。
+   * 现在**同步**收起，靠两条保证不误伤：
+   *   1. 源码区里**非文本框**的 mousedown 已经被 `onBoxMouseDown` 拦掉（焦点压根没离开
+   *      textarea，不会有 blur）——这是主路径，不再需要"下一帧再判"这道兜底；
+   *   2. 收起之后光标交回正文（`closeSessionAndContinue`）——否则 `activeElement` 停在 body
+   *      上，用户接着敲字一个字都进不去（用户报过的"公式下方无法再输入文字"）。
+   *
+   * 内容**保留**：每个字符早就实时写进文档了（`pull`/`commit`），收起动作本身不改内容。
    */
   private onBlur = (): void => {
-    requestAnimationFrame(() => {
+    /**
+     * 判定放在**一个微任务**之后（不是下一帧、更不是定时器）。
+     *
+     * 为什么需要这一点点延迟：逐键写回会让 PM 重算装饰，编辑容器的 DOM 可能被搬动/重插
+     * 一次，旧 textarea 就在那一刻失焦（实测栈：`rm$2` → `HTMLTextAreaElement.onBlur`），
+     * 而补焦点发生在同一次视图更新里稍后一点点。**同步**判定会看到 `activeElement === body`
+     * 而误判成"用户点了外面"（实测：敲一个字符编辑框就消失）。
+     *
+     * 一个微任务足够让那次补焦点生效，**且仍在同一个任务内**：套件实测
+     * `blur → 容器从 DOM 消失` 是**个位数毫秒**，远低于口径给的 ≤1 帧（≈16ms），
+     * 用户观感就是"立马消失"。刻意**不用** `setTimeout` / `requestAnimationFrame`：
+     * 那才是真的"延迟收起"——老实现正是 rAF，实测观感就是"点了别处它还赖着不走"。
+     */
+    queueMicrotask(() => {
       if (this.destroyed) return
       // 会话已经换人/已经收起：不要拿旧容器的失焦去关新会话
       if (mathPreviewKey.getState(this.view.state)?.box !== this) return
+      // 焦点还在本容器里（例如从 textarea 移到容器内的其它可聚焦元素）：不算"离开编辑框"
       const active = document.activeElement
       if (active && this.dom.contains(active)) return
-      closeSession(this.view)
+      closeSessionAndContinue(this.view)
     })
   }
 }
@@ -1045,6 +1080,40 @@ class InlineMathEditor extends MathEditorBase {
     this.hit = session.active
     this.dom.classList.add('md-math-editor--inline')
     this.dom.setAttribute('data-md-math-editor-shape', 'inline')
+  }
+
+  /**
+   * 行内：**把 `$…$` 整段显示出来**（用户口径①：「显示公式的标识符 `$`，可以对标识符进行编辑」）。
+   *
+   * `baseTex` 是公式**内容**（`E=mc^2`，不含定界符），这里补上两侧 `$`；
+   * 已经是完整形态时原样返回（**幂等**：`pull()` 每次按键都会走一遍，不幂等就会越加越多）。
+   */
+  protected toEditorText(baseTex: string): string {
+    if (baseTex.length >= 2 && baseTex.startsWith('$') && baseTex.endsWith('$')) return baseTex
+    return `$${baseTex}$`
+  }
+
+  /**
+   * 行内：编辑框里的文字 ⇒ 文档里的公式内容。
+   *
+   * * **两侧 `$` 都在**：去掉它们当内容（`$E=mc^2$` → `E=mc^2`）；
+   * * **只有一侧（或一个都没有）**：`degradable: true` ⇒ 交给 `applySource` 走**退化**
+   *   （原样留在正文、摘掉公式 mark）。这与 `mathMarkers.ts` 的既有归一化同口径：
+   *   行内公式必须一对配平的 `$…$`，不配平就退回普通文本。
+   */
+  protected toDocumentTex(editorText: string): { tex: string; degradable: boolean } {
+    const balanced =
+      editorText.length >= 2 && editorText.startsWith('$') && editorText.endsWith('$')
+    return { tex: balanced ? editorText.slice(1, -1) : editorText, degradable: !balanced }
+  }
+
+  /**
+   * 行内：聚焦时插入符落在**收尾 `$` 之前**（见基类 `caretOnFocus` 的说明）。
+   * 不配平（用户已经把定界符改坏）时才退回末尾，让用户自己看着改。
+   */
+  protected caretOnFocus(value: string): number {
+    const balanced = value.length >= 2 && value.startsWith('$') && value.endsWith('$')
+    return balanced ? value.length - 1 : value.length
   }
 
   /**
@@ -1186,9 +1255,17 @@ function currentTexOf(doc: PMNode, live: MathHit, kind: 'inline' | 'block'): str
  *     一个零宽公式留在句子中间既看不见也点不着；用户口径里也写明这条单独判断。
  *
  * @param id 发起写入的编辑区 id：会话已经被别人接管时**直接忽略**（防止过期写入）
+ * @param degradable 用户把定界符改坏了（行内 `$…$` 不再配平）⇒ 走**退化**：
+ *   把用户**原样输入的文本**留在正文里、只摘掉公式 mark，**绝不静默丢弃**任何一个字符。
+ *   与 `mathMarkers.ts` 的既有归一化同一口径（行内公式必须一对配平的 `$…$`，不配平退回普通文本）。
  * @returns 是否真的改动了文档
  */
-export function applySource(view: EditorView, tex: string, id?: number): boolean {
+export function applySource(
+  view: EditorView,
+  tex: string,
+  id?: number,
+  degradable = false
+): boolean {
   const session = mathPreviewKey.getState(view.state)?.active
   if (!session) return false
   if (id !== undefined && session.id !== id) return false
@@ -1200,13 +1277,28 @@ export function applySource(view: EditorView, tex: string, id?: number): boolean
     // 行内：清空 = **删掉整条公式**（连两侧 `$` 定界符一起，见 deleteMathNode 的口径）
     return deleteMathNode(view, id)
   }
-  if (tex === currentTex(state, live, kind)) return false
   if (kind === 'inline') {
+    if (degradable) {
+      /**
+       * **改坏即退化**（用户口径①）：文本原样留着，只把 `mdMath` mark 摘掉。
+       *
+       * 为什么是"摘 mark"而不是"删掉"或"补回 `$`"：
+       *   * 删掉 ⇒ 用户删了一个 `$` 却整条公式没了，等于**静默丢弃输入**（用户明确禁止）；
+       *   * 补回 `$` ⇒ 用户按不动删除键，输入被吞（同样是丢弃）。
+       * 摘 mark 之后这段就是普通文本，与 markdown 里"`$\frac{1}{2}`（不配平）"的解析结果一致，
+       * 所以**保存后再打开**与屏幕上看到的是同一个东西（往返一致）。
+       * 用**整段区间**（`live.from..live.to`，含两侧 `$`）替换：一个事务完成，`Ctrl+Z` 可回退。
+       */
+      view.dispatch(state.tr.replaceWith(live.from, live.to, state.schema.text(tex)))
+      return true
+    }
+    if (tex === currentTex(state, live, kind)) return false
     // 行内：替换**内容区间**（两侧 `$` 定界符与 `mdMath` mark 都留着）
     const text = state.schema.text(tex, liveMarks(state, live))
     view.dispatch(state.tr.replaceWith(live.innerFrom, live.innerTo, text))
     return true
   }
+  if (tex === currentTex(state, live, kind)) return false
   // 块级：原文在**节点属性** `source` 里（节点本身没有文本内容，`textBetween` 恒为空串）。
   // ⚠️ 这里千万不能 `replaceWith(...)` —— 那会把整个 `mathBlock`（原子节点）换成一段文字，
   // 于是公式退化成一个普通段落（实测过：`$$…$$` 被吃掉、`\frac{1}{` 变成正文）。

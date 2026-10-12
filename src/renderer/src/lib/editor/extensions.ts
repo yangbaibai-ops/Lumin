@@ -318,8 +318,6 @@ export function buildEditorExtensions(options: EditorExtensionOptions = {}): Ext
     label: i18n.global.t('editor.mathSource'),
     // 容器/编辑区的**可访问名**（比可见标签更具体：说清这是"公式源码"）
     aria: i18n.global.t('editor.mathSourceBlock'),
-    // ✓ 按钮的可访问名
-    check: i18n.global.t('editor.mathCheck'),
     // 行内浮层上的「Esc」提示（只给读屏器）
     esc: i18n.global.t('editor.mathEscHint'),
     // 空公式的占位（`< Empty Math Block >`）：**只画在视图上，一个字都不进文档**
