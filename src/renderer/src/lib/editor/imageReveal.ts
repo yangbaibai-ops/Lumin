@@ -25,14 +25,33 @@ export interface RevealRange {
 
 /**
  * 选区是否**完全盖住**标识符范围且**至少一端严格超出** —— 也就是"标识符该隐藏"的那一档。
- * 第九十三轮起它**还兼任**"这张图片算被选中"的判据（用户口径：标识符不显示时图片要是选中态），
- * 所以单独抽出来当**唯一判据**用，避免两处各写一套（`revealDecision` 也调它）。
+ * ⚠️ 第一百零六轮起它**只**管这一件事（`revealDecision` 调它）。历史上它**还兼任**过
+ * "这张图片算被选中"的判据，那条口径已经拆到下面的 `selectionIntersectsSource`
+ * （两者语义不同：隐藏要求"完全覆盖 + 至少一端超出"，而"图片被选中"只要**有交**）。
  */
 export function selectionCoversSource(sel: RevealSel, img: RevealRange): boolean {
   if (sel.empty) return false
   const covers = sel.from <= img.from && sel.to >= img.to
   const strictlyBeyond = sel.from < img.from || sel.to > img.to
   return covers && strictlyBeyond
+}
+
+/**
+ * ─── 图片"被选中"观感（`img-selected`）的判据：选区与图片的渲染区间**有交** ─────────────
+ * 第一百零六轮（用户口径）：「图片能不能像浏览器里展示的图片一样，**可以被选择选中** —— 拖动
+ * 选中跨过图片时，**图片本身也要像浏览器里那样显示为"被选中"**」。浏览器语义：只要选区与这个
+ * 元素**相交**（含只覆盖一部分）就给它画一层选区色，**不要求**完全覆盖、也不要求某一端超出。
+ *
+ * 本函数是那条口径的**唯一落点**（`imageToolbar.ts` 的装饰只调它），并且**刻意**与
+ * `selectionCoversSource` 分开：
+ *   * 本函数 ⇒ **只**决定"图片要不要显示为被选中"（`img-selected` 类）；
+ *   * `selectionCoversSource` ⇒ **只**决定"标识符（源码文本）该不该隐藏"（第七十五轮防闪口径）。
+ * 两者一旦混用：要么"部分覆盖时标识符被藏掉"（闪烁回归），要么"整段选中时图片不再高亮"。
+ * 所以**不要合并**；纯函数单测见 `tests/imageReveal.test.mjs`（B 段）。
+ */
+export function selectionIntersectsSource(sel: RevealSel, img: RevealRange): boolean {
+  if (sel.empty) return false
+  return sel.from < img.to && sel.to > img.from
 }
 
 /**

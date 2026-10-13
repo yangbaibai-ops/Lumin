@@ -3,7 +3,9 @@ import assert from 'node:assert/strict'
 import {
   PENDING_TTL,
   isPendingExpired,
-  revealDecision
+  revealDecision,
+  selectionCoversSource,
+  selectionIntersectsSource
 } from '../src/renderer/src/lib/editor/imageReveal.ts'
 
 /**
@@ -89,4 +91,46 @@ test('dragging + 起点未命中（null 或别的源）⇒ 一律 hide（第七�
 test('未拖动：覆盖 ⇒ hide、被包含 ⇒ show（既有口径不变）', () => {
   assert.equal(revealDecision(sel(1, 30), IMG), 'hide')
   assert.equal(revealDecision(sel(10, 19), IMG), 'show')
+})
+
+// ─── 第一百零六轮 B 段：「图片被选中」观感 = 选区与图片**有交**（浏览器语义）───────────────
+// ⚠️ 这两条判据**必须**分开：`selectionIntersectsSource` 只管 `img-selected` 观感，
+//    `selectionCoversSource` 只管"标识符该不该隐藏"。下面的对偶断言就是"不许合并"的护栏。
+test('B：部分覆盖（选区只压住源码后半段）⇒ 图片算被选中', () => {
+  assert.equal(selectionIntersectsSource(sel(15, 19), IMG), true)
+})
+
+test('B：一端在内、一端在外 ⇒ 图片算被选中（浏览器里也这样）', () => {
+  assert.equal(selectionIntersectsSource(sel(9, 19), IMG), true)
+  assert.equal(selectionIntersectsSource(sel(15, 21), IMG), true)
+})
+
+test('B：完全覆盖（含整齐等于）⇒ 图片算被选中', () => {
+  assert.equal(selectionIntersectsSource(sel(10, 20), IMG), true)
+  assert.equal(selectionIntersectsSource(sel(5, 25), IMG), true)
+})
+
+test('B：无交集 / 只在边界外侧 ⇒ 不算被选中', () => {
+  assert.equal(selectionIntersectsSource(sel(0, 9), IMG), false)
+  assert.equal(selectionIntersectsSource(sel(21, 30), IMG), false)
+  assert.equal(selectionIntersectsSource(sel(20, 30), IMG), false, '左端齐平右边界不算相交')
+  assert.equal(selectionIntersectsSource(sel(0, 10), IMG), false, '右端齐平左边界不算相交')
+})
+
+test('B：空光标不算"被选中"（浏览器不给图片画选区色）', () => {
+  assert.equal(selectionIntersectsSource(sel(15, 15), IMG), false)
+})
+
+test('B：两条口径**没有**被合并 —— 部分覆盖时"图片选中"成立、"隐藏标识符"不成立', () => {
+  const partial = sel(15, 19) // 只压住后半段
+  assert.equal(selectionIntersectsSource(partial, IMG), true, '图片：要有选中观感')
+  assert.equal(selectionCoversSource(partial, IMG), false, '标识符：不许被藏掉')
+  assert.equal(revealDecision(partial, IMG), 'show', '标识符仍显示（显隐口径未放宽）')
+})
+
+test('B：整段选中 ⇒ 两条口径同时成立（既有"整段选中 ⇒ 图片高亮"不回归）', () => {
+  const all = sel(5, 25)
+  assert.equal(selectionIntersectsSource(all, IMG), true)
+  assert.equal(selectionCoversSource(all, IMG), true)
+  assert.equal(revealDecision(all, IMG), 'hide')
 })
