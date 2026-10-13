@@ -431,6 +431,44 @@ ormal，只影响这种段落 */
 .md-preview .img-src-revealed:not(.img-src-revealed--block) {
   vertical-align: top;
 }
+/* ── 第一百零五轮（用户口径）：**行内档**的底色要铺满「整行行盒」，不是只包住字形 ──────────
+   用户原话：「点击后出现的背景颜色不要只是文字有背景颜色，而是所有属于图片源码区域的都要有
+   背景颜色（行的全高），且背景颜色的覆盖区域和被拖动连续选中文字时的覆盖区域一致」。
+
+   为什么现状只有字形高：`background-color` 画在**内容盒**上，而 `inline` 盒的内容盒高度 =
+   字体内容区（ascent+descent）——本机实测 21.00px（Inter 17px），行盒（= `line-height` 继承值）
+   却是 32.30px ⇒ 上下各差 5.65px 的白缝。**原生选区**画的是行盒那一档（像素实测：正文段落
+   选区带 = 32.3px；标识符第 1 行选区带 = 354.67..386.97 = 32.30px），所以两者对不上。
+
+   做法（最小充分）：给行内档加**由行高推导的垂直 padding**，让内容盒沿竖直方向补成行盒高：
+       padding-block = (行盒高 - 字体内容区) / 2
+   推导依据与令牌来源（**不硬编码像素**）：
+     * `1lh` = 元素自身 `line-height` 的继承值（本文件 :12 `line-height: var(--editor-lh, 1.9)`，
+       17px ⇒ 1lh = 32.2969px）；字号线高设置变化时它自动跟着变；
+     * `em` = 元素自身 `font-size` 的继承值（:11 `var(--editor-size, 17px)`）；
+     * 系数 **1.24**：Chrome 画 inline 盒内容区用的是字体度量 ascent+descent，Inter 实测
+       21.0007px = 1.2353em（`1em` 只是字号，不等于字体内容区 —— 这也是不能直接写
+       `calc((1lh - 1em) / 2)` 的原因：那会把带宽撑到 36.3px，比行盒高 4px）。实测该字体链
+       （Inter / ui-sans-serif / system-ui / Segoe UI）的内容区在 1.21–1.28em 之间，
+       取 1.24em 后带宽 = 内容区 + (1lh − 1.24em)，落点：
+       Inter 17px ⇒ 32.19px（vs 行盒 32.30px，Δ=0.11px）；Segoe UI ⇒ 最差 0.7px。
+     * `max(0px, …)`：行高设置小于字体内容区（例如行高 1.0）时 padding 会算成负数 →
+       取 0 退化回原状（负 padding 是非法值，会整条声明作废）。
+   两条附带口径：
+     * 只作用于**行内档**：块级档（`display:block`）的盒子本身就是 n × 行盒高，底色早就铺满
+       （实测 96.89px = 3 × 32.30px），加 padding 反而会溢出 ⇒ 显式排除；
+     * `box-decoration-break: clone` 必须留：默认 `slice` 只给**首/末**片段补 padding，
+       源码折成多行时中间行的底色仍是字形高 ⇒ clone 让**每个**行片段各自补齐。
+   取舍（如实记录）：本机实测**原生选区**在被图片撑高的那一行上画的是「整条**行盒**」
+   （第 15 行第 2 行的选区带 = 143.25px）——逐行高度不同，一套 CSS 背景无法逐片段表达
+   （`box-decoration-break: clone` 下每个片段共用同一组背景几何）；本改动覆盖所有
+   「行盒高 = line-height」的行（正文行、块级档、行内档独占行均属此类），被图片撑高的行
+   只铺到 1lh。详见本轮报告。 */
+.md-preview .img-src-revealed:not(.img-src-revealed--block) {
+  padding-block: max(0px, calc((1lh - 1.24em) / 2));
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+}
 /* ── 第九十三轮（用户口径）：源码被"整段选中"而隐藏时，**这张图片显示为被选中** ──────────
    判据与"隐藏标识符"同一处（`selectionCoversSource`）⇒ `img-selected` 类挂在
    widget（裸 `<img>` 形态）或图片节点（`![]()` 形态）上。观感只用**既有令牌**：
