@@ -803,6 +803,35 @@ export const ImageSourceUi = Extension.create({
     }
 
     /**
+     * 「点在**这一段的可见源码区域**上吗」—— 区域 = 覆盖层**行盒**（含空白带）∪ 源码**片段行盒**
+     * （字形盒连同上下 padding）。返回该段源码的 `from`，都不命中 ⇒ `null`。
+     *
+     * ⚠️ 第一百一十二轮：这是"按在这一段上"的**唯一判据**（`onDragDown` 用它给 `dragInsideFrom`
+     * 兜底）。此前只有 `bandAt`（行盒 − 片段盒），于是**片段行盒自己的 padding 那几像素**
+     * 两边都不算 ⇒ `dragInsideFrom == null` ⇒ 按住期间被防闪口径藏掉一帧再显示
+     *（逐帧实测的交界处回摆 #1 帧）。
+     */
+    const revealedSourceFromAtPoint = (view: EditorView, x: number, y: number): number | null => {
+      const els = view.dom.querySelectorAll<HTMLElement>(
+        '.img-src-revealed:not(.img-src-revealed--block)'
+      )
+      for (const el of Array.from(els)) {
+        if (el.getAttribute('data-img-kind') !== 'raw') continue
+        const from = Number(el.getAttribute('data-img-from'))
+        if (!Number.isFinite(from)) continue
+        // ① 源码自己的片段行盒（字形 + 行盒 padding）
+        for (const r of Array.from(el.getClientRects())) {
+          if (x >= r.left && x <= r.right && y >= r.top && y <= r.bottom) return from
+        }
+        // ② 该段的覆盖层行盒（空白带所在的整行）
+        for (const b of revealedRowBoxes(el)) {
+          if (x >= b.left && x <= b.right && y >= b.top && y <= b.bottom) return from
+        }
+      }
+      return null
+    }
+
+    /**
      * 按列求文档位置：用浏览器自己的"点 → 光标"映射（`caretRangeFromPoint`）在**该片段的字形行**
      * 上取同一 x 的位置 —— 与"直接点同行字形"完全同一条映射；取不到时退回 `posAtCoords`。
      * 最后 **clamp 到该段源码范围**（左侧越界 ⇒ 片段/源码起点，右侧越界 ⇒ 终点）。
@@ -884,6 +913,97 @@ export const ImageSourceUi = Extension.create({
       } catch {
         /* 位置非法（文档刚变）⇒ 下一次移动再试 */
       }
+    }
+
+    /**
+     * ─── 第一百一十一轮（用户报障）：**图片实体**后面往左拖，选不中 ──────────────────────────
+     * 用户原话：「还是**无法在显示的图片后面从后往前去连续选中文字**，我指的图片是**图片的实体**，
+     * **不是图片的源码**」。
+     *
+     * 真因（本轮实测复现，与已撤回的 `da310f2` 同一根因）：原文形式的图片是
+     * 「`contenteditable=false` 的**实体 widget 盒子** + `display:none` 的**源码文本**」两件东西
+     * 叠出来的 ⇒ **整个 215px 盒子对指针是死区**：`posAtCoords` 在盒内任意 x 上恒返回同一位置
+     * （实测 613/665/718/772/824 → **恒 254**）。于是"在图片后面按下往左拖"时原生锚点立不住
+     * （逐帧 `2-2-E`，一帧选区都建不起来），与公式死区是同一条。
+     *
+     * 做法（照抄当时已验证的骨架，只把命中集合换成图片这一条线；**不新装监听**）：
+     *   * **拖动期一个字节都不落**（拖动中 dispatch 会打断 Chromium 的原生手势 ⇒ 反向拖动被冻死）；
+     *   * **`mouseup` 后一帧**按"指针压在盒子哪一半"把 focus 定到**近端/远端**
+     *     （行内图看 x 轴、块级图看 y 轴 —— 与公式那条口径一致）；
+     *   * PM 的 `DOMObserver.flushSoon`（~20ms 定时器）会把原生选区读回来 ⇒ 落定后**有界复验**
+     *     （6 帧，达标即停）；
+     *   * 只在**指针确实落在图片盒上**、或**原生锚点确实被死区吃掉**（拖动第一帧选区就是空的）时
+     *     才介入；其余（正常文字拖选、拖到盒外松手）一个字节都不碰。
+     */
+    let boxDrag: {
+      /** 按下点的文档位置（坐标现算）：原生锚点被死区吃掉时的**兜底锚点** */
+      pressPos: number | null
+      anchor: number | null
+      focus: number | null
+      anchorLost: boolean
+    } | null = null
+    let boxSettleRaf: number | null = null
+    let boxSettleLeft = 0
+    let boxSettleTarget: { from: number; to: number } | null = null
+
+    /** 图片实体盒 → 它的源码区间（纯映射：认 `data-img-from` + `collectImgSources`，不比较 DOM 身份） */
+    const imgRangeOfWidget = (
+      view: EditorView,
+      widget: HTMLElement
+    ): { from: number; to: number } | null => {
+      const raw = widget.getAttribute('data-img-from')
+      if (raw == null || raw === '') return null
+      const from = Number(raw)
+      if (!Number.isFinite(from)) return null
+      const img = collectImgSources(view.state).find((i) => i.from === from && i.kind === 'raw')
+      return img ? { from: img.from, to: img.to } : null
+    }
+
+    /**
+     * 指针正压在图片实体盒上 ⇒ 该用**哪一端**当 focus：没过半 ⇒ 近端（`from`），过半 ⇒ 远端（`to`）。
+     * 轴：行内图（`data-img-inline !== 'false'`）看水平半区、独占一行的图看垂直半区。
+     * 指针不在任何图片盒上 ⇒ `null`（调用方一律不介入）。
+     */
+    const imgDragEdgeAtPoint = (view: EditorView, x: number, y: number): number | null => {
+      const at = document.elementFromPoint(x, y) as HTMLElement | null
+      if (!at || typeof at.closest !== 'function') return null
+      const widget = at.closest<HTMLElement>('[data-img-widget]')
+      if (!widget) return null
+      const range = imgRangeOfWidget(view, widget)
+      if (!range) return null
+      const r = widget.getBoundingClientRect()
+      const frac =
+        widget.getAttribute('data-img-inline') === 'false'
+          ? r.height > 0
+            ? (y - r.top) / r.height
+            : 0.5
+          : r.width > 0
+            ? (x - r.left) / r.width
+            : 0.5
+      return frac < 0.5 ? range.from : range.to
+    }
+
+    /** 落定 + **有界复验**（松手后一帧落下，之后每帧只看"是否被读回改掉"，最多 6 帧） */
+    const boxDragSettle = (view: EditorView): void => {
+      if (boxSettleRaf != null) return
+      const tryOnce = (): void => {
+        boxSettleRaf = null
+        const t = boxSettleTarget
+        if (!t) return
+        const sel = view.state.selection
+        if (sel.from !== t.from || sel.to !== t.to) {
+          try {
+            view.dispatch(
+              view.state.tr.setSelection(TextSelection.create(view.state.doc, t.from, t.to))
+            )
+          } catch {
+            /* 位置非法（文档刚变）⇒ 放弃这一次 */
+          }
+        }
+        if (boxSettleLeft-- > 0) boxSettleRaf = window.requestAnimationFrame(tryOnce)
+        else boxSettleTarget = null
+      }
+      boxSettleRaf = window.requestAnimationFrame(tryOnce)
     }
 
     /**
@@ -1010,12 +1130,22 @@ export const ImageSourceUi = Extension.create({
              * 底色才不会被"先加后撤"地闪一下。
              */
             const justOpened = Date.now() - (value.openedAt || 0) < 400
+            /**
+             * ⚠️ 第一百一十二轮（用户报障：交界处点击 ⇒ "显示源码 / 不显示源码"闪烁）：
+             * 此前**只要 `pick` 与 `value.from` 不同就重置 `openedAt`**，于是一次"按压把可见源从
+             * A 切到 B"（`onDragDown` 的按哪段显哪段口径）也会被当成"刚点开" ⇒ `justOpened` 为真
+             * ⇒ 光标明明**严格落在 B 里面**却把 `editing` 压成 `false`（底色亮着），400ms 后才又
+             * 切回编辑态（底色撤掉）—— 一次点击**两次可见跃迁**。实测（交界处 9 点）：
+             * `R(bgE) → -(open=null) → RE(bgO) → R(bgE)`，回摆在 #1 与 #3 帧。
+             * 现在 `openedAt` **只在"从没开 → 开"那一次**才重置（真正的激活），A→B 切换沿用原值：
+             * `editing` 只由 `caretInside`（光标严格在 (from,to) 内）决定，不再被误压。
+             */
             const caretInside =
               sel.empty && sel.from > pick.from && sel.from < pick.to && !justOpened
             return {
               from: pick.from,
               editing: caretInside,
-              openedAt: value.from === pick.from ? value.openedAt : Date.now()
+              openedAt: value.from == null ? Date.now() : value.openedAt
             }
           }
         },
@@ -1680,13 +1810,41 @@ export const ImageSourceUi = Extension.create({
              * "按列光标"会被 DOM 选区回读抹掉（实测：落的 285 在 60ms 后回退成 355）。
              */
             if (inside == null && event instanceof MouseEvent) {
+              /**
+               * 第一百一十二轮：判据由"只看空白带（`bandAt`）"扩成**"按在这一段可见源码的整行区域上"**
+               * —— `bandAt` 只看"覆盖层行盒 − 片段盒"，于是**片段行盒自己的 padding 那几像素**
+               * （源码行盒 354.08..386.27 与字形盒 359.67..380.67 之间）是个**缝**：
+               * 既不算片段、也不算带 ⇒ `dragInsideFrom == null` ⇒ 按住那一瞬间
+               * `dragging && dragInsideFrom == null` 按第七十五轮口径把它**藏掉一帧**再显示
+               * （实测：`R(bgE) → -(open=null) → RE(bgO) → R(bgE)` 的 #1 帧就是它）。
+               * 现在改用同一个"可见源码区域"判据：**覆盖层行盒 ∪ 片段行盒**命中即算按在这段上。
+               */
               const band = bandAt(editorView, event.clientX, event.clientY)
               if (band) {
                 const f = Number(band.el.getAttribute('data-img-from'))
                 if (Number.isFinite(f)) inside = f
+              } else {
+                const f = revealedSourceFromAtPoint(editorView, event.clientX, event.clientY)
+                if (f != null) inside = f
               }
             }
             dragInsideFrom = inside
+            /**
+             * 第一百一十一轮：**跨图片实体拖动**这一路（原生手势）的按下登记 —— 只记数字、不碰选区。
+             * 带内按下（`inside != null` 且确实命中 band）时**不登记**：那一路由 `bandDrag` 接管
+             * （它 preventDefault 了 mousedown，没有原生手势，落定方式不同）。
+             */
+            boxSettleTarget = null
+            boxDrag = null
+            if (event instanceof MouseEvent && !bandAt(editorView, event.clientX, event.clientY)) {
+              const at = editorView.posAtCoords({ left: event.clientX, top: event.clientY })
+              boxDrag = {
+                pressPos: at ? at.pos : null,
+                anchor: null,
+                focus: null,
+                anchorLost: false
+              }
+            }
           }
           const onDragUp = (): void => {
             dragActive = false
@@ -1730,11 +1888,51 @@ export const ImageSourceUi = Extension.create({
            * 挂在 window 上：指针移出编辑器/移出窗口也能继续扩选，松手（或指针取消/失焦）即结束。
            */
           const onBandMove = (event: MouseEvent): void => {
-            if (!bandDrag || event.buttons !== 1) return
-            bandDragMove(editorView, event.clientX, event.clientY)
+            if (bandDrag) {
+              if (event.buttons === 1) bandDragMove(editorView, event.clientX, event.clientY)
+              return
+            }
+            /**
+             * 第一百一十一轮：**跨图片实体拖动**这一路（原生手势）。
+             * 拖动期**只记状态、一个字节都不落**（见 `boxDrag` 那段说明）：锚点在第一帧若还是空的
+             * 说明原生锚点被死区吃掉了，用按下点兜底；focus 按"指针压在盒子哪一半"算。
+             */
+            if (!boxDrag || event.buttons !== 1) return
+            const sel = editorView.state.selection
+            if (boxDrag.anchor == null) {
+              if (sel.empty && boxDrag.pressPos != null) {
+                boxDrag.anchor = boxDrag.pressPos
+                boxDrag.anchorLost = true
+              } else {
+                boxDrag.anchor = sel.anchor
+              }
+            }
+            boxDrag.focus = imgDragEdgeAtPoint(editorView, event.clientX, event.clientY)
+            // 诊断锚（与 `data-img-open` 同一用途）：套件可以直接断言"助手有没有认出指针压在图片盒上"
+            editorView.dom.setAttribute(
+              'data-img-drag-edge',
+              boxDrag.focus == null ? '' : String(boxDrag.focus)
+            )
           }
           const onBandUp = (): void => {
             bandDrag = null
+            /**
+             * 第一百一十一轮：松手（或指针取消/失焦）时把"跨图片实体"那一路落定 ——
+             * 仍然是**唯一一处**落定 + 有界复验（`boxDragSettle`），拖动期没落过任何子。
+             */
+            if (!boxDrag) return
+            const bd = boxDrag
+            boxDrag = null
+            const anchor = bd.anchor
+            const focus =
+              bd.focus ??
+              (bd.anchorLost && editorView.state.selection.empty
+                ? editorView.state.selection.head
+                : null)
+            if (anchor == null || focus == null || anchor === focus) return
+            boxSettleTarget = { from: Math.min(anchor, focus), to: Math.max(anchor, focus) }
+            boxSettleLeft = 6
+            boxDragSettle(editorView)
           }
           window.addEventListener('mousemove', onBandMove)
           window.addEventListener('mouseup', onBandUp, true)
@@ -1777,6 +1975,13 @@ export const ImageSourceUi = Extension.create({
               window.removeEventListener('pointercancel', onBandUp, true)
               window.removeEventListener('blur', onBandUp)
               bandDrag = null
+              boxDrag = null
+              boxSettleTarget = null
+              if (boxSettleRaf != null) {
+                window.cancelAnimationFrame(boxSettleRaf)
+                boxSettleRaf = null
+              }
+              editorView.dom.removeAttribute('data-img-drag-edge')
               if (pendingDom === editorView.dom) pendingDom = null
               clearPending()
               hideBar()
