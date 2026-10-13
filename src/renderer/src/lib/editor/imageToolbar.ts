@@ -948,10 +948,23 @@ export const ImageSourceUi = Extension.create({
       anchor: number | null
       focus: number | null
       anchorLost: boolean
+      /** 高水位：远端达到过的最远文档位置（只增不减，除非指针真的反向 ≥4px，见 `TAIL_BACK_PX`） */
+      hw: number | null
+      /** 设置 hw 时的指针"轴向距离"（px） */
+      hwPx: number
+      /** 按下点屏幕坐标：高水位护栏用它判断"是否真的往回走" */
+      press: { x: number; y: number } | null
     } | null = null
     let boxSettleRaf: number | null = null
-    let boxSettleLeft = 0
+    /** 本次落定**连续被推翻**的次数（第一百一十六轮：按连续失败计数，成功即归零并收工） */
+    let boxSettleFails = 0
     let boxSettleTarget: { from: number; to: number } | null = null
+    /**
+     * 复验上限 = **连续被推翻**的最大次数（第一百一十六轮收口：不再按固定 40 帧空转）。
+     * 6 次的理由：PM `flushSoon` ≈20ms 一次读回，连续 6 次（≈100ms）足以骑过实测的读回串；
+     * 一落定成功就立刻停 ⇒ "松手后仍在写 DOM"的窗口从 ~650ms 缩到通常 1–2 帧。
+     */
+    const BOX_SETTLE_MAX_FAILS = 6
 
     /** 图片实体盒 → 它的源码区间（纯映射：认 `data-img-from` + `collectImgSources`，不比较 DOM 身份） */
     const imgRangeOfWidget = (
@@ -990,32 +1003,70 @@ export const ImageSourceUi = Extension.create({
       return frac < 0.5 ? range.from : range.to
     }
 
-    /** 落定 + **有界复验**（松手后一帧落下，之后每帧只看"是否被读回改掉"，最多 6 帧） */
+    /**
+     * 落定 + **有界复验**（松手后一帧落下，之后每帧只看"是否被读回改掉"）。
+     *
+     * ⚠️ 第一百一十五轮（真因二）：上限由 **6 帧放宽到 40 帧（≈650ms）**。理由：PM 的
+     * `DOMObserver.flushSoon` 是 ~20ms 定时器、且"读回原生选区 → `selectionToDOM`"会**连续**
+     * 推翻我落的选区（实测 F 手势 6 帧全被推翻 ⇒ 终态空选区、临时高亮还留在屏幕上）。
+     * 40 帧足以骑过一整串读回，同时仍是**有界**的（不会长期改写用户后续操作）。
+     * 兜底（无论成功/失败都必走）：
+     *   ① 临时绘制**一律清掉**（绝不泄漏到松手之后）；
+     *   ② 选区**不得为空** —— 若复验用尽仍不是目标区间，最后再**同步**补一次 dispatch
+     *      （`data-img-settle-fallback` 记 1，供套件断言到底走了哪条路）。
+     */
+    /**
+     * 落定 + **有界复验**（松手后一帧落下；之后只在"被读回推翻"时补写）。
+     *
+     * ⚠️ 第一百一十六轮（收口）：计数**不再按固定帧数**，改成按**连续被推翻次数**
+     * （`BOX_SETTLE_MAX_FAILS = 6`，连续 6 次不成立即走兜底）。理由：PM 的 `DOMObserver.flushSoon`
+     * 是 ~20ms 定时器，"读回原生选区 → `selectionToDOM`"会**连续**推翻落定；按"连续失败"计数后，
+     * **一落定成功就立刻停**（不再空转 40 帧），于是"鼠标松开后仍在写 DOM"的窗口从 ~650ms
+     * 缩到"真正需要补写的那些帧"（通常 1–2 帧，最坏 6 帧 ≈100ms）。
+     * 兜底（无论成功/失败都必走）：
+     *   ① 临时绘制**一律清掉**（绝不泄漏到松手之后）；
+     *   ② 选区**不得为空** —— 补写用尽仍不成立时再**同步**落一次，
+     *      `data-img-settle-fallback` 记 `late|fail`，供套件断言走了哪条路。
+     */
     const boxDragSettle = (view: EditorView): void => {
       if (boxSettleRaf != null) return
+      const setTo = (t: { from: number; to: number }): boolean => {
+        const sel = view.state.selection
+        if (sel.from === t.from && sel.to === t.to) return true
+        try {
+          view.dispatch(
+            view.state.tr.setSelection(TextSelection.create(view.state.doc, t.from, t.to))
+          )
+        } catch {
+          return false
+        }
+        return view.state.selection.from === t.from && view.state.selection.to === t.to
+      }
       const tryOnce = (): void => {
         boxSettleRaf = null
         const t = boxSettleTarget
         if (!t) return
-        const sel = view.state.selection
-        if (sel.from !== t.from || sel.to !== t.to) {
-          try {
-            view.dispatch(
-              view.state.tr.setSelection(TextSelection.create(view.state.doc, t.from, t.to))
-            )
-          } catch {
-            /* 位置非法（文档刚变）⇒ 放弃这一次 */
-          }
+        const ok = setTo(t)
+        if (ok) {
+          /**
+           * 第一百一十三/一十六轮：落定 dispatch **之后**才撤临时绘制（顺序反了会闪一帧空白）。
+           * ⚠️ **首次成功那一帧就清**（旧判据 `boxSettleLeft <= TRIES-1` 恒假、要拖到第二帧）
+           * —— 之后不再有任何补写，窗口到此为止。
+           */
+          window.requestAnimationFrame(() => clearLiveSel(view))
+          boxSettleTarget = null
+          view.dom.setAttribute('data-img-settle-fallback', 'ok')
+          return
         }
-        /**
-         * 第一百一十三轮（P1）：落定 dispatch **之后**才撤掉临时绘制 —— 顺序反了会闪一帧空白。
-         * 再等一帧（下一帧）才清：`selectionToDOM` 的原生高亮要下一帧才画出来，先清就会露出空档。
-         */
-        if (t.from === view.state.selection.from && t.to === view.state.selection.to) {
-          window.requestAnimationFrame(() => clearLiveSel())
+        if (++boxSettleFails < BOX_SETTLE_MAX_FAILS) {
+          boxSettleRaf = window.requestAnimationFrame(tryOnce)
+          return
         }
-        if (boxSettleLeft-- > 0) boxSettleRaf = window.requestAnimationFrame(tryOnce)
-        else boxSettleTarget = null
+        // 连续被推翻到上限：兜底 —— 再同步落一次；无论成败都清掉临时绘制，绝不留泄漏
+        const finalOk = setTo(t)
+        view.dom.setAttribute('data-img-settle-fallback', finalOk ? 'late' : 'fail')
+        clearLiveSel(view)
+        boxSettleTarget = null
       }
       boxSettleRaf = window.requestAnimationFrame(tryOnce)
     }
@@ -1044,9 +1095,23 @@ export const ImageSourceUi = Extension.create({
     const liveMarked = new Set<HTMLElement>()
     const liveRange = { from: -1, to: -1 }
 
-    const hasNativeSelection = (): boolean => {
+    /**
+     * 原生（浏览器 DOM）选区的**文档区间**：用来把"原生已经在画的那段"从临时高亮里扣掉
+     *（第一百一十五轮：不扣会叠成双倍深；整层删掉会丢尾巴 ⇒ 只扣差集）。
+     * 原来的 `hasNativeSelection()` 布尔判断已删除 —— "非空就整层不画"正是真因一。
+     */
+    const nativeDocRange = (view: EditorView): { from: number; to: number } | null => {
       const s = window.getSelection()
-      return !!s && !s.isCollapsed && s.rangeCount > 0
+      if (!s || s.isCollapsed || !s.rangeCount) return null
+      const r = s.getRangeAt(0)
+      if (!view.dom.contains(r.startContainer) || !view.dom.contains(r.endContainer)) return null
+      try {
+        const a = view.posAtDOM(r.startContainer, r.startOffset)
+        const b = view.posAtDOM(r.endContainer, r.endOffset)
+        return { from: Math.min(a, b), to: Math.max(a, b) }
+      } catch {
+        return null
+      }
     }
 
     const clearLiveSel = (view?: EditorView | null): void => {
@@ -1090,20 +1155,39 @@ export const ImageSourceUi = Extension.create({
       }
       liveRange.from = from
       liveRange.to = to
-      // ① 文字：原生选区自己在画就不叠（避免双倍深）
+      /**
+       * ① 文字：**原生 ∪ 临时**（去重，不叠色、不丢覆盖）。
+       *
+       * ⚠️ 第一百一十五轮（用户报障："鼠标还按着没松开的时候就丢尾巴了"）真因一：
+       * 此前这里是"原生选区非空 ⇒ **把整层删掉**"，而原生选区常常**比试探区间短**
+       *（实测 C 手势帧1→2：`hl101`（覆盖 101 字符、x 601）⇒ `dom1 hl0`（原生只有 1 字符、
+       * x 584..601）⇒ **可见覆盖从 101 字符掉到 1 字符**＝尾巴当场没了）。
+       * 现在只把试探区间里**没被原生盖住**的那几段交给 Highlight（同色 `--sel` ⇒ 视觉连成一片，
+       * 又不会叠成双倍深）；于是"可见覆盖 = 原生 ∪ 临时"天然只增不减（配合下面的高水位护栏）。
+       */
       try {
         const h = (CSS as unknown as { highlights?: Map<string, unknown> }).highlights
         const H = (window as unknown as { Highlight?: new (...r: Range[]) => unknown }).Highlight
         if (h && H) {
-          if (hasNativeSelection()) h.delete(LIVE_SEL_HIGHLIGHT)
+          const nat = nativeDocRange(view)
+          const segs: Array<[number, number]> = []
+          if (!nat) segs.push([from, to])
           else {
-            const a = view.domAtPos(from)
-            const b = view.domAtPos(to)
+            if (from < nat.from) segs.push([from, Math.min(to, nat.from)])
+            if (nat.to < to) segs.push([Math.max(from, nat.to), to])
+          }
+          const ranges: Range[] = []
+          for (const [s1, s2] of segs) {
+            if (s2 <= s1) continue
+            const a = view.domAtPos(s1)
+            const b = view.domAtPos(s2)
             const r = document.createRange()
             r.setStart(a.node, a.offset)
             r.setEnd(b.node, b.offset)
-            h.set(LIVE_SEL_HIGHLIGHT, new H(r))
+            ranges.push(r)
           }
+          if (ranges.length) h.set(LIVE_SEL_HIGHLIGHT, new H(...ranges))
+          else h.delete(LIVE_SEL_HIGHLIGHT)
         }
       } catch {
         /* 位置/DOM 不合法（文档刚变）⇒ 这一帧不画文字 */
@@ -1132,13 +1216,63 @@ export const ImageSourceUi = Extension.create({
       }
     }
 
-    /** 拖动期每帧：锚点（按下点/原生锚点）→ 当前点（盒上取半盒端，否则用原生光标）⇒ 试探区间 */
-    const boxDragLive = (view: EditorView): void => {
-      if (!boxDrag) return
+    /**
+     * 第一百一十五轮 · **单次手势内可见覆盖只增不减**（真因一的护栏）。
+     * 远端走**高水位**：只要指针还在朝远离锚点的方向走，试探区间的远端**只增不减**；
+     * 只有指针**真的往回走了 ≥`TAIL_BACK_PX`(4px)** 才允许把高水位降到当前值。
+     * 4px 的理由：指针 jitter / 亚像素取整通常 <2px，而"往回选"的手部动作一定远超 4px
+     * ⇒ 既不会吞掉真正的反向回缩，也不会让尾巴被一两帧的抖动吃掉。
+     */
+    const TAIL_BACK_PX = 4
+
+    /** 指针到按下点的"轴向距离"（px）：判断"继续远离"还是"真的往回走" */
+    const pxAway = (x: number, y: number): number => {
+      const p = boxDrag?.press
+      return p ? Math.abs(x - p.x) + Math.abs(y - p.y) : 0
+    }
+
+    /**
+     * 拖动期每帧：锚点（按下点/原生锚点）→ 当前点（盒上取半盒端，否则用原生光标）⇒ 试探区间。
+     * 远端经**高水位护栏**处理；返回值同时供绘制与落定使用（两者取同一个值 ⇒ 松手不跳变）。
+     */
+    const boxDragRange = (
+      view: EditorView,
+      x: number,
+      y: number
+    ): { from: number; to: number } | null => {
+      if (!boxDrag) return null
       const a = boxDrag.anchor ?? boxDrag.pressPos
+      if (a == null) return null
       const b = boxDrag.focus ?? view.state.selection.head
-      if (a == null || b == null) return
-      paintLiveSel(view, Math.min(a, b), Math.max(a, b))
+      if (b == null) return null
+      const px = pxAway(x, y)
+      if (boxDrag.hw == null) {
+        boxDrag.hw = b
+        boxDrag.hwPx = px
+      } else {
+        const growing = Math.abs(b - a) >= Math.abs(boxDrag.hw - a)
+        const back = px < boxDrag.hwPx - TAIL_BACK_PX
+        if (growing || back) {
+          boxDrag.hw = b
+          boxDrag.hwPx = px
+        }
+      }
+      const far = boxDrag.hw ?? b
+      return { from: Math.min(a, far), to: Math.max(a, far) }
+    }
+
+    const boxDragLive = (view: EditorView, x: number, y: number): void => {
+      const r = boxDragRange(view, x, y)
+      if (!r) return
+      /**
+       * 诊断锚（与 `data-img-open` 同一用途）：把这一帧的**锚点 / 当前点 / 试探区间**摊平成
+       * `anchor|head|from|to`，套件可以直接逐帧断言"锚点恒定、远端不回缩"。
+       */
+      view.dom.setAttribute(
+        'data-img-drag-live',
+        `${boxDrag?.anchor ?? boxDrag?.pressPos}|${boxDrag?.focus ?? view.state.selection.head}|${r.from}|${r.to}`
+      )
+      paintLiveSel(view, r.from, r.to)
     }
 
     /**
@@ -1977,7 +2111,10 @@ export const ImageSourceUi = Extension.create({
                 pressPos: at ? at.pos : null,
                 anchor: null,
                 focus: null,
-                anchorLost: false
+                anchorLost: false,
+                hw: null,
+                hwPx: 0,
+                press: { x: event.clientX, y: event.clientY }
               }
             }
           }
@@ -2052,7 +2189,7 @@ export const ImageSourceUi = Extension.create({
              * 第一百一十三轮（P1）：同一帧里把"试探区间"画出来（文字走 CSS Highlight、图片加既有
              * `img-selected`）——**仍然零 dispatch**。这样"按下并拖动"就有即时观感，不必等松手。
              */
-            boxDragLive(editorView)
+            boxDragLive(editorView, event.clientX, event.clientY)
           }
           const onBandUp = (): void => {
             bandDrag = null
@@ -2067,18 +2204,32 @@ export const ImageSourceUi = Extension.create({
             const bd = boxDrag
             boxDrag = null
             const anchor = bd.anchor
+            /**
+             * 第一百一十五轮：松手这一帧也要"入护栏"—— 浏览器在 mouseup 时已把光标挪到**松手点**
+             * （比最后一帧 mousemove 更远，实测 118 vs 120）⇒ 先按"只增不减"并进高水位，
+             * 否则落定会比用户松手的位置**短一两个字符**（会把 A 的 [118,355] 变成 [120,355]）。
+             */
+            if (bd.hw != null && anchor != null) {
+              const b2 = bd.focus ?? editorView.state.selection.head
+              if (b2 != null && Math.abs(b2 - anchor) >= Math.abs(bd.hw - anchor)) bd.hw = b2
+            }
             const focus =
               bd.focus ??
               (bd.anchorLost && editorView.state.selection.empty
                 ? editorView.state.selection.head
                 : null)
-            if (anchor == null || focus == null || anchor === focus) {
+            /** 绘制与落定取**同一个**远端（`hw` 高水位）⇒ 松手不跳变、也不会比画面短 */
+            const far = bd.hw ?? focus
+            const sFrom = anchor == null || far == null ? null : Math.min(anchor, far)
+            const sTo = anchor == null || far == null ? null : Math.max(anchor, far)
+            if (sFrom == null || sTo == null || sFrom === sTo) {
               // 没有要落定的东西 ⇒ 立刻清干净（别把临时绘制留在文档上）
               clearLiveSel(editorView)
               return
             }
-            boxSettleTarget = { from: Math.min(anchor, focus), to: Math.max(anchor, focus) }
-            boxSettleLeft = 6
+            boxSettleTarget = { from: sFrom, to: sTo }
+            boxSettleFails = 0
+            editorView.dom.removeAttribute('data-img-settle-fallback')
             boxDragSettle(editorView)
           }
           window.addEventListener('mousemove', onBandMove)
@@ -2106,8 +2257,13 @@ export const ImageSourceUi = Extension.create({
                * 刚加的 `img-selected` 连同元素一起消失，下一帧再加回来 ⇒ 逐帧
                * `img1[254] → img0[] → img1[254]`（肉眼就是"选中样式在闪"）。
                * 这里在 `update`（PM 重建之后）按同一份试探区间重画一次：文字走 Highlight、图片补类。
+               *
+               * ⚠️ 第一百一十六轮（收口）：**只在"指针还按着"（`boxDrag != null`）时重画**。
+               * 松手后这一段重画窗口会一直写到落定复验结束（旧版固定 40 帧 ≈650ms），期间持续改
+               * widget 的类/Highlight ⇒ 与套件里"程序化覆盖后再断言类与样式"的步骤抢时序（实测多出
+               * ㉛④ / ㉜① 的**旋转红**）。松手之后一律交给 `boxDragSettle` 的清理路径决定。
                */
-              if (liveRange.from >= 0 && liveRange.to > liveRange.from) {
+              if (boxDrag != null && liveRange.from >= 0 && liveRange.to > liveRange.from) {
                 paintLiveSel(editorView, liveRange.from, liveRange.to)
               }
             },
