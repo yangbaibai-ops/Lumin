@@ -28,7 +28,12 @@ import type { EditorState } from '@tiptap/pm/state'
 import type { EditorView } from '@tiptap/pm/view'
 import i18n from '../../i18n'
 // 纯判据（显隐契约 + 登记到期）单独成文件，可被 `tests/imageReveal.test.mjs` 直接钉住
-import { PENDING_TTL, isPendingExpired, revealDecision, selectionCoversSource } from './imageReveal'
+import {
+  PENDING_TTL,
+  isPendingExpired,
+  revealDecision,
+  selectionIntersectsSource
+} from './imageReveal'
 export { revealDecision } from './imageReveal'
 export type { RevealSel, RevealRange } from './imageReveal'
 
@@ -419,6 +424,104 @@ function placeToolbar(bar: HTMLElement, anchor: HTMLElement | DOMRect): void {
   bar.style.left = `${Math.round(left)}px`
 }
 
+/* ─── 第一百零六轮：行内档底色的**逐行片段覆盖层** ────────────────────────────────
+ * 用户口径：「点击后出现的背景颜色……**所有属于图片源码区域的**都要有背景颜色（行的全高），
+ * 且背景颜色的覆盖区域和**被拖动连续选中文字时的覆盖区域一致**」。
+ *
+ * 为什么纯 CSS 到不了（第九十一/一百零五轮已实测）：`box-decoration-break: clone` 下同一元素的
+ * **所有片段共用一组背景几何** —— 给不了"处于不同行高的两个片段"各自的高度：普通行行盒 32.30px
+ * （底色 32.19 ✓ Δ0.11），被图片撑高的行行盒 **143.25px**（底色仍 32.19 ⇒ Δ111.06），
+ * 而**原生选区实画**在那一行上画的正是整条行盒（本机逐像素实测 143.25px，与本模块的目标矩形一致）。
+ *
+ * 几何口径（全部来自测量，**不写死像素**）：
+ *   * 元素自身 `getClientRects()` = 逐行片段的 **x 范围**（Chromium 对 inline 元素按行片段返回）；
+ *   * 该行的**行盒上下边** = 同一行上所有"行内参与者"（文字节点的 Range 矩形、行内元素矩形、
+ *     图片等替换元素矩形）的并集 —— 被图片撑高的那一行由图片矩形给出 143.25，与行盒、
+ *     与原生选区实画都逐像素一致（`Range.getClientRects()` 对**文字**只给字体内容盒 21px，
+ *     所以不能直接拿它当行盒，必须取并集）；
+ *   * 只有并集**高于行距**（`1lh`）的"被撑高的行"才需要覆盖层：普通行的底色已由
+ *     `.img-src-revealed` 自身的 `padding-block` 补齐（Δ0.11px，第九十一轮已验收）⇒ 不重复画。
+ *
+ * 覆盖层挂在 `view.dom.parentElement` 上（与悬浮工具栏同一做法）⇒ **不在 `view.dom` 里**：
+ * ProseMirror 的 DOM 观察者看不到它、不进 Markdown（往返逐字节不变）、不占布局，
+ * 且 `pointer-events: none` ⇒ 不挡鼠标。重算时机见 `scheduleOverlay` 的调用点。
+ */
+const SRC_OVERLAY_CLASS = 'img-src-overlay'
+/** "行盒所属的块"：与 `.img-src-revealed` 的排版上下文一致（段落/列表项/引用/单元格…） */
+const ROW_BLOCK_SEL = 'p, li, pre, td, th, blockquote, h1, h2, h3, h4, h5, h6'
+
+interface RectBox {
+  left: number
+  top: number
+  right: number
+  bottom: number
+}
+
+/** 一个块里"可能撑起行盒"的行内参与者矩形（**排除** `exclude` 自己那一棵子树） */
+function inlineRowRects(block: Element, exclude: Element): RectBox[] {
+  const out: RectBox[] = []
+  const walk = (parent: Node): void => {
+    for (const child of Array.from(parent.childNodes)) {
+      if (child === exclude) continue
+      if (child.nodeType === 3) {
+        const tn = child as Text
+        if (!tn.length) continue
+        const rg = document.createRange()
+        rg.setStart(tn, 0)
+        rg.setEnd(tn, tn.length)
+        for (const r of Array.from(rg.getClientRects())) {
+          if (r.height > 0) out.push({ left: r.left, top: r.top, right: r.right, bottom: r.bottom })
+        }
+        continue
+      }
+      if (child.nodeType !== 1) continue
+      const el = child as HTMLElement
+      const cs = getComputedStyle(el)
+      if (cs.display === 'none' || cs.visibility === 'hidden') continue
+      // 行内盒（含行内块）与替换元素（img/svg）才参与"行盒"；块级子树的矩形跨多行，会污染并集
+      const replaced = el.tagName === 'IMG' || el.tagName === 'SVG'
+      if (replaced || cs.display.startsWith('inline')) {
+        for (const r of Array.from(el.getClientRects())) {
+          if (r.height > 0) out.push({ left: r.left, top: r.top, right: r.right, bottom: r.bottom })
+        }
+      }
+      if (!replaced && !cs.display.startsWith('inline')) walk(el)
+    }
+  }
+  walk(block)
+  return out
+}
+
+/**
+ * 一段行内档标识符**需要在覆盖层上补画**的逐行矩形（正常行不返回 —— 那些行 CSS 已经铺满）。
+ * ⚠️ 只处理行内档（`--block` 的盒子本身就是 n × 行盒高，早铺满了）；
+ * 编辑态（`--editing`，底色撤掉）也不画（调用方用选择器排除）。
+ */
+function revealedRowRects(el: HTMLElement): RectBox[] {
+  const block = (el.closest(ROW_BLOCK_SEL) as Element | null) ?? el.parentElement
+  if (!block) return []
+  const strut = parseFloat(getComputedStyle(el).lineHeight)
+  const parts = inlineRowRects(block, el)
+  const out: RectBox[] = []
+  for (const frag of Array.from(el.getClientRects())) {
+    if (!frag.height && !frag.width) continue
+    let top = Infinity
+    let bottom = -Infinity
+    for (const p of parts) {
+      // 同一行 ⇔ 与这一片段在竖直方向有交叠（行盒彼此相邻、不会互相侵入）
+      if (p.bottom <= frag.top + 0.5 || p.top >= frag.bottom - 0.5) continue
+      top = Math.min(top, p.top)
+      bottom = Math.max(bottom, p.bottom)
+    }
+    if (!Number.isFinite(top) || !Number.isFinite(bottom)) continue
+    const line = bottom - top
+    const limit = Number.isFinite(strut) ? strut + 0.5 : frag.height + 0.5
+    if (line <= limit) continue
+    out.push({ left: frag.left, top, right: frag.right, bottom })
+  }
+  return out
+}
+
 export const ImageSourceUi = Extension.create({
   name: 'luminImageSourceUi',
 
@@ -541,6 +644,82 @@ export const ImageSourceUi = Extension.create({
     const hideBar = (): void => {
       if (bar) bar.remove()
       bar = null
+    }
+
+    /* ── 覆盖层（第一百零六轮）：见文件里 `SRC_OVERLAY_CLASS` 那段说明 ────────────── */
+    let overlay: HTMLElement | null = null
+    let overlayRaf: number | null = null
+    /** 连续"量不到可补画的行"的次数：用来把"布局过渡的当帧"与"真的不需要画"分开 */
+    let overlayMiss = 0
+
+    const ensureOverlay = (view: EditorView): HTMLElement => {
+      if (overlay && overlay.isConnected) return overlay
+      overlay = document.createElement('div')
+      overlay.className = SRC_OVERLAY_CLASS
+      overlay.setAttribute('data-img-src-overlay', '')
+      overlay.contentEditable = 'false'
+      overlay.setAttribute('aria-hidden', 'true')
+      const host = view.dom.parentElement ?? document.body
+      host.appendChild(overlay)
+      return overlay
+    }
+
+    /** 没有要补画的行（未显形 / 编辑态 / 全部是正常行）⇒ 覆盖层整个摘掉，DOM 回到"零痕迹" */
+    const dropOverlay = (): void => {
+      if (overlay) overlay.remove()
+      overlay = null
+    }
+
+    const syncOverlay = (view: EditorView): void => {
+      const els = Array.from(
+        view.dom.querySelectorAll<HTMLElement>(
+          `.img-src-revealed:not(.img-src-revealed--block):not(.img-src-revealed--editing)`
+        )
+      )
+      if (!els.length) {
+        overlayMiss = 0
+        dropOverlay()
+        return
+      }
+      const boxes: RectBox[] = []
+      for (const el of els) boxes.push(...revealedRowRects(el))
+      if (!boxes.length) {
+        /**
+         * 显形/归位的那一两帧里，"被撑高的行"可能还量不到（图片尚未挪到那一行）
+         * ⇒ **先留着上一帧的覆盖层、下一帧再量**，避免它"画出来→撤掉→又画出来"地闪；
+         * 连续两帧都量不到才真的撤（切到编辑态、或这段源码所在的行本来就都是正常行）。
+         */
+        if (overlayMiss++ < 1) scheduleOverlay(view)
+        else dropOverlay()
+        return
+      }
+      overlayMiss = 0
+      const node = ensureOverlay(view)
+      const parent = node.offsetParent as HTMLElement | null
+      const base = parent ? parent.getBoundingClientRect() : { left: 0, top: 0 }
+      const frag = document.createDocumentFragment()
+      for (const b of boxes) {
+        const d = document.createElement('div')
+        d.style.left = `${(b.left - base.left).toFixed(2)}px`
+        d.style.top = `${(b.top - base.top).toFixed(2)}px`
+        d.style.width = `${Math.max(0, b.right - b.left).toFixed(2)}px`
+        d.style.height = `${Math.max(0, b.bottom - b.top).toFixed(2)}px`
+        frag.appendChild(d)
+      }
+      node.replaceChildren(frag)
+    }
+
+    /** 重算时机：显形/隐藏、编辑态切换、文档或布局变化、窗口 resize、滚动（逐帧合并一次） */
+    const scheduleOverlay = (view: EditorView): void => {
+      if (overlayRaf != null) return
+      overlayRaf = window.requestAnimationFrame(() => {
+        overlayRaf = null
+        try {
+          syncOverlay(view)
+        } catch {
+          /* 量不到就不画：下一次 update/RO/resize 会再算一遍 */
+        }
+      })
     }
 
     /**
@@ -724,9 +903,11 @@ export const ImageSourceUi = Extension.create({
               }
             })
             /**
-             * 第九十三轮（用户口径）：选区**完全盖住**某张图的源码范围（且至少一端严格超出）
-             * ⇒ 标识符按既有口径隐藏，同时给**这张图片**一个"被选中"的观感（`img-selected`）。
-             * 判据复用 `selectionCoversSource`（与"隐藏标识符"是同一处），不另造第二套。
+             * 第一百零六轮（用户口径）：「图片要像浏览器里展示的图片一样**可以被选择选中** ——
+             * 拖动选中跨过图片时，图片本身也要显示为被选中」。
+             * 判据 = **选区与它有交**（`selectionIntersectsSource`，浏览器语义：碰到就算，
+             * 不要求全覆盖）；⚠️ 它**只**决定观感（`img-selected`）：标识符"该不该隐藏"仍走
+             * `selectionCoversSource`（见 `revealDecision`）—— 两条口径已拆开，不许合并。
              */
             const sel93 = state.selection
             const selLike93 = {
@@ -736,7 +917,7 @@ export const ImageSourceUi = Extension.create({
               nodeSel: sel93.constructor.name === 'NodeSelection'
             }
             for (const img of imgs) {
-              const selected = selectionCoversSource(selLike93, img)
+              const selected = selectionIntersectsSource(selLike93, img)
               if (selected && img.kind === 'node') {
                 decos.push(Decoration.node(img.from, img.to, { class: 'img-selected' }))
               }
@@ -1110,10 +1291,18 @@ export const ImageSourceUi = Extension.create({
               b.title = i18n.global.t('editor.imageZoom', { pct })
             }
           }
-          const ro = new ResizeObserver(() => sync())
+          const ro = new ResizeObserver(() => {
+            sync()
+            scheduleOverlay(editorView)
+          })
           ro.observe(editorView.dom)
-          const onScroll = (): void => sync()
+          const onScroll = (): void => {
+            sync()
+            scheduleOverlay(editorView)
+          }
           editorView.dom.addEventListener('scroll', onScroll, true)
+          const onResize = (): void => scheduleOverlay(editorView)
+          window.addEventListener('resize', onResize)
           /**
            * 第七十三轮：`pendingClick` 的清理钩子（诊断锚挂在 `view.dom` 的 `data-img-pending`）。
            * 覆盖"按下之后再也等不到 mouseup"的所有常见路径：失焦、页面隐藏、开始打字
@@ -1329,10 +1518,13 @@ export const ImageSourceUi = Extension.create({
               } catch {
                 /* 定位失败不该影响编辑：下一次 update 会再算一遍 */
               }
+              // 显形/隐藏、编辑态切换、文档变化都会走到这里 ⇒ 覆盖层跟着重算
+              scheduleOverlay(editorView)
             },
             destroy: () => {
               ro.disconnect()
               editorView.dom.removeEventListener('scroll', onScroll, true)
+              window.removeEventListener('resize', onResize)
               window.removeEventListener('blur', onBlur)
               document.removeEventListener('visibilitychange', onVis)
               window.removeEventListener('keydown', onKey, true)
@@ -1348,6 +1540,11 @@ export const ImageSourceUi = Extension.create({
               if (pendingDom === editorView.dom) pendingDom = null
               clearPending()
               hideBar()
+              if (overlayRaf != null) {
+                window.cancelAnimationFrame(overlayRaf)
+                overlayRaf = null
+              }
+              dropOverlay()
             }
           }
         }

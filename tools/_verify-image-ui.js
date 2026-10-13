@@ -3515,12 +3515,13 @@ const doc = MD.split('PLACE_A')
       after93.selected === 0 && after93.markers === 0,
       JSON.stringify({ 前后: { selected: s93.selected, widgetCls: s93.widgetCls }, 之后: { selected: after93.selected, widgetCls: after93.widgetCls, imgCls: after93.imgCls } })
     )
-    // ③ 只覆盖一部分 ⇒ 标识符显示、图片**不带** img-selected
+    // ③ 只覆盖一部分 ⇒ 标识符显示；图片**带** img-selected
     const partial93 = await json(`(() => {
       const v = window.__vt.ed().view
       const w = document.querySelector('[data-img-widget]')
       const from = w ? Number(w.getAttribute('data-img-from')) : 1
-      // 选区落在源码**内部**（严格子区间）⇒ 按既有口径标识符应显示、且不算"图片被选中"
+      // 选区落在源码**内部**（严格子区间）⇒ 标识符按原口径仍显示（两条判据已拆开），
+      // 而"图片被选中"改用**浏览器语义**（第一百零六轮：只要选区与它有交就算）⇒ 这里应带类
       v.dispatch(
         v.state.tr.setSelection(v.state.selection.constructor.create(v.state.doc, from + 2, from + 12))
       )
@@ -3529,9 +3530,9 @@ const doc = MD.split('PLACE_A')
     await sleep(400)
     const p93 = await stateOf()
     check(
-      '㉚③ **部分覆盖**（严格子区间）⇒ 标识符**显示**（count ≥1）且图片**不带** `.img-selected`',
-      p93.markers >= 1 && p93.selected === 0,
-      JSON.stringify({ 源码起点: partial93, ...p93 })
+      '㉚③ **部分覆盖**（严格子区间）⇒ 标识符**显示**（count ≥1，显隐口径与"图片选中"已解耦）且图片**带** `.img-selected`（第一百零六轮用户口径：像浏览器那样，碰到就算被选中）',
+      p93.markers >= 1 && p93.selected >= 1 && p93.background === 'rgba(17, 24, 39, 0.11)',
+      JSON.stringify({ 源码起点: partial93, ...p93, 口径: '第一百零六轮：selectionIntersectsSource（观感）与 selectionCoversSource（显隐）分开' })
     )
     // ④ 不闪：整段选中这一手势的逐帧序列
     await ev(`(() => {

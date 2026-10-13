@@ -462,17 +462,58 @@ ormal，只影响这种段落 */
    取舍（如实记录）：本机实测**原生选区**在被图片撑高的那一行上画的是「整条**行盒**」
    （第 15 行第 2 行的选区带 = 143.25px）——逐行高度不同，一套 CSS 背景无法逐片段表达
    （`box-decoration-break: clone` 下每个片段共用同一组背景几何）；本改动覆盖所有
-   「行盒高 = line-height」的行（正文行、块级档、行内档独占行均属此类），被图片撑高的行
-   只铺到 1lh。详见本轮报告。 */
+   「行盒高 = line-height」的行（正文行、块级档、行内档独占行均属此类），
+   **被图片撑高的那一行**由下面第一百零六轮的 `.img-src-overlay` 覆盖层按行补齐（Δ = 0）。 */
 .md-preview .img-src-revealed:not(.img-src-revealed--block) {
   padding-block: max(0px, calc((1lh - 1.24em) / 2));
   -webkit-box-decoration-break: clone;
   box-decoration-break: clone;
 }
-/* ── 第九十三轮（用户口径）：源码被"整段选中"而隐藏时，**这张图片显示为被选中** ──────────
-   判据与"隐藏标识符"同一处（`selectionCoversSource`）⇒ `img-selected` 类挂在
-   widget（裸 `<img>` 形态）或图片节点（`![]()` 形态）上。观感只用**既有令牌**：
-   `--sel`（选择底色）铺底 + `--accent` 描边；不加图标、不改尺寸 ⇒ 不影响居中/并排几何。 */
+/* ── 第一百零六轮（用户口径）：**被图片撑高的行**也要铺满整行全高 ─────────────────────
+    用户原话：「点击后出现的背景颜色……**所有属于图片源码区域的**都要有背景颜色（行的全高），
+    且背景颜色的覆盖区域和被拖动连续选中文字时的覆盖区域一致」。
+
+    为什么纯 CSS 到不了（第九十一/一百零五轮的结论，本机逐像素实测）：
+      * `box-decoration-break: clone` 下同一元素的**所有片段共用一组背景几何** —— 无法给
+        "处于不同行高的两个片段"各自不同的高度；
+      * 实测：普通行行盒 32.30px（底色 32.19 ✓，Δ0.11），而**被图片撑高的行**行盒 143.25px，
+        底色仍只有 32.19（Δ111.06）；原生选区在那一行上画的**是整条行盒**（像素实测
+        143.25px，与行盒逐像素一致）⇒ 两者对不上，纯 CSS 表达不了。
+
+    做法（本轮）：DOM 层**按行片段几何的绝对定位覆盖层**，几何**全部来自测量**（见
+    `lib/editor/imageToolbar.ts` 的 `syncOverlay`）：
+      * 挂在 `view.dom.parentElement` 上（与 `.img-zoom-bar` 同一做法）⇒ **不在 `view.dom` 里**：
+        不进 Markdown、不被 ProseMirror 的 DOM 观察者看到、不改文档、不占布局；
+      * `pointer-events: none` ⇒ 不挡鼠标（点/拖选照常落在正文上）；
+      * 颜色沿用既有令牌 `--edge`（与 `.img-src-revealed` 的底色同一个）；
+      * 画在正文**下面**：靠下面那条 `.editor-content .md-preview { z-index: var(--z-raise) }`
+        把正文抬一档；覆盖层自己**不写 z-index**（`auto` < `--z-raise`）⇒ 文字、原生选区、
+        图片都在它上面。容器只做坐标系锚点（零尺寸），矩形由 JS 逐个给。 */
+.img-src-overlay {
+  position: absolute;
+  left: 0;
+  top: 0;
+  pointer-events: none;
+}
+.img-src-overlay > div {
+  position: absolute;
+  background-color: var(--edge);
+}
+/* 正文自己抬一档（既有令牌 `--z-raise`）：覆盖层（`z-index: auto`）落在正文/选区/图片之下。
+   只作用于**编辑器里的** `.md-preview`（设置页里那个预览盒不受影响）。 */
+.editor-content .md-preview {
+  position: relative;
+  z-index: var(--z-raise);
+}
+/* ── 第九十三轮 / 第一百零六轮（用户口径）：图片显示为**被选中** ──────────────────────
+   用户原话（第一百零六轮）：「图片能不能像浏览器里展示的图片一样，**可以被选择选中** —— 拖动
+   选中跨过图片时，**图片本身也要像浏览器里那样显示为"被选中"**」⇒ 判据由"选区**完全盖住**源码
+   范围（且至少一端严格超出）"放宽为"**选区与它有交**"（浏览器语义：碰到就算，不要求全覆盖）。
+   ⚠️ 这个类**只管观感**："标识符该不该隐藏"仍是原来的口径。两条判据在
+   `lib/editor/imageReveal.ts` 里**分开**（`selectionIntersectsSource` / `selectionCoversSource`），
+   纯函数单测见 `tests/imageReveal.test.mjs` 的 B 段 —— 不许合并。
+   观感只用**既有令牌**：`--sel`（选择底色）铺底 + `--accent` 描边；不加图标、不改尺寸
+   ⇒ 不影响居中/并排几何；`img-selected` 类挂在 widget（裸 `<img>` 形态）或图片节点（`![]()`）上。 */
 .md-preview .img-selected,
 .md-preview .img-selected img {
   background-color: var(--sel);
