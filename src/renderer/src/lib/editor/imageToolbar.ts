@@ -1072,33 +1072,289 @@ export const ImageSourceUi = Extension.create({
     }
 
     /**
-     * ─── 第一百一十三轮 · P1：**拖动期即时观感**（用户报障"按下并拖动没有选择的样式，要等松手"）──
+     * ─── 第一百一十三轮（拖动期即时观感）＋第一百二十一轮（用户两条口径）：**行盒选中带** ───────
      *
-     * 为什么此前拖动期是"瞎"的：跨图片实体这一路**故意不在拖动期 dispatch**（dispatch 会打断
-     * Chromium 的原生手势，见 `boxDrag` 那段），而原生选区在图片死区里是**塌缩的空光标**
-     *（实测逐帧 `355-355E → 254-254E → 153-153E …`）⇒ 浏览器不画高亮、装饰也判不出"相交"
-     * ⇒ 松手前**一个像素的反馈都没有**。
+     * 用户两条口径（原话）：
+     *   ①「当这一行内有行级公式的话，请把这一行的行级公式的选中样式做成和同一行内其他正文被选中时
+     *      **同高度且连续不间断**的样式」；
+     *   ②「把**所有元素（正文、图片、公式）**更改成**被选中且鼠标未松开前**和**选中且鼠标松开后**
+     *      的选中样式**一致**（按照在**松开鼠标后的样式**做）」。
      *
-     * 做法（**只画不改**，拖动期依然零 dispatch）：
-     *   * **文字**：CSS Custom Highlight API（`CSS.highlights`）—— 名字 `lumin-img-drag`，
-     *     一个 `Range` 从试探区间两端 `domAtPos` 取；高亮只落在**文字节点**上（图片盒不是文字，
-     *     天然不会被它染色）；
-     *   * **图片**：给落在试探区间里的 widget 加**既有的** `img-selected` 类（复用装饰用的同一个
-     *     类名与同一份 CSS，不新增类名体系）；
-     *   * **原生选区已覆盖时不叠**：浏览器自己在画高亮（原生选区非空）就撤掉我们的 highlight，
-     *     避免"两层底色叠加"变成双倍深；
-     *   * **清理**：`endDrag`/落定 dispatch 之后（下一帧）/卸载/取消 一律清干净；清 `img-selected`
-     *     时只摘**当前状态并未选中**的那些（避免把装饰自己加的类摘掉）。
+     * 逐像素实测（`tmp/native-geom2.js` + `tmp/shots-121`，亮色主题、夹具 SHA256 见轮次报告）：
+     *   * 浏览器对**正文片段**画的是**行盒**：纯文字行 `32.3px`、被图片撑高的行 `143.25px` ——
+     *     与"该行所有内联内容盒的并集"（文字盒按 CSS 半行距模型上下补 `(usedLineHeight−盒高)/2`、
+     *     再并上 inline-block/替换盒）逐项 **Δ ≤ 0.3px** ⇒ 行盒**可以自己算出来**；
+     *   * 对**行内公式**画的是 KaTeX 内层 inline-block 的盒子 ⇒ 同一行里正文 `143.25px`（或 `32.3px`）
+     *     而公式段只有 **15px**、还按字形断开（实测公式列 `t131..b145`、正文列 `t72..b214`）
+     *     ⇒ 这**正是**用户第①条。
+     *
+     * 做法（**只画不改**，拖动期依然零 dispatch —— dispatch 会打断 Chromium 原生手势）：
+     *   * **行盒选中带**：`div.sel-band` 下每行一条绝对定位矩形（该行**行盒高** × 被覆盖的 x 范围），
+     *     一行一条、同行相邻段并成一条 ⇒ 公式段与正文段**同 top/bottom/height 且无缝**；颜色只用
+     *     既有令牌 `--sel`（零硬编码）；容器与 `.img-src-overlay` 同一套定位/层级（落在正文与
+     *     原生选区**之下**）；
+     *   * **闸门 `data-sel-own`**：**只有这一帧确实画出来了**才置位（`setSelOwn(view, mode)`）——
+     *     `math` = 落定态**只接管行内公式那几段**（其余内容照旧由浏览器自己画 ⇒ 回归面最小）；
+     *     `all`  = 拖动期整层由我们独占（浏览器那份关掉），于是"拖动中"与"松手后"是**同一份几何**
+     *     （用户第②条按构造成立）；画不出来（位置/DOM 不合法、片段超上限、闸门没置位）就**撤层撤闸**
+     *     ⇒ 退回浏览器绘制 ⇒ **绝不出现"没有选中样式"**；
+     *   * **图片**：沿用既有的 `img-selected`（拖动期与落定态**同一套类与 CSS**，不新增类名）；
+     *   * **兜底高亮**：每帧拿**渲染后**的带矩形（`getBoundingClientRect` 回读）与"选区文字盒"比对，
+     *     凡未被盖住的片段再补进 CSS Highlight（名字 `lumin-img-drag` 不变、同色 `--sel` ⇒ 不叠深）
+     *     ⇒ "不漏画"有逐帧自证（`data-sel-band-miss`；探针再独立比对一份，见 `tmp/selstyle-122.js`）；
+     *   * **清理**：落定 dispatch 之后 / 空选区 / 卸载 一律清干净；清 `img-selected` 时只摘
+     *     **当前状态并未选中**的那些（避免把装饰自己加的类摘掉）。
      */
     const LIVE_SEL_HIGHLIGHT = 'lumin-img-drag'
+    const SEL_BAND_CLASS = 'sel-band'
+    const SEL_OWN_ATTR = 'data-sel-own'
+    /** 带左右各外扩这么多 px：消掉"正文片段右缘 ↔ 公式片段左缘"之间实测 ~1.3px 的缝（≤1px 重叠不可见） */
+    const SEL_BAND_PAD_X = 1
+    /** 一次最多处理多少文本片段：超了就**不自己画**（撤闸、退回浏览器绘制），避免超长选区卡顿 */
+    const SEL_BAND_MAX_FRAGS = 1200
     /** 我们临时加过 `img-selected` 的 widget（清的时候只动这一批） */
     const liveMarked = new Set<HTMLElement>()
     const liveRange = { from: -1, to: -1 }
+    let selBand: HTMLElement | null = null
+    let selOwn: 'all' | 'math' | null = null
+    /** 落定态最近一次的输入（`from/to/doc` 全同就跳过重算：选区事务很多，别每一笔都量布局） */
+    let settledKey: { from: number; to: number; doc: unknown } | null = null
+
+    // ── 选中带的几何（全部来自测量：行盒自己算，与浏览器实画 Δ ≤ 0.3px）────────────────────
+
+    /** 一个选中片段（**逐可见文本节点**建 Range：跨 `display:none` 的整段 Range 会返回空集，已踩过） */
+    type SelFrag = {
+      /** 该文字节点与区间 `[from,to]` 的交集 */
+      range: Range
+      /** 交集的**文字盒**（`getClientRects`） */
+      rects: RectBox[]
+      /** 行盒用哪个块算（行盒 = 块内该行所有内联内容盒的并集） */
+      block: HTMLElement | null
+      /**
+       * 在**块级**公式里（`[data-md-math-block]`）：这一档**不套外层行盒** —— 片段在 KaTeX 的
+       * 行内块里，浏览器画的是**它自己的行高盒**（实测 `23px`，外层行盒模型会算成 `89.25px`）
+       * ⇒ 用片段盒按自己的 `line-height` 补半行距。
+       */
+      blockMath: boolean
+      /** 该片段父元素的 used `line-height`（补半行距用） */
+      lh: number
+    }
+
+    /** 行盒的"块"边界：与 `lineHeightAt` 同一套（标题/列表项/单元格/块级公式都算块） */
+    const SEL_BLOCK_SEL = 'p,li,h1,h2,h3,h4,h5,h6,blockquote,td,th,pre,div'
 
     /**
-     * 原生（浏览器 DOM）选区的**文档区间**：用来把"原生已经在画的那段"从临时高亮里扣掉
-     *（第一百一十五轮：不扣会叠成双倍深；整层删掉会丢尾巴 ⇒ 只扣差集）。
-     * 原来的 `hasNativeSelection()` 布尔判断已删除 —— "非空就整层不画"正是真因一。
+     * 某块内**每一行**的行盒（= 该行所有内联内容盒的并集）。
+     * 文本片段按 CSS 半行距模型上下补 `(usedLineHeight − 盒高)/2`；inline-block/替换盒取其边框盒。
+     * 对照实测（`tmp/shots-121/nativegeom-*.json`）：行内公式+图片那一行 `143.25`（浏览器实画 `143.25`、
+     * Δ `0.25px`）、纯文字行 `32.3`（实画 `32.3`、Δ `0.3px`）。
+     */
+    const blockLineBoxes = (block: HTMLElement): RectBox[] => {
+      const items: RectBox[] = []
+      const walker = document.createTreeWalker(block, NodeFilter.SHOW_TEXT)
+      let n: Node | null
+      while ((n = walker.nextNode())) {
+        const t = n as Text
+        if (!t.length) continue
+        const pe = t.parentElement
+        if (!pe) continue
+        const lh = parseFloat(getComputedStyle(pe).lineHeight)
+        const r = document.createRange()
+        r.selectNodeContents(t)
+        for (const cr of Array.from(r.getClientRects())) {
+          if (cr.width <= 0.5 && cr.height <= 0.5) continue
+          const pad = Number.isFinite(lh) && lh > cr.height ? (lh - cr.height) / 2 : 0
+          items.push({ left: cr.left, right: cr.right, top: cr.top - pad, bottom: cr.bottom + pad })
+        }
+      }
+      /**
+       * 替换元素/行内块：**只并"图片盒"与行内公式构件盒本身**，**不并 KaTeX 内层 span**。
+       * 为什么（第一百二十一轮实测）：KaTeX 的 `SPAN.pstrut`（`overflow:hidden` 的 inline-block）会
+       * **向上溢出行盒**，把并集抬到 `64.84px`，而浏览器实画的正文带只有 `32.3px`（Δ `32.5px`）⇒
+       * 并进来就变成"拖动期比松手后高一截"（正是用户第②条要消灭的东西）。
+       * 而 `.md-math-rendered` 自身的盒是**行内盒**（实测 `21px`，不溢出）⇒ 拿它代表这颗行内公式。
+       */
+      const boxed = block.querySelectorAll<HTMLElement>(
+        'img,[data-img-widget],[data-md-math-rendered]'
+      )
+      for (const el of Array.from(boxed)) {
+        for (const cr of Array.from(el.getClientRects())) {
+          if (cr.width <= 0.5 && cr.height <= 0.5) continue
+          items.push({ left: cr.left, right: cr.right, top: cr.top, bottom: cr.bottom })
+        }
+      }
+      const lines: RectBox[] = []
+      for (const b of items.sort((x, y) => x.top - y.top)) {
+        const g = lines.find((x) => Math.min(x.bottom, b.bottom) - Math.max(x.top, b.top) > 0)
+        if (!g) lines.push({ ...b })
+        else {
+          g.left = Math.min(g.left, b.left)
+          g.right = Math.max(g.right, b.right)
+          g.top = Math.min(g.top, b.top)
+          g.bottom = Math.max(g.bottom, b.bottom)
+        }
+      }
+      return lines
+    }
+
+    /** `y` 落在哪一行：优先"包含它的那条"，否则取竖直重叠最大的那条 */
+    const pickLine = (lines: RectBox[], cy: number): RectBox | null => {
+      let best: RectBox | null = null
+      let bestOv = 0
+      for (const l of lines) {
+        if (cy >= l.top && cy <= l.bottom) return l
+        const ov = Math.min(l.bottom, cy + 0.5) - Math.max(l.top, cy - 0.5)
+        if (ov > bestOv) {
+          bestOv = ov
+          best = l
+        }
+      }
+      return best
+    }
+
+    /** 同一行内水平相邻（间隙 ≤ `gap`）的矩形并成一条连续带 ⇒ 公式段与正文段无缝 */
+    const mergeBands = (rects: RectBox[], gap: number): RectBox[] => {
+      const out: RectBox[] = []
+      for (const r of [...rects].sort((a, b) => a.top - b.top || a.left - b.left)) {
+        const last = out[out.length - 1]
+        const sameRow =
+          last != null && Math.min(last.bottom, r.bottom) - Math.max(last.top, r.top) > 0
+        if (last && sameRow && r.left <= last.right + gap) {
+          last.right = Math.max(last.right, r.right)
+          last.top = Math.min(last.top, r.top)
+          last.bottom = Math.max(last.bottom, r.bottom)
+        } else out.push({ ...r })
+      }
+      return out
+    }
+
+    /** 区间覆盖到的可见文本片段：逐节点裁到 `[from,to]`，再按 `block` 缓存里取行盒 */
+    const visibleFrags = (
+      view: EditorView,
+      from: number,
+      to: number,
+      onBlock: (b: HTMLElement) => RectBox[]
+    ): SelFrag[] => {
+      const out: SelFrag[] = []
+      if (!(to > from)) return out
+      const walker = document.createTreeWalker(view.dom, NodeFilter.SHOW_TEXT)
+      let n: Node | null
+      while ((n = walker.nextNode())) {
+        const t = n as Text
+        if (!t.length) continue
+        let start = -1
+        let whole = false
+        try {
+          start = view.posAtDOM(t, 0)
+        } catch {
+          start = NaN
+        }
+        if (!Number.isFinite(start)) {
+          /**
+           * 反查失败：**KaTeX 构件内部**的文字节点没有自己的文档位置（它是原子节点的一部分）
+           * ⇒ 退回用**构件自己的位置**判"在不在区间里"；在就把整个节点算进来（原子节点要么全在、
+           * 要么全不在，不需要逐字裁剪）。不兜底就会漏掉这几段 —— 而拖动期浏览器那份已经被我们
+           * 关掉（`data-sel-own=all`）⇒ 那几段会**完全没有选中样式**（实测漏 5 片）。
+           */
+          const host = t.parentElement?.closest(
+            '[data-md-math-rendered],[data-md-math-block]'
+          ) as HTMLElement | null
+          if (!host) continue
+          try {
+            const hp = view.posAtDOM(host, 0)
+            if (!(Number.isFinite(hp) && hp >= from - 1 && hp <= to + 1)) continue
+            start = 0
+            whole = true
+          } catch {
+            continue
+          }
+        }
+        const a1 = whole ? 0 : Math.max(from, start)
+        const b1 = whole ? t.length : Math.min(to, start + t.length)
+        if (b1 <= a1) continue
+        const r = document.createRange()
+        try {
+          r.setStart(t, a1 - start)
+          r.setEnd(t, b1 - start)
+        } catch {
+          continue
+        }
+        const rects: RectBox[] = []
+        for (const cr of Array.from(r.getClientRects())) {
+          if (cr.width <= 0.5 && cr.height <= 0.5) continue
+          rects.push({ left: cr.left, right: cr.right, top: cr.top, bottom: cr.bottom })
+        }
+        if (!rects.length) continue
+        const block = (t.parentElement?.closest(SEL_BLOCK_SEL) as HTMLElement | null) ?? null
+        if (block) onBlock(block)
+        const blockMath = !!t.parentElement?.closest('[data-md-math-block]')
+        const lh = parseFloat(
+          getComputedStyle(t.parentElement ?? (t as unknown as Element)).lineHeight
+        )
+        out.push({ range: r, rects, block, blockMath, lh: Number.isFinite(lh) ? lh : 0 })
+        if (out.length >= SEL_BAND_MAX_FRAGS) break
+      }
+      return out
+    }
+
+    /** 落在区间里的**行内公式渲染子树**（落定态只接管这几段；`posAtDOM` 取构件位置，不整树遍历） */
+    const mathWidgetsIn = (view: EditorView, from: number, to: number): HTMLElement[] => {
+      const out: HTMLElement[] = []
+      for (const el of Array.from(
+        view.dom.querySelectorAll<HTMLElement>('[data-md-math-rendered]')
+      )) {
+        try {
+          const p = view.posAtDOM(el, 0)
+          if (Number.isFinite(p) && p >= from - 1 && p <= to + 1) out.push(el)
+        } catch {
+          /* 位置取不到 ⇒ 这几段交回浏览器绘制 */
+        }
+      }
+      return out
+    }
+
+    /** 落在区间里的图片实体盒（选中观感仍由既有 `img-selected` 负责，这里只用来让带连续过图） */
+    const imgWidgetsIn = (view: EditorView, from: number, to: number): HTMLElement[] => {
+      const out: HTMLElement[] = []
+      for (const el of Array.from(view.dom.querySelectorAll<HTMLElement>('[data-img-widget]'))) {
+        const f = Number(el.getAttribute('data-img-from'))
+        if (!Number.isFinite(f)) continue
+        if (f >= from - 4 && f <= to + 4) out.push(el)
+      }
+      return out
+    }
+
+    const ensureSelBand = (view: EditorView): HTMLElement => {
+      if (selBand && selBand.isConnected) return selBand
+      selBand = document.createElement('div')
+      selBand.className = SEL_BAND_CLASS
+      selBand.setAttribute('data-sel-band', '')
+      selBand.contentEditable = 'false'
+      selBand.setAttribute('aria-hidden', 'true')
+      ;(view.dom.parentElement ?? document.body).appendChild(selBand)
+      return selBand
+    }
+
+    /** 闸门开关：`null` = 浏览器自己画（默认）；`all` = 拖动期整层独占；`math` = 落定态只接管行内公式 */
+    const setSelOwn = (view: EditorView | null | undefined, v: 'all' | 'math' | null): void => {
+      const dom = view?.dom
+      const cur = dom ? (dom.getAttribute(SEL_OWN_ATTR) as 'all' | 'math' | null) : null
+      if (selOwn === v && cur === v) return
+      selOwn = v
+      if (!dom) return
+      try {
+        if (v) dom.setAttribute(SEL_OWN_ATTR, v)
+        else dom.removeAttribute(SEL_OWN_ATTR)
+      } catch {
+        /* 视图已销毁：忽略 */
+      }
+    }
+
+    /**
+     * 原生（浏览器 DOM）选区的**文档区间**。
+     * 第一百二十一轮：拖动期整层由我们画（浏览器那份关掉）⇒ "我们画的"必须**包含**浏览器本来
+     * 会画的那段（否则就是新的一种"漏画"）：所以取 `试探区间 ∪ 原生区间`。原来的"把原生那段从
+     * 临时高亮里扣掉"（第一百一十五轮）随之作废 —— 那是"两层各画一半"时代的补丁。
      */
     const nativeDocRange = (view: EditorView): { from: number; to: number } | null => {
       const s = window.getSelection()
@@ -1114,34 +1370,264 @@ export const ImageSourceUi = Extension.create({
       }
     }
 
-    const clearLiveSel = (view?: EditorView | null): void => {
-      liveRange.from = -1
-      liveRange.to = -1
+    const clearSelBands = (view?: EditorView | null): void => {
+      setSelOwn(view, null)
+      if (selBand) {
+        selBand.remove()
+        selBand = null
+      }
       try {
         const h = (CSS as unknown as { highlights?: Map<string, unknown> }).highlights
         h?.delete(LIVE_SEL_HIGHLIGHT)
       } catch {
         /* 环境没有这个 API：忽略 */
       }
-      if (!liveMarked.size) return
-      const stillSelected = new Set<number>()
-      const sel = view?.state.selection
-      if (sel && !sel.empty) {
-        for (const i of collectImgSources(view.state)) {
-          if (
-            selectionIntersectsSource(
-              { from: sel.from, to: sel.to, empty: false, nodeSel: false },
-              { from: i.from, to: i.to }
-            )
-          )
-            stillSelected.add(i.from)
+      try {
+        const d = view?.dom
+        d?.removeAttribute('data-sel-band-live')
+        d?.removeAttribute('data-sel-band-ours')
+        d?.removeAttribute('data-sel-band-miss')
+      } catch {
+        /* 视图已销毁：忽略 */
+      }
+    }
+
+    /**
+     * 画一帧选中带（**只画不改**）。
+     * @param mode `math` = 落定态（只接管行内公式那几段）；`all` = 拖动期（整层独占）
+     * @returns 这一帧"我们负责画"的矩形数（0 ⇒ 已撤层撤闸，退回浏览器绘制）
+     */
+    const paintSelBands = (
+      view: EditorView,
+      from: number,
+      to: number,
+      mode: 'all' | 'math'
+    ): number => {
+      if (!(to > from)) {
+        clearSelBands(view)
+        return 0
+      }
+      const lineCache = new Map<HTMLElement, RectBox[]>()
+      const linesOf = (b: HTMLElement): RectBox[] => {
+        let v = lineCache.get(b)
+        if (!v) {
+          v = blockLineBoxes(b)
+          lineCache.set(b, v)
+        }
+        return v
+      }
+      /** 落定态：先看有没有行内公式落在区间里（**不整树遍历**，只查构件） */
+      const widgets = mode === 'math' ? mathWidgetsIn(view, from, to) : []
+      const frags = mode === 'all' ? visibleFrags(view, from, to, linesOf) : []
+      if (mode === 'math' && !widgets.length) {
+        clearSelBands(view)
+        return 0
+      }
+      if (mode === 'all' && frags.length > SEL_BAND_MAX_FRAGS) {
+        view.dom.setAttribute('data-sel-band-miss', 'over-cap')
+        clearSelBands(view)
+        return 0
+      }
+      const lineOf = (block: HTMLElement | null, cy: number, fallback: RectBox): RectBox => {
+        const lb = block ? pickLine(linesOf(block), cy) : null
+        return lb ?? fallback
+      }
+      // ── 我们负责的矩形（行盒高 × 覆盖到的 x 范围）
+      const raw: RectBox[] = []
+      /** 兜底高亮用：我们负责的**片段**（带没盖住的那几段补进 Highlight） */
+      const intentFrags: SelFrag[] = mode === 'all' ? frags : []
+      if (mode === 'math') {
+        for (const w of widgets) {
+          const box = w.getBoundingClientRect()
+          if (!(box.width > 0.5 && box.height > 0.5)) continue
+          const r: RectBox = { left: box.left, right: box.right, top: box.top, bottom: box.bottom }
+          const block = (w.closest(SEL_BLOCK_SEL) as HTMLElement | null) ?? null
+          const lb = lineOf(block, (box.top + box.bottom) / 2, r)
+          raw.push({ left: r.left, right: r.right, top: lb.top, bottom: lb.bottom })
+          // 兜底：这颗公式里的文字盒（行盒算错时也要有底色）
+          const walker = document.createTreeWalker(w, NodeFilter.SHOW_TEXT)
+          let n: Node | null
+          while ((n = walker.nextNode())) {
+            const t = n as Text
+            if (!t.length) continue
+            const rg = document.createRange()
+            rg.selectNodeContents(t)
+            const rects: RectBox[] = []
+            for (const cr of Array.from(rg.getClientRects())) {
+              if (cr.width <= 0.5 && cr.height <= 0.5) continue
+              rects.push({ left: cr.left, right: cr.right, top: cr.top, bottom: cr.bottom })
+            }
+            if (rects.length) intentFrags.push({ range: rg, rects, block, blockMath: false, lh: 0 })
+          }
+        }
+      } else {
+        for (const f of frags) {
+          // 块级公式的片段在下面单独处理（不套行盒）
+          if (f.blockMath) continue
+          for (const r of f.rects) {
+            const lb = lineOf(f.block, (r.top + r.bottom) / 2, r)
+            raw.push({ left: r.left, right: r.right, top: lb.top, bottom: lb.bottom })
+          }
+        }
+        // 行内公式：用**构件盒**取 x（公式片段的文字盒与相邻正文之间实测有 ~1.3px 的缝）
+        for (const w of Array.from(
+          view.dom.querySelectorAll<HTMLElement>('[data-md-math-rendered]')
+        )) {
+          try {
+            const p = view.posAtDOM(w, 0)
+            if (!(Number.isFinite(p) && p >= from - 1 && p <= to + 1)) continue
+          } catch {
+            continue
+          }
+          const box = w.getBoundingClientRect()
+          if (!(box.width > 0.5 && box.height > 0.5)) continue
+          const r: RectBox = { left: box.left, right: box.right, top: box.top, bottom: box.bottom }
+          const block = (w.closest(SEL_BLOCK_SEL) as HTMLElement | null) ?? null
+          const lb = lineOf(block, (box.top + box.bottom) / 2, r)
+          raw.push({ left: r.left, right: r.right, top: lb.top, bottom: lb.bottom })
+        }
+        // 图片：让带连续过图（选中观感仍由 `img-selected` 负责）
+        for (const w of imgWidgetsIn(view, from, to)) {
+          const box = w.getBoundingClientRect()
+          if (!(box.width > 0.5 && box.height > 0.5)) continue
+          const r: RectBox = { left: box.left, right: box.right, top: box.top, bottom: box.bottom }
+          const block = (w.closest(SEL_BLOCK_SEL) as HTMLElement | null) ?? null
+          const lb = lineOf(block, (box.top + box.bottom) / 2, r)
+          raw.push({ left: r.left, right: r.right, top: lb.top, bottom: lb.bottom })
+        }
+        // 块级公式：**不套外层行盒**（片段在 KaTeX 的行内块里，浏览器画的是它自己的行高盒）
+        for (const f of frags) {
+          if (!f.blockMath) continue
+          for (const r of f.rects) {
+            const h = r.bottom - r.top
+            const pad = f.lh > h ? (f.lh - h) / 2 : 0
+            raw.push({ left: r.left, right: r.right, top: r.top - pad, bottom: r.bottom + pad })
+          }
         }
       }
-      for (const el of liveMarked) {
-        const from = Number(el.getAttribute('data-img-from'))
-        if (!stillSelected.has(from)) el.classList.remove(IMG_SELECTED_CLASS)
+      if (!raw.length) {
+        clearSelBands(view)
+        return 0
+      }
+      const bands = mergeBands(raw, 8)
+      for (const b of bands) {
+        b.left -= SEL_BAND_PAD_X
+        b.right += SEL_BAND_PAD_X
+      }
+      // ── 画（容器与 `.img-src-overlay` 同一套：挂在 `view.dom.parentElement`，落在正文之下）
+      const node = ensureSelBand(view)
+      const parent = node.offsetParent as HTMLElement | null
+      const base = parent ? parent.getBoundingClientRect() : { left: 0, top: 0 }
+      const frag = document.createDocumentFragment()
+      for (const b of bands) {
+        const d = document.createElement('div')
+        d.style.left = `${(b.left - base.left).toFixed(2)}px`
+        d.style.top = `${(b.top - base.top).toFixed(2)}px`
+        d.style.width = `${Math.max(0, b.right - b.left).toFixed(2)}px`
+        d.style.height = `${Math.max(0, b.bottom - b.top).toFixed(2)}px`
+        frag.appendChild(d)
+      }
+      node.replaceChildren(frag)
+      // ── 回读**渲染后**的矩形（自证："画的"确实盖住了"要画的"）
+      const rendered: RectBox[] = []
+      for (const d of Array.from(node.children)) {
+        const r = d.getBoundingClientRect()
+        rendered.push({ left: r.left, right: r.right, top: r.top, bottom: r.bottom })
+      }
+      const covered = (r: RectBox): boolean =>
+        rendered.some(
+          (b) =>
+            b.left <= r.left + 0.5 &&
+            b.right >= r.right - 0.5 &&
+            Math.min(b.bottom, r.bottom) - Math.max(b.top, r.top) > 0
+        )
+      let missFrag = 0
+      const missRanges: Range[] = []
+      for (const f of intentFrags) {
+        if (f.rects.every(covered)) continue
+        missFrag++
+        missRanges.push(f.range)
+      }
+      try {
+        const h = (CSS as unknown as { highlights?: Map<string, unknown> }).highlights
+        const H = (window as unknown as { Highlight?: new (...r: Range[]) => unknown }).Highlight
+        if (h && H) {
+          if (missRanges.length) h.set(LIVE_SEL_HIGHLIGHT, new H(...missRanges))
+          else h.delete(LIVE_SEL_HIGHLIGHT)
+        }
+      } catch {
+        /* 无 API：忽略（带本身已经画出来了） */
+      }
+      /**
+       * 闸门：**只有确实画出来了才置位**（`rendered` 非空即"画出来了"）。画不出来一律撤闸
+       * ⇒ 退回浏览器自己的绘制 ⇒ 不会出现"没有选中样式"。
+       */
+      setSelOwn(view, rendered.length ? mode : null)
+      try {
+        const fmt = (r: RectBox): string =>
+          `${r.left.toFixed(2)},${r.top.toFixed(2)},${r.right.toFixed(2)},${r.bottom.toFixed(2)}`
+        view.dom.setAttribute(
+          'data-sel-band-ours',
+          intentFrags
+            .flatMap((f) => f.rects)
+            .map(fmt)
+            .join(';')
+        )
+        view.dom.setAttribute('data-sel-band-live', rendered.map(fmt).join(';'))
+        view.dom.setAttribute('data-sel-band-miss', `0/${missFrag}`)
+      } catch {
+        /* 忽略 */
+      }
+      return rendered.length
+    }
+
+    /** 落定态：按**模型选区**画一帧（`from/to/doc` 全同就跳过重算：选区事务很多，别每笔都量布局） */
+    const paintSettledSel = (view: EditorView): void => {
+      const s = view.state.selection
+      const k = settledKey
+      if (k && k.from === s.from && k.to === s.to && k.doc === view.state.doc) return
+      settledKey = { from: s.from, to: s.to, doc: view.state.doc }
+      if (s.empty) {
+        clearSelBands(view)
+        return
+      }
+      paintSelBands(view, s.from, s.to, 'math')
+    }
+
+    const clearLiveSel = (view?: EditorView | null): void => {
+      liveRange.from = -1
+      liveRange.to = -1
+      /**
+       * ① 图片类：只摘"当前状态并未选中"的那些（装饰自己加的那份不动）。清 `liveMarked` 之前
+       * 先算 `stillSelected`，`liveMarked` 为空就直接跳过（省一次 `collectImgSources`）。
+       */
+      if (liveMarked.size && view) {
+        const stillSelected = new Set<number>()
+        const sel = view.state.selection
+        if (sel && !sel.empty) {
+          for (const i of collectImgSources(view.state)) {
+            if (
+              selectionIntersectsSource(
+                { from: sel.from, to: sel.to, empty: false, nodeSel: false },
+                { from: i.from, to: i.to }
+              )
+            )
+              stillSelected.add(i.from)
+          }
+        }
+        for (const el of liveMarked) {
+          const from = Number(el.getAttribute('data-img-from'))
+          if (!stillSelected.has(from)) el.classList.remove(IMG_SELECTED_CLASS)
+        }
       }
       liveMarked.clear()
+      /**
+       * ② 选中带：撤掉"整层独占"，改按**当前模型选区**画落定态（只有行内公式那几段由我们接管）。
+       * 视图已销毁 ⇒ 整层撤掉（容器挂在 `view.dom` 之外，必须手动摘）。
+       */
+      settledKey = null
+      if (view && view.dom?.isConnected) paintSettledSel(view)
+      else clearSelBands(view)
     }
 
     /**
@@ -1150,48 +1636,22 @@ export const ImageSourceUi = Extension.create({
      */
     const paintLiveSel = (view: EditorView, from: number, to: number): void => {
       if (to <= from) {
-        clearLiveSel()
+        clearLiveSel(view)
         return
       }
       liveRange.from = from
       liveRange.to = to
       /**
-       * ① 文字：**原生 ∪ 临时**（去重，不叠色、不丢覆盖）。
-       *
-       * ⚠️ 第一百一十五轮（用户报障："鼠标还按着没松开的时候就丢尾巴了"）真因一：
-       * 此前这里是"原生选区非空 ⇒ **把整层删掉**"，而原生选区常常**比试探区间短**
-       *（实测 C 手势帧1→2：`hl101`（覆盖 101 字符、x 601）⇒ `dom1 hl0`（原生只有 1 字符、
-       * x 584..601）⇒ **可见覆盖从 101 字符掉到 1 字符**＝尾巴当场没了）。
-       * 现在只把试探区间里**没被原生盖住**的那几段交给 Highlight（同色 `--sel` ⇒ 视觉连成一片，
-       * 又不会叠成双倍深）；于是"可见覆盖 = 原生 ∪ 临时"天然只增不减（配合下面的高水位护栏）。
+       * ① 文字 + 公式 + 图片：整层行盒选中带（`all` 档：拖动期由我们独占绘制）。
+       * 几何与落定态**同一份函数**（`paintSelBands`）⇒ 用户第②条"拖动中 ≡ 松手后"按构造成立。
+       * 画不出来（位置不合法、片段超上限）⇒ 撤闸，浏览器自己那份照旧 ⇒ 不会"没有样式"。
        */
-      try {
-        const h = (CSS as unknown as { highlights?: Map<string, unknown> }).highlights
-        const H = (window as unknown as { Highlight?: new (...r: Range[]) => unknown }).Highlight
-        if (h && H) {
-          const nat = nativeDocRange(view)
-          const segs: Array<[number, number]> = []
-          if (!nat) segs.push([from, to])
-          else {
-            if (from < nat.from) segs.push([from, Math.min(to, nat.from)])
-            if (nat.to < to) segs.push([Math.max(from, nat.to), to])
-          }
-          const ranges: Range[] = []
-          for (const [s1, s2] of segs) {
-            if (s2 <= s1) continue
-            const a = view.domAtPos(s1)
-            const b = view.domAtPos(s2)
-            const r = document.createRange()
-            r.setStart(a.node, a.offset)
-            r.setEnd(b.node, b.offset)
-            ranges.push(r)
-          }
-          if (ranges.length) h.set(LIVE_SEL_HIGHLIGHT, new H(...ranges))
-          else h.delete(LIVE_SEL_HIGHLIGHT)
-        }
-      } catch {
-        /* 位置/DOM 不合法（文档刚变）⇒ 这一帧不画文字 */
-      }
+      settledKey = null
+      /** 我们画的 ⊇ 浏览器本来会画的 ⇒ 取"试探区间 ∪ 原生区间"（见 `nativeDocRange`） */
+      const nat = nativeDocRange(view)
+      const pf = nat ? Math.min(from, nat.from) : from
+      const pt = nat ? Math.max(to, nat.to) : to
+      paintSelBands(view, pf, pt, 'all')
       // ② 图片：落在试探区间里的 widget 加既有 `img-selected`
       const srcs = collectImgSources(view.state).filter((i) =>
         selectionIntersectsSource(
@@ -1881,6 +2341,15 @@ export const ImageSourceUi = Extension.create({
           const ro = new ResizeObserver(() => {
             sync()
             scheduleOverlay(editorView)
+            /** 第一百二十一轮：布局变了 ⇒ 落定态的带要按新几何重画（`settledKey` 只挡"输入没变"） */
+            settledKey = null
+            if (boxDrag == null) {
+              try {
+                paintSettledSel(editorView)
+              } catch {
+                clearSelBands(editorView)
+              }
+            }
           })
           ro.observe(editorView.dom)
           const onScroll = (): void => {
@@ -1888,7 +2357,17 @@ export const ImageSourceUi = Extension.create({
             scheduleOverlay(editorView)
           }
           editorView.dom.addEventListener('scroll', onScroll, true)
-          const onResize = (): void => scheduleOverlay(editorView)
+          const onResize = (): void => {
+            scheduleOverlay(editorView)
+            settledKey = null
+            if (boxDrag == null) {
+              try {
+                paintSettledSel(editorView)
+              } catch {
+                clearSelBands(editorView)
+              }
+            }
+          }
           window.addEventListener('resize', onResize)
           /**
            * 第七十三轮：`pendingClick` 的清理钩子（诊断锚挂在 `view.dom` 的 `data-img-pending`）。
@@ -2265,6 +2744,18 @@ export const ImageSourceUi = Extension.create({
                */
               if (boxDrag != null && liveRange.from >= 0 && liveRange.to > liveRange.from) {
                 paintLiveSel(editorView, liveRange.from, liveRange.to)
+              } else if (boxDrag == null) {
+                /**
+                 * 第一百二十一轮：**落定态**也要画一帧 —— 行内公式那几段由我们的选中带接管
+                 *（浏览器对公式片段画的是 KaTeX 内层 inline-block 的盒子：实测 15px，同行正文
+                 * 143.25px ⇒ 用户第①条）。`paintSettledSel` 自带"同 from/to/doc 就跳过"的判据，
+                 * 所以这里不必再包一层。异常一律吞掉：画不出来就撤闸退回浏览器绘制。
+                 */
+                try {
+                  paintSettledSel(editorView)
+                } catch {
+                  clearSelBands(editorView)
+                }
               }
             },
             destroy: () => {
@@ -2290,7 +2781,8 @@ export const ImageSourceUi = Extension.create({
               bandDrag = null
               boxDrag = null
               boxSettleTarget = null
-              clearLiveSel(editorView)
+              clearLiveSel(null)
+              clearSelBands(editorView)
               if (boxSettleRaf != null) {
                 window.cancelAnimationFrame(boxSettleRaf)
                 boxSettleRaf = null

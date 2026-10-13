@@ -525,9 +525,39 @@ ormal，只影响这种段落 */
   第一百一十三轮（P1）：**拖动期的试探区间**由 CSS Custom Highlight API 画 —— 拖动期我们
   **不 dispatch**（dispatch 会打断 Chromium 原生手势），所以 PM 装饰/原生选区都还没跟上，
   只能自己画一层。名字与 `imageToolbar.ts` 的 `LIVE_SEL_HIGHLIGHT` 一一对应；颜色只用既有
-  令牌 `--sel`（与选中底色同源，零硬编码色值）；松手落定后由原生选区/装饰接管，这一层立即撤掉。 */
+  令牌 `--sel`（与选中底色同源，零硬编码色值）；松手落定后由原生选区/装饰接管，这一层立即撤掉。
+  ⚠️ 第一百二十一轮：这一层现在只当**兜底**用（带没盖住的片段才补进来），主力是下面的 `.sel-band`。 */
 ::highlight(lumin-img-drag) {
   background-color: var(--sel);
+}
+/* ── 第一百二十一轮（用户两条口径）：**行盒选中带** ────────────────────────────────────
+  ①「这一行有行级公式时，公式的选中样式要和同行正文**同高且连续不间断**」；
+  ②「正文/图片/公式，**按住未松手**与**松手后**的选中样式**一致**（按松手后的样式做）」。
+  逐像素实测：浏览器对正文画的是**行盒**（纯文字行 32.3px、被图片撑高的行 143.25px），对行内公式
+  画的却是 KaTeX 内层 inline-block 的盒子（同一行里只有 **15px**、还按字形断开）⇒ 用户第①条。
+  做法：每行一条带（行盒高 × 被覆盖的 x 范围），同行相邻段并成一条 ⇒ 同高且无缝；容器与
+  `.img-src-overlay` 同一套定位/层级（自己**不写** z-index ⇒ 落在正文/原生选区/图片之下）；
+  颜色只用既有令牌 `--sel`（零硬编码）。 */
+.sel-band {
+  position: absolute;
+  left: 0;
+  top: 0;
+  pointer-events: none;
+}
+.sel-band > div {
+  position: absolute;
+  background-color: var(--sel);
+}
+/* 闸门：**只有 `imageToolbar.ts` 这一帧确实画出了带**（`setSelOwn`）才置位 —— 画不出来就撤闸，
+   退回浏览器自己的绘制，绝不出现"没有选中样式"。
+   `all`  = 拖动期整层由我们独占（浏览器那份关掉）；
+   `math` = 落定态只接管"行内公式"那几段（其余内容照旧由浏览器画，回归面最小）。 */
+.editor-content .md-preview[data-sel-own='all'] ::selection {
+  background: transparent;
+}
+.editor-content .md-preview[data-sel-own='math'] [data-md-math-rendered] ::selection,
+.editor-content .md-preview[data-sel-own='math'] [data-md-math-rendered]::selection {
+  background: transparent;
 }
 /* 语法被改坏（例如退格删掉结尾 `>`）：它不再是图片，但仍是正文 —— 只关拼写检查 */
 .md-preview .img-src-incomplete {
