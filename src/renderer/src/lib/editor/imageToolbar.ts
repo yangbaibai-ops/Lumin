@@ -433,14 +433,16 @@ function placeToolbar(bar: HTMLElement, anchor: HTMLElement | DOMRect): void {
  * （底色 32.19 ✓ Δ0.11），被图片撑高的行行盒 **143.25px**（底色仍 32.19 ⇒ Δ111.06），
  * 而**原生选区实画**在那一行上画的正是整条行盒（本机逐像素实测 143.25px，与本模块的目标矩形一致）。
  *
- * 几何口径（全部来自测量，**不写死像素**）：
+ * 几何口径（全部来自测量，**不写死像素、也没有"行高阈值"启发式**）：
  *   * 元素自身 `getClientRects()` = 逐行片段的 **x 范围**（Chromium 对 inline 元素按行片段返回）；
- *   * 该行的**行盒上下边** = 同一行上所有"行内参与者"（文字节点的 Range 矩形、行内元素矩形、
- *     图片等替换元素矩形）的并集 —— 被图片撑高的那一行由图片矩形给出 143.25，与行盒、
- *     与原生选区实画都逐像素一致（`Range.getClientRects()` 对**文字**只给字体内容盒 21px，
- *     所以不能直接拿它当行盒，必须取并集）；
- *   * 只有并集**高于行距**（`1lh`）的"被撑高的行"才需要覆盖层：普通行的底色已由
- *     `.img-src-revealed` 自身的 `padding-block` 补齐（Δ0.11px，第九十一轮已验收）⇒ 不重复画。
+ *   * 该片段的**行盒上下边** = 同一行盒里所有"参与者"（文字节点的 Range 矩形、行内盒、
+ *     替换元素 —— **含嵌在行内 span 内部的图片 widget**）按"竖直重叠即同一行"串成的组，
+ *     片段自己也作为种子放进组里，再用**片段的竖直中点**挑出它所在的那一组；
+ *   * **只要行盒比片段本身高**（>0.5px 亚像素容差）就补画 —— 覆盖层 = 片段的 x 范围 × 行盒的
+ *     y 范围。行盒与片段等高（普通行）时不画：那些行的底色已由 `.img-src-revealed` 自身的
+ *     `padding-block` 铺满（Δ0.11px，第九十一轮已验收）。
+ *   * 上一轮的两处缺陷（用户实测报障的根因）见 `collectRowRects` 的注释：行内 span 内部的
+ *     widget 没被采集、以及 KaTeX 相对定位的 strut 会污染行盒。
  *
  * 覆盖层挂在 `view.dom.parentElement` 上（与悬浮工具栏同一做法）⇒ **不在 `view.dom` 里**：
  * ProseMirror 的 DOM 观察者看不到它、不进 Markdown（往返逐字节不变）、不占布局，
@@ -449,6 +451,8 @@ function placeToolbar(bar: HTMLElement, anchor: HTMLElement | DOMRect): void {
 const SRC_OVERLAY_CLASS = 'img-src-overlay'
 /** "行盒所属的块"：与 `.img-src-revealed` 的排版上下文一致（段落/列表项/引用/单元格…） */
 const ROW_BLOCK_SEL = 'p, li, pre, td, th, blockquote, h1, h2, h3, h4, h5, h6'
+/** 替换元素：它们的高就是所在行盒的高（图片撑高行的唯一来源） */
+const REPLACED_TAGS = new Set(['IMG', 'SVG', 'CANVAS', 'VIDEO', 'IFRAME', 'OBJECT', 'EMBED'])
 
 interface RectBox {
   left: number
@@ -457,67 +461,96 @@ interface RectBox {
   bottom: number
 }
 
-/** 一个块里"可能撑起行盒"的行内参与者矩形（**排除** `exclude` 自己那一棵子树） */
-function inlineRowRects(block: Element, exclude: Element): RectBox[] {
-  const out: RectBox[] = []
-  const walk = (parent: Node): void => {
-    for (const child of Array.from(parent.childNodes)) {
-      if (child === exclude) continue
-      if (child.nodeType === 3) {
-        const tn = child as Text
-        if (!tn.length) continue
-        const rg = document.createRange()
-        rg.setStart(tn, 0)
-        rg.setEnd(tn, tn.length)
-        for (const r of Array.from(rg.getClientRects())) {
-          if (r.height > 0) out.push({ left: r.left, top: r.top, right: r.right, bottom: r.bottom })
-        }
-        continue
+/**
+ * 收集一个块里**参与行盒**的矩形（**排除** `exclude` 自己那一棵子树 —— 它由调用方按"片段"补上）。
+ *
+ * ⚠️ 第一百零七轮修正的两处（上一轮的红根因）：
+ *   1. **行内元素必须继续往下走**：图片 widget（`<span class="img-widget">` 或 `img`）会**嵌在**
+ *      源码文本的外层 `<span class="md-html">` 里（widget 挂在源码的结束位置 ⇒ PM 把它插进那层
+ *      span 内部）。上一轮遇到 `display: inline` 的元素就 `continue`，于是"与片段同一行的图片矩形"
+ *      根本没进集合 ⇒ 行盒看起来只有文字高（21px）⇒ **该行不补画**（用户实测：源码与高图同行、
+ *      位于行顶，底色却没铺满）。
+ *   2. **跳过"视觉排版孤岛"（KaTeX）**：`.pstrut` 之类是 `display: inline-block; width: 0`
+ *      但**绘制高 48.64px、且绘制顶边比所在行盒顶边还高 33px** 的盒子（KaTeX 用 vlist 表格 +
+ *      相对位移把它们挪出所在行）。算进来会把普通行误判成"被撑高"，甚至把相邻两行**粘成一行**
+ *      （实测：行盒 32.30 + 32.30 被粘成 64.79）。它们只影响绘制位置、不影响行盒
+ *      ⇒ 只取 `position: static` 的盒子，并且**整个 `.katex` 子树都不参与**
+ *      （公式的行盒由外层文字的行距决定）。
+ */
+function collectRowRects(parent: Node, exclude: Element, out: RectBox[]): void {
+  for (const child of Array.from(parent.childNodes)) {
+    if (child === exclude) continue
+    if (child.nodeType === 3) {
+      const tn = child as Text
+      if (!tn.length) continue
+      const rg = document.createRange()
+      rg.setStart(tn, 0)
+      rg.setEnd(tn, tn.length)
+      for (const r of Array.from(rg.getClientRects())) {
+        if (r.height > 0) out.push({ left: r.left, top: r.top, right: r.right, bottom: r.bottom })
       }
-      if (child.nodeType !== 1) continue
-      const el = child as HTMLElement
-      const cs = getComputedStyle(el)
-      if (cs.display === 'none' || cs.visibility === 'hidden') continue
-      // 行内盒（含行内块）与替换元素（img/svg）才参与"行盒"；块级子树的矩形跨多行，会污染并集
-      const replaced = el.tagName === 'IMG' || el.tagName === 'SVG'
-      if (replaced || cs.display.startsWith('inline')) {
-        for (const r of Array.from(el.getClientRects())) {
-          if (r.height > 0) out.push({ left: r.left, top: r.top, right: r.right, bottom: r.bottom })
-        }
-      }
-      if (!replaced && !cs.display.startsWith('inline')) walk(el)
+      continue
     }
+    if (child.nodeType !== 1) continue
+    const el = child as HTMLElement
+    const cs = getComputedStyle(el)
+    if (cs.display === 'none' || cs.visibility === 'hidden') continue
+    // KaTeX 子树整体跳过（见上面第 2 条）
+    if (el.classList.contains('katex')) continue
+    // 块级盒子自己的矩形跨多行（会污染行盒）⇒ 只往下走、不采集它；行内盒与替换元素才采集
+    const replaced = REPLACED_TAGS.has(el.tagName)
+    if ((replaced || cs.display.startsWith('inline')) && cs.position === 'static') {
+      for (const r of Array.from(el.getClientRects())) {
+        if (r.height > 0) out.push({ left: r.left, top: r.top, right: r.right, bottom: r.bottom })
+      }
+    }
+    collectRowRects(el, exclude, out)
   }
-  walk(block)
-  return out
 }
 
 /**
- * 一段行内档标识符**需要在覆盖层上补画**的逐行矩形（正常行不返回 —— 那些行 CSS 已经铺满）。
+ * 一段行内档标识符**需要在覆盖层上补画**的逐行矩形。
+ *
+ * 口径（第一百零七轮定稿，**不再用任何"行高阈值"启发式**）：
+ *   1. 行盒 = 该块里所有行盒参与者（文字 Range 矩形、行内盒、替换元素，**含嵌在行内 span 内部的
+ *      widget**）按"竖直重叠必然属于同一行盒"串成的组；
+ *   2. 片段所在的行盒 = **包含片段竖直中点的那一组**（不依赖"高图与片段本身是否重叠"，也**不把
+ *      片段自己放进分组** —— 片段因 `vertical-align: top` + 自身 padding 会比行盒顶边高出 0.59px，
+ *      放进分组会把上一行与这一行**粘成一行**，实测粘出 287.08px 的怪框）；
+ *   3. **只要行盒比片段本身高**（> 0.5px 亚像素容差）就补画：覆盖层矩形 = 片段的 x 范围 ×
+ *      行盒的 y 范围（"整行全高"，与浏览器给选区画的高亮同口径）；行盒与片段等高（普通行）时
+ *      不画 —— 那些行的底色已由 `.img-src-revealed` 自身的 `padding-block` 铺满（Δ0.11px）。
  * ⚠️ 只处理行内档（`--block` 的盒子本身就是 n × 行盒高，早铺满了）；
- * 编辑态（`--editing`，底色撤掉）也不画（调用方用选择器排除）。
+ * 编辑态（`--editing`，底色撤掉）由调用方用选择器排除。
  */
 function revealedRowRects(el: HTMLElement): RectBox[] {
   const block = (el.closest(ROW_BLOCK_SEL) as Element | null) ?? el.parentElement
   if (!block) return []
-  const strut = parseFloat(getComputedStyle(el).lineHeight)
-  const parts = inlineRowRects(block, el)
-  const out: RectBox[] = []
-  for (const frag of Array.from(el.getClientRects())) {
-    if (!frag.height && !frag.width) continue
-    let top = Infinity
-    let bottom = -Infinity
-    for (const p of parts) {
-      // 同一行 ⇔ 与这一片段在竖直方向有交叠（行盒彼此相邻、不会互相侵入）
-      if (p.bottom <= frag.top + 0.5 || p.top >= frag.bottom - 0.5) continue
-      top = Math.min(top, p.top)
-      bottom = Math.max(bottom, p.bottom)
+  const frags: RectBox[] = []
+  for (const r of Array.from(el.getClientRects())) {
+    if (r.width > 0 && r.height > 0)
+      frags.push({ left: r.left, top: r.top, right: r.right, bottom: r.bottom })
+  }
+  if (!frags.length) return []
+  const parts: RectBox[] = []
+  collectRowRects(block, el, parts)
+  // 行盒分组：按上边排序，与已有组竖直重叠即并入（同一行盒里的盒子必然互相重叠）
+  const rows: { top: number; bottom: number }[] = []
+  for (const r of parts.sort((a, b) => a.top - b.top)) {
+    const hit = rows.find((g) => r.top < g.bottom - 0.5 && r.bottom > g.top + 0.5)
+    if (hit) {
+      hit.top = Math.min(hit.top, r.top)
+      hit.bottom = Math.max(hit.bottom, r.bottom)
+    } else {
+      rows.push({ top: r.top, bottom: r.bottom })
     }
-    if (!Number.isFinite(top) || !Number.isFinite(bottom)) continue
-    const line = bottom - top
-    const limit = Number.isFinite(strut) ? strut + 0.5 : frag.height + 0.5
-    if (line <= limit) continue
-    out.push({ left: frag.left, top, right: frag.right, bottom })
+  }
+  const out: RectBox[] = []
+  for (const f of frags) {
+    const mid = (f.top + f.bottom) / 2
+    const row = rows.find((g) => mid >= g.top - 0.5 && mid <= g.bottom + 0.5)
+    if (!row || row.bottom - row.top <= f.bottom - f.top + 0.5) continue
+    out.push({ left: f.left, top: row.top, right: f.right, bottom: row.bottom })
   }
   return out
 }
