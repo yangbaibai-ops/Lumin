@@ -522,8 +522,15 @@ function collectRowRects(parent: Node, exclude: Element, out: RectBox[]): void {
  *      不画 —— 那些行的底色已由 `.img-src-revealed` 自身的 `padding-block` 铺满（Δ0.11px）。
  * ⚠️ 只处理行内档（`--block` 的盒子本身就是 n × 行盒高，早铺满了）；
  * 编辑态（`--editing`，底色撤掉）由调用方用选择器排除。
+ *
+ * 返回的每个矩形都带 `frag`（生成它的那个片段矩形）：第一百零八轮要用它把"整行全高"里
+ * **源码盒子之外**的那片空白带切出来（点空白带 ⇒ 不收回 + 按列落光标）。
  */
-function revealedRowRects(el: HTMLElement): RectBox[] {
+interface RowBox extends RectBox {
+  frag: RectBox
+}
+
+function revealedRowBoxes(el: HTMLElement): RowBox[] {
   const block = (el.closest(ROW_BLOCK_SEL) as Element | null) ?? el.parentElement
   if (!block) return []
   const frags: RectBox[] = []
@@ -545,12 +552,12 @@ function revealedRowRects(el: HTMLElement): RectBox[] {
       rows.push({ top: r.top, bottom: r.bottom })
     }
   }
-  const out: RectBox[] = []
+  const out: RowBox[] = []
   for (const f of frags) {
     const mid = (f.top + f.bottom) / 2
     const row = rows.find((g) => mid >= g.top - 0.5 && mid <= g.bottom + 0.5)
     if (!row || row.bottom - row.top <= f.bottom - f.top + 0.5) continue
-    out.push({ left: f.left, top: row.top, right: f.right, bottom: row.bottom })
+    out.push({ left: f.left, top: row.top, right: f.right, bottom: row.bottom, frag: f })
   }
   return out
 }
@@ -714,8 +721,8 @@ export const ImageSourceUi = Extension.create({
         dropOverlay()
         return
       }
-      const boxes: RectBox[] = []
-      for (const el of els) boxes.push(...revealedRowRects(el))
+      const boxes: RowBox[] = []
+      for (const el of els) boxes.push(...revealedRowBoxes(el))
       if (!boxes.length) {
         /**
          * 显形/归位的那一两帧里，"被撑高的行"可能还量不到（图片尚未挪到那一行）
@@ -753,6 +760,84 @@ export const ImageSourceUi = Extension.create({
           /* 量不到就不画：下一次 update/RO/resize 会再算一遍 */
         }
       })
+    }
+
+    /**
+     * ─── 第一百零八轮（用户口径）：整行全高覆盖层里"**源码盒子之外**"的那片空白带 ───────────
+     * 用户原话：「源码展示在顶部的源码**下面的区域**（**和图片相同高度但是除了源码以外的空白
+     * 区域**）也算作是**图片和图片源码的一部分**，也就是**点击这里图片不收回**，并且**可以通过
+     * 点击下方的空白区域将光标放置在同一列上面的源码处**（**和浏览器输入框的逻辑一致**）」。
+     *
+     * 判据（几何全部来自测量，不新增样式、不参与命中测试）：
+     *   * 带 = 覆盖层矩形（片段 x 范围 × 行盒 y 范围）**减去片段自己的盒子** —— 源码字形/内边距
+     *     所在区域一律**放行给既有路径**（拖动选择、点字落光标都不受影响）；
+     *   * 覆盖层仍是 `pointer-events: none`（`elementFromPoint` 永远拿不到它）⇒ 这里只是**按几何**
+     *     判定，不给覆盖层任何命中能力。
+     */
+    const bandAt = (
+      view: EditorView,
+      x: number,
+      y: number
+    ): { el: HTMLElement; frag: RectBox } | null => {
+      const els = view.dom.querySelectorAll<HTMLElement>(
+        '.img-src-revealed:not(.img-src-revealed--block)'
+      )
+      for (const el of Array.from(els)) {
+        // 只处理"裸 `<img …>` 原文"这一档（节点档点开时会先归一成原文，口径统一）
+        if (el.getAttribute('data-img-kind') !== 'raw') continue
+        for (const b of revealedRowBoxes(el)) {
+          if (x < b.left || x > b.right || y < b.top || y > b.bottom) continue
+          // 片段自己的盒子（源码文本所在）⇒ 交回既有路径
+          if (x >= b.frag.left && x <= b.frag.right && y >= b.frag.top && y <= b.frag.bottom)
+            return null
+          return { el, frag: b.frag }
+        }
+      }
+      return null
+    }
+
+    /**
+     * 按列求文档位置：用浏览器自己的"点 → 光标"映射（`caretRangeFromPoint`）在**该片段的字形行**
+     * 上取同一 x 的位置 —— 与"直接点同行字形"完全同一条映射；取不到时退回 `posAtCoords`。
+     * 最后 **clamp 到该段源码范围**（左侧越界 ⇒ 片段/源码起点，右侧越界 ⇒ 终点）。
+     */
+    const caretByColumn = (
+      view: EditorView,
+      el: HTMLElement,
+      frag: RectBox,
+      x: number
+    ): number | null => {
+      const from = Number(el.getAttribute('data-img-from'))
+      const img = Number.isFinite(from)
+        ? collectImgSources(view.state).find((i) => i.from === from)
+        : null
+      if (!img) return null
+      const midY = (frag.top + frag.bottom) / 2
+      let pos: number | null = null
+      try {
+        const d = document as Document & {
+          caretRangeFromPoint?: (px: number, py: number) => Range | null
+          caretPositionFromPoint?: (
+            px: number,
+            py: number
+          ) => { offsetNode: Node; offset: number } | null
+        }
+        const r = d.caretRangeFromPoint?.(x, midY)
+        if (r && view.dom.contains(r.startContainer))
+          pos = view.posAtDOM(r.startContainer, r.startOffset)
+        if (pos == null) {
+          const cp = d.caretPositionFromPoint?.(x, midY)
+          if (cp && view.dom.contains(cp.offsetNode)) pos = view.posAtDOM(cp.offsetNode, cp.offset)
+        }
+      } catch {
+        pos = null
+      }
+      if (pos == null) {
+        const at = view.posAtCoords({ left: x, top: midY })
+        pos = at ? at.pos : null
+      }
+      if (pos == null) return null
+      return Math.min(Math.max(pos, img.from), img.to)
     }
 
     /**
@@ -1074,6 +1159,25 @@ export const ImageSourceUi = Extension.create({
             mousedown(view, event) {
               clearPending()
               /**
+               * 第一百零八轮（用户口径）：先接管"**整行全高覆盖层里的空白带**"——
+               * 点它 **不收回**源码，并且按**同一 x 列**把光标落到该行源码上（浏览器输入框语义）。
+               * ⚠️ 只接管"片段盒子之外"的那一片：源码字形/内边距、图片本体、别处一律照旧放行。
+               */
+              const t0 = event.target as HTMLElement | null
+              if (!t0?.closest?.('[data-img-widget]') && t0?.tagName !== 'IMG') {
+                const band = bandAt(view, event.clientX, event.clientY)
+                if (band) {
+                  const pos = caretByColumn(view, band.el, band.frag, event.clientX)
+                  if (pos != null) {
+                    event.preventDefault()
+                    view.dispatch(
+                      view.state.tr.setSelection(TextSelection.create(view.state.doc, pos))
+                    )
+                    return true
+                  }
+                }
+              }
+              /**
                * 第七十一轮（用户报障：标识符"根本无法编辑和选中"）：**已经显示出来的标识符文本**
                * 必须走原生文本行为（放光标、拖选、输入）。此前这里对"按在图片源码范围内"的按下
                * **一律** `preventDefault` + `return true` ⇒ 标识符文本上的拖选也被吞掉
@@ -1081,7 +1185,7 @@ export const ImageSourceUi = Extension.create({
                * 现收窄为：**按在标识符文本上一律放行**（返回 false，交给 PM/浏览器），
                * 其余仍走"坐标 → 落在图片源码范围内 ⇒ 记 pendingClick"的老判据。
                */
-              const target = event.target as HTMLElement | null
+              const target = t0
               if (target?.closest?.('[data-img-revealed]')) return false
               /**
                * 第七十八轮：远程图片的**占位**（`click` 档下的 `[data-remote-src]`）也必须放行 ——
@@ -1517,7 +1621,21 @@ export const ImageSourceUi = Extension.create({
             const target = event.target as HTMLElement | null
             const el = target?.closest?.('[data-img-revealed]') as HTMLElement | null
             const raw = el ? el.getAttribute('data-img-from') : null
-            dragInsideFrom = raw != null && raw !== '' ? Number(raw) : null
+            let inside = raw != null && raw !== '' ? Number(raw) : null
+            /**
+             * 第一百零八轮：按在"整行全高覆盖层里的**空白带**"上，也算**按在这一段源码上** ——
+             * 空白带是图片/源码的一部分（见 `bandAt` 的说明）。否则 `dragging && dragInsideFrom == null`
+             * 会按第七十五轮防闪口径把这段源码**在按住期间藏掉**，于是同一次按下里刚落的
+             * "按列光标"会被 DOM 选区回读抹掉（实测：落的 285 在 60ms 后回退成 355）。
+             */
+            if (inside == null && event instanceof MouseEvent) {
+              const band = bandAt(editorView, event.clientX, event.clientY)
+              if (band) {
+                const f = Number(band.el.getAttribute('data-img-from'))
+                if (Number.isFinite(f)) inside = f
+              }
+            }
+            dragInsideFrom = inside
           }
           const onDragUp = (): void => {
             dragActive = false
