@@ -1150,7 +1150,10 @@ export const ImageSourceUi = Extension.create({
      * Δ `0.25px`）、纯文字行 `32.3`（实画 `32.3`、Δ `0.3px`）。
      */
     const blockLineBoxes = (block: HTMLElement): RectBox[] => {
-      const items: RectBox[] = []
+      /** 文本片段（已按半行距补成"行高盒"） */
+      const textItems: RectBox[] = []
+      /** 图片/行内块实体盒 */
+      const boxItems: RectBox[] = []
       const walker = document.createTreeWalker(block, NodeFilter.SHOW_TEXT)
       let n: Node | null
       while ((n = walker.nextNode())) {
@@ -1164,35 +1167,85 @@ export const ImageSourceUi = Extension.create({
         for (const cr of Array.from(r.getClientRects())) {
           if (cr.width <= 0.5 && cr.height <= 0.5) continue
           const pad = Number.isFinite(lh) && lh > cr.height ? (lh - cr.height) / 2 : 0
-          items.push({ left: cr.left, right: cr.right, top: cr.top - pad, bottom: cr.bottom + pad })
+          textItems.push({
+            left: cr.left,
+            right: cr.right,
+            top: cr.top - pad,
+            bottom: cr.bottom + pad
+          })
         }
       }
       /**
        * 替换元素/行内块：**只并"图片盒"与行内公式构件盒本身**，**不并 KaTeX 内层 span**。
        * 为什么（第一百二十一轮实测）：KaTeX 的 `SPAN.pstrut`（`overflow:hidden` 的 inline-block）会
        * **向上溢出行盒**，把并集抬到 `64.84px`，而浏览器实画的正文带只有 `32.3px`（Δ `32.5px`）⇒
-       * 并进来就变成"拖动期比松手后高一截"（正是用户第②条要消灭的东西）。
-       * 而 `.md-math-rendered` 自身的盒是**行内盒**（实测 `21px`，不溢出）⇒ 拿它代表这颗行内公式。
+       * 并进来就变成"拖动期比松手后高一截"。而 `.md-math-rendered` 自身的盒是**行内盒**（实测
+       * `21px`，不溢出）⇒ 拿它代表这颗行内公式。
        */
-      const boxed = block.querySelectorAll<HTMLElement>(
-        'img,[data-img-widget],[data-md-math-rendered]'
-      )
+      const boxed = block.querySelectorAll<HTMLElement>('img,[data-img-widget]')
       for (const el of Array.from(boxed)) {
         for (const cr of Array.from(el.getClientRects())) {
           if (cr.width <= 0.5 && cr.height <= 0.5) continue
-          items.push({ left: cr.left, right: cr.right, top: cr.top, bottom: cr.bottom })
+          boxItems.push({ left: cr.left, right: cr.right, top: cr.top, bottom: cr.bottom })
         }
       }
-      const lines: RectBox[] = []
-      for (const b of items.sort((x, y) => x.top - y.top)) {
-        const g = lines.find((x) => Math.min(x.bottom, b.bottom) - Math.max(x.top, b.top) > 0)
-        if (!g) lines.push({ ...b })
-        else {
-          g.left = Math.min(g.left, b.left)
-          g.right = Math.max(g.right, b.right)
-          g.top = Math.min(g.top, b.top)
-          g.bottom = Math.max(g.bottom, b.bottom)
+      const union = (g: RectBox, b: RectBox): void => {
+        g.left = Math.min(g.left, b.left)
+        g.right = Math.max(g.right, b.right)
+        g.top = Math.min(g.top, b.top)
+        g.bottom = Math.max(g.bottom, b.bottom)
+      }
+      /**
+       * ① **文本行**：要求**较强竖直重叠**（≥ 较矮者的一半）才算同一行。
+       * ⚠️ 第一百二十三（用户报障：「在图片源码上拖选 ⇒ 灰带把上一行也盖住」）真因一：
+       * 旧口径是"**有任何竖直重叠就算同一行**"⇒ 一颗 143px 的行内图会把**它跨到的所有文本行**
+       * 串成一串（实测把本段 3 行 + 2 张图粘成 `[354.02, 641.16]`＝**287px** 一个盒子），
+       * 于是"按在下面那行源码上拖"的带从 354px 起、把上一行（正文+行内公式，413..436）也盖住。
+       */
+      const rows: RectBox[] = []
+      const strongOverlap = (a: RectBox, b: RectBox, k: number): boolean => {
+        const h = Math.min(a.bottom - a.top, b.bottom - b.top)
+        return h > 0 && Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top) >= h * k
+      }
+      for (const b of textItems.sort((x, y) => x.top - y.top)) {
+        const g = rows.find((x) => strongOverlap(x, b, 0.5))
+        if (!g) rows.push({ ...b })
+        else union(g, b)
+      }
+      /**
+       * ② **图片盒**：它**竖直罩住**哪几行就并进哪几行（一颗高图 = 那一行的行盒，浏览器也是这么画的：
+       * 实测该行正文带 `143.25px`）；一行都没罩住就并进"中心最近"的那行；连文本行都没有就自己成一行。
+       */
+      for (const b of boxItems) {
+        if (!rows.length) {
+          rows.push({ ...b })
+          continue
         }
+        const cy = (b.top + b.bottom) / 2
+        const hit = rows.filter((r) => cy >= r.top && cy <= r.bottom)
+        if (hit.length) for (const r of hit) union(r, b)
+        else {
+          let best = rows[0]
+          let bestD = Infinity
+          for (const r of rows) {
+            const d = Math.abs((r.top + r.bottom) / 2 - cy)
+            if (d < bestD) {
+              bestD = d
+              best = r
+            }
+          }
+          union(best, b)
+        }
+      }
+      /**
+       * ③ 再把**几乎重合**的两行并成一条（同一行里的两条文本片段被①/②各自扩到同一个图盒后会近乎相等），
+       * 阈值 0.8：真正的相邻行最多"擦边"重叠几个像素（实测 0.3~0.6px / 143px ⇒ 0.4%），绝不会到 80%。
+       */
+      const lines: RectBox[] = []
+      for (const r of rows.sort((x, y) => x.top - y.top)) {
+        const g = lines.find((x) => strongOverlap(x, r, 0.8))
+        if (g) union(g, r)
+        else lines.push({ ...r })
       }
       return lines
     }
@@ -1212,18 +1265,35 @@ export const ImageSourceUi = Extension.create({
       return best
     }
 
-    /** 同一行内水平相邻（间隙 ≤ `gap`）的矩形并成一条连续带 ⇒ 公式段与正文段无缝 */
-    const mergeBands = (rects: RectBox[], gap: number): RectBox[] => {
+    /**
+     * 同一条**行盒**内水平相邻（间隙 ≤ `gap`）的矩形并成一条连续带 ⇒ 公式段与正文段无缝。
+     * ⚠️ 第一百二十三真因二：旧口径是"**竖直有任何重叠**且水平相邻就合并"⇒ 相邻两行的行盒哪怕只
+     * 擦边重叠 `0.3~0.6px`（实测：图行 `[354.67,497.92]` 与下一行 `[497.33,641.17]`）也会被粘成
+     * 一条横跨两行的带。现在按**行盒身份**分组：只有同一条行盒（同一个对象）内部的矩形才合并，
+     * 不同行一律各自成带（`top/bottom` 直接取该行行盒）。
+     */
+    const mergeBands = (
+      pieces: Array<{ rect: RectBox; line: RectBox }>,
+      gap: number
+    ): RectBox[] => {
+      const byLine = new Map<RectBox, RectBox[]>()
+      for (const p of pieces) {
+        const g = byLine.get(p.line)
+        if (g) g.push(p.rect)
+        else byLine.set(p.line, [p.rect])
+      }
       const out: RectBox[] = []
-      for (const r of [...rects].sort((a, b) => a.top - b.top || a.left - b.left)) {
-        const last = out[out.length - 1]
-        const sameRow =
-          last != null && Math.min(last.bottom, r.bottom) - Math.max(last.top, r.top) > 0
-        if (last && sameRow && r.left <= last.right + gap) {
-          last.right = Math.max(last.right, r.right)
-          last.top = Math.min(last.top, r.top)
-          last.bottom = Math.max(last.bottom, r.bottom)
-        } else out.push({ ...r })
+      for (const [line, rects] of byLine) {
+        const sorted = [...rects].sort((a, b) => a.left - b.left)
+        let cur: RectBox | null = null
+        for (const r of sorted) {
+          if (cur && r.left <= cur.right + gap) cur.right = Math.max(cur.right, r.right)
+          else {
+            if (cur) out.push(cur)
+            cur = { left: r.left, right: r.right, top: line.top, bottom: line.bottom }
+          }
+        }
+        if (cur) out.push(cur)
       }
       return out
     }
@@ -1297,29 +1367,58 @@ export const ImageSourceUi = Extension.create({
       return out
     }
 
-    /** 落在区间里的**行内公式渲染子树**（落定态只接管这几段；`posAtDOM` 取构件位置，不整树遍历） */
+    /**
+     * 构件的**文档区间**（`[s,e)`，`e>s`）。`posAtDOM(el,0)` 给的是构件**前面**那个位置；
+     * 长度取 `doc.nodeAt(pos).nodeSize`（行内公式/图片这类原子节点都是 1）。
+     */
+    const widgetRange = (view: EditorView, el: HTMLElement): { s: number; e: number } | null => {
+      let p = NaN
+      try {
+        p = view.posAtDOM(el, 0)
+      } catch {
+        return null
+      }
+      if (!Number.isFinite(p)) return null
+      let size = 1
+      try {
+        const n = view.state.doc.nodeAt(p)
+        if (n && n.nodeSize > 0) size = n.nodeSize
+      } catch {
+        /* 取不到就按 1 处理 */
+      }
+      return { s: p, e: p + size }
+    }
+
+    /**
+     * **严格覆盖**判定：只有 `[from,to]` 把构件整段包住（`from ≤ s && to ≥ e`）才算"并入"。
+     * ⚠️ 第一百二十三（用户报障：「从后往前选『粗』到『星』，竟把后面的 `a * kb` 也选上」）真因：
+     * 旧口径是 `p >= from - 1 && p <= to + 1`（±1 位置）⇒ **选区正好停在公式起点**时照样命中，
+     * 于是把公式**整块**矩形并进来 ⇒ 画出了选区之外的灰底（"不许更宽"）。
+     */
+    const coversWidget = (from: number, to: number, r: { s: number; e: number } | null): boolean =>
+      !!r && r.e > r.s && from <= r.s && to >= r.e
+
+    /** 落在区间里、且**被完整覆盖**的**行内公式渲染子树**（落定态只接管这几段） */
     const mathWidgetsIn = (view: EditorView, from: number, to: number): HTMLElement[] => {
       const out: HTMLElement[] = []
       for (const el of Array.from(
         view.dom.querySelectorAll<HTMLElement>('[data-md-math-rendered]')
       )) {
-        try {
-          const p = view.posAtDOM(el, 0)
-          if (Number.isFinite(p) && p >= from - 1 && p <= to + 1) out.push(el)
-        } catch {
-          /* 位置取不到 ⇒ 这几段交回浏览器绘制 */
-        }
+        if (coversWidget(from, to, widgetRange(view, el))) out.push(el)
       }
       return out
     }
 
-    /** 落在区间里的图片实体盒（选中观感仍由既有 `img-selected` 负责，这里只用来让带连续过图） */
+    /** 落在区间里、且**被完整覆盖**的图片实体盒（选中观感仍由既有 `img-selected` 负责，这里只让带连续过图） */
     const imgWidgetsIn = (view: EditorView, from: number, to: number): HTMLElement[] => {
       const out: HTMLElement[] = []
+      const srcs = collectImgSources(view.state)
       for (const el of Array.from(view.dom.querySelectorAll<HTMLElement>('[data-img-widget]'))) {
         const f = Number(el.getAttribute('data-img-from'))
         if (!Number.isFinite(f)) continue
-        if (f >= from - 4 && f <= to + 4) out.push(el)
+        const src = srcs.find((i) => i.from === f)
+        if (!src) continue
+        if (from <= src.from && to >= src.to) out.push(el)
       }
       return out
     }
@@ -1432,8 +1531,8 @@ export const ImageSourceUi = Extension.create({
         const lb = block ? pickLine(linesOf(block), cy) : null
         return lb ?? fallback
       }
-      // ── 我们负责的矩形（行盒高 × 覆盖到的 x 范围）
-      const raw: RectBox[] = []
+      // ── 我们负责的矩形（**行盒**高 × 覆盖到的 x 范围）+ 它属于哪一条行盒（合并只在同一条行盒内做）
+      const pieces: Array<{ rect: RectBox; line: RectBox }> = []
       /** 兜底高亮用：我们负责的**片段**（带没盖住的那几段补进 Highlight） */
       const intentFrags: SelFrag[] = mode === 'all' ? frags : []
       if (mode === 'math') {
@@ -1443,7 +1542,10 @@ export const ImageSourceUi = Extension.create({
           const r: RectBox = { left: box.left, right: box.right, top: box.top, bottom: box.bottom }
           const block = (w.closest(SEL_BLOCK_SEL) as HTMLElement | null) ?? null
           const lb = lineOf(block, (box.top + box.bottom) / 2, r)
-          raw.push({ left: r.left, right: r.right, top: lb.top, bottom: lb.bottom })
+          pieces.push({
+            rect: { left: r.left, right: r.right, top: lb.top, bottom: lb.bottom },
+            line: lb
+          })
           // 兜底：这颗公式里的文字盒（行盒算错时也要有底色）
           const walker = document.createTreeWalker(w, NodeFilter.SHOW_TEXT)
           let n: Node | null
@@ -1466,34 +1568,42 @@ export const ImageSourceUi = Extension.create({
           if (f.blockMath) continue
           for (const r of f.rects) {
             const lb = lineOf(f.block, (r.top + r.bottom) / 2, r)
-            raw.push({ left: r.left, right: r.right, top: lb.top, bottom: lb.bottom })
+            pieces.push({
+              rect: { left: r.left, right: r.right, top: lb.top, bottom: lb.bottom },
+              line: lb
+            })
           }
         }
-        // 行内公式：用**构件盒**取 x（公式片段的文字盒与相邻正文之间实测有 ~1.3px 的缝）
+        /**
+         * 行内公式：用**构件盒**取 x（公式片段的文字盒与相邻正文之间实测有 ~1.3px 的缝）。
+         * 命中口径 = **严格覆盖**（`coversWidget`）：选区只"碰到"公式起点不算命中，绝不把公式
+         * 整块并进来（第一百二十三用户报障真因）。
+         */
         for (const w of Array.from(
           view.dom.querySelectorAll<HTMLElement>('[data-md-math-rendered]')
         )) {
-          try {
-            const p = view.posAtDOM(w, 0)
-            if (!(Number.isFinite(p) && p >= from - 1 && p <= to + 1)) continue
-          } catch {
-            continue
-          }
+          if (!coversWidget(from, to, widgetRange(view, w))) continue
           const box = w.getBoundingClientRect()
           if (!(box.width > 0.5 && box.height > 0.5)) continue
           const r: RectBox = { left: box.left, right: box.right, top: box.top, bottom: box.bottom }
           const block = (w.closest(SEL_BLOCK_SEL) as HTMLElement | null) ?? null
           const lb = lineOf(block, (box.top + box.bottom) / 2, r)
-          raw.push({ left: r.left, right: r.right, top: lb.top, bottom: lb.bottom })
+          pieces.push({
+            rect: { left: r.left, right: r.right, top: lb.top, bottom: lb.bottom },
+            line: lb
+          })
         }
-        // 图片：让带连续过图（选中观感仍由 `img-selected` 负责）
+        // 图片：让带连续过图（严格覆盖才算；选中观感仍由 `img-selected` 负责）
         for (const w of imgWidgetsIn(view, from, to)) {
           const box = w.getBoundingClientRect()
           if (!(box.width > 0.5 && box.height > 0.5)) continue
           const r: RectBox = { left: box.left, right: box.right, top: box.top, bottom: box.bottom }
           const block = (w.closest(SEL_BLOCK_SEL) as HTMLElement | null) ?? null
           const lb = lineOf(block, (box.top + box.bottom) / 2, r)
-          raw.push({ left: r.left, right: r.right, top: lb.top, bottom: lb.bottom })
+          pieces.push({
+            rect: { left: r.left, right: r.right, top: lb.top, bottom: lb.bottom },
+            line: lb
+          })
         }
         // 块级公式：**不套外层行盒**（片段在 KaTeX 的行内块里，浏览器画的是它自己的行高盒）
         for (const f of frags) {
@@ -1501,15 +1611,22 @@ export const ImageSourceUi = Extension.create({
           for (const r of f.rects) {
             const h = r.bottom - r.top
             const pad = f.lh > h ? (f.lh - h) / 2 : 0
-            raw.push({ left: r.left, right: r.right, top: r.top - pad, bottom: r.bottom + pad })
+            // 每片段自成一条"行"（不与相邻片段跨行合并）
+            const own: RectBox = {
+              left: r.left,
+              right: r.right,
+              top: r.top - pad,
+              bottom: r.bottom + pad
+            }
+            pieces.push({ rect: own, line: own })
           }
         }
       }
-      if (!raw.length) {
+      if (!pieces.length) {
         clearSelBands(view)
         return 0
       }
-      const bands = mergeBands(raw, 8)
+      const bands = mergeBands(pieces, 8)
       for (const b of bands) {
         b.left -= SEL_BAND_PAD_X
         b.right += SEL_BAND_PAD_X
