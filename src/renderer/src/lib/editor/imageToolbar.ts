@@ -710,12 +710,14 @@ export const ImageSourceUi = Extension.create({
       overlay = null
     }
 
+    /** 覆盖层要伺候的元素：行内档 + 非编辑态（编辑态底色撤掉，覆盖层也不该在） */
+    const OVERLAY_TARGET_SEL = `.img-src-revealed:not(.img-src-revealed--block):not(.img-src-revealed--editing)`
+    /** 有没有需要覆盖层的显形源码（只看 DOM，不做任何测量 ⇒ 可以在事务里同步调用） */
+    const hasOverlayTarget = (view: EditorView): boolean =>
+      !!view.dom.querySelector(OVERLAY_TARGET_SEL)
+
     const syncOverlay = (view: EditorView): void => {
-      const els = Array.from(
-        view.dom.querySelectorAll<HTMLElement>(
-          `.img-src-revealed:not(.img-src-revealed--block):not(.img-src-revealed--editing)`
-        )
-      )
+      const els = Array.from(view.dom.querySelectorAll<HTMLElement>(OVERLAY_TARGET_SEL))
       if (!els.length) {
         overlayMiss = 0
         dropOverlay()
@@ -725,11 +727,15 @@ export const ImageSourceUi = Extension.create({
       for (const el of els) boxes.push(...revealedRowBoxes(el))
       if (!boxes.length) {
         /**
-         * 显形/归位的那一两帧里，"被撑高的行"可能还量不到（图片尚未挪到那一行）
+         * 显形/归位的那几帧里，"被撑高的行"可能还量不到（图片尚未挪到那一行）
          * ⇒ **先留着上一帧的覆盖层、下一帧再量**，避免它"画出来→撤掉→又画出来"地闪；
-         * 连续两帧都量不到才真的撤（切到编辑态、或这段源码所在的行本来就都是正常行）。
+         * 连续若干帧都量不到才真的撤（切到编辑态、或这段源码所在的行本来就都是正常行）。
+         * ⚠️ 第一百零九轮：预算由 1 帧放宽到 5 帧 —— 显形后图片回流 + 段落重排可能跨好几帧，
+         * 旧预算会在回流没结束时就把层撤掉，而此后若没有别的触发（RO/滚动/resize）就**一直空着**
+         * （逐帧实测：偶发 `ovEl=true / ov=0` 且不再恢复）。多量几帧的代价只是几次选择器查询 +
+         * 矩形读取；画不出来时终态仍是不画（与旧行为一致）。
          */
-        if (overlayMiss++ < 1) scheduleOverlay(view)
+        if (overlayMiss++ < 5) scheduleOverlay(view)
         else dropOverlay()
         return
       }
@@ -838,6 +844,46 @@ export const ImageSourceUi = Extension.create({
       }
       if (pos == null) return null
       return Math.min(Math.max(pos, img.from), img.to)
+    }
+
+    /**
+     * ─── 第一百一十轮（用户口径）：**从空白带按下并拖动 = 在同一列源码字形上按下并拖动** ────────
+     * 用户原话：「优化下，**点击源码的空白区域拖动也可以选择文字**，使其**和直接点击在同一列
+     * 源码上拖动是一样的效果**」。
+     *
+     * 做法（同一套映射，不另造第二套）：
+     *   * **按下**（带内）⇒ 锚点 = `caretByColumn(该行片段)`（与"单击落光标"同一个函数），
+     *     并先把光标落在锚点上（单击=空光标的口径不变）；
+     *   * **拖动**⇒ 当前点：指针仍在**空白带**里 ⇒ 同一按列映射（自动 clamp 到该行片段）；
+     *     指针落到**文字/字形或别处** ⇒ 交回**原生**映射（`posAtCoords`，与 PM 自己的拖选同一条）；
+     *     选区 = `[min(锚点, 当前), max(锚点, 当前)]`；
+     *   * **松手**⇒ 只清掉拖动状态（选区原样保留），不加第二套落定/复验。
+     * ⚠️ 只在"空白带按下"这一条路上生效：**在字形上按下**照旧放行给原生拖选（`bandAt` 对片段
+     * 盒子内的点返回 null）。
+     */
+    let bandDrag: { el: HTMLElement; anchor: number } | null = null
+
+    /** 指针处的"当前点"：带内按列映射、带外原生映射（都不新增第二套坐标逻辑） */
+    const bandDragPosAt = (view: EditorView, x: number, y: number): number | null => {
+      const band = bandAt(view, x, y)
+      if (band) return caretByColumn(view, band.el, band.frag, x)
+      const at = view.posAtCoords({ left: x, top: y })
+      return at ? at.pos : null
+    }
+
+    const bandDragMove = (view: EditorView, x: number, y: number): void => {
+      if (!bandDrag) return
+      const cur = bandDragPosAt(view, x, y)
+      if (cur == null) return
+      const from = Math.min(bandDrag.anchor, cur)
+      const to = Math.max(bandDrag.anchor, cur)
+      const sel = view.state.selection
+      if (sel.from === from && sel.to === to) return
+      try {
+        view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, from, to)))
+      } catch {
+        /* 位置非法（文档刚变）⇒ 下一次移动再试 */
+      }
     }
 
     /**
@@ -1170,6 +1216,11 @@ export const ImageSourceUi = Extension.create({
                   const pos = caretByColumn(view, band.el, band.frag, event.clientX)
                   if (pos != null) {
                     event.preventDefault()
+                    /**
+                     * 第一百一十轮：把这一按记成"带内拖动的锚点"（拖动时按同一套映射扩选）；
+                     * 没有拖动就是一次普通单击 ⇒ 只落光标（选区为空）——口径不变。
+                     */
+                    bandDrag = { el: band.el, anchor: pos }
                     view.dispatch(
                       view.state.tr.setSelection(TextSelection.create(view.state.doc, pos))
                     )
@@ -1640,12 +1691,23 @@ export const ImageSourceUi = Extension.create({
           const onDragUp = (): void => {
             dragActive = false
             dragInsideFrom = null
-            // 松手后**触发一次重算**（带 KEY meta 的空事务）⇒ 立刻回到既有口径
+            /**
+             * 松手后**触发一次重算**（空事务）⇒ 立刻回到既有口径。
+             *
+             * ⚠️ 第一百零九轮修正（用户报障：「点击空白区域 / 点击源码会出现**背景颜色闪烁**」）：
+             * 此前这里发的是**带 `KEY` meta 的空事务** `setMeta(KEY, { from })`，而 `apply` 的 meta
+             * 分支会把 `editing` **强制**写成 `false`（`editing: !!meta.editing`）。于是当光标本来
+             * 就在源码里（编辑态）时，这一下会把底色**重新点亮**，紧接着又被下一次选区事务切回编辑态
+             * ⇒ 一帧内 `底色亮 → 灭` 的**回摆**。逐帧实测（点空白带）：`… editing+bg-off →（93ms）
+             * revealed+bg →（110ms）editing+bg-off …`。
+             * 现在改发**空事务**：`apply` 走"按当前选区重算"那条既有分支，`editing` 由 `caretInside`
+             * 口径得出，不再被 meta 强改；`addToHistory: false` 免得往撤销栈里塞无意义的一步。
+             */
             try {
               editorView.dispatch(
-                editorView.state.tr.setMeta(KEY, {
-                  from: KEY.getState(editorView.state)?.from ?? null
-                })
+                editorView.state.tr
+                  .setSelection(editorView.state.selection)
+                  .setMeta('addToHistory', false)
               )
             } catch {
               /* 忽略：下一次选区事务会再算一遍 */
@@ -1662,6 +1724,22 @@ export const ImageSourceUi = Extension.create({
            */
           window.addEventListener('mousemove', onMoveBlank)
           window.addEventListener('mouseup', onUpBlank, true)
+          /**
+           * 第一百一十轮：空白带拖动（与上面那套"最后一块右侧空白拖选"并列、互不干扰 ——
+           * 那套只在 `blankAnchor != null` 时动作，而这套只在 `bandDrag != null` 时动作）。
+           * 挂在 window 上：指针移出编辑器/移出窗口也能继续扩选，松手（或指针取消/失焦）即结束。
+           */
+          const onBandMove = (event: MouseEvent): void => {
+            if (!bandDrag || event.buttons !== 1) return
+            bandDragMove(editorView, event.clientX, event.clientY)
+          }
+          const onBandUp = (): void => {
+            bandDrag = null
+          }
+          window.addEventListener('mousemove', onBandMove)
+          window.addEventListener('mouseup', onBandUp, true)
+          window.addEventListener('pointercancel', onBandUp, true)
+          window.addEventListener('blur', onBandUp)
           return {
             update: () => {
               try {
@@ -1669,8 +1747,14 @@ export const ImageSourceUi = Extension.create({
               } catch {
                 /* 定位失败不该影响编辑：下一次 update 会再算一遍 */
               }
-              // 显形/隐藏、编辑态切换、文档变化都会走到这里 ⇒ 覆盖层跟着重算
-              scheduleOverlay(editorView)
+              /**
+               * 第一百零九轮：**摘层要同步**，画层才逐帧合并。
+               * 进入编辑态/隐藏时那一帧就把覆盖层撤掉（纯 DOM 摘除、零测量），否则"底色已经撤了、
+               * 灰带还多留一帧"本身也是一次可见闪动（逐帧实测：编辑态那一帧覆盖层仍为 2）。
+               * 需要**测量**的重算照旧 `scheduleOverlay`（逐帧合并，避免布局抖动）。
+               */
+              if (!hasOverlayTarget(editorView)) dropOverlay()
+              else scheduleOverlay(editorView)
             },
             destroy: () => {
               ro.disconnect()
@@ -1688,6 +1772,11 @@ export const ImageSourceUi = Extension.create({
               window.removeEventListener('blur', onDragUp)
               window.removeEventListener('mousemove', onMoveBlank)
               window.removeEventListener('mouseup', onUpBlank, true)
+              window.removeEventListener('mousemove', onBandMove)
+              window.removeEventListener('mouseup', onBandUp, true)
+              window.removeEventListener('pointercancel', onBandUp, true)
+              window.removeEventListener('blur', onBandUp)
+              bandDrag = null
               if (pendingDom === editorView.dom) pendingDom = null
               clearPending()
               hideBar()
