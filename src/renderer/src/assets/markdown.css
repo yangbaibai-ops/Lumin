@@ -521,6 +521,14 @@ ormal，只影响这种段落 */
   outline-offset: 1px;
   border-radius: 3px;
 }
+/**
+  第一百一十三轮（P1）：**拖动期的试探区间**由 CSS Custom Highlight API 画 —— 拖动期我们
+  **不 dispatch**（dispatch 会打断 Chromium 原生手势），所以 PM 装饰/原生选区都还没跟上，
+  只能自己画一层。名字与 `imageToolbar.ts` 的 `LIVE_SEL_HIGHLIGHT` 一一对应；颜色只用既有
+  令牌 `--sel`（与选中底色同源，零硬编码色值）；松手落定后由原生选区/装饰接管，这一层立即撤掉。 */
+::highlight(lumin-img-drag) {
+  background-color: var(--sel);
+}
 /* 语法被改坏（例如退格删掉结尾 `>`）：它不再是图片，但仍是正文 —— 只关拼写检查 */
 .md-preview .img-src-incomplete {
   vertical-align: top;

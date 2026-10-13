@@ -37,6 +37,13 @@ import {
 export { revealDecision } from './imageReveal'
 export type { RevealSel, RevealRange } from './imageReveal'
 
+/**
+ * 「这张图片算被选中」的观感类名 —— **全仓唯一出处**：装饰（`Decoration.node` / widget）与
+ * 第一百一十三轮的**拖动期即时绘制**（P1，只画不改）都用它，CSS 也只有一份
+ *（`markdown.css` 的 `.md-preview .img-selected`：`--sel` 铺底 + `--accent` 描边）。
+ */
+const IMG_SELECTED_CLASS = 'img-selected'
+
 /** 图片的一段"源码标记"：节点形式（`![alt](src)`）或原文形式（`<img …>`） */
 export interface ImgSource {
   /** 'node' = Tiptap 的 Image 节点；'raw' = 文档里那段 `<img …>` 原文 */
@@ -1000,10 +1007,138 @@ export const ImageSourceUi = Extension.create({
             /* 位置非法（文档刚变）⇒ 放弃这一次 */
           }
         }
+        /**
+         * 第一百一十三轮（P1）：落定 dispatch **之后**才撤掉临时绘制 —— 顺序反了会闪一帧空白。
+         * 再等一帧（下一帧）才清：`selectionToDOM` 的原生高亮要下一帧才画出来，先清就会露出空档。
+         */
+        if (t.from === view.state.selection.from && t.to === view.state.selection.to) {
+          window.requestAnimationFrame(() => clearLiveSel())
+        }
         if (boxSettleLeft-- > 0) boxSettleRaf = window.requestAnimationFrame(tryOnce)
         else boxSettleTarget = null
       }
       boxSettleRaf = window.requestAnimationFrame(tryOnce)
+    }
+
+    /**
+     * ─── 第一百一十三轮 · P1：**拖动期即时观感**（用户报障"按下并拖动没有选择的样式，要等松手"）──
+     *
+     * 为什么此前拖动期是"瞎"的：跨图片实体这一路**故意不在拖动期 dispatch**（dispatch 会打断
+     * Chromium 的原生手势，见 `boxDrag` 那段），而原生选区在图片死区里是**塌缩的空光标**
+     *（实测逐帧 `355-355E → 254-254E → 153-153E …`）⇒ 浏览器不画高亮、装饰也判不出"相交"
+     * ⇒ 松手前**一个像素的反馈都没有**。
+     *
+     * 做法（**只画不改**，拖动期依然零 dispatch）：
+     *   * **文字**：CSS Custom Highlight API（`CSS.highlights`）—— 名字 `lumin-img-drag`，
+     *     一个 `Range` 从试探区间两端 `domAtPos` 取；高亮只落在**文字节点**上（图片盒不是文字，
+     *     天然不会被它染色）；
+     *   * **图片**：给落在试探区间里的 widget 加**既有的** `img-selected` 类（复用装饰用的同一个
+     *     类名与同一份 CSS，不新增类名体系）；
+     *   * **原生选区已覆盖时不叠**：浏览器自己在画高亮（原生选区非空）就撤掉我们的 highlight，
+     *     避免"两层底色叠加"变成双倍深；
+     *   * **清理**：`endDrag`/落定 dispatch 之后（下一帧）/卸载/取消 一律清干净；清 `img-selected`
+     *     时只摘**当前状态并未选中**的那些（避免把装饰自己加的类摘掉）。
+     */
+    const LIVE_SEL_HIGHLIGHT = 'lumin-img-drag'
+    /** 我们临时加过 `img-selected` 的 widget（清的时候只动这一批） */
+    const liveMarked = new Set<HTMLElement>()
+    const liveRange = { from: -1, to: -1 }
+
+    const hasNativeSelection = (): boolean => {
+      const s = window.getSelection()
+      return !!s && !s.isCollapsed && s.rangeCount > 0
+    }
+
+    const clearLiveSel = (view?: EditorView | null): void => {
+      liveRange.from = -1
+      liveRange.to = -1
+      try {
+        const h = (CSS as unknown as { highlights?: Map<string, unknown> }).highlights
+        h?.delete(LIVE_SEL_HIGHLIGHT)
+      } catch {
+        /* 环境没有这个 API：忽略 */
+      }
+      if (!liveMarked.size) return
+      const stillSelected = new Set<number>()
+      const sel = view?.state.selection
+      if (sel && !sel.empty) {
+        for (const i of collectImgSources(view.state)) {
+          if (
+            selectionIntersectsSource(
+              { from: sel.from, to: sel.to, empty: false, nodeSel: false },
+              { from: i.from, to: i.to }
+            )
+          )
+            stillSelected.add(i.from)
+        }
+      }
+      for (const el of liveMarked) {
+        const from = Number(el.getAttribute('data-img-from'))
+        if (!stillSelected.has(from)) el.classList.remove(IMG_SELECTED_CLASS)
+      }
+      liveMarked.clear()
+    }
+
+    /**
+     * 按试探区间画一帧（同一帧里文字与图片一起画）。
+     * @param from/@param to 试探区间（`[min(锚点, 当前点), max(...)]`，锚点复用按下点/按列映射）
+     */
+    const paintLiveSel = (view: EditorView, from: number, to: number): void => {
+      if (to <= from) {
+        clearLiveSel()
+        return
+      }
+      liveRange.from = from
+      liveRange.to = to
+      // ① 文字：原生选区自己在画就不叠（避免双倍深）
+      try {
+        const h = (CSS as unknown as { highlights?: Map<string, unknown> }).highlights
+        const H = (window as unknown as { Highlight?: new (...r: Range[]) => unknown }).Highlight
+        if (h && H) {
+          if (hasNativeSelection()) h.delete(LIVE_SEL_HIGHLIGHT)
+          else {
+            const a = view.domAtPos(from)
+            const b = view.domAtPos(to)
+            const r = document.createRange()
+            r.setStart(a.node, a.offset)
+            r.setEnd(b.node, b.offset)
+            h.set(LIVE_SEL_HIGHLIGHT, new H(r))
+          }
+        }
+      } catch {
+        /* 位置/DOM 不合法（文档刚变）⇒ 这一帧不画文字 */
+      }
+      // ② 图片：落在试探区间里的 widget 加既有 `img-selected`
+      const srcs = collectImgSources(view.state).filter((i) =>
+        selectionIntersectsSource(
+          { from, to, empty: false, nodeSel: false },
+          { from: i.from, to: i.to }
+        )
+      )
+      const want = new Set(srcs.map((i) => i.from))
+      const widgets = view.dom.querySelectorAll<HTMLElement>('[data-img-widget]')
+      for (const w of Array.from(widgets)) {
+        const f = Number(w.getAttribute('data-img-from'))
+        if (!Number.isFinite(f)) continue
+        if (want.has(f)) {
+          if (!w.classList.contains(IMG_SELECTED_CLASS)) {
+            w.classList.add(IMG_SELECTED_CLASS)
+            liveMarked.add(w)
+          }
+        } else if (liveMarked.has(w)) {
+          w.classList.remove(IMG_SELECTED_CLASS)
+          liveMarked.delete(w)
+        }
+      }
+    }
+
+    /** 拖动期每帧：锚点（按下点/原生锚点）→ 当前点（盒上取半盒端，否则用原生光标）⇒ 试探区间 */
+    const boxDragLive = (view: EditorView): void => {
+      if (!boxDrag) return
+      const a = boxDrag.anchor ?? boxDrag.pressPos
+      const b = boxDrag.focus ?? view.state.selection.head
+      if (a == null || b == null) return
+      paintLiveSel(view, Math.min(a, b), Math.max(a, b))
     }
 
     /**
@@ -1213,7 +1348,7 @@ export const ImageSourceUi = Extension.create({
             for (const img of imgs) {
               const selected = selectionIntersectsSource(selLike93, img)
               if (selected && img.kind === 'node') {
-                decos.push(Decoration.node(img.from, img.to, { class: 'img-selected' }))
+                decos.push(Decoration.node(img.from, img.to, { class: IMG_SELECTED_CLASS }))
               }
               if (img.kind === 'raw') {
                 /**
@@ -1277,7 +1412,7 @@ export const ImageSourceUi = Extension.create({
                     () => {
                       const span = document.createElement('span')
                       span.className = inline ? 'img-widget img-widget--inline' : 'img-widget'
-                      if (selected) span.classList.add('img-selected')
+                      if (selected) span.classList.add(IMG_SELECTED_CLASS)
                       span.setAttribute('data-img-widget', '')
                       span.setAttribute('data-img-from', String(img.from))
                       span.setAttribute('data-img-inline', inline ? 'true' : 'false')
@@ -1913,6 +2048,11 @@ export const ImageSourceUi = Extension.create({
               'data-img-drag-edge',
               boxDrag.focus == null ? '' : String(boxDrag.focus)
             )
+            /**
+             * 第一百一十三轮（P1）：同一帧里把"试探区间"画出来（文字走 CSS Highlight、图片加既有
+             * `img-selected`）——**仍然零 dispatch**。这样"按下并拖动"就有即时观感，不必等松手。
+             */
+            boxDragLive(editorView)
           }
           const onBandUp = (): void => {
             bandDrag = null
@@ -1920,7 +2060,10 @@ export const ImageSourceUi = Extension.create({
              * 第一百一十一轮：松手（或指针取消/失焦）时把"跨图片实体"那一路落定 ——
              * 仍然是**唯一一处**落定 + 有界复验（`boxDragSettle`），拖动期没落过任何子。
              */
-            if (!boxDrag) return
+            if (!boxDrag) {
+              clearLiveSel(editorView)
+              return
+            }
             const bd = boxDrag
             boxDrag = null
             const anchor = bd.anchor
@@ -1929,7 +2072,11 @@ export const ImageSourceUi = Extension.create({
               (bd.anchorLost && editorView.state.selection.empty
                 ? editorView.state.selection.head
                 : null)
-            if (anchor == null || focus == null || anchor === focus) return
+            if (anchor == null || focus == null || anchor === focus) {
+              // 没有要落定的东西 ⇒ 立刻清干净（别把临时绘制留在文档上）
+              clearLiveSel(editorView)
+              return
+            }
             boxSettleTarget = { from: Math.min(anchor, focus), to: Math.max(anchor, focus) }
             boxSettleLeft = 6
             boxDragSettle(editorView)
@@ -1953,6 +2100,16 @@ export const ImageSourceUi = Extension.create({
                */
               if (!hasOverlayTarget(editorView)) dropOverlay()
               else scheduleOverlay(editorView)
+              /**
+               * 第一百一十三轮（P1）：拖动期的临时绘制要**跟着 PM 的事务重画**。
+               * 真因实测：原生拖动本身每帧都在落光标（PM 事务）⇒ widget 由 `toDOM` **重建** ⇒ 我们
+               * 刚加的 `img-selected` 连同元素一起消失，下一帧再加回来 ⇒ 逐帧
+               * `img1[254] → img0[] → img1[254]`（肉眼就是"选中样式在闪"）。
+               * 这里在 `update`（PM 重建之后）按同一份试探区间重画一次：文字走 Highlight、图片补类。
+               */
+              if (liveRange.from >= 0 && liveRange.to > liveRange.from) {
+                paintLiveSel(editorView, liveRange.from, liveRange.to)
+              }
             },
             destroy: () => {
               ro.disconnect()
@@ -1977,6 +2134,7 @@ export const ImageSourceUi = Extension.create({
               bandDrag = null
               boxDrag = null
               boxSettleTarget = null
+              clearLiveSel(editorView)
               if (boxSettleRaf != null) {
                 window.cancelAnimationFrame(boxSettleRaf)
                 boxSettleRaf = null
