@@ -1742,15 +1742,57 @@ export const ImageSourceUi = Extension.create({
      * 才回来 —— 正是用户"按下拖动但内容却没有被选中的样式，抬起时才有"那句话。
      * 所以块级公式必须**与图片一样当成"可覆盖的原子盒"**并进来。
      *
-     * 盒子的取法：优先用**公式自身的渲染盒**（KaTeX 的 `.katex-display` 子元素，宽高贴着公式），
-     * 拿不到才退回外层 `div.md-math-block`（它是**整行宽**，会把整行都铺上带，那正是"不许更宽"）。
+     * ─── 第一百二十九轮（用户报障：**图片源码被选中的样式，拖动期与松手后不一样**）──────────
+     * 上一版把块级公式并进来时用的是 `div.md-math-block` 的**子元素**（`.katex-display`）当盒子 ——
+     * 它 `display: block`、**宽度等于整行**（实测 `[320,163.2,1242,212.5]`，而公式字形只占
+     * `[737.5,162.8,824.5,208.8]`）⇒ **拖动期**那一行被铺成**整行宽的灰带**，而**松手后**那一行
+     * 根本不画带 ⇒ 用户看到"块级公式那一行是整行宽的灰带"，且"鼠标一松就变样"。
+     *
+     * 现在**两个档（拖动期 `all` / 落定态 `math`）都走这里**，并且只取**浏览器真正画出来的范围**：
+     *   * **y**：块级公式内部可见文字盒的并集（没有文字盒才退回子元素的盒）；
+     *   * **x**：同上 —— 于是带紧贴公式本体，不再"动不动整行宽"。
+     * 换句话说：**拖动期与松手后取同一个来源**（这是用户口径里"以松手后为准"的落法）。
+     * 返回**矩形**而不是元素：调用方（两档）直接并进带，不需要再各算一套几何。
      */
-    const mathBlockBoxesIn = (view: EditorView, from: number, to: number): HTMLElement[] => {
-      const out: HTMLElement[] = []
+    const mathBlockRectsIn = (view: EditorView, from: number, to: number): RectBox[] => {
+      const out: RectBox[] = []
       for (const el of Array.from(view.dom.querySelectorAll<HTMLElement>('[data-md-math-block]'))) {
         if (!coversWidget(from, to, widgetRange(view, el))) continue
-        const inner = el.firstElementChild as HTMLElement | null
-        out.push(inner && inner.getBoundingClientRect().width > 0.5 ? inner : el)
+        const union: RectBox | null = (() => {
+          let u: RectBox | null = null
+          const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT)
+          let n: Node | null
+          while ((n = walker.nextNode())) {
+            const t = n as Text
+            if (!t.length || !t.textContent?.trim()) continue
+            const rg = document.createRange()
+            try {
+              rg.selectNodeContents(t)
+            } catch {
+              continue
+            }
+            for (const cr of Array.from(rg.getClientRects())) {
+              if (cr.width <= 0.5 && cr.height <= 0.5) continue
+              if (!u) u = { left: cr.left, right: cr.right, top: cr.top, bottom: cr.bottom }
+              else {
+                u.left = Math.min(u.left, cr.left)
+                u.right = Math.max(u.right, cr.right)
+                u.top = Math.min(u.top, cr.top)
+                u.bottom = Math.max(u.bottom, cr.bottom)
+              }
+            }
+          }
+          return u
+        })()
+        if (union) {
+          out.push(union)
+          continue
+        }
+        const inner = (el.firstElementChild as HTMLElement | null) ?? el
+        const r = inner.getBoundingClientRect()
+        if (r.width > 0.5 && r.height > 0.5) {
+          out.push({ left: r.left, right: r.right, top: r.top, bottom: r.bottom })
+        }
       }
       return out
     }
@@ -1966,39 +2008,41 @@ export const ImageSourceUi = Extension.create({
             line: lb
           })
         }
-        // 块级公式：它在 `visibleFrags` 里取不到任何片段（KaTeX 的字形没有文档位置）⇒ 必须像图片
-        // 一样按**构件盒**并进来，否则整块公式在拖动期一点样式都没有（见 `mathBlockBoxesIn`）。
-        // ⚠️ 这里**不套外层行盒**（`lineOf` 会一路 `closest` 到 `view.dom` 那个 div ⇒ 行盒变成
-        // 整篇文档高，带会糊满全屏）—— 块的边界就是公式自己的盒。
-        for (const w of mathBlockBoxesIn(view, from, to)) {
-          const box = w.getBoundingClientRect()
-          if (!(box.width > 0.5 && box.height > 0.5)) continue
+      }
+      /**
+       * ─── 第一百二十九轮（用户报障：**图片源码被选中的样式，拖动期与松手后不一样**）──────────
+       * 块级公式必须**两档都画**（拖动期 `all` / 落定态 `math`），而且几何来源**只有一个**
+       * （`mathBlockRectsIn`：公式本体**实画范围**的并集）。
+       *
+       * 上一版把它写在 `else`（= `mode === 'all'` 拖动期）那一支里 —— 后果有两个，正好就是用户
+       * 看到的两张图：
+       *   * 拖动期用的是 `.katex-display` 的盒（`display: block`、**宽度=整行**，实测
+       *     `[320,163.2,1242,212.5]` 而公式字形只有 `[737.5,162.8,824.5,208.8]`）
+       *     ⇒ 那一行铺成**整行宽的灰带**；
+       *   * 落定态（`mode='math'`）**根本没有块级公式这一支** ⇒ 那一行一条带都不画
+       *     ⇒ "鼠标一松就变样"。
+       * 现在移到分支之外、两档共用；`frags` 只在 `all` 档有内容（落定态不遍历全文片段），
+       * 所以下面那段"块级公式文字片段兜底"天然只在拖动期生效 —— 它的矩形被上面的并集包含。
+       */
+      for (const own of mathBlockRectsIn(view, from, to)) {
+        if (!(own.right - own.left > 0.5 && own.bottom - own.top > 0.5)) continue
+        pieces.push({ rect: own, line: own })
+      }
+      // 块级公式的**文字片段兜底**：片段在 KaTeX 的行内块里，浏览器画的是它自己的行高盒
+      // （外层行盒会把 89px 算成别的）⇒ 每片段自成一条"行"、不与相邻片段跨行合并。
+      for (const f of frags) {
+        if (!f.blockMath) continue
+        if (f.block) pieceBlocks.add(f.block)
+        for (const r of f.rects) {
+          const h = r.bottom - r.top
+          const pad = f.lh > h ? (f.lh - h) / 2 : 0
           const own: RectBox = {
-            left: box.left,
-            right: box.right,
-            top: box.top,
-            bottom: box.bottom
+            left: r.left,
+            right: r.right,
+            top: r.top - pad,
+            bottom: r.bottom + pad
           }
-          const block = (w.closest(SEL_BLOCK_SEL) as HTMLElement | null) ?? null
-          if (block) pieceBlocks.add(block)
           pieces.push({ rect: own, line: own })
-        }
-        // 块级公式的**文字片段兜底**：片段在 KaTeX 的行内块里，浏览器画的是它自己的行高盒
-        // （外层行盒会把 89px 算成别的）⇒ 每片段自成一条"行"、不与相邻片段跨行合并。
-        for (const f of frags) {
-          if (!f.blockMath) continue
-          if (f.block) pieceBlocks.add(f.block)
-          for (const r of f.rects) {
-            const h = r.bottom - r.top
-            const pad = f.lh > h ? (f.lh - h) / 2 : 0
-            const own: RectBox = {
-              left: r.left,
-              right: r.right,
-              top: r.top - pad,
-              bottom: r.bottom + pad
-            }
-            pieces.push({ rect: own, line: own })
-          }
         }
       }
       if (!pieces.length) {
@@ -2217,6 +2261,16 @@ export const ImageSourceUi = Extension.create({
     const clearLiveSel = (view?: EditorView | null): void => {
       liveRange.from = -1
       liveRange.to = -1
+      /**
+       * ⚠️ 第一百二十九轮（用户报障：**拖动期与松手后的样式不一样**）：
+       * `settledKey` 是"落定态要不要重画"的**去重键**（`from`/`to`/`doc` 全同就跳过）。
+       * 拖动期那份带是按 `mode='all'` 画的，**几何口径可能与落定态不同**（本轮就是：块级公式行
+       * 在拖动期是"整行宽的 `.katex-display` 盒"、落定态没有它）。松手时键刚好与松手后的模型选区
+       * 相同 ⇒ `paintSettledSel` 会**直接返回**，于是屏幕上留着的还是**拖动期那一份**（`own` 仍是
+       * `all`）——"鼠标一松就变样"的另一半就是这个。
+       * 这里把键清掉：松手一定会用**落定态口径**重画一次（两档现在共用 `mathBlockRectsIn`）。
+       */
+      settledKey = null
       /**
        * ① 图片类：只摘"当前状态并未选中"的那些（装饰自己加的那份不动）。清 `liveMarked` 之前
        * 先算 `stillSelected`，`liveMarked` 为空就直接跳过（省一次 `collectImgSources`）。
