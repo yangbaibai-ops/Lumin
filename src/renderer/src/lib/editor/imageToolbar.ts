@@ -1001,6 +1001,14 @@ export const ImageSourceUi = Extension.create({
      * 一落定成功就立刻停 ⇒ "松手后仍在写 DOM"的窗口从 ~650ms 缩到通常 1–2 帧。
      */
     const BOX_SETTLE_MAX_FAILS = 6
+    /**
+     * 落定**成功之后**的看门狗帧数（第一百二十六轮）：PM 的 `DOMObserver` 会在我们落定成功之后
+     * 把**过期的 DOM 选区**读回来、把整段选购吞掉（逐帧实测：目标 `360-753` → 下一帧模型 `360-360E`）。
+     * 12 帧（≈200ms）足以骑过那串读回，同时仍是**有界**的；用户一有 `mousedown/keydown` 立刻收手。
+     */
+    const BOX_SETTLE_WATCH = 0
+    /** 看门狗已跑过的帧数 */
+    let boxSettleWatch = 0
 
     /** 图片实体盒 → 它的源码区间（纯映射：认 `data-img-from` + `collectImgSources`，不比较 DOM 身份） */
     const imgRangeOfWidget = (
@@ -1065,7 +1073,47 @@ export const ImageSourceUi = Extension.create({
      *      `data-img-settle-fallback` 记 `late|fail`，供套件断言走了哪条路。
      */
     const boxDragSettle = (view: EditorView): void => {
-      if (boxSettleRaf != null) return
+      /**
+       * ⚠️ 上一次落定/看门狗可能还挂着一帧 rAF（用户已经按了新的 mousedown ⇒ `cancelWatch` 只清了
+       * `boxSettleTarget`、没清 rAF）—— 旧代码在这里直接 `return`，于是**新的一次落定根本没落**，
+       * 选区就停在 DOMObserver 读回来的塌缩值上（逐帧实测：上行跨表格 `target360-753` 全丢）。
+       * 现在改成：新落定接管旧 rAF。
+       */
+      if (boxSettleRaf != null) {
+        try {
+          window.cancelAnimationFrame(boxSettleRaf)
+        } catch {
+          /* 忽略 */
+        }
+        boxSettleRaf = null
+      }
+      /**
+       * 第一百二十六轮（用户报障：跨表格/公式/图片拖动，**松手后丢一部分**）：
+       * 落定**成功之后不能立刻收工**。逐帧实测（诊断锚 `data-img-settle-in`）：
+       * 上行跨表格拖动 `target360-753` 落定成功，**其后** PM 的 `DOMObserver` 把**过期的 DOM 选区**
+       * （上行拖动时它常常还塌缩在起点）读回来 ⇒ 模型变成 `360-360E`，整段选购被吞掉 ——
+       * 而我们的复验在"首次成功那一帧"就停了（旧行为）。
+       * 现在：成功后再**有界**看 `BOX_SETTLE_WATCH` 帧，**只在选区被改小/改没时**补写；
+       * 用户一旦有新的 `mousedown/keydown`（新动作）立刻收手，绝不与用户争。
+       */
+      const stopWatch = (): void => {
+        window.removeEventListener('mousedown', cancelWatch, true)
+        window.removeEventListener('keydown', cancelWatch, true)
+      }
+      const cancelWatch = (): void => {
+        boxSettleTarget = null
+        if (boxSettleRaf != null) {
+          try {
+            window.cancelAnimationFrame(boxSettleRaf)
+          } catch {
+            /* 忽略 */
+          }
+          boxSettleRaf = null
+        }
+        boxSettleWatch = 0
+        boxSettleFails = 0
+        stopWatch()
+      }
       const setTo = (t: { from: number; to: number }): boolean => {
         const sel = view.state.selection
         if (sel.from === t.from && sel.to === t.to) return true
@@ -1081,7 +1129,10 @@ export const ImageSourceUi = Extension.create({
       const tryOnce = (): void => {
         boxSettleRaf = null
         const t = boxSettleTarget
-        if (!t) return
+        if (!t) {
+          stopWatch()
+          return
+        }
         const ok = setTo(t)
         if (ok) {
           /**
@@ -1090,8 +1141,12 @@ export const ImageSourceUi = Extension.create({
            * —— 之后不再有任何补写，窗口到此为止。
            */
           window.requestAnimationFrame(() => clearLiveSel(view))
-          boxSettleTarget = null
           view.dom.setAttribute('data-img-settle-fallback', 'ok')
+          if (boxSettleWatch++ < BOX_SETTLE_WATCH) {
+            boxSettleRaf = window.requestAnimationFrame(tryOnce)
+            return
+          }
+          cancelWatch()
           return
         }
         if (++boxSettleFails < BOX_SETTLE_MAX_FAILS) {
@@ -1102,8 +1157,11 @@ export const ImageSourceUi = Extension.create({
         const finalOk = setTo(t)
         view.dom.setAttribute('data-img-settle-fallback', finalOk ? 'late' : 'fail')
         clearLiveSel(view)
-        boxSettleTarget = null
+        cancelWatch()
       }
+      boxSettleWatch = 0
+      window.addEventListener('mousedown', cancelWatch, true)
+      window.addEventListener('keydown', cancelWatch, true)
       boxSettleRaf = window.requestAnimationFrame(tryOnce)
     }
 
@@ -2949,10 +3007,28 @@ export const ImageSourceUi = Extension.create({
           const onBandUp = (): void => {
             bandDrag = null
             /**
+             * 第一百二十六轮诊断锚（用户报障：跨表格/公式/图片拖动，松手后丢一部分）：
+             * 落定的**输入**逐项落到 DOM 上，供逐帧取证（`boxDrag` 是否在、锚点/高水位/远端/区间）。
+             */
+            const dbgIn = (bd: typeof boxDrag, extra: string): void => {
+              try {
+                editorView.dom.setAttribute(
+                  'data-img-settle-in',
+                  `${bd ? `${bd.anchor}|${bd.hw}|${bd.focus}|${bd.anchorLost ? 1 : 0}` : 'nodrag'}|${extra}`
+                )
+              } catch {
+                /* 忽略 */
+              }
+            }
+            /**
              * 第一百一十一轮：松手（或指针取消/失焦）时把"跨图片实体"那一路落定 ——
              * 仍然是**唯一一处**落定 + 有界复验（`boxDragSettle`），拖动期没落过任何子。
              */
             if (!boxDrag) {
+              dbgIn(
+                null,
+                `nodrag|sel${editorView.state.selection.from}-${editorView.state.selection.to}`
+              )
               clearLiveSel(editorView)
               return
             }
@@ -2979,9 +3055,14 @@ export const ImageSourceUi = Extension.create({
             const sTo = anchor == null || far == null ? null : Math.max(anchor, far)
             if (sFrom == null || sTo == null || sFrom === sTo) {
               // 没有要落定的东西 ⇒ 立刻清干净（别把临时绘制留在文档上）
+              dbgIn(
+                bd,
+                `empty-target|far${far}|focus${focus}|sel${editorView.state.selection.from}-${editorView.state.selection.to}`
+              )
               clearLiveSel(editorView)
               return
             }
+            dbgIn(bd, `target${sFrom}-${sTo}|far${far}|focus${focus}`)
             boxSettleTarget = { from: sFrom, to: sTo }
             boxSettleFails = 0
             editorView.dom.removeAttribute('data-img-settle-fallback')
