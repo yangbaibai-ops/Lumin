@@ -984,13 +984,8 @@ export const ImageSourceUi = Extension.create({
       anchor: number | null
       focus: number | null
       anchorLost: boolean
-      /** 上一帧原生 `selection.head`（判"原生光标是不是钉住不动了"，见 `boxDragRange`） */
-      lastHead: number | null
-      /** 上一帧的指针轴向距离（与 `lastHead` 配对） */
-      lastPx: number
-      /** 指针在走、原生光标却**连续**没动的帧数（`≥2` 时落定按我们画的那份兜底） */
-      blindMoves: number
-      /** 最近一次"试探区间"的远端（**画面上那一份**；原生光标瞎了时落定用它兜底） */
+      /** 最近一次"试探区间"的**两端**（也就是**画面上那一份**；落定按它对齐，见 `onBandUp`） */
+      lastLiveNear: number | null
       lastLiveFar: number | null
       /** 高水位：远端达到过的最远文档位置（只增不减，除非指针真的反向 ≥4px，见 `TAIL_BACK_PX`） */
       hw: number | null
@@ -2204,27 +2199,6 @@ export const ImageSourceUi = Extension.create({
           boxDrag.hwPx = px
         }
       }
-      /**
-       * ─── 第一百二十七轮（用户报障 1：松手后与拖动期不一致）────────────────────────────────
-       * **原生光标"瞎了"的帧要记下来**：指针明明走了 ≥3px、而原生 `selection.head` **一个位置都没
-       * 动**，说明浏览器这次命中落进了**死区/被原子构件夹住**（实测：跨块图/跨表那段手势里
-       * 原生光标会连着好几帧钉在同一处，而我们的试探区间在正常推进）。
-       * 这时候 `hw` 记下的是**过期的** `b`，落定就会比画面上短一截（实测 I2 `401→408` 少 7、
-       * W1 `402→409` 少 7）—— 正是用户"本该选中却没选中"。
-       * ≥3px 的理由与 `TAIL_BACK_PX` 同源：jitter/亚像素取整 <2px，真手势一定远超。
-       */
-      if (boxDrag.lastHead == null) {
-        boxDrag.lastHead = b
-        boxDrag.lastPx = px
-      } else {
-        const moved = Math.abs(px - boxDrag.lastPx) >= 3
-        if (moved && b === boxDrag.lastHead) boxDrag.blindMoves++
-        else if (b !== boxDrag.lastHead) boxDrag.blindMoves = 0
-        if (moved) {
-          boxDrag.lastHead = b
-          boxDrag.lastPx = px
-        }
-      }
       const far = boxDrag.hw ?? b
       return { from: Math.min(a, far), to: Math.max(a, far) }
     }
@@ -2232,12 +2206,11 @@ export const ImageSourceUi = Extension.create({
     const boxDragLive = (view: EditorView, x: number, y: number): void => {
       const r = boxDragRange(view, x, y)
       if (!r) return
-      /** 记下"画面上这一份"的远端（落定兜底用，见 `onBandUp` 里那段说明） */
-      if (boxDrag)
-        boxDrag.lastLiveFar =
-          Math.abs(r.from - (boxDrag.anchor ?? r.from)) >= Math.abs(r.to - (boxDrag.anchor ?? r.to))
-            ? r.from
-            : r.to
+      /** 记下"画面上这一份"的**两端**（落定按它对齐，见 `onBandUp` 里那段说明） */
+      if (boxDrag) {
+        boxDrag.lastLiveNear = r.from
+        boxDrag.lastLiveFar = r.to
+      }
       /**
        * 诊断锚（与 `data-img-open` 同一用途）：把这一帧的**锚点 / 当前点 / 试探区间**摊平成
        * `anchor|head|from|to`，套件可以直接逐帧断言"锚点恒定、远端不回缩"。
@@ -3105,9 +3078,7 @@ export const ImageSourceUi = Extension.create({
                 anchor: null,
                 focus: null,
                 anchorLost: false,
-                lastHead: null,
-                lastPx: 0,
-                blindMoves: 0,
+                lastLiveNear: null,
                 lastLiveFar: null,
                 hw: null,
                 hwPx: 0,
@@ -3226,54 +3197,55 @@ export const ImageSourceUi = Extension.create({
             boxDrag = null
             const anchor = bd.anchor
             /**
-             * 第一百一十五轮：松手这一帧也要"入护栏"—— 浏览器在 mouseup 时已把光标挪到**松手点**
-             * （比最后一帧 mousemove 更远，实测 118 vs 120）⇒ 先按"只增不减"并进高水位，
-             * 否则落定会比用户松手的位置**短一两个字符**（会把 A 的 [118,355] 变成 [120,355]）。
-             */
-            if (bd.hw != null && anchor != null) {
-              const b2 = bd.focus ?? editorView.state.selection.head
-              if (b2 != null && Math.abs(b2 - anchor) >= Math.abs(bd.hw - anchor)) bd.hw = b2
-            }
-            /**
-             * ─── 第一百二十七轮（用户报障 1：松手后与拖动期不一致）─────────────────────────────
-             * **原生光标瞎了的时候，落定按"我们画的那一份"兜底**。
+             * ─── 第一百二十七轮（用户报障 1：松手后的选区必须与拖动期一致）────────────────────
+             * 落定的边界**只取"画面上那一份"**（`lastLiveNear`/`lastLiveFar`）并上**锚点**与**落点**；
+             * **不再取 `hw`、也不再取模型里的 `selection.head`**。
              *
-             * 真因（逐帧实测）：跨原子构件/跨表拖动时，浏览器会有连续若干帧把 `selection.head`
-             * 钉在**同一个位置**（`boxDragRange` 里记的 `blindMoves`），于是 `hw` 记下的是那个
-             * **过期的**远端；而我们的试探区间（画面上那份）在正常推进 ⇒ 落定比画面**短一截**：
-             *   I2（段A→跨块图→尾段）`live 94-401` vs `settled 94-408`；
-             *   W1（首行→尾段，大范围）`live 11-402` vs `settled 11-409`。
-             * 这就是用户"本该选中却没被选中"。
-             *
-             * 兜底取 **`lastLiveFar`**（最近一次"试探区间"的远端，也就是画面上那一份），**不是**
-             * `lastHead`：`hw` 是"只增不减"的，通常**已经超过** `lastHead`，而 `lastLiveFar`
-             * 恰好就是画出来的那份 ⇒ 落定 = 画面（实测 I2 `401`、W1 `402` 都对上）。
-             * 只在 `blindMoves ≥ 2`（指针确实在走、原生光标连续两帧没动）时才并进来 —— 正常手势里
-             * `blindMoves` 恒 0（原生光标每帧都在推进）⇒ 这条**零副作用**。
+             * 为什么不能用那两个（逐帧实测，两类都踩到了）：
+             * ① **`hw` 是整段手势的最大值**：用户拖到最远又拖回来时，画面（`[60,409]`）比 `hw`
+             *    （`[11,409]`）窄得多，只按 `hw` 落定就会**多选 49 个位置**
+             *    （实测 W2：`live 60-409` vs `settled 11-409`）⇒ "本不该选中却被选中"。
+             * ② **`selection.head` 是 PM 的**模型**值，会**晚于画面**推进**：PM 的 `DOMObserver` 是
+             *    ~20ms 的定时器，松手那一瞬它刚把 DOM 选区读回来 ⇒ 读到的是**没画过的**位置
+             *    （逐帧实测 I2：画面 `94-401`，落定输入读到的 `selection.head` 已是 **408**、
+             *    锚点记录 `94|401` ⇒ 落定成了 `94-408`，比画面多 7 个位置；W1 同形 `402→409`）。
+             *    注意：**"松手点比最后一帧更远"这条既有口径并没有丢** —— `lastLiveFar` 取的是
+             *    **试探区间 ∪ 原生 DOM 区间**（`paintLiveSel` 里那个并集），而画面上画的就是这个并集，
+             *    所以"画面 ⊆ 落定"依旧成立；实测 A=[118,355] 不变（见本轮报告）。
+             * 取"画面那一份"之后：**落定 ⊇ 画面**（看到的一定被选中），且
+             * **落定 ⊆ 画面 ∪ 锚点 ∪ 落点**（绝不会突然多出一段没画过的）⇒ 双向差集收敛到
+             * "锚点/落点并入"的那 ≤2 位。
              */
-            if (bd.blindMoves >= 2 && anchor != null && bd.lastLiveFar != null) {
-              if (Math.abs(bd.lastLiveFar - anchor) > Math.abs((bd.hw ?? anchor) - anchor))
-                bd.hw = bd.lastLiveFar
-            }
             const focus =
               bd.focus ??
               (bd.anchorLost && editorView.state.selection.empty
                 ? editorView.state.selection.head
                 : null)
-            /** 绘制与落定取**同一个**远端（`hw` 高水位）⇒ 松手不跳变、也不会比画面短 */
-            const far = bd.hw ?? focus
-            const sFrom = anchor == null || far == null ? null : Math.min(anchor, far)
-            const sTo = anchor == null || far == null ? null : Math.max(anchor, far)
+            const cands: number[] = []
+            if (bd.lastLiveNear != null && bd.lastLiveFar != null) {
+              cands.push(bd.lastLiveNear, bd.lastLiveFar)
+            }
+            if (anchor != null) cands.push(anchor)
+            if (focus != null) cands.push(focus)
+            const sFrom = cands.length ? Math.min(...cands) : null
+            const sTo = cands.length ? Math.max(...cands) : null
+            /**
+             * 落点也要"画得到"：落定前把试探区间扩到同一个极值并**重画一帧**，否则会出现
+             * "落定比画面宽、而那一帧的画面上什么都没有"的观感断层（用户第②条：按松手后的样式做）。
+             */
+            if (sFrom != null && sTo != null && sTo > sFrom) {
+              paintLiveSel(editorView, sFrom, sTo)
+            }
             if (sFrom == null || sTo == null || sFrom === sTo) {
               // 没有要落定的东西 ⇒ 立刻清干净（别把临时绘制留在文档上）
               dbgIn(
                 bd,
-                `empty-target|far${far}|focus${focus}|sel${editorView.state.selection.from}-${editorView.state.selection.to}`
+                `empty-target|far${bd.hw}|focus${focus}|sel${editorView.state.selection.from}-${editorView.state.selection.to}`
               )
               clearLiveSel(editorView)
               return
             }
-            dbgIn(bd, `target${sFrom}-${sTo}|far${far}|focus${focus}`)
+            dbgIn(bd, `target${sFrom}-${sTo}|far${bd.hw}|focus${focus}`)
             boxSettleTarget = { from: sFrom, to: sTo }
             boxSettleFails = 0
             editorView.dom.removeAttribute('data-img-settle-fallback')
