@@ -1,7 +1,0 @@
-﻿frags [{"l":828.53,"t":354.08,"r":1345.97,"b":386.27},{"l":320,"t":497.33,"r":690.53,"b":529.52}] ov [{"l":828.52,"t":354.66,"r":1345.95,"b":497.91},{"l":320,"t":497.91,"r":690.52,"b":641.16}]
-before {"revealed":1,"sel":{"from":355,"to":355},"band":"none","bandPos":"334","done":"334","after":"334","editing":false,"ov":2}
-row0-band (1087,442) {"revealed":1,"sel":{"from":355,"to":355},"band":"829,354","bandPos":"285","done":"285","after":"355","editing":false,"ov":2}
-row0-glyph (1087,370) {"revealed":1,"sel":{"from":285,"to":285},"band":"none","bandPos":"285","done":"285","after":"355","editing":true,"ov":0}
-row0-band2 (1087,442) {"revealed":1,"sel":{"from":355,"to":355},"band":"829,354","bandPos":"285","done":"285","after":"355","editing":false,"ov":2}
-row1-band (505,585) {"revealed":1,"sel":{"from":334,"to":334},"band":"320,497","bandPos":"334","done":"334","after":"334","editing":false,"ov":2}
-row1-band2 (505,585) {"revealed":1,"sel":{"from":334,"to":334},"band":"320,497","bandPos":"334","done":"334","after":"334","editing":false,"ov":2}
