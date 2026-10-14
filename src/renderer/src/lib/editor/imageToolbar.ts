@@ -949,15 +949,6 @@ export const ImageSourceUi = Extension.create({
       if (cur == null) return
       const from = Math.min(bandDrag.anchor, cur)
       const to = Math.max(bandDrag.anchor, cur)
-      if (to <= from) {
-        clearLiveSel(view)
-        return
-      }
-      /**
-       * 空白带这一路 preventDefault 了 mousedown，没有浏览器原生蓝底可依赖；拖动期同步画
-       * `paintLiveSel`，让源码/图片/公式在按住移动时就呈现与落定态一致的选中样式。
-       */
-      paintLiveSel(view, from, to)
       const sel = view.state.selection
       if (sel.from === from && sel.to === to) return
       try {
@@ -1015,7 +1006,7 @@ export const ImageSourceUi = Extension.create({
      * 把**过期的 DOM 选区**读回来、把整段选购吞掉（逐帧实测：目标 `360-753` → 下一帧模型 `360-360E`）。
      * 12 帧（≈200ms）足以骑过那串读回，同时仍是**有界**的；用户一有 `mousedown/keydown` 立刻收手。
      */
-    const BOX_SETTLE_WATCH = 12
+    const BOX_SETTLE_WATCH = 0
     /** 看门狗已跑过的帧数 */
     let boxSettleWatch = 0
 
@@ -3014,7 +3005,6 @@ export const ImageSourceUi = Extension.create({
             boxDragLive(editorView, event.clientX, event.clientY)
           }
           const onBandUp = (): void => {
-            const hadBandDrag = bandDrag != null
             bandDrag = null
             /**
              * 第一百二十六轮诊断锚（用户报障：跨表格/公式/图片拖动，松手后丢一部分）：
@@ -3039,8 +3029,7 @@ export const ImageSourceUi = Extension.create({
                 null,
                 `nodrag|sel${editorView.state.selection.from}-${editorView.state.selection.to}`
               )
-              if (hadBandDrag) paintSettledSel(editorView)
-              else clearLiveSel(editorView)
+              clearLiveSel(editorView)
               return
             }
             const bd = boxDrag
