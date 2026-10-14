@@ -4041,6 +4041,218 @@ const doc = MD.split('PLACE_A')
     await sleep(900)
   }
 
+  // ═══ 第一百二十七轮（用户两条报障）：**拖动期必须"处处都有样式"** + **松手后与拖动期一致** ═══
+  //  ① 覆盖差额 = 该帧"试探区间 ∪ 原生 DOM 区间"里、既没被我们的选中带/兜底高亮**完整**盖住、
+  //     也不在"交回原生绘制的块"或"闸没开时的原生选区"里的文本片段条数 ⇒ 必须帧帧为 0。
+  //  ② settled 与 live（最后一帧试探区间）双向差集必须为 0（"本该选中没选中" + "不该选中却选中"）。
+  const lsFixture =
+    `行内公式行：开头文字 $E = mc^2$ 中间文字 $a^2 + b^2 = c^2$ 结尾文字。\n\n` +
+    `$$\n\\int_0^1 x^2 dx = \\frac{1}{3}\n$$\n\n` +
+    `段A：星号不斜 粗体不粗 $x_1 + y_2$ 结束。\n\n` +
+    `段B：行内图 <img src="${PNG_B}" style="zoom:25%;" /> 中间 <img src="${PNG_B}" style="zoom:25%;" /> 后文继续。\n\n` +
+    `| 列一 | 列二 |\n| :--- | :--- |\n| **粗体甲** | 说明甲一段话 |\n| **粗体乙** | 说明乙一段话 |\n| **粗体丙** | 说明丙一段话 |\n\n` +
+    `尾段：随便一些文字，让选区可以落在这里。`
+  const lsCoverFn = `(rangeFrom, rangeTo, sawWrite) => {
+    const pm = document.querySelector('.ProseMirror')
+    const v = window.__vt.ed().view
+    const own = pm.getAttribute('data-sel-own')
+    const nativeMode = own !== 'all'
+    const bandsA = [...document.querySelectorAll('.sel-band > div')].map((d) => { const r = d.getBoundingClientRect(); return { l: r.left, t: r.top, r: r.right, b: r.bottom } })
+    const hlA = []
+    try { const h = CSS.highlights.get('lumin-img-drag'); if (h) for (const rg of h) for (const c of rg.getClientRects()) hlA.push({ l: c.left, t: c.top, r: c.right, b: c.bottom }) } catch (e) {}
+    const natA = []
+    try { const q = window.getSelection(); if (q && q.rangeCount && !q.isCollapsed) for (const c of q.getRangeAt(0).getClientRects()) if (c.width > 0.5 || c.height > 0.5) natA.push({ l: c.left, t: c.top, r: c.right, b: c.bottom }) } catch (e) {}
+    const TOL = 1.25
+    const has = (arr, r) => arr.some((b) => b.l <= r.l + TOL && b.r >= r.r - TOL && b.t <= r.t + TOL && b.b >= r.b - TOL)
+    let fragN = 0, missN = 0
+    const w = document.createTreeWalker(pm, NodeFilter.SHOW_TEXT)
+    let n
+    while ((n = w.nextNode())) {
+      if (!n.length) continue
+      if (n.parentElement && n.parentElement.closest('[data-md-math-block]')) continue
+      let start = -1
+      try { start = v.posAtDOM(n, 0) } catch (e) { start = NaN }
+      const pe = n.parentElement
+      const inMath = !!(pe && pe.closest('[data-md-math-rendered],[data-md-math-block]'))
+      let a1, b1, whole = false
+      if (!Number.isFinite(start)) {
+        if (!inMath) continue
+        try { const hp = v.posAtDOM(pe.closest('[data-md-math-rendered],[data-md-math-block]'), 0); if (!(hp >= rangeFrom - 1 && hp <= rangeTo + 1)) continue; a1 = 0; b1 = n.length; whole = true } catch (e) { continue }
+      } else { a1 = Math.max(rangeFrom, start); b1 = Math.min(rangeTo, start + n.length) }
+      if (b1 <= a1) continue
+      const rg = document.createRange()
+      try { if (whole) rg.selectNodeContents(n); else { rg.setStart(n, a1 - start); rg.setEnd(n, b1 - start) } } catch (e) { continue }
+      const nat = !!(pe && pe.closest('th,thead,.img-src-revealed,pre,code,blockquote'))
+      for (const c of [...rg.getClientRects()]) {
+        if (!(c.width > 0.5 || c.height > 0.5)) continue
+        fragN++
+        const rr = { l: c.left, t: c.top, r: c.right, b: c.bottom }
+        if (nat) continue
+        if (has(bandsA, rr)) continue
+        if (has(hlA, rr)) continue
+        if (nativeMode && has(natA, rr)) continue
+        missN++
+      }
+    }
+    for (const el of [...pm.querySelectorAll('[data-md-math-block]')]) {
+      let covered = false
+      try { const p0 = v.posAtDOM(el, 0); const nn = v.state.doc.nodeAt(p0); const sz = nn ? nn.nodeSize : 1; covered = rangeFrom <= p0 && rangeTo >= p0 + sz } catch (e) {}
+      if (!covered) continue
+      const inner = el.firstElementChild || el
+      const r = inner.getBoundingClientRect()
+      if (!(r.width > 0.5 && r.height > 0.5)) continue
+      fragN++
+      const rr = { l: r.left, t: r.top, r: r.right, b: r.bottom }
+      if (has(bandsA, rr) || has(hlA, rr)) continue
+      if (nativeMode && has(natA, rr)) continue
+      missN++
+    }
+    return { own, bandN: bandsA.length, hl: hlA.length, fragN, missN, wrote: sawWrite }
+  }`
+  const lsResolve = (aNeedle, aFx, bNeedle, bFx) =>
+    json(`(() => {
+      const R = (x) => ({ l: x.left, t: x.top, r: x.right, b: x.bottom })
+      const find = (needle) => { const w = document.createTreeWalker(document.querySelector('.ProseMirror'), NodeFilter.SHOW_TEXT); let n; while ((n = w.nextNode())) { const i = (n.textContent || '').indexOf(needle); if (i >= 0) return { n, i } } return null }
+      const rectAt = (needle, fx) => {
+        const h = find(needle)
+        if (!h) return null
+        const rg = document.createRange()
+        rg.setStart(h.n, h.i); rg.setEnd(h.n, h.i + needle.length)
+        const el = h.n.parentElement
+        if (el && el.scrollIntoView) el.scrollIntoView({ block: 'nearest', inline: 'nearest' })
+        const r = rg.getBoundingClientRect()
+        return { x: Math.round(r.left + r.width * fx), y: Math.round((r.top + r.bottom) / 2), t: r.top, b: r.bottom, vh: innerHeight }
+      }
+      return { a: rectAt(${JSON.stringify(aNeedle)}, ${aFx}), b: rectAt(${JSON.stringify(bNeedle)}, ${bFx}) } })()`)
+  const lsDrag = async (a, b, frames) => {
+    await send('Input.dispatchMouseEvent', { type: 'mousePressed', x: a.x, y: a.y, button: 'left', clickCount: 1 })
+    await sleep(22)
+    const perFrame = []
+    const seen = new Map()
+    for (let i = 1; i <= frames; i++) {
+      await send('Input.dispatchMouseEvent', {
+        type: 'mouseMoved',
+        x: Math.round(a.x + ((b.x - a.x) * i) / frames),
+        y: Math.round(a.y + ((b.y - a.y) * i) / frames),
+        button: 'left',
+        buttons: 1
+      })
+      // **逐帧**判定：这一帧"本体"就是它的试探区间 ∪ 原生 DOM 区间
+      const f = await json(`(() => {
+        const pm = document.querySelector('.ProseMirror')
+        const parts = (pm.getAttribute('data-img-drag-live') || '').split('|').map(Number)
+        let from = parts.length === 4 && Number.isFinite(parts[2]) ? Math.min(parts[2], parts[3]) : null
+        let to = parts.length === 4 && Number.isFinite(parts[2]) ? Math.max(parts[2], parts[3]) : null
+        try { const q = window.getSelection(); if (q && q.rangeCount && !q.isCollapsed) { const v = window.__vt.ed().view; const p0 = v.posAtDOM(q.getRangeAt(0).startContainer, q.getRangeAt(0).startOffset); const p1 = v.posAtDOM(q.getRangeAt(0).endContainer, q.getRangeAt(0).endOffset); const lo = Math.min(p0, p1), hi = Math.max(p0, p1); if (hi > lo) { from = from == null ? lo : Math.min(from, lo); to = to == null ? hi : Math.max(to, hi) } } } catch (e) {}
+        if (from == null || !(to > from)) return null
+        return { from, to, cov: (${lsCoverFn})(from, to, true) } })()`)
+      if (f) {
+        perFrame.push({ live: `${f.from}-${f.to}`, missN: f.cov.missN, fragN: f.cov.fragN, own: f.cov.own, bandN: f.cov.bandN, hl: f.cov.hl })
+        if (!seen.has(`${f.from}-${f.to}`)) seen.set(`${f.from}-${f.to}`, { r: `${f.from}-${f.to}`, ...f.cov })
+      }
+      await sleep(11)
+    }
+    const last = await json(`(() => { const pm = document.querySelector('.ProseMirror'); const parts = (pm.getAttribute('data-img-drag-live') || '').split('|').map(Number); return parts.length === 4 && Number.isFinite(parts[2]) ? { from: Math.min(parts[2], parts[3]), to: Math.max(parts[2], parts[3]) } : null })()`)
+    await send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: b.x, y: b.y, button: 'left', clickCount: 1 })
+    await sleep(430)
+    const settled = await json(`(() => { const s = window.__vt.ed().state.selection; return { from: s.from, to: s.to, empty: s.empty } })()`)
+    const missing = last ? Math.max(0, settled.from - last.from) + Math.max(0, last.to - settled.to) : null
+    const extra = last ? Math.max(0, last.from - settled.from) + Math.max(0, settled.to - last.to) : null
+    return {
+      last,
+      settled,
+      missing,
+      extra,
+      framesN: perFrame.length,
+      missFrames: perFrame.filter((x) => x.missN > 0).length,
+      missDetail: perFrame.filter((x) => x.missN > 0).slice(0, 4),
+      spec: [...seen.values()]
+    }
+  }
+  let lsCover = { err: null }
+  let lsSettle = { err: null }
+  try {
+    await send('Page.bringToFront').catch(() => null)
+    await ev(`(() => { window.__vt.ui().editorMode = 'wysiwyg'; return 'ok' })()`)
+    await sleep(300)
+    /**
+     * ⚠️ 走**打开文件**这条路，不用 `commands.setContent`：本条断言要的是**真渲染几何**
+     * （图片实体盒 / 块级公式 NodeView / 表格行盒），而 `setContent` 那条路本轮实测把夹具
+     * 解析变形（图片只剩一段空文本、段落被撑到 638px ⇒ `posAtCoords` 整片返回同一个位置），
+     * 断言的就不是我们想测的东西了。文件名**不含 "lumin"**（本机有清理会按命令行关键字杀实例）。
+     */
+    const lsFile = path.join(process.env.TEMP || 'C:\\Windows\\Temp', 'xw-ls-suite-fixture.md')
+    safe(() => fs.writeFileSync(lsFile, lsFixture, 'utf8'), null)
+    /** 打开可能被"当前文档"状态拦一下 ⇒ 最多重试 3 次，并以**内容真的换了**为准（不看返回值） */
+    for (let attempt = 0; attempt < 3; attempt++) {
+      await ev(`window.__lsOpen = window.__vt.files().openPath(${JSON.stringify(lsFile)}).then(() => 'ok').catch((e) => 'err:' + e.message); 1`)
+      for (let i = 0; i < 20; i++) {
+        await sleep(250)
+        if (await ev(`(window.__vt.files().content || '').includes('行内公式行')`)) break
+      }
+      if (await ev(`(window.__vt.files().content || '').includes('行内公式行')`)) break
+    }
+    await sleep(900)
+    for (let i = 0; i < 20; i++) {
+      const ready = await ev(`[...document.querySelectorAll('.ProseMirror img')].every((im) => im.complete) && document.querySelectorAll('.ProseMirror table').length > 0`)
+      if (ready) break
+      await sleep(300)
+    }
+    await ev(`(() => { const pm = document.querySelector('.ProseMirror'); for (const el of [pm, ...document.querySelectorAll('.editor-content,.md-preview,.editor-scroll,.scroll-area')]) { try { el.scrollTop = 0 } catch (e) {} } window.scrollTo(0, 0); return 'ok' })()`)
+    await sleep(500)
+    lsCover = { loaded: await ev(`(window.__vt.files().content || '').includes('行内公式行')`) }
+    const away = await json(`(() => { const w = document.createTreeWalker(document.querySelector('.ProseMirror'), NodeFilter.SHOW_TEXT); let n; while ((n = w.nextNode())) { if ((n.textContent || '').trim().length > 4) { const rg = document.createRange(); rg.setStart(n, 0); rg.setEnd(n, 1); const r = rg.getBoundingClientRect(); return { x: Math.round(r.left + 2), y: Math.round((r.top + r.bottom) / 2) } } } return { x: 400, y: 30 } })()`)
+    // ① 覆盖差额：**首行正文 → 尾段**（大范围多元素：跨行内公式 + 块级公式 + 两图 + 表格 + 标题）
+    const gy = await lsResolve('行内公式行：开头', 0.2, '尾段：随便', 0.8)
+    const g1 = gy.a && gy.b && gy.a.y > 8 && gy.a.y < gy.a.vh - 8 && gy.b.y > 8 && gy.b.y < gy.b.vh - 8 ? await lsDrag(gy.a, gy.b, 26) : null
+    lsCover = g1 ? { loaded: true, a: gy.a, b: gy.b, framesN: g1.framesN, missFrames: g1.missFrames, missDetail: g1.missDetail, spec: g1.spec } : { err: '端点不在视口内', a: gy.a, b: gy.b }
+    // ② settled == live：三类跨越（表格前→后 / 块级公式 / 图片）各一例 + 大范围
+    const cases = []
+    const spec2 = [
+      ['表格 表头→表体', '粗体甲', 0.4, '粗体丙', 0.6],
+      ['块级公式后→尾段', '段A：星号', 0.4, '尾段：随便', 0.6],
+      ['正文→跨行内图到后文', '段B：行内', 0.4, '后文继续', 0.6],
+      ['大范围 首行→尾段', '行内公式行：开头', 0.2, '尾段：随便', 0.8],
+      ['大范围反向 尾段→首行', '尾段：随便', 0.8, '行内公式行：开头', 0.2]
+    ]
+    for (const [name, an, af, bn, bf] of spec2) {
+      await ev(`(() => { const e = window.__vt.ed(); const v = e.view; const s = document.querySelectorAll('.lm-prompt,.lm-modal'); s.forEach((x) => x.remove()); return 'ok' })()`)
+      const g = await lsResolve(an, af, bn, bf)
+      if (!g.a || !g.b || g.a.y < 8 || g.a.y > g.a.vh - 8 || g.b.y < 8 || g.b.y > g.b.vh - 8) { cases.push({ name, skip: '端点不在视口内' }); continue }
+      await send('Input.dispatchMouseEvent', { type: 'mousePressed', x: away.x, y: away.y, button: 'left', clickCount: 1 })
+      await send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: away.x, y: away.y, button: 'left', clickCount: 1 })
+      await sleep(220)
+      const r = await lsDrag(g.a, g.b, 20)
+      /**
+       * **手势有效性自证**：`live` 的跨度必须明显大于"单帧噪声"（≥3 位且确实随拖动推进）。
+       * 否则说明这一帧指针压根没被编辑器接住（遮挡 / 坐标落在容器外）⇒ 记 `skip` 而不是让
+       * `missing/extra` 去伪造一个"不一致"（那是测量失败，不是产品缺陷）。
+       */
+      if (!r.last || r.last.to - r.last.from < 3) {
+        cases.push({ name, skip: '手势无效(live 跨度<3)', live: r.last })
+        continue
+      }
+      cases.push({ name, from: g.a, to: g.b, live: r.last, settled: r.settled, missing: r.missing, extra: r.extra, framesN: r.framesN, missFrames: r.missFrames })
+    }
+    lsSettle = { cases }
+  } catch (e) {
+    lsCover = { err: String((e && e.message) || e) }
+    lsSettle = { err: String((e && e.message) || e) }
+  }
+  check(
+    '㊴① **拖动期处处有样式**：大范围多元素拖动（跨行内/块级公式+图片+表格+标题）逐帧"原生会画的覆盖 − 我们的可见绘制" = 0',
+    !lsCover.err && lsCover.missFrames === 0 && lsCover.spec && lsCover.spec.length > 0,
+    JSON.stringify(lsCover)
+  )
+  const settleDiff = (lsSettle.cases || []).filter((c) => !c.skip)
+  check(
+    '㊴② **松手后与拖动期一致**：表格/块级公式/图片三类跨越 + 大范围（正/反）⇒ settled 与 live 双向差集 = 0',
+    !lsSettle.err &&
+      settleDiff.length >= 4 &&
+      settleDiff.every((c) => c.missing === 0 && c.extra === 0),
+    JSON.stringify(lsSettle)
+  )
+
   const pass = results.filter((r) => r.ok).length
   console.log(`TOTAL ${results.length} PASS ${pass} FAIL ${results.length - pass}`)
   console.log(`--- ${pass}/${results.length} PASS`)

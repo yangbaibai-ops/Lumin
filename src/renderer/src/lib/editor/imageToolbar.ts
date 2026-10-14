@@ -22,7 +22,7 @@
 // 这正是用户要的"缩放持久化进源码"。之后所有档位都在同一段原文上原地改 style，
 // 因此永远不会出现第二个 `<img>`。
 import { Extension } from '@tiptap/core'
-import { Plugin, PluginKey, TextSelection } from '@tiptap/pm/state'
+import { Plugin, PluginKey, Selection, TextSelection } from '@tiptap/pm/state'
 import { Decoration, DecorationSet } from '@tiptap/pm/view'
 import type { EditorState } from '@tiptap/pm/state'
 import type { EditorView } from '@tiptap/pm/view'
@@ -1213,17 +1213,69 @@ export const ImageSourceUi = Extension.create({
         boxSettleFails = 0
         stopWatch()
       }
-      const setTo = (t: { from: number; to: number }): boolean => {
-        const sel = view.state.selection
-        if (sel.from === t.from && sel.to === t.to) return true
+      /**
+       * 落定用的 `TextSelection`：**先按原样建**，只有在 PM 把端点修掉（或干脆抛）时才吸附。
+       *
+       * ⚠️ 第一百二十七轮（实测踩到）：试探区间 / 原生 DOM 区间的端点可能落在**原子节点内部**
+       * （例如块级公式 `$$…$$` 那一行、或表格边界），直接 `TextSelection.create` 会触发
+       * PM 的 `TextSelection endpoint not pointing into a node with inline content` 并**把选区
+       * 悄悄修掉**（实测 `tmp/ls-suite-block.js`：live `120-188` 落定成了 `188-188E` ⇒ 差集 68）。
+       *
+       * 吸附必须**拿着已经落成的 `from` 去找 `to`**，否则 `findFrom` 会跑出这个小段、落到外层
+       * 容器上，把区间**反向塌缩**（实测 `166-240` 被吸成 `166-166` ⇒ 落定成 `240-240E`）。
+       * 两次都按"往区间内收"的方向找：`from` 用 `+1`（往后）、`to` 用 `-1`（往前）。
+       */
+      const textSelAt = (
+        doc: EditorView['state']['doc'],
+        a: number,
+        b: number
+      ): TextSelection | null => {
+        const size = doc.content.size
+        const clamp = (p: number): number => Math.max(0, Math.min(size, p))
+        let raw: TextSelection | null = null
         try {
-          view.dispatch(
-            view.state.tr.setSelection(TextSelection.create(view.state.doc, t.from, t.to))
-          )
+          raw = TextSelection.create(doc, clamp(a), clamp(b))
         } catch {
-          return false
+          raw = null
         }
-        return view.state.selection.from === t.from && view.state.selection.to === t.to
+        /** 原样就成立（误差 ≤2 位、且非空）⇒ 一点都不动它：吸附越少越好 */
+        if (raw && raw.to > raw.from && Math.abs(raw.from - a) <= 2 && Math.abs(raw.to - b) <= 2)
+          return raw
+        const sp =
+          Selection.findFrom(doc.resolve(clamp(a)), 1) ??
+          Selection.findFrom(doc.resolve(clamp(a)), -1)
+        if (!sp) return raw
+        const anchor = Math.max(sp.to, clamp(b))
+        const ep =
+          Selection.findFrom(doc.resolve(anchor), -1) ?? Selection.findFrom(doc.resolve(anchor), 1)
+        if (!ep) return raw
+        const s = Math.min(sp.from, ep.from)
+        const e = Math.max(sp.to, ep.to)
+        if (!(e > s)) return raw
+        try {
+          return TextSelection.create(doc, s, e)
+        } catch {
+          return raw
+        }
+      }
+      /**
+       * 落定一次：返回**实际落成的区间**（失败给 `null`）。
+       * ⚠️ 返回"实际值"而不是布尔（第一百二十七轮）：两端要**吸附**到合法文本位置（见 `textSelAt`），
+       * 吸附后可能与目标差 1~2 位；再拿"和目标逐位相等"当成功判据，就会把**已经落成功**的一次
+       * 判成失败 ⇒ 连续 6 次"推翻"后走兜底、而兜底又是同一个吸附 ⇒ 白转一圈。
+       */
+      const setTo = (t: { from: number; to: number }): { from: number; to: number } | null => {
+        const sel = view.state.selection
+        if (sel.from === t.from && sel.to === t.to) return { from: sel.from, to: sel.to }
+        const next = textSelAt(view.state.doc, t.from, t.to)
+        if (!next) return null
+        try {
+          view.dispatch(view.state.tr.setSelection(next))
+        } catch {
+          return null
+        }
+        const now = view.state.selection
+        return { from: now.from, to: now.to }
       }
       const tryOnce = (): void => {
         boxSettleRaf = null
@@ -1232,7 +1284,14 @@ export const ImageSourceUi = Extension.create({
           stopWatch()
           return
         }
-        const ok = setTo(t)
+        const got = setTo(t)
+        /** 容差 ±2：吸附只允许"往区间内收"，1~2 位内视为落成（第 1 步口径里"松手点并入"也是 ≤2 位） */
+        const ok =
+          !!got &&
+          got.from >= t.from - 2 &&
+          got.from <= t.from + 2 &&
+          got.to >= t.to - 2 &&
+          got.to <= t.to + 2
         if (ok) {
           /**
            * 第一百一十三/一十六轮：落定 dispatch **之后**才撤临时绘制（顺序反了会闪一帧空白）。
@@ -1253,7 +1312,7 @@ export const ImageSourceUi = Extension.create({
           return
         }
         // 连续被推翻到上限：兜底 —— 再同步落一次；无论成败都清掉临时绘制，绝不留泄漏
-        const finalOk = setTo(t)
+        const finalOk = setTo(t) != null
         view.dom.setAttribute('data-img-settle-fallback', finalOk ? 'late' : 'fail')
         clearLiveSel(view)
         cancelWatch()
