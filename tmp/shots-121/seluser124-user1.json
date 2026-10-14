@@ -1,0 +1,424 @@
+{
+ "tag": "user1",
+ "cases": [
+  {
+   "label": "user-gesture",
+   "from": {
+    "x": 342,
+    "y": 372
+   },
+   "to": {
+    "x": 1310,
+    "y": 372
+   },
+   "srcRange": [
+    254,
+    355
+   ],
+   "srcRows": [
+    [
+     828.53,
+     354.08,
+     1345.97,
+     386.27
+    ],
+    [
+     320,
+     497.33,
+     690.53,
+     529.52
+    ]
+   ],
+   "revealedRows": [
+    [
+     828.53,
+     354.08,
+     1345.97,
+     386.27
+    ],
+    [
+     320,
+     497.33,
+     690.53,
+     529.52
+    ]
+   ],
+   "blocks": [
+    {
+     "i": 0,
+     "from": 1,
+     "to": 37,
+     "text": "行内公式：$E = mc^2$ ",
+     "rect": [
+      320,
+      72,
+      1362,
+      104.3
+     ]
+    },
+    {
+     "i": 1,
+     "from": 39,
+     "to": 44,
+     "text": "块级公式：",
+     "rect": [
+      320,
+      113.64,
+      1362,
+      145.94
+     ]
+    },
+    {
+     "i": 2,
+     "from": 47,
+     "to": 52,
+     "text": "$gyg$",
+     "rect": [
+      320,
+      161.23,
+      1362,
+      214.45
+     ]
+    },
+    {
+     "i": 3,
+     "from": 54,
+     "to": 55,
+     "text": "2",
+     "rect": [
+      320,
+      229.75,
+      1362,
+      262.05
+     ]
+    },
+    {
+     "i": 4,
+     "from": 57,
+     "to": 116,
+     "text": "下划线不当斜体：$x_1 + y",
+     "rect": [
+      320,
+      271.39,
+      1362,
+      303.69
+     ]
+    },
+    {
+     "i": 5,
+     "from": 118,
+     "to": 355,
+     "text": "行内公式$E = mc^2$ 与",
+     "rect": [
+      320,
+      313.03,
+      1362,
+      345.33
+     ]
+    },
+    {
+     "i": 6,
+     "from": 357,
+     "to": 361,
+     "text": "工作方式",
+     "rect": [
+      320,
+      354.67,
+      1362,
+      641.17
+     ]
+    },
+    {
+     "i": 7,
+     "from": 588,
+     "to": 751,
+     "text": "flowchart LR\n  A",
+     "rect": [
+      320,
+      674.31,
+      1362,
+      715.34
+     ]
+    },
+    {
+     "i": 8,
+     "from": 753,
+     "to": 753,
+     "text": "",
+     "rect": [
+      320,
+      730.64,
+      1362,
+      1112.27
+     ]
+    }
+   ],
+   "prevIdx": -1,
+   "pressFrame": {
+    "sel": "254-254E",
+    "modelAnchor": 254,
+    "modelHead": 254,
+    "fromBlk": 5,
+    "toBlk": 5,
+    "live": "119|153|119|153",
+    "pFrom": 119,
+    "pTo": 153,
+    "bands": [],
+    "own": null
+   },
+   "mid": {
+    "sel": "254-309",
+    "modelAnchor": 254,
+    "modelHead": 309,
+    "fromBlk": 5,
+    "toBlk": 5,
+    "live": "119|153|119|153",
+    "pFrom": 119,
+    "pTo": 153,
+    "bands": [],
+    "own": null,
+    "t": 15
+   },
+   "settled": {
+    "sel": "254-309",
+    "modelAnchor": 254,
+    "modelHead": 309,
+    "fromBlk": 5,
+    "toBlk": 5,
+    "live": "119|153|119|153",
+    "pFrom": 119,
+    "pTo": 153,
+    "bands": [],
+    "own": null
+   },
+   "bands": [],
+   "bandTop": null,
+   "prevRect": null,
+   "prevRowScan": [],
+   "badModel": 0,
+   "badAnchor": 0,
+   "frames": [
+    {
+     "sel": "254-254E",
+     "modelAnchor": 254,
+     "modelHead": 254,
+     "fromBlk": 5,
+     "toBlk": 5,
+     "live": "119|153|119|153",
+     "pFrom": 119,
+     "pTo": 153,
+     "bands": [],
+     "own": null
+    },
+    {
+     "sel": "254-309",
+     "modelAnchor": 254,
+     "modelHead": 309,
+     "fromBlk": 5,
+     "toBlk": 5,
+     "live": "119|153|119|153",
+     "pFrom": 119,
+     "pTo": 153,
+     "bands": [],
+     "own": null,
+     "t": 0
+    },
+    {
+     "sel": "254-309",
+     "modelAnchor": 254,
+     "modelHead": 309,
+     "fromBlk": 5,
+     "toBlk": 5,
+     "live": "119|153|119|153",
+     "pFrom": 119,
+     "pTo": 153,
+     "bands": [],
+     "own": null,
+     "t": 1
+    },
+    {
+     "sel": "254-309",
+     "modelAnchor": 254,
+     "modelHead": 309,
+     "fromBlk": 5,
+     "toBlk": 5,
+     "live": "119|153|119|153",
+     "pFrom": 119,
+     "pTo": 153,
+     "bands": [],
+     "own": null,
+     "t": 2
+    },
+    {
+     "sel": "254-309",
+     "modelAnchor": 254,
+     "modelHead": 309,
+     "fromBlk": 5,
+     "toBlk": 5,
+     "live": "119|153|119|153",
+     "pFrom": 119,
+     "pTo": 153,
+     "bands": [],
+     "own": null,
+     "t": 3
+    },
+    {
+     "sel": "254-309",
+     "modelAnchor": 254,
+     "modelHead": 309,
+     "fromBlk": 5,
+     "toBlk": 5,
+     "live": "119|153|119|153",
+     "pFrom": 119,
+     "pTo": 153,
+     "bands": [],
+     "own": null,
+     "t": 4
+    },
+    {
+     "sel": "254-309",
+     "modelAnchor": 254,
+     "modelHead": 309,
+     "fromBlk": 5,
+     "toBlk": 5,
+     "live": "119|153|119|153",
+     "pFrom": 119,
+     "pTo": 153,
+     "bands": [],
+     "own": null,
+     "t": 5
+    },
+    {
+     "sel": "254-309",
+     "modelAnchor": 254,
+     "modelHead": 309,
+     "fromBlk": 5,
+     "toBlk": 5,
+     "live": "119|153|119|153",
+     "pFrom": 119,
+     "pTo": 153,
+     "bands": [],
+     "own": null,
+     "t": 6
+    },
+    {
+     "sel": "254-309",
+     "modelAnchor": 254,
+     "modelHead": 309,
+     "fromBlk": 5,
+     "toBlk": 5,
+     "live": "119|153|119|153",
+     "pFrom": 119,
+     "pTo": 153,
+     "bands": [],
+     "own": null,
+     "t": 7
+    },
+    {
+     "sel": "254-309",
+     "modelAnchor": 254,
+     "modelHead": 309,
+     "fromBlk": 5,
+     "toBlk": 5,
+     "live": "119|153|119|153",
+     "pFrom": 119,
+     "pTo": 153,
+     "bands": [],
+     "own": null,
+     "t": 8
+    },
+    {
+     "sel": "254-309",
+     "modelAnchor": 254,
+     "modelHead": 309,
+     "fromBlk": 5,
+     "toBlk": 5,
+     "live": "119|153|119|153",
+     "pFrom": 119,
+     "pTo": 153,
+     "bands": [],
+     "own": null,
+     "t": 9
+    },
+    {
+     "sel": "254-309",
+     "modelAnchor": 254,
+     "modelHead": 309,
+     "fromBlk": 5,
+     "toBlk": 5,
+     "live": "119|153|119|153",
+     "pFrom": 119,
+     "pTo": 153,
+     "bands": [],
+     "own": null,
+     "t": 10
+    },
+    {
+     "sel": "254-309",
+     "modelAnchor": 254,
+     "modelHead": 309,
+     "fromBlk": 5,
+     "toBlk": 5,
+     "live": "119|153|119|153",
+     "pFrom": 119,
+     "pTo": 153,
+     "bands": [],
+     "own": null,
+     "t": 11
+    },
+    {
+     "sel": "254-309",
+     "modelAnchor": 254,
+     "modelHead": 309,
+     "fromBlk": 5,
+     "toBlk": 5,
+     "live": "119|153|119|153",
+     "pFrom": 119,
+     "pTo": 153,
+     "bands": [],
+     "own": null,
+     "t": 12
+    },
+    {
+     "sel": "254-309",
+     "modelAnchor": 254,
+     "modelHead": 309,
+     "fromBlk": 5,
+     "toBlk": 5,
+     "live": "119|153|119|153",
+     "pFrom": 119,
+     "pTo": 153,
+     "bands": [],
+     "own": null,
+     "t": 13
+    },
+    {
+     "sel": "254-309",
+     "modelAnchor": 254,
+     "modelHead": 309,
+     "fromBlk": 5,
+     "toBlk": 5,
+     "live": "119|153|119|153",
+     "pFrom": 119,
+     "pTo": 153,
+     "bands": [],
+     "own": null,
+     "t": 14
+    },
+    {
+     "sel": "254-309",
+     "modelAnchor": 254,
+     "modelHead": 309,
+     "fromBlk": 5,
+     "toBlk": 5,
+     "live": "119|153|119|153",
+     "pFrom": 119,
+     "pTo": 153,
+     "bands": [],
+     "own": null,
+     "t": 15
+    }
+   ]
+  }
+ ]
+}

@@ -1,0 +1,32 @@
+﻿tag=green2 mode=all innerWidth=1424 mdLen=811 起点={"from":355,"to":355,"empty":true}
+points {"band":{"x":1087,"y":442},"glyph":{"x":1087,"y":370}}
+A/X 点空白带 逐帧去重:
+   5.1ms ov2(el) R bgEDGE open=254:e n1 sel355
+   71.6ms ov0 R RE bgOFF open=254:E n1 sel285
+   evs=[] frames=40
+A/Y 点源码字形 逐帧去重:
+   6.6ms ov2(el) R bgEDGE open=254:e n1 sel355
+   90.1ms ov0 R RE bgOFF open=254:E n1 sel285
+   evs=[] frames=40
+A/Z 点图片激活 逐帧去重:
+   11.4ms ov2(el) R bgEDGE open=254:e n1 sel355
+   77ms ov0 R RE bgOFF open=254:E n1 sel267
+A 点真正的别处 ⇒ {"revealed":0,"from":null,"cls":null,"bg":null,"ov":0,"ovEl":false,"open":"null:e","sel":{"from":2,"to":2,"empty":true}}
+B① 向左拖 起点(带 1087,442 / 字 1087,370) 终点(869,370)
+     空白带拖动 sel={"from":258,"to":285,"empty":false} | 同列字形拖动 sel={"from":258,"to":285,"empty":false} | Δfrom=0 Δto=0
+     拖动逐帧去重: ["7.8ms ov0 R RE bgOFF open=254:E n1 sel285","60.9ms ov0 R bgEDGE open=254:e n1 sel283-285","74.5ms ov2(el) R bgEDGE open=254:e n1 sel283-285","93.5ms ov2(el) R bgEDGE open=254:e n1 sel281-285","126.4ms ov2(el) R bgEDGE open=254:e n1 sel280-285","159.8ms ov2(el) R bgEDGE open=254:e n1 sel277-285","209.9ms ov2(el) R bgEDGE open=254:e n1 sel275-285","261.7ms ov2(el) R bgEDGE open=254:e n1 sel274-285","293.1ms ov2(el) R bgEDGE open=254:e n1 sel272-285","326.4ms ov2(el) R bgEDGE open=254:e n1 sel269-285","359.7ms ov2(el) R bgEDGE open=254:e n1 sel267-285","393.1ms ov2(el) R bgEDGE open=254:e n1 sel265-285","426.4ms ov2(el) R bgEDGE open=254:e n1 sel263-285","477.1ms ov2(el) R bgEDGE open=254:e n1 sel262-285","509.6ms ov2(el) R bgEDGE open=254:e n1 sel260-285","543.3ms ov2(el) R bgEDGE open=254:e n1 sel258-285"]
+B① 向右拖 起点(带 1087,442 / 字 1087,370) 终点(1209,370)
+     空白带拖动 sel={"from":285,"to":299,"empty":false} | 同列字形拖动 sel={"from":285,"to":299,"empty":false} | Δfrom=0 Δto=0
+     拖动逐帧去重: ["9.3ms ov0 R RE bgOFF open=254:E n1 sel285","62.8ms ov0 R bgEDGE open=254:e n1 sel285-287","76.1ms ov2(el) R bgEDGE open=254:e n1 sel285-287","129.1ms ov2(el) R bgEDGE open=254:e n1 sel285-288","178.5ms ov2(el) R bgEDGE open=254:e n1 sel285-289","229.5ms ov2(el) R bgEDGE open=254:e n1 sel285-290","295.1ms ov2(el) R bgEDGE open=254:e n1 sel285-291","328ms ov2(el) R bgEDGE open=254:e n1 sel285-292","361.3ms ov2(el) R bgEDGE open=254:e n1 sel285-293","394.4ms ov2(el) R bgEDGE open=254:e n1 sel285-295","428.2ms ov2(el) R bgEDGE open=254:e n1 sel285-296","478.7ms ov2(el) R bgEDGE open=254:e n1 sel285-297","528.1ms ov2(el) R bgEDGE open=254:e n1 sel285-298","561.9ms ov2(el) R bgEDGE open=254:e n1 sel285-299"]
+B① 拖出源码进入正文 起点(带 1087,442 / 字 1087,370) 终点(360,424)
+     空白带拖动 sel={"from":120,"to":285,"empty":false} | 同列字形拖动 sel={"from":120,"to":285,"empty":false} | Δfrom=0 Δto=0
+     拖动逐帧去重: ["0.9ms ov2(el) R bgEDGE open=254:e n1 sel355","17.8ms ov0 R RE bgOFF open=254:E n1 sel285","71.3ms ov0 R bgEDGE open=254:e n1 sel279-285","84.4ms ov2(el) R bgEDGE open=254:e n1 sel279-285","103.8ms ov2(el) R bgEDGE open=254:e n1 sel272-285","136.2ms ov2(el) R bgEDGE open=254:e n1 sel265-285","169.6ms ov2(el) R bgEDGE open=254:e n1 sel259-285","203.1ms ov2(el) R bgEDGE open=254:e n1 sel254-285","387.1ms ov2(el) R bgEDGE open=254:e n1 sel135-285","453.7ms ov2(el) R bgEDGE open=254:e n1 sel133-285","486.7ms ov2(el) R bgEDGE open=254:e n1 sel122-285","536.8ms ov2(el) R bgEDGE open=254:e n1 sel120-285","618.8ms ov0 - bgnull open=null:e n0 sel120-285"]
+B② 空白带单击 ⇒ {"from":285,"to":285,"empty":true}
+B② 字形上拖动 ⇒ {"from":256,"to":278,"empty":false}
+B  带内终点拖动（指针一路在带里）⇒ {"from":285,"to":299,"empty":false}
+不破坏: 空白带单击 revealed=1 pos={"from":285,"to":285,"empty":true}
+  显形手势 press=0 release=1 bg=EDGE
+  显形手势逐帧: ["0.7ms ov0 - bgnull open=null:e n0 sel2","209.1ms ov0 R bgEDGE open=254:e n1 sel254","225.7ms ov2(el) R bgEDGE open=254:e n1 sel355"]
+  elementFromPoint={"mid":{"tag":"P","cls":"img-side-by-side","overlay":false}} layoutSame=true
+  编辑态: bg=OFF cls=img-src-revealed img-src-revealed--editing ov=0 ovEl=false
+  隐藏: {"revealed":0,"from":null,"cls":null,"bg":null,"ov":0,"ovEl":false,"open":"null:e","sel":{"from":2,"to":2,"empty":true}} 往返逐字节=true modal=0

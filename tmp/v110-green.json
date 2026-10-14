@@ -1,0 +1,540 @@
+{
+ "tag": "green",
+ "mode": "all",
+ "innerWidth": 1424,
+ "mdBefore": 811,
+ "shaBefore": "4dbb870902ecc4ab38f83fcb8ce5c8b755ea738d94932ca5487b5467fd453a7b",
+ "away": {
+  "x": 340,
+  "y": 88
+ },
+ "widgetPt": {
+  "x": 946,
+  "y": 426
+ },
+ "pre": {
+  "revealed": 1,
+  "from": 254,
+  "cls": "img-src-revealed",
+  "bg": "rgb(228, 230, 234)",
+  "ov": 2,
+  "ovEl": true,
+  "open": "254:e",
+  "sel": {
+   "from": 355,
+   "to": 355,
+   "empty": true
+  },
+  "activated": true,
+  "ovWaitedMs": 0,
+  "ovOk": true
+ },
+ "bands": {
+  "from": 254,
+  "len": 101,
+  "frags": [
+   {
+    "l": 828.53,
+    "t": 354.08,
+    "r": 1345.97,
+    "b": 386.27
+   },
+   {
+    "l": 320,
+    "t": 497.33,
+    "r": 690.53,
+    "b": 529.52
+   }
+  ],
+  "texts": [
+   {
+    "l": 828.53,
+    "t": 359.67,
+    "r": 1345.97,
+    "b": 380.67
+   },
+   {
+    "l": 320,
+    "t": 502.92,
+    "r": 690.53,
+    "b": 523.92
+   }
+  ],
+  "ov": [
+   {
+    "l": 828.52,
+    "t": 354.66,
+    "r": 1345.95,
+    "b": 497.91
+   },
+   {
+    "l": 320,
+    "t": 497.91,
+    "r": 690.52,
+    "b": 641.16
+   }
+  ],
+  "bodyText": {
+   "l": 320,
+   "t": 413.89,
+   "r": 388,
+   "b": 434.89
+  },
+  "block": {
+   "l": 320,
+   "t": 354.67,
+   "r": 1362,
+   "b": 641.17
+  }
+ },
+ "points": {
+  "band": {
+   "x": 1087,
+   "y": 442
+  },
+  "glyph": {
+   "x": 1087,
+   "y": 370
+  },
+  "row": {
+   "t": 354.08,
+   "b": 386.27
+  },
+  "overlay0": {
+   "l": 828.52,
+   "t": 354.66,
+   "r": 1345.95,
+   "b": 497.91
+  }
+ },
+ "A_X_band": {
+  "pre": {
+   "revealed": 1,
+   "from": 254,
+   "cls": "img-src-revealed",
+   "bg": "rgb(228, 230, 234)",
+   "ov": 2,
+   "ovEl": true,
+   "open": "254:e",
+   "sel": {
+    "from": 355,
+    "to": 355,
+    "empty": true
+   },
+   "activated": true,
+   "ovWaitedMs": 0,
+   "ovOk": true
+  },
+  "point": {
+   "x": 1087,
+   "y": 442
+  },
+  "seq": [
+   "11.9ms ov2(el) R bgEDGE open=254:e n1 sel355",
+   "63.6ms ov0 R RE bgOFF open=254:E n1 sel285"
+  ],
+  "evs": [],
+  "frames": 40
+ },
+ "A_Y_glyph": {
+  "pre": {
+   "revealed": 1,
+   "from": 254,
+   "cls": "img-src-revealed",
+   "bg": "rgb(228, 230, 234)",
+   "ov": 2,
+   "ovEl": true,
+   "open": "254:e",
+   "sel": {
+    "from": 355,
+    "to": 355,
+    "empty": true
+   },
+   "activated": true,
+   "ovWaitedMs": 0,
+   "ovOk": true
+  },
+  "point": {
+   "x": 1087,
+   "y": 370
+  },
+  "seq": [
+   "1.2ms ov2(el) R bgEDGE open=254:e n1 sel355",
+   "84.9ms ov0 R RE bgOFF open=254:E n1 sel285"
+  ],
+  "evs": [],
+  "frames": 40
+ },
+ "A_Z_activate": {
+  "pre": {
+   "revealed": 1,
+   "from": 254,
+   "cls": "img-src-revealed",
+   "bg": "rgb(228, 230, 234)",
+   "ov": 2,
+   "ovEl": true,
+   "open": "254:e",
+   "sel": {
+    "from": 355,
+    "to": 355,
+    "empty": true
+   },
+   "activated": true,
+   "ovWaitedMs": 0,
+   "ovOk": true
+  },
+  "seq": [
+   "11.8ms ov2(el) R bgEDGE open=254:e n1 sel355",
+   "62.1ms ov0 R RE bgOFF open=254:E n1 sel267"
+  ],
+  "evs": []
+ },
+ "A_elsewhere": {
+  "revealed": 0,
+  "from": null,
+  "cls": null,
+  "bg": null,
+  "ov": 0,
+  "ovEl": false,
+  "open": "null:e",
+  "sel": {
+   "from": 2,
+   "to": 2,
+   "empty": true
+  }
+ },
+ "B": [
+  {
+   "name": "向左拖",
+   "start": {
+    "band": {
+     "x": 1087,
+     "y": 442
+    },
+    "glyph": {
+     "x": 1087,
+     "y": 370
+    }
+   },
+   "end": {
+    "x": 869,
+    "y": 370
+   },
+   "band": {
+    "from": 258,
+    "to": 285,
+    "empty": false
+   },
+   "glyph": {
+    "from": 258,
+    "to": 285,
+    "empty": false
+   },
+   "dFrom": 0,
+   "dTo": 0,
+   "bandSeq": [
+    "6.1ms ov0 R RE bgOFF open=254:E n1 sel285",
+    "76.6ms ov0 R bgEDGE open=254:e n1 sel283-285",
+    "89.7ms ov2(el) R bgEDGE open=254:e n1 sel283-285",
+    "109ms ov2(el) R bgEDGE open=254:e n1 sel281-285",
+    "142.5ms ov2(el) R bgEDGE open=254:e n1 sel280-285",
+    "175.3ms ov2(el) R bgEDGE open=254:e n1 sel277-285",
+    "208.7ms ov2(el) R bgEDGE open=254:e n1 sel275-285",
+    "242.1ms ov2(el) R bgEDGE open=254:e n1 sel274-285",
+    "292.3ms ov2(el) R bgEDGE open=254:e n1 sel272-285",
+    "342ms ov2(el) R bgEDGE open=254:e n1 sel269-285",
+    "375.7ms ov2(el) R bgEDGE open=254:e n1 sel267-285",
+    "408.9ms ov2(el) R bgEDGE open=254:e n1 sel265-285",
+    "441.9ms ov2(el) R bgEDGE open=254:e n1 sel263-285",
+    "475ms ov2(el) R bgEDGE open=254:e n1 sel262-285",
+    "525.2ms ov2(el) R bgEDGE open=254:e n1 sel260-285",
+    "575.5ms ov2(el) R bgEDGE open=254:e n1 sel258-285"
+   ]
+  },
+  {
+   "name": "向右拖",
+   "start": {
+    "band": {
+     "x": 1087,
+     "y": 442
+    },
+    "glyph": {
+     "x": 1087,
+     "y": 370
+    }
+   },
+   "end": {
+    "x": 1209,
+    "y": 370
+   },
+   "band": {
+    "from": 285,
+    "to": 299,
+    "empty": false
+   },
+   "glyph": {
+    "from": 285,
+    "to": 299,
+    "empty": false
+   },
+   "dFrom": 0,
+   "dTo": 0,
+   "bandSeq": [
+    "12.8ms ov0 R RE bgOFF open=254:E n1 sel285",
+    "65.2ms ov0 R bgEDGE open=254:e n1 sel285-287",
+    "79.5ms ov2(el) R bgEDGE open=254:e n1 sel285-287",
+    "132.6ms ov2(el) R bgEDGE open=254:e n1 sel285-288",
+    "182.1ms ov2(el) R bgEDGE open=254:e n1 sel285-289",
+    "232.4ms ov2(el) R bgEDGE open=254:e n1 sel285-290",
+    "298.3ms ov2(el) R bgEDGE open=254:e n1 sel285-291",
+    "331.7ms ov2(el) R bgEDGE open=254:e n1 sel285-292",
+    "365.1ms ov2(el) R bgEDGE open=254:e n1 sel285-293",
+    "415ms ov2(el) R bgEDGE open=254:e n1 sel285-295",
+    "464.9ms ov2(el) R bgEDGE open=254:e n1 sel285-296",
+    "498.6ms ov2(el) R bgEDGE open=254:e n1 sel285-297",
+    "531.5ms ov2(el) R bgEDGE open=254:e n1 sel285-298",
+    "564.9ms ov2(el) R bgEDGE open=254:e n1 sel285-299"
+   ]
+  },
+  {
+   "name": "拖出源码进入正文",
+   "start": {
+    "band": {
+     "x": 1087,
+     "y": 442
+    },
+    "glyph": {
+     "x": 1087,
+     "y": 370
+    }
+   },
+   "end": {
+    "x": 360,
+    "y": 424
+   },
+   "band": {
+    "from": 120,
+    "to": 285,
+    "empty": false
+   },
+   "glyph": {
+    "from": 120,
+    "to": 285,
+    "empty": false
+   },
+   "dFrom": 0,
+   "dTo": 0,
+   "bandSeq": [
+    "9.2ms ov0 R RE bgOFF open=254:E n1 sel285",
+    "79.1ms ov0 R bgEDGE open=254:e n1 sel279-285",
+    "92.6ms ov2(el) R bgEDGE open=254:e n1 sel279-285",
+    "111.7ms ov2(el) R bgEDGE open=254:e n1 sel272-285",
+    "145.1ms ov2(el) R bgEDGE open=254:e n1 sel265-285",
+    "178.3ms ov2(el) R bgEDGE open=254:e n1 sel259-285",
+    "212ms ov2(el) R bgEDGE open=254:e n1 sel254-285",
+    "413.1ms ov2(el) R bgEDGE open=254:e n1 sel135-285",
+    "479.1ms ov2(el) R bgEDGE open=254:e n1 sel133-285",
+    "528.6ms ov2(el) R bgEDGE open=254:e n1 sel122-285",
+    "562.1ms ov2(el) R bgEDGE open=254:e n1 sel120-285",
+    "642.6ms ov0 - bgnull open=null:e n0 sel120-285"
+   ]
+  }
+ ],
+ "B_singleClick": {
+  "revealed": 1,
+  "from": 254,
+  "cls": "img-src-revealed img-src-revealed--editing",
+  "bg": "rgba(0, 0, 0, 0)",
+  "ov": 0,
+  "ovEl": false,
+  "open": "254:E",
+  "sel": {
+   "from": 285,
+   "to": 285,
+   "empty": true
+  }
+ },
+ "B_glyphDrag": {
+  "revealed": 1,
+  "from": 254,
+  "cls": "img-src-revealed",
+  "bg": "rgb(228, 230, 234)",
+  "ov": 2,
+  "ovEl": true,
+  "open": "254:e",
+  "sel": {
+   "from": 256,
+   "to": 278,
+   "empty": false
+  }
+ },
+ "B_inBandDrag": {
+  "revealed": 1,
+  "from": 254,
+  "cls": "img-src-revealed",
+  "bg": "rgb(228, 230, 234)",
+  "ov": 2,
+  "ovEl": true,
+  "open": "254:e",
+  "sel": {
+   "from": 285,
+   "to": 299,
+   "empty": false
+  }
+ },
+ "keep": {
+  "bandClick": {
+   "revealed": 1,
+   "from": 254,
+   "cls": "img-src-revealed img-src-revealed--editing",
+   "bg": "rgba(0, 0, 0, 0)",
+   "ov": 0,
+   "ovEl": false,
+   "open": "254:E",
+   "sel": {
+    "from": 285,
+    "to": 285,
+    "empty": true
+   }
+  },
+  "revealGesture": {
+   "press": 0,
+   "release": 1,
+   "bg": "rgb(228, 230, 234)",
+   "seq": [
+    "0.4ms ov0 - bgnull open=null:e n0 sel2",
+    "211.9ms ov0 R bgEDGE open=254:e n1 sel254",
+    "228.6ms ov2(el) R bgEDGE open=254:e n1 sel355"
+   ]
+  },
+  "hit": {
+   "mid": {
+    "tag": "P",
+    "cls": "img-side-by-side",
+    "overlay": false
+   }
+  },
+  "layoutOn": {
+   "para": {
+    "l": 320,
+    "t": 354.67,
+    "r": 1362,
+    "b": 641.17,
+    "w": 1042,
+    "h": 286.5
+   },
+   "imgs": [
+    {
+     "l": 610.98,
+     "t": 354.67,
+     "r": 825.98,
+     "b": 497.92,
+     "w": 215,
+     "h": 143.25
+    },
+    {
+     "l": 700.72,
+     "t": 497.92,
+     "r": 915.72,
+     "b": 641.17,
+     "w": 215,
+     "h": 143.25
+    },
+    {
+     "l": 918.27,
+     "t": 497.92,
+     "r": 918.27,
+     "b": 497.92,
+     "w": 0,
+     "h": 0
+    }
+   ],
+   "h2": {
+    "l": 320,
+    "t": 674.31,
+    "r": 1362,
+    "b": 715.34,
+    "w": 1042,
+    "h": 41.03
+   },
+   "scrollH": 1530
+  },
+  "layoutOff": {
+   "para": {
+    "l": 320,
+    "t": 354.67,
+    "r": 1362,
+    "b": 641.17,
+    "w": 1042,
+    "h": 286.5
+   },
+   "imgs": [
+    {
+     "l": 610.98,
+     "t": 354.67,
+     "r": 825.98,
+     "b": 497.92,
+     "w": 215,
+     "h": 143.25
+    },
+    {
+     "l": 700.72,
+     "t": 497.92,
+     "r": 915.72,
+     "b": 641.17,
+     "w": 215,
+     "h": 143.25
+    },
+    {
+     "l": 918.27,
+     "t": 497.92,
+     "r": 918.27,
+     "b": 497.92,
+     "w": 0,
+     "h": 0
+    }
+   ],
+   "h2": {
+    "l": 320,
+    "t": 674.31,
+    "r": 1362,
+    "b": 715.34,
+    "w": 1042,
+    "h": 41.03
+   },
+   "scrollH": 1530
+  },
+  "layoutSame": true,
+  "editing": {
+   "revealed": 1,
+   "from": 254,
+   "cls": "img-src-revealed img-src-revealed--editing",
+   "bg": "rgba(0, 0, 0, 0)",
+   "ov": 0,
+   "ovEl": false,
+   "open": "254:E",
+   "sel": {
+    "from": 275,
+    "to": 275,
+    "empty": true
+   }
+  },
+  "hidden": {
+   "revealed": 0,
+   "from": null,
+   "cls": null,
+   "bg": null,
+   "ov": 0,
+   "ovEl": false,
+   "open": "null:e",
+   "sel": {
+    "from": 2,
+    "to": 2,
+    "empty": true
+   }
+  },
+  "modal": 0
+ },
+ "shaAfter": "4dbb870902ecc4ab38f83fcb8ce5c8b755ea738d94932ca5487b5467fd453a7b",
+ "mdRoundtripSame": true
+}

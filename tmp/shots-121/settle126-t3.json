@@ -1,0 +1,611 @@
+{
+ "tag": "t3",
+ "marks": {
+  "blocks": [
+   {
+    "i": 0,
+    "name": "paragraph",
+    "from": 1,
+    "to": 37,
+    "text": "行内公式：$E = mc"
+   },
+   {
+    "i": 1,
+    "name": "paragraph",
+    "from": 39,
+    "to": 44,
+    "text": "块级公式："
+   },
+   {
+    "i": 2,
+    "name": "paragraph",
+    "from": 47,
+    "to": 52,
+    "text": "$gyg$"
+   },
+   {
+    "i": 3,
+    "name": "paragraph",
+    "from": 54,
+    "to": 55,
+    "text": "2"
+   },
+   {
+    "i": 4,
+    "name": "paragraph",
+    "from": 57,
+    "to": 116,
+    "text": "下划线不当斜体：$x_1"
+   },
+   {
+    "i": 5,
+    "name": "paragraph",
+    "from": 118,
+    "to": 355,
+    "text": "行内公式$E = mc^"
+   },
+   {
+    "i": 6,
+    "name": "heading",
+    "from": 357,
+    "to": 361,
+    "text": "工作方式"
+   },
+   {
+    "i": 7,
+    "name": "codeBlock",
+    "from": 588,
+    "to": 751,
+    "text": "flowchart LR"
+   },
+   {
+    "i": 8,
+    "name": "paragraph",
+    "from": 753,
+    "to": 753,
+    "text": ""
+   }
+  ],
+  "tables": [
+   {
+    "from": 362,
+    "to": 587,
+    "rows": 6,
+    "text": "环节说明**索引体积**单独成块"
+   },
+   {
+    "rect": [
+     320,
+     587.39,
+     1242,
+     969.02
+    ]
+   }
+  ],
+  "mathInline": [
+   {
+    "from": 6,
+    "to": 16,
+    "rect": [
+     405,
+     77,
+     477.59,
+     98
+    ],
+    "text": "E=mc2"
+   },
+   {
+    "from": 19,
+    "to": 36,
+    "rect": [
+     504.66,
+     77,
+     600.8,
+     98
+    ],
+    "text": "a2+b2=c2"
+   },
+   {
+    "from": 47,
+    "to": 52,
+    "rect": [
+     320,
+     234.75,
+     351.36,
+     255.75
+    ],
+    "text": "gyg"
+   },
+   {
+    "from": 65,
+    "to": 76,
+    "rect": [
+     456,
+     318.03,
+     514.97,
+     339.03
+    ],
+    "text": "x1​+y2​"
+   },
+   {
+    "from": 85,
+    "to": 93,
+    "rect": [
+     660.95,
+     318.03,
+     708.58,
+     339.03
+    ],
+    "text": "a∗kb"
+   },
+   {
+    "from": 99,
+    "to": 112,
+    "rect": [
+     798.61,
+     318.03,
+     812.61,
+     339.03
+    ],
+    "text": "21​"
+   },
+   {
+    "from": 122,
+    "to": 132,
+    "rect": [
+     388,
+     413.89,
+     460.59,
+     434.89
+    ],
+    "text": "E=mc2"
+   },
+   {
+    "from": 135,
+    "to": 152,
+    "rect": [
+     487.66,
+     413.89,
+     583.8,
+     434.89
+    ],
+    "text": "a2+b2=c2"
+   }
+  ],
+  "mathBlock": [
+   {
+    "from": 45,
+    "rect": [
+     320,
+     161.23,
+     1242,
+     214.45
+    ]
+   }
+  ],
+  "imgs": [
+   {
+    "from": 153,
+    "rect": [
+     610.98,
+     354.67,
+     825.98,
+     497.92
+    ]
+   },
+   {
+    "from": 254,
+    "rect": [
+     838.72,
+     354.67,
+     1053.72,
+     497.92
+    ]
+   }
+  ]
+ },
+ "cases": [
+  {
+   "label": "table-fwd",
+   "from": {
+    "x": 408,
+    "y": 548
+   },
+   "to": {
+    "x": 367,
+    "y": 1064
+   },
+   "mid": {
+    "sel": "360-751",
+    "empty": false,
+    "type": "text",
+    "live": "360|751|360|751",
+    "lFrom": 360,
+    "lTo": 751,
+    "bands": 11,
+    "own": "all",
+    "nat": [
+     360,
+     588
+    ],
+    "t": 11
+   },
+   "settled": {
+    "sel": "360-753",
+    "empty": false,
+    "type": "text",
+    "live": "360|751|360|751",
+    "lFrom": 360,
+    "lTo": 751,
+    "bands": 0,
+    "own": null,
+    "nat": [
+     360,
+     753
+    ]
+   },
+   "post": {
+    "fallback": null,
+    "settleIn": "360|753|null|1|target360-753|far753|focusnull",
+    "band": 0,
+    "own": null,
+    "type": "text",
+    "text": "式\n环节\n说明\n**索引体积**\n单独成块，**不计入首屏**；用户不搜索就不下"
+   },
+   "dropped": [],
+   "same": false,
+   "frames": [
+    "1-1E|text|liveundefined-undefined|nat[null,null]|带0|闸null",
+    "360-751|text|live360-751|nat[360,588]|带11|闸all",
+    "360-751|text|live360-751|nat[360,588]|带11|闸all",
+    "360-751|text|live360-751|nat[360,588]|带11|闸all",
+    "360-751|text|live360-751|nat[360,588]|带11|闸all",
+    "360-751|text|live360-751|nat[360,588]|带11|闸all",
+    "360-751|text|live360-751|nat[360,588]|带11|闸all",
+    "360-751|text|live360-751|nat[360,588]|带11|闸all",
+    "360-751|text|live360-751|nat[360,588]|带11|闸all",
+    "360-751|text|live360-751|nat[360,588]|带11|闸all",
+    "360-751|text|live360-751|nat[360,588]|带11|闸all",
+    "360-751|text|live360-751|nat[360,588]|带11|闸all",
+    "360-751|text|live360-751|nat[360,588]|带11|闸all"
+   ]
+  },
+  {
+   "label": "table-back",
+   "from": {
+    "x": 367,
+    "y": 1064
+   },
+   "to": {
+    "x": 408,
+    "y": 548
+   },
+   "mid": {
+    "sel": "360-753",
+    "empty": false,
+    "type": "text",
+    "live": "360|753|360|753",
+    "lFrom": 360,
+    "lTo": 753,
+    "bands": 17,
+    "own": "all",
+    "nat": [
+     null,
+     null
+    ],
+    "t": 11
+   },
+   "settled": {
+    "sel": "360-360",
+    "empty": true,
+    "type": "text",
+    "live": "360|753|360|753",
+    "lFrom": 360,
+    "lTo": 753,
+    "bands": 0,
+    "own": null,
+    "nat": [
+     null,
+     null
+    ]
+   },
+   "post": {
+    "fallback": null,
+    "settleIn": "360|753|null|0|target360-753|far753|focusnull",
+    "band": 0,
+    "own": null,
+    "type": "text",
+    "text": ""
+   },
+   "dropped": [
+    {
+     "from": 360,
+     "to": 753,
+     "where": "heading/text→paragraph"
+    }
+   ],
+   "same": false,
+   "frames": [
+    "360-753|text|live360-751|nat[null,null]|带0|闸null",
+    "360-753|text|live360-753|nat[null,null]|带17|闸all",
+    "360-753|text|live360-753|nat[null,null]|带17|闸all",
+    "360-753|text|live360-753|nat[null,null]|带17|闸all",
+    "360-753|text|live360-753|nat[null,null]|带17|闸all",
+    "360-753|text|live360-753|nat[null,null]|带17|闸all",
+    "360-753|text|live360-753|nat[null,null]|带17|闸all",
+    "360-753|text|live360-753|nat[null,null]|带17|闸all",
+    "360-753|text|live360-753|nat[null,null]|带17|闸all",
+    "360-753|text|live360-753|nat[null,null]|带17|闸all",
+    "360-753|text|live360-753|nat[null,null]|带17|闸all",
+    "360-753|text|live360-753|nat[null,null]|带17|闸all",
+    "360-753|text|live360-753|nat[null,null]|带17|闸all"
+   ]
+  },
+  {
+   "label": "math-block-fwd",
+   "from": {
+    "x": 397,
+    "y": 129
+   },
+   "to": {
+    "x": 472,
+    "y": 83
+   },
+   "mid": {
+    "sel": "362-368",
+    "empty": false,
+    "type": "text",
+    "live": "368|362|362|368",
+    "lFrom": 362,
+    "lTo": 368,
+    "bands": 0,
+    "own": null,
+    "nat": [
+     363,
+     368
+    ],
+    "t": 11
+   },
+   "settled": {
+    "sel": "362-368",
+    "empty": false,
+    "type": "text",
+    "live": "368|362|362|368",
+    "lFrom": 362,
+    "lTo": 368,
+    "bands": 0,
+    "own": null,
+    "nat": [
+     362,
+     368
+    ]
+   },
+   "post": {
+    "fallback": null,
+    "settleIn": "368|362|null|1|target362-368|far362|focusnull",
+    "band": 0,
+    "own": null,
+    "type": "text",
+    "text": "环节"
+   },
+   "dropped": [],
+   "same": true,
+   "frames": [
+    "360-360E|text|live360-753|nat[null,null]|带0|闸null",
+    "362-368|text|live362-368|nat[363,368]|带0|闸null",
+    "362-368|text|live362-368|nat[363,368]|带0|闸null",
+    "362-368|text|live362-368|nat[363,368]|带0|闸null",
+    "362-368|text|live362-368|nat[363,368]|带0|闸null",
+    "362-368|text|live362-368|nat[363,368]|带0|闸null",
+    "362-368|text|live362-368|nat[363,368]|带0|闸null",
+    "362-368|text|live362-368|nat[363,368]|带0|闸null",
+    "362-368|text|live362-368|nat[363,368]|带0|闸null",
+    "362-368|text|live362-368|nat[363,368]|带0|闸null",
+    "362-368|text|live362-368|nat[363,368]|带0|闸null",
+    "362-368|text|live362-368|nat[363,368]|带0|闸null",
+    "362-368|text|live362-368|nat[363,368]|带0|闸null"
+   ]
+  },
+  {
+   "label": "math-block-back",
+   "from": {
+    "x": 472,
+    "y": 83
+   },
+   "to": {
+    "x": 397,
+    "y": 129
+   },
+   "mid": {
+    "sel": "362-368",
+    "empty": false,
+    "type": "text",
+    "live": "362|368|362|368",
+    "lFrom": 362,
+    "lTo": 368,
+    "bands": 0,
+    "own": null,
+    "nat": [
+     362,
+     368
+    ],
+    "t": 11
+   },
+   "settled": {
+    "sel": "362-368",
+    "empty": false,
+    "type": "text",
+    "live": "362|368|362|368",
+    "lFrom": 362,
+    "lTo": 368,
+    "bands": 0,
+    "own": null,
+    "nat": [
+     362,
+     368
+    ]
+   },
+   "post": {
+    "fallback": "ok",
+    "settleIn": "362|368|null|0|target362-368|far368|focusnull",
+    "band": 0,
+    "own": null,
+    "type": "text",
+    "text": "环节"
+   },
+   "dropped": [],
+   "same": true,
+   "frames": [
+    "362-368|text|live362-368|nat[362,368]|带0|闸null",
+    "362-368|text|live362-368|nat[362,368]|带0|闸null",
+    "362-368|text|live362-368|nat[362,368]|带0|闸null",
+    "362-368|text|live362-368|nat[362,368]|带0|闸null",
+    "362-368|text|live362-368|nat[362,368]|带0|闸null",
+    "362-368|text|live362-368|nat[362,368]|带0|闸null",
+    "362-368|text|live362-368|nat[362,368]|带0|闸null",
+    "362-368|text|live362-368|nat[362,368]|带0|闸null",
+    "362-368|text|live362-368|nat[362,368]|带0|闸null",
+    "362-368|text|live362-368|nat[362,368]|带0|闸null",
+    "362-368|text|live362-368|nat[362,368]|带0|闸null",
+    "362-368|text|live362-368|nat[362,368]|带0|闸null",
+    "362-368|text|live362-368|nat[362,368]|带0|闸null"
+   ]
+  },
+  {
+   "label": "math-inline-fwd",
+   "from": {
+    "x": 337,
+    "y": 329
+   },
+   "to": {
+    "x": 860,
+    "y": 329
+   },
+   "mid": {
+    "sel": "366-501",
+    "empty": false,
+    "type": "text",
+    "live": "362|501|362|501",
+    "lFrom": 362,
+    "lTo": 501,
+    "bands": 5,
+    "own": "all",
+    "nat": [
+     366,
+     501
+    ],
+    "t": 11
+   },
+   "settled": {
+    "sel": "366-501",
+    "empty": false,
+    "type": "text",
+    "live": "362|501|362|501",
+    "lFrom": 362,
+    "lTo": 501,
+    "bands": 5,
+    "own": "all",
+    "nat": [
+     366,
+     501
+    ]
+   },
+   "post": {
+    "fallback": null,
+    "settleIn": "362|501|null|0|target362-501|far501|focusnull",
+    "band": 5,
+    "own": "all",
+    "type": "text",
+    "text": "环节\n说明\n**索引体积**\n单独成块，**不计入首屏**；用户不搜索就不下载\n"
+   },
+   "dropped": [
+    {
+     "from": 362,
+     "to": 366,
+     "where": "doc/table→paragraph"
+    }
+   ],
+   "same": false,
+   "frames": [
+    "362-368|text|live362-368|nat[362,368]|带0|闸null",
+    "366-501|text|live362-501|nat[366,501]|带5|闸all",
+    "366-501|text|live362-501|nat[366,501]|带5|闸all",
+    "366-501|text|live362-501|nat[366,501]|带5|闸all",
+    "366-501|text|live362-501|nat[366,501]|带5|闸all",
+    "366-501|text|live362-501|nat[366,501]|带5|闸all",
+    "366-501|text|live362-501|nat[366,501]|带5|闸all",
+    "366-501|text|live362-501|nat[366,501]|带5|闸all",
+    "366-501|text|live362-501|nat[366,501]|带5|闸all",
+    "366-501|text|live362-501|nat[366,501]|带5|闸all",
+    "366-501|text|live362-501|nat[366,501]|带5|闸all",
+    "366-501|text|live362-501|nat[366,501]|带5|闸all",
+    "366-501|text|live362-501|nat[366,501]|带5|闸all"
+   ]
+  },
+  {
+   "label": "math-inline-back",
+   "from": {
+    "x": 860,
+    "y": 329
+   },
+   "to": {
+    "x": 337,
+    "y": 329
+   },
+   "mid": {
+    "sel": "366-501",
+    "empty": false,
+    "type": "text",
+    "live": "366|501|366|501",
+    "lFrom": 366,
+    "lTo": 501,
+    "bands": 5,
+    "own": "all",
+    "nat": [
+     366,
+     501
+    ],
+    "t": 11
+   },
+   "settled": {
+    "sel": "366-501",
+    "empty": false,
+    "type": "text",
+    "live": "366|501|366|501",
+    "lFrom": 366,
+    "lTo": 501,
+    "bands": 0,
+    "own": null,
+    "nat": [
+     366,
+     501
+    ]
+   },
+   "post": {
+    "fallback": "ok",
+    "settleIn": "366|501|null|0|target366-501|far501|focusnull",
+    "band": 0,
+    "own": null,
+    "type": "text",
+    "text": "环节\n说明\n**索引体积**\n单独成块，**不计入首屏**；用户不搜索就不下载\n"
+   },
+   "dropped": [],
+   "same": true,
+   "frames": [
+    "366-501|text|live362-501|nat[366,501]|带0|闸null",
+    "366-501|text|live366-501|nat[366,501]|带5|闸all",
+    "366-501|text|live366-501|nat[366,501]|带5|闸all",
+    "366-501|text|live366-501|nat[366,501]|带5|闸all",
+    "366-501|text|live366-501|nat[366,501]|带5|闸all",
+    "366-501|text|live366-501|nat[366,501]|带5|闸all",
+    "366-501|text|live366-501|nat[366,501]|带5|闸all",
+    "366-501|text|live366-501|nat[366,501]|带5|闸all",
+    "366-501|text|live366-501|nat[366,501]|带5|闸all",
+    "366-501|text|live366-501|nat[366,501]|带5|闸all",
+    "366-501|text|live366-501|nat[366,501]|带5|闸all",
+    "366-501|text|live366-501|nat[366,501]|带5|闸all",
+    "366-501|text|live366-501|nat[366,501]|带5|闸all"
+   ]
+  }
+ ]
+}

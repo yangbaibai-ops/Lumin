@@ -1,0 +1,22 @@
+innerWidth=1424 source=[254,355]
+frags [{"l":828.53,"t":354.08,"r":1345.97,"b":386.27,"w":517.44,"h":32.19},{"l":320,"t":497.33,"r":690.53,"b":529.52,"w":370.53,"h":32.19}]
+texts [{"l":828.53,"t":359.67,"r":1345.97,"b":380.67,"w":517.44,"h":21},{"l":320,"t":502.92,"r":690.53,"b":523.92,"w":370.53,"h":21}]
+overlays [{"l":828.52,"t":354.66,"r":1345.95,"b":497.91,"w":517.44,"h":143.25},{"l":320,"t":497.91,"r":690.52,"b":641.16,"w":370.52,"h":143.25}]
+hiddenBefore {"revealed":0,"sel":{"from":2,"to":2,"empty":true},"domText":"","editing":null,"cls":null,"bg":null,"overlays":0,"overlayEl":false}
+① A 连点空白带 3 次:
+   #1 (1087,442) preRevealed=1 ⇒ postRevealed=1 pos={"from":285,"to":285,"empty":true} editing=true overlays=0
+   #2 (1087,442) preRevealed=1 ⇒ postRevealed=1 pos={"from":285,"to":285,"empty":true} editing=true overlays=0
+   #3 (1087,442) preRevealed=1 ⇒ postRevealed=1 pos={"from":285,"to":285,"empty":true} editing=true overlays=0
+② B 按列落光标（空白带 vs 同行字形，同一 x）:
+   row0 mid x=1087 bandPos={"from":285,"to":285,"empty":true} glyphPos={"from":285,"to":285,"empty":true} Δ=0 bandRevealed=1 glyphRevealed=1 源码范围=[254,355]
+   row0 left x=830 bandPos={"from":254,"to":254,"empty":true} glyphPos={"from":254,"to":254,"empty":true} Δ=0 bandRevealed=1 glyphRevealed=1 源码范围=[254,355]
+   row0 right x=1345 bandPos={"from":313,"to":313,"empty":true} glyphPos={"from":313,"to":313,"empty":true} Δ=0 bandRevealed=1 glyphRevealed=1 源码范围=[254,355]
+   row1 mid x=505 bandPos={"from":334,"to":334,"empty":true} glyphPos={"from":334,"to":334,"empty":true} Δ=0 bandRevealed=1 glyphRevealed=1 源码范围=[254,355]
+   row1 left x=321 bandPos={"from":313,"to":313,"empty":true} glyphPos={"from":313,"to":313,"empty":true} Δ=0 bandRevealed=1 glyphRevealed=1 源码范围=[254,355]
+   row1 right x=690 bandPos={"from":355,"to":355,"empty":true} glyphPos={"from":355,"to":355,"empty":true} Δ=0 bandRevealed=1 glyphRevealed=1 源码范围=[254,355]
+③ 不误伤: dragOnGlyphs={"revealed":1,"sel":{"from":255,"to":273,"empty":false},"domText":"img src=\"https://a","editing":false,"cls":"img-src-revealed","bg":"rgb(228, 230, 234)","overlays":2,"overlayEl":true} clickOnGlyphs={"revealed":1,"sel":{"from":355,"to":355,"empty":true},"domText":"","editing":false,"cls":"img-src-revealed","bg":"rgb(228, 230, 234)","overlays":2,"overlayEl":true}
+④ 点真正的别处: {"revealed":0,"sel":{"from":2,"to":2,"empty":true},"domText":"","editing":null,"cls":null,"bg":null,"overlays":0,"overlayEl":false}
+⑤ 不破坏: press=0 release=1 bg=rgb(228, 230, 234) frames=["0/0","1/0","1/2"]
+   hit={"mid":{"tag":"P","cls":"img-side-by-side","overlay":false},"y":442,"x":1087} layoutSame=true
+   editing={"revealed":1,"sel":{"from":275,"to":275,"empty":true},"domText":"","editing":true,"cls":"img-src-revealed img-src-revealed--editing","bg":"rgba(0, 0, 0, 0)","overlays":0,"overlayEl":false}
+   hidden={"revealed":0,"sel":{"from":2,"to":2,"empty":true},"domText":"","editing":null,"cls":null,"bg":null,"overlays":0,"overlayEl":false} mdRoundtripSame=true modalAtEnd=0

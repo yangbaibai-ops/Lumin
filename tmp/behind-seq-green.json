@@ -1,0 +1,153 @@
+{
+ "tag": "green",
+ "geo": {
+  "ranges": [
+   {
+    "from": 153,
+    "to": 254
+   },
+   {
+    "from": 254,
+    "to": 355
+   }
+  ],
+  "widgets": [
+   {
+    "l": 610.98,
+    "t": 354.67,
+    "r": 825.98,
+    "b": 497.92
+   },
+   {
+    "l": 838.72,
+    "t": 354.67,
+    "r": 1053.72,
+    "b": 497.92
+   }
+  ],
+  "text": {
+   "l": 320,
+   "t": 413.89,
+   "r": 388,
+   "b": 434.89
+  }
+ },
+ "gestures": [
+  {
+   "name": "① 图后(右) → 向左拖到正文",
+   "from": {
+    "x": 1094,
+    "y": 426
+   },
+   "to": {
+    "x": 326,
+    "y": 424
+   },
+   "pre": {
+    "from": 2,
+    "to": 2,
+    "empty": true,
+    "revealed": 0,
+    "open": "null:e",
+    "cls": null,
+    "ov": 0
+   },
+   "after": {
+    "from": 118,
+    "to": 355,
+    "empty": false,
+    "revealed": 0,
+    "open": "null:e",
+    "cls": null,
+    "ov": 0
+   },
+   "frag": "行内公式$E = mc^2$ 与 $a^2 + b^2 = c^2$。<img src=\"https://assets.699pic.com/public/img95/photo/50465/4467.jpg_wh860.jpg\" styl",
+   "seq": [
+    "-|ov0|opennull:e|sel355-355E",
+    "-|ov0|opennull:e|sel254-254E",
+    "-|ov0|opennull:e|sel153-153E",
+    "-|ov0|opennull:e|sel135-135E",
+    "-|ov0|opennull:e|sel122-122E",
+    "-|ov0|opennull:e|sel121-121E",
+    "-|ov0|opennull:e|sel118-118E",
+    "-|ov0|opennull:e|sel118-355"
+   ],
+   "frames": 48
+  },
+  {
+   "name": "② 正文 → 向右拖过两张图",
+   "from": {
+    "x": 551,
+    "y": 424
+   },
+   "to": {
+    "x": 1084,
+    "y": 426
+   },
+   "pre": {
+    "from": 2,
+    "to": 2,
+    "empty": true,
+    "revealed": 0,
+    "open": "null:e",
+    "cls": null,
+    "ov": 0
+   },
+   "after": {
+    "from": 135,
+    "to": 355,
+    "empty": false,
+    "revealed": 0,
+    "open": "null:e",
+    "cls": null,
+    "ov": 0
+   },
+   "frag": "$a^2 + b^2 = c^2$。<img src=\"https://assets.699pic.com/public/img95/photo/50465/4467.jpg_wh860.jpg\" style=\"zoom:25%;\" /><",
+   "seq": [
+    "-|ov0|opennull:e|sel135-135E",
+    "-|ov0|opennull:e|sel153-153E",
+    "-|ov0|opennull:e|sel254-254E",
+    "-|ov0|opennull:e|sel355-355E",
+    "-|ov0|opennull:e|sel135-355"
+   ],
+   "frames": 48
+  },
+  {
+   "name": "⑤ 对照：图后 → 向左拖（停在图盒内）",
+   "from": {
+    "x": 1094,
+    "y": 426
+   },
+   "to": {
+    "x": 617,
+    "y": 426
+   },
+   "pre": {
+    "from": 2,
+    "to": 2,
+    "empty": true,
+    "revealed": 0,
+    "open": "null:e",
+    "cls": null,
+    "ov": 0
+   },
+   "after": {
+    "from": 153,
+    "to": 355,
+    "empty": false,
+    "revealed": 0,
+    "open": "null:e",
+    "cls": null,
+    "ov": 0
+   },
+   "frag": "<img src=\"https://assets.699pic.com/public/img95/photo/50465/4467.jpg_wh860.jpg\" style=\"zoom:25%;\" /><img src=\"https://a",
+   "seq": [
+    "-|ov0|opennull:e|sel355-355E",
+    "-|ov0|opennull:e|sel254-254E",
+    "-|ov0|opennull:e|sel153-153E",
+    "-|ov0|opennull:e|sel153-355"
+   ],
+   "frames": 48
+  }
+ ]
+}

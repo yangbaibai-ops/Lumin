@@ -1,0 +1,4595 @@
+{
+ "tag": "run4",
+ "info": {
+  "tokens": {
+   "sel": "#1118271c",
+   "edge": "#e4e6ea",
+   "panel2": "#e9ebf0"
+  },
+  "domBg": "rgba(0, 0, 0, 0)",
+  "bandCss": null,
+  "th": {
+   "rect": [
+    320.5,
+    731.14,
+    497.13,
+    794.58
+   ],
+   "bg": "rgb(233, 235, 240)",
+   "z": "auto",
+   "pos": "static",
+   "pe": "auto",
+   "text": "环节"
+  },
+  "thText": [
+   334,
+   747.52,
+   483.63,
+   778.2
+  ],
+  "revealed": {
+   "rects": [
+    [
+     828.53,
+     354.08,
+     1345.97,
+     386.27
+    ],
+    [
+     320,
+     497.33,
+     690.53,
+     529.52
+    ]
+   ],
+   "bg": "rgb(228, 230, 234)",
+   "z": "auto",
+   "pos": "static",
+   "pe": "auto",
+   "kind": "raw"
+  },
+  "parentChildren": [
+   "tiptap ProseMirror md-preview ProseMirror-focused:1",
+   "img-zoom-bar:30",
+   "img-src-overlay:auto"
+  ]
+ },
+ "cases": [
+  {
+   "label": "T-表头",
+   "from": {
+    "x": 350,
+    "y": 763
+   },
+   "to": {
+    "x": 477,
+    "y": 763
+   },
+   "frames": [
+    {
+     "sel": "425-425E",
+     "type": "text",
+     "own": null,
+     "miss": null,
+     "editing": null,
+     "bands": [],
+     "hl": [],
+     "nat": [
+      [
+       350.14,
+       736.14,
+       350.16,
+       756.14
+      ]
+     ],
+     "revealed": 0,
+     "residue": {
+      "rects": [],
+      "stack": [],
+      "bands": []
+     }
+    },
+    {
+     "sel": "425-428",
+     "type": "text",
+     "own": "all",
+     "miss": "0/0",
+     "editing": null,
+     "bands": [
+      [
+       349.13,
+       730.8,
+       399.59,
+       761.47
+      ]
+     ],
+     "hl": [],
+     "nat": [
+      [
+       350.14,
+       736.14,
+       398.61,
+       756.14
+      ]
+     ],
+     "revealed": 0,
+     "t": 0,
+     "residue": {
+      "rects": [
+       {
+        "nat": [
+         350.14,
+         736.14,
+         398.61,
+         756.14
+        ],
+        "covered": true,
+        "coveredVisible": true,
+        "hiddenByBg": false
+       }
+      ],
+      "stack": [
+       {
+        "tag": "STRONG",
+        "inDom": true,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "P",
+        "inDom": true,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "TD",
+        "inDom": true,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "TABLE",
+        "inDom": true,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.tableWrapper",
+        "inDom": true,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.tiptap",
+        "inDom": true,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "1"
+       },
+       {
+        "tag": "DIV.editor-content",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.relative",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.editor-scroll",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.typora-container",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.h-full",
+        "inDom": false,
+        "bg": "rgb(255, 255, 255)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.relative",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.flex",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.relative",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "MAIN.flex",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.relative",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.flex",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "BODY",
+        "inDom": false,
+        "bg": "rgb(250, 250, 250)",
+        "z": "auto"
+       },
+       {
+        "tag": "HTML.theme-light",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       }
+      ],
+      "bands": [
+       [
+        349.13,
+        730.8,
+        399.59,
+        761.47
+       ]
+      ]
+     }
+    },
+    {
+     "sel": "425-428",
+     "type": "text",
+     "own": "all",
+     "miss": "0/0",
+     "editing": null,
+     "bands": [
+      [
+       349.13,
+       730.8,
+       399.59,
+       761.47
+      ]
+     ],
+     "hl": [],
+     "nat": [
+      [
+       350.14,
+       736.14,
+       398.61,
+       756.14
+      ]
+     ],
+     "revealed": 0,
+     "t": 1,
+     "residue": {
+      "rects": [
+       {
+        "nat": [
+         350.14,
+         736.14,
+         398.61,
+         756.14
+        ],
+        "covered": true,
+        "coveredVisible": true,
+        "hiddenByBg": false
+       }
+      ],
+      "stack": [
+       {
+        "tag": "STRONG",
+        "inDom": true,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "P",
+        "inDom": true,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "TD",
+        "inDom": true,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "TABLE",
+        "inDom": true,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.tableWrapper",
+        "inDom": true,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.tiptap",
+        "inDom": true,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "1"
+       },
+       {
+        "tag": "DIV.editor-content",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.relative",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.editor-scroll",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.typora-container",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.h-full",
+        "inDom": false,
+        "bg": "rgb(255, 255, 255)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.relative",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.flex",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.relative",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "MAIN.flex",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.relative",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.flex",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "BODY",
+        "inDom": false,
+        "bg": "rgb(250, 250, 250)",
+        "z": "auto"
+       },
+       {
+        "tag": "HTML.theme-light",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       }
+      ],
+      "bands": [
+       [
+        349.13,
+        730.8,
+        399.59,
+        761.47
+       ]
+      ]
+     }
+    },
+    {
+     "sel": "425-428",
+     "type": "text",
+     "own": "all",
+     "miss": "0/0",
+     "editing": null,
+     "bands": [
+      [
+       349.13,
+       730.8,
+       399.59,
+       761.47
+      ]
+     ],
+     "hl": [],
+     "nat": [
+      [
+       350.14,
+       736.14,
+       398.61,
+       756.14
+      ]
+     ],
+     "revealed": 0,
+     "t": 2,
+     "residue": {
+      "rects": [
+       {
+        "nat": [
+         350.14,
+         736.14,
+         398.61,
+         756.14
+        ],
+        "covered": true,
+        "coveredVisible": true,
+        "hiddenByBg": false
+       }
+      ],
+      "stack": [
+       {
+        "tag": "STRONG",
+        "inDom": true,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "P",
+        "inDom": true,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "TD",
+        "inDom": true,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "TABLE",
+        "inDom": true,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.tableWrapper",
+        "inDom": true,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.tiptap",
+        "inDom": true,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "1"
+       },
+       {
+        "tag": "DIV.editor-content",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.relative",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.editor-scroll",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.typora-container",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.h-full",
+        "inDom": false,
+        "bg": "rgb(255, 255, 255)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.relative",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.flex",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.relative",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "MAIN.flex",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.relative",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.flex",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "BODY",
+        "inDom": false,
+        "bg": "rgb(250, 250, 250)",
+        "z": "auto"
+       },
+       {
+        "tag": "HTML.theme-light",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       }
+      ],
+      "bands": [
+       [
+        349.13,
+        730.8,
+        399.59,
+        761.47
+       ]
+      ]
+     }
+    },
+    {
+     "sel": "425-428",
+     "type": "text",
+     "own": "all",
+     "miss": "0/0",
+     "editing": null,
+     "bands": [
+      [
+       349.13,
+       730.8,
+       399.59,
+       761.47
+      ]
+     ],
+     "hl": [],
+     "nat": [
+      [
+       350.14,
+       736.14,
+       398.61,
+       756.14
+      ]
+     ],
+     "revealed": 0,
+     "t": 3,
+     "residue": {
+      "rects": [
+       {
+        "nat": [
+         350.14,
+         736.14,
+         398.61,
+         756.14
+        ],
+        "covered": true,
+        "coveredVisible": true,
+        "hiddenByBg": false
+       }
+      ],
+      "stack": [
+       {
+        "tag": "STRONG",
+        "inDom": true,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "P",
+        "inDom": true,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "TD",
+        "inDom": true,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "TABLE",
+        "inDom": true,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.tableWrapper",
+        "inDom": true,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.tiptap",
+        "inDom": true,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "1"
+       },
+       {
+        "tag": "DIV.editor-content",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.relative",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.editor-scroll",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.typora-container",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.h-full",
+        "inDom": false,
+        "bg": "rgb(255, 255, 255)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.relative",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.flex",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.relative",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "MAIN.flex",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.relative",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.flex",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "BODY",
+        "inDom": false,
+        "bg": "rgb(250, 250, 250)",
+        "z": "auto"
+       },
+       {
+        "tag": "HTML.theme-light",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       }
+      ],
+      "bands": [
+       [
+        349.13,
+        730.8,
+        399.59,
+        761.47
+       ]
+      ]
+     }
+    },
+    {
+     "sel": "425-428",
+     "type": "text",
+     "own": "all",
+     "miss": "0/0",
+     "editing": null,
+     "bands": [
+      [
+       349.13,
+       730.8,
+       399.59,
+       761.47
+      ]
+     ],
+     "hl": [],
+     "nat": [
+      [
+       350.14,
+       736.14,
+       398.61,
+       756.14
+      ]
+     ],
+     "revealed": 0,
+     "t": 4,
+     "residue": {
+      "rects": [
+       {
+        "nat": [
+         350.14,
+         736.14,
+         398.61,
+         756.14
+        ],
+        "covered": true,
+        "coveredVisible": true,
+        "hiddenByBg": false
+       }
+      ],
+      "stack": [
+       {
+        "tag": "STRONG",
+        "inDom": true,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "P",
+        "inDom": true,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "TD",
+        "inDom": true,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "TABLE",
+        "inDom": true,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.tableWrapper",
+        "inDom": true,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.tiptap",
+        "inDom": true,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "1"
+       },
+       {
+        "tag": "DIV.editor-content",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.relative",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.editor-scroll",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.typora-container",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.h-full",
+        "inDom": false,
+        "bg": "rgb(255, 255, 255)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.relative",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.flex",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.relative",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "MAIN.flex",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.relative",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.flex",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "BODY",
+        "inDom": false,
+        "bg": "rgb(250, 250, 250)",
+        "z": "auto"
+       },
+       {
+        "tag": "HTML.theme-light",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       }
+      ],
+      "bands": [
+       [
+        349.13,
+        730.8,
+        399.59,
+        761.47
+       ]
+      ]
+     }
+    },
+    {
+     "sel": "425-428",
+     "type": "text",
+     "own": "all",
+     "miss": "0/0",
+     "editing": null,
+     "bands": [
+      [
+       349.13,
+       730.8,
+       399.59,
+       761.47
+      ]
+     ],
+     "hl": [],
+     "nat": [
+      [
+       350.14,
+       736.14,
+       398.61,
+       756.14
+      ]
+     ],
+     "revealed": 0,
+     "t": 5,
+     "residue": {
+      "rects": [
+       {
+        "nat": [
+         350.14,
+         736.14,
+         398.61,
+         756.14
+        ],
+        "covered": true,
+        "coveredVisible": true,
+        "hiddenByBg": false
+       }
+      ],
+      "stack": [
+       {
+        "tag": "STRONG",
+        "inDom": true,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "P",
+        "inDom": true,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "TD",
+        "inDom": true,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "TABLE",
+        "inDom": true,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.tableWrapper",
+        "inDom": true,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.tiptap",
+        "inDom": true,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "1"
+       },
+       {
+        "tag": "DIV.editor-content",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.relative",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.editor-scroll",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.typora-container",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.h-full",
+        "inDom": false,
+        "bg": "rgb(255, 255, 255)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.relative",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.flex",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.relative",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "MAIN.flex",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.relative",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.flex",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "BODY",
+        "inDom": false,
+        "bg": "rgb(250, 250, 250)",
+        "z": "auto"
+       },
+       {
+        "tag": "HTML.theme-light",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       }
+      ],
+      "bands": [
+       [
+        349.13,
+        730.8,
+        399.59,
+        761.47
+       ]
+      ]
+     }
+    },
+    {
+     "sel": "425-428",
+     "type": "text",
+     "own": "all",
+     "miss": "0/0",
+     "editing": null,
+     "bands": [
+      [
+       349.13,
+       730.8,
+       399.59,
+       761.47
+      ]
+     ],
+     "hl": [],
+     "nat": [
+      [
+       350.14,
+       736.14,
+       398.61,
+       756.14
+      ]
+     ],
+     "revealed": 0,
+     "t": 6,
+     "residue": {
+      "rects": [
+       {
+        "nat": [
+         350.14,
+         736.14,
+         398.61,
+         756.14
+        ],
+        "covered": true,
+        "coveredVisible": true,
+        "hiddenByBg": false
+       }
+      ],
+      "stack": [
+       {
+        "tag": "STRONG",
+        "inDom": true,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "P",
+        "inDom": true,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "TD",
+        "inDom": true,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "TABLE",
+        "inDom": true,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.tableWrapper",
+        "inDom": true,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.tiptap",
+        "inDom": true,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "1"
+       },
+       {
+        "tag": "DIV.editor-content",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.relative",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.editor-scroll",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.typora-container",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.h-full",
+        "inDom": false,
+        "bg": "rgb(255, 255, 255)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.relative",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.flex",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.relative",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "MAIN.flex",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.relative",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.flex",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "BODY",
+        "inDom": false,
+        "bg": "rgb(250, 250, 250)",
+        "z": "auto"
+       },
+       {
+        "tag": "HTML.theme-light",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       }
+      ],
+      "bands": [
+       [
+        349.13,
+        730.8,
+        399.59,
+        761.47
+       ]
+      ]
+     }
+    },
+    {
+     "sel": "425-428",
+     "type": "text",
+     "own": "all",
+     "miss": "0/0",
+     "editing": null,
+     "bands": [
+      [
+       349.13,
+       730.8,
+       399.59,
+       761.47
+      ]
+     ],
+     "hl": [],
+     "nat": [
+      [
+       350.14,
+       736.14,
+       398.61,
+       756.14
+      ]
+     ],
+     "revealed": 0,
+     "t": 7,
+     "residue": {
+      "rects": [
+       {
+        "nat": [
+         350.14,
+         736.14,
+         398.61,
+         756.14
+        ],
+        "covered": true,
+        "coveredVisible": true,
+        "hiddenByBg": false
+       }
+      ],
+      "stack": [
+       {
+        "tag": "STRONG",
+        "inDom": true,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "P",
+        "inDom": true,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "TD",
+        "inDom": true,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "TABLE",
+        "inDom": true,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.tableWrapper",
+        "inDom": true,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.tiptap",
+        "inDom": true,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "1"
+       },
+       {
+        "tag": "DIV.editor-content",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.relative",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.editor-scroll",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.typora-container",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.h-full",
+        "inDom": false,
+        "bg": "rgb(255, 255, 255)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.relative",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.flex",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.relative",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "MAIN.flex",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.relative",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.flex",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "BODY",
+        "inDom": false,
+        "bg": "rgb(250, 250, 250)",
+        "z": "auto"
+       },
+       {
+        "tag": "HTML.theme-light",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       }
+      ],
+      "bands": [
+       [
+        349.13,
+        730.8,
+        399.59,
+        761.47
+       ]
+      ]
+     }
+    },
+    {
+     "sel": "425-428",
+     "type": "text",
+     "own": "all",
+     "miss": "0/0",
+     "editing": null,
+     "bands": [
+      [
+       349.13,
+       730.8,
+       399.59,
+       761.47
+      ]
+     ],
+     "hl": [],
+     "nat": [
+      [
+       350.14,
+       736.14,
+       398.61,
+       756.14
+      ]
+     ],
+     "revealed": 0,
+     "t": 8,
+     "residue": {
+      "rects": [
+       {
+        "nat": [
+         350.14,
+         736.14,
+         398.61,
+         756.14
+        ],
+        "covered": true,
+        "coveredVisible": true,
+        "hiddenByBg": false
+       }
+      ],
+      "stack": [
+       {
+        "tag": "STRONG",
+        "inDom": true,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "P",
+        "inDom": true,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "TD",
+        "inDom": true,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "TABLE",
+        "inDom": true,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.tableWrapper",
+        "inDom": true,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.tiptap",
+        "inDom": true,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "1"
+       },
+       {
+        "tag": "DIV.editor-content",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.relative",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.editor-scroll",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.typora-container",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.h-full",
+        "inDom": false,
+        "bg": "rgb(255, 255, 255)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.relative",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.flex",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.relative",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "MAIN.flex",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.relative",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.flex",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "BODY",
+        "inDom": false,
+        "bg": "rgb(250, 250, 250)",
+        "z": "auto"
+       },
+       {
+        "tag": "HTML.theme-light",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       }
+      ],
+      "bands": [
+       [
+        349.13,
+        730.8,
+        399.59,
+        761.47
+       ]
+      ]
+     }
+    },
+    {
+     "sel": "425-428",
+     "type": "text",
+     "own": "all",
+     "miss": "0/0",
+     "editing": null,
+     "bands": [
+      [
+       349.13,
+       730.8,
+       399.59,
+       761.47
+      ]
+     ],
+     "hl": [],
+     "nat": [
+      [
+       350.14,
+       736.14,
+       398.61,
+       756.14
+      ]
+     ],
+     "revealed": 0,
+     "t": 9,
+     "residue": {
+      "rects": [
+       {
+        "nat": [
+         350.14,
+         736.14,
+         398.61,
+         756.14
+        ],
+        "covered": true,
+        "coveredVisible": true,
+        "hiddenByBg": false
+       }
+      ],
+      "stack": [
+       {
+        "tag": "STRONG",
+        "inDom": true,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "P",
+        "inDom": true,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "TD",
+        "inDom": true,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "TABLE",
+        "inDom": true,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.tableWrapper",
+        "inDom": true,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.tiptap",
+        "inDom": true,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "1"
+       },
+       {
+        "tag": "DIV.editor-content",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.relative",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.editor-scroll",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.typora-container",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.h-full",
+        "inDom": false,
+        "bg": "rgb(255, 255, 255)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.relative",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.flex",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.relative",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "MAIN.flex",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.relative",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.flex",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "BODY",
+        "inDom": false,
+        "bg": "rgb(250, 250, 250)",
+        "z": "auto"
+       },
+       {
+        "tag": "HTML.theme-light",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       }
+      ],
+      "bands": [
+       [
+        349.13,
+        730.8,
+        399.59,
+        761.47
+       ]
+      ]
+     }
+    },
+    {
+     "sel": "425-428",
+     "type": "text",
+     "own": "all",
+     "miss": "0/0",
+     "editing": null,
+     "bands": [
+      [
+       349.13,
+       730.8,
+       399.59,
+       761.47
+      ]
+     ],
+     "hl": [],
+     "nat": [
+      [
+       350.14,
+       736.14,
+       398.61,
+       756.14
+      ]
+     ],
+     "revealed": 0,
+     "t": 10,
+     "residue": {
+      "rects": [
+       {
+        "nat": [
+         350.14,
+         736.14,
+         398.61,
+         756.14
+        ],
+        "covered": true,
+        "coveredVisible": true,
+        "hiddenByBg": false
+       }
+      ],
+      "stack": [
+       {
+        "tag": "STRONG",
+        "inDom": true,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "P",
+        "inDom": true,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "TD",
+        "inDom": true,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "TABLE",
+        "inDom": true,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.tableWrapper",
+        "inDom": true,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.tiptap",
+        "inDom": true,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "1"
+       },
+       {
+        "tag": "DIV.editor-content",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.relative",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.editor-scroll",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.typora-container",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.h-full",
+        "inDom": false,
+        "bg": "rgb(255, 255, 255)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.relative",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.flex",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.relative",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "MAIN.flex",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.relative",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.flex",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "BODY",
+        "inDom": false,
+        "bg": "rgb(250, 250, 250)",
+        "z": "auto"
+       },
+       {
+        "tag": "HTML.theme-light",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       }
+      ],
+      "bands": [
+       [
+        349.13,
+        730.8,
+        399.59,
+        761.47
+       ]
+      ]
+     }
+    },
+    {
+     "sel": "425-428",
+     "type": "text",
+     "own": "all",
+     "miss": "0/0",
+     "editing": null,
+     "bands": [
+      [
+       349.13,
+       730.8,
+       399.59,
+       761.47
+      ]
+     ],
+     "hl": [],
+     "nat": [
+      [
+       350.14,
+       736.14,
+       398.61,
+       756.14
+      ]
+     ],
+     "revealed": 0,
+     "t": 11,
+     "residue": {
+      "rects": [
+       {
+        "nat": [
+         350.14,
+         736.14,
+         398.61,
+         756.14
+        ],
+        "covered": true,
+        "coveredVisible": true,
+        "hiddenByBg": false
+       }
+      ],
+      "stack": [
+       {
+        "tag": "STRONG",
+        "inDom": true,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "P",
+        "inDom": true,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "TD",
+        "inDom": true,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "TABLE",
+        "inDom": true,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.tableWrapper",
+        "inDom": true,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.tiptap",
+        "inDom": true,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "1"
+       },
+       {
+        "tag": "DIV.editor-content",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.relative",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.editor-scroll",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.typora-container",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.h-full",
+        "inDom": false,
+        "bg": "rgb(255, 255, 255)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.relative",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.flex",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.relative",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "MAIN.flex",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.relative",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.flex",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "BODY",
+        "inDom": false,
+        "bg": "rgb(250, 250, 250)",
+        "z": "auto"
+       },
+       {
+        "tag": "HTML.theme-light",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       }
+      ],
+      "bands": [
+       [
+        349.13,
+        730.8,
+        399.59,
+        761.47
+       ]
+      ]
+     }
+    },
+    {
+     "sel": "425-428",
+     "type": "text",
+     "own": "all",
+     "miss": "0/0",
+     "editing": null,
+     "bands": [
+      [
+       349.13,
+       730.8,
+       399.59,
+       761.47
+      ]
+     ],
+     "hl": [],
+     "nat": [
+      [
+       350.14,
+       736.14,
+       398.61,
+       756.14
+      ]
+     ],
+     "revealed": 0,
+     "t": 12,
+     "residue": {
+      "rects": [
+       {
+        "nat": [
+         350.14,
+         736.14,
+         398.61,
+         756.14
+        ],
+        "covered": true,
+        "coveredVisible": true,
+        "hiddenByBg": false
+       }
+      ],
+      "stack": [
+       {
+        "tag": "STRONG",
+        "inDom": true,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "P",
+        "inDom": true,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "TD",
+        "inDom": true,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "TABLE",
+        "inDom": true,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.tableWrapper",
+        "inDom": true,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.tiptap",
+        "inDom": true,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "1"
+       },
+       {
+        "tag": "DIV.editor-content",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.relative",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.editor-scroll",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.typora-container",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.h-full",
+        "inDom": false,
+        "bg": "rgb(255, 255, 255)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.relative",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.flex",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.relative",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "MAIN.flex",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.relative",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.flex",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "BODY",
+        "inDom": false,
+        "bg": "rgb(250, 250, 250)",
+        "z": "auto"
+       },
+       {
+        "tag": "HTML.theme-light",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       }
+      ],
+      "bands": [
+       [
+        349.13,
+        730.8,
+        399.59,
+        761.47
+       ]
+      ]
+     }
+    },
+    {
+     "sel": "425-428",
+     "type": "text",
+     "own": "all",
+     "miss": "0/0",
+     "editing": null,
+     "bands": [
+      [
+       349.13,
+       730.8,
+       399.59,
+       761.47
+      ]
+     ],
+     "hl": [],
+     "nat": [
+      [
+       350.14,
+       736.14,
+       398.61,
+       756.14
+      ]
+     ],
+     "revealed": 0,
+     "t": 13,
+     "residue": {
+      "rects": [
+       {
+        "nat": [
+         350.14,
+         736.14,
+         398.61,
+         756.14
+        ],
+        "covered": true,
+        "coveredVisible": true,
+        "hiddenByBg": false
+       }
+      ],
+      "stack": [
+       {
+        "tag": "STRONG",
+        "inDom": true,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "P",
+        "inDom": true,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "TD",
+        "inDom": true,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "TABLE",
+        "inDom": true,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.tableWrapper",
+        "inDom": true,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.tiptap",
+        "inDom": true,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "1"
+       },
+       {
+        "tag": "DIV.editor-content",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.relative",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.editor-scroll",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.typora-container",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.h-full",
+        "inDom": false,
+        "bg": "rgb(255, 255, 255)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.relative",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.flex",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.relative",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "MAIN.flex",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.relative",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.flex",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "BODY",
+        "inDom": false,
+        "bg": "rgb(250, 250, 250)",
+        "z": "auto"
+       },
+       {
+        "tag": "HTML.theme-light",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       }
+      ],
+      "bands": [
+       [
+        349.13,
+        730.8,
+        399.59,
+        761.47
+       ]
+      ]
+     }
+    }
+   ],
+   "samples": [
+    {
+     "name": "带中心",
+     "x": 374,
+     "y": 746,
+     "drag": [
+      221,
+      196,
+      142
+     ],
+     "settled": [
+      196,
+      136,
+      78
+     ],
+     "Δ": 149,
+     "拖动期有样式": false
+    },
+    {
+     "name": "带内字形下方4px",
+     "x": 374,
+     "y": 757,
+     "drag": [
+      221,
+      222,
+      224
+     ],
+     "settled": [
+      221,
+      222,
+      224
+     ],
+     "Δ": 0,
+     "拖动期有样式": true
+    },
+    {
+     "name": "原生rect中心",
+     "x": 374,
+     "y": 746,
+     "drag": [
+      221,
+      196,
+      142
+     ],
+     "settled": [
+      196,
+      136,
+      78
+     ],
+     "Δ": 149,
+     "拖动期有样式": false
+    },
+    {
+     "name": "表头单元中心偏下",
+     "x": 409,
+     "y": 772,
+     "drag": [
+      246,
+      246,
+      247
+     ],
+     "settled": [
+      246,
+      246,
+      247
+     ],
+     "Δ": 0,
+     "拖动期有样式": true
+    },
+    {
+     "name": "表头字形行",
+     "x": 350,
+     "y": 763,
+     "drag": [
+      246,
+      246,
+      247
+     ],
+     "settled": [
+      246,
+      246,
+      247
+     ],
+     "Δ": 0,
+     "拖动期有样式": true
+    },
+    {
+     "name": "表体首行",
+     "x": 409,
+     "y": 821,
+     "drag": [
+      255,
+      255,
+      255
+     ],
+     "settled": [
+      255,
+      255,
+      255
+     ],
+     "Δ": 0,
+     "拖动期有样式": true
+    }
+   ],
+   "settled": {
+    "sel": "425-431",
+    "type": "text",
+    "own": null,
+    "miss": null,
+    "editing": null,
+    "bands": [],
+    "hl": [],
+    "nat": [
+     [
+      364.84,
+      736.14,
+      413.31,
+      756.14
+     ],
+     [
+      413.31,
+      736.14,
+      428.02,
+      756.14
+     ],
+     [
+      413.31,
+      736.14,
+      428.02,
+      756.14
+     ]
+    ],
+    "revealed": 0
+   },
+   "resMax": 0,
+   "resFramesBad": 0,
+   "dragCovered": 1,
+   "dragOwn": "all",
+   "dragHl": 0,
+   "dragNat": 1
+  },
+  {
+   "label": "S-刚显形源码",
+   "from": {
+    "x": 837,
+    "y": 370
+   },
+   "to": {
+    "x": 987,
+    "y": 370
+   },
+   "frames": [
+    {
+     "sel": "255-255E",
+     "type": "text",
+     "own": null,
+     "miss": null,
+     "editing": false,
+     "bands": [],
+     "hl": [],
+     "nat": [
+      [
+       841.13,
+       359.67,
+       841.14,
+       380.67
+      ]
+     ],
+     "revealed": 1,
+     "residue": {
+      "rects": [],
+      "stack": [],
+      "bands": []
+     }
+    },
+    {
+     "sel": "255-273",
+     "type": "text",
+     "own": "all",
+     "miss": "0/0",
+     "editing": false,
+     "bands": [
+      [
+       840.13,
+       354.02,
+       991.03,
+       497.91
+      ]
+     ],
+     "hl": [],
+     "nat": [
+      [
+       841.13,
+       359.67,
+       990.03,
+       380.67
+      ]
+     ],
+     "revealed": 1,
+     "t": 0,
+     "residue": {
+      "rects": [
+       {
+        "nat": [
+         841.13,
+         359.67,
+         990.03,
+         380.67
+        ],
+        "covered": true,
+        "coveredVisible": false,
+        "hiddenByBg": true
+       }
+      ],
+      "stack": [
+       {
+        "tag": "SPAN.md-html",
+        "inDom": true,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "P.img-side-by-side",
+        "inDom": true,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.tiptap",
+        "inDom": true,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "1"
+       },
+       {
+        "tag": "DIV.editor-content",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.relative",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.editor-scroll",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.typora-container",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.h-full",
+        "inDom": false,
+        "bg": "rgb(255, 255, 255)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.relative",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.flex",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.relative",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "MAIN.flex",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.relative",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.flex",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "BODY",
+        "inDom": false,
+        "bg": "rgb(250, 250, 250)",
+        "z": "auto"
+       },
+       {
+        "tag": "HTML.theme-light",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       }
+      ],
+      "bands": [
+       [
+        840.13,
+        354.02,
+        991.03,
+        497.91
+       ]
+      ]
+     }
+    },
+    {
+     "sel": "255-273",
+     "type": "text",
+     "own": "all",
+     "miss": "0/0",
+     "editing": false,
+     "bands": [
+      [
+       840.13,
+       354.02,
+       991.03,
+       497.91
+      ]
+     ],
+     "hl": [],
+     "nat": [
+      [
+       841.13,
+       359.67,
+       990.03,
+       380.67
+      ]
+     ],
+     "revealed": 1,
+     "t": 1,
+     "residue": {
+      "rects": [
+       {
+        "nat": [
+         841.13,
+         359.67,
+         990.03,
+         380.67
+        ],
+        "covered": true,
+        "coveredVisible": false,
+        "hiddenByBg": true
+       }
+      ],
+      "stack": [
+       {
+        "tag": "SPAN.md-html",
+        "inDom": true,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "P.img-side-by-side",
+        "inDom": true,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.tiptap",
+        "inDom": true,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "1"
+       },
+       {
+        "tag": "DIV.editor-content",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.relative",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.editor-scroll",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.typora-container",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.h-full",
+        "inDom": false,
+        "bg": "rgb(255, 255, 255)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.relative",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.flex",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.relative",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "MAIN.flex",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.relative",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.flex",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "BODY",
+        "inDom": false,
+        "bg": "rgb(250, 250, 250)",
+        "z": "auto"
+       },
+       {
+        "tag": "HTML.theme-light",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       }
+      ],
+      "bands": [
+       [
+        840.13,
+        354.02,
+        991.03,
+        497.91
+       ]
+      ]
+     }
+    },
+    {
+     "sel": "255-273",
+     "type": "text",
+     "own": "all",
+     "miss": "0/0",
+     "editing": false,
+     "bands": [
+      [
+       840.13,
+       354.02,
+       991.03,
+       497.91
+      ]
+     ],
+     "hl": [],
+     "nat": [
+      [
+       841.13,
+       359.67,
+       990.03,
+       380.67
+      ]
+     ],
+     "revealed": 1,
+     "t": 2,
+     "residue": {
+      "rects": [
+       {
+        "nat": [
+         841.13,
+         359.67,
+         990.03,
+         380.67
+        ],
+        "covered": true,
+        "coveredVisible": false,
+        "hiddenByBg": true
+       }
+      ],
+      "stack": [
+       {
+        "tag": "SPAN.md-html",
+        "inDom": true,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "P.img-side-by-side",
+        "inDom": true,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.tiptap",
+        "inDom": true,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "1"
+       },
+       {
+        "tag": "DIV.editor-content",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.relative",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.editor-scroll",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.typora-container",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.h-full",
+        "inDom": false,
+        "bg": "rgb(255, 255, 255)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.relative",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.flex",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.relative",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "MAIN.flex",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.relative",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.flex",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "BODY",
+        "inDom": false,
+        "bg": "rgb(250, 250, 250)",
+        "z": "auto"
+       },
+       {
+        "tag": "HTML.theme-light",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       }
+      ],
+      "bands": [
+       [
+        840.13,
+        354.02,
+        991.03,
+        497.91
+       ]
+      ]
+     }
+    },
+    {
+     "sel": "255-273",
+     "type": "text",
+     "own": "all",
+     "miss": "0/0",
+     "editing": false,
+     "bands": [
+      [
+       840.13,
+       354.02,
+       991.03,
+       497.91
+      ]
+     ],
+     "hl": [],
+     "nat": [
+      [
+       841.13,
+       359.67,
+       990.03,
+       380.67
+      ]
+     ],
+     "revealed": 1,
+     "t": 3,
+     "residue": {
+      "rects": [
+       {
+        "nat": [
+         841.13,
+         359.67,
+         990.03,
+         380.67
+        ],
+        "covered": true,
+        "coveredVisible": false,
+        "hiddenByBg": true
+       }
+      ],
+      "stack": [
+       {
+        "tag": "SPAN.md-html",
+        "inDom": true,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "P.img-side-by-side",
+        "inDom": true,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.tiptap",
+        "inDom": true,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "1"
+       },
+       {
+        "tag": "DIV.editor-content",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.relative",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.editor-scroll",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.typora-container",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.h-full",
+        "inDom": false,
+        "bg": "rgb(255, 255, 255)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.relative",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.flex",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.relative",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "MAIN.flex",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.relative",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.flex",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "BODY",
+        "inDom": false,
+        "bg": "rgb(250, 250, 250)",
+        "z": "auto"
+       },
+       {
+        "tag": "HTML.theme-light",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       }
+      ],
+      "bands": [
+       [
+        840.13,
+        354.02,
+        991.03,
+        497.91
+       ]
+      ]
+     }
+    },
+    {
+     "sel": "255-273",
+     "type": "text",
+     "own": "all",
+     "miss": "0/0",
+     "editing": false,
+     "bands": [
+      [
+       840.13,
+       354.02,
+       991.03,
+       497.91
+      ]
+     ],
+     "hl": [],
+     "nat": [
+      [
+       841.13,
+       359.67,
+       990.03,
+       380.67
+      ]
+     ],
+     "revealed": 1,
+     "t": 4,
+     "residue": {
+      "rects": [
+       {
+        "nat": [
+         841.13,
+         359.67,
+         990.03,
+         380.67
+        ],
+        "covered": true,
+        "coveredVisible": false,
+        "hiddenByBg": true
+       }
+      ],
+      "stack": [
+       {
+        "tag": "SPAN.md-html",
+        "inDom": true,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "P.img-side-by-side",
+        "inDom": true,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.tiptap",
+        "inDom": true,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "1"
+       },
+       {
+        "tag": "DIV.editor-content",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.relative",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.editor-scroll",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.typora-container",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.h-full",
+        "inDom": false,
+        "bg": "rgb(255, 255, 255)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.relative",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.flex",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.relative",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "MAIN.flex",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.relative",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.flex",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "BODY",
+        "inDom": false,
+        "bg": "rgb(250, 250, 250)",
+        "z": "auto"
+       },
+       {
+        "tag": "HTML.theme-light",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       }
+      ],
+      "bands": [
+       [
+        840.13,
+        354.02,
+        991.03,
+        497.91
+       ]
+      ]
+     }
+    },
+    {
+     "sel": "255-273",
+     "type": "text",
+     "own": "all",
+     "miss": "0/0",
+     "editing": false,
+     "bands": [
+      [
+       840.13,
+       354.02,
+       991.03,
+       497.91
+      ]
+     ],
+     "hl": [],
+     "nat": [
+      [
+       841.13,
+       359.67,
+       990.03,
+       380.67
+      ]
+     ],
+     "revealed": 1,
+     "t": 5,
+     "residue": {
+      "rects": [
+       {
+        "nat": [
+         841.13,
+         359.67,
+         990.03,
+         380.67
+        ],
+        "covered": true,
+        "coveredVisible": false,
+        "hiddenByBg": true
+       }
+      ],
+      "stack": [
+       {
+        "tag": "SPAN.md-html",
+        "inDom": true,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "P.img-side-by-side",
+        "inDom": true,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.tiptap",
+        "inDom": true,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "1"
+       },
+       {
+        "tag": "DIV.editor-content",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.relative",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.editor-scroll",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.typora-container",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.h-full",
+        "inDom": false,
+        "bg": "rgb(255, 255, 255)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.relative",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.flex",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.relative",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "MAIN.flex",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.relative",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.flex",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "BODY",
+        "inDom": false,
+        "bg": "rgb(250, 250, 250)",
+        "z": "auto"
+       },
+       {
+        "tag": "HTML.theme-light",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       }
+      ],
+      "bands": [
+       [
+        840.13,
+        354.02,
+        991.03,
+        497.91
+       ]
+      ]
+     }
+    },
+    {
+     "sel": "255-273",
+     "type": "text",
+     "own": "all",
+     "miss": "0/0",
+     "editing": false,
+     "bands": [
+      [
+       840.13,
+       354.02,
+       991.03,
+       497.91
+      ]
+     ],
+     "hl": [],
+     "nat": [
+      [
+       841.13,
+       359.67,
+       990.03,
+       380.67
+      ]
+     ],
+     "revealed": 1,
+     "t": 6,
+     "residue": {
+      "rects": [
+       {
+        "nat": [
+         841.13,
+         359.67,
+         990.03,
+         380.67
+        ],
+        "covered": true,
+        "coveredVisible": false,
+        "hiddenByBg": true
+       }
+      ],
+      "stack": [
+       {
+        "tag": "SPAN.md-html",
+        "inDom": true,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "P.img-side-by-side",
+        "inDom": true,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.tiptap",
+        "inDom": true,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "1"
+       },
+       {
+        "tag": "DIV.editor-content",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.relative",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.editor-scroll",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.typora-container",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.h-full",
+        "inDom": false,
+        "bg": "rgb(255, 255, 255)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.relative",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.flex",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.relative",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "MAIN.flex",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.relative",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.flex",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "BODY",
+        "inDom": false,
+        "bg": "rgb(250, 250, 250)",
+        "z": "auto"
+       },
+       {
+        "tag": "HTML.theme-light",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       }
+      ],
+      "bands": [
+       [
+        840.13,
+        354.02,
+        991.03,
+        497.91
+       ]
+      ]
+     }
+    },
+    {
+     "sel": "255-273",
+     "type": "text",
+     "own": "all",
+     "miss": "0/0",
+     "editing": false,
+     "bands": [
+      [
+       840.13,
+       354.02,
+       991.03,
+       497.91
+      ]
+     ],
+     "hl": [],
+     "nat": [
+      [
+       841.13,
+       359.67,
+       990.03,
+       380.67
+      ]
+     ],
+     "revealed": 1,
+     "t": 7,
+     "residue": {
+      "rects": [
+       {
+        "nat": [
+         841.13,
+         359.67,
+         990.03,
+         380.67
+        ],
+        "covered": true,
+        "coveredVisible": false,
+        "hiddenByBg": true
+       }
+      ],
+      "stack": [
+       {
+        "tag": "SPAN.md-html",
+        "inDom": true,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "P.img-side-by-side",
+        "inDom": true,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.tiptap",
+        "inDom": true,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "1"
+       },
+       {
+        "tag": "DIV.editor-content",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.relative",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.editor-scroll",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.typora-container",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.h-full",
+        "inDom": false,
+        "bg": "rgb(255, 255, 255)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.relative",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.flex",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.relative",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "MAIN.flex",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.relative",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.flex",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "BODY",
+        "inDom": false,
+        "bg": "rgb(250, 250, 250)",
+        "z": "auto"
+       },
+       {
+        "tag": "HTML.theme-light",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       }
+      ],
+      "bands": [
+       [
+        840.13,
+        354.02,
+        991.03,
+        497.91
+       ]
+      ]
+     }
+    },
+    {
+     "sel": "255-273",
+     "type": "text",
+     "own": "all",
+     "miss": "0/0",
+     "editing": false,
+     "bands": [
+      [
+       840.13,
+       354.02,
+       991.03,
+       497.91
+      ]
+     ],
+     "hl": [],
+     "nat": [
+      [
+       841.13,
+       359.67,
+       990.03,
+       380.67
+      ]
+     ],
+     "revealed": 1,
+     "t": 8,
+     "residue": {
+      "rects": [
+       {
+        "nat": [
+         841.13,
+         359.67,
+         990.03,
+         380.67
+        ],
+        "covered": true,
+        "coveredVisible": false,
+        "hiddenByBg": true
+       }
+      ],
+      "stack": [
+       {
+        "tag": "SPAN.md-html",
+        "inDom": true,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "P.img-side-by-side",
+        "inDom": true,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.tiptap",
+        "inDom": true,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "1"
+       },
+       {
+        "tag": "DIV.editor-content",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.relative",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.editor-scroll",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.typora-container",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.h-full",
+        "inDom": false,
+        "bg": "rgb(255, 255, 255)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.relative",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.flex",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.relative",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "MAIN.flex",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.relative",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.flex",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "BODY",
+        "inDom": false,
+        "bg": "rgb(250, 250, 250)",
+        "z": "auto"
+       },
+       {
+        "tag": "HTML.theme-light",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       }
+      ],
+      "bands": [
+       [
+        840.13,
+        354.02,
+        991.03,
+        497.91
+       ]
+      ]
+     }
+    },
+    {
+     "sel": "255-273",
+     "type": "text",
+     "own": "all",
+     "miss": "0/0",
+     "editing": false,
+     "bands": [
+      [
+       840.13,
+       354.02,
+       991.03,
+       497.91
+      ]
+     ],
+     "hl": [],
+     "nat": [
+      [
+       841.13,
+       359.67,
+       990.03,
+       380.67
+      ]
+     ],
+     "revealed": 1,
+     "t": 9,
+     "residue": {
+      "rects": [
+       {
+        "nat": [
+         841.13,
+         359.67,
+         990.03,
+         380.67
+        ],
+        "covered": true,
+        "coveredVisible": false,
+        "hiddenByBg": true
+       }
+      ],
+      "stack": [
+       {
+        "tag": "SPAN.md-html",
+        "inDom": true,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "P.img-side-by-side",
+        "inDom": true,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.tiptap",
+        "inDom": true,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "1"
+       },
+       {
+        "tag": "DIV.editor-content",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.relative",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.editor-scroll",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.typora-container",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.h-full",
+        "inDom": false,
+        "bg": "rgb(255, 255, 255)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.relative",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.flex",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.relative",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "MAIN.flex",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.relative",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.flex",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "BODY",
+        "inDom": false,
+        "bg": "rgb(250, 250, 250)",
+        "z": "auto"
+       },
+       {
+        "tag": "HTML.theme-light",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       }
+      ],
+      "bands": [
+       [
+        840.13,
+        354.02,
+        991.03,
+        497.91
+       ]
+      ]
+     }
+    },
+    {
+     "sel": "255-273",
+     "type": "text",
+     "own": "all",
+     "miss": "0/0",
+     "editing": false,
+     "bands": [
+      [
+       840.13,
+       354.02,
+       991.03,
+       497.91
+      ]
+     ],
+     "hl": [],
+     "nat": [
+      [
+       841.13,
+       359.67,
+       990.03,
+       380.67
+      ]
+     ],
+     "revealed": 1,
+     "t": 10,
+     "residue": {
+      "rects": [
+       {
+        "nat": [
+         841.13,
+         359.67,
+         990.03,
+         380.67
+        ],
+        "covered": true,
+        "coveredVisible": false,
+        "hiddenByBg": true
+       }
+      ],
+      "stack": [
+       {
+        "tag": "SPAN.md-html",
+        "inDom": true,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "P.img-side-by-side",
+        "inDom": true,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.tiptap",
+        "inDom": true,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "1"
+       },
+       {
+        "tag": "DIV.editor-content",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.relative",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.editor-scroll",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.typora-container",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.h-full",
+        "inDom": false,
+        "bg": "rgb(255, 255, 255)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.relative",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.flex",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.relative",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "MAIN.flex",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.relative",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.flex",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "BODY",
+        "inDom": false,
+        "bg": "rgb(250, 250, 250)",
+        "z": "auto"
+       },
+       {
+        "tag": "HTML.theme-light",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       }
+      ],
+      "bands": [
+       [
+        840.13,
+        354.02,
+        991.03,
+        497.91
+       ]
+      ]
+     }
+    },
+    {
+     "sel": "255-273",
+     "type": "text",
+     "own": "all",
+     "miss": "0/0",
+     "editing": false,
+     "bands": [
+      [
+       840.13,
+       354.02,
+       991.03,
+       497.91
+      ]
+     ],
+     "hl": [],
+     "nat": [
+      [
+       841.13,
+       359.67,
+       990.03,
+       380.67
+      ]
+     ],
+     "revealed": 1,
+     "t": 11,
+     "residue": {
+      "rects": [
+       {
+        "nat": [
+         841.13,
+         359.67,
+         990.03,
+         380.67
+        ],
+        "covered": true,
+        "coveredVisible": false,
+        "hiddenByBg": true
+       }
+      ],
+      "stack": [
+       {
+        "tag": "SPAN.md-html",
+        "inDom": true,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "P.img-side-by-side",
+        "inDom": true,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.tiptap",
+        "inDom": true,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "1"
+       },
+       {
+        "tag": "DIV.editor-content",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.relative",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.editor-scroll",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.typora-container",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.h-full",
+        "inDom": false,
+        "bg": "rgb(255, 255, 255)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.relative",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.flex",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.relative",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "MAIN.flex",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.relative",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV.flex",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "DIV",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       },
+       {
+        "tag": "BODY",
+        "inDom": false,
+        "bg": "rgb(250, 250, 250)",
+        "z": "auto"
+       },
+       {
+        "tag": "HTML.theme-light",
+        "inDom": false,
+        "bg": "rgba(0, 0, 0, 0)",
+        "z": "auto"
+       }
+      ],
+      "bands": [
+       [
+        840.13,
+        354.02,
+        991.03,
+        497.91
+       ]
+      ]
+     }
+    }
+   ],
+   "samples": [
+    {
+     "name": "带中心",
+     "x": 916,
+     "y": 426,
+     "drag": [
+      205,
+      208,
+      212
+     ],
+     "settled": [
+      205,
+      208,
+      212
+     ],
+     "Δ": 0,
+     "拖动期有样式": true
+    },
+    {
+     "name": "带内字形下方4px",
+     "x": 916,
+     "y": 494,
+     "drag": [
+      204,
+      207,
+      211
+     ],
+     "settled": [
+      204,
+      207,
+      211
+     ],
+     "Δ": 0,
+     "拖动期有样式": true
+    },
+    {
+     "name": "原生rect中心",
+     "x": 916,
+     "y": 370,
+     "drag": [
+      228,
+      230,
+      234
+     ],
+     "settled": [
+      205,
+      208,
+      212
+     ],
+     "Δ": 67,
+     "拖动期有样式": false
+    },
+    {
+     "name": "正文行(源码外)",
+     "x": 354,
+     "y": 424,
+     "drag": [
+      255,
+      224,
+      159
+     ],
+     "settled": [
+      255,
+      224,
+      159
+     ],
+     "Δ": 0,
+     "拖动期有样式": true
+    }
+   ],
+   "settled": {
+    "sel": "255-273",
+    "type": "text",
+    "own": null,
+    "miss": null,
+    "editing": false,
+    "bands": [],
+    "hl": [],
+    "nat": [
+     [
+      841.13,
+      359.67,
+      990.03,
+      380.67
+     ]
+    ],
+    "revealed": 1
+   },
+   "resMax": 1,
+   "resFramesBad": 12,
+   "dragCovered": 1,
+   "dragOwn": "all",
+   "dragHl": 0,
+   "dragNat": 1
+  }
+ ]
+}

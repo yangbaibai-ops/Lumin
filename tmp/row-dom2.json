@@ -1,0 +1,1736 @@
+{
+ "innerWidth": 1408,
+ "paraCount": 1,
+ "paras": [
+  {
+   "pRect": {
+    "l": 320,
+    "t": 354.67,
+    "r": 1346,
+    "b": 641.17,
+    "w": 1026,
+    "h": 286.5
+   },
+   "revealed": {
+    "from": 254,
+    "cls": "img-src-revealed",
+    "rects": [
+     {
+      "l": 828.53,
+      "t": 354.08,
+      "r": 1345.97,
+      "b": 386.27,
+      "w": 517.44,
+      "h": 32.19
+     },
+     {
+      "l": 320,
+      "t": 497.33,
+      "r": 690.53,
+      "b": 529.52,
+      "w": 370.53,
+      "h": 32.19
+     }
+    ],
+    "childRects": [
+     {
+      "node": 3,
+      "txt": "<img src=\"ht"
+     }
+    ]
+   },
+   "items": [
+    {
+     "kind": "text",
+     "txt": "行内公式",
+     "display": "text",
+     "rects": [
+      {
+       "l": 320,
+       "t": 413.89,
+       "r": 388,
+       "b": 434.89,
+       "w": 68,
+       "h": 21
+      }
+     ]
+    },
+    {
+     "kind": "el",
+     "tag": "SPAN",
+     "cls": "md-math-rendered ProseMirror-widget",
+     "display": "inline",
+     "rects": [
+      {
+       "l": 388,
+       "t": 413.89,
+       "r": 460.59,
+       "b": 434.89,
+       "w": 72.59,
+       "h": 21
+      }
+     ]
+    },
+    {
+     "kind": "el",
+     "tag": "SPAN",
+     "cls": "katex",
+     "display": "inline",
+     "rects": [
+      {
+       "l": 389.69,
+       "t": 414.89,
+       "r": 458.91,
+       "b": 435.89,
+       "w": 69.22,
+       "h": 21
+      }
+     ]
+    },
+    {
+     "kind": "el",
+     "tag": "SPAN",
+     "cls": "katex-html",
+     "display": "inline",
+     "rects": [
+      {
+       "l": 389.69,
+       "t": 414.89,
+       "r": 458.91,
+       "b": 435.89,
+       "w": 69.22,
+       "h": 21
+      }
+     ]
+    },
+    {
+     "kind": "el",
+     "tag": "SPAN",
+     "cls": "katex-base",
+     "display": "inline-block",
+     "rects": [
+      {
+       "l": 389.69,
+       "t": 414.89,
+       "r": 428.06,
+       "b": 437.5,
+       "w": 38.38,
+       "h": 22.61
+      }
+     ]
+    },
+    {
+     "kind": "el",
+     "tag": "SPAN",
+     "cls": "katex-strut",
+     "display": "inline-block",
+     "rects": [
+      {
+       "l": 389.69,
+       "t": 418.58,
+       "r": 389.69,
+       "b": 430.89,
+       "w": 0,
+       "h": 12.31
+      }
+     ]
+    },
+    {
+     "kind": "el",
+     "tag": "SPAN",
+     "cls": "mord mathnormal",
+     "display": "inline",
+     "rects": [
+      {
+       "l": 389.69,
+       "t": 417.89,
+       "r": 403,
+       "b": 434.89,
+       "w": 13.31,
+       "h": 17
+      }
+     ]
+    },
+    {
+     "kind": "text",
+     "txt": "E",
+     "display": "text",
+     "rects": [
+      {
+       "l": 389.69,
+       "t": 417.89,
+       "r": 403,
+       "b": 434.89,
+       "w": 13.31,
+       "h": 17
+      }
+     ]
+    },
+    {
+     "kind": "el",
+     "tag": "SPAN",
+     "cls": "mspace",
+     "display": "inline-block",
+     "rects": [
+      {
+       "l": 404.03,
+       "t": 430.89,
+       "r": 404.03,
+       "b": 430.89,
+       "w": 0,
+       "h": 0
+      }
+     ]
+    },
+    {
+     "kind": "el",
+     "tag": "SPAN",
+     "cls": "mrel",
+     "display": "inline",
+     "rects": [
+      {
+       "l": 409.03,
+       "t": 414.89,
+       "r": 423.06,
+       "b": 435.89,
+       "w": 14.03,
+       "h": 21
+      }
+     ]
+    },
+    {
+     "kind": "text",
+     "txt": "=",
+     "display": "text",
+     "rects": [
+      {
+       "l": 409.03,
+       "t": 414.89,
+       "r": 423.06,
+       "b": 435.89,
+       "w": 14.03,
+       "h": 21
+      }
+     ]
+    },
+    {
+     "kind": "el",
+     "tag": "SPAN",
+     "cls": "mspace",
+     "display": "inline-block",
+     "rects": [
+      {
+       "l": 423.06,
+       "t": 430.89,
+       "r": 423.06,
+       "b": 430.89,
+       "w": 0,
+       "h": 0
+      }
+     ]
+    },
+    {
+     "kind": "el",
+     "tag": "SPAN",
+     "cls": "katex-base",
+     "display": "inline-block",
+     "rects": [
+      {
+       "l": 428.06,
+       "t": 414.89,
+       "r": 458.91,
+       "b": 437.5,
+       "w": 30.84,
+       "h": 22.61
+      }
+     ]
+    },
+    {
+     "kind": "el",
+     "tag": "SPAN",
+     "cls": "katex-strut",
+     "display": "inline-block",
+     "rects": [
+      {
+       "l": 428.06,
+       "t": 416.23,
+       "r": 428.06,
+       "b": 430.89,
+       "w": 0,
+       "h": 14.66
+      }
+     ]
+    },
+    {
+     "kind": "el",
+     "tag": "SPAN",
+     "cls": "mord mathnormal",
+     "display": "inline",
+     "rects": [
+      {
+       "l": 428.06,
+       "t": 417.89,
+       "r": 443.89,
+       "b": 434.89,
+       "w": 15.83,
+       "h": 17
+      }
+     ]
+    },
+    {
+     "kind": "text",
+     "txt": "m",
+     "display": "text",
+     "rects": [
+      {
+       "l": 428.06,
+       "t": 417.89,
+       "r": 443.89,
+       "b": 434.89,
+       "w": 15.83,
+       "h": 17
+      }
+     ]
+    },
+    {
+     "kind": "el",
+     "tag": "SPAN",
+     "cls": "mord",
+     "display": "inline",
+     "rects": [
+      {
+       "l": 443.89,
+       "t": 414.89,
+       "r": 458.91,
+       "b": 435.89,
+       "w": 15.02,
+       "h": 21
+      }
+     ]
+    },
+    {
+     "kind": "el",
+     "tag": "SPAN",
+     "cls": "mord mathnormal",
+     "display": "inline",
+     "rects": [
+      {
+       "l": 443.89,
+       "t": 417.89,
+       "r": 451.7,
+       "b": 434.89,
+       "w": 7.81,
+       "h": 17
+      }
+     ]
+    },
+    {
+     "kind": "text",
+     "txt": "c",
+     "display": "text",
+     "rects": [
+      {
+       "l": 443.89,
+       "t": 417.89,
+       "r": 451.7,
+       "b": 434.89,
+       "w": 7.81,
+       "h": 17
+      }
+     ]
+    },
+    {
+     "kind": "el",
+     "tag": "SPAN",
+     "cls": "msupsub",
+     "display": "inline",
+     "rects": [
+      {
+       "l": 451.7,
+       "t": 414.89,
+       "r": 458.91,
+       "b": 435.89,
+       "w": 7.2,
+       "h": 21
+      }
+     ]
+    },
+    {
+     "kind": "el",
+     "tag": "SPAN",
+     "cls": "vlist-t",
+     "display": "inline-table",
+     "rects": [
+      {
+       "l": 451.7,
+       "t": 416.23,
+       "r": 458.91,
+       "b": 430.89,
+       "w": 7.2,
+       "h": 14.66
+      }
+     ]
+    },
+    {
+     "kind": "el",
+     "tag": "SPAN",
+     "cls": "vlist-r",
+     "display": "table-row",
+     "rects": [
+      {
+       "l": 451.7,
+       "t": 416.23,
+       "r": 458.91,
+       "b": 430.89,
+       "w": 7.2,
+       "h": 14.66
+      }
+     ]
+    },
+    {
+     "kind": "el",
+     "tag": "SPAN",
+     "cls": "vlist",
+     "display": "table-cell",
+     "rects": [
+      {
+       "l": 451.7,
+       "t": 416.23,
+       "r": 458.91,
+       "b": 430.89,
+       "w": 7.2,
+       "h": 14.66
+      }
+     ]
+    },
+    {
+     "kind": "el",
+     "tag": "SPAN",
+     "cls": "",
+     "display": "block",
+     "rects": [
+      {
+       "l": 451.7,
+       "t": 375.7,
+       "r": 458.02,
+       "b": 375.7,
+       "w": 6.31,
+       "h": 0
+      }
+     ]
+    },
+    {
+     "kind": "el",
+     "tag": "SPAN",
+     "cls": "pstrut",
+     "display": "inline-block",
+     "rects": [
+      {
+       "l": 451.7,
+       "t": 375.7,
+       "r": 451.7,
+       "b": 424.34,
+       "w": 0,
+       "h": 48.64
+      }
+     ]
+    },
+    {
+     "kind": "el",
+     "tag": "SPAN",
+     "cls": "katex-sizing reset-size6 size3 mtight",
+     "display": "inline-block",
+     "rects": [
+      {
+       "l": 451.7,
+       "t": 413.34,
+       "r": 458.02,
+       "b": 428.47,
+       "w": 6.31,
+       "h": 15.13
+      }
+     ]
+    },
+    {
+     "kind": "el",
+     "tag": "SPAN",
+     "cls": "mord mtight",
+     "display": "inline",
+     "rects": [
+      {
+       "l": 451.7,
+       "t": 413.34,
+       "r": 458.02,
+       "b": 427.34,
+       "w": 6.31,
+       "h": 14
+      }
+     ]
+    },
+    {
+     "kind": "text",
+     "txt": "2",
+     "display": "text",
+     "rects": [
+      {
+       "l": 451.7,
+       "t": 413.34,
+       "r": 458.02,
+       "b": 427.34,
+       "w": 6.31,
+       "h": 14
+      }
+     ]
+    },
+    {
+     "kind": "el",
+     "tag": "SPAN",
+     "cls": "md-math",
+     "display": "inline",
+     "rects": [
+      {
+       "l": 460.59,
+       "t": 413.89,
+       "r": 460.59,
+       "b": 434.89,
+       "w": 0,
+       "h": 21
+      }
+     ]
+    },
+    {
+     "kind": "el",
+     "tag": "SPAN",
+     "cls": "md-math-source",
+     "display": "inline",
+     "rects": [
+      {
+       "l": 460.59,
+       "t": 430.89,
+       "r": 460.59,
+       "b": 430.89,
+       "w": 0,
+       "h": 0
+      }
+     ]
+    },
+    {
+     "kind": "text",
+     "txt": "$E = mc^2$",
+     "display": "text",
+     "rects": []
+    },
+    {
+     "kind": "text",
+     "txt": " 与 ",
+     "display": "text",
+     "rects": [
+      {
+       "l": 460.59,
+       "t": 413.89,
+       "r": 487.66,
+       "b": 434.89,
+       "w": 27.06,
+       "h": 21
+      }
+     ]
+    },
+    {
+     "kind": "el",
+     "tag": "SPAN",
+     "cls": "md-math-rendered ProseMirror-widget",
+     "display": "inline",
+     "rects": [
+      {
+       "l": 487.66,
+       "t": 413.89,
+       "r": 583.8,
+       "b": 434.89,
+       "w": 96.14,
+       "h": 21
+      }
+     ]
+    },
+    {
+     "kind": "el",
+     "tag": "SPAN",
+     "cls": "katex",
+     "display": "inline",
+     "rects": [
+      {
+       "l": 489.34,
+       "t": 414.89,
+       "r": 582.11,
+       "b": 435.89,
+       "w": 92.77,
+       "h": 21
+      }
+     ]
+    },
+    {
+     "kind": "el",
+     "tag": "SPAN",
+     "cls": "katex-html",
+     "display": "inline",
+     "rects": [
+      {
+       "l": 489.34,
+       "t": 414.89,
+       "r": 582.11,
+       "b": 435.89,
+       "w": 92.77,
+       "h": 21
+      }
+     ]
+    },
+    {
+     "kind": "el",
+     "tag": "SPAN",
+     "cls": "katex-base",
+     "display": "inline-block",
+     "rects": [
+      {
+       "l": 489.34,
+       "t": 414.89,
+       "r": 528.13,
+       "b": 437.5,
+       "w": 38.78,
+       "h": 22.61
+      }
+     ]
+    },
+    {
+     "kind": "el",
+     "tag": "SPAN",
+     "cls": "katex-strut",
+     "display": "inline-block",
+     "rects": [
+      {
+       "l": 489.34,
+       "t": 416.23,
+       "r": 489.34,
+       "b": 432.39,
+       "w": 0,
+       "h": 16.16
+      }
+     ]
+    },
+    {
+     "kind": "el",
+     "tag": "SPAN",
+     "cls": "mord",
+     "display": "inline",
+     "rects": [
+      {
+       "l": 489.34,
+       "t": 414.89,
+       "r": 506.09,
+       "b": 435.89,
+       "w": 16.75,
+       "h": 21
+      }
+     ]
+    },
+    {
+     "kind": "el",
+     "tag": "SPAN",
+     "cls": "mord mathnormal",
+     "display": "inline",
+     "rects": [
+      {
+       "l": 489.34,
+       "t": 417.89,
+       "r": 498.89,
+       "b": 434.89,
+       "w": 9.55,
+       "h": 17
+      }
+     ]
+    },
+    {
+     "kind": "text",
+     "txt": "a",
+     "display": "text",
+     "rects": [
+      {
+       "l": 489.34,
+       "t": 417.89,
+       "r": 498.89,
+       "b": 434.89,
+       "w": 9.55,
+       "h": 17
+      }
+     ]
+    },
+    {
+     "kind": "el",
+     "tag": "SPAN",
+     "cls": "msupsub",
+     "display": "inline",
+     "rects": [
+      {
+       "l": 498.89,
+       "t": 414.89,
+       "r": 506.09,
+       "b": 435.89,
+       "w": 7.2,
+       "h": 21
+      }
+     ]
+    },
+    {
+     "kind": "el",
+     "tag": "SPAN",
+     "cls": "vlist-t",
+     "display": "inline-table",
+     "rects": [
+      {
+       "l": 498.89,
+       "t": 416.23,
+       "r": 506.09,
+       "b": 430.89,
+       "w": 7.2,
+       "h": 14.66
+      }
+     ]
+    },
+    {
+     "kind": "el",
+     "tag": "SPAN",
+     "cls": "vlist-r",
+     "display": "table-row",
+     "rects": [
+      {
+       "l": 498.89,
+       "t": 416.23,
+       "r": 506.09,
+       "b": 430.89,
+       "w": 7.2,
+       "h": 14.66
+      }
+     ]
+    },
+    {
+     "kind": "el",
+     "tag": "SPAN",
+     "cls": "vlist",
+     "display": "table-cell",
+     "rects": [
+      {
+       "l": 498.89,
+       "t": 416.23,
+       "r": 506.09,
+       "b": 430.89,
+       "w": 7.2,
+       "h": 14.66
+      }
+     ]
+    },
+    {
+     "kind": "el",
+     "tag": "SPAN",
+     "cls": "",
+     "display": "block",
+     "rects": [
+      {
+       "l": 498.89,
+       "t": 375.7,
+       "r": 505.2,
+       "b": 375.7,
+       "w": 6.31,
+       "h": 0
+      }
+     ]
+    },
+    {
+     "kind": "el",
+     "tag": "SPAN",
+     "cls": "pstrut",
+     "display": "inline-block",
+     "rects": [
+      {
+       "l": 498.89,
+       "t": 375.7,
+       "r": 498.89,
+       "b": 424.34,
+       "w": 0,
+       "h": 48.64
+      }
+     ]
+    },
+    {
+     "kind": "el",
+     "tag": "SPAN",
+     "cls": "katex-sizing reset-size6 size3 mtight",
+     "display": "inline-block",
+     "rects": [
+      {
+       "l": 498.89,
+       "t": 413.34,
+       "r": 505.2,
+       "b": 428.47,
+       "w": 6.31,
+       "h": 15.13
+      }
+     ]
+    },
+    {
+     "kind": "el",
+     "tag": "SPAN",
+     "cls": "mord mtight",
+     "display": "inline",
+     "rects": [
+      {
+       "l": 498.89,
+       "t": 413.34,
+       "r": 505.2,
+       "b": 427.34,
+       "w": 6.31,
+       "h": 14
+      }
+     ]
+    },
+    {
+     "kind": "text",
+     "txt": "2",
+     "display": "text",
+     "rects": [
+      {
+       "l": 498.89,
+       "t": 413.34,
+       "r": 505.2,
+       "b": 427.34,
+       "w": 6.31,
+       "h": 14
+      }
+     ]
+    },
+    {
+     "kind": "el",
+     "tag": "SPAN",
+     "cls": "mspace",
+     "display": "inline-block",
+     "rects": [
+      {
+       "l": 506.09,
+       "t": 430.89,
+       "r": 506.09,
+       "b": 430.89,
+       "w": 0,
+       "h": 0
+      }
+     ]
+    },
+    {
+     "kind": "el",
+     "tag": "SPAN",
+     "cls": "mbin",
+     "display": "inline",
+     "rects": [
+      {
+       "l": 510.09,
+       "t": 414.89,
+       "r": 524.13,
+       "b": 435.89,
+       "w": 14.03,
+       "h": 21
+      }
+     ]
+    },
+    {
+     "kind": "text",
+     "txt": "+",
+     "display": "text",
+     "rects": [
+      {
+       "l": 510.09,
+       "t": 414.89,
+       "r": 524.13,
+       "b": 435.89,
+       "w": 14.03,
+       "h": 21
+      }
+     ]
+    },
+    {
+     "kind": "el",
+     "tag": "SPAN",
+     "cls": "mspace",
+     "display": "inline-block",
+     "rects": [
+      {
+       "l": 524.13,
+       "t": 430.89,
+       "r": 524.13,
+       "b": 430.89,
+       "w": 0,
+       "h": 0
+      }
+     ]
+    },
+    {
+     "kind": "el",
+     "tag": "SPAN",
+     "cls": "katex-base",
+     "display": "inline-block",
+     "rects": [
+      {
+       "l": 528.13,
+       "t": 414.89,
+       "r": 567.09,
+       "b": 437.5,
+       "w": 38.97,
+       "h": 22.61
+      }
+     ]
+    },
+    {
+     "kind": "el",
+     "tag": "SPAN",
+     "cls": "katex-strut",
+     "display": "inline-block",
+     "rects": [
+      {
+       "l": 528.13,
+       "t": 416.23,
+       "r": 528.13,
+       "b": 430.89,
+       "w": 0,
+       "h": 14.66
+      }
+     ]
+    },
+    {
+     "kind": "el",
+     "tag": "SPAN",
+     "cls": "mord",
+     "display": "inline",
+     "rects": [
+      {
+       "l": 528.13,
+       "t": 414.89,
+       "r": 543.06,
+       "b": 435.89,
+       "w": 14.94,
+       "h": 21
+      }
+     ]
+    },
+    {
+     "kind": "el",
+     "tag": "SPAN",
+     "cls": "mord mathnormal",
+     "display": "inline",
+     "rects": [
+      {
+       "l": 528.13,
+       "t": 417.89,
+       "r": 535.86,
+       "b": 434.89,
+       "w": 7.73,
+       "h": 17
+      }
+     ]
+    },
+    {
+     "kind": "text",
+     "txt": "b",
+     "display": "text",
+     "rects": [
+      {
+       "l": 528.13,
+       "t": 417.89,
+       "r": 535.86,
+       "b": 434.89,
+       "w": 7.73,
+       "h": 17
+      }
+     ]
+    },
+    {
+     "kind": "el",
+     "tag": "SPAN",
+     "cls": "msupsub",
+     "display": "inline",
+     "rects": [
+      {
+       "l": 535.86,
+       "t": 414.89,
+       "r": 543.06,
+       "b": 435.89,
+       "w": 7.2,
+       "h": 21
+      }
+     ]
+    },
+    {
+     "kind": "el",
+     "tag": "SPAN",
+     "cls": "vlist-t",
+     "display": "inline-table",
+     "rects": [
+      {
+       "l": 535.86,
+       "t": 416.23,
+       "r": 543.06,
+       "b": 430.89,
+       "w": 7.2,
+       "h": 14.66
+      }
+     ]
+    },
+    {
+     "kind": "el",
+     "tag": "SPAN",
+     "cls": "vlist-r",
+     "display": "table-row",
+     "rects": [
+      {
+       "l": 535.86,
+       "t": 416.23,
+       "r": 543.06,
+       "b": 430.89,
+       "w": 7.2,
+       "h": 14.66
+      }
+     ]
+    },
+    {
+     "kind": "el",
+     "tag": "SPAN",
+     "cls": "vlist",
+     "display": "table-cell",
+     "rects": [
+      {
+       "l": 535.86,
+       "t": 416.23,
+       "r": 543.06,
+       "b": 430.89,
+       "w": 7.2,
+       "h": 14.66
+      }
+     ]
+    },
+    {
+     "kind": "el",
+     "tag": "SPAN",
+     "cls": "",
+     "display": "block",
+     "rects": [
+      {
+       "l": 535.86,
+       "t": 375.7,
+       "r": 542.17,
+       "b": 375.7,
+       "w": 6.31,
+       "h": 0
+      }
+     ]
+    },
+    {
+     "kind": "el",
+     "tag": "SPAN",
+     "cls": "pstrut",
+     "display": "inline-block",
+     "rects": [
+      {
+       "l": 535.86,
+       "t": 375.7,
+       "r": 535.86,
+       "b": 424.34,
+       "w": 0,
+       "h": 48.64
+      }
+     ]
+    },
+    {
+     "kind": "el",
+     "tag": "SPAN",
+     "cls": "katex-sizing reset-size6 size3 mtight",
+     "display": "inline-block",
+     "rects": [
+      {
+       "l": 535.86,
+       "t": 413.34,
+       "r": 542.17,
+       "b": 428.47,
+       "w": 6.31,
+       "h": 15.13
+      }
+     ]
+    },
+    {
+     "kind": "el",
+     "tag": "SPAN",
+     "cls": "mord mtight",
+     "display": "inline",
+     "rects": [
+      {
+       "l": 535.86,
+       "t": 413.34,
+       "r": 542.17,
+       "b": 427.34,
+       "w": 6.31,
+       "h": 14
+      }
+     ]
+    },
+    {
+     "kind": "text",
+     "txt": "2",
+     "display": "text",
+     "rects": [
+      {
+       "l": 535.86,
+       "t": 413.34,
+       "r": 542.17,
+       "b": 427.34,
+       "w": 6.31,
+       "h": 14
+      }
+     ]
+    },
+    {
+     "kind": "el",
+     "tag": "SPAN",
+     "cls": "mspace",
+     "display": "inline-block",
+     "rects": [
+      {
+       "l": 543.06,
+       "t": 430.89,
+       "r": 543.06,
+       "b": 430.89,
+       "w": 0,
+       "h": 0
+      }
+     ]
+    },
+    {
+     "kind": "el",
+     "tag": "SPAN",
+     "cls": "mrel",
+     "display": "inline",
+     "rects": [
+      {
+       "l": 548.06,
+       "t": 414.89,
+       "r": 562.09,
+       "b": 435.89,
+       "w": 14.03,
+       "h": 21
+      }
+     ]
+    },
+    {
+     "kind": "text",
+     "txt": "=",
+     "display": "text",
+     "rects": [
+      {
+       "l": 548.06,
+       "t": 414.89,
+       "r": 562.09,
+       "b": 435.89,
+       "w": 14.03,
+       "h": 21
+      }
+     ]
+    },
+    {
+     "kind": "el",
+     "tag": "SPAN",
+     "cls": "mspace",
+     "display": "inline-block",
+     "rects": [
+      {
+       "l": 562.09,
+       "t": 430.89,
+       "r": 562.09,
+       "b": 430.89,
+       "w": 0,
+       "h": 0
+      }
+     ]
+    },
+    {
+     "kind": "el",
+     "tag": "SPAN",
+     "cls": "katex-base",
+     "display": "inline-block",
+     "rects": [
+      {
+       "l": 567.09,
+       "t": 414.89,
+       "r": 582.11,
+       "b": 437.5,
+       "w": 15.02,
+       "h": 22.61
+      }
+     ]
+    },
+    {
+     "kind": "el",
+     "tag": "SPAN",
+     "cls": "katex-strut",
+     "display": "inline-block",
+     "rects": [
+      {
+       "l": 567.09,
+       "t": 416.23,
+       "r": 567.09,
+       "b": 430.89,
+       "w": 0,
+       "h": 14.66
+      }
+     ]
+    },
+    {
+     "kind": "el",
+     "tag": "SPAN",
+     "cls": "mord",
+     "display": "inline",
+     "rects": [
+      {
+       "l": 567.09,
+       "t": 414.89,
+       "r": 582.11,
+       "b": 435.89,
+       "w": 15.02,
+       "h": 21
+      }
+     ]
+    },
+    {
+     "kind": "el",
+     "tag": "SPAN",
+     "cls": "mord mathnormal",
+     "display": "inline",
+     "rects": [
+      {
+       "l": 567.09,
+       "t": 417.89,
+       "r": 574.91,
+       "b": 434.89,
+       "w": 7.81,
+       "h": 17
+      }
+     ]
+    },
+    {
+     "kind": "text",
+     "txt": "c",
+     "display": "text",
+     "rects": [
+      {
+       "l": 567.09,
+       "t": 417.89,
+       "r": 574.91,
+       "b": 434.89,
+       "w": 7.81,
+       "h": 17
+      }
+     ]
+    },
+    {
+     "kind": "el",
+     "tag": "SPAN",
+     "cls": "msupsub",
+     "display": "inline",
+     "rects": [
+      {
+       "l": 574.91,
+       "t": 414.89,
+       "r": 582.11,
+       "b": 435.89,
+       "w": 7.2,
+       "h": 21
+      }
+     ]
+    },
+    {
+     "kind": "el",
+     "tag": "SPAN",
+     "cls": "vlist-t",
+     "display": "inline-table",
+     "rects": [
+      {
+       "l": 574.91,
+       "t": 416.23,
+       "r": 582.11,
+       "b": 430.89,
+       "w": 7.2,
+       "h": 14.66
+      }
+     ]
+    },
+    {
+     "kind": "el",
+     "tag": "SPAN",
+     "cls": "vlist-r",
+     "display": "table-row",
+     "rects": [
+      {
+       "l": 574.91,
+       "t": 416.23,
+       "r": 582.11,
+       "b": 430.89,
+       "w": 7.2,
+       "h": 14.66
+      }
+     ]
+    },
+    {
+     "kind": "el",
+     "tag": "SPAN",
+     "cls": "vlist",
+     "display": "table-cell",
+     "rects": [
+      {
+       "l": 574.91,
+       "t": 416.23,
+       "r": 582.11,
+       "b": 430.89,
+       "w": 7.2,
+       "h": 14.66
+      }
+     ]
+    },
+    {
+     "kind": "el",
+     "tag": "SPAN",
+     "cls": "",
+     "display": "block",
+     "rects": [
+      {
+       "l": 574.91,
+       "t": 375.7,
+       "r": 581.22,
+       "b": 375.7,
+       "w": 6.31,
+       "h": 0
+      }
+     ]
+    },
+    {
+     "kind": "el",
+     "tag": "SPAN",
+     "cls": "pstrut",
+     "display": "inline-block",
+     "rects": [
+      {
+       "l": 574.91,
+       "t": 375.7,
+       "r": 574.91,
+       "b": 424.34,
+       "w": 0,
+       "h": 48.64
+      }
+     ]
+    },
+    {
+     "kind": "el",
+     "tag": "SPAN",
+     "cls": "katex-sizing reset-size6 size3 mtight",
+     "display": "inline-block",
+     "rects": [
+      {
+       "l": 574.91,
+       "t": 413.34,
+       "r": 581.22,
+       "b": 428.47,
+       "w": 6.31,
+       "h": 15.13
+      }
+     ]
+    },
+    {
+     "kind": "el",
+     "tag": "SPAN",
+     "cls": "mord mtight",
+     "display": "inline",
+     "rects": [
+      {
+       "l": 574.91,
+       "t": 413.34,
+       "r": 581.22,
+       "b": 427.34,
+       "w": 6.31,
+       "h": 14
+      }
+     ]
+    },
+    {
+     "kind": "text",
+     "txt": "2",
+     "display": "text",
+     "rects": [
+      {
+       "l": 574.91,
+       "t": 413.34,
+       "r": 581.22,
+       "b": 427.34,
+       "w": 6.31,
+       "h": 14
+      }
+     ]
+    },
+    {
+     "kind": "el",
+     "tag": "SPAN",
+     "cls": "md-math",
+     "display": "inline",
+     "rects": [
+      {
+       "l": 583.8,
+       "t": 413.89,
+       "r": 583.8,
+       "b": 434.89,
+       "w": 0,
+       "h": 21
+      }
+     ]
+    },
+    {
+     "kind": "el",
+     "tag": "SPAN",
+     "cls": "md-math-source",
+     "display": "inline",
+     "rects": [
+      {
+       "l": 583.8,
+       "t": 430.89,
+       "r": 583.8,
+       "b": 430.89,
+       "w": 0,
+       "h": 0
+      }
+     ]
+    },
+    {
+     "kind": "text",
+     "txt": "$a^2 + b^2 = c^2",
+     "display": "text",
+     "rects": []
+    },
+    {
+     "kind": "text",
+     "txt": "。",
+     "display": "text",
+     "rects": [
+      {
+       "l": 583.8,
+       "t": 413.89,
+       "r": 600.8,
+       "b": 434.89,
+       "w": 17,
+       "h": 21
+      }
+     ]
+    },
+    {
+     "kind": "el",
+     "tag": "SPAN",
+     "cls": "md-html",
+     "display": "inline",
+     "rects": [
+      {
+       "l": 600.8,
+       "t": 413.89,
+       "r": 1345.97,
+       "b": 434.89,
+       "w": 745.17,
+       "h": 21
+      },
+      {
+       "l": 320,
+       "t": 557.14,
+       "r": 690.53,
+       "b": 578.14,
+       "w": 370.53,
+       "h": 21
+      }
+     ]
+    },
+    {
+     "kind": "el",
+     "tag": "SPAN",
+     "cls": "img-src-marker-hidden",
+     "display": "none",
+     "rects": []
+    },
+    {
+     "kind": "text",
+     "txt": "<img src=\"https:",
+     "display": "text",
+     "rects": []
+    },
+    {
+     "kind": "el",
+     "tag": "SPAN",
+     "cls": "img-widget img-widget--inline ProseMirror-wi",
+     "display": "inline-block",
+     "rects": [
+      {
+       "l": 610.98,
+       "t": 354.67,
+       "r": 825.98,
+       "b": 497.92,
+       "w": 215,
+       "h": 143.25
+      }
+     ]
+    },
+    {
+     "kind": "el",
+     "tag": "IMG",
+     "cls": "",
+     "display": "inline-block",
+     "rects": [
+      {
+       "l": 610.98,
+       "t": 354.67,
+       "r": 825.98,
+       "b": 497.92,
+       "w": 215,
+       "h": 143.25
+      }
+     ]
+    },
+    {
+     "kind": "el",
+     "tag": "SPAN",
+     "cls": "img-src-revealed",
+     "display": "inline",
+     "rects": [
+      {
+       "l": 828.53,
+       "t": 354.08,
+       "r": 1345.97,
+       "b": 386.27,
+       "w": 517.44,
+       "h": 32.19
+      },
+      {
+       "l": 320,
+       "t": 497.33,
+       "r": 690.53,
+       "b": 529.52,
+       "w": 370.53,
+       "h": 32.19
+      }
+     ]
+    },
+    {
+     "kind": "text",
+     "txt": "<img src=\"https:",
+     "display": "text",
+     "rects": [
+      {
+       "l": 828.53,
+       "t": 359.67,
+       "r": 1345.97,
+       "b": 380.67,
+       "w": 517.44,
+       "h": 21
+      },
+      {
+       "l": 320,
+       "t": 502.92,
+       "r": 690.53,
+       "b": 523.92,
+       "w": 370.53,
+       "h": 21
+      }
+     ]
+    },
+    {
+     "kind": "el",
+     "tag": "SPAN",
+     "cls": "img-widget img-widget--inline ProseMirror-wi",
+     "display": "inline-block",
+     "rects": [
+      {
+       "l": 700.72,
+       "t": 497.92,
+       "r": 915.72,
+       "b": 641.17,
+       "w": 215,
+       "h": 143.25
+      }
+     ]
+    },
+    {
+     "kind": "el",
+     "tag": "IMG",
+     "cls": "",
+     "display": "inline-block",
+     "rects": [
+      {
+       "l": 700.72,
+       "t": 497.92,
+       "r": 915.72,
+       "b": 641.17,
+       "w": 215,
+       "h": 143.25
+      }
+     ]
+    },
+    {
+     "kind": "el",
+     "tag": "IMG",
+     "cls": "ProseMirror-separator",
+     "display": "inline",
+     "rects": [
+      {
+       "l": 918.27,
+       "t": 497.92,
+       "r": 918.27,
+       "b": 497.92,
+       "w": 0,
+       "h": 0
+      }
+     ]
+    },
+    {
+     "kind": "el",
+     "tag": "BR",
+     "cls": "ProseMirror-trailingBreak",
+     "display": "inline",
+     "rects": [
+      {
+       "l": 918.27,
+       "t": 557.14,
+       "r": 918.27,
+       "b": 578.14,
+       "w": 0,
+       "h": 21
+      }
+     ]
+    }
+   ],
+   "walkerParts": [
+    {
+     "k": "text",
+     "txt": "行内公式",
+     "l": 320,
+     "t": 413.89,
+     "r": 388,
+     "b": 434.89,
+     "w": 68,
+     "h": 21
+    },
+    {
+     "k": "inline",
+     "cls": "md-math-rendered ProseMirror-w",
+     "l": 388,
+     "t": 413.89,
+     "r": 460.59,
+     "b": 434.89,
+     "w": 72.59,
+     "h": 21
+    },
+    {
+     "k": "inline",
+     "cls": "md-math",
+     "l": 460.59,
+     "t": 413.89,
+     "r": 460.59,
+     "b": 434.89,
+     "w": 0,
+     "h": 21
+    },
+    {
+     "k": "text",
+     "txt": " 与 ",
+     "l": 460.59,
+     "t": 413.89,
+     "r": 487.66,
+     "b": 434.89,
+     "w": 27.06,
+     "h": 21
+    },
+    {
+     "k": "inline",
+     "cls": "md-math-rendered ProseMirror-w",
+     "l": 487.66,
+     "t": 413.89,
+     "r": 583.8,
+     "b": 434.89,
+     "w": 96.14,
+     "h": 21
+    },
+    {
+     "k": "inline",
+     "cls": "md-math",
+     "l": 583.8,
+     "t": 413.89,
+     "r": 583.8,
+     "b": 434.89,
+     "w": 0,
+     "h": 21
+    },
+    {
+     "k": "text",
+     "txt": "。",
+     "l": 583.8,
+     "t": 413.89,
+     "r": 600.8,
+     "b": 434.89,
+     "w": 17,
+     "h": 21
+    },
+    {
+     "k": "inline",
+     "cls": "md-html",
+     "l": 600.8,
+     "t": 413.89,
+     "r": 1345.97,
+     "b": 434.89,
+     "w": 745.17,
+     "h": 21
+    },
+    {
+     "k": "inline",
+     "cls": "md-html",
+     "l": 320,
+     "t": 557.14,
+     "r": 690.53,
+     "b": 578.14,
+     "w": 370.53,
+     "h": 21
+    },
+    {
+     "k": "inline",
+     "cls": "img-widget img-widget--inline ",
+     "l": 700.72,
+     "t": 497.92,
+     "r": 915.72,
+     "b": 641.17,
+     "w": 215,
+     "h": 143.25
+    },
+    {
+     "k": "inline",
+     "cls": "ProseMirror-trailingBreak",
+     "l": 918.27,
+     "t": 557.14,
+     "r": 918.27,
+     "b": 578.14,
+     "w": 0,
+     "h": 21
+    }
+   ],
+   "overlayRects": [
+    {
+     "l": 320,
+     "t": 497.91,
+     "r": 690.52,
+     "b": 641.16,
+     "w": 370.52,
+     "h": 143.25
+    }
+   ]
+  }
+ ]
+}

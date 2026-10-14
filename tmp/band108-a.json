@@ -1,0 +1,441 @@
+{
+ "tag": "a",
+ "innerWidth": 1424,
+ "mdBefore": "4dbb870902ecc4ab38f83fcb8ce5c8b755ea738d94932ca5487b5467fd453a7b",
+ "hiddenBefore": {
+  "revealed": 0,
+  "sel": {
+   "from": 2,
+   "to": 2,
+   "empty": true
+  },
+  "domText": "",
+  "editing": null,
+  "cls": null,
+  "bg": null,
+  "overlays": 0,
+  "overlayEl": false
+ },
+ "source": {
+  "from": 254,
+  "to": 355,
+  "frags": [
+   {
+    "l": 828.53,
+    "t": 354.08,
+    "r": 1345.97,
+    "b": 386.27,
+    "w": 517.44,
+    "h": 32.19
+   },
+   {
+    "l": 320,
+    "t": 497.33,
+    "r": 690.53,
+    "b": 529.52,
+    "w": 370.53,
+    "h": 32.19
+   }
+  ],
+  "texts": [
+   {
+    "l": 828.53,
+    "t": 359.67,
+    "r": 1345.97,
+    "b": 380.67,
+    "w": 517.44,
+    "h": 21
+   },
+   {
+    "l": 320,
+    "t": 502.92,
+    "r": 690.53,
+    "b": 523.92,
+    "w": 370.53,
+    "h": 21
+   }
+  ],
+  "overlays": [
+   {
+    "l": 828.52,
+    "t": 354.66,
+    "r": 1345.95,
+    "b": 497.91,
+    "w": 517.44,
+    "h": 143.25
+   },
+   {
+    "l": 320,
+    "t": 497.91,
+    "r": 690.52,
+    "b": 641.16,
+    "w": 370.52,
+    "h": 143.25
+   }
+  ]
+ },
+ "A": [
+  {
+   "k": 1,
+   "x": 1087,
+   "y": 442,
+   "preRevealed": 1,
+   "postRevealed": 1,
+   "pos": {
+    "from": 285,
+    "to": 285,
+    "empty": true
+   },
+   "editing": true,
+   "overlays": 0
+  },
+  {
+   "k": 2,
+   "x": 1087,
+   "y": 442,
+   "preRevealed": 1,
+   "postRevealed": 1,
+   "pos": {
+    "from": 285,
+    "to": 285,
+    "empty": true
+   },
+   "editing": true,
+   "overlays": 0
+  },
+  {
+   "k": 3,
+   "x": 1087,
+   "y": 442,
+   "preRevealed": 1,
+   "postRevealed": 1,
+   "pos": {
+    "from": 285,
+    "to": 285,
+    "empty": true
+   },
+   "editing": true,
+   "overlays": 0
+  }
+ ],
+ "B": [
+  {
+   "row": 0,
+   "kind": "mid",
+   "x": 1087,
+   "bandPos": {
+    "from": 285,
+    "to": 285,
+    "empty": true
+   },
+   "bandRevealed": 1,
+   "glyphPos": {
+    "from": 285,
+    "to": 285,
+    "empty": true
+   },
+   "glyphRevealed": 1,
+   "delta": 0,
+   "sourceRange": [
+    254,
+    355
+   ]
+  },
+  {
+   "row": 0,
+   "kind": "left",
+   "x": 830,
+   "bandPos": {
+    "from": 254,
+    "to": 254,
+    "empty": true
+   },
+   "bandRevealed": 1,
+   "glyphPos": {
+    "from": 254,
+    "to": 254,
+    "empty": true
+   },
+   "glyphRevealed": 1,
+   "delta": 0,
+   "sourceRange": [
+    254,
+    355
+   ]
+  },
+  {
+   "row": 0,
+   "kind": "right",
+   "x": 1345,
+   "bandPos": {
+    "from": 313,
+    "to": 313,
+    "empty": true
+   },
+   "bandRevealed": 1,
+   "glyphPos": {
+    "from": 313,
+    "to": 313,
+    "empty": true
+   },
+   "glyphRevealed": 1,
+   "delta": 0,
+   "sourceRange": [
+    254,
+    355
+   ]
+  },
+  {
+   "row": 1,
+   "kind": "mid",
+   "x": 505,
+   "bandPos": {
+    "from": 334,
+    "to": 334,
+    "empty": true
+   },
+   "bandRevealed": 1,
+   "glyphPos": {
+    "from": 334,
+    "to": 334,
+    "empty": true
+   },
+   "glyphRevealed": 1,
+   "delta": 0,
+   "sourceRange": [
+    254,
+    355
+   ]
+  },
+  {
+   "row": 1,
+   "kind": "left",
+   "x": 321,
+   "bandPos": {
+    "from": 313,
+    "to": 313,
+    "empty": true
+   },
+   "bandRevealed": 1,
+   "glyphPos": {
+    "from": 313,
+    "to": 313,
+    "empty": true
+   },
+   "glyphRevealed": 1,
+   "delta": 0,
+   "sourceRange": [
+    254,
+    355
+   ]
+  },
+  {
+   "row": 1,
+   "kind": "right",
+   "x": 690,
+   "bandPos": {
+    "from": 355,
+    "to": 355,
+    "empty": true
+   },
+   "bandRevealed": 1,
+   "glyphPos": {
+    "from": 355,
+    "to": 355,
+    "empty": true
+   },
+   "glyphRevealed": 1,
+   "delta": 0,
+   "sourceRange": [
+    254,
+    355
+   ]
+  }
+ ],
+ "C": {
+  "dragOnGlyphs": {
+   "revealed": 1,
+   "sel": {
+    "from": 255,
+    "to": 273,
+    "empty": false
+   },
+   "domText": "img src=\"https://a",
+   "editing": false,
+   "cls": "img-src-revealed",
+   "bg": "rgb(228, 230, 234)",
+   "overlays": 2,
+   "overlayEl": true
+  },
+  "clickOnGlyphs": {
+   "revealed": 1,
+   "sel": {
+    "from": 355,
+    "to": 355,
+    "empty": true
+   },
+   "domText": "",
+   "editing": false,
+   "cls": "img-src-revealed",
+   "bg": "rgb(228, 230, 234)",
+   "overlays": 2,
+   "overlayEl": true
+  }
+ },
+ "D": {
+  "revealed": 0,
+  "sel": {
+   "from": 2,
+   "to": 2,
+   "empty": true
+  },
+  "domText": "",
+  "editing": null,
+  "cls": null,
+  "bg": null,
+  "overlays": 0,
+  "overlayEl": false
+ },
+ "E": {
+  "press": 0,
+  "release": 1,
+  "bg": "rgb(228, 230, 234)",
+  "frames": [
+   "0/0",
+   "1/0",
+   "1/2"
+  ],
+  "hit": {
+   "mid": {
+    "tag": "P",
+    "cls": "img-side-by-side",
+    "overlay": false
+   },
+   "y": 442,
+   "x": 1087
+  },
+  "layoutOn": {
+   "para": {
+    "l": 320,
+    "t": 354.67,
+    "r": 1362,
+    "b": 641.17,
+    "w": 1042,
+    "h": 286.5
+   },
+   "imgs": [
+    {
+     "l": 610.98,
+     "t": 354.67,
+     "r": 825.98,
+     "b": 497.92,
+     "w": 215,
+     "h": 143.25
+    },
+    {
+     "l": 700.72,
+     "t": 497.92,
+     "r": 915.72,
+     "b": 641.17,
+     "w": 215,
+     "h": 143.25
+    },
+    {
+     "l": 918.27,
+     "t": 497.92,
+     "r": 918.27,
+     "b": 497.92,
+     "w": 0,
+     "h": 0
+    }
+   ],
+   "h2": {
+    "l": 320,
+    "t": 674.31,
+    "r": 1362,
+    "b": 715.34,
+    "w": 1042,
+    "h": 41.03
+   },
+   "scrollH": 1530,
+   "overlays": 2
+  },
+  "layoutOff": {
+   "para": {
+    "l": 320,
+    "t": 354.67,
+    "r": 1362,
+    "b": 641.17,
+    "w": 1042,
+    "h": 286.5
+   },
+   "imgs": [
+    {
+     "l": 610.98,
+     "t": 354.67,
+     "r": 825.98,
+     "b": 497.92,
+     "w": 215,
+     "h": 143.25
+    },
+    {
+     "l": 700.72,
+     "t": 497.92,
+     "r": 915.72,
+     "b": 641.17,
+     "w": 215,
+     "h": 143.25
+    },
+    {
+     "l": 918.27,
+     "t": 497.92,
+     "r": 918.27,
+     "b": 497.92,
+     "w": 0,
+     "h": 0
+    }
+   ],
+   "h2": {
+    "l": 320,
+    "t": 674.31,
+    "r": 1362,
+    "b": 715.34,
+    "w": 1042,
+    "h": 41.03
+   },
+   "scrollH": 1530
+  },
+  "layoutSame": true,
+  "editing": {
+   "revealed": 1,
+   "sel": {
+    "from": 275,
+    "to": 275,
+    "empty": true
+   },
+   "domText": "",
+   "editing": true,
+   "cls": "img-src-revealed img-src-revealed--editing",
+   "bg": "rgba(0, 0, 0, 0)",
+   "overlays": 0,
+   "overlayEl": false
+  },
+  "hidden": {
+   "revealed": 0,
+   "sel": {
+    "from": 2,
+    "to": 2,
+    "empty": true
+   },
+   "domText": "",
+   "editing": null,
+   "cls": null,
+   "bg": null,
+   "overlays": 0,
+   "overlayEl": false
+  },
+  "mdRoundtripSame": true,
+  "modalAtEnd": 0
+ },
+ "mdAfter": "4dbb870902ecc4ab38f83fcb8ce5c8b755ea738d94932ca5487b5467fd453a7b"
+}

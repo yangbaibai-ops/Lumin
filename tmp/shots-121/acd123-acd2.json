@@ -1,0 +1,3020 @@
+{
+ "tag": "acd2",
+ "geo": {
+  "widgets": [
+   {
+    "l": 610.98,
+    "t": 354.67,
+    "r": 825.98,
+    "b": 497.92
+   },
+   {
+    "l": 838.72,
+    "t": 354.67,
+    "r": 1053.72,
+    "b": 497.92
+   }
+  ],
+  "math": [
+   {
+    "l": 388,
+    "t": 413.89,
+    "r": 460.59,
+    "b": 434.89
+   },
+   {
+    "l": 487.66,
+    "t": 413.89,
+    "r": 583.8,
+    "b": 434.89
+   }
+  ],
+  "text": {
+   "l": 320,
+   "t": 413.89,
+   "r": 388,
+   "b": 434.89
+  },
+  "para": {
+   "l": 320,
+   "t": 354.67,
+   "r": 1362,
+   "b": 497.92
+  }
+ },
+ "gestures": [
+  {
+   "name": "A 图片后→左拖(未显形)",
+   "from": {
+    "x": 1094,
+    "y": 426
+   },
+   "to": {
+    "x": 326,
+    "y": 424
+   },
+   "shrink": [
+    {
+     "i": 1,
+     "prev": 355,
+     "now": 355,
+     "anchor": 135
+    }
+   ],
+   "shrinkU": [
+    {
+     "i": 20,
+     "dir": "left",
+     "prevX": [
+      601,
+      1055
+     ],
+     "nowX": [
+      611,
+      1056
+     ],
+     "sel": "135-135E",
+     "pFrom": 153,
+     "pTo": 355
+    }
+   ],
+   "pre": {
+    "anchor": 355,
+    "head": 120,
+    "pFrom": 120,
+    "pTo": 355,
+    "sel": "118-118E",
+    "own": "all",
+    "imgSel": 2,
+    "hlN": 0,
+    "domLen": 0,
+    "uX": [
+     320,
+     1055
+    ]
+   },
+   "post": {
+    "sel": "118-355",
+    "text": "行内公式$E = mc^2$ 与 $a^2 + b^2 = c^2$。<img src=\"https://assets.",
+    "marked": 2,
+    "band": 2,
+    "own": "math",
+    "hlNow": 0,
+    "md": "行内公式：$E = mc^2$ 与 $a^2 + b^2 = c^2$。\n\n块级"
+   },
+   "dedup": [
+    "135-355(a135,sel355-355E,img0,uXnull)",
+    "355-355(a355,sel355-355E,img0,uXnull)",
+    "254-355(a355,sel355-355E,img1,uX[838,1055])",
+    "254-355(a355,sel254-254E,img1,uX[838,1055])",
+    "153-355(a355,sel153-153E,img2,uX[601,1055])",
+    "153-355(a355,sel135-135E,img2,uX[611,1056])",
+    "135-355(a355,sel135-135E,img2,uX[487,1056])",
+    "135-355(a355,sel134-134E,img2,uX[483,1055])",
+    "134-355(a355,sel122-122E,img2,uX[483,1056])",
+    "122-355(a355,sel122-122E,img2,uX[387,1056])",
+    "122-355(a355,sel121-121E,img2,uX[371,1055])",
+    "121-355(a355,sel120-120E,img2,uX[354,1055])",
+    "120-355(a355,sel118-118E,img2,uX[320,1055])"
+   ],
+   "frames": [
+    {
+     "i": -1,
+     "anchor": 135,
+     "head": 355,
+     "pFrom": 135,
+     "pTo": 355,
+     "sel": "355-355E",
+     "own": null,
+     "imgSel": 0,
+     "hlN": 0,
+     "domLen": 0,
+     "uX": null
+    },
+    {
+     "i": 1,
+     "anchor": 355,
+     "head": 355,
+     "pFrom": 355,
+     "pTo": 355,
+     "sel": "355-355E",
+     "own": null,
+     "imgSel": 0,
+     "hlN": 0,
+     "domLen": 0,
+     "uX": null
+    },
+    {
+     "i": 2,
+     "anchor": 355,
+     "head": 355,
+     "pFrom": 355,
+     "pTo": 355,
+     "sel": "355-355E",
+     "own": null,
+     "imgSel": 0,
+     "hlN": 0,
+     "domLen": 0,
+     "uX": null
+    },
+    {
+     "i": 3,
+     "anchor": 355,
+     "head": 355,
+     "pFrom": 355,
+     "pTo": 355,
+     "sel": "355-355E",
+     "own": null,
+     "imgSel": 0,
+     "hlN": 0,
+     "domLen": 0,
+     "uX": null
+    },
+    {
+     "i": 4,
+     "anchor": 355,
+     "head": 355,
+     "pFrom": 355,
+     "pTo": 355,
+     "sel": "355-355E",
+     "own": null,
+     "imgSel": 0,
+     "hlN": 0,
+     "domLen": 0,
+     "uX": null
+    },
+    {
+     "i": 5,
+     "anchor": 355,
+     "head": 355,
+     "pFrom": 355,
+     "pTo": 355,
+     "sel": "355-355E",
+     "own": null,
+     "imgSel": 0,
+     "hlN": 0,
+     "domLen": 0,
+     "uX": null
+    },
+    {
+     "i": 6,
+     "anchor": 355,
+     "head": 254,
+     "pFrom": 254,
+     "pTo": 355,
+     "sel": "355-355E",
+     "own": "all",
+     "imgSel": 1,
+     "hlN": 0,
+     "domLen": 0,
+     "uX": [
+      838,
+      1055
+     ]
+    },
+    {
+     "i": 7,
+     "anchor": 355,
+     "head": 254,
+     "pFrom": 254,
+     "pTo": 355,
+     "sel": "355-355E",
+     "own": "all",
+     "imgSel": 1,
+     "hlN": 0,
+     "domLen": 0,
+     "uX": [
+      838,
+      1055
+     ]
+    },
+    {
+     "i": 8,
+     "anchor": 355,
+     "head": 254,
+     "pFrom": 254,
+     "pTo": 355,
+     "sel": "355-355E",
+     "own": "all",
+     "imgSel": 1,
+     "hlN": 0,
+     "domLen": 0,
+     "uX": [
+      838,
+      1055
+     ]
+    },
+    {
+     "i": 9,
+     "anchor": 355,
+     "head": 254,
+     "pFrom": 254,
+     "pTo": 355,
+     "sel": "355-355E",
+     "own": "all",
+     "imgSel": 1,
+     "hlN": 0,
+     "domLen": 0,
+     "uX": [
+      838,
+      1055
+     ]
+    },
+    {
+     "i": 10,
+     "anchor": 355,
+     "head": 254,
+     "pFrom": 254,
+     "pTo": 355,
+     "sel": "355-355E",
+     "own": "all",
+     "imgSel": 1,
+     "hlN": 0,
+     "domLen": 0,
+     "uX": [
+      838,
+      1055
+     ]
+    },
+    {
+     "i": 11,
+     "anchor": 355,
+     "head": 254,
+     "pFrom": 254,
+     "pTo": 355,
+     "sel": "254-254E",
+     "own": "all",
+     "imgSel": 1,
+     "hlN": 0,
+     "domLen": 0,
+     "uX": [
+      838,
+      1055
+     ]
+    },
+    {
+     "i": 12,
+     "anchor": 355,
+     "head": 254,
+     "pFrom": 254,
+     "pTo": 355,
+     "sel": "254-254E",
+     "own": "all",
+     "imgSel": 1,
+     "hlN": 0,
+     "domLen": 0,
+     "uX": [
+      838,
+      1055
+     ]
+    },
+    {
+     "i": 13,
+     "anchor": 355,
+     "head": 254,
+     "pFrom": 254,
+     "pTo": 355,
+     "sel": "254-254E",
+     "own": "all",
+     "imgSel": 1,
+     "hlN": 0,
+     "domLen": 0,
+     "uX": [
+      838,
+      1055
+     ]
+    },
+    {
+     "i": 14,
+     "anchor": 355,
+     "head": 254,
+     "pFrom": 254,
+     "pTo": 355,
+     "sel": "254-254E",
+     "own": "all",
+     "imgSel": 1,
+     "hlN": 0,
+     "domLen": 0,
+     "uX": [
+      838,
+      1055
+     ]
+    },
+    {
+     "i": 15,
+     "anchor": 355,
+     "head": 153,
+     "pFrom": 153,
+     "pTo": 355,
+     "sel": "153-153E",
+     "own": "all",
+     "imgSel": 2,
+     "hlN": 0,
+     "domLen": 0,
+     "uX": [
+      601,
+      1055
+     ]
+    },
+    {
+     "i": 16,
+     "anchor": 355,
+     "head": 153,
+     "pFrom": 153,
+     "pTo": 355,
+     "sel": "153-153E",
+     "own": "all",
+     "imgSel": 2,
+     "hlN": 0,
+     "domLen": 0,
+     "uX": [
+      601,
+      1055
+     ]
+    },
+    {
+     "i": 17,
+     "anchor": 355,
+     "head": 153,
+     "pFrom": 153,
+     "pTo": 355,
+     "sel": "153-153E",
+     "own": "all",
+     "imgSel": 2,
+     "hlN": 0,
+     "domLen": 0,
+     "uX": [
+      601,
+      1055
+     ]
+    },
+    {
+     "i": 18,
+     "anchor": 355,
+     "head": 153,
+     "pFrom": 153,
+     "pTo": 355,
+     "sel": "153-153E",
+     "own": "all",
+     "imgSel": 2,
+     "hlN": 0,
+     "domLen": 0,
+     "uX": [
+      601,
+      1055
+     ]
+    },
+    {
+     "i": 19,
+     "anchor": 355,
+     "head": 153,
+     "pFrom": 153,
+     "pTo": 355,
+     "sel": "153-153E",
+     "own": "all",
+     "imgSel": 2,
+     "hlN": 0,
+     "domLen": 0,
+     "uX": [
+      601,
+      1055
+     ]
+    },
+    {
+     "i": 20,
+     "anchor": 355,
+     "head": 153,
+     "pFrom": 153,
+     "pTo": 355,
+     "sel": "135-135E",
+     "own": "all",
+     "imgSel": 2,
+     "hlN": 0,
+     "domLen": 0,
+     "uX": [
+      611,
+      1056
+     ]
+    },
+    {
+     "i": 21,
+     "anchor": 355,
+     "head": 135,
+     "pFrom": 135,
+     "pTo": 355,
+     "sel": "135-135E",
+     "own": "all",
+     "imgSel": 2,
+     "hlN": 0,
+     "domLen": 0,
+     "uX": [
+      487,
+      1056
+     ]
+    },
+    {
+     "i": 22,
+     "anchor": 355,
+     "head": 135,
+     "pFrom": 135,
+     "pTo": 355,
+     "sel": "135-135E",
+     "own": "all",
+     "imgSel": 2,
+     "hlN": 0,
+     "domLen": 0,
+     "uX": [
+      487,
+      1056
+     ]
+    },
+    {
+     "i": 23,
+     "anchor": 355,
+     "head": 135,
+     "pFrom": 135,
+     "pTo": 355,
+     "sel": "135-135E",
+     "own": "all",
+     "imgSel": 2,
+     "hlN": 0,
+     "domLen": 0,
+     "uX": [
+      487,
+      1056
+     ]
+    },
+    {
+     "i": 24,
+     "anchor": 355,
+     "head": 135,
+     "pFrom": 135,
+     "pTo": 355,
+     "sel": "134-134E",
+     "own": "all",
+     "imgSel": 2,
+     "hlN": 0,
+     "domLen": 0,
+     "uX": [
+      483,
+      1055
+     ]
+    },
+    {
+     "i": 25,
+     "anchor": 355,
+     "head": 134,
+     "pFrom": 134,
+     "pTo": 355,
+     "sel": "122-122E",
+     "own": "all",
+     "imgSel": 2,
+     "hlN": 0,
+     "domLen": 0,
+     "uX": [
+      483,
+      1056
+     ]
+    },
+    {
+     "i": 26,
+     "anchor": 355,
+     "head": 122,
+     "pFrom": 122,
+     "pTo": 355,
+     "sel": "122-122E",
+     "own": "all",
+     "imgSel": 2,
+     "hlN": 0,
+     "domLen": 0,
+     "uX": [
+      387,
+      1056
+     ]
+    },
+    {
+     "i": 27,
+     "anchor": 355,
+     "head": 122,
+     "pFrom": 122,
+     "pTo": 355,
+     "sel": "122-122E",
+     "own": "all",
+     "imgSel": 2,
+     "hlN": 0,
+     "domLen": 0,
+     "uX": [
+      387,
+      1056
+     ]
+    },
+    {
+     "i": 28,
+     "anchor": 355,
+     "head": 122,
+     "pFrom": 122,
+     "pTo": 355,
+     "sel": "121-121E",
+     "own": "all",
+     "imgSel": 2,
+     "hlN": 0,
+     "domLen": 0,
+     "uX": [
+      371,
+      1055
+     ]
+    },
+    {
+     "i": 29,
+     "anchor": 355,
+     "head": 121,
+     "pFrom": 121,
+     "pTo": 355,
+     "sel": "120-120E",
+     "own": "all",
+     "imgSel": 2,
+     "hlN": 0,
+     "domLen": 0,
+     "uX": [
+      354,
+      1055
+     ]
+    },
+    {
+     "i": 30,
+     "anchor": 355,
+     "head": 120,
+     "pFrom": 120,
+     "pTo": 355,
+     "sel": "118-118E",
+     "own": "all",
+     "imgSel": 2,
+     "hlN": 0,
+     "domLen": 0,
+     "uX": [
+      320,
+      1055
+     ]
+    }
+   ]
+  },
+  {
+   "name": "C 公式后→左拖(未显形)",
+   "from": {
+    "x": 590,
+    "y": 424
+   },
+   "to": {
+    "x": 326,
+    "y": 424
+   },
+   "shrink": [
+    {
+     "i": 1,
+     "prev": 120,
+     "now": 152,
+     "anchor": 355
+    }
+   ],
+   "shrinkU": [],
+   "pre": {
+    "anchor": 152,
+    "head": 119,
+    "pFrom": 119,
+    "pTo": 152,
+    "sel": "118-118E",
+    "own": "all",
+    "imgSel": 0,
+    "hlN": 0,
+    "domLen": 0,
+    "uX": [
+     320,
+     585
+    ]
+   },
+   "post": {
+    "sel": "118-152",
+    "text": "行内公式$E = mc^2$ 与 $a^2 + b^2 = c^2$",
+    "marked": 0,
+    "band": 2,
+    "own": "math",
+    "hlNow": 0,
+    "md": "行内公式：$E = mc^2$ 与 $a^2 + b^2 = c^2$。\n\n块级"
+   },
+   "dedup": [
+    "120-355(a355,sel152-152E,img0,uX[584,584])",
+    "152-152(a152,sel135-135E,img0,uXnull)",
+    "135-152(a152,sel135-135E,img0,uX[487,585])",
+    "135-152(a152,sel134-134E,img0,uX[483,585])",
+    "134-152(a152,sel133-133E,img0,uX[466,585])",
+    "133-152(a152,sel122-122E,img0,uX[466,586])",
+    "122-152(a152,sel122-122E,img0,uX[387,586])",
+    "122-152(a152,sel121-121E,img0,uX[371,585])",
+    "121-152(a152,sel121-121E,img0,uX[370,585])",
+    "121-152(a152,sel120-120E,img0,uX[354,585])",
+    "120-152(a152,sel120-120E,img0,uX[353,585])",
+    "120-152(a152,sel119-119E,img0,uX[337,585])",
+    "119-152(a152,sel118-118E,img0,uX[320,585])"
+   ],
+   "frames": [
+    {
+     "i": -1,
+     "anchor": 355,
+     "head": 120,
+     "pFrom": 120,
+     "pTo": 355,
+     "sel": "152-152E",
+     "own": null,
+     "imgSel": 0,
+     "hlN": 0,
+     "domLen": 0,
+     "uX": [
+      584,
+      584
+     ]
+    },
+    {
+     "i": 1,
+     "anchor": 152,
+     "head": 152,
+     "pFrom": 152,
+     "pTo": 152,
+     "sel": "135-135E",
+     "own": null,
+     "imgSel": 0,
+     "hlN": 0,
+     "domLen": 0,
+     "uX": null
+    },
+    {
+     "i": 2,
+     "anchor": 152,
+     "head": 135,
+     "pFrom": 135,
+     "pTo": 152,
+     "sel": "135-135E",
+     "own": "all",
+     "imgSel": 0,
+     "hlN": 0,
+     "domLen": 0,
+     "uX": [
+      487,
+      585
+     ]
+    },
+    {
+     "i": 3,
+     "anchor": 152,
+     "head": 135,
+     "pFrom": 135,
+     "pTo": 152,
+     "sel": "135-135E",
+     "own": "all",
+     "imgSel": 0,
+     "hlN": 0,
+     "domLen": 0,
+     "uX": [
+      487,
+      585
+     ]
+    },
+    {
+     "i": 4,
+     "anchor": 152,
+     "head": 135,
+     "pFrom": 135,
+     "pTo": 152,
+     "sel": "135-135E",
+     "own": "all",
+     "imgSel": 0,
+     "hlN": 0,
+     "domLen": 0,
+     "uX": [
+      487,
+      585
+     ]
+    },
+    {
+     "i": 5,
+     "anchor": 152,
+     "head": 135,
+     "pFrom": 135,
+     "pTo": 152,
+     "sel": "135-135E",
+     "own": "all",
+     "imgSel": 0,
+     "hlN": 0,
+     "domLen": 0,
+     "uX": [
+      487,
+      585
+     ]
+    },
+    {
+     "i": 6,
+     "anchor": 152,
+     "head": 135,
+     "pFrom": 135,
+     "pTo": 152,
+     "sel": "135-135E",
+     "own": "all",
+     "imgSel": 0,
+     "hlN": 0,
+     "domLen": 0,
+     "uX": [
+      487,
+      585
+     ]
+    },
+    {
+     "i": 7,
+     "anchor": 152,
+     "head": 135,
+     "pFrom": 135,
+     "pTo": 152,
+     "sel": "135-135E",
+     "own": "all",
+     "imgSel": 0,
+     "hlN": 0,
+     "domLen": 0,
+     "uX": [
+      487,
+      585
+     ]
+    },
+    {
+     "i": 8,
+     "anchor": 152,
+     "head": 135,
+     "pFrom": 135,
+     "pTo": 152,
+     "sel": "135-135E",
+     "own": "all",
+     "imgSel": 0,
+     "hlN": 0,
+     "domLen": 0,
+     "uX": [
+      487,
+      585
+     ]
+    },
+    {
+     "i": 9,
+     "anchor": 152,
+     "head": 135,
+     "pFrom": 135,
+     "pTo": 152,
+     "sel": "135-135E",
+     "own": "all",
+     "imgSel": 0,
+     "hlN": 0,
+     "domLen": 0,
+     "uX": [
+      487,
+      585
+     ]
+    },
+    {
+     "i": 10,
+     "anchor": 152,
+     "head": 135,
+     "pFrom": 135,
+     "pTo": 152,
+     "sel": "135-135E",
+     "own": "all",
+     "imgSel": 0,
+     "hlN": 0,
+     "domLen": 0,
+     "uX": [
+      487,
+      585
+     ]
+    },
+    {
+     "i": 11,
+     "anchor": 152,
+     "head": 135,
+     "pFrom": 135,
+     "pTo": 152,
+     "sel": "134-134E",
+     "own": "all",
+     "imgSel": 0,
+     "hlN": 0,
+     "domLen": 0,
+     "uX": [
+      483,
+      585
+     ]
+    },
+    {
+     "i": 12,
+     "anchor": 152,
+     "head": 134,
+     "pFrom": 134,
+     "pTo": 152,
+     "sel": "133-133E",
+     "own": "all",
+     "imgSel": 0,
+     "hlN": 0,
+     "domLen": 0,
+     "uX": [
+      466,
+      585
+     ]
+    },
+    {
+     "i": 13,
+     "anchor": 152,
+     "head": 133,
+     "pFrom": 133,
+     "pTo": 152,
+     "sel": "122-122E",
+     "own": "all",
+     "imgSel": 0,
+     "hlN": 0,
+     "domLen": 0,
+     "uX": [
+      466,
+      586
+     ]
+    },
+    {
+     "i": 14,
+     "anchor": 152,
+     "head": 122,
+     "pFrom": 122,
+     "pTo": 152,
+     "sel": "122-122E",
+     "own": "all",
+     "imgSel": 0,
+     "hlN": 0,
+     "domLen": 0,
+     "uX": [
+      387,
+      586
+     ]
+    },
+    {
+     "i": 15,
+     "anchor": 152,
+     "head": 122,
+     "pFrom": 122,
+     "pTo": 152,
+     "sel": "122-122E",
+     "own": "all",
+     "imgSel": 0,
+     "hlN": 0,
+     "domLen": 0,
+     "uX": [
+      387,
+      586
+     ]
+    },
+    {
+     "i": 16,
+     "anchor": 152,
+     "head": 122,
+     "pFrom": 122,
+     "pTo": 152,
+     "sel": "122-122E",
+     "own": "all",
+     "imgSel": 0,
+     "hlN": 0,
+     "domLen": 0,
+     "uX": [
+      387,
+      586
+     ]
+    },
+    {
+     "i": 17,
+     "anchor": 152,
+     "head": 122,
+     "pFrom": 122,
+     "pTo": 152,
+     "sel": "122-122E",
+     "own": "all",
+     "imgSel": 0,
+     "hlN": 0,
+     "domLen": 0,
+     "uX": [
+      387,
+      586
+     ]
+    },
+    {
+     "i": 18,
+     "anchor": 152,
+     "head": 122,
+     "pFrom": 122,
+     "pTo": 152,
+     "sel": "122-122E",
+     "own": "all",
+     "imgSel": 0,
+     "hlN": 0,
+     "domLen": 0,
+     "uX": [
+      387,
+      586
+     ]
+    },
+    {
+     "i": 19,
+     "anchor": 152,
+     "head": 122,
+     "pFrom": 122,
+     "pTo": 152,
+     "sel": "122-122E",
+     "own": "all",
+     "imgSel": 0,
+     "hlN": 0,
+     "domLen": 0,
+     "uX": [
+      387,
+      586
+     ]
+    },
+    {
+     "i": 20,
+     "anchor": 152,
+     "head": 122,
+     "pFrom": 122,
+     "pTo": 152,
+     "sel": "122-122E",
+     "own": "all",
+     "imgSel": 0,
+     "hlN": 0,
+     "domLen": 0,
+     "uX": [
+      387,
+      586
+     ]
+    },
+    {
+     "i": 21,
+     "anchor": 152,
+     "head": 122,
+     "pFrom": 122,
+     "pTo": 152,
+     "sel": "121-121E",
+     "own": "all",
+     "imgSel": 0,
+     "hlN": 0,
+     "domLen": 0,
+     "uX": [
+      371,
+      585
+     ]
+    },
+    {
+     "i": 22,
+     "anchor": 152,
+     "head": 121,
+     "pFrom": 121,
+     "pTo": 152,
+     "sel": "121-121E",
+     "own": "all",
+     "imgSel": 0,
+     "hlN": 0,
+     "domLen": 0,
+     "uX": [
+      370,
+      585
+     ]
+    },
+    {
+     "i": 23,
+     "anchor": 152,
+     "head": 121,
+     "pFrom": 121,
+     "pTo": 152,
+     "sel": "120-120E",
+     "own": "all",
+     "imgSel": 0,
+     "hlN": 0,
+     "domLen": 0,
+     "uX": [
+      354,
+      585
+     ]
+    },
+    {
+     "i": 24,
+     "anchor": 152,
+     "head": 120,
+     "pFrom": 120,
+     "pTo": 152,
+     "sel": "120-120E",
+     "own": "all",
+     "imgSel": 0,
+     "hlN": 0,
+     "domLen": 0,
+     "uX": [
+      353,
+      585
+     ]
+    },
+    {
+     "i": 25,
+     "anchor": 152,
+     "head": 120,
+     "pFrom": 120,
+     "pTo": 152,
+     "sel": "119-119E",
+     "own": "all",
+     "imgSel": 0,
+     "hlN": 0,
+     "domLen": 0,
+     "uX": [
+      337,
+      585
+     ]
+    },
+    {
+     "i": 26,
+     "anchor": 152,
+     "head": 119,
+     "pFrom": 119,
+     "pTo": 152,
+     "sel": "118-118E",
+     "own": "all",
+     "imgSel": 0,
+     "hlN": 0,
+     "domLen": 0,
+     "uX": [
+      320,
+      585
+     ]
+    }
+   ]
+  },
+  {
+   "name": "D 公式后→右拖(未显形)",
+   "from": {
+    "x": 471,
+    "y": 424
+   },
+   "to": {
+    "x": 1354,
+    "y": 424
+   },
+   "shrink": [
+    {
+     "i": 1,
+     "prev": 119,
+     "now": 133,
+     "anchor": 152
+    }
+   ],
+   "shrinkU": [],
+   "pre": {
+    "anchor": 133,
+    "head": 355,
+    "pFrom": 133,
+    "pTo": 355,
+    "sel": "133-355",
+    "own": "all",
+    "imgSel": 2,
+    "hlN": 0,
+    "domLen": 230,
+    "uX": [
+     465,
+     1056
+    ]
+   },
+   "post": {
+    "sel": "133-355",
+    "text": "与 $a^2 + b^2 = c^2$。<img src=\"https://assets.699pic.com/publ",
+    "marked": 2,
+    "band": 1,
+    "own": "math",
+    "hlNow": 0,
+    "md": "行内公式：$E = mc^2$ 与 $a^2 + b^2 = c^2$。\n\n块级"
+   },
+   "dedup": [
+    "119-152(a152,sel133-133E,img0,uX[466,466])",
+    "133-133(a133,sel133-135,img0,uX[466,488])",
+    "133-135(a133,sel133-135,img0,uX[465,489])",
+    "133-153(a133,sel133-153,img0,uX[465,602])",
+    "133-254(a133,sel133-254,img1,uX[465,827])",
+    "133-254(a133,sel133-355,img2,uX[465,1055])",
+    "133-355(a133,sel133-355,img2,uX[465,1055])",
+    "133-355(a133,sel133-355,img2,uX[465,1056])"
+   ],
+   "frames": [
+    {
+     "i": -1,
+     "anchor": 152,
+     "head": 119,
+     "pFrom": 119,
+     "pTo": 152,
+     "sel": "133-133E",
+     "own": null,
+     "imgSel": 0,
+     "hlN": 0,
+     "domLen": 0,
+     "uX": [
+      466,
+      466
+     ]
+    },
+    {
+     "i": 1,
+     "anchor": 133,
+     "head": 133,
+     "pFrom": 133,
+     "pTo": 133,
+     "sel": "133-135",
+     "own": null,
+     "imgSel": 0,
+     "hlN": 0,
+     "domLen": 2,
+     "uX": [
+      466,
+      488
+     ]
+    },
+    {
+     "i": 2,
+     "anchor": 133,
+     "head": 135,
+     "pFrom": 133,
+     "pTo": 135,
+     "sel": "133-135",
+     "own": "all",
+     "imgSel": 0,
+     "hlN": 0,
+     "domLen": 2,
+     "uX": [
+      465,
+      489
+     ]
+    },
+    {
+     "i": 3,
+     "anchor": 133,
+     "head": 135,
+     "pFrom": 133,
+     "pTo": 135,
+     "sel": "133-135",
+     "own": "all",
+     "imgSel": 0,
+     "hlN": 0,
+     "domLen": 2,
+     "uX": [
+      465,
+      489
+     ]
+    },
+    {
+     "i": 4,
+     "anchor": 133,
+     "head": 153,
+     "pFrom": 133,
+     "pTo": 153,
+     "sel": "133-153",
+     "own": "all",
+     "imgSel": 0,
+     "hlN": 0,
+     "domLen": 28,
+     "uX": [
+      465,
+      602
+     ]
+    },
+    {
+     "i": 5,
+     "anchor": 133,
+     "head": 153,
+     "pFrom": 133,
+     "pTo": 153,
+     "sel": "133-153",
+     "own": "all",
+     "imgSel": 0,
+     "hlN": 0,
+     "domLen": 28,
+     "uX": [
+      465,
+      602
+     ]
+    },
+    {
+     "i": 6,
+     "anchor": 133,
+     "head": 153,
+     "pFrom": 133,
+     "pTo": 153,
+     "sel": "133-153",
+     "own": "all",
+     "imgSel": 0,
+     "hlN": 0,
+     "domLen": 28,
+     "uX": [
+      465,
+      602
+     ]
+    },
+    {
+     "i": 7,
+     "anchor": 133,
+     "head": 254,
+     "pFrom": 133,
+     "pTo": 254,
+     "sel": "133-254",
+     "own": "all",
+     "imgSel": 1,
+     "hlN": 0,
+     "domLen": 129,
+     "uX": [
+      465,
+      827
+     ]
+    },
+    {
+     "i": 8,
+     "anchor": 133,
+     "head": 254,
+     "pFrom": 133,
+     "pTo": 254,
+     "sel": "133-254",
+     "own": "all",
+     "imgSel": 1,
+     "hlN": 0,
+     "domLen": 129,
+     "uX": [
+      465,
+      827
+     ]
+    },
+    {
+     "i": 9,
+     "anchor": 133,
+     "head": 254,
+     "pFrom": 133,
+     "pTo": 254,
+     "sel": "133-254",
+     "own": "all",
+     "imgSel": 1,
+     "hlN": 0,
+     "domLen": 129,
+     "uX": [
+      465,
+      827
+     ]
+    },
+    {
+     "i": 10,
+     "anchor": 133,
+     "head": 254,
+     "pFrom": 133,
+     "pTo": 254,
+     "sel": "133-355",
+     "own": "all",
+     "imgSel": 2,
+     "hlN": 0,
+     "domLen": 230,
+     "uX": [
+      465,
+      1055
+     ]
+    },
+    {
+     "i": 11,
+     "anchor": 133,
+     "head": 254,
+     "pFrom": 133,
+     "pTo": 254,
+     "sel": "133-355",
+     "own": "all",
+     "imgSel": 2,
+     "hlN": 0,
+     "domLen": 230,
+     "uX": [
+      465,
+      1055
+     ]
+    },
+    {
+     "i": 12,
+     "anchor": 133,
+     "head": 254,
+     "pFrom": 133,
+     "pTo": 254,
+     "sel": "133-355",
+     "own": "all",
+     "imgSel": 2,
+     "hlN": 0,
+     "domLen": 230,
+     "uX": [
+      465,
+      1055
+     ]
+    },
+    {
+     "i": 13,
+     "anchor": 133,
+     "head": 355,
+     "pFrom": 133,
+     "pTo": 355,
+     "sel": "133-355",
+     "own": "all",
+     "imgSel": 2,
+     "hlN": 0,
+     "domLen": 230,
+     "uX": [
+      465,
+      1055
+     ]
+    },
+    {
+     "i": 14,
+     "anchor": 133,
+     "head": 355,
+     "pFrom": 133,
+     "pTo": 355,
+     "sel": "133-355",
+     "own": "all",
+     "imgSel": 2,
+     "hlN": 0,
+     "domLen": 230,
+     "uX": [
+      465,
+      1055
+     ]
+    },
+    {
+     "i": 15,
+     "anchor": 133,
+     "head": 355,
+     "pFrom": 133,
+     "pTo": 355,
+     "sel": "133-355",
+     "own": "all",
+     "imgSel": 2,
+     "hlN": 0,
+     "domLen": 230,
+     "uX": [
+      465,
+      1055
+     ]
+    },
+    {
+     "i": 16,
+     "anchor": 133,
+     "head": 355,
+     "pFrom": 133,
+     "pTo": 355,
+     "sel": "133-355",
+     "own": "all",
+     "imgSel": 2,
+     "hlN": 0,
+     "domLen": 230,
+     "uX": [
+      465,
+      1056
+     ]
+    },
+    {
+     "i": 17,
+     "anchor": 133,
+     "head": 355,
+     "pFrom": 133,
+     "pTo": 355,
+     "sel": "133-355",
+     "own": "all",
+     "imgSel": 2,
+     "hlN": 0,
+     "domLen": 230,
+     "uX": [
+      465,
+      1056
+     ]
+    },
+    {
+     "i": 18,
+     "anchor": 133,
+     "head": 355,
+     "pFrom": 133,
+     "pTo": 355,
+     "sel": "133-355",
+     "own": "all",
+     "imgSel": 2,
+     "hlN": 0,
+     "domLen": 230,
+     "uX": [
+      465,
+      1056
+     ]
+    },
+    {
+     "i": 19,
+     "anchor": 133,
+     "head": 355,
+     "pFrom": 133,
+     "pTo": 355,
+     "sel": "133-355",
+     "own": "all",
+     "imgSel": 2,
+     "hlN": 0,
+     "domLen": 230,
+     "uX": [
+      465,
+      1056
+     ]
+    },
+    {
+     "i": 20,
+     "anchor": 133,
+     "head": 355,
+     "pFrom": 133,
+     "pTo": 355,
+     "sel": "133-355",
+     "own": "all",
+     "imgSel": 2,
+     "hlN": 0,
+     "domLen": 230,
+     "uX": [
+      465,
+      1056
+     ]
+    },
+    {
+     "i": 21,
+     "anchor": 133,
+     "head": 355,
+     "pFrom": 133,
+     "pTo": 355,
+     "sel": "133-355",
+     "own": "all",
+     "imgSel": 2,
+     "hlN": 0,
+     "domLen": 230,
+     "uX": [
+      465,
+      1056
+     ]
+    },
+    {
+     "i": 22,
+     "anchor": 133,
+     "head": 355,
+     "pFrom": 133,
+     "pTo": 355,
+     "sel": "133-355",
+     "own": "all",
+     "imgSel": 2,
+     "hlN": 0,
+     "domLen": 230,
+     "uX": [
+      465,
+      1056
+     ]
+    },
+    {
+     "i": 23,
+     "anchor": 133,
+     "head": 355,
+     "pFrom": 133,
+     "pTo": 355,
+     "sel": "133-355",
+     "own": "all",
+     "imgSel": 2,
+     "hlN": 0,
+     "domLen": 230,
+     "uX": [
+      465,
+      1056
+     ]
+    },
+    {
+     "i": 24,
+     "anchor": 133,
+     "head": 355,
+     "pFrom": 133,
+     "pTo": 355,
+     "sel": "133-355",
+     "own": "all",
+     "imgSel": 2,
+     "hlN": 0,
+     "domLen": 230,
+     "uX": [
+      465,
+      1056
+     ]
+    }
+   ]
+  },
+  {
+   "name": "E1 图片后→左拖(显形)",
+   "from": {
+    "x": 1094,
+    "y": 426
+   },
+   "to": {
+    "x": 326,
+    "y": 424
+   },
+   "shrink": [],
+   "shrinkU": [],
+   "pre": {
+    "anchor": 133,
+    "head": 355,
+    "pFrom": 133,
+    "pTo": 355,
+    "sel": "118-286",
+    "own": "math",
+    "imgSel": 2,
+    "hlN": 0,
+    "domLen": 181,
+    "uX": [
+     320,
+     1092
+    ]
+   },
+   "post": {
+    "sel": "118-286",
+    "text": "行内公式$E = mc^2$ 与 $a^2 + b^2 = c^2$。<img src=\"https://assets.",
+    "marked": 2,
+    "band": 2,
+    "own": "math",
+    "hlNow": 0,
+    "md": "行内公式：$E = mc^2$ 与 $a^2 + b^2 = c^2$。\n\n块级"
+   },
+   "dedup": [
+    "133-355(a133,sel286-286E,img0,uX[1092,1092])",
+    "133-355(a133,sel282-286,img1,uX[1064,1092])",
+    "133-355(a133,sel279-286,img1,uX[1034,1092])",
+    "133-355(a133,sel275-286,img1,uX[1006,1092])",
+    "133-355(a133,sel271-286,img1,uX[973,1092])",
+    "133-355(a133,sel267-286,img1,uX[943,1092])",
+    "133-355(a133,sel264-286,img1,uX[920,1092])",
+    "133-355(a133,sel260-286,img1,uX[885,1092])",
+    "133-355(a133,sel257-286,img1,uX[862,1092])",
+    "133-355(a133,sel254-286,img1,uX[611,1092])",
+    "133-355(a133,sel152-286,img2,uX[584,1092])",
+    "133-355(a133,sel135-286,img2,uX[487,1092])",
+    "133-355(a133,sel133-286,img2,uX[466,1092])",
+    "133-355(a133,sel122-286,img2,uX[387,1092])",
+    "133-355(a133,sel120-286,img2,uX[354,1092])",
+    "133-355(a133,sel118-286,img2,uX[320,1092])"
+   ],
+   "frames": [
+    {
+     "i": -1,
+     "anchor": 133,
+     "head": 355,
+     "pFrom": 133,
+     "pTo": 355,
+     "sel": "286-286E",
+     "own": null,
+     "imgSel": 0,
+     "hlN": 0,
+     "domLen": 0,
+     "uX": [
+      1092,
+      1092
+     ]
+    },
+    {
+     "i": 1,
+     "anchor": 133,
+     "head": 355,
+     "pFrom": 133,
+     "pTo": 355,
+     "sel": "282-286",
+     "own": null,
+     "imgSel": 1,
+     "hlN": 0,
+     "domLen": 4,
+     "uX": [
+      1064,
+      1092
+     ]
+    },
+    {
+     "i": 2,
+     "anchor": 133,
+     "head": 355,
+     "pFrom": 133,
+     "pTo": 355,
+     "sel": "279-286",
+     "own": null,
+     "imgSel": 1,
+     "hlN": 0,
+     "domLen": 7,
+     "uX": [
+      1034,
+      1092
+     ]
+    },
+    {
+     "i": 3,
+     "anchor": 133,
+     "head": 355,
+     "pFrom": 133,
+     "pTo": 355,
+     "sel": "275-286",
+     "own": null,
+     "imgSel": 1,
+     "hlN": 0,
+     "domLen": 11,
+     "uX": [
+      1006,
+      1092
+     ]
+    },
+    {
+     "i": 4,
+     "anchor": 133,
+     "head": 355,
+     "pFrom": 133,
+     "pTo": 355,
+     "sel": "271-286",
+     "own": null,
+     "imgSel": 1,
+     "hlN": 0,
+     "domLen": 15,
+     "uX": [
+      973,
+      1092
+     ]
+    },
+    {
+     "i": 5,
+     "anchor": 133,
+     "head": 355,
+     "pFrom": 133,
+     "pTo": 355,
+     "sel": "267-286",
+     "own": null,
+     "imgSel": 1,
+     "hlN": 0,
+     "domLen": 19,
+     "uX": [
+      943,
+      1092
+     ]
+    },
+    {
+     "i": 6,
+     "anchor": 133,
+     "head": 355,
+     "pFrom": 133,
+     "pTo": 355,
+     "sel": "264-286",
+     "own": null,
+     "imgSel": 1,
+     "hlN": 0,
+     "domLen": 22,
+     "uX": [
+      920,
+      1092
+     ]
+    },
+    {
+     "i": 7,
+     "anchor": 133,
+     "head": 355,
+     "pFrom": 133,
+     "pTo": 355,
+     "sel": "260-286",
+     "own": null,
+     "imgSel": 1,
+     "hlN": 0,
+     "domLen": 26,
+     "uX": [
+      885,
+      1092
+     ]
+    },
+    {
+     "i": 8,
+     "anchor": 133,
+     "head": 355,
+     "pFrom": 133,
+     "pTo": 355,
+     "sel": "257-286",
+     "own": null,
+     "imgSel": 1,
+     "hlN": 0,
+     "domLen": 29,
+     "uX": [
+      862,
+      1092
+     ]
+    },
+    {
+     "i": 9,
+     "anchor": 133,
+     "head": 355,
+     "pFrom": 133,
+     "pTo": 355,
+     "sel": "254-286",
+     "own": null,
+     "imgSel": 1,
+     "hlN": 0,
+     "domLen": 32,
+     "uX": [
+      611,
+      1092
+     ]
+    },
+    {
+     "i": 10,
+     "anchor": 133,
+     "head": 355,
+     "pFrom": 133,
+     "pTo": 355,
+     "sel": "254-286",
+     "own": null,
+     "imgSel": 1,
+     "hlN": 0,
+     "domLen": 32,
+     "uX": [
+      611,
+      1092
+     ]
+    },
+    {
+     "i": 11,
+     "anchor": 133,
+     "head": 355,
+     "pFrom": 133,
+     "pTo": 355,
+     "sel": "254-286",
+     "own": null,
+     "imgSel": 1,
+     "hlN": 0,
+     "domLen": 32,
+     "uX": [
+      611,
+      1092
+     ]
+    },
+    {
+     "i": 12,
+     "anchor": 133,
+     "head": 355,
+     "pFrom": 133,
+     "pTo": 355,
+     "sel": "254-286",
+     "own": null,
+     "imgSel": 1,
+     "hlN": 0,
+     "domLen": 32,
+     "uX": [
+      611,
+      1092
+     ]
+    },
+    {
+     "i": 13,
+     "anchor": 133,
+     "head": 355,
+     "pFrom": 133,
+     "pTo": 355,
+     "sel": "254-286",
+     "own": null,
+     "imgSel": 1,
+     "hlN": 0,
+     "domLen": 32,
+     "uX": [
+      611,
+      1092
+     ]
+    },
+    {
+     "i": 14,
+     "anchor": 133,
+     "head": 355,
+     "pFrom": 133,
+     "pTo": 355,
+     "sel": "254-286",
+     "own": null,
+     "imgSel": 1,
+     "hlN": 0,
+     "domLen": 32,
+     "uX": [
+      611,
+      1092
+     ]
+    },
+    {
+     "i": 15,
+     "anchor": 133,
+     "head": 355,
+     "pFrom": 133,
+     "pTo": 355,
+     "sel": "254-286",
+     "own": null,
+     "imgSel": 1,
+     "hlN": 0,
+     "domLen": 32,
+     "uX": [
+      611,
+      1092
+     ]
+    },
+    {
+     "i": 16,
+     "anchor": 133,
+     "head": 355,
+     "pFrom": 133,
+     "pTo": 355,
+     "sel": "254-286",
+     "own": null,
+     "imgSel": 1,
+     "hlN": 0,
+     "domLen": 32,
+     "uX": [
+      611,
+      1092
+     ]
+    },
+    {
+     "i": 17,
+     "anchor": 133,
+     "head": 355,
+     "pFrom": 133,
+     "pTo": 355,
+     "sel": "152-286",
+     "own": null,
+     "imgSel": 2,
+     "hlN": 0,
+     "domLen": 134,
+     "uX": [
+      584,
+      1092
+     ]
+    },
+    {
+     "i": 18,
+     "anchor": 133,
+     "head": 355,
+     "pFrom": 133,
+     "pTo": 355,
+     "sel": "135-286",
+     "own": "math",
+     "imgSel": 2,
+     "hlN": 0,
+     "domLen": 151,
+     "uX": [
+      487,
+      1092
+     ]
+    },
+    {
+     "i": 19,
+     "anchor": 133,
+     "head": 355,
+     "pFrom": 133,
+     "pTo": 355,
+     "sel": "135-286",
+     "own": "math",
+     "imgSel": 2,
+     "hlN": 0,
+     "domLen": 151,
+     "uX": [
+      487,
+      1092
+     ]
+    },
+    {
+     "i": 20,
+     "anchor": 133,
+     "head": 355,
+     "pFrom": 133,
+     "pTo": 355,
+     "sel": "135-286",
+     "own": "math",
+     "imgSel": 2,
+     "hlN": 0,
+     "domLen": 151,
+     "uX": [
+      487,
+      1092
+     ]
+    },
+    {
+     "i": 21,
+     "anchor": 133,
+     "head": 355,
+     "pFrom": 133,
+     "pTo": 355,
+     "sel": "133-286",
+     "own": "math",
+     "imgSel": 2,
+     "hlN": 0,
+     "domLen": 161,
+     "uX": [
+      466,
+      1092
+     ]
+    },
+    {
+     "i": 22,
+     "anchor": 133,
+     "head": 355,
+     "pFrom": 133,
+     "pTo": 355,
+     "sel": "122-286",
+     "own": "math",
+     "imgSel": 2,
+     "hlN": 0,
+     "domLen": 172,
+     "uX": [
+      387,
+      1092
+     ]
+    },
+    {
+     "i": 23,
+     "anchor": 133,
+     "head": 355,
+     "pFrom": 133,
+     "pTo": 355,
+     "sel": "122-286",
+     "own": "math",
+     "imgSel": 2,
+     "hlN": 0,
+     "domLen": 172,
+     "uX": [
+      387,
+      1092
+     ]
+    },
+    {
+     "i": 24,
+     "anchor": 133,
+     "head": 355,
+     "pFrom": 133,
+     "pTo": 355,
+     "sel": "122-286",
+     "own": "math",
+     "imgSel": 2,
+     "hlN": 0,
+     "domLen": 172,
+     "uX": [
+      387,
+      1092
+     ]
+    },
+    {
+     "i": 25,
+     "anchor": 133,
+     "head": 355,
+     "pFrom": 133,
+     "pTo": 355,
+     "sel": "120-286",
+     "own": "math",
+     "imgSel": 2,
+     "hlN": 0,
+     "domLen": 179,
+     "uX": [
+      354,
+      1092
+     ]
+    },
+    {
+     "i": 26,
+     "anchor": 133,
+     "head": 355,
+     "pFrom": 133,
+     "pTo": 355,
+     "sel": "118-286",
+     "own": "math",
+     "imgSel": 2,
+     "hlN": 0,
+     "domLen": 181,
+     "uX": [
+      320,
+      1092
+     ]
+    }
+   ]
+  },
+  {
+   "name": "E2 图片后→左拖(显形)",
+   "from": {
+    "x": 1094,
+    "y": 426
+   },
+   "to": {
+    "x": 326,
+    "y": 424
+   },
+   "shrink": [],
+   "shrinkU": [],
+   "pre": {
+    "anchor": 133,
+    "head": 355,
+    "pFrom": 133,
+    "pTo": 355,
+    "sel": "118-286",
+    "own": "math",
+    "imgSel": 2,
+    "hlN": 0,
+    "domLen": 181,
+    "uX": [
+     320,
+     1092
+    ]
+   },
+   "post": {
+    "sel": "118-286",
+    "text": "行内公式$E = mc^2$ 与 $a^2 + b^2 = c^2$。<img src=\"https://assets.",
+    "marked": 2,
+    "band": 2,
+    "own": "math",
+    "hlNow": 0,
+    "md": "行内公式：$E = mc^2$ 与 $a^2 + b^2 = c^2$。\n\n块级"
+   },
+   "dedup": [
+    "133-355(a133,sel286-286E,img0,uX[1092,1092])",
+    "133-355(a133,sel282-286,img1,uX[1064,1092])",
+    "133-355(a133,sel279-286,img1,uX[1034,1092])",
+    "133-355(a133,sel275-286,img1,uX[1006,1092])",
+    "133-355(a133,sel271-286,img1,uX[973,1092])",
+    "133-355(a133,sel267-286,img1,uX[943,1092])",
+    "133-355(a133,sel264-286,img1,uX[920,1092])",
+    "133-355(a133,sel260-286,img1,uX[885,1092])",
+    "133-355(a133,sel257-286,img1,uX[862,1092])",
+    "133-355(a133,sel254-286,img1,uX[611,1092])",
+    "133-355(a133,sel152-286,img2,uX[584,1092])",
+    "133-355(a133,sel135-286,img2,uX[487,1092])",
+    "133-355(a133,sel133-286,img2,uX[466,1092])",
+    "133-355(a133,sel122-286,img2,uX[387,1092])",
+    "133-355(a133,sel120-286,img2,uX[354,1092])",
+    "133-355(a133,sel118-286,img2,uX[320,1092])"
+   ],
+   "frames": [
+    {
+     "i": -1,
+     "anchor": 133,
+     "head": 355,
+     "pFrom": 133,
+     "pTo": 355,
+     "sel": "286-286E",
+     "own": null,
+     "imgSel": 0,
+     "hlN": 0,
+     "domLen": 0,
+     "uX": [
+      1092,
+      1092
+     ]
+    },
+    {
+     "i": 1,
+     "anchor": 133,
+     "head": 355,
+     "pFrom": 133,
+     "pTo": 355,
+     "sel": "282-286",
+     "own": null,
+     "imgSel": 1,
+     "hlN": 0,
+     "domLen": 4,
+     "uX": [
+      1064,
+      1092
+     ]
+    },
+    {
+     "i": 2,
+     "anchor": 133,
+     "head": 355,
+     "pFrom": 133,
+     "pTo": 355,
+     "sel": "279-286",
+     "own": null,
+     "imgSel": 1,
+     "hlN": 0,
+     "domLen": 7,
+     "uX": [
+      1034,
+      1092
+     ]
+    },
+    {
+     "i": 3,
+     "anchor": 133,
+     "head": 355,
+     "pFrom": 133,
+     "pTo": 355,
+     "sel": "275-286",
+     "own": null,
+     "imgSel": 1,
+     "hlN": 0,
+     "domLen": 11,
+     "uX": [
+      1006,
+      1092
+     ]
+    },
+    {
+     "i": 4,
+     "anchor": 133,
+     "head": 355,
+     "pFrom": 133,
+     "pTo": 355,
+     "sel": "271-286",
+     "own": null,
+     "imgSel": 1,
+     "hlN": 0,
+     "domLen": 15,
+     "uX": [
+      973,
+      1092
+     ]
+    },
+    {
+     "i": 5,
+     "anchor": 133,
+     "head": 355,
+     "pFrom": 133,
+     "pTo": 355,
+     "sel": "267-286",
+     "own": null,
+     "imgSel": 1,
+     "hlN": 0,
+     "domLen": 19,
+     "uX": [
+      943,
+      1092
+     ]
+    },
+    {
+     "i": 6,
+     "anchor": 133,
+     "head": 355,
+     "pFrom": 133,
+     "pTo": 355,
+     "sel": "264-286",
+     "own": null,
+     "imgSel": 1,
+     "hlN": 0,
+     "domLen": 22,
+     "uX": [
+      920,
+      1092
+     ]
+    },
+    {
+     "i": 7,
+     "anchor": 133,
+     "head": 355,
+     "pFrom": 133,
+     "pTo": 355,
+     "sel": "260-286",
+     "own": null,
+     "imgSel": 1,
+     "hlN": 0,
+     "domLen": 26,
+     "uX": [
+      885,
+      1092
+     ]
+    },
+    {
+     "i": 8,
+     "anchor": 133,
+     "head": 355,
+     "pFrom": 133,
+     "pTo": 355,
+     "sel": "257-286",
+     "own": null,
+     "imgSel": 1,
+     "hlN": 0,
+     "domLen": 29,
+     "uX": [
+      862,
+      1092
+     ]
+    },
+    {
+     "i": 9,
+     "anchor": 133,
+     "head": 355,
+     "pFrom": 133,
+     "pTo": 355,
+     "sel": "254-286",
+     "own": null,
+     "imgSel": 1,
+     "hlN": 0,
+     "domLen": 32,
+     "uX": [
+      611,
+      1092
+     ]
+    },
+    {
+     "i": 10,
+     "anchor": 133,
+     "head": 355,
+     "pFrom": 133,
+     "pTo": 355,
+     "sel": "254-286",
+     "own": null,
+     "imgSel": 1,
+     "hlN": 0,
+     "domLen": 32,
+     "uX": [
+      611,
+      1092
+     ]
+    },
+    {
+     "i": 11,
+     "anchor": 133,
+     "head": 355,
+     "pFrom": 133,
+     "pTo": 355,
+     "sel": "254-286",
+     "own": null,
+     "imgSel": 1,
+     "hlN": 0,
+     "domLen": 32,
+     "uX": [
+      611,
+      1092
+     ]
+    },
+    {
+     "i": 12,
+     "anchor": 133,
+     "head": 355,
+     "pFrom": 133,
+     "pTo": 355,
+     "sel": "254-286",
+     "own": null,
+     "imgSel": 1,
+     "hlN": 0,
+     "domLen": 32,
+     "uX": [
+      611,
+      1092
+     ]
+    },
+    {
+     "i": 13,
+     "anchor": 133,
+     "head": 355,
+     "pFrom": 133,
+     "pTo": 355,
+     "sel": "254-286",
+     "own": null,
+     "imgSel": 1,
+     "hlN": 0,
+     "domLen": 32,
+     "uX": [
+      611,
+      1092
+     ]
+    },
+    {
+     "i": 14,
+     "anchor": 133,
+     "head": 355,
+     "pFrom": 133,
+     "pTo": 355,
+     "sel": "254-286",
+     "own": null,
+     "imgSel": 1,
+     "hlN": 0,
+     "domLen": 32,
+     "uX": [
+      611,
+      1092
+     ]
+    },
+    {
+     "i": 15,
+     "anchor": 133,
+     "head": 355,
+     "pFrom": 133,
+     "pTo": 355,
+     "sel": "254-286",
+     "own": null,
+     "imgSel": 1,
+     "hlN": 0,
+     "domLen": 32,
+     "uX": [
+      611,
+      1092
+     ]
+    },
+    {
+     "i": 16,
+     "anchor": 133,
+     "head": 355,
+     "pFrom": 133,
+     "pTo": 355,
+     "sel": "254-286",
+     "own": null,
+     "imgSel": 1,
+     "hlN": 0,
+     "domLen": 32,
+     "uX": [
+      611,
+      1092
+     ]
+    },
+    {
+     "i": 17,
+     "anchor": 133,
+     "head": 355,
+     "pFrom": 133,
+     "pTo": 355,
+     "sel": "152-286",
+     "own": null,
+     "imgSel": 2,
+     "hlN": 0,
+     "domLen": 134,
+     "uX": [
+      584,
+      1092
+     ]
+    },
+    {
+     "i": 18,
+     "anchor": 133,
+     "head": 355,
+     "pFrom": 133,
+     "pTo": 355,
+     "sel": "135-286",
+     "own": "math",
+     "imgSel": 2,
+     "hlN": 0,
+     "domLen": 151,
+     "uX": [
+      487,
+      1092
+     ]
+    },
+    {
+     "i": 19,
+     "anchor": 133,
+     "head": 355,
+     "pFrom": 133,
+     "pTo": 355,
+     "sel": "135-286",
+     "own": "math",
+     "imgSel": 2,
+     "hlN": 0,
+     "domLen": 151,
+     "uX": [
+      487,
+      1092
+     ]
+    },
+    {
+     "i": 20,
+     "anchor": 133,
+     "head": 355,
+     "pFrom": 133,
+     "pTo": 355,
+     "sel": "135-286",
+     "own": "math",
+     "imgSel": 2,
+     "hlN": 0,
+     "domLen": 151,
+     "uX": [
+      487,
+      1092
+     ]
+    },
+    {
+     "i": 21,
+     "anchor": 133,
+     "head": 355,
+     "pFrom": 133,
+     "pTo": 355,
+     "sel": "133-286",
+     "own": "math",
+     "imgSel": 2,
+     "hlN": 0,
+     "domLen": 161,
+     "uX": [
+      466,
+      1092
+     ]
+    },
+    {
+     "i": 22,
+     "anchor": 133,
+     "head": 355,
+     "pFrom": 133,
+     "pTo": 355,
+     "sel": "122-286",
+     "own": "math",
+     "imgSel": 2,
+     "hlN": 0,
+     "domLen": 172,
+     "uX": [
+      387,
+      1092
+     ]
+    },
+    {
+     "i": 23,
+     "anchor": 133,
+     "head": 355,
+     "pFrom": 133,
+     "pTo": 355,
+     "sel": "122-286",
+     "own": "math",
+     "imgSel": 2,
+     "hlN": 0,
+     "domLen": 172,
+     "uX": [
+      387,
+      1092
+     ]
+    },
+    {
+     "i": 24,
+     "anchor": 133,
+     "head": 355,
+     "pFrom": 133,
+     "pTo": 355,
+     "sel": "122-286",
+     "own": "math",
+     "imgSel": 2,
+     "hlN": 0,
+     "domLen": 172,
+     "uX": [
+      387,
+      1092
+     ]
+    },
+    {
+     "i": 25,
+     "anchor": 133,
+     "head": 355,
+     "pFrom": 133,
+     "pTo": 355,
+     "sel": "120-286",
+     "own": "math",
+     "imgSel": 2,
+     "hlN": 0,
+     "domLen": 179,
+     "uX": [
+      354,
+      1092
+     ]
+    },
+    {
+     "i": 26,
+     "anchor": 133,
+     "head": 355,
+     "pFrom": 133,
+     "pTo": 355,
+     "sel": "118-286",
+     "own": "math",
+     "imgSel": 2,
+     "hlN": 0,
+     "domLen": 181,
+     "uX": [
+      320,
+      1092
+     ]
+    }
+   ]
+  },
+  {
+   "name": "F 正文起手→右拖过两图(未显形)",
+   "from": {
+    "x": 551,
+    "y": 424
+   },
+   "to": {
+    "x": 1084,
+    "y": 426
+   },
+   "shrink": [
+    {
+     "i": 1,
+     "prev": 355,
+     "now": 135,
+     "anchor": 133
+    }
+   ],
+   "shrinkU": [],
+   "pre": {
+    "anchor": 135,
+    "head": 355,
+    "pFrom": 135,
+    "pTo": 355,
+    "sel": "355-355E",
+    "own": "all",
+    "imgSel": 2,
+    "hlN": 0,
+    "domLen": 0,
+    "uX": [
+     487,
+     1055
+    ]
+   },
+   "post": {
+    "sel": "135-355",
+    "text": "$a^2 + b^2 = c^2$。<img src=\"https://assets.699pic.com/public",
+    "marked": 2,
+    "band": 1,
+    "own": "math",
+    "hlNow": 0,
+    "md": "行内公式：$E = mc^2$ 与 $a^2 + b^2 = c^2$。\n\n块级"
+   },
+   "dedup": [
+    "133-355(a133,sel135-135E,img0,uXnull)",
+    "135-135(a135,sel135-135E,img0,uXnull)",
+    "135-135(a135,sel152-152E,img0,uX[584,584])",
+    "135-153(a135,sel153-153E,img0,uX[487,602])",
+    "135-254(a135,sel254-254E,img1,uX[487,827])",
+    "135-254(a135,sel355-355E,img1,uX[487,827])",
+    "135-355(a135,sel355-355E,img2,uX[487,1055])"
+   ],
+   "frames": [
+    {
+     "i": -1,
+     "anchor": 133,
+     "head": 355,
+     "pFrom": 133,
+     "pTo": 355,
+     "sel": "135-135E",
+     "own": null,
+     "imgSel": 0,
+     "hlN": 0,
+     "domLen": 0,
+     "uX": null
+    },
+    {
+     "i": 1,
+     "anchor": 135,
+     "head": 135,
+     "pFrom": 135,
+     "pTo": 135,
+     "sel": "135-135E",
+     "own": null,
+     "imgSel": 0,
+     "hlN": 0,
+     "domLen": 0,
+     "uX": null
+    },
+    {
+     "i": 2,
+     "anchor": 135,
+     "head": 135,
+     "pFrom": 135,
+     "pTo": 135,
+     "sel": "152-152E",
+     "own": null,
+     "imgSel": 0,
+     "hlN": 0,
+     "domLen": 0,
+     "uX": [
+      584,
+      584
+     ]
+    },
+    {
+     "i": 3,
+     "anchor": 135,
+     "head": 153,
+     "pFrom": 135,
+     "pTo": 153,
+     "sel": "153-153E",
+     "own": "all",
+     "imgSel": 0,
+     "hlN": 0,
+     "domLen": 0,
+     "uX": [
+      487,
+      602
+     ]
+    },
+    {
+     "i": 4,
+     "anchor": 135,
+     "head": 153,
+     "pFrom": 135,
+     "pTo": 153,
+     "sel": "153-153E",
+     "own": "all",
+     "imgSel": 0,
+     "hlN": 0,
+     "domLen": 0,
+     "uX": [
+      487,
+      602
+     ]
+    },
+    {
+     "i": 5,
+     "anchor": 135,
+     "head": 153,
+     "pFrom": 135,
+     "pTo": 153,
+     "sel": "153-153E",
+     "own": "all",
+     "imgSel": 0,
+     "hlN": 0,
+     "domLen": 0,
+     "uX": [
+      487,
+      602
+     ]
+    },
+    {
+     "i": 6,
+     "anchor": 135,
+     "head": 153,
+     "pFrom": 135,
+     "pTo": 153,
+     "sel": "153-153E",
+     "own": "all",
+     "imgSel": 0,
+     "hlN": 0,
+     "domLen": 0,
+     "uX": [
+      487,
+      602
+     ]
+    },
+    {
+     "i": 7,
+     "anchor": 135,
+     "head": 153,
+     "pFrom": 135,
+     "pTo": 153,
+     "sel": "153-153E",
+     "own": "all",
+     "imgSel": 0,
+     "hlN": 0,
+     "domLen": 0,
+     "uX": [
+      487,
+      602
+     ]
+    },
+    {
+     "i": 8,
+     "anchor": 135,
+     "head": 153,
+     "pFrom": 135,
+     "pTo": 153,
+     "sel": "153-153E",
+     "own": "all",
+     "imgSel": 0,
+     "hlN": 0,
+     "domLen": 0,
+     "uX": [
+      487,
+      602
+     ]
+    },
+    {
+     "i": 9,
+     "anchor": 135,
+     "head": 254,
+     "pFrom": 135,
+     "pTo": 254,
+     "sel": "254-254E",
+     "own": "all",
+     "imgSel": 1,
+     "hlN": 0,
+     "domLen": 0,
+     "uX": [
+      487,
+      827
+     ]
+    },
+    {
+     "i": 10,
+     "anchor": 135,
+     "head": 254,
+     "pFrom": 135,
+     "pTo": 254,
+     "sel": "254-254E",
+     "own": "all",
+     "imgSel": 1,
+     "hlN": 0,
+     "domLen": 0,
+     "uX": [
+      487,
+      827
+     ]
+    },
+    {
+     "i": 11,
+     "anchor": 135,
+     "head": 254,
+     "pFrom": 135,
+     "pTo": 254,
+     "sel": "254-254E",
+     "own": "all",
+     "imgSel": 1,
+     "hlN": 0,
+     "domLen": 0,
+     "uX": [
+      487,
+      827
+     ]
+    },
+    {
+     "i": 12,
+     "anchor": 135,
+     "head": 254,
+     "pFrom": 135,
+     "pTo": 254,
+     "sel": "254-254E",
+     "own": "all",
+     "imgSel": 1,
+     "hlN": 0,
+     "domLen": 0,
+     "uX": [
+      487,
+      827
+     ]
+    },
+    {
+     "i": 13,
+     "anchor": 135,
+     "head": 254,
+     "pFrom": 135,
+     "pTo": 254,
+     "sel": "254-254E",
+     "own": "all",
+     "imgSel": 1,
+     "hlN": 0,
+     "domLen": 0,
+     "uX": [
+      487,
+      827
+     ]
+    },
+    {
+     "i": 14,
+     "anchor": 135,
+     "head": 254,
+     "pFrom": 135,
+     "pTo": 254,
+     "sel": "355-355E",
+     "own": "all",
+     "imgSel": 1,
+     "hlN": 0,
+     "domLen": 0,
+     "uX": [
+      487,
+      827
+     ]
+    },
+    {
+     "i": 15,
+     "anchor": 135,
+     "head": 254,
+     "pFrom": 135,
+     "pTo": 254,
+     "sel": "355-355E",
+     "own": "all",
+     "imgSel": 1,
+     "hlN": 0,
+     "domLen": 0,
+     "uX": [
+      487,
+      827
+     ]
+    },
+    {
+     "i": 16,
+     "anchor": 135,
+     "head": 254,
+     "pFrom": 135,
+     "pTo": 254,
+     "sel": "355-355E",
+     "own": "all",
+     "imgSel": 1,
+     "hlN": 0,
+     "domLen": 0,
+     "uX": [
+      487,
+      827
+     ]
+    },
+    {
+     "i": 17,
+     "anchor": 135,
+     "head": 254,
+     "pFrom": 135,
+     "pTo": 254,
+     "sel": "355-355E",
+     "own": "all",
+     "imgSel": 1,
+     "hlN": 0,
+     "domLen": 0,
+     "uX": [
+      487,
+      827
+     ]
+    },
+    {
+     "i": 18,
+     "anchor": 135,
+     "head": 254,
+     "pFrom": 135,
+     "pTo": 254,
+     "sel": "355-355E",
+     "own": "all",
+     "imgSel": 1,
+     "hlN": 0,
+     "domLen": 0,
+     "uX": [
+      487,
+      827
+     ]
+    },
+    {
+     "i": 19,
+     "anchor": 135,
+     "head": 254,
+     "pFrom": 135,
+     "pTo": 254,
+     "sel": "355-355E",
+     "own": "all",
+     "imgSel": 1,
+     "hlN": 0,
+     "domLen": 0,
+     "uX": [
+      487,
+      827
+     ]
+    },
+    {
+     "i": 20,
+     "anchor": 135,
+     "head": 355,
+     "pFrom": 135,
+     "pTo": 355,
+     "sel": "355-355E",
+     "own": "all",
+     "imgSel": 2,
+     "hlN": 0,
+     "domLen": 0,
+     "uX": [
+      487,
+      1055
+     ]
+    },
+    {
+     "i": 21,
+     "anchor": 135,
+     "head": 355,
+     "pFrom": 135,
+     "pTo": 355,
+     "sel": "355-355E",
+     "own": "all",
+     "imgSel": 2,
+     "hlN": 0,
+     "domLen": 0,
+     "uX": [
+      487,
+      1055
+     ]
+    },
+    {
+     "i": 22,
+     "anchor": 135,
+     "head": 355,
+     "pFrom": 135,
+     "pTo": 355,
+     "sel": "355-355E",
+     "own": "all",
+     "imgSel": 2,
+     "hlN": 0,
+     "domLen": 0,
+     "uX": [
+      487,
+      1055
+     ]
+    },
+    {
+     "i": 23,
+     "anchor": 135,
+     "head": 355,
+     "pFrom": 135,
+     "pTo": 355,
+     "sel": "355-355E",
+     "own": "all",
+     "imgSel": 2,
+     "hlN": 0,
+     "domLen": 0,
+     "uX": [
+      487,
+      1055
+     ]
+    },
+    {
+     "i": 24,
+     "anchor": 135,
+     "head": 355,
+     "pFrom": 135,
+     "pTo": 355,
+     "sel": "355-355E",
+     "own": "all",
+     "imgSel": 2,
+     "hlN": 0,
+     "domLen": 0,
+     "uX": [
+      487,
+      1055
+     ]
+    },
+    {
+     "i": 25,
+     "anchor": 135,
+     "head": 355,
+     "pFrom": 135,
+     "pTo": 355,
+     "sel": "355-355E",
+     "own": "all",
+     "imgSel": 2,
+     "hlN": 0,
+     "domLen": 0,
+     "uX": [
+      487,
+      1055
+     ]
+    },
+    {
+     "i": 26,
+     "anchor": 135,
+     "head": 355,
+     "pFrom": 135,
+     "pTo": 355,
+     "sel": "355-355E",
+     "own": "all",
+     "imgSel": 2,
+     "hlN": 0,
+     "domLen": 0,
+     "uX": [
+      487,
+      1055
+     ]
+    }
+   ]
+  }
+ ],
+ "broken": {
+  "blankClick": {
+   "sel": "355-355E",
+   "revealed": 1
+  },
+  "roundTrip": {
+   "len": 811,
+   "byteEqual": true
+  },
+  "rt": {
+   "len": 811
+  }
+ }
+}

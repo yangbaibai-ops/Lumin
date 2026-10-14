@@ -1,0 +1,376 @@
+{
+ "tag": "base",
+ "mode": "math",
+ "rows": [
+  {
+   "bi": 0,
+   "li": 0,
+   "text": "行首：a2+b2=c2$",
+   "lineBox": [
+    72,
+    215.25,
+    143.25
+   ],
+   "bodyCol": 481.1,
+   "mathSpan": [
+    372.69,
+    465.45
+   ],
+   "mathCol": 419.1,
+   "bodyH": 21,
+   "mathH": 48.64,
+   "items": [
+    "ib:SPAN.img-widget@644.7..859.7/72.0..215.3",
+    "img:IMG.@644.7..859.7/72.0..215.3",
+    "ib:SPAN.pstrut@382.2..382.2/93.0..141.7(math)",
+    "ib:SPAN.pstrut@419.2..419.2/93.0..141.7(math)",
+    "ib:SPAN.pstrut@458.3..458.3/93.0..141.7(math)",
+    "text:P.img-inline-mode@320.0..371.0/125.6..157.9",
+    "text:P.img-inline-mode@467.1..642.2/125.6..157.9",
+    "text:SPAN.mord@382.2..388.5/130.1..145.2(math)",
+    "text:SPAN.mord@419.2..425.5/130.1..145.2(math)",
+    "text:SPAN.mord@458.3..464.6/130.1..145.2(math)",
+    "ib:SPAN.katex-sizing@382.2..388.5/130.7..145.8(math)",
+    "ib:SPAN.katex-sizing@419.2..425.5/130.7..145.8(math)",
+    "ib:SPAN.katex-sizing@458.3..464.6/130.7..145.8(math)",
+    "text:SPAN.mbin@393.4..407.5/131.9..153.5(math)",
+    "text:SPAN.mrel@431.4..445.4/131.9..153.5(math)",
+    "ib:SPAN.katex-base@372.7..411.5/132.2..154.8(math)",
+    "ib:SPAN.katex-base@411.5..450.4/132.2..154.8(math)",
+    "ib:SPAN.katex-base@450.4..465.5/132.2..154.8(math)",
+    "text:SPAN.mord@372.7..382.2/132.9..154.5(math)",
+    "text:SPAN.mord@411.5..419.2/132.9..154.5(math)",
+    "text:SPAN.mord@450.4..458.3/132.9..154.5(math)",
+    "ib:SPAN.katex-strut@372.7..372.7/133.6..149.7(math)",
+    "ib:SPAN.vlist-t@382.2..389.4/133.6..148.2(math)",
+    "ib:SPAN.katex-strut@411.5..411.5/133.6..148.2(math)",
+    "ib:SPAN.vlist-t@419.2..426.4/133.6..148.2(math)",
+    "ib:SPAN.katex-strut@450.4..450.4/133.6..148.2(math)",
+    "ib:SPAN.vlist-t@458.3..465.5/133.6..148.2(math)"
+   ],
+   "paper": [
+    255,
+    255,
+    255
+   ],
+   "modelSel": "1-129",
+   "bodySeg": {
+    "top": 72,
+    "bottom": 214,
+    "height": 143,
+    "inkRows": 15
+   },
+   "mathSeg": {
+    "top": 131,
+    "bottom": 145,
+    "height": 15,
+    "inkRows": 0
+   },
+   "dBody": -0.25,
+   "dMath": -128.25
+  },
+  {
+   "bi": 1,
+   "li": 0,
+   "text": "行中：甲乙丙丁戊己 a2",
+   "lineBox": [
+    224.59,
+    367.84,
+    143.25
+   ],
+   "bodyCol": 483.6,
+   "mathSpan": [
+    479.72,
+    572.48
+   ],
+   "mathCol": 526.1,
+   "bodyH": 21,
+   "mathH": 48.64,
+   "items": [
+    "ib:SPAN.img-widget@649.8..864.8/224.6..367.8",
+    "img:IMG.@649.8..864.8/224.6..367.8",
+    "ib:SPAN.pstrut@489.3..489.3/245.6..294.3(math)",
+    "ib:SPAN.pstrut@526.2..526.2/245.6..294.3(math)",
+    "ib:SPAN.pstrut@565.3..565.3/245.6..294.3(math)",
+    "text:P.img-inline-mode@320.0..478.0/278.2..310.5",
+    "text:P.img-inline-mode@574.2..647.2/278.2..310.5",
+    "text:SPAN.mord@489.3..495.6/282.7..297.8(math)",
+    "text:SPAN.mord@526.2..532.5/282.7..297.8(math)",
+    "text:SPAN.mord@565.3..571.6/282.7..297.8(math)",
+    "ib:SPAN.katex-sizing@489.3..495.6/283.3..298.4(math)",
+    "ib:SPAN.katex-sizing@526.2..532.5/283.3..298.4(math)",
+    "ib:SPAN.katex-sizing@565.3..571.6/283.3..298.4(math)",
+    "text:SPAN.mbin@500.5..514.5/284.5..306.1(math)",
+    "text:SPAN.mrel@538.4..552.5/284.5..306.1(math)",
+    "ib:SPAN.katex-base@479.7..518.5/284.8..307.4(math)",
+    "ib:SPAN.katex-base@518.5..557.5/284.8..307.4(math)",
+    "ib:SPAN.katex-base@557.5..572.5/284.8..307.4(math)",
+    "text:SPAN.mord@479.7..489.3/285.5..307.1(math)",
+    "text:SPAN.mord@518.5..526.2/285.5..307.1(math)",
+    "text:SPAN.mord@557.5..565.3/285.5..307.1(math)",
+    "ib:SPAN.katex-strut@479.7..479.7/286.2..302.3(math)",
+    "ib:SPAN.vlist-t@489.3..496.5/286.2..300.8(math)",
+    "ib:SPAN.katex-strut@518.5..518.5/286.2..300.8(math)",
+    "ib:SPAN.vlist-t@526.2..533.4/286.2..300.8(math)",
+    "ib:SPAN.katex-strut@557.5..557.5/286.2..300.8(math)",
+    "ib:SPAN.vlist-t@565.3..572.5/286.2..300.8(math)"
+   ],
+   "paper": [
+    255,
+    255,
+    255
+   ],
+   "modelSel": "131-260",
+   "bodySeg": {
+    "top": 285,
+    "bottom": 307,
+    "height": 23,
+    "inkRows": 2
+   },
+   "mathSeg": {
+    "top": 283,
+    "bottom": 297,
+    "height": 15,
+    "inkRows": 0
+   },
+   "dBody": -120.25,
+   "dMath": -128.25
+  },
+  {
+   "bi": 2,
+   "li": 0,
+   "text": "行尾：甲乙丙丁戊己庚辛壬",
+   "lineBox": [
+    377.19,
+    520.44,
+    143.25
+   ],
+   "bodyCol": 433,
+   "mathSpan": [
+    547.72,
+    640.48
+   ],
+   "mathCol": 594.1,
+   "bodyH": 21,
+   "mathH": 48.64,
+   "items": [
+    "ib:SPAN.img-widget@644.7..859.7/377.2..520.4",
+    "img:IMG.@644.7..859.7/377.2..520.4",
+    "ib:SPAN.pstrut@557.3..557.3/398.2..446.9(math)",
+    "ib:SPAN.pstrut@594.2..594.2/398.2..446.9(math)",
+    "ib:SPAN.pstrut@633.3..633.3/398.2..446.9(math)",
+    "text:P.img-inline-mode@320.0..546.0/430.8..463.1",
+    "text:SPAN.mord@557.3..563.6/435.3..450.4(math)",
+    "text:SPAN.mord@594.2..600.5/435.3..450.4(math)",
+    "text:SPAN.mord@633.3..639.6/435.3..450.4(math)",
+    "ib:SPAN.katex-sizing@557.3..563.6/435.9..451.0(math)",
+    "ib:SPAN.katex-sizing@594.2..600.5/435.9..451.0(math)",
+    "ib:SPAN.katex-sizing@633.3..639.6/435.9..451.0(math)",
+    "text:SPAN.mbin@568.5..582.5/437.1..458.7(math)",
+    "text:SPAN.mrel@606.4..620.5/437.1..458.7(math)",
+    "ib:SPAN.katex-base@547.7..586.5/437.4..460.0(math)",
+    "ib:SPAN.katex-base@586.5..625.5/437.4..460.0(math)",
+    "ib:SPAN.katex-base@625.5..640.5/437.4..460.0(math)",
+    "text:SPAN.mord@547.7..557.3/438.1..459.7(math)",
+    "text:SPAN.mord@586.5..594.2/438.1..459.7(math)",
+    "text:SPAN.mord@625.5..633.3/438.1..459.7(math)",
+    "ib:SPAN.katex-strut@547.7..547.7/438.8..454.9(math)",
+    "ib:SPAN.vlist-t@557.3..564.5/438.8..453.4(math)",
+    "ib:SPAN.katex-strut@586.5..586.5/438.8..453.4(math)",
+    "ib:SPAN.vlist-t@594.2..601.4/438.8..453.4(math)",
+    "ib:SPAN.katex-strut@625.5..625.5/438.8..453.4(math)",
+    "ib:SPAN.vlist-t@633.3..640.5/438.8..453.4(math)"
+   ],
+   "paper": [
+    255,
+    255,
+    255
+   ],
+   "modelSel": "262-390",
+   "bodySeg": {
+    "top": 377,
+    "bottom": 519,
+    "height": 143,
+    "inkRows": 1
+   },
+   "mathSeg": {
+    "top": 436,
+    "bottom": 450,
+    "height": 15,
+    "inkRows": 0
+   },
+   "dBody": -0.25,
+   "dMath": -128.25
+  },
+  {
+   "bi": 3,
+   "li": 0,
+   "text": "纯正文：甲乙丙丁戊己庚辛",
+   "lineBox": [
+    756.23,
+    899.48,
+    143.25
+   ],
+   "bodyCol": 490,
+   "mathSpan": null,
+   "mathCol": null,
+   "bodyH": 21,
+   "mathH": null,
+   "items": [
+    "ib:SPAN.img-widget@662.5..877.5/756.2..899.5",
+    "img:IMG.@662.5..877.5/756.2..899.5",
+    "text:P.img-inline-mode@320.0..660.0/809.8..842.1"
+   ],
+   "paper": [
+    255,
+    255,
+    255
+   ],
+   "modelSel": "394-515",
+   "bodySeg": {
+    "top": 756,
+    "bottom": 887,
+    "height": 132,
+    "inkRows": 0
+   },
+   "mathSeg": null,
+   "dBody": -11.25,
+   "dMath": null
+  },
+  {
+   "bi": "block",
+   "li": 0,
+   "text": "$$",
+   "lineBox": [
+    499.22,
+    588.47,
+    89.25
+   ],
+   "bodyCol": null,
+   "mathSpan": [
+    783.59,
+    898.41
+   ],
+   "mathCol": 841,
+   "blockBox": true,
+   "items": [
+    "ib:SPAN.pstrut@801.6..801.6/499.2..547.9",
+    "ib:SPAN.pstrut@882.7..882.7/501.7..555.7",
+    "ib:SPAN.pstrut@878.2..878.2/509.7..563.8",
+    "ib:SPAN.pstrut@822.1..822.1/511.8..560.5",
+    "ib:SPAN.pstrut@878.2..878.2/526.2..580.3",
+    "ib:SPAN.pstrut@793.6..793.6/535.7..584.3",
+    "text:SPAN.mord@801.6..807.9/536.3..551.4",
+    "ib:SPAN.katex-sizing@801.6..807.9/536.9..552.0",
+    "text:SPAN.mord@882.7..891.7/539.4..561.0",
+    "ib:SPAN.mord@882.7..891.7/539.7..561.3",
+    "ib:SPAN.katex-base@783.6..876.1/539.7..584.3",
+    "ib:SPAN.katex-strut@783.6..783.6/539.7..584.3",
+    "ib:SPAN.vlist-t@801.6..810.8/539.8..584.3",
+    "text:SPAN.mop@783.6..793.6/542.9..583.9",
+    "ib:SPAN.katex-base@876.1..898.4/544.1..580.3",
+    "ib:SPAN.katex-strut@876.1..876.1/544.1..580.3",
+    "ib:SPAN.vlist-t@878.2..898.3/544.1..580.3",
+    "text:SPAN.mord@822.1..828.5/548.9..564.0",
+    "ib:SPAN.katex-sizing@822.1..828.5/549.5..564.6",
+    "text:SPAN.mrel@857.0..871.1/551.6..573.2",
+    "ib:SPAN.vlist-t@822.1..829.3/552.4..567.9",
+    "text:SPAN.mord@811.8..822.1/552.6..574.2",
+    "text:SPAN.mord@832.3..841.7/552.6..574.2",
+    "text:SPAN.mord@841.7..852.0/552.6..574.2",
+    "ib:SPAN.frac-line@878.2..896.3/562.8..563.8",
+    "text:SPAN.mord@878.2..896.3/564.0..585.6",
+    "ib:SPAN.mord@878.2..896.3/564.3..585.9",
+    "text:SPAN.vlist-s@808.8..808.8/566.6..567.8",
+    "text:SPAN.vlist-s@897.3..897.3/566.6..567.8",
+    "text:SPAN.mord@793.6..799.9/572.8..587.9",
+    "ib:SPAN.katex-sizing@793.6..799.9/573.3..588.5"
+   ],
+   "paper": [
+    255,
+    255,
+    255
+   ],
+   "modelSel": "390-390E",
+   "bodySeg": null,
+   "mathSeg": {
+    "top": 587,
+    "bottom": 591,
+    "height": 5,
+    "inkRows": 2
+   },
+   "dBody": null,
+   "dMath": -84.25
+  },
+  {
+   "bi": "block",
+   "li": 0,
+   "text": "$$",
+   "lineBox": [
+    567.92,
+    567.92,
+    0
+   ],
+   "bodyCol": null,
+   "mathSpan": [
+    876.06,
+    878.22
+   ],
+   "mathCol": 877.1,
+   "blockBox": true,
+   "items": [
+    "ib:SPAN.mopen@876.1..878.2/567.9..567.9"
+   ],
+   "paper": [
+    255,
+    255,
+    255
+   ],
+   "modelSel": "390-390E",
+   "bodySeg": null,
+   "mathSeg": {
+    "top": 634,
+    "bottom": 638,
+    "height": 5,
+    "inkRows": 0
+   },
+   "dBody": null,
+   "dMath": 5
+  },
+  {
+   "bi": "block",
+   "li": 0,
+   "text": "$$",
+   "lineBox": [
+    567.92,
+    567.92,
+    0
+   ],
+   "bodyCol": null,
+   "mathSpan": [
+    896.25,
+    898.41
+   ],
+   "mathCol": 897.3,
+   "blockBox": true,
+   "items": [
+    "ib:SPAN.mclose@896.3..898.4/567.9..567.9"
+   ],
+   "paper": [
+    255,
+    255,
+    255
+   ],
+   "modelSel": "390-390E",
+   "bodySeg": null,
+   "mathSeg": {
+    "top": 634,
+    "bottom": 638,
+    "height": 5,
+    "inkRows": 0
+   },
+   "dBody": null,
+   "dMath": 5
+  }
+ ]
+}

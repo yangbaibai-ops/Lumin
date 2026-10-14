@@ -1,0 +1,508 @@
+{
+ "tag": "diag",
+ "realPathError": "TEMP 副本也打不开？",
+ "opened": "C:\\Users\\yangbaibai\\Desktop\\Lumin相关\\数学公式示例.md",
+ "imgLoaded": [
+  {
+   "c": true,
+   "nw": 860,
+   "nh": 573,
+   "h": 143.25
+  },
+  {
+   "c": true,
+   "nw": 860,
+   "nh": 573,
+   "h": 143.25
+  },
+  {
+   "c": true,
+   "nw": 0,
+   "nh": 0,
+   "h": 0
+  }
+ ],
+ "dom": [
+  {
+   "tag": "div",
+   "cls": "tiptap ProseMirror md-preview",
+   "pos": "relative",
+   "z": "auto",
+   "iso": "auto",
+   "bg": "rgba(0, 0, 0, 0)",
+   "transform": "none"
+  },
+  {
+   "tag": "div",
+   "cls": "editor-content px-14 max-[900px]:px-8 max-[760px]:px-5 pt-10 max-[760px]:pt-7 pb",
+   "pos": "static",
+   "z": "auto",
+   "iso": "auto",
+   "bg": "rgba(0, 0, 0, 0)",
+   "transform": "none"
+  },
+  {
+   "tag": "div",
+   "cls": "relative mx-auto transition-all duration-300 max-w-[1320px]",
+   "pos": "relative",
+   "z": "auto",
+   "iso": "auto",
+   "bg": "rgba(0, 0, 0, 0)",
+   "transform": "none"
+  },
+  {
+   "tag": "div",
+   "cls": "editor-scroll h-full overflow-y-auto",
+   "pos": "static",
+   "z": "auto",
+   "iso": "auto",
+   "bg": "rgba(0, 0, 0, 0)",
+   "transform": "none"
+  },
+  {
+   "tag": "div",
+   "cls": "typora-container relative h-full",
+   "pos": "relative",
+   "z": "auto",
+   "iso": "auto",
+   "bg": "rgba(0, 0, 0, 0)",
+   "transform": "none"
+  },
+  {
+   "tag": "div",
+   "cls": "h-full min-w-0 bg-paper",
+   "pos": "static",
+   "z": "auto",
+   "iso": "auto",
+   "bg": "rgb(255, 255, 255)",
+   "transform": "none"
+  },
+  {
+   "tag": "div",
+   "cls": "relative flex min-h-0 flex-1",
+   "pos": "relative",
+   "z": "auto",
+   "iso": "auto",
+   "bg": "rgba(0, 0, 0, 0)",
+   "transform": "none"
+  },
+  {
+   "tag": "div",
+   "cls": "flex min-h-0 flex-1",
+   "pos": "static",
+   "z": "auto",
+   "iso": "auto",
+   "bg": "rgba(0, 0, 0, 0)",
+   "transform": "none"
+  },
+  {
+   "tag": "div",
+   "cls": "relative flex h-full min-h-0 flex-col",
+   "pos": "relative",
+   "z": "auto",
+   "iso": "auto",
+   "bg": "rgba(0, 0, 0, 0)",
+   "transform": "none"
+  },
+  {
+   "tag": "main",
+   "cls": "flex min-w-0 flex-1 flex-col",
+   "pos": "static",
+   "z": "auto",
+   "iso": "auto",
+   "bg": "rgba(0, 0, 0, 0)",
+   "transform": "none"
+  },
+  {
+   "tag": "div",
+   "cls": "relative flex min-h-0 flex-1",
+   "pos": "relative",
+   "z": "auto",
+   "iso": "auto",
+   "bg": "rgba(0, 0, 0, 0)",
+   "transform": "none"
+  },
+  {
+   "tag": "div",
+   "cls": "flex h-full min-h-0 flex-col",
+   "pos": "static",
+   "z": "auto",
+   "iso": "auto",
+   "bg": "rgba(0, 0, 0, 0)",
+   "transform": "none"
+  },
+  {
+   "tag": "div",
+   "cls": "",
+   "pos": "static",
+   "z": "auto",
+   "iso": "auto",
+   "bg": "rgba(0, 0, 0, 0)",
+   "transform": "none"
+  },
+  {
+   "tag": "body",
+   "cls": "",
+   "pos": "static",
+   "z": "auto",
+   "iso": "auto",
+   "bg": "rgb(250, 250, 250)",
+   "transform": "none"
+  }
+ ],
+ "struct": {
+  "parentCls": "editor-content px-14 max-[900px]:px-8 max-[760px]:px-5 pt-10 max-[760px]:pt-7 pb-40",
+  "parentTag": "DIV",
+  "offsetParentCls": "relative mx-auto transition-all duration-300 max-w-[1320px]"
+ },
+ "hiddenCount": 0,
+ "revealedAfterClick": 1,
+ "geom": [
+  {
+   "cls": "img-src-revealed",
+   "from": "153",
+   "textLen": 101,
+   "pRect": {
+    "l": 320,
+    "t": 399.67,
+    "r": 1242,
+    "b": 575.22,
+    "w": 922,
+    "h": 175.55
+   },
+   "contentColLeft": 320,
+   "elRects": [
+    {
+     "l": 600.8,
+     "t": 399.08,
+     "r": 1237.22,
+     "b": 431.27,
+     "w": 636.42,
+     "h": 32.19
+    },
+    {
+     "l": 320,
+     "t": 431.38,
+     "r": 571.55,
+     "b": 463.56,
+     "w": 251.55,
+     "h": 32.19
+    }
+   ],
+   "selfRangeRects": [
+    {
+     "l": 600.8,
+     "t": 404.67,
+     "r": 1237.22,
+     "b": 425.67,
+     "w": 636.42,
+     "h": 21
+    },
+    {
+     "l": 320,
+     "t": 436.97,
+     "r": 571.55,
+     "b": 457.97,
+     "w": 251.55,
+     "h": 21
+    }
+   ],
+   "textRangeRects": [
+    {
+     "l": 600.8,
+     "t": 404.67,
+     "r": 633.86,
+     "b": 425.67,
+     "w": 33.06,
+     "h": 21
+    }
+   ],
+   "rawRangeRects": [
+    {
+     "l": 320,
+     "t": 404.67,
+     "r": 388,
+     "b": 425.67,
+     "w": 68,
+     "h": 21
+    },
+    {
+     "l": 388,
+     "t": 404.67,
+     "r": 460.59,
+     "b": 425.67,
+     "w": 72.59,
+     "h": 21
+    },
+    {
+     "l": 389.69,
+     "t": 408.67,
+     "r": 403,
+     "b": 425.67,
+     "w": 13.31,
+     "h": 17
+    },
+    {
+     "l": 409.03,
+     "t": 405.67,
+     "r": 423.06,
+     "b": 426.67,
+     "w": 14.03,
+     "h": 21
+    },
+    {
+     "l": 428.06,
+     "t": 408.67,
+     "r": 443.89,
+     "b": 425.67,
+     "w": 15.83,
+     "h": 17
+    },
+    {
+     "l": 443.89,
+     "t": 408.67,
+     "r": 451.7,
+     "b": 425.67,
+     "w": 7.81,
+     "h": 17
+    },
+    {
+     "l": 451.7,
+     "t": 404.13,
+     "r": 458.02,
+     "b": 418.13,
+     "w": 6.31,
+     "h": 14
+    },
+    {
+     "l": 460.59,
+     "t": 404.67,
+     "r": 487.66,
+     "b": 425.67,
+     "w": 27.06,
+     "h": 21
+    },
+    {
+     "l": 487.66,
+     "t": 404.67,
+     "r": 583.8,
+     "b": 425.67,
+     "w": 96.14,
+     "h": 21
+    },
+    {
+     "l": 489.34,
+     "t": 408.67,
+     "r": 498.89,
+     "b": 425.67,
+     "w": 9.55,
+     "h": 17
+    },
+    {
+     "l": 498.89,
+     "t": 404.13,
+     "r": 505.2,
+     "b": 418.13,
+     "w": 6.31,
+     "h": 14
+    },
+    {
+     "l": 510.09,
+     "t": 405.67,
+     "r": 524.13,
+     "b": 426.67,
+     "w": 14.03,
+     "h": 21
+    },
+    {
+     "l": 528.13,
+     "t": 408.67,
+     "r": 535.86,
+     "b": 425.67,
+     "w": 7.73,
+     "h": 17
+    },
+    {
+     "l": 535.86,
+     "t": 404.13,
+     "r": 542.17,
+     "b": 418.13,
+     "w": 6.31,
+     "h": 14
+    },
+    {
+     "l": 548.06,
+     "t": 405.67,
+     "r": 562.09,
+     "b": 426.67,
+     "w": 14.03,
+     "h": 21
+    },
+    {
+     "l": 567.09,
+     "t": 408.67,
+     "r": 574.91,
+     "b": 425.67,
+     "w": 7.81,
+     "h": 17
+    },
+    {
+     "l": 574.91,
+     "t": 404.13,
+     "r": 581.22,
+     "b": 418.13,
+     "w": 6.31,
+     "h": 14
+    },
+    {
+     "l": 583.8,
+     "t": 404.67,
+     "r": 600.8,
+     "b": 425.67,
+     "w": 17,
+     "h": 21
+    },
+    {
+     "l": 600.8,
+     "t": 404.67,
+     "r": 1237.22,
+     "b": 425.67,
+     "w": 636.42,
+     "h": 21
+    },
+    {
+     "l": 320,
+     "t": 491.19,
+     "r": 799.28,
+     "b": 512.19,
+     "w": 479.28,
+     "h": 21
+    },
+    {
+     "l": 600.8,
+     "t": 404.67,
+     "r": 1237.22,
+     "b": 425.67,
+     "w": 636.42,
+     "h": 21
+    },
+    {
+     "l": 320,
+     "t": 436.97,
+     "r": 571.55,
+     "b": 457.97,
+     "w": 251.55,
+     "h": 21
+    },
+    {
+     "l": 809.47,
+     "t": 431.97,
+     "r": 1024.47,
+     "b": 575.22,
+     "w": 215,
+     "h": 143.25
+    }
+   ],
+   "imgRects": [
+    {
+     "l": 581.73,
+     "t": 431.97,
+     "r": 796.73,
+     "b": 575.22,
+     "w": 215,
+     "h": 143.25
+    },
+    {
+     "l": 809.47,
+     "t": 431.97,
+     "r": 1024.47,
+     "b": 575.22,
+     "w": 215,
+     "h": 143.25
+    },
+    {
+     "l": 1027.02,
+     "t": 431.97,
+     "r": 1027.02,
+     "b": 431.97,
+     "w": 0,
+     "h": 0
+    }
+   ],
+   "lines": [
+    {
+     "l": 320,
+     "t": 404.13,
+     "r": 1237.22,
+     "b": 426.67,
+     "w": 917.22,
+     "h": 22.55
+    },
+    {
+     "l": 320,
+     "t": 431.97,
+     "r": 1024.47,
+     "b": 575.22,
+     "w": 704.47,
+     "h": 143.25
+    },
+    {
+     "l": 320,
+     "t": 436.97,
+     "r": 571.55,
+     "b": 457.97,
+     "w": 251.55,
+     "h": 21
+    }
+   ]
+  }
+ ],
+ "pixels": [
+  {
+   "frag": {
+    "l": 600.8,
+    "t": 399.08,
+    "r": 1237.22,
+    "b": 431.27,
+    "w": 636.42,
+    "h": 32.19
+   },
+   "bgBand": {
+    "top": 399,
+    "bottom": 486,
+    "height": 88
+   },
+   "appearBand": {
+    "top": 395,
+    "bottom": 571,
+    "height": 177
+   },
+   "selBand": null,
+   "selApi": null
+  },
+  {
+   "frag": {
+    "l": 320,
+    "t": 431.38,
+    "r": 571.55,
+    "b": 463.56,
+    "w": 251.55,
+    "h": 32.19
+   },
+   "bgBand": {
+    "top": 431,
+    "bottom": 463,
+    "height": 33
+   },
+   "appearBand": {
+    "top": 431,
+    "bottom": 604,
+    "height": 174
+   },
+   "selBand": null,
+   "selApi": null
+  }
+ ],
+ "redNoIsolation": 0,
+ "redWithIsolation": 40
+}

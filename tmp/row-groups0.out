@@ -1,0 +1,74 @@
+﻿pRect {"l":320,"t":354.67,"r":1346,"b":530.22,"w":1026,"h":175.55}
+frags [{"l":600.8,"t":354.08,"r":1337.66,"b":386.27,"w":736.86,"h":32.19},{"l":320,"t":386.38,"r":471.13,"b":418.56,"w":151.13,"h":32.19}]
+overlay [{"l":600.8,"t":321.47,"r":1337.66,"b":386.23,"w":736.86,"h":64.77},{"l":320,"t":386.38,"r":471.13,"b":530.2,"w":151.13,"h":143.83}]
+row#0 t=321.48 b=386.27 h=64.79  members=62
+    SPAN.pstrut [inline-block static] l=451.7 r=451.7 t=321.48 b=370.13 w=0 h=48.64
+    SPAN.pstrut [inline-block static] l=498.89 r=498.89 t=321.48 b=370.13 w=0 h=48.64
+    SPAN.pstrut [inline-block static] l=535.86 r=535.86 t=321.48 b=370.13 w=0 h=48.64
+    SPAN.pstrut [inline-block static] l=574.91 r=574.91 t=321.48 b=370.13 w=0 h=48.64
+    FRAG [ ] l=600.8 r=1337.66 t=354.08 b=386.27 w=736.86 h=32.19
+    SPAN.katex-sizing reset-size6 s [inline-block static] l=451.7 r=458.02 t=359.13 b=374.25 w=6.31 h=15.13
+    SPAN.mord mtight [inline static] l=451.7 r=458.02 t=359.13 b=373.13 w=6.31 h=14
+    #text:2 [ text] l=451.7 r=458.02 t=359.13 b=373.13 w=6.31 h=14
+    SPAN.katex-sizing reset-size6 s [inline-block static] l=498.89 r=505.2 t=359.13 b=374.25 w=6.31 h=15.13
+    SPAN.mord mtight [inline static] l=498.89 r=505.2 t=359.13 b=373.13 w=6.31 h=14
+    #text:2 [ text] l=498.89 r=505.2 t=359.13 b=373.13 w=6.31 h=14
+    SPAN.katex-sizing reset-size6 s [inline-block static] l=535.86 r=542.17 t=359.13 b=374.25 w=6.31 h=15.13
+    SPAN.mord mtight [inline static] l=535.86 r=542.17 t=359.13 b=373.13 w=6.31 h=14
+    #text:2 [ text] l=535.86 r=542.17 t=359.13 b=373.13 w=6.31 h=14
+    SPAN.katex-sizing reset-size6 s [inline-block static] l=574.91 r=581.22 t=359.13 b=374.25 w=6.31 h=15.13
+    SPAN.mord mtight [inline static] l=574.91 r=581.22 t=359.13 b=373.13 w=6.31 h=14
+    #text:2 [ text] l=574.91 r=581.22 t=359.13 b=373.13 w=6.31 h=14
+    #text:行内公式 [ text] l=320 r=388 t=359.67 b=380.67 w=68 h=21
+    SPAN.md-math-rendered ProseMirr [inline static] l=388 r=460.59 t=359.67 b=380.67 w=72.59 h=21
+    SPAN.md-math [inline static] l=460.59 r=460.59 t=359.67 b=380.67 w=0 h=21
+    #text: 与  [ text] l=460.59 r=487.66 t=359.67 b=380.67 w=27.06 h=21
+    SPAN.md-math-rendered ProseMirr [inline static] l=487.66 r=583.8 t=359.67 b=380.67 w=96.14 h=21
+    SPAN.md-math [inline static] l=583.8 r=583.8 t=359.67 b=380.67 w=0 h=21
+    #text:。 [ text] l=583.8 r=600.8 t=359.67 b=380.67 w=17 h=21
+    SPAN.md-html [inline static] l=600.8 r=1337.66 t=359.67 b=380.67 w=736.86 h=21
+    SPAN.katex-html [inline static] l=389.69 r=458.91 t=360.67 b=381.67 w=69.22 h=21
+    SPAN.mrel [inline static] l=409.03 r=423.06 t=360.67 b=381.67 w=14.03 h=21
+    #text:= [ text] l=409.03 r=423.06 t=360.67 b=381.67 w=14.03 h=21
+    SPAN.mord [inline static] l=443.89 r=458.91 t=360.67 b=381.67 w=15.02 h=21
+    SPAN.msupsub [inline static] l=451.7 r=458.91 t=360.67 b=381.67 w=7.2 h=21
+    SPAN.katex-html [inline static] l=489.34 r=582.11 t=360.67 b=381.67 w=92.77 h=21
+    SPAN.mord [inline static] l=489.34 r=506.09 t=360.67 b=381.67 w=16.75 h=21
+    SPAN.msupsub [inline static] l=498.89 r=506.09 t=360.67 b=381.67 w=7.2 h=21
+    SPAN.mbin [inline static] l=510.09 r=524.13 t=360.67 b=381.67 w=14.03 h=21
+    #text:+ [ text] l=510.09 r=524.13 t=360.67 b=381.67 w=14.03 h=21
+    SPAN.mord [inline static] l=528.13 r=543.06 t=360.67 b=381.67 w=14.94 h=21
+    SPAN.msupsub [inline static] l=535.86 r=543.06 t=360.67 b=381.67 w=7.2 h=21
+    SPAN.mrel [inline static] l=548.06 r=562.09 t=360.67 b=381.67 w=14.03 h=21
+    #text:= [ text] l=548.06 r=562.09 t=360.67 b=381.67 w=14.03 h=21
+    SPAN.mord [inline static] l=567.09 r=582.11 t=360.67 b=381.67 w=15.02 h=21
+    SPAN.msupsub [inline static] l=574.91 r=582.11 t=360.67 b=381.67 w=7.2 h=21
+    SPAN.katex-strut [inline-block static] l=428.06 r=428.06 t=362.02 b=376.67 w=0 h=14.66
+    SPAN.vlist-t [inline-table static] l=451.7 r=458.91 t=362.02 b=376.67 w=7.2 h=14.66
+    SPAN.katex-strut [inline-block static] l=489.34 r=489.34 t=362.02 b=378.17 w=0 h=16.16
+    SPAN.vlist-t [inline-table static] l=498.89 r=506.09 t=362.02 b=376.67 w=7.2 h=14.66
+    SPAN.katex-strut [inline-block static] l=528.13 r=528.13 t=362.02 b=376.67 w=0 h=14.66
+    SPAN.vlist-t [inline-table static] l=535.86 r=543.06 t=362.02 b=376.67 w=7.2 h=14.66
+    SPAN.katex-strut [inline-block static] l=567.09 r=567.09 t=362.02 b=376.67 w=0 h=14.66
+    SPAN.vlist-t [inline-table static] l=574.91 r=582.11 t=362.02 b=376.67 w=7.2 h=14.66
+    SPAN.mord mathnormal [inline static] l=389.69 r=403 t=363.67 b=380.67 w=13.31 h=17
+    #text:E [ text] l=389.69 r=403 t=363.67 b=380.67 w=13.31 h=17
+    SPAN.mord mathnormal [inline static] l=428.06 r=443.89 t=363.67 b=380.67 w=15.83 h=17
+    #text:m [ text] l=428.06 r=443.89 t=363.67 b=380.67 w=15.83 h=17
+    SPAN.mord mathnormal [inline static] l=443.89 r=451.7 t=363.67 b=380.67 w=7.81 h=17
+    #text:c [ text] l=443.89 r=451.7 t=363.67 b=380.67 w=7.81 h=17
+    SPAN.mord mathnormal [inline static] l=489.34 r=498.89 t=363.67 b=380.67 w=9.55 h=17
+    #text:a [ text] l=489.34 r=498.89 t=363.67 b=380.67 w=9.55 h=17
+    SPAN.mord mathnormal [inline static] l=528.13 r=535.86 t=363.67 b=380.67 w=7.73 h=17
+    #text:b [ text] l=528.13 r=535.86 t=363.67 b=380.67 w=7.73 h=17
+    SPAN.mord mathnormal [inline static] l=567.09 r=574.91 t=363.67 b=380.67 w=7.81 h=17
+    #text:c [ text] l=567.09 r=574.91 t=363.67 b=380.67 w=7.81 h=17
+    SPAN.katex-strut [inline-block static] l=389.69 r=389.69 t=364.36 b=376.67 w=0 h=12.31
+row#1 t=386.38 b=530.22 h=143.84  members=7
+    FRAG [ ] l=320 r=471.13 t=386.38 b=418.56 w=151.13 h=32.19
+    SPAN.img-widget img-widget--inl [inline-block static] l=481.31 r=696.31 t=386.97 b=530.22 w=215 h=143.25
+    IMG. [inline-block static] l=481.31 r=696.31 t=386.97 b=530.22 w=215 h=143.25
+    SPAN.img-widget img-widget--inl [inline-block static] l=709.05 r=924.05 t=386.97 b=530.22 w=215 h=143.25
+    IMG. [inline-block static] l=709.05 r=924.05 t=386.97 b=530.22 w=215 h=143.25
+    SPAN.md-html [inline static] l=320 r=698.86 t=446.19 b=467.19 w=378.86 h=21
+    BR.ProseMirror-trailingBreak [inline static] l=926.59 r=926.59 t=446.19 b=467.19 w=0 h=21

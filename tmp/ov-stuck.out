@@ -1,0 +1,28 @@
+﻿{
+ "size": "1304x821",
+ "distinctColors": 219,
+ "top": [
+  "220,221,224 x49524",
+  "221,222,225 x35938",
+  "216,217,220 x13926",
+  "217,218,221 x9573",
+  "255,255,255 x5762"
+ ],
+ "hasFocus": false,
+ "activeEl": "lm-prompt__card",
+ "revealed": 0,
+ "imgs": 2,
+ "scrollY": 0,
+ "scrollInfo": {
+  "top": 0,
+  "h": 761,
+  "sh": 761
+ },
+ "imgRect": {
+  "l": 760,
+  "t": 77.9375,
+  "r": 808,
+  "b": 109.9375
+ },
+ "disp": "{\"vis\":\"visible\",\"hidden\":false,\"w\":1304,\"h\":821}"
+}

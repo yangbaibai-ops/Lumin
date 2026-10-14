@@ -1,0 +1,374 @@
+{
+ "tag": "red",
+ "mode": "A",
+ "innerWidth": 1424,
+ "mdBefore": 811,
+ "shaBefore": "4dbb870902ecc4ab38f83fcb8ce5c8b755ea738d94932ca5487b5467fd453a7b",
+ "away": {
+  "x": 340,
+  "y": 88
+ },
+ "widgetPt": {
+  "x": 808,
+  "y": 570
+ },
+ "pre": {
+  "revealed": 1,
+  "from": 254,
+  "cls": "img-src-revealed",
+  "bg": "rgb(228, 230, 234)",
+  "ov": 2,
+  "ovEl": true,
+  "open": "254:e",
+  "sel": {
+   "from": 355,
+   "to": 355,
+   "empty": true
+  },
+  "activated": true,
+  "ovWaitedMs": 0,
+  "ovOk": true
+ },
+ "bands": {
+  "from": 254,
+  "len": 101,
+  "frags": [
+   {
+    "l": 828.53,
+    "t": 354.08,
+    "r": 1345.97,
+    "b": 386.27
+   },
+   {
+    "l": 320,
+    "t": 497.33,
+    "r": 690.53,
+    "b": 529.52
+   }
+  ],
+  "texts": [
+   {
+    "l": 828.53,
+    "t": 359.67,
+    "r": 1345.97,
+    "b": 380.67
+   },
+   {
+    "l": 320,
+    "t": 502.92,
+    "r": 690.53,
+    "b": 523.92
+   }
+  ],
+  "ov": [
+   {
+    "l": 828.52,
+    "t": 354.66,
+    "r": 1232.45,
+    "b": 497.91
+   },
+   {
+    "l": 320,
+    "t": 497.91,
+    "r": 804.05,
+    "b": 641.16
+   }
+  ],
+  "bodyText": {
+   "l": 320,
+   "t": 413.89,
+   "r": 388,
+   "b": 434.89
+  },
+  "block": {
+   "l": 320,
+   "t": 354.67,
+   "r": 1362,
+   "b": 641.17
+  }
+ },
+ "bandFallback": false,
+ "points": {
+  "band": {
+   "x": 1087,
+   "y": 442
+  },
+  "glyph": {
+   "x": 1087,
+   "y": 370
+  },
+  "row": {
+   "t": 354.08,
+   "b": 386.27,
+   "bottom": 497.91
+  },
+  "overlays": [
+   {
+    "l": 828.52,
+    "t": 354.66,
+    "r": 1232.45,
+    "b": 497.91
+   },
+   {
+    "l": 320,
+    "t": 497.91,
+    "r": 804.05,
+    "b": 641.16
+   }
+  ]
+ },
+ "A_X_band": {
+  "pre": {
+   "revealed": 1,
+   "from": 254,
+   "cls": "img-src-revealed",
+   "bg": "rgb(228, 230, 234)",
+   "ov": 2,
+   "ovEl": true,
+   "open": "254:e",
+   "sel": {
+    "from": 355,
+    "to": 355,
+    "empty": true
+   },
+   "activated": true,
+   "ovWaitedMs": 0,
+   "ovOk": true
+  },
+  "point": {
+   "x": 1087,
+   "y": 442
+  },
+  "seq": [
+   "5100.1ms ov0 R RE bgOFF open=254:E n1 sel285"
+  ],
+  "evs": [],
+  "frames": 1
+ },
+ "A_Y_glyph": {
+  "pre": {
+   "revealed": 1,
+   "from": 254,
+   "cls": "img-src-revealed",
+   "bg": "rgb(228, 230, 234)",
+   "ov": 2,
+   "ovEl": true,
+   "open": "254:e",
+   "sel": {
+    "from": 355,
+    "to": 355,
+    "empty": true
+   },
+   "activated": true,
+   "ovWaitedMs": 0,
+   "ovOk": true
+  },
+  "point": {
+   "x": 1087,
+   "y": 370
+  },
+  "seq": [
+   "3.2ms ov2(el) R bgEDGE open=254:e n1 sel355",
+   "86.6ms ov2(el) R RE bgOFF open=254:E n1 sel285",
+   "103.3ms ov0 R RE bgOFF open=254:E n1 sel285",
+   "120.5ms ov0 R bgEDGE open=254:e n1 sel285",
+   "136.5ms ov2(el) R RE bgOFF open=254:E n1 sel285",
+   "153.2ms ov0 R RE bgOFF open=254:E n1 sel285"
+  ],
+  "evs": [],
+  "frames": 40
+ },
+ "A_Z_activate": {
+  "pre": {
+   "revealed": 1,
+   "from": 254,
+   "cls": "img-src-revealed",
+   "bg": "rgb(228, 230, 234)",
+   "ov": 2,
+   "ovEl": true,
+   "open": "254:e",
+   "sel": {
+    "from": 355,
+    "to": 355,
+    "empty": true
+   },
+   "activated": true,
+   "ovWaitedMs": 0,
+   "ovOk": true
+  },
+  "seq": [
+   "12ms ov2(el) R bgEDGE open=254:e n1 sel355",
+   "62.1ms ov2(el) R bgEDGE open=254:e n1 sel254",
+   "78.7ms ov2(el) R bgEDGE open=254:e n1 sel355"
+  ],
+  "evs": []
+ },
+ "A_elsewhere": {
+  "revealed": 0,
+  "from": null,
+  "cls": null,
+  "bg": null,
+  "ov": 0,
+  "ovEl": false,
+  "open": "null:e",
+  "sel": {
+   "from": 2,
+   "to": 2,
+   "empty": true
+  }
+ },
+ "keep": {
+  "bandClick": {
+   "revealed": 1,
+   "from": 254,
+   "cls": "img-src-revealed img-src-revealed--editing",
+   "bg": "rgba(0, 0, 0, 0)",
+   "ov": 0,
+   "ovEl": false,
+   "open": "254:E",
+   "sel": {
+    "from": 285,
+    "to": 285,
+    "empty": true
+   }
+  },
+  "revealGesture": {
+   "press": 0,
+   "release": 0,
+   "bg": null,
+   "seq": [
+    "18.3ms ov0 - bgnull open=null:e n0 sel2",
+    "67.5ms ov0 - bgnull open=null:e n0 sel361"
+   ]
+  },
+  "hit": {
+   "mid": {
+    "tag": "P",
+    "cls": "img-side-by-side",
+    "overlay": false
+   }
+  },
+  "layoutOn": {
+   "para": {
+    "l": 320,
+    "t": 354.67,
+    "r": 1362,
+    "b": 497.92,
+    "w": 1042,
+    "h": 143.25
+   },
+   "imgs": [
+    {
+     "l": 610.98,
+     "t": 354.67,
+     "r": 825.98,
+     "b": 497.92,
+     "w": 215,
+     "h": 143.25
+    },
+    {
+     "l": 838.72,
+     "t": 354.67,
+     "r": 1053.72,
+     "b": 497.92,
+     "w": 215,
+     "h": 143.25
+    },
+    {
+     "l": 1056.27,
+     "t": 354.67,
+     "r": 1056.27,
+     "b": 354.67,
+     "w": 0,
+     "h": 0
+    }
+   ],
+   "h2": {
+    "l": 320,
+    "t": 531.06,
+    "r": 1362,
+    "b": 572.09,
+    "w": 1042,
+    "h": 41.03
+   },
+   "scrollH": 1386
+  },
+  "layoutOff": {
+   "para": {
+    "l": 320,
+    "t": 354.67,
+    "r": 1362,
+    "b": 497.92,
+    "w": 1042,
+    "h": 143.25
+   },
+   "imgs": [
+    {
+     "l": 610.98,
+     "t": 354.67,
+     "r": 825.98,
+     "b": 497.92,
+     "w": 215,
+     "h": 143.25
+    },
+    {
+     "l": 838.72,
+     "t": 354.67,
+     "r": 1053.72,
+     "b": 497.92,
+     "w": 215,
+     "h": 143.25
+    },
+    {
+     "l": 1056.27,
+     "t": 354.67,
+     "r": 1056.27,
+     "b": 354.67,
+     "w": 0,
+     "h": 0
+    }
+   ],
+   "h2": {
+    "l": 320,
+    "t": 531.06,
+    "r": 1362,
+    "b": 572.09,
+    "w": 1042,
+    "h": 41.03
+   },
+   "scrollH": 1386
+  },
+  "layoutSame": true,
+  "editing": {
+   "revealed": 1,
+   "from": 254,
+   "cls": "img-src-revealed img-src-revealed--editing",
+   "bg": "rgba(0, 0, 0, 0)",
+   "ov": 0,
+   "ovEl": false,
+   "open": "254:E",
+   "sel": {
+    "from": 275,
+    "to": 275,
+    "empty": true
+   }
+  },
+  "hidden": {
+   "revealed": 0,
+   "from": null,
+   "cls": null,
+   "bg": null,
+   "ov": 0,
+   "ovEl": false,
+   "open": "null:e",
+   "sel": {
+    "from": 2,
+    "to": 2,
+    "empty": true
+   }
+  },
+  "modal": 0
+ },
+ "shaAfter": "4dbb870902ecc4ab38f83fcb8ce5c8b755ea738d94932ca5487b5467fd453a7b",
+ "mdRoundtripSame": true
+}

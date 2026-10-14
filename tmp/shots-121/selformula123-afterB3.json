@@ -1,0 +1,1555 @@
+{
+ "tag": "afterB3",
+ "target": {
+  "text": "下划线不当斜体：x1​+y2​$x_1 + y_2$；星号不当5加粗：a∗kb$",
+  "para": [
+   320,
+   313.03,
+   1362,
+   345.33
+  ],
+  "chars": [
+   {
+    "ch": "下",
+    "x": 328.5,
+    "y": 328.53125,
+    "rect": [
+     320,
+     318.03,
+     337,
+     339.03
+    ]
+   },
+   {
+    "ch": "划",
+    "x": 345.5,
+    "y": 328.53125,
+    "rect": [
+     337,
+     318.03,
+     354,
+     339.03
+    ]
+   },
+   {
+    "ch": "线",
+    "x": 362.5,
+    "y": 328.53125,
+    "rect": [
+     354,
+     318.03,
+     371,
+     339.03
+    ]
+   },
+   {
+    "ch": "不",
+    "x": 379.5,
+    "y": 328.53125,
+    "rect": [
+     371,
+     318.03,
+     388,
+     339.03
+    ]
+   },
+   {
+    "ch": "当",
+    "x": 396.5,
+    "y": 328.53125,
+    "rect": [
+     388,
+     318.03,
+     405,
+     339.03
+    ]
+   },
+   {
+    "ch": "斜",
+    "x": 413.5,
+    "y": 328.53125,
+    "rect": [
+     405,
+     318.03,
+     422,
+     339.03
+    ]
+   },
+   {
+    "ch": "体",
+    "x": 430.5,
+    "y": 328.53125,
+    "rect": [
+     422,
+     318.03,
+     439,
+     339.03
+    ]
+   },
+   {
+    "ch": "：",
+    "x": 447.5,
+    "y": 328.53125,
+    "rect": [
+     439,
+     318.03,
+     456,
+     339.03
+    ]
+   },
+   {
+    "ch": "x",
+    "x": 462.84375,
+    "y": 330.53125,
+    "rect": [
+     457.69,
+     322.03,
+     468,
+     339.03
+    ]
+   },
+   {
+    "ch": "1",
+    "x": 471.15625,
+    "y": 333.734375,
+    "rect": [
+     468,
+     326.73,
+     474.31,
+     340.73
+    ]
+   },
+   {
+    "ch": "+",
+    "x": 486.21875,
+    "y": 329.53125,
+    "rect": [
+     479.2,
+     319.03,
+     493.23,
+     340.03
+    ]
+   },
+   {
+    "ch": "y",
+    "x": 501.65625,
+    "y": 330.53125,
+    "rect": [
+     497.23,
+     322.03,
+     506.08,
+     339.03
+    ]
+   },
+   {
+    "ch": "2",
+    "x": 509.234375,
+    "y": 333.734375,
+    "rect": [
+     506.08,
+     326.73,
+     512.39,
+     340.73
+    ]
+   },
+   {
+    "ch": "；",
+    "x": 523.46875,
+    "y": 328.53125,
+    "rect": [
+     514.97,
+     318.03,
+     531.97,
+     339.03
+    ]
+   },
+   {
+    "ch": "星",
+    "x": 540.46875,
+    "y": 328.53125,
+    "rect": [
+     531.97,
+     318.03,
+     548.97,
+     339.03
+    ]
+   },
+   {
+    "ch": "号",
+    "x": 557.46875,
+    "y": 328.53125,
+    "rect": [
+     548.97,
+     318.03,
+     565.97,
+     339.03
+    ]
+   },
+   {
+    "ch": "不",
+    "x": 574.46875,
+    "y": 328.53125,
+    "rect": [
+     565.97,
+     318.03,
+     582.97,
+     339.03
+    ]
+   },
+   {
+    "ch": "当",
+    "x": 591.46875,
+    "y": 328.53125,
+    "rect": [
+     582.97,
+     318.03,
+     599.97,
+     339.03
+    ]
+   },
+   {
+    "ch": "5",
+    "x": 604.9609375,
+    "y": 328.53125,
+    "rect": [
+     599.97,
+     318.03,
+     609.95,
+     339.03
+    ]
+   },
+   {
+    "ch": "加",
+    "x": 618.4453125,
+    "y": 328.53125,
+    "rect": [
+     609.94,
+     318.03,
+     626.95,
+     339.03
+    ]
+   },
+   {
+    "ch": "粗",
+    "x": 635.4453125,
+    "y": 328.53125,
+    "rect": [
+     626.94,
+     318.03,
+     643.95,
+     339.03
+    ]
+   },
+   {
+    "ch": "：",
+    "x": 652.4453125,
+    "y": 328.53125,
+    "rect": [
+     643.94,
+     318.03,
+     660.95,
+     339.03
+    ]
+   },
+   {
+    "ch": "a",
+    "x": 667.4140625,
+    "y": 330.53125,
+    "rect": [
+     662.64,
+     322.03,
+     672.19,
+     339.03
+    ]
+   },
+   {
+    "ch": "∗",
+    "x": 680.6953125,
+    "y": 329.53125,
+    "rect": [
+     676.19,
+     319.03,
+     685.2,
+     340.03
+    ]
+   },
+   {
+    "ch": "k",
+    "x": 693.8984375,
+    "y": 330.53125,
+    "rect": [
+     689.2,
+     322.03,
+     698.59,
+     339.03
+    ]
+   },
+   {
+    "ch": "b",
+    "x": 703.0234375,
+    "y": 330.53125,
+    "rect": [
+     699.16,
+     322.03,
+     706.89,
+     339.03
+    ]
+   },
+   {
+    "ch": "。",
+    "x": 717.078125,
+    "y": 328.53125,
+    "rect": [
+     708.58,
+     318.03,
+     725.58,
+     339.03
+    ]
+   },
+   {
+    "ch": " ",
+    "x": 728.09375,
+    "y": 328.53125,
+    "rect": [
+     725.58,
+     318.03,
+     730.61,
+     339.03
+    ]
+   },
+   {
+    "ch": "坏",
+    "x": 739.1015625,
+    "y": 328.53125,
+    "rect": [
+     730.59,
+     318.03,
+     747.61,
+     339.03
+    ]
+   },
+   {
+    "ch": "公",
+    "x": 756.1015625,
+    "y": 328.53125,
+    "rect": [
+     747.59,
+     318.03,
+     764.61,
+     339.03
+    ]
+   },
+   {
+    "ch": "式",
+    "x": 773.1015625,
+    "y": 328.53125,
+    "rect": [
+     764.59,
+     318.03,
+     781.61,
+     339.03
+    ]
+   },
+   {
+    "ch": "：",
+    "x": 790.1015625,
+    "y": 328.53125,
+    "rect": [
+     781.59,
+     318.03,
+     798.61,
+     339.03
+    ]
+   },
+   {
+    "ch": "2",
+    "x": 805.609375,
+    "y": 337.25,
+    "rect": [
+     802.45,
+     330.25,
+     808.77,
+     344.25
+    ]
+   },
+   {
+    "ch": "1",
+    "x": 805.609375,
+    "y": 323.921875,
+    "rect": [
+     802.45,
+     316.92,
+     808.77,
+     330.92
+    ]
+   },
+   {
+    "ch": " ",
+    "x": 815.125,
+    "y": 328.53125,
+    "rect": [
+     812.61,
+     318.03,
+     817.64,
+     339.03
+    ]
+   },
+   {
+    "ch": "结",
+    "x": 826.1328125,
+    "y": 328.53125,
+    "rect": [
+     817.63,
+     318.03,
+     834.64,
+     339.03
+    ]
+   },
+   {
+    "ch": "束",
+    "x": 843.1328125,
+    "y": 328.53125,
+    "rect": [
+     834.63,
+     318.03,
+     851.64,
+     339.03
+    ]
+   },
+   {
+    "ch": "。",
+    "x": 860.1328125,
+    "y": 328.53125,
+    "rect": [
+     851.63,
+     318.03,
+     868.64,
+     339.03
+    ]
+   }
+  ],
+  "maths": [
+   {
+    "rect": [
+     456,
+     318.03,
+     514.97,
+     339.03
+    ],
+    "s": 65,
+    "e": 76,
+    "tex": "x1​+y2​"
+   },
+   {
+    "rect": [
+     660.95,
+     318.03,
+     708.58,
+     339.03
+    ],
+    "s": 85,
+    "e": 93,
+    "tex": "a∗kb"
+   },
+   {
+    "rect": [
+     798.61,
+     318.03,
+     812.61,
+     339.03
+    ],
+    "s": 99,
+    "e": 112,
+    "tex": "21​"
+   }
+  ]
+ },
+ "prev": {
+  "text": "下划线不当斜体：x1​+y2​$x_1 + y_2$；星号不当5加粗：a∗kb$",
+  "chars": 38,
+  "maths": [
+   {
+    "rect": [
+     456,
+     318.03,
+     514.97,
+     339.03
+    ],
+    "s": 65,
+    "e": 76,
+    "tex": "x1​+y2​"
+   },
+   {
+    "rect": [
+     660.95,
+     318.03,
+     708.58,
+     339.03
+    ],
+    "s": 85,
+    "e": 93,
+    "tex": "a∗kb"
+   },
+   {
+    "rect": [
+     798.61,
+     318.03,
+     812.61,
+     339.03
+    ],
+    "s": 99,
+    "e": 112,
+    "tex": "21​"
+   }
+  ]
+ },
+ "cases": [
+  {
+   "label": "B1-starToCu",
+   "from": {
+    "x": 652.4453125,
+    "y": 328.53125
+   },
+   "to": {
+    "x": 540.46875,
+    "y": 328.53125
+   },
+   "mid": {
+    "sel": "77-84",
+    "own": "all",
+    "live": "84|78|78|84",
+    "union": [
+     77,
+     84
+    ],
+    "bands": [
+     [
+      530.97,
+      312.38,
+      644.94,
+      344.81
+     ]
+    ],
+    "ours": [
+     [
+      531.97,
+      318.03,
+      643.95,
+      339.03
+     ]
+    ],
+    "hl": [],
+    "maths": [
+     {
+      "rect": [
+       405,
+       77,
+       477.59,
+       98
+      ],
+      "s": 6,
+      "e": 16,
+      "oldHit": false,
+      "newHit": false,
+      "painted": false,
+      "modelCovered": false
+     },
+     {
+      "rect": [
+       504.66,
+       77,
+       600.8,
+       98
+      ],
+      "s": 19,
+      "e": 36,
+      "oldHit": false,
+      "newHit": false,
+      "painted": false,
+      "modelCovered": false
+     },
+     {
+      "rect": [
+       320,
+       234.75,
+       351.36,
+       255.75
+      ],
+      "s": 47,
+      "e": 52,
+      "oldHit": false,
+      "newHit": false,
+      "painted": false,
+      "modelCovered": false
+     },
+     {
+      "rect": [
+       456,
+       318.03,
+       514.97,
+       339.03
+      ],
+      "s": 65,
+      "e": 76,
+      "oldHit": false,
+      "newHit": false,
+      "painted": false,
+      "modelCovered": false
+     },
+     {
+      "rect": [
+       660.95,
+       318.03,
+       708.58,
+       339.03
+      ],
+      "s": 85,
+      "e": 93,
+      "oldHit": true,
+      "newHit": false,
+      "painted": false,
+      "modelCovered": false
+     },
+     {
+      "rect": [
+       798.61,
+       318.03,
+       812.61,
+       339.03
+      ],
+      "s": 99,
+      "e": 112,
+      "oldHit": false,
+      "newHit": false,
+      "painted": false,
+      "modelCovered": false
+     },
+     {
+      "rect": [
+       388,
+       413.89,
+       460.59,
+       434.89
+      ],
+      "s": 122,
+      "e": 132,
+      "oldHit": false,
+      "newHit": false,
+      "painted": false,
+      "modelCovered": false
+     },
+     {
+      "rect": [
+       487.66,
+       413.89,
+       583.8,
+       434.89
+      ],
+      "s": 135,
+      "e": 152,
+      "oldHit": false,
+      "newHit": false,
+      "painted": false,
+      "modelCovered": false
+     }
+    ],
+    "bandMaxRight": 644.94,
+    "bandMinLeft": 530.97,
+    "selInMath": 0
+   },
+   "settledSel": "77-84",
+   "settledMaths": [
+    {
+     "rect": [
+      405,
+      77,
+      477.59,
+      98
+     ],
+     "s": 6,
+     "e": 16,
+     "oldHit": false,
+     "newHit": false,
+     "painted": false,
+     "modelCovered": false
+    },
+    {
+     "rect": [
+      504.66,
+      77,
+      600.8,
+      98
+     ],
+     "s": 19,
+     "e": 36,
+     "oldHit": false,
+     "newHit": false,
+     "painted": false,
+     "modelCovered": false
+    },
+    {
+     "rect": [
+      320,
+      234.75,
+      351.36,
+      255.75
+     ],
+     "s": 47,
+     "e": 52,
+     "oldHit": false,
+     "newHit": false,
+     "painted": false,
+     "modelCovered": false
+    },
+    {
+     "rect": [
+      456,
+      318.03,
+      514.97,
+      339.03
+     ],
+     "s": 65,
+     "e": 76,
+     "oldHit": false,
+     "newHit": false,
+     "painted": false,
+     "modelCovered": false
+    },
+    {
+     "rect": [
+      660.95,
+      318.03,
+      708.58,
+      339.03
+     ],
+     "s": 85,
+     "e": 93,
+     "oldHit": true,
+     "newHit": false,
+     "painted": false,
+     "modelCovered": false
+    },
+    {
+     "rect": [
+      798.61,
+      318.03,
+      812.61,
+      339.03
+     ],
+     "s": 99,
+     "e": 112,
+     "oldHit": false,
+     "newHit": false,
+     "painted": false,
+     "modelCovered": false
+    },
+    {
+     "rect": [
+      388,
+      413.89,
+      460.59,
+      434.89
+     ],
+     "s": 122,
+     "e": 132,
+     "oldHit": false,
+     "newHit": false,
+     "painted": false,
+     "modelCovered": false
+    },
+    {
+     "rect": [
+      487.66,
+      413.89,
+      583.8,
+      434.89
+     ],
+     "s": 135,
+     "e": 152,
+     "oldHit": false,
+     "newHit": false,
+     "painted": false,
+     "modelCovered": false
+    }
+   ],
+   "leak": {
+    "bands": 1,
+    "own": "all"
+   },
+   "frames": [
+    "77-84|ownall|bands1|minL530.97|maxR644.94|oldHit1|newHit0|painted0",
+    "77-84|ownall|bands1|minL530.97|maxR644.94|oldHit1|newHit0|painted0",
+    "77-84|ownall|bands1|minL530.97|maxR644.94|oldHit1|newHit0|painted0",
+    "77-84|ownall|bands1|minL530.97|maxR644.94|oldHit1|newHit0|painted0",
+    "77-84|ownall|bands1|minL530.97|maxR644.94|oldHit1|newHit0|painted0",
+    "77-84|ownall|bands1|minL530.97|maxR644.94|oldHit1|newHit0|painted0",
+    "77-84|ownall|bands1|minL530.97|maxR644.94|oldHit1|newHit0|painted0",
+    "77-84|ownall|bands1|minL530.97|maxR644.94|oldHit1|newHit0|painted0",
+    "77-84|ownall|bands1|minL530.97|maxR644.94|oldHit1|newHit0|painted0",
+    "77-84|ownall|bands1|minL530.97|maxR644.94|oldHit1|newHit0|painted0",
+    "77-84|ownall|bands1|minL530.97|maxR644.94|oldHit1|newHit0|painted0",
+    "77-84|ownall|bands1|minL530.97|maxR644.94|oldHit1|newHit0|painted0",
+    "77-84|ownall|bands1|minL530.97|maxR644.94|oldHit1|newHit0|painted0",
+    "77-84|ownall|bands1|minL530.97|maxR644.94|oldHit1|newHit0|painted0",
+    "77-84|ownall|bands1|minL530.97|maxR644.94|oldHit1|newHit0|painted0",
+    "77-84|ownall|bands1|minL530.97|maxR644.94|oldHit1|newHit0|painted0",
+    "77-84|ownall|bands1|minL530.97|maxR644.94|oldHit1|newHit0|painted0",
+    "77-84|ownall|bands1|minL530.97|maxR644.94|oldHit1|newHit0|painted0",
+    "77-84|ownall|bands1|minL530.97|maxR644.94|oldHit1|newHit0|painted0",
+    "77-84|ownall|bands1|minL530.97|maxR644.94|oldHit1|newHit0|painted0"
+   ],
+   "cols": {
+    "formula": {
+     "x": 685,
+     "drag": null,
+     "settled": null
+    },
+    "bodyPre": {
+     "x": 490,
+     "drag": null,
+     "settled": null
+    }
+   }
+  },
+  {
+   "label": "B2-starFromAfter",
+   "from": {
+    "x": 717.078125,
+    "y": 328.53125
+   },
+   "to": {
+    "x": 540.46875,
+    "y": 328.53125
+   },
+   "mid": {
+    "sel": "77-77E",
+    "own": "all",
+    "live": "93|78|78|93",
+    "union": [
+     77,
+     93
+    ],
+    "bands": [
+     [
+      547.97,
+      312.38,
+      709.58,
+      344.81
+     ]
+    ],
+    "ours": [
+     [
+      548.97,
+      318.03,
+      660.95,
+      339.03
+     ],
+     [
+      662.64,
+      322.03,
+      672.19,
+      339.03
+     ],
+     [
+      676.19,
+      319.03,
+      685.2,
+      340.03
+     ],
+     [
+      689.2,
+      322.03,
+      698.59,
+      339.03
+     ],
+     [
+      699.16,
+      322.03,
+      706.89,
+      339.03
+     ]
+    ],
+    "hl": [],
+    "maths": [
+     {
+      "rect": [
+       405,
+       77,
+       477.59,
+       98
+      ],
+      "s": 6,
+      "e": 16,
+      "oldHit": false,
+      "newHit": false,
+      "painted": false,
+      "modelCovered": false
+     },
+     {
+      "rect": [
+       504.66,
+       77,
+       600.8,
+       98
+      ],
+      "s": 19,
+      "e": 36,
+      "oldHit": false,
+      "newHit": false,
+      "painted": false,
+      "modelCovered": false
+     },
+     {
+      "rect": [
+       320,
+       234.75,
+       351.36,
+       255.75
+      ],
+      "s": 47,
+      "e": 52,
+      "oldHit": false,
+      "newHit": false,
+      "painted": false,
+      "modelCovered": false
+     },
+     {
+      "rect": [
+       456,
+       318.03,
+       514.97,
+       339.03
+      ],
+      "s": 65,
+      "e": 76,
+      "oldHit": false,
+      "newHit": false,
+      "painted": false,
+      "modelCovered": false
+     },
+     {
+      "rect": [
+       660.95,
+       318.03,
+       708.58,
+       339.03
+      ],
+      "s": 85,
+      "e": 93,
+      "oldHit": true,
+      "newHit": true,
+      "painted": true,
+      "modelCovered": false
+     },
+     {
+      "rect": [
+       798.61,
+       318.03,
+       812.61,
+       339.03
+      ],
+      "s": 99,
+      "e": 112,
+      "oldHit": false,
+      "newHit": false,
+      "painted": false,
+      "modelCovered": false
+     },
+     {
+      "rect": [
+       388,
+       413.89,
+       460.59,
+       434.89
+      ],
+      "s": 122,
+      "e": 132,
+      "oldHit": false,
+      "newHit": false,
+      "painted": false,
+      "modelCovered": false
+     },
+     {
+      "rect": [
+       487.66,
+       413.89,
+       583.8,
+       434.89
+      ],
+      "s": 135,
+      "e": 152,
+      "oldHit": false,
+      "newHit": false,
+      "painted": false,
+      "modelCovered": false
+     }
+    ],
+    "bandMaxRight": 709.58,
+    "bandMinLeft": 547.97,
+    "selInMath": 0
+   },
+   "settledSel": "77-93",
+   "settledMaths": [
+    {
+     "rect": [
+      405,
+      77,
+      477.59,
+      98
+     ],
+     "s": 6,
+     "e": 16,
+     "oldHit": false,
+     "newHit": false,
+     "painted": false,
+     "modelCovered": false
+    },
+    {
+     "rect": [
+      504.66,
+      77,
+      600.8,
+      98
+     ],
+     "s": 19,
+     "e": 36,
+     "oldHit": false,
+     "newHit": false,
+     "painted": false,
+     "modelCovered": false
+    },
+    {
+     "rect": [
+      320,
+      234.75,
+      351.36,
+      255.75
+     ],
+     "s": 47,
+     "e": 52,
+     "oldHit": false,
+     "newHit": false,
+     "painted": false,
+     "modelCovered": false
+    },
+    {
+     "rect": [
+      456,
+      318.03,
+      514.97,
+      339.03
+     ],
+     "s": 65,
+     "e": 76,
+     "oldHit": false,
+     "newHit": false,
+     "painted": false,
+     "modelCovered": false
+    },
+    {
+     "rect": [
+      660.95,
+      318.03,
+      708.58,
+      339.03
+     ],
+     "s": 85,
+     "e": 93,
+     "oldHit": true,
+     "newHit": true,
+     "painted": true,
+     "modelCovered": true
+    },
+    {
+     "rect": [
+      798.61,
+      318.03,
+      812.61,
+      339.03
+     ],
+     "s": 99,
+     "e": 112,
+     "oldHit": false,
+     "newHit": false,
+     "painted": false,
+     "modelCovered": false
+    },
+    {
+     "rect": [
+      388,
+      413.89,
+      460.59,
+      434.89
+     ],
+     "s": 122,
+     "e": 132,
+     "oldHit": false,
+     "newHit": false,
+     "painted": false,
+     "modelCovered": false
+    },
+    {
+     "rect": [
+      487.66,
+      413.89,
+      583.8,
+      434.89
+     ],
+     "s": 135,
+     "e": 152,
+     "oldHit": false,
+     "newHit": false,
+     "painted": false,
+     "modelCovered": false
+    }
+   ],
+   "leak": {
+    "bands": 1,
+    "own": "all"
+   },
+   "frames": [
+    "77-77E|ownall|bands1|minL547.97|maxR709.58|oldHit1|newHit1|painted1",
+    "77-77E|ownall|bands1|minL547.97|maxR709.58|oldHit1|newHit1|painted1",
+    "77-77E|ownall|bands1|minL547.97|maxR709.58|oldHit1|newHit1|painted1",
+    "77-77E|ownall|bands1|minL547.97|maxR709.58|oldHit1|newHit1|painted1",
+    "77-77E|ownall|bands1|minL547.97|maxR709.58|oldHit1|newHit1|painted1",
+    "77-77E|ownall|bands1|minL547.97|maxR709.58|oldHit1|newHit1|painted1",
+    "77-77E|ownall|bands1|minL547.97|maxR709.58|oldHit1|newHit1|painted1",
+    "77-77E|ownall|bands1|minL547.97|maxR709.58|oldHit1|newHit1|painted1",
+    "77-77E|ownall|bands1|minL547.97|maxR709.58|oldHit1|newHit1|painted1",
+    "77-77E|ownall|bands1|minL547.97|maxR709.58|oldHit1|newHit1|painted1",
+    "77-77E|ownall|bands1|minL547.97|maxR709.58|oldHit1|newHit1|painted1",
+    "77-77E|ownall|bands1|minL547.97|maxR709.58|oldHit1|newHit1|painted1",
+    "77-77E|ownall|bands1|minL547.97|maxR709.58|oldHit1|newHit1|painted1",
+    "77-77E|ownall|bands1|minL547.97|maxR709.58|oldHit1|newHit1|painted1",
+    "77-77E|ownall|bands1|minL547.97|maxR709.58|oldHit1|newHit1|painted1",
+    "77-77E|ownall|bands1|minL547.97|maxR709.58|oldHit1|newHit1|painted1",
+    "77-77E|ownall|bands1|minL547.97|maxR709.58|oldHit1|newHit1|painted1",
+    "77-77E|ownall|bands1|minL547.97|maxR709.58|oldHit1|newHit1|painted1",
+    "77-77E|ownall|bands1|minL547.97|maxR709.58|oldHit1|newHit1|painted1",
+    "77-77E|ownall|bands1|minL547.97|maxR709.58|oldHit1|newHit1|painted1"
+   ],
+   "cols": {
+    "formula": {
+     "x": 685,
+     "drag": null,
+     "settled": null
+    },
+    "bodyPre": {
+     "x": 490,
+     "drag": null,
+     "settled": null
+    }
+   }
+  },
+  {
+   "label": "B4-prevLineBack",
+   "from": {
+    "x": 860.1328125,
+    "y": 328.53125
+   },
+   "to": {
+    "x": 328.5,
+    "y": 328.53125
+   },
+   "mid": {
+    "sel": "58-115",
+    "own": "all",
+    "live": "115|60|60|115",
+    "union": [
+     58,
+     115
+    ],
+    "bands": [
+     [
+      336,
+      312.38,
+      852.63,
+      344.81
+     ]
+    ],
+    "ours": [
+     [
+      337,
+      318.03,
+      456,
+      339.03
+     ],
+     [
+      457.69,
+      322.03,
+      468,
+      339.03
+     ],
+     [
+      468,
+      326.73,
+      474.31,
+      340.73
+     ],
+     [
+      475.2,
+      333.84,
+      475.2,
+      334.84
+     ],
+     [
+      479.2,
+      319.03,
+      493.23,
+      340.03
+     ],
+     [
+      497.23,
+      322.03,
+      506.08,
+      339.03
+     ],
+     [
+      506.08,
+      326.73,
+      512.39,
+      340.73
+     ],
+     [
+      513.28,
+      333.84,
+      513.28,
+      334.84
+     ],
+     [
+      514.97,
+      318.03,
+      660.95,
+      339.03
+     ],
+     [
+      662.64,
+      322.03,
+      672.19,
+      339.03
+     ],
+     [
+      676.19,
+      319.03,
+      685.2,
+      340.03
+     ],
+     [
+      689.2,
+      322.03,
+      698.59,
+      339.03
+     ],
+     [
+      699.16,
+      322.03,
+      706.89,
+      339.03
+     ],
+     [
+      708.58,
+      318.03,
+      798.61,
+      339.03
+     ],
+     [
+      802.45,
+      330.25,
+      808.77,
+      344.25
+     ],
+     [
+      802.45,
+      316.92,
+      808.77,
+      330.92
+     ],
+     [
+      809.77,
+      333.84,
+      809.77,
+      334.84
+     ],
+     [
+      812.61,
+      318.03,
+      851.64,
+      339.03
+     ]
+    ],
+    "hl": [],
+    "maths": [
+     {
+      "rect": [
+       405,
+       77,
+       477.59,
+       98
+      ],
+      "s": 6,
+      "e": 16,
+      "oldHit": false,
+      "newHit": false,
+      "painted": false,
+      "modelCovered": false
+     },
+     {
+      "rect": [
+       504.66,
+       77,
+       600.8,
+       98
+      ],
+      "s": 19,
+      "e": 36,
+      "oldHit": false,
+      "newHit": false,
+      "painted": false,
+      "modelCovered": false
+     },
+     {
+      "rect": [
+       320,
+       234.75,
+       351.36,
+       255.75
+      ],
+      "s": 47,
+      "e": 52,
+      "oldHit": false,
+      "newHit": false,
+      "painted": false,
+      "modelCovered": false
+     },
+     {
+      "rect": [
+       456,
+       318.03,
+       514.97,
+       339.03
+      ],
+      "s": 65,
+      "e": 76,
+      "oldHit": true,
+      "newHit": true,
+      "painted": true,
+      "modelCovered": true
+     },
+     {
+      "rect": [
+       660.95,
+       318.03,
+       708.58,
+       339.03
+      ],
+      "s": 85,
+      "e": 93,
+      "oldHit": true,
+      "newHit": true,
+      "painted": true,
+      "modelCovered": true
+     },
+     {
+      "rect": [
+       798.61,
+       318.03,
+       812.61,
+       339.03
+      ],
+      "s": 99,
+      "e": 112,
+      "oldHit": true,
+      "newHit": true,
+      "painted": true,
+      "modelCovered": true
+     },
+     {
+      "rect": [
+       388,
+       413.89,
+       460.59,
+       434.89
+      ],
+      "s": 122,
+      "e": 132,
+      "oldHit": false,
+      "newHit": false,
+      "painted": false,
+      "modelCovered": false
+     },
+     {
+      "rect": [
+       487.66,
+       413.89,
+       583.8,
+       434.89
+      ],
+      "s": 135,
+      "e": 152,
+      "oldHit": false,
+      "newHit": false,
+      "painted": false,
+      "modelCovered": false
+     }
+    ],
+    "bandMaxRight": 852.63,
+    "bandMinLeft": 336,
+    "selInMath": 3
+   },
+   "settledSel": "58-115",
+   "settledMaths": [
+    {
+     "rect": [
+      405,
+      77,
+      477.59,
+      98
+     ],
+     "s": 6,
+     "e": 16,
+     "oldHit": false,
+     "newHit": false,
+     "painted": false,
+     "modelCovered": false
+    },
+    {
+     "rect": [
+      504.66,
+      77,
+      600.8,
+      98
+     ],
+     "s": 19,
+     "e": 36,
+     "oldHit": false,
+     "newHit": false,
+     "painted": false,
+     "modelCovered": false
+    },
+    {
+     "rect": [
+      320,
+      234.75,
+      351.36,
+      255.75
+     ],
+     "s": 47,
+     "e": 52,
+     "oldHit": false,
+     "newHit": false,
+     "painted": false,
+     "modelCovered": false
+    },
+    {
+     "rect": [
+      456,
+      318.03,
+      514.97,
+      339.03
+     ],
+     "s": 65,
+     "e": 76,
+     "oldHit": true,
+     "newHit": true,
+     "painted": true,
+     "modelCovered": true
+    },
+    {
+     "rect": [
+      660.95,
+      318.03,
+      708.58,
+      339.03
+     ],
+     "s": 85,
+     "e": 93,
+     "oldHit": true,
+     "newHit": true,
+     "painted": true,
+     "modelCovered": true
+    },
+    {
+     "rect": [
+      798.61,
+      318.03,
+      812.61,
+      339.03
+     ],
+     "s": 99,
+     "e": 112,
+     "oldHit": true,
+     "newHit": true,
+     "painted": true,
+     "modelCovered": true
+    },
+    {
+     "rect": [
+      388,
+      413.89,
+      460.59,
+      434.89
+     ],
+     "s": 122,
+     "e": 132,
+     "oldHit": false,
+     "newHit": false,
+     "painted": false,
+     "modelCovered": false
+    },
+    {
+     "rect": [
+      487.66,
+      413.89,
+      583.8,
+      434.89
+     ],
+     "s": 135,
+     "e": 152,
+     "oldHit": false,
+     "newHit": false,
+     "painted": false,
+     "modelCovered": false
+    }
+   ],
+   "leak": {
+    "bands": 1,
+    "own": "all"
+   },
+   "frames": [
+    "58-115|ownall|bands1|minL336|maxR852.63|oldHit3|newHit3|painted3",
+    "58-115|ownall|bands1|minL336|maxR852.63|oldHit3|newHit3|painted3",
+    "58-115|ownall|bands1|minL336|maxR852.63|oldHit3|newHit3|painted3",
+    "58-115|ownall|bands1|minL336|maxR852.63|oldHit3|newHit3|painted3",
+    "58-115|ownall|bands1|minL336|maxR852.63|oldHit3|newHit3|painted3",
+    "58-115|ownall|bands1|minL336|maxR852.63|oldHit3|newHit3|painted3",
+    "58-115|ownall|bands1|minL336|maxR852.63|oldHit3|newHit3|painted3",
+    "58-115|ownall|bands1|minL336|maxR852.63|oldHit3|newHit3|painted3",
+    "58-115|ownall|bands1|minL336|maxR852.63|oldHit3|newHit3|painted3",
+    "58-115|ownall|bands1|minL336|maxR852.63|oldHit3|newHit3|painted3",
+    "58-115|ownall|bands1|minL336|maxR852.63|oldHit3|newHit3|painted3",
+    "58-115|ownall|bands1|minL336|maxR852.63|oldHit3|newHit3|painted3",
+    "58-115|ownall|bands1|minL336|maxR852.63|oldHit3|newHit3|painted3",
+    "58-115|ownall|bands1|minL336|maxR852.63|oldHit3|newHit3|painted3",
+    "58-115|ownall|bands1|minL336|maxR852.63|oldHit3|newHit3|painted3",
+    "58-115|ownall|bands1|minL336|maxR852.63|oldHit3|newHit3|painted3",
+    "58-115|ownall|bands1|minL336|maxR852.63|oldHit3|newHit3|painted3",
+    "58-115|ownall|bands1|minL336|maxR852.63|oldHit3|newHit3|painted3",
+    "58-115|ownall|bands1|minL336|maxR852.63|oldHit3|newHit3|painted3",
+    "58-115|ownall|bands1|minL336|maxR852.63|oldHit3|newHit3|painted3"
+   ],
+   "cols": {
+    "formula": {
+     "x": 485,
+     "drag": null,
+     "settled": null
+    },
+    "bodyPre": {
+     "x": 388,
+     "drag": null,
+     "settled": null
+    }
+   }
+  }
+ ]
+}

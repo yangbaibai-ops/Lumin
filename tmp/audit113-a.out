@@ -1,0 +1,39 @@
+﻿
+== 1 点源码字形 frames=36 marks={"press":0,"release":6} 回摆(可见)=0 回摆(含选区)=0
+   可见序列 ["REOov0open254:Eimg0[]hl0"]
+
+== 2 点空白带 frames=36 marks={"press":0,"release":6} 回摆(可见)=0 回摆(含选区)=0
+   可见序列 ["REOov0open254:Eimg0[]hl0"]
+
+== 3 点交界缝(行盒下沿内, 多点) frames=234 marks={"press(837,385)":0,"release":212,"press(1087,385)":26,"press(1338,385)":52,"press(837,383)":78,"press(1087,383)":104,"press(1338,383)":130,"press(837,381)":156,"press(1087,381)":182,"press(1338,381)":208} 回摆(可见)=0 回摆(含选区)=6
+   可见序列 ["REOov0open254:Eimg0[]hl0"]
+   RBF 0→1→3: REOov0open254:Eimg0[]hl0|sel255-255E ⇒ REOov0open254:Eimg0[]hl0|sel285-285E ⇒ 回到 REOov0open254:Eimg0[]hl0|sel255-255E
+   RBF 1→2→4: REOov0open254:Eimg0[]hl0|sel285-285E ⇒ REOov0open254:Eimg0[]hl0|sel312-312E ⇒ 回到 REOov0open254:Eimg0[]hl0|sel285-285E
+   RBF 2→3→5: REOov0open254:Eimg0[]hl0|sel312-312E ⇒ REOov0open254:Eimg0[]hl0|sel255-255E ⇒ 回到 REOov0open254:Eimg0[]hl0|sel312-312E
+   RBF 3→4→6: REOov0open254:Eimg0[]hl0|sel255-255E ⇒ REOov0open254:Eimg0[]hl0|sel285-285E ⇒ 回到 REOov0open254:Eimg0[]hl0|sel255-255E
+   RBF 4→5→7: REOov0open254:Eimg0[]hl0|sel285-285E ⇒ REOov0open254:Eimg0[]hl0|sel312-312E ⇒ 回到 REOov0open254:Eimg0[]hl0|sel285-285E
+   RBF 5→6→8: REOov0open254:Eimg0[]hl0|sel312-312E ⇒ REOov0open254:Eimg0[]hl0|sel255-255E ⇒ 回到 REOov0open254:Eimg0[]hl0|sel312-312E
+
+== 4 点图片本体 frames=42 marks={"press":0,"release":8} 回摆(可见)=0 回摆(含选区)=0
+   可见序列 ["-?ov0opennull:eimg0[]hl0","REov0open254:eimg0[]hl0","REov2open254:eimg0[]hl0"]
+
+== 5 图后往左拖 frames=68 marks={"press":0,"shot":32,"release-pre":32,"release-post":34} 回摆(可见)=5 回摆(含选区)=0
+   可见序列 ["-?ov0opennull:eimg0[]hl0","-?ov0opennull:eimg1[254]hl1","-?ov0opennull:eimg0[]hl1","-?ov0opennull:eimg1[254]hl1","-?ov0opennull:eimg0[]hl1","-?ov0opennull:eimg2[153,254]hl1","-?ov0opennull:eimg0[]hl1","-?ov0opennull:eimg2[153,254]hl1","-?ov0opennull:eimg0[]hl1","-?ov0opennull:eimg2[153,254]hl0"]
+   RB 1→2→3: -?ov0opennull:eimg1[254]hl1 ⇒ -?ov0opennull:eimg0[]hl1 ⇒ 回到 -?ov0opennull:eimg1[254]hl1
+   RB 2→3→4: -?ov0opennull:eimg0[]hl1 ⇒ -?ov0opennull:eimg1[254]hl1 ⇒ 回到 -?ov0opennull:eimg0[]hl1
+   RB 4→5→6: -?ov0opennull:eimg0[]hl1 ⇒ -?ov0opennull:eimg2[153,254]hl1 ⇒ 回到 -?ov0opennull:eimg0[]hl1
+   RB 5→6→7: -?ov0opennull:eimg2[153,254]hl1 ⇒ -?ov0opennull:eimg0[]hl1 ⇒ 回到 -?ov0opennull:eimg2[153,254]hl1
+   RB 6→7→8: -?ov0opennull:eimg0[]hl1 ⇒ -?ov0opennull:eimg2[153,254]hl1 ⇒ 回到 -?ov0opennull:eimg0[]hl1
+
+== 6 空白带拖动 frames=54 marks={"press":0,"release":24} 回摆(可见)=0 回摆(含选区)=0
+   可见序列 ["REov2open254:eimg1[254]hl0"]
+
+== 7 正文起手拖过图 frames=58 marks={"press":0,"release":28} 回摆(可见)=2 回摆(含选区)=0
+   可见序列 ["-?ov0opennull:eimg0[]hl0","-?ov0opennull:eimg0[]hl1","-?ov0opennull:eimg1[153]hl1","-?ov0opennull:eimg0[]hl1","-?ov0opennull:eimg1[153]hl1","-?ov0opennull:eimg2[153,254]hl1","REov0open254:eimg0[]hl1","-?ov0opennull:eimg2[153,254]hl0"]
+   RB 1→2→3: -?ov0opennull:eimg0[]hl1 ⇒ -?ov0opennull:eimg1[153]hl1 ⇒ 回到 -?ov0opennull:eimg0[]hl1
+   RB 2→3→4: -?ov0opennull:eimg1[153]hl1 ⇒ -?ov0opennull:eimg0[]hl1 ⇒ 回到 -?ov0opennull:eimg1[153]hl1
+
+== 8 连点图片两次(同处) frames=60 marks={"click1":0,"click2":27} 回摆(可见)=0 回摆(含选区)=0
+   可见序列 ["-?ov0opennull:eimg0[]hl0","REov0open254:eimg0[]hl0","REov2open254:eimg0[]hl0","REOov0open254:Eimg0[]hl0"]
+
+P1 拖动中(未松手) imgSel=0 [] hl=247 sel=118-118

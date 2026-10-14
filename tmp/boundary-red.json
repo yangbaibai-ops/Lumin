@@ -1,0 +1,673 @@
+{
+ "tag": "red",
+ "mode": "shown",
+ "innerWidth": 1424,
+ "geo": {
+  "from": 254,
+  "frags": [
+   {
+    "l": 828.53,
+    "t": 354.08,
+    "r": 1345.97,
+    "b": 386.27,
+    "w": 517.44,
+    "h": 32.19
+   },
+   {
+    "l": 320,
+    "t": 497.33,
+    "r": 690.53,
+    "b": 529.52,
+    "w": 370.53,
+    "h": 32.19
+   }
+  ],
+  "ov": []
+ },
+ "points": {
+  "f0": {
+   "l": 828.53,
+   "t": 354.08,
+   "r": 1345.97,
+   "b": 386.27,
+   "w": 517.44,
+   "h": 32.19
+  },
+  "bandTop": 354.08,
+  "bandBottom": 386.27,
+  "bandY": 386,
+  "midY": 370
+ },
+ "runs": [
+  {
+   "label": "右边界-2",
+   "x": 1344,
+   "y": 386,
+   "pre": {
+    "t": 0,
+    "from": 355,
+    "to": 355,
+    "empty": true,
+    "revealed": 1,
+    "cls": "R",
+    "bg": "rgb(228, 230, 234)",
+    "ov": 0,
+    "ovEl": false,
+    "open": "254:e",
+    "rel": [
+     {
+      "r": {
+       "from": 153,
+       "to": 254
+      },
+      "intersectsEmpty": false,
+      "contained": false,
+      "coversBeyond": false,
+      "intersectsSource": false,
+      "caretInside": false,
+      "caretAtBoundary": false
+     },
+     {
+      "r": {
+       "from": 254,
+       "to": 355
+      },
+      "intersectsEmpty": true,
+      "contained": false,
+      "coversBeyond": false,
+      "intersectsSource": false,
+      "caretInside": false,
+      "caretAtBoundary": true
+     }
+    ]
+   },
+   "frames": 54,
+   "seq": [
+    "#0 R|bgE|ov0|sel355-355-E|open254:e",
+    "#1 -|bg?|ov0|sel313-313-E|opennull:e",
+    "#2 RE|bgO|ov0|sel313-313-E|open254:E",
+    "#3 R|bgE|ov0|sel313-313-E|open254:e"
+   ],
+   "judgements": [
+    {
+     "k": "R|bgE|ov0|sel355-355-E|open254:e",
+     "rel": [
+      "153-254:IE0",
+      "254-355:IE1 @B"
+     ]
+    },
+    {
+     "k": "-|bg?|ov0|sel313-313-E|opennull:e",
+     "rel": [
+      "153-254:IE0",
+      "254-355:IE1 CI"
+     ]
+    },
+    {
+     "k": "RE|bgO|ov0|sel313-313-E|open254:E",
+     "rel": [
+      "153-254:IE0",
+      "254-355:IE1 CI"
+     ]
+    },
+    {
+     "k": "R|bgE|ov0|sel313-313-E|open254:e",
+     "rel": [
+      "153-254:IE0",
+      "254-355:IE1 CI"
+     ]
+    }
+   ]
+  },
+  {
+   "label": "右边界+2",
+   "x": 1348,
+   "y": 386,
+   "pre": {
+    "t": 0,
+    "from": 313,
+    "to": 313,
+    "empty": true,
+    "revealed": 1,
+    "cls": "R",
+    "bg": "rgb(228, 230, 234)",
+    "ov": 0,
+    "ovEl": false,
+    "open": "254:e",
+    "rel": [
+     {
+      "r": {
+       "from": 153,
+       "to": 254
+      },
+      "intersectsEmpty": false,
+      "contained": false,
+      "coversBeyond": false,
+      "intersectsSource": false,
+      "caretInside": false,
+      "caretAtBoundary": false
+     },
+     {
+      "r": {
+       "from": 254,
+       "to": 355
+      },
+      "intersectsEmpty": true,
+      "contained": false,
+      "coversBeyond": false,
+      "intersectsSource": false,
+      "caretInside": true,
+      "caretAtBoundary": false
+     }
+    ]
+   },
+   "frames": 54,
+   "seq": [
+    "#0 R|bgE|ov0|sel313-313-E|open254:e",
+    "#1 RE|bgO|ov0|sel313-313-E|open254:E"
+   ],
+   "judgements": [
+    {
+     "k": "R|bgE|ov0|sel313-313-E|open254:e",
+     "rel": [
+      "153-254:IE0",
+      "254-355:IE1 CI"
+     ]
+    },
+    {
+     "k": "RE|bgO|ov0|sel313-313-E|open254:E",
+     "rel": [
+      "153-254:IE0",
+      "254-355:IE1 CI"
+     ]
+    }
+   ]
+  },
+  {
+   "label": "左边界-2",
+   "x": 827,
+   "y": 386,
+   "pre": {
+    "t": 0,
+    "from": 313,
+    "to": 313,
+    "empty": true,
+    "revealed": 1,
+    "cls": "R RE",
+    "bg": "rgba(0, 0, 0, 0)",
+    "ov": 0,
+    "ovEl": false,
+    "open": "254:E",
+    "rel": [
+     {
+      "r": {
+       "from": 153,
+       "to": 254
+      },
+      "intersectsEmpty": false,
+      "contained": false,
+      "coversBeyond": false,
+      "intersectsSource": false,
+      "caretInside": false,
+      "caretAtBoundary": false
+     },
+     {
+      "r": {
+       "from": 254,
+       "to": 355
+      },
+      "intersectsEmpty": true,
+      "contained": false,
+      "coversBeyond": false,
+      "intersectsSource": false,
+      "caretInside": true,
+      "caretAtBoundary": false
+     }
+    ]
+   },
+   "frames": 54,
+   "seq": [
+    "#0 RE|bgO|ov0|sel313-313-E|open254:E",
+    "#1 R|bgE|ov0|sel153-153-E|open153:e",
+    "#2 R|bgE|ov0|sel254-254-E|open153:e"
+   ],
+   "judgements": [
+    {
+     "k": "RE|bgO|ov0|sel313-313-E|open254:E",
+     "rel": [
+      "153-254:IE0",
+      "254-355:IE1 CI"
+     ]
+    },
+    {
+     "k": "R|bgE|ov0|sel153-153-E|open153:e",
+     "rel": [
+      "153-254:IE1 @B",
+      "254-355:IE0"
+     ]
+    },
+    {
+     "k": "R|bgE|ov0|sel254-254-E|open153:e",
+     "rel": [
+      "153-254:IE1 @B",
+      "254-355:IE1 @B"
+     ]
+    }
+   ]
+  },
+  {
+   "label": "左边界+2",
+   "x": 831,
+   "y": 386,
+   "pre": {
+    "t": 0,
+    "from": 254,
+    "to": 254,
+    "empty": true,
+    "revealed": 1,
+    "cls": "R",
+    "bg": "rgb(228, 230, 234)",
+    "ov": 0,
+    "ovEl": false,
+    "open": "153:e",
+    "rel": [
+     {
+      "r": {
+       "from": 153,
+       "to": 254
+      },
+      "intersectsEmpty": true,
+      "contained": false,
+      "coversBeyond": false,
+      "intersectsSource": false,
+      "caretInside": false,
+      "caretAtBoundary": true
+     },
+     {
+      "r": {
+       "from": 254,
+       "to": 355
+      },
+      "intersectsEmpty": true,
+      "contained": false,
+      "coversBeyond": false,
+      "intersectsSource": false,
+      "caretInside": false,
+      "caretAtBoundary": true
+     }
+    ]
+   },
+   "frames": 54,
+   "seq": [
+    "#0 R|bgE|ov0|sel254-254-E|open153:e",
+    "#1 R|bgE|ov0|sel254-254-E|open254:e",
+    "#2 R|bgE|ov0|sel355-355-E|open254:e"
+   ],
+   "judgements": [
+    {
+     "k": "R|bgE|ov0|sel254-254-E|open153:e",
+     "rel": [
+      "153-254:IE1 @B",
+      "254-355:IE1 @B"
+     ]
+    },
+    {
+     "k": "R|bgE|ov0|sel254-254-E|open254:e",
+     "rel": [
+      "153-254:IE1 @B",
+      "254-355:IE1 @B"
+     ]
+    },
+    {
+     "k": "R|bgE|ov0|sel355-355-E|open254:e",
+     "rel": [
+      "153-254:IE0",
+      "254-355:IE1 @B"
+     ]
+    }
+   ]
+  },
+  {
+   "label": "带下边界-2",
+   "x": 1087,
+   "y": 384,
+   "pre": {
+    "t": 0,
+    "from": 355,
+    "to": 355,
+    "empty": true,
+    "revealed": 1,
+    "cls": "R",
+    "bg": "rgb(228, 230, 234)",
+    "ov": 0,
+    "ovEl": false,
+    "open": "254:e",
+    "rel": [
+     {
+      "r": {
+       "from": 153,
+       "to": 254
+      },
+      "intersectsEmpty": false,
+      "contained": false,
+      "coversBeyond": false,
+      "intersectsSource": false,
+      "caretInside": false,
+      "caretAtBoundary": false
+     },
+     {
+      "r": {
+       "from": 254,
+       "to": 355
+      },
+      "intersectsEmpty": true,
+      "contained": false,
+      "coversBeyond": false,
+      "intersectsSource": false,
+      "caretInside": false,
+      "caretAtBoundary": true
+     }
+    ]
+   },
+   "frames": 54,
+   "seq": [
+    "#0 R|bgE|ov0|sel355-355-E|open254:e",
+    "#1 RE|bgO|ov0|sel285-285-E|open254:E"
+   ],
+   "judgements": [
+    {
+     "k": "R|bgE|ov0|sel355-355-E|open254:e",
+     "rel": [
+      "153-254:IE0",
+      "254-355:IE1 @B"
+     ]
+    },
+    {
+     "k": "RE|bgO|ov0|sel285-285-E|open254:E",
+     "rel": [
+      "153-254:IE0",
+      "254-355:IE1 CI"
+     ]
+    }
+   ]
+  },
+  {
+   "label": "带下边界+2",
+   "x": 1087,
+   "y": 388,
+   "pre": {
+    "t": 0,
+    "from": 285,
+    "to": 285,
+    "empty": true,
+    "revealed": 1,
+    "cls": "R RE",
+    "bg": "rgba(0, 0, 0, 0)",
+    "ov": 0,
+    "ovEl": false,
+    "open": "254:E",
+    "rel": [
+     {
+      "r": {
+       "from": 153,
+       "to": 254
+      },
+      "intersectsEmpty": false,
+      "contained": false,
+      "coversBeyond": false,
+      "intersectsSource": false,
+      "caretInside": false,
+      "caretAtBoundary": false
+     },
+     {
+      "r": {
+       "from": 254,
+       "to": 355
+      },
+      "intersectsEmpty": true,
+      "contained": false,
+      "coversBeyond": false,
+      "intersectsSource": false,
+      "caretInside": true,
+      "caretAtBoundary": false
+     }
+    ]
+   },
+   "frames": 54,
+   "seq": [
+    "#0 RE|bgO|ov0|sel285-285-E|open254:E"
+   ],
+   "judgements": [
+    {
+     "k": "RE|bgO|ov0|sel285-285-E|open254:E",
+     "rel": [
+      "153-254:IE0",
+      "254-355:IE1 CI"
+     ]
+    }
+   ]
+  },
+  {
+   "label": "片段上边界-2",
+   "x": 1087,
+   "y": 352,
+   "pre": {
+    "t": 0,
+    "from": 285,
+    "to": 285,
+    "empty": true,
+    "revealed": 1,
+    "cls": "R RE",
+    "bg": "rgba(0, 0, 0, 0)",
+    "ov": 0,
+    "ovEl": false,
+    "open": "254:E",
+    "rel": [
+     {
+      "r": {
+       "from": 153,
+       "to": 254
+      },
+      "intersectsEmpty": false,
+      "contained": false,
+      "coversBeyond": false,
+      "intersectsSource": false,
+      "caretInside": false,
+      "caretAtBoundary": false
+     },
+     {
+      "r": {
+       "from": 254,
+       "to": 355
+      },
+      "intersectsEmpty": true,
+      "contained": false,
+      "coversBeyond": false,
+      "intersectsSource": false,
+      "caretInside": true,
+      "caretAtBoundary": false
+     }
+    ]
+   },
+   "frames": 54,
+   "seq": [
+    "#0 RE|bgO|ov0|sel285-285-E|open254:E",
+    "#1 -|bg?|ov0|sel117-117-E|opennull:e"
+   ],
+   "judgements": [
+    {
+     "k": "RE|bgO|ov0|sel285-285-E|open254:E",
+     "rel": [
+      "153-254:IE0",
+      "254-355:IE1 CI"
+     ]
+    },
+    {
+     "k": "-|bg?|ov0|sel117-117-E|opennull:e",
+     "rel": [
+      "153-254:IE0",
+      "254-355:IE0"
+     ]
+    }
+   ]
+  },
+  {
+   "label": "片段上边界+2",
+   "x": 1087,
+   "y": 356,
+   "pre": {
+    "t": 0,
+    "from": 117,
+    "to": 117,
+    "empty": true,
+    "revealed": 0,
+    "cls": null,
+    "bg": null,
+    "ov": 0,
+    "ovEl": false,
+    "open": "null:e",
+    "rel": [
+     {
+      "r": {
+       "from": 153,
+       "to": 254
+      },
+      "intersectsEmpty": false,
+      "contained": false,
+      "coversBeyond": false,
+      "intersectsSource": false,
+      "caretInside": false,
+      "caretAtBoundary": false
+     },
+     {
+      "r": {
+       "from": 254,
+       "to": 355
+      },
+      "intersectsEmpty": false,
+      "contained": false,
+      "coversBeyond": false,
+      "intersectsSource": false,
+      "caretInside": false,
+      "caretAtBoundary": false
+     }
+    ]
+   },
+   "frames": 54,
+   "seq": [
+    "#0 -|bg?|ov0|sel117-117-E|opennull:e",
+    "#1 -|bg?|ov0|sel355-355-E|opennull:e",
+    "#2 R|bgE|ov0|sel355-355-E|open254:e"
+   ],
+   "judgements": [
+    {
+     "k": "-|bg?|ov0|sel117-117-E|opennull:e",
+     "rel": [
+      "153-254:IE0",
+      "254-355:IE0"
+     ]
+    },
+    {
+     "k": "-|bg?|ov0|sel355-355-E|opennull:e",
+     "rel": [
+      "153-254:IE0",
+      "254-355:IE1 @B"
+     ]
+    },
+    {
+     "k": "R|bgE|ov0|sel355-355-E|open254:e",
+     "rel": [
+      "153-254:IE0",
+      "254-355:IE1 @B"
+     ]
+    }
+   ]
+  },
+  {
+   "label": "带内中部(对照)",
+   "x": 1087,
+   "y": 386,
+   "pre": {
+    "t": 0,
+    "from": 355,
+    "to": 355,
+    "empty": true,
+    "revealed": 1,
+    "cls": "R",
+    "bg": "rgb(228, 230, 234)",
+    "ov": 0,
+    "ovEl": false,
+    "open": "254:e",
+    "rel": [
+     {
+      "r": {
+       "from": 153,
+       "to": 254
+      },
+      "intersectsEmpty": false,
+      "contained": false,
+      "coversBeyond": false,
+      "intersectsSource": false,
+      "caretInside": false,
+      "caretAtBoundary": false
+     },
+     {
+      "r": {
+       "from": 254,
+       "to": 355
+      },
+      "intersectsEmpty": true,
+      "contained": false,
+      "coversBeyond": false,
+      "intersectsSource": false,
+      "caretInside": false,
+      "caretAtBoundary": true
+     }
+    ]
+   },
+   "frames": 54,
+   "seq": [
+    "#0 R|bgE|ov0|sel355-355-E|open254:e",
+    "#1 -|bg?|ov0|sel285-285-E|opennull:e",
+    "#2 RE|bgO|ov0|sel285-285-E|open254:E",
+    "#3 R|bgE|ov0|sel285-285-E|open254:e"
+   ],
+   "judgements": [
+    {
+     "k": "R|bgE|ov0|sel355-355-E|open254:e",
+     "rel": [
+      "153-254:IE0",
+      "254-355:IE1 @B"
+     ]
+    },
+    {
+     "k": "-|bg?|ov0|sel285-285-E|opennull:e",
+     "rel": [
+      "153-254:IE0",
+      "254-355:IE1 CI"
+     ]
+    },
+    {
+     "k": "RE|bgO|ov0|sel285-285-E|open254:E",
+     "rel": [
+      "153-254:IE0",
+      "254-355:IE1 CI"
+     ]
+    },
+    {
+     "k": "R|bgE|ov0|sel285-285-E|open254:e",
+     "rel": [
+      "153-254:IE0",
+      "254-355:IE1 CI"
+     ]
+    }
+   ]
+  }
+ ],
+ "clip": {
+  "x": 768,
+  "y": 324,
+  "width": 638,
+  "height": 93
+ }
+}

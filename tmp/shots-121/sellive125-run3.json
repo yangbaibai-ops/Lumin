@@ -1,0 +1,1269 @@
+{
+ "tag": "run3",
+ "info": {
+  "tokens": {
+   "sel": "#1118271c",
+   "edge": "#e4e6ea",
+   "panel2": "#e9ebf0"
+  },
+  "domBg": "rgba(0, 0, 0, 0)",
+  "bandCss": null,
+  "th": {
+   "rect": [
+    320.5,
+    731.14,
+    497.13,
+    794.58
+   ],
+   "bg": "rgb(233, 235, 240)",
+   "z": "auto",
+   "pos": "static",
+   "pe": "auto",
+   "text": "环节"
+  },
+  "thText": [
+   334,
+   747.52,
+   483.63,
+   778.2
+  ],
+  "revealed": {
+   "rects": [
+    [
+     828.53,
+     354.08,
+     1345.97,
+     386.27
+    ],
+    [
+     320,
+     497.33,
+     690.53,
+     529.52
+    ]
+   ],
+   "bg": "rgb(228, 230, 234)",
+   "z": "auto",
+   "pos": "static",
+   "pe": "auto",
+   "kind": "raw"
+  },
+  "parentChildren": [
+   "tiptap ProseMirror md-preview ProseMirror-focused:1",
+   "img-zoom-bar:30",
+   "img-src-overlay:auto"
+  ]
+ },
+ "cases": [
+  {
+   "label": "T-表头",
+   "from": {
+    "x": 350,
+    "y": 763
+   },
+   "to": {
+    "x": 477,
+    "y": 763
+   },
+   "frames": [
+    {
+     "sel": "425-425E",
+     "type": "text",
+     "own": null,
+     "miss": null,
+     "editing": null,
+     "bands": [],
+     "hl": [],
+     "nat": [
+      [
+       350.14,
+       736.14,
+       350.16,
+       756.14
+      ]
+     ],
+     "revealed": 0,
+     "residue": []
+    },
+    {
+     "sel": "425-428",
+     "type": "text",
+     "own": "all",
+     "miss": "0/0",
+     "editing": null,
+     "bands": [
+      [
+       349.13,
+       730.8,
+       399.59,
+       761.47
+      ]
+     ],
+     "hl": [],
+     "nat": [
+      [
+       350.14,
+       736.14,
+       398.61,
+       756.14
+      ]
+     ],
+     "revealed": 0,
+     "t": 0,
+     "residue": [
+      {
+       "nat": [
+        350.14,
+        736.14,
+        398.61,
+        756.14
+       ],
+       "covered": true,
+       "coveredVisible": true,
+       "hiddenByBg": false
+      }
+     ]
+    },
+    {
+     "sel": "425-428",
+     "type": "text",
+     "own": "all",
+     "miss": "0/0",
+     "editing": null,
+     "bands": [
+      [
+       349.13,
+       730.8,
+       399.59,
+       761.47
+      ]
+     ],
+     "hl": [],
+     "nat": [
+      [
+       350.14,
+       736.14,
+       398.61,
+       756.14
+      ]
+     ],
+     "revealed": 0,
+     "t": 1,
+     "residue": [
+      {
+       "nat": [
+        350.14,
+        736.14,
+        398.61,
+        756.14
+       ],
+       "covered": true,
+       "coveredVisible": true,
+       "hiddenByBg": false
+      }
+     ]
+    },
+    {
+     "sel": "425-428",
+     "type": "text",
+     "own": "all",
+     "miss": "0/0",
+     "editing": null,
+     "bands": [
+      [
+       349.13,
+       730.8,
+       399.59,
+       761.47
+      ]
+     ],
+     "hl": [],
+     "nat": [
+      [
+       350.14,
+       736.14,
+       398.61,
+       756.14
+      ]
+     ],
+     "revealed": 0,
+     "t": 2,
+     "residue": [
+      {
+       "nat": [
+        350.14,
+        736.14,
+        398.61,
+        756.14
+       ],
+       "covered": true,
+       "coveredVisible": true,
+       "hiddenByBg": false
+      }
+     ]
+    },
+    {
+     "sel": "425-428",
+     "type": "text",
+     "own": "all",
+     "miss": "0/0",
+     "editing": null,
+     "bands": [
+      [
+       349.13,
+       730.8,
+       399.59,
+       761.47
+      ]
+     ],
+     "hl": [],
+     "nat": [
+      [
+       350.14,
+       736.14,
+       398.61,
+       756.14
+      ]
+     ],
+     "revealed": 0,
+     "t": 3,
+     "residue": [
+      {
+       "nat": [
+        350.14,
+        736.14,
+        398.61,
+        756.14
+       ],
+       "covered": true,
+       "coveredVisible": true,
+       "hiddenByBg": false
+      }
+     ]
+    },
+    {
+     "sel": "425-428",
+     "type": "text",
+     "own": "all",
+     "miss": "0/0",
+     "editing": null,
+     "bands": [
+      [
+       349.13,
+       730.8,
+       399.59,
+       761.47
+      ]
+     ],
+     "hl": [],
+     "nat": [
+      [
+       350.14,
+       736.14,
+       398.61,
+       756.14
+      ]
+     ],
+     "revealed": 0,
+     "t": 4,
+     "residue": [
+      {
+       "nat": [
+        350.14,
+        736.14,
+        398.61,
+        756.14
+       ],
+       "covered": true,
+       "coveredVisible": true,
+       "hiddenByBg": false
+      }
+     ]
+    },
+    {
+     "sel": "425-428",
+     "type": "text",
+     "own": "all",
+     "miss": "0/0",
+     "editing": null,
+     "bands": [
+      [
+       349.13,
+       730.8,
+       399.59,
+       761.47
+      ]
+     ],
+     "hl": [],
+     "nat": [
+      [
+       350.14,
+       736.14,
+       398.61,
+       756.14
+      ]
+     ],
+     "revealed": 0,
+     "t": 5,
+     "residue": [
+      {
+       "nat": [
+        350.14,
+        736.14,
+        398.61,
+        756.14
+       ],
+       "covered": true,
+       "coveredVisible": true,
+       "hiddenByBg": false
+      }
+     ]
+    },
+    {
+     "sel": "425-428",
+     "type": "text",
+     "own": "all",
+     "miss": "0/0",
+     "editing": null,
+     "bands": [
+      [
+       349.13,
+       730.8,
+       399.59,
+       761.47
+      ]
+     ],
+     "hl": [],
+     "nat": [
+      [
+       350.14,
+       736.14,
+       398.61,
+       756.14
+      ]
+     ],
+     "revealed": 0,
+     "t": 6,
+     "residue": [
+      {
+       "nat": [
+        350.14,
+        736.14,
+        398.61,
+        756.14
+       ],
+       "covered": true,
+       "coveredVisible": true,
+       "hiddenByBg": false
+      }
+     ]
+    },
+    {
+     "sel": "425-428",
+     "type": "text",
+     "own": "all",
+     "miss": "0/0",
+     "editing": null,
+     "bands": [
+      [
+       349.13,
+       730.8,
+       399.59,
+       761.47
+      ]
+     ],
+     "hl": [],
+     "nat": [
+      [
+       350.14,
+       736.14,
+       398.61,
+       756.14
+      ]
+     ],
+     "revealed": 0,
+     "t": 7,
+     "residue": [
+      {
+       "nat": [
+        350.14,
+        736.14,
+        398.61,
+        756.14
+       ],
+       "covered": true,
+       "coveredVisible": true,
+       "hiddenByBg": false
+      }
+     ]
+    },
+    {
+     "sel": "425-428",
+     "type": "text",
+     "own": "all",
+     "miss": "0/0",
+     "editing": null,
+     "bands": [
+      [
+       349.13,
+       730.8,
+       399.59,
+       761.47
+      ]
+     ],
+     "hl": [],
+     "nat": [
+      [
+       350.14,
+       736.14,
+       398.61,
+       756.14
+      ]
+     ],
+     "revealed": 0,
+     "t": 8,
+     "residue": [
+      {
+       "nat": [
+        350.14,
+        736.14,
+        398.61,
+        756.14
+       ],
+       "covered": true,
+       "coveredVisible": true,
+       "hiddenByBg": false
+      }
+     ]
+    },
+    {
+     "sel": "425-428",
+     "type": "text",
+     "own": "all",
+     "miss": "0/0",
+     "editing": null,
+     "bands": [
+      [
+       349.13,
+       730.8,
+       399.59,
+       761.47
+      ]
+     ],
+     "hl": [],
+     "nat": [
+      [
+       350.14,
+       736.14,
+       398.61,
+       756.14
+      ]
+     ],
+     "revealed": 0,
+     "t": 9,
+     "residue": [
+      {
+       "nat": [
+        350.14,
+        736.14,
+        398.61,
+        756.14
+       ],
+       "covered": true,
+       "coveredVisible": true,
+       "hiddenByBg": false
+      }
+     ]
+    },
+    {
+     "sel": "425-428",
+     "type": "text",
+     "own": "all",
+     "miss": "0/0",
+     "editing": null,
+     "bands": [
+      [
+       349.13,
+       730.8,
+       399.59,
+       761.47
+      ]
+     ],
+     "hl": [],
+     "nat": [
+      [
+       350.14,
+       736.14,
+       398.61,
+       756.14
+      ]
+     ],
+     "revealed": 0,
+     "t": 10,
+     "residue": [
+      {
+       "nat": [
+        350.14,
+        736.14,
+        398.61,
+        756.14
+       ],
+       "covered": true,
+       "coveredVisible": true,
+       "hiddenByBg": false
+      }
+     ]
+    },
+    {
+     "sel": "425-428",
+     "type": "text",
+     "own": "all",
+     "miss": "0/0",
+     "editing": null,
+     "bands": [
+      [
+       349.13,
+       730.8,
+       399.59,
+       761.47
+      ]
+     ],
+     "hl": [],
+     "nat": [
+      [
+       350.14,
+       736.14,
+       398.61,
+       756.14
+      ]
+     ],
+     "revealed": 0,
+     "t": 11,
+     "residue": [
+      {
+       "nat": [
+        350.14,
+        736.14,
+        398.61,
+        756.14
+       ],
+       "covered": true,
+       "coveredVisible": true,
+       "hiddenByBg": false
+      }
+     ]
+    },
+    {
+     "sel": "425-428",
+     "type": "text",
+     "own": "all",
+     "miss": "0/0",
+     "editing": null,
+     "bands": [
+      [
+       349.13,
+       730.8,
+       399.59,
+       761.47
+      ]
+     ],
+     "hl": [],
+     "nat": [
+      [
+       350.14,
+       736.14,
+       398.61,
+       756.14
+      ]
+     ],
+     "revealed": 0,
+     "t": 12,
+     "residue": [
+      {
+       "nat": [
+        350.14,
+        736.14,
+        398.61,
+        756.14
+       ],
+       "covered": true,
+       "coveredVisible": true,
+       "hiddenByBg": false
+      }
+     ]
+    },
+    {
+     "sel": "425-428",
+     "type": "text",
+     "own": "all",
+     "miss": "0/0",
+     "editing": null,
+     "bands": [
+      [
+       349.13,
+       730.8,
+       399.59,
+       761.47
+      ]
+     ],
+     "hl": [],
+     "nat": [
+      [
+       350.14,
+       736.14,
+       398.61,
+       756.14
+      ]
+     ],
+     "revealed": 0,
+     "t": 13,
+     "residue": [
+      {
+       "nat": [
+        350.14,
+        736.14,
+        398.61,
+        756.14
+       ],
+       "covered": true,
+       "coveredVisible": true,
+       "hiddenByBg": false
+      }
+     ]
+    }
+   ],
+   "samples": [
+    {
+     "name": "表头单元中心偏下",
+     "x": 409,
+     "y": 772,
+     "drag": [
+      246,
+      246,
+      247
+     ],
+     "settled": [
+      246,
+      246,
+      247
+     ],
+     "Δ": 0,
+     "拖动期有样式": true
+    },
+    {
+     "name": "表头字形行",
+     "x": 350,
+     "y": 763,
+     "drag": [
+      246,
+      246,
+      247
+     ],
+     "settled": [
+      246,
+      246,
+      247
+     ],
+     "Δ": 0,
+     "拖动期有样式": true
+    },
+    {
+     "name": "表体首行",
+     "x": 409,
+     "y": 821,
+     "drag": [
+      255,
+      255,
+      255
+     ],
+     "settled": [
+      255,
+      255,
+      255
+     ],
+     "Δ": 0,
+     "拖动期有样式": true
+    }
+   ],
+   "settled": {
+    "sel": "425-431",
+    "type": "text",
+    "own": null,
+    "miss": null,
+    "editing": null,
+    "bands": [],
+    "hl": [],
+    "nat": [
+     [
+      364.84,
+      736.14,
+      413.31,
+      756.14
+     ],
+     [
+      413.31,
+      736.14,
+      428.02,
+      756.14
+     ],
+     [
+      413.31,
+      736.14,
+      428.02,
+      756.14
+     ]
+    ],
+    "revealed": 0
+   },
+   "resMax": 0,
+   "resFramesBad": 0,
+   "dragCovered": 1,
+   "dragOwn": "all",
+   "dragHl": 0,
+   "dragNat": 1
+  },
+  {
+   "label": "S-刚显形源码",
+   "from": {
+    "x": 837,
+    "y": 370
+   },
+   "to": {
+    "x": 987,
+    "y": 370
+   },
+   "frames": [
+    {
+     "sel": "255-255E",
+     "type": "text",
+     "own": null,
+     "miss": null,
+     "editing": false,
+     "bands": [],
+     "hl": [],
+     "nat": [
+      [
+       841.13,
+       359.67,
+       841.14,
+       380.67
+      ]
+     ],
+     "revealed": 1,
+     "residue": []
+    },
+    {
+     "sel": "255-273",
+     "type": "text",
+     "own": "all",
+     "miss": "0/0",
+     "editing": false,
+     "bands": [
+      [
+       840.13,
+       354.02,
+       991.03,
+       497.91
+      ]
+     ],
+     "hl": [],
+     "nat": [
+      [
+       841.13,
+       359.67,
+       990.03,
+       380.67
+      ]
+     ],
+     "revealed": 1,
+     "t": 0,
+     "residue": [
+      {
+       "nat": [
+        841.13,
+        359.67,
+        990.03,
+        380.67
+       ],
+       "covered": true,
+       "coveredVisible": false,
+       "hiddenByBg": true
+      }
+     ]
+    },
+    {
+     "sel": "255-273",
+     "type": "text",
+     "own": "all",
+     "miss": "0/0",
+     "editing": false,
+     "bands": [
+      [
+       840.13,
+       354.02,
+       991.03,
+       497.91
+      ]
+     ],
+     "hl": [],
+     "nat": [
+      [
+       841.13,
+       359.67,
+       990.03,
+       380.67
+      ]
+     ],
+     "revealed": 1,
+     "t": 1,
+     "residue": [
+      {
+       "nat": [
+        841.13,
+        359.67,
+        990.03,
+        380.67
+       ],
+       "covered": true,
+       "coveredVisible": false,
+       "hiddenByBg": true
+      }
+     ]
+    },
+    {
+     "sel": "255-273",
+     "type": "text",
+     "own": "all",
+     "miss": "0/0",
+     "editing": false,
+     "bands": [
+      [
+       840.13,
+       354.02,
+       991.03,
+       497.91
+      ]
+     ],
+     "hl": [],
+     "nat": [
+      [
+       841.13,
+       359.67,
+       990.03,
+       380.67
+      ]
+     ],
+     "revealed": 1,
+     "t": 2,
+     "residue": [
+      {
+       "nat": [
+        841.13,
+        359.67,
+        990.03,
+        380.67
+       ],
+       "covered": true,
+       "coveredVisible": false,
+       "hiddenByBg": true
+      }
+     ]
+    },
+    {
+     "sel": "255-273",
+     "type": "text",
+     "own": "all",
+     "miss": "0/0",
+     "editing": false,
+     "bands": [
+      [
+       840.13,
+       354.02,
+       991.03,
+       497.91
+      ]
+     ],
+     "hl": [],
+     "nat": [
+      [
+       841.13,
+       359.67,
+       990.03,
+       380.67
+      ]
+     ],
+     "revealed": 1,
+     "t": 3,
+     "residue": [
+      {
+       "nat": [
+        841.13,
+        359.67,
+        990.03,
+        380.67
+       ],
+       "covered": true,
+       "coveredVisible": false,
+       "hiddenByBg": true
+      }
+     ]
+    },
+    {
+     "sel": "255-273",
+     "type": "text",
+     "own": "all",
+     "miss": "0/0",
+     "editing": false,
+     "bands": [
+      [
+       840.13,
+       354.02,
+       991.03,
+       497.91
+      ]
+     ],
+     "hl": [],
+     "nat": [
+      [
+       841.13,
+       359.67,
+       990.03,
+       380.67
+      ]
+     ],
+     "revealed": 1,
+     "t": 4,
+     "residue": [
+      {
+       "nat": [
+        841.13,
+        359.67,
+        990.03,
+        380.67
+       ],
+       "covered": true,
+       "coveredVisible": false,
+       "hiddenByBg": true
+      }
+     ]
+    },
+    {
+     "sel": "255-273",
+     "type": "text",
+     "own": "all",
+     "miss": "0/0",
+     "editing": false,
+     "bands": [
+      [
+       840.13,
+       354.02,
+       991.03,
+       497.91
+      ]
+     ],
+     "hl": [],
+     "nat": [
+      [
+       841.13,
+       359.67,
+       990.03,
+       380.67
+      ]
+     ],
+     "revealed": 1,
+     "t": 5,
+     "residue": [
+      {
+       "nat": [
+        841.13,
+        359.67,
+        990.03,
+        380.67
+       ],
+       "covered": true,
+       "coveredVisible": false,
+       "hiddenByBg": true
+      }
+     ]
+    },
+    {
+     "sel": "255-273",
+     "type": "text",
+     "own": "all",
+     "miss": "0/0",
+     "editing": false,
+     "bands": [
+      [
+       840.13,
+       354.02,
+       991.03,
+       497.91
+      ]
+     ],
+     "hl": [],
+     "nat": [
+      [
+       841.13,
+       359.67,
+       990.03,
+       380.67
+      ]
+     ],
+     "revealed": 1,
+     "t": 6,
+     "residue": [
+      {
+       "nat": [
+        841.13,
+        359.67,
+        990.03,
+        380.67
+       ],
+       "covered": true,
+       "coveredVisible": false,
+       "hiddenByBg": true
+      }
+     ]
+    },
+    {
+     "sel": "255-273",
+     "type": "text",
+     "own": "all",
+     "miss": "0/0",
+     "editing": false,
+     "bands": [
+      [
+       840.13,
+       354.02,
+       991.03,
+       497.91
+      ]
+     ],
+     "hl": [],
+     "nat": [
+      [
+       841.13,
+       359.67,
+       990.03,
+       380.67
+      ]
+     ],
+     "revealed": 1,
+     "t": 7,
+     "residue": [
+      {
+       "nat": [
+        841.13,
+        359.67,
+        990.03,
+        380.67
+       ],
+       "covered": true,
+       "coveredVisible": false,
+       "hiddenByBg": true
+      }
+     ]
+    },
+    {
+     "sel": "255-273",
+     "type": "text",
+     "own": "all",
+     "miss": "0/0",
+     "editing": false,
+     "bands": [
+      [
+       840.13,
+       354.02,
+       991.03,
+       497.91
+      ]
+     ],
+     "hl": [],
+     "nat": [
+      [
+       841.13,
+       359.67,
+       990.03,
+       380.67
+      ]
+     ],
+     "revealed": 1,
+     "t": 8,
+     "residue": [
+      {
+       "nat": [
+        841.13,
+        359.67,
+        990.03,
+        380.67
+       ],
+       "covered": true,
+       "coveredVisible": false,
+       "hiddenByBg": true
+      }
+     ]
+    },
+    {
+     "sel": "255-273",
+     "type": "text",
+     "own": "all",
+     "miss": "0/0",
+     "editing": false,
+     "bands": [
+      [
+       840.13,
+       354.02,
+       991.03,
+       497.91
+      ]
+     ],
+     "hl": [],
+     "nat": [
+      [
+       841.13,
+       359.67,
+       990.03,
+       380.67
+      ]
+     ],
+     "revealed": 1,
+     "t": 9,
+     "residue": [
+      {
+       "nat": [
+        841.13,
+        359.67,
+        990.03,
+        380.67
+       ],
+       "covered": true,
+       "coveredVisible": false,
+       "hiddenByBg": true
+      }
+     ]
+    },
+    {
+     "sel": "255-273",
+     "type": "text",
+     "own": "all",
+     "miss": "0/0",
+     "editing": false,
+     "bands": [
+      [
+       840.13,
+       354.02,
+       991.03,
+       497.91
+      ]
+     ],
+     "hl": [],
+     "nat": [
+      [
+       841.13,
+       359.67,
+       990.03,
+       380.67
+      ]
+     ],
+     "revealed": 1,
+     "t": 10,
+     "residue": [
+      {
+       "nat": [
+        841.13,
+        359.67,
+        990.03,
+        380.67
+       ],
+       "covered": true,
+       "coveredVisible": false,
+       "hiddenByBg": true
+      }
+     ]
+    },
+    {
+     "sel": "255-273",
+     "type": "text",
+     "own": "all",
+     "miss": "0/0",
+     "editing": false,
+     "bands": [
+      [
+       840.13,
+       354.02,
+       991.03,
+       497.91
+      ]
+     ],
+     "hl": [],
+     "nat": [
+      [
+       841.13,
+       359.67,
+       990.03,
+       380.67
+      ]
+     ],
+     "revealed": 1,
+     "t": 11,
+     "residue": [
+      {
+       "nat": [
+        841.13,
+        359.67,
+        990.03,
+        380.67
+       ],
+       "covered": true,
+       "coveredVisible": false,
+       "hiddenByBg": true
+      }
+     ]
+    }
+   ],
+   "samples": [
+    {
+     "name": "正文行(源码外)",
+     "x": 354,
+     "y": 424,
+     "drag": [
+      255,
+      224,
+      159
+     ],
+     "settled": [
+      255,
+      224,
+      159
+     ],
+     "Δ": 0,
+     "拖动期有样式": true
+    }
+   ],
+   "settled": {
+    "sel": "255-273",
+    "type": "text",
+    "own": null,
+    "miss": null,
+    "editing": false,
+    "bands": [],
+    "hl": [],
+    "nat": [
+     [
+      841.13,
+      359.67,
+      990.03,
+      380.67
+     ]
+    ],
+    "revealed": 1
+   },
+   "resMax": 1,
+   "resFramesBad": 12,
+   "dragCovered": 1,
+   "dragOwn": "all",
+   "dragHl": 0,
+   "dragNat": 1
+  }
+ ]
+}

@@ -1,0 +1,32 @@
+{
+ "tag": "green",
+ "cases": [
+  {
+   "name": "img.from (254, 前一段的 to 也是它)",
+   "pos": 254,
+   "dedup": [
+    "R|ov2|open254:e|sel254-254"
+   ],
+   "stable": true,
+   "samples": 32
+  },
+  {
+   "name": "img.to (355)",
+   "pos": 355,
+   "dedup": [
+    "R|ov2|open254:e|sel355-355"
+   ],
+   "stable": true,
+   "samples": 32
+  },
+  {
+   "name": "from+1 (255, 严格之内)",
+   "pos": 255,
+   "dedup": [
+    "RE|ov0|open254:E|sel255-255"
+   ],
+   "stable": true,
+   "samples": 32
+  }
+ ]
+}

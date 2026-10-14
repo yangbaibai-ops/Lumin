@@ -1,0 +1,401 @@
+{
+ "tag": "a",
+ "geo0": {
+  "widgets": [
+   {
+    "from": 153,
+    "l": 610.98,
+    "t": 354.67,
+    "r": 825.98,
+    "b": 497.92,
+    "w": 215,
+    "h": 143.25
+   },
+   {
+    "from": 254,
+    "l": 838.72,
+    "t": 354.67,
+    "r": 1053.72,
+    "b": 497.92,
+    "w": 215,
+    "h": 143.25
+   }
+  ],
+  "text": {
+   "l": 320,
+   "t": 413.89,
+   "r": 388,
+   "b": 434.89,
+   "w": 68,
+   "h": 21
+  },
+  "para": {
+   "l": 320,
+   "t": 354.67,
+   "r": 1362,
+   "b": 497.92,
+   "w": 1042,
+   "h": 143.25
+  },
+  "revealed": null,
+  "ovs": []
+ },
+ "gestures": [
+  {
+   "name": "1 点源码字形",
+   "pre": {
+    "from": 355,
+    "to": 355,
+    "empty": true,
+    "revealed": 1,
+    "cls": "R",
+    "bg": "rgb(228, 230, 234)",
+    "ov": 2,
+    "open": "254:e",
+    "imgSel": 0,
+    "imgSelFrom": "",
+    "markedNodes": 0,
+    "hl": 0
+   },
+   "frames": 36,
+   "marks": {
+    "press": 0,
+    "release": 6
+   },
+   "dedVis": [
+    "REOov0open254:Eimg0[]hl0"
+   ],
+   "dedFull": [
+    "REOov0open254:Eimg0[]hl0|sel286-286E"
+   ],
+   "rbVis": [],
+   "rbFull": [],
+   "preUp": null
+  },
+  {
+   "name": "2 点空白带",
+   "pre": {
+    "from": 355,
+    "to": 355,
+    "empty": true,
+    "revealed": 1,
+    "cls": "R",
+    "bg": "rgb(228, 230, 234)",
+    "ov": 2,
+    "open": "254:e",
+    "imgSel": 0,
+    "imgSelFrom": "",
+    "markedNodes": 0,
+    "hl": 0
+   },
+   "frames": 36,
+   "marks": {
+    "press": 0,
+    "release": 6
+   },
+   "dedVis": [
+    "REOov0open254:Eimg0[]hl0"
+   ],
+   "dedFull": [
+    "REOov0open254:Eimg0[]hl0|sel285-285E"
+   ],
+   "rbVis": [],
+   "rbFull": [],
+   "preUp": null
+  },
+  {
+   "name": "3 点交界缝(行盒下沿内, 多点)",
+   "pre": {
+    "from": 355,
+    "to": 355,
+    "empty": true,
+    "revealed": 1,
+    "cls": "R",
+    "bg": "rgb(228, 230, 234)",
+    "ov": 2,
+    "open": "254:e",
+    "imgSel": 0,
+    "imgSelFrom": "",
+    "markedNodes": 0,
+    "hl": 0
+   },
+   "frames": 234,
+   "marks": {
+    "press(837,385)": 0,
+    "release": 212,
+    "press(1087,385)": 26,
+    "press(1338,385)": 52,
+    "press(837,383)": 78,
+    "press(1087,383)": 104,
+    "press(1338,383)": 130,
+    "press(837,381)": 156,
+    "press(1087,381)": 182,
+    "press(1338,381)": 208
+   },
+   "dedVis": [
+    "REOov0open254:Eimg0[]hl0"
+   ],
+   "dedFull": [
+    "REOov0open254:Eimg0[]hl0|sel255-255E",
+    "REOov0open254:Eimg0[]hl0|sel285-285E",
+    "REOov0open254:Eimg0[]hl0|sel312-312E",
+    "REOov0open254:Eimg0[]hl0|sel255-255E",
+    "REOov0open254:Eimg0[]hl0|sel285-285E",
+    "REOov0open254:Eimg0[]hl0|sel312-312E",
+    "REOov0open254:Eimg0[]hl0|sel255-255E",
+    "REOov0open254:Eimg0[]hl0|sel285-285E",
+    "REOov0open254:Eimg0[]hl0|sel312-312E"
+   ],
+   "rbVis": [],
+   "rbFull": [
+    "0→1→3: REOov0open254:Eimg0[]hl0|sel255-255E ⇒ REOov0open254:Eimg0[]hl0|sel285-285E ⇒ 回到 REOov0open254:Eimg0[]hl0|sel255-255E",
+    "1→2→4: REOov0open254:Eimg0[]hl0|sel285-285E ⇒ REOov0open254:Eimg0[]hl0|sel312-312E ⇒ 回到 REOov0open254:Eimg0[]hl0|sel285-285E",
+    "2→3→5: REOov0open254:Eimg0[]hl0|sel312-312E ⇒ REOov0open254:Eimg0[]hl0|sel255-255E ⇒ 回到 REOov0open254:Eimg0[]hl0|sel312-312E",
+    "3→4→6: REOov0open254:Eimg0[]hl0|sel255-255E ⇒ REOov0open254:Eimg0[]hl0|sel285-285E ⇒ 回到 REOov0open254:Eimg0[]hl0|sel255-255E",
+    "4→5→7: REOov0open254:Eimg0[]hl0|sel285-285E ⇒ REOov0open254:Eimg0[]hl0|sel312-312E ⇒ 回到 REOov0open254:Eimg0[]hl0|sel285-285E",
+    "5→6→8: REOov0open254:Eimg0[]hl0|sel312-312E ⇒ REOov0open254:Eimg0[]hl0|sel255-255E ⇒ 回到 REOov0open254:Eimg0[]hl0|sel312-312E"
+   ],
+   "preUp": null
+  },
+  {
+   "name": "4 点图片本体",
+   "pre": {
+    "from": 312,
+    "to": 312,
+    "empty": true,
+    "revealed": 1,
+    "cls": "R RE",
+    "bg": "rgba(0, 0, 0, 0)",
+    "ov": 0,
+    "open": "254:E",
+    "imgSel": 0,
+    "imgSelFrom": "",
+    "markedNodes": 0,
+    "hl": 0
+   },
+   "frames": 42,
+   "marks": {
+    "press": 0,
+    "release": 8
+   },
+   "dedVis": [
+    "-?ov0opennull:eimg0[]hl0",
+    "REov0open254:eimg0[]hl0",
+    "REov2open254:eimg0[]hl0"
+   ],
+   "dedFull": [
+    "-?ov0opennull:eimg0[]hl0|sel2-2E",
+    "REov0open254:eimg0[]hl0|sel254-254E",
+    "REov2open254:eimg0[]hl0|sel355-355E"
+   ],
+   "rbVis": [],
+   "rbFull": [],
+   "preUp": null
+  },
+  {
+   "name": "5 图后往左拖",
+   "pre": {
+    "from": 355,
+    "to": 355,
+    "empty": true,
+    "revealed": 1,
+    "cls": "R",
+    "bg": "rgb(228, 230, 234)",
+    "ov": 2,
+    "open": "254:e",
+    "imgSel": 0,
+    "imgSelFrom": "",
+    "markedNodes": 0,
+    "hl": 0
+   },
+   "frames": 68,
+   "marks": {
+    "press": 0,
+    "shot": 32,
+    "release-pre": 32,
+    "release-post": 34
+   },
+   "dedVis": [
+    "-?ov0opennull:eimg0[]hl0",
+    "-?ov0opennull:eimg1[254]hl1",
+    "-?ov0opennull:eimg0[]hl1",
+    "-?ov0opennull:eimg1[254]hl1",
+    "-?ov0opennull:eimg0[]hl1",
+    "-?ov0opennull:eimg2[153,254]hl1",
+    "-?ov0opennull:eimg0[]hl1",
+    "-?ov0opennull:eimg2[153,254]hl1",
+    "-?ov0opennull:eimg0[]hl1",
+    "-?ov0opennull:eimg2[153,254]hl0"
+   ],
+   "dedFull": [
+    "-?ov0opennull:eimg0[]hl0|sel355-355E",
+    "-?ov0opennull:eimg1[254]hl1|sel355-355E",
+    "-?ov0opennull:eimg0[]hl1|sel254-254E",
+    "-?ov0opennull:eimg1[254]hl1|sel254-254E",
+    "-?ov0opennull:eimg0[]hl1|sel153-153E",
+    "-?ov0opennull:eimg2[153,254]hl1|sel153-153E",
+    "-?ov0opennull:eimg0[]hl1|sel135-135E",
+    "-?ov0opennull:eimg2[153,254]hl1|sel135-135E",
+    "-?ov0opennull:eimg0[]hl1|sel133-133E",
+    "-?ov0opennull:eimg0[]hl1|sel122-122E",
+    "-?ov0opennull:eimg0[]hl1|sel121-121E",
+    "-?ov0opennull:eimg0[]hl1|sel118-118E",
+    "-?ov0opennull:eimg2[153,254]hl0|sel118-355"
+   ],
+   "rbVis": [
+    "1→2→3: -?ov0opennull:eimg1[254]hl1 ⇒ -?ov0opennull:eimg0[]hl1 ⇒ 回到 -?ov0opennull:eimg1[254]hl1",
+    "2→3→4: -?ov0opennull:eimg0[]hl1 ⇒ -?ov0opennull:eimg1[254]hl1 ⇒ 回到 -?ov0opennull:eimg0[]hl1",
+    "4→5→6: -?ov0opennull:eimg0[]hl1 ⇒ -?ov0opennull:eimg2[153,254]hl1 ⇒ 回到 -?ov0opennull:eimg0[]hl1",
+    "5→6→7: -?ov0opennull:eimg2[153,254]hl1 ⇒ -?ov0opennull:eimg0[]hl1 ⇒ 回到 -?ov0opennull:eimg2[153,254]hl1",
+    "6→7→8: -?ov0opennull:eimg0[]hl1 ⇒ -?ov0opennull:eimg2[153,254]hl1 ⇒ 回到 -?ov0opennull:eimg0[]hl1"
+   ],
+   "rbFull": [],
+   "preUp": null
+  },
+  {
+   "name": "6 空白带拖动",
+   "pre": {
+    "from": 355,
+    "to": 355,
+    "empty": true,
+    "revealed": 1,
+    "cls": "R",
+    "bg": "rgb(228, 230, 234)",
+    "ov": 2,
+    "open": "254:e",
+    "imgSel": 0,
+    "imgSelFrom": "",
+    "markedNodes": 0,
+    "hl": 0
+   },
+   "frames": 54,
+   "marks": {
+    "press": 0,
+    "release": 24
+   },
+   "dedVis": [
+    "REov2open254:eimg1[254]hl0"
+   ],
+   "dedFull": [
+    "REov2open254:eimg1[254]hl0|sel285-287",
+    "REov2open254:eimg1[254]hl0|sel285-288",
+    "REov2open254:eimg1[254]hl0|sel285-289",
+    "REov2open254:eimg1[254]hl0|sel285-290",
+    "REov2open254:eimg1[254]hl0|sel285-291",
+    "REov2open254:eimg1[254]hl0|sel285-292",
+    "REov2open254:eimg1[254]hl0|sel285-293",
+    "REov2open254:eimg1[254]hl0|sel285-295",
+    "REov2open254:eimg1[254]hl0|sel285-297",
+    "REov2open254:eimg1[254]hl0|sel285-298",
+    "REov2open254:eimg1[254]hl0|sel285-299"
+   ],
+   "rbVis": [],
+   "rbFull": [],
+   "preUp": null
+  },
+  {
+   "name": "7 正文起手拖过图",
+   "pre": {
+    "from": 285,
+    "to": 299,
+    "empty": false,
+    "revealed": 1,
+    "cls": "R",
+    "bg": "rgb(228, 230, 234)",
+    "ov": 2,
+    "open": "254:e",
+    "imgSel": 1,
+    "imgSelFrom": "254",
+    "markedNodes": 1,
+    "hl": 0
+   },
+   "frames": 58,
+   "marks": {
+    "press": 0,
+    "release": 28
+   },
+   "dedVis": [
+    "-?ov0opennull:eimg0[]hl0",
+    "-?ov0opennull:eimg0[]hl1",
+    "-?ov0opennull:eimg1[153]hl1",
+    "-?ov0opennull:eimg0[]hl1",
+    "-?ov0opennull:eimg1[153]hl1",
+    "-?ov0opennull:eimg2[153,254]hl1",
+    "REov0open254:eimg0[]hl1",
+    "-?ov0opennull:eimg2[153,254]hl0"
+   ],
+   "dedFull": [
+    "-?ov0opennull:eimg0[]hl0|sel152-152E",
+    "-?ov0opennull:eimg0[]hl1|sel153-153E",
+    "-?ov0opennull:eimg0[]hl1|sel254-254E",
+    "-?ov0opennull:eimg1[153]hl1|sel254-254E",
+    "-?ov0opennull:eimg0[]hl1|sel355-355E",
+    "-?ov0opennull:eimg1[153]hl1|sel355-355E",
+    "-?ov0opennull:eimg2[153,254]hl1|sel355-355E",
+    "REov0open254:eimg0[]hl1|sel355-355E",
+    "-?ov0opennull:eimg2[153,254]hl0|sel135-355"
+   ],
+   "rbVis": [
+    "1→2→3: -?ov0opennull:eimg0[]hl1 ⇒ -?ov0opennull:eimg1[153]hl1 ⇒ 回到 -?ov0opennull:eimg0[]hl1",
+    "2→3→4: -?ov0opennull:eimg1[153]hl1 ⇒ -?ov0opennull:eimg0[]hl1 ⇒ 回到 -?ov0opennull:eimg1[153]hl1"
+   ],
+   "rbFull": [],
+   "preUp": null
+  },
+  {
+   "name": "8 连点图片两次(同处)",
+   "pre": {
+    "from": 135,
+    "to": 355,
+    "empty": false,
+    "revealed": 0,
+    "cls": null,
+    "bg": null,
+    "ov": 0,
+    "open": "null:e",
+    "imgSel": 2,
+    "imgSelFrom": "153,254",
+    "markedNodes": 2,
+    "hl": 0
+   },
+   "frames": 60,
+   "marks": {
+    "click1": 0,
+    "click2": 27
+   },
+   "dedVis": [
+    "-?ov0opennull:eimg0[]hl0",
+    "REov0open254:eimg0[]hl0",
+    "REov2open254:eimg0[]hl0",
+    "REOov0open254:Eimg0[]hl0"
+   ],
+   "dedFull": [
+    "-?ov0opennull:eimg0[]hl0|sel2-2E",
+    "REov0open254:eimg0[]hl0|sel254-254E",
+    "REov2open254:eimg0[]hl0|sel355-355E",
+    "REov2open254:eimg0[]hl0|sel267-267E",
+    "REOov0open254:Eimg0[]hl0|sel267-267E"
+   ],
+   "rbVis": [],
+   "rbFull": [],
+   "preUp": null
+  }
+ ],
+ "p1": {
+  "midDrag": {
+   "from": 118,
+   "to": 118,
+   "empty": true,
+   "revealed": 0,
+   "cls": null,
+   "bg": null,
+   "ov": 0,
+   "open": "null:e",
+   "imgSel": 0,
+   "imgSelFrom": "",
+   "markedNodes": 0,
+   "hl": 247
+  },
+  "seqAtMidDrag": null
+ }
+}

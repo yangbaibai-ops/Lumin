@@ -1,0 +1,32 @@
+﻿
+== S1-行首公式 (公式start) (text+formula) liveSel=47-47E settledSel=47-47E
+   live   []
+   settled[]
+   Δ      []
+   img live/ settled [] / [] 泄漏={"bandEl":false,"bandKids":0,"cls":0}
+
+== S1-行中公式 (公式mid) (text+formula) liveSel=1-37 settledSel=1-37
+   live   []
+   settled[]
+   Δ      []
+   img live/ settled [] / [] 泄漏={"bandEl":false,"bandKids":0,"cls":0}
+
+== S1-行尾公式 (公式end) (text+formula) liveSel=57-116 settledSel=57-116
+   live   []
+   settled[]
+   Δ      []
+   img live/ settled [] / [] 泄漏={"bandEl":false,"bandKids":0,"cls":0}
+
+== S2-块级公式 (block-math) liveSel=45-46 settledSel=45-46
+   live   []
+   settled[]
+   Δ      []
+   img live/ settled [] / [] 泄漏={"bandEl":false,"bandKids":0,"cls":0}
+
+== S2-图片(图后往左拖) (image) liveSel=118-118E settledSel=118-355
+   live   [{"l":610.98,"t":354.67,"r":828.53,"b":497.92,"h":143.25}]
+   settled[]
+   Δ      [{"i":0,"missing":"settled"}]
+   img live/ settled [{"from":"153","l":610.98,"t":354.67,"r":825.98,"b":497.92,"bg":"rgba(17, 24, 39, 0.11)","outline":"2px"},{"from":"254","l":838.72,"t":354.67,"r":1053.72,"b":497.92,"bg":"rgba(17, 24, 39, 0.11)","outline":"2px"}] / [{"from":"153","l":610.98,"t":354.67,"r":825.98,"b":497.92,"bg":"rgba(17, 24, 39, 0.11)","outline":"2px"},{"from":"254","l":838.72,"t":354.67,"r":1053.72,"b":497.92,"bg":"rgba(17, 24, 39, 0.11)","outline":"2px"}] 泄漏={"bandEl":false,"bandKids":0,"cls":2}
+
+红值（旧做法 = 文字盒）: lineHeight=32.3px rects=[{"x":[320,388],"h":21}]

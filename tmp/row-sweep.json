@@ -1,0 +1,1401 @@
+{
+ "widths": [
+  {
+   "window": 1200,
+   "innerWidth": 1184,
+   "sources": [
+    {
+     "innerWidth": 1184,
+     "block": {
+      "l": 320,
+      "t": 354.67,
+      "r": 1122,
+      "b": 673.47,
+      "w": 802,
+      "h": 318.8
+     },
+     "revealedFrom": 153,
+     "revealedLen": 101,
+     "frags": [
+      {
+       "frag": {
+        "l": 600.8,
+        "t": 354.08,
+        "r": 1118.23,
+        "b": 386.27,
+        "w": 517.44,
+        "h": 32.19
+       },
+       "line": {
+        "t": 359.67,
+        "b": 380.67,
+        "h": 21
+       },
+       "lineImgs": [],
+       "lineTextH": 21
+      },
+      {
+       "frag": {
+        "l": 320,
+        "t": 386.38,
+        "r": 690.53,
+        "b": 418.56,
+        "w": 370.53,
+        "h": 32.19
+       },
+       "line": null,
+       "lineImgs": [],
+       "lineTextH": null
+      }
+     ],
+     "imgsAll": [
+      {
+       "l": 700.72,
+       "t": 386.97,
+       "r": 915.72,
+       "b": 530.22,
+       "w": 215,
+       "h": 143.25
+      },
+      {
+       "l": 330.19,
+       "t": 530.22,
+       "r": 545.19,
+       "b": 673.47,
+       "w": 215,
+       "h": 143.25
+      },
+      {
+       "l": 547.73,
+       "t": 530.22,
+       "r": 547.73,
+       "b": 530.22,
+       "w": 0,
+       "h": 0
+      }
+     ],
+     "overlayRects": [],
+     "widgetIndex": 0,
+     "assessment": [
+      {
+       "fragH": 32.19,
+       "lineH": 21,
+       "imgH": [],
+       "sameLineMax": 32.19,
+       "overlayH": 0,
+       "needCover": false,
+       "covered": false,
+       "ok": true
+      },
+      {
+       "fragH": 32.19,
+       "lineH": null,
+       "imgH": [],
+       "sameLineMax": 32.19,
+       "overlayH": 0,
+       "needCover": false,
+       "covered": false,
+       "ok": true
+      }
+     ]
+    },
+    {
+     "innerWidth": 1184,
+     "block": {
+      "l": 320,
+      "t": 354.67,
+      "r": 1122,
+      "b": 673.47,
+      "w": 802,
+      "h": 318.8
+     },
+     "revealedFrom": 254,
+     "revealedLen": 101,
+     "frags": [
+      {
+       "frag": {
+        "l": 828.53,
+        "t": 354.08,
+        "r": 1110.95,
+        "b": 386.27,
+        "w": 282.42,
+        "h": 32.19
+       },
+       "line": null,
+       "lineImgs": [],
+       "lineTextH": null
+      },
+      {
+       "frag": {
+        "l": 320,
+        "t": 497.33,
+        "r": 925.56,
+        "b": 529.52,
+        "w": 605.56,
+        "h": 32.19
+       },
+       "line": {
+        "t": 502.92,
+        "b": 523.92,
+        "h": 21
+       },
+       "lineImgs": [],
+       "lineTextH": 21
+      }
+     ],
+     "imgsAll": [
+      {
+       "l": 610.98,
+       "t": 354.67,
+       "r": 825.98,
+       "b": 497.92,
+       "w": 215,
+       "h": 143.25
+      },
+      {
+       "l": 330.19,
+       "t": 530.22,
+       "r": 545.19,
+       "b": 673.47,
+       "w": 215,
+       "h": 143.25
+      },
+      {
+       "l": 547.73,
+       "t": 530.22,
+       "r": 547.73,
+       "b": 530.22,
+       "w": 0,
+       "h": 0
+      }
+     ],
+     "overlayRects": [],
+     "widgetIndex": 1,
+     "assessment": [
+      {
+       "fragH": 32.19,
+       "lineH": null,
+       "imgH": [],
+       "sameLineMax": 32.19,
+       "overlayH": 0,
+       "needCover": false,
+       "covered": false,
+       "ok": true
+      },
+      {
+       "fragH": 32.19,
+       "lineH": 21,
+       "imgH": [],
+       "sameLineMax": 32.19,
+       "overlayH": 0,
+       "needCover": false,
+       "covered": false,
+       "ok": true
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "window": 1300,
+   "innerWidth": 1284,
+   "sources": [
+    {
+     "innerWidth": 1284,
+     "block": {
+      "l": 320,
+      "t": 354.67,
+      "r": 1222,
+      "b": 530.22,
+      "w": 902,
+      "h": 175.55
+     },
+     "revealedFrom": 153,
+     "revealedLen": 101,
+     "frags": [
+      {
+       "frag": {
+        "l": 600.8,
+        "t": 354.08,
+        "r": 1213.33,
+        "b": 386.27,
+        "w": 612.53,
+        "h": 32.19
+       },
+       "line": {
+        "t": 359.67,
+        "b": 380.67,
+        "h": 21
+       },
+       "lineImgs": [],
+       "lineTextH": 21
+      },
+      {
+       "frag": {
+        "l": 320,
+        "t": 386.38,
+        "r": 595.44,
+        "b": 418.56,
+        "w": 275.44,
+        "h": 32.19
+       },
+       "line": {
+        "t": 386.97,
+        "b": 530.22,
+        "h": 143.25
+       },
+       "lineImgs": [],
+       "lineTextH": 143.25
+      }
+     ],
+     "imgsAll": [
+      {
+       "l": 605.63,
+       "t": 386.97,
+       "r": 820.63,
+       "b": 530.22,
+       "w": 215,
+       "h": 143.25
+      },
+      {
+       "l": 833.36,
+       "t": 386.97,
+       "r": 1048.36,
+       "b": 530.22,
+       "w": 215,
+       "h": 143.25
+      },
+      {
+       "l": 1050.91,
+       "t": 386.97,
+       "r": 1050.91,
+       "b": 386.97,
+       "w": 0,
+       "h": 0
+      }
+     ],
+     "overlayRects": [
+      {
+       "l": 320,
+       "t": 386.97,
+       "r": 595.44,
+       "b": 530.22,
+       "w": 275.44,
+       "h": 143.25
+      }
+     ],
+     "widgetIndex": 0,
+     "assessment": [
+      {
+       "fragH": 32.19,
+       "lineH": 21,
+       "imgH": [],
+       "sameLineMax": 32.19,
+       "overlayH": 0,
+       "needCover": false,
+       "covered": false,
+       "ok": true
+      },
+      {
+       "fragH": 32.19,
+       "lineH": 143.25,
+       "imgH": [],
+       "sameLineMax": 32.19,
+       "overlayH": 143.25,
+       "needCover": true,
+       "covered": true,
+       "ok": true
+      }
+     ]
+    },
+    {
+     "innerWidth": 1284,
+     "block": {
+      "l": 320,
+      "t": 354.67,
+      "r": 1222,
+      "b": 641.17,
+      "w": 902,
+      "h": 286.5
+     },
+     "revealedFrom": 254,
+     "revealedLen": 101,
+     "frags": [
+      {
+       "frag": {
+        "l": 828.53,
+        "t": 354.08,
+        "r": 1211.63,
+        "b": 386.27,
+        "w": 383.09,
+        "h": 32.19
+       },
+       "line": null,
+       "lineImgs": [],
+       "lineTextH": null
+      },
+      {
+       "frag": {
+        "l": 320,
+        "t": 497.33,
+        "r": 824.89,
+        "b": 529.52,
+        "w": 504.89,
+        "h": 32.19
+       },
+       "line": {
+        "t": 497.92,
+        "b": 641.17,
+        "h": 143.25
+       },
+       "lineImgs": [],
+       "lineTextH": 143.25
+      }
+     ],
+     "imgsAll": [
+      {
+       "l": 610.98,
+       "t": 354.67,
+       "r": 825.98,
+       "b": 497.92,
+       "w": 215,
+       "h": 143.25
+      },
+      {
+       "l": 835.08,
+       "t": 497.92,
+       "r": 1050.08,
+       "b": 641.17,
+       "w": 215,
+       "h": 143.25
+      },
+      {
+       "l": 1052.63,
+       "t": 497.92,
+       "r": 1052.63,
+       "b": 497.92,
+       "w": 0,
+       "h": 0
+      }
+     ],
+     "overlayRects": [
+      {
+       "l": 320,
+       "t": 497.91,
+       "r": 824.88,
+       "b": 641.16,
+       "w": 504.88,
+       "h": 143.25
+      }
+     ],
+     "widgetIndex": 1,
+     "assessment": [
+      {
+       "fragH": 32.19,
+       "lineH": null,
+       "imgH": [],
+       "sameLineMax": 32.19,
+       "overlayH": 0,
+       "needCover": false,
+       "covered": false,
+       "ok": true
+      },
+      {
+       "fragH": 32.19,
+       "lineH": 143.25,
+       "imgH": [],
+       "sameLineMax": 32.19,
+       "overlayH": 143.25,
+       "needCover": true,
+       "covered": true,
+       "ok": true
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "window": 1424,
+   "innerWidth": 1408,
+   "sources": [
+    {
+     "innerWidth": 1408,
+     "block": {
+      "l": 320,
+      "t": 354.67,
+      "r": 1346,
+      "b": 530.22,
+      "w": 1026,
+      "h": 175.55
+     },
+     "revealedFrom": 153,
+     "revealedLen": 101,
+     "frags": [
+      {
+       "frag": {
+        "l": 600.8,
+        "t": 354.08,
+        "r": 1337.66,
+        "b": 386.27,
+        "w": 736.86,
+        "h": 32.19
+       },
+       "line": {
+        "t": 359.67,
+        "b": 380.67,
+        "h": 21
+       },
+       "lineImgs": [],
+       "lineTextH": 21
+      },
+      {
+       "frag": {
+        "l": 320,
+        "t": 386.38,
+        "r": 471.13,
+        "b": 418.56,
+        "w": 151.13,
+        "h": 32.19
+       },
+       "line": {
+        "t": 386.97,
+        "b": 530.22,
+        "h": 143.25
+       },
+       "lineImgs": [],
+       "lineTextH": 143.25
+      }
+     ],
+     "imgsAll": [
+      {
+       "l": 481.31,
+       "t": 386.97,
+       "r": 696.31,
+       "b": 530.22,
+       "w": 215,
+       "h": 143.25
+      },
+      {
+       "l": 709.05,
+       "t": 386.97,
+       "r": 924.05,
+       "b": 530.22,
+       "w": 215,
+       "h": 143.25
+      },
+      {
+       "l": 926.59,
+       "t": 386.97,
+       "r": 926.59,
+       "b": 386.97,
+       "w": 0,
+       "h": 0
+      }
+     ],
+     "overlayRects": [
+      {
+       "l": 320,
+       "t": 386.97,
+       "r": 471.13,
+       "b": 530.22,
+       "w": 151.13,
+       "h": 143.25
+      }
+     ],
+     "widgetIndex": 0,
+     "assessment": [
+      {
+       "fragH": 32.19,
+       "lineH": 21,
+       "imgH": [],
+       "sameLineMax": 32.19,
+       "overlayH": 0,
+       "needCover": false,
+       "covered": false,
+       "ok": true
+      },
+      {
+       "fragH": 32.19,
+       "lineH": 143.25,
+       "imgH": [],
+       "sameLineMax": 32.19,
+       "overlayH": 143.25,
+       "needCover": true,
+       "covered": true,
+       "ok": true
+      }
+     ]
+    },
+    {
+     "innerWidth": 1408,
+     "block": {
+      "l": 320,
+      "t": 354.67,
+      "r": 1346,
+      "b": 641.17,
+      "w": 1026,
+      "h": 286.5
+     },
+     "revealedFrom": 254,
+     "revealedLen": 101,
+     "frags": [
+      {
+       "frag": {
+        "l": 828.53,
+        "t": 354.08,
+        "r": 1345.97,
+        "b": 386.27,
+        "w": 517.44,
+        "h": 32.19
+       },
+       "line": null,
+       "lineImgs": [],
+       "lineTextH": null
+      },
+      {
+       "frag": {
+        "l": 320,
+        "t": 497.33,
+        "r": 690.53,
+        "b": 529.52,
+        "w": 370.53,
+        "h": 32.19
+       },
+       "line": {
+        "t": 497.92,
+        "b": 641.17,
+        "h": 143.25
+       },
+       "lineImgs": [],
+       "lineTextH": 143.25
+      }
+     ],
+     "imgsAll": [
+      {
+       "l": 610.98,
+       "t": 354.67,
+       "r": 825.98,
+       "b": 497.92,
+       "w": 215,
+       "h": 143.25
+      },
+      {
+       "l": 700.72,
+       "t": 497.92,
+       "r": 915.72,
+       "b": 641.17,
+       "w": 215,
+       "h": 143.25
+      },
+      {
+       "l": 918.27,
+       "t": 497.92,
+       "r": 918.27,
+       "b": 497.92,
+       "w": 0,
+       "h": 0
+      }
+     ],
+     "overlayRects": [
+      {
+       "l": 320,
+       "t": 497.91,
+       "r": 690.52,
+       "b": 641.16,
+       "w": 370.52,
+       "h": 143.25
+      }
+     ],
+     "widgetIndex": 1,
+     "assessment": [
+      {
+       "fragH": 32.19,
+       "lineH": null,
+       "imgH": [],
+       "sameLineMax": 32.19,
+       "overlayH": 0,
+       "needCover": false,
+       "covered": false,
+       "ok": true
+      },
+      {
+       "fragH": 32.19,
+       "lineH": 143.25,
+       "imgH": [],
+       "sameLineMax": 32.19,
+       "overlayH": 143.25,
+       "needCover": true,
+       "covered": true,
+       "ok": true
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "window": 1500,
+   "innerWidth": 1484,
+   "sources": [
+    {
+     "innerWidth": 1484,
+     "block": {
+      "l": 320,
+      "t": 354.67,
+      "r": 1422,
+      "b": 530.22,
+      "w": 1102,
+      "h": 175.55
+     },
+     "revealedFrom": 153,
+     "revealedLen": 101,
+     "frags": [
+      {
+       "frag": {
+        "l": 600.8,
+        "t": 354.08,
+        "r": 1417.31,
+        "b": 386.27,
+        "w": 816.52,
+        "h": 32.19
+       },
+       "line": {
+        "t": 359.67,
+        "b": 380.67,
+        "h": 21
+       },
+       "lineImgs": [],
+       "lineTextH": 21
+      },
+      {
+       "frag": {
+        "l": 320,
+        "t": 386.38,
+        "r": 391.47,
+        "b": 418.56,
+        "w": 71.47,
+        "h": 32.19
+       },
+       "line": {
+        "t": 386.97,
+        "b": 530.22,
+        "h": 143.25
+       },
+       "lineImgs": [],
+       "lineTextH": 143.25
+      }
+     ],
+     "imgsAll": [
+      {
+       "l": 401.66,
+       "t": 386.97,
+       "r": 616.66,
+       "b": 530.22,
+       "w": 215,
+       "h": 143.25
+      },
+      {
+       "l": 629.39,
+       "t": 386.97,
+       "r": 844.39,
+       "b": 530.22,
+       "w": 215,
+       "h": 143.25
+      },
+      {
+       "l": 846.94,
+       "t": 386.97,
+       "r": 846.94,
+       "b": 386.97,
+       "w": 0,
+       "h": 0
+      }
+     ],
+     "overlayRects": [
+      {
+       "l": 320,
+       "t": 386.97,
+       "r": 391.47,
+       "b": 530.22,
+       "w": 71.47,
+       "h": 143.25
+      }
+     ],
+     "widgetIndex": 0,
+     "assessment": [
+      {
+       "fragH": 32.19,
+       "lineH": 21,
+       "imgH": [],
+       "sameLineMax": 32.19,
+       "overlayH": 0,
+       "needCover": false,
+       "covered": false,
+       "ok": true
+      },
+      {
+       "fragH": 32.19,
+       "lineH": 143.25,
+       "imgH": [],
+       "sameLineMax": 32.19,
+       "overlayH": 143.25,
+       "needCover": true,
+       "covered": true,
+       "ok": true
+      }
+     ]
+    },
+    {
+     "innerWidth": 1484,
+     "block": {
+      "l": 320,
+      "t": 354.67,
+      "r": 1422,
+      "b": 641.17,
+      "w": 1102,
+      "h": 286.5
+     },
+     "revealedFrom": 254,
+     "revealedLen": 101,
+     "frags": [
+      {
+       "frag": {
+        "l": 828.53,
+        "t": 354.08,
+        "r": 1411.72,
+        "b": 386.27,
+        "w": 583.19,
+        "h": 32.19
+       },
+       "line": null,
+       "lineImgs": [],
+       "lineTextH": null
+      },
+      {
+       "frag": {
+        "l": 320,
+        "t": 497.33,
+        "r": 624.8,
+        "b": 529.52,
+        "w": 304.8,
+        "h": 32.19
+       },
+       "line": {
+        "t": 497.92,
+        "b": 641.17,
+        "h": 143.25
+       },
+       "lineImgs": [],
+       "lineTextH": 143.25
+      }
+     ],
+     "imgsAll": [
+      {
+       "l": 610.98,
+       "t": 354.67,
+       "r": 825.98,
+       "b": 497.92,
+       "w": 215,
+       "h": 143.25
+      },
+      {
+       "l": 634.98,
+       "t": 497.92,
+       "r": 849.98,
+       "b": 641.17,
+       "w": 215,
+       "h": 143.25
+      },
+      {
+       "l": 852.53,
+       "t": 497.92,
+       "r": 852.53,
+       "b": 497.92,
+       "w": 0,
+       "h": 0
+      }
+     ],
+     "overlayRects": [
+      {
+       "l": 320,
+       "t": 497.91,
+       "r": 624.8,
+       "b": 641.16,
+       "w": 304.8,
+       "h": 143.25
+      }
+     ],
+     "widgetIndex": 1,
+     "assessment": [
+      {
+       "fragH": 32.19,
+       "lineH": null,
+       "imgH": [],
+       "sameLineMax": 32.19,
+       "overlayH": 0,
+       "needCover": false,
+       "covered": false,
+       "ok": true
+      },
+      {
+       "fragH": 32.19,
+       "lineH": 143.25,
+       "imgH": [],
+       "sameLineMax": 32.19,
+       "overlayH": 143.25,
+       "needCover": true,
+       "covered": true,
+       "ok": true
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "window": 1600,
+   "innerWidth": 1584,
+   "sources": [
+    {
+     "innerWidth": 1584,
+     "block": {
+      "l": 320,
+      "t": 354.67,
+      "r": 1522,
+      "b": 530.22,
+      "w": 1202,
+      "h": 175.55
+     },
+     "revealedFrom": 153,
+     "revealedLen": 101,
+     "frags": [
+      {
+       "frag": {
+        "l": 600.8,
+        "t": 354.08,
+        "r": 1488.77,
+        "b": 386.27,
+        "w": 887.97,
+        "h": 32.19
+       },
+       "line": {
+        "t": 359.67,
+        "b": 380.67,
+        "h": 21
+       },
+       "lineImgs": [],
+       "lineTextH": 21
+      }
+     ],
+     "imgsAll": [
+      {
+       "l": 330.19,
+       "t": 386.97,
+       "r": 545.19,
+       "b": 530.22,
+       "w": 215,
+       "h": 143.25
+      },
+      {
+       "l": 557.92,
+       "t": 386.97,
+       "r": 772.92,
+       "b": 530.22,
+       "w": 215,
+       "h": 143.25
+      },
+      {
+       "l": 775.47,
+       "t": 386.97,
+       "r": 775.47,
+       "b": 386.97,
+       "w": 0,
+       "h": 0
+      }
+     ],
+     "overlayRects": [],
+     "widgetIndex": 0,
+     "assessment": [
+      {
+       "fragH": 32.19,
+       "lineH": 21,
+       "imgH": [],
+       "sameLineMax": 32.19,
+       "overlayH": 0,
+       "needCover": false,
+       "covered": false,
+       "ok": true
+      }
+     ]
+    },
+    {
+     "innerWidth": 1584,
+     "block": {
+      "l": 320,
+      "t": 354.67,
+      "r": 1522,
+      "b": 641.17,
+      "w": 1202,
+      "h": 286.5
+     },
+     "revealedFrom": 254,
+     "revealedLen": 101,
+     "frags": [
+      {
+       "frag": {
+        "l": 828.53,
+        "t": 354.08,
+        "r": 1514.36,
+        "b": 386.27,
+        "w": 685.83,
+        "h": 32.19
+       },
+       "line": null,
+       "lineImgs": [],
+       "lineTextH": null
+      },
+      {
+       "frag": {
+        "l": 320,
+        "t": 497.33,
+        "r": 522.16,
+        "b": 529.52,
+        "w": 202.16,
+        "h": 32.19
+       },
+       "line": {
+        "t": 497.92,
+        "b": 641.17,
+        "h": 143.25
+       },
+       "lineImgs": [],
+       "lineTextH": 143.25
+      }
+     ],
+     "imgsAll": [
+      {
+       "l": 610.98,
+       "t": 354.67,
+       "r": 825.98,
+       "b": 497.92,
+       "w": 215,
+       "h": 143.25
+      },
+      {
+       "l": 532.34,
+       "t": 497.92,
+       "r": 747.34,
+       "b": 641.17,
+       "w": 215,
+       "h": 143.25
+      },
+      {
+       "l": 749.89,
+       "t": 497.92,
+       "r": 749.89,
+       "b": 497.92,
+       "w": 0,
+       "h": 0
+      }
+     ],
+     "overlayRects": [
+      {
+       "l": 320,
+       "t": 497.91,
+       "r": 522.16,
+       "b": 641.16,
+       "w": 202.16,
+       "h": 143.25
+      }
+     ],
+     "widgetIndex": 1,
+     "assessment": [
+      {
+       "fragH": 32.19,
+       "lineH": null,
+       "imgH": [],
+       "sameLineMax": 32.19,
+       "overlayH": 0,
+       "needCover": false,
+       "covered": false,
+       "ok": true
+      },
+      {
+       "fragH": 32.19,
+       "lineH": 143.25,
+       "imgH": [],
+       "sameLineMax": 32.19,
+       "overlayH": 143.25,
+       "needCover": true,
+       "covered": true,
+       "ok": true
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "window": 1700,
+   "innerWidth": 1684,
+   "sources": [
+    {
+     "innerWidth": 1684,
+     "block": {
+      "l": 367,
+      "t": 354.67,
+      "r": 1575,
+      "b": 530.22,
+      "w": 1208,
+      "h": 175.55
+     },
+     "revealedFrom": 153,
+     "revealedLen": 101,
+     "frags": [
+      {
+       "frag": {
+        "l": 647.8,
+        "t": 354.08,
+        "r": 1535.77,
+        "b": 386.27,
+        "w": 887.97,
+        "h": 32.19
+       },
+       "line": {
+        "t": 359.67,
+        "b": 380.67,
+        "h": 21
+       },
+       "lineImgs": [],
+       "lineTextH": 21
+      }
+     ],
+     "imgsAll": [
+      {
+       "l": 377.19,
+       "t": 386.97,
+       "r": 592.19,
+       "b": 530.22,
+       "w": 215,
+       "h": 143.25
+      },
+      {
+       "l": 604.92,
+       "t": 386.97,
+       "r": 819.92,
+       "b": 530.22,
+       "w": 215,
+       "h": 143.25
+      },
+      {
+       "l": 822.47,
+       "t": 386.97,
+       "r": 822.47,
+       "b": 386.97,
+       "w": 0,
+       "h": 0
+      }
+     ],
+     "overlayRects": [],
+     "widgetIndex": 0,
+     "assessment": [
+      {
+       "fragH": 32.19,
+       "lineH": 21,
+       "imgH": [],
+       "sameLineMax": 32.19,
+       "overlayH": 0,
+       "needCover": false,
+       "covered": false,
+       "ok": true
+      }
+     ]
+    },
+    {
+     "innerWidth": 1684,
+     "block": {
+      "l": 367,
+      "t": 354.67,
+      "r": 1575,
+      "b": 641.17,
+      "w": 1208,
+      "h": 286.5
+     },
+     "revealedFrom": 254,
+     "revealedLen": 101,
+     "frags": [
+      {
+       "frag": {
+        "l": 875.53,
+        "t": 354.08,
+        "r": 1561.36,
+        "b": 386.27,
+        "w": 685.83,
+        "h": 32.19
+       },
+       "line": null,
+       "lineImgs": [],
+       "lineTextH": null
+      },
+      {
+       "frag": {
+        "l": 367,
+        "t": 497.33,
+        "r": 569.16,
+        "b": 529.52,
+        "w": 202.16,
+        "h": 32.19
+       },
+       "line": {
+        "t": 497.92,
+        "b": 641.17,
+        "h": 143.25
+       },
+       "lineImgs": [],
+       "lineTextH": 143.25
+      }
+     ],
+     "imgsAll": [
+      {
+       "l": 657.98,
+       "t": 354.67,
+       "r": 872.98,
+       "b": 497.92,
+       "w": 215,
+       "h": 143.25
+      },
+      {
+       "l": 579.34,
+       "t": 497.92,
+       "r": 794.34,
+       "b": 641.17,
+       "w": 215,
+       "h": 143.25
+      },
+      {
+       "l": 796.89,
+       "t": 497.92,
+       "r": 796.89,
+       "b": 497.92,
+       "w": 0,
+       "h": 0
+      }
+     ],
+     "overlayRects": [
+      {
+       "l": 367,
+       "t": 497.91,
+       "r": 569.16,
+       "b": 641.16,
+       "w": 202.16,
+       "h": 143.25
+      }
+     ],
+     "widgetIndex": 1,
+     "assessment": [
+      {
+       "fragH": 32.19,
+       "lineH": null,
+       "imgH": [],
+       "sameLineMax": 32.19,
+       "overlayH": 0,
+       "needCover": false,
+       "covered": false,
+       "ok": true
+      },
+      {
+       "fragH": 32.19,
+       "lineH": 143.25,
+       "imgH": [],
+       "sameLineMax": 32.19,
+       "overlayH": 143.25,
+       "needCover": true,
+       "covered": true,
+       "ok": true
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "window": 1920,
+   "innerWidth": 1904,
+   "sources": [
+    {
+     "innerWidth": 1904,
+     "block": {
+      "l": 477,
+      "t": 354.67,
+      "r": 1685,
+      "b": 530.22,
+      "w": 1208,
+      "h": 175.55
+     },
+     "revealedFrom": 153,
+     "revealedLen": 101,
+     "frags": [
+      {
+       "frag": {
+        "l": 757.8,
+        "t": 354.08,
+        "r": 1645.77,
+        "b": 386.27,
+        "w": 887.97,
+        "h": 32.19
+       },
+       "line": {
+        "t": 359.67,
+        "b": 380.67,
+        "h": 21
+       },
+       "lineImgs": [],
+       "lineTextH": 21
+      }
+     ],
+     "imgsAll": [
+      {
+       "l": 487.19,
+       "t": 386.97,
+       "r": 702.19,
+       "b": 530.22,
+       "w": 215,
+       "h": 143.25
+      },
+      {
+       "l": 714.92,
+       "t": 386.97,
+       "r": 929.92,
+       "b": 530.22,
+       "w": 215,
+       "h": 143.25
+      },
+      {
+       "l": 932.47,
+       "t": 386.97,
+       "r": 932.47,
+       "b": 386.97,
+       "w": 0,
+       "h": 0
+      }
+     ],
+     "overlayRects": [],
+     "widgetIndex": 0,
+     "assessment": [
+      {
+       "fragH": 32.19,
+       "lineH": 21,
+       "imgH": [],
+       "sameLineMax": 32.19,
+       "overlayH": 0,
+       "needCover": false,
+       "covered": false,
+       "ok": true
+      }
+     ]
+    },
+    {
+     "innerWidth": 1904,
+     "block": {
+      "l": 477,
+      "t": 354.67,
+      "r": 1685,
+      "b": 641.17,
+      "w": 1208,
+      "h": 286.5
+     },
+     "revealedFrom": 254,
+     "revealedLen": 101,
+     "frags": [
+      {
+       "frag": {
+        "l": 985.53,
+        "t": 354.08,
+        "r": 1671.36,
+        "b": 386.27,
+        "w": 685.83,
+        "h": 32.19
+       },
+       "line": null,
+       "lineImgs": [],
+       "lineTextH": null
+      },
+      {
+       "frag": {
+        "l": 477,
+        "t": 497.33,
+        "r": 679.16,
+        "b": 529.52,
+        "w": 202.16,
+        "h": 32.19
+       },
+       "line": {
+        "t": 497.92,
+        "b": 641.17,
+        "h": 143.25
+       },
+       "lineImgs": [],
+       "lineTextH": 143.25
+      }
+     ],
+     "imgsAll": [
+      {
+       "l": 767.98,
+       "t": 354.67,
+       "r": 982.98,
+       "b": 497.92,
+       "w": 215,
+       "h": 143.25
+      },
+      {
+       "l": 689.34,
+       "t": 497.92,
+       "r": 904.34,
+       "b": 641.17,
+       "w": 215,
+       "h": 143.25
+      },
+      {
+       "l": 906.89,
+       "t": 497.92,
+       "r": 906.89,
+       "b": 497.92,
+       "w": 0,
+       "h": 0
+      }
+     ],
+     "overlayRects": [
+      {
+       "l": 477,
+       "t": 497.91,
+       "r": 679.16,
+       "b": 641.16,
+       "w": 202.16,
+       "h": 143.25
+      }
+     ],
+     "widgetIndex": 1,
+     "assessment": [
+      {
+       "fragH": 32.19,
+       "lineH": null,
+       "imgH": [],
+       "sameLineMax": 32.19,
+       "overlayH": 0,
+       "needCover": false,
+       "covered": false,
+       "ok": true
+      },
+      {
+       "fragH": 32.19,
+       "lineH": 143.25,
+       "imgH": [],
+       "sameLineMax": 32.19,
+       "overlayH": 143.25,
+       "needCover": true,
+       "covered": true,
+       "ok": true
+      }
+     ]
+    }
+   ]
+  }
+ ],
+ "capture": null
+}

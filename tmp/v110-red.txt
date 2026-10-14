@@ -1,0 +1,24 @@
+tag=red mode=A innerWidth=1424 mdLen=811 起点={"from":355,"to":355,"empty":true}
+points {"band":{"x":1087,"y":442},"glyph":{"x":1087,"y":370}}
+A/X 点空白带 逐帧去重:
+   5100.1ms ov0 R RE bgOFF open=254:E n1 sel285
+   evs=[] frames=1
+A/Y 点源码字形 逐帧去重:
+   3.2ms ov2(el) R bgEDGE open=254:e n1 sel355
+   86.6ms ov2(el) R RE bgOFF open=254:E n1 sel285
+   103.3ms ov0 R RE bgOFF open=254:E n1 sel285
+   120.5ms ov0 R bgEDGE open=254:e n1 sel285
+   136.5ms ov2(el) R RE bgOFF open=254:E n1 sel285
+   153.2ms ov0 R RE bgOFF open=254:E n1 sel285
+   evs=[] frames=40
+A/Z 点图片激活 逐帧去重:
+   12ms ov2(el) R bgEDGE open=254:e n1 sel355
+   62.1ms ov2(el) R bgEDGE open=254:e n1 sel254
+   78.7ms ov2(el) R bgEDGE open=254:e n1 sel355
+A 点真正的别处 ⇒ {"revealed":0,"from":null,"cls":null,"bg":null,"ov":0,"ovEl":false,"open":"null:e","sel":{"from":2,"to":2,"empty":true}}
+不破坏: 空白带单击 revealed=1 pos={"from":285,"to":285,"empty":true}
+  显形手势 press=0 release=0 bg=null
+  显形手势逐帧: ["18.3ms ov0 - bgnull open=null:e n0 sel2","67.5ms ov0 - bgnull open=null:e n0 sel361"]
+  elementFromPoint={"mid":{"tag":"P","cls":"img-side-by-side","overlay":false}} layoutSame=true
+  编辑态: bg=OFF cls=img-src-revealed img-src-revealed--editing ov=0 ovEl=false
+  隐藏: {"revealed":0,"from":null,"cls":null,"bg":null,"ov":0,"ovEl":false,"open":"null:e","sel":{"from":2,"to":2,"empty":true}} 往返逐字节=true modal=0

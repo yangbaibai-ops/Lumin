@@ -1,0 +1,502 @@
+{
+ "tag": "a",
+ "lines": [
+  {
+   "block": "P",
+   "lineHeight": 32.3,
+   "formula": {
+    "l": 405,
+    "t": 77,
+    "r": 477.59,
+    "b": 98,
+    "text": "E=mc2"
+   },
+   "lineLeft": 320,
+   "lineRight": 617.8,
+   "lineTop": 76.45,
+   "lineBottom": 99,
+   "pos": "mid",
+   "textRectHeights": [
+    21,
+    17,
+    21,
+    17,
+    17,
+    14,
+    21,
+    17,
+    14,
+    21,
+    17,
+    14,
+    21,
+    17,
+    14,
+    21
+   ]
+  },
+  {
+   "block": "P",
+   "lineHeight": 32.3,
+   "formula": {
+    "l": 504.66,
+    "t": 77,
+    "r": 600.8,
+    "b": 98,
+    "text": "a2+b2=c2"
+   },
+   "lineLeft": 320,
+   "lineRight": 617.8,
+   "lineTop": 76.45,
+   "lineBottom": 99,
+   "pos": "mid",
+   "textRectHeights": [
+    21,
+    17,
+    21,
+    17,
+    17,
+    14,
+    21,
+    17,
+    14,
+    21,
+    17,
+    14,
+    21,
+    17,
+    14,
+    21
+   ]
+  },
+  {
+   "block": "P",
+   "lineHeight": 32.3,
+   "formula": {
+    "l": 320,
+    "t": 234.75,
+    "r": 351.36,
+    "b": 255.75,
+    "text": "gyg"
+   },
+   "lineLeft": 321.69,
+   "lineRight": 349.03,
+   "lineTop": 238.75,
+   "lineBottom": 255.75,
+   "pos": "start",
+   "textRectHeights": [
+    17,
+    17,
+    17
+   ]
+  },
+  {
+   "block": "P",
+   "lineHeight": 32.3,
+   "formula": {
+    "l": 456,
+    "t": 318.03,
+    "r": 514.97,
+    "b": 339.03,
+    "text": "x1​+y2​"
+   },
+   "lineLeft": 320,
+   "lineRight": 868.64,
+   "lineTop": 316.92,
+   "lineBottom": 344.25,
+   "pos": "mid",
+   "textRectHeights": [
+    21,
+    17,
+    14,
+    21,
+    17,
+    14,
+    21,
+    17,
+    21,
+    17,
+    17,
+    21,
+    14,
+    14,
+    21
+   ]
+  },
+  {
+   "block": "P",
+   "lineHeight": 32.3,
+   "formula": {
+    "l": 660.95,
+    "t": 318.03,
+    "r": 708.58,
+    "b": 339.03,
+    "text": "a∗kb"
+   },
+   "lineLeft": 320,
+   "lineRight": 868.64,
+   "lineTop": 316.92,
+   "lineBottom": 344.25,
+   "pos": "mid",
+   "textRectHeights": [
+    21,
+    17,
+    14,
+    21,
+    17,
+    14,
+    21,
+    17,
+    21,
+    17,
+    17,
+    21,
+    14,
+    14,
+    21
+   ]
+  },
+  {
+   "block": "P",
+   "lineHeight": 32.3,
+   "formula": {
+    "l": 798.61,
+    "t": 318.03,
+    "r": 812.61,
+    "b": 339.03,
+    "text": "21​"
+   },
+   "lineLeft": 320,
+   "lineRight": 868.64,
+   "lineTop": 316.92,
+   "lineBottom": 344.25,
+   "pos": "end",
+   "textRectHeights": [
+    21,
+    17,
+    14,
+    21,
+    17,
+    14,
+    21,
+    17,
+    21,
+    17,
+    17,
+    21,
+    14,
+    14,
+    21
+   ]
+  },
+  {
+   "block": "P",
+   "lineHeight": 32.3,
+   "formula": {
+    "l": 388,
+    "t": 413.89,
+    "r": 460.59,
+    "b": 434.89,
+    "text": "E=mc2"
+   },
+   "lineLeft": 320,
+   "lineRight": 600.8,
+   "lineTop": 413.34,
+   "lineBottom": 435.89,
+   "pos": "mid",
+   "textRectHeights": [
+    21,
+    17,
+    21,
+    17,
+    17,
+    14,
+    21,
+    17,
+    14,
+    21,
+    17,
+    14,
+    21,
+    17,
+    14,
+    21
+   ]
+  },
+  {
+   "block": "P",
+   "lineHeight": 32.3,
+   "formula": {
+    "l": 487.66,
+    "t": 413.89,
+    "r": 583.8,
+    "b": 434.89,
+    "text": "a2+b2=c2"
+   },
+   "lineLeft": 320,
+   "lineRight": 600.8,
+   "lineTop": 413.34,
+   "lineBottom": 435.89,
+   "pos": "mid",
+   "textRectHeights": [
+    21,
+    17,
+    21,
+    17,
+    17,
+    14,
+    21,
+    17,
+    14,
+    21,
+    17,
+    14,
+    21,
+    17,
+    14,
+    21
+   ]
+  }
+ ],
+ "targets": [
+  {
+   "name": "S1-行首公式 (公式start)",
+   "kind": "text+formula",
+   "liveSel": "47-47E",
+   "settledSel": "47-47E",
+   "live": [],
+   "settled": [],
+   "deltas": [],
+   "liveImgs": [],
+   "settledImgs": [],
+   "leak": {
+    "bandEl": false,
+    "bandKids": 0,
+    "cls": 0
+   }
+  },
+  {
+   "name": "S1-行中公式 (公式mid)",
+   "kind": "text+formula",
+   "liveSel": "1-37",
+   "settledSel": "1-37",
+   "live": [],
+   "settled": [],
+   "deltas": [],
+   "liveImgs": [],
+   "settledImgs": [],
+   "leak": {
+    "bandEl": false,
+    "bandKids": 0,
+    "cls": 0
+   }
+  },
+  {
+   "name": "S1-行尾公式 (公式end)",
+   "kind": "text+formula",
+   "liveSel": "57-116",
+   "settledSel": "57-116",
+   "live": [],
+   "settled": [],
+   "deltas": [],
+   "liveImgs": [],
+   "settledImgs": [],
+   "leak": {
+    "bandEl": false,
+    "bandKids": 0,
+    "cls": 0
+   }
+  },
+  {
+   "name": "S2-块级公式",
+   "kind": "block-math",
+   "liveSel": "45-46",
+   "settledSel": "45-46",
+   "live": [],
+   "settled": [],
+   "deltas": [],
+   "liveImgs": [],
+   "settledImgs": [],
+   "leak": {
+    "bandEl": false,
+    "bandKids": 0,
+    "cls": 0
+   }
+  },
+  {
+   "name": "S2-图片(图后往左拖)",
+   "kind": "image",
+   "liveSel": "118-118E",
+   "settledSel": "118-355",
+   "live": [
+    {
+     "l": 610.98,
+     "t": 354.67,
+     "r": 828.53,
+     "b": 497.92,
+     "h": 143.25
+    }
+   ],
+   "settled": [],
+   "deltas": [
+    {
+     "i": 0,
+     "missing": "settled"
+    }
+   ],
+   "liveImgs": [
+    {
+     "from": "153",
+     "l": 610.98,
+     "t": 354.67,
+     "r": 825.98,
+     "b": 497.92,
+     "bg": "rgba(17, 24, 39, 0.11)",
+     "outline": "2px"
+    },
+    {
+     "from": "254",
+     "l": 838.72,
+     "t": 354.67,
+     "r": 1053.72,
+     "b": 497.92,
+     "bg": "rgba(17, 24, 39, 0.11)",
+     "outline": "2px"
+    }
+   ],
+   "settledImgs": [
+    {
+     "from": "153",
+     "l": 610.98,
+     "t": 354.67,
+     "r": 825.98,
+     "b": 497.92,
+     "bg": "rgba(17, 24, 39, 0.11)",
+     "outline": "2px"
+    },
+    {
+     "from": "254",
+     "l": 838.72,
+     "t": 354.67,
+     "r": 1053.72,
+     "b": 497.92,
+     "bg": "rgba(17, 24, 39, 0.11)",
+     "outline": "2px"
+    }
+   ],
+   "leak": {
+    "bandEl": false,
+    "bandKids": 0,
+    "cls": 2
+   }
+  }
+ ],
+ "picked": {
+  "startLine": {
+   "block": "P",
+   "lineHeight": 32.3,
+   "formula": {
+    "l": 320,
+    "t": 234.75,
+    "r": 351.36,
+    "b": 255.75,
+    "text": "gyg"
+   },
+   "lineLeft": 321.69,
+   "lineRight": 349.03,
+   "lineTop": 238.75,
+   "lineBottom": 255.75,
+   "pos": "start",
+   "textRectHeights": [
+    17,
+    17,
+    17
+   ]
+  },
+  "midLine": {
+   "block": "P",
+   "lineHeight": 32.3,
+   "formula": {
+    "l": 405,
+    "t": 77,
+    "r": 477.59,
+    "b": 98,
+    "text": "E=mc2"
+   },
+   "lineLeft": 320,
+   "lineRight": 617.8,
+   "lineTop": 76.45,
+   "lineBottom": 99,
+   "pos": "mid",
+   "textRectHeights": [
+    21,
+    17,
+    21,
+    17,
+    17,
+    14,
+    21,
+    17,
+    14,
+    21,
+    17,
+    14,
+    21,
+    17,
+    14,
+    21
+   ]
+  },
+  "endLine": {
+   "block": "P",
+   "lineHeight": 32.3,
+   "formula": {
+    "l": 798.61,
+    "t": 318.03,
+    "r": 812.61,
+    "b": 339.03,
+    "text": "21​"
+   },
+   "lineLeft": 320,
+   "lineRight": 868.64,
+   "lineTop": 316.92,
+   "lineBottom": 344.25,
+   "pos": "end",
+   "textRectHeights": [
+    21,
+    17,
+    14,
+    21,
+    17,
+    14,
+    21,
+    17,
+    21,
+    17,
+    17,
+    21,
+    14,
+    14,
+    21
+   ]
+  }
+ },
+ "blockMath": {
+  "l": 320,
+  "r": 1362,
+  "t": 161.23,
+  "b": 214.45
+ },
+ "textBoxRed": {
+  "lineHeight": "32.3px",
+  "rects": [
+   {
+    "l": 320,
+    "t": 413.89,
+    "r": 388,
+    "b": 434.89,
+    "h": 21
+   }
+  ]
+ }
+}

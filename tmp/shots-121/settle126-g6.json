@@ -1,0 +1,599 @@
+{
+ "tag": "g6",
+ "marks": {
+  "blocks": [
+   {
+    "i": 0,
+    "name": "paragraph",
+    "from": 1,
+    "to": 37,
+    "text": "行内公式：$E = mc"
+   },
+   {
+    "i": 1,
+    "name": "paragraph",
+    "from": 39,
+    "to": 44,
+    "text": "块级公式："
+   },
+   {
+    "i": 2,
+    "name": "paragraph",
+    "from": 47,
+    "to": 52,
+    "text": "$gyg$"
+   },
+   {
+    "i": 3,
+    "name": "paragraph",
+    "from": 54,
+    "to": 55,
+    "text": "2"
+   },
+   {
+    "i": 4,
+    "name": "paragraph",
+    "from": 57,
+    "to": 116,
+    "text": "下划线不当斜体：$x_1"
+   },
+   {
+    "i": 5,
+    "name": "paragraph",
+    "from": 118,
+    "to": 355,
+    "text": "行内公式$E = mc^"
+   },
+   {
+    "i": 6,
+    "name": "heading",
+    "from": 357,
+    "to": 361,
+    "text": "工作方式"
+   },
+   {
+    "i": 7,
+    "name": "codeBlock",
+    "from": 588,
+    "to": 751,
+    "text": "flowchart LR"
+   },
+   {
+    "i": 8,
+    "name": "paragraph",
+    "from": 753,
+    "to": 753,
+    "text": ""
+   }
+  ],
+  "tables": [
+   {
+    "from": 362,
+    "to": 587,
+    "rows": 6,
+    "text": "环节说明**索引体积**单独成块"
+   },
+   {
+    "rect": [
+     320,
+     495.39,
+     1362,
+     877.02
+    ]
+   }
+  ],
+  "mathInline": [
+   {
+    "from": 6,
+    "to": 16,
+    "rect": [
+     405,
+     -15,
+     477.59,
+     6
+    ],
+    "text": "E=mc2"
+   },
+   {
+    "from": 19,
+    "to": 36,
+    "rect": [
+     504.66,
+     -15,
+     600.8,
+     6
+    ],
+    "text": "a2+b2=c2"
+   },
+   {
+    "from": 47,
+    "to": 52,
+    "rect": [
+     320,
+     142.75,
+     351.36,
+     163.75
+    ],
+    "text": "gyg"
+   },
+   {
+    "from": 65,
+    "to": 76,
+    "rect": [
+     456,
+     226.03,
+     514.97,
+     247.03
+    ],
+    "text": "x1​+y2​"
+   },
+   {
+    "from": 85,
+    "to": 93,
+    "rect": [
+     660.95,
+     226.03,
+     708.58,
+     247.03
+    ],
+    "text": "a∗kb"
+   },
+   {
+    "from": 99,
+    "to": 112,
+    "rect": [
+     798.61,
+     226.03,
+     812.61,
+     247.03
+    ],
+    "text": "21​"
+   },
+   {
+    "from": 122,
+    "to": 132,
+    "rect": [
+     388,
+     321.89,
+     460.59,
+     342.89
+    ],
+    "text": "E=mc2"
+   },
+   {
+    "from": 135,
+    "to": 152,
+    "rect": [
+     487.66,
+     321.89,
+     583.8,
+     342.89
+    ],
+    "text": "a2+b2=c2"
+   }
+  ],
+  "mathBlock": [
+   {
+    "from": 45,
+    "rect": [
+     320,
+     69.23,
+     1362,
+     122.45
+    ]
+   }
+  ],
+  "imgs": [
+   {
+    "from": 153,
+    "rect": [
+     610.98,
+     262.67,
+     825.98,
+     405.92
+    ]
+   },
+   {
+    "from": 254,
+    "rect": [
+     838.72,
+     262.67,
+     1053.72,
+     405.92
+    ]
+   }
+  ]
+ },
+ "cases": [
+  {
+   "label": "math-block-fwd",
+   "from": {
+    "x": 397,
+    "y": 129
+   },
+   "to": {
+    "x": 345,
+    "y": 247
+   },
+   "mid": {
+    "sel": "44-47",
+    "empty": false,
+    "type": "text",
+    "live": "44|47|44|52",
+    "lFrom": 44,
+    "lTo": 52,
+    "bands": 17,
+    "own": "all",
+    "nat": [
+     44,
+     47
+    ],
+    "t": 11
+   },
+   "settled": {
+    "sel": "44-52",
+    "empty": false,
+    "type": "text",
+    "live": "44|47|44|52",
+    "lFrom": 44,
+    "lTo": 52,
+    "bands": 1,
+    "own": "math",
+    "nat": [
+     44,
+     52
+    ]
+   },
+   "post": {
+    "fallback": "ok",
+    "settleIn": "44|52|null|1|target44-52|far52|focusnull",
+    "band": 1,
+    "own": "math",
+    "type": "text",
+    "text": "\n$gyg$"
+   },
+   "dropped": [],
+   "same": true,
+   "frames": [
+    "44-44E|text|live355-583|nat[null,null]|带0|闸null",
+    "44-47|text|live44-52|nat[44,47]|带17|闸all",
+    "44-47|text|live44-52|nat[44,47]|带17|闸all",
+    "44-47|text|live44-52|nat[44,47]|带17|闸all",
+    "44-47|text|live44-52|nat[44,47]|带17|闸all",
+    "44-47|text|live44-52|nat[44,47]|带17|闸all",
+    "44-47|text|live44-52|nat[44,47]|带17|闸all",
+    "44-47|text|live44-52|nat[44,47]|带17|闸all",
+    "44-47|text|live44-52|nat[44,47]|带17|闸all",
+    "44-47|text|live44-52|nat[44,47]|带17|闸all",
+    "44-47|text|live44-52|nat[44,47]|带17|闸all",
+    "44-47|text|live44-52|nat[44,47]|带17|闸all",
+    "44-47|text|live44-52|nat[44,47]|带17|闸all"
+   ]
+  },
+  {
+   "label": "math-block-back",
+   "from": {
+    "x": 345,
+    "y": 247
+   },
+   "to": {
+    "x": 397,
+    "y": 129
+   },
+   "mid": {
+    "sel": "44-47",
+    "empty": false,
+    "type": "text",
+    "live": "47|43|43|47",
+    "lFrom": 43,
+    "lTo": 47,
+    "bands": 17,
+    "own": "all",
+    "nat": [
+     44,
+     47
+    ],
+    "t": 11
+   },
+   "settled": {
+    "sel": "43-47",
+    "empty": false,
+    "type": "text",
+    "live": "47|43|43|47",
+    "lFrom": 43,
+    "lTo": 47,
+    "bands": 0,
+    "own": null,
+    "nat": [
+     43,
+     47
+    ]
+   },
+   "post": {
+    "fallback": "ok",
+    "settleIn": "47|43|null|1|target43-47|far43|focusnull",
+    "band": 0,
+    "own": null,
+    "type": "text",
+    "text": "：\n"
+   },
+   "dropped": [],
+   "same": true,
+   "frames": [
+    "47-47E|text|live44-52|nat[null,null]|带0|闸null",
+    "44-47|text|live43-47|nat[44,47]|带17|闸all",
+    "44-47|text|live43-47|nat[44,47]|带17|闸all",
+    "44-47|text|live43-47|nat[44,47]|带17|闸all",
+    "44-47|text|live43-47|nat[44,47]|带17|闸all",
+    "44-47|text|live43-47|nat[44,47]|带17|闸all",
+    "44-47|text|live43-47|nat[44,47]|带17|闸all",
+    "44-47|text|live43-47|nat[44,47]|带17|闸all",
+    "44-47|text|live43-47|nat[44,47]|带17|闸all",
+    "44-47|text|live43-47|nat[44,47]|带17|闸all",
+    "44-47|text|live43-47|nat[44,47]|带17|闸all",
+    "44-47|text|live43-47|nat[44,47]|带17|闸all",
+    "44-47|text|live43-47|nat[44,47]|带17|闸all"
+   ]
+  },
+  {
+   "label": "math-inline-fwd",
+   "from": {
+    "x": 329,
+    "y": 329
+   },
+   "to": {
+    "x": 860,
+    "y": 329
+   },
+   "mid": {
+    "sel": "58-115",
+    "empty": false,
+    "type": "text",
+    "live": "58|113|58|113",
+    "lFrom": 58,
+    "lTo": 113,
+    "bands": 1,
+    "own": "all",
+    "nat": [
+     58,
+     115
+    ],
+    "t": 11
+   },
+   "settled": {
+    "sel": "58-115",
+    "empty": false,
+    "type": "text",
+    "live": "58|113|58|113",
+    "lFrom": 58,
+    "lTo": 113,
+    "bands": 3,
+    "own": "math",
+    "nat": [
+     58,
+     115
+    ]
+   },
+   "post": {
+    "fallback": "ok",
+    "settleIn": "58|115|null|1|target58-115|far115|focusnull",
+    "band": 3,
+    "own": "math",
+    "type": "text",
+    "text": "划线不当斜体：$x_1 + y_2$；星号不当5加粗：$a * kb$。 坏公式"
+   },
+   "dropped": [],
+   "same": false,
+   "frames": [
+    "58-58E|text|live43-47|nat[null,null]|带0|闸null",
+    "58-115|text|live58-113|nat[58,115]|带1|闸all",
+    "58-115|text|live58-113|nat[58,115]|带1|闸all",
+    "58-115|text|live58-113|nat[58,115]|带1|闸all",
+    "58-115|text|live58-113|nat[58,115]|带1|闸all",
+    "58-115|text|live58-113|nat[58,115]|带1|闸all",
+    "58-115|text|live58-113|nat[58,115]|带1|闸all",
+    "58-115|text|live58-113|nat[58,115]|带1|闸all",
+    "58-115|text|live58-113|nat[58,115]|带1|闸all",
+    "58-115|text|live58-113|nat[58,115]|带1|闸all",
+    "58-115|text|live58-113|nat[58,115]|带1|闸all",
+    "58-115|text|live58-113|nat[58,115]|带1|闸all",
+    "58-115|text|live58-113|nat[58,115]|带1|闸all"
+   ]
+  },
+  {
+   "label": "math-inline-back",
+   "from": {
+    "x": 860,
+    "y": 329
+   },
+   "to": {
+    "x": 329,
+    "y": 329
+   },
+   "mid": {
+    "sel": "58-115",
+    "empty": false,
+    "type": "text",
+    "live": "115|60|60|115",
+    "lFrom": 60,
+    "lTo": 115,
+    "bands": 1,
+    "own": "all",
+    "nat": [
+     58,
+     115
+    ],
+    "t": 11
+   },
+   "settled": {
+    "sel": "58-115",
+    "empty": false,
+    "type": "text",
+    "live": "115|60|60|115",
+    "lFrom": 60,
+    "lTo": 115,
+    "bands": 3,
+    "own": "math",
+    "nat": [
+     58,
+     115
+    ]
+   },
+   "post": {
+    "fallback": "ok",
+    "settleIn": "115|58|null|1|target58-115|far58|focusnull",
+    "band": 3,
+    "own": "math",
+    "type": "text",
+    "text": "划线不当斜体：$x_1 + y_2$；星号不当5加粗：$a * kb$。 坏公式"
+   },
+   "dropped": [],
+   "same": false,
+   "frames": [
+    "115-115E|text|live58-113|nat[null,null]|带0|闸null",
+    "58-115|text|live60-115|nat[58,115]|带1|闸all",
+    "58-115|text|live60-115|nat[58,115]|带1|闸all",
+    "58-115|text|live60-115|nat[58,115]|带1|闸all",
+    "58-115|text|live60-115|nat[58,115]|带1|闸all",
+    "58-115|text|live60-115|nat[58,115]|带1|闸all",
+    "58-115|text|live60-115|nat[58,115]|带1|闸all",
+    "58-115|text|live60-115|nat[58,115]|带1|闸all",
+    "58-115|text|live60-115|nat[58,115]|带1|闸all",
+    "58-115|text|live60-115|nat[58,115]|带1|闸all",
+    "58-115|text|live60-115|nat[58,115]|带1|闸all",
+    "58-115|text|live60-115|nat[58,115]|带1|闸all",
+    "58-115|text|live60-115|nat[58,115]|带1|闸all"
+   ]
+  },
+  {
+   "label": "img-fwd",
+   "from": {
+    "x": 341,
+    "y": 426
+   },
+   "to": {
+    "x": 1258,
+    "y": 460
+   },
+   "mid": {
+    "sel": "119-355",
+    "empty": false,
+    "type": "text",
+    "live": "119|355|119|355",
+    "lFrom": 119,
+    "lTo": 355,
+    "bands": 3,
+    "own": "all",
+    "nat": [
+     119,
+     355
+    ],
+    "t": 11
+   },
+   "settled": {
+    "sel": "119-355",
+    "empty": false,
+    "type": "text",
+    "live": "119|355|119|355",
+    "lFrom": 119,
+    "lTo": 355,
+    "bands": 2,
+    "own": "math",
+    "nat": [
+     119,
+     355
+    ]
+   },
+   "post": {
+    "fallback": "ok",
+    "settleIn": "119|355|null|1|target119-355|far355|focusnull",
+    "band": 2,
+    "own": "math",
+    "type": "text",
+    "text": "内公式$E = mc^2$ 与 $a^2 + b^2 = c^2$。<img s"
+   },
+   "dropped": [],
+   "same": true,
+   "frames": [
+    "119-119E|text|live60-115|nat[null,null]|带0|闸null",
+    "119-355|text|live119-355|nat[119,355]|带3|闸all",
+    "119-355|text|live119-355|nat[119,355]|带3|闸all",
+    "119-355|text|live119-355|nat[119,355]|带3|闸all",
+    "119-355|text|live119-355|nat[119,355]|带3|闸all",
+    "119-355|text|live119-355|nat[119,355]|带3|闸all",
+    "119-355|text|live119-355|nat[119,355]|带3|闸all",
+    "119-355|text|live119-355|nat[119,355]|带3|闸all",
+    "119-355|text|live119-355|nat[119,355]|带3|闸all",
+    "119-355|text|live119-355|nat[119,355]|带3|闸all",
+    "119-355|text|live119-355|nat[119,355]|带3|闸all",
+    "119-355|text|live119-355|nat[119,355]|带3|闸all",
+    "119-355|text|live119-355|nat[119,355]|带3|闸all"
+   ]
+  },
+  {
+   "label": "img-back",
+   "from": {
+    "x": 1258,
+    "y": 460
+   },
+   "to": {
+    "x": 341,
+    "y": 426
+   },
+   "mid": {
+    "sel": "119-119",
+    "empty": true,
+    "type": "text",
+    "live": "355|122|122|355",
+    "lFrom": 122,
+    "lTo": 355,
+    "bands": 3,
+    "own": "all",
+    "nat": [
+     null,
+     null
+    ],
+    "t": 11
+   },
+   "settled": {
+    "sel": "119-355",
+    "empty": false,
+    "type": "text",
+    "live": "355|122|122|355",
+    "lFrom": 122,
+    "lTo": 355,
+    "bands": 2,
+    "own": "math",
+    "nat": [
+     119,
+     355
+    ]
+   },
+   "post": {
+    "fallback": "ok",
+    "settleIn": "355|119|null|1|target119-355|far119|focus119",
+    "band": 2,
+    "own": "math",
+    "type": "text",
+    "text": "内公式$E = mc^2$ 与 $a^2 + b^2 = c^2$。<img s"
+   },
+   "dropped": [],
+   "same": false,
+   "frames": [
+    "355-355E|text|live119-355|nat[null,null]|带0|闸null",
+    "119-119E|text|live122-355|nat[null,null]|带3|闸all",
+    "119-119E|text|live122-355|nat[null,null]|带3|闸all",
+    "119-119E|text|live122-355|nat[null,null]|带3|闸all",
+    "119-119E|text|live122-355|nat[null,null]|带3|闸all",
+    "119-119E|text|live122-355|nat[null,null]|带3|闸all",
+    "119-119E|text|live122-355|nat[null,null]|带3|闸all",
+    "119-119E|text|live122-355|nat[null,null]|带3|闸all",
+    "119-119E|text|live122-355|nat[null,null]|带3|闸all",
+    "119-119E|text|live122-355|nat[null,null]|带3|闸all",
+    "119-119E|text|live122-355|nat[null,null]|带3|闸all",
+    "119-119E|text|live122-355|nat[null,null]|带3|闸all",
+    "119-119E|text|live122-355|nat[null,null]|带3|闸all"
+   ]
+  }
+ ]
+}

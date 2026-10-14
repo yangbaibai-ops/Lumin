@@ -1,0 +1,32 @@
+﻿tag=green mode=all innerWidth=1424 mdLen=811 起点={"from":355,"to":355,"empty":true}
+points {"band":{"x":1087,"y":442},"glyph":{"x":1087,"y":370}}
+A/X 点空白带 逐帧去重:
+   11.9ms ov2(el) R bgEDGE open=254:e n1 sel355
+   63.6ms ov0 R RE bgOFF open=254:E n1 sel285
+   evs=[] frames=40
+A/Y 点源码字形 逐帧去重:
+   1.2ms ov2(el) R bgEDGE open=254:e n1 sel355
+   84.9ms ov0 R RE bgOFF open=254:E n1 sel285
+   evs=[] frames=40
+A/Z 点图片激活 逐帧去重:
+   11.8ms ov2(el) R bgEDGE open=254:e n1 sel355
+   62.1ms ov0 R RE bgOFF open=254:E n1 sel267
+A 点真正的别处 ⇒ {"revealed":0,"from":null,"cls":null,"bg":null,"ov":0,"ovEl":false,"open":"null:e","sel":{"from":2,"to":2,"empty":true}}
+B① 向左拖 起点(带 1087,442 / 字 1087,370) 终点(869,370)
+     空白带拖动 sel={"from":258,"to":285,"empty":false} | 同列字形拖动 sel={"from":258,"to":285,"empty":false} | Δfrom=0 Δto=0
+     拖动逐帧去重: ["6.1ms ov0 R RE bgOFF open=254:E n1 sel285","76.6ms ov0 R bgEDGE open=254:e n1 sel283-285","89.7ms ov2(el) R bgEDGE open=254:e n1 sel283-285","109ms ov2(el) R bgEDGE open=254:e n1 sel281-285","142.5ms ov2(el) R bgEDGE open=254:e n1 sel280-285","175.3ms ov2(el) R bgEDGE open=254:e n1 sel277-285","208.7ms ov2(el) R bgEDGE open=254:e n1 sel275-285","242.1ms ov2(el) R bgEDGE open=254:e n1 sel274-285","292.3ms ov2(el) R bgEDGE open=254:e n1 sel272-285","342ms ov2(el) R bgEDGE open=254:e n1 sel269-285","375.7ms ov2(el) R bgEDGE open=254:e n1 sel267-285","408.9ms ov2(el) R bgEDGE open=254:e n1 sel265-285","441.9ms ov2(el) R bgEDGE open=254:e n1 sel263-285","475ms ov2(el) R bgEDGE open=254:e n1 sel262-285","525.2ms ov2(el) R bgEDGE open=254:e n1 sel260-285","575.5ms ov2(el) R bgEDGE open=254:e n1 sel258-285"]
+B① 向右拖 起点(带 1087,442 / 字 1087,370) 终点(1209,370)
+     空白带拖动 sel={"from":285,"to":299,"empty":false} | 同列字形拖动 sel={"from":285,"to":299,"empty":false} | Δfrom=0 Δto=0
+     拖动逐帧去重: ["12.8ms ov0 R RE bgOFF open=254:E n1 sel285","65.2ms ov0 R bgEDGE open=254:e n1 sel285-287","79.5ms ov2(el) R bgEDGE open=254:e n1 sel285-287","132.6ms ov2(el) R bgEDGE open=254:e n1 sel285-288","182.1ms ov2(el) R bgEDGE open=254:e n1 sel285-289","232.4ms ov2(el) R bgEDGE open=254:e n1 sel285-290","298.3ms ov2(el) R bgEDGE open=254:e n1 sel285-291","331.7ms ov2(el) R bgEDGE open=254:e n1 sel285-292","365.1ms ov2(el) R bgEDGE open=254:e n1 sel285-293","415ms ov2(el) R bgEDGE open=254:e n1 sel285-295","464.9ms ov2(el) R bgEDGE open=254:e n1 sel285-296","498.6ms ov2(el) R bgEDGE open=254:e n1 sel285-297","531.5ms ov2(el) R bgEDGE open=254:e n1 sel285-298","564.9ms ov2(el) R bgEDGE open=254:e n1 sel285-299"]
+B① 拖出源码进入正文 起点(带 1087,442 / 字 1087,370) 终点(360,424)
+     空白带拖动 sel={"from":120,"to":285,"empty":false} | 同列字形拖动 sel={"from":120,"to":285,"empty":false} | Δfrom=0 Δto=0
+     拖动逐帧去重: ["9.2ms ov0 R RE bgOFF open=254:E n1 sel285","79.1ms ov0 R bgEDGE open=254:e n1 sel279-285","92.6ms ov2(el) R bgEDGE open=254:e n1 sel279-285","111.7ms ov2(el) R bgEDGE open=254:e n1 sel272-285","145.1ms ov2(el) R bgEDGE open=254:e n1 sel265-285","178.3ms ov2(el) R bgEDGE open=254:e n1 sel259-285","212ms ov2(el) R bgEDGE open=254:e n1 sel254-285","413.1ms ov2(el) R bgEDGE open=254:e n1 sel135-285","479.1ms ov2(el) R bgEDGE open=254:e n1 sel133-285","528.6ms ov2(el) R bgEDGE open=254:e n1 sel122-285","562.1ms ov2(el) R bgEDGE open=254:e n1 sel120-285","642.6ms ov0 - bgnull open=null:e n0 sel120-285"]
+B② 空白带单击 ⇒ {"from":285,"to":285,"empty":true}
+B② 字形上拖动 ⇒ {"from":256,"to":278,"empty":false}
+B  带内终点拖动（指针一路在带里）⇒ {"from":285,"to":299,"empty":false}
+不破坏: 空白带单击 revealed=1 pos={"from":285,"to":285,"empty":true}
+  显形手势 press=0 release=1 bg=EDGE
+  显形手势逐帧: ["0.4ms ov0 - bgnull open=null:e n0 sel2","211.9ms ov0 R bgEDGE open=254:e n1 sel254","228.6ms ov2(el) R bgEDGE open=254:e n1 sel355"]
+  elementFromPoint={"mid":{"tag":"P","cls":"img-side-by-side","overlay":false}} layoutSame=true
+  编辑态: bg=OFF cls=img-src-revealed img-src-revealed--editing ov=0 ovEl=false
+  隐藏: {"revealed":0,"from":null,"cls":null,"bg":null,"ov":0,"ovEl":false,"open":"null:e","sel":{"from":2,"to":2,"empty":true}} 往返逐字节=true modal=0

@@ -1,0 +1,1267 @@
+{
+ "tag": "wl",
+ "info": {
+  "tokens": {
+   "sel": "#1118271c",
+   "edge": "#e4e6ea",
+   "panel2": "#e9ebf0"
+  },
+  "domBg": "rgba(0, 0, 0, 0)",
+  "bandCss": null,
+  "th": {
+   "rect": [
+    320.5,
+    587.89,
+    497.13,
+    651.33
+   ],
+   "bg": "rgb(233, 235, 240)",
+   "z": "auto",
+   "pos": "static",
+   "pe": "auto",
+   "text": "环节"
+  },
+  "thText": [
+   334,
+   604.27,
+   483.63,
+   634.95
+  ],
+  "revealed": null,
+  "parentChildren": [
+   "tiptap ProseMirror md-preview:1"
+  ]
+ },
+ "cases": [
+  {
+   "label": "T-表头",
+   "from": {
+    "x": 350,
+    "y": 619
+   },
+   "to": {
+    "x": 482.31,
+    "y": 619
+   },
+   "frames": [
+    {
+     "sel": "367-367E",
+     "type": "text",
+     "own": null,
+     "miss": null,
+     "editing": null,
+     "bands": [],
+     "hl": [],
+     "nat": [
+      [
+       350.14,
+       609.27,
+       350.16,
+       629.27
+      ]
+     ],
+     "revealed": 0,
+     "residue": {
+      "rects": [],
+      "stack": [],
+      "bands": []
+     }
+    },
+    {
+     "sel": "367-368",
+     "type": "text",
+     "own": null,
+     "miss": "0/0",
+     "editing": null,
+     "bands": [],
+     "hl": [],
+     "nat": [
+      [
+       350.14,
+       609.27,
+       366.31,
+       629.27
+      ]
+     ],
+     "revealed": 0,
+     "t": 0,
+     "residue": {
+      "rects": [
+       {
+        "nat": [
+         350.14,
+         609.27,
+         366.31,
+         629.27
+        ],
+        "covered": false,
+        "coveredVisible": false,
+        "hiddenByBg": true
+       }
+      ],
+      "stack": [],
+      "bands": []
+     }
+    },
+    {
+     "sel": "367-368",
+     "type": "text",
+     "own": null,
+     "miss": "0/0",
+     "editing": null,
+     "bands": [],
+     "hl": [],
+     "nat": [
+      [
+       350.14,
+       609.27,
+       366.31,
+       629.27
+      ]
+     ],
+     "revealed": 0,
+     "t": 1,
+     "residue": {
+      "rects": [
+       {
+        "nat": [
+         350.14,
+         609.27,
+         366.31,
+         629.27
+        ],
+        "covered": false,
+        "coveredVisible": false,
+        "hiddenByBg": true
+       }
+      ],
+      "stack": [],
+      "bands": []
+     }
+    },
+    {
+     "sel": "367-368",
+     "type": "text",
+     "own": null,
+     "miss": "0/0",
+     "editing": null,
+     "bands": [],
+     "hl": [],
+     "nat": [
+      [
+       350.14,
+       609.27,
+       366.31,
+       629.27
+      ]
+     ],
+     "revealed": 0,
+     "t": 2,
+     "residue": {
+      "rects": [
+       {
+        "nat": [
+         350.14,
+         609.27,
+         366.31,
+         629.27
+        ],
+        "covered": false,
+        "coveredVisible": false,
+        "hiddenByBg": true
+       }
+      ],
+      "stack": [],
+      "bands": []
+     }
+    },
+    {
+     "sel": "367-368",
+     "type": "text",
+     "own": null,
+     "miss": "0/0",
+     "editing": null,
+     "bands": [],
+     "hl": [],
+     "nat": [
+      [
+       350.14,
+       609.27,
+       366.31,
+       629.27
+      ]
+     ],
+     "revealed": 0,
+     "t": 3,
+     "residue": {
+      "rects": [
+       {
+        "nat": [
+         350.14,
+         609.27,
+         366.31,
+         629.27
+        ],
+        "covered": false,
+        "coveredVisible": false,
+        "hiddenByBg": true
+       }
+      ],
+      "stack": [],
+      "bands": []
+     }
+    },
+    {
+     "sel": "367-368",
+     "type": "text",
+     "own": null,
+     "miss": "0/0",
+     "editing": null,
+     "bands": [],
+     "hl": [],
+     "nat": [
+      [
+       350.14,
+       609.27,
+       366.31,
+       629.27
+      ]
+     ],
+     "revealed": 0,
+     "t": 4,
+     "residue": {
+      "rects": [
+       {
+        "nat": [
+         350.14,
+         609.27,
+         366.31,
+         629.27
+        ],
+        "covered": false,
+        "coveredVisible": false,
+        "hiddenByBg": true
+       }
+      ],
+      "stack": [],
+      "bands": []
+     }
+    },
+    {
+     "sel": "367-368",
+     "type": "text",
+     "own": null,
+     "miss": "0/0",
+     "editing": null,
+     "bands": [],
+     "hl": [],
+     "nat": [
+      [
+       350.14,
+       609.27,
+       366.31,
+       629.27
+      ]
+     ],
+     "revealed": 0,
+     "t": 5,
+     "residue": {
+      "rects": [
+       {
+        "nat": [
+         350.14,
+         609.27,
+         366.31,
+         629.27
+        ],
+        "covered": false,
+        "coveredVisible": false,
+        "hiddenByBg": true
+       }
+      ],
+      "stack": [],
+      "bands": []
+     }
+    },
+    {
+     "sel": "367-368",
+     "type": "text",
+     "own": null,
+     "miss": "0/0",
+     "editing": null,
+     "bands": [],
+     "hl": [],
+     "nat": [
+      [
+       350.14,
+       609.27,
+       366.31,
+       629.27
+      ]
+     ],
+     "revealed": 0,
+     "t": 6,
+     "residue": {
+      "rects": [
+       {
+        "nat": [
+         350.14,
+         609.27,
+         366.31,
+         629.27
+        ],
+        "covered": false,
+        "coveredVisible": false,
+        "hiddenByBg": true
+       }
+      ],
+      "stack": [],
+      "bands": []
+     }
+    },
+    {
+     "sel": "367-368",
+     "type": "text",
+     "own": null,
+     "miss": "0/0",
+     "editing": null,
+     "bands": [],
+     "hl": [],
+     "nat": [
+      [
+       350.14,
+       609.27,
+       366.31,
+       629.27
+      ]
+     ],
+     "revealed": 0,
+     "t": 7,
+     "residue": {
+      "rects": [
+       {
+        "nat": [
+         350.14,
+         609.27,
+         366.31,
+         629.27
+        ],
+        "covered": false,
+        "coveredVisible": false,
+        "hiddenByBg": true
+       }
+      ],
+      "stack": [],
+      "bands": []
+     }
+    },
+    {
+     "sel": "367-368",
+     "type": "text",
+     "own": null,
+     "miss": "0/0",
+     "editing": null,
+     "bands": [],
+     "hl": [],
+     "nat": [
+      [
+       350.14,
+       609.27,
+       366.31,
+       629.27
+      ]
+     ],
+     "revealed": 0,
+     "t": 8,
+     "residue": {
+      "rects": [
+       {
+        "nat": [
+         350.14,
+         609.27,
+         366.31,
+         629.27
+        ],
+        "covered": false,
+        "coveredVisible": false,
+        "hiddenByBg": true
+       }
+      ],
+      "stack": [],
+      "bands": []
+     }
+    },
+    {
+     "sel": "367-368",
+     "type": "text",
+     "own": null,
+     "miss": "0/0",
+     "editing": null,
+     "bands": [],
+     "hl": [],
+     "nat": [
+      [
+       350.14,
+       609.27,
+       366.31,
+       629.27
+      ]
+     ],
+     "revealed": 0,
+     "t": 9,
+     "residue": {
+      "rects": [
+       {
+        "nat": [
+         350.14,
+         609.27,
+         366.31,
+         629.27
+        ],
+        "covered": false,
+        "coveredVisible": false,
+        "hiddenByBg": true
+       }
+      ],
+      "stack": [],
+      "bands": []
+     }
+    },
+    {
+     "sel": "367-368",
+     "type": "text",
+     "own": null,
+     "miss": "0/0",
+     "editing": null,
+     "bands": [],
+     "hl": [],
+     "nat": [
+      [
+       350.14,
+       609.27,
+       366.31,
+       629.27
+      ]
+     ],
+     "revealed": 0,
+     "t": 10,
+     "residue": {
+      "rects": [
+       {
+        "nat": [
+         350.14,
+         609.27,
+         366.31,
+         629.27
+        ],
+        "covered": false,
+        "coveredVisible": false,
+        "hiddenByBg": true
+       }
+      ],
+      "stack": [],
+      "bands": []
+     }
+    },
+    {
+     "sel": "367-368",
+     "type": "text",
+     "own": null,
+     "miss": "0/0",
+     "editing": null,
+     "bands": [],
+     "hl": [],
+     "nat": [
+      [
+       350.14,
+       609.27,
+       366.31,
+       629.27
+      ]
+     ],
+     "revealed": 0,
+     "t": 11,
+     "residue": {
+      "rects": [
+       {
+        "nat": [
+         350.14,
+         609.27,
+         366.31,
+         629.27
+        ],
+        "covered": false,
+        "coveredVisible": false,
+        "hiddenByBg": true
+       }
+      ],
+      "stack": [],
+      "bands": []
+     }
+    },
+    {
+     "sel": "367-368",
+     "type": "text",
+     "own": null,
+     "miss": "0/0",
+     "editing": null,
+     "bands": [],
+     "hl": [],
+     "nat": [
+      [
+       350.14,
+       609.27,
+       366.31,
+       629.27
+      ]
+     ],
+     "revealed": 0,
+     "t": 12,
+     "residue": {
+      "rects": [
+       {
+        "nat": [
+         350.14,
+         609.27,
+         366.31,
+         629.27
+        ],
+        "covered": false,
+        "coveredVisible": false,
+        "hiddenByBg": true
+       }
+      ],
+      "stack": [],
+      "bands": []
+     }
+    },
+    {
+     "sel": "367-368",
+     "type": "text",
+     "own": null,
+     "miss": "0/0",
+     "editing": null,
+     "bands": [],
+     "hl": [],
+     "nat": [
+      [
+       350.14,
+       609.27,
+       366.31,
+       629.27
+      ]
+     ],
+     "revealed": 0,
+     "t": 13,
+     "residue": {
+      "rects": [
+       {
+        "nat": [
+         350.14,
+         609.27,
+         366.31,
+         629.27
+        ],
+        "covered": false,
+        "coveredVisible": false,
+        "hiddenByBg": true
+       }
+      ],
+      "stack": [],
+      "bands": []
+     }
+    }
+   ],
+   "samples": [
+    {
+     "name": "原生rect中心",
+     "x": 358,
+     "y": 619,
+     "drag": [
+      209,
+      212,
+      218
+     ],
+     "settled": [
+      209,
+      212,
+      218
+     ],
+     "Δ": 0,
+     "拖动期有样式": true
+    },
+    {
+     "name": "原生rect下方40px(空白带)",
+     "x": 358,
+     "y": 669,
+     "drag": [
+      255,
+      255,
+      255
+     ],
+     "settled": [
+      255,
+      255,
+      255
+     ],
+     "Δ": 0,
+     "拖动期有样式": true
+    },
+    {
+     "name": "原生rect上方8px",
+     "x": 358,
+     "y": 601,
+     "drag": [
+      228,
+      230,
+      236
+     ],
+     "settled": [
+      228,
+      230,
+      236
+     ],
+     "Δ": 0,
+     "拖动期有样式": true
+    },
+    {
+     "name": "表头单元中心偏下",
+     "x": 409,
+     "y": 628,
+     "drag": [
+      233,
+      235,
+      240
+     ],
+     "settled": [
+      233,
+      235,
+      240
+     ],
+     "Δ": 0,
+     "拖动期有样式": true
+    },
+    {
+     "name": "表头字形行",
+     "x": 350,
+     "y": 619,
+     "drag": [
+      209,
+      212,
+      218
+     ],
+     "settled": [
+      209,
+      212,
+      218
+     ],
+     "Δ": 0,
+     "拖动期有样式": true
+    },
+    {
+     "name": "表体首行",
+     "x": 409,
+     "y": 677,
+     "drag": [
+      255,
+      255,
+      255
+     ],
+     "settled": [
+      255,
+      255,
+      255
+     ],
+     "Δ": 0,
+     "拖动期有样式": true
+    }
+   ],
+   "settled": {
+    "sel": "367-368",
+    "type": "text",
+    "own": null,
+    "miss": null,
+    "editing": null,
+    "bands": [],
+    "hl": [],
+    "nat": [
+     [
+      350.14,
+      609.27,
+      366.31,
+      629.27
+     ]
+    ],
+    "revealed": 0
+   },
+   "resMax": 1,
+   "resFramesBad": 14,
+   "dragCovered": 0,
+   "dragOwn": null,
+   "dragHl": 0,
+   "dragNat": 1
+  },
+  {
+   "label": "S-刚显形源码",
+   "from": {
+    "x": 837,
+    "y": 370
+   },
+   "to": {
+    "x": 987,
+    "y": 370
+   },
+   "frames": [
+    {
+     "sel": "255-255E",
+     "type": "text",
+     "own": null,
+     "miss": null,
+     "editing": false,
+     "bands": [],
+     "hl": [],
+     "nat": [
+      [
+       841.13,
+       359.67,
+       841.14,
+       380.67
+      ]
+     ],
+     "revealed": 1,
+     "residue": {
+      "rects": [],
+      "stack": [],
+      "bands": []
+     }
+    },
+    {
+     "sel": "255-273",
+     "type": "text",
+     "own": null,
+     "miss": "0/0",
+     "editing": false,
+     "bands": [],
+     "hl": [],
+     "nat": [
+      [
+       841.13,
+       359.67,
+       990.03,
+       380.67
+      ]
+     ],
+     "revealed": 1,
+     "t": 0,
+     "residue": {
+      "rects": [
+       {
+        "nat": [
+         841.13,
+         359.67,
+         990.03,
+         380.67
+        ],
+        "covered": false,
+        "coveredVisible": false,
+        "hiddenByBg": true
+       }
+      ],
+      "stack": [],
+      "bands": []
+     }
+    },
+    {
+     "sel": "255-273",
+     "type": "text",
+     "own": null,
+     "miss": "0/0",
+     "editing": false,
+     "bands": [],
+     "hl": [],
+     "nat": [
+      [
+       841.13,
+       359.67,
+       990.03,
+       380.67
+      ]
+     ],
+     "revealed": 1,
+     "t": 1,
+     "residue": {
+      "rects": [
+       {
+        "nat": [
+         841.13,
+         359.67,
+         990.03,
+         380.67
+        ],
+        "covered": false,
+        "coveredVisible": false,
+        "hiddenByBg": true
+       }
+      ],
+      "stack": [],
+      "bands": []
+     }
+    },
+    {
+     "sel": "255-273",
+     "type": "text",
+     "own": null,
+     "miss": "0/0",
+     "editing": false,
+     "bands": [],
+     "hl": [],
+     "nat": [
+      [
+       841.13,
+       359.67,
+       990.03,
+       380.67
+      ]
+     ],
+     "revealed": 1,
+     "t": 2,
+     "residue": {
+      "rects": [
+       {
+        "nat": [
+         841.13,
+         359.67,
+         990.03,
+         380.67
+        ],
+        "covered": false,
+        "coveredVisible": false,
+        "hiddenByBg": true
+       }
+      ],
+      "stack": [],
+      "bands": []
+     }
+    },
+    {
+     "sel": "255-273",
+     "type": "text",
+     "own": null,
+     "miss": "0/0",
+     "editing": false,
+     "bands": [],
+     "hl": [],
+     "nat": [
+      [
+       841.13,
+       359.67,
+       990.03,
+       380.67
+      ]
+     ],
+     "revealed": 1,
+     "t": 3,
+     "residue": {
+      "rects": [
+       {
+        "nat": [
+         841.13,
+         359.67,
+         990.03,
+         380.67
+        ],
+        "covered": false,
+        "coveredVisible": false,
+        "hiddenByBg": true
+       }
+      ],
+      "stack": [],
+      "bands": []
+     }
+    },
+    {
+     "sel": "255-273",
+     "type": "text",
+     "own": null,
+     "miss": "0/0",
+     "editing": false,
+     "bands": [],
+     "hl": [],
+     "nat": [
+      [
+       841.13,
+       359.67,
+       990.03,
+       380.67
+      ]
+     ],
+     "revealed": 1,
+     "t": 4,
+     "residue": {
+      "rects": [
+       {
+        "nat": [
+         841.13,
+         359.67,
+         990.03,
+         380.67
+        ],
+        "covered": false,
+        "coveredVisible": false,
+        "hiddenByBg": true
+       }
+      ],
+      "stack": [],
+      "bands": []
+     }
+    },
+    {
+     "sel": "255-273",
+     "type": "text",
+     "own": null,
+     "miss": "0/0",
+     "editing": false,
+     "bands": [],
+     "hl": [],
+     "nat": [
+      [
+       841.13,
+       359.67,
+       990.03,
+       380.67
+      ]
+     ],
+     "revealed": 1,
+     "t": 5,
+     "residue": {
+      "rects": [
+       {
+        "nat": [
+         841.13,
+         359.67,
+         990.03,
+         380.67
+        ],
+        "covered": false,
+        "coveredVisible": false,
+        "hiddenByBg": true
+       }
+      ],
+      "stack": [],
+      "bands": []
+     }
+    },
+    {
+     "sel": "255-273",
+     "type": "text",
+     "own": null,
+     "miss": "0/0",
+     "editing": false,
+     "bands": [],
+     "hl": [],
+     "nat": [
+      [
+       841.13,
+       359.67,
+       990.03,
+       380.67
+      ]
+     ],
+     "revealed": 1,
+     "t": 6,
+     "residue": {
+      "rects": [
+       {
+        "nat": [
+         841.13,
+         359.67,
+         990.03,
+         380.67
+        ],
+        "covered": false,
+        "coveredVisible": false,
+        "hiddenByBg": true
+       }
+      ],
+      "stack": [],
+      "bands": []
+     }
+    },
+    {
+     "sel": "255-273",
+     "type": "text",
+     "own": null,
+     "miss": "0/0",
+     "editing": false,
+     "bands": [],
+     "hl": [],
+     "nat": [
+      [
+       841.13,
+       359.67,
+       990.03,
+       380.67
+      ]
+     ],
+     "revealed": 1,
+     "t": 7,
+     "residue": {
+      "rects": [
+       {
+        "nat": [
+         841.13,
+         359.67,
+         990.03,
+         380.67
+        ],
+        "covered": false,
+        "coveredVisible": false,
+        "hiddenByBg": true
+       }
+      ],
+      "stack": [],
+      "bands": []
+     }
+    },
+    {
+     "sel": "255-273",
+     "type": "text",
+     "own": null,
+     "miss": "0/0",
+     "editing": false,
+     "bands": [],
+     "hl": [],
+     "nat": [
+      [
+       841.13,
+       359.67,
+       990.03,
+       380.67
+      ]
+     ],
+     "revealed": 1,
+     "t": 8,
+     "residue": {
+      "rects": [
+       {
+        "nat": [
+         841.13,
+         359.67,
+         990.03,
+         380.67
+        ],
+        "covered": false,
+        "coveredVisible": false,
+        "hiddenByBg": true
+       }
+      ],
+      "stack": [],
+      "bands": []
+     }
+    },
+    {
+     "sel": "255-273",
+     "type": "text",
+     "own": null,
+     "miss": "0/0",
+     "editing": false,
+     "bands": [],
+     "hl": [],
+     "nat": [
+      [
+       841.13,
+       359.67,
+       990.03,
+       380.67
+      ]
+     ],
+     "revealed": 1,
+     "t": 9,
+     "residue": {
+      "rects": [
+       {
+        "nat": [
+         841.13,
+         359.67,
+         990.03,
+         380.67
+        ],
+        "covered": false,
+        "coveredVisible": false,
+        "hiddenByBg": true
+       }
+      ],
+      "stack": [],
+      "bands": []
+     }
+    },
+    {
+     "sel": "255-273",
+     "type": "text",
+     "own": null,
+     "miss": "0/0",
+     "editing": false,
+     "bands": [],
+     "hl": [],
+     "nat": [
+      [
+       841.13,
+       359.67,
+       990.03,
+       380.67
+      ]
+     ],
+     "revealed": 1,
+     "t": 10,
+     "residue": {
+      "rects": [
+       {
+        "nat": [
+         841.13,
+         359.67,
+         990.03,
+         380.67
+        ],
+        "covered": false,
+        "coveredVisible": false,
+        "hiddenByBg": true
+       }
+      ],
+      "stack": [],
+      "bands": []
+     }
+    },
+    {
+     "sel": "255-273",
+     "type": "text",
+     "own": null,
+     "miss": "0/0",
+     "editing": false,
+     "bands": [],
+     "hl": [],
+     "nat": [
+      [
+       841.13,
+       359.67,
+       990.03,
+       380.67
+      ]
+     ],
+     "revealed": 1,
+     "t": 11,
+     "residue": {
+      "rects": [
+       {
+        "nat": [
+         841.13,
+         359.67,
+         990.03,
+         380.67
+        ],
+        "covered": false,
+        "coveredVisible": false,
+        "hiddenByBg": true
+       }
+      ],
+      "stack": [],
+      "bands": []
+     }
+    }
+   ],
+   "samples": [
+    {
+     "name": "原生rect中心",
+     "x": 916,
+     "y": 370,
+     "drag": [
+      205,
+      208,
+      212
+     ],
+     "settled": [
+      205,
+      208,
+      212
+     ],
+     "Δ": 0,
+     "拖动期有样式": true
+    },
+    {
+     "name": "原生rect下方40px(空白带)",
+     "x": 916,
+     "y": 421,
+     "drag": [
+      205,
+      208,
+      212
+     ],
+     "settled": [
+      205,
+      208,
+      212
+     ],
+     "Δ": 0,
+     "拖动期有样式": true
+    },
+    {
+     "name": "原生rect上方8px",
+     "x": 916,
+     "y": 352,
+     "drag": [
+      255,
+      255,
+      255
+     ],
+     "settled": [
+      255,
+      255,
+      255
+     ],
+     "Δ": 0,
+     "拖动期有样式": true
+    },
+    {
+     "name": "正文行(源码外)",
+     "x": 354,
+     "y": 424,
+     "drag": [
+      255,
+      224,
+      159
+     ],
+     "settled": [
+      255,
+      224,
+      159
+     ],
+     "Δ": 0,
+     "拖动期有样式": true
+    }
+   ],
+   "settled": {
+    "sel": "255-273",
+    "type": "text",
+    "own": null,
+    "miss": null,
+    "editing": false,
+    "bands": [],
+    "hl": [],
+    "nat": [
+     [
+      841.13,
+      359.67,
+      990.03,
+      380.67
+     ]
+    ],
+    "revealed": 1
+   },
+   "resMax": 1,
+   "resFramesBad": 12,
+   "dragCovered": 0,
+   "dragOwn": null,
+   "dragHl": 0,
+   "dragNat": 1
+  }
+ ]
+}

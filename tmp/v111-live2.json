@@ -1,0 +1,553 @@
+{
+ "tag": "live2",
+ "innerWidth": 1424,
+ "shaBefore": "4dbb870902ecc4ab38f83fcb8ce5c8b755ea738d94932ca5487b5467fd453a7b",
+ "boxes": {
+  "ranges": [
+   {
+    "from": 153,
+    "to": 254
+   },
+   {
+    "from": 254,
+    "to": 355
+   }
+  ],
+  "widgets": [
+   {
+    "from": 153,
+    "inline": "true",
+    "l": 610.98,
+    "t": 354.67,
+    "r": 825.98,
+    "b": 497.92,
+    "w": 215,
+    "h": 143.25
+   },
+   {
+    "from": 254,
+    "inline": "true",
+    "l": 838.72,
+    "t": 354.67,
+    "r": 1053.72,
+    "b": 497.92,
+    "w": 215,
+    "h": 143.25
+   }
+  ],
+  "text": {
+   "l": 320,
+   "t": 413.89,
+   "r": 388,
+   "b": 434.89,
+   "w": 68,
+   "h": 21
+  },
+  "para": {
+   "l": 320,
+   "t": 354.67,
+   "r": 1362,
+   "b": 497.92,
+   "w": 1042,
+   "h": 143.25
+  },
+  "state0": {
+   "revealed": 0
+  }
+ },
+ "deadzone": [
+  {
+   "x": 622,
+   "pos": 254
+  },
+  {
+   "x": 665,
+   "pos": 254
+  },
+  {
+   "x": 718,
+   "pos": 254
+  },
+  {
+   "x": 772,
+   "pos": 254
+  },
+  {
+   "x": 815,
+   "pos": 254
+  }
+ ],
+ "gestures": [
+  {
+   "name": "① 图后(右) → 向左拖",
+   "from": {
+    "x": 1094,
+    "y": 426
+   },
+   "to": {
+    "x": 617,
+    "y": 426
+   },
+   "pre": {
+    "from": 2,
+    "to": 2,
+    "empty": true,
+    "anchor": 2,
+    "head": 2,
+    "frag": ""
+   },
+   "beforeUp": {
+    "from": 153,
+    "to": 153,
+    "empty": true,
+    "anchor": 153,
+    "head": 153,
+    "frag": ""
+   },
+   "afterUp": {
+    "from": 153,
+    "to": 355,
+    "empty": false,
+    "anchor": 153,
+    "head": 355,
+    "frag": "<img src=\"https://assets.699pic.com/public/img95/photo/50465/4467.jpg_wh860.jpg\" style=\"zoom:25%;\" /><img src=\"https://assets.699pic.com/pub"
+   },
+   "seq": [
+    "0.4ms 2-2-E|ov0|-",
+    "84.3ms 355-355-E|ov0|-",
+    "517.2ms 254-254-E|ov0|-",
+    "617.3ms 153-153-E|ov0|-",
+    "850.5ms 153-153-E|ov0|R",
+    "867.3ms 153-355--|ov0|-"
+   ],
+   "frames": 91
+  },
+  {
+   "name": "② 文字 → 向右拖过图",
+   "from": {
+    "x": 551,
+    "y": 424
+   },
+   "to": {
+    "x": 1084,
+    "y": 426
+   },
+   "pre": {
+    "from": 153,
+    "to": 355,
+    "empty": false,
+    "anchor": 153,
+    "head": 355,
+    "frag": "<img src=\"https://assets.699pic.com/public/img95/photo/50465/4467.jpg_wh860.jpg\" style=\"zoom:25%;\" /><img src=\"https://assets.699pic.com/pub"
+   },
+   "beforeUp": {
+    "from": 355,
+    "to": 355,
+    "empty": true,
+    "anchor": 355,
+    "head": 355,
+    "frag": ""
+   },
+   "afterUp": {
+    "from": 135,
+    "to": 355,
+    "empty": false,
+    "anchor": 135,
+    "head": 355,
+    "frag": "$a^2 + b^2 = c^2$。<img src=\"https://assets.699pic.com/public/img95/photo/50465/4467.jpg_wh860.jpg\" style=\"zoom:25%;\" /><img src=\"https://ass"
+   },
+   "seq": [
+    "13.6ms 153-355--|ov0|-",
+    "80.3ms 135-135-E|ov0|-",
+    "180.1ms 153-153-E|ov0|-",
+    "346.8ms 254-254-E|ov0|-",
+    "463.4ms 355-355-E|ov0|-",
+    "833.3ms 355-355-E|ov0|R",
+    "846.7ms 135-355--|ov0|-"
+   ],
+   "frames": 91
+  },
+  {
+   "name": "③a 图下方 → 向左拖",
+   "from": {
+    "x": 718,
+    "y": 495
+   },
+   "to": {
+    "x": 615,
+    "y": 426
+   },
+   "pre": {
+    "from": 135,
+    "to": 355,
+    "empty": false,
+    "anchor": 135,
+    "head": 355,
+    "frag": "$a^2 + b^2 = c^2$。<img src=\"https://assets.699pic.com/public/img95/photo/50465/4467.jpg_wh860.jpg\" style=\"zoom:25%;\" /><img src=\"https://ass"
+   },
+   "beforeUp": {
+    "from": 135,
+    "to": 355,
+    "empty": false,
+    "anchor": 135,
+    "head": 355,
+    "frag": "$a^2 + b^2 = c^2$。<img src=\"https://assets.699pic.com/public/img95/photo/50465/4467.jpg_wh860.jpg\" style=\"zoom:25%;\" /><img src=\"https://ass"
+   },
+   "afterUp": {
+    "from": 135,
+    "to": 153,
+    "empty": false,
+    "anchor": 135,
+    "head": 153,
+    "frag": "$a^2 + b^2 = c^2$。"
+   },
+   "seq": [
+    "13.9ms 135-355--|ov0|-",
+    "830.6ms 135-153--|ov0|-"
+   ],
+   "frames": 91
+  },
+  {
+   "name": "③b 图上方 → 向左拖",
+   "from": {
+    "x": 718,
+    "y": 358
+   },
+   "to": {
+    "x": 615,
+    "y": 426
+   },
+   "pre": {
+    "from": 135,
+    "to": 153,
+    "empty": false,
+    "anchor": 135,
+    "head": 153,
+    "frag": "$a^2 + b^2 = c^2$。"
+   },
+   "beforeUp": {
+    "from": 135,
+    "to": 153,
+    "empty": false,
+    "anchor": 135,
+    "head": 153,
+    "frag": "$a^2 + b^2 = c^2$。"
+   },
+   "afterUp": {
+    "from": 135,
+    "to": 153,
+    "empty": false,
+    "anchor": 135,
+    "head": 153,
+    "frag": "$a^2 + b^2 = c^2$。"
+   },
+   "seq": [
+    "14.2ms 135-153--|ov0|-"
+   ],
+   "frames": 91
+  },
+  {
+   "name": "④a 松在图盒左半",
+   "from": {
+    "x": 551,
+    "y": 424
+   },
+   "to": {
+    "x": 665,
+    "y": 426
+   },
+   "pre": {
+    "from": 135,
+    "to": 153,
+    "empty": false,
+    "anchor": 135,
+    "head": 153,
+    "frag": "$a^2 + b^2 = c^2$。"
+   },
+   "beforeUp": {
+    "from": 153,
+    "to": 153,
+    "empty": true,
+    "anchor": 153,
+    "head": 153,
+    "frag": ""
+   },
+   "afterUp": {
+    "from": 135,
+    "to": 153,
+    "empty": false,
+    "anchor": 135,
+    "head": 153,
+    "frag": "$a^2 + b^2 = c^2$。"
+   },
+   "seq": [
+    "13.8ms 135-153--|ov0|-",
+    "80.7ms 135-135-E|ov0|-",
+    "280.7ms 152-152-E|ov0|-",
+    "314ms 153-153-E|ov0|-",
+    "797ms 153-153-E|ov0|R",
+    "813.8ms 135-153--|ov0|-"
+   ],
+   "frames": 91
+  },
+  {
+   "name": "④b 松在图盒右半",
+   "from": {
+    "x": 551,
+    "y": 424
+   },
+   "to": {
+    "x": 772,
+    "y": 426
+   },
+   "pre": {
+    "from": 135,
+    "to": 153,
+    "empty": false,
+    "anchor": 135,
+    "head": 153,
+    "frag": "$a^2 + b^2 = c^2$。"
+   },
+   "beforeUp": {
+    "from": 254,
+    "to": 254,
+    "empty": true,
+    "anchor": 254,
+    "head": 254,
+    "frag": ""
+   },
+   "afterUp": {
+    "from": 135,
+    "to": 254,
+    "empty": false,
+    "anchor": 135,
+    "head": 254,
+    "frag": "$a^2 + b^2 = c^2$。<img src=\"https://assets.699pic.com/public/img95/photo/50465/4467.jpg_wh860.jpg\" style=\"zoom:25%;\" />"
+   },
+   "seq": [
+    "14.6ms 135-153--|ov0|-",
+    "81.4ms 135-135-E|ov0|-",
+    "231.6ms 152-152-E|ov0|-",
+    "264.9ms 153-153-E|ov0|-",
+    "614.5ms 254-254-E|ov0|-",
+    "831.3ms 254-254-E|ov0|R",
+    "847.9ms 135-254--|ov0|-"
+   ],
+   "frames": 91
+  }
+ ],
+ "clip": {
+  "x": 300,
+  "y": 334,
+  "width": 1082,
+  "height": 184
+ },
+ "keep": {
+  "revealed": {
+   "revealed": 1,
+   "from": 254,
+   "cls": "img-src-revealed",
+   "bg": "rgb(228, 230, 234)",
+   "ov": 2,
+   "sel": {
+    "from": 355,
+    "to": 355
+   },
+   "frags": [
+    {
+     "l": 828.53,
+     "t": 354.08,
+     "r": 1345.97,
+     "b": 386.27,
+     "w": 517.44,
+     "h": 32.19
+    },
+    {
+     "l": 320,
+     "t": 497.33,
+     "r": 690.53,
+     "b": 529.52,
+     "w": 370.53,
+     "h": 32.19
+    }
+   ],
+   "ovRects": [
+    {
+     "l": 828.52,
+     "t": 354.66,
+     "r": 1345.95,
+     "b": 497.91,
+     "w": 517.44,
+     "h": 143.25
+    },
+    {
+     "l": 320,
+     "t": 497.91,
+     "r": 690.52,
+     "b": 641.16,
+     "w": 370.52,
+     "h": 143.25
+    }
+   ]
+  },
+  "bandClick": {
+   "from": 285,
+   "to": 285,
+   "empty": true,
+   "anchor": 285,
+   "head": 285,
+   "frag": ""
+  },
+  "bandClickRevealed": 1,
+  "bandDrag": {
+   "from": 285,
+   "to": 299,
+   "empty": false,
+   "anchor": 285,
+   "head": 299,
+   "frag": ".com/public/im"
+  },
+  "glyphDrag": {
+   "from": 285,
+   "to": 299,
+   "empty": false,
+   "anchor": 285,
+   "head": 299,
+   "frag": ".com/public/im"
+  },
+  "bandDragDelta": {
+   "dFrom": 0,
+   "dTo": 0
+  },
+  "glyphDragOnly": {
+   "from": 256,
+   "to": 278,
+   "empty": false,
+   "anchor": 256,
+   "head": 278,
+   "frag": "mg src=\"https://assets"
+  },
+  "elsewhere": {
+   "revealed": 0
+  },
+  "press": 0,
+  "release": 1,
+  "releaseBg": "rgb(228, 230, 234)",
+  "revealSeq": [
+   "0.5ms 2-2-E|ov0|-",
+   "218.7ms 254-254-E|ov0|R",
+   "235.5ms 355-355-E|ov2|R"
+  ],
+  "hit": {
+   "mid": {
+    "tag": "SPAN",
+    "cls": "md-html",
+    "overlay": false
+   }
+  },
+  "layoutOn": {
+   "para": {
+    "l": 320,
+    "t": 354.67,
+    "r": 1362,
+    "b": 641.17,
+    "w": 1042,
+    "h": 286.5
+   },
+   "imgs": [
+    {
+     "l": 610.98,
+     "t": 354.67,
+     "r": 825.98,
+     "b": 497.92,
+     "w": 215,
+     "h": 143.25
+    },
+    {
+     "l": 700.72,
+     "t": 497.92,
+     "r": 915.72,
+     "b": 641.17,
+     "w": 215,
+     "h": 143.25
+    },
+    {
+     "l": 918.27,
+     "t": 497.92,
+     "r": 918.27,
+     "b": 497.92,
+     "w": 0,
+     "h": 0
+    }
+   ],
+   "h2": {
+    "l": 320,
+    "t": 674.31,
+    "r": 1362,
+    "b": 715.34,
+    "w": 1042,
+    "h": 41.03
+   },
+   "scrollH": 1530
+  },
+  "layoutOff": {
+   "para": {
+    "l": 320,
+    "t": 354.67,
+    "r": 1362,
+    "b": 641.17,
+    "w": 1042,
+    "h": 286.5
+   },
+   "imgs": [
+    {
+     "l": 610.98,
+     "t": 354.67,
+     "r": 825.98,
+     "b": 497.92,
+     "w": 215,
+     "h": 143.25
+    },
+    {
+     "l": 700.72,
+     "t": 497.92,
+     "r": 915.72,
+     "b": 641.17,
+     "w": 215,
+     "h": 143.25
+    },
+    {
+     "l": 918.27,
+     "t": 497.92,
+     "r": 918.27,
+     "b": 497.92,
+     "w": 0,
+     "h": 0
+    }
+   ],
+   "h2": {
+    "l": 320,
+    "t": 674.31,
+    "r": 1362,
+    "b": 715.34,
+    "w": 1042,
+    "h": 41.03
+   },
+   "scrollH": 1530
+  },
+  "layoutSame": true,
+  "editing": {
+   "cls": "img-src-revealed img-src-revealed--editing",
+   "bg": "rgba(0, 0, 0, 0)",
+   "ov": 0,
+   "ovEl": false
+  },
+  "hidden": {
+   "revealed": 0,
+   "ovEl": false
+  },
+  "modal": 0
+ },
+ "shaAfter": "4dbb870902ecc4ab38f83fcb8ce5c8b755ea738d94932ca5487b5467fd453a7b",
+ "mdRoundtripSame": true
+}

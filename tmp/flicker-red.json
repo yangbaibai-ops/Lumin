@@ -1,0 +1,242 @@
+{
+ "tag": "red",
+ "innerWidth": 1424,
+ "gestures": {
+  "X_band": {
+   "point": {
+    "x": 1087,
+    "y": 442
+   },
+   "frames": 41,
+   "seq": [
+    "0.3ms ov2+R bgEDGE open=254:e n1 sel355",
+    "9.7ms ov2+R RE bgOFF open=254:E n1 sel285",
+    "26.4ms ov0+R RE bgOFF open=254:E n1 sel285",
+    "93ms ov0+R bgEDGE open=254:e n1 sel285",
+    "109.9ms ov2+R RE bgOFF open=254:E n1 sel285",
+    "126.3ms ov0+R RE bgOFF open=254:E n1 sel285"
+   ],
+   "evs": [],
+   "raw": [
+    {
+     "t": 0.3,
+     "ov": 2,
+     "cls": "R",
+     "bg": "rgb(228, 230, 234)",
+     "open": "254:e",
+     "n": 1,
+     "sel": "355",
+     "act": "tiptap ProseMirror md-pr"
+    },
+    {
+     "t": 9.7,
+     "ov": 2,
+     "cls": "R RE",
+     "bg": "rgba(0, 0, 0, 0)",
+     "open": "254:E",
+     "n": 1,
+     "sel": "285",
+     "act": "tiptap ProseMirror md-pr"
+    },
+    {
+     "t": 26.4,
+     "ov": 0,
+     "cls": "R RE",
+     "bg": "rgba(0, 0, 0, 0)",
+     "open": "254:E",
+     "n": 1,
+     "sel": "285",
+     "act": "tiptap ProseMirror md-pr"
+    },
+    {
+     "t": 93,
+     "ov": 0,
+     "cls": "R",
+     "bg": "rgb(228, 230, 234)",
+     "open": "254:e",
+     "n": 1,
+     "sel": "285",
+     "act": "tiptap ProseMirror md-pr"
+    },
+    {
+     "t": 109.9,
+     "ov": 2,
+     "cls": "R RE",
+     "bg": "rgba(0, 0, 0, 0)",
+     "open": "254:E",
+     "n": 1,
+     "sel": "285",
+     "act": "tiptap ProseMirror md-pr"
+    },
+    {
+     "t": 126.3,
+     "ov": 0,
+     "cls": "R RE",
+     "bg": "rgba(0, 0, 0, 0)",
+     "open": "254:E",
+     "n": 1,
+     "sel": "285",
+     "act": "tiptap ProseMirror md-pr"
+    }
+   ]
+  },
+  "Y_glyph": {
+   "point": {
+    "x": 845,
+    "y": 370
+   },
+   "frames": 41,
+   "seq": [
+    "0.5ms ov0+R RE bgOFF open=254:E n1 sel285",
+    "31.3ms ov0+R RE bgOFF open=254:E n1 sel256",
+    "81.2ms ov0+R bgEDGE open=254:e n1 sel256",
+    "98.1ms ov2+R RE bgOFF open=254:E n1 sel256",
+    "114.5ms ov0+R RE bgOFF open=254:E n1 sel256"
+   ],
+   "evs": [],
+   "raw": [
+    {
+     "t": 0.5,
+     "ov": 0,
+     "cls": "R RE",
+     "bg": "rgba(0, 0, 0, 0)",
+     "open": "254:E",
+     "n": 1,
+     "sel": "285",
+     "act": "tiptap ProseMirror md-pr"
+    },
+    {
+     "t": 31.3,
+     "ov": 0,
+     "cls": "R RE",
+     "bg": "rgba(0, 0, 0, 0)",
+     "open": "254:E",
+     "n": 1,
+     "sel": "256",
+     "act": "tiptap ProseMirror md-pr"
+    },
+    {
+     "t": 81.2,
+     "ov": 0,
+     "cls": "R",
+     "bg": "rgb(228, 230, 234)",
+     "open": "254:e",
+     "n": 1,
+     "sel": "256",
+     "act": "tiptap ProseMirror md-pr"
+    },
+    {
+     "t": 98.1,
+     "ov": 2,
+     "cls": "R RE",
+     "bg": "rgba(0, 0, 0, 0)",
+     "open": "254:E",
+     "n": 1,
+     "sel": "256",
+     "act": "tiptap ProseMirror md-pr"
+    },
+    {
+     "t": 114.5,
+     "ov": 0,
+     "cls": "R RE",
+     "bg": "rgba(0, 0, 0, 0)",
+     "open": "254:E",
+     "n": 1,
+     "sel": "256",
+     "act": "tiptap ProseMirror md-pr"
+    }
+   ]
+  },
+  "Z_activate": {
+   "point": {
+    "x": 946,
+    "y": 426
+   },
+   "frames": 41,
+   "seq": [
+    "0.3ms ov0 bgnull open=null:e n0 sel2",
+    "93ms ov0+R bgEDGE open=254:e n1 sel254",
+    "109.2ms ov2+R bgEDGE open=254:e n1 sel355"
+   ],
+   "evs": [],
+   "raw": [
+    {
+     "t": 0.3,
+     "ov": 0,
+     "cls": null,
+     "bg": null,
+     "open": "null:e",
+     "n": 0,
+     "sel": "2",
+     "act": "tiptap ProseMirror md-pr"
+    },
+    {
+     "t": 93,
+     "ov": 0,
+     "cls": "R",
+     "bg": "rgb(228, 230, 234)",
+     "open": "254:e",
+     "n": 1,
+     "sel": "254",
+     "act": "tiptap ProseMirror md-pr"
+    },
+    {
+     "t": 109.2,
+     "ov": 2,
+     "cls": "R",
+     "bg": "rgb(228, 230, 234)",
+     "open": "254:e",
+     "n": 1,
+     "sel": "355",
+     "act": "tiptap ProseMirror md-pr"
+    }
+   ]
+  }
+ },
+ "bands": {
+  "frags": [
+   {
+    "l": 828.53,
+    "t": 354.08,
+    "r": 1345.97,
+    "b": 386.27
+   },
+   {
+    "l": 320,
+    "t": 497.33,
+    "r": 690.53,
+    "b": 529.52
+   }
+  ],
+  "ov": [
+   {
+    "l": 828.52,
+    "t": 354.66,
+    "r": 1345.95,
+    "b": 497.91
+   },
+   {
+    "l": 320,
+    "t": 497.91,
+    "r": 690.52,
+    "b": 641.16
+   }
+  ],
+  "text0": {
+   "l": 828.53,
+   "t": 359.67,
+   "r": 861.59,
+   "b": 380.67
+  }
+ },
+ "points": {
+  "band": {
+   "x": 1087,
+   "y": 442
+  },
+  "glyph": {
+   "x": 845,
+   "y": 370
+  }
+ }
+}
