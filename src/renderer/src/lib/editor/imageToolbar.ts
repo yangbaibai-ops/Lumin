@@ -1144,6 +1144,18 @@ export const ImageSourceUi = Extension.create({
     const LIVE_SEL_HIGHLIGHT = 'lumin-img-drag'
     const SEL_BAND_CLASS = 'sel-band'
     const SEL_OWN_ATTR = 'data-sel-own'
+    /**
+     * 第一百二十五轮：被"不透明底色"盖住、因而**必须交回原生选区绘制**的那些元素
+     * （表格 `thead/th`、显形源码 `.img-src-revealed`…）。只在这个属性上重新打开 `::selection`
+     * 的底色（见 markdown.css 里同一段说明），闸本身仍保持"整层独占" ⇒ 不会和原生叠成两层。
+     */
+    const NATIVE_ATTR = 'data-sel-band-native'
+    /**
+     * "会盖住我们的带"的**结构性不透明块**白名单 —— 与 markdown.css 里那组
+     * `[data-sel-band-native] …` 选择器**必须逐字一致**（这里判"该交回原生"，那边负责"重新打开
+     * 原生 `::selection`"；两边不同步就会出现"撤了带、原生却没打开"= 又没样式）。
+     */
+    const NATIVE_KINDS = 'th, thead, .img-src-revealed, pre, code, blockquote'
     /** 带左右各外扩这么多 px：消掉"正文片段右缘 ↔ 公式片段左缘"之间实测 ~1.3px 的缝（≤1px 重叠不可见） */
     const SEL_BAND_PAD_X = 1
     /** 一次最多处理多少文本片段：超了就**不自己画**（撤闸、退回浏览器绘制），避免超长选区卡顿 */
@@ -1155,6 +1167,26 @@ export const ImageSourceUi = Extension.create({
     let selOwn: 'all' | 'math' | null = null
     /** 落定态最近一次的输入（`from/to/doc` 全同就跳过重算：选区事务很多，别每一笔都量布局） */
     let settledKey: { from: number; to: number; doc: unknown } | null = null
+
+    /**
+     * 交回原生绘制的"不透明块"标记：本帧**有带被不透明底色盖住**时挂在 **`view.dom` 上** ——
+     * 只在这些不透明块（表格 `thead/th`、显形源码 `.img-src-revealed`、代码块…）里重新打开
+     * `::selection` 的底色（见 markdown.css 同一段说明），闸本身仍保持"整层独占" ⇒ 不会和原生叠成两层。
+     * ⚠️ 必须挂在**根**上：往正文元素上写属性会惊动 PM 的 DOMObserver（实测直接把渲染进程卡死）。
+     * 幂等：值不变就不碰 DOM。
+     */
+    const setSelNative = (view: EditorView | null | undefined, on: boolean): void => {
+      const dom = view?.dom
+      if (!dom) return
+      const v = on ? 'on' : null
+      if (dom.getAttribute(NATIVE_ATTR) === v) return
+      try {
+        if (v) dom.setAttribute(NATIVE_ATTR, v)
+        else dom.removeAttribute(NATIVE_ATTR)
+      } catch {
+        /* 视图已销毁：忽略 */
+      }
+    }
 
     // ── 选中带的几何（全部来自测量：行盒自己算，与浏览器实画 Δ ≤ 0.3px）────────────────────
 
@@ -1511,6 +1543,7 @@ export const ImageSourceUi = Extension.create({
         selBand.remove()
         selBand = null
       }
+      setSelNative(view, false)
       try {
         const h = (CSS as unknown as { highlights?: Map<string, unknown> }).highlights
         h?.delete(LIVE_SEL_HIGHLIGHT)
@@ -1569,6 +1602,16 @@ export const ImageSourceUi = Extension.create({
       }
       // ── 我们负责的矩形（**行盒**高 × 覆盖到的 x 范围）+ 它属于哪一条行盒（合并只在同一条行盒内做）
       const pieces: Array<{ rect: RectBox; line: RectBox }> = []
+      /**
+       * 这些带"落在哪些块里"——用来判**带能不能被看见**（见下面的 `bandBlocksOpaque`）。
+       * 第一百二十五轮：表格 `thead/th` 有 `background: var(--panel-2)`、显形源码有
+       * `background-color: var(--edge)`，两者都**不透明**；而我们的层挂在
+       * `view.dom.parentElement` 且**不写 z-index**（markdown.css 里"覆盖层自己 `z-index: auto`"
+       * 那段）⇒ 落在正文**之下**、被这些底色整块盖住 ⇒ 用户报的"表头/源码拖动期没有选中样式"
+       * （逐帧实测：闸 `all` + 带存在，但像素上是裸底色 `rgb(233,235,240)` / `rgb(228,230,234)`，
+       * 松手后才是 `rgb(209,212,218)` / `rgb(205,208,212)`，Δ 67~69）。
+       */
+      const pieceBlocks = new Set<HTMLElement>()
       /** 兜底高亮用：我们负责的**片段**（带没盖住的那几段补进 Highlight） */
       const intentFrags: SelFrag[] = mode === 'all' ? frags : []
       if (mode === 'math') {
@@ -1577,6 +1620,7 @@ export const ImageSourceUi = Extension.create({
           if (!(box.width > 0.5 && box.height > 0.5)) continue
           const r: RectBox = { left: box.left, right: box.right, top: box.top, bottom: box.bottom }
           const block = (w.closest(SEL_BLOCK_SEL) as HTMLElement | null) ?? null
+          if (block) pieceBlocks.add(block)
           const lb = lineOf(block, (box.top + box.bottom) / 2, r)
           pieces.push({
             rect: { left: r.left, right: r.right, top: lb.top, bottom: lb.bottom },
@@ -1602,6 +1646,7 @@ export const ImageSourceUi = Extension.create({
         for (const f of frags) {
           // 块级公式的片段在下面单独处理（不套行盒）
           if (f.blockMath) continue
+          if (f.block) pieceBlocks.add(f.block)
           for (const r of f.rects) {
             const lb = lineOf(f.block, (r.top + r.bottom) / 2, r)
             pieces.push({
@@ -1623,6 +1668,7 @@ export const ImageSourceUi = Extension.create({
           if (!(box.width > 0.5 && box.height > 0.5)) continue
           const r: RectBox = { left: box.left, right: box.right, top: box.top, bottom: box.bottom }
           const block = (w.closest(SEL_BLOCK_SEL) as HTMLElement | null) ?? null
+          if (block) pieceBlocks.add(block)
           const lb = lineOf(block, (box.top + box.bottom) / 2, r)
           pieces.push({
             rect: { left: r.left, right: r.right, top: lb.top, bottom: lb.bottom },
@@ -1635,6 +1681,7 @@ export const ImageSourceUi = Extension.create({
           if (!(box.width > 0.5 && box.height > 0.5)) continue
           const r: RectBox = { left: box.left, right: box.right, top: box.top, bottom: box.bottom }
           const block = (w.closest(SEL_BLOCK_SEL) as HTMLElement | null) ?? null
+          if (block) pieceBlocks.add(block)
           const lb = lineOf(block, (box.top + box.bottom) / 2, r)
           pieces.push({
             rect: { left: r.left, right: r.right, top: lb.top, bottom: lb.bottom },
@@ -1644,6 +1691,7 @@ export const ImageSourceUi = Extension.create({
         // 块级公式：**不套外层行盒**（片段在 KaTeX 的行内块里，浏览器画的是它自己的行高盒）
         for (const f of frags) {
           if (!f.blockMath) continue
+          if (f.block) pieceBlocks.add(f.block)
           for (const r of f.rects) {
             const h = r.bottom - r.top
             const pad = f.lh > h ? (f.lh - h) / 2 : 0
@@ -1681,11 +1729,89 @@ export const ImageSourceUi = Extension.create({
         frag.appendChild(d)
       }
       node.replaceChildren(frag)
+      /**
+       * 带**被不透明底色盖住**时，盖住我们的那一层元素（`elementsFromPoint` 里第一个
+       * `backgroundColor` alpha > 0.02 的、且在我们的正文子树之内）。逐帧实测的两处真凶：
+       *   * 表格 `thead/th`：`background: var(--panel-2)` = `rgb(233,235,240)`；
+       *   * 显形源码 `<span class="img-src-revealed">`：`background-color: var(--edge)` = `rgb(228,230,234)`
+       *     —— 它是**段落的后代**（不是祖先），所以只能按"带上的实际像素点"判，不能只走祖先链。
+       * 零硬编码：只看 computed 背景色的 alpha；±2px 只是**取样容差**（上沿/中心/下沿三点抽样），
+       * 不是视觉尺寸。
+       */
+      const opaqueCoverAt = (r: RectBox): HTMLElement | null => {
+        const x = (r.left + r.right) / 2
+        for (const y of [r.top + 2, (r.top + r.bottom) / 2, r.bottom - 2]) {
+          let stack: Element[] = []
+          try {
+            stack = document.elementsFromPoint(x, y)
+          } catch {
+            stack = []
+          }
+          for (const el of stack) {
+            if (el === view.dom) break
+            if (!view.dom.contains(el)) continue
+            /**
+             * ⚠️ 只认**结构性的不透明块**（与 markdown.css 里那组"交回原生"的选择器**同一份白名单**）：
+             * 泛化到"任何有不透明底色的元素"会把图片 widget 的拖动高亮也算进来 ⇒ 每帧时有时无地
+             * 撤掉过图的带（实测 A 手势的可见并集 4 帧回缩、出现接缝）。
+             */
+            if (!(el as HTMLElement).matches?.(NATIVE_KINDS)) continue
+            let bg = ''
+            try {
+              bg = getComputedStyle(el).backgroundColor
+            } catch {
+              bg = ''
+            }
+            const m = /^rgba?\(([^)]+)\)$/.exec(bg)
+            if (!m) continue
+            const p = m[1].split(',').map((v) => parseFloat(v))
+            if ((p.length > 3 ? p[3] : 1) > 0.02) return el as HTMLElement
+          }
+        }
+        return null
+      }
       // ── 回读**渲染后**的矩形（自证："画的"确实盖住了"要画的"）
-      const rendered: RectBox[] = []
+      const drawn: RectBox[] = []
       for (const d of Array.from(node.children)) {
         const r = d.getBoundingClientRect()
-        rendered.push({ left: r.left, right: r.right, top: r.top, bottom: r.bottom })
+        drawn.push({ left: r.left, right: r.right, top: r.top, bottom: r.bottom })
+      }
+      /**
+       * 第一百二十五轮：**看不见的带要撤掉，并把盖住它的那层交给原生**。
+       *
+       * 用户两条报障（表头 / 点图后立刻在源码上拖动）逐帧实测的机制完全一样：
+       * `data-sel-own='all'` 把浏览器自己的绘制关掉了，而我们的带画在 `view.dom` **之下**
+       * （markdown.css："覆盖层自己 `z-index: auto`，落在正文/选区/图片之下"）⇒ 碰到
+       * `th` 的 `--panel-2`、显形源码的 `--edge` 这类**不透明底色**就被整块盖住 ⇒
+       * **拖动期一点样式都没有，松手后（落定态不再整层独占）才回来**。
+       *
+       * 做法（"闸只能关掉我们确实画到的部分"）：
+       *   ① 被盖住的带**从我们的层里撤掉** —— 留着只会和原生在底色上叠成两层 `--sel`
+       *      （实测 `rgb(184,188,193)` vs 松手后 `rgb(205,208,212)`，Δ 60，肉眼更暗）；
+       *   ② 把"盖住我们的那层元素"标 `data-sel-band-native` ⇒ **原生选区只在这些块里接管绘制**
+       *      （原生画在底色**之上**、文字**之下**，与松手后逐像素一致：表头 `rgb(209,212,218)`、
+       *      源码 `rgb(205,208,212)`，Δ 0）；
+       *   ③ 这些块里的片段交给原生，**不再进兜底 Highlight**（否则又叠一层）。
+       * 其余部分照旧：整层独占 + 我们的带（零叠加）。
+       */
+      const dropIdx = new Set<number>()
+      drawn.forEach((r, i) => {
+        if (opaqueCoverAt(r)) dropIdx.add(i)
+      })
+      const kids = Array.from(node.children)
+      for (const i of dropIdx) kids[i]?.remove()
+      setSelNative(view, dropIdx.size > 0)
+      const hiddenRects = drawn.filter((_, i) => dropIdx.has(i))
+      const rendered = drawn.filter((_, i) => !dropIdx.has(i))
+      const handledByNative = (f: SelFrag): boolean => {
+        return f.rects.some((r) =>
+          hiddenRects.some(
+            (h) =>
+              h.left <= r.left + 0.5 &&
+              h.right >= r.right - 0.5 &&
+              Math.min(h.bottom, r.bottom) - Math.max(h.top, r.top) > 0
+          )
+        )
       }
       const covered = (r: RectBox): boolean =>
         rendered.some(
@@ -1697,6 +1823,7 @@ export const ImageSourceUi = Extension.create({
       let missFrag = 0
       const missRanges: Range[] = []
       for (const f of intentFrags) {
+        if (handledByNative(f)) continue
         if (f.rects.every(covered)) continue
         missFrag++
         missRanges.push(f.range)
@@ -1711,10 +1838,6 @@ export const ImageSourceUi = Extension.create({
       } catch {
         /* 无 API：忽略（带本身已经画出来了） */
       }
-      /**
-       * 闸门：**只有确实画出来了才置位**（`rendered` 非空即"画出来了"）。画不出来一律撤闸
-       * ⇒ 退回浏览器自己的绘制 ⇒ 不会出现"没有选中样式"。
-       */
       setSelOwn(view, rendered.length ? mode : null)
       try {
         const fmt = (r: RectBox): string =>

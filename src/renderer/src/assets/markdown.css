@@ -555,6 +555,35 @@ ormal，只影响这种段落 */
 .editor-content .md-preview[data-sel-own='all'] ::selection {
   background: transparent;
 }
+/* 第一百二十五轮（用户两条报障：「表头拖动时没有被选中的样式」「点图后立刻在源码上拖动也没有」）：
+   我们的带画在正文**之下**（见上面 `.sel-band` 那段），碰到**不透明底色**的块就被整块盖住 ——
+   表格 `thead/th`（`background: var(--panel-2)`）、显形源码 `.img-src-revealed`（`var(--edge)`）、
+   代码块（`pre/code` 的 `--code-bg`）…。此时若仍靠"整层独占"，就成了"原生被关掉 + 我们的带看不见
+   = 拖动期完全没有选中样式"，松手后才回来。
+   `imageToolbar.ts` 每帧判"有没有带被盖住"：有 ⇒ ① 撤掉自己那条**看不见**的带（留着只会和原生
+   在底色上叠成两层 `--sel`，实测更暗 Δ60）；② 在**根上**挂 `[data-sel-band-native]`。
+   这里只在这些不透明块里重新打开原生的 `::selection` 底色（原生画在底色**之上**、文字**之下**，
+   与松手后逐像素一致）。⚠️ 没有 `!important`：靠选择器权重高于上面那条闸规则生效；
+   颜色仍只用既有令牌 `--sel`（零硬编码）。 */
+.editor-content .md-preview[data-sel-own='all'][data-sel-band-native] th::selection,
+.editor-content .md-preview[data-sel-own='all'][data-sel-band-native] th ::selection,
+.editor-content .md-preview[data-sel-own='all'][data-sel-band-native] thead ::selection,
+.editor-content .md-preview[data-sel-own='all'][data-sel-band-native] .img-src-revealed::selection,
+.editor-content .md-preview[data-sel-own='all'][data-sel-band-native] .img-src-revealed ::selection,
+.editor-content .md-preview[data-sel-own='all'][data-sel-band-native] pre::selection,
+.editor-content .md-preview[data-sel-own='all'][data-sel-band-native] pre ::selection,
+.editor-content .md-preview[data-sel-own='all'][data-sel-band-native] code::selection,
+.editor-content .md-preview[data-sel-own='all'][data-sel-band-native] code ::selection,
+.editor-content .md-preview[data-sel-own='all'][data-sel-band-native] blockquote ::selection,
+.editor-content .md-preview[data-sel-own='math'][data-sel-band-native] th::selection,
+.editor-content .md-preview[data-sel-own='math'][data-sel-band-native] th ::selection,
+.editor-content .md-preview[data-sel-own='math'][data-sel-band-native] thead ::selection,
+.editor-content .md-preview[data-sel-own='math'][data-sel-band-native] .img-src-revealed::selection,
+.editor-content .md-preview[data-sel-own='math'][data-sel-band-native] .img-src-revealed ::selection,
+.editor-content .md-preview[data-sel-own='math'][data-sel-band-native] pre ::selection,
+.editor-content .md-preview[data-sel-own='math'][data-sel-band-native] blockquote ::selection {
+  background-color: var(--sel);
+}
 .editor-content .md-preview[data-sel-own='math'] [data-md-math-rendered] ::selection,
 .editor-content .md-preview[data-sel-own='math'] [data-md-math-rendered]::selection {
   background: transparent;
