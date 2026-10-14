@@ -12,3 +12,5 @@ dev-app-update.yml
 *.lumin-tmp
 # TypeScript 增量构建缓存（每次 typecheck 都会变，不该进仓库）
 *.tsbuildinfo
+
+tmp/
