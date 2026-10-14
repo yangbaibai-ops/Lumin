@@ -1749,50 +1749,82 @@ export const ImageSourceUi = Extension.create({
      * 根本不画带 ⇒ 用户看到"块级公式那一行是整行宽的灰带"，且"鼠标一松就变样"。
      *
      * 现在**两个档（拖动期 `all` / 落定态 `math`）都走这里**，并且只取**浏览器真正画出来的范围**：
-     *   * **y**：块级公式内部可见文字盒的并集（没有文字盒才退回子元素的盒）；
-     *   * **x**：同上 —— 于是带紧贴公式本体，不再"动不动整行宽"。
+     *   * **x**：公式本体实画范围的并集 —— 于是带紧贴公式本体，不再"动不动整行宽"；
+     *   * **y**：这一档自己的盒（见下面第一百三十轮的补充）。
      * 换句话说：**拖动期与松手后取同一个来源**（这是用户口径里"以松手后为准"的落法）。
      * 返回**矩形**而不是元素：调用方（两档）直接并进带，不需要再各算一套几何。
      */
-    const mathBlockRectsIn = (view: EditorView, from: number, to: number): RectBox[] => {
+    /**
+     * 同一条"块级公式带"的矩形，并保证它是**一条连续的带**：
+     *   * **x** 取公式本体的实画并集（紧贴公式，不铺满整行 —— 上一轮的既有口径）；
+     *   * **y** 取**这一档自己的盒**（有文字盒时用 `.katex-display` 的盒、否则用块自己的盒）
+     *     —— 因为 KaTeX 的文字盒是**多个行内片段**（上下两排不等高），只取并集时
+     *     带会在片段交界处"收腰"（逐像素实测：上下两排之间横向连续、但列方向上有 6~16px 的
+     *     非带像素），用户看到的"被切成一块块/高低不一"就包含这一层。
+     * 两条都不新造几何：x 来自并集、y 来自既有盒。色仍 `var(--sel)`。
+     */
+    const mathBlockBandRects = (view: EditorView, from: number, to: number): RectBox[] => {
       const out: RectBox[] = []
       for (const el of Array.from(view.dom.querySelectorAll<HTMLElement>('[data-md-math-block]'))) {
         if (!coversWidget(from, to, widgetRange(view, el))) continue
-        const union: RectBox | null = (() => {
-          let u: RectBox | null = null
-          const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT)
-          let n: Node | null
-          while ((n = walker.nextNode())) {
-            const t = n as Text
-            if (!t.length || !t.textContent?.trim()) continue
-            const rg = document.createRange()
-            try {
-              rg.selectNodeContents(t)
-            } catch {
-              continue
-            }
-            for (const cr of Array.from(rg.getClientRects())) {
-              if (cr.width <= 0.5 && cr.height <= 0.5) continue
-              if (!u) u = { left: cr.left, right: cr.right, top: cr.top, bottom: cr.bottom }
-              else {
-                u.left = Math.min(u.left, cr.left)
-                u.right = Math.max(u.right, cr.right)
-                u.top = Math.min(u.top, cr.top)
-                u.bottom = Math.max(u.bottom, cr.bottom)
-              }
+        let u: RectBox | null = null
+        const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT)
+        let n: Node | null
+        while ((n = walker.nextNode())) {
+          const t = n as Text
+          if (!t.length || !t.textContent?.trim()) continue
+          const rg = document.createRange()
+          try {
+            rg.selectNodeContents(t)
+          } catch {
+            continue
+          }
+          for (const cr of Array.from(rg.getClientRects())) {
+            if (cr.width <= 0.5 && cr.height <= 0.5) continue
+            if (!u) u = { left: cr.left, right: cr.right, top: cr.top, bottom: cr.bottom }
+            else {
+              u.left = Math.min(u.left, cr.left)
+              u.right = Math.max(u.right, cr.right)
+              u.top = Math.min(u.top, cr.top)
+              u.bottom = Math.max(u.bottom, cr.bottom)
             }
           }
-          return u
-        })()
-        if (union) {
-          out.push(union)
+        }
+        /** y 的权威来源：这一档自己的盒（`.katex-display` 优先，拿不到用块自己的盒） */
+        const inner = (el.firstElementChild as HTMLElement | null) ?? el
+        const box = inner.getBoundingClientRect()
+        /**
+         * x 也要覆盖**整颗公式**：只并"文字盒"会漏掉 KaTeX 的**行内构件盒**
+         * （`.pstrut`/`.mspace`/行列盒这些没有文字的后代），逐帧实测会剩 1 个片段盖不住
+         * （`blockmath@122`）。所以把公式内部**除最外层渲染盒以外**的所有后代元素的盒也并进来
+         * —— 它们都落在公式本体里，不会把带铺到整行。
+         */
+        for (const d of Array.from(el.querySelectorAll<HTMLElement>('*'))) {
+          if (d === inner) continue
+          const r = d.getBoundingClientRect()
+          if (!(r.width > 0.5 && r.height > 0.5)) continue
+          if (!u) u = { left: r.left, right: r.right, top: r.top, bottom: r.bottom }
+          else {
+            u.left = Math.min(u.left, r.left)
+            u.right = Math.max(u.right, r.right)
+            u.top = Math.min(u.top, r.top)
+            u.bottom = Math.max(u.bottom, r.bottom)
+          }
+        }
+        const yTop = box.height > 0.5 ? box.top : (u?.top ?? 0)
+        const yBottom = box.height > 0.5 ? box.bottom : (u?.bottom ?? 0)
+        if (!u) {
+          if (box.width > 0.5 && box.height > 0.5) {
+            out.push({ left: box.left, right: box.right, top: box.top, bottom: box.bottom })
+          }
           continue
         }
-        const inner = (el.firstElementChild as HTMLElement | null) ?? el
-        const r = inner.getBoundingClientRect()
-        if (r.width > 0.5 && r.height > 0.5) {
-          out.push({ left: r.left, right: r.right, top: r.top, bottom: r.bottom })
-        }
+        out.push({
+          left: u.left,
+          right: u.right,
+          top: Math.min(u.top, yTop),
+          bottom: Math.max(u.bottom, yBottom)
+        })
       }
       return out
     }
@@ -1904,10 +1936,20 @@ export const ImageSourceUi = Extension.create({
         }
         return v
       }
-      /** 落定态：先看有没有行内公式落在区间里（**不整树遍历**，只查构件） */
+      /**
+       * 落定态：先看有没有公式落在区间里（**不整树遍历**，只查构件）。
+       * ⚠️ 第一百三十轮（用户报障：**块级公式松手后灰带被切成一块块**）：
+       * 这里原来只查**行内**公式（`mathWidgetsIn` 只看 `[data-md-math-rendered]`），**没有行内公式就
+       * `clearSelBands` 直接收工** ⇒ 松手后**块级公式**那一条连续带被撤掉（`data-sel-own` 回到
+       * 未置位）⇒ 剩下浏览器对 KaTeX 逐片段的原生 `::selection`（实测该块内原生 `getClientRects()`
+       * **16 条**、有断口、高低不一）——正是用户第二张图。
+       * 现在把**块级**公式也算进"这一档有东西要画"：两档都能画到那一条连续带。
+       * （拖动期 `mode='all'` 不查这个闸，所以上一轮只在拖动期看得见连续带。）
+       */
       const widgets = mode === 'math' ? mathWidgetsIn(view, from, to) : []
+      const blockMathRects = mathBlockBandRects(view, from, to)
       const frags = mode === 'all' ? visibleFrags(view, from, to, linesOf) : []
-      if (mode === 'math' && !widgets.length) {
+      if (mode === 'math' && !widgets.length && !blockMathRects.length) {
         clearSelBands(view)
         return 0
       }
@@ -2012,7 +2054,7 @@ export const ImageSourceUi = Extension.create({
       /**
        * ─── 第一百二十九轮（用户报障：**图片源码被选中的样式，拖动期与松手后不一样**）──────────
        * 块级公式必须**两档都画**（拖动期 `all` / 落定态 `math`），而且几何来源**只有一个**
-       * （`mathBlockRectsIn`：公式本体**实画范围**的并集）。
+       * （`mathBlockBandRects`：公式本体**实画范围**的并集）。
        *
        * 上一版把它写在 `else`（= `mode === 'all'` 拖动期）那一支里 —— 后果有两个，正好就是用户
        * 看到的两张图：
@@ -2024,7 +2066,7 @@ export const ImageSourceUi = Extension.create({
        * 现在移到分支之外、两档共用；`frags` 只在 `all` 档有内容（落定态不遍历全文片段），
        * 所以下面那段"块级公式文字片段兜底"天然只在拖动期生效 —— 它的矩形被上面的并集包含。
        */
-      for (const own of mathBlockRectsIn(view, from, to)) {
+      for (const own of blockMathRects) {
         if (!(own.right - own.left > 0.5 && own.bottom - own.top > 0.5)) continue
         pieces.push({ rect: own, line: own })
       }
@@ -2190,7 +2232,20 @@ export const ImageSourceUi = Extension.create({
       } catch {
         /* 忽略：下一帧会再画一次 */
       }
-      setSelNative(view, dropped)
+      /**
+       * ─── 第一百三十轮（用户报障：**块级公式松手后被切成一块块**）────────────────────────────
+       * 打开"交回原生"的开关，**不只是**因为"有带被撤掉"，还因为**块级公式这一档本来就不该让
+       * 原生再画一层**：
+       * `data-sel-own='all'`（拖动期）会把浏览器那份整体关掉 ⇒ 用户看到的是**我们那一条连续带**；
+       * 而落定态（`own='math'`）闸只关"行内公式那几段"，块级公式**不在闸内** ⇒ 浏览器把它自己那份
+       * 画在**我们带的上方**：KaTeX 逐片段（实测该块内原生 `getClientRects()` **16 条**、有断口、
+       * 高低不一）⇒ 同一条带看上去被"切碎"。这正是用户"按下是一条、松手变一块块"的根因。
+       * 所以：**只要这一帧画了块级公式的带，就把这个块交回"我们独占"** —— 闸保持独占（`own` 不变），
+       * 同时用根上的 `[data-sel-band-native]` 让 markdown.css 在**该块内**把原生 `::selection`
+       * 压掉（`background: transparent`），于是屏幕上只剩那一条连续带。
+       * 注意与"被盖住要交回原生"不冲突：那一路走的是 `dropped`（撤带），这一路是**我们确实画到了**。
+       */
+      setSelNative(view, dropped || blockMathRects.length > 0)
       const handledByNative = (f: SelFrag): boolean => {
         return f.rects.some((r) =>
           hiddenRects.some(
@@ -2268,7 +2323,7 @@ export const ImageSourceUi = Extension.create({
        * 在拖动期是"整行宽的 `.katex-display` 盒"、落定态没有它）。松手时键刚好与松手后的模型选区
        * 相同 ⇒ `paintSettledSel` 会**直接返回**，于是屏幕上留着的还是**拖动期那一份**（`own` 仍是
        * `all`）——"鼠标一松就变样"的另一半就是这个。
-       * 这里把键清掉：松手一定会用**落定态口径**重画一次（两档现在共用 `mathBlockRectsIn`）。
+       * 这里把键清掉：松手一定会用**落定态口径**重画一次（两档现在共用 `mathBlockBandRects`）。
        */
       settledKey = null
       /**

@@ -598,6 +598,19 @@ ormal，只影响这种段落 */
 .editor-content .md-preview[data-sel-own='math'] [data-md-math-rendered]::selection {
   background: transparent;
 }
+/* 第一百三十轮（用户报障：「选中块级公式时，按下是一条连续的灰带，松手后被切成一块块」）：
+   **块级公式**不在"闸"的范围内（闸只关了行内公式那几段），于是浏览器把它自己那份选区画在
+   **我们那一条连续带的上方**；KaTeX 的文字是逐片段的行内盒（实测该块内原生 `getClientRects()`
+   有 **16 条**、高低不一、还有断口）⇒ 同一条带看起来"被切碎"。
+   这里在这些块内把原生 `::selection` 压掉，屏幕上只剩我们自己那一条连续带（`var(--sel)`，
+   零硬编码）。开关仍走既有的根属性 `[data-sel-band-native]`（由 imageToolbar 每帧按需置位），
+   不新增任何第二套机制。 */
+.editor-content .md-preview[data-sel-own='math'][data-sel-band-native] [data-md-math-block] ::selection,
+.editor-content .md-preview[data-sel-own='math'][data-sel-band-native] [data-md-math-block]::selection,
+.editor-content .md-preview[data-sel-own='all'][data-sel-band-native] [data-md-math-block] ::selection,
+.editor-content .md-preview[data-sel-own='all'][data-sel-band-native] [data-md-math-block]::selection {
+  background: transparent;
+}
 /* 语法被改坏（例如退格删掉结尾 `>`）：它不再是图片，但仍是正文 —— 只关拼写检查 */
 .md-preview .img-src-incomplete {
   vertical-align: top;

@@ -4181,10 +4181,21 @@ const doc = MD.split('PLACE_A')
      * 解析变形（图片只剩一段空文本、段落被撑到 638px ⇒ `posAtCoords` 整片返回同一个位置），
      * 断言的就不是我们想测的东西了。文件名**不含 "lumin"**（本机有清理会按命令行关键字杀实例）。
      */
-    const lsFile = path.join(process.env.TEMP || 'C:\\Windows\\Temp', 'xw-ls-suite-fixture.md')
+    /**
+     * ⚠️ 文件名**每次都不一样**：应用对"已经打开过的路径"会**去重**（再 `openPath` 直接 resolve，
+     * 不重读磁盘、不换文档）⇒ 上一轮遗留的同名夹具会让这里**看起来加载成功、实际还是旧文档**
+     * （实测 `pmText` 还是上一段的 `qian <img …>`，端点自然取不到）。
+     * 用「基础名 + 递增序号」保证每次都是**新路径**。文件名仍不含 "lumin"。
+     */
+    const lsFile = path.join(
+      process.env.TEMP || 'C:\\Windows\\Temp',
+      `xw-look-fixture-${Date.now().toString(36)}.md`
+    )
     safe(() => fs.writeFileSync(lsFile, lsFixture, 'utf8'), null)
-    /** 打开可能被"当前文档"状态拦一下 ⇒ 最多重试 3 次，并以**内容真的换了**为准（不看返回值） */
+    /** 打开可能被"当前文档"状态拦一下 ⇒ 最多重试 3 次，并以**内容真的换了**为准（不看返回值）；
+     *  若当前文档**本来就是这份夹具**，直接跳过重开（重开失败会让下面所有端点取不到 ⇒ 误报"端点不在视口内"） */
     for (let attempt = 0; attempt < 3; attempt++) {
+      if (await ev(`(window.__vt.files().current && String(window.__vt.files().current.content || '')).includes('行内公式行')`)) break
       await ev(`window.__lsOpen = window.__vt.files().openPath(${JSON.stringify(lsFile)}).then(() => 'ok').catch((e) => 'err:' + e.message); 1`)
       for (let i = 0; i < 20; i++) {
         await sleep(250)
@@ -4198,14 +4209,19 @@ const doc = MD.split('PLACE_A')
       if (ready) break
       await sleep(300)
     }
+    // 端点解析**重试**：文档刚切换时 DOM 可能还没量好（否则会误报"端点不在视口内"）
+    let gy = await lsResolve('行内公式行：开头', 0.2, '尾段：随便', 0.8)
+    for (let i = 0; i < 6 && !(gy.a && gy.b); i++) {
+      await sleep(400)
+      gy = await lsResolve('行内公式行：开头', 0.2, '尾段：随便', 0.8)
+    }
     await ev(`(() => { const pm = document.querySelector('.ProseMirror'); for (const el of [pm, ...document.querySelectorAll('.editor-content,.md-preview,.editor-scroll,.scroll-area')]) { try { el.scrollTop = 0 } catch (e) {} } window.scrollTo(0, 0); return 'ok' })()`)
     await sleep(500)
     lsCover = { loaded: await ev(`(window.__vt.files().content || '').includes('行内公式行')`) }
     const away = await json(`(() => { const w = document.createTreeWalker(document.querySelector('.ProseMirror'), NodeFilter.SHOW_TEXT); let n; while ((n = w.nextNode())) { if ((n.textContent || '').trim().length > 4) { const rg = document.createRange(); rg.setStart(n, 0); rg.setEnd(n, 1); const r = rg.getBoundingClientRect(); return { x: Math.round(r.left + 2), y: Math.round((r.top + r.bottom) / 2) } } } return { x: 400, y: 30 } })()`)
     // ① 覆盖差额：**首行正文 → 尾段**（大范围多元素：跨行内公式 + 块级公式 + 两图 + 表格 + 标题）
-    const gy = await lsResolve('行内公式行：开头', 0.2, '尾段：随便', 0.8)
     const g1 = gy.a && gy.b && gy.a.y > 8 && gy.a.y < gy.a.vh - 8 && gy.b.y > 8 && gy.b.y < gy.b.vh - 8 ? await lsDrag(gy.a, gy.b, 26) : null
-    lsCover = g1 ? { loaded: true, a: gy.a, b: gy.b, framesN: g1.framesN, missFrames: g1.missFrames, missDetail: g1.missDetail, spec: g1.spec } : { err: '端点不在视口内', a: gy.a, b: gy.b }
+    lsCover = g1 ? { loaded: true, a: gy.a, b: gy.b, framesN: g1.framesN, missFrames: g1.missFrames, missDetail: g1.missDetail, spec: g1.spec } : { err: '端点不在视口内', a: gy.a, b: gy.b, docHas: await ev(`(window.__vt.files().current && String(window.__vt.files().current.content || '')).includes('行内公式行')`), pmText: await ev(`(document.querySelector('.ProseMirror') && document.querySelector('.ProseMirror').textContent || '').slice(0, 40)`), pmP: await ev(`document.querySelectorAll('.ProseMirror p').length`) }
     // ② settled == live：三类跨越（表格前→后 / 块级公式 / 图片）各一例 + 大范围
     const cases = []
     const spec2 = [
