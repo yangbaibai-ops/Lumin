@@ -555,6 +555,16 @@ ormal，只影响这种段落 */
 .editor-content .md-preview[data-sel-own='all'] ::selection {
   background: transparent;
 }
+/* 第一百二十七轮（用户报障 2 的残留一帧）：**拖动期把插入符藏掉**。
+   闸只关掉了浏览器的"选中底色"，**文本插入符**是另一条绘制路径 —— 落点若停在原子构件
+   （图片实体盒、块级公式盒）旁边，浏览器仍会把那条 1px 竖线画出来（实测：`caret-color` 仍是
+   `--ink`）。于是"按下还没拖出第一帧"时屏幕上唯一的东西就是这根插入符 ⇒ 用户看到的就是
+   "按下去没有选中样式、抬起才有"。我们自己的行盒带已经承担了这段观感，插入符在这里**只添乱**；
+   松手后闸一撤，`caret-color` 立刻回到 `--ink`（editor.css 的既有口径）⇒ 不改变任何既有观感。
+   零硬编码：只用既有令牌 `transparent` 语义 + 属性选择器，靠权重盖过 editor.css 那条。 */
+.editor-content .md-preview[data-sel-own='all'] {
+  caret-color: transparent;
+}
 /* 第一百二十五轮（用户两条报障：「表头拖动时没有被选中的样式」「点图后立刻在源码上拖动也没有」）：
    我们的带画在正文**之下**（见上面 `.sel-band` 那段），碰到**不透明底色**的块就被整块盖住 ——
    表格 `thead/th`（`background: var(--panel-2)`）、显形源码 `.img-src-revealed`（`var(--edge)`）、

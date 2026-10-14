@@ -984,6 +984,14 @@ export const ImageSourceUi = Extension.create({
       anchor: number | null
       focus: number | null
       anchorLost: boolean
+      /** 上一帧原生 `selection.head`（判"原生光标是不是钉住不动了"，见 `boxDragRange`） */
+      lastHead: number | null
+      /** 上一帧的指针轴向距离（与 `lastHead` 配对） */
+      lastPx: number
+      /** 指针在走、原生光标却**连续**没动的帧数（`≥2` 时落定按我们画的那份兜底） */
+      blindMoves: number
+      /** 最近一次"试探区间"的远端（**画面上那一份**；原生光标瞎了时落定用它兜底） */
+      lastLiveFar: number | null
       /** 高水位：远端达到过的最远文档位置（只增不减，除非指针真的反向 ≥4px，见 `TAIL_BACK_PX`） */
       hw: number | null
       /** 设置 hw 时的指针"轴向距离"（px） */
@@ -1024,27 +1032,123 @@ export const ImageSourceUi = Extension.create({
     }
 
     /**
-     * 指针正压在图片实体盒上 ⇒ 该用**哪一端**当 focus：没过半 ⇒ 近端（`from`），过半 ⇒ 远端（`to`）。
-     * 轴：行内图（`data-img-inline !== 'false'`）看水平半区、独占一行的图看垂直半区。
-     * 指针不在任何图片盒上 ⇒ `null`（调用方一律不介入）。
+     * ─── 第一百二十七轮（用户报障 2：「按下拖动但内容却没有被选中的样式，抬起才有」）────────────
+     * **`posAtCoords` 死区**：指针压在某个**原子构件的盒子**上时，`posAtCoords` 在整个盒子内
+     * **恒返回同一个位置** ⇒ 原生锚点立不住、原生选区一帧都建不起来，而拖动期 `data-sel-own='all'`
+     * 已经把浏览器那份绘制关掉了 ⇒ **整段拖动期一点样式都没有，松手落定才回来**（正是用户那句话）。
+     *
+     * 逐点实测（本轮 `tmp/ls-dead.js`，块级公式 `div.md-math-block` 盒 x∈[320,1362]、y∈[192.8,245.5]）：
+     *   `posAtCoords` 在 x = 320/494/667/841/1015/1188/1362 上**恒为 61**；
+     *   在 y = 193/206/219/232/245 上恒为 60/61 —— 与图片实体盒（第一百一十一轮实测"恒 254"）同一条。
+     *
+     * 做法（沿用图片那条已验证的骨架，**不新装监听**）：指针压在原子盒上时，用**盒的哪一半**把
+     * focus 定到**近端/远端**；盒内一律不落子（拖动期零 dispatch），由绘制接管、松手后 `boxDragSettle`
+     * 落定 ⇒ "拖动中"与"松手后"是**同一个区间**。
+     *
+     * 轴的选择按**盒子的形状**（与图片那条同一条判据，零硬编码尺寸）：
+     *   * 宽 > 高（行内图、行内公式）：看水平半区；
+     *   * 高 ≥ 宽（独占一行的块级图、块级 display 公式）：看垂直半区
+     *     —— 块级公式盒是**整行宽**，按水平半区取的话"从公式里往下拖"永远停在近端（实测卡在 61）。
      */
-    const imgDragEdgeAtPoint = (view: EditorView, x: number, y: number): number | null => {
+    /**
+     * 原子盒的**两端**（+ 命中的盒子）：`near` = 盒的近端（左上那半）、`far` = 远端。
+     * 两端一起返回，由调用方按**锚点在哪一端**决定 focus（见 `atomFocusAt`）。
+     */
+    type AtomEnds = { near: number; far: number; box: HTMLElement }
+
+    const atomEndsAtPoint = (view: EditorView, x: number, y: number): AtomEnds | null => {
       const at = document.elementFromPoint(x, y) as HTMLElement | null
-      if (!at || typeof at.closest !== 'function') return null
-      const widget = at.closest<HTMLElement>('[data-img-widget]')
-      if (!widget) return null
-      const range = imgRangeOfWidget(view, widget)
-      if (!range) return null
-      const r = widget.getBoundingClientRect()
-      const frac =
-        widget.getAttribute('data-img-inline') === 'false'
-          ? r.height > 0
-            ? (y - r.top) / r.height
-            : 0.5
-          : r.width > 0
-            ? (x - r.left) / r.width
-            : 0.5
-      return frac < 0.5 ? range.from : range.to
+      let range: { from: number; to: number } | null = null
+      let box: HTMLElement | null = null
+      const widget =
+        at && typeof at.closest === 'function' ? at.closest<HTMLElement>('[data-img-widget]') : null
+      if (widget) {
+        range = imgRangeOfWidget(view, widget)
+        box = widget
+      } else {
+        /**
+         * 公式：块级是 `div.md-math-block`（NodeView），行内是 `span.md-math-rendered`（widget）。
+         * 结构性判据（不用正则、不硬编码）：**块级盒里必然含行内渲染盒**，行内盒则不在任何块级盒里。
+         */
+        const hit =
+          at && typeof at.closest === 'function'
+            ? at.closest<HTMLElement>('[data-md-math-block],[data-md-math-rendered]')
+            : null
+        if (hit) {
+          /** 两者都取**外层那个**当命中盒 */
+          const blk = hit.closest<HTMLElement>('[data-md-math-block]')
+          const target = blk ?? hit
+          const r = widgetRange(view, target)
+          if (r) {
+            range = { from: r.s, to: r.e }
+            box = target
+          }
+        }
+      }
+      if (!range || !box) return null
+      const r = box.getBoundingClientRect()
+      if (!(r.width > 0.5 && r.height > 0.5)) return null
+      return { near: range.from, far: range.to, box }
+    }
+
+    /**
+     * 死区命中的**几何兜底**：`document.elementFromPoint` 只看得见**最上面那一层**，被任何浮层
+     * （工具栏/浮条/提示卡）压住时就返回 null ⇒ 死区解析会整个失效（本轮实测就是这么踩到的：
+     * 一个残留的模态把 `elementFromPoint` 全吃掉，块级公式盒里的死区一句都没解析出来）。
+     * 这里按**构件自己的矩形**做命中测试（纯几何），只在 `atomEdgeAtPoint` 没命中时才走
+     * ⇒ 正常路径零额外开销。
+     */
+    const atomEndsAtBox = (view: EditorView, x: number, y: number): AtomEnds | null => {
+      for (const w of Array.from(
+        view.dom.querySelectorAll<HTMLElement>('[data-img-widget],[data-md-math-block]')
+      )) {
+        const r = w.getBoundingClientRect()
+        if (!(r.width > 0.5 && r.height > 0.5)) continue
+        if (x < r.left || x > r.right || y < r.top || y > r.bottom) continue
+        const blk = w.closest<HTMLElement>('[data-md-math-block]')
+        const target = blk ?? w
+        const range = widgetRange(view, target)
+        if (!range) return null
+        return { near: range.s, far: range.e, box: target }
+      }
+      return null
+    }
+
+    /**
+     * 死区里这一帧的 focus 取哪一端（`anchor` = 本次拖动的锚点）。
+     *
+     * ⚠️ **只在指针确实落在某个原子盒内时**才给答案（`null` = 指针在盒外 ⇒ 一律交回原生映射）。
+     * 为什么必须这么收窄（本轮实测的第二个坑）：先前是"每帧都用 `elementFromPoint` 解一次"，
+     * 指针**离开盒子之后**它仍然命中盒子（块级公式盒整行宽、图片实体盒 215px 高）⇒ focus 被
+     * **钉在盒子的远端**，原生光标明明已经推进到后面的正文，`boxDragRange` 却取不到
+     * ⇒ 试探区间恒为 `[60,61]`、**整段拖动一个像素都不长**（逐帧实测 P1）。
+     *
+     * 取哪一端：
+     *   * 锚点**不在**这个原子区间里（`anchor < near || anchor > far`）⇒ 取**盒内取半**那一端
+     *     （鼠标从外侧压上来，自然想压到靠近自己的那一端）；
+     *   * 锚点**已经在这个原子区间里**（在块级公式里按下、或在图片实体上按下）⇒ 取**另一半**
+     *     —— 否则"盒内取半"恒返回近端、而锚点就在近端 ⇒ 试探区间恒为 `[a,a]`。
+     * 轴向按**盒子的形状**（零硬编码尺寸）：
+     *   * 宽 > 高（行内图、行内公式）：看水平半区；
+     *   * 高 ≥ 宽（独占一行的块级图、块级 display 公式）：看垂直半区
+     *     —— 块级公式盒是**整行宽**，按水平半区取的话"从公式里往下拖"永远停在近端。
+     */
+    const atomFocusAt = (
+      view: EditorView,
+      x: number,
+      y: number,
+      anchor: number | null
+    ): number | null => {
+      const ends = atomEndsAtPoint(view, x, y) ?? atomEndsAtBox(view, x, y)
+      if (!ends) return null
+      const r = ends.box.getBoundingClientRect()
+      /** 盒外一律不介入（见上面那段"第二个坑"） */
+      if (x < r.left || x > r.right || y < r.top || y > r.bottom) return null
+      const frac = r.width > r.height ? (x - r.left) / r.width : (y - r.top) / r.height
+      const side = frac < 0.5 ? ends.near : ends.far
+      const inside = anchor != null && anchor >= ends.near && anchor <= ends.far
+      if (inside) return side === ends.near ? ends.far : ends.near
+      return side
     }
 
     /**
@@ -1438,6 +1542,14 @@ export const ImageSourceUi = Extension.create({
       while ((n = walker.nextNode())) {
         const t = n as Text
         if (!t.length) continue
+        /**
+         * ⚠️ 第一百二十七轮：**块级公式内部**的文字节点全部跳过。
+         * 原因：块级公式是 `div.md-math-block` 的 NodeView，而 `view.dom` 自己就是 `div`、也在
+         * `SEL_BLOCK_SEL` 里 ⇒ `closest(SEL_BLOCK_SEL)` 会一路取到 `view.dom`，`blockLineBoxes`
+         * 于是算出**整篇文档高**的"行盒"，带糊满全屏。块级公式**已经**由 `mathBlockBoxesIn`
+         * 按构件盒整块并进来了（那一份才是对的），这里再出一份只会更糟。
+         */
+        if (t.parentElement?.closest('[data-md-math-block]')) continue
         let start = -1
         let whole = false
         try {
@@ -1531,6 +1643,30 @@ export const ImageSourceUi = Extension.create({
         view.dom.querySelectorAll<HTMLElement>('[data-md-math-rendered]')
       )) {
         if (coversWidget(from, to, widgetRange(view, el))) out.push(el)
+      }
+      return out
+    }
+
+    /**
+     * 落在区间里、且**被完整覆盖**的**块级公式盒**（`div.md-math-block`）。
+     *
+     * ⚠️ 第一百二十七轮（用户报障 2 的真凶之一）：块级公式是 **NodeView + KaTeX**，它内部那些文字
+     * 节点**没有自己的文档位置**（`posAtDOM` 抛）⇒ `visibleFrags` 一条都取不到它，于是
+     * `paintSelBands(mode='all')` 对**整块公式一个矩形都不画**；而拖动期 `data-sel-own='all'`
+     * 已经把浏览器那份关掉了 ⇒ **在块级公式上拖动，拖动期一个像素的选中样式都没有**（逐帧实测：
+     * 12~24 个公式字形盒的"覆盖差额"帧帧不为 0，`own=null/bandN=0/hl=0`）。松手后靠原生/落定态
+     * 才回来 —— 正是用户"按下拖动但内容却没有被选中的样式，抬起时才有"那句话。
+     * 所以块级公式必须**与图片一样当成"可覆盖的原子盒"**并进来。
+     *
+     * 盒子的取法：优先用**公式自身的渲染盒**（KaTeX 的 `.katex-display` 子元素，宽高贴着公式），
+     * 拿不到才退回外层 `div.md-math-block`（它是**整行宽**，会把整行都铺上带，那正是"不许更宽"）。
+     */
+    const mathBlockBoxesIn = (view: EditorView, from: number, to: number): HTMLElement[] => {
+      const out: HTMLElement[] = []
+      for (const el of Array.from(view.dom.querySelectorAll<HTMLElement>('[data-md-math-block]'))) {
+        if (!coversWidget(from, to, widgetRange(view, el))) continue
+        const inner = el.firstElementChild as HTMLElement | null
+        out.push(inner && inner.getBoundingClientRect().width > 0.5 ? inner : el)
       }
       return out
     }
@@ -1746,14 +1882,31 @@ export const ImageSourceUi = Extension.create({
             line: lb
           })
         }
-        // 块级公式：**不套外层行盒**（片段在 KaTeX 的行内块里，浏览器画的是它自己的行高盒）
+        // 块级公式：它在 `visibleFrags` 里取不到任何片段（KaTeX 的字形没有文档位置）⇒ 必须像图片
+        // 一样按**构件盒**并进来，否则整块公式在拖动期一点样式都没有（见 `mathBlockBoxesIn`）。
+        // ⚠️ 这里**不套外层行盒**（`lineOf` 会一路 `closest` 到 `view.dom` 那个 div ⇒ 行盒变成
+        // 整篇文档高，带会糊满全屏）—— 块的边界就是公式自己的盒。
+        for (const w of mathBlockBoxesIn(view, from, to)) {
+          const box = w.getBoundingClientRect()
+          if (!(box.width > 0.5 && box.height > 0.5)) continue
+          const own: RectBox = {
+            left: box.left,
+            right: box.right,
+            top: box.top,
+            bottom: box.bottom
+          }
+          const block = (w.closest(SEL_BLOCK_SEL) as HTMLElement | null) ?? null
+          if (block) pieceBlocks.add(block)
+          pieces.push({ rect: own, line: own })
+        }
+        // 块级公式的**文字片段兜底**：片段在 KaTeX 的行内块里，浏览器画的是它自己的行高盒
+        // （外层行盒会把 89px 算成别的）⇒ 每片段自成一条"行"、不与相邻片段跨行合并。
         for (const f of frags) {
           if (!f.blockMath) continue
           if (f.block) pieceBlocks.add(f.block)
           for (const r of f.rects) {
             const h = r.bottom - r.top
             const pad = f.lh > h ? (f.lh - h) / 2 : 0
-            // 每片段自成一条"行"（不与相邻片段跨行合并）
             const own: RectBox = {
               left: r.left,
               right: r.right,
@@ -2051,6 +2204,27 @@ export const ImageSourceUi = Extension.create({
           boxDrag.hwPx = px
         }
       }
+      /**
+       * ─── 第一百二十七轮（用户报障 1：松手后与拖动期不一致）────────────────────────────────
+       * **原生光标"瞎了"的帧要记下来**：指针明明走了 ≥3px、而原生 `selection.head` **一个位置都没
+       * 动**，说明浏览器这次命中落进了**死区/被原子构件夹住**（实测：跨块图/跨表那段手势里
+       * 原生光标会连着好几帧钉在同一处，而我们的试探区间在正常推进）。
+       * 这时候 `hw` 记下的是**过期的** `b`，落定就会比画面上短一截（实测 I2 `401→408` 少 7、
+       * W1 `402→409` 少 7）—— 正是用户"本该选中却没选中"。
+       * ≥3px 的理由与 `TAIL_BACK_PX` 同源：jitter/亚像素取整 <2px，真手势一定远超。
+       */
+      if (boxDrag.lastHead == null) {
+        boxDrag.lastHead = b
+        boxDrag.lastPx = px
+      } else {
+        const moved = Math.abs(px - boxDrag.lastPx) >= 3
+        if (moved && b === boxDrag.lastHead) boxDrag.blindMoves++
+        else if (b !== boxDrag.lastHead) boxDrag.blindMoves = 0
+        if (moved) {
+          boxDrag.lastHead = b
+          boxDrag.lastPx = px
+        }
+      }
       const far = boxDrag.hw ?? b
       return { from: Math.min(a, far), to: Math.max(a, far) }
     }
@@ -2058,6 +2232,12 @@ export const ImageSourceUi = Extension.create({
     const boxDragLive = (view: EditorView, x: number, y: number): void => {
       const r = boxDragRange(view, x, y)
       if (!r) return
+      /** 记下"画面上这一份"的远端（落定兜底用，见 `onBandUp` 里那段说明） */
+      if (boxDrag)
+        boxDrag.lastLiveFar =
+          Math.abs(r.from - (boxDrag.anchor ?? r.from)) >= Math.abs(r.to - (boxDrag.anchor ?? r.to))
+            ? r.from
+            : r.to
       /**
        * 诊断锚（与 `data-img-open` 同一用途）：把这一帧的**锚点 / 当前点 / 试探区间**摊平成
        * `anchor|head|from|to`，套件可以直接逐帧断言"锚点恒定、远端不回缩"。
@@ -2925,6 +3105,10 @@ export const ImageSourceUi = Extension.create({
                 anchor: null,
                 focus: null,
                 anchorLost: false,
+                lastHead: null,
+                lastPx: 0,
+                blindMoves: 0,
+                lastLiveFar: null,
                 hw: null,
                 hwPx: 0,
                 press: { x: event.clientX, y: event.clientY }
@@ -2992,11 +3176,17 @@ export const ImageSourceUi = Extension.create({
                 boxDrag.anchor = sel.anchor
               }
             }
-            boxDrag.focus = imgDragEdgeAtPoint(editorView, event.clientX, event.clientY)
-            // 诊断锚（与 `data-img-open` 同一用途）：套件可以直接断言"助手有没有认出指针压在图片盒上"
+            /**
+             * 死区（原子盒）命中：见 `atomFocusAt`。**只在指针确实落在原子盒内**时才接管 focus；
+             * 指针在盒外一律 `focus = null` ⇒ `boxDragRange` 退回原生映射（`state.selection.head`）
+             * —— 于是"从公式/图片里往外拖"能继续按原生那条路扩选，不会被钉在盒子里。
+             */
+            const hitEdge = atomFocusAt(editorView, event.clientX, event.clientY, boxDrag.anchor)
+            boxDrag.focus = hitEdge
+            // 诊断锚（与 `data-img-open` 同一用途）：套件可以直接断言"助手有没有认出指针压在原子盒上"
             editorView.dom.setAttribute(
               'data-img-drag-edge',
-              boxDrag.focus == null ? '' : String(boxDrag.focus)
+              hitEdge == null ? '' : String(hitEdge)
             )
             /**
              * 第一百一十三轮（P1）：同一帧里把"试探区间"画出来（文字走 CSS Highlight、图片加既有
@@ -3043,6 +3233,27 @@ export const ImageSourceUi = Extension.create({
             if (bd.hw != null && anchor != null) {
               const b2 = bd.focus ?? editorView.state.selection.head
               if (b2 != null && Math.abs(b2 - anchor) >= Math.abs(bd.hw - anchor)) bd.hw = b2
+            }
+            /**
+             * ─── 第一百二十七轮（用户报障 1：松手后与拖动期不一致）─────────────────────────────
+             * **原生光标瞎了的时候，落定按"我们画的那一份"兜底**。
+             *
+             * 真因（逐帧实测）：跨原子构件/跨表拖动时，浏览器会有连续若干帧把 `selection.head`
+             * 钉在**同一个位置**（`boxDragRange` 里记的 `blindMoves`），于是 `hw` 记下的是那个
+             * **过期的**远端；而我们的试探区间（画面上那份）在正常推进 ⇒ 落定比画面**短一截**：
+             *   I2（段A→跨块图→尾段）`live 94-401` vs `settled 94-408`；
+             *   W1（首行→尾段，大范围）`live 11-402` vs `settled 11-409`。
+             * 这就是用户"本该选中却没被选中"。
+             *
+             * 兜底取 **`lastLiveFar`**（最近一次"试探区间"的远端，也就是画面上那一份），**不是**
+             * `lastHead`：`hw` 是"只增不减"的，通常**已经超过** `lastHead`，而 `lastLiveFar`
+             * 恰好就是画出来的那份 ⇒ 落定 = 画面（实测 I2 `401`、W1 `402` 都对上）。
+             * 只在 `blindMoves ≥ 2`（指针确实在走、原生光标连续两帧没动）时才并进来 —— 正常手势里
+             * `blindMoves` 恒 0（原生光标每帧都在推进）⇒ 这条**零副作用**。
+             */
+            if (bd.blindMoves >= 2 && anchor != null && bd.lastLiveFar != null) {
+              if (Math.abs(bd.lastLiveFar - anchor) > Math.abs((bd.hw ?? anchor) - anchor))
+                bd.hw = bd.lastLiveFar
             }
             const focus =
               bd.focus ??
