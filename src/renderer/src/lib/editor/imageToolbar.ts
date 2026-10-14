@@ -669,19 +669,49 @@ export const ImageSourceUi = Extension.create({
         b.textContent = `${pct}%`
         bar.appendChild(b)
       }
-      // 事件用**捕获**挂在工具栏自己身上：不碰文档，也不参与 ProseMirror 的输入
-      bar.addEventListener('mousedown', (e) => e.stopPropagation(), true)
+      /**
+       * ─── 第一百二十八轮（用户报障：点档位**不落盘**）──────────────────────────────────────
+       * 真因：工具栏挂在**编辑器 DOM 之外**（`view.dom.parentElement`）⇒ 在按钮上按下时，浏览器
+       * 的**默认动作**会把焦点从正文移走，插件的失焦路径先把"当前激活的源"清成 `null`；等 `click`
+       * 才去读 `KEY.getState(...).from` 时**已经无源可写** ⇒ 档位白点（源码、文档、磁盘都没变）。
+       * 改法：**落盘挪到 `mousedown`**（`mousedown` 的监听**先于**焦点转移的默认动作执行 ⇒ 这一刻
+       * `from` 还在），并把这次落盘记下来；`click` 只做**幂等兜底**（键盘/无障碍触发的 click 没有
+       * 对应的 mousedown 时才需要它；同一个源 + 同一个档位重复落盘写出来的字节完全一样）。
+       *
+       * ⚠️ **不许**在这里 `preventDefault()` 阻止焦点转移（任务书反例）：实测会让套件在第 42 行
+       * 直接 `FATAL EXC` 中断。所以这里只 `stopPropagation()`（不碰文档、不参与 PM 输入）。
+       */
+      const zoomAt = (pct: number): boolean => {
+        if (!Number.isFinite(pct)) return false
+        const st = view.state
+        const open = KEY.getState(st)?.from ?? null
+        const img = open == null ? null : collectImgSources(st).find((i) => i.from === open)
+        if (!img) return false
+        applyZoom(view, img, pct, true)
+        return true
+      }
+      /** 最近一次"在档位上按下"的时刻：`click` 用它判断要不要再兜一次 */
+      let zoomDownAt = 0
+      bar.addEventListener(
+        'mousedown',
+        (e) => {
+          const btn = (e.target as HTMLElement | null)?.closest?.('[data-img-zoom]')
+          if (btn) {
+            zoomDownAt = Date.now()
+            zoomAt(Number(btn.getAttribute('data-img-zoom')))
+          }
+          e.stopPropagation()
+        },
+        true
+      )
       bar.addEventListener('click', (e) => {
         const btn = (e.target as HTMLElement | null)?.closest?.('[data-img-zoom]')
         if (!btn) return
         e.preventDefault()
         e.stopPropagation()
-        const pct = Number(btn.getAttribute('data-img-zoom'))
-        const st = view.state
-        const open = KEY.getState(st)?.from ?? null
-        const img = open == null ? null : collectImgSources(st).find((i) => i.from === open)
-        if (!img || !Number.isFinite(pct)) return
-        applyZoom(view, img, pct, true)
+        /** 刚刚在 `mousedown` 里落过盘 ⇒ 这一下不再重复（`zoomAt` 本身幂等，这里只是省一次事务） */
+        if (Date.now() - zoomDownAt < 800) return
+        zoomAt(Number(btn.getAttribute('data-img-zoom')))
       })
       const host = view.dom.parentElement ?? document.body
       host.appendChild(bar)
@@ -1994,17 +2024,50 @@ export const ImageSourceUi = Extension.create({
         frag.appendChild(d)
       }
       node.replaceChildren(frag)
+      // ── 回读**渲染后**的矩形（自证："画的"确实盖住了"要画的"）
+      const drawn: RectBox[] = []
+      for (const d of Array.from(node.children)) {
+        const r = d.getBoundingClientRect()
+        if (!(r.width > 0.5 && r.height > 0.5)) continue
+        drawn.push({ left: r.left, right: r.right, top: r.top, bottom: r.bottom })
+      }
       /**
-       * 带**被不透明底色盖住**时，盖住我们的那一层元素（`elementsFromPoint` 里第一个
-       * `backgroundColor` alpha > 0.02 的、且在我们的正文子树之内）。逐帧实测的两处真凶：
-       *   * 表格 `thead/th`：`background: var(--panel-2)` = `rgb(233,235,240)`；
-       *   * 显形源码 `<span class="img-src-revealed">`：`background-color: var(--edge)` = `rgb(228,230,234)`
-       *     —— 它是**段落的后代**（不是祖先），所以只能按"带上的实际像素点"判，不能只走祖先链。
-       * 零硬编码：只看 computed 背景色的 alpha；±2px 只是**取样容差**（上沿/中心/下沿三点抽样），
-       * 不是视觉尺寸。
+       * 第一百二十五轮：**看不见的带要撤掉，并把盖住它的那层交给原生**。
+       *
+       * 用户两条报障（表头 / 点图后立刻在源码上拖动）逐帧实测的机制完全一样：
+       * `data-sel-own='all'` 把浏览器自己的绘制关掉了，而我们的带画在 `view.dom` **之下**
+       * （markdown.css："覆盖层自己 `z-index: auto`，落在正文/选区/图片之下"）⇒ 碰到
+       * `th` 的 `--panel-2`、显形源码的 `--edge` 这类**不透明底色**就被整块盖住 ⇒
+       * **拖动期一点样式都没有，松手后（落定态不再整层独占）才回来**。
+       *
+       * 做法（"闸只能关掉我们确实画到的部分"）：
+       *   ① 被盖住的带**从我们的层里撤掉** —— 留着只会和原生在底色上叠成两层 `--sel`
+       *      （实测 `rgb(184,188,193)` vs 松手后 `rgb(205,208,212)`，Δ 60，肉眼更暗）；
+       *   ② 把"盖住我们的那层元素"标 `data-sel-band-native` ⇒ **原生选区只在这些块里接管绘制**
+       *      （原生画在底色**之上**、文字**之下**，与松手后逐像素一致：表头 `rgb(209,212,218)`、
+       *      源码 `rgb(205,208,212)`，Δ 0）；
+       *   ③ 这些块里的片段交给原生，**不再进兜底 Highlight**（否则又叠一层）。
+       * 其余部分照旧：整层独占 + 我们的带（零叠加）。
        */
-      const opaqueCoverAt = (r: RectBox): HTMLElement | null => {
-        const x = (r.left + r.right) / 2
+      /**
+       * ─── 第一百二十八轮（用户报障：**选择图片源码并跨多行**时，拖动期有行没有选中样式）──────
+       * 闸只能关掉"我们确实画到的地方"。上一轮的做法是"被不透明底色盖住的带**整条撤掉**，
+       * 再把这几条交给原生"——两处不够稳，实测都能变成"整行没有任何选中样式"：
+       *   ① 覆盖判定只按**带的中列**纵取三点 ⇒ 中列被盖住时**整条带**被撤，
+       *      哪怕左右两端本来就露在外面；
+       *   ② 交回原生的那条 CSS 只对**白名单**里的块重开 `::selection` ⇒ 只要盖住我们的那一层
+       *      不是白名单元素，就会出现"我们的带被撤了、原生又没打开" ⇒ 整行空白。
+       * 现在收口成两句话：
+       *   * **撤带只撤"确实看不见"的那部分**：按 x 分片（每片约 `SEL_COVER_SLICE_PX` 宽）
+       *     逐片判"是否被不透明块盖住"，只把被盖住的**片段**从我们的层里去掉（`splitByCover`）；
+       *   * **一旦有片段交回原生，就把闸的"交回原生"开关打开**（`setSelNative(true)`），
+       *     也就是不再把"交回原生"局限在白名单块上 —— 只要有一片撤了，那一行就一定有人上色。
+       *     叠加风险：原生只画在**没有被我们撤掉**的地方之外的区域会叠两层 `--sel`；但
+       *     "叠一层更深的底色"远好过"整行什么都没有"（用户口径：绝不允许原生被关掉 + 我们没画）。
+       */
+      const SEL_COVER_SLICE_PX = 12
+      /** 这一 x 位置（带内上下三点抽样）是不是被**不透明块**盖住了 */
+      const opaqueCoverAtX = (r: RectBox, x: number): HTMLElement | null => {
         for (const y of [r.top + 2, (r.top + r.bottom) / 2, r.bottom - 2]) {
           let stack: Element[] = []
           try {
@@ -2035,39 +2098,55 @@ export const ImageSourceUi = Extension.create({
         }
         return null
       }
-      // ── 回读**渲染后**的矩形（自证："画的"确实盖住了"要画的"）
-      const drawn: RectBox[] = []
-      for (const d of Array.from(node.children)) {
-        const r = d.getBoundingClientRect()
-        drawn.push({ left: r.left, right: r.right, top: r.top, bottom: r.bottom })
-      }
       /**
-       * 第一百二十五轮：**看不见的带要撤掉，并把盖住它的那层交给原生**。
-       *
-       * 用户两条报障（表头 / 点图后立刻在源码上拖动）逐帧实测的机制完全一样：
-       * `data-sel-own='all'` 把浏览器自己的绘制关掉了，而我们的带画在 `view.dom` **之下**
-       * （markdown.css："覆盖层自己 `z-index: auto`，落在正文/选区/图片之下"）⇒ 碰到
-       * `th` 的 `--panel-2`、显形源码的 `--edge` 这类**不透明底色**就被整块盖住 ⇒
-       * **拖动期一点样式都没有，松手后（落定态不再整层独占）才回来**。
-       *
-       * 做法（"闸只能关掉我们确实画到的部分"）：
-       *   ① 被盖住的带**从我们的层里撤掉** —— 留着只会和原生在底色上叠成两层 `--sel`
-       *      （实测 `rgb(184,188,193)` vs 松手后 `rgb(205,208,212)`，Δ 60，肉眼更暗）；
-       *   ② 把"盖住我们的那层元素"标 `data-sel-band-native` ⇒ **原生选区只在这些块里接管绘制**
-       *      （原生画在底色**之上**、文字**之下**，与松手后逐像素一致：表头 `rgb(209,212,218)`、
-       *      源码 `rgb(205,208,212)`，Δ 0）；
-       *   ③ 这些块里的片段交给原生，**不再进兜底 Highlight**（否则又叠一层）。
-       * 其余部分照旧：整层独占 + 我们的带（零叠加）。
+       * 把一条带按 x **逐片**判覆盖：只返回"没被盖住"的那些 x 区间（空数组 = 整条都看不见）。
+       * 这样"中列被盖住、两端露着"时，两端照样留在我们的层里（不再整条撤掉）。
        */
-      const dropIdx = new Set<number>()
-      drawn.forEach((r, i) => {
-        if (opaqueCoverAt(r)) dropIdx.add(i)
-      })
-      const kids = Array.from(node.children)
-      for (const i of dropIdx) kids[i]?.remove()
-      setSelNative(view, dropIdx.size > 0)
-      const hiddenRects = drawn.filter((_, i) => dropIdx.has(i))
-      const rendered = drawn.filter((_, i) => !dropIdx.has(i))
+      const splitByCover = (r: RectBox): RectBox[] => {
+        const w = r.right - r.left
+        if (!(w > 0)) return []
+        const n = Math.max(1, Math.ceil(w / SEL_COVER_SLICE_PX))
+        const keep: Array<{ l: number; r: number }> = []
+        for (let i = 0; i < n; i++) {
+          const x0 = r.left + (w * i) / n
+          const x1 = r.left + (w * (i + 1)) / n
+          if (opaqueCoverAtX(r, (x0 + x1) / 2)) continue
+          const last = keep[keep.length - 1]
+          if (last && Math.abs(last.r - x0) < 0.01) last.r = x1
+          else keep.push({ l: x0, r: x1 })
+        }
+        return keep.map((k) => ({ left: k.l, right: k.r, top: r.top, bottom: r.bottom }))
+      }
+      const keptRects: RectBox[] = []
+      for (const r of drawn) keptRects.push(...splitByCover(r))
+      /** 被撤掉的部分（交回原生）：用来判"这些片段由原生负责" */
+      const hiddenRects = drawn.filter(
+        (r) =>
+          r.right - r.left > 0.5 &&
+          !keptRects.some((k) => k.left <= r.left + 0.5 && k.right >= r.right - 0.5)
+      )
+      /** 我们这一帧真正留着画的矩形 */
+      const rendered = keptRects.length ? keptRects : []
+      const dropped = hiddenRects.length > 0
+      // 重画：把"被盖住的那些片"从层里去掉，留下的片保持原位（DOM 子节点与 `drawn` 一一对应）
+      try {
+        node.replaceChildren()
+        const frag2 = document.createDocumentFragment()
+        const parent2 = node.offsetParent as HTMLElement | null
+        const base2 = parent2 ? parent2.getBoundingClientRect() : { left: 0, top: 0 }
+        for (const k of rendered) {
+          const d = document.createElement('div')
+          d.style.left = `${(k.left - base2.left).toFixed(2)}px`
+          d.style.top = `${(k.top - base2.top).toFixed(2)}px`
+          d.style.width = `${Math.max(0, k.right - k.left).toFixed(2)}px`
+          d.style.height = `${Math.max(0, k.bottom - k.top).toFixed(2)}px`
+          frag2.appendChild(d)
+        }
+        node.appendChild(frag2)
+      } catch {
+        /* 忽略：下一帧会再画一次 */
+      }
+      setSelNative(view, dropped)
       const handledByNative = (f: SelFrag): boolean => {
         return f.rects.some((r) =>
           hiddenRects.some(
