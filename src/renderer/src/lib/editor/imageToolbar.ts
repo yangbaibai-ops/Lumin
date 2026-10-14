@@ -787,6 +787,28 @@ export const ImageSourceUi = Extension.create({
      *   * 覆盖层仍是 `pointer-events: none`（`elementFromPoint` 永远拿不到它）⇒ 这里只是**按几何**
      *     判定，不给覆盖层任何命中能力。
      */
+    /**
+     * 指针是否落在**任何可见文字的字形盒**里（±1px）。点字形一律交回原生：正文、源码都一样。
+     * 第一百二十四轮新增：把"行盒空白带"的判据从"片段盒之外"扩到"**整行行盒减去所有字形盒**"
+     * 时，必须先把"压在别的文字上"的点排掉，否则会抢走正文的点击。
+     */
+    const pointOnGlyphs = (block: Element, x: number, y: number): boolean => {
+      const walker = document.createTreeWalker(block, NodeFilter.SHOW_TEXT)
+      let n: Node | null
+      while ((n = walker.nextNode())) {
+        const t = n as Text
+        if (!t.length) continue
+        const r = document.createRange()
+        r.selectNodeContents(t)
+        for (const c of Array.from(r.getClientRects())) {
+          if (c.width <= 0.5 && c.height <= 0.5) continue
+          if (x >= c.left - 1 && x <= c.right + 1 && y >= c.top - 1 && y <= c.bottom + 1)
+            return true
+        }
+      }
+      return false
+    }
+
     const bandAt = (
       view: EditorView,
       x: number,
@@ -798,11 +820,25 @@ export const ImageSourceUi = Extension.create({
       for (const el of Array.from(els)) {
         // 只处理"裸 `<img …>` 原文"这一档（节点档点开时会先归一成原文，口径统一）
         if (el.getAttribute('data-img-kind') !== 'raw') continue
+        const block = (el.closest(ROW_BLOCK_SEL) as HTMLElement | null) ?? el.parentElement
+        if (!block) continue
+        /**
+         * ⚠️ 第一百二十四轮（用户复报：「**在图片源码上**按下并拖动选中文字时，**会选中上面的文字**」）
+         * 真因：`revealedRowBoxes` 给的行盒矩形 **x 范围 = 片段自己的 x**（`left/right: f.left/f.right`），
+         * 于是"源码字形左边/右边那一段空白"**不在带里** ⇒ `bandAt` 返回 null ⇒ 按下走**原生**
+         * `posAtCoords`，而在"被图片撑高的那一行"里，那个 x 上最近的文字往往是**同一行的正文**
+         * （实测：按 (342,370) ⇒ 锚点落到正文 `行内公式E=mc²…` 的 119，拖动后模型选区 119-135
+         * 正是用户截图里被选中的那行）⇒ 视觉上"选中了上面的文字"。
+         * 现在：行盒的 **x 范围取"块的内容盒 ∪ 片段盒"**（用户第一百零八轮口径：整行全高覆盖层里的
+         * 空白带都算这一段源码），并用 `pointOnGlyphs` 把"压在任意字形上"的点排掉 ⇒ 点正文/点字形
+         * 行为完全不变，只有**真空白**才走按列映射（并 clamp 到该段源码范围）。
+         */
+        const br = block.getBoundingClientRect()
         for (const b of revealedRowBoxes(el)) {
-          if (x < b.left || x > b.right || y < b.top || y > b.bottom) continue
-          // 片段自己的盒子（源码文本所在）⇒ 交回既有路径
-          if (x >= b.frag.left && x <= b.frag.right && y >= b.frag.top && y <= b.frag.bottom)
-            return null
+          const left = Math.min(b.frag.left, br.left)
+          const right = Math.max(b.frag.right, br.right)
+          if (x < left || x > right || y < b.top || y > b.bottom) continue
+          if (pointOnGlyphs(block, x, y)) return null
           return { el, frag: b.frag }
         }
       }
