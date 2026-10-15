@@ -397,9 +397,90 @@ interface CaretVisibility {
 }
 
 /**
+ * `pos` 是否**严格落在**某段行内公式内部（`run.from < pos < run.to`）。
+ *
+ * ⚠️ 判据不能用位置的 `nodeBefore/nodeAfter`：位置落在**同一个文本节点内部**时两者都是
+ * `null`（而公式原文恰恰是**一个**文本节点）—— 那样写等于永远返回 null（实测：方向键
+ * 完全不接管）。这里改成在光标所在块里把相邻的 `mdMath` 文本节点并成区间，再判 `pos` 在不在内部。
+ *
+ * 与 `inlineMathRunAt` 的分工：后者把左右**边界**也算命中（画插入符要用它 —— 边界处原生
+ * 插入符高度是 0）；这里只认内部，因为只有内部才是那个**看不见又打得进去**的陷阱位置
+ * （见 `crossInlineMathOnArrow`）。
+ */
+function inlineMathRunAround(doc: PMNode, pos: number): { from: number; to: number } | null {
+  const $pos = doc.resolve(clamp(pos, doc))
+  if (!$pos.parent.isTextblock) return null
+  const blockStart = $pos.start()
+  const isMarkedText = (node: PMNode): boolean =>
+    node.isText && !!node.marks.some((m) => m.type.name === 'mdMath')
+  let run: { from: number; to: number } | null = null
+  $pos.parent.forEach((child, offset) => {
+    if (run) return
+    const from = blockStart + offset
+    const to = from + child.nodeSize
+    if (isMarkedText(child) && from < pos && pos < to) run = { from, to }
+  })
+  return run
+}
+
+/**
+ * ← / → **不许停在行内公式内部**（第三十五轮报障 B：「点击左右键无法在行内公式前后移动」）。
+ *
+ * 实测事实（见报告）：方向键的**模型**位置本来就一步步走得通（`11→10→…→1`，能到公式之前），
+ * 坏的是另外两件事：
+ *   ① 那些位置**画在同一处**（公式右边缘 —— 折叠原文在 DOM 里排在渲染 widget 之后，
+ *      见 `caretDecorations`）⇒ 用户看到的是"插入符钉在公式右边一动不动"；
+ *   ② 停在折叠原文内部时，接着敲的字会**落进公式源码**（那段文本 `font-size: 0`，
+ *      用户看不见自己在改什么）。
+ *
+ * 所以这里把"跨过公式"做成**一步**：候选位置（`sel.from + dir`）若落在某段公式**内部**
+ * （`inlineMathRunAround`），就按方向跳到那段公式的起点之前 / 终点之后
+ * （← 落 `run.from`、→ 落 `run.to`）。于是"公式之后按 ←"一次就到公式之前、
+ * "公式之前按 →"一次就到公式之后 —— 与用户预期一致，也彻底消掉"停在隐藏原文里打字"的陷阱。
+ *
+ * 放行条件（一条都不许少）：只认 **ArrowLeft / ArrowRight**、空 `TextSelection`、无
+ * Shift/Ctrl/Cmd/Alt（扩选与按词/按行跳转照旧）、非组字态。
+ * 点公式进编辑态那条路不受影响：源码框的事件被 `stopEvent` 挡在 PM 之外，进不到这里。
+ *
+ * @returns 是否已接管这次按键（true = 调用方要 `preventDefault`）
+ */
+function crossInlineMathOnArrow(view: EditorView, event: KeyboardEvent): boolean {
+  if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return false
+  if (event.shiftKey || event.ctrlKey || event.metaKey || event.altKey) return false
+  if (event.isComposing || view.composing) return false
+  const sel = view.state.selection
+  if (!(sel instanceof TextSelection) || !sel.empty) return false
+  const dir = event.key === 'ArrowLeft' ? -1 : 1
+  const run = inlineMathRunAround(view.state.doc, sel.from + dir)
+  if (!run) return false
+  const dest = dir < 0 ? run.from : run.to
+  const $dest = view.state.doc.resolve(clamp(dest, view.state.doc))
+  const near = TextSelection.near($dest, dir) ?? TextSelection.near($dest, -dir)
+  if (!near) return false
+  if (!view.state.selection.eq(near)) {
+    view.dispatch(view.state.tr.setSelection(near).scrollIntoView())
+  }
+  event.preventDefault()
+  return true
+}
+
+/**
  * 需要自绘插入符时给出那一条装饰，否则 `null`。
  *
  * 拆成独立函数是为了让"要不要画"这件事一眼可读，也方便和 `CaretVisibility` 的注释对照。
+ *
+ * ⚠️ 第三十五轮（用户复报「无法在行内公式的前后移动光标」）修的是**画在哪一侧**：
+ * 折叠后的原文（`.md-math-source`，`font-size: 0`）在 DOM 里排在**渲染 widget 之后**
+ * （`buildMathDecorations` 把 widget 挂在 `hit.from`），于是 `run.from … run.to-1` 这些位置
+ * 的原生/自绘插入符**全都画在公式右边缘**（实测：行首公式 pos=1..10 的 caretRect 都是
+ * `[393,195,1,17]`，而公式左缘是 320）。后果是"按 ← 从公式之后往回走"时插入符**看着一动不动**
+ * 地钉在右边缘，用户报的"没法在公式前面落光标 / 没法前后移动"就是它。
+ *
+ * 修法：**按位置选边**，而不是按 DOM 顺序 ——
+ *   * `pos >= run.to`（公式之后）⇒ 排在渲染 widget **之后**（`side: 1`，落在公式右边缘）；
+ *   * 其余（公式之前 + 折叠原文内部）⇒ 排在渲染 widget **之前**（`side: -2`；
+ *     渲染 widget 自己是 `side: -1`，PM 的 `iterDeco` 对同位置 widget 按 `side` 升序排，
+ *     所以 -2 会插到它前面）⇒ 落在公式**左边缘**。
  */
 function caretDecorations(
   state: EditorState,
@@ -414,11 +495,11 @@ function caretDecorations(
   if (!sel.empty) return null
   const run = inlineMathRunAt(state.doc, sel.from)
   if (!run) return null
+  const past = sel.from >= run.to
   return [
-    Decoration.widget(sel.from, caretDom, {
-      // 右边界排到折叠原文**之后**（插入符落在公式右边缘）；其余位置排在之前（左边缘）
-      side: sel.from >= run.to ? 1 : -1,
-      key: `md-math-caret:${sel.from}`
+    Decoration.widget(past ? run.to : run.from, caretDom, {
+      side: past ? 1 : -2,
+      key: `md-math-caret:${past ? 'end' : 'head'}:${sel.from}`
     })
   ]
 }
@@ -1657,6 +1738,38 @@ export const MathPreview = Extension.create<{ labels?: Partial<MathLabels> }>({
             if (!(found instanceof HTMLElement)) return false
             const hit = locate(view.state.doc, pos, found)
             if (!hit) return false
+            /**
+             * 行内公式的**左半边**：按"原子行内元素"的浏览器惯例，落点取**公式起点**
+             * （= 公式之前）并交出焦点，**不**打开源码编辑态（第三十五轮报障 A）。
+             *
+             * 为什么必须有这一条：`view.posAtCoords` 对这个 widget 的**任何** x 都返回
+             * `hit.from`（实测 x=321…391 全给 `{pos:1,inside:0}`）—— 也就是说"点公式"这件事，
+             * PM 自己的答案**本来就是"落在公式之前"**；是我们这个 `handleClick` 无条件把它覆盖成
+             * "打开编辑态"，于是行首公式连"正文列左缘/左缘内 1px"这一点都只能开出编辑框、
+             * 落不到公式之前。现在把左半边让回 PM 的语义。
+             *
+             * 取舍（写在这里免得以后当成 bug）：**只有左侧 1/4** 让回 PM 的语义，其余
+             * （含正中）**仍然打开编辑态** —— "点公式看源码"是前几轮的用户口径，不能丢；
+             * 而"我要在它前面写字"的人，落点基本都在最左边那一小条里。
+             * 用 1/4 而不是浏览器对原子行内元素的 1/2 惯例，是为了**不误伤**
+             * "点公式（正中）⇒ 开编辑态"那条既有口径：套件一律 `centerOf` 点正中，
+             * 而 1/2 判据在 `Math.round(left + width / 2)` 往下取整时会误吞正中那一击。
+             * 判据用 widget 自己的盒子（`(clientX - left) * 4 < width`），不是硬编码像素；
+             * 宽度为 0（还没上屏）时不接管。
+             */
+            if (hit.kind === 'inline' && event instanceof MouseEvent) {
+              const rect = found.getBoundingClientRect()
+              if (rect.width > 0 && (event.clientX - rect.left) * 4 < rect.width) {
+                const $at = view.state.doc.resolve(clamp(hit.from, view.state.doc))
+                const near = TextSelection.near($at, -1) ?? TextSelection.near($at, 1)
+                event.preventDefault()
+                if (near && !view.state.selection.eq(near)) {
+                  view.dispatch(view.state.tr.setSelection(near))
+                }
+                view.focus()
+                return true
+              }
+            }
             openMathEditor(view, hit)
             return true // 已处理：别再让 PM 按落点写一次选区
           },
@@ -1665,8 +1778,11 @@ export const MathPreview = Extension.create<{ labels?: Partial<MathLabels> }>({
            *
            * 输入法组字中的回车**必须放行** —— 那是"确认候选词"，不是"回车"（用户口径
            * 里点名的边界）。组字态在 PM 上是 `view.composing`，在事件上是 `isComposing`。
+           *
+           * 方向键那条见 `crossInlineMathOnArrow`。
            */
           handleKeyDown(view, event) {
+            if (crossInlineMathOnArrow(view, event)) return true
             if (event.key !== 'Enter' || event.shiftKey) return false
             if (event.isComposing || view.composing) return false
             if (!insertEmptyMathBlock(view)) return false
