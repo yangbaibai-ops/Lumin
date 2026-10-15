@@ -81,6 +81,31 @@ export function isImgOnlyRawHtml(text: string): boolean {
   return t.replace(/<img\b[^>]*\/?>/gi, '').trim() === ''
 }
 
+/**
+ * 这段原文 HTML 是不是「**≥1 个完整 `<img …>` + 一段未闭合的残片**」。
+ *
+ * 为什么需要它（第三十四轮报障④，用户确切片段 `<img … /><img … /`）：
+ *   * 残片（第二个标签没有收尾 `>`）**不是** `html_inline`，落到普通文本那一档 ⇒
+ *     `prosemirror-markdown` 会把 `<` 转义成 `&lt;`、还会把里面的裸 URL linkify 成
+ *     `<URL>` 自动链接 ⇒ 整行往返变形（由 `htmlPassthrough.ts` 的 `HtmlTailLiteral`
+ *     把残片挂上 `MdHtml`（`escape:false`）修掉）；
+ *   * 但挂上同一个 mark 之后，PM 会把**相邻同 mark 的文本节点合并** ⇒ 完整标签与残片
+ *     合成一个文本节点，于是"整段就是一个 `<img …>`"（`isRawImgHtml`）与
+ *     "整段只由 `<img …>` 组成"（`isImgOnlyRawHtml`）**双双失配** ⇒
+ *     `collectImgSources` 一个源都不产出 ⇒ **前面那张格式正确的图不显示**
+ *     （这正是用户报的那一条；实测改完 `HtmlTailLiteral` 之后 `.ProseMirror img` 从 1 变 0）。
+ * 判据刻意收窄：去掉全部完整标签后，剩下的必须是一段**以 `<` + 字母开头、且不含 `>`** 的残片。
+ * 于是 `<img A />尾随文字` 不命中（那是行内混排，走 `isImgSourceText` 那条既有通路）。
+ */
+export function isImgWithUnclosedTail(text: string): boolean {
+  const t = text.trim()
+  if (!t || !/<img\b/i.test(t)) return false
+  const rest = t.replace(/<img\b[^>]*\/?>/gi, '')
+  if (rest === t) return false
+  const tail = rest.trim()
+  return tail.startsWith('<') && /^<[A-Za-z]/.test(tail) && !tail.includes('>')
+}
+
 /** 这段文本是不是"整段就是一个 markdown 图片语法"（`![alt](url)`） */
 export function isMdImgSource(text: string): boolean {
   return MD_IMG_RE.test(text.trim())
@@ -214,7 +239,7 @@ export function collectImgSources(state: EditorState): ImgSource[] {
        * 于是每个标签各自命中"整段是一个 `<img …>`"的 widget 渲染 ⇒ 两张并排。
        * 文档**一个字节都不动**（不做拆分、不做替换）⇒ 往返逐字节、天然幂等、不进 undo。
        */
-      if (isImgOnlyRawHtml(raw)) {
+      if (isImgOnlyRawHtml(raw) || isImgWithUnclosedTail(raw)) {
         const re = /<img\b[^>]*\/?>/gi
         let m: RegExpExecArray | null
         while ((m = re.exec(node.text ?? '')) !== null) {
@@ -2772,6 +2797,12 @@ export const ImageSourceUi = Extension.create({
                * 挤到下一行去（㉕③ 的真因之一）。
                */
               if (isImgOnlyRawHtml(t)) return true
+              /**
+               * 第三十四轮报障④：**完整标签 + 未闭合残片**合成的那一个文本节点同样是**合法**的
+               * （里面的完整标签照常渲染成图片），不许挂 `.img-src-incomplete` —— 那层包装会把
+               * 源码文本一起留在行内流里，与第八十三轮多标签那条是同一个坑。
+               */
+              if (isImgWithUnclosedTail(t)) return true
               if (!/^\s*!?\[?\s*(<img|!\[)/i.test(t)) return true
               decos.push(
                 Decoration.inline(pos, pos + node.nodeSize, {

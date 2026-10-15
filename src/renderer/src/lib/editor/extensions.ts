@@ -34,7 +34,7 @@ import { MarkdownPaste } from './markdownPaste'
 import { TableClipboard, TableDragSelect, TableNoCellClamp } from './tableClipboard'
 import { TyporaInlineMarks, MdStyle, MdMarker, MdCodeLiteral, MdEscape } from './typoraInlineMarks'
 import { Frontmatter } from './frontmatter'
-import { HtmlBlock, MdHtml } from './htmlPassthrough'
+import { HtmlBlock, MdHtml, HtmlTailLiteral } from './htmlPassthrough'
 import { FootnoteDef, MdFootnote } from './footnotePassthrough'
 import { MathBlock, MdMath } from './mathMarkers'
 import { MathPreview } from './mathPreview'
@@ -289,6 +289,9 @@ export const editorExtensions: Extensions = [
   Frontmatter,
   // 块级 HTML 原文（`<div>`/`<!-- 注释 -->`/`<details>`）：Markdown 表达不了就整段原样留
   HtmlBlock,
+  // 行内 HTML 的**残片**（`<img … /><img … /` 里第二个不完整）：从残片起逐字写回，
+  // 免得 `<` 被转义、里面的 URL 被 linkify 认成链接（报障④）
+  HtmlTailLiteral,
   // 脚注：行内 `[^1]` 与块级 `[^1]: …` 都**原样透传**（见 footnotePassthrough.ts 的成因说明）
   MdFootnote,
   FootnoteDef,
