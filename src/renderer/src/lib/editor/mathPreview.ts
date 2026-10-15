@@ -1676,6 +1676,40 @@ class MathPreviewView {
     })
   }
 
+  /**
+   * **点别处立刻收起**（第三十四轮报障①：「点击公式出现编辑态之后，点其他任何地方，
+   * 公式编辑的区域应该就消失」）。
+   *
+   * 为什么不能只靠源码框的 `blur`：`blur` 成立的前提是**焦点离开了源码框**，而"按下"
+   * 并不总会移动焦点 —— 两条路都会漏：
+   *   * **合成 / 程序化事件**（`el.dispatchEvent(new MouseEvent('mousedown'))`）根本不参与
+   *     浏览器的默认焦点转移，textarea 一直是 `activeElement`；
+   *   * 界面上有一批控件在自己的 `mousedown` 里 `preventDefault()`（工具栏那排按钮的
+   *     `@mousedown.prevent` 就是"别把编辑器的焦点抢走"写的），焦点同样不动。
+   * 两种情况下 `blur` 永远不会来 ⇒ 编辑框**赖着不走**。改前实测（合成 mousedown 打在
+   * 正文段落 / 空白区上）：350ms 后 `[data-md-math-editor]` 仍在、`goneMs = null`。
+   *
+   * 所以在**捕获阶段**监听整个窗口的 `mousedown`：按下点只要不落在编辑容器内部，就立刻
+   * 收起。出口与失焦那条完全一致（`closeSessionAndContinue`：先把光标交回正文再聚焦编辑器），
+   * 所以"点别处之后接着打字"这条既有口径不变；容器内部的按下（源码框 / `$$` 行 / 内边距）
+   * 一律放行 —— 那是第三十一轮"点源码区任何位置都不收起"的口径。
+   *
+   * 用**捕获**而不是冒泡：要在任何 `preventDefault()` 之前就决定，且不受
+   * `e.stopPropagation()`（编辑容器自己就 stop 了 mousedown/click）影响。
+   */
+  private onDocMouseDown = (event: MouseEvent): void => {
+    // 只认主键（右键/中键不改变编辑态；与 `onBoxMouseDown` 的口径一致）
+    if (event.button !== 0) return
+    if (this.view.isDestroyed) return
+    const st = mathPreviewKey.getState(this.view.state)
+    if (!st?.active || !st.box) return
+    const target = event.target as Element | null
+    if (target && typeof target.closest === 'function' && target.closest('[data-md-math-editor]')) {
+      return
+    }
+    closeSessionAndContinue(this.view)
+  }
+
   constructor(view: EditorView, labels: MathLabels, caret: CaretVisibility) {
     this.view = view
     this.labels = labels
@@ -1709,11 +1743,13 @@ class MathPreviewView {
        * 与原生插入符叠成两条。
        */
       for (const type of CARET_FLAG_EVENTS) view.dom.addEventListener(type, this.onCaretFlags)
+      window.addEventListener('mousedown', this.onDocMouseDown, true)
       view.dom.dataset.mdMathViewportHandlers = '1'
       return () => {
         window.removeEventListener('scroll', this.onViewport, true)
         window.removeEventListener('resize', this.onViewport)
         for (const type of CARET_FLAG_EVENTS) view.dom.removeEventListener(type, this.onCaretFlags)
+        window.removeEventListener('mousedown', this.onDocMouseDown, true)
         view.dom.dataset.mdMathViewportHandlers = '0'
       }
     })
