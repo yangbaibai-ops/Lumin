@@ -4124,11 +4124,20 @@ const doc = MD.split('PLACE_A')
         return { x: Math.round(r.left + r.width * fx), y: Math.round((r.top + r.bottom) / 2), t: r.top, b: r.bottom, vh: innerHeight }
       }
       return { a: rectAt(${JSON.stringify(aNeedle)}, ${aFx}), b: rectAt(${JSON.stringify(bNeedle)}, ${bFx}) } })()`)
-  const lsDrag = async (a, b, frames) => {
+  const lsDrag = async (a, b, frames, kind) => {
     await send('Input.dispatchMouseEvent', { type: 'mousePressed', x: a.x, y: a.y, button: 'left', clickCount: 1 })
     await sleep(22)
     const perFrame = []
     const seen = new Map()
+    /**
+     * ㊵（第一百三十三轮）：可在拖动**中途**派发一次 `pointercancel`，用来稳定复刻
+     * "`pointercancel` 提前消费 `boxDrag`，随后真正的 `mouseup` 发现 `boxDrag` 已 null"这个时序。
+     * 派发目标是 `view.dom`（`onBandUp` 就挂在 `view.dom` 的 pointercancel 上，见 imageToolbar）。
+     */
+    if (kind === 'pointercancel') {
+      await ev(`(() => { const d = window.__vt.ed().view.dom; d.dispatchEvent(new PointerEvent('pointercancel', { bubbles: true, cancelable: true, pointerType: 'mouse', buttons: 1 })); return 'ok' })()`)
+      await sleep(30)
+    }
     for (let i = 1; i <= frames; i++) {
       await send('Input.dispatchMouseEvent', {
         type: 'mouseMoved',
@@ -4156,6 +4165,9 @@ const doc = MD.split('PLACE_A')
     await send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: b.x, y: b.y, button: 'left', clickCount: 1 })
     await sleep(430)
     const settled = await json(`(() => { const s = window.__vt.ed().state.selection; return { from: s.from, to: s.to, empty: s.empty } })()`)
+    /** 落定走的哪条路（`ok`/`late`/`fail`/null）+ `onBandUp` 是被哪个事件触发的（㊵ 用） */
+    const fallback = await ev(`document.querySelector('.ProseMirror').getAttribute('data-img-settle-fallback')`)
+    const inDiag = await ev(`document.querySelector('.ProseMirror').getAttribute('data-img-settle-in')`)
     const missing = last ? Math.max(0, settled.from - last.from) + Math.max(0, last.to - settled.to) : null
     const extra = last ? Math.max(0, last.from - settled.from) + Math.max(0, settled.to - last.to) : null
     return {
@@ -4163,6 +4175,9 @@ const doc = MD.split('PLACE_A')
       settled,
       missing,
       extra,
+      fallback,
+      
+      inDiag,
       framesN: perFrame.length,
       missFrames: perFrame.filter((x) => x.missN > 0).length,
       missDetail: perFrame.filter((x) => x.missN > 0).slice(0, 4),
@@ -4267,6 +4282,66 @@ const doc = MD.split('PLACE_A')
       settleDiff.length >= 4 &&
       settleDiff.every((c) => c.missing === 0 && c.extra === 0),
     JSON.stringify(lsSettle)
+  )
+  /**
+   * ─── ㊵（第一百三十三轮）：**拖动中途 `pointercancel` 不得让我们"少列"** ────────────────
+   * 真因（统计取证：劣化实例 9/70、全新实例 0/1050）：`onBandUp` 有一半是靠 **`pointercancel`**
+   * 触发的（实测"距最近一次 mousemove 约 20–23ms"）。若某次 `pointercancel` 在拖动**中途**到达，
+   * 它会**提前消费掉 `boxDrag`**（那一次正常落定）；紧接着**真正的 `mouseup`** 到达时 `boxDrag`
+   * 已 `null` ⇒ 旧代码在 `if (!boxDrag)` 里 `clearLiveSel(); return` ⇒ **我们的落定一次都没发生**、
+   * 屏幕交回**原生被夹扁的选区** ⇒ 用户报的"松手后少 1–2 列"。
+   * 这里用 `Runtime.evaluate` 在拖动中途**主动派发**一次 `pointercancel` 来稳定复刻那个时序
+   * （不靠碰运气），断言：松手后选区 == 拖动期 live（双向差集 0），且 `fallback ∈ {ok,late}`。
+   */
+  const lsCancel = { cases: [] }
+  try {
+    /**
+     * ㊵ 用的端点：**跨表格**的一条（表头 → 表体），这样"少列"会在差集上直接暴露。
+     * 文档里 lsFixture 的表格是「列一/列二 + 三行粗体」。
+     */
+    let gg = await lsResolve('粗体甲', 0.4, '粗体丙', 0.6)
+    for (let i = 0; i < 6 && !(gg.a && gg.b); i++) {
+      await sleep(400)
+      gg = await lsResolve('粗体甲', 0.4, '粗体丙', 0.6)
+    }
+    for (let i = 0; i < 10; i++) {
+      // ① 中途派发 pointercancel
+      const r1 = await lsDrag(gg.a, gg.b, 22, 'pointercancel')
+      lsCancel.cases.push({ kind: 'mid-pointercancel', i, ...r1 })
+      // ② 对照：正常 mouseup
+      const r2 = await lsDrag(gg.a, gg.b, 22)
+      lsCancel.cases.push({ kind: 'normal-mouseup', i, ...r2 })
+    }
+  } catch (e) {
+    lsCancel.err = String((e && e.message) || e)
+  }
+  const cMid = lsCancel.cases.filter((c) => c.kind === 'mid-pointercancel')
+  const cNor = lsCancel.cases.filter((c) => c.kind === 'normal-mouseup')
+  check(
+    '㊵① **拖动中途收到 `pointercancel` ⇒ 仍按 live 区间落定**（不把屏幕交回原生）⇒ settled == live 双向差集 0 且 fallback ∈ {ok,late}',
+    cMid.length >= 10 &&
+      cMid.every(
+        (c) =>
+          c.last &&
+          c.last.to - c.last.from >= 3 &&
+          c.missing === 0 &&
+          c.extra === 0 &&
+          (c.fallback === 'ok' || c.fallback === 'late')
+      ),
+    JSON.stringify({ err: lsCancel.err, cases: cMid.map((c) => ({ i: c.i, live: c.last, settled: c.settled, fb: c.fallback, up: c.inDiag, miss: c.missing, extra: c.extra })) })
+  )
+  check(
+    '㊵② 对照：正常 `mouseup`（无中途 `pointercancel`）⇒ 同样 settled == live、fallback ∈ {ok,late}',
+    cNor.length >= 10 &&
+      cNor.every(
+        (c) =>
+          c.last &&
+          c.last.to - c.last.from >= 3 &&
+          c.missing === 0 &&
+          c.extra === 0 &&
+          (c.fallback === 'ok' || c.fallback === 'late')
+      ),
+    JSON.stringify({ cases: cNor.map((c) => ({ i: c.i, live: c.last, settled: c.settled, fb: c.fallback, up: c.inDiag, miss: c.missing, extra: c.extra })) })
   )
 
   const pass = results.filter((r) => r.ok).length

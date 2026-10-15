@@ -1048,11 +1048,36 @@ export const ImageSourceUi = Extension.create({
       hwPx: number
       /** 按下点屏幕坐标：高水位护栏用它判断"是否真的往回走" */
       press: { x: number; y: number } | null
+      /**
+       * ─── 第一百三十三轮（用户报障"松手后少 1–2 列"的**防御性**收口）──────────────────
+       * "最近一帧 live"的**时间戳**（`performance.now()`）。理由：`onBandUp` 可能是被
+       * **拖动中途误触发的 `pointercancel`** 提前消费掉的 —— 那一次会正常落定，而**紧接着真正的
+       * `mouseup` 到达时 `boxDrag` 已经 null** ⇒ 走 `if (!boxDrag)` 早退 ⇒ **我们的落定完全没发生**、
+       * 屏幕交回原生被夹扁的选区（实测签名：`nodrag` + 少 1–2 列）。
+       * 有了时间戳，早退分支就能判"这一趟手势是刚刚才画过画面的"，于是**按那一帧的区间兜底落定**，
+       * 而不是把屏幕让给原生。
+       */
+      lastLiveAt: number | null
     } | null = null
     let boxSettleRaf: number | null = null
     /** 本次落定**连续被推翻**的次数（第一百一十六轮：按连续失败计数，成功即归零并收工） */
     let boxSettleFails = 0
     let boxSettleTarget: { from: number; to: number } | null = null
+    /**
+     * ─── 第一百三十三轮（"松手后少 1–2 列"的防御性收口）─────────────────────────────────
+     * **与 `boxDrag` 独立**的一份"最近一帧 live 区间 + 时间戳"。
+     * 为什么必须独立：`boxDrag` 可能在手势中途被误触发的 `pointercancel` **提前消费掉**，
+     * 于是真正的 `mouseup` 到达时 `boxDrag` 已是 `null`。这时只要这份记录还新鲜，我们仍然能
+     * **按画面上那一份落定**，而不是把屏幕让回原生（那正是"少 1–2 列"的成因）。
+     */
+    let lastLiveRange: { from: number; to: number; at: number } | null = null
+    /** "最近一帧 live"还能用来兜底落定的时限（ms）：超过它说明这不是同一趟手势了 */
+    const LAST_LIVE_TRUST_MS = 2000
+    /**
+     * ─── 第一百三十三轮诊断锚（只为确认"`pointercancel` 是否早到"，不作为交付前提）──────────
+     * 记下最近一次 `mousemove` 的时刻，供 `onBandUp` 判定 `pointercancel` 与它的间隔。
+     */
+    let lastMoveAt = 0
     /**
      * 复验上限 = **连续被推翻**的最大次数（第一百一十六轮收口：不再按固定 40 帧空转）。
      * 6 次的理由：PM `flushSoon` ≈20ms 一次读回，连续 6 次（≈100ms）足以骑过实测的读回串；
@@ -2482,6 +2507,7 @@ export const ImageSourceUi = Extension.create({
       if (boxDrag) {
         boxDrag.lastLiveNear = r.from
         boxDrag.lastLiveFar = r.to
+        boxDrag.lastLiveAt = Date.now()
       }
       /**
        * 诊断锚（与 `data-img-open` 同一用途）：把这一帧的**锚点 / 当前点 / 试探区间**摊平成
@@ -2491,6 +2517,8 @@ export const ImageSourceUi = Extension.create({
         'data-img-drag-live',
         `${boxDrag?.anchor ?? boxDrag?.pressPos}|${boxDrag?.focus ?? view.state.selection.head}|${r.from}|${r.to}`
       )
+      /** 早退兜底落定要用的"最近一帧 live"，即使 `boxDrag` 已经不在了也留着 */
+      lastLiveRange = { from: r.from, to: r.to, at: Date.now() }
       paintLiveSel(view, r.from, r.to)
     }
 
@@ -3360,7 +3388,8 @@ export const ImageSourceUi = Extension.create({
                 lastLiveFar: null,
                 hw: null,
                 hwPx: 0,
-                press: { x: event.clientX, y: event.clientY }
+                press: { x: event.clientX, y: event.clientY },
+                lastLiveAt: null
               }
             }
           }
@@ -3442,8 +3471,9 @@ export const ImageSourceUi = Extension.create({
              * `img-selected`）——**仍然零 dispatch**。这样"按下并拖动"就有即时观感，不必等松手。
              */
             boxDragLive(editorView, event.clientX, event.clientY)
+            lastMoveAt = Date.now()
           }
-          const onBandUp = (): void => {
+          const onBandUp = (ev2?: Event): void => {
             bandDrag = null
             /**
              * 第一百二十六轮诊断锚（用户报障：跨表格/公式/图片拖动，松手后丢一部分）：
@@ -3453,7 +3483,9 @@ export const ImageSourceUi = Extension.create({
               try {
                 editorView.dom.setAttribute(
                   'data-img-settle-in',
-                  `${bd ? `${bd.anchor}|${bd.hw}|${bd.focus}|${bd.anchorLost ? 1 : 0}` : 'nodrag'}|${extra}`
+                  `${bd ? `${bd.anchor}|${bd.hw}|${bd.focus}|${bd.anchorLost ? 1 : 0}` : 'nodrag'}|${extra}|up${
+                    ev2 ? ev2.type : 'none'
+                  }|sinceMove${lastMoveAt ? Date.now() - lastMoveAt : -1}`
                 )
               } catch {
                 /* 忽略 */
@@ -3464,6 +3496,31 @@ export const ImageSourceUi = Extension.create({
              * 仍然是**唯一一处**落定 + 有界复验（`boxDragSettle`），拖动期没落过任何子。
              */
             if (!boxDrag) {
+              /**
+               * ─── 第一百三十三轮（用户报障：表格拖选"松手后少 1–2 列"的防御性收口）──────────
+               * 早退**不再无条件把屏幕让回原生**。真因链（逐帧+统计取证）：
+               *   `onBandUp` 有一半是靠 **`pointercancel`** 触发的（正常时 `boxDrag` 完好、落定正常）；
+               *   但若某次 `pointercancel` **在拖动中途误触发**，它会**提前消费 `boxDrag`**（那一次
+               *   正常落定），紧接着**真正的 `mouseup`** 到达时 `boxDrag` 已 `null` ⇒ 旧代码在这里
+               *   `clearLiveSel(); return` ⇒ **我们的落定一次都没发生**、屏幕交回**原生被夹扁的选区**
+               *   （实测签名：`data-img-settle-in=nodrag|…` + 覆盖列数 2→1/2→0）。
+               * 现在：只要这一趟手势**刚刚才画过画面**（`lastLiveRange` 新鲜），就**按那一帧的区间
+               * 走同一条 `boxDragSettle` 落定路径**，绝不把屏幕让给原生。
+               */
+              const lr = lastLiveRange
+              const fresh = lr != null && Date.now() - lr.at <= LAST_LIVE_TRUST_MS
+              if (fresh && lr.to > lr.from) {
+                dbgIn(
+                  null,
+                  `late-settle${lr.from}-${lr.to}|sel${editorView.state.selection.from}-${editorView.state.selection.to}`
+                )
+                paintLiveSel(editorView, lr.from, lr.to)
+                boxSettleTarget = { from: lr.from, to: lr.to }
+                boxSettleFails = 0
+                editorView.dom.removeAttribute('data-img-settle-fallback')
+                boxDragSettle(editorView)
+                return
+              }
               dbgIn(
                 null,
                 `nodrag|sel${editorView.state.selection.from}-${editorView.state.selection.to}`
