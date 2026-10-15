@@ -43,6 +43,7 @@ import { MarkdownParseLimits } from './parseLimits'
 // CJK 强调定界符口径：`**「…」**` 这类中文写法必须能成对（见 cjkEmphasis.ts）
 import { CjkEmphasis } from './cjkEmphasis'
 import { TyporaPointer, LinkSource } from './pointer'
+import { GutterCaret } from './gutterCaret'
 import { TableOfContents } from './tableOfContents'
 
 // 行内样式 mark：保留节点类型（解析粘贴/加载内容需要），但输入规则、**粘贴规则**
@@ -298,6 +299,8 @@ export const editorExtensions: Extensions = [
   // 鼠标语义：Ctrl/Cmd+左键退化为普通点击（PM 内置会整选段落/节点，Typora 无此逻辑）；
   // 链接：普通左键原地展开源码、Ctrl/Cmd+左键交宿主注入的 onOpenLink（§4.14/§4.15）
   TyporaPointer,
+  // 左内边距上按下 ⇒ 光标落到该行行首（报障③「行首行内公式之前落不进光标」）
+  GutterCaret,
   // 键盘语义（分割线回车确认 / 标题行首退格降级）：priority 200，
   // 先于 core keymap 执行；置于末尾保证在同等优先级中注册最晚（最先执行）
   TyporaKeymap
