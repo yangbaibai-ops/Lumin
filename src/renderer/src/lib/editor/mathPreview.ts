@@ -865,7 +865,17 @@ abstract class MathEditorBase {
     const { tex, degradable } = this.toDocumentTex(this.ta.value)
     this.writing = true
     try {
-      applySource(this.view, tex, this.id, degradable)
+      /**
+       * `caret` = 源码框里的插入符下标（**只在 `degradable` 那一支用得上**）。
+       *
+       * 退化（用户把 `$…$` 改得不配平）时要把用户**原样输入**的文本留在正文里；
+       * 而那一段在文档里是"一段原来的公式原文"，光标此刻通常还停在开会话之前的位置
+       * （`handleClick` 认领了那次点击 ⇒ PM 没按落点写过选区）。不显式落光标的话，
+       * 用户删掉收尾 `$` 之后光标会跳回**公式最前面**（= 前一个 `$` 之前）——
+       * 正是报障②的现场。这里把源码框里的插入符位置一起传下去，
+       * 由 `applySource` 映射成文档位置（`degradable` 时 `tex` 与框内文本逐字相同，下标可直接平移）。
+       */
+      applySource(this.view, tex, this.id, degradable, this.ta.selectionStart)
     } finally {
       this.writing = false
     }
@@ -1258,13 +1268,17 @@ function currentTexOf(doc: PMNode, live: MathHit, kind: 'inline' | 'block'): str
  * @param degradable 用户把定界符改坏了（行内 `$…$` 不再配平）⇒ 走**退化**：
  *   把用户**原样输入的文本**留在正文里、只摘掉公式 mark，**绝不静默丢弃**任何一个字符。
  *   与 `mathMarkers.ts` 的既有归一化同一口径（行内公式必须一对配平的 `$…$`，不配平退回普通文本）。
+ * @param caret 源码框里的插入符下标（`degradable` 时才有意义，见 `MathEditorBase.commit`）。
+ *   退化之后把文档光标落在 `live.from + caret`（夹在退化区间的两端之内）并聚焦编辑器 ——
+ *   这是报障②「删掉收尾 `$` 之后光标该落在内容末尾」的唯一落点来源。
  * @returns 是否真的改动了文档
  */
 export function applySource(
   view: EditorView,
   tex: string,
   id?: number,
-  degradable = false
+  degradable = false,
+  caret?: number
 ): boolean {
   const session = mathPreviewKey.getState(view.state)?.active
   if (!session) return false
@@ -1289,7 +1303,37 @@ export function applySource(
        * 所以**保存后再打开**与屏幕上看到的是同一个东西（往返一致）。
        * 用**整段区间**（`live.from..live.to`，含两侧 `$`）替换：一个事务完成，`Ctrl+Z` 可回退。
        */
-      view.dispatch(state.tr.replaceWith(live.from, live.to, state.schema.text(tex)))
+      const tr = state.tr.replaceWith(live.from, live.to, state.schema.text(tex))
+      /**
+       * **退化之后光标落在哪**（报障②）。
+       *
+       * 不显式落光标的话，文档光标停在开会话之前的位置（`handleClick` 认领了那次点击，
+       * PM 没按落点写过选区）—— 实测：`$E = mc^2$` 里删掉收尾 `$` 之后
+       * `selection.from = 1`（公式**最前面**），而用户期望的是 `10`（`2` 的后面）。
+       *
+       * 口径：源码框里的插入符下标**原样平移**到文档（`degradable` 时 `tex` 就是框内文本，
+       * `toDocumentTex` 没有做任何裁剪），夹在退化区间 `[live.from, live.from + tex.length]` 之内。
+       * 两条出口都保住：
+       *   * 末尾退格删 `$` ⇒ 框内插入符在末尾 ⇒ 文档光标紧跟内容末尾（正是报障②要的"落在 `2` 后面"）；
+       *   * 中间改坏某个 `$` ⇒ 光标跟着停在用户改的那个字符处（不跳位）。
+       * 源码框没给下标（程序化调用）时保持 PM 的映射结果，不抢。
+       */
+      if (typeof caret === 'number' && Number.isFinite(caret)) {
+        const at = Math.max(
+          live.from,
+          Math.min(live.from + Math.trunc(caret), live.from + tex.length)
+        )
+        const $at = tr.doc.resolve(at)
+        const near = TextSelection.near($at, 1) ?? TextSelection.near($at, -1)
+        if (near) tr.setSelection(near)
+      }
+      view.dispatch(tr)
+      /**
+       * 焦点交回编辑器：退化会让这条公式的 mark 消失 ⇒ 会话在同一个事务里被摘掉
+       * （`MathPreviewView.sync` → `drop`），编辑容器（含 textarea）随之下线，焦点此刻落在
+       * `body` 上 —— 不补这一下，用户接着敲字一个字都进不去（实测 `activeElement = BODY`）。
+       */
+      if (typeof caret === 'number' && Number.isFinite(caret)) view.focus()
       return true
     }
     if (tex === currentTex(state, live, kind)) return false
