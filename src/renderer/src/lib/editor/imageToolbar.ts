@@ -1072,6 +1072,13 @@ export const ImageSourceUi = Extension.create({
         maxTo: number | null
         /** 写 `maxFrom/maxTo` 的时刻 */
         maxAt: number
+        /**
+         * 本手势**画过**的范围（只增不减；= 试探区间 ∪ 原生区间的并，**含"原生领先一帧"那部分**）。
+         * 它**只**用于"给复验/护栏当上界"与诊断，**不参与"落定该多宽"的决策**（那件事由
+         * `maxFrom/maxTo` 管 —— 把原生并进去会让反向拖动在松手时多选一段没画过的内容）。
+         */
+        paintFrom: number | null
+        paintTo: number | null
         /** 本次手势**是否已经收尾**过（收尾幂等的唯一判据） */
         settled: boolean
         /** 上次收尾落定的区间（幂等判据：记录没超出它 ⇒ 重复事件直接跳过） */
@@ -1105,6 +1112,8 @@ export const ImageSourceUi = Extension.create({
       maxFrom: number | null
       maxTo: number | null
       maxAt: number
+      paintFrom: number | null
+      paintTo: number | null
       settled: boolean
       closeFrom: number | null
       closeTo: number | null
@@ -2586,22 +2595,40 @@ export const ImageSourceUi = Extension.create({
       const bd = boxDrag
       if (!bd) return
       /**
-       * 记下"画面上这一份"的**两端**（落定按它对齐，见 `onBandUp` 里那段说明）。
-       * 这是**唯一**的一份记录：`boxDrag.g` 本身就是 `liveGesture`（同一对象引用）。
+       * 最近一帧**画面上那一份**：`paintLiveSel` 取的是 `试探区间 ∪ 原生 DOM 区间`
+       * （见那里的说明），而落定与"锚点/落点"都以这一份为准 ⇒ 这里记的必须与画的一致。
+       * ⚠️ 这一条是本轮（架构收口 · 阶段 1）修掉的**诊断误差**：旧代码只记 `试探区间`，
+       * 于是"反向拖动时原生选区领先一帧"的那些帧上，`data-img-drag-live` 报的比画面上窄，
+       * 套件读到"落定 ⊋ live"就误判成回归（逐帧实测：反向段原生已到 `3`、我们画到 `3`、
+       * 而诊断仍写 `51`）。**它只是一个读数**，落定口径本身没有变。
        */
-      bd.g.from = r.from
-      bd.g.to = r.to
+      const nat = nativeDocRange(view)
+      const pf = nat ? Math.min(r.from, nat.from) : r.from
+      const pt = nat ? Math.max(r.to, nat.to) : r.to
+      bd.g.from = pf
+      bd.g.to = pt
       bd.g.at = Date.now()
       /**
        * 单调性护栏的高水位：**只在指针确实压在原子盒内**（`bd.focus != null` = 我们按盒内取半
        * 选出来的那一端）时写；盒外帧一律不写（理由见 `boxDrag.g.maxFrom` 那段）。
        */
-      if (bd.focus != null && r.to > r.from) {
+      if (bd.focus != null && pt > pf) {
         const mf = bd.g.maxFrom
         const mt = bd.g.maxTo
-        bd.g.maxFrom = mf == null ? r.from : Math.min(mf, r.from)
-        bd.g.maxTo = mt == null ? r.to : Math.max(mt, r.to)
+        bd.g.maxFrom = mf == null ? pf : Math.min(mf, pf)
+        bd.g.maxTo = mt == null ? pt : Math.max(mt, pt)
         bd.g.maxAt = Date.now()
+      }
+      /**
+       * 只增不减的"画过的范围"：给复验/护栏当**上界**用（它包含"原生领先一帧"那部分，
+       * 但**绝不**参与"落定该多宽"的决策 —— 那件事由 `maxFrom/maxTo` 管）。
+       * ⚠️ 与 `maxFrom/maxTo` 不同，这一对**每一帧都写**（它只是读数，没有副作用）。
+       */
+      if (pt > pf) {
+        const p0 = bd.g.paintFrom
+        const p1 = bd.g.paintTo
+        bd.g.paintFrom = p0 == null ? pf : Math.min(p0, pf)
+        bd.g.paintTo = p1 == null ? pt : Math.max(p1, pt)
       }
       /**
        * 诊断锚（与 `data-img-open` 同一用途）：把这一帧的**锚点 / 当前点 / 试探区间**摊平成
@@ -2609,7 +2636,7 @@ export const ImageSourceUi = Extension.create({
        */
       view.dom.setAttribute(
         'data-img-drag-live',
-        `${bd.anchor ?? bd.pressPos}|${bd.focus ?? view.state.selection.head}|${r.from}|${r.to}`
+        `${bd.anchor ?? bd.pressPos}|${bd.focus ?? view.state.selection.head}|${pf}|${pt}`
       )
       /**
        * 单调性护栏的**可见自证**：本手势的id / 已记录的最大覆盖 / 收尾次数 / 重复收尾次数，
@@ -2619,7 +2646,15 @@ export const ImageSourceUi = Extension.create({
         'data-img-gesture',
         `${bd.g.id}|${bd.g.maxFrom ?? '-'}-${bd.g.maxTo ?? '-'}|${bd.g.settled ? 1 : 0}`
       )
-      paintLiveSel(view, r.from, r.to)
+      /**
+       * "落定 ⊆ 画过"的**独立上界**（诊断锚）：本手势画过的最小/最大位置，只增不减。
+       * 它含"原生领先一帧"那部分，所以它只是**上界**；**不参与**落定决策。
+       */
+      view.dom.setAttribute(
+        'data-img-sel-paint',
+        `${bd.g.id}|${bd.g.paintFrom ?? '-'}-${bd.g.paintTo ?? '-'}`
+      )
+      paintLiveSel(view, pf, pt)
     }
 
     /**
@@ -3496,6 +3531,8 @@ export const ImageSourceUi = Extension.create({
                 maxFrom: null as number | null,
                 maxTo: null as number | null,
                 maxAt: 0,
+                paintFrom: null as number | null,
+                paintTo: null as number | null,
                 settled: false,
                 closeFrom: null as number | null,
                 closeTo: null as number | null
