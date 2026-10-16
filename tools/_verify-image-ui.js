@@ -160,9 +160,36 @@ const MD =
   `<img src="PLACE_B" style="zoom:25%;" />\n\n最后一段文字。\n\n前 **粗体** 后\n\n前 **粗体** 后\n`
 
 const results = []
+/**
+ * ─── 第一百三十八轮：**TALLY 兜底**（防"被杀后无法核对"）────────────────────────────────────
+ * 现象：某些运行里套件进程被**外部终止**（`exit=null`、无 EXIT/SIGNAL/UNCAUGHT 钩子、内存不涨），
+ * 输出截断在某条断言之后 ⇒ 整轮既没有 `TOTAL` 也说不清跑到哪。
+ * 这里每 `check()` 之后**同步追加**一行 `TALLY n=<k> pass=<p> fail=<f>`：
+ *   * 一份 `fs.appendFileSync` 落 `tmp/keep/tally-<pid>.log`（**同步写，杀进程也不丢**）；
+ *   * 一份打到 stdout（驱动/运行器可直接解析）。
+ * 于是即使被杀也能如实报 **`PARTIAL — 死于第 N 条（块名）`**，而不是"没有数字"。
+ */
+const TALLY_FILE = (() => {
+  try {
+    const p = require('path').join(__dirname, '..', 'tmp', 'keep', `tally-${process.pid}.log`)
+    require('fs').mkdirSync(require('path').dirname(p), { recursive: true })
+    require('fs').writeFileSync(p, `[start] pid=${process.pid} t=${Date.now()}\n`)
+    return p
+  } catch (e) {
+    return null
+  }
+})()
 function check(name, ok, extra) {
   results.push({ name, ok })
   console.log(`${ok ? 'PASS' : 'FAIL'} ${name}${extra === undefined ? '' : ' | ' + extra}`)
+  try {
+    const p = results.filter((r) => r.ok).length
+    const line = `TALLY n=${results.length} pass=${p} fail=${results.length - p} last=${String(name).slice(0, 60)}`
+    console.log(line)
+    if (TALLY_FILE) require('fs').appendFileSync(TALLY_FILE, line + '\n')
+  } catch (e) {
+    /* 忽略 */
+  }
 }
 function safe(fn, fallback) {
   try {

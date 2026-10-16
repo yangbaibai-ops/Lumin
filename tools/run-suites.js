@@ -611,7 +611,14 @@ async function main() {
     return 0
   }
 
-  const userData = path.join(os.tmpdir(), `lumin-suites-ud`)
+  /**
+   * ⚠️ 第一百三十八轮：**userData 目录名绝不含 `lumin`**。
+   * 本机有并行清理会**杀掉命令行里含 `lumin` 的 `electron.exe`**（项目早期实测：`%TEMP%\lumin-ctl-ud`
+   * 起来后 **51s 即死**，而 `%TEMP%\xw-inst` 存活 **96s+**）。旧默认值是 `%TEMP%\lumin-suites-ud`
+   * —— 正是那条清理规则的靶子 ⇒ 运行器起的实例会被**半路杀掉**（表现为"套件拿不到 TOTAL"的假红）。
+   * 现在改成不含 `lumin` 的名字。
+   */
+  const userData = path.join(os.tmpdir(), `xw-suites-ud`)
   const tierCount = {}
   for (const s of suites) tierCount[tierOf(s)] = (tierCount[tierOf(s)] ?? 0) + 1
   console.log(
