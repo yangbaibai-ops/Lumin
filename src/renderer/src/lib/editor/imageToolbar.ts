@@ -1039,38 +1039,88 @@ export const ImageSourceUi = Extension.create({
       anchor: number | null
       focus: number | null
       anchorLost: boolean
-      /** 最近一次"试探区间"的**两端**（也就是**画面上那一份**；落定按它对齐，见 `onBandUp`） */
-      lastLiveNear: number | null
-      lastLiveFar: number | null
+      /**
+       * 本次手势的**唯一记录**（第一百三十四轮：单一真相）。
+       *
+       * 真因：同一个事实原来有**四份真相** —— 模型选区 / 我们画的带 / 原生 DOM 选区 /
+       * 拖动期试探区间。任何一条收尾路径（`mouseup` / `pointercancel` / `blur` /
+       * `visibilitychange` / Escape / 插件 `destroy` / 点别处早退）只要**不是**按"本次手势
+       * 记录的那一份"落定，屏幕上就会留下**原生那份被夹扁的选区** ⇒ 用户看到"松手后少 1–2 列"。
+       *
+       * 现在：拖动期每一帧把试探区间写进 `boxDrag.g`（盒内指针时是[盒内取半]∪[原生光标]），
+       * **所有**收尾路径一律经 `settleGesture` 以 `boxDrag.g` 为准走**同一条** `boxDragSettle`
+       * ⇒ 落定 == 画面那一份；`settled` 保证**同一次手势只收尾一次**（重复事件只"修正不回缩"）。
+       */
+      g: {
+        /** 本次手势 id（诊断锚用；"收尾幂等"按它识别同一次手势） */
+        id: number
+        /** 最近一帧**画面上那一份**的两端（落定按它对齐，见 `onBandUp`） */
+        from: number | null
+        to: number | null
+        /** 该帧的时间戳（`Date.now()`）：早退兜底落定的新鲜度判据 */
+        at: number
+        /**
+         * 本手势**已经画过的最大覆盖范围**（只增不减，且**只由"盒内取半"那一帧写**）：
+         * 单调性护栏 —— 落定区间不得比它更小（"允许修正端点、不允许整段回缩"）。
+         *
+         * ⚠️ 为什么不把"盒外帧"的 `[anchor, 原生光标]` 并进来：第 2.x 步实测过一类
+         * **反向拖动**（指针带着原生光标往回走，我们画的带跟着缩），把它并进来会在松手时
+         * 突然**多选一大段没画过的内容**（"本不该选中却被选中"）。而盒内帧是我们**自己选的
+         * 那一边**、不看原生光标 ⇒ 对"原生那份被夹扁"的失败模式灵敏，且不会因原生滞后而虚高。
+         */
+        maxFrom: number | null
+        maxTo: number | null
+        /** 写 `maxFrom/maxTo` 的时刻 */
+        maxAt: number
+        /** 本次手势**是否已经收尾**过（收尾幂等的唯一判据） */
+        settled: boolean
+        /** 上次收尾落定的区间（幂等判据：记录没超出它 ⇒ 重复事件直接跳过） */
+        closeFrom: number | null
+        closeTo: number | null
+      }
       /** 高水位：远端达到过的最远文档位置（只增不减，除非指针真的反向 ≥4px，见 `TAIL_BACK_PX`） */
       hw: number | null
       /** 设置 hw 时的指针"轴向距离"（px） */
       hwPx: number
       /** 按下点屏幕坐标：高水位护栏用它判断"是否真的往回走" */
       press: { x: number; y: number } | null
-      /**
-       * ─── 第一百三十三轮（用户报障"松手后少 1–2 列"的**防御性**收口）──────────────────
-       * "最近一帧 live"的**时间戳**（`performance.now()`）。理由：`onBandUp` 可能是被
-       * **拖动中途误触发的 `pointercancel`** 提前消费掉的 —— 那一次会正常落定，而**紧接着真正的
-       * `mouseup` 到达时 `boxDrag` 已经 null** ⇒ 走 `if (!boxDrag)` 早退 ⇒ **我们的落定完全没发生**、
-       * 屏幕交回原生被夹扁的选区（实测签名：`nodrag` + 少 1–2 列）。
-       * 有了时间戳，早退分支就能判"这一趟手势是刚刚才画过画面的"，于是**按那一帧的区间兜底落定**，
-       * 而不是把屏幕让给原生。
-       */
-      lastLiveAt: number | null
     } | null = null
     let boxSettleRaf: number | null = null
     /** 本次落定**连续被推翻**的次数（第一百一十六轮：按连续失败计数，成功即归零并收工） */
     let boxSettleFails = 0
     let boxSettleTarget: { from: number; to: number } | null = null
     /**
-     * ─── 第一百三十三轮（"松手后少 1–2 列"的防御性收口）─────────────────────────────────
-     * **与 `boxDrag` 独立**的一份"最近一帧 live 区间 + 时间戳"。
-     * 为什么必须独立：`boxDrag` 可能在手势中途被误触发的 `pointercancel` **提前消费掉**，
-     * 于是真正的 `mouseup` 到达时 `boxDrag` 已是 `null`。这时只要这份记录还新鲜，我们仍然能
-     * **按画面上那一份落定**，而不是把屏幕让回原生（那正是"少 1–2 列"的成因）。
+     * ─── 第一百三十四轮（架构收口 · 阶段 1）：**本次手势的唯一记录**（单一真相）─────────────
+     * 就是 `boxDrag.g` 本身。为什么要一个**别名**而不是 `lastLiveRange` 那种"第二份记录"：
+     * `boxDrag` 会在收尾时被置 `null`（收尾后就该是它），可**同一趟手势的后续事件**
+     * （`pointercancel` 之后又来真 `mouseup`、`blur`、`visibilitychange`）还得能判"这是不是
+     * 刚收尾的那一趟"。别名在收尾时**不清**，于是所有收尾路径都能拿到**同一份**记录 ——
+     * 不再出现"两份真相、谁先写谁算"。
      */
-    let lastLiveRange: { from: number; to: number; at: number } | null = null
+    let liveGesture: {
+      id: number
+      from: number | null
+      to: number | null
+      at: number
+      maxFrom: number | null
+      maxTo: number | null
+      maxAt: number
+      settled: boolean
+      closeFrom: number | null
+      closeTo: number | null
+    } | null = null
+    /** 手势 id 自增（每次 `mousedown` 起手一个） */
+    let gestureSeq = 0
+    /**
+     * "最近一次收尾"的印记（`boxSettleTarget` 会在落成后被 `cancelWatch()` 清成 `null`，
+     * 单据它挡不住落成**之后** PM `DOMObserver` 读回那一帧的重画）。
+     */
+    let settleStampAt = 0
+    /** "最近一次收尾"还能算作"这次收尾的尾巴"的时限（PM `flushSoon` 是 ~20ms 定时器，200ms 足够骑过一串） */
+    const SETTLE_STAMP_MS = 200
+    /** 现在是否处于"某次收尾尚未稳定"的窗口（拖动期 / 复验期 / 读回尾巴） */
+    const closeWindowOpen = (now: number): boolean =>
+      boxDrag != null || boxSettleTarget != null || now - settleStampAt <= SETTLE_STAMP_MS
     /** "最近一帧 live"还能用来兜底落定的时限（ms）：超过它说明这不是同一趟手势了 */
     const LAST_LIVE_TRUST_MS = 2000
     /**
@@ -1292,6 +1342,13 @@ export const ImageSourceUi = Extension.create({
         boxSettleWatch = 0
         boxSettleFails = 0
         stopWatch()
+        /**
+         * 第一百三十四轮：给"这次收尾"盖一个印记。`boxSettleTarget` 在落成那一刻就被清成 `null`，
+         * 于是**落成之后** PM `DOMObserver` 读回那一帧（模型选区被夹扁时）会让
+         * `update()` / `ResizeObserver` 那条 `boxDrag == null ⇒ paintSettledSel()` 按**假的模型选区**
+         * 重画一次带 —— 这正是"收尾尾巴上的可见抖动"。有印记后，那三处按 `closeWindowOpen()` 让位。
+         */
+        settleStampAt = Date.now()
       }
       /**
        * 落定用的 `TextSelection`：**先按原样建**，只有在 PM 把端点修掉（或干脆抛）时才吸附。
@@ -1359,10 +1416,33 @@ export const ImageSourceUi = Extension.create({
       }
       const tryOnce = (): void => {
         boxSettleRaf = null
-        const t = boxSettleTarget
+        let t = boxSettleTarget
         if (!t) {
           stopWatch()
           return
+        }
+        /**
+         * ─── 第一百三十四轮（架构收口 · 阶段 1）：**单调性护栏**（"允许修正端点、不允许整段回缩"）
+         * 每次落定**之前**把本次手势"已经画过的最大覆盖范围"并进目标（`boxDrag.g.maxFrom/maxTo`，
+         * 只增不减）⇒ 即使 PM 的 `DOMObserver` 把**过期的 DOM 选区**读回来试图把区间改小，
+         * 我们下一次补写用的目标**不小于**画面上画过的那一份。旧代码只把目标定一次
+         * （`boxSettleTarget` 不会被更新），于是"读回把端点夹扁"只能靠 ±2 容差兜住，
+         * 一旦差值超过 2 位就直接判失败、转兜底 —— 现在从**源头**保证不缩。
+         * 注意：这里**只扩不缩**，所以不会引入"本不该选中却选中"（那是把 `hw`/原生光标并进来的后果）。
+         */
+        const g = liveGesture
+        if (g) {
+          if (g.maxFrom != null && g.maxTo != null && g.maxTo > g.maxFrom) {
+            t = {
+              from: Math.min(t.from, g.maxFrom),
+              to: Math.max(t.to, g.maxTo)
+            }
+            boxSettleTarget = t
+          }
+          if (g.from != null && g.to != null && g.to > g.from) {
+            t = { from: Math.min(t.from, g.from), to: Math.max(t.to, g.to) }
+            boxSettleTarget = t
+          }
         }
         const got = setTo(t)
         /** 容差 ±2：吸附只允许"往区间内收"，1~2 位内视为落成（第 1 步口径里"松手点并入"也是 ≤2 位） */
@@ -2503,11 +2583,25 @@ export const ImageSourceUi = Extension.create({
     const boxDragLive = (view: EditorView, x: number, y: number): void => {
       const r = boxDragRange(view, x, y)
       if (!r) return
-      /** 记下"画面上这一份"的**两端**（落定按它对齐，见 `onBandUp` 里那段说明） */
-      if (boxDrag) {
-        boxDrag.lastLiveNear = r.from
-        boxDrag.lastLiveFar = r.to
-        boxDrag.lastLiveAt = Date.now()
+      const bd = boxDrag
+      if (!bd) return
+      /**
+       * 记下"画面上这一份"的**两端**（落定按它对齐，见 `onBandUp` 里那段说明）。
+       * 这是**唯一**的一份记录：`boxDrag.g` 本身就是 `liveGesture`（同一对象引用）。
+       */
+      bd.g.from = r.from
+      bd.g.to = r.to
+      bd.g.at = Date.now()
+      /**
+       * 单调性护栏的高水位：**只在指针确实压在原子盒内**（`bd.focus != null` = 我们按盒内取半
+       * 选出来的那一端）时写；盒外帧一律不写（理由见 `boxDrag.g.maxFrom` 那段）。
+       */
+      if (bd.focus != null && r.to > r.from) {
+        const mf = bd.g.maxFrom
+        const mt = bd.g.maxTo
+        bd.g.maxFrom = mf == null ? r.from : Math.min(mf, r.from)
+        bd.g.maxTo = mt == null ? r.to : Math.max(mt, r.to)
+        bd.g.maxAt = Date.now()
       }
       /**
        * 诊断锚（与 `data-img-open` 同一用途）：把这一帧的**锚点 / 当前点 / 试探区间**摊平成
@@ -2515,10 +2609,16 @@ export const ImageSourceUi = Extension.create({
        */
       view.dom.setAttribute(
         'data-img-drag-live',
-        `${boxDrag?.anchor ?? boxDrag?.pressPos}|${boxDrag?.focus ?? view.state.selection.head}|${r.from}|${r.to}`
+        `${bd.anchor ?? bd.pressPos}|${bd.focus ?? view.state.selection.head}|${r.from}|${r.to}`
       )
-      /** 早退兜底落定要用的"最近一帧 live"，即使 `boxDrag` 已经不在了也留着 */
-      lastLiveRange = { from: r.from, to: r.to, at: Date.now() }
+      /**
+       * 单调性护栏的**可见自证**：本手势的id / 已记录的最大覆盖 / 收尾次数 / 重复收尾次数，
+       * 全部摊到 DOM 上 ⇒ 套件与探针都能直接读到"这一次是不是只收尾了一次"。
+       */
+      view.dom.setAttribute(
+        'data-img-gesture',
+        `${bd.g.id}|${bd.g.maxFrom ?? '-'}-${bd.g.maxTo ?? '-'}|${bd.g.settled ? 1 : 0}`
+      )
       paintLiveSel(view, r.from, r.to)
     }
 
@@ -3136,7 +3236,8 @@ export const ImageSourceUi = Extension.create({
             scheduleOverlay(editorView)
             /** 第一百二十一轮：布局变了 ⇒ 落定态的带要按新几何重画（`settledKey` 只挡"输入没变"） */
             settledKey = null
-            if (boxDrag == null) {
+            /** 第一百三十四轮：收尾窗口内不按（可能已被 DOMObserver 读回夹扁的）模型选区重画 */
+            if (boxDrag == null && !closeWindowOpen(Date.now())) {
               try {
                 paintSettledSel(editorView)
               } catch {
@@ -3153,7 +3254,7 @@ export const ImageSourceUi = Extension.create({
           const onResize = (): void => {
             scheduleOverlay(editorView)
             settledKey = null
-            if (boxDrag == null) {
+            if (boxDrag == null && !closeWindowOpen(Date.now())) {
               try {
                 paintSettledSel(editorView)
               } catch {
@@ -3377,20 +3478,40 @@ export const ImageSourceUi = Extension.create({
              */
             boxSettleTarget = null
             boxDrag = null
+            /**
+             * ⚠️ 第一百三十四轮（单一真相）：**每一次 `mousedown` 都要把上一次手势的记录作废**。
+             * 不收手就把 `liveGesture` 留着的话，一次"不带 `boxDrag` 的按下 + 松手"（按在带里、
+             * 按在工具栏上）会在 `onBandUp` 的早退分支里拿**上一趟**的区间去落定
+             * ⇒ 凭空多选一段（把上一趟的画面当成本趟的）。
+             */
+            liveGesture = null
             if (event instanceof MouseEvent && !bandAt(editorView, event.clientX, event.clientY)) {
               const at = editorView.posAtCoords({ left: event.clientX, top: event.clientY })
+              /** 本次手势的**唯一记录**：拖动期每一帧由 `boxDragLive` 写，收尾一律读它 */
+              const g = {
+                id: ++gestureSeq,
+                from: null as number | null,
+                to: null as number | null,
+                at: 0,
+                maxFrom: null as number | null,
+                maxTo: null as number | null,
+                maxAt: 0,
+                settled: false,
+                closeFrom: null as number | null,
+                closeTo: null as number | null
+              }
               boxDrag = {
                 pressPos: at ? at.pos : null,
                 anchor: null,
                 focus: null,
                 anchorLost: false,
-                lastLiveNear: null,
-                lastLiveFar: null,
+                g,
                 hw: null,
                 hwPx: 0,
-                press: { x: event.clientX, y: event.clientY },
-                lastLiveAt: null
+                press: { x: event.clientX, y: event.clientY }
               }
+              liveGesture = g
+              editorView.dom.setAttribute('data-img-gesture', `${g.id}|0-0|0`)
             }
           }
           const onDragUp = (): void => {
@@ -3473,123 +3594,163 @@ export const ImageSourceUi = Extension.create({
             boxDragLive(editorView, event.clientX, event.clientY)
             lastMoveAt = Date.now()
           }
-          const onBandUp = (ev2?: Event): void => {
-            bandDrag = null
-            /**
-             * 第一百二十六轮诊断锚（用户报障：跨表格/公式/图片拖动，松手后丢一部分）：
-             * 落定的**输入**逐项落到 DOM 上，供逐帧取证（`boxDrag` 是否在、锚点/高水位/远端/区间）。
-             */
-            const dbgIn = (bd: typeof boxDrag, extra: string): void => {
-              try {
-                editorView.dom.setAttribute(
-                  'data-img-settle-in',
-                  `${bd ? `${bd.anchor}|${bd.hw}|${bd.focus}|${bd.anchorLost ? 1 : 0}` : 'nodrag'}|${extra}|up${
-                    ev2 ? ev2.type : 'none'
-                  }|sinceMove${lastMoveAt ? Date.now() - lastMoveAt : -1}`
-                )
-              } catch {
-                /* 忽略 */
-              }
+          /**
+           * ═══ 第一百三十四轮（架构收口 · 阶段 1）：**收尾的唯一入口**（单一真相 + 幂等 + 单调）═══
+           *
+           * 收尾路径（全部经此一处，**不得**读浏览器当前选区当落定依据）：
+           *   `mouseup` / `pointercancel` / `blur` / `visibilitychange`（隐藏时）/ Escape /
+           *   任意 `keydown` / 点别处（`mousedown` 已把记录作废）/ 插件 `destroy`。
+           *
+           * 输入只有一个：`liveGesture`（= `boxDrag.g`，拖动期每帧写的那一份）。
+           *   * **幂等**：记录上已收尾（`g.settled`）且覆盖没再变大 ⇒ **直接跳过**（重复事件只识别、
+           *     不重落）；覆盖变大了 ⇒ **只修正、不回缩**（单调性）。
+           *   * **单调**：落定目标 ⊇ `g.maxFrom/maxTo`（本手势画过的最大覆盖）∪ 最后一帧画面 ∪ 锚点/落点。
+           */
+          const dbgUp = (tag: string, extra: string): void => {
+            try {
+              editorView.dom.setAttribute(
+                'data-img-up-diag',
+                `id${liveGesture ? liveGesture.id : -1}|${tag}${
+                  liveGesture && liveGesture.settled ? '|dup' : '|first'
+                }|${extra}`
+              )
+            } catch {
+              /* 忽略 */
             }
-            /**
-             * 第一百一十一轮：松手（或指针取消/失焦）时把"跨图片实体"那一路落定 ——
-             * 仍然是**唯一一处**落定 + 有界复验（`boxDragSettle`），拖动期没落过任何子。
-             */
-            if (!boxDrag) {
-              /**
-               * ─── 第一百三十三轮（用户报障：表格拖选"松手后少 1–2 列"的防御性收口）──────────
-               * 早退**不再无条件把屏幕让回原生**。真因链（逐帧+统计取证）：
-               *   `onBandUp` 有一半是靠 **`pointercancel`** 触发的（正常时 `boxDrag` 完好、落定正常）；
-               *   但若某次 `pointercancel` **在拖动中途误触发**，它会**提前消费 `boxDrag`**（那一次
-               *   正常落定），紧接着**真正的 `mouseup`** 到达时 `boxDrag` 已 `null` ⇒ 旧代码在这里
-               *   `clearLiveSel(); return` ⇒ **我们的落定一次都没发生**、屏幕交回**原生被夹扁的选区**
-               *   （实测签名：`data-img-settle-in=nodrag|…` + 覆盖列数 2→1/2→0）。
-               * 现在：只要这一趟手势**刚刚才画过画面**（`lastLiveRange` 新鲜），就**按那一帧的区间
-               * 走同一条 `boxDragSettle` 落定路径**，绝不把屏幕让给原生。
-               */
-              const lr = lastLiveRange
-              const fresh = lr != null && Date.now() - lr.at <= LAST_LIVE_TRUST_MS
-              if (fresh && lr.to > lr.from) {
-                dbgIn(
-                  null,
-                  `late-settle${lr.from}-${lr.to}|sel${editorView.state.selection.from}-${editorView.state.selection.to}`
-                )
-                paintLiveSel(editorView, lr.from, lr.to)
-                boxSettleTarget = { from: lr.from, to: lr.to }
-                boxSettleFails = 0
-                editorView.dom.removeAttribute('data-img-settle-fallback')
-                boxDragSettle(editorView)
-                return
-              }
-              dbgIn(
-                null,
+          }
+          /**
+           * 第一百二十六轮诊断锚（用户报障：跨表格/公式/图片拖动，松手后丢一部分）：
+           * 落定的**输入**逐项落到 DOM 上，供逐帧取证（`boxDrag` 是否在、锚点/高水位/远端/区间）。
+           */
+          const dbgIn = (bd: typeof boxDrag, extra: string, ev2?: Event): void => {
+            try {
+              editorView.dom.setAttribute(
+                'data-img-settle-in',
+                `${bd ? `${bd.anchor}|${bd.hw}|${bd.focus}|${bd.anchorLost ? 1 : 0}` : 'nodrag'}|${extra}|up${
+                  ev2 ? ev2.type : 'none'
+                }|sinceMove${lastMoveAt ? Date.now() - lastMoveAt : -1}`
+              )
+            } catch {
+              /* 忽略 */
+            }
+          }
+          const settleGesture = (ev2?: Event): void => {
+            const g = liveGesture
+            const fresh = g != null && Date.now() - g.at <= LAST_LIVE_TRUST_MS
+            const from = g && fresh ? g.from : null
+            const to = g && fresh ? g.to : null
+            const dbgInG = (extra: string): void => dbgIn(boxDrag, extra, ev2)
+            if (!g || !fresh || from == null || to == null || !(to > from)) {
+              // 没有任何"本次手势"要落定的东西 ⇒ 把临时绘制清干净（绝不泄漏到松手之后）
+              dbgInG(
                 `nodrag|sel${editorView.state.selection.from}-${editorView.state.selection.to}`
               )
+              dbgUp('none', g ? `stale${g.id}` : 'no-record')
+              boxSettleTarget = null
               clearLiveSel(editorView)
               return
             }
-            const bd = boxDrag
-            boxDrag = null
-            const anchor = bd.anchor
             /**
-             * ─── 第一百二十七轮（用户报障 1：松手后的选区必须与拖动期一致）────────────────────
-             * 落定的边界**只取"画面上那一份"**（`lastLiveNear`/`lastLiveFar`）并上**锚点**与**落点**；
-             * **不再取 `hw`、也不再取模型里的 `selection.head`**。
-             *
-             * 为什么不能用那两个（逐帧实测，两类都踩到了）：
-             * ① **`hw` 是整段手势的最大值**：用户拖到最远又拖回来时，画面（`[60,409]`）比 `hw`
-             *    （`[11,409]`）窄得多，只按 `hw` 落定就会**多选 49 个位置**
-             *    （实测 W2：`live 60-409` vs `settled 11-409`）⇒ "本不该选中却被选中"。
-             * ② **`selection.head` 是 PM 的**模型**值，会**晚于画面**推进**：PM 的 `DOMObserver` 是
-             *    ~20ms 的定时器，松手那一瞬它刚把 DOM 选区读回来 ⇒ 读到的是**没画过的**位置
-             *    （逐帧实测 I2：画面 `94-401`，落定输入读到的 `selection.head` 已是 **408**、
-             *    锚点记录 `94|401` ⇒ 落定成了 `94-408`，比画面多 7 个位置；W1 同形 `402→409`）。
-             *    注意：**"松手点比最后一帧更远"这条既有口径并没有丢** —— `lastLiveFar` 取的是
-             *    **试探区间 ∪ 原生 DOM 区间**（`paintLiveSel` 里那个并集），而画面上画的就是这个并集，
-             *    所以"画面 ⊆ 落定"依旧成立；实测 A=[118,355] 不变（见本轮报告）。
-             * 取"画面那一份"之后：**落定 ⊇ 画面**（看到的一定被选中），且
-             * **落定 ⊆ 画面 ∪ 锚点 ∪ 落点**（绝不会突然多出一段没画过的）⇒ 双向差集收敛到
-             * "锚点/落点并入"的那 ≤2 位。
+             * 幂等：同一次手势的**第二次收尾**（`pointercancel` 之后又来真 `mouseup`）默认什么都不做。
+             * 判据只看一件事：**记录里的区间有没有超出上次落成的区间**（`closeFrom/closeTo`）。
+             *   * 没超出 ⇒ 跳过（这就是"只允许收尾一次"）；重复事件连一次 `dispatch` 都不产生。
+             *   * 超出了 ⇒ **允许修正一次**，且只可能"往外补"（`cands` 里既有新记录也有上次落成值，
+             *     取 min/max）⇒ **绝不回缩**（单调性）。
              */
+            if (
+              g.settled &&
+              g.closeFrom != null &&
+              g.closeTo != null &&
+              from >= g.closeFrom &&
+              to <= g.closeTo
+            ) {
+              dbgUp('dup-skip', `live${from}-${to}|closed${g.closeFrom}-${g.closeTo}`)
+              return
+            }
+            const cands: number[] = [from, to]
+            if (g.maxFrom != null && g.maxTo != null) cands.push(g.maxFrom, g.maxTo)
+            if (g.settled && g.closeFrom != null && g.closeTo != null) {
+              cands.push(g.closeFrom, g.closeTo)
+            }
+            const anchor = boxDrag?.anchor ?? null
+            if (anchor != null) cands.push(anchor)
             const focus =
-              bd.focus ??
-              (bd.anchorLost && editorView.state.selection.empty
+              boxDrag?.focus ??
+              (boxDrag?.anchorLost && editorView.state.selection.empty
                 ? editorView.state.selection.head
                 : null)
-            const cands: number[] = []
-            if (bd.lastLiveNear != null && bd.lastLiveFar != null) {
-              cands.push(bd.lastLiveNear, bd.lastLiveFar)
-            }
-            if (anchor != null) cands.push(anchor)
             if (focus != null) cands.push(focus)
-            const sFrom = cands.length ? Math.min(...cands) : null
-            const sTo = cands.length ? Math.max(...cands) : null
-            /**
-             * 落点也要"画得到"：落定前把试探区间扩到同一个极值并**重画一帧**，否则会出现
-             * "落定比画面宽、而那一帧的画面上什么都没有"的观感断层（用户第②条：按松手后的样式做）。
-             */
-            if (sFrom != null && sTo != null && sTo > sFrom) {
-              paintLiveSel(editorView, sFrom, sTo)
-            }
-            if (sFrom == null || sTo == null || sFrom === sTo) {
-              // 没有要落定的东西 ⇒ 立刻清干净（别把临时绘制留在文档上）
-              dbgIn(
-                bd,
-                `empty-target|far${bd.hw}|focus${focus}|sel${editorView.state.selection.from}-${editorView.state.selection.to}`
-              )
+            const sFrom = Math.min(...cands)
+            const sTo = Math.max(...cands)
+            if (!(sTo > sFrom)) {
+              dbgInG('empty-target')
+              dbgUp('empty', `live${from}-${to}`)
               clearLiveSel(editorView)
               return
             }
-            dbgIn(bd, `target${sFrom}-${sTo}|far${bd.hw}|focus${focus}`)
+            /**
+             * 落点也要"画得到"：先把画面扩到同一个极值并重画一帧，否则会出现"落定比画面宽、
+             * 而那一帧的画面上什么都没有"的观感断层（用户第②条：按松手后的样式做）。
+             */
+            paintLiveSel(editorView, sFrom, sTo)
+            dbgInG(
+              `${g.settled ? 'repeat' : 'first'}-target${sFrom}-${sTo}|live${from}-${to}|max${g.maxFrom ?? '-'}-${g.maxTo ?? '-'}|far${boxDrag?.hw ?? null}|focus${focus}`
+            )
+            dbgUp(ev2 ? ev2.type : 'direct', `${g.settled ? 'repeat' : 'first'}${sFrom}-${sTo}`)
             boxSettleTarget = { from: sFrom, to: sTo }
             boxSettleFails = 0
             editorView.dom.removeAttribute('data-img-settle-fallback')
+            g.settled = true
+            g.closeFrom = sFrom
+            g.closeTo = sTo
+            editorView.dom.setAttribute(
+              'data-img-gesture',
+              `${g.id}|${g.maxFrom ?? '-'}-${g.maxTo ?? '-'}|1`
+            )
             boxDragSettle(editorView)
+          }
+          const onBandUp = (ev2?: Event): void => {
+            bandDrag = null
+            /**
+             * ─── 第一百三十三/三十四轮（用户报障：表格拖选"松手后少 1–2 列"）──────────────
+             * `onBandUp` 有一半是靠 **`pointercancel`** 触发的（实测"距最近一次 `mousemove`
+             * 约 20–23ms"）。若某次 `pointercancel` 在拖动**中途**到达，它会**提前消费 `boxDrag`**
+             * （那一次正常落定）；紧接着**真正的 `mouseup`** 到达时 `boxDrag` 已 `null`。
+             * 旧代码在那个分支里 `clearLiveSel(); return` ⇒ **我们的落定一次都没发生**、屏幕交回
+             * **原生被夹扁的选区**（实测签名：`data-img-settle-in=nodrag|…` + 覆盖列数 2→1/2→0）。
+             *
+             * 现在这个分支与"正常松手"**没有区别**：两者都只调 `settleGesture`，
+             * 落定依据是**同一份手势记录**（`liveGesture`）⇒ 谁先到都收尾一次、后到的识别为同一次手势。
+             */
+            settleGesture(ev2)
+            /**
+             * `boxDrag` 到这里才失效：`settleGesture` 读它（锚点 / 落点 / 高水位）。
+             * ⚠️ 记录（`liveGesture`）**不清** —— 幂等判据靠它识别"同一次手势的后续事件"。
+             */
+            boxDrag = null
           }
           window.addEventListener('mousemove', onBandMove)
           window.addEventListener('mouseup', onBandUp, true)
           window.addEventListener('pointercancel', onBandUp, true)
           window.addEventListener('blur', onBandUp)
+          /**
+           * ─── 第一百三十四轮（收尾路径全覆盖）────────────────────────────────────────────
+           * 上面那三条（`mouseup` / `pointercancel` / `blur`）之外，**凡是会"结束拖动"的时机**
+           * 也一律走同一个 `onBandUp`（它只做一件事：按手势记录 `settleGesture`）：
+           *   * `visibilitychange`（页面被隐藏）：拖动期窗口被隐藏时不会再有 `mouseup`；
+           *   * 任意 `keydown`（含 Escape）：Escape 取消拖动、打字则意味着手势早该结束。
+           * 三条判断都只问"有没有**未收尾的**手势记录"：没有 ⇒ 一个字节都不碰（零回归面）。
+           */
+          const onVisUp = (): void => {
+            if (document.visibilityState === 'visible') return
+            if (liveGesture && !liveGesture.settled) onBandUp(new Event('visibilitychange'))
+          }
+          const onKeyUp = (event: KeyboardEvent): void => {
+            if (!liveGesture || liveGesture.settled) return
+            if (event.key === 'Escape' || !event.repeat) onBandUp(event)
+          }
+          document.addEventListener('visibilitychange', onVisUp)
+          window.addEventListener('keydown', onKeyUp, true)
           return {
             update: () => {
               try {
@@ -3619,12 +3780,21 @@ export const ImageSourceUi = Extension.create({
                */
               if (boxDrag != null && liveRange.from >= 0 && liveRange.to > liveRange.from) {
                 paintLiveSel(editorView, liveRange.from, liveRange.to)
-              } else if (boxDrag == null) {
+              } else if (
+                boxDrag == null &&
+                !closeWindowOpen(Date.now()) &&
+                !(liveGesture != null && !liveGesture.settled)
+              ) {
                 /**
                  * 第一百二十一轮：**落定态**也要画一帧 —— 行内公式那几段由我们的选中带接管
                  *（浏览器对公式片段画的是 KaTeX 内层 inline-block 的盒子：实测 15px，同行正文
                  * 143.25px ⇒ 用户第①条）。`paintSettledSel` 自带"同 from/to/doc 就跳过"的判据，
                  * 所以这里不必再包一层。异常一律吞掉：画不出来就撤闸退回浏览器绘制。
+                 *
+                 * ⚠️ 第一百三十四轮：**收尾窗口内一律不画**（`closeWindowOpen`：拖动期 / 复验期 /
+                 * 刚落成后的读回尾巴）。理由：落定那一刻 PM `DOMObserver` 常把**过期的 DOM 选区**
+                 * 读回模型，此时"按模型画一帧落定态"就是把**被夹扁的假选区**画到屏幕上（收尾尾巴上
+                 * 的可见抖动）。窗口结束后自然恢复成"按模型画落定态"这条既有行为。
                  */
                 try {
                   paintSettledSel(editorView)
@@ -3653,6 +3823,16 @@ export const ImageSourceUi = Extension.create({
               window.removeEventListener('mouseup', onBandUp, true)
               window.removeEventListener('pointercancel', onBandUp, true)
               window.removeEventListener('blur', onBandUp)
+              document.removeEventListener('visibilitychange', onVisUp)
+              window.removeEventListener('keydown', onKeyUp, true)
+              /**
+               * ⚠️ 第一百三十四轮：**销毁也是一条收尾路径**。插件在拖动期被销毁
+               * （换文档 / 切模式 / 视图重建）时，旧代码只是把 `boxDrag` 丢掉 ⇒ 屏幕上留下
+               * 我们画的临时带（`liveRange` 还指着它），而模型那次落定**一次都没发生**。
+               * 这里先走**同一条** `settleGesture`（"以本次手势记录为准"）再拆层；
+               * 视图已不可用（`view.dom` 已断）时 `settleGesture` 内部会自己兜底清干净。
+               */
+              if (liveGesture && !liveGesture.settled) settleGesture()
               bandDrag = null
               boxDrag = null
               boxSettleTarget = null
