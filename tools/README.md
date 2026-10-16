@@ -90,11 +90,37 @@ main().then((c) => process.exit(c)).catch(fatal)
     那 19 个名字**同时写进了 `tests/tooling.test.mjs` 的欠账名单**：名单只减不增（加了守卫却
     不删登记会红，往上限之上加新名字也会红），所以"还剩多少"这件事不需要靠人记。
 
+## 起实例的正确姿势（第 135 轮收口 · 三条真因都是实测踩出来的）
+
+**唯一正确入口：`tools/lib/harness.js` 的 `launchStable()`**（`node tools/run-suites.js` 内部也已改用它）。
+以前的 `start-isolated.ps1` 路径有三个会让人查半天的坑：
+
+1. **必须 `delete` 子进程环境里的 `ELECTRON_RUN_AS_NODE`**。
+   它一旦非空（本环境里常被上层进程带进来），`electron.cmd .` 就退化成"用 **node** 跑 `.`"：
+   主进程 `require('electron').app` 是 `undefined`，报
+   `Cannot read properties of undefined (reading 'isPackaged')` 后**立刻退出**。
+   症状极具误导性：`DevTools listening on …` 已经打出来、**探针连上之前进程数就归零**。
+   ⚠️ **`ELECTRON_RUN_AS_NODE: undefined` 会被 `spawn` 忽略（等价于没删）⇒ 必须 `delete`。**
+2. **必须设 `LUMIN_TRUSTED_PATHS` 指向临时目录**（`os.tmpdir()`）。
+   否则主进程的 `file:read` 授权会拒掉临时目录里的夹具，页面侧只看到 `openPath` 回 `false`，
+   表现成 **"夹具没被打开 / 夹具没渲染成预期形状"这类含糊 skip** —— 历史上大量此类 skip 都是它。
+3. **起之前必须先探端口是否被占用**。
+   残留实例（上一轮没杀干净的）占着端口时，新实例的 DevTools `bind()` 会失败
+   （`tcp_socket_win.cc: bind() returned an error`），而 `connect()` **会连到那个陈旧实例**上 ⇒
+   夹具完全不对、统计全是假数据。`launchStable` 默认 `portPolicy:'skip-busy'`（占用就换端口）；
+   "先关掉自己那个实例、再在同一端口重起"的调用方传 `portPolicy:'force'`。
+   默认端口**不再用 9222**（本机被无关 chrome 占着）。
+
+其余要点：**非阻塞 `spawn`**（不是 `spawnSync` —— 旧的 `spawnSync(powershell, [start-isolated.ps1])`
+在脚本起不来时会**永久阻塞**整个运行器）、**每次全新唯一 userData**（跑完即弃）、
+主进程日志落 `tmp/inst-<tag>-<n>.log`、轮询 `/json/list` **硬超时 90s** 后 kill 并如实报错、
+收尾按 `--user-data-dir` **精确**杀（不用"命令行含某关键字就杀"那种会误杀的写法）。
+
 ## 现状与迁移进度
 
 <!-- facts:begin（由 tools/doc-facts.js 生成，勿手改）-->
 
-- `tools/` 共 **218 个文件 / 65943 行**（`.js`/`.mjs`/`.ps1`/`.md`）；
+- `tools/` 共 **218 个文件 / 66257 行**（`.js`/`.mjs`/`.ps1`/`.md`）；
 - 套件文件 **129 个**（_regress-* 6 / _repro-* 9 / _verify-* 114），默认矩阵 **77 个**，分档：fast 77 / needs-build 47 / needs-dev 4 / manual 1；
 - 另有 **12 个**探针/遗留脚本默认只列不判（`--probe` 显式跑）；
 - 单元测试 **109 个** `tests/*.test.mjs`；Markdown 往返夹具 **33 份**（exact 17 / normalized 16）；

@@ -25,6 +25,7 @@ const DEFAULT_PORT = Number(process.env.LUMIN_DEBUG_PORT || 9222)
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 const path = require('path')
 const os = require('os')
+const fs = require('fs')
 const { spawnSync, spawn } = require('child_process')
 
 function cdpUrl(port, pathname = '/json') {
@@ -452,6 +453,181 @@ function spawnApp({ userData, port = 9222, env = {} } = {}) {
 }
 
 /**
+ * **起实例的正确姿势**（第 135 轮收口，全部套件/探针共用这一条路径）
+ *
+ * ## ⚠️ 真因：`ELECTRON_RUN_AS_NODE` 会被 `spawn` **继承**，必须 `delete`
+ * 一旦它非空（本环境里常被上层进程带进来），`electron.cmd .` 就退化成"用 **node** 跑 `.`"：
+ * 主进程里 `require('electron').app` 是 `undefined`，随后报
+ * `Cannot read properties of undefined (reading 'isPackaged')` 并**立刻退出**。
+ * 症状极具误导性：窗口标题一闪、`DevTools listening on …` 已经打出来、**探针连上之前进程数就归零** ——
+ * 多轮里我一直误判成"同目录复用导致实例活不久"，其实是环境变量。
+ * **注意：`ELECTRON_RUN_AS_NODE: undefined` 会被 `spawn` 忽略（等价于没删）⇒ 必须 `delete`。**
+ *
+ * ## 其余要点
+ *   * **非阻塞**：`spawn`（不是 `spawnSync`）—— 原来的 `start-isolated.ps1` 是"起实例→轮询→READY→退出"
+ *     的语义，用 `spawnSync` 等它时，只要脚本起不来就**永久阻塞**（历史上多次把运行器挂死）。
+ *   * **硬超时**：轮询 `/json/list` 最多 `readyMs`（默认 90s），超时**kill 并如实返回本次的退出码与日志尾部**。
+ *   * **每次全新 userData**：唯一名、跑完即弃 —— 同目录复用会撞单实例锁/profile 残留。
+ *   * **精确清理**：按 `--user-data-dir` 杀，不用"命令行含某关键字就杀"（会误杀）。
+ *
+ * @returns `{ ok, port, userData, log, proc, attempts, close }`；`ok:false` 时 `attempts` 里带每次的失败原因。
+ */
+async function launchStable({
+  tag = 'inst',
+  userData = null,
+  ports = [9440, 9441, 9442],
+  tries = 3,
+  readyMs = 90000,
+  rootDir = null,
+  /**
+   * 端口选择策略：
+   *   * `'skip-busy'`（默认）：端口上有**别的**实例在跑就换下一个 —— 防止连到陈旧实例上
+   *     （本轮实际踩过：残留实例占着 9440，新实例 DevTools `bind()` 失败，而 `connect()`
+   *     连到了那个陈旧实例，夹具完全不对）。
+   *   * `'force'`：**忽略占用检查**，直接用 `ports[0]`。给"先关掉自己那个实例、再在同一端口重起"
+   *     的调用方用（`bootInstance` 就是这种；用 `'skip-busy'` 会因为**自己**占着端口而误判成"全占用"）。
+   */
+  portPolicy = 'skip-busy'
+} = {}) {
+  const ROOT = rootDir || path.join(__dirname, '..', '..')
+  const attempts = []
+  /** 轮询 CDP：返回页面目标或 null */
+  const probe = async (port) => {
+    try {
+      const ctl = new AbortController()
+      const t = setTimeout(() => ctl.abort(), 1500)
+      const r = await fetch(`http://127.0.0.1:${port}/json/list`, { signal: ctl.signal })
+      clearTimeout(t)
+      if (!r.ok) return null
+      const list = await r.json()
+      return list.find((x) => x.type === 'page' && x.webSocketDebuggerUrl) || null
+    } catch (e) {
+      return null
+    }
+  }
+  const killByUserData = (ud) => {
+    try {
+      const ps = `Get-CimInstance Win32_Process -Filter "Name='electron.exe'" | Where-Object { $_.CommandLine -like '*${String(ud).replace(/\\/g, '\\\\')}*' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }`
+      spawnSync('powershell', ['-NoProfile', '-Command', ps], { stdio: 'ignore' })
+    } catch (e) {
+      /* 忽略 */
+    }
+  }
+  for (let i = 0; i < Math.max(1, tries); i++) {
+    let port = ports[i % ports.length]
+    /**
+     * ⚠️ **先确认端口是空的**：上一轮留下的实例（或其它 agent 起的实例）会占着端口，
+     * 新实例的 DevTools `bind()` 失败（`tcp_socket_win.cc: bind() returned an error`），
+     * 而 `connect()` 会**连到那个陈旧实例**上 ⇒ 夹具不对、统计全是假数据（这一坑本轮实际踩到）。
+     * 占用就换下一个候选端口；全占则如实失败。
+     */
+    const busy = portPolicy === 'force' ? null : await probe(port)
+    if (busy) {
+      const free = []
+      for (const x of ports) if (!(await probe(x))) free.push(x)
+      if (!free.length) {
+        attempts.push({ i: i + 1, port, ready: false, code: null, busy: true, tail: `端口 ${ports.join('/')} 都被占用（先杀掉残留 electron 再跑）` })
+        continue
+      }
+      port = free[0]
+    }
+    const ud =
+      userData && tries === 1
+        ? userData
+        : path.join(os.tmpdir(), `xw-${tag}-${Date.now().toString(36)}${i}-ud`)
+    const logFile = path.join(ROOT, 'tmp', `inst-${tag}-${i + 1}.log`)
+    try {
+      fs.rmSync(ud, { recursive: true, force: true })
+    } catch (e) {
+      /* 忽略 */
+    }
+    try {
+      fs.mkdirSync(ud, { recursive: true })
+    } catch (e) {
+      /* 忽略 */
+    }
+    try {
+      fs.mkdirSync(path.dirname(logFile), { recursive: true })
+    } catch (e) {
+      /* 忽略 */
+    }
+    const fd = fs.openSync(logFile, 'w')
+    const electron = path.join(ROOT, 'node_modules', '.bin', 'electron.cmd')
+    const childEnv = {
+      ...process.env,
+      LUMIN_DEBUG_PORT: String(port),
+      /**
+       * ⚠️ 必须显式信任临时目录：套件/探针的夹具都写在 `os.tmpdir()`，而主进程对 `file:read`
+       * 有**路径授权**（未授权会回 `PathNotAuthorized`，页面侧看到 `openPath` 直接 `false`，
+       * 表现为"夹具没被打开 / 夹具没渲染成预期形状"这种含糊 skip）。`start-isolated.ps1` 会自己设
+       * 这个变量，`spawn` 这条路必须自己设。
+       */
+      LUMIN_TRUSTED_PATHS: os.tmpdir()
+    }
+    // ⚠️ 关键一行：必须 **delete**（置 undefined 会被 spawn 忽略）
+    delete childEnv.ELECTRON_RUN_AS_NODE
+    const proc = spawn('cmd.exe', ['/c', electron, '.', `--user-data-dir=${ud}`], {
+      cwd: ROOT,
+      env: childEnv,
+      stdio: ['ignore', fd, fd],
+      detached: false
+    })
+    let page = null
+    const t0 = Date.now()
+    while (Date.now() - t0 < readyMs) {
+      page = await probe(port)
+      if (page) break
+      if (proc.exitCode != null) break
+      await sleep(500)
+    }
+    const tail = (() => {
+      try {
+        return fs.readFileSync(logFile, 'utf-8').split('\n').slice(-14).join('\n')
+      } catch (e) {
+        return '(无日志)'
+      }
+    })()
+    attempts.push({ i: i + 1, port, ud, ready: !!page, code: proc.exitCode, log: logFile, tail })
+    if (page) {
+      return {
+        ok: true,
+        port,
+        userData: ud,
+        page,
+        proc,
+        log: logFile,
+        attempts,
+        close: () => {
+          try {
+            proc.kill()
+          } catch (e) {
+            /* 忽略 */
+          }
+          killByUserData(ud)
+          try {
+            fs.closeSync(fd)
+          } catch (e) {
+            /* 忽略 */
+          }
+        }
+      }
+    }
+    try {
+      proc.kill()
+    } catch (e) {
+      /* 忽略 */
+    }
+    killByUserData(ud)
+    try {
+      fs.closeSync(fd)
+    } catch (e) {
+      /* 忽略 */
+    }
+  }
+  return { ok: false, attempts }
+}
+
+/**
  * 起/收一个**隔离实例**（项目标准入口 `tools/start-isolated.ps1`）。
  *
  * 什么时候需要它：套件必须在**实例启动前**摆好前置状态或环境变量 —— 典型两类：
@@ -687,6 +863,7 @@ module.exports = {
   waitRestored,
   openDocWith,
   startIsolated,
+  launchStable,
   spawnApp,
   instanceLog,
   Reporter,

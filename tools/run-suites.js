@@ -28,7 +28,7 @@
 //    边跑边构建会把正在运行的实例指向半截产物 —— 表现是随机的两三条断言失败
 //    （实测踩过：编码套件的「设置已落库」与「菜单标题跟随语言」同时红，看着像代码坏了）。
 
-const { spawnSync } = require('child_process')
+const { spawnSync, spawn } = require('child_process')
 const fs = require('fs')
 const os = require('os')
 const path = require('path')
@@ -240,7 +240,11 @@ function parseArgs(argv) {
     suite: null,
     all: false,
     keep: false,
-    port: 9222,
+    /**
+     * 默认调试端口：**不再用 9222**（本机被无关 chrome 占着 ⇒ 新实例 DevTools `bind()` 失败，
+     * 而 `connect()` 会连到那个无关进程上）。改成一个空闲端口，见 `tools/README.md`。
+     */
+    port: 9440,
     timeoutMs: 420000,
     retry: 1,
     tier: null,
@@ -396,27 +400,86 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
  */
 const instanceLog = require('./lib/harness').instanceLog
 
-/** 起一个隔离实例（**launcher** 的日志落文件：直接管道会把 Start-Process 的输出挂住。
- *  ⚠️ 这不是主进程 stdout —— 后者的落点见 `instanceLog()` 的说明） */
+/**
+ * 起一个隔离实例。**非阻塞**（第 135 轮收口）。
+ *
+ * ⚠️ 旧实现用 `spawnSync('powershell', ['-File', start-isolated.ps1, …])` **同步等待**那个脚本；
+ * 而该脚本的语义是"起实例 → 轮询端口 → READY → 退出" ⇒ 它在**本环境沙箱下起不来**时，
+ * `spawnSync` 又没传 `timeout`，于是整个运行器**永久阻塞**（历史上多次把矩阵命令挂死，
+ * 表头之后再无输出、实例日志只有一行 `CLEANED`）。
+ *
+ * 现在换成 `spawn`（非阻塞）+ 自己轮询 `http://127.0.0.1:<port>/json/list`，**硬超时 90s**，
+ * 超时/失败都**如实返回**（`code` 非 0 + 日志尾部），绝不无限期挂住。
+ *
+ * 另外三条实测踩出来的坑（详见 `tools/README.md` 的"起实例的正确姿势"）：
+ *   * 必须 `delete ELECTRON_RUN_AS_NODE`（置 `undefined` 会被 `spawn` 忽略，Electron 会退化成
+ *     "用 node 跑 `.`" ⇒ 主进程秒退）；
+ *   * 必须设 `LUMIN_TRUSTED_PATHS` 指向临时目录（否则临时目录里的夹具 `openPath` 回 `false`）；
+ *   * 起之前要确认端口没被**残留实例**占着（否则新实例 DevTools `bind()` 失败，而 `connect()`
+ *     会连到那个陈旧实例上 ⇒ 统计全是假数据）。
+ */
 function startInstance(port, userData, cleanupOnly = false) {
   const launchLog = path.join(os.tmpdir(), `lumin-suites-${path.basename(userData)}.log`)
   const fd = fs.openSync(launchLog, 'w')
-  const args = [
-    '-NoProfile',
-    '-ExecutionPolicy',
-    'Bypass',
-    '-File',
-    path.join(TOOLS, 'start-isolated.ps1'),
-    '-UserData',
-    userData,
-    '-Port',
-    String(port)
-  ]
-  if (cleanupOnly) args.push('-CleanupOnly')
-  const r = spawnSync('powershell', args, { cwd: ROOT, stdio: ['ignore', fd, fd] })
+  if (cleanupOnly) {
+    // 只收尾：按 user-data-dir 精确杀（不按 "lumin" 关键字杀，避免误杀）
+    const ps = `Get-CimInstance Win32_Process -Filter "Name='electron.exe'" | Where-Object { $_.CommandLine -like '*${String(userData).replace(/\\/g, '\\\\')}*' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }`
+    const r = spawnSync('powershell', ['-NoProfile', '-Command', ps], { cwd: ROOT, stdio: 'ignore' })
+    fs.closeSync(fd)
+    const text = fs.existsSync(launchLog) ? fs.readFileSync(launchLog, 'utf-8') : ''
+    return { code: r.status, text }
+  }
+  const electron = path.join(ROOT, 'node_modules', '.bin', 'electron.cmd')
+  const childEnv = {
+    ...process.env,
+    LUMIN_DEBUG_PORT: String(port),
+    LUMIN_TRUSTED_PATHS: os.tmpdir()
+  }
+  // ⚠️ 关键：必须 delete（置 undefined 会被 spawn 忽略）
+  delete childEnv.ELECTRON_RUN_AS_NODE
+  const proc = spawn('cmd.exe', ['/c', electron, '.', `--user-data-dir=${userData}`], {
+    cwd: ROOT,
+    env: childEnv,
+    stdio: ['ignore', fd, fd],
+    detached: false
+  })
+  /** 同步探测 CDP 是否就绪（不起新进程，用 http 请求） */
+  const ready = () => {
+    try {
+      const r = spawnSync(
+        'powershell',
+        [
+          '-NoProfile',
+          '-Command',
+          `try { (Invoke-WebRequest -UseBasicParsing -TimeoutSec 2 "http://127.0.0.1:${port}/json/list").StatusCode } catch { 0 }`
+        ],
+        { cwd: ROOT, encoding: 'utf-8', timeout: 8000 }
+      )
+      return String(r.stdout || '').trim() === '200'
+    } catch (e) {
+      return false
+    }
+  }
+  const t0 = Date.now()
+  let ok = false
+  while (Date.now() - t0 < 90000) {
+    if (ready()) {
+      ok = true
+      break
+    }
+    if (proc.exitCode != null) break
+    spawnSync('powershell', ['-NoProfile', '-Command', 'Start-Sleep -Milliseconds 500'], { stdio: 'ignore' })
+  }
   fs.closeSync(fd)
   const text = fs.existsSync(launchLog) ? fs.readFileSync(launchLog, 'utf-8') : ''
-  return { code: r.status, text }
+  if (!ok) {
+    try {
+      proc.kill()
+    } catch (e) {
+      /* 忽略 */
+    }
+  }
+  return { code: ok ? 0 : 1, text }
 }
 
 /**

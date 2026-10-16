@@ -78,6 +78,7 @@ const {
   settle,
   sleep,
   startIsolated,
+  launchStable,
   bringToFront,
   framesAlive,
   preconditionSkip,
@@ -889,57 +890,88 @@ async function bootInstance(why) {
     } catch (e) {}
     app = null
   }
-  let last = null
-  for (let attempt = 0; attempt < 2; attempt++) {
-    profileIdx = (profileIdx + 1) % PROFILES.length
-    const p = PROFILES[profileIdx]
-    startIsolated({ userData: p.ud, port: p.port, cleanupOnly: true })
-    await sleep(600)
-    const code = startIsolated({ userData: p.ud, port: p.port })
-    last = { ...p, code }
-    if (code !== 0) continue
-    try {
-      app = await connect({ port: p.port, timeoutMs: 45000 })
-      if (await settle(app.ev)) {
-        cellsOnInstance = 0
-        await app.send('Runtime.enable').catch(() => {})
-        await app.send('Log.enable').catch(() => {})
-        await app.send('Inspector.enable').catch(() => {})
-        watchEvents(app, (m) => {
-          if (m.method === 'Runtime.consoleAPICalled' && m.params.type === 'error') {
-            logSink.push({
-              k: 'console.error',
-              cell: currentCell,
-              text: (m.params.args || []).map((a) => String(a.value ?? a.description ?? a.type)).join(' ').slice(0, 220)
-            })
-          } else if (m.method === 'Runtime.exceptionThrown') {
-            const d = m.params.exceptionDetails || {}
-            logSink.push({ k: 'exception', cell: currentCell, text: String(d.exception?.description ?? d.text).slice(0, 220) })
-          } else if (m.method === 'Log.entryAdded' && m.params.entry.level === 'error') {
-            logSink.push({ k: 'log.error', cell: currentCell, text: String(m.params.entry.text).slice(0, 220) })
-          } else if (m.method === 'Inspector.targetCrashed') {
-            crashed = true
-            logSink.push({ k: 'targetCrashed', cell: currentCell, text: 'renderer crashed' })
-          }
-        })
-        await loadFixture()
-        console.log(`· 实例就绪（${why}）：port=${p.port} userData=${p.ud}`)
-        return true
-      }
-    } catch (e) {
-      last.err = String((e && e.message) || e)
-    }
+  /**
+   * ─── 第 135 轮：改用 `launchStable()`（非阻塞 + 唯一 userData + delete ELECTRON_RUN_AS_NODE）──
+   * 原来的两步 `startIsolated({cleanupOnly:true})` + `startIsolated()` 有两个坑：
+   *   ① `start-isolated.ps1` 在本环境起不来实例 ⇒ `spawnSync` 永久阻塞 / 返回非 0（实测第二个
+   *      profile `code:3`）；
+   *   ② 它会把 `ELECTRON_RUN_AS_NODE` 原样透给 Electron ⇒ Electron 退化成 node 跑 `.` ⇒ 主进程秒退。
+   * 现在一次调用就完成"起 + 轮询 + 硬超时 + 换端口换目录重试"，且**每次全新 userData**。
+   */
+  const launched = await launchStable({
+    tag: 'inv',
+    ports: PROFILES.map((x) => x.port),
+    tries: 3,
+    readyMs: 90000,
+    // 我们自己可能还占着上一个实例的端口（本函数开头已 `app.close()`）⇒ 忽略占用检查，
+    // 否则会被自己的残留误判成"端口全占用"。
+    portPolicy: 'force'
+  })
+  if (!launched.ok) {
+    throw preconditionSkip(
+      `隔离实例起不来（${JSON.stringify(launched.attempts.map((a) => ({ port: a.port, code: a.code, ready: a.ready, tail: String(a.tail).slice(-200) })))}）——环境问题，不是缺陷`
+    )
   }
-  throw preconditionSkip(`隔离实例起不来（${JSON.stringify(last)}）——环境问题，不是缺陷`)
+  try {
+    app = await connect({ port: launched.port, timeoutMs: 45000 })
+    if (await settle(app.ev)) {
+      cellsOnInstance = 0
+      await app.send('Runtime.enable').catch(() => {})
+      await app.send('Log.enable').catch(() => {})
+      await app.send('Inspector.enable').catch(() => {})
+      watchEvents(app, (m) => {
+        if (m.method === 'Runtime.consoleAPICalled' && m.params.type === 'error') {
+          logSink.push({
+            k: 'console.error',
+            cell: currentCell,
+            text: (m.params.args || []).map((a) => String(a.value ?? a.description ?? a.type)).join(' ').slice(0, 220)
+          })
+        } else if (m.method === 'Runtime.exceptionThrown') {
+          const d = m.params.exceptionDetails || {}
+          logSink.push({ k: 'exception', cell: currentCell, text: String(d.exception?.description ?? d.text).slice(0, 220) })
+        } else if (m.method === 'Log.entryAdded' && m.params.entry.level === 'error') {
+          logSink.push({ k: 'log.error', cell: currentCell, text: String(m.params.entry.text).slice(0, 220) })
+        } else if (m.method === 'Inspector.targetCrashed') {
+          crashed = true
+          logSink.push({ k: 'targetCrashed', cell: currentCell, text: 'renderer crashed' })
+        }
+      })
+      await loadFixture()
+      console.log(`· 实例就绪（${why}）：port=${launched.port} userData=${launched.userData} log=${launched.log}`)
+      return true
+    }
+  } catch (e) {
+    launched.close()
+    throw preconditionSkip(`连上实例但 settle 失败（${String((e && e.message) || e)}）——环境问题，不是缺陷`)
+  }
+  launched.close()
+  throw preconditionSkip(`实例起来了但 settle 不通过（${JSON.stringify({ port: launched.port })}）——环境问题，不是缺陷`)
 }
 
 async function loadFixture() {
   const file = path.join(os.tmpdir(), `xw-inv-fixture-${Date.now().toString(36)}.md`)
   fs.writeFileSync(file, FIXTURE, 'utf8')
-  await app.ev(`window.__L.files().openPath(${JSON.stringify(file)}).then(() => 'ok').catch((e) => 'err:' + e.message)`)
-  for (let i = 0; i < 40; i++) {
+  /**
+   * ⚠️ 第 135 轮：把"打开结果"读回来并**诊断落盘**。原来这里 `.catch(() => 'err:…')` 之后
+   * 直接进轮询，一旦打开失败（例如路径没被授权、或 `window.__L` 还没注入）就只会得到
+   * `p:1` 这种"夹具没渲染成预期形状"的含糊结论，看不出真因。
+   */
+  const opened = await app.ev(
+    `window.__L.files().openPath(${JSON.stringify(file)}).then((x) => 'ok:' + JSON.stringify(x).slice(0, 120)).catch((e) => 'err:' + (e && e.message))`
+  )
+  let contentOk = false
+  for (let i = 0; i < 60; i++) {
     await sleep(250)
-    if (await app.ev(`(window.__L.files().content || '').includes('纯正文段')`)) break
+    if (await app.ev(`String(window.__L.files().current && window.__L.files().current.content || '').includes('纯正文段')`)) {
+      contentOk = true
+      break
+    }
+  }
+  if (!contentOk) {
+    const diag = await app.ev(
+      `JSON.stringify({ opened: ${JSON.stringify(opened)}, path: String(window.__L.files().current && window.__L.files().current.path), len: String(window.__L.files().current && window.__L.files().current.content || '').length, head: String(window.__L.files().current && window.__L.files().current.content || '').slice(0, 60), pm: document.querySelectorAll('.ProseMirror p').length })`
+    )
+    throw preconditionSkip(`夹具没被打开（${diag}）——环境/夹具问题，不是缺陷`)
   }
   await sleep(700)
   await app.ev(`(() => { window.__L.ui().editorMode = 'wysiwyg'; return 'ok' })()`)
@@ -1929,7 +1961,23 @@ async function main() {
   if (prov.dirty) report.note(`⚠️ 工作区有 ${prov.dirty} 个未提交文件（另一个 agent 可能在改 src）——本次数字对应上面那份构建`)
 
   await bootInstance('开跑')
-  if (!(await framesAlive(app))) throw preconditionSkip('窗口不产生帧（多半被遮挡）——请在窗口可见时重跑')
+  /**
+   * ─── 第 135 轮：可见性前置条件改成**先 bringToFront 再判定 + 有限重试** ────────────────
+   * 旧写法只判一次：`if (!(await framesAlive(app))) throw preconditionSkip('窗口不产生帧…')`。
+   * 本环境里窗口常被遮挡（rAF 停摆），一次判定就把整轮作废，事后手动 bringToFront 也来不及
+   * （脚本已经退了）。现在最多试 3 次，每次都**重新 bringToFront + 等一拍**再判定；
+   * 仍失败则如实 skip，并给出可操作提示。
+   */
+  let framesOk = false
+  for (let i = 0; i < 3 && !framesOk; i++) {
+    await bringToFront(app).catch(() => {})
+    await sleep(400)
+    framesOk = await framesAlive(app)
+    if (!framesOk) console.log(`· 窗口暂无帧（第 ${i + 1}/3 次判定）——已重新 bringToFront，继续重试`)
+  }
+  if (!framesOk) {
+    throw preconditionSkip('窗口不产生帧（多半被遮挡）——已 bringToFront 重试 3 次仍无帧；请把窗口置于最前（或加 --disable-features=CalculateNativeWinOcclusion）后重跑')
+  }
 
   const cells = []
   for (const el of ELEMENTS) {
