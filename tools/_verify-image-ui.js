@@ -82,6 +82,68 @@ const PNG_DECODE = (buf) => {
     return null
   }
 }
+/**
+ * ─── 离线夹具（本轮 A 项：让套件在**无网**下也能跑完）────────────────────────────────────
+ * 两张**本地 PNG data URI**（120×80 纯色，够大能被 `visibleRendered` 的 >8px 判据认出）。
+ * 替换掉原来指向 `samplelib.com` 的远程 GIF —— 那是套件"卡死/跑不完"的根源：无网时请求悬着，
+ * 后续所有"等图片就绪"的地方都会被拖住。断言意图不变（仍是非空 URL 的图片）。
+ */
+function solidPng (w, h, r, g, b) {
+  const crc32 = (buf) => {
+    let c, crc = 0xffffffff
+    for (let i = 0; i < buf.length; i++) {
+      c = (crc ^ buf[i]) & 0xff
+      for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1
+      crc = (crc >>> 8) ^ c
+    }
+    return (crc ^ 0xffffffff) >>> 0
+  }
+  const chunk = (type, data) => {
+    const len = Buffer.alloc(4)
+    len.writeUInt32BE(data.length)
+    const td = Buffer.concat([Buffer.from(type, 'ascii'), data])
+    const crc = Buffer.alloc(4)
+    crc.writeUInt32BE(crc32(td))
+    return Buffer.concat([len, td, crc])
+  }
+  const ihdr = Buffer.alloc(13)
+  ihdr.writeUInt32BE(w, 0)
+  ihdr.writeUInt32BE(h, 4)
+  ihdr[8] = 8
+  ihdr[9] = 2
+  const raw = Buffer.alloc(h * (1 + w * 3))
+  for (let y = 0; y < h; y++) {
+    const o = y * (1 + w * 3)
+    raw[o] = 0
+    for (let x = 0; x < w; x++) {
+      raw[o + 1 + x * 3] = r
+      raw[o + 2 + x * 3] = g
+      raw[o + 3 + x * 3] = b
+    }
+  }
+  return `data:image/png;base64,${Buffer.concat([Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]), chunk('IHDR', ihdr), chunk('IDAT', zlib.deflateSync(raw)), chunk('IEND', Buffer.alloc(0))]).toString('base64')}`
+}
+const SAMPLE_LOCAL_IMG = solidPng(120, 80, 210, 90, 70)
+const SAMPLE_LOCAL_IMG2 = solidPng(120, 80, 70, 120, 210)
+/**
+ * **有界等待**：把一个"轮询直到条件成立"的循环包成**最多 `ms` 毫秒**，超时就返回 `{ ok:false, reason }`。
+ * 用途（本轮 A 项第二条）：所有"等图片就绪"的地方都不允许无限期挂住 —— 无网时它必须**如实返回失败**，
+ * 由调用方记成 FAIL 或 skip，而不是把整个套件拖死。
+ */
+async function waitBounded (tick, ms, stepMs = 250) {
+  const t0 = Date.now()
+  while (Date.now() - t0 < ms) {
+    let ok = false
+    try {
+      ok = await tick()
+    } catch (e) {
+      ok = false
+    }
+    if (ok) return { ok: true, ms: Date.now() - t0 }
+    await new Promise((r) => setTimeout(r, stepMs))
+  }
+  return { ok: false, ms: Date.now() - t0, reason: `等待超时（${ms}ms）` }
+}
 const PORT = process.env.LUMIN_DEBUG_PORT || '9333'
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 
@@ -2393,8 +2455,15 @@ const doc = MD.split('PLACE_A')
 
   // ═══ 第七十六轮：**非空 URL 的相邻两张 `![]()` 不渲染**（只显示纯文字）═══════════
   {
-    const U1 = 'https://samplelib.com/gif/sample-variable-delay-400x300.gif'
-    const U2 = 'https://samplelib.com/gif/sample-zero-delay-400x300.gif'
+    /**
+     * ⚠️ 离线化（本轮 A 项）：这两个 URL 原来指向 `samplelib.com` 的**远程 GIF**。
+     * 在无网/弱网机器上，应用真去拉它 ⇒ 图片请求悬着 ⇒ 后面凡是"等图片就绪"的地方都会**无限期挂住**
+     * （实测套件卡在第 76 行左右，`FATAL fetch failed` 或长时间无新行；**改前就卡**，与本轮样式改动无关）。
+     * 这里换成**本地 PNG data URI**：断言意图（"非空 URL 的相邻两张 ⇒ 渲染出两个可见图片元素/占位框"、
+     * "序列化逐字节不变"）**完全不变**，只是图片从"远程"变成"本地但仍是非空 URL"。
+     */
+    const U1 = SAMPLE_LOCAL_IMG
+    const U2 = SAMPLE_LOCAL_IMG2
     const A = `![](${U1})![](${U2})`
     const B = `![](${U2})`
     const C = `![alt](${U2})`
@@ -3913,6 +3982,9 @@ const doc = MD.split('PLACE_A')
           imgCls: img ? img.className : null,
           bgWidget: cs ? cs.backgroundColor : null,
           outlineWidget: cs ? cs.outlineColor + ' / ' + cs.outlineWidth : null,
+          filterWidget: cs ? cs.filter : null,
+          outlineStyleWidget: cs ? cs.outlineStyle : null,
+          shadowWidget: cs ? cs.boxShadow : null,
           bgImg: csImg ? csImg.backgroundColor : null,
           outlineImg: csImg ? csImg.outlineColor + ' / ' + csImg.outlineWidth : null,
           imgs: root.querySelectorAll('img').length
@@ -3965,11 +4037,15 @@ const doc = MD.split('PLACE_A')
     }
     const coverData = await coverProbe() // 当前内容 = 远程 URL 夹具（backDrag99 最后加载的那条）
     check(
-      '㉜①【契约】**程序化覆盖整个源码范围** ⇒ 标识符 count:0 **且** 图片带 `.img-selected` 且样式可见（`--sel`/`--accent`）',
+      '㉜①【契约】**程序化覆盖整个源码范围** ⇒ 标识符 count:0 **且** 图片带 `.img-selected` 且样式可见（`--sel` 底 + `--img-selected-filter` 变灰；第一百三十四轮起**不再有 outline 描边**）',
       coverData.markers === 0 &&
         coverData.selectedCount >= 1 &&
         coverData.bgWidget === 'rgba(17, 24, 39, 0.11)' &&
-        coverData.outlineWidget === 'rgb(107, 114, 128) / 2px',
+        coverData.outlineStyleWidget === 'none' &&
+        coverData.outlineWidget === 'rgb(32, 36, 43) / 0px' &&
+        coverData.shadowWidget === 'none' &&
+        /brightness\(/.test(String(coverData.filterWidget)) &&
+        /saturate\(/.test(String(coverData.filterWidget)),
       JSON.stringify({ 覆盖后: coverData, CDP直线拖_远程URL: url99.after })
     )
     const dataCover = await (async () => {
@@ -3978,11 +4054,15 @@ const doc = MD.split('PLACE_A')
       return coverProbe()
     })()
     check(
-      '㉜②【契约】**用户夹具（base64 data URI + zoom:100%）**同样成立（两种形态一致）',
+      '㉜②【契约】**用户夹具（base64 data URI + zoom:100%）**同样成立（两种形态一致；样式口径同 ㉜①）',
       dataCover.markers === 0 &&
         dataCover.selectedCount >= 1 &&
         dataCover.bgWidget === 'rgba(17, 24, 39, 0.11)' &&
-        dataCover.outlineWidget === 'rgb(107, 114, 128) / 2px',
+        dataCover.outlineStyleWidget === 'none' &&
+        dataCover.outlineWidget === 'rgb(32, 36, 43) / 0px' &&
+        dataCover.shadowWidget === 'none' &&
+        /brightness\(/.test(String(dataCover.filterWidget)) &&
+        /saturate\(/.test(String(dataCover.filterWidget)),
       JSON.stringify({
         用户夹具_覆盖后: dataCover,
         CDP直线拖_用户夹具: data99.after,
@@ -4016,7 +4096,10 @@ const doc = MD.split('PLACE_A')
           selected: root.querySelectorAll('.img-selected').length,
           sel: { from: v.state.selection.from, to: v.state.selection.to, empty: v.state.selection.empty },
           bg: cs ? cs.backgroundColor : null,
-          outline: cs ? cs.outlineColor + ' / ' + cs.outlineWidth : null
+          outline: cs ? cs.outlineColor + ' / ' + cs.outlineWidth : null,
+          outlineStyle: cs ? cs.outlineStyle : null,
+          shadow: cs ? cs.boxShadow : null,
+          filter: cs ? cs.filter : null
         }
       })()`)
     /** 在**标识符文本上按下**，向右拖到整段末尾 ⇒ 拖动期间逐帧采样 markers */
@@ -4091,11 +4174,15 @@ const doc = MD.split('PLACE_A')
     await sleep(450)
     const cover104 = await stateOf104()
     check(
-      '㉞② **程序化覆盖整个源码范围** ⇒ 标识符 0 + 图片 `.img-selected`（注明：程序化路径；直线拖无法覆盖多行源码）',
+      '㉞② **程序化覆盖整个源码范围** ⇒ 标识符 0 + 图片 `.img-selected`（注明：程序化路径；直线拖无法覆盖多行源码）；样式口径同 ㉜①（无 outline、有变灰滤镜）',
       cover104.markers === 0 &&
         cover104.selected >= 1 &&
         cover104.bg === 'rgba(17, 24, 39, 0.11)' &&
-        cover104.outline === 'rgb(107, 114, 128) / 2px',
+        cover104.outlineStyle === 'none' &&
+        cover104.outline === 'rgb(32, 36, 43) / 0px' &&
+        cover104.shadow === 'none' &&
+        /brightness\(/.test(String(cover104.filter)) &&
+        /saturate\(/.test(String(cover104.filter)),
       JSON.stringify({ 程序化覆盖: cover104, 在标识符上拖: onMarker })
     )
     const shot104 = await send('Page.captureScreenshot', { format: 'png' })
