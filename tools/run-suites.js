@@ -514,6 +514,16 @@ function runSuite(file, port, timeoutMs, userData) {
     maxBuffer: 32 * 1024 * 1024
   })
   const raw = `${r.stdout ?? ''}${r.stderr ?? ''}`
+  /**
+   * 诊断（第 135 轮 D 项）：把**套件原始输出**落盘。运行器只打一行汇总，
+   * 一旦它与直跑的 `TOTAL` 不一致（实测运行器 `115/115` vs 直跑 `132`），
+   * 没有原始输出就完全无法定位。落 `tmp/raw-<suite>.log`，便于逐条对比。
+   */
+  try {
+    fs.writeFileSync(path.join(ROOT, 'tmp', `raw-${path.basename(file, '.js')}.log`), raw)
+  } catch (e) {
+    /* 忽略 */
+  }
   // 汇总行三种写法都认：新套件的 `--- N/M PASS`、老套件的 `TOTAL n PASS x FAIL y`、
   // **以及更老的「逐行 `PASS x` / `FAIL y` 但从不打汇总行」那一批**（自查报告 H1 的第二种成因：
   // 这类套件其实一直在断言，只是运行器把它们的成绩读成 0/0 —— 实测 `_verify-editor-menu.js`

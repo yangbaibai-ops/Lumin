@@ -116,11 +116,28 @@ main().then((c) => process.exit(c)).catch(fatal)
 主进程日志落 `tmp/inst-<tag>-<n>.log`、轮询 `/json/list` **硬超时 90s** 后 kill 并如实报错、
 收尾按 `--user-data-dir` **精确**杀（不用"命令行含某关键字就杀"那种会误杀的写法）。
 
+## 计数口径：**以"直跑稳定实例"的 `TOTAL` 为准**（第 135 轮 D 项）
+
+两条路径**已经逐条一致**（同一构建、同一套件）：
+
+| 路径 | 命令 | 日志 | 末行 |
+| --- | --- | --- | --- |
+| 直跑（稳定实例 · **推荐**） | `LUMIN_DEBUG_PORT=<port> node tools/<suite>.js` | `tmp/ui-offline-run2.log` / `-run3.log` | `TOTAL 132 PASS 129 FAIL 3` |
+| 运行器 | `node tools/run-suites.js --suite=<suite>.js` | `tmp/runner-run2.log`（原始输出 `tmp/raw-<suite>.log`） | `129/132`，红条逐条列出，与直跑**完全相同** |
+
+* **以后以哪一条为准**：**直跑稳定实例**（`LUMIN_DEBUG_PORT=… node tools/<suite>.js`）。
+  理由：它不受运行器"按文件汇总 / 重试 / 分档"那层封装影响，且是我们历次验收用的口径；
+  运行器适合**批量跑**与巡检 —— 两者数字**必须一致**，不一致就是 bug。
+* **历史坑（已修）**：曾见运行器报 `115/115` 而直跑报 `132` —— 那**不是计数口径差异**，而是
+  `_verify-selection-invariants.js` 的 `profileIdx` 越界（`4a10101` 修掉）**把套件中途打断**：
+  套件崩在收尾处 ⇒ 只注册了一部分断言。**教训：先看套件原始输出，再怀疑计数口径。**
+  为此运行器现在会把**套件原始输出**落盘到 `tmp/raw-<suite>.log`（只打一行汇总时无法定位这类问题）。
+
 ## 现状与迁移进度
 
 <!-- facts:begin（由 tools/doc-facts.js 生成，勿手改）-->
 
-- `tools/` 共 **218 个文件 / 66257 行**（`.js`/`.mjs`/`.ps1`/`.md`）；
+- `tools/` 共 **218 个文件 / 66286 行**（`.js`/`.mjs`/`.ps1`/`.md`）；
 - 套件文件 **129 个**（_regress-* 6 / _repro-* 9 / _verify-* 114），默认矩阵 **77 个**，分档：fast 77 / needs-build 47 / needs-dev 4 / manual 1；
 - 另有 **12 个**探针/遗留脚本默认只列不判（`--probe` 显式跑）；
 - 单元测试 **109 个** `tests/*.test.mjs`；Markdown 往返夹具 **33 份**（exact 17 / normalized 16）；
