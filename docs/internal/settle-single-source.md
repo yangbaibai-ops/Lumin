@@ -187,4 +187,22 @@ boxSettleTarget = t        // 目标只增不减
 
 * `markdown.css` 未改（本轮不需要）。
 * `BOX_SETTLE_WATCH` 仍 `0`（未动）。
-* `tmp/` 下的探针（`probe-settle.js` / `probe-regress.js`）不入库（`.gitignore` 已忽略 `tmp/`）。
+* `tmp/` 下的探针（`probe-settle.js` / `probe-regress.js` / `probe-bandcol.js`）不入库（`.gitignore` 已忽略 `tmp/`）。
+
+## 6. 并行工作带来的交叉验证（重要）
+
+同一工作区里有另一个并行改动（提交 `c9333bf`，只动 `tools/`，`src/` 一个字节没动）新增了
+`tools/_verify-selection-invariants.js`（10 元素 × 10 手势 = 100 格的类级不变量矩阵）。把它对着
+本轮的实现跑（`node tools/run-suites.js --suite=_verify-selection-invariants.js`）：
+
+* **I1（连续缺口 / 单帧闪 / 原生领先）全绿**、**I3（`settled` 与 `trial/liveRange/gesture` 的关系，
+  `drop`/`spill`）全绿**、**I4（绘制闸与泄漏）全绿**、**I5（文档长度不变）/ I6（控制台无错）全绿**；
+* 有 **8 格**红在 **I7（"落点是否被落定区间覆盖"）**：`E2xG3`（行内公式 × 空白带按下拖）、
+  `E3xG1`（块级公式 × 正拖）、`E3xG5/G10`、`E4xG5/G10`（单图）、`E5xG5/G10`（双图）。
+  红格的 I3 一律是 `drop: 0, spill: 0`、`trial == settled` ⇒ **落定没有回缩**（不是本轮要收口的那类缺陷）；
+  I7 失败的直接原因是"手势本身的试探区间就没到落点"（`releasePoint y=701` 落在视口底部，
+  `trial` 停在块级公式/图片附近 ⇒ `relPos 811` 不在其中）。
+* 本轮**没有**对该套件做基线（`feafc91`）对照：那需要在工作区里来回重建/切提交，
+  与"每步提交 + 标签"的纪律冲突。⇒ **如实标为遗留**：这 8 格是"手势可达性/落点覆盖"这一路的欠账，
+  与"单一真相/幂等/单调"这一路解耦（I3 全绿就是证据）。
+
