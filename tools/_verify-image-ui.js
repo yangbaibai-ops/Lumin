@@ -211,16 +211,26 @@ async function main() {
     return true
   }
 
-  const boot = await ev(`(() => {
-    if (window.__vt) return 'OK'
-    const app = document.querySelector('#app')?.__vue_app__
-    if (!app) return 'NO_APP'
-    const vals = Object.getOwnPropertySymbols(app._context.provides).map((s) => app._context.provides[s])
-    const pinia = vals.find((v) => v && typeof v === 'object' && v._s instanceof Map)
-    if (!pinia) return 'NO_PINIA'
-    window.__vt = { files: () => pinia._s.get('files'), ui: () => pinia._s.get('ui'), ed: () => pinia._s.get('editor')?.instance ?? null, settings: () => pinia._s.get('settings') }
-    return 'OK'
-  })()`)
+  /**
+   * ⚠️ 第一百三十六轮：`#app` 挂载**不是**"CDP 连上就绪"的同义词 —— 新实例上偶发 `NO_APP`
+   * （实测：同一构建、同一套件，直跑里有整轮 `FATAL bridge NO_APP` + `TOTAL 0`，那是**假红**）。
+   * 改成**有限重试**（≤20 × 400ms ≈ 8s），让"实例已起但 Vue 还没挂载"这段窗口不再把整轮判 FATAL。
+   */
+  let boot = 'NO_APP'
+  for (let i = 0; i < 20; i++) {
+    boot = await ev(`(() => {
+      if (window.__vt) return 'OK'
+      const app = document.querySelector('#app')?.__vue_app__
+      if (!app) return 'NO_APP'
+      const vals = Object.getOwnPropertySymbols(app._context.provides).map((s) => app._context.provides[s])
+      const pinia = vals.find((v) => v && typeof v === 'object' && v._s instanceof Map)
+      if (!pinia) return 'NO_PINIA'
+      window.__vt = { files: () => pinia._s.get('files'), ui: () => pinia._s.get('ui'), ed: () => pinia._s.get('editor')?.instance ?? null, settings: () => pinia._s.get('settings') }
+      return 'OK'
+    })()`)
+    if (boot === 'OK') break
+    await sleep(400)
+  }
   if (boot !== 'OK') throw new Error('bridge ' + boot)
   // 第七十七轮：远程图片**默认档＝always**（打开即加载）。这里显式置一次，保证整轮确定性
   // （⑤ 段会临时切到 click 验证"隐私档"，㉓ 再切回来）。

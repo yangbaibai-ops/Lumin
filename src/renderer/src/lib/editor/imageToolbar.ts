@@ -3815,6 +3815,34 @@ export const ImageSourceUi = Extension.create({
                * widget 的类/Highlight ⇒ 与套件里"程序化覆盖后再断言类与样式"的步骤抢时序（实测多出
                * ㉛④ / ㉜① 的**旋转红**）。松手之后一律交给 `boxDragSettle` 的清理路径决定。
                */
+              /**
+               * ─── 第一百三十六轮（用户报障：**点击收起选区后，公式的选中样式残留**）──────────────
+               * 「选择一些内容（鼠标已抬起）→ 在选中内容中间点一下 ⇒ 其他内容的选择样式都消失了（对），
+               *   **但之前被选中的公式依然保持选中样式**，需要再点一次才清掉。」
+               *
+               * 逐帧复现（`tmp/keep/collapse-r1.json`，稳定）：塌缩后 `empty=true` 而
+               * **`data-sel-own` 仍为 `math`、`.sel-band` 仍有带**（Highlight 与 `img-selected`
+               * 自己会清），**直到第二次点击**才 `own=null bandN=0`。
+               *
+               * 真因：**下面那一支被 `!(liveGesture != null && !liveGesture.settled)` 挡掉** ——
+               * 正常（非 `pointercancel`/`blur`）松手后 `liveGesture.settled === false` ⇒ 整支不执行
+               * ⇒ 塌缩帧既没有 `paintSettledSel`（它本会走空选区分支去 `clearSelBands`）也没有清场。
+               *
+               * 修法（最小）：**"选区已空且不在拖动中"就直接清一次** —— `clearSelBands` 是幂等的
+               * （不依赖任何几何），所以这里不必做 `false→true` 跳变判定：
+               *   * 拖动期 `boxDrag != null` ⇒ **完全不介入**（`own=all`/`math` 的正常绘制不受影响）；
+               *   * 非空选区 ⇒ 完全不介入；
+               *   * 不碰 `settleGesture` / `boxDragSettle` / `BOX_SETTLE_WATCH`。
+               * 行为对照（同一探针）：改前塌缩后 `true/math/3` 持续；改后**塌缩当帧** `true/null/0`，
+               * 连续 5 次 5/5，第二次点击无变化。
+               */
+              if (editorView.state.selection.empty && boxDrag == null) {
+                try {
+                  clearSelBands(editorView)
+                } catch {
+                  /* 清不掉也不该影响编辑 */
+                }
+              }
               if (boxDrag != null && liveRange.from >= 0 && liveRange.to > liveRange.from) {
                 paintLiveSel(editorView, liveRange.from, liveRange.to)
               } else if (
