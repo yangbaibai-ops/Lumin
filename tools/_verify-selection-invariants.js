@@ -2097,7 +2097,9 @@ async function main() {
     `日志：主进程/渲染层错误共 ${logSink.length} 条（按格归属，逐格断言 I6）；` +
       `崩溃=${crashed ? '是' : '否'}`
   )
-  startIsolated({ userData: PROFILES[profileIdx].ud, port: PROFILES[profileIdx].port, cleanupOnly: true })
+  // 收尾：`launchStable` 用**唯一 userData**（不再是 PROFILE 里那两个固定目录），
+  // 所以不再按 `profileIdx` 索引 PROFILES —— 它已不再推进，越界会抛
+  // `TypeError: Cannot read properties of undefined (reading 'ud')` 把整轮打成 20 格（本轮实测踩到）。
   for (const p of PROFILES) startIsolated({ userData: p.ud, port: p.port, cleanupOnly: true })
   return report.finish()
 }
