@@ -4168,6 +4168,9 @@ const doc = MD.split('PLACE_A')
     /** 落定走的哪条路（`ok`/`late`/`fail`/null）+ `onBandUp` 是被哪个事件触发的（㊵ 用） */
     const fallback = await ev(`document.querySelector('.ProseMirror').getAttribute('data-img-settle-fallback')`)
     const inDiag = await ev(`document.querySelector('.ProseMirror').getAttribute('data-img-settle-in')`)
+    const upDiag = await ev(`document.querySelector('.ProseMirror').getAttribute('data-img-up-diag')`)
+    const gestDiag = await ev(`document.querySelector('.ProseMirror').getAttribute('data-img-gesture')`)
+    const paintDiag = await ev(`document.querySelector('.ProseMirror').getAttribute('data-img-sel-paint')`)
     const missing = last ? Math.max(0, settled.from - last.from) + Math.max(0, last.to - settled.to) : null
     const extra = last ? Math.max(0, last.from - settled.from) + Math.max(0, settled.to - last.to) : null
     return {
@@ -4178,6 +4181,9 @@ const doc = MD.split('PLACE_A')
       fallback,
       
       inDiag,
+      upDiag,
+      gestDiag,
+      paintDiag,
       framesN: perFrame.length,
       missFrames: perFrame.filter((x) => x.missN > 0).length,
       missDetail: perFrame.filter((x) => x.missN > 0).slice(0, 4),
@@ -4263,9 +4269,34 @@ const doc = MD.split('PLACE_A')
         cases.push({ name, skip: '手势无效(live 跨度<3)', live: r.last })
         continue
       }
-      cases.push({ name, from: g.a, to: g.b, live: r.last, settled: r.settled, missing: r.missing, extra: r.extra, framesN: r.framesN, missFrames: r.missFrames })
+      cases.push({ name, from: g.a, to: g.b, live: r.last, settled: r.settled, missing: r.missing, extra: r.extra, framesN: r.framesN, missFrames: r.missFrames, upDiag: r.upDiag, gestDiag: r.gestDiag, paintDiag: r.paintDiag })
     }
     lsSettle = { cases }
+    /**
+     * ㊴③（第一百三十四轮）：**单调性（不得回缩）** —— 落定区间必须**包含**本手势"画过的最大覆盖"
+     * （`data-img-sel-paint`，只增不减的上界）与"盒内取半"那一帧的高水位（`data-img-gesture` 的 `max`）。
+     * 这一条比 ㊴② 更严：㊴② 比的是"最后一帧"，而"松手后少一段/少列"恰恰是**比画过的还窄**。
+     * 只在真跑出原子盒几何（`focus != null` ⇒ `max` 非 `-`）时对 `max` 提要求（无原子盒的夹具里它恒为 `-`）。
+     */
+    const nums = (s) => {
+      const p = String(s || '').split('|')
+      if (p.length < 2 || p[1] === '---' || p[1] === '' || p[1].includes('null')) return null
+      const r = p[1].split('-').map(Number)
+      return r.length === 2 && r.every(Number.isFinite) ? { from: r[0], to: r[1] } : null
+    }
+    const monoCases = (lsSettle.cases || []).filter((c) => !c.skip)
+    lsSettle.mono = {
+      n: monoCases.length,
+      badPaint: monoCases.filter((c) => {
+        const pa = nums(c.paintDiag)
+        return !pa || c.settled.from > pa.from || c.settled.to < pa.to
+      }).length,
+      maxN: monoCases.filter((c) => nums(c.gestDiag)).length,
+      badMax: monoCases.filter((c) => {
+        const mx = nums(c.gestDiag)
+        return mx && (c.settled.from > mx.from || c.settled.to < mx.to)
+      }).length
+    }
   } catch (e) {
     lsCover = { err: String((e && e.message) || e) }
     lsSettle = { err: String((e && e.message) || e) }
@@ -4282,6 +4313,15 @@ const doc = MD.split('PLACE_A')
       settleDiff.length >= 4 &&
       settleDiff.every((c) => c.missing === 0 && c.extra === 0),
     JSON.stringify(lsSettle)
+  )
+  check(
+    '㊴③ **单调性（不得回缩）**：`settled ⊇ 画过的最大覆盖`（`data-img-sel-paint`）且 `⊇ 盒内高水位`（`data-img-gesture` 的 `max`）⇒ "松手后少一段/少列"在数值上被排除',
+    !lsSettle.err &&
+      !!lsSettle.mono &&
+      lsSettle.mono.n >= 4 &&
+      lsSettle.mono.badPaint === 0 &&
+      lsSettle.mono.badMax === 0,
+    JSON.stringify({ mono: lsSettle.mono, cases: settleDiff.map((c) => ({ name: c.name, live: c.live, settled: c.settled, paint: c.paintDiag, gest: c.gestDiag })) })
   )
   /**
    * ─── ㊵（第一百三十三轮）：**拖动中途 `pointercancel` 不得让我们"少列"** ────────────────
@@ -4342,6 +4382,189 @@ const doc = MD.split('PLACE_A')
           (c.fallback === 'ok' || c.fallback === 'late')
       ),
     JSON.stringify({ cases: cNor.map((c) => ({ i: c.i, live: c.last, settled: c.settled, fb: c.fallback, up: c.inDiag, miss: c.missing, extra: c.extra })) })
+  )
+
+  /**
+   * ═══ 第一百三十四轮（架构收口 · 阶段 1）：**每一条收尾路径都必须"以本次手势记录为准"** ═══
+   *
+   * 真因：同一个事实原来有**四份真相**（模型选区 / 我们画的带 / 原生 DOM 选区 / 拖动期试探区间）。
+   * 任何一条收尾路径不是"以本次手势的唯一记录落定"，屏幕上就留下**原生那份被夹扁的选区**
+   * ⇒ 用户看到"松手后少 1–2 列"（劣化实例实测 9/70 ≈ 13%）。
+   *
+   * ㊵①② 已覆盖 `mouseup` 与 `pointercancel`；这里补齐**其余收尾路径**与**幂等**：
+   *   * ㊶ 拖动中途 `blur`（`window.dispatchEvent(new Event('blur'))`）；
+   *   * ㊷ 拖动中途 `visibilitychange`（`document.hidden` 在 Chromium 里**不可写** ⇒ 这里用
+   *     `Object.defineProperty` 伪造 `visibilityState/hidden` 后派发真实事件，收尾后立刻还原）；
+   *   * ㊸ **重复收尾**：`pointercancel` 之后再来真 `mouseup` ⇒ **只落定一次**（第二次 0 次 dispatch）、
+   *     结果仍 == live、无绘制泄漏。
+   * 每条各跑 10 次。判据：`settled == live` 双向差集 0、`fallback ∈ {ok,late}`、
+   * `data-img-up-diag` 里的手势 id 与"同一次手势"识别正确、泄漏三项全 0。
+   */
+  const lsPaths = { cases: [] }
+  /**
+   * 判据提到 `try` **外面**：`check(...)` 在 catch 之后才跑，写在 try 里会 `ReferenceError`
+   * （实测第一版就把整轮打成 `FATAL lsPathOK is not defined`）。
+   *
+   * ⚠️ **"无绘制泄漏"的口径不是"一条带都不许有"**：落定态本来就会给**行内公式**那几段画
+   * "选中带"（`data-sel-own='math'`，见 `paintSettledSel`）。真正的泄漏是"**整层独占的临时绘制**
+   * 留在屏幕上" ⇒ 判据是 `own !== 'all'`（临时高亮 `lumin-img-drag` 必须为 0）。
+   * （第一版按 `bandN === 0` 判，实测 30/30 全红 —— 那是把**正常落定态**误判成泄漏。）
+   */
+  const lsPathOK = (cs) =>
+    cs.length >= 10 &&
+    cs.every(
+      (c) =>
+        c.live &&
+        c.live.to - c.live.from >= 3 &&
+        c.missing === 0 &&
+        c.extra === 0 &&
+        (c.fb === 'ok' || c.fb === 'late') &&
+        c.leak &&
+        c.leak.own !== 'all' &&
+        c.leak.hl === 0
+    )
+  try {
+    // —— 收尾次数的**独立观测器**：数 `data-img-settle-in`（只在"目标定下来"时写一次）
+    await ev(`(() => {
+      if (window.__settleN != null) return 'ok'
+      window.__settleN = 0; window.__settleIns = []
+      const pm = document.querySelector('.ProseMirror')
+      const real = Object.getPrototypeOf(pm).setAttribute
+      Object.getPrototypeOf(pm).setAttribute = function (k, v) {
+        if (k === 'data-img-settle-in') { window.__settleN++; if (window.__settleIns.length < 8) window.__settleIns.push(String(v).slice(0, 100)) }
+        return real.call(this, k, v)
+      }
+      return 'ok' })()`)
+    const peek = () =>
+      json(`(() => { const pm = document.querySelector('.ProseMirror')
+      let hl = -1; try { const h = CSS.highlights.get('lumin-img-drag'); hl = h ? [...h].length : 0 } catch (e) {}
+      return { gest: pm.getAttribute('data-img-gesture'), up: pm.getAttribute('data-img-up-diag'),
+        fb: pm.getAttribute('data-img-settle-fallback'), inDiag: pm.getAttribute('data-img-settle-in'),
+        settleN: window.__settleN, settleIns: (window.__settleIns || []).slice(),
+        leak: { bandN: document.querySelectorAll('.sel-band > div').length, selBand: !!document.querySelector('.sel-band'), hl, own: pm.getAttribute('data-sel-own') } } })()`)
+    /** 拖动 + 中途派发一个收尾事件 + 松手；`kind`: blur | vis | dup */
+    const lsPathDrag = async (a, b, kind, frames = 20) => {
+      await ev(`window.__settleN = 0; window.__settleIns = []; 1`)
+      await send('Input.dispatchMouseEvent', { type: 'mousePressed', x: a.x, y: a.y, button: 'left', clickCount: 1 })
+      await sleep(20)
+      let mid = null
+      for (let i = 1; i <= frames; i++) {
+        await send('Input.dispatchMouseEvent', {
+          type: 'mouseMoved',
+          x: Math.round(a.x + ((b.x - a.x) * i) / frames),
+          y: Math.round(a.y + ((b.y - a.y) * i) / frames),
+          button: 'left',
+          buttons: 1
+        })
+        await sleep(11)
+        if (i === Math.round(frames / 2)) {
+          if (kind === 'blur') {
+            await ev(`(window.dispatchEvent(new Event('blur')), 'ok')`)
+          } else if (kind === 'vis') {
+            await ev(`(() => { Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => 'hidden' })
+              Object.defineProperty(document, 'hidden', { configurable: true, get: () => true })
+              document.dispatchEvent(new Event('visibilitychange')); return 'ok' })()`)
+          } else if (kind === 'dup') {
+            await ev(`(() => { const d = window.__vt.ed().view.dom
+              d.dispatchEvent(new PointerEvent('pointercancel', { bubbles: true, cancelable: true, pointerType: 'mouse', buttons: 1 })); return 'ok' })()`)
+          }
+          // 留出一帧多：收尾的 rAF 补写 + `clearLiveSel` 那一帧都要跑完
+          await sleep(60)
+          mid = await peek()
+          const midSel = await json(`(() => { const s = window.__vt.ed().state.selection; return { from: s.from, to: s.to } })()`)
+          mid.sel = midSel
+          if (kind === 'vis') {
+            await ev(`(() => { Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => 'visible' })
+              Object.defineProperty(document, 'hidden', { configurable: true, get: () => false }); return 'ok' })()`)
+          }
+        }
+      }
+      const live = await json(`(() => { const pm = document.querySelector('.ProseMirror'); const parts = (pm.getAttribute('data-img-drag-live') || '').split('|').map(Number)
+        return parts.length === 4 && Number.isFinite(parts[2]) ? { from: Math.min(parts[2], parts[3]), to: Math.max(parts[2], parts[3]) } : null })()`)
+      await send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: b.x, y: b.y, button: 'left', clickCount: 1 })
+      await sleep(430)
+      const post = await peek()
+      const settled = await json(`(() => { const s = window.__vt.ed().state.selection; return { from: s.from, to: s.to, empty: s.empty } })()`)
+      const missing = live ? Math.max(0, settled.from - live.from) + Math.max(0, live.to - settled.to) : null
+      const extra = live ? Math.max(0, live.from - settled.from) + Math.max(0, settled.to - live.to) : null
+      const paintD = await ev(`document.querySelector('.ProseMirror').getAttribute('data-img-sel-paint')`)
+      return { kind, live, mid: mid ? { sel: mid.sel, fb: mid.fb, gest: mid.gest, up: mid.up, settleN: mid.settleN, leak: mid.leak } : null, settled, missing, extra, fb: post.fb, gest: post.gest, up: post.up, settleN: post.settleN, settleIns: post.settleIns, paint: paintD, leak: post.leak }
+    }
+    for (const kind of ['blur', 'vis', 'dup']) {
+      let gp = await lsResolve('粗体甲', 0.4, '粗体丙', 0.6)
+      for (let i = 0; i < 6 && !(gp.a && gp.b); i++) {
+        await sleep(400)
+        gp = await lsResolve('粗体甲', 0.4, '粗体丙', 0.6)
+      }
+      for (let i = 0; i < 10; i++) {
+        lsPaths.cases.push({ i, ...(await lsPathDrag(gp.a, gp.b, kind)) })
+      }
+    }
+  } catch (e) {
+    lsPaths.err = String((e && e.message) || e)
+  }
+  const byKind = (k) => lsPaths.cases.filter((c) => c.kind === k)
+  const cBlur = byKind('blur')
+  const cVis = byKind('vis')
+  const cDup = byKind('dup')
+  const lsCase = (c) => ({
+    i: c.i,
+    live: c.live ? `${c.live.from}-${c.live.to}` : null,
+    mid: c.mid ? `${c.mid.sel.from}-${c.mid.sel.to}` : null,
+    midFb: c.mid ? c.mid.fb : null,
+    settled: `${c.settled.from}-${c.settled.to}`,
+    fb: c.fb,
+    gest: c.gest,
+    up: c.up,
+    settleN: c.settleN,
+    miss: c.missing,
+    extra: c.extra,
+    leak: c.leak
+  })
+  check(
+    '㊶ **拖动中途 `blur`** ⇒ 仍按 live 区间落定（settled == live 双向差集 0、fallback ∈ {ok,late}、无绘制泄漏）',
+    !lsPaths.err && lsPathOK(cBlur),
+    JSON.stringify({ err: lsPaths.err, cases: cBlur.map(lsCase) })
+  )
+  check(
+    '㊷ **拖动中途 `visibilitychange`（伪造 hidden）** ⇒ 同上（settled == live、无绘制泄漏）',
+    !lsPaths.err && lsPathOK(cVis) && cVis.every((c) => c.mid && c.mid.settleN >= 1 && c.mid.sel.from === c.live.from && c.mid.sel.to === c.live.to),
+    JSON.stringify({ err: lsPaths.err, cases: cVis.map(lsCase) })
+  )
+  check(
+    '㊸ **重复收尾**（`pointercancel` → 真 `mouseup`）⇒ **只落定一次**（第二次 0 次 dispatch，`up-diag` 记 `dup-skip`）、结果仍 == live、无绘制泄漏',
+    !lsPaths.err &&
+      lsPathOK(cDup) &&
+      cDup.every((c) => c.settleN === 1 && String(c.up || '').includes('dup-skip')),
+    JSON.stringify({ err: lsPaths.err, cases: cDup.map(lsCase) })
+  )
+  /**
+   * ㊹ **单调性的"不缩"半边**（`settled ⊇ 已画过的最大覆盖`）：
+   * `data-img-sel-paint` 是本手势"画过的最小/最大位置"（只增不减的**上界**），
+   * `data-img-gesture` 的 `max` 是"盒内取半"那一类帧的最大覆盖。判据：
+   *   ① `settled.from <= paint.min`、`settled.to >= paint.max`（落定不得比画过的窄 ⇒ "少列"不可能）；
+   *   ② `settled.from <= max.min`、`settled.to >= max.max`（落定也不得比护栏窄）。
+   * 两条一起把"落定 ⊂ 画面"（用户报的"松手后少一段"）在**数值上**排除。
+   */
+  const paintNum = (s) => {
+    const p = String(s || '').split('|')
+    if (p.length < 2) return null
+    const r = p[1].split('-').map(Number)
+    return r.length === 2 && r.every(Number.isFinite) ? { from: r[0], to: r[1] } : null
+  }
+  const monoOK = lsPaths.cases.every((c) => {
+    const pa = paintNum(c.paint)
+    const g = String(c.gest || '').split('|')
+    const mx = g.length >= 2 ? paintNum(`x|${g[1]}`) : null
+    if (!pa || !c.settled) return false
+    const a = c.settled.from <= pa.from && c.settled.to >= pa.to
+    const b = !mx || (c.settled.from <= mx.from && c.settled.to >= mx.to)
+    return a && b
+  })
+  check(
+    '㊹ **单调性（不得回缩）**：`settled.from <= 画过的最小` 且 `settled.to >= 画过的最大`（`data-img-sel-paint` 独立取证）⇒ "松手后少一段/少列"在数值上被排除',
+    !lsPaths.err && lsPaths.cases.length >= 30 && monoOK,
+    JSON.stringify({ err: lsPaths.err, cases: lsPaths.cases.filter((c) => !paintNum(c.paint)).length, sample: lsPaths.cases.slice(0, 4).map((c) => ({ kind: c.kind, settled: `${c.settled.from}-${c.settled.to}`, paint: c.paint, gest: c.gest })) })
   )
 
   const pass = results.filter((r) => r.ok).length
