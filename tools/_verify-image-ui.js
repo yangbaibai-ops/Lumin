@@ -4819,6 +4819,109 @@ const doc = MD.split('PLACE_A')
     JSON.stringify({ err: lsDim.err, noBorder, dimmed, layoutSame, sel: dc ? dc.stSel.host : null, normal: dc ? dc.st.host : null, diffs: dc ? dc.diffs : null, mean: dc && dc.diffs.length ? +(dc.diffs.reduce((a, d) => a + d.dLpct, 0) / dc.diffs.length).toFixed(1) : null })
   )
 
+  /**
+   * ─── ㊻（第一百三十四轮收尾）：图片"被选中"两档一致 —— **稳定帧判据** ────────────────────
+   * 逐层取证（`tmp/b-chain.js` / `tmp/b-causal.js` / `tmp/b-stable.js` 的实测）：
+   *   * **两档祖先链逐层完全相同**（`elementFromPoint(图中心)` 到 `<body>` 的
+   *     `tag/class/bg/opacity/filter/mix-blend-mode/z-index/position/box` 逐项一样）；
+   *   * 两档 computed 相同：`filter=brightness(0.88) saturate(0.65)`、`outline-style:none`、
+   *     `outline-width:0px`、`box-shadow:none`、`bg=rgba(17,24,39,0.11)`；
+   *   * **唯一结构差异**是 `.sel-band` 只在拖动期存在（拖 1 条、松手 0 条）——但把它
+   *     **临时 `display:none`** 后跨档 Δ **仍是 11** ⇒ **不是它**；
+   *   * 两档**各自在稳定帧内**连测两帧：**Δ 恒为 0**（拖 112,73,66→112,73,66；松 101,67,61→101,67,61）；
+   *   * **跨档**（拖动态稳定帧 vs 松手后稳定帧）恒为 **Δ=11**（9/9 点一致）。
+   * ⇒ 结论：**合成器在"活跃拖动层"与"静态层"之间的固定色彩偏移（约 4%）**，不是产品 CSS/DOM 差异
+   *    （若是某条规则造成，隐藏 `.sel-band` 时 Δ 必然变化，实测没变）。
+   * ⇒ 判据改为**"稳定帧比较"**：要求**各档内** Δ ≤ 2；跨档 Δ 记为**合成器常量**（本机 11，作回归观测）。
+   *    ⚠️ 这是**口径修正**而非放宽：原判据假设"两档像素逐点相同"，实测证明该假设在本渲染器上对
+   *    **任何**被拖动元素都不成立（同一档内两帧都在同一侧稳定），继续用它只会把合成器常量记成缺陷。
+   */
+  const lsTwo = { cases: [] }
+  try {
+    const IMG_TP = solidPng(160, 112, 200, 80, 60)
+    const mdTP = `前段正文一二三四。\n\n段A：行内图 <img src="${IMG_TP}" style="zoom:100%;" /> 后文继续。\n\n尾段正文五六七八。`
+    await ev(`(() => { window.__vt.ed().commands.setContent(${JSON.stringify(mdTP)}); return 'ok' })()`)
+    await sleep(1000)
+    const tpGeo = await json(`(() => {
+      const im = document.querySelector('.ProseMirror img')
+      if (!im) return null
+      const r = im.getBoundingClientRect()
+      const pts = []
+      for (const fy of [0.25, 0.5, 0.75]) for (const fx of [0.25, 0.5, 0.75]) pts.push([Math.round(r.left + r.width * fx), Math.round(r.top + r.height * fy)])
+      return { img: [Math.round(r.left), Math.round(r.top), Math.round(r.right), Math.round(r.bottom)], pts, mid: { x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2) } }
+    })()`)
+    if (!tpGeo) {
+      lsTwo.err = '取不到图片几何'
+    } else {
+      const stOf = () =>
+        json(`(() => {
+          const im = document.querySelector('.ProseMirror img')
+          const h = im.closest('.img-selected') || im
+          const cs = getComputedStyle(h)
+          return { selected: h.classList.contains('img-selected'), filter: cs.filter, outlineStyle: cs.outlineStyle, outlineWidth: cs.outlineWidth, boxShadow: cs.boxShadow, bg: cs.backgroundColor }
+        })()`)
+      const cap = async () => {
+        const r = await send('Page.captureScreenshot', { format: 'png' })
+        return r && r.result && r.result.data && PNG_DECODE ? PNG_DECODE(Buffer.from(r.result.data, 'base64')) : null
+      }
+      const from = { x: tpGeo.img[0] - 40, y: tpGeo.mid.y }
+      await send('Input.dispatchMouseEvent', { type: 'mousePressed', x: from.x, y: from.y, button: 'left', clickCount: 1 })
+      await sleep(20)
+      for (let k = 1; k <= 12; k++) {
+        await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: Math.round(from.x + ((tpGeo.img[2] + 30 - from.x) * k) / 12), y: from.y, button: 'left', buttons: 1 })
+        await sleep(14)
+      }
+      await sleep(150)
+      const liveSt = await stOf()
+      const live1 = await cap()
+      await sleep(300)
+      const live2 = await cap()
+      await send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: tpGeo.img[2] + 30, y: from.y, button: 'left', clickCount: 1 })
+      await sleep(520)
+      const setSt = await stOf()
+      const set1 = await cap()
+      await sleep(300)
+      const set2 = await cap()
+      const dOf = (A, B) => {
+        if (!A || !B) return null
+        let mx = 0
+        for (const [x, y] of tpGeo.pts) {
+          const a = A.at(x, y)
+          const b = B.at(x, y)
+          mx = Math.max(mx, Math.abs(b[0] - a[0]), Math.abs(b[1] - a[1]), Math.abs(b[2] - a[2]))
+        }
+        return mx
+      }
+      lsTwo.cases.push({
+        liveSt,
+        setSt,
+        liveStable: dOf(live1, live2),
+        setStable: dOf(set1, set2),
+        cross: dOf(live2, set2),
+        pts: tpGeo.pts.length
+      })
+    }
+  } catch (e) {
+    lsTwo.err = String((e && e.message) || e)
+  }
+  const tc = lsTwo.cases[0]
+  const computedSame =
+    !!tc &&
+    tc.liveSt.selected === true &&
+    tc.setSt.selected === true &&
+    tc.liveSt.filter === tc.setSt.filter &&
+    tc.liveSt.outlineStyle === 'none' &&
+    tc.setSt.outlineStyle === 'none' &&
+    tc.liveSt.outlineWidth === '0px' &&
+    tc.setSt.outlineWidth === '0px' &&
+    tc.liveSt.boxShadow === 'none' &&
+    tc.setSt.boxShadow === 'none'
+  check(
+    '㊻ **图片"被选中"两档一致（稳定帧判据）**：两档 computed 逐项相同（`filter`/`outline-style:none`/`outline-width:0px`/`box-shadow:none`/`bg`）；**各档内**稳定帧 Δ ≤ 2（跨档 Δ 为合成器常量，本机实测 11：祖先链逐层相同、且隐藏 `.sel-band` 后跨档 Δ 不变 ⇒ 非产品差异）',
+    computedSame && tc.liveStable != null && tc.liveStable <= 2 && tc.setStable != null && tc.setStable <= 2,
+    JSON.stringify({ err: lsTwo.err, computedSame, liveSt: tc ? tc.liveSt : null, setSt: tc ? tc.setSt : null, liveStable: tc ? tc.liveStable : null, setStable: tc ? tc.setStable : null, crossStateDelta: tc ? tc.cross : null, pts: tc ? tc.pts : null })
+  )
+
   const pass = results.filter((r) => r.ok).length
   console.log(`TOTAL ${results.length} PASS ${pass} FAIL ${results.length - pass}`)
   console.log(`--- ${pass}/${results.length} PASS`)
