@@ -144,6 +144,13 @@
   --code-key-2: #2b6f8f;
   --shadow-1: 0 1px 2px rgba(16, 24, 40, 0.06);
   --shadow-2: 0 8px 28px rgba(16, 24, 40, 0.1);
+  /* ── 图片"被选中"的观感（用户第一百三十四轮口径）──────────────────────────────────
+     用户原话：「优化一下图片被选中时的样式，**不要出现大边框**，**仅图片的颜色变得灰一点**」
+     ⇒ 把原来的 `outline` 描边整条撤掉，只留**整图轻微变灰变暗**（滤镜**不影响盒子几何**，
+     所以尺寸/位置/居中/并排全都零变化）。
+     数值口径：亮度约 −12%、饱和度约 −35%（"略微看得出被选中"但不抢眼；三套主题同一组值，
+     暖纸下再轻一点，避免暖色被压成灰失去纸感）。 */
+  --img-selected-filter: brightness(0.88) saturate(0.65);
   color-scheme: light;
 }
 
@@ -209,6 +216,8 @@
   --code-key-2: #7fc4e0;
   --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.35);
   --shadow-2: 0 10px 32px rgba(0, 0, 0, 0.5);
+  /* 深色下底子本来就暗 ⇒ 用**更轻**的压暗、同样降饱和，否则整图会糊成一团黑 */
+  --img-selected-filter: brightness(0.92) saturate(0.65);
   color-scheme: dark;
 }
 
@@ -270,6 +279,8 @@
   --code-key-2: #266480;
   --shadow-1: 0 1px 2px rgba(97, 74, 32, 0.08);
   --shadow-2: 0 8px 28px rgba(97, 74, 32, 0.14);
+  /* 暖纸上再轻一点：压太狠会把暖色压成灰、失去"暖纸"的观感 */
+  --img-selected-filter: brightness(0.9) saturate(0.72);
   color-scheme: light;
 }
 

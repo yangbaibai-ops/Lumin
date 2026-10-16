@@ -19,6 +19,69 @@
 // 连接写法沿用 tools/_probe-imgcaret.js（裸 CDP，端口取 LUMIN_DEBUG_PORT，默认 9333）。
 const fs = require('fs')
 const path = require('path')
+const zlib = require('zlib')
+/**
+ * ㊺ 用的**本地 PNG 解码**（只解 8bit RGBA/RGB，非隔行）：把 `Page.captureScreenshot` 的 PNG
+ * 解成可逐点取色的位图，用来证明"选中的图片**确实变灰**"（不依赖任何图像库）。
+ */
+function decodePngRGBA (buf) {
+  let p = 8, w = 0, h = 0, bitDepth = 8, colorType = 6, interlace = 0
+  const idat = []
+  while (p + 8 <= buf.length) {
+    const len = buf.readUInt32BE(p)
+    const type = buf.toString('ascii', p + 4, p + 8)
+    const data = buf.subarray(p + 8, p + 8 + len)
+    if (type === 'IHDR') { w = data.readUInt32BE(0); h = data.readUInt32BE(4); bitDepth = data[8]; colorType = data[9]; interlace = data[12] }
+    else if (type === 'IDAT') idat.push(data)
+    else if (type === 'IEND') break
+    p += 12 + len
+  }
+  if (bitDepth !== 8 || interlace !== 0) return null
+  const ch = colorType === 6 ? 4 : colorType === 2 ? 3 : colorType === 0 ? 1 : 0
+  if (!ch || !w || !h) return null
+  const raw = zlib.inflateSync(Buffer.concat(idat))
+  const stride = w * ch
+  const out = Buffer.alloc(h * stride)
+  let prev = Buffer.alloc(stride)
+  for (let y = 0; y < h; y++) {
+    const ft = raw[y * (stride + 1)]
+    const line = raw.subarray(y * (stride + 1) + 1, y * (stride + 1) + 1 + stride)
+    const cur = Buffer.alloc(stride)
+    for (let i = 0; i < stride; i++) {
+      const a = i >= ch ? cur[i - ch] : 0
+      const b = prev[i]
+      const c = i >= ch ? prev[i - ch] : 0
+      let v = line[i]
+      if (ft === 1) v += a
+      else if (ft === 2) v += b
+      else if (ft === 3) v += (a + b) >> 1
+      else if (ft === 4) {
+        const pa = Math.abs(b - c), pb = Math.abs(a - c), pc = Math.abs(a + b - 2 * c)
+        v += pa <= pb && pa <= pc ? a : pb <= pc ? b : c
+      }
+      cur[i] = v & 255
+    }
+    cur.copy(out, y * stride)
+    prev = cur
+  }
+  return {
+    w,
+    h,
+    at: (x, y) => {
+      const xi = Math.max(0, Math.min(w - 1, x))
+      const yi = Math.max(0, Math.min(h - 1, y))
+      const i = yi * stride + xi * ch
+      return [out[i], out[i + 1] ?? out[i], out[i + 2] ?? out[i]]
+    }
+  }
+}
+const PNG_DECODE = (buf) => {
+  try {
+    return decodePngRGBA(buf)
+  } catch (e) {
+    return null
+  }
+}
 const PORT = process.env.LUMIN_DEBUG_PORT || '9333'
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 
@@ -4565,6 +4628,108 @@ const doc = MD.split('PLACE_A')
     '㊹ **单调性（不得回缩）**：`settled.from <= 画过的最小` 且 `settled.to >= 画过的最大`（`data-img-sel-paint` 独立取证）⇒ "松手后少一段/少列"在数值上被排除',
     !lsPaths.err && lsPaths.cases.length >= 30 && monoOK,
     JSON.stringify({ err: lsPaths.err, cases: lsPaths.cases.filter((c) => !paintNum(c.paint)).length, sample: lsPaths.cases.slice(0, 4).map((c) => ({ kind: c.kind, settled: `${c.settled.from}-${c.settled.to}`, paint: c.paint, gest: c.gest })) })
+  )
+
+  /**
+   * ─── ㊺（第一百三十四轮）：图片"被选中"**无边框、只变灰** ──────────────────────────────
+   * 用户口径：「不要出现大边框，仅图片的颜色变得灰一点」。
+   * 修前选中态是 `outline: 2px solid var(--accent)`（就是"大边框"）；修后改为
+   * `filter: var(--img-selected-filter)`（light/dark/sepia 三套值定义在 `theme.css`）。
+   * 这条断言防两件事：**① 边框类样式回来**；**② 图内像素确实变灰**（拿截图解码后逐点比）。
+   */
+  const lsDim = { cases: [] }
+  try {
+    /**
+     * ㊺ 用**本地 PNG data URI**（红/蓝两张）：离线可测、颜色饱和度高，"变灰"的 Δ 才量得准
+     * （远程图会依赖网络与 `remoteImages` 设置）。两张都带不透明像素 ⇒ 底色不会干扰量测。
+     */
+    const U_RED =
+      'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAIAAAAlC+aJAAAAe0lEQVR4nO3PQQ0AIBDAsNPEG/8qEIMIHg3Jkgno5uz1dcMFDWhBA1rQgBY0oAUNaEEDWtCAFjSgBQ1oQQNa0IAWNKAFDWhBA1rQgBY0oAUNaEEDWtCAFjSgBQ1oQQNa0IAWNKAFDWhBA1rQgBY0oAUNaEEDWtCAFjx2Afo1oS21o/G8AAAAAElFTkSuQmCC'
+    const U_BLUE =
+      'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAIAAAAlC+aJAAAAeklEQVR4nO3PUQkAIBTAwBfHTMY2kSH8OITBAtxm7fN1wwUNaEEDWtCAFjSgBQ1oQQNa0IAWNKAFDWhBA1rQgBY0oAUNaEEDWtCAFjSgBQ1oQQNa0IAWNKAFDWhBA1rQgBY0oAUNaEEDWtCAFjSgBQ1oQQNa0IAWPHYBmzVBPMu+AJ8AAAAASUVORK5CYII='
+    const U_BLUE_OLD = ''
+    const dimMd = `前段正文。\n\n段A：行内图 <img src="${U_RED}" style="zoom:25%;" /> 中间 <img src="${U_BLUE}" style="zoom:25%;" /> 后文。\n\n尾段正文。`
+    void U_BLUE_OLD
+    await ev(`(() => { window.__vt.ed().commands.setContent(${JSON.stringify(dimMd)}); return 'ok' })()`)
+    await sleep(950)
+    const dimGeo = await json(`(() => {
+      const v = window.__vt.ed().view
+      const im = document.querySelector('.ProseMirror img')
+      if (!im) return null
+      const p = im.closest('p')
+      const r = im.getBoundingClientRect()
+      let pFrom = null, pTo = null
+      try { pFrom = v.posAtDOM(p, 0); const c = p.childNodes[p.childNodes.length - 1]; pTo = v.posAtDOM(c, 0) + (c.nodeSize || c.textContent.length || 1) } catch (e) {}
+      // 图内 3x3 采样点（避开圆角/边缘）
+      const pts = []
+      for (const fy of [0.25, 0.5, 0.75]) for (const fx of [0.25, 0.5, 0.75]) pts.push([Math.round(r.left + r.width * fx), Math.round(r.top + r.height * fy)])
+      return { pFrom, pTo, box: [r.left, r.top, r.width, r.height], pts, w: +r.width.toFixed(2), h: +r.height.toFixed(2) }
+    })()`)
+    if (!dimGeo || dimGeo.pFrom == null) {
+      lsDim.err = '取不到图片/段落几何'
+    } else {
+      const shotAt = async (from, to, name) => {
+        await ev(`(() => { const e = window.__vt.ed(); e.commands.setTextSelection({ from: ${from}, to: ${to} }); return 'ok' })()`)
+        await sleep(620)
+        const r = await send('Page.captureScreenshot', { format: 'png' })
+        const buf = Buffer.from(r.result.data, 'base64')
+        safe(() => fs.writeFileSync(path.join(process.cwd(), 'tmp', name), buf), null)
+        return PNG_DECODE ? PNG_DECODE(buf) : null
+      }
+      const st = await json(`(() => {
+        const im = document.querySelector('.ProseMirror img')
+        const h = im.closest('.img-selected') || im
+        const cs = getComputedStyle(h); const ci = getComputedStyle(im)
+        const r = im.getBoundingClientRect()
+        const keys = ['outline-style', 'outline-width', 'outline-color', 'outline-offset', 'border-top-width', 'border-right-width', 'border-bottom-width', 'border-left-width', 'border-top-style', 'border-right-style', 'border-bottom-style', 'border-left-style', 'box-shadow', 'filter', 'background-color']
+        const grab = (c) => { const o = {}; for (const k of keys) o[k] = c.getPropertyValue(k); return o }
+        return { selected: h.classList.contains('img-selected'), host: grab(cs), img: grab(ci), rect: [+r.left.toFixed(2), +r.top.toFixed(2), +r.right.toFixed(2), +r.bottom.toFixed(2)], w: +r.width.toFixed(2), h: +r.height.toFixed(2) }
+      })()`)
+      const normalPng = await shotAt(dimGeo.pFrom, dimGeo.pFrom, 'img-selected-normal.png')
+      const selPng = await shotAt(dimGeo.pFrom, dimGeo.pTo, 'img-selected-dim.png')
+      const stSel = await json(`(() => {
+        const im = document.querySelector('.ProseMirror img')
+        const h = im.closest('.img-selected') || im
+        const cs = getComputedStyle(h); const r = im.getBoundingClientRect()
+        const keys = ['outline-style', 'outline-width', 'border-top-width', 'border-right-width', 'border-bottom-width', 'border-left-width', 'box-shadow', 'filter']
+        const grab = (c) => { const o = {}; for (const k of keys) o[k] = c.getPropertyValue(k); return o }
+        return { selected: h.classList.contains('img-selected'), host: grab(cs), rect: [+r.left.toFixed(2), +r.top.toFixed(2), +r.right.toFixed(2), +r.bottom.toFixed(2)], w: +r.width.toFixed(2), h: +r.height.toFixed(2) }
+      })()`)
+      const diffs = []
+      if (normalPng && selPng) {
+        for (const [x, y] of dimGeo.pts) {
+          const a = normalPng.at(x, y); const b = selPng.at(x, y)
+          const lA = 0.2126 * a[0] + 0.7152 * a[1] + 0.0722 * a[2]
+          const lB = 0.2126 * b[0] + 0.7152 * b[1] + 0.0722 * b[2]
+          diffs.push({ x, y, n: a.join(','), s: b.join(','), dR: b[0] - a[0], dG: b[1] - a[1], dB: b[2] - a[2], dLpct: +(((lB - lA) / (lA || 1)) * 100).toFixed(1) })
+        }
+      }
+      lsDim.cases.push({ st, stSel, diffs, w: dimGeo.w, h: dimGeo.h, pts: dimGeo.pts.length })
+    }
+  } catch (e) {
+    lsDim.err = String((e && e.message) || e)
+  }
+  const dc = lsDim.cases[0]
+  const noBorder =
+    !!dc &&
+    dc.stSel.selected === true &&
+    dc.stSel.host['outline-style'] === 'none' &&
+    dc.stSel.host['outline-width'] === '0px' &&
+    dc.stSel.host['box-shadow'] === 'none' &&
+    ['border-top-width', 'border-right-width', 'border-bottom-width', 'border-left-width'].every(
+      (k) => dc.stSel.host[k] === dc.st.host[k]
+    )
+  const dimmed =
+    !!dc &&
+    dc.diffs.length >= 9 &&
+    // 每点都必须"不变亮"，且整图平均变暗落在令牌允许区间（brightness 0.88 ⇒ 约 −12%~−30%，含降饱和的贡献）
+    dc.diffs.every((d) => d.dLpct <= 0.5) &&
+    (() => { const m = dc.diffs.reduce((a, d) => a + d.dLpct, 0) / dc.diffs.length; return m <= -5 && m >= -45 })()
+  const layoutSame = !!dc && dc.st.rect.join(',') === dc.stSel.rect.join(',') && dc.st.w === dc.stSel.w && dc.st.h === dc.stSel.h
+  check(
+    '㊺ **图片"被选中"无边框、只变灰**：选中态 `outline-style:none` / `outline-width:0px` / `box-shadow:none` / 四边 `border-*-width` 与未选中**逐项相同**；且图内 ≥9 点像素确实变暗（均值 −5%~−45%）、尺寸位置逐项不变',
+    noBorder && dimmed && layoutSame,
+    JSON.stringify({ err: lsDim.err, noBorder, dimmed, layoutSame, sel: dc ? dc.stSel.host : null, normal: dc ? dc.st.host : null, diffs: dc ? dc.diffs : null, mean: dc && dc.diffs.length ? +(dc.diffs.reduce((a, d) => a + d.dLpct, 0) / dc.diffs.length).toFixed(1) : null })
   )
 
   const pass = results.filter((r) => r.ok).length

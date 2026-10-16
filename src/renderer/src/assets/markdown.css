@@ -512,13 +512,19 @@ ormal，只影响这种段落 */
    ⚠️ 这个类**只管观感**："标识符该不该隐藏"仍是原来的口径。两条判据在
    `lib/editor/imageReveal.ts` 里**分开**（`selectionIntersectsSource` / `selectionCoversSource`），
    纯函数单测见 `tests/imageReveal.test.mjs` 的 B 段 —— 不许合并。
-   观感只用**既有令牌**：`--sel`（选择底色）铺底 + `--accent` 描边；不加图标、不改尺寸
-   ⇒ 不影响居中/并排几何；`img-selected` 类挂在 widget（裸 `<img>` 形态）或图片节点（`![]()`）上。 */
+   观感只用**令牌**：`--sel`（选择底色）铺底 + `--img-selected-filter`（整图变灰变暗）；
+   不加图标、不改尺寸 ⇒ 不影响居中/并排几何；`img-selected` 类挂在 widget（裸 `<img>` 形态）
+   或图片节点（`![]()`）上。
+
+   ⚠️ 第一百三十四轮（用户口径改版）：「优化一下图片被选中时的样式，**不要出现大边框**，
+   **仅图片的颜色变得灰一点**」⇒ 撤掉 `outline`（那正是用户说的"大边框"），改为
+   **整图轻微变灰变暗**：`filter: var(--img-selected-filter)`（light/dark/sepia 三套值都定义在
+   `theme.css` 里，这里**零硬编码**）。`filter` **不参与布局** ⇒ 尺寸/位置/居中/并排全不变。
+   底色仍保留 `--sel`：它在图片**透明区域**与圆角外露出一点，与正文的选中观感同源。 */
 .md-preview .img-selected,
 .md-preview .img-selected img {
   background-color: var(--sel);
-  outline: 2px solid var(--accent);
-  outline-offset: 1px;
+  filter: var(--img-selected-filter);
   border-radius: 3px;
 }
 /**

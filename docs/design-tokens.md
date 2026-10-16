@@ -32,7 +32,7 @@ npm run docs:tokens:write
 |---|---|
 | 定义令牌的文件 | `src/renderer/src/assets/theme.css` / `src/renderer/src/assets/sidebar.css` |
 | 声明块 | 7 个 |
-| 令牌总数 | 191 |
+| 令牌总数 | 194 |
 | 重复定义（同一声明块内） | 0 |
 
 > 这张表由 `node tools/doc-tokens.js --write` 生成，`npm run docs:tokens:check` 校验；
@@ -40,7 +40,7 @@ npm run docs:tokens:write
 
 ### src/renderer/src/assets/theme.css
 
-**:root, .theme-light**（第 6 行起，47 个）
+**:root, .theme-light**（第 6 行起，48 个）
 
 | 令牌 | 值 |
 |---|---|
@@ -91,8 +91,9 @@ npm run docs:tokens:write
 | `--code-key-2` | `#2b6f8f` |
 | `--shadow-1` | `0 1px 2px rgba(16, 24, 40, 0.06)` |
 | `--shadow-2` | `0 8px 28px rgba(16, 24, 40, 0.1)` |
+| `--img-selected-filter` | `brightness(0.88) saturate(0.65)` |
 
-**.theme-dark**（第 71 行起，47 个）
+**.theme-dark**（第 73 行起，48 个）
 
 | 令牌 | 值 |
 |---|---|
@@ -143,8 +144,9 @@ npm run docs:tokens:write
 | `--code-key-2` | `#7fc4e0` |
 | `--shadow-1` | `0 1px 2px rgba(0, 0, 0, 0.35)` |
 | `--shadow-2` | `0 10px 32px rgba(0, 0, 0, 0.5)` |
+| `--img-selected-filter` | `brightness(0.92) saturate(0.65)` |
 
-**.theme-sepia**（第 130 行起，47 个）
+**.theme-sepia**（第 134 行起，48 个）
 
 | 令牌 | 值 |
 |---|---|
@@ -195,8 +197,9 @@ npm run docs:tokens:write
 | `--code-key-2` | `#266480` |
 | `--shadow-1` | `0 1px 2px rgba(97, 74, 32, 0.08)` |
 | `--shadow-2` | `0 8px 28px rgba(97, 74, 32, 0.14)` |
+| `--img-selected-filter` | `brightness(0.9) saturate(0.72)` |
 
-**:root**（第 191 行起，15 个）
+**:root**（第 197 行起，15 个）
 
 | 令牌 | 值 |
 |---|---|
@@ -216,7 +219,7 @@ npm run docs:tokens:write
 | `--z-editor-menu-sub` | `171` |
 | `--z-tooltip-global` | `9999` |
 
-**@theme**（第 220 行起，4 个）
+**@theme**（第 226 行起，4 个）
 
 | 令牌 | 值 |
 |---|---|
@@ -225,7 +228,7 @@ npm run docs:tokens:write
 | `--text-ui` | `12.5px` |
 | `--text-ui-sm` | `12px` |
 
-**@theme inline**（第 231 行起，24 个）
+**@theme inline**（第 237 行起，24 个）
 
 | 令牌 | 值 |
 |---|---|
