@@ -226,6 +226,13 @@ const SELF_MANAGED = new Set([
   // 它要在实例起来**之前**给 `LUMIN_PRINT_DRY_RUN=1`（"点预览里的打印只记账、不弹原生对话框"）
   // 与 `LUMIN_EXPORT_DIR`（导出落点旁路，用来交叉验证页数），端口 9237
   '_verify-print-preview.js',
+  // ── 选区不变量矩阵（元素 × 手势 = 100 格）：**自管实例**（端口 9422/9423，
+  //    userData `%TEMP%\xw-inv-ud(2)`，目录名刻意不含 "lumin"）。
+  //    为什么自管：它按"每 ≤30 格换一个全新实例"跑（拖选会写下大量临时状态），
+  //    而且要周期性 `Page.bringToFront`（窗口被遮挡时 rAF 降到 1/500ms，统计就不可信）。
+  //    跑法：`node tools/run-suites.js --suite=_verify-selection-invariants.js --timeout=1800000`
+  //    （实测一轮 ~5 分钟：100 格 × ~1.5s + 4 次换实例 + 2 次像素自证）。
+  '_verify-selection-invariants.js'
 ])
 
 function parseArgs(argv) {

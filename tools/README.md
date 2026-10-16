@@ -94,11 +94,11 @@ main().then((c) => process.exit(c)).catch(fatal)
 
 <!-- facts:begin（由 tools/doc-facts.js 生成，勿手改）-->
 
-- `tools/` 共 **217 个文件 / 63290 行**（`.js`/`.mjs`/`.ps1`/`.md`）；
-- 套件文件 **128 个**（_regress-* 6 / _repro-* 9 / _verify-* 113），默认矩阵 **77 个**，分档：fast 77 / needs-build 46 / needs-dev 4 / manual 1；
+- `tools/` 共 **218 个文件 / 65588 行**（`.js`/`.mjs`/`.ps1`/`.md`）；
+- 套件文件 **129 个**（_regress-* 6 / _repro-* 9 / _verify-* 114），默认矩阵 **77 个**，分档：fast 77 / needs-build 47 / needs-dev 4 / manual 1；
 - 另有 **12 个**探针/遗留脚本默认只列不判（`--probe` 显式跑）；
 - 单元测试 **109 个** `tests/*.test.mjs`；Markdown 往返夹具 **33 份**（exact 17 / normalized 16）；
-- `docs/manual/` **17 份 / 5875 行**，`docs/` 下共 **35 份** md。
+- `docs/manual/` **17 份 / 5875 行**，`docs/` 下共 **36 份** md。
 
 <!-- facts:end -->
 
@@ -125,6 +125,7 @@ main().then((c) => process.exit(c)).catch(fatal)
 | `_verify-keymap.js`、`_verify-open-file-dedup.js`、`_verify-open-file-routing.js`、`_verify-save-as-workspace.js` | 这 4 条 `import('/src/...')`，**必须先起 dev server（5173）**：`npm run dev` 另开一个终端，再 `node tools/run-suites.js --tier=needs-dev` |
 | `_verify-notify-restart.js`（manual） | 人工三步：种一条通知 → 杀进程 → 重启后确认它还在（进程重启语义只能人看着验） |
 | `_verify-image-ui.js`（13 条，自管实例；裸 CDP，端口取 `LUMIN_DEBUG_PORT`，默认 9333） | 改**图片交互**之后：居中 / 源码标记四态（点开·点别处·完全包住·边界切进）/ 悬浮工具栏（100/75/50/25、与源码行不相交）/ 缩放进源码（`<img … style="zoom:50%;" />`、原地更新不新增标签）/ 远程图无占位图标且未点击不发请求。跑法：`node tools/run-suites.js --suite=...` 不适用（它自管连接），直接 `LUMIN_DEBUG_PORT=9333 node tools/_verify-image-ui.js`（实例需已带 `--remote-debugging-port`） |
+| `_verify-selection-invariants.js`（113 条断言 / **100 格矩阵**，自管实例，端口 9422/9423） | **选区正确性的类级不变量**：`10 元素（正文/行内公式/块级公式/单图/双图/表头/表体/显形源码/空白带/混合长选区） × 10 手势（正拖/反拖/空白带按下/单击/跨结构拖/中途 pointercancel·blur·visibilitychange·Escape/拖到视口外再回来）`，每格判 I1–I7（覆盖完整、两档一致、选区一致、无泄漏、往返无损、无异常、落点覆盖）+ 每格前的 `elementFromPoint` 命中自检。**只要改了选区自绘带（`.sel-band`）/ `data-sel-own` 闸 / 拖动期试探区间 / 图片与公式的「原件↔源码」显示**就必须跑：`node tools/run-suites.js --suite=_verify-selection-invariants.js --timeout=1800000`（一轮 ~5 分钟）。`--elements=`/`--gestures=`/`--only=E3xG5`/`--no-pixel`/`--only-pixel` 可只跑一部分（调试用）。⚠️ 它**先校验 `out/` 比 `src/` 新**，不新鲜就如实 SKIP（统计作废），所以跑之前先构建 |
 
 `--all` 一次跑完自动能跑的全部（109 条，含默认矩阵与上面这些）；`--probe` 单跑 7 个探针。
 判定口径不因"按需"而放松：`FAIL` / `NOASSERT` 一律让命令非零退出，`FLAKY` 会单独列出来
