@@ -2449,6 +2449,22 @@ export const ImageSourceUi = Extension.create({
       return rendered.length
     }
 
+    /**
+     * 选区里是否还有"显形源码"（`[data-img-revealed]`）。松手后它会被收起 ⇒ DOM/布局**下一帧**就变，
+     * 而 live 那份带是按"源码行还在"量的 ⇒ 保留下来就是一条指错的带（矩阵 `E8×G10` 实测）。
+     */
+    const revealedSourceInSel = (view: EditorView, from: number, to: number): boolean => {
+      const els = view.dom.querySelectorAll<HTMLElement>('[data-img-revealed]')
+      if (!els.length) return false
+      const srcs = collectImgSources(view.state)
+      for (const el of Array.from(els)) {
+        const f = Number(el.getAttribute('data-img-from'))
+        const src = srcs.find((i) => i.from === f)
+        if (src && src.from < to && src.to > from) return true
+      }
+      return false
+    }
+
     /** 落定态：按**模型选区**画一帧（`from/to/doc` 全同就跳过重算：选区事务很多，别每笔都量布局） */
     const paintSettledSel = (view: EditorView): void => {
       const s = view.state.selection
@@ -2458,6 +2474,56 @@ export const ImageSourceUi = Extension.create({
       if (s.empty) {
         clearSelBands(view)
         return
+      }
+      /* 只有**普通 mouseup** 收尾才保留 live 那一份；中断型（pointercancel /
+         visibilitychange / Escape / 重复收尾）一律走原 'math' 重画 ——
+         实测那三类会让 PM 把选区规范化到不同行盒（geometry: n/a），保留 live 会真泄漏。
+         "区间未变"比的是**落定那一刻画上去的**那一份（`closeFrom/closeTo`：`settleGesture`
+         先按 `sFrom/sTo` 画 `all`、再把这同一对写进记录），而不是手势最后一帧 —— 实测 10 次里
+         有 1 次落定目标被"盒内高水位"扩到 `maxFrom`（`data-img-settle-in` =
+         `anchor19|hw846|live19-846|target3-846`），拿手势帧比较会漏 ⇒ 退回 math。 */
+      const upKind = (view.dom.getAttribute('data-img-up-diag') || '').split('|')[1]?.trim() ?? ''
+      if (
+        upKind === 'mouseup' &&
+        liveGesture &&
+        liveGesture.closeFrom === s.from &&
+        liveGesture.closeTo === s.to &&
+        selBand &&
+        selBand.childElementCount > 0 &&
+        /** 选区里还有"显形源码"⇒ 松手会被收起（布局随后变化），那一份带指向旧源码行，绝不保留 */
+        !revealedSourceInSel(view, s.from, s.to)
+      ) {
+        /**
+         * 保留之前再按**当前布局**把 `all` 档重算一遍：矩形逐个相同 ⇒ live 那份仍然成立
+         * （重画出来一模一样，屏幕上不会变）；只要不同 ⇒ 说明落定这一帧布局已经动过
+         * （实测：显形源码收起后带还指着上一帧的源码行，矩阵 `E8×G1` 由此转红），
+         * 必须走原 `math` 重画。重算写在同一个任务里，浏览器只合成最后一帧。
+         */
+        const prev = view.dom.getAttribute('data-sel-band-live') || ''
+        const n = paintSelBands(view, s.from, s.to, 'all')
+        if (n > 0 && (view.dom.getAttribute('data-sel-band-live') || '') === prev) {
+          clearTempPaint(view)
+          /**
+           * 落定**之后**再复验一小段（≤250ms 的 rAF）：显形源码收起这类布局变化常常晚一帧才落地，
+           * 届时这一份带就指错了位置（实测算下来整段左移 307px）。复验不过 ⇒ 走原 math 重画。
+           */
+          const until = Date.now() + 250
+          const verify = (): void => {
+            if (!view.dom?.isConnected || boxDrag != null) return
+            const s2 = view.state.selection
+            if (s2.from !== s.from || s2.to !== s.to) return
+            const cur = view.dom.getAttribute('data-sel-band-live') || ''
+            paintSelBands(view, s.from, s.to, 'all')
+            if ((view.dom.getAttribute('data-sel-band-live') || '') !== cur) {
+              paintSelBands(view, s.from, s.to, 'math')
+              return
+            }
+            clearTempPaint(view)
+            if (Date.now() < until) window.requestAnimationFrame(verify)
+          }
+          window.requestAnimationFrame(verify)
+          return
+        }
       }
       paintSelBands(view, s.from, s.to, 'math')
     }
