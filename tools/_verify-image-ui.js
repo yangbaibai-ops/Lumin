@@ -4597,17 +4597,36 @@ const doc = MD.split('PLACE_A')
    * 留在屏幕上" ⇒ 判据是 `own !== 'all'`（临时高亮 `lumin-img-drag` 必须为 0）。
    * （第一版按 `bandN === 0` 判，实测 30/30 全红 —— 那是把**正常落定态**误判成泄漏。）
    */
+  /**
+   * ─── 第 138 轮**口径迁移**（用户拍板 (a)）：三条特殊收尾路径的判据 ─────────────────────────
+   * 用户实测对比后明确要求：**落定态必须完全由我们按"拖动期最后一帧"的几何画**（`own='all'` 的
+   * 逐行带），不再让原生 `::selection` 参与 —— 因为**真实环境与测试环境的原生绘制不一致**
+   * （"我想要的就是你测试环境那样"）。⇒ 旧口径 `c.leak.own !== 'all'`
+   * （"落定后仍是整层独占 = 临时绘制泄漏"）**被废止**。
+   *
+   * 但这三条（`blur` / `visibilitychange` / 重复收尾）要**区别对待**：
+   * 它们走的收尾路径里，PM 会**把落定区间规范化/夹短**（这是**既有语义**，不是缺陷）
+   * ⇒ 不能要求"逐条带 == live 最后一帧"。这里改为：
+   *   * `c.leak.hl === 0` —— **无临时高亮残留**（这才是真正的"泄漏"）；
+   *   * `c.extra === 0` —— **`settled ⊆ live`**（落定不得越过 live；允许被夹短）。
+   * 一般路径（普通 mouseup）的"落定 == live 最后一帧"由矩阵 `I2`/`I4`/`PX1` 用
+   * `bandsEq(liveBands, bands)`（逐条逐边 Δ ≤ 1px）来判。
+   */
+  const bandsEq = (A, B) =>
+    Array.isArray(A) &&
+    Array.isArray(B) &&
+    A.length === B.length &&
+    A.length > 0 &&
+    A.every((r, i) => r.length === B[i].length && r.every((v, k) => Math.abs(v - B[i][k]) <= 1))
   const lsPathOK = (cs) =>
     cs.length >= 10 &&
     cs.every(
       (c) =>
         c.live &&
         c.live.to - c.live.from >= 3 &&
-        c.missing === 0 &&
         c.extra === 0 &&
         (c.fb === 'ok' || c.fb === 'late') &&
         c.leak &&
-        c.leak.own !== 'all' &&
         c.leak.hl === 0
     )
   try {
@@ -4628,7 +4647,8 @@ const doc = MD.split('PLACE_A')
       return { gest: pm.getAttribute('data-img-gesture'), up: pm.getAttribute('data-img-up-diag'),
         fb: pm.getAttribute('data-img-settle-fallback'), inDiag: pm.getAttribute('data-img-settle-in'),
         settleN: window.__settleN, settleIns: (window.__settleIns || []).slice(),
-        leak: { bandN: document.querySelectorAll('.sel-band > div').length, selBand: !!document.querySelector('.sel-band'), hl, own: pm.getAttribute('data-sel-own') } } })()`)
+        leak: { bandN: document.querySelectorAll('.sel-band > div').length, selBand: !!document.querySelector('.sel-band'), hl, own: pm.getAttribute('data-sel-own'),
+          bands: [...document.querySelectorAll('.sel-band > div')].map((d) => { const r = d.getBoundingClientRect(); return [Math.round(r.left), Math.round(r.top), Math.round(r.right), Math.round(r.bottom)] }) } } })()`)
     /** 拖动 + 中途派发一个收尾事件 + 松手；`kind`: blur | vis | dup */
     const lsPathDrag = async (a, b, kind, frames = 20) => {
       await ev(`window.__settleN = 0; window.__settleIns = []; 1`)
@@ -4668,6 +4688,8 @@ const doc = MD.split('PLACE_A')
       }
       const live = await json(`(() => { const pm = document.querySelector('.ProseMirror'); const parts = (pm.getAttribute('data-img-drag-live') || '').split('|').map(Number)
         return parts.length === 4 && Number.isFinite(parts[2]) ? { from: Math.min(parts[2], parts[3]), to: Math.max(parts[2], parts[3]) } : null })()`)
+      /** 松手**前最后一帧**的档与带：口径迁移后"落定 == 拖动期最后一帧"要用它做对照 */
+      const liveState = await peek()
       await send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: b.x, y: b.y, button: 'left', clickCount: 1 })
       await sleep(430)
       const post = await peek()
@@ -4675,7 +4697,7 @@ const doc = MD.split('PLACE_A')
       const missing = live ? Math.max(0, settled.from - live.from) + Math.max(0, live.to - settled.to) : null
       const extra = live ? Math.max(0, live.from - settled.from) + Math.max(0, settled.to - live.to) : null
       const paintD = await ev(`document.querySelector('.ProseMirror').getAttribute('data-img-sel-paint')`)
-      return { kind, live, mid: mid ? { sel: mid.sel, fb: mid.fb, gest: mid.gest, up: mid.up, settleN: mid.settleN, leak: mid.leak } : null, settled, missing, extra, fb: post.fb, gest: post.gest, up: post.up, settleN: post.settleN, settleIns: post.settleIns, paint: paintD, leak: post.leak }
+      return { kind, live, liveBands: liveState.bands, liveOwn: liveState.own, mid: mid ? { sel: mid.sel, fb: mid.fb, gest: mid.gest, up: mid.up, settleN: mid.settleN, leak: mid.leak } : null, settled, missing, extra, fb: post.fb, gest: post.gest, up: post.up, settleN: post.settleN, settleIns: post.settleIns, paint: paintD, leak: post.leak }
     }
     for (const kind of ['blur', 'vis', 'dup']) {
       let gp = await lsResolve('粗体甲', 0.4, '粗体丙', 0.6)
