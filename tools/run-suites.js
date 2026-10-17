@@ -437,7 +437,7 @@ function startInstance(port, userData, cleanupOnly = false) {
   }
   // ⚠️ 关键：必须 delete（置 undefined 会被 spawn 忽略）
   delete childEnv.ELECTRON_RUN_AS_NODE
-  const proc = spawn('cmd.exe', ['/c', electron, '.', `--user-data-dir=${userData}`], {
+  const proc = spawn('cmd.exe', ['/c', electron, '.', `--user-data-dir=${userData}`, '--disable-features=CalculateNativeWinOcclusion'], {
     cwd: ROOT,
     env: childEnv,
     stdio: ['ignore', fd, fd],
