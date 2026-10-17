@@ -55,40 +55,30 @@ import {
   STATIC_HIGHLIGHT
 } from '../../lib/editor/codeBlockMountPolicy'
 import { registerStaticParser, staticHighlightHtml } from '../../lib/editor/staticHighlight'
+import {
+  PLAIN_TEXT_LANGUAGE,
+  detectLanguage,
+  filterLanguagePresets,
+  needsNoHighlightNotice,
+  normalizeLanguageName,
+  resolveLanguageKey
+} from '../../lib/editor/codeBlockLanguage'
 
 const props = defineProps(nodeViewProps)
 const settings = useSettingsStore()
 const editorStore = useEditorStore()
 
-const LANGUAGES = [
-  'javascript',
-  'typescript',
-  'python',
-  'html',
-  'css',
-  'json',
-  'sql',
-  'bash',
-  'java',
-  'go',
-  'rust',
-  'cpp',
-  'php',
-  'ruby',
-  'yaml',
-  'mermaid'
-]
-
 /**
  * 语言支持：**显式映射表**（清单 §1.B / 自查报告 O3）。
  *
  * 原来用 `@codemirror/language-data` 的 `languages` 表找 `load()` —— 那张表覆盖 115 种语言，
- * 于是构建产物里留下 **116 个 `import()` 目标（合计约 1.6MB）**，而本组件的语言清单只有 15 种
- * （+ mermaid 走预览）。现在按清单显式列出来：14 种走 `@codemirror/lang-*`，
+ * 于是构建产物里留下 **116 个 `import()` 目标（合计约 1.6MB）**，而本组件的常用语言清单
+ * 只有十几种（+ mermaid 走预览）。现在按清单显式列出来：`@codemirror/lang-*` 为主，
  * `bash` / `ruby` 走 `@codemirror/legacy-modes` + `StreamLanguage`，多出来的体积就不发了。
  *
- * ⚠️ 取舍（写清楚，免得后来人以为「任意语言高亮」还在）：**只高亮这 15 种**。
- * 其余语言的 ``` 块按纯文本渲染（与原行为一致：认不出来就 reconfigure 成空扩展）。
+ * ⚠️ 口径（2026 本轮更新）：**列表之外的任何语言名都合法**，只是没有内置高亮包 ——
+ * 写进 `language` 属性、照常往返，代码区按纯文本显示，选择器里标注「未内置高亮」。
+ * 预设清单 / 别名 / 自动识别都在 `lib/editor/codeBlockLanguage.ts`（纯函数，有单测）。
  */
 type LanguageLoader = () => Promise<Extension>
 
@@ -114,50 +104,6 @@ const LANGUAGE_LOADERS: Record<string, LanguageLoader> = {
 }
 
 /**
- * 文档里常见的别名 → 映射表的键（原 `language-data` 认得的那些）。
- * 清单只列了 `js/ts/py/sh/zsh/yml/c++/cc/rb`，这里把 markdown 生态里同样常见的几个一并收进来
- * （`jsx/tsx/mjs/cjs`、`htm`、`yml`、`rb`、`golang`、`cxx/hpp`、`shell`）。
- */
-const LANGUAGE_ALIASES: Record<string, string> = {
-  js: 'javascript',
-  jsx: 'javascript',
-  mjs: 'javascript',
-  cjs: 'javascript',
-  ts: 'typescript',
-  tsx: 'typescript',
-  py: 'python',
-  python3: 'python',
-  htm: 'html',
-  xhtml: 'html',
-  xml: 'html',
-  svg: 'html',
-  sh: 'bash',
-  shell: 'bash',
-  zsh: 'bash',
-  console: 'bash',
-  yml: 'yaml',
-  'c++': 'cpp',
-  cc: 'cpp',
-  cxx: 'cpp',
-  h: 'cpp',
-  hpp: 'cpp',
-  golang: 'go',
-  rb: 'ruby',
-  mysql: 'sql',
-  postgres: 'sql',
-  postgresql: 'sql',
-  sqlite: 'sql'
-}
-
-/** 语言标识 → 映射表的键（大小写不敏感；认不出来返回 null = 按纯文本） */
-function resolveLanguageKey(lang: string): string | null {
-  const key = lang.trim().toLowerCase()
-  if (!key) return null
-  if (LANGUAGE_LOADERS[key]) return key
-  return LANGUAGE_ALIASES[key] ?? null
-}
-
-/**
  * 从语言扩展里取出 Lezer 解析器（静态态高亮要用，P2）。
  *
  * 两种形态都要认：`@codemirror/lang-*` 返回 `LanguageSupport`（解析器在 `.language` 上），
@@ -170,7 +116,103 @@ function parserOf(ext: Extension): Parser | null {
 }
 
 const editorRef = ref<HTMLElement | null>(null)
-const selectedLanguage = ref<string>(props.node.attrs.language || 'javascript')
+/** 静态态 <pre>（Esc 把焦点还给代码区时用） */
+const staticRef = ref<HTMLElement | null>(null)
+/** mermaid 容器（语言浮层的锚点 / Esc 还焦点时用） */
+const mermaidBlockRef = ref<HTMLElement | null>(null)
+
+/**
+ * ─── 语言状态：显式 / 自动识别 / 生效值（三者分开，别合并）────────────────────
+ *
+ * `explicitLanguage`：`code` 节点的 `language` 属性（用户设置过 / 文档里写的）。
+ * `detectedLanguage`：**只在没有显式语言时**按内容启发式识别出来的语言。它**不写回节点** ——
+ *   自动识别是"显示层"的判断，写回去就变成了"用户显式设置"，下次改内容也再也不会重新识别。
+ * `selectedLanguage`：渲染实际用的那一个（显式优先；都没有 = 纯文本）。
+ *
+ * 于是"显式设置过的语言不得被自动识别覆盖"是**结构性**成立的：有显式值时
+ * `scheduleDetect()` 直接返回，`detectLanguage()` 根本不会被调用。
+ */
+const explicitLanguage = ref(normalizeLanguageName(props.node.attrs.language))
+const detectedLanguage = ref<string | null>(null)
+const selectedLanguage = computed(
+  () => explicitLanguage.value || detectedLanguage.value || PLAIN_TEXT_LANGUAGE
+)
+
+/** 用户显式清空语言后，本次会话内不再用自动识别把它"猜"回来（见 applyLanguageChoice） */
+let detectSuppressed = false
+/**
+ * 内容变化 → 重新识别的防抖（350ms）。
+ * 为什么必须防抖：CM 每敲一个字符都会写回节点，识别要扫 12 组特征；
+ * 不防抖的话一个 100 字的块要跑 100 次（1500 块的文档里就是 15 万次）。
+ */
+const DETECT_DEBOUNCE_MS = 350
+let detectTimer: ReturnType<typeof setTimeout> | null = null
+
+// ─── 语言浮层（combobox）：聚焦才出现、绝对/固定定位、不占布局 ─────────────────
+// 状态机：pickerOpen（浮层在不在 DOM 里，v-if）→ listOpen（下拉列表开没开）。
+// 空闲态 DOM 里**没有**这个节点（不是 display:none 的占位），所以不可能出现
+// "未聚焦还留一条语言栏"的观感，也不会为 1500 个块各留一份输入框。
+const pickerOpen = ref(false)
+const listOpen = ref(false)
+const pickerQuery = ref('')
+const activeIndex = ref(0)
+/** 浮层位置：fixed + 视口坐标（见 positionPicker 的注释：为什么必须 fixed） */
+const pickerStyle = ref<Record<string, string>>({})
+const pickerRef = ref<HTMLElement | null>(null)
+const pickerInputRef = ref<HTMLInputElement | null>(null)
+/** 每块一个唯一 listbox id（aria-controls / aria-activedescendant 要成对） */
+let pickerSeq = 0
+const pickerListId = `cb-lang-list-${++pickerSeq}`
+/** Esc 关闭后把焦点还给代码区时，别让紧接着的 focusin 又把浮层打开 */
+let suppressReopen = false
+/** 应用语言时 PM 事务可能把焦点拽回编辑器根节点：这一拍内别因为失焦把浮层收了 */
+let keepOpenOnFocusLoss = false
+
+/** 当前语言没有内置高亮包（选择器里标注「未内置高亮」） */
+const languageUnsupported = computed(() => needsNoHighlightNotice(selectedLanguage.value))
+/** 有没有东西可清空（显式语言或自动识别出的语言） */
+const showClearButton = computed(
+  () => explicitLanguage.value !== '' || detectedLanguage.value !== null
+)
+
+interface PickerItem {
+  /** 选中后写进 `language` 属性的**原样字符串**（空串 = 无语言） */
+  value: string
+  /** 展示文本（预设就是它自己；自定义是"使用 xxx"的插值） */
+  label: string
+  /** 这一项是否要标「未内置高亮」 */
+  note: boolean
+  /** 是不是"输入框里的自定义语言"这一行 */
+  custom: boolean
+}
+
+/**
+ * 下拉候选。
+ *   * 空输入：全部预设；
+ *   * 有输入：先给匹配的预设，再把"用户输入的原文"作为最后一项（未内置也允许选，见需求 ③）。
+ * 自定义项只有在输入**不是**已知语言名时才出现（输入 `typescript` 不该再冒一行重复的）。
+ */
+const pickerItems = computed<PickerItem[]>(() => {
+  const raw = pickerQuery.value.trim()
+  const items: PickerItem[] = filterLanguagePresets(raw).map((preset) => ({
+    value: preset,
+    label: preset,
+    note: needsNoHighlightNotice(preset),
+    custom: false
+  }))
+  if (!raw) return items
+  const known =
+    items.some((item) => item.value.toLowerCase() === raw.toLowerCase()) ||
+    resolveLanguageKey(raw) !== null ||
+    raw.toLowerCase() === PLAIN_TEXT_LANGUAGE
+  if (!known)
+    items.push({ value: raw, label: raw, note: needsNoHighlightNotice(raw), custom: true })
+  return items
+})
+
+function optionId(index: number): string {
+  return `${pickerListId}-opt-${index}`
+}
 
 let cmView: EditorView | null = null
 let onPmBlurCapture: ((e: FocusEvent) => void) | null = null
@@ -421,10 +463,9 @@ const cmMounted = computed(
 )
 
 /**
- * 语言下拉框要不要渲染（P3）：挂载态要，mermaid 块也要（它没有 CM，切回代码语言全靠它）；
- * 只有「静态态的非 mermaid 块」不渲染 —— 那一项的 DOM/内存代价见模板里的注释。
+ * 语言选择器**不再**是常驻 DOM：它由 `pickerOpen` 控制、聚焦时才挂出来
+ * （见 openPicker/onBlockFocusIn）。所以这里不再有 showLangSelect 之类的可见性开关。
  */
-const showLangSelect = computed(() => cmMounted.value || selectedLanguage.value === 'mermaid')
 
 /** 选区/光标是否落在本节点范围内（PM 的 selectionUpdate 里刷新；computed 读不到 PM state 变化） */
 function refreshSelectionInside(): void {
@@ -587,6 +628,13 @@ function onCmKeydownCapture(e: KeyboardEvent): void {
   if (!cmView || e.isComposing) return
   // 撤销/重做：见 onCmHistoryKey 的口径注释（块内优先，再交外层全局历史）
   if (onCmHistoryKey(e)) return
+  // 语言浮层开着时 Esc = 收起浮层（焦点本来就在代码区，不用再还）
+  if (e.key === 'Escape' && pickerOpen.value) {
+    e.preventDefault()
+    e.stopPropagation()
+    closePicker()
+    return
+  }
   // 空代码块按退格 = 删除整个代码块。CM 自身的退格在文档开头无内容可删、
   // 且 stopEvent 让 PM 收不到按键，导致空代码块“卡住”删不掉。
   if (e.key === 'Backspace' && cmView.state.doc.length === 0) {
@@ -720,8 +768,14 @@ function syncToNode(): void {
   pinCmFocus()
 }
 
+/**
+ * 生效语言变了 → 换渲染形态 / 换高亮包。
+ *
+ * ⚠️ 这里**不再** `updateAttributes({ language })`：自动识别出来的语言只影响显示，
+ * 不写回文档（写回去 = 污染 markdown 围栏，还会把"自动识别"冻结成"用户显式设置"，
+ * 之后改内容也不会再识别）。显式设置只发生在 applyLanguageChoice()。
+ */
 watch(selectedLanguage, async (lang) => {
-  props.updateAttributes({ language: lang })
   if (lang === 'mermaid') {
     // 切到 mermaid：CM 宿主节点即将被 v-else 卸载，先彻底拆掉（含焦点封堵、
     // 观察器恢复），并退出源码态——否则再切回 mermaid 会看到残留的 textarea
@@ -738,7 +792,26 @@ watch(selectedLanguage, async (lang) => {
   // （是否真建由挂载策略决定：远处/未激活的块保持静态态，见 codeBlockMountPolicy）
   await nextTick()
   if (cmMounted.value) void mountCmForVirtualization()
+  // 已经在挂载态（例如自动识别从 js 改判成 ts）：只换语言扩展，不重建 CM
+  if (cmView) void loadLanguage(lang)
 })
+
+/**
+ * 节点 `language` 属性被外部改掉（源码面编辑 / 载入历史 / 撤销重做）时同步进来。
+ * 非空 = 显式设置：清掉自动识别的结果并解除"用户清空后不再识别"的抑制。
+ */
+watch(
+  () => props.node.attrs.language,
+  (raw) => {
+    const next = normalizeLanguageName(raw)
+    if (next === explicitLanguage.value) return
+    explicitLanguage.value = next
+    if (next) {
+      detectedLanguage.value = null
+      detectSuppressed = false
+    }
+  }
+)
 
 // 设置里切换「代码块行号」即时生效（折叠槽仍在，只去掉行号）
 watch(
@@ -803,8 +876,31 @@ function scheduleApplyNodeText(): void {
 
 watch(
   () => props.node.textContent,
-  () => scheduleApplyNodeText()
+  () => {
+    scheduleApplyNodeText()
+    // 需求 ④：内容变化且**没有显式语言**时重新识别（防抖，不是每键一次）。
+    // 有显式语言 / 用户刚清空 ⇒ scheduleDetect 直接返回，绝不覆盖用户的选择。
+    scheduleDetect()
+  }
 )
+
+// ─── 自动识别语言（只在没有显式语言时跑；结果只影响显示，不写回文档）──────────
+function scheduleDetect(): void {
+  if (explicitLanguage.value || detectSuppressed) return
+  if (detectTimer) clearTimeout(detectTimer)
+  detectTimer = setTimeout(() => {
+    detectTimer = null
+    runDetect()
+  }, DETECT_DEBOUNCE_MS)
+}
+
+/** 立刻识别一次（视口放行时用：块第一次露面前就把语言判好，不闪一帧纯文本） */
+function runDetect(): void {
+  if (explicitLanguage.value || detectSuppressed) return
+  const next = detectLanguage(currentNodeText())
+  if (next === detectedLanguage.value) return
+  detectedLanguage.value = next
+}
 
 /* 扩展列表按需构建：行号开关属于 Compartment，但重建 state（外部内容同步）时
    必须按「当前设置」重新组装，否则会退回挂载时刻的取值 */
@@ -977,11 +1073,276 @@ function teardownCm(): void {
   if (v && v.domObserver && !(ae && ae.closest && ae.closest('.cm-editor'))) v.domObserver.start()
 }
 
+// ─── 语言浮层：定位 / 开关 / 键盘 / 应用 ─────────────────────────────────────
+/**
+ * 浮层锚点：代码区本身。
+ *   * 挂载态 = CM 的 `.cm-editor`（它的 rect 就是"代码区"）；
+ *   * 静态态 = `.cb-static`（点击后马上会挂 CM）；
+ *   * mermaid 态 = `.mermaid-block`（它没有 CM，但同样要能切回代码语言）。
+ */
+function pickerAnchorEl(): HTMLElement | null {
+  if (cmView) return cmView.dom
+  if (selectedLanguage.value === 'mermaid') return mermaidBlockRef.value
+  return staticRef.value
+}
+
+/**
+ * 浮层与代码块边缘的距离（px）。就近常量：这是**视觉贴角**的微调，不是布局尺寸；
+ * 换成 em 会随字号缩放，反而让"贴在右上角"的关系漂移。
+ */
+const PICKER_EDGE_PX = 6
+/** 浮层与视口边缘的最小留白（px）：窄窗口下夹住它，绝不让它顶出页面 */
+const PICKER_VIEWPORT_PAD_PX = 8
+
+/**
+ * 用视口坐标摆浮层（CSS `position: fixed`）。
+ *
+ * 为什么不 `position: absolute` 挂在代码块里：`.code-block-wrapper` 必须是
+ * `overflow: hidden`（tests/layoutNoOverflow 守着它 —— 否则内部滚动条会画到圆角外），
+ * absolute 子元素会被它裁掉：**新代码块只有一行高**，下拉列表会被整块裁没。
+ * `fixed` 是"绝对定位"里唯一既能脱离文档流、又不被祖先 overflow 裁剪、还能按视口夹住的形态
+ * （本仓从 `.editor-scroll` 到 `.md-preview` 没有 transform/filter，fixed 的包含块就是视口）。
+ *
+ * 夹取规则保证窄窗口不撑破布局：左右上下都限制在 `[pad, 视口 - 尺寸 - pad]` 内；
+ * 尺寸上限另由 CSS 的 `max-width: min(...)` 兜住。
+ */
+function positionPicker(): void {
+  const anchor = pickerAnchorEl()
+  const panel = pickerRef.value
+  if (!anchor || !panel) return
+  const r = anchor.getBoundingClientRect()
+  const w = panel.offsetWidth
+  const h = panel.offsetHeight
+  const vw = window.innerWidth
+  const vh = window.innerHeight
+  const pad = PICKER_VIEWPORT_PAD_PX
+  let left = r.right - w - PICKER_EDGE_PX
+  let top = r.top + PICKER_EDGE_PX
+  left = Math.min(Math.max(left, pad), Math.max(pad, vw - w - pad))
+  top = Math.min(Math.max(top, pad), Math.max(pad, vh - h - pad))
+  pickerStyle.value = { left: `${Math.round(left)}px`, top: `${Math.round(top)}px` }
+}
+
+// 滚动 / 缩放时（rAF 合并）重新贴角：浮层是 fixed，不跟内容走，必须自己追。
+let repositionRaf = 0
+function scheduleReposition(): void {
+  if (!pickerOpen.value || repositionRaf) return
+  repositionRaf = window.requestAnimationFrame(() => {
+    repositionRaf = 0
+    positionPicker()
+  })
+}
+
+function onWindowResize(): void {
+  scheduleReposition()
+}
+
+function attachPickerListeners(): void {
+  window.addEventListener('resize', onWindowResize, { passive: true })
+  // 捕获阶段：编辑器自己的滚动容器（.editor-scroll）滚动不冒泡到 document
+  document.addEventListener('scroll', scheduleReposition, true)
+}
+
+function detachPickerListeners(): void {
+  window.removeEventListener('resize', onWindowResize)
+  document.removeEventListener('scroll', scheduleReposition, true)
+  if (repositionRaf) {
+    window.cancelAnimationFrame(repositionRaf)
+    repositionRaf = 0
+  }
+}
+
+function openPicker(): void {
+  if (pickerOpen.value) return
+  pickerOpen.value = true
+  listOpen.value = false
+  // 输入框里预填当前语言（自动识别出来的也填，用户能看到"它认成了什么"；
+  // 无语言时留空，placeholder 负责提示可输入）。
+  pickerQuery.value = selectedLanguage.value === PLAIN_TEXT_LANGUAGE ? '' : selectedLanguage.value
+  activeIndex.value = 0
+  attachPickerListeners()
+  void nextTick(positionPicker)
+}
+
+function closePicker(): void {
+  if (!pickerOpen.value) return
+  pickerOpen.value = false
+  listOpen.value = false
+  pickerQuery.value = ''
+  pickerStyle.value = {}
+  detachPickerListeners()
+}
+
+/** 焦点落进本块（CM / mermaid 预览按钮 / 静态区）→ 浮层出现 */
+function onBlockFocusIn(): void {
+  // Esc 把焦点还给代码区时不要立刻又弹出来（见 focusCodeArea）
+  if (suppressReopen) {
+    suppressReopen = false
+    return
+  }
+  openPicker()
+}
+
+/**
+ * 指针按在块内（语言浮层之外）→ 也把浮层打开。
+ *
+ * 为什么需要它：Esc 关闭浮层后焦点**仍留在代码区**，再点同一处不会触发 focusin；
+ * 没有这条，"关掉之后想再选语言"只能先点别处再点回来。openPicker 是幂等的。
+ */
+function onBlockPointerDown(e: Event): void {
+  const target = e.target as Element | null
+  if (target && typeof target.closest === 'function' && target.closest('[data-cb-lang-picker]')) {
+    return
+  }
+  openPicker()
+}
+
+/** 焦点离开本块 → 收起。relatedTarget 还在块内（例如从 CM Tab 到输入框）就不收 */
+function onBlockFocusOut(e: Event): void {
+  if (keepOpenOnFocusLoss) return
+  const next = (e as FocusEvent).relatedTarget as Node | null
+  const el = blockEl()
+  if (next && el && el.contains(next)) return
+  closePicker()
+}
+
+/** Esc 关闭后把焦点还给代码区（CM 优先；mermaid 给预览按钮；静态态给 <pre>） */
+function focusCodeArea(): void {
+  suppressReopen = true
+  if (cmView) {
+    pinCmFocus()
+  } else if (selectedLanguage.value === 'mermaid' && mermaidRenderRef.value) {
+    mermaidRenderRef.value.focus()
+  } else {
+    staticRef.value?.focus()
+  }
+  // 兜底：万一焦点没落进块里（元素不可聚焦），别让抑制旗留到下一次真正的聚焦
+  window.setTimeout(() => {
+    suppressReopen = false
+  }, 0)
+}
+
+function openList(): void {
+  listOpen.value = true
+  const current = pickerQuery.value.trim().toLowerCase()
+  const at = pickerItems.value.findIndex((item) => item.value.toLowerCase() === current)
+  activeIndex.value = at >= 0 ? at : 0
+  void nextTick(() => {
+    positionPicker()
+    scrollActiveIntoView()
+  })
+}
+
+function scrollActiveIntoView(): void {
+  const el = document.getElementById(optionId(activeIndex.value))
+  el?.scrollIntoView({ block: 'nearest' })
+}
+
+function onPickerInput(e: Event): void {
+  pickerQuery.value = (e.target as HTMLInputElement).value
+  listOpen.value = true
+  activeIndex.value = 0
+  void nextTick(positionPicker)
+}
+
+/** 点进输入框时全选：想换语言直接打字覆盖，不用先删掉旧名字 */
+function onPickerInputFocus(e: Event): void {
+  ;(e.target as HTMLInputElement).select()
+}
+
+/**
+ * 应用一个语言名（`''` = 清空成"无语言"）。
+ *
+ * 这里才写 `language` 属性：**原样**保存用户输入的名字（含别名与未内置语言），
+ * 序列化侧 `codeBlock.ts` 逐字写回围栏 ⇒ `getMarkdown()` 能读回 ```zig / ```ts。
+ * 未内置的名字只是没有高亮包（loadLanguage 会 reconfigure 成空扩展 = 纯文本），不报错。
+ */
+function applyLanguageChoice(raw: string): void {
+  const name = normalizeLanguageName(raw)
+  const changed = name !== explicitLanguage.value || detectedLanguage.value !== null
+  detectedLanguage.value = null
+  explicitLanguage.value = name
+  // 清空 = 用户明确要"无语言"：本次会话内不再让自动识别把它猜回来。
+  // （重新打开文档时，空围栏按定义仍会被自动识别 —— 那正是需求 ④ 的行为。）
+  detectSuppressed = name === ''
+  keepOpenOnFocusLoss = true
+  if (changed) props.updateAttributes({ language: name })
+  pickerQuery.value = name === PLAIN_TEXT_LANGUAGE ? '' : name
+  listOpen.value = false
+  const refocusInput = document.activeElement === pickerInputRef.value
+  void nextTick(() => {
+    keepOpenOnFocusLoss = false
+    positionPicker()
+    if (refocusInput) pickerInputRef.value?.focus()
+  })
+}
+
+function clearLanguage(): void {
+  applyLanguageChoice('')
+}
+
+/**
+ * 浮层键盘（combobox 口径）：
+ *   * ↑/↓ 打开列表并移动选中项；Enter/Space 打开列表或应用当前项；
+ *   * Esc 关闭并把焦点还给代码区（需求点名）；
+ *   * Tab 不拦截 —— 浏览器把焦点移走，`onBlockFocusOut` 负责收起。
+ * 输入过滤走 `onPickerInput`（每敲一下就把列表切到"过滤结果"）。
+ */
+function onPickerKeydown(e: KeyboardEvent): void {
+  if (e.key === 'Escape') {
+    e.preventDefault()
+    e.stopPropagation()
+    closePicker()
+    focusCodeArea()
+    return
+  }
+  if (e.key === 'Tab') return
+  if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+    e.preventDefault()
+    e.stopPropagation()
+    if (!listOpen.value) {
+      openList()
+      return
+    }
+    const n = pickerItems.value.length
+    if (!n) return
+    const delta = e.key === 'ArrowDown' ? 1 : -1
+    activeIndex.value = (activeIndex.value + delta + n) % n
+    scrollActiveIntoView()
+    return
+  }
+  if (e.key === 'Home' || e.key === 'End') {
+    if (!listOpen.value || !pickerItems.value.length) return
+    e.preventDefault()
+    e.stopPropagation()
+    activeIndex.value = e.key === 'Home' ? 0 : pickerItems.value.length - 1
+    scrollActiveIntoView()
+    return
+  }
+  if (e.key === 'Enter' || e.key === ' ') {
+    e.preventDefault()
+    e.stopPropagation()
+    if (!listOpen.value) {
+      openList()
+      return
+    }
+    const item = pickerItems.value[activeIndex.value]
+    if (item) applyLanguageChoice(item.value)
+    else if (pickerQuery.value.trim()) applyLanguageChoice(pickerQuery.value)
+  }
+}
+
 onMounted(() => {
   // 视口观察（代码块虚拟化）：两个分支都要观察 —— 它决定的是「这个块该不该挂 CM」。
   // 观察根用默认视口（祖先裁剪由 IntersectionObserver 自己处理，分屏下也准）。
   const el = blockEl()
   if (el) {
+    // 语言浮层：焦点进/出本块（CM / mermaid 预览按钮 / 静态区）时开关。
+    // 用原生监听而不是模板上的 @focusin：NodeViewWrapper 的 render 只透传它自己那几项 attr，
+    // 事件能不能落到根节点取决于 Tiptap 版本；原生监听不依赖那层实现。
+    el.addEventListener('focusin', onBlockFocusIn)
+    el.addEventListener('focusout', onBlockFocusOut)
+    el.addEventListener('pointerdown', onBlockPointerDown, true)
     stopMountWatch = watchCodeBlockMount(el, (near) => {
       if (near) {
         // 回到视口附近：马上挂（并撤销可能正在倒计时的卸载）
@@ -989,6 +1350,9 @@ onMounted(() => {
           clearTimeout(unmountDelayTimer)
           unmountDelayTimer = null
         }
+        // 块第一次露面之前先把语言判好（识别只影响显示，不写回文档）：
+        // 这样 mermaid 块不会先闪一帧源码、ts 块不会先闪一帧纯文本。
+        runDetect()
         nearViewport.value = true
         return
       }
@@ -1001,6 +1365,7 @@ onMounted(() => {
     })
   } else {
     // 理论上不会发生（模板根节点必然挂出来）；真发生就当作「在视口内」，不能把块卡成静态
+    runDetect()
     nearViewport.value = true
   }
   props.editor.on('selectionUpdate', refreshSelectionInside)
@@ -1027,6 +1392,15 @@ onBeforeUnmount(() => {
     unregisterCodeBlockHandle(handle)
     handleRegistered = false
   }
+  const el = blockEl()
+  if (el) {
+    el.removeEventListener('focusin', onBlockFocusIn)
+    el.removeEventListener('focusout', onBlockFocusOut)
+    el.removeEventListener('pointerdown', onBlockPointerDown, true)
+  }
+  closePicker()
+  if (detectTimer) clearTimeout(detectTimer)
+  detectTimer = null
   props.editor.off('selectionUpdate', refreshSelectionInside)
   stopMountWatch?.()
   stopMountWatch = null
@@ -1182,26 +1556,17 @@ function commitMermaid(): void {
 </script>
 
 <template>
-  <node-view-wrapper ref="blockRef" class="code-block-wrapper">
-    <div class="code-block-header" data-cb-header>
-      <span class="code-block-lang-label">{{ selectedLanguage }}</span>
-      <!-- P3 内存第一刀：**静态态不渲染那个 16 项的 `<select>`**。
-           实测 1500 块的文档里，光是这一项就是 24,000 个元素 + 24,000 个文本节点，外加
-           Chromium 给每个 `<option>` 建的内部 shadow DOM（`Performance.getMetrics` 的 Nodes
-           里约 14 万）—— 是这台"内存账"上最大的一笔。屏幕上看得到的块**永远**是挂载态
-           （观察器有 600px 提前量），所以静态态的 select 谁也看不到。
-           换成同几何的 span 占位（同一套 class / box 模型、只是去掉箭头与光标）⇒ 块高与
-           挂载态一致，滚动不跳。mermaid 块没有 CM，必须一直留着 select（否则没法切回代码）。 -->
-      <select v-if="showLangSelect" v-model="selectedLanguage" class="code-block-select">
-        <option v-for="lang in LANGUAGES" :key="lang" :value="lang">{{ lang }}</option>
-      </select>
-      <span v-else class="code-block-select code-block-select-static" aria-hidden="true">{{
-        selectedLanguage
-      }}</span>
-    </div>
-
+  <!-- 代码块外壳。**没有顶栏**（用户口径：那一行连同语言徽标一起取消）：
+       未聚焦时这里只有代码正文，块高 = 代码区高。语言选择器是聚焦才挂出来的浮层，
+       见模板末尾的 .cb-lang-picker（fixed 定位、不在文档流里、不改变块高）。 -->
+  <node-view-wrapper
+    ref="blockRef"
+    class="code-block-wrapper"
+    :data-cb-language="selectedLanguage"
+    :data-cb-language-explicit="explicitLanguage || null"
+  >
     <!-- Mermaid 图表模式 -->
-    <div v-if="selectedLanguage === 'mermaid'" class="mermaid-block">
+    <div v-if="selectedLanguage === 'mermaid'" ref="mermaidBlockRef" class="mermaid-block">
       <!-- 预览本体是 <button>，不是 <div @click>：它是"打开源码编辑"这个动作
            （审计 §8 P2「纯鼠标交互」）。样式在 overlays.css 里把按钮默认外观全部抹掉，
            键盘用户 Tab 得到它、Enter/Space 就能进源码编辑。 -->
@@ -1240,10 +1605,13 @@ function commitMermaid(): void {
 
     <!-- 代码块虚拟化的**静态态**（F 项 / O2）：没有轮到挂 CM 的块只渲染等宽文本 + 行号，
          不建 CodeMirror 实例。点一下就激活（下一拍挂 CM 并把光标交给它）。
-         `minHeight` 是卸载时记下的挂载态高度 —— 没有它，滚动进/出边距会跳（风险 R3）。 -->
+         `minHeight` 是卸载时记下的挂载态高度 —— 没有它，滚动进/出边距会跳（风险 R3）。
+         `tabindex="-1"`：Esc 关闭语言浮层时要把焦点还回代码区（不可 Tab 到，不改变观感）。 -->
     <pre
       v-else-if="!cmMounted"
+      ref="staticRef"
       class="cb-static"
+      tabindex="-1"
       :style="staticMinHeight ? { minHeight: staticMinHeight + 'px' } : null"
       :data-cb-static="'1'"
       @mousedown.stop="activateFromStatic"
@@ -1272,5 +1640,95 @@ function commitMermaid(): void {
       @pointerup.stop
       @dblclick.stop
     />
+
+    <!-- ─── 语言浮层（聚焦才出现；`.cb-lang-picker` 是 fixed 定位，不占布局）──────────
+         为什么放在代码区**之后**：Tab 顺序按 DOM 走。浮层在 CM 之后，用户从代码区按 Tab
+         正好落到这个输入框；若放在前面，Tab 会跨过它直接跑到块外。
+         v-if（不是 v-show）：未聚焦时 DOM 里**没有**这个节点 —— 验收要求"没有可见的语言条"，
+         同时也避免 1500 个块各留一份输入框。
+         mousedown/pointerdown/click/keydown 全部 .stop：浮层虽然长在 NodeView 里，
+         但它不是正文，不能让 PM 把焦点/选区抢回编辑器根节点。 -->
+    <div
+      v-if="pickerOpen"
+      ref="pickerRef"
+      class="cb-lang-picker"
+      :style="pickerStyle"
+      data-cb-lang-picker
+      @mousedown.stop
+      @pointerdown.stop
+      @click.stop
+      @dblclick.stop
+      @keydown.stop
+    >
+      <div class="cb-lang-row">
+        <input
+          ref="pickerInputRef"
+          class="cb-lang-input"
+          type="text"
+          role="combobox"
+          autocomplete="off"
+          spellcheck="false"
+          data-cb-lang-input
+          :value="pickerQuery"
+          :placeholder="$t('editor.codeLanguagePlaceholder')"
+          :aria-label="$t('editor.codeLanguage')"
+          :aria-expanded="listOpen ? 'true' : 'false'"
+          :aria-controls="pickerListId"
+          :aria-autocomplete="'list'"
+          :aria-activedescendant="
+            listOpen && pickerItems.length ? optionId(activeIndex) : undefined
+          "
+          @input="onPickerInput"
+          @keydown="onPickerKeydown"
+          @focus="onPickerInputFocus"
+        />
+        <!-- 清空 = 写回 `language: ''`（裸围栏 / 无语言纯文本），不是"选 text" -->
+        <button
+          v-if="showClearButton"
+          type="button"
+          class="cb-lang-clear"
+          data-cb-lang-clear
+          :aria-label="$t('editor.codeLanguageClear')"
+          :title="$t('editor.codeLanguageClear')"
+          @mousedown.prevent
+          @click="clearLanguage"
+        >
+          ×
+        </button>
+      </div>
+      <!-- 当前语言没有内置高亮包时，浮层里明确标注（弱化的提示文字，不是报错） -->
+      <p v-if="languageUnsupported" class="cb-lang-note" data-cb-lang-note>
+        {{ $t('editor.codeLanguageUnsupported') }}
+      </p>
+      <ul
+        v-if="listOpen"
+        :id="pickerListId"
+        class="cb-lang-list"
+        role="listbox"
+        :aria-label="$t('editor.codeLanguage')"
+        data-cb-lang-list
+      >
+        <li
+          v-for="(item, i) in pickerItems"
+          :id="optionId(i)"
+          :key="item.value + (item.custom ? ':custom' : '')"
+          class="cb-lang-option"
+          role="option"
+          :aria-selected="i === activeIndex ? 'true' : 'false'"
+          :data-cb-lang-option="item.value"
+          :data-cb-lang-custom="item.custom ? '1' : null"
+          @mousedown.prevent
+          @click="applyLanguageChoice(item.value)"
+          @mouseenter="activeIndex = i"
+        >
+          <span class="cb-lang-option-name">{{
+            item.custom ? $t('editor.codeLanguageUse', { name: item.label }) : item.label
+          }}</span>
+          <span v-if="item.note" class="cb-lang-option-note">{{
+            $t('editor.codeLanguageUnsupported')
+          }}</span>
+        </li>
+      </ul>
+    </div>
   </node-view-wrapper>
 </template>

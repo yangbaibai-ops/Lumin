@@ -229,7 +229,12 @@
     "syncScrollOn": "Синхронная прокрутка включена (нажмите, чтобы выключить)",
     "syncScrollOff": "Включить синхронную прокрутку",
     "imageFromFile": "Выбрать изображение…",
-    "imageFromUrl": "Ввести URL изображения…"
+    "imageFromUrl": "Ввести URL изображения…",
+    "codeLanguage": "Язык кода (введите для фильтра)",
+    "codeLanguagePlaceholder": "Введите язык…",
+    "codeLanguageUnsupported": "Подсветка не встроена",
+    "codeLanguageUse": "Использовать «{name}»",
+    "codeLanguageClear": "Очистить язык (простой текст)"
   },
   "settings": {
     "title": "Настройки",

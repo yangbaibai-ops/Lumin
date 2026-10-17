@@ -549,7 +549,10 @@ li.md-reveal {
   background: var(--edge);
 }
 
-/* ── 代码块 NodeView（CodeMirror 嵌入）── */
+/* ── 代码块 NodeView（CodeMirror 嵌入）──
+   用户口径（本轮）：**取消常驻顶栏**（语言名那一行连同选择器占位一起删掉）。
+   未聚焦时块里只有代码正文 ⇒ 块高 = 代码区高；语言选择器是聚焦才出现的浮层
+   （`.cb-lang-picker`，fixed 定位、不占布局、不改变块高）。 */
 .code-block-wrapper {
   margin: 0.8em 0;
   border: 1px solid var(--edge);
@@ -557,48 +560,126 @@ li.md-reveal {
   background: var(--code-bg);
   overflow: hidden;
 }
-.code-block-header {
+
+/* 语言浮层（combobox）。
+   ⚠️ `position: fixed` 不是随手选的：父级 `.code-block-wrapper` 必须 `overflow: hidden`
+   （layoutNoOverflow 守着它），absolute 子元素会被裁掉 —— 新建的一行高代码块会把下拉列表
+   整块裁没。fixed 既能脱离文档流（块高不变），又不受祖先 overflow 裁剪，还能按视口夹住。
+   这里没有 transform/filter 祖先，所以 fixed 的包含块就是视口（见 CodeBlockView.positionPicker）。 */
+.cb-lang-picker {
+  position: fixed;
+  z-index: var(--z-popover);
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  /* 浮层宽度上限：240px 是"能放下 typescript/sequenceDiagram"的就近常量；
+     `calc(100vw - 16px)` 是窄窗口兜底（8px 边距 ×2），绝不让浮层撑破页面。 */
+  width: max-content;
+  min-width: 0;
+  max-width: min(240px, calc(100vw - 16px));
+  padding: 5px;
+  border: 1px solid var(--edge);
+  border-radius: 9px;
+  background: var(--elevate);
+  box-shadow: var(--shadow-2);
+  color: var(--ink);
+  font-size: 12px;
+}
+.cb-lang-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+.cb-lang-input {
+  box-sizing: border-box;
+  flex: 1 1 auto;
+  width: 100%;
+  min-width: 0;
+  padding: 4px 7px;
+  border: 1px solid var(--edge-strong);
+  border-radius: 6px;
+  background: var(--panel);
+  color: var(--ink);
+  font-family: var(--font-mono);
+  /* 12px：比正文代码（12.5px）略小，浮层不喧宾夺主 */
+  font-size: 12px;
+  outline: none;
+}
+/* outline:none 的焦点环在这里（focusVisibility 守卫要求能说出焦点提示在哪） */
+.cb-lang-input:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+/* 清空按钮：`×` 只是字形，语义由 aria-label/title 给（走语言包） */
+.cb-lang-clear {
+  flex: none;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: none;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--ink-2b);
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+}
+.cb-lang-clear:hover {
+  background: var(--panel-2);
+  color: var(--ink);
+}
+.cb-lang-clear:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+/* 候选列表：超过约 9 行就自己滚（浮层高度受限，不把页面推高）。
+   ⚠️ 选择器带 `.cb-lang-picker` 前缀是必须的：浮层长在 .md-preview 里，
+   `.md-preview ul`（margin 0.55em / padding-left 1.7em / list-style:disc）与
+   `.md-preview li`（margin 0.22em 0）的优先级是 (0,1,1)，只用单类名压不住 ——
+   实测列表因此被顶进 20.4px 的左内距，选项右侧的「未内置高亮」贴着浮层边缘。 */
+.cb-lang-picker .cb-lang-list {
+  margin: 0;
+  padding: 0;
+  max-height: 13.5rem;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  list-style: none;
+}
+.cb-lang-picker .cb-lang-option {
+  margin: 0;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 5px 10px;
-  background: color-mix(in srgb, var(--panel-2) 70%, transparent);
-  border-bottom: 1px solid var(--edge);
-}
-.code-block-lang-label {
-  font-size: 10.5px;
-  font-weight: 600;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--ink-2b);
-}
-.code-block-select {
-  appearance: none;
-  border: 1px solid var(--edge-strong);
-  background: var(--panel);
-  color: var(--ink-2);
-  border-radius: 6px;
-  font-size: 11.5px;
-  padding: 2px 22px 2px 8px;
-  background-image:
-    linear-gradient(45deg, transparent 50%, var(--ink-3) 50%),
-    linear-gradient(135deg, var(--ink-3) 50%, transparent 50%);
-  background-position:
-    right 11px center,
-    right 7px center;
-  background-size:
-    4px 4px,
-    4px 4px;
-  background-repeat: no-repeat;
+  gap: 8px;
+  padding: 3px 7px;
+  border-radius: 5px;
   cursor: pointer;
+  white-space: nowrap;
 }
-/* 静态态那个「同几何占位」（P3）：与 .code-block-select 完全同一套盒模型
-   （border / padding / font-size 都继承上面那条），只去掉下拉箭头与手型光标 ——
-   这样「静态 ↔ 挂载」切换时头部高度不变，滚动不会跳。 */
-.code-block-select-static {
-  background-image: none;
-  cursor: default;
-  user-select: none;
+.cb-lang-picker .cb-lang-option[aria-selected='true'] {
+  background: var(--accent-soft);
+}
+/* 长语言名（`sequenceDiagram` / 用户输入的超长名字）在浮层里省略，不撑宽 */
+.cb-lang-picker .cb-lang-option-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* 「未内置高亮」：弱化的次要文字（`--ink-2b` 在三个主题下都过正文对比度门槛） */
+.cb-lang-note,
+.cb-lang-option-note {
+  margin: 0;
+  color: var(--ink-2b);
+  font-size: 10.5px;
+  line-height: 1.4;
+}
+.cb-lang-note {
+  padding: 0 2px;
+}
+.cb-lang-picker .cb-lang-option-note {
+  flex: none;
 }
 .cm-editor-container .cm-editor {
   background: transparent;

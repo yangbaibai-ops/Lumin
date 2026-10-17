@@ -229,7 +229,12 @@
     "syncScrollOn": "Sync scrolling is on (click to turn off)",
     "syncScrollOff": "Turn on sync scrolling",
     "imageFromFile": "Choose a local image…",
-    "imageFromUrl": "Enter an image URL…"
+    "imageFromUrl": "Enter an image URL…",
+    "codeLanguage": "Code language (type to filter)",
+    "codeLanguagePlaceholder": "Type a language…",
+    "codeLanguageUnsupported": "No built-in highlighting",
+    "codeLanguageUse": "Use “{name}”",
+    "codeLanguageClear": "Clear language (plain text)"
   },
   "settings": {
     "title": "Settings",

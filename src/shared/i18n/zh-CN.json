@@ -229,7 +229,12 @@
     "syncScrollOn": "同步滚动已开启（点击关闭）",
     "syncScrollOff": "开启同步滚动",
     "imageFromFile": "选择本地图片…",
-    "imageFromUrl": "输入图片 URL…"
+    "imageFromUrl": "输入图片 URL…",
+    "codeLanguage": "代码语言（可输入）",
+    "codeLanguagePlaceholder": "输入语言名…",
+    "codeLanguageUnsupported": "未内置高亮",
+    "codeLanguageUse": "使用“{name}”",
+    "codeLanguageClear": "清除语言（纯文本）"
   },
   "settings": {
     "title": "设置",
