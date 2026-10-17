@@ -2506,15 +2506,20 @@ export const ImageSourceUi = Extension.create({
           /**
            * 落定**之后**再复验一小段（≤250ms 的 rAF）：显形源码收起这类布局变化常常晚一帧才落地，
            * 届时这一份带就指错了位置（实测算下来整段左移 307px）。复验不过 ⇒ 走原 math 重画。
+           *
+           * ⚠️ 第一百三十九轮（真鼠标实测：落定后 +16ms 就变回 math）：复验的**基线只能取闭包里的
+           * `prev`**，不能每帧再从 `data-sel-band-live` 读 —— 下面成功分支里的 `clearTempPaint`（6d3e1e6）
+           * 会把这三个诊断属性一起删掉 ⇒ 第二帧读到的是空串、与新指纹恒不相等 ⇒ 复验**必然**判"布局变了"
+           * 并 `paintBands(..., 'math')`（实测 `verify-fail cur=` 空串）。基线与落定那帧的指纹同一份，
+           * 判据语义不变：只有**这一份几何真的变了**才退回 math。
            */
           const until = Date.now() + 250
           const verify = (): void => {
             if (!view.dom?.isConnected || boxDrag != null) return
             const s2 = view.state.selection
             if (s2.from !== s.from || s2.to !== s.to) return
-            const cur = view.dom.getAttribute('data-sel-band-live') || ''
             paintSelBands(view, s.from, s.to, 'all')
-            if ((view.dom.getAttribute('data-sel-band-live') || '') !== cur) {
+            if ((view.dom.getAttribute('data-sel-band-live') || '') !== prev) {
               paintSelBands(view, s.from, s.to, 'math')
               return
             }
