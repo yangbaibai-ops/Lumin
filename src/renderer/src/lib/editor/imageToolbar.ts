@@ -2028,13 +2028,14 @@ export const ImageSourceUi = Extension.create({
       }
     }
 
-    const clearSelBands = (view?: EditorView | null): void => {
-      setSelOwn(view, null)
-      if (selBand) {
-        selBand.remove()
-        selBand = null
-      }
-      setSelNative(view, false)
+    /**
+     * ─── 第一百三十八轮：**只清"临时绘制"**（不动 `.sel-band`、不动 `data-sel-own`）──────────
+     * 把 `clearSelBands` 里"删临时 Highlight + 删临时诊断属性"这两类动作抽出来，供**落定守卫**单独调用：
+     * 松手时若区间未变，我们要**保留 live 画的那一层**（用户口径：松手后必须和按住时一模一样），
+     * 但**临时高亮 `lumin-img-drag` 必须清掉**（否则 `I4` 判"临时绘制泄漏"——上一轮正是漏了这一步，
+     * 矩阵里冒出 26 条 `I4 BAD`）。`clearSelBands` 内部**仍然调用它**，既有语义完全不变。
+     */
+    const clearTempPaint = (view?: EditorView | null): void => {
       try {
         const h = (CSS as unknown as { highlights?: Map<string, unknown> }).highlights
         h?.delete(LIVE_SEL_HIGHLIGHT)
@@ -2049,6 +2050,15 @@ export const ImageSourceUi = Extension.create({
       } catch {
         /* 视图已销毁：忽略 */
       }
+    }
+    const clearSelBands = (view?: EditorView | null): void => {
+      setSelOwn(view, null)
+      if (selBand) {
+        selBand.remove()
+        selBand = null
+      }
+      setSelNative(view, false)
+      clearTempPaint(view)
     }
 
     /**
