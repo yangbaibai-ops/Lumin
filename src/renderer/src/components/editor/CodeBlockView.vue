@@ -1112,7 +1112,22 @@ async function renderMermaid(): Promise<void> {
       `mmd-block-${Date.now()}`,
       props.node.textContent || ''
     )
+    /**
+     * 图表尺寸（用户报障：mermaid 代码块里的图被缩成小小一团、字号只有正常的三分之一）。
+     *
+     * mermaid 默认输出 `width="100%" style="max-width: <自然宽度>px"`；而容器
+     * `.mermaid-render` 是 `display:flex` 的 `<button>`（宽度 100%、居中）⇒ 这个
+     * `max-width` 会把图锁在"自然宽度"以内，flex 项还会进一步按 min-content 压缩，
+     * 于是长流程图（6 个节点的横向链路）被等比缩小、整块挤在左边。
+     *
+     * 处理：摘掉 mermaid 写在 `<svg>` 上的内联 `style`（里面只有 `max-width`），
+     * 宽度强制 `100%`、删掉固定 `height` 交给 `viewBox` 自适应 —— 图随容器宽度
+     * 等比放大，与「期望的全宽大图」一致。导出侧 `export.ts` 用同一口径。
+     */
     mermaidSvg.value = svg
+      .replace(/(<svg[^>]*?)\sstyle="[^"]*"/i, '$1')
+      .replace(/(<svg[^>]*?)\swidth="[^"]*"/i, '$1 width="100%"')
+      .replace(/(<svg[^>]*?)\sheight="[^"]*"/i, '$1')
   } catch {
     mermaidSvg.value = `<pre><code>${escapeHtml(props.node.textContent || '')}</code></pre>`
   }

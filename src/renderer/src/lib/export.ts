@@ -58,7 +58,7 @@ body.export-body {
 .md-preview ul[data-type="taskList"] input[type="checkbox"] { accent-color: var(--accent); }
 .md-preview .katex { font-size: 1.06em; }
 .md-mermaid { display: flex; justify-content: center; margin: .8em 0; }
-.md-mermaid svg { max-width: 100%; height: auto; }
+.md-mermaid svg { display: block; flex: 1 1 auto; width: 100%; min-width: 0; max-width: 100%; height: auto; }
 @media print {
   .md-preview { padding: 0; max-width: none; }
   .md-preview pre { white-space: pre-wrap; }
@@ -120,7 +120,15 @@ export async function renderMermaidInHtml(html: string, theme: EffectiveTheme): 
         )
         const wrap = doc.createElement('div')
         wrap.className = 'md-mermaid'
+        /**
+         * 与编辑器侧同一口径（见 CodeBlockView 的 renderMermaid）：摘掉 mermaid 写在
+         * `<svg>` 上的内联 `style`（里面只有 `max-width`），宽度强制 100%、删掉固定
+         * `height` 交给 viewBox 自适应 —— 否则导出的图会被锁在自然宽度内、被压小。
+         */
         wrap.innerHTML = svg
+          .replace(/(<svg[^>]*?)\sstyle="[^"]*"/i, '$1')
+          .replace(/(<svg[^>]*?)\swidth="[^"]*"/i, '$1 width="100%"')
+          .replace(/(<svg[^>]*?)\sheight="[^"]*"/i, '$1')
         pre.replaceWith(wrap)
       } catch {
         /* 渲染失败保留源码 */

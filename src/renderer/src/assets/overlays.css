@@ -745,6 +745,13 @@ aside:focus-within [data-sidebar-filetools],
   background: var(--block-hover);
 }
 .mermaid-block .mermaid-render svg {
+  display: block;
+  /* 图表随容器宽度等比放大（配合 CodeBlockView 里摘掉 mermaid 的内联 max-width）。
+     `min-width: 0` 是给 flex 项的：默认 `min-width: auto` 会按 min-content 压缩，
+     长流程图因此被缩小、字挤成一团。 */
+  flex: 1 1 auto;
+  width: 100%;
+  min-width: 0;
   max-width: 100%;
   height: auto;
 }
