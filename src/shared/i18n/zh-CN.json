@@ -225,6 +225,8 @@
     "imageZoom": "缩放到 {pct}%",
     "imagePick": "选择图片",
     "editSource": "点击编辑源码",
+    "mermaidSource": "Mermaid 源码（下方实时预览）",
+    "mermaidPreviewError": "语法有误：下方仍是上一张渲染成功的图",
     "splitDividerTitle": "拖动调整左右比例（双击复位）",
     "syncScrollOn": "同步滚动已开启（点击关闭）",
     "syncScrollOff": "开启同步滚动",

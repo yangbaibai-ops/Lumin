@@ -55,6 +55,8 @@ import {
   STATIC_HIGHLIGHT
 } from '../../lib/editor/codeBlockMountPolicy'
 import { registerStaticParser, staticHighlightHtml } from '../../lib/editor/staticHighlight'
+import { nextMermaidPreviewState, normalizeMermaidSvg } from '../../lib/export'
+import type { MermaidConfig } from 'mermaid'
 import {
   PLAIN_TEXT_LANGUAGE,
   detectLanguage,
@@ -780,6 +782,11 @@ watch(selectedLanguage, async (lang) => {
     // 切到 mermaid：CM 宿主节点即将被 v-else 卸载，先彻底拆掉（含焦点封堵、
     // 观察器恢复），并退出源码态——否则再切回 mermaid 会看到残留的 textarea
     editingMermaid.value = false
+    mermaidPreviewSeq++
+    if (mermaidPreviewTimer) {
+      clearTimeout(mermaidPreviewTimer)
+      mermaidPreviewTimer = null
+    }
     teardownCm()
     // 容器是刚挂出来的：先挂视口门（门已开时它是空操作，紧接着的 render 才是要的）
     void nextTick(() => {
@@ -1211,8 +1218,10 @@ function focusCodeArea(): void {
   suppressReopen = true
   if (cmView) {
     pinCmFocus()
-  } else if (selectedLanguage.value === 'mermaid' && mermaidRenderRef.value) {
-    mermaidRenderRef.value.focus()
+  } else if (selectedLanguage.value === 'mermaid') {
+    // 编辑态焦点归源码框，显示态归预览按钮
+    const target = mermaidInputRef.value ?? mermaidRenderRef.value
+    target?.focus()
   } else {
     staticRef.value?.focus()
   }
@@ -1412,17 +1421,32 @@ onBeforeUnmount(() => {
   pinTimer = null
   if (extSyncTimer) clearTimeout(extSyncTimer)
   extSyncTimer = null
+  if (mermaidPreviewTimer) clearTimeout(mermaidPreviewTimer)
+  mermaidPreviewTimer = null
 })
 
 // ─── Mermaid 渲染 ───
 const mermaidSvg = ref('')
 const editingMermaid = ref(false)
 const mermaidSource = ref('')
+/** 编辑态下半段的实时预览图（**只缩不放**口径与显示态完全一致，见 normalizeMermaidSvg） */
+const mermaidEditSvg = ref('')
+/** 最近一次实时预览渲染失败（上一张成功的图仍在 mermaidEditSvg 里） */
+const mermaidPreviewError = ref(false)
 const mermaidInputRef = ref<HTMLTextAreaElement | null>(null)
 const mermaidRenderRef = ref<HTMLElement | null>(null)
-/** 进入源码态时沿用的图表高度（px）：让两种形态的块高一致 */
-const mermaidEditHeight = ref<number | null>(null)
 let mermaidRenderTimer: ReturnType<typeof setTimeout> | null = null
+let mermaidPreviewTimer: ReturnType<typeof setTimeout> | null = null
+/**
+ * 编辑态实时预览的防抖（ms）。
+ *
+ * 为什么是这个区间：mermaid.render 是一次完整布局 + 文本测量，逐键调用会把连续输入拖卡；
+ * 300ms 又是「打字停下就能看到结果」的感知阈值内（验收口径 ≤400ms 更新）。
+ * 显示态那 400ms 是节点内容变化（提交/外部改动）的防抖，两件事别合并。
+ */
+const MERMAID_PREVIEW_DEBOUNCE_MS = 300
+/** 预览渲染序号：异步渲染回来时只采用**最新一次**的结果（防止乱序覆盖） */
+let mermaidPreviewSeq = 0
 
 /**
  * ─── 视口门（清单 §2.G / O1）────────────────────────────────────────────────
@@ -1471,39 +1495,105 @@ function armMermaidObserver(): void {
   mermaidObserver.observe(el)
 }
 
+/** mermaid 的初始化参数：显示态与编辑态预览必须完全一致（否则同一份代码两种观感） */
+function mermaidConfig(): MermaidConfig {
+  return {
+    startOnLoad: false,
+    securityLevel: 'strict',
+    theme: settings.resolveTheme() === 'dark' ? 'dark' : 'default',
+    fontFamily: 'ui-sans-serif, system-ui, sans-serif'
+  }
+}
+
+/**
+ * mermaid 渲染失败时会在 body 里留下临时节点（id 为传入的 id / `d+id`）。
+ * 不清理的话每错一次就多一坨隐藏 DOM，导出与截图也会被它污染。
+ */
+function removeMermaidTempNode(id: string): void {
+  document.getElementById(id)?.remove()
+  document.getElementById(`d${id}`)?.remove()
+}
+
 async function renderMermaid(): Promise<void> {
   // 视口门未开就不 import —— 观察器放行时会自己回来调一次
   if (!mermaidNearViewport.value) return
   try {
     const mod = await import('mermaid')
-    mod.default.initialize({
-      startOnLoad: false,
-      securityLevel: 'strict',
-      theme: settings.resolveTheme() === 'dark' ? 'dark' : 'default',
-      fontFamily: 'ui-sans-serif, system-ui, sans-serif'
-    })
+    mod.default.initialize(mermaidConfig())
     const { svg } = await mod.default.render(
       `mmd-block-${Date.now()}`,
       props.node.textContent || ''
     )
     /**
-     * 图表尺寸（用户报障：mermaid 代码块里的图被缩成小小一团、字号只有正常的三分之一）。
+     * 图表尺寸（用户报障：竖向图被放大到一屏一个框）。
      *
-     * mermaid 默认输出 `width="100%" style="max-width: <自然宽度>px"`；而容器
-     * `.mermaid-render` 是 `display:flex` 的 `<button>`（宽度 100%、居中）⇒ 这个
-     * `max-width` 会把图锁在"自然宽度"以内，flex 项还会进一步按 min-content 压缩，
-     * 于是长流程图（6 个节点的横向链路）被等比缩小、整块挤在左边。
-     *
-     * 处理：摘掉 mermaid 写在 `<svg>` 上的内联 `style`（里面只有 `max-width`），
-     * 宽度强制 `100%`、删掉固定 `height` 交给 `viewBox` 自适应 —— 图随容器宽度
-     * 等比放大，与「期望的全宽大图」一致。导出侧 `export.ts` 用同一口径。
+     * 口径是**只缩不放**，实现只有一处：`normalizeMermaidSvg()`（lib/export.ts）。
+     * 它把 viewBox 的自然宽高写回 `<svg width height>` 并摘掉内联 style；缩放交给
+     * overlays.css 里 `max-width:100%`：
+     *   * 宽扁图（自然宽 > 容器）⇒ 等比缩到容器宽，不会被裁；
+     *   * 竖图（自然宽 < 容器）⇒ 保持自然尺寸，不再 width:100% 拉满一屏。
+     * 导出侧 `renderMermaidInHtml` 调的是同一个函数，两边不可能漂。
      */
-    mermaidSvg.value = svg
-      .replace(/(<svg[^>]*?)\sstyle="[^"]*"/i, '$1')
-      .replace(/(<svg[^>]*?)\swidth="[^"]*"/i, '$1 width="100%"')
-      .replace(/(<svg[^>]*?)\sheight="[^"]*"/i, '$1')
+    mermaidSvg.value = normalizeMermaidSvg(svg)
   } catch {
     mermaidSvg.value = `<pre><code>${escapeHtml(props.node.textContent || '')}</code></pre>`
+  }
+}
+
+/**
+ * 编辑态实时预览：只渲染 textarea 里的 `mermaidSource`。
+ *
+ * 失败语义（用户口径）：**保留上一张成功的图** + 在预览上方加一行弱化提示，
+ * 绝不把整块替换成错误文本 —— 否则「改坏一个括号」就会让整张图消失，没法边改边看。
+ */
+async function renderMermaidPreview(): Promise<void> {
+  if (!editingMermaid.value) return
+  const seq = ++mermaidPreviewSeq
+  const source = mermaidSource.value
+  const id = `mmd-edit-${Date.now()}-${seq}`
+  try {
+    const mod = await import('mermaid')
+    mod.default.initialize(mermaidConfig())
+    const { svg } = await mod.default.render(id, source)
+    // 异步回来的旧结果直接丢弃（用户可能已经退出编辑 / 又敲了新内容）
+    if (seq !== mermaidPreviewSeq || !editingMermaid.value) return
+    const next = nextMermaidPreviewState(
+      { svg: mermaidEditSvg.value, error: mermaidPreviewError.value },
+      normalizeMermaidSvg(svg)
+    )
+    mermaidEditSvg.value = next.svg
+    mermaidPreviewError.value = next.error
+  } catch {
+    removeMermaidTempNode(id)
+    if (seq !== mermaidPreviewSeq || !editingMermaid.value) return
+    const next = nextMermaidPreviewState(
+      { svg: mermaidEditSvg.value, error: mermaidPreviewError.value },
+      null
+    )
+    mermaidEditSvg.value = next.svg
+    mermaidPreviewError.value = next.error
+  }
+}
+
+/** 输入即排一次防抖预览（300ms）；退出编辑时由 commitMermaid 清掉 */
+function onMermaidSourceInput(): void {
+  if (mermaidPreviewTimer) clearTimeout(mermaidPreviewTimer)
+  mermaidPreviewTimer = setTimeout(() => {
+    mermaidPreviewTimer = null
+    void renderMermaidPreview()
+  }, MERMAID_PREVIEW_DEBOUNCE_MS)
+}
+
+/**
+ * 编辑态键盘：`Esc` / `Ctrl(Cmd)+Enter` = **提交并退出**（与点块外同一语义）。
+ * 都要 stopPropagation：否则 Esc 会被 PM / 语言浮层当成"关闭"，Ctrl+Enter 会被
+ * 当成块外快捷键。
+ */
+function onMermaidSourceKeydown(e: KeyboardEvent): void {
+  if (e.key === 'Escape' || ((e.ctrlKey || e.metaKey) && e.key === 'Enter')) {
+    e.preventDefault()
+    e.stopPropagation()
+    commitMermaid()
   }
 }
 
@@ -1517,29 +1607,49 @@ watch(
 )
 
 function startMermaidEdit(): void {
+  // 点得动它 = 这块已经在视口里：先放行视口门。否则编辑态把预览按钮卸载后，观察器
+  // 还盯着那个**已脱离文档**的旧节点，永远等不到相交回调 —— 退出编辑态会一直停在源码占位。
+  openMermaidGate()
   mermaidSource.value = props.node.textContent
-  // 先量图表高度，让源码态沿用同一高度：一是切换形态时不再有布局跳动，
-  // 二是避免「折叠时块变矮/变高」把鼠标下的其它图表挪走——那样紧随其后的
-  // mouseup 会落到别的元素上，浏览器只在两者的共同祖先上补一个 click，
-  // 于是「点另一个图表」这一次点击被吞掉，看起来像没反应。
-  mermaidEditHeight.value = mermaidRenderRef.value
-    ? Math.round(mermaidRenderRef.value.getBoundingClientRect().height)
-    : null
+  // 预览从显示态那张图起步（成功渲染过就是同一条 SVG），进入编辑态不会先闪一个空位。
+  // 显示态是错误兜底（<pre>）时它为空，下面会立刻渲染一次。
+  mermaidEditSvg.value = /^\s*<svg/i.test(mermaidSvg.value) ? mermaidSvg.value : ''
+  mermaidPreviewError.value = false
+  mermaidPreviewSeq++
   editingMermaid.value = true
-  // 进入源码态后必须把焦点交给 textarea：点击时 textarea 尚不存在（v-else 刚切换），
-  // 浏览器不会给它焦点，PM 的 click 处理器又会把焦点交给 PM 根节点——于是
-  // 「点击块外」不会产生任何 blur，commitMermaid 永不执行，块卡在源码态，
-  // 表现为「要再点进去一次、再失焦一次才回到图表」。
+  /**
+   * 进入编辑态后必须把焦点交给 textarea：点击时 textarea 尚不存在（v-if 刚切换），
+   * 浏览器不会给它焦点，PM 的 click 处理器又会把焦点交给 PM 根节点 —— 于是
+   * 「点击块外」不会产生任何 blur，commitMermaid 永不执行，块卡在编辑态，
+   * 表现为「要再点进去一次、再失焦一次才回到图表」。
+   */
   void nextTick(() => {
     const el = mermaidInputRef.value
     if (!el) return
     el.focus()
     el.setSelectionRange(el.value.length, el.value.length)
   })
+  // 没有可沿用的图（首次渲染失败 / 还没轮到视口门）：立刻按当前源码渲染一张，
+  // 保证「代码在上、预览在下」一进来就是两段都在（防抖只用于后续输入）。
+  if (!mermaidEditSvg.value) void renderMermaidPreview()
 }
 
+/**
+ * 提交并退出编辑态（点块外 / Esc / Ctrl+Enter 三条路都走这里）。
+ *
+ * * **未改动 ⇒ 一个事务都不发**：只切回显示形态（`getMarkdown()` 与撤销栈都不受影响）；
+ * * 有改动 ⇒ 写回 `code` 节点的文本（与原来一致），再按新内容重渲染显示态。
+ * `editingMermaid` 守卫防止「Esc 提交后 textarea 卸载又触发一次 blur」造成重复事务。
+ */
 function commitMermaid(): void {
+  if (!editingMermaid.value) return
   editingMermaid.value = false
+  mermaidPreviewSeq++
+  if (mermaidPreviewTimer) {
+    clearTimeout(mermaidPreviewTimer)
+    mermaidPreviewTimer = null
+  }
+  mermaidPreviewError.value = false
   const source = mermaidSource.value
   if (source === props.node.textContent) return
   const getPos = props.getPos as () => number
@@ -1567,11 +1677,44 @@ function commitMermaid(): void {
   >
     <!-- Mermaid 图表模式 -->
     <div v-if="selectedLanguage === 'mermaid'" ref="mermaidBlockRef" class="mermaid-block">
-      <!-- 预览本体是 <button>，不是 <div @click>：它是"打开源码编辑"这个动作
+      <!-- ─── 编辑态：同一块内**代码在上、实时预览在下**（用户口径：不要再二选一）───
+           两段同时可见、块高随内容自然增长；预览不是按钮（它只负责显示），
+           提交靠「点块外 / Esc / Ctrl(Cmd)+Enter」三条路，全部走 commitMermaid()。 -->
+      <div v-if="editingMermaid" class="mermaid-edit" data-mermaid-edit>
+        <!-- 上段：源码编辑框（多行、可 Tab、插入符即焦点提示） -->
+        <textarea
+          ref="mermaidInputRef"
+          v-model="mermaidSource"
+          class="mermaid-source-input"
+          data-mermaid-source
+          spellcheck="false"
+          :aria-label="$t('editor.mermaidSource')"
+          @input="onMermaidSourceInput"
+          @keydown="onMermaidSourceKeydown"
+          @blur="commitMermaid"
+        />
+        <!-- 渲染失败时只加这一行弱化提示；图仍是上一张成功的那张（不换成错误文本） -->
+        <p
+          v-if="mermaidPreviewError"
+          class="mermaid-preview-error"
+          role="status"
+          data-mermaid-error
+        >
+          {{ $t('editor.mermaidPreviewError') }}
+        </p>
+        <!-- 下段：实时预览。mousedown.prevent 让点/滚预览区不夺走 textarea 的焦点，
+             于是"看预览"不会被当成"点块外"而误提交。 -->
+        <div class="mermaid-preview" data-mermaid-preview @mousedown.prevent>
+          <!-- eslint-disable-next-line vue/no-v-html -- mermaidEditSvg 是 mermaid.render() 在 securityLevel:'strict' 下生成的 SVG（见 mermaidConfig），不是文档原文 -->
+          <div v-if="mermaidEditSvg" class="mermaid-svg-host" v-html="mermaidEditSvg" />
+          <pre v-else class="mermaid-placeholder"><code>{{ mermaidSource }}</code></pre>
+        </div>
+      </div>
+      <!-- 显示态：预览本体是 <button>，不是 <div @click>：它是"打开源码编辑"这个动作
            （审计 §8 P2「纯鼠标交互」）。样式在 overlays.css 里把按钮默认外观全部抹掉，
            键盘用户 Tab 得到它、Enter/Space 就能进源码编辑。 -->
       <button
-        v-if="!editingMermaid"
+        v-else
         ref="mermaidRenderRef"
         type="button"
         class="mermaid-render"
@@ -1586,21 +1729,11 @@ function commitMermaid(): void {
           v-if="!mermaidSvg"
           class="mermaid-placeholder"
         ><code>{{ props.node.textContent }}</code></pre>
-        <!-- 宿主 div 必须显式给宽度（overlays.css 的 .mermaid-svg-host）：
-             `.mermaid-render` 是 display:flex，不写宽度的 div 是 shrink-to-fit 的 flex 项，
-             svg 的 width:100% 会回退成固有宽（实测 1598 → 300px，只占容器 32%）。 -->
+        <!-- 宿主 div 不写宽度（overlays.css 的 .mermaid-svg-host）：它是 flex 项，
+             宽度 = SVG 的自然宽（只缩不放），居中由 .mermaid-render 的 justify-content 负责。 -->
         <!-- eslint-disable-next-line vue/no-v-html -- mermaidSvg 是 mermaid.render() 在 securityLevel:'strict' 下生成的 SVG（见本文件 mermaid 初始化），不是文档原文 -->
         <div v-else class="mermaid-svg-host" v-html="mermaidSvg" />
       </button>
-      <textarea
-        v-else
-        ref="mermaidInputRef"
-        v-model="mermaidSource"
-        class="mermaid-source-input"
-        :style="mermaidEditHeight ? { minHeight: mermaidEditHeight + 'px' } : null"
-        spellcheck="false"
-        @blur="commitMermaid"
-      />
     </div>
 
     <!-- 代码块虚拟化的**静态态**（F 项 / O2）：没有轮到挂 CM 的块只渲染等宽文本 + 行号，

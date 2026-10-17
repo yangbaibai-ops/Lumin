@@ -1,6 +1,81 @@
 // ─── 导出服务（渲染层）：getHTML 输出 + 独立排版 CSS + Mermaid 后处理 ──────
 import type { EffectiveTheme } from '../../../shared/types'
 
+/**
+ * ─── Mermaid SVG 尺寸口径（编辑器与导出**共用这一处**）────────────────────────
+ *
+ * mermaid 默认输出 `width="100%"` + 内联 `style="max-width: <自然宽>px"`。历史上为了
+ * 「长流程图被压成小图」把 width 改成 100%、删掉 height —— 于是**竖图被放大**：一个
+ * 自然宽 346 的纵向流程图会被拉到 584（1000px 窗口下实测），块高从 590 涨到 996，
+ * 屏幕上只剩一个方框（用户报障）。
+ *
+ * 现在**只缩不放**：
+ *   * 把 `viewBox` 的 `w`/`h` 写成 `<svg>` 的 `width`/`height` 属性（`viewBox` 保留），
+ *     SVG 于是有确定的**内在尺寸与宽高比**；
+ *   * 缩放完全交给 CSS 的 `max-width: 100%`：容器更窄 ⇒ 等比缩小（宽图照旧铺满），
+ *     容器更宽 ⇒ 保持自然尺寸（竖图不再被拉满一屏）；
+ *   * 内联 `style` 仍摘掉（里面只有 max-width，会把图锁在自然宽以内；而且缩放口径
+ *     只能有一处，写在 CSS 里）。
+ *
+ * 导出侧 `renderMermaidInHtml` 与编辑器 `CodeBlockView.renderMermaid` 都走这个函数，
+ * 保证「编辑器里看到的尺寸 = 导出件里的尺寸」。
+ */
+export function normalizeMermaidSvg(svg: string): string {
+  const open = /<svg\b[^>]*>/i.exec(svg)
+  if (!open) return svg
+  // ⚠️ 只改开头这个 <svg …> 标签；内容里的 <style>/<svg> 子元素必须原样保留
+  let tag = open[0].replace(/\sstyle="[^"]*"/i, '')
+  const natural = parseViewBoxSize(/\sviewBox="([^"]*)"/i.exec(tag)?.[1])
+  if (natural) {
+    tag = setSvgAttr(tag, 'width', String(natural.width))
+    tag = setSvgAttr(tag, 'height', String(natural.height))
+  } else {
+    // 没有 viewBox（mermaid 正常都会给）：保守兜底 —— 百分比宽度必须去掉，
+    // 它就是「把图拉满容器」的那个源头；固定 height 也去掉，交给内在比例。
+    tag = tag.replace(/\swidth="[^"]*%"/i, '').replace(/\sheight="[^"]*"/i, '')
+  }
+  return svg.replace(open[0], tag)
+}
+
+/** `viewBox="minX minY w h"` 的后两项（自然宽高）；解析不出来返回 null */
+function parseViewBoxSize(viewBox: string | undefined): { width: number; height: number } | null {
+  if (!viewBox) return null
+  const parts = viewBox
+    .trim()
+    .split(/[\s,]+/)
+    .map(Number)
+  if (parts.length !== 4 || parts.some((n) => !Number.isFinite(n))) return null
+  const [, , width, height] = parts
+  return width > 0 && height > 0 ? { width, height } : null
+}
+
+/** 覆盖（没有就补上）`<svg>` 开标签上的一个属性 */
+function setSvgAttr(tag: string, name: 'width' | 'height', value: string): string {
+  const re = new RegExp(`\\s${name}="[^"]*"`, 'i')
+  if (re.test(tag)) return tag.replace(re, ` ${name}="${value}"`)
+  return tag.replace(/<svg\b/i, `<svg ${name}="${value}"`)
+}
+
+/**
+ * 编辑态实时预览的状态迁移：**渲染失败时保留上一张成功的图**（只多一行错误提示），
+ * 绝不把整块换成错误文本。
+ *
+ * `rendered === null` = 本次渲染抛错；此时 svg 原样返回、error 置真。成功则整体替换。
+ * 抽成纯函数是为了单测能直接钉住「失败保留旧图」这条语义（组件里只负责调用）。
+ */
+export interface MermaidPreviewState {
+  svg: string
+  error: boolean
+}
+
+export function nextMermaidPreviewState(
+  prev: MermaidPreviewState,
+  rendered: string | null
+): MermaidPreviewState {
+  if (rendered === null) return { svg: prev.svg, error: true }
+  return { svg: rendered, error: false }
+}
+
 // 导出件的色值必须与**浅色主题令牌逐条一致**（审计 §8 P2「token 未覆盖的硬编码色」）：
 // 这里是一份独立 HTML 的排版 CSS，拿不到运行时的 CSS 变量，只能写死字面量 —— 但"写死"不等于
 // "自己另立一套"：`--code-bg` 曾漂成 #f4f5f8（令牌 #f1f2f5）、`--panel-2` 漂成 #f0f1f4（令牌 #e9ebf0），
@@ -58,12 +133,14 @@ body.export-body {
 .md-preview ul[data-type="taskList"] input[type="checkbox"] { accent-color: var(--accent); }
 .md-preview .katex { font-size: 1.06em; }
 .md-mermaid { display: flex; justify-content: center; margin: .8em 0; }
-/* Same geometry contract as the editor (overlays.css .mermaid-block .mermaid-render):
-   flex container > host div > svg, each level 100% wide; the svg scales only via viewBox.
-   The host layer is required: an auto-width flex item is shrink-to-fit, so a bare
-   width:100% on the svg falls back to its intrinsic width (measured: 32% of the container). */
-.md-mermaid .mermaid-svg-host { flex: 1 1 auto; min-width: 0; width: 100%; }
-.md-mermaid svg { display: block; width: 100%; min-width: 0; max-width: 100%; height: auto; }
+/* Same geometry contract as the editor (overlays.css .mermaid-block): **shrink only, never grow**.
+   normalizeMermaidSvg() writes the viewBox's natural w/h onto the svg, so:
+     * narrower container -> max-width:100% scales it down proportionally (wide flowcharts still fit);
+     * wider container   -> it keeps its natural size (tall diagrams are no longer blown up).
+   The host stays shrink-to-fit: it is the flex item, and an explicit width:100% here would make
+   every svg grow to the full column again (the bug this contract fixes). */
+.md-mermaid .mermaid-svg-host { min-width: 0; max-width: 100%; }
+.md-mermaid svg { display: block; max-width: 100%; height: auto; }
 @media print {
   .md-preview { padding: 0; max-width: none; }
   .md-preview pre { white-space: pre-wrap; }
@@ -126,16 +203,12 @@ export async function renderMermaidInHtml(html: string, theme: EffectiveTheme): 
         const wrap = doc.createElement('div')
         wrap.className = 'md-mermaid'
         /**
-         * 与编辑器侧同一口径（见 CodeBlockView 的 renderMermaid）：摘掉 mermaid 写在
-         * `<svg>` 上的内联 `style`（里面只有 `max-width`），宽度强制 100%、删掉固定
-         * `height` 交给 viewBox 自适应 —— 否则导出的图会被锁在自然宽度内、被压小。
-         * 外面再包一层 `.mermaid-svg-host`，与编辑器（模板里的宿主 div）**结构一致**，
-         * 两边都靠「宿主撑满 → svg width:100% → viewBox 等比」得到同一观感。
+         * 与编辑器侧同一口径（`normalizeMermaidSvg`，本文件顶部）：把 viewBox 的自然宽高写回
+         * `width`/`height` 属性并摘掉内联 style，缩放交给上面 CSS 的 `max-width:100%` ——
+         * 窄容器等比缩小、宽容器保持自然尺寸（竖图不再被拉满整页）。
+         * 外面再包一层 `.mermaid-svg-host`，与编辑器（模板里的宿主 div）**结构一致**。
          */
-        wrap.innerHTML = `<div class="mermaid-svg-host">${svg
-          .replace(/(<svg[^>]*?)\sstyle="[^"]*"/i, '$1')
-          .replace(/(<svg[^>]*?)\swidth="[^"]*"/i, '$1 width="100%"')
-          .replace(/(<svg[^>]*?)\sheight="[^"]*"/i, '$1')}</div>`
+        wrap.innerHTML = `<div class="mermaid-svg-host">${normalizeMermaidSvg(svg)}</div>`
         pre.replaceWith(wrap)
       } catch {
         /* 渲染失败保留源码 */

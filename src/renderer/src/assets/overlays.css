@@ -825,26 +825,54 @@ aside:focus-within [data-sidebar-filetools],
 .mermaid-block .mermaid-render:hover {
   background: var(--block-hover);
 }
-/* v-html 的宿主（`<div class="mermaid-svg-host">`，见 CodeBlockView 模板）。
-   `.mermaid-render` 是 display:flex 的 <button>，所以**宿主才是 flex 项**，不是 svg：
-   不写宽度的宿主是 shrink-to-fit 的 auto 宽，svg 的 width:100% 便没有确定参照，
-   回退成 viewBox 的固有宽（实测 1598 的图渲染成 300px ⇒ 只占容器 32%、字 3px）。
-   撑满按钮内容盒（926 - 2×16 = 894）后，svg 的 width:100% 才有参照。 */
-.mermaid-block .mermaid-render > .mermaid-svg-host {
-  flex: 1 1 auto;
-  min-width: 0;
-  width: 100%;
-}
-.mermaid-block .mermaid-render svg {
-  display: block;
-  /* 图表随容器宽度等比放大（配合 CodeBlockView 里摘掉 mermaid 的内联 max-width）。
-     `min-width: 0` 是给 flex 项的：默认 `min-width: auto` 会按 min-content 压缩，
-     长流程图因此被缩小、字挤成一团。 */
-  flex: 1 1 auto;
-  width: 100%;
+/* v-html 的宿主（`<div class="mermaid-svg-host">`，见 CodeBlockView 模板）。**只缩不放**：
+   SVG 的 width/height 已被 normalizeMermaidSvg() 写成 viewBox 的自然尺寸，于是
+     * 宿主**不写 width**：它是 flex 项，宽度按 SVG 的自然宽 shrink-to-fit ——
+       竖图（实测自然宽 346）就只占 346，不再被 width:100% 拉满整屏；
+     * `min-width: 0` 允许它在窄窗口下收缩（默认 min-width:auto 会按 min-content 顶住容器）；
+     * `max-width: 100%` 兜住"宽图不许溢出内容列"。
+   历史上这里写的是 flex:1 1 auto + width:100%（f787c60「铺满容器」），那正是竖图被放大的
+   原因：flex-grow 把宿主撑满、svg 的 width:100% 再把它等比放大到一屏一个框。 */
+.mermaid-block .mermaid-render > .mermaid-svg-host,
+.mermaid-block .mermaid-edit .mermaid-preview > .mermaid-svg-host {
   min-width: 0;
   max-width: 100%;
+}
+.mermaid-block .mermaid-render svg,
+.mermaid-block .mermaid-edit .mermaid-preview svg {
+  display: block;
+  /* 缩放只由 max-width 决定：容器更窄 ⇒ 等比缩小（宽流程图照旧铺满可用宽度）；
+     容器更宽 ⇒ 保持 width/height 属性里的自然尺寸（竖图不再一屏一个框）。
+     不要加 width:100%：那等于无条件放大，正是本次要修的行为。 */
+  max-width: 100%;
   height: auto;
+}
+
+/* 编辑态：同一块内**代码在上、实时预览在下**（用户口径：不能有代码没图）。
+   纵向 flex + 两段都参与布局 ⇒ 不会互相覆盖；块高随内容自然增长，不做等高锁定。 */
+.mermaid-block .mermaid-edit {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+/* 源码 / 预览之间的一条弱化分界（不是硬边框，跟主题走） */
+.mermaid-block .mermaid-edit > .mermaid-source-input {
+  border-bottom: 1px solid var(--edge);
+}
+.mermaid-block .mermaid-preview {
+  display: flex;
+  justify-content: center;
+  min-width: 0;
+  max-width: 100%;
+  padding: 14px 16px;
+}
+/* 实时预览渲染失败：只在预览上方加一行弱化提示，上一张成功的图仍留在下面 */
+.mermaid-block .mermaid-preview-error {
+  margin: 0;
+  padding: 8px 16px;
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--ink-3);
 }
 /* 视口门未放行时的源码占位：只是「还没轮到渲染」的等价物，视觉上按源码块排
    （等宽、淡色、可选择），不抢注意力。它让块**保持有高度**，放行后换图不会有跳动。 */
@@ -860,6 +888,9 @@ aside:focus-within [data-sidebar-filetools],
 }
 .mermaid-source-input {
   width: 100%;
+  /* 100% 宽 + 左右 16px 内边距：不按 border-box 算会横向多出 32px（被外壳裁掉，
+     但内容区实际比块宽，滚动/换行都不准） */
+  box-sizing: border-box;
   min-height: 130px;
   border: none;
   background: transparent;

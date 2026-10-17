@@ -102,20 +102,26 @@ test('代码块长行只在框内滚动：CodeMirror / 静态态 / 普通 pre �
   )
 })
 
-test('mermaid 宿主仍可收缩、svg 仍铺满容器（f787c60 的修复不许回退）', () => {
+test('mermaid 尺寸「只缩不放」：宿主可收缩、svg 只靠 max-width 缩小（无 width:100%）', () => {
   assert.match(
     overlays,
-    /\.mermaid-block \.mermaid-render > \.mermaid-svg-host\s*\{[^}]*min-width:\s*0/,
+    /\.mermaid-block \.mermaid-render > \.mermaid-svg-host[\s\S]{0,200}?min-width:\s*0/,
     '.mermaid-svg-host 缺 min-width:0：窄窗口下图表宿主会按 SVG 固有宽度撑宽'
   )
   assert.match(
     overlays,
-    /\.mermaid-block \.mermaid-render svg\s*\{[^}]*width:\s*100%/,
-    'mermaid svg 不再 width:100%：f787c60「图表铺满容器」的效果会被回退'
+    /\.mermaid-block \.mermaid-render svg[\s\S]{0,600}?max-width:\s*100%/,
+    'mermaid svg 缺 max-width:100%：长图表可能溢出内容列（79357ba 的无横向溢出）'
   )
-  assert.match(
-    overlays,
-    /\.mermaid-block \.mermaid-render svg\s*\{[^}]*max-width:\s*100%/,
-    'mermaid svg 缺 max-width:100%：长图表可能溢出内容列'
+  // 尺寸口径（2026 用户报障）：width:100% 会把竖图无条件放大到一屏一个框。
+  // 只对**声明**做断言，注释里出现 width:100% 是说明文字（先剥注释）。
+  const block = /\.mermaid-block \.mermaid-render svg[^{}]*\{([^}]*)\}/.exec(overlays)
+  assert.ok(block, '找不到 .mermaid-block .mermaid-render svg 规则')
+  const decls = block[1].replace(/\/\*[\s\S]*?\*\//g, '')
+  assert.doesNotMatch(
+    decls,
+    /(?:^|;)\s*width\s*:/,
+    'mermaid svg 不许再写 width:100%：竖图会被放大到一屏一个框（只缩不放）'
   )
+  assert.match(decls, /height:\s*auto/, 'svg 必须 height:auto 才能按内在比例等比缩放')
 })
