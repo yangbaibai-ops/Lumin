@@ -858,10 +858,16 @@ onBeforeUnmount(() => {
          「大纲放在编辑区右侧」）下右侧多一块 `OutlinePanel`，内核本身照旧 flex-1。
          内核的定位语义（`data-editor-kernel`）没变，所以查找栏/各套件的锚点选择器不受影响。 -->
     <div class="flex min-h-0 flex-1">
+      <!-- `min-w-0` 不是装饰：内核是 `.flex.min-h-0.flex-1`（横排）里的 flex 项，
+           默认 `min-width: auto` 会按**内容 min-content** 兜底 —— 而正文列的 min-content
+           被表格（每个单元格 `min-width: 96px`，10 列 ≈ 1208）撑到 1320，于是窄窗口下
+           内核拒绝收缩、右缘被 `#app { overflow: hidden }` 裁掉（表格/代码块/正文"被挤到
+           应用外侧"）。给 0 后宽度交给 flex，表格改为在 `.tableWrapper` 内部横向滚动，
+           整页不出现横向溢出。见布局回归 `layout-no-horizontal-overflow`。 -->
       <div
         ref="kernelRef"
         data-editor-kernel
-        class="relative flex min-h-0 flex-1"
+        class="relative flex min-h-0 min-w-0 flex-1"
         :class="{ 'view-restoring': viewRestoring }"
         @scroll.capture="onSplitScroll"
       >
