@@ -58,7 +58,12 @@ body.export-body {
 .md-preview ul[data-type="taskList"] input[type="checkbox"] { accent-color: var(--accent); }
 .md-preview .katex { font-size: 1.06em; }
 .md-mermaid { display: flex; justify-content: center; margin: .8em 0; }
-.md-mermaid svg { display: block; flex: 1 1 auto; width: 100%; min-width: 0; max-width: 100%; height: auto; }
+/* Same geometry contract as the editor (overlays.css .mermaid-block .mermaid-render):
+   flex container > host div > svg, each level 100% wide; the svg scales only via viewBox.
+   The host layer is required: an auto-width flex item is shrink-to-fit, so a bare
+   width:100% on the svg falls back to its intrinsic width (measured: 32% of the container). */
+.md-mermaid .mermaid-svg-host { flex: 1 1 auto; min-width: 0; width: 100%; }
+.md-mermaid svg { display: block; width: 100%; min-width: 0; max-width: 100%; height: auto; }
 @media print {
   .md-preview { padding: 0; max-width: none; }
   .md-preview pre { white-space: pre-wrap; }
@@ -124,11 +129,13 @@ export async function renderMermaidInHtml(html: string, theme: EffectiveTheme): 
          * 与编辑器侧同一口径（见 CodeBlockView 的 renderMermaid）：摘掉 mermaid 写在
          * `<svg>` 上的内联 `style`（里面只有 `max-width`），宽度强制 100%、删掉固定
          * `height` 交给 viewBox 自适应 —— 否则导出的图会被锁在自然宽度内、被压小。
+         * 外面再包一层 `.mermaid-svg-host`，与编辑器（模板里的宿主 div）**结构一致**，
+         * 两边都靠「宿主撑满 → svg width:100% → viewBox 等比」得到同一观感。
          */
-        wrap.innerHTML = svg
+        wrap.innerHTML = `<div class="mermaid-svg-host">${svg
           .replace(/(<svg[^>]*?)\sstyle="[^"]*"/i, '$1')
           .replace(/(<svg[^>]*?)\swidth="[^"]*"/i, '$1 width="100%"')
-          .replace(/(<svg[^>]*?)\sheight="[^"]*"/i, '$1')
+          .replace(/(<svg[^>]*?)\sheight="[^"]*"/i, '$1')}</div>`
         pre.replaceWith(wrap)
       } catch {
         /* 渲染失败保留源码 */

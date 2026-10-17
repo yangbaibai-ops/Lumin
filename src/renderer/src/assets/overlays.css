@@ -744,6 +744,16 @@ aside:focus-within [data-sidebar-filetools],
 .mermaid-block .mermaid-render:hover {
   background: var(--block-hover);
 }
+/* v-html 的宿主（`<div class="mermaid-svg-host">`，见 CodeBlockView 模板）。
+   `.mermaid-render` 是 display:flex 的 <button>，所以**宿主才是 flex 项**，不是 svg：
+   不写宽度的宿主是 shrink-to-fit 的 auto 宽，svg 的 width:100% 便没有确定参照，
+   回退成 viewBox 的固有宽（实测 1598 的图渲染成 300px ⇒ 只占容器 32%、字 3px）。
+   撑满按钮内容盒（926 - 2×16 = 894）后，svg 的 width:100% 才有参照。 */
+.mermaid-block .mermaid-render > .mermaid-svg-host {
+  flex: 1 1 auto;
+  min-width: 0;
+  width: 100%;
+}
 .mermaid-block .mermaid-render svg {
   display: block;
   /* 图表随容器宽度等比放大（配合 CodeBlockView 里摘掉 mermaid 的内联 max-width）。

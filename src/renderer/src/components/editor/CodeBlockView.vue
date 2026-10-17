@@ -1221,8 +1221,11 @@ function commitMermaid(): void {
           v-if="!mermaidSvg"
           class="mermaid-placeholder"
         ><code>{{ props.node.textContent }}</code></pre>
+        <!-- 宿主 div 必须显式给宽度（overlays.css 的 .mermaid-svg-host）：
+             `.mermaid-render` 是 display:flex，不写宽度的 div 是 shrink-to-fit 的 flex 项，
+             svg 的 width:100% 会回退成固有宽（实测 1598 → 300px，只占容器 32%）。 -->
         <!-- eslint-disable-next-line vue/no-v-html -- mermaidSvg 是 mermaid.render() 在 securityLevel:'strict' 下生成的 SVG（见本文件 mermaid 初始化），不是文档原文 -->
-        <div v-else v-html="mermaidSvg" />
+        <div v-else class="mermaid-svg-host" v-html="mermaidSvg" />
       </button>
       <textarea
         v-else
