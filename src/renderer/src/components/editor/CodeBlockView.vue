@@ -50,7 +50,11 @@ import {
   type CodeBlockHandle
 } from '../../lib/editor/codeBlockViews'
 import {
+  CODE_UNMOUNT_DELAY_MS,
+  caretOffsetInBlock,
+  msUntilScrollIdle,
   shouldMountCm,
+  staticFallbackMinHeight,
   watchCodeBlockMount,
   STATIC_HIGHLIGHT
 } from '../../lib/editor/codeBlockMountPolicy'
@@ -277,7 +281,26 @@ function releaseHasFocusGuard(pmView: object): void {
 const cmTheme = EditorView.theme({
   '&': { color: 'var(--ink)', backgroundColor: 'transparent', fontSize: '12.5px' },
   '.cm-scroller': { fontFamily: 'var(--font-mono)', lineHeight: '1.65' },
-  '.cm-content': { caretColor: 'var(--accent)', padding: '10px 0 14px' },
+  '.cm-content': {
+    caretColor: 'var(--accent)',
+    padding: '10px 0 14px'
+    /**
+     * ⚠️ **不换行**这条**不能写在这里**（tag `codeblock-mount-no-jump`）：
+     *
+     * CM 6 的 `HeightOracle` 会用 `.cm-content` 的**计算后 `white-space`** 判断行是否折行
+     * （命中 `wrappingWhiteSpace` ⇒ `lineWrapping`）。它只测量视口里那几十行，**没量到的行
+     * 按"不折行"估高** —— 一边滚一边把新测到的折行补进高度表，实测同一个 150 行的块
+     * 2365 → 3332 → 3311 → 3881 一直长高，滚一下就把下面的内容顶走（用户报障的跳变引擎）。
+     *
+     * 而 `.cm-content` 会被 prosemirror.css 里的一条规则命中：
+     *   `.ProseMirror [contenteditable="false"] [contenteditable="true"] { white-space: pre-wrap }`
+     * （特异性 0,3,0）—— 代码块的 NodeView 外壳为了把 CM 隔离成"编辑岛"正好被标成
+     * `contenteditable="false"`（见 initCm），于是这条规则精准命中了 CM 的内容区。
+     * `EditorView.theme()` 生成的 `.ͼX .cm-content` 只有 (0,2,0)，**压不住**它（实测过）。
+     * 所以真正的声明在 overlays.css 的 `.md-preview .code-block-wrapper .cm-editor-container
+     * .cm-content`（0,4,0），由 tests/codeBlockMountHeight.test.mjs 钉住。
+     */
+  },
   '.cm-cursor, .cm-dropCursor': { borderLeftColor: 'var(--accent)' },
   '&.cm-focused .cm-selectionBackground, .cm-selectionBackground, .cm-content ::selection': {
     backgroundColor: 'var(--sel)'
@@ -410,6 +433,30 @@ function focusCmAtEnd(): boolean {
   return true
 }
 
+/**
+ * 挂载后把光标放到**用户点的那个位置**（PM 选区在本节点内的偏移），并且**不许滚动页面**。
+ *
+ * 为什么不能沿用 `focusCmAtEnd()`（tag `codeblock-mount-no-jump`，用户报障的第二条路径）：
+ * 它把光标扔到块尾并带 `scrollIntoView: true`。点/激活一个 150 行的代码块 ⇒ CM 立刻要
+ * 把"文档末尾"滚进视口，而它滚的是**所有可滚动祖先**（含 `.editor-scroll`）⇒ 整页被拽到
+ * 块底：屏幕上就是"mermaid 不见了，直接跳到大代码块中间那段 `<RouterLink v-for=…>`"。
+ * 实测那条路一次写 `scrollTop` 就能挪 700+px（见 tmp/cbj-click.json）。
+ *
+ * `scrollIntoView: false` 是**必要的**：光标落在用户刚点的位置，本来就在视口里，
+ * 没有任何理由去滚动。块尾定位仍由 `focusCmAtEnd()` 负责（键盘拦截那条路要用）。
+ */
+function focusCmAtSelection(): void {
+  if (!cmView) return
+  const getPos = props.getPos as (() => number) | undefined
+  const at = typeof getPos === 'function' ? getPos() : undefined
+  const offset =
+    typeof at === 'number'
+      ? caretOffsetInBlock(at, props.editor.state.selection.from, cmView.state.doc.length)
+      : 0
+  cmView.dispatch({ selection: { anchor: offset }, scrollIntoView: false })
+  pinCmFocus()
+}
+
 // ── 实例注册（PM 键盘拦截按节点位置查找本组件，见 codeBlockViews.ts）──
 const handle: CodeBlockHandle = {
   getPos: () => {
@@ -430,6 +477,11 @@ const handle: CodeBlockHandle = {
 //     记高度 → 切静态态 → 注销句柄；少了第 1 步会丢字符，少了最后一步会让键盘路由命中
 //     「没有 CM 的块」。
 //   * **高度必须固定**：切静态态前记下当前高度当 `minHeight`，否则滚动会跳（风险 R3）。
+//     记的是 **CM 自己（`.cm-editor`）的高度**，不是 NodeView 外壳的高度 —— 外壳那 2px
+//     边框不属于代码区，记进去会让静态态每次都高出 2px（挂/卸一次抖 2px）。
+//     两态真正的"不跳"靠的是**排版契约**（静态态与 CM 的 padding / 行高 / 不换行逐项相同，
+//     见 overlays.css 的 `.md-preview pre.cb-static` 与下面 cmTheme 的 `.cm-content`），
+//     `minHeight` 只是兜底：契约成立时它恒等于静态态的自然高度，等于没设。
 //   * 静态态**不是**不可编辑：它只是「还没轮到挂 CM」，点一下（或选区落进来）就挂上。
 const blockRef = ref<unknown>(null)
 const nearViewport = ref(false)
@@ -445,8 +497,8 @@ const staticMinHeight = ref<number | null>(null)
 const wasMounted = ref(false)
 let stopMountWatch: (() => void) | null = null
 let handleRegistered = false
-/** 离开视口附近后延迟多久才真卸（P3.2：来回滚一点不该反复挂/卸） */
-const UNMOUNT_DELAY_MS = 500
+/** 离开视口附近后延迟多久才真卸（P3.2：来回滚一点不该反复挂/卸）—— 常量在策略模块里，单测钉着 */
+const UNMOUNT_DELAY_MS = CODE_UNMOUNT_DELAY_MS
 let unmountDelayTimer: ReturnType<typeof setTimeout> | null = null
 
 /**
@@ -516,11 +568,31 @@ const staticHtml = computed(() => {
   return staticHighlightHtml(text, resolveLanguageKey(selectedLanguage.value))
 })
 
+/**
+ * 挂载态容器在第一帧的 `min-height`（= 切换前静态 `<pre>` 的高度）。
+ *
+ * 为什么需要：`cmMounted` 一翻真，模板立刻把 `<pre>` 换成**空的** `.cm-editor-container`，
+ * 而 CodeMirror 实例要等 `await nextTick()` 之后才建。万一浏览器在这两步之间出了一帧，
+ * 块高就塌成 2px（只剩外壳的上下边框）—— 下方内容"抽一下"。实测抓到过这一帧
+ * （`tmp/cb-jump-ticks.json` 里有 wrapper h=2 的采样）。静态态的 min-height 兜的是
+ * 反方向（挂载→静态），这里补上正方向。
+ */
+const containerMinHeight = ref<number | null>(null)
+
 /** 挂载：建 CM（复用既有创建函数）+ 应用语言（+ 选区在本块内时把光标交给 CM） */
 async function mountCmForVirtualization(): Promise<void> {
   if (cmView || selectedLanguage.value === 'mermaid') return
+  /**
+   * 先读下静态态**现在**的高度，塞给即将出现的容器当 min-height（见 containerMinHeight）。
+   * 必须在 `await nextTick()` **之前**读：下一拍 `<pre>` 就已经被换成容器了。
+   */
+  const staticH = staticRef.value ? Math.round(staticRef.value.getBoundingClientRect().height) : 0
+  containerMinHeight.value = staticH > 0 ? staticH : null
   await nextTick()
-  if (cmView || !blockEl()) return
+  if (cmView || !blockEl()) {
+    containerMinHeight.value = null
+    return
+  }
   staticMinHeight.value = null
   initCm()
   wasMounted.value = true
@@ -529,18 +601,28 @@ async function mountCmForVirtualization(): Promise<void> {
     handleRegistered = true
   }
   void loadLanguage(selectedLanguage.value)
-  // 选区已经在这个块里（例如键盘路径刚把光标交给本块）⇒ 把焦点/光标移交 CM
-  if (selectionInside.value) focusCmAtEnd()
+  // 选区已经在这个块里（例如键盘路径刚把光标交给本块）⇒ 把焦点/光标移交 CM。
+  // ⚠️ 必须是 `focusCmAtSelection()`（原位、不滚）；`focusCmAtEnd()` 会把整页拽到块底。
+  if (selectionInside.value) focusCmAtSelection()
+  // CM 已经就位（它自己就是内容高度）：撤掉第一帧的兜底，此后块高完全由内容决定
+  void nextTick(() => {
+    containerMinHeight.value = null
+  })
 }
 
 /** 卸载：先落盘、再拆、记高度、注销句柄（顺序见上方注释） */
 function unmountCmForVirtualization(): void {
   if (!cmView) return
   syncToNode()
-  const el = blockEl()
-  const h = el ? Math.round(el.getBoundingClientRect().height) : 0
+  /**
+   * 记 **CM 代码区**的高度（不是 NodeView 外壳的）：外壳带 2px 边框，记进去会让静态态
+   * 每次挂/卸都高出 2px。`Math.ceil` 保证兜底值**不会低于**静态态的自然高度（宁可高
+   * 0.75px，也不能矮 —— 矮了就是内容跳一下）。
+   */
+  const h = cmView.dom.getBoundingClientRect().height
   teardownCm()
-  staticMinHeight.value = h > 0 ? h : null
+  staticMinHeight.value = staticFallbackMinHeight(h)
+  containerMinHeight.value = null
   if (handleRegistered) {
     unregisterCodeBlockHandle(handle)
     handleRegistered = false
@@ -1351,6 +1433,37 @@ function onPickerKeydown(e: KeyboardEvent): void {
   }
 }
 
+/**
+ * 滚动活动门：把「视口判定」的结果**延后到滚停**再落地（tag `codeblock-mount-no-jump`）。
+ *
+ * 为什么在**视口判定**这一层等，而不是在 watcher 里等 CM 创建：
+ * 模板是拿 `cmMounted` 决定渲染 `<pre>` 还是 `.cm-editor-container` 的。若只延后"建 CM"
+ * 而不延后判定，浏览器会先看到一只**空的** `.cm-editor-container`（实测 220ms 里块高 2px，
+ * 只剩外壳边框），反而制造出新的塌陷。所以在源头等：滚动期间 `nearViewport` 不动，
+ * 模板就完全不动，逐 tick 的高度与 DOM 都不变。
+ *
+ * 用户已经表态的动作（点进块 / 光标落进块）**不走这道门** —— 它们改的是 `activated` /
+ * `selectionInside`，见下面 watcher 上方注释。
+ */
+let nearTimer: ReturnType<typeof setTimeout> | null = null
+
+function scheduleNear(next: boolean): void {
+  if (nearTimer) {
+    clearTimeout(nearTimer)
+    nearTimer = null
+  }
+  const apply = (): void => {
+    nearTimer = null
+    nearViewport.value = next
+  }
+  const wait = msUntilScrollIdle(performance.now())
+  if (wait <= 0) {
+    apply()
+    return
+  }
+  nearTimer = setTimeout(apply, wait + 16)
+}
+
 onMounted(() => {
   // 视口观察（代码块虚拟化）：两个分支都要观察 —— 它决定的是「这个块该不该挂 CM」。
   // 观察根用默认视口（祖先裁剪由 IntersectionObserver 自己处理，分屏下也准）。
@@ -1372,14 +1485,14 @@ onMounted(() => {
         // 块第一次露面之前先把语言判好（识别只影响显示，不写回文档）：
         // 这样 mermaid 块不会先闪一帧源码、ts 块不会先闪一帧纯文本。
         runDetect()
-        nearViewport.value = true
+        scheduleNear(true)
         return
       }
       // 离开视口附近：**延迟 500ms 再卸**（P3.2）——来回滚一点就挂/卸会白花两次 CM 构造
       if (unmountDelayTimer) clearTimeout(unmountDelayTimer)
       unmountDelayTimer = setTimeout(() => {
         unmountDelayTimer = null
-        nearViewport.value = false
+        scheduleNear(false)
       }, UNMOUNT_DELAY_MS)
     })
   } else {
@@ -1399,7 +1512,15 @@ onMounted(() => {
   if (cmMounted.value) void mountCmForVirtualization()
 })
 
-// 挂载态变化 → 建/拆 CM。两个方向都要走各自的流程（卸载顺序见 mountCmForVirtualization 上方注释）
+/**
+ * 挂载态变化 → 建/拆 CM。两个方向都要走各自的流程（卸载顺序见 mountCmForVirtualization
+ * 上方注释）。
+ *
+ * 这里**同步**执行，不再自己等：滚动中不切换的闸门在**视口判定**那一层
+ * （`scheduleNear`，见上）—— 判定不动，`cmMounted` 就不会翻，模板也就完全不动。
+ * 而"用户点进块 / 光标落进块"直接把 `activated` / `selectionInside` 置真，走的是同一个
+ * watcher，天然免排队（不能让人点了代码块还要等滚停）。
+ */
 watch(cmMounted, (on) => {
   if (on) void mountCmForVirtualization()
   else unmountCmForVirtualization()
@@ -1425,6 +1546,10 @@ onBeforeUnmount(() => {
   stopMountWatch = null
   if (unmountDelayTimer) clearTimeout(unmountDelayTimer)
   unmountDelayTimer = null
+  if (nearTimer) {
+    clearTimeout(nearTimer)
+    nearTimer = null
+  }
   teardownCm()
   teardownMermaidObserver()
   resetPendingMermaidSwap()
@@ -2183,6 +2308,7 @@ function commitMermaid(): void {
       v-else
       ref="editorRef"
       class="cm-editor-container"
+      :style="containerMinHeight ? { minHeight: containerMinHeight + 'px' } : null"
       @keydown.capture="onCmKeydownCapture"
       @mousedown.stop="pinCmFocus"
       @mouseup.stop="pinCmFocus"

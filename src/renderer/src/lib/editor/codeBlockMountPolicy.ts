@@ -51,10 +51,113 @@ export function shouldMountCm(input: {
   return input.near || input.selectionInside || input.activated
 }
 
+/** 离开视口附近后延迟多久才真卸（P3.2）：滚动中"来回滚一点"不该反复挂/卸一次 CM */
+export const CODE_UNMOUNT_DELAY_MS = 500
+
+/**
+ * 卸载回静态态时记下的 `min-height` 兜底值（纯函数，可单测）。
+ *
+ * 语义只有一条：**宁可高一点，绝不能矮**。矮了就等于把下面的内容往上抽一下（跳变），
+ * 高了最多多一条等宽背景。所以取 `Math.ceil`，非法值（0 / NaN / 负）给 `null`（不设）。
+ *
+ * 期望值来自 **CM 自己（`.cm-editor`）的高度**，不是 NodeView 外壳的高度 ——
+ * 外壳那 2px 边框不属于代码区，记进去会让静态态每次挂/卸都高出 2px。
+ *
+ * 注：两态"不跳"靠的是排版契约（静态态与 CM 的 padding / 行高 / 不换行逐项相同，
+ * 见 overlays.css 的 `.md-preview pre.cb-static` 与 CodeBlockView 的 cmTheme），
+ * 这个兜底在契约成立时恒等于静态态的自然高度。
+ */
+export function staticFallbackMinHeight(cmHeight: number): number | null {
+  return Number.isFinite(cmHeight) && cmHeight > 0 ? Math.ceil(cmHeight) : null
+}
+
+/**
+ * 挂载 CM 时"把光标放到用户点的那个位置"的偏移（纯函数，可单测）。
+ *
+ * 入参是 PM 的节点起点 `nodePos` 与选区 `selectionFrom`：`code` 节点的**正文**
+ * 从 `nodePos + 1` 开始（`nodePos` 是开标记），所以偏移 = `selectionFrom - nodePos - 1`，
+ * 并夹在 `[0, docLength]` 里 —— 选区落在节点边界上（PM 允许 `to === nodePos + nodeSize`）
+ * 时不能抛 `RangeError`，宁可落到块尾。
+ *
+ * 为什么要有这个函数：`focusCmAtEnd()`（块尾 + `scrollIntoView: true`）用在挂载路径上，
+ * 会把整页滚到块底（用户报障："点一下 mermaid 下面那行，屏幕跳到大代码块中间"）。
+ */
+export function caretOffsetInBlock(
+  nodePos: number,
+  selectionFrom: number,
+  docLength: number
+): number {
+  if (!Number.isFinite(nodePos) || !Number.isFinite(selectionFrom)) return 0
+  const raw = Math.floor(selectionFrom - nodePos - 1)
+  return Math.min(Math.max(raw, 0), Math.max(0, docLength))
+}
+
 type MountListener = (near: boolean) => void
 
 const watchers = new Map<Element, MountListener>()
 let observer: IntersectionObserver | null = null
+
+// ─── 滚动活动门（tag `codeblock-mount-no-jump`）────────────────────────────────
+//
+// 为什么需要：两态的高度契约（静态 `<pre>` 与 CM 逐项同 padding / 同 line-height /
+// 同样不换行）已经把「挂载/卸载」的高度差压到一条水平滚动条的厚度（实测 6px：静态态量
+// 的是**全文**最长行，CM 只量当前视口渲染的那几十行）。但"切换本身"仍然是一次 DOM 重建，
+// 在滚动中发生的任何一次都是可见的抖动源。所以**滚动中一律不切换**：等滚停 180ms 再决定。
+//
+// 用户交互（点进块 / 光标落进块）**不走这道门**，见 CodeBlockView 的 urgent 判定：
+// 让人等 180ms 才拿到可编辑的代码块是不可接受的。
+
+/**
+ * 滚动停下多久之后才允许做「静态 ↔ 挂载」的切换（毫秒）。
+ *
+ * 220ms：滚轮一 tick 的间隔通常 60–120ms，所以连续滚动期间不会出现"刚好停够"的空隙；
+ * 而松手后 220ms 内就会把视口里的块挂上，人的感知仍是"滚过去就能点"。再长（>300ms）
+ * 会出现"块已经停在眼前、却还是死文本"的观感。
+ */
+export const CODE_SCROLL_IDLE_MS = 220
+
+let lastScrollAt = Number.NEGATIVE_INFINITY
+let scrollListenerInstalled = false
+
+function nowMs(): number {
+  return typeof performance !== 'undefined' && typeof performance.now === 'function'
+    ? performance.now()
+    : Date.now()
+}
+
+/** 记一次滚动（共享监听器调用；单测可直接喂时间戳） */
+export function noteScrollActivity(now: number = nowMs()): void {
+  lastScrollAt = now
+}
+
+/**
+ * 距离「滚动停下」还有多少毫秒（纯函数，`0` = 现在就停在原地）。
+ *
+ * 从来没滚动过（`lastScrollAt` 是 -Infinity）⇒ 0：首屏打开时块必须立刻挂上。
+ */
+export function msUntilScrollIdle(now: number, idleMs: number = CODE_SCROLL_IDLE_MS): number {
+  if (!Number.isFinite(lastScrollAt)) return 0
+  const left = lastScrollAt + idleMs - now
+  return left > 0 ? Math.ceil(left) : 0
+}
+
+/** 单测用：把滚动活动门复位（模块是单例，用例之间不能串味） */
+export function resetScrollActivity(): void {
+  lastScrollAt = Number.NEGATIVE_INFINITY
+}
+
+/**
+ * 装一个**共享的** document 级 scroll 监听（捕获阶段：`.editor-scroll` 不冒泡到
+ * document，只有捕获阶段收得到）。只装一次。
+ */
+function ensureScrollListener(): void {
+  if (scrollListenerInstalled || typeof document === 'undefined') return
+  scrollListenerInstalled = true
+  document.addEventListener('scroll', () => noteScrollActivity(), {
+    capture: true,
+    passive: true
+  })
+}
 
 function ensureObserver(): IntersectionObserver | null {
   if (typeof IntersectionObserver === 'undefined') return null
@@ -78,6 +181,7 @@ function ensureObserver(): IntersectionObserver | null {
  * 宁可不省这点成本，也不能让代码块不可编辑。
  */
 export function watchCodeBlockMount(el: Element, cb: MountListener): () => void {
+  ensureScrollListener()
   const obs = ensureObserver()
   if (!obs) {
     cb(true)

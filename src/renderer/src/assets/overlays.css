@@ -691,20 +691,66 @@ li.md-reveal {
   overflow: auto;
   padding: 0 4px;
 }
+/* ─── 两态高度契约的另一半：CM 内容区**不换行**（tag `codeblock-mount-no-jump`）─────────
+   为什么不能写在 CodeBlockView 的 cmTheme 里：CM 6 的 `HeightOracle` 读的是 `.cm-content`
+   的**计算后** `white-space`，而 prosemirror.css 有一条
+
+     .ProseMirror [contenteditable="false"] [contenteditable="true"] { white-space: pre-wrap }
+
+   （特异性 0,3,0）—— 代码块外壳为了把 CM 隔离成"编辑岛"被标成 `contenteditable="false"`
+   （见 CodeBlockView.initCm），于是这条**正好命中** CM 的内容区；`EditorView.theme()` 生成的
+   `.ͼX .cm-content` 只有 (0,2,0)，压不住它（实测：写了 theme 仍然是 pre-wrap）。
+
+   为什么必须不换行：折行让 CM 只能"边滚边量"。150 行的块里有 37 行被折成两行，而 CM 只
+   测量视口内几十行、其余按"不折行"估高 ⇒ 块高在滚动中一路长高（实测 2365 → 3332 → 3311
+   → 3881），整篇内容被顶走。静态态（`pre` + 块内横向滚动）本来就不折行，两边统一成
+   「行数 × 行高 + 上下内边距」这一条公式后，CM 第一帧就能算准，滚动中高度恒定。
+
+   特异性 (0,4,0) > prosemirror.css 的 (0,3,0)，不需要 important 强改。 */
+.md-preview .code-block-wrapper .cm-editor-container .cm-content {
+  white-space: pre;
+  word-break: normal;
+  overflow-wrap: normal;
+}
 /* 代码块虚拟化的**静态态**（F 项 / O2）：没轮到挂 CM 的块用等宽文本 + CSS 行号，
    完全不建 CodeMirror 实例。字号/字体/行高/内边距**刻意抄 CM 的那一套**
    （见 CodeBlockView.vue 的 cmTheme：12.5px / var(--font-mono) / 1.65 / padding 10px 0 14px），
-   这样「静态 ↔ 挂载」切换时高度与排版几乎不差，配合卸载时记下的 minHeight 就不会滚动跳动。 */
-.cb-static {
+   这样「静态 ↔ 挂载」切换时高度与排版几乎不差，配合卸载时记下的 minHeight 就不会滚动跳动。
+
+   ⚠️ 高度契约（tag `codeblock-mount-no-jump`，**改之前先读这段**）：
+   静态态与挂载态的**行高 / 内边距 / 换行口径必须逐项相同**。不一致的后果不是"差几像素"，
+   而是整篇文档在滚动中反复伸缩：实测同一块 150 行 ⇒ 静态 3036px / CM 3881px（差 845px），
+   滚一下就让下方的 mermaid 被顶出视口、视口落到上面那个代码块的中间（用户报障原样）。
+
+   两个**必然踩到的级联坑**（所以选择器不是单类名）：
+   * `.md-preview pre`（markdown.css:174，特异性 0,1,1）会盖掉 `.cb-static`（0,1,0）：
+     它给 14px 16px 内边距、`line-height: 1.6`、`margin: .8em 0`、1px 边框与底色
+     ⇒ 静态态比 CM 多出 20px 外边距、少 4px 行高、还多画一圈边框；
+   * `.md-preview pre code`（0,1,2）会盖掉 `.cb-static-code` 的 `font: inherit` ⇒
+     静态态正文变成 0.86em（10.75px）而 CM 是 12.5px，切挂载时字号会跳。
+   本规则抬到 (0,2,1)，下面 `.cb-static-code` 抬到 (0,3,1)，两边都不需要 important 强改。
+   数值改动必须同步 cmTheme（tests/codeBlockMountHeight.test.mjs 钉着这条契约）。 */
+.md-preview pre.cb-static {
   display: flex;
   margin: 0;
   padding: 10px 4px 14px;
+  /* 外框由 .code-block-wrapper 画（border + 圆角 + 底色），静态态自己不许再画一圈：
+     否则「静态 → 挂载」这一下会看到边框消失（视觉上也是一次跳变） */
+  border: 0;
+  border-radius: 0;
+  background: transparent;
   font-family: var(--font-mono);
   font-size: 12.5px;
   line-height: 1.65;
   color: var(--ink);
+  /* 与 CM 的 `.cm-content` 完全一致：**不换行**（长行走块内横向滚动）。
+     换行口径一旦两边不同，CM 的 HeightOracle 会按"还没量到的行"估高，
+     滚到哪儿就把那一段的真实行数补进来 ⇒ 块高在滚动中持续长高（这就是跳变的引擎）。 */
   white-space: pre;
+  word-break: normal;
+  overflow-wrap: normal;
   overflow-x: auto;
+  overflow-y: hidden;
   cursor: text;
 }
 /* 行号（设置里关掉行号时不渲染这个 span）——与 CM 行号 gutter 同一套排布 */
@@ -716,10 +762,18 @@ li.md-reveal {
   user-select: none;
   white-space: pre;
 }
-.cb-static-code {
+/* 静态态正文：字号/行高必须与 CM 的 `.cm-content` 完全一致（12.5px / 1.65）。
+   选择器要压过 `.md-preview pre code`（0,1,2，它把字号设成 0.86em）—— 见上方契约注释。 */
+.md-preview pre.cb-static .cb-static-code {
   font: inherit;
+  font-size: inherit;
+  line-height: inherit;
   color: inherit;
+  background: none;
+  padding: 0;
   white-space: pre;
+  word-break: normal;
+  overflow-wrap: normal;
 }
 /* 静态态的语法高亮 token（F 项 P2）。**与 CodeBlockView.vue 里 mdHighlight 的规则一一对应**：
    那张表是 CM 挂载态的配色，这里用应用自己的 class 复刻一份 —— 刻意不用 CM 生成的 class，
