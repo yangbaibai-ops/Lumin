@@ -26,8 +26,6 @@ import {
   HighlightStyle,
   indentOnInput,
   bracketMatching,
-  foldGutter,
-  foldKeymap,
   StreamLanguage,
   type Language
 } from '@codemirror/language'
@@ -54,6 +52,7 @@ import {
   caretOffsetInBlock,
   msUntilScrollIdle,
   shouldMountCm,
+  shouldWarmMeasureLines,
   staticFallbackMinHeight,
   watchCodeBlockMount,
   STATIC_HIGHLIGHT
@@ -285,20 +284,22 @@ const cmTheme = EditorView.theme({
     caretColor: 'var(--accent)',
     padding: '10px 0 14px'
     /**
-     * ⚠️ **不换行**这条**不能写在这里**（tag `codeblock-mount-no-jump`）：
+     * ⚠️ **换行口径**（tag `codeblock-wrap-no-fold`，本条改写过一次口径）：
      *
-     * CM 6 的 `HeightOracle` 会用 `.cm-content` 的**计算后 `white-space`** 判断行是否折行
-     * （命中 `wrappingWhiteSpace` ⇒ `lineWrapping`）。它只测量视口里那几十行，**没量到的行
-     * 按"不折行"估高** —— 一边滚一边把新测到的折行补进高度表，实测同一个 150 行的块
-     * 2365 → 3332 → 3311 → 3881 一直长高，滚一下就把下面的内容顶走（用户报障的跳变引擎）。
+     * 上一版（`codeblock-mount-no-jump`）把这里钉成 `white-space: pre`（不换行），换来的是
+     * 「两态高度一致」。现在用户口径是**代码要自动换行、不许出现横向滚动条**，于是两态一起
+     * 改成换行 —— 但**「两态高度一致」这条约束没变**：
+     *   * 挂载态：`buildCmExtensions()` 里加了 `EditorView.lineWrapping`（CM 自己按宽度折行、
+     *     折出来的每一行都算进高度表），`.cm-content` 的 `white-space: pre-wrap` 写在
+     *     overlays.css（0,4,0，压过 prosemirror.css 的 0,3,0）；
+     *   * 静态态：同一个 `pre-wrap` + 同一套字号/行高/内边距/左右留白/行号槽宽。
      *
-     * 而 `.cm-content` 会被 prosemirror.css 里的一条规则命中：
+     * 为什么 `white-space` 仍然不能写在这个 theme 里：`.cm-content` 会被 prosemirror.css 的
      *   `.ProseMirror [contenteditable="false"] [contenteditable="true"] { white-space: pre-wrap }`
-     * （特异性 0,3,0）—— 代码块的 NodeView 外壳为了把 CM 隔离成"编辑岛"正好被标成
-     * `contenteditable="false"`（见 initCm），于是这条规则精准命中了 CM 的内容区。
-     * `EditorView.theme()` 生成的 `.ͼX .cm-content` 只有 (0,2,0)，**压不住**它（实测过）。
-     * 所以真正的声明在 overlays.css 的 `.md-preview .code-block-wrapper .cm-editor-container
-     * .cm-content`（0,4,0），由 tests/codeBlockMountHeight.test.mjs 钉住。
+     * （0,3,0）命中，而 `EditorView.theme()` 生成的 `.ͼX .cm-content` 只有 (0,2,0)，压不住它。
+     * 真正的声明在 overlays.css 的
+     * `.md-preview .code-block-wrapper .cm-editor-container .cm-content`（0,4,0），由
+     * tests/codeBlockMountHeight.test.mjs 钉住（与静态态逐项比对，包括换行口径）。
      */
   },
   '.cm-cursor, .cm-dropCursor': { borderLeftColor: 'var(--accent)' },
@@ -307,11 +308,6 @@ const cmTheme = EditorView.theme({
   },
   // 不注册 highlightActiveLine：点击代码块时任一行都不该被底色标出来
   '.cm-gutters': { backgroundColor: 'transparent', color: 'var(--ink-3)', border: 'none' },
-  '.cm-foldPlaceholder': {
-    backgroundColor: 'var(--accent-soft)',
-    color: 'var(--accent)',
-    border: 'none'
-  },
   '.cm-tooltip': { backgroundColor: 'var(--elevate)', border: '1px solid var(--edge)' },
   '.cm-tooltip-autocomplete ul li[aria-selected]': {
     backgroundColor: 'var(--accent-soft)',
@@ -479,8 +475,8 @@ const handle: CodeBlockHandle = {
 //   * **高度必须固定**：切静态态前记下当前高度当 `minHeight`，否则滚动会跳（风险 R3）。
 //     记的是 **CM 自己（`.cm-editor`）的高度**，不是 NodeView 外壳的高度 —— 外壳那 2px
 //     边框不属于代码区，记进去会让静态态每次都高出 2px（挂/卸一次抖 2px）。
-//     两态真正的"不跳"靠的是**排版契约**（静态态与 CM 的 padding / 行高 / 不换行逐项相同，
-//     见 overlays.css 的 `.md-preview pre.cb-static` 与下面 cmTheme 的 `.cm-content`），
+//     两态真正的"不跳"靠的是**排版契约**（静态态与 CM 的 padding / 行高 / **换行口径**
+//     逐项相同，见 overlays.css 的 `.md-preview pre.cb-static` 与下面 cmTheme 的 `.cm-content`），
 //     `minHeight` 只是兜底：契约成立时它恒等于静态态的自然高度，等于没设。
 //   * 静态态**不是**不可编辑：它只是「还没轮到挂 CM」，点一下（或选区落进来）就挂上。
 const blockRef = ref<unknown>(null)
@@ -569,15 +565,121 @@ const staticHtml = computed(() => {
 })
 
 /**
- * 挂载态容器在第一帧的 `min-height`（= 切换前静态 `<pre>` 的高度）。
+ * 挂载期容器的 `min-height` = 切换前**静态 `<pre>` 的精确高度**（本轮从"只兜第一帧"改成"一直兜到内容真的变了"）。
  *
- * 为什么需要：`cmMounted` 一翻真，模板立刻把 `<pre>` 换成**空的** `.cm-editor-container`，
- * 而 CodeMirror 实例要等 `await nextTick()` 之后才建。万一浏览器在这两步之间出了一帧，
- * 块高就塌成 2px（只剩外壳的上下边框）—— 下方内容"抽一下"。实测抓到过这一帧
- * （`tmp/cb-jump-ticks.json` 里有 wrapper h=2 的采样）。静态态的 min-height 兜的是
- * 反方向（挂载→静态），这里补上正方向。
+ * 为什么需要（两条，都是实测）：
+ *  1. `cmMounted` 一翻真，模板立刻把 `<pre>` 换成**空的** `.cm-editor-container`，而 CM 实例要等
+ *     `await nextTick()` 之后才建。万一浏览器在这两步之间出了一帧，块高就塌成 2px（只剩外壳
+ *     上下边框）—— 下方内容"抽一下"。实测抓到过这一帧（`tmp/cb-jump-ticks.json` 有 wrapper h=2 的采样）。
+ *  2. **换行之后新增的一条（tag `codeblock-wrap-no-fold`）**：CM 的 `HeightMap` 对**视口外**的行
+ *     只能按字符数估高（`HeightOracle.heightForLine`），而浏览器在**折行**时按空格断行、长串再
+ *     anywhere 断，实际视觉行数会多于估值。实测 150 行 vue 块：静态 `<pre>` 4025px（精确），
+ *     CM 挂载后先算成 3922px，滚过整块时 3922 → 3963 → 4005 → 4025 一路长高 —— 一边滚一边把
+ *     下方内容顶走（正是 `codeblock-mount-no-jump` 要消灭的那类跳变，只是这次源头从"两态排版
+ *     不一致"换成了"CM 对折行的估值修正"）。
+ *     静态态的高度是**浏览器排完整篇**量出来的，天然精确；把它当挂载期的 min-height 地板，
+ *     CM 的估值再怎么变都改不动页面高度（CM 自己长高只是填满这块地板）。
+ *
+ * 地板什么时候撤（任何"精确高度已不成立"的时刻）：
+ *   * 用户/外部**改了内容**（`docChanged` / setState）—— 行数变了，旧高度没有意义；
+ *   * **换行宽度变了**（容器 ResizeObserver 的宽度变化、设置里切换行号改变行号槽宽）；
+ *   * 卸载。
+ * 撤掉之后块高回到 CM 自管（编辑时块随内容长/缩，行为与换行前一致）。
  */
 const containerMinHeight = ref<number | null>(null)
+/** 挂载期容器的宽度哨兵：宽度变了（窗口/分屏/行号槽变化）就把 min-height 地板撤掉 */
+let cmWidthWatch: ResizeObserver | null = null
+let cmLastWidth = 0
+
+/** 撤掉 min-height 地板（内容/宽度真的变了，旧静态高度已不成立） */
+function dropHeightFloor(): void {
+  if (containerMinHeight.value === null) return
+  containerMinHeight.value = null
+}
+
+// ─── 折行高度全量测量（tag `codeblock-wrap-no-fold`）──────────────────────────
+// 为什么：开 `EditorView.lineWrapping` 后，CM 只对视口内的行拿到真实折行高度，视口外按字符数
+// 估高；浏览器按空格 + overflow-wrap:anywhere 断行，实际视觉行比估值多 ⇒ 边滚边补高度。
+// 实测 150 行块：静态 4025px / CM 先算 3922px，滚过整块一路长到 4025，途中一次滚轮
+// -120 只走了 -99（高度修正被 Chromium 的 scroll anchoring 吃掉）。
+// 修法：用 CM 内部的 `printing` 口径（关闭视口限制）一次性把全文行高量准。它只是
+// 一次同步的 render+measure（同一任务内完成，不会画出一帧"全文展开"），之后 heightMap
+// 全是实测值。`shouldWarmMeasureLines` 兜住超大块（退回 min-height 地板，页面高度仍稳定）。
+interface CmMeasureInternals {
+  measure?: () => void
+  viewState?: { printing?: boolean }
+}
+/** 本实例是否已经量准（宽度变化 / setState 会复位） */
+let warmedHeights = false
+let warmLinesObserver: IntersectionObserver | null = null
+let warmTimer: ReturnType<typeof setTimeout> | null = null
+
+function warmMeasureWrappedLines(): void {
+  if (!cmView || warmedHeights) return
+  if (!shouldWarmMeasureLines(cmView.state.doc.lines)) return
+  // `printing` 口径仍要求编辑器在窗口里（否则 measure 直接返回 0）：不在就等观察器
+  const r = cmView.dom.getBoundingClientRect()
+  const visible =
+    r.bottom > 0 && r.top < window.innerHeight && r.right > 0 && r.left < window.innerWidth
+  if (!visible) return
+  const internals = cmView as unknown as CmMeasureInternals
+  if (
+    typeof internals.measure !== 'function' ||
+    !internals.viewState ||
+    typeof internals.viewState.printing !== 'boolean'
+  ) {
+    return // 内部口径不可用：保留 min-height 地板（页面高度照样稳定）
+  }
+  try {
+    internals.viewState.printing = true
+    internals.measure()
+    warmedHeights = true
+  } catch {
+    /* 量不准就退回地板兜底，不影响编辑 */
+  } finally {
+    if (internals.viewState) internals.viewState.printing = false
+    cmView?.requestMeasure()
+  }
+}
+
+/** 立刻试一次；不可见/量不成时挂一个一次性 IntersectionObserver，等它进视口再量 */
+function armWarmMeasure(): void {
+  if (!cmView || warmedHeights) return
+  if (!shouldWarmMeasureLines(cmView.state.doc.lines)) return
+  warmMeasureWrappedLines()
+  if (warmedHeights) return
+  if (typeof IntersectionObserver !== 'function') return
+  warmLinesObserver?.disconnect()
+  warmLinesObserver = new IntersectionObserver(
+    (entries) => {
+      if (!entries.some((e) => e.isIntersecting)) return
+      warmMeasureWrappedLines()
+      if (warmedHeights) {
+        warmLinesObserver?.disconnect()
+        warmLinesObserver = null
+      }
+    },
+    { threshold: 0 }
+  )
+  warmLinesObserver.observe(cmView.dom)
+}
+
+/** 等 CM 自己这一拍 measure 完再全量量（resize / setState 之后用） */
+function scheduleWarmMeasure(delay = 60): void {
+  if (warmTimer) clearTimeout(warmTimer)
+  warmTimer = setTimeout(() => {
+    warmTimer = null
+    armWarmMeasure()
+  }, delay)
+}
+
+function releaseWarmMeasure(): void {
+  warmLinesObserver?.disconnect()
+  warmLinesObserver = null
+  if (warmTimer) clearTimeout(warmTimer)
+  warmTimer = null
+  warmedHeights = false
+}
 
 /** 挂载：建 CM（复用既有创建函数）+ 应用语言（+ 选区在本块内时把光标交给 CM） */
 async function mountCmForVirtualization(): Promise<void> {
@@ -595,6 +697,8 @@ async function mountCmForVirtualization(): Promise<void> {
   }
   staticMinHeight.value = null
   initCm()
+  // 挂载即把全文行高量准（折行后不再"边滚边补高度"，见 warmMeasureWrappedLines）
+  armWarmMeasure()
   wasMounted.value = true
   if (!handleRegistered) {
     registerCodeBlockHandle(handle)
@@ -604,10 +708,8 @@ async function mountCmForVirtualization(): Promise<void> {
   // 选区已经在这个块里（例如键盘路径刚把光标交给本块）⇒ 把焦点/光标移交 CM。
   // ⚠️ 必须是 `focusCmAtSelection()`（原位、不滚）；`focusCmAtEnd()` 会把整页拽到块底。
   if (selectionInside.value) focusCmAtSelection()
-  // CM 已经就位（它自己就是内容高度）：撤掉第一帧的兜底，此后块高完全由内容决定
-  void nextTick(() => {
-    containerMinHeight.value = null
-  })
+  // ⚠️ 这里**不再**在下一拍撤掉 min-height：它是换行后压住 CM 估值修正的地板（见上方注释）。
+  // 撤地板的三个时机是 docChanged / 宽度变化 / 卸载。
 }
 
 /** 卸载：先落盘、再拆、记高度、注销句柄（顺序见上方注释） */
@@ -912,10 +1014,13 @@ watch(
   }
 )
 
-// 设置里切换「代码块行号」即时生效（折叠槽仍在，只去掉行号）
+// 设置里切换「代码块行号」即时生效（折叠功能已按用户口径整条移除：
+// 没有 foldGutter / foldKeymap / 折叠占位符，只剩行号这一个 gutter）
 watch(
   () => settings.codeLineNumbers,
   (on) => {
+    // 行号槽宽变了 ⇒ 折行宽度变了 ⇒ 挂载期的静态高度地板失效（见 containerMinHeight）
+    dropHeightFloor()
     cmView?.dispatch({
       effects: lineNumberCompartment.reconfigure(on ? lineNumbers() : [])
     })
@@ -958,7 +1063,13 @@ function applyNodeText(force = false): void {
     scheduleApplyNodeText()
     return
   }
+  // setState 不会触发 updateListener（CM 的 setState 不派发 update），所以这里显式撤地板：
+  // 外部整篇替换后，"挂载时那份静态高度"已经不对应当前内容了。
+  dropHeightFloor()
   cmView.setState(EditorState.create({ doc: fresh, extensions: buildCmExtensions() }))
+  // setState 会重建 ViewState + 清空高度表：等它自己量完再全量量一次
+  warmedHeights = false
+  scheduleWarmMeasure()
   // 重建之后这一面与真源同代（`force` 那条路是"真源优先，哪怕用户正在这里打字"）
   alignedNodeText = fresh
   useFilesStore().markContentApplied('codeblock')
@@ -1006,6 +1117,20 @@ function runDetect(): void {
 function buildCmExtensions(): Extension[] {
   return [
     lineNumberCompartment.of(settings.codeLineNumbers ? lineNumbers() : []),
+    /**
+     * ─── 自动换行（tag `codeblock-wrap-no-fold`）──────────────────────────────
+     * 用户口径：显示代码时**不要出现横向滚动条，一行放不下就折行**（mermaid 除外）。
+     *
+     * `EditorView.lineWrapping` 做两件事，两件都必须：
+     *   * 给 `.cm-content` 挂上 `cm-lineWrapping`（`white-space: break-spaces` 兜底 +
+     *     `overflow-wrap: anywhere` + `flex-shrink: 1`）—— 其中 `flex-shrink:1` 是内容区
+     *     能收窄到 scroller 宽度的前提，否则它按 min-content 撑宽、继续出横向滚动；
+     *   * 让 `HeightOracle.lineWrapping` 为真：CM 折行后**按折出来的视觉行**量高度。
+     *     这条是「两态等高」的关键 —— 只是 CSS 折行而不开这个扩展时，CM 会把没量到的行
+     *     按"一行"估高，边滚边补，块高在滚动中一路长高（`codeblock-mount-no-jump` 修的就是它）。
+     * `white-space` 本身仍写在 overlays.css（0,4,0 压 prosemirror.css 的 0,3,0），见 cmTheme 注释。
+     */
+    EditorView.lineWrapping,
     drawSelection(),
     /**
      * ─── 多光标（报告 §P2「功能缺口：多光标」）──────────────────────────────
@@ -1025,7 +1150,6 @@ function buildCmExtensions(): Extension[] {
     rectangularSelection(),
     crosshairCursor(),
     history(),
-    foldGutter(),
     indentOnInput(),
     bracketMatching(),
     autocompletion(),
@@ -1047,11 +1171,15 @@ function buildCmExtensions(): Extension[] {
       ),
       ...searchKeymap,
       ...historyKeymap,
-      ...foldKeymap,
       ...completionKeymap
     ]),
     EditorView.updateListener.of((u) => {
-      if (u.docChanged) syncToNode()
+      if (u.docChanged) {
+        // 内容真的变了：挂载时记下的静态精确高度已不成立，撤掉 min-height 地板，
+        // 块高交还 CM 自管（编辑时该长就长、该缩就缩）。
+        dropHeightFloor()
+        syncToNode()
+      }
     })
   ]
 }
@@ -1080,6 +1208,25 @@ function initCm(): void {
   // CM 默认不给 contentDOM 设 tabindex，浏览器点击不会把焦点交给他；
   // 显式设置后点击代码区即可聚焦输入（配合模板上的事件阻断防 PM 抢焦点）
   cmView.contentDOM.tabIndex = 0
+
+  // ── 换行宽度哨兵（tag `codeblock-wrap-no-fold`）──
+  // min-height 地板记的是"某个宽度下"静态 <pre> 的精确高度；窗口/分屏一改宽，折行点就变了，
+  // 旧高度不再成立。宽度一变就撤掉地板，交给 CM 自管（行号开关改变行号槽宽不走这里，
+  // 由 settings 的 watcher 撤）。
+  if (typeof ResizeObserver === 'function' && host) {
+    cmLastWidth = host.getBoundingClientRect().width
+    cmWidthWatch = new ResizeObserver((entries) => {
+      const w = entries[0]?.contentRect.width ?? 0
+      if (!(w > 0)) return
+      if (Math.abs(w - cmLastWidth) < 0.5) return
+      cmLastWidth = w
+      dropHeightFloor()
+      // 宽度变了：折行点全变，旧的实测高度作废，等 CM 这拍量完再全量量一次
+      warmedHeights = false
+      armWarmMeasure()
+    })
+    cmWidthWatch.observe(host)
+  }
 
   // ── 焦点封堵 ──
   // PM 的 DOMObserver 监听 document 级 selectionchange：CM 内容区内的选区
@@ -1159,6 +1306,13 @@ function teardownCm(): void {
   onPmBlurCapture = null
   cmView?.destroy()
   cmView = null
+  cmWidthWatch?.disconnect()
+  cmWidthWatch = null
+  cmLastWidth = 0
+  releaseWarmMeasure()
+  // 地板随视图一起消失（卸载路径会把 CM 高度记成静态态的 minHeight）：
+  // 组件卸载时清掉，切 mermaid 时也清掉（图表态没有代码区）
+  containerMinHeight.value = null
   // 还原隔离用的 contentEditable：图表态下没有 CM，不需要独立编辑岛
   if (cmWrapper) {
     cmWrapper.contentEditable = 'inherit'

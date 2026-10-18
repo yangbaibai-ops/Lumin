@@ -63,12 +63,37 @@ export const CODE_UNMOUNT_DELAY_MS = 500
  * 期望值来自 **CM 自己（`.cm-editor`）的高度**，不是 NodeView 外壳的高度 ——
  * 外壳那 2px 边框不属于代码区，记进去会让静态态每次挂/卸都高出 2px。
  *
- * 注：两态"不跳"靠的是排版契约（静态态与 CM 的 padding / 行高 / 不换行逐项相同，
+ * 注：两态"不跳"靠的是排版契约（静态态与 CM 的 padding / 行高 / 换行口径逐项相同，
  * 见 overlays.css 的 `.md-preview pre.cb-static` 与 CodeBlockView 的 cmTheme），
  * 这个兜底在契约成立时恒等于静态态的自然高度。
  */
 export function staticFallbackMinHeight(cmHeight: number): number | null {
   return Number.isFinite(cmHeight) && cmHeight > 0 ? Math.ceil(cmHeight) : null
+}
+
+/**
+ * 折行高度「全量测量」的行数上限（tag `codeblock-wrap-no-fold`，纯函数见下）。
+ *
+ * 为什么需要全量测量：开启 `EditorView.lineWrapping` 之后，CM 的 `HeightMap` 只对**视口里**
+ * 的行拿到真实高度，视口外按字符数估（`HeightOracle.heightForLine`）。浏览器折行是按空格断行、
+ * 长串再 `overflow-wrap:anywhere` 断，实际视觉行数会多于估值 —— 实测 150 行 vue 块：
+ * 静态 `<pre>` 4025px（精确），CM 先算成 3922px，滚过整块时 3922 → 3963 → 4005 → 4025 一路长高，
+ * 每补一行就把页面的滚动位置吃掉一点（一次滚轮 -120 只走了 -99）。这正是
+ * `codeblock-mount-no-jump` 要消灭的跳变，只是源头换成了"折行估值修正"。
+ *
+ * 修法是让 CM 用内部的 `printing` 口径（关闭视口限制）**一次性把全文行高量准**：
+ * 之后 heightMap 全是实测值，滚动中不再修正，块高恒定。代价是挂载时渲染一遍全文行
+ * （只在块首次进入视口时发生）。行数超过上限的块不做（一次性渲染代价太高），退回
+ * 「静态精确高度当 min-height 地板」的兜底 —— 页面高度仍然稳定，只是 CM 内部行位置按估值。
+ *
+ * 1200 行（≈ 24000px）覆盖常见代码块（几十~几百行）；更大的块退回地板兜底，
+ * 不做一次性全文渲染（那是挂载时的同步成本，块越大越不该付）。
+ */
+export const WARM_MEASURE_MAX_LINES = 1200
+
+/** 该不该为这个块做全量行高测量（纯函数）：行数在 `[1, 上限]` 内才做 */
+export function shouldWarmMeasureLines(lines: number): boolean {
+  return Number.isFinite(lines) && lines > 0 && lines <= WARM_MEASURE_MAX_LINES
 }
 
 /**

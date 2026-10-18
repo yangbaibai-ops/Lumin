@@ -10,9 +10,10 @@
 //
 // 本文件守两件事（浏览器实测数字与截图见提交信息）：
 //   ① `min-width: 0` 链完整：App 的 <main>、编辑器内核、渲染/源码两个 pane 都能收缩；
-//   ② 「块内滚动」容器还在：宽表格在 .tableWrapper 里滚、长代码行在 .cm-scroller /
-//      .cb-static / .md-preview pre 里滚 —— 它们是把「整页横向溢出」降级成「块内滚动」
-//      的关键，删掉任何一条，长内容就会重新去撑整页。
+//   ② 「块内滚动」/「折行」容器还在：宽表格在 .tableWrapper 里滚；普通 .md-preview pre
+//      （mermaid 源码占位等）在块内滚；**代码块（静态态与 CM 态）按 tag `codeblock-wrap-no-fold`
+//      改为自动折行、不横向滚动**（用户口径），靠 min-width:0 + overflow-wrap:anywhere
+//      把长串在列内断开，而不是撑宽整页。删掉任何一条，长内容都会重新去撑整页。
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
@@ -79,26 +80,55 @@ test('宽表格只能在 .tableWrapper 内部横向滚动，不许撑整页', ()
   )
 })
 
-test('代码块长行只在框内滚动：CodeMirror / 静态态 / 普通 pre 三态都要有横向滚动容器', () => {
+test('代码块长行在框内折行（无横向滚动）；普通 pre / 表格仍各自块内滚动', () => {
+  // 代码块（tag `codeblock-wrap-no-fold`）：用户口径是**折行、不出横向滚动条**。
+  // CM 侧：scroller 只留竖向滚动，横向 hidden；内容区 pre-wrap + anywhere。
   assert.match(
+    overlays,
+    /\.cm-editor-container \.cm-scroller\s*\{[^}]*overflow-x:\s*hidden/,
+    'CodeMirror 的 .cm-scroller 必须 overflow-x:hidden（用户口径：代码不出现横向滚动条）'
+  )
+  assert.doesNotMatch(
     overlays,
     /\.cm-editor-container \.cm-scroller\s*\{[^}]*overflow:\s*auto/,
-    'CodeMirror 的 .cm-scroller 必须自己滚（长行否则会把代码块顶宽）'
+    '.cm-scroller 不许再用 overflow:auto（那会同时开出横向滚动条）'
   )
   assert.match(
     overlays,
-    /\.cb-static\s*\{[^}]*overflow-x:\s*auto/,
-    '静态态代码块（.cb-static）必须自己滚：它是视口外的默认形态'
+    /\.md-preview \.code-block-wrapper \.cm-editor-container \.cm-content\s*\{[^}]*white-space:\s*pre-wrap/,
+    'CM 内容区必须 pre-wrap（折行后 CM 才不会把行撑出横向滚动）'
   )
+  // 静态态：折行 + overflow-x:hidden（不再自己横向滚）
+  assert.match(
+    overlays,
+    /\.md-preview pre\.cb-static\s*\{[^}]*white-space:\s*pre-wrap/,
+    '静态态代码块（.cb-static）必须折行（用户口径：一行放不下就分行）'
+  )
+  assert.match(
+    overlays,
+    /\.md-preview pre\.cb-static\s*\{[^}]*overflow-x:\s*hidden/,
+    '静态态代码块必须 overflow-x:hidden（不许出现横向滚动条）'
+  )
+  assert.doesNotMatch(
+    overlays,
+    /\.md-preview pre\.cb-static\s*\{[^}]*overflow-x:\s*auto/,
+    '静态态代码块不许再 overflow-x:auto（那是上一版「不换行 + 块内横滚」口径）'
+  )
+  assert.match(
+    overlays,
+    /\.md-preview pre\.cb-static \.cb-static-code\s*\{[^}]*overflow-wrap:\s*anywhere/,
+    '静态态正文必须 overflow-wrap:anywhere（无空格长串也要在列内断开）'
+  )
+  // 普通 pre（mermaid 源码占位等）仍按块内横向滚动，不受代码块口径影响
   assert.match(
     markdown,
     /\.md-preview pre\s*\{[^}]*overflow-x:\s*auto/,
-    '普通 .md-preview pre 必须自己滚（导出/预览与无 CodeMirror 的语言共用）'
+    '普通 .md-preview pre 必须自己滚（导出/预览与 mermaid 占位共用）'
   )
   assert.match(
     overlays,
     /\.code-block-wrapper\s*\{[^}]*overflow:\s*hidden/,
-    '代码块外壳必须裁住内部滚动条/内容，否则滚动条会画到圆角外'
+    '代码块外壳必须裁住内部内容，否则滚动条/折行残影会画到圆角外'
   )
 })
 
