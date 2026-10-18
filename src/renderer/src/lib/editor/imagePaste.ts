@@ -1,15 +1,18 @@
-// ─── 编辑区里的图片：粘贴 / 拖入（Tiptap 插件）────────────────────────────────
+// ─── 编辑区里的图片：粘贴（Tiptap 插件）────────────────────────────────────────
 //
 // 只做"认出图片 → 交给 lib/insertImage 落盘并插入"这一件事：
-// 落点规则、命名、相对路径、错误提示都在那边（粘贴/拖入/选文件三条入口共用一份实现）。
+// 落点规则、命名、相对路径、错误提示都在那边（粘贴 / 选文件两条入口共用一份实现）。
 //
 // 为什么用 ProseMirror 插件而不是 DOM 监听：
-//   * `handlePaste` / `handleDrop` 能**先于**默认行为拿到事件，插完返回 true 就
-//     不会被 Tiptap 再把同一张图当文本插一遍；
+//   * `handlePaste` 能**先于**默认行为拿到事件，插完返回 true 就不会被 Tiptap 再把同一张图
+//     当文本插一遍；
 //   * 落点（`view.state.selection`）由 PM 给，不用自己算光标坐标。
 //
-// 注意：**只在有图片时才接管**，其余粘贴/拖放（markdown 文本、HTML、内部拖动）原样放行 ——
-// 那些有自己的扩展（MarkdownPaste / NodeSelection 拖动）。
+// ⚠️ 拖拽（drag & drop）已全禁用（`lib/dragGuard.ts`）：这里**没有** `handleDrop`，
+//    从系统拖入图片不会再落盘/插入。**粘贴**图片仍然走 `handlePaste`（Ctrl+V 不受影响）。
+//
+// 注意：**只在有图片时才接管**，其余粘贴（markdown 文本、HTML）原样放行 ——
+// 那些有自己的扩展（MarkdownPaste）。
 import { Extension } from '@tiptap/core'
 import { Plugin } from '@tiptap/pm/state'
 import { insertImageFromBytes, insertImageFromPath, IMAGE_EXT_RE } from '../insertImage'
@@ -75,30 +78,6 @@ export const ImagePaste = Extension.create({
             const file = pickImageFile(event.clipboardData)
             if (!file) return false
             event.preventDefault()
-            void insert(file)
-            return true
-          },
-          handleDrop(_view, event) {
-            const file = pickImageFile(event.dataTransfer)
-            if (!file) return false
-            // 拖进来的如果是 .md（打开外部文件），交给窗口级的落点处理，这里只管图片
-            const p = pathOfFile(file)
-            if (p && !IMAGE_EXT_RE.test(p)) return false
-            event.preventDefault()
-            /**
-             * ⚠️ `stopPropagation` 是这一步的**关键**，不是顺手加的：
-             *
-             * 窗口级还有一层「从系统拖入文件/文件夹 → 打开」的处理（App.vue 的 onWindowDrop）。
-             * 这次拖放已经被内核认领（图片插进来了），必须让它**不再冒泡**上去，
-             * 否则同一张 png 会被外层的「不支持的文件类型」白名单再判一次 ——
-             * 用户看到的是"图片插进去了，同时弹一条不支持"。
-             *
-             * 这条链上曾经用 `event.defaultPrevented` 表达"内层已认领"，而外层是
-             * `@drop.prevent`（Vue 的 `.prevent` 在**调用处理函数之前**就 preventDefault 了）
-             * ⇒ 那个判据恒为 true，把「拖 .md 进窗口打开」整条功能一起关掉了（见 droppedPath.ts）。
-             * 所以认领信号只认 stopPropagation：**这里改了就要连着 App.vue 一起想**。
-             */
-            event.stopPropagation()
             void insert(file)
             return true
           }

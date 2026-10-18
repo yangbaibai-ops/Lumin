@@ -94,15 +94,6 @@ export const useUiStore = defineStore('ui', {
     /** 文件标签页展示形态：树 / 列表（Typora 式元数据列表） */
     sidebarFilesView: 'tree' as 'tree' | 'list',
     /**
-     * 树内拖放时**当前高亮**的落点行路径（null = 没有落点）。
-     *
-     * 为什么进 store 而不是各行的局部 ref：高亮的**清除**有两处只有容器看得见 ——
-     * 拖拽被 Esc 取消、或落下之后源行的 `dragend`（它会冒泡到 `FileTree.vue` 的容器）。
-     * 一个全局唯一的值让"整棵树同时最多亮一行"成为结构性事实，也让那两处兜底清除
-     * 有一个明确的落点（见 `TreeNode.vue` 的 dragenter/leave 与 `FileTree.vue` 的 dragend）。
-     */
-    dropTargetPath: null as string | null,
-    /**
      * 「请把焦点交给侧栏的文件搜索框」的信号（自增计数器，0 = 还没请求过）。
      *
      * 为什么是计数器而不是一个 boolean：搜索框的展开/收起状态、失焦规则、DOM 引用都在

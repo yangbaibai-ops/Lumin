@@ -107,40 +107,14 @@ export function planMove(
 }
 
 /**
- * 拖拽悬停期间用的**快速**判定：这次落点值不值得高亮。
+ * 「移动到…」菜单的候选过滤：这个目标目录值不值得出现在菜单里。
  *
- * 与 `planMove` 的唯一差别是不做重名探测（`dragover` 期间拿不到异步结果，也不该为每一次
- * 移动去发 IPC）：同名冲突会在**落下**那一刻由 `moveNode` 明确拒绝并提示。
- * 同父（无操作）与非法落点都返回 false —— 落点高亮必须只亮**真的会搬**的那些行。
+ * 与 `planMove` 的唯一差别是不做重名探测（同名冲突会在真正移动时由 `moveNode` 拒绝并提示）。
+ * 同父（无操作）与非法目标都返回 false —— 菜单里只出现**真的会搬**的那些目录。
+ *
+ * ⚠️ 拖拽已全禁用（`lib/dragGuard.ts`），这里只剩右键菜单「移动到…」在用；
+ *    文件名里的 `Drop` 是历史包袱，语义是"可移动到此处"。
  */
 export function canDropOn(source: MoveSource, targetDir: string, workspaceRoot: string): boolean {
   return planMove(source, targetDir, workspaceRoot).kind === 'move'
-}
-
-// ─── 拖放会话：谁在被拖 ────────────────────────────────────────────────────────
-//
-// 为什么是**模块级普通变量**而不是响应式状态：落点高亮是**每一行自己的**局部状态
-// （dragenter/dragleave 就在那一行上，`ui.dropTargetPath` 记高亮、容器上的 dragend 兜底清除），
-// 这里只需要一个「谁在被拖」的信箱，供 `dragover` 做合法性判定 —— 它不需要参与渲染，
-// 也就不该把 vue 引进来（引了 `tests/treeMove.test.mjs` 就得连 vue 一起加载）。
-//
-// 为什么不能用 `dataTransfer.getData`：Chromium 在 `dragover` 期间处于「受保护的数据存储」
-// 模式，只有 `drop` 才读得到内容（`types` 里只有 'text/plain' 这个类型名）。所以来源路径
-// 必须在 `dragstart` 时自己记下来。
-
-let dragged: MoveSource | null = null
-
-/** 某一行的 `dragstart`：记下来源（同时把路径写进 dataTransfer，作为**跨组件/未来**的正规通道） */
-export function beginTreeDrag(source: MoveSource): void {
-  dragged = { path: source.path, type: source.type }
-}
-
-/** 拖拽结束（dragend，含 Esc 取消）或落下之后：清空信箱 */
-export function endTreeDrag(): void {
-  dragged = null
-}
-
-/** 当前正在被拖的树行（null = 没有内部拖拽；外部拖入永远拿不到它） */
-export function draggingTree(): MoveSource | null {
-  return dragged
 }

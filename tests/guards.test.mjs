@@ -286,173 +286,81 @@ test('卸载不许删用户数据（写作类应用的底线）', () => {
   assert.match(yml, /deleteAppDataOnUninstall:\s*false/, 'deleteAppDataOnUninstall 必须为 false')
 })
 
-test('拖放链：内层认领的信号是 stopPropagation，不是恒真的 defaultPrevented（d014773 回归的守卫）', () => {
-  /**
-   * ⚠️ 这条测试的**上一版**把回归当成正确行为钉住了，值得写下来当教训：
-   *
-   *   它断言 `EditorView.vue` 的 `onDrop` 里必须有 `if (e.defaultPrevented) return`，
-   *   理由（d014773）是"图片拖入由内核 handleDrop 处理，它只 preventDefault 不 stopPropagation，
-   *   事件继续冒泡到外层，于是拖 png 会『图片插进去了 + 同时弹一条不支持的文件类型』"。
-   *   但那个模板写的是 `@drop.prevent="onDrop"` —— Vue 的 `.prevent` 修饰器
-   *   （`withModifiers` 的 `modifierGuards.prevent`）**先** `preventDefault()`，**再**调处理函数。
-   *   于是进了 `onDrop` 之后 `defaultPrevented` **恒为 true**：第一行就 return，
-   *   **拖 .md 不打开、拖 .png 连提示都没有**（"连提示都没有"正是它恒真的铁证）。
-   *   静态守卫看不出来（那一行确实"在"），只有真派发一次拖放才看得见 —— 这正是本条改成
-   *   "运行时套件 + 这里守契约"的原因。
-   *
-   * 现在的契约（三处，缺一处就会重演）：
-   *   ① 内层认领 = `lib/editor/imagePaste.ts` 的 `event.stopPropagation()`（事件不再冒泡出去）；
-   *   ② 窗口级落点只有一份：`App.vue` 的 `[data-drop-window]`（`@drop.prevent` + `@dragover`，
-   *      `@dragover` 必须 preventDefault，否则浏览器根本不派发 drop）；
-   *   ③ **任何**文件都别再拿 `defaultPrevented` 判"内层已认领这次拖放"（它是恒真的）。
-   *
-   * 运行时那一半在 `tools/_verify-drop-open.js`（已进默认矩阵）：用 CDP
-   * `Input.dispatchDragEvent`（`DragData.files` = 真实磁盘路径）真拖一次 .md / 文件夹 / 图片 ——
-   * 上一版注释里"CDP 造出来的 File 没有真实路径、到不了 toast 分支"的说法已被实测推翻
-   * （`webUtils.getPathForFile` 拿得到真实路径），所以那半条**不再是**未证事项。
-   */
-  const ip = read('src/renderer/src/lib/editor/imagePaste.ts')
+test('拖拽全禁用：入口统一拦截、各组件不再有拖拽源/落点/放置指示', () => {
+  // ① 入口：window 捕获阶段拦 dragstart + drop（见 lib/dragGuard.ts）
+  const main = read('src/renderer/src/main.ts')
+  assert.match(main, /installDragGuard\(window\)/, '入口必须装 window 级拖拽拦截')
   assert.match(
-    ip,
-    /event\.stopPropagation\(\)/,
-    '图片认领一次拖放之后必须 stopPropagation（否则窗口级会出现"不支持的文件类型"双弹）'
+    main,
+    /installNonDraggableDom\(document\)/,
+    '入口必须把 DOM 拖拽源钉成 draggable=false'
+  )
+  const guard = read('src/renderer/src/lib/dragGuard.ts')
+  for (const type of ['dragstart', 'dragenter', 'dragover', 'drop']) {
+    assert.match(guard, new RegExp(`'${type}'`), `dragGuard 必须拦截 ${type}`)
+  }
+  assert.match(guard, /preventDefault\(\)/, '拦截必须 preventDefault（否则幽灵图/禁用光标都不对）')
+  assert.match(guard, /stopPropagation\(\)/, '拦截必须在捕获阶段切断，页面内处理器一个都不该收到')
+  assert.match(guard, /capture:\s*true/, '必须用捕获阶段（capture: true）')
+  assert.doesNotMatch(
+    guard,
+    /addEventListener\(\s*['"](mousedown|mousemove|mouseup)/,
+    '拖选依赖鼠标事件，拦截器不许碰 mousedown/mousemove/mouseup'
   )
 
+  // ② 窗口/编辑器不再有 drop 落点（文件拖入不打开、图片不插入）
   const app = read('src/renderer/src/App.vue')
-  assert.match(app, /@drop\.prevent="onWindowDrop"/, '窗口根节点必须挂着 drop 处理')
-  const dragOverAt = app.indexOf('async function onWindowDragOver(')
-  assert.ok(dragOverAt > 0, 'App.vue 里找不到窗口级 onWindowDragOver')
-  assert.match(
-    app.slice(dragOverAt, dragOverAt + 300),
-    /preventDefault\(\)/,
-    'onWindowDragOver 必须 preventDefault（否则浏览器不会派发 drop，甚至会导航到那个文件）'
-  )
-  assert.match(app, /data-drop-window/, '窗口根节点要有 data-drop-window 语义锚点（套件按它定位）')
-
-  // 回归指纹：渲染层不许再用 `defaultPrevented` 当"这次拖放已经被人处理过"的判据。
-  // （文字里提到它是允许的 —— 上面这些注释就在讲这件事；真正要拦的是**代码**里的读取，
-  //   所以只比对"非注释行"。）
-  //
-  // 唯一的例外：`lib/keymap/service.ts` 读的是 **keydown** 的 `defaultPrevented`
-  // （"内层已经处理过这个键就让行"）—— 键盘事件上这个判据是**真的**
-  // （没人用 `@keydown.prevent` 把它提前置真），与拖放那条恒真陷阱不是一回事。
-  const stripComments = (t) =>
-    t.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:'"`\w])\/\/[^\n]*/g, '$1')
-  const offenders = []
-  const walk = (dir) => {
-    for (const e of readdirSync(join(ROOT, dir), { withFileTypes: true })) {
-      const rel = `${dir}/${e.name}`
-      if (e.isDirectory()) walk(rel)
-      else if (/\.(ts|vue)$/.test(e.name)) {
-        const body = stripComments(read(rel))
-        if (/\.defaultPrevented/.test(body) && !rel.endsWith('keymap/service.ts')) {
-          offenders.push(rel)
-        }
-      }
-    }
-  }
-  walk('src/renderer/src')
-  assert.deepEqual(
-    offenders,
-    [],
-    '这些文件又拿 event.defaultPrevented 做判据了（@drop.prevent 下它恒真，会整条关掉拖放打开）：\n' +
-      offenders.join('\n')
-  )
-
-  // 旧实现的两个"旧址"：处理函数搬走了就不该再各留一份（两份实现 = 落点会漂）。
-  // 只看 `<template>` 那一段 —— 上面那些解释里**提到**旧写法是正当的。
-  const ev = read('src/renderer/src/views/EditorView.vue')
-  const evTemplate = ev.slice(ev.indexOf('<template>'))
   assert.doesNotMatch(
-    evTemplate,
-    /@drop/,
-    'EditorView 的模板不该再挂 drop 处理（窗口级 App.vue 已经有一份，两份会让落点漂）'
+    app,
+    /@drop|@dragover|data-drop-window|handleDroppedEvent/,
+    'App.vue 不许再挂窗口级拖放落点'
   )
+  const imagePaste = read('src/renderer/src/lib/editor/imagePaste.ts')
+  assert.doesNotMatch(imagePaste, /handleDrop\(/, '图片插件不许再处理 drop（拖入图片已禁用）')
+  assert.match(imagePaste, /handlePaste/, '粘贴图片必须保留（Ctrl+V 不受影响）')
+  const extensions = read('src/renderer/src/lib/editor/extensions.ts')
+  assert.doesNotMatch(extensions, /^\s*NoTextDrag,/m, 'NoTextDrag 必须从扩展注册表里消失')
+  assert.doesNotMatch(extensions, /dropCursor/, 'dropCursor 必须从扩展集里消失')
+  assert.match(extensions, /draggable:\s*false/, 'Image 节点必须从 schema 层不可拖')
+
+  // ③ 文件树：draggable=false、无 drag*/drop 处理、无落点高亮
+  const treeNode = read('src/renderer/src/components/TreeNode.vue')
+  assert.match(treeNode, /draggable="false"/, '树行必须显式 draggable="false"')
   assert.doesNotMatch(
-    ev,
-    /^async function onDrop\(/m,
-    'EditorView 不该再自己定义 onDrop（实现只有 lib/droppedPath.ts 一份）'
+    treeNode,
+    /@dragstart=|@dragend=|@dragover=|@dragleave=|@drop=|'is-drop-target'/,
+    '树行不许再挂拖放处理/落点样式'
   )
+  const fileTree = read('src/renderer/src/components/FileTree.vue')
+  assert.doesNotMatch(
+    fileTree,
+    /@drop|@dragover|@dragend|onDrop|onDragOver/,
+    '文件树容器不许再挂拖放处理'
+  )
+  const sidebar = read('src/renderer/src/assets/sidebar.css')
+  assert.doesNotMatch(sidebar, /is-drop-target/, '落点高亮样式必须删除')
 
-  /**
-   * ─── 第六轮：拖入文件夹的三个分支必须"用现成的" ──────────────────────────────
-   *
-   * 用户口径：当前开着的就是它 → 不新开窗口；不是它 → 新窗口打开那个文件夹。
-   * 这里守三件容易走偏的事：
-   *   ① "是同一个文件夹"的判据必须**问主进程**（`file:isSamePath` → 纯函数
-   *      `pathGuard.sameResolvedPath` + `realpath`），不许在渲染层手搓字符串比较 ——
-   *      大小写/分隔符/尾分隔符/`.`/`..`/符号链接/8.3 短名全都要算同一个；
-   *   ② 不同分支必须复用既有的 `app.openFolderInNewWindow`（**不新造开窗逻辑**）；
-   *   ③ 同一个文件夹要给一条提示（静默 = 用户以为又坏了），文案走 i18n。
-   */
-  const dropped = read('src/renderer/src/lib/droppedPath.ts')
-  assert.match(
-    dropped,
-    /window\.luminAPI\.file\.isSamePath\(/,
-    '同一个文件夹的判据必须问主进程（file:isSamePath），不许在渲染层手搓比较'
-  )
-  assert.match(
-    dropped,
-    /window\.luminAPI\.app\.openFolderInNewWindow\(/,
-    '目录不同时必须复用既有的 app.openFolderInNewWindow（"应用外请求打开目录"那条规则）'
-  )
-  assert.match(
-    dropped,
-    /toast\.workspaceAlreadyOpen/,
-    '同一个文件夹要有一条明确提示（不许静默 no-op）'
-  )
-  const pg = read('src/main/pathGuard.ts')
-  assert.match(
-    pg,
-    /export function sameResolvedPath\(/,
-    '路径同一性的判据必须落在主进程的纯函数里（可单测、只有一份）'
-  )
-  assert.match(
-    read('src/main/fileOps.ts'),
-    /export async function isSamePath\([\s\S]{0,400}realpath\(/,
-    '符号链接 / junction / 8.3 短名要靠 fs.realpath 兜住'
-  )
-  // 三语都要有这条提示（少一个语言 = 那个语言下弹裸 key）
-  for (const lang of ['zh-CN', 'en-US', 'ru-RU']) {
-    const pack = JSON.parse(read(`src/shared/i18n/${lang}.json`))
-    assert.ok(
-      typeof pack.toast.workspaceAlreadyOpen === 'string' &&
-        pack.toast.workspaceAlreadyOpen.includes('{name}'),
-      `${lang} 缺少 toast.workspaceAlreadyOpen（且要带 {name} 占位）`
-    )
-  }
-
-  /**
-   * ─── 根因取证：把"为什么 `defaultPrevented` 恒真"钉在单测里 ────────────────────
-   *
-   * 这一条读的是 Vue 自己的实现（`node_modules/@vue/runtime-dom`），不是我们的代码 ——
-   * 目的是让**判据的来源**可被机器复核：`withModifiers` 先跑守卫、再调处理函数，
-   * 而 `prevent` 守卫就是 `e.preventDefault()`。于是 `@drop.prevent="fn"` 里的 `fn`
-   * 看到 `defaultPrevented === true` 是**框架语义**上的必然，不是"某次手滑"。
-   *
-   * 现场：`EditorView.vue`（HEAD 84cec62）第 699 行 `if (e.defaultPrevented) return`、
-   * 模板第 827 行 `@drop.prevent="onDrop"`，由 d014773 引入（本测试的上一版还把它当正确行为守着）。
-   */
-  const vueRuntime = readFileSync(
-    join(ROOT, 'node_modules', '@vue', 'runtime-dom', 'dist', 'runtime-dom.esm-bundler.js'),
-    'utf8'
-  )
-  const wmAt = vueRuntime.indexOf('const withModifiers =')
-  assert.ok(wmAt > 0, 'Vue 运行时里找不到 withModifiers（升级 Vue 后请复核这条判据的来源）')
-  const wm = vueRuntime.slice(wmAt, wmAt + 600)
-  const guardAt = wm.indexOf('guard(event, modifiers)')
-  const callAt = wm.indexOf('return fn(event')
-  assert.ok(
-    guardAt > 0 && callAt > guardAt,
-    'Vue 的 withModifiers 语义变了：守卫（含 .prevent）必须仍在处理函数之前调用'
-  )
-  assert.match(
-    vueRuntime,
-    /prevent: \(e\) => e\.preventDefault\(\)/,
-    'Vue 的 .prevent 守卫必须还在'
-  )
+  // ④ 样式/指示：全局 user-drag:none、无 dropcursor / 拖拽动效、无 !important
+  const base = read('src/renderer/src/assets/base.css')
+  assert.match(base, /-webkit-user-drag:\s*none/, '必须有全局 -webkit-user-drag: none')
+  assert.doesNotMatch(base, /-webkit-user-drag[^;]*!important/, '禁用拖拽不许用 !important')
+  const css = [
+    'base.css',
+    'markdown.css',
+    'sidebar.css',
+    'editor.css',
+    'overlays.css',
+    'chrome.css',
+    'components.css',
+    'style.css'
+  ]
+    .map((f) => read(`src/renderer/src/assets/${f}`))
+    .join('\n')
+  assert.doesNotMatch(css, /ProseMirror-dropcursor|\.cm-dropCursor/, '放置指示线样式必须不存在')
+  assert.doesNotMatch(css, /cursor:\s*(grab|grabbing|move)\b/, '不许留下可拖拽光标')
+  const cb = read('src/renderer/src/components/editor/CodeBlockView.vue')
+  assert.doesNotMatch(cb, /['"]\.cm-dropCursor['"]/, '代码块不许配置放置指示线')
 })
-
 test('许可与第三方声明：LICENSE 存在、声明会被打进产物、且门禁校验它是最新的', () => {
   // 背景（审计 §5）：README 一直声明 MIT，而仓库既没有 LICENSE 也没有 package.json 的 license 字段；
   // 打包产物里第三方库的版权声明又被 Rollup 全剥掉了。这一条把"补上的东西不会悄悄回退"钉住。

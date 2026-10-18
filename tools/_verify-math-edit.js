@@ -1949,7 +1949,7 @@ async function main() {
   await sleep(300)
   await closeEditor(app)
 
-  // ─── M ③ 公式拖不走；图片仍可拖（对照项）────────────────────────────────
+  // ─── M ③ 公式拖不走；图片同样拖不走（dnd-disabled 后无对照项）──────────────
   await reloadFix3(app)
   const p1Rect = await centerOf(app.ev, '.md-preview p')
   await openBlockEditor(app)
@@ -1996,8 +1996,8 @@ async function main() {
    * `draggable=true` —— 那正是它会走"节点拖动"分支的入口）。
    */
   report.check(
-    'M1 块级公式**拖不走**：真实拖拽手势之后文档逐字不变（且此时它正处于"选中后可被节点拖动"的状态）',
-    mBlock.freshMarkdown === mBefore.freshMarkdown && mSelected.blockDraggable === 'true',
+    'M1 块级公式**拖不走**：真实拖拽手势之后文档逐字不变（dnd-disabled 后选中也不再补 draggable=true）',
+    mBlock.freshMarkdown === mBefore.freshMarkdown && mSelected.blockDraggable === 'false',
     'markdownSame=' +
       (mBlock.freshMarkdown === mBefore.freshMarkdown) +
       ' dragSeen=' +
@@ -2024,10 +2024,10 @@ async function main() {
       ' log=' +
       JSON.stringify(mInline.dragLog)
   )
-  // 对照项：图片（同一套手势、同一个判据 —— 它**必须**还能搬）
+  // 对照项：图片（同一套手势、同一个判据 —— dnd-disabled 后它**也不许**再搬）
   if (!mInline.imgRect || mInline.imgRect.width < 20) {
     report.skip(
-      'M3 图片节点仍然可以拖动（对照项）',
+      'M3 图片节点也不再可拖（对照项）',
       '图片没加载出来（imgRect=' +
         JSON.stringify(mInline.imgRect) +
         '）——多半是实例的 LUMIN_TRUSTED_PATHS 没覆盖 %TEMP%'
@@ -2044,8 +2044,8 @@ async function main() {
     )
     const mImg = JSON.parse(await app.ev(SRC_SNAPSHOT))
     report.check(
-      'M3 图片节点**仍然可以拖动**（同一套手势、同一个判据：文档必须变）—— 数学那条没误伤节点拖动',
-      mImg.freshMarkdown !== mBeforeImg,
+      'M3 图片节点**也不再可拖**（同一套手势、同一个判据：文档必须不变）—— 拖拽已全局禁用',
+      mImg.freshMarkdown === mBeforeImg,
       'markdownChanged=' +
         (mImg.freshMarkdown !== mBeforeImg) +
         ' imgDraggableAfterSelect=' +

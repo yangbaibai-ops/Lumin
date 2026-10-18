@@ -10,7 +10,6 @@ import {
   initRovingFocus,
   onTreeKeydown
 } from '../lib/treeFocus'
-import { draggingTree, endTreeDrag } from '../lib/treeMove'
 import { useWorkspaceRootMenu } from '../composables/useWorkspaceRootMenu'
 import TreeNode from './TreeNode.vue'
 import FileList from './FileList.vue'
@@ -211,67 +210,17 @@ function onRootContextMenu(e: MouseEvent): void {
     也就是用户要求"文件区里不要有任何按钮和文字"的场景。入口仍在顶部「文件」菜单与快捷键里。 */
 
 /**
- * ─── 容器级的拖放（两种来源，必须分开对待）────────────────────────────────────
+ * ─── 文件树不再接受任何拖放（用户口径：所有组件元素的拖拽行为一起取消）──────────
  *
- *  ① **外部拖入**（系统文件管理器里的文件）：`treeMove` 的信箱是空的 ⇒ 行为与改动前**完全一致**
- *     —— 只 `preventDefault`（把落点挡在侧栏外，交给编辑器/全局那两条路去处理），什么都不做。
- *  ② **树内拖动**（本项目自己的行）：落在**文件夹行**上由 `TreeNode.vue` 认领（它会
- *     `stopPropagation`）；落在**其它空白处**就是"移到工作区根"。两种"不是落点"的情形要
- *     分开看 —— 它们都不该被当成"根"顺手接住（拖到子文件夹里却搬去了根，是最糟的一种"帮忙"）：
- *       * 落在**文件行**上：那不是目录；
- *       * 落在**某个展开目录的子级区域里**（子行之间的空隙、空文件夹的那句提示）：那是
- *         "这个目录里"，但指针并没有落在它的**行**上 —— 猜成"根"会与用户看到的位置相反。
- *         本轮的落点口径就是"文件夹行"（题目：移动到文件夹，理由见 lib/treeMove.ts）。
- *
- * `@dragend` 挂在这里是因为它会从**源行冒泡上来**：拖拽以"没有 drop"的方式结束
- * （Esc 取消、拖到窗口外）时，只有这里能兜底把落点高亮清掉。
+ * 外部文件拖入、树内拖动重排/搬家都已经在入口被拦（`lib/dragGuard.ts` 的 window 捕获
+ * `dragstart`/`drop` + `assets/base.css` 的 `-webkit-user-drag: none`）。这里**不再挂**
+ * `dragover` / `drop` / `dragend` —— 文件树连"落点"这个概念都不再存在。
+ * 「移动到…」仍有键盘/右键菜单那条路（TreeNode.vue），不受影响。
  */
-function treeRowAt(e: DragEvent): HTMLElement | null {
-  const target = e.target as HTMLElement | null
-  return target?.closest?.('[data-tree-row]') ?? null
-}
-
-/** 指针是不是落在某个展开目录的**子级区域**里（不是那一行本身，见上面第二条） */
-function insideFolderChildren(e: DragEvent): boolean {
-  const target = e.target as HTMLElement | null
-  return !!target?.closest?.('[data-tree-children]')
-}
-
-function onDragOver(e: DragEvent): void {
-  if (!draggingTree()) {
-    // 外部拖入：保持原样（此前是 `@dragover.prevent`）
-    e.preventDefault()
-    return
-  }
-  if (treeRowAt(e) || insideFolderChildren(e)) return // 都不是"根"的落点，交给行自己判定
-  e.preventDefault()
-  if (e.dataTransfer) e.dataTransfer.dropEffect = 'move'
-}
-
-async function onDrop(e: DragEvent): Promise<void> {
-  e.preventDefault()
-  const src = draggingTree()
-  if (!src) return
-  if (treeRowAt(e) || insideFolderChildren(e)) return // 同上：只有"真正的空白"才是移到根
-  ui.dropTargetPath = null
-  endTreeDrag()
-  if (files.root) await files.moveNode(src, files.root)
-}
-
-function onTreeDragEnd(): void {
-  endTreeDrag()
-  ui.dropTargetPath = null
-}
 </script>
 
 <template>
-  <div
-    class="flex h-full flex-col"
-    data-sidebar-files
-    @drop="onDrop"
-    @dragover="onDragOver"
-    @dragend="onTreeDragEnd"
-  >
+  <div class="flex h-full flex-col" data-sidebar-files>
     <!-- 列表视图：工作区全部 Markdown 文章（含元数据） -->
     <div
       v-if="files.root && ui.sidebarFilesView === 'list'"

@@ -7,7 +7,7 @@ import { useFilesStore } from '../stores/files'
 import { useUiStore, type ContextMenuItem } from '../stores/ui'
 import { activeTreePath } from '../lib/treeFocus'
 import { samePath, ancestorDirs } from '../lib/pathUtils'
-import { beginTreeDrag, canDropOn, draggingTree, endTreeDrag } from '../lib/treeMove'
+import { canDropOn } from '../lib/treeMove'
 import { confirmDiscardIfDirty } from '../lib/dialog'
 import { errorReason } from '../lib/errors'
 import { useWorkspaceRootMenu } from '../composables/useWorkspaceRootMenu'
@@ -304,70 +304,15 @@ async function handleAction(action: string): Promise<void> {
 }
 
 /**
- * ─── 拖放：把这一行拖到某个**文件夹行**上（审计缺口：此前只有 dragstart，onDrop 是空的）──
+ * ─── 这一行不再可拖、也不再是拖放落点（用户口径：拖拽行为全部取消）──────────────
  *
- * 分工：
- *   * `dragstart`（源行）把路径写进 `dataTransfer`（正规通道，外部/未来都能读），
- *     并在 `lib/treeMove` 的信箱里记下"谁在被拖"——Chromium 在 `dragover` 期间读不到
- *     `dataTransfer` 的内容（受保护的数据存储），而落点高亮必须**当场**判断合不合法；
- *   * `dragover`（文件夹行）合法才 `preventDefault`（不合法就让浏览器显示"禁止"光标，
- *     并且不会派发 drop —— 这比"先收下再报错"更符合桌面文件管理器的口径）；
- *   * `drop` 落到 `files.moveNode()`，那边做两趟判定（纯字符串 + 一次 exists 探测）后
- *     复用 `file.rename` 通道；重名 / 自己进自己 / 越界都在**落下那一刻**明确提示；
- *   * 高亮只有一个全局值 `ui.dropTargetPath`：容器上的 `dragend` 能兜底清掉它
- *     （Esc 取消、拖到窗外这类"没有 drop"的结束方式都走这里）。
+ * 入口处已拦掉所有 dragstart / drop（`lib/dragGuard.ts`），模板里的 `draggable` 也钉成
+ * `false`（`assets/base.css` 再补 `-webkit-user-drag: none`）。所以这里**没有**
+ * dragstart / dragover / drop / 落点高亮。
  *
- * 为什么只有文件夹行是落点：本轮的题目是"移动到文件夹"（不做任意排序，理由见 treeMove.ts）。
- * 拖到**文件行**上什么都不发生（那不是一个目录），拖到空白区 = 移到工作区根（见 FileTree.vue）。
+ * 「移动到…」的功能没有丢：它仍在右键菜单里（`moveTargets` → `files.moveNode`），
+ * 且是**键盘可达**的那一条（Shift+F10 / 菜单键 → 「移动到…」）。
  */
-function onDragStart(e: DragEvent): void {
-  // 顶层文件夹不可拖（拖走整个工作区没有意义）；同时别把路径写进 dataTransfer，
-  // 否则外部程序会把它当成"拖出一个文件夹"来处理
-  if (props.isRoot) return
-  e.dataTransfer?.setData('text/plain', props.node.path)
-  // copyMove：内部拖放显示"移动"手势；带出去的仍然只是 text/plain（不是文件），
-  // 不改变原有的跨应用行为（此前是 'copy'）
-  if (e.dataTransfer) e.dataTransfer.effectAllowed = 'copyMove'
-  beginTreeDrag({ path: props.node.path, type: props.node.type })
-}
-
-function onDragEnd(): void {
-  endTreeDrag()
-  ui.dropTargetPath = null
-}
-
-/** 这一行现在值不值得高亮：目录行 + 有内部拖拽 + 落点合法（判定见 lib/treeMove.canDropOn） */
-function isDroppable(): boolean {
-  if (props.node.type !== 'directory') return false
-  const src = draggingTree()
-  return !!src && !!files.root && canDropOn(src, props.node.path, files.root)
-}
-
-function onDragOver(e: DragEvent): void {
-  if (!isDroppable()) return
-  e.preventDefault()
-  if (e.dataTransfer) e.dataTransfer.dropEffect = 'move'
-  ui.dropTargetPath = props.node.path
-}
-
-function onDragLeave(e: DragEvent): void {
-  // 行内有子元素（图标/文字/箭头槽），在它们之间移动也会触发 dragleave：
-  // relatedTarget 仍在行内就不算离开，否则高亮会一路闪
-  const to = e.relatedTarget as Node | null
-  if (to && (e.currentTarget as HTMLElement).contains(to)) return
-  if (ui.dropTargetPath === props.node.path) ui.dropTargetPath = null
-}
-
-async function onDrop(e: DragEvent): Promise<void> {
-  if (!isDroppable()) return
-  e.preventDefault()
-  // 别冒泡到 FileTree 的容器：那里的兜底落点是"工作区根"，否则拖到子目录里会变成移到根
-  e.stopPropagation()
-  ui.dropTargetPath = null
-  const src = draggingTree()
-  endTreeDrag()
-  if (src) await files.moveNode(src, props.node.path)
-}
 </script>
 
 <template>
@@ -387,15 +332,11 @@ async function onDrop(e: DragEvent): Promise<void> {
          行的按键（onRowKeydown）：F2 重命名、Delete 删除、Shift+F10 / 菜单键唤出上下文菜单。
          aria-keyshortcuts 把这三条报给读屏器（不写的话只能靠用户猜）。
 
-         拖放（见 script 里那一段说明）：整行可拖（`draggable`，改名中除外）；只有**文件夹行**
-         是落点，被悬停时带 `.is-drop-target`（文件夹行可由 `data-tree-type="directory"` 定位）。 -->
+         拖放已全禁用（见 script 里那一段说明）：`draggable="false"`、不挂任何 drag/drop
+         处理，也不再出现 `.is-drop-target` 落点高亮。 -->
     <div
       class="tree-row"
-      :class="{
-        'is-current': isCurrent,
-        'is-renaming': renaming,
-        'is-drop-target': ui.dropTargetPath === node.path
-      }"
+      :class="{ 'is-current': isCurrent, 'is-renaming': renaming }"
       role="treeitem"
       data-tree-row
       :data-tree-root-row="isRoot ? 'true' : undefined"
@@ -410,16 +351,11 @@ async function onDrop(e: DragEvent): Promise<void> {
       :aria-keyshortcuts="renaming ? undefined : 'F2 Delete Shift+F10'"
       :tabindex="activeTreePath === node.path ? 0 : -1"
       :style="{ '--tree-depth': depth }"
-      :draggable="!renaming && !isRoot"
+      draggable="false"
       @focus="activeTreePath = node.path"
       @click="onToggle"
       @contextmenu="onContextMenu"
       @keydown="onRowKeydown"
-      @dragstart="onDragStart"
-      @dragend="onDragEnd"
-      @dragover="onDragOver"
-      @dragleave="onDragLeave"
-      @drop="onDrop"
     >
       <span class="tree-chevron-slot">
         <Icon

@@ -28,7 +28,6 @@ import { ImageSourceUi } from './imageToolbar'
 // 第八十六轮：末尾是图片时点下方在下一行落光标（纯判据 + 一段**不抢事件**的处理）
 import { TrailingParagraph } from './trailingParagraph'
 import { MathPaste } from './mathPaste'
-import { NoTextDrag } from './noTextDrag'
 import { CodeBlockCM } from './codeBlock'
 import { MarkdownPaste } from './markdownPaste'
 import { TableClipboard, TableDragSelect, TableNoCellClamp } from './tableClipboard'
@@ -171,6 +170,9 @@ export const editorExtensions: Extensions = [
     inline: true,
     allowBase64: true
   }).extend({
+    // drag & drop 已全局禁用（lib/dragGuard.ts）：从 schema 层就把图片钉成不可拖，
+    // 免得 NodeView / 选中态再补 `draggable=true`。样式与事件两层仍各自兜底。
+    draggable: false,
     renderHTML({ HTMLAttributes }) {
       const src = imageSrcForDoc(String(HTMLAttributes.src ?? ''), documentDirProvider())
       // 远程图片默认**不加载**（隐私，见 lib/remoteImages.ts）：换成带 `data-src` 的占位元素，
@@ -237,14 +239,11 @@ export const editorExtensions: Extensions = [
   // 没有数学就完全不接管（普通富文本粘贴不受影响）。**必须排在 ImagePaste 之后**：
   // 图片粘贴要由它先认领（someProp 取首个返回 true 的），本扩展内部也再挡一道 files。
   MathPaste,
-  // 取消「拖动选中的文字去改位置」（用户报障）：只在 `moved === true` 且拖的不是节点时拦下。
-  // ⚠️ 必须排在 ImagePaste **之后**：图片拖入由 ImagePaste 先认领（someProp 取首个返回 true 的），
-  //    否则一张 png 的落点会先撞上"内部拖动"的判据（它 moved 为 false，其实也不会命中，
-  //    但顺序按语义写清楚，免得以后有人挪动这一行）。
-  NoTextDrag,
+  // 拖拽（drag & drop）已在窗口级**全部禁用**（见 lib/dragGuard.ts + assets/base.css），
+  // 编辑器里不再需要"只拦文字拖动、放行节点拖动"的 NoTextDrag 补丁；拖选文字不受影响。
   // 表格拖选口径（第十四轮）：普通拖选**不进 `CellSelection`**，而是按阅读顺序的
   // **文本选择**（用户口径）；`Ctrl/Cmd+左键`、`Shift+左键` 仍保留"整格选"。
-  // ⚠️ 必须排在 `TableFidelity` **之后**、且排在 `NoTextDrag` **之后**：
+  // ⚠️ 必须排在 `TableFidelity` **之后**：
   //    它在 `filterTransaction` 里只改"鼠标拖出来的 cell 选区"，详见 tableClipboard.ts。
   TableDragSelect,
   // 粘贴修复：先注册 MarkdownPaste 接管 clipboardTextParser（someProp 取

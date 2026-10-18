@@ -13,6 +13,15 @@ import { useEditorMenuStore } from './stores/editorMenu'
 import { applySessionPosition, installSessionTracking, restoreSession } from './lib/session'
 import { isInside, installOpenDocTracking } from './lib/openFile'
 import { initExternalWatch } from './lib/externalWatch'
+import { installDragGuard, installNonDraggableDom } from './lib/dragGuard'
+
+/**
+ * 拖拽（drag & drop）全禁用：**挂载前**就把 window 捕获阶段的拦截器与 DOM 纠偏装好，
+ * 保证编辑器 / 文件树 / 任何后续挂载的组件都起不了拖、也收不到 drop。
+ * 只拦 drag* 事件，mousedown/mousemove/mouseup 的**拖选**一个字都不碰（见 lib/dragGuard.ts）。
+ */
+installDragGuard(window)
+installNonDraggableDom(document)
 
 /**
  * 启动阶段打点（`performance.mark('lumin:*')`）：零开销、可在 DevTools Performance

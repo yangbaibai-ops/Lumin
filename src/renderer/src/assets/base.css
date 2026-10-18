@@ -35,6 +35,19 @@
     outline: none;
   }
 
+  /**
+   * ─── drag & drop 全禁用（用户口径）────────────────────────────────────────
+   * 所有元素都不再是 HTML5 拖拽源：拖选中的文字、图片、公式、代码块、文件树行都起不了拖，
+   * 浏览器也就不会画拖拽幽灵图 / 可放置光标。**只关拖拽**，不碰 `user-select` / `cursor`：
+   * 鼠标拖选（mousedown→mousemove→mouseup）与文本框的原生行为不受影响。
+   * 事件侧还有一层 window 捕获拦截（见 `lib/dragGuard.ts`），两层互为兜底。
+   */
+  *,
+  ::before,
+  ::after {
+    -webkit-user-drag: none;
+  }
+
   html,
   body,
   #app {

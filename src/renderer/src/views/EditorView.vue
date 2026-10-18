@@ -693,26 +693,12 @@ watch(
   { immediate: true }
 )
 
-// ─── 外部文件拖放打开（文件系统逻辑，与内核无关）────────────────────────────────
+// ─── 外部文件拖放打开：已按用户口径**整条移除** ────────────────────────────────
 //
-// ⚠️ 这条处理**已经搬到 App.vue 的窗口根节点**（`[data-drop-window]`），实现只有一份：
-// `lib/droppedPath.ts`。搬走的原因有两个，都跟"拖进来没反应"这个报障有关：
-//
-//  ① **原来的判据是恒真的死判据**。这里曾经写：
-//       `if (e.defaultPrevented) return`
-//     想表达"内核（图片拖入）已经认领了这次拖放"。但模板上那个处理是
-//     `@drop.prevent="onDrop"` —— Vue 的 `.prevent` 修饰器**先** `preventDefault()`、
-//     再调处理函数（@vue/runtime-dom 的 withModifiers），所以进函数时 `defaultPrevented`
-//     **永远是 true**：`onDrop` 每次都在第一行 return。
-//     症状 = 拖 .md 不打开、拖 .png 连"不支持的文件类型"提示都没有（连提示都没有正是它恒真的铁证）。
-//     引入它的提交是 d014773（本意是修"图片拖入 + 不支持提示"双弹，修法用错了信号）。
-//     正确的"内层已认领"信号是 `stopPropagation`（见 lib/editor/imagePaste.ts）。
-//  ② 挂在编辑区根节点上时，**侧栏不是它的子树**：拖到左半边（文件树）永远没人处理。
-//     用户口径是"拖入应用内"，所以落点应该是整个窗口。
-//
-// 原来那段实现（含落点注释）保留在 git 历史里；现在的入口：
-//   * `App.vue` 的 `onWindowDragOver` / `onWindowDrop`
-//   * `lib/droppedPath.ts`（取路径 → 授权 → 文件走 openExternalFile / 目录走 files.setRoot）
+// 用户口径（本轮）：所有组件元素的拖拽行为、样式与动效一起取消 —— 文件拖入不再打开、
+// 不再插入图片、不再弹「不支持的文件类型」。实现在入口 `lib/dragGuard.ts`（window 捕获
+// 拦 dragstart/drop）+ `assets/base.css`（`-webkit-user-drag: none`）。
+// 历史实现（`App.vue` 的窗口级落点 + `lib/droppedPath.ts`）保留在 git 历史里，不再接线。
 
 // ─── 草稿恢复弹窗：焦点 / Tab 循环 / 「不选就不能编辑」的按键闸门 ───────────────
 //

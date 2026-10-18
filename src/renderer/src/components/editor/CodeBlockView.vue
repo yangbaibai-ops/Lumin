@@ -302,7 +302,8 @@ const cmTheme = EditorView.theme({
      * tests/codeBlockMountHeight.test.mjs 钉住（与静态态逐项比对，包括换行口径）。
      */
   },
-  '.cm-cursor, .cm-dropCursor': { borderLeftColor: 'var(--accent)' },
+  // 代码块内拖拽已全局禁用（lib/dragGuard.ts）：不再配置 `.cm-dropCursor`（放置指示线）。
+  '.cm-cursor': { borderLeftColor: 'var(--accent)' },
   '&.cm-focused .cm-selectionBackground, .cm-selectionBackground, .cm-content ::selection': {
     backgroundColor: 'var(--sel)'
   },

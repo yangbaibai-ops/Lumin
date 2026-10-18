@@ -1,18 +1,14 @@
-// 文件树内「移动到文件夹」的纯规则（`src/renderer/src/lib/treeMove.ts`）单测。
+// 文件树「移动到…」的纯规则（`src/renderer/src/lib/treeMove.ts`）单测。
 //
-// 为什么值得钉住：拖放是**没有撤销按钮也能毁掉目录结构**的少数操作之一
-// （把文件夹拖进自己的子孙里、把 A 拖到已经有同名 A 的地方），而它的判定全是字符串比较 ——
+// 为什么值得钉住：移动是**没有撤销按钮也能毁掉目录结构**的少数操作之一
+// （把文件夹移进自己的子孙里、把 A 移到已经有同名 A 的地方），而它的判定全是字符串比较 ——
 // 正好是单测最便宜、运行时最难看出错的那一类。落盘那一半（`file.rename` / `moveNode`）
 // 复用既有通道，这里只钉"能不能搬、搬到哪"。
+//
+// ⚠️ 拖拽本身已全禁用（`lib/dragGuard.ts`），`canDropOn` 现在服务的是右键菜单「移动到…」。
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import {
-  beginTreeDrag,
-  canDropOn,
-  draggingTree,
-  endTreeDrag,
-  planMove
-} from '../src/renderer/src/lib/treeMove.ts'
+import { canDropOn, planMove } from '../src/renderer/src/lib/treeMove.ts'
 
 const ROOT = 'D:\\ws'
 const file = (path) => ({ path, type: 'file' })
@@ -132,21 +128,6 @@ test('canDropOn：只对"真的会搬"的落点为真（同父与非法落点都
   assert.equal(canDropOn(file('D:\\ws\\sub\\a.md'), 'D:\\ws\\sub', ROOT), false, '同父 = 无操作')
   assert.equal(canDropOn(dir('D:\\ws\\a'), 'D:\\ws\\a\\b', ROOT), false, '子孙 = 拒绝')
   assert.equal(canDropOn(file('D:\\ws\\a.md'), 'D:\\other', ROOT), false, '越界 = 拒绝')
-  // ⚠️ 重名冲突这里**故意不判**（dragover 期间发不了 IPC）：落点照常高亮，
-  // 落下那一刻由 moveNode 明确拒绝并提示。这条口径写在这里，免得以后有人"顺手"加一次同步探测
-})
-
-// ─── 拖拽会话信箱 ─────────────────────────────────────────────────────────────
-
-test('拖拽会话：begin 记来源、end 清空（外部拖入永远拿不到来源）', () => {
-  assert.equal(draggingTree(), null, '静息态没有内部拖拽')
-  beginTreeDrag({ path: 'D:\\ws\\a.md', type: 'file' })
-  assert.deepEqual(draggingTree(), { path: 'D:\\ws\\a.md', type: 'file' })
-  // 记的是副本：调用方之后改自己的对象不会污染信箱
-  const source = { path: 'D:\\ws\\b', type: 'directory' }
-  beginTreeDrag(source)
-  source.path = 'D:\\ws\\changed'
-  assert.equal(draggingTree().path, 'D:\\ws\\b')
-  endTreeDrag()
-  assert.equal(draggingTree(), null)
+  // ⚠️ 重名冲突这里**故意不判**（菜单候选不逐项发 IPC）：菜单里会出现，真正移动时
+  // 由 moveNode 明确拒绝并提示。这条口径写在这里，免得以后有人"顺手"加一次同步探测。
 })

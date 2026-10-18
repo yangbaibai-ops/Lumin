@@ -254,6 +254,8 @@ function loadGuardedImage(el: HTMLElement): void {
   if (!src) return
   allowRemoteImage(src)
   const img = document.createElement('img')
+  // 拖拽已全局禁用（lib/dragGuard.ts）：就地换上的真图也不是拖拽源
+  img.draggable = false
   img.src = src
   // alt 取占位元素自己的 data-remote-alt（第五十三轮已删掉文案节点，按内容查会恒为空）
   img.alt = el.getAttribute('data-remote-alt') ?? ''

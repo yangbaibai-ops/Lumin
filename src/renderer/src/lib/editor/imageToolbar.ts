@@ -2901,6 +2901,8 @@ export const ImageSourceUi = Extension.create({
           span.setAttribute('data-img-from', String(img.from))
           span.setAttribute('data-img-inline', inline ? 'true' : 'false')
           const im = document.createElement('img')
+          // 拖拽已全局禁用（lib/dragGuard.ts）：widget 里的图片同样不是拖拽源
+          im.draggable = false
           im.src = img.src
           if (img.alt) im.alt = img.alt
           if (img.zoom) im.style.zoom = `${img.zoom}%`
