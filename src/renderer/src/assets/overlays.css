@@ -565,74 +565,69 @@ li.md-reveal {
    ⚠️ `position: fixed` 不是随手选的：父级 `.code-block-wrapper` 必须 `overflow: hidden`
    （layoutNoOverflow 守着它），absolute 子元素会被裁掉 —— 新建的一行高代码块会把下拉列表
    整块裁没。fixed 既能脱离文档流（块高不变），又不受祖先 overflow 裁剪，还能按视口夹住。
-   这里没有 transform/filter 祖先，所以 fixed 的包含块就是视口（见 CodeBlockView.positionPicker）。 */
+   这里没有 transform/filter 祖先，所以 fixed 的包含块就是视口（见 CodeBlockView.positionPicker）。
+
+   位置口径（本轮用户需求）：浮层在**代码块外面**，不压任何一行代码；默认贴块上方、右对齐，
+   顶部放不下自动翻到下方（几何在 lib/editor/codeBlockLangPicker.ts，单测钉着"交集 = 0"）。
+   所以这里只负责观感：细边框（--edge）+ 极淡投影（--shadow-1）+ 紧凑内距 —— 它是块外的
+   一条小注脚，不是块里的工具条。 */
 .cb-lang-picker {
   position: fixed;
   z-index: var(--z-popover);
   box-sizing: border-box;
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 2px;
   /* 浮层宽度上限：240px 是"能放下 typescript/sequenceDiagram"的就近常量；
-     `calc(100vw - 16px)` 是窄窗口兜底（8px 边距 ×2），绝不让浮层撑破页面。 */
+     `calc(100vw - 16px)` 是窄窗口兜底（8px 边距 ×2），绝不让浮层撑破页面。
+     **实际上限**还由 JS 按"代码块宽的 40%"再夹一次（PICKER_MAX_WIDTH_RATIO）：浮层再宽
+     也不会超过代码块的 40%（用户口径），见 codeBlockLangPicker.ts 的 maxWidth。 */
   width: max-content;
   min-width: 0;
   max-width: min(240px, calc(100vw - 16px));
-  padding: 5px;
+  padding: 4px;
+  /* 圆角比代码块（12px）小一档、边框沿用 --edge：贴着块，但不抢块的轮廓 */
   border: 1px solid var(--edge);
-  border-radius: 9px;
+  border-radius: 8px;
   background: var(--elevate);
-  box-shadow: var(--shadow-2);
+  /* --shadow-1 是"轻量浮起"那一档（--shadow-2 留给模态/大浮层）：块外的小浮层不需要重阴影 */
+  box-shadow: var(--shadow-1);
   color: var(--ink);
   font-size: 12px;
+  /* max-height 由 JS 按"贴的那一侧到视口边缘的空间"写内联值：候选列表再长也只在浮层里滚，
+     绝不越过代码块的上/下边缘（任何时刻都不压代码）。 */
+  overflow: hidden;
 }
 .cb-lang-row {
   display: flex;
   align-items: center;
-  gap: 4px;
   min-width: 0;
 }
+/* 输入框：无边框（用户口径：要么无边框、要么极细下划线），只有 hover/focus 时浮一层
+   --block-hover —— 它看起来像"块外的一行注记"，而不是第二个工具面板。 */
 .cb-lang-input {
   box-sizing: border-box;
   flex: 1 1 auto;
   width: 100%;
   min-width: 0;
-  padding: 4px 7px;
-  border: 1px solid var(--edge-strong);
-  border-radius: 6px;
-  background: var(--panel);
-  color: var(--ink);
-  font-family: var(--font-mono);
-  /* 12px：比正文代码（12.5px）略小，浮层不喧宾夺主 */
-  font-size: 12px;
-  outline: none;
-}
-/* outline:none 的焦点环在这里（focusVisibility 守卫要求能说出焦点提示在哪） */
-.cb-lang-input:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 1px;
-}
-/* 清空按钮：`×` 只是字形，语义由 aria-label/title 给（走语言包） */
-.cb-lang-clear {
-  flex: none;
-  width: 20px;
-  height: 20px;
-  padding: 0;
+  padding: 3px 6px;
   border: none;
   border-radius: 5px;
   background: transparent;
-  color: var(--ink-2b);
-  font-size: 14px;
-  line-height: 1;
-  cursor: pointer;
-}
-.cb-lang-clear:hover {
-  background: var(--panel-2);
   color: var(--ink);
+  font-family: var(--font-mono);
+  /* 12px：比正文代码（13.5px）小一档，浮层不喧宾夺主 */
+  font-size: 12px;
+  outline: none;
 }
-.cb-lang-clear:focus-visible {
+.cb-lang-input:hover {
+  background: var(--block-hover);
+}
+/* outline:none 的焦点环在这里（focusVisibility 守卫要求能说出焦点提示在哪）。
+   offset 取 -2px：环画在输入框内侧，不会被浮层的 overflow:hidden 裁掉。 */
+.cb-lang-input:focus-visible {
   outline: 2px solid var(--accent);
-  outline-offset: 1px;
+  outline-offset: -2px;
 }
 /* 候选列表：超过约 9 行就自己滚（浮层高度受限，不把页面推高）。
    ⚠️ 选择器带 `.cb-lang-picker` 前缀是必须的：浮层长在 .md-preview 里，
@@ -642,7 +637,11 @@ li.md-reveal {
 .cb-lang-picker .cb-lang-list {
   margin: 0;
   padding: 0;
-  max-height: 13.5rem;
+  /* 列表是 flex 项：浮层被 JS 的 max-height 夹住时，列表自己收缩并出滚动条
+     （没有 min-height:0 的话 flex 项的默认最小高度会把浮层重新撑破）。 */
+  flex: 1 1 auto;
+  min-height: 0;
+  max-height: 12rem;
   overflow-y: auto;
   overscroll-behavior: contain;
   list-style: none;
@@ -652,11 +651,15 @@ li.md-reveal {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
-  padding: 3px 7px;
-  border-radius: 5px;
+  gap: 6px;
+  /* 行高紧凑：一行只占 3.4 个字号高，12rem 的列表能放下约 9 项 */
+  padding: 2px 6px;
+  border-radius: 4px;
   cursor: pointer;
   white-space: nowrap;
+}
+.cb-lang-picker .cb-lang-option:hover {
+  background: var(--block-hover);
 }
 .cb-lang-picker .cb-lang-option[aria-selected='true'] {
   background: var(--accent-soft);

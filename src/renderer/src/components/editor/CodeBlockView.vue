@@ -76,6 +76,9 @@ import {
   normalizeLanguageName,
   resolveLanguageKey
 } from '../../lib/editor/codeBlockLanguage'
+// 浮层定位的几何计算（纯函数，单测钉住"与代码块 rect 交集 = 0"）：
+// 用户口径是本轮新增的「浮层在代码块**外面**、不压代码」，算法与断言都集中在那里。
+import { placePicker, type PickerSide } from '../../lib/editor/codeBlockLangPicker'
 
 const props = defineProps(nodeViewProps)
 const settings = useSettingsStore()
@@ -183,10 +186,6 @@ let keepOpenOnFocusLoss = false
 
 /** 当前语言没有内置高亮包（选择器里标注「未内置高亮」） */
 const languageUnsupported = computed(() => needsNoHighlightNotice(selectedLanguage.value))
-/** 有没有东西可清空（显式语言或自动识别出的语言） */
-const showClearButton = computed(
-  () => explicitLanguage.value !== '' || detectedLanguage.value !== null
-)
 
 interface PickerItem {
   /** 选中后写进 `language` 属性的**原样字符串**（空串 = 无语言） */
@@ -1334,24 +1333,13 @@ function teardownCm(): void {
 
 // ─── 语言浮层：定位 / 开关 / 键盘 / 应用 ─────────────────────────────────────
 /**
- * 浮层锚点：代码区本身。
- *   * 挂载态 = CM 的 `.cm-editor`（它的 rect 就是"代码区"）；
- *   * 静态态 = `.cb-static`（点击后马上会挂 CM）；
- *   * mermaid 态 = `.mermaid-block`（它没有 CM，但同样要能切回代码语言）。
+ * 本次打开浮层贴在哪一边（`above` / `below`）。null = 刚打开、还没选边。
+ *
+ * 为什么要"记住"而不是每次重新算：列表展开会让浮层长高，如果每拍都重挑一边，
+ * 用户一按 ↓ / 一开始打字浮层就会在块上方和下方之间跳。粘住之后只有一种情况会翻边：
+ * 这一侧已经被滚到几乎没有空间（见 placePicker 的注释）。
  */
-function pickerAnchorEl(): HTMLElement | null {
-  if (cmView) return cmView.dom
-  if (selectedLanguage.value === 'mermaid') return mermaidBlockRef.value
-  return staticRef.value
-}
-
-/**
- * 浮层与代码块边缘的距离（px）。就近常量：这是**视觉贴角**的微调，不是布局尺寸；
- * 换成 em 会随字号缩放，反而让"贴在右上角"的关系漂移。
- */
-const PICKER_EDGE_PX = 6
-/** 浮层与视口边缘的最小留白（px）：窄窗口下夹住它，绝不让它顶出页面 */
-const PICKER_VIEWPORT_PAD_PX = 8
+const pickerSide = ref<PickerSide | null>(null)
 
 /**
  * 用视口坐标摆浮层（CSS `position: fixed`）。
@@ -1362,24 +1350,43 @@ const PICKER_VIEWPORT_PAD_PX = 8
  * `fixed` 是"绝对定位"里唯一既能脱离文档流、又不被祖先 overflow 裁剪、还能按视口夹住的形态
  * （本仓从 `.editor-scroll` 到 `.md-preview` 没有 transform/filter，fixed 的包含块就是视口）。
  *
- * 夹取规则保证窄窗口不撑破布局：左右上下都限制在 `[pad, 视口 - 尺寸 - pad]` 内；
- * 尺寸上限另由 CSS 的 `max-width: min(...)` 兜住。
+ * 用户口径（本轮）：浮层要**在代码块外面**，不遮挡任何一行代码。所以这里不再拿
+ * "代码区右上角"当锚点，而是拿**代码块外壳的 rect** 去问 placePicker：
+ *   * 默认贴块**上方**、右对齐、留 6px 缝；
+ *   * 上方空间不够（块靠近视口顶部）→ 自动贴到块**下方**，仍然留 6px 缝；
+ *   * 高度上限 = 这一侧到视口边缘的空间 ⇒ 候选列表再长也只会在浮层内部滚，
+ *     不会越过块的边缘（"任何时刻都不压代码"）。
+ * 几何全部在 `lib/editor/codeBlockLangPicker.ts`（纯函数），单测用真实尺寸的矩形
+ * 证明"浮层 rect × 代码块 rect 交集面积 = 0"；这里只负责把结果写成 style。
  */
 function positionPicker(): void {
-  const anchor = pickerAnchorEl()
+  const block = blockEl()
   const panel = pickerRef.value
-  if (!anchor || !panel) return
-  const r = anchor.getBoundingClientRect()
-  const w = panel.offsetWidth
-  const h = panel.offsetHeight
-  const vw = window.innerWidth
-  const vh = window.innerHeight
-  const pad = PICKER_VIEWPORT_PAD_PX
-  let left = r.right - w - PICKER_EDGE_PX
-  let top = r.top + PICKER_EDGE_PX
-  left = Math.min(Math.max(left, pad), Math.max(pad, vw - w - pad))
-  top = Math.min(Math.max(top, pad), Math.max(pad, vh - h - pad))
-  pickerStyle.value = { left: `${Math.round(left)}px`, top: `${Math.round(top)}px` }
+  if (!block || !panel) return
+  const r = block.getBoundingClientRect()
+  const placement = placePicker({
+    block: {
+      left: r.left,
+      top: r.top,
+      right: r.right,
+      bottom: r.bottom,
+      width: r.width,
+      height: r.height
+    },
+    viewport: { width: window.innerWidth, height: window.innerHeight },
+    panelWidth: panel.offsetWidth,
+    panelHeight: panel.offsetHeight,
+    side: pickerSide.value
+  })
+  pickerSide.value = placement.side
+  pickerStyle.value = {
+    left: `${placement.left}px`,
+    top: `${placement.top}px`,
+    maxWidth: `${placement.maxWidth}px`,
+    // 永远写 max-height（不是"只在放不下时写"）：否则列表展开/收起会让它一会儿有、
+    // 一会儿没有，量到的自然高度在两次调用之间反复变，反而抖。
+    maxHeight: `${placement.maxHeight}px`
+  }
 }
 
 // 滚动 / 缩放时（rAF 合并）重新贴角：浮层是 fixed，不跟内容走，必须自己追。
@@ -1415,6 +1422,8 @@ function openPicker(): void {
   if (pickerOpen.value) return
   pickerOpen.value = true
   listOpen.value = false
+  // 每次打开重新挑边（默认上方；块靠近视口顶部时 placePicker 会翻到下方）
+  pickerSide.value = null
   // 输入框里预填当前语言（自动识别出来的也填，用户能看到"它认成了什么"；
   // 无语言时留空，placeholder 负责提示可输入）。
   pickerQuery.value = selectedLanguage.value === PLAIN_TEXT_LANGUAGE ? '' : selectedLanguage.value
@@ -1428,6 +1437,7 @@ function closePicker(): void {
   pickerOpen.value = false
   listOpen.value = false
   pickerQuery.value = ''
+  pickerSide.value = null
   pickerStyle.value = {}
   detachPickerListeners()
 }
@@ -1500,7 +1510,23 @@ function scrollActiveIntoView(): void {
 }
 
 function onPickerInput(e: Event): void {
-  pickerQuery.value = (e.target as HTMLInputElement).value
+  const next = (e.target as HTMLInputElement).value
+  pickerQuery.value = next
+  /**
+   * 用户把输入框**删空** = 明确要"无语言"（裸围栏 / 纯文本）。
+   *
+   * 这是"×"清空按钮被取消后唯一的清空路径（用户口径：取消一键删除，但"输入为空 =
+   * 无语言"这条语义要保留）。立即落库而不是等 Enter：
+   *   * 删空这个动作本身就是完整的、不需要再确认；
+   *   * 若等到 Enter，空输入下 `pickerItems` 是完整预设列表，Enter 会选中第一项
+   *     （`text` = 显式语言）而不是"无语言"，语义就变味了。
+   * 自动识别过的块也一样：这里同时把 `detectSuppressed` 置真，本次会话不再被猜回来。
+   */
+  if (next.trim() === '') {
+    applyLanguageChoice('')
+    listOpen.value = false
+    return
+  }
   listOpen.value = true
   activeIndex.value = 0
   void nextTick(positionPicker)
@@ -1521,6 +1547,15 @@ function onPickerInputFocus(e: Event): void {
 function applyLanguageChoice(raw: string): void {
   const name = normalizeLanguageName(raw)
   const changed = name !== explicitLanguage.value || detectedLanguage.value !== null
+  /**
+   * 焦点是否还在输入框里：**必须在 `updateAttributes` 之前读**。
+   *
+   * `updateAttributes` 是一次 PM 事务，事务里的 `selectionToDOM` 可能同步把 DOM 焦点
+   * 挪回编辑器根节点（实测：在输入框里删空 → 立即写回 `language: ''` 时，焦点被拽走，
+   * 随后那一次 focusout 在 keepOpenOnFocusLoss 复位之后才到，浮层就"自己消失了"）。
+   * 先记下、事务后（nextTick）再 focus 回来，浮层与输入焦点都稳定。
+   */
+  const refocusInput = document.activeElement === pickerInputRef.value
   detectedLanguage.value = null
   explicitLanguage.value = name
   // 清空 = 用户明确要"无语言"：本次会话内不再让自动识别把它猜回来。
@@ -1530,16 +1565,11 @@ function applyLanguageChoice(raw: string): void {
   if (changed) props.updateAttributes({ language: name })
   pickerQuery.value = name === PLAIN_TEXT_LANGUAGE ? '' : name
   listOpen.value = false
-  const refocusInput = document.activeElement === pickerInputRef.value
   void nextTick(() => {
     keepOpenOnFocusLoss = false
     positionPicker()
     if (refocusInput) pickerInputRef.value?.focus()
   })
-}
-
-function clearLanguage(): void {
-  applyLanguageChoice('')
 }
 
 /**
@@ -2479,17 +2509,23 @@ function commitMermaid(): void {
     />
 
     <!-- ─── 语言浮层（聚焦才出现；`.cb-lang-picker` 是 fixed 定位，不占布局）──────────
+         位置口径（本轮用户需求）：**在代码块外面**，默认贴块上方、右对齐、留 6px 缝；
+         顶部空间不够时贴到块下方。坐标由 positionPicker → placePicker 按「块外壳 rect」
+         算，任何时刻都不与块 rect 相交（单测/验收都按交集面积 = 0 判）。
          为什么放在代码区**之后**：Tab 顺序按 DOM 走。浮层在 CM 之后，用户从代码区按 Tab
          正好落到这个输入框；若放在前面，Tab 会跨过它直接跑到块外。
          v-if（不是 v-show）：未聚焦时 DOM 里**没有**这个节点 —— 验收要求"没有可见的语言条"，
          同时也避免 1500 个块各留一份输入框。
          mousedown/pointerdown/click/keydown 全部 .stop：浮层虽然长在 NodeView 里，
-         但它不是正文，不能让 PM 把焦点/选区抢回编辑器根节点。 -->
+         但它不是正文，不能让 PM 把焦点/选区抢回编辑器根节点。
+         **没有"×"清空按钮**（用户口径：取消一键删除）：清空语言 = 手动把输入框里的
+         内容删空（输入为空 = 无语言，见 applyLanguageChoice 的空串语义）。 -->
     <div
       v-if="pickerOpen"
       ref="pickerRef"
       class="cb-lang-picker"
       :style="pickerStyle"
+      :data-cb-picker-side="pickerSide ?? 'auto'"
       data-cb-lang-picker
       @mousedown.stop
       @pointerdown.stop
@@ -2519,19 +2555,6 @@ function commitMermaid(): void {
           @keydown="onPickerKeydown"
           @focus="onPickerInputFocus"
         />
-        <!-- 清空 = 写回 `language: ''`（裸围栏 / 无语言纯文本），不是"选 text" -->
-        <button
-          v-if="showClearButton"
-          type="button"
-          class="cb-lang-clear"
-          data-cb-lang-clear
-          :aria-label="$t('editor.codeLanguageClear')"
-          :title="$t('editor.codeLanguageClear')"
-          @mousedown.prevent
-          @click="clearLanguage"
-        >
-          ×
-        </button>
       </div>
       <!-- 当前语言没有内置高亮包时，浮层里明确标注（弱化的提示文字，不是报错） -->
       <p v-if="languageUnsupported" class="cb-lang-note" data-cb-lang-note>

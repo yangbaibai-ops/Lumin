@@ -236,8 +236,7 @@
     "codeLanguage": "代码语言（可输入）",
     "codeLanguagePlaceholder": "输入语言名…",
     "codeLanguageUnsupported": "未内置高亮",
-    "codeLanguageUse": "使用“{name}”",
-    "codeLanguageClear": "清除语言（纯文本）"
+    "codeLanguageUse": "使用“{name}”"
   },
   "settings": {
     "title": "设置",

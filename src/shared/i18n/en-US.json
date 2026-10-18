@@ -236,8 +236,7 @@
     "codeLanguage": "Code language (type to filter)",
     "codeLanguagePlaceholder": "Type a language…",
     "codeLanguageUnsupported": "No built-in highlighting",
-    "codeLanguageUse": "Use “{name}”",
-    "codeLanguageClear": "Clear language (plain text)"
+    "codeLanguageUse": "Use “{name}”"
   },
   "settings": {
     "title": "Settings",

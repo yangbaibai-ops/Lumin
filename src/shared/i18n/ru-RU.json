@@ -236,8 +236,7 @@
     "codeLanguage": "Язык кода (введите для фильтра)",
     "codeLanguagePlaceholder": "Введите язык…",
     "codeLanguageUnsupported": "Подсветка не встроена",
-    "codeLanguageUse": "Использовать «{name}»",
-    "codeLanguageClear": "Очистить язык (простой текст)"
+    "codeLanguageUse": "Использовать «{name}»"
   },
   "settings": {
     "title": "Настройки",
