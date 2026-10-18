@@ -36,6 +36,8 @@ import {
 } from './imageReveal'
 export { revealDecision } from './imageReveal'
 export type { RevealSel, RevealRange } from './imageReveal'
+// 性能探针（默认关闭；打开后只计数 + A/B 开关，不改变行为）。见 perfProbe.ts。
+import { perfCount, perfFlag } from './perfProbe'
 
 /**
  * 「这张图片算被选中」的观感类名 —— **全仓唯一出处**：装饰（`Decoration.node` / widget）与
@@ -195,8 +197,24 @@ export function withZoomInRaw(raw: string, zoom: number): string {
  * `tests/imageReveal.test.mjs`。
  */
 
-/** 文档里所有"图片源码"（节点形式 + 原文形式），按位置排序 */
+/**
+ * 文档里所有"图片源码"（节点形式 + 原文形式），按位置排序。
+ *
+ * ⚡ 性能（本轮）：结果只由 `state.doc` 决定（只读 `doc` / `schema`），而编辑器**每次
+ * 选区事务**都会调 decorations()/apply()/update() → 原来每个 mousemove 都要把整篇文档
+ * `descendants` 扫好几遍（2000 行夹具实测 24 步拖选里 100+ 次）。这里按 `doc` 身份缓存；
+ * 文档一改（事务产生新 doc 对象）缓存自然失效。返回的数组**只读**，调用方一律
+ * find/filter/遍历，不改写它（`trailingParagraph.ts` 等已核对）。
+ */
+let imgSrcCacheDoc: EditorState['doc'] | null = null
+let imgSrcCacheList: ImgSource[] = []
+
 export function collectImgSources(state: EditorState): ImgSource[] {
+  if (perfFlag('imgCache') && imgSrcCacheDoc === state.doc) {
+    perfCount('collectHit')
+    return imgSrcCacheList
+  }
+  perfCount('collect')
   const out: ImgSource[] = []
   state.doc.descendants((node, pos) => {
     if (node.type.name === 'image') {
@@ -274,7 +292,10 @@ export function collectImgSources(state: EditorState): ImgSource[] {
     }
     return true
   })
-  return out.sort((a, b) => a.from - b.from)
+  const list = out.sort((a, b) => a.from - b.from)
+  imgSrcCacheDoc = state.doc
+  imgSrcCacheList = list
+  return list
 }
 
 const KEY = new PluginKey<{ from: number | null; editing?: boolean; openedAt?: number }>(
@@ -1760,10 +1781,49 @@ export const ImageSourceUi = Extension.create({
     ): SelFrag[] => {
       const out: SelFrag[] = []
       if (!(to > from)) return out
+      perfCount('visible')
+      /**
+       * ⚡ 性能（本轮）：原来从 `view.dom` 第一个文本节点开始**整篇遍历**，每个节点都
+       * `posAtDOM` 一次（2000 行夹具上千个文本节点）—— 而用户拖选的范围往往只有几行。
+       * 现在用 `domAtPos(from/to)` 拿到区间两端的 DOM 位置，**从起点文本开始走、越过终点即停**；
+       * 区间外的文本节点本来就会被 `b1 <= a1` 裁掉，跳过它们不改变任何结果。
+       */
+      let start: { node: Node; offset: number } | null = null
+      let end: { node: Node; offset: number } | null = null
+      try {
+        start = view.domAtPos(from)
+      } catch {
+        start = null
+      }
+      try {
+        end = view.domAtPos(to)
+      } catch {
+        end = null
+      }
       const walker = document.createTreeWalker(view.dom, NodeFilter.SHOW_TEXT)
       let n: Node | null
-      while ((n = walker.nextNode())) {
+      if (start) {
+        walker.currentNode = start.node
+        n = start.node.nodeType === Node.TEXT_NODE ? start.node : walker.nextNode()
+      } else {
+        n = walker.nextNode()
+      }
+      const endNode = end ? end.node : null
+      const pastEnd = (t: Node): boolean => {
+        if (!endNode) return false
+        if (t === endNode) return false
+        const rel = endNode.compareDocumentPosition(t)
+        return (
+          (rel & Node.DOCUMENT_POSITION_FOLLOWING) !== 0 &&
+          (rel & Node.DOCUMENT_POSITION_CONTAINED_BY) === 0
+        )
+      }
+      const lhCache = new Map<Element, number>()
+      while (n) {
         const t = n as Text
+        const next = walker.nextNode()
+        if (pastEnd(t)) break
+        n = next
         if (!t.length) continue
         /**
          * ⚠️ 第一百二十七轮：**块级公式内部**的文字节点全部跳过。
@@ -1819,9 +1879,19 @@ export const ImageSourceUi = Extension.create({
         const block = (t.parentElement?.closest(SEL_BLOCK_SEL) as HTMLElement | null) ?? null
         if (block) onBlock(block)
         const blockMath = !!t.parentElement?.closest('[data-md-math-block]')
-        const lh = parseFloat(
-          getComputedStyle(t.parentElement ?? (t as unknown as Element)).lineHeight
-        )
+        /**
+         * `lh` 只在 `blockMath` 片段里被读（见 paintSelBands 的块级公式兜底），
+         * 正文片段读完即弃 —— 不再为每个文本节点付一次 `getComputedStyle`。
+         */
+        let lh = 0
+        if (blockMath) {
+          const pe = t.parentElement
+          if (pe) {
+            const hit = lhCache.get(pe)
+            lh = hit ?? parseFloat(getComputedStyle(pe).lineHeight)
+            if (hit == null && Number.isFinite(lh)) lhCache.set(pe, lh)
+          }
+        }
         out.push({ range: r, rects, block, blockMath, lh: Number.isFinite(lh) ? lh : 0 })
         if (out.length >= SEL_BAND_MAX_FRAGS) break
       }
@@ -2052,6 +2122,11 @@ export const ImageSourceUi = Extension.create({
       }
     }
     const clearSelBands = (view?: EditorView | null): void => {
+      if (livePaintRaf) {
+        window.cancelAnimationFrame(livePaintRaf)
+        livePaintRaf = 0
+        livePaintPending = null
+      }
       setSelOwn(view, null)
       if (selBand) {
         selBand.remove()
@@ -2072,6 +2147,12 @@ export const ImageSourceUi = Extension.create({
       to: number,
       mode: 'all' | 'math'
     ): number => {
+      perfCount('paint')
+      // A/B 开关：关掉选区带绘制（退回浏览器原生 ::selection）——用来量这一层的成本
+      if (!perfFlag('selBand')) {
+        clearSelBands(view)
+        return 0
+      }
       if (!(to > from)) {
         clearSelBands(view)
         return 0
@@ -2247,25 +2328,15 @@ export const ImageSourceUi = Extension.create({
       }
       // ── 画（容器与 `.img-src-overlay` 同一套：挂在 `view.dom.parentElement`，落在正文之下）
       const node = ensureSelBand(view)
+      /**
+       * ⚡ 性能（本轮）：原先是「先建一遍 DOM → 逐个子节点 getBoundingClientRect 回读 →
+       * 清空 → 再建一遍」。每次 paint 两次 DOM 重建 + 一次强制布局；而回读的尺寸就是
+       * 刚写进去的 left/top/width/height（绝对定位、无裁剪），几何与 `bands` 逐值相同。
+       * 现在直接用 `bands` 当 `drawn`，只建一次 DOM。
+       */
+      const drawn: RectBox[] = bands.filter((b) => b.right - b.left > 0.5 && b.bottom - b.top > 0.5)
       const parent = node.offsetParent as HTMLElement | null
       const base = parent ? parent.getBoundingClientRect() : { left: 0, top: 0 }
-      const frag = document.createDocumentFragment()
-      for (const b of bands) {
-        const d = document.createElement('div')
-        d.style.left = `${(b.left - base.left).toFixed(2)}px`
-        d.style.top = `${(b.top - base.top).toFixed(2)}px`
-        d.style.width = `${Math.max(0, b.right - b.left).toFixed(2)}px`
-        d.style.height = `${Math.max(0, b.bottom - b.top).toFixed(2)}px`
-        frag.appendChild(d)
-      }
-      node.replaceChildren(frag)
-      // ── 回读**渲染后**的矩形（自证："画的"确实盖住了"要画的"）
-      const drawn: RectBox[] = []
-      for (const d of Array.from(node.children)) {
-        const r = d.getBoundingClientRect()
-        if (!(r.width > 0.5 && r.height > 0.5)) continue
-        drawn.push({ left: r.left, right: r.right, top: r.top, bottom: r.bottom })
-      }
       /**
        * 第一百二十五轮：**看不见的带要撤掉，并把盖住它的那层交给原生**。
        *
@@ -2301,8 +2372,38 @@ export const ImageSourceUi = Extension.create({
        *     "叠一层更深的底色"远好过"整行什么都没有"（用户口径：绝不允许原生被关掉 + 我们没画）。
        */
       const SEL_COVER_SLICE_PX = 12
+      /**
+       * ⚡ 性能（本轮，profile 第一热点）：`elementsFromPoint` 是**同步命中测试**，
+       * 一条带按 12px 切片 × 每片 3 个 y 采样 —— 24 步拖选实测 **5044 次 / 2.8s**。
+       * 其中绝大多数落在普通正文上，而普通正文附近根本没有「不透明白名单块」。
+       * 这里先一次性量出白名单元素的矩形（每帧一次，`querySelectorAll` 已经很便宜），
+       * **只有 x/y 落在某个候选矩形内才真的做命中测试**；判定逻辑（elementsFromPoint +
+       * 白名单 + 背景 alpha）逐行保持不变。
+       */
+      const opaqueCandidates: Array<{ el: HTMLElement; r: DOMRect }> = []
+      try {
+        for (const el of Array.from(view.dom.querySelectorAll<HTMLElement>(NATIVE_KINDS))) {
+          const r = el.getBoundingClientRect()
+          if (r.width > 0.5 && r.height > 0.5) opaqueCandidates.push({ el, r })
+        }
+      } catch {
+        /* 量不到就退回"处处可疑"，行为与旧版一致 */
+      }
       /** 这一 x 位置（带内上下三点抽样）是不是被**不透明块**盖住了 */
-      const opaqueCoverAtX = (r: RectBox, x: number): HTMLElement | null => {
+      const opaqueCoverAtX = (
+        r: RectBox,
+        x: number,
+        cands: Array<{ el: HTMLElement; r: DOMRect }>
+      ): HTMLElement | null => {
+        // 纯几何预筛：x 不在任何候选块的横向范围内 ⇒ 这三点不可能命中白名单元素
+        let any = false
+        for (const c of cands) {
+          if (x >= c.r.left - 0.5 && x <= c.r.right + 0.5) {
+            any = true
+            break
+          }
+        }
+        if (!any) return null
         for (const y of [r.top + 2, (r.top + r.bottom) / 2, r.bottom - 2]) {
           let stack: Element[] = []
           try {
@@ -2340,12 +2441,15 @@ export const ImageSourceUi = Extension.create({
       const splitByCover = (r: RectBox): RectBox[] => {
         const w = r.right - r.left
         if (!(w > 0)) return []
+        // 带与候选块的 y 区间有交叠才值得逐片查；否则整条原样留下（旧版会在这里白跑 N 次命中测试）
+        const cands = opaqueCandidates.filter((c) => c.r.bottom > r.top && c.r.top < r.bottom)
+        if (!cands.length) return [r]
         const n = Math.max(1, Math.ceil(w / SEL_COVER_SLICE_PX))
         const keep: Array<{ l: number; r: number }> = []
         for (let i = 0; i < n; i++) {
           const x0 = r.left + (w * i) / n
           const x1 = r.left + (w * (i + 1)) / n
-          if (opaqueCoverAtX(r, (x0 + x1) / 2)) continue
+          if (opaqueCoverAtX(r, (x0 + x1) / 2, cands)) continue
           const last = keep[keep.length - 1]
           if (last && Math.abs(last.r - x0) < 0.01) last.r = x1
           else keep.push({ l: x0, r: x1 })
@@ -2365,19 +2469,16 @@ export const ImageSourceUi = Extension.create({
       const dropped = hiddenRects.length > 0
       // 重画：把"被盖住的那些片"从层里去掉，留下的片保持原位（DOM 子节点与 `drawn` 一一对应）
       try {
-        node.replaceChildren()
         const frag2 = document.createDocumentFragment()
-        const parent2 = node.offsetParent as HTMLElement | null
-        const base2 = parent2 ? parent2.getBoundingClientRect() : { left: 0, top: 0 }
         for (const k of rendered) {
           const d = document.createElement('div')
-          d.style.left = `${(k.left - base2.left).toFixed(2)}px`
-          d.style.top = `${(k.top - base2.top).toFixed(2)}px`
+          d.style.left = `${(k.left - base.left).toFixed(2)}px`
+          d.style.top = `${(k.top - base.top).toFixed(2)}px`
           d.style.width = `${Math.max(0, k.right - k.left).toFixed(2)}px`
           d.style.height = `${Math.max(0, k.bottom - k.top).toFixed(2)}px`
           frag2.appendChild(d)
         }
-        node.appendChild(frag2)
+        node.replaceChildren(frag2)
       } catch {
         /* 忽略：下一帧会再画一次 */
       }
@@ -2534,6 +2635,12 @@ export const ImageSourceUi = Extension.create({
     }
 
     const clearLiveSel = (view?: EditorView | null): void => {
+      // 有排队中的 live 绘制就一起取消：否则落定/清空之后它还会用旧区间再画一帧
+      if (livePaintRaf) {
+        window.cancelAnimationFrame(livePaintRaf)
+        livePaintRaf = 0
+        livePaintPending = null
+      }
       liveRange.from = -1
       liveRange.to = -1
       /**
@@ -2583,7 +2690,36 @@ export const ImageSourceUi = Extension.create({
      * 按试探区间画一帧（同一帧里文字与图片一起画）。
      * @param from/@param to 试探区间（`[min(锚点, 当前点), max(...)]`，锚点复用按下点/按列映射）
      */
+    /**
+     * ⚡ 性能（本轮）：拖动期**按帧合并** live 绘制。
+     *
+     * 一次 mousemove 会触发两路：`window` 上的 `boxDragLive`，以及 PM 对原生选区的
+     * `update()`。两条路都调这里，原来就会**同一帧画两遍**（2000 行夹具实测每步
+     * 2×visibleFrags + 2×整层带重建 + 400+ 次 elementsFromPoint）。现在同一帧只留
+     * 最后一次请求、下一帧画一次 —— 绘制仍发生在浏览器出帧之前，观感不变。
+     */
+    let livePaintRaf = 0
+    let livePaintPending: { view: EditorView; from: number; to: number } | null = null
+    const flushLivePaint = (): void => {
+      livePaintRaf = 0
+      const p = livePaintPending
+      livePaintPending = null
+      if (!p || !p.view.dom?.isConnected) return
+      perfCount('paintLive')
+      paintLiveSelNow(p.view, p.from, p.to)
+    }
     const paintLiveSel = (view: EditorView, from: number, to: number): void => {
+      if (!perfFlag('paintCoalesce')) {
+        perfCount('paintLive')
+        paintLiveSelNow(view, from, to)
+        return
+      }
+      if (livePaintPending) perfCount('paintSkip')
+      livePaintPending = { view, from, to }
+      if (!livePaintRaf) livePaintRaf = window.requestAnimationFrame(flushLivePaint)
+    }
+
+    const paintLiveSelNow = (view: EditorView, from: number, to: number): void => {
       if (to <= from) {
         clearLiveSel(view)
         return
@@ -2744,6 +2880,85 @@ export const ImageSourceUi = Extension.create({
      * 也不会进入 Markdown（导出/复制/往返都不带它）。
      */
 
+    /**
+     * ⚡ 性能（本轮）：图片 widget 装饰的**唯一构造器**（未选中/选中两态各缓存一份）。
+     *
+     * 为什么单独抽出来：装饰集里"图片居中/并排、隐藏源码、图片 widget"这些**只由 doc 决定**；
+     * 选区只影响 `img-selected`。原来每次事务（含每个 mousemove 的纯选区事务）都把整篇文档
+     * 重新扫一遍、把所有 widget 重新 new 一遍 —— PM 认为 widget 类型变了，就把 `<img>` DOM
+     * 拆了重建。现在按 doc 缓存 base，只对"选中集合真的变了"的图片换一份稳定的 widget 装饰。
+     */
+    const makeRawWidgetDeco = (img: ImgSource, inline: boolean, selected: boolean): Decoration =>
+      Decoration.widget(
+        // ⚠️ 挂在**构造的末尾**（`img.to`）：标识符文本在图片**左边**（Typora 观感）。
+        //    挂 `img.from` 时无论 side 正负，DOM 里图片都会排在文本前面。
+        img.to,
+        () => {
+          const span = document.createElement('span')
+          span.className = inline ? 'img-widget img-widget--inline' : 'img-widget'
+          if (selected) span.classList.add(IMG_SELECTED_CLASS)
+          span.setAttribute('data-img-widget', '')
+          span.setAttribute('data-img-from', String(img.from))
+          span.setAttribute('data-img-inline', inline ? 'true' : 'false')
+          const im = document.createElement('img')
+          im.src = img.src
+          if (img.alt) im.alt = img.alt
+          if (img.zoom) im.style.zoom = `${img.zoom}%`
+          im.loading = 'lazy'
+          span.appendChild(im)
+          return span
+        },
+        { side: 1 }
+      )
+
+    /** doc/key 维度缓存：base 里所有图片一律按"未选中"建；选区只换 widget 变体 + 补 node 装饰 */
+    type RawWidgetMeta = { at: number; img: ImgSource; inline: boolean; sel?: Decoration }
+    type DecoCache = {
+      doc: EditorState['doc']
+      open: number | null
+      editing: boolean
+      imgs: ImgSource[]
+      base: Decoration[]
+      raws: Map<number, RawWidgetMeta>
+      selSig: string
+      set: DecorationSet
+    }
+    let decoCache: DecoCache | null = null
+
+    const applyDecoSelection = (state: EditorState, cache: DecoCache): DecorationSet => {
+      const sel93 = state.selection
+      const selLike93 = {
+        from: sel93.from,
+        to: sel93.to,
+        empty: sel93.empty,
+        nodeSel: sel93.constructor.name === 'NodeSelection'
+      }
+      const want = new Set<number>()
+      for (const img of cache.imgs) {
+        if (selectionIntersectsSource(selLike93, img)) want.add(img.from)
+      }
+      const sig = [...want].join(',')
+      if (sig === cache.selSig) {
+        perfCount('decoHit')
+        return cache.set
+      }
+      const decos = cache.base.slice()
+      for (const [from, meta] of cache.raws) {
+        if (!want.has(from)) continue
+        meta.sel ??= makeRawWidgetDeco(meta.img, meta.inline, true)
+        decos[meta.at] = meta.sel
+      }
+      for (const img of cache.imgs) {
+        if (img.kind === 'node' && want.has(img.from)) {
+          decos.push(Decoration.node(img.from, img.to, { class: IMG_SELECTED_CLASS }))
+        }
+      }
+      const set = DecorationSet.create(state.doc, decos)
+      cache.selSig = sig
+      cache.set = set
+      return set
+    }
+
     return [
       new Plugin<{ from: number | null; editing?: boolean; openedAt?: number }>({
         key: KEY,
@@ -2883,10 +3098,29 @@ export const ImageSourceUi = Extension.create({
         },
         props: {
           decorations(state) {
+            perfCount('decoCall')
+            if (!perfFlag('imgDeco')) return DecorationSet.empty
             const open = KEY.getState(state)?.from ?? null
             const openEditing = KEY.getState(state)?.editing === true
+            /**
+             * ⚡ 性能（本轮）：doc + 打开态都没变 ⇒ 直接走"只算选中集合"的快路径。
+             * 拖动期每个 mousemove 都是一次纯选区事务，原来这里要把整篇文档 forEach +
+             * descendants 扫两遍、重建全部装饰；现在命中时只遍历图片列表（通常个位数）。
+             */
+            const cached = decoCache
+            if (
+              cached &&
+              cached.doc === state.doc &&
+              cached.open === open &&
+              cached.editing === openEditing
+            ) {
+              return applyDecoSelection(state, cached)
+            }
+            perfCount('decoBuild')
             const imgs = collectImgSources(state)
             const decos: Decoration[] = []
+            /** 本帧 base 里每个 raw widget 的位置（选区变化时只替换这些下标） */
+            const raws = new Map<number, RawWidgetMeta>()
             // ① 图片**居中**：给"只有一张图"的块挂一个类（比 CSS `:only-child` 稳 ——
             //    行内图片旁边可能还有被隐藏的标记文本、或我们自己的 widget 装饰）
             state.doc.forEach((block, offset) => {
@@ -2934,19 +3168,12 @@ export const ImageSourceUi = Extension.create({
              * 判据 = **选区与它有交**（`selectionIntersectsSource`，浏览器语义：碰到就算，
              * 不要求全覆盖）；⚠️ 它**只**决定观感（`img-selected`）：标识符"该不该隐藏"仍走
              * `selectionCoversSource`（见 `revealDecision`）—— 两条口径已拆开，不许合并。
+             *
+             * ⚡ 性能：base 一律按"未选中"建；选中态由 `applyDecoSelection` 在缓存集上叠加
+             * （node 图补一个 node 装饰、raw 图换一份稳定的选中 widget）。
              */
-            const sel93 = state.selection
-            const selLike93 = {
-              from: sel93.from,
-              to: sel93.to,
-              empty: sel93.empty,
-              nodeSel: sel93.constructor.name === 'NodeSelection'
-            }
             for (const img of imgs) {
-              const selected = selectionIntersectsSource(selLike93, img)
-              if (selected && img.kind === 'node') {
-                decos.push(Decoration.node(img.from, img.to, { class: IMG_SELECTED_CLASS }))
-              }
+              const selected = false
               if (img.kind === 'raw') {
                 /**
                  * 第五十九轮口径：**标识符就是文档里那段文本本身**。
@@ -3001,29 +3228,8 @@ export const ImageSourceUi = Extension.create({
                 //    行内/块级判据与未激活时**完全一致**；块级的继续吃 `img-block-center` 的
                 //    居中对齐 ⇒ 图片水平不动，标识符只占掉它上面一行（图片只向下让位）。
                 const inline = imgIsInline(state, img)
-                decos.push(
-                  Decoration.widget(
-                    // ⚠️ 挂在**构造的末尾**（`img.to`）：标识符文本在图片**左边**（Typora 观感）。
-                    //    挂 `img.from` 时无论 side 正负，DOM 里图片都会排在文本前面。
-                    img.to,
-                    () => {
-                      const span = document.createElement('span')
-                      span.className = inline ? 'img-widget img-widget--inline' : 'img-widget'
-                      if (selected) span.classList.add(IMG_SELECTED_CLASS)
-                      span.setAttribute('data-img-widget', '')
-                      span.setAttribute('data-img-from', String(img.from))
-                      span.setAttribute('data-img-inline', inline ? 'true' : 'false')
-                      const im = document.createElement('img')
-                      im.src = img.src
-                      if (img.alt) im.alt = img.alt
-                      if (img.zoom) im.style.zoom = `${img.zoom}%`
-                      im.loading = 'lazy'
-                      span.appendChild(im)
-                      return span
-                    },
-                    { side: 1 }
-                  )
-                )
+                raws.set(img.from, { at: decos.length, img, inline })
+                decos.push(makeRawWidgetDeco(img, inline, selected))
               }
             }
             /**
@@ -3057,7 +3263,18 @@ export const ImageSourceUi = Extension.create({
               )
               return true
             })
-            return DecorationSet.create(state.doc, decos)
+            const built: DecoCache = {
+              doc: state.doc,
+              open,
+              editing: openEditing,
+              imgs,
+              base: decos,
+              raws,
+              selSig: '\u0000',
+              set: DecorationSet.empty
+            }
+            decoCache = built
+            return applyDecoSelection(state, built)
           },
           handleClickOn(_view, _pos, node) {
             if (node.type.name === 'image') return false
@@ -3924,7 +4141,12 @@ export const ImageSourceUi = Extension.create({
                   /* 清不掉也不该影响编辑 */
                 }
               }
-              if (boxDrag != null && liveRange.from >= 0 && liveRange.to > liveRange.from) {
+              if (
+                perfFlag('livePaint') &&
+                boxDrag != null &&
+                liveRange.from >= 0 &&
+                liveRange.to > liveRange.from
+              ) {
                 paintLiveSel(editorView, liveRange.from, liveRange.to)
               } else if (
                 boxDrag == null &&

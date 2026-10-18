@@ -13,6 +13,7 @@ import { useEditorStore } from '../../stores/editor'
 import { useFilesStore } from '../../stores/files'
 import { useSettingsStore } from '../../stores/settings'
 import { useUiStore } from '../../stores/ui'
+import { perfFlag } from '../../lib/editor/perfProbe'
 
 // ─── Typora 式所见即所得编辑器（开发文档「步骤 2」的高阶封装）────────────────
 // - Tiptap(ProseMirror) AST 内核 + tiptap-markdown 双向转换
@@ -78,6 +79,30 @@ const editor = useEditor({
     attributes: {
       class: 'md-preview',
       spellcheck: 'false'
+    },
+    /**
+     * ⚡ 性能（本轮）：打字（以及任何 `scrollIntoView` 事务）时，PM 的
+     * `scrollRectIntoView` 会**逐层量祖先矩形**（实测每次按键 14 次 getBoundingClientRect，
+     * 且量完还可能写 scrollTop 引发重排）。光标本来就在可视区里时这些测量全是白做。
+     *
+     * 这里只做一件事：光标离上下边缘都还有 10px（PM 自己的 scrollMargin 是 5px，所以
+     * 这个判据**比 PM 更保守**：会被 PM 滚动的情形我们一律交回 PM）才返回 true 跳过测量。
+     * 光标贴近边缘 / 非折叠选区 / 拿不到滚动容器 ⇒ 返回 false，走的还是原来的 PM 路径。
+     */
+    handleScrollToSelection: (view) => {
+      if (!perfFlag('fastScroll')) return false
+      try {
+        const sel = view.state.selection
+        if (!sel.empty) return false
+        const scroller = view.dom.closest('.editor-scroll') as HTMLElement | null
+        if (!scroller) return false
+        const box = scroller.getBoundingClientRect()
+        const caret = view.coordsAtPos(sel.head)
+        const pad = 10
+        return caret.top >= box.top + pad && caret.bottom <= box.bottom - pad
+      } catch {
+        return false
+      }
     }
   },
   onUpdate: ({ editor: ed }) => {

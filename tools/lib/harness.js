@@ -85,6 +85,15 @@ async function attach(page) {
       waiters.delete(m.id)
     }
   }
+  /**
+   * 连接断开时把挂起的求值**立刻**放掉：否则 Node 侧只有 Promise、没有定时器，
+   * 事件循环一空就静默退出（退出码 0），看起来像"什么都没跑"。给调用方一个空响应，
+   * 让上层按"取不到值"报错。正常流程（连接还在）完全不受影响。
+   */
+  sock.onclose = () => {
+    for (const res of waiters.values()) res({ id: 0, result: {} })
+    waiters.clear()
+  }
   const send = (method, params) =>
     new Promise((res) => {
       const i = ++n
@@ -311,9 +320,7 @@ async function ensureFocus(app, { tries = 15, gapMs = 200 } = {}) {
  */
 async function requireFocus(app, what = '真实按键段', opts) {
   if (await ensureFocus(app, opts)) return
-  throw preconditionSkip(
-    `${what}：拿不到 OS 焦点（CDP 注入的按键会丢）——环境抖动，不是产品缺陷`
-  )
+  throw preconditionSkip(`${what}：拿不到 OS 焦点（CDP 注入的按键会丢）——环境抖动，不是产品缺陷`)
 }
 
 /**
@@ -479,6 +486,8 @@ async function launchStable({
   tries = 3,
   readyMs = 90000,
   rootDir = null,
+  /** 追加给 Electron 的参数（例如 `--lumin-open=<encoded>`）；默认空，既有调用方不受影响 */
+  extraArgs = [],
   /**
    * 端口选择策略：
    *   * `'skip-busy'`（默认）：端口上有**别的**实例在跑就换下一个 —— 防止连到陈旧实例上
@@ -526,7 +535,14 @@ async function launchStable({
       const free = []
       for (const x of ports) if (!(await probe(x))) free.push(x)
       if (!free.length) {
-        attempts.push({ i: i + 1, port, ready: false, code: null, busy: true, tail: `端口 ${ports.join('/')} 都被占用（先杀掉残留 electron 再跑）` })
+        attempts.push({
+          i: i + 1,
+          port,
+          ready: false,
+          code: null,
+          busy: true,
+          tail: `端口 ${ports.join('/')} 都被占用（先杀掉残留 electron 再跑）`
+        })
         continue
       }
       port = free[0]
@@ -566,12 +582,23 @@ async function launchStable({
     }
     // ⚠️ 关键一行：必须 **delete**（置 undefined 会被 spawn 忽略）
     delete childEnv.ELECTRON_RUN_AS_NODE
-    const proc = spawn('cmd.exe', ['/c', electron, '.', `--user-data-dir=${ud}`, '--disable-features=CalculateNativeWinOcclusion'], {
-      cwd: ROOT,
-      env: childEnv,
-      stdio: ['ignore', fd, fd],
-      detached: false
-    })
+    const proc = spawn(
+      'cmd.exe',
+      [
+        '/c',
+        electron,
+        '.',
+        `--user-data-dir=${ud}`,
+        '--disable-features=CalculateNativeWinOcclusion',
+        ...extraArgs
+      ],
+      {
+        cwd: ROOT,
+        env: childEnv,
+        stdio: ['ignore', fd, fd],
+        detached: false
+      }
+    )
     let page = null
     const t0 = Date.now()
     while (Date.now() - t0 < readyMs) {
