@@ -1136,6 +1136,14 @@ function buildCmExtensions(): Extension[] {
      * `white-space` 本身仍写在 overlays.css（0,4,0 压 prosemirror.css 的 0,3,0），见 cmTheme 注释。
      */
     EditorView.lineWrapping,
+    /**
+     * ─── 拼写检查排除：代码块（CM 内容区）──────────────────────────────────────
+     * 正文根节点现在是 `spellcheck="true"`（见 TyporaEditor），而 CM 的 contentDOM
+     * 是嵌套在 PM 可编辑区里的**独立 contenteditable**。不显式关掉的话，代码里的
+     * 变量名/关键字会被 Chromium 逐词标红。用 contentAttributes 把属性写到
+     * `.cm-content` 上（验收会读这个 DOM 属性），而不是靠 CSS 或事后补属性。
+     */
+    EditorView.contentAttributes.of({ spellcheck: 'false', autocorrect: 'off' }),
     drawSelection(),
     /**
      * ─── 多光标（报告 §P2「功能缺口：多光标」）──────────────────────────────

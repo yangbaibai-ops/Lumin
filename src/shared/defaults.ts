@@ -106,6 +106,17 @@ export const defaultSettings: AppSettings = {
    * 藏起来等于丢字符；后者的折叠/拆分是同一条渲染结构，要一起改得单独设计）。
    */
   hideInlineMarkers: false,
+  /**
+   * 拼写检查：出厂**开启**（正文 `spellcheck="true"`），语言留空 = 自动。
+   *
+   * 为什么默认开：这正是本轮用户要的能力，默认关掉会让"装了却看不到"；而中文/日文
+   * 没有 Chromium 词典，永远不会被标错 —— 对中文用户来说它只在夹带英文单词时出现，
+   * 不会满屏红波浪线（代码块/mermaid 等已分别排除）。不想要的人一个开关即可关掉。
+   * 语言不写死：空数组交给主进程从 `availableSpellCheckerLanguages` 里挑
+   * （优先界面语言 → en-US → 常见语言 → 第一个可用项，见 shared/spellcheck.ts）。
+   */
+  spellcheckEnabled: true,
+  spellcheckLanguages: [],
   linkCreateMode: 'ask',
   restoreSession: true,
   /** 打开文件时的默认编码：auto = 走判定链（BOM → 每文件记忆 → 严格 UTF-8 → 系统语言兜底） */

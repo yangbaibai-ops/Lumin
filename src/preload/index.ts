@@ -48,6 +48,12 @@ const EVENT_CHANNELS = [
   'notifications:changed',
   'update:status',
   /**
+   * 正文右键时的拼写参数（`misspelledWord` / `dictionarySuggestions`）。
+   * 正文的 DOM contextmenu 有意不 preventDefault，主进程拿到 Chromium 的参数后回发这一条；
+   * 渲染层据此决定自绘菜单顶部是否出现「建议 / 添加到词典 / 忽略」。
+   */
+  'spell:context',
+  /**
    * 主进程改了设置（原生菜单的主题项、备份目录选择…）→ 渲染层就地把 store patch 回来。
    * 这条是报告 §3.2 P0-1 的收口：设置曾经有"两处真相"（主进程直接写 kv、渲染层不知道），
    * 现在主进程只走 `services/appSettings.ts` 的写入口，写完广播这条。
@@ -165,6 +171,17 @@ const api: LuminAPI = {
     exportFile: (settings: AppSettings) => ipcRenderer.invoke('settings:exportFile', settings),
     importFile: () => ipcRenderer.invoke('settings:importFile'),
     applyImport: (patch: Partial<AppSettings>) => ipcRenderer.invoke('settings:applyImport', patch)
+  },
+  /**
+   * 拼写检查（Electron/Chromium 内置检查器）：
+   *   * 开关与语言是设置项，走 `settings:update`（主进程同步 session，立即生效）；
+   *   * 这里只有三个动作：问状态（available 语言清单）、添加到词典、忽略（本会话）。
+   * 建议列表不在这里 —— 它由主进程的 `spell:context` 事件随每次右键下发。
+   */
+  spell: {
+    getState: () => ipcRenderer.invoke('spell:getState'),
+    addWord: (word) => ipcRenderer.invoke('spell:addWord', word),
+    ignoreWord: (word) => ipcRenderer.invoke('spell:ignoreWord', word)
   },
   workspace: {
     getRoot: () => ipcRenderer.invoke('workspace:getRoot'),

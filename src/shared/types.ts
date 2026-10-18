@@ -77,6 +77,20 @@ export interface AppSettings {
    * 只影响**显示**：标记仍是文档里的真实文本，保存/导出/往返一个字节都不变。
    */
   hideInlineMarkers: boolean
+  /**
+   * 拼写检查（Electron/Chromium 内置检查器，不引第三方词典）。
+   *
+   * 开启后正文根节点 `spellcheck="true"`，由 Chromium 画下划线与给建议；代码块（CodeMirror）、
+   * mermaid 源码框、公式/图片源码等非自然语言区域显式 `spellcheck="false"`。
+   * 主进程在启动与设置变化时调用 `session.setSpellCheckerEnabled`，改完立即生效。
+   */
+  spellcheckEnabled: boolean
+  /**
+   * 参与检查的语言代码（如 `en-US`）。**空数组 = 自动**：主进程按界面语言/系统 locale
+   * 与常见语言顺序挑一个可用项。可选项永远来自 `availableSpellCheckerLanguages`，
+   * 过滤/排序规则见 shared/spellcheck.ts（用户选的项若已不可用会自动降级）。
+   */
+  spellcheckLanguages: string[]
   /** 链接指向的文件/文件夹不存在时的处理策略（询问 / 总是创建 / 从不创建） */
   linkCreateMode: LinkCreateMode
   /** 启动时恢复上次会话（文档 + 光标 + 滚动位置）；关闭则每次启动都进欢迎页 */
@@ -750,6 +764,20 @@ export interface LuminAPI {
      * 返回归一后的完整设置，渲染层直接 `$patch` 即可让界面立刻生效。
      */
     applyImport: (patch: Partial<AppSettings>) => Promise<AppSettings>
+  }
+  /**
+   * 拼写检查（Electron/Chromium 内置检查器）。
+   * 开关与语言是设置项（`settings.update` 会让主进程立即同步 session）；
+   * 这里只有「问状态 / 添加到词典 / 忽略」三个动作。
+   * 右键建议由主进程的 `spell:context` 事件下发，不经过 IPC invoke。
+   */
+  spell: {
+    /** 当前生效状态 + 系统实际提供的语言清单（原值，不排序） */
+    getState: () => Promise<{ enabled: boolean; languages: string[]; available: string[] }>
+    /** 写入 Chromium 用户词典（持久化；成功返回 true） */
+    addWord: (word: string) => Promise<boolean>
+    /** 本会话内忽略（不改变系统词典；下划线仍由 Chromium 绘制） */
+    ignoreWord: (word: string) => Promise<boolean>
   }
   workspace: {
     getRoot: () => Promise<string | null>

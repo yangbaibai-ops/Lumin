@@ -3,6 +3,7 @@ import type { Editor } from '@tiptap/core'
 import type { EditorMenuAction, EditorMenuSection } from '../lib/editor/menu/types'
 import { buildEditorMenuSections } from '../lib/editor/menu/registry'
 import { buildEditorMenuActions } from '../lib/editor/menu/actions'
+import { buildSpellSection, replaceSpellWord, type SpellMenuData } from '../lib/editor/menu/spell'
 import { readEditorMenuContext } from '../lib/editor/menu/context'
 import i18n from '../i18n'
 import { useEditorStore } from './editor'
@@ -26,6 +27,8 @@ export const useEditorMenuStore = defineStore('editorMenu', {
     x: 0,
     y: 0,
     sections: [] as EditorMenuSection[],
+    /** 本次右键的拼写信息（null = 没有拼错；不会从上一次右键残留） */
+    spell: null as SpellMenuData | null,
     /** 一级（分类）高亮索引 */
     activeIndex: 0,
     /** 已展开的二级菜单所属分类 id；null = 未展开 */
@@ -49,6 +52,18 @@ export const useEditorMenuStore = defineStore('editorMenu', {
     /** 二级菜单里的动作 */
     activeSectionItems(): EditorMenuAction[] {
       return this.activeSection?.items ?? []
+    },
+    /** 顶部的拼写建议分区（只有命中错词时才有） */
+    spellSection(state): EditorMenuSection | null {
+      return state.sections.find((s) => s.variant === 'spell') ?? null
+    },
+    /** 建议词（纯数据，点击即替换） */
+    spellSuggestions(): EditorMenuAction[] {
+      return (this.spellSection?.items ?? []).filter((i) => i.kind === 'suggestion')
+    },
+    /** 「添加到词典」/「忽略」 */
+    spellActions(): EditorMenuAction[] {
+      return (this.spellSection?.items ?? []).filter((i) => i.kind !== 'suggestion')
     }
   },
   actions: {
@@ -75,11 +90,31 @@ export const useEditorMenuStore = defineStore('editorMenu', {
         // 而不是上面那个"单输入框"的 prompt
         promptLink: (req) => ui.promptLink(req)
       })
-      return buildEditorMenuSections(readEditorMenuContext(editor), actions)
+      const sections = buildEditorMenuSections(readEditorMenuContext(editor), actions)
+      /**
+       * 拼写建议放在**最顶部**（用户口径）：建议词 → 添加到词典 → 忽略。
+       * 没有错词时 `buildSpellSection` 返回 null，sections 原样返回 ——
+       * 这保证"没有拼写错误时菜单行为完全不变"。
+       */
+      const spellSection = buildSpellSection(this.spell, {
+        replace: (range, word) => {
+          replaceSpellWord(editor, range, word)
+        },
+        addToDictionary: (word) => {
+          void window.luminAPI.spell.addWord(word)
+        },
+        ignore: (word) => {
+          void window.luminAPI.spell.ignoreWord(word)
+        }
+      })
+      return spellSection ? [spellSection, ...sections] : sections
     },
 
     /** 在视口坐标 (x, y) 打开菜单（默认只展开一级总览，不自动展开任何分类） */
-    openAt(x: number, y: number): void {
+    openAt(x: number, y: number, spell: SpellMenuData | null = null): void {
+      // 先落拼写状态再构建分区：`buildSections` 读的就是 this.spell。
+      // 每次打开都显式覆盖（包括 null），绝不会读到上一次右键的残留。
+      this.spell = spell
       const sections = this.buildSections()
       if (!sections.length) return
       this.sections = sections
@@ -94,6 +129,7 @@ export const useEditorMenuStore = defineStore('editorMenu', {
     close(): void {
       this.open = false
       this.sections = []
+      this.spell = null
       this.activeIndex = 0
       this.activeSectionId = null
       this.activeSubIndex = 0

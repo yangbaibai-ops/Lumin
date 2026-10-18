@@ -89,6 +89,17 @@ watch(
   }
 )
 
+/**
+ * 拼写分区可能在菜单**已经打开之后**才补上（主进程 context-menu 回发与 120ms 兜底
+ * 之间有极小的竞态）：补上时面板会长高，重新按视口钳一次，避免贴底溢出。
+ */
+watch(
+  () => menu.spellSection,
+  () => {
+    if (menu.open) void place()
+  }
+)
+
 function onDocMouseDown(e: MouseEvent): void {
   if (!menu.open) return
   const target = e.target as Node
@@ -187,6 +198,21 @@ function onEnterSub(): void {
 
 function onKeydown(e: KeyboardEvent): void {
   if (!menu.open) return
+  /**
+   * 拼写建议区是一组普通按钮（Tab 可达、Enter/Space 原生触发）。
+   * 面板级的 Enter 被用来"展开分类"，若在这里不早退，焦点在建议按钮上按 Enter
+   * 会变成展开一级分类而不是选中建议 —— 所以来自该区域的事件交回浏览器。
+   * Esc 例外：无论焦点在哪，Esc 都该关闭菜单。
+   */
+  const target = e.target as HTMLElement | null
+  if (
+    e.key !== 'Escape' &&
+    target &&
+    typeof target.closest === 'function' &&
+    target.closest('[data-spell-section]')
+  ) {
+    return
+  }
   const inSub = !!menu.activeSectionId
   if (e.key === 'Escape') {
     e.preventDefault()
@@ -243,6 +269,42 @@ const subStyle = computed(() => ({ left: `${subPos.value.left}px`, top: `${subPo
         @keydown="onKeydown"
         @contextmenu.prevent
       >
+        <!-- 顶部：拼写建议（仅当右键命中拼写错误时出现）。
+             没有错词 → 这个节点不存在，下面的菜单结构与行为保持原样。 -->
+        <div v-if="menu.spellSection" class="ecm-spell" data-spell-section>
+          <p class="ecm-spell-head">
+            <span class="ecm-spell-title">{{ t('editorMenu.spellSuggestions') }}</span>
+            <span class="ecm-spell-word" data-spell-word>{{ menu.spellSection.word }}</span>
+          </p>
+          <div v-if="menu.spellSuggestions.length" class="ecm-spell-sugs">
+            <button
+              v-for="item in menu.spellSuggestions"
+              :key="item.id"
+              class="ecm-spell-sug"
+              :disabled="item.disabled"
+              :title="t('editorMenu.spellSuggestionApply', { word: item.label })"
+              data-spell-suggestion
+              @click="menu.run(item)"
+            >
+              {{ item.label }}
+            </button>
+          </div>
+          <p v-else class="ecm-spell-empty">{{ t('editorMenu.spellNoSuggestions') }}</p>
+          <div class="ecm-spell-actions">
+            <button
+              v-for="item in menu.spellActions"
+              :key="item.id"
+              class="ecm-item ecm-spell-action"
+              :data-spell-action="item.id"
+              :title="item.hintKey ? t(item.hintKey) : undefined"
+              @click="menu.run(item)"
+            >
+              <Icon :name="item.icon || 'dot'" :size="14" class="ecm-icon" />
+              <span class="flex-1 truncate">{{ t(item.labelKey) }}</span>
+            </button>
+          </div>
+        </div>
+
         <!-- 顶部：横向常用操作 -->
         <div
           v-if="menu.toolbarSection"

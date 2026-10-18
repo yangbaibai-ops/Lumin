@@ -10,7 +10,7 @@
 | --------------------------------------------------------------- | -------------------------------------------- | ------------------------------------------------------------ | ------------------------------------------------------------------------------------------ |
 | P0（数据丢失 / 分发 / 性能 / PR 门禁）                          | 4 / 4 项**代码侧**完成                       | 分发链 3 项（渠道 URL、仓库/官网、签名证书）                 | —                                                                                          |
 | P1（正确性 / IO 单测 / a11y·i18n / 索引一致性 / Electron 升级） | 4 / 5                                        | Electron 升级代码侧已验证可行，缺一台**正常 npm 环境**的机器 | —                                                                                          |
-| P2（大重构 / 文档收敛 / 壁垒功能）                              | 文档收敛、命令面板、便携版、多光标（代码块） | —                                                            | 拼写检查、真 `.docx`、双链；`files` store 与 `SettingsDialog` 拆分、`tsconfig.shared.json` |
+| P2（大重构 / 文档收敛 / 壁垒功能）                              | 文档收敛、命令面板、便携版、多光标（代码块）、拼写检查 | —                                                            | 真 `.docx`、双链；`files` store 与 `SettingsDialog` 拆分、`tsconfig.shared.json` |
 
 ## P0
 
@@ -41,7 +41,7 @@
 | 壁垒功能：命令面板                                                                                     | ✅            | Ctrl+Shift+P，listbox + `aria-activedescendant` + Esc 回焦，注册表复用既有动作                                         | `_verify-command-palette` **17/17**（提交 `62edcd9`）                                    |
 | 壁垒功能：便携版                                                                                       | ✅            | 免安装（`portable` target）+ **数据随身**（`PORTABLE_EXECUTABLE_DIR` → exe 同级 `LuminData/`）                         | `tests/portable.test.mjs` 6 条 + 运行时实测；便携包产出留在打包手动清单                  |
 | 壁垒功能：多光标                                                                                       | 🟡 代码块可用 | `allowMultipleSelections` + `rectangularSelection` + `Mod-d`；源码 textarea 与所见即所得**不做**（边界写在注释与台账） | `_verify-multicursor` 3 PASS / 0 FAIL / 2 SKIP（Alt+单击缺公共 API、源码模式断言未确认） |
-| 壁垒功能：拼写检查 / 真 `.docx` / 双链                                                                 | ⏳ 未做       | —                                                                                                                      | —                                                                                        |
+| 壁垒功能：拼写检查 ✅ / 真 `.docx` / 双链                                                               | 🟡 部分完成   | 拼写检查：Electron/Chromium 内置检查器（无新依赖）+ 设置开关与语言多选 + 右键建议/添加到词典/忽略；代码块、mermaid、公式与图片源码显式排除 | `tests/spellcheck.test.mjs` 20 条 + 真实窗口实测（`tmp/spell-on.png` / `spell-off.png`）   |
 | 大重构（`files` store 1396 行、`SettingsDialog.vue` 1745 行、`main/index.ts`、`tsconfig.shared.json`） | ⏳ 未做       | —                                                                                                                      | —                                                                                        |
 | 段落级虚拟化（性能下一刀）                                                                             | ⏳ 未做       | 默认路径已回秒级，但"用户坚持渲染"仍 +3.4 s / ~1.2 GB；根治要让 PM 只建视口附近的段落 DOM（大工程，需先立项）          | `_probe-bigprose` 的 profile 归因                                                        |
 

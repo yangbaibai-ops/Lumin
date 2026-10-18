@@ -125,6 +125,7 @@ function startWorkspaceWatch(root: string): void {
  *  因为主进程现在有两个调用方（IPC 的 settings:update 与原生菜单的主题项），留两份迟早会漂 */
 import { mergeSettings } from '../shared/settingsSchema'
 import * as appSettings from './services/appSettings'
+import * as spellcheck from './services/spellcheck'
 
 /**
  * 主进程持有、渲染层问不到的两件事：窗口 ↔ 会话槽位归属。
@@ -776,6 +777,15 @@ export function registerIpc(slots: SlotRegistry): void {
     if (changed.backupAuto !== undefined || changed.backupDir !== undefined) {
       void dbBackup.maybeAutoBackup()
     }
+    /**
+     * 拼写检查：改开关/语言要**立即**落到 session（不需要重启）。
+     * 放在这条唯一出口上，`settings:update` 与 `settings:applyImport` 两条路都会经过，
+     * 不会出现"导入设置后拼写检查还是旧语言"。判据只看这两个键，避免每次保存都重设语言
+     * （重设会让 Chromium 重载词典，正文短时间失去下划线）。
+     */
+    if (changed.spellcheckEnabled !== undefined || changed.spellcheckLanguages !== undefined) {
+      spellcheck.applySpellcheckSettings(next)
+    }
     return next
   }
   ipcMain.handle('settings:update', (_, partial: Partial<AppSettings>) =>
@@ -787,6 +797,20 @@ export function registerIpc(slots: SlotRegistry): void {
       normalizeSettings(mergeSettings(readSettings(), partial), defaultSettings).settings,
       partial
     )
+  )
+  /**
+   * 拼写检查：状态查询 + 「添加到词典」/「忽略」。
+   *
+   * 开关与语言不走独立通道 —— 它们本来就是设置项，走 `settings:update` 的同一条出口
+   * （主进程在 `commitSettings` 里同步 session）。这里只留三个"动作型"入口：
+   * `getState` 供设置界面枚举 available 语言；另外两个由右键菜单点击触发。
+   */
+  ipcMain.handle('spell:getState', () => spellcheck.getSpellcheckState())
+  ipcMain.handle('spell:addWord', (_, word: string) =>
+    typeof word === 'string' ? spellcheck.addWordToDictionary(word) : false
+  )
+  ipcMain.handle('spell:ignoreWord', (_, word: string) =>
+    typeof word === 'string' ? spellcheck.ignoreWord(word) : false
   )
   /**
    * 导出设置（审计清单「设置/快捷键导入导出、恢复默认」里缺的那一半）。

@@ -1458,6 +1458,78 @@ aside:focus-within [data-sidebar-filetools],
   letter-spacing: 0.02em;
   color: var(--ink-2b);
 }
+/* ── 拼写建议（右键命中错词时置顶；没有错词时整块不存在）────────────────────
+   建议词是"用户数据"（词典给的候选），不是普通菜单项：做成紧凑的整行按钮，
+   长词截断；动作行复用 .ecm-item 的图标/悬停语义。配色只走主题令牌。 */
+.ecm-spell {
+  padding: 7px 8px 6px;
+  border-bottom: 1px solid var(--edge);
+}
+.ecm-spell-head {
+  display: flex;
+  min-width: 0;
+  align-items: baseline;
+  gap: 6px;
+  margin-bottom: 4px;
+}
+.ecm-spell-title {
+  flex: none;
+  font-size: 10.5px;
+  letter-spacing: 0.02em;
+  color: var(--ink-2b);
+}
+.ecm-spell-word {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--danger);
+}
+.ecm-spell-sugs {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  margin-bottom: 4px;
+}
+.ecm-spell-sug {
+  display: block;
+  width: 100%;
+  overflow: hidden;
+  border-radius: 8px;
+  padding: 4px 7px;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+  color: var(--ink);
+  background: var(--code-bg);
+  cursor: pointer;
+  transition:
+    background-color 0.1s ease,
+    color 0.1s ease;
+}
+.ecm-spell-sug:hover:not(:disabled) {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+.ecm-spell-sug:disabled {
+  opacity: 0.38;
+  cursor: default;
+}
+.ecm-spell-empty {
+  padding: 1px 7px 4px;
+  font-size: 11.5px;
+  color: var(--ink-2b);
+}
+.ecm-spell-actions {
+  display: flex;
+  gap: 2px;
+}
+.ecm-spell-action {
+  font-size: 12.5px;
+}
 .ecm-item {
   display: flex;
   width: 100%;

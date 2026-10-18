@@ -36,6 +36,7 @@ import {
 import { planOpenRequest } from './openRequest'
 import { mainT } from './i18n'
 import { registerIpc, attachCloseGuard } from './ipc'
+import * as spellcheck from './services/spellcheck'
 import { isServableMedia } from './fileOps'
 import * as links from './services/links'
 import { migrateLegacyStores } from './store'
@@ -375,6 +376,13 @@ function createWindow(options: WindowOpenOptions = {}): BrowserWindow {
   // 关闭时记住当前窗口位置/大小（下次启动恢复）
   mainWindow.on('close', () => saveWindowState(mainWindow))
 
+  /**
+   * 拼写检查的右键参数来源（`context-menu`）。
+   * 必须在窗口加载前挂上：正文的 DOM contextmenu 有意**不** preventDefault
+   * （见 services/spellcheck.ts 的说明），第一次右键就该拿到 misspelledWord。
+   */
+  spellcheck.attachSpellcheckContextMenu(mainWindow.webContents)
+
   attachCloseGuard(mainWindow)
 
   // 开发环境：转发渲染进程控制台日志，便于排查（Electron 39 新签名：单个 Event 对象）
@@ -512,6 +520,10 @@ app.whenReady().then(() => {
   migrateLegacyStores()
   // 数据库打开/迁移/schema 就绪：`[db] schema migration` 那行日志背后的实际耗时
   startup('db-ready')
+  // 拼写检查：把持久化的开关与语言落到 session。必须在建窗之前（首帧正文就要按它对）；
+  // 语言清单只取 availableSpellCheckerLanguages，不写死（见 services/spellcheck.ts）。
+  spellcheck.initializeSpellcheck()
+  startup('spellcheck-ready')
   // 开发/测试专用：把 LUMIN_TRUSTED_PATHS 里的目录加进路径授权表（打包态忽略，见 pathGrants 的说明）
   const trusted = pathGrants.grantTrustedPathsFromEnv(is.dev, process.env.LUMIN_TRUSTED_PATHS)
   if (trusted) console.log(`[grants] trusted paths from env: ${trusted}`)

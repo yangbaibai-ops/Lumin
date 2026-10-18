@@ -16,6 +16,7 @@ import { measureAllCodeBlocks } from '../lib/editor/codeBlockViews'
 import { historyIntent, isNestedEditorTarget } from '../lib/editor/historyKey'
 import { registerEditorFlush, currentEditorFlush } from '../lib/editorFlush'
 import { useEditorMode } from '../composables/useEditorMode'
+import { findWordRange, type SpellMenuData } from '../lib/editor/menu/spell'
 import { preloadKatexCss } from '../lib/editor/mathStyles'
 import i18n from '../i18n'
 
@@ -46,13 +47,21 @@ preloadKatexCss()
 
 /**
  * 渲染面板右键：先按点击位置校正选区（右键点在哪就作用于哪，表格识别才准确；
- * 点在已有选区内则保留选区），再交 store 组装并打开菜单。
- * 源码视图不接管（保留原生文本菜单的拼写/粘贴能力）。
+ * 点在已有选区内则保留选区），再等主进程把拼写参数回传后打开自绘菜单。
+ *
+ * ⚠️ **不能** `e.preventDefault()`：Chromium 只有在页面没有拦截 contextmenu 时才会把这次
+ * 右键交给主进程，而 `params.misspelledWord` / `dictionarySuggestions` **只存在于**
+ * `webContents` 的 `context-menu` 事件参数里（实测：拦截后主进程完全不触发）。
+ * 所以这里的顺序是：DOM 事件只记坐标 + 调选区 → 主进程带拼写参数回发 `spell:context`
+ * → `onSpellContext` 再开菜单；主进程万一没回（极端情况）有 120ms 兜底，菜单照常打开。
+ * 没有拼写错误时回发的是空 word，菜单结构与原来完全一致。
  */
 function onRenderContextMenu(e: MouseEvent): void {
   const editor = editorStore.instance
-  if (!editor || ui.editorMode === 'source') return
-  e.preventDefault()
+  if (!editor || ui.editorMode === 'source') {
+    lastContext = null
+    return
+  }
   const hit = editor.view.posAtCoords({ left: e.clientX, top: e.clientY })
   if (hit) {
     const { from, to } = editor.state.selection
@@ -61,7 +70,60 @@ function onRenderContextMenu(e: MouseEvent): void {
     const inline = editor.state.doc.resolve(hit.pos).parent.inlineContent
     if (inline && (hit.pos < from || hit.pos > to)) editor.commands.setTextSelection(hit.pos)
   }
-  editorMenu.openAt(e.clientX, e.clientY)
+  lastContext = { x: e.clientX, y: e.clientY, pos: hit?.pos ?? null, at: Date.now() }
+  if (spellFallback) clearTimeout(spellFallback)
+  spellFallback = setTimeout(() => {
+    spellFallback = null
+    if (!lastContext) return
+    editorMenu.openAt(lastContext.x, lastContext.y, null)
+  }, SPELL_CONTEXT_WAIT_MS)
+}
+
+interface SpellContextPayload {
+  x: number
+  y: number
+  word: string
+  suggestions: string[]
+  enabled: boolean
+}
+
+/** 最近一次正文右键（等主进程回传拼写参数；见 main/services/spellcheck.ts） */
+let lastContext: { x: number; y: number; pos: number | null; at: number } | null = null
+let spellFallback: ReturnType<typeof setTimeout> | null = null
+let offSpellContext: (() => void) | null = null
+/** 主进程回发通常与 DOM 事件同一拍；120ms 只兜"主进程没有回"这种极端情况 */
+const SPELL_CONTEXT_WAIT_MS = 120
+/** 超过这个时间的回发不认（避免把上一次右键的参数贴到新菜单上） */
+const SPELL_CONTEXT_MATCH_MS = 2000
+
+/**
+ * 主进程回发的拼写参数 → 打开菜单。
+ * 坐标必须与最近一次 DOM 右键对得上：主进程的 context-menu 是**全窗口**事件，
+ * 侧栏输入框的右键也可能走到这里，坐标不符就忽略（那些区域有自己的菜单/原生行为）。
+ */
+function onSpellContext(raw: unknown): void {
+  const payload = raw as SpellContextPayload | null
+  if (!payload || typeof payload.x !== 'number' || typeof payload.y !== 'number') return
+  const ctx = lastContext
+  if (!ctx) return
+  if (Math.abs(ctx.x - payload.x) > 2 || Math.abs(ctx.y - payload.y) > 2) return
+  if (Date.now() - ctx.at > SPELL_CONTEXT_MATCH_MS) return
+  if (spellFallback) {
+    clearTimeout(spellFallback)
+    spellFallback = null
+  }
+  const editor = editorStore.instance
+  if (!editor) return
+  const word = typeof payload.word === 'string' ? payload.word : ''
+  let spell: SpellMenuData | null = null
+  if (word) {
+    spell = {
+      word,
+      suggestions: Array.isArray(payload.suggestions) ? payload.suggestions : [],
+      range: ctx.pos == null ? null : findWordRange(editor.state.doc, ctx.pos, word)
+    }
+  }
+  editorMenu.openAt(ctx.x, ctx.y, spell)
 }
 
 function onEditorUpdate(md: string): void {
@@ -826,6 +888,8 @@ onMounted(() => {
   editorStore.setActive(ui.editorMode !== 'source')
   window.addEventListener('keydown', onGlobalHistoryKey, true)
   registerEditorFlush(flushWysiwyg)
+  // 拼写参数回发（正文右键 → 主进程 context-menu → 这里）。白名单见 preload 的 EVENT_CHANNELS。
+  offSpellContext = window.luminAPI.events.on('spell:context', onSpellContext)
   // ⚠️ **启动期间不要开这份占位缓冲**（`ui.booting` 为真 = 会话恢复还没跑完）：
   // 这里开出来的空白缓冲区会去查一次「无主草稿」，于是可能把「未保存的草稿」弹窗拉起来；
   // 紧接着会话恢复打开真正的文档（`openPath` 里会把 `draftRestore` 清空）⇒ 弹窗**闪一下就不见**。
@@ -835,6 +899,13 @@ onMounted(() => {
 })
 onBeforeUnmount(() => {
   window.removeEventListener('keydown', onGlobalHistoryKey, true)
+  offSpellContext?.()
+  offSpellContext = null
+  if (spellFallback) {
+    clearTimeout(spellFallback)
+    spellFallback = null
+  }
+  lastContext = null
   document.removeEventListener('keydown', blockDraftKeys, true)
   for (const name of DRAFT_WRITE_EVENTS) document.removeEventListener(name, blockDraftWrites, true)
   // ⚠️ 顺序：**不能**先摘登记再 flushAll —— flushAll 自己要在最前面刷一次编辑器

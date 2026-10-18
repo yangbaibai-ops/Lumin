@@ -24,6 +24,8 @@ import { parseSettingsFile, type SettingsImportErrorCode } from '../../../shared
 import { formatBytes } from '../../../shared/backup'
 import { ENCODINGS, type EncodingId } from '../../../shared/encodings'
 import { EOL_OPTIONS, eolLabel, type Eol } from '../../../shared/eol'
+// 拼写检查的语言清单/排序规则（纯函数，主进程与这里共用；单测 tests/spellcheck.test.mjs）
+import { sortSpellcheckLanguages } from '../../../shared/spellcheck'
 // 主题缩略图的三套色（审计 §8 P2「token 未覆盖的硬编码色」）：原来写死在下面的 themes 里，
 // 已成第二份真值且漂了（深色样机画的是近黑，而深色主题早改成中性灰）
 import { PREVIEW_BY_THEME } from '../../../shared/theme'
@@ -238,7 +240,11 @@ function onKeydown(e: KeyboardEvent): void {
     searchEl.value?.select()
   }
 }
-onMounted(() => window.addEventListener('keydown', onKeydown, true))
+onMounted(() => {
+  window.addEventListener('keydown', onKeydown, true)
+  // 语言清单来自主进程（availableSpellCheckerLanguages）：首次渲染前就问一次
+  void refreshSpellState()
+})
 onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown, true))
 
 // 切到「链接」页签时读取历史（每次打开设置面板都刷新，避免看到过期数据）
@@ -248,6 +254,8 @@ watch(
     if (open && tab === 'links') void loadLinkHistory()
     // 备份现状（目录/份数/上次时间）也在「通用」页签里，同样每次刷新
     if (open && tab === 'general') void refreshBackup()
+    // 每次打开设置页都重新问一次拼写检查状态（开关/语言可能被另一条路径改过）
+    if (open) void refreshSpellState()
   },
   { immediate: true }
 )
@@ -347,6 +355,75 @@ async function resetAllSettings(): Promise<void> {
     danger: true
   })
   if (ok) await settings.reset()
+}
+
+// ─── 拼写检查（Electron/Chromium 内置检查器，不引第三方词典）──────────────────
+// 语言**不写死**：可选项来自主进程返回的 `availableSpellCheckerLanguages` 原值，
+// 只做"常见语言优先、其余字母序"的展示排序（shared/spellcheck.ts）。
+interface SpellState {
+  enabled: boolean
+  /** 当前真正生效的语言（空数组 = 平台没有可用词典） */
+  languages: string[]
+  /** 系统提供的全部语言（原值） */
+  available: string[]
+}
+
+const spellState = ref<SpellState | null>(null)
+
+/** 可选语言：常见语言在前，其余按字母序；中文/日文等无词典语言不会凭空出现 */
+const spellAvailable = computed(() => sortSpellcheckLanguages(spellState.value?.available ?? []))
+
+/**
+ * 界面上的"已选"：
+ *   * 用户手动选过 ⇒ 就是持久化的那份（主进程会再过滤掉不可用的）；
+ *   * 没选过（空数组 = 自动）⇒ 显示当前真正生效的语言，避免"开着却一个都没勾"的错觉。
+ */
+const spellEffective = computed<string[]>(() => {
+  if (settings.spellcheckLanguages.length > 0) return settings.spellcheckLanguages
+  return spellState.value?.languages ?? []
+})
+
+/** 语言显示名：用当前界面语言的 Intl.DisplayNames（失败就退回语言代码） */
+function spellLanguageLabel(code: string): string {
+  try {
+    const names = new Intl.DisplayNames([settings.language], { type: 'language' })
+    return names.of(code) ?? code
+  } catch {
+    return code
+  }
+}
+
+const spellEffectiveLabel = computed(() => spellEffective.value.map(spellLanguageLabel).join(', '))
+
+/** 重新问主进程要状态（打开设置页时、每次改动落库后） */
+async function refreshSpellState(): Promise<void> {
+  try {
+    spellState.value = await window.luminAPI.spell.getState()
+  } catch {
+    spellState.value = null
+  }
+}
+
+/** 开关：落库 → 主进程在 settings:update 里立即 setSpellCheckerEnabled（不用重启） */
+function setSpellcheckEnabled(value: boolean): void {
+  settings.set('spellcheckEnabled', value)
+  void settings.flush().then(refreshSpellState)
+}
+
+/**
+ * 语言多选。至少保留一个：全不选在语义上等于关闭总开关，
+ * 而"空数组"在持久化里另有含义（自动选择），两者混在一起会让界面显示与生效不一致。
+ */
+function toggleSpellLanguage(code: string): void {
+  const current = spellEffective.value
+  const checked = current.includes(code)
+  if (checked && current.length <= 1) {
+    ui.toast(t('settings.spellcheckKeepOne'), 'info')
+    return
+  }
+  const next = checked ? current.filter((c) => c !== code) : [...current, code]
+  settings.set('spellcheckLanguages', next)
+  void settings.flush().then(refreshSpellState)
 }
 
 // ─── 设置的导出 / 导入（审计清单「设置/快捷键导入导出、恢复默认」里缺的那一半）──
@@ -1368,6 +1445,79 @@ function formatTime(ms: number): string {
                             }}
                           </option>
                         </select>
+                      </div>
+                    </section>
+
+                    <!-- 拼写检查：总开关 + 语言多选。可选项来自主进程的
+                         availableSpellCheckerLanguages（常见语言前置，其余字母序），
+                         中文/日文等没有词典的语言不会出现在这里。 -->
+                    <section class="set-card">
+                      <h3 class="set-card-title">{{ t('settings.cardSpellcheck') }}</h3>
+                      <div class="set-row">
+                        <div>
+                          <p class="set-row-label">{{ t('settings.spellcheckEnabled') }}</p>
+                          <p class="set-row-desc">{{ t('settings.spellcheckEnabledDesc') }}</p>
+                        </div>
+                        <SettingSwitch
+                          :model-value="settings.spellcheckEnabled"
+                          :label="t('settings.spellcheckEnabled')"
+                          data-setting-spellcheck
+                          @update:model-value="setSpellcheckEnabled"
+                        />
+                      </div>
+                      <div
+                        v-if="settings.spellcheckEnabled"
+                        class="set-row"
+                        data-setting-spellcheck-languages
+                      >
+                        <div class="w-full">
+                          <div class="flex items-baseline justify-between gap-3">
+                            <p class="set-row-label">{{ t('settings.spellcheckLanguages') }}</p>
+                            <p v-if="spellAvailable.length" class="text-ui-sm text-ink-3">
+                              {{ t('settings.spellcheckAvailable') }}
+                            </p>
+                          </div>
+                          <p class="set-row-desc">{{ t('settings.spellcheckLanguagesDesc') }}</p>
+                          <p v-if="spellState && !spellAvailable.length" class="set-row-desc">
+                            {{ t('settings.spellcheckNoLanguages') }}
+                          </p>
+                          <div
+                            v-else
+                            class="mt-2 grid max-h-56 grid-cols-2 gap-x-4 gap-y-0.5 overflow-y-auto pr-1"
+                          >
+                            <label
+                              v-for="code in spellAvailable"
+                              :key="code"
+                              class="flex cursor-pointer items-center gap-2 rounded px-1 py-1 text-ui text-ink-2 hover:bg-[var(--accent-soft)]"
+                            >
+                              <input
+                                type="checkbox"
+                                class="accent-[var(--accent)]"
+                                :checked="spellEffective.includes(code)"
+                                :disabled="
+                                  spellEffective.includes(code) && spellEffective.length <= 1
+                                "
+                                :data-setting-spellcheck-lang="code"
+                                @change="toggleSpellLanguage(code)"
+                              />
+                              <span class="min-w-0 flex-1 truncate">
+                                {{ spellLanguageLabel(code) }}
+                              </span>
+                              <span class="shrink-0 text-ui-sm text-ink-3">{{ code }}</span>
+                            </label>
+                          </div>
+                          <p
+                            v-if="
+                              spellState &&
+                              spellAvailable.length &&
+                              settings.spellcheckLanguages.length === 0
+                            "
+                            class="set-row-desc mt-2"
+                            data-spellcheck-auto
+                          >
+                            {{ t('settings.spellcheckAuto', { langs: spellEffectiveLabel }) }}
+                          </p>
+                        </div>
                       </div>
                     </section>
 

@@ -78,7 +78,13 @@ const editor = useEditor({
   editorProps: {
     attributes: {
       class: 'md-preview',
-      spellcheck: 'false'
+      /**
+       * 正文是**唯一**开启拼写检查的编辑面（用户口径：正文 `spellcheck="true"`）。
+       * 代码块（CodeMirror 的 contentDOM）、mermaid 源码框、公式/图片源码、源码模式
+       * textarea 都显式 `spellcheck="false"` —— 否则满屏红波浪线。见各处的注释与
+       * tests/spellcheckExclusions.test.mjs 的静态断言。
+       */
+      spellcheck: 'true'
     },
     /**
      * ⚡ 性能（本轮）：打字（以及任何 `scrollIntoView` 事务）时，PM 的
