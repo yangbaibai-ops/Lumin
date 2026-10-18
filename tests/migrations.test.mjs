@@ -45,7 +45,7 @@ const columnsOf = (db, table) =>
 const metaCols = (db) =>
   columnsOf(db, 'documents').filter((c) => ['encoding', 'eol', 'had_bom'].includes(c))
 
-test('空库跑一遍：写到当前版本、六张表全在、FTS 用 trigram 分词器', () => {
+test('空库跑一遍：写到当前版本、五张表全在、FTS 用 trigram 分词器', () => {
   const t = tempDb()
   try {
     const res = runMigrations(t.db)
@@ -59,16 +59,10 @@ test('空库跑一遍：写到当前版本、六张表全在、FTS 用 trigram �
     assert.equal(readSchemaVersion(t.db), SCHEMA_VERSION)
 
     const names = tableNames(t.db)
-    for (const name of [
-      'documents',
-      'kv',
-      'notifications',
-      'menu_usage',
-      'link_history',
-      'documents_history'
-    ]) {
+    for (const name of ['documents', 'kv', 'notifications', 'link_history', 'documents_history']) {
       assert.ok(names.includes(name), `缺表 ${name}（实有：${names.join(', ')}）`)
     }
+    assert.ok(!names.includes('menu_usage'), '「最近使用」下线后不该再建 menu_usage 表')
     assert.ok(names.includes('documents_fts'), 'FTS 虚拟表应当建出来')
     const fts = t.db.prepare("SELECT sql FROM sqlite_master WHERE name = 'documents_fts'").get()
     assert.match(fts.sql, /trigram/, 'FTS 必须用 trigram（中文子串匹配的前提）')
@@ -78,6 +72,27 @@ test('空库跑一遍：写到当前版本、六张表全在、FTS 用 trigram �
       columnsOf(t.db, 'documents_history').includes('bytes'),
       'documents_history 应当有 bytes 列'
     )
+  } finally {
+    t.done()
+  }
+})
+
+test('migration 3：老库里的 menu_usage 表会被删掉（「最近使用」下线后不留数据残留）', () => {
+  const t = tempDb()
+  try {
+    t.db.exec(`
+      CREATE TABLE menu_usage (
+        action_id TEXT PRIMARY KEY,
+        count INTEGER NOT NULL DEFAULT 0,
+        last_used INTEGER NOT NULL
+      );
+      INSERT INTO menu_usage (action_id, count, last_used) VALUES ('paragraph.h2', 3, 1);
+    `)
+    runMigrations(t.db)
+    assert.ok(!tableNames(t.db).includes('menu_usage'), 'menu_usage 必须被 DROP')
+    assert.equal(readSchemaVersion(t.db), SCHEMA_VERSION)
+    // 再跑一次也不抛（IF EXISTS）
+    runMigrations(t.db)
   } finally {
     t.done()
   }

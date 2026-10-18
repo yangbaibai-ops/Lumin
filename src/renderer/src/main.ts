@@ -9,7 +9,6 @@ import { useSettingsStore } from './stores/settings'
 import { useFilesStore } from './stores/files'
 import { useUiStore } from './stores/ui'
 import { useNotificationsStore } from './stores/notifications'
-import { useEditorMenuStore } from './stores/editorMenu'
 import { applySessionPosition, installSessionTracking, restoreSession } from './lib/session'
 import { isInside, installOpenDocTracking } from './lib/openFile'
 import { initExternalWatch } from './lib/externalWatch'
@@ -124,16 +123,12 @@ async function bootstrap(): Promise<void> {
    */
   initExternalWatch()
 
-  // 通知中心 / 右键菜单「最近使用」：只影响卡片与菜单的次要分区，不阻塞文档显示
-  // —— 空闲时再从 SQLite 恢复（各自独立，互不等待）。启动瞬间产生通知也没问题：
-  // notify() 直接更新内存镜像，空闲 hydrate 会再与数据库对齐一次。
+  // 通知中心：只影响卡片，不阻塞文档显示 —— 空闲时再从 SQLite 恢复。
+  // 启动瞬间产生通知也没问题：notify() 直接更新内存镜像，空闲 hydrate 会再与数据库对齐一次。
   whenIdle(() => {
     void useNotificationsStore(pinia)
       .hydrate()
       .then(() => mark('notifications'))
-    void useEditorMenuStore(pinia)
-      .hydrate()
-      .then(() => mark('editor-menu'))
     mark('idle-tasks-started')
   })
 

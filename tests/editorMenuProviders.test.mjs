@@ -8,10 +8,7 @@
 // 这些判据错了不会崩，只会让菜单少一项或多一项灰的 —— 没有断言就只能靠肉眼点。
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import {
-  buildRecentSection,
-  createDefaultProviders
-} from '../src/renderer/src/lib/editor/menu/providers.ts'
+import { createDefaultProviders } from '../src/renderer/src/lib/editor/menu/providers.ts'
 
 /** 动作表：只需要 id / labelKey / run 三个字段（disabled 由提供者按上下文补） */
 const actionsOf = (ids) =>
@@ -48,7 +45,9 @@ const ALL_IDS = [
   'insert.image',
   'insert.table',
   'insert.hr',
-  'insert.toc'
+  'insert.toc',
+  'insert.paragraphAbove',
+  'insert.paragraphBelow'
 ]
 
 const providers = createDefaultProviders(actionsOf(ALL_IDS))
@@ -115,11 +114,12 @@ test('when：表格分区只在光标位于表格内时出场（别的场景一�
   )
 })
 
-test('when：format / insert 在代码块里不出场（代码块里不该有加粗与插入表格）', () => {
+test('when：format 在代码块里不出场；insert 仍出场（只保留上/下段落两项）', () => {
   assert.equal(providerById.get('format').when(ctx()), true)
   assert.equal(providerById.get('format').when(ctx({ inCodeBlock: true })), false)
   assert.equal(providerById.get('insert').when(ctx()), true)
-  assert.equal(providerById.get('insert').when(ctx({ inCodeBlock: true })), false)
+  // 代码块里「插入」不能整个消失：用户正是要在代码块外面挤出可写位置
+  assert.equal(providerById.get('insert').when(ctx({ inCodeBlock: true })), true)
 })
 
 test('when：clipboard / paragraph 任何场景都出场（位置稳定，靠 disabled 表达不可用）', () => {
@@ -212,51 +212,35 @@ test('paragraph：代码块里只留「转为正文」，其余段落样式全�
   )
 })
 
+test('insert：普通场景 7 项，上/下段落排在最后；代码块里只留这两项', () => {
+  const outside = sectionItems('insert', ctx())
+  assert.deepEqual(
+    outside.map((i) => i.id),
+    [
+      'insert.link',
+      'insert.image',
+      'insert.table',
+      'insert.hr',
+      'insert.toc',
+      'insert.paragraphAbove',
+      'insert.paragraphBelow'
+    ]
+  )
+  const code = sectionItems('insert', ctx({ inCodeBlock: true }))
+  assert.deepEqual(
+    code.map((i) => i.id),
+    ['insert.paragraphAbove', 'insert.paragraphBelow'],
+    '代码块里不出现链接/图片/表格等（它们会插进代码块内部）'
+  )
+})
+
 test('insert：已在表格里时「插入表格」灰掉（表格不能嵌套）', () => {
   const outside = sectionItems('insert', ctx())
   assert.equal(itemById(outside, 'insert.table').disabled, false)
   const inside = sectionItems('insert', ctx({ inTable: true }))
+  // 表格内「插入表格」禁用
   assert.equal(itemById(inside, 'insert.table').disabled, true)
   assert.equal(itemById(inside, 'insert.link').disabled, undefined, '其它插入项不受影响')
-})
-
-// ── buildRecentSection：「最近使用」分区 ─────────────────────────────────────
-const act = (id, extra = {}) => ({ id, labelKey: id, run: () => true, ...extra })
-
-test('buildRecentSection：没有可用项时返回 null（菜单不出现空分区）', () => {
-  assert.equal(buildRecentSection([], []), null)
-  assert.equal(buildRecentSection(['a.b'], []), null, '记录里的动作当前上下文不可用')
-  assert.equal(
-    buildRecentSection(['a.b'], [act('a.b', { disabled: true })]),
-    null,
-    '唯一一项是灰的'
-  )
-})
-
-test('buildRecentSection：按记录顺序保留，去重，跳过不可用与灰项', () => {
-  const available = [act('a'), act('b'), act('c', { disabled: true }), act('d')]
-  const section = buildRecentSection(['b', 'b', 'c', 'zzz', 'a', 'd'], available)
-  assert.deepEqual(
-    section.items.map((i) => i.id),
-    ['b', 'a', 'd'],
-    '顺序 = 记录顺序；重复项只出现一次；灰项与不存在的 id 跳过'
-  )
-  assert.equal(section.id, 'recent')
-  assert.equal(section.variant, 'list')
-  assert.equal(section.labelKey, 'editorMenu.section.recent')
-})
-
-test('buildRecentSection：最多 5 条（超出的记录直接截断）', () => {
-  const available = ['a', 'b', 'c', 'd', 'e', 'f', 'g'].map((id) => act(id))
-  const section = buildRecentSection(['g', 'f', 'e', 'd', 'c', 'b', 'a'], available)
-  assert.deepEqual(
-    section.items.map((i) => i.id),
-    ['g', 'f', 'e', 'd', 'c']
-  )
-})
-
-test('buildRecentSection：返回的就是动作表里那一项（保留 run/danger 等字段，不只是 id）', () => {
-  const danger = act('table.delete', { danger: true })
-  const section = buildRecentSection(['table.delete'], [danger])
-  assert.equal(section.items[0], danger, '必须原样引用，否则 run 与 i18n key 都会丢')
+  assert.equal(itemById(inside, 'insert.paragraphAbove').disabled, undefined)
+  assert.equal(itemById(inside, 'insert.paragraphBelow').disabled, undefined)
 })

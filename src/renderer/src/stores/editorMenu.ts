@@ -1,6 +1,5 @@
 import { defineStore } from 'pinia'
 import type { Editor } from '@tiptap/core'
-import type { MenuUsageEntry } from '../../../shared/types'
 import type { EditorMenuAction, EditorMenuSection } from '../lib/editor/menu/types'
 import { buildEditorMenuSections } from '../lib/editor/menu/registry'
 import { buildEditorMenuActions } from '../lib/editor/menu/actions'
@@ -12,13 +11,13 @@ import { useNotificationsStore } from './notifications'
 
 /**
  * ─── 编辑器右键菜单 store（两级结构）────────────────────────────────────────
- * 一级：分类总览（最近使用 / 表格 / 段落 / 格式 / 插入），悬停、→ 或点击展开二级；
+ * 一级：分类总览（表格 / 段落 / 格式 / 插入），悬停、→ 或点击展开二级；
  * 二级：该分类下的具体动作（一级标题、二级标题…）。
  *
  * 职责边界：
  *  - 打开时向注册表索取「当前上下文的分区」，每个分区即一个一级分类；
  *  - 维护一级高亮、当前展开的分类、二级高亮；
- *  - 执行动作后写一次使用记录（SQLite），并同步内存缓存。
+ *  - 执行动作后关闭菜单并把焦点交还编辑器。
  * 组件只负责渲染与交互，编辑器只负责执行命令，二者通过本 store 交汇。
  */
 export const useEditorMenuStore = defineStore('editorMenu', {
@@ -32,10 +31,7 @@ export const useEditorMenuStore = defineStore('editorMenu', {
     /** 已展开的二级菜单所属分类 id；null = 未展开 */
     activeSectionId: null as string | null,
     /** 二级高亮索引 */
-    activeSubIndex: 0,
-    /** 使用记录：actionId → 条目（最近使用排序见 getter recentIds） */
-    usage: {} as Record<string, MenuUsageEntry>,
-    usageReady: false
+    activeSubIndex: 0
   }),
   getters: {
     /** 顶部横向常用行（剪贴板） */
@@ -53,28 +49,9 @@ export const useEditorMenuStore = defineStore('editorMenu', {
     /** 二级菜单里的动作 */
     activeSectionItems(): EditorMenuAction[] {
       return this.activeSection?.items ?? []
-    },
-    /** 最近使用的动作 id（最多 12 条候选，真正展示数量由注册表决定） */
-    recentIds(state): string[] {
-      return Object.values(state.usage)
-        .sort((a, b) => b.lastUsed - a.lastUsed)
-        .slice(0, 12)
-        .map((u) => u.actionId)
     }
   },
   actions: {
-    /** 启动时从 SQLite 恢复使用记录（跨会话保留） */
-    async hydrate(): Promise<void> {
-      try {
-        const rows = await window.luminAPI.menuUsage.list(50)
-        this.usage = Object.fromEntries(rows.map((r) => [r.actionId, r]))
-      } catch {
-        /* 数据库不可用时退化为「无最近使用」，不影响菜单可用性 */
-      } finally {
-        this.usageReady = true
-      }
-    },
-
     /** 组装分区：读取当前编辑器上下文 + 注入依赖（对话框、失败提示、i18n） */
     buildSections(): EditorMenuSection[] {
       // store 里的 instance 经 Vue 响应式包装后，类型上丢了 Editor 的私有成员
@@ -98,7 +75,7 @@ export const useEditorMenuStore = defineStore('editorMenu', {
         // 而不是上面那个"单输入框"的 prompt
         promptLink: (req) => ui.promptLink(req)
       })
-      return buildEditorMenuSections(readEditorMenuContext(editor), actions, this.recentIds)
+      return buildEditorMenuSections(readEditorMenuContext(editor), actions)
     },
 
     /** 在视口坐标 (x, y) 打开菜单（默认只展开一级总览，不自动展开任何分类） */
@@ -156,18 +133,12 @@ export const useEditorMenuStore = defineStore('editorMenu', {
       this.setSubActive(this.activeSubIndex + delta)
     },
 
-    /** 执行动作并关闭菜单；成功执行会记一次使用频次 */
+    /** 执行动作并关闭菜单 */
     async run(action: EditorMenuAction): Promise<void> {
       this.close()
       if (action.disabled) return
       const executed = await action.run()
       if (executed === false) return
-      try {
-        const entry = await window.luminAPI.menuUsage.bump(action.id)
-        this.usage = { ...this.usage, [action.id]: entry }
-      } catch {
-        /* 记录失败不影响功能 */
-      }
       if (action.refocus !== false) useEditorStore().instance?.commands.focus()
     },
 
@@ -175,20 +146,6 @@ export const useEditorMenuStore = defineStore('editorMenu', {
     async runSubActive(): Promise<void> {
       const item = this.activeSectionItems[this.activeSubIndex]
       if (item) await this.run(item)
-    },
-
-    /** 清空全部使用记录（菜单里的「清除最近使用」） */
-    async clearUsage(): Promise<void> {
-      this.usage = {}
-      await window.luminAPI.menuUsage.reset().catch(() => {})
-    },
-
-    /** 忘记单个动作的使用记录 */
-    async forget(actionId: string): Promise<void> {
-      const next = { ...this.usage }
-      delete next[actionId]
-      this.usage = next
-      await window.luminAPI.menuUsage.forget(actionId).catch(() => {})
     }
   }
 })

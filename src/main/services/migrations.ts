@@ -20,7 +20,7 @@
 // 只会让老库和新库走出不同的状态。
 
 /** 当前 schema 版本。加一步迁移就 +1，并在 `MIGRATIONS` 末尾追加。 */
-export const SCHEMA_VERSION = 2
+export const SCHEMA_VERSION = 3
 
 /** 只依赖 `node:sqlite`，不依赖 electron */
 type Db = import('node:sqlite').DatabaseSync
@@ -265,10 +265,23 @@ function migration2(db: Db): void {
   )
 }
 
+/**
+ * 迁移 3：删除 `menu_usage` 表（右键菜单「最近使用」已下线）。
+ *
+ * 右键菜单只保留静态分区，不再记录/读取动作使用频次，因此这张表没有存在意义。
+ * 用 `DROP TABLE IF EXISTS` 而不是只在启动时忽略：老库里的记录也一并清掉，
+ * 避免"功能已删、数据还躺着"的残留。迁移 1 里的 CREATE 是历史步骤，按本文件
+ * 的约定**不改**，让空库也走同一条可复现的路径。
+ */
+function migration3(db: Db): void {
+  db.exec('DROP TABLE IF EXISTS menu_usage')
+}
+
 /** 迁移步骤表：**只许追加**，不许改已发布步骤的语义（见文件头注释） */
 const MIGRATIONS: { version: number; up: (db: Db) => void }[] = [
   { version: 1, up: migration1 },
-  { version: 2, up: migration2 }
+  { version: 2, up: migration2 },
+  { version: 3, up: migration3 }
 ]
 
 /** 读当前库的 schema 版本（无用户表时 SQLite 返回 0） */

@@ -7,7 +7,7 @@ import type { Editor } from '@tiptap/core'
  *    新增识别场景只需往这里加字段（如数学块、脚注、批注…）；
  *  - 提供者（EditorMenuProvider）：`when(ctx)` 决定是否出场，`build(ctx)` 产出分区，
  *    新增一类功能＝新增一个提供者文件并注册，菜单组件完全不用改；
- *  - 动作（EditorMenuAction）：带稳定 id 的可执行项，id 用于使用记录持久化。
+ *  - 动作（EditorMenuAction）：带稳定 id 的可执行项，id 供提供者按表引用。
  * 菜单组件只认识 EditorMenuSection[]，不认识编辑器命令，因此 UI 与编辑器解耦。
  */
 
@@ -15,7 +15,7 @@ import type { Editor } from '@tiptap/core'
 export type EditorMenuVariant = 'toolbar' | 'list'
 
 export interface EditorMenuAction {
-  /** 稳定标识（如 table.rowBelow）：用于使用频次持久化与「最近使用」 */
+  /** 稳定标识（如 table.rowBelow）：提供者按它从动作表里取项 */
   id: string
   /** i18n key（editorMenu.*） */
   labelKey: string
@@ -26,7 +26,7 @@ export interface EditorMenuAction {
   /** 危险动作（删除表格/行/列）用红色呈现 */
   danger?: boolean
   disabled?: boolean
-  /** 执行；返回 false 表示未执行（例如用户取消了对话框），此时不计入使用记录 */
+  /** 执行；返回 false 表示未执行（例如用户取消了对话框） */
   run: () => boolean | void | Promise<boolean | void>
   /** 执行后是否把焦点交还编辑器（默认 true） */
   refocus?: boolean

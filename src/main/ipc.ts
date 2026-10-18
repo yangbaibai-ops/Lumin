@@ -1038,12 +1038,6 @@ export function registerIpc(slots: SlotRegistry): void {
     return n
   })
 
-  // ── 编辑器右键菜单的动作使用记录（SQLite 持久化）──
-  ipcMain.handle('menu:usage:list', (_, limit?: number) => db.listMenuUsage(limit ?? 8))
-  ipcMain.handle('menu:usage:bump', (_, actionId: string) => db.bumpMenuUsage(actionId))
-  ipcMain.handle('menu:usage:forget', (_, actionId: string) => db.forgetMenuUsage(actionId))
-  ipcMain.handle('menu:usage:reset', () => db.resetMenuUsage())
-
   // ── 「一个文件只开一个窗口」：文档归属上报 + 打开前先看有没有别处已开着 ──
   // 渲染层在文档切换时上报（见 renderer lib/openFile.ts）；要打开的文件若已在别的
   // 窗口开着，`window:focusByDoc` 直接把那个窗口唤到前面（返回 focused），

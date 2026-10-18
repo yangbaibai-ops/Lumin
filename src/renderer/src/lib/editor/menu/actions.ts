@@ -1,13 +1,15 @@
 import type { Editor } from '@tiptap/core'
 import type { EditorMenuAction } from './types'
 import { insertOrEditLink, type LinkAsker } from '../../linkInsert'
+import { insertParagraphAround } from '../paragraphAround'
 
 /**
  * ─── 动作目录 ────────────────────────────────────────────────────────────────
  * 每个动作 = 稳定 id + i18n 标签 + 图标 + 执行逻辑。与 store / 组件解耦：
  * 依赖只有 editor 与两个回调（prompt 对话框、失败提示），因此可单独测试，
  * 也可被工具栏、命令面板等复用（后续把 Toolbar 迁到这里即可消除重复）。
- * id 会写入 SQLite menu_usage，务必保持稳定（重命名＝丢失历史）。
+ * id 是提供者（providers.ts）引用动作的稳定键：重命名必须同步那边；菜单本身
+ * **不再持久化**任何使用记录。
  */
 export interface EditorMenuActionDeps {
   editor: Editor
@@ -295,6 +297,21 @@ export function buildEditorMenuActions(
       run: () => {
         editor.chain().focus().insertTableOfContents().run()
       }
+    },
+    // 在**当前顶层块**的上/下插入空段落并把光标放进去。用于「代码块在文档开头」
+    // 「表格在文档最末尾」这类没有可点位置、写不进去的场景。
+    // 语义与实现见 lib/editor/paragraphAround.ts（顶层兄弟位置，绝不进表格/代码块内部）。
+    'insert.paragraphAbove': {
+      id: 'insert.paragraphAbove',
+      labelKey: 'editorMenu.paragraphAbove',
+      icon: 'chevron-up',
+      run: () => insertParagraphAround(editor, 'above')
+    },
+    'insert.paragraphBelow': {
+      id: 'insert.paragraphBelow',
+      labelKey: 'editorMenu.paragraphBelow',
+      icon: 'chevron-down',
+      run: () => insertParagraphAround(editor, 'below')
     },
 
     // ── 表格（仅在表格内出现）─────────────────────────────────────────────

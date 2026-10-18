@@ -11,7 +11,6 @@ import type {
   LinkActivateRecord,
   LinkHistoryEntry,
   LinkTargetKind,
-  MenuUsageEntry,
   NotificationAction,
   NotificationInput,
   NotificationLevel,
@@ -101,12 +100,6 @@ interface NotificationRow {
   closed_at: number | null
   actions: string | null
   payload: string | null
-}
-
-interface MenuUsageRow {
-  action_id: string
-  count: number
-  last_used: number
 }
 
 interface LinkHistoryRow {
@@ -1183,40 +1176,6 @@ class LuminDatabase {
          )`
       )
       .run(scope, scope, keep)
-  }
-
-  // ── 编辑器右键菜单：动作使用记录（CRUD，驱动「最近使用」）───────────────
-  // 只有「增/改（bump 累加）」与「查/删」两条路径，语义简单：
-  // 每次从菜单执行动作就 bump 一次，菜单按 last_used 倒序取前 N 组成「最近使用」。
-
-  bumpMenuUsage(actionId: string): MenuUsageEntry {
-    const now = Date.now()
-    this.db
-      .prepare(
-        `INSERT INTO menu_usage (action_id, count, last_used) VALUES (?, 1, ?)
-         ON CONFLICT(action_id) DO UPDATE SET count = count + 1, last_used = excluded.last_used`
-      )
-      .run(actionId, now)
-    const row = this.db
-      .prepare('SELECT action_id, count, last_used FROM menu_usage WHERE action_id = ?')
-      .get(actionId) as unknown as MenuUsageRow
-    return { actionId: row.action_id, count: row.count, lastUsed: row.last_used }
-  }
-
-  listMenuUsage(limit = 8): MenuUsageEntry[] {
-    const rows = this.db
-      .prepare('SELECT action_id, count, last_used FROM menu_usage ORDER BY last_used DESC LIMIT ?')
-      .all(limit) as unknown as MenuUsageRow[]
-    return rows.map((r) => ({ actionId: r.action_id, count: r.count, lastUsed: r.last_used }))
-  }
-
-  forgetMenuUsage(actionId: string): void {
-    this.db.prepare('DELETE FROM menu_usage WHERE action_id = ?').run(actionId)
-  }
-
-  resetMenuUsage(): number {
-    const info = this.db.prepare('DELETE FROM menu_usage').run()
-    return Number(info.changes)
   }
 
   // ── 链接打开历史（CRUD，SQLite 持久化）─────────────────────────────────

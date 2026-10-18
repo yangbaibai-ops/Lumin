@@ -1,9 +1,4 @@
-import type {
-  EditorMenuAction,
-  EditorMenuContext,
-  EditorMenuProvider,
-  EditorMenuSection
-} from './types'
+import type { EditorMenuAction, EditorMenuContext, EditorMenuProvider } from './types'
 
 /**
  * ─── 内置提供者 ──────────────────────────────────────────────────────────────
@@ -141,48 +136,38 @@ export function createDefaultProviders(
     },
 
     // ── 插入 ─────────────────────────────────────────────────────────────
+    // 代码块里也出场：**只**保留「段落（上方/下方）」这两项 —— 它们正是为了
+    // 「代码块在文档开头/末尾、外面没有可点位置」而存在的（插在代码块这个顶层
+    // 兄弟的前后，不进代码块内部）。其余插入项在代码块里没有意义，不出现。
     {
       id: 'insert',
       sortOrder: 50,
-      when: (ctx) => !ctx.inCodeBlock,
+      when: () => true,
       build: (ctx) => [
         {
           id: 'insert',
           labelKey: 'editorMenu.section.insert',
           variant: 'list',
-          items: pick(
-            actions,
-            ['insert.link', 'insert.image', 'insert.table', 'insert.hr', 'insert.toc'],
-            {
-              // 表格不能嵌套：已在表格内时禁用「插入表格」
-              'insert.table': { disabled: ctx.inTable }
-            }
-          )
+          items: ctx.inCodeBlock
+            ? pick(actions, ['insert.paragraphAbove', 'insert.paragraphBelow'])
+            : pick(
+                actions,
+                [
+                  'insert.link',
+                  'insert.image',
+                  'insert.table',
+                  'insert.hr',
+                  'insert.toc',
+                  'insert.paragraphAbove',
+                  'insert.paragraphBelow'
+                ],
+                {
+                  // 表格不能嵌套：已在表格内时禁用「插入表格」
+                  'insert.table': { disabled: ctx.inTable }
+                }
+              )
         }
       ]
     }
   ]
-}
-
-/**
- * 纯函数版「最近使用」分区：由使用记录（SQLite）+ 当前上下文可用的动作集合推导。
- * 放在这里而不是提供者里，是因为它依赖持久化数据、且对所有场景通用。
- * 只保留「当前上下文下确实可用」的动作——表格操作不会在普通段落里冒出来。
- */
-export function buildRecentSection(
-  recentIds: string[],
-  available: EditorMenuAction[]
-): EditorMenuSection | null {
-  const availableById = new Map(available.map((a) => [a.id, a]))
-  const seen = new Set<string>()
-  const items: EditorMenuAction[] = []
-  for (const id of recentIds) {
-    const action = availableById.get(id)
-    if (!action || action.disabled || seen.has(id)) continue
-    seen.add(id)
-    items.push(action)
-    if (items.length >= 5) break
-  }
-  if (!items.length) return null
-  return { id: 'recent', labelKey: 'editorMenu.section.recent', variant: 'list', items }
 }

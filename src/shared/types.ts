@@ -214,16 +214,7 @@ export interface NotificationListOptions {
   limit?: number
 }
 
-// ─── 编辑器右键菜单的「使用记录」（SQLite 持久化，驱动「最近使用」）──────────
-export interface MenuUsageEntry {
-  /** 动作稳定标识，如 table.rowBelow */
-  actionId: string
-  /** 累计使用次数（保留给后续的「常用」排序/统计） */
-  count: number
-  /** 最近一次使用时间戳 */
-  lastUsed: number
-}
-
+// ─── 最近打开的文件 / 文件夹（侧栏「最近」页）──────────────────────────────
 export interface RecentFile {
   path: string
   title: string
@@ -819,13 +810,6 @@ export interface LuminAPI {
     closeAll: () => Promise<number>
     remove: (id: number) => Promise<void>
     clearClosed: () => Promise<number>
-  }
-  /** 编辑器右键菜单的动作使用记录（SQLite menu_usage 表） */
-  menuUsage: {
-    list: (limit?: number) => Promise<MenuUsageEntry[]>
-    bump: (actionId: string) => Promise<MenuUsageEntry>
-    forget: (actionId: string) => Promise<void>
-    reset: () => Promise<number>
   }
   export: {
     pdf: (payload: ExportPayload, settings: AppSettings['export']['pdf']) => Promise<string | null>

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 // ─── 编辑器右键菜单（两级结构）───────────────────────────────────────────────
-// 一级：顶部横向常用操作（复制/剪切/粘贴/全选）+ 分类总览（最近使用/表格/段落/格式/插入）
+// 一级：顶部横向常用操作（复制/剪切/粘贴/全选）+ 分类总览（表格/段落/格式/插入）
 // 二级：鼠标悬停（或 → / 点击）某个分类时，在其右侧弹出该分类的动作列表
 // 交互：↑↓ 移动、→/Enter 进入二级、←/Esc 退回一级、Esc 退出、点击外部关闭。
 // 组件只渲染 store 给的分区并处理交互，不认识任何编辑器命令。
@@ -278,14 +278,6 @@ const subStyle = computed(() => ({ left: `${subPos.value.left}px`, top: `${subPo
           >
             <span class="flex-1 truncate">{{ section.labelKey ? t(section.labelKey) : '' }}</span>
             <Icon name="chevron-right" :size="13" class="ecm-caret" />
-          </button>
-        </div>
-
-        <!-- 底部：清除最近使用（仅当有记录时出现） -->
-        <div v-if="menu.recentIds.length" class="border-t border-edge/70 px-1.5 py-1">
-          <button class="ecm-foot" @click="menu.clearUsage()">
-            <Icon name="trash" :size="13" />
-            <span>{{ t('editorMenu.clearRecent') }}</span>
           </button>
         </div>
       </div>
