@@ -13,6 +13,7 @@ import OutlinePanel from '../components/OutlinePanel.vue'
 import TyporaEditor from '../components/editor/TyporaEditor.vue'
 import Icon from '../components/Icon.vue'
 import { measureAllCodeBlocks } from '../lib/editor/codeBlockViews'
+import { historyIntent, isNestedEditorTarget } from '../lib/editor/historyKey'
 import { registerEditorFlush, currentEditorFlush } from '../lib/editorFlush'
 import { useEditorMode } from '../composables/useEditorMode'
 import { preloadKatexCss } from '../lib/editor/mathStyles'
@@ -791,8 +792,53 @@ watch(
   { immediate: true }
 )
 
+/**
+ * ─── 全局撤销兜底：焦点不在任何编辑面里时，Ctrl/Cmd+Z 交给主编辑器 ──────────
+ *
+ * 用户报障：「编辑完 mermaid 的代码后，把焦点放在其他地方（mermaid 代码块隐藏），
+ * 再按 Ctrl+Z 无法撤销刚才对 mermaid 的修改。」
+ *
+ * 实测真因是 **按键没到编辑器**（不是历史没记）：
+ *   * `commitMermaid()` 的写回事务是普通事务（`tr.getMeta('addToHistory')` 为
+ *     `undefined`），`editor.commands.undo()` 一条命令就能把源码逐字还原；
+ *   * 但点状态栏 / 正文下方留白后 `document.activeElement === <body>` ——
+ *     ProseMirror / CodeMirror 的 keymap 挂在各自的 DOM 上，收不到这个事件。
+ * 所以这里补的是**投递**，不是第二套历史：命中后直接调主编辑器的
+ * `undo()/redo()`（与工具栏、菜单、PM 内建 keymap 走同一个命令）。
+ *
+ * 边界（任何一个都不抢）：
+ *   * 事件目标在**编辑面**里（正文 `.ProseMirror`、代码块 `.cm-editor`、源码模式
+ *     `.source-editor`、mermaid/公式的 textarea…）⇒ 由它们自己的历史处理；
+ *     焦点在正文里时 PM 的 keymap 本来就会接，应用层重复接只会造成双重撤销；
+ *   * 源码模式（`editorMode === 'source'`）⇒ 文档的真源是 textarea，没有"全局"可言；
+ *   * 对话框开着（`role="dialog"` + `aria-modal`）或草稿恢复提示挂着 ⇒ 不越过模态层
+ *     去改背后的文档；
+ *   * IME 组字中 / 带 Alt 的组合 ⇒ 不接（这里是 window 捕获，内层处理器还没跑，
+ *     不读 `defaultPrevented`：拖放那边 `@*.prevent` 会把拖放事件的它恒置为真）。
+ *
+ * 监听放在 **window 捕获阶段**：焦点落在 `body` 时事件只走到 document/window，
+ * 编辑器根节点上的 keymap 永远收不到；捕获阶段还能保证先于页面内其它监听做决定。
+ */
+function onGlobalHistoryKey(e: KeyboardEvent): void {
+  const intent = historyIntent(e)
+  if (!intent) return
+  if (ui.editorMode === 'source' || files.draftRestore) return
+  if (document.querySelector('[role="dialog"][aria-modal="true"]')) return
+  if (isNestedEditorTarget(e.target as HTMLElement | null)) return
+  const editor = editorStore.instance
+  if (!editor || editor.isDestroyed || !editor.isEditable) return
+  const done = intent === 'redo' ? editor.commands.redo() : editor.commands.undo()
+  if (!done) return
+  e.preventDefault()
+  e.stopPropagation()
+  // 焦点原本在 body（没有任何编辑面/控件接住它）时把用户送回文档：
+  // 撤销后可以直接继续打字；焦点在工具栏按钮等可聚焦控件上时不抢。
+  if (document.activeElement === document.body) editor.commands.focus()
+}
+
 onMounted(() => {
   editorStore.setActive(ui.editorMode !== 'source')
+  window.addEventListener('keydown', onGlobalHistoryKey, true)
   registerEditorFlush(flushWysiwyg)
   // ⚠️ **启动期间不要开这份占位缓冲**（`ui.booting` 为真 = 会话恢复还没跑完）：
   // 这里开出来的空白缓冲区会去查一次「无主草稿」，于是可能把「未保存的草稿」弹窗拉起来；
@@ -802,6 +848,7 @@ onMounted(() => {
   if (!files.current && !ui.booting) void files.openUntitled()
 })
 onBeforeUnmount(() => {
+  window.removeEventListener('keydown', onGlobalHistoryKey, true)
   document.removeEventListener('keydown', blockDraftKeys, true)
   for (const name of DRAFT_WRITE_EVENTS) document.removeEventListener(name, blockDraftWrites, true)
   // ⚠️ 顺序：**不能**先摘登记再 flushAll —— flushAll 自己要在最前面刷一次编辑器
