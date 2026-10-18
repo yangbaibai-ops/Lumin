@@ -104,12 +104,14 @@ test('两态高度契约 ②：换行口径（pre-wrap + anywhere）与文字列
     cmDecls,
     `找不到 ${CM_CONTENT_SELECTOR} 规则：CM 内容区会退回 prosemirror.css 的 pre-wrap 但没人钉住`
   )
-  // 静态态：12.5px / 1.65（= 20.625px，与 CM 的 .cm-content 同一个数）
-  assert.match(staticDecls, /font-size:\s*12\.5px/, '静态态字号必须 12.5px（= CM 的 # 12.5px）')
+  // 静态态：13.5px / 1.85（= 24.975px，与 CM 的 .cm-content 同一个数）
+  // 口径变更（用户：代码字号与行距各增大一点点）：12.5px/1.65 → 13.5px/1.85。
+  // 断言不变的方向仍是"两态必须逐项相同"，只是数值随口径一起上调。
+  assert.match(staticDecls, /font-size:\s*13\.5px/, '静态态字号必须 13.5px（= CM 的 # 13.5px）')
   assert.match(
     staticDecls,
-    /line-height:\s*1\.65/,
-    '静态态行高必须 1.65（与 cmTheme 的 .cm-scroller 一致）'
+    /line-height:\s*1\.85/,
+    '静态态行高必须 1.85（与 cmTheme 的 .cm-scroller 一致）'
   )
   // ── 换行口径（本轮口径变更：不换行 → 换行）──
   assert.match(staticDecls, /white-space:\s*pre-wrap/, '静态态必须换行（用户口径：不出横向滚动条）')

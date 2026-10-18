@@ -754,8 +754,11 @@ li.md-reveal {
   border-radius: 0;
   background: transparent;
   font-family: var(--font-mono);
-  font-size: 12.5px;
-  line-height: 1.65;
+  /* 用户口径：代码字号与行距"各增大一点点"（12.5→13.5px、1.65→1.85 行高）。
+     ⚠️ 这两项**必须与 CodeBlockView 的 cmTheme（.cm-scroller 的 fontSize/lineHeight）
+     逐项相同**：静态态与挂载态一旦不同，「静态→挂载」的高度契约就会失效（滚动跳变复发）。 */
+  font-size: 13.5px;
+  line-height: 1.85;
   color: var(--ink);
   /* 与 CM 的 `.cm-content` 完全一致：**换行**（一行放不下就折，不出横向滚动条）。
      `anywhere` 让没有空格的长串（URL / 标识符 / minified 代码）也能断开；

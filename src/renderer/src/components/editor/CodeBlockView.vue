@@ -278,8 +278,13 @@ function releaseHasFocusGuard(pmView: object): void {
 
 // ── CodeMirror 主题（CSS 变量驱动，随应用明暗/羊皮纸主题自动适配）──
 const cmTheme = EditorView.theme({
-  '&': { color: 'var(--ink)', backgroundColor: 'transparent', fontSize: '12.5px' },
-  '.cm-scroller': { fontFamily: 'var(--font-mono)', lineHeight: '1.65' },
+  /**
+   * 用户口径：代码字号与行距"各增大一点点"（12.5→13.5px、1.65→1.85）。
+   * ⚠️ 必须与 `overlays.css` 里 `.md-preview pre.cb-static` 的 font-size/line-height
+   * **逐项相同**：两态字号或行高一旦不同，「静态 → 挂载」的高度契约就失效（滚动跳变复发）。
+   */
+  '&': { color: 'var(--ink)', backgroundColor: 'transparent', fontSize: '13.5px' },
+  '.cm-scroller': { fontFamily: 'var(--font-mono)', lineHeight: '1.85' },
   '.cm-content': {
     caretColor: 'var(--accent)',
     padding: '10px 0 14px'
