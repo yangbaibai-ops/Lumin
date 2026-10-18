@@ -76,6 +76,43 @@ export function nextMermaidPreviewState(
   return { svg: rendered, error: false }
 }
 
+/**
+ * 提交口径：**只有空白**的源码按"空"处理（返回 `''`），其余原样返回。
+ *
+ * 为什么不在组件里直接 `trim()`：非空源码里的缩进/空行是 mermaid 排版的一部分，必须逐字保留；
+ * 但"只有空白"（误触进来又退出、只敲了空格）如果原样写回，会留下一个内容为 `\n  ` 的代码块——
+ * markdown 里就是一行尾随空格，且显示态会拿它去渲染必然失败的 mermaid。统一在这里定口径，
+ * 组件只负责按返回值走"清空 / 写回"两条路。
+ */
+export function normalizeMermaidSource(raw: string): string {
+  return raw.trim() === '' ? '' : raw
+}
+
+/**
+ * mermaid 块高度变化后，滚动容器 `scrollTop` 的**视觉锚点补偿量**（px，可正可负）。
+ *
+ * 为什么需要：mermaid 是懒渲染的（视口门）——占位源码（几十行，几百 px）换成图表（可能几十 px）
+ * 时块高突变。如果这个块**整个在视口上方**，块高变化会把它下面的所有内容整体推走，而
+ * `scrollTop` 不变 ⇒ 用户正在读的内容瞬间位移（实测 838px → 45px 时整屏跳了 793px）。
+ * Chromium 的 scroll anchoring 在这种"滚动中异步替换子树"的场景里没有兜住，所以在组件里
+ * 显式补偿：
+ *   * `above`（块整体在视口上方）⇒ 加上高度差：缩多少就把 scrollTop 减多少，下方内容原地不动；
+ *   * `visible`（块与视口相交）⇒ 加上块顶偏移：保持块顶不动，用户看着图自己变高/变矮；
+ *   * `below`（块整体在视口下方）⇒ 0：视口里的内容本来就没受影响。
+ *
+ * `heightDelta = 新块高 - 旧块高`，`topDelta = 新块顶 - 旧块顶`（视口坐标）。
+ * 抽成纯函数是为了单测能直接钉住这三种情形，组件里只做测量与调用。
+ */
+export function mermaidAnchorScrollDelta(
+  position: 'above' | 'visible' | 'below',
+  heightDelta: number,
+  topDelta: number
+): number {
+  if (position === 'above') return heightDelta
+  if (position === 'visible') return topDelta
+  return 0
+}
+
 // 导出件的色值必须与**浅色主题令牌逐条一致**（审计 §8 P2「token 未覆盖的硬编码色」）：
 // 这里是一份独立 HTML 的排版 CSS，拿不到运行时的 CSS 变量，只能写死字面量 —— 但"写死"不等于
 // "自己另立一套"：`--code-bg` 曾漂成 #f4f5f8（令牌 #f1f2f5）、`--panel-2` 漂成 #f0f1f4（令牌 #e9ebf0），

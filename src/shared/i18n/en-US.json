@@ -227,6 +227,7 @@
     "editSource": "Click to edit source",
     "mermaidSource": "Mermaid source (live preview below)",
     "mermaidPreviewError": "Syntax error: the last successfully rendered diagram is kept below",
+    "mermaidEmpty": "Empty Mermaid block (click to edit source)",
     "splitDividerTitle": "Drag to resize the panes; double-click to reset",
     "syncScrollOn": "Sync scrolling is on (click to turn off)",
     "syncScrollOff": "Turn on sync scrolling",

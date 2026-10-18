@@ -55,7 +55,10 @@ import {
   STATIC_HIGHLIGHT
 } from '../../lib/editor/codeBlockMountPolicy'
 import { registerStaticParser, staticHighlightHtml } from '../../lib/editor/staticHighlight'
+// 共享的 mermaid 尺寸清洗 / 预览状态（既有契约，mermaidSplitEdit 单测按这一行钉住）
 import { nextMermaidPreviewState, normalizeMermaidSvg } from '../../lib/export'
+// 本轮新增的两个纯函数（空源码口径 + 滚动锚点补偿），单独一行以保持上面的契约行不变
+import { mermaidAnchorScrollDelta, normalizeMermaidSource } from '../../lib/export'
 import type { MermaidConfig } from 'mermaid'
 import {
   PLAIN_TEXT_LANGUAGE,
@@ -1449,6 +1452,142 @@ const MERMAID_PREVIEW_DEBOUNCE_MS = 300
 let mermaidPreviewSeq = 0
 
 /**
+ * 源码框最小高度（px）：与 overlays.css 的 `.mermaid-source-input { min-height }` 同一数值。
+ * 自动增高以它为下限（只有一行的源码不会缩成一条缝）。
+ */
+const MERMAID_SOURCE_MIN_HEIGHT_PX = 130
+/**
+ * 超过这个行数进入编辑态时，把插入符放在**开头**。
+ *
+ * 源码框现在按内容完整展开（不内部滚动）：200 行 ≈ 4000px，若沿用原来的"插入符放末尾"，
+ * 浏览器为了露出插入符会把整页滚到块底，表现为"点一下图，页面就跑到别处"。
+ * 短源码（常见 3–10 行）仍沿用原文末尾，不改变大多数人的肌肉记忆。
+ */
+const MERMAID_LONG_SOURCE_LINES = 24
+
+/**
+ * IME 组字状态（compositionstart → compositionend）。
+ * 组字期间的任何"重渲染/提交/抢焦点"都会把候选词打断（中文用户直接打不出字）。
+ */
+const mermaidComposing = ref(false)
+/** 组字期间发生了 blur：推迟到 compositionend 再提交，绝不把半截拼音写进文档 */
+let mermaidBlurWhileComposing = false
+
+/**
+ * 这些事件在源码框里**必须由 textarea 自己处理**，一个字都不许冒泡到 PM 根节点。
+ *
+ * 真因（实测，Electron 39 / Chromium）：NodeView 里的 textarea 在 PM 的 DOM 树内，
+ * 键盘事件会冒泡到 `view.dom` 上 PM 的 keydown 处理器 —— 它**不检查 event.target**：
+ *   * ArrowUp/ArrowDown ⇒ `selectVertically → endOfTextblock → view.focus()`，
+ *     焦点被抢回 ProseMirror，textarea 随即 blur ⇒ `commitMermaid()` 把编辑态关掉
+ *     （表现就是"源码框刚出来按一下方向键就没了，根本没法编辑"）；
+ *   * Enter ⇒ PM 的 splitBlock 作用在**文档**上（pmlen 60→61，块被拆开）；
+ *   * Backspace ⇒ PM 的 joinBackward/deleteSelection 作用在文档上（pmlen 60→58）；
+ *   * Ctrl+A / Ctrl+Z 会被 PM 的 selectAll / undo 拿走，textarea 自己收不到。
+ * 这些键不在 `.cm-editor` 里，所以 codeBlock.ts 的 stopEvent（只认 `.cm-editor`）兜不住。
+ * 在 textarea 上逐个 stopPropagation 是唯一不碰 NodeView 配置的修法；浏览器默认行为
+ * （插入字符、换行、退格、方向键、原生 undo、粘贴）不受影响。
+ */
+const MERMAID_SOURCE_LOCAL_EVENTS = [
+  'keydown',
+  'keyup',
+  'keypress',
+  'beforeinput',
+  'input',
+  'paste',
+  'cut',
+  'copy',
+  'compositionstart',
+  'compositionupdate',
+  'compositionend',
+  'mousedown',
+  'mouseup',
+  'click',
+  'dblclick',
+  'pointerdown',
+  'pointerup',
+  'dragstart',
+  'dragend',
+  'dragover',
+  'drop'
+] as const
+
+function isolateMermaidSource(el: HTMLTextAreaElement): void {
+  const stop = (e: Event): void => e.stopPropagation()
+  for (const type of MERMAID_SOURCE_LOCAL_EVENTS) el.addEventListener(type, stop)
+}
+
+/**
+ * 源码框随内容自动增高：高度 = max(最小高度, scrollHeight)，**不允许内部竖直滚动条**。
+ *
+ * 写法说明：先把 height 置回 auto 再读 scrollHeight —— 只判断
+ * `scrollHeight > clientHeight` 只能单向变高，删行/粘贴成更短的内容后不会缩回
+ * （显式 height 让 scrollHeight 至少等于 clientHeight）。两次读写在同一帧内完成，
+ * 中间不会绘制，所以看不到闪烁。保留 scrollTop 是为了防止个别情况下浏览器在改高度时
+ * 顺手把 textarea 的内部滚动位置挪走（哪怕 1px 的内部滚动都算"有滚动条"）。
+ */
+function autosizeMermaidSource(): void {
+  const el = mermaidInputRef.value
+  if (!el) return
+  const keepTop = el.scrollTop
+  el.style.height = 'auto'
+  /**
+   * `scrollHeight` 是 padding box 的内容高；但源码框底部有 1px 分隔线（overlays.css 的
+   * `.mermaid-edit > .mermaid-source-input { border-bottom }`），`height` 算的是 border-box
+   * ⇒ 直接写 scrollHeight 会少 1px，clientHeight 恒比 scrollHeight 小 1（验收要求相等）。
+   * 把边框厚度补回 height 里即可（视觉上分隔线仍在，内容一行不少）。
+   */
+  const border = el.offsetHeight - el.clientHeight
+  el.style.height = `${Math.max(MERMAID_SOURCE_MIN_HEIGHT_PX, el.scrollHeight + border)}px`
+  el.scrollTop = keepTop
+}
+
+/**
+ * 滚动锚点：mermaid 块高度突变时用来保住"用户正在看的那一屏"。
+ *
+ * 为什么不在 CSS 里交给浏览器：这套替换是**滚动中异步发生**的（视口门放行 → 动态 import →
+ * mermaid.render 同步占主线程 → v-html 换图），实测 Chromium 的 scroll anchoring 没有补偿
+ * （838px 的占位换成 45px 的图，scrollTop 只跟着滚轮走、下方内容整体上移 793px）。
+ */
+interface MermaidScrollAnchor {
+  scrollEl: HTMLElement
+  block: HTMLElement
+  scrollTop: number
+  top: number
+  height: number
+  viewTop: number
+  viewBottom: number
+}
+
+function captureMermaidScrollAnchor(): MermaidScrollAnchor | null {
+  const block = blockEl() as HTMLElement | null
+  const scrollEl = block?.closest('.editor-scroll') as HTMLElement | null
+  if (!block || !scrollEl) return null
+  const r = block.getBoundingClientRect()
+  const view = scrollEl.getBoundingClientRect()
+  return {
+    scrollEl,
+    block,
+    scrollTop: scrollEl.scrollTop,
+    top: r.top,
+    height: r.height,
+    viewTop: view.top,
+    viewBottom: view.bottom
+  }
+}
+
+function restoreMermaidScrollAnchor(anchor: MermaidScrollAnchor): void {
+  // 节点被替换/卸载时 rect 全是 0，不要拿它去改 scrollTop
+  if (!anchor.block.isConnected) return
+  const r = anchor.block.getBoundingClientRect()
+  const position =
+    r.bottom <= anchor.viewTop ? 'above' : r.top >= anchor.viewBottom ? 'below' : 'visible'
+  const delta = mermaidAnchorScrollDelta(position, r.height - anchor.height, r.top - anchor.top)
+  if (!delta) return
+  anchor.scrollEl.scrollTop = Math.max(0, anchor.scrollTop + delta)
+}
+
+/**
  * ─── 视口门（清单 §2.G / O1）────────────────────────────────────────────────
  * mermaid 家族是构建产物里最重的一坨：`mermaid.core` 1.23MB + `cynefin` 1.30MB +
  * `cytoscape` 0.96MB ≈ **3.5MB**（懒加载）。只要文档里有一个 ```mermaid 块，
@@ -1458,6 +1597,10 @@ let mermaidPreviewSeq = 0
  *
  * 为什么 rootMargin 取 200px：块从「未渲染」变成「图表」会有高度变化，
  * 提前 200px 放行 ⇒ 变化发生在**屏幕外**，正常滚动不会看到跳动。
+ * ⚠️ 但"屏幕外"不等于"不影响视口"：块在**视口上方**时高度突变会把下方内容整体推走
+ * （实测占位 838px → 图 45px，滚轮只走了 120px、内容却跳了 793px）。所以真正兜住
+ * 跳变的是 `captureMermaidScrollAnchor` / `restoreMermaidScrollAnchor` 的视觉锚点补偿，
+ * rootMargin 只负责"别在屏幕正中间突然换形态"。
  * 导出不受影响：那条路走 `renderMermaidInHtml(html)`，与编辑器视图解耦。
  */
 const mermaidNearViewport = ref(false)
@@ -1517,6 +1660,15 @@ function removeMermaidTempNode(id: string): void {
 async function renderMermaid(): Promise<void> {
   // 视口门未开就不 import —— 观察器放行时会自己回来调一次
   if (!mermaidNearViewport.value) return
+  // 空 / 只有空白：不交给 mermaid.render（它对空源码必抛错，会留一堆临时 DOM），
+  // 直接回占位态（模板对空内容显示"空 mermaid 代码块"提示）。
+  if (normalizeMermaidSource(props.node.textContent || '') === '') {
+    const anchor = captureMermaidScrollAnchor()
+    mermaidSvg.value = ''
+    await nextTick()
+    if (anchor) restoreMermaidScrollAnchor(anchor)
+    return
+  }
   try {
     const mod = await import('mermaid')
     mod.default.initialize(mermaidConfig())
@@ -1534,9 +1686,17 @@ async function renderMermaid(): Promise<void> {
      *   * 竖图（自然宽 < 容器）⇒ 保持自然尺寸，不再 width:100% 拉满一屏。
      * 导出侧 `renderMermaidInHtml` 调的是同一个函数，两边不可能漂。
      */
+    // 占位（几十行源码）↔ 图 的高度往往差好几百 px：替换前后保住视觉锚点，
+    // 否则滚动中放行的块会把正在读的内容整体推走（见 restoreMermaidScrollAnchor）。
+    const anchor = captureMermaidScrollAnchor()
     mermaidSvg.value = normalizeMermaidSvg(svg)
+    await nextTick()
+    if (anchor) restoreMermaidScrollAnchor(anchor)
   } catch {
+    const anchor = captureMermaidScrollAnchor()
     mermaidSvg.value = `<pre><code>${escapeHtml(props.node.textContent || '')}</code></pre>`
+    await nextTick()
+    if (anchor) restoreMermaidScrollAnchor(anchor)
   }
 }
 
@@ -1561,8 +1721,12 @@ async function renderMermaidPreview(): Promise<void> {
       { svg: mermaidEditSvg.value, error: mermaidPreviewError.value },
       normalizeMermaidSvg(svg)
     )
+    // 预览图变高/变矮会改变块高：块在视口上方时补 scrollTop，正在读的内容不被推走
+    const anchor = captureMermaidScrollAnchor()
     mermaidEditSvg.value = next.svg
     mermaidPreviewError.value = next.error
+    await nextTick()
+    if (anchor) restoreMermaidScrollAnchor(anchor)
   } catch {
     removeMermaidTempNode(id)
     if (seq !== mermaidPreviewSeq || !editingMermaid.value) return
@@ -1575,13 +1739,44 @@ async function renderMermaidPreview(): Promise<void> {
   }
 }
 
-/** 输入即排一次防抖预览（300ms）；退出编辑时由 commitMermaid 清掉 */
+/**
+ * 输入：先贴合高度（源码框随内容增长，无内部滚动条），再排预览。
+ * IME 组字期间**不排**预览：mermaid.render 是同步重活，会把候选词/组字打断；
+ * compositionend 会补排一次，所以停手后仍然按时看到图。
+ */
 function onMermaidSourceInput(): void {
+  autosizeMermaidSource()
+  if (mermaidComposing.value) return
   if (mermaidPreviewTimer) clearTimeout(mermaidPreviewTimer)
   mermaidPreviewTimer = setTimeout(() => {
     mermaidPreviewTimer = null
     void renderMermaidPreview()
   }, MERMAID_PREVIEW_DEBOUNCE_MS)
+}
+
+/** 组字开始：进入守卫态，并取消可能已排队的预览（不能在图里插半截拼音） */
+function onMermaidCompositionStart(): void {
+  mermaidComposing.value = true
+  if (mermaidPreviewTimer) {
+    clearTimeout(mermaidPreviewTimer)
+    mermaidPreviewTimer = null
+  }
+}
+
+/**
+ * 组字结束：退出守卫态、补一次高度贴合与预览。
+ * 若组字期间焦点已经离开（blur 被推迟，见 commitMermaid），这里补提交 —— 提交必须
+ * 发生在 compositionend 之后，否则写进文档的是半截拼音而不是上屏的汉字。
+ */
+function onMermaidCompositionEnd(): void {
+  mermaidComposing.value = false
+  autosizeMermaidSource()
+  if (mermaidBlurWhileComposing || document.activeElement !== mermaidInputRef.value) {
+    mermaidBlurWhileComposing = false
+    commitMermaid()
+    return
+  }
+  onMermaidSourceInput()
 }
 
 /**
@@ -1590,6 +1785,10 @@ function onMermaidSourceInput(): void {
  * 当成块外快捷键。
  */
 function onMermaidSourceKeydown(e: KeyboardEvent): void {
+  // IME 组字中的 Esc 只负责"取消候选/结束组字"（浏览器默认行为），
+  // 绝不能顺手提交并退出编辑 —— 中文用户按 Esc 收候选词是常态。
+  // Ctrl+Enter 在组字中同样不能提交（会把半截拼音写进文档）。
+  if (e.isComposing || mermaidComposing.value) return
   if (e.key === 'Escape' || ((e.ctrlKey || e.metaKey) && e.key === 'Enter')) {
     e.preventDefault()
     e.stopPropagation()
@@ -1626,8 +1825,23 @@ function startMermaidEdit(): void {
   void nextTick(() => {
     const el = mermaidInputRef.value
     if (!el) return
-    el.focus()
-    el.setSelectionRange(el.value.length, el.value.length)
+    /**
+     * 事件隔离必须在 focus 之前装好：焦点一落进来，键盘事件就已经开始冒泡到 PM。
+     * 见 MERMAID_SOURCE_LOCAL_EVENTS 的注释（ArrowUp/Enter/Backspace 会作用到文档上）。
+     */
+    isolateMermaidSource(el)
+    // 先按内容把高度贴合好，再 focus：否则 focus 时还是旧的 130px，浏览器会对插入符
+    // 做一次"最小滚动"，长源码看起来就是一顿跳。
+    autosizeMermaidSource()
+    // preventScroll：源码框就在用户点的地方，别让焦点把整页再滚一次
+    el.focus({ preventScroll: true })
+    /**
+     * 插入符：短源码沿用原文末尾（大多数人的习惯）；长源码放开头 —— 200 行源码框高约
+     * 4000px，放末尾会把整页滚到块底（见 MERMAID_LONG_SOURCE_LINES）。
+     */
+    const lines = (el.value.match(/\n/g)?.length ?? 0) + 1
+    const caret = lines > MERMAID_LONG_SOURCE_LINES ? 0 : el.value.length
+    el.setSelectionRange(caret, caret)
   })
   // 没有可沿用的图（首次渲染失败 / 还没轮到视口门）：立刻按当前源码渲染一张，
   // 保证「代码在上、预览在下」一进来就是两段都在（防抖只用于后续输入）。
@@ -1643,6 +1857,15 @@ function startMermaidEdit(): void {
  */
 function commitMermaid(): void {
   if (!editingMermaid.value) return
+  /**
+   * IME 组字中：**不提交**，只记下"该提交了"。Chromium 在失焦时会先 compositionend
+   * 再 blur，但顺序并非所有输入法都一致；直接提交会写进半截拼音（例如把 `ni` 而不是
+   * `你` 写进文档）。onMermaidCompositionEnd 会在组字结束后补这一次提交。
+   */
+  if (mermaidComposing.value) {
+    mermaidBlurWhileComposing = true
+    return
+  }
   editingMermaid.value = false
   mermaidPreviewSeq++
   if (mermaidPreviewTimer) {
@@ -1650,7 +1873,11 @@ function commitMermaid(): void {
     mermaidPreviewTimer = null
   }
   mermaidPreviewError.value = false
-  const source = mermaidSource.value
+  /**
+   * 只有空白 ⇒ 按空源码提交（清空块内容）：既不留 `\n  ` 这种尾随空格差异，
+   * 也不把一个必错的 mermaid 源码交给渲染器。非空源码逐字保留（缩进是排版的一部分）。
+   */
+  const source = normalizeMermaidSource(mermaidSource.value)
   if (source === props.node.textContent) return
   const getPos = props.getPos as () => number
   const pos = getPos()
@@ -1658,6 +1885,11 @@ function commitMermaid(): void {
   props.editor.commands.command(({ tr }) => {
     const node = tr.doc.nodeAt(pos)
     if (!node) return false
+    // 空内容不能 `schema.text('')`（prosemirror 的 text node 不接受空字符串），走 delete
+    if (source === '') {
+      tr.delete(pos + 1, pos + node.nodeSize - 1)
+      return true
+    }
     tr.replaceWith(pos + 1, pos + node.nodeSize - 1, tr.doc.type.schema.text(source))
     return true
   })
@@ -1691,6 +1923,8 @@ function commitMermaid(): void {
           :aria-label="$t('editor.mermaidSource')"
           @input="onMermaidSourceInput"
           @keydown="onMermaidSourceKeydown"
+          @compositionstart="onMermaidCompositionStart"
+          @compositionend="onMermaidCompositionEnd"
           @blur="commitMermaid"
         />
         <!-- 渲染失败时只加这一行弱化提示；图仍是上一张成功的那张（不换成错误文本） -->
@@ -1707,7 +1941,9 @@ function commitMermaid(): void {
         <div class="mermaid-preview" data-mermaid-preview @mousedown.prevent>
           <!-- eslint-disable-next-line vue/no-v-html -- mermaidEditSvg 是 mermaid.render() 在 securityLevel:'strict' 下生成的 SVG（见 mermaidConfig），不是文档原文 -->
           <div v-if="mermaidEditSvg" class="mermaid-svg-host" v-html="mermaidEditSvg" />
-          <pre v-else class="mermaid-placeholder"><code>{{ mermaidSource }}</code></pre>
+          <pre v-else class="mermaid-placeholder"><code>{{
+            mermaidSource || $t('editor.mermaidEmpty')
+          }}</code></pre>
         </div>
       </div>
       <!-- 显示态：预览本体是 <button>，不是 <div @click>：它是"打开源码编辑"这个动作
@@ -1728,7 +1964,7 @@ function commitMermaid(): void {
         <pre
           v-if="!mermaidSvg"
           class="mermaid-placeholder"
-        ><code>{{ props.node.textContent }}</code></pre>
+        ><code>{{ props.node.textContent || $t('editor.mermaidEmpty') }}</code></pre>
         <!-- 宿主 div 不写宽度（overlays.css 的 .mermaid-svg-host）：它是 flex 项，
              宽度 = SVG 的自然宽（只缩不放），居中由 .mermaid-render 的 justify-content 负责。 -->
         <!-- eslint-disable-next-line vue/no-v-html -- mermaidSvg 是 mermaid.render() 在 securityLevel:'strict' 下生成的 SVG（见本文件 mermaid 初始化），不是文档原文 -->

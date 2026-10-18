@@ -891,7 +891,12 @@ aside:focus-within [data-sidebar-filetools],
   /* 100% 宽 + 左右 16px 内边距：不按 border-box 算会横向多出 32px（被外壳裁掉，
      但内容区实际比块宽，滚动/换行都不准） */
   box-sizing: border-box;
+  display: block;
+  /* 初始高度 = 最小高度；之后由 CodeBlockView 的 autosizeMermaidSource() 按 scrollHeight
+     写内联 height（用户报障：40 行源码被 130px 的框截断、出现内部竖直滚动条）。
+     这里**不限高**：max-height 显式写 none，防止将来别处的通用 textarea 规则把它压住。 */
   min-height: 130px;
+  max-height: none;
   border: none;
   background: transparent;
   padding: 14px 16px;
@@ -900,7 +905,12 @@ aside:focus-within [data-sidebar-filetools],
   line-height: 1.6;
   color: var(--ink);
   outline: none;
+  /* 只允许纵向拖拽（横向拖会把 100% 宽的框拖出内容列）。
+     ⚠️ 不允许内部滚动条：高度已按内容贴合，overflow 一旦是 auto 就会在
+     「内容多一行、JS 还没量到」的那一帧闪出滚动条；hidden 把它彻底关掉。 */
   resize: vertical;
+  overflow-x: hidden;
+  overflow-y: hidden;
   caret-color: var(--ink);
 }
 
