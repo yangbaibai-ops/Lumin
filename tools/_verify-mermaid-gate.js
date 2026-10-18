@@ -2,7 +2,7 @@
 //
 // 为什么值得单独一条：mermaid 家族（mermaid.core 1.23MB + cynefin 1.30MB + cytoscape 0.96MB
 // ≈3.5MB，懒加载）原来只要文档里出现一个 ```mermaid 块就会**立刻** import，哪怕它在屏幕外。
-// 现在要求：**进入视口附近 200px 才 import + 渲染**，此前块内是源码占位（有高度、可点进源码编辑）。
+// 现在要求：**进入视口附近 600px 才 import + 渲染**，此前块内是源码占位（有高度、可点进源码编辑）。
 //
 // 断言两路证据：
 //   ① DOM：远在视口外的块没有 `<svg>`、带 `data-mermaid-gated="pending"`、有占位；

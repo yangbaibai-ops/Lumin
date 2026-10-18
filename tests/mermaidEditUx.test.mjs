@@ -23,7 +23,7 @@ installTsExtensionResolve()
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..')
 const read = (p) => fs.readFileSync(path.join(ROOT, p), 'utf-8')
 
-const { normalizeMermaidSource, mermaidAnchorScrollDelta } =
+const { normalizeMermaidSource, mermaidAnchorScrollDelta, mermaidBlockPosition } =
   await import('../src/renderer/src/lib/export.ts')
 
 const vue = read('src/renderer/src/components/editor/CodeBlockView.vue')
@@ -232,14 +232,16 @@ test('提交：只有空白 ⇒ 清空块内容（tr.delete），非空 ⇒ 原�
 // ─── ⑥ 滚动锚点：异步换图前后保住视觉位置 ────────────────────────────────────
 test('显示态换图：先记录锚点、nextTick 后恢复；预览换图同样处理', () => {
   const render = fnBody('async function renderMermaid', 'async function renderMermaidPreview')
-  assert.match(render, /captureMermaidScrollAnchor\(\)/, '换图前必须记录锚点')
   assert.match(
     render,
-    /mermaidSvg\.value = normalizeMermaidSvg\(svg\)/,
-    '尺寸清洗仍只有一处（既有契约）'
+    /queueMermaidSvg\(normalizeMermaidSvg\(svg\), force\)/,
+    '尺寸清洗仍只有一处（既有契约），且必须走排队入口'
   )
+  const apply = fnBody('async function applyMermaidSvg', 'function clearMermaidHeightAnimation')
+  assert.match(apply, /captureMermaidScrollAnchor\(\)/, '换图前必须记录锚点')
+  assert.match(apply, /mermaidSvg\.value = svg/)
   assert.match(
-    render,
+    apply,
     /await nextTick\(\)[\s\S]*restoreMermaidScrollAnchor\(anchor\)/,
     'DOM 更新后必须恢复锚点'
   )
@@ -247,11 +249,63 @@ test('显示态换图：先记录锚点、nextTick 后恢复；预览换图同�
   assert.match(preview, /captureMermaidScrollAnchor\(\)/)
   assert.match(preview, /restoreMermaidScrollAnchor\(anchor\)/)
 
-  const helper = fnBody('function restoreMermaidScrollAnchor', 'async function renderMermaid')
+  const helper = fnBody('function restoreMermaidScrollAnchor', 'function mermaidBlockPositionNow')
   assert.match(helper, /mermaidAnchorScrollDelta\(/, '补偿量走纯函数（单测钉住三种位置）')
-  assert.match(helper, /r\.bottom <= anchor\.viewTop \? 'above'/, '块整体在视口上方 = above')
-  assert.match(helper, /r\.top >= anchor\.viewBottom \? 'below'/, '块整体在视口下方 = below')
+  assert.match(helper, /mermaidBlockPosition\(/, '位置判定与排队共用同一个纯函数')
   assert.match(helper, /anchor\.block\.isConnected/, '块已卸载时不拿 0 rect 去改 scrollTop')
+})
+
+// ─── ⑦ 第二轮报障：块**部分可见**时换图会把块顶/视口内容挪走 ──────────────────
+test('位置纯函数：above / visible / below 三态与边界（块底=视口顶算 above）', () => {
+  assert.equal(mermaidBlockPosition(-900, -100, 0, 800), 'above')
+  assert.equal(mermaidBlockPosition(0, 800, 0, 800), 'visible', '恰好铺满视口 = visible')
+  assert.equal(mermaidBlockPosition(-216, 622, 0, 800), 'visible', '块底可见 = visible')
+  assert.equal(mermaidBlockPosition(-100, 0, 0, 800), 'above', '块底恰在视口顶 = above')
+  assert.equal(mermaidBlockPosition(800, 900, 0, 800), 'below', '块顶恰在视口底 = below')
+  assert.equal(mermaidBlockPosition(900, 1700, 0, 800), 'below')
+})
+
+test('换图排队契约：visible 时不改 mermaidSvg/块高，离开视口或滚动停下才换', () => {
+  const queue = fnBody('function queueMermaidSvg', 'const mermaidNearViewport')
+  assert.match(queue, /position !== 'visible'/, '只有不在视口里才允许立刻换图')
+  assert.match(queue, /pendingMermaidSvg = svg/, '可见时先把新 SVG 排队（块高不变）')
+  assert.match(queue, /armPendingSwapWatcher\(\)/)
+  assert.match(queue, /void applyMermaidSvg\(svg\)/, '不可见/主动路径立刻换（带锚点补偿）')
+  assert.doesNotMatch(queue, /scrollIntoView/, '排队路径不许调用 scrollIntoView')
+
+  const scroll = fnBody('function onPendingSwapScroll', 'function resetPendingMermaidSwap')
+  assert.match(
+    scroll,
+    /mermaidBlockPositionNow\(\) !== 'visible'[\s\S]*flushPendingMermaidSwap\(false\)/,
+    '块一离开视口就立刻换，补偿发生在屏幕外'
+  )
+  assert.match(scroll, /MERMAID_SWAP_IDLE_MS/, '滚动停下后才允许收拢')
+
+  const animated = fnBody(
+    'async function applyMermaidSvgAnimated',
+    'function detachPendingSwapWatcher'
+  )
+  assert.match(animated, /el\.style\.height = `\$\{h0\}px`/, '从旧高度起过渡')
+  assert.match(animated, /el\.style\.height = `\$\{h1\}px`/, '过渡到新高度')
+  assert.match(animated, /MERMAID_SWAP_ANIM_MS/)
+  assert.doesNotMatch(animated, /scrollTop\s*=/, '可见收拢不写 scrollTop（逐 tick 只有滚轮量）')
+  assert.doesNotMatch(animated, /scrollIntoView/)
+
+  // 排队状态要能在 DOM 上观测（验收/诊断用）
+  assert.match(template, /data-mermaid-pending/)
+})
+
+test('视口门单向：放行后只 disconnect，不回退占位；提前量 600px 给 import 留时间', () => {
+  assert.doesNotMatch(script, /mermaidNearViewport\.value = false/, '门一旦放行不许回退')
+  const openGate = fnBody('function openMermaidGate', 'function teardownMermaidObserver')
+  assert.match(openGate, /mermaidNearViewport\.value = true/)
+  assert.match(openGate, /teardownMermaidObserver\(\)/)
+  assert.match(openGate, /void renderMermaid\(\)/)
+  assert.match(script, /rootMargin: '600px 0px 600px 0px'/, '提前量必须覆盖首次 import/render')
+  assert.match(template, /data-mermaid-gated="mermaidNearViewport \? null : 'pending'"/)
+  // 用户主动提交必须不排队（force），否则编辑结果会"消失"
+  const commit = fnBody('function commitMermaid')
+  assert.match(commit, /renderMermaid\(true\)/)
 })
 
 test('CSS 契约未被破坏：只缩不放 / 两段分栏仍在', () => {

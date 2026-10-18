@@ -57,8 +57,13 @@ import {
 import { registerStaticParser, staticHighlightHtml } from '../../lib/editor/staticHighlight'
 // 共享的 mermaid 尺寸清洗 / 预览状态（既有契约，mermaidSplitEdit 单测按这一行钉住）
 import { nextMermaidPreviewState, normalizeMermaidSvg } from '../../lib/export'
-// 本轮新增的两个纯函数（空源码口径 + 滚动锚点补偿），单独一行以保持上面的契约行不变
-import { mermaidAnchorScrollDelta, normalizeMermaidSource } from '../../lib/export'
+// 本轮新增的纯函数（空源码口径 + 滚动锚点补偿 + 三态位置判定），单独一行以保持上面的契约行不变
+import {
+  mermaidAnchorScrollDelta,
+  mermaidBlockPosition,
+  normalizeMermaidSource,
+  type MermaidBlockPosition
+} from '../../lib/export'
 import type { MermaidConfig } from 'mermaid'
 import {
   PLAIN_TEXT_LANGUAGE,
@@ -781,6 +786,8 @@ function syncToNode(): void {
  * 之后改内容也不会再识别）。显式设置只发生在 applyLanguageChoice()。
  */
 watch(selectedLanguage, async (lang) => {
+  // 换语言会整块换 DOM：排队中的图/未收完的高度动画都属于旧形态，先清掉
+  resetPendingMermaidSwap()
   if (lang === 'mermaid') {
     // 切到 mermaid：CM 宿主节点即将被 v-else 卸载，先彻底拆掉（含焦点封堵、
     // 观察器恢复），并退出源码态——否则再切回 mermaid 会看到残留的 textarea
@@ -1420,6 +1427,7 @@ onBeforeUnmount(() => {
   unmountDelayTimer = null
   teardownCm()
   teardownMermaidObserver()
+  resetPendingMermaidSwap()
   if (pinTimer) clearTimeout(pinTimer)
   pinTimer = null
   if (extSyncTimer) clearTimeout(extSyncTimer)
@@ -1580,11 +1588,181 @@ function restoreMermaidScrollAnchor(anchor: MermaidScrollAnchor): void {
   // 节点被替换/卸载时 rect 全是 0，不要拿它去改 scrollTop
   if (!anchor.block.isConnected) return
   const r = anchor.block.getBoundingClientRect()
-  const position =
-    r.bottom <= anchor.viewTop ? 'above' : r.top >= anchor.viewBottom ? 'below' : 'visible'
+  const position = mermaidBlockPosition(r.top, r.bottom, anchor.viewTop, anchor.viewBottom)
   const delta = mermaidAnchorScrollDelta(position, r.height - anchor.height, r.top - anchor.top)
   if (!delta) return
   anchor.scrollEl.scrollTop = Math.max(0, anchor.scrollTop + delta)
+}
+
+/** 现在这个块相对滚动容器的位置（块不在 DOM 里 ⇒ null） */
+function mermaidBlockPositionNow(): MermaidBlockPosition | null {
+  const block = blockEl() as HTMLElement | null
+  if (!block || !block.isConnected) return null
+  const scrollEl = block.closest('.editor-scroll') as HTMLElement | null
+  if (!scrollEl) return null
+  const r = block.getBoundingClientRect()
+  const view = scrollEl.getBoundingClientRect()
+  return mermaidBlockPosition(r.top, r.bottom, view.top, view.bottom)
+}
+
+/**
+ * ─── 换图排队：**块部分可见时不换**（第二轮报障的真因）─────────────────────────
+ *
+ * 实测（F 场景，块 838px、视口 840px、换图时块底在视口里 590px）：
+ *   scrollTop 6848→5935（Δ-913，滚轮只有 -120）、块高 838→45、块顶 -216→697、
+ *   块上方段落 rect.top -295→618。旧代码用换图**之后**的 rect 判位置：块缩成 45px 后
+ *   整体落到视口上方 ⇒ 走 `above` 补偿 -793 ⇒ 把块顶连同视口内容一起往上挪 793px。
+ *   视觉上就是「在图下方往上滚，突然跳到 mermaid 上方很远」。
+ *
+ * 现在：`visible`（哪怕只露一条边）→ 先把新 SVG 排队，**块高保持不变**；
+ *   * 继续滚动、块完全离开视口后立即换图（above/below 的补偿在屏幕外，见 restore）；
+ *   * 滚动停下来（260ms 空闲）→ 平滑收拢高度（不动 scrollTop，见 applyMermaidSvgAnimated）；
+ *   * 用户主动点进编辑/提交（force）→ 立即换，不等（见 renderMermaid(force)）。
+ * 这样「换图导致的高度突变」永远不会发生在块可见、用户还在滚动的这一拍里。
+ */
+const mermaidSwapPending = ref(false)
+let pendingMermaidSvg: string | null = null
+let pendingSwapScrollEl: HTMLElement | null = null
+let pendingSwapIdleTimer: ReturnType<typeof setTimeout> | null = null
+let mermaidAnimTimer: ReturnType<typeof setTimeout> | null = null
+/** 滚动停下多久后允许收拢（也是"用户在看这块图"的判据） */
+const MERMAID_SWAP_IDLE_MS = 260
+/** 可见时收拢块高的过渡时长：不是瞬时跳变，下方内容跟着匀速上移 */
+const MERMAID_SWAP_ANIM_MS = 360
+
+/** 立刻换图：换前记录锚点，DOM 更新后按 above/visible/below 补偿（编辑/提交路径走这条） */
+async function applyMermaidSvg(svg: string): Promise<void> {
+  clearMermaidHeightAnimation()
+  const anchor = captureMermaidScrollAnchor()
+  mermaidSvg.value = svg
+  await nextTick()
+  if (anchor) restoreMermaidScrollAnchor(anchor)
+}
+
+/** 清掉收拢动画留下的内联高度（任何一次新换图/进编辑/卸载之前都必须清） */
+function clearMermaidHeightAnimation(): void {
+  if (mermaidAnimTimer) {
+    clearTimeout(mermaidAnimTimer)
+    mermaidAnimTimer = null
+  }
+  const el = mermaidBlockRef.value
+  if (!el) return
+  el.style.transition = ''
+  el.style.height = ''
+  el.style.overflow = ''
+}
+
+/**
+ * 可见时收拢：**不写 scrollTop**，把块高从旧值过渡到新值。
+ * 这样滚轮节奏不被改写（逐 tick 只有滚轮量），也没有单帧 793px 的跳变。
+ */
+async function applyMermaidSvgAnimated(svg: string): Promise<void> {
+  const el = mermaidBlockRef.value
+  if (!el) {
+    await applyMermaidSvg(svg)
+    return
+  }
+  clearMermaidHeightAnimation()
+  const h0 = el.getBoundingClientRect().height
+  mermaidSvg.value = svg
+  await nextTick()
+  if (!el.isConnected) return
+  const h1 = el.getBoundingClientRect().height
+  // 高度本来就稳定（图片尺寸与占位一致）⇒ 什么都不用做
+  if (!Number.isFinite(h0) || Math.abs(h1 - h0) < 12) return
+  // 系统设置「减少动态效果」时直接落位，不再播过渡
+  if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return
+  el.style.transition = 'none'
+  el.style.overflow = 'hidden'
+  el.style.height = `${h0}px`
+  // 强制一次布局，让 h0 成为过渡起点（同一帧内完成，不会先画一帧旧高度）
+  void el.offsetHeight
+  el.style.transition = `height ${MERMAID_SWAP_ANIM_MS}ms cubic-bezier(0.2, 0.7, 0.3, 1)`
+  el.style.height = `${h1}px`
+  mermaidAnimTimer = setTimeout(() => {
+    mermaidAnimTimer = null
+    if (!el.isConnected) return
+    el.style.transition = ''
+    el.style.height = ''
+    el.style.overflow = ''
+  }, MERMAID_SWAP_ANIM_MS + 40)
+}
+
+function detachPendingSwapWatcher(): void {
+  if (pendingSwapScrollEl) {
+    pendingSwapScrollEl.removeEventListener('scroll', onPendingSwapScroll)
+    pendingSwapScrollEl = null
+  }
+  if (pendingSwapIdleTimer) {
+    clearTimeout(pendingSwapIdleTimer)
+    pendingSwapIdleTimer = null
+  }
+}
+
+function armPendingSwapWatcher(): void {
+  const block = blockEl() as HTMLElement | null
+  const scrollEl = block?.closest('.editor-scroll') as HTMLElement | null
+  if (!scrollEl) return
+  if (pendingSwapScrollEl !== scrollEl) {
+    detachPendingSwapWatcher()
+    pendingSwapScrollEl = scrollEl
+    scrollEl.addEventListener('scroll', onPendingSwapScroll, { passive: true })
+  }
+  if (pendingSwapIdleTimer) clearTimeout(pendingSwapIdleTimer)
+  pendingSwapIdleTimer = setTimeout(() => {
+    pendingSwapIdleTimer = null
+    flushPendingMermaidSwap(true)
+  }, MERMAID_SWAP_IDLE_MS)
+}
+
+/** 滚动中：块完全离开视口 ⇒ 立即换（补偿在屏幕外）；还在视口里 ⇒ 重置空闲计时 */
+function onPendingSwapScroll(): void {
+  if (!pendingMermaidSvg) return
+  if (mermaidBlockPositionNow() !== 'visible') {
+    flushPendingMermaidSwap(false)
+    return
+  }
+  if (pendingSwapIdleTimer) clearTimeout(pendingSwapIdleTimer)
+  pendingSwapIdleTimer = setTimeout(() => {
+    pendingSwapIdleTimer = null
+    flushPendingMermaidSwap(true)
+  }, MERMAID_SWAP_IDLE_MS)
+}
+
+/** 丢弃排队/动画（卸载、切语言、换块时用） */
+function resetPendingMermaidSwap(): void {
+  pendingMermaidSvg = null
+  mermaidSwapPending.value = false
+  detachPendingSwapWatcher()
+  clearMermaidHeightAnimation()
+}
+
+function flushPendingMermaidSwap(animated: boolean): void {
+  const svg = pendingMermaidSvg
+  pendingMermaidSvg = null
+  mermaidSwapPending.value = false
+  detachPendingSwapWatcher()
+  if (svg === null) return
+  if (animated) void applyMermaidSvgAnimated(svg)
+  else void applyMermaidSvg(svg)
+}
+
+/**
+ * 所有显示态换图的唯一入口（空源码/渲染成功/渲染失败三条分支都走这里）。
+ * `force` 只给用户主动动作（提交编辑）用 —— 那时块就在眼前，排队会让用户以为图没变。
+ */
+function queueMermaidSvg(svg: string, force = false): void {
+  const position = mermaidBlockPositionNow()
+  if (force || editingMermaid.value || position !== 'visible') {
+    pendingMermaidSvg = null
+    mermaidSwapPending.value = false
+    detachPendingSwapWatcher()
+    void applyMermaidSvg(svg)
+    return
+  }
+  pendingMermaidSvg = svg
+  mermaidSwapPending.value = true
+  armPendingSwapWatcher()
 }
 
 /**
@@ -1592,15 +1770,14 @@ function restoreMermaidScrollAnchor(anchor: MermaidScrollAnchor): void {
  * mermaid 家族是构建产物里最重的一坨：`mermaid.core` 1.23MB + `cynefin` 1.30MB +
  * `cytoscape` 0.96MB ≈ **3.5MB**（懒加载）。只要文档里有一个 ```mermaid 块，
  * 原来的 onMounted 就会 `import('mermaid')` —— 哪怕它远在屏幕外、用户只是翻过去。
- * 现在：**进入视口附近 200px 才真正 import + 渲染**；在此之前块内展示源码占位
+ * 现在：**进入视口附近 600px 才真正 import + 渲染**；在此之前块内展示源码占位
  * （既有高度、可点击回到源码编辑，与原错误兜底是同一套标记）。
  *
- * 为什么 rootMargin 取 200px：块从「未渲染」变成「图表」会有高度变化，
- * 提前 200px 放行 ⇒ 变化发生在**屏幕外**，正常滚动不会看到跳动。
- * ⚠️ 但"屏幕外"不等于"不影响视口"：块在**视口上方**时高度突变会把下方内容整体推走
- * （实测占位 838px → 图 45px，滚轮只走了 120px、内容却跳了 793px）。所以真正兜住
- * 跳变的是 `captureMermaidScrollAnchor` / `restoreMermaidScrollAnchor` 的视觉锚点补偿，
- * rootMargin 只负责"别在屏幕正中间突然换形态"。
+ * 为什么 rootMargin 取 600px（与代码块虚拟化同一档，见 codeBlockMountPolicy）：
+ * 首次 `import('mermaid')` + render 要几百 ms，200px 的提前量在正常滚轮速度下不够 ——
+ * 实测放行后块已经滚进视口 590px 才换图，高度 838→45 的突变就发生在**用户眼前**。
+ * 提到 600px 后，多数情况下换图在屏幕外完成；真没赶上（慢盘/快速滚动）时由
+ * `queueMermaidSvg` 排队到块离开视口（见上方「换图排队」注释），绝不在可见时突变。
  * 导出不受影响：那条路走 `renderMermaidInHtml(html)`，与编辑器视图解耦。
  */
 const mermaidNearViewport = ref(false)
@@ -1632,8 +1809,8 @@ function armMermaidObserver(): void {
     (entries) => {
       if (entries.some((e) => e.isIntersecting)) openMermaidGate()
     },
-    // 上下各提前 200px 放行（左右不限）
-    { rootMargin: '200px 0px 200px 0px' }
+    // 上下各提前 600px 放行（左右不限）：给首次 import/render 留出滚动时间
+    { rootMargin: '600px 0px 600px 0px' }
   )
   mermaidObserver.observe(el)
 }
@@ -1657,16 +1834,13 @@ function removeMermaidTempNode(id: string): void {
   document.getElementById(`d${id}`)?.remove()
 }
 
-async function renderMermaid(): Promise<void> {
+async function renderMermaid(force = false): Promise<void> {
   // 视口门未开就不 import —— 观察器放行时会自己回来调一次
   if (!mermaidNearViewport.value) return
   // 空 / 只有空白：不交给 mermaid.render（它对空源码必抛错，会留一堆临时 DOM），
   // 直接回占位态（模板对空内容显示"空 mermaid 代码块"提示）。
   if (normalizeMermaidSource(props.node.textContent || '') === '') {
-    const anchor = captureMermaidScrollAnchor()
-    mermaidSvg.value = ''
-    await nextTick()
-    if (anchor) restoreMermaidScrollAnchor(anchor)
+    queueMermaidSvg('', force)
     return
   }
   try {
@@ -1686,17 +1860,11 @@ async function renderMermaid(): Promise<void> {
      *   * 竖图（自然宽 < 容器）⇒ 保持自然尺寸，不再 width:100% 拉满一屏。
      * 导出侧 `renderMermaidInHtml` 调的是同一个函数，两边不可能漂。
      */
-    // 占位（几十行源码）↔ 图 的高度往往差好几百 px：替换前后保住视觉锚点，
-    // 否则滚动中放行的块会把正在读的内容整体推走（见 restoreMermaidScrollAnchor）。
-    const anchor = captureMermaidScrollAnchor()
-    mermaidSvg.value = normalizeMermaidSvg(svg)
-    await nextTick()
-    if (anchor) restoreMermaidScrollAnchor(anchor)
+    // 占位（几十行源码）↔ 图 的高度往往差好几百 px：块可见时排队（高度先不变），
+    // 离开视口/滚动停下后再换；块在屏幕外时直接换并由 restoreMermaidScrollAnchor 补偿。
+    queueMermaidSvg(normalizeMermaidSvg(svg), force)
   } catch {
-    const anchor = captureMermaidScrollAnchor()
-    mermaidSvg.value = `<pre><code>${escapeHtml(props.node.textContent || '')}</code></pre>`
-    await nextTick()
-    if (anchor) restoreMermaidScrollAnchor(anchor)
+    queueMermaidSvg(`<pre><code>${escapeHtml(props.node.textContent || '')}</code></pre>`, force)
   }
 }
 
@@ -1809,6 +1977,18 @@ function startMermaidEdit(): void {
   // 点得动它 = 这块已经在视口里：先放行视口门。否则编辑态把预览按钮卸载后，观察器
   // 还盯着那个**已脱离文档**的旧节点，永远等不到相交回调 —— 退出编辑态会一直停在源码占位。
   openMermaidGate()
+  /**
+   * 排队中的新图是当前最真实的一版：先落成显示态再进编辑。
+   * 否则「图已渲染好但因为在视口里被排队」时点进编辑、未改动退出，显示态会退回旧占位。
+   * 这一拍马上会切到编辑形态，所以这里的高度变化是用户主动点击的一部分，不需要补偿。
+   */
+  if (pendingMermaidSvg) {
+    mermaidSvg.value = pendingMermaidSvg
+    pendingMermaidSvg = null
+    mermaidSwapPending.value = false
+    detachPendingSwapWatcher()
+    clearMermaidHeightAnimation()
+  }
   mermaidSource.value = props.node.textContent
   // 预览从显示态那张图起步（成功渲染过就是同一条 SVG），进入编辑态不会先闪一个空位。
   // 显示态是错误兜底（<pre>）时它为空，下面会立刻渲染一次。
@@ -1893,7 +2073,8 @@ function commitMermaid(): void {
     tr.replaceWith(pos + 1, pos + node.nodeSize - 1, tr.doc.type.schema.text(source))
     return true
   })
-  void renderMermaid()
+  // 用户主动提交：不排队（块就在眼前，等离开视口会让编辑结果"消失"）
+  void renderMermaid(true)
 }
 </script>
 
@@ -1955,6 +2136,7 @@ function commitMermaid(): void {
         type="button"
         class="mermaid-render"
         :data-mermaid-gated="mermaidNearViewport ? null : 'pending'"
+        :data-mermaid-pending="mermaidSwapPending ? '1' : null"
         :title="$t('editor.editSource')"
         :aria-label="$t('editor.editSource')"
         @click="startMermaidEdit"

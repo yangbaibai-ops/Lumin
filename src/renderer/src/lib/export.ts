@@ -103,14 +103,40 @@ export function normalizeMermaidSource(raw: string): string {
  * `heightDelta = 新块高 - 旧块高`，`topDelta = 新块顶 - 旧块顶`（视口坐标）。
  * 抽成纯函数是为了单测能直接钉住这三种情形，组件里只做测量与调用。
  */
+export type MermaidBlockPosition = 'above' | 'visible' | 'below'
+
 export function mermaidAnchorScrollDelta(
-  position: 'above' | 'visible' | 'below',
+  position: MermaidBlockPosition,
   heightDelta: number,
   topDelta: number
 ): number {
   if (position === 'above') return heightDelta
   if (position === 'visible') return topDelta
   return 0
+}
+
+/**
+ * mermaid 块相对滚动容器视口的三种位置（**纯几何**，单测直接钉住）。
+ *
+ * 为什么要单独抽出来：第二轮报障暴露的盲区是「换图发生在块**部分可见**时」。
+ * 旧实现用换图**之后**的 rect 判位置，块 838px→45px 后整体落到视口上方，于是走
+ * `above` 分支把 scrollTop 减 793 ⇒ 块顶被挪走 793px、视口里换成 mermaid 上方的正文
+ * （实测 F 场景 scrollTop 6848→5935、块顶 -216→697、上方段落 -295→618）。
+ *
+ * 现在组件用同一个函数做两件事：
+ *   1. `visible` 时**不换图**（等块完全离开视口再换，或用高度过渡平滑收拢）；
+ *   2. 真正换图时按位置做补偿。
+ * 判定边界用闭区间：块底恰好等于视口顶算 `above`，块顶恰好等于视口底算 `below`。
+ */
+export function mermaidBlockPosition(
+  top: number,
+  bottom: number,
+  viewTop: number,
+  viewBottom: number
+): MermaidBlockPosition {
+  if (bottom <= viewTop) return 'above'
+  if (top >= viewBottom) return 'below'
+  return 'visible'
 }
 
 // 导出件的色值必须与**浅色主题令牌逐条一致**（审计 §8 P2「token 未覆盖的硬编码色」）：

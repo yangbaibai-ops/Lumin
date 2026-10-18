@@ -126,7 +126,11 @@ test('组件用的是 lib/export 的同一对函数（尺寸/预览状态只有�
     /import \{ nextMermaidPreviewState, normalizeMermaidSvg \} from '\.\.\/\.\.\/lib\/export'/,
     'CodeBlockView 必须引用共享的 normalizeMermaidSvg / nextMermaidPreviewState'
   )
-  assert.match(script, /mermaidSvg\.value = normalizeMermaidSvg\(svg\)/, '显示态渲染必须走清洗函数')
+  assert.match(
+    script,
+    /queueMermaidSvg\(normalizeMermaidSvg\(svg\), force\)/,
+    '显示态渲染必须走清洗函数（第二轮起经 queueMermaidSvg 排队，清洗仍只有一处）'
+  )
 })
 
 // ─── ③ 编辑态 DOM：代码在上、预览在下（两段同时存在）────────────────────────────
