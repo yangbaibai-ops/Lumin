@@ -28,6 +28,8 @@ import { ImageSourceUi } from './imageToolbar'
 // 第八十六轮：末尾是图片时点下方在下一行落光标（纯判据 + 一段**不抢事件**的处理）
 import { TrailingParagraph } from './trailingParagraph'
 import { MathPaste } from './mathPaste'
+// 粘贴防卡死护栏：规模判定 + 内联图片预算 + 降级 + 超时回滚（见 pasteGuard.ts）
+import { PasteFreezeGuard } from './pasteGuard'
 import { CodeBlockCM } from './codeBlock'
 import { MarkdownPaste } from './markdownPaste'
 import { TableClipboard, TableDragSelect, TableNoCellClamp } from './tableClipboard'
@@ -97,6 +99,15 @@ export interface EditorExtensionOptions {
   getDocumentDir?: () => string | null
   /** 远程图片加载策略（`click` 默认 / `always`）；见 lib/remoteImages.ts */
   getRemoteImagePolicy?: () => RemoteImagePolicy
+  /**
+   * 粘贴护栏的可见提示出口（降级 / 拒绝 / 超时回滚）。
+   * 内核不认识通知中心，由宿主注入（见 pasteGuard.ts 的 PasteNotice）。
+   */
+  onPasteNotice?: (notice: {
+    level: 'info' | 'warning' | 'error'
+    title: string
+    body?: string
+  }) => void
 }
 
 /** 默认链接打开：只把网址交给系统默认浏览器（应用内由 lib/linkOpen.ts 覆盖） */
@@ -236,11 +247,22 @@ export const editorExtensions: Extensions = [
   ImageSourceUi,
   // 第八十六轮：**末尾是图片**时点它下方的空白 ⇒ 末尾补一个空段落并把光标放进去
   TrailingParagraph,
+  // 粘贴防卡死护栏（思源式 HTML：大 base64 + 深嵌套 + 多表）。
+  // ⚠️ 顺序口径（实测）：Tiptap 把扩展的插件**反序**塞进 `view.state.plugins`，而
+  //    `someProp('handlePaste')` 是**正向**遍历那个数组 ⇒ **扩展数组里越靠后，越先拿到粘贴事件**。
+  //    所以护栏必须写在 `MathPaste` **之后**（否则带 KaTeX 的剪贴板会被 MathPaste 先接管：
+  //    实测 19 MB 的思源夹具就是这样绕过护栏、原样内联了 4 张 base64）。
+  //    图片**文件**（截图/资源管理器）仍由 `ImagePaste` 认领：本插件遇到 `clipboardData.files`
+  //    直接放行（见 pasteGuard.ts）。
   // 公式粘贴（第十三轮）：剪贴板 HTML 里如果有数学（KaTeX/MathJax 的 DOM、我们自己的
   // 复制形态），先把原文取回来换成 `mathBlock` / `$…$`，再交给常规 HTML 解析；
   // 没有数学就完全不接管（普通富文本粘贴不受影响）。**必须排在 ImagePaste 之后**：
   // 图片粘贴要由它先认领（someProp 取首个返回 true 的），本扩展内部也再挡一道 files。
   MathPaste,
+  // 护栏本体（位置口径见上方那一段：必须在 MathPaste 之后才拿得到 handlePaste）。
+  // 放在这里同时也在 `MarkdownPaste` / `TableClipboard` 之后 ⇒ 超预算 HTML 不会进它们
+  // 的 `clipboardTextParser` / `transformPastedHTML`（那两处都会再解析一遍整段 HTML）。
+  PasteFreezeGuard,
   // 拖拽（drag & drop）已在窗口级**全部禁用**（见 lib/dragGuard.ts + assets/base.css），
   // 编辑器里不再需要"只拦文字拖动、放行节点拖动"的 NoTextDrag 补丁；拖选文字不受影响。
   // 表格拖选口径（第十四轮）：普通拖选**不进 `CellSelection`**，而是按阅读顺序的
@@ -339,6 +361,8 @@ export function buildEditorExtensions(options: EditorExtensionOptions = {}): Ext
     if (e.name === 'mathPreview') return e.configure({ labels: mathLabels })
     // 块级公式节点自己也要那份占位文案（空公式的**非编辑**渲染走它的 NodeView）
     if (e.name === 'mathBlock') return e.configure({ emptyLabel: mathLabels.empty })
+    if (e.name === 'pasteFreezeGuard')
+      return e.configure({ onNotice: options.onPasteNotice ?? ((): void => {}) })
     return e
   })
 }

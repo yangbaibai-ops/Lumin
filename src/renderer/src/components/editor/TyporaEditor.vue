@@ -13,6 +13,7 @@ import { useEditorStore } from '../../stores/editor'
 import { useFilesStore } from '../../stores/files'
 import { useSettingsStore } from '../../stores/settings'
 import { useUiStore } from '../../stores/ui'
+import { useNotificationsStore } from '../../stores/notifications'
 import { perfFlag } from '../../lib/editor/perfProbe'
 
 // ─── Typora 式所见即所得编辑器（开发文档「步骤 2」的高阶封装）────────────────
@@ -27,6 +28,7 @@ const editorStore = useEditorStore()
 const files = useFilesStore()
 const settings = useSettingsStore()
 const ui = useUiStore()
+const notifications = useNotificationsStore()
 /** 编辑器容器：远程图片占位的点击/回车委托挂在这里（见 loadGuardedImage） */
 const containerRef = ref<HTMLElement | null>(null)
 /**
@@ -73,7 +75,15 @@ const editor = useEditor({
     // 图片相对路径的解析基准 = 当前文档所在目录（未命名文档为侧栏工作区，见 stores/files 的 openUntitled）
     getDocumentDir: () => files.currentDir ?? null,
     // 远程图片默认不自动加载（隐私，见 lib/remoteImages.ts）：读设置、现取现用
-    getRemoteImagePolicy: () => settings.remoteImages
+    getRemoteImagePolicy: () => settings.remoteImages,
+    // 粘贴护栏的可见提示（降级/拒绝/超时回滚）：走应用内通知中心，不静默吞内容
+    onPasteNotice: (notice) => {
+      void notifications.notify({
+        level: notice.level,
+        title: notice.title,
+        body: notice.body
+      })
+    }
   }),
   editorProps: {
     attributes: {

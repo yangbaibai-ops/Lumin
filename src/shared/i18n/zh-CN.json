@@ -236,7 +236,17 @@
     "codeLanguage": "代码语言（可输入）",
     "codeLanguagePlaceholder": "输入语言名…",
     "codeLanguageUnsupported": "未内置高亮",
-    "codeLanguageUse": "使用“{name}”"
+    "codeLanguageUse": "使用“{name}”",
+    "pasteImageOmitted": "［图片已省略：{mb} MB］",
+    "pasteDegradedTitle": "内容过大，已降级粘贴",
+    "pasteDegradedBody": "已省略 {n} 张内联图片（共 {mb} MB），其余内容（正文/表格/公式）已正常粘贴。需要这些图片时请改为插入本地文件。",
+    "pasteFallbackTitle": "结构过于复杂，已转为纯文本粘贴",
+    "pasteFallbackBody": "原内容含约 {elements} 个元素、最深 {depth} 层，超出可安全渲染的范围{truncated}。为避免卡死，只保留了纯文本。",
+    "pasteTruncatedSuffix": "（文本也已截断）",
+    "pasteRejectedTitle": "内容过大，已取消粘贴",
+    "pasteRejectedBody": "内联图片共约 {mb} MB，超过上限（单张 {single} MB / 合计 {total} MB）。文档未改动。",
+    "pasteRollbackTitle": "粘贴耗时过长，已回滚",
+    "pasteRollbackBody": "本次粘贴处理了 {ms} ms，超过 {budget} ms 上限；文档已恢复到粘贴前，未改动。"
   },
   "settings": {
     "title": "设置",

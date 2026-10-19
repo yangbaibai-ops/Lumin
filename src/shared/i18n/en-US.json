@@ -236,7 +236,17 @@
     "codeLanguage": "Code language (type to filter)",
     "codeLanguagePlaceholder": "Type a language…",
     "codeLanguageUnsupported": "No built-in highlighting",
-    "codeLanguageUse": "Use “{name}”"
+    "codeLanguageUse": "Use “{name}”",
+    "pasteImageOmitted": "[Image omitted: {mb} MB]",
+    "pasteDegradedTitle": "Content too large — pasted in reduced form",
+    "pasteDegradedBody": "Omitted {n} inline image(s) ({mb} MB total). The rest (text/tables/math) was pasted normally. Insert those images as local files instead.",
+    "pasteFallbackTitle": "Structure too complex — pasted as plain text",
+    "pasteFallbackBody": "The content had about {elements} elements, nested up to {depth} levels deep, beyond what can be rendered safely{truncated}. Only plain text was kept to avoid freezing.",
+    "pasteTruncatedSuffix": " (the text was truncated too)",
+    "pasteRejectedTitle": "Content too large — paste cancelled",
+    "pasteRejectedBody": "Inline images total about {mb} MB, above the limit (single {single} MB / total {total} MB). The document was not modified.",
+    "pasteRollbackTitle": "Paste took too long — rolled back",
+    "pasteRollbackBody": "This paste took {ms} ms, above the {budget} ms budget. The document was restored to its pre-paste state."
   },
   "settings": {
     "title": "Settings",

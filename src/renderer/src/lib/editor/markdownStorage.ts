@@ -1,5 +1,11 @@
 import type { Editor } from '@tiptap/core'
 import { escapeMarkerOnlyLines, withFinalNewline } from '../../../../shared/documentText'
+// 序列化器热区快路径（`atBlank` 的 O(n²)）：只在本模块被加载时装一次，输出字节不变。
+// 为什么挂在这里：`getMarkdown()` 是"编辑器内容 → 文档文本"的唯一出口，
+// 所有落盘/同步都会经过它，装在这里就不会漏掉任何一条调用链（见该文件的长注释）。
+import { installFastMarkdownSerializer } from './serializerFastPath'
+
+installFastMarkdownSerializer()
 
 /**
  * **原样写回的节点**（HTML 块 / 公式块 / front matter，都是 `attrs.source`）里的每一行：
