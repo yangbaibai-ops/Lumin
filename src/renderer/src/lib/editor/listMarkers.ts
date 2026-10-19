@@ -104,6 +104,68 @@ export const BulletListMarked = BulletList.extend({
  * 于是 `1. [ ] 有序任务列表` 保存后变成 `- [ ] 有序任务列表` —— **列表类型从有序变无序**，
  * 渲染从数字变成圆点，是实打实的内容结构变化。
  */
+/**
+ * 外部 HTML 里的任务清单 → 本模型的任务清单（`ul[data-type="taskList"]` + `li[data-type="taskItem"]`）。
+ *
+ * 为什么需要（本轮实测）：思源/Word 复制出来的任务项是
+ * `<ul><li><p><input type="checkbox" disabled> 正文</p></li></ul>`。
+ * Tiptap 的任务列表**只认** `ul[data-type="taskList"]` 与 `li[data-type="taskItem"]`
+ * （见 `@tiptap/extension-list` 的 parseHTML），于是外部任务清单会被解析成**普通列表项**，
+ * `<input>` 被丢弃 —— 勾选状态与"这是任务"一起消失（落盘就只剩普通 `- 文本`）。
+ * Markdown 通道不受影响（tiptap-markdown 的 `updateDOM` 会把 `.task-list-item` 认领掉），
+ * 只有**粘贴外部 HTML** 这条通道缺这一步。
+ *
+ * 纯字符串 → DOM → 字符串（与 `promoteHeaderlessTables` 同一层、同一手法）：
+ *   * 只处理"`<ul>/<ol>` 的**直接子项里**有 `input[type=checkbox]`"的列表；
+ *   * `<li>` 补 `data-type="taskItem"` 与 `data-checked`（由 `input.checked` 决定），
+ *     再把 `input` 摘掉（留着会被当成正文里的无名元素）；
+ *   * 列表本体补 `data-type="taskList"`（原来是 `<ol>` 时保留标签，序列化按 ordered 写）。
+ * 幂等：已经是 `data-type="taskList"` 的列表直接跳过（不会二次改写）。
+ *
+ * @returns `changed` = 是否真的改过（false ⇒ 调用方把原 HTML 原样交回去）
+ */
+export function normalizeExternalTaskItems(html: string): { html: string; changed: boolean } {
+  if (!html || !/<\s*(ul|ol)[\s>]/i.test(html) || !/type\s*=\s*["']?checkbox/i.test(html)) {
+    return { html, changed: false }
+  }
+  let doc: Document
+  try {
+    doc = new DOMParser().parseFromString(`<body>${html}</body>`, 'text/html')
+  } catch {
+    return { html, changed: false }
+  }
+  let changed = false
+  const lists = Array.from(doc.body.querySelectorAll('ul, ol')) as HTMLElement[]
+  for (const list of lists) {
+    if (list.getAttribute('data-type') === 'taskList') continue
+    const items = Array.from(list.children).filter((el): el is HTMLElement => el.tagName === 'LI')
+    if (!items.length) continue
+    const taskItems: HTMLElement[] = []
+    for (const item of items) {
+      const box = item.querySelector('input[type="checkbox" i]') as HTMLInputElement | null
+      if (!box) continue
+      item.setAttribute('data-type', 'taskItem')
+      item.setAttribute('data-checked', box.checked || box.hasAttribute('checked') ? '' : 'false')
+      // `<li>` 里常见的 `<p><input> 正文</p>`：摘掉 input 不会碰到正文
+      box.remove()
+      taskItems.push(item)
+    }
+    if (!taskItems.length) continue
+    // 只有整张列表都是任务项时才整体转换（混排列表保持普通列表，避免结构错位）
+    if (taskItems.length !== items.length) {
+      for (const item of taskItems) {
+        item.removeAttribute('data-type')
+        item.removeAttribute('data-checked')
+      }
+      continue
+    }
+    list.setAttribute('data-type', 'taskList')
+    changed = true
+  }
+  if (!changed) return { html, changed: false }
+  return { html: doc.body.innerHTML, changed: true }
+}
+
 export const TaskListTight = TaskList.extend({
   parseHTML() {
     return [

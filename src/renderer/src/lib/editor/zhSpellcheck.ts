@@ -25,6 +25,25 @@ import {
   type ZhSpellIssue
 } from '../../../../shared/spellcheckZh.ts'
 import { onZhSpellcheckEnabledChange, zhSpellcheckEnabled } from './zhSpellcheckBridge.ts'
+// 显式 .ts：本模块要被 tests/*.test.mjs 直接加载（Node 的 ESM 不做扩展名补全）
+import { noteHeavyWorkDeferred, shouldDeferHeavyWork } from './workBudget.ts'
+
+/**
+ * **单段长度上限**（本轮新增的防线）。
+ *
+ * 为什么要有：规则本身是 O(段长)，但这条链是"**每个 Textblock 都跑一遍**"，
+ * 而表格单元格里的长段落（本次复报的第二张表：8 行、每格 100–200 字，还夹着行内
+ * 代码/粗体被拆成十几个文本片段）会把"段数 × 段长"抬起来；再叠加 500 ms 防抖在
+ * 每次 docChanged 后重排，粘贴后那一秒里就全在算波浪线。
+ *
+ * 超过这个长度**跳过该段**（不扫、不画波浪线）—— 丢的只是"提示"，不是内容；
+ * 统计里记 `skippedLongBlocks`，控制台只提示一次（可见、可查，不静默）。
+ * 4000 字≈A4 两页，正常段落远达不到；真到了那个量级，波浪线本身也没有阅读价值。
+ */
+export const ZH_MAX_PARAGRAPH_CHARS = 4000
+
+/** 冷却期内的重算延后间隔（ms）：让路给"粘贴后必须跑完的"内容/落盘链路 */
+const ZH_DEFERRED_RECOMPUTE_MS = 1500
 
 /** 命中项在**文档坐标**里的形态（菜单/装饰/性能统计都用它） */
 export interface ZhDocIssue extends ZhSpellIssue {
@@ -77,6 +96,10 @@ export interface ZhSpellStats {
   durations: number[]
   debounceMs: number
   maxIssues: number
+  /** 因超过单段长度上限被跳过的段数（降级可见：不静默） */
+  skippedLongBlocks: number
+  /** 最近一次因"重活预算冷却"而被延后的次数 */
+  deferredRuns: number
 }
 
 const stats: ZhSpellStats = {
@@ -85,7 +108,9 @@ const stats: ZhSpellStats = {
   lastCount: 0,
   durations: [],
   debounceMs: ZH_RECOMPUTE_DEBOUNCE_MS,
-  maxIssues: ZH_MAX_ISSUES
+  maxIssues: ZH_MAX_ISSUES,
+  skippedLongBlocks: 0,
+  deferredRuns: 0
 }
 
 /** 性能/验收用的只读统计（与 perfProbe 的 `window.__LPERF` 同一做法） */
@@ -95,6 +120,11 @@ try {
   }
 } catch {
   /* 非渲染环境（单测 import）：忽略 */
+}
+
+/** 只读统计出口（单测用；浏览器侧另有 `window.__LZHSPELL`） */
+export function zhSpellStats(): Readonly<ZhSpellStats> {
+  return stats
 }
 
 function now(): number {
@@ -152,6 +182,24 @@ export function scanZhDoc(doc: PmNode): ZhDocIssue[] {
       text += child.text
     })
     if (!text) return false
+    /**
+     * 单段长度上限：超长段落直接跳过（只少提示，不丢内容）。
+     * 计数器 + 一次性控制台提示，保证"降级"是可查的，而不是悄悄没有波浪线。
+     */
+    if (text.length > ZH_MAX_PARAGRAPH_CHARS) {
+      stats.skippedLongBlocks += 1
+      if (stats.skippedLongBlocks === 1) {
+        try {
+          // ASCII 诊断（控制台不是界面文案；界面提示走语言包）
+          console.warn(
+            `[lumin] zh-spellcheck: skip paragraph longer than ${ZH_MAX_PARAGRAPH_CHARS} chars (this one ${text.length}); hints only, content untouched`
+          )
+        } catch {
+          /* 忽略 */
+        }
+      }
+      return false
+    }
     for (const issue of checkChinese(text)) {
       const from = mapFrom(segments, issue.from)
       const to = mapTo(segments, issue.to)
@@ -207,11 +255,23 @@ function computeState(doc: PmNode): ZhPluginState {
   return buildZhDecorations(doc)
 }
 
-/** 500ms 防抖重算；`immediate` 用于开关切换（尽快看到下划线，但仍然异步，避免卡输入） */
+/**
+ * 500ms 防抖重算；`immediate` 用于开关切换（尽快看到下划线，但仍然异步，避免卡输入）。
+ *
+ * 本轮新增：**重活预算冷却期内自动让路**（`shouldDeferHeavyWork`）。粘贴/大改之后
+ * 那几秒里，主线程要跑 `getMarkdown` 与落盘；拼写重算是"可选装饰"，延后到
+ * `ZH_DEFERRED_RECOMPUTE_MS` 再做 —— 延后不是丢弃：定时器照旧会跑一次，
+ * 只是晚一点（并在 `stats.deferredRuns` 里记一笔，不静默）。
+ */
 function schedule(view: EditorView, immediate = false): void {
   if (!views.has(view)) return
   const pending = timers.get(view)
   if (pending) clearTimeout(pending)
+  const defer = !immediate && shouldDeferHeavyWork()
+  if (defer) {
+    stats.deferredRuns += 1
+    noteHeavyWorkDeferred()
+  }
   const timer = setTimeout(
     () => {
       timers.delete(view)
@@ -222,7 +282,7 @@ function schedule(view: EditorView, immediate = false): void {
         /* 视图已销毁/正在销毁：忽略 */
       }
     },
-    immediate ? 60 : ZH_RECOMPUTE_DEBOUNCE_MS
+    immediate ? 60 : defer ? ZH_DEFERRED_RECOMPUTE_MS : ZH_RECOMPUTE_DEBOUNCE_MS
   )
   timers.set(view, timer)
 }

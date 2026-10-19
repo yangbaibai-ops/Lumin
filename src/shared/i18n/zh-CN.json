@@ -246,7 +246,9 @@
     "pasteRejectedTitle": "内容过大，已取消粘贴",
     "pasteRejectedBody": "内联图片共约 {mb} MB，超过上限（单张 {single} MB / 合计 {total} MB）。文档未改动。",
     "pasteRollbackTitle": "粘贴耗时过长，已回滚",
-    "pasteRollbackBody": "本次粘贴处理了 {ms} ms，超过 {budget} ms 上限；文档已恢复到粘贴前，未改动。"
+    "pasteRollbackBody": "本次粘贴处理了 {ms} ms，超过 {budget} ms 上限；文档已恢复到粘贴前，未改动。",
+    "heavyWorkDeferredTitle": "后台重活已放慢（编辑不受影响）",
+    "heavyWorkDeferredBody": "本次序列化/统计耗时 {ms} ms，超过单次预算。为保证界面可交互，拼写检查与后台统计已延后执行；文档内容与保存不受影响。"
   },
   "settings": {
     "title": "设置",

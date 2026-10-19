@@ -34,6 +34,9 @@ import type { Node as PMNode } from '@tiptap/pm/model'
 import type { MarkdownSerializerStateLike } from './markdownTypes'
 // 显式 .ts：本模块要被 tests/tableMarkdown.test.mjs 直接加载（Node 的 ESM 不做扩展名补全）
 import { delimiterRow, escapeCellPipes, type CellAlign } from './tableAlign.ts'
+// 序列化热区：把"直接改 out"之后的 atBlank 增量缓存对齐（见 renderCell 的长注释）
+// 同上，显式 .ts（tests/*.test.mjs 直接加载本模块）
+import { noteSerializerAppend } from './serializerFastPath.ts'
 
 /**
  * 表格能否用 Markdown 管道语法表达：
@@ -125,14 +128,44 @@ function cellInlineNode(cell: PMNode): PMNode | null {
   return paragraphType.create(null, Fragment.fromArray(parts))
 }
 
-/** 渲染一格：合成 → 一次 `renderInline` → 就地转义竖线（截出来必须立刻写回，见文件头注释） */
+/**
+ * 渲染一格：合成 → 一次 `renderInline` → 就地转义竖线。
+ *
+ * ── 为什么不能"直接渲染进 state.out 再切片"（本轮改，真因）──────────────────────
+ * 旧写法是 `const start = state.out.length; renderInline(); out = out.slice(0,start) + …`。
+ * 对一个 cons string 做 `slice` 会强制 V8 **把整串拍平**，而这个动作**每个单元格做两次**：
+ *   ① `out.slice(start)`（拍平 + 复制全文）
+ *   ② `out.slice(0,start)`（再拍平一次）
+ * 于是序列化成本 = 单元格数 × 已写出全文 = **二次增长**。两张长表格（本次复报就是
+ * 2 张、14 格）在小文档上只是慢一点，但它会和大文档叠加；而且它还会把下面这条
+ * 快路径打回原形：`atBlank()` 的增量缓存按 `{len,end}` 校验，`out` 被直接赋值后
+ * 长度对不上 ⇒ 下一次 `atBlank()` 走 `computeEnd()` 再拍平一次全文。
+ *
+ * 新写法：把 `out` 临时换成**与真实尾部同形的短种子**（每个单元格前刚写过 `'| '`，
+ * 所以种子就是 `'| '` —— `atBlank()` 的判据与真实状态一致，`renderInline` 的输出
+ * 逐字节不变），渲染完只读回这一格的短串，再用**一次字符串拼接**写回：
+ * 拼接 cons string 是 O(1)，不拍平。最后 `noteSerializerAppend()` 把 atBlank 的
+ * 增量缓存对齐（否则下一次 `atBlank()` 仍会拍平全文）。
+ */
 function renderCell(state: MarkdownSerializerStateLike, cell: PMNode): void {
   const inline = cellInlineNode(cell)
   if (!inline) return
-  const start = state.out.length
-  state.renderInline(inline)
-  const rendered = state.out.slice(start)
-  state.out = state.out.slice(0, start) + escapeCellPipes(rendered)
+  const before = state.out
+  // serializeTable 在每格前刚写过 `'| '`；极端情况下（外部直接调用 serializeTable）
+  // 尾部不是它，那就用空种子 —— 语义与"从当前列位置开始渲染"一致。
+  const seed = before.endsWith('| ') ? '| ' : ''
+  state.out = seed
+  let rendered = ''
+  try {
+    state.renderInline(inline)
+    rendered = state.out.length >= seed.length ? state.out.slice(seed.length) : state.out
+  } finally {
+    // 异常也要把 out 还原（否则整篇序列化会从这里断掉半截）
+    state.out = before
+  }
+  const escaped = escapeCellPipes(rendered)
+  state.out = before + escaped
+  noteSerializerAppend(state, escaped)
 }
 
 /**

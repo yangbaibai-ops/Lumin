@@ -1,7 +1,6 @@
 // ─── Markdown 序列化的超线性热区：`atBlank()` ───────────────────────────────────
 //
-// 真因（实测，见本轮报告 §profile）：
-// `prosemirror-markdown` 的 `MarkdownSerializerState.atBlank()` 是这么写的：
+// 真因：`prosemirror-markdown` 的 `MarkdownSerializerState.atBlank()` 是
 // ```js
 // atBlank() { return /(^|\n)$/.test(this.out) }
 // ```
@@ -15,23 +14,43 @@
 //   17.2 MB → 1077 ms；20.6 MB → 1589 ms —— 典型二次增长。
 // CPU profile 里 `atBlank` 占 70% 以上，调用栈 `atBlank ← flushClose ← write ← text ← serialize`。
 //
-// 修法：把"输出是否以换行结尾"变成**追加时顺带记下来的一个字符**（O(1)），
-// `atBlank()` 只读这个记下来的值，**永远不碰已经累积的大字符串**。
-// `out` 的追加点在上游只有四处（`flushClose` / `ensureNewLine` / `write` / `text`），
-// 每处的结尾字符都可以由**入参**推出来（见下面各 `nextEnd` 的推导），所以不需要读 `out`：
-//   * flushClose / ensureNewLine：只要长度变了，追加的一定是 `"\n"`；
-//   * write：有 content ⇒ 结尾是 content 的最后一个字符；否则 delim 非空 ⇒ delim 的最后一个字符；否则 `"\n"`；
-//   * text：每行都补一个 `"\n"`（最后一行也是）。
+// ── 修法：把"是否以换行结尾"变成随写入记下来的**布尔值**（O(1)），永不读回 out ──
 //
-// 语义与正则逐字等价（单测 `tests/serializerFastPath.test.mjs` 用同一批输入对比新旧实现）。
+// ⚠️ **上一版这里写错了**（本轮复查发现：它是数据保真缺陷，不是性能问题）：
+// 上一版记录"最后一个字符" `end`，并假设 `text()` 之后 out 一定以 `"\n"` 结尾。
+// 上游 1.13 的实现并不是这样：
+// ```js
+// text(text, escape = true) {
+//   let lines = text.split("\n")
+//   for (let i = 0; i < lines.length; i++) {
+//     this.write()                                       // 无参数
+//     if (!escape && lines[i][0] == "[") this.out = this.out.slice(...) + "\\!"
+//     this.out += escape ? this.esc(lines[i]) : lines[i]  // 直接追加；最后一行**没有**换行
+//     if (i != lines.length - 1) this.ensureNewLine()
+//   }
+// }
+// ```
+// 于是"刚写完一段正文"时 out 其实**不以换行结尾**，旧补丁却回报 `atBlank() === true`
+// ⇒ `flushClose()` / `ensureNewLine()` 都以为"已经在行首"⇒ **不写换行** ⇒
+// 列表项粘成一行、引用块粘成 `> …>`、任务项连成 `- [ ] a- [ ] b`（实测原文，见本轮报告）。
+// 这类输出再被打开/落盘就是结构损坏 —— 与本轮要修的"卡死"无关，但同样必须修。
+//
+// 现在按**每个方法的真实语义**推导"是否以换行结尾"（`blank`）：
+//   * `flushClose` / `ensureNewLine`：追加的一定是 `"\n"`（或其前有 delimMin）⇒ blank=true；
+//   * `write(content)`：追加顺序是 [flushClose 的换行][delim][content]；
+//     有 content ⇒ blank = content 是否以 `"\n"` 结尾；无 content ⇒ blank = delim 是否以 `"\n"` 结尾
+//     （都没有 ⇒ 长度不变，缓存不动，交给里层已经记好的值）；
+//   * `text(s)`：最后一行是**原样追加**的（`esc()` 不会增删 `"\n"`）⇒ blank = s 是否以 `"\n"` 结尾；
+//     `s === ''` 时长度只可能因里层的 `write()` 变化，那由里层负责，这里不覆盖。
+// 语义与上游正则**逐字等价**（单测 `tests/serializerFastPath.test.mjs` 直接对比新旧实现
+// 对同一批文档的**完整序列化输出**）。
+//
 // 这里是**替换一个纯判据**，输出字节完全不变；上游若改结构（方法不存在），自动放弃补丁、
 // 退回原实现 —— 宁可慢，也不能坏。
 import { MarkdownSerializerState } from 'prosemirror-markdown'
 
-/** `out` 的"最后一步"状态：-1 = 空串，否则是最后一个 charCode；len 用于兜底校验 */
-const endByState = new WeakMap<object, { len: number; end: number }>()
-
-const FLAG_END = 10 // '\n'
+/** `out` 的"是否以换行结尾"状态：len 用于兜底校验（长度没变就复用，变了就重算一次） */
+const blankByState = new WeakMap<object, { len: number; blank: boolean }>()
 
 interface StateLike {
   out?: unknown
@@ -41,35 +60,36 @@ interface StateLike {
 type AnyFn = (...args: unknown[]) => unknown
 
 /** 读一次（仅用于第一次或兜底；之后都走增量记录） */
-function computeEnd(state: StateLike): number {
+function computeBlank(state: StateLike): boolean {
   const out = state.out
-  if (typeof out !== 'string' || out.length === 0) return -1
-  return out.charCodeAt(out.length - 1)
+  if (typeof out !== 'string' || out.length === 0) return true
+  return out.charCodeAt(out.length - 1) === 10
 }
 
-function remember(state: StateLike, end: number): number {
+function remember(state: StateLike, blank: boolean): boolean {
   const len = typeof state.out === 'string' ? state.out.length : 0
-  endByState.set(state as object, { len, end })
-  return end
+  blankByState.set(state as object, { len, blank })
+  return blank
 }
 
-function endOf(state: StateLike): number {
-  const cached = endByState.get(state as object)
+function blankOf(state: StateLike): boolean {
+  const cached = blankByState.get(state as object)
   const len = typeof state.out === 'string' ? state.out.length : 0
-  // 长度没变 ⇒ 记下来的字符仍然有效（生产路径只有上游的 `+=`，长度单调增）；
+  // 长度没变 ⇒ 记下来的判定仍然有效（生产路径只有上游的 `+=`，长度单调增）；
   // 长度变了却没经过我们补丁的方法（外部直接改 `out`）⇒ 重算一次，保证判据不漂。
-  if (cached && cached.len === len) return cached.end
-  return remember(state, computeEnd(state))
+  if (cached && cached.len === len) return cached.blank
+  return remember(state, computeBlank(state))
 }
 
 /** 空串 / 以换行结尾（与 `/(^|\n)$/.test(out)` 等价） */
 export function fastAtBlank(out: string): boolean {
   if (out.length === 0) return true
-  return out.charCodeAt(out.length - 1) === FLAG_END
+  return out.charCodeAt(out.length - 1) === 10
 }
 
-function lastCode(s: unknown): number {
-  return typeof s === 'string' && s.length ? s.charCodeAt(s.length - 1) : -1
+/** 入参的"追加后是否以换行结尾"；`null` = 由入参推不出来（交给里层已经记好的值） */
+function endsWithNewline(s: unknown): boolean | null {
+  return typeof s === 'string' && s.length ? s.endsWith('\n') : null
 }
 
 let installed = false
@@ -93,33 +113,57 @@ export function installFastMarkdownSerializer(): void {
 
   const track = (
     name: 'write' | 'flushClose' | 'ensureNewLine' | 'text',
-    nextEnd: (state: StateLike, before: number, args: unknown[]) => number
+    nextBlank: (state: StateLike, args: unknown[]) => boolean | null
   ): void => {
     const orig = proto[name] as AnyFn
     proto[name] = function patched(this: StateLike, ...args: unknown[]): unknown {
       const before = typeof this.out === 'string' ? this.out.length : 0
       // 先保证缓存与当前 out 对齐（第一次调用时算一次，之后都是增量）
-      endOf(this)
+      blankOf(this)
       const res = orig.apply(this, args)
       const after = typeof this.out === 'string' ? this.out.length : 0
-      if (after !== before) remember(this, nextEnd(this, before, args))
+      if (after !== before) {
+        const next = nextBlank(this, args)
+        remember(this, next === null ? computeBlank(this) : next)
+      }
       return res
     }
   }
 
-  track('flushClose', () => FLAG_END)
-  track('ensureNewLine', () => FLAG_END)
-  track('text', () => FLAG_END)
-  track('write', (state, _before, args) => {
-    const content = args[0]
-    if (typeof content === 'string' && content.length) return lastCode(content)
-    return typeof state.delim === 'string' && state.delim.length ? lastCode(state.delim) : FLAG_END
+  // flushClose / ensureNewLine：追加的一定以 "\n" 结尾
+  track('flushClose', () => true)
+  track('ensureNewLine', () => true)
+  // text：最后一行原样追加（见文件头），只有"文本本身以 \n 结尾"才算行首
+  track('text', (_state, args) => endsWithNewline(args[0]))
+  // write：有 content ⇒ 看 content；否则看 delim（都没有 ⇒ 交给里层/兜底）
+  track('write', (state, args) => {
+    const fromContent = endsWithNewline(args[0])
+    if (fromContent !== null) return fromContent
+    return endsWithNewline(state.delim)
   })
 
   proto.atBlank = function atBlankFast(this: StateLike): boolean {
-    const end = endOf(this)
-    return end === -1 || end === FLAG_END
+    return blankOf(this)
   }
+}
+
+/**
+ * 序列化器在**别处直接改 `state.out`** 之后，把"是否以换行结尾"缓存对齐。
+ *
+ * 为什么需要：`atBlank()` 的快路径靠 `{len, blank}` 增量记录。一旦有代码绕过
+ * `write/flushClose/text` 直接给 `out` 赋值（表格单元格就是），缓存的 `len` 就对不上，
+ * 下一次 `atBlank()` 会走 `computeBlank()` —— 而它对 cons string 做 `charCodeAt`
+ * 会强制 V8 **把整串拍平**（O(已写出的全文)）。每个单元格一次 ⇒ 单元格数 × 全长,
+ * 这就是"含两张长表格的文档序列化仍然超线性"的最后一处。
+ *
+ * 调用约定：`state.out` 已经是新值，`appended` 是这次**追加**的那段文本
+ * （空串 ⇒ 长度没变，缓存本来就有效，什么都不做）。
+ */
+export function noteSerializerAppend(state: unknown, appended: string): void {
+  if (!appended.length) return
+  const s = state as StateLike
+  if (typeof s.out !== 'string') return
+  remember(s, appended.endsWith('\n'))
 }
 
 /** 单测用：把"已安装"标记复位（原型上的补丁保留，重复安装是幂等的） */

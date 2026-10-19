@@ -13,14 +13,26 @@ import { applySessionPosition, installSessionTracking, restoreSession } from './
 import { isInside, installOpenDocTracking } from './lib/openFile'
 import { initExternalWatch } from './lib/externalWatch'
 import { installDragGuard, installNonDraggableDom } from './lib/dragGuard'
+import { exposeWorkBudget, installLongTaskSentinel } from './lib/editor/workBudget'
 
 /**
  * 拖拽（drag & drop）全禁用：**挂载前**就把 window 捕获阶段的拦截器与 DOM 纠偏装好，
  * 保证编辑器 / 文件树 / 任何后续挂载的组件都起不了拖、也收不到 drop。
  * 只拦 drag* 事件，mousedown/mousemove/mouseup 的**拖选**一个字都不碰（见 lib/dragGuard.ts）。
+ *
+ * ⚠️ 纠偏**不碰 `.ProseMirror` 子树**（见该文件的 `insideEditor`）：给 PM 管理的
+ * 节点写 `draggable` 会让 PM 的 DOMObserver 反复重渲染 → 主线程死循环（粘贴后卡死的
+ * 真因之一）。编辑器内的"不可拖"由 window 捕获拦截 + CSS 保证。
  */
 installDragGuard(window)
 installNonDraggableDom(document)
+
+/**
+ * 主线程长任务哨兵（>200 ms）：挂载前装好，启动/粘贴/切换文档都能记到。
+ * 只记时长与时刻（不记内容），诊断值在 `window.__LWORK`。
+ */
+installLongTaskSentinel()
+exposeWorkBudget()
 
 /**
  * 启动阶段打点（`performance.mark('lumin:*')`）：零开销、可在 DevTools Performance

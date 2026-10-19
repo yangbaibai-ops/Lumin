@@ -246,7 +246,9 @@
     "pasteRejectedTitle": "Content too large — paste cancelled",
     "pasteRejectedBody": "Inline images total about {mb} MB, above the limit (single {single} MB / total {total} MB). The document was not modified.",
     "pasteRollbackTitle": "Paste took too long — rolled back",
-    "pasteRollbackBody": "This paste took {ms} ms, above the {budget} ms budget. The document was restored to its pre-paste state."
+    "pasteRollbackBody": "This paste took {ms} ms, above the {budget} ms budget. The document was restored to its pre-paste state.",
+    "heavyWorkDeferredTitle": "Background work slowed down (editing unaffected)",
+    "heavyWorkDeferredBody": "This serialization/statistics run took {ms} ms, above the per-run budget. Spell check and background statistics were postponed so the UI stays responsive; content and saving are unaffected."
   },
   "settings": {
     "title": "Settings",

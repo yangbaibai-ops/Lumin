@@ -5,7 +5,9 @@ import type { Editor } from '@tiptap/core'
 import TableQuickBar from './TableQuickBar.vue'
 import { buildEditorExtensions } from '../../lib/editor/extensions'
 import { openLinkTarget } from '../../lib/linkOpen'
-import { getMarkdown } from '../../lib/editor/markdownStorage'
+import { getMarkdown, setMarkdownBudgetNotice } from '../../lib/editor/markdownStorage'
+import { installLongTaskSentinel } from '../../lib/editor/workBudget'
+import i18n from '../../i18n'
 import { deferAfterPmEvent } from '../../lib/editor/defer'
 import { activeHeadingIndex } from '../../lib/editor/scrollSpy'
 import { allowRemoteImage } from '../../lib/remoteImages'
@@ -137,6 +139,25 @@ const editor = useEditor({
   },
   onCreate: ({ editor: ed }) => {
     editorStore.bind(ed)
+    /**
+     * 粘贴之后的重活连锁（本轮）：序列化超预算 ⇒ **可见告知**，并把可选重活
+     * （拼写检查等）延后（见 workBudget.ts）。节流：8 秒最多一条，免得大文档里
+     * 每条 toast 都变成新的打扰；提示的是"后台工作已放慢"，不是"内容丢了"。
+     */
+    let lastNoticeAt = 0
+    setMarkdownBudgetNotice((_name, ms) => {
+      const nowMs = Date.now()
+      if (nowMs - lastNoticeAt < 8000) return
+      lastNoticeAt = nowMs
+      // 文案在这里按当前语言取（workBudget 内核不 import i18n，便于单测直接加载）
+      void notifications.notify({
+        level: 'warning',
+        title: i18n.global.t('editor.heavyWorkDeferredTitle'),
+        body: i18n.global.t('editor.heavyWorkDeferredBody', { ms: Math.round(ms) })
+      })
+    })
+    // 长任务哨兵：>200ms 的同步任务写日志 + 计数（window.__LWORK），下次卡死能直接定位
+    installLongTaskSentinel()
     // 编辑器以 props.modelValue（=files.content）整装创建：直接标记「已渲染到当前世代」
     files.markContentApplied('wysiwyg')
     updateCursor(ed)

@@ -101,7 +101,33 @@ export function installDragGuard(target: DragGuardTarget = window): () => void {
 const DRAG_SOURCE_SELECTOR =
   'img, a[href], video, audio, pre, [data-node-view-wrapper], .code-block-wrapper, [contenteditable="false"], [draggable]:not([draggable="false"]), [data-drag-handle]'
 
+/**
+ * **ProseMirror 管理的 DOM 一律不碰**（`iterPasteFreezeTables` 真因，实测）。
+ *
+ * 事故：给 `<a href>` 写 `draggable="false"` 之后，PM 的 `DOMObserver` 把这次**属性
+ * 变更**当成"外部程序改了我的 DOM"（PM 只认自己渲染出来的属性）⇒ `updateState`
+ * 重渲染这一段 ⇒ `draggable` 被重建掉 ⇒ 我们再写一次 …… 于是形成
+ * `MutationObserver → updateState → updateChildren → renderDescs → MutationObserver`
+ * 的死循环：实测 2.5 s 内 observer 回调 **9451 次**、主线程永不返回（CDP 全超时，
+ * `Debugger.pause` 也进不去）。触发门槛低得吓人：一篇只有**两个链接**的文档就够了
+ * （一个链接时 PM 的重渲染恰好不重建属性，两个以上才进环），所以它表现成"随机卡死"。
+ *
+ * 为什么可以安全跳过：编辑器内的"不可拖"本来就不靠属性 ——
+ * ① `installDragGuard` 在 window **捕获阶段** 对 `dragstart` 做 `preventDefault +
+ *    stopPropagation`（浏览器根本不会开始拖拽，也无法把拖拽数据交给外部）；
+ * ② `assets/base.css` 的 `* { -webkit-user-drag: none }`。
+ * 属性纠偏只对**编辑器之外**的 DOM（文件树、侧栏、弹层）仍然生效。
+ */
+function insideEditor(el: Element): boolean {
+  try {
+    return !!(el.closest && el.closest('.ProseMirror'))
+  } catch {
+    return true
+  }
+}
+
 function neutralize(el: Element): void {
+  if (insideEditor(el)) return
   if (el.hasAttribute('data-drag-handle')) el.removeAttribute('data-drag-handle')
   if (el.getAttribute('draggable') === 'false') return
   try {
@@ -116,6 +142,7 @@ function neutralize(el: Element): void {
 function sweep(node: Node): void {
   if (node.nodeType !== Node.ELEMENT_NODE) return
   const el = node as Element
+  if (insideEditor(el)) return
   if (el.matches?.(DRAG_SOURCE_SELECTOR)) neutralize(el)
   el.querySelectorAll?.(DRAG_SOURCE_SELECTOR).forEach(neutralize)
 }
@@ -126,7 +153,46 @@ function sweep(node: Node): void {
  */
 export function installNonDraggableDom(root: Document = document): () => void {
   sweep(root.documentElement)
+  /**
+   * 熔断（第二道，纯兜底）：即使将来又有谁往编辑器 DOM 里写属性，也不能让 observer
+   * 回调把主线程占死。1 秒内超过 `MAX_CALLBACKS_PER_WINDOW` 次回调 ⇒ 丢弃本轮记录
+   * 并冷却 1 秒（丢弃的只是"把 draggable 钉成 false"这层兜底，事件拦截与 CSS 仍在）。
+   * 冷却只影响编辑器之外的 DOM 纠偏；诊断值挂 `window.__LDRAGGUARD`，e2e 可断言。
+   */
+  const MAX_CALLBACKS_PER_WINDOW = 600
+  const stats = { callbacks: 0, dropped: 0, trips: 0, lastTrip: 0 }
+  try {
+    ;(window as unknown as { __LDRAGGUARD?: typeof stats }).__LDRAGGUARD = stats
+  } catch {
+    /* 非浏览器环境（单测）：没有 window 也无所谓 */
+  }
+  let windowStart = 0
+  let windowCount = 0
   const observer = new MutationObserver((records) => {
+    const now = Date.now()
+    if (now - windowStart > 1000) {
+      windowStart = now
+      windowCount = 0
+    }
+    windowCount += 1
+    stats.callbacks += 1
+    if (windowCount > MAX_CALLBACKS_PER_WINDOW) {
+      stats.dropped += records.length
+      if (stats.trips === 0 || now - stats.lastTrip > 5000) {
+        stats.trips += 1
+        stats.lastTrip = now
+        // 可见但不吵：连一次就够定位了（下一次卡死先看这条）。
+        // ASCII 诊断（控制台不是界面文案，界面提示一律走语言包）
+        try {
+          console.warn(
+            `[lumin] dragGuard: ${windowCount} MutationObserver callbacks/s - dropped this batch (something is rewriting editor DOM repeatedly)`
+          )
+        } catch {
+          /* ignore */
+        }
+      }
+      return
+    }
     for (const record of records) {
       if (record.type === 'attributes') {
         const el = record.target as Element

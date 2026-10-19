@@ -51,6 +51,8 @@ import type { EditorView, EditorProps } from '@tiptap/pm/view'
 import type { Node as PMNode, ResolvedPos } from '@tiptap/pm/model'
 import { tableEditingKey } from '@tiptap/pm/tables'
 import { TableFidelity } from './tableMarkdown'
+// 外部任务清单 → 本模型 taskList/taskItem（同一个 transformPastedHTML 槽位，见下）
+import { normalizeExternalTaskItems } from './listMarkers'
 
 /** 这段选区里有没有表格（原地判定，不复制文档） */
 export function sliceHasTable(doc: PMNode, from: number, to: number): boolean {
@@ -84,6 +86,18 @@ export function markdownHasPipeTable(md: string): boolean {
  * schema 的 `tableHeader` 与 `tableCell` 内容表达式相同（`paragraph+`），解析结果一致
  * （实测粘出来的结构与手写管道表逐字段相同）。
  *
+ * ── 本轮改法（真因：重复 promote / O(n²) 与"嵌套表误判"）───────────────────────
+ * 旧实现是一个 `for guard < 500` 的循环：每轮 `querySelectorAll('table')` 再
+ * `find(t => !SKIP && !t.querySelector('th'))`。两个问题：
+ *   ① **每轮都重扫整棵 DOM**，而且 `t.querySelector('th')` 会**连嵌套子表的 th 一起算**
+ *      —— 外层无表头表里嵌了一张有表头表时，外层被误判成"已有表头"、永远不提升
+ *      （用户口径里"表格变 HTML 字面量"的另一条夹缝）；
+ *   ② 收敛靠 `data-lumin-skip` 属性标记 + 500 轮上限，属于"打着补丁的循环"。
+ *
+ * 现在改为**单遍线性**：`querySelectorAll` 取一次快照，逐表只看**自己的行**
+ * （`table.rows` / `row.cells` 天然不含嵌套表的行），判据是"本表没有任何 th"，
+ * 处理完就前进 —— 没有循环、没有标记属性、天然幂等（第二遍跑 promoted 必为 0）。
+ *
  * @returns `promoted` = 改过几张表（0 = 调用方**不该**认为"这次粘贴我处理了"）
  */
 export function promoteHeaderlessTables(html: string): { html: string; promoted: number } {
@@ -94,28 +108,28 @@ export function promoteHeaderlessTables(html: string): { html: string; promoted:
   } catch {
     return { html, promoted: 0 }
   }
-  /**
-   * 每轮重查一遍（**不做快照**）：改外层表会动 DOM，先前拿到的内层 `<table>` 引用会失联。
-   * 用 `data-lumin-skip` 把"看过但不需要改"的表标记掉，保证必然收敛（不会死循环）。
-   */
-  const SKIP = 'data-lumin-skip'
-  let promoted = 0
-  for (let guard = 0; guard < 500; guard += 1) {
-    const target = Array.from(doc.body.querySelectorAll('table')).find(
-      (t) => !t.hasAttribute(SKIP) && !t.querySelector('th')
-    )
-    if (!target) break
-    const firstRow = target.tHead?.rows?.[0] ?? target.rows?.[0]
-    const tds = firstRow
-      ? (Array.from(firstRow.cells ?? []) as HTMLTableCellElement[]).filter(
-          (c) => c.tagName === 'TD'
-        )
-      : []
-    if (!tds.length) {
-      // 空表 / 第一行本来就是 th：标记后跳过，别再找它
-      target.setAttribute(SKIP, '1')
-      continue
+  /** 本表（不含嵌套子表）有没有表头单元格：`table.rows` 只包含自己的行 */
+  const hasOwnHeader = (table: HTMLTableElement): boolean => {
+    const rows = table.rows
+    for (let r = 0; r < rows.length; r += 1) {
+      const cells = rows[r].cells
+      for (let c = 0; c < cells.length; c += 1) {
+        if (cells[c].tagName === 'TH') return true
+      }
     }
+    return false
+  }
+  let promoted = 0
+  // 快照一次：后面只替换单元格标签，不会增删 `<table>` 节点，引用始终有效
+  const tables = Array.from(doc.body.querySelectorAll('table')) as HTMLTableElement[]
+  for (const table of tables) {
+    if (hasOwnHeader(table)) continue
+    const firstRow = table.tHead?.rows?.[0] ?? table.rows?.[0]
+    if (!firstRow) continue
+    const tds = (Array.from(firstRow.cells ?? []) as HTMLTableCellElement[]).filter(
+      (c) => c.tagName === 'TD'
+    )
+    if (!tds.length) continue
     for (const td of tds) {
       const th = doc.createElement('th')
       for (const attr of Array.from(td.attributes)) th.setAttribute(attr.name, attr.value)
@@ -220,17 +234,28 @@ export const TableClipboard = Extension.create({
        *
        * ⚠️ 顺序：本插件排在 `MathPaste` **之前**（extensions.ts），而 MathPaste 在没有数学时
        * 返回 false，两条互不抢；但顺序写清楚，免得以后有人挪动。
+       * ⚠️ `transformPastedHTML` 只有**一个槽位**（PM 的 someProp 取首个非空结果），
+       * 所以"粘贴 HTML 的预处理"必须都收敛到这一个函数里 —— 本轮加进来的
+       * `normalizeExternalTaskItems`（外部任务清单 → 本模型 taskList/taskItem）也在下面。
        */
       new Plugin({
         key: new PluginKey('luminTableClipboardPaste'),
         props: {
           transformPastedHTML(html: string): string {
+            let out = html
             try {
-              const rewritten = promoteHeaderlessTables(html)
-              return rewritten.promoted ? rewritten.html : html
+              const rewritten = promoteHeaderlessTables(out)
+              if (rewritten.promoted) out = rewritten.html
             } catch {
-              return html
+              /* 表格提升失败：用原 HTML */
             }
+            try {
+              const tasks = normalizeExternalTaskItems(out)
+              if (tasks.changed) out = tasks.html
+            } catch {
+              /* 任务清单归一化失败：用上一步的结果 */
+            }
+            return out
           }
         } as unknown as EditorProps
       })

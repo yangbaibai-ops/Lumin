@@ -63,7 +63,11 @@ test('docs：README 的 EXPECT 分类计数与 EXPECT.json 实测一致', () => 
     if (m) assert.equal(Number(m[1]), n, `README 写了 ${cls} ${m[1]}，实测是 ${cls} ${n}`)
   }
   // 账目本身要有落脚处：工程文档（tools/README.md 的 facts 块由 doc-facts 生成）
-  assert.match(TOOLS_README, new RegExp(`exact ${counts.exact}\\b`), 'tools/README.md 应记录 exact 计数')
+  assert.match(
+    TOOLS_README,
+    new RegExp(`exact ${counts.exact}\\b`),
+    'tools/README.md 应记录 exact 计数'
+  )
   assert.match(
     TOOLS_README,
     new RegExp(`normalized ${counts.normalized}\\b`),

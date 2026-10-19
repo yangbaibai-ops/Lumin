@@ -207,10 +207,23 @@ async function main() {
       JSON.stringify({ cursors: idle.cursors, dropcursor: idle.dropcursor, cm: idle.cmDropCursor, dragging: idle.dragging })
     )
     report.check(
-      '③ DOM 拖拽源：图片 / 代码块 / 树行都钉成 draggable=false',
-      (!idle.imgDrag || idle.imgDrag.attr === 'false') &&
-        (!idle.preDrag || idle.preDrag.attr === 'false') &&
-        (!idle.treeDrag || idle.treeDrag.attr === 'false'),
+      '③ DOM 拖拽源：编辑器外（树行）钉 draggable=false；编辑器内不写属性（见注释）',
+      /**
+       * 口径变更（paste-freeze-tables 轮）：**编辑器内不再由 MutationObserver 写
+       * `draggable=false`**。真因：给 PM 管理的 `<a>` 写属性会被 PM 的 DOMObserver
+       * 当成"外部改了我的 DOM"⇒ 整段重渲染 ⇒ 再写一次……主线程死循环（实测 2.5s
+       * 9451 次回调、CDP 全超时；一篇只有两个链接的文档就能触发）。
+       * 编辑器内的"不可拖"由另外两层保证（下面 ④–⑧ 的真手势用例逐条验证）：
+       *   ① window 捕获阶段 `dragstart` preventDefault + stopPropagation；
+       *   ② 全局 `-webkit-user-drag: none`。
+       * 所以这里断言：树行仍是属性钉死；编辑器内是 user-drag:none（不是属性）。
+       */
+      (!idle.treeDrag || idle.treeDrag.attr === 'false') &&
+        idle.userDrag === 'none' &&
+        (!idle.imgDrag || idle.imgDrag.userDrag === 'none') &&
+        (!idle.preDrag || idle.preDrag.userDrag === 'none') &&
+        idle.imgDrag?.attr !== 'false' &&
+        idle.preDrag?.attr !== 'false',
       JSON.stringify({ img: idle.imgDrag, pre: idle.preDrag, tree: idle.treeDrag })
     )
 
@@ -274,8 +287,9 @@ async function main() {
     await drag(imgRect, { x: B.x, y: B.y }, { steps: 12 })
     const afterImg = await snap()
     report.check(
-      '⑨ 图片节点（NodeSelection + 真拖）⇒ 文档逐字不变、图片 draggable=false',
-      afterImg.md === mdBeforeNodes && (!afterImg.imgDrag || afterImg.imgDrag.attr === 'false'),
+      '⑨ 图片节点（NodeSelection + 真拖）⇒ 文档逐字不变、图片 user-drag:none',
+      afterImg.md === mdBeforeNodes &&
+        (!afterImg.imgDrag || afterImg.imgDrag.userDrag === 'none'),
       JSON.stringify({ same: afterImg.md === mdBeforeNodes, img: afterImg.imgDrag })
     )
 
@@ -294,8 +308,9 @@ async function main() {
     await drag(preRect, { x: B.x, y: B.y }, { steps: 12 })
     const afterPre = await snap()
     report.check(
-      '⑩ 代码块节点（NodeSelection + 真拖）⇒ 文档逐字不变、代码块 draggable=false',
-      afterPre.md === mdBeforeNodes && (!afterPre.preDrag || afterPre.preDrag.attr === 'false'),
+      '⑩ 代码块节点（NodeSelection + 真拖）⇒ 文档逐字不变、代码块 user-drag:none',
+      afterPre.md === mdBeforeNodes &&
+        (!afterPre.preDrag || afterPre.preDrag.userDrag === 'none'),
       JSON.stringify({ same: afterPre.md === mdBeforeNodes, pre: afterPre.preDrag })
     )
 
