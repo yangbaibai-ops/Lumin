@@ -5,6 +5,9 @@ import { setLanguage } from '../i18n'
 // 行内标记字符的显隐开关 ⇄ 编辑器内核：走**零依赖桥**（store 一侧不认识 ProseMirror，
 // 否则整份 PM 会被钉进首屏 entry chunk —— 见 lib/editor/markerVisibility.ts 与 findBridge.ts）
 import { setInlineMarkersHidden } from '../lib/editor/markerVisibility'
+// 中文拼写检查开关：同样是零依赖桥（store 不认识 ProseMirror，见该文件说明）
+import { setZhSpellcheckEnabled } from '../lib/editor/zhSpellcheckBridge'
+import { isChineseSpellcheckEnabled } from '../../../shared/spellcheck'
 
 /**
  * 取消挂起的那次节流写入（`persist()` 排的 250ms 定时器）。
@@ -72,6 +75,12 @@ export const useSettingsStore = defineStore('settings', {
       // "设置页显示已打开、正文里标记还在闪"的不一致。内核收到通知后自己重算显隐装饰，
       // 所以改完立刻生效、不用重开文档（值没变时桥里早退，不惊动内核）。
       setInlineMarkersHidden(this.hideInlineMarkers)
+      // 中文检查层的唯一开启条件：拼写检查总开关 **且** 语言含中文（zh）。
+      // 默认语言是空数组（自动），所以升级后不会凭空多出中文波浪线；
+      // 用户在设置卡/状态栏勾上「中文（简体）」后立即生效。
+      setZhSpellcheckEnabled(
+        isChineseSpellcheckEnabled(this.spellcheckEnabled, this.spellcheckLanguages)
+      )
     },
     /** 更新设置：立即应用（主题/语言/字体）并节流持久化 */
     set<K extends keyof AppSettings>(key: K, value: AppSettings[K]): void {

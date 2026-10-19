@@ -1487,6 +1487,17 @@ aside:focus-within [data-sidebar-filetools],
   font-weight: 600;
   color: var(--danger);
 }
+/* 中文检查的 message 比单词长，允许换行（截断会让"『的的』可能重复"看不全） */
+.ecm-spell-word--message {
+  overflow: visible;
+  white-space: normal;
+  text-overflow: clip;
+  font-weight: 500;
+  line-height: 1.45;
+}
+.ecm-spell-head:has(.ecm-spell-word--message) {
+  align-items: flex-start;
+}
 .ecm-spell-sugs {
   display: flex;
   flex-direction: column;

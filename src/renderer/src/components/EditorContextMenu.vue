@@ -273,8 +273,16 @@ const subStyle = computed(() => ({ left: `${subPos.value.left}px`, top: `${subPo
              没有错词 → 这个节点不存在，下面的菜单结构与行为保持原样。 -->
         <div v-if="menu.spellSection" class="ecm-spell" data-spell-section>
           <p class="ecm-spell-head">
-            <span class="ecm-spell-title">{{ t('editorMenu.spellSuggestions') }}</span>
-            <span class="ecm-spell-word" data-spell-word>{{ menu.spellSection.word }}</span>
+            <span class="ecm-spell-title">{{
+              t(menu.spellSection.labelKey ?? 'editorMenu.spellSuggestions')
+            }}</span>
+            <span
+              class="ecm-spell-word"
+              :class="{ 'ecm-spell-word--message': menu.spellSection.message }"
+              :title="menu.spellSection.message"
+              data-spell-word
+              >{{ menu.spellSection.message ?? menu.spellSection.word }}</span
+            >
           </p>
           <div v-if="menu.spellSuggestions.length" class="ecm-spell-sugs">
             <button

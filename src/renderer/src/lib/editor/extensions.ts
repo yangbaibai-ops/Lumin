@@ -37,6 +37,8 @@ import { HtmlBlock, MdHtml, HtmlTailLiteral } from './htmlPassthrough'
 import { FootnoteDef, MdFootnote } from './footnotePassthrough'
 import { MathBlock, MdMath } from './mathMarkers'
 import { MathPreview } from './mathPreview'
+// 中文拼写检查（启发式，非词典）：ProseMirror Decoration 波浪线，只作用于正文
+import { ZhSpellcheck } from './zhSpellcheck'
 import { BulletListMarked, TaskListTight } from './listMarkers'
 import { MarkdownParseLimits } from './parseLimits'
 // CJK 强调定界符口径：`**「…」**` 这类中文写法必须能成对（见 cjkEmphasis.ts）
@@ -298,6 +300,9 @@ export const editorExtensions: Extensions = [
   MathBlock,
   // 行内公式的 KaTeX 预览（光标不在公式上时用渲染结果替换原文）
   MathPreview,
+  // 中文拼写检查（启发式）：正文 Textblock 的重复字词/标点/易错词波浪线。
+  // 开关来自设置（总开关 && 语言含中文），见 zhSpellcheck.ts 与 zhSpellcheckBridge.ts。
+  ZhSpellcheck,
   // 鼠标语义：Ctrl/Cmd+左键退化为普通点击（PM 内置会整选段落/节点，Typora 无此逻辑）；
   // 链接：普通左键原地展开源码、Ctrl/Cmd+左键交宿主注入的 onOpenLink（§4.14/§4.15）
   TyporaPointer,

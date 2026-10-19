@@ -11,6 +11,7 @@ import { encodingOf } from '../../../shared/encodings'
 import { eolLabel } from '../../../shared/eol'
 import { formatTagsInput, parseTagsInput } from '../lib/tags'
 import { wordGoalProgress } from '../../../shared/readingTime'
+import { toggleSpellcheckLanguage, ZH_SPELLCHECK_LANGUAGE } from '../../../shared/spellcheck'
 import Icon from './Icon.vue'
 import type { Language, ThemeMode } from '../../../shared/types'
 
@@ -198,6 +199,65 @@ function openAboutFromMenu(): void {
   menuOpen.value = false
   void router.push('/about')
 }
+
+// ─── 拼写检查快捷设置（`⋯` 菜单里；与设置卡同一份 settings store）──────────────
+// 为什么放在这里：拼写检查是"写作时会随手开关"的东西，进设置页太深；
+// 但完整语言清单仍在设置卡里（这里只给中文/英文两个常用项 + 「更多语言…」）。
+interface SpellState {
+  enabled: boolean
+  /** Chromium 当前真正生效的语言（用户没手选时用它显示勾选态） */
+  languages: string[]
+  available: string[]
+}
+
+const spellState = ref<SpellState | null>(null)
+
+/** 界面上的"已选"口径与设置卡完全一致：用户选过看持久化，没选过看真正生效的 */
+const spellEffective = computed<string[]>(() =>
+  settings.spellcheckLanguages.length > 0
+    ? settings.spellcheckLanguages
+    : (spellState.value?.languages ?? [])
+)
+const spellZhChecked = computed(() => spellEffective.value.some((code) => /^zh(-|$)/i.test(code)))
+const spellEnChecked = computed(() => spellEffective.value.some((code) => /^en(-|$)/i.test(code)))
+
+async function refreshSpellState(): Promise<void> {
+  try {
+    spellState.value = await window.luminAPI.spell.getState()
+  } catch {
+    spellState.value = null
+  }
+}
+
+/** 开关：settings store 立即生效；主进程在 settings:update 里同步 Chromium */
+function setSpellcheckEnabled(value: boolean): void {
+  settings.set('spellcheckEnabled', value)
+  void settings.flush().then(refreshSpellState)
+}
+
+/** 快捷语言勾选：与设置卡共用 toggleSpellcheckLanguage（不能把最后一个也取消） */
+function toggleQuickSpellLanguage(code: string): void {
+  const next = toggleSpellcheckLanguage(spellEffective.value, code)
+  if (next === null) {
+    ui.toast(t('settings.spellcheckKeepOne'), 'info')
+    return
+  }
+  settings.set('spellcheckLanguages', next)
+  void settings.flush().then(refreshSpellState)
+}
+
+/** 「更多语言…」：设置卡里的拼写检查区在「编辑器」页 */
+function openSpellSettings(): void {
+  menuOpen.value = false
+  ui.openSettings('editor')
+}
+
+// 从设置页/主进程改过之后，状态栏这边的勾选态要跟着走（两处同一份 store + 同一次查询）
+watch(
+  () => [settings.spellcheckEnabled, settings.spellcheckLanguages.length] as const,
+  () => void refreshSpellState()
+)
+onMounted(() => void refreshSpellState())
 
 const themes: { mode: ThemeMode; icon: string; labelKey: string }[] = [
   { mode: 'auto', icon: 'monitor', labelKey: 'settings.themeAuto' },
@@ -399,6 +459,62 @@ const themes: { mode: ThemeMode; icon: string; labelKey: string }[] = [
             <Icon name="globe" :size="14" />
             {{ opt.label }}
             <Icon v-if="settings.language === opt.value" name="check" :size="13" class="ml-auto" />
+          </button>
+
+          <div class="my-1 border-t border-edge" />
+          <p
+            class="px-2.5 pb-1 pt-1.5 text-[10.5px] font-medium uppercase tracking-wide text-ink-2b"
+          >
+            {{ t('statusbar.spellcheck') }}
+          </p>
+          <!-- 开关：勾选态直接绑定 settings（与设置卡同一个 store，立即双向同步） -->
+          <button
+            class="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-left text-ui transition-colors duration-100"
+            :class="
+              settings.spellcheckEnabled
+                ? 'bg-accent-soft text-accent-ink'
+                : 'text-ink hover:bg-panel-2'
+            "
+            role="menuitem"
+            data-more-spellcheck
+            @click="setSpellcheckEnabled(!settings.spellcheckEnabled)"
+          >
+            <Icon :name="settings.spellcheckEnabled ? 'check' : 'dot'" :size="14" />
+            <span class="flex-1">{{ t('settings.spellcheckEnabled') }}</span>
+            <Icon v-if="settings.spellcheckEnabled" name="check" :size="13" class="ml-auto" />
+          </button>
+          <!-- 快捷语言：中文（启发式，非词典）/ English（Chromium 词典），可同时勾选 -->
+          <button
+            class="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-left text-ui transition-colors duration-100"
+            :class="spellZhChecked ? 'bg-accent-soft text-accent-ink' : 'text-ink hover:bg-panel-2'"
+            role="menuitem"
+            data-more-spell-zh
+            :title="t('settings.spellcheckZhNote')"
+            @click="toggleQuickSpellLanguage(ZH_SPELLCHECK_LANGUAGE)"
+          >
+            <Icon name="globe" :size="14" />
+            <span class="flex-1">{{ t('statusbar.spellcheckZh') }}</span>
+            <Icon v-if="spellZhChecked" name="check" :size="13" class="ml-auto" />
+          </button>
+          <button
+            class="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-left text-ui transition-colors duration-100"
+            :class="spellEnChecked ? 'bg-accent-soft text-accent-ink' : 'text-ink hover:bg-panel-2'"
+            role="menuitem"
+            data-more-spell-en
+            @click="toggleQuickSpellLanguage('en-US')"
+          >
+            <Icon name="globe" :size="14" />
+            <span class="flex-1">{{ t('statusbar.spellcheckEn') }}</span>
+            <Icon v-if="spellEnChecked" name="check" :size="13" class="ml-auto" />
+          </button>
+          <button
+            class="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-ui-sm text-ink-2b transition-colors hover:bg-panel-2 hover:text-ink-2"
+            role="menuitem"
+            data-more-spell-more
+            @click="openSpellSettings"
+          >
+            <Icon name="settings" :size="12" />
+            {{ t('statusbar.spellcheckMore') }}
           </button>
 
           <div class="my-1 border-t border-edge" />

@@ -128,6 +128,17 @@
   outline: none;
 }
 
+/* 中文启发式拼写检查的波浪线（Decoration.inline 加 class）。
+   颜色取既有语义令牌 `--danger`（三套主题各自校准过），不新增硬编码色；
+   `text-decoration-skip-ink: none` 让波浪线在"的的"这种连续字上也连贯。 */
+.editor-content .ProseMirror .zh-spell-issue {
+  text-decoration-line: underline;
+  text-decoration-style: wavy;
+  text-decoration-color: var(--danger);
+  text-decoration-skip-ink: none;
+  text-underline-offset: 2px;
+}
+
 /* 空文档占位提示 */
 .editor-content .ProseMirror p.is-editor-empty:first-child::before {
   content: attr(data-placeholder);

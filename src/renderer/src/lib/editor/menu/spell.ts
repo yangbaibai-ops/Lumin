@@ -25,6 +25,16 @@ export interface SpellMenuData {
   suggestions: string[]
   /** 该词在 PM 文档里的范围；找不到时为 null（建议项会禁用，而不是静默无效） */
   range: SpellRange | null
+  /**
+   * 检查来源：
+   *   * `'en'`（默认）= Chromium 内置拼写器；
+   *   * `'zh'` = 我们的中文启发式层（没有词典，因此没有「添加到词典」）。
+   */
+  source?: 'en' | 'zh'
+  /** 中文命中的说明（如「『的的』可能重复」）；英文为空 */
+  message?: string
+  /** 中文命中的稳定指纹（「忽略本次」用） */
+  issueKey?: string
 }
 
 /** 建议被点击 / 「添加到词典」/「忽略」时的落地动作（由 store 注入） */
@@ -83,6 +93,18 @@ export function replaceSpellWord(editor: Editor, range: SpellRange, word: string
 }
 
 /**
+ * 中文修正：直接 `tr.insertText`（一个事务、Ctrl+Z 一次还原）。
+ * 为什么不用链式命令：中文修正只需要替换一段纯文本，不需要解析插入内容；
+ * insertText 的语义最窄，也不会把「，」这类标点当成 Markdown 结构。
+ */
+export function replaceSpellRange(editor: Editor, range: SpellRange, text: string): boolean {
+  if (!text) return false
+  editor.view.dispatch(editor.state.tr.insertText(text, range.from, range.to).scrollIntoView())
+  editor.view.focus()
+  return true
+}
+
+/**
  * 拼出菜单顶部的「拼写建议」分区。
  * 无错词 ⇒ 返回 null（调用方据此保证"没有拼写错误时菜单行为完全不变"）。
  */
@@ -91,7 +113,9 @@ export function buildSpellSection(
   handlers: SpellMenuHandlers
 ): EditorMenuSection | null {
   const word = spell?.word?.trim() ?? ''
-  if (!word) return null
+  const message = spell?.message?.trim() ?? ''
+  if (!word && !message) return null
+  const isZh = spell?.source === 'zh'
   const seen = new Set<string>()
   const suggestions: string[] = []
   for (const raw of spell?.suggestions ?? []) {
@@ -105,7 +129,7 @@ export function buildSpellSection(
   const range = spell?.range ?? null
   const items: EditorMenuAction[] = suggestions.map((text, index) => ({
     id: `spell.suggest.${index}`,
-    // Suggestion 的 label 是**用户数据**（词典给的词），不是 i18n key：
+    // Suggestion 的 label 是**用户数据**（词典给的词 / 中文修正目标），不是 i18n key：
     // 用 label 覆盖 t(labelKey)，菜单模板据此原样显示。
     labelKey: 'editorMenu.spellSuggestions',
     label: text,
@@ -117,6 +141,28 @@ export function buildSpellSection(
       return true
     }
   }))
+
+  if (isZh) {
+    // 中文没有词典，不提供「添加到词典」；只有「忽略本次」（按指纹，不改文档）
+    items.push({
+      id: 'spell.ignore',
+      labelKey: 'editorMenu.spellIgnoreOne',
+      icon: 'x',
+      kind: 'action',
+      hintKey: 'editorMenu.zhSpellIgnoreHint',
+      run: () => {
+        void handlers.ignore(spell?.issueKey ?? word)
+      }
+    })
+    return {
+      id: 'spell',
+      labelKey: 'editorMenu.zhSpell',
+      variant: 'spell',
+      word,
+      message,
+      items
+    }
+  }
 
   items.push(
     {

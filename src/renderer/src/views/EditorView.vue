@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { TextSelection } from '@tiptap/pm/state'
+import { TextSelection, type EditorState } from '@tiptap/pm/state'
 import { useFilesStore } from '../stores/files'
 import { useUiStore } from '../stores/ui'
 import { useEditorStore } from '../stores/editor'
@@ -17,6 +17,7 @@ import { historyIntent, isNestedEditorTarget } from '../lib/editor/historyKey'
 import { registerEditorFlush, currentEditorFlush } from '../lib/editorFlush'
 import { useEditorMode } from '../composables/useEditorMode'
 import { findWordRange, type SpellMenuData } from '../lib/editor/menu/spell'
+import { getZhIssueAt, type ZhDocIssue } from '../lib/editor/zhSpellcheck'
 import { preloadKatexCss } from '../lib/editor/mathStyles'
 import i18n from '../i18n'
 
@@ -75,8 +76,25 @@ function onRenderContextMenu(e: MouseEvent): void {
   spellFallback = setTimeout(() => {
     spellFallback = null
     if (!lastContext) return
-    editorMenu.openAt(lastContext.x, lastContext.y, null)
+    // 主进程没回（极端情况）：中文命中仍要从渲染层拿到，否则右键不会给修正项
+    const issue =
+      lastContext.pos == null
+        ? null
+        : getZhIssueAt(editor.state as unknown as EditorState, lastContext.pos)
+    editorMenu.openAt(lastContext.x, lastContext.y, issue ? zhSpellMenuData(issue) : null)
   }, SPELL_CONTEXT_WAIT_MS)
+}
+
+/** 中文命中 → 现有菜单数据（message/suggestions 由启发式规则给出） */
+function zhSpellMenuData(issue: ZhDocIssue): SpellMenuData {
+  return {
+    word: issue.text,
+    suggestions: issue.suggestions ?? [],
+    range: { from: issue.from, to: issue.to },
+    source: 'zh',
+    message: issue.message,
+    issueKey: issue.fingerprint
+  }
 }
 
 interface SpellContextPayload {
@@ -122,6 +140,10 @@ function onSpellContext(raw: unknown): void {
       suggestions: Array.isArray(payload.suggestions) ? payload.suggestions : [],
       range: ctx.pos == null ? null : findWordRange(editor.state.doc, ctx.pos, word)
     }
+  } else if (ctx.pos != null) {
+    // Chromium 没有中文词典，中文命中只可能来自我们自己的启发式层
+    const issue = getZhIssueAt(editor.state as unknown as EditorState, ctx.pos)
+    if (issue) spell = zhSpellMenuData(issue)
   }
   editorMenu.openAt(ctx.x, ctx.y, spell)
 }

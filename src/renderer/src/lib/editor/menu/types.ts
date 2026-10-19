@@ -50,6 +50,11 @@ export interface EditorMenuSection {
   items: EditorMenuAction[]
   /** spell 分区：被判定拼错的词（纯文本，来自 Chromium 的 misspelledWord） */
   word?: string
+  /**
+   * spell 分区：中文启发式检查的说明（如「『的的』可能重复」）。
+   * 有值时菜单标题行显示它，`word` 退居为 aria/调试用途。
+   */
+  message?: string
 }
 
 /** 右键时刻的编辑器场景快照 */

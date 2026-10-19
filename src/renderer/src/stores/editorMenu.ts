@@ -3,7 +3,13 @@ import type { Editor } from '@tiptap/core'
 import type { EditorMenuAction, EditorMenuSection } from '../lib/editor/menu/types'
 import { buildEditorMenuSections } from '../lib/editor/menu/registry'
 import { buildEditorMenuActions } from '../lib/editor/menu/actions'
-import { buildSpellSection, replaceSpellWord, type SpellMenuData } from '../lib/editor/menu/spell'
+import {
+  buildSpellSection,
+  replaceSpellRange,
+  replaceSpellWord,
+  type SpellMenuData
+} from '../lib/editor/menu/spell'
+import { ignoreZhIssue } from '../lib/editor/zhSpellcheck'
 import { readEditorMenuContext } from '../lib/editor/menu/context'
 import i18n from '../i18n'
 import { useEditorStore } from './editor'
@@ -98,13 +104,20 @@ export const useEditorMenuStore = defineStore('editorMenu', {
        */
       const spellSection = buildSpellSection(this.spell, {
         replace: (range, word) => {
-          replaceSpellWord(editor, range, word)
+          // 中文修正是纯文本替换（tr.insertText）：一个事务，Ctrl+Z 一次还原
+          if (this.spell?.source === 'zh') replaceSpellRange(editor, range, word)
+          else replaceSpellWord(editor, range, word)
         },
         addToDictionary: (word) => {
           void window.luminAPI.spell.addWord(word)
         },
-        ignore: (word) => {
-          void window.luminAPI.spell.ignoreWord(word)
+        ignore: (key) => {
+          // 中文按命中指纹忽略（不改文档）；英文仍走 Chromium 会话忽略表
+          if (this.spell?.source === 'zh') {
+            if (this.spell.issueKey) ignoreZhIssue({ fingerprint: this.spell.issueKey })
+          } else {
+            void window.luminAPI.spell.ignoreWord(key)
+          }
         }
       })
       return spellSection ? [spellSection, ...sections] : sections

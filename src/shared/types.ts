@@ -89,6 +89,10 @@ export interface AppSettings {
    * 参与检查的语言代码（如 `en-US`）。**空数组 = 自动**：主进程按界面语言/系统 locale
    * 与常见语言顺序挑一个可用项。可选项永远来自 `availableSpellCheckerLanguages`，
    * 过滤/排序规则见 shared/spellcheck.ts（用户选的项若已不可用会自动降级）。
+   *
+   * 例外：`zh` 是**我们自己的中文启发式检查层**的伪语言（Chromium 没有中文词典，
+   * `availableSpellCheckerLanguages` 不含 zh）。它可以与 en-US 等同时选；主进程只把
+   * 非中文项交给 Chromium，渲染层据「总开关 && 含中文」决定是否画中文波浪线。
    */
   spellcheckLanguages: string[]
   /** 链接指向的文件/文件夹不存在时的处理策略（询问 / 总是创建 / 从不创建） */

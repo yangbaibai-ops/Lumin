@@ -25,7 +25,12 @@ import { formatBytes } from '../../../shared/backup'
 import { ENCODINGS, type EncodingId } from '../../../shared/encodings'
 import { EOL_OPTIONS, eolLabel, type Eol } from '../../../shared/eol'
 // 拼写检查的语言清单/排序规则（纯函数，主进程与这里共用；单测 tests/spellcheck.test.mjs）
-import { sortSpellcheckLanguages } from '../../../shared/spellcheck'
+import {
+  buildSpellcheckLanguageOptions,
+  sortSpellcheckLanguages,
+  toggleSpellcheckLanguage,
+  ZH_SPELLCHECK_LANGUAGE
+} from '../../../shared/spellcheck'
 // 主题缩略图的三套色（审计 §8 P2「token 未覆盖的硬编码色」）：原来写死在下面的 themes 里，
 // 已成第二份真值且漂了（深色样机画的是近黑，而深色主题早改成中性灰）
 import { PREVIEW_BY_THEME } from '../../../shared/theme'
@@ -370,8 +375,19 @@ interface SpellState {
 
 const spellState = ref<SpellState | null>(null)
 
-/** 可选语言：常见语言在前，其余按字母序；中文/日文等无词典语言不会凭空出现 */
-const spellAvailable = computed(() => sortSpellcheckLanguages(spellState.value?.available ?? []))
+/**
+ * 可选语言：**第一项固定为「中文（简体）」**（我们自己实现的启发式检查，不在
+ * Chromium 的词典清单里）；其后是 Chromium 的可用语言（常见语言在前，其余字母序）。
+ * 系统清单里若本来有 zh，会被收敛进第一项，不会出现两个中文。
+ */
+const spellAvailable = computed(() =>
+  buildSpellcheckLanguageOptions(spellState.value?.available ?? [])
+)
+
+/** Chromium 侧到底有没有词典（中文项不算；用于"系统无词典"的提示） */
+const spellChromiumAvailable = computed(() =>
+  sortSpellcheckLanguages(spellState.value?.available ?? [])
+)
 
 /**
  * 界面上的"已选"：
@@ -383,8 +399,9 @@ const spellEffective = computed<string[]>(() => {
   return spellState.value?.languages ?? []
 })
 
-/** 语言显示名：用当前界面语言的 Intl.DisplayNames（失败就退回语言代码） */
+/** 语言显示名：中文项用语言包里的固定名（Intl 只给「中文」，看不出是简体） */
 function spellLanguageLabel(code: string): string {
+  if (code === ZH_SPELLCHECK_LANGUAGE) return t('settings.spellcheckZhLabel')
   try {
     const names = new Intl.DisplayNames([settings.language], { type: 'language' })
     return names.of(code) ?? code
@@ -415,13 +432,12 @@ function setSpellcheckEnabled(value: boolean): void {
  * 而"空数组"在持久化里另有含义（自动选择），两者混在一起会让界面显示与生效不一致。
  */
 function toggleSpellLanguage(code: string): void {
-  const current = spellEffective.value
-  const checked = current.includes(code)
-  if (checked && current.length <= 1) {
+  // 与状态栏快捷菜单共用同一套多选语义（不能把最后一个语言也取消）
+  const next = toggleSpellcheckLanguage(spellEffective.value, code)
+  if (next === null) {
     ui.toast(t('settings.spellcheckKeepOne'), 'info')
     return
   }
-  const next = checked ? current.filter((c) => c !== code) : [...current, code]
   settings.set('spellcheckLanguages', next)
   void settings.flush().then(refreshSpellState)
 }
@@ -1448,9 +1464,10 @@ function formatTime(ms: number): string {
                       </div>
                     </section>
 
-                    <!-- 拼写检查：总开关 + 语言多选。可选项来自主进程的
-                         availableSpellCheckerLanguages（常见语言前置，其余字母序），
-                         中文/日文等没有词典的语言不会出现在这里。 -->
+                    <!-- 拼写检查：总开关 + 语言多选。
+                         第一项**固定是「中文（简体）」**：它由渲染层的启发式规则完成，
+                         不是 Chromium 词典（availableSpellCheckerLanguages 里没有 zh）；
+                         其余项来自 availableSpellCheckerLanguages（常见语言前置、其余字母序）。 -->
                     <section class="set-card">
                       <h3 class="set-card-title">{{ t('settings.cardSpellcheck') }}</h3>
                       <div class="set-row">
@@ -1478,11 +1495,17 @@ function formatTime(ms: number): string {
                             </p>
                           </div>
                           <p class="set-row-desc">{{ t('settings.spellcheckLanguagesDesc') }}</p>
-                          <p v-if="spellState && !spellAvailable.length" class="set-row-desc">
+                          <p class="set-row-desc mt-1" data-spellcheck-zh-note>
+                            {{ t('settings.spellcheckZhNote') }}
+                          </p>
+                          <p
+                            v-if="spellState && !spellChromiumAvailable.length"
+                            class="set-row-desc"
+                            data-spellcheck-no-dictionary
+                          >
                             {{ t('settings.spellcheckNoLanguages') }}
                           </p>
                           <div
-                            v-else
                             class="mt-2 grid max-h-56 grid-cols-2 gap-x-4 gap-y-0.5 overflow-y-auto pr-1"
                           >
                             <label
@@ -1507,11 +1530,7 @@ function formatTime(ms: number): string {
                             </label>
                           </div>
                           <p
-                            v-if="
-                              spellState &&
-                              spellAvailable.length &&
-                              settings.spellcheckLanguages.length === 0
-                            "
+                            v-if="spellState && settings.spellcheckLanguages.length === 0"
                             class="set-row-desc mt-2"
                             data-spellcheck-auto
                           >

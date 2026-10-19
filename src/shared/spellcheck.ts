@@ -47,6 +47,61 @@ export const COMMON_SPELLCHECK_LANGUAGES: readonly string[] = [
 /** 右键建议最多显示几条（Chromium 有时给一长串，菜单只放得下几条） */
 export const MAX_SPELL_SUGGESTIONS = 5
 
+/** 中文（简体）的伪语言代码：中文检查由渲染层启发式完成，**不交给 Chromium** */
+export const ZH_SPELLCHECK_LANGUAGE = 'zh'
+
+/**
+ * 某个语言代码是不是中文（zh / zh-CN / zh-Hans 都算）。
+ *
+ * 注意：`zh` **不在** Chromium 的 availableSpellCheckerLanguages 里（实测），
+ * 所以它只用于我们自己的中文检查层与界面选项，绝不能原样塞给
+ * `setSpellCheckerLanguages`（Electron 会报错/忽略）。
+ */
+export function isChineseSpellcheckLanguage(code: string): boolean {
+  const lower = code.trim().toLowerCase()
+  return lower === 'zh' || lower.startsWith('zh-')
+}
+
+/** 用户选的语言里是否包含中文（中文检查层的开启条件之一） */
+export function hasChineseSpellcheckLanguage(codes: readonly string[]): boolean {
+  return codes.some(isChineseSpellcheckLanguage)
+}
+
+/**
+ * 中文检查层是否应启用：拼写检查总开关打开 **且** 语言里选了中文。
+ * 主进程/渲染层共用这一条判定，避免"界面打开了、正文没划线"的两套口径。
+ */
+export function isChineseSpellcheckEnabled(enabled: boolean, codes: readonly string[]): boolean {
+  return enabled === true && hasChineseSpellcheckLanguage(codes)
+}
+
+/**
+ * 设置界面里的语言多选项：**中文（简体）固定第一项**，其后是 Chromium 的可用语言。
+ *
+ * 为什么中文不来自 available：Chromium 没有中文词典，但中文检查由我们自己做。
+ * 若系统清单里本来就有 zh / zh-CN（别的平台/别的版本），先统一收敛成 `zh`，
+ * 保证列表里**不会出现两个中文项**。
+ */
+export function buildSpellcheckLanguageOptions(available: readonly string[]): string[] {
+  const chromium = sortSpellcheckLanguages(available).filter(
+    (code) => !isChineseSpellcheckLanguage(code)
+  )
+  return [ZH_SPELLCHECK_LANGUAGE, ...chromium]
+}
+
+/**
+ * 语言多选的同一套语义（设置卡与状态栏快捷菜单共用，避免两处行为漂移）。
+ * 返回 null = 不允许（不能把最后一个语言也取消：空数组在持久化里表示"自动"）。
+ */
+export function toggleSpellcheckLanguage(
+  current: readonly string[],
+  code: string
+): string[] | null {
+  const checked = current.includes(code)
+  if (checked && current.length <= 1) return null
+  return checked ? current.filter((item) => item !== code) : [...current, code]
+}
+
 /** 只保留非空字符串并去重（available 在极少数平台可能带重复/空项） */
 function uniqueCodes(codes: readonly unknown[]): string[] {
   const out: string[] = []
