@@ -2,6 +2,7 @@ import type { Editor } from '@tiptap/core'
 import type { EditorMenuAction } from './types'
 import { insertOrEditLink, type LinkAsker } from '../../linkInsert'
 import { insertParagraphAround } from '../paragraphAround'
+import { pastePlainIntoEditor } from '../../plainPaste'
 
 /**
  * ─── 动作目录 ────────────────────────────────────────────────────────────────
@@ -117,6 +118,18 @@ export function buildEditorMenuActions(
           return false
         }
       }
+    },
+    /**
+     * 粘贴为纯文本（用户自救入口）：不读 HTML、不做 Markdown 解析、不建表格/公式，
+     * 只把剪贴板文字原样插进当前编辑面。Guard 触发提示上的同名按钮走同一个实现
+     * （lib/plainPaste.ts），所以行为不会有两套。
+     */
+    'clipboard.pastePlain': {
+      id: 'clipboard.pastePlain',
+      labelKey: 'editorMenu.pastePlain',
+      icon: 'clipboard',
+      shortcut: 'Ctrl+Shift+V',
+      run: () => pastePlainIntoEditor()
     },
     'clipboard.selectAll': {
       id: 'clipboard.selectAll',

@@ -19,6 +19,8 @@ import { flushEditorBeforeReplace } from '../lib/editorFlush'
 import { draftKeyFor, restorableDraft } from '../lib/draftRules'
 import { SAVE_CONFLICT_KIND } from '../lib/saveConflict'
 import { docLoad, heavyReason } from '../lib/largeDoc'
+import { estimateDocLoad, planDocOpen } from '../../../shared/freeze'
+import { DOC_SAFE_MODE_KIND } from '../lib/safety'
 import {
   createLedger,
   markApplied,
@@ -676,6 +678,38 @@ export const useFilesStore = defineStore('files', {
         const opened: OpenedFile = await window.luminAPI.file.read(path, requested, {
           softDefault: true
         })
+
+        /**
+         * ─── 打开前的安全模式闸（本轮）───────────────────────────────────────────
+         *
+         * 两条判据（纯函数在 shared/freeze.ts，单测钉着）：
+         *  1. **同一文档连续两次崩溃/无响应** ⇒ 直接源码模式并提示（记录在主进程 kv，
+         *     渲染进程崩溃时它自己写不了任何东西，所以只能由主进程记）；
+         *  2. **>2MB 或 >5 万节点** ⇒ 先问一句：「以源码模式打开 / 仍然打开 / 取消」。
+         *
+         * 注意这里已经读完文件（读文本本身很便宜），问的是**要不要建富文本 DOM**：
+         * 真正的卡顿来自解析 + PM 建 DOM（见 lib/largeDoc.ts 的实测），不是读盘。
+         * 用户选取消 ⇒ `return false`，当前文档一个字节都没动。
+         */
+        const risk = await window.luminAPI.freeze.docRisk(opened.path).catch(() => null)
+        const estimate = estimateDocLoad(opened.content)
+        const openPlan = planDocOpen(risk, estimate)
+        const riskSafeMode = openPlan === 'source-risk'
+        let openInSource = riskSafeMode
+        if (openPlan === 'prompt-large') {
+          const choice = await useUiStore().confirmTriple({
+            title: i18n.global.t('editor.largeDocPromptTitle'),
+            body: i18n.global.t('editor.largeDocPromptBody', {
+              mb: (estimate.bytes / 1024 / 1024).toFixed(1),
+              nodes: estimate.nodes
+            }),
+            confirmLabel: i18n.global.t('editor.openAsSource'),
+            altLabel: i18n.global.t('editor.openAnyway')
+          })
+          if (choice === 'cancel') return false
+          openInSource = choice === 'confirm'
+        }
+
         // **先**定好 currentDir 再换 current：编辑器按 current.path 重建（:key），
         // 重建那一刻就渲染正文里的图片，而图片相对路径的基准正是 currentDir ——
         // 顺序反了的话第一帧会拿到「上一个文档的目录」（实测：换文档后图片指向旧目录）。
@@ -716,17 +750,45 @@ export const useFilesStore = defineStore('files', {
          */
         const reason = heavyReason(opened.content)
         this.heavyMode = reason !== null
+        const uiAtOpen = useUiStore()
+        if (riskSafeMode) {
+          /**
+           * 连续两次崩溃/无响应 ⇒ 默认源码模式。提示里带一个「仍然以富文本打开」的出口：
+           * 那是用户明确的决定，点过就清零风险（否则一份文档会被永久钉在源码模式）。
+           * 记录在**主进程 kv**：渲染进程崩溃时它自己写不了任何东西。
+           */
+          uiAtOpen.editorMode = 'source'
+          void useNotificationsStore().notify({
+            level: 'warning',
+            title: i18n.global.t('editor.safeModeTitle'),
+            body: i18n.global.t('editor.safeModeBody', { n: Math.max(2, risk?.incidents ?? 2) }),
+            actions: [
+              {
+                id: 'rich',
+                label: i18n.global.t('editor.safeModeOpenRich'),
+                tone: 'ghost' as const
+              }
+            ],
+            payload: { kind: DOC_SAFE_MODE_KIND, path: opened.path },
+            mergeKey: `doc-safe-mode:${opened.path}`
+          })
+        } else if (openInSource) {
+          // 用户在「大文档」提示里选了「以源码模式打开」：只改会话状态，不落库
+          uiAtOpen.editorMode = 'source'
+        }
         if (reason) {
-          const ui = useUiStore()
-          ui.editorMode = 'source'
-          ui.toast(
-            i18n.global.t(
-              reason === 'fences' ? 'toast.heavyDocSourceMode' : 'toast.heavyDocSourceModeChars',
-              { fences: load.fences, chars: load.chars }
-            ),
-            'warning'
-          )
-        } else if (isPlainTextName(opened.name)) {
+          uiAtOpen.editorMode = 'source'
+          // 风险模式已经有一条更重要的提示；不再叠一条"文档太大"的 toast
+          if (!riskSafeMode) {
+            uiAtOpen.toast(
+              i18n.global.t(
+                reason === 'fences' ? 'toast.heavyDocSourceMode' : 'toast.heavyDocSourceModeChars',
+                { fences: load.fences, chars: load.chars }
+              ),
+              'warning'
+            )
+          }
+        } else if (isPlainTextName(opened.name) && !riskSafeMode && !openInSource) {
           /**
            * ─── 纯文本族默认走**源码模式**（第七轮）────────────────────────────────
            *

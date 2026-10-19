@@ -103,11 +103,7 @@ export interface EditorExtensionOptions {
    * 粘贴护栏的可见提示出口（降级 / 拒绝 / 超时回滚）。
    * 内核不认识通知中心，由宿主注入（见 pasteGuard.ts 的 PasteNotice）。
    */
-  onPasteNotice?: (notice: {
-    level: 'info' | 'warning' | 'error'
-    title: string
-    body?: string
-  }) => void
+  onPasteNotice?: (notice: import('./pasteGuard').PasteNotice) => void
 }
 
 /** 默认链接打开：只把网址交给系统默认浏览器（应用内由 lib/linkOpen.ts 覆盖） */

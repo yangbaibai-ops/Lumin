@@ -125,7 +125,8 @@
     "cut": "剪切",
     "copy": "复制",
     "paste": "粘贴",
-    "selectAll": "全选"
+    "selectAll": "全选",
+    "pastePlain": "粘贴为纯文本"
   },
   "fileTree": {
     "moveTo": "移动到…",
@@ -248,7 +249,18 @@
     "pasteRollbackTitle": "粘贴耗时过长，已回滚",
     "pasteRollbackBody": "本次粘贴处理了 {ms} ms，超过 {budget} ms 上限；文档已恢复到粘贴前，未改动。",
     "heavyWorkDeferredTitle": "后台重活已放慢（编辑不受影响）",
-    "heavyWorkDeferredBody": "本次序列化/统计耗时 {ms} ms，超过单次预算。为保证界面可交互，拼写检查与后台统计已延后执行；文档内容与保存不受影响。"
+    "heavyWorkDeferredBody": "本次序列化/统计耗时 {ms} ms，超过单次预算。为保证界面可交互，拼写检查与后台统计已延后执行；文档内容与保存不受影响。",
+    "pasteAsPlainText": "改用纯文本粘贴",
+    "pastePlainEmpty": "剪贴板里没有可粘贴的纯文本",
+    "freezeDetectedTitle": "刚刚有一次长时间阻塞，已记录",
+    "freezeDetectedBody": "主线程被同步任务占用了约 {ms} ms。界面已恢复；诊断记录在 window.__LWORK，反馈问题时可以带上它。",
+    "largeDocPromptTitle": "该文档较大，可能较慢",
+    "largeDocPromptBody": "这份文档约 {mb} MB、约 {nodes} 个节点。实时渲染需要先解析整篇并建立富文本结构，可能明显变慢。可以先以源码模式打开（逐字编辑，随时可切回），或仍然打开。",
+    "openAsSource": "以源码模式打开",
+    "openAnyway": "仍然打开",
+    "safeModeTitle": "该文档已连续两次崩溃或无响应，已用源码模式打开",
+    "safeModeBody": "为避免再次卡死，这份文档本次默认以源码模式打开（逐字编辑，不建立富文本结构）。如果已经恢复正常，可以改回实时渲染。",
+    "safeModeOpenRich": "仍然以富文本打开"
   },
   "settings": {
     "title": "设置",
@@ -592,7 +604,8 @@
       "center": "本列居中",
       "right": "本列右对齐",
       "none": "本列默认对齐（不写 :---）"
-    }
+    },
+    "pastePlain": "粘贴为纯文本"
   },
   "tableBar": {
     "label": "表格快捷操作",
@@ -752,5 +765,18 @@
     "settings": "设置快照",
     "errors": "最近的错误（最多 10 条，只留标题）",
     "none": "（无）"
+  },
+  "freeze": {
+    "unresponsiveTitle": "页面响应缓慢/无响应",
+    "unresponsiveMessage": "Lumin 的页面已经有 {seconds} 秒没有响应。",
+    "unresponsiveDetail": "你可以继续等待（同步任务结束后会自动恢复），或者重新加载并恢复。重新加载前会尽力保存一次草稿；未保存的内容依赖自动草稿恢复。",
+    "wait": "等待",
+    "reload": "重新加载并恢复",
+    "crashTitle": "页面已崩溃",
+    "crashMessage": "页面进程意外退出。",
+    "crashThrottledRecent": "为避免崩溃循环，{seconds} 秒内不会自动重载。可以手动重新加载，未保存的正文会从草稿恢复。",
+    "crashThrottledWindow": "5 分钟内已自动重载多次，已停止自动重载以避免崩溃循环。可以手动重新加载，未保存的正文会从草稿恢复。",
+    "crashReload": "重新加载并恢复",
+    "crashWait": "暂不重载"
   }
 }

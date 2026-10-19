@@ -14,6 +14,8 @@ import { isInside, installOpenDocTracking } from './lib/openFile'
 import { initExternalWatch } from './lib/externalWatch'
 import { installDragGuard, installNonDraggableDom } from './lib/dragGuard'
 import { exposeWorkBudget, installLongTaskSentinel } from './lib/editor/workBudget'
+import { installFreezeSentinel } from './lib/editor/freezeSentinel'
+import { installFreezeHeartbeat } from './lib/freezeHeartbeat'
 
 /**
  * 拖拽（drag & drop）全禁用：**挂载前**就把 window 捕获阶段的拦截器与 DOM 纠偏装好，
@@ -81,6 +83,35 @@ async function bootstrap(): Promise<void> {
   mark('boot-start')
   // Pinia 必须先于 store 使用被安装
   const pinia = createPinia()
+
+  /**
+   * ─── 全局防卡死兜底（本轮）──────────────────────────────────────────────────
+   *
+   * ① 心跳（500ms）：主进程据此判 5s 超时；卡死发生在编辑器挂载前也能被发现。
+   * ② 同步任务哨兵（1s tick）：卡完把 `{at,durationMs,stackHint}` 写进
+   *    `window.__LWORK.freezes` 并弹可见提示 —— 不中断同步代码（JS 做不到），
+   *    只保证"能自愈 + 留证据"。
+   * ③ `app:freeze` 的 flush-draft：主进程重载前**尽力**让我们先落一次草稿。
+   *
+   * 三者都在挂载前装：启动阶段的大文档解析同样要被覆盖。
+   */
+  installFreezeHeartbeat({
+    flushDraft: async () => {
+      const files = useFilesStore(pinia)
+      await files.writeDraft()
+    }
+  })
+  installFreezeSentinel({
+    onFreeze: (record) => {
+      void useNotificationsStore(pinia).notify({
+        level: 'warning',
+        title: i18n.global.t('editor.freezeDetectedTitle'),
+        body: i18n.global.t('editor.freezeDetectedBody', {
+          ms: Math.round(record.durationMs)
+        })
+      })
+    }
+  })
 
   // 主题/语言必须在挂载前就位，否则会闪一下默认主题
   const settings = useSettingsStore(pinia)

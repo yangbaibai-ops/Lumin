@@ -8,6 +8,8 @@ import type { Eol } from './eol'
 import type { HistoryEntry, HistoryEntryMeta } from './history'
 // 设置文件的读取结果（信封/白名单那一套在 shared/settingsFile.ts；这里只要类型）
 import type { SettingsFileReadResult } from './settingsFile'
+import type { DocRiskRecord } from './freeze'
+import type { NativeCloseChoice, NativeExternalChoice } from './nativeDialogs'
 // 打印结果三态 + 失败原因（纯函数模块，见 shared/printOptions.ts）
 import type { PrintResult } from './printOptions'
 export type { HistoryEntry, HistoryEntryMeta }
@@ -568,6 +570,8 @@ export type MenuAction =
   | 'toggle-typewriter'
   | 'settings'
   | 'about'
+  /** 粘贴为纯文本（Ctrl+Shift+V）：不走富文本/表格/公式解析，永远只插纯文本 */
+  | 'paste-plain'
 
 export interface LuminAPI {
   app: {
@@ -923,6 +927,55 @@ export interface LuminAPI {
     forget: (target: string) => Promise<void>
     /** 清空历史，返回删除条数 */
     clear: () => Promise<number>
+  }
+  /**
+   * 原生确认对话框（主进程 `dialog.showMessageBox(win, …)`）。
+   *
+   * 目前两条：关闭未保存文件（保存/不保存/取消）、外部修改（重新加载/稍后）。
+   * 渲染层只传"是哪一种"，文案由主进程语言包取；按钮下标 → 语义的映射在
+   * shared/nativeDialogs.ts（纯函数，单测）。
+   */
+  dialog: {
+    confirmClose: () => Promise<NativeCloseChoice>
+    externalChange: () => Promise<NativeExternalChoice>
+  }
+  /**
+   * 全局防卡死兜底（主进程判活；渲染层只发心跳与读诊断）。
+   *
+   * 心跳是**单向小消息**（500ms 一条，只带 `__LWORK` 计数摘要，绝不含正文）。
+   * 无响应/崩溃的提示与重载都在主进程（见 main/services/freezeGuard.ts）：
+   * 渲染进程卡死时它自己发不出任何请求，所以不能把判活放在这一侧。
+   */
+  freeze: {
+    /** 发一次心跳（fire-and-forget；主进程据此判 5s 超时） */
+    heartbeat: (payload: {
+      at?: number
+      rafFramesIn500ms?: number
+      visible?: boolean
+      work?: {
+        runs?: number
+        overruns?: number
+        lastMs?: number
+        lastName?: string
+        longTasks?: number
+        lastLongMs?: number
+        freezes?: number
+        lastFreezeMs?: number
+      }
+    }) => void
+    /** 重载前的草稿落盘回执（主进程最多等 1.2s，等不到就依赖自动草稿） */
+    draftAck: () => void
+    /** 本窗口的只读诊断快照（心跳次数/检测延迟/重载记录/崩溃记录） */
+    state: () => Promise<Record<string, unknown> | null>
+    /** 按文档路径读取「连续崩溃/无响应」风险（下次打开默认源码模式的依据） */
+    docRisk: (path: string) => Promise<DocRiskRecord | null>
+    /** 用户明确选择「仍然以富文本打开」/ 文档已恢复正常：清零风险 */
+    clearDocRisk: (path: string) => Promise<void>
+    /**
+     * 读剪贴板的纯文本（主进程 `clipboard.readText`）。
+     * 页面失焦时 `navigator.clipboard.readText()` 会 reject，而自救入口不该"点了没反应"。
+     */
+    clipboardText: () => Promise<string>
   }
   events: {
     on: (channel: string, cb: (payload?: unknown) => void) => () => void

@@ -340,7 +340,8 @@ async function main() {
       })
   )
   c('opens-on-right-click', menuA.open === true)
-  c('toolbar-has-4-clipboard', menuA.toolbar?.length === 4, JSON.stringify(menuA.toolbar))
+  // 本轮新增「粘贴为纯文本」（自卫入口），顶部常用行从 4 项变 5 项
+  c('toolbar-has-5-clipboard', menuA.toolbar?.length === 5, JSON.stringify(menuA.toolbar))
   c(
     'level1-is-categories',
     menuA.categories?.map((x) => x.text).join(',') === '段落,格式,插入',

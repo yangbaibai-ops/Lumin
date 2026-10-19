@@ -97,6 +97,18 @@ export function useKeymap(actions: ReturnType<typeof useAppActions>): void {
 
     // ── 编辑 ──
     {
+      /**
+       * 粘贴为纯文本：用户自救入口的键盘版（菜单/右键菜单/通知按钮走同一个 handleMenu）。
+       * `Mod+Shift+V` 与浏览器/其他编辑器一致；此前全仓没有这条绑定。
+       * 不设 `when: 'notInInput'`：源码模式的 textarea 也是编辑面，快捷键必须在里面生效。
+       */
+      id: 'edit.pastePlain',
+      titleKey: 'editorMenu.pastePlain',
+      groupKey: 'keymap.groupEdit',
+      defaultKeys: 'Mod+Shift+V',
+      run: () => handleMenu('paste-plain')
+    },
+    {
       id: 'edit.findReplace',
       titleKey: 'menu.findReplace',
       groupKey: 'keymap.groupEdit',

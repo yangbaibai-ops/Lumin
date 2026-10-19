@@ -89,6 +89,9 @@ export function installMenu(): void {
         { role: 'cut', label: T('cut') },
         { role: 'copy', label: T('copy') },
         { role: 'paste', label: T('paste') },
+        // 粘贴为纯文本（用户自救入口）。与其它菜单项一样**不设 accelerator**：
+        // 应用级快捷键由渲染层命令表统一接管（Ctrl+Shift+V，见 useKeymap.ts）。
+        { label: T('pastePlain'), click: () => send('paste-plain') },
         { role: 'selectAll', label: T('selectAll') },
         { type: 'separator' },
         { label: T('findReplace'), click: () => send('find') },

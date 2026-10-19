@@ -6,6 +6,7 @@ import {
   BrowserWindow,
   webUtils,
   shell,
+  clipboard,
   type IpcMainInvokeEvent
 } from 'electron'
 import path from 'path'
@@ -28,6 +29,9 @@ import * as dbBackup from './services/dbBackup'
 import * as externalWatch from './services/externalWatch'
 import * as workspaceBackup from './services/workspaceBackup'
 import { onSettingsChanged } from './services/updater'
+import { mapCloseDialogResponse, mapExternalDialogResponse } from '../shared/nativeDialogs'
+import * as freezeGuard from './services/freezeGuard'
+import * as docRisk from './services/docRisk'
 import { installMenu } from './menu'
 import { mainT } from './i18n'
 import { scopeOfSender } from './services/windowScope'
@@ -79,6 +83,31 @@ import type {
   SessionSlot,
   WorkspaceReplaceRequest
 } from '../shared/types'
+
+/**
+ * 同一窗口同一类原生确认框只允许一个在飞。
+ *
+ * 为什么需要：关窗事件可能被触发两次（用户连点关闭 / 菜单 + 窗口按钮），两个
+ * `requestClose` 会各自请求原生框 —— 用户看到两个叠在一起的 MessageBox，
+ * 而且两个 `app:cancelClose` 会把守卫状态搅乱。第二次请求直接复用第一次的 Promise，
+ * 语义上就是"同一个问题只问一次"。
+ */
+const nativeDialogFlights = new Map<string, Promise<string>>()
+
+function onceNativeDialog<T extends string>(
+  win: BrowserWindow,
+  kind: string,
+  run: () => Promise<T>
+): Promise<T> {
+  const key = `${win.id}:${kind}`
+  const existing = nativeDialogFlights.get(key)
+  if (existing) return existing as Promise<T>
+  const p = run().finally(() => {
+    if (nativeDialogFlights.get(key) === p) nativeDialogFlights.delete(key)
+  })
+  nativeDialogFlights.set(key, p)
+  return p
+}
 
 const closeConfirmed =
   new WeakSet<BrowserWindow>() /** 每个窗口的关窗兜底计时器（收到心跳就重置） */
@@ -177,6 +206,116 @@ export function registerIpc(slots: SlotRegistry): void {
   // ── 应用 ──
   ipcMain.handle('app:getVersion', () => exportSvc.appVersion())
   ipcMain.handle('app:getPlatform', () => process.platform)
+
+  /**
+   * ─── 防卡死兜底（本轮）──────────────────────────────────────────────────────
+   * 心跳是**单向小消息**（500ms 一条），复用既有 `ipcRenderer.send` 风格；
+   * 判活/事件/弹窗/重载都在主进程（见 services/freezeGuard.ts）。
+   * 这里不读任何文档内容：心跳里只有 `window.__LWORK` 的计数摘要。
+   */
+  ipcMain.on('freeze:heartbeat', (event, payload?: freezeGuard.FreezeHeartbeatPayload) => {
+    freezeGuard.noteHeartbeat(event.sender, payload)
+  })
+  ipcMain.on('freeze:draftAck', (event) => {
+    freezeGuard.noteDraftFlushed(event.sender)
+  })
+  ipcMain.handle('freeze:state', (event) => {
+    const win = BrowserWindow.fromWebContents(event.sender)
+    return win ? freezeGuard.freezeStateSnapshot(win) : null
+  })
+  ipcMain.handle('freeze:docRisk', (_event, p: unknown) => {
+    if (typeof p !== 'string' || !p) return null
+    return docRisk.getDocRisk(p)
+  })
+  ipcMain.handle('freeze:clearDocRisk', (_event, p: unknown) => {
+    if (typeof p === 'string' && p) docRisk.clearDocRisk(p)
+  })
+  /**
+   * 「粘贴为纯文本」的剪贴板读取。
+   *
+   * 为什么不让渲染层直接 `navigator.clipboard.readText()`：那条 API 要求 document 处于
+   * **聚焦**状态；而"页面刚恢复/用户从别的窗口点菜单"时它经常直接 reject，用户看到的是
+   * "点了没反应"。Electron 主进程的 `clipboard.readText()` 没有这个前提。
+   * 上限 8M 字符：再大的粘贴本来就该走粘贴护栏，不在 IPC 里搬整座山。
+   */
+  ipcMain.handle('freeze:clipboardText', () => {
+    try {
+      const text = clipboard.readText()
+      return typeof text === 'string' && text.length <= 8 * 1024 * 1024 ? text : ''
+    } catch {
+      return ''
+    }
+  })
+
+  /**
+   * ─── 原生确认对话框（用户新增口径）────────────────────────────────────────────
+   *
+   * 「关闭未保存文件」与「外部应用修改了文档内容」必须用**主进程**的
+   * `dialog.showMessageBox(win, …)`（原生 MessageBox 风格、父窗口绑定），不再自绘。
+   *
+   * 文案从主进程语言包按 key 取（与原生菜单同一口径）：渲染层只传"是哪一种确认"，
+   * 不把整段文案/文件名搬过来 —— 少一条跨进程字符串通道，也避免用户内容进日志。
+   * 按钮语义映射在 shared/nativeDialogs.ts（纯函数，单测钉住下标 → 语义）。
+   */
+  ipcMain.handle('dialog:confirmClose', async (event) => {
+    const win = BrowserWindow.fromWebContents(event.sender)
+    if (!win || win.isDestroyed()) return 'cancel'
+    return onceNativeDialog(win, 'confirmClose', async () => {
+      try {
+        console.log('[dialog] show close-unsaved native')
+        // 确认框必须看得见：先把窗口唤到前面（与防卡死提示同一口径）。
+        if (win.isMinimized()) win.restore()
+        win.show()
+        win.focus()
+        const { response } = await dialog.showMessageBox(win, {
+          type: 'warning',
+          title: mainT('close.saveTitle'),
+          message: mainT('close.saveTitle'),
+          detail: mainT('close.saveBody'),
+          buttons: [mainT('common.save'), mainT('close.dontSave'), mainT('common.cancel')],
+          defaultId: 0,
+          cancelId: 2,
+          noLink: true
+        })
+        const choice = mapCloseDialogResponse(response)
+        console.log(`[dialog] native close-unsaved response=${response} choice=${choice}`)
+        return choice
+      } catch {
+        // 窗口在对话框期间被销毁：最安全的出口是"别关"
+        console.log('[dialog] native close-unsaved failed choice=cancel')
+        return 'cancel'
+      }
+    })
+  })
+
+  ipcMain.handle('dialog:externalChange', async (event) => {
+    const win = BrowserWindow.fromWebContents(event.sender)
+    if (!win || win.isDestroyed()) return 'later'
+    return onceNativeDialog(win, 'externalChange', async () => {
+      try {
+        console.log('[dialog] show external-change native')
+        if (win.isMinimized()) win.restore()
+        win.show()
+        win.focus()
+        const { response } = await dialog.showMessageBox(win, {
+          type: 'warning',
+          title: mainT('editor.externalChangeTitle'),
+          message: mainT('editor.externalChangeTitle'),
+          detail: mainT('editor.externalChangeBody'),
+          buttons: [mainT('editor.externalChangeReload'), mainT('editor.externalChangeLater')],
+          defaultId: 0,
+          cancelId: 1,
+          noLink: true
+        })
+        const choice = mapExternalDialogResponse(response)
+        console.log(`[dialog] native external-change response=${response} choice=${choice}`)
+        return choice
+      } catch {
+        console.log('[dialog] native external-change failed choice=later')
+        return 'later'
+      }
+    })
+  })
   /**
    * 「关于」页需要的事实：真实依赖清单 + 第三方许可声明。
    *

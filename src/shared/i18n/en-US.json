@@ -125,7 +125,8 @@
     "cut": "Cut",
     "copy": "Copy",
     "paste": "Paste",
-    "selectAll": "Select All"
+    "selectAll": "Select All",
+    "pastePlain": "Paste as Plain Text"
   },
   "fileTree": {
     "moveTo": "Move to…",
@@ -248,7 +249,18 @@
     "pasteRollbackTitle": "Paste took too long — rolled back",
     "pasteRollbackBody": "This paste took {ms} ms, above the {budget} ms budget. The document was restored to its pre-paste state.",
     "heavyWorkDeferredTitle": "Background work slowed down (editing unaffected)",
-    "heavyWorkDeferredBody": "This serialization/statistics run took {ms} ms, above the per-run budget. Spell check and background statistics were postponed so the UI stays responsive; content and saving are unaffected."
+    "heavyWorkDeferredBody": "This serialization/statistics run took {ms} ms, above the per-run budget. Spell check and background statistics were postponed so the UI stays responsive; content and saving are unaffected.",
+    "pasteAsPlainText": "Paste as plain text instead",
+    "pastePlainEmpty": "There is no plain text on the clipboard",
+    "freezeDetectedTitle": "A long main-thread block was recorded",
+    "freezeDetectedBody": "The main thread was occupied by synchronous work for about {ms} ms. The UI has recovered; the diagnostic record is in window.__LWORK — include it when reporting the issue.",
+    "largeDocPromptTitle": "This document is large and may be slow",
+    "largeDocPromptBody": "This document is about {mb} MB with roughly {nodes} nodes. Live rendering parses the whole document and builds the rich-text DOM first, which can be noticeably slow. Open it in source mode (character-exact editing, switch back anytime) or open it anyway.",
+    "openAsSource": "Open in source mode",
+    "openAnyway": "Open anyway",
+    "safeModeTitle": "This document crashed or froze twice in a row — opened in source mode",
+    "safeModeBody": "To avoid another freeze, this document is opened in source mode this time (plain text editing, no rich-text DOM). If it is healthy again, you can switch back to live rendering.",
+    "safeModeOpenRich": "Open as rich text anyway"
   },
   "settings": {
     "title": "Settings",
@@ -592,7 +604,8 @@
       "center": "Center this column",
       "right": "Align this column right",
       "none": "Default alignment for this column (plain ---)"
-    }
+    },
+    "pastePlain": "Paste as Plain Text"
   },
   "tableBar": {
     "label": "Table quick actions",
@@ -752,5 +765,18 @@
     "settings": "Settings snapshot",
     "errors": "Recent errors (up to 10, titles only)",
     "none": "(none)"
+  },
+  "freeze": {
+    "unresponsiveTitle": "The page is slow or unresponsive",
+    "unresponsiveMessage": "The Lumin page has not responded for {seconds} seconds.",
+    "unresponsiveDetail": "You can keep waiting (it usually recovers when the synchronous work ends), or reload and recover. A last draft save is attempted before reloading; unsaved content relies on the automatic draft.",
+    "wait": "Wait",
+    "reload": "Reload and recover",
+    "crashTitle": "The page crashed",
+    "crashMessage": "The renderer process exited unexpectedly.",
+    "crashThrottledRecent": "To avoid a crash loop, automatic reload is paused for {seconds} seconds. You can reload manually; unsaved text is recovered from the draft.",
+    "crashThrottledWindow": "The page was auto-reloaded several times within 5 minutes, so automatic reload has stopped to avoid a crash loop. You can reload manually; unsaved text is recovered from the draft.",
+    "crashReload": "Reload and recover",
+    "crashWait": "Do not reload"
   }
 }

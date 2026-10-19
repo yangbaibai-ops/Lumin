@@ -73,14 +73,14 @@ async function handleExternalChange(payload: ExternalChangePayload): Promise<voi
   try {
     const body = i18n.global.t('editor.externalChangeBody')
     counts.lastBody = body
-    const choice = await ui.confirmTriple({
-      title: i18n.global.t('editor.externalChangeTitle'),
-      body,
-      confirmLabel: i18n.global.t('editor.externalChangeReload'),
-      // 「暂不」= 不改内容；主进程已记下这一版，不会再重复提示
-      altLabel: i18n.global.t('editor.externalChangeLater')
-    })
-    if (choice === 'confirm') {
+    /**
+     * 呈现方式：**主进程原生对话框**（用户口径，本轮追加）。
+     * 不改变判定/时机：仍然由主进程按版去重后推一次 `doc:externalChange`，这里只问一次；
+     * 换的只是"怎么弹"——`dialog.showMessageBox(win, …)` 的「重新加载 / 稍后」。
+     * 语义结果由 shared/nativeDialogs.ts 映射（0=reload，其余=later）。
+     */
+    const choice = await window.luminAPI.dialog.externalChange()
+    if (choice === 'reload') {
       // 读盘前先把编辑器里挂起的变更刷进 store：否则"重新加载"可能丢掉最后一拍输入
       // （用户点的是"重新加载"，本来就要求以磁盘为准）
       const ok = await files.reloadFromDisk()

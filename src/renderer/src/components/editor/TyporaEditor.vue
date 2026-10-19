@@ -17,6 +17,7 @@ import { useSettingsStore } from '../../stores/settings'
 import { useUiStore } from '../../stores/ui'
 import { useNotificationsStore } from '../../stores/notifications'
 import { perfFlag } from '../../lib/editor/perfProbe'
+import { PASTE_PLAIN_KIND } from '../../lib/safety'
 
 // ─── Typora 式所见即所得编辑器（开发文档「步骤 2」的高阶封装）────────────────
 // - Tiptap(ProseMirror) AST 内核 + tiptap-markdown 双向转换
@@ -80,10 +81,27 @@ const editor = useEditor({
     getRemoteImagePolicy: () => settings.remoteImages,
     // 粘贴护栏的可见提示（降级/拒绝/超时回滚）：走应用内通知中心，不静默吞内容
     onPasteNotice: (notice) => {
+      /**
+       * 用户自救入口：护栏接管了这次粘贴（拒绝/降级/超时回滚）时，给一个
+       * 「改用纯文本粘贴」按钮 —— 不解析 HTML/表格/公式，只插文字。
+       * 按钮的 payload 只带 kind（不带剪贴板内容：正文绝不落通知表）。
+       */
       void notifications.notify({
         level: notice.level,
         title: notice.title,
-        body: notice.body
+        body: notice.body,
+        ...(notice.plainPaste
+          ? {
+              actions: [
+                {
+                  id: 'plain',
+                  label: i18n.global.t('editor.pasteAsPlainText'),
+                  tone: 'primary' as const
+                }
+              ],
+              payload: { kind: PASTE_PLAIN_KIND }
+            }
+          : {})
       })
     }
   }),

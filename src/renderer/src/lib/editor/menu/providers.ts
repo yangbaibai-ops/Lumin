@@ -35,7 +35,13 @@ export function createDefaultProviders(
           variant: 'toolbar',
           items: pick(
             actions,
-            ['clipboard.copy', 'clipboard.cut', 'clipboard.paste', 'clipboard.selectAll'],
+            [
+              'clipboard.copy',
+              'clipboard.cut',
+              'clipboard.paste',
+              'clipboard.pastePlain',
+              'clipboard.selectAll'
+            ],
             {
               'clipboard.copy': { disabled: !ctx.hasSelection },
               'clipboard.cut': { disabled: !ctx.hasSelection }

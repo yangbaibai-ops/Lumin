@@ -27,6 +27,14 @@ export function forgetWindow(winId: number): void {
 }
 
 /**
+ * 某个窗口当前打开着的文档路径（null = 未打开/未命名）。
+ * 防卡死兜底按文档记录崩溃/无响应事故时用它（见 services/freezeGuard.ts）。
+ */
+export function docForWindow(winId: number): string | null {
+  return docOfWindow.get(winId) ?? null
+}
+
+/**
  * 当前所有窗口打开着的文档路径（去重）。
  * 用途：`lumin-file://` 协议的访问白名单 —— 只放行「工作区之内」或「某个已打开文档所在目录之内」
  * 的媒体文件（见 main/index.ts 的 protocol.handle）。

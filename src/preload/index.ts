@@ -58,7 +58,12 @@ const EVENT_CHANNELS = [
    * 这条是报告 §3.2 P0-1 的收口：设置曾经有"两处真相"（主进程直接写 kv、渲染层不知道），
    * 现在主进程只走 `services/appSettings.ts` 的写入口，写完广播这条。
    */
-  'settings:changed'
+  'settings:changed',
+  /**
+   * 主进程的防卡死通知（第一百一十轮）：无响应/恢复，以及重载前的 `flush-draft`。
+   * 渲染层只在收到 `flush-draft` 时落一次草稿并回 `freeze:draftAck`。
+   */
+  'app:freeze'
 ] as const
 
 const EVENT_CHANNEL_SET: ReadonlySet<string> = new Set(EVENT_CHANNELS)
@@ -281,6 +286,27 @@ const api: LuminAPI = {
     history: (limit) => ipcRenderer.invoke('links:history', limit),
     forget: (target) => ipcRenderer.invoke('links:forget', target),
     clear: () => ipcRenderer.invoke('links:clear')
+  },
+  /**
+   * 原生确认对话框：关闭未保存文件 / 外部修改。
+   * 由主进程 `dialog.showMessageBox(win, …)` 弹出（原生、父窗口绑定），
+   * 渲染层只拿语义结果（save/discard/cancel、reload/later）。
+   */
+  dialog: {
+    confirmClose: () => ipcRenderer.invoke('dialog:confirmClose'),
+    externalChange: () => ipcRenderer.invoke('dialog:externalChange')
+  },
+  /**
+   * 防卡死兜底：心跳单向、状态/文档风险按需 invoke。
+   * 通道名与主进程 `services/freezeGuard.ts`、`ipc.ts` 一一对应（tests/i18nAndIpc 会对账）。
+   */
+  freeze: {
+    heartbeat: (payload) => ipcRenderer.send('freeze:heartbeat', payload),
+    draftAck: () => ipcRenderer.send('freeze:draftAck'),
+    state: () => ipcRenderer.invoke('freeze:state'),
+    docRisk: (path) => ipcRenderer.invoke('freeze:docRisk', path),
+    clearDocRisk: (path) => ipcRenderer.invoke('freeze:clearDocRisk', path),
+    clipboardText: () => ipcRenderer.invoke('freeze:clipboardText')
   },
   events: {
     on: (channel, cb) => {

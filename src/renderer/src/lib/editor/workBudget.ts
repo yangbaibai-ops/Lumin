@@ -33,6 +33,17 @@ export const LONG_TASK_MS = 200
 export const HEAVY_WORK_COOLDOWN_MS = 2000
 /** 环形缓冲长度（只留最近的长任务，不记内容） */
 const RING = 20
+/** `freezes` 环形缓冲上限（见 freezeSentinel.ts；只记时刻/时长/线索，绝不记正文） */
+const FREEZE_RING = 10
+
+export interface WorkFreezeRecord {
+  /** 发现时刻（wall clock，ms） */
+  at: number
+  /** 相邻两次哨兵 tick 的实际间隔（ms，阻塞时长的上界） */
+  durationMs: number
+  /** 定位线索（最后一笔重活 / 长任务 / 调用栈摘要，不含正文） */
+  stackHint: string
+}
 
 export interface WorkBudgetStats {
   /** 记账次数 */
@@ -55,6 +66,10 @@ export interface WorkBudgetStats {
   lastLongStart: number
   /** 最近的长任务（最多 20 条，{start,dur}） */
   recent: Array<{ start: number; dur: number }>
+  /** 同步阻塞记录（哨兵发现 tick 迟到 >2s 时追加；见 freezeSentinel.ts） */
+  freezes: WorkFreezeRecord[]
+  /** 最近一次同步阻塞的时长（ms；0 = 还没记录过） */
+  lastFreezeMs: number
 }
 
 const stats: WorkBudgetStats = {
@@ -67,7 +82,9 @@ const stats: WorkBudgetStats = {
   longTasks: 0,
   lastLongMs: 0,
   lastLongStart: 0,
-  recent: []
+  recent: [],
+  freezes: [],
+  lastFreezeMs: 0
 }
 
 /** 只读统计（验收/诊断用；与 perfProbe 的 `window.__LPERF` 同一手法） */
@@ -184,6 +201,18 @@ export function installLongTaskSentinel(): () => void {
   } catch {
     return () => {}
   }
+}
+
+/**
+ * 记一条同步阻塞（哨兵调用；`window.__LWORK.freezes` 追加）。
+ *
+ * 这是用户在验收里要看的证据：`{at,durationMs,stackHint}`。只记时长/时刻/线索，
+ * 绝不记文档内容（大 base64 绝不进日志）。
+ */
+export function noteFreeze(record: WorkFreezeRecord): void {
+  stats.freezes.push(record)
+  if (stats.freezes.length > FREEZE_RING) stats.freezes.shift()
+  stats.lastFreezeMs = record.durationMs
 }
 
 /** 把统计挂到 window（诊断/验收；e2e 直接读 `window.__LWORK`） */

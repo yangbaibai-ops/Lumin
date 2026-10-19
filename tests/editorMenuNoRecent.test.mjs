@@ -23,6 +23,7 @@ const ALL_IDS = [
   'clipboard.copy',
   'clipboard.cut',
   'clipboard.paste',
+  'clipboard.pastePlain',
   'clipboard.selectAll',
   'table.rowAbove',
   'table.rowBelow',

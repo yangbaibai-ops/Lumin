@@ -34,6 +34,11 @@ export interface PasteNotice {
   level: 'info' | 'warning' | 'error'
   title: string
   body?: string
+  /**
+   * 这次提示要不要配一个「改用纯文本粘贴」按钮（用户自救入口）。
+   * 只在剪贴板里确实有纯文本时置位 —— 按了却没东西可插比没有按钮更糟。
+   */
+  plainPaste?: boolean
 }
 
 export interface PasteGuardOptions {
@@ -129,7 +134,7 @@ export const PasteFreezeGuard = Extension.create<PasteGuardOptions>({
      * 下一拍看门狗：同步粘贴超过预算且文档变了 ⇒ 回滚 + 提示。
      * 只对"放行给既有管线"的粘贴挂（降级/拒绝路径本身已经是同步可控的短路径）。
      */
-    const armWatchdog = (view: EditorView): void => {
+    const armWatchdog = (view: EditorView, plainPaste: boolean): void => {
       const before = view.state.doc
       const sel = view.state.selection
       const t0 = performance.now()
@@ -148,7 +153,8 @@ export const PasteFreezeGuard = Extension.create<PasteGuardOptions>({
           body: t('editor.pasteRollbackBody', {
             ms: Math.round(elapsed),
             budget: watchdogBudget()
-          })
+          }),
+          plainPaste
         })
       })
     }
@@ -179,7 +185,7 @@ export const PasteFreezeGuard = Extension.create<PasteGuardOptions>({
       }
 
       if (decision.kind === 'allow') {
-        armWatchdog(view)
+        armWatchdog(view, !!text)
         return false
       }
 
@@ -198,7 +204,8 @@ export const PasteFreezeGuard = Extension.create<PasteGuardOptions>({
             mb: (decision.scan.imageBytes / 1024 / 1024).toFixed(1),
             single: Math.round(PASTE_HARD_SINGLE_IMAGE_BYTES / 1024 / 1024),
             total: Math.round(PASTE_HARD_TOTAL_IMAGE_BYTES / 1024 / 1024)
-          })
+          }),
+          plainPaste: !!text
         })
         return true
       }
@@ -216,7 +223,10 @@ export const PasteFreezeGuard = Extension.create<PasteGuardOptions>({
             elements: decision.scan.elements,
             depth: decision.scan.maxDepth,
             truncated: decision.truncated ? t('editor.pasteTruncatedSuffix') : ''
-          })
+          }),
+          // 即使已降级成纯文本，也保留入口：fallback 可能因长度上限被截断
+          // （PASTE_FALLBACK_TEXT_CHARS），用户可以用它把**完整**剪贴板文本再插一次。
+          plainPaste: true
         })
         return true
       }
@@ -233,7 +243,8 @@ export const PasteFreezeGuard = Extension.create<PasteGuardOptions>({
         body: t('editor.pasteDegradedBody', {
           n: decision.omittedImages,
           mb: (decision.omittedBytes / 1024 / 1024).toFixed(1)
-        })
+        }),
+        plainPaste: !!text
       })
       return true
     }

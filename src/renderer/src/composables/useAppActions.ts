@@ -12,6 +12,8 @@ import { openExternalFile } from '../lib/openFile'
 import { confirmDiscardIfDirty, resolveCloseIntent } from '../lib/dialog'
 import { registerNotificationActions } from '../lib/notificationActions'
 import { SAVE_CONFLICT_KIND } from '../lib/saveConflict'
+import { DOC_SAFE_MODE_KIND, PASTE_PLAIN_KIND } from '../lib/safety'
+import { pastePlainIntoEditor } from '../lib/plainPaste'
 import { ctrlFTarget, type CtrlFTarget } from '../lib/ctrlFRoute'
 import { installPointerRegionTracker, pointerIsMoreRecentThanFocus } from '../lib/pointerRegion'
 import { exportFormatByAction } from '../../../shared/exportFormats'
@@ -188,6 +190,11 @@ export function useAppActions(): {
         break
       // 「打字机模式」这一档已整体摘掉（菜单项 + Ctrl+Shift+T + 状态字段）：
       // 它此前只是一句「功能待接入」的提示，留着等于承诺一个不存在的能力（审计 §7）。
+      case 'paste-plain':
+        // 粘贴为纯文本（Ctrl+Shift+V / 编辑菜单 / 右键菜单 / 粘贴护栏提示按钮）：
+        // 唯一实现在 lib/plainPaste.ts —— 不解析 HTML、表格、公式或 Markdown。
+        void pastePlainIntoEditor()
+        break
       case 'settings':
         ui.openSettings()
         break
@@ -311,6 +318,25 @@ export function useAppActions(): {
       // `discardChanges`：用户在卡片上**明确点过**"放弃我的改动"，这里不再问第二次
       await files.openPath(path, { discardChanges: true })
     }
+  })
+
+  /**
+   * 粘贴护栏提示上的「改用纯文本粘贴」。
+   * 按钮本身不带剪贴板内容（正文绝不进通知表），点的时候重新读一次剪贴板。
+   */
+  registerNotificationActions(PASTE_PLAIN_KIND, async (_n, actionId) => {
+    if (actionId === 'plain') await pastePlainIntoEditor()
+  })
+
+  /**
+   * 连续两次崩溃/无响应后的安全模式提示（见 stores/files.openPath）：
+   * 用户明确点「仍然以富文本打开」⇒ 清零这份文档的风险记录并切回实时渲染。
+   */
+  registerNotificationActions(DOC_SAFE_MODE_KIND, async (n, actionId) => {
+    if (actionId !== 'rich') return
+    const path = String(n.payload?.path ?? '')
+    if (path) await window.luminAPI.freeze.clearDocRisk(path).catch(() => {})
+    ui.editorMode = 'wysiwyg'
   })
 
   const offMenu = window.luminAPI.events.on('menu:action', (payload) => handleMenu(String(payload)))

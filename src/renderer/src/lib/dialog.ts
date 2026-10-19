@@ -81,14 +81,17 @@ export async function resolveCloseIntent(input: {
   ) {
     return 'proceed'
   }
-  const ui = useUiStore()
-  const choice = await ui.confirmTriple({
-    title: i18n.global.t('close.saveTitle'),
-    body: i18n.global.t('close.saveBody'),
-    confirmLabel: i18n.global.t('common.save'),
-    altLabel: i18n.global.t('close.dontSave')
-  })
-  if (choice === 'confirm') return 'save'
-  if (choice === 'alt') return 'discard'
-  return 'cancel'
+  /**
+   * 呈现方式：**主进程原生对话框**（用户口径，本轮追加）。
+   * 判定条件/时机一个字没动 —— `planClosePrompt` 仍然先决定"要不要问"，
+   * 这里只把"怎么弹"从自绘 `ui.confirmTriple` 换成 `dialog.showMessageBox(win, …)`。
+   * 文案由主进程语言包取（`close.saveTitle` / `close.saveBody`），按钮语义映射见
+   * shared/nativeDialogs.ts；渲染层拿到的直接是 save / discard / cancel。
+   */
+  try {
+    return await window.luminAPI.dialog.confirmClose()
+  } catch {
+    // 主进程不可用（极端情况）：最安全的出口是"别关窗、别丢内容"
+    return 'cancel'
+  }
 }

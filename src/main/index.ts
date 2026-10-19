@@ -37,6 +37,7 @@ import { planOpenRequest } from './openRequest'
 import { mainT } from './i18n'
 import { registerIpc, attachCloseGuard } from './ipc'
 import * as spellcheck from './services/spellcheck'
+import * as freezeGuard from './services/freezeGuard'
 import { isServableMedia } from './fileOps'
 import * as links from './services/links'
 import { migrateLegacyStores } from './store'
@@ -384,6 +385,9 @@ function createWindow(options: WindowOpenOptions = {}): BrowserWindow {
   spellcheck.attachSpellcheckContextMenu(mainWindow.webContents)
 
   attachCloseGuard(mainWindow)
+  // 全局防卡死兜底：心跳巡检 + unresponsive/responsive/render-process-gone 事件。
+  // 每个窗口一份状态（见 services/freezeGuard.ts），窗口关闭自动清理。
+  freezeGuard.attachFreezeGuard(mainWindow)
 
   // 开发环境：转发渲染进程控制台日志，便于排查（Electron 39 新签名：单个 Event 对象）
   if (is.dev) {
