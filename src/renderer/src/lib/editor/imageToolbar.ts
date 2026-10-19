@@ -1146,6 +1146,14 @@ export const ImageSourceUi = Extension.create({
      * 单据它挡不住落成**之后** PM `DOMObserver` 读回那一帧的重画）。
      */
     let settleStampAt = 0
+    /**
+     * 收尾窗口关闭后的**补画**定时器（第一百四十轮）。
+     * 收尾窗口内（拖动期 / 复验期 / 读回尾巴）`update()` 一律让位不画；窗口关闭时若**没有新事务**
+     * 就再也不会按最终模型重画 ⇒ 屏幕上留着拖动期那一份带。逐帧实测（拖到表格下方再松手）：
+     * 模型落成 `515-713`，带仍是拖动期那 10 条（覆盖到 `515-880`）⇒ 松手后**多出**一截高亮，
+     * 直到下一次事务（失焦/回焦、点一下）才按模型重画 —— 正是用户"抬起后多出一块、回焦才对"。
+     */
+    let settleRepaintTimer: ReturnType<typeof setTimeout> | 0 = 0
     /** "最近一次收尾"还能算作"这次收尾的尾巴"的时限（PM `flushSoon` 是 ~20ms 定时器，200ms 足够骑过一串） */
     const SETTLE_STAMP_MS = 200
     /** 现在是否处于"某次收尾尚未稳定"的窗口（拖动期 / 复验期 / 读回尾巴） */
@@ -1379,6 +1387,41 @@ export const ImageSourceUi = Extension.create({
          * 重画一次带 —— 这正是"收尾尾巴上的可见抖动"。有印记后，那三处按 `closeWindowOpen()` 让位。
          */
         settleStampAt = Date.now()
+        /**
+         * 第一百四十轮：收尾窗口关闭时**立刻按最终模型补画一次**（`closeWindowOpen()` 只约束
+         * `update()` 那几条被动路径，这里是我们自己的收尾出口，不受它拦）。真因见
+         * `settleRepaintTimer` 的说明：窗口内不画、窗口关闭后又没有新事务 ⇒ 带停在拖动期那一份。
+         * `boxDrag != null`（新手势已经开始）时让位。
+         */
+        if (boxDrag == null && view.dom?.isConnected) {
+          settledKey = null
+          try {
+            paintSettledSel(view)
+            view.dom.setAttribute('data-img-settle-repaint', 'direct')
+          } catch {
+            clearSelBands(view)
+            view.dom.setAttribute('data-img-settle-repaint', 'fail')
+          }
+        }
+        /**
+         * 第一百四十轮：收尾窗口关闭后**按最终模型补画一次**（见 `settleRepaintTimer` 的说明）。
+         * 定时器只在"这次收尾之后确实没有新事务"时才真正画；`boxDrag != null`（新手势）直接让位。
+         * 幂等：`settledKey` 置空后 `paintSettledSel` 按最终 `from/to` 画，与上一帧相同就只做一次 DOM 重建。
+         */
+        if (settleRepaintTimer) clearTimeout(settleRepaintTimer)
+        settleRepaintTimer = setTimeout(() => {
+          settleRepaintTimer = 0
+          if (!view.dom?.isConnected || boxDrag != null) return
+          if (Date.now() - settleStampAt < SETTLE_STAMP_MS) return
+          settledKey = null
+          try {
+            paintSettledSel(view)
+            view.dom.setAttribute('data-img-settle-repaint', 'timer')
+          } catch {
+            clearSelBands(view)
+            view.dom.setAttribute('data-img-settle-repaint', 'fail')
+          }
+        }, SETTLE_STAMP_MS + 40)
       }
       /**
        * 落定用的 `TextSelection`：**先按原样建**，只有在 PM 把端点修掉（或干脆抛）时才吸附。
@@ -2437,7 +2480,15 @@ export const ImageSourceUi = Extension.create({
       /**
        * 把一条带按 x **逐片**判覆盖：只返回"没被盖住"的那些 x 区间（空数组 = 整条都看不见）。
        * 这样"中列被盖住、两端露着"时，两端照样留在我们的层里（不再整条撤掉）。
+       *
+       * ⚠️ 第一百四十轮（用户报障：**表格里按下时和抬起后选中样式不一致**）：
+       * 撤掉的片必须**逐片**记下来（`removedSlices`），不能用"整条带是否被完整保留"反推 ——
+       * 一条带中间被 `code` 这类不透明块切成两半时，两半都"完整保留"，旧判据于是得出
+       * `dropped=false` ⇒ **没有把那一小段交回原生**。实测（表格第 2 行 `` `Ctrl/⌘ K` ``）：
+       * 带的 x 是 `[…,633] ∪ [717,…]`，中间 641~714 的代码片既没有带、原生又被关着 ⇒
+       * 松手撤掉兜底高亮后那一段**完全没有选中样式**。逐片记账后 `dropped=true`，原生接管这一片。
        */
+      const removedSlices: RectBox[] = []
       const splitByCover = (r: RectBox): RectBox[] => {
         const w = r.right - r.left
         if (!(w > 0)) return []
@@ -2454,19 +2505,25 @@ export const ImageSourceUi = Extension.create({
           if (last && Math.abs(last.r - x0) < 0.01) last.r = x1
           else keep.push({ l: x0, r: x1 })
         }
+        // 撤掉的部分 = 保留区间在 [r.left, r.right] 里的补集（逐片记录，见上面说明）
+        let cursor = r.left
+        for (const k of keep) {
+          if (k.l - cursor > 0.5) {
+            removedSlices.push({ left: cursor, right: k.l, top: r.top, bottom: r.bottom })
+          }
+          cursor = Math.max(cursor, k.r)
+        }
+        if (r.right - cursor > 0.5) {
+          removedSlices.push({ left: cursor, right: r.right, top: r.top, bottom: r.bottom })
+        }
         return keep.map((k) => ({ left: k.l, right: k.r, top: r.top, bottom: r.bottom }))
       }
       const keptRects: RectBox[] = []
       for (const r of drawn) keptRects.push(...splitByCover(r))
-      /** 被撤掉的部分（交回原生）：用来判"这些片段由原生负责" */
-      const hiddenRects = drawn.filter(
-        (r) =>
-          r.right - r.left > 0.5 &&
-          !keptRects.some((k) => k.left <= r.left + 0.5 && k.right >= r.right - 0.5)
-      )
       /** 我们这一帧真正留着画的矩形 */
       const rendered = keptRects.length ? keptRects : []
-      const dropped = hiddenRects.length > 0
+      /** 有任何一片被不透明块盖住 ⇒ 这一片交回原生（不能只看"整条带是否被完整保留"） */
+      const dropped = removedSlices.length > 0
       // 重画：把"被盖住的那些片"从层里去掉，留下的片保持原位（DOM 子节点与 `drawn` 一一对应）
       try {
         const frag2 = document.createDocumentFragment()
@@ -2498,7 +2555,7 @@ export const ImageSourceUi = Extension.create({
       setSelNative(view, dropped || blockMathRects.length > 0)
       const handledByNative = (f: SelFrag): boolean => {
         return f.rects.some((r) =>
-          hiddenRects.some(
+          removedSlices.some(
             (h) =>
               h.left <= r.left + 0.5 &&
               h.right >= r.right - 0.5 &&
@@ -2506,12 +2563,26 @@ export const ImageSourceUi = Extension.create({
           )
         )
       }
+      /**
+       * ⚠️ 第一百四十轮（用户报障：**按下时 / 抬起后选中样式不一致**）真因之一：
+       * 兜底高亮（CSS Highlight `lumin-img-drag`）与我们的带**同色叠加**。
+       * 旧判据是"片段矩形必须**完整**被带包住"，容差只有 0.5px ⇒ 实测表格里
+       * "首次唤起搜索面板（" 的右缘比带多出 **2.4px**（带止于 633.23、文字到 635.63），
+       * 于是**整段**又被加进 Highlight；它在带上覆盖了 143px ⇒ 同色叠两层（像素 206,208,210），
+       * 松手时 `clearTempPaint` 撤掉高亮 ⇒ 同一片立刻变浅（229,230,231）= 用户看到的"按下 / 抬起不一致"。
+       * 现在给 x 4px / y 2px 容差：真正的"几乎被盖住"不再补第二层；只有确实没盖到的片段才进兜底。
+       * 容差远小于一个字宽（正文 14px+），不会把"完全没画"的片段误判成已画。
+       */
+      const SEL_COVER_TOL_X = 4
+      const SEL_COVER_TOL_Y = 2
       const covered = (r: RectBox): boolean =>
         rendered.some(
           (b) =>
-            b.left <= r.left + 0.5 &&
-            b.right >= r.right - 0.5 &&
-            Math.min(b.bottom, r.bottom) - Math.max(b.top, r.top) > 0
+            b.left <= r.left + SEL_COVER_TOL_X &&
+            b.right >= r.right - SEL_COVER_TOL_X &&
+            Math.min(b.bottom, r.bottom) - Math.max(b.top, r.top) > 0 &&
+            b.top <= r.top + SEL_COVER_TOL_Y &&
+            b.bottom >= r.bottom - SEL_COVER_TOL_Y
         )
       let missFrag = 0
       const missRanges: Range[] = []
@@ -4211,6 +4282,10 @@ export const ImageSourceUi = Extension.create({
               if (boxSettleRaf != null) {
                 window.cancelAnimationFrame(boxSettleRaf)
                 boxSettleRaf = null
+              }
+              if (settleRepaintTimer) {
+                clearTimeout(settleRepaintTimer)
+                settleRepaintTimer = 0
               }
               editorView.dom.removeAttribute('data-img-drag-edge')
               if (pendingDom === editorView.dom) pendingDom = null
