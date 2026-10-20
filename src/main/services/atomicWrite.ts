@@ -22,6 +22,7 @@
 import fs from 'fs/promises'
 import path from 'path'
 import { randomUUID } from 'crypto'
+import { beginAtomicWrite, endAtomicWrite } from './writeDrain.ts'
 
 /** 临时文件后缀（与 `shared/tempName.ts` 的 `TEMP_SUFFIX_RE` 同源，测试会对照） */
 export const TMP_SUFFIX = '.lumin-tmp'
@@ -63,13 +64,32 @@ export async function atomicWrite(
   }
 
   const tmp = tempPathFor(filePath)
+  /**
+   * 清理必须放在 `finally` 里，而不是只放在 `catch` 里（用户报障：D 盘出现
+   * `数学公式示例.md.be9947e7.lumin-tmp` 一直留到下次启动）。
+   *
+   * 只 catch 的话有两条漏法：
+   *   1. **进程在 fsync/rename 途中退出**（关窗/退出不等待保存）——`catch` 根本没机会跑；
+   *   2. `write` / `fsync` / `rename` 之外的异常（例如调用方在写入后自己抛）同样会绕过。
+   * `finally` 保证"只要这个函数拿到了控制权回来"就一定收拾临时文件；rename 成功后临时名
+   * 已经不存在，`fs.rm(force)` 是 no-op。错误仍然原样冒泡给调用方（不静默）。
+   *
+   * 注意：**同步退出**（`app.exit` / 被 taskkill）连 finally 也跑不到 —— 那一路由主进程退出前
+   * 等待在飞的原子写（services/writeDrain.ts）+ 启动清扫兜底。
+   */
+  beginAtomicWrite()
   try {
     await write(tmp)
     await fsyncPath(tmp)
     await fs.rename(tmp, filePath)
-  } catch (err) {
-    await fs.rm(tmp, { force: true }).catch(() => {})
-    throw err
+  } finally {
+    await fs.rm(tmp, { force: true }).catch((err: NodeJS.ErrnoException) => {
+      // 清理失败不能污染成功结果，但也不能完全静默（否则又回到"用户看见残留、日志里没有"）
+      if (err?.code !== 'ENOENT') {
+        console.log(`[atomicWrite] cleanup failed: ${err?.code || err?.message || 'unknown'}`)
+      }
+    })
+    endAtomicWrite()
   }
   // rename 之后再 stat：此刻磁盘上的就是刚写进去的那一份
   const st = await fs.stat(filePath)

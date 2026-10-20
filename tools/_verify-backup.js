@@ -278,7 +278,16 @@ async function main() {
     // ── ⑩ 打开工作区的第一件事：清掉崩溃残留的写盘临时文件（审计 §2 P2）─────
     // 夹具里那个 `stale.md.deadbeef.lumin-tmp` 是**故意**放的：它模拟崩溃后残留的
     // 全文副本（隐私 + 磁盘占用），`workspace:setRoot` 会扫掉它。
+    //
+    // ⚠️ 清扫口径已收紧（用户报障：保存在退出时残留 `.lumin-tmp` 之后）：只删
+    // 「本应用命名 + 年龄 > 10 分钟 + 同目录有对应目标文件」。所以这里要把夹具做成
+    // **真的陈旧且目标还在**，否则它按新口径不该被删（而"不删"正是我们要保住的行为）。
+    // 目标在断言完成后立刻移走，避免影响下面快照的条数（快照会收录 `stale.md`）。
     const TMP = path.join(WS, 'stale.md.deadbeef.lumin-tmp')
+    const STALE_TARGET = path.join(WS, 'stale.md')
+    fs.writeFileSync(STALE_TARGET, '目标文件\n', 'utf-8')
+    const oldTime = new Date(Date.now() - 20 * 60 * 1000)
+    fs.utimesSync(TMP, oldTime, oldTime)
     await ev(
       `(async () => { await window.luminAPI.workspace.setRoot(${JSON.stringify(WS)}); return 'ok' })()`
     )
@@ -292,6 +301,12 @@ async function main() {
       swept,
       `残留在 ${path.relative(WS, TMP)} 里 = ${!swept}`
     )
+    report.check(
+      'sweep-keeps-the-target-file',
+      fs.existsSync(STALE_TARGET),
+      '清扫只许删临时文件，目标文件必须原样在'
+    )
+    fs.rmSync(STALE_TARGET, { force: true })
 
     // ── ⑪ 工作区快照：条数 / 跳过的统计 ──────────────────────────────────────
     // 重新放一个临时文件：要验的是"快照会跳过它"，而扫除已经在上一步把旧的清掉了

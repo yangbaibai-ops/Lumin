@@ -2,7 +2,6 @@
 import fs from 'fs/promises'
 import path from 'path'
 import { shell } from 'electron'
-import type { Dirent } from 'fs'
 import { pathToFileURL } from 'url'
 import { db } from './services/database'
 import { isInside, sameResolvedPath } from './pathGuard'
@@ -316,35 +315,13 @@ export async function importImage(source: string, dir: string, baseName: string)
 export { TEMP_SUFFIX_RE }
 
 /**
- * 清理目录树里残留的写盘临时文件（打开工作区时跑一次）。
+ * 清理目录树里残留的写盘临时文件（打开/恢复工作区时跑一次）。
  *
- * 为什么必须有：崩溃/断电时临时文件不会被 catch 分支清掉，而它里面是**用户全文的副本**
- * （隐私 + 磁盘占用）。以前靠"下次写同一个文件时被覆盖"自愈 —— 改成随机名之后那条路没了，
- * 必须显式扫。跳过隐藏目录与 node_modules（它们不该有我们的临时文件，也不该被慢扫）。
+ * 实现搬到了 `services/tempSweep.ts`（零 electron 依赖，`node --test` 可直接钉住
+ * "只删本应用创建 + 年龄 > 10 分钟 + 同目录有目标"的选择性）。这里保留同名导出，
+ * 既有调用点（`ipc.ts` 的 `sweepTempFiles`）不用改。
  */
-export async function cleanStaleTempFiles(root: string): Promise<number> {
-  let removed = 0
-  const walk = async (dir: string): Promise<void> => {
-    let entries: Dirent[]
-    try {
-      entries = await fs.readdir(dir, { withFileTypes: true })
-    } catch {
-      return
-    }
-    for (const e of entries) {
-      const p = path.join(dir, e.name)
-      if (e.isDirectory()) {
-        if (e.name.startsWith('.') || e.name === 'node_modules') continue
-        await walk(p)
-      } else if (TEMP_SUFFIX_RE.test(e.name)) {
-        await fs.rm(p, { force: true }).catch(() => {})
-        removed += 1
-      }
-    }
-  }
-  await walk(root)
-  return removed
-}
+export { cleanStaleTempFiles } from './services/tempSweep'
 
 export async function exists(p: string): Promise<boolean> {
   try {

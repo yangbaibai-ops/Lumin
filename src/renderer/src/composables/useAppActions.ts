@@ -45,6 +45,22 @@ export async function newDocumentWindow(): Promise<void> {
   else window.luminAPI.app.newWindow()
 }
 
+/**
+ * 本窗口的「动作 / 事件订阅」只装一次。
+ *
+ * 为什么必须有这个闸（用户报障的真根因）：`useAppActions()` 会被**两个**组件各调一次 ——
+ * `App.vue`（第 47 行）与常驻挂载的 `CommandPalette.vue`（它也要拿 `handleMenu` 组命令表）。
+ * 这个函数此前把所有副作用（`app:before-close` / `menu:action` / `settings:changed` /
+ * 主题媒体查询 / 指针区域 / 通知动作）都写在函数体里，于是每个订阅都注册了**两份**：
+ *   * 实测：一次 Ctrl+W 收到两次 `app:before-close` → 两个 `requestClose` 同时弹框/保存；
+ *   * 第二个保存的 `file:write` 在窗口销毁后才落地，临时文件来不及 rename/清理 ——
+ *     这正是 D 盘残留 `数学公式保存后 .lumin-tmp` 的来源（见 `main/services/writeDrain.ts`）。
+ *
+ * 修法：建函数（返回 handleMenu/requestClose）保持无副作用，只有**第一次**调用安装订阅；
+ * 卸载时复位（正常退出时不会走到，但热更新/测试里要能重装）。
+ */
+let appActionListenersInstalled = false
+
 export function useAppActions(): {
   handleMenu: (action: string) => void
   requestClose: () => void
@@ -305,82 +321,88 @@ export function useAppActions(): {
     if (closeNow) await window.luminAPI.app.confirmClose()
   }
 
-  // ── 事件绑定 ──
-  /**
-   * 外部改动冲突通知卡片上的两个按钮（审计 §2 P1）。
-   *
-   * 为什么是通知而不是把确认框扩成三选一：确认框只有两键，而冲突有三条出路
-   * （覆盖 → 手动保存时问的那一次；另存为 / 重新打开 → 这里）。通知卡支持按钮，
-   * 而且它会一直留在通知中心里 —— 用户什么时候决定都行，不会因为对话框被关掉而丢。
-   */
-  registerNotificationActions(SAVE_CONFLICT_KIND, async (n, actionId) => {
-    const path = String(n.payload?.path ?? '')
-    if (actionId === 'save-as') {
-      await files.saveAs()
-      return
+  // ── 事件绑定（每个窗口只装一次，见文件上方 `appActionListenersInstalled` 的说明）──
+  if (!appActionListenersInstalled) {
+    appActionListenersInstalled = true
+    /**
+     * 外部改动冲突通知卡片上的两个按钮（审计 §2 P1）。
+     *
+     * 为什么是通知而不是把确认框扩成三选一：确认框只有两键，而冲突有三条出路
+     * （覆盖 → 手动保存时问的那一次；另存为 / 重新打开 → 这里）。通知卡支持按钮，
+     * 而且它会一直留在通知中心里 —— 用户什么时候决定都行，不会因为对话框被关掉而丢。
+     */
+    registerNotificationActions(SAVE_CONFLICT_KIND, async (n, actionId) => {
+      const path = String(n.payload?.path ?? '')
+      if (actionId === 'save-as') {
+        await files.saveAs()
+        return
+      }
+      if (actionId === 'reload' && path) {
+        // `discardChanges`：用户在卡片上**明确点过**"放弃我的改动"，这里不再问第二次
+        await files.openPath(path, { discardChanges: true })
+      }
+    })
+
+    /**
+     * 粘贴护栏提示上的「改用纯文本粘贴」。
+     * 按钮本身不带剪贴板内容（正文绝不进通知表），点的时候重新读一次剪贴板。
+     */
+    registerNotificationActions(PASTE_PLAIN_KIND, async (_n, actionId) => {
+      if (actionId === 'plain') await pastePlainIntoEditor()
+    })
+
+    /**
+     * 连续两次崩溃/无响应后的安全模式提示（见 stores/files.openPath）：
+     * 用户明确点「仍然以富文本打开」⇒ 清零这份文档的风险记录并切回实时渲染。
+     */
+    registerNotificationActions(DOC_SAFE_MODE_KIND, async (n, actionId) => {
+      if (actionId !== 'rich') return
+      const path = String(n.payload?.path ?? '')
+      if (path) await window.luminAPI.freeze.clearDocRisk(path).catch(() => {})
+      ui.editorMode = 'wysiwyg'
+    })
+
+    const offMenu = window.luminAPI.events.on('menu:action', (payload) =>
+      handleMenu(String(payload))
+    )
+    // `app:before-close` 的 payload 带 `reason`（window / quit / session-end）：
+    // 系统关机（session-end）不弹「是否保存更改？」—— 没人能点那个按钮，见 shared/closePrompt.ts
+    const offClose = window.luminAPI.events.on(
+      'app:before-close',
+      (payload) => void requestClose((payload ?? {}) as { reason?: CloseReason })
+    )
+    /**
+     * 主进程改了设置（原生菜单的主题项、备份目录选择…）→ 就地 patch store。
+     *
+     * 报告 §3.2 P0-1：设置此前是"两处真相"，主进程写 kv 不通知渲染层 ⇒ 界面显示旧值到重启。
+     * 现在主进程只走 `services/appSettings.ts` 的写入口并广播这条通道（preload 白名单里已登记，
+     * `tests/i18nAndIpc.test.mjs` 双向对账），这里订阅它即可 —— 不再需要"每个调用点自己记得同步"。
+     */
+    const offSettings = window.luminAPI.events.on('settings:changed', (payload) => {
+      if (payload && typeof payload === 'object') settings.applyRemote(payload as AppSettings)
+    })
+    const media = window.matchMedia('(prefers-color-scheme: dark)')
+    const onSystemTheme = (): void => {
+      if (settings.theme === 'auto') settings.applyAll()
     }
-    if (actionId === 'reload' && path) {
-      // `discardChanges`：用户在卡片上**明确点过**"放弃我的改动"，这里不再问第二次
-      await files.openPath(path, { discardChanges: true })
-    }
-  })
+    media.addEventListener('change', onSystemTheme)
 
-  /**
-   * 粘贴护栏提示上的「改用纯文本粘贴」。
-   * 按钮本身不带剪贴板内容（正文绝不进通知表），点的时候重新读一次剪贴板。
-   */
-  registerNotificationActions(PASTE_PLAIN_KIND, async (_n, actionId) => {
-    if (actionId === 'plain') await pastePlainIntoEditor()
-  })
+    /**
+     * 指针区域跟踪（Ctrl+F 分流用，见 `lib/ctrlFRoute.ts` 与 `lib/pointerRegion.ts`）：
+     * 装上之后"最近一次指针交互在侧栏还是编辑区"就有据可查 ——
+     * 只看"焦点 + 此刻悬停"分不清 B 段（先动鼠标再点正文）与 D 段（先点正文再动鼠标）。
+     */
+    const offPointerRegion = installPointerRegionTracker()
 
-  /**
-   * 连续两次崩溃/无响应后的安全模式提示（见 stores/files.openPath）：
-   * 用户明确点「仍然以富文本打开」⇒ 清零这份文档的风险记录并切回实时渲染。
-   */
-  registerNotificationActions(DOC_SAFE_MODE_KIND, async (n, actionId) => {
-    if (actionId !== 'rich') return
-    const path = String(n.payload?.path ?? '')
-    if (path) await window.luminAPI.freeze.clearDocRisk(path).catch(() => {})
-    ui.editorMode = 'wysiwyg'
-  })
-
-  const offMenu = window.luminAPI.events.on('menu:action', (payload) => handleMenu(String(payload)))
-  // `app:before-close` 的 payload 带 `reason`（window / quit / session-end）：
-  // 系统关机（session-end）不弹「是否保存更改？」—— 没人能点那个按钮，见 shared/closePrompt.ts
-  const offClose = window.luminAPI.events.on(
-    'app:before-close',
-    (payload) => void requestClose((payload ?? {}) as { reason?: CloseReason })
-  )
-  /**
-   * 主进程改了设置（原生菜单的主题项、备份目录选择…）→ 就地 patch store。
-   *
-   * 报告 §3.2 P0-1：设置此前是"两处真相"，主进程写 kv 不通知渲染层 ⇒ 界面显示旧值到重启。
-   * 现在主进程只走 `services/appSettings.ts` 的写入口并广播这条通道（preload 白名单里已登记，
-   * `tests/i18nAndIpc.test.mjs` 双向对账），这里订阅它即可 —— 不再需要"每个调用点自己记得同步"。
-   */
-  const offSettings = window.luminAPI.events.on('settings:changed', (payload) => {
-    if (payload && typeof payload === 'object') settings.applyRemote(payload as AppSettings)
-  })
-  const media = window.matchMedia('(prefers-color-scheme: dark)')
-  const onSystemTheme = (): void => {
-    if (settings.theme === 'auto') settings.applyAll()
+    onBeforeUnmount(() => {
+      appActionListenersInstalled = false
+      offMenu()
+      offClose()
+      offSettings()
+      offPointerRegion()
+      media.removeEventListener('change', onSystemTheme)
+    })
   }
-  media.addEventListener('change', onSystemTheme)
-
-  /**
-   * 指针区域跟踪（Ctrl+F 分流用，见 `lib/ctrlFRoute.ts` 与 `lib/pointerRegion.ts`）：
-   * 装上之后"最近一次指针交互在侧栏还是编辑区"就有据可查 ——
-   * 只看"焦点 + 此刻悬停"分不清 B 段（先动鼠标再点正文）与 D 段（先点正文再动鼠标）。
-   */
-  const offPointerRegion = installPointerRegionTracker()
-
-  onBeforeUnmount(() => {
-    offMenu()
-    offClose()
-    offSettings()
-    offPointerRegion()
-    media.removeEventListener('change', onSystemTheme)
-  })
 
   return { handleMenu, requestClose }
 }

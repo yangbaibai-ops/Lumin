@@ -55,6 +55,12 @@ import { initUpdater } from './services/updater'
 import { startAutoBackup } from './services/dbBackup'
 import { gcDrafts } from './drafts'
 import { beginShutdown } from './services/shutdown'
+import {
+  drainAtomicWrites,
+  markQuitDrained,
+  pendingAtomicWrites,
+  quitDrainComplete
+} from './services/writeDrain'
 import { bindWindowScope, scopeOfSlot } from './services/windowScope'
 import * as pathGrants from './services/pathGrants'
 import { defaultSettings } from '../shared/defaults'
@@ -171,7 +177,7 @@ let whenReadyEnsureDb: (() => Promise<void>) | null = null
 function readyForDb(): Promise<void> {
   return whenReadyEnsureDb ? whenReadyEnsureDb() : Promise.resolve()
 }
-app.on('before-quit', () => {
+app.on('before-quit', (event) => {
   session.markQuitting()
   beginShutdown('before-quit')
   // 退出前把排队的全文索引落盘（索引是节流的，见 services/database.ts 的 scheduleFtsIndex）。
@@ -189,6 +195,40 @@ app.on('before-quit', () => {
   } catch {
     /* 同上：清理失败不拦住退出 */
   }
+  /**
+   * ─── 退出**必须等在飞的原子写收尾**（用户报障：保存后残留 `<doc>.<8hex>.lumin-tmp`）──
+   *
+   * 现场：关窗确认点「保存」后，窗口销毁 → 进程退出，而另一次（重复注册导致的）保存在
+   * 退出瞬间才发出 `file:write`：临时文件已经写出，`fsync/rename/finally 清理` 没来得及跑，
+   * 于是 D 盘留下 `.lumin-tmp`，直到下次启动才被扫掉。
+   *
+   * 做法：`before-quit` 先 `preventDefault()`，等 `drainAtomicWrites()`（计数归零 + 安静
+   * `QUIT_DRAIN_IDLE_MS`，最多 `QUIT_DRAIN_TIMEOUT_MS`）再 `app.quit()`。第二次进入时
+   * `quitDrainComplete()` 为真，直接放行 —— 否则每次 `app.quit()` 都会被自己拦住，退不掉。
+   *
+   * 用户在关窗确认里点「取消」时，`main/ipc.ts` 的 `app:cancelClose` 会 `resetQuitDrain()`：
+   * 那一轮退出作废，下一次必须重新排空。
+   */
+  if (quitDrainComplete()) return
+  event.preventDefault()
+  const pending = pendingAtomicWrites()
+  if (pending > 0) console.log(`[quit] waiting for ${pending} in-flight write(s)`)
+  void drainAtomicWrites().then((r) => {
+    if (!r.ok) console.log(`[quit] drain timeout, ${r.pending} write(s) still pending`)
+    markQuitDrained()
+    app.quit()
+  })
+})
+
+/**
+ * `will-quit` 兜底：`before-quit` 放行之后仍可能有写冒出来（例如窗口 `closed` 瞬间
+ * 到达的 IPC）。这里再拦一次，等它收尾后 `app.exit()` —— 已经没有任何窗口，直接退出即可。
+ */
+app.on('will-quit', (event) => {
+  if (pendingAtomicWrites() === 0) return
+  event.preventDefault()
+  console.log(`[quit] will-quit drain, ${pendingAtomicWrites()} write(s) pending`)
+  void drainAtomicWrites(2000).then(() => app.exit(0))
 })
 
 /**

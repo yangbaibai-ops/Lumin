@@ -72,6 +72,7 @@ import {
 } from '../shared/closeGuard'
 import { beginShutdown } from './services/shutdown'
 import { serializeWrite } from './services/writeQueue'
+import { resetQuitDrain } from './services/writeDrain'
 import type {
   AppSettings,
   EpubMeta,
@@ -577,6 +578,12 @@ export function registerIpc(slots: SlotRegistry): void {
     closeGuardState.delete(win)
     // 取消退出：`quitting` 是"窗口槽位要不要保留"的判据，留着会让之后的单独关窗被误当成整体退出
     session.clearQuitting()
+    /**
+     * 这一轮退出被用户取消了 ⇒ 「退出前已排空原子写」的闸必须复位。
+     * 不复位的话，下一次 Ctrl+Q 会因为 `quitDrainComplete()` 直接放行 ——
+     * 恰好那一次有写在飞时，就又回到"进程先走、临时文件留下"的老问题。
+     */
+    resetQuitDrain()
   })
   /**
    * 关窗流程里的心跳：渲染层还在落盘 → 兜底计时器重置（审计 §2 P1「2.5s 强杀」）。
