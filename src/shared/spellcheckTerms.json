@@ -1,0 +1,32 @@
+{
+  "terms": [
+    "Lumin",
+    "LuminData",
+    "Markdown",
+    "Mermaid",
+    "KaTeX",
+    "Tiptap",
+    "ProseMirror",
+    "CodeMirror",
+    "WYSIWYG",
+    "Electron",
+    "Vue",
+    "shields",
+    "TypeScript",
+    "JavaScript",
+    "JSON",
+    "YAML",
+    "macOS",
+    "Linux",
+    "Windows",
+    "GitHub",
+    "README",
+    "中文",
+    "简体",
+    "繁體",
+    "简体中文",
+    "繁體中文",
+    "English"
+  ],
+  "zhAllowTerms": ["中文", "简体", "繁體", "简体中文", "繁體中文", "English"]
+}

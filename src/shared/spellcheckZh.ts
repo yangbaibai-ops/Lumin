@@ -9,7 +9,11 @@
 //       ② 常见代词/连接词连续重复（我们我们…，闭集，排除正常叠动词）；
 //       ③ 中文句里的半角标点 + 成对符号不配对/嵌套错位；
 //       ④ 高置信易错词（小词表，见 confusableRules 的说明）；
-//       ⑤ 中英之间缺空格（**只提示、不自动改**，默认关闭，advisory）。
+//       ⑤ 中英之间缺空格（**只提示、不自动改**，默认关闭，advisory）；
+//       ⑥ 术语 / 语言名白名单（精确区间豁免，见 spellcheckTerms.ts）。
+//          语言名（简体中文 / 繁體中文 / English…）不是错词；规则再怎么演变，
+//          也不该在它们身上画波浪线。豁免按"整条命中都落在词内"判定，不影响
+//          词外的真错词。
 //   * 偏移量 `from/to` 是**相对传入文本**的 UTF-16 下标，调用方换算成文档位置。
 //
 // 数据与引擎分离：词表 / 标点对 / 诊断文案都在同目录的 `spellcheckZhData.json`。
@@ -21,6 +25,7 @@
 // 单测读同一份实现；规则改动只有一处。
 
 import rules from './spellcheckZhData.json' with { type: 'json' }
+import { findTermSpans, ZH_ALLOW_TERMS } from './spellcheckTerms.ts'
 import { ZH_SPELLCHECK_LANGUAGE } from './spellcheck.ts'
 
 export { ZH_SPELLCHECK_LANGUAGE }
@@ -69,6 +74,13 @@ export interface CheckChineseOptions {
    *   * `'its'` ⇒ 认为「其它」是用户选择的风格，不提示。
    */
   otherStyle?: 'other' | 'its'
+  /**
+   * 术语 / 语言名白名单（精确区间豁免）。
+   *
+   * 默认取 `shared/spellcheckTerms.json` 的 `zhAllowTerms`；传 `[]` 可显式关闭，
+   * 单测用它证明"豁免来自白名单、不是规则本身碰巧不命中"。
+   */
+  allowTerms?: readonly string[]
 }
 
 /**
@@ -379,7 +391,21 @@ export function checkChinese(text: string, options: CheckChineseOptions = {}): Z
   checkPairs(text, out)
   checkConfusables(text, out, options)
   if (options.checkSpacing === true) checkCjkSpacing(text, out)
+
+  /**
+   * ⑥ 白名单：**整条命中**都落在某个术语/语言名内部时丢掉。
+   * 只丢"命中在词内"的项：`简体中文` 里的规则误报会被消掉，而紧挨着它的
+   * `我们的的` 仍然是独立区间，照常报。
+   */
+  const termSpans = findTermSpans(text, options.allowTerms ?? ZH_ALLOW_TERMS)
+  const kept =
+    termSpans.length === 0
+      ? out
+      : out.filter(
+          (issue) => !termSpans.some(([start, end]) => issue.from >= start && issue.to <= end)
+        )
+
   // 按位置排序后截断：超大文档也不让 DecorationSet 无上界增长
-  out.sort((a, b) => a.from - b.from || a.to - b.to)
-  return out.length > ZH_MAX_ISSUES ? out.slice(0, ZH_MAX_ISSUES) : out
+  kept.sort((a, b) => a.from - b.from || a.to - b.to)
+  return kept.length > ZH_MAX_ISSUES ? kept.slice(0, ZH_MAX_ISSUES) : kept
 }

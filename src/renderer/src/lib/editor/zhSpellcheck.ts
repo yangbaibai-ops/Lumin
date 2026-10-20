@@ -92,6 +92,15 @@ export interface ZhSpellStats {
   enabled: boolean
   lastMs: number
   lastCount: number
+  /**
+   * 最近一次扫描的命中明细（诊断对象 `window.__LZHSPELL` 读它）。
+   *
+   * 为什么要有：以前这里只有条数，验收/排查时只能说"有 0 条"，说不出"哪一段、
+   * 哪条规则"；而中文命中的 `from/to` 是相对**段落文本**的，光看 DOM 波浪线
+   * 对不上规则。现在留最近 50 条（`from/to` 是**文档坐标**，`text` 是命中原文），
+   * 既能证明"该区间无命中"，也能直接指名规则。
+   */
+  lastIssues: ZhSpellHit[]
   /** 最近 50 次重算耗时（ms），验收脚本读它算 P50/P95 */
   durations: number[]
   debounceMs: number
@@ -102,10 +111,20 @@ export interface ZhSpellStats {
   deferredRuns: number
 }
 
+/** 诊断对象里的一条命中（文档坐标） */
+export interface ZhSpellHit {
+  from: number
+  to: number
+  kind: ZhSpellIssue['kind']
+  message: string
+  text: string
+}
+
 const stats: ZhSpellStats = {
   enabled: false,
   lastMs: 0,
   lastCount: 0,
+  lastIssues: [],
   durations: [],
   debounceMs: ZH_RECOMPUTE_DEBOUNCE_MS,
   maxIssues: ZH_MAX_ISSUES,
@@ -161,7 +180,10 @@ function fingerprintOf(doc: PmNode, from: number, to: number, kind: string): str
  * 纯函数（不建 Decoration），单测可以直接用一个最小 schema 的 doc 断言排除区域。
  */
 export function scanZhDoc(doc: PmNode): ZhDocIssue[] {
-  if (!zhSpellcheckEnabled()) return []
+  if (!zhSpellcheckEnabled()) {
+    stats.lastIssues = []
+    return []
+  }
   const started = now()
   const out: ZhDocIssue[] = []
   doc.descendants((node, pos) => {
@@ -219,6 +241,13 @@ export function scanZhDoc(doc: PmNode): ZhDocIssue[] {
   })
   stats.lastMs = Math.round((now() - started) * 100) / 100
   stats.lastCount = out.length
+  stats.lastIssues = out.slice(0, 50).map((issue) => ({
+    from: issue.from,
+    to: issue.to,
+    kind: issue.kind,
+    message: issue.message,
+    text: issue.text
+  }))
   stats.durations.push(stats.lastMs)
   if (stats.durations.length > 50) stats.durations.shift()
   return out

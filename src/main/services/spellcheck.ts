@@ -14,6 +14,7 @@
 import { app, session as electronSession, type WebContents } from 'electron'
 import type { AppSettings } from '../../shared/types'
 import { resolveSpellcheckLanguages, MAX_SPELL_SUGGESTIONS } from '../../shared/spellcheck'
+import { normalizeTerm, SPELLCHECK_TERMS } from '../../shared/spellcheckTerms'
 import { readSettings } from './appSettings'
 
 /** 转给渲染层的右键参数（`spell:context` 的负载） */
@@ -35,6 +36,10 @@ export interface SpellcheckState {
   languages: string[]
   /** 系统实际提供的全部语言（原值，不排序、不过滤；空 = 该平台没有词典） */
   available: string[]
+  /** 随应用发布的术语表（产品名/技术名/语言名；**不是**用户词典） */
+  terms: string[]
+  /** 本进程真正写进 Chromium 自定义词典的术语（关闭拼写检查时会从用户词典移除） */
+  registeredTerms: string[]
 }
 
 /** 已附加右键监听的 webContents（避免同一窗口重复注册） */
@@ -45,6 +50,36 @@ const attached = new WeakSet<WebContents>()
  * 不下发任何"忽略"给 Chromium —— 它没有这个 API。
  */
 const ignoredWords = new Set<string>()
+
+/**
+ * 术语表记账（**避免污染用户词典**的关键）。
+ *
+ * Electron 只有 `addWordToSpellCheckerDictionary` / `removeWordFromSpellCheckerDictionary`，
+ * 没有"临时词表"；加进去就会落到 `<userData>/Custom Dictionary.txt`（用户词典）。
+ * 所以这里做两件事：
+ *   ① 加之前先用 `listWordsInSpellCheckerDictionary()` 查重：用户本来就有的词
+ *      **不碰**，也就不可能被我们误删；
+ *   ② 只记"我们真的加进去的"（`ownDictionaryWords`），关闭拼写检查或退出应用时
+ *      只撤销这一批（`removeWordFromSpellCheckerDictionary`）。
+ * 兼容性降级：万一 `listWordsInSpellCheckerDictionary()` 不可用，我们仍会加词
+ * （否则术语照旧被标红），但会按"自己加的"记账 —— 这点在日志里体现为
+ * registered 数大于事先存在的数，不影响透明性。
+ */
+const ownDictionaryWords = new Map<string, string>()
+/** 用户词典里原本就有、因而不归我们管的词（小写） */
+const preexistingDictionaryWords = new Set<string>()
+/** 注册任务的代次：关闭时 +1，作废在飞的注册（避免"关了又加回来"） */
+let termsGeneration = 0
+/** 已尝试同步过（避免每次保存设置都重复 list + add） */
+let termsSynced = false
+/** 在飞的注册任务（同一时刻只跑一个） */
+let termsTask: Promise<void> | null = null
+/** 退出清理期间**暂停注册**：否则 renderer 的 before-close `settings.flush()` 会在清理后又加回来（实测） */
+let termsPausedForQuit = false
+/** 退出被取消（关窗确认里点了取消）时，把注册恢复回来 */
+let termsResumeTimer: ReturnType<typeof setTimeout> | null = null
+/** 是否已挂 before-quit 清理（只挂一次） */
+let quitCleanupInstalled = false
 
 /** 本平台可用的词典语言（每次现取：语言包可能被系统更新） */
 function availableLanguages(): string[] {
@@ -62,8 +97,95 @@ export function getSpellcheckState(): SpellcheckState {
   return {
     enabled: ses.spellCheckerEnabled,
     languages: ses.getSpellCheckerLanguages(),
-    available: availableLanguages()
+    available: availableLanguages(),
+    terms: [...SPELLCHECK_TERMS],
+    registeredTerms: [...ownDictionaryWords.values()]
   }
+}
+
+/**
+ * 把内置术语表注册进 Chromium 的自定义词典（只加"用户词典里还没有的"）。
+ * 失败/不可用时不抛：拼写检查是增强能力，术语注册失败不该拦住启动。
+ */
+async function registerBuiltinTerms(): Promise<void> {
+  const gen = ++termsGeneration
+  const ses = electronSession.defaultSession
+  if (!ses.spellCheckerEnabled) return
+
+  let existing: string[] = []
+  try {
+    existing = await ses.listWordsInSpellCheckerDictionary()
+  } catch {
+    // 该平台没有这个 API（或词典尚未加载）：退化为"全部按自己加的记账"
+    existing = []
+  }
+  // 等待期间用户关了拼写检查 / 又触发了新一轮注册：这轮作废，别再往词典里写
+  if (gen !== termsGeneration || !ses.spellCheckerEnabled) return
+
+  const known = new Set(existing.map((word) => normalizeTerm(word)))
+  let added = 0
+  for (const term of SPELLCHECK_TERMS) {
+    const key = normalizeTerm(term)
+    if (!key || known.has(key)) {
+      if (key) preexistingDictionaryWords.add(key)
+      continue
+    }
+    try {
+      if (ses.addWordToSpellCheckerDictionary(term)) {
+        ownDictionaryWords.set(key, term)
+        known.add(key)
+        added += 1
+      }
+    } catch {
+      /* 平台不支持自定义词典：跳过该词，继续加下一个 */
+    }
+  }
+  termsSynced = true
+  if (added > 0) {
+    console.log(
+      `[spell] terms added=${added} own=${ownDictionaryWords.size} preexisting=${preexistingDictionaryWords.size} total=${SPELLCHECK_TERMS.length}`
+    )
+  }
+}
+
+/**
+ * 撤销**我们自己加过**的术语，用户原有的词一个不动。
+ *
+ * 调用时机只有两个：关闭拼写检查、应用退出。这样用户词典里不会长期留着
+ * 一批"Lumin 塞进去的产品名"；下次开启时再按需注册。
+ */
+function unregisterBuiltinTerms(reason: 'disabled' | 'quit'): void {
+  termsGeneration += 1
+  termsSynced = false
+  const ses = electronSession.defaultSession
+  let removed = 0
+  for (const [, word] of ownDictionaryWords) {
+    try {
+      if (ses.removeWordFromSpellCheckerDictionary(word)) removed += 1
+    } catch {
+      /* 平台不支持移除：保留（已在日志里如实说明），不影响本次关闭 */
+    }
+  }
+  ownDictionaryWords.clear()
+  if (removed > 0) console.log(`[spell] terms removed=${removed} reason=${reason}`)
+}
+
+/** 按开关同步术语：开启 → 注册（幂等）；关闭 → 撤销我们加的那批 */
+function syncBuiltinTerms(enabled: boolean): void {
+  if (!enabled) {
+    unregisterBuiltinTerms('disabled')
+    return
+  }
+  // 退出清理正在进行：renderer 的 settings.flush() 会在 before-close 里再发一次
+  // `spellcheckEnabled:true`；此时绝不能再把词加回去（否则"退出后词典里没有我们的词"做
+  // 不到，实测会重新加满 27 个）。
+  if (termsPausedForQuit) return
+  if (termsSynced || termsTask) return
+  const task = registerBuiltinTerms()
+  termsTask = task
+  void task.finally(() => {
+    if (termsTask === task) termsTask = null
+  })
 }
 
 /**
@@ -112,6 +234,9 @@ export function applySpellcheckSettings(settings: AppSettings): SpellcheckState 
     console.log(`[spell] apply failed: ${err instanceof Error ? err.message : String(err)}`)
   }
 
+  // 术语表：开了就注册（幂等）；关了就把**我们自己加的那批**从用户词典撤掉
+  syncBuiltinTerms(wantedEnabled)
+
   const state = getSpellcheckState()
   if (before.enabled !== state.enabled || languagesChanged) {
     console.log(
@@ -122,11 +247,74 @@ export function applySpellcheckSettings(settings: AppSettings): SpellcheckState 
 }
 
 /**
+ * 退出前把术语从用户词典里撤掉。
+ *
+ * 为什么退出也要撤：Electron 没有"仅本会话生效"的自定义词典，`Custom Dictionary.txt`
+ * 是持久化的；若不撤，用户词典里会一直留着 `Lumin` / `KaTeX` 这批产品名 ——
+ * 用户在别处（其它应用/系统拼写设置）也会看到它们。
+ *
+ * ⚠️ 为什么不能"在 before-quit 里同步删完就放行"（实测）：`removeWordFromSpellCheckerDictionary`
+ * 的落盘是异步的；主进程在 quit 阶段只来得及写回**一部分**（27 个词只删掉 13 个，
+ * 文件里剩 14 个）。所以这里 `preventDefault()` 一次，删完后**轮询**
+ * `listWordsInSpellCheckerDictionary()` 确认真的没了，再重新 `app.quit()`。
+ * 代价是退出多等几十毫秒；换来的是"用户词典里不留我们的词"这条可验证的承诺。
+ */
+function ensureQuitCleanup(): void {
+  if (quitCleanupInstalled) return
+  quitCleanupInstalled = true
+  let cleanupRunning = false
+  app.on('before-quit', (event) => {
+    if (cleanupRunning || ownDictionaryWords.size === 0) return
+    event.preventDefault()
+    cleanupRunning = true
+    termsPausedForQuit = true
+    if (termsResumeTimer) clearTimeout(termsResumeTimer)
+    /**
+     * 退出被取消时（关窗确认里点「取消」）把注册恢复回来；正常退出时进程在定时器
+     * 到期前就结束了。5s 覆盖 before-quit → drain（最多 2.5s）→ quit 的正常路径。
+     */
+    termsResumeTimer = setTimeout(() => {
+      termsResumeTimer = null
+      termsPausedForQuit = false
+      if (electronSession.defaultSession.spellCheckerEnabled) syncBuiltinTerms(true)
+    }, 5000)
+    const ses = electronSession.defaultSession
+    const words = [...ownDictionaryWords.values()]
+    unregisterBuiltinTerms('quit')
+    const keys = new Set(words.map((word) => normalizeTerm(word)))
+    const finish = (left: number): void => {
+      if (left > 0)
+        console.log(`[spell] terms leftover=${left} (dictionary API did not remove all)`)
+      app.quit()
+    }
+    const poll = async (attempt: number): Promise<void> => {
+      let left = 0
+      try {
+        const remaining = await ses.listWordsInSpellCheckerDictionary()
+        left = remaining.filter((word) => keys.has(normalizeTerm(word))).length
+      } catch {
+        left = 0
+      }
+      if (left === 0 || attempt >= 20) {
+        finish(left)
+        return
+      }
+      setTimeout(() => void poll(attempt + 1), 50)
+    }
+    void poll(0)
+  })
+}
+
+/**
  * 启动时调用一次（readSettings 已归一，缺键会回落默认值）。
  * 顺序要点：必须在窗口创建/加载之前 —— 页面首帧就可能带着正文，
  * 晚一步会让用户先看到一帧没有下划线的文档再"补上"，观感像闪了一下。
+ *
+ * 注：真正的调用点在首屏可交互之后（main/index.ts 的 runPostShowTasks），
+ * 那时窗口已画出；术语注册会稍后几毫秒完成，验收以注册完成后的状态为准。
  */
 export function initializeSpellcheck(): SpellcheckState {
+  ensureQuitCleanup()
   const available = availableLanguages()
   // 原值写进日志：验收要求"可用语言清单原值"，也便于排查"系统到底给了什么"。
   console.log(`[spell] available=${JSON.stringify(available)}`)
@@ -198,6 +386,11 @@ export function addWordToDictionary(word: string): boolean {
   if (!trimmed) return false
   try {
     const ok = electronSession.defaultSession.addWordToSpellCheckerDictionary(trimmed)
+    if (ok) {
+      // 用户主动加的词归用户：以后关闭拼写检查/退出时**不能**被我们顺手删掉。
+      const key = normalizeTerm(trimmed)
+      if (ownDictionaryWords.delete(key)) preexistingDictionaryWords.add(key)
+    }
     console.log(`[spell] add-word ok=${ok}`)
     return ok
   } catch (err) {
