@@ -29,6 +29,15 @@ test('图片节点首帧渲染与 widget 共用同一个解析出口', () => {
   assert.match(extensions, /setDocumentDirProvider\(options\.getDocumentDir/)
 })
 
+test('没有文档目录时，宿主把工作区根注入成兜底基准', () => {
+  // 否则相对图片会被浏览器按 out/renderer/index.html 解析 ⇒ 首帧就 404
+  assert.match(extensions, /setWorkspaceRootProvider\(options\.getWorkspaceRoot/)
+  assert.match(
+    read('../src/renderer/src/components/editor/WysiwygEditor.vue'),
+    /getWorkspaceRoot:\s*\(\)\s*=>\s*files\.root/
+  )
+})
+
 test('加载失败只加错误标记，不替换/清空 src（重新打开可恢复）', () => {
   assert.match(toolbar, /data-img-error/)
   assert.doesNotMatch(toolbar, /im\.(?:removeAttribute|setAttribute)\(['"]src['"]/)

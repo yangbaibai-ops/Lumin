@@ -30,6 +30,22 @@ export function setDocumentDirProvider(provider: () => string | null): void {
 }
 
 /**
+ * 当前**工作区根**的宿主注入出口：只在「没有文档目录」时兜底。
+ *
+ * 为什么需要：相对图片的基准在正常路径上是文档目录（`files.currentDir`），但有两种
+ * 文档没有目录上下文 —— 未命名缓冲区、以及某些把正文直接塞进编辑器的路径（状态恢复 /
+ * 只读预览）。这时退回工作区根仍能解析出用户预期的图（README 在仓库根、图在
+ * `docs/screenshots/` 就是这种形态），比把相对串原样交给浏览器（会按 `out/renderer/`
+ * 解析 ⇒ 必然 404）安全。没有工作区时仍保持旧行为（原样返回，不瞎猜）。
+ */
+let workspaceRootProvider: () => string | null = () => null
+
+/** 注入「当前工作区根」的提供者（读的时候现取；仅作为无文档目录时的兜底） */
+export function setWorkspaceRootProvider(provider: () => string | null): void {
+  workspaceRootProvider = provider
+}
+
+/**
  * 把 Markdown 里写的图片 src 解析成**当前上下文里可直接加载**的 URL。
  *
  * 与 `imageSrcForDoc(src, docDir)` 是同一条纯解析，只是基准目录由宿主注入。
@@ -38,7 +54,13 @@ export function setDocumentDirProvider(provider: () => string | null): void {
  * 「点击不改变可加载性」的守卫点（tests/imageSrc.test.mjs 有纯函数用例）。
  */
 export function resolveImageSrc(src: string): string {
-  return imageSrcForDoc(src, documentDirProvider())
+  // 幂等第一道闸：已经解析好的可加载 URL（lumin-file / http(s) / data / blob / file）
+  // **原样返回**。这是「点击前后 img.src 逐字符相同」的守卫点 —— 若把
+  // `lumin-file:///D%3A/…` 再当相对路径拼一次，`%3A` 就会变成 `%253A`（协议侧 404）。
+  if (isExternalImageSrc(src)) return src
+  // 文档目录优先；没有文档目录（未命名 / 无路径上下文）时退回工作区根。
+  const dir = documentDirProvider() ?? workspaceRootProvider()
+  return imageSrcForDoc(src, dir)
 }
 
 /** 远程 / 内联图片（不参与本地路径解析） */
@@ -73,16 +95,49 @@ export function joinDocPath(dir: string, rel: string): string {
 }
 
 /**
+ * 把 Markdown 链接目标里**已经百分号编码**的路径逐段还原成真实路径。
+ *
+ * 为什么必须先 decode：markdown-it 按 URL 语义处理 `![]()` 的目标，会把空格 / 中文 /
+ * `#` 等规范化成 `%XX` 再交给 ProseMirror（实测 `![](图 片/c 图.png)` 的节点 attrs
+ * 是 `%E5%9B%BE%20%E7%89%87/c%20%E5%9B%BE.png`）。如果直接对这段字符串逐段
+ * `encodeURIComponent`，`%` 会被再编码一次 ⇒ `%E5` 变 `%25E5`，主进程只 decode 一次，
+ * 拿到的是字面量 `%E5…` 的路径 ⇒ 404（这正是「带空格/中文的图片永远裂」的真因）。
+ *
+ * 逐段处理（而不是整串 decode）保住分隔符，也避免 `%2F` 之外的字符改变路径结构；
+ * 非法转义（例如文件名里真有个 `%`）原样保留，绝不因为 decode 失败把图弄丢。
+ */
+export function decodePathEscapes(p: string): string {
+  if (!p.includes('%')) return p
+  return p
+    .split(/([\\/]+)/)
+    .map((part, i) => {
+      if (i % 2 === 1 || !part.includes('%')) return part
+      try {
+        return decodeURIComponent(part)
+      } catch {
+        return part
+      }
+    })
+    .join('')
+}
+
+/**
  * 图片 src → 实际可用的 URL。
- * @param src     Markdown 里写的路径
+ * @param src     Markdown 里写的路径（可能是 URL 编码形态）
  * @param docDir  当前文档所在目录（未命名文档 / 无文档时为 null）
  */
 export function imageSrcForDoc(src: string, docDir: string | null): string {
+  // 已经是可加载的绝对 URL（含 lumin-file 自带 `%3A`）：逐字符原样返回，绝不二次包装。
   if (isExternalImageSrc(src)) return src
-  const abs = isAbsolutePath(src) ? joinDocPath('', src) : docDir ? joinDocPath(docDir, src) : null
+  const realPath = decodePathEscapes(src)
+  const abs = isAbsolutePath(realPath)
+    ? joinDocPath('', realPath)
+    : docDir
+      ? joinDocPath(docDir, realPath)
+      : null
   if (!abs) return src // 没有基准目录可解析：保持原样（与旧行为一致）
   // 逐段转义（encodeURIComponent 会连盘符的冒号一起转义，主进程 decode 后照样还原）：
-  // 空格、中文、`#`、`?` 都不会把 URL 拆坏
+  // 空格、中文、`#`、`?` 都不会把 URL 拆坏；decode 过的路径在这里只编码**一次**。
   const urlPath = abs
     .replace(/\\/g, '/')
     .split('/')

@@ -13,7 +13,7 @@ import { TableRow, TableCell, TableHeader } from '@tiptap/extension-table'
 import { TableColumnAlign } from './tableColumnAlign'
 import TaskItem from '@tiptap/extension-task-item'
 import Placeholder from '@tiptap/extension-placeholder'
-import { resolveImageSrc, setDocumentDirProvider } from '../imageSrc'
+import { resolveImageSrc, setDocumentDirProvider, setWorkspaceRootProvider } from '../imageSrc'
 import { needsRemotePermission } from '../remoteImages'
 import type { RemoteImagePolicy } from '../remoteImages'
 import i18n from '../../i18n'
@@ -90,6 +90,8 @@ export interface EditorExtensionOptions {
   onOpenLink?: (href: string) => void
   /** 当前文档所在目录（图片相对路径的解析基准）；返回 null = 不解析 */
   getDocumentDir?: () => string | null
+  /** 当前工作区根（**仅**在没有文档目录时兜底相对图片）；返回 null = 不兜底 */
+  getWorkspaceRoot?: () => string | null
   /** 远程图片加载策略（`click` 默认 / `always`）；见 lib/remoteImages.ts */
   getRemoteImagePolicy?: () => RemoteImagePolicy
   /**
@@ -335,6 +337,9 @@ export const editorExtensions: Extensions = [
  */
 export function buildEditorExtensions(options: EditorExtensionOptions = {}): Extensions {
   setDocumentDirProvider(options.getDocumentDir ?? ((): string | null => null))
+  // 无文档目录上下文（未命名 / 没有路径的正文）时，相对图片退回工作区根解析：
+  // 否则相对串会被浏览器按 out/renderer/index.html 解析 ⇒ 首帧就 404。
+  setWorkspaceRootProvider(options.getWorkspaceRoot ?? ((): string | null => null))
   remoteImageProvider = options.getRemoteImagePolicy ?? ((): RemoteImagePolicy => 'click')
   const mathLabels = {
     // 可见标签（参考截图里右上角那个「公式」）

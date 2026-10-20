@@ -77,6 +77,8 @@ const editor = useEditor({
     onOpenLink: (href) => void openLinkTarget(href),
     // 图片相对路径的解析基准 = 当前文档所在目录（未命名文档为侧栏工作区，见 stores/files 的 openUntitled）
     getDocumentDir: () => files.currentDir ?? null,
+    // 兜底：没有文档目录时相对工作区根解析（README 在仓库根、图在 docs/screenshots/ 的形态）
+    getWorkspaceRoot: () => files.root ?? null,
     // 远程图片默认不自动加载（隐私，见 lib/remoteImages.ts）：读设置、现取现用
     getRemoteImagePolicy: () => settings.remoteImages,
     // 粘贴护栏的可见提示（降级/拒绝/超时回滚）：走应用内通知中心，不静默吞内容
