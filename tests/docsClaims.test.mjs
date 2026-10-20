@@ -139,7 +139,12 @@ test('README「已知限制与路线」表：每条声明都要能落到代码�
    */
   const lines = read('README.md').split('\n')
   const start = lines.findIndex((l) => /^##\s+已知限制/.test(l))
-  assert.ok(start > 0, 'README 里找不到「已知限制与路线」章节')
+  /**
+   * 口径变更（用户要求）：README **不再写"已知缺陷/已知限制"章节** —— 公开文档只讲能力与用法。
+   * 因此这里从"必须有该章节"改为"**有则校验、无则跳过**"：
+   * 审计真正关心的是"声明与实现一致"，只要章节存在仍逐条校验，放宽存在性不丢校验能力。
+   */
+  if (start < 0) return
   /** 把续行并进上一条表格行（表格行以 `|` 开头） */
   const rows = []
   for (let i = start; i < lines.length; i += 1) {

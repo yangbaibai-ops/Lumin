@@ -192,20 +192,6 @@ renderer.
 | `tests/`            | Unit tests (`node --test`)                                |
 | `docs/`             | Manual, design notes, and screenshots                     |
 
-## 已知限制与路线（Known limitations & roadmap）
-
-| 项 | 现状 | 说明 / 计划 |
-| --- | --- | --- |
-| 代码签名 | ❌ 安装包未签名 | 卡在外部资源（签名证书），不放置占位签名；安装时需走 SmartScreen 的“仍要运行” |
-| macOS / Linux | ❌ 未验证、不提供构建 | 需要真实桌面环境做完整验收；构建脚本会明确拒绝，不发没验过的包 |
-| 自动更新 | ❌ 更新渠道仍是占位地址 | 需要稳定的分发地址与签名链路；当前请手动下载新版本 |
-| 中文拼写检查 | ⚠️ 启发式规则 | 覆盖常见中英混用与重复字，不承诺完整词典；误报可在右键菜单忽略 |
-| 系统词典与语言包 | ⚠️ 依赖 Electron 内置拼写检查 | 可用语言取决于操作系统；Linux 上尤其受 hunspell 字典影响 |
-| 超长文档 | ⚠️ 十万字量级建议分篇 | 大文档滚动已做优化；极端长文的虚拟滚动仍在路线图上 |
-| 冷门 Markdown 扩展 | ⚠️ 脚注等按原样透传 | 继续补齐更少见的扩展语法；欢迎带最小样例提 issue |
-| 版本快照 | ⚠️ 保留条数固定 | 每次覆盖前留快照；保留条数做成可配置仍在计划中 |
-| 行尾格式 | ✅ 自动识别 CRLF / LF | 状态栏可手动切换；多窗口同时编辑的极端场景仍需注意 |
-
 ## Contributing
 
 Contributions are welcome. Read [`CONTRIBUTING.md`](CONTRIBUTING.md) for the workflow, commit
