@@ -21,15 +21,24 @@ const ROOT = path.join(here, '..')
 const README = fs.readFileSync(path.join(ROOT, 'README.md'), 'utf-8')
 const TOOLS_README = fs.readFileSync(path.join(ROOT, 'tools', 'README.md'), 'utf-8')
 
-test('docs：对外 README 不含 HTML（发布页要求纯 Markdown 可解析）', () => {
+test('docs：对外 README 不含 HTML（发布页要求纯 Markdown 可解析；徽章 <p> 是唯一例外）', () => {
   /**
    * 产品决定：本仓库只发布安装包、源码不开源 ⇒ `README.md` 是**给使用者看的发布页**，
    * 要求**纯 Markdown**（不放 `<div align="center">` 这类 HTML，也不放 HTML 注释）。
    * 工程账目（源码规模 / 套件数）一律留在 `tools/README.md` 的 facts 块里（下一条守着）。
+   *
+   * 唯一例外（用户口径）：四枚徽章必须**同一行**，不能被 Markdown 软换行拆开；
+   * GitHub 上可靠的做法是用 `<p>` 包住四枚 `<img>`（HTML 把空白折叠成空格，不产生软换行）。
+   * 例外收窄到"恰好含 4 个 img 的单个 `<p>` 块"——其它任何 HTML 标签仍然红。
    */
   assert.ok(!/<!--/.test(README), 'README 里不应出现 HTML 注释')
-  const tag = README.match(/<\/?[a-zA-Z][a-zA-Z0-9-]*(\s[^>]*)?\/?>/)
-  assert.equal(tag, null, `README 里不应出现 HTML 标签：${tag && tag[0]}`)
+  const badgeBlock = /<p>[\s\S]*?<\/p>/g
+  const blocks = README.match(badgeBlock) ?? []
+  assert.equal(blocks.length, 1, 'README 里应只有一处徽章 <p> 块')
+  assert.equal((blocks[0].match(/<img\b/g) ?? []).length, 4, '徽章 <p> 里必须恰好是四枚 <img>')
+  const withoutBadges = README.replace(badgeBlock, '')
+  const tag = withoutBadges.match(/<\/?[a-zA-Z][a-zA-Z0-9-]*(\s[^>]*)?\/?>/)
+  assert.equal(tag, null, `README 里不应出现徽章 <p> 之外的 HTML 标签：${tag && tag[0]}`)
 })
 
 test('docs：tools/README 的 facts 块与实测一致', () => {

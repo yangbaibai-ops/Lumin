@@ -9,7 +9,9 @@ import {
   isAbsolutePath,
   isExternalImageSrc,
   joinDocPath,
-  relativeDocPath
+  relativeDocPath,
+  resolveImageSrc,
+  setDocumentDirProvider
 } from '../src/renderer/src/lib/imageSrc.ts'
 
 test('远程 / 内联图片原样返回', () => {
@@ -90,4 +92,40 @@ test('relativeDocPath：不同盘符相对不了就退回绝对路径', () => {
 
 test('relativeDocPath：没有基准目录时原样返回', () => {
   assert.equal(relativeDocPath('', 'D:\\ws\\assets\\a.png'), 'D:\\ws\\assets\\a.png')
+})
+
+// ─── 点击守卫（用户报障：图片首帧能显示、点一下就永久裂）──────────────────────
+// 点击图片节点时，mouseup 会把节点换成原文文本 `![alt](src)`（序列化必须保留原文）。
+// 之后视图改由 widget 画图 —— **widget 写进 <img src> 的必须是解析后的绝对 URL**，
+// 不能是 Markdown 原串（浏览器会按 out/renderer/index.html 解析 ⇒ 404）。
+test('resolveImageSrc：相对 / 绝对 / 网络都给出可加载 URL（与节点首帧同一出口）', () => {
+  setDocumentDirProvider(() => 'D:\\notes')
+  try {
+    assert.equal(resolveImageSrc('img/a.png'), 'lumin-file:///D%3A/notes/img/a.png')
+    assert.equal(resolveImageSrc('C:/pics/b.png'), 'lumin-file:///C%3A/pics/b.png')
+    assert.equal(resolveImageSrc('https://x/y.png'), 'https://x/y.png')
+    assert.equal(resolveImageSrc('data:image/png;base64,AAA'), 'data:image/png;base64,AAA')
+  } finally {
+    setDocumentDirProvider(() => null)
+  }
+  assert.equal(resolveImageSrc('img/a.png'), 'img/a.png')
+})
+
+test('点击守卫：节点转原文后 widget 的显示 src 与节点首帧相同（不会退回相对串）', () => {
+  setDocumentDirProvider(() => 'D:\\notes')
+  try {
+    const markdownSrc = 'img/a.png'
+    // 节点首帧：renderHTML 走 resolveImageSrc
+    const nodeRender = resolveImageSrc(markdownSrc)
+    // 点击：节点 → 原文文本，src 仍是 Markdown 原串
+    const rawText = `![](${markdownSrc})`
+    const parsed = /^!\[[^\]]*\]\(([^)]+)\)$/.exec(rawText)?.[1]
+    assert.equal(parsed, markdownSrc)
+    // 原文 widget：必须走同一个解析出口
+    const widgetRender = resolveImageSrc(parsed)
+    assert.equal(widgetRender, nodeRender)
+    assert.notEqual(widgetRender, markdownSrc) // 不能是会把浏览器带回页面目录的相对串
+  } finally {
+    setDocumentDirProvider(() => null)
+  }
 })

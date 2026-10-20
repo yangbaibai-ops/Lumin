@@ -2,10 +2,12 @@
 
 **面向写作者的所见即所得 Markdown 编辑器 —— 数学公式、Mermaid、代码、拼写检查。**
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-![Platform: Windows 10 / 11](https://img.shields.io/badge/Platform-Windows%2010%20%2F%2011-0078D6.svg)
-![Electron 39](https://img.shields.io/badge/Electron-39-47848F.svg)
-![Vue 3](https://img.shields.io/badge/Vue-3-42B883.svg)
+<p>
+  <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/License-MIT-yellow.svg"></a>
+  <img alt="Platform: Windows 10 / 11" src="https://img.shields.io/badge/Platform-Windows%2010%20%7C%2011-0078D6.svg">
+  <img alt="Electron 39" src="https://img.shields.io/badge/Electron-39-47848F.svg">
+  <img alt="Vue 3" src="https://img.shields.io/badge/Vue-3-42B883.svg">
+</p>
 
 [English](README.md) | **简体中文**
 

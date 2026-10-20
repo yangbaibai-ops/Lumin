@@ -13,7 +13,7 @@ import { TableRow, TableCell, TableHeader } from '@tiptap/extension-table'
 import { TableColumnAlign } from './tableColumnAlign'
 import TaskItem from '@tiptap/extension-task-item'
 import Placeholder from '@tiptap/extension-placeholder'
-import { imageSrcForDoc } from '../imageSrc'
+import { resolveImageSrc, setDocumentDirProvider } from '../imageSrc'
 import { needsRemotePermission } from '../remoteImages'
 import type { RemoteImagePolicy } from '../remoteImages'
 import i18n from '../../i18n'
@@ -76,13 +76,6 @@ const CodeQuiet = Code.extend({
   // 所以放开互斥；换行/代码块那套「逐字」语义与 mark 互斥无关。
   excludes: ''
 })
-
-/**
- * 当前文档所在目录的提供者：图片相对路径要靠它解析（见 lib/imageSrc.ts）。
- * 宿主（WysiwygEditor）注入；默认返回 null = 不解析（原样输出，与旧行为一致）。
- * 用「读的时候现取」而不是快照：切换文档后编辑器按 :key 重建，取值时机天然正确。
- */
-let documentDirProvider: () => string | null = () => null
 
 /**
  * 远程图片加载策略的提供者（自查报告 H2）：宿主注入 settings 里的 `remoteImages`；
@@ -183,7 +176,9 @@ export const editorExtensions: Extensions = [
     // 免得 NodeView / 选中态再补 `draggable=true`。样式与事件两层仍各自兜底。
     draggable: false,
     renderHTML({ HTMLAttributes }) {
-      const src = imageSrcForDoc(String(HTMLAttributes.src ?? ''), documentDirProvider())
+      // 统一出口：相对路径按**当前文档目录**解析（lumin-file://），绝对路径同样规范化，
+      // 网络图原样。点击后转成的原文 widget 也走同一个函数（见 imageToolbar.ts）。
+      const src = resolveImageSrc(String(HTMLAttributes.src ?? ''))
       // 远程图片默认**不加载**（隐私，见 lib/remoteImages.ts）：换成带 `data-src` 的占位元素，
       // 没有 `src` 属性浏览器就不会发请求。点击占位 → 放行并在 DOM 里就地换成真图。
       // 导出 / getHTML() 期间由 beginExportRender() 放行，导出的文档里图片照旧齐全。
@@ -339,7 +334,7 @@ export const editorExtensions: Extensions = [
  * 每次组装都现取，所以切语言后重建编辑器（切文件/切模式）就会跟着换。
  */
 export function buildEditorExtensions(options: EditorExtensionOptions = {}): Extensions {
-  documentDirProvider = options.getDocumentDir ?? ((): string | null => null)
+  setDocumentDirProvider(options.getDocumentDir ?? ((): string | null => null))
   remoteImageProvider = options.getRemoteImagePolicy ?? ((): RemoteImagePolicy => 'click')
   const mathLabels = {
     // 可见标签（参考截图里右上角那个「公式」）

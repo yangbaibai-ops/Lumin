@@ -13,6 +13,34 @@
  */
 const EXTERNAL_SCHEME = /^(https?|data|blob|file|lumin-file):/i
 
+/**
+ * 当前文档目录的**宿主注入**出口（默认 null = 不解析，与旧行为一致）。
+ *
+ * 为什么放在这个纯函数模块里：图片节点（extensions.ts 的 renderHTML）与
+ * **点击后转成的原文 widget**（imageToolbar.ts）必须用**同一个**基准目录解析，
+ * 否则会出现「首帧能显示、点一下图片就裂」——后者拿到的 src 是 Markdown 里写的
+ * 相对串，浏览器按渲染页面（out/renderer/index.html）解析 ⇒ 404（见 imageToolbar
+ * 的 `makeRawWidgetDeco`）。宿主在 buildEditorExtensions() 里注入一次即可。
+ */
+let documentDirProvider: () => string | null = () => null
+
+/** 注入「当前文档所在目录」的提供者（读的时候现取：切换文档后自然正确） */
+export function setDocumentDirProvider(provider: () => string | null): void {
+  documentDirProvider = provider
+}
+
+/**
+ * 把 Markdown 里写的图片 src 解析成**当前上下文里可直接加载**的 URL。
+ *
+ * 与 `imageSrcForDoc(src, docDir)` 是同一条纯解析，只是基准目录由宿主注入。
+ * 相对路径 ⇒ `lumin-file:///...` 绝对 URL；绝对路径 ⇒ 同样走协议；http/https/data 原样。
+ * 任何要写进 `<img src>` 的地方（节点渲染 / 原文 widget）都必须经过它——这是
+ * 「点击不改变可加载性」的守卫点（tests/imageSrc.test.mjs 有纯函数用例）。
+ */
+export function resolveImageSrc(src: string): string {
+  return imageSrcForDoc(src, documentDirProvider())
+}
+
 /** 远程 / 内联图片（不参与本地路径解析） */
 export function isExternalImageSrc(src: string): boolean {
   return !src || EXTERNAL_SCHEME.test(src) || src.startsWith('//')

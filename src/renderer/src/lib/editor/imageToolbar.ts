@@ -27,6 +27,9 @@ import { Decoration, DecorationSet } from '@tiptap/pm/view'
 import type { EditorState } from '@tiptap/pm/state'
 import type { EditorView } from '@tiptap/pm/view'
 import i18n from '../../i18n'
+// 图片 src 的**唯一解析出口**：节点渲染与这里的原文 widget 必须同源，否则点击后
+// 相对路径会退回 Markdown 原串、被浏览器按 out/renderer/index.html 解析 ⇒ 首帧能看、点一下就裂。
+import { resolveImageSrc } from '../imageSrc'
 // 纯判据（显隐契约 + 登记到期）单独成文件，可被 `tests/imageReveal.test.mjs` 直接钉住
 import {
   PENDING_TTL,
@@ -2974,10 +2977,31 @@ export const ImageSourceUi = Extension.create({
           const im = document.createElement('img')
           // 拖拽已全局禁用（lib/dragGuard.ts）：widget 里的图片同样不是拖拽源
           im.draggable = false
-          im.src = img.src
+          /**
+           * ⚠️ 必须走 `resolveImageSrc`，**不能**直接 `im.src = img.src`。
+           *
+           * 真因（用户报障：图片首次能显示、点一下后永久裂）：
+           * 点击图片节点时 mouseup 会把节点换成原文文本 `![alt](相对路径)`（序列化需要保留原文），
+           * 视图随后改由本 widget 画图。如果这里写的是 Markdown 里的原串 `pics/a.png`，浏览器按
+           * **页面 URL**（out/renderer/index.html）解析 ⇒ file:///…/out/renderer/pics/a.png ⇒ 404
+           * （绝对路径 `C:/…` 虽能侥幸落到 file:///C:/…，但也不该依赖这种巧合）。
+           * 现在与节点首帧渲染共用同一个解析函数：相对 / 绝对都变成 lumin-file:// 绝对 URL，
+           * 网络图原样 ⇒ 点击前后 `getAttribute('src')` 完全一致（或等价可加载 URL）。
+           */
+          im.src = resolveImageSrc(img.src)
           if (img.alt) im.alt = img.alt
           if (img.zoom) im.style.zoom = `${img.zoom}%`
           im.loading = 'lazy'
+          /**
+           * 加载失败（文件被删/移动）时**不替换 src**：保留原图占位（浏览器 broken image + alt），
+           * 只加一个错误标记与提示。文件恢复后重新打开文档即可重新加载（不做永久降级）。
+           */
+          im.addEventListener('error', () => {
+            if (!im.getAttribute('src')) return
+            span.setAttribute('data-img-error', '')
+            span.title = i18n.global.t('editor.imageLoadFailed')
+          })
+          im.addEventListener('load', () => span.removeAttribute('data-img-error'))
           span.appendChild(im)
           return span
         },

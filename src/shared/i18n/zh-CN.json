@@ -269,7 +269,8 @@
     "openAnyway": "仍然打开",
     "safeModeTitle": "该文档已连续两次崩溃或无响应，已用源码模式打开",
     "safeModeBody": "为避免再次卡死，这份文档本次默认以源码模式打开（逐字编辑，不建立富文本结构）。如果已经恢复正常，可以改回实时渲染。",
-    "safeModeOpenRich": "仍然以富文本打开"
+    "safeModeOpenRich": "仍然以富文本打开",
+    "imageLoadFailed": "图片加载失败（可检查文件是否移动/删除，或重新打开文档）"
   },
   "settings": {
     "title": "设置",

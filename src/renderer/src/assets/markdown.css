@@ -336,6 +336,20 @@ ormal，只影响这种段落 */
   margin-inline: 0;
   vertical-align: middle;
 }
+/* 图片加载失败（文件被删/移动）：**保留原占位**，只加虚线相框 + 提示文案。
+   解析出的 src 原样留在 <img> 上（绝不替换成 about:blank），文件恢复后重新打开文档即可加载。 */
+.md-preview .img-widget[data-img-error] {
+  padding: 0.35em 0.6em;
+  border: 1px dashed var(--edge-strong);
+  border-radius: 6px;
+  color: var(--ink-3);
+}
+.md-preview .img-widget[data-img-error]::after {
+  content: attr(title);
+  display: block;
+  margin-top: 0.35em;
+  font-size: 0.85em;
+}
 /* 「这一段只有一张图」→ 块级居中（由 imageToolbar 挂类，比 `:only-child` 稳：
    行内图片旁边可能还有被隐藏的标记文本、或 widget 装饰） */
 .md-preview .img-block-center,

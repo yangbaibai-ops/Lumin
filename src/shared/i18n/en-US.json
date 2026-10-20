@@ -269,7 +269,8 @@
     "openAnyway": "Open anyway",
     "safeModeTitle": "This document crashed or froze twice in a row — opened in source mode",
     "safeModeBody": "To avoid another freeze, this document is opened in source mode this time (plain text editing, no rich-text DOM). If it is healthy again, you can switch back to live rendering.",
-    "safeModeOpenRich": "Open as rich text anyway"
+    "safeModeOpenRich": "Open as rich text anyway",
+    "imageLoadFailed": "Image failed to load (check whether the file was moved or deleted, or reopen the document)"
   },
   "settings": {
     "title": "Settings",
