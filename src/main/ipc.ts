@@ -28,7 +28,7 @@ import * as workspaceReplace from './services/workspaceReplace'
 import * as dbBackup from './services/dbBackup'
 import * as externalWatch from './services/externalWatch'
 import * as workspaceBackup from './services/workspaceBackup'
-import { onSettingsChanged } from './services/updater'
+import { checkNow as checkForUpdatesNow, onSettingsChanged } from './services/updater'
 import { mapCloseDialogResponse, mapExternalDialogResponse } from '../shared/nativeDialogs'
 import * as freezeGuard from './services/freezeGuard'
 import * as docRisk from './services/docRisk'
@@ -496,6 +496,17 @@ export function registerIpc(slots: SlotRegistry): void {
     else win.maximize()
   })
   ipcMain.on('app:close', () => BrowserWindow.getFocusedWindow()?.close())
+  /**
+   * 退出应用（应用菜单「文件 → 退出」）。
+   * 走 `app.quit()` 而不是逐个 `win.close()`：`before-quit` 会 `session.markQuitting()`，
+   * 每个窗口的关闭走 `reason: 'quit'` 的守卫（脏文档照样弹「是否保存更改？」）。
+   */
+  ipcMain.on('app:quit', () => app.quit())
+  /**
+   * 手动检查更新（「帮助 → 检查更新」）。
+   * `checkNow()` 在开发态/未配置渠道时返回 false —— 如实告诉界面，不假装在检查。
+   */
+  ipcMain.handle('app:checkUpdate', async () => ({ ok: await checkForUpdatesNow() }))
   // 原生菜单栏显隐（关闭时彻底隐藏，禁用 Alt 临时唤起）
   ipcMain.on('app:setMenuBar', (event, visible: boolean) => {
     const win = BrowserWindow.fromWebContents(event.sender)

@@ -89,6 +89,18 @@ export const APP_OWNED_COMBOS: readonly string[] = [
   'Mod+Tab', // 应用内切换窗口
   'Mod+Shift+Tab',
   'Mod+K', // 快捷键设置
+  // 插入类（useKeymap.ts）：Mod+Alt+T/H/K/M/G 与段落上/下；图片/代码块是 Shift 变体
+  'Mod+Alt+T', // 插入表格
+  'Mod+Alt+H', // 插入分割线
+  // 「插入图片 / 代码块」加 Shift：macOS 的 Cmd+Alt+I / Cmd+Alt+C 是 Chromium DevTools，
+  // 不能占（见 tests/shortcuts.test.mjs 的既有契约），Shift 变体避开。
+  'Mod+Shift+Alt+I', // 插入图片
+  'Mod+Alt+K', // 插入链接
+  'Mod+Shift+Alt+C', // 插入代码块
+  'Mod+Alt+M', // 插入块级公式
+  'Mod+Alt+G', // 插入 Mermaid
+  'Mod+Alt+ArrowUp', // 上方插入段落（原有登记，快捷键表首次真正使用）
+  'Mod+Alt+ArrowDown', // 下方插入段落
   // ── 编辑器级（typoraInlineMarks / lib/editor/keymap）──
   'Mod+B',
   'Mod+I',
@@ -110,8 +122,6 @@ export const APP_OWNED_COMBOS: readonly string[] = [
   'Mod+[',
   'Mod+]',
   'Mod+Alt+\\',
-  'Mod+Alt+ArrowUp',
-  'Mod+Alt+ArrowDown',
   'Mod+ArrowLeft',
   'Mod+ArrowRight',
   'Mod+ArrowUp',

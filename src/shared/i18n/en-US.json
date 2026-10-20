@@ -126,7 +126,15 @@
     "copy": "Copy",
     "paste": "Paste",
     "selectAll": "Select All",
-    "pastePlain": "Paste as Plain Text"
+    "pastePlain": "Paste as Plain Text",
+    "outline": "Outline",
+    "zoomIn": "Zoom In",
+    "zoomOut": "Zoom Out",
+    "zoomReset": "Reset Zoom",
+    "keymap": "Keyboard Shortcuts",
+    "docs": "Documentation",
+    "checkUpdate": "Check for Updates",
+    "updateUnavailable": "No update channel is configured in this build (development), so updates cannot be checked"
   },
   "fileTree": {
     "moveTo": "Move to…",
@@ -605,7 +613,9 @@
       "right": "Align this column right",
       "none": "Default alignment for this column (plain ---)"
     },
-    "pastePlain": "Paste as Plain Text"
+    "pastePlain": "Paste as Plain Text",
+    "math": "Block Formula",
+    "mermaid": "Mermaid Diagram"
   },
   "tableBar": {
     "label": "Table quick actions",
@@ -668,6 +678,15 @@
     "groupView": "View",
     "groupWindow": "Window",
     "groupHelp": "Help",
+    "groupInsert": "Insert",
+    "errSyntax": "Unrecognized shortcut format",
+    "errModifierRequired": "Must include Ctrl/Cmd or Alt (Shift alone does not count)",
+    "errReserved": "Reserved by the system and cannot be bound",
+    "errConflict": "Already used by “{names}”",
+    "suggest": "Try {key}",
+    "invalidBadge": "Invalid",
+    "invalidHint": "This binding is invalid: {reason}. Please restore the default.",
+    "invalidShort": "Invalid — restore default",
     "nextWindow": "Switch to next window",
     "prevWindow": "Switch to previous window",
     "minimizeWindow": "Minimize window",

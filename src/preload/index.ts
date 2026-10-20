@@ -95,6 +95,13 @@ const api: LuminAPI = {
     minimize: () => ipcRenderer.send('app:minimize'),
     toggleMaximize: () => ipcRenderer.send('app:toggleMaximize'),
     close: () => ipcRenderer.send('app:close'),
+    /** 退出应用（应用菜单「文件 → 退出」）：走 app.quit()，每个窗口仍会经过关窗守卫 */
+    quit: () => ipcRenderer.send('app:quit'),
+    /**
+     * 手动检查更新（「帮助 → 检查更新」）。返回是否真的发起了检查：
+     * 开发态/未配置更新渠道时为 false，界面据此给出如实提示而不是假装在检查。
+     */
+    checkUpdate: () => ipcRenderer.invoke('app:checkUpdate'),
     setMenuBar: (visible) => ipcRenderer.send('app:setMenuBar', visible),
     newWindow: () => ipcRenderer.send('app:newWindow'),
     openInNewWindow: (path) => ipcRenderer.send('app:openInNewWindow', path),

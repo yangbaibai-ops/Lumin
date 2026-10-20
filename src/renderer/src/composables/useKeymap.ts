@@ -2,6 +2,7 @@ import { onBeforeUnmount } from 'vue'
 import { useRouter } from 'vue-router'
 import { useUiStore } from '../stores/ui'
 import { useSettingsStore } from '../stores/settings'
+import { useEditorMenuStore } from '../stores/editorMenu'
 import { installKeymap, type KeymapCommand } from '../lib/keymap/service'
 import { EXPORT_FORMATS } from '../../../shared/exportFormats'
 import type { useAppActions } from './useAppActions'
@@ -21,8 +22,16 @@ import type { useAppActions } from './useAppActions'
 export function useKeymap(actions: ReturnType<typeof useAppActions>): void {
   const ui = useUiStore()
   const settings = useSettingsStore()
+  const editorMenu = useEditorMenuStore()
   const router = useRouter()
   const { handleMenu } = actions
+
+  /**
+   * 插入类命令统一转给编辑器右键菜单的动作目录（lib/editor/menu/actions.ts）：
+   * 表格 / 分割线 / 图片 / 链接 / 代码块 / 公式 / Mermaid 的实现只有那一份，
+   * 快捷键只是"多一个入口"。动作返回 false（用户取消 / 没有编辑器）时什么都不做。
+   */
+  const runInsert = (id: string) => () => void editorMenu.runById(id)
 
   const commands: KeymapCommand[] = [
     // ── 文件 ──
@@ -151,6 +160,76 @@ export function useKeymap(actions: ReturnType<typeof useAppActions>): void {
       groupKey: 'keymap.groupEdit',
       defaultKeys: 'Mod+,',
       run: () => handleMenu('settings')
+    },
+
+    // ── 插入（默认键避开已有注册表：Mod+K 属快捷键设置，故链接用 Mod+Alt+K）──
+    {
+      id: 'insert.table',
+      titleKey: 'editorMenu.table',
+      groupKey: 'keymap.groupInsert',
+      defaultKeys: 'Mod+Alt+T',
+      run: runInsert('insert.table')
+    },
+    {
+      id: 'insert.hr',
+      titleKey: 'editorMenu.hr',
+      groupKey: 'keymap.groupInsert',
+      defaultKeys: 'Mod+Alt+H',
+      run: runInsert('insert.hr')
+    },
+    {
+      id: 'insert.image',
+      titleKey: 'editorMenu.image',
+      groupKey: 'keymap.groupInsert',
+      // macOS 的 Cmd+Alt+I 是 Chromium 的 DevTools（既有契约必须保留），
+      // 因此按用户给的"冲突就换"口径加 Shift
+      defaultKeys: 'Mod+Alt+Shift+I',
+      run: runInsert('insert.image')
+    },
+    {
+      id: 'insert.link',
+      titleKey: 'editorMenu.link',
+      groupKey: 'keymap.groupInsert',
+      // Ctrl/Cmd+K 已被 help.keymap（打开快捷键设置）占用 ⇒ 按用户给的备选落到 Alt+K
+      defaultKeys: 'Mod+Alt+K',
+      run: runInsert('insert.link')
+    },
+    {
+      id: 'insert.codeBlock',
+      titleKey: 'editorMenu.codeBlock',
+      groupKey: 'keymap.groupInsert',
+      // 同「插入图片」：macOS 的 Cmd+Alt+C 是 DevTools，加 Shift 避开
+      defaultKeys: 'Mod+Alt+Shift+C',
+      run: runInsert('paragraph.codeBlock')
+    },
+    {
+      id: 'insert.math',
+      titleKey: 'editorMenu.math',
+      groupKey: 'keymap.groupInsert',
+      defaultKeys: 'Mod+Alt+M',
+      run: runInsert('insert.math')
+    },
+    {
+      id: 'insert.mermaid',
+      titleKey: 'editorMenu.mermaid',
+      groupKey: 'keymap.groupInsert',
+      defaultKeys: 'Mod+Alt+G',
+      run: runInsert('insert.mermaid')
+    },
+    // 上/下插入段落：`Mod+Alt+↑/↓` 此前未被任何命令占用（APP_OWNED_COMBOS 里已登记）
+    {
+      id: 'insert.paragraphAbove',
+      titleKey: 'editorMenu.paragraphAbove',
+      groupKey: 'keymap.groupInsert',
+      defaultKeys: 'Mod+Alt+ArrowUp',
+      run: runInsert('insert.paragraphAbove')
+    },
+    {
+      id: 'insert.paragraphBelow',
+      titleKey: 'editorMenu.paragraphBelow',
+      groupKey: 'keymap.groupInsert',
+      defaultKeys: 'Mod+Alt+ArrowDown',
+      run: runInsert('insert.paragraphBelow')
     },
 
     // ── 视图 ──

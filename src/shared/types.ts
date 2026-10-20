@@ -604,6 +604,10 @@ export interface LuminAPI {
     minimize: () => void
     toggleMaximize: () => void
     close: () => void
+    /** 退出应用（走 app.quit()；每个窗口的关窗守卫照常询问保存） */
+    quit: () => void
+    /** 手动检查更新：返回是否真的发起了检查（开发态/未配置渠道为 false） */
+    checkUpdate: () => Promise<{ ok: boolean }>
     /** 原生菜单栏显隐（设置「原生菜单栏」开关时由渲染进程驱动主进程） */
     setMenuBar: (visible: boolean) => void
     /** 新建一个空白窗口（干净窗口：不继承当前工作区，空白未命名缓冲区） */

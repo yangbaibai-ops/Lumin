@@ -8,6 +8,11 @@ import { useI18n } from 'vue-i18n'
 import { useSettingsStore } from '../stores/settings'
 import { currentKeymap, setKeymapRecording, type ResolvedCommand } from '../lib/keymap/service'
 import { eventToSpec, parseKeybinding, specToChips } from '../lib/keymap/keys'
+import {
+  auditKeybindings,
+  validateKeybinding,
+  type KeymapValidationResult
+} from '../lib/keymap/validate'
 import Icon from './Icon.vue'
 
 const { t } = useI18n()
@@ -16,6 +21,8 @@ const settings = useSettingsStore()
 /** 正在录制的命令 id（null = 未录制） */
 const recordingId = ref<string | null>(null)
 const filter = ref('')
+/** 最近一次录制被拒绝的原因（与行 id 绑定；重新录制或恢复默认时清掉） */
+const recordError = ref<{ id: string; result: KeymapValidationResult } | null>(null)
 
 /**
  * 解析结果（**唯一**的显示数据源）：默认键 + 用户覆盖，由命令注册表算出来。
@@ -59,7 +66,54 @@ const groups = computed(() => {
 
 const customizedCount = computed(() => commands.value.filter((c) => c.customized).length)
 
+/**
+ * 历史数据审计（**只读**）：已存在的非法绑定（如 `f`）标成「无效」，
+ * 不静默删除 —— 用户点「恢复默认」才真正改设置。默认键不查保留表（见 validate.ts）。
+ */
+const issues = computed(() =>
+  auditKeybindings(
+    commands.value.map((c) => ({
+      id: c.id,
+      keys: c.keys,
+      customized: c.customized,
+      titleKey: c.titleKey
+    }))
+  )
+)
+
+function issueOf(c: ResolvedCommand): KeymapValidationResult | undefined {
+  return issues.value[c.id]
+}
+
+/** 冲突命令 id → 标题 */
+function namesOf(result: KeymapValidationResult): string {
+  return result.conflictWith
+    .map((id) => commands.value.find((x) => x.id === id))
+    .filter((x): x is ResolvedCommand => !!x)
+    .map((x) => titleOf(x))
+    .join(' / ')
+}
+
+/** 把校验结果落成一句可见文案（含"建议改为 …"） */
+function resultText(result: KeymapValidationResult): string {
+  const base = t(result.messageKey, { names: namesOf(result) })
+  if (result.suggestion) return `${base} ${t('keymap.suggest', { key: result.suggestion })}`
+  return base
+}
+
+function errorTextOf(c: ResolvedCommand): string {
+  if (recordError.value?.id === c.id) return resultText(recordError.value.result)
+  const issue = issueOf(c)
+  if (!issue) return ''
+  return t('keymap.invalidHint', { reason: resultText(issue) })
+}
+
+function errorIdOf(c: ResolvedCommand): string {
+  return `keymap-error-${c.id}`
+}
+
 function startRecording(id: string): void {
+  recordError.value = null
   recordingId.value = id
   setKeymapRecording(true)
   window.addEventListener('keydown', onRecordKey, true)
@@ -83,20 +137,37 @@ function onRecordKey(e: KeyboardEvent): void {
   }
   if (e.key === 'Backspace' || e.key === 'Delete') {
     settings.setKeybinding(id, null)
+    recordError.value = null
     stopRecording()
     return
   }
   const spec = eventToSpec(e)
   if (!spec) return // 只按了修饰键：继续等主键
-  settings.setKeybinding(id, spec)
+  /**
+   * 统一校验（纯函数在 lib/keymap/validate.ts）：拒绝时**不写 settings**，
+   * 保留原绑定并在行内显示红字 + aria-invalid。`spec` 用的是校验后的规范化写法。
+   */
+  const result = validateKeybinding(spec, {
+    selfId: id,
+    bindings: commands.value.map((c) => ({ id: c.id, keys: c.keys, titleKey: c.titleKey }))
+  })
+  if (!result.ok) {
+    recordError.value = { id, result }
+    stopRecording()
+    return
+  }
+  settings.setKeybinding(id, result.spec)
+  recordError.value = null
   stopRecording()
 }
 
 function resetOne(id: string): void {
+  recordError.value = null
   settings.resetKeybinding(id)
 }
 
 function resetAll(): void {
+  recordError.value = null
   settings.resetAllKeybindings()
 }
 
@@ -113,9 +184,9 @@ function conflictNames(c: ResolvedCommand): string {
     .join(' / ')
 }
 
-/** 表达式是否合法（用户可能手改成非法值；非法时按未绑定展示并提示） */
-function isValid(c: ResolvedCommand): boolean {
-  return !c.keys || parseKeybinding(c.keys) !== null
+/** 表达式至少能被解析（历史数据可能更糟：手写坏格式） */
+function parseOk(c: ResolvedCommand): boolean {
+  return !!c.keys && parseKeybinding(c.keys) !== null
 }
 </script>
 
@@ -167,14 +238,25 @@ function isValid(c: ResolvedCommand): boolean {
         <div
           v-for="c in g.items"
           :key="c.id"
-          class="key-row flex items-center gap-3 rounded-lg px-2 py-1.5"
+          class="key-row flex flex-wrap items-center gap-3 rounded-lg px-2 py-1.5"
           :data-command="c.id"
+          :data-keymap-invalid="issueOf(c) ? 'true' : undefined"
         >
           <span class="min-w-0 flex-1 truncate text-[13px] text-ink">{{ titleOf(c) }}</span>
 
+          <!-- 历史非法绑定（如 `f`）：红色「无效」徽标 + 恢复默认，不静默删除 -->
+          <span
+            v-if="issueOf(c)"
+            class="flex flex-none items-center gap-1 text-ui-sm text-danger-ink"
+            :title="errorTextOf(c)"
+            data-keymap-invalid-badge
+          >
+            <Icon name="alert-triangle" :size="12" />
+            {{ t('keymap.invalidBadge') }}
+          </span>
           <!-- 冲突：同一个键被多条命令占用 -->
           <span
-            v-if="c.conflictWith.length"
+            v-else-if="c.conflictWith.length"
             class="flex flex-none items-center gap-1 text-[11.5px] text-warning-ink"
             :title="t('keymap.conflictWith', { names: conflictNames(c) })"
           >
@@ -194,17 +276,21 @@ function isValid(c: ResolvedCommand): boolean {
                 {{ t('keymap.pressKeys') }}
               </span>
             </template>
-            <template v-else-if="c.keys && isValid(c)">
+            <template v-else-if="parseOk(c)">
               <kbd v-for="k in specToChips(c.keys)" :key="k" class="key-chip">{{ k }}</kbd>
             </template>
+            <span v-else-if="c.keys" class="text-ui-sm text-danger-ink">{{ c.keys }}</span>
             <span v-else class="text-[11.5px] text-ink-2b">{{ t('keymap.unbound') }}</span>
           </span>
 
           <span class="flex flex-none items-center gap-1">
             <button
               class="icon-btn h-6 w-6"
+              :class="{ 'key-invalid': !!issueOf(c) || recordError?.id === c.id }"
               :title="t('keymap.edit')"
               :aria-label="t('keymap.edit')"
+              :aria-invalid="issueOf(c) || recordError?.id === c.id ? 'true' : undefined"
+              :aria-describedby="issueOf(c) || recordError?.id === c.id ? errorIdOf(c) : undefined"
               @click="recordingId === c.id ? stopRecording() : startRecording(c.id)"
             >
               <Icon :name="recordingId === c.id ? 'x' : 'keyboard'" :size="12" />
@@ -220,6 +306,19 @@ function isValid(c: ResolvedCommand): boolean {
               <Icon name="refresh" :size="12" />
             </button>
           </span>
+
+          <!-- 可见错误（红字 + role=alert）：录制被拒绝或历史非法绑定都会落到这里。
+               `aria-describedby` 指的就是这个节点，读屏器与截图看到的是同一句文案。 -->
+          <p
+            v-if="errorTextOf(c)"
+            :id="errorIdOf(c)"
+            class="w-full text-ui-sm leading-relaxed text-danger-ink"
+            role="alert"
+            :data-keymap-error="recordError?.id === c.id ? 'record' : 'invalid'"
+          >
+            {{ errorTextOf(c) }}
+            <template v-if="issueOf(c)">— {{ t('keymap.invalidShort') }}</template>
+          </p>
         </div>
         <p v-if="!g.items.length" class="px-2 py-3 text-ui-sm text-ink-2b">
           {{ t('keymap.noMatch') }}

@@ -186,6 +186,7 @@ const ICONS: Record<string, string[]> = {
   'chevron-down': ['p:m6 9 6 6 6-6'],
   'chevron-up': ['p:m18 15-6-6-6 6'],
   plus: ['p:M5 12h14', 'p:M12 5v14'],
+  minus: ['p:M5 12h14'],
   trash: [
     'p:M3 6h18',
     'p:M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6',

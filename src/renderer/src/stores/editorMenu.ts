@@ -73,15 +73,20 @@ export const useEditorMenuStore = defineStore('editorMenu', {
     }
   },
   actions: {
-    /** 组装分区：读取当前编辑器上下文 + 注入依赖（对话框、失败提示、i18n） */
-    buildSections(): EditorMenuSection[] {
+    /**
+     * 构建**全部**动作（未按上下文裁剪）。
+     *
+     * 抽出来是为了应用菜单 / 快捷键也能按 id 执行同一条命令（`runById`）——否则
+     * 「插入表格」会变成快捷键一份实现、右键菜单一份实现，用户看到的行为迟早分叉。
+     */
+    buildActions() {
       // store 里的 instance 经 Vue 响应式包装后，类型上丢了 Editor 的私有成员
       // （css/className/editorView…）；运行时它就是 markRaw 的原始实例，故此处断言
       const editor = useEditorStore().instance as Editor | null
-      if (!editor) return []
+      if (!editor) return {}
       const ui = useUiStore()
       const notifications = useNotificationsStore()
-      const actions = buildEditorMenuActions({
+      return buildEditorMenuActions({
         editor,
         prompt: (opts) =>
           ui.prompt(
@@ -96,6 +101,15 @@ export const useEditorMenuStore = defineStore('editorMenu', {
         // 而不是上面那个"单输入框"的 prompt
         promptLink: (req) => ui.promptLink(req)
       })
+    },
+
+    /** 组装分区：读取当前编辑器上下文 + 注入依赖（对话框、失败提示、i18n） */
+    buildSections(): EditorMenuSection[] {
+      // store 里的 instance 经 Vue 响应式包装后，类型上丢了 Editor 的私有成员
+      // （css/className/editorView…）；运行时它就是 markRaw 的原始实例，故此处断言
+      const editor = useEditorStore().instance as Editor | null
+      if (!editor) return []
+      const actions = this.buildActions()
       const sections = buildEditorMenuSections(readEditorMenuContext(editor), actions)
       /**
        * 拼写建议放在**最顶部**（用户口径）：建议词 → 添加到词典 → 忽略。
@@ -121,6 +135,22 @@ export const useEditorMenuStore = defineStore('editorMenu', {
         }
       })
       return spellSection ? [spellSection, ...sections] : sections
+    },
+
+    /**
+     * 按动作 id 执行一条命令（应用菜单 / 快捷键用）。
+     *
+     * 与右键菜单 `run()` 的差别只有一点：这里没有"先 close 菜单"的步骤。
+     * 动作的 `false` 返回值（用户取消、没有编辑器）不当作错误，交给调用方忽略。
+     */
+    async runById(id: string): Promise<boolean> {
+      const action = (this.buildActions() as Record<string, EditorMenuAction | undefined>)[id]
+      if (!action || action.disabled) return false
+      const ok = await action.run()
+      if (ok !== false && action.refocus !== false) {
+        useEditorStore().instance?.commands.focus()
+      }
+      return ok !== false
     },
 
     /** 在视口坐标 (x, y) 打开菜单（默认只展开一级总览，不自动展开任何分类） */

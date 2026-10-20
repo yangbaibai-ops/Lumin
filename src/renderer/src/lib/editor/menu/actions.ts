@@ -2,6 +2,7 @@ import type { Editor } from '@tiptap/core'
 import type { EditorMenuAction } from './types'
 import { insertOrEditLink, type LinkAsker } from '../../linkInsert'
 import { insertParagraphAround } from '../paragraphAround'
+import { insertBlockMath, insertMermaidBlock } from '../insertBlocks'
 import { pastePlainIntoEditor } from '../../plainPaste'
 
 /**
@@ -302,6 +303,20 @@ export function buildEditorMenuActions(
       run: () => {
         editor.chain().focus().setHorizontalRule().run()
       }
+    },
+    // 块级公式 / Mermaid：与右键菜单、应用菜单、快捷键共用同一份实现
+    // （lib/editor/insertBlocks.ts），不做第二套插入事务。
+    'insert.math': {
+      id: 'insert.math',
+      labelKey: 'editorMenu.math',
+      icon: 'sigma',
+      run: () => insertBlockMath(editor)
+    },
+    'insert.mermaid': {
+      id: 'insert.mermaid',
+      labelKey: 'editorMenu.mermaid',
+      icon: 'braces',
+      run: () => insertMermaidBlock(editor)
     },
     'insert.toc': {
       id: 'insert.toc',

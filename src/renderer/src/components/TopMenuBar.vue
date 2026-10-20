@@ -10,13 +10,18 @@ import { useUiStore } from '../stores/ui'
 import { useSettingsStore } from '../stores/settings'
 import { useEditorStore } from '../stores/editor'
 import { useFindStore } from '../stores/find'
+import { useEditorMenuStore } from '../stores/editorMenu'
 import { useExport } from '../composables/useExport'
+import { currentKeymap } from '../lib/keymap/service'
+import { normalizeSpec } from '../lib/keymap/keys'
 import { useEditorMode } from '../composables/useEditorMode'
 import { useOutlineSide } from '../composables/useOutlineSide'
 import { confirmIfDirty, newDocumentWindow } from '../composables/useAppActions'
 import { openExternalFile, openInWindowOrFocus } from '../lib/openFile'
 // 反馈渠道清单（**URL 只在这一份配置里**，模板不写死；加 Gitee = 加一条数据）
 import { FEEDBACK_CHANNELS } from '../../../shared/feedback'
+import { APP_DOCS_URL } from '../../../shared/appLinks'
+import { defaultSettings } from '../../../shared/defaults'
 import { ENCODINGS } from '../../../shared/encodings'
 import { EOL_OPTIONS } from '../../../shared/eol'
 // 导出格式的唯一清单（应用内菜单的二级项从它派生）
@@ -31,6 +36,7 @@ const files = useFilesStore()
 const ui = useUiStore()
 const settings = useSettingsStore()
 const editorStore = useEditorStore()
+const editorMenu = useEditorMenuStore()
 const { runExport, runPrint } = useExport()
 const { setMode } = useEditorMode()
 const { toggleOutlineSide } = useOutlineSide()
@@ -43,6 +49,12 @@ type Leaf = {
   danger?: boolean
   /** 当前项（如「选择编码重新打开」里当前生效的那个编码）：右侧打勾并高亮 */
   active?: boolean
+  /** 与快捷键注册表同源的命令 id：右侧加速键由它实时解析（用户改绑后跟着变） */
+  commandId?: string
+  /** 没有注册表命令时显示的标准键（如剪贴板 role；按平台规范化） */
+  shortcut?: string
+  /** 禁用态（如没有文档时「保存」） */
+  disabled?: boolean
   run: () => void | Promise<void>
 }
 /** 二级菜单项：悬停展开右侧浮层（最近文档 / 最近文件夹 / 自定义内容） */
@@ -175,6 +187,55 @@ function saveEncodingItems(): (Leaf | 'sep')[] {
   return items
 }
 
+/** 至少打开了一篇文档（无文档时保存/导出/打印/编辑类菜单必须禁用） */
+const hasDoc = computed(() => !!files.current)
+/** 有编辑器实例（源码模式也仍持有 Tiptap 实例；未打开文档时为 null） */
+const hasEditor = computed(() => !!editorStore.instance)
+
+/** 字号即「缩放」的范围：与设置面板同一区间（13–26px） */
+const ZOOM_MIN = 13
+const ZOOM_MAX = 26
+function zoomBy(delta: number): void {
+  const next = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, settings.fontSize + delta))
+  if (next !== settings.fontSize) settings.set('fontSize', next)
+}
+function resetZoom(): void {
+  settings.set('fontSize', defaultSettings.fontSize)
+}
+
+/**
+ * 加速键显示的唯一来源：命令注册表的**生效键**（默认 + 用户覆盖）。
+ * `void settings.keybindings` 保留响应式依赖：用户改绑后菜单里的组合键立刻跟着变，
+ * 与设置页看到的是同一份数据（绝不在这里抄第二张键位表）。
+ */
+const keyLabels = computed<Record<string, string>>(() => {
+  void settings.keybindings
+  const out: Record<string, string> = {}
+  for (const c of currentKeymap()?.resolved() ?? []) {
+    if (c.keys) out[c.id] = c.keys
+  }
+  return out
+})
+
+/** 菜单项右侧的加速键文案（没有就返回空串，不占位） */
+function shortcutOf(it: Leaf): string {
+  if (it.commandId) return keyLabels.value[it.commandId] ?? ''
+  return it.shortcut ? (normalizeSpec(it.shortcut) ?? '') : ''
+}
+
+/** 「大纲」：切到左栏的大纲页签（不是"左右位置"，那是下一项） */
+function showOutline(): void {
+  ui.sidebarVisible = true
+  ui.sidebarTab = 'outline'
+  settings.set('sidebarVisible', true)
+}
+
+/** 「帮助 → 检查更新」：开发态没有更新渠道，如实提示而不是假装在检查 */
+async function checkForUpdate(): Promise<void> {
+  const res = await window.luminAPI.app.checkUpdate()
+  if (!res?.ok) ui.toast(t('menu.updateUnavailable'), 'info')
+}
+
 /** 菜单结构用 computed：文件菜单里的「最近文档/最近文件夹」需要随使用记录实时更新 */
 const GROUPS = computed<Group[]>(() => [
   {
@@ -187,12 +248,19 @@ const GROUPS = computed<Group[]>(() => [
         // 同一件事不留两个入口；顶部栏那个独立按钮也收回到这里。
         labelKey: 'menu.new',
         icon: 'file-plus',
+        commandId: 'file.new',
         run: () => newDocumentWindow()
       },
-      { labelKey: 'menu.newWindow', icon: 'copy', run: () => window.luminAPI.app.newWindow() },
+      {
+        labelKey: 'menu.newWindow',
+        icon: 'copy',
+        commandId: 'file.newWindow',
+        run: () => window.luminAPI.app.newWindow()
+      },
       {
         labelKey: 'menu.openFile',
         icon: 'folder-open',
+        commandId: 'file.open',
         run: async () => {
           if (await confirmIfDirty()) {
             const p = await window.luminAPI.file.chooseOpenFile()
@@ -205,7 +273,12 @@ const GROUPS = computed<Group[]>(() => [
           }
         }
       },
-      { labelKey: 'menu.openFolder', icon: 'folderOpen', run: () => files.openFolder() },
+      {
+        labelKey: 'menu.openFolder',
+        icon: 'folderOpen',
+        commandId: 'file.openFolder',
+        run: () => files.openFolder()
+      },
       'sep',
       // 一级项 + 悬停二级：最近文档 / 最近文件夹（二级里用共用的 RecentList 组件）
       { labelKey: 'open.recent', icon: 'clock', slot: 'recentFiles' },
@@ -214,6 +287,9 @@ const GROUPS = computed<Group[]>(() => [
       {
         labelKey: 'menu.save',
         icon: 'save',
+        commandId: 'file.save',
+        // 没有文档时保存没有意义（用户口径：无文档时「保存」禁用）
+        disabled: !hasDoc.value,
         // 保存成功不发通知（脏标记/状态栏就是反馈）；失败本身由 files.save() 内部报错
         run: async () => {
           await files.save()
@@ -222,6 +298,8 @@ const GROUPS = computed<Group[]>(() => [
       {
         labelKey: 'menu.saveAs',
         icon: 'copy',
+        commandId: 'file.saveAs',
+        disabled: !hasDoc.value,
         run: async () => {
           await files.saveAs()
         }
@@ -235,16 +313,25 @@ const GROUPS = computed<Group[]>(() => [
         children: EXPORT_FORMATS.map((f) => ({
           labelKey: f.labelKey,
           icon: f.icon,
+          commandId: f.commandId,
+          disabled: !hasDoc.value,
           run: () => runExport(f.id)
         }))
       },
       // 「打印」紧挨着导出，但它**不来自** EXPORT_FORMATS：那份清单是「导出格式的唯一清单」，
       // 而打印不落盘、没有输出文件（审计 §7 第 18 条：此前只有 PDF 导出）。Ctrl+P 同一动作。
-      { labelKey: 'menu.print', icon: 'printer', run: () => runPrint() },
+      {
+        labelKey: 'menu.print',
+        icon: 'printer',
+        commandId: 'file.print',
+        disabled: !hasDoc.value,
+        run: () => runPrint()
+      },
       // 本地历史（Wave 2）：保存前的快照可查看/载入（未落盘文档没有历史）
       {
         labelKey: 'menu.localHistory',
         icon: 'clock',
+        disabled: !files.current?.path,
         run: async () => {
           await files.openHistory()
         }
@@ -266,6 +353,20 @@ const GROUPS = computed<Group[]>(() => [
         labelKey: 'menu.reopenWithEncoding',
         icon: 'globe',
         children: reopenEncodingItems()
+      },
+      'sep',
+      {
+        labelKey: 'menu.closeWindow',
+        icon: 'x',
+        commandId: 'file.closeWindow',
+        run: () => window.luminAPI.app.close()
+      },
+      {
+        // 退出没有注册表命令（它不属于"文档命令"）：不显示假加速键。
+        // 实际退出走主进程 app.quit() → 每个窗口的关窗守卫照常询问保存。
+        labelKey: 'menu.quit',
+        icon: 'x',
+        run: () => window.luminAPI.app.quit()
       }
     ]
   },
@@ -273,16 +374,77 @@ const GROUPS = computed<Group[]>(() => [
     key: 'e',
     labelKey: 'menu.edit',
     items: [
-      { labelKey: 'menu.undo', icon: 'undo', run: () => editorStore.instance?.commands.undo() },
-      { labelKey: 'menu.redo', icon: 'redo', run: () => editorStore.instance?.commands.redo() },
+      {
+        labelKey: 'menu.undo',
+        icon: 'undo',
+        shortcut: 'Mod+Z',
+        disabled: !hasEditor.value,
+        run: () => editorStore.instance?.commands.undo()
+      },
+      {
+        labelKey: 'menu.redo',
+        icon: 'redo',
+        shortcut: 'Mod+Shift+Z',
+        disabled: !hasEditor.value,
+        run: () => editorStore.instance?.commands.redo()
+      },
+      'sep',
+      // 剪贴板四项走编辑器动作目录的既有实现（与右键菜单/工具栏同一份）：
+      // cut/copy 走 execCommand，paste 走 PM 的粘贴管线（含 Markdown 解析）。
+      {
+        labelKey: 'menu.cut',
+        icon: 'scissors',
+        shortcut: 'Mod+X',
+        disabled: !hasEditor.value,
+        run: () => void editorMenu.runById('clipboard.cut')
+      },
+      {
+        labelKey: 'menu.copy',
+        icon: 'copy',
+        shortcut: 'Mod+C',
+        disabled: !hasEditor.value,
+        run: () => void editorMenu.runById('clipboard.copy')
+      },
+      {
+        labelKey: 'menu.paste',
+        icon: 'clipboard',
+        shortcut: 'Mod+V',
+        disabled: !hasEditor.value,
+        run: () => void editorMenu.runById('clipboard.paste')
+      },
+      {
+        labelKey: 'menu.pastePlain',
+        icon: 'clipboard',
+        commandId: 'edit.pastePlain',
+        disabled: !hasEditor.value,
+        run: () => void editorMenu.runById('clipboard.pastePlain')
+      },
+      {
+        labelKey: 'menu.selectAll',
+        icon: 'list-checks',
+        shortcut: 'Mod+A',
+        disabled: !hasEditor.value,
+        run: () => void editorMenu.runById('clipboard.selectAll')
+      },
       'sep',
       {
         labelKey: 'menu.findReplace',
         icon: 'search',
+        commandId: 'edit.findReplace',
         run: () => useFindStore().show()
       },
-      { labelKey: 'menu.replace', icon: 'pencil', run: () => useFindStore().showReplace() },
-      { labelKey: 'menu.globalSearch', icon: 'list-checks', run: () => ui.openGlobalSearch() }
+      {
+        labelKey: 'menu.replace',
+        icon: 'pencil',
+        commandId: 'edit.replace',
+        run: () => useFindStore().showReplace()
+      },
+      {
+        labelKey: 'menu.globalSearch',
+        icon: 'list-checks',
+        commandId: 'edit.globalSearch',
+        run: () => ui.openGlobalSearch()
+      }
     ]
   },
   {
@@ -292,34 +454,94 @@ const GROUPS = computed<Group[]>(() => [
       {
         labelKey: 'editor.codeBlock',
         icon: 'braces',
-        run: () => editorStore.instance?.chain().focus().toggleCodeBlock().run()
+        commandId: 'insert.codeBlock',
+        disabled: !hasEditor.value,
+        run: () => void editorMenu.runById('paragraph.codeBlock')
       },
       {
         labelKey: 'editor.quote',
         icon: 'quote',
+        disabled: !hasEditor.value,
         run: () => editorStore.instance?.chain().focus().toggleBlockquote().run()
       },
       'sep',
       {
         labelKey: 'editor.ul',
         icon: 'list',
+        disabled: !hasEditor.value,
         run: () => editorStore.instance?.chain().focus().toggleBulletList().run()
       },
       {
         labelKey: 'editor.ol',
         icon: 'list-ordered',
+        disabled: !hasEditor.value,
         run: () => editorStore.instance?.chain().focus().toggleOrderedList().run()
       },
       {
         labelKey: 'editor.task',
         icon: 'list-checks',
+        disabled: !hasEditor.value,
         run: () => editorStore.instance?.chain().focus().toggleTaskList().run()
       },
       'sep',
       {
         labelKey: 'editor.hr',
         icon: 'hr',
-        run: () => editorStore.instance?.chain().focus().setHorizontalRule().run()
+        commandId: 'insert.hr',
+        disabled: !hasEditor.value,
+        run: () => void editorMenu.runById('insert.hr')
+      },
+      'sep',
+      // 插入类：与快捷键注册表、编辑器右键菜单共用同一批动作 id（见 useKeymap 的 insert.*）。
+      {
+        labelKey: 'editorMenu.table',
+        icon: 'table',
+        commandId: 'insert.table',
+        disabled: !hasEditor.value,
+        run: () => void editorMenu.runById('insert.table')
+      },
+      {
+        labelKey: 'editorMenu.image',
+        icon: 'image',
+        commandId: 'insert.image',
+        disabled: !hasEditor.value,
+        run: () => void editorMenu.runById('insert.image')
+      },
+      {
+        labelKey: 'editorMenu.link',
+        icon: 'link',
+        commandId: 'insert.link',
+        disabled: !hasEditor.value,
+        run: () => void editorMenu.runById('insert.link')
+      },
+      {
+        labelKey: 'editorMenu.math',
+        icon: 'sigma',
+        commandId: 'insert.math',
+        disabled: !hasEditor.value,
+        run: () => void editorMenu.runById('insert.math')
+      },
+      {
+        labelKey: 'editorMenu.mermaid',
+        icon: 'braces',
+        commandId: 'insert.mermaid',
+        disabled: !hasEditor.value,
+        run: () => void editorMenu.runById('insert.mermaid')
+      },
+      'sep',
+      {
+        labelKey: 'editorMenu.paragraphAbove',
+        icon: 'chevron-up',
+        commandId: 'insert.paragraphAbove',
+        disabled: !hasEditor.value,
+        run: () => void editorMenu.runById('insert.paragraphAbove')
+      },
+      {
+        labelKey: 'editorMenu.paragraphBelow',
+        icon: 'chevron-down',
+        commandId: 'insert.paragraphBelow',
+        disabled: !hasEditor.value,
+        run: () => void editorMenu.runById('insert.paragraphBelow')
       },
       'sep',
       { labelKey: 'editor.raiseHeading', icon: 'chevron-up', run: raiseHeadingLevel },
@@ -333,10 +555,18 @@ const GROUPS = computed<Group[]>(() => [
       {
         labelKey: 'menu.toggleSidebar',
         icon: 'panel-left',
+        commandId: 'view.toggleSidebar',
         run: () => {
           ui.sidebarVisible = !ui.sidebarVisible
           settings.set('sidebarVisible', ui.sidebarVisible)
         }
+      },
+      {
+        // 「大纲」：直接切到左栏的大纲页签（不是"左右位置"，那是下一项）。
+        labelKey: 'menu.outline',
+        icon: 'outline-panel',
+        disabled: !hasDoc.value,
+        run: showOutline
       },
       {
         // 关掉工具栏后唯一的「开关型」入口（右键菜单那条路已被隐藏，看不出可点）；
@@ -351,19 +581,84 @@ const GROUPS = computed<Group[]>(() => [
         label: settings.outlineOnRight ? t('outline.toLeft') : t('outline.toRight'),
         icon: 'outline-panel',
         active: settings.outlineOnRight,
+        commandId: 'view.outlineSide',
         run: toggleOutlineSide
       },
       'sep',
-      { labelKey: 'menu.wysiwyg', icon: 'eye', run: () => setMode('wysiwyg') },
-      { labelKey: 'menu.split', icon: 'columns', run: () => setMode('split') },
-      { labelKey: 'menu.source', icon: 'source', run: () => setMode('source') },
+      {
+        labelKey: 'menu.wysiwyg',
+        icon: 'eye',
+        commandId: 'view.modeWysiwyg',
+        run: () => setMode('wysiwyg')
+      },
+      {
+        labelKey: 'menu.split',
+        icon: 'columns',
+        commandId: 'view.modeSplit',
+        run: () => setMode('split')
+      },
+      {
+        labelKey: 'menu.source',
+        icon: 'source',
+        commandId: 'view.modeSource',
+        run: () => setMode('source')
+      },
       'sep',
       {
         labelKey: 'menu.focus',
         icon: 'focus',
+        commandId: 'view.focusMode',
         run: () => {
           ui.focusMode = !ui.focusMode
         }
+      },
+      'sep',
+      // 缩放 = 正文字号（应用自己有字号设置，Chromium 整页缩放会弄坏版式）；
+      // 上下界与设置面板一致，到界后对应项禁用。
+      {
+        labelKey: 'menu.zoomIn',
+        icon: 'plus',
+        disabled: settings.fontSize >= ZOOM_MAX,
+        run: () => zoomBy(1)
+      },
+      {
+        labelKey: 'menu.zoomOut',
+        icon: 'minus',
+        disabled: settings.fontSize <= ZOOM_MIN,
+        run: () => zoomBy(-1)
+      },
+      {
+        labelKey: 'menu.zoomReset',
+        icon: 'refresh',
+        run: resetZoom
+      },
+      'sep',
+      // 主题切换：与原生菜单同一组取值（直接写设置，主进程广播后全局生效）
+      {
+        labelKey: 'menu.theme',
+        icon: 'sun',
+        children: [
+          {
+            labelKey: 'menu.themeAuto',
+            active: settings.theme === 'auto',
+            run: () => settings.set('theme', 'auto')
+          },
+          {
+            labelKey: 'menu.themeLight',
+            active: settings.theme === 'light',
+            run: () => settings.set('theme', 'light')
+          },
+          {
+            labelKey: 'menu.themeDark',
+            active: settings.theme === 'dark',
+            run: () => settings.set('theme', 'dark')
+          },
+          {
+            labelKey: 'menu.themeSepia',
+            active: settings.theme === 'sepia',
+            run: () => settings.set('theme', 'sepia')
+          }
+        ]
       }
     ]
   },
@@ -372,8 +667,23 @@ const GROUPS = computed<Group[]>(() => [
     labelKey: 'menu.help',
     items: [
       { labelKey: 'menu.settings', icon: 'settings', run: () => ui.openSettings() },
+      {
+        // 快捷键一览：直接打开设置里的「快捷键」页签（与 Ctrl+, 后切页签同一目的地）
+        labelKey: 'menu.keymap',
+        icon: 'keyboard',
+        commandId: 'help.keymap',
+        run: () => ui.openSettings('keymap')
+      },
+      {
+        // 使用文档：README（URL 在 shared/appLinks.ts，打开走既有外链白名单）
+        labelKey: 'menu.docs',
+        icon: 'book',
+        run: () => window.luminAPI.shell.openExternal(APP_DOCS_URL)
+      },
       { labelKey: 'menu.about', icon: 'info', run: () => router.push('/about') },
-      // 与上面两条（设置 / 关于）之间画一条分隔线：下面是**开发者向**的入口
+      { labelKey: 'menu.checkUpdate', icon: 'refresh', run: checkForUpdate },
+      // 与上面几条（设置 / 快捷键 / 文档 / 关于 / 更新）之间画一条分隔线：
+      // 下面是**开发者向**的入口
       'sep',
       // 「打开开发者工具」放在**帮助**里（用户口径第五轮原话：「并不是在编辑快捷工具栏中，
       // 而是在应用的顶部栏中的'帮助'里添加」；那枚工具栏按钮已随之移除）。
@@ -456,6 +766,7 @@ function onGroupHover(g: Group): void {
 }
 
 async function runLeaf(leaf: Leaf): Promise<void> {
+  if (leaf.disabled) return
   close()
   try {
     await leaf.run()
@@ -718,8 +1029,15 @@ onBeforeUnmount(() => {
           <button
             v-else
             class="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-left text-ui transition-colors duration-100"
-            :class="it.danger ? 'text-danger-ink hover:bg-danger/10' : 'text-ink hover:bg-panel-2'"
+            :class="[
+              it.danger ? 'text-danger-ink hover:bg-danger/10' : 'text-ink hover:bg-panel-2',
+              it.disabled ? 'cursor-not-allowed opacity-40' : ''
+            ]"
+            :disabled="it.disabled"
+            :aria-disabled="it.disabled ? 'true' : undefined"
             :data-menu-item="it.labelKey ?? it.label ?? ''"
+            :data-command-id="it.commandId"
+            :data-shortcut="shortcutOf(it)"
             @mouseenter="closeSub"
             @click="runLeaf(it)"
           >
@@ -727,6 +1045,13 @@ onBeforeUnmount(() => {
               <Icon v-if="it.icon" :name="it.icon" :size="13" />
             </span>
             <span class="min-w-0 flex-1 truncate">{{ it.label ?? t(it.labelKey ?? '') }}</span>
+            <!-- 加速键：来自命令注册表的生效键（用户改绑后实时变化），不是另一张表 -->
+            <span
+              v-if="shortcutOf(it)"
+              class="ml-1 flex-none font-mono text-ui-sm tracking-tight text-ink-3"
+            >
+              {{ shortcutOf(it) }}
+            </span>
           </button>
         </template>
       </div>
@@ -775,15 +1100,20 @@ onBeforeUnmount(() => {
               <button
                 v-else
                 class="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-left text-ui transition-colors duration-100"
-                :class="
+                :class="[
                   child.danger
                     ? 'text-danger-ink hover:bg-danger/10'
                     : child.active
                       ? 'bg-accent-soft text-accent-ink'
-                      : 'text-ink hover:bg-panel-2'
-                "
+                      : 'text-ink hover:bg-panel-2',
+                  child.disabled ? 'cursor-not-allowed opacity-40' : ''
+                ]"
+                :disabled="child.disabled"
+                :aria-disabled="child.disabled ? 'true' : undefined"
                 :data-encoding-item="child.label ?? child.labelKey ?? ''"
                 :data-menu-item="child.labelKey ?? child.label ?? ''"
+                :data-command-id="child.commandId"
+                :data-shortcut="shortcutOf(child)"
                 @click="runLeaf(child)"
               >
                 <span class="flex h-4 w-4 items-center justify-center text-ink-2b">
@@ -792,6 +1122,12 @@ onBeforeUnmount(() => {
                 <span class="min-w-0 flex-1 truncate">{{
                   child.label ?? t(child.labelKey ?? '')
                 }}</span>
+                <span
+                  v-if="shortcutOf(child)"
+                  class="ml-1 flex-none font-mono text-ui-sm tracking-tight text-ink-3"
+                >
+                  {{ shortcutOf(child) }}
+                </span>
                 <Icon v-if="child.active" name="check" :size="13" class="flex-none" />
               </button>
             </template>

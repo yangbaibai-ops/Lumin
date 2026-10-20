@@ -126,7 +126,15 @@
     "copy": "复制",
     "paste": "粘贴",
     "selectAll": "全选",
-    "pastePlain": "粘贴为纯文本"
+    "pastePlain": "粘贴为纯文本",
+    "outline": "大纲",
+    "zoomIn": "放大",
+    "zoomOut": "缩小",
+    "zoomReset": "重置缩放",
+    "keymap": "快捷键一览",
+    "docs": "使用文档",
+    "checkUpdate": "检查更新",
+    "updateUnavailable": "当前版本未配置更新渠道（开发态），无法检查更新"
   },
   "fileTree": {
     "moveTo": "移动到…",
@@ -605,7 +613,9 @@
       "right": "本列右对齐",
       "none": "本列默认对齐（不写 :---）"
     },
-    "pastePlain": "粘贴为纯文本"
+    "pastePlain": "粘贴为纯文本",
+    "math": "块级公式",
+    "mermaid": "Mermaid 图表"
   },
   "tableBar": {
     "label": "表格快捷操作",
@@ -668,6 +678,15 @@
     "groupView": "视图",
     "groupWindow": "窗口",
     "groupHelp": "帮助",
+    "groupInsert": "插入",
+    "errSyntax": "无法识别的快捷键格式",
+    "errModifierRequired": "必须搭配 Ctrl/Cmd 或 Alt（Shift 单独不算）",
+    "errReserved": "系统保留组合，不能绑定",
+    "errConflict": "已被「{names}」占用",
+    "suggest": "建议改为 {key}",
+    "invalidBadge": "无效",
+    "invalidHint": "当前绑定无效：{reason}。请恢复默认。",
+    "invalidShort": "无效，请恢复默认",
     "nextWindow": "切换到下一个窗口",
     "prevWindow": "切换到上一个窗口",
     "minimizeWindow": "最小化窗口",
