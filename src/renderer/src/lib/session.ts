@@ -28,7 +28,7 @@ const slotIndex = window.luminAPI.app.sessionSlot
 let saveTimer: ReturnType<typeof setTimeout> | null = null
 let installed = false
 
-/** 编辑器视图内的滚动容器（.editor-scroll 由 TyporaEditor 提供） */
+/** 编辑器视图内的滚动容器（.editor-scroll 由 WysiwygEditor 提供） */
 function scrollEl(): HTMLElement | null {
   const dom = useEditorStore().instance?.view?.dom as HTMLElement | undefined
   return dom ? (dom.closest('.editor-scroll') as HTMLElement | null) : null
@@ -137,7 +137,7 @@ export function installSessionTracking(): void {
   })
 }
 
-/** 等待编辑器装载「正确的文档」：新文档刚打开时 TyporaEditor 会按 :key 重建，
+/** 等待编辑器装载「正确的文档」：新文档刚打开时 WysiwygEditor 会按 :key 重建，
  *  只判实例存在会拿到旧的（还是未命名缓冲区），故用文档长度做锚。
  *
  *  **源码模式要在这里放行**：那时编辑面是 textarea，Tiptap 实例永远不会出现

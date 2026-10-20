@@ -7,7 +7,7 @@
 //     用户实测报障：光标在构造内（正显示着 `**`）时在别处按一下，`**` 立刻消失、
 //     松手又回来（闪动）。成因就是「`mousedown` 即挂 `.press-hidden`」。
 //
-// 实现口径（第二十四轮定稿 + 第二十六轮时机修正，见 typoraInlineMarks 的
+// 实现口径（第二十四轮定稿 + 第二十六轮时机修正，见 inlineMarks 的
 // `pressHeld` / `pressInkHidden` / `PRESS_DRAG_SLOP`）：
 //   * 按下即 **冻结显隐装饰**（手势期间谁显形谁折叠不变、版面一个像素不动）；
 //   * **指针移动超过 4px 之后**才由 CSS
@@ -544,7 +544,7 @@ async function main() {
   // ═══ 第十五轮 H：嵌套标记的配对 + 拖选"模型层 vs 可视层" ═══════════════════════
   //
   // ① 用户报障源码：`**` + 反引号包住的 `****x****` + ` 逐字节留住**`。
-  //    真因（文件:行号 = typoraInlineMarks.ts 的 blockInventory，原「只维护一个 cur run 且不看
+  //    真因（文件:行号 = inlineMarks.ts 的 blockInventory，原「只维护一个 cur run 且不看
   //    style」）：`code:start` 因 `bold` 还开着被整颗丢掉，紧接着的 `` ` ``（code:end）又把 `bold`
   //    的 run 提前闭合在**反引号**上 ⇒ 收尾那颗 `**` 没有可闭合的 run、`runs` 里没有任何区间
   //    覆盖它 ⇒ 光标放哪它都不显形（用户说的"后面的 `**` 怎么都不出现"）。

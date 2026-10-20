@@ -10,7 +10,7 @@ import Toolbar from '../components/Toolbar.vue'
 import StatusBar from '../components/StatusBar.vue'
 import NotificationCenter from '../components/NotificationCenter.vue'
 import OutlinePanel from '../components/OutlinePanel.vue'
-import TyporaEditor from '../components/editor/TyporaEditor.vue'
+import WysiwygEditor from '../components/editor/WysiwygEditor.vue'
 import Icon from '../components/Icon.vue'
 import { measureAllCodeBlocks } from '../lib/editor/codeBlockViews'
 import { historyIntent, isNestedEditorTarget } from '../lib/editor/historyKey'
@@ -24,7 +24,7 @@ import i18n from '../i18n'
 // ─── 编辑器页面：工具栏 + 实时渲染/分屏对比/源码三模式 + 状态栏 ────────────
 // 布局模型：渲染面板（Tiptap）与源码面板（textarea）各只挂载一次、常驻 DOM，
 // 模式切换只改变两个面板的尺寸/显隐与分隔条，绝不卸载重建编辑器内核——
-// 大文档下 TyporaEditor 重建是此前切换耗时（数百 ms）的唯一来源。
+// 大文档下 WysiwygEditor 重建是此前切换耗时（数百 ms）的唯一来源。
 const files = useFilesStore()
 const ui = useUiStore()
 const editorStore = useEditorStore()
@@ -231,9 +231,9 @@ watch(
 // 两条方向都由**同一个账本**驱动，没有第二套判断：
 //   左（实时渲染）→ 右（源码）：Tiptap 防抖序列化 → files store（作者 wysiwyg）
 //     → textarea 的 `:value` 绑定自动跟上（声明式副本，零新增代码）。
-//   右（源码）→ 左（实时渲染）：输入即写 files store（作者 source）→ TyporaEditor 的
+//   右（源码）→ 左（实时渲染）：输入即写 files store（作者 source）→ WysiwygEditor 的
 //     `contentRev` watcher 看到自己落后 ⇒ setContent 进 Tiptap（分屏下 200ms 合并，
-//     见 TyporaEditor 的 applyStoreContent；那条合并只是渲染节流）。
+//     见 WysiwygEditor 的 applyStoreContent；那条合并只是渲染节流）。
 // 旧写法在这里另开了一个 200ms 的 setContent 定时器，是同一件事的第二条通道，
 // 已删除（手册 §4.59）。
 
@@ -487,7 +487,7 @@ function applyScrollRatioSettled(el: HTMLElement | null, ratio: number): void {
   setTimeout(() => applyScrollRatio(el, ratio), 120)
 }
 
-/** 编辑器视图内的实际滚动容器（.editor-scroll，TyporaEditor 内部） */
+/** 编辑器视图内的实际滚动容器（.editor-scroll，WysiwygEditor 内部） */
 function editorScrollEl(ed: PmEditor | null): HTMLElement | null {
   const dom = ed?.view?.dom as HTMLElement | undefined
   return dom ? (dom.closest('.editor-scroll') as HTMLElement | null) : null
@@ -534,7 +534,7 @@ function captureViewPos(prev: 'wysiwyg' | 'split' | 'source'): void {
   viewPosMem.value = { scrollRatio, pmPos, pmLen, mdOffset, mdLen, fromKind }
 }
 
-/** 等待编辑器实例就绪（文件刚切换、新 TyporaEditor 尚未绑定完成时） */
+/** 等待编辑器实例就绪（文件刚切换、新 WysiwygEditor 尚未绑定完成时） */
 async function waitEditorReady(timeout = 1200): Promise<PmEditor | null> {
   const t0 = Date.now()
   await nextTick()
@@ -640,7 +640,7 @@ async function restoreViewPos(mode: 'wysiwyg' | 'split' | 'source'): Promise<voi
   }
 }
 
-// 切换文件（TyporaEditor :key 重建）时，跨文档的位置记忆作废
+// 切换文件（WysiwygEditor :key 重建）时，跨文档的位置记忆作废
 watch(
   () => files.current?.path,
   () => {
@@ -944,7 +944,7 @@ onBeforeUnmount(() => {
   <div class="relative flex h-full min-h-0 flex-col" :class="{ 'split-dragging': splitDragging }">
     <!-- 快捷工具栏：可在设置（编辑器 → 快捷工具栏）或工具栏空白区右键菜单里关掉；
          关掉后这里是「一片空的编辑区」，不占高度。
-         **专注模式下一并隐藏**（用户口径：本产品定位是「纸面优先」的 Typora 式写作，
+         **专注模式下一并隐藏**（用户口径：本产品定位是「纸面优先」的 纸面优先写作，
          而专注模式此前只收窄正文列 + 压暗侧栏，最显眼的 44px 常驻 chrome 却留着 ——
          名不副实）。
          ⚠️ 但"隐藏工具栏"会把它**自己的退出开关**一起藏掉（那枚开关就在工具栏里）——
@@ -967,7 +967,7 @@ onBeforeUnmount(() => {
       <span>{{ i18n.global.t('editor.focusExit') }}</span>
     </button>
 
-    <!-- 通知中心：**编辑区上方**（像 Typora），紧接工具栏之下、内核之上 —— 文档流里的一块，
+    <!-- 通知中心：**编辑区上方**（像主流编辑器），紧接工具栏之下、内核之上 —— 文档流里的一块，
          长通知不会被窗口底边裁掉，也不再挤在底部栏旁边。进出场动画见 overlays.css 的 `.ntf-*`。
          ⚠️ 草稿提示**不在这里**：它已经改成独立弹窗（见下面的 `.draft-modal`），
          因为「当前内容和磁盘不一样」这件事必须先做选择，不能和通知混在一起。 -->
@@ -1008,7 +1008,7 @@ onBeforeUnmount(() => {
           class="h-full min-w-0 bg-paper"
           @contextmenu="onRenderContextMenu"
         >
-          <TyporaEditor
+          <WysiwygEditor
             ref="renderRef"
             :key="files.current?.path ?? 'untitled'"
             :model-value="files.current?.content ?? ''"

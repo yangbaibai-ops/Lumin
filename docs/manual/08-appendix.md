@@ -1,4 +1,4 @@
-<!-- 本文件由 docs/typora-wysiwyg-manual.md 按章拆出（清单 §2.H）；索引见该文件。 -->
+<!-- 本文件由 docs/wysiwyg-manual.md 按章拆出（清单 §2.H）；索引见该文件。 -->
 
 ## 8. 附录
 
@@ -14,7 +14,7 @@ src/
 ├─ shared/                      # 三进程共享类型
 └─ renderer/src/
    ├─ components/editor/
-   │  ├─ TyporaEditor.vue       # useEditor + 防抖序列化（气泡菜单已于第 25 轮移除）
+   │  ├─ WysiwygEditor.vue       # useEditor + 防抖序列化（气泡菜单已于第 25 轮移除）
    │  └─ CodeBlockView.vue      # CodeMirror/Mermaid NodeView
    ├─ components/ToolbarTableButton.vue  # WPS 式表格网格选择器
    ├─ lib/editor/
@@ -30,7 +30,7 @@ tools/
 ├─ run-suites.js                # CDP 套件矩阵入口（默认 58 条；--all/--tier/--suite/--probe）
 ├─ lib/harness.js               # 套件公共骨架（连 CDP / 注入 pinia / 输入模拟）
 └─ _verify-*.js                 # 各领域验收套件（清单见 tools/README.md）
-docs/typora-wysiwyg-manual.md   # 本文档
+docs/wysiwyg-manual.md   # 本文档
 ```
 
 ### 附录 B：关键依赖（package.json 实况）

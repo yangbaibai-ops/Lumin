@@ -330,7 +330,7 @@
     "historyMaxAge": "快照保留时长",
     "historyDays": "{days} 天",
     "remoteImages": "远程图片",
-    "remoteImagesHint": "打开文档时自动加载（与 Typora 一致）；想「不点不外联」请选「点击后加载」",
+    "remoteImagesHint": "打开文档时自动加载（遵循通行的做法）；想「不点不外联」请选「点击后加载」",
     "nativeMenuBar": "顶部菜单栏",
     "syncScroll": "分屏同步滚动",
     "codeLineNumbers": "代码块行号",
@@ -497,7 +497,7 @@
     "restoreFailed": "无法恢复上次的文档（文件可能已被移动或删除）"
   },
   "about": {
-    "desc": "Lumin 是一款基于 Electron 构建的跨平台桌面 Markdown 编辑器，以所见即所得为核心设计理念，致力于提供媲美 Typora 的沉浸式写作体验。",
+    "desc": "Lumin 是一款基于 Electron 构建的跨平台桌面 Markdown 编辑器，以所见即所得为核心设计理念，致力于提供专业级的沉浸式长文写作体验。",
     "version": "版本",
     "stack": "技术栈",
     "license": "免费 · 开源 · 现代化",

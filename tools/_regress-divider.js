@@ -11,7 +11,7 @@ const { connect, settle, waitEditor, showToolbar, sleep, Reporter, clickMode, wa
 
 /** 左栏（渲染面板）占内核容器的比例 */
 const RATIO = `(() => {
-  const host = document.querySelector('.typora-container')?.parentElement
+  const host = document.querySelector('.wysiwyg-container')?.parentElement
   if (!host) return -1
   const parent = host.parentElement
   if (!parent) return -1

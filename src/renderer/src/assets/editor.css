@@ -6,7 +6,7 @@
  */
 
 /* ─────────────────────── 编辑器块（所见即所得） ─────────────────────── */
-/* Typora 式极简：编辑中的块不做背景/色条提示，仅在行内标记符层面反馈。
+/* 极简：编辑中的块不做背景/色条提示，仅在行内标记符层面反馈。
    padding 放在可编辑容器上，保证点击块整行（含边缘空白）都能放置光标 */
 .md-block {
   position: relative;
@@ -74,7 +74,7 @@ code.md-reveal > .md-meta {
   animation: lm-fade-in 0.12s ease;
 }
 
-/* 标题标记符（Typora：光标进入标题时显示 #，退格可去标题） */
+/* 标题标记符（光标进入标题时显示 #，退格可去标题） */
 h1 > .md-heading-marker,
 h2 > .md-heading-marker,
 h3 > .md-heading-marker,
@@ -94,7 +94,7 @@ h6.md-reveal > .md-heading-marker {
   animation: lm-fade-in 0.12s ease;
 }
 
-/* 表格行内编辑（Typora：编辑单元格时显示 | 标记，无整行高亮） */
+/* 表格行内编辑（编辑单元格时显示 | 标记，无整行高亮） */
 .md-block-inner th,
 .md-block-inner td {
   cursor: text;
@@ -214,7 +214,7 @@ h6.md-reveal > .md-heading-marker {
 .md-math {
   cursor: pointer;
 }
-/* 目录（[TOC] 渲染结果）：对齐 Typora 的朴素嵌套列表——没有外框 / 底色 / 左侧色条，
+/* 目录（[TOC] 渲染结果）：对齐主流编辑器的朴素嵌套列表——没有外框 / 底色 / 左侧色条，
    只有按层级缩进的圆点与文字；点击条目平滑滚动到对应标题（见 stores/editor.jumpToHeading）。
    条目默认是**蓝色**（--toc-link，三套主题各自调过对比度：浅色 blue-600 / 深色 blue-400 /
    羊皮纸 blue-700——那边 --accent 是琥珀色，直接用 accent 就不是蓝的了）。 */
@@ -235,7 +235,7 @@ h6.md-reveal > .md-heading-marker {
   transition: color 0.15s ease;
 }
 
-/* 圆点用 ::before 画，层级越深字重越轻（与 Typora 的 disc → circle → square 一致） */
+/* 圆点用 ::before 画，层级越深字重越轻（与主流编辑器的 disc → circle → square 一致） */
 .md-toc .toc-item::before {
   content: '•';
   position: absolute;

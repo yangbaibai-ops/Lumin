@@ -1,4 +1,4 @@
-<!-- 本文件由 docs/typora-wysiwyg-manual.md 按章拆出（清单 §2.H）；索引见该文件。 -->
+<!-- 本文件由 docs/wysiwyg-manual.md 按章拆出（清单 §2.H）；索引见该文件。 -->
 
 ## 5. 分步实施计划（从零到一）
 
@@ -20,7 +20,7 @@
 ### 步骤 2：编辑器内核装配（✅）
 
 - **目标**：能渲染 Markdown 的 Tiptap 实例。
-- **实现**：`extensions.ts` 按 §1.3 装配：StarterKit（`codeBlock:false`、link 不点击跳转）+ Image + Table 全家 + TaskList/TaskItem + Placeholder + CodeBlockCM + TyporaInputRules + **MarkdownPaste**（粘贴块级解析/开放 Slice 闭合，§4.12，Markdown 自身 `transformPastedText: false` 让位）+ Markdown 双向转换 + TyporaMarkers。
+- **实现**：`extensions.ts` 按 §1.3 装配：StarterKit（`codeBlock:false`、link 不点击跳转）+ Image + Table 全家 + TaskList/TaskItem + Placeholder + CodeBlockCM + WysiwygInputRules + **MarkdownPaste**（粘贴块级解析/开放 Slice 闭合，§4.12，Markdown 自身 `transformPastedText: false` 让位）+ Markdown 双向转换 + WysiwygMarkers。
 - **验收**：打开 `.md` 文件后 `h1/strong/em/blockquote/ul/ol/table/checkbox/codemirror/mermaid` 全部渲染，`no-raw-markdown`（verify phase A 的 15 项断言）。
 
 ### 步骤 3：Markdown 双向桥（✅）
@@ -38,7 +38,7 @@
 ### 步骤 5：Input Rules 与键盘语义（✅）
 
 - **目标**：`# `、`- `、`- [ ] `、`> `、` ``` `、表格即时转换；`---`/`***` + 回车确认式分割线；回车/退格/删除的 Typora 手感（列表 + 标题降级）。
-- **实现**：`inputRules.ts`（任务规则用「重建 + 整体 replace」）+ `keymap.ts`（`TyporaKeymap`，priority 200：Enter→分割线、Backspace→标题降级）+ StarterKit 内建 keymap。
+- **实现**：`inputRules.ts`（任务规则用「重建 + 整体 replace」）+ `keymap.ts`（`WysiwygKeymap`，priority 200：Enter→分割线、Backspace→标题降级）+ StarterKit 内建 keymap。
 - **验收**：`heading-input-rule`、`bullet-input-rule`、`task-input-rule`、`task-enter-semantics`（phase B）、`hr-not-immediate`、`hr-enter-rule`、`hr-text-kept`、`heading-backspace-unheading`（phase E）。
 
 ### 步骤 6：光标感知标记符（✅）
@@ -56,13 +56,13 @@
 ### 步骤 8：选区气泡菜单与工具栏（✅ 气泡菜单部分已于第 25 轮移除）
 
 - **目标**：选中文字弹出格式菜单（加粗/斜体/下划线/删除线/行内代码/链接/清除格式）。
-- **实现**：`TyporaEditor.vue` 自绘气泡；定位上下文 rect + 视口钳制 + 滚动跟随（§3.8）。
+- **实现**：`WysiwygEditor.vue` 自绘气泡；定位上下文 rect + 视口钳制 + 滚动跟随（§3.8）。
 - **验收**：`bubble-menu-visible`、`bubble-bold-applied`、`bubble-stays-open`（verify phase D）。
 
 ### 步骤 9：数据持久化管道（✅）
 
 - **目标**：输入 → 250ms 防抖序列化 → 500ms 防抖写盘 → SQLite 落库；blur/beforeunload 立即 flush。
-- **实现**：`TyporaEditor.vue` 的 `onUpdate` 防抖 + `files` store 写盘 + `unmounting` 守卫（§4.6）。
+- **实现**：`WysiwygEditor.vue` 的 `onUpdate` 防抖 + `files` store 写盘 + `unmounting` 守卫（§4.6）。
 - **验收**：`file-save`、`reopen-persists-render`（verify phase C）。
 
 ### 步骤 10：设置持久化与多语言多主题（✅）

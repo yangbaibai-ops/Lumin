@@ -37,7 +37,7 @@
 //     序列化结果就是 `<table style="min-width: 50px;"><colgroup>…`（实测原文）。
 //     复制它 → `text/plain` 也是这段 HTML（**用户报的原实现象**）；落盘同理。
 //   * 而 GFM 管道表语法**本来就要求有表头行** —— 没有表头，Markdown 没有写法。
-//     所以正解是"把第一行当表头"（Typora / VS Code / GitHub 导入同一口径）。
+//     所以正解是"把第一行当表头"（主流编辑器 / VS Code / GitHub 导入同一口径）。
 //
 // 于是粘贴端在 HTML 进 schema **之前**把无表头表的第一行 `td` 提升为 `th`。
 // 为什么放在这一层而不是 markdown-it 渲染规则里：那一侧改的是 `renderer.rules.table_open`，
@@ -469,7 +469,7 @@ function mouseAnchorCellPos(
 // ─── 表格拖选口径（第十四轮）：普通拖选 = 按阅读顺序的**文本选择** ─────────────────
 // 用户口径：「在表格中连续选中的时候，**不要选中一整个单元格**，而是**按照从上到下、
 //            从左到右的顺序可以连续选中**。」
-// 也就是：鼠标拖选要像 Typora 那样给**文本选择**，而**不是** prosemirror-tables 的
+// 也就是：鼠标拖选要像主流编辑器那样给**文本选择**，而**不是** prosemirror-tables 的
 // `CellSelection`（整格高亮块选）。
 //
 // 真因（文件:行号，实测）：`tableEditing()` 插件自己造 `CellSelection`。它唯一的运行期

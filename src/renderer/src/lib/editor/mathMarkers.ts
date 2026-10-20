@@ -32,7 +32,7 @@ export function renderMath(source: string, display: boolean): string {
 }
 
 /**
- * 空公式的占位元素（`< Empty Math Block >`，Typora 那种"框架还在"的观感）。
+ * 空公式的占位元素（`< Empty Math Block >`，主流编辑器那种"框架还在"的观感）。
  *
  * ⚠️ **铁律：它只是视图**。文本一个字都不进文档 —— 块级空公式在模型里仍然是
  * `mathBlock { source: '' }`，序列化照旧是 `$$\n\n$$`。所以这个元素：
@@ -213,7 +213,7 @@ export const MdMath = Mark.create({
    * （`parseHTML` ← `<span data-md-math>` ← `patchMathRules` 插的 markdown-it 规则），
    * 而 markdown-it 只会在「把一段 markdown 文本读进编辑器」时跑（打开文件 / 粘贴 /
    * 切面 / 导出回流）——**逐键打字根本不经过它**。对照：`**粗体**` 有
-   * `typoraInlineMarks` 的派生归一化（`appendTransaction`）兜着，所以敲完收尾 `**`
+   * `inlineMarks` 的派生归一化（`appendTransaction`）兜着，所以敲完收尾 `**`
    * 立刻成型；`$…$` 此前没有对应机制 ⇒ 打完一串仍是纯文本（实测时间线见报告）。
    *
    * 判据**复用 `matchInlineMathAtCaret`**（见 mathScan.ts）：与 markdown-it 用同一个
@@ -282,7 +282,7 @@ export const MdMath = Mark.create({
    * 收尾 `$` 后不紧跟数字）。配平但内容有错（`$\notarealmacro$`）**保留 mark**，
    * 继续由渲染层用 KaTeX 的 `throwOnError` 显示明确错误态（上一轮的既有口径）。
    *
-   * 为什么放在 `appendTransaction`（本仓库 `typoraInlineMarks` 也是这个做法）：删字符这类编辑
+   * 为什么放在 `appendTransaction`（本仓库 `inlineMarks` 也是这个做法）：删字符这类编辑
    * 不经过任何输入规则，只有在"事务应用之后"统一体检才能保证任何改法都被修好；返回 `null`
    * 表示没改动 ⇒ PM 不会多记历史（`Ctrl+Z` 的步数与改前一致）。
    */

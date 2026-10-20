@@ -3,7 +3,7 @@
 //
 // 与 `_verify-math.js` 的分工：那条守「渲染出来了 + 原文逐字往返 + 坏公式不崩」，
 // 这条守**用户口径的交互**（第二十九轮）：
-//   「点击公式时，会在公式**上方**展示公式的源码（可编辑），像 Typora 一样，
+//   「点击公式时，会在公式**上方**展示公式的源码（可编辑），像主流编辑器一样，
 //     可以编辑公式实时渲染，大小适中、布局合理。」
 //
 // 六条断言（照任务口径逐条落）：
@@ -303,7 +303,7 @@ const SNAPSHOT = `(() => {
           connected: box.isConnected,
           taConnected: ta ? ta.isConnected : null,
           label: (box.querySelector('[data-md-math-editor-label]') || {}).textContent ?? null,
-          // ── 第三十轮的形态（Typora 截图口径）──
+          // ── 第三十轮的形态（参考截图口径）──
           borderWidth: box ? getComputedStyle(box).borderTopWidth : null,
           borderColor: box ? getComputedStyle(box).borderTopColor : null,
           containerBg: box ? getComputedStyle(box).backgroundColor : null,
@@ -1034,9 +1034,9 @@ async function main() {
     await sleep(300)
   }
 
-  // ─── E7 编辑态形态（第三十轮：Typora 截图口径）──────────────────────────────
+  // ─── E7 编辑态形态（第三十轮：参考截图口径）──────────────────────────────
   //
-  // 与用户给的 Typora 截图逐条对齐：
+  // 与用户给的 参考截图逐条对齐：
   //   ① 一个**带细边框的容器**，源码区在上、渲染区在下，都在同一个容器里（随正文流）；
   //   ② 源码是**两行 `$$`** 分列上下（不是挤在一行）+ 等宽字体；
   //   ③ 右上角「公式 ✓」：标签文本走语言包，✓ 是**可聚焦、有可访问名**的真按钮；
@@ -2288,7 +2288,7 @@ async function main() {
   await sleep(300)
   const o5 = JSON.parse(await app.ev(SRC_SNAPSHOT))
   report.check(
-    'O5 收起编辑态后，**非编辑**的块级公式也画占位（框架仍在，观感与 Typora 一致）',
+    'O5 收起编辑态后，**非编辑**的块级公式也画占位（框架仍在，观感与主流编辑器一致）',
     o5.hasBox === false && o5.emptyRenderedCount === 1 && o5.blockSources[0] === '',
     'hasBox=' +
       o5.hasBox +
@@ -3100,15 +3100,15 @@ async function main() {
       JSON.stringify(z.mathMarkedTexts)
   )
 
-  // ═══ 第三十五轮（用户第十三轮反馈）：PA 段 —— 从 Typora 连正文一起复制公式过来 ═══
+  // ═══ 第三十五轮（用户第十三轮反馈）：PA 段 —— 从主流编辑器连正文一起复制公式过来 ═══
   //
   // 实测真因（第十三轮探针原始数据见报告 §1）：剪贴板同时有 text/html 与 text/plain 时
-  // ProseMirror 走 HTML 那条，而 Typora 的 HTML 里公式是 KaTeX 的 DOM（`.katex-display` +
+  // ProseMirror 走 HTML 那条，而主流编辑器的 HTML 里公式是 KaTeX 的 DOM（`.katex-display` +
   // MathML + `annotation`），我们的 schema 不认 ⇒ 被通用 HTML 解析拆成纯文本；随后写出器
   // 对普通文本的 `\` 做 CommonMark 转义、行内硬换行写成行尾 `\` ⇒ 用户看到的
   // `$$\\` + 加倍反斜杠全是下游症状。修法见 lib/editor/mathPaste.ts。
 
-  /** 造一次"Typora 那种剪贴板"并派发 paste（html 为 null = 只发纯文本） */
+  /** 造一次"主流编辑器那种剪贴板"并派发 paste（html 为 null = 只发纯文本） */
   const pasteWith = (html, text) => `(() => {
     const view = window.__L.ed().view
     const dt = new DataTransfer()
@@ -3120,7 +3120,7 @@ async function main() {
     return 'ok'
   })()`
   const PASTE_TEX = 'x = \\frac{-b \\pm \\sqrt{b^2 - 4ac}}{2a}'
-  /** Typora 复制块级公式时 HTML 里那一坨（KaTeX 真实结构：mathml 带 annotation + 视觉层） */
+  /** 主流编辑器复制块级公式时 HTML 里那一坨（KaTeX 真实结构：mathml 带 annotation + 视觉层） */
   const PASTE_HTML_BLOCK = [
     '<p>前面一段普通文字。</p>',
     '<span class="katex-display"><span class="katex">',
@@ -3183,10 +3183,10 @@ async function main() {
       ' fresh=' +
       JSON.stringify(String(pa1.freshMarkdown).slice(-90))
   )
-  // ①b 两者都发（Typora 真实情形：HTML + 纯文本）
+  // ①b 两者都发（主流编辑器真实情形：HTML + 纯文本）
   const pa1b = await pasteRun('math-edit-13b.md', PASTE_HTML_BLOCK, PASTE_TEXT_BLOCK)
   report.check(
-    'PA1b ① 剪贴板**同时有 HTML 与纯文本**（Typora 真实情形）→ 结果与只发 HTML 一致：块级公式节点 + 规范序列化',
+    'PA1b ① 剪贴板**同时有 HTML 与纯文本**（主流编辑器真实情形）→ 结果与只发 HTML 一致：块级公式节点 + 规范序列化',
     pa1b.blockSources.length === 1 &&
       pa1b.blockSources[0] === PASTE_TEX &&
       pa1b.paraTexts.includes('前面一段普通文字。') &&

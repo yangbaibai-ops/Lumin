@@ -625,7 +625,7 @@ async function main() {
 
   // ═══ G. 样式正文里的字面标记字符（任务 A：**不许产生转义**）════════════════════
   // 现场：实时渲染区逐字输入 `**2****2**`，落盘变成 `**2\*\*\*\*2**`（多出四个反斜杠）。
-  // 取证结论（四条路径全跑过，见 docs/typora-wysiwyg-manual.md §4.70）：
+  // 取证结论（四条路径全跑过，见 docs/wysiwyg-manual.md §4.70）：
   //   * 逐字键入 / 一次性 insertContent / 从磁盘装载 —— **三条路径全都**出现转义，
   //     所以不是「输入中间态把标记锁成字面文本」；
   //   * 不是转义的那条（先打 `**2**` 再整段插入 `**2**`）之所以干净，是因为它的模型
@@ -1298,7 +1298,7 @@ async function main() {
   // 都要走一遍 markdown-it 重推 + 原子归一化）。取证：50 段 ≈3000 字的文档里打字，
   // 每键触发 **51 次** markdown-it 解析（`MarkdownParser.parse`），修复后是 **2 次**。
   // 修法：按块缓存「已归一的块节点」（PM 节点不可变 + 结构共享 ⇒ 没被编辑的块引用不变），
-  // 只重算被这次编辑改到的块（见 typoraInlineMarks.appendTransaction 的 normalizeClean）；
+  // 只重算被这次编辑改到的块（见 inlineMarks.appendTransaction 的 normalizeClean）；
   // 装饰同理按块缓存清单（decoCache）。
   //
   // 阈值依据（本机实测，见下方 note 打印的实际值）：
@@ -1410,7 +1410,7 @@ async function main() {
   //   `.press-hidden .md-marker:has(> .md-reveal-inline) { color: transparent }`
   //   把已显形标记的字色变透明（占位照旧 ⇒ 只是「看不见」，所以松手就回来）。
   // 口径（第二十六轮修后）：**一次没有拖动的按下不改屏幕上的任何东西** ——
-  //   * 按下即**冻结**显隐装饰（版面与「谁显形」全程不变，见 typoraInlineMarks 的 pressHeld）；
+  //   * 按下即**冻结**显隐装饰（版面与「谁显形」全程不变，见 inlineMarks 的 pressHeld）；
   //   * 去墨（`.press-hidden`）只认「指针在按住期间**真的移动了**」（PRESS_DRAG_SLOP = 4px）
   //     **且按下点落在已显形的那个构造里**（第二十七轮补的第二条判据见本文件 M 段）。
   // 「按下会改变选区」不能当判据：PM 在 mousedown 本来就会按落点写一次选区，那是「点一下」
@@ -1567,7 +1567,7 @@ async function main() {
     // 成因：去墨的判据只有「指针在按住期间移动 >4px」，没看**按下点在哪** —— 拖动本身会把无关
     //   构造的标记一起藏掉。
     // 口径（第二十七轮）：**去墨只在「按下点落在已显形的那个构造里」时才启用**；按下点在别处
-    //   一律不去墨。判据本体见 typoraInlineMarks 的 `pressOnRevealedRun`（半开区间
+    //   一律不去墨。判据本体见 inlineMarks 的 `pressOnRevealedRun`（半开区间
     //   `rs <= pos < re` + 该构造此刻已显形，按下那一刻在捕获阶段取一次）。
     // 为什么这样切分（简版）：装饰在按下时被**冻结** ⇒ 手势里可见的标记只有「按下时已显形」的
     //   那几颗，拖动不可能让新标记冒出来（第二十四轮「拖选时别冒 `**`」正是靠冻结实现的）；

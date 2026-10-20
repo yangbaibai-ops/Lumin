@@ -1,7 +1,7 @@
 // ─── 查找命中高亮 ⇄ 编辑器内核的**零依赖桥** ────────────────────────────────────
 //
 // 为什么单独一个模块（第二十五轮，轻量化）：`stores/find.ts` 只需要「让编辑器把命中范围
-// 高亮一下」，原来它直接 `import { setFindHit } from './typoraInlineMarks'` —— 而那个模块
+// 高亮一下」，原来它直接 `import { setFindHit } from './inlineMarks'` —— 而那个模块
 // **静态** import 了 `@tiptap/core` 与 `@tiptap/pm/{state,model,view}`。
 // `prosemirror-state` 的 deps 又链到 model + transform + **view**，于是「import 一个函数」
 // 就把整份 ProseMirror（构建产物实测 ~412KB）钉进**首屏 entry chunk**。

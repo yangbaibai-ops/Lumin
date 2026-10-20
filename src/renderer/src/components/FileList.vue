@@ -8,8 +8,8 @@ import { confirmDiscardIfDirty } from '../lib/dialog'
 import { docMatchesFilter } from '../lib/tags'
 import Icon from './Icon.vue'
 
-// ─── 文件列表视图（Typora 式侧边栏「列表」）────────────────────────────────
-// 展示工作区全部 Markdown 文章的扁平列表。视觉遵循 Typora 侧边栏语言：
+// ─── 文件列表视图（极简侧边栏「列表」）────────────────────────────────
+// 展示工作区全部 Markdown 文章的扁平列表。视觉遵循主流编辑器侧边栏语言：
 // 条目之间用 1px 细分隔线分区（容器上边框 + 每行下边框，--edge-strong），
 // hover / 选中态用整块底色区分；元数据（所在文件夹、修改时间）与后缀标签
 // 整体弱化，去后缀的文件名为视觉主体，正文预览最多两行。
@@ -98,7 +98,7 @@ async function openDoc(path: string): Promise<void> {
 
 <template>
   <div class="flex h-full flex-col">
-    <!-- 顶栏：文章数 + 刷新（Typora 式极简弱化） -->
+    <!-- 顶栏：文章数 + 刷新（极简弱化） -->
     <div class="flex flex-none items-center gap-2 px-3 pb-1.5">
       <!-- 审计 §8 P1：这一行原来用 `text-ink-3/80`（11px 小字再叠 80% 透明）——三主题下都远低于
            正文级对比度。列表元信息属"次要正文"，用 `--ink-2b`（专门为此加的档）而不是装饰色。 -->

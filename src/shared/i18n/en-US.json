@@ -330,7 +330,7 @@
     "historyMaxAge": "Keep snapshots for",
     "historyDays": "{days} days",
     "remoteImages": "Remote images",
-    "remoteImagesHint": "Load automatically when a document opens (same as Typora); choose 'Load on click' to stay offline until you click",
+    "remoteImagesHint": "Load automatically when a document opens (the common default); choose 'Load on click' to stay offline until you click",
     "nativeMenuBar": "Top menu bar",
     "syncScroll": "Synchronized scrolling in split view",
     "codeLineNumbers": "Code block line numbers",
@@ -497,7 +497,7 @@
     "restoreFailed": "Could not restore the previous document (the file may have been moved or deleted)"
   },
   "about": {
-    "desc": "Lumin is a cross-platform desktop Markdown editor built on Electron, with WYSIWYG at its core — an immersive writing experience comparable to Typora.",
+    "desc": "Lumin is a cross-platform desktop Markdown editor built on Electron, with WYSIWYG at its core — a professional-grade, immersive writing experience for long-form work.",
     "version": "Version",
     "stack": "Tech Stack",
     "license": "Free · Open Source · Modern",

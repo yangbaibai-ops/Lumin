@@ -8,7 +8,7 @@
 // 它明明在正文里 —— 迟早对不上。做成节点后：**文档文本 = 节点序列化结果**，
 // 一行都不多不少，编辑器里也能直接看到这段 YAML。
 //
-// 往返三段（与 MdEscape 同一套机制，见 typoraInlineMarks.ts 顶部说明）：
+// 往返三段（与 MdEscape 同一套机制，见 inlineMarks.ts 顶部说明）：
 //   1. `parse.setup(md)` 里插一条 markdown-it **block 规则**，只在文档最开头认领
 //      `---…---`（判定见 shared/frontmatter.ts，纯函数有单测），推一个自定义 token，
 //      内容就是原文；

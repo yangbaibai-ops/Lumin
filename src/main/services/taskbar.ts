@@ -21,8 +21,8 @@ import appIconIco from '../../../resources/icon.ico?asset'
 
 /**
  * ─── Windows 任务栏跳转列表与「应用标识」（右键图标的那份菜单）─────────────────
- * 目标：和 Typora 一致 —— 右键任务栏图标时
- *   ① 第一项显示**应用名**（Typora 里就是「Typora」），点它打开一个**全新的窗口**；
+ * 目标：和主流编辑器一致 —— 右键任务栏图标时
+ *   ① 第一项显示**应用名**（同类应用里就是应用名本身），点它打开一个**全新的窗口**；
  *   ② 还能看到 Tasks（「新建窗口」）与一栏最近打开的文档。
  *
  * 三个必须踩准的点（都是「看起来能用、其实点下去会出事」的地方）：
@@ -42,7 +42,7 @@ import appIconIco from '../../../resources/icon.ico?asset'
  *
  *  3. **最近文件用自定义分类，而不是 `app.addRecentDocument()`**：后者把点击交给系统的
  *     「最近文档」+**文件关联**，开发态 electron.exe 没有 .md 关联，点下去会跑去打开别的程序
- *     （机器上装了 Typora 就开 Typora）。自己写 program/args 则永远拉起本应用。
+ *     （机器上装了别的 Markdown 编辑器就可能打开它）。自己写 program/args 则永远拉起本应用。
  */
 
 /**

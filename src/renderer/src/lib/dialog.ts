@@ -54,7 +54,7 @@ export async function confirmDiscardIfDirty(dirty: DirtyProbe): Promise<boolean>
 }
 
 /**
- * ─── 关窗前的「是否保存更改？」（用户口径，对齐 Typora）────────────────────────
+ * ─── 关窗前的「是否保存更改？」（用户口径，对齐主流编辑器）────────────────────────
  *
  * 规则（纯函数 `planClosePrompt` 钉住，单测在 tests/closePrompt.test.mjs）：
  *   * 自动保存开着 → 不问（改动本来就在写盘路上）；

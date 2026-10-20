@@ -1153,7 +1153,7 @@ const doc = MD.split('PLACE_A')
   )
 
   // ── ⑤ 远程图片：**非默认的 `click` 档**下仍是"内容为空的占位、未点击不发请求" ──
-  //    第七十七轮：默认档已改成 `always`（打开即加载，与 Typora 一致），所以这里先显式切到
+  //    第七十七轮：默认档已改成 `always`（打开即加载，与主流编辑器一致），所以这里先显式切到
   //    `click` 再验"隐私档"的既有口径；`always`（默认）档的验收见本轮新增的 ㉓。
   const toClick = await ev(`(async () => {
     try {
@@ -1486,9 +1486,9 @@ const doc = MD.split('PLACE_A')
     JSON.stringify(bgIdle)
   )
   const shotClick = await send('Page.captureScreenshot', { format: 'png' })
-  safe(() => fs.writeFileSync(path.join(process.cwd(), 'tmp', 'img-marker-typora-click.png'), Buffer.from(shotClick.result.data, 'base64')), null)
+  safe(() => fs.writeFileSync(path.join(process.cwd(), 'tmp', 'img-marker-click.png'), Buffer.from(shotClick.result.data, 'base64')), null)
   const shotPos = await send('Page.captureScreenshot', { format: 'png' })
-  safe(() => fs.writeFileSync(path.join(process.cwd(), 'tmp', 'img-marker-typora-position.png'), Buffer.from(shotPos.result.data, 'base64')), null)
+  safe(() => fs.writeFileSync(path.join(process.cwd(), 'tmp', 'img-marker-position.png'), Buffer.from(shotPos.result.data, 'base64')), null)
   // 把光标放进标识符文本（= 开始编辑）——用**真实点击**落进它的矩形里
   const markerPt = await json(`(() => {
     const el = document.querySelector('.ProseMirror [data-img-revealed]')
@@ -1500,7 +1500,7 @@ const doc = MD.split('PLACE_A')
   await click(markerPt)
   await sleep(450)
   const shotEdit = await send('Page.captureScreenshot', { format: 'png' })
-  safe(() => fs.writeFileSync(path.join(process.cwd(), 'tmp', 'img-marker-typora-editing.png'), Buffer.from(shotEdit.result.data, 'base64')), null)
+  safe(() => fs.writeFileSync(path.join(process.cwd(), 'tmp', 'img-marker-editing.png'), Buffer.from(shotEdit.result.data, 'base64')), null)
   const bgEditing = await json(`(() => {
     const el = document.querySelector('.ProseMirror [data-img-revealed]')
     if (!el) return { ok: false, hasMarker: false }
@@ -2629,7 +2629,7 @@ const doc = MD.split('PLACE_A')
     await sleep(900)
   }
 
-  // ═══ 第七十七轮：**默认档 = 自动加载远程图片**（parent 决策：与 Typora 一致）════════
+  // ═══ 第七十七轮：**默认档 = 自动加载远程图片**（parent 决策：与主流编辑器一致）════════
   {
     // 起一个**本机 http 服务**当"远程图床"：这样"默认档打开即加载"能被真正验证
     // （naturalWidth > 0 + CDP 网络计数 > 0），又不依赖外网。
@@ -2724,7 +2724,7 @@ const doc = MD.split('PLACE_A')
         String(m.params?.request?.url || '').includes(`127.0.0.1:${PORT}`)
     ).length
     check(
-      '㉓② **默认档下打开文档就会发起远程请求**（>0）—— 新口径：默认已改为 `always`（与 Typora 一致）',
+      '㉓② **默认档下打开文档就会发起远程请求**（>0）—— 新口径：默认已改为 `always`（与主流编辑器一致）',
       localReqs > 0,
       JSON.stringify({ 本机图床请求数: localReqs, 夹具: PAIR, 说明: '默认 always ⇒ 打开即加载；click 档见 ㉓③（非默认档）' })
     )
@@ -3054,7 +3054,7 @@ const doc = MD.split('PLACE_A')
     await sleep(900)
   }
 
-  // ═══ 第八十五轮：末尾是图片 ⇒ 点它**下方**在下一行落光标（照 Typora；**不许闪**）════════
+  // ═══ 第八十五轮：末尾是图片 ⇒ 点它**下方**在下一行落光标（参照主流编辑器；**不许闪**）════════
   {
     const shapeOf = () =>
       json(`(() => {
@@ -3955,7 +3955,7 @@ const doc = MD.split('PLACE_A')
       }
     })()`)
     check(
-      '㉛④ **图片右侧空白处按下 → 往左拖**过整段 ⇒ 松开后选区**非空**且覆盖所拖范围（Typora 式；红=压根没建立选区）',
+      '㉛④ **图片右侧空白处按下 → 往左拖**过整段 ⇒ 松开后选区**非空**且覆盖所拖范围（极简式；红=压根没建立选区）',
       margin96.empty === false && margin96.to - margin96.from >= 20,
       JSON.stringify({ 几何: marginGeo, 空白起手: margin96 })
     )

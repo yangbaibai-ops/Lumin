@@ -1,4 +1,4 @@
-// 验收：目录（[TOC]）样式对齐 Typora + 点击标题**平滑**滚动
+// 验收：目录（[TOC]）样式对齐主流编辑器 + 点击标题**平滑**滚动
 //
 // 断言：
 //  A. 样式：没有左侧色条（border-left 宽度 0 / style none）、没有外框与底色、没有「目录」标题行、
@@ -255,7 +255,7 @@ const SCROLL_HOOK = `(() => {
       JSON.stringify(st.itemStyle.map((x) => ({ l: x.level, pad: x.paddingLeft })))
     )
     c(
-      'typora-like-typography',
+      'wysiwyg-like-typography',
       st.itemStyle.every((x) => x.cursor === 'pointer') && st.itemStyle[0].lineHeight !== 'normal',
       JSON.stringify(st.itemStyle.map((x) => ({ lh: x.lineHeight, cursor: x.cursor })))
     )

@@ -1,4 +1,4 @@
-<!-- 本文件由 docs/typora-wysiwyg-manual.md 按章拆出（清单 §2.H）；索引见该文件。 -->
+<!-- 本文件由 docs/wysiwyg-manual.md 按章拆出（清单 §2.H）；索引见该文件。 -->
 
 ## 4. 实践坑位与解法（本项目实录）
 
@@ -57,7 +57,7 @@ tr.replace(0, doc.content.size, new Slice(Fragment.fromArray(children), 0, 0))
 
 场景：切文件时旧编辑器实例销毁，`blur/flushSync` 把旧文档内容写回当前文件槽——新打开的文档被旧内容覆盖。
 
-解法（`TyporaEditor.vue`）：
+解法（`WysiwygEditor.vue`）：
 
 1. `unmounting` 标志位：`onBeforeUnmount` 置位，`flushSync` 开头检查，卸载中的旧实例禁止回写；
 2. 窗口级关闭走 `beforeunload` 监听单独 flush（不参与文件切换）；
@@ -97,7 +97,7 @@ tr.replace(0, doc.content.size, new Slice(Fragment.fromArray(children), 0, 0))
 诊断实录（CDP 打点 + `view.dispatch` 补丁抓 PM 事务栈）：
 
 1. **焦点全程在 CM 上**——`HTMLElement.focus` 补丁显示 47 次 focus 全部落在 `cm-content`，零次 tiptap；8 个 keydown 全部进入捕获处理器，`setState` 全部应用（CM 状态 1→9 行）。问题不在 CM；
-2. **PM 文档在事务间被回滚**：`syncToNode` 的 8 个事务依次把节点推到 9 行，但每轮之后紧跟一个 `setContent` 事务（栈指向 `TyporaEditor.vue` 的 modelValue watch）把它打回**上一轮**的行数（9→3 收尾）；
+2. **PM 文档在事务间被回滚**：`syncToNode` 的 8 个事务依次把节点推到 9 行，但每轮之后紧跟一个 `setContent` 事务（栈指向 `WysiwygEditor.vue` 的 modelValue watch）把它打回**上一轮**的行数（9→3 收尾）；
 3. **根因链**：每轮 Enter 的 `pinCmFocus` 把焦点从 PM 拉回 CM → 触发 PM blur → `onBlur` 立即 `flushSync` → **抢在本轮 `syncToNode` 之前** emit 上一轮的 markdown → 父组件 store 同步回流 `props.modelValue` → watch 比较「当前 PM 序列化 ≠ 旧快照」→ `setContent(旧快照)` 整体替换文档 → 代码块节点 props 更新 → `CodeBlockView` 的 watch 又把 CM 状态重置回旧内容。单次回车靠「syncToNode 在 watch 之后执行」的顺序碰巧自愈，快速输入时 watch 落在两轮 syncToNode 之间 → 真回滚；
 4. **修复**（§4.6 第 4、5 条）：blur 守卫（焦点仍在编辑器内不落盘）+ 回声过滤 + 600ms 静默窗。另将 `CodeBlockView` 的 `props.node.textContent` watch 防抖 150ms，避免 Vue 异步队列里的过期快照把 CM 逐级回滚；
 5. **验收**：`tools/_repro-rapidenter.js`——8 次 35ms 连发 + 10 次 15ms 按住速率，要求 `.cm-line` 与 PM codeBlock 行数双端 = 19。
@@ -120,7 +120,7 @@ tr.replace(0, doc.content.size, new Slice(Fragment.fromArray(children), 0, 0))
 
 需求驱动（Typora 同款）：行内语法标记（`**`/`*`/`~~`/`` ` ``）必须是**文档中的真实文本**——光标在样式内/边界（'体'后、'被'前）时显现、移出隐藏，且标记可被选中编辑；**「标记文本即源码真值」（CommonMark 对齐）**：两侧标记相等且可识别才派生样式，**不成对/不可识别即整段字面量**——删单侧一个 `*` 后显示原始字符 `*加粗**`（不再自动转斜体），两侧各删一星成 `*加粗*` 才按 CommonMark 重派为斜体；标题的光标提示改为浅色 `H1~H6` 徽章（非可编辑源码标记）。
 
-**数据模型**（`typoraInlineMarks.ts`，两条自定义 Mark）：
+**数据模型**（`inlineMarks.ts`，两条自定义 Mark）：
 - `mdStyle`（attrs.style）：被样式的正文，WYSIWYG 渲染 `<strong>/<em>/<s>/<code>`（带 `data-md-style`），markdown 序列化 open/close 为空——**语法由标记文本自身承担**，序列化输出 == 源码；
 - `mdMarker`（attrs.style + side）：语法标记文本，渲染 `.md-marker` span，序列化 `open/close: '' + escape: false`（标记字符原样输出；若被转义成 `\*`，序列化结果与源码不一致，会破坏外部同步回声过滤并引发 setContent 循环重放）。
 
@@ -277,35 +277,35 @@ tr.replace(0, doc.content.size, new Slice(Fragment.fromArray(children), 0, 0))
 **联动调整**：StarterKit 的 bold/italic/strike/code 以「安静版」注册（关闭输入规则与快捷键，mark 类型保留供解析）；工具栏改用 `toggleMdBold` 等新命令；`Ctrl+B/I/Shift+X/E` 快捷键接管。验收：`bold-marker-reveal/boundary/hide-on-exit/no-layout/boundary-left`（隐藏态零占位 + 光标边界显隐）、`roundtrip-markdown`（源码零转义往返）、`paste-heading-no-bold`、`boundary-type-start/end-keeps-bold/fold-back-bold`（G 阶段，构造边界打字不失粗）、`ctrl-click-plain-caret/plain-click-unchanged`（H 阶段，Ctrl+点击普通光标）、`link-plain-click-expand/link-auto-collapse/link-ctrl-keeps-link`（I 阶段，链接点击交互，§4.15）、`marker-enter-italic-live/backspace-join-no-purple-relift/bold-survives-after-merge`（J 阶段，标记内回车→斜体实时化/段首退格合并，§4.13）等 89 项全绿。
 
 **补丁：标记内回车 → 段首退格合并（本次，J 阶段）**：`**5*|*` 回车字面量切段后再按 Backspace，此前本版 prosemirror-commands 的 `joinBackward` 要求光标真正在文本块内部，而 Enter/归一化常把光标留在**块边界（depth 0）**位置，join 失效 → 落到 `selectNodeBackward` 把上一段做成 NodeSelection（`.ProseMirror-selectednode` 紫色整选框）；即使后续拼回 `**5**`，两侧字面量标记也会永远停在可见字面量、须刷新才恢复。修复（三处，非硬编码）：
-1. `typoraInlineMarks.ts` 新增 **reLiftLiteralPairs（字面量配对重提升）**：`side:'literal'` 只是"当时不成对"的过渡态——一旦两侧字面量标记在编辑/合并后重新围住无样式正文（整窗文本与完整构造模式吻合），立即还原为 start/正文 mdStyle/end，与任何输入/合并路径通用；
+1. `inlineMarks.ts` 新增 **reLiftLiteralPairs（字面量配对重提升）**：`side:'literal'` 只是"当时不成对"的过渡态——一旦两侧字面量标记在编辑/合并后重新围住无样式正文（整窗文本与完整构造模式吻合），立即还原为 start/正文 mdStyle/end，与任何输入/合并路径通用；
 2. `keymap.ts` 段首/段间边界 Backspace（及对称 Delete）显式 `tr.join` 相邻同型段落，并把光标设到两段拼接缝，不再让 PM 走 selectNodeBackward；
 3. `pointer.ts` 增加 **filterTransaction 护栏**：任何事务若要把文本块（段落/标题等）设为 NodeSelection，一律降级为文本光标（节点级整选只保留给图片等叶子）——紫色段选框从机制上不可能出现。
 
 **补丁：整选逻辑整体取消（第二十二轮）**：用户要求「去掉 `.ProseMirror-selectednode` 外层的紫色边框，且取消这个选中的逻辑」。原先护栏只覆盖**文本块**，图片这类叶节点仍会被 PM 做成 `NodeSelection` 并套上主题色描边，于是紫色框仍有来源。现在 `filterTransaction` 把**任何** `NodeSelection` 都降级为 `TextSelection.near(pos, 1)`：点图片落到图片旁边的文本光标，选中态只有文本选区这一种。CSS 里 `.ProseMirror-selectednode { outline: none }` 一并保留为兜底（正常路径下该类不再落地）。删除图片仍按 Typora 习惯：光标落在图片一侧按 `Backspace`/`Delete`。验收见 `tools/_verify-round-perf.js` A 段（`selection` 不是 `NodeSelection`、文档里 `0` 个 `.ProseMirror-selectednode`、图片 `outline` 为 `none`、降级后仍能正常打字）。
 
 **补丁：源码权威重推，实时渲染与刷新语义对齐（本次）**：用户复现出斜体同样滞后（`*5*|` 无法删到 `*5`；`**5**` 在结束标记两星之间回车后，首行 `**5*` 的 5 应实时显示斜体——按 markdown-it，`**5*` = 字面 `*` + 斜体 `5`，此前要刷新才出现）。根因：归一化只是“启发式配对/字面量化”，与 markdown-it 对**边缘源码**（不成对、劈裂、删除收尾）的解析语义不一致。修复（非硬编码）：
-1. **复用同一条解析管线**：`typoraInlineMarks.ts` 新增 `resolveBlockContent` + `parseInlineHtml`——对含 `*~`` 的纯行内文本块，把其原文（标记文本即源码真值）喂给 tiptap-markdown 的 markdown-it parser（与加载/刷新完全同一引擎），解析结果经同一归一化转成标记模型；差异才替换（稳定态零开销），解析不可用回退原启发式。于是 `**5*` 实时即 字面`*`+斜体5、`*5**` 对称同理、`*5` 删尾后按字面量显示；
+1. **复用同一条解析管线**：`inlineMarks.ts` 新增 `resolveBlockContent` + `parseInlineHtml`——对含 `*~`` 的纯行内文本块，把其原文（标记文本即源码真值）喂给 tiptap-markdown 的 markdown-it parser（与加载/刷新完全同一引擎），解析结果经同一归一化转成标记模型；差异才替换（稳定态零开销），解析不可用回退原启发式。于是 `**5*` 实时即 字面`*`+斜体5、`*5**` 对称同理、`*5` 删尾后按字面量显示；
 2. **零转义保持**：`literalizeStrayMarkers` 把解析产物中“未被样式消费”的裸 `*~`` 包成 mdMarker(literal)（escape:false），否则普通文本里的 `*` 会被 markdown 写出器加 `\`（`**5*` → `\**5*` 源码漂移）；
 3. **删除收尾不再自动补齐**：删掉 `*5*` 的收尾 `*` 后按源码真值落为字面 `*5`（可继续删除），而不是引擎擅自把缺侧标记补回。
 验证：原生键 CDP（删除到 `*5` 无转义；回车即斜体）+ 打字回归（逐字 `**5**`/`*5*` 最终正确零转义）+ J 阶段断言更新，89/89 全绿。
 
-**补丁：字面量语义落地 ×3（本次）**：① **逐字符打字成样式**——打字识别正则（`typoraInlineMarks.ts` PATTERN/PATTERN_TEST）单星分支加 lookaround `(?<!\*)\*([^*\n]+?)\*(?!\*)`，杜绝输入 `**5**` 到中途 `**5*` 时把 `*5*` 误切为斜体（残星 + 序列化 `\*` 转义）；逐字输入 `*`,`*`,`5`,`*`,`*` 的最终产物为粗体 `**5**`、源码零转义。② **标记内回车字面量切段**（见上方坑位 6）。③ **行首粘贴不裂段**——光标位于构造起点（`|**5**`，pos=run.start）或文档首段边界（pos 0）粘贴内联文本时，PM 把插入合并进当前段落、归一化容错，得到同段 `2**5**`（不再出现 `2\n**5**` 两段）。验证：CDP 实测脚本（`tools/probe-three.js`，验证毕移除）三项断言全过 + 全量矩阵 77/77 全绿。
+**补丁：字面量语义落地 ×3（本次）**：① **逐字符打字成样式**——打字识别正则（`inlineMarks.ts` PATTERN/PATTERN_TEST）单星分支加 lookaround `(?<!\*)\*([^*\n]+?)\*(?!\*)`，杜绝输入 `**5**` 到中途 `**5*` 时把 `*5*` 误切为斜体（残星 + 序列化 `\*` 转义）；逐字输入 `*`,`*`,`5`,`*`,`*` 的最终产物为粗体 `**5**`、源码零转义。② **标记内回车字面量切段**（见上方坑位 6）。③ **行首粘贴不裂段**——光标位于构造起点（`|**5**`，pos=run.start）或文档首段边界（pos 0）粘贴内联文本时，PM 把插入合并进当前段落、归一化容错，得到同段 `2**5**`（不再出现 `2\n**5**` 两段）。验证：CDP 实测脚本（`tools/probe-three.js`，验证毕移除）三项断言全过 + 全量矩阵 77/77 全绿。
 
 **补丁：构造边界打字不失粗（本次）**：光标落在粗体 `**5**` 的构造起点打字 `2`，此前因 mdMarker 继承粘连（坑位 7）导致整段字面量、渲染失粗、刷新才恢复；新增 `repairPollutedMarkers` 拆回普通文本后，起点/终点打字均保留粗体（`2**5**`、`2**5**3` 且 `strong` 内容为 `5`），光标移出折叠为纯粗体。验证：`tools/probe-boundary-type.js`（临时探针，验证毕已移除）三场景全过 + 矩阵新增 G 阶段 3 项断言，80/80 全绿。
 
 ### 4.14 鼠标语义：Ctrl/Cmd + 左键 = 普通点击（本次）
 
-prosemirror-view 内置 `selectNodeModifier`（Win: `ctrlKey` / Mac: `metaKey`）：按住修饰键左键点击时，PM 在 `mousedown` 捕获该状态，`mouseup` 时经 `selectClickedNode` 把光标所在**最小可选中块**（段落/标题等文本块）做成 `NodeSelection` 整选，DOM 上整块套 `.ProseMirror-selectednode`（CSS 为主题色 outline 全选框）——Typora 没有这套逻辑。修复（`pointer.ts` → `TyporaPointer`，注册于扩展集）：在 **`mousedown` 阶段**拦截（PM 的 selectNode 状态在 mousedown 即被捕获——若用户先松开 Ctrl 再松鼠标，mouseup 时判断修饰键会漏网，mousedown 拦截才是确定的），`preventDefault` 掉浏览器默认行为后**退化为普通点击**：`posAtCoords` → `TextSelection.near` 把光标放到点击处。仅拦截 Ctrl/Cmd+左键，普通单击（含图片等节点的常规选中）、双击/三击选择均不受影响。验收（H 阶段）：`ctrl-click-plain-caret`（折叠 TextSelection 落在段落内、无 `.ProseMirror-selectednode`）、`plain-click-unchanged`。
+prosemirror-view 内置 `selectNodeModifier`（Win: `ctrlKey` / Mac: `metaKey`）：按住修饰键左键点击时，PM 在 `mousedown` 捕获该状态，`mouseup` 时经 `selectClickedNode` 把光标所在**最小可选中块**（段落/标题等文本块）做成 `NodeSelection` 整选，DOM 上整块套 `.ProseMirror-selectednode`（CSS 为主题色 outline 全选框）——Typora 没有这套逻辑。修复（`pointer.ts` → `WysiwygPointer`，注册于扩展集）：在 **`mousedown` 阶段**拦截（PM 的 selectNode 状态在 mousedown 即被捕获——若用户先松开 Ctrl 再松鼠标，mouseup 时判断修饰键会漏网，mousedown 拦截才是确定的），`preventDefault` 掉浏览器默认行为后**退化为普通点击**：`posAtCoords` → `TextSelection.near` 把光标放到点击处。仅拦截 Ctrl/Cmd+左键，普通单击（含图片等节点的常规选中）、双击/三击选择均不受影响。验收（H 阶段）：`ctrl-click-plain-caret`（折叠 TextSelection 落在段落内、无 `.ProseMirror-selectednode`）、`plain-click-unchanged`。
 
 ### 4.15 链接交互：普通点击展开源码 / Ctrl+点击用浏览器打开（本次）
 
-Typora 官方行为（support.typoraio.cn/Links/）：**Ctrl/Cmd+点击**链接跳转（网页/本地/应用），**普通点击**不跳转，而是把该链接原地展开为可编辑的 Markdown 源码 `[文字](网址)`。Lumin 实现（`pointer.ts` → `TyporaPointer` + `LinkSource` 标记）：
+Typora 官方行为（support.typoraio.cn/Links/）：**Ctrl/Cmd+点击**链接跳转（网页/本地/应用），**普通点击**不跳转，而是把该链接原地展开为可编辑的 Markdown 源码 `[文字](网址)`。Lumin 实现（`pointer.ts` → `WysiwygPointer` + `LinkSource` 标记）：
 
-- **Ctrl/Cmd + 左键点击链接** → 交宿主注入的 `onOpenLink`（`pointer.ts` 的 `TyporaPointer` 选项；应用内为 `lib/linkOpen.ts`：网址→系统默认浏览器、同级文件名→新窗口、相对/绝对路径→默认应用，目标缺失时询问是否新建，详见 §4.17）；非链接处仍为 §4.14 的普通光标落点；
+- **Ctrl/Cmd + 左键点击链接** → 交宿主注入的 `onOpenLink`（`pointer.ts` 的 `WysiwygPointer` 选项；应用内为 `lib/linkOpen.ts`：网址→系统默认浏览器、同级文件名→新窗口、相对/绝对路径→默认应用，目标缺失时询问是否新建，详见 §4.17）；非链接处仍为 §4.14 的普通光标落点；
 - **普通左键点击链接** → 展开：**不整体替换成纯文本**，而是把原 label 上的 link mark 换成 `linkSource(part:'label')`（**保留其内 mdStyle/mdMarker 等标记**，各 mark 序列化 open/close 为空 → 输出仍是原 label 字符），两侧补 `linkSource(part:'syntax')` 的 `[` 与 `](网址)`——效果：**原文标签保持链接外观**（主题色 + 下边框，CSS `.md-link-source` 与 `.md-preview a` 一致）、**新增的括号与网址以浅灰呈现**（`.md-link-syntax` = `--ink-3`）、源码往返恒等；
 - **不自动选中、光标停在点击处**：展开前先把光标落到点击位置（mousedown 内 preventDefault 会阻止 PM 落光标，须先 `setSelection` 再展开），展开事务本身不 setSelection，PM 把光标按步骤映射进 label 的相对偏移——点到哪光标就在哪；
 - **自动折叠**：光标移出展开区（appendTransaction 判定）、按 Esc、编辑器失焦 → 解析展开区整体文本 `[label](url)` 以 link mark 重建 label（内部 `**` 等由派生归一化还原）；改残则不还原、仅去掉 linkSource 标记保留原文；
-- **联动归一化**：`typoraInlineMarks` 的 toAtoms/blockNeedsNormalize 把 linkSource 文本视为**不透明**（否则展开源码里的 `**` 会被派生归一化误转为样式标记）。
+- **联动归一化**：`inlineMarks` 的 toAtoms/blockNeedsNormalize 把 linkSource 文本视为**不透明**（否则展开源码里的 `**` 会被派生归一化误转为样式标记）。
 
 关键坑位：PM 的 mark 渲染必须有 `toDOM`（tiptap `renderHTML`）——缺省会抛 `mark.type.spec.toDOM is not a function`：事务已进 state（选区/文档都对）但 **DOM 构建中断**，视图停在旧 DOM，形成「状态已展开、界面仍是链接」的失同步；且**不能在 mousedown 事件回调里同步 dispatch**（实测 DOM 不随事务重建），须 `setTimeout(0)` 延后派发；parseHTML 需还原 `span.md-link-source`/`span.md-link-syntax` 避免 DOMObserver 回写循环。验收（I 阶段）：`link-plain-click-expand`（锚点消失、源码可见、label/syntax 双形态存在、光标折叠不选中、md 不变）、`link-auto-collapse`（光标移出折叠还原）、`link-ctrl-keeps-link`（Ctrl+点击不展开）。
 
@@ -338,7 +338,7 @@ Typora 官方行为（support.typoraio.cn/Links/）：**Ctrl/Cmd+点击**链接�
 - **非文本目标不凭空创建**：`.png`/`.pdf` 之类已经存在时交系统默认应用；不存在时直接提示「该类型的文件无法新建」——造一个空的二进制文件没有意义。
 - **安全**：`shell.openExternal` 只放行 http/https/mailto 白名单（任意 scheme 交给系统处理器是历史上的高危面，如 `javascript:`、`ms-msdt:`）；分类前先排除 Windows 盘符（`C:\x` 会被 `new URL()` 误判成 scheme `c:`）；创建文件用 `flag: 'wx'`——**绝不覆盖**已有内容。`file://` URL 先 `fileURLToPath` 再按路径规则处理。
 - **持久化（SQLite，非 session）**：`link_history` 表以链接文本为主键 upsert（`kind / resolved_path / action / created_entry / count / created_at / last_used`），记录每一次打开、以及「放弃创建」；设置项 `linkCreateMode` 落在 `kv.settings`。**设置 → 链接**页签可查看历史（含类型/动作/次数/时间徽章）、逐条删除、一键清空（完整 CRUD）。
-- **解耦**：主进程 `services/links.ts` 只做「分类 + 路径解析 + 探测/创建」，**不打开任何东西**；打开动作由渲染层 `lib/linkOpen.ts` 编排（确认弹窗、通知、落库都在 UI 层）。编辑器内核不依赖任何 store——`TyporaPointer` 暴露 `onOpenLink` 选项注入（默认实现仅开浏览器），`buildEditorExtensions({ onOpenLink })` 在 `TyporaEditor.vue` 里接上应用逻辑。
+- **解耦**：主进程 `services/links.ts` 只做「分类 + 路径解析 + 探测/创建」，**不打开任何东西**；打开动作由渲染层 `lib/linkOpen.ts` 编排（确认弹窗、通知、落库都在 UI 层）。编辑器内核不依赖任何 store——`WysiwygPointer` 暴露 `onOpenLink` 选项注入（默认实现仅开浏览器），`buildEditorExtensions({ onOpenLink })` 在 `WysiwygEditor.vue` 里接上应用逻辑。
 
 验收：`tools/_verify-link-open.js`（真实文件系统 + 真实新窗口 + 直读 SQLite）：分类矩阵、缺失目标「是/否」两条分支、创建后打开、协议白名单拒绝、非文本不创建、历史 CRUD 与落盘。
 

@@ -7,7 +7,7 @@
 // 三个层次，从「用户看到的结果」往「实现细节」逐层收窄：
 //
 //   A. 文档级（**主断言**）：把夹具内容装进真实编辑器 → 触发应用自己的落盘管线
-//      （TyporaEditor 的 flushSync，用 window 的 beforeunload 事件同步触发，见 onWindowBeforeUnload）
+//      （WysiwygEditor 的 flushSync，用 window 的 beforeunload 事件同步触发，见 onWindowBeforeUnload）
 //      → 读 files.current.content（= **文档文本**，已经过 markdownStorage.getMarkdown 的
 //      收尾规则）→ 用 tools/lib/md-fidelity.js 判 exact / normalized / lossy，
 //      与 fixtures/md/EXPECT.json 写明的预期比对：**实际比预期差就是 FAIL**。
@@ -110,7 +110,7 @@ const BYTE_CASES = [
     file: 'no-final-newline.md',
     bytes: Buffer.from('# 标题\n\n正文没有文末换行', 'utf-8'),
     noEdit: 'exact',
-    // 文档收尾规则统一补文末换行（与 Typora/VS Code 同款，属保义改写）
+    // 文档收尾规则统一补文末换行（与主流编辑器/VS Code 同款，属保义改写）
     edit: 'known',
     why: '保存时补一个文末换行（保义，规则 18）'
   }

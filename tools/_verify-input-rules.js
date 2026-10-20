@@ -354,7 +354,7 @@ async function main() {
    * 实测口径（与 verify-tiptap 里 `hr-not-immediate` / `hr-enter-rule` 两条同名断言一致）：
    * `---` **不立即**变分割线（`HorizontalRule.extend({ addInputRules: () => [] })` 把输入规则置空），
    * 但**按回车确认**后会被"源码权威重推"成 horizontalRule，落盘就是 `---`。
-   * 这就是 Typora 的行为，也解释了为什么 A7 的"保持段落"只在**没有回车**时成立。
+   * 这就是主流编辑器的行为，也解释了为什么 A7 的"保持段落"只在**没有回车**时成立。
    */
   report.check(
     'D3 `---` 不立即转、**回车确认**后转分割线（延迟到 Enter，落盘 `---`）',

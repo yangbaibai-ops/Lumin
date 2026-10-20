@@ -1,6 +1,6 @@
 // ─── 公式粘贴（第十三轮）：把富文本剪贴板里的数学**取回原文** ──────────────────────
 //
-// 用户报障：在 Typora 里**连公式带正文一起复制**粘进来，公式不是公式 ——
+// 用户报障：在主流编辑器里**连公式带正文一起复制**粘进来，公式不是公式 ——
 // 实时渲染区是一段字面文本，而"源码区"里是
 //   `$$`
 //   `\`                      ← 行尾多一个反斜杠
@@ -11,8 +11,8 @@
 // 实测真因（第十三轮探针原始数据，见报告 §1）：
 //   * 剪贴板里**同时有** `text/html` 与 `text/plain` 时，ProseMirror 走的是 HTML 那条
 //     （`parseFromClipboard` 优先 `text/html`）—— 所以"单独复制公式能行、连正文一起复制就不行"
-//     并不是随机的：单独复制时 Typora 给的多半是纯文本，走的是我们已修好的 markdown 文本通道；
-//   * Typora 的 HTML 里公式是 **KaTeX 的 DOM**（`.katex` / `.katex-display`，里面还同时有
+//     并不是随机的：单独复制时主流编辑器给的多半是纯文本，走的是我们已修好的 markdown 文本通道；
+//   * 主流编辑器的 HTML 里公式是 **KaTeX 的 DOM**（`.katex` / `.katex-display`，里面还同时有
 //     MathML 的 `<mi>`、`<annotation encoding="application/x-tex">` 与视觉层 `.katex-html`），
 //     而我们的 schema 只认自己那两种形态（`div[data-md-math-block][data-source]` /
 //     `span[data-md-math]`）⇒ KaTeX 的 DOM 被"通用 HTML→PM 解析"当普通元素**拆成了纯文本**，
@@ -27,7 +27,7 @@
 //
 //   取原文的顺序：`annotation[encoding="application/x-tex"]`（KaTeX 与 MathJax 都输出它）
 //     → `data-md-math-rendered` / `data-source` / `data-math` / `data-latex`（我们自己的复制、
-//     以及 Typora 之类可能带的属性）
+//     以及主流编辑器之类可能带的属性）
 //   行内 / 块级：`.katex-display`、`mjx-container[display="true"]`、`[data-md-math-block]`、
 //     或"父块里只有它一个内容"⇒ 块级；其余 ⇒ 行内
 //   产出形态：块级 `div[data-md-math-block][data-source]`、行内 `span[data-md-math]` 里放
@@ -216,7 +216,7 @@ export const MathPaste = Extension.create({
               if (rewritten.math > 0) return insertSlice(view, htmlSlice(view, rewritten.html))
             }
             // HTML 里没有数学，但纯文本里有 `$$…$$`：走 markdown 文本通道
-            //（单独复制公式时 Typora 给的就是纯文本，这条路实测本来就正确）
+            //（单独复制公式时主流编辑器给的就是纯文本，这条路实测本来就正确）
             if (text && hasBlockMathText(text)) {
               const slice = markdownSlice(view, text, parser)
               if (slice) return insertSlice(view, slice)

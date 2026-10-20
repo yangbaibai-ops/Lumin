@@ -1,6 +1,6 @@
 // ⚠️ 已过时（会覆盖现行图标，别随手跑）：本脚本生成的是**第一版**设计（靛蓝渐变 + 星光 Logo，256×256），
 // 而 resources/icon.png 现在装的是**用户交付的位图**（1024×1024，见
-// docs/typora-wysiwyg-manual.md §4.36 的「图标更换记录」）。跑本脚本会把 resources/icon.png 覆盖回旧设计，
+// docs/wysiwyg-manual.md §4.36 的「图标更换记录」）。跑本脚本会把 resources/icon.png 覆盖回旧设计，
 // 让「同一个应用两种图标」重现。
 // 换图标的正确做法：替换 `resources/icon.png` → 跑 `node tools/pack-ico.js`（打出七档 DIB 的
 // `resources/icon.ico`）→ 跑 `node tools/sync-app-icon.js`（同步应用内标识）。

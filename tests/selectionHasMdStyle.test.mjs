@@ -9,7 +9,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { Schema } from '@tiptap/pm/model'
 import { EditorState, TextSelection } from '@tiptap/pm/state'
-import { selectionHasMdStyle } from '../src/renderer/src/lib/editor/typoraInlineMarks.ts'
+import { selectionHasMdStyle } from '../src/renderer/src/lib/editor/inlineMarks.ts'
 
 const schema = new Schema({
   nodes: {

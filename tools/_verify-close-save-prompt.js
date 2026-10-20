@@ -1,7 +1,7 @@
 'use strict'
-// 验收：**手动保存**模式下关窗要问「是否保存更改？」（用户口径，对齐 Typora 的实测行为）
+// 验收：**手动保存**模式下关窗要问「是否保存更改？」（用户口径，对齐主流编辑器的实测行为）
 //
-// 用户口径（原话）：Typora 默认是手动保存，未启用自动保存时关闭会提示
+// 用户口径（原话）：主流编辑器默认是手动保存，未启用自动保存时关闭会提示
 // 「是否保存更改？／如果不保存，您的更改将会丢失。」—— 本项目也要这样。
 //
 // 改造前的行为（本套件要防它回归）：关窗**一句都不问**，`flushAll()` 直接把有路径的文档
@@ -414,7 +414,7 @@ async function waitDialog(conn, ms = 5000) {
         JSON.stringify({ open: dlg.open, title: dlg.title })
       )
       c(
-        'prompt-text-is-the-typora-wording',
+        'prompt-text-matches-wording',
         dlg.title === '是否保存更改？' && dlg.body === '如果不保存，您的更改将会丢失。',
         JSON.stringify({ title: dlg.title, body: dlg.body })
       )

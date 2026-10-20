@@ -377,7 +377,7 @@ HTML/公式块/front matter（`attrs.source` 当 `protect` 集合）、缩进行
 → 实时渲染区「粗体的 `2****2`，星号可见」**才是**与 GitHub / VS Code 一致的行为。
 真正的缺陷只有一条：**字节被改写**（多了 `\*\*\*\*`）。
 
-**根因**：`typoraInlineMarks.ts` 的 `literalizeStrayMarkers`（旧 472–517 行）见到 `mdStyle`
+**根因**：`inlineMarks.ts` 的 `literalizeStrayMarkers`（旧 472–517 行）见到 `mdStyle`
 就整段跳过 —— 字面量化只覆盖无样式正文，样式正文里的裸标记字符被 markdown 写出器的
 `esc()`（`` ` `` `*` `\` `~` `[` `]` `_`）补了反斜杠。
 

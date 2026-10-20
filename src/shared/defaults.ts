@@ -65,8 +65,8 @@ export const defaultSettings: AppSettings = {
   toolbarItems: [...DEFAULT_TOOLBAR_ITEMS],
   /**
    * 远程图片（`![](https://…)`）的加载策略（自查报告 H2）：
-   *   `'always'`（**第七十七轮起默认**）＝ 打开文档就直接加载，与 Typora 一致
-   *                （用户实测口径：Typora 打开就能看到图，占位框让人以为"什么都没有"）；
+   *   `'always'`（**第七十七轮起默认**）＝ 打开文档就直接加载，与主流编辑器一致
+   *                （用户实测口径：主流编辑器打开就能看到图，占位框让人以为"什么都没有"）；
    *   `'click'`  ＝ 先挡成占位、点一下才加载 —— 想要"隐私优先、不点不外联"的用户在设置里选它。
    * 两条分支都保留（实现见 `src/renderer/src/lib/remoteImages.ts`）；
    * 导出 HTML 用的是真实 src，不受此设置影响。
@@ -100,7 +100,7 @@ export const defaultSettings: AppSettings = {
    *     不用用户没要求的改变」这条既有口径冲突（见 tests/settingsDefaults.test.mjs）。
    * 所以设置项名是「**隐藏**行内标记字符」，语义只有一条：打开 ⇒ 所见即所得里**永不显形**。
    *
-   * 只影响显示层（`typoraInlineMarks` 的显隐装饰）：标记仍是文档里的真实文本，
+   * 只影响显示层（`inlineMarks` 的显隐装饰）：标记仍是文档里的真实文本，
    * 保存/导出/往返字节不变；字面量标记（未配对/切段残留的 `*`，`data-side='literal'`）与
    * 转义反斜杠（`\*`，见 MdEscape 的说明）**不在**这个开关的口径里（前者是用户正文、
    * 藏起来等于丢字符；后者的折叠/拆分是同一条渲染结构，要一起改得单独设计）。

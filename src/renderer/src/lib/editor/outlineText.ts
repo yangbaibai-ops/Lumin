@@ -1,7 +1,7 @@
 // ─── 标题的「纯文本标签」（大纲 / 目录用）────────────────────────────────────
 //
 // 本编辑器的行内标记是**真实文本**：`**加粗**` 的四个星号就在文档里（带 `mdMarker` mark，
-// 见 lib/editor/typoraInlineMarks.ts）。所以 `node.textContent` 拿到的是
+// 见 lib/editor/inlineMarks.ts）。所以 `node.textContent` 拿到的是
 // `林一鸣（**男主，21岁**）` —— 直接拿去做大纲/目录的行文字，用户就会看到一串 `**`
 //（用户报障：`### 林一鸣（**男主，21岁，大四或刚毕业待业**）` 在目录里带着 `**`）。
 //
@@ -12,7 +12,7 @@
 // 硬换行（`<br>`）折算成一个空格：它是「两行标题」的视觉换行，在大纲里连成一行更好读。
 import type { Node as PMNode } from '@tiptap/pm/model'
 
-/** 标记文本的 mark 名（与 typoraInlineMarks.ts 里的 `name: 'mdMarker'` 保持一致） */
+/** 标记文本的 mark 名（与 inlineMarks.ts 里的 `name: 'mdMarker'` 保持一致） */
 const MARKER_MARK = 'mdMarker'
 
 /**

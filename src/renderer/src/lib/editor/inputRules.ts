@@ -1,8 +1,8 @@
 // ─── 附加 InputRules ─────────────────────────────────────────────────────────
 // 1) 任务列表：StarterKit 自带的 Heading / BulletList / Blockquote / CodeBlock
-//    输入规则已覆盖 '# ' 标题与 '- ' 列表语法，这里补齐 Typora 的任务列表动态
+//    输入规则已覆盖 '# ' 标题与 '- ' 列表语法，这里补齐主流编辑器的任务列表动态
 //    语法：在无序列表项开头输入 '[ ] ' 或 '[x] '，把整个列表转换为任务列表。
-// 2) Markdown 链接：[文字](网址) —— 敲下右括号即成形（Typora 同款）。
+// 2) Markdown 链接：[文字](网址) —— 敲下右括号即成形（通用做法）。
 //    Tiptap 的 Link 只有 autolink（裸网址自动成链）与 linkOnPaste，没有这套
 //    方括号语法，所以此前手工输入 [](), 只会remain 纯文本。
 import { Extension, InputRule } from '@tiptap/core'
@@ -16,8 +16,8 @@ const MD_LINK_AT_CARET = /\[([^[\]\n]*)\]\(([^()\s]+)\)$/
 /** 跨文本块时 textBetween 用的分隔符：正常文本里不会出现，借此避免跨块误匹配 */
 const BLOCK_GUARD = '\uffff'
 
-export const TyporaInputRules = Extension.create({
-  name: 'typoraInputRules',
+export const WysiwygInputRules = Extension.create({
+  name: 'wysiwygInputRules',
 
   addInputRules() {
     const schema = this.editor.schema

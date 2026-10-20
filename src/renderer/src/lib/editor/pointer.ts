@@ -1,16 +1,16 @@
-// ─── 鼠标语义：Ctrl/Cmd+左键与链接交互（Typora 同款）───────────────────────
+// ─── 鼠标语义：Ctrl/Cmd+左键与链接交互（通用做法）───────────────────────
 //
 // 1) PM 内置 selectNodeModifier（Win: ctrlKey / Mac: metaKey）：Ctrl/Cmd+左键
 //    会把光标所在文本块 NodeSelection 整选（.ProseMirror-selectednode 全选框）
-//    ——Typora 没有，须拦截：非链接处 Ctrl/Cmd+左键退化为普通光标落点。
-// 2) 链接（Typora 官方行为）：
+//    —— 主流编辑器没有，须拦截：非链接处 Ctrl/Cmd+左键退化为普通光标落点。
+// 2) 链接（同类编辑器的官方行为）：
 //    - Ctrl/Cmd + 左键点击链接 → 交给宿主注入的 onOpenLink（默认：系统默认
 //      浏览器；应用内注入 lib/linkOpen.ts 的完整分流：网址/同级文件名/相对路径/
 //      绝对路径，并按需询问是否新建缺失目标）；
 //    - 普通左键点击链接（不按修饰键）→ 该链接「原地展开」为可编辑源码形态：
 //      `[` 与 `](网址)` 等新增字符以浅灰（linkSource/syntax）呈现、**原文链接
 //      标签保持链接外观（主题色 + 下边框）**、光标停在点击处且不自动选中任何
-//      文本（Typora md-raw-inline 同款）。光标移出展开区（或按 Esc / 编辑器
+//      文本（主流编辑器 md-raw-inline 同款）。光标移出展开区（或按 Esc / 编辑器
 //      失焦）自动折叠还原为链接——往返序列化恒等于 `[文字](网址)`。
 //
 // 实现要点：
@@ -19,7 +19,7 @@
 //   的 open/close 均为空 → 输出仍是原 label 字符），在两侧补 linkSource
 //   (part:'syntax') 的 `[`、`](url)` 文本——因此标签可见样式不变、其余灰显；
 // - 折叠：把展开区整体文本解析回 `[label](url)`，以 link mark 重建 label，
-//   内部 `**` 等由派生归一化（typoraInlineMarks）自动还原；
+//   内部 `**` 等由派生归一化（inlineMarks）自动还原；
 // - 自动折叠在 appendTransaction 里按「光标是否仍在展开区」判定，一次折叠
 //   一个区域、无循环；mousedown 内同步 dispatch 会导致 PM DOM 不重建
 //   （须 setTimeout(0) 延后），且展开前先落光标再展开以保持“点到哪光标在哪”。
@@ -32,7 +32,7 @@ import { deferAfterPmEvent } from './defer'
 // 自定义命令类型声明（tiptap v3 命令合并，命名空间形式）
 declare module '@tiptap/core' {
   interface Commands<ReturnType> {
-    typoraPointer: {
+    wysiwygPointer: {
       collapseLinkSources: () => ReturnType
     }
   }
@@ -70,7 +70,7 @@ export const LinkSource = Mark.create({
   }
 })
 
-const pluginKey = new PluginKey('typora-pointer-link')
+const pluginKey = new PluginKey('pointer-link')
 
 interface TextRun {
   from: number // 起点（含）
@@ -212,7 +212,7 @@ function collapseAll(
   return true
 }
 
-export interface TyporaPointerOptions {
+export interface WysiwygPointerOptions {
   /**
    * 打开链接（Ctrl/Cmd+左键）。宿主注入完整解析逻辑（网址→浏览器、同级文件名→
    * 新窗口、相对/绝对路径→默认应用，见 lib/linkOpen.ts）；默认实现只把网址交给
@@ -221,8 +221,8 @@ export interface TyporaPointerOptions {
   onOpenLink: (href: string) => void
 }
 
-export const TyporaPointer = Extension.create<TyporaPointerOptions>({
-  name: 'typoraPointer',
+export const WysiwygPointer = Extension.create<WysiwygPointerOptions>({
+  name: 'wysiwygPointer',
   addOptions() {
     return {
       onOpenLink: (href: string) => {
@@ -280,7 +280,7 @@ export const TyporaPointer = Extension.create<TyporaPointerOptions>({
         },
         // 节点级整选一律不允许（图片 / 水平线 / 代码块 / 数学块…，不只是文本块）。
         // 为什么连叶子节点也压掉：它会套上 `.ProseMirror-selectednode` 的整选框，而本应用
-        // 按 Typora 的口径走 —— 点图片是为了拖/删它，不是为了看一圈选中框；键盘整体选中
+        // 按主流编辑器的口径走 —— 点图片是为了拖/删它，不是为了看一圈选中框；键盘整体选中
         // 也没有对应的可用操作（删除仍然可用：光标落到节点旁边按退格即可）。
         // 降级为**就近的文本光标**（不是丢弃事务），选区语义不丢、用户看到的就是一个光标。
         // 注意 filterTransaction 先于 dispatch 应用。

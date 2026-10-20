@@ -181,7 +181,7 @@ export function buildEditorMenuActions(
       id: 'paragraph.quote',
       labelKey: 'editorMenu.quote',
       icon: 'quote',
-      // 真实绑定 `Mod-Shift-q`（lib/editor/keymap.ts 的 TyporaKeymap）：Tiptap 自带的
+      // 真实绑定 `Mod-Shift-q`（lib/editor/keymap.ts 的 WysiwygKeymap）：Tiptap 自带的
       // `Mod-Shift-b` 被「切换侧栏」占用，按不出来 —— 所以这里写的是我们补的那条键
       shortcut: 'Ctrl+Shift+Q',
       run: () => {
@@ -246,7 +246,7 @@ export function buildEditorMenuActions(
       id: 'format.strike',
       labelKey: 'editorMenu.strike',
       icon: 'strike',
-      // 快捷键提示要跟**真实绑定**一致：`Mod-Shift-x`（typoraInlineMarks 的 addKeyboardShortcuts）
+      // 快捷键提示要跟**真实绑定**一致：`Mod-Shift-x`（inlineMarks 的 addKeyboardShortcuts）
       shortcut: 'Ctrl+Shift+X',
       run: () => {
         chain().toggleMdStrike().run()
@@ -256,7 +256,7 @@ export function buildEditorMenuActions(
       id: 'format.inlineCode',
       labelKey: 'editorMenu.inlineCode',
       icon: 'code',
-      // 真实绑定是 `Mod-e`（typoraInlineMarks），此前菜单里不显示 —— 有键就写出来
+      // 真实绑定是 `Mod-e`（inlineMarks），此前菜单里不显示 —— 有键就写出来
       shortcut: 'Ctrl+E',
       run: () => {
         chain().toggleMdCode().run()

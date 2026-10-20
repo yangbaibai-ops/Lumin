@@ -71,7 +71,7 @@ export const GutterCaret = Extension.create({
          *
          * ⚠️ 用 `installOnce` 而不是裸 `addEventListener`：`document` 比插件视图活得久
          * （dev 下 HMR 会反复重建插件视图），裸装会累积多份回调 —— 仓库里
-         * `mathPreview` / `typoraInlineMarks` 都踩过这个坑（见 `installOnce` 的说明）。
+         * `mathPreview` / `inlineMarks` 都踩过这个坑（见 `installOnce` 的说明）。
          */
         view: (view) => {
           /**

@@ -15,7 +15,7 @@ import ToolbarCodeBlockButton from './ToolbarCodeBlockButton.vue'
 import { shouldCloseOnScrollOrResize } from '../lib/popoverClose'
 import { insertImageFromPath, insertImageFromUrl } from '../lib/insertImage'
 import { insertOrEditLink } from '../lib/linkInsert'
-import { selectionHasMdStyle } from '../lib/editor/typoraInlineMarks'
+import { selectionHasMdStyle } from '../lib/editor/inlineMarks'
 import {
   DEFAULT_TOOLBAR_ITEMS,
   insertToolbarItemByOrder,

@@ -1,5 +1,5 @@
-// ─── Typora 式键盘语义 ───────────────────────────────────────────────────────
-// 1) 分割线：'---' / '***' 独立成行后按 Enter 才转换（Typora 同款）。
+// ─── 所见即所得键盘语义 ───────────────────────────────────────────────────────
+// 1) 分割线：'---' / '***' 独立成行后按 Enter 才转换（通用做法）。
 //    即时转换（输入规则）被禁用，因此 "---你好" 这类文本可以正常输入；
 // 2) 标题降级：光标位于标题第一个字前按 Backspace → 取消标题格式
 //    （整行降级为段落，内容保留），而不是并入上一行 / 影响上一行层级。
@@ -71,7 +71,7 @@ function joinTextblockAtBoundary(editor: Editor, dir: 'backward' | 'forward'): b
     后留下的空占位段，也可能是有正文的段。PM 默认的 joinBackward 会把整个
     后续段落并入代码块（正文变代码，S2 复现的「吞文」）；这里改为不合并文本，
     而是把光标移到代码块内容末尾并聚焦其 CodeMirror：空占位段顺手删除，
-    有正文的段保留、光标仍进入代码块（Typora 语义：代码块是编辑岛，行首
+    有正文的段保留、光标仍进入代码块（主流编辑器语义：代码块是编辑岛，行首
     退格 = 回到代码块内继续输入）。
     另覆盖一个点击残留态：先在代码块内点过（PM 选区停在代码块内容末尾），
     随后点击代码块下方预留空行——DOM 光标已进空段，但 PM 选区仍滞留在代码
@@ -179,8 +179,8 @@ function backspaceIntoCodeBlock(editor: Editor): boolean {
   return true
 }
 
-export const TyporaKeymap = Extension.create({
-  name: 'typoraKeymap',
+export const WysiwygKeymap = Extension.create({
+  name: 'wysiwygKeymap',
   priority: 200,
 
   addKeyboardShortcuts() {
@@ -192,7 +192,7 @@ export const TyporaKeymap = Extension.create({
       Enter: ({ editor }) => {
         // 注意：光标落在语法标记字符内部（如 '**5*|*'）时按回车 = 普通
         // 文本切段（`**5*` / `*`）。派生归一化对不成对构造按字面量处理，
-        // 不再自动改写样式，也不会崩溃（详见 typoraInlineMarks.ts）。
+        // 不再自动改写样式，也不会崩溃（详见 inlineMarks.ts）。
         if (!hrType || !pType) return false
         const { state } = editor
         const { $from, empty } = state.selection
@@ -231,7 +231,7 @@ export const TyporaKeymap = Extension.create({
         // 代码块后段落行首退格 → 光标进入代码块末尾（不吞正文），见上
         if (backspaceIntoCodeBlock(editor)) return true
 
-        // 段落行首 / 段间边界退格 = 与上一段合并（Typora 行为）。
+        // 段落行首 / 段间边界退格 = 与上一段合并（主流编辑器行为）。
         // 本版 prosemirror-commands 的 joinBackward 要求光标真正落在文本块
         // 内部（$cursor 非空）；而本编辑器的 Enter/归一化常把光标留在「块
         // 边界」位置（depth 0，解析不进任何段落），joinBackward 直接失效并
@@ -254,7 +254,7 @@ export const TyporaKeymap = Extension.create({
        * Tiptap 的 Blockquote 自带 `Mod-Shift-b`，而 `Mod+Shift+B` 被本应用的「切换侧栏」
        * （`view.toggleSidebar`，全局捕获阶段监听 window）占用 —— 于是内建那条**永远按不出来**，
        * 而右键菜单里这条动作也没有任何快捷键提示（编辑 › 段落 › 引用）。
-       * 这里补 `Mod-Shift-q`：与 Typora 的引用快捷键一致，且与现有 27 条应用级默认键无冲突
+       * 这里补 `Mod-Shift-q`：与主流编辑器的引用快捷键一致，且与现有 27 条应用级默认键无冲突
        * （实测：`_verify-keymap.js` 的「无重复默认键」不受影响，因为它是**编辑器级**绑定）。
        * 提示写在 `lib/editor/menu/actions.ts` 的 `paragraph.quote` 上，两边必须一致。
        */

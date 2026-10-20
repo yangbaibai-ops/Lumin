@@ -14,7 +14,7 @@ const ROOT = new URL('../', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, 
 const read = (rel) => readFileSync(join(ROOT, rel), 'utf-8')
 
 test('正文：ProseMirror 根节点显式 spellcheck="true"（唯一开启的编辑面）', () => {
-  const src = read('src/renderer/src/components/editor/TyporaEditor.vue')
+  const src = read('src/renderer/src/components/editor/WysiwygEditor.vue')
   assert.match(src, /spellcheck:\s*'true'/, '正文根节点必须显式开启拼写检查')
 })
 
@@ -69,7 +69,7 @@ test('全仓只有正文根节点开启 spellcheck="true"（防止某处误开�
   }
   walk(join(ROOT, 'src/renderer/src'))
   assert.equal(offenders.length, 1, `只有正文根节点可以开启（实际：${offenders.join(', ')}）`)
-  assert.match(offenders[0].replace(/\\/g, '/'), /TyporaEditor\.vue$/)
+  assert.match(offenders[0].replace(/\\/g, '/'), /WysiwygEditor\.vue$/)
 })
 
 test('主进程用的是 Electron 内置拼写接口（不是自造词典）', () => {

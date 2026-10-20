@@ -139,7 +139,7 @@ async function readPreviewHead(filePath: string, bytes = 1024): Promise<string> 
 }
 
 /** 递归扫描工作区根目录下的全部文本文档，返回扁平条目。
-    用于侧边栏「列表」视图（Typora 式）：展示每篇的修改时间与正文预览。
+    用于侧边栏「列表」视图（极简式）：展示每篇的修改时间与正文预览。
     - 只统计「可打开的文本类型」——清单的唯一真相源是 `shared/textFiles.ts`
       （`md/markdown/mdown/mkd/txt/text/log/ini/cfg`），**加类型只改那一处**；
     - 跳过隐藏目录（.git/.obsidian 等）以提速并避免噪音；

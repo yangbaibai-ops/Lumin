@@ -680,7 +680,7 @@
 
 ### Fixed
 
-- **根因**：侧栏大纲的「当前章节」是滚动侦测算的（`TyporaEditor.onScroll`：取「滚动容器上沿往下
+- **根因**：侧栏大纲的「当前章节」是滚动侦测算的（`WysiwygEditor.onScroll`：取「滚动容器上沿往下
   90px 那条线」上方最后一个标题）。点最后一个标题时容器已经滚到底，那条线离最后一个标题还有
   一两屏，于是它停在倒数第三个标题的章节上 —— 侦测结果把用户点的那条**覆盖**掉了。
   **两条修法都在，缺一不可**：
@@ -688,7 +688,7 @@
      （`activePinnedUntil = now + 800ms`）。立刻是为了平滑滚动那 300–500ms 里高亮不被中途经过的
      章节带走；上锁是为了不让侦测覆盖。真实滚动（`wheel` / `touchstart`）**提前解锁**，到期也自动
      解锁 —— 锁不是永久的。
-  2. `TyporaEditor.onScroll()`：**到底就点亮最后一条**（先判 `scrollHeight > clientHeight + 1`
+  2. `WysiwygEditor.onScroll()`：**到底就点亮最后一条**（先判 `scrollHeight > clientHeight + 1`
      确认真的可滚动，再用 1px 容差判到底）。末屏那几个标题都在 90px 判定线**下面**，
      没有这条规则它们永远轮不到高亮。
 
@@ -1446,7 +1446,7 @@ LayoutObject 151 → 17,062 · 监听器 113 → 5,289 · JS 堆 10 → 70MB · 
 
 ### Changed
 
-- **正文列左右内缩 40px → 56px**：`TyporaEditor.vue` 的 `editor-content` 由 `px-10` 改 `px-14`
+- **正文列左右内缩 40px → 56px**：`WysiwygEditor.vue` 的 `editor-content` 由 `px-10` 改 `px-14`
   （实测计算值 `40px 56px 160px`）。源码面同步放宽（`.source-editor` 左右 24 → 40px、
   `.source-editor--split` 24 → 32px）；通知带跟着对齐同一列（`padding: 11px 56px 13px`，
   它的「与正文列对齐」断言也改成 56px）。
@@ -1560,13 +1560,13 @@ LayoutObject 151 → 17,062 · 监听器 113 → 5,289 · JS 堆 10 → 70MB · 
 
 ## [Unreleased · H 文档体系拆分] — 手册按章拆、CHANGELOG 归档老轮次、台账分离已完成
 
-> 来源：桌面《Lumin-待优化清单-2026-09-22.md》§2.H。原状：`docs/typora-wysiwyg-manual.md`
+> 来源：桌面《Lumin-待优化清单-2026-09-22.md》§2.H。原状：`docs/wysiwyg-manual.md`
 > **3,934 行**、`CHANGELOG.md` **2,581 行**、`docs/optimization-program.md` 台账 **501 行** ——
 > 人类已经很难在里面找到「现在到底是怎么实现的」。
 
 ### Changed（三处都是**逐字节搬运 + 行数守恒校验**，没有改写内容）
 
-- **手册**：`docs/typora-wysiwyg-manual.md` 变成**索引**（标题 + 引言 + 指向各章的目录），
+- **手册**：`docs/wysiwyg-manual.md` 变成**索引**（标题 + 引言 + 指向各章的目录），
   正文按章拆到 `docs/manual/`：`01-design`(82) / `02-core-internals`(85) / `03-interactions`(205) /
   `04-pitfalls`(841) / `05-plan`(91) / `06-engineering`(33) / `07-roadmap`(34) / `08-appendix`(2540)。
   校验：各章合计 3,911 行 + 索引前半段 23 行 = 原文 3,934 行 ✓。
@@ -1777,9 +1777,9 @@ LayoutObject 151 → 17,062 · 监听器 113 → 5,289 · JS 堆 10 → 70MB · 
 ### Changed
 
 - 已收口到 `deferAfterPmEvent()` 的三处（「新写的 + 下次改到的」口径，不全量替换）：
-  `lib/editor/pointer.ts`（点击链接 → 展开源码）、`lib/editor/typoraInlineMarks.ts`
+  `lib/editor/pointer.ts`（点击链接 → 展开源码）、`lib/editor/inlineMarks.ts`
   （`handleDOMEvents.mouseup` 的拖选撑标记 + 行尾落点）、
-  `components/editor/TyporaEditor.vue`（`onCreate` 后的 `normalizeMdMarkers()`）。
+  `components/editor/WysiwygEditor.vue`（`onCreate` 后的 `normalizeMdMarkers()`）。
 
 ### Verification（本轮实测）
 

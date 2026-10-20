@@ -23,7 +23,7 @@
 // 真正的防线是让重活**别叠加**（冷却 + 延后），以及让下一次定位有数据。
 //
 // ⚠️ 本模块**不 import i18n / 任何 UI 层**：它要能被 `node --test` 直接加载
-// （文案由宿主按语言包拼，见 components/editor/TyporaEditor.vue）。
+// （文案由宿主按语言包拼，见 components/editor/WysiwygEditor.vue）。
 
 /** 单次重活的预算（ms）。超过就认为"这一次已经很重了"，后续可选重活延后 */
 export const HEAVY_WORK_BUDGET_MS = 120

@@ -1,6 +1,6 @@
-// ─── Typora 光标感知块级标记符（ProseMirror Decoration）─────────────────────
+// ─── 光标感知块级标记符（ProseMirror Decoration）─────────────────────
 // 块级标记（标题/引用/列表项）由 CSS ::before 生成，不进入文档内容；
-// 行内标记（加粗/斜体等）已升级为真实文本模型（typoraInlineMarks.ts），
+// 行内标记（加粗/斜体等）已升级为真实文本模型（inlineMarks.ts），
 // 标记字符本身在文档中，可选中、可编辑，本文件不再管理行内元素。
 //
 // 实现要点（本版 prosemirror-view 的实测行为）：
@@ -10,7 +10,7 @@ import { Extension } from '@tiptap/core'
 import { Plugin, PluginKey } from '@tiptap/pm/state'
 import { Decoration, DecorationSet } from '@tiptap/pm/view'
 
-const pluginKey = new PluginKey('typora-dynamic-syntax')
+const pluginKey = new PluginKey('md-dynamic-syntax')
 
 function buildBlockDecorations(state: import('@tiptap/pm/state').EditorState): DecorationSet {
   const { selection, doc } = state
@@ -24,7 +24,7 @@ function buildBlockDecorations(state: import('@tiptap/pm/state').EditorState): D
         // 光标真正进入标题正文后才显示级别提示：排除“刚打开文档聚焦到标题首字符”
         // 的情况（selFrom 恰为内容起点 pos+1 且标题非空），避免打开即显示 H1。
         // 但刚通过 `# ` 输入规则创建的空标题（内容为空、光标在 pos+1）应立刻显示，
-        // 与 Typora 一致。
+        // 与主流编辑器一致。
         const isEmpty = node.textContent.length === 0
         const within = selTo <= pos + node.nodeSize
         if ((selFrom >= pos + 2 || (isEmpty && selFrom === pos + 1)) && within) {
@@ -65,7 +65,7 @@ function markFirstDecorations(): void {
   performance.mark('lumin:decorations-first')
 }
 
-export const typoraMarkersPlugin = new Plugin({
+export const markersPlugin = new Plugin({
   key: pluginKey,
   state: {
     init: (_config, state) => {
@@ -86,9 +86,9 @@ export const typoraMarkersPlugin = new Plugin({
 })
 
 /** 包装为 Tiptap Extension（与扩展集统一注册） */
-export const TyporaMarkers = Extension.create({
-  name: 'typoraMarkers',
+export const WysiwygMarkers = Extension.create({
+  name: 'wysiwygMarkers',
   addProseMirrorPlugins() {
-    return [typoraMarkersPlugin]
+    return [markersPlugin]
   }
 })

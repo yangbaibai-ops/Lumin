@@ -5,7 +5,7 @@
 //
 //   ① **同步 dispatch 会被 PM 覆盖**：`handleDOMEvents` 之后 PM 还有自己的 MouseUp 处理，
 //      它会按自己的算法再把选区写一遍。实测：点一行行尾空白时 `posAtCoords` 明明给出**块尾**，
-//      最终光标却停在收尾 `**` 之前 —— 就是被 PM 那一步覆盖的（见 typoraInlineMarks.ts 的
+//      最终光标却停在收尾 `**` 之前 —— 就是被 PM 那一步覆盖的（见 inlineMarks.ts 的
 //      `handleDOMEvents.mouseup`）。
 //   ② **判据与落点必须分家**：松手瞬间 `.press-hidden` 解除、显隐装饰重算，整行会左右移动，
 //      所以几何判据要在**点击当时的布局**上同步量；而落点要延后写。

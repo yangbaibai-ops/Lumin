@@ -19,7 +19,7 @@ import { useNotificationsStore } from '../../stores/notifications'
 import { perfFlag } from '../../lib/editor/perfProbe'
 import { PASTE_PLAIN_KIND } from '../../lib/safety'
 
-// ─── Typora 式所见即所得编辑器（开发文档「步骤 2」的高阶封装）────────────────
+// ─── 所见即所得编辑器（开发文档「步骤 2」的高阶封装）────────────────
 // - Tiptap(ProseMirror) AST 内核 + tiptap-markdown 双向转换
 // - onUpdate 防抖序列化回 Markdown 源码（SQLite 持久化管道的源头）
 // - 外部数据同步：**按账本世代**判断该不该换内容（手册 §4.59），不比字符串、不看时间窗
@@ -364,7 +364,7 @@ defineExpose({ editor, syncNow })
 <template>
   <div
     ref="containerRef"
-    class="typora-container relative h-full"
+    class="wysiwyg-container relative h-full"
     :class="{ 'focus-mode': ui.focusMode }"
   >
     <!-- 编辑区。

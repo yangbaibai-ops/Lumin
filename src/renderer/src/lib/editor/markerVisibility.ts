@@ -16,7 +16,7 @@
 //
 // 为什么单独一个模块（与 `findBridge.ts` 同一取舍）：这个开关由**设置 store** 推给内核，
 // 而 `stores/settings.ts` 挂在首屏静态依赖链上（`App.vue → useAppActions → stores/settings`）。
-// 如果它直接 `import { … } from './typoraInlineMarks'`，那个模块静态 import 了
+// 如果它直接 `import { … } from './inlineMarks'`，那个模块静态 import 了
 // `@tiptap/core` 与 `@tiptap/pm/*`，整份 ProseMirror（构建产物实测 ~412KB）就会被钉进首屏
 // entry chunk —— 这正是 `findBridge.ts` 当初存在的理由。依赖方向因此是
 // 「编辑器内核 → 本桥 ← 设置 store」，store 一侧不认识 ProseMirror。

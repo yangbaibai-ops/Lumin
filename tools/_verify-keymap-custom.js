@@ -167,7 +167,7 @@ const closeSettings = async (app) => {
 }
 
 const focusMode = (app) => app.ev('window.__L.ui().focusMode')
-const focusClass = (app) => app.ev('!!document.querySelector(".typora-container.focus-mode")')
+const focusClass = (app) => app.ev('!!document.querySelector(".wysiwyg-container.focus-mode")')
 
 const FOCUS = 'view.focusMode'
 const PALETTE = 'app.commandPalette'
@@ -337,7 +337,7 @@ async function relaunch() {
   report.check(
     'new-key-runs-command',
     f0 !== f1 && f1 === true && cls === true,
-    'Ctrl+Alt+J: focusMode ' + f0 + ' -> ' + f1 + '，DOM .typora-container.focus-mode=' + cls
+    'Ctrl+Alt+J: focusMode ' + f0 + ' -> ' + f1 + '，DOM .wysiwyg-container.focus-mode=' + cls
   )
 
   // ── ③ 旧键不再执行（防「新旧都生效」）────────────────────────────────────────

@@ -19,9 +19,9 @@ import type { RemoteImagePolicy } from '../remoteImages'
 import i18n from '../../i18n'
 import Image from '@tiptap/extension-image'
 import { Markdown } from 'tiptap-markdown'
-import { TyporaMarkers } from './markers'
-import { TyporaInputRules } from './inputRules'
-import { TyporaKeymap } from './keymap'
+import { WysiwygMarkers } from './markers'
+import { WysiwygInputRules } from './inputRules'
+import { WysiwygKeymap } from './keymap'
 import { ImagePaste } from './imagePaste'
 // 图片的源码标记（点击显示 / 缩放写进源码 / 悬浮工具栏）见该文件的长注释
 import { ImageSourceUi } from './imageToolbar'
@@ -33,7 +33,7 @@ import { PasteFreezeGuard } from './pasteGuard'
 import { CodeBlockCM } from './codeBlock'
 import { MarkdownPaste } from './markdownPaste'
 import { TableClipboard, TableDragSelect, TableNoCellClamp } from './tableClipboard'
-import { TyporaInlineMarks, MdStyle, MdMarker, MdCodeLiteral, MdEscape } from './typoraInlineMarks'
+import { InlineMarks, MdStyle, MdMarker, MdCodeLiteral, MdEscape } from './inlineMarks'
 import { Frontmatter } from './frontmatter'
 import { HtmlBlock, MdHtml, HtmlTailLiteral } from './htmlPassthrough'
 import { FootnoteDef, MdFootnote } from './footnotePassthrough'
@@ -45,7 +45,7 @@ import { BulletListMarked, TaskListTight } from './listMarkers'
 import { MarkdownParseLimits } from './parseLimits'
 // CJK 强调定界符口径：`**「…」**` 这类中文写法必须能成对（见 cjkEmphasis.ts）
 import { CjkEmphasis } from './cjkEmphasis'
-import { TyporaPointer, LinkSource } from './pointer'
+import { WysiwygPointer, LinkSource } from './pointer'
 import { GutterCaret } from './gutterCaret'
 import { TableOfContents } from './tableOfContents'
 
@@ -79,14 +79,14 @@ const CodeQuiet = Code.extend({
 
 /**
  * 当前文档所在目录的提供者：图片相对路径要靠它解析（见 lib/imageSrc.ts）。
- * 宿主（TyporaEditor）注入；默认返回 null = 不解析（原样输出，与旧行为一致）。
+ * 宿主（WysiwygEditor）注入；默认返回 null = 不解析（原样输出，与旧行为一致）。
  * 用「读的时候现取」而不是快照：切换文档后编辑器按 :key 重建，取值时机天然正确。
  */
 let documentDirProvider: () => string | null = () => null
 
 /**
  * 远程图片加载策略的提供者（自查报告 H2）：宿主注入 settings 里的 `remoteImages`；
- * 默认 `'click'` = 不自动加载远程图（隐私优先，与 Typora / VS Code 同口径）。
+ * 默认 `'click'` = 不自动加载远程图（隐私优先，与主流编辑器 / VS Code 同口径）。
  * 同样是「读的时候现取」：用户在设置里改了开关，下一帧渲染就生效，不用重建编辑器。
  */
 let remoteImageProvider: () => RemoteImagePolicy = () => 'click'
@@ -124,8 +124,8 @@ export const editorExtensions: Extensions = [
     codeBlock: false,
     // 无序列表用「保留源码标记」的版本（见 listMarkers.ts），这里关掉内置的
     bulletList: false,
-    // 分割线即时输入规则关闭：改为 '---'/'***' + Enter 确认（TyporaKeymap），
-    // 以便正常输入 "---你好" 这类文本（Typora 同款行为）
+    // 分割线即时输入规则关闭：改为 '---'/'***' + Enter 确认（WysiwygKeymap），
+    // 以便正常输入 "---你好" 这类文本（通用做法行为）
     horizontalRule: false,
     // 行内样式 mark 由外部注册的「安静版」提供（无输入规则/快捷键，
     // 见上），这里关闭 StarterKit 内置版本
@@ -161,7 +161,7 @@ export const editorExtensions: Extensions = [
   MdHtml,
   // 数学公式原文（`$…$`）：靠 escape:false 逐字写回；渲染由 MathPreview 的装饰负责
   MdMath,
-  TyporaInlineMarks,
+  InlineMarks,
   // 独立注册 horizontalRule 节点（仅节点与渲染，输入规则置空）
   HorizontalRule.extend({
     addInputRules() {
@@ -193,7 +193,7 @@ export const editorExtensions: Extensions = [
          *
          * 口径沿革：第五十三轮把"虚线相框 + 🔒 + alt/URL 文案"删成了空元素；
          * **第五十五轮连 `.img-guard` 类名一起删掉** —— 点击钩子改成走 `data-remote-src`
-         * （见 components/editor/TyporaEditor.vue），样式锚点改成属性选择器（assets/markdown.css）。
+         * （见 components/editor/WysiwygEditor.vue），样式锚点改成属性选择器（assets/markdown.css）。
          * 于是这块区域"可点击但视觉为空"，且类名/样式锚点都不再残留。
          * title 留着是为了键盘/读屏用户仍知道这里有什么（不产生任何像素）。
          */
@@ -236,7 +236,7 @@ export const editorExtensions: Extensions = [
     placeholder: () => i18n.global.t('editor.placeholder')
   }),
   CodeBlockCM,
-  TyporaInputRules,
+  WysiwygInputRules,
   // 图片：粘贴剪贴板 / 拖入文件 → 落进工作区 assets/ 并插入相对路径（见 lib/insertImage.ts）
   ImagePaste,
   // 图片的**源码标记 + 缩放工具栏**（第五十三轮）：点击显示源码行、档位把 zoom 写进源码
@@ -292,7 +292,7 @@ export const editorExtensions: Extensions = [
     transformPastedText: false,
     transformCopiedText: true
   }),
-  TyporaMarkers,
+  WysiwygMarkers,
   // CJK 强调定界符（flanking）口径：全角/中文标点不参与定界符判定。
   // 必须与 Markdown 的 parser 同源 —— 它就是通过 parse.setup 改 markdown-it 的
   // emphasis 分词规则，所以「加载/刷新」与「实时重推」自动一致。
@@ -321,14 +321,14 @@ export const editorExtensions: Extensions = [
   // 中文拼写检查（启发式）：正文 Textblock 的重复字词/标点/易错词波浪线。
   // 开关来自设置（总开关 && 语言含中文），见 zhSpellcheck.ts 与 zhSpellcheckBridge.ts。
   ZhSpellcheck,
-  // 鼠标语义：Ctrl/Cmd+左键退化为普通点击（PM 内置会整选段落/节点，Typora 无此逻辑）；
+  // 鼠标语义：Ctrl/Cmd+左键退化为普通点击（PM 内置会整选段落/节点，主流编辑器无此逻辑）；
   // 链接：普通左键原地展开源码、Ctrl/Cmd+左键交宿主注入的 onOpenLink（§4.14/§4.15）
-  TyporaPointer,
+  WysiwygPointer,
   // 左内边距上按下 ⇒ 光标落到该行行首（报障③「行首行内公式之前落不进光标」）
   GutterCaret,
   // 键盘语义（分割线回车确认 / 标题行首退格降级）：priority 200，
   // 先于 core keymap 执行；置于末尾保证在同等优先级中注册最晚（最先执行）
-  TyporaKeymap
+  WysiwygKeymap
 ]
 
 /**
@@ -342,7 +342,7 @@ export function buildEditorExtensions(options: EditorExtensionOptions = {}): Ext
   documentDirProvider = options.getDocumentDir ?? ((): string | null => null)
   remoteImageProvider = options.getRemoteImagePolicy ?? ((): RemoteImagePolicy => 'click')
   const mathLabels = {
-    // 可见标签（Typora 截图里右上角那个「公式」）
+    // 可见标签（参考截图里右上角那个「公式」）
     label: i18n.global.t('editor.mathSource'),
     // 容器/编辑区的**可访问名**（比可见标签更具体：说清这是"公式源码"）
     aria: i18n.global.t('editor.mathSourceBlock'),
@@ -352,7 +352,7 @@ export function buildEditorExtensions(options: EditorExtensionOptions = {}): Ext
     empty: i18n.global.t('editor.mathEmpty')
   }
   return editorExtensions.map((e) => {
-    if (e.name === 'typoraPointer')
+    if (e.name === 'wysiwygPointer')
       return e.configure({ onOpenLink: options.onOpenLink ?? defaultOpenLink })
     if (e.name === 'mathPreview') return e.configure({ labels: mathLabels })
     // 块级公式节点自己也要那份占位文案（空公式的**非编辑**渲染走它的 NodeView）

@@ -184,7 +184,7 @@ export function withZoomInRaw(raw: string, zoom: number): string {
 }
 
 /**
- * 显隐判据（与行内标记同一套口径，见 typoraInlineMarks 的说明）：
+ * 显隐判据（与行内标记同一套口径，见 inlineMarks 的说明）：
  *   * 选区落在构造**内部**（含恰好等于两端 = 点图片/点源码行）⇒ **显示**；
  *   * 非空选区**完全包住**构造 ⇒ **不显示**；
  *   * 选区边界**严格切进**构造内部 ⇒ **显示**；
@@ -2961,7 +2961,7 @@ export const ImageSourceUi = Extension.create({
      */
     const makeRawWidgetDeco = (img: ImgSource, inline: boolean, selected: boolean): Decoration =>
       Decoration.widget(
-        // ⚠️ 挂在**构造的末尾**（`img.to`）：标识符文本在图片**左边**（Typora 观感）。
+        // ⚠️ 挂在**构造的末尾**（`img.to`）：标识符文本在图片**左边**（主流编辑器观感）。
         //    挂 `img.from` 时无论 side 正负，DOM 里图片都会排在文本前面。
         img.to,
         () => {
@@ -3144,7 +3144,7 @@ export const ImageSourceUi = Extension.create({
             const pick = keep && showable(keep) ? keep : (imgs.find((i) => showable(i)) ?? null)
             if (!pick) return { from: null, editing: false, openedAt: value.openedAt }
             /**
-             * 光标**严格落进**标识符文本 ⇒ 正在编辑（底色撤掉；Typora 同观感）。
+             * 光标**严格落进**标识符文本 ⇒ 正在编辑（底色撤掉；主流编辑器同观感）。
              * ⚠️ 第六十四轮：刚点开的那一下，浏览器/PM 会顺手把光标落到标识符里（那是这一击的
              * 收尾，不是"用户要点进文本来编辑"）⇒ 开点后 400ms 内忽略这种选区同步，
              * 底色才不会被"先加后撤"地闪一下。
@@ -3266,7 +3266,7 @@ export const ImageSourceUi = Extension.create({
                   )
                 } else {
                   /**
-                   * 原位显形（Typora 观感）：
+                   * 原位显形（主流编辑器观感）：
                    *   * 排版完全跟正文一致（不改 font/color）；
                    *   * 点开图片时给**浅灰底**（`--code-bg`，既有令牌）；光标落进文本开始编辑 ⇒ 去掉底；
                    *   * `vertical-align: top`：与图片同行时贴该行顶部；
@@ -3693,7 +3693,7 @@ export const ImageSourceUi = Extension.create({
            *   * `mousedown` 命中"最后一块的**行内**范围内、且位置贴住该块末尾、且不在图片本体上"
            *     ⇒ 记下锚点 = 该块末尾的文本位置；
            *   * `mousemove`（按住左键）⇒ 用 `posAtCoords` 取当前位置，把选区设成
-           *     `[min(锚点, 当前), max(...)]` ⇒ 与 Typora 一样能拖出选区；
+           *     `[min(锚点, 当前), max(...)]` ⇒ 与主流编辑器一样能拖出选区；
            *   * `mouseup` ⇒ 结束（单击情形照旧交给第四十五轮的"单击落光标"）。
            * 监听器挂在 `view.dom` 的**冒泡阶段、PM 之后注册** ⇒ 每次移动都**覆盖**PM 落下的光标。
            */

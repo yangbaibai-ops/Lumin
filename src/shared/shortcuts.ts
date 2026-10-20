@@ -53,7 +53,7 @@ export type BlockedReason =
  * 来源（逐个核对，2026-10/第四轮）：
  *   * `src/renderer/src/composables/useKeymap.ts` —— 应用级命令表（默认键）；
  *   * `src/shared/exportFormats.ts` —— 导出格式的唯一清单（defaultKeys）；
- *   * `src/renderer/src/lib/editor/typoraInlineMarks.ts` 与 `lib/editor/keymap.ts` —— 编辑器级；
+ *   * `src/renderer/src/lib/editor/inlineMarks.ts` 与 `lib/editor/keymap.ts` —— 编辑器级；
  *   * 代码块里的 CodeMirror keymap（见 `CodeBlockView.vue` 的 `buildCmExtensions`）。
  *
  * ⚠️ 这份清单是**应用赢**的兜底，不是"待办"：往里加 = 声明"这条键属于应用，永远别拦"。
@@ -63,7 +63,7 @@ export type BlockedReason =
  *   * `Mod+F` / `Mod+H` / `Mod+K` / `Mod+/` / `Mod+=`? —— 前四条是应用的查找/替换/快捷键设置/
  *     循环模式；`Mod+=` **没人用**（所以它进了拦截表，见下）。
  *   * `Mod+D`（代码块多光标加选）、`Mod+E`（行内代码）、`Mod+U`（**仅代码块**，见 KNOWN_COLLISIONS）。
- *   * `Mod+B` / `Mod+I`：行内加粗/斜体（`typoraInlineMarks`）。**注意与 DevTools 的
+ *   * `Mod+B` / `Mod+I`：行内加粗/斜体（`inlineMarks`）。**注意与 DevTools 的
  *     `Ctrl+Shift+I` 区分**：判据必须带 shift，否则会把斜体一起吃掉。
  *   * `Mod+Shift+B`（侧栏）、`Mod+Shift+F`（专注模式）、`Mod+Shift+E`（导出 PDF）、
  *     `Mod+Shift+X`（删除线）、`Mod+Shift+Q`（引用）、`Mod+Shift+P`（命令面板）。
@@ -101,7 +101,7 @@ export const APP_OWNED_COMBOS: readonly string[] = [
   'Mod+Alt+G', // 插入 Mermaid
   'Mod+Alt+ArrowUp', // 上方插入段落（原有登记，快捷键表首次真正使用）
   'Mod+Alt+ArrowDown', // 下方插入段落
-  // ── 编辑器级（typoraInlineMarks / lib/editor/keymap）──
+  // ── 编辑器级（inlineMarks / lib/editor/keymap）──
   'Mod+B',
   'Mod+I',
   'Mod+Shift+X',

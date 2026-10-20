@@ -4,7 +4,7 @@
  * 开关：localStorage['lumin.selTrace'] === '1'（默认关闭 ⇒ traceRow 立即 return，零开销）。
  * 输出：一次手势结束后，把整段以 `[lumin-sel-trace]` 开头的文本打到 DevTools 控制台（整段复制即可）；
  *      同时也挂在 window.__mdSelTrace（数组）上，便于自动化读取。
- * 只读状态、不改任何行为；定位完后可整体删除（删本文件 + typoraInlineMarks.ts 里的 import/traceAttach/traceRow 三处）。
+ * 只读状态、不改任何行为；定位完后可整体删除（删本文件 + inlineMarks.ts 里的 import/traceAttach/traceRow 三处）。
  */
 interface TraceView {
   state: {

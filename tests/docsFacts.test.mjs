@@ -111,7 +111,7 @@ test('docs：组件清单文档存在、被索引，且它点名的组件文件�
   const file = path.join(ROOT, rel)
   assert.ok(fs.existsSync(file), `${rel} 必须存在（组件清单：开关/分段/滑杆/浮层/播报）`)
   const doc = fs.readFileSync(file, 'utf-8')
-  const index = fs.readFileSync(path.join(ROOT, 'docs', 'typora-wysiwyg-manual.md'), 'utf-8')
+  const index = fs.readFileSync(path.join(ROOT, 'docs', 'wysiwyg-manual.md'), 'utf-8')
   assert.match(index, /manual\/09-components\.md/, '手册目录里没有索引到组件清单')
   // 必写的几类控件都要在这份清单里出现（否则它退化成一个空壳）
   for (const key of ['SettingSwitch', 'SegmentedControl', '.range', 'aria-modal', 'aria-live']) {

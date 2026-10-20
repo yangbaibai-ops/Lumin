@@ -1,4 +1,4 @@
-<!-- 本文件由 docs/typora-wysiwyg-manual.md 按章拆出（清单 §2.H）；索引见该文件。 -->
+<!-- 本文件由 docs/wysiwyg-manual.md 按章拆出（清单 §2.H）；索引见该文件。 -->
 
 ## 2. 核心原理：如何在渲染结果里直接编辑
 

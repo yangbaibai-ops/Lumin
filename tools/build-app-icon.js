@@ -25,7 +25,7 @@
 //    从它打出的七档 DIB `resources/icon.ico`）。本脚本画的是上一版「折带 L」，直接写盘会
 //    把用户的设计覆盖掉，于是「开发态一个新图标、装完一个旧图标」重现。
 //    * 默认：产物写到 %TEMP%\lumin-icon-redesign\，只做自检与观感对照，**不碰 resources/**；
-//    * 真要重新生成旧设计：加 `--force`（确认过再敲，见 docs/typora-wysiwyg-manual.md §4.36）。
+//    * 真要重新生成旧设计：加 `--force`（确认过再敲，见 docs/wysiwyg-manual.md §4.36）。
 //    换图标请改 `resources/icon.png` 后跑 `node tools/pack-ico.js`（保持单一来源）。
 const fs = require('fs')
 const os = require('os')

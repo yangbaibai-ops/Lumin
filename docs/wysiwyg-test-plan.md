@@ -210,7 +210,7 @@ front matter、围栏被内容提前闭合（` ```` ` 里放 ``` ）、表格缺
 | # | 现象 | 严重度 | 根因 | 状态 | 回归 |
 | --- | --- | --- | --- | --- | --- |
 | F1 | **深层嵌套（≥50 层列表）静默丢内容**：100 层缩进列表保存后只剩 49 层，第 50 层往后一个字符都不剩 | **S1**（内容丢失） | markdown-it 的块解析器 `if (state.level >= maxNesting) { state.line = endLine; break }` —— 触到上限**跳过剩余行**；默认 `maxNesting: 100`，而每个列表层吃 2 级 ⇒ 实际上限 ~50 层 | ✅ 已修：新增 `src/renderer/src/lib/editor/parseLimits.ts`，用 `parse.setup` 钩子把 `md.options.maxNesting` 抬到 1000（有界，防栈溢出） | `_verify-surface-stress.js` 的 `deep-list-100`（哨兵 100/100）；深度扫描 64/100 层从 `lossy` 变 `exact` |
-| F2 | **段尾孤立反斜杠被改写**：`a\`（CommonMark 里是字面反斜杠）保存一次变成 `a\\`，文件涨一个字符 | S2（改字节，语义不变） | 自定义 `escape` 规则在 `pos + 1 >= posMax` 时 `return false`，markdown-it 当普通文本 → 序列化器再转义成 `\\` | ✅ 已修：`typoraInlineMarks.ts` 的 escape 规则加「段尾字面反斜杠」分支，走 `md_escape`（`escape:false`）逐字写回 | 新套件 L2/L3 的文档树签名（修前 doc-8 签名不同构）；探针表：`a\`→`a\`、`a\`+空行、`a\`+EOF 全部 exact |
+| F2 | **段尾孤立反斜杠被改写**：`a\`（CommonMark 里是字面反斜杠）保存一次变成 `a\\`，文件涨一个字符 | S2（改字节，语义不变） | 自定义 `escape` 规则在 `pos + 1 >= posMax` 时 `return false`，markdown-it 当普通文本 → 序列化器再转义成 `\\` | ✅ 已修：`inlineMarks.ts` 的 escape 规则加「段尾字面反斜杠」分支，走 `md_escape`（`escape:false`）逐字写回 | 新套件 L2/L3 的文档树签名（修前 doc-8 签名不同构）；探针表：`a\`→`a\`、`a\`+空行、`a\`+EOF 全部 exact |
 | F3 | 977KB 文档**装载 16.2s、切回渲染 16.4s** | S3（性能） | 待profile（大文档的解析/归一化/装饰重建路径） | ⏳ 已记基线，未修 | `_verify-surface-stress.js` 的 `scale-1mb-plain` 预算守卫 |
 | F4 | 2000 个围栏代码块（仅 56KB）**装载 51.9s** | S3（性能） | 每个代码块挂一个 CodeMirror 实例，代价随块数线性膨胀（应虚拟化/懒挂载） | ⏳ 已记基线，未修 | `many-fences-2000` 预算守卫 |
 | F5 | 100 个代码块 + 100 张表的 98KB 混合文档装载 33.7s | S3（性能） | 同 F4（可见区外的代码块也在挂实例） | ⏳ 已记基线，未修 | `mixed-real-100k` 预算守卫 |

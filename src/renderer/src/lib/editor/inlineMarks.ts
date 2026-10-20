@@ -1,5 +1,5 @@
-// ─── Typora 行内标记：真实文本标记模型 ───────────────────────────────────────
-// 与 Typora 一致：`**` 等语法字符是文档里的真实文本（可选中、可编辑——
+// ─── 行内标记：真实文本标记模型 ───────────────────────────────────────
+// 与主流编辑器一致：`**` 等语法字符是文档里的真实文本（可选中、可编辑——
 // 删掉一个 `*` 就把 `**加粗**` 变成 `*加粗*` 斜体），样式由标记文本派生。
 //
 // 数据模型（两条自定义 Mark）：
@@ -1238,7 +1238,7 @@ function toggleStyle(
   }
 }
 
-const inlineMarkPluginKey = new PluginKey('typora-inline-marks')
+const inlineMarkPluginKey = new PluginKey('inline-marks')
 
 /** 上一次算出的显隐装饰集：props.decorations 每次求值都复用它（别重复整篇扫描） */
 let lastRevealDecos: DecorationSet | null = null
@@ -1283,13 +1283,13 @@ const SET_FIND_HIT = new PluginKey<{
   ranges: FindHitRange[] | null
   current: number
   active: boolean
-}>('typora-find-hit')
+}>('find-hit')
 
 /**
  * 「按住/松开指针」的事务标记：只用来在**松开**那一刻催一次显隐装饰重算
  * （按住期间反过来要**冻结**，见 `apply` 里的说明）。它不带任何文档/选区变更。
  */
-const SET_PRESS = new PluginKey<boolean>('typora-press-hold')
+const SET_PRESS = new PluginKey<boolean>('press-hold')
 
 /**
  * 「隐藏行内标记字符」开关变了的事务标记：设置改动本身不改文档也不改选区，而显隐装饰只在
@@ -1297,7 +1297,7 @@ const SET_PRESS = new PluginKey<boolean>('typora-press-hold')
  * 打开/关闭设置后屏幕**不会变**（要等下一次选区变化才生效，那就不满足"改设置立刻生效"）。
  * 与 SET_PRESS 同一套做法：空事务 + 元数据，纯观感，不进历史。
  */
-const SET_MARKERS_HIDDEN = new PluginKey<boolean>('typora-inline-markers-hidden')
+const SET_MARKERS_HIDDEN = new PluginKey<boolean>('inline-markers-hidden')
 
 /**
  * 由 SET_FIND_HIT 驱动的那份高亮装饰（与显隐装饰**分属两个 state 字段**，互不干扰）。
@@ -1442,8 +1442,8 @@ function expandOutsideMarkers(doc: PMNode, from: number, to: number): { from: nu
   return t > f ? { from: f, to: t } : { from, to }
 }
 
-export const TyporaInlineMarks = Extension.create({
-  name: 'typoraInlineMarks',
+export const InlineMarks = Extension.create({
+  name: 'inlineMarks',
   /**
    * 指针手势期间的显隐：**按下一律先冻结装饰（版面不动、已显形的标记也照旧显形）；
    * 只有「按下点落在已显形构造里」且指针真的拖起来之后，才把标记去墨**

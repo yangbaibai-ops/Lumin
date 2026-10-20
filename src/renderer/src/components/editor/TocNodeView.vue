@@ -23,7 +23,7 @@ function jump(pos: number): void {
 </script>
 
 <template>
-  <!-- 样式对齐 Typora：一颗朴素的嵌套列表（圆点 + 缩进），没有外框、底色与左侧色条 -->
+  <!-- 样式对齐主流编辑器：一颗朴素的嵌套列表（圆点 + 缩进），没有外框、底色与左侧色条 -->
   <node-view-wrapper class="md-toc" contenteditable="false">
     <template v-if="items.length">
       <a

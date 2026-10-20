@@ -114,7 +114,7 @@ function hasSelection(index: number, total: number): boolean {
  * ↑/↓ 移动高亮。**到两端就停在原地**（不回卷）。
  *
  * 为什么不循环：命令面板的结果条数随输入变化，回卷会让人"按了 ↓ 却跳回第一行"时
- * 分不清是自己多按了一下还是列表变了；VS Code / Typora 的同类面板到端即停。
+ * 分不清是自己多按了一下还是列表变了；VS Code / 主流编辑器的同类面板到端即停。
  */
 export function moveSelection(index: number, delta: number, total: number): number {
   if (total <= 0) return -1

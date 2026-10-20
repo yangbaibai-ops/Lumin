@@ -22,7 +22,7 @@
 1. **原生应用菜单整条链路当前不可达**（`src/main/index.ts:255` 启动即 `setMenuBarVisibility(false)` + `setAutoHideMenuBar(false)`，而渲染层从未调用 `app.setMenuBar`，见 §3 D1）——所以 `src/main/menu.ts` 里那 42 条三语菜单项（含导出子菜单、主题子菜单、重新加载、开发者工具、项目主页）**用户看不到、点不到**。它们的 i18n 与语种切换逻辑本身是正确的（51 个 `menu.*` 键全部被引用，无死键）。
 2. **设置面板与「关于」页几乎整体未走 i18n**（`SettingsDialog.vue` 92 行含中文、`AboutView.vue` 8 行含中文且完全没引入 `useI18n`），同时 `settings.themeDesc / fontSans / pdfMargin / languageDesc …` 等键**已经存在却没人用**（附录 A）。三语用户切到 en-US / ru-RU 后，设置面板与关于页仍是中文。
 
-另外两个「功能级」缺陷：**打字机模式根本不存在**（点了只弹「功能待接入」，`useAppActions.ts:140`）、**编辑区选区浮动菜单被代码写死关闭**（`TyporaEditor.vue:213` `BUBBLE_MENU_ENABLED = false`，7 个按钮永不渲染）。
+另外两个「功能级」缺陷：**打字机模式根本不存在**（点了只弹「功能待接入」，`useAppActions.ts:140`）、**编辑区选区浮动菜单被代码写死关闭**（`WysiwygEditor.vue:213` `BUBBLE_MENU_ENABLED = false`，7 个按钮永不渲染）。
 
 ---
 
@@ -174,7 +174,7 @@
 | Toolbar.vue:357                | 设置                             | `settings.title`                                   | `ui.openSettings()`                           | 是       | —                                                                           |
 | —                              | （缺）保存                       | —                                                  | —                                             | —        | **工具栏没有保存按钮**，而设置面板文案提到「保存按钮」（D41）               |
 
-### 1.4 编辑器视图内控件（`EditorView.vue` / `TyporaEditor.vue` / `CodeBlockView.vue`，12 项）
+### 1.4 编辑器视图内控件（`EditorView.vue` / `WysiwygEditor.vue` / `CodeBlockView.vue`，12 项）
 
 | 来源                      | 控件 id/选择器                               | 显示文案（i18n key）                                                                  | 绑定的动作/命令                                                        | 是否接线           | 备注                                                        |
 | ------------------------- | -------------------------------------------- | ------------------------------------------------------------------------------------- | ---------------------------------------------------------------------- | ------------------ | ----------------------------------------------------------- |
@@ -182,7 +182,7 @@
 | EditorView.vue            | 草稿弹窗 → 丢弃                              | `common.discard`                                                                      | `files.applyDraftRestore(false)`                                       | 是                 | 同上；弹窗 `role=dialog` + `aria-modal` + `aria-labelledby` |
 | EditorView.vue:563        | `.split-divider`                             | `title="拖动调整左右比例（双击复位）"`（硬编码）                                      | `startSplitDrag` / `resetSplitRatio`                                   | 是                 | 文案硬编码（D15）                                           |
 | EditorView.vue:595        | `.split-sync-chip`                           | `title` 三元 `同步滚动已开启（点击关闭）`/`开启同步滚动`；正文 `同步滚动`（均硬编码） | `settings.set('syncScroll', !)`                                        | 是                 | 文案硬编码（D15）；与设置面板同一 setting                   |
-| TyporaEditor.vue:329-375  | `.bubble-btn` × 7                            | 硬编码 `加粗/斜体/下划线/删除线/行内代码/链接/清除格式`                               | `toggleMdBold/Italic/Underline/Strike/Code`、`addLink`、`clearFormats` | **否（永不渲染）** | `BUBBLE_MENU_ENABLED=false`（:213）整块死代码（D3）         |
+| WysiwygEditor.vue:329-375  | `.bubble-btn` × 7                            | 硬编码 `加粗/斜体/下划线/删除线/行内代码/链接/清除格式`                               | `toggleMdBold/Italic/Underline/Strike/Code`、`addLink`、`clearFormats` | **否（永不渲染）** | `BUBBLE_MENU_ENABLED=false`（:213）整块死代码（D3）         |
 | CodeBlockView.vue:661     | `.code-block-select`                         | 语言名（javascript…mermaid）                                                          | `watch(selectedLanguage)`（:339）写回节点                              | 是                 | 无 aria-label                                               |
 | CodeBlockView.vue:668     | `.mermaid-render`                            | `title="点击编辑源码"`（硬编码）                                                      | `startMermaidEdit`                                                     | 是                 | 文案硬编码（D16）                                           |
 | CodeBlockView.vue:695     | `.cm-editor-container`                       | —（无文案）                                                                           | CodeMirror 6 编辑岛                                                    | 是                 | —                                                           |
@@ -407,7 +407,7 @@
 | actions.ts:201            | `format.bold`                                                                        | `editorMenu.bold`                           | `Ctrl+B`                                  | `toggleMdBold()`                                               | 是       | 与内核 `Mod-b` 一致                                                       |
 | actions.ts:210            | `format.italic`                                                                      | `editorMenu.italic`                         | `Ctrl+I`                                  | `toggleMdItalic()`                                             | 是       | —                                                                         |
 | actions.ts:219            | `format.underline`                                                                   | `editorMenu.underline`                      | `Ctrl+U`                                  | `toggleUnderline()`                                            | 是       | StarterKit 默认键                                                         |
-| actions.ts:228            | `format.strike`                                                                      | `editorMenu.strike`                         | **无（漏显示）**                          | `toggleMdStrike()`                                             | 是       | 内核实际绑了 `Mod-Shift-x`（typoraInlineMarks.ts:1318），菜单没显示（S3） |
+| actions.ts:228            | `format.strike`                                                                      | `editorMenu.strike`                         | **无（漏显示）**                          | `toggleMdStrike()`                                             | 是       | 内核实际绑了 `Mod-Shift-x`（inlineMarks.ts:1318），菜单没显示（S3） |
 | actions.ts:236            | `format.inlineCode`                                                                  | `editorMenu.inlineCode`                     | **无（漏显示）**                          | `toggleMdCode()`                                               | 是       | 内核实际绑了 `Mod-e`（:1319），菜单没显示（S3）                           |
 | actions.ts:246            | `insert.link`                                                                        | `editorMenu.link`                           | **`Ctrl+K`（假）**                        | `ui.prompt(editorMenu.linkPrompt/linkPlaceholder)` → `setLink` | **部分** | Ctrl+K 实际被全局 keymap 抢走（D4）                                       |
 | actions.ts:267            | `insert.image`                                                                       | `editorMenu.image`                          | 无                                        | `ui.prompt(imagePrompt/imagePlaceholder)`                      | 是       | 文案走 i18n（与工具栏路径不同）                                           |
@@ -471,10 +471,10 @@
 
 | 来源                      | 键                                        | 行为                                                         | 备注                                                        |
 | ------------------------- | ----------------------------------------- | ------------------------------------------------------------ | ----------------------------------------------------------- |
-| typoraInlineMarks.ts:1316 | `Mod-b`                                   | `toggleMdBold`                                               | 与菜单 `format.bold` 标注一致                               |
-| typoraInlineMarks.ts:1317 | `Mod-i`                                   | `toggleMdItalic`                                             | 一致                                                        |
-| typoraInlineMarks.ts:1318 | `Mod-Shift-x`                             | `toggleMdStrike`                                             | 菜单未标注（S3）                                            |
-| typoraInlineMarks.ts:1319 | `Mod-e`                                   | `toggleMdCode`                                               | 菜单未标注（S3）                                            |
+| inlineMarks.ts:1316 | `Mod-b`                                   | `toggleMdBold`                                               | 与菜单 `format.bold` 标注一致                               |
+| inlineMarks.ts:1317 | `Mod-i`                                   | `toggleMdItalic`                                             | 一致                                                        |
+| inlineMarks.ts:1318 | `Mod-Shift-x`                             | `toggleMdStrike`                                             | 菜单未标注（S3）                                            |
+| inlineMarks.ts:1319 | `Mod-e`                                   | `toggleMdCode`                                               | 菜单未标注（S3）                                            |
 | StarterKit(Underline)     | `Mod-u`                                   | `toggleUnderline`                                            | 菜单标注 `Ctrl+U`，一致                                     |
 | StarterKit(UndoRedo)      | `Mod-z` / `Mod-y` / `Mod-Shift-z`         | undo / redo                                                  | **与原生菜单 role 的默认键重叠**（D23，待运行时确认优先级） |
 | extensions.ts:36-47       | —                                         | Bold/Italic/Strike/Code 的默认输入规则与快捷键被**主动清空** | 行内样式改由 mdStyle 派生归一化负责                         |
@@ -564,7 +564,7 @@
 **D3 | S1 | 编辑区选区浮动格式菜单被代码写死关闭（7 个按钮永不渲染）**
 
 - 现象：`加粗/斜体/下划线/删除线/行内代码/链接/清除格式` 七个气泡按钮的实现都在（含定位、钳制、样式），但开关常量为 false，永不出现。
-- 证据：`src/renderer/src/components/editor/TyporaEditor.vue:213`（`const BUBBLE_MENU_ENABLED = false`）、`:219-223`（提前 return）、`:318-376`（模板与 7 个按钮）、`:291-302`（`addLink` 硬编码中文 prompt）。
+- 证据：`src/renderer/src/components/editor/WysiwygEditor.vue:213`（`const BUBBLE_MENU_ENABLED = false`）、`:219-223`（提前 return）、`:318-376`（模板与 7 个按钮）、`:291-302`（`addLink` 硬编码中文 prompt）。
 - 建议：若产品决定不上，删掉模板与 `bubbleActive`/`updateBubbleMenu` 死代码（顺带去掉两处硬编码中文）；若要上，改为设置项并给文案 key（`editor.bold` 等已存在）。
 
 ### S2 行为不符预期
@@ -725,7 +725,7 @@
 **D31 | S2 | 命令表内部的冲突检测覆盖不到内核键与 role 默认键**
 
 - 现象：`SettingsKeymap` 的冲突提示只比较命令表内部（`resolveCommands`）。用户把 `file.save` 改成 `Ctrl+B`，界面不报冲突，但实际加粗（内核 `Mod-b`）与保存会互抢，且谁赢取决于 `findMatch` 与内核 keymap 的执行顺序。
-- 证据：`src/renderer/src/lib/keymap/service.ts:105-132`（只对传入的 commands 做冲突统计）；内核键位：`lib/editor/typoraInlineMarks.ts:1314-1320`。
+- 证据：`src/renderer/src/lib/keymap/service.ts:105-132`（只对传入的 commands 做冲突统计）；内核键位：`lib/editor/inlineMarks.ts:1314-1320`。
 - 建议：把内核保留键（`Mod-b/i/u/e/x/y/z/Shift-*` 等）与原生 role 默认键作为一张只读的「保留键表」参与冲突检测。
 
 ### S3 观感或文案
@@ -763,7 +763,7 @@
 
 **D38 | S3 | 右键菜单漏标两个真实快捷键**
 
-- 证据：`src/renderer/src/lib/editor/menu/actions.ts:228-243`（删除线/行内代码无 `shortcut`），内核实际绑定 `Mod-Shift-x` / `Mod-e`（`typoraInlineMarks.ts:1318-1319`）。
+- 证据：`src/renderer/src/lib/editor/menu/actions.ts:228-243`（删除线/行内代码无 `shortcut`），内核实际绑定 `Mod-Shift-x` / `Mod-e`（`inlineMarks.ts:1318-1319`）。
 - 建议：补 `Ctrl+Shift+X` / `Ctrl+E`，并从一份共享表生成，避免再漏。
 
 **D39 | S3 | 新建文件夹输入框预填了「新建文件夹」**
@@ -884,6 +884,6 @@
 5. 图标名核对：把 `Icon.vue` 的 `ICONS` 键与所有 `name=` / `icon:` 取值对比，发现 3 处未注册名（D18）。
 6. 依赖核对：`package.json` 依赖列表 vs `src/**` 里 `from '@tiptap/...'` 的包名（D44）。
 7. IPC 面核对：`src/preload/index.ts` 暴露的每个方法名在 `src/renderer/**` 里 grep 调用点（D45）。
-8. 快捷键核对：`useKeymap.ts` 的 25 条命令 × `defaultKeys` 去重；再与内核 `addKeyboardShortcuts`（`typoraInlineMarks.ts`、`keymap.ts`、`pointer.ts`）以及零散 `addEventListener('keydown')` 对照（§1.17）。
+8. 快捷键核对：`useKeymap.ts` 的 25 条命令 × `defaultKeys` 去重；再与内核 `addKeyboardShortcuts`（`inlineMarks.ts`、`keymap.ts`、`pointer.ts`）以及零散 `addEventListener('keydown')` 对照（§1.17）。
 9. 编辑器扩展核对：`extensions.ts` 的注册顺序与 `StarterKit.configure` 的开关，确认 `toggleUnderline`/`toggleBulletList`/`insertTable` 等命令真实存在（`node_modules/@tiptap/starter-kit/src/starter-kit.ts:263`）。
 10. 未运行任何构建/测试（`npm run typecheck`、`lint`、`test:unit` 均未执行）——若要确认以上静态结论中涉及类型/构建的部分（如 D44 的依赖提升），建议补跑 `npm run ci`。

@@ -14,14 +14,14 @@
 
 **但确实找到了一条「能产生完全相同症状」的代码路径**，并把它封掉了：
 
-`src/renderer/src/components/editor/TyporaEditor.vue` 的外部同步 watch 有两条**回声过滤**（启发式）：
+`src/renderer/src/components/editor/WysiwygEditor.vue` 的外部同步 watch 有两条**回声过滤**（启发式）：
 
 1. `if (nv === lastEmitted) return` —— 「store 内容 == 我上次 emit 的文本」当成自身回声；
 2. `if (performance.now() - lastEmitTime < 600) return` —— 600ms 静默窗。
 
 两条对「显式外部替换」都不成立：**按原编码切回来时，store 里的内容恰好就是原文**（= 编辑器上次 emit 的文本）→ 规则 1 把它当回声丢掉；若上次 emit 在 600ms 内 → 规则 2 丢掉。表现就是「状态栏编码变了、正文却没回来」。实测里之所以没咬到，是因为切成 GBK 后编辑器往往又 emit 了一次乱码文本、把 `lastEmitted` 顶掉了 —— 属于时序运气，不能依赖。
 
-**改法**：`files` store 新增 `syncEpoch`（显式外部替换计数），`reopenWithEncoding` 替换内容后 `syncEpoch++`；TyporaEditor 把同步逻辑抽成 `applyExternalContent(nv, force)`，`force = true` 时**跳过两条过滤**、无条件 `setContent`。于是「重新解释编码」这类显式动作永远能落到编辑器上，不受任何回声启发式影响。
+**改法**：`files` store 新增 `syncEpoch`（显式外部替换计数），`reopenWithEncoding` 替换内容后 `syncEpoch++`；WysiwygEditor 把同步逻辑抽成 `applyExternalContent(nv, force)`，`force = true` 时**跳过两条过滤**、无条件 `setContent`。于是「重新解释编码」这类显式动作永远能落到编辑器上，不受任何回声启发式影响。
 
 **顺带两处诊断加固**（这次排查最费时间的就是「不知道用户那边跑的是哪份构建」）：
 
@@ -842,7 +842,7 @@ Ctrl+N 开的新窗口正好是「空白缓冲区」，于是把别人的正文�
 #### 三、套件 `tools/_verify-md-fidelity.js`（文档级 / 幂等 / 字节级）
 
 1. **文档级（主断言）**：把夹具装进真实编辑器 → 触发应用**自己的落盘管线**
-   （`TyporaEditor` 的 `flushSync`，用 window 的 `beforeunload` 同步触发，正是「关窗落盘」那条真实路径）
+   （`WysiwygEditor` 的 `flushSync`，用 window 的 `beforeunload` 同步触发，正是「关窗落盘」那条真实路径）
    → 读 `files.current.content`（= 文档文本）→ 判级比对。
    _为什么绕这一道_：Tiptap 只在 **docChanged** 时发 `onUpdate`（还有 250ms 防抖），
    而 `beforeunload` 的 flush 是同步的 —— 既确定，又不用给产品代码开后门。
@@ -856,8 +856,8 @@ Ctrl+N 开的新窗口正好是「空白缓冲区」，于是把别人的正文�
 
 | 现象                                                                                                           | 根因                                                                                                                                                                            | 修法（落点）                                                                                                                                                       |
 | -------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| 代码块里出现成对反引号（``let a = `x```）时，**一次编辑后整段代码并成一行**                                    | 标记模型的「源码权威重推」把 `codeBlock` 当普通段落处理（PM 里 `isTextblock` 对代码块也为真），拿代码文本再喂 markdown-it，而重推走的 DOMParser **不保留空白** → 换行全塌成空格 | `isVerbatimBlock()`（`type.spec.code === true`）把逐字块排除在归一化之外（`typoraInlineMarks.ts`）                                                                 |
-| 行内代码里的反斜杠**每保存一次多一层**（非幂等增长）                                                           | prose-mirror-markdown 只按**最内层 mark** 的 `escape:false` 决定原样输出，而 `mdStyle(code)` 正文没有这层保护；代码跨度里反斜杠不是转义字符                                     | 新增 `mdCodeLiteral` mark（空包裹 + `escape:false`），贴在代码样式正文上（`typoraInlineMarks.ts` + `extensions.ts`）                                               |
+| 代码块里出现成对反引号（``let a = `x```）时，**一次编辑后整段代码并成一行**                                    | 标记模型的「源码权威重推」把 `codeBlock` 当普通段落处理（PM 里 `isTextblock` 对代码块也为真），拿代码文本再喂 markdown-it，而重推走的 DOMParser **不保留空白** → 换行全塌成空格 | `isVerbatimBlock()`（`type.spec.code === true`）把逐字块排除在归一化之外（`inlineMarks.ts`）                                                                 |
+| 行内代码里的反斜杠**每保存一次多一层**（非幂等增长）                                                           | prose-mirror-markdown 只按**最内层 mark** 的 `escape:false` 决定原样输出，而 `mdStyle(code)` 正文没有这层保护；代码跨度里反斜杠不是转义字符                                     | 新增 `mdCodeLiteral` mark（空包裹 + `escape:false`），贴在代码样式正文上（`inlineMarks.ts` + `extensions.ts`）                                               |
 | 软换行被写成行尾 `\`（每行都加）                                                                               | `Markdown.configure({ breaks: true })`：markdown-it 把段内单个换行渲染成 `<br>` → 解析成 hardBreak → 序列化成 `\`。语义从「软换行 ≡ 空格」变成强制换行，GitHub 渲染都不一样     | `breaks: false`；真正的「软换行可往返」需要独立节点，列为 Wave 2                                                                                                   |
 | 无序列表标记被抹平（`*`/`+` → `-`），相邻两个列表被插**两个空行**，再解析并成一个**松散列表** → 每次保存都在漂 | 上游 `bulletListMarker` 固定 `-`；`renderList` 遇到同类型相邻块会 `flushClose(3)` 兜底                                                                                          | 解析时记录 `bullet`（`parse.setup` 钩子给 `<ul>` 打 `data-bullet`）→ 序列化写回原标记；标记不同时 `flushClose(1)` 只断行不插空行（`listMarkers.ts`）               |
 | 任务列表**每个任务项之间都被塞空行**；`1. [ ] x` 变成「空的有序项 + 无序任务列表」                             | 任务列表复用无序列表的序列化器，而它读 `node.attrs.tight`，`tight` 只挂在 bulletList/orderedList 上 → `undefined` → 松散；`ol` 形态的任务列表没有 parse 规则                    | 给 `taskList` 补 `tight` 属性；parse 规则同时认 `ul/ol[data-type="taskList"]`（`listMarkers.ts`）                                                                  |

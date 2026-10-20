@@ -1,4 +1,4 @@
-<!-- 本文件由 docs/typora-wysiwyg-manual.md 按章拆出（清单 §2.H）；索引见该文件。 -->
+<!-- 本文件由 docs/wysiwyg-manual.md 按章拆出（清单 §2.H）；索引见该文件。 -->
 
 ## 1. 总体设计与技术选型
 
@@ -59,7 +59,7 @@ Lumin 在这三点之上增加了自己的产品形态：Electron 桌面应用�
 │  ├─ files store ─ 文件树/当前文档/自动保存（500ms 防抖写盘）        │
 │  ├─ settings store ─ 主题/语言/字体（立即生效，250ms 防抖落 SQLite）│
 │  ├─ editor store ─ Tiptap 实例/大纲/跳转                          │
-│  ├─ TyporaEditor.vue ─ useEditor + EditorContent                │
+│  ├─ WysiwygEditor.vue ─ useEditor + EditorContent                │
 │  │    ├─ extensions.ts ─ schema 扩展集装配                       │
 │  │    ├─ inputRules.ts ─ #、-、- [ ]、表格 实时转换               │
 │  │    ├─ keymap.ts ─ 分割线回车确认 / 标题行首退格降级             │

@@ -3,7 +3,7 @@
 // 打开动作（系统默认浏览器 / Lumin 新窗口 / 系统默认应用）由渲染层按解析结果编排——
 // 因为「目标不存在时是否创建」需要询问用户，而 UI 归渲染层。
 //
-// 分类规则（与 docs/typora-wysiwyg-manual.md 一致）：
+// 分类规则（与 docs/wysiwyg-manual.md 一致）：
 //   url      网址（http/https/mailto）→ 系统默认浏览器
 //   file     不含量分隔符的文件名 → 相对当前文档所在目录，Lumin 新窗口打开
 //   relative 含分隔符的相对路径（./a/b.md、../x）→ 系统默认应用

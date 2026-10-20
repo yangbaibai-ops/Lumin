@@ -139,7 +139,7 @@ export function useKeymap(actions: ReturnType<typeof useAppActions>): void {
        * 全局搜索（全文索引）。
        *
        * ⚠️ `defaultKeys` 是 **null**（出厂不绑键），这是有条理的口径而不是"忘了写"：
-       * `Mod+Shift+P` 已经被下面的命令面板拿走（VS Code / Typora 的通行键），而**同一张表里
+       * `Mod+Shift+P` 已经被下面的命令面板拿走（VS Code / 主流编辑器的通行键），而**同一张表里
        * 两条命令写同一个默认键**会同时坏两件事（用户实测的"改绑了但没用"）：
        *   1. 设置页对这两条永久显示「冲突」徽标；
        *   2. 改绑其中一条后，旧键会被**另一条**接管 —— 用户按旧键仍看到默认行为，
@@ -327,7 +327,7 @@ export function useKeymap(actions: ReturnType<typeof useAppActions>): void {
 
     // ── 命令面板 ──
     /**
-     * ⚠️ `Mod+Shift+P` 的**唯一**主人（VS Code / Typora 的通行键）。
+     * ⚠️ `Mod+Shift+P` 的**唯一**主人（VS Code / 主流编辑器的通行键）。
      *
      * 这条键原先在 `edit.globalSearch` 上，迁移时曾经"两条命令都保留这个默认键、靠
      * `findMatch` 的后注册者胜来定胜负"——那是**隐性第二真相**：表面能用，但设置页会永久

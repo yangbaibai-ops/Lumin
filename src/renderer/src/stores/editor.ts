@@ -24,7 +24,7 @@ export interface OutlineItem {
  * 为什么是布尔锁而不是「N 毫秒后自动解锁」（第二轮报障的根因）：平滑滚动落地后侦测立刻重算，
  * 而末屏那几个标题压不到判定线 ⇒ 高亮被挪到「判定线算出来的那条」（点倒数第三、亮到倒数第四）。
  * 现在解锁只发生在**用户自己的滚动意图**上：`wheel` / `touchstart` / 按下指针 / 按键
- * （见 `TyporaEditor.vue` 模板上的四个监听器都调 `releaseActiveHeadingPin()`）。
+ * （见 `WysiwygEditor.vue` 模板上的四个监听器都调 `releaseActiveHeadingPin()`）。
  */
 export const useEditorStore = defineStore('editor', {
   state: () => ({
@@ -64,7 +64,7 @@ export const useEditorStore = defineStore('editor', {
       this.editor = markRaw(editor)
       /**
        * 启动打点：Tiptap 实例绑上来的时刻（≈ ProseMirror 插件全部 init 完，其中就包含
-       * `markers` / `mathPreview` / `typoraInlineMarks` 那几套装饰的**首次构建**）。
+       * `markers` / `mathPreview` / `inlineMarks` 那几套装饰的**首次构建**）。
        * 只记时刻、不做任何等待 —— 打点不许改变被测路径（见 renderer/main.ts 的说明）。
        */
       performance.mark('lumin:editor-bind')

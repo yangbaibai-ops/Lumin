@@ -19,7 +19,7 @@ import { DOMParser as PMDOMParser, Fragment, Slice } from '@tiptap/pm/model'
 import type { EditorProps } from '@tiptap/pm/view'
 import type { Node as PMNode, ResolvedPos, Slice as PMSlice } from '@tiptap/pm/model'
 import type { Mark as PMMark } from '@tiptap/pm/model'
-import { styleList } from './typoraInlineMarks'
+import { styleList } from './inlineMarks'
 
 /** 块标记开头：粘贴以这些字符起头时即使单行也按块解析（单行 '# 标题' 也是块） */
 const BLOCK_START = /^(#{1,6}\s|>\s?|[-*+]\s|```|~~~|\d{1,9}[.)]\s|\[[ xX]?\]\s|\|)/

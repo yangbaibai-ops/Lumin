@@ -1,4 +1,4 @@
-<!-- 本文件由 docs/typora-wysiwyg-manual.md 按章拆出（清单 §2.H）；索引见该文件。 -->
+<!-- 本文件由 docs/wysiwyg-manual.md 按章拆出（清单 §2.H）；索引见该文件。 -->
 
 ## 3. 关键交互的实现细节
 
@@ -6,7 +6,7 @@
 
 Input Rule 是 ProseMirror 的正则触发机制：每次文本插入后，用正则匹配光标前的文本，命中就执行一个替换事务。
 
-本项目在 `src/renderer/src/lib/editor/inputRules.ts`（`TyporaInputRules` 扩展）中注册：
+本项目在 `src/renderer/src/lib/editor/inputRules.ts`（`WysiwygInputRules` 扩展）中注册：
 
 | 输入 | 规则 | 结果 |
 |---|---|---|
@@ -17,13 +17,13 @@ Input Rule 是 ProseMirror 的正则触发机制：每次文本插入后，用�
 | `> ` | `wrappingInputRule` | 段落 → `blockquote` |
 | ` ```js ` | StarterKit | `codeBlock(language='js')` |
 | `| a | b |` | 表格扩展规则 | 创建 2 列表格 |
-| `---` + 回车 | `TyporaKeymap`（Enter 键绑定） | `horizontalRule`（**回车确认式**，见下） |
+| `---` + 回车 | `WysiwygKeymap`（Enter 键绑定） | `horizontalRule`（**回车确认式**，见下） |
 | `**加粗**`、`` `代码` `` | 成对标点规则 | 自动应用 mark |
 
 **分割线为什么是「回车确认式」**：Typora 里输入 `---` 并不会立刻变成横线——否则 `---你好` 这类文本根本无法输入。正确语义是：整段内容恰好为 `---`/`***`（可带尾随空格）且光标在段尾时，**按 Enter 才转换**。实现要点：
 
 1. 通过 `StarterKit.configure({ horizontalRule: false })` 关闭 StarterKit 自带的即时输入规则，再独立注册 `HorizontalRule.extend({ addInputRules: () => [] })`——只保留节点与渲染，去掉即时转换（`src/renderer/src/lib/editor/extensions.ts`）；
-2. 在 `TyporaKeymap` 扩展里绑定 Enter：条件为「空选区 + 父块是 paragraph + 光标在段尾 + 文本匹配 `/^(-{3,}|\*{3,})\s*$/`」，满足则用事务把整段替换为 `[horizontalRule, 新空段落]`，光标落在新段落（`src/renderer/src/lib/editor/keymap.ts`）；
+2. 在 `WysiwygKeymap` 扩展里绑定 Enter：条件为「空选区 + 父块是 paragraph + 光标在段尾 + 文本匹配 `/^(-{3,}|\*{3,})\s*$/`」，满足则用事务把整段替换为 `[horizontalRule, 新空段落]`，光标落在新段落（`src/renderer/src/lib/editor/keymap.ts`）；
 3. 顺带获得的正确性：`---你好` 按 Enter 只是普通换行，且序列化器会自动把它转义为 `\---你好` 写回文件，下次解析不会误判成分割线（CommonMark 转义规则，无损往返）。
 
 实现要点（任务列表规则的教训）：
@@ -41,7 +41,7 @@ Typora 的键盘手感由这套规则组成，StarterKit 的 listItem 扩展默�
 - **删除（行尾）**：光标在项尾且下一项紧跟 → 合并两个列表项；
 - **Tab / Shift+Tab**：嵌套/提升列表层级（`sinkListItem`/`liftListItem`）。
 
-**标题行首退格（本项目自研语义，`TyporaKeymap`）**：光标位于标题第一个字前（含空标题）按 Backspace → 整行**取消标题格式**（降级为段落，内容保留），而不是默认的 `joinBackward` 并入上一行——后者正是「按退格跑到上一行、还改变上一行层级」bug 的根源。实现：
+**标题行首退格（本项目自研语义，`WysiwygKeymap`）**：光标位于标题第一个字前（含空标题）按 Backspace → 整行**取消标题格式**（降级为段落，内容保留），而不是默认的 `joinBackward` 并入上一行——后者正是「按退格跑到上一行、还改变上一行层级」bug 的根源。实现：
 
 ```ts
 Backspace: ({ editor }) => {
@@ -53,7 +53,7 @@ Backspace: ({ editor }) => {
 }
 ```
 
-**键盘优先级（关键坑）**：Tiptap v3 把每个扩展的 `addKeyboardShortcuts` 变成独立 keymap 插件，按扩展 `priority`（默认 100）降序执行，先返回 true 的绑定胜出。core 的 Enter/Backspace（`splitBlock`/`joinBackward` 链）默认优先于一般用户扩展，因此自定义键盘语义的扩展必须显式设置 `priority: 200`（`TyporaKeymap` 即是），否则拦截永远不会生效；条件不匹配时返回 false 交还后续绑定，不影响其他按键行为。
+**键盘优先级（关键坑）**：Tiptap v3 把每个扩展的 `addKeyboardShortcuts` 变成独立 keymap 插件，按扩展 `priority`（默认 100）降序执行，先返回 true 的绑定胜出。core 的 Enter/Backspace（`splitBlock`/`joinBackward` 链）默认优先于一般用户扩展，因此自定义键盘语义的扩展必须显式设置 `priority: 200`（`WysiwygKeymap` 即是），否则拦截永远不会生效；条件不匹配时返回 false 交还后续绑定，不影响其他按键行为。
 
 本项目验收矩阵（`tools/_verify-input-rules.js` 的 D 段）覆盖：任务列表回车语义、标题行首退格降级且不影响上一行、分割线回车确认（`---` 不立即转、回车后才转）。
 
@@ -63,7 +63,7 @@ Typora 的招牌细节：光标进入一个块或行内样式时，该处的 Mar
 
 **块级**（heading/blockquote/listItem）：
 
-1. `typoraMarkersPlugin` 用 `Decoration.node` 在选区所在块的 DOM 上挂 `md-reveal` 类（注意：本 PM 版本装饰的 `pos` 必须用 `descendants` 回调给的 0-based `contentPos`，且要传 `parent` 以判断容器）；
+1. `markersPlugin` 用 `Decoration.node` 在选区所在块的 DOM 上挂 `md-reveal` 类（注意：本 PM 版本装饰的 `pos` 必须用 `descendants` 回调给的 0-based `contentPos`，且要传 `parent` 以判断容器）；
 2. CSS 生成内容画出标记：`h1.md-reveal::before { content: '# ' }`、`blockquote.md-reveal > p::before { content: '> ' }`。字符只存在于 `::before`，文档内容里没有，序列化零影响。
 
 **行内级**（bold/italic/strike/code）：
@@ -129,16 +129,16 @@ export const CodeBlockCM = CodeBlock.extend({
 
 ### 3.8 选区浮动菜单（气泡菜单 · 已移除）
 
-> ⚠️ **本节描述的东西已经在第二十五轮被移除**（组件 77 行 + CSS 40 行一起删除，`TyporaEditor.vue`
+> ⚠️ **本节描述的东西已经在第二十五轮被移除**（组件 77 行 + CSS 40 行一起删除，`WysiwygEditor.vue`
 > 里不再有气泡菜单）。原因：它从第二十二轮起就是 `BUBBLE_MENU_ENABLED = false` 的死码（模板
 > `v-if` 恒假），却仍在每次选区变化时重算状态；功能与快捷工具栏 + 编辑器右键菜单 **100% 重复**。
 > **正文保留，作为「自绘浮动层」的原理与踩坑记录**（坐标系、视口钳制、焦点保持这些结论对今天
 > 仍然有效 —— 查找浮条、表格/代码块弹层、右键菜单都在用同一套思路）。
 
-Tiptap v3 官方已无 Vue 版 BubbleMenu 组件，本项目当时自绘（`TyporaEditor.vue`）。要点：
+Tiptap v3 官方已无 Vue 版 BubbleMenu 组件，本项目当时自绘（`WysiwygEditor.vue`）。要点：
 
 1. **触发**：`onSelectionUpdate` 中 `selection.empty` 为假时定位显示；
-2. **坐标**：`view.coordsAtPos(from/to)` 返回**视口坐标**，减去气泡的**定位上下文**（`.typora-container`，`position:relative`）的 `getBoundingClientRect()`，得到容器相对坐标；气泡 `absolute + transform: translateX(-50%)` 居中于选区、位于其上方 44px；
+2. **坐标**：`view.coordsAtPos(from/to)` 返回**视口坐标**，减去气泡的**定位上下文**（`.wysiwyg-container`，`position:relative`）的 `getBoundingClientRect()`，得到容器相对坐标；气泡 `absolute + transform: translateX(-50%)` 居中于选区、位于其上方 44px；
 3. **坐标系教训**：最初用 `ed.view.dom`（`.ProseMirror`）的 rect 做参考系——它和定位上下文之间隔着 `px-6/pt-10` 内边距，气泡整体偏左 24px；滚动后还漂移。**必须用定位上下文自己的 rect**；
 4. **视口钳制**：`coordsAtPos` 在选区滚出可视区时返回视口外坐标。若选区完全离开容器可视范围则隐藏气泡；部分可见时把 top/left 钳制在容器内（`top >= 8`、`left ∈ [8, width-8]`），气泡绝不渲染到窗口外；
 5. **滚动跟随**：`onScroll` 里补一次重新定位；
@@ -176,7 +176,7 @@ Tiptap v3 官方已无 Vue 版 BubbleMenu 组件，本项目当时自绘（`Typo
 - 动效全部收敛在 `transition-*` 与 `@media (prefers-reduced-motion: reduce)` 降级之内，减少动效敏感用户的干扰；
 - 编辑器内容本身零动画（渲染稳定优先，防抖序列化与布局抖动风险最低）。
 
-**写作区版心**：`TyporaEditor.vue` 的内容容器 `mx-auto` 居中，常规模式 `max-w-[1320px]`、焦点模式 `max-w-[1140px]`（1.5 倍于旧值 880/760），宽度切换带 `transition-all duration-300` 平滑过渡。
+**写作区版心**：`WysiwygEditor.vue` 的内容容器 `mx-auto` 居中，常规模式 `max-w-[1320px]`、焦点模式 `max-w-[1140px]`（1.5 倍于旧值 880/760），宽度切换带 `transition-all duration-300` 平滑过渡。
 
 ### 3.11 公式与图表
 
@@ -195,7 +195,7 @@ Tiptap v3 官方已无 Vue 版 BubbleMenu 组件，本项目当时自绘（`Typo
 - **切走前显式 flush**：工具栏根节点 `@mousedown.prevent`（点控件不触发编辑器 blur），blur 落盘不会发生——`flushWysiwyg()` 先把文档序列化刷入 files store，防抖窗口内的编辑零丢失；
 - **源码面板高度**：textarea 是定高控件、默认只渲染 2 行——「展示不全」的根因。高度链 `.editor-scroll(h-full) → 内层(h-full) → textarea(height:100%)` 填满可视区，长内容在内部滚动（VSCode 式单滚动区，无嵌套滚动条）；Tab 插入两空格，光标行列经 `ui.cursor` 进状态栏；
 - **分屏双向实时同步**（IDEA 式对比）：
-  - 左 → 右：TyporaEditor 防抖序列化 → files store → 源码面板 `:value` 自动刷新（既有管道，零新增代码）；
+  - 左 → 右：WysiwygEditor 防抖序列化 → files store → 源码面板 `:value` 自动刷新（既有管道，零新增代码）；
   - 右 → 左：输入即写 files store（持久化管道），另防抖 200ms 直接 `commands.setContent(…, { emitUpdate: false })` 进左侧 Tiptap——**不依赖 modelValue watch**（其 600ms 静默窗会吞掉紧邻渲染端 emit 的外部更新），且 `emitUpdate:false` 不产生 onUpdate 回声，双向永不回路；
 - **分隔条**：拖拽调整左右比例（0.25~0.75 钳制），双击复位 0.5，拖拽结束才 `settings.set('splitRatio', …)` 落 SQLite kv（重启保持）；拖拽期间全局 `user-select:none` + `cursor:col-resize`，杜绝 CodeMirror/选区抢鼠标；
 - **同步滚动**（分屏专属悬浮芯片「同步滚动」+ 设置页开关，`settings.syncScroll` 落 kv）：`scroll` 事件不冒泡但可捕获——在分屏容器挂 `@scroll.capture` 单点监听，左右任意一栏滚动（含左侧代码块 CodeMirror 内部滚动）都按**滚动进度比**（`scrollTop / (scrollHeight - clientHeight)`）映射到另一栏；busy 旗标 + 同值赋值不触发 scroll 的浏览器语义保证无回声振荡。两侧内容高度不同也能正确对齐进度（对比视图的通用做法）；

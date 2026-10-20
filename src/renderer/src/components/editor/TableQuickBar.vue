@@ -5,7 +5,7 @@
 // 调整列宽（见下）/ 删除表格 / 更多菜单（上下列、左右列）。
 //
 // ── 为什么是「绝对定位在随内容滚动的容器里」而不是 fixed ──────────────────────
-// 宿主 `TyporaEditor.vue` 把本组件放在正文列那个 `relative` 的包裹层里，落点用
+// 宿主 `WysiwygEditor.vue` 把本组件放在正文列那个 `relative` 的包裹层里，落点用
 // `offsetIn()` 沿 `offsetParent` 链现算（表格的 `offsetParent` 是 `.tableWrapper`，
 // `table.offsetTop` 恒为 0，不能直接用）。于是**坐标全部是内容坐标**，滚动时表格与
 // 工具条一起走，不需要任何 scroll 监听 —— 也就不可能出现"滚完条子还停在屏幕原位"。
@@ -44,7 +44,7 @@ const GAP = 6
 const BAR_HEIGHT_GUESS = 30
 
 /**
- * 宿主正文列包裹层（`relative`，见 TyporaEditor.vue）：本组件的绝对定位包含块。
+ * 宿主正文列包裹层（`relative`，见 WysiwygEditor.vue）：本组件的绝对定位包含块。
  * 选它而不是 `.editor-scroll`：它俩只差滚动容器的上内边距，滚动时表格与工具条
  * 一起走这件事一样成立，而它的高度**恰好是内容高度** —— 于是"上方还有没有空间"可以直接
  * 用内容坐标判断，不会被滚动容器的 `padding` 骗到（实测踩过：表格在文档最前面时
@@ -313,7 +313,7 @@ const alignChoices: { value: AlignValue; icon: string; labelKey: string }[] = [
 ]
 
 /**
- * 「更多」菜单：按**行 / 列**分组（Typora 的表格菜单也是这个分组），
+ * 「更多」菜单：按**行 / 列**分组（主流编辑器的表格菜单也是这个分组），
  * 组内顺序 = 文档顺序（上 → 下、左 → 右），破坏性的删除放组尾。
  */
 interface MenuGroup {

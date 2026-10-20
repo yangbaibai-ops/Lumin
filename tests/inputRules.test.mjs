@@ -14,7 +14,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { Schema } from '@tiptap/pm/model'
 import { EditorState, TextSelection } from '@tiptap/pm/state'
-import { TyporaInputRules } from '../src/renderer/src/lib/editor/inputRules.ts'
+import { WysiwygInputRules } from '../src/renderer/src/lib/editor/inputRules.ts'
 
 const NODES = {
   doc: { content: 'block+' },
@@ -46,7 +46,7 @@ const noLinks = new Schema({
 const { paragraph, bulletList, listItem, orderedList } = schema.nodes
 
 /** `addInputRules` 只用 `this.editor.schema`，所以给个只有 schema 的假实例就够 */
-const rulesFor = (s) => TyporaInputRules.config.addInputRules.call({ editor: { schema: s } })
+const rulesFor = (s) => WysiwygInputRules.config.addInputRules.call({ editor: { schema: s } })
 const linkRuleOf = (rules) => rules.find((r) => r.find.test('[文字](https://a.com)'))
 const taskRuleOf = (rules) => rules.find((r) => r.find.test('[ ] '))
 

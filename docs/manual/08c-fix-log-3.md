@@ -328,7 +328,7 @@ if (!app.requestSingleInstanceLock()) app.quit()
 - 现象：空段落点工具栏「加粗」→ 得到 `****|`（用户描述为 `*|***`），而不是 `**|**`；
   在 `x` 末尾点加粗 → `x****|`。更隐蔽的是**手打标记时字符会跑位**：`x` 前手打 `**`
   得到 `*x*`（两颗星被拆到两端）——因为第一颗星打完后光标已被挪到块尾，第二颗星落在了末尾。
-- 根因：`typoraInlineMarks.ts` 的 appendTransaction 里，光标保护把锚点算成
+- 根因：`inlineMarks.ts` 的 appendTransaction 里，光标保护把锚点算成
   `$sel.before(d) - 1`。`before(d)` 本身就是「文本块之前的位置」（与 `descendants` 给的
   `pos` 同域，块内容从 `pos + 1` 开始），再减一让顶层段落得到 **-1**，
   `caretBlockStart >= 0` 的守卫直接不成立 → 光标保护**整段失效**；
@@ -412,7 +412,7 @@ if (!app.requestSingleInstanceLock()) app.quit()
   改成「两个相邻粗体 2、星号不显示」反而会与 GitHub 不一致，也会破坏「实时 = 重开」
   这条不变量（重开走 markdown-it，必然回到一个 strong）。
   → 真正的缺陷只有一条：**字符没丢、语义没变，但文件字节被改写了**（多了 `\*\*\*\*`）。
-- 根因（文件:行）：`typoraInlineMarks.ts` 的 `literalizeStrayMarkers`（旧 472–517 行）在
+- 根因（文件:行）：`inlineMarks.ts` 的 `literalizeStrayMarkers`（旧 472–517 行）在
   函数开头就对带 `mdStyle` 的文本整段 `continue` —— 「字面量化」只覆盖**无样式正文**，
   **样式正文里**的裸标记字符（`<strong>2****2</strong>` 里的 `****`）落进普通文本分支，
   被 markdown 写出器（prosemirror-markdown `MarkdownSerializerState.esc()`：
@@ -460,7 +460,7 @@ if (!app.requestSingleInstanceLock()) app.quit()
   应当**和加粗的 `**` 一样按光标显隐**；而且**连续多个转义要整体显隐**。
 - 现口径（本轮）：
   - `MdEscape` 的 `renderHTML` 只能给出**一个** span（PM 里一个 mark 的内容洞是连续的，
-    renderHTML 拆不开），所以在**装饰层**拆：`typoraInlineMarks.escapeDecorations()` 把
+    renderHTML 拆不开），所以在**装饰层**拆：`inlineMarks.escapeDecorations()` 把
     `\X` 渲染成 `<span class="md-escape-backslash">\</span><span class="md-escape-char">X</span>`。
     一个文本节点里可能连着**好几处**转义（整行 `\*\*\*\*` 会被 PM 合并成一段），
     所以按字符走而不是只切第一个；
@@ -612,7 +612,7 @@ CPU 采样（修复前，单段 3000 字）自带时间 top：`normalizeAtoms` 1
 原子归一化管线约 33ms、markdown-it + DOM 往返约 90ms）；**装饰构建只有 1.1ms**
 （所以卡顿与「转义反斜杠按光标显隐」无关，不必回退该功能）。
 
-**根因**：`typoraInlineMarks.ts` 的 `appendTransaction` 每次事务都遍历**全篇** textblock，
+**根因**：`inlineMarks.ts` 的 `appendTransaction` 每次事务都遍历**全篇** textblock，
 对每个「需要归一化」的块跑 `resolveBlockContent`（toAtoms + normalizeAtoms + **可能的
 markdown-it 重推** + fromAtoms + `frag.eq`）。而 `blockNeedsNormalize` 对**已经带样式标记的块
 恒为真** ⇒ 每敲一个字，**全篇每个带加粗的段落**都要重算一遍（50 段文档 = 每键 51 次
@@ -694,7 +694,7 @@ markdown-it 解析）。这就是「平方级」的来源：成本 ≈ 文档长
 
 #### 一、副色（accent 家族）改成灰，靠明度差不靠色相
 
-参照 Typora：界面里的「强调」不靠色相。三个角色各司其职，但**都必须是低饱和的灰**
+参考通用做法：界面里的「强调」不靠色相。三个角色各司其职，但**都必须是低饱和的灰**
 （暖灰 / 冷灰都算灰，判据见验收里的「通道极差 ≤ 40 且不是紫/品红」）：
 
 | 令牌            | 角色                          | 浅色                 | 深色                    | 羊皮纸               |

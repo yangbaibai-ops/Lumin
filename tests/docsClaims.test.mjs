@@ -50,7 +50,7 @@ test('文档里引用的仓库路径都存在（README / 手册 / 台账）', ()
   // 只扫索引会漏掉各章里引用的路径，所以这里把 `docs/manual/` 下的分片**一起**扫。
   const docs = [
     'README.md',
-    'docs/typora-wysiwyg-manual.md',
+    'docs/wysiwyg-manual.md',
     'docs/optimization-program.md',
     // 逐条记录桌面评审报告各项处理状态的活台账（波次 1 = 2026-10-04）
     'docs/optimization-waves.md',

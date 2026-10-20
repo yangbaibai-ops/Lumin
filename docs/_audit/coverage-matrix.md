@@ -18,7 +18,7 @@
 > **本文是一次只读审计的产物**（不修改 `src/`、不提交、不执行任何套件）。
 > 数据来源：`tools/_*.js`（98 个）的文件头注释与断言名、`tools/run-suites.js`（默认矩阵）、
 > `tools/verify-tiptap.js`（69KB 遗留总套件）、`tests/*.test.mjs`（23 个单测文件）、
-> `README.md`、`docs/typora-wysiwyg-manual.md`、`docs/wysiwyg-test-plan.md`。
+> `README.md`、`docs/wysiwyg-manual.md`、`docs/wysiwyg-test-plan.md`。
 
 ## 0. 口径与计数约定
 

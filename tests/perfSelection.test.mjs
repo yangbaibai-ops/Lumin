@@ -89,7 +89,7 @@ test('选区带：每帧只建一次 DOM（不再"建 → 回读 → 清空 → 
 })
 
 test('打字：光标已在视口内时跳过 PM 逐层 scrollRectIntoView 测量（贴近边缘仍交回 PM）', () => {
-  const src = read('src/renderer/src/components/editor/TyporaEditor.vue')
+  const src = read('src/renderer/src/components/editor/WysiwygEditor.vue')
   assert.match(src, /handleScrollToSelection: \(view\) =>/)
   assert.match(src, /if \(!perfFlag\('fastScroll'\)\) return false/)
   assert.match(src, /caret\.top >= box\.top \+ pad && caret\.bottom <= box\.bottom - pad/)

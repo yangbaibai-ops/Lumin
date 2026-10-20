@@ -61,7 +61,7 @@ const RADIUS_TIERS = [
   '999px',
   '0 12px 12px 0',
   '0 6px 6px 0',
-  // 公式编辑容器（Typora 那种"上半源码 / 下半渲染"的合体盒子）只用**上下**两处方向性圆角：
+  // 公式编辑容器（主流编辑器那种"上半源码 / 下半渲染"的合体盒子）只用**上下**两处方向性圆角：
   // 源码区圆上两角、渲染区圆下两角，中间相接处必须是直角（否则接缝会露白）。px 值仍取自
   // 上面的 3/4px 两档，只是把方向写全 —— 所以登记这两条，而不是新造一档半径。
   '4px 4px 0 0',
@@ -250,7 +250,7 @@ test('圆角：命名工具类（rounded / rounded-lg / …）也是闭集', () 
  * —— 1366×768 @150% 缩放的可用逻辑尺寸只有 911×512，"最小窗口"比屏幕还大（右边缘永远够不着）。
  *
  * 这条守卫把"两档断点 + 最小尺寸"钉住：断点值一共出现在四处
- * （`chrome.css` / `TyporaEditor.vue` 的内边距变体 / `main/windowPlacement.ts` 的常量 /
+ * （`chrome.css` / `WysiwygEditor.vue` 的内边距变体 / `main/windowPlacement.ts` 的常量 /
  * `_verify-a11y.js` 的窄窗断言），改一处就得四处对齐。
  */
 test('窄窗策略：900/760 两档断点存在，且最小窗口尺寸与之配套', () => {
@@ -280,7 +280,7 @@ test('窄窗策略：900/760 两档断点存在，且最小窗口尺寸与之配
 
   // 正文内边距：窄窗必须让位（Tailwind 的 max-[Npx]: 变体）
   const editor = fs.readFileSync(
-    path.join(ROOT, 'src/renderer/src/components/editor/TyporaEditor.vue'),
+    path.join(ROOT, 'src/renderer/src/components/editor/WysiwygEditor.vue'),
     'utf-8'
   )
   assert.match(editor, /max-\[900px\]:px-8/, '900px 档要把正文内边距降到 32px')

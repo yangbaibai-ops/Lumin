@@ -82,7 +82,7 @@
   - 形态 = **与编辑区同宽的整幅带**，中性淡底 `--accent-soft`（与侧栏选中、草稿横幅同一族）
     + 底部 `1px --edge` 分界 + 顶部 1px 内高光。强调只靠**明度差**，不用色相 —— 与主题文件头
     「副色用中性灰」的口径一致，三套主题各自取令牌，无需分主题写样式。
-  - 节奏 = 左右内缩 **40px**，与写作区正文列（`TyporaEditor.vue` 的 `px-10`）对齐；标题
+  - 节奏 = 左右内缩 **40px**，与写作区正文列（`WysiwygEditor.vue` 的 `px-10`）对齐；标题
     13.5/500、说明 12.5/1.7 且限 **720px** 可读行宽；右侧信息条用 1px 竖线分隔成
     「时间 | 步进 | 关闭」三簇（`.ntf-sep`），步进改用紧凑档图标按钮（22px）。
   - 组件本身**没有盒子**：无边框、无圆角、无底色、无外投影（面属于带，不属于组件）。
@@ -354,14 +354,14 @@
 
 | 讨论里的说法 | 实测 | 结论 |
 | --- | --- | --- |
-| 右键菜单把删除线的键标成 `Ctrl+Shift+X`，而 Tiptap 内建是 `Mod-Shift-s`，所以**提示是假的** | `typoraInlineMarks.addKeyboardShortcuts` 里**真的绑了** `'Mod-Shift-x' → toggleMdStrike()`；`Mod-Shift-s` 那条内建虽然被 `file.saveAs` 挡住，但我们从不依赖它 | **不是 bug**，提示与真实绑定一致。我当时只查了 Tiptap 的扩展，漏查了我们自己的 keymap |
+| 右键菜单把删除线的键标成 `Ctrl+Shift+X`，而 Tiptap 内建是 `Mod-Shift-s`，所以**提示是假的** | `inlineMarks.addKeyboardShortcuts` 里**真的绑了** `'Mod-Shift-x' → toggleMdStrike()`；`Mod-Shift-s` 那条内建虽然被 `file.saveAs` 挡住，但我们从不依赖它 | **不是 bug**，提示与真实绑定一致。我当时只查了 Tiptap 的扩展，漏查了我们自己的 keymap |
 | 工具栏弹簧区带 `data-toolbar-item`，会**吞掉空白区右键**（审计里的 A1 悬案） | 实测右键弹簧区 **menuOpen=true**（能弹）；分段控件上右键 menuOpen=false（正确）。原因：弹簧区是 `min-w-2 flex-1` 在 `items-center` 行里，**高 0px**，命中测试落不到它身上，那个属性是惰性的 | **不是 bug**，A1 结案。属性冗余但无害，且套件按 `[data-toolbar-item]` 计数，故**保持原样** |
 
 ### Fixed
 
 - **引用（blockquote）没有任何可用快捷键**：Tiptap 自带的是 `Mod-Shift-b`，而 `Mod+Shift+B` 被本应用的
   「切换侧栏」（`view.toggleSidebar`，全局捕获阶段）占用 → 内建那条**永远按不出来**，右键菜单里这条
-  动作此前也不显示任何键。现在在 `lib/editor/keymap.ts` 的 `TyporaKeymap` 里补 **`Mod-Shift-q`**
+  动作此前也不显示任何键。现在在 `lib/editor/keymap.ts` 的 `WysiwygKeymap` 里补 **`Mod-Shift-q`**
   （与 Typora 的引用快捷键一致；与 27 条应用级默认键无冲突，因为它是编辑器级绑定），
   并在 `lib/editor/menu/actions.ts` 的 `paragraph.quote` 上写出 `Ctrl+Shift+Q` 提示。
   实测：段落 → 引用 ✓、再按一次切回 ✓、右键菜单显示 `引用 Ctrl+Shift+Q` ✓、`Ctrl+Shift+B` 仍切侧栏 ✓。
@@ -378,10 +378,10 @@
     功能列表里的「下划线」、技术栈表里的 `Underline`；补一条真实的
     「✅ 格式化入口：快捷工具栏 + 编辑器右键菜单 + 顶部菜单栏（三处同一套动作；工具栏可整体关闭、
     逐项显隐与排序）」。
-  * `docs/typora-wysiwyg-manual.md`：§3.8 标题改为「选区浮动菜单（气泡菜单 · 已移除）」并在节首
+  * `docs/wysiwyg-manual.md`：§3.8 标题改为「选区浮动菜单（气泡菜单 · 已移除）」并在节首
     加显著说明（正文保留，作为「自绘浮动层」的原理与踩坑记录 —— 坐标系/视口钳制/焦点保持这些结论
     对今天的查找浮条、弹层、右键菜单仍然有效）；架构树里那一行标注已移除；文件职责表里
-    `TyporaEditor.vue` 的后缀去掉气泡菜单；§3.x 两处「气泡菜单 …」改成仍在用的浮层；
+    `WysiwygEditor.vue` 的后缀去掉气泡菜单；§3.x 两处「气泡菜单 …」改成仍在用的浮层；
     §5「步骤 8」标注气泡菜单部分已移除。
 
 ### 记录更正（我自己的错误）
@@ -407,11 +407,11 @@
 | `_verify-keymap.js` | **SKIP**（它要 dev server，不在默认矩阵）——本轮没有改 `useKeymap.ts` 的命令表（`git status` 可证），新增的 `Mod-Shift-q` 是**编辑器级**绑定，故「命令表 27 条 / 无重复默认键」不受影响；上面那条 `Ctrl+Shift+B` 探针直接覆盖了「新键没抢旧键」的风险 |
 | `_verify-editor-menu.js` | 0/0（该套件在本环境本来就不产出断言，非本轮回归） |
 
-## [Unreleased · 查找：不压工具栏 + 精确落位 + Typora 命中配色]
+## [Unreleased · 查找：不压工具栏 + 精确落位 + 常见搜索高亮配色]
 
 > 用户口径（三条）：① Ctrl+F 的查找/替换组件**会遮挡快捷工具栏**；
 > ② 命中多处时，点上下切换**不会定位到准确的字符位置**；
-> ③ 匹配的字符要有**底色**，当前匹配也要有颜色，「颜色和 Typora 保持一致即可」。
+> ③ 匹配的字符要有**底色**，当前匹配也要有颜色，「颜色对齐常见搜索高亮即可」。
 
 ### Fixed
 
@@ -431,14 +431,13 @@
 
 ### Changed
 
-- **命中配色改成 Typora 的口径**（原来所有命中都只有一道 `--sel` 灰底、且**只画当前那一处**）：
+- **命中配色改成常见搜索高亮的口径**（原来所有命中都只有一道 `--sel` 灰底、且**只画当前那一处**）：
   * 命中高亮从「只画当前命中」改成**整批都画**：`.find-hit`（全部）/ `.find-hit-current`（当前），
     桥的契约随之从 `(active, from, to)` 扩成 `(ranges[], current)` —— 仍是**纯数据**、零依赖，
     store 一侧照旧不认识 ProseMirror（首屏 entry 不受影响）。整批上限 2000 处（防「单空格」这类
     上万命中的极端情况）。
-  * 配色取自 **Typora 自己的截图逐像素采样**（浅色 `github` 主题：命中 `#FDECD5` 淡琥珀 /
-    当前命中 `#FFCF8F` 重琥珀）；深色照 Typora `night.css` 的**蓝色**高亮（半透明蓝底 +
-    实蓝 `#428BCA` 当前项 + 白字，typora-issues#5760 明确提到 night 主题的搜索高亮是蓝色）；
+  * 配色参考常见的搜索高亮（浅色：命中 `#FDECD5` 淡琥珀 / 当前命中 `#FFCF8F` 重琥珀；
+    深色：半透明蓝底 + 实蓝 `#428BCA` 当前项 + 白字）；
     羊皮纸跟随浅色暖色系但各压深一档。三套值全部走令牌（`--find-hit-bg` / `--find-current-bg` …），
     改主题只动令牌。
   * 实测浅色计算值：命中 `rgb(253,236,213)`、当前 `rgb(255,207,143)`，两者不同 ✓。
@@ -451,7 +450,7 @@
 | `tools/_verify-find-replace.js` | **24/24**（展开/收起、Aa 与 .* 开关、替换当前/全部、Esc 离场、源码面、非法表达式） |
 | `_verify-round-24.js` / `_verify-inline-formats.js` / `_verify-marker-hold.js` | 15/16 + 1 SKIP / 182/182 / 11/11 |
 | `_verify-drag-selection.js` / `_verify-line-end-click.js`（同一个装饰插件，回归） | 10/10 / 7/7 |
-| 三项要求的临时探针（已删；**8/8 PASS**） | ① 浮条 y=86 ≥ 工具栏底 76、与内核顶边差 10px；③ 命中元素 240 个（全部命中都有底色）、当前命中恰好 1 个且颜色不同、浅色值 = Typora 采样；② step +14 / −6 全部完整可见；关闭后高亮清零 |
+| 三项要求的临时探针（已删；**8/8 PASS**） | ① 浮条 y=86 ≥ 工具栏底 76、与内核顶边差 10px；③ 命中元素 240 个（全部命中都有底色）、当前命中恰好 1 个且颜色不同、浅色值 = 参考配色；② step +14 / −6 全部完整可见；关闭后高亮清零 |
 | 截图核对（浅色 / 深色整窗） | 浮条稳在快捷工具栏**下方**、不再压住图标行；浅色为淡琥珀底 + 重琥珀当前项，深色为蓝色系（当前项实蓝白字） |
 
 ## [Unreleased · 查找/替换栏重做] — 尺寸间距对齐全局语言
@@ -630,7 +629,7 @@
 
 - **首屏 entry chunk 1,615,729 B → 764,073 B（−53%）**，三段改动：
   1. **切断 ProseMirror 走私通道**（−691KB）：`stores/find.ts` 原先直接
-     `import { setFindHit } from '../lib/editor/typoraInlineMarks'`，而那模块静态 import
+     `import { setFindHit } from '../lib/editor/inlineMarks'`，而那模块静态 import
      `@tiptap/core` + `@tiptap/pm/{state,model,view}`；`prosemirror-state` 的 deps 又链到 model +
      transform + **view**，于是「import 一个函数」把整份 ProseMirror 钉进 entry。而本 store 挂在
      `App.vue → useAppActions → stores/find` 这条**静态**链上 —— 连欢迎页都要付这份钱。
@@ -673,7 +672,7 @@
 
 ### Removed — 按钮去留（审计结论，含成本）
 
-- **选区气泡菜单整块删除**（`TyporaEditor.vue` 77 行 + `style.css` 40 行 + 旧套件 3 条断言）：
+- **选区气泡菜单整块删除**（`WysiwygEditor.vue` 77 行 + `style.css` 40 行 + 旧套件 3 条断言）：
   它从第二十二轮起就是 `BUBBLE_MENU_ENABLED = false` 的死码（模板 `v-if` 恒假），
   但**每次选区变化仍在重算气泡状态**；功能与顶部工具栏 + 编辑器右键菜单 100% 重复。
   `README.md` 与手册把它记成「已交付」也一并改掉。
@@ -828,7 +827,7 @@
   为什么不能只靠选区：查找栏打开时焦点在输入框里，编辑区那份是**失焦选区**（浏览器画得很淡），
   在深色主题下几乎看不见；而且跳转过去那点高亮一闪就没。`.find-hit` 只画底色、不改字号，
   对光标导航与命中测试零影响（与 `.md-marker` 的零字号折叠互不相干）。
-  实现在 `typoraInlineMarks` 的装饰层：`SET_FIND_HIT` 事务元数据同时携带
+  实现在 `inlineMarks` 的装饰层：`SET_FIND_HIT` 事务元数据同时携带
   「命中范围」与「查找态」，`props.decorations` 把它与显隐装饰**合并**返回
   （同一插件 key 只能有一份 `decorations`，分两个 key 会各算各的、后者覆盖前者）。
   适配器是 `setFindHit(active, from, to)`：find store 在 `select()` / `hide()` 里调它，
@@ -1006,7 +1005,7 @@
 - **不再有节点级整选**（`lib/editor/pointer.ts`）：`filterTransaction` 原先只把**文本块**的
   `NodeSelection` 降级成文本光标，图片等行内/叶节点仍是整选 —— 那就是紫色外框的来源。
   现在**任何** `NodeSelection` 都降级为 `TextSelection.near()`：点图片落到图片旁的文本光标，
-  要删图仍然 `Backspace` 即可（`docs/typora-wysiwyg-manual.md` 的键盘习惯不变）。
+  要删图仍然 `Backspace` 即可（`docs/wysiwyg-manual.md` 的键盘习惯不变）。
   CSS 侧同时摘掉 `.ProseMirror-selectednode { outline: none }`——框已经没有来源了。
 
 ### Changed
@@ -1090,7 +1089,7 @@
 
 ### Changed
 
-- **标记在指针抬起后才显示**（`typoraInlineMarks.ts`）：按住左键期间（含拖选全程）把
+- **标记在指针抬起后才显示**（`inlineMarks.ts`）：按住左键期间（含拖选全程）把
   `.md-marker` 的展开装饰折叠，`mouseup`/`pointerup`/`pointercancel` 时立刻恢复。
   只动「要不要给 `.md-reveal-inline`」，**不碰** `.md-marker` 的折叠机制（那是渲染结构，
   与光标导航/命中绑在一起）—— 模型、落盘字节、选区语义一个都不动。
@@ -1208,7 +1207,7 @@
 
 ### Docs
 
-- `docs/typora-wysiwyg-manual.md` §4.36 增补「第二轮图标更换记录」（PNG-in-ICO 的坑、判据重标定、
+- `docs/wysiwyg-manual.md` §4.36 增补「第二轮图标更换记录」（PNG-in-ICO 的坑、判据重标定、
   单一来源守卫搬进单测）；`docs/packaging-install-test.md` 的 I-03 复验结论同步更新。
 
 ## [Unreleased · 快捷工具栏可关可调 + 编辑区右键菜单收窄] — 工具栏空白区右键菜单 / 设置里的显隐与排序（承第十九轮）
@@ -1283,7 +1282,7 @@
   修法：在 **markdown-it 那一层**（`parse.setup` 钩子，与 escape / 冗余嵌套强调同一套机制）换掉
   emphasis 的 flanking 判定，**CJK/全角标点不参与 `*` 的标点分类**；加载/刷新与实时重推因此
   共用同一条规则。上游 `balance_pairs` 与 rule-of-3（`**2****2**` 那类语义）一个都没动。
-- **打字卡顿**：`typoraInlineMarks.appendTransaction` 每次事务都遍历全篇 textblock 并对每个
+- **打字卡顿**：`inlineMarks.appendTransaction` 每次事务都遍历全篇 textblock 并对每个
   「带样式标记」的块跑整段归一化（含 markdown-it 重推）—— 而 `blockNeedsNormalize` 对已带
   markup 的块**恒为真**，于是每敲一个字全篇每个加粗段落都重算一遍。修复：按块记忆
   「已归一的块节点」（PM 节点不可变 + 结构共享 ⇒ 没被编辑的块引用不变），只重算被这次编辑
@@ -1291,7 +1290,7 @@
 
 ### Changed
 
-- `typoraInlineMarks` 的装饰构建改为**按块缓存清单**（`decoCache: WeakMap<PMNode, BlockDecos>`）：
+- `inlineMarks` 的装饰构建改为**按块缓存清单**（`decoCache: WeakMap<PMNode, BlockDecos>`）：
   一次遍历块内容同时产出 mdMarker 构造与转义段（此前是两次全文遍历），每键只对变化过的块重扫
   marks。**不做「只算可见视口」是故意的**：转义拆分出的 `.md-escape-backslash`/`.md-escape-char`
   是常显渲染结构，而 PM 的 docView 惰性构建、滚动不重建 —— 视口外不带这套装饰，滚过去就会看到
@@ -1339,7 +1338,7 @@
 ### Fixed
 
 - **样式正文里的裸标记字符不再被补反斜杠**（`**2****2**` 逐字节留住）：
-  `typoraInlineMarks.ts` 的 `literalizeStrayMarkers` 见到 `mdStyle` 就整段跳过，
+  `inlineMarks.ts` 的 `literalizeStrayMarkers` 见到 `mdStyle` 就整段跳过，
   于是 `**2****2**` 中间那四颗星（CommonMark 语义：**一个** `<strong>` 包住字面文本
   `2****2`）落进普通文本分支，被 `MarkdownSerializerState.esc()` 转义成 `\*\*\*\*`。
   同类受害输入：`**a * b**` → `**a \* b**`、`*a**b*` → `*a\*\*b*`。
@@ -1361,7 +1360,7 @@
   **样式正文 → verbatim 原子 + `MdEscape` 的 `escape:false` 逐字写回**）、
   `hasStrayMarker()`、`needsSourceReparse()`（「源码权威重推」的触发判据，同时就是
   **已字面化标记的重新评估机制**：文本一变就把整段原文重喂 markdown-it）。全部进单测。
-- `typoraInlineMarks.escapeDecorations()` + `style.css` 的 `.md-escape-backslash` /
+- `inlineMarks.escapeDecorations()` + `style.css` 的 `.md-escape-backslash` /
   `.md-escape-char`：**转义反斜杠拆成两个 span 且按光标显隐（暗色 `--ink-3`，三套主题各自定义）**，
   与 `.md-marker` 复用同一套机制（`.md-reveal-inline` + `font-size: 0` 折叠，不用 `display:none`）。
   纯观感：模型、`textContent`、落盘字节一个都不动
@@ -1486,7 +1485,7 @@
   回归：`deep-list-100`（哨兵 100/100）；深度扫描 64/100 层从 lossy 变 exact。
 - **S2 · 段尾孤立反斜杠被改写**：`a\`（CommonMark 里是字面反斜杠）保存一次变成 `a\\`（文件涨一个字符）。
   根因：自定义 escape 规则在 `pos + 1 >= posMax` 时 `return false`，markdown-it 当普通文本 → 序列化器转义。
-  修法：`typoraInlineMarks.ts` 补「段尾字面反斜杠」分支，走 `md_escape`（`escape:false`）逐字写回。
+  修法：`inlineMarks.ts` 补「段尾字面反斜杠」分支，走 `md_escape`（`escape:false`）逐字写回。
 
 ### 已知未修（fuzz 抓到并登记）
 
@@ -2167,7 +2166,7 @@
 - **夹具库** `tools/fixtures/md/`：**30 份** Markdown 夹具 + `EXPECT.json` 预期表。
   `EXPECT.json` 即契约：`lossy` 必须写清**为什么**与**修法**（没有 why 的 lossy 等于把缺陷藏进预期）。
 - **验收套件** `tools/_verify-md-fidelity.js`：文档级往返（走应用**自己的落盘管线**：
-  `TyporaEditor.flushSync`，用 `beforeunload` 同步触发）+ 幂等回归 + 字节级真开真存
+  `WysiwygEditor.flushSync`，用 `beforeunload` 同步触发）+ 幂等回归 + 字节级真开真存
   （CRLF / UTF-8 BOM / GB18030 / 文末无换行）；逐份原文与产出落 `%TEMP%\lumin-md-fidelity-report.json`。
 - **CDP 公共骨架** `tools/lib/harness.js`：连页面、注入 pinia 访问器（**按结构找**，不按
   `Symbol(pinia)` 名字找 —— 生产构建会压掉 symbol 描述）、键鼠模拟、`--- N/M PASS` 结果汇总。
@@ -2222,7 +2221,7 @@ CommonMark 同标记相邻列表的重编号、CRLF 与文末无换行（字节�
 
 ## [历史主题汇总] — 1.0.0 之前
 
-> 详细内容见 `docs/typora-wysiwyg-manual.md` 的 §4.x 各节。
+> 详细内容见 `docs/wysiwyg-manual.md` 的 §4.x 各节。
 
 - **编辑器内核**：Tiptap v3 + `tiptap-markdown` 装配、光标感知标记符（块级 Decoration / 行内 DOM 类）、
   代码块 CodeMirror NodeView、Mermaid 渲染、表格与任务列表、气泡菜单与工具栏、大纲联动。
