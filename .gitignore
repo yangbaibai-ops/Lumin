@@ -23,3 +23,6 @@ tmp/
 *.cer
 *.p7b
 *.key
+
+dist-build/
+dist-*/

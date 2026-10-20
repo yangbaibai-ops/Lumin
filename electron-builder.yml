@@ -50,6 +50,11 @@ files:
   - '!node_modules/{mermaid,@mermaid-js,cytoscape,cytoscape-fcose,cytoscape-cose-bilkent,katex,es-toolkit,@tiptap,@codemirror,@lezer,@vue,@babel,@intlify,@floating-ui,@iconify,@upsetjs,@braintree,@chevrotain,@jridgewell,@types,@marijn,@antfu}/**'
   - '!node_modules/{vue,vue-i18n,vue-router,pinia,tiptap-markdown,markdown-it,markdown-it-task-lists,dompurify,d3,d3-*,dagre-d3-es,khroma,stylis,roughjs,points-on-curve,points-on-path,path-data-parser,layout-base,cose-base,robust-predicates,delaunator,internmap,dayjs,marked,linkify-it,linkifyjs,mdurl,uc.micro,entities,uuid,ts-dedent,prosemirror-*,source-map-js,mlly,acorn,magic-string,postcss,commander,chokidar,picomatch,fdir,tinyglobby,readdirp,local-pkg,pkg-types,pathe,ufo,exsolve,confbox,quansync,scule,hookable,birpc,perfect-debounce,fastdom,strictdom,webpack-virtual-modules,muggle-string,ast-kit,ast-walker-scope,unplugin,unplugin-utils,package-manager-detector,tinyexec,nanoid,style-mod,w3c-keyname,crelt,rope-sequence,orderedmap,rw,hachure-fill,punycode.js}/**'
   - '!tmp/**'
+  # 构建输出目录本身绝不能进包：默认输出是 `dist/`（electron-builder 会自动排除），
+  # 但一旦用 `--config.directories.output=dist-build` 换目录，旧的 `dist/` 就**不再**被
+  # 自动排除 —— 会把上一个安装包（~94MB）打进 asar（实测 asar 11MB→116MB）。
+  - '!dist/**'
+  - '!dist-*/**'
   - '!{build-out.txt,typecheck-out.txt,dev-run.log}'
   - '!*.log'
   - '!**/*.log'
