@@ -1,6 +1,6 @@
 // 全局防卡死兜底：心跳超时 / 崩溃节流 / 同步阻塞哨兵 / 大文档与安全模式 / 纯文本兜底。
 //
-// 这些阈值都是验收口径的一部分（500ms 心跳、4.8s 超时、2s 冻结、30s 崩溃节流、
+// 这些阈值都是验收口径的一部分（500ms 心跳、4.6s 超时、2s 冻结、30s 崩溃节流、
 // 2MB / 5 万节点），所以全部做成纯函数用毫秒级单测钉住；端到端那一半见
 // tools/_verify-freeze.js（真窗口里注阻塞 + Pege.crash）。
 import { test } from 'node:test'
@@ -33,11 +33,11 @@ test('心跳：第一次心跳之前不判超时（启动慢不是卡死）', ()
   assert.equal(before.ageMs, 0)
 })
 
-test('心跳：4.8s 内算活着，超过才判无响应（边界取严格大于）', () => {
+test('心跳：4.6s 内算活着，超过才判无响应（边界取严格大于）', () => {
   const at = 1_000_000
   const fresh = heartbeatLiveness(at, at - HEARTBEAT_TIMEOUT_MS)
   assert.equal(fresh.primed, true)
-  assert.equal(fresh.stale, false, '恰好 4800ms 不该判死（检测定时器还要留粒度余量）')
+  assert.equal(fresh.stale, false, '恰好 4600ms 不该判死（检测定时器还要留粒度余量）')
   assert.equal(fresh.ageMs, HEARTBEAT_TIMEOUT_MS)
 
   const stale = heartbeatLiveness(at, at - HEARTBEAT_TIMEOUT_MS - 1)

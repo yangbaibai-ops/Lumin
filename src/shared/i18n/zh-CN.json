@@ -375,6 +375,8 @@
     "spellcheckKeepOne": "至少保留一种语言；不需要检查时请关闭总开关",
     "spellcheckZhLabel": "中文（简体）",
     "spellcheckZhNote": "中文检查由 Lumin 的启发式规则完成（重复字词 / 标点 / 常见易错词），不是词典级检查。",
+    "unresponsivePromptEnabled": "页面无响应提示",
+    "unresponsivePromptEnabledDesc": "仅在窗口可见且真正卡死时弹出「等待 / 重新加载并恢复」；最小化、隐藏或系统休眠时不会提示。关闭后不再巡检（崩溃仍会自动恢复）。",
     "cardTypography": "字体与排版",
     "fontFamilyLabel": "正文字体",
     "fontSansShort": "无衬线",

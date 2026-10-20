@@ -3,16 +3,25 @@
 // 用户口径：渲染进程每 500ms 向主进程发一次心跳；主进程记「最后一次心跳时间」与
 // 「最近重活摘要」（`window.__LWORK` 的计数，绝不含正文），据此判 5s 超时。
 //
+// ⚠️ 可见性是这条链的**前提**：窗口最小化 / 被完全遮挡 / 系统休眠时，Chromium 会节流甚至
+// 暂停后台定时器 —— 心跳停了并不代表卡死。所以 `document.visibilitychange` 是硬门：
+//   * `hidden`  ⇒ 停掉心跳定时器，并发一次 `freeze:pause`（主进程暂停巡检与弹框）；
+//   * `visible` ⇒ 重置计时、**立刻**补一拍，并发 `freeze:resume`（主进程复位 lastBeat）。
+// 这样主进程永远不会在窗口看不见的时候用一段陈旧心跳判"无响应"。
+//
 // 这里同时把 `app:freeze`（主进程 → 渲染层）接上：
 //   * `flush-draft`：主进程要 reload 了，**尽力**再落一次草稿，然后回 `freeze:draftAck`；
 //   * `unresponsive` / `recovered`：只更新 `window.__LFREEZE` 的诊断字段，供排查。
 //
 // 为什么心跳不放在编辑器里：卡死可能发生在编辑器挂载之前（大文档解析）或源码模式，
 // 判活必须覆盖整个渲染进程，所以放在 `main.ts` 的启动期。
+import { planHeartbeatVisibility } from '../../../shared/freeze'
 import { workBudgetStats } from './editor/workBudget'
 
 export interface FreezeDiagnostics {
   installed: boolean
+  /** 当前是否因页面隐藏而暂停心跳（验收用；与主进程的 paused 是同一件事的两侧） */
+  paused: boolean
   heartbeats: number
   lastSentAt: number
   lastPayload: {
@@ -74,6 +83,7 @@ export function installFreezeHeartbeat(opts: FreezeHeartbeatOptions = {}): () =>
   const intervalMs = Math.max(200, Math.round(opts.intervalMs ?? 500))
   const diag: FreezeDiagnostics = {
     installed: true,
+    paused: false,
     heartbeats: 0,
     lastSentAt: 0,
     lastPayload: null,
@@ -100,7 +110,10 @@ export function installFreezeHeartbeat(opts: FreezeHeartbeatOptions = {}): () =>
   if (typeof requestAnimationFrame === 'function') rafId = requestAnimationFrame(countFrame)
 
   let lastTick = Date.now()
-  const timer = setInterval(() => {
+  let timer: ReturnType<typeof setInterval> | null = null
+
+  /** 发一拍心跳。隐藏期间不调用它（避免定时器被节流后打出"假心跳"）。 */
+  const beat = (): void => {
     const now = Date.now()
     const elapsed = Math.max(1, now - lastTick)
     lastTick = now
@@ -121,7 +134,60 @@ export function installFreezeHeartbeat(opts: FreezeHeartbeatOptions = {}): () =>
     } catch {
       /* 主进程正在退出：下一拍再试 */
     }
-  }, intervalMs)
+  }
+
+  const stopTimer = (): void => {
+    if (timer) clearInterval(timer)
+    timer = null
+  }
+
+  const startTimer = (): void => {
+    stopTimer()
+    lastTick = Date.now()
+    timer = setInterval(beat, intervalMs)
+  }
+
+  const onVisibilityChange = (): void => {
+    const plan = planHeartbeatVisibility(
+      typeof document === 'undefined' ? 'visible' : document.visibilityState
+    )
+    if (plan.notifyMain === 'pause') {
+      // 先告诉主进程暂停，再停表：这两步之间不允许再打出一拍"假心跳"。
+      diag.paused = true
+      stopTimer()
+      try {
+        window.luminAPI.freeze.pause()
+      } catch {
+        /* 主进程正在退出：它那一侧还有窗口事件兜底 */
+      }
+      return
+    }
+    // 可见：复位计时并立刻补一拍。主进程收到 resume 也会把自己的 lastBeat 复位，
+    // 因此"隐藏 20s 后恢复"的第一拍不会被当成 20s 的超时。
+    diag.paused = false
+    startTimer()
+    try {
+      window.luminAPI.freeze.resume()
+    } catch {
+      /* 同上 */
+    }
+    beat()
+  }
+
+  // 启动时页面就不可见（最小化启动 / 后台恢复）也不该跑表。
+  if (typeof document !== 'undefined' && document.visibilityState === 'hidden') {
+    diag.paused = true
+    try {
+      window.luminAPI.freeze.pause()
+    } catch {
+      /* 忽略 */
+    }
+  } else {
+    startTimer()
+  }
+  if (typeof document !== 'undefined') {
+    document.addEventListener('visibilitychange', onVisibilityChange)
+  }
 
   const off = window.luminAPI.events.on('app:freeze', (raw) => {
     const payload = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>
@@ -151,8 +217,11 @@ export function installFreezeHeartbeat(opts: FreezeHeartbeatOptions = {}): () =>
   })
 
   uninstall = () => {
-    clearInterval(timer)
+    stopTimer()
     if (rafId) cancelAnimationFrame(rafId)
+    if (typeof document !== 'undefined') {
+      document.removeEventListener('visibilitychange', onVisibilityChange)
+    }
     off()
     installed = false
     uninstall = null

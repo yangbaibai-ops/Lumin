@@ -21,11 +21,11 @@ export const HEARTBEAT_INTERVAL_MS = 500
 /**
  * 心跳超时（ms）。
  *
- * 用户口径是「例如 >5s」。取 4800 而不是 5000：检测定时器本身有 250ms 粒度，
- * 恰好卡在 5000 会让实测落在 5.0~5.25s，验收口径「≤5s」在边界上不成立。
- * 留 200ms 余量后，8s 阻塞的检测落在 4.8~5.05s。
+ * 用户口径是「例如 >5s」。取 4600 而不是 5000：检测定时器本身有 250ms 粒度，
+ * 恰好卡在 5000 会让实测落在 5.0~5.25s（CDP 注入还有一个请求往返），验收口径
+ * 「≤5s」在边界上不成立。留 400ms 余量后，8s 阻塞的检测稳定落在 4.6~4.85s。
  */
-export const HEARTBEAT_TIMEOUT_MS = 4800
+export const HEARTBEAT_TIMEOUT_MS = 4600
 
 /** 主进程巡检心跳的间隔（ms） */
 export const HEARTBEAT_CHECK_MS = 250
@@ -54,6 +54,110 @@ export function heartbeatLiveness(
   }
   const ageMs = Math.max(0, nowMs - lastHeartbeatAt)
   return { primed: true, stale: ageMs > timeoutMs, ageMs }
+}
+
+// ─── 门控：窗口不可见 / 系统挂起 / 用户关掉提示 ─────────────────────────────
+//
+// 背景（用户实测误报）：窗口最小化、被完全遮挡或系统休眠时，Chromium 会**节流甚至暂停**
+// 渲染进程的定时器 —— 500ms 心跳停了，主进程按 4.6s 超时判"无响应"，于是用户在后台放一会儿
+// 就收到一个纯属噪声的原生提示。判活本身没有错，错在"窗口根本不可见时还拿心跳当证据"。
+//
+// 这一节只放**纯判据**：什么时候该暂停、暂停后是否还要判、恢复时怎么复位。主进程的
+// Electron 事件（minimize/hide/powerMonitor/…）与渲染层的 visibilitychange 都接到这里，
+// 于是"可见才判"只有一处口径，单测也能毫秒级钉住。
+
+/** 暂停巡检的原因（日志/诊断用；全是 ASCII，主进程 console 有静态守卫） */
+export type FreezePauseReason =
+  | 'setting-disabled'
+  | 'window-minimized'
+  | 'window-hidden'
+  | 'renderer-hidden'
+  | 'system-suspend'
+  | 'screen-locked'
+
+/**
+ * 窗口状态是否已经不该判活。
+ * 最小化与"不可见"（hide / 被系统隐藏）都必须暂停：两者都会让 Chromium 停定时器。
+ * 被遮挡（occluded）不在这里判 —— Electron 的 `isVisible()` 仍为 true，那一路由渲染层的
+ * `document.visibilitychange` 发 `freeze:pause` 解决。
+ */
+export function freezeWindowPauseReason(activity: {
+  minimized: boolean
+  visible: boolean
+}): 'window-minimized' | 'window-hidden' | null {
+  if (activity.minimized) return 'window-minimized'
+  if (!activity.visible) return 'window-hidden'
+  return null
+}
+
+export interface FreezeCheckInput {
+  nowMs: number
+  lastHeartbeatAt: number
+  /** 设置里的「页面无响应提示」开关；关闭 = 不巡检、不弹（崩溃恢复不受影响） */
+  enabled: boolean
+  /** 主进程门控状态（窗口不可见 / 系统挂起 / 渲染层报告隐藏） */
+  paused: boolean
+  /** 正在 reload / 崩溃恢复中：渲染进程本来就不在，心跳停了不是"无响应" */
+  reloading: boolean
+  /** 已经有一轮无响应未结束：别重复弹 */
+  episodeOpen: boolean
+}
+
+export type FreezeCheckResult =
+  | {
+      action: 'idle'
+      reason: 'disabled' | 'paused' | 'reloading' | 'episode-open' | 'unprimed' | 'alive'
+    }
+  | { action: 'prompt'; ageMs: number }
+
+/**
+ * 巡检的一拍：先看门控，再看心跳。门控命中时**连算都不算** —— 这样"后台放 20 秒后恢复"
+ * 永远不会在恢复瞬间用一段陈旧心跳弹框（恢复方负责把 `lastHeartbeatAt` 复位成 now）。
+ */
+export function planFreezeCheck(input: FreezeCheckInput): FreezeCheckResult {
+  if (!input.enabled) return { action: 'idle', reason: 'disabled' }
+  if (input.paused) return { action: 'idle', reason: 'paused' }
+  if (input.reloading) return { action: 'idle', reason: 'reloading' }
+  if (input.episodeOpen) return { action: 'idle', reason: 'episode-open' }
+  const live = heartbeatLiveness(input.nowMs, input.lastHeartbeatAt)
+  if (!live.primed) return { action: 'idle', reason: 'unprimed' }
+  if (!live.stale) return { action: 'idle', reason: 'alive' }
+  return { action: 'prompt', ageMs: live.ageMs }
+}
+
+/**
+ * 恢复巡检：**先把计时器复位成 now**，再允许判活。
+ *
+ * 这是"最小化 20 秒 → 恢复瞬间不弹框"的关键：恢复时 `lastHeartbeatAt` 还停在最小化前，
+ * 直接恢复巡检会让第一拍（250ms 内）立刻看到 20s 的 age。复位后第一拍一定"活着"，
+ * 真正的卡死仍会在 4.6s 后被抓到（那 4.6s 里渲染层心跳没来）。
+ */
+export function planWatchResume(nowMs: number): {
+  lastHeartbeatAt: number
+  paused: false
+} {
+  return { lastHeartbeatAt: nowMs, paused: false }
+}
+
+/**
+ * 渲染层可见性变化的心跳计划：
+ *   * `hidden`  ⇒ 停定时器，并告诉主进程暂停（不给节流后的"假心跳"留机会）；
+ *   * `visible` ⇒ 重置计时并**立刻**发一拍，同时告诉主进程恢复（主进程也会复位 lastBeat）。
+ */
+export interface HeartbeatVisibilityPlan {
+  running: boolean
+  sendNow: boolean
+  resetTimer: boolean
+  notifyMain: 'pause' | 'resume' | null
+}
+
+export function planHeartbeatVisibility(
+  visibility: 'visible' | 'hidden' | 'prerender'
+): HeartbeatVisibilityPlan {
+  if (visibility === 'hidden') {
+    return { running: false, sendNow: false, resetTimer: false, notifyMain: 'pause' }
+  }
+  return { running: true, sendNow: true, resetTimer: true, notifyMain: 'resume' }
 }
 
 // ─── 崩溃后的自动重载节流 ───────────────────────────────────────────────────
@@ -113,6 +217,24 @@ export function planCrashReload(
     }
   }
   return { reload: true, reason: 'ok', retryInMs: 0 }
+}
+
+/**
+ * 渲染进程崩溃后的恢复决策：**门控与开关一律不参与**。
+ *
+ * 为什么单独留这个函数而不是让调用方直接调 `planCrashReload`：崩溃是"页面已经没了"，
+ * 与"看不见时不要误报无响应"是两件事。把它写成一个**显式接收 gate 却刻意忽略**的纯函数，
+ * 单测就能钉住"关闭提示 / 窗口最小化时，首次崩溃仍然自动重载一次"这条不能回退的行为
+ * —— 将来谁想在崩溃路径上加门控，会先在这里红灯。
+ */
+export function planCrashRecovery(
+  nowMs: number,
+  recentAutoReloads: readonly number[],
+  gate: { enabled: boolean; paused: boolean },
+  opts: Parameters<typeof planCrashReload>[2] = {}
+): CrashReloadDecision {
+  void gate
+  return planCrashReload(nowMs, recentAutoReloads, opts)
 }
 
 // ─── 渲染进程内的「同步阻塞」判定 ───────────────────────────────────────────

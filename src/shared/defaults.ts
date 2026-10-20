@@ -117,6 +117,11 @@ export const defaultSettings: AppSettings = {
    */
   spellcheckEnabled: true,
   spellcheckLanguages: [],
+  /**
+   * 「页面无响应提示」：默认**开**（真实卡死时仍要提示），但窗口最小化/隐藏/系统休眠时
+   * 主进程门控会暂停巡检与弹框。用户若仍觉得打扰，可在设置里关掉（后台的崩溃恢复保留）。
+   */
+  unresponsivePromptEnabled: true,
   linkCreateMode: 'ask',
   restoreSession: true,
   /** 打开文件时的默认编码：auto = 走判定链（BOM → 每文件记忆 → 严格 UTF-8 → 系统语言兜底） */

@@ -309,6 +309,8 @@ const api: LuminAPI = {
    */
   freeze: {
     heartbeat: (payload) => ipcRenderer.send('freeze:heartbeat', payload),
+    pause: () => ipcRenderer.send('freeze:pause'),
+    resume: () => ipcRenderer.send('freeze:resume'),
     draftAck: () => ipcRenderer.send('freeze:draftAck'),
     state: () => ipcRenderer.invoke('freeze:state'),
     docRisk: (path) => ipcRenderer.invoke('freeze:docRisk', path),

@@ -216,6 +216,14 @@ export function registerIpc(slots: SlotRegistry): void {
   ipcMain.on('freeze:heartbeat', (event, payload?: freezeGuard.FreezeHeartbeatPayload) => {
     freezeGuard.noteHeartbeat(event.sender, payload)
   })
+  /**
+   * 渲染层可见性门（`document.visibilitychange`）：
+   * 隐藏 ⇒ 主进程暂停巡检与弹框；可见 ⇒ 复位 lastBeat 后恢复。
+   * 窗口最小化/hide 有主进程自己的事件兜底；这条补的是"窗口 isVisible() 仍为 true、
+   * 但页面已被 Chromium 判定为 hidden（被完全遮挡）"的那一路。
+   */
+  ipcMain.on('freeze:pause', (event) => freezeGuard.noteVisibilityPause(event.sender))
+  ipcMain.on('freeze:resume', (event) => freezeGuard.noteVisibilityResume(event.sender))
   ipcMain.on('freeze:draftAck', (event) => {
     freezeGuard.noteDraftFlushed(event.sender)
   })
@@ -936,6 +944,12 @@ export function registerIpc(slots: SlotRegistry): void {
     if (changed.spellcheckEnabled !== undefined || changed.spellcheckLanguages !== undefined) {
       spellcheck.applySpellcheckSettings(next)
     }
+    /**
+     * 「页面无响应提示」开关：即时联动心跳巡检（关闭 = 不巡检、不弹；崩溃恢复保留）。
+     * 放在这条唯一出口上，`settings:update` 与 `settings:applyImport` 都会经过；
+     * 重复调用是幂等的（`setPromptEnabled` 只在值变化时动作）。
+     */
+    freezeGuard.setPromptEnabled(next.unresponsivePromptEnabled)
     return next
   }
   ipcMain.handle('settings:update', (_, partial: Partial<AppSettings>) =>

@@ -1042,6 +1042,22 @@ function formatTime(ms: number): string {
                           @update:model-value="(v) => settings.set('restoreSession', v)"
                         />
                       </div>
+                      <!-- 用户口径：「最小化/后台一会儿就报页面无响应，明明没卡死，取消掉」。
+                           默认开（真卡死仍要提示）；关掉只停无响应巡检，崩溃恢复不受影响。 -->
+                      <div class="set-row" :title="t('settings.unresponsivePromptEnabledDesc')">
+                        <div>
+                          <p class="set-row-label">{{ t('settings.unresponsivePromptEnabled') }}</p>
+                          <p class="set-row-desc">
+                            {{ t('settings.unresponsivePromptEnabledDesc') }}
+                          </p>
+                        </div>
+                        <SettingSwitch
+                          :model-value="settings.unresponsivePromptEnabled"
+                          :label="t('settings.unresponsivePromptEnabled')"
+                          data-setting-unresponsive-prompt
+                          @update:model-value="(v) => settings.set('unresponsivePromptEnabled', v)"
+                        />
+                      </div>
                       <div class="set-row" :title="t('settings.historyHint')">
                         <div>
                           <p class="set-row-label">{{ t('settings.historyEnabled') }}</p>

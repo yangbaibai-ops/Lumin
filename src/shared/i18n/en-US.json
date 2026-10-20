@@ -375,6 +375,8 @@
     "spellcheckKeepOne": "Keep at least one language; turn the main switch off if you do not want spell check",
     "spellcheckZhLabel": "Chinese (Simplified)",
     "spellcheckZhNote": "Chinese checking uses Lumin's heuristic rules (repeated characters/words, punctuation, common confusions) — it is not a dictionary-based checker.",
+    "unresponsivePromptEnabled": "Page unresponsive prompt",
+    "unresponsivePromptEnabledDesc": "Show the Wait / Reload and recover dialog only when the window is visible and the page is actually frozen; minimized, hidden, or sleeping windows never prompt. Turning this off stops the check (crash recovery still runs).",
     "cardTypography": "Font & typography",
     "fontFamilyLabel": "Body font",
     "fontSansShort": "Sans",

@@ -97,6 +97,14 @@ export interface AppSettings {
    * 非中文项交给 Chromium，渲染层据「总开关 && 含中文」决定是否画中文波浪线。
    */
   spellcheckLanguages: string[]
+  /**
+   * 「页面无响应提示」总开关（默认开）。
+   *
+   * 关掉后主进程**不再巡检心跳、也不再弹「页面无响应」原生提示**；崩溃恢复
+   * （`render-process-gone` 后自动重载一次、崩溃提示）**不受影响** —— 用户要取消的
+   * 是"误报骚扰"，不是丢字保护。
+   */
+  unresponsivePromptEnabled: boolean
   /** 链接指向的文件/文件夹不存在时的处理策略（询问 / 总是创建 / 从不创建） */
   linkCreateMode: LinkCreateMode
   /** 启动时恢复上次会话（文档 + 光标 + 滚动位置）；关闭则每次启动都进欢迎页 */
@@ -967,6 +975,13 @@ export interface LuminAPI {
         lastFreezeMs?: number
       }
     }) => void
+    /**
+     * 页面隐藏（`document.visibilitychange`）⇒ 主进程暂停巡检与弹框。
+     * 窗口最小化/被遮挡时 Chromium 会停定时器，心跳停了不是卡死。
+     */
+    pause: () => void
+    /** 页面重新可见 ⇒ 主进程复位 lastBeat 后再恢复巡检（恢复瞬间绝不弹框） */
+    resume: () => void
     /** 重载前的草稿落盘回执（主进程最多等 1.2s，等不到就依赖自动草稿） */
     draftAck: () => void
     /** 本窗口的只读诊断快照（心跳次数/检测延迟/重载记录/崩溃记录） */
