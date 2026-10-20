@@ -76,6 +76,13 @@ const api: LuminAPI = {
     getAbout: () => ipcRenderer.invoke('app:getAbout'),
     // 诊断信息（纯文本，不含文档内容）与"打开日志目录"（不接受参数：固定打开我们自己的日志目录）
     getDiagnostics: () => ipcRenderer.invoke('app:getDiagnostics'),
+    // 「导出启动诊断」：主进程弹保存对话框并写文件（启动日志已脱敏）
+    exportStartupDiagnostics: () => ipcRenderer.invoke('app:exportStartupDiagnostics'),
+    /**
+     * 启动打点上报（单向）：只在启动阶段发几条，主进程写 `<userData>/logs/startup.log`。
+     * 载荷只有 stage 名与 performance mark 的毫秒数 —— 不包含文档内容或路径。
+     */
+    reportStartup: (payload) => ipcRenderer.send('startup:report', payload),
     openLogDir: () => ipcRenderer.invoke('app:openLogDir'),
     /**
      * 开发者工具（顶部工具栏那项）：F12 那条隐式入口已拆掉（见 main/index.ts 的显式快捷键表），

@@ -22,6 +22,7 @@ import * as session from './services/session'
 import * as openDocs from './services/openDocs'
 import * as pathGrants from './services/pathGrants'
 import * as appLog from './services/appLog'
+import * as startupLog from './services/startupLog'
 import * as taskbar from './services/taskbar'
 import * as workspaceIndex from './services/workspaceIndex'
 import * as workspaceReplace from './services/workspaceReplace'
@@ -387,7 +388,11 @@ export function registerIpc(slots: SlotRegistry): void {
         logs: [
           // 落点见 services/appLog.ts：`<userData>/logs/app.log`（打包态不再往 %TEMP% 写
           // cwd/appPath/argv，也没有"列在诊断里却从来不存在"的第二条日志 —— 审计 §4 P2 / §9 P1）
-          { label: 'app', path: appLog.logPath() }
+          { label: 'app', path: appLog.logPath() },
+          // 启动分段日志（本次新增）：用户报"启动慢"时优先看它
+          ...(startupLog.startupLogPath()
+            ? [{ label: 'startup', path: startupLog.startupLogPath() }]
+            : [])
         ],
         launchArgs: safeLaunchArgs(process.argv),
         settings,
@@ -402,6 +407,36 @@ export function registerIpc(slots: SlotRegistry): void {
    * 是同一个函数算出来的，见 services/appLog.ts）。
    */
   ipcMain.handle('app:openLogDir', () => shell.openPath(appLog.logDir()))
+  /**
+   * 「导出启动诊断」：把当前 `startup.log`（含轮转的上一代）+ 环境摘要另存成**一个文件**，
+   * 方便用户直接发回来。默认弹系统保存对话框（用户选路径）；自动化验收用
+   * `LUMIN_STARTUP_EXPORT_PATH` 指定落点，跳过对话框（仅本机环境变量，不接受渲染层传路径）。
+   *
+   * 日志内容本身已经脱敏（见 shared/startupLog.ts）：没有文档内容、没有完整个人路径。
+   */
+  ipcMain.handle('app:exportStartupDiagnostics', async (event) => {
+    try {
+      let target = process.env['LUMIN_STARTUP_EXPORT_PATH'] ?? ''
+      if (!target) {
+        const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)
+        const win = BrowserWindow.fromWebContents(event.sender)
+        const options = {
+          title: 'Export startup diagnostics',
+          defaultPath: path.join(app.getPath('downloads'), `lumin-startup-${stamp}.log`),
+          filters: [{ name: 'Log', extensions: ['log', 'txt'] }]
+        }
+        const picked = win
+          ? await dialog.showSaveDialog(win, options)
+          : await dialog.showSaveDialog(options)
+        if (picked.canceled || !picked.filePath) return { ok: false, canceled: true }
+        target = picked.filePath
+      }
+      const written = startupLog.writeStartupExport(target)
+      return written ? { ok: true, ...written } : { ok: false, error: 'WRITE_FAILED' }
+    } catch (err) {
+      return { ok: false, error: err instanceof Error ? err.message : String(err) }
+    }
+  })
   /**
    * 打开 / 关闭**本窗口**的开发者工具（顶部工具栏那项「打开开发者工具」）。
    *

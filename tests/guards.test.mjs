@@ -249,7 +249,10 @@ test('落盘：用户文档必须走 fileOps.writeFile（原子写），直接�
     'services/links.ts',
     'services/database.ts',
     'services/history.ts',
-    'services/taskbar.ts'
+    'services/taskbar.ts',
+    // 启动诊断导出：写的是**用户通过保存对话框选定的诊断文件**（`startup.log` + 环境摘要，
+    // 本身不含文档内容，也不是用户的 .md）；与 export.ts 同属"用户在对话框里选落点"的产物。
+    'services/startupLog.ts'
   ]
   const offenders = []
   const walk = (dir) => {

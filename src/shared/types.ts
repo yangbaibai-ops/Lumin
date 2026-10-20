@@ -652,6 +652,20 @@ export interface LuminAPI {
      * 设置快照 / 最近的错误标题。**不含文档内容，也不含最近打开的文件清单**。
      */
     getDiagnostics: () => Promise<string>
+    /**
+     * 「导出启动诊断」：把 `<userData>/logs/startup.log`（含轮转的上一代）与环境摘要
+     * 另存成一个文件。返回落点/行数/字节数，用户可把它发给开发者。
+     * 内容只含分段耗时与环境事实 —— 没有文档内容，也没有完整个人路径。
+     */
+    exportStartupDiagnostics: () => Promise<
+      | { ok: true; path: string; lines: number; bytes: number }
+      | { ok: false; canceled?: boolean; error?: string }
+    >
+    /**
+     * 渲染层启动打点上报（单向）：首屏可交互/壳出帧等时刻。
+     * 主进程只接受 stage 名与数字 marks（见 shared/startupLog 的清洗），不落任何文本。
+     */
+    reportStartup: (payload: { stage: string; marks?: Record<string, number> }) => void
     /** 打开日志目录（`%TEMP%`）：不接受参数，固定打开我们自己的目录 */
     openLogDir: () => Promise<string>
     /**

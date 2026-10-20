@@ -49,6 +49,28 @@ const mark = (stage: string): void => {
   performance.mark(`lumin:${stage}`)
 }
 
+/**
+ * 启动诊断上报（用户报「装完启动 5–6 秒」）：把渲染层的关键时刻发给主进程，
+ * 与主进程的分段一起落到 `<userData>/logs/startup.log`。
+ *
+ * 只发 stage 名与 `performance.mark` 的毫秒数 —— 不含文档内容/路径；主进程那边还会
+ * 再做一次清洗（见 shared/startupLog.ts）。任何失败都静默：诊断不能影响启动本身。
+ */
+function reportStartup(stage: string): void {
+  try {
+    const marks: Record<string, number> = {}
+    for (const entry of performance.getEntriesByType('mark')) {
+      const name = entry.name.replace(/^lumin:/, '')
+      if (name && name !== entry.name && Number.isFinite(entry.startTime)) {
+        marks[name] = Math.round(entry.startTime)
+      }
+    }
+    window.luminAPI.app.reportStartup({ stage, marks })
+  } catch {
+    /* 上报失败不影响启动 */
+  }
+}
+
 /** 入口脚本开始执行（模块图的模块级代码都跑完了、这里开始接手） */
 mark('entry-exec')
 
@@ -148,6 +170,7 @@ async function bootstrap(): Promise<void> {
   await nextTick()
   await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
   mark('shell')
+  reportStartup('shell')
 
   await router.isReady()
   mark('router-ready')
@@ -158,6 +181,7 @@ async function bootstrap(): Promise<void> {
   const files = useFilesStore(pinia)
   await files.init({ inheritWorkspace: !window.luminAPI.app.startupNoWorkspace })
   mark('files')
+  reportStartup('files')
 
   /**
    * 外部改动监测（第一百零八轮）：监听主进程推来的 `doc:externalChange`（目录监听 +
@@ -225,6 +249,13 @@ async function bootstrap(): Promise<void> {
   await nextTick()
   await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
   mark('doc-visible')
+  // 用户真正能把光标放进正文、开始打字的时刻（验收里的「首屏可交互」）
+  reportStartup('first-interactive')
+  // 首屏之后才拉工作区目录树（5000 文件实测 ~800ms，见 stores/files.ts 的说明）
+  files.loadRootWhenIdle()
 }
 
-void bootstrap()
+void bootstrap().catch(() => {
+  // 启动失败也要留一条（主进程据此看到"渲染层没到可交互"）；不吞掉后续排查信息
+  reportStartup('boot-failed')
+})

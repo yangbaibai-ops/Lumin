@@ -48,6 +48,7 @@ import {
 import { measureText, type TextMeasure } from '../../../shared/readingTime'
 // 「哪些扩展名是可打开的文本 / 哪一族是纯文本」的唯一真相源（第七轮：加类型只改那一处）
 import { isPlainTextName, saveDefaultName } from '../../../shared/textFiles'
+import { planStartupTreeLoad } from '../../../shared/startupLog'
 
 /**
  * 统计量的按内容缓存（见下方 getters 的说明）：一起算出「字数 / 行数 / 字符数」，
@@ -286,7 +287,15 @@ export const useFilesStore = defineStore('files', {
         options.inheritWorkspace === false ? null : await window.luminAPI.workspace.getRoot()
       if (this.root) {
         this.expanded.add(this.root)
-        await this.loadChildren(this.root)
+        /**
+         * 目录树的**首次扫描不在首屏路径上**（模拟慢环境实测：5000 个文件时
+         * `readDir` + IPC + 5000 行递归渲染 ≈ 800ms，窗口已出现但正文迟迟不来）。
+         * 这里只把工作区根落地（会话恢复/打开文件都要它）；扫描由 `main.ts` 在
+         * `first-interactive` **之后**调 `loadRootWhenIdle()` 排到空闲时段 ——
+         * 不能在这里排，否则空闲回调会抢在会话恢复的 IPC 前面把主线程占满
+         * （实测：first-interactive 仍然 1.5s）。判据是纯函数
+         * `planStartupTreeLoad`（单测 tests/startupLazy.test.mjs）。
+         */
       }
       // 外部软件增删/改名文件时，主进程 fs.watch 推送 workspace:changed，
       // 实时刷新根目录与所有已展开子目录；列表视图缓存一并失效
@@ -296,6 +305,27 @@ export const useFilesStore = defineStore('files', {
         for (const dir of dirs) void this.loadChildren(dir)
         useWorkspaceDocsStore().invalidate()
       })
+    },
+    /**
+     * 空闲时补拉工作区根目录（首屏之后再扫，见 init 的说明）。
+     * `timeout` 是兜底：持续有任务时 `requestIdleCallback` 可能永远不来，
+     * 800ms 内至少跑一次，避免侧栏长期空着。
+     */
+    loadRootWhenIdle(): void {
+      const root = this.root
+      if (!root) return
+      if (planStartupTreeLoad({ hasRoot: true, cached: !!this.dirCache[root] }) !== 'idle') return
+      const run = (): void => {
+        if (this.root !== root || this.dirCache[root]) return
+        void this.loadChildren(root)
+      }
+      const ric = (
+        window as unknown as {
+          requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => number
+        }
+      ).requestIdleCallback
+      if (ric) ric(run, { timeout: 800 })
+      else setTimeout(run, 120)
     },
     async openFolder(): Promise<void> {
       const dir = await window.luminAPI.file.chooseFolder()

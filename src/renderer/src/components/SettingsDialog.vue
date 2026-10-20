@@ -549,6 +549,27 @@ function openLogDir(): void {
   void window.luminAPI.app.openLogDir()
 }
 
+/**
+ * 导出启动诊断（用户报「装完启动 5–6 秒」）：把主进程的 `startup.log` + 环境摘要
+ * 另存成一个文件。日志只含分段耗时/数量/脱敏路径，**不含文档内容**。
+ * 自动化验收用 `LUMIN_STARTUP_EXPORT_PATH` 跳过保存对话框（见 main/ipc.ts）。
+ */
+async function exportStartupDiagnostics(): Promise<void> {
+  try {
+    const result = await window.luminAPI.app.exportStartupDiagnostics()
+    if (result.ok) {
+      ui.toast(
+        t('settings.startupDiagnosticsSaved', { path: result.path, lines: result.lines }),
+        'success'
+      )
+    } else if (!result.canceled) {
+      ui.toast(t('settings.startupDiagnosticsFailed'), 'error')
+    }
+  } catch {
+    ui.toast(t('settings.startupDiagnosticsFailed'), 'error')
+  }
+}
+
 // ─── 数据库维护（审计 §2 P1：全仓无 VACUUM / integrity_check / 重建索引入口）──
 // 三条都只在用户点击时跑：`VACUUM` 会重建整个库（耗时与库大小成正比），
 // 重建索引会重写全部 FTS 行 —— 放在启动路径上等于每次开窗都做一遍。
@@ -1331,6 +1352,13 @@ function formatTime(ms: number): string {
                         @click="copyDiagnostics()"
                       >
                         {{ t('settings.copyDiagnostics') }}
+                      </button>
+                      <button
+                        class="rounded-lg border border-edge px-3 py-1.5 text-ui text-ink-2 transition-colors hover:border-edge-strong hover:text-ink"
+                        data-settings-export-startup
+                        @click="exportStartupDiagnostics()"
+                      >
+                        {{ t('settings.exportStartupDiagnostics') }}
                       </button>
                       <button
                         class="rounded-lg border border-edge px-3 py-1.5 text-ui text-ink-2 transition-colors hover:border-edge-strong hover:text-ink"

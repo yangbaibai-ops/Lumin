@@ -184,8 +184,23 @@ class LuminDatabase {
   private ftsTimer: NodeJS.Timeout | null = null
   /** 库文件路径（VACUUM 前后要比字节数，见 fileSizeBytes） */
   readonly path: string
+  /**
+   * 开库成本（启动诊断用）：打开 / 迁移 / FTS 对账各自耗时，外加迁移前后版本与对账条数。
+   * 量的是**真实发生在这台机器上**的那一段 —— 用户报"启动慢"时，先看它是不是库的锅。
+   */
+  readonly openStats: {
+    openMs: number
+    migrationMs: number
+    ftsReconcileMs: number
+    migrationsFrom: number
+    migrationsTo: number
+    migrated: boolean
+    ftsMissing: number
+    ftsOrphans: number
+  }
 
   constructor(dbPath?: string) {
+    const tOpen = performance.now()
     /**
      * 库文件路径：**显式传入优先**（测试与组合根），否则问 electron 的 userData。
      *
@@ -210,9 +225,12 @@ class LuminDatabase {
      * 3 秒是"足够等一次 checkpoint 完成、又不至于让界面觉得卡住"的折中。
      */
     this.db.exec('PRAGMA busy_timeout = 3000')
+    const openMs = performance.now() - tOpen
     // 建表 / 加列 / 索引 / 一次性数据迁移全部在 services/migrations.ts 里按**版本**跑
     // （自查报告 S4；那边不 import electron，所以能用单测直接建临时库验）
+    const tMigrate = performance.now()
     const migrated = runMigrations(this.db)
+    const migrationMs = performance.now() - tMigrate
     if (migrated.ran.length) {
       // 主进程 console 输出一律 ASCII（见 tests/mainConsoleAscii.test.mjs）
       console.log(`[db] schema migration: v${migrated.from} -> v${migrated.to}`)
@@ -222,14 +240,29 @@ class LuminDatabase {
      * 有行、documents_fts 没有行"的空洞 —— 表现是搜不到刚保存过的内容，且永远不会自愈。
      * 开库后跑一次：补缺失、删孤儿（判据与理由见 reconcileFts）。
      */
+    const tFts = performance.now()
+    let ftsMissing = 0
+    let ftsOrphans = 0
     try {
       const rec = this.reconcileFts()
+      ftsMissing = rec.missing
+      ftsOrphans = rec.orphans
       if (rec.missing || rec.orphans) {
         console.log(`[db] fts reconcile: +${rec.missing} -${rec.orphans}`)
       }
     } catch (err) {
       // 对账失败不该拦住启动：搜索可能会少几条，但库本身是好的
       console.log(`[db] fts reconcile failed: ${err instanceof Error ? err.message : String(err)}`)
+    }
+    this.openStats = {
+      openMs,
+      migrationMs,
+      ftsReconcileMs: performance.now() - tFts,
+      migrationsFrom: migrated.from,
+      migrationsTo: migrated.to,
+      migrated: migrated.ran.length > 0,
+      ftsMissing,
+      ftsOrphans
     }
   }
 
