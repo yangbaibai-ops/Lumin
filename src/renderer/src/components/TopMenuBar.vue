@@ -27,6 +27,8 @@ import { EOL_OPTIONS } from '../../../shared/eol'
 // 导出格式的唯一清单（应用内菜单的二级项从它派生）
 import { EXPORT_FORMATS } from '../../../shared/exportFormats'
 import { placeSubmenuX } from '../lib/menuPlacement'
+// 「导出启动诊断」的唯一实现（设置页/状态栏/帮助菜单共用）
+import { exportStartupDiagnostics } from '../lib/startupDiagnostics'
 import RecentList from './RecentList.vue'
 import Icon from './Icon.vue'
 
@@ -682,6 +684,14 @@ const GROUPS = computed<Group[]>(() => [
       },
       { labelKey: 'menu.about', icon: 'info', run: () => router.push('/about') },
       { labelKey: 'menu.checkUpdate', icon: 'refresh', run: checkForUpdate },
+      // 「导出启动诊断」：用户报「启动慢/闪退」时，一键把脱敏的 startup.log（最近 5 次）
+      // 与环境摘要写成一份文件发给开发者。实现与设置页那颗按钮**共用同一份**
+      // （lib/startupDiagnostics.ts），不在这里另写 toast/失败处理。
+      {
+        labelKey: 'menu.exportStartupDiagnostics',
+        icon: 'download',
+        run: () => void exportStartupDiagnostics()
+      },
       // 与上面几条（设置 / 快捷键 / 文档 / 关于 / 更新）之间画一条分隔线：
       // 下面是**开发者向**的入口
       'sep',

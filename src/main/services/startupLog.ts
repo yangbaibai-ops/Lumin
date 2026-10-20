@@ -106,7 +106,8 @@ function collectEnvironment(): StartupExportEnvironment {
 }
 
 /**
- * 轮转（写前判）：`startup.log` → `.1` → `.2`，最老的删掉。最多 3 份。
+ * 轮转（写前判）：`startup.log` → `.1` → … → `.4`，最老的删掉。最多 5 份
+ * （保留最近 5 次启动，便于对比「第一次慢、第二次快」）。
  * 任何一步失败都继续（宁可多写一点，也不要因为轮转失败把诊断能力整个关掉）。
  */
 function rotateIfNeeded(): void {

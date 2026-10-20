@@ -134,6 +134,7 @@
     "keymap": "快捷键一览",
     "docs": "使用文档",
     "checkUpdate": "检查更新",
+    "exportStartupDiagnostics": "导出启动诊断",
     "updateUnavailable": "当前版本未配置更新渠道（开发态），无法检查更新"
   },
   "fileTree": {
@@ -510,7 +511,10 @@
     "platform": "平台",
     "stackCount": "共 {n} 项",
     "licenses": "开源许可",
-    "licensesHint": "点击展开第三方许可声明（由 npm run notices 生成）"
+    "licensesHint": "点击展开第三方许可声明（由 npm run notices 生成）",
+    "logs": "诊断日志",
+    "logsHint": "反馈启动慢/闪退时，先把这份日志导出后发给我们（已脱敏，不含文档内容）",
+    "logPath": "启动日志路径"
   },
   "toast": {
     "unsupportedFile": "仅支持打开 Markdown 文件",

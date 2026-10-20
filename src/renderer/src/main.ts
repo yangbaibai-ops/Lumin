@@ -10,6 +10,7 @@ import { useFilesStore } from './stores/files'
 import { useUiStore } from './stores/ui'
 import { useNotificationsStore } from './stores/notifications'
 import { applySessionPosition, installSessionTracking, restoreSession } from './lib/session'
+import { ensureSessionSlot } from './lib/sessionSlot'
 import { isInside, installOpenDocTracking } from './lib/openFile'
 import { initExternalWatch } from './lib/externalWatch'
 import { installDragGuard, installNonDraggableDom } from './lib/dragGuard'
@@ -172,6 +173,14 @@ async function bootstrap(): Promise<void> {
   mark('shell')
   reportStartup('shell')
 
+  /**
+   * 启动窗口的会话槽位是**延迟分配**的（主进程窗口先出、库后开，见 lib/sessionSlot.ts）。
+   * 在这里先认领：它是一次 IPC（主进程可能还要算恢复计划 + 读 session kv），
+   * 正好与下面 `router.isReady()` 等 EditorView 大 chunk 的时间**重叠**，
+   * 不占首屏路径；之后的草稿键 / 会话恢复 / 会话跟踪都用它。
+   */
+  await ensureSessionSlot()
+
   await router.isReady()
   mark('router-ready')
 
@@ -179,6 +188,7 @@ async function bootstrap(): Promise<void> {
   // 会话恢复（否则并发 setRoot 会互相覆盖），所以这里保持顺序等待。
   // 「新建窗口」是干净窗口：不继承当前工作区（工作区根在 kv 里是全局的）。
   const files = useFilesStore(pinia)
+  // 槽位已在上面的「壳出帧之后、路由就绪之前」认领过（幂等）；这里不再重复等待。
   await files.init({ inheritWorkspace: !window.luminAPI.app.startupNoWorkspace })
   mark('files')
   reportStartup('files')

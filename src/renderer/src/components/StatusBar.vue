@@ -12,6 +12,7 @@ import { eolLabel } from '../../../shared/eol'
 import { formatTagsInput, parseTagsInput } from '../lib/tags'
 import { wordGoalProgress } from '../../../shared/readingTime'
 import { toggleSpellcheckLanguage, ZH_SPELLCHECK_LANGUAGE } from '../../../shared/spellcheck'
+import { exportStartupDiagnostics } from '../lib/startupDiagnostics'
 import Icon from './Icon.vue'
 import type { Language, ThemeMode } from '../../../shared/types'
 
@@ -146,6 +147,28 @@ function toggleMenu(): void {
   menuOpen.value = true
   // 打开即把焦点给第一项：键盘用户按 Enter 打开后可以直接上下选（鼠标用户也符合平台惯例）
   void nextTick(() => menuItems()[0]?.focus())
+  // 日志路径按需取（打开菜单时才 IPC，不占启动路径）
+  void loadLogPaths()
+}
+
+/**
+ * 日志路径（状态栏「更多」菜单里展示）：用户报「启动慢/闪退」时，界面上直接能看到
+ * `startup.log` 在哪、该发哪个文件。主进程算好路径返回，渲染层不拼路径。
+ */
+const logPaths = ref<{ dir: string; app: string; startup: string } | null>(null)
+async function loadLogPaths(): Promise<void> {
+  if (logPaths.value) return
+  try {
+    logPaths.value = await window.luminAPI.app.getLogPaths()
+  } catch {
+    /* 诊断信息拿不到不影响使用 */
+  }
+}
+
+/** 「导出启动诊断」（与设置页/帮助菜单共用同一份实现，见 lib/startupDiagnostics.ts） */
+function exportDiagnosticsFromMenu(): void {
+  menuOpen.value = false
+  void exportStartupDiagnostics()
 }
 
 /**
@@ -549,6 +572,25 @@ const themes: { mode: ThemeMode; icon: string; labelKey: string }[] = [
             <Icon name="info" :size="12" />
             {{ t('menu.about') }}
           </button>
+          <div class="my-1 border-t border-edge" />
+          <!-- 启动诊断：入口与设置页/帮助菜单同一份实现；下面一行是日志路径（脱敏后展示） -->
+          <button
+            class="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-ui-sm text-ink-2b transition-colors hover:bg-panel-2 hover:text-ink-2"
+            role="menuitem"
+            data-more-export-startup
+            @click="exportDiagnosticsFromMenu"
+          >
+            <Icon name="download" :size="12" />
+            {{ t('menu.exportStartupDiagnostics') }}
+          </button>
+          <p
+            v-if="logPaths?.startup"
+            class="max-w-64 break-all px-2.5 pb-1 text-ui-sm leading-snug text-ink-3/70"
+            data-more-startup-log-path
+            :title="logPaths.startup"
+          >
+            {{ logPaths.startup }}
+          </p>
         </div>
       </Transition>
     </div>

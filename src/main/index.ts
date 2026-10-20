@@ -41,7 +41,8 @@ import * as freezeGuard from './services/freezeGuard'
 import { isServableMedia } from './fileOps'
 import * as links from './services/links'
 import { migrateLegacyStores } from './store'
-import { db } from './services/database'
+import { db, databaseReady, ensureDatabase } from './services/database'
+import { readSettings, syncNativeTheme } from './services/appSettings'
 import * as session from './services/session'
 import * as openDocs from './services/openDocs'
 // 打印预览作业：退出时清掉它的临时目录（开预览本身走 ipc.ts 的 print:preview）
@@ -161,12 +162,23 @@ const uidOfWindow = new Map<number, string>()
  * Ctrl+N / 新建窗口是用户明确要一篇空白，不该被上一次没保存的内容打断。
  */
 let startupWindowId: number | null = null
+/**
+ * 「库就绪」入口在 whenReady 里赋值：模块级的第二实例 / open-file / activate 处理也要等它。
+ * 为什么不在模块级直接 import ensureDatabase：这里需要的是**带历史迁移与打点**的那一个。
+ */
+let whenReadyEnsureDb: (() => Promise<void>) | null = null
+/** 等库就绪（若 whenReady 还没跑到就立即继续 —— 此时也还没有窗口，走不到读库的分支） */
+function readyForDb(): Promise<void> {
+  return whenReadyEnsureDb ? whenReadyEnsureDb() : Promise.resolve()
+}
 app.on('before-quit', () => {
   session.markQuitting()
   beginShutdown('before-quit')
-  // 退出前把排队的全文索引落盘（索引是节流的，见 services/database.ts 的 scheduleFtsIndex）
+  // 退出前把排队的全文索引落盘（索引是节流的，见 services/database.ts 的 scheduleFtsIndex）。
+  // ⚠️ 只在库**已经开过**时做：启动懒等待之后，用户完全可能在库还没打开时就退出
+  // （秒开秒关），此时 `db.flushFtsIndex()` 会当场同步开库 —— 退出路径不该再付这笔钱。
   try {
-    db.flushFtsIndex()
+    if (databaseReady()) db.flushFtsIndex()
   } catch {
     /* 退出路径上的失败不该拦住退出 */
   }
@@ -249,6 +261,18 @@ interface WindowOpenOptions {
   noWorkspace?: boolean
   /** 会话槽位（渲染进程据此读写自己的会话；主进程负责单窗关闭时清空） */
   sessionSlot?: number
+  /**
+   * 「启动窗口」：槽位**延迟分配**（窗口先出、库后开）。带它时：
+   *   * 不读 kv 里的 windowState（库还没开）—— 位置/主题由 applyWindowSeed 在 show 前补；
+   *   * 不写 `--lumin-session-slot`，改写 `--lumin-startup-head=1`，渲染层认领后才知道槽位
+   *     （见 ipc.ts 的 `app:claimStartupSlot` 与 renderer lib/sessionSlot.ts）。
+   */
+  restoreHead?: boolean
+  /**
+   * 兜底显示窗口的时限（ms，仅首窗用）：慢盘上渲染层可能迟迟画不完，到点先把
+   * 已上好背景色的空窗口显示出来 —— 「窗口先出」是用户可感知的第一指标。
+   */
+  earlyShowMs?: number
 }
 
 /**
@@ -257,7 +281,7 @@ interface WindowOpenOptions {
  * 参与会话恢复。首个窗口恢复上次的位置/大小，后续窗口基于最近窗口级联偏移。
  */
 function createWindow(options: WindowOpenOptions = {}): BrowserWindow {
-  const { openFile, openFolder, noWorkspace, sessionSlot } = options
+  const { openFile, openFolder, noWorkspace, sessionSlot, restoreHead, earlyShowMs } = options
   // 启动参数里带的文件 / 文件夹是**主进程自己解析出来的**，天然可信 → 登记为授权路径
   // （否则"双击一个工作区外的 .md"会在 file:read 的授权闸上被拦掉）
   pathGrants.grantStartup(openFile, openFolder)
@@ -271,8 +295,10 @@ function createWindow(options: WindowOpenOptions = {}): BrowserWindow {
   let height = 860
   let restoreMaximized = false
 
-  if (isFirst) {
-    const state = db.kvGet<WindowState | null>('windowState', null)
+  if (isFirst && !restoreHead) {
+    // 启动窗口之外的「首窗」路径（第二实例/open-file/activate 抢在库就绪之前）：
+    // 库没开就先用默认位置，绝不在这里同步开库（见 whenReady 的启动顺序说明）。
+    const state = databaseReady() ? db.kvGet<WindowState | null>('windowState', null) : null
     // 尺寸与位置的判据都在 canRestoreWindow 里（含"小于最小窗口不采用"）
     if (state && validWindowBounds(state)) {
       x = state.x
@@ -281,7 +307,7 @@ function createWindow(options: WindowOpenOptions = {}): BrowserWindow {
       height = state.height
       restoreMaximized = state.isMaximized
     }
-  } else {
+  } else if (!isFirst) {
     const ref = BrowserWindow.getFocusedWindow() ?? existing[existing.length - 1]
     if (ref) {
       const rb = ref.getBounds()
@@ -303,7 +329,12 @@ function createWindow(options: WindowOpenOptions = {}): BrowserWindow {
     ...(y !== undefined ? { y } : {}),
     show: false,
     autoHideMenuBar: false,
-    backgroundColor: themeBackground(),
+    // 启动窗口不读库（库还没开）：先用**出厂主题**的纸色，库就绪后 applyWindowSeed
+    // 会在 show 之前把它换成持久化主题的纸色。其它窗口此时库已就绪，照旧读设置。
+    backgroundColor:
+      restoreHead || !databaseReady()
+        ? paperForTheme(defaultSettings.theme, nativeTheme.shouldUseDarkColors)
+        : themeBackground(),
     title: 'Lumin',
     // 窗口图标 = 任务栏按钮图标。
     // **打包态不传**：图标已经嵌进 Lumin.exe（win.icon），Windows 自己会取 —— 这是
@@ -325,6 +356,8 @@ function createWindow(options: WindowOpenOptions = {}): BrowserWindow {
         ...(openFolder ? [`--lumin-open-folder=${encodeURIComponent(openFolder)}`] : []),
         ...(noWorkspace ? ['--lumin-no-workspace=1'] : []),
         ...(sessionSlot !== undefined ? [`--lumin-session-slot=${sessionSlot}`] : []),
+        // 启动窗口的槽位是延迟分配的（见 WindowOpenOptions.restoreHead / lib/sessionSlot.ts）
+        ...(restoreHead ? ['--lumin-startup-head=1'] : []),
         `--lumin-window-uid=${windowUid}`
       ]
     }
@@ -380,7 +413,9 @@ function createWindow(options: WindowOpenOptions = {}): BrowserWindow {
       }
     })
   }
-  // 窗口作用域：通知等「属于某个窗口」的数据按它隔离（见 services/windowScope）
+  // 窗口作用域：通知等「属于某个窗口」的数据按它隔离（见 services/windowScope）。
+  // 启动窗口此时还没有槽位：先给一个随机作用域，认领槽位时再重新绑定（见 index.ts 的
+  // claimStartupSlot）。这样「通知不可能串台」的底线在整个启动过程中都成立。
   bindWindowScope(mainWindow, sessionSlot)
   // 「哪个窗口开着哪个文档」注册表：窗口关闭即清账，不留已销毁窗口的条目
   mainWindow.on('closed', () => openDocs.forgetWindow(mainWindow.id))
@@ -423,10 +458,36 @@ function createWindow(options: WindowOpenOptions = {}): BrowserWindow {
     })
   }
 
-  mainWindow.on('ready-to-show', () => {
+  /**
+   * 显示窗口（只做一次）。
+   *
+   * 为什么除了 `ready-to-show` 还有一条 `timeout`：慢盘/杀软把渲染层拖慢时，
+   * `ready-to-show` 可能几百毫秒都不来，而用户对「点了图标有没有反应」的容忍度很低。
+   * 首窗带一个 150ms 兜底：到点先把**已经上好纸色背景**的窗口显示出来，
+   * 内容随后继续加载 —— 首屏可交互仍然按 `renderer-first-interactive` 单独计。
+   */
+  let revealed = false
+  let earlyShowTimer: NodeJS.Timeout | null = null
+  const reveal = (reason: 'ready-to-show' | 'timeout'): void => {
+    if (revealed || mainWindow.isDestroyed()) return
+    revealed = true
+    if (earlyShowTimer) {
+      clearTimeout(earlyShowTimer)
+      earlyShowTimer = null
+    }
     mainWindow.show()
     startup('window-shown')
-    startupMark('window-shown', { first: isFirst })
+    startupMark('window-shown', { first: isFirst, reason })
+  }
+  mainWindow.on('ready-to-show', () => reveal('ready-to-show'))
+  if (earlyShowMs && earlyShowMs > 0) {
+    earlyShowTimer = setTimeout(() => reveal('timeout'), earlyShowMs)
+  }
+  mainWindow.on('closed', () => {
+    if (earlyShowTimer) {
+      clearTimeout(earlyShowTimer)
+      earlyShowTimer = null
+    }
   })
 
   // 外部链接交给系统浏览器 —— 一律先过 `safeExternalUrl` 的 scheme 白名单
@@ -546,37 +607,185 @@ function startup(label: string): void {
 app.whenReady().then(() => {
   startup('app-ready')
   startupMark('app-ready')
-  // 历史版本 electron-store 数据一次性迁入 SQLite kv（kv 已有数据时跳过）
-  const tMigrateLegacy = performance.now()
-  migrateLegacyStores()
-  // 数据库打开/迁移/schema 就绪：`[db] schema migration` 那行日志背后的实际耗时
-  startup('db-ready')
-  const openStats = db.openStats
-  startupMark('db-ready', {
-    // 只记耗时/条数/版本，不记库路径（userData 已在 environment 里脱敏）
-    migrateLegacyMs: Math.round(performance.now() - tMigrateLegacy),
-    dbOpenMs: Math.round(openStats.openMs),
-    dbMigrationMs: Math.round(openStats.migrationMs),
-    dbFtsReconcileMs: Math.round(openStats.ftsReconcileMs),
-    dbMigrationsFrom: openStats.migrationsFrom,
-    dbMigrationsTo: openStats.migrationsTo,
-    dbMigrated: openStats.migrated,
-    dbFtsMissing: openStats.ftsMissing,
-    dbFtsOrphans: openStats.ftsOrphans,
-    dbSizeMb: (() => {
-      try {
-        return Math.round((statSync(db.path).size / (1024 * 1024)) * 10) / 10
-      } catch {
-        return null
+
+  /**
+   * 启动参数解析（纯字符串，不碰库）：越早越好 —— 首窗要按它决定打开哪篇文档/哪个目录。
+   * 落一行日志也是「静默失败」重灾区（关联双击没反应之类）的唯一证据，见 services/buildStamp。
+   */
+  const cwd = process.cwd()
+  const appPath = app.getAppPath()
+  const intent = parseLaunchIntent(process.argv, { appPath, cwd })
+  recordLaunchIntent({ argv: process.argv, intent, ignored: intent.ignored, cwd, appPath })
+  startupMark('launch-intent')
+
+  /**
+   * ─── 启动顺序（本轮：窗口先出、库与跳转列表后置）──────────────────────────────
+   *
+   * 用户报障：Typora 打开 <1s，Lumin 5–6s；本机冷启 524ms —— 差距是机器相关的
+   * （慢盘/漫游 profile/Defender/大工作区/库迁移）。旧顺序把**所有东西**都压在
+   * 「建窗口」之前：开库 + electron-store 迁移（本机 ~58ms）→ 拼写检查 → IPC →
+   * 读设置 → 跳转列表（写 .lnk，慢盘上可能是秒级）→ 会话恢复计划 → 才建窗口。
+   *
+   * 新顺序：
+   *   ① 解析启动参数（纯字符串）→ **立刻建窗口**（位置/主题先用默认值，show 前补）；
+   *   ② 窗口建好之后再并行开库（`ensureDatabase` 让到下一轮事件循环）：
+   *      渲染层加载 JS/CSS 的同时，主进程把库打开、迁移、FTS 对账做完；
+   *   ③ 库就绪后、窗口显示前：把持久化的**主题与窗口位置**补上（用户看不到跳变）；
+   *   ④ 拼写检查 / 最近列表 / 跳转列表：**首屏可交互之后**的空闲时段（startup:report）；
+   *   ⑤ 会话恢复计划：渲染层**认领槽位时**才算（`app:claimStartupSlot`），此时首屏已出；
+   *   ⑥ 其余窗口仍在首窗加载完之后错峰创建。
+   *
+   * 依赖库的每一处（IPC handler、窗口槽位认领、首屏后任务）都 `await ensureDb()` ——
+   * 库只会打开一次，且 UI 永远不会被同步开库卡住。
+   */
+  let dbReadyPromise: Promise<void> | null = null
+  /** 唯一的「库就绪」入口：打开 + 历史 electron-store 迁移 + db-ready 打点 */
+  const ensureDb = (): Promise<void> => {
+    if (!dbReadyPromise) {
+      dbReadyPromise = (async () => {
+        const t = performance.now()
+        startupMark('db-open-start', { deferred: true })
+        await ensureDatabase()
+        // 历史版本 electron-store 数据一次性迁入 SQLite kv（kv 已有数据时跳过）。
+        // 必须早于任何设置读取：否则 readSettings 会先把默认值写进 kv，旧设置再也迁不进来。
+        const tLegacy = performance.now()
+        migrateLegacyStores()
+        const legacyMs = Math.round(performance.now() - tLegacy)
+        startup('db-ready')
+        const openStats = db.openStats
+        startupMark('db-ready', {
+          // 只记耗时/条数/版本，不记库路径（userData 已在 environment 里脱敏）
+          migrateLegacyMs: legacyMs,
+          dbOpenMs: Math.round(openStats.openMs),
+          dbMigrationMs: Math.round(openStats.migrationMs),
+          dbFtsReconcileMs: Math.round(openStats.ftsReconcileMs),
+          dbMigrationsFrom: openStats.migrationsFrom,
+          dbMigrationsTo: openStats.migrationsTo,
+          dbMigrated: openStats.migrated,
+          dbFtsMissing: openStats.ftsMissing,
+          dbFtsOrphans: openStats.ftsOrphans,
+          dbSizeMb: (() => {
+            try {
+              return Math.round((statSync(db.path).size / (1024 * 1024)) * 10) / 10
+            } catch {
+              return null
+            }
+          })()
+        })
+        startupMark('db-open-end', {
+          durationMs: Math.round(performance.now() - t),
+          legacyMs
+        })
+      })()
+    }
+    return dbReadyPromise
+  }
+  // 模块级的「第二实例 / open-file / activate」也要能等到库就绪（见 readyForDb）
+  whenReadyEnsureDb = ensureDb
+
+  /** 把持久化的主题/窗口位置补到**还没显示**的窗口上（show 之前完成 ⇒ 用户看不到跳变） */
+  const applyWindowSeed = (win: BrowserWindow): void => {
+    const t = performance.now()
+    startupMark('window-seed-start')
+    try {
+      if (win.isDestroyed()) return
+      const settings = readSettings()
+      syncNativeTheme(settings.theme)
+      const visible = win.isVisible()
+      if (!visible) win.setBackgroundColor(themeBackground())
+      const state = db.kvGet<WindowState | null>('windowState', null)
+      const restorable = !visible && !!state && validWindowBounds(state)
+      if (restorable && state) {
+        win.setBounds({ x: state.x, y: state.y, width: state.width, height: state.height })
+        if (state.isMaximized) win.maximize()
       }
-    })()
-  })
-  // 拼写检查：把持久化的开关与语言落到 session。必须在建窗之前（首帧正文就要按它对）；
-  // 语言清单只取 availableSpellCheckerLanguages，不写死（见 services/spellcheck.ts）。
-  const tSpell = performance.now()
-  spellcheck.initializeSpellcheck()
-  startup('spellcheck-ready')
-  startupMark('spellcheck-ready', { ms: Math.round(performance.now() - tSpell) })
+      startupMark('window-seed-end', {
+        applied: restorable,
+        alreadyVisible: visible,
+        maximized: !!(restorable && state?.isMaximized),
+        durationMs: Math.round(performance.now() - t)
+      })
+    } catch (err) {
+      startupMark('window-seed-end', {
+        applied: false,
+        error: err instanceof Error ? err.name : 'unknown',
+        durationMs: Math.round(performance.now() - t)
+      })
+    }
+  }
+
+  /**
+   * 会话恢复计划（延迟计算）：渲染层认领槽位时 / 首窗加载完时才算。
+   * 「在新窗口打开文件/文件夹」的意图优先于会话槽位；设置里关了 restoreSession 时一律单窗口。
+   */
+  let planPromise: Promise<ReturnType<typeof session.planRestore>> | null = null
+  const ensureRestorePlan = (): Promise<ReturnType<typeof session.planRestore>> => {
+    if (!planPromise) {
+      planPromise = (async () => {
+        await ensureDb()
+        startupMark('session-plan-start')
+        const t = performance.now()
+        const settings = readSettings()
+        const wantRestore = settings.restoreSession !== false
+        // macOS：open-file 可能在 ready 之前到达（Finder 双击）。合并进本次启动的意图，
+        // 这样首个窗口就直接打开它，而不是先开一个空窗口再补一个。
+        if (pendingOpenPaths.length) {
+          const merged = intentFromPaths(pendingOpenPaths.splice(0))
+          intent.openFile ??= merged.openFile
+          intent.openFolder ??= merged.openFolder
+        }
+        // 明确要求打开某篇文档 / 某个目录时（跳转列表的「最近打开」、双击文件、拖文件夹给应用），
+        // 意图很清楚：就打开它。此时不拉会话恢复；槽位数据仍留在 kv 里，下次正常启动照旧恢复。
+        const explicitOpen = !!(intent.openFile || intent.openFolder)
+        const plan = wantRestore && !explicitOpen ? session.planRestore() : []
+        if (!wantRestore) session.resetSession()
+        startupMark('session-plan', {
+          wantRestore,
+          explicitOpen,
+          // 恢复的窗口/文档数（**只记数量**，路径不落盘）
+          restoredWindows: plan.length,
+          restoredDocs: plan.filter((w) => !!w.slot.path).length,
+          restoredWithFolder: plan.filter((w) => !!w.slot.folder).length,
+          workspaceTop: topLevelName(plan.find((w) => !!w.slot.folder)?.slot.folder ?? ''),
+          restoreClosedSlot: plan.some((w) => !!w.slot.closed),
+          deferred: true
+        })
+        startupMark('session-plan-end', {
+          windows: plan.length,
+          durationMs: Math.round(performance.now() - t)
+        })
+        return plan
+      })()
+    }
+    return planPromise
+  }
+
+  /** 启动窗口（本次运行唯一能认领「无主草稿」的窗口）：首窗，槽位延迟分配 */
+  let startupWin: BrowserWindow | null = null
+  let startupSlot: number | null = null
+  let startupSlotClaimed = false
+  const claimStartupSlot = async (windowId: number): Promise<number | null> => {
+    if (!startupWin || startupWin.isDestroyed() || windowId !== startupWin.id) return null
+    if (startupSlotClaimed) return startupSlot
+    const plan = await ensureRestorePlan()
+    // 恢复计划的第一项就是「最近用过的那个窗口」（见 services/session 的排序）
+    const slot = plan[0]?.index ?? claimFreshSlot()
+    startupSlot = slot
+    startupSlotClaimed = true
+    slotOfWindow.set(windowId, slot)
+    startupWin.on('closed', () => {
+      slotOfWindow.delete(windowId)
+      if (!session.isQuitting()) {
+        session.markSlotClosed(slot)
+        db.deleteNotificationsByScope(scopeOfSlot(slot))
+      }
+    })
+    // 认领后重绑窗口作用域：认领前用的是随机作用域（启动期间的通知不会串台）
+    bindWindowScope(startupWin, slot)
+    startupMark('startup-slot-claimed', { slot, restored: plan.length > 0 })
+    return slot
+  }
+
   // 开发/测试专用：把 LUMIN_TRUSTED_PATHS 里的目录加进路径授权表（打包态忽略，见 pathGrants 的说明）
   const tGrants = performance.now()
   const trusted = pathGrants.grantTrustedPathsFromEnv(is.dev, process.env.LUMIN_TRUSTED_PATHS)
@@ -591,9 +800,8 @@ app.whenReady().then(() => {
   // 清掉写盘临时文件残留与"有磁盘正本、且 30 天没动过"的 file-* 草稿。
   // 不 await：它只碰我们自己的草稿目录，不该拖慢首屏；失败也不影响启动。
   void gcDrafts().catch(() => {})
-  // 顺序要点：IPC 必须在任何窗口加载之前注册（渲染层启动就会发 IPC）；
-  // 原生菜单不影响首屏，放到窗口创建之后再装。
-  // 注入「窗口 ↔ 槽位」归属：草稿认领要看「还有哪些窗口活着」，那份状态只有这里持有。
+  // IPC 必须在任何窗口加载之前注册（渲染层启动就会发 IPC）；每个 handler 注册期都套了
+  // 「先等库就绪」的包装（见 ipc.ts 的 registerIpc）。
   const tIpc = performance.now()
   registerIpc({
     slotOf: (windowId) => slotOfWindow.get(windowId) ?? null,
@@ -605,7 +813,9 @@ app.whenReady().then(() => {
     slotRestored: (slot) => session.isRestoredSlot(slot),
     uidOf: (windowId) => uidOfWindow.get(windowId) ?? null,
     liveUids: () => [...new Set(uidOfWindow.values())],
-    mayClaimUntitledDraft: (windowId) => windowId === startupWindowId
+    mayClaimUntitledDraft: (windowId) => windowId === startupWindowId,
+    ensureDb,
+    claimStartupSlot
   })
   startup('ipc-registered')
   startupMark('ipc-registered', { ms: Math.round(performance.now() - tIpc) })
@@ -613,8 +823,85 @@ app.whenReady().then(() => {
   /**
    * 启动诊断上报：渲染层在「壳出帧 / 路由就绪 / 首屏可交互」时发来一条。
    * 只收 stage 名与数字 marks（见 shared/startupLog 的清洗），不接受任何文本。
+   * **首屏可交互之后**才跑拼写检查/最近列表/跳转列表 —— 这些都不该压首屏。
    */
-  ipcMain.on('startup:report', (_event, payload) => recordRendererStartup(payload))
+  /**
+   * 自动更新：**首屏可交互之后**再初始化（启动性能，实测见 services/updater.ts）。
+   *
+   * 两个理由：
+   *  1. `import('electron-updater')` 实测 ≈52ms（模块图解析 + 求值），默认又不检查更新，
+   *     这笔钱不该出现在首屏路径上；
+   *  2. 更新检查会联网、会读 app-update.yml，放在窗口之后做，即使慢也只影响后台。
+   *
+   * 由 runPostShowTasks 触发；3s 兜底保证渲染层没上报时也会初始化（`initUpdater` 自己幂等）。
+   */
+  const initUpdaterDeferred = (): void => {
+    startupMark('updater-init', { deferred: true })
+    void initUpdater()
+  }
+
+  let postShowTasksStarted = false
+  const runPostShowTasks = (): void => {
+    if (postShowTasksStarted) return
+    postShowTasksStarted = true
+    setTimeout(() => {
+      void (async () => {
+        try {
+          await ensureDb()
+          // 原生菜单：它读语言设置（库），且菜单栏默认隐藏 —— 首屏画完再装。
+          const tMenu = performance.now()
+          startupMark('menu-start')
+          installMenu()
+          startupMark('menu-installed', { ms: Math.round(performance.now() - tMenu) })
+          startupMark('menu-end', { durationMs: Math.round(performance.now() - tMenu) })
+          // 拼写检查：把持久化的开关与语言落到 session（首屏已经画出来了，不再赶时间）
+          const tSpell = performance.now()
+          startupMark('spellcheck-start')
+          spellcheck.initializeSpellcheck()
+          startup('spellcheck-ready')
+          startupMark('spellcheck-ready', { ms: Math.round(performance.now() - tSpell) })
+          startupMark('spellcheck-end', { durationMs: Math.round(performance.now() - tSpell) })
+          // 最近列表（设置整份从 kv 读出，含 recentFiles/recentFolders）：只记条数与耗时
+          const tRecent = performance.now()
+          startupMark('recent-list-start')
+          const startupSettings = readSettings()
+          const recentCount = Array.isArray(startupSettings.recentFiles)
+            ? startupSettings.recentFiles.length
+            : 0
+          startupMark('recent-list', {
+            ms: Math.round(performance.now() - tRecent),
+            recentCount,
+            recentFolderCount: Array.isArray(startupSettings.recentFolders)
+              ? startupSettings.recentFolders.length
+              : 0
+          })
+          startupMark('recent-list-end', { durationMs: Math.round(performance.now() - tRecent) })
+          // 跳转列表（右键任务栏图标）：写开始菜单快捷方式 + 任务列表 —— 慢盘上是秒级开销
+          const tJumpList = performance.now()
+          startupMark('jump-list-start')
+          taskbar.ensureShortcut()
+          taskbar.refreshJumpList()
+          startupMark('jump-list', {
+            ms: Math.round(performance.now() - tJumpList),
+            recentCount
+          })
+          startupMark('jump-list-end', { durationMs: Math.round(performance.now() - tJumpList) })
+          // 自动更新：与上面同一时机（见 initUpdaterDeferred 的说明）
+          initUpdaterDeferred()
+        } catch (err) {
+          // 非关键工作失败不该影响应用：留一行证据（只记错误名，不记路径/正文）
+          startupMark('post-show-tasks-failed', {
+            error: err instanceof Error ? err.name : 'unknown'
+          })
+        }
+      })()
+    }, 0)
+  }
+  ipcMain.on('startup:report', (_event, payload) => {
+    recordRendererStartup(payload)
+    const stage = (payload as { stage?: unknown } | null)?.stage
+    if (stage === 'first-interactive') runPostShowTasks()
+  })
 
   // 多窗口：新建空白窗口 / 在新窗口打开文件 / 在新窗口打开文件夹（IPC 由渲染进程驱动）。
   // 三者都领一个新槽位，这样用户新开的窗口也会被会话记录到。
@@ -677,8 +964,8 @@ app.whenReady().then(() => {
     }
   })
 
-  const theme = db.kvGet('settings', defaultSettings).theme
-  nativeTheme.themeSource = theme === 'auto' ? 'system' : theme === 'sepia' ? 'light' : theme
+  // 主题（原生标题栏/`prefers-color-scheme`）不在这里读库：启动窗口建出来之后由
+  // applyWindowSeed 在 show 之前补上（见 whenReady 的启动顺序说明）。
 
   /**
    * ─── 浏览器级快捷键：**显式列举**，不再整包交给 `optimizer.watchWindowShortcuts` ──────
@@ -745,106 +1032,83 @@ app.whenReady().then(() => {
   // 同上：console 输出一律 ASCII（Windows 控制台代码页不接受 UTF-8 字节）
   if (devProfileDir) console.log(`[profile] isolated dev profile active: ${devProfileDir}`)
 
-  // 任务栏跳转列表（右键图标）：一条「新建窗口」任务 + 一栏最近文档。
-  // 顺序有讲究：先写「开始菜单快捷方式」——任务栏右键菜单第一项的名字与点击行为都来自它
-  // （没有它时 Windows 退回进程路径，就显示成「Electron」并启动无参数的 electron.exe）。
-  const cwd = process.cwd()
-  const appPath = app.getAppPath()
-  const intent = parseLaunchIntent(process.argv, { appPath, cwd })
-  // 落一行日志：启动参数解析是「静默失败」重灾区（关联双击没反应之类），解出来的意图与被忽略的
-  // 参数必须留证据，否则只能靠猜。见 services/buildStamp 的说明。
-  recordLaunchIntent({ argv: process.argv, intent, ignored: intent.ignored, cwd, appPath })
-  const tSettingsRead = performance.now()
-  const startupSettings = db.kvGet('settings', defaultSettings)
-  const startupRecentCount = Array.isArray(startupSettings.recentFiles)
-    ? startupSettings.recentFiles.length
-    : 0
-  // 「recent 列表加载耗时」：设置整份从 kv 读出（含 recentFiles/recentFolders）的那一段。
-  // 只记条数与耗时 —— 路径不进日志。
-  startupMark('recent-list', {
-    ms: Math.round(performance.now() - tSettingsRead),
-    recentCount: startupRecentCount,
-    recentFolderCount: Array.isArray(startupSettings.recentFolders)
-      ? startupSettings.recentFolders.length
-      : 0
-  })
-  const tJumpList = performance.now()
-  taskbar.ensureShortcut()
-  taskbar.refreshJumpList()
-  startupMark('jump-list', {
-    ms: Math.round(performance.now() - tJumpList),
-    recentCount: startupRecentCount
-  })
-
-  // 会话恢复：按上次的窗口槽位重建窗口（每个槽位一个窗口，各自恢复文档/文件夹与位置）。
-  // 「在新窗口打开文件/文件夹」创建的窗口带 --lumin-open(-folder)，优先级高于会话槽位；
-  // 设置里关闭 restoreSession 时一律走单窗口（空白未命名缓冲区）。
-  const wantRestore = startupSettings.restoreSession !== false
-  // macOS：open-file 事件可能在 ready 之前到达（Finder 双击）。合并进本次启动的意图，
-  // 这样首个窗口就直接打开它，而不是先开一个空窗口再补一个。Windows 走命令行裸路径，这段恒为空。
-  if (pendingOpenPaths.length) {
-    const merged = intentFromPaths(pendingOpenPaths.splice(0))
-    intent.openFile ??= merged.openFile
-    intent.openFolder ??= merged.openFolder
-  }
-
-  // 明确要求打开某篇文档 / 某个目录时（跳转列表的「最近打开」、双击文件、把文件夹拖给应用），
-  // 意图很清楚：就打开它。此时不拉会话恢复（否则会先恢复一堆旧窗口再把目标插进去，观感很乱）；
-  // 槽位数据仍留在 kv 里，下次正常启动照旧恢复。
-  const explicitOpen = !!(intent.openFile || intent.openFolder)
-  const plan = wantRestore && !explicitOpen ? session.planRestore() : []
-  if (!wantRestore) session.resetSession()
-  startupMark('session-plan', {
-    wantRestore,
-    explicitOpen,
-    // 恢复的窗口/文档数（**只记数量**，路径不落盘）
-    restoredWindows: plan.length,
-    restoredDocs: plan.filter((w) => !!w.slot.path).length,
-    restoredWithFolder: plan.filter((w) => !!w.slot.folder).length,
-    workspaceTop: topLevelName(plan.find((w) => !!w.slot.folder)?.slot.folder ?? ''),
-    restoreClosedSlot: plan.some((w) => !!w.slot.closed)
-  })
-  // 首个窗口先建（「最近使用过的窗口」优先，见 planRestore 的排序），
-  // 其余窗口等它加载完首帧后再建 —— 避免 N 个渲染进程同时抢 CPU/磁盘把首屏拖慢。
-  const [head, ...rest] = plan
-  const first =
-    head !== undefined
-      ? createWindow({ sessionSlot: head.index })
-      : createWindow({
-          openFile: intent.openFile ?? undefined,
-          openFolder: intent.openFolder ?? undefined,
-          // 冷启动时 --lumin-no-workspace=1 同样要认（「新建窗口」那条快捷方式在应用没跑时就走这条路）
-          noWorkspace: intent.noWorkspace || undefined,
-          sessionSlot: claimFreshSlot()
-        })
-  startup('first-window-created')
-  startupMark('first-window-created', {
-    restored: head !== undefined,
-    sessionSlot: head?.index ?? null
+  /**
+   * ─── 第一个窗口：**立刻建**（不读库）────────────────────────────────────────
+   *
+   * 槽位延迟分配（restoreHead）：位置/主题在库就绪后、show 之前由 applyWindowSeed 补上；
+   * `earlyShowMs: 150` 是慢盘兜底 —— 到点先把已上好纸色背景的窗口显示出来。
+   */
+  const tWindow = performance.now()
+  startupMark('first-window-create-start')
+  const first = createWindow({
+    openFile: intent.openFile ?? undefined,
+    openFolder: intent.openFolder ?? undefined,
+    // 冷启动时 --lumin-no-workspace=1 同样要认（「新建窗口」那条快捷方式在应用没跑时就走这条路）
+    noWorkspace: intent.noWorkspace || undefined,
+    restoreHead: true,
+    earlyShowMs: 150
   })
   // 启动窗口 = 本次运行里唯一能认领「无主草稿」的窗口（见 main/drafts.ts：
   // Ctrl+N / 新建窗口是用户明确要一篇空白，不该被上一次没保存的内容打断）
   startupWindowId = first.id
+  startupWin = first
+  startup('first-window-created')
+  startupMark('first-window-created', {
+    deferredSlot: true,
+    durationMs: Math.round(performance.now() - tWindow)
+  })
+  startupMark('first-window-create-end', { durationMs: Math.round(performance.now() - tWindow) })
+
+  /**
+   * 窗口已建好：从这里开始**并行开库**（不 await，渲染层同时加载自己的 JS/CSS）。
+   * 库就绪后按顺序补窗口外观、装原生菜单 —— 通常都发生在 show 之前。
+   */
+  void (async () => {
+    try {
+      await ensureDb()
+      applyWindowSeed(first)
+    } catch (err) {
+      startupMark('startup-db-failed', { error: err instanceof Error ? err.name : 'unknown' })
+    }
+  })()
+
   first.once('ready-to-show', () => {
     startup('first-window-painted')
     startupMark('first-window-painted')
   })
-  let firstShown = false
+
+  /**
+   * 其余窗口：等首窗加载完再错峰建（避免 N 个渲染进程同时抢 CPU/磁盘把首屏拖慢）。
+   * 会话恢复计划也在这里才计算（或更早，于渲染层认领槽位时）—— 不再压在建首窗之前。
+   */
+  let remainingOpened = false
   const openRemaining = (): void => {
-    if (firstShown) return
-    firstShown = true
+    if (remainingOpened) return
+    remainingOpened = true
     startup('first-window-loaded')
     startupMark('first-window-loaded')
-    for (const { index } of rest) createWindow({ sessionSlot: index })
-    if (rest.length) {
-      startup('remaining-windows-created')
-      startupMark('remaining-windows-created', { count: rest.length })
-    }
+    void ensureRestorePlan()
+      .then((plan) => {
+        const rest = plan.slice(1)
+        for (const { index } of rest) createWindow({ sessionSlot: index })
+        if (rest.length) {
+          startup('remaining-windows-created')
+          startupMark('remaining-windows-created', { count: rest.length })
+        }
+      })
+      .catch(() => {
+        /* 恢复计划失败时只保留首窗：用户仍能正常使用 */
+      })
   }
-  // 首帧之后再建其余窗口：load 事件即「首屏内容已就绪」；兜底 1.5s，避免异常时窗口永远不建。
+  // 首帧之后再建其余窗口：load 事件即「首屏内容已就绪」；兜底 2.5s，避免异常时窗口永远不建。
   first.webContents.once('did-finish-load', openRemaining)
-  setTimeout(openRemaining, 1500)
-  installMenu()
+  setTimeout(openRemaining, 2500)
+  // 首屏可交互之后才做拼写检查/最近列表/跳转列表（渲染层在 doc-visible 时上报
+  // `first-interactive`，由上面的 startup:report 处理器触发）。
+  // 兜底 5s：渲染层没上报（例如崩溃/白屏）时也要把非关键工作做完 —— 但不能更早，
+  // 跳转列表写 .lnk 在本机要 ~50ms，压在渲染层的 IPC 上会把首屏可交互往后推。
+  setTimeout(runPostShowTasks, 5000)
+
   /**
    * 自动更新：**首窗真正显示之后**再初始化（启动性能，实测见 services/updater.ts）。
    *
@@ -856,18 +1120,20 @@ app.whenReady().then(() => {
    * 兜底 3s：`ready-to-show` 因异常没来（例如窗口被立刻关闭）时也要把监听装上，
    * 否则用户在设置里打开「自动检查更新」会看起来毫无反应。`initUpdater` 自己有幂等闸。
    */
-  const initUpdaterDeferred = (): void => {
-    startupMark('updater-init', { deferred: true })
-    void initUpdater()
-  }
-  first.once('ready-to-show', () => setTimeout(initUpdaterDeferred, 0))
+  /**
+   * 自动更新：由 runPostShowTasks 在首屏可交互之后触发（见上面的定义）。
+   * 3s 兜底：渲染层没上报（崩溃/白屏）时也要把监听装上，否则用户在设置里打开
+   * 「自动检查更新」会看起来毫无反应。`initUpdater` 自己有幂等闸。
+   */
   setTimeout(initUpdaterDeferred, 3000)
   // 自动备份数据库（审计 §2 P1）：延迟 20 秒再跑第一次，之后每 6 小时看一次该不该备。
   // 同样放在窗口之后 —— 复制库文件、checkpoint WAL 都会占用主进程，不该压在首屏上。
   startAutoBackup()
 
   app.on('activate', function () {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow({ sessionSlot: claimFreshSlot() })
+    if (BrowserWindow.getAllWindows().length === 0) {
+      void readyForDb().then(() => createWindow({ sessionSlot: claimFreshSlot() }))
+    }
   })
 })
 
@@ -949,7 +1215,8 @@ app.on('open-file', (event, filePath) => {
     cwd: process.cwd(),
     appPath: app.getAppPath()
   })
-  handleOpenRequest(intent)
+  // 落点要等库就绪：新窗口会读 kv（槽位/窗口位置），不能在这里同步开库
+  void readyForDb().then(() => handleOpenRequest(intent))
 })
 
 app.on('second-instance', (_event, argv) => {
@@ -958,7 +1225,7 @@ app.on('second-instance', (_event, argv) => {
   const intent = parseLaunchIntent(argv, { appPath, cwd })
   // 与冷启动同样留证据：用户「双击了没反应」时，先看这行日志
   recordLaunchIntent({ argv, intent, ignored: intent.ignored, cwd, appPath })
-  handleOpenRequest(intent)
+  void readyForDb().then(() => handleOpenRequest(intent))
 })
 
 app.on('window-all-closed', () => {

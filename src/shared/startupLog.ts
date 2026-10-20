@@ -6,19 +6,20 @@
 //
 // 三条口径（本文件只放纯函数，写盘在 main/services/startupLog.ts）：
 //   ① **默认开**、开销极小（一次启动十来行 JSON，同步 append 几十微秒）；
-//   ② **有界**：单文件 ≤256KB，最多 3 份（`.log` / `.log.1` / `.log.2`），轮转在写前判；
+//   ② **有界**：单文件 ≤256KB，最多 5 份（`.log` / `.log.1` … `.log.4`），轮转在写前判；
+//      留 5 次是为了让用户能对比「第一次慢、第二次快」（冷/热启动差异、Defender 首次扫描）；
 //   ③ **不记隐私**：不写文档内容、不写完整文档路径；路径类信息只留
 //      「数量」或「脱敏后的顶层名」（userData 折成 `%APPDATA%\Lumin`）。
 //
-// 为什么单列一个 shared 模块：主进程写盘、设置页导出、单测读它，三处必须共用同一套
+// 为什么单列一个 shared 模块：主进程写盘、设置页/帮助菜单导出、单测读它，三处必须共用同一套
 // 轮转/脱敏/格式规则 —— 各写一份一定会漂。
 
-/** 启动日志文件名（轮转后的上一代是 `<name>.1`，再上一代 `.2`） */
+/** 启动日志文件名（轮转后的上一代是 `<name>.1`，再上一代 `.2`…） */
 export const STARTUP_LOG_FILE = 'startup.log'
 /** 单份启动日志上限：256KB（约 1000+ 行；一次启动约 15–25 行） */
 export const MAX_STARTUP_LOG_BYTES = 256 * 1024
-/** 最多保留几份（含当前那份） */
-export const MAX_STARTUP_LOG_FILES = 3
+/** 最多保留几份（含当前那份）：5 次启动，便于对比冷/热与「第一次慢、第二次快」 */
+export const MAX_STARTUP_LOG_FILES = 5
 
 /** 是否该轮转（`>=`：正好等于上限也换一份，保证单文件不会长过上限） */
 export function shouldRotateStartup(size: number, max: number = MAX_STARTUP_LOG_BYTES): boolean {
@@ -26,8 +27,8 @@ export function shouldRotateStartup(size: number, max: number = MAX_STARTUP_LOG_
 }
 
 /**
- * 某份日志轮转后的目标文件名（`startup.log` → `.1`）。只留 3 份：
- * 第 3 份（`.2`）在下一轮被删掉，而不是继续往后编号 —— 否则目录会无限长大。
+ * 某份日志轮转后的目标文件名（`startup.log` → `.1`）。只留 `MAX_STARTUP_LOG_FILES` 份：
+ * 最老那份（`.4`）在下一轮被删掉，而不是继续往后编号 —— 否则目录会无限长大。
  */
 export function rotatedStartupName(index: number): string {
   return `${STARTUP_LOG_FILE}.${index}`

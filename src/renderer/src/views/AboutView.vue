@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import Icon from '../components/Icon.vue'
 import { APP_ICON_PNG_BASE64 } from '../assets/iconPng'
+import { exportStartupDiagnostics } from '../lib/startupDiagnostics'
 
 const { t } = useI18n()
 const router = useRouter()
@@ -18,6 +19,11 @@ const deps = ref<{ name: string; version: string }[]>([])
 /** 第三方许可声明全文（`THIRD-PARTY-NOTICES.md`，由 `npm run notices` 生成） */
 const notices = ref<string | null>(null)
 const showLicenses = ref(false)
+/**
+ * 诊断日志路径（主进程算好，渲染层不拼路径）：用户报「启动慢/闪退」时，
+ * 界面上直接能看到该发哪个文件。取不到就不显示这一块。
+ */
+const logPaths = ref<{ dir: string; app: string; startup: string } | null>(null)
 
 /** 应用标识 = 应用图标本身（内嵌位图，与桌面图标同源；不依赖外部文件） */
 const appIconSrc = `data:image/png;base64,${APP_ICON_PNG_BASE64}`
@@ -40,7 +46,22 @@ onMounted(async () => {
   platform.value = info.platform
   deps.value = info.deps
   notices.value = info.notices
+  try {
+    logPaths.value = await window.luminAPI.app.getLogPaths()
+  } catch {
+    /* 日志路径拿不到不影响这一页 */
+  }
 })
+
+/** 导出启动诊断（与设置页/帮助菜单/状态栏共用同一份实现） */
+function exportDiagnostics(): void {
+  void exportStartupDiagnostics()
+}
+
+/** 打开日志目录（主进程固定打开我们自己的目录，不接受参数） */
+function openLogDir(): void {
+  void window.luminAPI.app.openLogDir()
+}
 </script>
 
 <template>
@@ -128,6 +149,38 @@ onMounted(async () => {
           <pre class="whitespace-pre-wrap break-words text-[11px] leading-relaxed text-ink-2">{{
             noticesBlocks.join('\n')
           }}</pre>
+        </div>
+      </div>
+
+      <!-- 诊断日志：用户报「启动慢/闪退」时的取证入口。路径来自主进程（脱敏展示），
+           导出与设置页/帮助菜单/状态栏共用同一份实现 -->
+      <div v-if="logPaths" class="mt-8 w-full text-left" data-about-logs>
+        <h2 class="mb-3 text-ui-sm font-semibold uppercase tracking-[0.14em] text-ink-2b">
+          {{ t('about.logs') }}
+        </h2>
+        <div class="surface p-4">
+          <p class="text-ui-sm text-ink-2">{{ t('about.logsHint') }}</p>
+          <p class="mt-2 break-all font-mono text-ui-sm leading-relaxed text-ink-2b">
+            {{ t('about.logPath') }}: {{ logPaths.startup }}
+          </p>
+          <div class="mt-3 flex flex-wrap gap-2">
+            <button
+              class="btn btn-outline px-3 py-1.5 text-ui-sm"
+              data-about-export-startup
+              @click="exportDiagnostics"
+            >
+              <Icon name="download" :size="13" />
+              {{ t('menu.exportStartupDiagnostics') }}
+            </button>
+            <button
+              class="btn btn-outline px-3 py-1.5 text-ui-sm"
+              data-about-open-logs
+              @click="openLogDir"
+            >
+              <Icon name="folder" :size="13" />
+              {{ t('settings.openLogDir') }}
+            </button>
+          </div>
         </div>
       </div>
 

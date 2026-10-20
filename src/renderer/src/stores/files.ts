@@ -17,6 +17,7 @@ import { errorReason } from '../lib/errors'
 import { confirmDiscardIfDirty } from '../lib/dialog'
 import { flushEditorBeforeReplace } from '../lib/editorFlush'
 import { draftKeyFor, restorableDraft } from '../lib/draftRules'
+import { currentSessionSlot } from '../lib/sessionSlot'
 import { SAVE_CONFLICT_KIND } from '../lib/saveConflict'
 import { docLoad, heavyReason } from '../lib/largeDoc'
 import { estimateDocLoad, planDocOpen } from '../../../shared/freeze'
@@ -972,7 +973,9 @@ export const useFilesStore = defineStore('files', {
       }
     },
     draftKey(path: string | null): string {
-      return draftKeyFor(path, window.luminAPI.app.sessionSlot)
+      // 槽位可能是**延迟认领**的（启动窗口）：用 lib/sessionSlot 的当前值，而不是
+      // preload 上那个创建时就固定下来的 sessionSlot（启动窗口那时还是 null）。
+      return draftKeyFor(path, currentSessionSlot())
     },
 
     // ── 内容更新 + 自动保存 + 草稿 ──

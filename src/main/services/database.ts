@@ -1350,11 +1350,52 @@ function defaultDbPath(): string {
  * 不指定则首次访问 `db` 时用 electron 的 userData —— 对外表现与原来一致。
  */
 let singleton: LuminDatabase | null = null
+/**
+ * 异步开库的「正在开」句柄（启动性能，见 ensureDatabase 的说明）。
+ * 只用于把同步的开库/迁移让到窗口建好之后；测试与既有同步路径仍可直接 `db`。
+ */
+let opening: Promise<LuminDatabase> | null = null
 
 /** 打开（或换一个）库文件。返回实例本身，便于测试直接取用。 */
 export function initDatabase(dbPath?: string): LuminDatabase {
   singleton = new LuminDatabase(dbPath)
   return singleton
+}
+
+/**
+ * ─── 异步确保库已就绪（**启动关键路径**上唯一该用的入口）─────────────────────────
+ *
+ * 为什么要有它：`db` 是惰性单例，任何 `db.xxx()` 的第一次访问都会**同步**打开库并跑
+ * 迁移 + FTS 对账。在慢盘/漫游 profile/杀软全盘扫描的机器上，这一段实测能到几百毫秒甚至
+ * 数秒，而它此前压在「建窗口」之前 —— 用户看到的就是「点了图标半天没反应」。
+ *
+ * 口径：
+ *   * 打开动作**让到下一轮事件循环**（`setImmediate`）：调用点刚建完窗口、`loadFile` 也刚发出去，
+ *     先把「窗口先出」让出去，再跑开库这段同步重活；
+ *   * 同一个 Promise 复用：IPC、启动窗口的槽位分配、首屏后的空闲任务可以并发 `await`，
+ *     绝不会把库打开两次；
+ *   * 失败时清掉句柄（下次还能重试），并把原始错误抛给调用方 —— 不在这里吞掉。
+ */
+export function ensureDatabase(dbPath?: string): Promise<LuminDatabase> {
+  if (singleton) return Promise.resolve(singleton)
+  if (!opening) {
+    opening = new Promise<LuminDatabase>((resolve, reject) => {
+      setImmediate(() => {
+        try {
+          resolve(initDatabase(dbPath))
+        } catch (err) {
+          opening = null
+          reject(err)
+        }
+      })
+    })
+  }
+  return opening
+}
+
+/** 库是否已就绪（同步、零副作用）：IPC 包装与启动打点用 */
+export function databaseReady(): boolean {
+  return singleton !== null
 }
 
 /** 当前库实例（没初始化就用 electron 的 userData 建一个） */
@@ -1367,6 +1408,7 @@ function activeDb(): LuminDatabase {
 export function closeDatabase(): void {
   singleton?.close()
   singleton = null
+  opening = null
 }
 
 /**

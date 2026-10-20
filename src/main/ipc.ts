@@ -179,6 +179,19 @@ export interface SlotRegistry {
   mayClaimUntitledDraft: (windowId: number) => boolean
   /** 该窗口的槽位是不是本次启动恢复出来的（草稿归属要用，见 shared/drafts 的 mySlotRestored） */
   slotRestored: (slot: number | null) => boolean
+  /**
+   * 确保库已就绪（**启动懒等待**，见 main/services/database.ts 的 ensureDatabase）。
+   *
+   * 为什么由 index.ts 注入而不是 ipc.ts 自己 import：开库 + 历史迁移 + 「db-ready」打点
+   * 是一件事，必须只有一个执行者；ipc.ts 只负责在每次 IPC 之前 `await` 它。
+   */
+  ensureDb: () => Promise<void>
+  /**
+   * 启动窗口的会话槽位（**延迟分配**）：窗口先建出来（不碰库），渲染层在恢复会话前
+   * 调一次 `app:claimStartupSlot` 拿到它该占的槽位（恢复计划的 head，或新槽位）。
+   * 非启动窗口返回 null（它们的槽位在创建时就定了）。
+   */
+  claimStartupSlot: (windowId: number) => Promise<number | null>
 }
 
 /**
@@ -204,6 +217,53 @@ async function recordHistoryBeforeOverwrite(
 }
 
 export function registerIpc(slots: SlotRegistry): void {
+  /**
+   * ─── 启动懒等待：每个 IPC 先等库就绪 ─────────────────────────────────────────
+   *
+   * 背景（启动重构）：窗口**先建出来**，库由 `ensureDatabase()` 让到下一轮事件循环再打开
+   * （见 main/services/database.ts）。而渲染层一挂载就会发 `settings:getAll` / `session:get` /
+   * `db:listRecent` —— 这些 handler 里第一次 `db.xxx()` 会**同步**打开库（惰性单例），
+   * 于是开库/迁移又回到首屏路径上，甚至可能与 startup 的 ensureDb 并发开两次。
+   *
+   * 做法：注册期把 `ipcMain.handle/on` 临时换成「先 `await ensureDb()` 再调用原 handler」的版本。
+   * 几十个 handler 一行都不用改（通道名与既有套件里那些「注册某个通道」的断言也保持不变），
+   * 「库没就绪时绝不进 handler」变成结构性保证，而不是每个 handler 自觉加一行。
+   *
+   * 取舍：
+   *   * 不碰库的 handler 也会等一次 —— 库就绪后只是一个已 resolve 的 Promise（一次微任务）；
+   *   * `on`（单向通道）用 `void ensureDb().then(...)`：同一个 Promise 的微任务顺序保证
+   *     同一通道的事件仍按到达顺序执行；
+   *   * 注册结束后**立刻还原**（唯一的还原出口在 registerIpc 末尾），不让这层包装漏到
+   *     index.ts 自己注册的通道上。
+   */
+  const rawHandle = ipcMain.handle
+  const rawOn = ipcMain.on
+  ipcMain.handle = ((channel: string, listener: (...args: never[]) => unknown) =>
+    rawHandle.call(ipcMain, channel, async (event, ...args) => {
+      await slots.ensureDb()
+      return listener(event as never, ...(args as never[]))
+    })) as typeof ipcMain.handle
+  ipcMain.on = ((channel: string, listener: (...args: never[]) => void) =>
+    rawOn.call(ipcMain, channel, (event, ...args) => {
+      void slots
+        .ensureDb()
+        .then(() => listener(event as never, ...(args as never[])))
+        .catch(() => {
+          /* 库打不开时 IPC 不执行：错误已由 ensureDb 的调用方记录，这里不吞更多信息 */
+        })
+    })) as typeof ipcMain.on
+
+  /**
+   * 启动窗口的槽位**延迟分配**（见 SlotRegistry.claimStartupSlot / renderer lib/sessionSlot）。
+   * 放在这里而不是 index.ts：这是渲染层唯一能问「我该占哪个槽位」的通道，且必须走上面那层
+   * 「先等库就绪」的包装（它自己要读 session kv）。
+   */
+  ipcMain.handle('app:claimStartupSlot', async (event) => {
+    const win = BrowserWindow.fromWebContents(event.sender)
+    if (!win) return null
+    return slots.claimStartupSlot(win.id)
+  })
+
   // ── 应用 ──
   ipcMain.handle('app:getVersion', () => exportSvc.appVersion())
   ipcMain.handle('app:getPlatform', () => process.platform)
@@ -407,6 +467,16 @@ export function registerIpc(slots: SlotRegistry): void {
    * 是同一个函数算出来的，见 services/appLog.ts）。
    */
   ipcMain.handle('app:openLogDir', () => shell.openPath(appLog.logDir()))
+  /**
+   * 日志路径（状态栏「更多」菜单与「关于」页展示用）：只返回我们自己算出来的三条路径，
+   * **不接受任何参数**（与 openLogDir 同一口径，渲染层不能借此读任意路径）。
+   * 用户报「启动慢/闪退」时，界面上能直接看到该发哪个文件。
+   */
+  ipcMain.handle('app:getLogPaths', () => ({
+    dir: appLog.logDir(),
+    app: appLog.logPath(),
+    startup: startupLog.startupLogPath()
+  }))
   /**
    * 「导出启动诊断」：把当前 `startup.log`（含轮转的上一代）+ 环境摘要另存成**一个文件**，
    * 方便用户直接发回来。默认弹系统保存对话框（用户选路径）；自动化验收用
@@ -1453,12 +1523,26 @@ export function registerIpc(slots: SlotRegistry): void {
   ipcMain.handle('links:forget', (_, target: string) => db.forgetLinkOpen(target))
   ipcMain.handle('links:clear', () => db.clearLinkHistory())
 
-  // 启动时若已记住工作区，恢复对根目录的监听 + 扫一遍崩溃残留的写盘临时文件
-  const existingRoot = db.kvGet<{ root: string | null }>('workspace', { root: null }).root
-  if (existingRoot) {
-    startWorkspaceWatch(existingRoot)
-    void sweepTempFiles(existingRoot)
-  }
+  // 启动时若已记住工作区，恢复对根目录的监听 + 扫一遍崩溃残留的写盘临时文件。
+  // ⚠️ 这里**不能同步读库**（会把开库拉回启动路径）：排到库就绪之后。
+  void slots.ensureDb().then(() => {
+    const existingRoot = db.kvGet<{ root: string | null }>('workspace', { root: null }).root
+    if (existingRoot) {
+      startWorkspaceWatch(existingRoot)
+      void sweepTempFiles(existingRoot)
+    }
+  })
+
+  /**
+   * 注册期到这里结束：立刻还原包装（不让这层包装漏到 index.ts 自己注册的 `app:newWindow`
+   * 等通道上）。
+   *
+   * 为什么不用 try/finally：下面几百行全是**静态注册**（只有 `ipcMain.handle/on(通道名, …)`），
+   * 抛错只可能来自某个 handler 自身求值期的 bug —— 那时应用本来也起不来；而把整段包进 try 会让
+   * 这份 1600 行的文件整体缩进，diff 里全是空白改动。还原动作放在唯一出口，读起来更直接。
+   */
+  ipcMain.handle = rawHandle
+  ipcMain.on = rawOn
 }
 
 /**

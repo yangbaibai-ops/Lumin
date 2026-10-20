@@ -16,14 +16,19 @@ import { useNotificationsStore } from '../stores/notifications'
 import { useSettingsStore } from '../stores/settings'
 import { useUiStore } from '../stores/ui'
 import type { SessionSlot } from '../../../shared/types'
+import { currentSessionSlot, ensureSessionSlot } from './sessionSlot'
 
 /** 光标/滚动写库节流：光标每动一次都写 SQLite 会太碎 */
 const SAVE_DELAY = 800
 
 const t = (key: string): string => i18n.global.t(key)
 
-/** 本窗口的会话槽位；null = 不参与会话恢复（如显式打开文件的窗口） */
-const slotIndex = window.luminAPI.app.sessionSlot
+/**
+ * 本窗口的会话槽位现在从 `./sessionSlot` 取（可**延迟认领**）。
+ *
+ * 为什么不再是模块求值时的常量：启动窗口的槽位要在窗口建好、库就绪之后由主进程按恢复
+ * 计划分配（窗口先出、库后开）。所有需要它的地方先 `await ensureSessionSlot()`。
+ */
 
 let saveTimer: ReturnType<typeof setTimeout> | null = null
 let installed = false
@@ -92,13 +97,14 @@ function snapshot(): SessionSlot | null {
 
 /** 立即写回槽位（关闭窗口前调用） */
 export async function flushSession(): Promise<void> {
-  if (slotIndex === null) return
+  const index = await ensureSessionSlot()
+  if (index === null) return
   if (saveTimer) {
     clearTimeout(saveTimer)
     saveTimer = null
   }
   try {
-    await window.luminAPI.session.save(slotIndex, snapshot())
+    await window.luminAPI.session.save(index, snapshot())
   } catch {
     /* 会话保存失败不影响使用 */
   }
@@ -106,7 +112,9 @@ export async function flushSession(): Promise<void> {
 
 /** 节流写回（光标移动、滚动、切换文档时调用） */
 function scheduleSessionSave(): void {
-  if (slotIndex === null) return
+  const index = currentSessionSlot()
+  // 启动窗口首次写回前可能还没认领槽位；flushSession 里会 ensure，这里不拦。
+  if (index === null && !window.luminAPI.app.startupRestoreHead) return
   if (saveTimer) clearTimeout(saveTimer)
   saveTimer = setTimeout(() => {
     saveTimer = null
@@ -119,7 +127,8 @@ function scheduleSessionSave(): void {
  * 滚动监听挂在 window 捕获阶段：滚动容器会随文档重建，挂在 window 上无需反复绑定。
  */
 export function installSessionTracking(): void {
-  if (installed || slotIndex === null) return
+  if (installed) return
+  if (currentSessionSlot() === null && !window.luminAPI.app.startupRestoreHead) return
   installed = true
   const files = useFilesStore()
   const ui = useUiStore()
@@ -229,7 +238,10 @@ async function applyPosition(slot: SessionSlot): Promise<void> {
  *          （无槽位 / 已有关闭恢复 / 槽位为空 / 文件打不开 / 只恢复了文件夹）
  */
 export async function restoreSession(): Promise<SessionSlot | null> {
-  if (slotIndex === null) return null
+  // 先把槽位认领下来：启动窗口是延迟分配的；即使这次不恢复（用户关了恢复开关），
+  // 后面「认领未命名草稿」「写会话」也要用它，早认领一次比每处各认一次简单。
+  const index = await ensureSessionSlot()
+  if (index === null) return null
   const settings = useSettingsStore()
   if (!settings.restoreSession) return null
   const files = useFilesStore()
@@ -242,7 +254,7 @@ export async function restoreSession(): Promise<SessionSlot | null> {
   let slot: SessionSlot | null = null
   try {
     const state = await window.luminAPI.session.get()
-    slot = state.slots[slotIndex] ?? null
+    slot = state.slots[index] ?? null
   } catch {
     return null
   }

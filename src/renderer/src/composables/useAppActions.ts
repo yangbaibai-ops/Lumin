@@ -17,6 +17,7 @@ import { pastePlainIntoEditor } from '../lib/plainPaste'
 import { ctrlFTarget, type CtrlFTarget } from '../lib/ctrlFRoute'
 import { installPointerRegionTracker, pointerIsMoreRecentThanFocus } from '../lib/pointerRegion'
 import { exportFormatByAction } from '../../../shared/exportFormats'
+import { exportStartupDiagnostics } from '../lib/startupDiagnostics'
 import type { CloseReason } from '../../../shared/closePrompt'
 import type { MenuAction, AppSettings } from '../../../shared/types'
 
@@ -200,6 +201,10 @@ export function useAppActions(): {
         break
       case 'about':
         void router.push('/about')
+        break
+      case 'export-startup-diagnostics':
+        // 原生菜单「帮助 → 导出启动诊断」走到这里；顶部栏/状态栏/设置页直接调同一个函数
+        void exportStartupDiagnostics()
         break
       /**
        * `theme-changed` 这条菜单动作**已删除**（报告 §3.2 P0-2）：原生菜单的主题项以前写

@@ -116,6 +116,17 @@ nsis:
   shortcutName: Lumin
   uninstallDisplayName: Lumin
   artifactName: Lumin-${version}-setup.${ext}
+  # ─── 图标全链路（用户报障：「桌面图标依旧是 Electron 的图标」）────────────────────
+  # win.icon 只决定**被嵌进 Lumin.exe 资源段**的图标（任务栏/Alt+Tab/资源管理器取它）；
+  # 安装包**自身**的图标、卸载程序的图标、安装向导页眉图标各走一套独立配置，默认值
+  # 是 electron-builder 自带的 electron.ico —— 上一轮只修了 win.icon，于是 exe 图标对了，
+  # 安装包/快捷方式却还是 Electron 的脸。三处都必须显式指向同一份 resources/icon.ico。
+  #
+  # 与 win.icon 同一条硬约束：ico 必须是多档 32 位 BGRA DIB（含 AND 掩码），
+  # 由 `node tools/pack-ico.js` 从 resources/icon.png 生成（理由见 win.icon 的注释）。
+  installerIcon: resources/icon.ico
+  uninstallerIcon: resources/icon.ico
+  installerHeaderIcon: resources/icon.ico
   # 装完直接启动：面向普通用户，省一步手动点开
   runAfterFinish: true
   # ⚠️ **绝对不能改成 true**：它会在卸载时删掉 %APPDATA%\Lumin，而用户的笔记索引、草稿、

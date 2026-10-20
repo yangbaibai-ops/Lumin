@@ -44,15 +44,17 @@ test('路径脱敏：AppData / 用户目录换成环境变量，其它只留顶�
   assert.equal(topLevelName(''), '')
 })
 
-test('轮转：单文件 ≥256KB 才换，最多 3 份，最老的被删掉', () => {
+test('轮转：单文件 ≥256KB 才换，最多 5 份（最近 5 次启动），最老的被删掉', () => {
   assert.equal(MAX_STARTUP_LOG_BYTES, 256 * 1024)
-  assert.equal(MAX_STARTUP_LOG_FILES, 3)
+  assert.equal(MAX_STARTUP_LOG_FILES, 5)
   assert.equal(shouldRotateStartup(MAX_STARTUP_LOG_BYTES - 1), false)
   assert.equal(shouldRotateStartup(MAX_STARTUP_LOG_BYTES), true)
 
   const plan = startupRotationPlan(MAX_STARTUP_LOG_FILES)
-  assert.equal(plan.remove, rotatedStartupName(2))
+  assert.equal(plan.remove, rotatedStartupName(4))
   assert.deepEqual(plan.renames, [
+    { from: `${STARTUP_LOG_FILE}.3`, to: `${STARTUP_LOG_FILE}.4` },
+    { from: `${STARTUP_LOG_FILE}.2`, to: `${STARTUP_LOG_FILE}.3` },
     { from: `${STARTUP_LOG_FILE}.1`, to: `${STARTUP_LOG_FILE}.2` },
     { from: STARTUP_LOG_FILE, to: `${STARTUP_LOG_FILE}.1` }
   ])

@@ -36,6 +36,8 @@ import {
 import { PREVIEW_BY_THEME } from '../../../shared/theme'
 // 导出格式的唯一清单（设置页那张表、原生菜单、快捷键表都从它派生，审计 §6 P2）
 import { EXPORT_FORMATS } from '../../../shared/exportFormats'
+// 「导出启动诊断」的唯一实现（帮助菜单/状态栏/设置页共用，见该文件头）
+import { exportStartupDiagnostics } from '../lib/startupDiagnostics'
 
 /** 本地历史的可选项（保留策略见 shared/history.ts；这里只给几档常用值） */
 const HISTORY_LIMIT_CHOICES = [10, 20, 30, 50, 100]
@@ -550,25 +552,9 @@ function openLogDir(): void {
 }
 
 /**
- * 导出启动诊断（用户报「装完启动 5–6 秒」）：把主进程的 `startup.log` + 环境摘要
- * 另存成一个文件。日志只含分段耗时/数量/脱敏路径，**不含文档内容**。
- * 自动化验收用 `LUMIN_STARTUP_EXPORT_PATH` 跳过保存对话框（见 main/ipc.ts）。
+ * 「导出启动诊断」的实现已移到 `lib/startupDiagnostics.ts`（帮助菜单/状态栏/设置页共用
+ * 同一份 toast 与失败处理）。这里保留一句说明，避免后来者又在这里写第二份。
  */
-async function exportStartupDiagnostics(): Promise<void> {
-  try {
-    const result = await window.luminAPI.app.exportStartupDiagnostics()
-    if (result.ok) {
-      ui.toast(
-        t('settings.startupDiagnosticsSaved', { path: result.path, lines: result.lines }),
-        'success'
-      )
-    } else if (!result.canceled) {
-      ui.toast(t('settings.startupDiagnosticsFailed'), 'error')
-    }
-  } catch {
-    ui.toast(t('settings.startupDiagnosticsFailed'), 'error')
-  }
-}
 
 // ─── 数据库维护（审计 §2 P1：全仓无 VACUUM / integrity_check / 重建索引入口）──
 // 三条都只在用户点击时跑：`VACUUM` 会重建整个库（耗时与库大小成正比），

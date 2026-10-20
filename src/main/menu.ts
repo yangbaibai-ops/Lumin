@@ -149,7 +149,11 @@ export function installMenu(): void {
       label: T('help'),
       submenu: [
         { label: T('settings'), click: () => send('settings') },
-        { label: T('about'), click: () => send('about') }
+        { label: T('about'), click: () => send('about') },
+        // 「导出启动诊断」：用户报「启动慢/闪退」时把脱敏的 startup.log（最近 5 次）+
+        // 环境摘要写成一份文件。渲染层与设置页/状态栏共用同一份实现
+        // （renderer/lib/startupDiagnostics.ts），这里只发动作名。
+        { label: T('exportStartupDiagnostics'), click: () => send('export-startup-diagnostics') }
         // 这里原来有一项「主页」→ `shell.openExternal('https://github.com')`：
         // 打开的是 **GitHub 首页**，不是本项目的仓库。指向一个无关站点比没有这一项更糟 ——
         // 用户点了会以为自己走错了地方，所以当时摘掉了。

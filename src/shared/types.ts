@@ -580,6 +580,8 @@ export type MenuAction =
   | 'about'
   /** 粘贴为纯文本（Ctrl+Shift+V）：不走富文本/表格/公式解析，永远只插纯文本 */
   | 'paste-plain'
+  /** 「导出启动诊断」（帮助菜单 / 状态栏 / 设置页共用）：写一份脱敏的启动日志合集 */
+  | 'export-startup-diagnostics'
 
 export interface LuminAPI {
   app: {
@@ -647,6 +649,18 @@ export interface LuminAPI {
     startupNoWorkspace: boolean
     /** 本窗口的会话槽位索引（主进程分配，用于会话恢复）；null = 本窗口不参与会话 */
     sessionSlot: number | null
+    /**
+     * 启动窗口标记：槽位**延迟分配**（窗口先建、库后开）。
+     * true 时 `sessionSlot` 为 null，渲染层要先 `await claimStartupSlot()` 拿槽位。
+     */
+    startupRestoreHead: boolean
+    /**
+     * 启动窗口认领会话槽位（幂等）：恢复计划的 head 槽位，或一个全新的槽位。
+     * 非启动窗口 / 已认领过都返回当前槽位（不会重复分配）。
+     */
+    claimStartupSlot: () => Promise<number | null>
+    /** 日志路径（状态栏/关于展示；主进程算好，不含参数） */
+    getLogPaths: () => Promise<{ dir: string; app: string; startup: string }>
     /**
      * 诊断信息（纯文本，可直接贴进 issue）：版本 / 平台 / 数据位置 / 启动参数 /
      * 设置快照 / 最近的错误标题。**不含文档内容，也不含最近打开的文件清单**。

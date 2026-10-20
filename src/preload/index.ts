@@ -27,6 +27,13 @@ const sessionSlot: number | null = (() => {
 })()
 
 /**
+ * 「启动窗口」标记：槽位**延迟分配**（启动性能：窗口先建出来、库后开）。
+ * 带这个标记的窗口在恢复会话前调一次 `app.claimStartupSlot` 拿自己的槽位
+ * （恢复计划的 head，或新槽位）。见 main/index.ts 的 createWindow / ipc.ts 的同名通道。
+ */
+const startupRestoreHead: boolean = process.argv.includes('--lumin-startup-head=1')
+
+/**
  * 主进程 → 渲染层**出站通道白名单**（清单 §4 P2「`events.on(channel, cb)` 没有通道白名单」）。
  *
  * 为什么要有：`ipcRenderer.on` 本身不校验通道名，被注入的页面可以注册任意通道的监听 ——
@@ -76,6 +83,8 @@ const api: LuminAPI = {
     getAbout: () => ipcRenderer.invoke('app:getAbout'),
     // 诊断信息（纯文本，不含文档内容）与"打开日志目录"（不接受参数：固定打开我们自己的日志目录）
     getDiagnostics: () => ipcRenderer.invoke('app:getDiagnostics'),
+    // 日志路径（状态栏/关于展示用）：主进程算好，不接受参数
+    getLogPaths: () => ipcRenderer.invoke('app:getLogPaths'),
     // 「导出启动诊断」：主进程弹保存对话框并写文件（启动日志已脱敏）
     exportStartupDiagnostics: () => ipcRenderer.invoke('app:exportStartupDiagnostics'),
     /**
@@ -122,7 +131,13 @@ const api: LuminAPI = {
     startupFile,
     startupFolder,
     startupNoWorkspace,
-    sessionSlot
+    sessionSlot,
+    startupRestoreHead,
+    /**
+     * 启动窗口专用：向主进程认领会话槽位（恢复计划的 head / 新槽位）。
+     * 非启动窗口返回 null；同一窗口重复调用幂等。
+     */
+    claimStartupSlot: () => ipcRenderer.invoke('app:claimStartupSlot')
   },
   file: {
     // opts.softDefault：encoding 只是「打开文件时的设置默认值」时传 true ——
