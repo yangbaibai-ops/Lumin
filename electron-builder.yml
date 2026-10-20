@@ -25,6 +25,13 @@ directories:
 # 为什么连文档和日志也要排除：默认打包会把它们一起塞进 app.asar —— 实测解析 asar 顶层能看到
 # docs/、tools/、build-out.txt、typecheck-out.txt、dev-run.log。它们跟运行时毫无关系，
 # 进来只会让安装包变大、把开发脚本发给用户。运行时没有任何代码读这些路径（已核对 src）。
+# 打包排除项（**启动性能**，实测：asar 352MB → 11.5MB，安装包 181MB → ~94MB）：
+#   * `tmp/` 是本仓库的**开发期证据目录**（截图、日志、探针脚本、性能 JSON），默认会被
+#     打进 asar —— 实测一次就有 160MB+。它不是运行时资源，却会让 Windows Defender 在
+#     首次启动时多扫 160MB、安装包白白大一圈。
+#   * `tests/` 同理（0.9MB）；根目录的 `*.log` 是构建/测试日志。
+#   * `*.md` 一律不进包（运行时没有任何代码读它们）；`*.map` 是调试产物。
+# 口径：**只排除开发期文件**，`out/`（编译产物）与 `resources/`（运行时要用的图标等）必须留着。
 files:
   - '!**/.vscode/*'
   - '!src/*'
@@ -32,9 +39,22 @@ files:
   - '!{.eslintcache,eslint.config.mjs,.prettierignore,.prettierrc.yaml,dev-app-update.yml,CHANGELOG.md,README.md}'
   - '!{.env,.env.*,.npmrc,pnpm-lock.yaml}'
   - '!{tsconfig.json,tsconfig.node.json,tsconfig.web.json}'
-  - '!docs/*'
-  - '!tools/*'
+  - '!docs/**'
+  - '!tools/**'
+  - '!tests/**'
+  # ─── 渲染层依赖不进包（启动性能：asar 352MB→11.5MB）────────────────────────────
+  # 这些包已经被 Vite 打进 out/renderer/**（见 electron.vite.config.ts 的默认拆包），
+  # 运行时不会从 node_modules 里 require 它们 —— 随产物分发只会让 asar 变大、让
+  # Windows Defender 首次启动多扫几百 MB。主进程真正的运行时依赖（electron-store /
+  # electron-updater / iconv-lite / @electron-toolkit/utils 及其传递闭包）不在排除之列。
+  - '!node_modules/{mermaid,@mermaid-js,cytoscape,cytoscape-fcose,cytoscape-cose-bilkent,katex,es-toolkit,@tiptap,@codemirror,@lezer,@vue,@babel,@intlify,@floating-ui,@iconify,@upsetjs,@braintree,@chevrotain,@jridgewell,@types,@marijn,@antfu}/**'
+  - '!node_modules/{vue,vue-i18n,vue-router,pinia,tiptap-markdown,markdown-it,markdown-it-task-lists,dompurify,d3,d3-*,dagre-d3-es,khroma,stylis,roughjs,points-on-curve,points-on-path,path-data-parser,layout-base,cose-base,robust-predicates,delaunator,internmap,dayjs,marked,linkify-it,linkifyjs,mdurl,uc.micro,entities,uuid,ts-dedent,prosemirror-*,source-map-js,mlly,acorn,magic-string,postcss,commander,chokidar,picomatch,fdir,tinyglobby,readdirp,local-pkg,pkg-types,pathe,ufo,exsolve,confbox,quansync,scule,hookable,birpc,perfect-debounce,fastdom,strictdom,webpack-virtual-modules,muggle-string,ast-kit,ast-walker-scope,unplugin,unplugin-utils,package-manager-detector,tinyexec,nanoid,style-mod,w3c-keyname,crelt,rope-sequence,orderedmap,rw,hachure-fill,punycode.js}/**'
+  - '!tmp/**'
   - '!{build-out.txt,typecheck-out.txt,dev-run.log}'
+  - '!*.log'
+  - '!**/*.log'
+  - '!**/*.md'
+  - '!**/*.map'
 
 # 保留 asarUnpack：asar 里的文件 Windows shell 读不到，而 resources/ 将来会放导出模板之类的
 # **必须作为真实文件存在**的资源。图标现在是嵌进 exe 的（见 win.icon），不依赖这条，

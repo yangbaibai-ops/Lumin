@@ -1,7 +1,6 @@
 import { app, BrowserWindow } from 'electron'
 import { existsSync, readFileSync } from 'fs'
 import { join } from 'path'
-import { autoUpdater } from 'electron-updater'
 import { db } from './database'
 import { defaultSettings } from '../../shared/defaults'
 import { isPlaceholderValue } from '../../shared/distribution'
@@ -64,12 +63,32 @@ function notifyRenderer(status: UpdateStatus): void {
 let started = false
 
 /**
+ * ─── electron-updater 惰性加载（启动性能）──────────────────────────────────────
+ *
+ * `require('electron-updater')` 实测 **≈52ms**（Node 24，本机；含 fs-extra / js-yaml 等
+ * 依赖的解析与求值），而它只在「要检查更新」时才用得上。自动检查默认是关的，所以这次
+ * 求值在绝大多数启动里纯属白付；改成 `import()` 后，只有真的初始化更新器时才加载。
+ *
+ * 注意：调用方（index.ts）现在把 `initUpdater()` 放到首窗 `ready-to-show` 之后，
+ * 让这 52ms 彻底离开首屏路径。
+ */
+type AutoUpdater = import('electron-updater').AppUpdater
+
+let updaterPromise: Promise<AutoUpdater> | null = null
+function loadUpdater(): Promise<AutoUpdater> {
+  updaterPromise ??= import('electron-updater').then((m) => m.autoUpdater)
+  return updaterPromise
+}
+
+/**
  * 初始化自动更新。**永远不要**在开发态调用它去做真实检查：
  * dev 版的版本号来自 package.json，跟发布渠道对不上，检查只会得到噪音。
  */
-export function initUpdater(): void {
+export async function initUpdater(): Promise<void> {
   if (started) return
   started = true
+
+  const autoUpdater = await loadUpdater()
 
   // 不自动下载、退出时如已下载则安装：把「要不要装」的决定权留给用户
   autoUpdater.autoDownload = false
@@ -105,6 +124,7 @@ function shouldCheck(): boolean {
 export async function checkNow(): Promise<boolean> {
   if (!app.isPackaged || !updateChannelConfigured()) return false
   try {
+    const autoUpdater = await loadUpdater()
     await autoUpdater.checkForUpdates()
     return true
   } catch (err) {

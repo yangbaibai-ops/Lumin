@@ -326,6 +326,15 @@ function createWindow(options: WindowOpenOptions = {}): BrowserWindow {
   })
 
   /**
+   * 启动分段打点（仅 `LUMIN_STARTUP_LOG=1` 时输出，零成本）：把窗口加载拆成
+   * did-start-loading / dom-ready / did-finish-load 三段。只记**首次**（`once`）——
+   * 多窗口时后续窗口不该混进首屏口径；`startup()` 的标签取第一次出现的那条。
+   */
+  mainWindow.webContents.once('did-start-loading', () => startup('window-did-start-loading'))
+  mainWindow.webContents.once('dom-ready', () => startup('window-dom-ready'))
+  mainWindow.webContents.once('did-finish-load', () => startup('window-did-finish-load'))
+
+  /**
    * 「哪个窗口开着哪个文档」这张表**当场登记启动参数里的文件**（审计 §6 P2 打包态覆盖时实测到的缺口）。
    *
    * 为什么不能只靠渲染层上报（`renderer/lib/openFile.ts` 的 `installOpenDocTracking`）：
@@ -402,6 +411,7 @@ function createWindow(options: WindowOpenOptions = {}): BrowserWindow {
 
   mainWindow.on('ready-to-show', () => {
     mainWindow.show()
+    startup('window-shown')
   })
 
   // 外部链接交给系统浏览器 —— 一律先过 `safeExternalUrl` 的 scheme 白名单
@@ -742,9 +752,22 @@ app.whenReady().then(() => {
   first.webContents.once('did-finish-load', openRemaining)
   setTimeout(openRemaining, 1500)
   installMenu()
-  // 自动更新：默认不检查（设置里关着、或 publish 还是占位地址时都不会联网）。
-  // 放在窗口创建之后：更新检查再重要也不该跟首屏抢时间。
-  initUpdater()
+  /**
+   * 自动更新：**首窗真正显示之后**再初始化（启动性能，实测见 services/updater.ts）。
+   *
+   * 两个理由：
+   *  1. `import('electron-updater')` 实测 ≈52ms（模块图解析 + 求值），默认又不检查更新，
+   *     这笔钱不该出现在首屏路径上；
+   *  2. 更新检查会联网、会读 app-update.yml，放在窗口之后做，即使慢也只影响后台。
+   *
+   * 兜底 3s：`ready-to-show` 因异常没来（例如窗口被立刻关闭）时也要把监听装上，
+   * 否则用户在设置里打开「自动检查更新」会看起来毫无反应。`initUpdater` 自己有幂等闸。
+   */
+  const initUpdaterDeferred = (): void => {
+    void initUpdater()
+  }
+  first.once('ready-to-show', () => setTimeout(initUpdaterDeferred, 0))
+  setTimeout(initUpdaterDeferred, 3000)
   // 自动备份数据库（审计 §2 P1）：延迟 20 秒再跑第一次，之后每 6 小时看一次该不该备。
   // 同样放在窗口之后 —— 复制库文件、checkpoint WAL 都会占用主进程，不该压在首屏上。
   startAutoBackup()
