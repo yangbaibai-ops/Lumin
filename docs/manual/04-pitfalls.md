@@ -883,7 +883,7 @@ commands     应用级命令表（composables/useKeymap.ts）：id / i18n 标题
 - **任务栏快捷方式与跳转列表条目**改用 `resources/icon.ico`（它们只认 exe/dll/ico 资源，PNG 在这里没用；之前借的是 electron.exe 的图标）——`ensureAppShortcut()` 的 `icon` 与两条 task 的 `iconPath` 都指向它。
 - **应用内标识**（`Icon.vue` 的 `logo`）换成与图标同源的折线 `M9 8 V16.5 H15.5`（24 viewBox 折算），启动骨架屏与「关于」页各给一个较粗的 `stroke-width`，它才像「标识」而不是一枚普通线性图标。
 
-**验收**：`tools/build-app-icon.js` 自检 **14/14**（文件结构 + 像素取样）；`tools/_verify-taskbar-jumplist.js` **27/27**（新增两条：快捷方式的 `icon` 是 `icon.ico` 且文件存在、`readShortcutLink` 回读的 icon 与写入一致）。另外用 **Windows 自己的 COM** 独立复核了那条 `.lnk`：`IconLocation = D:\code_workspace\Lumin\resources\icon.ico,0`。各档观感另存 `%TEMP%\lumin-icon-sheet.png`（浅色/深色两条 + 原尺寸，供人工看）。
+**验收**：`tools/build-app-icon.js` 自检 **14/14**（文件结构 + 像素取样）；`tools/_verify-taskbar-jumplist.js` **27/27**（新增两条：快捷方式的 `icon` 是 `icon.ico` 且文件存在、`readShortcutLink` 回读的 icon 与写入一致）。另外用 **Windows 自己的 COM** 独立复核了那条 `.lnk`：`IconLocation = <仓库根>\resources\icon.ico,0`。各档观感另存 `%TEMP%\lumin-icon-sheet.png`（浅色/深色两条 + 原尺寸，供人工看）。
 
 **打包注意**：`?asset` 在打包后仍指向 `app.asar` 内的 `resources/`——窗口图标 Electron 自己能读，但**任务栏/快捷方式要的是真实文件**，所以将来配 electron-builder 时要把 `resources/**` 放进 `asarUnpack`（并把 `win.icon` 指到 `resources/icon.ico`）。
 

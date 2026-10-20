@@ -376,7 +376,7 @@ export async function isDirectory(p: string): Promise<boolean> {
  * 两段：
  *   ① 字符串层：`pathGuard.sameResolvedPath`（resolve 掉 `.`/`..`、统一分隔符、折叠大小写）；
  *   ② 只有第 ① 段判"不同"时才做 **realpath**：符号链接 / junction / 8.3 短名
- *      （`C:\Users\YANGBA~1\…`，也就是资源管理器拖进来时 Chromium 给的那一串）
+ *      （`C:\PROGRA~1\…`，也就是资源管理器拖进来时 Chromium 给的那一串）
  *      都是"看起来不同、指的却是同一处"。两侧都成功才拿结果下结论；任何一侧失败
  *      （路径不存在 / 权限不足）就维持第 ① 段的答案 —— 不因为"查不到"而改判成相同。
  */

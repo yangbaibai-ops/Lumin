@@ -25,7 +25,7 @@
 | 3   | 低-中：桌面同名快捷方式会被安装器覆盖                                                     | 🔶 **有意保持现状**（详见 §三）                     | 不改代码，改为文档说明                                                                                                              | `shortcuts-created` ✅ 桌面快捷方式按设计创建；收尾已把被覆盖的那条按原样重建                                                                                            |
 | 4   | 低：判断「快捷方式未携带 AppUserModelID」                                                 | ⚠️ **第一轮结论被推翻**（详见 §四）｜运行时兜底保留 | `src/main/services/taskbar.ts` 的 `backfillInstalledShortcutAumid()`（幂等；正常走「已存在」分支）                                  | `shortcut-aumid-present` ✅ 日志：`shortcut aumid already present … aumid=com.lumin.app`                                                                                 |
 | 5   | 中（开发期专属）：dev 与打包版共用 `%APPDATA%\Lumin` 与单实例锁                           | ✅ **已修（opt-in）**                               | 新增 `src/main/devProfile.ts`（在 `index.ts` 里**第一行导入**）+ `package.json` 的 `npm run dev:isolated`                           | 本轮的复测实例全程用 `--user-data-dir` 隔离，未与 dev 实例互抢；用户数据 11027 文件/38 草稿全程未变                                                                      |
-| 6   | 低：`InstallLocation` 为空、`EstimatedSize` 报 501.4 MB（实际约 280 MB）                  | ✅ 前半已修｜后半属上游                             | `build/installer.nsh` 的 `customInstall` 写入 `InstallLocation=$INSTDIR`                                                            | `install-location-non-empty` ✅ `InstallLocation='C:\Users\yangbaibai\AppData\Local\Programs\Lumin'`；`EstimatedSize=501.4MB` 仍在（上游估算方式，仅信息展示，不做处理） |
+| 6   | 低：`InstallLocation` 为空、`EstimatedSize` 报 501.4 MB（实际约 280 MB）                  | ✅ 前半已修｜后半属上游                             | `build/installer.nsh` 的 `customInstall` 写入 `InstallLocation=$INSTDIR`                                                            | `install-location-non-empty` ✅ `InstallLocation='%LOCALAPPDATA%\Programs\Lumin'`；`EstimatedSize=501.4MB` 仍在（上游估算方式，仅信息展示，不做处理） |
 
 **修复方式为什么是 `nsis.include`**：P1 的根因在 electron-builder 自带的 NSIS 模板里 —— `APP_UNASSOCIATE`（`FileAssociation.nsh:99-102`）只删除扩展名下 `OpenWithProgids` 的那**个值**和 ProgID 子树，**从不删扩展名的默认值**。所以关联是我们建的、注销却漏了一半。上游模板不能改，官方支持的扩展点就是 `nsis.include` 的 `customUnInstall` 宏。
 
@@ -42,9 +42,9 @@
 | `install-exit-0`                | 退出码 0                 | ✅ exit=0，耗时 **11.2 s**（第一轮 20.2 s，随磁盘/杀软波动）         |
 | `installed-exe-present`         | 安装目录里有 `Lumin.exe` | ✅ `…\Programs\Lumin\Lumin.exe`，**210,974,720 字节**                |
 | `publisher-is-real-author`      | Publisher 是真实作者     | ✅ `Publisher='yang_bai_bai'`（第一轮 `example.com`）                |
-| `install-location-non-empty`    | `InstallLocation` 有值   | ✅ `C:\Users\yangbaibai\AppData\Local\Programs\Lumin`（第一轮为空）  |
+| `install-location-non-empty`    | `InstallLocation` 有值   | ✅ `%LOCALAPPDATA%\Programs\Lumin`（第一轮为空）  |
 | `md-associated-to-progid`       | `.md` → ProgID           | ✅ `.md='Markdown'`                                                  |
-| `md-open-command-points-to-exe` | 命令指向安装后的 exe     | ✅ `C:\Users\yangbaibai\AppData\Local\Programs\Lumin\Lumin.exe "%1"` |
+| `md-open-command-points-to-exe` | 命令指向安装后的 exe     | ✅ `%LOCALAPPDATA%\Programs\Lumin\Lumin.exe "%1"` |
 | `markdown-ext-associated`       | `.markdown` 同样登记     | ✅ `.markdown='Markdown'`                                            |
 | `shortcuts-created`             | 开始菜单 + 桌面快捷方式  | ✅ `start=True desktop=True`                                         |
 
@@ -94,7 +94,7 @@
 3. 真正的风险不是「建快捷方式」，而是「静默覆盖同名文件」—— 而 `Lumin.lnk` 这个名字本来就属于本应用，同名文件是用户自建/上一版遗留，属边缘情况；
 4. 改成 `false` 会让「装完在桌面上找不到图标」变成更常见的抱怨，收益为负。
 
-**代价与补偿**：本轮的验收脚本会在收尾时把桌面那条**按原样重建**（`target = D:\code_workspace\Lumin`），机器状态表（§八）里已记录。发布说明/安装说明里应写明「安装会在桌面创建 Lumin 快捷方式」。
+**代价与补偿**：本轮的验收脚本会在收尾时把桌面那条**按原样重建**（`target = <仓库根>`），机器状态表（§八）里已记录。发布说明/安装说明里应写明「安装会在桌面创建 Lumin 快捷方式」。
 
 ---
 
@@ -176,7 +176,7 @@ Get-ChildItem "$env:APPDATA\Lumin" -Recurse -File | Measure-Object              
 ⚠️ 隐私口径写进用户文档：数据跟着 U 盘走 = U 盘丢了数据就丢了；插到别人机器上打开时，
 你的笔记会出现在那台机器上（见 [distribution.md](./distribution.md) §3）。
 
-`tools/_install-test.ps1` 做的事（都在 `finally` 里兜底）：记基线 → 静默安装 → 跑 19 条断言（含以**裸路径**启动打包版并读窗口标题）→ 静默卸载 → 断言清理与用户数据 → 杀掉测试进程、删除测试 profile 与夹具、**把桌面 `Lumin.lnk` 重建回 `D:\code_workspace\Lumin`**、清掉任何残留的 `.md`/`.markdown` 默认值。它全程使用 `--user-data-dir=%TEMP%\lumin-install-test-profile`，不会碰到正在运行的用户实例与 `%APPDATA%\Lumin`。
+`tools/_install-test.ps1` 做的事（都在 `finally` 里兜底）：记基线 → 静默安装 → 跑 19 条断言（含以**裸路径**启动打包版并读窗口标题）→ 静默卸载 → 断言清理与用户数据 → 杀掉测试进程、删除测试 profile 与夹具、**把桌面 `Lumin.lnk` 重建回 `<仓库根>`**、清掉任何残留的 `.md`/`.markdown` 默认值。它全程使用 `--user-data-dir=%TEMP%\lumin-install-test-profile`，不会碰到正在运行的用户实例与 `%APPDATA%\Lumin`。
 
 ---
 
@@ -186,7 +186,7 @@ Get-ChildItem "$env:APPDATA\Lumin" -Recurse -File | Measure-Object              
 | ------------------------------------------------ | -------------------------------------------------------------------------------------- |
 | 安装到 `%LOCALAPPDATA%\Programs\Lumin`           | ✅ 已静默卸载，目录已删除（残留文件 0）                                                |
 | 开始菜单 `Lumin.lnk`                             | ✅ 已随卸载删除                                                                        |
-| **桌面 `Lumin.lnk`（原有那条指向项目文件夹）**   | ✅ 安装器覆盖、卸载删除后，已按原样重建（`target = D:\code_workspace\Lumin`）          |
+| **桌面 `Lumin.lnk`（原有那条指向项目文件夹）**   | ✅ 安装器覆盖、卸载删除后，已按原样重建（`target = <仓库根>`）          |
 | `HKCU\Software\Classes\.md` / `.markdown` 默认值 | ✅ 本轮**由安装器自己的卸载逻辑清空**（这正是 P1 的修复点），实测均为 `''`，与基线一致 |
 | `HKCU\Software\Classes\Markdown`、卸载条目       | ✅ 卸载时已清除                                                                        |
 | `%APPDATA%\Lumin`（用户数据）                    | ✅ 全程未被修改（11027 文件 / 38 草稿，装前装后逐项一致）                              |
@@ -222,7 +222,7 @@ Get-ChildItem "$env:APPDATA\Lumin" -Recurse -File | Measure-Object              
 | ---------------------------------- | -------------------------------------------------------- |
 | `%LOCALAPPDATA%\Programs\Lumin`    | 不存在                                                   |
 | 开始菜单 `Lumin.lnk`               | 不存在（开发态那条叫 `Lumin (dev).lnk`）                 |
-| 桌面 `Lumin.lnk`                   | **存在，但指向 `D:\code_workspace\Lumin`（项目文件夹）** |
+| 桌面 `Lumin.lnk`                   | **存在，但指向 `<仓库根>`（项目文件夹）** |
 | `HKCU\Software\Classes\.md` 默认值 | 空（无关联）                                             |
 | 卸载条目（含 Lumin）               | 0 项                                                     |
 | `%APPDATA%\Lumin`（用户数据）      | 存在，**11027 个文件 / 38 个草稿**                       |
@@ -236,7 +236,7 @@ Get-ChildItem "$env:APPDATA\Lumin" -Recurse -File | Measure-Object              
 | I-01  | `Lumin-1.0.0-setup.exe /S` | 退出码 0                          | 退出码 0，耗时 **20.2 s**                                                                                                                                                             | ✅                                                                                                   |
 | I-02  | 检查安装目录               | 可执行文件 + Electron 运行时齐全  | `%LOCALAPPDATA%\Programs\Lumin`，**82 个文件**；`Lumin.exe` **210,974,720 字节**                                                                                                      | ✅                                                                                                   |
 | I-03  | exe 内嵌图标               | 是我们的图标，不是 Electron 默认  | `resources/icon.ico` 的 **16/24/32/48/64/128/256 七档负载 7/7 逐字节命中 `Lumin.exe`**；同一批字节在 `electron.exe` 里 **7/7 不存在**；GDI+ 抽出的 32×32 中心 luma≈178（Electron 66） | ✅ **已复验**（2026-09 第二轮图标更换后重跑 `_verify-packaging.js` 24/24；旧结论的「待复验」已解除） |
-| I-04  | 文件关联                   | `.md` 登记到本应用                | `HKCU\Software\Classes\.md` 默认值 = `Markdown`；`…\Markdown\shell\open\command` = `C:\Users\…\Programs\Lumin\Lumin.exe "%1"`                                                         | ✅                                                                                                   |
+| I-04  | 文件关联                   | `.md` 登记到本应用                | `HKCU\Software\Classes\.md` 默认值 = `Markdown`；`…\Markdown\shell\open\command` = `%LOCALAPPDATA%\Programs\Lumin\Lumin.exe "%1"`                                                         | ✅                                                                                                   |
 | I-05  | 「打开方式」候选           | 扩展名带 OpenWithProgids          | `HKCU\Software\Classes\.md\OpenWithProgids` 含 `Markdown`                                                                                                                             | ✅                                                                                                   |
 | I-06  | 开始菜单快捷方式           | target 指向安装后的 exe、图标同源 | target = `…\Programs\Lumin\Lumin.exe`；args 空；workdir = 安装目录；icon = `Lumin.exe,0`                                                                                              | ✅                                                                                                   |
 | I-06b | 快捷方式 AUMID             | Windows 身份链路                  | ~~在 .lnk 字节里搜不到 `com.lumin.app` —— 快捷方式未携带 AppUserModelID 属性~~ **⬅ 本轮更正：这是测量方法错误，安装器写的 lnk 本来就带 AUMID（见 §四）**                              | ⚠️→✅                                                                                                |

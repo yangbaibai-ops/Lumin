@@ -7,13 +7,19 @@
 //   2. `big.md`  ── 把真实文档重复 8 遍 ≈ 2000 行，表格 / 行内+块级公式 / <img> /
 //      mermaid / 代码块都在，用来量「大文档」下的跟手度。
 //
-// 用法：`node tools/perf/fixtures.js` 打印两份夹具的路径 / 行数 / 字节数 / SHA256。
+// 用法：`node tools/perf/fixtures.js [源文档]`；源文档也可以用环境变量 `XW_DOC` 指定。
+//   省略时取仓库内的 `tools/fixtures/md/mixed-doc.md`（不依赖任何个人目录）。
+//   源文档只被**读取**，副本落在 `%TEMP%\xw-perf-fixture\`，不会写回源文件。
 const fs = require('fs')
 const os = require('os')
 const path = require('path')
 const crypto = require('crypto')
 
-const REAL_DOC = 'C:\\Users\\yangbaibai\\Desktop\\Lumin相关\\数学公式示例.md'
+/** CLI 参数（跳过 `--only=...` 这类选项）优先于环境变量，最后回落到仓库夹具 */
+const CLI_DOC = process.argv[2] && !process.argv[2].startsWith('-') ? process.argv[2] : ''
+const REAL_DOC = path.resolve(
+  process.env.XW_DOC || CLI_DOC || path.join(__dirname, '..', 'fixtures', 'md', 'mixed-doc.md')
+)
 const OUT_DIR = path.join(os.tmpdir(), 'xw-perf-fixture')
 const COPIES = 8
 

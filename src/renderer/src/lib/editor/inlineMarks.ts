@@ -953,7 +953,7 @@ function buildRevealDecorations(
   // 产出**转义反斜杠的拆分 span**（`pushEscapeDecorations` 的 `.md-escape-backslash` /
   // `.md-escape-char`）。那不是显隐而是**渲染结构** —— 少了它，`\*` 的反斜杠会直接露在正文里
   // （`.md-escape-backslash { font-size: 0 }` 正是靠装饰给的），而 Windows 路径那种**非标点
-  // 转义**（`C:\Users\x`）必须常显（折叠它会少字符）。所以转义那条路径照旧，只关成对标记。
+  // 转义**（`C:\work\x`）必须常显（折叠它会少字符）。所以转义那条路径照旧，只关成对标记。
   const markersHidden = inlineMarkersHidden()
   const { from, to } = state.selection
   const decos: Decoration[] = []
@@ -1036,9 +1036,9 @@ function buildRevealDecorations(
  *   * **整段统一判定**：连续转义段的所有 `\` 一起显/隐（`\*\*\*\*` 4 个同进同出），
  *     与「一对 `**` 整体显隐」同理；中间隔字符的 `\* \*` 是两段，各管各的；
  *   * **只有「真转义」（`\` + ASCII 标点）折叠**，非标点的 `\X` 一律常显（带
- *     `.md-reveal-inline` 的「已展开」态）：`C:\Users\x`、`C:\a\b` 这类 Windows 路径
+ *     `.md-reveal-inline` 的「已展开」态）：`C:\work\x`、`C:\a\b` 这类 Windows 路径
  *     在本应用里也是 MdEscape 文本节点（那是**逐字写回**的载体，不是转义语义），
- *     把它们折叠会让路径在屏幕上少字符（`C:Usersx`）—— 边界取证见套件 H7 与手册 §4.70 六；
+ *     把它们折叠会让路径在屏幕上少字符（`C:workx`）—— 边界取证见套件 H7 与手册 §4.70 六；
  *   * 只给反斜杠 span 加 `.md-reveal-inline`（**同一个元素**上），折叠/显示由
  *     style.css 的 `font-size: 0` / `font-size: inherit` 承担（不用 `display:none`，
  *     否则会破坏光标导航与命中）；`.md-escape-char` 始终正常显示。

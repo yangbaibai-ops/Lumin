@@ -399,8 +399,8 @@ HTML/公式块/front matter（`attrs.source` 当 `protect` 集合）、缩进行
 判据与 mdMarker 构造逐字一致（`from <= run.end && to >= run.start`，边界均含）；
 新增 `collectEscapeRuns()` 做**连续转义段**判定（`\*\*\*\*` = 1 段 4 个 → 同显同隐；
 `\* \*` 中间有空格 = 2 段 → 各显各的）。**只有「真转义」（`\` + ASCII 标点，复用既有
-`ASCII_PUNCT`）折叠**：实测 `C:\Users\x` 这类 Windows 路径在装载路径上同样是 MdEscape
-文本节点，折叠会让路径少字符（`C:Usersx`）→ 非标点 `\X` 一律常显（宁可多显示一个反斜杠，
+`ASCII_PUNCT`）折叠**：实测 `C:\work\x` 这类 Windows 路径在装载路径上同样是 MdEscape
+文本节点，折叠会让路径少字符（`C:workx`）→ 非标点 `\X` 一律常显（宁可多显示一个反斜杠，
 也绝不把内容藏起来）。
 
 **验收**：单测 **217/217**（新增 5 条：判据/字面量化/归一化幂等/重推判据/重新评估）；

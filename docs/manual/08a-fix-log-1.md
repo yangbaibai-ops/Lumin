@@ -50,7 +50,7 @@
 - **打包也指到同一个文件**：当时在 `package.json` 里加了一段最小 `build` 配置（`appId: com.lumin.app`、`productName: Lumin`、`win.icon: resources/icon.ico`）—— 不写这段的话 electron-builder 会回去找 `build/icon.ico`（已被我们删掉），反而退化成 Electron 默认图标。**后来这段被移到 `electron-builder.yml` 里成为唯一配置源，`package.json` 的 `build` 字段已删除，见 §4.41。**
 - **加守卫防复发**：`tools/build-app-icon.js` 自检里新增三条 —— 扫 `src/**` 里所有 `resources/icon*` 引用必须只有 `icon.ico`（或非 Windows 分支的 `icon.png`）、Windows 必须有 ≥2 处引用同一个 ico、`build/` 下不允许再出现 `icon.*`。
 
-**验收**：`tools/build-app-icon.js` **14/14**（像素取样 + 三条单一来源守卫）；`_verify-taskbar-jumplist.js` 里快捷方式的 `IconLocation` 独立用 Windows COM 复核为 `D:\code_workspace\Lumin\resources\icon.ico,0`；`npm run typecheck` 0 error。
+**验收**：`tools/build-app-icon.js` **14/14**（像素取样 + 三条单一来源守卫）；`_verify-taskbar-jumplist.js` 里快捷方式的 `IconLocation` 独立用 Windows COM 复核为 `<仓库根>\resources\icon.ico,0`；`npm run typecheck` 0 error。
 
 **需要重启才能看到**：窗口图标是在窗口创建时设置的，所以改完要重启应用（如今开发态 `npm run dev --watch` 会自动重启，见 §4.38）。
 
@@ -291,7 +291,7 @@ set LUMIN_PKG_SKIP_BUILD=1 && node tools/_verify-packaging.js   # 复用已有�
 
 #### 三、P3 为什么保持现状（桌面快捷方式覆盖同名文件）
 
-`createDesktopShortcut: true` 是主流做法（VS Code / Typora / Obsidian 都是），安装向导非静默时也能取消勾选；改成 `false` 会让「装完桌面没图标」变成更常见的抱怨。真正的风险只是「静默覆盖同名文件」，而 `Lumin.lnk` 这个名字本就属于本应用。**代价**：验收脚本收尾会把桌面那条按原样重建（本轮即 `target = D:\code_workspace\Lumin`），发布说明里要写明会在桌面创建快捷方式。
+`createDesktopShortcut: true` 是主流做法（VS Code / Typora / Obsidian 都是），安装向导非静默时也能取消勾选；改成 `false` 会让「装完桌面没图标」变成更常见的抱怨。真正的风险只是「静默覆盖同名文件」，而 `Lumin.lnk` 这个名字本就属于本应用。**代价**：验收脚本收尾会把桌面那条按原样重建（本轮即 `target = <仓库根>`），发布说明里要写明会在桌面创建快捷方式。
 
 #### 四、AUMID：我第一轮判错了，留档避免再犯
 
@@ -465,7 +465,7 @@ A~D 段的光标/滚动/开关/文件丢失恢复全部照旧）；`_verify-draf
 
 ```
 [taskbar] shortcut ok=true path="…\Start Menu\Programs\Lumin (dev) [test].lnk"
-          aumid=com.lumin.app.dev icon="C:\Users\…\Temp\lumin-guard-userdata\icons\lumin-817ce6db.ico"
+          aumid=com.lumin.app.dev icon="%TEMP%\lumin-guard-userdata\icons\lumin-817ce6db.ico"
 ```
 
 而那条 `.lnk` 的图标文件在套件收尾删掉临时配置目录后就不存在了（`IconExists: False`）。

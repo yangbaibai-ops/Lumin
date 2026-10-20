@@ -93,7 +93,7 @@ test('sameResolvedPath：拿不到其中一侧就判不同（不许把"不知道
  * 这一层**只做字符串**，所以有两类"Windows 上其实是同一处"的写法它判不出来，
  * 由主进程 `fileOps.isSamePath` 的第二段（`fs.realpath`）兜住（不在这里断言，因为没有 fs）：
  *   * 符号链接 / junction；
- *   * 8.3 短名（`C:\Users\YANGBA~1\…`，资源管理器拖进来时 Chromium 给的就是这种）；
+ *   * 8.3 短名（`C:\PROGRA~1\…`，资源管理器拖进来时 Chromium 给的就是这种）；
  *   * 末尾空格/点（Windows 在打开路径时会吃掉它们，`realpath` 会给出规范形）。
  */
 

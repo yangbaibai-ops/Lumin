@@ -2,7 +2,7 @@
 
 # Lumin 面向用户控件接线审计（只读静态审计）
 
-- 审计对象：`D:\code_workspace\Lumin`（Electron 39 / Vue 3.5 / Tiptap 3.31 / vue-i18n 11 / Pinia / SQLite）
+- 审计对象：`<仓库根>`（Electron 39 / Vue 3.5 / Tiptap 3.31 / vue-i18n 11 / Pinia / SQLite）
 - 审计方式：**纯静态**（read / grep / glob + 只读 PowerShell 扫描）。未运行 npm、未启动 Electron、未修改 `src/` 下任何文件、未提交 git。
 - 审计产出：`docs/_audit/ui-inventory.md`（本文件的**唯一**新增内容；`docs/_audit/` 目录与同目录另两份审计在本会话期间一并产生）
 - 关于 git：**本次审计没有执行任何写操作**（未 `add`、未 `commit`）。但本会话期间**另一个并发进程/代理**在同一工作区创建了提交 `3843195`（2026-09-16 21:01:59，`test(docs): 日常与深度使用验收：逐控件盘点 + i18n/设置/IPC/覆盖矩阵四份审计…`），该提交把本文件当时的快照一并纳入版本库；本文档最后一行修正（摘要里的「34 条 → 42 条」）当前仍以 `M docs/_audit/ui-inventory.md` 的形式留在工作区。除本文件外，本会话未改动 `src/` 与任何其它文件。

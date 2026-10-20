@@ -487,10 +487,10 @@ md-reveal-inline"`）→ 字号恢复 `inherit` + 暗色 `--ink-3` + 与 `.md-ma
   - 被转义的字面字符本身（`.md-escape-char`）**始终**正常显示（`color: inherit`）。
   - **只有「真转义」折叠**（本轮第二处口径判断）：「真转义」= `\` + **ASCII 标点**，
     判据直接复用文件里既有的 `ASCII_PUNCT` 常量（即 `ESCAPED_PUNCT_RE` 用的那一份，
-    CommonMark 的可转义集合）。原因是一条**实测出来的**边界：`C:\Users\x` 这类 Windows
+    CommonMark 的可转义集合）。原因是一条**实测出来的**边界：`C:\work\x` 这类 Windows
     路径在装载路径上**同样是 `MdEscape` 文本节点**（`patchEscapeRule` 的分支 ③ 把不可
     转义字符也原样保留、逐字写回），但它不是 CommonMark 语义上的转义 —— 一起折叠的话，
-    屏幕上的路径会**少字符**（`C:\Users\x` 显示成 `C:Usersx`，实测取证）。所以非标点的
+    屏幕上的路径会**少字符**（`C:\work\x` 显示成 `C:workx`，实测取证）。所以非标点的
     `\X`（含孤立反斜杠、`\` + 空格）一律常显：装饰永远给它 `.md-reveal-inline`（复用同一个
     显隐类的「已展开」态，不新造机制），cursor 进出一律不变。取舍方向是**宁可多显示一个
     反斜杠，也绝不把内容藏起来**；

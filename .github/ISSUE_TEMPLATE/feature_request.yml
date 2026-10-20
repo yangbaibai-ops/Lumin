@@ -1,0 +1,74 @@
+name: 功能建议
+description: 提出一个可落地的功能或改进（请说明使用场景，而不只是"想要 X"）
+title: '[Feature] '
+labels: ['enhancement']
+body:
+  - type: markdown
+    attributes:
+      value: |
+        感谢建议。Lumin 的目标是"写 Markdown 时不用切模式"，
+        所以请优先描述**你现在的写作流程卡在哪**，而不是直接指定实现方式。
+
+  - type: input
+    id: version
+    attributes:
+      label: 版本
+      description: 应用内「帮助 → 关于」，或 package.json 里的版本号
+      placeholder: '例如 1.0.0'
+    validations:
+      required: true
+
+  - type: dropdown
+    id: platform
+    attributes:
+      label: 系统
+      options:
+        - Windows 10/11
+        - macOS
+        - Linux
+        - 其他（请在补充里说明）
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: 使用场景 / 现在的问题
+      description: 你正在写什么、卡在哪一步、现在只能怎么绕过
+      placeholder: |
+        我在写……时需要……
+        现在只能……，因为……
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: 期望的行为
+      description: 从用户视角描述"做完之后我应该能……"
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: 现在的实际行为
+      description: 没有对应功能就写"无此功能"；行为不一致请写清差异
+    validations:
+      required: true
+
+  - type: textarea
+    id: screenshots
+    attributes:
+      label: 截图 / 示意图
+      description: 可拖入图片；手绘草图也可以
+    validations:
+      required: false
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: 备选方案
+      description: 你考虑过的其它做法，以及为什么它们不够好
+    validations:
+      required: false

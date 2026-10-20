@@ -70,6 +70,15 @@ body:
       required: true
 
   - type: textarea
+    id: screenshots
+    attributes:
+      label: 截图 / 录屏
+      description: 直接把图片拖进输入框即可；涉及文档内容请先打码或换成最小复现样例
+      placeholder: 拖入图片，或写"无"
+    validations:
+      required: false
+
+  - type: textarea
     id: extra
     attributes:
       label: 其他

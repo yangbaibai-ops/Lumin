@@ -1044,9 +1044,9 @@ async function main() {
   )
 
   // H7：**非标点的 `\X` 不参与光标显隐**（Windows 路径 `C:\a\b`）——
-  // 取证（隔离实例实测）：`C:\Users\x` 在装载路径上同样是 **MdEscape 文本节点**
+  // 取证（隔离实例实测）：`C:\work\x` 在装载路径上同样是 **MdEscape 文本节点**
   // （`patchEscapeRule` 的分支 ③ 把不可转义字符也原样保留、逐字写回），但它不是
-  // CommonMark 语义上的转义；若一起折叠，屏幕上会少字符（`C:Usersx`）。
+  // CommonMark 语义上的转义；若一起折叠，屏幕上会少字符（`C:workx`）。
   // 所以装饰永远给它 `.md-reveal-inline`（= 常显暗色），判据是被转义字符属不属于
   // 既有常量 ASCII_PUNCT（CommonMark 的可转义集合）。
   await openDoc('Windows 路径 C:\\a\\b 结束\n')

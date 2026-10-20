@@ -307,13 +307,13 @@
 | `_verify-rename.js`(13) + `_verify-rename-fix.js`(9)                                                                                                                                   | 数据破坏面，且 `_verify-rename-fix` 守的是用户真实踩过的 UNIQUE 冲突                                                                                                                                                                   |
 | `_verify-links.js`(12) + `_verify-link-paste.js`(3)                                                                                                                                    | 编辑核心；无需 dev server                                                                                                                                                                                                              |
 | `_verify-table-width.js`(14)、`_verify-filelist-view.js`(13)、`_verify-tooltip.js`(6)                                                                                                  | 无需 dev server 的纯 UI 回归，跑得便宜                                                                                                                                                                                                 |
-| `verify-tiptap.js`                                                                                                                                                                     | **治本方案**：把它拆进 harness + Reporter，删掉硬编码的 `D:/code_workspace/Lumin-test-workspace` 与 `C:/Users/yangbaibai/Desktop/新建文件夹`，让 114 项断言能进矩阵。它是气泡菜单/input rules/标记符/表格编辑/全局搜索唯一的自动化资产 |
+| `verify-tiptap.js`                                                                                                                                                                     | **治本方案**：把它拆进 harness + Reporter，删掉硬编码的 `<测试工作区>` 与 `<用户桌面>/新建文件夹`，让 114 项断言能进矩阵。它是气泡菜单/input rules/标记符/表格编辑/全局搜索唯一的自动化资产 |
 
 ### 3.3 「非矩阵大资产」专项：`tools/verify-tiptap.js`
 
 - 体量：1473 行、**114 项具名断言**、10 个分组（A 打开渲染 / B input rules+标记符 / C 代码块 / D 表格+气泡菜单+HTML+主题+全局搜索 / E 分割线+标题退格+设置持久化 / F 表格插入+真实键入 / G 边界打字不丢粗体 / H Ctrl+左键 / I 链接交互 / J 标记内回车合并）。
 - 拉它进来的三个障碍：
-  1. **硬编码机器路径**：`tests/` 之外的 `D:/code_workspace/Lumin-test-workspace` 与 `USER_WS = 'C:/Users/yangbaibai/Desktop/新建文件夹'`（后者分明是某次调试留下的答案）；
+  1. **硬编码机器路径**：`tests/` 之外的 `<测试工作区>` 与 `USER_WS = '<用户桌面>/新建文件夹'`（后者分明是某次调试留下的答案）；
   2. **必须 dev server**（写死 `5173` 与 `9222`），而 `run-suites.js` 的默认矩阵刻意排除这类；
   3. **不用 harness + Reporter**：自己的 `results`/`logErrors` 汇总，`run-suites.js` 解析不了它的输出（不认识 `--- N/M PASS`）。
 - 结论：**它守的功能（气泡菜单、input rules、标记符显隐、表格编辑、全局搜索）在矩阵里等于没守**。这是本次审计最重要的单项发现。
@@ -330,7 +330,7 @@
 | `--all` 只收 `_verify-*`                 | `allSuites()` 用 `/^_verify-.*\.js$/` 过滤                                                                                                                                                                                         | `_regress-*` / `_repro-*` **永远不会**被 `--all` 带上，只有默认矩阵里那 7 个在跑；其余 `_repro-*`（9 个探针）算「已知只手工跑」 |
 | 命名与语义漂移                           | `_verify-session.js` 的 `toggle-off-shows-welcome` 实际断言的是「落在编辑器」（欢迎页已删）                                                                                                                                        | 断言名误导后来人                                                                                                                |
 | README 与事实不一致                      | README「查找替换 ❌ 功能待接入」，但 `_verify-find-replace.js`(12) + `tests/findReplace.test.mjs`(11) 已完整覆盖；README「EOL 多窗口一致性还没做」，但 `_verify-md-fidelity` 已有 3 条多窗口断言                                   | 审计/排期会基于错误前提                                                                                                         |
-| 探针里有硬编码绝对路径                   | `_verify-3tasks.js`（`D:\code_workspace\Lumin-test-workspace`）、`verify-tiptap.js`（两个）、`_check-windowstate.js` 等                                                                                                            | 换机器即废；也说明它们**从未打算进矩阵**                                                                                        |
+| 探针里有硬编码绝对路径                   | `_verify-3tasks.js`（`<测试工作区>`）、`verify-tiptap.js`（两个）、`_check-windowstate.js` 等                                                                                                            | 换机器即废；也说明它们**从未打算进矩阵**                                                                                        |
 
 ### 3.5 建议归档（从 `tools/` 挪到 `tools/_archive/` 或直接删）
 

@@ -9,6 +9,7 @@
  *
  * 用法：先起带调试端口的隔离实例（LUMIN_DEBUG_PORT，默认 9333），再 node tools/_probe-imgcaret.js
  */
+const path = require('path')
 const PORT = process.env.LUMIN_DEBUG_PORT || '9333'
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 
@@ -56,7 +57,7 @@ async function main() {
     await sleep(300)
   }
   if (!ready) throw new Error('编辑器未就绪')
-  const H = require('D:\\code_workspace\\Lumin\\tools\\lib\\harness.js')
+  const H = require(path.join(__dirname, 'lib', 'harness.js'))
   if (!(await H.settle(ev))) throw new Error('settle 失败')
 
   // ── ① 转义：清空 → 打字 → 读序列化字节 ────────────────────────────────────

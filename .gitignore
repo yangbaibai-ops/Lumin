@@ -14,3 +14,12 @@ dev-app-update.yml
 *.tsbuildinfo
 
 tmp/
+# 本地环境变量与签名材料：绝不入库（假 .env 也不该出现在提交里）
+.env
+.env.*
+*.p12
+*.pfx
+*.pem
+*.cer
+*.p7b
+*.key

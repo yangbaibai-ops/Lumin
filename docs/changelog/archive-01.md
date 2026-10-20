@@ -1375,9 +1375,9 @@
   左右边界均含 → 光标紧贴段两端也显示）；`style.css` 的 `.md-escape-backslash` 默认
   `font-size: 0`，带 `.md-reveal-inline` 时 `font-size: inherit` + 同一条淡入动画。
   被转义的字面字符（`.md-escape-char`）始终正常显示。
-- **只有「真转义」（`\` + ASCII 标点）参与折叠**：实测发现 `C:\Users\x` 这类 Windows 路径
+- **只有「真转义」（`\` + ASCII 标点）参与折叠**：实测发现 `C:\work\x` 这类 Windows 路径
   在装载路径上**同样是 `MdEscape` 文本节点**（逐字写回的载体，不是 CommonMark 转义）——
-  若一起折叠，路径在屏幕上会少字符（`C:Usersx`）。所以非标点 `\X` 一律常显（复用同一个
+  若一起折叠，路径在屏幕上会少字符（`C:workx`）。所以非标点 `\X` 一律常显（复用同一个
   `.md-reveal-inline` 的「已展开」态，判据复用既有常量 `ASCII_PUNCT`），取舍是
   「宁可多显示一个反斜杠，也绝不把内容藏起来」。
 - `literalizeStrayMarkers`（Fragment 级、只在重推路径调用）删除，逻辑并入 `normalizeAtoms`

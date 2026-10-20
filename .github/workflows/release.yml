@@ -1,0 +1,64 @@
+# ─── 发版：推送 v* tag 时构建 Windows 安装包并创建 GitHub Release ───────────────
+#
+# 触发：`git tag v1.0.0 && git push origin v1.0.0`
+# 产物：dist/Lumin-<version>-setup.exe、dist/latest.yml、dist/*.blockmap
+#
+# 认证：只用仓库自带的 GITHUB_TOKEN（permissions.contents: write），
+# 不配置任何签名证书 / PAT / 第三方 secret。安装包未做代码签名，
+# 用户下载时会看到 SmartScreen 的“未知发布者”，这是已知限制（见 README）。
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+# 创建 Release 需要写 contents；不要给多余权限
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:
+      # 与 ci.yml / package.yml 一致：action 一律 pin 到 commit SHA，
+      # 注释保留人类可读的版本号（由 dependabot 的 github-actions 条目更新）。
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: 安装依赖
+        run: npm ci
+
+      - name: 构建 Windows 安装包
+        run: npm run build:win
+
+      - name: 校验产物存在
+        shell: pwsh
+        run: |
+          $setup = Get-ChildItem dist -Filter 'Lumin-*-setup.exe' | Select-Object -First 1
+          if (-not $setup) { throw '没有找到 dist/Lumin-*-setup.exe' }
+          if (-not (Test-Path 'dist/latest.yml')) { throw '没有找到 dist/latest.yml' }
+          Get-ChildItem dist -Include *.exe, latest.yml, *.blockmap -Recurse |
+            ForEach-Object { "$($_.Name)  $((Get-FileHash $_.FullName -Algorithm SHA256).Hash)" } |
+            Tee-Object -FilePath dist\SHA256SUMS.txt
+
+      - name: 创建 Release 并上传产物
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          files: |
+            dist/Lumin-*-setup.exe
+            dist/latest.yml
+            dist/*.blockmap
+            dist/SHA256SUMS.txt
+          fail_on_unmatched_files: true
+          generate_release_notes: true

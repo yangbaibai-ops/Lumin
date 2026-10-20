@@ -7,6 +7,9 @@
 //   node tools/_verify-notify-restart.js check    # 复核恢复结果并清理
 //
 // 不读写用户已开窗口的通知；清理阶段会关掉临时窗口（主进程随之清掉其作用域）。
+//
+// 临时窗口打开的文档：用环境变量 `LUMIN_USER_DOC` 指定（绝对路径）；
+// 省略时用仓库内的 `tools/fixtures/md/mixed-doc.md`，不再依赖任何人的机器目录。
 const path = require('path')
 const os = require('os')
 const fs = require('fs')
@@ -14,8 +17,10 @@ const { DatabaseSync } = require('node:sqlite')
 const CDP = 'http://127.0.0.1:9222/json'
 const DB = process.env.LUMIN_DB || path.join(os.homedir(), 'AppData', 'Roaming', 'lumin', 'lumin.db')
 const STATE = path.join(os.tmpdir(), 'lumin-notify-restart.json')
-/** 临时窗口里要打开的文档：用工作区里已存在、且已在最近文档里的文件（只读打开，不写盘） */
-const USER_DOC = 'D:\\code_workspace\\Lumin-test-workspace\\000.md'
+/** 临时窗口里要打开的文档（只读打开，不写盘）：环境变量优先，默认取仓库夹具 */
+const USER_DOC = path.resolve(
+  process.env.LUMIN_USER_DOC || path.join(__dirname, 'fixtures', 'md', 'mixed-doc.md')
+)
 const PHASE = process.argv[2]
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 
