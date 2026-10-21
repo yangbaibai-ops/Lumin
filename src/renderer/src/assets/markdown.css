@@ -268,6 +268,36 @@
   /* 仓库里**没有**通用间距令牌（theme.css 只有颜色/圆角一类）⇒ 用相对字号，不硬编码像素 */
   margin-inline-start: 0.6em;
 }
+/* ── 被链接包住的图片（`[![alt](img)](url)`）必须与裸图**同一套对齐** ──────────────
+   用户报障（README 徽章）：首张徽章是 `[![License](…)](LICENSE)`（DOM 是 `p > a > img`），
+   后面三张是裸 `img`；`p > img:not(:only-child)` 选不中链接里的那张 ⇒ 它走 img 基线的
+   `vertical-align: middle`，其它张走 `top` ⇒ 同一行里上下错位。
+   这里把「段落里的图片」统一成同一套几何：inline-block + `vertical-align: top`。 */
+.md-preview p > a > img {
+  display: inline-block;
+  vertical-align: top;
+  margin-inline: 0;
+}
+/* 链接元素本身是 inline：不压掉它的行高，就会在图片下方留出一条 descender 空隙，
+   与裸图并排时整体往下沉几像素（徽章错位的另一半原因）。 */
+.md-preview p > a:has(> img) {
+  display: inline-block;
+  vertical-align: top;
+  line-height: 0;
+}
+/* 链接包住的图**独占一段**时，仍按块级居中（与 `p > img:only-child` 同口径） */
+.md-preview p > a:only-child > img {
+  display: block;
+  margin: 0.4em auto;
+  margin-inline: auto;
+  vertical-align: middle;
+}
+/* 链接与图片混排时的间距（`a + img` / `img + a` / `a + a`），外侧不撑开 */
+.md-preview p > a + img,
+.md-preview p > img + a,
+.md-preview p > a + a {
+  margin-inline-start: 0.6em;
+}
 /* 段内的空白策略是 reak-spaces（会保留换行 ⇒ 把两张相邻图片拆成两行）
    ⇒ 段里不止一张图时改回 
 ormal，只影响这种段落 */
