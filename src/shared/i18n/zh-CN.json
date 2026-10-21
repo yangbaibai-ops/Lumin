@@ -53,7 +53,6 @@
     "closeWorkspace": "关闭工作区",
     "expand": "展开侧边栏",
     "hide": "隐藏侧边栏",
-    "show": "显示侧边栏",
     "filterPlaceholder": "搜索文件名…",
     "noMatch": "没有匹配的文件",
     "emptyFolder": "文件夹为空",
