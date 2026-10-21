@@ -11,6 +11,7 @@ import { useSettingsStore } from '../stores/settings'
 import { useEditorStore } from '../stores/editor'
 import { useFindStore } from '../stores/find'
 import { useEditorMenuStore } from '../stores/editorMenu'
+import { useAiStore } from '../stores/ai'
 import { useExport } from '../composables/useExport'
 import { currentKeymap } from '../lib/keymap/service'
 import { normalizeSpec } from '../lib/keymap/keys'
@@ -39,6 +40,7 @@ const ui = useUiStore()
 const settings = useSettingsStore()
 const editorStore = useEditorStore()
 const editorMenu = useEditorMenuStore()
+const ai = useAiStore()
 const { runExport, runPrint } = useExport()
 const { setMode } = useEditorMode()
 const { toggleOutlineSide } = useOutlineSide()
@@ -446,6 +448,21 @@ const GROUPS = computed<Group[]>(() => [
         icon: 'list-checks',
         commandId: 'edit.globalSearch',
         run: () => ui.openGlobalSearch()
+      },
+      'sep',
+      // AI（最小可用）：摘要可对全文/选区，改写要求先有选区。两个入口都只开预览面板，
+      // 落笔/替换必须用户再点一次（与命令面板、快捷键、原生菜单同一条实现）。
+      {
+        labelKey: 'menu.aiSummarize',
+        icon: 'sparkles',
+        commandId: 'ai.summarize',
+        run: () => void ai.openSummary()
+      },
+      {
+        labelKey: 'menu.aiRewrite',
+        icon: 'pencil',
+        commandId: 'ai.rewrite',
+        run: () => void ai.openRewrite()
       }
     ]
   },

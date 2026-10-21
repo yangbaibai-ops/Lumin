@@ -12,6 +12,15 @@ import type { DocRiskRecord } from './freeze'
 import type { NativeCloseChoice, NativeExternalChoice } from './nativeDialogs'
 // 打印结果三态 + 失败原因（纯函数模块，见 shared/printOptions.ts）
 import type { PrintResult } from './printOptions'
+// AI 通道的负载（状态/流式事件/测试连接；类型定义在 shared/ai.ts）
+import type {
+  AiKeySaveOutcome,
+  AiStatus,
+  AiStreamEvent,
+  AiStreamRequest,
+  AiStreamStart,
+  AiTestResult
+} from './ai'
 export type { HistoryEntry, HistoryEntryMeta }
 export type { ConcreteEncoding, EncodingId, Eol }
 export type Language = 'zh-CN' | 'en-US' | 'ru-RU'
@@ -151,6 +160,13 @@ export interface AppSettings {
    */
   keybindings: Record<string, string | null>
   export: ExportSettings
+  /**
+   * AI 的 Base URL / 模型名（**不是密钥**）。
+   * 这两项是普通设置（会进设置导出）；API Key 单独用 safeStorage 加密后存 kv 的
+   * `aiApiKey`，永远不进设置对象、不进导出文件、不透出到渲染层。
+   */
+  aiBaseUrl: string
+  aiModel: string
 }
 
 // ─── 通知中心（窗口私有，SQLite 持久化）────────────────────────────────────
@@ -582,6 +598,10 @@ export type MenuAction =
   | 'paste-plain'
   /** 「导出启动诊断」（帮助菜单 / 状态栏 / 设置页共用）：写一份脱敏的启动日志合集 */
   | 'export-startup-diagnostics'
+  /** AI 摘要（全文或选区）：只**生成预览**，不自动改文档 */
+  | 'ai-summarize'
+  /** AI 改写（必须先有选区）：先出 diff 预览，用户确认后才单事务替换 */
+  | 'ai-rewrite'
 
 export interface LuminAPI {
   app: {
@@ -832,6 +852,26 @@ export interface LuminAPI {
     addWord: (word: string) => Promise<boolean>
     /** 本会话内忽略（不改变系统词典；下划线仍由 Chromium 绘制） */
     ignoreWord: (word: string) => Promise<boolean>
+  }
+  /**
+   * AI（摘要 / 选区改写）——**渲染层拿不到 Key**。
+   *
+   * 这里只有五个动作：问状态、写 Key、测试连接、开流、取消。
+   * 生成结果通过 `events.on('ai:event')` 逐段推送；渲染层不直接 fetch（网络只在主进程）。
+   */
+  ai: {
+    /** 只回 `{ hasKey, model, baseUrl }`，没有明文/密文 Key */
+    status: () => Promise<AiStatus>
+    /** 保存 Key（空串 = 清除）；失败原因只有 empty-key / key-unavailable */
+    setKey: (key: string) => Promise<AiKeySaveOutcome>
+    /** 测试连接（/models，服务端不支持时回退一次极小 completion） */
+    test: () => Promise<AiTestResult>
+    /** 开一个流：立刻返回 requestId / 截断统计，delta 走 ai:event */
+    stream: (req: AiStreamRequest) => Promise<AiStreamStart>
+    /** 取消某个请求（只对发起窗口有效） */
+    abort: (requestId: string) => Promise<boolean>
+    /** 订阅流式事件（preload 白名单通道 `ai:event`；返回取消函数） */
+    onEvent: (fn: (event: AiStreamEvent) => void) => () => void
   }
   workspace: {
     getRoot: () => Promise<string | null>

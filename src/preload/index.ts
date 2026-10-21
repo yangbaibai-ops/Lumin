@@ -82,7 +82,12 @@ const EVENT_CHANNELS = [
    * 主进程的防卡死通知（第一百一十轮）：无响应/恢复，以及重载前的 `flush-draft`。
    * 渲染层只在收到 `flush-draft` 时落一次草稿并回 `freeze:draftAck`。
    */
-  'app:freeze'
+  'app:freeze',
+  /**
+   * AI 流式事件（`services/ai.ts` 的 `sender.send('ai:event', …)`）。
+   * 负载只有 requestId + delta/结束/错误码 —— **没有 Key，也没有完整 prompt**。
+   */
+  'ai:event'
 ] as const
 
 const EVENT_CHANNEL_SET: ReadonlySet<string> = new Set(EVENT_CHANNELS)
@@ -229,6 +234,22 @@ const api: LuminAPI = {
     getState: () => ipcRenderer.invoke('spell:getState'),
     addWord: (word) => ipcRenderer.invoke('spell:addWord', word),
     ignoreWord: (word) => ipcRenderer.invoke('spell:ignoreWord', word)
+  },
+  /**
+   * AI：**只转发 IPC**，不做任何拼接/缓存。Key 从渲染层进来一次（用户输入），
+   * 出去的方向只有 `{hasKey,model,baseUrl}` —— preload 也没有读回 Key 的通道。
+   */
+  ai: {
+    status: () => ipcRenderer.invoke('ai:status'),
+    setKey: (key) => ipcRenderer.invoke('ai:setKey', key),
+    test: () => ipcRenderer.invoke('ai:test'),
+    stream: (req) => ipcRenderer.invoke('ai:stream', req),
+    abort: (requestId) => ipcRenderer.invoke('ai:abort', requestId),
+    onEvent: (fn) => {
+      const handler = (_e: unknown, event: unknown): void => fn(event as never)
+      ipcRenderer.on('ai:event', handler)
+      return () => ipcRenderer.removeListener('ai:event', handler)
+    }
   },
   workspace: {
     getRoot: () => ipcRenderer.invoke('workspace:getRoot'),

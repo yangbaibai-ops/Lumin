@@ -114,6 +114,22 @@ export function buildPaletteCommands(
       keywords: ['workspace search', 'fts'],
       run: () => handleMenu('global-search')
     },
+    {
+      id: 'ai.summarize',
+      labelKey: 'menu.aiSummarize',
+      groupKey: 'keymap.groupEdit',
+      icon: 'sparkles',
+      keywords: ['ai', 'summary', 'summarize'],
+      run: () => handleMenu('ai-summarize')
+    },
+    {
+      id: 'ai.rewrite',
+      labelKey: 'menu.aiRewrite',
+      groupKey: 'keymap.groupEdit',
+      icon: 'pencil',
+      keywords: ['ai', 'rewrite', 'polish'],
+      run: () => handleMenu('ai-rewrite')
+    },
 
     // ── 视图 ──
     {

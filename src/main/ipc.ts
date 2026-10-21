@@ -157,6 +157,7 @@ function startWorkspaceWatch(root: string): void {
 import { mergeSettings } from '../shared/settingsSchema'
 import * as appSettings from './services/appSettings'
 import * as spellcheck from './services/spellcheck'
+import * as ai from './services/ai'
 
 /**
  * 主进程持有、渲染层问不到的两件事：窗口 ↔ 会话槽位归属。
@@ -1087,6 +1088,21 @@ export function registerIpc(slots: SlotRegistry): void {
   )
   ipcMain.handle('spell:ignoreWord', (_, word: string) =>
     typeof word === 'string' ? spellcheck.ignoreWord(word) : false
+  )
+  /**
+   * ─── AI（最小可用：摘要 + 选区改写）──────────────────────────────────────────
+   *
+   * 三条铁律（见 services/ai.ts 的文件头）：
+   *   1. **Key 只在主进程**：`ai:status` 只回布尔/模型/地址，没有任何 Key 形态；
+   *   2. **网络只在主进程**：`ai:stream` 立刻返回 requestId，delta 走 `ai:event`；
+   *   3. **不自动改文档**：这几条通道都不碰编辑器，落笔永远由渲染层在用户确认后执行。
+   */
+  ipcMain.handle('ai:status', () => ai.getAiStatus())
+  ipcMain.handle('ai:setKey', (_, key: string) => ai.setAiKey(typeof key === 'string' ? key : ''))
+  ipcMain.handle('ai:test', () => ai.testAi())
+  ipcMain.handle('ai:stream', (event, req) => ai.startAiStream(req, event.sender))
+  ipcMain.handle('ai:abort', (event, requestId: string) =>
+    typeof requestId === 'string' ? ai.abortAiStream(requestId, event.sender) : false
   )
   /**
    * 导出设置（审计清单「设置/快捷键导入导出、恢复默认」里缺的那一半）。

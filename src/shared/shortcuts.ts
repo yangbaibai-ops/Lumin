@@ -89,6 +89,10 @@ export const APP_OWNED_COMBOS: readonly string[] = [
   'Mod+Tab', // 应用内切换窗口
   'Mod+Shift+Tab',
   'Mod+K', // 快捷键设置
+  // AI：用户点名的 Ctrl+Alt+S / Ctrl+Alt+R（摘要 / 选区改写）。命令表里写的是字面 Ctrl，
+  // 而主进程这条判据把 Ctrl 归一成 Mod（Windows/Linux 上二者是同一个键），所以登记成 Mod。
+  'Mod+Alt+S',
+  'Mod+Alt+R',
   // 插入类（useKeymap.ts）：Mod+Alt+T/H/K/M/G 与段落上/下；图片/代码块是 Shift 变体
   'Mod+Alt+T', // 插入表格
   'Mod+Alt+H', // 插入分割线

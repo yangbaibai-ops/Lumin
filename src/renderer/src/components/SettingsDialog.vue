@@ -17,6 +17,15 @@ import { useSettingsStore } from '../stores/settings'
 import { useFilesStore } from '../stores/files'
 import { useUiStore } from '../stores/ui'
 import { FONT_OPTIONS } from '../../../shared/defaults'
+// AI：预设清单与错误码→文案键的唯一映射（与主进程/面板共用）
+import {
+  AI_DEFAULT_MODEL,
+  AI_ERROR_KEY,
+  AI_PROVIDER_PRESETS,
+  normalizeBaseUrl,
+  type AiStatus,
+  type AiTestResult
+} from '../../../shared/ai'
 // 设置文件的信封校验 / 白名单过滤 / 隐私剔除（纯函数，单测 tests/settingsFile.test.mjs）：
 // 导入的 JSON 是不可信输入，判据全在那边，这里只负责对话框、报错与确认
 import { parseSettingsFile, type SettingsImportErrorCode } from '../../../shared/settingsFile'
@@ -79,6 +88,7 @@ const tabs = computed(() => [
   { id: 'appearance', label: t('settings.appearance'), icon: 'sun' },
   { id: 'keymap', label: t('settings.keymap'), icon: 'keyboard' },
   { id: 'export', label: t('settings.export'), icon: 'download' },
+  { id: 'ai', label: t('settings.ai'), icon: 'sparkles' },
   { id: 'links', label: t('settings.links'), icon: 'link' }
 ])
 
@@ -263,6 +273,12 @@ watch(
     if (open && tab === 'general') void refreshBackup()
     // 每次打开设置页都重新问一次拼写检查状态（开关/语言可能被另一条路径改过）
     if (open) void refreshSpellState()
+    // AI 页签：Key 状态只有主进程知道，进页面时问一次（只拿 hasKey/模型/地址）
+    if (open && tab === 'ai') {
+      aiNotice.value = ''
+      aiTestState.value = null
+      void refreshAiStatus()
+    }
   },
   { immediate: true }
 )
@@ -684,6 +700,123 @@ async function useDefaultBackupDir(): Promise<void> {
 
 async function revealBackupDir(): Promise<void> {
   await window.luminAPI.backup.revealDir()
+}
+
+// ─── AI（API Key / Base URL / 模型 / 测试连接）────────────────────────────────
+// Key 的输入框**只进不出**：保存时经 IPC 交给主进程加密落库，之后渲染层只能拿到
+// `hasKey` 布尔值；这里没有任何"读回 Key"的调用。
+const aiStatus = ref<AiStatus | null>(null)
+const aiBaseDraft = ref('')
+const aiModelDraft = ref('')
+const aiKeyInput = ref('')
+const aiBusy = ref(false)
+const aiTesting = ref(false)
+const aiNotice = ref<'' | 'saved' | 'cleared'>('')
+const aiTestState = ref<AiTestResult | null>(null)
+
+const aiKeyLabel = computed(() =>
+  aiStatus.value?.hasKey ? t('settings.aiKeySaved') : t('settings.aiKeyMissing')
+)
+const aiTestText = computed(() => {
+  const s = aiTestState.value
+  if (!s) return ''
+  if (s.ok) return t('settings.aiTestOk', { ms: s.latencyMs ?? 0 })
+  return t(AI_ERROR_KEY[s.code])
+})
+const aiNoticeText = computed(() => {
+  if (aiNotice.value === 'saved') return t('settings.aiSaved')
+  if (aiNotice.value === 'cleared') return t('settings.aiCleared')
+  return ''
+})
+/** 当前 Base URL 命中了哪个预设（找不到 = 自定义） */
+const aiPresetId = computed(
+  () =>
+    AI_PROVIDER_PRESETS.find((p) => p.baseUrl && p.baseUrl === aiBaseDraft.value)?.id ?? 'custom'
+)
+
+function syncAiDrafts(): void {
+  aiBaseDraft.value = settings.aiBaseUrl
+  aiModelDraft.value = settings.aiModel
+}
+
+async function refreshAiStatus(): Promise<void> {
+  try {
+    aiStatus.value = await window.luminAPI.ai.status()
+  } catch {
+    aiStatus.value = null
+  }
+  syncAiDrafts()
+}
+
+function onAiPresetChange(id: string): void {
+  const preset = AI_PROVIDER_PRESETS.find((p) => p.id === id)
+  if (preset && preset.baseUrl) aiBaseDraft.value = preset.baseUrl
+}
+
+/** 保存 Base URL / 模型（以及输入框里新填的 Key）；返回是否可以继续测试连接 */
+async function saveAiSettings(): Promise<boolean> {
+  const base = normalizeBaseUrl(aiBaseDraft.value)
+  if (!base) {
+    aiTestState.value = { ok: false, code: 'invalid-base-url' }
+    return false
+  }
+  const model = aiModelDraft.value.trim() || AI_DEFAULT_MODEL
+  aiBaseDraft.value = base
+  aiModelDraft.value = model
+  settings.set('aiBaseUrl', base)
+  settings.set('aiModel', model)
+  // Base URL/模型是普通设置（250ms 节流），保存后立刻落库；紧接着的测试连接读的是主进程那份
+  await settings.flush()
+  const key = aiKeyInput.value.trim()
+  if (key) {
+    const r = await window.luminAPI.ai.setKey(key)
+    if (!r.ok) {
+      aiTestState.value = { ok: false, code: r.code }
+      return false
+    }
+    aiKeyInput.value = ''
+    aiNotice.value = 'saved'
+  }
+  await refreshAiStatus()
+  return true
+}
+
+async function saveAi(): Promise<void> {
+  if (aiBusy.value) return
+  aiBusy.value = true
+  aiNotice.value = ''
+  try {
+    await saveAiSettings()
+  } finally {
+    aiBusy.value = false
+  }
+}
+
+async function clearAiKey(): Promise<void> {
+  if (aiBusy.value) return
+  aiBusy.value = true
+  try {
+    await window.luminAPI.ai.setKey('')
+    aiTestState.value = null
+    aiNotice.value = 'cleared'
+    await refreshAiStatus()
+  } finally {
+    aiBusy.value = false
+  }
+}
+
+async function testAi(): Promise<void> {
+  if (aiTesting.value) return
+  aiTesting.value = true
+  aiTestState.value = null
+  try {
+    if (!(await saveAiSettings())) return
+    aiTestState.value = await window.luminAPI.ai.test()
+  } catch {
+    aiTestState.value = { ok: false, code: 'network' }
+  } finally {
+    aiTesting.value = false
+  }
 }
 
 /**
@@ -1828,6 +1961,117 @@ function formatTime(ms: number): string {
                         <p class="set-row-desc mt-1">{{ t('settings.exportNote') }}</p>
                       </div>
                     </details>
+                  </template>
+
+                  <!-- AI：Key（只写不读）/ Base URL / 模型 / 测试连接。
+                       Key 输入框保存后立刻清空，界面只显示"已保存/未设置"——
+                       渲染层没有任何读回 Key 的通道（见 preload 的 ai API）。 -->
+                  <template v-else-if="tab.id === 'ai'">
+                    <section class="set-card">
+                      <h3 class="set-card-title">{{ t('settings.aiCard') }}</h3>
+                      <p class="set-row-desc mb-4">{{ t('settings.aiCardDesc') }}</p>
+
+                      <div class="ai-settings-grid">
+                        <label class="ai-field">
+                          <span class="set-row-label">{{ t('settings.aiProvider') }}</span>
+                          <select
+                            class="input select"
+                            :value="aiPresetId"
+                            data-ai-provider
+                            @change="onAiPresetChange(($event.target as HTMLSelectElement).value)"
+                          >
+                            <option
+                              v-for="preset in AI_PROVIDER_PRESETS"
+                              :key="preset.id"
+                              :value="preset.id"
+                            >
+                              {{ t(preset.labelKey) }}
+                            </option>
+                          </select>
+                        </label>
+                        <label class="ai-field">
+                          <span class="set-row-label">{{ t('settings.aiBaseUrl') }}</span>
+                          <input
+                            v-model="aiBaseDraft"
+                            type="url"
+                            class="input"
+                            spellcheck="false"
+                            data-ai-base-url
+                            :placeholder="t('settings.aiBaseUrlPlaceholder')"
+                          />
+                          <span class="set-row-desc">{{ t('settings.aiBaseUrlDesc') }}</span>
+                        </label>
+                        <label class="ai-field">
+                          <span class="set-row-label">{{ t('settings.aiModel') }}</span>
+                          <input
+                            v-model="aiModelDraft"
+                            type="text"
+                            class="input"
+                            spellcheck="false"
+                            data-ai-model
+                            :placeholder="t('settings.aiModelPlaceholder')"
+                          />
+                          <span class="set-row-desc">{{ t('settings.aiModelDesc') }}</span>
+                        </label>
+                      </div>
+
+                      <div class="set-row ai-key-row">
+                        <div>
+                          <p class="set-row-label">{{ t('settings.aiKey') }}</p>
+                          <p class="set-row-desc" data-ai-key-status>{{ aiKeyLabel }}</p>
+                        </div>
+                        <div class="ai-key-controls">
+                          <input
+                            v-model="aiKeyInput"
+                            type="password"
+                            class="input ai-key-input"
+                            spellcheck="false"
+                            autocomplete="off"
+                            data-ai-key-input
+                            :placeholder="t('settings.aiKeyPlaceholder')"
+                          />
+                          <button
+                            class="btn btn-primary px-4 py-2"
+                            :disabled="aiBusy"
+                            data-ai-save
+                            @click="saveAi()"
+                          >
+                            {{ t('common.save') }}
+                          </button>
+                          <button
+                            v-if="aiStatus?.hasKey"
+                            class="btn btn-ghost px-3 py-2"
+                            :disabled="aiBusy"
+                            data-ai-clear
+                            @click="clearAiKey()"
+                          >
+                            {{ t('settings.aiClearKey') }}
+                          </button>
+                        </div>
+                      </div>
+
+                      <div class="ai-test-row">
+                        <button
+                          class="btn btn-outline px-4 py-2"
+                          :disabled="aiTesting || aiBusy"
+                          data-ai-test
+                          @click="testAi()"
+                        >
+                          {{ aiTesting ? t('settings.aiTesting') : t('settings.aiTest') }}
+                        </button>
+                        <span v-if="aiNoticeText" class="ai-test-note" data-ai-notice>{{
+                          aiNoticeText
+                        }}</span>
+                        <span
+                          v-if="aiTestText"
+                          class="ai-test-note"
+                          :class="aiTestState?.ok ? 'text-ok-ink' : 'text-danger-ink'"
+                          data-ai-test-result
+                          >{{ aiTestText }}</span
+                        >
+                      </div>
+                      <p class="set-row-desc mt-3">{{ t('settings.aiSecurityNote') }}</p>
+                    </section>
                   </template>
 
                   <!-- 链接：Ctrl/Cmd+左键打开链接时的行为与历史 -->

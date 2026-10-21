@@ -161,6 +161,22 @@ export function useKeymap(actions: ReturnType<typeof useAppActions>): void {
       defaultKeys: 'Mod+,',
       run: () => handleMenu('settings')
     },
+    {
+      // AI 摘要：用户点名的 **Ctrl+Alt+S**（不是 Mod，mac 上也是 Control）
+      id: 'ai.summarize',
+      titleKey: 'menu.aiSummarize',
+      groupKey: 'keymap.groupEdit',
+      defaultKeys: 'Ctrl+Alt+S',
+      run: () => handleMenu('ai-summarize')
+    },
+    {
+      // AI 改写（选区）：用户点名的 **Ctrl+Alt+R**
+      id: 'ai.rewrite',
+      titleKey: 'menu.aiRewrite',
+      groupKey: 'keymap.groupEdit',
+      defaultKeys: 'Ctrl+Alt+R',
+      run: () => handleMenu('ai-rewrite')
+    },
 
     // ── 插入（默认键避开已有注册表：Mod+K 属快捷键设置，故链接用 Mod+Alt+K）──
     {
