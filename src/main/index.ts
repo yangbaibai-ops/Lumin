@@ -15,7 +15,8 @@ import {
   screen,
   // ⚠️ 名字冲突：本文件下面还有 `import * as session from './services/session'`（会话恢复），
   // 所以 Electron 的这个 session 必须起别名
-  session as electronSession
+  session as electronSession,
+  type Display
 } from 'electron'
 import { join, resolve } from 'path'
 import { randomUUID } from 'crypto'
@@ -33,6 +34,18 @@ import {
   MIN_WINDOW_WIDTH,
   MIN_WINDOW_HEIGHT
 } from './windowPlacement'
+import {
+  clampBoundsToWorkArea,
+  computeDefaultBounds,
+  displayStateKey,
+  type Rect,
+  type Size
+} from './windowBounds'
+import {
+  attachWindowBoundsGuard,
+  installWindowDebugHook,
+  resyncWindowBounds
+} from './windowBoundsGuard'
 import { planOpenRequest } from './openRequest'
 import { mainT } from './i18n'
 import { registerIpc, attachCloseGuard } from './ipc'
@@ -273,29 +286,106 @@ interface WindowState {
   isMaximized: boolean
 }
 
+/** 最小窗口尺寸（与 windowPlacement.ts 同源，也给纯函数 clamp 用） */
+const MIN_WINDOW_SIZE: Size = { width: MIN_WINDOW_WIDTH, height: MIN_WINDOW_HEIGHT }
+/** kv 键：最近一次窗口（旧版本也读它；新版作为诊断/迁移源保留） */
+const WINDOW_STATE_KV = 'windowState'
+/** kv 键：按 `display.id@scaleFactor` 分屏保存的窗口记录 */
+const WINDOW_STATE_BY_DISPLAY_KV = 'windowStateByDisplay'
+/** kv 键：上次退出时窗口所在的显示器 id（启动时优先恢复到那块屏） */
+const WINDOW_STATE_LAST_DISPLAY_KV = 'windowStateLastDisplay'
+/** 最多记住几块屏的记录（换接口/改缩放会累积 key，不能让 kv 无限长） */
+const MAX_REMEMBERED_DISPLAYS = 8
+
+/** 分屏保存的一条记录：除 bounds 外还带显示器标识，避免把 A 屏尺寸套到 B 屏 */
+interface DisplayWindowState extends WindowState {
+  displayId: number
+  scaleFactor: number
+  savedAt: number
+}
+
+type WindowStateMap = Record<string, DisplayWindowState>
+
 /**
- * 保存过的窗口位置还能不能用（尺寸够大 + 与某个显示器工作区相交）。
- * 纯规则抽在 `main/windowPlacement.ts`（不 import electron，有单测）——
- * 这里只负责把「当前显示器的工作区」喂进去。
+ * 启动时该恢复到哪块显示器：优先上次退出时那块（还在的话），否则主屏。
+ * 必须在数据库就绪之后调用（要读 kv）。
  */
-function validWindowBounds(s: WindowState): boolean {
-  return canRestoreWindow(
-    s,
-    screen.getAllDisplays().map((d) => d.workArea)
-  )
+function displayToRestore(): Display {
+  const displays = screen.getAllDisplays()
+  const lastId = db.kvGet<number | null>(WINDOW_STATE_LAST_DISPLAY_KV, null)
+  return displays.find((d) => d.id === lastId) ?? screen.getPrimaryDisplay()
+}
+
+/**
+ * 取某块显示器上保存的窗口记录。
+ *
+ * **按显示器 + 缩放**取（`display.id@scaleFactor`）：A 屏保存的尺寸绝不会套到 B 屏；
+ * 同一块屏改了缩放（key 变了）就重新用默认尺寸，避免旧 DIP 尺寸在新缩放下显得忽大忽小。
+ * `windowState` 是旧版本的单条记录：只在**还没有任何分屏记录**时迁移用，且必须仍与这块
+ * 屏的工作区相交；一旦写过新表，就不再回头读它（否则拔掉副屏后旧记录会串到主屏）。
+ */
+function savedWindowStateFor(display: Display): WindowState | null {
+  const map = db.kvGet<WindowStateMap>(WINDOW_STATE_BY_DISPLAY_KV, {})
+  const entry = map[displayStateKey(display)]
+  if (entry) {
+    return {
+      x: entry.x,
+      y: entry.y,
+      width: entry.width,
+      height: entry.height,
+      isMaximized: !!entry.isMaximized
+    }
+  }
+  if (Object.keys(map).length === 0) {
+    const legacy = db.kvGet<WindowState | null>(WINDOW_STATE_KV, null)
+    if (legacy && canRestoreWindow(legacy, [display.workArea], MIN_WINDOW_SIZE)) return legacy
+  }
+  return null
+}
+
+/**
+ * 首次建窗/启动 seed 的尺寸：有该屏的保存记录就**夹进当前工作区**再恢复，
+ * 没有就按当前工作区算默认尺寸（居中、不越界）。
+ */
+function startupWindowBounds(): { bounds: Rect; isMaximized: boolean } {
+  const display = displayToRestore()
+  const saved = savedWindowStateFor(display)
+  if (!saved) {
+    return {
+      bounds: computeDefaultBounds(display.workArea, { minSize: MIN_WINDOW_SIZE }),
+      isMaximized: false
+    }
+  }
+  return {
+    bounds: clampBoundsToWorkArea(saved, display.workArea, MIN_WINDOW_SIZE),
+    isMaximized: saved.isMaximized
+  }
 }
 
 function saveWindowState(win: BrowserWindow): void {
   // 「最大化时存 normalBounds」这条规则抽在 windowPlacement.ts（有单测）：
   // 存 getBounds() 会把"被撑满的屏幕矩形"当成还原尺寸，下次先按大尺寸建窗再最大化，多一次跳变。
-  db.kvSet(
-    'windowState',
-    windowStateFor({
-      bounds: win.getBounds(),
-      normalBounds: win.getNormalBounds(),
-      isMaximized: win.isMaximized()
-    }) satisfies WindowState
-  )
+  const saved = windowStateFor({
+    bounds: win.getBounds(),
+    normalBounds: win.getNormalBounds(),
+    isMaximized: win.isMaximized()
+  }) satisfies WindowState
+  // 写清这块窗口属于哪块屏 + 什么缩放：下次同样配置才按原尺寸恢复
+  const display = screen.getDisplayMatching(saved)
+  const map = db.kvGet<WindowStateMap>(WINDOW_STATE_BY_DISPLAY_KV, {})
+  map[displayStateKey(display)] = {
+    ...saved,
+    displayId: display.id,
+    scaleFactor: display.scaleFactor,
+    savedAt: Date.now()
+  }
+  const kept = Object.entries(map)
+    .sort((a, b) => b[1].savedAt - a[1].savedAt)
+    .slice(0, MAX_REMEMBERED_DISPLAYS)
+  db.kvSet(WINDOW_STATE_BY_DISPLAY_KV, Object.fromEntries(kept))
+  db.kvSet(WINDOW_STATE_LAST_DISPLAY_KV, display.id)
+  // 旧版本（以及 tools/_check-windowstate.js）仍读单条 key；保留写入，便于降级与排障
+  db.kvSet(WINDOW_STATE_KV, saved)
 }
 
 // CSP 的响应头只注册一次（session 为所有窗口共享，避免重复监听）
@@ -342,44 +432,45 @@ function createWindow(options: WindowOpenOptions = {}): BrowserWindow {
   const isFirst = existing.length === 0
   const windowUid = randomUUID()
 
-  let x: number | undefined
-  let y: number | undefined
-  let width = 1320
-  let height = 860
+  // 默认尺寸按当前显示器工作区自适应（小屏不越界、大屏不铺满、居中）。
+  // 纯函数在 windowBounds.ts，有 tests/windowBounds.test.mjs 的模拟显示器表格钉住。
+  let bounds: Rect = computeDefaultBounds(screen.getPrimaryDisplay().workArea, {
+    minSize: MIN_WINDOW_SIZE
+  })
   let restoreMaximized = false
 
   if (isFirst && !restoreHead) {
     // 启动窗口之外的「首窗」路径（第二实例/open-file/activate 抢在库就绪之前）：
     // 库没开就先用默认位置，绝不在这里同步开库（见 whenReady 的启动顺序说明）。
-    const state = databaseReady() ? db.kvGet<WindowState | null>('windowState', null) : null
-    // 尺寸与位置的判据都在 canRestoreWindow 里（含"小于最小窗口不采用"）
-    if (state && validWindowBounds(state)) {
-      x = state.x
-      y = state.y
-      width = state.width
-      height = state.height
-      restoreMaximized = state.isMaximized
+    if (databaseReady()) {
+      const seed = startupWindowBounds()
+      bounds = seed.bounds
+      restoreMaximized = seed.isMaximized
     }
   } else if (!isFirst) {
     const ref = BrowserWindow.getFocusedWindow() ?? existing[existing.length - 1]
     if (ref) {
       const rb = ref.getBounds()
-      x = rb.x + 28
-      y = rb.y + 28
-      width = rb.width
-      height = rb.height
+      // 级联位置也要夹进目标显示器：否则“在新窗口打开”可能把窗口推出屏幕
+      const display = screen.getDisplayMatching(rb)
+      bounds = clampBoundsToWorkArea(
+        { x: rb.x + 28, y: rb.y + 28, width: rb.width, height: rb.height },
+        display.workArea,
+        MIN_WINDOW_SIZE
+      )
     }
   }
 
   const mainWindow = new BrowserWindow({
-    width,
-    height,
+    width: bounds.width,
+    height: bounds.height,
+    // 显式给 x/y：默认尺寸的居中由 computeDefaultBounds 算好（不依赖 Electron 的默认摆放）
+    x: bounds.x,
+    y: bounds.y,
     // 与 windowPlacement.ts 的常量同源（波次 2 从 940×600 降到 760×520：
     // 1366×768 @150% 缩放只有 911×512 可用，旧最小尺寸比屏幕还大）
     minWidth: MIN_WINDOW_WIDTH,
     minHeight: MIN_WINDOW_HEIGHT,
-    ...(x !== undefined ? { x } : {}),
-    ...(y !== undefined ? { y } : {}),
     show: false,
     autoHideMenuBar: false,
     // 启动窗口不读库（库还没开）：先用**出厂主题**的纸色，库就绪后 applyWindowSeed
@@ -417,6 +508,14 @@ function createWindow(options: WindowOpenOptions = {}): BrowserWindow {
       ]
     }
   })
+
+  /**
+   * 跨 DPI / 拔屏的 bounds 守卫（接线在 windowBoundsGuard.ts，纯规则在 windowBounds.ts）：
+   * 监听 moved/resized（节流 120ms）与 display-metrics-changed，只有 scaleFactor 真的变了
+   * 才用**拖动前的 DIP 尺寸**纠正，并把坐标夹进新工作区。防回环标志在守卫内部。
+   */
+  attachWindowBoundsGuard(mainWindow)
+  if (!app.isPackaged && process.env['LUMIN_WINDOW_DEBUG'] === '1') installWindowDebugHook()
 
   /**
    * 启动分段打点（仅 `LUMIN_STARTUP_LOG=1` 时输出，零成本）：把窗口加载拆成
@@ -753,16 +852,19 @@ app.whenReady().then(() => {
       syncNativeTheme(settings.theme)
       const visible = win.isVisible()
       if (!visible) win.setBackgroundColor(themeBackground())
-      const state = db.kvGet<WindowState | null>('windowState', null)
-      const restorable = !visible && !!state && validWindowBounds(state)
-      if (restorable && state) {
-        win.setBounds({ x: state.x, y: state.y, width: state.width, height: state.height })
-        if (state.isMaximized) win.maximize()
+      // 隐藏时预置尺寸：有保存记录就夹进当前工作区，没有就按当前屏算默认（居中、不越界）。
+      // 同样在 show 之前完成，用户看不到跳变。
+      const seed = visible ? null : startupWindowBounds()
+      if (seed) {
+        win.setBounds(seed.bounds, false)
+        if (seed.isMaximized) win.maximize()
+        // 这次是程序化移动：重置跨屏守卫的基线，避免被误判成“跨 DPI 拖动”
+        resyncWindowBounds(win)
       }
       startupMark('window-seed-end', {
-        applied: restorable,
+        applied: !!seed,
         alreadyVisible: visible,
-        maximized: !!(restorable && state?.isMaximized),
+        maximized: !!seed?.isMaximized,
         durationMs: Math.round(performance.now() - t)
       })
     } catch (err) {
