@@ -23,6 +23,7 @@ import {
   truncateForModel,
   type AiErrorCode,
   type AiKeySaveOutcome,
+  type AiRequestKind,
   type AiStatus,
   type AiStreamEvent,
   type AiStreamRequest,
@@ -128,7 +129,8 @@ export function startAiStream(req: AiStreamRequest, sender: WebContents): AiStre
   const baseUrl = normalizeBaseUrl(settings.aiBaseUrl)
   if (!baseUrl) return { ok: false, code: 'invalid-base-url' }
   const model = normalizeModel(settings.aiModel) || AI_DEFAULT_MODEL
-  const kind = req?.kind === 'rewrite' ? 'rewrite' : 'summarize'
+  const kind: AiRequestKind =
+    req?.kind === 'rewrite' ? 'rewrite' : req?.kind === 'chat' ? 'chat' : 'summarize'
   const truncated = truncateForModel(String(req?.text ?? ''))
   if (!truncated.text.trim()) return { ok: false, code: 'no-selection' }
 
@@ -154,7 +156,9 @@ export function startAiStream(req: AiStreamRequest, sender: WebContents): AiStre
     kind,
     text: truncated.text,
     instruction: req?.instruction,
-    language: settings.language
+    language: settings.language,
+    // 对话历史只在这一支才有；主进程的 sanitizeChatHistory 会再清洗/限量一次
+    history: kind === 'chat' ? req?.history : undefined
   })
 
   // 让出这一轮 IPC：先让 invoke 把 requestId 交回渲染层，再开始推 delta
@@ -174,7 +178,9 @@ export function startAiStream(req: AiStreamRequest, sender: WebContents): AiStre
             model,
             messages,
             signal: controller.signal,
-            temperature: AI_TEMPERATURE
+            temperature: AI_TEMPERATURE,
+            // 设置 → AI → 行为：关掉后请求 `stream:false`（一次 JSON，仍按一段 delta 推送）
+            stream: settings.aiStream !== false
           },
           (delta) => send({ requestId, type: 'delta', delta })
         )
@@ -190,7 +196,10 @@ export function startAiStream(req: AiStreamRequest, sender: WebContents): AiStre
           : err instanceof Error && err.name === 'AbortError'
             ? 'aborted'
             : ((err as { code?: AiErrorCode })?.code ?? 'http')
-        send({ requestId, type: 'error', code })
+        // HTTP 状态码随错误一起回给界面（401/429/5xx 的提示里会带上它）；
+        // 只带数字，不带响应正文/Key。
+        const status = (err as { status?: number })?.status
+        send({ requestId, type: 'error', code, ...(typeof status === 'number' ? { status } : {}) })
       } finally {
         clearTimeout(timer)
         if (active.get(requestId) === entry) active.delete(requestId)

@@ -2,11 +2,23 @@ import { defineStore } from 'pinia'
 import type { Editor } from '@tiptap/core'
 import i18n from '../i18n'
 import { useEditorStore } from './editor'
+import { useSettingsStore } from './settings'
 import { useUiStore } from './ui'
 import { getMarkdown } from '../lib/editor/markdownStorage'
 import { readSelectionMarkdown } from '../lib/aiSelection'
+import { insertMarkdownAtCursor } from '../lib/aiInsert'
+import {
+  composeChatTurn,
+  reduceChatPhase,
+  trimChatMessages,
+  chatHistory,
+  type AiChatEvent,
+  type AiChatPhase,
+  type ChatTurnResult
+} from '../../../shared/aiChat'
 import {
   AI_ERROR_KEY,
+  type AiChatTurn,
   type AiErrorCode,
   type AiPanelKind,
   type AiStatus,
@@ -14,12 +26,11 @@ import {
 } from '../../../shared/ai'
 
 /**
- * AI 面板的会话状态（摘要 / 改写共用一套）。
+ * AI 面板的会话状态（摘要 / 改写 / 右侧对话共用一套 store）。
  *
  * 三条不变量（与主进程的分工）：
- *   1. **不自动改文档**：流式只写 `output`，编辑器只在用户点「插入/替换」后动一次；
- *   2. **替换是单事务**：`intercept` 捕获的 from/to 在确认时用 `tr.insertText` 一次 dispatch，
- *      Ctrl+Z 一步还原；
+ *   1. **不自动改文档**：流式只写消息内容，编辑器只在用户点「插入/替换」后动一次；
+ *   2. **插入是单事务**：`insertMarkdownAtCursor` 只 dispatch 一个事务，Ctrl+Z 一步还原；
  *   3. **Key 不在这里**：状态里只有 `hasKey/model/baseUrl`，没有任何 Key 字段。
  */
 export type AiPanelPhase =
@@ -30,6 +41,20 @@ interface CapturedTarget {
   to: number
   /** 捕获时的 doc 身份：确认时不一致就拒绝写入（文档在生成期间被改过） */
   doc: unknown
+}
+
+/** 右侧对话面板里的一条消息（只活在内存里；不落库）。 */
+export interface ChatUiMessage {
+  id: string
+  role: 'user' | 'assistant'
+  content: string
+  status: 'streaming' | 'done' | 'error' | 'stopped'
+  errorCode?: AiErrorCode
+  errorStatus?: number | null
+  /** 用户消息保存的重试快照（含组装后的正文与会话历史） */
+  request?: { text: string; history: AiChatTurn[] }
+  /** 本轮上下文统计（截断提示用） */
+  stats?: ChatTurnResult
 }
 
 // 捕获的编辑器位置与 doc 不放进响应式 state（ProseMirror Node 不该被 Vue 代理）
@@ -45,6 +70,14 @@ function requireEditor(): Editor | null {
 
 function toastError(code: AiErrorCode): void {
   useUiStore().toast(i18n.global.t(AI_ERROR_KEY[code]), 'error')
+}
+
+function uid(): string {
+  try {
+    return crypto.randomUUID()
+  } catch {
+    return `m-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
+  }
 }
 
 export const useAiStore = defineStore('ai', {
@@ -65,33 +98,83 @@ export const useAiStore = defineStore('ai', {
     truncated: false,
     hasKey: false,
     model: '',
-    baseUrl: ''
+    baseUrl: '',
+
+    // ── 右侧栏「AI 对话」──────────────────────────────────────────────────────
+    /** 面板状态机（idle / starting / streaming / error），转换规则在 shared/aiChat.ts */
+    chatPhase: 'idle' as AiChatPhase,
+    chatErrorCode: null as AiErrorCode | null,
+    chatErrorStatus: null as number | null,
+    chatRequestId: null as string | null,
+    /** 当前正在追加 delta 的助手消息 id */
+    chatActiveId: null as string | null,
+    /** 用户在 `ai:stream` 返回 requestId 之前就点了停止（拿到 id 后补一次 abort） */
+    chatStopRequested: false,
+    /** 当前会话（最多 100 条；纯内存，不落库） */
+    chatMessages: [] as ChatUiMessage[],
+    chatInput: '',
+    /** 上下文开关：默认只附选区、不附全文（首次打开时按设置初始化一次） */
+    chatIncludeDocument: false,
+    chatIncludeSelection: true,
+    chatContextInitialized: false,
+    chatDocChars: 0,
+    chatSelectionChars: 0,
+    /** 最近一次发送的上下文统计（面板显示截断提示） */
+    chatLastStats: null as ChatTurnResult | null
   }),
+  getters: {
+    chatBusy(state): boolean {
+      return state.chatPhase === 'starting' || state.chatPhase === 'streaming'
+    },
+    lastChatAssistant(state): ChatUiMessage | null {
+      for (let i = state.chatMessages.length - 1; i >= 0; i--) {
+        if (state.chatMessages[i].role === 'assistant') return state.chatMessages[i]
+      }
+      return null
+    },
+    lastChatUserIndex(state): number {
+      for (let i = state.chatMessages.length - 1; i >= 0; i--) {
+        if (state.chatMessages[i].role === 'user') return i
+      }
+      return -1
+    },
+    canChatRetry(state): boolean {
+      const busy = state.chatPhase === 'starting' || state.chatPhase === 'streaming'
+      return !busy && state.chatMessages.some((m) => m.role === 'user')
+    }
+  },
   actions: {
     /** 订阅主进程的流式事件（只装一次；事件里没有 Key） */
     ensureListener(): void {
       if (listenerInstalled) return
       listenerInstalled = true
       window.luminAPI.ai.onEvent((event: AiStreamEvent) => {
-        if (!this.open || !this.requestId || event.requestId !== this.requestId) return
-        if (event.type === 'delta') {
-          this.output += event.delta
-          this.phase = 'streaming'
+        // ① 摘要 / 改写弹层
+        if (this.open && this.requestId && event.requestId === this.requestId) {
+          if (event.type === 'delta') {
+            this.output += event.delta
+            this.phase = 'streaming'
+            return
+          }
+          this.requestId = null
+          if (event.type === 'done') {
+            this.phase = 'done'
+            return
+          }
+          if (event.type === 'aborted') {
+            this.phase = 'aborted'
+            return
+          }
+          this.phase = 'error'
+          this.errorCode = event.code
+          if (event.code === 'missing-key' || event.code === 'key-unavailable') {
+            useUiStore().openSettings('ai')
+          }
           return
         }
-        this.requestId = null
-        if (event.type === 'done') {
-          this.phase = 'done'
-          return
-        }
-        if (event.type === 'aborted') {
-          this.phase = 'aborted'
-          return
-        }
-        this.phase = 'error'
-        this.errorCode = event.code
-        if (event.code === 'missing-key' || event.code === 'key-unavailable') {
-          useUiStore().openSettings('ai')
+        // ② 右侧对话面板（与弹层各自持有 requestId；主进程同一窗口只允许一条在飞）
+        if (this.chatRequestId && event.requestId === this.chatRequestId) {
+          this.applyChatEvent(event)
         }
       })
     },
@@ -307,6 +390,316 @@ export const useAiStore = defineStore('ai', {
       } catch {
         useUiStore().toast(i18n.global.t('ai.copyFailed'), 'error')
       }
+    },
+
+    // ── 右侧栏「AI 对话」──────────────────────────────────────────────────────
+
+    /**
+     * 打开右侧栏的 AI 标签页（菜单 / 命令面板 / 工具栏共用）。
+     * 右侧栏沿用「大纲放在编辑区右侧」的那一栏：没打开三栏时先打开它。
+     */
+    openChat(): void {
+      this.ensureListener()
+      const settings = useSettingsStore()
+      const ui = useUiStore()
+      if (!settings.outlineOnRight) settings.set('outlineOnRight', true)
+      if (!settings.outlineRightExpanded) settings.set('outlineRightExpanded', true)
+      ui.rightTab = 'ai'
+      if (!this.chatContextInitialized) {
+        this.chatIncludeDocument = settings.aiContextDefault === 'document'
+        this.chatIncludeSelection = settings.aiContextDefault !== 'document'
+        this.chatContextInitialized = true
+      }
+      void this.refreshStatus()
+      this.refreshChatCounts()
+    },
+
+    /** 面板可见时刷新 Key 状态与上下文计数（切回 AI 页、设置关闭后调用） */
+    async refreshChat(): Promise<void> {
+      this.ensureListener()
+      if (!this.chatContextInitialized) {
+        const settings = useSettingsStore()
+        this.chatIncludeDocument = settings.aiContextDefault === 'document'
+        this.chatIncludeSelection = settings.aiContextDefault !== 'document'
+        this.chatContextInitialized = true
+      }
+      await this.refreshStatus()
+      this.refreshChatCounts()
+    },
+
+    /** 读当前文档/选区的字符数（getMarkdown 有 doc 身份缓存，重复调用不重排） */
+    refreshChatCounts(): void {
+      const ed = requireEditor()
+      if (!ed) {
+        this.chatDocChars = 0
+        this.chatSelectionChars = 0
+        return
+      }
+      this.chatDocChars = getMarkdown(ed).length
+      this.chatSelectionChars = readSelectionMarkdown(ed)?.text.length ?? 0
+    },
+
+    setChatIncludeDocument(value: boolean): void {
+      this.chatIncludeDocument = value
+      this.refreshChatCounts()
+    },
+
+    setChatIncludeSelection(value: boolean): void {
+      this.chatIncludeSelection = value
+      this.refreshChatCounts()
+    },
+
+    /** 状态机推进（唯一入口；事件非法时保持原状态） */
+    chatTransition(
+      event: AiChatEvent,
+      payload: { code?: AiErrorCode; status?: number } = {}
+    ): void {
+      const next = reduceChatPhase(
+        { phase: this.chatPhase, errorCode: this.chatErrorCode, errorStatus: this.chatErrorStatus },
+        event,
+        payload
+      )
+      this.chatPhase = next.phase
+      this.chatErrorCode = next.errorCode
+      this.chatErrorStatus = next.errorStatus
+    },
+
+    /** 主进程流事件 → store（只处理属于当前对话请求的那些） */
+    applyChatEvent(event: AiStreamEvent): void {
+      const msg = this.chatMessages.find((m) => m.id === this.chatActiveId) ?? null
+      if (event.type === 'delta') {
+        if (msg) msg.content += event.delta
+        this.chatTransition('delta')
+        return
+      }
+      if (event.type === 'done') {
+        if (msg) msg.status = 'done'
+        this.chatTransition('done')
+        this.chatRequestId = null
+        this.chatActiveId = null
+        return
+      }
+      if (event.type === 'aborted') {
+        if (msg) msg.status = 'stopped'
+        this.chatTransition('abort')
+        this.chatRequestId = null
+        this.chatActiveId = null
+        return
+      }
+      if (msg) {
+        msg.status = 'error'
+        msg.errorCode = event.code
+        msg.errorStatus = event.status ?? null
+      }
+      this.chatTransition('error', { code: event.code, status: event.status })
+      this.chatRequestId = null
+      this.chatActiveId = null
+      if (event.code === 'missing-key' || event.code === 'key-unavailable') {
+        useUiStore().openSettings('ai')
+      }
+    },
+
+    /**
+     * 发送一条消息。
+     *
+     * 上下文组装优先级见 `composeChatTurn`：问题永远完整，文档/选区按剩余预算截断。
+     * 请求发出前先落地两条消息（用户 + 空的助手），delta 到达时只追加助手那一条。
+     */
+    async chatSend(): Promise<void> {
+      if (this.chatBusy) return
+      const question = this.chatInput.trim()
+      if (!question) return
+      const status = await this.refreshStatus()
+      if (!status?.hasKey) {
+        this.chatTransition('send')
+        this.chatTransition('error', { code: 'missing-key' })
+        return
+      }
+      const ed = requireEditor()
+      if (!ed) {
+        this.chatTransition('send')
+        this.chatTransition('error', { code: 'no-editor' })
+        return
+      }
+      const documentText = this.chatIncludeDocument ? getMarkdown(ed) : ''
+      const selectionText = this.chatIncludeSelection ? (readSelectionMarkdown(ed)?.text ?? '') : ''
+      const turn = composeChatTurn({
+        question,
+        document: documentText,
+        selection: selectionText
+      })
+      if (!turn.text) return
+      const history = chatHistory(this.chatMessages)
+      const userMessage: ChatUiMessage = {
+        id: uid(),
+        role: 'user',
+        content: question,
+        status: 'done',
+        request: { text: turn.text, history },
+        stats: turn
+      }
+      const assistantMessage: ChatUiMessage = {
+        id: uid(),
+        role: 'assistant',
+        content: '',
+        status: 'streaming'
+      }
+      this.chatMessages = trimChatMessages([...this.chatMessages, userMessage, assistantMessage])
+      this.chatInput = ''
+      this.chatLastStats = turn
+      this.refreshChatCounts()
+      this.chatActiveId = assistantMessage.id
+      this.chatStopRequested = false
+      this.chatTransition('send')
+      await this.startChatRequest({ text: turn.text, history }, assistantMessage.id, turn)
+    },
+
+    /** 真正发 IPC + 落地 requestId（send / retry 共用） */
+    async startChatRequest(
+      request: { text: string; history: AiChatTurn[] },
+      assistantId: string,
+      turn?: ChatTurnResult
+    ): Promise<void> {
+      this.chatRequestId = null
+      const result = await window.luminAPI.ai.stream({
+        kind: 'chat',
+        text: request.text,
+        history: request.history
+      })
+      const assistant = this.chatMessages.find((m) => m.id === assistantId)
+      if (!result.ok) {
+        this.chatStopRequested = false
+        if (assistant) {
+          assistant.status = 'error'
+          assistant.errorCode = result.code
+        }
+        this.chatTransition('error', { code: result.code })
+        this.chatActiveId = null
+        if (result.code === 'missing-key' || result.code === 'key-unavailable') {
+          useUiStore().openSettings('ai')
+        }
+        return
+      }
+      // 用户在 IPC 返回 requestId 之前就点了停止：补一次 abort（否则界面停了、服务端还在跑）
+      if (this.chatStopRequested) {
+        this.chatStopRequested = false
+        try {
+          await window.luminAPI.ai.abort(result.requestId)
+        } catch {
+          /* 已经结束 */
+        }
+        if (assistant) assistant.status = 'stopped'
+        this.chatActiveId = null
+        this.chatTransition('abort')
+        return
+      }
+      // 主进程拿到的是**已经按上下文预算截断过**的正文，所以它的 originalChars/truncated
+      // 只反映"第二道闸"；对话面板的统计必须以渲染层这一轮的组装结果为准（取并集）。
+      const merged = turn
+        ? {
+            ...turn,
+            sentChars:
+              result.sentChars > 0 ? Math.min(turn.sentChars, result.sentChars) : turn.sentChars,
+            originalChars: Math.max(turn.originalChars, result.originalChars),
+            truncated: turn.truncated || result.truncated
+          }
+        : undefined
+      if (assistant) assistant.stats = merged
+      if (merged) this.chatLastStats = merged
+      this.chatRequestId = result.requestId
+      this.chatTransition('delta')
+    },
+
+    /** 停止生成：立刻释放 UI（服务端由主进程 abort 断开，假服务器能看到 client closed） */
+    async chatStop(): Promise<void> {
+      const id = this.chatRequestId
+      this.chatStopRequested = true
+      this.chatRequestId = null
+      this.chatActiveId = null
+      const msg = this.lastChatAssistant
+      if (msg && msg.status === 'streaming') {
+        msg.status = 'stopped'
+      }
+      this.chatTransition('abort')
+      if (id) {
+        try {
+          await window.luminAPI.ai.abort(id)
+        } catch {
+          /* 请求可能已经结束 */
+        }
+      }
+    },
+
+    /**
+     * 重试上一条：保留那条用户消息，删掉它之后的所有消息（失败的助手回答），
+     * 用**当时保存的请求快照**重放（上下文不会因为现在换了选区而漂移）。
+     */
+    async chatRetry(): Promise<void> {
+      if (this.chatBusy) return
+      const index = this.lastChatUserIndex
+      if (index < 0) return
+      const userMessage = this.chatMessages[index]
+      // ⚠️ 快照在响应式 state 里会变成 Proxy，直接传 IPC 会报
+      // "An object could not be cloned."。重试前必须摊平成普通对象。
+      const request = userMessage.request
+        ? {
+            text: String(userMessage.request.text),
+            history: userMessage.request.history.map((h) => ({ role: h.role, content: h.content }))
+          }
+        : {
+            text: userMessage.content,
+            history: chatHistory(this.chatMessages.slice(0, index))
+          }
+      this.chatMessages = trimChatMessages(this.chatMessages.slice(0, index + 1))
+      const assistantMessage: ChatUiMessage = {
+        id: uid(),
+        role: 'assistant',
+        content: '',
+        status: 'streaming'
+      }
+      this.chatMessages = trimChatMessages([...this.chatMessages, assistantMessage])
+      this.chatActiveId = assistantMessage.id
+      this.chatStopRequested = false
+      this.chatTransition('retry')
+      await this.startChatRequest(request, assistantMessage.id, userMessage.stats)
+    },
+
+    /** 新对话：清空消息与输入，**保留上下文开关**（用户口径） */
+    newChat(): void {
+      if (this.chatBusy) void this.chatStop()
+      this.chatMessages = []
+      this.chatInput = ''
+      this.chatLastStats = null
+      this.chatActiveId = null
+      this.chatRequestId = null
+      this.chatStopRequested = false
+      this.chatTransition('new')
+      this.chatErrorCode = null
+      this.chatErrorStatus = null
+    },
+
+    async copyChatMessage(id: string): Promise<void> {
+      const msg = this.chatMessages.find((m) => m.id === id)
+      if (!msg || !msg.content) return
+      try {
+        await navigator.clipboard.writeText(msg.content)
+        useUiStore().toast(i18n.global.t('ai.chat.copied'), 'success')
+      } catch {
+        useUiStore().toast(i18n.global.t('ai.copyFailed'), 'error')
+      }
+    },
+
+    /** 把某条回答以 Markdown 插入到光标处（单事务；一次 Ctrl+Z 可撤销） */
+    insertChatMessage(id: string): void {
+      const ed = requireEditor()
+      const msg = this.chatMessages.find((m) => m.id === id)
+      if (!ed || !msg || !msg.content.trim()) {
+        useUiStore().toast(i18n.global.t('ai.chat.insertFailed'), 'error')
+        return
+      }
+      const ok = insertMarkdownAtCursor(ed, msg.content)
+      if (ok) useUiStore().toast(i18n.global.t('ai.chat.inserted'), 'success')
+      else useUiStore().toast(i18n.global.t('ai.chat.insertFailed'), 'error')
     }
   }
 })

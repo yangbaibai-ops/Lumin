@@ -21,6 +21,7 @@ import { FONT_OPTIONS } from '../../../shared/defaults'
 import {
   AI_DEFAULT_MODEL,
   AI_ERROR_KEY,
+  AI_MAX_INPUT_CHARS,
   AI_PROVIDER_PRESETS,
   normalizeBaseUrl,
   type AiStatus,
@@ -733,6 +734,15 @@ const aiPresetId = computed(
   () =>
     AI_PROVIDER_PRESETS.find((p) => p.baseUrl && p.baseUrl === aiBaseDraft.value)?.id ?? 'custom'
 )
+/** Base URL 非法时输入框描红（错误色只用 --danger，不写死色值） */
+const aiBaseInvalid = computed(
+  () => !!aiBaseDraft.value.trim() && normalizeBaseUrl(aiBaseDraft.value) === null
+)
+
+/** 对话默认上下文：只影响**新打开**的对话面板（面板内仍可随时改） */
+function setAiContextDefault(value: 'selection' | 'document'): void {
+  settings.set('aiContextDefault', value)
+}
 
 function syncAiDrafts(): void {
   aiBaseDraft.value = settings.aiBaseUrl
@@ -1963,114 +1973,223 @@ function formatTime(ms: number): string {
                     </details>
                   </template>
 
-                  <!-- AI：Key（只写不读）/ Base URL / 模型 / 测试连接。
+                  <!-- AI：三张分组卡片（连接 / 行为 / 安全说明）。
                        Key 输入框保存后立刻清空，界面只显示"已保存/未设置"——
                        渲染层没有任何读回 Key 的通道（见 preload 的 ai API）。 -->
                   <template v-else-if="tab.id === 'ai'">
-                    <section class="set-card">
-                      <h3 class="set-card-title">{{ t('settings.aiCard') }}</h3>
-                      <p class="set-row-desc mb-4">{{ t('settings.aiCardDesc') }}</p>
+                    <!-- ① 连接 -->
+                    <section class="set-card set-card--boxed" data-ai-card="connection">
+                      <header class="ai-card-head">
+                        <span class="ai-card-head__icon"><Icon name="globe" :size="15" /></span>
+                        <div class="ai-card-head__meta">
+                          <h3 class="ai-card-head__title">{{ t('settings.aiCardConnection') }}</h3>
+                          <p class="ai-card-head__desc">{{ t('settings.aiCardConnectionDesc') }}</p>
+                        </div>
+                      </header>
 
-                      <div class="ai-settings-grid">
-                        <label class="ai-field">
-                          <span class="set-row-label">{{ t('settings.aiProvider') }}</span>
-                          <select
-                            class="input select"
-                            :value="aiPresetId"
-                            data-ai-provider
-                            @change="onAiPresetChange(($event.target as HTMLSelectElement).value)"
-                          >
-                            <option
-                              v-for="preset in AI_PROVIDER_PRESETS"
-                              :key="preset.id"
-                              :value="preset.id"
+                      <div class="ai-card-body">
+                        <div class="ai-settings-grid">
+                          <label class="ai-field">
+                            <span class="set-row-label">{{ t('settings.aiProvider') }}</span>
+                            <select
+                              class="input select"
+                              :value="aiPresetId"
+                              data-ai-provider
+                              @change="onAiPresetChange(($event.target as HTMLSelectElement).value)"
                             >
-                              {{ t(preset.labelKey) }}
-                            </option>
-                          </select>
-                        </label>
-                        <label class="ai-field">
-                          <span class="set-row-label">{{ t('settings.aiBaseUrl') }}</span>
-                          <input
-                            v-model="aiBaseDraft"
-                            type="url"
-                            class="input"
-                            spellcheck="false"
-                            data-ai-base-url
-                            :placeholder="t('settings.aiBaseUrlPlaceholder')"
-                          />
-                          <span class="set-row-desc">{{ t('settings.aiBaseUrlDesc') }}</span>
-                        </label>
-                        <label class="ai-field">
-                          <span class="set-row-label">{{ t('settings.aiModel') }}</span>
-                          <input
-                            v-model="aiModelDraft"
-                            type="text"
-                            class="input"
-                            spellcheck="false"
-                            data-ai-model
-                            :placeholder="t('settings.aiModelPlaceholder')"
-                          />
-                          <span class="set-row-desc">{{ t('settings.aiModelDesc') }}</span>
-                        </label>
-                      </div>
-
-                      <div class="set-row ai-key-row">
-                        <div>
-                          <p class="set-row-label">{{ t('settings.aiKey') }}</p>
-                          <p class="set-row-desc" data-ai-key-status>{{ aiKeyLabel }}</p>
+                              <option
+                                v-for="preset in AI_PROVIDER_PRESETS"
+                                :key="preset.id"
+                                :value="preset.id"
+                              >
+                                {{ t(preset.labelKey) }}
+                              </option>
+                            </select>
+                          </label>
+                          <label class="ai-field">
+                            <span class="set-row-label">{{ t('settings.aiBaseUrl') }}</span>
+                            <input
+                              v-model="aiBaseDraft"
+                              type="url"
+                              class="input"
+                              :class="{ 'input--invalid': aiBaseInvalid }"
+                              spellcheck="false"
+                              data-ai-base-url
+                              :aria-invalid="aiBaseInvalid ? 'true' : 'false'"
+                              :placeholder="t('settings.aiBaseUrlPlaceholder')"
+                            />
+                            <span class="set-row-desc">{{ t('settings.aiBaseUrlDesc') }}</span>
+                          </label>
+                          <label class="ai-field">
+                            <span class="set-row-label">{{ t('settings.aiModel') }}</span>
+                            <input
+                              v-model="aiModelDraft"
+                              type="text"
+                              class="input"
+                              spellcheck="false"
+                              data-ai-model
+                              :placeholder="t('settings.aiModelPlaceholder')"
+                            />
+                            <span class="set-row-desc">{{ t('settings.aiModelDesc') }}</span>
+                          </label>
                         </div>
-                        <div class="ai-key-controls">
-                          <input
-                            v-model="aiKeyInput"
-                            type="password"
-                            class="input ai-key-input"
-                            spellcheck="false"
-                            autocomplete="off"
-                            data-ai-key-input
-                            :placeholder="t('settings.aiKeyPlaceholder')"
+
+                        <div class="set-row ai-key-row">
+                          <div>
+                            <p class="set-row-label">{{ t('settings.aiKey') }}</p>
+                            <p
+                              class="ai-status mt-1"
+                              :class="aiStatus?.hasKey ? 'is-ok' : 'is-muted'"
+                              data-ai-key-status
+                            >
+                              <Icon v-if="aiStatus?.hasKey" name="check" :size="12" />{{
+                                aiKeyLabel
+                              }}
+                            </p>
+                          </div>
+                          <div class="ai-key-controls">
+                            <input
+                              v-model="aiKeyInput"
+                              type="password"
+                              class="input ai-key-input"
+                              spellcheck="false"
+                              autocomplete="off"
+                              data-ai-key-input
+                              :placeholder="t('settings.aiKeyPlaceholder')"
+                            />
+                            <button
+                              class="btn btn-primary px-4 py-2"
+                              :disabled="aiBusy"
+                              data-ai-save
+                              @click="saveAi()"
+                            >
+                              {{ t('common.save') }}
+                            </button>
+                            <button
+                              v-if="aiStatus?.hasKey"
+                              class="btn btn-ghost px-3 py-2"
+                              :disabled="aiBusy"
+                              data-ai-clear
+                              @click="clearAiKey()"
+                            >
+                              {{ t('settings.aiClearKey') }}
+                            </button>
+                          </div>
+                        </div>
+
+                        <div class="ai-test-row">
+                          <button
+                            class="btn btn-outline px-4 py-2"
+                            :disabled="aiTesting || aiBusy"
+                            data-ai-test
+                            @click="testAi()"
+                          >
+                            {{ aiTesting ? t('settings.aiTesting') : t('settings.aiTest') }}
+                          </button>
+                          <span v-if="aiNoticeText" class="ai-status is-muted" data-ai-notice>
+                            <Icon name="check" :size="12" />{{ aiNoticeText }}
+                          </span>
+                          <span
+                            v-if="aiTestText"
+                            class="ai-status"
+                            :class="aiTestState?.ok ? 'is-ok' : 'is-error'"
+                            data-ai-test-result
+                          >
+                            <Icon :name="aiTestState?.ok ? 'check' : 'info'" :size="12" />{{
+                              aiTestText
+                            }}
+                          </span>
+                        </div>
+                        <p v-if="aiBaseInvalid" class="ai-status is-error" data-ai-base-invalid>
+                          <Icon name="info" :size="12" />{{ t('ai.error.invalidBaseUrl') }}
+                        </p>
+                      </div>
+                    </section>
+
+                    <!-- ② 行为 -->
+                    <section class="set-card set-card--boxed" data-ai-card="behavior">
+                      <header class="ai-card-head">
+                        <span class="ai-card-head__icon"><Icon name="settings" :size="15" /></span>
+                        <div class="ai-card-head__meta">
+                          <h3 class="ai-card-head__title">{{ t('settings.aiCardBehavior') }}</h3>
+                          <p class="ai-card-head__desc">{{ t('settings.aiCardBehaviorDesc') }}</p>
+                        </div>
+                      </header>
+
+                      <div class="ai-card-body">
+                        <div class="set-row">
+                          <div>
+                            <p class="set-row-label">{{ t('settings.aiContextDefault') }}</p>
+                            <p class="set-row-desc">{{ t('settings.aiContextDefaultDesc') }}</p>
+                          </div>
+                          <div
+                            class="ai-context-choice"
+                            role="group"
+                            :aria-label="t('settings.aiContextDefault')"
+                            data-ai-context-choice
+                          >
+                            <button
+                              type="button"
+                              :class="{ 'is-active': settings.aiContextDefault === 'selection' }"
+                              :aria-pressed="settings.aiContextDefault === 'selection'"
+                              data-ai-context-default="selection"
+                              @click="setAiContextDefault('selection')"
+                            >
+                              {{ t('settings.aiContextSelection') }}
+                            </button>
+                            <button
+                              type="button"
+                              :class="{ 'is-active': settings.aiContextDefault === 'document' }"
+                              :aria-pressed="settings.aiContextDefault === 'document'"
+                              data-ai-context-default="document"
+                              @click="setAiContextDefault('document')"
+                            >
+                              {{ t('settings.aiContextDocument') }}
+                            </button>
+                          </div>
+                        </div>
+
+                        <div class="set-row">
+                          <div>
+                            <p class="set-row-label">{{ t('settings.aiCharLimit') }}</p>
+                            <p class="set-row-desc">{{ t('settings.aiCharLimitDesc') }}</p>
+                          </div>
+                          <span class="ai-status is-muted" data-ai-char-limit>
+                            <Icon name="info" :size="12" />{{
+                              t('settings.aiCharLimitValue', { n: AI_MAX_INPUT_CHARS })
+                            }}
+                          </span>
+                        </div>
+
+                        <div class="set-row">
+                          <div>
+                            <p class="set-row-label">{{ t('settings.aiStream') }}</p>
+                            <p class="set-row-desc">{{ t('settings.aiStreamDesc') }}</p>
+                          </div>
+                          <SettingSwitch
+                            :model-value="settings.aiStream"
+                            :label="t('settings.aiStream')"
+                            data-ai-stream-switch
+                            @update:model-value="settings.set('aiStream', $event)"
                           />
-                          <button
-                            class="btn btn-primary px-4 py-2"
-                            :disabled="aiBusy"
-                            data-ai-save
-                            @click="saveAi()"
-                          >
-                            {{ t('common.save') }}
-                          </button>
-                          <button
-                            v-if="aiStatus?.hasKey"
-                            class="btn btn-ghost px-3 py-2"
-                            :disabled="aiBusy"
-                            data-ai-clear
-                            @click="clearAiKey()"
-                          >
-                            {{ t('settings.aiClearKey') }}
-                          </button>
                         </div>
                       </div>
+                    </section>
 
-                      <div class="ai-test-row">
-                        <button
-                          class="btn btn-outline px-4 py-2"
-                          :disabled="aiTesting || aiBusy"
-                          data-ai-test
-                          @click="testAi()"
-                        >
-                          {{ aiTesting ? t('settings.aiTesting') : t('settings.aiTest') }}
-                        </button>
-                        <span v-if="aiNoticeText" class="ai-test-note" data-ai-notice>{{
-                          aiNoticeText
-                        }}</span>
-                        <span
-                          v-if="aiTestText"
-                          class="ai-test-note"
-                          :class="aiTestState?.ok ? 'text-ok-ink' : 'text-danger-ink'"
-                          data-ai-test-result
-                          >{{ aiTestText }}</span
-                        >
-                      </div>
-                      <p class="set-row-desc mt-3">{{ t('settings.aiSecurityNote') }}</p>
+                    <!-- ③ 安全说明 -->
+                    <section class="set-card set-card--boxed" data-ai-card="security">
+                      <header class="ai-card-head">
+                        <span class="ai-card-head__icon"><Icon name="info" :size="15" /></span>
+                        <div class="ai-card-head__meta">
+                          <h3 class="ai-card-head__title">{{ t('settings.aiCardSecurity') }}</h3>
+                          <p class="ai-card-head__desc">{{ t('settings.aiSecurityIntro') }}</p>
+                        </div>
+                      </header>
+                      <ul class="ai-security-list">
+                        <li>{{ t('settings.aiSecurityLocal') }}</li>
+                        <li>{{ t('settings.aiSecurityEncrypted') }}</li>
+                        <li>{{ t('settings.aiSecurityLogs') }}</li>
+                      </ul>
                     </section>
                   </template>
 

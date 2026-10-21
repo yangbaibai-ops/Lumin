@@ -177,6 +177,15 @@ export function useKeymap(actions: ReturnType<typeof useAppActions>): void {
       defaultKeys: 'Ctrl+Alt+R',
       run: () => handleMenu('ai-rewrite')
     },
+    {
+      // AI 对话（右侧栏）：Ctrl+Alt+C。用字面 Ctrl（与摘要/改写同口径，
+      // mac 上也是 Control，避开 Cmd+Alt+C = DevTools）。
+      id: 'ai.chat',
+      titleKey: 'menu.aiChat',
+      groupKey: 'keymap.groupEdit',
+      defaultKeys: 'Ctrl+Alt+C',
+      run: () => handleMenu('ai-chat')
+    },
 
     // ── 插入（默认键避开已有注册表：Mod+K 属快捷键设置，故链接用 Mod+Alt+K）──
     {

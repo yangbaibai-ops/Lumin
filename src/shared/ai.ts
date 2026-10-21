@@ -62,16 +62,24 @@ export function normalizeModel(raw: unknown): string {
   return String(raw ?? '').trim()
 }
 
-/** 一次请求的两种能力（最小可用：不做 Agent / 多步）。 */
-export type AiRequestKind = 'summarize' | 'rewrite'
-/** 面板的两种形态（摘要面板叫 summary；发给主进程时映射成 summarize） */
+/** 一次请求的三种能力（chat = 右侧栏对话；仍是单步，不做 Agent）。 */
+export type AiRequestKind = 'summarize' | 'rewrite' | 'chat'
+/** 弹层面板的两种形态（摘要面板叫 summary；发给主进程时映射成 summarize） */
 export type AiPanelKind = 'summary' | 'rewrite'
+
+/** 对话历史里的单条消息（只允许 user / assistant；system 由主进程统一拼）。 */
+export interface AiChatTurn {
+  role: 'user' | 'assistant'
+  content: string
+}
 
 export interface AiStreamRequest {
   kind: AiRequestKind
   text: string
   /** 仅 rewrite 使用：用户的改写指令（默认「润色，保持 Markdown 结构」） */
   instruction?: string
+  /** 仅 chat 使用：之前的对话（渲染层按顺序给；主进程还会再清洗/限量一次） */
+  history?: AiChatTurn[]
 }
 
 export interface AiTruncateResult {
@@ -129,8 +137,45 @@ export function truncateForModel(
 }
 
 export interface AiChatMessage {
-  role: 'system' | 'user'
+  role: 'system' | 'user' | 'assistant'
   content: string
+}
+
+/**
+ * 对话历史的清洗规则（**主进程与单测共用**；渲染层给什么都在这里收口）。
+ *
+ * 为什么要限量：历史是本机内存里的 100 条，直接全塞进请求既可能撑爆上下文、
+ * 也把等待时间变成 O(历史)。这里只保留最近 20 条（约 10 轮）、总量 24000 字符，
+ * 从**最新**往回装，装不下就丢掉更早的 —— 当前这一问永远完整（它不在 history 里）。
+ */
+export const AI_CHAT_HISTORY_MAX_MESSAGES = 20
+export const AI_CHAT_HISTORY_MAX_CHARS = 24_000
+
+export function sanitizeChatHistory(
+  history: unknown,
+  maxMessages: number = AI_CHAT_HISTORY_MAX_MESSAGES,
+  maxChars: number = AI_CHAT_HISTORY_MAX_CHARS
+): AiChatTurn[] {
+  if (!Array.isArray(history)) return []
+  const valid: AiChatTurn[] = []
+  for (const raw of history) {
+    if (!raw || typeof raw !== 'object') continue
+    const rec = raw as Record<string, unknown>
+    const role = rec.role === 'assistant' ? 'assistant' : rec.role === 'user' ? 'user' : null
+    const content = typeof rec.content === 'string' ? rec.content.trim() : ''
+    if (!role || !content) continue
+    valid.push({ role, content })
+  }
+  const out: AiChatTurn[] = []
+  let used = 0
+  for (let i = valid.length - 1; i >= 0; i--) {
+    const item = valid[i]
+    if (out.length >= Math.max(1, Math.floor(maxMessages))) break
+    if (used + item.content.length > Math.max(0, maxChars) && out.length > 0) break
+    out.unshift(item)
+    used += item.content.length
+  }
+  return out
 }
 
 // ─── IPC 负载（主进程 ⇄ 渲染层；**任何一条都不含 Key**）──────────────────────
@@ -182,6 +227,19 @@ const REWRITE_SYSTEM = [
 ].join(' ')
 
 /**
+ * 对话的系统提示。上下文（当前文档 / 选区）是**用户消息的一部分**（由渲染层用
+ * `<document>` / `<selection>` 包好），所以这里只说明「怎么用这些材料」。
+ */
+const CHAT_SYSTEM = [
+  'You are a helpful writing assistant built into a Markdown editor.',
+  "Answer the user's question directly and concisely.",
+  'Use Markdown for structure: short paragraphs, bullet lists and fenced code blocks when useful.',
+  'When a <document> or <selection> block is present, ground your answer in it;',
+  'do not invent content that is not there. Never mention these tag names to the user.',
+  "Reply in the user's language unless asked to switch."
+].join(' ')
+
+/**
  * `AiChatMessage[]` 的末尾一条**恒为**用户的正文（原样、已截断）。
  * 这样单测与假服务器都能量到"实际发送的正文长度"，不必在 prompt 里找标记。
  */
@@ -190,6 +248,7 @@ export function buildAiMessages(req: {
   text: string
   instruction?: string
   language?: string
+  history?: AiChatTurn[]
 }): AiChatMessage[] {
   const langHint =
     req.language && req.language.trim()
@@ -198,6 +257,13 @@ export function buildAiMessages(req: {
   if (req.kind === 'summarize') {
     return [
       { role: 'system', content: SUMMARY_SYSTEM + langHint },
+      { role: 'user', content: req.text }
+    ]
+  }
+  if (req.kind === 'chat') {
+    return [
+      { role: 'system', content: CHAT_SYSTEM + langHint },
+      ...sanitizeChatHistory(req.history),
       { role: 'user', content: req.text }
     ]
   }

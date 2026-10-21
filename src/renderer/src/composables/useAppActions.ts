@@ -231,6 +231,10 @@ export function useAppActions(): {
         // 选区改写：没有选区时只提示，不打开面板（面板本身也要求先捕获选区）
         void useAiStore().openRewrite()
         break
+      case 'ai-chat':
+        // 右侧栏对话：切到 AI 标签页；没有三栏时先把右侧栏打开（用户显式动作）
+        useAiStore().openChat()
+        break
       /**
        * `theme-changed` 这条菜单动作**已删除**（报告 §3.2 P0-2）：原生菜单的主题项以前写
        * electron-store（那只是历史配置的一次性迁移源）再发这条动作让渲染层 `settings.init()`

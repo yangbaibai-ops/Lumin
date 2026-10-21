@@ -450,8 +450,14 @@ const GROUPS = computed<Group[]>(() => [
         run: () => ui.openGlobalSearch()
       },
       'sep',
-      // AI（最小可用）：摘要可对全文/选区，改写要求先有选区。两个入口都只开预览面板，
-      // 落笔/替换必须用户再点一次（与命令面板、快捷键、原生菜单同一条实现）。
+      // AI：摘要可对全文/选区，改写要求先有选区，对话在右侧栏。
+      // 三个入口都只开面板，落笔/替换必须用户再点一次（与命令面板、快捷键、原生菜单同一条实现）。
+      {
+        labelKey: 'menu.aiChat',
+        icon: 'sparkles',
+        commandId: 'ai.chat',
+        run: () => ai.openChat()
+      },
       {
         labelKey: 'menu.aiSummarize',
         icon: 'sparkles',

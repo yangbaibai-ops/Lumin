@@ -26,6 +26,11 @@ export interface StreamChatOptions {
   messages: AiChatMessage[]
   signal?: AbortSignal
   temperature?: number
+  /**
+   * `false` = 一次性 JSON completion（设置里关掉「流式输出」时）。
+   * 默认 `true`（SSE）。
+   */
+  stream?: boolean
   /** 测试注入用；默认全局 fetch */
   fetchImpl?: typeof fetch
 }
@@ -93,19 +98,20 @@ export async function streamChatCompletion(
   const base = assertUsableBaseUrl(opts.baseUrl)
   const fetchImpl = opts.fetchImpl ?? fetch
   const url = chatCompletionsUrl(base)
+  const useStream = opts.stream !== false
   let res: Response
   try {
     res = await fetchImpl(url, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Accept: 'text/event-stream',
+        Accept: useStream ? 'text/event-stream' : 'application/json',
         Authorization: `Bearer ${opts.apiKey}`
       },
       body: JSON.stringify({
         model: opts.model,
         messages: opts.messages,
-        stream: true,
+        stream: useStream,
         temperature: opts.temperature
       }),
       signal: opts.signal
@@ -115,6 +121,20 @@ export async function streamChatCompletion(
   }
   if (!res.ok) throw await toRequestError(res)
   if (!res.body) throw new AiRequestError('bad-response')
+
+  // 明确要求非流式：读一次 JSON，作为**一整段 delta**交给调用方。
+  // （界面侧仍走同一条 ai:event 通道，不需要第二套状态机。）
+  if (!useStream) {
+    try {
+      const json = (await res.json()) as unknown
+      const text = textFromJson(json)
+      if (text) onDelta(text)
+      return text
+    } catch (err) {
+      if (err instanceof AiRequestError) throw err
+      throw new AiRequestError('bad-response')
+    }
+  }
 
   const contentType = (res.headers.get('content-type') ?? '').toLowerCase()
   // 少数代理/本地服务会无视 stream:true，直接回一份 JSON：解析后当成一段 delta。

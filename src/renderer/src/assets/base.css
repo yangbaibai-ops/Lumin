@@ -570,3 +570,123 @@ div + .set-row {
   font-size: 12.5px;
   color: var(--ink-2b);
 }
+
+/* ── 设置 → AI：分组卡片（连接 / 行为 / 安全）──────────────────────────────
+   与其它设置页共用字号/圆角/间距；这里只补"卡片容器 + 卡片头 + 内联状态"。 */
+.set-card--boxed {
+  padding: 16px 18px;
+  border: 1px solid var(--edge);
+  border-radius: 12px;
+  background: var(--panel);
+  box-shadow: var(--shadow-1);
+}
+.set-card--boxed:last-child {
+  border-bottom: 1px solid var(--edge);
+  padding-bottom: 16px;
+}
+.set-card--boxed + .set-card--boxed {
+  margin-top: 14px;
+}
+.ai-card-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+.ai-card-head__icon {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+.ai-card-head__meta {
+  min-width: 0;
+}
+.ai-card-head__title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink);
+}
+.ai-card-head__desc {
+  margin-top: 2px;
+  font-size: 12px;
+  line-height: 1.55;
+  color: var(--ink-2b);
+}
+.ai-card-body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.ai-context-choice {
+  display: inline-flex;
+  gap: 4px;
+  padding: 2px;
+  border: 1px solid var(--edge);
+  border-radius: 9px;
+  background: var(--app);
+}
+.ai-context-choice button {
+  padding: 4px 12px;
+  border-radius: 7px;
+  color: var(--ink-2);
+  font-size: 12px;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+.ai-context-choice button.is-active {
+  background: var(--accent-soft);
+  color: var(--accent-ink);
+  font-weight: 500;
+}
+.ai-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  line-height: 1.5;
+}
+.ai-status.is-ok {
+  color: var(--ok-ink);
+}
+.ai-status.is-error {
+  color: var(--danger-ink);
+}
+.ai-status.is-muted {
+  color: var(--ink-2b);
+}
+.input--invalid {
+  border-color: var(--danger);
+}
+.input--invalid:focus {
+  border-color: var(--danger);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+.ai-security-list {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  margin-top: 8px;
+  padding-left: 1.15em;
+  list-style: disc;
+  color: var(--ink-2b);
+  font-size: 12px;
+  line-height: 1.6;
+}
+/* API Key 行：窄栏下把说明与控件改成上下两行，避免状态文案被挤成两行 */
+.ai-key-row {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+}
+.ai-key-row .ai-key-controls {
+  justify-content: flex-start;
+}
+.ai-key-row .ai-key-input {
+  flex: 1 1 220px;
+  width: auto;
+}

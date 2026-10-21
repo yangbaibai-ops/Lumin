@@ -123,6 +123,14 @@ export function buildPaletteCommands(
       run: () => handleMenu('ai-summarize')
     },
     {
+      id: 'ai.chat',
+      labelKey: 'menu.aiChat',
+      groupKey: 'keymap.groupEdit',
+      icon: 'sparkles',
+      keywords: ['ai', 'chat', 'assistant', 'conversation'],
+      run: () => handleMenu('ai-chat')
+    },
+    {
       id: 'ai.rewrite',
       labelKey: 'menu.aiRewrite',
       groupKey: 'keymap.groupEdit',

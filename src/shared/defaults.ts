@@ -161,5 +161,9 @@ export const defaultSettings: AppSettings = {
    * **API Key 不在这里**（它只以 safeStorage 密文存 kv 的 `aiApiKey`，渲染层拿不到）。
    */
   aiBaseUrl: AI_DEFAULT_BASE_URL,
-  aiModel: AI_DEFAULT_MODEL
+  aiModel: AI_DEFAULT_MODEL,
+  /** 对话默认只附选区（不把整篇文档发出去）——用户口径。 */
+  aiContextDefault: 'selection' as 'selection' | 'document',
+  /** 默认流式（可关，兼容不支持 SSE 的服务）。 */
+  aiStream: true
 }

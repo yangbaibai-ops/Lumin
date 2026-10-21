@@ -167,6 +167,17 @@ export interface AppSettings {
    */
   aiBaseUrl: string
   aiModel: string
+  /**
+   * 对话面板的**默认上下文**：打开/新对话时预先勾选哪一项。
+   * 默认 `'selection'` = 只附选区、不附全文（用户口径）。
+   */
+  aiContextDefault: 'selection' | 'document'
+  /**
+   * 是否要求服务端流式返回（SSE）。默认开。
+   * 关掉后请求用 `stream:false` 一次性返回，界面仍按"一段返回"呈现；
+   * 少数只实现普通 JSON completion 的兼容服务需要这个开关。
+   */
+  aiStream: boolean
 }
 
 // ─── 通知中心（窗口私有，SQLite 持久化）────────────────────────────────────
@@ -602,6 +613,8 @@ export type MenuAction =
   | 'ai-summarize'
   /** AI 改写（必须先有选区）：先出 diff 预览，用户确认后才单事务替换 */
   | 'ai-rewrite'
+  /** AI 对话：切到右侧栏的 AI 标签页（没有右侧栏时先打开三栏布局） */
+  | 'ai-chat'
 
 export interface LuminAPI {
   app: {

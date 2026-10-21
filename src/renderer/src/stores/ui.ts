@@ -91,6 +91,13 @@ export const useUiStore = defineStore('ui', {
   state: () => ({
     sidebarVisible: true,
     sidebarTab: 'files' as 'files' | 'outline',
+    /**
+     * 右侧栏当前页签：大纲 / AI 对话。
+     *
+     * 右侧栏本身仍由 `settings.outlineOnRight` 决定是否出现（三栏模式），
+     * 这里只决定**那一栏里显示哪一页**；与左侧的 `sidebarTab` 同一套语义。
+     */
+    rightTab: 'outline' as 'outline' | 'ai',
     /** 文件标签页展示形态：树 / 列表（极简元数据列表） */
     sidebarFilesView: 'tree' as 'tree' | 'list',
     /**
