@@ -987,9 +987,9 @@ onBeforeUnmount(() => {
 
 <template>
   <!-- 底色 = **纸**（`bg-paper`，与编辑区同一个颜色；用户口径，见 §4.82）。
-       原来用外壳色 `bg-app`：浅色主题下它是 #fafafa，与白纸之间有一条看得出来的分界，
+       原来用外壳色 `bg-app`：浅色主题下它是 #f4f3ee，与暖白纸之间有一条看得出来的分界，
        整条菜单栏读起来像"压在页面上方的一条 chrome"。改成纸色之后，
-       菜单栏 / 快捷工具栏 / 写作区在浅色主题下就是同一块白；
+       菜单栏 / 快捷工具栏 / 写作区在浅色主题下就是同一块纸色；
        深色与羊皮纸主题各自跟随 `--paper`，所以口径是"与编辑区同色"而不是写死 #fff。 -->
   <div
     class="topmenu-root flex h-8 shrink-0 items-center gap-0.5 border-b border-edge bg-paper px-2 text-ui text-ink-2 select-none"

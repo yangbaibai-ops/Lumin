@@ -20,6 +20,14 @@ const { decodePng, downscale } = require('./pack-ico.js')
 const REPO = path.resolve(__dirname, '..')
 const PNG_PATH = path.join(REPO, 'resources', 'icon.png')
 const OUT_PATH = path.join(REPO, 'src', 'renderer', 'src', 'assets', 'iconPng.ts')
+/**
+ * `index.html` 的启动骨架也要在**任何 JS 之前**画出品牌图标：它只能内嵌一份 data URI，
+ * 不能 import iconPng.ts（那要等 bundle 求值）。所以这里把同一份 base64 同步进 HTML，
+ * 保证「启动画面 / 关于页 / 桌面图标」三处是**同一张图**。
+ */
+const HTML_PATH = path.join(REPO, 'src', 'renderer', 'index.html')
+// payload 允许初期是 `__LUMIN_BOOT_ICON__` 占位（生成过之后就是纯 base64）
+const HTML_ICON_RE = /src="data:image\/png;base64,([^"]+)"/
 /** 应用内标识的像素尺寸：骨架屏 46px / 关于页 80px，128 档在 2x 屏上也够清晰 */
 const SIZE = 128
 
@@ -88,6 +96,10 @@ if (require.main === module) {
   const b64 = buildBase64()
   const src = fs.existsSync(OUT_PATH) ? fs.readFileSync(OUT_PATH, 'utf-8') : ''
   const embedded = [...src.matchAll(/'([A-Za-z0-9+/=]+)'/g)].map((m) => m[1]).join('')
+  const html = fs.existsSync(HTML_PATH) ? fs.readFileSync(HTML_PATH, 'utf-8') : ''
+  const htmlMatch = HTML_ICON_RE.exec(html)
+  const htmlSynced = !!htmlMatch && htmlMatch[1] === b64
+  const htmlTag = `src="data:image/png;base64,${b64}"`
   const same = embedded === b64
   console.log(
     'APP-ICON ' +
@@ -96,12 +108,16 @@ if (require.main === module) {
         size: SIZE,
         base64Chars: b64.length,
         synced: same,
+        html: path.relative(REPO, HTML_PATH),
+        htmlSynced,
         file: path.relative(REPO, OUT_PATH)
       })
   )
   if (check) {
-    if (!same) {
-      console.error('不同步：resources/icon.png 已变更，请跑 node tools/sync-app-icon.js')
+    if (!same || !htmlSynced) {
+      console.error(
+        '不同步：resources/icon.png 已变更（或 index.html 的启动图标缺失），请跑 node tools/sync-app-icon.js'
+      )
       process.exit(1)
     }
     process.exit(0)
@@ -111,4 +127,11 @@ if (require.main === module) {
   for (let i = 0; i < b64.length; i += 96) lines.push(`  '${b64.slice(i, i + 96)}'`)
   fs.writeFileSync(OUT_PATH, `${FILE_HEADER}${lines.join(' +\n')}\n`, 'utf-8')
   console.log('WROTE ' + path.relative(REPO, OUT_PATH))
+  if (htmlMatch) {
+    fs.writeFileSync(HTML_PATH, html.replace(HTML_ICON_RE, htmlTag), 'utf-8')
+    console.log('WROTE ' + path.relative(REPO, HTML_PATH))
+  } else {
+    console.error('index.html 里找不到启动图标 data URI 槽位（src="data:image/png;base64,…"）')
+    process.exit(1)
+  }
 }

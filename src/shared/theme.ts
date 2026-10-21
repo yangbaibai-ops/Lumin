@@ -8,15 +8,16 @@
 // 两边各自漂移是这类镜像的典型死法，所以 `tests/themeTokens.test.mjs` 把本文件与 style.css
 // 钉在一起（逐主题比对 + 三主题的表面不变量），任何一边改了纸色忘了另一边，`npm run ci` 就红。
 //
-// 取值口径（改这里必须同步改 style.css 的 `--paper`，反之亦然）：
-//   light  **纯白**（用户口径：浅色主题下写作区要纯白；代价是与 --panel/--elevate 同色，
-//          面板改由 1px 边框 + 投影立起来）
+// 取值口径（改这里必须同步改 style.css 的 `--paper`、`index.html` 的 `--boot-paper`，
+// 反之亦然 —— 三处由 tests/themeTokens.test.mjs 逐值钉住）：
+//   light  **暖白纸**（#fbfaf6，**不是纯白**）：窗口在渲染层首帧之前露出的就是它，
+//          必须与写作区同色；纯白会把启动前那几秒变成刺眼的白屏（用户报障）。
 //   dark   中性灰的纸（比外壳 --app=#2b2e33 亮一档，否则侧栏与正文糊在一起）。
 //          暗色从近黑（#0b0d12 / #12141a）改成浅灰，是用户口径：不要纯黑、像主流编辑器，
 //          且**编辑区比侧栏更浅一点**。
 //   sepia  暖纸
 export const PAPER_BY_THEME = {
-  light: '#ffffff',
+  light: '#fbfaf6',
   dark: '#35383d',
   sepia: '#faf4e4'
 } as const
@@ -54,7 +55,7 @@ export function paperForTheme(
 // 所以深色要用白线、浅色/暖纸用黑线（单测按"线的合成色对纸 ≥ 1.1:1"守住"看得见"）。
 export const PREVIEW_BY_THEME: Record<PaperTheme, { shell: string; paper: string; line: string }> =
   {
-    light: { shell: '#fafafa', paper: PAPER_BY_THEME.light, line: 'rgba(16, 24, 40, 0.16)' },
+    light: { shell: '#f4f3ee', paper: PAPER_BY_THEME.light, line: 'rgba(16, 24, 40, 0.16)' },
     dark: { shell: '#2b2e33', paper: PAPER_BY_THEME.dark, line: 'rgba(255, 255, 255, 0.24)' },
     sepia: { shell: '#f1e9d5', paper: PAPER_BY_THEME.sepia, line: 'rgba(90, 74, 48, 0.18)' }
   }

@@ -439,7 +439,7 @@ const exportItems: { icon: string; labelKey: string; format: 'pdf' | 'html' | 'w
 
 <template>
   <!-- 底色 = **纸**（`bg-paper`，与编辑区同一个颜色；用户口径，见 §4.82）：
-       浅色主题下与写作区同为白，深色 / 羊皮纸主题各自跟随 `--paper`，
+       浅色主题下与写作区同为暖白纸，深色 / 羊皮纸主题各自跟随 `--paper`，
        所以口径是"与编辑区同色"而不是写死 #fff。 -->
   <div
     class="flex h-11 shrink-0 items-center gap-0.5 overflow-x-auto border-b border-edge bg-paper px-3"

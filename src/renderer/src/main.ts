@@ -17,6 +17,38 @@ import { installDragGuard, installNonDraggableDom } from './lib/dragGuard'
 import { exposeWorkBudget, installLongTaskSentinel } from './lib/editor/workBudget'
 import { installFreezeSentinel } from './lib/editor/freezeSentinel'
 import { installFreezeHeartbeat } from './lib/freezeHeartbeat'
+import { armBootSplashDeadline, dismissBootSplash } from './lib/bootSplash'
+
+/**
+ * 人为慢渲染开关（默认 0）：`LUMIN_BOOT_DELAY_MS` 由主进程读环境变量、经
+ * additionalArguments → preload 传进来（见 main/index.ts 的 bootDelayMs）。
+ * 只用于启动验收：延迟放在 `bootstrap()` 最前面（settings / 会话 / 挂载都还没跑），
+ * 骨架必须全程可见；兜底时限同步延长（lib/bootSplash.ts 的 bootSplashDeadline）。
+ *
+ * ⚠️ 产品路径上它恒为 0；不要用它做任何"优化"。
+ */
+const BOOT_DELAY_MS: number = (() => {
+  try {
+    const n = window.luminAPI.app.bootDelayMs
+    return Number.isFinite(n) && n > 0 ? Math.min(Math.floor(n), 30000) : 0
+  } catch {
+    return 0
+  }
+})()
+
+/**
+ * JS 已接管：取消 index.html 里那条**纯 CSS 的 1500ms 兜底**。
+ * 它守的是「bundle 完全没跑起来」；跑到这里就交给 bootSplash.ts 的计时器
+ * （它会加上 LUMIN_BOOT_DELAY_MS），否则慢渲染验收时 CSS 会先一步把骨架藏掉。
+ */
+try {
+  document.documentElement.dataset.bootJs = '1'
+} catch {
+  /* 没有 document 的极端环境（单测）：忽略 */
+}
+
+// 入口一执行就装兜底：后面任何一步抛错，1.5s（+人为延迟）后骨架都会自己让开。
+armBootSplashDeadline(BOOT_DELAY_MS)
 
 /**
  * 拖拽（drag & drop）全禁用：**挂载前**就把 window 捕获阶段的拦截器与 DOM 纠偏装好，
@@ -104,6 +136,13 @@ const whenIdle = (fn: () => void): void => {
 
 async function bootstrap(): Promise<void> {
   mark('boot-start')
+  /**
+   * 人为慢渲染（验收用，默认 0）：放在最前面，模拟"JS 已解析但界面迟迟挂不上"的机器。
+   * 这段等待期间屏幕上只有 index.html 的骨架 —— 如果看到白屏，说明骨架方案没生效。
+   */
+  if (BOOT_DELAY_MS > 0) {
+    await new Promise<void>((resolve) => setTimeout(resolve, BOOT_DELAY_MS))
+  }
   // Pinia 必须先于 store 使用被安装
   const pinia = createPinia()
 
@@ -172,6 +211,11 @@ async function bootstrap(): Promise<void> {
   await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
   mark('shell')
   reportStartup('shell')
+  /**
+   * Vue 已经挂载并真的出了一帧（上面那个 rAF）⇒ 撤掉 index.html 的启动骨架。
+   * 内部再等 fonts.ready + 双 rAF 再淡出（见 lib/bootSplash.ts），200ms 后移除节点。
+   */
+  dismissBootSplash()
 
   /**
    * 启动窗口的会话槽位是**延迟分配**的（主进程窗口先出、库后开，见 lib/sessionSlot.ts）。

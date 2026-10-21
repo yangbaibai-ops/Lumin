@@ -181,7 +181,7 @@
    ⚠️ 颜色、圆角、阴影、间距**一律走既有令牌**：`themeTokens` / `visualScale` / `zIndexStack`
    三个守卫盯着，新造硬编码色或新字号都会被判红。 */
 .md-math-editor {
-  /* 容器：白底 + 细边框 + 小圆角（浅色下 --paper 是纯白） */
+  /* 容器：纸底 + 细边框 + 小圆角（浅色下 --paper 是暖白纸 #fbfaf6） */
   position: relative;
   display: flex;
   flex-direction: column;

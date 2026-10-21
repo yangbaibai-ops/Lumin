@@ -83,6 +83,7 @@ Lumin opens `.md` files as typeset prose. Click the sentence you want to change 
 1. Open the [Releases](https://github.com/yangbaibai-ops/Lumin/releases) page and download the latest `Lumin-1.0.0-setup.exe`.
 2. Run the installer and choose an install location. It creates Start menu and desktop shortcuts.
 3. The installer is **not code-signed** yet, so Windows SmartScreen may show “Windows protected your PC”. Choose **More info → Run anyway** to continue.
+4. **The first launch after installing can take a few seconds** while Windows Defender scans the newly written files and the OS file cache is cold. Lumin shows its paper-colored boot screen immediately (never a blank white window); later launches are much faster. Reinstalling writes new files, so the first launch after a reinstall can be slow again — this is OS behavior, not an app hang. A code-signed build would shorten the scan.
 
 ### Requirements
 

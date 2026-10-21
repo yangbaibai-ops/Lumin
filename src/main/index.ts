@@ -251,6 +251,19 @@ function themeBackground(): string {
   return paperForTheme(db.kvGet('settings', defaultSettings).theme, nativeTheme.shouldUseDarkColors)
 }
 
+/**
+ * 启动验收专用的「人为慢渲染」开关（`LUMIN_BOOT_DELAY_MS`，默认 0）。
+ *
+ * 只做一件事：把它经 additionalArguments 传给窗口，渲染层在 bootstrap 最前面 await 这么久。
+ * 为什么需要它：真机上「JS 已经解析、但界面迟迟挂不上」才是骨架屏要扛的场景；本机太快，
+ * 不人为放慢就量不到「慢渲染时会不会白屏」。产品路径上环境变量不存在 ⇒ 0，零开销。
+ * 上限 30s，避免误配把窗口拖死。
+ */
+const bootDelayMs = (() => {
+  const raw = Number(process.env['LUMIN_BOOT_DELAY_MS'] ?? '')
+  return Number.isFinite(raw) && raw > 0 ? Math.min(Math.floor(raw), 30000) : 0
+})()
+
 /** 窗口位置/大小持久化（记住上次关闭时的位置与尺寸） */
 interface WindowState {
   x: number
@@ -398,6 +411,8 @@ function createWindow(options: WindowOpenOptions = {}): BrowserWindow {
         ...(sessionSlot !== undefined ? [`--lumin-session-slot=${sessionSlot}`] : []),
         // 启动窗口的槽位是延迟分配的（见 WindowOpenOptions.restoreHead / lib/sessionSlot.ts）
         ...(restoreHead ? ['--lumin-startup-head=1'] : []),
+        // 启动验收用的人为慢渲染（默认不传；见上面的 bootDelayMs）
+        ...(bootDelayMs > 0 ? [`--lumin-boot-delay-ms=${bootDelayMs}`] : []),
         `--lumin-window-uid=${windowUid}`
       ]
     }
@@ -503,8 +518,13 @@ function createWindow(options: WindowOpenOptions = {}): BrowserWindow {
    *
    * 为什么除了 `ready-to-show` 还有一条 `timeout`：慢盘/杀软把渲染层拖慢时，
    * `ready-to-show` 可能几百毫秒都不来，而用户对「点了图标有没有反应」的容忍度很低。
-   * 首窗带一个 150ms 兜底：到点先把**已经上好纸色背景**的窗口显示出来，
-   * 内容随后继续加载 —— 首屏可交互仍然按 `renderer-first-interactive` 单独计。
+   *
+   * 兜底取 **600ms**（本轮从 150ms 上调，实测依据见启动报告）：
+   *   * 150ms 会在页面**还没画出第一帧**时先把窗口亮出来 —— 用户看到的是纯纸色空窗，
+   *     随后骨架才到（热启动实测：窗口 230ms、骨架首帧 345ms，白等了 115ms）；
+   *   * 600ms 让正常机器走 `ready-to-show`（热启动 ~278ms），窗口一出现**骨架已经在上面**；
+   *   * 真遇到 ready-to-show 迟迟不来（冷启动/杀软扫描），600ms 仍然会先把纸色窗口亮出来，
+   *     绝不会回到「点了图标没反应」。两条路径的背景色都是纸色，不存在白屏。
    */
   let revealed = false
   let earlyShowTimer: NodeJS.Timeout | null = null
@@ -1076,8 +1096,10 @@ app.whenReady().then(() => {
    * ─── 第一个窗口：**立刻建**（不读库）────────────────────────────────────────
    *
    * 槽位延迟分配（restoreHead）：位置/主题在库就绪后、show 之前由 applyWindowSeed 补上；
-   * `earlyShowMs: 150` 是慢盘兜底 —— 到点先把已上好纸色背景的窗口显示出来。
+   * `earlyShowMs: 600` 是慢盘兜底 —— 正常走 ready-to-show（骨架已在画面上），
+   * 到点仍未绘制则先把已上好纸色背景的窗口显示出来。
    */
+  if (bootDelayMs > 0) startupMark('boot-delay', { ms: bootDelayMs })
   const tWindow = performance.now()
   startupMark('first-window-create-start')
   const first = createWindow({
@@ -1086,7 +1108,7 @@ app.whenReady().then(() => {
     // 冷启动时 --lumin-no-workspace=1 同样要认（「新建窗口」那条快捷方式在应用没跑时就走这条路）
     noWorkspace: intent.noWorkspace || undefined,
     restoreHead: true,
-    earlyShowMs: 150
+    earlyShowMs: 600
   })
   // 启动窗口 = 本次运行里唯一能认领「无主草稿」的窗口（见 main/drafts.ts：
   // Ctrl+N / 新建窗口是用户明确要一篇空白，不该被上一次没保存的内容打断）

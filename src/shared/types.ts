@@ -655,6 +655,12 @@ export interface LuminAPI {
      */
     startupRestoreHead: boolean
     /**
+     * 启动验收用的人为慢渲染延迟（ms）：主进程 `LUMIN_BOOT_DELAY_MS` → argv → 这里。
+     * 默认 0（产品路径恒为 0）；渲染层在 bootstrap 最前面 await 这么久，用来验证骨架
+     * 在「JS 迟迟挂不上」时仍然可见。兜底移除时限会同步延长这个值。
+     */
+    bootDelayMs: number
+    /**
      * 启动窗口认领会话槽位（幂等）：恢复计划的 head 槽位，或一个全新的槽位。
      * 非启动窗口 / 已认领过都返回当前槽位（不会重复分配）。
      */

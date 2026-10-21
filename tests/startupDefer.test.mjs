@@ -28,9 +28,10 @@ function stripComments(src) {
 }
 const idxCode = stripComments(idx)
 
-test('窗口先建：首窗带 restoreHead + 200ms 兜底显示，且开库发生在建窗之后', () => {
+test('窗口先建：首窗带 restoreHead + 600ms 兜底显示，且开库发生在建窗之后', () => {
   assert.match(idx, /restoreHead:\s*true/)
-  assert.match(idx, /earlyShowMs:\s*150/)
+  // 600ms：正常机器走 ready-to-show（窗口出现时骨架已在），慢盘才用兜底先亮纸色窗口
+  assert.match(idx, /earlyShowMs:\s*600/)
   const firstWindow = idxCode.indexOf('const first = createWindow(')
   assert.ok(firstWindow > 0, '找不到首窗创建')
   // 建窗之后（同一个 whenReady 里）才 await 库、才补窗口外观

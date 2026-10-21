@@ -11,15 +11,15 @@
  *   --app   = 外壳（chrome）：侧栏 / 工具栏 / 状态栏 / 顶栏 / 分屏缝隙 / 启动骨架 / body
  *   --paper = 写作区（纸）：编辑器正文 pane、源码模式 pane、设置里的排版预览、骨架的正文区
  *
- *   **不变量 ①：L(paper) > L(chrome)** —— 纸永远比外壳亮一档。浅色下纸是**纯白**、外壳浅灰；
- *   深色下纸 #12141a、外壳更暗；sepia 下纸是暖纸、外壳是暖灰。
+ *   **不变量 ①：L(paper) > L(chrome)** —— 纸永远比外壳亮一档。浅色下纸是**暖白纸**
+ *   （#fbfaf6：启动时窗口 `backgroundColor` 与内联骨架用的就是它，**不许退回纯白** ——
+ *   纯白会在渲染层首帧前把整窗刷成刺眼的白，正是用户报的「白屏」），外壳暖浅灰；
+ *   深色下纸 #35383d、外壳更暗；sepia 下纸是暖纸、外壳是暖灰。
  *   若两者同色（或反了），侧栏与正文会糊成一片，文件树的 accent-soft 选中态也失去依托。
  *
  *   --panel / --elevate = 浮在纸**之上**的面板（对话框 / 菜单 / 气泡 / 输入框）。
- *   深色下纸刻意压暗，就是为了给面板留出「再亮一档」。
- *   ⚠️ **浅色下纸与面板同为纯白**（用户口径：写作区要纯白 #ffffff，而 #ffffff 已是上限）——
- *   这一档明度差在浅色下不存在，面板改由 **1px `--edge` 边框 + `--shadow-2` 投影**立起来
- *   （所有对话框/菜单/气泡/输入框本来就带边框或投影）。深色与 sepia 不受影响，仍是两档。
+ *   三主题都**严格亮于纸**（浅色纸不再是纯白，面板仍取 #ffffff —— 浮层因此有了真实的明度差，
+ *   而不是只靠 1px `--edge` 边框 + `--shadow-2` 投影立起来）。
  *
  * 承载「比纸略灰」的面（改动纸色时逐个复核，套件里量的是**关系**不是绝对值）：
  *   --code-bg（代码块 / 行内代码 / CodeMirror 编辑框）、--panel-2（表头 / 悬停底色 / kbd 芯片）、
@@ -48,22 +48,22 @@
  * 中性灰会让它和正文混在一起（主流编辑器的链接也是蓝的）。 */
 :root,
 .theme-light {
-  /* 外壳（侧栏 / 顶部菜单 / 工具栏 / 状态栏 / 窗口底色）= **#FAFAFA**（用户口径：像主流编辑器）。
-     改前是 #f2f3f7（偏冷的浅灰）。与纸（纯白）的对比度约 **1.04:1** —— 刻意很小，
-     所以分层靠 1px `--edge` 边框与投影，而不是靠底色明度差（主流编辑器的浅色也是这个路子）。 */
-  --app: #fafafa;
-  /* 写作区 = **纯白**（用户口径：浅色主题下文本编辑区要纯白）。
-     注意两个随之而来的口径：
-       * 与 --panel/--elevate 同色 ⇒ 面板靠 1px 边框 + 投影立起来（见文件头说明）；
-       * 与外壳 --app 的明度差反而更大（对比 1.09 → 1.12），两段式表面更清楚。 */
-  --paper: #ffffff;
+  /* 外壳（侧栏 / 顶部菜单 / 工具栏 / 状态栏 / 窗口底色）= **暖浅灰 #f4f3ee**。
+     与纸（#fbfaf6）的对比度约 **1.06:1** —— 刻意很小，分层主要靠 1px `--edge` 边框与投影，
+     底色只提供「纸比壳亮一档」的两段式暗示。 */
+  --app: #f4f3ee;
+  /* 写作区 = **暖白纸 #fbfaf6**（不是纯白）：
+       * 它是窗口 `backgroundColor`（shared/theme.ts 的 PAPER_BY_THEME.light）与
+         index.html 内联骨架的 `--boot-paper` 的唯一来源 —— 三处必须同值，否则启动会闪色；
+       * 面板取 #ffffff，于是浮层真的比纸亮一档（见文件头的不变量②）；
+       * 与外壳 --app 保持 ~1.06:1 的明度差。 */
+  --paper: #fbfaf6;
   --panel: #ffffff;
-  /* 比旧值 #f0f1f4 深一档：外壳从「近白」变成「浅灰」后，悬停底色必须跟着让位，
-     否则 panel-2 与 chrome 只差 2/255，侧栏与工具栏的悬停反馈会消失 */
-  --panel-2: #e9ebf0;
+  /* 悬停/表头底色：跟着暖纸走，压到外壳之下；与纸的对比度约 1.17:1，悬停反馈看得见 */
+  --panel-2: #e9e8e2;
   --elevate: #ffffff;
-  --edge: #e4e6ea;
-  --edge-strong: #d2d5db;
+  --edge: #e3e2dc;
+  --edge-strong: #d2d1ca;
   --ink: #20242b;
   --ink-2: #4e5766;
   --ink-3: #7d8595;
@@ -115,7 +115,7 @@
   --warning-ink: #92400e;
   --ok-ink: #166534;
   --glow: rgba(17, 24, 39, 0.12);
-  --code-bg: #f1f2f5;
+  --code-bg: #f1f0ea;
   /* 自绘淡底（查找命中）：灰，不是紫。原生文字选区走浏览器默认，不用这个令牌 */
   --sel: rgba(17, 24, 39, 0.11);
   --block-hover: rgba(17, 24, 39, 0.04);
@@ -369,4 +369,26 @@
   --color-scrim: var(--scrim);
   --color-control-on: var(--control-on);
   --color-control-ink: var(--control-ink);
+}
+
+/* ─── 启动骨架（#boot-splash）跟随**显式主题** ───────────────────────────────────
+ * 骨架的样式内联在 index.html（必须早于本 CSS 生效），默认按系统 `prefers-color-scheme`
+ * 取纸色/墨色；一旦 settings 应用了 `.theme-*` 类，这里就用当前主题的真实令牌覆盖它。
+ * 场景：系统深色 + 用户显式浅色（或反过来）时，启动画面不会亮错一档。
+ * 骨架在首帧后 200ms 内会被移除，所以这段规则只在「设置已就绪、界面还没画完」的短短一瞬起作用。 */
+.theme-light #boot-splash,
+.theme-dark #boot-splash,
+.theme-sepia #boot-splash {
+  background: var(--paper);
+  color: var(--ink);
+}
+.theme-light #boot-splash .boot-track,
+.theme-dark #boot-splash .boot-track,
+.theme-sepia #boot-splash .boot-track {
+  background: color-mix(in srgb, var(--ink) 12%, transparent);
+}
+.theme-light #boot-splash .boot-bar,
+.theme-dark #boot-splash .boot-bar,
+.theme-sepia #boot-splash .boot-bar {
+  background: var(--accent);
 }

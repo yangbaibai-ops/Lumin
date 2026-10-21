@@ -34,6 +34,18 @@ const sessionSlot: number | null = (() => {
 const startupRestoreHead: boolean = process.argv.includes('--lumin-startup-head=1')
 
 /**
+ * 启动验收用的「人为慢渲染」延迟（ms，默认 0）：主进程从 `LUMIN_BOOT_DELAY_MS` 读入，
+ * 只经 additionalArguments 传给窗口（不落设置、不影响其它实例）。渲染层在 bootstrap
+ * 最前面等这么久，用来验证「JS 迟迟挂不上时骨架仍然可见、不白屏」。
+ */
+const bootDelayMs: number = (() => {
+  const arg = process.argv.find((a) => a.startsWith('--lumin-boot-delay-ms='))
+  if (!arg) return 0
+  const n = Number(arg.slice(arg.indexOf('=') + 1))
+  return Number.isFinite(n) && n > 0 ? Math.min(Math.floor(n), 30000) : 0
+})()
+
+/**
  * 主进程 → 渲染层**出站通道白名单**（清单 §4 P2「`events.on(channel, cb)` 没有通道白名单」）。
  *
  * 为什么要有：`ipcRenderer.on` 本身不校验通道名，被注入的页面可以注册任意通道的监听 ——
@@ -133,6 +145,7 @@ const api: LuminAPI = {
     startupNoWorkspace,
     sessionSlot,
     startupRestoreHead,
+    bootDelayMs,
     /**
      * 启动窗口专用：向主进程认领会话槽位（恢复计划的 head / 新槽位）。
      * 非启动窗口返回 null；同一窗口重复调用幂等。
