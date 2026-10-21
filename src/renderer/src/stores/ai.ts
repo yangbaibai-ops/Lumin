@@ -432,16 +432,15 @@ export const useAiStore = defineStore('ai', {
     // ── 右侧栏「AI 对话」──────────────────────────────────────────────────────
 
     /**
-     * 打开右侧栏的 AI 标签页（菜单 / 命令面板 / 工具栏共用）。
-     * 右侧栏沿用「大纲放在编辑区右侧」的那一栏：没打开三栏时先打开它。
+     * 打开右侧停靠栏的 AI 面板（菜单 / 命令面板 / 工具栏共用）。
+     * 若停靠栏被设置关掉，先打开它；再切到 AI 并展开面板。
      */
     openChat(): void {
       this.ensureListener()
       const settings = useSettingsStore()
-      const ui = useUiStore()
-      if (!settings.outlineOnRight) settings.set('outlineOnRight', true)
+      if (!settings.rightDockVisible) settings.set('rightDockVisible', true)
       if (!settings.outlineRightExpanded) settings.set('outlineRightExpanded', true)
-      ui.rightTab = 'ai'
+      settings.set('rightDockActive', 'ai')
       if (!this.chatContextInitialized) {
         this.chatIncludeDocument = settings.aiContextDefault === 'document'
         this.chatIncludeSelection = settings.aiContextDefault !== 'document'

@@ -1,29 +1,45 @@
-// ─── 右侧栏「两个按钮」的状态机（纯函数）──────────────────────────────────────
+// ─── 右侧停靠栏「两个按钮」的状态机（纯函数）──────────────────────────────────
 //
-// 用户口径：大纲 / AI 是**两个独立按钮**，不是同一视图的两个页签。
-// 规则只有三条，收在这里是为了能被单测逐条钉住（组件里只负责渲染与写 store）：
-//   1. 点一个**非当前**面板 → 显示该面板（互斥切换）；
-//   2. 点**当前**面板 → 收起整栏（"再点一次收起"）；
-//   3. 收起态点任意面板 → 展开并显示该面板。
+// 用户口径：大纲 / AI 是**停靠栏上的两个独立按钮**，不是同一视图的两个页签；
+// 停靠栏本身常驻，点按钮只控制它左侧的面板：
+//   1. 点一个**非当前**面板 → 切到该面板并展开（互斥切换）；
+//   2. 点**当前**面板 → 收起面板（停靠栏仍然在）；
+//   3. 面板收起时点任意按钮 → 展开并显示该面板；
+//   4. `rightDockVisible = false`（设置里关掉「显示右侧停靠栏」）→ 整条 dock 与面板都不显示，
+//      此时按钮不可达，状态机原样返回。
 //
-// 不在组件里直接写这三个分支的原因：`selectPanel` 与窄轨里的按钮共用同一条规则，
-// 两处各写一遍迟早分叉（一边"再点收起"、一边"再点没反应"）。
+// 三个状态分开存：
+//   * `active`        当前选中的面板（settings.rightDockActive，落库，重启恢复）
+//   * `expanded`      面板是否展开（settings.outlineRightExpanded）
+//   * `rightDockVisible` 整条停靠栏是否显示（settings.rightDockVisible，默认 true）
+// 这样「收起面板」不会把 `active` 清掉 —— 设置里关掉再打开、或重启后仍回到上次那个面板。
 export type SidebarPanel = 'outline' | 'ai'
 
-export interface SidebarPanelState {
-  /** 整栏是否展开（持久化键 settings.outlineRightExpanded） */
+export interface RightDockState {
+  /** 当前选中的面板（与 expanded 无关） */
+  active: SidebarPanel
+  /** 面板是否展开；false = 只剩停靠栏 */
   expanded: boolean
-  /** 当前显示哪个面板（ui.rightTab） */
-  panel: SidebarPanel
+  /** 整条停靠栏是否显示（设置里的「显示右侧停靠栏」） */
+  rightDockVisible: boolean
 }
 
 /** 点某个面板按钮之后的新状态（不修改入参） */
-export function clickSidebarPanel(
-  state: SidebarPanelState,
-  clicked: SidebarPanel
-): SidebarPanelState {
-  if (state.expanded && state.panel === clicked) {
-    return { expanded: false, panel: state.panel }
+export function clickRightDockButton(state: RightDockState, clicked: SidebarPanel): RightDockState {
+  // 停靠栏被设置关掉时按钮不可达；兜底保持原状，避免任何程序化点击“隔空”打开面板
+  if (!state.rightDockVisible) return state
+  if (state.expanded && state.active === clicked) {
+    return { ...state, expanded: false }
   }
-  return { expanded: true, panel: clicked }
+  return { ...state, active: clicked, expanded: true }
+}
+
+/** 某个面板此刻是否真的可见（dock 关掉时，即使 expanded 记录为 true 也不可见） */
+export function isRightDockPanelVisible(state: RightDockState, panel: SidebarPanel): boolean {
+  return state.rightDockVisible && state.expanded && state.active === panel
+}
+
+/** 停靠栏本身是否可见（与面板展开无关） */
+export function isRightDockVisible(state: RightDockState): boolean {
+  return state.rightDockVisible
 }

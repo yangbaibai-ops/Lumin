@@ -41,6 +41,8 @@ export function useOutlineSide(): OutlineSide {
     if (next) {
       // 先记账再改页签：顺序反了就永远记成「文件」（那正是要避免的）
       ui.sidebarTabBeforeOutlineRight = ui.sidebarTab
+      // 右侧大纲现在住在常驻停靠栏里：把停靠栏一起打开，否则会「左栏大纲没了、右边也没有」
+      settings.set('rightDockVisible', true)
       settings.set('outlineRightExpanded', true)
       ui.sidebarTab = 'files'
     } else {

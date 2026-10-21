@@ -1133,6 +1133,18 @@ function formatTime(ms: number): string {
                           @update:model-value="toggleMenuBar"
                         />
                       </div>
+                      <div class="set-row" :title="t('settings.rightDockDesc')">
+                        <div>
+                          <p class="set-row-label">{{ t('settings.rightDock') }}</p>
+                          <p class="set-row-desc">{{ t('settings.rightDockShort') }}</p>
+                        </div>
+                        <SettingSwitch
+                          :model-value="settings.rightDockVisible"
+                          :label="t('settings.rightDock')"
+                          data-setting-right-dock
+                          @update:model-value="(v) => settings.set('rightDockVisible', v)"
+                        />
+                      </div>
                       <div class="set-row" :title="t('settings.outlineRightDesc')">
                         <div>
                           <p class="set-row-label">{{ t('settings.outlineRight') }}</p>

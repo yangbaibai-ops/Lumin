@@ -10,6 +10,7 @@ import Toolbar from '../components/Toolbar.vue'
 import StatusBar from '../components/StatusBar.vue'
 import NotificationCenter from '../components/NotificationCenter.vue'
 import OutlinePanel from '../components/OutlinePanel.vue'
+import RightDock from '../components/RightDock.vue'
 import WysiwygEditor from '../components/editor/WysiwygEditor.vue'
 import Icon from '../components/Icon.vue'
 import { measureAllCodeBlocks } from '../lib/editor/codeBlockViews'
@@ -1078,9 +1079,18 @@ onBeforeUnmount(() => {
         </button>
       </div>
 
-      <!-- 右侧大纲（三栏模式）：设置里打开「大纲放在编辑区右侧」时才出现。
-           它与左侧文件树同时可见，自身可折叠/展开（见 OutlinePanel.vue）。 -->
-      <OutlinePanel v-if="settings.outlineOnRight" />
+      <!-- 右侧停靠栏 + 面板（两块 DOM）：dock 是窗口最右侧的 40px 常驻竖条，
+           面板在它左侧。整组显隐由设置「显示右侧停靠栏」(rightDockVisible) 决定；
+           面板是否展开、当前是大纲还是 AI 由状态机各自负责（见 RightDock/OutlinePanel）。
+           `v-show` 而不是 `v-if`：关掉再打开、收起再展开都不丢大纲滚动位置与 AI 会话。 -->
+      <div
+        v-show="settings.rightDockVisible"
+        class="flex h-full min-h-0 flex-none"
+        data-right-dock-area
+      >
+        <OutlinePanel />
+        <RightDock />
+      </div>
     </div>
 
     <StatusBar />

@@ -7,7 +7,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { defaultSettings } from '../src/shared/defaults.ts'
 
-test('大纲三栏模式：出厂默认关闭，右侧大纲默认展开', () => {
+test('大纲三栏模式：出厂默认关闭，右侧面板默认展开', () => {
   assert.equal(
     defaultSettings.outlineOnRight,
     false,
@@ -16,8 +16,17 @@ test('大纲三栏模式：出厂默认关闭，右侧大纲默认展开', () =>
   assert.equal(
     defaultSettings.outlineRightExpanded,
     true,
-    '三栏一旦打开，右侧大纲应当是展开的（否则用户会以为设置没生效）'
+    '右侧面板应当默认展开（否则用户会以为开关没生效）'
   )
+})
+
+test('右侧停靠栏：出厂默认**显示**（用户口径「设置里开关，默认开」）', () => {
+  assert.equal(
+    defaultSettings.rightDockVisible,
+    true,
+    '停靠栏默认常驻；关掉后 dock 与面板一起隐藏，重新打开恢复上次选中面板'
+  )
+  assert.equal(defaultSettings.rightDockActive, 'outline', '首次启动默认选中大纲')
 })
 
 test('保存方式：出厂默认**手动保存**（用户口径）', () => {

@@ -1,138 +1,181 @@
-// ─── 右侧栏：两个按钮 toggle 的状态机 + 持久化/无障碍契约 ─────────────────────
+// ─── 右侧停靠栏：active / expanded / rightDockVisible 三态 + DOM 契约 ─────────────
 //
-// 用户口径（原话要点）：「不要…顶部标签切换，而是各自占用侧边栏的两个按钮，
-// 不要有展开/收起侧边栏的按钮，两个按钮点击就可出现对应的侧边栏，再次点击就可以收回。」
+// 用户口径（第三次澄清）：
+//   「保留右侧停靠栏，并且右侧停靠栏上要有两个按钮，一个负责显示大纲，另一个是 AI，
+//     点击就在右侧区域展示对应的大纲或者 AI，并且用户可以在设置中开启或关闭右侧停靠栏。」
 //
-// 这条测试守三件事：
-//   1. 状态规则（纯函数 lib/sidebarPanels.ts）：互斥切换 / 再点收起 / 收起态点任意一个展开；
-//   2. 源码契约：两枚按钮带 aria-pressed、没有 tablist/tab/aria-selected；
-//      **没有**任何独立的隐藏/显示按钮 —— 收起只靠再点当前面板；
-//   3. 收起态是 34px 窄条，两枚按钮仍在（data-sidebar-rail），状态接**既有**持久化键
-//      （outlineRightExpanded）；左栏的隐藏按钮不属于「大纲/AI」这套，保持原样。
+// 结构上停靠栏与面板是**两块 DOM**：
+//   * dock（RightDock.vue）在窗口最右侧，常驻 40px，竖排两个按钮（大纲 / AI）；
+//   * 面板（OutlinePanel.vue）在 dock 左侧，显隐与 dock 是否显示互不影响。
+// 这条测试守：
+//   1. 纯函数状态机（互斥切换 / 同按钮收起 / rightDockVisible 关掉时不可达）；
+//   2. dock 恰好两个按钮、aria-pressed、role=toolbar，无 tablist/tab/aria-selected；
+//   3. 面板里**没有**任何按钮（旧实现把两个按钮放在面板顶部，本轮要改掉）；
+//   4. 面板/停靠栏的显隐分别接 settings + ui，新增设置默认 true。
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
-import { clickSidebarPanel } from '../src/renderer/src/lib/sidebarPanels.ts'
+import {
+  clickRightDockButton,
+  isRightDockPanelVisible,
+  isRightDockVisible
+} from '../src/renderer/src/lib/sidebarPanels.ts'
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..')
 const read = (rel) => readFileSync(join(ROOT, rel), 'utf8')
+const RIGHT_DOCK = read('src/renderer/src/components/RightDock.vue')
 const OUTLINE_PANEL = read('src/renderer/src/components/OutlinePanel.vue')
-const APP_SIDEBAR = read('src/renderer/src/components/AppSidebar.vue')
+const EDITOR_VIEW = read('src/renderer/src/views/EditorView.vue')
+const DEFAULTS = read('src/shared/defaults.ts')
+const TYPES = read('src/shared/types.ts')
+const SETTINGS_DIALOG = read('src/renderer/src/components/SettingsDialog.vue')
 const UI_STORE = read('src/renderer/src/stores/ui.ts')
-const KEYMAP = read('src/renderer/src/composables/useKeymap.ts')
 
-// 只检查真正的标记/属性：先剥掉 HTML 注释与行注释（注释里会解释"为什么不是页签"）
-const markup = () => OUTLINE_PANEL.replace(/<!--[\s\S]*?-->/g, '').replace(/\/\/.*$/gm, '')
+// 只检查真正的标记/属性：先剥掉 HTML 注释与行注释（注释里会解释“为什么不是页签”）
+const markup = (text) => text.replace(/<!--[\s\S]*?-->/g, '').replace(/\/\/.*$/gm, '')
 
-// ── 状态机 ───────────────────────────────────────────────────────────────────
-test('点非当前面板：显示该面板（互斥切换）', () => {
-  assert.deepEqual(clickSidebarPanel({ expanded: true, panel: 'outline' }, 'ai'), {
+const base = { active: 'outline', expanded: true, rightDockVisible: true }
+
+// ── 状态机：active / expanded / rightDockVisible ─────────────────────────────
+test('点非当前面板：切换 active 并展开（互斥）', () => {
+  assert.deepEqual(clickRightDockButton(base, 'ai'), {
+    active: 'ai',
     expanded: true,
-    panel: 'ai'
+    rightDockVisible: true
   })
-  assert.deepEqual(clickSidebarPanel({ expanded: true, panel: 'ai' }, 'outline'), {
+  assert.deepEqual(clickRightDockButton({ ...base, active: 'ai' }, 'outline'), {
+    active: 'outline',
     expanded: true,
-    panel: 'outline'
+    rightDockVisible: true
   })
 })
 
-test('再点当前面板：收起整栏（面板选择保留，重新展开时回到原来那个）', () => {
-  assert.deepEqual(clickSidebarPanel({ expanded: true, panel: 'ai' }, 'ai'), {
-    expanded: false,
-    panel: 'ai'
+test('再点当前面板：只收起 expanded，active 保留（dock 仍在）', () => {
+  const next = clickRightDockButton(base, 'outline')
+  assert.deepEqual(next, { active: 'outline', expanded: false, rightDockVisible: true })
+  assert.equal(isRightDockPanelVisible(next, 'outline'), false)
+  assert.equal(isRightDockVisible(next), true, '面板收起不影响 dock 本身')
+})
+
+test('单独收起 expanded 后，点任意按钮：展开并显示它', () => {
+  const collapsed = { ...base, expanded: false }
+  assert.deepEqual(clickRightDockButton(collapsed, 'ai'), {
+    active: 'ai',
+    expanded: true,
+    rightDockVisible: true
   })
-  assert.deepEqual(clickSidebarPanel({ expanded: true, panel: 'outline' }, 'outline'), {
-    expanded: false,
-    panel: 'outline'
+  assert.deepEqual(clickRightDockButton(collapsed, 'outline'), {
+    active: 'outline',
+    expanded: true,
+    rightDockVisible: true
   })
 })
 
-test('收起态点任意面板：展开并直接显示它（窄条按钮的路径）', () => {
-  assert.deepEqual(clickSidebarPanel({ expanded: false, panel: 'outline' }, 'ai'), {
+test('rightDockVisible=false：整条 dock 不可见，按钮不可达（状态机原样返回）', () => {
+  const hidden = { active: 'ai', expanded: true, rightDockVisible: false }
+  assert.equal(isRightDockVisible(hidden), false)
+  assert.equal(isRightDockPanelVisible(hidden, 'ai'), false)
+  assert.deepEqual(clickRightDockButton(hidden, 'outline'), hidden)
+})
+
+test('三个状态互不串味：active 与 expanded 分离、rightDockVisible 只控制整条 dock', () => {
+  const state = { active: 'ai', expanded: false, rightDockVisible: true }
+  assert.equal(isRightDockPanelVisible(state, 'ai'), false, '收起时即使 active 是 ai 也不可见')
+  assert.equal(isRightDockVisible(state), true)
+  assert.deepEqual(clickRightDockButton(state, 'ai'), {
+    active: 'ai',
     expanded: true,
-    panel: 'ai'
-  })
-  assert.deepEqual(clickSidebarPanel({ expanded: false, panel: 'ai' }, 'outline'), {
-    expanded: true,
-    panel: 'outline'
+    rightDockVisible: true
   })
 })
 
 test('状态机是纯函数：不修改入参', () => {
-  const state = { expanded: true, panel: 'outline' }
-  const next = clickSidebarPanel(state, 'ai')
-  assert.deepEqual(state, { expanded: true, panel: 'outline' })
+  const state = { active: 'outline', expanded: true, rightDockVisible: true }
+  const next = clickRightDockButton(state, 'ai')
+  assert.deepEqual(state, { active: 'outline', expanded: true, rightDockVisible: true })
   assert.notEqual(next, state)
 })
 
-// ── 组件契约 ─────────────────────────────────────────────────────────────────
-test('右侧栏：恰好两个独立按钮（大纲 / AI）+ aria-pressed，没有页签语义', () => {
-  const ids = [...OUTLINE_PANEL.matchAll(/\{ id: '(outline|ai)'/g)].map((m) => m[1])
+// ── dock 组件契约 ───────────────────────────────────────────────────────────
+test('RightDock：独立元素、40px 竖条、恰好两个按钮（大纲 / AI）', () => {
+  assert.match(RIGHT_DOCK, /<aside[\s\S]*?data-right-dock/, 'dock 必须是独立元素')
+  assert.match(RIGHT_DOCK, /role="toolbar"/, 'dock 应有 toolbar 语义')
+  assert.match(RIGHT_DOCK, /aria-orientation="vertical"/, 'dock 是竖向工具栏')
+  assert.match(RIGHT_DOCK, /w-10/, 'dock 宽度应为 40px（w-10）')
+  assert.match(RIGHT_DOCK, /flex-col/, '两个按钮必须竖排')
+  const ids = [...RIGHT_DOCK.matchAll(/\{ id: '(outline|ai)'/g)].map((m) => m[1])
   assert.deepEqual(ids, ['outline', 'ai'], '按钮表必须恰好是 outline / ai 两项')
-  assert.match(OUTLINE_PANEL, /data-sidebar-buttons/, '缺少两个按钮的容器')
-  assert.match(OUTLINE_PANEL, /v-for="p in PANELS"/, '两枚按钮来自同一份表')
-  assert.match(OUTLINE_PANEL, /:data-sidebar-tab="p\.id"/, '按钮缺少 data-sidebar-tab')
+  assert.match(RIGHT_DOCK, /v-for="p in PANELS"/, '两枚按钮来自同一份表')
+  assert.match(RIGHT_DOCK, /data-right-dock-button/, '按钮缺少 data-right-dock-button')
+  assert.match(
+    RIGHT_DOCK,
+    /:aria-pressed="isRightDockPanelVisible\(state, p\.id\) \? 'true' : 'false'"/,
+    '两枚按钮都必须用 aria-pressed 表达“面板正在显示”'
+  )
+  assert.match(RIGHT_DOCK, /:aria-label="t\(p\.labelKey\)"/, '按钮缺少 aria-label')
+  assert.match(RIGHT_DOCK, /:title="t\(p\.labelKey\)"/, '按钮缺少 tooltip（title）')
+  assert.match(RIGHT_DOCK, /data-panel="p\.id"/, '按钮缺少面板标记')
+})
+
+test('RightDock：没有页签语义、没有面板内部隐藏/显示按钮', () => {
+  assert.doesNotMatch(markup(RIGHT_DOCK), /role="tablist"|role="tab"|aria-selected/)
+  assert.doesNotMatch(markup(RIGHT_DOCK), /data-sidebar-hide|data-sidebar-show/)
+  assert.doesNotMatch(markup(RIGHT_DOCK), /data-sidebar-buttons/, '按钮不该再长在面板顶部')
+})
+
+// ── 面板组件契约 ───────────────────────────────────────────────────────────
+test('OutlinePanel：面板里没有任何按钮（按钮只属于 dock）', () => {
+  assert.doesNotMatch(markup(OUTLINE_PANEL), /<button\b/, '面板里不许再有按钮')
+  assert.doesNotMatch(markup(OUTLINE_PANEL), /data-sidebar-buttons/, '旧的顶部按钮栏应删除')
+  assert.doesNotMatch(markup(OUTLINE_PANEL), /role="tablist"|role="tab"|aria-selected/)
+  assert.doesNotMatch(markup(OUTLINE_PANEL), /data-sidebar-hide|data-sidebar-show/)
+  assert.match(OUTLINE_PANEL, /data-outline-panel/, '面板必须保留 data-outline-panel')
   assert.match(
     OUTLINE_PANEL,
-    /:aria-pressed="isShown\(p\.id\) \? 'true' : 'false'"/,
-    '两枚按钮都必须用 aria-pressed 表达"面板正在显示"'
-  )
-  assert.doesNotMatch(markup(), /role="tablist"|role="tab"|aria-selected/, '不许再有页签语义')
-  assert.doesNotMatch(markup(), /RIGHT_TABS|onTabsKeydown/, '旧的页签实现应删除')
-})
-
-test('右侧栏：没有独立的隐藏/显示侧边栏按钮，收起只靠再点当前面板', () => {
-  assert.doesNotMatch(markup(), /data-sidebar-hide\b/, '不许再有隐藏按钮')
-  assert.doesNotMatch(markup(), /data-sidebar-show\b/, '不许再有显示按钮')
-  assert.doesNotMatch(OUTLINE_PANEL, /function toggle\(/, '隐藏/显示函数应删除')
-  assert.match(OUTLINE_PANEL, /:data-sidebar-collapsed=/, '缺少收起态标记')
-  assert.match(OUTLINE_PANEL, /data-sidebar-rail/, '收起态必须是窄条')
-  assert.match(OUTLINE_PANEL, /@click="selectPanel\(p\.id\)"/, '两枚按钮都走同一条 toggle 规则')
-})
-
-test('右侧栏：展开/收起接既有持久化键，没有新造 sidebar 状态', () => {
-  assert.match(OUTLINE_PANEL, /settings\.set\('outlineRightExpanded'/, '收起状态必须落既有键')
-  assert.match(OUTLINE_PANEL, /outlineRightExpanded/, '缺少展开状态')
-  assert.doesNotMatch(
-    UI_STORE,
-    /rightSidebarVisible|sidebarExpanded/,
-    'ui store 不许新造侧栏可见键'
-  )
-  assert.match(UI_STORE, /sidebarVisible:/, '左侧栏沿用的既有键必须还在')
-})
-
-test('左侧栏：隐藏按钮与「大纲/AI」无关，保持原样（不改左栏）', () => {
-  assert.match(APP_SIDEBAR, /data-sidebar-hide/, '左侧栏隐藏按钮不在本次删除范围')
-  assert.match(APP_SIDEBAR, /function hideSidebar/, '左侧栏沿用 hideSidebar 实现')
-  assert.match(APP_SIDEBAR, /ui\.sidebarVisible = false/, '必须改既有 ui.sidebarVisible')
-  assert.match(APP_SIDEBAR, /settings\.set\('sidebarVisible'/, '必须落既有 settings.sidebarVisible')
-})
-
-test('快捷键：Ctrl/Cmd+Shift+L 为主，旧键 Ctrl/Cmd+Shift+B 保留', () => {
-  assert.match(
-    KEYMAP,
-    /id: 'view\.toggleSidebar',[\s\S]{0,220}defaultKeys: 'Mod\+Shift\+L'/,
-    '主快捷键应为 Mod+Shift+L'
-  )
-  assert.match(
-    KEYMAP,
-    /id: 'view\.toggleSidebarLegacy',[\s\S]{0,220}defaultKeys: 'Mod\+Shift\+B'/,
-    '旧快捷键必须保留为独立命令'
+    /v-show="settings\.outlineRightExpanded"/,
+    '面板显隐必须独立于 dock（v-show，常驻 DOM）'
   )
 })
 
-test('两个面板都常驻 DOM（收起/切换只切显隐，滚动位置与聊天记录不丢）', () => {
+test('OutlinePanel：两个面板都常驻 DOM，按 settings.rightDockActive 切换', () => {
   assert.match(
     OUTLINE_PANEL,
-    /<div v-show="!hidden" class="flex min-h-0 flex-1 flex-col">/,
-    '内容块必须是 v-show（不能用 v-if 卸载，否则滚动位置会丢）'
+    /v-show="settings\.rightDockActive === 'outline'"[\s\S]{0,200}id="right-dock-panel-outline"/
   )
   assert.match(
     OUTLINE_PANEL,
-    /v-show="ui\.rightTab === 'outline'"[\s\S]{0,200}id="sidebar-panel-outline"/
+    /v-show="settings\.rightDockActive === 'ai'"[\s\S]{0,200}id="right-dock-panel-ai"/
   )
-  assert.match(OUTLINE_PANEL, /v-show="ui\.rightTab === 'ai'"[\s\S]{0,200}id="sidebar-panel-ai"/)
-  assert.match(OUTLINE_PANEL, /<AiChatPanel :active="ui\.rightTab === 'ai'" \/>/)
+  assert.match(OUTLINE_PANEL, /<AiChatPanel :active="aiActive" \/>/)
+  assert.match(OUTLINE_PANEL, /const aiActive = computed\(\(\) => isRightDockPanelVisible\(/)
+})
+
+test('EditorView：dock 与面板作为两块 DOM 一起挂载，整组由 rightDockVisible 控制', () => {
+  assert.match(EDITOR_VIEW, /import RightDock from '\.\.\/components\/RightDock\.vue'/)
+  assert.match(EDITOR_VIEW, /<OutlinePanel \/>/)
+  assert.match(EDITOR_VIEW, /<RightDock \/>/)
+  assert.match(EDITOR_VIEW, /v-show="settings\.rightDockVisible"/, '整组显隐必须接新设置')
+  assert.match(EDITOR_VIEW, /data-right-dock-area/)
+  const panelAt = EDITOR_VIEW.indexOf('<OutlinePanel />')
+  const dockAt = EDITOR_VIEW.indexOf('<RightDock />')
+  assert.ok(panelAt > 0 && dockAt > panelAt, '面板必须在 dock 左侧（先渲染）')
+})
+
+// ── 设置与持久化 ───────────────────────────────────────────────────────────
+test('新增设置 rightDockVisible：默认 true，三处（类型 / 默认值 / 设置页）齐全', () => {
+  assert.match(TYPES, /rightDockVisible: boolean/)
+  assert.match(DEFAULTS, /rightDockVisible: true/)
+  assert.match(SETTINGS_DIALOG, /settings\.rightDockVisible/, '设置页缺少开关')
+  assert.match(SETTINGS_DIALOG, /data-setting-right-dock/, '设置页开关需要可定位的标记')
+  assert.match(SETTINGS_DIALOG, /settings\.set\('rightDockVisible', v\)/)
+})
+
+test('持久化键：active / expanded / rightDockVisible 都落 settings，重启可恢复', () => {
+  assert.match(RIGHT_DOCK, /settings\.set\('rightDockActive'/)
+  assert.match(RIGHT_DOCK, /settings\.set\('outlineRightExpanded'/)
+  assert.match(TYPES, /rightDockActive: 'outline' \| 'ai'/)
+  assert.match(DEFAULTS, /rightDockActive: 'outline' as 'outline' \| 'ai'/)
+  assert.doesNotMatch(UI_STORE, /rightSidebarVisible|sidebarExpanded|rightTab/)
 })

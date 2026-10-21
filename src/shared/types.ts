@@ -71,11 +71,18 @@ export interface AppSettings {
   toolbarItems: string[]
   sidebarVisible: boolean
   sidebarWidth: number
-  /** 大纲放在编辑区右侧（三栏：左文件树 | 中编辑区 | 右大纲）；默认 false = 沿用左栏页签结构 */
+  /**
+   * 大纲放在编辑区右侧（三栏：左文件树 | 中编辑区 | 右大纲）。
+   * 默认 false = 左栏保留「文件 / 大纲」页签；右侧停靠栏的显隐由 rightDockVisible 决定。
+   */
   outlineOnRight: boolean
-  /** 右侧大纲面板是否展开（仅 outlineOnRight 打开时有意义） */
+  /** 显示右侧停靠栏（40px 竖条：大纲 / AI 两个按钮；默认开） */
+  rightDockVisible: boolean
+  /** 停靠栏上次选中的面板（收起面板不清除；重启后仍回到它） */
+  rightDockActive: 'outline' | 'ai'
+  /** 右侧面板是否展开（停靠栏常驻；默认展开） */
   outlineRightExpanded: boolean
-  /** 右侧大纲面板宽度（px；拖左缘调整，钳在 160~420） */
+  /** 右侧面板宽度（px；拖左缘调整，钳在 160~420） */
   outlineRightWidth: number
   splitRatio: number // 分屏对比视图左右宽度比（左面板占比 0.25~0.75）
   syncScroll: boolean // 分屏对比视图左右滚动进度同步
