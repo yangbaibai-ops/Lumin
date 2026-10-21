@@ -1,23 +1,25 @@
 <script setup lang="ts">
-// ─── 右侧面板（三栏模式）：大纲 / AI 对话 ─────────────────────────────────────
+// ─── 右侧栏（三栏模式）：两个独立按钮（大纲 / AI），可整栏隐藏 ────────────────
 //
-// 设置里打开「大纲放在编辑区右侧」后，编辑区右侧出现这一栏；栏内有两个页签：
-//   * 大纲（默认）：沿用原来的可拖宽 / 折叠行为；
-//   * AI 对话：右侧栏形态的对话面板（`AiChatPanel.vue`）。
-// 两个面板**都常驻 DOM**，切页签只切显隐 —— 与左侧栏同一口径：聊天记录、滚动位置、
-// 大纲滚动位置都不会因为切一次页签而丢。
+// 用户口径：**不要「大纲 / AI」页签**。这一栏顶部是两个并排的独立按钮 ——
+// 一个打开大纲、一个打开 AI 对话；它们互斥（点哪个就显示哪个面板），
+// 再点一次当前按钮 = 收起整栏。按钮用 `aria-pressed` 表达"这个面板正在显示"，
+// 不是 tablist / role=tab（没有页签语义，也就没有 roving tabindex 那套方向键规则）。
 //
+//   * 两个面板**都常驻 DOM**，切换只切显隐 —— 与左侧栏同一口径：聊天记录、滚动位置、
+//     大纲滚动位置都不会因为切一次而丢；
 //   * 宽度**可拖**：左缘 5px 的拖拽手柄（与左侧栏的手柄同一套做法、同一档钳位 160~420），
 //     宽度落在 `outlineRightWidth`，重启保持；
-//   * 折叠 / 展开：折叠 = 34px 窄轨（只留一个箭头），展开 = 设定宽度；
-//     箭头方向跟着状态翻转（展开时是「›」= 收起，折叠时是「‹」= 展开）。
-import { computed, nextTick, ref } from 'vue'
+//   * 隐藏 / 显示：隐藏 = 34px 窄轨（大纲 / AI 两枚按钮 + 一枚展开箭头），
+//     展开 = 设定宽度；状态落在**既有** `outlineRightExpanded`（SQLite 持久化，重启保持）。
+import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useSettingsStore } from '../stores/settings'
 import { useUiStore } from '../stores/ui'
 import Outline from './Outline.vue'
 import AiChatPanel from './AiChatPanel.vue'
 import Icon from './Icon.vue'
+import { clickSidebarPanel, type SidebarPanel } from '../lib/sidebarPanels'
 
 const { t } = useI18n()
 const settings = useSettingsStore()
@@ -32,34 +34,38 @@ const width = computed({
     settings.set('outlineRightWidth', Math.max(OUTLINE_MIN, Math.min(OUTLINE_MAX, v)))
 })
 const panelWidth = computed(() => (settings.outlineRightExpanded ? width.value : 34))
+const hidden = computed(() => !settings.outlineRightExpanded)
 
-function toggle(): void {
-  settings.set('outlineRightExpanded', !settings.outlineRightExpanded)
+/** 两个独立按钮（不是页签）：顺序固定，图标与文案都从这一份表来 */
+const PANELS = [
+  { id: 'outline', icon: 'list', labelKey: 'sidebar.outline' },
+  { id: 'ai', icon: 'sparkles', labelKey: 'ai.chat.tab' }
+] as const satisfies readonly {
+  id: SidebarPanel
+  icon: string
+  labelKey: string
+}[]
+
+function isShown(tab: SidebarPanel): boolean {
+  return settings.outlineRightExpanded && ui.rightTab === tab
 }
 
-// ── 页签（大纲 / AI 对话）────────────────────────────────────────────────────
-const RIGHT_TABS = ['outline', 'ai'] as const
-
 /**
- * 键盘路径（与左侧栏 AppSidebar 同一口径）：← → 在两项间移动并把焦点带过去，
- * Home/End 到两端；选中项 Tab 可进入、其余项用方向键到达。
+ * 点按钮：规则只有一份（lib/sidebarPanels.ts）——
+ * 互斥切换；**再点当前面板 = 收起整栏**；收起态点任意一枚 = 展开并显示它。
  */
-function onTabsKeydown(e: KeyboardEvent): void {
-  if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(e.key)) return
-  e.preventDefault()
-  const cur = RIGHT_TABS.indexOf(ui.rightTab)
-  const next =
-    e.key === 'ArrowRight'
-      ? RIGHT_TABS[(Math.max(0, cur) + 1) % RIGHT_TABS.length]
-      : e.key === 'ArrowLeft'
-        ? RIGHT_TABS[(Math.max(0, cur) + RIGHT_TABS.length - 1) % RIGHT_TABS.length]
-        : e.key === 'Home'
-          ? RIGHT_TABS[0]
-          : RIGHT_TABS[RIGHT_TABS.length - 1]
-  ui.rightTab = next
-  void nextTick(() => {
-    document.querySelector<HTMLElement>(`[data-right-tab="${next}"]`)?.focus()
-  })
+function selectPanel(tab: SidebarPanel): void {
+  const next = clickSidebarPanel(
+    { expanded: settings.outlineRightExpanded, panel: ui.rightTab },
+    tab
+  )
+  ui.rightTab = next.panel
+  settings.set('outlineRightExpanded', next.expanded)
+}
+
+/** 隐藏 / 显示整栏；`outlineRightExpanded` 是既有持久化键，重启保持 */
+function toggle(): void {
+  settings.set('outlineRightExpanded', !settings.outlineRightExpanded)
 }
 
 // ── 拖拽调宽：手柄在面板**左缘**，所以宽度 = 窗口右缘到指针的距离 ──
@@ -103,6 +109,8 @@ function onDragStart(e: MouseEvent): void {
 <template>
   <aside
     data-outline-panel
+    data-sidebar
+    :data-sidebar-hidden="hidden ? 'true' : 'false'"
     class="relative flex h-full flex-none flex-col border-l border-edge bg-app"
     :class="dragging ? '' : 'transition-[width] duration-200'"
     :style="{ '--outline-w': panelWidth + 'px' }"
@@ -130,73 +138,95 @@ function onDragStart(e: MouseEvent): void {
       />
     </div>
 
+    <!-- 顶部：两个**独立按钮**（大纲 / AI），互斥切换；右侧是隐藏整栏的开关。
+         不是页签：没有 tablist / role=tab / aria-selected，按钮各自带 aria-pressed。 -->
     <div
-      class="flex flex-none items-center gap-1 border-b border-edge py-1.5"
-      :class="settings.outlineRightExpanded ? 'pl-1.5 pr-1.5' : 'justify-center px-1'"
+      v-if="!hidden"
+      class="flex flex-none items-center gap-1 border-b border-edge py-1.5 pl-1.5 pr-1.5"
+      data-sidebar-buttons
     >
-      <!-- 两个页签：与左侧栏同一套 tab 语义/样式（选中项下方一条 accent 渐变细线） -->
-      <div
-        v-if="settings.outlineRightExpanded"
-        class="flex min-w-0 flex-1 gap-1"
-        role="tablist"
-        :aria-label="t('sidebar.outline') + ' / ' + t('ai.chat.tab')"
-        data-right-tablist
-        @keydown="onTabsKeydown"
-      >
-        <button
-          v-for="tab in RIGHT_TABS"
-          :id="`right-tab-${tab}`"
-          :key="tab"
-          role="tab"
-          :aria-selected="ui.rightTab === tab ? 'true' : 'false'"
-          :aria-controls="`right-panel-${tab}`"
-          :tabindex="ui.rightTab === tab ? 0 : -1"
-          class="relative flex min-w-0 flex-1 items-center justify-center gap-1.5 rounded-lg py-1.5 text-ui font-medium transition-all duration-200"
-          :class="ui.rightTab === tab ? 'text-ink' : 'text-ink-2b hover:text-ink-2'"
-          :data-right-tab="tab"
-          @click="ui.rightTab = tab"
-        >
-          <Icon :name="tab === 'outline' ? 'list' : 'sparkles'" :size="13" />
-          <span class="truncate">{{
-            tab === 'outline' ? t('sidebar.outline') : t('ai.chat.tab')
-          }}</span>
-          <span
-            v-if="ui.rightTab === tab"
-            class="absolute inset-x-3 bottom-0 h-0.5 rounded-full bg-gradient-to-r from-accent to-accent-2"
-            style="animation: lm-fade-in 0.25s ease"
-          />
-        </button>
-      </div>
       <button
+        v-for="p in PANELS"
+        :key="p.id"
+        type="button"
+        class="flex min-w-0 flex-1 items-center justify-center gap-1.5 rounded-lg px-2 py-1.5 text-ui font-medium transition-colors duration-150"
+        :class="
+          isShown(p.id)
+            ? 'bg-accent-soft text-ink'
+            : 'text-ink-2b hover:bg-accent-soft hover:text-ink-2'
+        "
+        :data-sidebar-tab="p.id"
+        :aria-pressed="isShown(p.id) ? 'true' : 'false'"
+        :aria-controls="`sidebar-panel-${p.id}`"
+        :aria-label="t(p.labelKey)"
+        :title="t(p.labelKey)"
+        @click="selectPanel(p.id)"
+      >
+        <Icon :name="p.icon" :size="13" />
+        <span class="truncate">{{ t(p.labelKey) }}</span>
+      </button>
+      <button
+        type="button"
         class="icon-btn !h-6.5 !w-6.5 flex-none"
-        data-outline-toggle
-        :title="settings.outlineRightExpanded ? t('outline.collapse') : t('outline.expand')"
-        :aria-label="settings.outlineRightExpanded ? t('outline.collapse') : t('outline.expand')"
-        :aria-expanded="settings.outlineRightExpanded"
+        data-sidebar-hide
+        :title="t('sidebar.hide')"
+        :aria-label="t('sidebar.hide')"
+        :aria-pressed="'true'"
+        :aria-expanded="true"
         @click="toggle"
       >
-        <Icon :name="settings.outlineRightExpanded ? 'chevron-right' : 'chevron-left'" :size="15" />
+        <Icon name="outline-panel" :size="15" />
       </button>
     </div>
 
-    <!-- 展开时才有内容；折叠态只留那条窄轨。两个面板**都常驻 DOM**（切页签只切显隐，
+    <!-- 隐藏态：34px 窄轨。两枚按钮仍然可达（点一下直接展开并显示该面板），
+         另有一枚「显示侧边栏」箭头 —— 满足"隐藏时给一个窄轨可再打开"。 -->
+    <div v-else class="flex flex-none flex-col items-center gap-1 px-1 py-1.5" data-sidebar-rail>
+      <button
+        v-for="p in PANELS"
+        :key="p.id"
+        type="button"
+        class="icon-btn !h-6.5 !w-6.5"
+        :data-sidebar-tab="p.id"
+        :aria-pressed="'false'"
+        :aria-label="t(p.labelKey)"
+        :title="t(p.labelKey)"
+        @click="selectPanel(p.id)"
+      >
+        <Icon :name="p.icon" :size="14" />
+      </button>
+      <button
+        type="button"
+        class="icon-btn !h-6.5 !w-6.5"
+        data-sidebar-show
+        :title="t('sidebar.show')"
+        :aria-label="t('sidebar.show')"
+        :aria-pressed="'false'"
+        :aria-expanded="'false'"
+        @click="toggle"
+      >
+        <Icon name="chevron-left" :size="15" />
+      </button>
+    </div>
+
+    <!-- 展开时才有内容；隐藏态只留窄轨。两个面板**都常驻 DOM**（切换只切显隐，
          聊天记录/滚动位置不丢），与左侧栏 AppSidebar 的口径一致。 -->
-    <div v-if="settings.outlineRightExpanded" class="flex min-h-0 flex-1 flex-col">
+    <div v-if="!hidden" class="flex min-h-0 flex-1 flex-col">
       <div
         v-show="ui.rightTab === 'outline'"
-        id="right-panel-outline"
+        id="sidebar-panel-outline"
         class="min-h-0 flex-1 px-1.5 pt-1"
-        role="tabpanel"
-        aria-labelledby="right-tab-outline"
+        role="region"
+        :aria-label="t('sidebar.outline')"
       >
         <Outline />
       </div>
       <div
         v-show="ui.rightTab === 'ai'"
-        id="right-panel-ai"
+        id="sidebar-panel-ai"
         class="min-h-0 flex-1"
-        role="tabpanel"
-        aria-labelledby="right-tab-ai"
+        role="region"
+        :aria-label="t('ai.chat.tab')"
       >
         <AiChatPanel :active="ui.rightTab === 'ai'" />
       </div>

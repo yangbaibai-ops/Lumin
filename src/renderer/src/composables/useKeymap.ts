@@ -186,6 +186,18 @@ export function useKeymap(actions: ReturnType<typeof useAppActions>): void {
       defaultKeys: 'Ctrl+Alt+C',
       run: () => handleMenu('ai-chat')
     },
+    {
+      /**
+       * 右键 AI 子菜单的「优化」也可用快捷键触发（`Ctrl+Alt+O`；用户提议的
+       * `Ctrl+Alt+K` 已被「插入链接」的 Mod+Alt+K 占用，`Ctrl+Alt+S/R/C` 属于
+       * 既有摘要/改写/对话，故落到 O）。动作实现只有右键菜单那一份（runById）。
+       */
+      id: 'ai.optimize',
+      titleKey: 'editorMenu.aiOptimize',
+      groupKey: 'keymap.groupEdit',
+      defaultKeys: 'Ctrl+Alt+O',
+      run: () => void editorMenu.runById('ai.optimize')
+    },
 
     // ── 插入（默认键避开已有注册表：Mod+K 属快捷键设置，故链接用 Mod+Alt+K）──
     {
@@ -259,8 +271,20 @@ export function useKeymap(actions: ReturnType<typeof useAppActions>): void {
 
     // ── 视图 ──
     {
+      /**
+       * 侧边栏显隐：用户点名的 **Ctrl/Cmd+Shift+L**（已核对整张表，此前无占用）。
+       * 旧键 Ctrl/Cmd+Shift+B 保留为下一条独立命令，老用户按原来的键仍然有效；
+       * 两条是同一个动作（同一个 handleMenu），只是键位不同、不会互相抢。
+       */
       id: 'view.toggleSidebar',
       titleKey: 'menu.toggleSidebar',
+      groupKey: 'keymap.groupView',
+      defaultKeys: 'Mod+Shift+L',
+      run: () => handleMenu('toggle-sidebar')
+    },
+    {
+      id: 'view.toggleSidebarLegacy',
+      titleKey: 'menu.toggleSidebarLegacy',
       groupKey: 'keymap.groupView',
       defaultKeys: 'Mod+Shift+B',
       run: () => handleMenu('toggle-sidebar')

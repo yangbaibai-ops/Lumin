@@ -630,9 +630,13 @@ async function main() {
       emptySidebar.openFolderEntry === false,
       `没有工作区时侧栏顶部不再有「打开文件夹」那一行（入口仍在「文件」菜单 / Ctrl+O）`
     )
+    // 用户本轮口径：侧边栏头部要有一个**看得见的「隐藏侧边栏」按钮**（此前只有菜单/快捷键）。
+    // 所以「空侧栏只有两个页签」这条契约更新为：两个页签 + 恰好一枚隐藏按钮，别无他物。
     report.check(
-      'no-workspace-sidebar-has-only-tabs',
-      emptySidebar.tabCount === 2 && emptySidebar.otherButtonCount === 0,
+      'no-workspace-sidebar-has-tabs-and-hide-button',
+      emptySidebar.tabCount === 2 &&
+        emptySidebar.otherButtonCount === 1 &&
+        emptySidebar.otherButtons[0] === '隐藏侧边栏',
       `页签 ${emptySidebar.tabCount} 个 / 其它按钮 ${emptySidebar.otherButtonCount} 个 ${JSON.stringify(emptySidebar.otherButtons)}`
     )
     report.check(

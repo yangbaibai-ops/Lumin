@@ -141,17 +141,17 @@ export function mermaidBlockPosition(
 
 // 导出件的色值必须与**浅色主题令牌逐条一致**（审计 §8 P2「token 未覆盖的硬编码色」）：
 // 这里是一份独立 HTML 的排版 CSS，拿不到运行时的 CSS 变量，只能写死字面量 —— 但"写死"不等于
-// "自己另立一套"：`--code-bg` 曾漂成 #f4f5f8（令牌 #f1f2f5）、`--panel-2` 漂成 #f0f1f4（令牌 #e9e8e2），
+// "自己另立一套"：`--code-bg` 曾漂成 #f4f5f8（令牌 #f1f2f5）、`--panel-2` 漂成 #f0f1f4（令牌 #e9ebf0），
 // 于是导出的 PDF/HTML 与编辑器里的观感悄悄不同。改动这些值请同步 theme.css 的浅色块，
 // `tests/designTokens.test.mjs` 会逐条对账。
 const proseCss = `
 :root {
-  --edge: #e3e2dc; --edge-strong: #d2d1ca; --ink: #20242b; --ink-2: #4e5766; --ink-3: #7d8595;
+  --edge: #e4e6ea; --edge-strong: #d2d5db; --ink: #20242b; --ink-2: #4e5766; --ink-3: #7d8595;
   --accent: #6b7280; --accent-2: #4b5563; --accent-soft: rgba(17, 24, 39, 0.07);
   --link: #1f57dd;
   --ok: #16a34a; --warning: #d97706; --danger: #dc2626;
   --code-key: #3f6592; --code-key-2: #2b6f8f;
-  --code-bg: #f1f0ea; --panel-2: #e9e8e2;
+  --code-bg: #f1f2f5; --panel-2: #e9ebf0;
 }
 html, body { margin: 0; padding: 0; }
 body.export-body {

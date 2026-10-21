@@ -1,4 +1,5 @@
 import type { EditorMenuAction, EditorMenuContext, EditorMenuProvider } from './types'
+import { AI_MENU_PRESETS } from '../../../../../shared/aiMenu.ts'
 
 /**
  * ─── 内置提供者 ──────────────────────────────────────────────────────────────
@@ -172,6 +173,26 @@ export function createDefaultProviders(
                   'insert.table': { disabled: ctx.inTable }
                 }
               )
+        }
+      ]
+    },
+
+    // ── AI 子菜单：任何场景都出场（正文 / 表格 / 代码块里都可能想优化或解释）──
+    // 它是一个和「表格 / 段落 / 格式 / 插入」同级的**一级分类**，悬停/→ 展开二级；
+    // 五项的顺序与文案来自 shared/aiMenu.ts（与快捷键、store 共用同一份）。
+    {
+      id: 'ai',
+      sortOrder: 60,
+      when: () => true,
+      build: () => [
+        {
+          id: 'ai',
+          labelKey: 'editorMenu.section.ai',
+          variant: 'list',
+          items: pick(
+            actions,
+            AI_MENU_PRESETS.map((p) => `ai.${p.kind}`)
+          )
         }
       ]
     }

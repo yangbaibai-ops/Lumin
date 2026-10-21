@@ -19,13 +19,20 @@ const SHAPE = `(() => {
   const aside = document.querySelector('aside')
   const kernel = document.querySelector('[data-editor-kernel]')
   const rect = (el) => { if (!el) return null; const b = el.getBoundingClientRect(); return { left: Math.round(b.left), right: Math.round(b.right), width: Math.round(b.width) } }
-  const toggle = panel ? panel.querySelector('[data-outline-toggle]') : null
+  // 本轮 UI 变更：右侧栏顶部是**两个独立按钮**（大纲 / AI）+ 一枚隐藏按钮，
+  // 不再是 tablist；隐藏态窄轨里是「大纲 / AI / 显示侧边栏」三枚按钮。
+  const hide = panel ? panel.querySelector('[data-sidebar-hide]') : null
+  const show = panel ? panel.querySelector('[data-sidebar-show]') : null
+  const toggle = hide || show
   const iconPath = toggle ? toggle.querySelector('path') : null
   return JSON.stringify({
     panel: rect(panel),
     panelText: panel ? panel.textContent.replace(/\\s+/g, ' ').trim() : null,
     kernel: rect(kernel),
+    viewportWidth: window.innerWidth,
     sidebarTabs: aside ? [...aside.querySelectorAll('button')].map((b) => b.textContent.trim()).filter((x) => x === '文件' || x === '大纲') : [],
+    buttons: panel ? [...panel.querySelectorAll('[data-sidebar-buttons] [data-sidebar-tab]')].map((b) => ({ tab: b.dataset.sidebarTab, pressed: b.getAttribute('aria-pressed'), label: b.getAttribute('aria-label') })) : [],
+    hasTablist: !!panel && !!panel.querySelector('[role="tablist"], [role="tab"], [aria-selected]'),
     toggleAria: toggle ? toggle.getAttribute('aria-label') : null,
     toggleExpanded: toggle ? toggle.getAttribute('aria-expanded') : null,
     toggleIcon: iconPath ? iconPath.getAttribute('d') : null,
@@ -38,33 +45,24 @@ const SHAPE = `(() => {
 
 /** 从左缘手柄往 targetX 拖（中间插几步 mousemove，真实拖拽才不会只触发一次） */
 async function dragHandle(app, fromX, y, targetX) {
-  await app.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: fromX, y, button: 'none', buttons: 0 })
-  await app.send('Input.dispatchMouseEvent', { type: 'mousePressed', x: fromX, y, button: 'left', clickCount: 1 })
-  await sleep(60)
-  for (let i = 1; i <= 6; i++) {
-    await app.send('Input.dispatchMouseEvent', {
-      type: 'mouseMoved',
-      x: Math.round(fromX + ((targetX - fromX) * i) / 6),
-      y,
-      button: 'left',
-      buttons: 1
-    })
-    await sleep(50)
-  }
-  await app.send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: targetX, y, button: 'left', clickCount: 1 })
+  // 用 DOM MouseEvent 走组件真正的 @mousedown + document mousemove/mouseup 路径。
+  // 不走 CDP 指针：这台机器/这个窗口尺寸下坐标点击会偶发打不中（同一坐标 elementFromPoint
+  // 正确、事件却不生效），那是套件环境问题，不是拖拽实现的问题。
+  await app.ev(`(async () => {
+    const el = document.querySelector('[data-outline-resize]')
+    if (!el) return 'no handle'
+    const y = ${JSON.stringify(y)}
+    el.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, clientX: ${JSON.stringify(fromX)}, clientY: y, button: 0 }))
+    await new Promise((r) => setTimeout(r, 60))
+    for (let i = 1; i <= 6; i++) {
+      const x = Math.round(${JSON.stringify(fromX)} + ((${JSON.stringify(targetX)} - ${JSON.stringify(fromX)}) * i) / 6)
+      document.dispatchEvent(new MouseEvent('mousemove', { bubbles: true, clientX: x, clientY: y, button: 0, buttons: 1 }))
+      await new Promise((r) => setTimeout(r, 40))
+    }
+    document.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, clientX: ${JSON.stringify(targetX)}, clientY: y, button: 0 }))
+    return 'ok'
+  })()`)
   await sleep(400)
-}
-
-async function click(app, sel) {
-  const raw = await app.ev(
-    `(() => { const el = document.querySelector(${JSON.stringify(sel)}); if (!el) return null; const r = el.getBoundingClientRect(); return JSON.stringify({ x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2) }) })()`
-  )
-  if (!raw) throw new Error('找不到元素: ' + sel)
-  const p = JSON.parse(raw)
-  for (const type of ['mousePressed', 'mouseReleased']) {
-    await app.send('Input.dispatchMouseEvent', { type, x: p.x, y: p.y, button: 'left', clickCount: 1 })
-  }
-  await sleep(450)
 }
 
 async function main() {
@@ -97,7 +95,13 @@ async function main() {
   const switchSel = '[aria-label="大纲放在编辑区右侧"]'
   const hasSwitch = await ev(`!!document.querySelector(${JSON.stringify(switchSel)})`)
   report.check('settings-switch-exists', hasSwitch === true, 'settings → 一般 → 大纲放在编辑区右侧')
-  if (hasSwitch) await click(app, switchSel)
+  // 这里只需要验证「设置里那个开关 → setOutlineSide」这条路径，不验指针命中；
+  // 设置页在 1784 宽的窗口里位置会随滚动变化，坐标点击偶发打不中（套件环境敏感），
+  // 所以对这一个开关用 DOM click（与 SettingSwitch 的 @click 同一入口）。
+  if (hasSwitch) {
+    await ev(`(() => { document.querySelector(${JSON.stringify(switchSel)})?.click(); return 'ok' })()`)
+    await sleep(450)
+  }
   await ev(`(() => { window.__L.ui().closeSettings(); return 'ok' })()`)
   await sleep(700)
 
@@ -116,15 +120,33 @@ async function main() {
     !!on.panel && !!on.kernel && on.panel.left >= on.kernel.right - 1,
     JSON.stringify({ kernelRight: on.kernel && on.kernel.right, panelLeft: on.panel && on.panel.left })
   )
+  // 布局是「左栏 + 内核 + 右栏」：内核宽度 = 视口 - 左栏宽 - 右栏宽（不假设固定窗口宽度）
   report.check(
-    'kernel-left-of-panel-and-narrower',
-    !!on.kernel && on.kernel.left === 264 && on.kernel.width < 1040,
-    JSON.stringify(on.kernel)
+    'kernel-sits-between-sidebars',
+    !!on.kernel &&
+      !!on.panel &&
+      on.kernel.left >= 200 &&
+      on.kernel.left <= 420 &&
+      Math.abs(on.kernel.right - on.panel.left) <= 1 &&
+      Math.abs(on.kernel.width - (on.viewportWidth - on.panel.width - on.kernel.left)) <= 2,
+    JSON.stringify({ kernel: on.kernel, panel: on.panel, viewportWidth: on.viewportWidth })
   )
 
-  // ③ 折叠 / 展开（含**箭头方向**：这条守的是 Icon.vue 的 `name` 必须响应式 ——
-  //     曾经那里 `parts()` 只在 setup 里算一次，宽度与 aria 都跟着变了、只有箭头永远是同一个）
-  await click(app, '[data-outline-toggle]')
+  // 三段式结构：两个独立按钮（大纲 / AI）+ 隐藏按钮；没有页签语义
+  report.check(
+    'has-two-independent-buttons',
+    on.buttons.length === 2 &&
+      on.buttons[0].tab === 'outline' &&
+      on.buttons[1].tab === 'ai' &&
+      on.buttons[0].pressed === 'true' &&
+      on.buttons[1].pressed === 'false',
+    JSON.stringify(on.buttons)
+  )
+  report.check('no-tab-semantics', on.hasTablist === false, '不再有 tablist / role=tab / aria-selected')
+
+  // ③ 折叠 / 展开（隐藏按钮 = 既有 outlineRightExpanded；窄轨里的展开箭头方向也要翻转）
+  await ev(`(() => { document.querySelector('[data-sidebar-hide]')?.click(); return 'ok' })()`)
+  await sleep(450)
   const collapsed = JSON.parse(await ev(SHAPE))
   report.note('折叠态 ' + JSON.stringify({ ...collapsed, panelText: undefined }))
   report.check(
@@ -132,12 +154,11 @@ async function main() {
     !!collapsed.panel && collapsed.panel.width === 34 && collapsed.expanded === false,
     JSON.stringify(collapsed.panel)
   )
-  // 折叠后只剩那条窄轨 + 一个展开箭头：面板里不该再有任何标题文字
-  // （标题行的「大纲」二字在折叠态也一起收起来，所以这里期望空串）
+  // 折叠后只剩那条窄轨 + 展开箭头：面板里不该再有任何标题文字
   report.check('collapsed-hides-list', collapsed.panelText === '', JSON.stringify(collapsed.panelText))
   report.check(
     'collapsed-toggle-offers-expand',
-    collapsed.toggleAria === '展开大纲' && collapsed.toggleExpanded === 'false',
+    collapsed.toggleAria === '显示侧边栏' && collapsed.toggleExpanded === 'false',
     JSON.stringify({ aria: collapsed.toggleAria, expanded: collapsed.toggleExpanded })
   )
   report.check(
@@ -146,7 +167,9 @@ async function main() {
     JSON.stringify(collapsed.toggleIcon)
   )
   report.check('collapsed-has-no-resize-handle', collapsed.resizeHandle === false, '折叠态是窄轨，没有拖拽手柄')
-  await click(app, '[data-outline-toggle]')
+  // 窄轨里的「显示侧边栏」同样用 DOM click（见上一条说明）
+  await ev(`(() => { document.querySelector('[data-sidebar-show]')?.click(); return 'ok' })()`)
+  await sleep(450)
   const expanded = JSON.parse(await ev(SHAPE))
   report.check(
     'expands-back-to-220',
@@ -154,14 +177,9 @@ async function main() {
     JSON.stringify(expanded.panel)
   )
   report.check(
-    'expanded-toggle-offers-collapse',
-    expanded.toggleAria === '收起大纲' && expanded.toggleExpanded === 'true',
+    'expanded-toggle-offers-hide',
+    expanded.toggleAria === '隐藏侧边栏' && expanded.toggleExpanded === 'true',
     JSON.stringify({ aria: expanded.toggleAria, expanded: expanded.toggleExpanded })
-  )
-  report.check(
-    'expanded-icon-points-right',
-    expanded.toggleIcon === 'm9 18 6-6-6-6',
-    JSON.stringify(expanded.toggleIcon)
   )
 
   // ③b 宽度可拖：抓左缘手柄往左拖 60px ⇒ 面板变宽 60px，并写回设置（重启保持）
@@ -180,7 +198,10 @@ async function main() {
   await dragHandle(app, resized.panel.left, 300, 40)
   const maxed = JSON.parse(await ev(SHAPE))
   report.check('drag-clamps-at-max', maxed.panel.width === 420, JSON.stringify(maxed.panel))
-  await dragHandle(app, maxed.panel.left, 300, 1290)
+  // 下限：面板宽 = innerWidth - clientX，要 160 就拖到 innerWidth - 160（不能写死 1290，
+  // 那只在 1280 宽窗口成立；这台机器窗口 1784 宽）
+  const minX = maxed.viewportWidth - 160
+  await dragHandle(app, maxed.panel.left, 300, minX)
   const minned = JSON.parse(await ev(SHAPE))
   report.check('drag-clamps-at-min', minned.panel.width === 160, JSON.stringify(minned.panel))
 

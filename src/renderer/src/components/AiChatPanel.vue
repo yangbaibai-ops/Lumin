@@ -223,7 +223,14 @@ onMounted(() => {
               </button>
             </div>
           </div>
-          <div v-if="m.role === 'assistant' && m.content" class="ai-msg__actions">
+          <div
+            v-if="m.role === 'assistant' && m.content"
+            class="ai-msg__actions"
+            :class="{
+              'ai-msg__actions--static':
+                ai.chatReplaceAvailable && m.id === ai.lastChatAssistant?.id
+            }"
+          >
             <button
               class="ai-chat__mini-btn"
               type="button"
@@ -243,6 +250,22 @@ onMounted(() => {
               @click="ai.insertChatMessage(m.id)"
             >
               <Icon name="download" :size="12" />
+            </button>
+            <!-- 右键 AI 子菜单发起的那一轮：可直接把回答替换回来源选区/段落（单事务、可撤销） -->
+            <button
+              v-if="
+                ai.chatReplaceAvailable &&
+                m.role === 'assistant' &&
+                m.id === ai.lastChatAssistant?.id
+              "
+              class="ai-chat__mini-btn ai-chat__mini-btn--text"
+              type="button"
+              :title="t('ai.chat.replaceSelection')"
+              :aria-label="t('ai.chat.replaceSelection')"
+              data-ai-chat-message-replace
+              @click="ai.replaceChatAnswer(m.id)"
+            >
+              {{ t('ai.chat.replaceSelection') }}
             </button>
           </div>
         </div>

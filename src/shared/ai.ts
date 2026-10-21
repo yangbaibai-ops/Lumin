@@ -67,6 +67,14 @@ export type AiRequestKind = 'summarize' | 'rewrite' | 'chat'
 /** 弹层面板的两种形态（摘要面板叫 summary；发给主进程时映射成 summarize） */
 export type AiPanelKind = 'summary' | 'rewrite'
 
+/**
+ * 右键菜单「AI」子菜单的五种动作（见 shared/aiMenu.ts）。
+ *
+ * 它们都走右侧栏对话通道（kind: 'chat'），不是弹层里的 summary/rewrite ——
+ * 结果落在对话气泡里，由用户决定「插入到文档 / 替换选区」。
+ */
+export type AiMenuKind = 'optimize' | 'continue' | 'polish' | 'explain' | 'summarize'
+
 /** 对话历史里的单条消息（只允许 user / assistant；system 由主进程统一拼）。 */
 export interface AiChatTurn {
   role: 'user' | 'assistant'

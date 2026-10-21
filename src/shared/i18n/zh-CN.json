@@ -39,8 +39,6 @@
     "alreadyOpenBody": "已为你切回「{name}」所在的那个窗口：同一个文件开在两个窗口里各自保存会互相覆盖。"
   },
   "outline": {
-    "collapse": "收起大纲",
-    "expand": "展开大纲",
     "resize": "调整大纲宽度",
     "untitled": "（无标题）",
     "toRight": "把大纲放到编辑区右侧（三栏）",
@@ -54,6 +52,8 @@
     "refresh": "刷新",
     "closeWorkspace": "关闭工作区",
     "expand": "展开侧边栏",
+    "hide": "隐藏侧边栏",
+    "show": "显示侧边栏",
     "filterPlaceholder": "搜索文件名…",
     "noMatch": "没有匹配的文件",
     "emptyFolder": "文件夹为空",
@@ -92,6 +92,7 @@
     "replace": "替换",
     "globalSearch": "全局搜索（全文索引）",
     "toggleSidebar": "切换侧边栏",
+    "toggleSidebarLegacy": "切换侧边栏（旧快捷键）",
     "toggleToolbar": "显示快捷工具栏",
     "outlineSide": "大纲位置（左/右）",
     "editorMode": "编辑器模式",
@@ -603,7 +604,20 @@
       "table": "表格",
       "paragraph": "段落",
       "format": "格式",
-      "insert": "插入"
+      "insert": "插入",
+      "ai": "AI"
+    },
+    "aiOptimize": "优化",
+    "aiContinue": "续写",
+    "aiPolish": "美化",
+    "aiExplain": "理解",
+    "aiSummarize": "总结",
+    "aiPrompt": {
+      "optimize": "请优化以下内容：使表达更清晰、准确、简洁，保持原意和 Markdown 结构，只输出优化后的正文。",
+      "continue": "请顺着以下内容自然续写，保持原有语气、人称与风格，只输出续写部分。",
+      "polish": "请润色美化以下内容：改善文风、节奏与用词，保留原意与事实，只输出润色后的正文。",
+      "explain": "请解释以下内容：说明它的含义、结构与关键要点，用清晰易懂的语言回答。",
+      "summarize": "请总结以下内容的核心要点，用简洁的条目列出。"
     },
     "paragraph": "正文",
     "heading1": "一级标题",
@@ -932,7 +946,9 @@
       "newChat": "新对话",
       "copied": "已复制回答",
       "insertFailed": "插入失败：请先把光标放到编辑器里",
-      "inserted": "已插入到光标处"
+      "inserted": "已插入到光标处",
+      "replaceSelection": "替换选区",
+      "replaced": "已替换来源内容（Ctrl+Z 可撤销）"
     }
   }
 }

@@ -52,7 +52,12 @@ const ALL_IDS = [
   'insert.hr',
   'insert.toc',
   'insert.paragraphAbove',
-  'insert.paragraphBelow'
+  'insert.paragraphBelow',
+  'ai.optimize',
+  'ai.continue',
+  'ai.polish',
+  'ai.explain',
+  'ai.summarize'
 ]
 const actions = Object.fromEntries(
   ALL_IDS.map((id) => [id, { id, labelKey: `label.${id}`, run: () => true }])
@@ -73,9 +78,9 @@ const ids = (sections) => sections.map((s) => s.id)
 const items = (sections) =>
   sections.filter((s) => s.variant === 'list').flatMap((s) => s.items.map((i) => i.id))
 
-test('菜单不再包含「最近使用」分区：普通场景只有静态四类', () => {
+test('菜单不再包含「最近使用」分区：普通场景只有静态五类（含 AI）', () => {
   const sections = buildEditorMenuSections(ctx(), actions)
-  assert.deepEqual(ids(sections), ['clipboard', 'paragraph', 'format', 'insert'])
+  assert.deepEqual(ids(sections), ['clipboard', 'paragraph', 'format', 'insert', 'ai'])
   assert.equal(
     sections.some((s) => /recent/i.test(s.id) || /recent/i.test(s.labelKey ?? '')),
     false
@@ -104,7 +109,12 @@ test('菜单顺序快照：全程按静态定义（普通场景）', () => {
     'insert.hr',
     'insert.toc',
     'insert.paragraphAbove',
-    'insert.paragraphBelow'
+    'insert.paragraphBelow',
+    'ai.optimize',
+    'ai.continue',
+    'ai.polish',
+    'ai.explain',
+    'ai.summarize'
   ])
 })
 
@@ -113,7 +123,7 @@ test('菜单顺序快照：表格内多一个「表格」分区，位置仍由 s
     ctx({ inTable: true, table: { rows: 2, cols: 2, rowIndex: 0, colIndex: 0 } }),
     actions
   )
-  assert.deepEqual(ids(sections), ['clipboard', 'table', 'paragraph', 'format', 'insert'])
+  assert.deepEqual(ids(sections), ['clipboard', 'table', 'paragraph', 'format', 'insert', 'ai'])
   assert.equal(
     sections.some((s) => /recent/i.test(s.id) || /recent/i.test(s.labelKey ?? '')),
     false

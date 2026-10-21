@@ -234,8 +234,10 @@ const RENDER_SPECS = [
   },
   {
     id: 'code-block-lang',
-    sel: '.md-preview .code-block-lang-label',
-    why: '围栏 info 串（语言）在代码块头部可见',
+    // 语言徽标/顶栏已按用户口径取消（CodeBlockView 头部注释：未聚焦只有代码正文）；
+    // 语言仍落在块元素上，编辑器据此高亮并可往返，所以改为断言这个数据契约。
+    sel: '.md-preview .code-block-wrapper[data-cb-language]',
+    why: '围栏 info 串（语言）落在代码块上（不再有顶部徽标）',
     ok: (m) => m.exists
   },
   {

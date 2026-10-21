@@ -9,7 +9,7 @@
 // 所以现在的骨架不是"过场动画"，而是**首帧的兜底画面**：纯 HTML + 内联 CSS，不依赖 JS bundle，
 // 只有一个居中的图标 + 应用名 + 细进度条，Vue 首帧后 200ms 淡出。这个文件守的就是它：
 //   * 必须在 body 最前面、在任何 <script> 之前（否则 JS 慢时又变白屏）；
-//   * 背景必须是主题纸色（--paper），**不是纯白**；
+//   * 背景必须是主题纸色（--paper）；浅色主题按用户本轮口径就是**纯白**；
 //   * 不进无障碍树、不拦截焦点/点击；
 //   * 移除只走 200ms opacity，且 1500ms 有强制兜底（见 bootSplash.test.mjs）。
 import { test } from 'node:test'
@@ -58,26 +58,31 @@ test('骨架可访问性：aria-hidden + 不拦截焦点/点击 + 动效只用 t
   )
 })
 
-test('骨架背景 = 主题纸色（--boot-paper），且不是纯白', () => {
+test('骨架背景 = 主题纸色（--boot-paper）；浅色纸是纯白', () => {
   assert.match(
     HTML,
     new RegExp(`--boot-paper:\\s*${PAPER_BY_THEME.light}`, 'i'),
     `index.html 的 --boot-paper 必须等于 PAPER_BY_THEME.light（${PAPER_BY_THEME.light}）`
   )
-  assert.notEqual(PAPER_BY_THEME.light.toLowerCase(), '#ffffff', '浅色纸不许是纯白（会白屏）')
+  // 用户口径：浅色模式恢复白色配色（此前暖白 #fbfaf6 是回归）
+  assert.equal(
+    PAPER_BY_THEME.light.toLowerCase(),
+    '#ffffff',
+    `浅色纸必须是纯白，实际 ${PAPER_BY_THEME.light}`
+  )
+  assert.match(HTML, /html\s*\{[^}]*background:\s*var\(--boot-paper\)/, '首帧 html 画布必须铺纸色')
+  // body 在外壳 CSS 到位后回到 --app（`_verify-surfaces` 的「body 就是外壳色」契约）；
+  // CSS 未到时用 --boot-paper 兜底，避免闪白。
   assert.match(
     HTML,
-    /html,\s*body\s*\{[^}]*background:\s*var\(--boot-paper\)/,
-    '首帧画布必须铺纸色'
+    /body\s*\{[^}]*background:\s*var\(--app,\s*var\(--boot-paper\)\)/,
+    'body 必须用 --app，并以启动纸色兜底'
   )
   assert.match(
     HTML,
     /#boot-splash\s*\{[^}]*background:\s*var\(--boot-paper\)/,
     '骨架自身必须铺纸色'
   )
-  // 纯白在任何启动路径上都不许出现（注释里可以提到历史）
-  const style = HTML.slice(HTML.indexOf('<style>'), HTML.indexOf('</style>'))
-  assert.doesNotMatch(style, /#fff(?:fff)?\b/i, '启动内联样式里不许出现纯白')
 })
 
 test('骨架图标是 resources/icon.png 的 128×128 内嵌位图（与 iconPng.ts 同步）', () => {

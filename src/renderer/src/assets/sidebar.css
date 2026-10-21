@@ -414,6 +414,10 @@
 .ai-msg:focus-within .ai-msg__actions {
   opacity: 1;
 }
+/* 右键 AI 的那一轮：回答下方常显「替换选区」（否则要悬停才看得见，用户不知道有这一步） */
+.ai-msg__actions--static {
+  opacity: 1;
+}
 .ai-chat__mini-btn {
   display: inline-flex;
   align-items: center;
@@ -428,6 +432,14 @@
 .ai-chat__mini-btn:hover {
   border-color: var(--edge-strong);
   color: var(--ink);
+}
+/* 带文案的小按钮（右键 AI 结果的「替换选区」）：高度与图标按钮一致，宽度随文字 */
+.ai-chat__mini-btn--text {
+  width: auto;
+  padding: 0 7px;
+  font-size: 11px;
+  font-weight: 500;
+  white-space: nowrap;
 }
 .ai-chat__link-btn {
   padding: 0;

@@ -4,6 +4,8 @@ import { insertOrEditLink, type LinkAsker } from '../../linkInsert'
 import { insertParagraphAround } from '../paragraphAround'
 import { insertBlockMath, insertMermaidBlock } from '../insertBlocks'
 import { pastePlainIntoEditor } from '../../plainPaste'
+import { buildAiMenuActions } from '../../../../../shared/aiMenu.ts'
+import type { AiMenuKind } from '../../../../../shared/ai'
 
 /**
  * ─── 动作目录 ────────────────────────────────────────────────────────────────
@@ -28,6 +30,14 @@ export interface EditorMenuActionDeps {
   promptLink: LinkAsker
   /** 失败提示（如剪贴板不可读）→ 交给全局通知中心 */
   notifyError: (titleKey: string, body?: string) => void
+  /**
+   * AI 子菜单（优化 / 续写 / 美化 / 理解 / 总结）。
+   *
+   * 动作层只传 kind，不自己读编辑器/发网络：来源文本（选区 → 段落 → 全文）、
+   * 打开右侧栏、组装 prompt、发送都在 `stores/ai.ts` 的那一个入口里 ——
+   * 这样右键菜单、快捷键、未来的命令面板不会各拼一套 prompt。
+   */
+  runAi?: (kind: AiMenuKind) => boolean | Promise<boolean>
 }
 
 /** 读取剪贴板：优先富文本 HTML，其次纯文本；失败抛错由调用方转成通知 */
@@ -409,6 +419,11 @@ export function buildEditorMenuActions(
       run: () => {
         editor.chain().focus().deleteTable().run()
       }
-    }
+    },
+
+    // ── AI（子菜单）：优化 / 续写 / 美化 / 理解 / 总结 ──────────────────────
+    // 文案与 prompt 指令的**唯一清单**在 shared/aiMenu.ts；这里只把 id 与
+    // "交给 store 的那一个入口"接起来（来源文本、打开右侧栏、发送都在 store 里）。
+    ...buildAiMenuActions(deps.runAi)
   }
 }

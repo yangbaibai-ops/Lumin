@@ -93,10 +93,15 @@ function onTabsKeydown(e: KeyboardEvent): void {
 }
 
 /**
- * 收起侧栏（`ui.sidebarVisible = false` + 落库）随底部那一行一起去掉了：
- * 现在只有菜单「视图 → 显示侧边栏」与 Ctrl+Shift+B 两条入口，它们直接改同一个状态。
- * 需要恢复一个鼠标入口时，把它放回侧栏头部（而不是底部整行）。
+ * 收起侧栏：用户口径要一个**看得见的鼠标入口**（菜单 / 快捷键之外）。
+ * 放在头部页签行右端（不是底部整行）；状态沿用既有的 `ui.sidebarVisible` +
+ * `settings.sidebarVisible`，与「视图 → 显示侧边栏」/ Ctrl+Shift+B(L) 同一份持久化。
+ * 收起后左缘有 `sidebar-handle` 展开把手（App.vue），窄窗断点行为不变。
  */
+function hideSidebar(): void {
+  ui.sidebarVisible = false
+  settings.set('sidebarVisible', false)
+}
 </script>
 
 <template>
@@ -124,34 +129,47 @@ function onTabsKeydown(e: KeyboardEvent): void {
          ── ARIA（报告 §5.2 P1-5）：这一组此前是**裸 button**，没有 role=tablist/tab、没有
          aria-selected，而 `_verify-a11y.js` 里那条"分段控件"断言量到的其实是文件树里的
          树/列表控件 —— 顶部页签是零覆盖。本轮补齐 tabs 语义 + 左右方向键切换。 -->
-    <div
-      v-if="!settings.outlineOnRight"
-      class="flex flex-none gap-1 px-2.5 pt-2"
-      role="tablist"
-      :aria-label="t('sidebar.files') + ' / ' + t('sidebar.outline')"
-      data-sidebar-tablist
-      @keydown="onTabsKeydown"
-    >
-      <button
-        v-for="tab in ['files', 'outline'] as const"
-        :id="`sidebar-tab-${tab}`"
-        :key="tab"
-        role="tab"
-        :aria-selected="ui.sidebarTab === tab ? 'true' : 'false'"
-        :aria-controls="`sidebar-panel-${tab}`"
-        :tabindex="ui.sidebarTab === tab ? 0 : -1"
-        class="relative flex flex-1 items-center justify-center gap-1.5 rounded-lg py-1.5 text-ui font-medium transition-all duration-200"
-        :class="ui.sidebarTab === tab ? 'text-ink' : 'text-ink-2b hover:text-ink-2'"
-        :data-sidebar-tab="tab"
-        @click="ui.sidebarTab = tab"
+    <div v-if="!settings.outlineOnRight" class="flex flex-none items-center gap-1 px-2.5 pt-2">
+      <div
+        class="flex min-w-0 flex-1 gap-1"
+        role="tablist"
+        :aria-label="t('sidebar.files') + ' / ' + t('sidebar.outline')"
+        data-sidebar-tablist
+        @keydown="onTabsKeydown"
       >
-        <Icon :name="tab === 'files' ? 'file' : 'list'" :size="13" />
-        {{ tab === 'files' ? t('sidebar.files') : t('sidebar.outline') }}
-        <span
-          v-if="ui.sidebarTab === tab"
-          class="absolute inset-x-3 bottom-0 h-[2px] rounded-full bg-gradient-to-r from-accent to-accent-2"
-          style="animation: lm-fade-in 0.25s ease"
-        />
+        <button
+          v-for="tab in ['files', 'outline'] as const"
+          :id="`sidebar-tab-${tab}`"
+          :key="tab"
+          role="tab"
+          :aria-selected="ui.sidebarTab === tab ? 'true' : 'false'"
+          :aria-controls="`sidebar-panel-${tab}`"
+          :tabindex="ui.sidebarTab === tab ? 0 : -1"
+          class="relative flex flex-1 items-center justify-center gap-1.5 rounded-lg py-1.5 text-ui font-medium transition-all duration-200"
+          :class="ui.sidebarTab === tab ? 'text-ink' : 'text-ink-2b hover:text-ink-2'"
+          :data-sidebar-tab="tab"
+          @click="ui.sidebarTab = tab"
+        >
+          <Icon :name="tab === 'files' ? 'file' : 'list'" :size="13" />
+          {{ tab === 'files' ? t('sidebar.files') : t('sidebar.outline') }}
+          <span
+            v-if="ui.sidebarTab === tab"
+            class="absolute inset-x-3 bottom-0 h-[2px] rounded-full bg-gradient-to-r from-accent to-accent-2"
+            style="animation: lm-fade-in 0.25s ease"
+          />
+        </button>
+      </div>
+      <button
+        type="button"
+        class="icon-btn !h-6.5 !w-6.5 flex-none"
+        data-sidebar-hide
+        :title="t('sidebar.hide')"
+        :aria-label="t('sidebar.hide')"
+        :aria-pressed="'true'"
+        :aria-expanded="'true'"
+        @click="hideSidebar"
+      >
+        <Icon name="panel-left" :size="15" />
       </button>
     </div>
 

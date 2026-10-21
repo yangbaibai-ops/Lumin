@@ -10,14 +10,15 @@
 //
 // 取值口径（改这里必须同步改 style.css 的 `--paper`、`index.html` 的 `--boot-paper`，
 // 反之亦然 —— 三处由 tests/themeTokens.test.mjs 逐值钉住）：
-//   light  **暖白纸**（#fbfaf6，**不是纯白**）：窗口在渲染层首帧之前露出的就是它，
-//          必须与写作区同色；纯白会把启动前那几秒变成刺眼的白屏（用户报障）。
+//   light  **纯白纸**（#ffffff）：用户口径「浅色模式恢复白色配色」——此前一轮把纸/外壳/骨架
+//          一起改成暖白（#fbfaf6 / #f4f3ee），整窗泛黄，属回归；现在正文底、窗口底色、
+//          启动骨架统一回到纯白，外壳用中性浅灰（#fafafa），不带任何暖色相。
 //   dark   中性灰的纸（比外壳 --app=#2b2e33 亮一档，否则侧栏与正文糊在一起）。
 //          暗色从近黑（#0b0d12 / #12141a）改成浅灰，是用户口径：不要纯黑、像主流编辑器，
 //          且**编辑区比侧栏更浅一点**。
-//   sepia  暖纸
+//   sepia  暖纸（羊皮纸主题的暖色是有意为之，本轮不动）
 export const PAPER_BY_THEME = {
-  light: '#fbfaf6',
+  light: '#ffffff',
   dark: '#35383d',
   sepia: '#faf4e4'
 } as const
@@ -55,7 +56,7 @@ export function paperForTheme(
 // 所以深色要用白线、浅色/暖纸用黑线（单测按"线的合成色对纸 ≥ 1.1:1"守住"看得见"）。
 export const PREVIEW_BY_THEME: Record<PaperTheme, { shell: string; paper: string; line: string }> =
   {
-    light: { shell: '#f4f3ee', paper: PAPER_BY_THEME.light, line: 'rgba(16, 24, 40, 0.16)' },
+    light: { shell: '#fafafa', paper: PAPER_BY_THEME.light, line: 'rgba(16, 24, 40, 0.16)' },
     dark: { shell: '#2b2e33', paper: PAPER_BY_THEME.dark, line: 'rgba(255, 255, 255, 0.24)' },
     sepia: { shell: '#f1e9d5', paper: PAPER_BY_THEME.sepia, line: 'rgba(90, 74, 48, 0.18)' }
   }

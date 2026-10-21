@@ -30,7 +30,7 @@
     -->
     <style>
       :root {
-        --boot-paper: #fbfaf6;
+        --boot-paper: #ffffff;
         --boot-ink: #20242b;
         --boot-muted: #7d8595;
         --boot-track: rgba(32, 36, 43, 0.1);
@@ -49,11 +49,19 @@
         }
       }
 
-      html,
-      body {
+      /* 首帧兜底只铺在 html 上：此时 theme.css 还没到，body 用 --app 的 fallback
+         （= 启动纸色）也不会闪。CSS 一到位 body 就回到 --app（外壳色）——
+         之前把 body 也写死成 --boot-paper，导致 body 永远等于纸色（`_verify-surfaces`
+         的「body 就是外壳色」在深色/羊皮纸下会红）。 */
+      html {
         margin: 0;
         height: 100%;
         background: var(--boot-paper);
+      }
+      body {
+        margin: 0;
+        height: 100%;
+        background: var(--app, var(--boot-paper));
       }
 
       #boot-splash {

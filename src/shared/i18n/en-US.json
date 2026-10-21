@@ -39,8 +39,6 @@
     "alreadyOpenBody": "Switched back to the window showing {name}: editing the same file in two windows means the two copies overwrite each other."
   },
   "outline": {
-    "collapse": "Collapse outline",
-    "expand": "Expand outline",
     "resize": "Resize outline panel",
     "untitled": "(Untitled)",
     "toRight": "Put the outline to the right of the editor (3 columns)",
@@ -54,6 +52,8 @@
     "refresh": "Refresh",
     "closeWorkspace": "Close workspace",
     "expand": "Expand sidebar",
+    "hide": "Hide sidebar",
+    "show": "Show sidebar",
     "filterPlaceholder": "Filter file names…",
     "noMatch": "No matching files",
     "emptyFolder": "Folder is empty",
@@ -92,6 +92,7 @@
     "replace": "Replace",
     "globalSearch": "Global Search (full-text index)",
     "toggleSidebar": "Toggle Sidebar",
+    "toggleSidebarLegacy": "Toggle Sidebar (legacy shortcut)",
     "toggleToolbar": "Show Shortcut Toolbar",
     "outlineSide": "Outline position (left/right)",
     "editorMode": "Editor Mode",
@@ -603,7 +604,20 @@
       "table": "Table",
       "paragraph": "Paragraph",
       "format": "Format",
-      "insert": "Insert"
+      "insert": "Insert",
+      "ai": "AI"
+    },
+    "aiOptimize": "Optimize",
+    "aiContinue": "Continue",
+    "aiPolish": "Polish",
+    "aiExplain": "Explain",
+    "aiSummarize": "Summarize",
+    "aiPrompt": {
+      "optimize": "Optimize the following content: make it clearer, more accurate and more concise while preserving the meaning and Markdown structure. Output only the optimized text.",
+      "continue": "Continue writing naturally after the following content, keeping the same tone, person and style. Output only the continuation.",
+      "polish": "Polish the following content: improve the style, rhythm and wording while preserving meaning and facts. Output only the polished text.",
+      "explain": "Explain the following content: describe its meaning, structure and key points in clear, plain language.",
+      "summarize": "Summarize the key points of the following content as a concise bullet list."
     },
     "paragraph": "Body text",
     "heading1": "Heading 1",
@@ -932,7 +946,9 @@
       "newChat": "New chat",
       "copied": "Answer copied",
       "insertFailed": "Insert failed: put the cursor in the editor first",
-      "inserted": "Inserted at the cursor"
+      "inserted": "Inserted at the cursor",
+      "replaceSelection": "Replace selection",
+      "replaced": "Replaced the source text (Ctrl+Z to undo)"
     }
   }
 }

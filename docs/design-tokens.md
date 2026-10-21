@@ -44,13 +44,13 @@ npm run docs:tokens:write
 
 | 令牌 | 值 |
 |---|---|
-| `--app` | `#f4f3ee` |
-| `--paper` | `#fbfaf6` |
+| `--app` | `#fafafa` |
+| `--paper` | `#ffffff` |
 | `--panel` | `#ffffff` |
-| `--panel-2` | `#e9e8e2` |
+| `--panel-2` | `#e9ebf0` |
 | `--elevate` | `#ffffff` |
-| `--edge` | `#e3e2dc` |
-| `--edge-strong` | `#d2d1ca` |
+| `--edge` | `#e4e6ea` |
+| `--edge-strong` | `#d2d5db` |
 | `--ink` | `#20242b` |
 | `--ink-2` | `#4e5766` |
 | `--ink-3` | `#7d8595` |
@@ -73,7 +73,7 @@ npm run docs:tokens:write
 | `--warning-ink` | `#92400e` |
 | `--ok-ink` | `#166534` |
 | `--glow` | `rgba(17, 24, 39, 0.12)` |
-| `--code-bg` | `#f1f0ea` |
+| `--code-bg` | `#f1f2f5` |
 | `--sel` | `rgba(17, 24, 39, 0.11)` |
 | `--block-hover` | `rgba(17, 24, 39, 0.04)` |
 | `--find-hit-bg` | `#fdecd5` |

@@ -146,28 +146,37 @@ test('不变量②：面板（--panel/--elevate）不比纸暗；能更亮时必
         L.panel >= L.paper,
         `${t}：${key}=${panel} 比纸 ${paper} 暗（L ${f(L.panel)} vs ${f(L.paper)}）`
       )
-      // 三主题都必须**严格更亮**：浅色的纸改成暖白纸（#fbfaf6，不是纯白）之后，
-      // 面板（#ffffff）终于比纸高出一档；深色/sepia 原本就靠这一档把浮层立起来。
+      // 浅色主题的纸是**纯白**（用户口径：白色配色）：#ffffff 已是亮度上限，这一档明度差不存在，
+      // 浮层改由 1px --edge 边框 + --shadow-2 投影立起来（所有对话框/菜单/气泡都带这两样）。
+      // 因此只要求「同色」，但**必须真的是纯白** —— 否则说明纸被改成了近白又没同步这条例外。
+      if (t === 'light') {
+        assert.equal(paper.toLowerCase(), '#ffffff', `light：纸应为纯白，实际 ${paper}`)
+        assert.equal(panel.toLowerCase(), '#ffffff', `light：${key} 应同为纯白，实际 ${panel}`)
+        continue
+      }
+      // 深色 / sepia：纸刻意压暗就是为了给面板留出「再亮一档」，这里必须**严格更亮**
       assert.ok(L.panel > L.paper, `${t}：${key}=${panel} 不比纸 ${paper} 亮（浮层会只剩边框可辨）`)
     }
   }
 })
 
 /**
- * 浅色纸**不许是纯白**：窗口在渲染层首帧之前露出的就是 backgroundColor / index.html 的
- * `--boot-paper`，纯白会把启动前那几秒变成刺眼的白屏（用户报障「白屏 5–6s」）。
- * 这条与「面板严格亮于纸」是一对：纸降一档，面板才有地方浮起来。
+ * 浅色纸**必须是纯白**（用户口径：浅色模式恢复白色配色）。
+ *
+ * 历史反复：上一轮为了防启动白屏把纸改成暖白 #fbfaf6（连同外壳 #f4f3ee），结果整窗泛黄，
+ * 用户报障「浅色模式怎么变成黄色的了」。这一轮回到纯白 —— 启动骨架与窗口底色三处同源，
+ * 仍是同一个值，不会出现「骨架一色、正文另一色」的闪色。
  */
-test('浅色纸不是纯白（启动底色 / 内联骨架都不许退回 #ffffff）', () => {
-  assert.notEqual(
+test('浅色纸是纯白（启动底色 / 内联骨架 / 写作区三处同源）', () => {
+  assert.equal(
     TOKENS.light['--paper'].toLowerCase(),
     '#ffffff',
-    `light：--paper 退回纯白了（${TOKENS.light['--paper']}），启动会白屏`
+    `light：--paper 必须是纯白，实际 ${TOKENS.light['--paper']}`
   )
-  assert.notEqual(
+  assert.equal(
     PAPER_BY_THEME.light.toLowerCase(),
     '#ffffff',
-    'light：PAPER_BY_THEME（窗口 backgroundColor）退回纯白了'
+    'light：PAPER_BY_THEME（窗口 backgroundColor）必须是纯白'
   )
 })
 

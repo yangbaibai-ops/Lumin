@@ -48,7 +48,12 @@ const ALL_IDS = [
   'insert.hr',
   'insert.toc',
   'insert.paragraphAbove',
-  'insert.paragraphBelow'
+  'insert.paragraphBelow',
+  'ai.optimize',
+  'ai.continue',
+  'ai.polish',
+  'ai.explain',
+  'ai.summarize'
 ]
 
 const providers = createDefaultProviders(actionsOf(ALL_IDS))
@@ -92,10 +97,10 @@ test('动作 id 拼错时该分区一构建就抛错并点名（而不是静默�
   assert.equal(sectionItems('table', inTable).length, 8)
 })
 
-test('提供者集合与排序：clipboard → table → paragraph → format → insert，sortOrder 递增', () => {
+test('提供者集合与排序：clipboard → table → paragraph → format → insert → ai，sortOrder 递增', () => {
   assert.deepEqual(
     providers.map((p) => p.id),
-    ['clipboard', 'table', 'paragraph', 'format', 'insert']
+    ['clipboard', 'table', 'paragraph', 'format', 'insert', 'ai']
   )
   const orders = providers.map((p) => p.sortOrder)
   assert.deepEqual(

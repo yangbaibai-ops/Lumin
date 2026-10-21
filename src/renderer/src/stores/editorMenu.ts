@@ -13,6 +13,7 @@ import { ignoreZhIssue } from '../lib/editor/zhSpellcheck'
 import { readEditorMenuContext } from '../lib/editor/menu/context'
 import i18n from '../i18n'
 import { useEditorStore } from './editor'
+import { useAiStore } from './ai'
 import { useUiStore } from './ui'
 import { useNotificationsStore } from './notifications'
 
@@ -99,7 +100,9 @@ export const useEditorMenuStore = defineStore('editorMenu', {
         },
         // 链接对话框：形状随选区变（有选区只有链接一栏），所以走 ui 上那份独立状态，
         // 而不是上面那个"单输入框"的 prompt
-        promptLink: (req) => ui.promptLink(req)
+        promptLink: (req) => ui.promptLink(req),
+        // AI 子菜单：来源文本 / 打开右侧栏 / prompt / 发送都收在 ai store 的同一入口
+        runAi: (kind) => useAiStore().askFromMenu(kind)
       })
     },
 

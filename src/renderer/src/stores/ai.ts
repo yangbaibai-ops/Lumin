@@ -20,10 +20,17 @@ import {
   AI_ERROR_KEY,
   type AiChatTurn,
   type AiErrorCode,
+  type AiMenuKind,
   type AiPanelKind,
   type AiStatus,
   type AiStreamEvent
 } from '../../../shared/ai'
+import {
+  aiMenuPreset,
+  buildAiMenuPrompt,
+  pickAiMenuSource,
+  type AiMenuSource
+} from '../../../shared/aiMenu'
 
 /**
  * AI 面板的会话状态（摘要 / 改写 / 右侧对话共用一套 store）。
@@ -61,11 +68,35 @@ export interface ChatUiMessage {
 let captured: CapturedTarget | null = null
 let listenerInstalled = false
 
+/**
+ * 右键「AI」子菜单这一轮的替换目标（普通变量，理由同上：doc 不能被 Vue 代理）。
+ * `chatReplaceAvailable` 只是给 UI 看的布尔；真正的 from/to/doc 在这里。
+ */
+let menuReplaceTarget: CapturedTarget | null = null
+
 function requireEditor(): Editor | null {
   // Pinia 的 state 经过 UnwrapRef，Editor 的方法在类型上会被剥掉；运行时仍是同一个实例。
   const ed = useEditorStore().instance as unknown as Editor | null
   if (!ed || ed.isDestroyed) return null
   return ed
+}
+
+/**
+ * 右键 AI 的取文（编辑器 → 纯数据的适配层；判定规则在 `shared/aiMenu.pickAiMenuSource`）：
+ * - 选区：沿用 `readSelectionMarkdown`（保留 Markdown 结构），位置就是选区；
+ * - 段落：`$from.parent` 的正文 + 该块的内容区间（替换时只替换这一段）；
+ * - 全文：`getMarkdown(ed)`；全文不提供替换目标（避免一键换掉整篇）。
+ */
+function readAiMenuSource(ed: Editor): AiMenuSource {
+  const selection = readSelectionMarkdown(ed)
+  const { $from } = ed.state.selection
+  return pickAiMenuSource({
+    selectionText: selection?.text ?? '',
+    selectionRange: selection ? { from: selection.from, to: selection.to } : null,
+    paragraphText: $from.parent.textContent,
+    paragraphRange: { from: $from.start(), to: $from.end() },
+    documentText: getMarkdown(ed)
+  })
 }
 
 function toastError(code: AiErrorCode): void {
@@ -120,7 +151,13 @@ export const useAiStore = defineStore('ai', {
     chatDocChars: 0,
     chatSelectionChars: 0,
     /** 最近一次发送的上下文统计（面板显示截断提示） */
-    chatLastStats: null as ChatTurnResult | null
+    chatLastStats: null as ChatTurnResult | null,
+    /**
+     * 右键 AI 子菜单发起的那一轮：结果可以「替换选区 / 替换段落」（单事务、可撤销）。
+     * 值为 true 时，最后一条回答的气泡上会出现替换按钮。
+     */
+    chatReplaceAvailable: false,
+    chatReplaceKind: null as AiMenuKind | null
   }),
   getters: {
     chatBusy(state): boolean {
@@ -414,6 +451,91 @@ export const useAiStore = defineStore('ai', {
       this.refreshChatCounts()
     },
 
+    /**
+     * 右键「AI」子菜单的统一入口（优化 / 续写 / 美化 / 理解 / 总结）。
+     *
+     * 取文口径（用户口径）：**选区 → 当前段落 → 全文**，取到哪一级就用哪一级；
+     * 然后把固定指令 + 正文拼成这一轮的问题，**打开右侧栏并自动发送**。
+     * 结果只落在对话气泡里；文档改动要等用户点「插入到文档 / 替换选区」。
+     *
+     * 未配置 Key：照样打开右侧栏（显示既有的引导卡「去设置」），再发一条错误通知 ——
+     * 用户不用猜"为什么点了没反应"。
+     */
+    async askFromMenu(kind: AiMenuKind): Promise<boolean> {
+      const preset = aiMenuPreset(kind)
+      if (!preset) return false
+      this.ensureListener()
+      const ed = requireEditor()
+      if (!ed) {
+        useUiStore().toast(i18n.global.t(AI_ERROR_KEY['no-editor']), 'error')
+        return false
+      }
+      const status = await this.refreshStatus()
+      this.openChat()
+      if (!status?.hasKey) {
+        // 引导卡由 AiChatPanel 按 hasKey 渲染，按钮直达设置页（复用既有逻辑）
+        useUiStore().toast(i18n.global.t(AI_ERROR_KEY['missing-key']), 'error')
+        return false
+      }
+      const source = readAiMenuSource(ed)
+      if (!source.text.trim()) {
+        useUiStore().toast(i18n.global.t(AI_ERROR_KEY['no-selection']), 'error')
+        return false
+      }
+      const prompt = buildAiMenuPrompt(kind, source.text, (key) => i18n.global.t(key))
+      if (!prompt) return false
+      this.chatInput = prompt
+      // 正文已经拼进问题里了：不要再把选区/全文作为上下文附一遍（否则同一段发两次）
+      this.chatIncludeDocument = false
+      this.chatIncludeSelection = false
+      // 续写是"接着写"：替换目标落在来源末尾；其余动作替换来源本身。
+      // 来源是全文时不给替换目标（避免一键把整篇文档换掉）。
+      const target =
+        source.kind === 'document'
+          ? null
+          : {
+              from: kind === 'continue' ? source.to : source.from,
+              to: kind === 'continue' ? source.to : source.to,
+              doc: ed.state.doc
+            }
+      menuReplaceTarget = target
+      this.chatReplaceAvailable = !!target
+      this.chatReplaceKind = kind
+      await this.chatSend(true)
+      return true
+    },
+
+    /**
+     * 右键 AI 的结果 → 替换来源区间（**一个事务**，Ctrl+Z 一步还原）。
+     * 与改写弹层的 replaceSelection 同一口径；文档在生成期间被改过就拒绝写入。
+     */
+    replaceChatAnswer(id: string): void {
+      const ed = requireEditor()
+      const msg = this.chatMessages.find((m) => m.id === id)
+      if (!ed || !msg || !msg.content.trim() || !menuReplaceTarget) {
+        useUiStore().toast(i18n.global.t(AI_ERROR_KEY['no-selection']), 'error')
+        return
+      }
+      if (ed.state.doc !== menuReplaceTarget.doc) {
+        useUiStore().toast(i18n.global.t(AI_ERROR_KEY['document-changed']), 'error')
+        return
+      }
+      const { from, to } = menuReplaceTarget
+      const size = ed.state.doc.content.size
+      if (from < 0 || to < from || to > size) {
+        useUiStore().toast(i18n.global.t(AI_ERROR_KEY['document-changed']), 'error')
+        return
+      }
+      const text = this.chatReplaceKind === 'continue' ? `\n\n${msg.content.trim()}` : msg.content
+      const tr = ed.state.tr.insertText(text, from, to)
+      ed.view.dispatch(tr)
+      ed.commands.focus()
+      menuReplaceTarget = null
+      this.chatReplaceAvailable = false
+      this.chatReplaceKind = null
+      useUiStore().toast(i18n.global.t('ai.chat.replaced'), 'success')
+    },
+
     /** 面板可见时刷新 Key 状态与上下文计数（切回 AI 页、设置关闭后调用） */
     async refreshChat(): Promise<void> {
       this.ensureListener()
@@ -505,8 +627,15 @@ export const useAiStore = defineStore('ai', {
      * 上下文组装优先级见 `composeChatTurn`：问题永远完整，文档/选区按剩余预算截断。
      * 请求发出前先落地两条消息（用户 + 空的助手），delta 到达时只追加助手那一条。
      */
-    async chatSend(): Promise<void> {
+    async chatSend(preserveReplaceTarget = false): Promise<void> {
       if (this.chatBusy) return
+      // 手动发起的对话不带替换目标：否则"替换选区"会落到上一轮右键的来源上，
+      // 用户点的是这条回答、改的却是另一段文字。
+      if (!preserveReplaceTarget) {
+        menuReplaceTarget = null
+        this.chatReplaceAvailable = false
+        this.chatReplaceKind = null
+      }
       const question = this.chatInput.trim()
       if (!question) return
       const status = await this.refreshStatus()
@@ -670,6 +799,9 @@ export const useAiStore = defineStore('ai', {
       this.chatMessages = []
       this.chatInput = ''
       this.chatLastStats = null
+      menuReplaceTarget = null
+      this.chatReplaceAvailable = false
+      this.chatReplaceKind = null
       this.chatActiveId = null
       this.chatRequestId = null
       this.chatStopRequested = false
