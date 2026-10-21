@@ -232,8 +232,9 @@
 }
 .md-preview img {
   max-width: 100%;
-  border-radius: 10px;
-  box-shadow: var(--shadow-2);
+  /* 圆角/阴影只属于「独立成段的正文大图」（见下面 `p > img:only-child`）。
+     通用图片（徽章、行内小图、并排图）保持自身原始形状 —— 尤其是 shields 的 SVG，
+     套上圆角/阴影会改掉它本来的直角与扁平观感（用户口径：让它展示自己原本的样式）。 */
   /* 图片是**行内**节点（Markdown 的 `![alt](src)` 本来就是行内语法）：
      默认按行内排版，能与文字同行、也能被链接包住 */
   display: inline-block;
@@ -248,6 +249,21 @@
   display: block;
   margin: 0.4em auto;
   margin-inline: auto;
+  /* 正文大图的卡片观感（只在这一档保留卡片圆角/阴影） */
+  border-radius: 10px;
+  box-shadow: var(--shadow-2);
+}
+/* SVG（shields 徽章常带 query，所以用 `*=` 而不是 `$=`）永远是自己的原始形状：
+   即使将来又被某条「独立成段」规则命中，也不许加圆角/阴影。
+   后三条比对应的卡片规则多一个属性选择器 ⇒ 专一性更高，不靠 `!important`。 */
+.md-preview img[src*='.svg'],
+.md-preview p > a:only-child > img[src*='.svg'],
+.md-preview p > img:only-child[src*='.svg'],
+.md-preview p.img-block-center img[src*='.svg'],
+.md-preview .img-block-center > img[src*='.svg'],
+.md-preview .img-block-center .img-widget img[src*='.svg'] {
+  border-radius: 0;
+  box-shadow: none;
 }
 /* ── 相邻图片**并排**（第六十五轮用户口径）──────────────────────────────────────
    `![](a)![](b)` 紧邻（无分隔）应**同行并排**，不是各自一行各自居中：
@@ -273,17 +289,22 @@
    后面三张是裸 `img`；`p > img:not(:only-child)` 选不中链接里的那张 ⇒ 它走 img 基线的
    `vertical-align: middle`，其它张走 `top` ⇒ 同一行里上下错位。
    这里把「段落里的图片」统一成同一套几何：inline-block + `vertical-align: top`。 */
-.md-preview p > a > img {
+.md-preview p > a > img,
+.md-preview a:has(> img) > img {
   display: inline-block;
   vertical-align: top;
   margin-inline: 0;
 }
 /* 链接元素本身是 inline：不压掉它的行高，就会在图片下方留出一条 descender 空隙，
-   与裸图并排时整体往下沉几像素（徽章错位的另一半原因）。 */
-.md-preview p > a:has(> img) {
+   与裸图并排时整体往下沉几像素（徽章错位的另一半原因）。
+   **图片链接不画下划线**（徽章这类不该有；下划线在本仓库是用 border-bottom 画的，
+   所以两样都要清）：选择器比 `.md-preview a` 更专一，不用 `!important`。 */
+.md-preview a:has(> img) {
   display: inline-block;
   vertical-align: top;
   line-height: 0;
+  text-decoration: none;
+  border-bottom: 0;
 }
 /* 链接包住的图**独占一段**时，仍按块级居中（与 `p > img:only-child` 同口径） */
 .md-preview p > a:only-child > img {
@@ -291,6 +312,9 @@
   margin: 0.4em auto;
   margin-inline: auto;
   vertical-align: middle;
+  /* 与裸图「独立成段」同一个卡片观感 */
+  border-radius: 10px;
+  box-shadow: var(--shadow-2);
 }
 /* 链接与图片混排时的间距（`a + img` / `img + a` / `a + a`），外侧不撑开 */
 .md-preview p > a + img,
@@ -366,6 +390,58 @@ ormal，只影响这种段落 */
   margin-inline: 0;
   vertical-align: middle;
 }
+/* ── 点击后的 widget 与静态渲染**几何同一**（用户报障：点一下图片，行高/基线就变）──────
+   并排段（`p.img-side-by-side`，README 徽章那一行就是）里外壳**不生成盒子**：
+   `display: contents` ⇒ 里面的 `<a>/<img>` 直接参与段落的行内排版，DOM 结构与静态的
+   `p > a > img` / `p > img` 同构。于是三态（初始 / 点击后 / 再点）的 top/bottom/height、
+   行高与下方段落位置都由同一组规则决定，不再依赖 widget 外壳的 margin/line-height。 */
+.md-preview p.img-side-by-side .img-widget.img-widget--inline,
+.md-preview p.img-side-by-side span.md-html:has(.img-widget) {
+  display: contents;
+  margin: 0;
+  text-align: initial;
+  vertical-align: baseline;
+}
+.md-preview p.img-side-by-side .img-widget.img-widget--inline > a,
+.md-preview p.img-side-by-side .img-widget.img-widget--inline > img {
+  display: inline-block;
+  vertical-align: top;
+  line-height: 0;
+  margin-inline: 0;
+}
+.md-preview p.img-side-by-side .img-widget.img-widget--inline > a {
+  text-decoration: none;
+  border-bottom: 0;
+}
+.md-preview p.img-side-by-side .img-widget.img-widget--inline > a > img,
+.md-preview p.img-side-by-side .img-widget.img-widget--inline > img {
+  display: inline-block;
+  vertical-align: top;
+  line-height: 0;
+  margin-inline: 0;
+}
+/* 间隙：与静态相邻规则同值（见本文件上方 `p > img:not(:only-child) + img` 那条，
+   含"前一张是链接图 ⇒ 不吃 0.6em"这个既有事实）。装饰把类直接打在 `<img>` 上：
+   widget 外壳（以及无链接时的 `span.md-html`）会把 `p > img + img` 的相邻关系隔断。 */
+.md-preview p.img-side-by-side .img-widget img.img-gap-before {
+  margin-inline-start: 0.6em;
+}
+/* 下一张仍是**裸图**（还没被点开）：给它补上与静态一致的 0.6em。
+   链接图的下一张在静态里本来就只有空格（实测 5.03px）⇒ 用 :not(.img-widget--linked) 排除。 */
+.md-preview p.img-side-by-side > .img-widget:not(.img-widget--linked) + img,
+.md-preview
+  p.img-side-by-side
+  > span.md-html:has(.img-widget:not(.img-widget--linked))
+  + img {
+  margin-inline-start: 0.6em;
+}
+/* 链接里只剩被隐藏的图片源码（`display:none`）、或正在显示图片源码时，
+   这层 `<a>` 不是"可点的文字链接"：不许再画下划线/边框（否则空的 `<a>` 会留下一条线） */
+.md-preview a:has(.img-src-marker-hidden),
+.md-preview a:has(.img-src-revealed) {
+  text-decoration: none;
+  border-bottom: 0;
+}
 /* 图片加载失败（文件被删/移动）：**保留原占位**，只加虚线相框 + 提示文案。
    解析出的 src 原样留在 <img> 上（绝不替换成 about:blank），文件恢复后重新打开文档即可加载。 */
 .md-preview .img-widget[data-img-error] {
@@ -391,6 +467,9 @@ ormal，只影响这种段落 */
 .md-preview .img-block-center .img-widget img {
   display: block;
   margin-inline: auto;
+  /* 独占一行的原文图片（widget）与节点大图同一档卡片观感 */
+  border-radius: 10px;
+  box-shadow: var(--shadow-2);
 }
 /* 原文形式的图片：文档里那段 `<img …>` / `![alt](url)` 是**标记字符**（= `**` 对加粗字）。
    未激活 ⇒ 整段隐藏（内容仍在文档里，保存逐字节不变）、原位画真图；

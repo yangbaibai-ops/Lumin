@@ -26,6 +26,7 @@ import { Plugin, PluginKey, Selection, TextSelection } from '@tiptap/pm/state'
 import { Decoration, DecorationSet } from '@tiptap/pm/view'
 import type { EditorState } from '@tiptap/pm/state'
 import type { EditorView } from '@tiptap/pm/view'
+import type { Mark, MarkType, Node as PMNode } from '@tiptap/pm/model'
 import i18n from '../../i18n'
 // 图片 src 的**唯一解析出口**：节点渲染与这里的原文 widget 必须同源，否则点击后
 // 相对路径会退回 Markdown 原串、被浏览器按 out/renderer/index.html 解析 ⇒ 首帧能看、点一下就裂。
@@ -41,6 +42,8 @@ export { revealDecision } from './imageReveal'
 export type { RevealSel, RevealRange } from './imageReveal'
 // 性能探针（默认关闭；打开后只计数 + A/B 开关，不改变行为）。见 perfProbe.ts。
 import { perfCount, perfFlag } from './perfProbe'
+// 链接图片的并排几何策略（纯函数，可单测）：三态共用同一组相邻外边距口径
+import { imageGapBefore, linkAttrsOf as linkAttrsOfMarkAttrs } from './imageLinkLayout'
 
 /**
  * 「这张图片算被选中」的观感类名 —— **全仓唯一出处**：装饰（`Decoration.node` / widget）与
@@ -61,6 +64,33 @@ export interface ImgSource {
   zoom: number | null
   /** 视图层要显示的源码文本（标记字符本体） */
   markdown: string
+  /**
+   * 这张图外面有没有 Markdown 链接（`[![alt](src)](href)` ⇒ link mark）。
+   * 有 ⇒ 静态渲染是 `a > img`；点击后转成原文文本时**必须把 link mark 一起带过去**，
+   * widget 也要画同一层 `<a>`，否则下划线与行高都会在点击后变样（用户报障的根因）。
+   */
+  link: Record<string, string> | null
+}
+
+/** 从 mark 集合里取出 link 的属性（href/target/rel…）；没有链接 ⇒ null */
+function linkAttrsOf(marks: readonly Mark[]): Record<string, string> | null {
+  const m = marks.find((x) => x.type.name === 'link')
+  return m ? linkAttrsOfMarkAttrs(m.attrs as Record<string, unknown>) : null
+}
+
+/**
+ * 图片节点 → 原文文本时要挂的 mark：**原样保留节点上的 mark（首位是 link）**，
+ * 再补上 MdHtml（逐字写回）。
+ *
+ * 为什么不能只挂 MdHtml（点击后下划线消失、保存还丢链接的真因）：PM 的
+ * `tr.replaceWith(from, to, text)` **不会继承**被替换节点的 mark，于是 `[![](img)](href)`
+ * 里的 link mark 在"节点 → 文本"这一步被丢掉 —— 视图少一层 `<a>`（下划线/行高变化），
+ * 序列化也写成裸 `![](img)`（**保存即丢链接**）。这里显式把原 mark 带过去。
+ */
+function imageTextMarks(node: PMNode, mdHtml: MarkType | undefined): readonly Mark[] {
+  const marks: Mark[] = [...node.marks]
+  if (mdHtml && !marks.some((m) => m.type.name === 'mdHtml')) marks.push(mdHtml.create())
+  return marks
 }
 
 const RAW_IMG_RE = /^<img\b[^>]*\/?>$/i
@@ -230,7 +260,8 @@ export function collectImgSources(state: EditorState): ImgSource[] {
         src,
         alt,
         zoom: null,
-        markdown: alt ? `![${alt}](${src})` : `![](${src})`
+        markdown: alt ? `![${alt}](${src})` : `![](${src})`,
+        link: linkAttrsOf(node.marks)
       })
       return false
     }
@@ -248,7 +279,8 @@ export function collectImgSources(state: EditorState): ImgSource[] {
         src: parsed.src,
         alt: parsed.alt,
         zoom: parsed.zoom,
-        markdown: source
+        markdown: source,
+        link: null
       })
       return false
     }
@@ -273,7 +305,8 @@ export function collectImgSources(state: EditorState): ImgSource[] {
             src: parsed.src,
             alt: parsed.alt,
             zoom: parsed.zoom,
-            markdown: m[0]
+            markdown: m[0],
+            link: linkAttrsOf(node.marks)
           })
         }
         return false
@@ -288,7 +321,8 @@ export function collectImgSources(state: EditorState): ImgSource[] {
           src: parsed.src,
           alt: parsed.alt,
           zoom: parsed.zoom,
-          markdown: raw
+          markdown: raw,
+          link: linkAttrsOf(node.marks)
         })
         return false
       }
@@ -313,8 +347,9 @@ const ZOOM_STEPS = [100, 75, 50, 25]
 function replaceRaw(view: EditorView, img: ImgSource, nextText: string): void {
   const { state } = view
   const mark = state.schema.marks.mdHtml
-  const marks = mark ? mark.create() : undefined
-  const text = state.schema.text(nextText, marks ? [marks] : undefined)
+  const at = state.doc.nodeAt(img.from)
+  const marks = at?.isText ? imageTextMarks(at, mark) : mark ? [mark.create()] : undefined
+  const text = state.schema.text(nextText, marks)
   view.dispatch(state.tr.replaceWith(img.from, img.to, text))
 }
 
@@ -322,9 +357,10 @@ function replaceRaw(view: EditorView, img: ImgSource, nextText: string): void {
 function nodeToRaw(view: EditorView, img: ImgSource, zoom: number): void {
   const { state } = view
   const mark = state.schema.marks.mdHtml
+  const node = state.doc.nodeAt(img.from)
   const text = state.schema.text(
     zoomedImgHtml(img.src, img.alt, zoom),
-    mark ? [mark.create()] : undefined
+    node ? imageTextMarks(node, mark) : mark ? [mark.create()] : undefined
   )
   view.dispatch(state.tr.replaceWith(img.from, img.to, text))
 }
@@ -402,8 +438,15 @@ export function commitImgSource(view: EditorView, img: ImgSource, text: string):
         })
       )
     } else {
-      // 原文形态 → 换回真图片节点（**一个**节点，不会留下第二个标签）
-      const image = state.schema.nodes.image.create({ alt: parsed.alt, src: parsed.src })
+      // 原文形态 → 换回真图片节点（**一个**节点，不会留下第二个标签）；
+      // 原文若在链接里（`[<img …>](href)`），link mark 必须跟着节点走，否则保存丢链接
+      const at = state.doc.nodeAt(img.from)
+      const marks = at?.isText ? at.marks : undefined
+      const image = state.schema.nodes.image.create(
+        { alt: parsed.alt, src: parsed.src },
+        null,
+        marks
+      )
       view.dispatch(state.tr.replaceWith(img.from, img.to, image))
     }
     return true
@@ -2962,7 +3005,12 @@ export const ImageSourceUi = Extension.create({
      * 重新扫一遍、把所有 widget 重新 new 一遍 —— PM 认为 widget 类型变了，就把 `<img>` DOM
      * 拆了重建。现在按 doc 缓存 base，只对"选中集合真的变了"的图片换一份稳定的 widget 装饰。
      */
-    const makeRawWidgetDeco = (img: ImgSource, inline: boolean, selected: boolean): Decoration =>
+    const makeRawWidgetDeco = (
+      img: ImgSource,
+      inline: boolean,
+      selected: boolean,
+      gapBefore = false
+    ): Decoration =>
       Decoration.widget(
         // ⚠️ 挂在**构造的末尾**（`img.to`）：标识符文本在图片**左边**（主流编辑器观感）。
         //    挂 `img.from` 时无论 side 正负，DOM 里图片都会排在文本前面。
@@ -2971,6 +3019,16 @@ export const ImageSourceUi = Extension.create({
           const span = document.createElement('span')
           span.className = inline ? 'img-widget img-widget--inline' : 'img-widget'
           if (selected) span.classList.add(IMG_SELECTED_CLASS)
+          /**
+           * 并排段（`p.img-side-by-side`）里的 widget 要**完全透明**：`display: contents`
+           * 让外壳不生成盒子，里面的 `<a>/<img>` 直接参与段落行内排版。这样"点击后"
+           * 与静态渲染（`p > a > img` / `p > img`）共用同一套几何，行高/顶边/基线都不变。
+           * 间隙类照抄静态 CSS 的相邻规则（见 markdown.css 的并排区块）：
+           *   * `img-gap-before` 直接打在 `<img>` 上（外壳可能是 contents，margin 会被吞掉）。
+           */
+          if (inline) {
+            if (img.link) span.classList.add('img-widget--linked')
+          }
           span.setAttribute('data-img-widget', '')
           span.setAttribute('data-img-from', String(img.from))
           span.setAttribute('data-img-inline', inline ? 'true' : 'false')
@@ -2993,6 +3051,12 @@ export const ImageSourceUi = Extension.create({
           if (img.zoom) im.style.zoom = `${img.zoom}%`
           im.loading = 'lazy'
           /**
+           * 间隙直接挂在 `<img>` 上：并排段里 widget 外壳可能是 `display:contents`、
+           * 也可能嵌在 `span.md-html` 里（无链接时），挂在壳上的 margin 会被吞掉或错位。
+           * 值/口径与静态 `p > img + img` 那条一致（前一张是链接图 ⇒ 不吃 0.6em）。
+           */
+          if (gapBefore) im.classList.add('img-gap-before')
+          /**
            * 加载失败（文件被删/移动）时**不替换 src**：保留原图占位（浏览器 broken image + alt），
            * 只加一个错误标记与提示。文件恢复后重新打开文档即可重新加载（不做永久降级）。
            */
@@ -3002,14 +3066,39 @@ export const ImageSourceUi = Extension.create({
             span.title = i18n.global.t('editor.imageLoadFailed')
           })
           im.addEventListener('load', () => span.removeAttribute('data-img-error'))
-          span.appendChild(im)
+          /**
+           * 保留链接语义（用户报障：点击后 `<a>` 消失 ⇒ 下划线没了、行高也变了）。
+           * 静态渲染是 `<a href=…><img></a>`；widget 必须画**同一层 `<a>`**（同一组属性），
+           * 并由同一套 CSS（`.md-preview a:has(> img)`）接管几何。
+           * 没有链接时保持裸 `<img>`（与 `p > img` 同口径）。
+           */
+          if (img.link) {
+            const a = document.createElement('a')
+            for (const [k, v] of Object.entries(img.link)) {
+              try {
+                a.setAttribute(k, v)
+              } catch {
+                /* 非法属性名忽略：不能因为一个属性让图片消失 */
+              }
+            }
+            a.appendChild(im)
+            span.appendChild(a)
+          } else {
+            span.appendChild(im)
+          }
           return span
         },
         { side: 1 }
       )
 
     /** doc/key 维度缓存：base 里所有图片一律按"未选中"建；选区只换 widget 变体 + 补 node 装饰 */
-    type RawWidgetMeta = { at: number; img: ImgSource; inline: boolean; sel?: Decoration }
+    type RawWidgetMeta = {
+      at: number
+      img: ImgSource
+      inline: boolean
+      gapBefore: boolean
+      sel?: Decoration
+    }
     type DecoCache = {
       doc: EditorState['doc']
       open: number | null
@@ -3042,7 +3131,7 @@ export const ImageSourceUi = Extension.create({
       const decos = cache.base.slice()
       for (const [from, meta] of cache.raws) {
         if (!want.has(from)) continue
-        meta.sel ??= makeRawWidgetDeco(meta.img, meta.inline, true)
+        meta.sel ??= makeRawWidgetDeco(meta.img, meta.inline, true, meta.gapBefore)
         decos[meta.at] = meta.sel
       }
       for (const img of cache.imgs) {
@@ -3220,6 +3309,24 @@ export const ImageSourceUi = Extension.create({
             const raws = new Map<number, RawWidgetMeta>()
             // ① 图片**居中**：给"只有一张图"的块挂一个类（比 CSS `:only-child` 稳 ——
             //    行内图片旁边可能还有被隐藏的标记文本、或我们自己的 widget 装饰）
+            /**
+             * 同一块里上一张/下一张图（只看**同一父节点**，`imgs` 已按 from 排序）。
+             * 用途：并排段里"点击后"的 widget 要用与静态渲染同一组相邻外边距
+             * （静态规则是 `p > img + img` 之类，widget 外壳一插进去就失配）。
+             */
+            const byBlock = new Map<PMNode, ImgSource[]>()
+            for (const img of imgs) {
+              const key = state.doc.resolve(img.from).parent
+              const arr = byBlock.get(key) ?? []
+              arr.push(img)
+              byBlock.set(key, arr)
+            }
+            const prevOf = new Map<number, ImgSource | null>()
+            for (const arr of byBlock.values()) {
+              arr.forEach((img, i) => {
+                prevOf.set(img.from, arr[i - 1] ?? null)
+              })
+            }
             state.doc.forEach((block, offset) => {
               if (!block.isBlock) return
               const from = offset
@@ -3325,8 +3432,12 @@ export const ImageSourceUi = Extension.create({
                 //    行内/块级判据与未激活时**完全一致**；块级的继续吃 `img-block-center` 的
                 //    居中对齐 ⇒ 图片水平不动，标识符只占掉它上面一行（图片只向下让位）。
                 const inline = imgIsInline(state, img)
-                raws.set(img.from, { at: decos.length, img, inline })
-                decos.push(makeRawWidgetDeco(img, inline, selected))
+                const prev = prevOf.get(img.from) ?? null
+                // 与静态 CSS 同一口径：前一张是链接图 ⇒ 本张不吃 0.6em；
+                // 策略是纯函数（见 imageLinkLayout.ts），三态答案一致。
+                const gapBefore = imageGapBefore(prev)
+                raws.set(img.from, { at: decos.length, img, inline, gapBefore })
+                decos.push(makeRawWidgetDeco(img, inline, selected, gapBefore))
               }
             }
             /**
@@ -3435,7 +3546,19 @@ export const ImageSourceUi = Extension.create({
               const at = view.posAtCoords({ left: event.clientX, top: event.clientY })
               if (!at) return false
               const sources = collectImgSources(view.state)
-              const hit = sources.find((s) => at.pos >= s.from - 1 && at.pos <= s.to + 1)
+              /**
+               * 先按**精确范围**认领，再退回 ±1 的边界容差。
+               *
+               * 为什么不能直接 `find(±1)`（实测）：第一张图被点开、换成原文文本后，它的
+               * 范围是 `[from, to]`，而**下一张图节点**的 `from` 恰好等于 `to + 1`
+               * ⇒ ±1 会把"点第二张"认成"点第一张"，随后 `inside()` 用的是第一张的矩形
+               * ⇒ 点在第二张上却什么都不发生（用户"逐个点四张"时后面几张点不动）。
+               * 精确匹配优先后：`pos === to + 1` 只命中下一张；右边缘返回 `pos === to`
+               * 时仍由本张精确认领；确实落在边界缝隙里才用 ±1 兜底。
+               */
+              const hit =
+                sources.find((s) => at.pos >= s.from && at.pos <= s.to) ??
+                sources.find((s) => at.pos >= s.from - 1 && at.pos <= s.to + 1)
               if (!hit) return false
               /**
                * 第八十六轮（闪烁根因 + "点不出光标"根因）：
@@ -3511,7 +3634,7 @@ export const ImageSourceUi = Extension.create({
                 const mdMark = st.schema.marks.mdHtml
                 const text = st.schema.text(
                   alt ? `![${alt}](${src})` : `![](${src})`,
-                  mdMark ? [mdMark.create()] : undefined
+                  imageTextMarks(node, mdMark)
                 )
                 const tr = st.tr.replaceWith(pending.from, pending.from + node.nodeSize, text)
                 tr.setSelection(TextSelection.create(tr.doc, pending.from))
@@ -3582,11 +3705,13 @@ export const ImageSourceUi = Extension.create({
             const node = st.doc.nodeAt(from)
             if (!node) return false
             const mdMark = st.schema.marks.mdHtml
-            const marks = mdMark ? [mdMark.create()] : undefined
             if (node.type.name === 'image') {
               const alt = String(node.attrs.alt ?? '')
               const src = String(node.attrs.src ?? '')
-              const text = st.schema.text(alt ? `![${alt}](${src})` : `![](${src})`, marks)
+              const text = st.schema.text(
+                alt ? `![${alt}](${src})` : `![](${src})`,
+                imageTextMarks(node, mdMark)
+              )
               const tr = st.tr.replaceWith(from, from + node.nodeSize, text)
               tr.setSelection(
                 TextSelection.create(tr.doc, Math.min(from + text.nodeSize, tr.doc.content.size))
@@ -3597,7 +3722,8 @@ export const ImageSourceUi = Extension.create({
             }
             if (node.type.name === 'htmlBlock') {
               const source = String(node.attrs.source ?? '')
-              const para = st.schema.nodes.paragraph.create(null, st.schema.text(source, marks))
+              const htmlMarks = mdMark ? [mdMark.create()] : undefined
+              const para = st.schema.nodes.paragraph.create(null, st.schema.text(source, htmlMarks))
               const tr = st.tr.replaceWith(from, from + node.nodeSize, para)
               // 标识符在新段落里的起点 = from + 1（段落边界各占 1）
               tr.setSelection(
