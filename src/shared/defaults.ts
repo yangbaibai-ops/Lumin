@@ -1,8 +1,6 @@
 import type { AppSettings } from './types'
 // 显式 .ts：defaults 会被 tests/*.test.mjs 直接加载，而 Node 的 ESM 解析不做扩展名补全（见 §4.56）
 import { HISTORY_LIMIT_PER_FILE, HISTORY_MAX_AGE_MS } from './history.ts'
-// AI 默认端点/模型（与设置界面预设共用一份，避免"两处默认值"漂移）
-import { AI_DEFAULT_BASE_URL, AI_DEFAULT_MODEL } from './ai.ts'
 import { DEFAULT_TOOLBAR_ITEMS } from './toolbarItems.ts'
 import { SETTINGS_SCHEMA_VERSION } from './settingsSchema.ts'
 
@@ -164,15 +162,5 @@ export const defaultSettings: AppSettings = {
   export: {
     pdf: { margin: 24, pageSize: 'A4' },
     html: { template: 'default' }
-  },
-  /**
-   * AI：OpenAI 兼容接口的默认端点与模型。
-   * **API Key 不在这里**（它只以 safeStorage 密文存 kv 的 `aiApiKey`，渲染层拿不到）。
-   */
-  aiBaseUrl: AI_DEFAULT_BASE_URL,
-  aiModel: AI_DEFAULT_MODEL,
-  /** 对话默认只附选区（不把整篇文档发出去）——用户口径。 */
-  aiContextDefault: 'selection' as 'selection' | 'document',
-  /** 默认流式（可关，兼容不支持 SSE 的服务）。 */
-  aiStream: true
+  }
 }

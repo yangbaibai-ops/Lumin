@@ -20,14 +20,16 @@ import type { AppSettings } from './types'
  * 并在下面的 `MIGRATIONS` 里补一条迁移；只"新增带默认值的键"不需要动版本
  * （缺键回落默认值这条路径本来就覆盖了）。
  */
-export const SETTINGS_SCHEMA_VERSION = 1
+export const SETTINGS_SCHEMA_VERSION = 2
 
 /**
  * 历史版本的迁移（版本号 → 把老结构改成新结构）。键名是**起始版本**：
  * `MIGRATIONS[1]` 表示"把 v1 的数据迁到 v2"。
  *
- * 目前只有 v1，表是空的 —— 留着它是因为"迁移该写在哪"这件事必须在**第一次改 schema 之前**
- * 就有答案，否则那次改动会顺手把迁移逻辑塞进 IPC 处理器里（散落、无测试、无版本判断）。
+ * v1 → v2（主分支移除 AI 整条链）：删掉 `aiBaseUrl` / `aiModel` / `aiContextDefault` /
+ * `aiStream` 四个键。这里**不需要写迁移函数**：`normalizeSettings()` 只认 defaults 里
+ * 有的键，老 kv 里的这四个键会自然进入 `dropped` 并在下一次写回时消失；
+ * 版本号 +1 只是让"这份数据来自删除之前的版本"这件事可判定（也符合本文件的口径）。
  */
 export const MIGRATIONS: Record<number, (raw: Record<string, unknown>) => Record<string, unknown>> =
   {}
