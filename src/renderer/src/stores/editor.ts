@@ -37,6 +37,14 @@ export const useEditorStore = defineStore('editor', {
     /** 编辑器文档是否含尚未序列化回 files 的用户输入（onUpdate 置位，flush 后清除） */
     dirty: false,
     /**
+     * 是否正在切换观看模式（wysiwyg / split / source）。
+     *
+     * 切换过程中布局、显隐、`setContent` 回灌会带来若干**非用户输入**的事务；它们不该
+     * 把文档标脏（用户报障：什么都没改、只切模式就出现"未保存"小圆点）。门控只负责
+     * 忽略这些更新，**不**清掉切换前已经存在的真实编辑（否则会丢"未保存"提示）。
+     */
+    modeSwitching: false,
+    /**
      * 下一次序列化回 files 时该记谁写的（手册 §4.59 的账本作者）。
      *
      * 为什么需要它：正文里嵌着**子编辑面**（代码块的 CodeMirror）。它的输入先写回
@@ -110,7 +118,16 @@ export const useEditorStore = defineStore('editor', {
     },
     /** 编辑器文档有了新的用户输入（序列化管道待触发） */
     markDirty(): void {
+      // 模式切换期间的事务不是用户输入：不标脏（见 modeSwitching 的说明）
+      if (this.modeSwitching) return
       this.dirty = true
+    },
+    /** 进入/退出「模式切换」门控（useEditorMode 在切换前后同步调用） */
+    beginModeSwitch(): void {
+      this.modeSwitching = true
+    },
+    endModeSwitch(): void {
+      this.modeSwitching = false
     },
     /** 子编辑面（代码块 CodeMirror / 源码 textarea）声明：接下来这次序列化是它写的 */
     noteWrite(surface: Author): void {

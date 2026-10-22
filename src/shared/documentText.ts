@@ -21,6 +21,28 @@ export function withFinalNewline(text: string): string {
   return text.replace(/\n+$/, '') + '\n'
 }
 
+/**
+ * 脏判定用的**归一化**：行尾统一成 LF，并去掉末尾空行。
+ *
+ * 为什么脏判定不能用逐字节比较（用户报障「只切观看模式就出现未保存小圆点」）：
+ *   * 打开一篇**结尾没有换行**的文件时，编辑器序列化会按规则 1 补一个 `\n`
+ *     （`withFinalNewline`），内容与 `savedContent` 只差这一个字节；
+ *   * 用户**什么都没改**，模式切换/自动落盘把这份序列化结果写回 store，逐字节比较
+ *     立刻判成「已修改」，退出时还弹保存提示。
+ * 归一化必须与保存口径一致：保存写盘前也会把行尾统一（`toLf`），文末连续空行本来
+ * 就不保留（规则 1「有且仅有一个换行」），所以这两类差异都不该算"内容变了"。
+ *
+ * 注意：**中间**的空行、缩进、行内空格一律保留 —— 它们是真的内容差异。
+ */
+export function normalizeForDirtyCompare(text: string): string {
+  return text.replace(/\r\n?/g, '\n').replace(/\n+$/, '')
+}
+
+/** 两份文档文本在"脏判定"口径下是否相同（见 normalizeForDirtyCompare） */
+export function sameDocumentText(a: string, b: string): boolean {
+  return normalizeForDirtyCompare(a) === normalizeForDirtyCompare(b)
+}
+
 /** 「整行只有标记字符」：`*` `~` `` ` `` `_`（四种都可能开启块级构造或强调语法） */
 const MARKER_ONLY_LINE = /^[*~`_]+$/
 

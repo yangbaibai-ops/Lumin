@@ -5,7 +5,9 @@ import assert from 'node:assert/strict'
 import {
   withFinalNewline,
   codeFenceFor,
-  escapeMarkerOnlyLines
+  escapeMarkerOnlyLines,
+  normalizeForDirtyCompare,
+  sameDocumentText
 } from '../src/shared/documentText.ts'
 
 test('withFinalNewline：非空文档以且仅以一个换行结尾', () => {
@@ -32,6 +34,27 @@ test('codeFenceFor：围栏必须比内容里最长的反引号串更长', () =>
   assert.equal(codeFenceFor('a\n```\nb'), '````')
   assert.equal(codeFenceFor('`````'), '``````')
   assert.equal(codeFenceFor('~~~~'), '```', '波浪线内容不需要加长反引号围栏')
+})
+
+// ─── 脏判定归一化（用户报障：只切观看模式就出现"未保存"小圆点）───────────────
+test('normalizeForDirtyCompare：行尾统一 LF、去掉末尾空行；中间内容不动', () => {
+  assert.equal(normalizeForDirtyCompare('a\r\nb\r\n'), 'a\nb')
+  assert.equal(normalizeForDirtyCompare('a\n\n'), 'a')
+  assert.equal(normalizeForDirtyCompare('a\n\nb\n'), 'a\n\nb', '中间空行是内容，必须保留')
+  assert.equal(normalizeForDirtyCompare('  a  '), '  a  ', '行内/行尾空格保留')
+  assert.equal(normalizeForDirtyCompare(''), '')
+})
+
+test('★ sameDocumentText：只差尾随换行/CRLF 不算修改；真的改字才算', () => {
+  // 打开一篇末尾没有换行的文件后，序列化会补一个 \n —— 这不是用户修改
+  assert.equal(sameDocumentText('# 标题\n\n正文\n', '# 标题\n\n正文'), true)
+  assert.equal(sameDocumentText('# 标题\n\n正文\n\n', '# 标题\n\n正文'), true)
+  assert.equal(sameDocumentText('a\r\nb\r\n', 'a\nb'), true)
+  // 真实编辑必须判为不同（反向用例）
+  assert.equal(sameDocumentText('# 标题\n\n正文 X\n', '# 标题\n\n正文'), false)
+  assert.equal(sameDocumentText('a\n\nb', 'a\nb'), false, '中间空行不能被归一化吃掉')
+  // 模式切换前后内容一致（只差尾随换行）⇒ 干净
+  assert.equal(sameDocumentText(withFinalNewline('第一段\n\n- 列表'), '第一段\n\n- 列表'), true)
 })
 
 // ─── escapeMarkerOnlyLines：整行标记字符逐字符转义 ───────────────────────────

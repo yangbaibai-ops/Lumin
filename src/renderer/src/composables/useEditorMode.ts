@@ -2,6 +2,7 @@ import { useEditorStore } from '../stores/editor'
 import { useFilesStore } from '../stores/files'
 import { useUiStore } from '../stores/ui'
 import type { EditorMode } from '../../../shared/types'
+import { sameDocumentText } from '../../../shared/documentText'
 
 /**
  * ─── 编辑器模式切换（实时渲染 / 分屏对比 / 源码）───────────────────────────
@@ -25,7 +26,9 @@ export function useEditorMode(): {
 
   /** 把当前 Tiptap 文档序列化为 Markdown 刷入文件槽（防抖编辑不丢失）。
       编辑器不脏时跳过——文件槽内容已与其一致（onUpdate emit 已同步），
-      避免「只看视图不编辑」的切换也要整篇序列化（大文档的隐藏成本）。 */
+      避免「只看视图不编辑」的切换也要整篇序列化（大文档的隐藏成本）。
+      序列化结果与 store 内容只有**尾随换行**这类归一化差异时也不写：
+      写进去只会让「什么都没改」变成"已修改"（脏判定见 shared/documentText）。 */
   function flushWysiwyg(): void {
     const ed = editorStore.instance
     if (!ed || !editorStore.dirty) return
@@ -39,7 +42,10 @@ export function useEditorMode(): {
        * （诊断与断言不可信，理论上还会少一次该有的回灌）。
        * `consumeWriteIntent()` 顺带做掉 `markFlushed()`（清牌 + 清脏），语义与原来一致。
        */
-      files.setContent(md, editorStore.consumeWriteIntent())
+      const author = editorStore.consumeWriteIntent()
+      if (!sameDocumentText(md, files.current?.content ?? '')) {
+        files.setContent(md, author)
+      }
     } catch {
       /* 序列化失败时保持文件槽现状 */
     }
@@ -47,8 +53,15 @@ export function useEditorMode(): {
 
   function setMode(mode: EditorMode): void {
     if (ui.editorMode === mode) return
-    if (ui.editorMode === 'wysiwyg' || ui.editorMode === 'split') flushWysiwyg()
-    ui.editorMode = mode
+    // ★ 门控：切换期间产生的事务（布局/回灌）不是用户输入，不标脏；退出时由内容比较定脏。
+    //   必须 try/finally：flush 或 store 写入抛错时也不能把门永久关着。
+    editorStore.beginModeSwitch()
+    try {
+      if (ui.editorMode === 'wysiwyg' || ui.editorMode === 'split') flushWysiwyg()
+      ui.editorMode = mode
+    } finally {
+      editorStore.endModeSwitch()
+    }
   }
 
   /** Ctrl+/ 循环：实时渲染 → 分屏对比 → 源码 → 实时渲染 */

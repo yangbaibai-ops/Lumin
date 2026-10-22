@@ -20,6 +20,7 @@ import { draftKeyFor, restorableDraft } from '../lib/draftRules'
 import { currentSessionSlot } from '../lib/sessionSlot'
 import { SAVE_CONFLICT_KIND } from '../lib/saveConflict'
 import { docLoad, heavyReason } from '../lib/largeDoc'
+import { sameDocumentText } from '../../../shared/documentText'
 import { estimateDocLoad, planDocOpen } from '../../../shared/freeze'
 import { DOC_SAFE_MODE_KIND } from '../lib/safety'
 import {
@@ -238,7 +239,9 @@ export const useFilesStore = defineStore('files', {
   }),
   getters: {
     dirty(state): boolean {
-      return !!state.current && state.current.content !== state.current.savedContent
+      // 内容比较（不是"发生过事务"）：只切观看模式/补尾随换行都不算修改。
+      // 归一化口径见 shared/documentText.normalizeForDirtyCompare（与保存路径一致）。
+      return !!state.current && !sameDocumentText(state.current.content, state.current.savedContent)
     },
     /* ── 统计量（第二十五轮轻量化）────────────────────────────────────────────
      * 三个计数原先各自对**全文**做一遍扫描（`replace` + 两次 `match` / `split`），
@@ -1067,7 +1070,7 @@ export const useFilesStore = defineStore('files', {
        * （实测：断言红，而且下次启动真的会弹"检测到未保存的草稿"）。
        */
       const job = (async () => {
-        if (cur.content === cur.savedContent) {
+        if (sameDocumentText(cur.content, cur.savedContent)) {
           if (this.draftRestore?.key !== key) await window.luminAPI.drafts.remove(key)
           return
         }
@@ -1239,7 +1242,7 @@ export const useFilesStore = defineStore('files', {
         // 会退化成"弹模态"（手动保存那条路才会弹），把正在写作的人拽出来。
         this.saveRetryDelay = nextSaveRetryDelay(this.saveRetryDelay)
         this.saveRetryAt = Date.now() + this.saveRetryDelay
-        if (this.current === doc && doc.content !== doc.savedContent) {
+        if (this.current === doc && !sameDocumentText(doc.content, doc.savedContent)) {
           clearTimeout(this.saveTimer as never)
           this.saveTimer = setTimeout(
             () => void (auto ? this.saveAutomatically() : this.save()),
