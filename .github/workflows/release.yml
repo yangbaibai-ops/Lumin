@@ -3,6 +3,9 @@
 # 触发：`git tag v1.0.0 && git push origin v1.0.0`
 # 产物：dist/Lumin-<version>-setup.exe、dist/latest.yml、dist/*.blockmap
 #
+# 门禁（审计 P1-4）：tag 与 package.json 的 version 必须一致，且先跑 `npm run ci`
+# （typecheck/lint/单测/许可声明/文档数字/生产构建）再打包；任何一步红都不发版。
+#
 # 认证：只用仓库自带的 GITHUB_TOKEN（permissions.contents: write），
 # 不配置任何签名证书 / PAT / 第三方 secret。安装包未做代码签名，
 # 用户下载时会看到 SmartScreen 的“未知发布者”，这是已知限制（见 README）。
@@ -37,6 +40,29 @@ jobs:
 
       - name: 安装依赖
         run: npm ci
+
+      # ─── 发版门禁（审计 P1-4）──────────────────────────────────────────────
+      # 1) tag 必须与 package.json 的 version 一致：打错 tag 再也发不出「版本号不符」的包；
+      # 2) `npm run ci` = typecheck + lint + 单测 + 许可声明/文档数字/令牌 + 生产构建，
+      #    与 PR 门禁是同一份脚本（唯一真相源在 package.json），不在 release 里另抄一遍。
+      - name: 校验 tag 与 package.json 版本一致
+        shell: pwsh
+        run: |
+          $tag = $env:GITHUB_REF_NAME
+          if (-not $tag -or -not $tag.StartsWith('v')) {
+            throw "发版 tag 必须形如 v1.2.3（当前 GITHUB_REF_NAME=「$tag」）；请用 git tag v<version> 重新打标签。"
+          }
+          $tagVersion = $tag.Substring(1)
+          # 用 node 读版本号：PowerShell 的 ConvertFrom-Json 在 Windows PowerShell 5.1 下
+          # 按 ANSI 解码无 BOM 的 UTF-8 package.json（description 里的中文会直接解析失败）。
+          $pkgVersion = (node -p "require('./package.json').version").Trim()
+          if ($tagVersion -ne $pkgVersion) {
+            throw "tag（$tag → $tagVersion）与 package.json 的 version（$pkgVersion）不一致：先把 package.json 的 version 改成 $tagVersion（并同步 CHANGELOG 标题）再打 tag，否则拒绝发版。"
+          }
+          Write-Host "版本一致性通过：tag=$tag, package.json=$pkgVersion"
+
+      - name: 门禁（与 CI 同一套：typecheck / lint / test / notices / docs / build）
+        run: npm run ci
 
       - name: 构建 Windows 安装包
         run: npm run build:win
