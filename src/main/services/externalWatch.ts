@@ -154,12 +154,6 @@ export function stopExternalWatch(win: BrowserWindow): void {
   watched.delete(win.id)
 }
 
-/** 全部停止（应用退出时调用；测试里也可用来清场） */
-export function stopAllExternalWatch(): void {
-  for (const id of [...watched.keys()]) stopWindowWatch(id)
-  watched.clear()
-}
-
 /**
  * 把某窗口的监测目标设成 `filePath`（`null` = 这篇没有磁盘文件/已关闭，停掉监测）。
  *
@@ -206,9 +200,4 @@ export function watchDocument(
   w.poll = setInterval(() => observe(win, w, 'poll'), POLL_MS)
   // 轮询不阻止进程退出
   w.poll.unref?.()
-}
-
-/** 测试钩子：当前有没有在监测（以及目标），套件用来确认申报生效 */
-export function watchedPathOf(win: BrowserWindow): string | null {
-  return watched.get(win.id)?.path ?? null
 }

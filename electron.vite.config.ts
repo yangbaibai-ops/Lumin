@@ -101,7 +101,6 @@ export default defineConfig(({ command }) => ({
         '@tiptap/extension-table',
         '@tiptap/extension-task-item',
         '@tiptap/extension-task-list',
-        '@tiptap/extension-underline',
         '@tiptap/pm/model',
         '@tiptap/pm/state',
         '@tiptap/pm/transform',

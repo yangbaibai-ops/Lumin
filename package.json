@@ -74,7 +74,6 @@
     "@tiptap/extension-table": "^3.31.0",
     "@tiptap/extension-task-item": "^3.31.0",
     "@tiptap/extension-task-list": "^3.31.0",
-    "@tiptap/extension-underline": "^3.31.0",
     "@tiptap/pm": "^3.31.0",
     "@tiptap/starter-kit": "^3.31.0",
     "@tiptap/vue-3": "^3.31.0",

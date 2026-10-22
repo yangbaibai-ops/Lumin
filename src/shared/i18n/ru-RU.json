@@ -521,9 +521,7 @@
     "logPath": "Путь к журналу запуска"
   },
   "toast": {
-    "unsupportedFile": "Можно открывать только файлы Markdown",
     "openFailed": "Не удалось открыть файл",
-    "workspaceAlreadyOpen": "«{name}» уже является текущей рабочей областью",
     "exportFailed": "Экспорт не удался",
     "exportedTo": "Экспортировано в: {path}",
     "printFailed": "Не удалось напечатать",

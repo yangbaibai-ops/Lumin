@@ -165,11 +165,13 @@ test('接线守卫：扩展名清单只许出现在 textFiles.ts（六处副本�
   )
 
   // 关键接线点各自用的是真相源，而不是就地写死的判据
-  const dropped = fs.readFileSync(
-    path.join(ROOT, 'src', 'renderer', 'src', 'lib', 'droppedPath.ts'),
-    'utf-8'
+  // （拖入路径模块 `droppedPath.ts` 已按审计删除：拖拽整体禁用后它没有调用方；
+  //   这里反过来守住它不要长回来）
+  assert.equal(
+    fs.existsSync(path.join(ROOT, 'src', 'renderer', 'src', 'lib', 'droppedPath.ts')),
+    false,
+    'droppedPath.ts 已删除（拖拽禁用后无调用方），不要再接线回来'
   )
-  assert.match(dropped, /isTextFileName/, '拖入白名单必须用真相源的判据')
   const ipc = fs.readFileSync(path.join(ROOT, 'src', 'main', 'ipc.ts'), 'utf-8')
   assert.match(ipc, /openFileDialogFilters\(/, '「打开文件」对话框的 filters 必须由真相源派生')
   const files = fs.readFileSync(

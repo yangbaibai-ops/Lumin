@@ -421,53 +421,6 @@ export function parseImgSourceInput(
   return null
 }
 
-/** 一次"源码行提交"的落点：`null` = 内容非法（调用方不许动文档） */
-export function commitImgSource(view: EditorView, img: ImgSource, text: string): boolean {
-  const parsed = parseImgSourceInput(text)
-  if (!parsed) return false
-  const { state } = view
-  const isBlock = state.doc.nodeAt(img.from)?.type.name === 'htmlBlock'
-  if (parsed.kind === 'md') {
-    if (img.kind === 'node') {
-      const node = state.doc.nodeAt(img.from)
-      view.dispatch(
-        state.tr.setNodeMarkup(img.from, undefined, {
-          ...node?.attrs,
-          alt: parsed.alt,
-          src: parsed.src
-        })
-      )
-    } else {
-      // 原文形态 → 换回真图片节点（**一个**节点，不会留下第二个标签）；
-      // 原文若在链接里（`[<img …>](href)`），link mark 必须跟着节点走，否则保存丢链接
-      const at = state.doc.nodeAt(img.from)
-      const marks = at?.isText ? at.marks : undefined
-      const image = state.schema.nodes.image.create(
-        { alt: parsed.alt, src: parsed.src },
-        null,
-        marks
-      )
-      view.dispatch(state.tr.replaceWith(img.from, img.to, image))
-    }
-    return true
-  }
-  // HTML 形态
-  if (img.kind === 'node') {
-    // 节点 → 原文形态（与点档位同一条路：`zoomedImgHtml` 是唯一的产出形状）
-    nodeToRaw(view, img, parsed.zoom ?? 100)
-    return true
-  }
-  if (isBlock) {
-    const node = state.doc.nodeAt(img.from)
-    view.dispatch(
-      state.tr.setNodeMarkup(img.from, undefined, { ...node?.attrs, source: parsed.raw })
-    )
-  } else {
-    replaceRaw(view, img, parsed.raw)
-  }
-  return true
-}
-
 /**
  * 这张图是不是"行内"的（第五十八轮：标记要不要**贴行顶**就靠它）。
  *

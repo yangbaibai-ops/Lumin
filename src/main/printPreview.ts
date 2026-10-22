@@ -52,9 +52,6 @@ interface PreviewJob {
 
 const jobs = new Map<string, PreviewJob>()
 
-/** 目录名前缀（与 `shared/printPreview.ts` 同一份常量；这里只用于退出时兜底清理） */
-import { PRINT_PREVIEW_DIR_PREFIX } from '../shared/printPreview'
-
 function labels(): PrintPreviewLabels {
   return {
     title: mainT('printPreview.title'),
@@ -185,31 +182,4 @@ export function cleanupPrintPreviews(): void {
     void removeJobDir(job.dir)
   }
   jobs.clear()
-}
-
-/**
- * 启动时扫一遍历史遗留：上一次运行崩溃/强杀时留下的 `lumin-print-preview-*` 目录。
- *
- * 只删**自己的前缀**、且只删**比 1 天更老**的：同机可能同时跑着另一个实例（多窗口/隔离实例），
- * 它的预览目录可能正开着，不能顺手删掉别人的。
- */
-export async function sweepStalePrintPreviews(): Promise<void> {
-  const tmp = app.getPath('temp')
-  const cutoff = Date.now() - 24 * 60 * 60 * 1000
-  let names: string[] = []
-  try {
-    names = await fs.readdir(tmp)
-  } catch {
-    return
-  }
-  for (const name of names) {
-    if (!name.startsWith(PRINT_PREVIEW_DIR_PREFIX)) continue
-    const full = path.join(tmp, name)
-    try {
-      const st = await fs.stat(full)
-      if (st.isDirectory() && st.mtimeMs < cutoff) await removeJobDir(full)
-    } catch {
-      /* 忽略：竞态/权限都无所谓 */
-    }
-  }
 }

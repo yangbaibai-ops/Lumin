@@ -25,7 +25,6 @@ import {
 import os from 'os'
 import { dirname, join } from 'path'
 import {
-  MAX_STARTUP_LOG_BYTES,
   MAX_STARTUP_LOG_FILES,
   STARTUP_LOG_FILE,
   buildStartupExportText,
@@ -205,11 +204,6 @@ export function startupMark(stage: string, data: Record<string, unknown> = {}): 
   })
 }
 
-/** 一次性的环境摘要（设置页导出时也给同一份） */
-export function startupEnvironment(): StartupExportEnvironment | null {
-  return env
-}
-
 /** 渲染层上报首屏可交互（只接受清洗后的 stage + 数字 marks） */
 export function recordRendererStartup(input: unknown): void {
   const report: RendererStartupReport | null = sanitizeRendererStartupReport(input)
@@ -268,6 +262,3 @@ export function writeStartupExport(
 export function startupLogPath(): string {
   return logFile
 }
-
-/** 单份上限（导出/诊断页展示用） */
-export const startupLogLimits = { maxBytes: MAX_STARTUP_LOG_BYTES, maxFiles: MAX_STARTUP_LOG_FILES }

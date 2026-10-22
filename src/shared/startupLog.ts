@@ -81,11 +81,6 @@ export function topLevelName(p: string): string {
   return parts[parts.length - 1] ?? ''
 }
 
-/** 只记数量（数组/其它值都安全）：文档列表类信息在日志里只能以它出现 */
-export function countOf(value: unknown): number {
-  return Array.isArray(value) ? value.length : 0
-}
-
 /**
  * 渲染层上报的打点清洗：只接受**已知形状**（stage 名 + 有限数字），
  * 任何字符串/对象/超大值一律丢掉 —— 渲染层被注入时也不能往日志里灌任意内容。

@@ -215,15 +215,6 @@ export function assertAuthorizedReal(p: string, mode: 'read' | 'write' = 'read')
   return realpathDeep(abs)
 }
 
-/** 诊断用：当前授权范围快照（"导出诊断信息"与套件都会读它） */
-export function grantedSnapshot(): { workspace: string | null; dirs: string[]; files: number } {
-  return {
-    workspace: workspaceRoot(),
-    dirs: [...dirs.values()],
-    files: files.size
-  }
-}
-
 /**
  * `openFolderInNewWindow` 的专属校验：**要当工作区打开的目录**。
  *

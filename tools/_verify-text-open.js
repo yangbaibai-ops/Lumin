@@ -292,13 +292,9 @@ async function main() {
     JSON.stringify({ mode: gbk.mode })
   )
 
-  // ── 7. 静态接线：对话框过滤器 / 拖入白名单 / 另存为后缀都派生自唯一真相源 ──
+  // ── 7. 静态接线：对话框过滤器 / 另存为后缀都派生自唯一真相源 ──
   //    （原生对话框在 CDP 里点不动 —— 这条只能静态 + 单测钉住，如实说明）
   const ipcSrc = fs.readFileSync(path.join(ROOT, 'src', 'main', 'ipc.ts'), 'utf-8')
-  const droppedSrc = fs.readFileSync(
-    path.join(ROOT, 'src', 'renderer', 'src', 'lib', 'droppedPath.ts'),
-    'utf-8'
-  )
   const filesSrc = fs.readFileSync(
     path.join(ROOT, 'src', 'renderer', 'src', 'stores', 'files.ts'),
     'utf-8'
@@ -309,9 +305,10 @@ async function main() {
     'src/main/ipc.ts'
   )
   report.check(
-    '接线-拖入白名单与另存为后缀也走真相源',
-    /isTextFileName/.test(droppedSrc) && /saveDefaultName\(/.test(filesSrc),
-    'droppedPath.ts / files.ts'
+    '接线-拖入路径模块已删除（拖拽禁用后无调用方），另存为后缀仍走真相源',
+    !fs.existsSync(path.join(ROOT, 'src', 'renderer', 'src', 'lib', 'droppedPath.ts')) &&
+      /saveDefaultName\(/.test(filesSrc),
+    'droppedPath.ts（应不存在）/ files.ts'
   )
 
   app.close()

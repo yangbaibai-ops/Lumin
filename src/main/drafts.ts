@@ -216,13 +216,6 @@ export async function takeUntitledDraft(opts: TakeUntitledDraftOptions): Promise
   return result
 }
 
-/** 停放键（诊断/排查用；导出给需要"还有几份没被认领"的地方） */
-export async function countParkedDrafts(): Promise<number> {
-  const onDisk = await listDrafts()
-  return onDisk.filter((d) => isOrphanDraftKey(d.key) && (d.data?.content.trim() ?? '') !== '')
-    .length
-}
-
 export interface DraftGcResult {
   /** 扫到多少个条目 */
   scanned: number

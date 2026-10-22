@@ -71,10 +71,4 @@ export async function setLanguage(lang: Language): Promise<void> {
   document.documentElement.lang = lang
 }
 
-/** 循环切换下一种语言（状态栏快捷按钮用） */
-export function nextLanguage(lang: Language): Language {
-  const idx = LANGUAGE_OPTIONS.findIndex((o) => o.value === lang)
-  return LANGUAGE_OPTIONS[(idx + 1) % LANGUAGE_OPTIONS.length].value
-}
-
 export default i18n

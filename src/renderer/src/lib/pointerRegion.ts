@@ -46,19 +46,6 @@ export function pointerIsMoreRecentThanFocus(region: PointerRegion): boolean {
   return pointerRegion === region && pointerSeq > focusSeq
 }
 
-/** 最近一次指针交互的区域（诊断/测试用） */
-export function lastPointerRegion(): PointerRegion | null {
-  return pointerRegion
-}
-
-/** 仅供测试/复位：把记录清空 */
-export function resetPointerRegion(): void {
-  seq = 0
-  pointerSeq = 0
-  pointerRegion = null
-  focusSeq = 0
-}
-
 let installed = false
 let teardown: (() => void) | null = null
 

@@ -35,7 +35,7 @@ docs/wysiwyg-manual.md   # 本文档
 
 ### 附录 B：关键依赖（package.json 实况）
 
-- `@tiptap/vue-3`、`@tiptap/starter-kit`、`@tiptap/extension-table`、`@tiptap/extension-task-list`、`@tiptap/extension-task-item`、`@tiptap/extension-image`、`@tiptap/extension-placeholder`、`@tiptap/extension-underline`、`@tiptap/extension-horizontal-rule`、`@tiptap/pm` —— 均 `^3.31.0`
+- `@tiptap/vue-3`、`@tiptap/starter-kit`、`@tiptap/extension-table`、`@tiptap/extension-task-list`、`@tiptap/extension-task-item`、`@tiptap/extension-image`、`@tiptap/extension-placeholder`、`@tiptap/extension-horizontal-rule`、`@tiptap/pm` —— 均 `^3.31.0`
 - `tiptap-markdown` `^0.9.0`（remark 系双向转换）
 - `@codemirror/*` 六件套 `^6`
 - `katex` `^0.18.5`、`mermaid` `^11.17.2`

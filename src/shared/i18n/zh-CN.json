@@ -521,9 +521,7 @@
     "logPath": "启动日志路径"
   },
   "toast": {
-    "unsupportedFile": "仅支持打开 Markdown 文件",
     "openFailed": "无法打开文件",
-    "workspaceAlreadyOpen": "「{name}」已经是当前工作区了",
     "exportFailed": "导出失败",
     "exportedTo": "已导出到：{path}",
     "printFailed": "打印失败",

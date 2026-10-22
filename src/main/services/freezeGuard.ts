@@ -24,8 +24,6 @@ import * as docRisk from './docRisk'
 import * as appSettings from './appSettings'
 import {
   HEARTBEAT_CHECK_MS,
-  HEARTBEAT_INTERVAL_MS,
-  HEARTBEAT_TIMEOUT_MS,
   freezeWindowPauseReason,
   heartbeatLiveness,
   planCrashRecovery,
@@ -814,13 +812,6 @@ function sendToRenderer(state: Internals, payload: Record<string, unknown>): voi
     /* 渲染进程已消失：提示发不到就算了（主进程的原生对话框才是兜底） */
   }
 }
-
-/** 诊断：暴露给其它模块/验收的常量（只读） */
-export const FREEZE_CONSTANTS = {
-  heartbeatIntervalMs: HEARTBEAT_INTERVAL_MS,
-  heartbeatTimeoutMs: HEARTBEAT_TIMEOUT_MS,
-  heartbeatCheckMs: HEARTBEAT_CHECK_MS
-} as const
 
 /** 兼容旧引用：其它模块只关心"有没有记录过 freeze"时用 */
 export type { FreezeRecord }

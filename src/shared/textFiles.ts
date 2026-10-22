@@ -5,10 +5,11 @@
 //   ② `main/services/links.ts` 链接目标算不算"本应用能打开"
 //   ③ `main/services/workspaceIndex.ts` + `main|shared/workspaceReplace.ts` 全文索引与跨文件替换
 //   ④ `main/ipc.ts` 「打开文件」对话框的 filters（硬编码数组）
-//   ⑤ `renderer/lib/droppedPath.ts` 拖入白名单（又一个硬编码正则）
-//   ⑥ `renderer/components/TreeNode.vue`（重命名时保留哪段后缀）、`renderer/composables/useExport.ts`（导出标题去后缀）
+//   ⑤ `renderer/components/TreeNode.vue`（重命名时保留哪段后缀）、`renderer/composables/useExport.ts`（导出标题去后缀）
 // 抄出来的副本必然漂移：加一种类型要改六处，漏一处就变成"能拖进来打开、树里却看不见"
 // 或者"对话框能选、拖进来提示不支持"。**新增可打开类型只改本文件的扩展名数组。**
+// （历史上还有一处 `renderer/lib/droppedPath.ts` 的拖入白名单：拖拽整体禁用后该模块已删除，
+//   不再可能成为第六份副本。）
 //
 // ⚠️ 只加**纯文本族**。判断标准是"这份内容在纯文本语义下不会被曲解"：
 //   * 已经支持：`md` / `markdown` / `mdown` / `mkd`（Markdown 家族）与 `txt`；

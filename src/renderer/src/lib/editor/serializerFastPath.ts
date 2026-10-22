@@ -165,8 +165,3 @@ export function noteSerializerAppend(state: unknown, appended: string): void {
   if (typeof s.out !== 'string') return
   remember(s, appended.endsWith('\n'))
 }
-
-/** 单测用：把"已安装"标记复位（原型上的补丁保留，重复安装是幂等的） */
-export function resetFastMarkdownSerializerForTests(): void {
-  installed = false
-}

@@ -521,9 +521,7 @@
     "logPath": "Startup log path"
   },
   "toast": {
-    "unsupportedFile": "Only Markdown files can be opened",
     "openFailed": "Cannot open file",
-    "workspaceAlreadyOpen": "\"{name}\" is already the current workspace",
     "exportFailed": "Export failed",
     "exportedTo": "Exported to: {path}",
     "printFailed": "Printing failed",

@@ -108,11 +108,6 @@ const RESERVED_SPECS = (): Map<string, ReservedShortcut> => {
   return map
 }
 
-/** 单字符 = 打印字符（字母/数字/标点）；`F1`/`Tab`/`Escape` 不是 */
-export function isPrintableKey(key: string): boolean {
-  return key.length === 1
-}
-
 /**
  * 结构校验（语法 + 修饰键 + 保留键）。不查重复绑定 —— 重复是"相对其他命令"的，
  * 单独拆出来便于给替代键做"这个键本身合不合法"的检查。
@@ -280,9 +275,4 @@ export function auditKeybindings(
     }
   }
   return out
-}
-
-/** 展示用：把一条失败结果落成短文案需要的参数（i18n 由调用方做） */
-export function validationSuggestion(result: KeymapValidationResult): string | null {
-  return result.suggestion
 }
