@@ -70,6 +70,8 @@ export type KeybindingOverrides = Record<string, string | null>
 
 /** 当前安装的服务（设置界面读取解析结果用） */
 let current: KeymapHandle | null = null
+/** 最近一次安装的配置：`refreshKeymap()` 用它做**同步重建** */
+let installed: { commands: KeymapCommand[]; getOverrides: () => KeybindingOverrides } | null = null
 
 /**
  * 文档自己的编辑面（源码 textarea / 渲染面 ProseMirror / 代码块里的 CodeMirror）。
@@ -185,6 +187,7 @@ export function installKeymap(
   getOverrides: () => KeybindingOverrides
 ): KeymapHandle {
   current?.dispose()
+  installed = { commands, getOverrides }
   const handler = (e: KeyboardEvent): void => {
     // 录制中（设置界面正在采集按键）→ 整体让行，交给录制器
     if (recording || e.defaultPrevented || e.isComposing) return
@@ -218,6 +221,31 @@ export function installKeymap(
 /** 当前安装的服务（设置界面读取解析结果用；未安装时返回 null） */
 export function currentKeymap(): KeymapHandle | null {
   return current
+}
+
+/**
+ * **同步**重建键位分发：重装全局 keydown 监听（同一份命令表 + 同一个 overrides 读取器）。
+ *
+ * 为什么要有这个显式入口（用户报障「改完快捷键要等一会才生效」）：
+ *   * 分发器本身是「每次 keydown 现算」的，但设置保存后**没有任何"已保存"的信号**
+ *     能让分发表收到一次确定的刷新 —— 一旦将来有人在 service 里加缓存/快照，
+ *     或者把 `resolveCommands()` 的结果提到 setup 期，保存与生效之间就会出现
+ *     一段取决于事件循环/落库时序的空窗；
+ *   * 设置 store 在写键位后**同步**调本函数（见 `stores/settings.ts` 的 setKeybinding），
+ *     不排定时器、不防抖：保存返回时监听已经换成最新一份。
+ *
+ * 注意：这里不重新读设置、不 await 任何东西 —— 它只做"把最新状态装回分发器"这一件事，
+ * 因此不会引入新的竞态，也不会把落库（IPC）时序卷进来。
+ */
+export function refreshKeymap(): void {
+  if (!installed) return
+  installKeymap(installed.commands, installed.getOverrides)
+}
+
+/** 卸载并清掉重建配置（应用卸载 / HMR 时用，避免 refresh 把监听又装回来） */
+export function disposeKeymap(): void {
+  current?.dispose()
+  installed = null
 }
 
 export { eventToSpec, normalizeSpec, parseKeybinding }

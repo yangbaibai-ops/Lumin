@@ -3,7 +3,7 @@ import { useRouter } from 'vue-router'
 import { useUiStore } from '../stores/ui'
 import { useSettingsStore } from '../stores/settings'
 import { useEditorMenuStore } from '../stores/editorMenu'
-import { installKeymap, type KeymapCommand } from '../lib/keymap/service'
+import { disposeKeymap, installKeymap, type KeymapCommand } from '../lib/keymap/service'
 import { EXPORT_FORMATS } from '../../../shared/exportFormats'
 import type { useAppActions } from './useAppActions'
 
@@ -367,6 +367,8 @@ export function useKeymap(actions: ReturnType<typeof useAppActions>): void {
    *     否则「设置里显示什么 / 按下去走什么」必然分叉 —— 用户看到的就是"快捷键是假的"。
    *     需要新键位 = 在这张表里加一条命令（设置界面 / 冲突检测 / 恢复默认 / 持久化全都自动有）。
    */
-  const handle = installKeymap(commands, () => settings.keybindings ?? {})
-  onBeforeUnmount(() => handle.dispose())
+  installKeymap(commands, () => settings.keybindings ?? {})
+  // 用 disposeKeymap（而不是 install 返回的 handle）：改键位时 service 会**同步重建**监听，
+  // 旧 handle 已经不是当前那一份了；按模块单例收尾才不会在卸载后留下一个孤儿监听。
+  onBeforeUnmount(disposeKeymap)
 }

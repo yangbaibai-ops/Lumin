@@ -8,6 +8,8 @@ import { setInlineMarkersHidden } from '../lib/editor/markerVisibility'
 // 中文拼写检查开关：同样是零依赖桥（store 不认识 ProseMirror，见该文件说明）
 import { setZhSpellcheckEnabled } from '../lib/editor/zhSpellcheckBridge'
 import { isChineseSpellcheckEnabled } from '../../../shared/spellcheck'
+// 键位写完后**同步**重装全局分发（见下方 setKeybinding 的说明；不排定时器/不防抖）
+import { refreshKeymap } from '../lib/keymap/service'
 
 /**
  * 取消挂起的那次节流写入（`persist()` 排的 250ms 定时器）。
@@ -127,6 +129,10 @@ export const useSettingsStore = defineStore('settings', {
       this.$patch((s) => {
         s.keybindings = { ...s.keybindings, [commandId]: spec }
       })
+      // ★ 保存后立即重建分发：这一行是同步的，返回时新键已生效、旧键已让位。
+      //   以前只靠 keydown 时现算 overrides（service.ts），虽也能用，但"保存 → 生效"
+      //   没有显式信号，任何缓存/快照都会造成用户看到的"要等一会"。这里不防抖。
+      refreshKeymap()
       this.applyAll()
       // 键位是**离散动作**（点一下、录一次就完了），不是滑块那种连续输入 —— 没必要进节流队列，
       // 立刻落库才能保证"改完顺手关应用"不丢（见 flush() 的说明）。
@@ -146,6 +152,7 @@ export const useSettingsStore = defineStore('settings', {
         delete next[commandId]
         s.keybindings = next
       })
+      refreshKeymap()
       this.applyAll()
       void this.flush()
     },
@@ -154,6 +161,7 @@ export const useSettingsStore = defineStore('settings', {
       this.$patch((s) => {
         s.keybindings = {}
       })
+      refreshKeymap()
       this.applyAll()
       void this.flush()
     },
@@ -168,6 +176,7 @@ export const useSettingsStore = defineStore('settings', {
       cancelPendingPersist(this)
       const merged = await window.luminAPI.settings.applyImport(patch)
       this.$patch(merged)
+      refreshKeymap()
       this.applyAll()
     },
     persist(): void {
@@ -210,6 +219,7 @@ export const useSettingsStore = defineStore('settings', {
     async reset(): Promise<void> {
       cancelPendingPersist(this)
       this.$patch({ ...defaultSettings })
+      refreshKeymap()
       this.applyAll()
       await window.luminAPI.settings.update({ ...defaultSettings })
     }
