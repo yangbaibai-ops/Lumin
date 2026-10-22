@@ -1,6 +1,7 @@
 // ─── 主进程：导出服务（PDF / HTML / Word / EPUB）────────────────────────────
 import { app, BrowserWindow, dialog } from 'electron'
 import fs from 'fs/promises'
+import { readFileSync } from 'fs'
 import path from 'path'
 import { mainLanguage, mainT } from './i18n'
 import * as fileOps from './fileOps'
@@ -24,16 +25,31 @@ import {
   buildNavXhtml,
   buildOpf,
   embedImagePath,
+  imageSrcs,
   rewriteImageSrcs,
   splitChapters
 } from '../shared/epub'
 import type { ExportPayload, EpubMeta } from '../shared/types'
+// 导出资产本地化（审计 P1-1）：图片 → data URI、KaTeX 字体 → data URI / 删除 @font-face、
+// 导出后自检不得含 `lumin-file:` / `file://`。纯函数在 main/exportAssets.ts（有单测）。
+import {
+  MAX_INLINE_FONT_BYTES,
+  MAX_INLINE_IMAGE_BYTES,
+  assertPortable,
+  dataUriFromBytes,
+  inlineFontFaces,
+  isLocalAssetSrc,
+  localPathFromUrl,
+  mimeForFontPath,
+  mimeForImagePath
+} from './exportAssets'
 
 // ─── 通用：保存对话框 + 写入 ───────────────────────────────────────────────
 async function saveWithDialog(
   defaultName: string,
   ext: string,
-  data: Buffer
+  data: Buffer,
+  filterLabel?: string
 ): Promise<string | null> {
   const win = BrowserWindow.getFocusedWindow()
   const testDir = testOutputDir()
@@ -41,7 +57,7 @@ async function saveWithDialog(
     ? { canceled: false, filePath: path.join(testDir, defaultName) }
     : await dialog.showSaveDialog(win!, {
         defaultPath: defaultName,
-        filters: [{ name: ext.toUpperCase(), extensions: [ext] }]
+        filters: [{ name: filterLabel ?? ext.toUpperCase(), extensions: [ext] }]
       })
   if (result.canceled || !result.filePath) return null
   // **原子写**（临时文件 + fsync + rename，与文档保存同一套）：
@@ -74,14 +90,104 @@ function buildHtml(payload: ExportPayload): string {
  */
 
 export async function exportHtml(payload: ExportPayload): Promise<string | null> {
-  const html = buildHtml(payload)
+  const html = await buildPortableHtml(payload)
   return saveWithDialog(`${payload.title || 'document'}.html`, 'html', Buffer.from(html, 'utf-8'))
 }
 
+/**
+ * 「Word」导出：**如实保存为 `.html`**（审计 P1-1 的 P3 附带项）。
+ *
+ * 现状：旧实现把同一份 HTML 存成 `.doc`，字节与 HTML 导出完全相同、SHA-256 一致 ——
+ * 用户以为拿到了 OOXML，实际只是改了个扩展名；Word 打开时会警告格式不符。
+ * 不引入新依赖就生成不了真正的 `.docx`，所以选**如实**的做法：
+ *   * 扩展名 `.html`（Word 能直接打开，浏览器也能）；
+ *   * 菜单/设置文案写清「Word（HTML 兼容格式）」；
+ *   * 保存对话框的过滤器也叫 `HTML (Word)`，不冒充 Word 文档。
+ */
 export async function exportWord(payload: ExportPayload): Promise<string | null> {
-  // Word 可直接打开 HTML 格式的 .doc 文件
-  const html = buildHtml(payload)
-  return saveWithDialog(`${payload.title || 'document'}.doc`, 'doc', Buffer.from(html, 'utf-8'))
+  const html = await buildPortableHtml(payload)
+  return saveWithDialog(
+    `${payload.title || 'document'} (Word).html`,
+    'html',
+    Buffer.from(html, 'utf-8'),
+    'HTML (Word)'
+  )
+}
+
+/**
+ * 把**本地图片内联为 data URI**（单张 ≤ 8MB）。
+ *
+ * 为什么读失败/超限要抛而不是"保留原路径继续导出"：保留原路径 = 产出一个离开本机
+ * 必然裂图的文件，而用户只会看到"导出成功"。报错里写明是哪张图、多大，用户能自己压缩。
+ */
+async function inlineLocalImages(html: string): Promise<{ html: string; inlined: number }> {
+  const srcs = [...new Set(imageSrcs(html).filter(isLocalAssetSrc))]
+  if (!srcs.length) return { html, inlined: 0 }
+  const mapping: Record<string, string> = {}
+  for (const src of srcs) {
+    const p = localPathFromUrl(src)
+    if (!p) {
+      throw new Error(`EXPORT_ASSET_UNRESOLVED: cannot resolve local image path: ${src}`)
+    }
+    const bytes = await readLocalImage(src)
+    if (!bytes) {
+      throw new Error(
+        `EXPORT_ASSET_UNREADABLE: cannot read local image (missing / not authorized / not a media file): ${p}`
+      )
+    }
+    if (bytes.length > MAX_INLINE_IMAGE_BYTES) {
+      throw new Error(
+        `EXPORT_ASSET_TOO_LARGE: image ${p} is ${(bytes.length / 1024 / 1024).toFixed(1)} MB (limit 8 MB); not inlined`
+      )
+    }
+    mapping[src] = dataUriFromBytes(bytes, mimeForImagePath(p))
+  }
+  return { html: rewriteImageSrcs(html, mapping), inlined: srcs.length }
+}
+
+/**
+ * KaTeX 字体内联：优先 woff2 → data URI；读不到就删掉那组 `@font-face`
+ * （公式退回系统字体，但导出件里不会留下本机绝对路径）。
+ *
+ * 只允许读**应用自己的构建产物**里的字体：CSS 是渲染层送上来的，如果这里接受任意
+ * `file://` 路径，导出就变成了一个"读文件换成 base64 再交回渲染层"的通道。
+ */
+function isAppFontPath(p: string): boolean {
+  try {
+    const assets = path.resolve(app.getAppPath(), 'out', 'renderer', 'assets')
+    const rp = path.resolve(p)
+    return rp === assets || rp.startsWith(assets + path.sep)
+  } catch {
+    return false
+  }
+}
+
+function inlineCssFonts(
+  css: string,
+  html: string
+): { css: string; inlined: number; dropped: number } {
+  // 没有公式就别把 250KB 字体塞进导出件：KaTeX 的 @font-face 全部删掉即可。
+  const hasMath = /class="[^"]*\bkatex\b|katex-display/i.test(html)
+  if (!hasMath) return inlineFontFaces(css, () => null)
+  return inlineFontFaces(css, (fontPath) => {
+    try {
+      if (!isAppFontPath(fontPath)) return null
+      const bytes = readFileSync(fontPath)
+      if (bytes.length > MAX_INLINE_FONT_BYTES) return null
+      return dataUriFromBytes(bytes, mimeForFontPath(fontPath))
+    } catch {
+      return null
+    }
+  })
+}
+
+/** 生成 HTML/Word 导出件：内联资产 → 拼模板 → 自检（不通过就抛，不写盘） */
+async function buildPortableHtml(payload: ExportPayload): Promise<string> {
+  const images = await inlineLocalImages(payload.html)
+  const fonts = inlineCssFonts(payload.css, images.html)
+  const html = buildHtml({ ...payload, html: images.html, css: fonts.css })
+  assertPortable(html, payload.title)
+  return html
 }
 
 /**
@@ -314,6 +420,9 @@ export async function exportEpub(meta: EpubMeta): Promise<string | null> {
     }
   }
   const withImages = chapters.map((c) => ({ ...c, html: rewriteImageSrcs(c.html, mapping) }))
+  // KaTeX 字体同样不能带本机绝对路径（EPUB 里 file:///… 一定读不到）：能内联就内联，
+  // 读不到就删 @font-face —— 与 HTML/Word 共用同一条口径。
+  const epubCss = inlineCssFonts(meta.css, meta.html).css
 
   const container = `<?xml version="1.0" encoding="utf-8"?>
 <container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container">
@@ -345,10 +454,10 @@ export async function exportEpub(meta: EpubMeta): Promise<string | null> {
     },
     ...withImages.map((c, i) => ({
       name: `OEBPS/chapter-${i + 1}.xhtml`,
-      data: Buffer.from(buildChapterXhtml(c, { title: meta.title, lang, css: meta.css }), 'utf-8')
+      data: Buffer.from(buildChapterXhtml(c, { title: meta.title, lang, css: epubCss }), 'utf-8')
     })),
     ...embedded.map((e) => ({ name: `OEBPS/${embedImagePath(e.name)}`, data: e.data })),
-    { name: 'OEBPS/styles.css', data: Buffer.from(meta.css, 'utf-8') }
+    { name: 'OEBPS/styles.css', data: Buffer.from(epubCss, 'utf-8') }
   ])
   // 原子写（临时文件 + fsync + rename）：导出件也不该出现"写了一半"的文件
   await fileOps.writeBinary(result.filePath, zip)
@@ -370,13 +479,11 @@ function imageExtOf(src: string): string {
  */
 async function readLocalImage(src: string): Promise<Buffer | null> {
   try {
-    let p = src
-    if (/^lumin-file:/i.test(src)) {
-      const u = new URL(src)
-      p = decodeURIComponent(u.pathname.replace(/^\//, ''))
-    } else if (!path.isAbsolute(src)) {
-      return null // 相对路径需要文档目录才能解析：渲染层给的已经是 lumin-file:// 绝对 URL
-    }
+    // 统一的 URL→路径解析（lumin-file / file:/// / 绝对路径 / UNC），与导出内联共用
+    const p = localPathFromUrl(src)
+    if (!p) return null
+    // 授权闸（工作区 / 已打开文档目录 / 对话框授权过的位置）+ 媒体扩展名白名单：
+    // 导出是"把磁盘上的文件塞进导出件"，没有这道闸就等于给了渲染层一个任意读文件的通道。
     if (!fileOps.isServableMedia(p)) return null
     return await fs.readFile(p)
   } catch {

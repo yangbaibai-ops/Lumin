@@ -59,7 +59,7 @@ export const EXPORT_FORMATS: readonly ExportFormatSpec[] = [
     id: 'word',
     labelKey: 'menu.exportWord',
     descKey: 'settings.exportWordDesc',
-    brand: 'Word (.doc)',
+    brand: 'Word (HTML)',
     icon: 'file',
     commandId: 'file.exportWord',
     menuAction: 'export-word',

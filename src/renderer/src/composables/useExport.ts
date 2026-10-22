@@ -3,7 +3,12 @@ import { useSettingsStore } from '../stores/settings'
 import { useUiStore } from '../stores/ui'
 import { useEditorStore } from '../stores/editor'
 import { useNotificationsStore } from '../stores/notifications'
-import { getExportCss, renderMermaidInHtml } from '../lib/export'
+import {
+  getExportCss,
+  renderMathInHtml,
+  renderMermaidInHtml,
+  resolveExportImageSrcs
+} from '../lib/export'
 import { exportRequest, printRequest } from '../lib/exportPayload'
 import type { ExportFormat } from '../lib/exportPayload'
 import { beginExportRender, endExportRender } from '../lib/remoteImages'
@@ -33,7 +38,9 @@ export function useExport(): {
     } finally {
       endExportRender()
     }
-    const html = await renderMermaidInHtml(raw, settings.resolveTheme())
+    const withImages = resolveExportImageSrcs(raw)
+    const withMath = await renderMathInHtml(withImages)
+    const html = await renderMermaidInHtml(withMath, settings.resolveTheme())
     // 标题去掉可打开的文本后缀（清单见 shared/textFiles.ts），不在这里手写正则
     return { html, title: stripTextExtension(files.current.name) }
   }

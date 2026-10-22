@@ -25,7 +25,7 @@ test('清单自洽：id 唯一、命令名与菜单动作名唯一、品牌名/�
     '格式集合变了就要同步 shared/types 的联合类型'
   )
   // 命令名 / 动作名 / i18n 键必须唯一；brand 与 icon 只要求非空
-  //（PDF 与 Word 共用 `file` 图标是有意的：图标表里没有 .doc 那个字形）
+  //（PDF 与 Word 共用 `file` 图标是有意的：图标表里没有文档字形；Word 现为 HTML 兼容格式）
   for (const key of ['commandId', 'menuAction', 'labelKey', 'descKey']) {
     const values = EXPORT_FORMATS.map((f) => f[key])
     assert.equal(new Set(values).size, values.length, `${key} 有重复：${values.join(', ')}`)

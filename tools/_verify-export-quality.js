@@ -141,7 +141,8 @@ async function main() {
     )
     report.check(
       'html-and-word-written',
-      fs.existsSync(htmlPath) && fs.existsSync(wordPath) && wordPath.endsWith('.doc'),
+      // Word 导出已改为**如实**的 HTML（审计 P1-1）：不再是伪装成 .doc 的同一份 HTML
+      fs.existsSync(htmlPath) && fs.existsSync(wordPath) && wordPath.endsWith('.html'),
       JSON.stringify({ htmlPath, wordPath })
     )
     const pdfPath = String(

@@ -1,5 +1,28 @@
 // ─── 导出服务（渲染层）：getHTML 输出 + 独立排版 CSS + Mermaid 后处理 ──────
 import type { EffectiveTheme } from '../../../shared/types'
+import { resolveImageSrc } from './imageSrc'
+
+/**
+ * 把 `getHTML()` 里的图片 src 统一解析成**绝对可读**形态（`lumin-file:///…`）。
+ *
+ * 为什么导出必须要这一步：Tiptap 节点里存的是 Markdown 原文（`![](img/a.png)`），
+ * 相对路径在编辑器里能显示只是因为 `renderHTML` 时用「文档目录」解析过；而
+ * `getHTML()` 拿到的是**节点属性原值**。原样交给主进程/PDF 窗口时，相对路径会按
+ * `out/renderer/index.html` 解析 ⇒ 图片裂。导出前统一过一次 `resolveImageSrc`，
+ * 后续「内联成 data URI」才有确定的绝对路径可读。
+ *
+ * 纯 DOM 改写，不改动 store、不触发编辑事务；没有任何 `<img>` 时**原样返回**
+ * （不重新序列化，避免属性顺序/空白变化）。
+ */
+export function resolveExportImageSrcs(html: string): string {
+  if (!/<img\b/i.test(html)) return html
+  const doc = new DOMParser().parseFromString(html, 'text/html')
+  doc.querySelectorAll('img').forEach((img) => {
+    const src = img.getAttribute('src')
+    if (src) img.setAttribute('src', resolveImageSrc(src))
+  })
+  return doc.body.innerHTML
+}
 
 /**
  * ─── Mermaid SVG 尺寸口径（编辑器与导出**共用这一处**）────────────────────────
@@ -238,6 +261,71 @@ export async function getExportCss(): Promise<string> {
     exportCssCache = proseCss + '\n' + katexCss
   }
   return exportCssCache
+}
+
+/**
+ * 把 `getHTML()` 里的公式源码渲染成 KaTeX HTML。
+ *
+ * 为什么导出必须单独做这一步：块级公式的 KaTeX **只存在于 NodeView**（屏幕上的那个
+ * DOM），`renderHTML` 给的是 `<div data-md-math-block data-source="…">源码</div>` ——
+ * 于是导出的 HTML/PDF 里公式一直是**源码文本**，而 KaTeX 的 59 条 `@font-face` 反倒
+ * 被原样带走（审计 P1-1 点名的「字体绝对路径」就是这么来的）。
+ *
+ * 这里把源码取回来，用与编辑器**同一个** `katex` 渲染成 HTML：
+ *   * 块级：`[data-md-math-block]` → `katex-display`；
+ *   * 行内：`[data-md-math]` 里的 `$…$` → 行内 KaTeX；
+ *   * 语法错误不抛（`throwOnError:false` 由 katex 自己给错误态），实在失败就保留原文。
+ *
+ * 没有公式时**原样返回**（不重新序列化 DOM）。
+ */
+export async function renderMathInHtml(html: string): Promise<string> {
+  if (!/data-md-math/i.test(html)) return html
+  const doc = new DOMParser().parseFromString(html, 'text/html')
+  const blocks = Array.from(doc.querySelectorAll('[data-md-math-block]'))
+  const inlines = Array.from(doc.querySelectorAll('[data-md-math]'))
+  if (!blocks.length && !inlines.length) return html
+  let katex: { renderToString(src: string, opts: Record<string, unknown>): string } | null = null
+  try {
+    const mod = await import('katex')
+    katex = mod.default as unknown as {
+      renderToString(s: string, o: Record<string, unknown>): string
+    }
+  } catch {
+    return html
+  }
+  const render = (src: string, displayMode: boolean): string | null => {
+    try {
+      return katex.renderToString(src, {
+        displayMode,
+        throwOnError: false,
+        strict: 'ignore',
+        trust: false
+      })
+    } catch {
+      return null
+    }
+  }
+  for (const el of blocks) {
+    const src = el.getAttribute('data-source') ?? el.textContent ?? ''
+    const rendered = render(src, true)
+    if (!rendered) continue
+    const holder = doc.createElement('div')
+    holder.innerHTML = rendered
+    const node = holder.firstElementChild
+    if (node) el.replaceWith(node)
+  }
+  for (const el of inlines) {
+    // `MdMath` mark 的文本就是 `$…$` 原文（序列化逐字写回），去掉一层定界符再渲染
+    const raw = (el.textContent ?? '').trim()
+    const src = raw.startsWith('$') && raw.endsWith('$') ? raw.slice(1, -1) : raw
+    const rendered = render(src, false)
+    if (!rendered) continue
+    const holder = doc.createElement('span')
+    holder.innerHTML = rendered
+    const node = holder.firstElementChild
+    if (node) el.replaceWith(node)
+  }
+  return doc.body.innerHTML
 }
 
 /** 把 getHTML 输出中的 mermaid 代码块替换为渲染好的 SVG */
