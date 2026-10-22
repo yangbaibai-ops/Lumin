@@ -1,13 +1,13 @@
 <script setup lang="ts">
 // ─── 右侧停靠栏（dock）：窗口最右侧常驻的 40px 竖条 ─────────────────────────────
 //
-// 用户口径（第三次澄清）：
+// 用户口径（第三次澄清 + 本轮「主分支移除 AI」）：
 //   * 停靠栏与面板是**两块 DOM** —— dock 常驻，面板在它左侧；
-//   * dock 上**只有两个按钮**：大纲 / AI（图标 + tooltip + aria-pressed）；
-//   * 点当前按钮 → 面板收起但 dock 还在；点另一个 → 切换并展开；
+//   * dock 上**只有一个按钮**：大纲（图标 + tooltip + aria-pressed）；
+//   * 点当前按钮 → 面板收起但 dock 还在；
 //   * 整条 dock 的显隐只由设置 `rightDockVisible` 决定（编辑器外层用 v-show 包裹）。
 //
-// 这里**没有** tablist / role=tab / aria-selected：两个按钮是独立动作，不是页签。
+// 这里**没有** tablist / role=tab / aria-selected：按钮是独立动作，不是页签。
 // 状态规则全部走 `lib/sidebarPanels.ts` 的纯函数，组件只负责渲染与写 store。
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
@@ -23,10 +23,9 @@ import {
 const { t } = useI18n()
 const settings = useSettingsStore()
 
-/** 按钮表只有这两项：顺序固定，图标与文案都从这里来 */
+/** 按钮表只有大纲一项：顺序固定，图标与文案都从这里来 */
 const PANELS = [
-  { id: 'outline', icon: 'list', labelKey: 'sidebar.outline', panelId: 'right-dock-panel-outline' },
-  { id: 'ai', icon: 'sparkles', labelKey: 'ai.chat.tab', panelId: 'right-dock-panel-ai' }
+  { id: 'outline', icon: 'list', labelKey: 'sidebar.outline', panelId: 'right-dock-panel-outline' }
 ] as const satisfies readonly {
   id: SidebarPanel
   icon: string
@@ -35,7 +34,8 @@ const PANELS = [
 }[]
 
 const state = computed<RightDockState>(() => ({
-  active: settings.rightDockActive,
+  // 主分支只保留大纲；旧版本落库的 'ai' 一律归一到大纲，避免面板空白
+  active: 'outline',
   expanded: settings.outlineRightExpanded,
   rightDockVisible: settings.rightDockVisible
 }))

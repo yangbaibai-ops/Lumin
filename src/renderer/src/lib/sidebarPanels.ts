@@ -1,19 +1,18 @@
-// ─── 右侧停靠栏「两个按钮」的状态机（纯函数）──────────────────────────────────
+// ─── 右侧停靠栏「大纲」按钮的状态机（纯函数）──────────────────────────────────
 //
-// 用户口径：大纲 / AI 是**停靠栏上的两个独立按钮**，不是同一视图的两个页签；
-// 停靠栏本身常驻，点按钮只控制它左侧的面板：
-//   1. 点一个**非当前**面板 → 切到该面板并展开（互斥切换）；
-//   2. 点**当前**面板 → 收起面板（停靠栏仍然在）；
-//   3. 面板收起时点任意按钮 → 展开并显示该面板；
-//   4. `rightDockVisible = false`（设置里关掉「显示右侧停靠栏」）→ 整条 dock 与面板都不显示，
+// 用户口径：主分支移除 AI 后，停靠栏上**只保留「大纲」一个按钮**；停靠栏本身常驻，
+// 点按钮只控制它左侧的面板：
+//   1. 点**当前**面板 → 收起面板（停靠栏仍然在）；
+//   2. 面板收起时点按钮 → 展开并显示大纲；
+//   3. `rightDockVisible = false`（设置里关掉「显示右侧停靠栏」）→ 整条 dock 与面板都不显示，
 //      此时按钮不可达，状态机原样返回。
 //
 // 三个状态分开存：
 //   * `active`        当前选中的面板（settings.rightDockActive，落库，重启恢复）
 //   * `expanded`      面板是否展开（settings.outlineRightExpanded）
 //   * `rightDockVisible` 整条停靠栏是否显示（settings.rightDockVisible，默认 true）
-// 这样「收起面板」不会把 `active` 清掉 —— 设置里关掉再打开、或重启后仍回到上次那个面板。
-export type SidebarPanel = 'outline' | 'ai'
+// 这样「收起面板」不会把 `active` 清掉 —— 设置里关掉再打开、或重启后仍回到大纲。
+export type SidebarPanel = 'outline'
 
 export interface RightDockState {
   /** 当前选中的面板（与 expanded 无关） */
@@ -24,7 +23,7 @@ export interface RightDockState {
   rightDockVisible: boolean
 }
 
-/** 点某个面板按钮之后的新状态（不修改入参） */
+/** 点面板按钮之后的新状态（不修改入参） */
 export function clickRightDockButton(state: RightDockState, clicked: SidebarPanel): RightDockState {
   // 停靠栏被设置关掉时按钮不可达；兜底保持原状，避免任何程序化点击“隔空”打开面板
   if (!state.rightDockVisible) return state

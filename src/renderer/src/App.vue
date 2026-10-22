@@ -37,8 +37,6 @@ const LocalHistoryDialog = defineAsyncComponent(() => import('./components/Local
 const SettingsDialog = defineAsyncComponent(() => import('./components/SettingsDialog.vue'))
 // 命令面板（Ctrl+Shift+P）：与上面那批同一条理由 —— 不按快捷键就不该被解析执行
 const CommandPalette = defineAsyncComponent(() => import('./components/CommandPalette.vue'))
-// AI 摘要/改写面板：同上（只有真的发起 AI 才拉这个 chunk）
-const AiPanel = defineAsyncComponent(() => import('./components/AiPanel.vue'))
 
 const router = useRouter()
 const { t } = useI18n()
@@ -167,7 +165,6 @@ onMounted(() => {
     <LocalHistoryDialog />
     <SettingsDialog />
     <CommandPalette />
-    <AiPanel />
     <GlobalTooltip />
     <!-- 启动遮罩（骨架屏）**已移除**（用户口径：取消打开应用时的进场动画，去掉骨架图）。
          原先这里在 `ui.booting` 期间盖一层 SkeletonScreen（外加一层淡出 Transition），

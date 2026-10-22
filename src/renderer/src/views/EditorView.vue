@@ -1081,8 +1081,8 @@ onBeforeUnmount(() => {
 
       <!-- 右侧停靠栏 + 面板（两块 DOM）：dock 是窗口最右侧的 40px 常驻竖条，
            面板在它左侧。整组显隐由设置「显示右侧停靠栏」(rightDockVisible) 决定；
-           面板是否展开、当前是大纲还是 AI 由状态机各自负责（见 RightDock/OutlinePanel）。
-           `v-show` 而不是 `v-if`：关掉再打开、收起再展开都不丢大纲滚动位置与 AI 会话。 -->
+           面板是否展开由状态机负责（见 RightDock/OutlinePanel）。
+           `v-show` 而不是 `v-if`：关掉再打开、收起再展开都不丢大纲滚动位置。 -->
       <div
         v-show="settings.rightDockVisible"
         class="flex h-full min-h-0 flex-none"

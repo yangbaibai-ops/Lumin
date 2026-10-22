@@ -161,43 +161,6 @@ export function useKeymap(actions: ReturnType<typeof useAppActions>): void {
       defaultKeys: 'Mod+,',
       run: () => handleMenu('settings')
     },
-    {
-      // AI 摘要：用户点名的 **Ctrl+Alt+S**（不是 Mod，mac 上也是 Control）
-      id: 'ai.summarize',
-      titleKey: 'menu.aiSummarize',
-      groupKey: 'keymap.groupEdit',
-      defaultKeys: 'Ctrl+Alt+S',
-      run: () => handleMenu('ai-summarize')
-    },
-    {
-      // AI 改写（选区）：用户点名的 **Ctrl+Alt+R**
-      id: 'ai.rewrite',
-      titleKey: 'menu.aiRewrite',
-      groupKey: 'keymap.groupEdit',
-      defaultKeys: 'Ctrl+Alt+R',
-      run: () => handleMenu('ai-rewrite')
-    },
-    {
-      // AI 对话（右侧栏）：Ctrl+Alt+C。用字面 Ctrl（与摘要/改写同口径，
-      // mac 上也是 Control，避开 Cmd+Alt+C = DevTools）。
-      id: 'ai.chat',
-      titleKey: 'menu.aiChat',
-      groupKey: 'keymap.groupEdit',
-      defaultKeys: 'Ctrl+Alt+C',
-      run: () => handleMenu('ai-chat')
-    },
-    {
-      /**
-       * 右键 AI 子菜单的「优化」也可用快捷键触发（`Ctrl+Alt+O`；用户提议的
-       * `Ctrl+Alt+K` 已被「插入链接」的 Mod+Alt+K 占用，`Ctrl+Alt+S/R/C` 属于
-       * 既有摘要/改写/对话，故落到 O）。动作实现只有右键菜单那一份（runById）。
-       */
-      id: 'ai.optimize',
-      titleKey: 'editorMenu.aiOptimize',
-      groupKey: 'keymap.groupEdit',
-      defaultKeys: 'Ctrl+Alt+O',
-      run: () => void editorMenu.runById('ai.optimize')
-    },
 
     // ── 插入（默认键避开已有注册表：Mod+K 属快捷键设置，故链接用 Mod+Alt+K）──
     {

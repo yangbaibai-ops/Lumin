@@ -61,6 +61,9 @@ export const useSettingsStore = defineStore('settings', {
     },
     /** 应用主题/语言到 DOM */
     applyAll(): void {
+      // 主分支已移除 AI：旧版本落库的 rightDockActive='ai' 归一到大纲，
+      // 否则停靠栏只剩一个按钮、面板却按旧值隐藏，看起来像「面板打不开」。
+      if ((this.rightDockActive as string) !== 'outline') this.rightDockActive = 'outline'
       const theme = this.resolveTheme()
       document.documentElement.classList.remove('theme-light', 'theme-dark', 'theme-sepia')
       document.documentElement.classList.add(`theme-${theme}`)

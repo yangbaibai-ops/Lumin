@@ -1,18 +1,15 @@
 <script setup lang="ts">
-// ─── 右侧面板（大纲 / AI）：停在 40px 停靠栏的**左侧** ─────────────────────────
+// ─── 右侧面板（大纲）：停在 40px 停靠栏的**左侧** ─────────────────────────────
 //
 // 用户口径（第三次澄清）：停靠栏与面板是两块 DOM。
 //   * 本组件只负责面板内容与拖拽调宽，**不再渲染任何按钮**（按钮在 RightDock.vue）；
 //   * 面板显隐 = `settings.outlineRightExpanded`，与 dock 是否存在无关；
-//   * 当前显示哪个面板 = `settings.rightDockActive`，收起时保留，重新展开仍是上次那个；
-//   * 两个面板都常驻 DOM（`v-show`），收起/切换不会丢大纲滚动位置或 AI 聊天记录；
+//   * 面板内容常驻 DOM（`v-show`），收起/展开不会丢大纲滚动位置；
 //   * 宽度沿用 `settings.outlineRightWidth`（钳 160~420），左缘 5px 手柄可拖、可键盘调。
 import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useSettingsStore } from '../stores/settings'
 import Outline from './Outline.vue'
-import AiChatPanel from './AiChatPanel.vue'
-import { isRightDockPanelVisible, type RightDockState } from '../lib/sidebarPanels'
 
 const { t } = useI18n()
 const settings = useSettingsStore()
@@ -25,15 +22,6 @@ const width = computed({
   set: (v: number) =>
     settings.set('outlineRightWidth', Math.max(OUTLINE_MIN, Math.min(OUTLINE_MAX, v)))
 })
-
-const state = computed<RightDockState>(() => ({
-  active: settings.rightDockActive,
-  expanded: settings.outlineRightExpanded,
-  rightDockVisible: settings.rightDockVisible
-}))
-
-/** AI 面板的 `active`：只有真的可见时才刷新/抢焦点（收起或切到大纲就停） */
-const aiActive = computed(() => isRightDockPanelVisible(state.value, 'ai'))
 
 // ── 拖拽调宽：手柄在面板**左缘**，宽度 = 面板右缘（dock 左边缘）到指针的距离 ──
 const dragRef = ref<HTMLElement | null>(null)
@@ -107,25 +95,15 @@ function onDragStart(e: MouseEvent): void {
       />
     </div>
 
-    <!-- 面板内容常驻 DOM，只切显隐：大纲滚动位置、AI 聊天记录在收起/再打开之间保留。 -->
+    <!-- 面板内容常驻 DOM，只切显隐：大纲滚动位置在收起/再打开之间保留。 -->
     <div class="flex min-h-0 flex-1 flex-col">
       <div
-        v-show="settings.rightDockActive === 'outline'"
         id="right-dock-panel-outline"
         class="min-h-0 flex-1 px-1.5 pt-1"
         role="region"
         :aria-label="t('sidebar.outline')"
       >
         <Outline />
-      </div>
-      <div
-        v-show="settings.rightDockActive === 'ai'"
-        id="right-dock-panel-ai"
-        class="min-h-0 flex-1"
-        role="region"
-        :aria-label="t('ai.chat.tab')"
-      >
-        <AiChatPanel :active="aiActive" />
       </div>
     </div>
   </aside>

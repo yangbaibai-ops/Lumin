@@ -79,7 +79,7 @@ export interface AppSettings {
   /** 显示右侧停靠栏（40px 竖条：大纲 / AI 两个按钮；默认开） */
   rightDockVisible: boolean
   /** 停靠栏上次选中的面板（收起面板不清除；重启后仍回到它） */
-  rightDockActive: 'outline' | 'ai'
+  rightDockActive: 'outline'
   /** 右侧面板是否展开（停靠栏常驻；默认展开） */
   outlineRightExpanded: boolean
   /** 右侧面板宽度（px；拖左缘调整，钳在 160~420） */
@@ -616,12 +616,6 @@ export type MenuAction =
   | 'paste-plain'
   /** 「导出启动诊断」（帮助菜单 / 状态栏 / 设置页共用）：写一份脱敏的启动日志合集 */
   | 'export-startup-diagnostics'
-  /** AI 摘要（全文或选区）：只**生成预览**，不自动改文档 */
-  | 'ai-summarize'
-  /** AI 改写（必须先有选区）：先出 diff 预览，用户确认后才单事务替换 */
-  | 'ai-rewrite'
-  /** AI 对话：切到右侧栏的 AI 标签页（没有右侧栏时先打开三栏布局） */
-  | 'ai-chat'
 
 export interface LuminAPI {
   app: {

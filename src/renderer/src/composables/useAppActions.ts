@@ -4,7 +4,6 @@ import { useFilesStore } from '../stores/files'
 import { useFindStore } from '../stores/find'
 import { useSettingsStore } from '../stores/settings'
 import { useUiStore } from '../stores/ui'
-import { useAiStore } from '../stores/ai'
 import { useExport } from './useExport'
 import { useEditorMode } from './useEditorMode'
 import { useOutlineSide } from './useOutlineSide'
@@ -222,18 +221,6 @@ export function useAppActions(): {
       case 'export-startup-diagnostics':
         // 原生菜单「帮助 → 导出启动诊断」走到这里；顶部栏/状态栏/设置页直接调同一个函数
         void exportStartupDiagnostics()
-        break
-      case 'ai-summarize':
-        // 全文或选区 → 预览面板流式生成；**不自动改文档**（用户点「插入」才落笔）
-        void useAiStore().openSummary()
-        break
-      case 'ai-rewrite':
-        // 选区改写：没有选区时只提示，不打开面板（面板本身也要求先捕获选区）
-        void useAiStore().openRewrite()
-        break
-      case 'ai-chat':
-        // 右侧栏对话：切到 AI 标签页；没有三栏时先把右侧栏打开（用户显式动作）
-        useAiStore().openChat()
         break
       /**
        * `theme-changed` 这条菜单动作**已删除**（报告 §3.2 P0-2）：原生菜单的主题项以前写

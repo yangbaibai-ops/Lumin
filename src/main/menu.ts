@@ -96,13 +96,7 @@ export function installMenu(): void {
         { type: 'separator' },
         { label: T('findReplace'), click: () => send('find') },
         { label: T('replace'), click: () => send('replace') },
-        { label: T('globalSearch'), click: () => send('global-search') },
-        { type: 'separator' },
-        // AI 三项只发动作名（与顶部菜单/快捷键/命令面板同一条 handleMenu 实现）；
-        // 按既有约定**不设 accelerator**，键位由渲染层命令表统一接管。
-        { label: T('aiChat'), click: () => send('ai-chat') },
-        { label: T('aiSummarize'), click: () => send('ai-summarize') },
-        { label: T('aiRewrite'), click: () => send('ai-rewrite') }
+        { label: T('globalSearch'), click: () => send('global-search') }
       ]
     },
     {
