@@ -43,6 +43,8 @@ import { MathPreview } from './mathPreview'
 import { ZhSpellcheck } from './zhSpellcheck'
 import { BulletListMarked, TaskListTight } from './listMarkers'
 import { MarkdownParseLimits } from './parseLimits'
+// 软换行往返：段内单个换行的**行结构**必须保住（审计 P2：20k 行保存后被合并）
+import { SoftBreakHardBreak } from './softBreak'
 // CJK 强调定界符口径：`**「…」**` 这类中文写法必须能成对（见 cjkEmphasis.ts）
 import { CjkEmphasis } from './cjkEmphasis'
 import { WysiwygPointer, LinkSource } from './pointer'
@@ -134,6 +136,8 @@ export const editorExtensions: Extensions = [
     // 关掉后 `Ctrl+U` 不再被它吞掉，工具栏与右键菜单里的入口也已一并移除。
     // 将来若要恢复，正确做法是做成一等 mark（`escape:false`，同 MdHtml），而不是重开它。
     underline: false,
+    // 硬换行用下面注册的 SoftBreakHardBreak（带 soft 属性：保留段内软换行的行结构）
+    hardBreak: false,
     link: {
       openOnClick: false,
       autolink: true,
@@ -145,6 +149,8 @@ export const editorExtensions: Extensions = [
   ItalicQuiet,
   StrikeQuiet,
   CodeQuiet,
+  // 硬换行节点（soft 属性标记段内软换行；序列化 soft→\n、硬换行→\\\n）
+  SoftBreakHardBreak,
   // 真实文本标记模型：mdStyle（样式正文）+ mdMarker（语法标记文本）+ 派生归一化
   // mdCodeLiteral 必须紧跟 mdStyle 之后注册（见该 mark 的说明：最内层 mark 才有 noEsc 效果）
   MdStyle,

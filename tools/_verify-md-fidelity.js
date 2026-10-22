@@ -49,8 +49,11 @@ const DUMP =
   process.env.LUMIN_FIDELITY_DUMP || path.join(os.tmpdir(), 'lumin-md-fidelity-report.json')
 const VERBOSE = process.env.LUMIN_FIDELITY_VERBOSE === '1'
 
-/** 触发应用自己的落盘管线（同步），返回文档文本 */
+/** 触发应用自己的落盘管线（同步），返回文档文本。
+ *  `setContent(..., {emitUpdate:false})` 不产生编辑事务，`flushSync` 的脏闸会跳过 ——
+ *  这里显式置脏，等价于"用户在文档里动了一下"，量到的才是序列化器产出。 */
 const FLUSH = `(() => {
+  window.__L.store('editor').dirty = true
   window.dispatchEvent(new Event('beforeunload'))
   return window.__L.files().current?.content ?? null
 })()`
