@@ -18,6 +18,8 @@ import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
 import {
+  availableDockPanels,
+  hasAvailableDockPanels,
   clickRightDockButton,
   isRightDockPanelVisible,
   isRightDockVisible
@@ -36,12 +38,18 @@ const UI_STORE = read('src/renderer/src/stores/ui.ts')
 // 只检查真正的标记/属性：先剥掉 HTML 注释与行注释（注释里会解释“为什么不是页签”）
 const markup = (text) => text.replace(/<!--[\s\S]*?-->/g, '').replace(/\/\/.*$/gm, '')
 
-const base = { active: 'outline', expanded: true, rightDockVisible: true }
+// 大纲在编辑区右侧 = dock 上有可用的「大纲」按钮（本轮新增的可用性前提）
+const base = { active: 'outline', expanded: true, rightDockVisible: true, outlineOnRight: true }
 
-// ── 状态机：active / expanded / rightDockVisible ─────────────────────────────
+// ── 状态机：active / expanded / rightDockVisible / 按钮可用性 ─────────────────
 test('再点当前面板：只收起 expanded，active 保留（dock 仍在）', () => {
   const next = clickRightDockButton(base, 'outline')
-  assert.deepEqual(next, { active: 'outline', expanded: false, rightDockVisible: true })
+  assert.deepEqual(next, {
+    active: 'outline',
+    expanded: false,
+    rightDockVisible: true,
+    outlineOnRight: true
+  })
   assert.equal(isRightDockPanelVisible(next, 'outline'), false)
   assert.equal(isRightDockVisible(next), true, '面板收起不影响 dock 本身')
 })
@@ -51,32 +59,50 @@ test('单独收起 expanded 后，点按钮：展开并显示大纲', () => {
   assert.deepEqual(clickRightDockButton(collapsed, 'outline'), {
     active: 'outline',
     expanded: true,
-    rightDockVisible: true
+    rightDockVisible: true,
+    outlineOnRight: true
   })
 })
 
 test('rightDockVisible=false：整条 dock 不可见，按钮不可达（状态机原样返回）', () => {
-  const hidden = { active: 'outline', expanded: true, rightDockVisible: false }
+  const hidden = { ...base, rightDockVisible: false }
   assert.equal(isRightDockVisible(hidden), false)
   assert.equal(isRightDockPanelVisible(hidden, 'outline'), false)
   assert.deepEqual(clickRightDockButton(hidden, 'outline'), hidden)
 })
 
+test('大纲搬回左栏：dock 上没有任何可用按钮 ⇒ 整条 dock 自动隐藏（设置值保持）', () => {
+  const left = { ...base, outlineOnRight: false }
+  assert.deepEqual(availableDockPanels(left), [], '大纲在左栏时按钮表为空')
+  assert.equal(isRightDockVisible(left), false, '没有可用按钮就不渲染 dock')
+  assert.equal(isRightDockPanelVisible(left, 'outline'), false, '右侧大纲面板也不可见')
+  assert.deepEqual(clickRightDockButton(left, 'outline'), left, '程序化点击不能隔空打开面板')
+  assert.equal(left.rightDockVisible, true, '用户设置值不被渲染条件改写')
+})
+
+test('可用性只由大纲位置决定：搬回右侧即恢复按钮', () => {
+  assert.deepEqual(availableDockPanels({ outlineOnRight: true }), ['outline'])
+  assert.deepEqual(availableDockPanels({ outlineOnRight: false }), [])
+  assert.equal(hasAvailableDockPanels({ outlineOnRight: true }), true)
+  assert.equal(hasAvailableDockPanels({ outlineOnRight: false }), false)
+})
+
 test('三个状态互不串味：active 与 expanded 分离、rightDockVisible 只控制整条 dock', () => {
-  const state = { active: 'outline', expanded: false, rightDockVisible: true }
+  const state = { ...base, expanded: false }
   assert.equal(isRightDockPanelVisible(state, 'outline'), false, '收起时面板不可见')
   assert.equal(isRightDockVisible(state), true)
   assert.deepEqual(clickRightDockButton(state, 'outline'), {
     active: 'outline',
     expanded: true,
-    rightDockVisible: true
+    rightDockVisible: true,
+    outlineOnRight: true
   })
 })
 
 test('状态机是纯函数：不修改入参', () => {
-  const state = { active: 'outline', expanded: true, rightDockVisible: true }
+  const state = { ...base }
   const next = clickRightDockButton(state, 'outline')
-  assert.deepEqual(state, { active: 'outline', expanded: true, rightDockVisible: true })
+  assert.deepEqual(state, base)
   assert.notEqual(next, state)
 })
 
@@ -90,7 +116,12 @@ test('RightDock：独立元素、40px 竖条、恰好一个按钮（大纲）', 
   const ids = [...RIGHT_DOCK.matchAll(/\{ id: '(outline|ai)'/g)].map((m) => m[1])
   assert.deepEqual(ids, ['outline'], '按钮表必须只剩 outline 一项')
   assert.doesNotMatch(markup(RIGHT_DOCK), /'ai'|ai\.chat|sparkles/, '主分支不许再有 AI 按钮入口')
-  assert.match(RIGHT_DOCK, /v-for="p in PANELS"/, '按钮来自 PANELS 表')
+  assert.match(RIGHT_DOCK, /v-for="p in panels"/, '按钮来自可用按钮表')
+  assert.match(
+    RIGHT_DOCK,
+    /availableDockPanels\(state\.value\)/,
+    '按钮表必须经过 availableDockPanels 过滤（大纲在左栏时为空）'
+  )
   assert.match(RIGHT_DOCK, /data-right-dock-button/, '按钮缺少 data-right-dock-button')
   assert.match(
     RIGHT_DOCK,
@@ -100,6 +131,7 @@ test('RightDock：独立元素、40px 竖条、恰好一个按钮（大纲）', 
   assert.match(RIGHT_DOCK, /:aria-label="t\(p\.labelKey\)"/, '按钮缺少 aria-label')
   assert.match(RIGHT_DOCK, /:title="t\(p\.labelKey\)"/, '按钮缺少 tooltip（title）')
   assert.match(RIGHT_DOCK, /data-panel="p\.id"/, '按钮缺少面板标记')
+  assert.match(RIGHT_DOCK, /outlineOnRight: settings\.outlineOnRight/, '可用性必须接大纲位置')
 })
 
 test('RightDock：没有页签语义、没有面板内部隐藏/显示按钮', () => {
@@ -129,11 +161,31 @@ test('OutlinePanel：只渲染大纲，AI 面板与右栏切换逻辑已移除',
   assert.doesNotMatch(OUTLINE_PANEL, /ai\.chat|aiActive/)
 })
 
-test('EditorView：dock 与面板作为两块 DOM 一起挂载，整组由 rightDockVisible 控制', () => {
+test('EditorView：dock 与面板作为两块 DOM 一起挂载，挂载/显示分两层判定', () => {
   assert.match(EDITOR_VIEW, /import RightDock from '\.\.\/components\/RightDock\.vue'/)
   assert.match(EDITOR_VIEW, /<OutlinePanel \/>/)
   assert.match(EDITOR_VIEW, /<RightDock \/>/)
-  assert.match(EDITOR_VIEW, /v-show="settings\.rightDockVisible"/, '整组显隐必须接新设置')
+  assert.match(
+    EDITOR_VIEW,
+    /v-if="rightDockAreaAvailable"/,
+    '大纲在左栏时整组不挂载（否则右侧会多出一份重复的大纲行）'
+  )
+  assert.match(
+    EDITOR_VIEW,
+    /v-show="rightDockAreaVisible"/,
+    '整组显示还必须接用户设置（关掉 dock 时隐藏）'
+  )
+  assert.match(
+    EDITOR_VIEW,
+    /hasAvailableDockPanels[\s\S]{0,120}from '\.\.\/lib\/sidebarPanels'/,
+    '挂载判定必须复用纯函数，不能另写一份「有没有可用按钮」'
+  )
+  assert.match(
+    EDITOR_VIEW,
+    /isRightDockVisible[\s\S]{0,160}from '\.\.\/lib\/sidebarPanels'/,
+    '显示判定必须复用纯函数，不能另写一份「两个条件」'
+  )
+  assert.match(EDITOR_VIEW, /outlineOnRight: settings\.outlineOnRight/, '可用性必须接大纲位置')
   assert.match(EDITOR_VIEW, /data-right-dock-area/)
   const panelAt = EDITOR_VIEW.indexOf('<OutlinePanel />')
   const dockAt = EDITOR_VIEW.indexOf('<RightDock />')

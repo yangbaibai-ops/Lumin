@@ -2,24 +2,22 @@
 //
 // 这个开关此前只在「设置 → 编辑器」里有一处入口（`SettingsDialog` 直接写 settings）。
 // 现在顶部快捷工具栏的视图区、应用内「视图」菜单、原生菜单 + 快捷键都得能用同一件事，
-// 于是把「翻这个开关时顺带要做的两件小事」收在这里，避免各处各写一份、慢慢走样：
+// 于是把「翻这个开关时顺带要做的几件小事」收在这里，避免各处各写一份、慢慢走样。
 //
-//   * 打开（放到右侧）→ 右侧大纲面板设为**展开**、左栏页签收回「文件」，
-//     并**记住左栏刚才显示的是哪一页**（用户口径：搬回来要回到那一页）。
-//     不这么做的话，用户点完可能看到「左栏还停在大纲页签」或「右侧大纲是一条折叠窄轨」，
-//     与「打开就能同时看到目录与大纲」的预期不符。
-//   * 关掉（放回左侧）→ 左栏页签**恢复成打开前那一页**（第十轮用户口径）：
-//        - 打开前在「文件」⇒ 回「文件」（大纲回左栏了，但用户本来就在看目录，不该被切走）；
-//        - 打开前在「大纲」⇒ 回「大纲」（这也顺带保住了旧行为：刚把大纲搬回来，页签跟着亮，
-//          用户看得到"它去哪了"）；
-//        - 没有记录（例如启动时 `outlineOnRight` 就已经是 true）⇒ 退回「大纲」，
-//          因为那一步刚把大纲搬回左栏，亮起它是最不容易让人迷惑的默认。
+// 规则本身是纯函数 `lib/outlineSideState.ts` 的 `moveOutlineSide`（单测覆盖），这里只负责
+// 把 store 里的几个字段读出来、把结果写回去：
+//   * 搬到右侧 → 左栏页签收回「文件」，右侧 dock/面板打开；
+//   * **搬回左侧 → 左栏强制可见**（用户报障的根因：原来只改了位置，没打开左栏），页签切到
+//     「大纲」，并把搬动前左栏的显隐记进 `ui.sidebarVisibleBeforeOutlineLeft`；
+//   * 再搬回右侧 → 左栏显隐还原成搬动前的样子（不污染用户的左栏偏好）。
 //
-// 与 `AppSidebar.vue` 里那个 `watch(settings.outlineOnRight)` 是同一口径的两半：
-// 那边兜住「任何来源把它改成 true」的收敛（页签收回「文件」），这里负责「顺带把状态摆正」。
+// 为什么「搬回左侧」必须把 `settings.sidebarVisible` 也写成 true：重启时 `main.ts` 用
+// `settings.sidebarVisible` 初始化 `ui.sidebarVisible`，只改 ui 的话重启后左栏又没了。
+// 切回右侧时按记忆把设置值还原（没有记忆则保持当前值）。
 import { computed, type ComputedRef } from 'vue'
 import { useSettingsStore } from '../stores/settings'
 import { useUiStore } from '../stores/ui'
+import { moveOutlineSide } from '../lib/outlineSideState'
 
 export interface OutlineSide {
   /** 当前是否「大纲在编辑区右侧」（三栏） */
@@ -37,17 +35,34 @@ export function useOutlineSide(): OutlineSide {
 
   function setOutlineSide(next: boolean): void {
     if (settings.outlineOnRight === next) return
-    settings.set('outlineOnRight', next)
-    if (next) {
-      // 先记账再改页签：顺序反了就永远记成「文件」（那正是要避免的）
-      ui.sidebarTabBeforeOutlineRight = ui.sidebarTab
-      // 右侧大纲现在住在常驻停靠栏里：把停靠栏一起打开，否则会「左栏大纲没了、右边也没有」
-      settings.set('rightDockVisible', true)
-      settings.set('outlineRightExpanded', true)
-      ui.sidebarTab = 'files'
-    } else {
-      ui.sidebarTab = ui.sidebarTabBeforeOutlineRight ?? 'outline'
-      ui.sidebarTabBeforeOutlineRight = null
+
+    const change = moveOutlineSide(
+      {
+        outlineOnRight: settings.outlineOnRight,
+        sidebarVisible: ui.sidebarVisible,
+        sidebarVisibleBefore: ui.sidebarVisibleBeforeOutlineLeft,
+        sidebarTab: ui.sidebarTab,
+        rightDockVisible: settings.rightDockVisible,
+        outlineRightExpanded: settings.outlineRightExpanded
+      },
+      next
+    )
+    if (!change.changed) return
+
+    settings.set('outlineOnRight', change.outlineOnRight)
+    // 左栏显隐：切到左侧强制 true、切回右侧还原记忆值（见纯函数的说明）
+    ui.sidebarVisible = change.sidebarVisible
+    if (change.sidebarVisibilityChanged) {
+      settings.set('sidebarVisible', change.sidebarVisible)
+    }
+    ui.sidebarVisibleBeforeOutlineLeft = change.sidebarVisibleBefore
+    // 左栏页签：搬家后直接亮出大纲（此刻右侧 dock 因无按钮而隐藏，不亮就「哪都看不到大纲」）
+    ui.sidebarTab = change.sidebarTab
+
+    if (change.outlineOnRight) {
+      // 既有口径：搬到右侧就得看得见（dock 设置值恢复为开、面板展开）
+      settings.set('rightDockVisible', change.rightDockVisible)
+      settings.set('outlineRightExpanded', change.outlineRightExpanded)
     }
   }
 

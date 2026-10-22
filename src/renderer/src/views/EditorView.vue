@@ -20,6 +20,11 @@ import { useEditorMode } from '../composables/useEditorMode'
 import { findWordRange, type SpellMenuData } from '../lib/editor/menu/spell'
 import { getZhIssueAt, type ZhDocIssue } from '../lib/editor/zhSpellcheck'
 import { preloadKatexCss } from '../lib/editor/mathStyles'
+import {
+  isRightDockVisible,
+  hasAvailableDockPanels,
+  type RightDockState
+} from '../lib/sidebarPanels'
 import i18n from '../i18n'
 
 // ─── 编辑器页面：工具栏 + 实时渲染/分屏对比/源码三模式 + 状态栏 ────────────
@@ -37,6 +42,26 @@ const editorMenu = useEditorMenuStore()
  * 登记的是`useEditorMode` 里那份唯一的 flush 实现（防抖窗口内的序列化 + 账本记账）。
  */
 const { flushWysiwyg } = useEditorMode()
+
+/**
+ * 右侧停靠栏整组（面板 + dock）是否渲染 / 显示。
+ *
+ * 两层条件，各自对应一件事：
+ *   * **挂不挂载**（v-if）= dock 上还有没有可用按钮：大纲搬回左侧边栏后按钮不再可用
+ *     （主分支 dock 上只有大纲），整组**不挂载** —— 否则右侧会留下第二份大纲行（左栏一份、
+ *     右侧隐藏一份），切文档时两套同时重渲染，正是 AppSidebar 里点名过的重复渲染问题。
+ *   * **显不显示**（v-show）= 设置里的「显示右侧停靠栏」（用户偏好，保持原值）：
+ *     关掉再打开不丢面板展开状态与滚动位置。
+ * 将来 AI 分支合并、dock 多出按钮时，`hasAvailableDockPanels` 自动为真，这里不用改。
+ */
+const rightDockState = computed<RightDockState>(() => ({
+  active: 'outline',
+  expanded: settings.outlineRightExpanded,
+  rightDockVisible: settings.rightDockVisible,
+  outlineOnRight: settings.outlineOnRight
+}))
+const rightDockAreaAvailable = computed(() => hasAvailableDockPanels(rightDockState.value))
+const rightDockAreaVisible = computed(() => isRightDockVisible(rightDockState.value))
 
 /**
  * 预热 KaTeX 样式（第十二轮启动量化，见 lib/editor/mathStyles.ts）：
@@ -1080,11 +1105,13 @@ onBeforeUnmount(() => {
       </div>
 
       <!-- 右侧停靠栏 + 面板（两块 DOM）：dock 是窗口最右侧的 40px 常驻竖条，
-           面板在它左侧。整组显隐由设置「显示右侧停靠栏」(rightDockVisible) 决定；
-           面板是否展开由状态机负责（见 RightDock/OutlinePanel）。
-           `v-show` 而不是 `v-if`：关掉再打开、收起再展开都不丢大纲滚动位置。 -->
+           面板在它左侧。**挂载**看「dock 上有没有可用按钮」（大纲搬回左栏 ⇒ 没有 ⇒ 整组
+           不挂载，避免与左栏大纲重复渲染，`rightDockVisible` 设置值保留、搬回右侧即恢复）；
+           **显示**看设置「显示右侧停靠栏」（v-show：关掉再打开、收起再展开都不丢滚动位置）。
+           面板是否展开由状态机负责（见 RightDock/OutlinePanel）。 -->
       <div
-        v-show="settings.rightDockVisible"
+        v-if="rightDockAreaAvailable"
+        v-show="rightDockAreaVisible"
         class="flex h-full min-h-0 flex-none"
         data-right-dock-area
       >

@@ -197,6 +197,19 @@ function toggleOutlineRight(v: boolean): void {
   setOutlineSide(v)
 }
 
+/**
+ * 左栏显隐：**必须同时改 ui 与 settings**。
+ *
+ * 此前设置页只写 `settings.sidebarVisible`，而左栏是 `v-if="ui.sidebarVisible"` ——
+ * 于是拨这个开关界面毫无反应，要等重启（`main.ts` 用设置初始化 ui）才生效；
+ * 更糟的是两个值会长期不一致，`useOutlineSide` 的「搬动前左栏显隐」记忆就会记错。
+ * 工具栏 / 菜单 / 左缘把手那几条路一直是两份一起写，这里补齐同一条口径。
+ */
+function setSidebarVisible(v: boolean): void {
+  ui.sidebarVisible = v
+  settings.set('sidebarVisible', v)
+}
+
 /** 自动保存开关：SettingSwitch 传新值进来；关闭时取消未触发的磁盘定时器（草稿崩溃保护不受影响） */
 function toggleAutoSave(v: boolean): void {
   settings.set('autoSave', v)
@@ -976,7 +989,7 @@ function formatTime(ms: number): string {
                         <SettingSwitch
                           :model-value="settings.sidebarVisible"
                           :label="t('settings.sidebarToggle')"
-                          @update:model-value="(v) => settings.set('sidebarVisible', v)"
+                          @update:model-value="setSidebarVisible"
                         />
                       </div>
                       <div class="set-row">

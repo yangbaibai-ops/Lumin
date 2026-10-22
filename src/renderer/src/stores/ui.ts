@@ -103,16 +103,19 @@ export const useUiStore = defineStore('ui', {
      */
     sidebarSearchTick: 0,
     /**
-     * 「把大纲放到编辑区右侧」**之前**左栏显示的是哪一页（null = 没有记录）。
+     * 「把大纲搬回左侧边栏」**之前**左栏是否可见（null = 没有记录）。
      *
-     * 用户口径（第十轮）：大纲搬去右侧、再搬回左侧之后，左栏要**回到打开前的那一页** ——
-     * 打开前在「文件」就回「文件」，在「大纲」就回「大纲」。
-     * 三栏模式打开期间页签行是隐藏的（左栏只承担文件树），所以这个值只能由
-     * `useOutlineSide` 在**打开的那一刻**记下来（见那里的说明）；一次搬回即消费掉。
-     * 只在会话内有效，不落库：它是"刚才在看哪一页"的临时记忆，重启后无从得知
-     * （启动时若 `outlineOnRight` 已经是 true，没有记录 → 搬回时退回「大纲」）。
+     * 为什么需要它（本轮用户报障）：大纲在右侧时左栏常常被用户收起（只留编辑区 + 右侧大纲），
+     * 此时把大纲搬回左侧必须**强制把左栏显示出来**，否则大纲挂回了左栏、整条左栏却仍不存在
+     * （`App.vue` 是 `v-if="ui.sidebarVisible"`）。但强制显示不能改掉用户的左栏偏好 ——
+     * 切回右侧时要把这里记下的值还回去：原来收起就仍收起，原来开着就仍开着。
+     *
+     * 只在会话内有效、不落库：它是"搬动前是什么样"的临时记忆，重启后无从得知
+     * （启动时若 `outlineOnRight` 已经是 true，没有记录 → 切回右侧时保持当前左栏状态）。
+     * 与 `settings.sidebarVisible` 的分工：那个是落库的用户偏好，切到左侧时会临时写成 true
+     * （保证重启后左栏仍在），切回右侧时按这里记下的原值还原。
      */
-    sidebarTabBeforeOutlineRight: null as 'files' | 'outline' | null,
+    sidebarVisibleBeforeOutlineLeft: null as boolean | null,
     editorMode: 'wysiwyg' as EditorMode,
     focusMode: false,
     confirmState: null as (ConfirmOptions & { resolve: (v: boolean) => void }) | null,

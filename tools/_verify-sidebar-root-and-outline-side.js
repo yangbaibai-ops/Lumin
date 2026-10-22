@@ -399,52 +399,62 @@ async function main() {
       `aria-pressed=${onRight.pressed} / title=${onRight.title}（文案说的是**下一步**）`
     )
 
-    // 关掉：大纲回左栏，左栏页签**恢复成打开前那一页**（第十轮用户口径）。
-    // 这一段开始前页签是「文件」（本套件一开始就设成 files），所以搬回来之后仍应是「文件」。
+    // 关掉：大纲回左栏。本轮用户口径（报障修复）：
+    //   * 左栏**必须可见**（`ui.sidebarVisible` 与设置一起为 true，否则整条左栏都不渲染）；
+    //   * 页签亮「大纲」—— 搬回来的就是它，而且右侧 dock 此时已因无按钮而整组隐藏，
+    //     停在「文件」会让用户觉得"大纲不见了"；
+    //   * 右侧停靠栏整组隐藏（`rightDockVisible` 设置值保持不变）。
     await clickSelector(send, ev, '[data-outline-side]')
     await sleep(900)
     const backLeft = JSON.parse(
-      await ev(`(() => JSON.stringify({
-        setting: window.__L.settings().outlineOnRight,
-        panel: !!document.querySelector('[data-outline-panel]'),
-        tab: window.__L.ui().sidebarTab,
-        remember: window.__L.ui().sidebarTabBeforeOutlineRight,
-        outlineRows: document.querySelectorAll('[data-outline-item]').length
-      }))()`)
+      await ev(`(() => {
+        const ui = window.__L.ui()
+        const s = window.__L.settings()
+        const sidebar = document.querySelector('[data-sidebar-root]')
+        const area = document.querySelector('[data-right-dock-area]')
+        const b = sidebar ? sidebar.getBoundingClientRect() : null
+        return JSON.stringify({
+          setting: s.outlineOnRight,
+          sidebarVisible: ui.sidebarVisible,
+          sidebarVisibleSetting: s.sidebarVisible,
+          sidebar: !!sidebar,
+          sidebarWidth: b ? Math.round(b.width) : 0,
+          dockAreaDisplay: area ? getComputedStyle(area).display : null,
+          dockVisible: !!document.querySelector('[data-right-dock]') && document.querySelector('[data-right-dock]').getClientRects().length > 0,
+          tab: ui.sidebarTab,
+          outlineRows: sidebar ? sidebar.querySelectorAll('[data-outline-item]').length : 0,
+          visibleOutlineRows: sidebar
+            ? [...sidebar.querySelectorAll('[data-outline-item]')].filter(
+                (el) => el.getClientRects().length > 0
+              ).length
+            : 0,
+          dockPanelMounted: !!document.querySelector('[data-outline-panel]')
+        })
+      })()`)
     )
     report.note('after second click ' + JSON.stringify(backLeft))
     report.check(
-      'toggle-back-restores-the-files-tab',
-      backLeft.setting === false && backLeft.panel === false && backLeft.tab === 'files',
-      `outlineOnRight=${backLeft.setting} / 右侧面板=${backLeft.panel} / 左栏页签=${backLeft.tab}（打开前是「文件」⇒ 搬回来还是「文件」）`
+      'toggle-back-shows-sidebar',
+      backLeft.setting === false &&
+        backLeft.sidebarVisible === true &&
+        backLeft.sidebarVisibleSetting === true &&
+        backLeft.sidebar === true &&
+        backLeft.sidebarWidth > 0,
+      `outlineOnRight=${backLeft.setting} / ui.sidebarVisible=${backLeft.sidebarVisible} / 设置=${backLeft.sidebarVisibleSetting} / 左栏宽=${backLeft.sidebarWidth}px`
     )
     report.check(
-      'toggle-back-consumes-the-remembered-tab',
-      backLeft.remember === null,
-      `记忆用掉即清空（还留着的话下一次"打开前"的判断会被上一次污染）：${JSON.stringify(backLeft.remember)}`
+      'toggle-back-shows-outline-in-sidebar',
+      backLeft.tab === 'outline' &&
+        backLeft.outlineRows > 0 &&
+        backLeft.visibleOutlineRows === backLeft.outlineRows,
+      `左栏页签=${backLeft.tab} / 大纲条目=${backLeft.visibleOutlineRows}/${backLeft.outlineRows}（可见/总数）`
     )
-
-    // 另一个方向：打开前停在「大纲」⇒ 搬回来仍是「大纲」
-    await ev(`(() => { window.__L.ui().sidebarTab = 'outline'; return 'ok' })()`)
-    await sleep(400)
-    await clickSelector(send, ev, '[data-outline-side]')
-    await sleep(900)
-    const remembered = await ev(`window.__L.ui().sidebarTabBeforeOutlineRight`)
-    await clickSelector(send, ev, '[data-outline-side]')
-    await sleep(900)
-    const backOutline = JSON.parse(
-      await ev(`(() => JSON.stringify({
-        setting: window.__L.settings().outlineOnRight,
-        tab: window.__L.ui().sidebarTab,
-        remember: window.__L.ui().sidebarTabBeforeOutlineRight,
-        outlineRows: document.querySelectorAll('[data-outline-item]').length
-      }))()`)
-    )
-    report.note('outline-tab round ' + JSON.stringify({ remembered, ...backOutline }))
     report.check(
-      'toggle-back-restores-the-outline-tab',
-      remembered === 'outline' && backOutline.setting === false && backOutline.tab === 'outline',
-      `打开时记下=${remembered} / 搬回来=${backOutline.tab}（打开前是「大纲」⇒ 搬回来还是「大纲」）`
+      'toggle-back-hides-right-dock',
+      (backLeft.dockAreaDisplay === null || backLeft.dockAreaDisplay === 'none') &&
+        backLeft.dockVisible === false &&
+        backLeft.dockPanelMounted === false,
+      `右侧停靠栏 display=${backLeft.dockAreaDisplay} / 可见=${backLeft.dockVisible} / 面板挂载=${backLeft.dockPanelMounted}（设置值 rightDockVisible 保持不变）`
     )
 
     // ── ② 同一个开关也在「视图」菜单里（文案与开关 title 同源，用相等来找它）──
