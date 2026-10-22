@@ -15,7 +15,11 @@ export default defineConfig(
       // 把 src 下真正要拦的 14 个 error 淹掉 —— 门禁必须是**可信信号**
       // （见 docs/optimization-program.md Wave 4）。脚手架自身的风格靠 prettier 单独管。
       'tools/**',
-      'build/**'
+      'build/**',
+      // `tmp/` 是本机证据/一次性脚本（`gitignore` 已列），里面既有 CommonJS 也有
+      // 自动生成的 JS；不忽略时 `npm run lint`（npm run ci 的一环）在任何跑过
+      // 验收/审计的机器上都会被几千条脚手架告警淹掉，本地门禁直接不可用。
+      'tmp/**'
     ]
   },
   tseslint.configs.recommended,
