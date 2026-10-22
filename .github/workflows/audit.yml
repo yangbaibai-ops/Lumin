@@ -1,0 +1,139 @@
+# ─── 依赖漏洞扫描（审计 P1-5）─────────────────────────────────────────────────
+#
+# 为什么需要它：CI 只有类型/风格/单测/构建，**看不见 39 个生产依赖的已知漏洞**。
+# 这条 workflow 把 `npm audit --omit=dev` 变成每周可见的信号，并且**不阻断主线**：
+#   * `npm audit` 的退出码只写进 summary，不决定 job 结论（step 有 continue-on-error）；
+#   * 有 high/critical 时只给 ⚠️ 提示 + 修复命令，先建立基线、再按路线图收 allowlist。
+#
+# 为什么用 `--package-lock-only`：审计只需要 lockfile 里的解析结果与 integrity，
+# 不必真的装一遍 Electron/原生依赖 —— 更快，也不会因为 runner 上的原生模块而假红。
+#
+# 为什么显式 `--registry=https://registry.npmjs.org/`：仓库 `.npmrc` 默认指向
+# npmmirror（国内安装快），但**镜像没有实现 audit 接口**（实测返回 404 NOT_IMPLEMENTED）。
+# 不覆盖 registry 的话，扫描会拿不到 advisories，最坏情况是把「没扫到」当成「没漏洞」。
+# 所以这里只让**审计请求**走官方源，安装仍按 `.npmrc` 的镜像（审计完不安装）。
+#
+# CodeQL（可选，默认关闭）：GitHub 对 JS/TS 的 CodeQL 模板很简单，但**私有仓库需要
+# GitHub Advanced Security** 才能上传 SARIF；在没开 GHAS 的仓库里强跑会每天红一次。
+# 所以这里做成显式开关：仓库 Settings → Secrets and variables → Actions → Variables
+# 里加 `ENABLE_CODEQL=true`（并确认有 GHAS）后，下面的 codeql job 才会跑；否则跳过。
+# 更省事的替代是仓库 Settings → Code security → CodeQL **default setup**（不需要 workflow）。
+name: Security audit
+
+on:
+  push:
+    branches: [main, master]
+  schedule:
+    # 每周一 03:17 UTC（北京时间 11:17）：与 nightly CDP 错开，避免互相抢 runner
+    - cron: '17 3 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: security-audit-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  npm-audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      # action 一律 pin 到 commit SHA（仓库口径，见 ci.yml / dependabot.yml）
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: 生产依赖漏洞扫描（high/critical；不阻断主线）
+        id: audit
+        shell: bash
+        continue-on-error: true
+        run: |
+          set +e
+          npm audit --omit=dev --audit-level=high --package-lock-only \
+            --registry=https://registry.npmjs.org/ --json > npm-audit.json 2>/dev/null
+          code=$?
+          set -e
+          echo "exit_code=$code" >> "$GITHUB_OUTPUT"
+          export AUDIT_EXIT=$code
+
+          node - <<'NODE'
+          const fs = require('fs')
+          let audit = {}
+          try {
+            audit = JSON.parse(fs.readFileSync('npm-audit.json', 'utf8'))
+          } catch {
+            audit = {}
+          }
+          const v = audit.metadata?.vulnerabilities
+          const lines = ['## 生产依赖漏洞扫描（npm audit --omit=dev）', '']
+          if (!v) {
+            // ⚠️ 关键：拿不到 advisories（镜像 404 / 网络失败）绝不能显示成「没有漏洞」
+            lines.push('⚠️ **扫描未完成**：没有拿到 audit 结果（registry 不支持 audit / 网络失败 / 命令报错）。')
+            lines.push('')
+            lines.push(`命令退出码：\`${process.env.AUDIT_EXIT ?? '?'}\`；返回：`)
+            lines.push('')
+            lines.push('```json')
+            lines.push(JSON.stringify(audit, null, 2).slice(0, 2000))
+            lines.push('```')
+            fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, lines.join('\n') + '\n')
+            process.exit(0)
+          }
+          const high = Number(v.high ?? 0)
+          const critical = Number(v.critical ?? 0)
+          const moderate = Number(v.moderate ?? 0)
+          const low = Number(v.low ?? 0)
+          if (high + critical === 0) {
+            lines.push('✅ 未发现 high / critical 级生产依赖漏洞。')
+          } else {
+            lines.push(
+              `⚠️ 发现 **${critical} critical / ${high} high** 级生产依赖漏洞（本 workflow 不阻断主线，请按周处理）。`
+            )
+            lines.push('')
+            lines.push('| 包 | 级别 | 直接依赖 | 修复建议 |')
+            lines.push('| --- | --- | --- | --- |')
+            for (const [name, adv] of Object.entries(audit.vulnerabilities ?? {})) {
+              const sev = String(adv.severity ?? '')
+              if (sev !== 'high' && sev !== 'critical') continue
+              const fix = adv.fixAvailable
+                ? typeof adv.fixAvailable === 'object'
+                  ? `${adv.fixAvailable.name}@${adv.fixAvailable.version}`
+                  : '可自动修复'
+                : '暂无自动修复'
+              lines.push(`| ${name} | ${sev} | ${adv.isDirect ? '是' : '否'} | ${fix} |`)
+            }
+          }
+          lines.push('', `其余：moderate ${moderate} / low ${low}（含 dev 依赖不计入本口径）。`, '')
+          lines.push('完整 JSON 见 job 的 `npm-audit.json`（未上传 artifact，避免把漏洞清单留在构建产物里）。')
+          fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, lines.join('\n') + '\n')
+          NODE
+
+          # 二次确认：把人类可读的那份也打印到 job log（summary 里只有计数与表格）
+          if [ "$code" -ne 0 ]; then
+            npm audit --omit=dev --audit-level=high --package-lock-only \
+              --registry=https://registry.npmjs.org/ || true
+          fi
+          exit 0
+
+  # ─── 可选：CodeQL（默认不跑；仓库变量 ENABLE_CODEQL=true 且已开 GHAS 时才生效）──
+  codeql:
+    if: ${{ vars.ENABLE_CODEQL == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - uses: github/codeql-action/init@4bfa242aa49c5f7c6770b98670d354a7dfac05f8 # v3
+        with:
+          languages: javascript-typescript
+
+      - uses: github/codeql-action/analyze@4bfa242aa49c5f7c6770b98670d354a7dfac05f8 # v3
+        with:
+          category: '/language:javascript-typescript'
