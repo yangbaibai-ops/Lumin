@@ -20,23 +20,29 @@ const ROOT = fileURLToPath(new URL('..', import.meta.url))
 const read = (rel) => readFileSync(join(ROOT, rel), 'utf-8')
 
 const FILES = read('src/renderer/src/stores/files.ts')
+const CORE = read('src/renderer/src/lib/filesCore.ts')
 const EDITOR = read('src/renderer/src/stores/editor.ts')
 const MODE = read('src/renderer/src/composables/useEditorMode.ts')
 const WYSIWYG = read('src/renderer/src/components/editor/WysiwygEditor.vue')
 
 test('files.dirty：内容比较走归一化（容差 = 尾随换行 / 行尾差异）', () => {
-  assert.match(FILES, /import \{ sameDocumentText \} from '\.\.\/\.\.\/\.\.\/shared\/documentText'/)
   const dirtyBlock = FILES.slice(FILES.indexOf('dirty(state)'), FILES.indexOf('/* ── 统计量'))
-  assert.match(
-    dirtyBlock,
-    /sameDocumentText\(state\.current\.content, state\.current\.savedContent\)/
-  )
+  assert.match(dirtyBlock, /isDocumentDirty\(state\.current\)/)
   assert.doesNotMatch(dirtyBlock, /state\.current\.content !== state\.current\.savedContent/)
+  // 归一化比较的唯一实现在 filesCore.isDocumentDirty（它引 shared/documentText）
+  assert.match(
+    CORE,
+    /import \{ sameDocumentText \} from '\.\.\/\.\.\/\.\.\/shared\/documentText\.ts'/
+  )
+  assert.match(
+    CORE,
+    /export function isDocumentDirty\(doc: DirtyDocSnapshot \| null \| undefined\): boolean \{[\s\S]*?sameDocumentText\(doc\.content, doc\.savedContent\)/
+  )
 })
 
 test('writeDraft：归一化相同就直接清理草稿、不写"假脏"草稿', () => {
-  assert.match(FILES, /if \(sameDocumentText\(cur\.content, cur\.savedContent\)\)/)
-  assert.match(FILES, /!sameDocumentText\(doc\.content, doc\.savedContent\)/)
+  assert.match(FILES, /if \(!isDocumentDirty\(cur\)\)/)
+  assert.match(FILES, /if \(this\.current === doc && isDocumentDirty\(doc\)\)/)
 })
 
 test('editorStore：modeSwitching 门控存在，markDirty 在切换期间让行', () => {
@@ -60,5 +66,13 @@ test('useEditorMode：切换成对开关门控；flush 只在内容真的不同�
 })
 
 test('onUpdate 仍然经过 markDirty（真实编辑必须标脏，不能被门控误伤）', () => {
-  assert.match(WYSIWYG, /onUpdate: \(\{ editor: ed \}\) => \{[\s\S]*?editorStore\.markDirty\(\)/)
+  assert.match(
+    WYSIWYG,
+    /onUpdate: \(\{ editor: ed(?:, transaction(?:, appendedTransactions)?)? \}\) => \{[\s\S]*?editorStore\.markDirty\(\)/
+  )
+  // 载入归一化带自己的事务标记：跳过分支必须在 markDirty 之前，否则"打开即脏"会回来
+  assert.match(
+    WYSIWYG,
+    /onUpdate: \(\{ editor: ed, transaction(?:, appendedTransactions)? \}\) => \{[\s\S]*?getMeta\(LOAD_NORMALIZE_META\)[\s\S]*?markDirty\(\)/
+  )
 })

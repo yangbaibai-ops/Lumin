@@ -4,6 +4,7 @@ import { useEditor, EditorContent } from '@tiptap/vue-3'
 import type { Editor } from '@tiptap/core'
 import TableQuickBar from './TableQuickBar.vue'
 import { buildEditorExtensions } from '../../lib/editor/extensions'
+import { LOAD_NORMALIZE_META } from '../../lib/editor/inlineMarks'
 import { openLinkTarget } from '../../lib/linkOpen'
 import { getMarkdown, setMarkdownBudgetNotice } from '../../lib/editor/markdownStorage'
 import { installLongTaskSentinel } from '../../lib/editor/workBudget'
@@ -53,6 +54,15 @@ function flushSync(ed: Editor): void {
   // 源码模式的编辑面是 textarea，编辑器只是隐藏副本——切回编辑器视图时由
   // 账本（`files.contentIsStale('wysiwyg')`）驱动一次性同步，此处无需 emit。
   if (ui.editorMode === 'source') return
+  /**
+   * ⚠️ 没有任何**用户输入**待序列化时，一次序列化只会把「解析→序列化」的规范形态
+   * 写回 store：对 setext 标题 / `~~~` 围栏 / 缩进代码 / `__粗体__` / 表格对齐等语法，
+   * 它和磁盘字节不同 —— 用户什么都没改，却被标成「已修改」并写出一份假草稿
+   * （用户报障：第一次打开文档就弹未保存文档 + 未保存草稿）。
+   * `editorStore.dirty` 只由真实编辑置位（载入归一化带 LOAD_NORMALIZE_META，被 onUpdate 跳过），
+   * 所以这里以它为唯一闸门。
+   */
+  if (!editorStore.dirty) return
   clearTimeout(syncTimer as never)
   syncTimer = null
   try {
@@ -61,6 +71,18 @@ function flushSync(ed: Editor): void {
     // 序列化结果由父组件写入 files（onEditorUpdate）并消费写者标记
   } catch {
     /* 序列化失败时保持上次状态 */
+  }
+}
+
+/**
+ * 把编辑器当前的序列化结果记成"打开时的规范基线"（见 files.noteCanonicalContent）。
+ * 序列化失败不能影响编辑：吞掉，等下一次（onUpdate/重新打开）再记。
+ */
+function noteCanonicalBaseline(ed: Editor): void {
+  try {
+    files.noteCanonicalContent(getMarkdown(ed))
+  } catch {
+    /* 序列化失败时保持现状 */
   }
 }
 
@@ -143,7 +165,32 @@ const editor = useEditor({
       }
     }
   },
-  onUpdate: ({ editor: ed }) => {
+  onUpdate: ({ editor: ed, transaction, appendedTransactions }) => {
+    /**
+     * 载入时的归一化有两种入口，都不是用户编辑：不标脏、不排序列化。
+     *
+     *  1. `normalizeMdMarkers` 自己 dispatch 的那一笔 —— 带 `LOAD_NORMALIZE_META`；
+     *  2. **插件追加事务**：载入时的首个空事务会触发 `inlineMarks` 的 `appendTransaction`，
+     *     它把解析产物里的遗留 mark 转成真实标记文本（文档因此变了），而 Tiptap 的 update
+     *     事件给的 `transaction` 是那笔**根事务**（0 步）。只看根事务会把它当成用户输入。
+     *
+     * 判据「根事务 0 步 + 变化全部来自 appended」只可能出现在"没有用户动作"的场合：
+     * 打字/粘贴/工具栏命令/代码块写回都会在根事务里带步骤，那些照常标脏。
+     * 跳过它，打开的文档才保持「与磁盘一致 = 干净」；否则 250ms 后会把序列化器的
+     * 规范形态写回 store，对 setext/围栏/缩进代码/`__粗体__` 等语法就是"没改也脏"。
+     */
+    const autoNormalize =
+      transaction?.getMeta(LOAD_NORMALIZE_META) === true ||
+      ((transaction?.steps.length ?? 0) === 0 && appendedTransactions.some((tr) => tr.docChanged))
+    if (autoNormalize) {
+      /**
+       * 顺手把归一化后的规范 Markdown 记成"第二个干净基线"：用户改一个字再撤销时，
+       * 编辑器序列化出来的就是这一份（与磁盘原文不同）——没有它，"撤销回基线"仍会被
+       * 判成脏并留下草稿。只在缓冲区还没脏时记录（见 files.noteCanonicalContent）。
+       */
+      noteCanonicalBaseline(ed)
+      return
+    }
     // 防抖 250ms：高频输入合并序列化（开发文档性能建议）
     editorStore.markDirty()
     clearTimeout(syncTimer as never)
@@ -184,7 +231,16 @@ const editor = useEditor({
     // 真实文本标记模型：初始解析产物只有 legacy bold 等 mark，
     // 归一化一次把标记文本写入文档（后续由 appendTransaction 自动维护）。
     // 延后一拍：onCreate 时首个事务还在 PM 手里，同步改会被它自己的初始化覆盖。
-    deferAfterPmEvent(() => ed.commands.normalizeMdMarkers())
+    deferAfterPmEvent(() => {
+      ed.commands.normalizeMdMarkers()
+      /**
+       * 归一化**之后**把序列化结果记为规范基线。不能只在 onUpdate 里记：
+       * 有些文档（例如只有一个 setext 标题 + 段落）根本不会产生归一化事务，
+       * onUpdate 一次都不来 —— 那样旧版本留下的"规范形态假草稿"就永远认不出来，
+       * 第一次打开仍会弹「未保存的草稿」。
+       */
+      noteCanonicalBaseline(ed)
+    })
   },
   onSelectionUpdate: ({ editor: ed }) => {
     updateCursor(ed)

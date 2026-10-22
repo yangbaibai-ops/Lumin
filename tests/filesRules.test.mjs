@@ -19,7 +19,11 @@ import {
   planTouchRecent,
   planTouchRecentFolder
 } from '../src/renderer/src/lib/recent.ts'
-import { draftKeyFor, restorableDraft } from '../src/renderer/src/lib/draftRules.ts'
+import {
+  draftKeyFor,
+  planDraftOnOpen,
+  restorableDraft
+} from '../src/renderer/src/lib/draftRules.ts'
 import {
   encodingLabel,
   formatHistoryTime,
@@ -130,6 +134,43 @@ test('restorableDraft：空/相同内容不打扰用户', () => {
     '确实更新'
   )
   assert.equal(restorableDraft(draft(), '正文', 'C:\\a.md', null), false, '拿不到 mtime 时不冒险')
+})
+
+// ─── 打开文件时旧草稿的处置（用户报障：第一次打开却弹未保存草稿）───────────────
+test('planDraftOnOpen：与磁盘内容一致（归一化）⇒ 删掉，不弹', () => {
+  const d = (content, over = {}) => ({
+    key: 'file-x',
+    path: 'C:\\a.md',
+    content,
+    savedAt: 9000,
+    ...over
+  })
+  // 只差尾随换行 / CRLF：用户什么都没改 —— 旧版本写下的假草稿
+  assert.equal(planDraftOnOpen(d('# 标题\n\n正文\n'), '# 标题\n\n正文', 'C:\\a.md', 1000), 'purge')
+  assert.equal(planDraftOnOpen(d('a\r\nb\r\n'), 'a\nb', 'C:\\a.md', 1000), 'purge')
+  // 真的不同 + 比磁盘新 ⇒ 保留（用户唯一的一份正文）
+  assert.equal(planDraftOnOpen(d('# 标题\n\n正文 X\n'), '# 标题\n\n正文', 'C:\\a.md', 1000), 'keep')
+  // 真的不同但不比磁盘新（含 1s 容差）⇒ 删掉：磁盘才是正本
+  assert.equal(
+    planDraftOnOpen(d('# 标题\n\n正文 X\n'), '# 标题\n\n正文', 'C:\\a.md', 9000),
+    'purge'
+  )
+  // 没有草稿 / 撞键到别的路径 / 拿不到 mtime ⇒ 什么都不做（不弹也不删）
+  assert.equal(planDraftOnOpen(null, 'x', 'C:\\a.md', 1), 'none')
+  assert.equal(planDraftOnOpen(d('正文'), '正文', 'C:\\b.md', 1), 'none')
+  assert.equal(planDraftOnOpen(d('正文 X'), '正文', 'C:\\a.md', null), 'none')
+  // 未命名缓冲区：空草稿清掉、有正文才恢复（没有磁盘正本可比时间）
+  assert.equal(planDraftOnOpen(d('', { path: null }), '', null, null), 'purge')
+  assert.equal(planDraftOnOpen(d('   ', { path: null }), '', null, null), 'purge')
+  assert.equal(planDraftOnOpen(d('草稿正文', { path: null }), '', null, null), 'keep')
+})
+
+test('restorableDraft = planDraftOnOpen 的 keep 分支（归一化比较是唯一口径）', () => {
+  const d = { key: 'k', path: 'C:\\a.md', content: '正文\n', savedAt: 5000 }
+  assert.equal(restorableDraft(d, '正文', 'C:\\a.md', 1000), false, '只差尾随换行不算内容不同')
+  const changed = { ...d, content: '正文 X\n' }
+  assert.equal(restorableDraft(changed, '正文', 'C:\\a.md', 1000), true)
+  assert.equal(restorableDraft(changed, '正文', 'C:\\a.md', 5000), false, '不比磁盘新')
 })
 
 test('docText：未命名文档的编码/行尾取设置默认值', () => {

@@ -16,7 +16,7 @@ import { planMove, type MoveRejectReason, type MoveSource } from '../lib/treeMov
 import { errorReason } from '../lib/errors'
 import { confirmDiscardIfDirty } from '../lib/dialog'
 import { flushEditorBeforeReplace } from '../lib/editorFlush'
-import { draftKeyFor, restorableDraft } from '../lib/draftRules'
+import { draftKeyFor, planDraftOnOpen } from '../lib/draftRules'
 import { currentSessionSlot } from '../lib/sessionSlot'
 import { SAVE_CONFLICT_KIND } from '../lib/saveConflict'
 import { docLoad, heavyReason } from '../lib/largeDoc'
@@ -39,6 +39,7 @@ import {
   askedPathStillCurrent,
   decideSamePathReopen,
   focusPathAfterMove,
+  isDocumentDirty,
   nextSaveRetryDelay,
   planDraftWrite,
   planReopenWhenClean,
@@ -93,6 +94,15 @@ export interface CurrentDoc {
   content: string
   mtimeMs: number | null
   savedContent: string
+  /**
+   * 打开时编辑器把磁盘原文解析后**重新序列化**得到的规范 Markdown（用户没改过时才记录）。
+   *
+   * 为什么脏判定需要它：setext 标题 / `~~~` 围栏 / 缩进代码 / `__粗体__` / 表格对齐等
+   * 语法的序列化结果与磁盘字节不同。用户"改一个字再撤销"之后，编辑器吐出来的就是规范形态
+   * —— 与 `savedContent` 仍不相等，但没有规范基线就会被判成脏、写草稿、关窗弹提示
+   * （见 lib/filesCore.isDocumentDirty）。
+   */
+  canonicalContent?: string | null
   /** 该文档当前的编码（未命名文档用设置里的默认编码，落到具体值时才有意义） */
   encoding: ConcreteEncoding
   /** 文件原本是否带 BOM（写回时保持一致） */
@@ -240,8 +250,9 @@ export const useFilesStore = defineStore('files', {
   getters: {
     dirty(state): boolean {
       // 内容比较（不是"发生过事务"）：只切观看模式/补尾随换行都不算修改。
-      // 归一化口径见 shared/documentText.normalizeForDirtyCompare（与保存路径一致）。
-      return !!state.current && !sameDocumentText(state.current.content, state.current.savedContent)
+      // 归一化口径见 shared/documentText.normalizeForDirtyCompare（与保存路径一致）；
+      // 规范基线见 lib/filesCore.isDocumentDirty（"编辑后又撤销"也要回到干净）。
+      return isDocumentDirty(state.current)
     },
     /* ── 统计量（第二十五轮轻量化）────────────────────────────────────────────
      * 三个计数原先各自对**全文**做一遍扫描（`replace` + 两次 `match` / `split`），
@@ -486,6 +497,8 @@ export const useFilesStore = defineStore('files', {
       if (!this.current) return
       this.current.path = null
       this.current.savedContent = ''
+      // 路径摘掉后旧磁盘基线作废：规范基线也随之失效（正文变成了未保存内容）
+      this.current.canonicalContent = null
       this.draftRestore = null
       useWorkspaceDocsStore().invalidate()
     },
@@ -683,9 +696,8 @@ export const useFilesStore = defineStore('files', {
            */
           const cur = this.current
           if (cur) {
-            const draft = await window.luminAPI.drafts.load(this.draftKey(path))
-            if (restorableDraft(draft, cur.content, cur.path, cur.mtimeMs))
-              this.draftRestore = draft
+            const key = this.draftKey(path)
+            this.draftRestore = await this.resolveOpenDraft(key, cur.content, cur.path, cur.mtimeMs)
             const settings = useSettingsStore()
             const diskMtime = await window.luminAPI.file.mtime(path).catch(() => null)
             if (
@@ -754,6 +766,8 @@ export const useFilesStore = defineStore('files', {
           content: opened.content,
           mtimeMs: opened.mtimeMs,
           savedContent: opened.content,
+          // 规范基线由编辑器在识别出"载入归一化"时补记（见 noteCanonicalContent）
+          canonicalContent: null,
           encoding: opened.encoding,
           hadBom: opened.hadBom,
           eol: opened.eol,
@@ -842,11 +856,15 @@ export const useFilesStore = defineStore('files', {
           ui.editorMode = 'source'
           ui.toast(i18n.global.t('toast.plainTextSourceMode', { name: opened.name }), 'info')
         }
-        // 草稿恢复检查：只有「内容确实不同 + 确实比磁盘新」才值得打扰用户
-        const draft = await window.luminAPI.drafts.load(this.draftKey(path))
-        if (restorableDraft(draft, opened.content, opened.path, opened.mtimeMs)) {
-          this.draftRestore = draft
-        }
+        // 草稿恢复检查：只有「内容确实不同（归一化后）+ 确实比磁盘新」才值得打扰用户；
+        // 与磁盘一致 / 不比磁盘新的旧草稿直接删掉（否则"第一次打开"也会弹未保存草稿）
+        const key = this.draftKey(path)
+        this.draftRestore = await this.resolveOpenDraft(
+          key,
+          opened.content,
+          opened.path,
+          opened.mtimeMs
+        )
         useRecentStore().touchFile(path)
         // 申报外部改动监测（第一百零八轮）：基线用刚读到的 mtime
         void this.syncExternalWatch()
@@ -864,6 +882,7 @@ export const useFilesStore = defineStore('files', {
         content: '',
         mtimeMs: null,
         savedContent: '',
+        canonicalContent: null,
         // 未命名文档还没有真实编码：用设置里的默认（auto 时落成 utf-8，保存时按它写）
         encoding: untitledEncoding(useSettingsStore().defaultEncoding),
         hadBom: false,
@@ -891,7 +910,11 @@ export const useFilesStore = defineStore('files', {
       // 另一半是「启动期间别开占位缓冲」，见 EditorView 的 onMounted）。
       const buffer = this.current
       const draft = await window.luminAPI.drafts.untitledDraft()
-      if (this.current === buffer && restorableDraft(draft, this.current.content, null, null)) {
+      // 空草稿 / 与空白缓冲一致的草稿不弹（判据与文件草稿同源：planDraftOnOpen）
+      if (
+        this.current === buffer &&
+        planDraftOnOpen(draft, this.current.content, null, null) === 'keep'
+      ) {
         this.draftRestore = draft
       }
     },
@@ -960,6 +983,7 @@ export const useFilesStore = defineStore('files', {
         if (this.current !== cur) return false
         cur.content = opened.content
         cur.savedContent = opened.content
+        cur.canonicalContent = null
         cur.mtimeMs = opened.mtimeMs
         cur.hadBom = opened.hadBom
         cur.eol = opened.eol
@@ -980,6 +1004,47 @@ export const useFilesStore = defineStore('files', {
       // preload 上那个创建时就固定下来的 sessionSlot（启动窗口那时还是 null）。
       return draftKeyFor(path, currentSessionSlot())
     },
+    /**
+     * 打开文档时处置同键旧草稿：值得恢复的返回给 `draftRestore`，没有恢复价值的**删掉**。
+     *
+     * 为什么删除动作必须在这里（而不是只靠"不展示"）：用户报障「第一次打开文档就弹未保存
+     * 的草稿」正是旧版本留下的假草稿（内容与磁盘只差尾随换行/CRLF）。不删的话，它会在
+     * 每一次打开时被重新判一次；`restorableDraft` 已经用归一化比较挡住展示，这里再把
+     * 它清掉，盘上才真正回到「没改过 = 没草稿」。判据全在纯函数 `planDraftOnOpen`
+     * （`tests/filesRules.test.mjs` 覆盖一致/更新/过期/撞键四种形态）。
+     */
+    async resolveOpenDraft(
+      key: string,
+      content: string,
+      path: string | null,
+      mtimeMs: number | null
+    ): Promise<DraftInfo | null> {
+      const draft = await window.luminAPI.drafts.load(key)
+      const plan = planDraftOnOpen(draft, content, path, mtimeMs)
+      if (plan === 'purge') {
+        // 删不掉（权限/占用）不影响打开：下次打开会再判一次，展示仍然被挡住
+        await window.luminAPI.drafts.remove(key).catch(() => {})
+        return null
+      }
+      if (plan === 'keep' && draft) {
+        /**
+         * 旧版本写下的"规范形态"假草稿：它和磁盘原文不相等（setext→`#`、`~~~`→反引号…），
+         * 所以上面只能先当候选。若这份文档**已经**有了规范基线（同路径重开、或编辑器
+         * 归一化抢在草稿加载之前完成），就能直接判定它没有恢复价值 —— 清掉，不弹。
+         */
+        const canonical = this.current?.canonicalContent
+        if (
+          canonical &&
+          samePath(path, this.current?.path ?? null) &&
+          sameDocumentText(draft.content, canonical)
+        ) {
+          await window.luminAPI.drafts.remove(key).catch(() => {})
+          return null
+        }
+        return draft
+      }
+      return null
+    },
 
     // ── 内容更新 + 自动保存 + 草稿 ──
     /**
@@ -998,6 +1063,36 @@ export const useFilesStore = defineStore('files', {
     /** 整篇替换意图（不改内容本身，只宣告「上一代已作废」）：打开/草稿/切编码/载入历史，见 setContent 说明 */
     noteExternalReplace(): void {
       write(this.sync, 'external')
+    },
+    /**
+     * 记录「打开时编辑器归一化后的规范 Markdown」作为第二个干净基线（见 CurrentDoc.canonicalContent）。
+     *
+     * 只在**用户还没改过**时记：一旦缓冲区已经脏了，序列化产物里混着用户输入，
+     * 拿它当基线会把真实修改洗白（关窗不提示、保存丢失）。
+     * 调用点：WysiwygEditor 的 `onUpdate` 在识别出"载入归一化"时顺手序列化一次。
+     */
+    noteCanonicalContent(content: string): void {
+      const cur = this.current
+      if (!cur || isDocumentDirty(cur)) return
+      cur.canonicalContent = content
+      /**
+       * 旧版本（`onUpdate` 无条件回写序列化结果）留下的"假草稿"，内容正是这一份**规范形态**：
+       * 它与磁盘原文（setext / `~~~` / 缩进代码…）不相等，所以打开时的 `planDraftOnOpen`
+       * 只能先当成候选。规范基线一出来就能证明它没有任何恢复价值 ⇒ 立刻清掉，
+       * 而不是让用户第一次打开就看见「未保存的草稿」。
+       *
+       * 同一份草稿里若混着用户的真实输入，它就不会与 `content` 相等，仍然照常弹出。
+       */
+      const draft = this.draftRestore
+      if (
+        draft?.path &&
+        cur.path &&
+        samePath(draft.path, cur.path) &&
+        sameDocumentText(draft.content, content)
+      ) {
+        this.draftRestore = null
+        void window.luminAPI.drafts.remove(draft.key).catch(() => {})
+      }
     },
     /** 命令式编辑面报告「我已渲染到当前世代」（渲染动作 = setContent / setState 之后调用） */
     markContentApplied(surface: DrivenSurface): void {
@@ -1022,10 +1117,15 @@ export const useFilesStore = defineStore('files', {
       })
       if (draftPlan === 'write-now') {
         void this.writeDraft()
-      } else if (draftPlan === 'debounce') {
+      } else if (draftPlan === 'debounce' || draftPlan === 'clear') {
+        /**
+         * `clear` = 内容已经回到基线（撤销回原样 / 编辑后又被自动保存清掉）。
+         * 仍然走同一个 `writeDraft`：它在干净时只删不写。1.2s 防抖让「编辑→撤销→再编辑」
+         * 这种连续动作只收尾一次，也避免每敲一个字就发一次删除 IPC。
+         */
         this.draftTimer = setTimeout(() => void this.writeDraft(), DRAFT_DEBOUNCE_MS)
       }
-      if (this.current?.path && settings.autoSave) {
+      if (this.current?.path && settings.autoSave && this.dirty) {
         /**
          * ⚠️ **按编码重新打开之后，自动保存不许落盘**（用户报障的那条数据损坏路径）：
          * 用错误编码重新解释出来的缓冲区里就是乱码；它一旦被自动写回，磁盘上的原始内容就没了，
@@ -1070,7 +1170,9 @@ export const useFilesStore = defineStore('files', {
        * （实测：断言红，而且下次启动真的会弹"检测到未保存的草稿"）。
        */
       const job = (async () => {
-        if (sameDocumentText(cur.content, cur.savedContent)) {
+        // 干净文档（与磁盘或"打开时的规范形态"一致）不写，只清掉盘上的旧草稿。
+        // 判据收在 isDocumentDirty 里，与 dirty getter 同源。
+        if (!isDocumentDirty(cur)) {
           if (this.draftRestore?.key !== key) await window.luminAPI.drafts.remove(key)
           return
         }
@@ -1242,7 +1344,7 @@ export const useFilesStore = defineStore('files', {
         // 会退化成"弹模态"（手动保存那条路才会弹），把正在写作的人拽出来。
         this.saveRetryDelay = nextSaveRetryDelay(this.saveRetryDelay)
         this.saveRetryAt = Date.now() + this.saveRetryDelay
-        if (this.current === doc && !sameDocumentText(doc.content, doc.savedContent)) {
+        if (this.current === doc && isDocumentDirty(doc)) {
           clearTimeout(this.saveTimer as never)
           this.saveTimer = setTimeout(
             () => void (auto ? this.saveAutomatically() : this.save()),
@@ -1266,6 +1368,9 @@ export const useFilesStore = defineStore('files', {
     async finishSave(doc: CurrentDoc, snapshot: string, mtimeMs: number): Promise<boolean> {
       doc.mtimeMs = mtimeMs
       doc.savedContent = snapshot
+      // 落盘之后磁盘上的那一份就是唯一基线：规范基线必须让位（否则"保存后再撤销"
+      // 会被旧规范形态判成干净，掩盖真实差异）
+      doc.canonicalContent = null
       /**
        * 落盘之后**重算**"缓冲区里还有没有 U+FFFD"（报告 §4.2 P2 的第二半）。
        *
@@ -1492,6 +1597,7 @@ export const useFilesStore = defineStore('files', {
         await window.luminAPI.file.rememberEncoding(cur.path, concrete)
         cur.content = opened.content
         cur.savedContent = opened.content
+        cur.canonicalContent = null
         cur.mtimeMs = opened.mtimeMs
         cur.encoding = concrete
         // 诊断：显式「自动检测」走的是**磁盘原始字节重新判定**（主进程日志会列出被忽略的旧记忆）

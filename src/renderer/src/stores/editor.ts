@@ -71,6 +71,14 @@ export const useEditorStore = defineStore('editor', {
       // markRaw：编辑器实例不参与 Vue 深度响应式（性能与兼容性）
       this.editor = markRaw(editor)
       /**
+       * 新文档 = 新的一份缓冲区：上一份的任何「待序列化」标记都不属于它。
+       * 上一份的真实输入在换文档前已由 `flushEditorBeforeReplace()` 收进 store
+       * （`useEditorMode.flushWysiwyg` 会消费写者标记并清脏）；这里复位只影响
+       * 新实例，防止旧状态把新文档的第一帧误判成"用户改过"。
+       */
+      this.dirty = false
+      this.writeIntent = null
+      /**
        * 启动打点：Tiptap 实例绑上来的时刻（≈ ProseMirror 插件全部 init 完，其中就包含
        * `markers` / `mathPreview` / `inlineMarks` 那几套装饰的**首次构建**）。
        * 只记时刻、不做任何等待 —— 打点不许改变被测路径（见 renderer/main.ts 的说明）。

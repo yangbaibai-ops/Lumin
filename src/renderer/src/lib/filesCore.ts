@@ -34,6 +34,7 @@
  */
 
 import { isInside, samePath } from './pathUtils.ts'
+import { sameDocumentText } from '../../../shared/documentText.ts'
 
 // ─── 共有形状与常量 ───────────────────────────────────────────────────────────
 
@@ -49,6 +50,40 @@ export interface DocSnapshot {
   content: unknown
   savedContent: unknown
   mtimeMs: number | null
+}
+
+/**
+ * 脏判定需要的三个文本口径（都是 `string`，纯比较）。
+ *
+ * `canonicalContent` = **编辑器把磁盘原文解析后重新序列化**得到的规范 Markdown
+ * （见 store 的 `noteCanonicalContent`）。它只在“用户还没改过”时记录一次。
+ */
+export interface DirtyDocSnapshot {
+  content: string
+  savedContent: string
+  canonicalContent?: string | null
+}
+
+/**
+ * 「这份文档有没有用户改动」的**唯一判定**。
+ *
+ * 两个基线，任何一个相等都算干净：
+ *  1. `savedContent`（磁盘上/上次保存的那一份）；
+ *  2. `canonicalContent`（打开时编辑器归一化后的规范形态）。
+ *
+ * 为什么需要第二个基线（本轮用户报障的后半段）：setext 标题、`~~~` 围栏、缩进代码、
+ * `__粗体__`、表格对齐这类语法的**序列化结果与磁盘字节不同**。打开时不写回 store
+ * 只是让"没改过"保持干净；但用户一旦敲一个字再**撤销**，编辑器序列化出来的就是
+ * 规范形态 —— 与磁盘原文仍不相等。没有规范基线的话，"改了又撤销"会留下脏标记与草稿，
+ * 关窗提示、下次启动的假草稿横幅又回来了。
+ *
+ * 归一化比较（`sameDocumentText`）仍旧是口径：只差尾随换行/CRLF 不算修改。
+ */
+export function isDocumentDirty(doc: DirtyDocSnapshot | null | undefined): boolean {
+  if (!doc) return false
+  if (sameDocumentText(doc.content, doc.savedContent)) return false
+  if (doc.canonicalContent && sameDocumentText(doc.content, doc.canonicalContent)) return false
+  return true
 }
 
 /**
@@ -101,8 +136,8 @@ export function planSaveOutcome(currentIsStillDoc: boolean, snapshotIsDisk: bool
 
 // ─── ② 草稿写入时机 ─────────────────────────────────────────────────────────
 
-/** 这一次「排草稿」的决定：立即写 / 起一个尾沿防抖定时器 / 不排（干净文档不写草稿） */
-export type DraftAction = 'write-now' | 'debounce' | 'skip'
+/** 这一次「排草稿」的决定：立即写 / 起一个尾沿防抖定时器 / 清掉旧草稿 / 不排 */
+export type DraftAction = 'write-now' | 'debounce' | 'clear' | 'skip'
 
 /**
  * 脏文档现在就该立刻写草稿吗（最大等待已到）。
@@ -120,18 +155,22 @@ export function shouldWriteDraftNow(input: {
 
 /**
  * 排草稿的完整决定：
- *   * 干净文档（`content === savedContent`）⇒ `skip`：不但不写，`writeDraft` 还会把盘上
- *     遗留的旧草稿清掉（否则那份"没有未保存内容"的草稿会在下次开窗时变成一条毫无意义的
- *     「检测到未保存的草稿」横幅，空白新文档尤其明显）；
  *   * 脏 + 距上次写草稿 ≥ 10s ⇒ `write-now`（**不是**再等 1.2s：连续输入期间尾沿永远等不到）；
- *   * 其余 ⇒ `debounce`，1.2s 后由 store 起定时器写。
+ *   * 脏 + 其余 ⇒ `debounce`，1.2s 后由 store 起定时器写；
+ *   * **干净 + 本会话写过草稿 ⇒ `clear`**：撤销回基线是最常见的路径，盘上那份草稿
+ *     此刻与磁盘一致、没有任何恢复价值；不主动清的话，崩溃/被结束后下次打开就会被
+ *     当成「未保存的草稿」（用户报障的另一半）。`lastDraftAt === 0` 说明本会话根本没写过，
+ *     没什么可清 ⇒ `skip`（避免每次干净输入都发一次无意义的删除 IPC）。
+ *
+ * 写盘那一步（`writeDraft`）仍然是最终闸门：它自己会用 `isDocumentDirty` 再判一次，
+ * 干净时只删不写。
  */
 export function planDraftWrite(input: {
   dirty: boolean
   lastDraftAt: number
   now: number
 }): DraftAction {
-  if (!input.dirty) return 'skip'
+  if (!input.dirty) return input.lastDraftAt > 0 ? 'clear' : 'skip'
   return shouldWriteDraftNow(input) ? 'write-now' : 'debounce'
 }
 

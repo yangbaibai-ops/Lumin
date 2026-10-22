@@ -16,6 +16,7 @@ import {
   contentWouldChangeOnReopen,
   decideSamePathReopen,
   focusPathAfterMove,
+  isDocumentDirty,
   nextSaveRetryDelay,
   planDraftWrite,
   planReopenWhenClean,
@@ -34,6 +35,43 @@ const doc = (over = {}) => ({
   savedContent: 'A',
   mtimeMs: 1000,
   ...over
+})
+
+// ─── ⓪ 脏判定的两个基线（"打开什么都不知道"不应该脏）────────────────────────────
+test('isDocumentDirty：磁盘基线或打开时的规范基线，任一相等即干净', () => {
+  assert.equal(isDocumentDirty(null), false, '没有文档')
+  assert.equal(isDocumentDirty(doc()), false, '与磁盘逐字相同')
+  assert.equal(isDocumentDirty(doc({ content: 'A\n', savedContent: 'A' })), false, '只差尾随换行')
+  assert.equal(
+    isDocumentDirty(doc({ content: 'a\r\nb', savedContent: 'a\nb' })),
+    false,
+    '只差 CRLF'
+  )
+  // 打开 setext/围栏/缩进代码时编辑器会给出规范形态：它必须算干净
+  assert.equal(
+    isDocumentDirty(
+      doc({
+        content: '# 标题\n\n正文\n',
+        savedContent: '标题\n===\n\n正文\n',
+        canonicalContent: '# 标题\n\n正文\n'
+      })
+    ),
+    false,
+    '等于打开时的规范形态'
+  )
+  // 规范形态 + 真编辑 ⇒ 脏（规范基线不能把用户改动洗白）
+  assert.equal(
+    isDocumentDirty(
+      doc({
+        content: '# 标题\n\n正文X\n',
+        savedContent: '标题\n===\n\n正文\n',
+        canonicalContent: '# 标题\n\n正文\n'
+      })
+    ),
+    true
+  )
+  // 没有规范基线时退回磁盘基线
+  assert.equal(isDocumentDirty(doc({ content: 'B' })), true)
 })
 
 // ─── ① 保存快照语义（审计 §2 P1 的 P0：保存期间继续输入被标成"已保存"）──────────────
@@ -95,6 +133,15 @@ test('计划分支互斥：四种组合只有"仍是当前文档 + 快照≠当�
 test('草稿：干净文档不排草稿（写盘那一步还会清掉盘上的旧草稿）', () => {
   assert.equal(planDraftWrite({ dirty: false, lastDraftAt: 0, now: T0 }), 'skip')
   // 反例：同一时刻只要脏了就必须排（不能因为"距上次写草稿还不到 1.2s"就不管）
+  assert.equal(planDraftWrite({ dirty: true, lastDraftAt: T0, now: T0 }), 'debounce')
+})
+
+test('草稿：撤销回基线 ⇒ 排一次清理（真编辑写过的草稿不能留到下次启动）', () => {
+  // 本会话写过草稿（lastDraftAt > 0）+ 内容已回到基线 ⇒ clear。
+  // 不清理的话，崩溃/强退后下次打开会按"草稿比磁盘新"弹出一条内容其实与磁盘一致的假草稿。
+  assert.equal(planDraftWrite({ dirty: false, lastDraftAt: T0, now: T0 }), 'clear')
+  assert.equal(planDraftWrite({ dirty: false, lastDraftAt: T0 - 60_000, now: T0 }), 'clear')
+  // 再脏回去时照常按"写/防抖"调度（清理与写入共用同一个定时器，后一次决定覆盖前一次）
   assert.equal(planDraftWrite({ dirty: true, lastDraftAt: T0, now: T0 }), 'debounce')
 })
 

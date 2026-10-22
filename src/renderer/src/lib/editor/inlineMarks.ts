@@ -82,6 +82,14 @@ export {
 } from './inlineMarkerCore.ts'
 export type { Atom, MarkerSide, StyleKind } from './inlineMarkerCore.ts'
 
+/**
+ * 「这是载入时的标记归一化，不是用户编辑」的事务标记。
+ *
+ * `normalizeMdMarkers` 打上它，`WysiwygEditor.onUpdate` 看到就跳过
+ * `markDirty()` / 序列化回写 —— 详见命令自身的注释（打开未编辑的文档不该变脏）。
+ */
+export const LOAD_NORMALIZE_META = 'luminLoadNormalize'
+
 // 自定义命令类型声明（tiptap v3 命令合并，命名空间形式）
 declare module '@tiptap/core' {
   interface Commands<ReturnType> {
@@ -1733,7 +1741,16 @@ export const InlineMarks = Extension.create({
       toggleMdItalic: () => toggleStyle('italic'),
       toggleMdStrike: () => toggleStyle('strike'),
       toggleMdCode: () => toggleStyle('code'),
-      /** 全文档归一化（初始加载：解析产物只有遗留 bold 等 mark，无标记文本） */
+      /**
+       * 全文档归一化（初始加载：解析产物只有遗留 bold 等 mark，无标记文本）。
+       *
+       * ⚠️ 这一笔**不是用户编辑**，必须在事务上挂 `LOAD_NORMALIZE_META`：
+       * `onUpdate` 据此不标脏、不排序列化。否则「打开一份文档」会走成
+       * 「归一化事务 → 250ms 后把序列化器的规范形态写回 store」——对于
+       * setext 标题 / `~~~` 围栏 / 缩进代码 / `__粗体__` / 表格对齐等
+       * 语法，序列化结果与磁盘字节不同，于是**没改过也标脏**、1.2s 后写出一份
+       * 假草稿、关窗还会弹「未保存」。草稿与脏标记只该由真实编辑触发。
+       */
       normalizeMdMarkers:
         () =>
         ({
@@ -1762,7 +1779,12 @@ export const InlineMarks = Extension.create({
             delta += frag.size - block.content.size
             changed = true
           }
-          if (changed) dispatch(tr)
+          if (changed) {
+            // 载入归一化：不进撤销栈，也不当作"用户编辑"（见命令上方的说明）
+            tr.setMeta('addToHistory', false)
+            tr.setMeta(LOAD_NORMALIZE_META, true)
+            dispatch(tr)
+          }
           return changed
         }
     } as unknown as Partial<RawCommands>
