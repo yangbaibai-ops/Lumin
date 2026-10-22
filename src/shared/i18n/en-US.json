@@ -705,7 +705,12 @@
     "minimizeWindow": "Minimize window",
     "closeWindow": "Close window",
     "cycleMode": "Cycle editor mode",
-    "openKeymapSettings": "Open shortcut settings"
+    "openKeymapSettings": "Open shortcut settings",
+    "clearSearch": "Clear search",
+    "keyFilterLabel": "Key",
+    "clearKeyFilter": "Clear key filter",
+    "keyFilterUnbound": "No command is bound to {keys}",
+    "keyFilterConflict": "Multiple commands use {keys}; see the Conflict badges below"
   },
   "commandPalette": {
     "title": "Command Palette",

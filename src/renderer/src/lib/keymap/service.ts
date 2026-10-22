@@ -191,6 +191,12 @@ export function installKeymap(
   const handler = (e: KeyboardEvent): void => {
     // 录制中（设置界面正在采集按键）→ 整体让行，交给录制器
     if (recording || e.defaultPrevented || e.isComposing) return
+    // 「按键搜索」输入框：按键只用于筛选，不许触发命令本身（见 SettingsKeymap 的
+    // data-keymap-capture）。这里必须让行，因为本监听在 window 捕获阶段、比输入框先收到事件。
+    const target = e.target as { closest?: (sel: string) => unknown } | null
+    if (target && typeof target.closest === 'function' && target.closest('[data-keymap-capture]')) {
+      return
+    }
     // 只处理带修饰键的组合（纯字母键留给编辑器/输入框）
     if (!e.ctrlKey && !e.metaKey && !e.altKey) return
     const hit = findMatch(e, resolveCommands(commands, getOverrides()))

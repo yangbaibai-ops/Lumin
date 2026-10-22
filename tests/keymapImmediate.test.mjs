@@ -130,3 +130,18 @@ test('dispose 后 refreshKeymap 不得把监听重新装回来', () => {
   refreshKeymap()
   assert.equal(listeners.size, 0, 'dispose 后监听表应为空')
 })
+
+test('data-keymap-capture 的输入框：全局分发器让行（按键搜索不许触发命令）', () => {
+  installKeymap(commands, () => ({ 'view.focusMode': 'Ctrl+Alt+J' }))
+  ran = 0
+  const e = fire(
+    keydown({
+      ...CTRL_ALT_J,
+      target: {
+        closest: (sel) => (sel === '[data-keymap-capture]' ? {} : null)
+      }
+    })
+  )
+  assert.equal(ran, 0, '按键搜索输入框里的组合键不得执行命令')
+  assert.equal(e.defaultPrevented, false)
+})

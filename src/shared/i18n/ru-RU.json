@@ -705,7 +705,12 @@
     "minimizeWindow": "Свернуть окно",
     "closeWindow": "Закрыть окно",
     "cycleMode": "Переключить режим редактора",
-    "openKeymapSettings": "Открыть настройки сочетаний"
+    "openKeymapSettings": "Открыть настройки сочетаний",
+    "clearSearch": "Очистить поиск",
+    "keyFilterLabel": "Клавиша",
+    "clearKeyFilter": "Сбросить фильтр по клавише",
+    "keyFilterUnbound": "На {keys} не назначено ни одной команды",
+    "keyFilterConflict": "Несколько команд используют {keys}; смотрите отметки «Конфликт» ниже"
   },
   "commandPalette": {
     "title": "Палитра команд",

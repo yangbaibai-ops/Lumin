@@ -705,7 +705,12 @@
     "minimizeWindow": "最小化窗口",
     "closeWindow": "关闭窗口",
     "cycleMode": "循环切换编辑模式",
-    "openKeymapSettings": "打开快捷键设置"
+    "openKeymapSettings": "打开快捷键设置",
+    "clearSearch": "清除搜索",
+    "keyFilterLabel": "按键",
+    "clearKeyFilter": "清除按键筛选",
+    "keyFilterUnbound": "该组合键未绑定任何命令：{keys}",
+    "keyFilterConflict": "该组合键被多条命令占用（{keys}）：见下方「冲突」标记"
   },
   "commandPalette": {
     "title": "命令面板",

@@ -8,6 +8,7 @@ import { useI18n } from 'vue-i18n'
 import { useSettingsStore } from '../stores/settings'
 import { currentKeymap, setKeymapRecording, type ResolvedCommand } from '../lib/keymap/service'
 import { eventToSpec, parseKeybinding, specToChips } from '../lib/keymap/keys'
+import { filterCommandsByKey, isConflictingKey, keyQueryFromEvent } from '../lib/keymap/keySearch'
 import {
   auditKeybindings,
   validateKeybinding,
@@ -21,6 +22,11 @@ const settings = useSettingsStore()
 /** 正在录制的命令 id（null = 未录制） */
 const recordingId = ref<string | null>(null)
 const filter = ref('')
+/**
+ * 「按键搜索」条件：在搜索框里按下组合键后置为规范表达式（如 `Ctrl+Alt+T`）。
+ * 非空时列表只按这个键筛（文字条件暂时让位）；退格 / 小 × / Esc 清除。
+ */
+const keyQuery = ref<string | null>(null)
 /** 最近一次录制被拒绝的原因（与行 id 绑定；重新录制或恢复默认时清掉） */
 const recordError = ref<{ id: string; result: KeymapValidationResult } | null>(null)
 
@@ -40,6 +46,9 @@ const commands = computed<ResolvedCommand[]>(() => {
 const titleOf = (c: ResolvedCommand): string => t(c.titleKey)
 
 const filtered = computed(() => {
+  // 按键条件优先：按下的键直接决定列表（文字搜索暂时不参与）；
+  // 清除按键胶囊后自动回到原来的文字搜索。
+  if (keyQuery.value) return filterCommandsByKey(commands.value, keyQuery.value)
   const q = filter.value.trim().toLowerCase()
   if (!q) return commands.value
   return commands.value.filter((c) => {
@@ -49,6 +58,52 @@ const filtered = computed(() => {
     )
   })
 })
+
+/** 按键筛选命中 0 条 = 这个组合键没有绑定任何命令（要明确告诉用户，而不是空白列表） */
+const keyQueryUnbound = computed(() => !!keyQuery.value && filtered.value.length === 0)
+
+/** 按键筛选结果里存在冲突（同一组合键被多条命令占用） */
+const keyQueryConflicting = computed(() => !!keyQuery.value && isConflictingKey(filtered.value))
+
+/**
+ * 搜索框内按下组合键 → 记录成按键筛选条件。
+ *
+ * 关键点：
+ *   * 必须 `preventDefault`：否则 Ctrl+Shift+P 会打开命令面板之类（入口由全局分发器让行，
+ *     见 `data-keymap-capture` 与 service.ts）；
+ *   * 裸字母/退格不拦 —— 用户还要正常输入文字；
+ *   * 退格 / Delete / Esc 清除按键条件（有按键条件时优先清它，不关设置页）。
+ */
+function onSearchKeydown(e: KeyboardEvent): void {
+  if (keyQuery.value && (e.key === 'Backspace' || e.key === 'Delete')) {
+    e.preventDefault()
+    e.stopPropagation()
+    clearKeyQuery()
+    return
+  }
+  if (keyQuery.value && e.key === 'Escape') {
+    e.preventDefault()
+    e.stopPropagation()
+    clearKeyQuery()
+    return
+  }
+  const spec = keyQueryFromEvent(e)
+  if (!spec) return
+  e.preventDefault()
+  e.stopPropagation()
+  keyQuery.value = spec
+}
+
+/** 清除按键条件（回到文字搜索） */
+function clearKeyQuery(): void {
+  keyQuery.value = null
+}
+
+/** 清除全部搜索条件（文字 + 按键） */
+function clearAllSearch(): void {
+  filter.value = ''
+  keyQuery.value = null
+}
 
 /** 按分组聚合（保持命令表里的出现顺序，分组名走 i18n） */
 const groups = computed(() => {
@@ -215,21 +270,60 @@ function parseOk(c: ResolvedCommand): boolean {
       </div>
 
       <div
-        class="flex min-w-0 items-center gap-2 rounded-lg border border-edge bg-panel px-2.5 py-1.5 transition-colors focus-within:border-accent"
+        class="flex min-w-0 flex-wrap items-center gap-2 rounded-lg border border-edge bg-panel px-2.5 py-1.5 transition-colors focus-within:border-accent"
       >
         <Icon name="search" :size="13" class="flex-none text-ink-3" />
         <input
           v-model="filter"
-          class="keymap-search w-full bg-transparent text-ui text-ink outline-none placeholder:text-ink-2b"
+          data-keymap-capture
+          class="keymap-search min-w-0 flex-1 bg-transparent text-ui text-ink outline-none placeholder:text-ink-2b"
           :placeholder="t('keymap.searchPlaceholder')"
+          :aria-label="t('keymap.searchPlaceholder')"
+          @keydown="onSearchKeydown"
         />
-        <button v-if="filter" class="flex-none text-ink-2b hover:text-ink" @click="filter = ''">
+        <!-- 按下的组合键：胶囊 + 一键清除（退格 / Esc 同样可清） -->
+        <span
+          v-if="keyQuery"
+          class="key-query flex flex-none items-center gap-1"
+          data-keymap-key-query
+        >
+          <span class="text-[11.5px] text-ink-2b">{{ t('keymap.keyFilterLabel') }}</span>
+          <kbd v-for="k in specToChips(keyQuery)" :key="k" class="key-chip">{{ k }}</kbd>
+          <button
+            type="button"
+            class="ml-0.5 flex-none text-ink-2b hover:text-ink"
+            :title="t('keymap.clearKeyFilter')"
+            :aria-label="t('keymap.clearKeyFilter')"
+            data-keymap-key-query-clear
+            @click="clearKeyQuery"
+          >
+            <Icon name="x" :size="12" />
+          </button>
+        </span>
+        <button
+          v-if="filter || keyQuery"
+          class="flex-none text-ink-2b hover:text-ink"
+          :title="t('keymap.clearSearch')"
+          :aria-label="t('keymap.clearSearch')"
+          data-keymap-search-clear
+          @click="clearAllSearch"
+        >
           <Icon name="x" :size="12" />
         </button>
         <span class="flex-none text-[11.5px] text-ink-2b">
           {{ t('keymap.customizedCount', { n: customizedCount }) }}
         </span>
       </div>
+      <p v-if="keyQueryUnbound" class="mt-2 text-ui-sm text-ink-2b" data-keymap-key-unbound>
+        {{ t('keymap.keyFilterUnbound', { keys: keyQuery }) }}
+      </p>
+      <p
+        v-else-if="keyQueryConflicting"
+        class="mt-2 text-ui-sm text-warning-ink"
+        data-keymap-key-conflict
+      >
+        {{ t('keymap.keyFilterConflict', { keys: keyQuery }) }}
+      </p>
     </section>
 
     <section v-for="g in groups" :key="g.key" class="surface mb-4 p-5">
@@ -239,6 +333,7 @@ function parseOk(c: ResolvedCommand): boolean {
           v-for="c in g.items"
           :key="c.id"
           class="key-row flex flex-wrap items-center gap-3 rounded-lg px-2 py-1.5"
+          :class="{ 'key-row--hit': keyQuery === c.keys }"
           :data-command="c.id"
           :data-keymap-invalid="issueOf(c) ? 'true' : undefined"
         >
@@ -333,6 +428,13 @@ function parseOk(c: ResolvedCommand): boolean {
 <style scoped>
 .key-row:hover {
   background: var(--panel-2);
+}
+/* 「按键搜索」命中的行：给一层浅强调底色，配合上面的筛选结果做视觉锚点 */
+.key-row--hit {
+  background: var(--accent-soft);
+}
+.key-row--hit:hover {
+  background: var(--accent-soft);
 }
 .key-chip {
   display: inline-flex;
