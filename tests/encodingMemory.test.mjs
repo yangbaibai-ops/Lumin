@@ -10,6 +10,7 @@ import {
   REPLACEMENT_CHAR,
   encodingMemoryIsFresh,
   hasReplacementChar,
+  rememberedForRequest,
   roundTripLossy
 } from '../src/shared/encodingMemory.ts'
 import iconv from 'iconv-lite'
@@ -52,4 +53,15 @@ test('roundTripLossy：往返一致 = 不丢字；被替换成 ? 就判为有损
   assert.ok(back.includes('?'), `GBK 往返应当出现替代字符：${JSON.stringify(back)}`)
   // 同一段文本用 UTF-8 编解码则一模一样
   assert.equal(roundTripLossy(withEmoji, Buffer.from(withEmoji, 'utf-8').toString('utf-8')), false)
+})
+
+test('★ rememberedForRequest：显式自动检测忽略记忆；打开文件时的软默认仍用记忆', () => {
+  // 用户报障的核心：手选 GBK → 记忆=gbk；再点自动检测必须不吃这份记忆
+  assert.equal(rememberedForRequest('auto', 'gbk', false), null)
+  assert.equal(rememberedForRequest('auto', 'gbk', undefined), null)
+  // 打开文件（软默认）仍然记忆优先：同一文件多窗口一致
+  assert.equal(rememberedForRequest('auto', 'gbk', true), 'gbk')
+  // 显式具体编码：记忆本来就不参与（返回什么都不会被 decoder 使用）
+  assert.equal(rememberedForRequest('utf-8', 'gbk', false), 'gbk')
+  assert.equal(rememberedForRequest('auto', null, false), null)
 })

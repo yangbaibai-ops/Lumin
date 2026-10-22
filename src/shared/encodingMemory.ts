@@ -7,6 +7,8 @@
 //   * 每文件编码记忆必须**附 mtime**：文件被外部换掉（git 切分支 / 同步盘）之后，
 //     旧记忆会把合法的 UTF-8 解成乱码，用户继续编辑再保存就把乱码写回磁盘。
 //     mtime 变了 ⇒ 记忆过期 ⇒ 回到判定链重新判。
+import type { EncodingId } from './encodings'
+
 export const REPLACEMENT_CHAR = '\uFFFD'
 
 /** 解码文本里是否出现替换字符（说明有字节没能解出来，或原文就含它） */
@@ -27,6 +29,28 @@ export function encodingMemoryIsFresh(
   if (recordedMtimeMs == null || currentMtimeMs == null) return true
   if (!Number.isFinite(recordedMtimeMs) || !Number.isFinite(currentMtimeMs)) return true
   return Math.abs(recordedMtimeMs - currentMtimeMs) <= 1
+}
+
+/**
+ * 解码时要不要带上「上次记住的编码」。
+ *
+ * 用户报障（「切到 GBK 后再点自动检测，仍停在 GBK」）的根因就在这一条：
+ * 手动选编码会把 GBK 写进每文件记忆，自动检测又拿这份记忆去解码 ——
+ * 判定链永远到不了「严格 UTF-8」那一步，于是磁盘字节明明没变、结果却是 GBK。
+ *
+ * 口径：
+ *   * **显式「自动检测」**（`requested === 'auto'` 且不是打开文件时的软默认）：
+ *     必须**忽略**记忆，只看这次从磁盘重新读出的原始字节；
+ *   * 打开文件时的软默认（`softDefault`）：记忆仍然优先 —— 这是"同一文件多窗口一致"的来源，
+ *     与"重新检测"是两件事。
+ */
+export function rememberedForRequest(
+  requested: EncodingId,
+  remembered: EncodingId | null | undefined,
+  softDefault: boolean | undefined
+): EncodingId | null {
+  if (requested === 'auto' && !softDefault) return null
+  return remembered ?? null
 }
 
 /**

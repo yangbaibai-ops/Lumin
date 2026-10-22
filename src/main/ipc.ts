@@ -39,11 +39,12 @@ import { scopeOfSender } from './services/windowScope'
 import {
   decodeBuffer,
   encodeText,
+  forgetEncoding,
   getRememberedEncoding,
   rememberEncoding
 } from './services/encoding'
 import { isUtf8Family, type ConcreteEncoding, type EncodingId } from '../shared/encodings'
-import { roundTripLossy } from '../shared/encodingMemory'
+import { rememberedForRequest, roundTripLossy } from '../shared/encodingMemory'
 import type { Eol } from '../shared/eol'
 import { untitledDraftKey } from '../shared/drafts'
 // 外链被白名单拦下时那行日志只打 scheme（别把任意 URL 写进日志）—— ASCII 且便于 grep
@@ -665,8 +666,18 @@ export function registerIpc(slots: SlotRegistry): void {
         () => null
       )
       const remembered = getRememberedEncoding(fp, currentMtimeMs)
+      // ★ 用户显式点「自动检测」= 必须**重新看磁盘原始字节**，不能拿每文件记忆当判据：
+      //   手动切到 GBK 会把 GBK 写进记忆，若这里继续把它喂给判定链，自动检测就永远回到 GBK
+      //   （用户报障：「切到 GBK 后再点自动检测不会回到 UTF-8」）。
+      //   只对「打开文件时的软默认」保留记忆优先（多窗口一致），见 shared/encodingMemory。
+      const explicitAuto = encoding === 'auto' && !opts?.softDefault
       // 软默认（打开文件时的设置默认值）让位给该文件的记录；显式指定则压过记录
       const requested: EncodingId = opts?.softDefault && remembered ? remembered : encoding
+      const decodeRemembered = rememberedForRequest(requested, remembered, opts?.softDefault)
+      if (explicitAuto && remembered) {
+        // 连缓存一起清掉：否则 documents.encoding / kv 兜底表还可能被后续软默认打开复用
+        forgetEncoding(fp)
+      }
       const {
         content,
         mtimeMs,
@@ -674,7 +685,14 @@ export function registerIpc(slots: SlotRegistry): void {
         hadBom,
         eol,
         hadReplacement
-      } = await fileOps.readFileInfo(fp, requested, remembered)
+      } = await fileOps.readFileInfo(fp, requested, decodeRemembered)
+      if (explicitAuto) {
+        // 诊断：判定只看字节；把"忽略了哪条记忆"和最终采用的编码写进主进程日志（ASCII）
+        console.log(
+          `[encoding] auto-detect ignored=${remembered ?? 'none'} -> ${used} ` +
+            `(bom=${hadBom}, replacement=${hadReplacement})`
+        )
+      }
       // 记回去的条件：用户显式指定过、或自动判定出非 UTF-8（纯 UTF-8 文件不占条目）。
       // 连同**这次的 mtime** 一起记，下次据此判断记忆有没有过期。
       if (encoding !== 'auto' || (used !== 'utf-8' && used !== 'utf-8-bom')) {

@@ -1476,6 +1476,7 @@ export const useFilesStore = defineStore('files', {
       // 脏文档先问（唯一实现在 lib/dialog：只依赖 ui store，所以 store 用也不会循环导入）
       if (!(await confirmDiscardIfDirty(() => this.dirty))) return false
       try {
+        const previousEncoding = cur.encoding
         const opened: OpenedFile = await window.luminAPI.file.read(cur.path, encoding)
         // 主进程/preload 是**构建产物**，不像渲染层那样热更新：若应用是在本次改动之前启动的，
         // 老主进程会忽略 encoding 参数、老 preload 也没有 rememberEncoding。这时必须明确告诉用户
@@ -1490,6 +1491,13 @@ export const useFilesStore = defineStore('files', {
         cur.savedContent = opened.content
         cur.mtimeMs = opened.mtimeMs
         cur.encoding = concrete
+        // 诊断：显式「自动检测」走的是**磁盘原始字节重新判定**（主进程日志会列出被忽略的旧记忆）
+        if (encoding === 'auto') {
+          console.info(
+            `[encoding] auto-detect applied ${previousEncoding} -> ${concrete} ` +
+              `(replacement=${!!opened.hadReplacement}, bom=${!!opened.hadBom})`
+          )
+        }
         /**
          * ⚠️ `hadReplacement` **必须跟着这次重新解码一起更新**（报告 §4.2 P2 点名的那条）。
          * 它的含义是"这份**当前缓冲区**里有字节没能按当前编码解出来"（状态栏那句 tooltip

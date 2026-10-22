@@ -74,7 +74,7 @@ function rememberedMtime(filePath: string): number | null {
 }
 
 /** 把这条记忆（编码 + mtime）整体忘掉：过期的记忆留着只会继续骗人 */
-function forgetEncoding(filePath: string): void {
+export function forgetEncoding(filePath: string): void {
   const key = normKey(filePath)
   const mtimes = loadMtimes()
   if (key in mtimes) {

@@ -172,3 +172,16 @@ test('GB18030 是全 Unicode 编码：emoji 往返不丢（免得把它误当有
   assert.equal(back.text, text)
   assert.equal(back.hadReplacement, false)
 })
+
+test('★ 显式自动检测：remembered 不能绑架判定链（GBK 记忆 + UTF-8 字节）', () => {
+  const text = '# 标题\n\n正文 UTF-8\n'
+  const buf = utf8(text)
+  // 先把"上次手选 GBK"的记忆喂进去：这就是用户报障时判定链看到的东西
+  const poisoned = decodeBuffer(buf, 'auto', 'gb18030')
+  assert.equal(poisoned.encoding, 'gb18030', '旧实现：记忆优先，自动检测被记忆绑架')
+  assert.notEqual(poisoned.text, text, '按 GBK 解 UTF-8 字节必然是乱码')
+  // 修法：显式自动检测传 remembered=null → 只看原始字节，严格 UTF-8 立刻胜出
+  const fresh = decodeBuffer(buf, 'auto', null)
+  assert.equal(fresh.encoding, 'utf-8')
+  assert.equal(fresh.text, text)
+})
