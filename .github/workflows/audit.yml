@@ -108,7 +108,7 @@ jobs:
             }
           }
           lines.push('', `其余：moderate ${moderate} / low ${low}（含 dev 依赖不计入本口径）。`, '')
-          lines.push('完整 JSON 见 job 的 `npm-audit.json`（未上传 artifact，避免把漏洞清单留在构建产物里）。')
+          lines.push('完整 JSON 保留在本次 job 的工作区（未上传 artifact，避免把漏洞清单留在构建产物里）。')
           fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, lines.join('\n') + '\n')
           NODE
 
