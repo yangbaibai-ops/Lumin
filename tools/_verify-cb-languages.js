@@ -151,17 +151,80 @@ async function main() {
     noise.length ? `不该高亮的：${noise.join(', ')}` : `${UNKNOWN.map((u) => u[0]).join(' / ')} 均为纯文本`
   )
 
-  // 反向证据：删掉 language-data 之后**不该**再有那 116 个语言 chunk —— 用选择框里的项数间接守住
-  // （选项仍是 16 项：15 种语言 + mermaid；清单外语言只能靠手写围栏标记，界面不提供）
-  const options = JSON.parse(
-    await ev(`(() => JSON.stringify({
-      langs: [...document.querySelectorAll('.code-block-select')[0].querySelectorAll('option')].map((o) => o.value)
-    }))()`)
+  // 反向证据：删掉 language-data 之后**不该**再有那 116 个语言 chunk —— 用语言浮层的项数间接守住。
+  // 当前实现（`ee44502` 起）：语言选择器**不在块内布局里**、也不是常驻 `<select>`，而是聚焦时
+  // 挂到代码块**外面**的浮层（`[data-cb-lang-picker]`，fixed 定位、v-if）。所以这里先点开浮层、
+  // 再按 ArrowDown 展开候选列表，读 `[data-cb-lang-option]` 的值。
+  // 预设清单见 `lib/editor/codeBlockLanguage.ts` 的 LANGUAGE_PRESETS：18 项
+  // （text/js/ts/vue/python/bash/json/css/html/markdown/sql/go/rust/java/c/cpp/yaml/mermaid）。
+  // ⚠️ 必须点**语言为 text 的块**：其余块会把自动识别出的语言（如 javascript）预填进搜索框，
+  //    候选会被过滤成空（`javascript` 不是 18 个预设之一）；text 块打开时输入框为空 = 全部预设。
+  const textBlockIndex = CASES.length + 1 // UNKNOWN 里第一个就是 text（1-based）
+  const opened = JSON.parse(
+    await ev(`(async () => {
+      const b = document.querySelectorAll('.code-block-wrapper')[${textBlockIndex - 1}]
+      if (!b) return JSON.stringify({ err: 'no-block' })
+      b.scrollIntoView({ block: 'center' })
+      b.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, cancelable: true }))
+      await new Promise((r) => setTimeout(r, 300))
+      // ⚠️ 必须取**这个块自己的**浮层：打开文档时首块可能已因焦点自动打开一个，
+      //    全局 querySelector 会拿到它（预填 javascript ⇒ 候选被过滤成空）。
+      const picker = b.querySelector('[data-cb-lang-picker]')
+      if (!picker) return JSON.stringify({ err: 'no-picker' })
+      const input = picker.querySelector('[data-cb-lang-input]')
+      if (!input) return JSON.stringify({ err: 'no-input' })
+      const owner = [...document.querySelectorAll('.code-block-wrapper')].indexOf(b)
+      input.focus()
+      input.select()
+      return JSON.stringify({ mounted: true, owner, inputValue: input.value })
+    })()`)
+  )
+  // 用输入事件逐个验证 18 个预设都能在浮层里被检索到。
+  // （合成 KeyboardEvent/真实 CDP 按键在本环境里会被 PM 抢走焦点；`input` 事件是
+  //   Vue `@input` 的直接入口，与用户打字走同一条 `onPickerInput` 路径。）
+  const picker = JSON.parse(
+    await ev(`(async () => {
+      const b = document.querySelectorAll('.code-block-wrapper')[${textBlockIndex - 1}]
+      const picker = b ? b.querySelector('[data-cb-lang-picker]') : null
+      if (!picker) return JSON.stringify({ err: 'picker-closed' })
+      const input = picker.querySelector('[data-cb-lang-input]')
+      if (!input) return JSON.stringify({ err: 'no-input' })
+      const presets = ['text','js','ts','vue','python','bash','json','css','html','markdown','sql','go','rust','java','c','cpp','yaml','mermaid']
+      const seen = []
+      for (const p of presets) {
+        input.value = p
+        input.dispatchEvent(new Event('input', { bubbles: true }))
+        await new Promise((r) => setTimeout(r, 30))
+        const opts = [...picker.querySelectorAll('[data-cb-lang-option]')].map((o) => o.getAttribute('data-cb-lang-option'))
+        if (opts.includes(p)) seen.push(p)
+      }
+      const pr = picker.getBoundingClientRect()
+      const br = b.getBoundingClientRect()
+      const overlap = Math.max(0, Math.min(pr.right, br.right) - Math.max(pr.left, br.left)) *
+        Math.max(0, Math.min(pr.bottom, br.bottom) - Math.max(pr.top, br.top))
+      return JSON.stringify({
+        position: getComputedStyle(picker).position,
+        overlap: Math.round(overlap),
+        inputValue: input.value,
+        optionCount: picker.querySelectorAll('[data-cb-lang-option]').length,
+        seen
+      })
+    })()`)
+  )
+  report.note('语言浮层 ' + JSON.stringify({ ...opened, ...picker, seen: picker.seen && picker.seen.length }))
+  report.check(
+    'language-picker-floats-outside-block',
+    opened.mounted === true && picker.position === 'fixed' && picker.overlap === 0,
+    JSON.stringify({ position: picker.position, overlap: picker.overlap })
   )
   report.check(
-    'language-picker-still-lists-16',
-    options.langs.length === 16 && options.langs.includes('mermaid') && options.langs.includes('ruby'),
-    JSON.stringify(options.langs)
+    'language-picker-lists-18-presets',
+    Array.isArray(picker.seen) &&
+      picker.seen.length === 18 &&
+      picker.seen.includes('mermaid') &&
+      picker.seen.includes('rust') &&
+      picker.seen.includes('cpp'),
+    JSON.stringify({ seen: picker.seen, missing: 18 - (picker.seen ? picker.seen.length : 0) })
   )
 
   app.close()

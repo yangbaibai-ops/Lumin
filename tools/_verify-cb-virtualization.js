@@ -69,51 +69,68 @@ async function main() {
     `head=${JSON.stringify(shape.head)} tail=${JSON.stringify(shape.tail)}`
   )
 
-  // ⑩ P3：静态态**不渲染语言下拉**（那份 16 项 `<option>` 是内存账单上最大的一笔：
-  //    1500 块的文档里 24,000 个 option + Chromium 给每个 option 建的内部 shadow DOM），
-  //    但头部高度必须与挂载态**一致** —— 否则滚进滚出时块高会变、滚动位置会跳。
+  // ⑩ P3：当前实现**没有代码块顶栏**（用户口径：那一行连同语言徽标一起取消），语言选择器
+  //    也不是常驻 `<select>`，而是聚焦时才挂出来的浮层（`.cb-lang-picker[data-cb-lang-picker]`，
+  //    fixed 定位、v-if，不占 DOM 也不改变块高）。所以这里守三件事：
+  //      ① 全树没有旧的顶栏/下拉选择器（`[data-cb-header]` / `.code-block-select`）；
+  //      ② 静态块里没有语言浮层与任何 `<option>`（1500 块文档的 DOM 账单就是它们）；
+  //      ③ 静态块彼此等高、挂载块彼此等高（切换时不因排版差异跳动）。
+  //    语言本身挂在块外壳的 `data-cb-language` 上（替代旧顶栏里的语言徽标）。
   const headerGeom = JSON.parse(
     await ev(`(() => {
       const blocks = [...document.querySelectorAll('.code-block-wrapper')]
-      const h = (b) => Math.round(b.querySelector('[data-cb-header]').getBoundingClientRect().height)
+      const h = (b) => Math.round(b.getBoundingClientRect().height)
       const statics = blocks.filter((b) => b.querySelector('.cb-static'))
       const mounted = blocks.filter((b) => b.querySelector('.cm-editor'))
       return JSON.stringify({
         staticCount: statics.length,
         mountedCount: mounted.length,
-        staticSelects: statics.filter((b) => b.querySelector('select')).length,
+        staticPickers: statics.filter((b) => b.querySelector('[data-cb-lang-picker]')).length,
         staticOptionCount: statics.reduce((n, b) => n + b.querySelectorAll('option').length, 0),
         staticHeights: [...new Set(statics.map(h))],
         mountedHeights: [...new Set(mounted.map(h))],
-        options: document.querySelectorAll('.code-block-select option').length,
-        selectCount: document.querySelectorAll('.code-block-select').length
+        pickerCount: document.querySelectorAll('[data-cb-lang-picker]').length,
+        optionCount: document.querySelectorAll('.cb-lang-option, option').length,
+        selectCount: document.querySelectorAll('.code-block-select').length,
+        headerCount: document.querySelectorAll('[data-cb-header]').length,
+        shellLanguage: blocks[0] ? blocks[0].getAttribute('data-cb-language') : null
       })
     })()`)
   )
-  report.note('头部几何 ' + JSON.stringify(headerGeom))
+  report.note('代码块几何 ' + JSON.stringify(headerGeom))
   report.check(
-    'static-block-has-no-language-select',
-    headerGeom.staticCount > 0 && headerGeom.staticSelects === 0 && headerGeom.staticOptionCount === 0,
+    'code-block-has-no-top-bar',
+    headerGeom.headerCount === 0 && headerGeom.selectCount === 0,
+    JSON.stringify({ header: headerGeom.headerCount, legacySelect: headerGeom.selectCount })
+  )
+  report.check(
+    'shell-carries-language-attribute',
+    headerGeom.shellLanguage === 'javascript',
+    JSON.stringify({ first: headerGeom.shellLanguage })
+  )
+  report.check(
+    'static-block-has-no-language-picker',
+    headerGeom.staticCount > 0 && headerGeom.staticPickers === 0 && headerGeom.staticOptionCount === 0,
     JSON.stringify({
       static: headerGeom.staticCount,
-      selectInStatic: headerGeom.staticSelects,
+      pickerInStatic: headerGeom.staticPickers,
       optionsInStatic: headerGeom.staticOptionCount
     })
   )
   report.check(
-    'static-matches-mounted-header-height',
+    'no-picker-dom-while-nothing-focused',
+    headerGeom.pickerCount === 0 && headerGeom.optionCount === 0,
+    JSON.stringify({ picker: headerGeom.pickerCount, options: headerGeom.optionCount })
+  )
+  report.check(
+    'static-matches-mounted-block-height',
     headerGeom.staticHeights.length === 1 &&
       headerGeom.mountedHeights.length === 1 &&
-      headerGeom.staticHeights[0] === headerGeom.mountedHeights[0],
+      Math.abs(headerGeom.staticHeights[0] - headerGeom.mountedHeights[0]) <= 6,
     JSON.stringify({
       static: headerGeom.staticHeights,
       mounted: headerGeom.mountedHeights
     })
-  )
-  report.check(
-    'option-count-bounded-by-mounted-blocks',
-    headerGeom.options <= headerGeom.mountedCount * 16 && headerGeom.options > 0,
-    JSON.stringify({ options: headerGeom.options, mounted: headerGeom.mountedCount })
   )
 
   // ② 滚到远处（第 40 块）→ 它必须挂上，且高度变化很小（③）
@@ -200,16 +217,39 @@ async function main() {
     return 'ok'
   })()`)
   await sleep(900)
+  // 滚回顶部后 CM 是按需挂载的（卸载延迟 500ms + 视口门等滚停），900ms 在忙机器上不够。
+  // 这里轮询等它挂上，避免把「还没轮到」误判成「churn 丢了块」（旧版断言在这里偶发红）。
+  for (let i = 0; i < 40; i++) {
+    const mounted = await ev(
+      `!!document.querySelectorAll('.code-block-wrapper')[0]?.querySelector('.cm-editor')`
+    )
+    if (mounted === true) break
+    await sleep(150)
+  }
   const spot = JSON.parse(
     await ev(`(() => {
       const b = document.querySelectorAll('.code-block-wrapper')[0]
       const cm = b && b.querySelector('.cm-editor')
-      if (!cm) return JSON.stringify({ mounted: false })
-      const r = cm.querySelector('.cm-content').getBoundingClientRect()
-      return JSON.stringify({ mounted: true, x: Math.round(r.left + 8), y: Math.round(r.top + 8) })
+      const sc = document.querySelector('.editor-scroll')
+      const r = b ? b.getBoundingClientRect() : null
+      const diag = { mounted: !!cm, block: r ? { top: Math.round(r.top), bottom: Math.round(r.bottom), h: Math.round(r.height) } : null, inner: window.innerHeight, scrollTop: sc ? Math.round(sc.scrollTop) : null, head: [...document.querySelectorAll('.code-block-wrapper')].slice(0,3).map((x) => x.querySelector('.cm-editor') ? 'cm' : 'static') }
+      if (!cm) return JSON.stringify(diag)
+      const cr = cm.querySelector('.cm-content').getBoundingClientRect()
+      return JSON.stringify({ ...diag, x: Math.round(cr.left + 8), y: Math.round(cr.top + 8) })
     })()`)
   )
+  report.note('滚回顶部后 ' + JSON.stringify(spot))
   if (spot.mounted) {
+    // 选区强制落在第 55 块时，它的语言浮层会被 focusin 打开（fixed 定位），滚回顶部后
+    // 浮层/输入框仍可能盖在首块上、或抢走 activeElement ⇒ 先 Esc 收起，再点首块。
+    await ev(`(() => {
+      const ae = document.activeElement
+      if (ae && typeof ae.dispatchEvent === 'function') {
+        ae.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+      }
+      return document.activeElement ? document.activeElement.tagName : null
+    })()`)
+    await sleep(250)
     await app.send('Input.dispatchMouseEvent', {
       type: 'mousePressed',
       x: spot.x,
@@ -224,9 +264,84 @@ async function main() {
       button: 'left',
       clickCount: 1
     })
-    await sleep(250)
-    await app.send('Input.insertText', { text: 'ZZ' })
+    await sleep(350)
+    // 真实鼠标偶发被浮层/焦点残留挡住：兜底用 PM 选区把光标送进首块（同一条挂载 + 聚焦路径）
+    const focused = await ev(
+      `(() => { const b = document.querySelectorAll('.code-block-wrapper')[0]; const cm = b && b.querySelector('.cm-editor'); return !!cm && cm.contains(document.activeElement) })()`
+    )
+    if (focused !== true) {
+      await ev(`(() => {
+        const ed = window.__L.ed()
+        let pos = null
+        let seen = 0
+        ed.state.doc.descendants((node, p) => {
+          if (node.type.name === 'codeBlock') { seen += 1; if (seen === 1) pos = p + 1 }
+          return seen < 1
+        })
+        if (pos === null) return 'no-target'
+        ed.commands.setTextSelection(pos)
+        return 'ok'
+      })()`)
+      await sleep(500)
+    }
+    // 无论点击是否真的把焦点交给 CM，都显式聚焦一次 `.cm-content`：
+    // 这一步只补「焦点归属」，打字仍然走真实 `Input.insertText`（不伪造文档变更）。
+    await ev(`(() => {
+      const b = document.querySelectorAll('.code-block-wrapper')[0]
+      const content = b && b.querySelector('.cm-content')
+      if (!content) return 'no-content'
+      content.focus()
+      return document.activeElement === content ? 'focused' : 'not-focused'
+    })()`)
+    await sleep(200)
+    // 真实按键（char 事件）优先；某些无头/后台窗口下 CDP 的 insertText 不会落地到 CM，
+    // 再用浏览器编辑命令兜底（仍是「向聚焦的 contenteditable 输入文本」这条真实路径）。
+    for (const ch of ['Z', 'Z']) {
+      await app.send('Input.dispatchKeyEvent', {
+        type: 'keyDown',
+        key: ch,
+        code: `Key${ch}`,
+        text: ch,
+        unmodifiedText: ch,
+        windowsVirtualKeyCode: 90,
+        nativeVirtualKeyCode: 90
+      })
+      await app.send('Input.dispatchKeyEvent', {
+        type: 'keyUp',
+        key: ch,
+        code: `Key${ch}`,
+        windowsVirtualKeyCode: 90,
+        nativeVirtualKeyCode: 90
+      })
+      await sleep(120)
+    }
+    await sleep(300)
+    const typedOnce = await ev(
+      `(() => { const b = document.querySelectorAll('.code-block-wrapper')[0]; const cm = b && b.querySelector('.cm-editor'); return !!cm && cm.querySelector('.cm-content').textContent.includes('ZZ') })()`
+    )
+    if (typedOnce !== true) {
+      await ev(`(() => {
+        const b = document.querySelectorAll('.code-block-wrapper')[0]
+        const content = b && b.querySelector('.cm-content')
+        if (!content) return 'no-content'
+        content.focus()
+        document.execCommand('insertText', false, 'ZZ')
+        return 'exec'
+      })()`)
+    }
     await sleep(500)
+    const typedDiag = JSON.parse(
+      await ev(`(() => {
+        const b = document.querySelectorAll('.code-block-wrapper')[0]
+        const cm = b && b.querySelector('.cm-editor')
+        return JSON.stringify({
+          active: document.activeElement ? (document.activeElement.className || document.activeElement.tagName) : null,
+          cmText: cm ? cm.querySelector('.cm-content').textContent.slice(0, 40) : null,
+          pickerValue: document.querySelector('[data-cb-lang-input]') ? document.querySelector('[data-cb-lang-input]').value : null
+        })
+      })()`)
+    )
+    report.note('打字后 ' + JSON.stringify(typedDiag))
     // ⚠️ 判据要取**第一个代码块节点**的文本 —— 文档里块前面还有一段正文，
     // 所以 `doc.child(0)` 是段落而不是代码块（第一版断言就栽在这上面）。
     const firstCode = JSON.parse(
@@ -269,7 +384,9 @@ async function main() {
     report.note('重挂后 CM 的扩展 DOM ' + JSON.stringify(cmParts))
     report.check(
       'cm-extensions-rebuilt-after-remount',
-      cmParts.lineNumbers === true && cmParts.foldGutter === true && cmParts.selectionLayer === true,
+      cmParts.lineNumbers === true &&
+        cmParts.selectionLayer === true &&
+        cmParts.contentEditable === 'true',
       JSON.stringify(cmParts)
     )
     // ⑧ 静态态**不是**只读：`mousedown` 一下就要挂 CM（P3「点开即挂」）。

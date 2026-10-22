@@ -3,7 +3,12 @@
 // 用户口径：**默认不动**（沿用左栏「文件 / 大纲」页签），设置里显式打开后：
 //   * 左栏只保留文件目录（页签行整行隐藏）；
 //   * 大纲固定显示在编辑区右侧，于是目录与大纲能同时看到；
-//   * 右侧大纲支持折叠 / 展开（折叠是 34px 窄轨，展开 220px）。
+//   * 大纲面板可折叠 / 展开（折叠 = 面板整块隐藏、dock 仍在，展开 220px）。
+//
+// ⚠️ 本套件随「主分支移除 AI + dock 只留大纲」更新过断言：
+//   * dock 上**只有 1 个按钮**（outline），不再有第 2 个 AI 按钮；
+//   * 折叠/展开走 dock 上的同一个按钮（`[data-right-dock-button]`），
+//     旧的 `[data-sidebar-hide]` / `[data-sidebar-show]` 窄轨按钮已随实现删除。
 //
 // 套件自己**收拾并还原现场**：先在设置面板里点真实开关验一遍 UI 路径，再用 store 做几何断言，
 // 最后把设置恢复成进入时的值（否则会污染后续套件 —— 默认值本身由 tests/ 的单测守着）。
@@ -16,26 +21,28 @@ const MD = ['# 一级标题', '', '正文。', '', '## 二级标题', '', '- 项
 
 const SHAPE = `(() => {
   const panel = document.querySelector('[data-outline-panel]')
+  const dock = document.querySelector('[data-right-dock]')
   const aside = document.querySelector('aside')
   const kernel = document.querySelector('[data-editor-kernel]')
   const rect = (el) => { if (!el) return null; const b = el.getBoundingClientRect(); return { left: Math.round(b.left), right: Math.round(b.right), width: Math.round(b.width) } }
-  // 本轮 UI 变更：右侧栏顶部是**两个独立按钮**（大纲 / AI）+ 一枚隐藏按钮，
-  // 不再是 tablist；隐藏态窄轨里是「大纲 / AI / 显示侧边栏」三枚按钮。
-  const hide = panel ? panel.querySelector('[data-sidebar-hide]') : null
-  const show = panel ? panel.querySelector('[data-sidebar-show]') : null
-  const toggle = hide || show
-  const iconPath = toggle ? toggle.querySelector('path') : null
+  // 当前实现（主分支移除 AI 后）：dock 上只有「大纲」一个按钮，按钮是独立动作不是页签。
+  // 折叠/展开也由这同一个按钮承担（旧窄轨里的 data-sidebar-show 已删除）。
+  const buttons = dock ? [...dock.querySelectorAll('[data-right-dock-button]')].map((b) => ({
+    tab: b.dataset.panel,
+    pressed: b.getAttribute('aria-pressed'),
+    label: b.getAttribute('aria-label')
+  })) : []
   return JSON.stringify({
     panel: rect(panel),
+    panelDisplayed: panel ? getComputedStyle(panel).display !== 'none' : false,
     panelText: panel ? panel.textContent.replace(/\\s+/g, ' ').trim() : null,
+    dock: rect(dock),
+    dockVisible: !!dock,
     kernel: rect(kernel),
     viewportWidth: window.innerWidth,
     sidebarTabs: aside ? [...aside.querySelectorAll('button')].map((b) => b.textContent.trim()).filter((x) => x === '文件' || x === '大纲') : [],
-    buttons: panel ? [...panel.querySelectorAll('[data-sidebar-buttons] [data-sidebar-tab]')].map((b) => ({ tab: b.dataset.sidebarTab, pressed: b.getAttribute('aria-pressed'), label: b.getAttribute('aria-label') })) : [],
-    hasTablist: !!panel && !!panel.querySelector('[role="tablist"], [role="tab"], [aria-selected]'),
-    toggleAria: toggle ? toggle.getAttribute('aria-label') : null,
-    toggleExpanded: toggle ? toggle.getAttribute('aria-expanded') : null,
-    toggleIcon: iconPath ? iconPath.getAttribute('d') : null,
+    buttons,
+    hasTablist: !!dock && !!dock.querySelector('[role="tablist"], [role="tab"], [aria-selected]'),
     resizeHandle: !!document.querySelector('[data-outline-resize]'),
     setting: window.__L.settings().outlineOnRight,
     expanded: window.__L.settings().outlineRightExpanded,
@@ -87,7 +94,9 @@ async function main() {
   const off = JSON.parse(await ev(SHAPE))
   report.note('关闭态 ' + JSON.stringify({ ...off, panelText: undefined }))
   report.check('off-keeps-sidebar-tabs', off.sidebarTabs.join('/') === '文件/大纲', JSON.stringify(off.sidebarTabs))
-  report.check('off-has-no-right-panel', off.panel === null, JSON.stringify(off.panel))
+  report.check('off-has-no-right-panel', off.panel === null && off.panelDisplayed === false, JSON.stringify(off.panel))
+  // 大纲在左栏 = dock 上没有可用按钮 ⇒ 整组（面板 + dock）不挂载（见 lib/sidebarPanels.ts）
+  report.check('off-has-no-right-dock', off.dock === null && off.dockVisible === false, JSON.stringify({ dock: off.dock, visible: off.dockVisible }))
 
   // ② 真实 UI 路径：设置面板里那个开关存在且能打开
   await ev(`(() => { window.__L.ui().openSettings('general'); return 'ok' })()`)
@@ -109,7 +118,8 @@ async function main() {
   report.note('开启态 ' + JSON.stringify({ ...on, panelText: undefined }))
   report.check('setting-turned-on-by-switch', on.setting === true && on.expanded === true, JSON.stringify({ s: on.setting, e: on.expanded }))
   report.check('on-hides-sidebar-tabs', on.sidebarTabs.length === 0, JSON.stringify(on.sidebarTabs))
-  report.check('on-shows-right-panel-220', !!on.panel && on.panel.width === 220, JSON.stringify(on.panel))
+  report.check('on-shows-right-panel-220', !!on.panel && on.panelDisplayed && on.panel.width === 220, JSON.stringify(on.panel))
+  report.check('on-shows-right-dock-40', !!on.dock && on.dock.width === 40, JSON.stringify(on.dock))
   report.check(
     'right-panel-lists-headings',
     !!on.panelText && on.panelText.includes('一级标题') && on.panelText.includes('三级标题'),
@@ -120,7 +130,7 @@ async function main() {
     !!on.panel && !!on.kernel && on.panel.left >= on.kernel.right - 1,
     JSON.stringify({ kernelRight: on.kernel && on.kernel.right, panelLeft: on.panel && on.panel.left })
   )
-  // 布局是「左栏 + 内核 + 右栏」：内核宽度 = 视口 - 左栏宽 - 右栏宽（不假设固定窗口宽度）
+  // 布局是「左栏 + 内核 + 右栏 + dock」：内核宽度 = 视口 - 左栏宽 - 右栏宽 - dock 宽
   report.check(
     'kernel-sits-between-sidebars',
     !!on.kernel &&
@@ -128,58 +138,57 @@ async function main() {
       on.kernel.left >= 200 &&
       on.kernel.left <= 420 &&
       Math.abs(on.kernel.right - on.panel.left) <= 1 &&
-      Math.abs(on.kernel.width - (on.viewportWidth - on.panel.width - on.kernel.left)) <= 2,
-    JSON.stringify({ kernel: on.kernel, panel: on.panel, viewportWidth: on.viewportWidth })
+      Math.abs(on.kernel.width - (on.viewportWidth - on.panel.width - (on.dock ? on.dock.width : 0) - on.kernel.left)) <= 2,
+    JSON.stringify({ kernel: on.kernel, panel: on.panel, dock: on.dock, viewportWidth: on.viewportWidth })
   )
 
-  // 三段式结构：两个独立按钮（大纲 / AI）+ 隐藏按钮；没有页签语义
+  // 主分支移除 AI 后：dock 上**只有一个「大纲」按钮**（没有第 2 个 AI 按钮），也没有页签语义
   report.check(
-    'has-two-independent-buttons',
-    on.buttons.length === 2 &&
+    'has-one-outline-button-and-no-ai',
+    on.buttons.length === 1 &&
       on.buttons[0].tab === 'outline' &&
-      on.buttons[1].tab === 'ai' &&
       on.buttons[0].pressed === 'true' &&
-      on.buttons[1].pressed === 'false',
+      on.buttons.every((b) => b.tab !== 'ai'),
     JSON.stringify(on.buttons)
   )
   report.check('no-tab-semantics', on.hasTablist === false, '不再有 tablist / role=tab / aria-selected')
 
-  // ③ 折叠 / 展开（隐藏按钮 = 既有 outlineRightExpanded；窄轨里的展开箭头方向也要翻转）
-  await ev(`(() => { document.querySelector('[data-sidebar-hide]')?.click(); return 'ok' })()`)
+  // ③ 折叠 / 展开：点 dock 上同一个按钮 = 收起面板（dock 仍常驻）；再点 = 展开 220
+  await ev(`(() => { document.querySelector('[data-right-dock-button]')?.click(); return 'ok' })()`)
   await sleep(450)
   const collapsed = JSON.parse(await ev(SHAPE))
-  report.note('折叠态 ' + JSON.stringify({ ...collapsed, panelText: undefined }))
+  report.note('收起态 ' + JSON.stringify({ ...collapsed, panelText: undefined }))
   report.check(
-    'collapses-to-narrow-rail',
-    !!collapsed.panel && collapsed.panel.width === 34 && collapsed.expanded === false,
-    JSON.stringify(collapsed.panel)
+    'dock-button-collapses-panel',
+    collapsed.expanded === false && collapsed.panelDisplayed === false,
+    JSON.stringify({ expanded: collapsed.expanded, displayed: collapsed.panelDisplayed })
   )
-  // 折叠后只剩那条窄轨 + 展开箭头：面板里不该再有任何标题文字
-  report.check('collapsed-hides-list', collapsed.panelText === '', JSON.stringify(collapsed.panelText))
+  // 收起只收起面板：dock 本体必须还在（用户点得到展开入口），按钮 pressed 变 false
   report.check(
-    'collapsed-toggle-offers-expand',
-    collapsed.toggleAria === '显示侧边栏' && collapsed.toggleExpanded === 'false',
-    JSON.stringify({ aria: collapsed.toggleAria, expanded: collapsed.toggleExpanded })
+    'collapsed-keeps-dock',
+    collapsed.dockVisible === true && collapsed.buttons.length === 1 && collapsed.buttons[0].pressed === 'false',
+    JSON.stringify({ dock: collapsed.dock, buttons: collapsed.buttons })
   )
+  // 收起态：面板整块不显示（v-show），但 DOM 保留（滚动位置不丢）；宽度应为 0
   report.check(
-    'collapsed-icon-points-left',
-    collapsed.toggleIcon === 'm15 18-6-6 6-6',
-    JSON.stringify(collapsed.toggleIcon)
+    'collapsed-panel-is-not-displayed',
+    collapsed.panelDisplayed === false && (!collapsed.panel || collapsed.panel.width === 0),
+    JSON.stringify({ displayed: collapsed.panelDisplayed, panel: collapsed.panel })
   )
-  report.check('collapsed-has-no-resize-handle', collapsed.resizeHandle === false, '折叠态是窄轨，没有拖拽手柄')
-  // 窄轨里的「显示侧边栏」同样用 DOM click（见上一条说明）
-  await ev(`(() => { document.querySelector('[data-sidebar-show]')?.click(); return 'ok' })()`)
+  report.check('collapsed-has-no-resize-handle', collapsed.resizeHandle === false, '收起态没有拖拽手柄')
+  // 再点同一个按钮展开
+  await ev(`(() => { document.querySelector('[data-right-dock-button]')?.click(); return 'ok' })()`)
   await sleep(450)
   const expanded = JSON.parse(await ev(SHAPE))
   report.check(
-    'expands-back-to-220',
-    !!expanded.panel && expanded.panel.width === 220 && expanded.expanded === true,
-    JSON.stringify(expanded.panel)
+    'dock-button-expands-back-to-220',
+    !!expanded.panel && expanded.panelDisplayed && expanded.panel.width === 220 && expanded.expanded === true,
+    JSON.stringify({ panel: expanded.panel, expanded: expanded.expanded })
   )
   report.check(
-    'expanded-toggle-offers-hide',
-    expanded.toggleAria === '隐藏侧边栏' && expanded.toggleExpanded === 'true',
-    JSON.stringify({ aria: expanded.toggleAria, expanded: expanded.toggleExpanded })
+    'expanded-button-reports-pressed',
+    expanded.buttons.length === 1 && expanded.buttons[0].pressed === 'true',
+    JSON.stringify(expanded.buttons)
   )
 
   // ③b 宽度可拖：抓左缘手柄往左拖 60px ⇒ 面板变宽 60px，并写回设置（重启保持）
@@ -267,8 +276,8 @@ async function main() {
   const back = JSON.parse(await ev(SHAPE))
   report.check(
     'turning-off-restores-tabs',
-    back.sidebarTabs.join('/') === '文件/大纲' && back.panel === null,
-    JSON.stringify({ tabs: back.sidebarTabs, panel: back.panel })
+    back.sidebarTabs.join('/') === '文件/大纲' && back.panel === null && back.dockVisible === false,
+    JSON.stringify({ tabs: back.sidebarTabs, panel: back.panel, dock: back.dockVisible })
   )
 
   // 还原进入时的值（不污染后续套件）
