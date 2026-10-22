@@ -104,7 +104,9 @@ function openLogDir(): void {
       <div class="mt-8 w-full" data-about-deps>
         <h2 class="mb-3 text-ui-sm font-semibold uppercase tracking-[0.14em] text-ink-2b">
           {{ t('about.stack') }}
-          <span class="ml-1 font-normal normal-case tracking-normal text-ink-3/80">
+          <!-- 审计 P2「关于页 12px 版本号对比度 2.56:1」：原先是 --ink-3 再叠 80% 透明，
+               羊皮纸主题实测 2.56:1。改用不透明的 --ink-2b（三主题实测 5.32 / 7.06 / 5.11:1）。 -->
+          <span class="ml-1 font-normal normal-case tracking-normal text-ink-2b">
             {{ t('about.stackCount', { n: deps.length }) }}
           </span>
         </h2>
