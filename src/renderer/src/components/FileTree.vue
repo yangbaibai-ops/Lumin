@@ -11,6 +11,7 @@ import {
   onTreeKeydown
 } from '../lib/treeFocus'
 import { useWorkspaceRootMenu } from '../composables/useWorkspaceRootMenu'
+import { useShortcutLabel } from '../lib/keymap/shortcutLabel'
 import TreeNode from './TreeNode.vue'
 import FileList from './FileList.vue'
 import Icon from './Icon.vue'
@@ -20,6 +21,12 @@ const { t } = useI18n()
 const files = useFilesStore()
 const ui = useUiStore()
 const filter = ref('')
+/** 搜索框提示里的键位来自命令注册表（改绑 edit.findReplace 后立即更新） */
+const shortcutOf = useShortcutLabel()
+const searchTitle = computed(() => {
+  const key = shortcutOf('edit.findReplace')
+  return key ? `${t('sidebar.filterPlaceholder')} (${key})` : t('sidebar.filterPlaceholder')
+})
 /** 工作区根的右键菜单（空白处与顶层文件夹行共用同一份实现，见 useWorkspaceRootMenu） */
 const { openWorkspaceRootMenu } = useWorkspaceRootMenu()
 
@@ -324,7 +331,7 @@ function onRootContextMenu(e: MouseEvent): void {
           <button
             class="file-search__icon"
             :data-sidebar-search-toggle="searchOpen ? undefined : 'true'"
-            :title="t('sidebar.filterPlaceholder') + ' (Ctrl+F)'"
+            :title="searchTitle"
             :aria-label="t('sidebar.filterPlaceholder')"
             :aria-expanded="searchOpen ? 'true' : 'false'"
             @mousedown.prevent

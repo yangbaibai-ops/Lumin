@@ -16,6 +16,7 @@ import { shouldCloseOnScrollOrResize } from '../lib/popoverClose'
 import { insertImageFromPath, insertImageFromUrl } from '../lib/insertImage'
 import { insertOrEditLink } from '../lib/linkInsert'
 import { selectionHasMdStyle } from '../lib/editor/inlineMarks'
+import { useShortcutLabel } from '../lib/keymap/shortcutLabel'
 import {
   DEFAULT_TOOLBAR_ITEMS,
   insertToolbarItemByOrder,
@@ -34,6 +35,8 @@ const settings = useSettingsStore()
 const editorStore = useEditorStore()
 const { runExport } = useExport()
 const { setMode } = useEditorMode()
+/** 所有可见快捷键文案都从这里取（改绑后立即更新，见 lib/keymap/shortcutLabel） */
+const shortcutOf = useShortcutLabel()
 
 /** 分段控件的段定义：文案走 i18n，提示里带上循环切换的快捷键（Ctrl+/） */
 const modeItems = computed<SegmentItem[]>(() =>
@@ -47,7 +50,7 @@ const modeItems = computed<SegmentItem[]>(() =>
     id: m.id,
     icon: m.icon,
     label: t(m.labelKey),
-    title: `${t(m.labelKey)} (Ctrl+/)`
+    title: titleWithShortcut(t(m.labelKey), 'view.cycleMode')
   }))
 )
 
@@ -87,6 +90,28 @@ function groupChanged(index: number): boolean {
 /** 提示文案：标题带序号，其余直接用项目自己的 i18n key */
 function titleOf(d: ToolbarItemDef): string {
   return d.level ? `${t(d.labelKey)} ${d.level}` : t(d.labelKey)
+}
+
+/**
+ * 「标题 (当前键位)」——键位**只从命令注册表取**，没有绑定就不加括号。
+ * 审计 P2：此前 tooltip 写死 Ctrl+Shift+B，而实际默认是 Mod+Shift+L。
+ */
+function titleWithShortcut(title: string, commandId: string): string {
+  const key = shortcutOf(commandId)
+  return key ? `${title} (${key})` : title
+}
+
+/** 工具栏项目 id → 命令 id（只映射注册表里存在的命令；其余没有可展示的键位） */
+const TOOLBAR_COMMAND_IDS: Partial<Record<string, string>> = {
+  sidebar: 'view.toggleSidebar',
+  table: 'insert.table',
+  codeblock: 'insert.codeBlock',
+  link: 'insert.link',
+  image: 'insert.image'
+}
+
+function shortcutForItem(id: string): string | null {
+  return shortcutOf(TOOLBAR_COMMAND_IDS[id] ?? null)
 }
 
 // ─── 空白区右键菜单 ────────────────────────────────────────────────────────
@@ -169,6 +194,74 @@ function toggleItem(id: string): void {
   settings.set('toolbarItems', next)
 }
 
+// ─── 窄窗折叠（审计 P2「800/1000 宽工具栏溢出 447/247px」）──────────────────
+//
+// 为什么按容器宽度而不是 `window.innerWidth`：工具栏的实际可用宽度 = 窗口 - 左栏 - 右栏
+// - dock（用户可把侧栏拖到 420px），断点必须看工具栏自己。
+// 987px 是满配内容量出来的宽度（800/1000 窗口下分别是 540/740）；小于 1000 就切换成
+// 「快捷项全部进『更多』菜单，模式/大纲/专注/导出/设置保持可见」——右侧固定入口再也不会
+// 被横向滚动藏掉。
+const COMPACT_MAX_WIDTH = 1000
+const toolbarRef = ref<HTMLElement | null>(null)
+const compact = ref(false)
+let toolbarObserver: ResizeObserver | null = null
+
+function measureToolbar(): void {
+  const w = toolbarRef.value?.clientWidth ?? 0
+  compact.value = w > 0 && w < COMPACT_MAX_WIDTH
+}
+
+// ─── 「更多」下拉（窄窗下的快捷项收纳）────────────────────────────────────
+const moreOpen = ref(false)
+const moreRef = ref<HTMLElement | null>(null)
+const morePos = ref({ x: 0, y: 0 })
+
+const morePanelWidth = 224
+
+function toggleMore(): void {
+  if (!moreOpen.value) {
+    const rect = moreRef.value?.getBoundingClientRect()
+    if (rect) {
+      // 右侧钳制：菜单 232px，靠近窗口右缘时整体左移，避免溢出视口
+      const x = Math.min(rect.left, window.innerWidth - morePanelWidth - 8)
+      morePos.value = { x: Math.max(8, x), y: rect.bottom + 8 }
+    }
+  }
+  moreOpen.value = !moreOpen.value
+}
+
+/** 菜单项点击：与工具栏按钮**同一条动作出口**，不另写一份命令 */
+function runMoreItem(d: ToolbarItemDef): void {
+  moreOpen.value = false
+  if (d.id === 'table') {
+    insertDefaultTable()
+    return
+  }
+  if (d.id === 'codeblock') {
+    editorStore.instance?.chain().focus().toggleCodeBlock().run()
+    return
+  }
+  runItem(d.id)
+}
+
+/** 表格默认 3×3 插入（与 ToolbarTableButton 的「直接点击」同一口径） */
+function insertDefaultTable(): void {
+  const ed = editorStore.instance
+  if (!ed) return
+  const opts = { rows: 3, cols: 3, withHeaderRow: true }
+  const { $from } = ed.state.selection
+  let blocked = false
+  for (let d = $from.depth; d > 0; d--) {
+    const name = $from.node(d).type.name
+    if (name === 'table' || name === 'codeBlock') {
+      blocked = true
+      break
+    }
+  }
+  if (blocked) ed.chain().focus('end').insertTable(opts).run()
+  else ed.chain().focus().insertTable(opts).run()
+}
+
 // ─── 编辑器命令 ────────────────────────────────────────────────────────────
 const exportOpen = ref(false)
 const exportRef = ref<HTMLElement | null>(null)
@@ -192,30 +285,51 @@ function onDocClick(e: MouseEvent): void {
     const panel = (e.target as HTMLElement).closest?.('[data-export-pop], [data-export-pop-anchor]')
     if (!panel) exportOpen.value = false
   }
+  if (moreOpen.value) {
+    const panel = (e.target as HTMLElement).closest?.(
+      '[data-toolbar-more-pop], [data-toolbar-more-anchor]'
+    )
+    if (!panel) moreOpen.value = false
+  }
 }
-/** 滚动/缩放收起导出菜单：菜单内部滚动不收起（见 lib/popoverClose.ts） */
+/** 滚动/缩放收起导出/更多菜单：菜单内部滚动不收起（见 lib/popoverClose.ts） */
 function onWindowScrollOrResize(e: Event): void {
-  if (!exportOpen.value) return
-  const panel = document.querySelector<HTMLElement>('[data-export-pop]')
-  if (!shouldCloseOnScrollOrResize(e, panel)) return
-  exportOpen.value = false
+  if (exportOpen.value) {
+    const panel = document.querySelector<HTMLElement>('[data-export-pop]')
+    if (shouldCloseOnScrollOrResize(e, panel)) exportOpen.value = false
+  }
+  if (moreOpen.value) {
+    const panel = document.querySelector<HTMLElement>('[data-toolbar-more-pop]')
+    if (shouldCloseOnScrollOrResize(e, panel)) moreOpen.value = false
+  }
 }
 onMounted(() => {
   document.addEventListener('mousedown', onDocClick)
   window.addEventListener('scroll', onWindowScrollOrResize, true)
   window.addEventListener('resize', onWindowScrollOrResize)
+  // 工具栏实际宽度会随侧栏拖拽变化（不只是窗口 resize），所以看容器自己的尺寸
+  if (typeof ResizeObserver !== 'undefined' && toolbarRef.value) {
+    toolbarObserver = new ResizeObserver(measureToolbar)
+    toolbarObserver.observe(toolbarRef.value)
+  }
+  measureToolbar()
 })
 onBeforeUnmount(() => {
   document.removeEventListener('mousedown', onDocClick)
   window.removeEventListener('scroll', onWindowScrollOrResize, true)
   window.removeEventListener('resize', onWindowScrollOrResize)
+  toolbarObserver?.disconnect()
+  toolbarObserver = null
 })
 
-/** 工具栏隐藏时把导出弹层一起收掉（否则它会孤零零浮在文档上） */
+/** 工具栏隐藏时把导出/更多弹层一起收掉（否则它们会孤零零浮在文档上） */
 watch(
   () => settings.toolbarVisible,
   (v) => {
-    if (!v) exportOpen.value = false
+    if (!v) {
+      exportOpen.value = false
+      moreOpen.value = false
+    }
   }
 )
 
@@ -442,52 +556,73 @@ const exportItems: { icon: string; labelKey: string; format: 'pdf' | 'html' | 'w
        浅色主题下与写作区同为纯白，深色 / 羊皮纸主题各自跟随 `--paper`，
        所以口径是"与编辑区同色"而不是写死 #fff。 -->
   <div
-    class="flex h-11 shrink-0 items-center gap-0.5 overflow-x-auto border-b border-edge bg-paper px-3"
+    ref="toolbarRef"
+    class="flex h-11 shrink-0 items-center gap-0.5 overflow-hidden border-b border-edge bg-paper px-3"
+    :data-toolbar-compact="compact ? '1' : null"
     data-editor-toolbar
     @mousedown.prevent
     @contextmenu="onToolbarContextMenu"
   >
-    <!-- 快捷项：顺序 / 显隐完全由 settings.toolbarItems 驱动。
-         分组不同的相邻两项之间画一条竖分隔线（见 script 里的 groupChanged）。 -->
-    <template v-for="(d, i) in items" :key="d.id">
-      <div v-if="groupChanged(i)" class="mx-1.5 h-5 w-px shrink-0 bg-edge" />
+    <!-- 宽窗：快捷项直接铺开；窄窗：整组收进「更多」下拉（右侧固定入口永不横向溢出） -->
+    <div v-if="!compact" class="flex items-center gap-0.5">
+      <!-- 快捷项：顺序 / 显隐完全由 settings.toolbarItems 驱动。
+           分组不同的相邻两项之间画一条竖分隔线（见 script 里的 groupChanged）。 -->
+      <template v-for="(d, i) in items" :key="d.id">
+        <div v-if="groupChanged(i)" class="mx-1.5 h-5 w-px shrink-0 bg-edge" />
 
-      <!-- 侧边栏开关：自己管理状态（与菜单栏/状态栏共用同一份持久化） -->
-      <button
-        v-if="d.id === 'sidebar'"
-        class="icon-btn"
-        data-toolbar-item
-        :title="t('menu.toggleSidebar') + ' (Ctrl+Shift+B)'"
-        :aria-label="t('menu.toggleSidebar')"
-        @click="toggleSidebar"
-      >
-        <Icon name="panel-left" :size="16" />
-      </button>
+        <!-- 侧边栏开关：自己管理状态（与菜单栏/状态栏共用同一份持久化） -->
+        <button
+          v-if="d.id === 'sidebar'"
+          class="icon-btn"
+          data-toolbar-item
+          :title="titleWithShortcut(t('menu.toggleSidebar'), 'view.toggleSidebar')"
+          :aria-label="t('menu.toggleSidebar')"
+          @click="toggleSidebar"
+        >
+          <Icon name="panel-left" :size="16" />
+        </button>
 
-      <!-- 段落 / 代码块：自带悬停弹层，单独两个组件 -->
-      <ToolbarTableButton v-else-if="d.id === 'table'" data-toolbar-item />
-      <ToolbarCodeBlockButton v-else-if="d.id === 'codeblock'" data-toolbar-item />
+        <!-- 段落 / 代码块：自带悬停弹层，单独两个组件 -->
+        <ToolbarTableButton v-else-if="d.id === 'table'" data-toolbar-item />
+        <ToolbarCodeBlockButton v-else-if="d.id === 'codeblock'" data-toolbar-item />
 
-      <!-- 其余项目：一条通用渲染路径（图标 + 序号 + 激活态 + 禁用态）。
+        <!-- 其余项目：一条通用渲染路径（图标 + 序号 + 激活态 + 禁用态）。
           同时给 title 与 aria-label：全局 tooltip 悬停时会**摘掉 title**
           再自己画一层，屏读器那时就读不到可访问名了（审计 F4）。 -->
-      <button
-        v-else
-        class="icon-btn"
-        data-toolbar-item
-        :data-toolbar-item-id="d.id"
-        :class="{ active: isItemActive(d.id) }"
-        :disabled="isDisabled(d.id)"
-        :title="titleOf(d)"
-        :aria-label="titleOf(d)"
-        @click="runItem(d.id)"
-      >
-        <Icon :name="d.icon" :size="15" />
-        <!-- 标题按钮的层级已经画在图标里（heading-1/2/3 = H + 数字同一套描边），
+        <button
+          v-else
+          class="icon-btn"
+          data-toolbar-item
+          :data-toolbar-item-id="d.id"
+          :class="{ active: isItemActive(d.id) }"
+          :disabled="isDisabled(d.id)"
+          :title="titleOf(d)"
+          :aria-label="titleOf(d)"
+          @click="runItem(d.id)"
+        >
+          <Icon :name="d.icon" :size="15" />
+          <!-- 标题按钮的层级已经画在图标里（heading-1/2/3 = H + 数字同一套描边），
              不再额外拼一个数字 span —— 那会造成字重/基线不一致（详见 Icon.vue 的注释）。
              层级信息仍在 title/aria-label 里（见 titleOf）。 -->
-      </button>
-    </template>
+        </button>
+      </template>
+    </div>
+
+    <!-- 窄窗：一个「更多」按钮收纳上面整组快捷项（内容与宽窗完全同一份 items） -->
+    <button
+      v-else-if="items.length"
+      class="icon-btn"
+      :class="{ active: moreOpen }"
+      :title="t('toolbar.more')"
+      :aria-label="t('toolbar.more')"
+      aria-haspopup="menu"
+      :aria-expanded="moreOpen ? 'true' : 'false'"
+      data-toolbar-more-anchor
+      @click="toggleMore"
+      @keydown.esc="moreOpen = false"
+    >
+      <Icon name="more" :size="16" />
+    </button>
 
     <!-- 编辑器模式：实时渲染 / 分屏对比 / 源码。
          主控控件放左侧主功能区：右侧文档信息区在窄窗口会被
@@ -527,7 +662,7 @@ const exportItems: { icon: string; labelKey: string; format: 'pdf' | 'html' | 'w
     <button
       class="icon-btn"
       :class="{ active: ui.focusMode }"
-      :title="t('editor.focus') + ' (Ctrl+Shift+F)'"
+      :title="titleWithShortcut(t('editor.focus'), 'view.focusMode')"
       :aria-label="t('editor.focus')"
       @click="ui.focusMode = !ui.focusMode"
     >
@@ -584,6 +719,47 @@ const exportItems: { icon: string; labelKey: string; format: 'pdf' | 'html' | 'w
           >
             <Icon :name="item.icon" :size="14" class="text-ink-3" />
             {{ t(item.labelKey) }}
+          </button>
+        </div>
+      </Transition>
+    </Teleport>
+
+    <!-- 窄窗「更多」下拉：与导出弹层同样的 body 传送 + fixed 定位（工具栏 overflow-hidden
+         会裁掉普通 absolute 弹层）。内容就是同一份 items，点击走同一条 runItem 出口。 -->
+    <Teleport to="body">
+      <Transition name="pop">
+        <div
+          v-if="moreOpen"
+          class="fixed rounded-xl border border-edge bg-elevate p-1.5"
+          role="menu"
+          :aria-label="t('toolbar.more')"
+          data-toolbar-more-pop
+          :style="{
+            zIndex: 'var(--z-popover)',
+            width: morePanelWidth + 'px',
+            boxShadow: 'var(--shadow-2)',
+            left: morePos.x + 'px',
+            top: morePos.y + 'px'
+          }"
+          @keydown.esc="moreOpen = false"
+        >
+          <button
+            v-for="d in items"
+            :key="d.id"
+            type="button"
+            role="menuitem"
+            class="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-left text-ui text-ink transition-colors duration-100 hover:bg-panel-2 disabled:cursor-not-allowed disabled:opacity-50"
+            :disabled="isDisabled(d.id)"
+            :data-more-item="d.id"
+            @click="runMoreItem(d)"
+          >
+            <Icon :name="d.icon" :size="14" class="flex-none text-ink-3" />
+            <span class="min-w-0 flex-1 truncate">{{ titleOf(d) }}</span>
+            <span
+              v-if="shortcutForItem(d.id)"
+              class="ml-2 shrink-0 font-mono text-ui-sm tracking-tight text-ink-2b"
+              >{{ shortcutForItem(d.id) }}</span
+            >
           </button>
         </div>
       </Transition>

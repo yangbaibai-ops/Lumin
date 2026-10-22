@@ -29,8 +29,13 @@ export interface EditorMenuAction {
   kind?: 'suggestion' | 'action'
   /** 图标名（见 components/Icon.vue） */
   icon?: string
-  /** 展示用快捷键提示（本地化文本） */
+  /** 展示用快捷键提示（本地化文本；**原生/编辑器级**键位，如 Ctrl+C、Ctrl+B） */
   shortcut?: string
+  /**
+   * 应用命令 id（lib/keymap 的命令表）。有值时菜单**优先**从注册表取当前生效键位，
+   * `shortcut` 只作兜底 —— 否则改绑后右键菜单会继续显示旧键（审计 P2）。
+   */
+  commandId?: string
   /** 悬停说明（i18n key；用于"忽略"这类需要讲清取舍的项） */
   hintKey?: string
   /** 危险动作（删除表格/行/列）用红色呈现 */

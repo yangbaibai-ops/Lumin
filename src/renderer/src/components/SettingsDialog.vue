@@ -1006,11 +1006,25 @@ function formatTime(ms: number): string {
                       <div class="set-row" :title="t('settings.rightDockDesc')">
                         <div>
                           <p class="set-row-label">{{ t('settings.rightDock') }}</p>
-                          <p class="set-row-desc">{{ t('settings.rightDockShort') }}</p>
+                          <!-- 审计 P2「dock 开关无效果」：outlineOnRight=false 时 dock 整块不挂载，
+                               开关必须置灰并说明原因，而不是让用户对着一个拨了没反应的开关。 -->
+                          <p
+                            class="set-row-desc"
+                            :data-right-dock-unavailable="
+                              settings.outlineOnRight ? undefined : 'true'
+                            "
+                          >
+                            {{
+                              settings.outlineOnRight
+                                ? t('settings.rightDockShort')
+                                : t('settings.rightDockUnavailable')
+                            }}
+                          </p>
                         </div>
                         <SettingSwitch
                           :model-value="settings.rightDockVisible"
                           :label="t('settings.rightDock')"
+                          :disabled="!settings.outlineOnRight"
                           data-setting-right-dock
                           @update:model-value="(v) => settings.set('rightDockVisible', v)"
                         />

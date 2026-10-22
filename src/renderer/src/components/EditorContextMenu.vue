@@ -8,10 +8,17 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useEditorMenuStore } from '../stores/editorMenu'
 import { placeAtPoint, placeSubmenu } from '../lib/menuPlacement'
+import { useShortcutLabel } from '../lib/keymap/shortcutLabel'
 import Icon from './Icon.vue'
 
 const { t } = useI18n()
 const menu = useEditorMenuStore()
+/** 应用命令的键位只从注册表取；原生/编辑器级键位仍用动作里写的 shortcut */
+const shortcutOf = useShortcutLabel()
+
+function shortcutText(item: { commandId?: string; shortcut?: string }): string | null {
+  return shortcutOf(item.commandId) ?? item.shortcut ?? null
+}
 const menuRef = ref<HTMLElement | null>(null)
 const subRef = ref<HTMLElement | null>(null)
 const catRefs = ref<Record<string, HTMLElement | null>>({})
@@ -382,7 +389,7 @@ const subStyle = computed(() => ({ left: `${subPos.value.left}px`, top: `${subPo
           >
             <Icon :name="item.icon || 'dot'" :size="14" class="ecm-icon" />
             <span class="flex-1 truncate">{{ t(item.labelKey) }}</span>
-            <span v-if="item.shortcut" class="ecm-key">{{ item.shortcut }}</span>
+            <span v-if="shortcutText(item)" class="ecm-key">{{ shortcutText(item) }}</span>
           </button>
         </div>
       </div>

@@ -350,6 +350,7 @@
     "outlineRightShort": "Three-pane layout: file tree and outline together (collapsible)",
     "rightDock": "Show right dock",
     "rightDockShort": "A persistent 40px vertical dock (Outline button) on the right; turn it off to hide both the dock and the panel so the editor uses the full width",
+    "rightDockUnavailable": "The outline is currently in the left sidebar, so the right dock has no button to show and stays hidden. Turn on \"Outline on the right\" above to make this switch effective.",
     "rightDockDesc": "The right dock stays at the far right of the window with a single Outline button. Click it to open the outline panel to the left of the dock, click again to collapse it. Turning this off hides the whole dock and panel; turning it back on restores the expanded state.",
     "cardSession": "Saving & session",
     "autoSaveManualHint": "In manual mode, save with Ctrl+S or the status bar",
@@ -459,6 +460,7 @@
   },
   "toolbar": {
     "hide": "Hide toolbar",
+    "more": "More (shortcuts collapsed in narrow windows)",
     "adjust": "Adjust toolbar items",
     "visible": "Show shortcut toolbar",
     "visibleDesc": "The shortcut toolbar above the editor. When hidden, bring it back from View → Show Shortcut Toolbar or the switch in Settings.",

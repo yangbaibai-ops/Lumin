@@ -129,7 +129,8 @@ export function buildEditorMenuActions(
       id: 'clipboard.pastePlain',
       labelKey: 'editorMenu.pastePlain',
       icon: 'clipboard',
-      shortcut: 'Ctrl+Shift+V',
+      // 键位从命令注册表取（默认 Mod+Shift+V，可改绑）
+      commandId: 'edit.pastePlain',
       run: () => pastePlainIntoEditor()
     },
     'clipboard.selectAll': {
@@ -216,6 +217,7 @@ export function buildEditorMenuActions(
       id: 'paragraph.codeBlock',
       labelKey: 'editorMenu.codeBlock',
       icon: 'code',
+      commandId: 'insert.codeBlock',
       run: () => {
         chain().toggleCodeBlock().run()
       }
@@ -268,6 +270,7 @@ export function buildEditorMenuActions(
       id: 'insert.link',
       labelKey: 'editorMenu.link',
       icon: 'link',
+      commandId: 'insert.link',
       // 这里原先标 `Ctrl+K`，但 Ctrl+K 实际绑的是「打开快捷键设置」（lib/keymap 的
       // help.keymap），链接压根没有快捷键 —— 提示键必须跟着真实绑定走，宁可不写。
       // 交互语义与工具栏那枚按钮**完全一致**（同一份 lib/linkInsert.ts）：有选区只要链接、
@@ -278,6 +281,7 @@ export function buildEditorMenuActions(
       id: 'insert.image',
       labelKey: 'editorMenu.image',
       icon: 'image',
+      commandId: 'insert.image',
       run: async () => {
         const src = await prompt({
           titleKey: 'editorMenu.imagePrompt',
@@ -292,6 +296,7 @@ export function buildEditorMenuActions(
       id: 'insert.table',
       labelKey: 'editorMenu.table',
       icon: 'table',
+      commandId: 'insert.table',
       run: () => {
         editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()
       }
@@ -300,6 +305,7 @@ export function buildEditorMenuActions(
       id: 'insert.hr',
       labelKey: 'editorMenu.hr',
       icon: 'hr',
+      commandId: 'insert.hr',
       run: () => {
         editor.chain().focus().setHorizontalRule().run()
       }
@@ -310,12 +316,14 @@ export function buildEditorMenuActions(
       id: 'insert.math',
       labelKey: 'editorMenu.math',
       icon: 'sigma',
+      commandId: 'insert.math',
       run: () => insertBlockMath(editor)
     },
     'insert.mermaid': {
       id: 'insert.mermaid',
       labelKey: 'editorMenu.mermaid',
       icon: 'braces',
+      commandId: 'insert.mermaid',
       run: () => insertMermaidBlock(editor)
     },
     'insert.toc': {
@@ -333,12 +341,14 @@ export function buildEditorMenuActions(
       id: 'insert.paragraphAbove',
       labelKey: 'editorMenu.paragraphAbove',
       icon: 'chevron-up',
+      commandId: 'insert.paragraphAbove',
       run: () => insertParagraphAround(editor, 'above')
     },
     'insert.paragraphBelow': {
       id: 'insert.paragraphBelow',
       labelKey: 'editorMenu.paragraphBelow',
       icon: 'chevron-down',
+      commandId: 'insert.paragraphBelow',
       run: () => insertParagraphAround(editor, 'below')
     },
 
