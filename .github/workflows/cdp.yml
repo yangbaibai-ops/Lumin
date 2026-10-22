@@ -9,8 +9,6 @@
 # `dispatchKeyEvent` / `dispatchMouseEvent` / `Input.insertText` 的套件（真实输入会被
 # "窗口不在前台"吃掉，那是无头环境唯一稳不住的东西）。判据在 run-suites.js 的 ciSubset()，
 # 往套件里加真实按键，它会自动出局 —— 不需要人来维护第二张名单。
-name: CDP suites (nightly)
-
 name: CDP suites (PR gate + nightly)
 
 on:
