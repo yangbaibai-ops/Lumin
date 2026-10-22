@@ -126,12 +126,21 @@ async function openDroppedFolder(dir: string): Promise<DroppedPathOutcome> {
  */
 export async function openDroppedPath(dropped: string): Promise<DroppedPathOutcome> {
   const ui = useUiStore()
-  // 拖放的落点路径主进程看不到 → 先申请一次只读授权（目录同样适用：grantDroppedRead 只要求存在）
-  if (!(await window.luminAPI.file.authorizeUserPath(dropped))) {
+  /**
+   * ⚠️ 审计 P1-2 之后这里**不再申请授权**（`file:authorizeUserPath` 已删除）：
+   * 渲染层不能把任意路径变成可读。拖放本身也已在 `lib/dragGuard.ts` 里全禁用；
+   * 若将来恢复，必须由主进程验证“这次拖放确实来自系统”（一次性 token），
+   * 而不是渲染层自报路径。现在只处理**已经授权**的路径（工作区 / 已打开文档目录等）：
+   * `file:isDirectory` 会走统一授权闸，被拒就如实提示。
+   */
+  let isDir = false
+  try {
+    isDir = await window.luminAPI.file.isDirectory(dropped)
+  } catch {
     ui.toast(i18n.global.t('toast.openFailed'), 'error')
     return 'unusable'
   }
-  if (await window.luminAPI.file.isDirectory(dropped)) return openDroppedFolder(dropped)
+  if (isDir) return openDroppedFolder(dropped)
   if (!isTextFileName(dropped)) {
     ui.toast(i18n.global.t('toast.unsupportedFile'), 'error')
     return 'unsupported'

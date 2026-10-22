@@ -205,8 +205,8 @@ const api: LuminAPI = {
       }
     },
     fileUrl: (path) => ipcRenderer.invoke('file:fileUrl', path),
-    // 拖进窗口的文件：路径只有渲染层拿得到，由它登记一次只读授权（见 services/pathGrants）
-    authorizeUserPath: (path) => ipcRenderer.invoke('file:authorizeUserPath', path),
+    // 注意：这里**没有** authorizeUserPath（审计 P1-2 已删除）。渲染层不得自行申报授权，
+    // 授权只由主进程在原生对话框 / 启动参数 / 会话 / 链接点击之后写入。
     dirname: (path) => ipcRenderer.invoke('file:dirname', path),
     join: (dir, name) => ipcRenderer.invoke('file:join', dir, name),
     basename: (path) => ipcRenderer.invoke('file:basename', path)

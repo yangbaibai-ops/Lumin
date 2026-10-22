@@ -11,11 +11,11 @@ import {
   atomicWriteEncoded,
   copyFileAtomic as atomicCopyFile
 } from './services/atomicWrite'
-import * as openDocs from './services/openDocs'
+import * as pathGrants from './services/pathGrants'
 import type { FileNode, WorkspaceDoc } from '../shared/types'
 import type { ConcreteEncoding, EncodingId } from '../shared/encodings'
 import { detectEol, toEol, toLf, type Eol } from '../shared/eol'
-import { isMediaExtension, isWithinAnyRoot } from '../shared/media'
+import { isMediaExtension } from '../shared/media'
 import { TEMP_SUFFIX_RE } from '../shared/tempName'
 // 「哪些文件算文本文档」的唯一真相源在 shared/textFiles.ts（可单测）；
 // 这里重新导出一次，只是为了历史调用点不用满地改 import 路径。
@@ -24,16 +24,14 @@ import { TEXT_FILE_EXT_RE } from '../shared/textFiles'
 export { TEXT_FILE_EXT_RE }
 
 /**
- * 该绝对路径能否经 `lumin-file://` 送出（两道闸，见 main/index.ts 的 protocol.handle 注释）：
+ * 该绝对路径能否经 `lumin-file://` 送出：
  *  1. 扩展名在媒体白名单里；
- *  2. 位于「当前工作区」或「某个已打开文档所在目录」之内。
- * 两条规则本身是纯函数，在 shared/media.ts（可单测）；这里只负责取「当前的根」。
+ *  2. 走与 `file:read` **完全相同**的授权校验（`pathGrants.isAuthorized`，内部先 realpath）
+ *     —— 统一到一处，才不会出现"fs 拦住了、协议没拦住"的分裂（审计 P1-2）。
  */
 export function isServableMedia(p: string): boolean {
   if (!isMediaExtension(p)) return false
-  const workspaceRoot = db.kvGet<{ root: string | null }>('workspace', { root: null }).root
-  const docDirs = openDocs.listOpenDocs().map((doc) => path.dirname(doc))
-  return isWithinAnyRoot(p, [workspaceRoot, ...docDirs])
+  return pathGrants.isAuthorized(p, 'read')
 }
 
 export function normalize(p: string): string {

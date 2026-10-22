@@ -146,14 +146,21 @@ test('IPC：shell:openPath 必须过授权闸（顺序也要对：黑名单 → 
   const end = body.indexOf('ipcMain.handle(')
   const handler = body.slice(0, end > 0 ? end : body.length)
   const iUnsafe = handler.indexOf('links.isUnsafeOpenTarget(abs)')
-  const iAuth = handler.indexOf(`pathGrants.isAuthorized(abs, 'read')`)
-  const iOpen = handler.indexOf('shell.openPath(abs)')
+  // 审计 P1-2：授权闸统一走 assertAuthorizedReal（内部 realpath，挡 junction 逃逸），
+  // 交给系统的也必须是真实路径（real），而不是未解析的字面路径。
+  const iAuth = handler.indexOf(`pathGrants.assertAuthorizedReal(abs, 'read')`)
+  const iOpen = handler.indexOf('shell.openPath(real)')
   assert.ok(iUnsafe > 0, 'shell:openPath 缺可执行类黑名单闸')
-  assert.ok(iAuth > 0, "shell:openPath 缺 pathGrants.isAuthorized(abs, 'read') 授权闸")
+  assert.ok(iAuth > 0, "shell:openPath 缺 pathGrants.assertAuthorizedReal(abs, 'read') 授权闸")
   assert.ok(iOpen > 0, 'shell:openPath 没有真的调用 shell.openPath')
   assert.ok(iUnsafe < iAuth && iAuth < iOpen, '三道闸的顺序错了（授权必须在交给系统之前）')
-  // 正常功能不能因此断掉：链接激活时要给目标记一条授权
+  // 正常功能不能因此断掉：链接激活时要给目标记一条**只读**授权
   assert.match(text, /grantLinkTarget/, 'links:resolve 没有为目标登记只读授权')
+  assert.match(
+    text,
+    /grantDirRead\(res\.path\)/,
+    '链接目标目录必须用 grantDirRead（只读），不能 grantDir（可写）'
+  )
 })
 
 test('IPC：preload 的出站通道白名单与主进程真实发送点一一对应', () => {

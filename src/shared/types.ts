@@ -825,10 +825,9 @@ export interface LuminAPI {
     chooseImage: () => Promise<string | null>
     getPathForFile: (file: File) => string | null
     /**
-     * 把「用户拖进窗口的文件」登记为只读授权（拖放路径主进程看不到，必须由渲染层申请一次）。
-     * 返回 false = 该路径不存在或不可用。口径见主进程 services/pathGrants。
+     * ⚠️ 已删除 `authorizeUserPath`（审计 P1-2）：渲染层不能自行申报任意路径授权。
+     * 授权只由主进程在原生对话框 / 启动参数 / 会话恢复 / 真实链接点击之后写入。
      */
-    authorizeUserPath: (path: string) => Promise<boolean>
     fileUrl: (path: string) => Promise<string>
     dirname: (path: string) => Promise<string>
     join: (dir: string, name: string) => Promise<string>

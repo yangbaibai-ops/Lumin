@@ -918,9 +918,9 @@ export function registerIpc(slots: SlotRegistry): void {
   /**
    * 这个路径是不是目录（拖入落点要靠它分流：文件 → 打开文件；目录 → 打开文件夹）。
    *
-   * 与 `file:exists` 同一口径：**先过授权闸**。拖入路径在调用它之前已经由
-   * `file:authorizeUserPath` 登记过只读授权（见下面那条 IPC），所以正常流程必然放行；
-   * 顺序反了（先问 kind 再授权）就会拿到 PATH_NOT_AUTHORIZED。
+   * 与 `file:exists` 同一口径：**先过授权闸**（`assertAuthorized` 内部 realpath）。
+   * 渲染层没有任何"自行申请授权"的通道 —— 拖入/最近列表等入口的路径，要么落在
+   * 工作区/已打开文档目录内，要么来自主进程写入的对话框/会话/链接目标授权。
    */
   ipcMain.handle('file:isDirectory', (_, p: string) =>
     fileOps.isDirectory(pathGrants.assertAuthorized(p, 'read'))
@@ -934,7 +934,7 @@ export function registerIpc(slots: SlotRegistry): void {
    * 这里只是"规范化 + 落地成一次查询"，渲染层不手搓字符串比较。
    *
    * 授权：与 `file:exists` / `file:isDirectory` 同一口径，**两侧都过闸**。
-   * 正常流程必然放行 —— 拖入的那侧由 `file:authorizeUserPath` 登记过，
+   * 正常流程必然放行 —— 拖入/最近列表那侧由 `links:resolve` / 会话 / 历史文档授权，
    * 工作区根那侧在 `isAuthorized` 里天然命中（它等于 kv 里的 root）。
    */
   ipcMain.handle('file:isSamePath', (_, a: string, b: string) => {
@@ -1005,14 +1005,15 @@ export function registerIpc(slots: SlotRegistry): void {
   /**
    * 把用户**拖进窗口**的那个路径登记为只读授权。
    *
-   * 为什么需要这条 IPC：拖放由渲染层收到 `File` 后用 `webUtils.getPathForFile` 取路径，
-   * 主进程完全不知道这次用户意图 —— 没有它，拖入文件会被授权闸拦掉（功能回退）。
-   * 口径见 services/pathGrants 的说明：它把"静默的任意路径访问"收窄成"一次显式的、可审计的申请"，
-   * **不是**沙箱边界；并且只对**已存在**的文件授予只读。
+   * ⚠️ 这条 IPC 已**删除**（审计 P1-2）：它此前对任意"存在的路径"直接 `grantDroppedRead`，
+   * 渲染层只要调一次就能把 `C:\Windows\win.ini` 登记成只读授权，再经 `file:read` /
+   * `lumin-file://` 读出来 —— 授权模型形同虚设。
+   *
+   * 现在的口径：**授权只能由主进程在真实用户手势之后写入** —— 原生对话框（打开/另存为/
+   * 选文件夹/选图片）、启动参数、会话恢复、documents 表、`links:resolve`（用户点链接）。
+   * 拖放本身在 `lib/dragGuard.ts` 里已全禁用；若将来恢复，"把拖入路径交给主进程"必须走
+   * 主进程能验证来源的一次性 token，而不是渲染层自报路径。
    */
-  ipcMain.handle('file:authorizeUserPath', (_, p: string) =>
-    pathGrants.grantDroppedRead(path.resolve(p))
-  )
   ipcMain.handle('file:getPathForFile', (_, file: File) => {
     try {
       return webUtils.getPathForFile(file)
@@ -1021,7 +1022,7 @@ export function registerIpc(slots: SlotRegistry): void {
     }
   })
   ipcMain.handle('file:fileUrl', (_, p: string) =>
-    fileOps.toFileUrl(pathGrants.assertAuthorized(p, 'read'))
+    fileOps.toFileUrl(pathGrants.assertAuthorizedReal(p, 'read'))
   )
   ipcMain.handle('file:dirname', (_, p: string) => path.dirname(p))
   ipcMain.handle('file:join', (_, dir: string, name: string) => path.join(dir, name))
@@ -1518,18 +1519,21 @@ export function registerIpc(slots: SlotRegistry): void {
     if (links.isUnsafeOpenTarget(abs)) return 'UNSAFE_OPEN_TARGET'
     /**
      * 纵深防御②：只把**已授权**的路径交给系统默认应用（清单 §4 P1「`shell:openPath` 是
-     * 任意路径执行入口」）。此前这个 handler 是"给我任意路径，我交给 OS"的直通口，
-     * 而 `pathGrants` 那份授权表（工作区 / 用户挑选 / 拖入 / 当前文档目录 / 会话与历史）
-     * 完全没被它用到 —— 同一份表在 `file:read` 上已经生效（见下面 `assertAuthorized`）。
+     * 任意路径执行入口」）。
      *
-     * 授权来源不只有上面那几类：**用户真的点了文档里的链接**时，`links:resolve` 会为目标
-     * 记一条只读授权（`grantLinkTarget`），所以"打开工作区外的链接目标"这个正常功能仍然可用。
-     * 与 `pathGrants` 的口径一致：这不是能力沙箱，挡的是"文档内容驱动的路径静默落到系统处理器"
-     * 与"渲染层随手把任意路径交出去"这两类，且拒绝原因可识别、可断言。
+     * 走与 `file:read` **同一个** `pathGrants.assertAuthorizedReal`：内部先 realpath，
+     * 既挡 junction/symlink 逃逸，也让"拒绝"留下一条可审计日志（审计 P1-2 的验收要求）。
+     * 授权来源不只有工作区：用户真的点了文档里的链接时，`links:resolve` 会为目标记一条
+     * **只读**授权，所以"打开工作区外的链接目标"这个正常功能仍然可用。
      */
-    if (!pathGrants.isAuthorized(abs, 'read')) return 'PATH_NOT_AUTHORIZED'
+    let real: string
+    try {
+      real = pathGrants.assertAuthorizedReal(abs, 'read')
+    } catch {
+      return 'PATH_NOT_AUTHORIZED'
+    }
     // shell.openPath 返回空字符串表示成功，否则是系统给的错误信息
-    return shell.openPath(abs)
+    return shell.openPath(real)
   })
 
   // ── 链接目标：解析 / 创建 / 历史记录 ──
@@ -1541,8 +1545,8 @@ export function registerIpc(slots: SlotRegistry): void {
    */
   const grantLinkTarget = (res: LinkResolveResult): void => {
     if (!res.path || !res.exists || res.blocked) return
-    if (res.entryType === 'directory') pathGrants.grantDir(res.path)
-    else pathGrants.grantDroppedRead(res.path)
+    if (res.entryType === 'directory') pathGrants.grantDirRead(res.path)
+    else pathGrants.grantFileRead(res.path)
   }
   ipcMain.handle('links:resolve', async (_, target: string, baseDir: string | null) => {
     const res = await links.resolveLinkTarget(target, baseDir)

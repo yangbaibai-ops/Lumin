@@ -14,7 +14,7 @@
 const fs = require('fs')
 const os = require('os')
 const path = require('path')
-const { connect, settle, sleep, Reporter, fatal } = require('./lib/harness')
+const { connect, settle, sleep, Reporter, appPages, fatal } = require('./lib/harness')
 
 const base = path.join(os.tmpdir(), 'lumin-grants')
 const ws = path.join(base, 'workspace')
@@ -24,13 +24,19 @@ const ws = path.join(base, 'workspace')
  * 一次性目录（用完删掉），它不在任何授权范围内。
  */
 const outside = path.join(os.homedir(), 'lumin-grants-outside')
-/** 「拖入的文件」也必须放在 %TEMP% 之外，否则会被测试期的信任范围顺带放行，测不出"只读" */
-const dropped = path.join(outside, 'dropped.md')
+/**
+ * 「拖入的文件」必须放在**另一个**工作区外目录：`outside` 在 B2 里被真正打开过，它的目录
+ * 因此会拿到会话/历史级别的只读授权（正文图片要用），放里面就测不出"未授权路径被拒"。
+ */
+const outside2 = path.join(os.homedir(), 'lumin-grants-outside2')
+const dropped = path.join(outside2, 'dropped.md')
 
-const read = (p) => `window.luminAPI.file.read(${JSON.stringify(p)}).then(() => 'ok').catch((e) => String(e.message ?? e))`
+const read = (p) =>
+  `window.luminAPI.file.read(${JSON.stringify(p)}).then(() => 'ok').catch((e) => String(e.message ?? e))`
 const write = (p, text) =>
   `window.luminAPI.file.write(${JSON.stringify(p)}, ${JSON.stringify(text)}).then(() => 'ok').catch((e) => String(e.message ?? e))`
-const exists = (p) => `window.luminAPI.file.exists(${JSON.stringify(p)}).then((v) => 'ok:' + v).catch((e) => String(e.message ?? e))`
+const exists = (p) =>
+  `window.luminAPI.file.exists(${JSON.stringify(p)}).then((v) => 'ok:' + v).catch((e) => String(e.message ?? e))`
 
 async function main() {
   const app = await connect()
@@ -42,6 +48,8 @@ async function main() {
   fs.mkdirSync(path.join(ws, 'sub'), { recursive: true })
   fs.rmSync(outside, { recursive: true, force: true })
   fs.mkdirSync(outside, { recursive: true })
+  fs.rmSync(outside2, { recursive: true, force: true })
+  fs.mkdirSync(outside2, { recursive: true })
   const inWs = path.join(ws, 'inside.md')
   const inWsSub = path.join(ws, 'sub', 'nested.md')
   const outFile = path.join(outside, 'secret.md')
@@ -83,10 +91,20 @@ async function main() {
       String(aExists).includes('PATH_NOT_AUTHORIZED'),
       `探测工作区外的文件是否存在：${aExists}（存在性探测也是信息泄露面）`
     )
+    report.check('refused-write-left-no-file', !fs.existsSync(outNew), '被拒绝的写必须真的没落盘')
+
+    /**
+     * ── A2. 系统文件：渲染层"伪造授权"再也拿不到它 ──────────────────────────
+     * 审计 P1-2 的原复现是"先 authorizeUserPath(C:\\Windows\\win.ini) 再读"。
+     * 现在授权 API 已删除，直接读也必须被拒（并且主进程会打 `[path-grant] denied read`）。
+     */
+    const winIni = await ev(
+      `window.luminAPI.file.read('C:\\\\Windows\\\\win.ini').then(() => 'ALLOWED').catch((e) => String(e.message ?? e))`
+    )
     report.check(
-      'refused-write-left-no-file',
-      !fs.existsSync(outNew),
-      '被拒绝的写必须真的没落盘'
+      'system-file-read-refused',
+      String(winIni).includes('PATH_NOT_AUTHORIZED'),
+      `读 C:\\Windows\\win.ini：${winIni}`
     )
 
     /**
@@ -140,14 +158,22 @@ async function main() {
     //     制造"曾经打开过"：直接读一次它的父目录不行，改用会话语义 —— 这里走 documents 表，
     //     所以先让主进程索引它（file:read 会 upsert）。做法：临时把工作区切到 outside 读一次，
     //     再把工作区切回 ws（此时 outside 只应剩"打开过"这一条授权）。
-    await ev(`(async () => { await window.__L.files().setRoot(${JSON.stringify(outside)}) ; return 'ok' })()`)
+    await ev(
+      `(async () => { await window.__L.files().setRoot(${JSON.stringify(outside)}) ; return 'ok' })()`
+    )
     await sleep(400)
-    await ev(`(async () => { await window.__L.files().openPath(${JSON.stringify(outFile)}); return 'ok' })()`)
+    await ev(
+      `(async () => { await window.__L.files().openPath(${JSON.stringify(outFile)}); return 'ok' })()`
+    )
     await sleep(600)
-    await ev(`(async () => { await window.__L.files().setRoot(${JSON.stringify(ws)}) ; return 'ok' })()`)
+    await ev(
+      `(async () => { await window.__L.files().setRoot(${JSON.stringify(ws)}) ; return 'ok' })()`
+    )
     // 关键：必须**离开**那篇文档（否则它是"当前打开的文档"，读写本来就该放行 —— 保存要用）。
     // 这里切回工作区里的另一篇，让 outside 那篇只剩"以前打开过"这一条授权。
-    await ev(`(async () => { await window.__L.files().openPath(${JSON.stringify(inWs)}); return 'ok' })()`)
+    await ev(
+      `(async () => { await window.__L.files().openPath(${JSON.stringify(inWs)}); return 'ok' })()`
+    )
     await sleep(600)
     const b2Read = await ev(read(outFile))
     const b2Write = await ev(write(outFile, '# rewritten\n'))
@@ -158,25 +184,78 @@ async function main() {
       `读=${b2Read} 写=${b2Write}（"打开过"只该给只读：否则最近列表变成任意改写入口）`
     )
 
-    // ── B. 放行侧 3：拖入的文件 —— 先申请（已存在 → 通过），再读；但**不能写** ──
-    const b3Grant = await ev(
-      `window.luminAPI.file.authorizeUserPath(${JSON.stringify(dropped)}).then((v) => 'ok:' + v).catch((e) => String(e.message ?? e))`
-    )
+    // ── B. 放行侧 3：**渲染层不得自我授权**（审计 P1-2） ──────────────────────
+    //     旧版这里验"拖入时渲染层申请一次只读授权"；该 IPC 已被删除 —— 现在必须证明：
+    //     ① API 根本不存在；② 工作区外路径仍然读不到；③ 不存在"给不存在的路径开口子"。
+    const b3Api = await ev(`typeof window.luminAPI.file.authorizeUserPath`)
     const b3Read = await ev(read(dropped))
     const b3Write = await ev(write(dropped, 'nope'))
-    const b3Missing = await ev(
-      `window.luminAPI.file.authorizeUserPath(${JSON.stringify(path.join(outside, 'nope.md'))}).then((v) => 'ok:' + v)`
-    )
-    report.note('B3 拖入 ' + JSON.stringify({ b3Grant, b3Read, b3Write, b3Missing }))
+    report.note('B3 自我授权 ' + JSON.stringify({ b3Api, b3Read, b3Write }))
     report.check(
-      'dropped-file-grant-is-readonly',
-      b3Grant === 'ok:true' && b3Read === 'ok' && String(b3Write).includes('PATH_NOT_AUTHORIZED'),
-      `授权=${b3Grant} 读=${b3Read} 写=${b3Write}`
+      'self-authorize-api-removed',
+      b3Api === 'undefined',
+      `renderer 侧不应再有 authorizeUserPath（实际 typeof=${b3Api}）`
     )
     report.check(
-      'dropped-grant-refuses-missing-file',
-      b3Missing === 'ok:false',
-      `对不存在的路径申请授权：${b3Missing}（不许给"将来会存在"的路径开口子）`
+      'dropped-path-without-dialog-refused',
+      String(b3Read).includes('PATH_NOT_AUTHORIZED') &&
+        String(b3Write).includes('PATH_NOT_AUTHORIZED'),
+      `没有对话框/真实手势的路径：读=${b3Read} 写=${b3Write}`
+    )
+
+    // ── B. 放行侧 3b：junction / symlink 逃逸（审计 P2「授权不解析 junction」） ──
+    //     在工作区里放一个指向工作区外的 junction：字符串上它在 ws 内，realpath 之后必须被拒。
+    //     文件读取与 lumin-file:// 两条通道都要验（统一走同一个授权函数）。
+    const junction = path.join(ws, 'junction')
+    fs.rmSync(junction, { recursive: true, force: true })
+    try {
+      fs.symlinkSync(outside, junction, 'junction')
+    } catch (err) {
+      report.skip('junction-created', '无法创建 junction：' + String(err.message ?? err))
+    }
+    if (fs.existsSync(junction)) {
+      fs.copyFileSync(
+        path.join(__dirname, '..', 'docs', 'screenshots', 'hero.png'),
+        path.join(outside, 'pic.png')
+      )
+      const jRead = await ev(read(path.join(junction, 'secret.md')))
+      const jWrite = await ev(write(path.join(junction, 'new.md'), 'escape'))
+      const jUrl = 'lumin-file:///' + encodeURI(junction.replace(/\\/g, '/') + '/pic.png')
+      const jImg = await ev(`new Promise((resolve) => {
+        const img = new Image()
+        const done = (v) => resolve(v)
+        img.onload = () => done('loaded')
+        img.onerror = () => done('error')
+        img.src = ${JSON.stringify(jUrl)}
+        setTimeout(() => done('timeout'), 3000)
+      })`)
+      report.note('B3b junction ' + JSON.stringify({ jRead, jWrite, jImg }))
+      report.check(
+        'junction-read-refused',
+        String(jRead).includes('PATH_NOT_AUTHORIZED'),
+        `junction 指向未授权目录时的读：${jRead}`
+      )
+      report.check(
+        'junction-write-refused',
+        String(jWrite).includes('PATH_NOT_AUTHORIZED'),
+        `junction 指向未授权目录时的写：${jWrite}`
+      )
+      report.check(
+        'junction-lumin-file-refused',
+        jImg === 'error',
+        `junction 内的图片经 lumin-file:// 加载：${jImg}（应为 error/404）`
+      )
+    }
+
+    // ── B. 放行侧 3c：openFolderInNewWindow 不得把任意目录开成工作区 ──────────
+    const pagesBefore = (await appPages()).length
+    await ev(`window.luminAPI.app.openFolderInNewWindow(${JSON.stringify(outside)})`)
+    await sleep(1200)
+    const pagesAfter = (await appPages()).length
+    report.check(
+      'open-folder-in-new-window-refuses-unauthorized',
+      pagesAfter === pagesBefore,
+      `未授权目录不应开新窗口：before=${pagesBefore} after=${pagesAfter}`
     )
 
     // ── B. 放行侧 4：**当前打开文档所在目录只读**（正文里的相对图片要用） ──
@@ -184,7 +263,9 @@ async function main() {
     //     （工作区内的文件本来就可写，拿它验不出 read/write 两档的区别。）
     const sibling = path.join(outside, 'sibling.md')
     fs.writeFileSync(sibling, '# sibling\n', 'utf-8')
-    await ev(`(async () => { await window.__L.files().openPath(${JSON.stringify(outFile)}); return 'ok' })()`)
+    await ev(
+      `(async () => { await window.__L.files().openPath(${JSON.stringify(outFile)}); return 'ok' })()`
+    )
     await sleep(600)
     const b4Read = await ev(read(sibling))
     const b4Write = await ev(write(sibling, '# sibling rewritten\n'))
@@ -195,9 +276,12 @@ async function main() {
       `打开文档的兄弟文件：读=${b4Read} 写=${b4Write}（只读，图片能加载、但不能被改写）`
     )
   } finally {
-    await ev(`(async () => { await window.__L.files().setRoot(null); return 'ok' })()`).catch(() => {})
+    await ev(`(async () => { await window.__L.files().setRoot(null); return 'ok' })()`).catch(
+      () => {}
+    )
     fs.rmSync(base, { recursive: true, force: true })
     fs.rmSync(outside, { recursive: true, force: true })
+    fs.rmSync(outside2, { recursive: true, force: true })
   }
 
   app.close()

@@ -425,9 +425,14 @@ interface WindowOpenOptions {
  */
 function createWindow(options: WindowOpenOptions = {}): BrowserWindow {
   const { openFile, openFolder, noWorkspace, sessionSlot, restoreHead, earlyShowMs } = options
-  // 启动参数里带的文件 / 文件夹是**主进程自己解析出来的**，天然可信 → 登记为授权路径
-  // （否则"双击一个工作区外的 .md"会在 file:read 的授权闸上被拦掉）
-  pathGrants.grantStartup(openFile, openFolder)
+  /**
+   * ⚠️ 这里**不再**无条件 `grantStartup(openFile, openFolder)`（审计 P1-2）：
+   * `createWindow` 也会被渲染层的 `app:openInNewWindow` / `app:openFolderInNewWindow`
+   * 调到，而 `grantStartup` 会把路径升级成**可写**授权 —— 等于给渲染层留了一条
+   * "先申请只读、再开个窗口就变成可写"的自我扩权链。
+   * 现在只有**主进程自己解析的启动参数**（首窗 / 第二实例转发）在调用处显式授权，
+   * 渲染层那条路先过 `assertAuthorized`，且不会升级权限。
+   */
   const existing = BrowserWindow.getAllWindows()
   const isFirst = existing.length === 0
   const windowUid = randomUUID()
@@ -1080,7 +1085,14 @@ app.whenReady().then(() => {
      * 各自保存，正文可能互相覆盖（现在还有外部改动检测兜底，但那是"报冲突"，
      * 不如一开始就不让它发生）。命中已开窗口就把那个窗口唤到前面，并给它一张提示。
      */
-    const existing = openDocs.findWindowWithDoc(path)
+    let real: string
+    try {
+      real = pathGrants.assertAuthorizedReal(path, 'read')
+    } catch {
+      console.warn(`[path-grant] refused app:openInNewWindow: ${encodeURI(path)}`)
+      return
+    }
+    const existing = openDocs.findWindowWithDoc(real) ?? openDocs.findWindowWithDoc(path)
     if (existing) {
       openDocs.focusWindow(existing)
       const slot = slotOfWindow.get(existing.id) ?? null
@@ -1092,10 +1104,24 @@ app.whenReady().then(() => {
       })
       return
     }
-    createWindow({ openFile: path, sessionSlot: claimFreshSlot() })
+    createWindow({ openFile: real, sessionSlot: claimFreshSlot() })
   })
   ipcMain.on('app:openFolderInNewWindow', (_event, path: string) => {
-    if (path) createWindow({ openFolder: path, sessionSlot: claimFreshSlot() })
+    if (!path) return
+    /**
+     * 审计 P1-2：这里此前把渲染层给的**任意目录** `grantStartup` 成工作区（整棵子树可写）。
+     * 现在先过统一授权闸 + 真实路径解析 + 目录校验；不通过就拒绝并记日志。
+     */
+    let real: string
+    try {
+      if (!pathGrants.canOpenFolderAsWorkspace(path)) throw new Error('PATH_NOT_AUTHORIZED')
+      real = pathGrants.assertAuthorizedReal(path, 'read')
+      if (!statSync(real).isDirectory()) throw new Error('NOT_A_DIRECTORY')
+    } catch {
+      console.warn(`[path-grant] refused app:openFolderInNewWindow: ${encodeURI(path)}`)
+      return
+    }
+    createWindow({ openFolder: real, sessionSlot: claimFreshSlot() })
   })
 
   /**
@@ -1114,13 +1140,20 @@ app.whenReady().then(() => {
       const url = new URL(request.url)
       const decoded = decodeURIComponent(url.pathname.replace(/^\//, ''))
       const p = resolve(decoded)
+      /**
+       * 与 `file:read` **同一个**授权函数（内部 realpath + 纯判据 `isPathAllowed`）：
+       * 扩展名白名单在 `isServableMedia` 里；越权/不存在的路径一律 404，并留日志。
+       * 取 `assertAuthorizedReal` 返回的真实路径去 fetch，避免"检查的是字符串、
+       * 读的是 junction 指向的真实文件"。
+       */
       if (!isServableMedia(p)) {
         // 主进程 console 输出一律 ASCII：Windows 控制台按代码页解读字节（中文系统 936/GBK），
         // 写中文只会得到乱码（详见 singleInstance.ts 的说明）。
-        console.warn(`[protocol] refused lumin-file request: ${p}`)
+        console.warn(`[protocol] refused lumin-file request: ${encodeURI(p)}`)
         return new Response('Not Found', { status: 404 })
       }
-      return net.fetch(pathToFileURL(p).href)
+      const real = pathGrants.assertAuthorizedReal(p, 'read')
+      return net.fetch(pathToFileURL(real).href)
     } catch {
       return new Response('Not Found', { status: 404 })
     }
@@ -1204,6 +1237,9 @@ app.whenReady().then(() => {
   if (bootDelayMs > 0) startupMark('boot-delay', { ms: bootDelayMs })
   const tWindow = performance.now()
   startupMark('first-window-create-start')
+  // 启动参数是**主进程自己解析**的（argv / 跳转列表），在这里显式登记为可读写授权；
+  // createWindow 本身不再授权（它也会被渲染层调用，见函数头注释）
+  pathGrants.grantStartup(intent.openFile, intent.openFolder)
   const first = createWindow({
     openFile: intent.openFile ?? undefined,
     openFolder: intent.openFolder ?? undefined,
@@ -1338,6 +1374,8 @@ function handleOpenRequest(intent: LaunchIntent): void {
       focusExistingWindow()
       return
     case 'new-window':
+      // 第二实例转发 / 命令行打开：路径同样来自操作系统，不是渲染层自报 → 显式授权
+      pathGrants.grantStartup(plan.openFile, plan.openFolder)
       createWindow({
         openFile: plan.openFile,
         openFolder: plan.openFolder,
