@@ -11,7 +11,8 @@
   },
   "main": "./out/main/index.js",
   "author": {
-    "name": "Lumin"
+    "name": "Lumin",
+    "email": "yang_bai_bai@163.com"
   },
   "scripts": {
     "format": "prettier --write .",

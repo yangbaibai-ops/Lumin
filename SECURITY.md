@@ -22,6 +22,9 @@
 **请用 GitHub Security Advisories 私下报告**：
 <https://github.com/yangbaibai-ops/Lumin/security/advisories/new>
 
+也可以发邮件到 **`yang_bai_bai@163.com`**（作为备用渠道；**优先用上面的 Advisories**，
+邮件里同样请不要贴可被利用的细节）。
+
 这是当前**唯一**的私密报告渠道 —— 本仓库是个人项目，没有 PGP key 或 bug bounty。
 **请勿在公开 Issue 里贴漏洞细节**（复现步骤、概念验证、受影响文件都不要贴）；
 如果只是想先打个招呼，可以开一个只写「我想报告一个安全问题，请给一个私密渠道」的
