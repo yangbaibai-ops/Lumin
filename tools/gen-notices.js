@@ -14,6 +14,7 @@
 // 用法：`npm run notices`（也可以 `node tools/gen-notices.js --check` 只校验是否最新）
 const fs = require('fs')
 const path = require('path')
+const { readLf } = require('./lib/text-eol.js')
 
 const ROOT = path.resolve(__dirname, '..')
 const OUT = path.join(ROOT, 'THIRD-PARTY-NOTICES.md')
@@ -137,7 +138,9 @@ function main() {
   const check = process.argv.includes('--check')
   const rows = collect()
   const text = render(rows)
-  const current = fs.existsSync(OUT) ? fs.readFileSync(OUT, 'utf-8') : ''
+  // 行尾归一：Windows CI 用 CRLF 检出，而 render() 拼出来的正文是 LF ——
+  // 不归一化，`--check` 会在干净克隆里报"不是最新的"（本地 LF 工作区全绿）。
+  const current = fs.existsSync(OUT) ? readLf(OUT) : ''
   if (check) {
     if (current !== text) {
       console.log('THIRD-PARTY-NOTICES.md 不是最新的：请跑 `npm run notices`')

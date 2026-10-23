@@ -14,12 +14,15 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { createRequire } from 'node:module'
 import { fileURLToPath } from 'node:url'
+import { readTextNormalized } from './lib/readTextNormalized.mjs'
 
 const require = createRequire(import.meta.url)
 const here = path.dirname(fileURLToPath(import.meta.url))
 const ROOT = path.join(here, '..')
-const README = fs.readFileSync(path.join(ROOT, 'README.md'), 'utf-8')
-const TOOLS_README = fs.readFileSync(path.join(ROOT, 'tools', 'README.md'), 'utf-8')
+// 行尾归一：Windows CI 用 CRLF 检出，而 doc-facts 渲染的 facts 块是 LF。
+// 直接比较会在干净克隆里因为 `\r` 假红（本地 LF 工作区看不出来）。
+const README = readTextNormalized(path.join(ROOT, 'README.md'))
+const TOOLS_README = readTextNormalized(path.join(ROOT, 'tools', 'README.md'))
 
 test('docs：对外 README 不含 HTML（发布页要求纯 Markdown 可解析）', () => {
   /**
@@ -81,7 +84,7 @@ test('docs：README 的 EXPECT 分类计数与 EXPECT.json 实测一致', () => 
 
 test('docs：package.json 的版本在 CHANGELOG 里有对应标题', () => {
   const version = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf-8')).version
-  const changelog = fs.readFileSync(path.join(ROOT, 'CHANGELOG.md'), 'utf-8')
+  const changelog = readTextNormalized(path.join(ROOT, 'CHANGELOG.md'))
   assert.match(
     changelog,
     new RegExp(`^## \\[${version.replace(/\./g, '\\.')}\\]`, 'm'),
@@ -90,7 +93,7 @@ test('docs：package.json 的版本在 CHANGELOG 里有对应标题', () => {
 })
 
 test('docs：CHANGELOG 的版本段都带日期（[Unreleased] 除外）', () => {
-  const changelog = fs.readFileSync(path.join(ROOT, 'CHANGELOG.md'), 'utf-8')
+  const changelog = readTextNormalized(path.join(ROOT, 'CHANGELOG.md'))
   const versions = [...changelog.matchAll(/^## \[([^\]]+)\](.*)$/gm)].map((m) => ({
     name: m[1],
     tail: m[2]

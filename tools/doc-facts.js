@@ -15,6 +15,9 @@ const ROOT = path.resolve(__dirname, '..')
 const BEGIN = '<!-- facts:begin（由 tools/doc-facts.js 生成，勿手改）-->'
 const END = '<!-- facts:end -->'
 
+/** 读文本时统一行尾：CRLF 检出 + LF 生成块不归一化，`--check` 会在干净克隆里假红 */
+const { readLf } = require('./lib/text-eol.js')
+
 function walk(dir, filter, out = []) {
   if (!fs.existsSync(dir)) return out
   for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
@@ -131,7 +134,7 @@ function main() {
   const facts = collectFacts()
   let drift = 0
   for (const t of TARGETS) {
-    const text = fs.readFileSync(t.file, 'utf-8')
+    const text = readLf(t.file)
     const rendered = t.render(facts)
     const next = replaceBlock(text, rendered)
     const rel = path.relative(ROOT, t.file).replace(/\\/g, '/')

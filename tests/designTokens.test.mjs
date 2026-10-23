@@ -14,6 +14,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { createRequire } from 'node:module'
 import { fileURLToPath } from 'node:url'
+import { readTextNormalized } from './lib/readTextNormalized.mjs'
 
 const require = createRequire(import.meta.url)
 const here = path.dirname(fileURLToPath(import.meta.url))
@@ -45,7 +46,9 @@ const RUNTIME_TOKENS = [
 const LITERAL_COLOR_CEILING = { hex: 0, rgb: 0 }
 
 test('设计令牌：docs/design-tokens.md 的表与 CSS 一致（改了 CSS 就跑 docs:tokens:write）', () => {
-  const doc = fs.readFileSync(path.join(ROOT, 'docs/design-tokens.md'), 'utf-8')
+  // 行尾归一：CI 的 Windows 检出是 CRLF，而 renderTokensBlock() 生成的是 LF。
+  // 不归一就会"内容一致但字符串不等"—— 本地 LF 工作区全绿、干净克隆假红。
+  const doc = readTextNormalized(path.join(ROOT, 'docs/design-tokens.md'))
   const a = doc.indexOf(tokens.BEGIN)
   const b = doc.indexOf(tokens.END)
   assert.ok(a >= 0 && b > a, 'docs/design-tokens.md 里没有 tokens 标记块')

@@ -18,9 +18,12 @@ import assert from 'node:assert/strict'
 import { existsSync, readFileSync, statSync } from 'node:fs'
 import { join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { readTextNormalized } from './lib/readTextNormalized.mjs'
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..')
-const read = (p) => readFileSync(join(ROOT, p), 'utf8')
+// 行尾归一：Windows CI 用 CRLF 检出，而这里的正则写的是 `^win:\n` / `...$`（LF 口径）。
+// 不归一的话 `win:\r\n` 匹配不上 `^win:\n`，干净克隆里就假红。
+const read = (p) => readTextNormalized(join(ROOT, p))
 
 test('electron-builder.yml：四层图标全部显式指向 resources/icon.ico', () => {
   const yml = read('electron-builder.yml')

@@ -20,6 +20,9 @@ const BEGIN = '<!-- tokens:begin（由 tools/doc-tokens.js 生成，勿手改）
 const END = '<!-- tokens:end -->'
 const DOC = path.join(ROOT, 'docs/design-tokens.md')
 
+/** 读文本时统一行尾：CRLF 检出 + LF 生成块不归一化，`--check` 会在干净克隆里假红 */
+const { readLf } = require('./lib/text-eol.js')
+
 /** 令牌的定义处：只扫这两个文件（其余 CSS 都是**消费**令牌，不是定义） */
 const SOURCES = ['src/renderer/src/assets/theme.css', 'src/renderer/src/assets/sidebar.css']
 
@@ -155,9 +158,7 @@ npm run docs:tokens:write
 function main() {
   const write = process.argv.includes('--write')
   const rendered = renderTokensBlock()
-  const existing = fs.existsSync(DOC)
-    ? fs.readFileSync(DOC, 'utf-8')
-    : HEADER + renderTokensBlock() + '\n'
+  const existing = fs.existsSync(DOC) ? readLf(DOC) : HEADER + renderTokensBlock() + '\n'
   const body = write ? writeInto(existing, rendered) : existing
   if (write) {
     fs.writeFileSync(DOC, body.endsWith('\n') ? body : body + '\n', 'utf-8')
