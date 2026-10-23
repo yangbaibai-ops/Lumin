@@ -187,8 +187,8 @@
 - CI 加固：**已补** —— 8 处 `uses` 全部 pin 到 commit SHA（逐个查 GitHub API 确认 SHA 与
   `v4.x.y` 标签一致）、新增 `CONTRIBUTING.md` / `SECURITY.md` / `.github/CODEOWNERS`、
   `dependabot.yml` 的 github-actions 段加分组与 PR 上限（`e8337fb`）；
-  **仍需用户提供真实 GitHub 用户名** —— CODEOWNERS 里的 `@yang_bai_bai` 是占位，
-  写成不存在的用户会让规则**静默失效**（语法正确、无报错、只是不请求评审）。
+  **已落到公开组织** —— CODEOWNERS 里的 owner 是 `@yangbaibai-ops`（公开组织账号）；
+  若写成不存在的用户，规则会**静默失效**（语法正确、无报错、只是不请求评审）。
 
 ## §11 需要实测才能定论（10 条）
 

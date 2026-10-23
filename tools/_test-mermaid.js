@@ -8,7 +8,7 @@ async function ev(expression) { const r = await send('Runtime.evaluate', { expre
 
 const expr = `(async () => {
   try {
-    const m = await import('/@fs/D:/code_workspace/Lumin/src/renderer/src/lib/export.ts')
+    const m = await import('/@fs/C:/work/Lumin/src/renderer/src/lib/export.ts')
     const html = '<pre><code class="language-mermaid">graph TD; A-->B;</code></pre>'
     const t0 = Date.now()
     const out = await m.renderMermaidInHtml(html, 'light')

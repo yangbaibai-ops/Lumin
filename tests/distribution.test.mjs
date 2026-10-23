@@ -51,7 +51,7 @@ test('占位判定：空值 / 占位域名 / 模板尖括号都算"没填"，真
   assert.equal(isPlaceholderValue('https://EXAMPLE.org/x'), true, '大小写无关')
   assert.equal(isPlaceholderValue('http://localhost:8080/updates'), true)
   assert.equal(isPlaceholderValue('https://github.com/<你的账号>/Lumin'), true, '模板尖括号')
-  assert.equal(isPlaceholderValue('https://github.com/yangbaibai/Lumin'), false)
+  assert.equal(isPlaceholderValue('https://github.com/alice/Lumin'), false)
   assert.equal(isPlaceholderValue('https://dl.lumin.app/updates'), false)
   // 清单里每一项都要真的能被识别（否则清单是装饰）
   for (const host of PLACEHOLDER_HOSTS) {

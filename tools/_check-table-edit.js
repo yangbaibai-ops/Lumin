@@ -31,7 +31,7 @@ async function main() {
   if (boot !== 'OK') { console.log('FAIL bridge', boot); process.exit(2) }
 
   // 打开验收文件（含表格），定位 '1' 单元格
-  await ev(`(async () => { await window.__vt.files().openPath('D:\\\\code_workspace\\\\Lumin-test-workspace\\\\tipverify.md'); return 'ok' })()`)
+  await ev(`(async () => { await window.__vt.files().openPath('C:\\\\work\\\\Lumin\\\\test-workspace\\\\tipverify.md'); return 'ok' })()`)
   await sleep(1200)
 
   for (let attempt = 1; attempt <= 4; attempt++) {

@@ -16,7 +16,7 @@ const expr = `(async () => {
     const files = pinia._s.get('files')
     const ed = pinia._s.get('editor')?.instance
     const settings = pinia._s.get('settings')
-    const m = await import('/@fs/D:/code_workspace/Lumin/src/renderer/src/lib/export.ts')
+    const m = await import('/@fs/C:/work/Lumin/src/renderer/src/lib/export.ts')
     const raw = ed ? ed.getHTML() : '<p>x</p>'
     const html = await m.renderMermaidInHtml(raw, settings.effectiveTheme)
     const title = (files.current?.name || 'doc').replace(/\\.(md|markdown|txt)$/i, '')
@@ -34,7 +34,7 @@ async function main() {
   await new Promise((res, rej) => { ws.onopen = res; ws.onerror = rej })
   ws.onmessage = (e) => { const m = JSON.parse(e.data); if (m.id && pending.has(m.id)) { pending.get(m.id)(m); pending.delete(m.id) } }
   // 打开验收文档
-  await ev(`(async () => { await window.__vt_files_open('D:\\\\code_workspace\\\\Lumin-test-workspace\\\\tipverify.md'); return 'ok' })()`).catch(() => {})
+  await ev(`(async () => { await window.__vt_files_open('C:\\\\work\\\\Lumin\\\\test-workspace\\\\tipverify.md'); return 'ok' })()`).catch(() => {})
   // 确保桥接 + 打开文档
   await send('Runtime.evaluate', { expression: `(() => {
     const app = document.querySelector('#app')?.__vue_app__
@@ -45,7 +45,7 @@ async function main() {
     window.__vt = { pinia, files: () => pinia._s.get('files'), ui: () => pinia._s.get('ui'), settings: () => pinia._s.get('settings'), ed: () => pinia._s.get('editor')?.instance ?? null }
     return 'OK'
   })()`, returnByValue: true })
-  await ev(`(async () => { await window.__vt.files().openPath('D:\\\\code_workspace\\\\Lumin-test-workspace\\\\tipverify.md'); return 'ok' })()`)
+  await ev(`(async () => { await window.__vt.files().openPath('C:\\\\work\\\\Lumin\\\\test-workspace\\\\tipverify.md'); return 'ok' })()`)
   await sleep(1500)
   const r = await send('Runtime.evaluate', { expression: expr, returnByValue: true, awaitPromise: true })
   if (r.result && r.result.exceptionDetails) console.log('EXCEPTION', r.result.exceptionDetails.exception?.description || r.result.exceptionDetails.text)

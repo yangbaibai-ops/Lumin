@@ -1,7 +1,7 @@
 // tools/_repro-split.js — 源码高度 + 分屏双同步 + 分隔条拖拽复现
 const CDP = 'http://127.0.0.1:9222/json'
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
-const TEST_DIR = 'D:/code_workspace/Lumin-test-workspace'
+const TEST_DIR = 'C:/work/Lumin/test-workspace'
 const TEST_PATH = TEST_DIR + '/tipverify.md'
 const TEST_MD = ['# 分屏标题', '', '分屏段落内容。', ''].join('\n')
 

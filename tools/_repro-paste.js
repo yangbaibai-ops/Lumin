@@ -1,7 +1,7 @@
 // tools/_repro-paste.js — 粘贴复现：样式渲染 / 可编辑性 / 标题标记符 / 源码响应式
 const CDP = 'http://127.0.0.1:9222/json'
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
-const TEST_DIR = 'D:/code_workspace/Lumin-test-workspace'
+const TEST_DIR = 'C:/work/Lumin/test-workspace'
 const TEST_PATH = TEST_DIR + '/tipverify.md'
 const TEST_MD = ['# 原有标题', '', '原有段落。', ''].join('\n')
 

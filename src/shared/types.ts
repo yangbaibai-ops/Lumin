@@ -776,7 +776,7 @@ export interface LuminAPI {
     isDirectory: (path: string) => Promise<boolean>
     /**
      * 两个路径是不是**同一个位置**：大小写、正反斜杠、末尾分隔符、`.`/`..`，
-     * 以及符号链接 / junction / 8.3 短名（`YANGBA~1`，资源管理器拖进来给的就是这种）
+     * 以及符号链接 / junction / 8.3 短名（`ALICE~1`，资源管理器拖进来给的就是这种）
      * 都归一到一处比较。判据是主进程的纯函数 `pathGuard.sameResolvedPath`
      * （`path.win32.resolve` + 大小写折叠）加一次 `fs.realpath` 兜底 ——
      * **渲染层不要手搓字符串比较**（判据只有一份）。任一侧未授权时 rejects。

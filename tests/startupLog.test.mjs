@@ -39,8 +39,8 @@ test('路径脱敏：AppData / 用户目录换成环境变量，其它只留顶�
     '%USERPROFILE%\\Documents\\novel\\chapter-1.md'
   )
   // 非用户目录：父目录与盘符都不进日志，只留最后一段
-  assert.equal(redactStartupPath('D:\\code_workspace\\Lumin\\secret.md'), 'secret.md')
-  assert.equal(topLevelName('D:\\code_workspace\\Lumin\\'), 'Lumin')
+  assert.equal(redactStartupPath('C:\\work\\Lumin\\secret.md'), 'secret.md')
+  assert.equal(topLevelName('C:\\work\\Lumin\\'), 'Lumin')
   assert.equal(topLevelName(''), '')
 })
 

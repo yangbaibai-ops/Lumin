@@ -1184,7 +1184,7 @@ export function registerIpc(slots: SlotRegistry): void {
    * 两个路径是不是**同一个位置**（拖入文件夹时判"是不是已经开着这个工作区"）。
    *
    * 为什么放在主进程：只有这边能既做 `path.resolve` 的规范化、又能做 `fs.realpath`
-   * （符号链接 / junction / 8.3 短名 —— 资源管理器拖进来的路径就是 `YANGBA~1` 那种短名，
+   * （符号链接 / junction / 8.3 短名 —— 资源管理器拖进来的路径就是 `ALICE~1` 那种短名，
    * 而工作区根往往是长名）。判据本身是纯函数 `pathGuard.sameResolvedPath`（有单测），
    * 这里只是"规范化 + 落地成一次查询"，渲染层不手搓字符串比较。
    *

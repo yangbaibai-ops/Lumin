@@ -37,8 +37,8 @@ test('相对路径按文档目录解析（Windows 绝对路径）', () => {
 // 基准是**文档所在目录**（不是页面目录，也不是图片自己的目录）。
 test('子目录相对路径：docs/screenshots/x.png 拼在文档目录之下', () => {
   assert.equal(
-    imageSrcForDoc('docs/screenshots/mermaid.png', 'D:\\code_workspace\\Lumin'),
-    'lumin-file:///D%3A/code_workspace/Lumin/docs/screenshots/mermaid.png'
+    imageSrcForDoc('docs/screenshots/mermaid.png', 'C:\\work\\Lumin'),
+    'lumin-file:///C%3A/work/Lumin/docs/screenshots/mermaid.png'
   )
   // 文档本身在子目录时，相对兄弟目录同样只拼文档目录
   assert.equal(

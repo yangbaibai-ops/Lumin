@@ -1,7 +1,7 @@
 // tools/_repro-sourcemode.js — 源码/实时渲染切换复现
 const CDP = 'http://127.0.0.1:9222/json'
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
-const TEST_DIR = 'D:/code_workspace/Lumin-test-workspace'
+const TEST_DIR = 'C:/work/Lumin/test-workspace'
 const TEST_PATH = TEST_DIR + '/tipverify.md'
 const TEST_MD = ['# 切换标题', '', '切换段落**加粗**。', ''].join('\n')
 

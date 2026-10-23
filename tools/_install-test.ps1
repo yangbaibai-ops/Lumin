@@ -8,6 +8,10 @@
 #  * 输出 PASS/FAIL 表 + 汇总，失败时退出码非 0（可直接作为发布前检查）。
 $ErrorActionPreference = 'Continue'
 $repo = Split-Path -Parent $PSScriptRoot
+# Publisher 断言不写死作者名：NSIS 的 Publisher 取自 package.json 的 author.name，
+# 读同一份真相，改名/移交仓库时不用改脚本。
+$pkg = Get-Content (Join-Path $repo 'package.json') -Raw -Encoding UTF8 | ConvertFrom-Json
+$authorName = $pkg.author.name
 $setup = Join-Path $repo 'dist\Lumin-1.0.0-setup.exe'
 $installDir = Join-Path $env:LOCALAPPDATA 'Programs\Lumin'
 $startMenuLnk = Join-Path $env:APPDATA 'Microsoft\Windows\Start Menu\Programs\Lumin.lnk'
@@ -58,7 +62,7 @@ try {
   $unKey = Get-ChildItem 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall' -ErrorAction SilentlyContinue |
     Where-Object { (Get-ItemProperty $_.PSPath).DisplayName -like '*Lumin*' } | Select-Object -First 1
   $u = if ($unKey) { Get-ItemProperty $unKey.PSPath } else { $null }
-  C 'publisher-is-real-author' ($u -and $u.Publisher -eq 'yang_bai_bai' -and $u.Publisher -notlike '*example.com*') "Publisher='$($u.Publisher)'"
+  C 'publisher-is-real-author' ($u -and $u.Publisher -eq $authorName -and $u.Publisher -notlike '*example.com*') "Publisher='$($u.Publisher)' 期望='$authorName'"
   C 'install-location-non-empty' ($u -and $u.InstallLocation) "InstallLocation='$($u.InstallLocation)'"
   Write-Host "UNINSTALL-ENTRY key=$($unKey.PSChildName) DisplayName='$($u.DisplayName)' Version='$($u.DisplayVersion)' EstimatedSize=$([math]::Round($u.EstimatedSize/1024,1))MB"
 

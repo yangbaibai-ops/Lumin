@@ -32,7 +32,7 @@ export function isInside(dir: string, p: string): boolean {
  * 判据 = `path.win32.resolve` 两侧（吃 `.`/`..`、补绝对路径、统一分隔符、去掉尾分隔符）
  *  + 大小写折叠（Windows 大小写不敏感）。**只做字符串层**，所以：
  *   * 符号链接 / junction：需要 `fs.realpath`，见主进程 `fileOps.isSamePath` 的第二段；
- *   * 8.3 短名（`YANGBA~1`，资源管理器拖进来的路径就是这种）：同样要靠 realpath 展开；
+ *   * 8.3 短名（`ALICE~1`，资源管理器拖进来的路径就是这种）：同样要靠 realpath 展开；
  *   * 相对 / 驱动相对路径（`C:foo`）不该出现在这条链上（两边都是绝对路径），
  *     真出现了 `resolve` 也会把它变成一个确定的绝对路径，不会抛。
  *

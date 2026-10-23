@@ -23,7 +23,7 @@ async function main() {
       ws.send(JSON.stringify({ id: i, method, params }))
     })
   await send('Runtime.evaluate', {
-    expression: "window.luminAPI.workspace.setRoot('D:\\\\code_workspace\\\\Lumin-test-workspace')",
+    expression: "window.luminAPI.workspace.setRoot('C:\\\\work\\\\Lumin\\\\test-workspace')",
     awaitPromise: true
   })
   await send('Page.reload', { ignoreCache: true })

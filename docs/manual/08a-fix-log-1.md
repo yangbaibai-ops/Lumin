@@ -273,7 +273,7 @@ set LUMIN_PKG_SKIP_BUILD=1 && node tools/_verify-packaging.js   # 复用已有�
 | 第一轮问题                                                  | 处置                          | 落点                                                                                                                                       | 复测证据                                                                                                  |
 | ----------------------------------------------------------- | ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------- |
 | **中**：卸载后 `.md` 默认值残留 `Markdown`（悬空关联）      | 修                            | 新增 `build/installer.nsh`（`customUnInstall` + 自己的 `Lumin_UnassociateExtension` 宏），经 `electron-builder.yml` 的 `nsis.include` 挂载 | `.md=''`、`.markdown=''`，且扩展名下 `OpenWithProgids` 子键也删掉                                         |
-| **中**：Publisher 显示 `example.com`                        | 修                            | `package.json` 的 `author` 改成真实作者（NSIS 的 Publisher 就取自这里）                                                                    | `Publisher='yang_bai_bai'`                                                                                |
+| **中**：Publisher 显示 `example.com`                        | 修                            | `package.json` 的 `author` 改成真实作者（NSIS 的 Publisher 就取自这里）                                                                    | `Publisher='Lumin'`（`author.name`）                                                                      |
 | 低：桌面同名快捷方式被覆盖                                  | **有意保持**                  | 不改代码                                                                                                                                   | 见下「三」                                                                                                |
 | 低：判断「快捷方式未携带 AUMID」                            | **前提有误，改断言 + 留兜底** | `taskbar.ts` 的 `backfillInstalledShortcutAumid()`（幂等，正常走「已存在」分支）                                                           | 日志 `shortcut aumid already present … aumid=com.lumin.app`                                               |
 | 中（开发期）：dev 与打包版共用 `%APPDATA%\Lumin` 与单实例锁 | 修（opt-in）                  | 新增 `src/main/devProfile.ts` + `npm run dev:isolated`                                                                                     | 复测全程用 `--user-data-dir` 隔离，用户数据 11027 文件/38 草稿未变                                        |
@@ -871,7 +871,7 @@ Ctrl+N 开的新窗口正好是「空白缓冲区」，于是把别人的正文�
   得按「前面是不是段落文本」判（CommonMark 顺序）；`$$` 块要与多行写法归一；实体要按命名/十进制/十六进制还原
   （`&lt;` 与 `<` 才判等）；链接目标要还原百分号编码（`%E4%B8%AD` ≡ `中`）；
   相邻列表之间的空行要**在标记归一化之前**判定（归一化后 `*` 也成了 `-`，就再也分不出两个列表了）。
-- **`start-isolated.ps1`**：Electron 的 `--user-data-dir` 用的是 **8.3 短路径**（`YANGBA~1`），
+- **`start-isolated.ps1`**：Electron 的 `--user-data-dir` 用的是 **8.3 短路径**（`ALICE~1`），
   拿长路径字符串比对会**漏杀**旧实例 —— 曾经因此对着**旧构建**跑了一整轮验收（结论全错）。
   现在两边都 `Resolve-Path` 成同一形态再比；端口判定改用 TCP 连接（`Get-NetTCPConnection`
   在受限模式会静默返回空，把「被占」判成「空闲」）。

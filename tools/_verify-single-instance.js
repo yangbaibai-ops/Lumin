@@ -32,7 +32,7 @@ const ELECTRON = path.join(REPO, 'node_modules', 'electron', 'dist', 'electron.e
  * 这样无论它排在矩阵哪个位置，都不会连到（或撞上）运行器给别的套件起的实例。
  */
 const PORT = 9231
-/** 长路径：argv 交给应用后会被原样记录下来，短路径（YANGBA~1）比对会误判 */
+/** 长路径：argv 交给应用后会被原样记录下来，短路径（ALICE~1）比对会误判 */
 const LONG_TMP = (() => {
   try {
     return fs.realpathSync.native(os.tmpdir())
