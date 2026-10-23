@@ -855,6 +855,8 @@ app.whenReady().then(() => {
       if (win.isDestroyed()) return
       const settings = readSettings()
       syncNativeTheme(settings.theme)
+      // 一次性「感谢 / 支持」提示的状态（验收要的证据：重启后它必须还是 true）
+      console.log(`[support] promptShown=${settings.supportPromptShown}`)
       const visible = win.isVisible()
       if (!visible) win.setBackgroundColor(themeBackground())
       // 隐藏时预置尺寸：有保存记录就夹进当前工作区，没有就按当前屏算默认（居中、不越界）。

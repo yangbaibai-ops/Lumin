@@ -29,6 +29,8 @@ import { EXPORT_FORMATS } from '../../../shared/exportFormats'
 import { placeSubmenuX } from '../lib/menuPlacement'
 // 「导出启动诊断」的唯一实现（设置页/状态栏/帮助菜单共用）
 import { exportStartupDiagnostics } from '../lib/startupDiagnostics'
+// 「支持这个项目」：重新弹出同一个原生感谢框（手动入口，不写一次性 flag）
+import { showSupportPromptManually } from '../lib/supportPrompt'
 import RecentList from './RecentList.vue'
 import Icon from './Icon.vue'
 
@@ -683,6 +685,13 @@ const GROUPS = computed<Group[]>(() => [
         run: () => window.luminAPI.shell.openExternal(APP_DOCS_URL)
       },
       { labelKey: 'menu.about', icon: 'info', run: () => router.push('/about') },
+      // 「支持这个项目」：一次性提示关掉后仍可从帮助里重新调出来（同一个原生框）。
+      // 手动入口不读写 `supportPromptShown`，实现只有一份（lib/supportPrompt.ts）。
+      {
+        labelKey: 'menu.support',
+        icon: 'heart',
+        run: () => void showSupportPromptManually(settings)
+      },
       { labelKey: 'menu.checkUpdate', icon: 'refresh', run: checkForUpdate },
       // 「导出启动诊断」：用户报「启动慢/闪退」时，一键把脱敏的 startup.log（最近 5 次）
       // 与环境摘要写成一份文件发给开发者。实现与设置页那颗按钮**共用同一份**

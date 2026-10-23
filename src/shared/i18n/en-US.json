@@ -135,6 +135,7 @@
     "docs": "Documentation",
     "checkUpdate": "Check for Updates",
     "exportStartupDiagnostics": "Export Startup Diagnostics",
+    "support": "Support this project",
     "updateUnavailable": "No update channel is configured in this build (development), so updates cannot be checked"
   },
   "fileTree": {
@@ -508,6 +509,14 @@
   },
   "session": {
     "restoreFailed": "Could not restore the previous document (the file may have been moved or deleted)"
+  },
+  "support": {
+    "title": "A small note from the author",
+    "line1": "Lumin is a small, one-person project — no ads, no subscription.",
+    "line2": "If it happens to help you, I'd be glad. If you feel like it, a Star on the project or a coffee for the author is always appreciated — but never expected.",
+    "line3": "Happy writing.",
+    "keepWriting": "Got it",
+    "starRepo": "Star the project"
   },
   "about": {
     "desc": "Lumin is a cross-platform desktop Markdown editor built on Electron, with WYSIWYG at its core — a professional-grade, immersive writing experience for long-form work.",

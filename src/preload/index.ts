@@ -342,7 +342,9 @@ const api: LuminAPI = {
     externalChange: () => ipcRenderer.invoke('dialog:externalChange'),
     confirmLeaveUnsaved: () => ipcRenderer.invoke('dialog:confirmLeaveUnsaved'),
     confirm: (options) => ipcRenderer.invoke('dialog:confirm', options),
-    choose: (options) => ipcRenderer.invoke('dialog:choose', options)
+    choose: (options) => ipcRenderer.invoke('dialog:choose', options),
+    // 一次性「感谢 / 支持」原生提示；manual=true 是帮助菜单的手动重开
+    supportPrompt: (options) => ipcRenderer.invoke('dialog:support', options)
   },
   /**
    * 防卡死兜底：心跳单向、状态/文档风险按需 invoke。

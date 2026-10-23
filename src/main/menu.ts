@@ -150,6 +150,9 @@ export function installMenu(): void {
       submenu: [
         { label: T('settings'), click: () => send('settings') },
         { label: T('about'), click: () => send('about') },
+        // 「支持这个项目」：重新弹出**同一个**原生感谢/支持框（一次性提示关掉后仍可回看）。
+        // 手动入口不写 `supportPromptShown`，也不受"已弹过"限制（见 main/ipc.ts 的 dialog:support）。
+        { label: T('support'), click: () => send('support') },
         // 「导出启动诊断」：用户报「启动慢/闪退」时把脱敏的 startup.log（最近 5 次）+
         // 环境摘要写成一份文件。渲染层与设置页/状态栏共用同一份实现
         // （renderer/lib/startupDiagnostics.ts），这里只发动作名。

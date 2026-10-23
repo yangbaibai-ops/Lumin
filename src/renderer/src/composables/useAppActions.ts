@@ -18,6 +18,7 @@ import { ctrlFTarget, type CtrlFTarget } from '../lib/ctrlFRoute'
 import { installPointerRegionTracker, pointerIsMoreRecentThanFocus } from '../lib/pointerRegion'
 import { exportFormatByAction } from '../../../shared/exportFormats'
 import { exportStartupDiagnostics } from '../lib/startupDiagnostics'
+import { showSupportPromptManually } from '../lib/supportPrompt'
 import type { CloseReason } from '../../../shared/closePrompt'
 import type { MenuAction, AppSettings } from '../../../shared/types'
 
@@ -221,6 +222,11 @@ export function useAppActions(): {
       case 'export-startup-diagnostics':
         // 原生菜单「帮助 → 导出启动诊断」走到这里；顶部栏/状态栏/设置页直接调同一个函数
         void exportStartupDiagnostics()
+        break
+      case 'support':
+        // 帮助菜单「支持这个项目」：重新弹出同一个原生感谢框；手动入口不写一次性 flag
+        // （原生菜单与顶部栏都走这里，实现只有一份，见 lib/supportPrompt.ts）
+        void showSupportPromptManually(settings)
         break
       /**
        * `theme-changed` 这条菜单动作**已删除**（报告 §3.2 P0-2）：原生菜单的主题项以前写

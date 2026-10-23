@@ -18,6 +18,7 @@ import { exposeWorkBudget, installLongTaskSentinel } from './lib/editor/workBudg
 import { installFreezeSentinel } from './lib/editor/freezeSentinel'
 import { installFreezeHeartbeat } from './lib/freezeHeartbeat'
 import { armBootSplashDeadline, dismissBootSplash } from './lib/bootSplash'
+import { armSupportPrompt } from './lib/supportPrompt'
 
 /**
  * 人为慢渲染开关（默认 0）：`LUMIN_BOOT_DELAY_MS` 由主进程读环境变量、经
@@ -305,6 +306,13 @@ async function bootstrap(): Promise<void> {
   mark('doc-visible')
   // 用户真正能把光标放进正文、开始打字的时刻（验收里的「首屏可交互」）
   reportStartup('first-interactive')
+  /**
+   * 一次性「感谢 / 支持」提示（用户口径）：
+   * **首屏可交互之后**再排一个 ~1.5s 的定时器，不占启动路径；此时 `settings` 已在手，
+   * 可见性/输入空闲/一次性 flag 的判定都在 `lib/supportPrompt.ts` 里。
+   * 故意不 await：它就是"以后再说"的那件事，启动流程到这里已经结束。
+   */
+  armSupportPrompt(settings)
   // 首屏之后才拉工作区目录树（5000 文件实测 ~800ms，见 stores/files.ts 的说明）
   files.loadRootWhenIdle()
 }

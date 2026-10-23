@@ -159,6 +159,12 @@ export const defaultSettings: AppSettings = {
   pinnedFiles: [],
   /** 快捷键自定义（空 = 全部用代码里的默认键，见 renderer/src/lib/keymap/commands） */
   keybindings: {},
+  /**
+   * 一次性「感谢 / 支持」提示：出厂 `false` = 还没弹过（首次启动后会自动弹一次）。
+   * 用户关掉（任一按钮）后写 `true`，此后不再自动弹；帮助菜单的手动入口不受影响。
+   * 不暴露在设置界面（用户口径）。
+   */
+  supportPromptShown: false,
   export: {
     pdf: { margin: 24, pageSize: 'A4' },
     html: { template: 'default' }

@@ -19,6 +19,8 @@ import type {
 } from './nativeDialogs'
 // 打印结果三态 + 失败原因（纯函数模块，见 shared/printOptions.ts）
 import type { PrintResult } from './printOptions'
+// 一次性「感谢 / 支持」提示的结果（判定与按钮映射见 shared/supportPrompt.ts）
+import type { SupportPromptResult } from './supportPrompt'
 export type { HistoryEntry, HistoryEntryMeta }
 export type { ConcreteEncoding, EncodingId, Eol }
 export type Language = 'zh-CN' | 'en-US' | 'ru-RU'
@@ -164,6 +166,14 @@ export interface AppSettings {
    * 解析与冲突判定见 renderer/src/lib/keymap/service.ts（SQLite kv 持久化）。
    */
   keybindings: Record<string, string | null>
+  /**
+   * 一次性「感谢 / 支持」提示是否已经展示并被用户关掉（默认 `false`）。
+   *
+   * 语义只有一条：**true ⇒ 不再自动弹**。帮助菜单里的「支持这个项目」是手动入口，
+   * 永远可用且**不读也不写**这个键（见 shared/supportPrompt.ts 的判定）。
+   * 不放进设置界面（用户口径：三语都无需暴露）。
+   */
+  supportPromptShown: boolean
   export: ExportSettings
 }
 
@@ -596,6 +606,8 @@ export type MenuAction =
   | 'paste-plain'
   /** 「导出启动诊断」（帮助菜单 / 状态栏 / 设置页共用）：写一份脱敏的启动日志合集 */
   | 'export-startup-diagnostics'
+  /** 「支持这个项目」（帮助菜单）：重新弹出同一个原生感谢框（不写一次性 flag） */
+  | 'support'
 
 export interface LuminAPI {
   app: {
@@ -1004,6 +1016,11 @@ export interface LuminAPI {
     confirmLeaveUnsaved: () => Promise<NativeLeaveChoice>
     confirm: (options: NativeConfirmOptions) => Promise<NativeConfirmChoice>
     choose: (options: NativeChooseOptions) => Promise<number>
+    /**
+     * 一次性「感谢 / 支持」原生提示（`type:'info'`，标题/正文/按钮都在主进程语言包里）。
+     * `manual=true` 是帮助菜单的手动重开：永不写 `supportPromptShown`。
+     */
+    supportPrompt: (options?: { manual?: boolean }) => Promise<SupportPromptResult>
   }
   /**
    * 全局防卡死兜底（主进程判活；渲染层只发心跳与读诊断）。

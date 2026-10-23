@@ -135,6 +135,7 @@
     "docs": "使用文档",
     "checkUpdate": "检查更新",
     "exportStartupDiagnostics": "导出启动诊断",
+    "support": "支持这个项目",
     "updateUnavailable": "当前版本未配置更新渠道（开发态），无法检查更新"
   },
   "fileTree": {
@@ -508,6 +509,14 @@
   },
   "session": {
     "restoreFailed": "无法恢复上次的文档（文件可能已被移动或删除）"
+  },
+  "support": {
+    "title": "一点小小的说明",
+    "line1": "Lumin 是一个人的业余作品，没有广告，也没有订阅。",
+    "line2": "如果它恰好帮到了你，我会很高兴；愿意的话，可以给项目点个 Star，或请我喝杯咖啡——不勉强，也不用有负担。",
+    "line3": "祝写作愉快。",
+    "keepWriting": "知道了",
+    "starRepo": "去点个 Star"
   },
   "about": {
     "desc": "Lumin 是一款基于 Electron 构建的跨平台桌面 Markdown 编辑器，以所见即所得为核心设计理念，致力于提供专业级的沉浸式长文写作体验。",

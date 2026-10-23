@@ -38,6 +38,8 @@ import {
   type NativeChooseOptions,
   type NativeConfirmOptions
 } from '../shared/nativeDialogs'
+import { mapSupportDialogResponse, type SupportPromptResult } from '../shared/supportPrompt'
+import { APP_HOMEPAGE } from '../shared/appLinks'
 import * as freezeGuard from './services/freezeGuard'
 import * as docRisk from './services/docRisk'
 import { installMenu } from './menu'
@@ -104,6 +106,24 @@ import type {
  */
 const nativeDialogFlights = new Map<string, Promise<unknown>>()
 
+/**
+ * 开发/验收专用：外部链接**只记日志、不真的交给系统**（dry-run）。
+ *
+ * 口径与 `src/main/testPaths.ts` 的 `LUMIN_EXPORT_DIR` 一致：**只在未打包实例上生效**，
+ * 打包产物忽略该环境变量（所以发布版永远不会"点了没反应"）。
+ * 放在模块级是因为「支持这个项目」的原生框（Star 按钮）也要走同一条口径。
+ */
+const openExternalDryRun = !app.isPackaged && process.env.LUMIN_OPEN_EXTERNAL_DRY_RUN === '1'
+
+/**
+ * 本次运行是否已经自动弹出过「感谢 / 支持」提示（**进程级**，不是窗口级）。
+ *
+ * 为什么需要：多窗口启动时每个窗口都会在首屏可交互后各自计时。若只看持久化的
+ * `supportPromptShown`，两个窗口会各弹一个原生框（用户要关两次，且第二次的点击
+ * 会把"只弹一次"变成"弹了两次"）。这里保证一次运行最多自动弹一次；手动入口不受限。
+ */
+let supportPromptAutoOpened = false
+
 function onceNativeDialog<T>(win: BrowserWindow, kind: string, run: () => Promise<T>): Promise<T> {
   const key = `${win.id}:${kind}`
   const existing = nativeDialogFlights.get(key)
@@ -113,6 +133,21 @@ function onceNativeDialog<T>(win: BrowserWindow, kind: string, run: () => Promis
   })
   nativeDialogFlights.set(key, p)
   return p
+}
+
+/**
+ * 「支持这个项目」原生框里点了「去点个 Star」：打开项目仓库。
+ *
+ * 地址来自 `shared/appLinks.ts` 的**唯一常量**（不是任意 URL），并且仍走
+ * `services/links.ts` 的 scheme 白名单 —— 与渲染层 `shell:openExternal` 同一道闸。
+ * 日志前缀用 `[shell]`：这是主进程自己发起的一次系统外链，便于验收脚本 grep。
+ * dry-run 时只记日志、不真的拉浏览器（验收环境不被打断）。
+ */
+function openSupportRepo(): void {
+  const safe = links.safeExternalUrl(APP_HOMEPAGE)
+  if (!safe) return
+  console.log(`[shell] openExternal${openExternalDryRun ? ' dry-run' : ''} ${encodeURI(safe)}`)
+  if (!openExternalDryRun) void shell.openExternal(safe)
 }
 
 const closeConfirmed =
@@ -431,6 +466,73 @@ export function registerIpc(slots: SlotRegistry): void {
       } catch {
         console.log('[dialog] native external-change failed choice=later')
         return 'later'
+      }
+    })
+  })
+
+  /**
+   * ─── 一次性「感谢 / 支持」原生提示（本轮）──────────────────────────────────────
+   *
+   * 用户口径：**安装或首次使用**时弹一次（原创不易 / 欢迎 Star / 请作者喝咖啡），
+   * 关掉之后不再自动弹；帮助菜单里可以随时重新调出来。
+   *
+   * 四条硬约束（都在这里落地）：
+   *   * `type:'info'`、`defaultId=0`、`cancelId=0`（回车 / Esc / 关窗都落在「继续使用」）；
+   *   * **父窗口绑定**，并复用 `onceNativeDialog` 的 `support` 闸（同窗口不会叠两个）；
+   *   * 自动那条**不调用** `win.show()/focus()`（用户口径：不抢焦点、不阻塞启动）；
+   *     窗口不可见 / 最小化时返回 `deferred`，由渲染层等下次可见再问 —— 绝不后台弹框；
+   *   * 手动入口（`manual=true`）**不读写** `supportPromptShown`：帮助菜单永远可用。
+   *
+   * 文案三语都在主进程语言包（`support.*`），渲染层只传"是不是手动打开的"。
+   */
+  ipcMain.handle('dialog:support', async (event, raw: unknown) => {
+    const win = BrowserWindow.fromWebContents(event.sender)
+    const manual = (raw as { manual?: unknown } | undefined)?.manual === true
+    console.log(`[dialog] support request manual=${manual} win=${win ? win.id : -1}`)
+    if (!win || win.isDestroyed())
+      return { status: 'deferred', manual } satisfies SupportPromptResult
+    return onceNativeDialog(win, 'support', async (): Promise<SupportPromptResult> => {
+      // 不可见时不弹（最小化也算不可见）——渲染层会在窗口重新可见/聚焦后重试
+      if (!win.isVisible() || win.isMinimized()) {
+        console.log(`[dialog] support deferred visible=false manual=${manual}`)
+        return { status: 'deferred', manual }
+      }
+      // 一次运行最多自动弹一次（多窗口共享同一份进程级状态；手动入口不受限）
+      if (!manual) {
+        if (supportPromptAutoOpened) {
+          console.log('[dialog] support skipped (already auto-opened this run)')
+          return { status: 'skipped', manual: false }
+        }
+        supportPromptAutoOpened = true
+      }
+      try {
+        console.log(`[dialog] show support native manual=${manual}`)
+        // 正文三段之间空一行：原生框里读起来是三个短段，而不是一整块（用户定稿的断行）
+        const detail = [
+          mainT('support.line1'),
+          mainT('support.line2'),
+          mainT('support.line3')
+        ].join('\n\n')
+        const { response } = await dialog.showMessageBox(win, {
+          type: 'info',
+          title: mainT('support.title'),
+          message: mainT('support.title'),
+          detail,
+          buttons: [mainT('support.keepWriting'), mainT('support.starRepo')],
+          defaultId: 0,
+          cancelId: 0,
+          noLink: true
+        })
+        const choice = mapSupportDialogResponse(response)
+        console.log(
+          `[dialog] native support response=${response} choice=${choice} manual=${manual}`
+        )
+        if (choice === 'starRepo') openSupportRepo()
+        return { status: 'choice', choice, manual }
+      } catch {
+        // 窗口在对话框期间被销毁：回"继续使用"（最无害），调用方据此收尾即可
+        console.log(`[dialog] native support failed manual=${manual}`)
+        return { status: 'choice', choice: 'keepWriting', manual }
       }
     })
   })
@@ -1627,8 +1729,8 @@ export function registerIpc(slots: SlotRegistry): void {
    * 而真开一次会把用户默认浏览器拉到前台（还会干扰同一条套件后面的焦点断言）。
    * 口径与 `src/main/testPaths.ts` 的 `LUMIN_EXPORT_DIR` 一致：**只在未打包实例上生效**，
    * 打包产物忽略该环境变量（所以发布版永远不会"点了没反应"）。
+   * 变量本身在模块顶部声明（「支持这个项目」原生框的 Star 按钮也要用它）。
    */
-  const openExternalDryRun = !app.isPackaged && process.env.LUMIN_OPEN_EXTERNAL_DRY_RUN === '1'
   ipcMain.on('shell:openExternal', (_, url: string) => {
     const safe = links.safeExternalUrl(url)
     if (!safe) {
