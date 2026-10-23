@@ -13,7 +13,7 @@ export default defineConfig(
       // tools/** 是验收脚手架（CommonJS + 一次性诊断脚本），不是产品代码。
       // 不忽略时 `npm run lint` 会报 898 个 error（require / 缺返回类型 / 空块），
       // 把 src 下真正要拦的 14 个 error 淹掉 —— 门禁必须是**可信信号**
-      // （见 docs/optimization-program.md Wave 4）。脚手架自身的风格靠 prettier 单独管。
+      // （见 docs/manual/06-engineering.md 的工程化章节）。脚手架自身的风格靠 prettier 单独管。
       'tools/**',
       'build/**',
       // `tmp/` 是本机证据/一次性脚本（`gitignore` 已列），里面既有 CommonJS 也有

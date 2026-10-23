@@ -17,17 +17,22 @@ const here = path.dirname(fileURLToPath(import.meta.url))
 const ROOT = path.join(here, '..')
 const MANUAL = path.join(ROOT, 'docs/manual')
 
-/** 拆片的分片（顺序即历史顺序）；改名字要同时改索引与这里 */
+/**
+ * 拆片的分片（顺序即历史顺序）；改名字要同时改索引与这里。
+ *
+ * 开源分支移除了 `08a` / `08c` 两份逐轮修复日志（内部开发记录），这里只保留随仓库
+ * 发布的分片。若以后还要删，请同步改索引与下面的行数/条目预算。
+ */
 const PARTS = [
-  '08a-fix-log-1.md',
   '08b-fix-log-2.md',
-  '08c-fix-log-3.md',
   '08d-fix-log-4.md',
   '08e-wave-records.md',
   // 第十一轮新增：08d 已经顶到 1000 行预算（999 + 一条指向新片的说明），§4.90 另开一片
   '08f-fix-log-5.md',
   // 第十二轮新增：启动量化的 §4.91（同理，别往已经贴顶的分片里塞）
-  '08g-fix-log-6.md'
+  '08g-fix-log-6.md',
+  // 第十三轮新增：图片标识符排版的 §4.92
+  '08h-fix-log-7.md'
 ]
 
 const lineCount = (f) => fs.readFileSync(f, 'utf-8').replace(/\r\n/g, '\n').split('\n').length
@@ -45,8 +50,7 @@ test('附录索引：够短（≤200 行）、点到每一片、保留参考表�
   assert.match(index, /^### 附录 A/m)
   assert.match(index, /^### 附录 B/m)
   assert.match(index, /^### 附录 C/m)
-  // 索引要给出"live 台账在哪"，免得读者只在历史记录里找当前状态
-  assert.match(index, /optimization-waves\.md/)
+  // 索引要给出"打包/安装的手工清单在哪"，免得读者只在历史记录里找当前状态
   assert.match(index, /packaging-install-test\.md/)
 })
 
@@ -76,13 +80,13 @@ test('内容不丢也不重：§4.x 小节在所有分片里恰好出现一次�
   }
   const dupes = [...seen.entries()].filter(([, n]) => n > 1).map(([id, n]) => `${id}×${n}`)
   assert.deepEqual(dupes, [], `这些小节在分片里出现了多次（拆片时重复了）：${dupes.join(', ')}`)
-  assert.ok(seen.size >= 45, `只找到 ${seen.size} 个 §4.x 小节 —— 像是丢了一大段`)
+  assert.ok(seen.size >= 28, `只找到 ${seen.size} 个 §4.x 小节 —— 像是丢了一大段`)
   // 首尾与两波记录都必须还在
-  for (const id of ['4.39', '4.85', '4.86', '4.87']) {
+  for (const id of ['4.53', '4.85', '4.86', '4.87', '4.92']) {
     assert.ok(seen.has(id), `§${id} 不见了（拆片时丢了）`)
   }
-  // 行数下限：拆片只该"搬家"，不该变短
-  assert.ok(total >= 3400, `五个分片合计只有 ${total} 行，比拆片前（3516 行）少太多`)
+  // 行数下限：开源分支删掉 08a/08c 后只剩这六片（实测约 2253 行），留一点余量
+  assert.ok(total >= 2200, `六个分片合计只有 ${total} 行，少了太多`)
 })
 
 test('拆片后的文件是 UTF-8 无 BOM（文档不该带 BOM：会污染 grep 与 diff 的第一行）', () => {

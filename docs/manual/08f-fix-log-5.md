@@ -1,7 +1,6 @@
 # 附录 4.90：`Ctrl+P` 改为应用内打印预览
 
-> 本文件是 [附录索引](./08-appendix.md) 的第 6/6 片（只收录 §4.90）。
-> 线上（live）的优化台账在 [docs/optimization-waves.md](../../optimization-waves.md)。
+> 本文件是 [附录索引](./08-appendix.md) 的第 4/6 片（只收录 §4.90）。
 > 相关代码：`src/main/printPreview.ts`、`src/shared/printPreview.ts`、`src/preload/printPreview.ts`；
 > 端到端判据：`tools/_verify-print-preview.js`（14 条）；单测：`tests/printPreview.test.mjs`（8 条）。
 

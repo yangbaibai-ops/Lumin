@@ -721,7 +721,7 @@
 - 提示文案按原因区分：新增纯函数 `heavyReason()`（`fences` / `chars`）+ 三语
   `toast.heavyDocSourceModeChars`（一份 977 KB 的纯散文没几个代码块，说"有 0 个代码块"只会让人困惑）。
 - **诚实标注代价**：用户坚持切回渲染面时成本仍在（+3.4s / ~1.2GB）—— 根治要段落级虚拟化，
-  已记进 `docs/optimization-waves.md` 的波次 2 余项。
+  已记进内部整改台账的波次 2 余项。
 - 单测 `tests/largeDoc.test.mjs` 6 → **8 条**；回归 `_verify-surface-stress` 72/72、
   `_verify-cb-virtualization` 18/18、单测 749/749。
 
@@ -829,9 +829,9 @@
 - 子菜单浮层加**语言无关**锚点 `data-context-submenu`：它的 `aria-label` 现在走语言包
   （中文界面是「子菜单」），4 个套件里 5 处按字面量 `aria-label="submenu"` 定位的选择器
   全部改用它 —— 否则那条契约会在下次改文案时继续骗人。
-- `docs/_audit/` 纳入 `docsClaims` 扫描域 + 6 份快照加「历史快照」横幅；
+- 内部审计快照纳入 `docsClaims` 扫描域 + 6 份快照加「历史快照」横幅；
   纳管第一轮即抓出 3 条失效引用（逐条登记理由，不整目录豁免）。
-- 新增 `docs/optimization-waves.md`：逐条记录桌面评审报告各项的处理状态 / 证据 / 验收口径 /
+- 新增内部整改台账：逐条记录桌面评审报告各项的处理状态 / 证据 / 验收口径 /
   剩余工作（波次 1 完成，波次 2 待做清单在文末）。
 
 ### Changed
@@ -1017,7 +1017,7 @@
 ### Docs
 
 - 新增手册 §4.51（本轮优化的范围、改法、验收数字与遗留项）。
-- `docs/optimization-program.md` 顶部台账更新：已完成项与剩余波次。
+- 内部整改方案的顶部台账更新：已完成项与剩余波次。
 
 ### Verification（本轮实测）
 
@@ -1046,6 +1046,5 @@
 ---
 
 > 归档口径（清单 §10 P2：文档规模已经超过人工同步能力；主文件只留基线 + 最新版本段）：
-> `## [1.0.0]` 之后的 **50 个历史小节**已逐字搬到
-> [`docs/changelog/archive-02.md`](docs/changelog/archive-02.md)；更早的 40 轮（含「历史主题汇总」）在
-> [`docs/changelog/archive-01.md`](docs/changelog/archive-01.md)。
+> `## [1.0.0]` 之后的 **50 个历史小节**与更早的 40 轮（含「历史主题汇总」）曾分别归档；
+> 开源分支不再随仓库发布这些内部历史归档。

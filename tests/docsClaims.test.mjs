@@ -41,35 +41,22 @@ test('README 不再宣传已移除的功能（气泡菜单 / 下划线 / Underli
   assert.deepEqual(hits, [], 'README 的正文里出现已移除功能的声明：\n' + hits.join('\n'))
 })
 
-test('文档里引用的仓库路径都存在（README / 手册 / 台账）', () => {
+test('文档里引用的仓库路径都存在（README / 手册）', () => {
   // 为什么**不含 CHANGELOG.md**：它是追加式历史记录，每条都描述"当时"的状态，
   // 里面出现后来被删掉的文件名是正确的（例如 `_verify-export-fix.js`）。
-  // 这里只查"活文档"——README / 手册 / 台账——它们描述的是**现在**。
+  // 这里只查"活文档"——README / 手册——它们描述的是**现在**。
   //
   // ⚠️ 手册按章拆到 `docs/manual/*.md` 之后（清单 §2.H），活文档的集合变成「索引 + 各章」：
   // 只扫索引会漏掉各章里引用的路径，所以这里把 `docs/manual/` 下的分片**一起**扫。
+  // 开源分支已移除内部审计快照（`docs/_audit/`）与整改台账，扫描域随之收敛。
   const docs = [
     'README.md',
+    'docs/README.md',
     'docs/wysiwyg-manual.md',
-    'docs/optimization-program.md',
-    // 逐条记录桌面评审报告各项处理状态的活台账（波次 1 = 2026-10-04）
-    'docs/optimization-waves.md',
     ...readdirSync(join(ROOT, 'docs/manual'))
       .filter((f) => f.endsWith('.md'))
       .sort()
-      .map((f) => `docs/manual/${f}`),
-    /**
-     * `docs/_audit/` 也纳入（报告 §6.2 P1）：这几份是**历史快照**，此前不在任何文档门禁的
-     * 扫描域里 —— 于是 `coverage-matrix.md` 里"默认矩阵 21 个 / `tools/verify-tiptap.js`
-     * 1473 行"这类早已作废的说法一直没人拦（那个文件其实已经删了）。
-     * 路径引用会随代码演进而失效，让它们至少在"指向的文件还在不在"这一层受同样的约束。
-     * ⚠️ 历史快照里"当时存在、后来删了"的路径是**正常**的：本文件的行内豁免
-     * （`删除/已删/移除/不存在`）就是给它们准备的通道。
-     */
-    ...readdirSync(join(ROOT, 'docs/_audit'))
-      .filter((f) => f.endsWith('.md'))
-      .sort()
-      .map((f) => `docs/_audit/${f}`)
+      .map((f) => `docs/manual/${f}`)
   ]
   // 只认「以仓库根为起点、带已知扩展名」的引用，避免把叙述性名字当路径。
   // ⚠️ 结尾必须有 `\b`：否则 `...zh-CN.json` 会被 `\.js` 抢先匹配成 `...zh-CN.js`
@@ -85,24 +72,6 @@ test('文档里引用的仓库路径都存在（README / 手册 / 台账）', ()
       existsSync(join(ROOT, c))
     )
   const missing = []
-  /**
-   * `docs/_audit/` 里的**已知历史路径**（报告 §6.2 P1）。
-   *
-   * 这几份是当时的快照：里面提到的文件后来被删/改了名，**在当时是对的**。
-   * 逐条登记而不是整目录豁免 —— 这样"快照里新出现的失效路径"仍然会被拦下
-   * （纳入扫描域的第一轮就抓到下面这三条，正是这个门禁的价值）。
-   */
-  const AUDIT_ALLOW = new Map([
-    [
-      'docs/_audit/coverage-matrix.md → tools/verify-tiptap.js',
-      '该总套件已删除（拆进 harness 与 _verify-* 套件）'
-    ],
-    ['docs/_audit/lumin-lighter-audit.md → tools/verify-tiptap.js', '同上'],
-    [
-      'docs/_audit/ui-inventory.md → src/starter-kit.ts',
-      '该文件从未存在于仓根（当时写的是包内路径 @tiptap/starter-kit）'
-    ]
-  ])
   for (const doc of docs) {
     const seen = new Set()
     read(doc)
@@ -114,7 +83,6 @@ test('文档里引用的仓库路径都存在（README / 手册 / 台账）', ()
           const p = m[0]
           if (seen.has(p)) continue
           seen.add(p)
-          if (AUDIT_ALLOW.has(`${doc} → ${p}`)) continue
           if (!resolve(p)) missing.push(`${doc} → ${p}`)
         }
       })

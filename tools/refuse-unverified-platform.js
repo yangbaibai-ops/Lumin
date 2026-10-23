@@ -14,12 +14,12 @@ console.error(
   [
     `✖ 不构建 ${target} 包：本项目的 ${target} 目标**未做过运行验证**。`,
     '',
-    '原因（README「平台现状」与 docs/optimization-program.md 的「明确不建议做的」）：',
+    '原因（README「平台现状」与工程手册的「明确不建议做的」）：',
     '  * 已实测可交付的是 Windows；任务栏 / 快捷方式 / 安装器体验也都按 Windows 做；',
     '  * electron-builder.yml 里 mac/linux 段存在，但从未跑过完整验证；',
     '  * 产出一个"看起来能用"的包会让人误以为它被验证过。',
     '',
-    `如果你确实要做 ${target}：先按 docs/optimization-program.md 补一套验证流程，`,
+    `如果你确实要做 ${target}：先按 docs/manual/06-engineering.md 补一套验证流程，`,
     '然后把 package.json 里的 build:mac / build:linux 改回',
     `  "build:${target}": "npm run build && electron-builder --${target}"`,
     '并在 README 的「平台现状」里更新结论。'

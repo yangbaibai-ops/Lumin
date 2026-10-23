@@ -1,8 +1,8 @@
 # 报告逐条覆盖表（《Lumin 项目评审报告》→ 落地状态）
 
 > 这张表回答一个问题：**报告里的每一条，现在到底是什么状态、证据在哪、还缺什么。**
-> 细节与验收数字在 [`optimization-waves.md`](./optimization-waves.md)（按波次的 live 台账）；
-> 历史交付记录在 [`manual/08-appendix.md`](./manual/08-appendix.md) 的五个分片里。
+> 细节与验收数字见各轮交付记录；
+> 历史交付记录在 [`manual/08-appendix.md`](./manual/08-appendix.md) 的六个分片里。
 
 ## 一眼看结论
 

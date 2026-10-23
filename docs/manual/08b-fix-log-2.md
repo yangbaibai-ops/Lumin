@@ -1,8 +1,7 @@
 # 附录 4.53–4.64：元数据与历史 / 数据流账本 / 套件迁移
 
-> 本文件是 [附录索引](./08-appendix.md) 的第 2/5 片，
+> 本文件是 [附录索引](./08-appendix.md) 的第 1/6 片，
 > 内容为原 `08-appendix.md` 的第 983–1775 行（**逐行原样**，拆片脚本见 commit 说明）。
-> 线上（live）的优化台账在 [docs/optimization-waves.md](../../optimization-waves.md)。
 
 ---
 
@@ -433,7 +432,7 @@ Wave 3 段的端到端断言（真实窗口里跑出来的）：flush 后立刻�
 | 外部整篇替换      | 作者 = `external`   | 打开/草稿/切编码/载入历史统一走 `setContent(..., 'external')` / `noteExternalReplace()`                                                                          |
 
 `files.syncEpoch` 与 `editorStore.syncedMd` 一并删除：前者就是账本的 `rev`（且账本还知道是谁写的），
-后者是字符串版本的 `applied.wysiwyg`。`docs/optimization-program.md` 里 Wave 3.2 的那条待办到此收口。
+后者是字符串版本的 `applied.wysiwyg`。内部整改方案里 Wave 3.2 的那条待办到此收口。
 
 #### 四、老套件迁移：不再按 `Symbol(pinia)` 的名字取 store
 

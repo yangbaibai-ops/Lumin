@@ -1,7 +1,6 @@
 # 附录 4.92：图片标识符的排版 —— 从「贴行盒顶部」到「与正文同线」（含一次被用户否掉的窄盒方案）
 
-> 本文件是 [附录索引](./08-appendix.md) 的第 8/8 片（只收录 §4.92）。
-> 线上（live）的优化台账在 [docs/optimization-waves.md](../../optimization-waves.md)。
+> 本文件是 [附录索引](./08-appendix.md) 的第 6/6 片（只收录 §4.92）。
 > 验收：`node tools/run-suites.js --suite=_verify-image-ui.js`（**42/42**）。
 
 ---

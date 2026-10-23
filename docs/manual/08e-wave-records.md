@@ -1,8 +1,7 @@
 # 附录 4.86–4.87：两波按报告优化的交付记录
 
-> 本文件是 [附录索引](./08-appendix.md) 的第 5/5 片，
+> 本文件是 [附录索引](./08-appendix.md) 的第 3/6 片，
 > 内容为原 `08-appendix.md` 的第 3359–3516 行（**逐行原样**，拆片脚本见 commit 说明）。
-> 线上（live）的优化台账在 [docs/optimization-waves.md](../../optimization-waves.md)。
 
 ---
 
@@ -11,7 +10,7 @@
 **背景**：桌面上那份《Lumin 项目评审报告》（26 页 / 13 张表，五路并行只读审计 + 竞品检索）
 列出 60+ 条可执行项。用户要求"按报告逐条优化，无需审批，全部专业地做"。
 于是把它拆成波次：**波次 1 = 会丢用户内容的三条路 + 成本极低、用户可见的十几项**；
-性能、窄窗、Electron 升级、分发链与壁垒功能放进波次 2（清单见 `docs/optimization-waves.md`）。
+性能、窄窗、Electron 升级、分发链与壁垒功能放进波次 2（清单见内部整改台账）。
 
 ### 一、数据安全三条（报告 §4.2 的 P0）
 
@@ -70,7 +69,7 @@
 | `tests/themeTokens`         | 面矩阵 3 → **4** 个 | `--ink-3`/`--accent` 四表面 ≥3:1；`--link` 四表面 ≥4.5；find-current 专测                        |
 | `tests/guards`              | +1                  | 「设置只有一个写入口」（扫 `src/main/**` 的 `kvSet('settings'` 与 `menu.ts` 的 `settingsStore`） |
 | `tests/i18nHardcoded`       | +3                  | 英文硬编码扫描器（文本节点 + 可见属性）+ 两处真实修复                                            |
-| `tests/docsClaims`          | 扫描域 +2           | `docs/_audit/*.md` 与 `docs/optimization-waves.md`；抓出 3 条失效引用                            |
+| `tests/docsClaims`          | 扫描域 +2           | 内部审计快照与整改台账；抓出 3 条失效引用                                                        |
 | `tests/settingsPatch`       | 新增 4 条           | `deepMerge` 的三条语义（数组替换 / `undefined` 不覆盖 / 深合并）                                 |
 
 ### 五、报告里**没成立**的一条（如实记录）
@@ -103,14 +102,14 @@
 IO 层单测（`fileOps`/`database`/`encoding` 需要先做可注入边界，它们都 import `electron`）、
 真实仓库/下载页与更新通道、代码签名、拼写检查、真 `.docx`、命令面板、多光标、双链、便携版，
 以及 `files` store / `SettingsDialog` / `main/index.ts` 的拆分欠账 —— 全部记在
-`docs/optimization-waves.md` 的"波次 2"里，做完一项销一项。
+内部整改台账的"波次 2"里，做完一项销一项。
 
 ---
 
 ## §4.87 波次 2：大文档性能 —— 先复测报告的数字，再按实测标定降级闸
 
 **方法论**：这一波没有直接照着报告的数字改代码，而是**先用自己的探针把报告的两个主张复测一遍**。
-结果一个是陈旧的、一个是真问题 —— 两种结论都进了台账（`docs/optimization-waves.md` §2.1）。
+结果一个是陈旧的、一个是真问题 —— 两种结论都进了内部整改台账（§2.1）。
 
 ### 一、两个数字的复测
 
