@@ -23,25 +23,25 @@ npm run dist:check
 
 **改哪**：`electron-builder.yml` 的 `publish`。
 
-```yaml
-# 方案 A：GitHub Releases（推荐，零运维）
-publish:
-  provider: github
-  owner: <你的 GitHub 账号>
-  repo: Lumin
+**当前状态：✅ 已指向真实仓库**（GitHub Releases 的 latest 别名，目录形态）：
 
-# 方案 B：任意 HTTPS 静态目录（把安装包与 latest.yml 放上去即可）
+```yaml
 publish:
   provider: generic
-  url: https://你的域名/lumin/updates
+  url: https://github.com/yangbaibai-ops/Lumin/releases/latest/download
 ```
 
-**拿到之后**：`npm run build:win` → electron-builder 生成 `latest.yml` 与
-`app-update.yml`（打进去的渠道配置）→ 把「安装包 + `latest.yml`」一起发布到该渠道。
+generic provider 会在该地址后拼接 `latest.yml`，所以这里必须是**目录**。GitHub 的
+`/releases/latest/download/<asset>` 才是 latest 别名；`/releases/download/latest`（把
+`latest` 当标签名）实测 404，**不要**使用。
 
-**缺了会怎样**：占位地址会被 `updater` 识别并**跳过检查** —— 用户永远收不到更新，
-而且不会看到任何错误提示（这是有意的：默认状态下不该冒出网络失败通知）。
-应用内「自动检查更新」默认关闭，配置好渠道后由用户主动打开或我们在设置里默认打开。
+**拿到之后**：`npm run build:win` → electron-builder 生成 `latest.yml` 与
+`app-update.yml`（打进去的渠道配置）→ 把「安装包 + `latest.yml` + `.blockmap`」一起发布到
+该 Release。在**首次发布**之前，检查更新会如实得到 404 —— 这是"还没有发布物"，不是配置错误。
+
+**缺了会怎样**（历史口径，留作判据说明）：占位地址会被 `updater` 识别并**跳过检查** ——
+用户永远收不到更新，而且不会看到任何错误提示（这是有意的：默认状态下不该冒出网络失败通知）。
+应用内「自动检查更新」默认关闭，配置好渠道并发布 Release 后由用户主动打开。
 
 ### 2.2 仓库地址 / 2.3 官网（下载页）
 
@@ -58,7 +58,7 @@ publish:
 
 **缺了会怎样**（历史口径，留作判据说明）：README 与「关于」页指向不了源码；用户拿到安装包后
 没有可点的落地页。现在这两项在 `npm run dist:check` 里都报"就绪"，待办只剩
-**更新渠道**与**代码签名证书**两项。
+**代码签名证书**一项（更新渠道已指向真实仓库，见 2.1；首次发 Release 前检查更新会 404）。
 
 **顺带一提**：`src/main/menu.ts` 里原生菜单那条「在浏览器中打开项目主页」（`menu.homepage`）
 **仍未启用**（一直注释着）—— 地址现在已经有了，启用它只差把那段放开；本轮没动它（不在用户口径内），

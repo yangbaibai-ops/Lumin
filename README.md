@@ -164,11 +164,13 @@ Lumin is an Electron application with a context-isolated bridge between the main
 
 ## Contributing
 
-Contributions are welcome. Read `[CONTRIBUTING.md](CONTRIBUTING.md)` for the workflow, commit message format, and test expectations before opening a pull request. By taking part you agree to the `[CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md)`. Please report security issues privately as described in `[SECURITY.md](SECURITY.md)`.
+Contributions are welcome. Read [CONTRIBUTING.md](CONTRIBUTING.md) for the workflow, commit message format, and test expectations before opening a pull request. By taking part you agree to the [Code of Conduct](CODE_OF_CONDUCT.md). Please report security issues privately as described in [SECURITY.md](SECURITY.md).
 
 ## License
 
-Lumin is released under the MIT License. See `[LICENSE](LICENSE)` and `[THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md)` for the full texts and third-party notices.
+Lumin is released under the [MIT License](LICENSE). Third-party components and their licenses are listed in [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md). Contribution guidelines are in [CONTRIBUTING.md](CONTRIBUTING.md).
+
+Copyright (c) 2026 Lumin.
 
 ## Acknowledgements
 

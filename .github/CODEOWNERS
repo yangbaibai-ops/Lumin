@@ -1,45 +1,39 @@
 # ─── CODEOWNERS：谁被自动请求评审（审计 P1-6）────────────────────────────────
 #
-# ⚠️ **发布前替换为真实 owner**：本文件目前**没有生效的 owner 规则** —— 所有规则都被
-# 注释掉了，这是刻意的。上一版用的 `@yang_bai_bai` 是照 `package.json` 的 author.name
-# 推出来的占位符；它不是本仓库有写权限的 GitHub 用户/团队时，GitHub 会**静默失败**
-# （语法没问题、也不报错，只是永远不请求评审），比没有 CODEOWNERS 更危险。
-#
-# 所以现在改成「注释形式 + 显式 TODO」：既不留下一个看起来生效、实际静默失效的门禁，
-# 也把真实 owner 该填在哪一行写清楚。维护者拿到真实 GitHub 用户名后：
-#   1. 把下面每条规则里的 `@REAL_OWNER` 换成真实用户名（或 `@org/team`）；
-#   2. 去掉行首的 `# `（只留 `# ───` 这类的说明注释）；
-#   3. 用 `gh api repos/{owner}/{repo}/collaborators` 核对对方确实有写权限。
-#
+# 维护者：`@yangbaibai-ops`（无团队时使用该账号；见 package.json 的 author）。
 # 语法：`<pattern> <@user 或 @org/team> [<@user> …]`；本文件**不是** YAML，是 gitignore
 # 风格的模式表，且 `.github/CODEOWNERS` 是这个文件的**首选位置**（根目录 / docs/ 下的
 # 同名文件优先级更低）。
+#
+# ⚠️ 发布前确认：`@yangbaibai-ops` 必须确实对本仓库有写权限（用
+# `gh api repos/yangbaibai-ops/Lumin/collaborators` 核对）。没有写权限的 owner 会让 GitHub
+# **静默失败**（语法没问题、也不报错，只是永远不请求评审），比没有 CODEOWNERS 更危险。
 
-# ─── 兜底：默认所有文件归维护者（放在文件**末尾**，被下面更具体的规则覆盖）───────
-# 发布前替换为真实 owner：# * @REAL_OWNER
+# ─── 兜底：默认所有文件归维护者（放在文件**开头**，被下面更具体的规则覆盖）───────
+* @yangbaibai-ops
 
 # ─── 高风险路径：改动会绕开常规测试面，请务必由维护者过一遍 ───────────────────
-# 发布前替换为真实 owner：
 
 # CI / 发布链路：action 的 pin、权限位、产物上传口径都在这里（供应链面）
-# /.github/ @REAL_OWNER
-# 打包与更新渠道：签名、artifact 命名、publish 占位（发版面）
-# /electron-builder.yml @REAL_OWNER
-# /dev-app-update.yml @REAL_OWNER
+/.github/** @yangbaibai-ops
+# 打包与更新渠道：签名、artifact 命名、publish 地址（发版面）
+/electron-builder.yml @yangbaibai-ops
+/dev-app-update.yml @yangbaibai-ops
 # 安全边界：路径授权、IPC 白名单、CSP、自定义协议（审计里的"我们认真对待的攻击面"）
-# /src/main/ @REAL_OWNER
-# /src/preload/ @REAL_OWNER
+/src/main/** @yangbaibai-ops
+/src/preload/** @yangbaibai-ops
 # 跨进程真相源：类型 + 纯函数（判定写在这里才测得了）
-# /src/shared/ @REAL_OWNER
+/src/shared/** @yangbaibai-ops
 # 交付口径文档：改这些等于改对外承诺
-# /README.md @REAL_OWNER
-# /SECURITY.md @REAL_OWNER
-# /RELEASE.md @REAL_OWNER
+/README.md @yangbaibai-ops
+/README.zh-CN.md @yangbaibai-ops
+/SECURITY.md @yangbaibai-ops
+/RELEASE.md @yangbaibai-ops
 # 门禁本身：改 eslint 配置 / 测试骨架等于改"什么算通过"
-# /eslint.config.mjs @REAL_OWNER
-# /tools/lib/ @REAL_OWNER
-# /tests/ @REAL_OWNER
+/eslint.config.mjs @yangbaibai-ops
+/tools/lib/** @yangbaibai-ops
+/tests/** @yangbaibai-ops
 # 依赖面：lockfile 与许可声明
-# /package.json @REAL_OWNER
-# /package-lock.json @REAL_OWNER
-# /THIRD-PARTY-NOTICES.md @REAL_OWNER
+/package.json @yangbaibai-ops
+/package-lock.json @yangbaibai-ops
+/THIRD-PARTY-NOTICES.md @yangbaibai-ops

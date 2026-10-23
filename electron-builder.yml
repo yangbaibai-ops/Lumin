@@ -161,25 +161,19 @@ fileAssociations:
     role: Editor
     icon: resources/doc-md.ico
 
-# 自动更新：**这里还是占位地址**，所以运行时不会去检查（services/updater.ts 用
-# shared/distribution.ts 的同一份占位判据识别并直接跳过，避免用户机器上冒出莫名其妙的网络失败通知）。
-# 真正启用需要两步：
-#   1) 把 provider/url 换成真实渠道，例如 GitHub Releases：
-#        publish:
-#          provider: github
-#          owner: <你的账号>
-#          repo: Lumin
-#      或自建静态源（把安装包与 latest.yml 放到任意 HTTPS 静态目录）：
-#        publish:
-#          provider: generic
-#          url: https://你的域名/lumin/updates
-#   2) 重新打包（electron-builder 会生成 latest.yml 与 app-update.yml），发布安装包 + latest.yml。
-# 之后在设置里打开「自动检查更新」即生效（默认关，不打扰用户）。
-# ⚠️ 发布前跑一次 `npm run dist:check -- --release`：它会把"还缺哪些外部输入"列出来，
-# 占位地址没换掉时**故意让这一步失败**（免得带着 example.com 发出去）。见 docs/distribution.md。
+# 自动更新：真实渠道 = 本仓库的 GitHub Releases（latest 别名）。
+# generic provider 会在下面 url 后面拼 `latest.yml`，所以必须是**目录形态**：
+#   https://github.com/yangbaibai-ops/Lumin/releases/latest/download/latest.yml
+# 注意：`/releases/download/latest`（把 latest 当标签名）实测 404，不能作为更新源；
+# GitHub 的 latest 别名是 `/releases/latest/download/<asset>`，这里用的是它的目录形态。
+# 运行时 services/updater.ts 用 shared/distribution.ts 的同一份占位判据决定是否真的发起请求。
+# ⚠️ 首次发布前：必须是**已发布**的 Release，且资产里带上安装包、latest.yml、.blockmap；
+#    否则检查更新会如实报 404（不是配置错误）。
+# ⚠️ 发布前跑一次 `npm run dist:check -- --release`：它会把"还缺哪些外部输入"列出来。
+#    见 docs/distribution.md。
 publish:
   provider: generic
-  url: https://example.com/auto-updates
+  url: https://github.com/yangbaibai-ops/Lumin/releases/latest/download
 
 # ─── 非 Windows 平台：目前不是发布目标，配置保留但不做针对性适配 ───────────────
 mac:

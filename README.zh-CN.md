@@ -164,11 +164,13 @@ Lumin 是 Electron 应用：主进程与 Vue 渲染层之间只通过 context-is
 
 ## 贡献
 
-欢迎参与贡献。提交 PR 之前请先阅读 `[CONTRIBUTING.md](CONTRIBUTING.md)`，其中说明了开发流程、 提交信息格式与测试要求。参与本项目即表示同意遵守 `[CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md)`。安全问题请按 `[SECURITY.md](SECURITY.md)` 的渠道 私下报告。
+欢迎参与贡献。提交 PR 之前请先阅读 [CONTRIBUTING.md](CONTRIBUTING.md)，其中说明了开发流程、提交信息格式与测试要求。参与本项目即表示同意遵守 [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md)。安全问题请按 [SECURITY.md](SECURITY.md) 的渠道私下报告。
 
 ## 许可
 
-Lumin 以 MIT 许可发布。完整文本与第三方声明见 `[LICENSE](LICENSE)` 与 `[THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md)`。
+Lumin 以 [MIT 许可](LICENSE)发布。第三方组件及其许可见 [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md)，贡献指引见 [CONTRIBUTING.md](CONTRIBUTING.md)。
+
+Copyright (c) 2026 Lumin.
 
 ## 致谢
 

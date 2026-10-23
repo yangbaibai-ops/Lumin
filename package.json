@@ -10,10 +10,7 @@
     "url": "https://github.com/yangbaibai-ops/Lumin/issues"
   },
   "main": "./out/main/index.js",
-  "author": {
-    "name": "yang_bai_bai",
-    "email": "yang_bai_bai@163.com"
-  },
+  "author": "Lumin",
   "scripts": {
     "format": "prettier --write .",
     "lint": "eslint --cache --max-warnings 0 .",
