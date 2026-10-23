@@ -9,7 +9,14 @@ import type { HistoryEntry, HistoryEntryMeta } from './history'
 // 设置文件的读取结果（信封/白名单那一套在 shared/settingsFile.ts；这里只要类型）
 import type { SettingsFileReadResult } from './settingsFile'
 import type { DocRiskRecord } from './freeze'
-import type { NativeCloseChoice, NativeExternalChoice } from './nativeDialogs'
+import type {
+  NativeChooseOptions,
+  NativeCloseChoice,
+  NativeConfirmChoice,
+  NativeConfirmOptions,
+  NativeExternalChoice,
+  NativeLeaveChoice
+} from './nativeDialogs'
 // 打印结果三态 + 失败原因（纯函数模块，见 shared/printOptions.ts）
 import type { PrintResult } from './printOptions'
 export type { HistoryEntry, HistoryEntryMeta }
@@ -983,13 +990,20 @@ export interface LuminAPI {
   /**
    * 原生确认对话框（主进程 `dialog.showMessageBox(win, …)`）。
    *
-   * 目前两条：关闭未保存文件（保存/不保存/取消）、外部修改（重新加载/稍后）。
-   * 渲染层只传"是哪一种"，文案由主进程语言包取；按钮下标 → 语义的映射在
-   * shared/nativeDialogs.ts（纯函数，单测）。
+   * 三条固定语义：关闭未保存文件（保存/不保存/取消）、外部修改（重新加载/稍后）、
+   * 离开文档（放弃并离开/取消）。按钮下标 → 语义的映射在 shared/nativeDialogs.ts
+   * （纯函数，单测）。
+   *
+   * 另有两条**通用**入口：确认框（删除/覆盖/清空…，文案由渲染层给）与三选一
+   * （大文档打开方式，返回按钮下标）。它们的文案在渲染层拼（含文件名/条数），
+   * `kind` 只作一次性闸与日志标记。
    */
   dialog: {
     confirmClose: () => Promise<NativeCloseChoice>
     externalChange: () => Promise<NativeExternalChoice>
+    confirmLeaveUnsaved: () => Promise<NativeLeaveChoice>
+    confirm: (options: NativeConfirmOptions) => Promise<NativeConfirmChoice>
+    choose: (options: NativeChooseOptions) => Promise<number>
   }
   /**
    * 全局防卡死兜底（主进程判活；渲染层只发心跳与读诊断）。

@@ -9,9 +9,14 @@ import fs from 'node:fs'
 import path from 'node:path'
 import {
   CLOSE_DIALOG_BUTTONS,
+  CONFIRM_DIALOG_BUTTONS,
   EXTERNAL_DIALOG_BUTTONS,
+  LEAVE_DIALOG_BUTTONS,
   mapCloseDialogResponse,
-  mapExternalDialogResponse
+  mapConfirmDialogResponse,
+  mapExternalDialogResponse,
+  mapLeaveDialogResponse,
+  planLeaveIntent
 } from '../src/shared/nativeDialogs.ts'
 
 const ROOT = new URL('../', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1')
@@ -33,6 +38,52 @@ test('外部修改原生框：0 重新加载，其余一律稍后', () => {
   assert.equal(mapExternalDialogResponse(1), 'later')
   assert.equal(mapExternalDialogResponse(9), 'later')
   assert.deepEqual(EXTERNAL_DIALOG_BUTTONS, ['reload', 'later'])
+})
+
+// ─── 离开文档（放弃未保存修改）：本轮新增 ────────────────────────────────────
+test('离开文档原生框：0 取消 / 1 放弃并离开，未知下标一律取消', () => {
+  assert.equal(mapLeaveDialogResponse(0), 'cancel')
+  assert.equal(mapLeaveDialogResponse(1), 'discard')
+  assert.equal(mapLeaveDialogResponse(-1), 'cancel')
+  assert.equal(mapLeaveDialogResponse(7), 'cancel')
+  assert.equal(mapLeaveDialogResponse(Number.NaN), 'cancel')
+  assert.deepEqual(LEAVE_DIALOG_BUTTONS, ['cancel', 'discard'])
+})
+
+test('离开文档：取消 ⇒ 留在当前文档（不丢内容/不清脏），放弃 ⇒ 继续原流程', () => {
+  assert.equal(planLeaveIntent('cancel'), 'stay')
+  assert.equal(planLeaveIntent('discard'), 'leave')
+})
+
+test('通用确认框：0 取消 / 1 确认，未知下标一律取消', () => {
+  assert.equal(mapConfirmDialogResponse(0), 'cancel')
+  assert.equal(mapConfirmDialogResponse(1), 'confirm')
+  assert.equal(mapConfirmDialogResponse(9), 'cancel')
+  assert.equal(mapConfirmDialogResponse(Number.NaN), 'cancel')
+  assert.deepEqual(CONFIRM_DIALOG_BUTTONS, ['cancel', 'confirm'])
+})
+
+test('离开确认不允许「回车即放弃」：主进程必须 defaultId=0 / cancelId=0', () => {
+  const main = read('src/main/ipc.ts')
+  const at = main.indexOf(`ipcMain.handle('dialog:confirmLeaveUnsaved'`)
+  assert.ok(at > 0, '主进程缺少 dialog:confirmLeaveUnsaved')
+  const body = main.slice(at + 1)
+  const handler = body.slice(0, body.indexOf(`ipcMain.handle('`))
+  assert.match(handler, /mainT\('editor\.dirtyConfirmTitle'\)/, '标题必须取语言包')
+  assert.match(handler, /mainT\('editor\.dirtyConfirmBody'\)/, '正文必须取语言包')
+  assert.match(handler, /mainT\('editor\.dirtyConfirmDiscard'\)/, '「放弃并离开」必须取语言包')
+  assert.match(handler, /defaultId:\s*0/, '默认焦点必须是「取消」')
+  assert.match(handler, /cancelId:\s*0/, 'Esc/关框必须等于「取消」')
+  assert.match(handler, /dialog\.showMessageBox\(win,/, '必须带父窗口的原生框')
+})
+
+test('离开确认的调用方已改为原生（渲染层不再走 ui.confirm / confirmTriple）', () => {
+  const dialog = read('src/renderer/src/lib/dialog.ts')
+  assert.match(dialog, /luminAPI\.dialog\.confirmLeaveUnsaved\(\)/)
+  assert.match(dialog, /planLeaveIntent\(choice\) === 'leave'/)
+  assert.doesNotMatch(dialog, /ui\.confirm\(/)
+  assert.doesNotMatch(dialog, /ui\.confirmTriple\(/)
+  assert.match(read('src/main/ipc.ts'), /ipcMain\.handle\('dialog:confirmLeaveUnsaved'/)
 })
 
 test('关窗/外部修改的呈现方式已是主进程原生框（不再走 ui.confirmTriple）', () => {

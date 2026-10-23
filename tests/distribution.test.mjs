@@ -95,18 +95,22 @@ test('外部输入清单：五项、id 稳定，private 是有意就绪的那一
   assert.equal(signingReady(facts()), true)
 })
 
-test('仓库现状：更新渠道仍是占位、仓库/主页已填、没证书 —— 清单必须如实报出来', () => {
+test('仓库现状：更新渠道已是真实 Release、仓库/主页已填、没证书 —— 清单必须如实报出来', () => {
   /**
    * 这条盯的是**真实仓库**（不是构造的事实）。它原本是"缺 repository/homepage"的哨兵，
    * 注释里写着"等仓库地址到手、这几行改完之后它应该变红 —— 那时把断言改成'已就绪'即可"。
-   * 现在**地址到手了**（用户给了 GitHub：`https://github.com/yangbaibai-ops/Lumin`，
-   * package.json 的 repository/homepage/bugs 都已填），所以这里按设计**转正**：
-   * repository/homepage 不再进待办；更新渠道（publish 占位）与签名证书仍是外部输入。
+   * 现在仓库地址与更新渠道**都已落地**（用户给了 GitHub：`https://github.com/yangbaibai-ops/Lumin`，
+   * publish 也指向该仓库的 Releases），所以这里按设计**转正**：
+   * repository / homepage / update-channel 都不再进待办；签名证书仍是外部输入。
+   * （占位已替换为真实渠道，故断言随之更新。）
    */
   const f = collectFacts({})
   const inputs = distributionInputs(f)
   const todo = missingInputs(inputs).map((t) => t.id)
-  assert.ok(todo.includes('update-channel'), `更新渠道应仍是占位：${JSON.stringify(f)}`)
+  assert.ok(!todo.includes('update-channel'), `更新渠道已是真实地址：${JSON.stringify(f)}`)
+  assert.equal(updateChannelReady(f), true)
+  assert.match(String(f.publishUrl), /^https:\/\//)
+  assert.doesNotMatch(String(f.publishUrl), /example\.com/)
   assert.ok(
     !todo.includes('repository'),
     `repository 已填（哨兵已转正）：${JSON.stringify({ repository: f.repository })}`
@@ -125,12 +129,19 @@ test('工具与运行时同一份判据：updater 不许再自带一份占位域
   assert.match(updater, /isPlaceholderValue\(/, '判据要走共享实现')
 })
 
-test('打包配置：更新包签名校验开着（在 win 段！）、卸载不删用户数据、publish 解析得出', () => {
+test('打包配置：更新包签名校验开着（在 win 段！）、卸载不删用户数据、publish 指向真实渠道', () => {
   const yml = read('electron-builder.yml')
   const parsed = readPublish(yml)
-  assert.equal(parsed.provider, 'generic')
-  assert.equal(parsed.url, 'https://example.com/auto-updates')
-  assert.equal(isPlaceholderValue(parsed.url), true, '当前就该是占位（发版前要换掉）')
+  assert.ok(
+    ['generic', 'github'].includes(parsed.provider),
+    `provider 必须是 electron-updater 认得的类型：${parsed.provider}`
+  )
+  // 占位已替换为真实渠道，故断言随之更新：必须是 https、能被 URL 解析、且不再含 example.com。
+  const url = new URL(parsed.url)
+  assert.equal(url.protocol, 'https:', '更新渠道必须是 https')
+  assert.ok(url.hostname, '更新渠道必须有主机名')
+  assert.doesNotMatch(parsed.url, /example\.com/)
+  assert.equal(isPlaceholderValue(parsed.url), false, '当前是真实渠道，不再是占位')
   /**
    * ⚠️ `verifyUpdateCodeSignature` 属于 **win** 段（scheme.json 的
    * WindowsConfiguration.properties），**不在 nsis 段** —— 放错位置会被 electron-builder 的

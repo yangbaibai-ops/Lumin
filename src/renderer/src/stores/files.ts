@@ -14,7 +14,7 @@ import { ancestorDirs, isInside, samePath } from '../lib/pathUtils'
 import { activeTreePath } from '../lib/treeFocus'
 import { planMove, type MoveRejectReason, type MoveSource } from '../lib/treeMove'
 import { errorReason } from '../lib/errors'
-import { confirmDiscardIfDirty } from '../lib/dialog'
+import { confirmDiscardIfDirty, confirmNative } from '../lib/dialog'
 import { flushEditorBeforeReplace } from '../lib/editorFlush'
 import { draftKeyFor, planDraftOnOpen } from '../lib/draftRules'
 import { currentSessionSlot } from '../lib/sessionSlot'
@@ -743,17 +743,26 @@ export const useFilesStore = defineStore('files', {
         const riskSafeMode = openPlan === 'source-risk'
         let openInSource = riskSafeMode
         if (openPlan === 'prompt-large') {
-          const choice = await useUiStore().confirmTriple({
+          /**
+           * 大文档打开方式：**主进程原生三选一**（取消 / 仍然打开 / 以源码模式打开）。
+           * 顺序即按钮顺序，下标 0 = 取消（默认焦点，安全出口）—— 与旧的自绘三选一
+           * 出口语义一一对应：cancel ⇒ 不换文档；alt ⇒ 富文本；confirm ⇒ 源码模式。
+           */
+          const choice = await window.luminAPI.dialog.choose({
+            kind: 'large-doc',
             title: i18n.global.t('editor.largeDocPromptTitle'),
             body: i18n.global.t('editor.largeDocPromptBody', {
               mb: (estimate.bytes / 1024 / 1024).toFixed(1),
               nodes: estimate.nodes
             }),
-            confirmLabel: i18n.global.t('editor.openAsSource'),
-            altLabel: i18n.global.t('editor.openAnyway')
+            buttons: [
+              i18n.global.t('common.cancel'),
+              i18n.global.t('editor.openAnyway'),
+              i18n.global.t('editor.openAsSource')
+            ]
           })
-          if (choice === 'cancel') return false
-          openInSource = choice === 'confirm'
+          if (choice === 0) return false
+          openInSource = choice === 2
         }
 
         // **先**定好 currentDir 再换 current：编辑器按 current.path 重建（:key），
@@ -1230,9 +1239,10 @@ export const useFilesStore = defineStore('files', {
        * 自动保存那条路已经在 scheduleSave 里直接跳过了（不会走到这里）。
        */
       if (this.reopenedWithEncoding) {
-        const ui = useUiStore()
         const enc = encodingLabel(doc.encoding)
-        const ok = await ui.confirm({
+        // 写回 = 用乱码覆盖原文，不可逆：走**主进程原生确认框**（确认类弹窗全部原生）
+        const ok = await confirmNative({
+          kind: 'save-after-reopen',
           title: i18n.global.t('editor.saveAfterReopenTitle'),
           body: i18n.global.t('editor.saveAfterReopenBody', { enc }),
           danger: true
@@ -1290,7 +1300,8 @@ export const useFilesStore = defineStore('files', {
         if (first.conflict) {
           const overwrite = auto
             ? false
-            : await useUiStore().confirm({
+            : await confirmNative({
+                kind: 'save-conflict-overwrite',
                 title: i18n.global.t('editor.saveConflictTitle', { name: doc.name }),
                 body: i18n.global.t('editor.saveConflictBody'),
                 danger: true

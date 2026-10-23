@@ -6,6 +6,7 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useUiStore } from '../stores/ui'
 import { useFilesStore } from '../stores/files'
+import { confirmNative } from '../lib/dialog'
 import Icon from './Icon.vue'
 import type { HistoryEntryMeta } from '../../../shared/types'
 
@@ -47,7 +48,9 @@ async function restore(entry: HistoryEntryMeta): Promise<void> {
 async function clearAll(): Promise<void> {
   const path = ui.localHistory.path
   if (!path) return
-  const ok = await ui.confirm({
+  // 清空本地历史不可逆：**主进程原生确认框**（确认类弹窗全部原生）
+  const ok = await confirmNative({
+    kind: 'clear-history',
     title: t('history.clearTitle'),
     body: t('history.clearBody'),
     danger: true

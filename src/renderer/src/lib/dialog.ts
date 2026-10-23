@@ -3,31 +3,57 @@
  *
  * 背景：这段「脏了就先问」的逻辑此前散在四处（`composables/useAppActions.ts`、
  * `stores/files.ts` 的 reopenWithEncoding、`TreeNode.vue` 的打开文件、`FileList.vue`），
- * 每处各写一遍 `ui.confirm({ title: t('editor.dirtyConfirmTitle'), ... })`。
+ * 每处各写一遍「ui.confirm + t('editor.dirtyConfirmTitle')」。
  * 文案改一次要改四处，漏一处的表现是「两个入口问的话不一样」——典型的一致性债务。
  *
  * 为什么放在 `lib/` 而不是像整改方案里写的 `services/dialog`：
  * 本仓库的 `services/` 是**主进程**的约定（`src/main/services/*`），渲染层没有这一层；
  * 放 `lib/` 与 `lib/errors.ts`、`lib/pathUtils.ts` 同一层级。
  *
- * 关键的依赖方向：这里**只依赖 ui store 与 i18n**，不认识 files store。
+ * 关键的依赖方向：这里**只依赖主进程的原生对话框通道与 i18n**，不认识 files store。
  * 「脏不脏」由调用方作为参数传进来 —— 于是 `stores/files.ts` 也能用它，
  * 不会形成 `store → composable → store` 的循环导入（那正是当初复制一份的原因）。
+ *
+ * 呈现方式（本轮用户口径）：**确认类弹窗全部走主进程原生框**，渲染层不再自绘；
+ * 只有 toast（内部灰色滑动提示）与应用内的草稿恢复选择器保留。
  */
 
-import { useUiStore } from '../stores/ui'
-import i18n from '../i18n'
 import { flushEditorBeforeReplace } from './editorFlush'
 import { planClosePrompt, type CloseReason } from '../../../shared/closePrompt'
+import { planLeaveIntent, type NativeConfirmOptions } from '../../../shared/nativeDialogs'
 
-/** 直接问「未保存的更改要丢弃吗」（调用方已确认确实有未保存内容） */
+/**
+ * 直接问「未保存的更改要丢弃吗」（调用方已确认确实有未保存内容）。
+ *
+ * 呈现方式：**主进程原生对话框**（用户口径：确认类弹窗全部原生）。
+ * 判定条件/时机与文案语义一个字没动 —— 仍然由调用方先 flush 再判断脏不脏，
+ * 这里只把"怎么弹"从自绘 `ui.confirm` 换成 `dialog.showMessageBox(win, …)`。
+ * 按钮映射（0 取消 / 1 放弃并离开）在 shared/nativeDialogs.ts，单测钉着；
+ * 主进程不可用（极端情况）时回 false —— 最安全的出口是"留在当前文档、不丢内容"。
+ */
 export async function confirmDiscardChanges(): Promise<boolean> {
-  const ui = useUiStore()
-  return ui.confirm({
-    title: i18n.global.t('editor.dirtyConfirmTitle'),
-    body: i18n.global.t('editor.dirtyConfirmBody'),
-    danger: true
-  })
+  try {
+    const choice = await window.luminAPI.dialog.confirmLeaveUnsaved()
+    return planLeaveIntent(choice) === 'leave'
+  } catch {
+    return false
+  }
+}
+
+/**
+ * 通用原生确认框（删除文件 / 覆盖保存 / 清空历史…）。
+ *
+ * 文案由渲染层给：这些弹窗的正文本来就在渲染层拼（文件名、条数、编码名），
+ * 主进程没有第二份来源；`kind` 是稳定的动作标识，主进程只用它做一次性闸与日志。
+ * 任何异常/窗口销毁都回 false（取消），破坏性动作绝不因"对话框失败"而继续。
+ */
+export async function confirmNative(options: NativeConfirmOptions): Promise<boolean> {
+  try {
+    const choice = await window.luminAPI.dialog.confirm(options)
+    return choice === 'confirm'
+  } catch {
+    return false
+  }
 }
 
 /**

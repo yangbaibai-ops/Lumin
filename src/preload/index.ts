@@ -330,13 +330,19 @@ const api: LuminAPI = {
     clear: () => ipcRenderer.invoke('links:clear')
   },
   /**
-   * 原生确认对话框：关闭未保存文件 / 外部修改。
+   * 原生确认对话框：关闭未保存文件 / 外部修改 / 离开文档（放弃未保存修改）。
    * 由主进程 `dialog.showMessageBox(win, …)` 弹出（原生、父窗口绑定），
-   * 渲染层只拿语义结果（save/discard/cancel、reload/later）。
+   * 渲染层只拿语义结果（save/discard/cancel、reload/later、discard/cancel）。
+   *
+   * 通用确认（删除 / 覆盖 / 清空…）与三选一（大文档打开方式）也走这一层：
+   * `confirm` 收渲染层已本地化的文案 + 稳定 `kind`，`choose` 收按钮数组、返回下标。
    */
   dialog: {
     confirmClose: () => ipcRenderer.invoke('dialog:confirmClose'),
-    externalChange: () => ipcRenderer.invoke('dialog:externalChange')
+    externalChange: () => ipcRenderer.invoke('dialog:externalChange'),
+    confirmLeaveUnsaved: () => ipcRenderer.invoke('dialog:confirmLeaveUnsaved'),
+    confirm: (options) => ipcRenderer.invoke('dialog:confirm', options),
+    choose: (options) => ipcRenderer.invoke('dialog:choose', options)
   },
   /**
    * 防卡死兜底：心跳单向、状态/文档风险按需 invoke。

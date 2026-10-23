@@ -222,6 +222,7 @@
     "cursor": "Ln {line}, Col {col}",
     "dirtyConfirmTitle": "Unsaved changes",
     "dirtyConfirmBody": "This document has unsaved changes. Leave anyway?",
+    "dirtyConfirmDiscard": "Discard and leave",
     "externalChangeTitle": "File changed outside Lumin",
     "externalChangeBody": "Changes to this content were detected. Reload it?",
     "externalChangeReload": "Reload",

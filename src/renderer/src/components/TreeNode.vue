@@ -8,7 +8,7 @@ import { useUiStore, type ContextMenuItem } from '../stores/ui'
 import { activeTreePath } from '../lib/treeFocus'
 import { samePath, ancestorDirs } from '../lib/pathUtils'
 import { canDropOn } from '../lib/treeMove'
-import { confirmDiscardIfDirty } from '../lib/dialog'
+import { confirmDiscardIfDirty, confirmNative } from '../lib/dialog'
 import { errorReason } from '../lib/errors'
 import { useWorkspaceRootMenu } from '../composables/useWorkspaceRootMenu'
 import Icon from './Icon.vue'
@@ -287,7 +287,10 @@ async function handleAction(action: string): Promise<void> {
     // 内容会被留成草稿、回收站里也有，但用户得知道"现在删的是手里这份没保存的东西"。
     const warnUnsaved = files.deleteAffectsCurrentDoc(props.node.path) && files.dirty
     const body = t('editor.deleteConfirmBody', { name: props.node.name })
-    const ok = await ui.confirm({
+    // 确认走**主进程原生框**（用户口径：确认类弹窗全部原生）；正文里那句「还有未保存改动」
+    // 仍按原规则拼在同一个 body 里，语义不变。
+    const ok = await confirmNative({
+      kind: 'delete-file',
       title: t('editor.deleteConfirmTitle'),
       body: warnUnsaved ? `${body}\n${t('editor.deleteUnsavedWarn')}` : body,
       danger: true

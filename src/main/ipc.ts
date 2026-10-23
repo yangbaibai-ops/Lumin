@@ -30,7 +30,14 @@ import * as dbBackup from './services/dbBackup'
 import * as externalWatch from './services/externalWatch'
 import * as workspaceBackup from './services/workspaceBackup'
 import { checkNow as checkForUpdatesNow, onSettingsChanged } from './services/updater'
-import { mapCloseDialogResponse, mapExternalDialogResponse } from '../shared/nativeDialogs'
+import {
+  mapCloseDialogResponse,
+  mapConfirmDialogResponse,
+  mapExternalDialogResponse,
+  mapLeaveDialogResponse,
+  type NativeChooseOptions,
+  type NativeConfirmOptions
+} from '../shared/nativeDialogs'
 import * as freezeGuard from './services/freezeGuard'
 import * as docRisk from './services/docRisk'
 import { installMenu } from './menu'
@@ -95,13 +102,9 @@ import type {
  * 而且两个 `app:cancelClose` 会把守卫状态搅乱。第二次请求直接复用第一次的 Promise，
  * 语义上就是"同一个问题只问一次"。
  */
-const nativeDialogFlights = new Map<string, Promise<string>>()
+const nativeDialogFlights = new Map<string, Promise<unknown>>()
 
-function onceNativeDialog<T extends string>(
-  win: BrowserWindow,
-  kind: string,
-  run: () => Promise<T>
-): Promise<T> {
+function onceNativeDialog<T>(win: BrowserWindow, kind: string, run: () => Promise<T>): Promise<T> {
   const key = `${win.id}:${kind}`
   const existing = nativeDialogFlights.get(key)
   if (existing) return existing as Promise<T>
@@ -319,14 +322,20 @@ export function registerIpc(slots: SlotRegistry): void {
   })
 
   /**
-   * ─── 原生确认对话框（用户新增口径）────────────────────────────────────────────
+   * ─── 原生确认对话框（用户口径：确认类弹窗全部改原生）────────────────────────────
    *
-   * 「关闭未保存文件」与「外部应用修改了文档内容」必须用**主进程**的
-   * `dialog.showMessageBox(win, …)`（原生 MessageBox 风格、父窗口绑定），不再自绘。
+   * 「关闭未保存文件」「外部应用修改了文档内容」「切换/离开文档时放弃未保存修改」
+   * 必须用**主进程**的 `dialog.showMessageBox(win, …)`（原生 MessageBox 风格、
+   * 父窗口绑定），不再自绘。
    *
    * 文案从主进程语言包按 key 取（与原生菜单同一口径）：渲染层只传"是哪一种确认"，
    * 不把整段文案/文件名搬过来 —— 少一条跨进程字符串通道，也避免用户内容进日志。
    * 按钮语义映射在 shared/nativeDialogs.ts（纯函数，单测钉住下标 → 语义）。
+   *
+   * 删除文件 / 覆盖保存 / 清空历史这类**通用确认框**走下面的 `dialog:confirm`：
+   * 它们的正文本来就由渲染层拼（含文件名/条数/编码名），主进程没有第二份来源；
+   * 渲染层传 `kind`（稳定动作标识，主进程只用它做闸门与日志）+ 已本地化文案。
+   * 大文档的「源码模式 / 仍然打开 / 取消」走 `dialog:choose`（同样是原生三选一）。
    */
   ipcMain.handle('dialog:confirmClose', async (event) => {
     const win = BrowserWindow.fromWebContents(event.sender)
@@ -359,6 +368,44 @@ export function registerIpc(slots: SlotRegistry): void {
     })
   })
 
+  /**
+   * 离开文档（放弃未保存修改）：**取消 / 放弃并离开**。
+   *
+   * 语义要点（单测与端到端套件都钉着）：
+   *   * 取消（下标 0 / Esc / 回车）⇒ 留在当前文档，内容与光标都不动；
+   *   * 放弃并离开（下标 1）⇒ 调用方继续原流程（切换/新建），本次未保存修改丢弃，
+   *     草稿按既有规则处理（不额外在这里删草稿）。
+   */
+  ipcMain.handle('dialog:confirmLeaveUnsaved', async (event) => {
+    const win = BrowserWindow.fromWebContents(event.sender)
+    if (!win || win.isDestroyed()) return 'cancel'
+    return onceNativeDialog(win, 'confirmLeaveUnsaved', async () => {
+      try {
+        console.log('[dialog] show leave-unsaved native')
+        if (win.isMinimized()) win.restore()
+        win.show()
+        win.focus()
+        const { response } = await dialog.showMessageBox(win, {
+          type: 'warning',
+          title: mainT('editor.dirtyConfirmTitle'),
+          message: mainT('editor.dirtyConfirmTitle'),
+          detail: mainT('editor.dirtyConfirmBody'),
+          buttons: [mainT('common.cancel'), mainT('editor.dirtyConfirmDiscard')],
+          defaultId: 0,
+          cancelId: 0,
+          noLink: true
+        })
+        const choice = mapLeaveDialogResponse(response)
+        console.log(`[dialog] native leave-unsaved response=${response} choice=${choice}`)
+        return choice
+      } catch {
+        // 窗口在对话框期间被销毁：最安全的出口是"留在当前文档、不丢内容"
+        console.log('[dialog] native leave-unsaved failed choice=cancel')
+        return 'cancel'
+      }
+    })
+  })
+
   ipcMain.handle('dialog:externalChange', async (event) => {
     const win = BrowserWindow.fromWebContents(event.sender)
     if (!win || win.isDestroyed()) return 'later'
@@ -384,6 +431,103 @@ export function registerIpc(slots: SlotRegistry): void {
       } catch {
         console.log('[dialog] native external-change failed choice=later')
         return 'later'
+      }
+    })
+  })
+
+  /**
+   * 通用确认框（删除文件 / 覆盖保存 / 清空历史 / 恢复默认设置…）。
+   * 危险动作用 warning 图标，但**默认焦点仍在「取消」**（defaultId=0 / cancelId=0）：
+   * 回车不会误删、误覆盖。按钮文案由渲染层给（已本地化），主进程只校验长度。
+   */
+  ipcMain.handle('dialog:confirm', async (event, raw: unknown) => {
+    const win = BrowserWindow.fromWebContents(event.sender)
+    if (!win || win.isDestroyed()) return 'cancel'
+    const input = (raw ?? {}) as Partial<NativeConfirmOptions>
+    const kind =
+      typeof input.kind === 'string' && /^[a-z0-9-]{1,40}$/.test(input.kind)
+        ? input.kind
+        : 'generic'
+    const title = typeof input.title === 'string' ? input.title.slice(0, 200) : ''
+    const body = typeof input.body === 'string' ? input.body.slice(0, 4000) : ''
+    if (!title.trim()) return 'cancel'
+    return onceNativeDialog(win, `confirm:${kind}`, async () => {
+      try {
+        console.log(`[dialog] show confirm native kind=${kind}`)
+        if (win.isMinimized()) win.restore()
+        win.show()
+        win.focus()
+        const { response } = await dialog.showMessageBox(win, {
+          type: input.danger ? 'warning' : 'question',
+          title,
+          message: title,
+          detail: body,
+          buttons: [
+            typeof input.cancelLabel === 'string' && input.cancelLabel.trim()
+              ? input.cancelLabel.slice(0, 60)
+              : mainT('common.cancel'),
+            typeof input.confirmLabel === 'string' && input.confirmLabel.trim()
+              ? input.confirmLabel.slice(0, 60)
+              : mainT('common.confirm')
+          ],
+          defaultId: 0,
+          cancelId: 0,
+          noLink: true
+        })
+        const choice = mapConfirmDialogResponse(response)
+        console.log(`[dialog] native confirm kind=${kind} response=${response} choice=${choice}`)
+        return choice
+      } catch {
+        console.log(`[dialog] native confirm kind=${kind} failed choice=cancel`)
+        return 'cancel'
+      }
+    })
+  })
+
+  /**
+   * 原生三选一（大文档打开方式）：下标 0 = 取消（默认焦点，安全出口）。
+   * 返回值就是 `showMessageBox` 的 response；调用方只认下标（见 stores/files.ts）。
+   */
+  ipcMain.handle('dialog:choose', async (event, raw: unknown) => {
+    const win = BrowserWindow.fromWebContents(event.sender)
+    if (!win || win.isDestroyed()) return 0
+    const input = (raw ?? {}) as Partial<NativeChooseOptions>
+    const kind =
+      typeof input.kind === 'string' && /^[a-z0-9-]{1,40}$/.test(input.kind)
+        ? input.kind
+        : 'generic'
+    const title = typeof input.title === 'string' ? input.title.slice(0, 200) : ''
+    const body = typeof input.body === 'string' ? input.body.slice(0, 4000) : ''
+    const buttons = Array.isArray(input.buttons)
+      ? input.buttons
+          .filter((b): b is string => typeof b === 'string' && !!b.trim())
+          .slice(0, 4)
+          .map((b) => b.slice(0, 60))
+      : []
+    if (!title.trim() || buttons.length < 2) return 0
+    return onceNativeDialog(win, `choose:${kind}`, async () => {
+      try {
+        console.log(`[dialog] show choose native kind=${kind}`)
+        if (win.isMinimized()) win.restore()
+        win.show()
+        win.focus()
+        const { response } = await dialog.showMessageBox(win, {
+          type: 'question',
+          title,
+          message: title,
+          detail: body,
+          buttons,
+          defaultId: 0,
+          cancelId: 0,
+          noLink: true
+        })
+        console.log(`[dialog] native choose kind=${kind} response=${response}`)
+        return Number.isInteger(response) && response >= 0 && response < buttons.length
+          ? response
+          : 0
+      } catch {
+        console.log(`[dialog] native choose kind=${kind} failed response=0`)
+        return 0
       }
     })
   })
@@ -616,7 +760,17 @@ export function registerIpc(slots: SlotRegistry): void {
     if (win.isMaximized()) win.unmaximize()
     else win.maximize()
   })
-  ipcMain.on('app:close', () => BrowserWindow.getFocusedWindow()?.close())
+  /**
+   * 关闭**发请求的那个窗口**。
+   *
+   * 为什么不用 `getFocusedWindow()`：它是"当前前台窗口"的近似，窗口没拿到焦点时
+   * 返回 null（实测：自动化/另一程序抢前台时按 Ctrl+W 毫无反应），多窗口下还可能
+   * 关错人。IPC 的 sender 就是"谁在请求关自己"，这条路径只该关它。
+   */
+  ipcMain.on('app:close', (event) => {
+    const win = BrowserWindow.fromWebContents(event.sender)
+    if (win && !win.isDestroyed()) win.close()
+  })
   /**
    * 退出应用（应用菜单「文件 → 退出」）。
    * 走 `app.quit()` 而不是逐个 `win.close()`：`before-quit` 会 `session.markQuitting()`，

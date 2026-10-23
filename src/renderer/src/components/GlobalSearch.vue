@@ -7,6 +7,7 @@ import { useFindStore } from '../stores/find'
 import { useNotificationsStore } from '../stores/notifications'
 import { useUiStore } from '../stores/ui'
 import { confirmIfDirty } from '../composables/useAppActions'
+import { confirmNative } from '../lib/dialog'
 import { errorReason } from '../lib/errors'
 import { highlightSegments } from '../lib/highlight'
 import { parseLossyReason } from '../../../shared/workspaceReplace.ts'
@@ -252,7 +253,9 @@ async function replaceAcrossWorkspace(): Promise<void> {
       })
       return
     }
-    const ok = await ui.confirm({
+    // 「全部替换」是不可逆的批量写盘：走**主进程原生确认框**（确认类弹窗全部原生）
+    const ok = await confirmNative({
+      kind: 'replace-all',
       title: t('globalSearch.replaceConfirmTitle'),
       body: confirmBody(req, preview),
       danger: true

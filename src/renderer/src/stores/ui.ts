@@ -196,6 +196,12 @@ export const useUiStore = defineStore('ui', {
       const notifications = useNotificationsStore()
       void notifications.notify({ level: TOAST_LEVEL[type] ?? 'info', title: message })
     },
+    /**
+     * ⚠️ **产品代码不再调用**：确认类弹窗已全部改为主进程原生框
+     * （`lib/dialog.ts` 的 `confirmNative` / `confirmLeaveUnsaved`）。
+     * 这个入口只为 CDP 套件的通用模态探针保留（点击陷阱 / z-order / 无障碍），
+     * 新代码不要再用它弹确认框 —— toast 才是保留在应用内的那一种提示。
+     */
     confirm(options: ConfirmOptions): Promise<boolean> {
       return new Promise((resolve) => {
         this.confirmState = { ...options, resolve }
@@ -205,7 +211,7 @@ export const useUiStore = defineStore('ui', {
       this.confirmState?.resolve(v)
       this.confirmState = null
     },
-    /** 三选一确认框（关窗「保存 / 不保存 / 取消」）：见 TripleConfirmOptions 的说明 */
+    /** 三选一确认框：**产品代码不再调用**（关窗已原生；大文档打开方式也已原生）。仅供套件探针。 */
     confirmTriple(options: TripleConfirmOptions): Promise<TripleConfirmResult> {
       return new Promise((resolve) => {
         this.tripleState = { ...options, resolve }

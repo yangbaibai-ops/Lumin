@@ -16,6 +16,7 @@ import { useI18n } from 'vue-i18n'
 import { useSettingsStore } from '../stores/settings'
 import { useFilesStore } from '../stores/files'
 import { useUiStore } from '../stores/ui'
+import { confirmNative } from '../lib/dialog'
 import { FONT_OPTIONS } from '../../../shared/defaults'
 // 设置文件的信封校验 / 白名单过滤 / 隐私剔除（纯函数，单测 tests/settingsFile.test.mjs）：
 // 导入的 JSON 是不可信输入，判据全在那边，这里只负责对话框、报错与确认
@@ -369,7 +370,8 @@ const remoteImagePolicies = computed<{ value: 'click' | 'always'; label: string 
 
 /** 恢复默认设置：store 里早有 `reset()`，但此前没有任何界面能调到它 */
 async function resetAllSettings(): Promise<void> {
-  const ok = await ui.confirm({
+  const ok = await confirmNative({
+    kind: 'reset-settings',
     title: t('settings.reset'),
     body: t('settings.resetConfirm'),
     danger: true
@@ -525,7 +527,8 @@ async function importSettingsFile(): Promise<void> {
       ui.toast(t('settings.importSettingsFailed', { reason: importErrorText(parsed) }), 'error')
       return
     }
-    const ok = await ui.confirm({
+    const ok = await confirmNative({
+      kind: 'import-settings',
       title: t('settings.importSettings'),
       body: t('settings.importSettingsConfirm', { n: parsed.applied.length }),
       danger: true
@@ -765,7 +768,8 @@ async function loadLinkHistory(): Promise<void> {
  * 本地历史问了，链接历史没问。单条删除同样不可恢复（打开次数与时间会随行一起没）。
  */
 async function forgetLink(target: string): Promise<void> {
-  const ok = await ui.confirm({
+  const ok = await confirmNative({
+    kind: 'forget-link',
     title: t('settings.linksForgetTitle'),
     body: t('settings.linksForgetBody', { target }),
     danger: true
@@ -776,7 +780,8 @@ async function forgetLink(target: string): Promise<void> {
 }
 
 async function clearLinkHistory(): Promise<void> {
-  const ok = await ui.confirm({
+  const ok = await confirmNative({
+    kind: 'clear-link-history',
     title: t('settings.linksClearTitle'),
     body: t('settings.linksClearBody'),
     danger: true
