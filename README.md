@@ -1,113 +1,98 @@
 # Lumin
 
-**A WYSIWYG Markdown editor for writers — math, mermaid, code, spell check.**
+**A WYSIWYG Markdown editor for people who write — math, diagrams, code, and spell check.**
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE) ![Platform: Windows 10 / 11](https://img.shields.io/badge/Platform-Windows%2010%20%7C%2011-0078D6.svg) ![Electron 39](https://img.shields.io/badge/Electron-39-47848F.svg) ![Vue 3](https://img.shields.io/badge/Vue-3-42B883.svg)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE) [![Platform: Windows 10 / 11](https://img.shields.io/badge/Platform-Windows%2010%20%7C%2011-0078D6.svg)](https://github.com/yangbaibai-ops/Lumin/releases) [![Electron 39](https://img.shields.io/badge/Electron-39-47848F.svg)](https://www.electronjs.org/) [![Vue 3](https://img.shields.io/badge/Vue-3-42B883.svg)](https://vuejs.org/)
 
 **English** | [简体中文](README.zh-CN.md)
 
-![Lumin main window: a Markdown document with a title, KaTeX math, and a table](docs/screenshots/hero.png)
+![Lumin main window: typeset prose with inline math, a table, and the outline](docs/screenshots/en/hero.png)
 
-Lumin opens `.md` files as typeset prose. Click the sentence you want to change and the Markdown marks appear around the caret; move the caret away and they disappear. Tables, formulas, diagrams, and code blocks are edited in place — there is no source/preview round trip.
-
-## Screenshots
-
-| Mermaid diagrams | Code blocks |
-| :---: | :---: |
-|  |  |
-
-| Spell check | Application menu |
-| :---: | :---: |
-|  |  |
-
-![Settings, Shortcuts page: every keyboard binding can be reassigned](docs/screenshots/settings.png)
+Lumin opens `.md` files as typeset prose. Click the sentence you want to change and its Markdown marks appear around the caret; move the caret away and they disappear. Tables, formulas, diagrams, and code blocks are edited in place, so writing never turns into a source-and-preview round trip.
 
 ## Features
 
-### Editing
+### WYSIWYG editing
 
-- Markdown formatting rendered inline: headings, bold, italic, strikethrough, inline code, blockquotes, ordered / unordered / task lists, tables, images, links, and horizontal rules.
-- Syntax markers stay hidden until the caret enters a construct, so the page reads like the finished document. A setting can keep inline markers hidden at all times.
-- Multi-cursor editing, drag selection, undo / redo, and find & replace.
-- CJK input methods work in the body; the status bar shows word and character counts, the current line and column, encoding, and line endings (CRLF / LF can be switched there).
+![Markdown marks appear around the caret in the rendered document](docs/screenshots/en/hero.png)
+
+Headings, bold, italic, strikethrough, inline code, blockquotes, lists, task lists, tables, images, links, and horizontal rules all render inline. Syntax markers stay hidden until the caret enters a construct; a setting can keep inline markers hidden at all times. The document model is still Markdown, so what you save is what the file contains.
+
+### Three viewing modes
+
+![Split view with the rendered document on the left and Markdown source on the right](docs/screenshots/en/split.png)
+
+![Source mode](docs/screenshots/en/source.png)
+
+The toolbar's segmented control and `Ctrl+/` switch between rendered, split, and source. Split view can synchronise the two panes, and the default mode can also be chosen in Settings → Editor.
 
 ### Math
 
-- Inline `$…$` and block `$$…$$` formulas rendered with KaTeX.
-- KaTeX and its fonts ship with the app: no CDN requests and no network needed.
-- Click a formula to edit its source with a live preview; the source stays Markdown.
+![Inline and block math rendered with KaTeX](docs/screenshots/en/hero.png)
 
-### Mermaid
+Inline `$…$` and block `$$…$$` formulas are rendered with KaTeX. KaTeX and its fonts ship with the app, so formulas render without a CDN or network connection. Click a formula to edit its Markdown source with a live preview.
 
-- A fenced block tagged `mermaid` renders as a diagram in place.
-- Diagrams are loaded lazily; clicking one opens its fence source with a live preview below it.
-- If a diagram fails to parse, the source is kept and the error is reported.
+### Mermaid diagrams
+
+![A fenced mermaid block rendered as a flow chart](docs/screenshots/en/mermaid.png)
+
+A fenced block tagged `mermaid` renders in place. The diagram runtime is loaded lazily; click a diagram to edit the fence source with a live preview underneath. If the source does not parse, the source is kept and the error is reported instead of replacing it.
 
 ### Code blocks
 
-- CodeMirror 6 is embedded inside the block: syntax highlighting, line numbers, bracket completion, autocompletion, and line wrapping.
-- The language picker sits outside the block. It accepts free-form language names and detects the language when the fence has none.
-- Code content is never rewritten by a Markdown round trip.
+![A CodeMirror block with syntax highlighting and the language picker outside the block](docs/screenshots/en/codeblock.png)
+
+Code blocks embed CodeMirror 6 with syntax highlighting, line numbers, bracket completion, autocompletion, and soft wrapping. The language picker floats outside the block, accepts any language name, and auto-detects the language when the fence has none. Code text is not rewritten by a Markdown round trip.
 
 ### Spell check
 
-- English uses the dictionaries shipped with Electron / the operating system; right-clicking a flagged word offers suggestions.
-- Chinese uses heuristic rules, not a dictionary: repeated characters and words, half-width punctuation inside Chinese text, unbalanced bracket pairs, a short list of common character confusions, and optional CJK–Latin spacing hints.
-- Code blocks, math source, and mermaid source are excluded from spell check.
+![A misspelled English word with a wavy underline and the suggestion menu](docs/screenshots/en/spellcheck.png)
 
-### Tables, images, and structure
+English uses the dictionary supplied by Electron and the operating system; right-clicking a flagged word shows suggestions. Chinese uses heuristic rules instead of a dictionary: repeated characters and words, half-width punctuation inside Chinese text, unbalanced bracket pairs, a short list of common confusions, and optional CJK–Latin spacing hints. Code blocks, math source, and Mermaid source are excluded from both.
 
-- Insert or delete rows and columns, and set a column's alignment (left / center / right).
-- Insert and paste images; resize them in place.
-- Outline pane, split view, and a folder file tree for workspaces.
+### Tables
+
+![A Markdown table rendered as an editable table](docs/screenshots/en/hero.png)
+
+Add or remove rows and columns, and set a column's alignment to left, center, or right. The table remains ordinary Markdown in the file.
+
+### Images
+
+![A local image resolved from a relative path](docs/screenshots/en/image.png)
+
+Relative and absolute image paths both resolve, and local images are served through the app's own file protocol. Clicking an image keeps it loadable while exposing its Markdown source, and images can be resized in place.
+
+### Task lists and headings
+
+![Task list and heading levels in the rendered document](docs/screenshots/en/outline.png)
+
+Task checkboxes and heading levels are edited in place and stay part of the Markdown document. The outline is built from that heading structure rather than from a separate table of contents.
+
+### Outline and the right dock
+
+![The outline in the left sidebar, following the current section](docs/screenshots/en/outline.png)
+
+The outline lives in the left sidebar by default. An optional 40-pixel dock on the right can hold the outline instead, so the file tree and the outline are visible at the same time. Both the dock and the outline side are switches in Settings → General.
+
+### Themes and interface languages
+
+![The main window in the dark theme](docs/screenshots/en/dark.png)
+
+Light, dark, and sepia themes are available, along with English, Simplified Chinese, and Russian interface languages. Theme and language changes apply immediately.
 
 ### Stability and recovery
 
-- Paste-size guard for very large clipboard content, with a notice before the editor locks up.
-- A heartbeat watchdog detects an unresponsive window and offers to wait or reload, flushing the draft first; a crashed renderer is reloaded automatically (throttled).
-- Drafts survive an unexpected exit and are offered for recovery on the next start.
-- Native confirmation dialogs for closing with unsaved changes.
-- Global undo: `Ctrl+Z` still works after focus has left the editor.
+![Settings showing the page-unresponsive prompt switch](docs/screenshots/en/settings.png)
 
-### Interface
+A paste-size guard warns before very large clipboard content can lock up the editor. A heartbeat watchdog notices an unresponsive window and offers to wait or reload, flushing the draft first; a crashed renderer is reloaded automatically with throttling. Drafts survive an unexpected exit, closing with unsaved changes uses a native confirmation dialog, and saves are atomic (temporary file, flush, rename). Temporary files left by interrupted writes are swept on startup.
 
-- Light, dark, and sepia themes; English, Simplified Chinese, and Russian UI.
-- Every keyboard binding can be reassigned or unbound in Settings → Shortcuts.
-- Command palette for running commands by name.
-- Export to PDF, HTML, Word, and EPUB.
+### Keyboard shortcuts
 
-## Install
+![Settings → Shortcuts with the factory defaults](docs/screenshots/en/settings-keymap.png)
 
-### Download the installer
+Every application binding can be reassigned or unbound in Settings → Shortcuts. These are the factory defaults; `Ctrl` is the Windows modifier. Editor-level undo, redo, and formatting keys are handled by the editor keymap.
 
-1. Open the [Releases](https://github.com/yangbaibai-ops/Lumin/releases) page and download the latest `Lumin-1.0.0-setup.exe`.
-2. Run the installer and choose an install location. It creates Start menu and desktop shortcuts.
-3. The installer is **not code-signed** yet, so Windows SmartScreen may show “Windows protected your PC”. Choose **More info → Run anyway** to continue.
-4. **The first launch after installing can take a few seconds** while Windows Defender scans the newly written files and the OS file cache is cold. Lumin shows its paper-colored boot screen immediately (never a blank white window); later launches are much faster. Reinstalling writes new files, so the first launch after a reinstall can be slow again — this is OS behavior, not an app hang. A code-signed build would shorten the scan.
-
-### Requirements
-
-- Windows 10 or Windows 11, 64-bit.
-- To build from source: Node.js 22 (`>= 22 < 25`) and a Windows desktop session.
-
-### Build from source
-
-```powershell
-npm install
-npm run build:win
-```
-
-The installer and update metadata are written to `dist/` (`Lumin-1.0.0-setup.exe`, `latest.yml`, and the `.blockmap` files). For development with hot reload:
-
-```powershell
-npm run dev
-```
-
-## Keyboard shortcuts
-
-These are the factory defaults. `Mod` is `Ctrl` on Windows. The application commands are declared in `[src/renderer/src/composables/useKeymap.ts](src/renderer/src/composables/useKeymap.ts)`; the editor-level bindings live in `[src/renderer/src/lib/editor/inlineMarks.ts](src/renderer/src/lib/editor/inlineMarks.ts)` and `[src/renderer/src/lib/editor/keymap.ts](src/renderer/src/lib/editor/keymap.ts)`. Every binding can be changed or unbound in **Settings → Shortcuts**.
-
-| Action | Shortcut |
+| Action | Default shortcut |
 | --- | --- |
 | New / New window | `Ctrl+N` / `Ctrl+Shift+N` |
 | Open file / Open folder | `Ctrl+O` / `Ctrl+Shift+O` |
@@ -122,12 +107,44 @@ These are the factory defaults. `Mod` is `Ctrl` on Windows. The application comm
 | Insert image / Code block | `Ctrl+Alt+Shift+I` / `Ctrl+Alt+Shift+C` |
 | Insert block math / Mermaid | `Ctrl+Alt+M` / `Ctrl+Alt+G` |
 | Insert paragraph above / below | `Ctrl+Alt+↑` / `Ctrl+Alt+↓` |
-| Toggle sidebar / Focus mode | `Ctrl+Shift+B` / `Ctrl+Shift+F` |
+| Toggle sidebar / legacy binding | `Ctrl+Shift+L` / `Ctrl+Shift+B` |
+| Focus mode | `Ctrl+Shift+F` |
 | Command palette | `Ctrl+Shift+P` |
 | Settings / Shortcut settings | `Ctrl+,` / `Ctrl+K` |
-| Cycle editor mode (live / split / source) | `Ctrl+/` |
+| Cycle editor mode (rendered / split / source) | `Ctrl+/` |
 | Next / previous window | `Ctrl+Tab` / `Ctrl+Shift+Tab` |
-| Undo / Redo | `Ctrl+Z` / `Ctrl+Y` |
+| Close window | `Ctrl+W` |
+
+The registry that defines these defaults is `src/renderer/src/composables/useKeymap.ts`. Editor-level bindings are declared in `src/renderer/src/lib/editor/keymap.ts` and `src/renderer/src/lib/editor/inlineMarks.ts`.
+
+### Export and the command palette
+
+![The command palette showing the export commands](docs/screenshots/en/palette.png)
+
+Export to PDF, HTML, Word (HTML-compatible `.html` that Word can open and edit — not OOXML `.docx`), and EPUB. PDF uses Chromium's print pipeline and gets page numbers and a header; EPUB splits at top-level headings and embeds local images. The command palette (`Ctrl+Shift+P`) runs any command by name, including the export commands shown here.
+
+## Install
+
+### Download the installer
+
+1. Open the [Releases page](https://github.com/yangbaibai-ops/Lumin/releases) and download the latest `Lumin-1.0.0-setup.exe`.
+2. Run the installer and choose an install location. It creates Start-menu and desktop shortcuts.
+3. The installer is **not code-signed** yet, so Windows SmartScreen may show “Windows protected your PC”. Choose **More info → Run anyway** to continue.
+4. The first launch after installing can take a few seconds while Windows Defender scans the new files and the file cache is cold. Lumin shows its paper-coloured boot screen immediately; later launches are faster. Reinstalling writes new files, so the first launch after a reinstall can be slow again.
+
+### Requirements
+
+- Windows 10 or Windows 11, 64-bit.
+- To build from source: Node.js 22 (`>= 22 < 25`) and a Windows desktop session.
+
+### Build from source
+
+```powershell
+npm install
+npm run build:win
+```
+
+The installer and update metadata are written to `dist/` (`Lumin-1.0.0-setup.exe`, `latest.yml`, and the `.blockmap` files). For development with hot reload, run `npm run dev`.
 
 ## Development
 
@@ -138,7 +155,7 @@ npm run typecheck      # type-check the main process and the renderer
 npm run test:unit      # unit tests (node --test)
 npm run ci             # typecheck + lint + unit tests + notices/docs checks + production build
 npm run build          # production build into out/
-npm run test:suites    # default CDP acceptance matrix (run `npm run build` first)
+npm run test:suites    # default CDP acceptance matrix (run npm run build first)
 ```
 
 `npm run test:suites` launches the built app from `out/` in isolated profiles and drives it over the DevTools protocol. It needs a real Windows desktop session; each suite gets a fresh user-data directory and its own debugging port. `npm run test:suites:all` runs the full matrix.
@@ -147,17 +164,12 @@ npm run test:suites    # default CDP acceptance matrix (run `npm run build` firs
 
 Lumin is an Electron application with a context-isolated bridge between the main process and a Vue renderer.
 
-- **Main process** (`src/main`): window and session management, file I/O, native menus, export and print pipelines, update checks, and the freeze / crash guards.
-- **Preload** (`src/preload`): the only bridge to the main process, exposed to pages as `window.luminAPI`.
-- **Renderer** (`src/renderer`): Vue 3 UI. Tiptap / ProseMirror is the document model, CodeMirror 6 edits code blocks, KaTeX renders math, and Mermaid renders diagrams.
-- **Shared** (`src/shared`): settings schema, i18n bundles, and Markdown, export, encoding, and spell-check rules used by both sides.
-
 | Path | Contents |
 | --- | --- |
-| `src/main/` | Electron main process, IPC handlers, services |
-| `src/preload/` | Context-isolated `window.luminAPI` bridge |
-| `src/renderer/src/` | Vue app, Tiptap editor, CodeMirror, KaTeX, Mermaid |
-| `src/shared/` | Settings, i18n, and format rules shared by both processes |
+| `src/main/` | Electron main process, IPC handlers, window and session management, file I/O, export and print, update checks, freeze and crash guards |
+| `src/preload/` | The context-isolated `window.luminAPI` bridge |
+| `src/renderer/src/` | Vue app, Tiptap / ProseMirror document model, CodeMirror 6 code blocks, KaTeX and Mermaid rendering |
+| `src/shared/` | Settings schema, i18n bundles, and Markdown, export, encoding, and spell-check rules used by both processes |
 | `tools/` | CDP acceptance suites and release / documentation scripts |
 | `tests/` | Unit tests (`node --test`) |
 | `docs/` | Manual, design notes, and screenshots |
