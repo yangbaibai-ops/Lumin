@@ -11,7 +11,8 @@
 import fs from 'fs/promises'
 import path from 'path'
 import { fileURLToPath } from 'url'
-import { TEXT_FILE_EXT_RE } from '../../shared/textFiles'
+import { TEXT_FILE_EXT_RE } from '../../shared/textFiles.ts'
+import { isProjectLinkHost } from '../../shared/appLinks.ts'
 import type { LinkResolveResult, LinkTargetKind } from '../../shared/types'
 
 /**
@@ -239,5 +240,36 @@ export function safeExternalUrl(url: string): string | null {
     return EXTERNAL_SCHEMES.has(parsed.protocol) ? parsed.href : null
   } catch {
     return null
+  }
+}
+
+/**
+ * 校验**应用自己发起的项目主页链接**：`https` + 域名白名单（GitHub / Gitee / GitCode）。
+ *
+ * 与 `safeExternalUrl` 的关系是**叠加**而不是替代：文档里的普通网址仍走前者（编辑器要能打开
+ * 任意 https 站点），而「帮助 → 项目主页」与关于页的仓库入口走这里 —— 目标是我们写死的
+ * 三个仓库，没有理由允许跳到别的主机。域名清单收在 `shared/appLinks.ts` 的
+ * `PROJECT_LINK_HOSTS`（唯一配置源，菜单/关于页/测试都从那里取）。
+ */
+export function safeProjectUrl(url: string): string | null {
+  const safe = safeExternalUrl(url)
+  if (!safe) return null
+  try {
+    const parsed = new URL(safe)
+    return parsed.protocol === 'https:' && isProjectLinkHost(parsed.hostname) ? parsed.href : null
+  } catch {
+    return null
+  }
+}
+
+/**
+ * 取 URL 的主机名（小写；解析不出来时返回 `'invalid'`）。
+ * 用途：域名白名单拒绝时打一行 ASCII 日志（不把任意完整 URL 写进日志）。
+ */
+export function hostOf(url: string): string {
+  try {
+    return new URL((url ?? '').trim()).hostname.toLowerCase() || 'invalid'
+  } catch {
+    return 'invalid'
   }
 }

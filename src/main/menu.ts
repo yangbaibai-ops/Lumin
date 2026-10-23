@@ -12,15 +12,33 @@
 // 注意：这里**故意不设 accelerator**。应用级快捷键由渲染层的命令注册表统一接管
 // （renderer/src/lib/keymap/），用户可以在「设置 → 快捷键」里改；若原生菜单也绑一份，
 // 就会出现「用户改了键但原生那份照旧触发」的两套真相 + 重复触发。
-import { app, BrowserWindow, Menu } from 'electron'
+import { app, BrowserWindow, Menu, shell } from 'electron'
 import type { MenuItemConstructorOptions } from 'electron'
 import { patchSettings } from './services/appSettings'
 import { mainLanguage, mainT } from './i18n'
 import { EXPORT_FORMATS } from '../shared/exportFormats'
+import { REPO_MIRRORS } from '../shared/appLinks'
+import { safeProjectUrl } from './services/links'
 
 function send(action: string): void {
   const win = BrowserWindow.getFocusedWindow()
   if (win) win.webContents.send('menu:action', action)
+}
+
+/**
+ * 原生菜单里的「帮助 → 项目主页 → …」：用**既有** `shell.openExternal` 通道，
+ * 并且先过 `safeProjectUrl` 的协议 + 域名白名单（只有 GitHub / Gitee / GitCode）。
+ *
+ * 这里的 URL 来自 `shared/appLinks.ts` 的 `REPO_MIRRORS`（不手抄第二份地址），
+ * dry-run 的口径与 `src/main/ipc.ts` 一致：仅未打包实例认这个变量，验收时只记日志。
+ */
+const openExternalDryRun = !app.isPackaged && process.env.LUMIN_OPEN_EXTERNAL_DRY_RUN === '1'
+
+function openProjectMirror(url: string): void {
+  const safe = safeProjectUrl(url)
+  if (!safe) return
+  console.log(`[shell] openExternal${openExternalDryRun ? ' dry-run' : ''} ${encodeURI(safe)}`)
+  if (!openExternalDryRun) void shell.openExternal(safe)
 }
 
 /**
@@ -34,6 +52,15 @@ function t(key: string): string {
 export function installMenu(): void {
   const isMac = process.platform === 'darwin'
   const T = t
+
+  /**
+   * 「项目主页」子菜单：从镜像清单派生（加一个镜像 = 清单加一条，这里不写地址）。
+   * 三条入口分别是 GitHub（主仓库）/ Gitee / GitCode，点击走 `safeProjectUrl` 白名单。
+   */
+  const projectHomeItems: MenuItemConstructorOptions[] = REPO_MIRRORS.map((m) => ({
+    label: m.name,
+    click: () => openProjectMirror(m.url)
+  }))
 
   const template: MenuItemConstructorOptions[] = [
     ...(isMac
@@ -149,6 +176,10 @@ export function installMenu(): void {
       label: T('help'),
       submenu: [
         { label: T('settings'), click: () => send('settings') },
+        // 「项目主页」子菜单：GitHub（主仓库）/ Gitee / GitCode 三个镜像入口。
+        // 地址来自 shared/appLinks.ts 的 REPO_MIRRORS，点击先过 safeProjectUrl 的域名白名单；
+        // 与顶部栏「帮助 → 项目主页」是同一份清单、同一条 shell.openExternal 通道。
+        { label: T('projectHome'), submenu: projectHomeItems },
         { label: T('about'), click: () => send('about') },
         // 「支持这个项目」：重新弹出**同一个**原生感谢/支持框（一次性提示关掉后仍可回看）。
         // 手动入口不写 `supportPromptShown`，也不受"已弹过"限制（见 main/ipc.ts 的 dialog:support）。
@@ -157,16 +188,6 @@ export function installMenu(): void {
         // 环境摘要写成一份文件。渲染层与设置页/状态栏共用同一份实现
         // （renderer/lib/startupDiagnostics.ts），这里只发动作名。
         { label: T('exportStartupDiagnostics'), click: () => send('export-startup-diagnostics') }
-        // 这里原来有一项「主页」→ `shell.openExternal('https://github.com')`：
-        // 打开的是 **GitHub 首页**，不是本项目的仓库。指向一个无关站点比没有这一项更糟 ——
-        // 用户点了会以为自己走错了地方，所以当时摘掉了。
-        // **现状（第十一轮）**：真实地址已经有了 —— `package.json` 的
-        // `homepage`/`repository` = `https://github.com/yangbaibai-ops/Lumin`。
-        // 原生菜单这条**仍未启用**（不在该轮用户口径内：那轮加的是顶部栏「帮助」里的
-        // **反馈渠道**入口，地址只出现在 `src/shared/feedback.ts`）。要启用就是把下面这行放开：
-        //   { label: T('homepage'), click: () => shell.openExternal(<package.json 的 homepage>) }
-        // 注意别把地址抄成第二份：菜单这边应当从同一份配置/元数据取（`menu.homepage` 这个
-        // 语言包键一直留着，`tests/i18nKeys.test.mjs` 的 RESERVED 里登记了它为什么还"零引用"）。
       ]
     }
   ]
@@ -175,4 +196,6 @@ export function installMenu(): void {
   // 自检日志（**ASCII**，便于脚本 grep）：验收脚本读实例 stdout 就能确认
   // 「原生菜单确实按新语言重建了」—— 菜单栏默认隐藏，页面侧看不到它，这是唯一可自动验证的观察点。
   console.log(`[menu] rebuilt lang=${mainLanguage()} top=${template.length}`)
+  // 原生命令树快照：验收要能证明「帮助 → 项目主页」下确实是那三个镜像（而不只是源码里有）。
+  console.log(`[menu] projectHome=${projectHomeItems.map((i) => i.label).join(',')}`)
 }

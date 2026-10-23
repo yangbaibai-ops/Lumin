@@ -146,6 +146,14 @@ npm run build:win
 
 安装包与更新元数据会写到 `dist/`（`Lumin-1.0.0-setup.exe`、`latest.yml` 与对应的 `.blockmap`）。开发模式（热重载）直接运行 `npm run dev`。
 
+## 镜像
+
+以 GitHub 为主仓库，Gitee 与 GitCode 为只读镜像；Issue 请优先提交到 GitHub。
+
+- GitHub（主仓库）：<https://github.com/yangbaibai-ops/Lumin>
+- Gitee：<https://gitee.com/yangbai-bai/Lumin>
+- GitCode：<https://gitcode.com/yangbaibai-ops/Lumin>
+
 ## 开发
 
 ```powershell

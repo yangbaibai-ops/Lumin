@@ -314,7 +314,7 @@ const api: LuminAPI = {
     snapshotWorkspace: () => ipcRenderer.invoke('backup:snapshotWorkspace')
   },
   shell: {
-    openExternal: (url) => ipcRenderer.send('shell:openExternal', url),
+    openExternal: (url, scope) => ipcRenderer.send('shell:openExternal', url, scope),
     openPath: (path) => ipcRenderer.invoke('shell:openPath', path)
   },
   session: {

@@ -973,7 +973,12 @@ export interface LuminAPI {
     snapshotWorkspace: () => Promise<SnapshotResult | null>
   }
   shell: {
-    openExternal: (url: string) => void
+    /**
+     * 交给系统浏览器打开网址。
+     * `scope: 'project'` 表示这是**应用自己发起的项目主页/镜像入口**（只允许
+     * GitHub / Gitee / GitCode 三个域名）；省略时按文档链接处理（协议白名单）。
+     */
+    openExternal: (url: string, scope?: 'project') => void
     /** 用系统默认应用打开文件或文件夹；返回空字符串表示成功，否则为错误信息 */
     openPath: (path: string) => Promise<string>
   }

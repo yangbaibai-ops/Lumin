@@ -1731,12 +1731,21 @@ export function registerIpc(slots: SlotRegistry): void {
    * 打包产物忽略该环境变量（所以发布版永远不会"点了没反应"）。
    * 变量本身在模块顶部声明（「支持这个项目」原生框的 Star 按钮也要用它）。
    */
-  ipcMain.on('shell:openExternal', (_, url: string) => {
-    const safe = links.safeExternalUrl(url)
+  ipcMain.on('shell:openExternal', (_, url: string, scope?: 'project') => {
+    /**
+     * 两条闸：
+     *   * 文档里的普通网址（默认 scope）→ `safeExternalUrl`：协议白名单；
+     *   * 应用自己发起的「项目主页/仓库镜像」（`scope === 'project'`）→ `safeProjectUrl`：
+     *     协议 + 域名白名单（只有 GitHub / Gitee / GitCode 能开，见 shared/appLinks.ts）。
+     */
+    const isProject = scope === 'project'
+    const safe = isProject ? links.safeProjectUrl(url) : links.safeExternalUrl(url)
     if (!safe) {
-      // 被白名单拦下的留一行日志（只打 scheme，别把任意 URL 写进日志）：既便于排查
+      // 被白名单拦下的留一行日志（只打 scheme/域名，别把任意 URL 写进日志）：既便于排查
       // "点了没反应"，也让「负例必须被拒」在验收里有可观测的证据。
-      console.log(`[links] refused openExternal scheme=${schemeOfUrl(url)}`)
+      console.log(
+        `[links] refused openExternal ${isProject ? `domain=${links.hostOf(url)}` : `scheme=${schemeOfUrl(url)}`}`
+      )
       return
     }
     /**
@@ -1744,8 +1753,11 @@ export function registerIpc(slots: SlotRegistry): void {
      * 控制台乱码 —— 主进程 console 的输出纪律见 singleInstance.ts 的说明）。
      * 这行是"点了哪个链接"的唯一取证点：渲染层的 `openExternal` 是 send（无返回值），
      * 而 contextBridge 暴露的 API 是只读的、页面里 monkey-patch 不了。
+     * 应用自己发起的项目链接用 `[shell]` 前缀（与「支持这个项目」的 Star 按钮同一口径），
+     * 文档链接继续用 `[links]`，验收脚本可以据此区分两条来源。
      */
-    console.log(`[links] openExternal${openExternalDryRun ? ' dry-run' : ''} ${encodeURI(safe)}`)
+    const tag = isProject ? '[shell]' : '[links]'
+    console.log(`${tag} openExternal${openExternalDryRun ? ' dry-run' : ''} ${encodeURI(safe)}`)
     if (!openExternalDryRun) void shell.openExternal(safe)
   })
   ipcMain.handle('shell:openPath', async (_, p: string) => {

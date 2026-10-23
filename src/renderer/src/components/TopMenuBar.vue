@@ -20,7 +20,7 @@ import { confirmIfDirty, newDocumentWindow } from '../composables/useAppActions'
 import { openExternalFile, openInWindowOrFocus } from '../lib/openFile'
 // 反馈渠道清单（**URL 只在这一份配置里**，模板不写死；加 Gitee = 加一条数据）
 import { FEEDBACK_CHANNELS } from '../../../shared/feedback'
-import { APP_DOCS_URL } from '../../../shared/appLinks'
+import { APP_DOCS_URL, REPO_MIRRORS } from '../../../shared/appLinks'
 import { defaultSettings } from '../../../shared/defaults'
 import { ENCODINGS } from '../../../shared/encodings'
 import { EOL_OPTIONS } from '../../../shared/eol'
@@ -684,6 +684,17 @@ const GROUPS = computed<Group[]>(() => [
         icon: 'book',
         run: () => window.luminAPI.shell.openExternal(APP_DOCS_URL)
       },
+      {
+        // 项目主页：GitHub（主仓库）/ Gitee / GitCode 三个镜像入口。
+        // 清单只存在于 shared/appLinks.ts；打开时带 `'project'`，主进程用 safeProjectUrl
+        // 做协议 + 域名白名单（只有这三个域名可开），与原生菜单「帮助 → 项目主页」同源。
+        labelKey: 'menu.projectHome',
+        icon: 'globe',
+        children: REPO_MIRRORS.map((mirror) => ({
+          label: mirror.name,
+          run: () => openProjectMirror(mirror.url)
+        }))
+      },
       { labelKey: 'menu.about', icon: 'info', run: () => router.push('/about') },
       // 「支持这个项目」：一次性提示关掉后仍可从帮助里重新调出来（同一个原生框）。
       // 手动入口不读写 `supportPromptShown`，实现只有一份（lib/supportPrompt.ts）。
@@ -849,6 +860,18 @@ function focusEditorSurface(): void {
  */
 function openFeedbackChannel(url: string): void {
   window.luminAPI.shell.openExternal(url)
+  focusEditorSurface()
+}
+
+/**
+ * 打开一个仓库镜像入口（「帮助 → 项目主页 → GitHub / Gitee / GitCode」）。
+ *
+ * `'project'` 这个 scope 是**必要的**：主进程据此走 `safeProjectUrl` 的协议 + 域名白名单
+ * （只有 GitHub / Gitee / GitCode），而不是文档链接那条「任意 https 都能开」的通道。
+ * 焦点处理与反馈渠道一致：菜单关掉后把焦点交回编辑面。
+ */
+function openProjectMirror(url: string): void {
+  window.luminAPI.shell.openExternal(url, 'project')
   focusEditorSurface()
 }
 

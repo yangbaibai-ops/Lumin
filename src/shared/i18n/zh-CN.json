@@ -109,11 +109,11 @@
     "openDevTools": "打开开发者工具",
     "feedback": "意见或 bug 反馈",
     "feedbackGithub": "GitHub Issues",
+    "projectHome": "项目主页",
     "settings": "设置",
     "about": "关于 Lumin",
     "quit": "退出",
     "closeWindow": "关闭窗口",
-    "homepage": "在浏览器中打开项目主页",
     "reopenWithEncoding": "选择编码重新打开",
     "saveWithEol": "行尾",
     "eolLf": "以 LF 保存",
@@ -530,7 +530,9 @@
     "licensesHint": "点击展开第三方许可声明（由 npm run notices 生成）",
     "logs": "诊断日志",
     "logsHint": "反馈启动慢/闪退时，先把这份日志导出后发给我们（已脱敏，不含文档内容）",
-    "logPath": "启动日志路径"
+    "logPath": "启动日志路径",
+    "mirrors": "镜像仓库",
+    "mirrorsHint": "以 GitHub 为主仓库，Gitee 与 GitCode 为镜像；问题请优先提交到 GitHub。"
   },
   "toast": {
     "openFailed": "无法打开文件",

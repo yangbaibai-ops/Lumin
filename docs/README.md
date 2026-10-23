@@ -1,5 +1,9 @@
 # Lumin 文档索引
 
+> 仓库：[GitHub](https://github.com/yangbaibai-ops/Lumin)（主仓库）·
+> [Gitee](https://gitee.com/yangbai-bai/Lumin)（镜像）·
+> [GitCode](https://gitcode.com/yangbaibai-ops/Lumin)（镜像）。Issue 请优先提交到 GitHub。
+>
 > 面向开源读者的文档导航。**第一次使用请先读根目录的 [`README.md`](../README.md)**（中英双语：
 > 功能、安装、快捷键与截图）。
 >

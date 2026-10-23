@@ -146,6 +146,14 @@ npm run build:win
 
 The installer and update metadata are written to `dist/` (`Lumin-1.0.0-setup.exe`, `latest.yml`, and the `.blockmap` files). For development with hot reload, run `npm run dev`.
 
+## Mirrors
+
+GitHub is the primary repository. Gitee and GitCode are read-only mirrors — please file issues on GitHub first.
+
+- GitHub (primary): <https://github.com/yangbaibai-ops/Lumin>
+- Gitee: <https://gitee.com/yangbai-bai/Lumin>
+- GitCode: <https://gitcode.com/yangbaibai-ops/Lumin>
+
 ## Development
 
 ```powershell

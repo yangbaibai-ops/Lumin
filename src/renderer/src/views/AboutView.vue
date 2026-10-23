@@ -5,6 +5,7 @@ import { useI18n } from 'vue-i18n'
 import Icon from '../components/Icon.vue'
 import { APP_ICON_PNG_BASE64 } from '../assets/iconPng'
 import { exportStartupDiagnostics } from '../lib/startupDiagnostics'
+import { REPO_MIRRORS } from '../../../shared/appLinks'
 
 const { t } = useI18n()
 const router = useRouter()
@@ -62,6 +63,15 @@ function exportDiagnostics(): void {
 function openLogDir(): void {
   void window.luminAPI.app.openLogDir()
 }
+
+/**
+ * 打开仓库镜像（GitHub 主仓库 / Gitee / GitCode）。
+ * 走 `'project'` scope → 主进程 `safeProjectUrl` 的协议 + 域名白名单，
+ * 与「帮助 → 项目主页」和原生菜单是同一份清单、同一条通道。
+ */
+function openMirror(url: string): void {
+  window.luminAPI.shell.openExternal(url, 'project')
+}
 </script>
 
 <template>
@@ -98,6 +108,31 @@ function openLogDir(): void {
             {{ t('about.platform') }}
           </p>
           <p class="mt-1 text-[15px] font-semibold text-ink capitalize">{{ platform }}</p>
+        </div>
+      </div>
+
+      <!-- 仓库镜像：GitHub（主仓库）+ Gitee / GitCode。清单只来自 shared/appLinks.ts
+           （模板里不写 URL），点击走主进程 `safeProjectUrl` 的域名白名单。 -->
+      <div class="mt-8 w-full text-left" data-about-mirrors>
+        <h2 class="mb-1 text-center text-ui-sm font-semibold uppercase tracking-wide text-ink-2b">
+          {{ t('about.mirrors') }}
+        </h2>
+        <p class="mb-3 text-center text-ui-sm text-ink-2b">{{ t('about.mirrorsHint') }}</p>
+        <div class="flex flex-col gap-2">
+          <button
+            v-for="mirror in REPO_MIRRORS"
+            :key="mirror.id"
+            class="surface flex items-center gap-2 px-3 py-2 text-left transition-colors duration-150 hover:border-accent"
+            :data-about-mirror="mirror.id"
+            :title="mirror.url"
+            @click="openMirror(mirror.url)"
+          >
+            <Icon name="globe" :size="14" class="flex-none text-ink-2b" />
+            <span class="flex-none text-ui font-medium text-ink">{{ mirror.name }}</span>
+            <span class="min-w-0 flex-1 truncate font-mono text-ui-sm text-accent-ink">
+              {{ mirror.url }}
+            </span>
+          </button>
         </div>
       </div>
 
