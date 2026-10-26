@@ -1,3 +1,5 @@
+> **Note**: Lumin was built over about one month with **DeepSeek Harness** — the code was written entirely by AI, then strictly reviewed before release.
+
 # Lumin
 
 **A WYSIWYG Markdown editor for people who write — math, diagrams, code, and spell check.**
